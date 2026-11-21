@@ -26,15 +26,28 @@ import { basename, join } from 'node:path'
 import { z } from 'zod'
 
 import {
-  claudePluginArgv,
-  claudeResumeFlag,
-  modelArgs,
+  CLAUDE_HOOK_EVENTS,
+  claudeHookSettings,
+  claudeResumeArgv,
+  claudeSessionArgv,
+  hasInteractiveArgv,
+  interactiveArgv,
+  type ClaudeLaunchFlags,
+  type ClaudeSessionFlags,
   type ModelChoice,
   type PluginSpec,
 } from '@osdlc/agent-call'
 import { harnessId } from '@osdlc/detect-harness'
 
-import { ran, resolveRunner, type CommandRunner, type EnvOverrides } from '@osdlc/command-seam'
+import {
+  commandString,
+  ran,
+  resolveRunner,
+  shellJoin,
+  shellQuote,
+  type CommandRunner,
+  type EnvOverrides,
+} from '@osdlc/command-seam'
 import { isRecord, parseJsonOrNull, realResolve, sleepSync, strOrNull, which } from './util.ts'
 
 // `contract.ts` imports only types from this file (`Harness` for
@@ -49,8 +62,7 @@ import {
 
 /**
  * The coding-agent CLI a session runs, by its tool id: a built-in one
- * (`BUILTIN_HARNESSES` from `@osdlc/detect-harness`, e.g. `claude`) or one a caller declares. This file
- * builds the interactive argv ({@link INTERACTIVE_ARGV}).
+ * (`BUILTIN_HARNESSES` from `@osdlc/detect-harness`, e.g. `claude`) or one a caller declares.
  */
 export type Harness = string
 
@@ -74,85 +86,41 @@ export function harnessOrNull(value: unknown): Harness | null {
   return typeof value === 'string' ? (harnessId(value) ?? null) : null
 }
 
-/** What an interactive argv builder is handed: the binary, the first message, and the flags around it. */
-interface InteractiveParts {
-  bin: string
-  prompt: string
-  /** The launch mode, model and effort flags (`modelArgs`). */
-  model: string[]
-  claude: ClaudeLaunchFlags
-  injected: readonly string[]
-}
-
-/** `<bin> <model flags> <injected> -- <prompt>`: the shape of every CLI whose positional is the first message. */
-const guarded = (p: InteractiveParts): string[] => [
-  p.bin,
-  ...p.model,
-  ...p.injected,
-  '--',
-  p.prompt,
-]
-
-/**
- * The interactive argv builders, keyed by tool id: the bare CLI with `prompt`
- * as its first message, guarded behind a `--` end-of-options marker, so a
- * prompt starting with `-` (or naming a subcommand) is never read as one.
- * A tool missing here has no interactive launch (antigravity, a declared tool).
- *
- *   - `claude`: its CLI parser (commander.js) treats `--` as the end of
- *     options. Its session flags ({@link claudeSessionArgv}) sit before the guard.
- *   - `codex`: its CLI parser (clap) honours `--`; without it a prompt starting
- *     with `-` is parsed as a flag, and one naming a subcommand (`login`) runs
- *     that subcommand. Checked against a live codex.
- *   - `cursor`: taken from Cursor's published CLI docs, not a live run; guarded
- *     the same way, since any argv-parsing CLI has the same ambiguity.
- *   - `pi`: `pi --help` documents `pi [options] [--] [@files...] [messages...]`,
- *     and a live run with `--` opened the session on the prompt.
- *   - `opencode`: its bare positional is the PROJECT directory, so the first
- *     message goes in `--prompt=<message>` (bound with `=` so a message starting
- *     with `-` is not read as a flag), per `opencode --help`.
- */
-const INTERACTIVE_ARGV: Readonly<Record<string, (p: InteractiveParts) => string[]>> = {
-  claude: (p) => [p.bin, ...p.model, ...claudeSessionArgv(p.claude), ...p.injected, '--', p.prompt],
-  codex: guarded,
-  cursor: guarded,
-  pi: guarded,
-  opencode: (p) => [p.bin, ...p.model, ...p.injected, `--prompt=${p.prompt}`],
-}
-
-/** Whether an interactive argv can be built for `tool`. */
-export function hasInteractiveArgv(tool: string): boolean {
-  return Object.hasOwn(INTERACTIVE_ARGV, tool)
-}
+/** Whether an interactive argv can be built for `tool`; `@osdlc/agent-call` owns the table. */
+export { hasInteractiveArgv }
 
 /**
  * The argv that opens `harness`, run as `binary` (a name on PATH or an
- * absolute path), interactively with `prompt` as its first message
- * ({@link INTERACTIVE_ARGV}). A resolved `choice` adds its launch mode,
- * model and effort flags (`modelArgs`, `@osdlc/agent-call`) before the `--` guard; a
- * tool with no model or effort flags wired throws on a choice rather than
- * dropping it. Throws for a tool with no interactive launch.
+ * absolute path, or a launcher prefix such as `['npx', '-y', 'claude']`
+ * whose words lead the argv), interactively with `prompt` as its first
+ * message: a thin form of `interactiveArgv` (`@osdlc/agent-call`), which owns
+ * each CLI's command line. Throws for a tool with no interactive launch, or a
+ * `choice` it has no model or effort flags for.
  *
  * `injected` is the argv a per-launch observation adds (pi's
  * `--session-id` and `-e <extension>`); it sits before the prompt.
  */
 export function harnessArgv(
   harness: Harness,
-  binary: string,
+  binary: string | readonly string[],
   prompt: string,
   claude: ClaudeLaunchFlags = {},
   choice: ModelChoice = {},
   injected: readonly string[] = [],
 ): string[] {
-  const build = Object.hasOwn(INTERACTIVE_ARGV, harness) ? INTERACTIVE_ARGV[harness] : undefined
-  if (build === undefined) throw new Error(`'${harness}' has no interactive launch`)
-  return build({
-    bin: binary,
+  const bin = typeof binary === 'string' ? [binary] : binary
+  if (bin.length === 0 || bin.some((w) => w === '')) {
+    throw new Error('harnessArgv needs a binary: a non-empty word, or a list of non-empty words')
+  }
+  // agent-call takes one binary word; the launcher's remaining words follow it.
+  const [first, ...rest] = interactiveArgv(harness, {
+    binary: bin[0]!,
     prompt,
-    model: modelArgs(harness, choice),
     claude,
+    choice,
     injected,
   })
+  return [first!, ...bin.slice(1), ...rest]
 }
 
 /** Session flags only `claude` takes; a caller can store them to resume with the same flags. */
@@ -172,122 +140,23 @@ export const ClaudeSessionFlagsSchema = z.object({
    * resume, since `--settings` is not persisted with the session.
    */
   hookCommand: z.string().optional(),
-})
-/**
- * The parsed {@link ClaudeSessionFlagsSchema}: the session flags only `claude` takes.
- */
-export type ClaudeSessionFlags = z.infer<typeof ClaudeSessionFlagsSchema>
+}) satisfies z.ZodType<ClaudeSessionFlags>
 
-/** {@link ClaudeSessionFlags} plus what only a fresh launch passes: the session id to preset. */
-export interface ClaudeLaunchFlags extends ClaudeSessionFlags {
-  /**
-   * The harness's own session id to preset (`claude --session-id`), so its id and transcript
-   * are known at launch. Never with a resume. Not the caller's id: that is
-   * `SessionRequest.sessionId`.
-   */
-  harnessSessionId?: string | undefined
-}
-
-/** How one Claude hook event is subscribed. */
-interface ClaudeHookSpec {
-  /** Runs `async`; false only where the hook must finish its write before Claude exits. */
-  async: boolean
-  /** Claude's tool-name matcher; without one the hook runs for every occurrence of the event. */
-  matcher?: string
-}
+// Fails to compile when agent-call's ClaudeSessionFlags gains a key the stored schema does not parse.
+const _schemaCoversFlags: Record<keyof ClaudeSessionFlags, unknown> = ClaudeSessionFlagsSchema.shape
+void _schemaCoversFlags
+export type { ClaudeLaunchFlags, ClaudeSessionFlags }
+export { CLAUDE_HOOK_EVENTS, claudeHookSettings, claudeResumeArgv, claudeSessionArgv }
 
 /**
- * The Claude Code hook events the caller listens to. Everything is async except
- * `SessionEnd`, which has to finish its write before Claude exits (its budget
- * is the hook's own `timeout`). `PreToolUse` is matched to `AskUserQuestion`
- * alone: the question is what puts the agent in `waiting_for_input` there, and
- * a hook on every tool call would cost a process each. `PermissionRequest` and
- * `StopFailure` mark a tool-permission prompt and a turn that ended on an API error.
+ * Whether the first word of `binary` (a name on PATH, an absolute path, or a
+ * launcher prefix) is on PATH: a synchronous lookup that spawns nothing. Only a
+ * PATH hit counts: an installed app bundle (Cursor.app) gives a session nothing
+ * to run.
  */
-export const CLAUDE_HOOK_EVENTS = {
-  SessionStart: { async: true },
-  UserPromptSubmit: { async: true },
-  PreToolUse: { async: true, matcher: 'AskUserQuestion' },
-  PermissionRequest: { async: true },
-  PostToolUse: { async: true },
-  PostToolUseFailure: { async: true },
-  Stop: { async: true },
-  StopFailure: { async: true },
-  SubagentStart: { async: true },
-  SubagentStop: { async: true },
-  Notification: { async: true },
-  PreCompact: { async: true },
-  PostModelSwitch: { async: true },
-  SessionEnd: { async: false },
-} as const satisfies Record<string, ClaudeHookSpec>
-
-/** Seconds `SessionEnd`'s hook may run; Claude's default budget for it is 1.5s. */
-const SESSION_END_HOOK_TIMEOUT_S = 10
-
-/** The `hooks` settings object that runs `command` for every {@link CLAUDE_HOOK_EVENTS} event. */
-export function claudeHookSettings(command: string): { hooks: Record<string, unknown[]> } {
-  const hooks: Record<string, unknown[]> = {}
-  for (const [name, spec] of Object.entries(CLAUDE_HOOK_EVENTS) as [string, ClaudeHookSpec][]) {
-    hooks[name] = [
-      {
-        ...(spec.matcher === undefined ? {} : { matcher: spec.matcher }),
-        hooks: [
-          spec.async
-            ? { type: 'command', command, async: true }
-            : { type: 'command', command, timeout: SESSION_END_HOOK_TIMEOUT_S },
-        ],
-      },
-    ]
-  }
-  return { hooks }
-}
-
-/**
- * The plugin argv with the hook settings merged into its `--settings` value, or
- * a `--settings` of their own when the plugins brought none: Claude is handed
- * one `--settings`, never two that could shadow each other.
- */
-function withHookSettings(pluginArgv: string[], command: string | undefined): string[] {
-  if (command === undefined) return pluginArgv
-  const hooks = claudeHookSettings(command)
-  const at = pluginArgv.indexOf('--settings')
-  if (at === -1) return [...pluginArgv, '--settings', JSON.stringify(hooks)]
-  const existing = JSON.parse(pluginArgv[at + 1]!) as Record<string, unknown>
-  const merged = [...pluginArgv]
-  // The plugin settings are only `enabledPlugins`, so the spread cannot lose a
-  // user key; if they ever carry `hooks`, ours replace them.
-  merged[at + 1] = JSON.stringify({ ...existing, ...hooks })
-  return merged
-}
-
-/** The argv for {@link ClaudeLaunchFlags}, shared by the launches and {@link claudeResumeArgv}. */
-export function claudeSessionArgv(flags: ClaudeLaunchFlags): string[] {
-  const pluginArgv = flags.plugins === undefined ? [] : claudePluginArgv(flags.plugins)
-  return [
-    ...(flags.harnessSessionId === undefined ? [] : ['--session-id', flags.harnessSessionId]),
-    ...withHookSettings(pluginArgv, flags.hookCommand),
-    ...(flags.appendSystemPrompt === undefined
-      ? []
-      : ['--append-system-prompt', flags.appendSystemPrompt]),
-  ]
-}
-
-/**
- * `claude --resume=<id>` plus the launch's session flags, so a resumed session
- * keeps its plugins and prompt pin. Does not validate `id`; `claudeResumeFlag`
- * (`@osdlc/agent-call`) binds it with `=`.
- */
-export function claudeResumeArgv(id: string, flags: ClaudeSessionFlags = {}): string[] {
-  return [claudeResumeFlag(id), ...claudeSessionArgv(flags)]
-}
-
-/**
- * Whether `harness`'s CLI, `binary` (a name on PATH or an absolute path), is
- * on PATH. A synchronous lookup that spawns nothing. Only a PATH hit counts: an
- * installed app bundle (Cursor.app) gives a session nothing to run.
- */
-export function harnessAvailable(_harness: Harness, binary: string): boolean {
-  return which(binary) !== null
+export function harnessAvailable(_harness: Harness, binary: string | readonly string[]): boolean {
+  const first = typeof binary === 'string' ? binary : binary[0]
+  return first !== undefined && which(first) !== null
 }
 
 /** {@link SendReceipt}'s shape, reused here under its own name: both answer "did the message get in", one via a host, one via the harness's own process/daemon directly. */
@@ -658,6 +527,8 @@ export const SESSION_ID_WAIT_MS = 3_000
  * word of the command is single-quoted, even one that needs no quoting: Windows
  * PowerShell 5.1 drops a bare `--` (the guard `harnessArgv` puts before the
  * prompt) and splits a bare `-name.value`, which a quoted word avoids.
+ *
+ * @throws Error if a variable name is not a plain identifier.
  */
 export function withEnv(
   argv: string[],
@@ -667,11 +538,7 @@ export function withEnv(
   const entries = Object.entries(env ?? {})
   if (entries.length === 0) return argv
   if (platform === 'win32') {
-    for (const [k] of entries) {
-      // The name goes into a PowerShell command unquoted (set branch), so it must be a plain identifier.
-      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k))
-        throw new Error(`invalid environment variable name: ${k}`)
-    }
+    for (const [k] of entries) assertEnvName(k)
     const sets = entries.map(([k, v]) =>
       v === undefined
         ? `Remove-Item -ErrorAction SilentlyContinue ${powershellLiteral(`Env:${k}`)}`
@@ -687,10 +554,68 @@ export function withEnv(
   const unset: string[] = []
   const pairs: string[] = []
   for (const [k, v] of entries) {
+    assertEnvName(k)
     if (v === undefined) unset.push('-u', k)
     else pairs.push(`${k}=${v}`)
   }
   return ['env', ...unset, ...pairs, ...argv]
+}
+
+/**
+ * Throws unless `name` is a plain identifier. PowerShell takes the name unquoted, `env`
+ * misreads a name holding `=` or starting with `-`, and a shell treats `K=V` as an
+ * assignment only when `K` is an identifier.
+ */
+function assertEnvName(name: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))
+    throw new Error(`invalid environment variable name: ${name}`)
+}
+
+/**
+ * `argv` as one command line with `env` as a plain POSIX assignment prefix
+ * (`K=V cmd`), for typing into an interactive shell. Unlike `env K=V cmd` (see
+ * {@link withEnv}) the shell resolves the command itself, so a shell function or alias
+ * still runs. It is a string, not an argv: `commandString` quotes a first word that
+ * holds `=`, so an argv cannot carry the prefix.
+ *
+ * On win32 there is no such prefix, so the line is `commandString(withEnv(argv, env, 'win32'))`.
+ *
+ * @throws RangeError if argv is empty; Error if a value is `undefined` (a prefix cannot
+ * unset) or a name is not a plain identifier.
+ *
+ * @example
+ * envPrefixLine(['a', 'x y'], { K: 'v w' }, 'linux') // K='v w' a 'x y'
+ */
+export function envPrefixLine(
+  argv: string[],
+  env: EnvOverrides | undefined,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (argv.length === 0) throw new RangeError('argv must not be empty')
+  if (platform === 'win32') {
+    return commandString(withEnv(argv, env, platform), { platform })
+  }
+  const entries = Object.entries(env ?? {})
+  for (const [k, v] of entries) {
+    assertEnvName(k)
+    if (v === undefined)
+      throw new Error(`cannot unset ${k} in an assignment prefix: use withEnv for \`env -u\``)
+  }
+  const assigns = entries.map(([k, v]) => `${k}=${shellQuote(v!)}`)
+  return [...assigns, shellJoin(argv)].join(' ')
+}
+
+/**
+ * `req.argv` under `req.env`: what a host runs for a {@link CommandRequest}.
+ *
+ * @throws Error if `req.argv` is empty, even when `req.env` is set.
+ */
+export function commandArgv(
+  req: Pick<CommandRequest, 'argv' | 'env'>,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  if (req.argv.length === 0) throw new Error('empty argv')
+  return withEnv(req.argv, req.env, platform)
 }
 
 /** `word` as a single-quoted PowerShell literal, each single quote (typographic ones too) doubled. */

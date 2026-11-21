@@ -1,5 +1,49 @@
 # @osdlc/pr-update
 
+## 0.14.0
+
+### Minor Changes
+
+- c92fac2: `on_rebase_conflict: repair` calls `repair` at a rebase stop the resolvers cannot clear, then continues the rebase, for at most `repair.max_rebase_stops` stops (default 3). Past the cap, or on a failed repair, the rebase is aborted and the PR is reported as a conflict; it never falls back to a merge. The request carries `replaying` (the commit being replayed and the base), and the prompt asks to keep that commit's intent.
+- c92fac2: `pr_update.verify: detect` is an opt-in tier that runs a well-known test command found in each PR's update worktree: the configured `test_command`, else a `test` recipe or target of a justfile or Makefile, else `scripts.test` of `package.json` (run with the package manager its lockfile names), else `cargo test`, `go test ./...` or `sbt test`. The run prints which rung it used for each PR on stderr, and fails that PR's verify, not the run, when none matches. `verify: detect` in the project file is trust-gated like `test_command`. `VerifyWhich` gains `'detect'`, resolved per PR with the update worktree as `checkout`, and `detectVerifyCommand` is exported for a host's own `resolveVerifyVerbs`.
+
+### Patch Changes
+
+- Updated dependencies [fa8118b]
+- Updated dependencies [63b5800]
+- Updated dependencies [976bbee]
+- Updated dependencies [976bbee]
+- Updated dependencies [6d37030]
+- Updated dependencies [0297b95]
+- Updated dependencies [2ee6d62]
+- Updated dependencies [c8470d6]
+- Updated dependencies [0ce8abc]
+- Updated dependencies [9c0f5ae]
+  - @osdlc/agent-call@0.15.0
+  - @osdlc/cli-tool@0.21.0
+  - @osdlc/command-seam@0.15.1
+  - @osdlc/config-layers@0.11.0
+  - @osdlc/typed-git@0.19.0
+  - @osdlc/code-host@0.8.3
+  - @osdlc/ref-lease@0.3.4
+  - @osdlc/trust-repo@0.5.11
+
+## 0.13.0
+
+### Minor Changes
+
+- bc341e9: `pr_update.restack: true | false` (default `false`) sets `update --restack` from the project config, so a project that always restacks need not pass the flag. `--restack` and `--no-restack` override it for one run.
+- cb56f16: The update worktree now gets the repository's git submodules: with a `.gitmodules` present, `pr_update.submodules: auto` (the default; `off` disables it) runs `git submodule update --init --recursive` after each PR's checkout and again when the update moved a gitlink or changed `.gitmodules`, before `verify`, resolvers and `lockfile_install` run. A submodule that will not check out fails the PR as `submodule setup failed: <detail>` without recording a failed attempt. A conflict on a submodule pointer names the base's and the branch's commits.
+
+### Patch Changes
+
+- Updated dependencies [b0ff1b3]
+- Updated dependencies [cb56f16]
+  - @osdlc/typed-git@0.18.0
+  - @osdlc/code-host@0.8.2
+  - @osdlc/ref-lease@0.3.3
+  - @osdlc/trust-repo@0.5.10
+
 ## 0.12.4
 
 ### Patch Changes

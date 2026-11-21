@@ -1,7 +1,7 @@
 ---
 id: T-UH0R
 type: task
-state: open
+state: done
 created: 2026-11-09
 ---
 
@@ -20,3 +20,10 @@ branch still stops the run, because the plan's premise no longer holds.
 a failure skips, the new `skipped` step result, and the acceptance criteria
 (see the decision comment). Discuss and refine it there. When the issue
 closes, set this task's `state` to `done` and add an Outcome section.
+
+## Outcome
+
+`clean` marks a failed step `failed` and the steps that depend on it
+`skipped`, naming the failed step in `error`; the dependency rules are
+`dependsOn` in `src/clean.ts`. A failed `verify-remote` still stops the run.
+Receipt version 3 adds the `skipped` result.

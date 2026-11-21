@@ -45,6 +45,7 @@ export const HOST_NAMES = [
   'wezterm',
   'vscode',
   'jetbrains',
+  'window',
 ] as const
 
 /**
@@ -62,8 +63,11 @@ export const HostNameSchema = z.enum(HOST_NAMES)
 export interface SessionRequest extends ClaudeLaunchFlags {
   cwd: string
   harness: Harness
-  /** The harness's executable: a name on PATH or an absolute path. */
-  binary: string
+  /**
+   * The harness's executable: a name on PATH or an absolute path, or a launcher
+   * prefix (`['npx', '-y', 'claude']`) whose words lead the argv.
+   */
+  binary: string | readonly string[]
   prompt: string
   /** Tab / workspace title for hosts that show one. */
   title: string
@@ -134,6 +138,12 @@ export interface CommandRequest {
   cwd: string
   argv: string[]
   title: string
+  /**
+   * Env vars set on the command, as {@link SessionRequest.env} is on a harness. Hosts
+   * apply it with `commandArgv`, so the agents started from a workspace shell inherit
+   * them. `wrapperSession` folds a session's env into `argv` itself and leaves this unset.
+   */
+  env?: EnvOverrides | undefined
   /** The caller's session id to bind the pane to; see {@link SessionRequest.sessionId}. */
   sessionId?: string | undefined
   /** See {@link SessionRequest.wait}. */

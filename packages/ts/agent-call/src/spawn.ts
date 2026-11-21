@@ -24,6 +24,8 @@ export interface SpawnOptions {
   maxOutputBytes?: number | undefined
   /** Called with each decoded chunk as it arrives. A throw stops later calls. */
   onOutput?: ((chunk: string, stream: 'stdout' | 'stderr') => void) | undefined
+  /** Called once with the pid and argv after the process starts. A throw or a rejected promise is swallowed. */
+  onSpawn?: ((info: { pid: number; argv: readonly string[] }) => void) | undefined
 }
 
 /**
@@ -323,6 +325,20 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
     child.stdin.on('error', (err: Error) => {
       stdinError ??= err.message
     })
+
+    // After the abort listener and handlers are installed, so a callback that
+    // aborts the run is honoured.
+    if (options.onSpawn !== undefined && child.pid !== undefined) {
+      try {
+        const returned: unknown = options.onSpawn({
+          pid: child.pid,
+          argv: Object.freeze([...argv]),
+        })
+        if (isThenable(returned)) returned.then(undefined, () => undefined)
+      } catch {
+        // A caller's callback must not end the run.
+      }
+    }
 
     if (options.stdin !== undefined) {
       child.stdin.write(options.stdin)

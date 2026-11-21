@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `serve` refuses an HTTP/2 request with `505 HTTP Version Not Supported`.
+  A connection's token tag assumes one request at a time. An app that embeds
+  this crate and enables axum's `http2` feature (Cargo unifies features)
+  would otherwise let concurrent streams overwrite each other's tag, so
+  withdrawing a token could cut the wrong connection or miss one.
+
+## [0.6.0](https://github.com/osdlc/osdlc/compare/web-access/v0.5.0...web-access/v0.6.0) - 2026-11-20
+
+### Other
+
+- close a withdrawn token's connections at once, and only those ([#885](https://github.com/osdlc/osdlc/pull/885))
+
 ### Added
 
 - Public names behind a TLS-terminating reverse proxy:
@@ -39,6 +53,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `web_access_admin_<port>`, so opening a full or read link no longer replaces
   it. The guard reads both cookies, and the highest grant wins.
   `is_cookie_name` matches both names.
+- `ServerHandle::replace_tokens` and `GuardState::replace_tokens`: a running
+  server takes a new set of tokens. Under `serve`, every connection a
+  withdrawn token let in closes at once, streams and upgraded WebSockets
+  included, and the other connections stay open. A connection counts as let in by
+  the token of its latest request. Under `serve`'s default policy, a
+  loopback-only server is open to loopback exactly while it holds no token.
+- `guard::ConnectionCut`, a handler argument that fires when the request's
+  connection is closed that way or by `stop()`.
 
 ### Changed
 
@@ -48,6 +70,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - An admin token's share link sets the `web_access_admin_<port>` cookie, not
   `web_access_<port>`. An admin token already in `web_access_<port>` still
   works.
+- Breaking: `ServerHandle::share_urls` returns a `Vec<String>`, built from the
+  tokens the server holds now. It and `share_urls_for` list, for a wildcard
+  bind, the addresses the machine has now, not those it had at start.
+- `SharingRuntime` restarts the server only when the listen setting or port
+  changes. Rotating a token, or turning admin on or off, hands the running
+  server its new tokens: the withdrawn token's connections close at once, and
+  the others' stay open, on the same port (also with `port: 0`). Turning
+  sharing off closes every connection opened with a token at once, before the
+  stop's grace period.
 
 ## [0.5.0](https://github.com/osdlc/osdlc/compare/web-access/v0.4.1...web-access/v0.5.0) - 2026-11-10
 

@@ -1,5 +1,62 @@
 # @osdlc/repo-cleaner
 
+## 0.22.0
+
+### Minor Changes
+
+- 0ce8abc: - A worktree lock's owner is checked with `@osdlc/file-lock`'s `sameProcess`. A lock may now record file-lock's `processIdentity` (on Linux, boot id and start ticks, which no clock change or time zone moves). A recorded start later than the process's real start, such as when the owner took the lock, still names the owner; before, a live owner's lock could read as stale.
+  - A sweep that fetches several remotes fetches them in one parallel `git fetch --multiple`, and reads their default branches in one call.
+  - Breaking, for library users: `RepoInfo.remotes` lists every remote the sweep touches (the default remote, the judged ones with `judged: true`, and the `against` remote), `RepoInfo.against` is the remote's name, and `RepoInfo.fetched` is gone (use `fetchedRemotes`). `judgedRemotes`, `landedFor`, `refOf` and the `RemoteInfo` and `LandedAgainst` types are exported.
+  - The two tests that make a receipt unsavable skip when run as root, which can always write it.
+- 976bbee: The command line by phase and scope ([D-4CE9](packages/ts/repo-cleaner/docs/planning/decisions/D-4CE9-the-cli-by-use-case.md)). Breaking; nothing is kept for compatibility.
+  
+  - Nothing runs until a phase is named: `status` (the old report), `plan`, `clean`, `cache`. The bare command explains them and exits 2.
+  - Scope: `--local` (the default), `--remote` (the default remote's branches), `--remote=<name>` (repeatable, `*` for every remote), `--all`, and `--worktrees` or `--branches`. `--only` is gone; the old `--remote` is `--all`; the report's `--all` is `--all-rows`. `--remote upstream` with a space is refused with the fix.
+  - Several remotes: each is fetched, and its branches judged against its own default branch. `--against <remote>` judges every row against one remote's default branch, as a fork against its parent. The default remote is `origin`, else the remote the default branch tracks, else the only remote.
+  - A fork's pull requests are read from its parent, so its branches no longer all need `confirm-open-pr`.
+  - `--fetch` fetches the default remote for local rows.
+  - `--pick` adds a row to the run instead of narrowing it; the library's `select` names rows exactly. `--spare` takes a glob, and a bare name spares that branch everywhere.
+  - `clean -i` chooses rows from a checklist and asks for each ticked row's risks.
+  - Library: `SweepOptions.remote` is `remotes`; `RepoInfo` gains `remotes`, `against` and `fetchedRemotes`; every judged row records `evidence.landedAgainst`, part of its fingerprint, which replaces a branch's `compareAgainst`. Plans are version 3.
+- 9c0f5ae: A clean worktree whose HEAD is on a branch of the fetched remote is now `delete`, whatever its PR state short of an open PR, once its branch shows a sign of use. Nothing is lost: the remote holds the commits. The row carries no `abandon-unmerged`, and `evidence.recoverableFrom` names the remote branches (it is part of the plan fingerprint). A run that also deletes every one of those remote branches drops the worktree unless `abandon-unmerged` is allowed. A sweep that did not fetch keeps its verdict and notes that `--remote` would check.
+- c8356f7: `repo-cleaner status --sizes` (`sizes` in the library's sweep options) reads each on-disk worktree's size with `du -sk` into `evidence.sizeBytes` (`null` when `du` fails or times out), lists rows largest first within each verdict, and reports `reclaimableBytes` for the `delete` and `review` rows in the totals line and in JSON. `--sizes` is a `status` flag: `plan` and `clean` refuse it (exit 2). Sizes are not part of a plan fingerprint.
+  
+  `clean` reports the disk space it freed, with no flag: each worktree a `remove-worktree` step removes is measured with `du` just before, into the step's new optional `freedBytes` in the receipt (`null` when the measurement failed or timed out; set only once the removal succeeded). The run summary adds `freed: 4.2 GB (2 worktrees)`, or `freed: at least 4.2 GB (2 worktrees, 1 not measured)`, and `RunSummary` (the JSON `summary`) gains `freedBytes` and `unmeasured`. A dry run measures nothing. `RunOptions.sizeTimeoutMs` caps each measurement.
+  
+  New exports: `sizeOf`, `formatBytes`. `repo-cleaner cache` now reports disk usage through `sizeOf` rather than apparent size.
+- 1db132e: `clean`: a failed step no longer ends the run. It skips only the steps that depend on it and the rest go on: a failed unlock skips that row's remove, a failed worktree removal skips the delete of the branch it held and a repository-wide prune, and a failed local branch delete skips the same branch's remote delete. Nothing in another repository is skipped. A failed spared-tip check still stops the run. A skipped step has the new receipt result `skipped` and names the failed step in `error`, so the receipt version is now 3. The summary counts steps run, failed and skipped, `RunSummary` gains `ran` and `skipped`, and the exit code is still `11` when any step failed.
+
+### Patch Changes
+
+- 2fd3d61: The GitHub provider lists the swept remote's own repository (`gh pr list --repo <host>/<project>`) instead of the one `gh` prefers, so a fork's branches are no longer judged against the upstream's PRs. It reads every open PR (up to 1000) apart from the newest 300 of any state, and both providers now report a listing that stopped short, or one for a fork whose PRs to its parent were not checked, as incomplete: the sweep adds a note and a remote branch with no known PR needs `confirm-open-pr`.
+- cbb1040: The default process probe runs `ps` under `TZ=UTC` and `LC_ALL=C` and reads `lstart` as UTC, so the repeated hour of a DST fall-back and a non-English locale can no longer make a live lock owner look gone. A pid that `process.kill(pid, 0)` reports as gone is answered without spawning `ps`. A new `pidExists` option on `defaultProcessProbe` overrides that check.
+- Updated dependencies [976bbee]
+- Updated dependencies [976bbee]
+- Updated dependencies [6d37030]
+- Updated dependencies [f8b19a9]
+- Updated dependencies [976bbee]
+- Updated dependencies [2fd3d61]
+- Updated dependencies [c8470d6]
+- Updated dependencies [0ce8abc]
+- Updated dependencies [9c0f5ae]
+  - @osdlc/cli-tool@0.21.0
+  - @osdlc/command-seam@0.15.1
+  - @osdlc/typed-gh@0.19.0
+  - @osdlc/typed-git@0.19.0
+
+## 0.21.0
+
+### Minor Changes
+
+- b0ff1b3: `clean --archive` (and the `archive` option of `check` and `run`) pushes the work a run would lose to an archive branch on the repository's remote, checks with `ls-remote` that it is there, and only then deletes. A new risk, `discard-archived`, takes the place of `abandon-unmerged` and `discard-changes` on a row whose work the archive holds; a file the snapshot leaves out (secret-shaped, `--archive-exclude`, over 10 MiB) keeps `discard-changes`, and a worktree's submodule work keeps both. A worktree's uncommitted files are snapshotted in a temporary index, so its own index and files are not touched. The receipt gains an `archive` step that records the ref, the sha and what each parent holds. Without `--archive`, `clean` behaves as before. Needs `@osdlc/typed-git` with `readTree` and `writeTree`.
+
+### Patch Changes
+
+- Updated dependencies [b0ff1b3]
+- Updated dependencies [cb56f16]
+  - @osdlc/typed-git@0.18.0
+  - @osdlc/typed-gh@0.18.2
+
 ## 0.20.6
 
 ### Patch Changes

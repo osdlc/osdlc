@@ -73,7 +73,9 @@ function buildFixture(): Fixture {
 }
 
 /** Remote branches too, judged on git evidence alone, against the remote-tracking refs on disk. */
-const REMOTE = ['--remote', '--provider', 'none', '--offline']
+const REMOTE = ['--all', '--provider', 'none', '--offline']
+/** The default remote's branches only. */
+const REMOTE_ONLY = ['--remote', '--provider', 'none', '--offline']
 
 /** All three rows of the fixture's branch, named so a run does not depend on how each is judged. */
 function rowsOf(fx: Fixture): string[] {
@@ -99,10 +101,32 @@ const kindsOf = (plan: Plan): Kind[] =>
   plan.repos[0]!.rows.map((r) => r.id.slice(0, r.id.indexOf(':')) as Kind).sort()
 
 describe('arguments', () => {
-  test('--help exits 0 and names every command', () => {
-    const res = run(['--help'], tempDir())
+  test('the bare command explains the phases, runs nothing and exits 2', () => {
+    const fx = buildFixture()
+    const res = run([], fx.root)
+    expect(res.code).toBe(2)
+    expect(res.out).toBe('')
+    expect(res.err).toContain('Nothing ran. Name a phase')
+    for (const verb of ['status', 'plan', 'clean', 'cache']) {
+      expect(res.err).toContain(`repo-cleaner ${verb}`)
+    }
+    expect(res.err).toContain('$ repo-cleaner clean -y')
+    const help = run(['--help'], fx.root)
+    expect(help.code).toBe(0)
+    expect(help.out).toContain('It works in phases')
+  })
+
+  test('a word that is no phase is refused, a path included', () => {
+    const fx = buildFixture()
+    const res = run([fx.root], fx.root)
+    expect(res.code).toBe(2)
+    expect(res.err).toContain('is not a phase')
+  })
+
+  test('--help exits 0 and names every phase', () => {
+    const res = run(['status', '--help'], tempDir())
     expect(res.code).toBe(0)
-    for (const verb of ['[target...]', 'plan', 'clean', 'cache'])
+    for (const verb of ['status', 'plan', 'clean', 'cache'])
       expect(res.out).toContain(`repo-cleaner ${verb}`)
     expect(run(['clean', '--help'], tempDir()).code).toBe(0)
     expect(run(['plan', '--help'], tempDir()).code).toBe(0)
@@ -116,7 +140,7 @@ describe('arguments', () => {
     writeFileSync(join(inner, 'index.ts'), 'export {}\n')
     sh(fx.root, ['add', '-A'])
     sh(fx.root, ['commit', '-q', '-m', 'add src'])
-    const res = run(['--format', 'json'], inner)
+    const res = run(['status', '--format', 'json'], inner)
     expect(res.code).toBe(0)
     const out = JSON.parse(res.out) as {
       repos: { repo: { root: string } }[]
@@ -129,12 +153,12 @@ describe('arguments', () => {
   test('a malformed command exits 2', () => {
     const fx = buildFixture()
     const cwd = tempDir()
-    expect(run(['--bogus'], cwd).code).toBe(2)
-    expect(run(['--only', 'nope'], cwd).code).toBe(2)
-    expect(run(['--scope', 'worktree'], cwd).code).toBe(2)
-    expect(run(['--branch', 'x', 'some/path', 'other/path'], cwd).code).toBe(2)
-    expect(run(['--all', '--format', 'json'], cwd).code).toBe(2)
-    expect(run(['--write-plan'], cwd).code).toBe(2)
+    expect(run(['status', '--bogus'], cwd).code).toBe(2)
+    expect(run(['status', '--only', 'nope'], cwd).code).toBe(2)
+    expect(run(['status', '--scope', 'worktree'], cwd).code).toBe(2)
+    expect(run(['status', '--branch', 'x', 'some/path', 'other/path'], cwd).code).toBe(2)
+    expect(run(['status', '--all-rows', '--format', 'json'], cwd).code).toBe(2)
+    expect(run(['status', '--write-plan'], cwd).code).toBe(2)
     // A malformed row is only refused once there is a plan to hold it.
     expect(run(['clean', '--pick', 'nope:x', '--yes'], fx.root).code).toBe(2)
     expect(run(['clean', '--plan', 'p.json', '--allow', 'a=nope'], cwd).code).toBe(2)
@@ -151,14 +175,14 @@ describe('arguments', () => {
   })
 
   test('--branch HEAD outside a repository is refused', () => {
-    const res = run(['--branch', 'HEAD'], tempDir())
+    const res = run(['status', '--branch', 'HEAD'], tempDir())
     expect(res.code).toBe(2)
-    expect(res.err).toContain('repo-cleaner:')
+    expect(res.err).toContain('repo-cleaner status:')
   })
 
   test('nothing to sweep exits 10, for every command that sweeps', () => {
     const cwd = tempDir()
-    expect(run([], cwd).code).toBe(10)
+    expect(run(['status'], cwd).code).toBe(10)
     expect(run(['plan'], cwd).code).toBe(10)
     expect(run(['clean'], cwd).code).toBe(10)
   })
@@ -172,7 +196,7 @@ describe('arguments', () => {
 
 describe('help', () => {
   for (const [label, prefix] of [
-    ['the report', []],
+    ['status', ['status']],
     ['clean', ['clean']],
   ] as const) {
     test(`${label}: --help is the short tier, ending with the pointer to --help --extended`, () => {
@@ -201,9 +225,9 @@ describe('help', () => {
   }
 
   test('each reference carries its own command', () => {
-    expect(run(['--help', '--extended'], tempDir()).out).toContain('--format summary')
+    expect(run(['status', '--help', '--extended'], tempDir()).out).toContain('--format summary')
     const clean = run(['clean', '--help', '--extended'], tempDir()).out
-    expect(clean).toContain('--spare <row>')
+    expect(clean).toContain('--spare <row|glob>')
     expect(clean).toContain('--allow <risk>=<row>')
   })
 })
@@ -213,7 +237,9 @@ const branchRefs = (dir: string): string => sh(dir, ['for-each-ref', 'refs/heads
 describe('status line', () => {
   test('drawn on a terminal stderr, erased before the report, never on stdout', () => {
     const fx = buildFixture()
-    const res = run(['--format', 'summary', ...REMOTE], fx.root, { stderrIsTerminal: true })
+    const res = run(['status', '--format', 'summary', ...REMOTE], fx.root, {
+      stderrIsTerminal: true,
+    })
     expect(res.code).toBe(0)
     expect(res.err).toContain('\r\x1b[2K')
     expect(res.err).toContain('checking remote branches')
@@ -223,11 +249,11 @@ describe('status line', () => {
 
   test('--no-progress, or a stderr that is not a terminal, draws none', () => {
     const fx = buildFixture()
-    const off = run(['--format', 'summary', ...REMOTE, '--no-progress'], fx.root, {
+    const off = run(['status', '--format', 'summary', ...REMOTE, '--no-progress'], fx.root, {
       stderrIsTerminal: true,
     })
     expect(off.err).not.toContain('\x1b')
-    const piped = run(['--format', 'summary', ...REMOTE], fx.root)
+    const piped = run(['status', '--format', 'summary', ...REMOTE], fx.root)
     expect(piped.err).not.toContain('\x1b')
   })
 
@@ -248,7 +274,7 @@ describe('plan', () => {
     const res = run(['plan', '--branch', BRANCH, ...REMOTE], fx.root)
     expect(res.code).toBe(0)
     const plan = JSON.parse(res.out) as Plan
-    expect(plan.version).toBe(2)
+    expect(plan.version).toBe(3)
     expect(kindsOf(plan)).toEqual(['branch', 'remote', 'worktree'])
     expect(res.err).toContain('to delete')
   })
@@ -266,7 +292,7 @@ describe('plan', () => {
   test('--only narrows the plan to the named kinds', () => {
     const fx = buildFixture()
     const res = run(
-      ['plan', '--branch', BRANCH, '--provider', 'none', '--offline', '--only', 'remote'],
+      ['plan', '--branch', BRANCH, '--provider', 'none', '--offline', '--remote'],
       fx.root,
     )
     expect(res.code).toBe(0)
@@ -283,7 +309,7 @@ describe('--format summary', () => {
     sh(fx.root, ['checkout', '-q', 'stale-unmerged'])
     sh(fx.root, ['commit', '-q', '--allow-empty', '-m', 'not merged'])
     sh(fx.root, ['checkout', '-q', 'main'])
-    const res = run(['--format', 'json', ...REMOTE], fx.root)
+    const res = run(['status', '--format', 'json', ...REMOTE], fx.root)
     expect(res.code).toBe(0)
     const out = JSON.parse(res.out) as {
       repos: Array<{ counts: Record<Kind, Bucket> }>
@@ -303,7 +329,7 @@ describe('--format summary', () => {
 
   test('text shows one table per repository and the closing totals line', () => {
     const fx = buildFixture()
-    const res = run(['--format', 'summary', ...REMOTE], fx.root)
+    const res = run(['status', '--format', 'summary', ...REMOTE], fx.root)
     expect(res.code).toBe(0)
     expect(res.out).toMatch(/total\s+merged\s+delete\s+prune\s+review\s+blocked\s+keep/)
     expect(res.out).toMatch(/local branches\s+2\s+1\s/)
@@ -314,46 +340,29 @@ describe('--format summary', () => {
 describe('remote branches are opt-in', () => {
   test('by default only worktrees and local branches are swept, and the report says so', () => {
     const fx = buildFixture()
-    const res = run(['--all'], fx.root)
+    const res = run(['status', '--all-rows'], fx.root)
     expect(res.code).toBe(0)
     expect(res.out).not.toMatch(/^ {2}remote {2}/m)
     expect(res.out).toMatch(/^ {2}branch {4}/m)
-    expect(res.out).toContain('remote branches not checked; add --remote for all three.')
+    expect(res.out).toContain(
+      "remote branches not checked; --all adds the default remote's branches.",
+    )
     const json = JSON.parse(run(['plan', '--branch', BRANCH], fx.root).out) as Plan
     expect(kindsOf(json)).toEqual(['branch', 'worktree'])
   })
 
-  test('--remote and --only remote include them; the note goes away', () => {
+  test('--remote, --all and --branches --remote include them; the note goes away', () => {
     const fx = buildFixture()
     for (const flags of [
       ['--remote', '--provider', 'none', '--offline'],
-      ['--only', 'remote', '--provider', 'none', '--offline'],
-      ['--only', 'branch,remote', '--remote', '--provider', 'none', '--offline'],
+      ['--all', '--provider', 'none', '--offline'],
+      ['--branches', '--remote', '--provider', 'none', '--offline'],
     ]) {
-      const res = run(['--all', ...flags], fx.root)
+      const res = run(['status', '--all-rows', ...flags], fx.root)
       expect(res.code).toBe(0)
       expect(res.out).toContain(`origin/${BRANCH}`)
       expect(res.out).not.toContain('remote branches not checked')
     }
-  })
-
-  test('clean re-checks only the kinds its rows are', () => {
-    const fx = buildFixture()
-    const plan = join(tempDir(), 'p.json')
-    expect(run(['plan', '--branch', BRANCH, ...REMOTE, '-o', plan], fx.root).code).toBe(0)
-    const res = run(
-      ['clean', '--plan', plan, '--yes', '--pick', `worktree:${fx.worktree}`],
-      fx.root,
-      { stderrIsTerminal: true },
-    )
-    expect(res.code).toBe(0)
-    expect(res.err).toContain('re-checking')
-    expect(res.err).not.toContain('checking local branches')
-    expect(res.err).not.toContain('checking remote branches')
-    expect(existsSync(fx.worktree)).toBe(false)
-    // The branches were in the plan but not picked: they are still there.
-    expect(branchRefs(fx.root)).toContain(BRANCH)
-    expect(branchRefs(fx.bare)).toContain(BRANCH)
   })
 })
 
@@ -367,19 +376,19 @@ describe('local by default means offline', () => {
     sh(other, ['push', '-q', 'origin', 'main'])
     const before = sh(fx.root, ['rev-parse', 'origin/main'])
 
-    const local = run([], fx.root)
+    const local = run(['status'], fx.root)
     expect(local.code).toBe(0)
     expect(local.out).toContain('not fetched')
     expect(local.out).toContain('Local only: nothing fetched, no pull requests looked up')
     expect(sh(fx.root, ['rev-parse', 'origin/main'])).toBe(before)
     const plan = JSON.parse(run(['plan'], fx.root).out) as Plan
     expect(plan.options.provider).toBe('none')
-    expect(plan.options.remote).toBe(false)
-    expect(plan.repos[0]!.fetched).toBe(false)
+    expect(plan.options.remotes).toEqual([])
+    expect(plan.repos[0]!.fetched).toEqual([])
     const fetched = JSON.parse(run(['plan', '--remote', '--provider', 'none'], fx.root).out) as Plan
-    expect(fetched.repos[0]!.fetched).toBe(true)
+    expect(fetched.repos[0]!.fetched).toEqual(['origin'])
 
-    const online = run(['--remote', '--provider', 'none'], fx.root)
+    const online = run(['status', '--remote', '--provider', 'none'], fx.root)
     expect(online.code).toBe(0)
     expect(online.out).not.toContain('not fetched')
     expect(sh(fx.root, ['rev-parse', 'origin/main'])).not.toBe(before)
@@ -390,7 +399,7 @@ describe('local by default means offline', () => {
     const plan = JSON.parse(run(['plan', '--against', 'origin'], fx.root).out) as Plan
     expect(plan.options.against).toBe('origin')
     expect((JSON.parse(run(['plan'], fx.root).out) as Plan).options.against).toBeNull()
-    const typo = run(['--remotes'], fx.root)
+    const typo = run(['status', '--remotes'], fx.root)
     expect(typo.code).toBe(2)
     expect(typo.err).toContain("unknown option '--remotes'")
     expect(typo.err).toContain('Did you mean --remote?')
@@ -426,11 +435,11 @@ describe('color', () => {
   test('a terminal gets colored verdict words; NO_COLOR and a pipe do not', () => {
     const fx = buildFixture()
     sh(fx.root, ['branch', 'gone-already'])
-    const colored = colorRun([], fx.root, {})
+    const colored = colorRun(['status'], fx.root, {})
     expect(colored.out).toContain('\x1b[31mdelete')
     expect(colored.out).toContain('\x1b[1m')
-    expect(colorRun([], fx.root, { NO_COLOR: '1' }).out).not.toContain('\x1b[')
-    expect(run([], fx.root).out).not.toContain('\x1b[')
+    expect(colorRun(['status'], fx.root, { NO_COLOR: '1' }).out).not.toContain('\x1b[')
+    expect(run(['status'], fx.root).out).not.toContain('\x1b[')
   })
 
   test('on a terminal clean lists every step, then checks each off as it runs', () => {
@@ -470,33 +479,39 @@ describe('color', () => {
     expect(res.out).toMatch(/\n {2}✗ delete +remote:origin\/feat\/s\n +.*pre-receive hook declined/)
   })
 
-  test("a live run keeps a failed step's error when the receipt then cannot be saved", () => {
-    const fx = buildFixture()
-    const receiptDir = join(tempDir(), 'receipts')
-    mkdirSync(receiptDir)
-    cleanups.push(() => chmodSync(receiptDir, 0o700))
-    // The hook runs after the first save: it locks the receipt directory, then refuses the push.
-    const hook = join(fx.bare, 'hooks', 'pre-receive')
-    writeFileSync(hook, `#!/bin/sh\nchmod 500 '${receiptDir}'\nexit 1\n`)
-    chmodSync(hook, 0o755)
-    const res = colorRun(
-      [
-        'clean',
-        '--branch',
-        BRANCH,
-        ...REMOTE,
-        '--yes',
-        '--pick',
-        `remote:origin/${BRANCH}`,
-        '--receipt',
-        join(receiptDir, 'r.json'),
-      ],
-      fx.root,
-      { NO_COLOR: '1' },
-    )
-    expect(res.code).toBe(1)
-    expect(res.out).toMatch(/\n {2}✗ delete +remote:origin\/feat\/s\n +.*pre-receive hook declined/)
-  })
+  // Root writes into a read-only directory, so the receipt can always be saved there.
+  test.skipIf(process.getuid?.() === 0)(
+    "a live run keeps a failed step's error when the receipt then cannot be saved",
+    () => {
+      const fx = buildFixture()
+      const receiptDir = join(tempDir(), 'receipts')
+      mkdirSync(receiptDir)
+      cleanups.push(() => chmodSync(receiptDir, 0o700))
+      // The hook runs after the first save: it locks the receipt directory, then refuses the push.
+      const hook = join(fx.bare, 'hooks', 'pre-receive')
+      writeFileSync(hook, `#!/bin/sh\nchmod 500 '${receiptDir}'\nexit 1\n`)
+      chmodSync(hook, 0o755)
+      const res = colorRun(
+        [
+          'clean',
+          '--branch',
+          BRANCH,
+          ...REMOTE,
+          '--yes',
+          '--pick',
+          `remote:origin/${BRANCH}`,
+          '--receipt',
+          join(receiptDir, 'r.json'),
+        ],
+        fx.root,
+        { NO_COLOR: '1' },
+      )
+      expect(res.code).toBe(1)
+      expect(res.out).toMatch(
+        /\n {2}✗ delete +remote:origin\/feat\/s\n +.*pre-receive hook declined/,
+      )
+    },
+  )
 
   test('a live run names a row its own re-check dropped after the preview', () => {
     const fx = buildFixture()
@@ -546,16 +561,16 @@ describe('prune rows', () => {
   test('a stale worktree link shows as prune in the report and the summary', () => {
     const fx = buildFixture()
     rmSync(fx.worktree, { recursive: true, force: true })
-    const report = run([...REMOTE], fx.root)
+    const report = run(['status', ...REMOTE], fx.root)
     expect(report.code).toBe(0)
     const row = report.out.split('\n').find((l) => l.includes('wt s'))!
     expect(row).toMatch(/worktree\s+\S.*\s+prune\s+worktree directory no longer on disk/)
     expect(report.out).toMatch(/\d+ to delete, 1 to prune, \d+ to review/)
 
-    const text = run(['--format', 'summary', ...REMOTE], fx.root)
+    const text = run(['status', '--format', 'summary', ...REMOTE], fx.root)
     // worktrees: total 2 (primary + stale), merged, delete 0 (prune is counted apart), prune 1.
     expect(text.out).toMatch(/worktrees\s+2\s+\d+\s+0\s+1\s/)
-    const json = JSON.parse(run(['--format', 'json', ...REMOTE], fx.root).out) as {
+    const json = JSON.parse(run(['status', '--format', 'json', ...REMOTE], fx.root).out) as {
       repos: Array<{ counts: Record<Kind, Bucket> }>
       totals: Bucket
     }
@@ -577,7 +592,7 @@ describe('a remote URL target', () => {
     const fx = buildFixture()
     const cache = tempDir()
     const away = tempDir()
-    const res = remoteRun([urlOf(fx.bare), ...NONE], away, cache)
+    const res = remoteRun(['status', urlOf(fx.bare), ...NONE], away, cache)
     expect(res.code).toBe(0)
     expect(res.out).toMatch(/remote\s+origin\/feat\/s\s+delete/)
     expect(res.out).not.toContain('worktree')
@@ -600,7 +615,7 @@ describe('a remote URL target', () => {
 
     // A branch pushed since is found on the next run: the mirror is fetched, not re-cloned.
     sh(fx.root, ['push', '-q', 'origin', `main:refs/heads/feat/later`])
-    const again = remoteRun([urlOf(fx.bare), ...NONE], away, cache)
+    const again = remoteRun(['status', urlOf(fx.bare), ...NONE], away, cache)
     expect(again.code).toBe(0)
     expect(again.out).toMatch(/origin\/feat\/later\s+delete/)
   })
@@ -621,11 +636,11 @@ describe('a remote URL target', () => {
     const cache = tempDir()
     const cwd = tempDir()
     const url = 'https://example.invalid/u.git'
-    expect(remoteRun([url, 'some/path'], cwd, cache).code).toBe(2)
-    expect(remoteRun([url, '--branch', 'x'], cwd, cache).code).toBe(2)
-    expect(remoteRun([url, '--only', 'worktree'], cwd, cache).code).toBe(2)
-    expect(remoteRun([url, '--only', 'branch'], cwd, cache).code).toBe(2)
-    expect(remoteRun([url, '--offline'], cwd, cache).code).toBe(2)
+    expect(remoteRun(['status', url, 'some/path'], cwd, cache).code).toBe(2)
+    expect(remoteRun(['status', url, '--branch', 'x'], cwd, cache).code).toBe(2)
+    expect(remoteRun(['status', url, '--worktrees'], cwd, cache).code).toBe(2)
+    expect(remoteRun(['status', url, '--branches'], cwd, cache).code).toBe(2)
+    expect(remoteRun(['status', url, '--offline'], cwd, cache).code).toBe(2)
     expect(readdirSync(cache)).toEqual([])
   })
 
@@ -661,7 +676,7 @@ describe('a remote URL target', () => {
     const swept = remoteRun(['plan', urlOf(fx.bare), ...NONE], away, cache)
     expect(swept.code).toBe(1)
     expect(swept.err).toContain('pushes somewhere other than')
-    const report = remoteRun([urlOf(fx.bare), ...NONE], away, cache)
+    const report = remoteRun(['status', urlOf(fx.bare), ...NONE], away, cache)
     expect(report.out).toContain('pushes somewhere other than')
     const cleaned = remoteRun(['clean', '--plan', plan, '--yes'], away, cache)
     expect(cleaned.code).toBe(1)
@@ -679,7 +694,7 @@ describe('a remote URL target', () => {
     expect(res.err).toContain('cannot clone https://127.0.0.1:9/acme/repo.git')
     expect(res.out + res.err).not.toContain('SECRET')
     const report = remoteRun(
-      ['https://me:SECRET@127.0.0.1:9/acme/repo.git?t=SECRET', ...NONE],
+      ['status', 'https://me:SECRET@127.0.0.1:9/acme/repo.git?t=SECRET', ...NONE],
       tempDir(),
       tempDir(),
     )
@@ -708,7 +723,7 @@ describe('a remote URL target', () => {
       const away = tempDir()
       const url = urlOf(fx.bare)
       expect(remoteRun(['cache'], away, cache).out).toMatch(/^no clones in /)
-      expect(remoteRun([url, ...NONE], away, cache).code).toBe(0)
+      expect(remoteRun(['status', url, ...NONE], away, cache).code).toBe(0)
 
       const list = remoteRun(['cache', 'list'], away, cache)
       expect(list.code).toBe(0)
@@ -732,7 +747,7 @@ describe('a remote URL target', () => {
       const fx = buildFixture()
       const cache = tempDir()
       const away = tempDir()
-      expect(remoteRun([urlOf(fx.bare), ...NONE], away, cache).code).toBe(0)
+      expect(remoteRun(['status', urlOf(fx.bare), ...NONE], away, cache).code).toBe(0)
       const dir = (
         JSON.parse(remoteRun(['cache', '--format', 'json'], away, cache).out) as {
           cache: string
@@ -775,7 +790,7 @@ describe('a remote URL target', () => {
       const fx = buildFixture()
       const cache = tempDir()
       const away = tempDir()
-      expect(remoteRun([urlOf(fx.bare), ...NONE], away, cache).code).toBe(0)
+      expect(remoteRun(['status', urlOf(fx.bare), ...NONE], away, cache).code).toBe(0)
       const dir = (
         JSON.parse(remoteRun(['cache', '--format', 'json'], away, cache).out) as { cache: string }
       ).cache
@@ -888,7 +903,7 @@ describe('clean', () => {
   test('with no --pick a review row is dropped, not run', () => {
     const fx = buildFixture()
     looksFresh(fx)
-    const res = run(['clean', '--branch', BRANCH, '--only', 'worktree', '--yes'], fx.root)
+    const res = run(['clean', '--branch', BRANCH, '--worktrees', '--yes'], fx.root)
     expect(res.code).toBe(0)
     expect(res.out).toContain('needs-pick')
     expect(existsSync(fx.worktree)).toBe(true)
@@ -899,10 +914,10 @@ describe('clean', () => {
     sh(fx.root, ['remote', 'set-url', 'origin', join(tempDir(), 'missing.git')])
     const res = run(['clean', '--remote', '--provider', 'none', '--yes'], fx.root)
     expect(res.code).toBe(1)
-    expect(res.err).toContain('fetch failed')
+    expect(res.err).toContain('fetch of origin failed')
     const plan = run(['plan', '--remote', '--provider', 'none'], fx.root)
     expect(plan.code).toBe(1)
-    expect(plan.err).toContain('fetch failed')
+    expect(plan.err).toContain('fetch of origin failed')
   })
 
   test('the receipt file records the rows the preview dropped', () => {
@@ -945,7 +960,7 @@ describe('clean', () => {
     sh(parent, ['clone', '-q', fx.bare, 'b'])
     sh(join(parent, 'a'), ['fetch', '-q'])
     const res = run(
-      ['clean', '--provider', 'none', '--offline', '--only', 'remote', '--yes', 'a', 'b'],
+      ['clean', '--provider', 'none', '--offline', '--remote', '--yes', 'a', 'b'],
       parent,
     )
     expect(res.code).toBe(0)
@@ -971,7 +986,7 @@ describe('clean', () => {
   // stale tracking refs never decide a remote step.
   test('offline, a remote branch the remote already deleted is skipped as gone, and the run goes on', () => {
     const fx = buildGoneFixture()
-    const res = run(['clean', ...REMOTE, '--only', 'remote', '--yes', '--format', 'json'], fx.root)
+    const res = run(['clean', ...REMOTE_ONLY, '--yes', '--format', 'json'], fx.root)
     expect(res.code).toBe(0)
     const out = JSON.parse(res.out) as { receipt: Receipt; summary: unknown }
     expect(out.receipt.status).toBe('complete')
@@ -985,7 +1000,7 @@ describe('clean', () => {
 
   test('offline, the preview asks the remote too: a dry run shows the gone branch skipped', () => {
     const fx = buildGoneFixture()
-    const res = run(['clean', ...REMOTE, '--only', 'remote', '--dry-run'], fx.root)
+    const res = run(['clean', ...REMOTE_ONLY, '--dry-run'], fx.root)
     expect(res.code).toBe(0)
     expect(res.out).toMatch(new RegExp(`skip +remote:origin/${BRANCH}\\n +gone`))
     expect(res.out).toContain('would delete: 1 remote branch')
@@ -996,7 +1011,7 @@ describe('clean', () => {
     const fx = buildGoneFixture()
     sh(fx.root, ['config', 'remote.origin.uploadpack', '/bin/false'])
     for (const mode of ['--dry-run', '--yes']) {
-      const res = run(['clean', ...REMOTE, '--only', 'remote', mode], fx.root)
+      const res = run(['clean', ...REMOTE_ONLY, mode], fx.root)
       expect(res.code).not.toBe(0)
       expect(res.err).toContain(realpathSync(fx.root))
       expect(res.err).toMatch(/`git ls-remote origin` failed .*nothing was run/)
@@ -1013,7 +1028,7 @@ describe('clean', () => {
     sh(dirname(other), ['clone', '-q', '-b', BRANCH, fx.bare, other])
     sh(other, ['commit', '-q', '--allow-empty', '-m', 'more'])
     sh(other, ['push', '-q', 'origin', BRANCH])
-    const res = run(['clean', ...REMOTE, '--only', 'remote', '--yes', '--format', 'json'], fx.root)
+    const res = run(['clean', ...REMOTE_ONLY, '--yes', '--format', 'json'], fx.root)
     expect(res.code).toBe(0)
     const out = JSON.parse(res.out) as { receipt: Receipt }
     expect(out.receipt.status).toBe('complete')
@@ -1030,7 +1045,7 @@ describe('clean', () => {
       const spare = `remote:origin/${BRANCH}`
       const plan = join(tempDir(), 'p.json')
       const sweepFlags = mode === 'offline' ? REMOTE : ['--remote', '--provider', 'none']
-      expect(run(['plan', ...sweepFlags, '--only', 'remote', '-o', plan], fx.root).code).toBe(0)
+      expect(run(['plan', ...sweepFlags, '--remote', '-o', plan], fx.root).code).toBe(0)
       // The branch is deleted on the remote after the plan.
       sh(fx.bare, ['update-ref', '-d', `refs/heads/${BRANCH}`])
       const res = run(['clean', '--plan', plan, '--yes', '--spare', spare], fx.root)
@@ -1043,7 +1058,7 @@ describe('clean', () => {
   test('a row that turns into a review row while the question waits is dropped, not run', () => {
     const fx = buildFixture()
     sh(fx.root, ['branch', 'extra', 'main'])
-    const res = run(['clean', '--only', 'branch'], fx.root, {
+    const res = run(['clean', '--branches'], fx.root, {
       confirm: () => {
         // Work lands on `extra` after the preview judged it merged.
         sh(fx.root, ['checkout', '-q', 'extra'])
@@ -1098,7 +1113,16 @@ describe('clean', () => {
     const fx = buildFixture()
     const plan = run(['plan', '--branch', BRANCH, ...REMOTE], fx.root).out
     const res = run(
-      ['clean', '--plan', '-', '--yes', '--pick', `remote:origin/${BRANCH}`],
+      [
+        'clean',
+        '--plan',
+        '-',
+        '--yes',
+        '--spare',
+        `worktree:${fx.worktree}`,
+        '--spare',
+        `branch:${BRANCH}`,
+      ],
       fx.root,
       {
         readStdin: () => plan,
@@ -1113,7 +1137,7 @@ describe('clean', () => {
   test('a row whose risk was not allowed is dropped, not deleted', () => {
     const fx = buildFixture()
     sh(fx.worktree, ['commit', '-q', '--allow-empty', '-m', 'unmerged'])
-    const res = run(['clean', '--branch', BRANCH, '--only', 'worktree', '--yes'], fx.root)
+    const res = run(['clean', '--branch', BRANCH, '--worktrees', '--yes'], fx.root)
     expect(res.code).toBe(0)
     expect(existsSync(fx.worktree)).toBe(true)
   })
@@ -1196,15 +1220,15 @@ describe('refused combinations', () => {
       untouched(fx)
     })
 
-    test('--allow <risk>=<row> for a row outside --pick', () => {
+    test('--allow <risk>=<row> for a spared row', () => {
       const fx = buildFixture()
       refused(
         run(
           [
             'clean',
             ...REMOTE,
-            '--pick',
-            `worktree:${fx.worktree}`,
+            '--spare',
+            `branch:${BRANCH}`,
             '--allow',
             `abandon-unmerged=branch:${BRANCH}`,
             '--yes',
@@ -1212,7 +1236,7 @@ describe('refused combinations', () => {
           fx.root,
         ),
         2,
-        'is not picked',
+        'is spared',
       )
       untouched(fx)
     })
@@ -1220,7 +1244,7 @@ describe('refused combinations', () => {
     test('a picked or spared row of a kind --only leaves out', () => {
       const fx = buildFixture()
       refused(
-        run(['clean', '--only', 'worktree', '--pick', `branch:${BRANCH}`, '--yes'], fx.root),
+        run(['clean', '--worktrees', '--pick', `branch:${BRANCH}`, '--yes'], fx.root),
         2,
         'the sweep has no branch rows',
       )
@@ -1230,13 +1254,13 @@ describe('refused combinations', () => {
         'the sweep has no remote rows',
       )
       refused(
-        run(['clean', '--only', 'branch', '--spare', `worktree:${fx.worktree}`, '--yes'], fx.root),
+        run(['clean', '--branches', '--spare', `worktree:${fx.worktree}`, '--yes'], fx.root),
         2,
         'the sweep has no worktree rows',
       )
       refused(
         run(
-          ['clean', '--only', 'worktree', '--allow', `abandon-unmerged=branch:${BRANCH}`, '--yes'],
+          ['clean', '--worktrees', '--allow', `abandon-unmerged=branch:${BRANCH}`, '--yes'],
           fx.root,
         ),
         2,
@@ -1270,16 +1294,16 @@ describe('refused combinations', () => {
       const parent = tempDir()
       sh(parent, ['clone', '-q', fx.bare, 'a'])
       sh(parent, ['clone', '-q', fx.bare, 'b'])
-      refused(run(['--branch', BRANCH, 'a', 'b'], parent), 2, 'one repository')
+      refused(run(['status', '--branch', BRANCH, 'a', 'b'], parent), 2, 'one repository')
       refused(run(['clean', '--branch', BRANCH, 'a', 'b', '--yes'], parent), 2, 'one repository')
       // A directory that holds two checkouts is more than one target too.
-      refused(run(['--branch', BRANCH], parent), 2, 'one repository')
+      refused(run(['status', '--branch', BRANCH], parent), 2, 'one repository')
       refused(
-        run(['--branch', BRANCH, 'https://example.invalid/r.git'], tempDir()),
+        run(['status', '--branch', BRANCH, 'https://example.invalid/r.git'], tempDir()),
         2,
         'remote URL',
       )
-      refused(run(['--branch', 'main'], fx.root), 2, 'default branch')
+      refused(run(['status', '--branch', 'main'], fx.root), 2, 'default branch')
       refused(run(['clean', '--branch', 'main', '--yes'], fx.root), 2, 'default branch')
       untouched(fx)
     })
@@ -1290,7 +1314,7 @@ describe('refused combinations', () => {
       expect(run(['plan', '-o', plan], fx.root).code).toBe(0)
       for (const extra of [
         [fx.root],
-        ['--only', 'worktree'],
+        ['--worktrees'],
         ['--branch', BRANCH],
         ['--remote'],
         ['--offline'],
@@ -1327,22 +1351,43 @@ describe('refused combinations', () => {
 
     test('--offline or --provider without --remote, for every command that sweeps', () => {
       const fx = buildFixture()
-      for (const verb of [[], ['plan'], ['clean', '--yes']]) {
-        refused(run([...verb, '--offline'], fx.root), 2, '--offline has no effect without --remote')
+      for (const verb of [['status'], ['plan'], ['clean', '--yes']]) {
+        refused(
+          run([...verb, '--offline'], fx.root),
+          2,
+          '--offline has no effect without remote rows',
+        )
         refused(
           run([...verb, '--provider', 'none'], fx.root),
           2,
-          '--provider has no effect without --remote',
+          '--provider has no effect without remote rows',
         )
       }
       untouched(fx)
     })
 
-    test('--remote with an --only that leaves remote out', () => {
+    test('--all with a named remote', () => {
       const fx = buildFixture()
-      refused(run(['--remote', '--only', 'branch'], fx.root), 2, 'leaves them out')
-      refused(run(['clean', '--remote', '--only', 'worktree,branch', '--yes'], fx.root), 2)
+      refused(run(['clean', '--all', '--remote=origin', '--yes'], fx.root), 2, 'write them out')
       untouched(fx)
+    })
+
+    test('a target that is no directory but a remote: --remote with a space', () => {
+      const fx = buildFixture()
+      for (const verb of [['status'], ['clean', '--yes']]) {
+        refused(
+          run([...verb, '--remote', 'origin'], fx.root),
+          2,
+          'origin is a remote, not a directory: write --remote=origin',
+        )
+      }
+      untouched(fx)
+    })
+
+    test('--fetch with --offline, or with remote rows only', () => {
+      const fx = buildFixture()
+      refused(run(['status', '--fetch', '--all', '--offline'], fx.root), 2, 'contradict')
+      refused(run(['status', '--fetch', '--remote'], fx.root), 2, 'fetch their remotes anyway')
     })
 
     test('a remote URL target with --only worktree or branch, --offline, or a checkout', () => {
@@ -1354,22 +1399,22 @@ describe('refused combinations', () => {
         return { code: main(argv, ctx, { confirm: () => null }), err: ctx.io.err }
       }
       const url = urlOf(fx.bare)
-      refused(at(['clean', url, '--only', 'worktree', '--yes']), 2, 'only remote branches')
-      refused(at(['clean', url, '--only', 'branch', '--yes']), 2, 'only remote branches')
+      refused(at(['clean', url, '--worktrees', '--yes']), 2, 'only remote branches')
+      refused(at(['clean', url, '--branches', '--yes']), 2, 'only remote branches')
       refused(at(['clean', url, '--offline', '--yes']), 2, '--offline would have no effect')
       refused(at(['clean', url, fx.root, '--yes']), 2, 'apart from checkouts')
       expect(readdirSync(cache)).toEqual([])
       untouched(fx)
     })
 
-    test('--all with any --format but text', () => {
+    test('--all-rows with any --format but text', () => {
       const fx = buildFixture()
       for (const format of ['json', 'summary', 'commands']) {
-        const res = run(['--all', '--format', format], fx.root)
-        refused(res, 2, '--all has no effect')
+        const res = run(['status', '--all-rows', '--format', format], fx.root)
+        refused(res, 2, '--all-rows has no effect')
         expect(res.code).toBe(2)
       }
-      expect(run(['--all', '--format', 'text'], fx.root).code).toBe(0)
+      expect(run(['status', '--all-rows', '--format', 'text'], fx.root).code).toBe(0)
     })
   })
 
@@ -1464,15 +1509,15 @@ describe('refused combinations', () => {
     test('a spared or allowed row the plan does not have, when no plan row could run', () => {
       const fx = buildFixture()
       // The fixture's only local branch besides main is held by its worktree: nothing could run.
-      const plan = JSON.parse(run(['plan', '--only', 'branch'], fx.root).out) as Plan
+      const plan = JSON.parse(run(['plan', '--branches'], fx.root).out) as Plan
       expect(plan.repos[0]!.rows.every((r) => r.action === null)).toBe(true)
       refused(
-        run(['clean', '--only', 'branch', '--spare', 'branch:nope', '--yes'], fx.root),
+        run(['clean', '--branches', '--spare', 'branch:nope', '--yes'], fx.root),
         1,
         'no such row in the plan',
       )
       refused(
-        run(['clean', '--only', 'branch', '--allow', 'abandon-unmerged=nope', '--yes'], fx.root),
+        run(['clean', '--branches', '--allow', 'abandon-unmerged=nope', '--yes'], fx.root),
         1,
         'no such row in the plan',
       )
@@ -1486,8 +1531,7 @@ describe('refused combinations', () => {
       const res = run(
         [
           'clean',
-          '--only',
-          'branch',
+          '--branches',
           '--pick',
           'branch:extra',
           '--pick',
@@ -1514,8 +1558,7 @@ describe('refused combinations', () => {
       const res = run(
         [
           'clean',
-          '--only',
-          'worktree',
+          '--worktrees',
           '--pick',
           row,
           '--allow',
@@ -1578,7 +1621,7 @@ describe('refused combinations', () => {
       const fx = buildFixture()
       sh(fx.root, ['worktree', 'lock', fx.worktree])
       const res = run(
-        ['clean', '--only', 'worktree', '--pick', `worktree:${fx.worktree}`, '--dry-run'],
+        ['clean', '--worktrees', '--pick', `worktree:${fx.worktree}`, '--dry-run'],
         fx.root,
       )
       expect(res.code).toBe(0)
@@ -1588,7 +1631,7 @@ describe('refused combinations', () => {
 
     test('picking a keep row: it is skipped and shown with the reason', () => {
       const fx = buildFixture()
-      const res = run(['clean', '--only', 'branch', '--pick', 'branch:main', '--dry-run'], fx.root)
+      const res = run(['clean', '--branches', '--pick', 'branch:main', '--dry-run'], fx.root)
       expect(res.code).toBe(0)
       expect(res.out).toMatch(/skip +branch:main\n +keep: /)
       expect(branchRefs(fx.root)).toContain('refs/heads/main')
@@ -1596,14 +1639,15 @@ describe('refused combinations', () => {
 
     test('--only remote without --remote: asking for remote branches implies the network', () => {
       const fx = buildFixture()
-      const res = run(['--only', 'remote', '--provider', 'none', '--offline', '--all'], fx.root)
+      const res = run(
+        ['status', '--remote', '--provider', 'none', '--offline', '--all-rows'],
+        fx.root,
+      )
       expect(res.code).toBe(0)
       expect(res.out).toContain(`origin/${BRANCH}`)
-      const plan = JSON.parse(
-        run(['plan', '--only', 'remote', '--provider', 'none'], fx.root).out,
-      ) as Plan
-      expect(plan.options).toMatchObject({ only: ['remote'], remote: true })
-      expect(plan.repos[0]!.fetched).toBe(true)
+      const plan = JSON.parse(run(['plan', '--remote', '--provider', 'none'], fx.root).out) as Plan
+      expect(plan.options).toMatchObject({ only: ['remote'], remotes: [''] })
+      expect(plan.repos[0]!.fetched).toEqual(['origin'])
     })
   })
 })
@@ -1622,14 +1666,14 @@ describe('branch mode', () => {
     const parent = tempDir()
     sh(parent, ['clone', '-q', a.bare, 'a'])
     sh(parent, ['clone', '-q', b.bare, 'b'])
-    const res = run(['--branch', BRANCH], parent)
+    const res = run(['status', '--branch', BRANCH], parent)
     expect(res.code).toBe(2)
     expect(res.err).toContain('one repository')
   })
 
   test('--branch on the default branch is refused', () => {
     const fx = buildFixture()
-    const res = run(['--branch', 'main'], fx.root)
+    const res = run(['status', '--branch', 'main'], fx.root)
     expect(res.code).toBe(2)
     expect(res.err).toContain('default branch')
   })
@@ -1670,25 +1714,25 @@ describe('a pull request listing that fails (#653)', () => {
       `#!/bin/sh\ncase "$1" in --version|auth) exit 0;; esac\nprintf '%b' '${stderr}' >&2\nexit 1\n`,
       fn,
     )
-  const GH = ['--remote', '--offline', '--provider', 'github', '--no-progress']
+  const GH = ['--all', '--offline', '--provider', 'github', '--no-progress']
   // An escape sequence in the provider's output must not reach the terminal.
   const STDERR = '\\033[31mboom: no such repository\\n'
 
   test('every output names the failure, with terminal controls stripped', () => {
     const fx = buildFixture()
     withFailingGh(STDERR, () => {
-      const commands = run([...GH, '--format', 'commands'], fx.root)
+      const commands = run(['status', ...GH, '--format', 'commands'], fx.root)
       expect(commands.code).toBe(0)
       expect(commands.err).toMatch(
         // The sweep names the repository by its real path (macOS: /var is /private/var).
         new RegExp(
-          `^repo-cleaner: ${escapeRegExp(realpathSync(fx.root))}: Listing PRs with \`gh pr list\` failed \\(.*boom`,
+          `^repo-cleaner status: ${escapeRegExp(realpathSync(fx.root))}: Listing PRs with \`gh pr list\` failed \\(.*boom`,
           'm',
         ),
       )
       expect(commands.err).not.toContain('\x1b')
 
-      const summary = run([...GH, '--format', 'summary'], fx.root)
+      const summary = run(['status', ...GH, '--format', 'summary'], fx.root)
       expect(summary.out).toContain('note: Listing PRs with `gh pr list` failed')
 
       const planFile = join(tempDir(), 'p.json')

@@ -1,5 +1,24 @@
 # @osdlc/trust-repo
 
+## 0.5.11
+
+### Patch Changes
+
+- Updated dependencies [6d37030]
+- Updated dependencies [c8470d6]
+- Updated dependencies [0ce8abc]
+- Updated dependencies [9c0f5ae]
+  - @osdlc/command-seam@0.15.1
+  - @osdlc/typed-git@0.19.0
+
+## 0.5.10
+
+### Patch Changes
+
+- Updated dependencies [b0ff1b3]
+- Updated dependencies [cb56f16]
+  - @osdlc/typed-git@0.18.0
+
 ## 0.5.9
 
 ### Patch Changes

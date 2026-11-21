@@ -26,7 +26,7 @@ function step(action: Step['action'], result: Step['result'], name: string): Ste
 }
 
 function receipt(status: Receipt['status'], steps: Step[], dropped: Dropped[] = []): Receipt {
-  return { version: 2, plan: '(test)', status, startedAt: 'x', finishedAt: 'y', dropped, steps }
+  return { version: 3, plan: '(test)', status, startedAt: 'x', finishedAt: 'y', dropped, steps }
 }
 
 const drop = (name: string, reason: Dropped['reason']): Dropped => ({
@@ -51,8 +51,13 @@ describe('run summary', () => {
       gone: 0,
       pruned: 1,
       dropped: {},
+      succeeded: 6,
       failed: 0,
+      skipped: 0,
       notRun: 0,
+      // The test step carries no measurement.
+      freedBytes: 0,
+      unmeasured: 1,
     })
     expect(renderRunSummary(r)).toEqual([
       'deleted: 1 worktree, 2 local branches, 1 remote branch, 1 stale worktree pruned',
@@ -91,6 +96,18 @@ describe('run summary', () => {
     expect(renderRunSummary(r)).toEqual([
       'deleted: 1 local branch',
       'stopped at a failed step; 1 row not run',
+    ])
+  })
+
+  test('a run that went on past a failure counts what ran, failed and was skipped', () => {
+    const r = receipt('failed', [
+      step('remove-worktree', 'failed', '/wt'),
+      step('delete-branch', 'skipped', 'a'),
+      step('delete-branch', 'ok', 'b'),
+    ])
+    expect(renderRunSummary(r)).toEqual([
+      'deleted: 1 local branch',
+      '1 step ran, 1 failed, 1 skipped',
     ])
   })
 

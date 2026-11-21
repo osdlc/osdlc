@@ -42,4 +42,13 @@ describe('prUpdateSection', () => {
     expect(prUpdateStandaloneSchema.safeParse({ test_command: 'make test' }).success).toBe(true)
     expect(prUpdateStandaloneSchema.safeParse({ test_comand: 'x' }).success).toBe(false)
   })
+
+  test('on_rebase_conflict takes repair, and max_rebase_stops defaults to 3 and must be positive', () => {
+    const parsed = prUpdateSection.schema.parse({ on_rebase_conflict: 'repair' })
+    expect(parsed.on_rebase_conflict).toBe('repair')
+    expect(parsed.repair.max_rebase_stops).toBe(3)
+    expect(prUpdateSection.schema.safeParse({ repair: { max_rebase_stops: 0 } }).success).toBe(
+      false,
+    )
+  })
 })

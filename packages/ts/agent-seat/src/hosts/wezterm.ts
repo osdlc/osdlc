@@ -30,7 +30,7 @@ import type {
   SendRequest,
 } from '../contract.ts'
 import { onPath, quietRun, supportsPlatform } from '../contract.ts'
-import { sessionViaTerminal } from '../harness.ts'
+import { commandArgv, sessionViaTerminal } from '../harness.ts'
 import { registryDirOf, type HostStateOptions } from './registry.ts'
 import { boundPane, recallSessionPane, rememberSessionPane } from './session-panes.ts'
 
@@ -43,7 +43,7 @@ export function weztermSpawnArgv(req: CommandRequest, newWindow = false): string
     req.cwd,
     ...(newWindow ? ['--new-window'] : []),
     '--',
-    ...req.argv,
+    ...commandArgv(req),
   ]
 }
 

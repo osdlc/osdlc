@@ -54,11 +54,17 @@
 //!
 //! The peer address comes from axum's `ConnectInfo<SocketAddr>`; a request
 //! without one is treated as non-loopback, so a mis-wired server fails closed.
+//!
+//! Under `serve`, a request the guard admits carries a [`ConnectionCut`], and
+//! the guard notes which token admitted it on its connection. Withdrawing that
+//! token with [`GuardState::replace_tokens`] closes the connection at once.
+//!
 //! Every response carries `Referrer-Policy: no-referrer` and
 //! `X-Content-Type-Options: nosniff`.
 
 use std::net::{IpAddr, SocketAddr};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, PoisonError, RwLock, RwLockReadGuard};
 use std::time::{Duration, Instant};
 
 use axum::body::Body;
@@ -68,6 +74,8 @@ use axum::middleware::Next;
 use axum::response::Response;
 use subtle::ConstantTimeEq;
 
+pub use crate::conn::ConnectionCut;
+use crate::conn::{Conn, Connections};
 use crate::context::{AccessContext, Grant};
 use crate::origin::is_webview_origin;
 use crate::permissions::{RouteRule, normalize_path};
@@ -210,9 +218,16 @@ impl DenialBudget {
     }
 }
 
+/// Source of [`Entry::id`].
+static NEXT_ENTRY_ID: AtomicU64 = AtomicU64::new(1);
+
 /// One accepted token.
 #[derive(Debug, Clone)]
 struct Entry {
+    /// Names the entry to the connections it admitted requests on, so
+    /// withdrawing it can cut them. Unique in the process; kept across
+    /// [`GuardState::replace_tokens`] while the token and grant stay.
+    id: u64,
     token: Token,
     grant: Grant,
     /// Who it was issued to; for audit once tokens are per device.
@@ -240,8 +255,8 @@ pub enum TokensError {
     },
 }
 
-/// The accepted tokens, each with the grant it confers. They are fixed for the
-/// life of a [`GuardState`]: rotating a token means building a new state.
+/// The accepted tokens, each with the grant it confers. A running guard takes
+/// a new set with [`GuardState::replace_tokens`].
 ///
 /// Only a [`Token`] can join a set, and no token is in it with two grants
 /// (see [`TokensError::Duplicate`]).
@@ -257,11 +272,7 @@ impl Tokens {
     /// One [`Grant::Full`] token, or none for `None`.
     pub fn full_only(token: impl Into<Option<Token>>) -> Self {
         match token.into() {
-            Some(token) => Self(vec![Entry {
-                token,
-                grant: Grant::Full,
-                label: None,
-            }]),
+            Some(token) => Self::none().pushed(token, Grant::Full, None),
             None => Self::none(),
         }
     }
@@ -294,12 +305,7 @@ impl Tokens {
         self.push(token, grant, Some(label.into()))
     }
 
-    fn push(
-        mut self,
-        token: Token,
-        grant: Grant,
-        label: Option<String>,
-    ) -> Result<Self, TokensError> {
+    fn push(self, token: Token, grant: Grant, label: Option<String>) -> Result<Self, TokensError> {
         if let Some(e) = self.0.iter().find(|e| e.token == token) {
             return if e.grant == grant {
                 Ok(self)
@@ -310,12 +316,17 @@ impl Tokens {
                 })
             };
         }
+        Ok(self.pushed(token, grant, label))
+    }
+
+    fn pushed(mut self, token: Token, grant: Grant, label: Option<String>) -> Self {
         self.0.push(Entry {
+            id: NEXT_ENTRY_ID.fetch_add(1, Ordering::Relaxed),
             token,
             grant,
             label,
         });
-        Ok(self)
+        self
     }
 
     /// True when no token was added.
@@ -331,15 +342,15 @@ impl Tokens {
         pick.or(self.0.first()).map(|e| &e.token)
     }
 
-    /// The grant of the entry equal to `presented`. Tokens are unique in the
-    /// set, so at most one matches. Every entry is compared, so timing does
-    /// not show which one matched. `ct_eq` returns early when the lengths
+    /// The grant and id of the entry equal to `presented`. Tokens are unique
+    /// in the set, so at most one matches. Every entry is compared, so timing
+    /// does not show which one matched. `ct_eq` returns early when the lengths
     /// differ, so timing can show a token's length.
-    fn grant_for(&self, presented: &str) -> Option<Grant> {
-        let mut found: Option<Grant> = None;
+    fn grant_for(&self, presented: &str) -> Option<(Grant, u64)> {
+        let mut found = None;
         for entry in &self.0 {
             if bool::from(presented.as_bytes().ct_eq(entry.token.as_str().as_bytes())) {
-                found = Some(entry.grant);
+                found = Some((entry.grant, entry.id));
             }
         }
         found
@@ -357,7 +368,12 @@ pub struct GuardPolicy {
 /// Middleware state. Build once, share in an `Arc`, hand to
 /// `axum::middleware::from_fn_with_state(state, guard)`.
 pub struct GuardState {
-    tokens: Tokens,
+    tokens: RwLock<Tokens>,
+    /// The server's open connections, when `serve` built this state.
+    conns: Option<Arc<Connections>>,
+    /// Let a loopback peer in while the set holds no token, whatever
+    /// `policy` says; `serve`'s default on a loopback-only listen.
+    open_while_tokenless: bool,
     read_safe: Vec<RouteRule<()>>,
     allowed_hosts: Vec<String>,
     /// Public names as `host:port` authorities. Kept apart from
@@ -390,7 +406,9 @@ impl GuardState {
             }
         }
         Self {
-            tokens,
+            tokens: RwLock::new(tokens),
+            conns: None,
+            open_while_tokenless: false,
             read_safe: Vec::new(),
             allowed_hosts: hosts,
             public_hosts: Vec::new(),
@@ -523,6 +541,62 @@ impl GuardState {
     pub fn with_shared_on_denied(mut self, f: Arc<OnDenied>) -> Self {
         self.on_denied = Some(f);
         self
+    }
+
+    /// Accept `tokens` from now on in place of the current set. A token that
+    /// stays with the same grant is the same entry. Under `serve`, every
+    /// connection a withdrawn entry admitted a request on is cut at once (see
+    /// [`crate::ServerHandle::replace_tokens`]); behind a guard you installed
+    /// yourself, open connections are left to you.
+    pub fn replace_tokens(&self, tokens: Tokens) {
+        let mut held = self.tokens.write().unwrap_or_else(PoisonError::into_inner);
+        let mut next = tokens;
+        for e in &mut next.0 {
+            if let Some(old) = held
+                .0
+                .iter()
+                .find(|o| o.grant == e.grant && o.token == e.token)
+            {
+                e.id = old.id;
+            }
+        }
+        let withdrawn: Vec<u64> = held
+            .0
+            .iter()
+            .map(|o| o.id)
+            .filter(|id| !next.0.iter().any(|n| n.id == *id))
+            .collect();
+        *held = next;
+        drop(held);
+        // A request tags its connection under the read lock, so it either
+        // matched an old entry and tagged before the swap, and the cut reaches
+        // it, or it reads the new set.
+        if let Some(conns) = &self.conns {
+            conns.cut_tagged(&withdrawn);
+        }
+    }
+
+    /// Cut a connection when the entry that admitted a request on it is
+    /// withdrawn.
+    pub(crate) fn with_connections(mut self, conns: Arc<Connections>) -> Self {
+        self.conns = Some(conns);
+        self
+    }
+
+    /// Open to a loopback peer exactly while the set holds no token, so a
+    /// [`Self::replace_tokens`] that adds the first token closes it.
+    pub(crate) fn open_while_tokenless(mut self) -> Self {
+        self.open_while_tokenless = true;
+        self
+    }
+
+    fn tokens(&self) -> RwLockReadGuard<'_, Tokens> {
+        self.tokens.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The current [`Tokens::share_token`].
+    pub(crate) fn share_token(&self) -> Option<Token> {
+        self.tokens().share_token().cloned()
     }
 
     fn deny(&self, req_parts: (&Method, &str, Option<SocketAddr>), reason: DenialReason) {
@@ -744,6 +818,19 @@ pub async fn guard(
 async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Response {
     let method = req.method().clone();
     let path = req.uri().path().to_owned();
+    // Under `serve`, the connection the request arrived on.
+    let conn = req.extensions().get::<Arc<Conn>>().cloned();
+    if let Some(c) = &conn {
+        // A connection's tag holds one token, so only HTTP/1 is safe on it.
+        // Cargo feature unification can turn axum's `http2` on under us.
+        if req.version() == axum::http::Version::HTTP_2 {
+            return refuse(
+                StatusCode::HTTP_VERSION_NOT_SUPPORTED,
+                "HTTP/2 is not supported; use HTTP/1.1",
+            );
+        }
+        req.extensions_mut().insert(c.signal());
+    }
     let peer = req
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
@@ -797,7 +884,9 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
     }
 
     // 4. Loopback peer without a token.
-    if state.policy.loopback_open && context == AccessContext::WebLocal && !public {
+    let loopback_open =
+        state.policy.loopback_open || (state.open_while_tokenless && state.tokens().is_empty());
+    if loopback_open && context == AccessContext::WebLocal && !public {
         return state.admit(req, context, Grant::Full, next).await;
     }
 
@@ -806,7 +895,7 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
     if method == Method::GET
         && let Some((tok, rest)) = req.uri().query().and_then(split_token_param)
     {
-        let link_grant = state.tokens.grant_for(tok);
+        let link_grant = state.tokens().grant_for(tok).map(|(g, _)| g);
         // An admin link that may not be used here sets no cookie, and does
         // not fall through to a cookie that would load the page with the
         // admin token still in the URL.
@@ -846,15 +935,31 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
         .headers()
         .get(TOKEN_HEADER)
         .and_then(|v| v.to_str().ok());
-    let mut grant = header_tok.and_then(|t| state.tokens.grant_for(t));
-    for name in [&cookie, &admin_cookie] {
-        for t in cookie_values(&req, name) {
-            presented_wrong = true;
-            grant = grant.max(state.tokens.grant_for(t));
+    let matched = {
+        let tokens = state.tokens();
+        // The highest grant this request may use, and the entry that gives
+        // it: an entry whose grant is lowered here ranks below one whose grant
+        // stands, so withdrawing it does not cut a request another token holds.
+        let rank = |t: &str| {
+            tokens.grant_for(t).map(|(g, id)| {
+                let used = state.effective_grant(g, public);
+                (used, used == g, id)
+            })
+        };
+        let mut best = header_tok.and_then(rank);
+        for name in [&cookie, &admin_cookie] {
+            for t in cookie_values(&req, name) {
+                presented_wrong = true;
+                best = best.max(rank(t));
+            }
         }
-    }
-    if let Some(grant) = grant {
-        let grant = state.effective_grant(grant, public);
+        // Must stay under the read lock; see GuardState::replace_tokens.
+        if let (Some((_, _, id)), Some(c)) = (best, &conn) {
+            c.tag(id);
+        }
+        best
+    };
+    if let Some((grant, _, _)) = matched {
         return state.admit(req, context, grant, next).await;
     }
     presented_wrong |= header_tok.is_some();
@@ -1695,7 +1800,7 @@ mod tests {
             .and_then(|t| t.with(x.clone(), Grant::Read))
             .unwrap();
         assert_eq!(set.0.len(), 1);
-        assert_eq!(set.grant_for(x.as_str()), Some(Grant::Read));
+        assert_eq!(set.grant_for(x.as_str()).map(|(g, _)| g), Some(Grant::Read));
     }
 
     /// A guard on `HOST` with a wildcard bind on :3000. Its interface list
