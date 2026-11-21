@@ -78,3 +78,29 @@ fn a_comment_inside_a_removed_or_emptied_element_is_never_lost() {
         );
     }
 }
+
+#[test]
+fn a_comment_trailing_a_removed_element_is_refused() {
+    for (src, path) in [
+        (
+            "t: [\n  a,\n  b, # about b\n  c\n]\n",
+            vec![k("t"), 1.into()],
+        ),
+        (
+            "t: {\n  a: 1,\n  b: 2, # about b\n  c: 3\n}\n",
+            vec![k("t"), k("b")],
+        ),
+        ("t: [\n  a,\n  b # about b\n]\n", vec![k("t"), 1.into()]),
+    ] {
+        let err = run(src, remove(&path)).unwrap_err();
+        assert!(err.contains("comment"), "{src:?}: {err}");
+    }
+}
+
+#[test]
+fn a_removed_complex_key_leaves_the_next_keys_marker() {
+    assert_eq!(
+        run("t: {? a : 1, b: 2}\n", remove(&[k("t"), k("a")])).unwrap(),
+        "t: {? b: 2}\n"
+    );
+}

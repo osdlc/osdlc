@@ -978,7 +978,7 @@ pub(crate) fn flow_elems(
 }
 
 /// The byte offset where the node that starts at event `idx` begins.
-pub(crate) fn root_start(events: &[Ev], src: &str, idx: usize) -> usize {
+pub(crate) fn node_start(events: &[Ev], src: &str, idx: usize) -> usize {
     byte_index(src, events[idx].span.start.index())
 }
 

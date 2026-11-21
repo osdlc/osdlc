@@ -142,7 +142,7 @@ pub(crate) fn apply(
             return finish(&cx, parsed, next, changed);
         }
         (_, Some(root))
-            if starts_with(current, parse::root_start(&events, current, root), b'{') =>
+            if starts_with(current, parse::node_start(&events, current, root), b'{') =>
         {
             return Err(unsupported(
                 &cx,

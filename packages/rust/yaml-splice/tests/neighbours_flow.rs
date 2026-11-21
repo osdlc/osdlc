@@ -1,9 +1,9 @@
 //! A flow edit never changes an element it does not address.
 //!
-//! `tests/neighbours_nested.rs` for flow collections. Three elements of a flow
-//! mapping or a flow sequence take a set of value shapes, in four layouts
-//! (one line, spaced, one element per line, with a trailing comma), in LF and
-//! CRLF. Each element gets a `RemovePath` and a `SetPath` of every value in
+//! The flow-collection counterpart of `tests/neighbours_nested.rs`. Three
+//! elements of a flow mapping or a flow sequence take a set of value shapes,
+//! in each layout (one line, spaced, one element per line, with a trailing
+//! comma), in LF and CRLF. Each element gets a `RemovePath` and a `SetPath` of every value in
 //! `NEW`. The result must parse to the original document with only that
 //! element changed, or the edit is refused. The refusals are counted: a
 //! comment or shape that is not edited (`UnsupportedPath`), and a result the

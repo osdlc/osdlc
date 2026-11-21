@@ -1,7 +1,7 @@
 //! Path edits inside flow collections (`{a: 1}`, `[x, y]`).
 //!
 //! A flow element is a bracketed, comma-separated value, so each edit is one
-//! replacement or deletion inside the brackets. New values are written on one
+//! replacement, insertion or deletion inside the brackets. New values are written on one
 //! line in flow style (`render::flow_text`).
 
 use std::ops::Range;
@@ -229,7 +229,7 @@ fn append(cx: &Cx<'_>, elems: &[FlowElem], text: String) -> Result<Edits, EditEr
 fn remove(cx: &Cx<'_>, open_idx: usize, elems: &[FlowElem], i: usize) -> Result<Edits, EditError> {
     let elem = &elems[i];
     let range: Range<usize> = if elems.len() == 1 {
-        let open = parse::root_start(cx.events, cx.src, open_idx) + 1;
+        let open = parse::node_start(cx.events, cx.src, open_idx) + 1;
         let close = parse::byte_index(
             cx.src,
             cx.events[parse::skip_node(cx.events, open_idx) - 1]
@@ -264,7 +264,20 @@ fn remove(cx: &Cx<'_>, open_idx: usize, elems: &[FlowElem], i: usize) -> Result<
     let separator = match i {
         _ if elems.len() == 1 => false,
         0 => has_hash(elem.value_range.end..elem_start(&elems[1])),
-        _ => has_hash(elems[i - 1].value_range.end..elem_start(elem)),
+        _ => {
+            // The element's own trailing `, # note` would be left behind.
+            let after = elem.value_range.end;
+            let stop = elems.get(i + 1).map_or_else(
+                || {
+                    after
+                        + cx.src[after..]
+                            .find([']', '}', '\n', '\r'])
+                            .unwrap_or(cx.src.len() - after)
+                },
+                elem_start,
+            );
+            has_hash(elems[i - 1].value_range.end..elem_start(elem)) || has_hash(after..stop)
+        }
     };
     let comment = key_gap || nested || separator;
     if comment {
