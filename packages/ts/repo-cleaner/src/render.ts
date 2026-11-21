@@ -15,6 +15,7 @@ import {
   KINDS,
   isPrune,
   isUnfetched,
+  judgedRemotes,
   parseRowId,
   totalOf,
   type Bucket,
@@ -134,7 +135,7 @@ function repoHeader(sweep: RepoSweep): string {
   if (sweep.repo === null) return name
   const repo = sweep.repo
   // Each remote judged besides the default one, marked when it was not fetched.
-  const others = repo.remotes
+  const others = judgedRemotes(repo)
     .filter((r) => r.name !== repo.remote)
     .map((r) => (repo.fetchedRemotes.includes(r.name) ? r.name : `${r.name} not fetched`))
   const bits = [
