@@ -28,6 +28,12 @@ of them.
   that capture, lint and compile it. It is not published. Its compiled file
   ships in `packages/ts/harness-knowledge` (`@osdlc/harness-knowledge` on
   npm), and `.github/workflows/harness-reference.yml` checks both.
+- `packages/profiles/system-cleanup/` (`@osdlc/corpus-profile-system-cleanup` on
+  npm) and `packages/corpora/system-cleanup-reference/`
+  (`@osdlc/corpus-system-cleanup-reference` on npm) are the system cleanup
+  profile and reference: cited statements about where tools and apps keep data
+  that can be reclaimed from disk, which host-cleaner's descriptors are drafted
+  from. They live beside host-cleaner while it is their only user.
 - TypeScript libraries are published to npm from CI with
   [Changesets](https://changesets.dev). `.github/workflows/packages-publish.yml`
   publishes through npm trusted publishing, with provenance, so no npm token

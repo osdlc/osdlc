@@ -115,9 +115,24 @@ importers:
         specifier: workspace:*
         version: link:../../profiles/sdlc
 
+  packages/corpora/system-cleanup-reference:
+    devDependencies:
+      '@osdlc/corpus-profile-claims':
+        specifier: workspace:*
+        version: link:../../profiles/claims
+      '@osdlc/corpus-profile-system-cleanup':
+        specifier: workspace:*
+        version: link:../../profiles/system-cleanup
+
   packages/profiles/claims: {}
 
   packages/profiles/sdlc: {}
+
+  packages/profiles/system-cleanup:
+    devDependencies:
+      '@osdlc/corpus-profile-claims':
+        specifier: workspace:*
+        version: link:../claims
 
   packages/ts/agent-call:
     dependencies:

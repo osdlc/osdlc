@@ -1,0 +1,20 @@
+---
+kind: source
+store: '[Hugging Face Hub](../../stores/Hugging%20Face%20Hub.md)'
+observed: '2026-11-21'
+locator: locks_dir
+reportedIn:
+- '[file_download.py](../../documents/Hugging%20Face/file_download.py.md)'
+excerpt:
+  exact: locks_dir = os.path.join(cache_dir, ".locks")
+contributions:
+- contributor:
+    name: system-cleanup research
+    agentType: software
+  activityType: created
+  date: '2026-11-21T00:00:00Z'
+---
+
+file_download.py (https://raw.githubusercontent.com/huggingface/huggingface_hub/main/src/huggingface_hub/file_download.py) says, under locks_dir:
+
+> locks_dir = os.path.join(cache_dir, ".locks")
