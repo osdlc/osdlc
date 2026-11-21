@@ -1178,4 +1178,59 @@ mod frontmatter_tests {
         let out = edit_yaml(b"f: 1\n", &edits).unwrap();
         assert_eq!(out.bytes, b"f: 2\n");
     }
+
+    #[test]
+    fn removing_a_key_a_merge_may_supply_is_refused() {
+        let src = b"base: &base {x: 1}\nchild:\n  <<: *base\n  y: 2\n";
+        let edits = [FieldEdit::RemovePath {
+            path: vec!["child".into(), "x".into()],
+        }];
+        assert!(matches!(
+            edit_yaml(src, &edits),
+            Err(EditError::UnsupportedPath { .. })
+        ));
+    }
+
+    fn edited(src: &str, path: &[&str], remove: bool, value: i64) -> Result<String, EditError> {
+        let path = path.iter().map(|k| (*k).into()).collect();
+        let edit = if remove {
+            FieldEdit::RemovePath { path }
+        } else {
+            FieldEdit::SetPath {
+                path,
+                value: value.into(),
+            }
+        };
+        let out = edit_yaml(src.as_bytes(), &[edit])?;
+        Ok(String::from_utf8(out.bytes).unwrap())
+    }
+
+    #[test]
+    fn removing_an_only_child_keeps_the_parents_properties_first() {
+        assert_eq!(
+            edited("a: &x\n  b: 1\n", &["a", "b"], true, 0).unwrap(),
+            "a: &x {}\n"
+        );
+        assert_eq!(
+            edited("a: !!map\n  b: 1\n", &["a", "b"], true, 0).unwrap(),
+            "a: !!map {}\n"
+        );
+    }
+
+    #[test]
+    fn removing_an_only_child_of_an_unterminated_mixed_eol_document() {
+        assert_eq!(
+            edited("a:\r\n  # \u{e9}\n  b: 1", &["a", "b"], true, 0).unwrap(),
+            "a: {}\r\n  # \u{e9}"
+        );
+    }
+
+    #[test]
+    fn a_keep_chomped_header_is_read_in_either_indicator_order() {
+        for header in ["|+2", "|2+", "|+\t# why"] {
+            let src = format!("a:\n  b: {header}\n    hi\n\nc: 2\n");
+            let out = edited(&src, &["a", "z"], false, 3).unwrap();
+            assert_eq!(out, format!("a:\n  b: {header}\n    hi\n\n  z: 3\nc: 2\n"));
+        }
+    }
 }

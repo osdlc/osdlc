@@ -18,7 +18,7 @@ use crate::edit::{
 };
 use crate::parse::{self, Ev, EvKind, ItemSpan, KeySpan, MapEntry, Parsed};
 use crate::render::{self, EmitOptions};
-use crate::splice::{apply_eol, value_assignment, value_edit};
+use crate::splice::{apply_eol, line_start, value_assignment, value_edit};
 use crate::value::{Mapping, Value};
 
 /// What a path edit does at its last segment.
@@ -282,6 +282,12 @@ fn absent(
     depth: usize,
     last: bool,
 ) -> Result<Edits, EditError> {
+    if !matches!(cx.op, Op::Set(_)) && entries.iter().any(|e| e.span.key == "<<") {
+        return Err(unsupported(
+            cx,
+            "the mapping merges keys (`<<`) that may hold it",
+        ));
+    }
     match cx.op {
         Op::Set(value) => {
             let nested = nest(cx, depth + 1, value)?;
@@ -455,10 +461,6 @@ fn key_text(key: &str) -> Result<String, EditError> {
 /// differs from its line's indent for the first key of a `- key:` item.
 fn column(src: &str, pos: usize) -> String {
     " ".repeat(pos - line_start(src, pos))
-}
-
-fn line_start(src: &str, pos: usize) -> usize {
-    src[..pos].rfind('\n').map_or(0, |i| i + 1)
 }
 
 /// The offset just past the line break that ends the line holding `pos`, or
@@ -678,8 +680,14 @@ fn keeps_trailing_blanks(cx: &Cx<'_>, value_idx: usize) -> bool {
         let from = line_start(cx.src, end - 1);
         let line = cx.src[from..end].trim_end_matches(['\r', '\n']);
         if !line.trim().is_empty() {
-            let code = line.split(" #").next().unwrap_or(line);
-            return code.trim_end().ends_with('+') || code.contains("+ ");
+            let code = line
+                .char_indices()
+                .find(|&(i, c)| c == '#' && line[..i].ends_with([' ', '\t']))
+                .map_or(line, |(i, _)| &line[..i]);
+            return code
+                .split_whitespace()
+                .next_back()
+                .is_some_and(|header| header.contains('+'));
         }
         end = from;
     }
@@ -749,11 +757,17 @@ fn cut_lines(
     // A document without a final line break loses the break before the
     // removed line too, or `a: {}` would gain one.
     let start = if end == cx.src.len() && !cx.src.ends_with('\n') {
-        start - cx.eol.len().min(start)
+        let before = &cx.src[..start];
+        start
+            - if before.ends_with("\r\n") {
+                2
+            } else {
+                usize::from(before.ends_with('\n'))
+            }
     } else {
         start
     };
-    let at = parent.after();
+    let at = after_properties(cx.src, parent.after());
     vec![
         (at..at, format!(" {empty}")),
         (start.max(at)..end, String::new()),
@@ -782,6 +796,21 @@ fn remove_item(
         only.then_some(parent),
         "[]",
     ))
+}
+
+/// The offset after any anchor or tag that follows `pos` on its line: an
+/// empty mapping goes after them.
+fn after_properties(src: &str, mut pos: usize) -> usize {
+    loop {
+        let rest = &src[pos..];
+        let token = rest.trim_start_matches([' ', '\t']);
+        if !token.starts_with(['&', '!']) {
+            return pos;
+        }
+        let skipped = rest.len() - token.len();
+        let len = token.find([' ', '\t', '\r', '\n']).unwrap_or(token.len());
+        pos += skipped + len;
+    }
 }
 
 /// The value the rest of the path builds, from the segment at `from`.

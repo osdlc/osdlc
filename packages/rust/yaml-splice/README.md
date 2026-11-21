@@ -38,7 +38,7 @@ cargo add yaml-splice
   `serde_json`. To build without it:
 
   ```toml
-  yaml-splice = { version = "0.3", default-features = false }
+  yaml-splice = { version = "0.4", default-features = false }
   ```
 
 ## Quick start
