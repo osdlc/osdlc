@@ -14,6 +14,13 @@
 # the other jobs skip when nothing under the Rust paths changed. `rust`
 # passes when every job it needs passed or was skipped.
 #
+# A draft pull request that a bot just pushed a merge commit to (pr-update.yml;
+# pr-load.yml decides, see "Load on pull requests" in packages-ci.yml) runs
+# none of the Rust jobs: `changes` reports rust=false, so every job skips and `rust` still
+# reports success. A draft that a person pushes to, or that a bot pushes a single-parent commit to, runs every job. Marking the
+# pull request ready runs the jobs (`ready_for_review`). A push to main and a
+# manual run are never drafts.
+#
 # The toolchain is the pin in packages/rust/rust-toolchain.toml (with the
 # wasm32 target added in the `wasm` job), except in the `msrv` job (the
 # workspace `rust-version`) and the `minimal-versions` lockfile step (a dated
@@ -24,6 +31,7 @@ name: rust
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   workflow_dispatch:
@@ -45,7 +53,12 @@ defaults:
     working-directory: packages/rust
 
 jobs:
+  load:
+    uses: ./.github/workflows/pr-load.yml
+
   changes:
+    needs: load
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -71,10 +84,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           PR: ${{ github.event.pull_request.number }}
+          LIGHT: ${{ needs.load.outputs.light }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
         run: |
           set -euo pipefail
+          if [ "$EVENT" = pull_request ] && [ "$LIGHT" = true ]; then
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           files=""
           case "$EVENT" in
             pull_request)
@@ -481,7 +499,7 @@ jobs:
         run: pnpm exec package-checks semver packages/rust/Cargo.toml HEAD^1
 
   rust:
-    needs: [changes, lint, rust-test, msrv, minimal-versions, wasm, release-plz, semver-version]
+    needs: [load, changes, lint, rust-test, msrv, minimal-versions, wasm, release-plz, semver-version]
     if: always()
     runs-on: ubuntu-latest
     defaults:

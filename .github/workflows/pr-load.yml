@@ -1,0 +1,49 @@
+# Decides whether a pull request run should be light. The heavy jobs of
+# packages-ci.yml, perf-gate.yml and rust-ci.yml call this workflow as their
+# `load` job and skip when its `light` output is true.
+#
+# `light` is true only when a bot pushed a merge commit to a draft pull
+# request: the event is pull_request `synchronize`, the PR is a draft, the
+# sender is a bot, and the head commit has more than one parent. That is what
+# pr-update.yml does after a merge to main (it merges the base into every open
+# pull request, as the GitHub App in vars.PR_UPDATE_APP_CLIENT_ID, so the bot
+# name is not fixed). Agent commits pushed as the same App (`--apply`) have
+# one parent, so they run the full checks. A person's push is never light,
+# and neither is any other event.
+name: pr-load
+
+on:
+  workflow_call:
+    outputs:
+      light:
+        description: "'true' when a bot pushed a merge commit to a draft pull request."
+        value: ${{ jobs.load.outputs.light }}
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      light: ${{ steps.decide.outputs.light }}
+    steps:
+      - name: Is this a bot's merge into a draft?
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          SENDER_TYPE: ${{ github.event.sender.type }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          light=false
+          if [ "$EVENT" = pull_request ] && [ "$ACTION" = synchronize ] && [ "$DRAFT" = true ] && [ "$SENDER_TYPE" = Bot ]; then
+            parents="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}" --jq '.parents | length')"
+            echo "head ${SHA} has ${parents} parent(s)"
+            if [ "$parents" -gt 1 ]; then light=true; fi
+          fi
+          echo "light=${light}" >> "$GITHUB_OUTPUT"
