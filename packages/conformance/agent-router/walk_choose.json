@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.4",
+  "referenceVersion": "0.4.5",
   "sections": {
     "walk_choose": {
       "description": "chooseFromProfile under scripted availability, without the author rule: every skip-reason row of the README table, the trace text exactly, the refs the callback was asked, and validateProfile’s errors",

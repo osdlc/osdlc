@@ -1,5 +1,23 @@
 # @osdlc/code-host
 
+## 0.8.3
+
+### Patch Changes
+
+- Updated dependencies [6d37030]
+- Updated dependencies [0297b95]
+- Updated dependencies [2ee6d62]
+- Updated dependencies [f8b19a9]
+- Updated dependencies [976bbee]
+- Updated dependencies [2fd3d61]
+- Updated dependencies [c8470d6]
+- Updated dependencies [0ce8abc]
+- Updated dependencies [9c0f5ae]
+  - @osdlc/command-seam@0.15.1
+  - @osdlc/config-layers@0.11.0
+  - @osdlc/typed-gh@0.19.0
+  - @osdlc/typed-git@0.19.0
+
 ## 0.8.2
 
 ### Patch Changes
