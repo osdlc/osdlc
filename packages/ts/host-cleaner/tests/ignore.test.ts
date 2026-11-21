@@ -1,7 +1,15 @@
 /** The ignore list: matching, the survey and re-check drops, and `idleHours: 0`. */
 
 import { afterEach, describe, expect, test } from 'vitest'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -23,6 +31,17 @@ const temp = (): string => {
   dirs.push(d)
   return d
 }
+
+/** Whether the temp directory's volume ignores letter case, as macOS's does by default. */
+const caseInsensitive = ((): boolean => {
+  const d = mkdtempSync(join(tmpdir(), 'host-cleaner-case-'))
+  try {
+    mkdirSync(join(d, 'Probe'))
+    return existsSync(join(d, 'probe'))
+  } finally {
+    rmSync(d, { recursive: true, force: true })
+  }
+})()
 
 const cand = (id: string, path: string, extra: Partial<Candidate> = {}): Candidate => ({
   id,
@@ -60,6 +79,17 @@ describe('ignorePaths and coveredBy', () => {
       coveredBy(join(root, 'real', 'f'), ignorePaths([join(root, 'link')], root, root)),
     ).toBeDefined()
   })
+
+  test.skipIf(!caseInsensitive)(
+    'on a volume that ignores letter case, an entry in other case covers the directory on disk',
+    () => {
+      const root = temp()
+      mkdirSync(join(root, 'Code', 'Keep'), { recursive: true })
+      const ignore = ignorePaths([join(root, 'code', 'keep')], root, root)
+      expect(coveredBy(join(root, 'Code', 'Keep', 'target'), ignore)).toBeDefined()
+      expect(containsIgnored(join(root, 'Code'), ignore)).toBeDefined()
+    },
+  )
 })
 
 describe('survey and recheck', () => {

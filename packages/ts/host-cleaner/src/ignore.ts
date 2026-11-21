@@ -11,9 +11,10 @@ import { isAbsolute, join, resolve, sep } from 'node:path'
 export const expandHome = (path: string, home: string): string =>
   path === '~' || path.startsWith('~/') ? join(home, path.slice(1)) : path
 
+/** `path` with links resolved and, on a case-insensitive volume, the letter case on disk; as given when missing. */
 const real = (path: string): string => {
   try {
-    return realpathSync(path)
+    return realpathSync.native(path)
   } catch {
     return path
   }
