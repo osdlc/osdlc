@@ -1,5 +1,29 @@
 # @osdlc/agent-seat
 
+## 0.9.0
+
+### Minor Changes
+
+- d1f8887: cmux host: `makeCmuxHost({ binary })` names the `cmux` binary (or `null` for none) instead of finding it only on PATH, and a launch with a `sessionId` records `agent-seat:<slug>` in the workspace's `--description`. `find`, `send`, `focus`, `capture` and `close` with that `sessionId` pick the workspace carrying the marker, so two sessions in one worktree can be told apart; without a marker match they fall back to the working directory as before.
+- 07a9f42: `CommandRequest` gains `env`, applied by every host with `withEnv`, so a workspace shell can carry variables without hiding exports inside `argv`. New `envPrefixLine(argv, env)` builds the plain POSIX `K=V cmd` prefix as a string, so a shell function or alias still runs where `env K=V cmd` would not. New `commandArgv(req)` returns a request's argv under its env.
+  
+  `withEnv` now refuses, on POSIX too, a variable name that is not a plain identifier (it used to pass any name to `env`), and `commandArgv` refuses an empty argv.
+- 9579dac: Add the `window` host: it opens a new GUI terminal window running the harness (Terminal.app through `osascript` by default, or a caller-supplied `WindowOpener`) and returns as soon as the window is open. `makeWindowHost`, `windowHost`, `terminalAppArgv`, `windowShellCommand` and `WindowOpener` are exported, and `'window'` joins `HOST_NAMES`. It cannot wait for the window's process to exit.
+
+### Patch Changes
+
+- fa8118b: `harnessArgv`, `hasInteractiveArgv`, `claudeSessionArgv`, `claudeResumeArgv`, `claudeHookSettings` and `CLAUDE_HOOK_EVENTS` now delegate to `@osdlc/agent-call`, which owns each CLI's command line. Same exports and the same argv.
+- Updated dependencies [fa8118b]
+- Updated dependencies [63b5800]
+- Updated dependencies [6d37030]
+- Updated dependencies [c8470d6]
+- Updated dependencies [0ce8abc]
+- Updated dependencies [9c0f5ae]
+  - @osdlc/agent-call@0.15.0
+  - @osdlc/command-seam@0.15.1
+  - @osdlc/typed-git@0.19.0
+  - @osdlc/detect-harness@0.7.4
+
 ## 0.8.1
 
 ### Patch Changes
