@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Breaking: depends on `markdown-vault-fs` 0.8, where `Hide` is
+  `#[non_exhaustive]` and gains `Source`; a `match` on the re-exported `Hide`
+  needs a wildcard arm.
+
+### Added
+
+- A walk's `Hide::Source` (re-exported) lets a caller change the excluded
+  files of a `FrontmatterIndex` or `LinkGraph` without building a new one:
+  change the list, then `refresh_now`. Notes that stay listed keep their
+  parse.
+
 ## [0.4.1](https://github.com/osdlc/osdlc/compare/markdown-corpus/v0.4.0...markdown-corpus/v0.4.1) - 2026-11-20
 
 ### Other
