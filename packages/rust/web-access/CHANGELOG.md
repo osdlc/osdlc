@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `serve` refuses an HTTP/2 request with `505 HTTP Version Not Supported`.
+  A connection's token tag assumes one request at a time. An app that embeds
+  this crate and enables axum's `http2` feature (Cargo unifies features)
+  would otherwise let concurrent streams overwrite each other's tag, so
+  withdrawing a token could cut the wrong connection or miss one.
+
 ## [0.6.0](https://github.com/osdlc/osdlc/compare/web-access/v0.5.0...web-access/v0.6.0) - 2026-11-20
 
 ### Other

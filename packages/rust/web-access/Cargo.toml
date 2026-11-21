@@ -35,8 +35,11 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["net", "rt", "sync", "time"] }
 
 [dev-dependencies]
+# `http2` here stands in for an embedder that turns it on: Cargo unifies the
+# feature, so `axum::serve` then speaks HTTP/2 and the guard must refuse it.
+axum = { workspace = true, features = ["http2"] }
 futures-util = { workspace = true }
-hyper = { workspace = true }
+hyper = { workspace = true, features = ["client", "http2"] }
 hyper-util = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread"] }
