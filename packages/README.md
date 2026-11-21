@@ -28,6 +28,12 @@ of them.
   that capture, lint and compile it. It is not published. Its compiled file
   ships in `packages/ts/harness-knowledge` (`@osdlc/harness-knowledge` on
   npm), and `.github/workflows/harness-reference.yml` checks both.
+- `packages/profiles/system-cleanup/` and
+  `packages/corpora/system-cleanup-reference/` are the system cleanup profile
+  and reference: cited statements about where tools and apps keep data that
+  can be reclaimed from disk, which host-cleaner's descriptors are drafted
+  from. They live beside host-cleaner while it is their only user, and are not
+  published yet; the reference's backlog item B-0001 says when they will be.
 - TypeScript libraries are published to npm from CI with
   [Changesets](https://changesets.dev). `.github/workflows/packages-publish.yml`
   publishes through npm trusted publishing, with provenance, so no npm token
@@ -321,6 +327,11 @@ Developed here, in this repository:
   on git refs: create, replace and delete a ref at any git remote only if it
   still holds the sha you read, through `git push --force-with-lease`, with the
   payload as canonical JSON in the ref's commit)
+- `packages/ts/story-harness` (`@osdlc/story-harness` on npm, a component's
+  static Storybook build as its test harness: exact Linux screenshot
+  baselines from a pinned Playwright container, Playwright helpers for
+  interaction and perf specs, an in-page metrics hook and a perf report that
+  parallel workers merge)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
@@ -445,6 +456,7 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    - `gfm-pipe-table`, until its first release can have a release-plz run of
      its own: it needs `CARGO_REGISTRY_TOKEN` (rules 3, 4 and 7).
    - `ref-lease`, for the same reason.
+   - `system-model`, for the same reason.
 
 #### Versions and breaking changes
 

@@ -7,7 +7,7 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git` plugin and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node` and `claude-code` plugins, and the `host-cleaner` command.
 
 ## Phases
 
@@ -76,6 +76,49 @@ blockers are `refuse` objections and its risks `protest`s, so
 freed by a worktree requires it. With `archive`, unlanded work is pushed to the
 remote first; a failed push throws `FatalRun`. Grant the named risks; the
 `discard-archived` cover is not yet offered here.
+
+## The `cargo` and `node` plugins
+
+Build caches fill agent machines, so two plugins list them. Both propose
+`artifact:<absolute path>` candidates with their size, and both set
+`unattended`. Settings: `plugins.<name>.idleHours` (default 24).
+
+- `cargo`: a `target/` with a `CACHEDIR.TAG` whose newest file under
+  `target/*/.fingerprint/` is at least `idleHours` old. Where incremental
+  builds are off (`CARGO_INCREMENTAL`, else `CARGO_BUILD_INCREMENTAL`, else `cargo config
+  get build.incremental`, which only nightly cargo answers), `target/*/incremental` is its own candidate.
+- `node`: `node_modules` of a linked worktree where nothing outside
+  `node_modules`, `.git` and `target` changed for `idleHours`. A primary
+  checkout is never proposed. A `.pnpm` tree frees less than it measures.
+
+A `cargo` or `rustc` process in the checkout (any busy process for `node`), or
+a process table that cannot be read, is a `refuse`. A path that leads outside
+its checkout (checked with `@osdlc/path-guard`) is a `refuse` and is never
+measured. `delete` reads the checkout's candidates again over a fresh process
+table, removes the directory and checks it is gone; a directory that is already
+gone (its worktree went first) is not a failure.
+
+## The `claude-code` plugin
+
+Lists running Claude Code sessions (`session:<pid>`) and closes one when asked.
+Detected through `@osdlc/detect-harness` (or, with no report, the config
+folder; `CLAUDE_CONFIG_DIR` moves it). A session is a process whose executable
+is `claude` or `claude.exe`, or `node` running a `claude` script, found with
+`ps` and its working directory with `lsof`. Each candidate carries a
+`close-session` protest and is never `unattended`, so a session closes only
+when picked and allowed by name. A session that host-cleaner itself runs
+inside (an ancestor of its process) is refused with `own-session`.
+
+```sh
+host-cleaner clean --pick session:1234 --allow close-session   # the usual clean, and this session
+host-cleaner clean -i                                           # tick only the session
+```
+
+Its evidence holds the start time, the command, the working directory, the
+resume id, the transcript's last write, other sessions resuming the same id,
+and whether the directory is gone or temporary. `delete` checks the pid still
+has the planned start time and command, sends SIGTERM and waits for the exit.
+It never sends SIGKILL; a session that ignores SIGTERM fails its step.
 
 ## Command line
 

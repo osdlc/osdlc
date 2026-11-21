@@ -68,7 +68,7 @@ import {
   type ConfigFileSpec,
   type StandaloneConfig,
 } from './config-file.ts'
-import { COMMAND_KEY_NAMES } from './trust.ts'
+import { CLI_ONLY_KEYS } from './trust.ts'
 
 /** The namespace an unqualified key belongs to. */
 const DEFAULT_SECTION = 'pr_update'
@@ -231,7 +231,7 @@ export function prUpdateConfigStore(file: ConfigFileSpec): ConfigStore {
     layers: LAYERS,
     defaultLayer: 'project',
     keys: KEYS,
-    cliOnlyKeys: COMMAND_KEY_NAMES,
+    cliOnlyKeys: CLI_ONLY_KEYS,
     dryRun: true,
     resolveKey(key) {
       try {
