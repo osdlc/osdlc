@@ -223,8 +223,7 @@ fn every_node_of_every_real_file_is_edited() {
         failures.len(),
         failures.join("\n")
     );
-    // Every edit is written. Only a path into a flow collection, which tier 3
-    // adds, is refused, and never because the result was wrong.
+    // No edit is refused because its result was wrong.
     assert_eq!(refused.get("InvalidResult"), None, "refused: {refused:?}");
     // Pinned: the files are fixed copies, so a change here means the walk or
     // the model changed.
@@ -249,8 +248,7 @@ fn run(src: &str, p: &Planned) -> Result<Outcome, String> {
         return Err(format!("read back as {got:?}, want {:?}", p.want));
     }
     if p.one_line {
-        // The lines that differ form one stretch, and it holds the new value
-        // on one line.
+        // Exactly one line differs between the shared head and tail.
         let (before, after): (Vec<&str>, Vec<&str>) =
             (src.lines().collect(), text.lines().collect());
         let head = before

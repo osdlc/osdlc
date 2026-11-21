@@ -41,8 +41,9 @@ struct Cx<'a> {
     bom_len: usize,
 }
 
-/// What encloses the collection being walked, for the one edit that must
-/// reach out of it: removing its only key or item.
+/// What encloses the collection being walked: where an emptied collection's
+/// `{}` or `[]` goes, and the column a new child's comment lines must stay
+/// right of.
 #[derive(Clone, Copy)]
 enum Parent<'a> {
     /// The value of a mapping entry: `{}` or `[]` goes after its `:`.
@@ -168,7 +169,7 @@ fn finish(
     }
     let mut want = parsed.root.clone();
     apply_model(&mut want, cx.path, cx.op, cx.opts)
-        .map_err(|e| e.unwrap_or_else(|| invalid("the edit cannot be applied in memory")))?;
+        .map_err(|()| invalid("the edit cannot be applied in memory"))?;
     let read_src = crate::edit::as_read(&next, cx.bom_len);
     let after = parse::parse_with_spans(read_src).map_err(|e| EditError::InvalidResult {
         message: e.to_string(),
@@ -316,10 +317,7 @@ fn step_into(
     }
     let next = depth + 1;
     match child {
-        // Nothing to lose: an empty value is replaced by the collection the
-        // next segment needs.
-        Value::Null => vivify(cx, slot, depth),
-        c if c.is_empty_collection() => vivify(cx, slot, depth),
+        c if matches!(c, Value::Null) || c.is_empty_collection() => vivify(cx, slot, depth),
         Value::Map(child_map) => {
             if starts_with(cx.src, slot.value_start(), b'{') {
                 return Err(unsupported(cx, "flow mappings are not edited yet"));
@@ -500,20 +498,19 @@ fn replace_slot(
     }
 }
 
-/// The text of a sequence item's value, as it follows `- ` for a `-` at
-/// `dash_col`: a collection is compact, its lines under the first.
-fn item_text(cx: &Cx<'_>, dash_col: usize, value: &Value) -> Result<String, EditError> {
+/// The text of a sequence item's value whose first line starts at column
+/// `col`: a collection is compact, its lines under the first.
+fn item_text(cx: &Cx<'_>, col: usize, value: &Value) -> Result<String, EditError> {
     let rendered = render::render_value(value, EmitOptions::line_width_0()).map_err(|e| {
         EditError::UnrenderableValue {
-            key: String::new(),
+            key: path_text(cx.path),
             message: e.to_string(),
         }
     })?;
     let rendered = rendered.strip_suffix('\n').unwrap_or(&rendered);
-    // Every line after the first sits two columns in from the `-`: the
-    // content of a block scalar, or the next key of a compact collection.
-    let pad = dash_col + 2;
-    let pad = " ".repeat(pad);
+    // Every line after the first sits under the first: the content of a
+    // block scalar, or the next key of a compact collection.
+    let pad = " ".repeat(col);
     let mut out = String::with_capacity(rendered.len() + pad.len());
     for (n, line) in rendered.split('\n').enumerate() {
         if n > 0 {
@@ -532,7 +529,8 @@ fn replace_item(
     item: &ItemSpan,
     value: &Value,
 ) -> Result<(Range<usize>, String), EditError> {
-    let text = item_text(cx, item.dash - line_start(cx.src, item.dash), value)?;
+    let start = item.value_range.start;
+    let text = item_text(cx, start - line_start(cx.src, start), value)?;
     // The value replaces what follows the `-` on its line. `KeySpan` already
     // carries what `value_edit` needs to keep a trailing comment.
     let span = KeySpan {
@@ -584,7 +582,7 @@ fn append_item(
         return Err(unsupported(cx, "the sequence has no editable item"));
     };
     let col = first.dash - line_start(cx.src, first.dash);
-    let line = format!("{}- {}", " ".repeat(col), item_text(cx, col, value)?);
+    let line = format!("{}- {}", " ".repeat(col), item_text(cx, col + 2, value)?);
     Ok(insert_line(
         cx,
         last.value_range.end,
@@ -695,8 +693,10 @@ fn keeps_trailing_blanks(cx: &Cx<'_>, value_idx: usize) -> bool {
     false
 }
 
-/// Removes a key and its lines. The only key of a mapping leaves `{}` after
-/// the parent's `:` (or `-`).
+/// Removes a key and its lines. The first key of a `- key:` item keeps the
+/// `-`: the next key moves up to it, or the `-` stays alone over a comment
+/// line. The only key of a nested mapping leaves `{}` after the parent's `:`
+/// or `-` and any anchor or tag.
 fn remove(
     cx: &Cx<'_>,
     entries: &[MapEntry],
@@ -723,12 +723,13 @@ fn remove(
         let gap = &cx.src[after..next.span.key_range.start];
         let (_, rest) = gap.split_once('\n').unwrap_or((gap, ""));
         if rest.trim().is_empty() {
-            // Only blanks lie between: the next key moves up to follow the
-            // `-`.
+            // Only blanks follow the key's line: the key and its trailing
+            // comment go, and the next key moves up to follow the `-`.
             return Ok(vec![(key_start..next.span.key_range.start, String::new())]);
         }
-        // A comment line lies between, and it has to stay. The key's text goes
-        // and the `-` is left alone on its line, over the comment.
+        // A comment line lies between and stays. The rest of the `-` line
+        // goes, trailing comment included, leaving the `-` alone over the
+        // comment.
         let dash = cx.src[..key_start].trim_end().len();
         let line_end = line_end_after(cx.src, after);
         let end = cx.src[..line_end].trim_end_matches(['\r', '\n']).len();
@@ -837,13 +838,13 @@ fn nest(cx: &Cx<'_>, from: usize, value: &Value) -> Result<Value, EditError> {
 // --- the edit applied in memory ---------------------------------------------
 
 /// `edit` applied to the parsed document, to compare the written bytes with.
-/// `Err(None)` is an edit that cannot be applied; `Err(Some(e))` is a refusal.
+/// `Err(())` is an edit that cannot be applied; `Err(Some(e))` is a refusal.
 fn apply_model(
     root: &mut Value,
     path: &[PathSegment],
     op: &Op<'_>,
     opts: &EditOptions,
-) -> Result<(), Option<EditError>> {
+) -> Result<(), ()> {
     match op {
         Op::Set(value) => model_set(root, path, (*value).clone(), opts),
         Op::Remove => {
@@ -878,9 +879,9 @@ fn model_set(
     path: &[PathSegment],
     value: Value,
     opts: &EditOptions,
-) -> Result<(), Option<EditError>> {
+) -> Result<(), ()> {
     let Some((seg, rest)) = path.split_first() else {
-        return Err(None);
+        return Err(());
     };
     if matches!(node, Value::Null) || node.is_empty_collection() {
         *node = match seg {
@@ -903,7 +904,7 @@ fn model_set(
                 items.push(value);
                 Ok(())
             }
-            _ => Err(None),
+            _ => Err(()),
         };
     }
     if let (Value::Map(m), PathSegment::Key(k)) = (&mut *node, seg)
@@ -911,7 +912,12 @@ fn model_set(
     {
         m.insert(k.clone(), Value::Null);
     }
-    model_child(node, seg, opts).map_or(Err(None), |child| model_set(child, rest, value, opts))
+    if let (Value::Seq(items), PathSegment::Index(i)) = (&mut *node, seg)
+        && *i == items.len()
+    {
+        items.push(Value::Null);
+    }
+    model_child(node, seg, opts).map_or(Err(()), |child| model_set(child, rest, value, opts))
 }
 
 fn model_remove(node: &mut Value, path: &[PathSegment], opts: &EditOptions) {
@@ -942,18 +948,18 @@ fn model_rename(
     path: &[PathSegment],
     to: &str,
     opts: &EditOptions,
-) -> Result<(), Option<EditError>> {
+) -> Result<(), ()> {
     let Some((seg, rest)) = path.split_first() else {
-        return Err(None);
+        return Err(());
     };
     if !rest.is_empty() {
         return model_child(node, seg, opts)
-            .map_or(Err(None), |child| model_rename(child, rest, to, opts));
+            .map_or(Err(()), |child| model_rename(child, rest, to, opts));
     }
     let (Value::Map(m), PathSegment::Key(from)) = (node, seg) else {
-        return Err(None);
+        return Err(());
     };
-    let from = find_key(m, from, opts).ok_or(None)?;
+    let from = find_key(m, from, opts).ok_or(())?;
     *m = m
         .iter()
         .map(|(k, v)| (if k == from { to } else { k }.to_string(), v.clone()))

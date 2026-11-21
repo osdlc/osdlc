@@ -13,10 +13,9 @@
 //! original document with only that child changed, or be an `InvalidResult`
 //! refusal. It is never a silently different document.
 //!
-//! A layout runs once the tier that edits it is in [`ENABLED_LAYOUTS`]; the
-//! documents of every layout are generated either way. The number of
-//! refusals per layout is pinned, so a shape that starts or stops failing is
-//! a test failure.
+//! A layout's edits run once it is in [`ENABLED_LAYOUTS`]; the documents of
+//! every layout are generated either way. The number of refusals is pinned,
+//! so a shape that starts or stops failing is a test failure.
 
 mod shapes;
 
@@ -187,8 +186,7 @@ fn a_nested_edit_changes_only_the_key_it_addresses() {
         failures.len(),
         failures.join("\n")
     );
-    // Pinned, 4,630 per layout: the same causes as `tests/neighbours.rs` (a keep-chomped value
-    // gaining a blank line, a comment landing in a new block), at depth.
+    // Pinned; the causes are those of `Cause` in tests/neighbours.rs, at depth.
     let refusals: usize = refused.values().sum();
     assert_eq!(refusals, 9_260, "refusals, by message: {refused:?}");
     // Every shape pair parses in both layouts, as it does at the top level.

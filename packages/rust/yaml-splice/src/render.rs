@@ -163,8 +163,8 @@ pub(crate) fn assignment(value: &Value, key_indent: &str) -> Result<String, Rend
         if key_indent.is_empty() {
             return Ok(format!(" {raw}"));
         }
-        // A multi-line scalar (a block scalar, say) sits one level in from
-        // its key, which is itself indented.
+        // A multi-line scalar, such as a block scalar, was rendered from
+        // column 0, so each continuation line also gets the key's indent.
         let mut out = String::from(" ");
         for (i, line) in raw.split('\n').enumerate() {
             if i > 0 {
