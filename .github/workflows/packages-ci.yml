@@ -156,11 +156,12 @@ jobs:
           --if-present run build
 
       # No `...` here: install and build need the workspace dependencies, but
-      # only these three packages run real git.
+      # only these three packages run real git. One package at a time, as in
+      # ts-packages-ci.yml: parallel packages starve trivial tests of CPU.
       - name: Test
         run: >-
           pnpm --filter @osdlc/typed-git --filter @osdlc/pr-update --filter @osdlc/trust-repo
-          --no-bail run test
+          --workspace-concurrency=1 --no-bail run test
 
   windows-tier2:
     needs: packages
