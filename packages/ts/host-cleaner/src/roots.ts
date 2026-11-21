@@ -6,21 +6,26 @@
  */
 
 import { realpathSync } from 'node:fs'
-import { isAbsolute, relative } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
 
 import { nodeGuard } from '@osdlc/path-guard/node'
 
-const real = (path: string): string => {
+/** Real path of the parent directory plus the leaf name, so a leaf that is itself a link is judged by where it sits. */
+const realLeaf = (path: string): string => {
+  const dir = dirname(path)
   try {
-    return realpathSync(path)
+    return join(realpathSync(dir), basename(path))
   } catch {
     return path
   }
 }
 
-/** The root of `roots` that `path` is strictly inside by its real path, or null. A root that cannot be resolved holds nothing; a root itself is not inside. */
+const hasDotDot = (path: string): boolean => path.split(/[\\/]/).includes('..')
+
+/** The root of `roots` that `path` is strictly inside by its real path, or null. A root that cannot be resolved holds nothing; a root itself is not inside; a relative path or one with a `..` segment is never inside. */
 export function containedIn(roots: readonly string[], path: string): string | null {
-  const target = real(path)
+  if (!isAbsolute(path) || hasDotDot(path)) return null
+  const target = realLeaf(path)
   for (const root of roots) {
     let base: string
     try {
@@ -29,7 +34,7 @@ export function containedIn(roots: readonly string[], path: string): string | nu
       continue
     }
     const rel = relative(base, target)
-    if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) continue
+    if (rel === '' || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) continue
     if (nodeGuard.tryResolve(base, rel) !== null) return root
   }
   return null

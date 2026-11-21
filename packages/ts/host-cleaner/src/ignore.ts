@@ -39,3 +39,10 @@ export function coveredBy(path: string, ignore: readonly string[]): string | und
   const forms = [path, real(path)]
   return ignore.find((dir) => forms.some((f) => within(f, dir)))
 }
+
+/** The ignore entry that sits inside `path`, so deleting `path` would take it too, or undefined. */
+export function containsIgnored(path: string, ignore: readonly string[]): string | undefined {
+  if (ignore.length === 0 || !isAbsolute(path)) return undefined
+  const forms = [path, real(path)]
+  return ignore.find((dir) => forms.some((f) => within(dir, f)))
+}
