@@ -25,6 +25,8 @@ They are never reused.
   whole stack in one run, opt-in
 - [D-0003](decisions/D-0003-survey-and-update-on-the-command-model.md): survey
   and update run on cli-tool's command model
+- [D-0004](decisions/D-0004-update-repositories-in-parallel-with-jobs.md): update
+  repositories in parallel with `--jobs`, one child process per repository
 
 ## Backlog
 
