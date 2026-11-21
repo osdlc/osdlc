@@ -1,6 +1,6 @@
 # yaml-splice
 
-Edit the top-level fields of a YAML mapping in place, for Rust.
+Edit the fields of a YAML mapping in place, at the top level or below it, for Rust.
 
 The usual way to change one field in a YAML file is to parse it into a value,
 change the value and write the whole value back. That loses everything the
@@ -18,7 +18,8 @@ It is for programs that update a few fields of YAML that people also edit:
 frontmatter in notes and static sites, config files, manifests.
 
 - `edit_yaml` takes UTF-8 bytes and a list of edits (`Set`, `Remove`,
-  `Rename`) and returns the new bytes, or a typed error.
+  `Rename`, and `SetPath`, `RemovePath`, `RenamePath` for keys below the top
+  level) and returns the new bytes, or a typed error.
 - `edit_frontmatter` does the same for a frontmatter block cut out of a
   Markdown file.
 - An edit that changes nothing returns the input bytes unchanged.
@@ -92,8 +93,40 @@ Edits in one call run in order, and each sees the result of the ones before
 it. Either all of them apply or none do. Keys are matched case-insensitively
 by default (`Title` and `title` are the same key); pass
 `EditOptions::default().case_sensitive(true)` to `edit_yaml_with` for exact
-matching. Only top-level keys can be addressed; to change a nested field, `Set`
-the whole top-level value.
+matching.
+
+### Nested edits
+
+`SetPath`, `RemovePath` and `RenamePath` take a path, a list of
+`PathSegment::Key` (or `PathSegment::Index`), instead of one key. A
+one-segment path is exactly the top-level edit of the same name. Every
+segment is matched like a top-level key. Only the bytes of the addressed
+node change, so the comments, quoting and layout around it stay.
+
+This release edits keys through block mappings. A path that steps into a
+sequence or a flow collection (`{...}`, `[...]`) is refused as
+`UnsupportedPath`.
+
+- **`SetPath`** replaces the value at the path. A missing key is appended
+  after the last key of its mapping, at the keys' indent, after any comment
+  lines at that indent and before blank lines or a less indented comment.
+  Missing keys along the path are created. An empty parent (`a:`, `a: ~`,
+  `a: {}`, `a: []`) is replaced by the collection the next segment needs,
+  and a trailing comment moves to the header line (`a: # c`). A scalar with
+  content on the way is a `PathTypeMismatch`. An equal value changes no byte.
+  A nested append never adds a final line break to a document that has none;
+  the top level does, as before.
+- **`RemovePath`** deletes the key, its value lines and the comment on its
+  last line. Comment lines above it stay. An absent last key is a no-op. A
+  missing key on the way is `PathNotFound`. Removing the only key of a
+  mapping leaves `{}` (`a: {}`), so the parent stays a mapping.
+- **`RenamePath`** changes the key token in place. The key must exist
+  (`MissingKey`) and no sibling may have the new name (`KeyConflict`); a
+  name that another key has at a different depth is fine.
+
+A path through an alias (`*x`), or through a merge key (`<<`), is
+`UnsupportedPath`. An edit inside an anchored node that an alias reads from
+is refused as `InvalidResult`, because the alias would change too.
 
 New values are written the way the npm `yaml` package (version 2) writes them:
 the same quoting, the same block or flow layout, the same number formatting.
@@ -116,6 +149,9 @@ byte span.
 - A key that matches more than one existing key (`AmbiguousKey`), a `Rename`
   whose source is missing (`MissingKey`) or whose destination exists
   (`KeyConflict`).
+- A path whose parent is missing (`PathNotFound`), that steps into the wrong
+  kind of value (`PathTypeMismatch`), or that goes through an alias, a merge
+  key or a shape not edited yet (`UnsupportedPath`).
 - A value or key the emitter cannot write (`UnrenderableValue`). The edit
   functions render at line width 0, where the emitter has no error, so this
   release does not return it.
@@ -146,8 +182,8 @@ byte span.
 
 ## When not to use it
 
-- You need to edit nested keys by path, or reorder keys. yaml-splice
-  addresses top-level keys only.
+- You need to reorder keys, or to edit inside a sequence or a flow
+  collection (not yet supported).
 - You want to reformat or normalize a document. yaml-splice never does.
 - You read YAML into your own types. Use a serde-based crate; yaml-splice's
   `Value` is a plain tree for edits, not a deserializer.
@@ -186,6 +222,8 @@ fields and want the smallest possible diff, or output that matches JavaScript's
 | BOM, CRLF and mixed line endings are kept | conformance `a_bom_is_preserved_and_outside_every_span`, `crlf_line_endings_survive_outside_the_edited_span`, `mixed_line_endings_are_not_normalized` |
 | An appended key uses the document's line ending, and lands before `...` | conformance `an_appended_key_uses_the_documents_line_ending`, `an_append_lands_before_an_explicit_document_end_marker` |
 | `Remove` takes the key, its value and its inline comment | conformance `remove_takes_the_key_its_value_and_its_inline_comment` |
+| A nested edit changes only the node it addresses, in block mappings | `nested_corpus::cases_pass`, `real_files::every_node_of_every_real_file_is_edited`, `neighbours_nested::a_nested_edit_changes_only_the_key_it_addresses` |
+| A one-segment path equals the top-level edit | `nested_corpus::one_segment_paths_match_the_conformance_corpus` |
 | `Rename` keeps the value and position; missing source and existing destination are refused | conformance `rename_changes_the_key_token_in_place`, `rename_of_a_missing_source_is_a_missing_key_refusal`, `rename_onto_an_existing_destination_is_a_key_conflict` |
 | Keys match case-insensitively by default, exactly on request | conformance `addressing_is_case_insensitive_by_default`, `case_sensitive_mode_treats_case_variants_as_distinct` |
 | A batch runs in order and applies all or nothing | conformance `a_batch_applies_in_declared_order_atomically`, `a_later_edit_sees_an_earlier_one`, `a_failing_edit_discards_the_whole_batch` |
@@ -218,7 +256,8 @@ Minimum supported Rust version: 1.89, checked in CI by running the tests on
 0.2.1 is the first release on crates.io. The crate stays on 0.x for now.
 
 Stable in 0.x: `edit_yaml`, `edit_yaml_with`, `edit_frontmatter`, `edit_frontmatter_with`,
-`FieldEdit`, `EditOptions`, `EditOutcome`, `EditError`, `Value`, `Mapping`.
+`FieldEdit`, `PathSegment`, `EditOptions`, `EditOutcome`, `EditError`, `Value`,
+`Mapping`.
 
 These are not expected to change in a breaking way. `FieldEdit`, `EditError`,
 `EditOptions` and `EditOutcome` are `#[non_exhaustive]`, so a later release can

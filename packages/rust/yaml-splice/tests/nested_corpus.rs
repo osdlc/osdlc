@@ -20,16 +20,16 @@ use std::collections::BTreeMap;
 
 mod model;
 
-use model::{PathEdit, Seg, apply, read};
+use model::{PathEdit, Seg, apply, read, to_field_edit};
 
 use serde_json::Value as Json;
-use yaml_splice::Value;
+use yaml_splice::{EditError, EditOptions, FieldEdit, Value, edit_yaml_with};
 
 const CORPUS: &str = include_str!("fixtures/nested.json");
 const CONFORMANCE: &str = include_str!("fixtures/conformance.json");
 
 /// The tiers whose cases must pass. Raised as each tier is implemented.
-const ENABLED_TIERS: &[u64] = &[];
+const ENABLED_TIERS: &[u64] = &[1];
 
 const CATEGORIES: &[(&str, u64)] = &[
     ("set-existing", 1),
@@ -239,11 +239,52 @@ fn one_segment_paths_match_the_conformance_corpus() {
 }
 
 /// Runs one case through the edit functions.
-///
-/// Tier 1 replaces the body with a call to `edit_yaml_with`, after turning
-/// each [`PathEdit`] into the crate's path edit.
-fn run_case(_c: &Case) -> Result<(), String> {
-    Err("path edits are not implemented yet".to_string())
+fn run_case(c: &Case) -> Result<(), String> {
+    let edits: Vec<FieldEdit> = c.edits.iter().map(to_field_edit).collect();
+    let opts = EditOptions::default().case_sensitive(c.case_sensitive);
+    let got = edit_yaml_with(c.source.as_bytes(), &edits, &opts);
+    match (&c.expect, got) {
+        (Expect::Bytes { changed, bytes }, Ok(out)) => {
+            if out.changed != *changed {
+                return Err(format!("changed: got {}, want {changed}", out.changed));
+            }
+            let got = String::from_utf8(out.bytes).map_err(|e| e.to_string())?;
+            if got != *bytes {
+                return Err(format!("bytes:\n  got  {got:?}\n  want {bytes:?}"));
+            }
+            Ok(())
+        }
+        (Expect::Error(code), Err(e)) => {
+            let name = error_name(&e);
+            if name == code {
+                Ok(())
+            } else {
+                Err(format!("error: got {name} ({e}), want {code}"))
+            }
+        }
+        (Expect::Bytes { .. }, Err(e)) => Err(format!("unexpected error: {e}")),
+        (Expect::Error(code), Ok(out)) => Err(format!(
+            "want error {code}, got {:?}",
+            String::from_utf8_lossy(&out.bytes)
+        )),
+    }
+}
+
+/// The variant name, as the corpus spells a refusal.
+fn error_name(e: &EditError) -> &'static str {
+    match e {
+        EditError::MalformedYaml { .. } => "MalformedYaml",
+        EditError::UnsupportedDocument { .. } => "UnsupportedDocument",
+        EditError::RootNotMapping { .. } => "RootNotMapping",
+        EditError::AmbiguousKey { .. } => "AmbiguousKey",
+        EditError::MissingKey { .. } => "MissingKey",
+        EditError::KeyConflict { .. } => "KeyConflict",
+        EditError::InvalidResult { .. } => "InvalidResult",
+        EditError::PathNotFound { .. } => "PathNotFound",
+        EditError::PathTypeMismatch { .. } => "PathTypeMismatch",
+        EditError::UnsupportedPath { .. } => "UnsupportedPath",
+        _ => "other",
+    }
 }
 
 // --- fixture decoding ------------------------------------------------------
