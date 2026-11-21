@@ -247,8 +247,7 @@ fn run(src: &str, p: &Planned) -> Result<Outcome, String> {
         return Err(format!("read back as {got:?}, want {:?}", p.want));
     }
     if p.one_line {
-        // The lines that differ form one stretch, and it holds the new value
-        // on one line.
+        // Exactly one line differs between the shared head and tail.
         let (before, after): (Vec<&str>, Vec<&str>) =
             (src.lines().collect(), text.lines().collect());
         let head = before

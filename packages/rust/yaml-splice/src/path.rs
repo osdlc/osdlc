@@ -117,7 +117,7 @@ fn finish(
     }
     let mut want = parsed.root.clone();
     apply_model(&mut want, cx.path, cx.op, cx.opts)
-        .map_err(|e| e.unwrap_or_else(|| invalid("the edit cannot be applied in memory")))?;
+        .map_err(|()| invalid("the edit cannot be applied in memory"))?;
     let read_src = crate::edit::as_read(&next, cx.bom_len);
     let after = parse::parse_with_spans(read_src).map_err(|e| EditError::InvalidResult {
         message: e.to_string(),
@@ -255,8 +255,6 @@ fn descend(
     let child = m.get(&span.key).unwrap_or(&Value::Null);
     let next = depth + 1;
     match child {
-        // Nothing to lose: an empty value is replaced by the collection the
-        // next segment needs.
         c if matches!(c, Value::Null) || c.is_empty_collection() => vivify(cx, entry, depth),
         Value::Map(child_map) => {
             if starts_with(cx.src, entry.span.value_range.start, b'{') {
@@ -461,8 +459,8 @@ fn keeps_trailing_blanks(cx: &Cx<'_>, entry: &MapEntry) -> bool {
     false
 }
 
-/// Removes a key and its lines. The only key of a mapping leaves `{}` after
-/// the parent's `:`.
+/// Removes a key and its lines. The only key of a nested mapping leaves `{}`
+/// after the parent's `:` and any anchor or tag.
 fn remove(
     cx: &Cx<'_>,
     entries: &[MapEntry],
@@ -533,13 +531,13 @@ fn nest(cx: &Cx<'_>, from: usize, value: &Value) -> Result<Value, EditError> {
 // --- the edit applied in memory ---------------------------------------------
 
 /// `edit` applied to the parsed document, to compare the written bytes with.
-/// `Err(None)` is an edit that cannot be applied; `Err(Some(e))` is a refusal.
+/// `Err(())` is an edit that cannot be applied; `Err(Some(e))` is a refusal.
 fn apply_model(
     root: &mut Value,
     path: &[PathSegment],
     op: &Op<'_>,
     opts: &EditOptions,
-) -> Result<(), Option<EditError>> {
+) -> Result<(), ()> {
     match op {
         Op::Set(value) => model_set(root, path, (*value).clone(), opts),
         Op::Remove => {
@@ -574,9 +572,9 @@ fn model_set(
     path: &[PathSegment],
     value: Value,
     opts: &EditOptions,
-) -> Result<(), Option<EditError>> {
+) -> Result<(), ()> {
     let Some((seg, rest)) = path.split_first() else {
-        return Err(None);
+        return Err(());
     };
     if matches!(node, Value::Null) || node.is_empty_collection() {
         *node = match seg {
@@ -599,7 +597,7 @@ fn model_set(
                 items.push(value);
                 Ok(())
             }
-            _ => Err(None),
+            _ => Err(()),
         };
     }
     if let (Value::Map(m), PathSegment::Key(k)) = (&mut *node, seg)
@@ -607,7 +605,12 @@ fn model_set(
     {
         m.insert(k.clone(), Value::Null);
     }
-    model_child(node, seg, opts).map_or(Err(None), |child| model_set(child, rest, value, opts))
+    if let (Value::Seq(items), PathSegment::Index(i)) = (&mut *node, seg)
+        && *i == items.len()
+    {
+        items.push(Value::Null);
+    }
+    model_child(node, seg, opts).map_or(Err(()), |child| model_set(child, rest, value, opts))
 }
 
 fn model_remove(node: &mut Value, path: &[PathSegment], opts: &EditOptions) {
@@ -638,18 +641,18 @@ fn model_rename(
     path: &[PathSegment],
     to: &str,
     opts: &EditOptions,
-) -> Result<(), Option<EditError>> {
+) -> Result<(), ()> {
     let Some((seg, rest)) = path.split_first() else {
-        return Err(None);
+        return Err(());
     };
     if !rest.is_empty() {
         return model_child(node, seg, opts)
-            .map_or(Err(None), |child| model_rename(child, rest, to, opts));
+            .map_or(Err(()), |child| model_rename(child, rest, to, opts));
     }
     let (Value::Map(m), PathSegment::Key(from)) = (node, seg) else {
-        return Err(None);
+        return Err(());
     };
-    let from = find_key(m, from, opts).ok_or(None)?;
+    let from = find_key(m, from, opts).ok_or(())?;
     *m = m
         .iter()
         .map(|(k, v)| (if k == from { to } else { k }.to_string(), v.clone()))

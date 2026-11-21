@@ -376,3 +376,19 @@ fn decode_path(path: Option<&Json>, i: usize) -> Result<Vec<Seg>, String> {
         })
         .collect()
 }
+
+#[test]
+fn a_set_creates_a_sequence_partway_down_the_path() {
+    use yaml_splice::PathSegment::{Index, Key};
+    let path = vec![Key("a".into()), Key("c".into()), Index(0), Key("d".into())];
+    let edit = FieldEdit::SetPath {
+        path,
+        value: Value::Int(1),
+    };
+    let out = edit_yaml_with(b"a:\n  b: 1\n", &[edit], &EditOptions::default());
+    let out = out.expect("the sequence is created");
+    assert_eq!(
+        String::from_utf8(out.bytes).unwrap(),
+        "a:\n  b: 1\n  c:\n    - d: 1\n"
+    );
+}
