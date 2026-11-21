@@ -21,12 +21,14 @@ created: 2026-11-07
 - A breaking change to a stable export ships only in a new 0.x minor release, with a CHANGELOG
   entry that starts with `Breaking:`.
 - `@osdlc/config-layers` is an optional peer at a range written by hand, today
-  `^0.8.0 || ^0.9.0 || ^0.10.0`: the lines `./config` was checked against (each section built
+  `^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0`: the lines `./config` was checked against (each section built
   from the packed package). Changesets leaves the range alone while a config-layers release stays
   in it (`onlyUpdatePeerDependentsWhenOutOfRange` in `.changeset/config.json`). A release that
   leaves it would still give this package an automatic patch that rewrites the range, so the pull
   request that takes config-layers to a new line also checks `./config` against it and adds it
-  here by hand, with an agent-router minor changeset. `tests/stability.test.ts` fails if the range
+  here by hand, with an agent-router patch changeset (widening an optional peer
+  breaks no host, and a minor would split this package from its Rust twin, which shares
+  major.minor). `tests/stability.test.ts` fails if the range
   drops a line it lists, which stops a Version Packages pull request that rewrote it.
 - A minor release may add a member to a union of codes or names, such as `AVAILABILITY_REASONS`,
   `PROFILE_SKIP_REASONS`, a validity code or `TRAITS`. A `switch` over one of these needs a
