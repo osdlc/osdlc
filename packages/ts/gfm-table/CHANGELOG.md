@@ -1,5 +1,11 @@
 # @osdlc/gfm-table
 
+## 0.5.1
+
+### Patch Changes
+
+- 03e5690: The README and CONTRIBUTING now point at the shared conformance suite in `packages/conformance/gfm-table`, and `pnpm conformance:write` regenerates it.
+
 ## 0.5.0
 
 ### Minor Changes
