@@ -838,6 +838,9 @@ importers:
       '@osdlc/command-seam':
         specifier: workspace:^
         version: link:../command-seam
+      '@osdlc/detect-harness':
+        specifier: workspace:^
+        version: link:../detect-harness
       '@osdlc/path-guard':
         specifier: workspace:^
         version: link:../path-guard
