@@ -3157,6 +3157,13 @@ export interface RebaseOptions {
    * base commits are left behind instead of replayed onto the new ones.
    */
   upstream?: string | undefined
+  /**
+   * `--fork-point`: take the branch's old base from the reflog of `onto`, so
+   * commits the base held before it was rewritten are left behind. Where the
+   * reflog lacks the old base (a fresh clone), git falls back to the merge
+   * base, which is a plain `rebase`. `upstream` wins when both are set.
+   */
+  forkPoint?: boolean | undefined
 }
 
 /**
@@ -3170,8 +3177,10 @@ export interface RebaseOptions {
 export function rebase(onto: string, opts: RebaseOptions = {}): GitVerb<RebaseOutcome> {
   const argv = ['rebase']
   if (opts.autostash) argv.push('--autostash')
-  if (opts.upstream === undefined) argv.push(positional('rebase', 'onto', onto))
-  else {
+  if (opts.upstream === undefined) {
+    if (opts.forkPoint) argv.push('--fork-point')
+    argv.push(positional('rebase', 'onto', onto))
+  } else {
     argv.push(
       '--onto',
       positional('rebase', 'onto', onto),
