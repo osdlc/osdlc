@@ -163,9 +163,9 @@ describe('status', () => {
     const { env } = setup()
     const dir = repo()
     const ids = (argv: string[]) =>
-      JSON.parse(run(['status', ...argv, '--format', 'json'], dir, env).out).candidates.map(
-        (c: Candidate) => c.kind,
-      )
+      JSON.parse(
+        run(['status', '--plugin', 'git', ...argv, '--format', 'json'], dir, env).out,
+      ).candidates.map((c: Candidate) => c.kind)
     expect(new Set(ids([]))).toEqual(new Set(['branch']))
     expect(ids(['--worktrees'])).toEqual([])
     expect(new Set(ids(['--branches']))).toEqual(new Set(['branch']))
