@@ -1178,4 +1178,16 @@ mod frontmatter_tests {
         let out = edit_yaml(b"f: 1\n", &edits).unwrap();
         assert_eq!(out.bytes, b"f: 2\n");
     }
+
+    #[test]
+    fn removing_a_key_a_merge_may_supply_is_refused() {
+        let src = b"base: &base {x: 1}\nchild:\n  <<: *base\n  y: 2\n";
+        let edits = [FieldEdit::RemovePath {
+            path: vec!["child".into(), "x".into()],
+        }];
+        assert!(matches!(
+            edit_yaml(src, &edits),
+            Err(EditError::UnsupportedPath { .. })
+        ));
+    }
 }

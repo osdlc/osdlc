@@ -221,6 +221,12 @@ fn absent(
     depth: usize,
     last: bool,
 ) -> Result<Edits, EditError> {
+    if !matches!(cx.op, Op::Set(_)) && entries.iter().any(|e| e.span.key == "<<") {
+        return Err(unsupported(
+            cx,
+            "the mapping merges keys (`<<`) that may hold it",
+        ));
+    }
     match cx.op {
         Op::Set(value) => {
             let nested = nest(cx, depth + 1, value)?;
