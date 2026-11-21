@@ -2,8 +2,10 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -28,6 +30,14 @@ export interface RunStats {
   assetsCopied: number
   assetsMissing: string[]
   byCollection: Record<string, number>
+  /** Output files that were new, i.e. not in the destination before the run. */
+  added: number
+  /** Output files whose text differs from the destination's copy. */
+  changed: number
+  /** With `clean`: destination files with no counterpart in the build, as paths under the destination dir. A dry run only reports them; a real run deletes them (needs `yes`). */
+  removed: string[]
+  /** Without `clean`: destination files with no counterpart in the build, as paths under the destination dir; left in place. */
+  orphans: string[]
 }
 
 /** Options for {@link transform} and {@link exportVault}. */
@@ -36,13 +46,69 @@ export interface RunOptions {
   verbose?: boolean
   /** Resolve targets but write nothing. */
   dryRun?: boolean
-  /** Delete the destination collection/vault dir before writing; skipped when the source has no notes. */
+  /**
+   * Replace the destination collection/vault dir with a fresh build: built
+   * aside in a sibling dir, then swapped in; skipped when the source has no
+   * notes. A real run that would remove destination files with no counterpart
+   * in the build throws, naming them, unless `yes` is set.
+   */
   clean?: boolean
+  /** Let `clean` remove destination files that have no counterpart in the build. */
+  yes?: boolean
   /**
    * Keep a note? Called with its collection, collection-relative path and
    * rewritten text. A rejected note is not written and its assets are not copied.
    */
   include?: (collection: string, rel: string, text: string) => boolean
+}
+
+/** Suffix of the sibling directory a `--clean` build is written to before it replaces the destination. */
+const TMP_SUFFIX = '.markdown-vault-astro-tmp'
+/** Suffix of the sibling dir {@link swapIn} parks the previous destination in until the new build is in place. */
+const OLD_SUFFIX = '.markdown-vault-astro-old'
+
+/** Every file under `dir` (dot files included, links not followed), as `/`-separated relative paths. */
+function listAllFiles(dir: string, prefix = ''): string[] {
+  if (!existsSync(dir)) return []
+  const out: string[] = []
+  for (const ent of readdirSync(dir, { withFileTypes: true })) {
+    const rel = prefix ? `${prefix}/${ent.name}` : ent.name
+    if (ent.isDirectory()) out.push(...listAllFiles(join(dir, ent.name), rel))
+    else out.push(rel)
+  }
+  return out
+}
+
+/** Restore `dst` from its {@link OLD_SUFFIX} sibling when a run was killed between the two renames of {@link swapIn}. */
+function recoverInterruptedSwap(dst: string): void {
+  const old = `${dst}${OLD_SUFFIX}`
+  if (existsSync(old) && !existsSync(dst)) renameSync(old, dst)
+}
+
+/** Put the built `tmp` dir in place of `dst`. The previous `dst` is restored if the move fails and deleted only after it succeeds. */
+function swapIn(dst: string, tmp: string): void {
+  const old = `${dst}${OLD_SUFFIX}`
+  if (existsSync(old)) {
+    throw new Error(`--clean: ${old} exists from an earlier run; restore or delete it`)
+  }
+  const hadDst = existsSync(dst)
+  if (hadDst) renameSync(dst, old)
+  try {
+    renameSync(tmp, dst)
+  } catch (err) {
+    if (hadDst) {
+      try {
+        renameSync(old, dst)
+      } catch (rollbackErr) {
+        throw new AggregateError(
+          [err, rollbackErr],
+          `--clean: the swap failed and ${old} could not be put back; the next run restores it`,
+        )
+      }
+    }
+    throw err
+  }
+  rmSync(old, { recursive: true, force: true })
 }
 
 const listMarkdown = (dir: string): string[] => (existsSync(dir) ? listMarkdownIn(dir) : [])
@@ -142,7 +208,13 @@ function run(config: MarkdownVaultAstroConfig, direction: Direction, opts: RunOp
     assetsCopied: 0,
     assetsMissing: [],
     byCollection: {},
+    added: 0,
+    changed: 0,
+    removed: [],
+    orphans: [],
   }
+  const swapClean = Boolean(opts.clean && !opts.dryRun)
+  const staged: Array<{ dst: string; tmp: string }> = []
   const copies = new Map<string, CopyOp>()
   const missing = new Set<string>()
   const assets = new Map<string, string>()
@@ -155,46 +227,84 @@ function run(config: MarkdownVaultAstroConfig, direction: Direction, opts: RunOp
     }
   }
 
-  for (const col of config.collections) {
-    const [srcDir, dstDir] = collectionDirs(config, direction, col)
+  try {
+    for (const col of config.collections) {
+      const [srcDir, dstDir] = collectionDirs(config, direction, col)
 
-    const files = listMarkdown(srcDir)
-    if (!files.length) {
-      log(`  · ${col.name}: no files in ${srcDir}`)
-      // A missing or empty source never cleans: a wrong path or a fresh clone would wipe the output.
-      if (opts.clean && existsSync(dstDir) && listMarkdown(dstDir).length) {
-        console.warn(`${col.name}: --clean skipped, ${srcDir} has no notes; ${dstDir} kept`)
+      if (!opts.dryRun) recoverInterruptedSwap(dstDir)
+      const files = listMarkdown(srcDir)
+      if (!files.length) {
+        log(`  · ${col.name}: no files in ${srcDir}`)
+        // A missing or empty source never cleans: a wrong path or a fresh clone would wipe the output.
+        if (opts.clean && existsSync(dstDir) && listMarkdown(dstDir).length) {
+          console.warn(`${col.name}: --clean skipped, ${srcDir} has no notes; ${dstDir} kept`)
+        }
+        continue
       }
-      continue
-    }
 
-    if (opts.clean && !opts.dryRun && existsSync(dstDir)) {
-      rmSync(dstDir, { recursive: true, force: true })
-    }
-
-    for (const rel of files) {
-      const text = readFileSync(join(srcDir, rel), 'utf8')
-      const res = rewriteFile(text, {
-        direction,
-        publicBase: config.assets.publicBase,
-        frontmatterAssets: config.frontmatterAssets,
-        ...(assetIndex ? { assetIndex } : {}),
-        ...(mediaPath ? { mediaPath } : {}),
-      })
-      if (opts.include && !opts.include(col.name, rel, res.text)) continue
-      for (const c of res.copies) copies.set(`${c.srcRel}\u0000${c.destRel}`, c)
-      res.missing.forEach((m) => missing.add(m))
-      for (const [target, outSub] of Object.entries(res.assets)) assets.set(target, outSub)
-
-      if (!opts.dryRun) {
-        const outPath = join(dstDir, rel)
-        ensureDir(join(outPath, '..'))
-        writeFileSync(outPath, res.text)
+      const outDir = swapClean ? `${dstDir}${TMP_SUFFIX}` : dstDir
+      if (swapClean) {
+        rmSync(outDir, { recursive: true, force: true })
+        ensureDir(outDir)
+        staged.push({ dst: dstDir, tmp: outDir })
       }
-      stats.files += 1
-      stats.byCollection[col.name] = (stats.byCollection[col.name] ?? 0) + 1
+      const existing = new Set(listAllFiles(dstDir))
+      const built = new Set<string>()
+
+      for (const rel of files) {
+        const text = readFileSync(join(srcDir, rel), 'utf8')
+        const res = rewriteFile(text, {
+          direction,
+          publicBase: config.assets.publicBase,
+          frontmatterAssets: config.frontmatterAssets,
+          ...(assetIndex ? { assetIndex } : {}),
+          ...(mediaPath ? { mediaPath } : {}),
+        })
+        if (opts.include && !opts.include(col.name, rel, res.text)) continue
+        for (const c of res.copies) copies.set(`${c.srcRel}\u0000${c.destRel}`, c)
+        res.missing.forEach((m) => missing.add(m))
+        for (const [target, outSub] of Object.entries(res.assets)) assets.set(target, outSub)
+
+        built.add(rel)
+        if (!existing.has(rel)) stats.added += 1
+        else if (readFileSync(join(dstDir, rel), 'utf8') !== res.text) stats.changed += 1
+
+        if (!opts.dryRun) {
+          const outPath = join(outDir, rel)
+          ensureDir(join(outPath, '..'))
+          writeFileSync(outPath, res.text)
+        }
+        stats.files += 1
+        stats.byCollection[col.name] = (stats.byCollection[col.name] ?? 0) + 1
+      }
+      const unmatched = [...existing]
+        .filter((rel) => !built.has(rel))
+        .map((rel) => join(dstDir, rel))
+      if (opts.clean) stats.removed.push(...unmatched)
+      else {
+        stats.orphans.push(...unmatched)
+        if (unmatched.length) {
+          console.warn(
+            `${col.name}: ${unmatched.length} file(s) in ${dstDir} have no source; --clean would remove them`,
+          )
+        }
+      }
+      log(`  · ${col.name}: ${stats.byCollection[col.name] ?? 0} files`)
     }
-    log(`  · ${col.name}: ${stats.byCollection[col.name] ?? 0} files`)
+
+    if (swapClean && stats.removed.length && !opts.yes) {
+      throw new Error(
+        `--clean would remove ${stats.removed.length} file(s) with no source; nothing was changed. Pass --yes to remove them, or --dry-run for the report:\n${stats.removed.map((f) => `  ${f}`).join('\n')}`,
+      )
+    }
+  } catch (err) {
+    for (const { tmp } of staged) rmSync(tmp, { recursive: true, force: true })
+    throw err
+  }
+  try {
+    for (const { dst, tmp } of staged) swapIn(dst, tmp)
+  } finally {
+    for (const { tmp } of staged) rmSync(tmp, { recursive: true, force: true })
   }
 
   // Copy only the assets actually referenced, preserving sub-paths.

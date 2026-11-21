@@ -27,7 +27,9 @@ packages, `.github/workflows/ts-packages-ci.yml` and
 `.github/workflows/`. Its changelog puts them under the shared version.
 osdlc/osdlc's `.github/workflows/pr-update.yml` can be called the same way
 (pr-update's README shows the caller), and so can its coverage and complexity
-report, `.github/workflows/reports.yml` ([Reports](#reports) below shows how).
+report, `.github/workflows/reports.yml` ([Reports](#reports) below shows how),
+and the Rust checks of a Cargo workspace, `.github/workflows/rust-ci-core.yml`
+([Rust CI](#rust-ci) below).
 
 ## Using an action
 
@@ -125,6 +127,92 @@ The Rust toolchain is the workspace's `rust-toolchain.toml`, or stable when it
 has none. The script and the Rust actions the workflow runs come from the
 same osdlc/osdlc commit as the workflow, so the ref after `@` pins all of
 them. It needs no secret.
+
+## Rust CI
+
+[`.github/workflows/rust-ci-core.yml`](../../.github/workflows/rust-ci-core.yml)
+runs the checks every Cargo workspace gets: `cargo fmt --check`, and clippy
+(`-D warnings`) and the tests on each runner OS, and, when asked, the same on
+Windows without gating and the tests on the workspace `rust-version` with a
+freshly resolved lockfile. It is only a reusable workflow: osdlc/osdlc's
+`rust-ci.yml` calls it from its `core` job and keeps the checks only it needs
+(crate shape, docs, minimal versions, wasm, release-plz, semver) as jobs of
+its own. Another repository does the same, with its own extras beside it and
+one gate job to require in its ruleset:
+
+```yaml
+name: rust
+
+on:
+  pull_request:
+  push:
+    branches: [main] # the build cache is saved only on main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  core:
+    uses: osdlc/osdlc/.github/workflows/rust-ci-core.yml@<commit-sha> # gh-actions/v1
+    with:
+      windows: 'true'
+      env: |
+        MY_BUILD_FLAG=1
+
+  # More jobs of the repository's own here.
+
+  # The check to require. It passes when every job it needs passed or was
+  # skipped; a run cancelled by a newer push does not report a failure.
+  rust:
+    needs: [core]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for r in $RESULTS; do
+            case "$r" in success|skipped) ;; *) echo "::error::a Rust job ended with: $r"; exit 1 ;; esac
+          done
+```
+
+The called jobs report as `core / format`, `core / test (<os>)`,
+`core / test (windows-latest, not gating)` and `core / msrv`. A crate list a
+caller computes in a job of its own reaches the workflow as
+`packages: ${{ needs.<job>.outputs.<name> }}`, with the call `needs:` that job.
+
+The settings are the calling repository's variables, each overridable by an
+input of the workflow under `with:`. Each is one line, except `env`.
+
+| Variable               | Input          | Default                      | Meaning                                                                                                              |
+| ---------------------- | -------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `RUST_CI_WORKSPACE`    | `workspace`    | `.`                          | The Cargo workspace folder, from the root.                                                                           |
+| `RUST_CI_PACKAGES`     | `packages`     | `--workspace`                | Which packages clippy, the tests and MSRV take, e.g. `-p a -p b`. `default`: none, so cargo takes `default-members`. |
+| `RUST_CI_CLIPPY_ARGS`  | `clippy-args`  | none                         | More `cargo clippy` arguments, before `--`, e.g. `--all-features`.                                                   |
+| `RUST_CI_TEST_ARGS`    | `test-args`    | none                         | More test arguments: nextest's by default (`--run-ignored only`), cargo test's with `cargo`. Not passed to doctests; MSRV gets them only with `cargo`. |
+| `RUST_CI_LOCKED`       | `locked`       | `true`                       | `--locked` for clippy and the tests. MSRV always resolves a fresh lockfile.                                          |
+| `RUST_CI_OS`           | `os`           | `ubuntu-latest macos-latest` | Runner labels, space separated; each gates. The format and MSRV jobs run on the first.                               |
+| `RUST_CI_WINDOWS`      | `windows`      | `false`                      | `true` adds clippy and the tests on `windows-latest` that do not gate (`continue-on-error`).                         |
+| `RUST_CI_MSRV`         | `msrv`         | `false`                      | `true` adds the tests on the `rust-version` in the workspace `Cargo.toml`.                                           |
+| `RUST_CI_SETUP`        | `setup`        | none                         | Shell, one line, run at the root before each build, on every OS. Guard OS-only commands with `$RUNNER_OS`.           |
+| `RUST_CI_NODE_VERSION` | `node-version` | none                         | Node to install before the setup, when the build or the tests run Node.                                              |
+| `RUST_CI_BUN_VERSION`  | `bun-version`  | none                         | Bun to install: a version, or `package.json` (its `packageManager`), `.bun-version` or `.tool-versions`.             |
+| `RUST_CI_ENV`          | `env`          | none                         | `NAME=value` lines added to each build job's environment.                                                                  |
+| `RUST_CI_TIMEOUT`      | `timeout`      | `60`                         | Minutes for each build job.                                                                                          |
+| `RUST_CI_TEST_RUNNER`  | `test-runner`  | `nextest`                    | `cargo nextest run`, then doctests with cargo test --doc; or `cargo` for cargo test.                                 |
+| `RUST_CI_DEBUG`        | `debug`        | `line-tables-only`           | Debug info for the dev and test profiles (not MSRV): `line-tables-only`, `none`, `limited`, `full`, or `profile` for Cargo.toml's.            |
+
+The toolchain is the workspace's `rust-toolchain.toml`, or stable when it has
+none. `CARGO_INCREMENTAL=0` is set for every job. The build cache
+(Swatinem/rust-cache) is saved only on `main`, so the caller needs
+a `push` trigger there for pull requests to find one. The Rust actions come
+from the same osdlc/osdlc commit as the workflow, so the ref after `@` pins
+them too. It needs no secret, so a private repository can call it.
 
 ## Shape
 

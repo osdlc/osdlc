@@ -389,7 +389,17 @@ export function updateCommand(seams: CliSeams) {
       },
       retryFailed: {
         kind: 'boolean',
-        help: 'Attempt PRs whose update already failed at their current head and base.',
+        help: 'Attempt PRs whose update already failed at their current head and base. Discards a kept worktree of such a PR first.',
+      },
+      keepFailed: {
+        kind: 'tristate',
+        offHelp:
+          'Do not keep failed worktrees this run, overriding a configured pr_update.keep_failed: true.',
+        help: "Move the worktree of a PR that ended conflict or failed to .pr-update/failed/<owner>-<name>-<number>/, on a branch named for the PR, with a failed verify's log in it, for a person to finish and push. The run goes on in a fresh worktree. Needs --apply.",
+      },
+      discardKept: {
+        kind: 'boolean',
+        help: 'Remove every kept worktree before the run. Needs --apply.',
       },
       repairAgent: {
         kind: 'enum',
@@ -424,6 +434,7 @@ export function updateCommand(seams: CliSeams) {
       'update --apply --strategy rebase',
       'update --branch --apply',
       'update --pr 12 --apply --report out.json',
+      'update --apply --keep-failed',
     ],
     output: updateOutputSchema,
     kind: 'update',
@@ -499,6 +510,8 @@ export function updateCommand(seams: CliSeams) {
             trust: flags.trust,
             retryFailed: flags.retryFailed,
             ...(flags.restack !== undefined ? { restack: flags.restack } : {}),
+            ...(flags.keepFailed !== undefined ? { keepFailed: flags.keepFailed } : {}),
+            ...(flags.discardKept ? { discardKept: true } : {}),
             ...(flags.strategy !== undefined ? { strategy: flags.strategy } : {}),
           },
           env,
