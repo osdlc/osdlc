@@ -6,7 +6,7 @@ apps keep data that can be reclaimed from disk, and how to reclaim it safely. It
 is a statement with evidence lines, and every piece of evidence is a study result that quotes a
 page. [The system cleanup reference](../../corpora/system-cleanup-reference/) is the corpus that uses it.
 
-The profile holds types and no records.
+The profile holds types and no records. It is not published yet; [B-0001](../../corpora/system-cleanup-reference/docs/planning/backlog/B-0001-publish-the-system-cleanup-profile-and-reference.md) tracks its release.
 
 ## Use it
 
@@ -20,7 +20,7 @@ uses: [system-cleanup/*]
 ---
 ```
 
-Install the profile and the claims profile beside your corpus. The validator finds both the way
+Once it is published, install the profile and the claims profile beside your corpus. The validator finds both the way
 Node.js finds packages, and `extends` needs `@osdlc/corpus-schema` 0.4.0 or later.
 
 ## The types

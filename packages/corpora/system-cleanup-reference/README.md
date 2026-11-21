@@ -8,7 +8,7 @@ and a quoted source. host-cleaner's plugins are meant to be built from it ([#952
 The record is one [corpus-schema](../../conformance/corpus-schema/SPEC.md)
 corpus. Its types come from the [system cleanup profile](../../profiles/system-cleanup/README.md), which builds
 on the [claims profile](../../profiles/claims/README.md). The
-package is published to npm as `@osdlc/corpus-system-cleanup-reference`.
+package is not published yet ([B-0001](docs/planning/backlog/B-0001-publish-the-system-cleanup-profile-and-reference.md)).
 
 ## Layout
 
