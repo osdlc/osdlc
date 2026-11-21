@@ -49,6 +49,7 @@ import {
   type PushReport,
 } from '@osdlc/typed-git'
 
+import { NothingDetectedError } from '../detect.ts'
 import { keepWorktree } from './kept.ts'
 import type {
   ConfirmPush,
@@ -757,7 +758,7 @@ async function integrateAndPush(
         ? await verifyVerbs(opts.worktree, target.number)
         : verifyVerbs
   } catch (e) {
-    return fail(errorLine(e))
+    return fail(errorLine(e), e instanceof NothingDetectedError)
   }
   const verifyFailure = runVerify(verbs, runVerb, opts.worktree)
   if (verifyFailure !== null) {
