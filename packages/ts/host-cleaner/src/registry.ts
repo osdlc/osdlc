@@ -11,8 +11,8 @@ import type { Plugin } from './types.ts'
 
 /**
  * What a factory is told: its own entry in the config's `plugins`, validated with
- * its defaults filled in (`./settings.ts`), and the git
- * kinds `--worktrees` and `--branches` leave.
+ * its defaults filled in (`./settings.ts`), and the git kinds `--worktrees` and
+ * `--branches` leave.
  */
 export interface PluginInit {
   settings: Record<string, unknown>

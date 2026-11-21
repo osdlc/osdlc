@@ -60,6 +60,7 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
           id,
           kind: row.kind,
           path: row.kind === 'worktree' ? row.path : `${row.repo}:${row.path}`,
+          ...(row.kind === 'worktree' ? {} : { at: row.repo }),
           ...(nameOf(row) === null ? {} : { name: nameOf(row)! }),
           owner: 'git',
           why: row.why,
