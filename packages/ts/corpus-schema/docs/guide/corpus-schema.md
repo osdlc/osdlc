@@ -433,6 +433,8 @@ CSV results of a method the record describes.
 - Ids are compared across both shapes: `methods/Survey/Survey.md` and `methods/survey.md` collide.
 - A folder in a type folder with no record file is not a record folder. Unless its name starts with
   `_`, it is a plain folder: each `.md`, `.yaml` and `.json` file in it is a record of the type.
+  A validator may add a hint to such a file's errors, since supporting data left there is a common
+  mistake. The reference validator does. Hints change messages only, not which files are records.
 
 osdlc calls this shape a bundle: a note's folder holding `<name>/<name>.md` and the files beside it.
 Moving the folder moves the record and its files together, and their relative links keep working.
@@ -537,9 +539,10 @@ after:
   }
 ```
 
-- It sits on a top-level property, or on the `items` of a top-level array property, where each
-  item is a reference. v0 defines `x-ref` only in those two places. Anywhere else, such as inside
-  a nested object, it is an error.
+- It sits on a property, or on the `items` of a list property, where each item is a reference. The
+  property may be nested at any depth, inside an object or inside the items of a list of objects,
+  such as `hasEvidenceLines[].hasEvidenceItems[]`. Anywhere else, such as under `allOf`, it is an
+  error. An error line names the field with its path, such as `hasEvidenceLines.0.hasEvidenceItems`.
 - Every named type must exist, in the corpus or in a corpus its prefixes name. A list must name one
   or more.
 - A reference matches a record of any named type, or of a type whose chain holds it, through
@@ -1207,7 +1210,6 @@ item. The task numbers are the plan's [task records](../planning/README.md).
 | Wikilinks into a copy's own `_references/`                            | Deferred. Not in the plan.                                                                   |
 | Dialects                                                              | Proposed: the baseline plus named dialects, `obsidian` first.                                |
 | A schema rule that warns instead of failing (`x-warn`)                | A task in the plan, after the first release.                                                 |
-| `x-ref` inside nested objects                                         | Needed for evidence lines inside a statement. Not yet a task in the plan.                    |
 | Build targets: JSON, SQLite, Astro, Nuxt, Obsidian Bases views        | The JSON and SQLite build is a task after the query layer. The others have no task.          |
 | A query layer                                                         | A task in the plan, on top of the shared corpus model.                                       |
 | Checking a level-0 folder                                             | Not in the plan. The validator finds corpora by their root file.                             |

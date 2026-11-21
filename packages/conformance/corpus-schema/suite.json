@@ -732,6 +732,42 @@
           }
         },
         {
+          "name": "x-ref works inside objects and inside lists of objects",
+          "input": {
+            "corpus": "corpora/xref-nested"
+          },
+          "expect": {
+            "errors": [],
+            "warnings": []
+          }
+        },
+        {
+          "name": "a nested x-ref checks each value, and names the field down to it",
+          "input": {
+            "corpus": "corpora/xref-nested-broken"
+          },
+          "expect": {
+            "errors": [
+              "notes/N.md: lines.1.items",
+              "notes/N.md: lines.1.owner",
+              "notes/N.md: meta.parent"
+            ],
+            "warnings": []
+          }
+        },
+        {
+          "name": "x-ref under allOf, where no value is reached, is an error",
+          "input": {
+            "corpus": "corpora/xref-nested-position"
+          },
+          "expect": {
+            "errors": [
+              "tasks/tasks.schema.yaml: properties.a.allOf.0.properties.b"
+            ],
+            "warnings": []
+          }
+        },
+        {
           "name": "a type folder sits at the corpus root; a deeper one is an error",
           "input": {
             "corpus": "corpora/types-root-only"
