@@ -115,6 +115,52 @@ describe('defineCli', () => {
   })
 })
 
+describe('a list that takes its value only after =', () => {
+  const remotes = defineCli({
+    name: 'clean',
+    summary: 'x',
+    flags: {
+      remote: { kind: 'list', valueName: 'name', valueAfterEquals: true, help: 'a remote' },
+    },
+    positionals: [{ name: 'path', variadic: true }],
+  })
+  const read = (...argv: string[]) => remotes.parse(argv, captureIo())
+
+  test('bare is an empty entry, and =name a named one', () => {
+    const result = read('--remote', '--remote=upstream')
+    expect(result.status === 'ok' && result.values.remote).toEqual(['', 'upstream'])
+  })
+
+  test('a word after a space stays a positional', () => {
+    const result = read('--remote', 'upstream')
+    expect(result.status).toBe('ok')
+    if (result.status !== 'ok') return
+    expect(result.values.remote).toEqual([''])
+    expect(result.positionals).toEqual(['upstream'])
+  })
+
+  test('absent is undefined, and nothing after -- is read as the flag', () => {
+    const result = read('--', '--remote')
+    expect(result.status).toBe('ok')
+    if (result.status !== 'ok') return
+    expect(result.values.remote).toBeUndefined()
+    expect(result.positionals).toEqual(['--remote'])
+  })
+
+  test('help shows the value as optional after =', () => {
+    expect(remotes.help()).toContain('--remote[=<name>]')
+  })
+
+  test('a short form is refused', () => {
+    const bad = defineCli({
+      name: 'bad',
+      summary: 'x',
+      flags: { remote: { kind: 'list', short: 'r', valueAfterEquals: true, help: 'a remote' } },
+    })
+    expect(() => bad.parse([], captureIo())).toThrow(/short form/)
+  })
+})
+
 describe('errors are values, not exits', () => {
   test('an unknown flag comes back as an error and prints nothing itself', () => {
     const io = captureIo()
