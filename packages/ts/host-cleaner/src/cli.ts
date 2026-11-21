@@ -425,6 +425,16 @@ const wanted = (v: SweepValues): string[] | undefined =>
     ? undefined
     : [...(v.plugin ?? []), ...(v.adapter ?? [])]
 
+/** The plugin names in `plugins` and in every profile's `plugins` (as `profiles.<p>.plugins.<name>`) that `known` refuses. */
+function unknownPlugins(config: Config, known: (name: string) => boolean): string[] {
+  const inProfiles = Object.entries(config.profiles).flatMap(([p, profile]) =>
+    Object.keys(profile.plugins ?? {})
+      .filter((n) => !known(n))
+      .map((n) => `profiles.${p}.plugins.${n}`),
+  )
+  return [...Object.keys(config.plugins).filter((n) => !known(n)), ...inProfiles]
+}
+
 /** The plugins this run uses: the shipped ones built from the config, or `deps.plugins`, then chosen by flag. */
 function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliContext): Plugin[] {
   // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
@@ -435,7 +445,7 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliCont
     Object.entries(FACTORIES).map(([name, make]) =>
       make({ settings: settingsOf(name, config.plugins[name] ?? {}, config), only, env: ctx.env }),
     )
-  const unused = Object.keys(config.plugins).filter((n) => !all.some((p) => p.name === n))
+  const unused = unknownPlugins(config, (n) => all.some((p) => p.name === n))
   if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
   // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
   const named = wanted(v) ?? []
@@ -540,7 +550,7 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
   const v = parsed.values
   try {
     const config = loadConfig(v, ctx)
-    const unused = Object.keys(config.plugins).filter((n) => !Object.hasOwn(PLUGIN_SETTINGS, n))
+    const unused = unknownPlugins(config, (n) => Object.hasOwn(PLUGIN_SETTINGS, n))
     if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
     const settings = effectiveSettings(config.plugins, config)
     if (v.format === 'json') {
@@ -553,6 +563,7 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
       ctx.io.stdout(
         JSON.stringify(
           {
+            profile: v.profile ?? null,
             targets: config.targets,
             ignore: config.ignore,
             idleHours: config.idleHours ?? null,

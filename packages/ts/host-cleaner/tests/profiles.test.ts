@@ -75,7 +75,10 @@ describe('applyProfile', () => {
 describe('--profile', () => {
   const run = (argv: string[], c: ReturnType<typeof configFile>, plugins?: Plugin[]) => {
     const ctx = captureContext({ cwd: c.cwd, env: c.env })
-    const code = main(argv, ctx, { confirm: () => null, ...(plugins ? { plugins } : {}) })
+    // The shipped plugins would talk to this machine's Orca and sweep every repository it lists.
+    const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
+    const args = phase && plugins === undefined ? [...argv, '--skip-plugin', 'orca'] : argv
+    const code = main(args, ctx, { confirm: () => null, ...(plugins ? { plugins } : {}) })
     return { code, out: ctx.io.out, err: ctx.io.err }
   }
 
@@ -92,6 +95,28 @@ describe('--profile', () => {
     const bad = run(['status', '--config', c.file, '--profile', 'nope'], c)
     expect(bad.code).toBe(2)
     expect(bad.err).toContain('no profile named nope')
+    const json = JSON.parse(
+      run(['config', '--config', c.file, '--profile', 'deep', '--format', 'json'], c).out,
+    )
+    expect(json.profile).toBe('deep')
+    expect(
+      JSON.parse(run(['config', '--config', c.file, '--format', 'json'], c).out).profile,
+    ).toBeNull()
+  })
+
+  test('a misspelt plugin name inside a profile is a config error, whether or not the profile is chosen', () => {
+    const c = configFile({ profiles: { deep: { plugins: { nodee: { enabled: false } } } } })
+    const plugins: Plugin[] = [{ name: 'node', detect: () => true }]
+    for (const argv of [
+      ['config', '--config', c.file],
+      ['status', '--config', c.file],
+      ['status', '--config', c.file, '--profile', 'deep'],
+    ]) {
+      const r = run(argv, c, argv[0] === 'config' ? undefined : plugins)
+      expect(r.code).toBe(2)
+      expect(r.err).toContain('config names no plugin')
+      expect(r.err).toContain('profiles.deep.plugins.nodee')
+    }
   })
 
   test('status and clean --auto take the profile: its ignore and disabled plugins apply', () => {
