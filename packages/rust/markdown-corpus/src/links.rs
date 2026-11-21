@@ -641,8 +641,8 @@ impl LinkGraph {
         // install after it.
         let _apply = self.apply_lock.lock().unwrap();
         // Another corpus: nothing below applies, so skip the listings. The
-        // freshness check stays below: it marks the graph only when the walk
-        // admits a path.
+        // never-swept check (`swept_at.is_none()`) stays after the admissions:
+        // it counts a stale mark only when the walk admits a path.
         if self.state.lock().unwrap().for_vault.as_deref() != Some(vault_dir) {
             return;
         }
@@ -1492,9 +1492,9 @@ pub(crate) mod hooks {
 
     impl<'a> StatHook<'a> {
         /// Runs `then` once, just after the first read of `path` (a stat of
-        /// it or a listing of its folder) and before that call returns. So
-        /// a test can change the corpus, or land another call, exactly
-        /// between a read and what the caller does with it.
+        /// it, or a listing of its folder that names it) and before that call
+        /// returns. So a test can change the corpus, or land another call,
+        /// exactly between a read and what the caller does with it.
         pub fn after(inner: &'a dyn Vfs, path: PathBuf, then: impl FnOnce() + 'a) -> Self {
             StatHook {
                 inner,
@@ -1598,6 +1598,8 @@ pub(crate) mod hooks {
             let entries = self.inner.read_dir(path);
             if let OnStat::After(then) = &self.on_stat
                 && self.path.parent() == Some(path)
+                && let (Ok(listed), Some(name)) = (&entries, self.path.file_name())
+                && listed.iter().any(|e| name == e.name.as_str())
             {
                 run_once(then);
             }
