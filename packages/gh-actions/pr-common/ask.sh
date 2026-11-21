@@ -93,7 +93,6 @@ system_prompt=""
 if [ "$MODE" = run ]; then
   parse_run_request
   git rev-parse HEAD > "${RUNNER_TEMP:-/tmp}/$AGENT-pr-head" 2> /dev/null || true
-  [ "$RUN_KIND" = instruction ] || [ -n "$SKILL_NAME" ] || refuse "\`${SKILL_TOKEN//[^A-Za-z0-9_.:\/-]/}\` is not a valid skill name. Use /<plugin>:<skill> or /<skill> (letters, digits, _ . - and one colon) as the first word after the mention. To ask a question that starts with a path, put some text before it."
   if [ "$RUN_APPLY" = 1 ]; then
     reason=$("$(dirname "$0")/apply.sh" check) || refuse "$reason"
   fi
@@ -240,10 +239,14 @@ if [ "$tried" -eq 0 ]; then
   jq -n --arg m "No $KEY_VAR secret is set" '{is_error: true, result: $m}' | tee "$RESULT"
 fi
 # A skill the CLI does not know comes back as a short "unknown command" message
-# and a success exit; report it as a failure with the reason.
+# and a success exit; report it as a failure with the reason. Only a reply that
+# opens with such a message and names the skill counts, so a short real result
+# that says "not found" is kept.
 if [ "$MODE" = run ] && [ "$RUN_KIND" = skill ] && [ "$status" -eq 0 ] && jq -e '.is_error == false' "$RESULT" > /dev/null 2>&1; then
   text=$(jq -r '.result // ""' "$RESULT")
-  if [ "${#text}" -lt 400 ] && printf '%s' "$text" | grep -qiE "(unknown|no such|not found|cannot find|can.t find|unrecognized|not installed).*(skill|command)|(skill|command).*(unknown|not found|not installed|does not exist|doesn.t exist)"; then
+  if [ "${#text}" -lt 400 ] \
+    && printf '%s' "$text" | head -n 1 | grep -qiE '^[[:space:]]*(unknown|unrecognized|no such)( slash)? (skill|command)([^[:alnum:]]|$)' \
+    && printf '%s' "$text" | grep -qiF "$SKILL_NAME"; then
     jq -n --arg m "The skill /$SKILL_NAME is not installed or not found. The agent said: $text" '{is_error: true, result: $m}' > "$RESULT"
     status=1
   fi

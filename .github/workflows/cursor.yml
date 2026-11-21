@@ -102,6 +102,7 @@ jobs:
         uses: ./../pr-agent-tools/packages/gh-actions/cursor-pr
         with:
           cursor-api-key: ${{ secrets.CURSOR_API_KEY }}
+          push-job: "true"
 
   # The agent never runs in this job.
   cursor-push:

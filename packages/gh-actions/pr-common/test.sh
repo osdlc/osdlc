@@ -168,7 +168,7 @@ run() {
     cd "$T/repo" || exit 1
     export AGENT="$agent" HARNESS_SH="$gha/$agent-pr/harness.sh" KEY_VAR="$keyvar" KEYS="$keys" MODE="$mode" \
       MAX_TURNS=60 RESULT="$RUNNER_TEMP/$agent-pr-result.json" REPO=o/r PR=7 SOURCE_URL=http://x \
-      REQUEST="${4:-@$agent hi}" RUN_URL=http://run GH_TOKEN=tok GITHUB_OUTPUT="$FAKE_DIR/gh_out"
+      REQUEST="${4:-@$agent hi}" RUN_URL=http://run GH_TOKEN=tok GITHUB_OUTPUT="$FAKE_DIR/gh_out" PUSH_JOB="${PUSH_JOB-true}"
     : > "$GITHUB_OUTPUT"
     rm -rf "$T/artifact" "$T/runner2" "$T/push"
     "$here/ask.sh" > "$FAKE_DIR/ask.log" 2>&1
@@ -177,7 +177,7 @@ run() {
     if [ "$mode" = run ] && [ "$(cat "$FAKE_DIR/status")" = 0 ] && printf '%s\n' "$REQUEST" | head -n 1 | grep -q -- ' --apply\( \|$\)'; then
       "$here/apply.sh" patch >> "$FAKE_DIR/ask.log" 2>&1 || echo 1 > "$FAKE_DIR/status"
     fi
-    if grep -q '^patch=true$' "$GITHUB_OUTPUT"; then
+    if [ "$PUSH_JOB" = true ] && grep -q '^patch=true$' "$GITHUB_OUTPUT"; then
       # upload-artifact, then the push job: a fresh clone-less checkout, no agent, the artifact only.
       cp -R "$RUNNER_TEMP/$agent-pr-apply" "$T/artifact"
       mkdir -p "$T/runner2" "$T/push"
@@ -516,14 +516,22 @@ for agent in claude codex cursor; do
   [ "$status" != 0 ] && [ ! -e "$FAKE_DIR/keys" ] && ok "$agent apply: default branch head refused, agent not run" || bad "$agent apply: default branch head refused, agent not run"
   check "$agent apply: default branch comment" grep -q 'never pushes to the default or base branch' "$FAKE_DIR/posted"
 
-  # names
-  run $agent run good "$(skillreq $agent '/bad;name')"
-  [ "$status" != 0 ] && [ ! -e "$FAKE_DIR/keys" ] && ok "$agent skill: invalid name refused, agent not run" || bad "$agent skill: invalid name refused, agent not run"
-  check "$agent skill: invalid name comment" grep -q 'not a valid skill name' "$FAKE_DIR/posted"
-  check "$agent skill: invalid name marker" grep -q "^<!-- $agent-run: failed head=" "$FAKE_DIR/posted"
-  check "$agent skill: invalid name is sanitized in the header" grep -q "^\*\*$label could not run /badname\*\*" "$FAKE_DIR/posted"
-  run $agent run good "$(skillreq $agent '/a:b:c')"
-  [ "$status" != 0 ] && ok "$agent skill: two colons refused" || bad "$agent skill: two colons refused"
+  # --apply with no push job: the agent job posts the output and says nothing was pushed
+  PUSH_JOB=false FAKE_EDIT=1 run $agent run good "$(skillreq $agent "$sk --apply")"
+  [ "$status" = 0 ] && ok "$agent apply, no push job: succeeds" || bad "$agent apply, no push job: succeeds"
+  check "$agent apply, no push job: patch artifact" test -s "$RUNNER_TEMP/$agent-pr-apply/patch"
+  check "$agent apply, no push job: pushes nothing" test "$(remote_head)" = "$BASE_HEAD"
+  check "$agent apply, no push job: posts the agent output" grep -q "$agent says hi" "$FAKE_DIR/posted"
+  check "$agent apply, no push job: says nothing was pushed" grep -q 'nothing was pushed: this workflow has no push job' "$FAKE_DIR/posted"
+  check "$agent apply, no push job: header has no push" bash -c "! grep -q 'and pushed' '$FAKE_DIR/posted'"
+  check "$agent apply, no push job: marker" grep -q "^<!-- $agent-run: done head=" "$FAKE_DIR/posted"
+
+  # a first word that is not a skill name is free text
+  [ "$(mention $agent "@$agent /bad;name")" = "real=1 mode=answer " ] && ok "$agent: invalid skill name is an answer" || bad "$agent: invalid skill name is an answer"
+  [ "$(mention $agent "@$agent /etc/hosts why is this here")" = "real=1 mode=answer " ] && ok "$agent: a path first is an answer" || bad "$agent: a path first is an answer"
+  [ "$(mention $agent "@$agent /a:b:c")" = "real=1 mode=answer " ] && ok "$agent: two colons is an answer" || bad "$agent: two colons is an answer"
+  [ "$(mention $agent "@$agent /")" = "real=1 mode=answer " ] && ok "$agent: a lone slash is an answer" || bad "$agent: a lone slash is an answer"
+  [ "$(mention $agent "@$agent /etc/hosts drop this file --apply")" = "real=1 mode=run kind=instruction apply=1 " ] && ok "$agent: a path first with --apply is an instruction" || bad "$agent: a path first with --apply is an instruction"
 
   # unknown skill
   if [ $agent = cursor ]; then
@@ -539,6 +547,14 @@ for agent in claude codex cursor; do
     check "$agent skill: unknown skill reason" grep -q 'is not installed or not found' "$FAKE_DIR/posted"
     check "$agent skill: unknown skill marker" grep -q "^<!-- $agent-run: failed head=" "$FAKE_DIR/posted"
   fi
+
+  # a short real result that says "not found" is not an unknown skill
+  FAKE_SAY="Done. The skill checked docs/; the config file was not found, so nothing changed." run $agent run good "$(skillreq $agent "$sk")"
+  [ "$status" = 0 ] && ok "$agent skill: short output saying not found is kept" || bad "$agent skill: short output saying not found is kept"
+  check "$agent skill: short output posted" grep -q 'the config file was not found' "$FAKE_DIR/posted"
+  # an unknown-command message for another name is not this skill
+  FAKE_SAY="Unknown command: /other" run $agent run good "$(skillreq $agent "$sk")"
+  [ "$status" = 0 ] && ok "$agent skill: unknown message naming another skill is kept" || bad "$agent skill: unknown message naming another skill is kept"
 
   # a long ordinary answer that mentions "skill" is not an unknown skill
   FAKE_SAY="Reviewed. The command was found in the skill and applied cleanly to $(printf 'x%.0s' $(seq 1 450))" run $agent run good "$(skillreq $agent "$sk")"

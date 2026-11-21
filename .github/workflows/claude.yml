@@ -102,6 +102,7 @@ jobs:
         uses: ./../pr-agent-tools/packages/gh-actions/claude-pr
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          push-job: "true"
 
   # The agent never runs in this job.
   claude-push:

@@ -102,6 +102,7 @@ jobs:
         uses: ./../pr-agent-tools/packages/gh-actions/codex-pr
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          push-job: "true"
 
   # The agent never runs in this job.
   codex-push:

@@ -66,7 +66,7 @@ please keep behaviour identical
   apply, where the diff is, the limits and how the final message is used.
 - **Markers.** `<!-- codex-run: done|failed head=<sha> -->`; the first line is
   **Codex ran /<skill>** for `<sha7>` (and ` and pushed <sha7>` after `--apply`
-  pushed). A skill the CLI does not know (Codex's "unknown skill" reply) posts a failed marker with the reason.
+  pushed). A skill the CLI does not know (Codex's "unknown skill" reply) posts a failed marker with the reason; only a short reply that opens with that message and names the skill counts. A first word that is not a valid skill name (such as `/etc/hosts`) is free text: an answer, or an instruction with `--apply`.
 
 ### `--apply` safety rules
 
@@ -147,8 +147,10 @@ jobs:
 Keep the author check in the job's `if`: it stops other people's comments
 before a runner starts or the key is in reach. `--apply` needs a second job
 that runs [`pr-apply`](../pr-apply/) when this action's `apply-patch` output is
-`true`; copy it from the workflow. Without it `--apply` runs the agent but
-nothing is pushed.
+`true`; copy it from the workflow, and set the input `push-job: "true"`.
+Without that job (`push-job` left `false`), `--apply` runs the agent, uploads
+the patch artifact, pushes nothing and posts the agent's output with a note
+that nothing was pushed.
 
 ## Inputs
 
@@ -160,6 +162,7 @@ nothing is pushed.
 | `model`          | empty                 | Passed as `-m`. Empty is codex's default model.                                                                                                                                                                                                                                                                                                                           |
 | `marketplaces`   | the osdlc marketplace | One per line, `name=https-git-url` with an optional ` ref` (agent-setup's format).                                                                                                                                                                                                                                                                                        |
 | `plugins`        | `craft@osdlc`         | `plugin@marketplace`, separated by spaces or newlines; each must name a listed marketplace. Review mode needs craft.                                                                                                                                                                                                                                                      |
+| `push-job`       | `false`               | `"true"` when a later job runs `pr-apply`; that job then posts the result of a patched `--apply` run. Left `false`, this action posts it and says nothing was pushed.                                                                                                                                                                                                     |
 
 ## Pinning
 

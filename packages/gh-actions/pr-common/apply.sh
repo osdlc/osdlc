@@ -13,7 +13,7 @@
 #                    branch and the patch touches only allowed paths and modes;
 #                    apply, commit and push (never forced) to the PR head branch.
 #                    Leaves $RESULT (the artifact's result.json) ready for post.sh.
-# Env: AGENT REPO PR REQUEST RUNNER_TEMP; patch: RESULT; push: PUSH_TOKEN,
+# Env: AGENT REPO PR REQUEST RUNNER_TEMP; patch: RESULT, PUSH_JOB; push: PUSH_TOKEN,
 # GIT_USER_NAME, GIT_USER_EMAIL.
 set -e
 : "${AGENT:?AGENT is required}" "${REPO:?REPO is required}" "${PR:?PR is required}"
@@ -75,6 +75,9 @@ if [ "$step" = patch ]; then
   git diff --cached --name-only -z --no-ext-diff "$head" \
     | jq -Rs --arg head "$head" '{head: $head, paths: [split("\u0000")[] | select(length > 0)]}' > "$dir/meta.json"
   cp "$RESULT" "$dir/result.json"
+  if [ "${PUSH_JOB:-false}" != true ]; then
+    note "Files changed, but nothing was pushed: this workflow has no push job (the action's \`push-job\` input). The patch is in the \`$AGENT-pr-apply\` artifact of the run for 7 days."
+  fi
   echo "patch=true" >> "${GITHUB_OUTPUT:-/dev/null}"
   exit 0
 fi

@@ -13,7 +13,8 @@ uploads a `<agent>-pr-apply` artifact (`patch` from `git diff --binary`,
 with the agent's output) and sets the output `apply-patch` to `true`. This
 action runs in a later job (`needs`), on a fresh checkout: no agent, no node or pnpm, nothing from the pull request, only `git`
 and `gh`. Because only this job's comment is posted for a patched run, the agent
-job stays silent on success (on failure, or when nothing changed, it posts).
+job stays silent on success when its `push-job` input is `"true"` (on failure,
+when nothing changed, or with no push job, it posts).
 
 ## What it checks, in order
 
