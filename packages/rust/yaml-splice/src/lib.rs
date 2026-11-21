@@ -4,9 +4,10 @@
 //! ([`FieldEdit::Set`], [`FieldEdit::Remove`], [`FieldEdit::Rename`], and
 //! their path forms [`FieldEdit::SetPath`], [`FieldEdit::RemovePath`],
 //! [`FieldEdit::RenamePath`] for keys below the top level) and returns new
-//! bytes or a typed [`EditError`]. Only the bytes of the edited field change. Every other byte (comments, key order, quoting, blank lines,
-//! a BOM, CRLF line endings) is kept, because it is never re-emitted. An edit
-//! that changes nothing returns the input bytes unchanged.
+//! bytes or a typed [`EditError`]. Only the bytes of the edited field change.
+//! Every other byte (comments, key order, quoting, blank lines, a BOM, CRLF
+//! line endings) is kept, because it is never re-emitted. An edit that
+//! changes nothing returns the input bytes unchanged.
 //!
 //! The crate does no I/O. It has no clock, locale or global state, so the same
 //! input always gives the same output.
