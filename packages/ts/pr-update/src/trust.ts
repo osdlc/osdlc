@@ -1,9 +1,10 @@
 /**
  * The repository-trust gate of a standalone run, over `@osdlc/trust-repo`.
  *
- * Five `pr_update` keys make the tool run a command, or an agent that can run
+ * These `pr_update` keys make the tool run a command, or an agent that can run
  * tools, chosen by the repository it is acting on: `lockfile_install`,
- * `resolvers[].run`, `repair.command`, `repair.agent` and `test_command`. A
+ * `resolvers[].run`, `repair.command`, `repair.agent`, `test_command`, and
+ * `verify: detect`, whose command the repository's own files choose. A
  * setting the repository itself can write cannot authorize running it. So a
  * value from the project config file needs consent: `--trust` for one run, or
  * a trust recorded with `pr-update trust`. A value from the `.local` overlay is
@@ -36,14 +37,21 @@ function isSet(value: unknown): boolean {
   return !(Array.isArray(value) && value.length === 0)
 }
 
-/** The command-running keys the project file sets and the overlay does not override. */
+const VERIFY_KEY = ['pr_update', 'verify'] as const
+
+/** The project-file keys that choose a command to run and that the overlay does not override. */
 export function projectSourcedCommands(
   project: Record<string, unknown> | null,
   local: Record<string, unknown> | null,
 ): string[] {
-  return COMMAND_KEYS.filter(
+  const keys = COMMAND_KEYS.filter(
     (path) => isSet(getIn(project, path).value) && !isSet(getIn(local, path).value),
   ).map((path) => path.join('.'))
+  // Not in COMMAND_KEYS: the value is a mode, not a command.
+  if (getIn(project, VERIFY_KEY).value === 'detect' && !isSet(getIn(local, VERIFY_KEY).value)) {
+    keys.push(VERIFY_KEY.join('.'))
+  }
+  return keys
 }
 
 /**

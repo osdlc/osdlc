@@ -1,0 +1,305 @@
+{
+  "family": "agent-router",
+  "reference": "ts",
+  "referenceVersion": "0.4.5",
+  "sections": {
+    "routing_shadow": {
+      "description": "shadowedRules: the rules an earlier, same-or-broader rule makes unreachable",
+      "cases": [
+        {
+          "name": "none-shadowed",
+          "input": {
+            "rules": [
+              {
+                "when": {
+                  "workflow": "implement",
+                  "complexity": "small"
+                },
+                "profile": "small"
+              },
+              {
+                "when": {
+                  "workflow": "implement",
+                  "complexity": "large"
+                },
+                "profile": "deep"
+              }
+            ]
+          },
+          "expect": []
+        },
+        {
+          "name": "identical-rule-is-shadowed",
+          "input": {
+            "rules": [
+              {
+                "when": {
+                  "workflow": "w"
+                },
+                "profile": "a"
+              },
+              {
+                "when": {
+                  "workflow": "w"
+                },
+                "profile": "b"
+              }
+            ]
+          },
+          "expect": [
+            {
+              "index": 1,
+              "by": 0
+            }
+          ]
+        },
+        {
+          "name": "broader-earlier-shadows-narrower",
+          "input": {
+            "rules": [
+              {
+                "when": {
+                  "workflow": "w"
+                },
+                "profile": "a"
+              },
+              {
+                "when": {
+                  "workflow": "w",
+                  "complexity": "small"
+                },
+                "profile": "b"
+              }
+            ]
+          },
+          "expect": [
+            {
+              "index": 1,
+              "by": 0
+            }
+          ]
+        },
+        {
+          "name": "narrower-earlier-does-not-shadow",
+          "input": {
+            "rules": [
+              {
+                "when": {
+                  "workflow": "w",
+                  "complexity": "small"
+                },
+                "profile": "a"
+              },
+              {
+                "when": {
+                  "workflow": "w"
+                },
+                "profile": "b"
+              }
+            ]
+          },
+          "expect": []
+        },
+        {
+          "name": "empty-when-shadows-everything-after",
+          "input": {
+            "rules": [
+              {
+                "when": {},
+                "profile": "a"
+              },
+              {
+                "when": {
+                  "workflow": "w"
+                },
+                "profile": "b"
+              },
+              {
+                "when": {
+                  "tags": [
+                    "ui"
+                  ]
+                },
+                "profile": "c"
+              }
+            ]
+          },
+          "expect": [
+            {
+              "index": 1,
+              "by": 0
+            },
+            {
+              "index": 2,
+              "by": 0
+            }
+          ]
+        },
+        {
+          "name": "reports-the-first-shadowing-rule",
+          "input": {
+            "rules": [
+              {
+                "when": {
+                  "stage": "s"
+                },
+                "profile": "a"
+              },
+              {
+                "when": {
+                  "workflow": "w"
+                },
+                "profile": "b"
+              },
+              {
+                "when": {
+                  "workflow": "w",
+                  "stage": "s"
+                },
+                "profile": "c"
+              }
+            ]
+          },
+          "expect": [
+            {
+              "index": 2,
+              "by": 0
+            }
+          ]
+        },
+        {
+          "name": "tags-subset-is-shadowed",
+          "input": {
+            "rules": [
+              {
+                "when": {
+                  "tags": [
+                    "ui",
+                    "db"
+                  ]
+                },
+                "profile": "a"
+              },
+              {
+                "when": {
+                  "tags": [
+                    "ui"
+                  ]
+                },
+                "profile": "b"
+              }
+            ]
+          },
+          "expect": [
+            {
+              "index": 1,
+              "by": 0
+            }
+          ]
+        },
+        {
+          "name": "tags-superset-is-not-shadowed",
+          "input": {
+            "rules": [
+              {
+                "when": {
+                  "tags": [
+                    "ui"
+                  ]
+                },
+                "profile": "a"
+              },
+              {
+                "when": {
+                  "tags": [
+                    "ui",
+                    "db"
+                  ]
+                },
+                "profile": "b"
+              }
+            ]
+          },
+          "expect": []
+        },
+        {
+          "name": "tags-broad-without-tags-narrow-is-not-shadowed",
+          "input": {
+            "rules": [
+              {
+                "when": {
+                  "tags": [
+                    "ui"
+                  ]
+                },
+                "profile": "a"
+              },
+              {
+                "when": {
+                  "workflow": "w"
+                },
+                "profile": "b"
+              }
+            ]
+          },
+          "expect": []
+        },
+        {
+          "name": "tags-absent-in-broad-is-covered",
+          "input": {
+            "rules": [
+              {
+                "when": {
+                  "workflow": "w"
+                },
+                "profile": "a"
+              },
+              {
+                "when": {
+                  "workflow": "w",
+                  "tags": [
+                    "ui"
+                  ]
+                },
+                "profile": "b"
+              }
+            ]
+          },
+          "expect": [
+            {
+              "index": 1,
+              "by": 0
+            }
+          ]
+        },
+        {
+          "name": "different-values-do-not-shadow",
+          "input": {
+            "rules": [
+              {
+                "when": {
+                  "workflow": "a"
+                },
+                "profile": "x"
+              },
+              {
+                "when": {
+                  "workflow": "b"
+                },
+                "profile": "y"
+              }
+            ]
+          },
+          "expect": []
+        },
+        {
+          "name": "no-rules",
+          "input": {
+            "rules": []
+          },
+          "expect": []
+        }
+      ]
+    }
+  }
+}

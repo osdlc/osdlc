@@ -801,6 +801,7 @@ Integration, declares exit 1 absent and returns the rejected refs.
 | Method | git |
 | --- | --- |
 | `fetch(remote, refspec, { prune, quiet, noWriteFetchHead, depth, noTags })` | `fetch` |
+| `fetchMany(remotes, { prune, quiet, noWriteFetchHead, noTags, jobs })` | `fetch --multiple [--jobs=<n>]` — every remote in one call, `jobs` at once; an empty list or a `jobs` that is not a positive integer throws a `TypeError` |
 | `add(paths, { all, update, intentToAdd })` | `add` (paths go after `--`) |
 | `commit({ message, body } \| { messageFile } \| { messageStdin }, plus { allowEmpty, amend, noVerify, signoff, paths } in the same object)` | `commit` — one argument, e.g. `commit({ message, allowEmpty: true })`; one message source, enforced by the types; `messageStdin` is `-F -` with the string on stdin, no temp file. `paths` appends `-- <paths…>`: only those paths are committed, from the working tree, and anything else staged stays staged. An empty `paths` throws a `TypeError`, because git would commit everything staged |
 | `configSet(key, value, { scope })` | `config` |
@@ -893,6 +894,34 @@ file's change as a `GIT binary patch`, which is ASCII, so the string holds it
 intact and `rawChecked(["apply"], { input: patch })` replays it. A text file
 whose lines are not UTF-8 still loses bytes in `diffText`. Read that patch
 with `rawBytesChecked`.
+
+### Many objects at once
+
+`catFileBatch(names, { maxBytes, chunkBytes })` reads many objects, byte for
+byte, in a few processes rather than one `git show` each. `names` are anything
+`git cat-file` reads, such as `rev:path` or a sha. It runs
+`cat-file --batch-check` for the sizes, then `cat-file --batch` for the blobs
+within `maxBytes`, in groups of about `chunkBytes` (64 MiB). It returns a map
+from each name to one of:
+
+| `kind` | Fields | Meaning |
+| --- | --- | --- |
+| `text`, `binary` | `sha`, `size`, `bytes` | a blob; `binary` has a NUL in its first 8000 bytes |
+| `too-large` | `sha`, `size` | a blob over `maxBytes`; not read |
+| `not-blob` | `type`, `sha`, `size` | a tree, commit or tag, such as `rev:dir`; not read |
+| `missing` | | no such object, or a short sha that names more than one |
+
+```ts
+const got = git.catFileBatch(changed.map((p) => `HEAD:${p}`), { maxBytes: 1 << 20 });
+for (const [name, e] of got) if (e.kind === "text") scan(name, e.bytes.toString("utf8"));
+```
+
+`catFileBatchChunks` yields the map one group at a time, so a caller can use
+the bytes and drop them before the next read; `AsyncGit` has both, with
+`for await` on the chunks. A name that is empty or holds a newline, a NUL or a trailing CR
+throws `TypeError` (the protocol is one name per line). The entry `bytes` are
+views of the group's buffer. Both run on the `bytesRunner`, so they are
+experimental and throw `UnsupportedRequest` where `rawBytes` does.
 
 ## Driving the CLI, or something else
 

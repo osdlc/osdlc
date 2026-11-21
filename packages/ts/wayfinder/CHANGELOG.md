@@ -1,5 +1,37 @@
 # @osdlc/wayfinder
 
+## 0.13.0
+
+### Minor Changes
+
+- dfea0da: New: hand an agent skill to an agent's CLI, as an explicit action beside copy. `way run /<name> --agent -- <args>` starts the first of `claude`, `codex` and `cursor-agent` on `PATH` whose agent reads the skill, in this terminal and the repository root, with `/<name> <args>` as its first prompt (`$<name>` for Codex), and exits with its code. `--harness <claude|codex|cursor>` picks the agent; `--dry-run --json` prints the run document, with the skill's id as `task`. In the terminal UI, `^g` on a skill does the same, asking first for what the skill's `argument-hint` names; the line under a skill says which agent `^g` starts. Enter, `^y` and the web view still copy `/<name>`, and plain `way run /<name>` still refuses, now suggesting `--agent` when an agent CLI is on `PATH`.
+
+### Patch Changes
+
+- Updated dependencies [976bbee]
+- Updated dependencies [976bbee]
+- Updated dependencies [6d37030]
+- Updated dependencies [0297b95]
+- Updated dependencies [2ee6d62]
+- Updated dependencies [c8470d6]
+- Updated dependencies [0ce8abc]
+- Updated dependencies [9c0f5ae]
+  - @osdlc/cli-tool@0.21.0
+  - @osdlc/command-seam@0.15.1
+  - @osdlc/config-layers@0.11.0
+  - @osdlc/typed-git@0.19.0
+  - @osdlc/detect-harness@0.7.4
+  - @osdlc/trust-repo@0.5.11
+
+## 0.12.13
+
+### Patch Changes
+
+- Updated dependencies [b0ff1b3]
+- Updated dependencies [cb56f16]
+  - @osdlc/typed-git@0.18.0
+  - @osdlc/trust-repo@0.5.10
+
 ## 0.12.12
 
 ### Patch Changes

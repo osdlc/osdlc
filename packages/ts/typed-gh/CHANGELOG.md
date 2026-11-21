@@ -1,5 +1,30 @@
 # @osdlc/typed-gh
 
+## 0.19.0
+
+### Minor Changes
+
+- f8b19a9: `PullRequest` has `baseRefOid` (the base commit sha, `null` when not requested), and `PR_LIST_FIELDS` and `PR_VIEW_FIELDS` request it. `runVerb`, `Gh` and `AsyncGh` now set `NO_COLOR=1` and remove `CLICOLOR_FORCE` and `GH_FORCE_TTY` on every verb except `raw` and `rawChecked`, so a forced-colour environment cannot break the JSON and diff they parse. A verb's own `env` (`GH_HOST`) is kept. New `GhVerb` field `leaveColour`, true for `raw` and `rawChecked`.
+- 976bbee: `PullRequest.headRepositoryOwner`: the login of the head repository's owner when the listing asks for `headRepositoryOwner`, so a parent's listing can pick out the pull requests opened from one fork. Null when not asked for. The field is required on the type, so code that builds a `PullRequest` by hand (a test fixture, say) sets it, usually to `null`.
+- 2fd3d61: Add `withHostname(hostname)` to `Gh` and `AsyncGh`: the same client (runner, directory and repo) aimed at another host, as `withRepo` does for the repository.
+
+### Patch Changes
+
+- Updated dependencies [6d37030]
+- Updated dependencies [c8470d6]
+- Updated dependencies [0ce8abc]
+- Updated dependencies [9c0f5ae]
+  - @osdlc/command-seam@0.15.1
+  - @osdlc/typed-git@0.19.0
+
+## 0.18.2
+
+### Patch Changes
+
+- Updated dependencies [b0ff1b3]
+- Updated dependencies [cb56f16]
+  - @osdlc/typed-git@0.18.0
+
 ## 0.18.1
 
 ### Patch Changes

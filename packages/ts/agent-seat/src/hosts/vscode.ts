@@ -27,7 +27,7 @@ import type {
   SendReceipt,
   SendRequest,
 } from '../contract.ts'
-import { sessionViaTerminal } from '../harness.ts'
+import { commandArgv, sessionViaTerminal } from '../harness.ts'
 import { registryDirOf, type HostStateOptions } from './registry.ts'
 
 import {
@@ -86,7 +86,7 @@ export function makeVscodeHost(
         op: 'open',
         cwd: req.cwd,
         title: req.title,
-        argv: req.argv,
+        argv: commandArgv(req),
         ...(req.sessionId === undefined ? {} : { sessionId: req.sessionId }),
       })
       if (!reply.ok)

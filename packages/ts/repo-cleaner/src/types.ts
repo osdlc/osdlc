@@ -130,6 +130,8 @@ export type PrEvidence = Omit<PRInfo, 'headRef'> & {
 
 /** Evidence every kind of row records about whether its work landed. */
 export interface LandingEvidence {
+  /** The default branch the row was judged against, as a ref: `origin/main`, or `main` without a remote. */
+  landedAgainst?: string
   pr?: PrEvidence
   /** The work is on the default branch: by ancestry, an exact-head merged PR, or a patch match. Absent on a row not judged. */
   merged?: boolean
@@ -167,6 +169,12 @@ export interface WorktreeEvidence extends LandingEvidence {
   bare: boolean
   detached: boolean
   primary: boolean
+  /**
+   * Bytes the directory takes on disk, read only with the `sizes` option; null
+   * when `du` could not say. Absent for a directory that is gone. Not part of
+   * a plan's fingerprint: growth after planning does not drop the row.
+   */
+  sizeBytes?: number | null
   /** The directory is there and is still a checkout. */
   onDisk?: boolean
   /** The directory is there but is no longer a checkout (its `.git` is gone). */
@@ -193,6 +201,11 @@ export interface WorktreeEvidence extends LandingEvidence {
   otherWorktrees?: string[]
   submodules?: SubmoduleEvidence[]
   submoduleDirtyFiles?: number
+  /**
+   * Remote-tracking branches (`origin/feature`) of the fetched remote whose history holds HEAD,
+   * the default branch excluded. Set only for a clean, used worktree of a fetched sweep.
+   */
+  recoverableFrom?: string[]
   /** Its submodules make plain `git worktree remove` refuse, so the remove is forced. */
   forcedForSubmodules?: boolean
 }
@@ -203,7 +216,6 @@ export interface BranchEvidence extends LandingEvidence {
   track: string | null
   lastCommit: string
   sha: string
-  compareAgainst?: string
   /** Null when the remote default branch was not found. */
   ancestorOfRemoteMain?: boolean | null
   /** The worktree whose removal frees this branch; it is deleted only when that worktree goes in the same run. */
@@ -284,6 +296,25 @@ export function makeRow<R extends Row>(
   } as R
 }
 
+/**
+ * One remote a sweep touches, as it resolved it: the default remote, each
+ * remote whose branches it judges, and the `against` remote.
+ */
+export interface RemoteInfo {
+  name: string
+  /** The sweep judges this remote's branches. */
+  judged: boolean
+  /**
+   * Its own default branch, which is kept: what `refs/remotes/<name>/HEAD`
+   * points at, else `main`, then `master`, where the remote has them.
+   */
+  defaultBranch: string
+  /** As {@link RepoInfo.slug}, for this remote. */
+  slug: string | null
+  /** As {@link RepoInfo.provider}, for this remote; null for a remote not judged. */
+  provider: ProviderStatus | null
+}
+
 /** What the sweep learned about a repository before inventorying it. */
 export interface RepoInfo {
   /** The main checkout's root, even when the sweep was pointed at a worktree. */
@@ -293,26 +324,69 @@ export interface RepoInfo {
    * host, or null when the remote names no repository.
    */
   slug: string | null
+  /** The local default branch: the default remote's default branch, or `main`, then `master`, without one. */
   mainBranch: string
+  /**
+   * The default remote: `origin`, else the remote the local default branch
+   * tracks, else the only remote. Null when none of those exists. Local rows
+   * are judged against its default branch.
+   */
   remote: string | null
   currentBranch: string
   /**
-   * The provider asked for pull requests and what its probe found. Null when
-   * none was asked (`provider: 'none'`, or a sweep without remote branches).
+   * The default remote's provider, asked for the local rows' pull requests,
+   * and what its probe found. Null when none was asked (`provider: 'none'`,
+   * or a sweep without remote branches).
    */
   provider: ProviderStatus | null
-  /** True when the sweep fetched the remote before classifying. */
-  fetched: boolean
+  /** Every remote the sweep fetched before classifying, the `against` remote included. */
+  fetchedRemotes: string[]
+  /** Every remote the repository has, touched or not. */
+  allRemotes: string[]
+  /**
+   * Every remote the sweep touches, each with its own default branch: the
+   * default remote, the remotes whose branches it judges (`judged`, in the
+   * order asked), and the `against` remote.
+   */
+  remotes: RemoteInfo[]
+  /** The remote whose default branch every row is judged against instead of its own; null without one. */
+  against: string | null
 }
 
-/** The ref a branch must reach to count as landed: `<remote>/<default>`, or the local default without a remote. */
-export function landedRef(repo: RepoInfo): string {
-  return repo.remote === null ? repo.mainBranch : `${repo.remote}/${repo.mainBranch}`
+/** The remotes whose branches the sweep judges, in the order asked. */
+export function judgedRemotes(repo: RepoInfo): RemoteInfo[] {
+  return repo.remotes.filter((r) => r.judged)
 }
 
-/** True when the repository has a remote the sweep did not fetch, so its refs may be stale. */
+/** A default branch a row's work can land on, and the remote it is on; null for the local default branch. */
+export interface LandedAgainst {
+  remote: string | null
+  branch: string
+}
+
+/** `<remote>/<branch>`, or the bare branch without a remote. */
+export function refOf(against: LandedAgainst): string {
+  return against.remote === null ? against.branch : `${against.remote}/${against.branch}`
+}
+
+/**
+ * What rows of `remote` are judged against; no `remote` for local rows
+ * (worktrees and local branches). With `against`, every row is judged against
+ * that. Otherwise a remote's branches are judged against its own default
+ * branch, and local rows against the default remote's.
+ */
+export function landedFor(repo: RepoInfo, remote?: RemoteInfo): LandedAgainst {
+  if (repo.against !== null) {
+    const against = repo.remotes.find((r) => r.name === repo.against)
+    return { remote: repo.against, branch: against?.defaultBranch ?? repo.mainBranch }
+  }
+  if (remote === undefined) return { remote: repo.remote, branch: repo.mainBranch }
+  return { remote: remote.name, branch: remote.defaultBranch }
+}
+
+/** True when the repository has a default remote the sweep did not fetch, so its refs may be stale. */
 export function isUnfetched(repo: RepoInfo): boolean {
-  return repo.remote !== null && !repo.fetched
+  return repo.remote !== null && !repo.fetchedRemotes.includes(repo.remote)
 }
 
 /** Rows of one kind, counted by what the sweep concluded. */
@@ -357,6 +431,26 @@ export function totalOf(counts: Counts): Bucket {
   return out
 }
 
+/** Bytes the `delete` rows and the `review` rows take on disk; see {@link reclaimableOf}. */
+export interface Reclaimable {
+  delete: number
+  review: number
+  /** How many `delete` or `review` worktrees have no size read, so the totals are lower bounds. */
+  unsized: number
+}
+
+/** The bytes `rows` would free, per verdict. Rows with no size read count for nothing. */
+export function reclaimableOf(rows: readonly Row[]): Reclaimable {
+  const out: Reclaimable = { delete: 0, review: 0, unsized: 0 }
+  for (const row of rows) {
+    if (row.kind !== 'worktree') continue
+    if (row.verdict !== 'delete' && row.verdict !== 'review') continue
+    if (typeof row.evidence.sizeBytes === 'number') out[row.verdict] += row.evidence.sizeBytes
+    else if (row.evidence.sizeBytes === null) out.unsized += 1
+  }
+  return out
+}
+
 /** One repository's rows, or the reason there are none. */
 export interface RepoSweep {
   /** The path the sweep was pointed at, whether or not it could be read. */
@@ -365,6 +459,8 @@ export interface RepoSweep {
   repo: RepoInfo | null
   rows: Row[]
   counts: Counts
+  /** Bytes freed by the `delete` rows and by the `review` rows; null when `sizes` was off. */
+  reclaimableBytes: Reclaimable | null
   /**
    * What the sweep could not look up for this repository and judged without,
    * one sentence each: a remote branch listing or a pull request listing that
@@ -429,6 +525,8 @@ export interface Sweep {
   duplicates: DuplicateCheckout[]
   /** Every repository's counts, summed per kind. */
   counts: Counts
+  /** Every repository's `reclaimableBytes`, summed; null when `sizes` was off. */
+  reclaimableBytes: Reclaimable | null
   /** What was swept, for a plan. */
   options: SweptWith
 }
@@ -466,7 +564,7 @@ export interface SweepProgress {
   repo: string
   index: number
   of: number
-  step: 'discover' | 'fetch' | 'prs' | Kind
+  step: 'discover' | 'fetch' | 'prs' | 'size' | Kind
   done?: number
   total?: number
   /** The CLI asked during the `prs` step: `gh`, `glab`. */
