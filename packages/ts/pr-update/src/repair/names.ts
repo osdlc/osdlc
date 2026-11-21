@@ -10,6 +10,11 @@ export const REPAIR_AGENTS = ['claude', 'codex', 'cursor', 'pi'] as const
 
 export type RepairAgent = (typeof REPAIR_AGENTS)[number]
 
+/** The ways a repair agent runs; `repair.mode` in config.ts describes each. */
+export const REPAIR_MODES = ['headless', 'interactive', 'terminal'] as const
+
+export type RepairMode = (typeof REPAIR_MODES)[number]
+
 /** One line per agent: what it is and the binary it runs. */
 export const REPAIR_AGENT_SUMMARIES: Record<RepairAgent, string> = {
   claude: 'Claude Code (the `claude` CLI)',

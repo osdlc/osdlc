@@ -10,7 +10,12 @@ import { join } from 'node:path'
 
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { prUpdateTrustStore, projectSourcedCommands, untrustedMessage } from '../src/trust.ts'
+import {
+  prUpdateTrustStore,
+  projectSourcedCommands,
+  untrustedMessage,
+  withoutRepairChoice,
+} from '../src/trust.ts'
 
 const scratch = mkdtempSync(join(tmpdir(), 'pr-update-trust-'))
 afterAll(() => rmSync(scratch, { recursive: true, force: true }))
@@ -23,6 +28,26 @@ function repo(): { root: string; env: Record<string, string> } {
   const env = { PATH: process.env.PATH ?? '', XDG_STATE_HOME: join(scratch, `state${n++}`) }
   return { root: realpathSync(fx.dir), env }
 }
+
+describe('repair.mode', () => {
+  test('a non-headless mode in the project file is gated, headless is not', () => {
+    const gated = (mode: string, local: Record<string, unknown> | null = null) =>
+      projectSourcedCommands({ pr_update: { repair: { mode } } }, local)
+    expect(gated('terminal')).toEqual(['pr_update.repair.mode'])
+    expect(gated('interactive')).toEqual(['pr_update.repair.mode'])
+    expect(gated('headless')).toEqual([])
+    expect(gated('terminal', { pr_update: { repair: { mode: 'interactive' } } })).toEqual([])
+    expect(gated('terminal', { pr_update: { repair: { mode: 'headless' } } })).toEqual([])
+  })
+
+  test('a flag consents to the keys it names only', () => {
+    const project = { pr_update: { repair: { agent: 'claude', mode: 'terminal' } } }
+    expect(withoutRepairChoice(project, ['mode'])).toEqual({
+      pr_update: { repair: { agent: 'claude' } },
+    })
+    expect(withoutRepairChoice(project)).toEqual({ pr_update: { repair: {} } })
+  })
+})
 
 describe('projectSourcedCommands', () => {
   test.each([
