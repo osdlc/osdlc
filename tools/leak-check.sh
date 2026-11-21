@@ -36,7 +36,11 @@ scan() {
 }
 
 scan "private repo" 'sksizer/dev([^a-zA-Z0-9_-]|$)' packages/profiles packages/corpora
+# /home/linuxbrew is Homebrew's fixed install prefix on Linux, not a person's
+# home folder. $not goes into a sed s/// expression, so it holds no slash.
+not='.home.linuxbrew([^A-Za-z0-9_-]|$)'
 scan "home path" '/(Users|home)/[A-Za-z0-9_.-]+' packages/profiles packages/corpora
+not=
 # A git remote in an SSH form, git@host:owner/repo or ssh://git@host/owner/repo,
 # is not an address.
 not='git@[A-Za-z0-9.-]+[:/]'
@@ -47,10 +51,13 @@ not=
 # examples are about the config paths of a made-up tool under ~/.
 # packages/corpora/harness-reference/ is exempt too: it records where each
 # harness keeps its config and skills, such as ~/.claude/.
+# packages/profiles/system-cleanup/ and packages/corpora/system-cleanup-reference/ are
+# exempt as well: they record where tools keep data a cleaner can reclaim, such as
+# ~/.cache/pnpm.
 tilde=
 for dir in packages/profiles/*/ packages/corpora/*/; do
   case $dir in
-    packages/profiles/claims/ | packages/corpora/examples/ | packages/corpora/harness-reference/) ;;
+    packages/profiles/claims/ | packages/corpora/examples/ | packages/corpora/harness-reference/ | packages/profiles/system-cleanup/ | packages/corpora/system-cleanup-reference/) ;;
     *) tilde="$tilde ${dir%/}" ;;
   esac
 done

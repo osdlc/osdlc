@@ -569,7 +569,8 @@ async function rebaseThroughRungs(
     outcome = git.rebase(base, {
       autostash: false,
       env: noHooksEnv(),
-      ...(limits.upstream === undefined ? {} : { upstream: limits.upstream }),
+      // Without a known old parent head, let git look for it in the reflog.
+      ...(limits.upstream === undefined ? { forkPoint: true } : { upstream: limits.upstream }),
     })
   } catch (e) {
     return failed(`rebase ${base}: ${errorLine(e)}`)

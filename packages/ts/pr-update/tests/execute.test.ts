@@ -191,6 +191,47 @@ describe('the executor against real git', () => {
     expect(msg).not.toContain('pr-update/')
   })
 
+  describe('a child of a parent rebased in an earlier run', () => {
+    /** `parent` off main, `child` off `parent`, then `parent` rewritten with a commit that edits the same file. */
+    function makeStack(): string {
+      const { git } = fx.worker
+      git.checkout('main', { branch: 'parent' })
+      fx.worker.commit('parent work', { 'p.txt': 'one\n' })
+      git.push('origin', 'parent')
+      git.checkout('parent', { branch: 'child' })
+      fx.worker.commit('child work', { 'c.txt': 'c\n' })
+      git.push('origin', 'child')
+      const childOid = git.resolveRef('HEAD')!
+      git.checkout('parent')
+      git.try.resetHard('main')
+      fx.worker.commit('parent work, resolved', { 'p.txt': 'two\n' })
+      git.push('origin', 'parent', { forceWithLease: true })
+      git.fetch('origin')
+      return childOid
+    }
+
+    test('git finds the old parent head in the reflog, so the old commits are not replayed', async () => {
+      const oid = makeStack()
+      const out = await inWorktree((wt) =>
+        updateOne(
+          wt,
+          target({ head: 'child', base: 'parent', headOid: oid, strategy: 'rebase' }),
+          SETTINGS,
+          recorder(),
+          { apply: true, worktree: wtRoot },
+        ),
+      )
+      expect(out.status).toBe('updated')
+      const { git } = fx.worker
+      git.fetch('origin')
+      const own = execFileSync('git', ['log', '--format=%s', 'origin/parent..origin/child'], {
+        cwd: fx.worker.dir,
+        encoding: 'utf8',
+      })
+      expect(own.trim()).toBe('child work')
+    })
+  })
+
   test('a clean rebase rewrites, and the old tip is left behind', async () => {
     const oid = makeBehindPr('clean-r', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
     const { git } = fx.worker
