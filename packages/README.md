@@ -100,7 +100,7 @@ the standard.
   `packages/conformance/config.json` holds its exemptions. `tiered-dirs`,
   `agent-router`, `config-layers`, `corpus-schema`, `etag-write`, `file-lock`,
   `frontmatter-lossless`, `gfm-table`, `intersect`, `markdown-contract`,
-  `markdown-link`, `markdown-tags` and `path-guard` are there.
+  `markdown-link`, `markdown-tags`, `path-guard` and `ref-lease` are there.
 - **Each language's idiom.** An implementation does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses
   snake_case, `Result`, traits and the standard library's words. TypeScript
@@ -168,6 +168,8 @@ Developed here, in this repository:
   implementation of `@osdlc/file-lock`, so a Rust process and a Node.js process
   can hold one lock file in turn)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
+- `packages/rust/ref-lease` (`ref-lease` on crates.io, the Rust twin of
+  `@osdlc/ref-lease`: the protocol's pure half, not the git push and fetch)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/system-model` (`system-model` on crates.io, the Rust twin of `@osdlc/system-model`)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
@@ -447,6 +449,7 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    Held now (each crate's `Cargo.toml` names what it waits for):
    - `gfm-pipe-table`, until its first release can have a release-plz run of
      its own: it needs `CARGO_REGISTRY_TOKEN` (rules 3, 4 and 7).
+   - `ref-lease`, for the same reason.
 
 #### Versions and breaking changes
 

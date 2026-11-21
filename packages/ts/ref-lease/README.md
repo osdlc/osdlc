@@ -178,10 +178,11 @@ platform branches. It needs git 2.29 or later, for `fetch --no-write-fetch-head`
 
 ## Conformance cases
 
-[`tests/conformance/`](./tests/conformance/) holds the protocol's cases as data: what each push
+[`packages/conformance/ref-lease/suite.json`](../../conformance/ref-lease/suite.json) holds the protocol's cases as data: what each push
 result (git's status for the ref and its rejection kind, as `@osdlc/typed-git` reads it) and each
-failed fetch means, and the canonical JSON of each value. Another implementation of the
-protocol checks itself against the same files.
+failed fetch means, and the canonical JSON of each value. This package is the reference. The
+[`ref-lease` Rust crate](../../rust/ref-lease) runs the same cases; it holds the protocol half only
+(no push or fetch yet).
 
 ## Alternatives
 
