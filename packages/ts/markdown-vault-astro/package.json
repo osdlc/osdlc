@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/markdown-vault-astro",
-  "version": "0.8.5",
+  "version": "0.9.0",
   "description": "Brings Obsidian-vault markdown (wikilinks, embeds) into Astro content collections: rewrites embeds, copies assets, resolves wikilinks at build time",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

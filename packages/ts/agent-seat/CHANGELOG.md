@@ -1,5 +1,12 @@
 # @osdlc/agent-seat
 
+## 0.10.1
+
+### Patch Changes
+
+- Updated dependencies [1ba6088]
+  - @osdlc/typed-git@0.20.0
+
 ## 0.10.0
 
 ### Minor Changes
