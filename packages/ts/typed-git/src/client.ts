@@ -75,6 +75,7 @@ export {
   type DiffAddedFileOptions,
   type DiffTextOptions,
   type DiffTreeOptions,
+  type FetchManyOptions,
   type FetchOptions,
   type ForEachRefOptions,
   type ForceLease,

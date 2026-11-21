@@ -1,5 +1,18 @@
 # @osdlc/typed-git
 
+## 0.19.0
+
+### Minor Changes
+
+- c8470d6: `catFileBatch(names, { maxBytes, chunkBytes })` and `catFileBatchChunks` (on `Git` and `AsyncGit`) read many objects byte for byte through `git cat-file --batch`: one `--batch-check` for the sizes, then `--batch` for the blobs within `maxBytes`, in groups of about `chunkBytes`. Each name maps to `text`, `binary`, `too-large`, `not-blob` or `missing`.
+- 0ce8abc: `fetchMany(remotes, { prune, quiet, noWriteFetchHead, noTags, jobs })`: `git fetch --multiple`, every remote in one call, up to `jobs` at once. Git fetches each remote it can and exits non-zero naming any that failed.
+- 9c0f5ae: `forEachRef` takes `contains`, which passes `--contains=<commit>` so only refs whose history holds that commit are listed.
+
+### Patch Changes
+
+- Updated dependencies [6d37030]
+  - @osdlc/command-seam@0.15.1
+
 ## 0.18.0
 
 ### Minor Changes

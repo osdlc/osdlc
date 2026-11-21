@@ -62,6 +62,7 @@ import {
   type DiffAddedFileOptions,
   type DiffTextOptions,
   type DiffTreeOptions,
+  type FetchManyOptions,
   type FetchOptions,
   type ForEachRefOptions,
   type GrepOptions,
@@ -723,6 +724,15 @@ export class AsyncGit {
   ): Promise<void> {
     const [call, req] = splitCallOptions(opts)
     return this.backend.execute(this.cwd, { kind: 'fetch', remote, refspec, ...req }, call)
+  }
+
+  /** `git fetch --multiple <remote>…`. See {@link FetchManyOptions}. */
+  fetchMany(
+    remotes: readonly string[],
+    opts: GitCallOptions & FetchManyOptions = {},
+  ): Promise<void> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(this.cwd, { kind: 'fetchMany', remotes, ...req }, call)
   }
 
   /** Stage paths; `all` / `update` are `git add -A` / `-u`. */
