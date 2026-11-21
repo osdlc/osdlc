@@ -42,6 +42,8 @@ export interface OrcaOptions {
   orca?: CommandRunner | undefined
   /** Sweep the repositories `orca repo list` names. Default true. */
   repos?: boolean | undefined
+  /** The environment the `orca` CLI is looked up in and run with, over this process's. */
+  env?: Readonly<Record<string, string | undefined>> | undefined
 }
 
 /** One Orca-managed worktree, as `orca worktree ps --json` reports it. */
@@ -115,7 +117,9 @@ const isGitWorktree = (c: Candidate): boolean => c.kind === 'worktree' && c.owne
 export function orcaPlugin(options: OrcaOptions = {}): Plugin {
   const found = (): CommandRunner | undefined => {
     if (options.orca !== undefined) return options.orca
-    const exe = which('orca') ?? (existsSync(ORCA_BUNDLE_CLI) ? ORCA_BUNDLE_CLI : undefined)
+    const exe =
+      which('orca', { env: options.env }) ??
+      (existsSync(ORCA_BUNDLE_CLI) ? ORCA_BUNDLE_CLI : undefined)
     return exe === undefined ? undefined : spawnRunner(exe)
   }
 
@@ -123,7 +127,7 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
   const call = (args: readonly string[], ctx: Ctx): unknown => {
     const runner = found()
     if (runner === undefined) throw new Error('the orca CLI was not found')
-    const r = runner.run([...args, '--json'], { cwd: ctx.cwd })
+    const r = runner.run([...args, '--json'], { cwd: ctx.cwd, env: options.env })
     const reason = (): string => failureText(r) || r.error || `exit ${r.exitCode}`
     if (r.exitCode !== 0) throw new Error(`orca ${args.join(' ')} failed: ${reason()}`)
     let body: unknown

@@ -1,7 +1,7 @@
 /** The `orca` plugin over a fake `orca` CLI shaped like the recorded `--json` output, with the real `git` plugin beside it. */
 
 import { afterEach, describe, expect, test } from 'vitest'
-import { existsSync, mkdtempSync, realpathSync } from 'node:fs'
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -145,6 +145,23 @@ describe('detection and scope', () => {
     expect(plugin.detect(ctx)).toBe(true)
     expect(plugin.scope!(ctx)).toEqual([dir])
     expect(orcaPlugin({ orca: o.orca, repos: false }).scope!(ctx)).toEqual([])
+  })
+
+  test('with no runner given, the CLI is found on the PATH in `env` and run with that env', () => {
+    const bin = realpathSync(mkdtempSync(join(tmpdir(), 'orca-env-')))
+    cleanups.push(() => rmSync(bin, { recursive: true, force: true }))
+    // Answers as a running Orca only when it sees the variable from `env`.
+    const script = [
+      '#!/bin/sh',
+      'if [ "$ORCA_ENV_MARK" = seen ]; then',
+      `  echo '${JSON.stringify({ ok: true, result: { runtime: { reachable: true } } })}'`,
+      'else',
+      `  echo '${JSON.stringify({ ok: false, error: { message: 'no mark' } })}'`,
+      'fi',
+    ].join('\n')
+    writeFileSync(join(bin, 'orca'), `${script}\n`, { mode: 0o755 })
+    const plugin = orcaPlugin({ env: { PATH: bin, ORCA_ENV_MARK: 'seen' } })
+    expect(plugin.detect(ctx)).toBe(true)
   })
 })
 

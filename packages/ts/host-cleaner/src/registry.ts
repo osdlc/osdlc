@@ -17,6 +17,8 @@ import type { Plugin } from './types.ts'
 export interface PluginInit {
   settings: Record<string, unknown>
   only: readonly Kind[]
+  /** The command line's environment, for a plugin that runs other programs. */
+  env: Readonly<Record<string, string | undefined>>
 }
 
 export type PluginFactory = (init: PluginInit) => Plugin
@@ -27,7 +29,7 @@ export const FACTORIES: Readonly<Record<string, PluginFactory>> = {
   cargo: ({ settings }) => cargoPlugin({ idleHours: settings.idleHours as number }),
   node: ({ settings }) => nodePlugin({ idleHours: settings.idleHours as number }),
   'claude-code': () => claudeCodePlugin(),
-  orca: ({ settings }) => orcaPlugin({ repos: settings.repos as boolean }),
+  orca: ({ settings, env }) => orcaPlugin({ repos: settings.repos as boolean, env }),
 }
 
 /** A `--plugin` or `--skip-plugin` that names no plugin. */
