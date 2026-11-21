@@ -243,13 +243,13 @@ fn require_mapping(v: Value) -> Result<Mapping, ParseError> {
 }
 
 #[derive(Debug, Clone)]
-struct Ev {
-    kind: EvKind,
-    span: Span,
+pub(crate) struct Ev {
+    pub(crate) kind: EvKind,
+    pub(crate) span: Span,
 }
 
 #[derive(Debug, Clone)]
-enum EvKind {
+pub(crate) enum EvKind {
     /// Text, style, anchor id (0 = none), explicit tag.
     Scalar(String, ScalarStyle, usize, Option<TagKind>),
     /// `*anchor`, carrying the id of the anchor it refers to.
@@ -283,7 +283,7 @@ enum EvKind {
 /// mean inventing a representation the canonical emitter could not write back.
 /// They fall through to spelling-based resolution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TagKind {
+pub(crate) enum TagKind {
     Str,
     Int,
     Float,
@@ -311,7 +311,7 @@ impl TagKind {
     }
 }
 
-fn collect_events(src: &str) -> Result<Vec<Ev>, ParseError> {
+pub(crate) fn collect_events(src: &str) -> Result<Vec<Ev>, ParseError> {
     let mut out = Vec::new();
     for item in Parser::new_from_str(src) {
         let (event, span) = item.map_err(|e| ParseError::Syntax(e.to_string()))?;
@@ -409,7 +409,12 @@ pub(crate) fn plain_is_non_string(text: &str) -> bool {
 /// string, and a plain token is a string only if it does not resolve to a
 /// scalar of another type.
 pub(crate) fn is_string_key(src: &str, span: &KeySpan) -> bool {
-    let raw = src[span.key_range.clone()].trim();
+    range_is_string_key(src, &span.key_range)
+}
+
+/// [`is_string_key`] for a key given by its byte range.
+pub(crate) fn range_is_string_key(src: &str, range: &std::ops::Range<usize>) -> bool {
+    let raw = src[range.clone()].trim();
     if raw.starts_with('\'') || raw.starts_with('"') {
         return true;
     }
@@ -660,7 +665,7 @@ fn count_nodes(v: &Value) -> usize {
 /// value it produces, so running the alias resolver here would spend the
 /// expansion budget on work nobody reads, and could fail a parse that the
 /// value pass had already accepted.
-fn skip_node(events: &[Ev], i: usize) -> usize {
+pub(crate) fn skip_node(events: &[Ev], i: usize) -> usize {
     match events[i].kind {
         EvKind::SeqStart(_) => {
             let mut j = i + 1;
@@ -687,19 +692,42 @@ fn skip_node(events: &[Ev], i: usize) -> usize {
 
 /// Walk the event stream and produce a [`KeySpan`] per top-level key.
 fn top_level_spans(events: &[Ev], src: &str) -> Vec<KeySpan> {
-    let mut i = 0;
-    while i < events.len() && !matches!(events[i].kind, EvKind::MapStart(_)) {
-        i += 1;
-    }
-    if i >= events.len() {
+    let Some(root) = events
+        .iter()
+        .position(|e| matches!(e.kind, EvKind::MapStart(_)))
+    else {
         return Vec::new();
-    }
-    i += 1;
+    };
+    map_entries(events, src, root, src.len())
+        .into_iter()
+        .map(|e| e.span)
+        .collect()
+}
+
+/// One scalar-keyed entry of a mapping: its spans, and the index of the
+/// event that starts its value.
+pub(crate) struct MapEntry {
+    pub(crate) span: KeySpan,
+    pub(crate) value_idx: usize,
+}
+
+/// The entries of the mapping that starts at event `map_idx`, in source
+/// order. `hard_stop` is the byte offset the last entry's value may not run
+/// past: the start of the mapping's next sibling, or the end of the source.
+/// An entry with a complex (non-scalar) key is left out.
+pub(crate) fn map_entries(
+    events: &[Ev],
+    src: &str,
+    map_idx: usize,
+    hard_stop: usize,
+) -> Vec<MapEntry> {
+    let mut i = map_idx + 1;
 
     // First pass: (key text, key range, value start, the two end estimates).
     struct Raw {
         key: String,
         key_range: std::ops::Range<usize>,
+        value_idx: usize,
         value_start: usize,
         /// End of the last scalar or alias in the value. Exact for scalars,
         /// and a safe floor for collections: nothing before it is a comment.
@@ -770,6 +798,7 @@ fn top_level_spans(events: &[Ev], src: &str) -> Vec<KeySpan> {
         raws.push(Raw {
             key,
             key_range,
+            value_idx,
             value_start,
             value_scalar_end,
             value_event_end,
@@ -784,16 +813,206 @@ fn top_level_spans(events: &[Ev], src: &str) -> Vec<KeySpan> {
         let hard_stop = raws
             .get(idx + 1)
             .map(|n| n.key_range.start)
-            .unwrap_or(src.len());
+            .unwrap_or(hard_stop.min(src.len()));
         let end = trim_value_end(src, hard_stop, raw.value_scalar_end, raw.value_event_end);
-        out.push(KeySpan {
-            key: raw.key.clone(),
-            key_range: raw.key_range.clone(),
-            assign_end: assign_end(src, raw.key_range.end, raw.value_start),
-            value_range: raw.value_start..end.max(raw.value_start),
+        out.push(MapEntry {
+            span: KeySpan {
+                key: raw.key.clone(),
+                key_range: raw.key_range.clone(),
+                assign_end: assign_end(src, raw.key_range.end, raw.value_start),
+                value_range: raw.value_start..end.max(raw.value_start),
+            },
+            value_idx: raw.value_idx,
         });
     }
     out
+}
+
+/// One item of a block sequence: where its `-` is, and its value.
+pub(crate) struct ItemSpan {
+    /// Offset of the `-` that starts the item.
+    pub(crate) dash: usize,
+    /// The event that starts the item's value.
+    pub(crate) value_idx: usize,
+    /// The value's bytes, without the trailing newline and comment.
+    pub(crate) value_range: std::ops::Range<usize>,
+}
+
+/// The items of the block sequence that starts at event `seq_idx`, in source
+/// order, bounded like [`map_entries`] by `hard_stop`. `None` for a shape whose
+/// spans are not known: an item with no value (`-` alone), or an empty block
+/// scalar.
+pub(crate) fn seq_items(
+    events: &[Ev],
+    src: &str,
+    seq_idx: usize,
+    hard_stop: usize,
+) -> Option<Vec<ItemSpan>> {
+    struct Raw {
+        dash: usize,
+        value_idx: usize,
+        start: usize,
+        scalar_end: usize,
+        event_end: usize,
+    }
+    let mut raws: Vec<Raw> = Vec::new();
+    let mut i = seq_idx + 1;
+    while i < events.len() && !matches!(events[i].kind, EvKind::SeqEnd) {
+        let ev = &events[i];
+        let start = byte_index(src, ev.span.start.index());
+        let empty_scalar =
+            matches!(ev.kind, EvKind::Scalar(..)) && ev.span.start.index() == ev.span.end.index();
+        if empty_scalar {
+            return None;
+        }
+        let dash = dash_before(src, start)?;
+        let after = skip_node(events, i);
+        let subtree = &events[i..after];
+        let scalar_end = subtree
+            .iter()
+            .filter(|e| matches!(e.kind, EvKind::Scalar(..) | EvKind::Alias(_)))
+            .map(|e| scalar_end(src, e))
+            .max()
+            .unwrap_or(start);
+        let event_end = subtree
+            .iter()
+            .map(|e| byte_index(src, e.span.end.index()))
+            .max()
+            .unwrap_or(start);
+        raws.push(Raw {
+            dash,
+            value_idx: i,
+            start,
+            scalar_end,
+            event_end,
+        });
+        i = after;
+    }
+    let stop = hard_stop.min(src.len());
+    Some(
+        raws.iter()
+            .enumerate()
+            .map(|(n, r)| {
+                let limit = raws.get(n + 1).map_or(stop, |next| next.dash);
+                let end = trim_value_end(src, limit, r.scalar_end, r.event_end);
+                ItemSpan {
+                    dash: r.dash,
+                    value_idx: r.value_idx,
+                    value_range: r.start..end.max(r.start),
+                }
+            })
+            .collect(),
+    )
+}
+
+/// One element of a flow collection: an item of `[a, b]`, or a `key: value`
+/// pair of `{a: 1}`.
+pub(crate) struct FlowElem {
+    /// The key and its range, for a mapping.
+    pub(crate) key: Option<(String, std::ops::Range<usize>)>,
+    /// The event that starts the value.
+    pub(crate) value_idx: usize,
+    /// The value's bytes: the scalar, or the collection with its brackets.
+    pub(crate) value_range: std::ops::Range<usize>,
+}
+
+/// The elements of the flow collection that starts at event `open_idx`
+/// (`{` when `is_map`, `[` otherwise), in source order. `None` for a shape
+/// whose spans are not known: a key that is not a scalar, a pair written
+/// inside a flow sequence, or an element with no value (`{a, b: 1}`).
+pub(crate) fn flow_elems(
+    events: &[Ev],
+    src: &str,
+    open_idx: usize,
+    is_map: bool,
+) -> Option<Vec<FlowElem>> {
+    let end_kind = |k: &EvKind| {
+        if is_map {
+            matches!(k, EvKind::MapEnd)
+        } else {
+            matches!(k, EvKind::SeqEnd)
+        }
+    };
+    let mut out = Vec::new();
+    let mut i = open_idx + 1;
+    while i < events.len() && !end_kind(&events[i].kind) {
+        let key = if is_map {
+            let ev = &events[i];
+            let EvKind::Scalar(text, ..) = &ev.kind else {
+                return None;
+            };
+            let start = byte_index(src, ev.span.start.index());
+            let range = start..scalar_end(src, ev);
+            i += 1;
+            Some((text.clone(), range))
+        } else {
+            None
+        };
+        let value_idx = i;
+        let first = events.get(value_idx)?;
+        let after = skip_node(events, value_idx);
+        let start = byte_index(src, first.span.start.index());
+        let empty = matches!(first.kind, EvKind::Scalar(..)) && first.span.start == first.span.end;
+        let nested_pair = !is_map
+            && matches!(first.kind, EvKind::MapStart(_))
+            && src.as_bytes().get(start) != Some(&b'{');
+        if empty || nested_pair {
+            return None;
+        }
+        let end = events[value_idx..after]
+            .iter()
+            .map(|e| match e.kind {
+                EvKind::Scalar(..) | EvKind::Alias(_) => scalar_end(src, e),
+                _ => byte_index(src, e.span.end.index()),
+            })
+            .max()
+            .unwrap_or(start);
+        out.push(FlowElem {
+            key,
+            value_idx,
+            value_range: start..end,
+        });
+        i = after;
+    }
+    Some(out)
+}
+
+/// The byte offset where the node that starts at event `idx` begins.
+pub(crate) fn node_start(events: &[Ev], src: &str, idx: usize) -> usize {
+    byte_index(src, events[idx].span.start.index())
+}
+
+/// The offset of the `-` that starts the sequence item whose value starts at
+/// `start`. The value may be on a later line than the `-`, after comment lines,
+/// and after a block scalar header, an anchor or a tag.
+fn dash_before(src: &str, start: usize) -> Option<usize> {
+    let mut ls = src[..start].rfind('\n').map_or(0, |i| i + 1);
+    let mut line = &src[ls..start];
+    let mut earlier = false;
+    while line.trim().is_empty() || earlier && line.trim_start().starts_with('#') {
+        if ls == 0 {
+            return None;
+        }
+        let end = ls - 1;
+        ls = src[..end].rfind('\n').map_or(0, |i| i + 1);
+        line = src[ls..end].trim_end_matches('\r');
+        earlier = true;
+    }
+    if earlier && let Some(i) = line.find(" #") {
+        line = &line[..i];
+    }
+    let mut head = line.trim_end();
+    // Properties, and on an earlier line a block scalar header, sit between
+    // the `-` and the value.
+    while let Some((rest, token)) = head.rsplit_once([' ', '\t']) {
+        let header = earlier && token.starts_with(['|', '>']);
+        if !(header || token.starts_with(['&', '!'])) {
+            break;
+        }
+        head = rest.trim_end();
+    }
+    (head.ends_with('-') && head[..head.len() - 1].ends_with([' ', '\t']) || head == "-")
+        .then(|| ls + head.len() - 1)
 }
 
 /// The byte offset just past a scalar or alias event's source text.
@@ -965,7 +1184,7 @@ fn byte_range(src: &str, span: Span) -> std::ops::Range<usize> {
 /// key and fails loudly if this is ever wrong again. Treating the index as
 /// bytes does not merely misalign: it panics on a char boundary, and real
 /// frontmatter has non-ASCII keys and titles.
-fn byte_index(src: &str, char_idx: usize) -> usize {
+pub(crate) fn byte_index(src: &str, char_idx: usize) -> usize {
     if src.is_ascii() {
         return char_idx.min(src.len());
     }

@@ -13,19 +13,21 @@
 //! original document with only that child changed, or be an `InvalidResult`
 //! refusal. It is never a silently different document.
 //!
-//! The run is gated by [`ENABLED`] until tier 1 is implemented; until then
-//! the test checks only the documents it generates. The refusal causes are
-//! pinned when the run is enabled, the way `tests/neighbours.rs` pins them.
+//! A layout's edits run once it is in [`ENABLED_LAYOUTS`]; the documents of
+//! every layout are generated either way. The number of refusals is pinned,
+//! so a shape that starts or stops failing is a test failure.
 
 mod shapes;
 
 use shapes::{SEPARATORS, VALUES, new_values};
-use yaml_splice::{Mapping, Value, parse::parse};
+use std::collections::BTreeMap;
 
-/// Whether the edits run. Turned on with tier 1.
-const ENABLED: bool = false;
+use yaml_splice::{EditError, FieldEdit, Mapping, PathSegment, Value, edit_yaml, parse::parse};
 
-#[derive(Debug, Clone, Copy)]
+/// The layouts whose edits run.
+const ENABLED_LAYOUTS: &[Layout] = &[Layout::Map, Layout::SeqItem];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Layout {
     /// `parent:` / `  first: …`
     Map,
@@ -106,6 +108,8 @@ fn with_children(root: &Value, layout: Layout, kids: Mapping) -> Value {
 fn a_nested_edit_changes_only_the_key_it_addresses() {
     let mut documents = 0;
     let mut planned = 0;
+    let mut refused: BTreeMap<String, usize> = BTreeMap::new();
+    let mut failures = Vec::new();
     for layout in [Layout::Map, Layout::SeqItem] {
         for eol in ["\n", "\r\n"] {
             for a in VALUES {
@@ -124,17 +128,51 @@ fn a_nested_edit_changes_only_the_key_it_addresses() {
                         );
                         documents += 1;
                         for key in ["first", "second", "last"] {
+                            let path = |key: &str| -> Vec<PathSegment> {
+                                let mut p = vec![PathSegment::from("parent")];
+                                if matches!(layout, Layout::SeqItem) {
+                                    p.push(PathSegment::Index(0));
+                                }
+                                p.push(PathSegment::from(key));
+                                p
+                            };
                             let mut removed = kids.clone();
                             removed.remove(key);
-                            let mut wants = vec![with_children(&original, layout, removed)];
+                            let mut cases = vec![(
+                                FieldEdit::RemovePath { path: path(key) },
+                                with_children(&original, layout, removed),
+                            )];
                             for value in new_values() {
                                 let mut set = kids.clone();
-                                set.insert(key, value);
-                                wants.push(with_children(&original, layout, set));
+                                set.insert(key, value.clone());
+                                cases.push((
+                                    FieldEdit::SetPath {
+                                        path: path(key),
+                                        value,
+                                    },
+                                    with_children(&original, layout, set),
+                                ));
                             }
-                            planned += wants.len();
-                            if ENABLED {
-                                unimplemented!("tier 1 runs the edits here");
+                            planned += cases.len();
+                            if !ENABLED_LAYOUTS.contains(&layout) {
+                                continue;
+                            }
+                            for (edit, want) in cases {
+                                match edit_yaml(src.as_bytes(), std::slice::from_ref(&edit)) {
+                                    Ok(out) => {
+                                        let text = String::from_utf8(out.bytes).unwrap();
+                                        if parse(&text).ok().as_ref() != Some(&want) {
+                                            failures
+                                                .push(format!("{edit:?} on {src:?} gave {text:?}"));
+                                        }
+                                    }
+                                    Err(EditError::InvalidResult { message }) => {
+                                        *refused
+                                            .entry(format!("{layout:?}: {message}"))
+                                            .or_insert(0) += 1;
+                                    }
+                                    Err(e) => failures.push(format!("{edit:?} on {src:?}: {e}")),
+                                }
                             }
                         }
                     }
@@ -142,6 +180,15 @@ fn a_nested_edit_changes_only_the_key_it_addresses() {
             }
         }
     }
+    assert!(
+        failures.is_empty(),
+        "{} edits went wrong:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+    // Pinned; the causes are those of `Cause` in tests/neighbours.rs, at depth.
+    let refusals: usize = refused.values().sum();
+    assert_eq!(refusals, 9_260, "refusals, by message: {refused:?}");
     // Every shape pair parses in both layouts, as it does at the top level.
     assert_eq!(documents, 7_500, "documents generated");
     assert_eq!(planned, 180_000, "edits planned");
