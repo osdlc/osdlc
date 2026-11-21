@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/osdlc/osdlc/compare/yaml-splice/v0.3.4...yaml-splice/v0.4.0) - 2026-11-21
+
+### Other
+
+- nested edits inside flow collections (stacked on #974) ([#975](https://github.com/osdlc/osdlc/pull/975))
+- nested edits through block sequences (stacked on #972) ([#974](https://github.com/osdlc/osdlc/pull/974))
+- nested edits through block mappings (SetPath, RemovePath, RenamePath) ([#972](https://github.com/osdlc/osdlc/pull/972))
+
 ### Added
 
 - Nested edits by path: `FieldEdit::SetPath`, `RemovePath` and `RenamePath`,

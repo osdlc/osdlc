@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/host-cleaner",
-  "version": "0.0.0",
+  "version": "0.1.2",
   "description": "Machine cleanup as plugins: each plugin proposes candidates and objects to others, and one plan, one re-check and one receipt cover them all.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

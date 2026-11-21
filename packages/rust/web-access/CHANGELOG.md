@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1](https://github.com/osdlc/osdlc/compare/web-access/v0.6.0...web-access/v0.6.1) - 2026-11-21
+
+### Other
+
+- refuse HTTP/2 so connection tags stay valid ([#981](https://github.com/osdlc/osdlc/pull/981))
+
 ### Fixed
 
 - `serve` refuses an HTTP/2 request with `505 HTTP Version Not Supported`.
