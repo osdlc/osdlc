@@ -59,7 +59,7 @@ import {
   type SendReceipt,
   type SendRequest,
 } from '../contract.ts'
-import { sessionViaTerminal } from '../harness.ts'
+import { commandArgv, sessionViaTerminal } from '../harness.ts'
 import {
   deepestContaining,
   readHostRegistry,
@@ -413,7 +413,7 @@ export function makeJetbrainsHost(
       const res = callChecked(ide, '/api/sdlc/terminal/open', {
         cwd: req.cwd,
         title: req.title,
-        argv: req.argv,
+        argv: commandArgv(req),
       })
       if ('problem' in res)
         throw new Error(`JetBrains terminal open failed for ${req.cwd}: ${res.problem}`)
