@@ -60,3 +60,21 @@ fn an_anchored_collection_loses_its_last_element() {
         "t: &x {}\n"
     );
 }
+
+#[test]
+fn a_comment_inside_a_removed_or_emptied_element_is_never_lost() {
+    for (src, edit) in [
+        ("t: [{a: 1, # keep\n  b: 2}]\n", remove(&[k("t"), 0.into()])),
+        ("t: {a: # keep\n  1, b: 2}\n", remove(&[k("t"), k("a")])),
+        (
+            "t: [{ # keep\n }]\n",
+            set(&[k("t"), 0.into(), k("x")], Value::Int(1)),
+        ),
+    ] {
+        let err = run(src, edit).unwrap_err();
+        assert!(
+            err.contains("a comment inside the flow collection"),
+            "{src:?}: {err}"
+        );
+    }
+}

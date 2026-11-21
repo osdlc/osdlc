@@ -109,6 +109,9 @@ fn vivify(cx: &Cx<'_>, elem: &FlowElem, depth: usize) -> Result<Edits, EditError
     let next = depth + 1;
     match cx.op {
         Op::Set(value) => {
+            if cx.src[elem.value_range.clone()].contains('#') {
+                return Err(unsupported(cx, "a comment inside the flow collection"));
+            }
             let nested = nest(cx, next, value)?;
             Ok(vec![(elem.value_range.clone(), flow_text(&nested)?)])
         }
@@ -249,17 +252,21 @@ fn remove(cx: &Cx<'_>, open_idx: usize, elems: &[FlowElem], i: usize) -> Result<
     } else {
         elems[i - 1].value_range.end..elem.value_range.end
     };
-    // A `#` in the value's own text is a comment only inside a nested collection.
-    let gap_has_comment = |gap: Range<usize>| cx.src[gap].contains('#');
-    let comment = if elems.len() == 1 {
-        false
-    } else if i == 0 {
-        gap_has_comment(elem.value_range.end..elem_start(&elems[1]))
-    } else {
-        gap_has_comment(elems[i - 1].value_range.end..elem_start(elem))
-    } || (elems.len() > 1
-        && !matches!(cx.events[elem.value_idx].kind, EvKind::Scalar(..))
-        && cx.src[elem.value_range.clone()].contains('#'));
+    // A `#` in a scalar is text. Between elements, between a key and its value,
+    // or inside a nested collection it may be a comment.
+    let has_hash = |r: Range<usize>| cx.src[r].contains('#');
+    let key_gap = elem
+        .key
+        .as_ref()
+        .is_some_and(|(_, k)| has_hash(k.end..elem.value_range.start));
+    let nested = !matches!(cx.events[elem.value_idx].kind, EvKind::Scalar(..))
+        && has_hash(elem.value_range.clone());
+    let separator = match i {
+        _ if elems.len() == 1 => false,
+        0 => has_hash(elem.value_range.end..elem_start(&elems[1])),
+        _ => has_hash(elems[i - 1].value_range.end..elem_start(elem)),
+    };
+    let comment = key_gap || nested || separator;
     if comment {
         return Err(unsupported(cx, "a comment inside the flow collection"));
     }
