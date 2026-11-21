@@ -25,17 +25,8 @@ export {
   type PlanRow,
 } from './plan.ts'
 export { DEFAULT_MAX_FILE_BYTES, type ArchiveOptions, type LeftOut } from './archive.ts'
-export {
-  check,
-  run,
-  type Allow,
-  type Approval,
-  type CheckOptions,
-  type Preview,
-  type ResolvedApproval,
-  type Resolved,
-  type RunOptions,
-} from './clean.ts'
+export { type Allow, type Approval, type ResolvedApproval, type Resolved } from './approval.ts'
+export { check, run, type CheckOptions, type Preview, type RunOptions } from './clean.ts'
 export {
   RECEIPT_VERSION,
   ReceiptSchema,
@@ -46,6 +37,7 @@ export {
   type Step,
 } from './receipt.ts'
 export { render, type RunSummary, type Style } from './render.ts'
+export { formatBytes, sizeOf, type SizeOfOptions } from './size.ts'
 export { defaultProcessProbe, type ProcessHolder, type ProcessProbe } from './processes.ts'
 export { providers, type PrProvider, type ProviderChoice } from './providers/index.ts'
 export type { Annotate } from './hooks.ts'
@@ -68,6 +60,7 @@ export {
   type RepoInfo,
   type RepoNote,
   type RepoSweep,
+  type Reclaimable,
   type Risk,
   type Row,
   type RowId,
