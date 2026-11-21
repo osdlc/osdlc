@@ -200,3 +200,81 @@ describe('schema and reference values', () => {
     assert.deepEqual(warnings(), [])
   })
 })
+
+describe('hints for supporting files outside a record folder', () => {
+  const study = (): void => {
+    root('c')
+    put('c/study/study.schema.yaml', 'type: object\nrequired: [title]\n')
+    put('c/study/a.md', '---\ntitle: A\n---\n')
+    put('c/study/b.md', '---\ntitle: B\n---\n')
+  }
+
+  test('a failing file in a subfolder with no record file says the folder is not a record folder', () => {
+    study()
+    put('c/study/perf-run/config.yaml', 'x: 1\n')
+    const [e] = errors().filter((m) => m.startsWith('study/perf-run/config.yaml:'))
+    assert.match(e ?? '', /not a record folder: perf-run\/ has no perf-run\.md/)
+    assert.match(e ?? '', /add study\/perf-run\/perf-run\.md \(or set x-record-file\)/)
+    assert.match(e ?? '', /under a folder starting with _/)
+    assert.ok(!(e ?? '').includes('\n'))
+  })
+
+  test('a file that fails to parse in a subfolder gets the hint on its one line', () => {
+    study()
+    put('c/study/perf-run/results.md', '---\na: [1\n---\n')
+    const e = errors().filter((m) => m.startsWith('study/perf-run/results.md:'))
+    assert.equal(e.length, 1)
+    assert.match(e[0] ?? '', /\(data\).*not a record folder: perf-run\//)
+    assert.ok(!(e[0] ?? '').includes('\n'))
+  })
+
+  test('no hint for a yaml file when records are not mostly .md', () => {
+    root('c')
+    put('c/study/study.schema.yaml', 'type: object\nrequired: [title]\n')
+    put('c/study/a.md', '---\ntitle: A\n---\n')
+    put('c/study/b.yaml', 'title: B\n')
+    put('c/study/c.yaml', 'x: 1\n')
+    const e = errors().filter((m) => m.startsWith('study/c.yaml:'))
+    assert.ok(e.length > 0)
+    assert.ok(e.every((m) => !m.includes('mostly')))
+    put('c/study/d.md', '---\ntitle: D\n---\n')
+    assert.ok(errors().some((m) => m.startsWith('study/c.yaml:') && !m.includes('mostly')))
+  })
+
+  test('a .yml file in a subfolder and a yaml file among .md records get a hint', () => {
+    study()
+    put('c/study/perf-run/config.yml', 'x: 1\n')
+    put('c/study/config.yaml', 'x: 1\n')
+    const all = errors()
+    assert.match(all.find((m) => m.startsWith('study/perf-run/config.yml:')) ?? '', /record folder/)
+    assert.match(all.find((m) => m.startsWith('study/config.yaml:')) ?? '', /mostly \.md/)
+    put('c/study/old.yml', 'x: 1\n')
+    assert.match(errors().find((m) => m.startsWith('study/old.yml:')) ?? '', /rename it to \.yaml/)
+  })
+
+  test('the hint names the declared x-record-file, and a deeper folder by its own name', () => {
+    root('c')
+    put('c/study/study.schema.yaml', 'type: object\nrequired: [title]\nx-record-file: README.md\n')
+    put('c/study/a/b/data.md', '---\n---\n')
+    const [e] = errors().filter((m) => m.startsWith('study/a/b/data.md:'))
+    assert.match(e ?? '', /b\/ has no README\.md/)
+    assert.match(e ?? '', /add study\/a\/b\/README\.md\./)
+    assert.doesNotMatch(e ?? '', /or set x-record-file/)
+  })
+
+  test('the hint suggests a record file in a format the corpus allows', () => {
+    root('c', { extra: 'formats: [json]\n' })
+    put('c/study/study.schema.json', '{"type":"object"}\n')
+    put('c/study/perf-run/notes.md', '---\n---\n')
+    const [e] = errors().filter((m) => m.startsWith('study/perf-run/notes.md:'))
+    assert.match(e ?? '', /perf-run\/ has no perf-run\.json/)
+  })
+
+  test('a failing .md record at the top of a type folder gets no hint', () => {
+    study()
+    put('c/study/c.md', '---\n---\n')
+    const e = errors().filter((m) => m.startsWith('study/c.md:'))
+    assert.ok(e.length > 0)
+    assert.ok(e.every((m) => !m.includes('\n')))
+  })
+})

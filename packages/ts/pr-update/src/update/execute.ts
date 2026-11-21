@@ -50,6 +50,7 @@ import {
 } from '@osdlc/typed-git'
 
 import { NothingDetectedError } from '../detect.ts'
+import { keepWorktree } from './kept.ts'
 import type {
   ConfirmPush,
   BranchLease,
@@ -197,6 +198,8 @@ export type UpdateOutcome =
        * out), so it is not recorded as a failed attempt and does not block a retry.
        */
       unrecorded?: true
+      /** Set when a verify verb failed: the verb, its exit status and its whole output. */
+      verifyLog?: string
     } & StrategyFallback)
 
 /**
@@ -205,6 +208,10 @@ export type UpdateOutcome =
  */
 export interface UpdateResult extends UpdateTarget {
   outcome: UpdateOutcome
+  /** Set when `keepFailed` moved this PR's worktree aside: its path. */
+  keptWorktree?: string
+  /** Set when `keepFailed` could not keep it: why. The outcome is unchanged. */
+  keepError?: string
 }
 
 /**
@@ -669,13 +676,18 @@ async function integrateAndPush(
   // A repair edits files with no undo, so a rehearsal never calls one.
   const repairFor = (kind: RepairKind): Repair | null => repairOf(settings, kind, opts.apply)
   const repaired: Repaired[] = [...rebaseRepaired]
-  const fail = (reason: string, unrecorded = false): UpdateOutcome => {
+  const fail = (reason: string, unrecorded = false, verifyLog?: string): UpdateOutcome => {
     git.try.mergeAbort()
     // A rebuild or repair can leave edits, intent-to-add entries and untracked
     // files, which the next PR's `add .` would otherwise pick up.
     git.try.resetHard('HEAD')
     git.clean({ directories: true, nested: true })
-    return unrecorded ? { status: 'failed', reason, unrecorded } : { status: 'failed', reason }
+    return {
+      status: 'failed',
+      reason,
+      ...(unrecorded ? { unrecorded } : {}),
+      ...(verifyLog === undefined ? {} : { verifyLog }),
+    }
   }
   const request = (kind: RepairKind, paths: readonly string[], reason: string): RepairRequest => ({
     kind,
@@ -750,14 +762,14 @@ async function integrateAndPush(
   const verifyFailure = runVerify(verbs, runVerb, opts.worktree)
   if (verifyFailure !== null) {
     const repair = repairFor('verify-failed')
-    if (repair === null) return fail(verifyFailure.summary)
+    if (repair === null) return fail(verifyFailure.summary, false, verifyFailure.log)
     const changed = git.try.diffNameOnly({ rangeArgs: [head, 'HEAD'] })
     const res = await tryRepair(
       git,
       repair,
       request('verify-failed', changed.ok ? changed.value : [], verifyFailure.detail),
     )
-    if (!res.ok) return fail(res.reason)
+    if (!res.ok) return fail(res.reason, false, verifyFailure.log)
     repaired.push({ kind: 'verify-failed', note: res.note })
     try {
       commitRepair(git, target, res.note)
@@ -765,7 +777,7 @@ async function integrateAndPush(
       return fail(`committing the repair: ${errorLine(e)}`)
     }
     const again = runVerify(verbs, runVerb, opts.worktree)
-    if (again !== null) return fail(`${again.summary} (after repair)`)
+    if (again !== null) return fail(`${again.summary} (after repair)`, false, again.log)
   }
 
   const built = git.resolveRef('HEAD')
@@ -904,7 +916,7 @@ function runVerify(
   verbs: readonly string[],
   runVerb: RunVerb,
   worktree: string,
-): { summary: string; detail: string } | null {
+): { summary: string; detail: string; log: string } | null {
   for (const verb of verbs) {
     const res = runVerb(verb, worktree)
     if (res.exitCode !== 0) {
@@ -914,6 +926,7 @@ function runVerify(
         summary: `verify \`${verb}\` failed: ${firstLine(stderr)}`,
         // The tail, where test runners print their summary.
         detail: `verify \`${verb}\` failed:\n${output.slice(-4000)}`,
+        log: `$ ${verb}\nexit status: ${res.exitCode}\n\n${output}\n`,
       }
     }
   }
@@ -1079,6 +1092,11 @@ export async function updateAll(
      * child back when the parent was not updated.
      */
     prepare?: (target: UpdateTarget, done: readonly UpdateResult[]) => UpdateTarget | null
+    /**
+     * Set to move the worktree of a PR that ended `conflict` or `failed` aside, under
+     * `checkout`, for a person to pick up (see `./kept.ts`). The run goes on in a fresh one.
+     */
+    keepFailed?: { checkout: string }
   },
 ): Promise<UpdateResult[]> {
   const results: UpdateResult[] = []
@@ -1117,7 +1135,27 @@ export async function updateAll(
         grant?.release()
       }
       const ran = 'strategyFallback' in outcome ? 'merge' : target.strategy
-      const result = { ...target, strategy: ran, outcome }
+      const result: UpdateResult = { ...target, strategy: ran, outcome }
+      if (
+        opts.keepFailed !== undefined &&
+        (outcome.status === 'conflict' || (outcome.status === 'failed' && !outcome.unrecorded))
+      ) {
+        try {
+          result.keptWorktree = keepWorktree(
+            git,
+            opts.keepFailed.checkout,
+            opts.worktreeRoot,
+            target,
+            outcome.status === 'failed' ? outcome.verifyLog : undefined,
+          ).path
+        } catch (e) {
+          result.keepError = errorLine(e)
+        }
+        if (!existsSync(opts.worktreeRoot)) {
+          git.try.worktreePrune()
+          git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
+        }
+      }
       results.push(result)
       // Reported as each PR finishes, not only at the end. A run over fifty
       // PRs takes minutes, and a caller showing progress needs each result.

@@ -453,6 +453,35 @@ Some hosts accept only `refs/heads` and `refs/tags` from a push (a ruleset or a 
 remote refuses these refs, and the run stops with an error that names the remote and this setting.
 Set `attempts.store: file` there. The file store is the default, so nothing changes until you opt in.
 
+## Keeping a failed PR's worktree
+
+A run that ends `conflict` or `failed` normally throws its worktree away, and a person who picks the
+PR up has to fetch, rebase, re-run the resolvers and re-run verify to get back where it stopped.
+`update --apply --keep-failed` (or `pr_update.keep_failed: true`; `--no-keep-failed` overrides it)
+moves that PR's worktree to `.pr-update/failed/<owner>-<name>-<number>/`, on a branch named
+`pr-update/failed-<owner>-<name>-<number>`, and the run goes on in a fresh one. The result carries
+`keptWorktree: <path>` and the text output says `kept: <path>`.
+
+```sh
+pr-update update --apply --keep-failed
+git worktree list                    # the kept tree is ordinary worktree state
+cd .pr-update/failed/acme-widgets-12  # finish the fix, then push it yourself
+```
+
+- The tree is the state the update ended in. A failed verify leaves the built merge or rebase result.
+  A conflict is aborted, which leaves the PR's own head.
+- A failed verify's log (the verb, its exit status and its output) is written to
+  `.pr-update-verify.log` in the tree, and the repository's `info/exclude` lists it, so it is never
+  committed by accident.
+- Only `--apply` runs keep anything. A failure that says nothing about the PR (see
+  `unrecorded`) is not kept, and neither is a PR whose worktree git cannot move (one holding
+  submodules); the result's `keepError` says why.
+- A later run lists a PR with a kept worktree under `skipped`, reason
+  `failed worktree kept at <path>`, while its head and base sha are unchanged. A PR that has moved
+  is attempted again and its old tree is discarded, as is a PR named by `--retry-failed`.
+- `update --apply --discard-kept` removes every kept worktree of the surveyed repositories, then
+  runs as usual. The output's `discarded` lists what was removed.
+
 ## Seeing a force-push before it happens
 
 `update --apply --confirm-push` stops before each rebase force-push. It prints
