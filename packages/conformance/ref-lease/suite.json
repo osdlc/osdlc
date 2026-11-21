@@ -1,7 +1,7 @@
 {
   "family": "ref-lease",
   "reference": "ts",
-  "referenceVersion": "0.3.3",
+  "referenceVersion": "0.3.4",
   "sections": {
     "push_outcome": {
       "description": "What a compare-and-swap push's per-ref result means. `input.flag` is git push --porcelain's status character for the ref; `input.rejection` is the reason kind read from git's reason text (null unless flag is `!`), as @osdlc/typed-git reads it: that reading is typed-git's and is tested there; `input.keepsSha` is true when the write expected the sha it pushes. `expect.outcome` is `ok`, `cas-failed` or `git-failed`.",
