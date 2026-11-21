@@ -1,7 +1,7 @@
 {
   "family": "markdown-contract",
   "reference": "ts",
-  "referenceVersion": "0.7.9",
+  "referenceVersion": "0.7.10",
   "sections": {
     "validate": {
       "description": "Compile a YAML contract (mcVersion 2) and validate one document against it, with the path fixture.md. A case gives the contract text and the document bytes as they are. expect.findings lists every finding in engine order as { id, level, line?, hint? }: line is the 1-based line of the finding position and is left out when the finding has none, and hint is left out when the finding has none.",
