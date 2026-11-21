@@ -277,6 +277,9 @@ describe('EditErrorCode', () => {
     MissingKey: true,
     KeyConflict: true,
     UnrenderableValue: true,
+    PathNotFound: true,
+    PathTypeMismatch: true,
+    UnsupportedPath: true,
     InvalidResult: true,
   }
 
@@ -301,5 +304,78 @@ describe('EditErrorCode', () => {
     // A variant missing from the wrapper's `variant_name` would reach JS under
     // the catch-all name `EditError` and be reported as `InvalidResult`.
     for (const v of variants) expect(wrapper).toContain(`EditError::${v} { .. } => "${v}"`)
+  })
+})
+
+describe('nested path edits', () => {
+  const source = enc('# top\nserver:\n  host: a   # the host\n  port: 80\nname: x\n')
+  const text = (edits: FieldEdit[], src = source) => bytesToString(editYaml(src, edits).bytes)
+  const codeOf = (edits: FieldEdit[], src = source) => {
+    try {
+      editYaml(src, edits)
+    } catch (err) {
+      expect(err).toBeInstanceOf(EditError)
+      return (err as EditError).code
+    }
+    throw new Error('expected a refusal')
+  }
+
+  test('SetPath changes a nested value and keeps every other byte', () => {
+    expect(text([{ SetPath: { path: ['server', 'port'], value: 8080 } }])).toBe(
+      '# top\nserver:\n  host: a   # the host\n  port: 8080\nname: x\n',
+    )
+  })
+
+  test('SetPath appends a missing nested key and creates missing collections only below an empty parent', () => {
+    expect(text([{ SetPath: { path: ['server', 'tls'], value: true } }])).toBe(
+      '# top\nserver:\n  host: a   # the host\n  port: 80\n  tls: true\nname: x\n',
+    )
+    expect(text([{ SetPath: { path: ['a', 'b'], value: 1 } }], enc('a:\n'))).toBe('a:\n  b: 1\n')
+  })
+
+  test('RemovePath removes a nested key, and an absent last key is a no-op', () => {
+    expect(text([{ RemovePath: { path: ['server', 'port'] } }])).toBe(
+      '# top\nserver:\n  host: a   # the host\nname: x\n',
+    )
+    const out = editYaml(source, [{ RemovePath: { path: ['server', 'nope'] } }])
+    expect(out.changed).toBe(false)
+    expect(equalBytes(out.bytes, source)).toBe(true)
+  })
+
+  test('RenamePath renames a nested key in place', () => {
+    expect(text([{ RenamePath: { path: ['server', 'host'], to: 'addr' } }])).toBe(
+      '# top\nserver:\n  addr: a   # the host\n  port: 80\nname: x\n',
+    )
+  })
+
+  test('a one-segment path is the top-level edit', () => {
+    expect(text([{ SetPath: { path: ['name'], value: 'y' } }])).toBe(
+      text([{ Set: { key: 'name', value: 'y' } }]),
+    )
+  })
+
+  test('the three path refusals carry their codes', () => {
+    expect(codeOf([{ RemovePath: { path: ['nope', 'x'] } }])).toBe('PathNotFound')
+    expect(codeOf([{ SetPath: { path: ['name', 'x'], value: 1 } }])).toBe('PathTypeMismatch')
+    expect(codeOf([{ SetPath: { path: [], value: 1 } }])).toBe('UnsupportedPath')
+    expect(codeOf([{ SetPath: { path: ['server', 0], value: 1 } }])).toBe('PathTypeMismatch')
+    expect(codeOf([{ SetPath: { path: ['l', 0], value: 1 } }], enc('l:\n  - a\n'))).toBe(
+      'UnsupportedPath',
+    )
+  })
+
+  test('a path segment that is not a string or a non-negative integer is InvalidEdit', () => {
+    for (const bad of [-1, 1.5, Number.NaN, Infinity, true, null, undefined, {}]) {
+      const edits = [{ RemovePath: { path: ['a', bad] } }] as unknown as FieldEdit[]
+      expect(codeOf(edits)).toBe('InvalidEdit')
+    }
+    expect(codeOf([{ RemovePath: { path: 'a' } }] as unknown as FieldEdit[])).toBe('InvalidEdit')
+    expect(codeOf([{ SetPath: null }] as unknown as FieldEdit[])).toBe('InvalidEdit')
+  })
+
+  test('a non-finite number in a SetPath value is UnrenderableValue', () => {
+    expect(codeOf([{ SetPath: { path: ['server', 'port'], value: Number.NaN } }])).toBe(
+      'UnrenderableValue',
+    )
   })
 })
