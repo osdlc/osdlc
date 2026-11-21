@@ -92,10 +92,29 @@ function fake(
   }
 }
 
-describe('report', () => {
+describe('phases', () => {
+  test('the bare command explains the phases and exits 2; nothing runs', () => {
+    const { env, cwd } = setup()
+    const plugin = fake()
+    const r = run([], cwd, env, { plugins: [plugin] })
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('Nothing ran. Name a phase')
+    expect(r.out).toBe('')
+    expect(run(['--help'], cwd, env).code).toBe(0)
+  })
+
+  test('a word that is no phase is refused with exit 2', () => {
+    const { env, cwd } = setup()
+    const r = run([cwd], cwd, env)
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('is not a phase')
+  })
+})
+
+describe('status', () => {
   test('the real git plugin lists the merged branch as delete and the unmerged one as review', () => {
     const { env } = setup()
-    const r = run([], repo(), env)
+    const r = run(['status'], repo(), env)
     expect(r.code).toBe(0)
     expect(r.out).toContain('plugins: git')
     expect(r.out).toMatch(/delete\s+branch:.*:merged-a/)
@@ -105,59 +124,74 @@ describe('report', () => {
 
   test('json carries the candidates and objections', () => {
     const { env, cwd } = setup()
-    const r = run(['--format', 'json'], cwd, env, { plugins: [fake()] })
+    const r = run(['status', '--format', 'json'], cwd, env, { plugins: [fake()] })
     const doc = JSON.parse(r.out)
     expect(doc.plugins).toEqual(['fake'])
     expect(doc.candidates.map((c: Candidate) => c.id)).toEqual(['artifact:fake'])
   })
 
-  test('a refused candidate is hidden unless --all', () => {
+  test('a refused candidate is hidden unless --all-rows', () => {
     const { env, cwd } = setup()
     const objections: Objection[] = [
       { by: 'fake', candidate: 'artifact:fake', level: 'refuse', code: 'busy', reason: 'in use' },
     ]
     const plugins = [fake('fake', { objections })]
-    expect(run([], cwd, env, { plugins }).out).not.toContain('artifact:fake')
-    expect(run(['--all'], cwd, env, { plugins }).out).toContain('refused artifact:fake')
+    expect(run(['status'], cwd, env, { plugins }).out).not.toContain('artifact:fake')
+    expect(run(['status', '--all-rows'], cwd, env, { plugins }).out).toContain(
+      'refused artifact:fake',
+    )
   })
 
   test('with nothing found it exits 10', () => {
     const { env, cwd } = setup()
-    expect(run([], cwd, env, { plugins: [{ name: 'empty', detect: () => true }] }).code).toBe(10)
+    expect(
+      run(['status'], cwd, env, { plugins: [{ name: 'empty', detect: () => true }] }).code,
+    ).toBe(10)
   })
 
   test('--plugin, its alias --adapter, and --skip-plugin choose among plugins', () => {
     const { env, cwd } = setup()
     const plugins = [fake('a'), fake('b')]
     const ids = (argv: string[]) =>
-      JSON.parse(run([...argv, '--format', 'json'], cwd, env, { plugins }).out).plugins
+      JSON.parse(run(['status', ...argv, '--format', 'json'], cwd, env, { plugins }).out).plugins
     expect(ids(['--plugin', 'a'])).toEqual(['a'])
     expect(ids(['--adapter', 'b'])).toEqual(['b'])
     expect(ids(['--skip-plugin', 'a'])).toEqual(['b'])
+  })
+
+  test('--worktrees and --branches narrow the git candidates, as in repo-cleaner', () => {
+    const { env } = setup()
+    const dir = repo()
+    const ids = (argv: string[]) =>
+      JSON.parse(run(['status', ...argv, '--format', 'json'], dir, env).out).candidates.map(
+        (c: Candidate) => c.kind,
+      )
+    expect(new Set(ids([]))).toEqual(new Set(['branch']))
+    expect(ids(['--worktrees'])).toEqual([])
+    expect(new Set(ids(['--branches']))).toEqual(new Set(['branch']))
   })
 
   test('targets come from the config file when none is named', () => {
     const { env, home } = setup()
     const config = join(home, 'c.json')
     writeFileSync(config, JSON.stringify({ targets: [repo()] }))
-    const r = run(['--config', config], tempDir(), env)
+    const r = run(['status', '--config', config], tempDir(), env)
     expect(r.out).toContain('merged-a')
   })
 
-  test('a bad config, an unknown plugin and a remote kind are refused with exit 2', () => {
+  test('a bad config and an unknown plugin are refused with exit 2', () => {
     const { env, home, cwd } = setup()
     const config = join(home, 'c.json')
     writeFileSync(config, '{"targets": 3}')
-    expect(run(['--config', config], cwd, env).code).toBe(2)
-    expect(run(['--plugin', 'nope'], cwd, env).code).toBe(2)
-    expect(run(['--skip-plugin', 'nope'], cwd, env).code).toBe(2)
-    expect(run(['--only', 'remote'], cwd, env).code).toBe(2)
+    expect(run(['status', '--config', config], cwd, env).code).toBe(2)
+    expect(run(['status', '--plugin', 'nope'], cwd, env).code).toBe(2)
+    expect(run(['status', '--skip-plugin', 'nope'], cwd, env).code).toBe(2)
     writeFileSync(config, JSON.stringify({ plugins: { cargo: { idleHours: 'soon' } } }))
-    const bad = run(['--config', config], cwd, env)
+    const bad = run(['status', '--config', config], cwd, env)
     expect(bad.code).toBe(2)
     expect(bad.err).toContain('plugins.cargo.idleHours')
     writeFileSync(config, JSON.stringify({ plugins: { ghost: {} } }))
-    const r = run(['--config', config], cwd, env)
+    const r = run(['status', '--config', config], cwd, env)
     expect(r.code).toBe(2)
     expect(r.err).toContain('ghost')
   })
@@ -204,7 +238,7 @@ describe('plan and clean', () => {
     const { env, cwd, home } = setup()
     const config = join(home, 'config.json')
     writeFileSync(config, JSON.stringify({ plugins: { git: { offline: true } } }))
-    const r = run(['--config', config], cwd, env)
+    const r = run(['status', '--config', config], cwd, env)
     expect(r.code).toBe(2)
     expect(r.err).toContain('plugins.git')
   })
@@ -298,6 +332,65 @@ describe('plan and clean', () => {
     expect(run(['clean', '--yes', '--dry-run'], cwd, env).code).toBe(2)
     expect(run(['clean', '--dry-run', '--receipt', f], cwd, env).code).toBe(2)
     expect(run(['clean', '--plan', f, '--pick', 'x'], cwd, env).code).toBe(2)
+    expect(run(['clean', '--plan', f, '--spare', 'x'], cwd, env).code).toBe(2)
+    expect(run(['clean', '--plan', f, '--worktrees'], cwd, env).code).toBe(2)
+    expect(run(['clean', '-i', '--pick', 'x'], cwd, env).code).toBe(2)
+    expect(run(['clean', '-i', '--plan', '-'], cwd, env).code).toBe(2)
+    const both = run(['clean', '--pick', 'a:x', '--spare', 'a:x', '--dry-run'], cwd, env, {
+      plugins: [fake()],
+    })
+    expect(both.code).toBe(2)
+    expect(both.err).toContain('a:x is both picked and spared')
+  })
+
+  test('--pick adds a candidate held for review to the default; --spare takes one away', () => {
+    const { env, cwd } = setup()
+    const held = fake('held', { candidate: { unattended: false } })
+    const plain = fake('plain')
+    const plugins = [held, plain]
+    const ran = (argv: string[]) =>
+      JSON.parse(
+        run(['clean', '--dry-run', '--format', 'json', ...argv], cwd, env, { plugins }).out,
+      ).run
+    expect(ran([])).toEqual(['artifact:plain'])
+    expect(ran(['--pick', 'artifact:held'])).toEqual(['artifact:plain', 'artifact:held'])
+    expect(ran(['--spare', 'artifact:plain'])).toEqual([])
+    expect(ran(['--spare', 'artifact:*', '--pick', 'artifact:held'])).toEqual([])
+  })
+
+  test('-i runs exactly the ticked candidates and asks for their protests by code', () => {
+    const { env, cwd } = setup()
+    const objections: Objection[] = [
+      { by: 'b', candidate: 'artifact:b', level: 'protest', code: 'lossy', reason: 'loses data' },
+    ]
+    const a = fake('a')
+    const b = fake('b', { objections })
+    const shown: string[] = []
+    const asked: string[] = []
+    const r = run(['clean', '-i', '--yes'], cwd, env, {
+      plugins: [a, b],
+      checklist: (_q, items) => {
+        shown.push(...items.map((i) => `${i.label} ${i.checked ? '[x]' : '[ ]'}`))
+        return [1]
+      },
+      confirm: (q) => {
+        asked.push(q)
+        return true
+      },
+    })
+    expect(r.code).toBe(0)
+    expect(shown).toEqual([
+      'artifact:a  delete: idle for a week [x]',
+      'artifact:b  review: idle for a week [ ]',
+    ])
+    expect(asked).toEqual(['artifact:b carries lossy (loses data): allow it?'])
+    expect(a.removed).toEqual([])
+    expect(b.removed).toEqual(['artifact:b'])
+  })
+
+  test('-i with no terminal is refused with exit 2', () => {
+    const { env, cwd } = setup()
+    expect(run(['clean', '-i'], cwd, env, { plugins: [fake()] }).code).toBe(2)
   })
 
   test('a plan that moved since is dropped as changed', () => {

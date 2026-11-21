@@ -28,7 +28,14 @@ export {
   type PlanRow,
 } from './plan.ts'
 export { DEFAULT_MAX_FILE_BYTES, type ArchiveOptions, type LeftOut } from './archive.ts'
-export { type Allow, type Approval, type ResolvedApproval, type Resolved } from './approval.ts'
+export {
+  isGlob,
+  type Allow,
+  type Approval,
+  type ResolvedApproval,
+  type Resolved,
+} from './approval.ts'
+export { globRegExp } from './util.ts'
 export {
   check,
   removeCandidate,

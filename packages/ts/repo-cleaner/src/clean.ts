@@ -189,6 +189,7 @@ function judgeRisks(
   const archived = (risk: Risk): boolean =>
     coverage?.covers.includes(risk) === true && isAllowed('discard-archived')
   const grants = (risk: Risk): boolean => isAllowed(risk) || archived(risk)
+  // A risk the archive covers is asked for as `discard-archived`.
   const asked = (risk: Risk): Risk => (coverage?.covers.includes(risk) ? 'discard-archived' : risk)
   return {
     needs: [...new Set(row.risks.map(asked))],
@@ -1003,7 +1004,7 @@ interface StepContext {
   git: Git
   probe: ProcessProbe
   removedHere: ReadonlySet<string>
-  /** A directory's size in bytes, null when it cannot be measured. */
+  /** A directory's size on disk, null when it could not be read. */
   measure: (path: string) => number | null
   /**
    * Worktrees whose lock this run cleared. typed-git has no `worktree lock`
@@ -1199,10 +1200,6 @@ function rowOfCandidate(c: CleanCandidate): Row {
  * and unsafe-force checks, the removal and its verification, stopping at the
  * first failure. The caller has already re-checked the candidate; this
  * refuses only what is unsafe now.
- *
- * A worktree whose removal needs `git worktree prune` is refused when the
- * prune would also drop another worktree of its repository, since this sees
- * only the one row.
  *
  * Does not throw for a refused or failed delete: see `CandidateRemoval`.
  */

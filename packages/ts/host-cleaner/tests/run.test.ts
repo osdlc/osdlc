@@ -5,7 +5,9 @@ import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
 import {
+  DEFAULT_SELECTION,
   FatalRun,
+  SelectionError,
   clean,
   decide,
   orderPlugins,
@@ -57,6 +59,9 @@ const withoutDelete = (p: Plugin): Plugin => {
   return copy
 }
 
+/** A selection of exactly `ids`. */
+const only = (ids: string[]) => ({ ...DEFAULT_SELECTION, select: ids })
+
 const objection = (candidate: string, level: Objection['level'], code: string): Objection => ({
   by: 'x',
   candidate,
@@ -65,7 +70,7 @@ const objection = (candidate: string, level: Objection['level'], code: string): 
   reason: `${code} reason`,
 })
 
-const run = (plugins: Plugin[], opts: { pick?: string[]; allow?: string[] } = {}) => {
+const run = (plugins: Plugin[], opts: { select?: string[]; allow?: string[] } = {}) => {
   const s = survey(plugins, ctx)
   return clean(plan(s, opts), plugins, { ...ctx, allow: opts.allow ?? [] })
 }
@@ -154,32 +159,39 @@ describe('objection levels', () => {
     objection('a:4', 'note', 'fyi'),
   ]
 
-  test('without a pick, only candidates with no refuse and no protest run; a note does not gate', () => {
-    const d = decide(cs, os, null, [])
+  test('by default, only candidates with no refuse and no protest run; a note does not gate', () => {
+    const d = decide(cs, os, DEFAULT_SELECTION, [])
     expect(d.run.map((c) => c.id)).toEqual(['a:1', 'a:4'])
     expect(d.dropped).toEqual([])
   })
 
-  test('without a pick, a candidate its owner marked unattended: false does not run; a pick still takes it', () => {
+  test('by default, a candidate its owner marked unattended: false does not run; a pick adds it', () => {
     const held = [cand('a:1', 'git', { unattended: false }), cand('a:2', 'git')]
-    expect(decide(held, [], null, []).run.map((c) => c.id)).toEqual(['a:2'])
-    expect(decide(held, [], ['a:1'], []).run.map((c) => c.id)).toEqual(['a:1'])
+    expect(decide(held, [], DEFAULT_SELECTION, []).run.map((c) => c.id)).toEqual(['a:2'])
+    expect(
+      decide(held, [], { ...DEFAULT_SELECTION, pick: ['a:1'] }, []).run.map((c) => c.id),
+    ).toEqual(['a:2', 'a:1'])
+    expect(decide(held, [], only(['a:1']), []).run.map((c) => c.id)).toEqual(['a:1'])
   })
 
-  test('without a pick, a protest that is granted does not keep a candidate out', () => {
-    expect(decide(cs, os, null, ['lossy']).run.map((c) => c.id)).toEqual(['a:1', 'a:3', 'a:4'])
+  test('by default, a protest that is granted does not keep a candidate out', () => {
+    expect(decide(cs, os, DEFAULT_SELECTION, ['lossy']).run.map((c) => c.id)).toEqual([
+      'a:1',
+      'a:3',
+      'a:4',
+    ])
   })
 
-  test('a pick of a refused candidate is blocked whatever is allowed', () => {
-    const d = decide(cs, os, ['a:2'], ['live', 'lossy'])
+  test('a selected refused candidate is blocked whatever is allowed', () => {
+    const d = decide(cs, os, only(['a:2']), ['live', 'lossy'])
     expect(d.dropped).toEqual([{ id: 'a:2', reason: 'blocked', detail: 'x: live reason' }])
   })
 
   test('a protest needs its code allowed', () => {
-    expect(decide(cs, os, ['a:3'], []).dropped).toEqual([
+    expect(decide(cs, os, only(['a:3']), []).dropped).toEqual([
       { id: 'a:3', reason: 'not-allowed', detail: 'needs --allow lossy' },
     ])
-    expect(decide(cs, os, ['a:3'], ['lossy']).run.map((c) => c.id)).toEqual(['a:3'])
+    expect(decide(cs, os, only(['a:3']), ['lossy']).run.map((c) => c.id)).toEqual(['a:3'])
   })
 
   test('a plugin cannot object under another name, or to a candidate nobody proposed', () => {
@@ -208,6 +220,70 @@ describe('objection levels', () => {
   })
 })
 
+describe('pick, select and spare', () => {
+  const branch = cand('branch:/r:feat/x', 'git', { path: '/r:feat/x', name: 'feat/x' })
+  const tree = cand('worktree:/w/x', 'git', { path: '/w/x', name: 'feat/x' })
+  const other = cand('artifact:/r/target', 'cargo', { path: '/r/target' })
+  const cs = [branch, tree, other]
+  const ran = (sel: Partial<typeof DEFAULT_SELECTION>) =>
+    decide(cs, [], { ...DEFAULT_SELECTION, ...sel }, [])
+
+  test('a pick adds to the default; a selection replaces it', () => {
+    const held = [...cs, cand('session:9', 'claude-code', { unattended: false })]
+    const pick = decide(held, [], { ...DEFAULT_SELECTION, pick: ['session:9'] }, [])
+    expect(pick.run.map((c) => c.id)).toEqual([...cs.map((c) => c.id), 'session:9'])
+    const select = decide(held, [], { ...DEFAULT_SELECTION, select: ['session:9'] }, [])
+    expect(select.run.map((c) => c.id)).toEqual(['session:9'])
+  })
+
+  test('a name spares every candidate of that name, a branch and the worktree that has it', () => {
+    const d = ran({ spare: ['feat/x'] })
+    expect(d.run.map((c) => c.id)).toEqual(['artifact:/r/target'])
+    expect(d.dropped).toEqual([
+      { id: 'branch:/r:feat/x', reason: 'spared', detail: '--spare feat/x' },
+      { id: 'worktree:/w/x', reason: 'spared', detail: '--spare feat/x' },
+    ])
+  })
+
+  test('an id or a path spares that candidate; a glob matches ids, paths and names', () => {
+    expect(ran({ spare: ['worktree:/w/x'] }).run.map((c) => c.id)).toEqual([
+      'branch:/r:feat/x',
+      'artifact:/r/target',
+    ])
+    expect(ran({ spare: ['/r/target'] }).run.map((c) => c.id)).toEqual([
+      'branch:/r:feat/x',
+      'worktree:/w/x',
+    ])
+    expect(ran({ spare: ['feat/*'] }).run.map((c) => c.id)).toEqual(['artifact:/r/target'])
+    expect(ran({ spare: ['/r/**'] }).run.map((c) => c.id)).toEqual([
+      'branch:/r:feat/x',
+      'worktree:/w/x',
+    ])
+    expect(ran({ spare: ['nothing-*'] }).dropped).toEqual([])
+  })
+
+  test('a spare wins over a pick of something it matches', () => {
+    const d = ran({ pick: ['worktree:/w/x'], spare: ['feat/*'] })
+    expect(d.run.map((c) => c.id)).toEqual(['artifact:/r/target'])
+  })
+
+  test('a plan refuses an id both picked and spared', () => {
+    const s = { candidates: cs, objections: [], warnings: [] }
+    expect(() => plan(s, { pick: ['worktree:/w/x'], spare: ['worktree:/w/x'] })).toThrow(
+      new SelectionError('worktree:/w/x is both picked and spared'),
+    )
+  })
+
+  test('a dependent of a spared candidate is blocked', () => {
+    const dependent = cand('branch:/r:y', 'git', { requires: ['worktree:/w/x'] })
+    const d = decide([...cs, dependent], [], { ...DEFAULT_SELECTION, spare: ['/w/x'] }, [])
+    expect(d.dropped.map((x) => [x.id, x.reason])).toEqual([
+      ['worktree:/w/x', 'spared'],
+      ['branch:/r:y', 'blocked'],
+    ])
+  })
+})
+
 describe('requires', () => {
   const tree = cand('worktree:/w', 'git')
   const branch = cand('branch:b', 'git', { requires: ['worktree:/w'] })
@@ -224,7 +300,7 @@ describe('requires', () => {
     const d = decide(
       [tree, branch, leaf],
       [objection('worktree:/w', 'refuse', 'live')],
-      ['branch:b', 'leaf:l'],
+      only(['branch:b', 'leaf:l']),
       [],
     )
     expect(d.run).toEqual([])
@@ -234,8 +310,8 @@ describe('requires', () => {
     ])
   })
 
-  test('a dependent whose requirement is not picked is blocked', () => {
-    const d = decide([tree, branch], [], ['branch:b'], [])
+  test('a dependent whose requirement is not selected is blocked', () => {
+    const d = decide([tree, branch], [], only(['branch:b']), [])
     expect(d.dropped).toEqual([
       { id: 'branch:b', reason: 'blocked', detail: 'requires worktree:/w, which does not run' },
     ])
@@ -245,7 +321,7 @@ describe('requires', () => {
     const a = cand('a:a', 'git', { requires: ['a:b'] })
     const b = cand('a:b', 'git', { requires: ['a:a'] })
     const c = cand('a:c', 'git', { requires: ['a:a'] })
-    const d = decide([a, b, c, cand('a:d', 'git')], [], null, [])
+    const d = decide([a, b, c, cand('a:d', 'git')], [], DEFAULT_SELECTION, [])
     expect(d.run.map((x) => x.id)).toEqual(['a:d'])
     expect(d.dropped.map((x) => x.id).sort()).toEqual(['a:a', 'a:b', 'a:c'])
   })
@@ -271,7 +347,7 @@ describe('requires', () => {
 })
 
 describe('re-check', () => {
-  const planWith = (plugin: Plugin, opts: { pick?: string[]; allow?: string[] } = {}) =>
+  const planWith = (plugin: Plugin, opts: { select?: string[]; allow?: string[] } = {}) =>
     plan(survey([plugin], ctx), opts)
   const mutable = (items: Candidate[], objections: () => Objection[] = () => []): Plugin => ({
     name: 'git',

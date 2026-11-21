@@ -35,8 +35,12 @@ export const PlanSchema = z
     createdAt: z.string(),
     /** The targets the plan was swept over, so `clean --plan` checks the same place. */
     targets: z.array(z.string()),
-    /** The candidates the person picked by id; null means every one `decide` takes without a pick. */
-    pick: z.array(z.string()).nullable(),
+    /** Exactly these candidate ids; null means the default: every one nothing objects to and no owner holds for review. */
+    select: z.array(z.string()).nullable(),
+    /** Candidate ids run as well as the default or the selection. */
+    pick: z.array(z.string()),
+    /** Ids, paths, names or globs left alone. */
+    spare: z.array(z.string()),
     /** The protest codes granted by name. */
     allow: z.array(z.string()),
     warnings: z.array(z.string()),

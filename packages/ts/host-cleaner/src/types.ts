@@ -20,8 +20,10 @@ export interface Candidate {
   evidence: Record<string, unknown>
   /** Candidate ids that must be deleted before this one; if one is refused or dropped, so is this. */
   requires?: string[] | undefined
+  /** The name a person knows it by, which `spare` matches: a branch's name, the branch a worktree has checked out. */
+  name?: string | undefined
   /**
-   * False when the owner wants a person to choose it: a run with no pick skips it.
+   * False when the owner wants a person to choose it: only a pick or a selection runs it.
    * True or absent: unattended runs may take it, if nothing objects.
    */
   unattended?: boolean | undefined
@@ -73,6 +75,6 @@ export class FatalRun extends Error {
 }
 
 /** Why a candidate does not run. */
-export const DROP_REASONS = ['gone', 'blocked', 'not-allowed', 'changed'] as const
+export const DROP_REASONS = ['gone', 'blocked', 'not-allowed', 'changed', 'spared'] as const
 
 export type DropReason = (typeof DROP_REASONS)[number]
