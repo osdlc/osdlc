@@ -169,6 +169,7 @@ Developed here, in this repository:
   can hold one lock file in turn)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
+- `packages/rust/system-model` (`system-model` on crates.io, the Rust twin of `@osdlc/system-model`)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
 - `packages/rust/tradecraft` (`tradecraft` on crates.io, the CLI's old
   name. It only points to `skillwright`.)
