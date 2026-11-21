@@ -8,8 +8,8 @@ answer it: a new terminal tab, a tmux session, a WezTerm pane, a VS Code
 terminal. Each of those places has its own CLI or protocol, its own way to
 name a pane, and its own failure modes. This package gives them one contract.
 
-- A **host** is one place a session can open. Nine are built in: `terminal`,
-  `tmux`, `wezterm`, `cmux`, `herdr`, `orca`, `otty`, `vscode` and `jetbrains`.
+- A **host** is one place a session can open. Ten are built in: `terminal`,
+  `tmux`, `wezterm`, `cmux`, `herdr`, `orca`, `otty`, `vscode`, `jetbrains` and `window`.
 - A **harness** is the agent CLI that runs in it: `claude`, `codex`, `cursor`,
   `pi` and `opencode` have an interactive launch.
 - The two are independent. Every host runs any harness, so where a session
@@ -93,12 +93,13 @@ Why the package has the shape it has, and the research on each host app, are in
 | `terminal` | all | nothing; runs in the caller's own terminal and blocks until the session exits | none |
 | `tmux` | macOS, Linux | `tmux` on `PATH` | send, find, focus, capture, close; can wait for the session to exit |
 | `wezterm` | all | `wezterm` on `PATH` and a running WezTerm | send, find, focus, capture, close |
-| `cmux` | macOS | the cmux app and its CLI | send, find, focus, capture, close |
+| `cmux` | macOS | the cmux app and its CLI (`makeCmuxHost({ binary })` names it; a `sessionId` is bound through the workspace description) | send, find, focus, capture, close |
 | `herdr` | macOS, Linux | `herdr` on `PATH` | send, find, focus, capture, close |
 | `orca` | macOS | the Orca app (its bundled CLI is found) | send, find, focus, close |
 | `otty` | macOS | the otty app and its CLI | send, find, focus, capture, close |
 | `vscode` | all | a VS Code, Cursor or Windsurf window with the `sdlc-host` extension | send, find, focus, close |
 | `jetbrains` | macOS | a JetBrains IDE with the companion plugin, and `curl` | send, find, focus, open workspace |
+| `window` | macOS | Terminal.app, or an opener you supply for another app | none; opens a new window and returns |
 
 `host.platforms` and `supportsPlatform(host)` say where a host runs;
 `available()` says whether it can open a session right now.
@@ -131,6 +132,16 @@ whether `binary` is on PATH. `claudeSessionArgv` and `claudeHookSettings` build
 the Claude Code flags a session can carry (plugins, a system prompt, hook
 settings). `findCodexSessionId` finds the id of a codex session from its
 rollout file.
+
+### Environment variables
+
+`SessionRequest.env` sets variables on the harness process, and
+`CommandRequest.env` sets them on a plain command, such as a workspace shell
+whose later agents inherit them. Every host applies `env` with `withEnv`
+(`commandArgv(req)` is `req.argv` under `req.env`); an `undefined` value unsets
+the variable. `withEnv` builds `env K=V cmd`, which cannot run a shell function
+or alias. For a line typed into an interactive shell, use `envPrefixLine(argv, env)`,
+which builds the plain POSIX prefix `K=V cmd`.
 
 ## Compared with other tools
 

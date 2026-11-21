@@ -242,7 +242,12 @@ describe("README: authentication is gh's", () => {
     f.gh.prList()
     await f.agh.prList()
     for (const call of f.seen) {
-      expect(Object.keys(call.opts)).toEqual(['cwd'])
+      expect(Object.keys(call.opts).sort()).toEqual(['cwd', 'env'])
+      expect(Object.keys(call.opts.env ?? {}).sort()).toEqual([
+        'CLICOLOR_FORCE',
+        'GH_FORCE_TTY',
+        'NO_COLOR',
+      ])
       expect(call.argv.join(' ')).not.toMatch(/token|GITHUB_TOKEN|Authorization/i)
     }
   })
