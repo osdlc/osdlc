@@ -36,7 +36,14 @@ import {
   type AutoReport,
 } from './auto.ts'
 import { expandHome, ignorePaths } from './ignore.ts'
-import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
+import {
+  ConfigError,
+  applyProfile,
+  configFile,
+  hostDirs,
+  readConfig,
+  type Config,
+} from './config.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { FACTORIES, UnknownPlugin, selectPlugins } from './registry.ts'
 import { PLUGIN_SETTINGS, disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
@@ -90,6 +97,11 @@ const SWEEP_FLAGS = {
     kind: 'string',
     valueName: 'file',
     help: 'read this config file instead of the one in the config directory',
+  },
+  profile: {
+    kind: 'string',
+    valueName: 'name',
+    help: 'apply this profile of the config file over the rest of it',
   },
   ignore: {
     kind: 'list',
@@ -181,6 +193,7 @@ const configCli = () =>
     autoHelp: false,
     flags: {
       config: SWEEP_FLAGS.config,
+      profile: SWEEP_FLAGS.profile,
       format: {
         kind: 'enum',
         choices: ['text', 'json'] as const,
@@ -395,10 +408,16 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
-const loadConfig = (v: { config?: string | undefined }, ctx: CliContext): Config =>
-  v.config === undefined
-    ? readConfig(configFile(hostDirs(ctx.env)))
-    : readConfig(resolve(ctx.cwd, v.config), { required: true })
+const loadConfig = (
+  v: { config?: string | undefined; profile?: string | undefined },
+  ctx: CliContext,
+): Config => {
+  const config =
+    v.config === undefined
+      ? readConfig(configFile(hostDirs(ctx.env)))
+      : readConfig(resolve(ctx.cwd, v.config), { required: true })
+  return v.profile === undefined ? config : applyProfile(config, v.profile)
+}
 
 /** `--plugin` and its alias `--adapter`, as one list; undefined when neither is given. */
 const wanted = (v: SweepValues): string[] | undefined =>
@@ -543,6 +562,7 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
     }
     const list = (xs: readonly string[]): string => (xs.length > 0 ? xs.join(', ') : '(none)')
     const lines = [
+      ...(v.profile === undefined ? [] : [`profile: ${v.profile}`]),
       `targets: ${list(config.targets)}`,
       `ignore: ${list(config.ignore)}`,
       `idleHours: ${config.idleHours ?? '(not set)'}`,
@@ -759,11 +779,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
         cwd: ctx.cwd,
         targets: plan.targets,
         allow: plan.allow,
-        ignore: ignorePaths(
-          [...loadConfig(v, ctx).ignore, ...v.ignore],
-          ctx.cwd,
-          ctx.env.HOME ?? homedir(),
-        ),
+        ignore: ignorePaths([...config.ignore, ...v.ignore], ctx.cwd, ctx.env.HOME ?? homedir()),
       }
       const checked = recheck(plan, plugins, cctx)
       writeWarnings(ctx, name, checked.survey.warnings)

@@ -39,14 +39,14 @@ const schemaOf = (name: string): z.ZodType | undefined =>
     ? (PLUGIN_SETTINGS as Record<string, z.ZodType>)[name]
     : undefined
 
-/** One line per problem in `plugins`, each starting `plugins.<name>[.<key>]`. */
-export function settingsIssues(plugins: Entries): string[] {
+/** One line per problem in `plugins`, each starting `<prefix>.<name>[.<key>]`. */
+export function settingsIssues(plugins: Entries, prefix = 'plugins'): string[] {
   return Object.entries(plugins).flatMap(([name, raw]) => {
     const schema = schemaOf(name)
     if (schema === undefined) return []
     const result = validateStandard(schema, raw)
     if (result.ok) return []
-    return result.issues.map((i) => `${['plugins', name, ...i.path].join('.')}: ${i.message}`)
+    return result.issues.map((i) => `${[prefix, name, ...i.path].join('.')}: ${i.message}`)
   })
 }
 
