@@ -1,5 +1,11 @@
 # @osdlc/yaml-splice
 
+## 0.4.0
+
+### Minor Changes
+
+- 0e47e68: Nested edits through block mappings: `FieldEdit` gains `SetPath`, `RemovePath` and `RenamePath`, each addressing a field by a `path` of keys (and, for later releases, sequence indices). New `EditErrorCode`s `PathNotFound`, `PathTypeMismatch` and `UnsupportedPath`. A path across a sequence or a flow collection is refused as `UnsupportedPath` for now.
+
 ## 0.3.1
 
 ### Patch Changes

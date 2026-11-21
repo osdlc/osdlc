@@ -74,6 +74,14 @@ impl Mapping {
         self.entries.iter().find(|(k, _)| k == key).map(|(_, v)| v)
     }
 
+    /// The value at `key`, compared exactly, for in-place edits.
+    pub(crate) fn get_mut(&mut self, key: &str) -> Option<&mut Value> {
+        self.entries
+            .iter_mut()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v)
+    }
+
     /// Whether `key` is present, compared exactly.
     pub fn contains_key(&self, key: &str) -> bool {
         self.entries.iter().any(|(k, _)| k == key)
