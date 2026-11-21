@@ -61,6 +61,7 @@ import {
   type DiffNameStatusOptions,
   type DiffTextOptions,
   type DiffTreeOptions,
+  type FetchManyOptions,
   type FetchOptions,
   type ForEachRefOptions,
   type GcOptions,
@@ -200,6 +201,7 @@ export type GitRequest =
       remote: string
       refspec?: string | string[] | undefined
     } & FetchOptions)
+  | ({ kind: 'fetchMany'; remotes: readonly string[] } & FetchManyOptions)
   | ({ kind: 'add'; paths: string[] } & AddOptions)
   | ({ kind: 'commit' } & CommitOptions)
   | ({ kind: 'configSet'; key: string; value: string } & ConfigSetOptions)
@@ -294,6 +296,7 @@ export interface GitResults {
   diffText: string
   diffAddedFile: string
   fetch: void
+  fetchMany: void
   add: void
   commit: void
   configSet: void
@@ -463,6 +466,8 @@ function toVerb(request: Exclude<GitRequest, { kind: 'rawBytes' }>): GitVerb<unk
       return v.diffAddedFile(request.relPath)
     case 'fetch':
       return v.fetch(request.remote, request.refspec, request)
+    case 'fetchMany':
+      return v.fetchMany(request.remotes, request)
     case 'add':
       return v.add(request.paths, request)
     case 'commit':

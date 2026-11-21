@@ -1,5 +1,13 @@
 # @osdlc/package-checks
 
+## 0.2.1
+
+### Patch Changes
+
+- 72ef5b8: `stage` runs `pnpm install` when `node_modules` is missing at the root or in the package and builds the package and its workspace dependencies before the placeholder publish, so a fresh clone stages in one command. A failure names the step that failed.
+- Updated dependencies [6d37030]
+  - @osdlc/command-seam@0.15.1
+
 ## 0.2.0
 
 ### Minor Changes

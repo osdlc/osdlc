@@ -15,6 +15,7 @@
 import { realpathSync } from 'node:fs'
 
 import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
+import { sameProcess } from '@osdlc/file-lock'
 import { nodeGuard } from '@osdlc/path-guard/node'
 
 /** A process whose working directory is inside a directory. */
@@ -34,9 +35,9 @@ export interface ProcessHolder {
 export interface ProcessProbe {
   /**
    * Whether `pid` is running. With `startedAt`, the process counts only if it
-   * also started at that time: a pid reused by a newer process is not the
-   * owner. `startedAt` is the text the lock gave; a probe that cannot read it
-   * as a time must answer "alive" (the owner cannot be ruled out).
+   * is the one that started then: a pid reused by a process that started
+   * later is not the owner. `startedAt` is the text the lock gave; a probe
+   * that cannot read it must answer "alive" (the owner cannot be ruled out).
    */
   alive(pid: number, startedAt?: string): boolean
   /**
@@ -94,31 +95,17 @@ export function busyHolders(holders: readonly ProcessHolder[]): ProcessHolder[] 
   return holders.filter((h) => !isIdleHolder(h))
 }
 
-/** Allowed difference between a lock's start time and the process's, in ms. */
-const START_TOLERANCE_MS = 2000
-
-// A zone is required: without one Date.parse reads local time, and a writer that
-// emitted UTC with no `Z` would shift the start time by hours and make a live owner
-// look like a reused pid.
-const ISO_WITH_TIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/
 /** `ps -o lstart`: `Sat Oct 25 18:22:19 2026`, the day space-padded on Linux. */
 const PS_LSTART =
   /^[A-Z][a-z]{2}\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})\s+(\d{4})$/
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /**
- * Epoch milliseconds of a start time, or NaN when the text is not precise to
- * the second. Accepted: a full ISO-8601 timestamp with a time of day, epoch
- * seconds (9-10 digits), epoch milliseconds (12-13 digits), or the `lstart`
- * form, read as UTC: the zone the default probe runs `ps` under (see `PS_ENV`).
- * A date alone, a short digit string or a partial date such as `Oct 25` is NaN, so the owner is treated as alive: the comparison would otherwise
- * call a live owner dead.
+ * Epoch milliseconds of what `ps -o lstart` printed, read as UTC (the zone the
+ * default probe runs `ps` under, see `PS_ENV`), or NaN for any other text.
  */
 export function startMs(text: string): number {
   const trimmed = text.trim()
-  if (/^\d{9,10}$/.test(trimmed)) return Number(trimmed) * 1000
-  if (/^\d{12,13}$/.test(trimmed)) return Number(trimmed)
-  if (ISO_WITH_TIME.test(trimmed)) return Date.parse(trimmed)
   const l = PS_LSTART.exec(trimmed)
   if (l !== null) {
     const month = MONTHS.indexOf(l[1] ?? '')
@@ -164,27 +151,13 @@ export interface DefaultProbeOptions {
    * tell" when it is, since a fake `ps` has its own idea of the pids.
    */
   pidExists?: ((pid: number) => boolean | undefined) | undefined
-}
-
-const QUARTER_HOUR_MS = 900_000
-// Real UTC offsets run -12 h to +14 h. Keep in step with `inSomeTimeZone` in
-// packages/ts/file-lock/src/process-start.ts, which this mirrors.
-const MIN_ZONE_OFFSET_MS = -12 * 3_600_000
-const MAX_ZONE_OFFSET_MS = 14 * 3_600_000
-
-/**
- * Whether zoneless text read as UTC (`utcMs`) is the instant `actual` in some
- * time zone: they differ by a whole number of quarter hours, from -12 h to +14 h, give
- * or take the tolerance.
- */
-function inSomeTimeZone(utcMs: number, actual: number): boolean {
-  const diff = utcMs - actual
-  const offset = Math.round(diff / QUARTER_HOUR_MS) * QUARTER_HOUR_MS
-  return (
-    offset >= MIN_ZONE_OFFSET_MS &&
-    offset <= MAX_ZONE_OFFSET_MS &&
-    Math.abs(diff - offset) <= START_TOLERANCE_MS
-  )
+  /**
+   * The platform whose process identities are read: on Linux a recorded
+   * boot-id identity is checked against /proc. Defaults to `process.platform`,
+   * or to a non-Linux one when `ps` is injected, since a fake `ps` has its own
+   * pids.
+   */
+  platform?: NodeJS.Platform | undefined
 }
 
 /** `process.kill(pid, 0)`: ESRCH is gone, EPERM is alive, anything else is unknown. */
@@ -226,6 +199,8 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
   const lsof = opts.lsof ?? spawnRunner('lsof')
   const timeoutMs = opts.timeoutMs ?? 60_000
   const pidExists = opts.pidExists ?? (opts.ps === undefined ? killProbe : () => undefined)
+  // A fake `ps` answers for its own pids, which /proc knows nothing of.
+  const platform = opts.platform ?? (opts.ps === undefined ? process.platform : 'darwin')
   let table: Array<ProcessHolder & { cwd: string }> | null = null
 
   return {
@@ -240,13 +215,17 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
       if (r.exitCode === 1 && started === '' && r.stderr.trim() === '') return false
       if (r.exitCode !== 0 || started === '') return true
       if (startedAt === undefined) return true
-      const claimed = startMs(startedAt)
+      // `@osdlc/file-lock` reads every form a lock records: its own process
+      // identity (Linux boot id and start ticks, checked against /proc), an
+      // instant (ISO time, epoch seconds or ms, `start:<ms>`), or `lstart`
+      // text in any zone. Only a process that started later is another one,
+      // so a writer that recorded when it took the lock keeps it.
       const actual = startMs(started)
-      if (Number.isNaN(claimed) || Number.isNaN(actual)) return true
-      // A writer may have recorded `lstart` text in its own zone, which is not
-      // known: it matches when it is the real start in some zone.
-      if (PS_LSTART.test(startedAt.trim())) return inSomeTimeZone(claimed, actual)
-      return Math.abs(claimed - actual) <= START_TOLERANCE_MS
+      return sameProcess(pid, startedAt, {
+        alive: () => true,
+        startedAt: () => (Number.isNaN(actual) ? null : actual),
+        platform,
+      })
     },
 
     holders(path, holdersOpts) {
