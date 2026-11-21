@@ -780,7 +780,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
         targets: plan.targets,
         allow: plan.allow,
         ignore: ignorePaths(
-          [...loadConfig(v, ctx).ignore, ...v.ignore],
+          [...config.ignore, ...v.ignore],
           ctx.cwd,
           ctx.env.HOME ?? homedir(),
         ),

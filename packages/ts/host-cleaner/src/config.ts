@@ -97,7 +97,7 @@ export function readConfig(path: string, opts: { required?: boolean } = {}): Con
  * @throws ConfigError when no profile has that name
  */
 export function applyProfile(config: Config, name: string): Config {
-  const profile = config.profiles[name]
+  const profile = Object.hasOwn(config.profiles, name) ? config.profiles[name] : undefined
   if (profile === undefined) {
     const have = Object.keys(config.profiles)
     throw new ConfigError(
