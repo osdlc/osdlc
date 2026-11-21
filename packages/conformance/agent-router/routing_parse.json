@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.4",
+  "referenceVersion": "0.4.5",
   "sections": {
     "routing_parse": {
       "description": "parseRouting: rules with trimmed values, an optional vocabulary, and typed errors by rule index; the zod text of a shape error is not mirrored",
