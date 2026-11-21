@@ -385,7 +385,7 @@ fn walk_seq(
     let Some(items) = parse::seq_items(cx.events, cx.src, seq_idx, hard_stop) else {
         return Err(unsupported(
             cx,
-            "a sequence item with no value is not edited",
+            "a sequence with an empty, anchored or tagged item is not edited",
         ));
     };
     let last = depth + 1 == cx.path.len();
@@ -520,12 +520,13 @@ fn item_text(cx: &Cx<'_>, dash_col: usize, value: &Value) -> Result<String, Edit
     // Every line after the first sits two columns in from the `-`: the
     // content of a block scalar, or the next key of a compact collection.
     let pad = dash_col + 2;
-    let mut out = String::new();
+    let pad = " ".repeat(pad);
+    let mut out = String::with_capacity(rendered.len() + pad.len());
     for (n, line) in rendered.split('\n').enumerate() {
         if n > 0 {
             out.push('\n');
             if !line.is_empty() {
-                out.push_str(&" ".repeat(pad));
+                out.push_str(&pad);
             }
         }
         out.push_str(line);
@@ -649,12 +650,17 @@ fn insert_line(
     vec![(p..p, text)]
 }
 
+/// Whether anything but blanks precedes `pos` on its line.
+fn shares_line(src: &str, pos: usize) -> bool {
+    !src[line_start(src, pos)..pos].trim().is_empty()
+}
+
 fn is_blank_line(src: &str, pos: usize) -> bool {
     pos < src.len() && src[pos..line_end_after(src, pos)].trim().is_empty()
 }
 
-/// Whether the last scalar of the value that starts at event `value_idx` is a block scalar with the
-/// keep (`+`) chomping indicator.
+/// Whether the last scalar of the value that starts at event `value_idx` is a
+/// block scalar with the keep (`+`) chomping indicator.
 fn keeps_trailing_blanks(cx: &Cx<'_>, value_idx: usize) -> bool {
     let end = parse::skip_node(cx.events, value_idx);
     let Some(ev) = cx.events[value_idx..end]
@@ -705,10 +711,7 @@ fn remove(
     let only = entries.len() == 1 && m.len() == 1;
     // The first key of a `- key:` item shares its line with the `-`, so the
     // line cannot go.
-    if !cx.src[line_start(cx.src, key_start)..key_start]
-        .trim()
-        .is_empty()
-    {
+    if shares_line(cx.src, key_start) {
         if only {
             return Ok(vec![(key_start..after, "{}".to_string())]);
         }
@@ -775,10 +778,7 @@ fn remove_item(
     parent: Parent<'_>,
 ) -> Result<Edits, EditError> {
     let item = &items[i];
-    if !cx.src[line_start(cx.src, item.dash)..item.dash]
-        .trim()
-        .is_empty()
-    {
+    if shares_line(cx.src, item.dash) {
         return Err(unsupported(
             cx,
             "an item that shares its line with another `-`",
