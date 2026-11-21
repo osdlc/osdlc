@@ -52,10 +52,15 @@ pnpm run format:check
   `tests/core/grammar.test.ts` for `src/core/grammar.ts`). The fixture-driven
   suites sit at the top of `tests/`. See
   [tests/FIXTURES.md](./tests/FIXTURES.md).
-- `corpus/` is the shared validation corpus: documents, YAML contracts and
-  expected findings in plain files. See [corpus/README.md](./corpus/README.md).
-  A change to the engine's findings updates the corpus in the same pull
-  request.
+- The shared validation corpus (documents, YAML contracts and expected
+  findings) is `packages/conformance/markdown-contract/suite.json`, run by this
+  package's `tests/conformance.test.ts` and by the Rust crate's
+  `tests/conformance.rs`. This package is the family's reference. A change to
+  the engine's findings is regenerated in the same pull request: run
+  `pnpm run build` and `pnpm run conformance:write`. See
+  [S-conformance-suites](../../../docs/planning/standards/S-conformance-suites.md).
+  Fixtures that need code (custom rules) are TypeScript-only: their files are
+  in `tests/fixtures/ts-only/`.
 
 ## Code style
 

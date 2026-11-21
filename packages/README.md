@@ -98,14 +98,9 @@ the standard.
   with expected values written by the reference implementation's generator.
   `pnpm run check:conformance` checks the suites with `@osdlc/conformance-suites`;
   `packages/conformance/config.json` holds its exemptions. `tiered-dirs`,
-  `config-layers`, `corpus-schema`, `etag-write`, `file-lock`,
-  `frontmatter-lossless`, `intersect`, `markdown-link`, `markdown-tags` and
-  `path-guard` are there. Until they move, `gfm-pipe-table` (the Rust
-  implementation of `@osdlc/gfm-table`) keeps
-  `packages/rust/gfm-pipe-table/tests/fixtures/parity.json`, and
-  `markdown-contract` runs the TypeScript package's `corpus/` directly.
-  The `agent-router` crate reads the TypeScript package's `fixtures/` and its
-  catalogue snapshot.
+  `agent-router`, `config-layers`, `corpus-schema`, `etag-write`, `file-lock`,
+  `frontmatter-lossless`, `gfm-table`, `intersect`, `markdown-contract`,
+  `markdown-link`, `markdown-tags` and `path-guard` are there.
 - **Each language's idiom.** An implementation does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses
   snake_case, `Result`, traits and the standard library's words. TypeScript
@@ -303,6 +298,9 @@ Developed here, in this repository:
   that finds the branches, worktrees and remote branches that have been merged
   and can go away, with the evidence and the command for each, and applies an
   approved plan compare-and-swap)
+- `packages/ts/host-cleaner` (`@osdlc/host-cleaner` on npm once published, a tool and
+  library that runs machine cleanup as plugins, each proposing candidates and
+  objecting to others', through one plan, one re-check and one receipt)
 - `packages/ts/rule-review` (`@osdlc/rule-review` on npm, a tool and library
   that reviews a change against the `CLAUDE.md` and `AGENTS.md` files that
   govern it, one headless agent judgement per rule file, and runs a folder of

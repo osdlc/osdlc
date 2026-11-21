@@ -15,19 +15,27 @@ The suites at the top of `tests/` run the whole engine. Unit tests sit in folder
 | `tests/fixtures/migrate/` | Old `mcVersion: 1` contracts, used to test `markdown-contract migrate`. |
 | `tests/fixtures/corpus/` | A small folder of documents and a config, used by the CLI tests. |
 | `tests/fixtures/projection/` | A real document used by the parser tests. |
-| `../corpus/` | The shared validation corpus: documents, YAML contracts and expected findings. See `corpus/README.md`. |
+| `../../../conformance/markdown-contract/suite.json` | The shared validation corpus: the cases of the conformance suite, each with a YAML contract, a document and the expected findings. |
+| `tests/fixtures/ts-only/` | The documents, expected findings and YAML contracts of the fixtures that need code (custom rules), which the suite leaves out. |
 | `tests/validation.test.ts`, `tests/consumption.test.ts`, `tests/inference.test.ts` | Feed the fixtures to the runners. |
 | `tests/yaml-parity.test.ts` | Runs each fixture's YAML contract and checks it gives the same results as the TypeScript one. |
-| `tests/corpus-manifest.test.ts` | Checks that `corpus/corpus-manifest.json` matches the fixture modules. |
+| `tests/corpus-suite.test.ts` | Checks that the suite and `tests/fixtures/ts-only/` match the fixture modules, with no document missing or left over. |
+| `tests/conformance.test.ts` | Runs the conformance suite's cases against this package. |
 | `tests/core-entry.test.ts` | Checks that the built `./core` entry imports no Node module. |
 
 ## Adding a validation fixture
 
-1. Write the documents in `corpus/`: `<name>.pass.md` and `<name>.fail.md` (or a
-   single `<name>.md`).
-2. Write each document's expected findings next to it as `<name>.<case>.expected.json`.
-3. Write the YAML contract as `corpus/<name>.contract.yaml`, when YAML can express it.
-4. Write `tests/fixtures/validation/<name>.ts`:
+1. If a YAML contract expresses the fixture in full, add its cases to the
+   `validate` section of the conformance suite: one case per document, named
+   `<name>.pass.md` or `<name>.fail.md` (or a single `<name>.md`), with the
+   `contract` (YAML) and `source` inputs. Then run `pnpm run build` and
+   `pnpm run conformance:write` to write the expected findings. The fixture
+   module then loads them by the document's name.
+2. If it needs code (a custom rule), write the documents instead in
+   `tests/fixtures/ts-only/` as `<name>.<case>.md`, with each one's expected
+   findings beside it as `<name>.<case>.expected.json`, and the partial YAML
+   contract as `<name>.contract.yaml` with a `# GAP:` comment.
+3. Write `tests/fixtures/validation/<name>.ts`:
 
    ```ts
    import { contract, section, sections, table } from '../../../src/index.js'
@@ -55,8 +63,8 @@ The suites at the top of `tests/` run the whole engine. Unit tests sit in folder
    export default v10b
    ```
 
-5. Add the fixture to `tests/fixtures/validation/index.ts` and to
-   `corpus/corpus-manifest.json`.
+4. Add the fixture to `tests/fixtures/validation/index.ts`, after the
+   fixtures that precede it in the suite.
 
 A fixture builds its contract inside `build`, so an error while building fails only
 that fixture's tests. Findings are compared on `id` and, when the golden sets them,

@@ -74,6 +74,7 @@ export {
   type DiffStatOptions,
   type DiffTextOptions,
   type DiffTreeOptions,
+  type FetchManyOptions,
   type FetchOptions,
   type ForEachRefOptions,
   type ForceLease,
@@ -138,3 +139,5 @@ export {
   type CommandRunner,
   type CommandRunOptions,
 } from '@osdlc/command-seam'
+
+export type { CatFileBatchOptions, CatFileEntry } from './cat-file.ts'

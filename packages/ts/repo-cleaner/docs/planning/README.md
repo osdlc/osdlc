@@ -14,11 +14,12 @@ are in the root [`docs/decisions/`](../../../../../docs/decisions/README.md).
 | Folder                     | Holds                                         | Ids              |
 | -------------------------- | --------------------------------------------- | ---------------- |
 | [`decisions/`](decisions/) | Choices that shape the package, one per topic | random, `D-XXXX` |
+| [`terms.md`](terms.md)     | Words used with one fixed meaning             |                  |
 | [`tasks/`](tasks/)         | Work on the package, open or done             | random, `T-XXXX` |
 
 Ids are random keys, so parallel branches do not collide. A record that
 started in sksizer/dev keeps the id it had there. Each decision has a `state`:
-`accepted` or `superseded`. A superseded decision names the one that replaces
+`proposed`, `accepted` or `superseded`. A superseded decision names the one that replaces
 it. A task is `open` or `done`. An open task names the issue that holds its
 spec and discussion; when that issue closes, the task becomes `done` and says
 what shipped.
@@ -29,29 +30,12 @@ what shipped.
   a host adds what it knows through `annotate`
 - [D-UVUH](decisions/D-UVUH-failed-lookups.md): a failed lookup costs its
   evidence; a failed fetch costs the repository
+- [D-4CE9](decisions/D-4CE9-the-cli-by-use-case.md): the CLI, by use case
+
 
 ## Open tasks
 
-- [T-C665](tasks/T-C665-remote-contained-worktree.md): a clean worktree whose
-  HEAD is on a remote branch can be removed
-  ([#659](https://github.com/osdlc/osdlc/issues/659))
-- [T-602K](tasks/T-602K-sizes-and-ranking.md): report each worktree's disk
-  size and the total a clean would free
-  ([#660](https://github.com/osdlc/osdlc/issues/660))
-- [T-R61B](tasks/T-R61B-archive-before-delete.md): archive unlanded work to
-  the remote before clean deletes it
-  ([#661](https://github.com/osdlc/osdlc/issues/661))
-- [T-95L2](tasks/T-95L2-open-prs-beyond-the-listing-cap.md): open PRs older
-  than the newest 300 are not missed
-  ([#677](https://github.com/osdlc/osdlc/issues/677))
-- [T-DEZH](tasks/T-DEZH-fork-pull-requests.md): in a fork, PRs are listed for
-  the swept remote ([#678](https://github.com/osdlc/osdlc/issues/678))
-- [T-FZEU](tasks/T-FZEU-utc-safe-process-probe.md): the process probe
-  compares start times in UTC
-  ([#679](https://github.com/osdlc/osdlc/issues/679))
-- [T-UH0R](tasks/T-UH0R-a-failed-step-skips-only-what-depends-on-it.md): a
-  failed step skips only what depends on it
-  ([#646](https://github.com/osdlc/osdlc/issues/646))
+None.
 
 ## Done tasks
 
@@ -64,3 +48,25 @@ what shipped.
 - [T-INEW](tasks/T-INEW-bare-invocation-from-a-subdirectory.md): run with no
   target from a subdirectory, sweep the checkout around it
   ([#689](https://github.com/osdlc/osdlc/pull/689))
+- [T-95L2](tasks/T-95L2-open-prs-beyond-the-listing-cap.md): open PRs older
+  than the newest 300 are not missed
+  ([#677](https://github.com/osdlc/osdlc/issues/677))
+- [T-DEZH](tasks/T-DEZH-fork-pull-requests.md): in a fork, PRs are listed for
+  the swept remote ([#677](https://github.com/osdlc/osdlc/issues/677))
+- [T-UH0R](tasks/T-UH0R-a-failed-step-skips-only-what-depends-on-it.md): a
+  failed step skips only what depends on it
+  ([#646](https://github.com/osdlc/osdlc/issues/646))
+- [T-C665](tasks/T-C665-remote-contained-worktree.md): a clean worktree whose
+  HEAD is on a remote branch can be removed
+  ([#919](https://github.com/osdlc/osdlc/pull/919))
+- [T-R61B](tasks/T-R61B-archive-before-delete.md): archive unlanded work to
+  the remote before clean deletes it
+  ([#941](https://github.com/osdlc/osdlc/pull/941))
+- [T-FZEU](tasks/T-FZEU-utc-safe-process-probe.md): the process probe
+  compares start times in UTC
+  ([#910](https://github.com/osdlc/osdlc/pull/910))
+- [T-79IP](tasks/T-79IP-the-cli-by-use-case.md): the command line by phase,
+  scope and remote ([#968](https://github.com/osdlc/osdlc/pull/968))
+- [T-602K](tasks/T-602K-sizes-and-ranking.md): report each worktree's disk
+  size and the space a clean freed
+  ([#936](https://github.com/osdlc/osdlc/pull/936))
