@@ -1,0 +1,383 @@
+/** The `cargo` and `node` plugins against real repositories, linked worktrees and temp directories. */
+
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import type { CommandRunner } from '@osdlc/command-seam'
+import type { ProcessHolder, ProcessProbe } from '@osdlc/repo-cleaner'
+import { Git } from '@osdlc/typed-git'
+import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
+
+import {
+  cargoPlugin,
+  clean,
+  nodePlugin,
+  plan,
+  survey,
+  type ArtifactOptions,
+  type Ctx,
+  type Plugin,
+} from '../src/index.ts'
+
+const NOW = new Date('2026-11-19T12:00:00Z')
+const HOUR = 3_600_000
+const ago = (hours: number): Date => new Date(NOW.getTime() - hours * HOUR)
+
+const cleanups: Array<() => void> = []
+const INCREMENTAL_VARS = ['CARGO_INCREMENTAL', 'CARGO_BUILD_INCREMENTAL'] as const
+let savedEnv: Array<string | undefined> = []
+beforeEach(() => {
+  savedEnv = INCREMENTAL_VARS.map((k) => process.env[k])
+  for (const k of INCREMENTAL_VARS) delete process.env[k]
+})
+afterEach(() => {
+  INCREMENTAL_VARS.forEach((k, i) => {
+    if (savedEnv[i] === undefined) delete process.env[k]
+    else process.env[k] = savedEnv[i]
+  })
+  while (cleanups.length > 0) cleanups.pop()!()
+})
+
+const tmp = (prefix: string): string => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)))
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
+  return dir
+}
+
+const sh = (cwd: string, args: string[]): void => {
+  new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args)
+}
+
+/** A repository with one commit. */
+function repo(): string {
+  const dir = tmp('host-cleaner-art-')
+  makeGitFixture({ dir, initialBranch: 'main' })
+  sh(dir, ['commit', '--allow-empty', '-m', 'initial'])
+  return dir
+}
+
+/** A linked worktree of `root`, beside it in its own temp directory. */
+function linked(root: string): string {
+  const path = join(tmp('host-cleaner-wt-'), 'wt')
+  sh(root, ['worktree', 'add', '-q', path, '-b', 'linked'])
+  return path
+}
+
+function put(path: string, hoursOld: number, body = 'x'.repeat(100)): void {
+  mkdirSync(join(path, '..'), { recursive: true })
+  writeFileSync(path, body)
+  utimesSync(path, ago(hoursOld), ago(hoursOld))
+}
+
+/** A cargo `target/` with a fingerprint `hoursOld`; `tag` false leaves out CACHEDIR.TAG. */
+function target(checkout: string, hoursOld: number, tag = true): string {
+  const dir = join(checkout, 'target')
+  if (tag) put(join(dir, 'CACHEDIR.TAG'), hoursOld, 'Signature: 8a477f597d28d172789f06886806bc55')
+  put(join(dir, 'debug', '.fingerprint', 'a', 'lib-a'), hoursOld)
+  put(join(dir, 'debug', 'deps', 'liba.rlib'), hoursOld, 'y'.repeat(900))
+  return dir
+}
+
+function fakeCargo(
+  opts: { present?: boolean; incremental?: boolean } = {},
+): (b: string) => CommandRunner {
+  return () =>
+    ({
+      run: (argv: string[]) => {
+        const ok = opts.present ?? true
+        const out =
+          argv[0] === 'config' ? `build.incremental = ${opts.incremental ?? true}\n` : 'cargo 1.0\n'
+        return { exitCode: ok ? 0 : 127, stdout: ok ? out : '', stderr: '' }
+      },
+    }) as unknown as CommandRunner
+}
+
+const probeOf = (holders: ProcessHolder[] | Error = []): ProcessProbe => ({
+  alive: () => true,
+  holders: () => {
+    if (holders instanceof Error) throw holders
+    return holders
+  },
+})
+
+const options = (over: ArtifactOptions = {}): ArtifactOptions => ({
+  now: () => NOW,
+  command: fakeCargo(),
+  probe: probeOf(),
+  ...over,
+})
+
+const ctxOf = (root: string): Ctx => ({ cwd: root, targets: [root], allow: [] })
+
+/** What one plugin proposes over `root`, and what it refuses. */
+function sweep(make: (o: ArtifactOptions) => Plugin, root: string, over: ArtifactOptions = {}) {
+  const s = survey([make(options(over))], ctxOf(root))
+  return { ...s, refused: s.objections.filter((o) => o.level === 'refuse') }
+}
+
+const cargo = (root: string, over: ArtifactOptions = {}) => sweep(cargoPlugin, root, over)
+const node = (root: string, over: ArtifactOptions = {}) => sweep(nodePlugin, root, over)
+
+describe('cargo plugin', () => {
+  test('a target/ idle for 48 hours is a candidate with its size; one idle for 1 hour is not', () => {
+    const root = repo()
+    writeFileSync(join(root, 'Cargo.toml'), '[package]\n')
+    target(root, 48)
+    const found = cargo(root).candidates
+    expect(found).toHaveLength(1)
+    expect(found[0]).toMatchObject({
+      id: `artifact:${join(root, 'target')}`,
+      kind: 'artifact',
+      owner: 'cargo',
+      unattended: true,
+      evidence: { kind: 'cargo-target', idleHours: 48, checkout: root, unattended: true },
+    })
+    expect(found[0]!.bytes).toBeGreaterThanOrEqual(1000)
+
+    rmSync(join(root, 'target'), { recursive: true })
+    target(root, 1)
+    expect(cargo(root).candidates).toEqual([])
+  })
+
+  test('a recent --target build keeps the whole target/ from being idle', () => {
+    const root = repo()
+    target(root, 100)
+    put(join(root, 'target', 'x86_64-unknown-linux-gnu', 'debug', '.fingerprint', 'a', 'f'), 1)
+    expect(cargo(root).candidates).toEqual([])
+  })
+
+  test('a target/ without CACHEDIR.TAG is never a candidate', () => {
+    const root = repo()
+    target(root, 100, false)
+    expect(cargo(root).candidates).toEqual([])
+  })
+
+  test('the threshold is idleHours', () => {
+    const root = repo()
+    target(root, 10)
+    expect(cargo(root).candidates).toEqual([])
+    expect(cargo(root, { idleHours: 6 }).candidates).toHaveLength(1)
+  })
+
+  test('a cargo process in the checkout refuses the candidate, and clean drops it as blocked', () => {
+    const root = repo()
+    const dir = target(root, 48)
+    const holders = [{ pid: 7, command: 'cargo' } as ProcessHolder]
+    const plugin = cargoPlugin(options({ probe: probeOf(holders) }))
+    const s = survey([plugin], ctxOf(root))
+    expect(s.objections).toEqual([
+      expect.objectContaining({ level: 'refuse', code: 'live-process', by: 'cargo' }),
+    ])
+    expect(s.objections[0]!.reason).toMatch(/cargo \(pid 7\)/)
+    const receipt = clean(plan(s, { select: [s.candidates[0]!.id] }), [plugin], ctxOf(root))
+    expect(receipt.steps).toEqual([])
+    expect(receipt.dropped).toEqual([expect.objectContaining({ reason: 'blocked' })])
+    expect(existsSync(dir)).toBe(true)
+  })
+
+  test('another process does not refuse it, and an unreadable process table does', () => {
+    const root = repo()
+    target(root, 48)
+    expect(
+      cargo(root, { probe: probeOf([{ pid: 9, command: 'vim' } as ProcessHolder]) }).refused,
+    ).toEqual([])
+    const unreadable = cargo(root, { probe: probeOf(new Error('no ps')) })
+    expect(unreadable.refused).toEqual([
+      expect.objectContaining({ code: 'process-table-unreadable' }),
+    ])
+  })
+
+  test('with incremental off, target/*/incremental is a candidate though target/ is not idle', () => {
+    const root = repo()
+    target(root, 1)
+    put(join(root, 'target', 'debug', 'incremental', 'c-1', 'work'), 1)
+    const off = cargo(root, { command: fakeCargo({ incremental: false }) }).candidates
+    expect(off.map((c) => c.evidence.kind)).toEqual(['cargo-incremental'])
+    expect(off[0]!.id).toBe(`artifact:${join(root, 'target', 'debug', 'incremental')}`)
+    expect(off[0]!.evidence.unattended).toBe(false)
+    expect(cargo(root, { command: fakeCargo({ incremental: true }) }).candidates).toEqual([])
+  })
+
+  test('CARGO_BUILD_INCREMENTAL decides before cargo is asked', () => {
+    const root = repo()
+    target(root, 1)
+    put(join(root, 'target', 'debug', 'incremental', 'work'), 1)
+    process.env.CARGO_BUILD_INCREMENTAL = 'false'
+    expect(cargo(root).candidates).toHaveLength(1)
+    process.env.CARGO_BUILD_INCREMENTAL = 'true'
+    expect(cargo(root, { command: fakeCargo({ incremental: false }) }).candidates).toEqual([])
+  })
+
+  test('CARGO_INCREMENTAL decides before CARGO_BUILD_INCREMENTAL', () => {
+    const root = repo()
+    target(root, 1)
+    put(join(root, 'target', 'debug', 'incremental', 'work'), 1)
+    process.env.CARGO_INCREMENTAL = '0'
+    process.env.CARGO_BUILD_INCREMENTAL = 'true'
+    expect(cargo(root).candidates).toHaveLength(1)
+  })
+
+  test('an idle target/ is one candidate; its incremental directories go with it', () => {
+    const root = repo()
+    target(root, 48)
+    put(join(root, 'target', 'debug', 'incremental', 'work'), 48)
+    expect(cargo(root, { command: fakeCargo({ incremental: false }) }).candidates).toHaveLength(1)
+  })
+
+  test('a target/ that leads outside its checkout is refused before anything is measured', () => {
+    const root = repo()
+    const outside = tmp('host-cleaner-out-')
+    put(join(outside, 'CACHEDIR.TAG'), 100)
+    put(join(outside, 'debug', '.fingerprint', 'a', 'f'), 100)
+    symlinkSync(outside, join(root, 'target'))
+    const found = cargo(root)
+    expect(found.candidates).toHaveLength(1)
+    expect(found.candidates[0]).toMatchObject({ evidence: { sizeBytes: null, idleHours: null } })
+    expect(found.refused).toEqual([expect.objectContaining({ code: 'outside-checkout' })])
+    const plugin = cargoPlugin(options())
+    const s = survey([plugin], ctxOf(root))
+    const receipt = clean(plan(s, { select: [s.candidates[0]!.id] }), [plugin], ctxOf(root))
+    expect(receipt.steps).toEqual([])
+    expect(existsSync(join(outside, 'CACHEDIR.TAG'))).toBe(true)
+  })
+
+  test('clean removes the directory, checks it is gone and records the bytes freed', () => {
+    const root = repo()
+    const dir = target(root, 48)
+    const plugin = cargoPlugin(options())
+    const s = survey([plugin], ctxOf(root))
+    const bytes = s.candidates[0]!.evidence.sizeBytes as number
+    const receipt = clean(plan(s), [plugin], ctxOf(root))
+    expect(receipt.status).toBe('complete')
+    expect(receipt.steps[0]).toMatchObject({
+      result: 'ok',
+      delete: `removed ${dir}; freed ${bytes} bytes`,
+    })
+    expect(existsSync(dir)).toBe(false)
+  })
+
+  test('delete refuses a directory that became busy after the survey', () => {
+    const root = repo()
+    const dir = target(root, 48)
+    const quiet = cargoPlugin(options())
+    const p = plan(survey([quiet], ctxOf(root)))
+    const busy = cargoPlugin(
+      options({ probe: probeOf([{ pid: 3, command: 'rustc' } as ProcessHolder]) }),
+    )
+    const receipt = clean(p, [busy], ctxOf(root))
+    expect(receipt.dropped).toEqual([expect.objectContaining({ reason: 'blocked' })])
+    expect(existsSync(dir)).toBe(true)
+  })
+
+  test('a candidate inside a worktree the run removes first is already gone, not a failure', () => {
+    const root = repo()
+    const wt = linked(root)
+    const dir = target(wt, 48)
+    const plugin = cargoPlugin(options())
+    const s = survey([plugin], ctxOf(root))
+    expect(s.candidates).toHaveLength(1)
+    rmSync(wt, { recursive: true })
+    const gone = cargoPlugin(options())
+    const direct = gone.delete!(s.candidates[0]!, ctxOf(root))
+    expect(direct).toBe(`already gone: ${dir}`)
+  })
+
+  test('a worktree removed since the plan is dropped as gone', () => {
+    const root = repo()
+    const wt = linked(root)
+    target(wt, 48)
+    const plugin = cargoPlugin(options())
+    const s = survey([plugin], ctxOf(root))
+    const p = plan(s, { select: [s.candidates[0]!.id] })
+    sh(root, ['worktree', 'remove', '--force', wt])
+    const receipt = clean(p, [plugin], ctxOf(root), { dryRun: true })
+    expect(receipt.dropped).toEqual([expect.objectContaining({ reason: 'gone' })])
+  })
+})
+
+describe('node plugin', () => {
+  test('the primary checkout is never a candidate; an idle linked worktree is', () => {
+    const root = repo()
+    writeFileSync(join(root, 'package.json'), '{}')
+    put(join(root, 'node_modules', 'a', 'index.js'), 500)
+    const wt = linked(root)
+    put(join(wt, 'package.json'), 72, '{}')
+    put(join(wt, 'src', 'a.ts'), 72)
+    put(join(wt, 'node_modules', 'a', 'index.js'), 1, 'z'.repeat(2000))
+    const found = node(root).candidates
+    expect(found).toHaveLength(1)
+    expect(found[0]).toMatchObject({
+      id: `artifact:${join(wt, 'node_modules')}`,
+      owner: 'node',
+      evidence: { kind: 'node-modules', checkout: wt, idleHours: 72, unattended: true },
+    })
+    expect(found[0]!.bytes).toBeGreaterThanOrEqual(2000)
+  })
+
+  test('a recently changed worktree has no candidate', () => {
+    const root = repo()
+    const wt = linked(root)
+    put(join(wt, 'package.json'), 72, '{}')
+    put(join(wt, 'src', 'a.ts'), 2)
+    put(join(wt, 'node_modules', 'a', 'index.js'), 72)
+    expect(node(root).candidates).toEqual([])
+  })
+
+  test('a process in the worktree refuses it; an idle shell does not', () => {
+    const root = repo()
+    const wt = linked(root)
+    put(join(wt, 'package.json'), 72, '{}')
+    put(join(wt, 'node_modules', 'a', 'index.js'), 72)
+    const shell = { pid: 4, command: 'zsh', hasChildren: false } as ProcessHolder
+    expect(node(root, { probe: probeOf([shell]) }).refused).toEqual([])
+    const busy = node(root, { probe: probeOf([{ pid: 5, command: 'node' } as ProcessHolder]) })
+    expect(busy.refused[0]).toMatchObject({ code: 'live-process' })
+    expect(busy.refused[0]!.reason).toMatch(/node \(pid 5\)/)
+  })
+
+  test('clean removes node_modules and records the bytes freed', () => {
+    const root = repo()
+    const wt = linked(root)
+    put(join(wt, 'package.json'), 72, '{}')
+    put(join(wt, 'node_modules', 'a', 'index.js'), 72)
+    const plugin = nodePlugin(options())
+    const receipt = clean(plan(survey([plugin], ctxOf(root))), [plugin], ctxOf(root))
+    expect(receipt.status).toBe('complete')
+    expect(receipt.steps[0]!.delete).toMatch(/^removed .*node_modules; freed 100 bytes$/)
+    expect(existsSync(join(wt, 'node_modules'))).toBe(false)
+    expect(existsSync(join(wt, 'package.json'))).toBe(true)
+  })
+})
+
+describe('detection', () => {
+  test('with neither cargo nor a node or Rust checkout, both plugins drop out of the survey', () => {
+    const root = repo()
+    const s = survey(
+      [cargoPlugin(options({ command: fakeCargo({ present: false }) })), nodePlugin(options())],
+      ctxOf(root),
+    )
+    expect(s.plugins).toEqual([])
+    expect(s.candidates).toEqual([])
+  })
+
+  test('a Cargo.toml detects cargo without cargo on PATH', () => {
+    const root = repo()
+    writeFileSync(join(root, 'Cargo.toml'), '[package]\n')
+    const s = survey(
+      [cargoPlugin(options({ command: fakeCargo({ present: false }) }))],
+      ctxOf(root),
+    )
+    expect(s.plugins.map((p) => p.name)).toEqual(['cargo'])
+  })
+})

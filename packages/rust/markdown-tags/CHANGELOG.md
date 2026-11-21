@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.2](https://github.com/osdlc/osdlc/compare/markdown-tags/v0.4.1...markdown-tags/v0.4.2) - 2026-11-21
+
+### Other
+
+- release against markdown-link 0.11 (0.4.2) ([#980](https://github.com/osdlc/osdlc/pull/980))
+
+### Changed
+
+- Depend on `markdown-link` 0.11, the version `markdown-contract`, `markdown-corpus` and `markdown-relink` already publish against, so one build of the set has one copy of `markdown-link`. The public API is unchanged.
+
 ## [0.4.1](https://github.com/osdlc/osdlc/compare/markdown-tags/v0.4.0...markdown-tags/v0.4.1) - 2026-11-10
 
 ### Other
