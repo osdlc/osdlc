@@ -1,7 +1,7 @@
 {
   "family": "gfm-table",
   "reference": "ts",
-  "referenceVersion": "0.5.0",
+  "referenceVersion": "0.5.1",
   "sections": {
     "split_row": {
       "description": "Split a line into a row span at `base`: the pipes, the cells, and each cell's content range. Offsets are UTF-8 bytes into the whole text, so `base` plus a position in the line.",
