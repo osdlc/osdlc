@@ -14,7 +14,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import type { CommandRunner } from '@osdlc/command-seam'
@@ -22,6 +22,7 @@ import { systemDirs } from '@osdlc/cli-tool'
 import { Git, parseRemoteRepo } from '@osdlc/typed-git'
 
 import { VENDOR_DIRS } from './devlink.ts'
+import { sizeOf } from './size.ts'
 
 /** A remote URL that cannot be mirrored, or a mirror that cannot be made or reused. */
 export class RemoteMirrorError extends Error {
@@ -150,7 +151,7 @@ export interface CachedMirror {
   dir: string
   /** The URL it was cloned from, credentials removed; null when there is none to read. */
   url: string | null
-  /** Bytes on disk, every file under the directory counted. */
+  /** Bytes on disk under the directory, as `du` counts them; 0 when `du` could not say. */
   bytes: number
   /** A clone left behind by a run that stopped before it finished. */
   partial: boolean
@@ -160,20 +161,10 @@ export interface CachedMirror {
 
 const PARTIAL = /\.partial-\d+$/
 
-/** Bytes under `path`, symlinks counted as themselves, not followed. */
-function sizeOf(path: string): number {
-  const stat = lstatSync(path, { throwIfNoEntry: false })
-  if (stat === undefined) return 0
-  if (!stat.isDirectory()) return stat.size
-  let total = 0
-  for (const name of readdirSync(path)) total += sizeOf(join(path, name))
-  return total
-}
-
 /** Every entry under `cacheDir`, sorted by directory; none when the cache does not exist. */
 export function listMirrors(
   cacheDir: string,
-  opts: { git?: CommandRunner | undefined } = {},
+  opts: { git?: CommandRunner | undefined; du?: CommandRunner | undefined } = {},
 ): CachedMirror[] {
   if (!existsSync(cacheDir)) return []
   return readdirSync(cacheDir, { withFileTypes: true })
@@ -182,7 +173,7 @@ export function listMirrors(
     .sort()
     .map((name) => {
       const dir = join(cacheDir, name)
-      const bytes = sizeOf(dir)
+      const bytes = sizeOf(dir, { du: opts.du }) ?? 0
       if (PARTIAL.test(name)) return { dir, url: null, bytes, partial: true, problem: null }
       const problem = mirrorProblem(dir, undefined, opts)
       const urls = new Git(dir, { runner: opts.git }).try.remoteGetUrls('origin')
