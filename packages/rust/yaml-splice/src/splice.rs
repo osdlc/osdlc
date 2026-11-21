@@ -269,6 +269,18 @@ pub(crate) fn value_edit(src: &str, span: &KeySpan, text: String) -> (Range<usiz
         src,
         span.assign_end..span.value_range.end.max(span.assign_end),
         text,
+        false,
+    )
+}
+
+/// [`value_edit`] for a sequence item: `text` follows `- `, and may start a
+/// compact collection (`a: |`, `a:`) whose first line is a place for a comment.
+pub(crate) fn item_edit(src: &str, span: &KeySpan, text: String) -> (Range<usize>, String) {
+    fit_assignment(
+        src,
+        span.assign_end..span.value_range.end.max(span.assign_end),
+        text,
+        true,
     )
 }
 
@@ -305,14 +317,19 @@ fn render_assignment(
 /// is moved to the end of the first line, where a comment is allowed. Any
 /// other multi-line text (a quoted or plain scalar that continues on the next
 /// line) is left as it is, since its first line is not a place for a comment.
-fn fit_assignment(src: &str, range: Range<usize>, text: String) -> (Range<usize>, String) {
+fn fit_assignment(
+    src: &str,
+    range: Range<usize>,
+    text: String,
+    compact: bool,
+) -> (Range<usize>, String) {
     let Some((head, rest)) = text.split_once('\n') else {
         return (range, text);
     };
     let (head, eol) = head
         .strip_suffix('\r')
         .map_or((head, "\n"), |h| (h, "\r\n"));
-    if !opens_a_block(head) {
+    if !(opens_a_block(head) || compact && opens_compact_block(head)) {
         return (range, text);
     }
     let line_end = src[range.end..]
@@ -345,6 +362,19 @@ fn opens_a_block(head: &str) -> bool {
     props.iter().all(|t| t.starts_with(['!', '&']))
         && matches!(chars.next(), Some('|' | '>'))
         && chars.all(|c| matches!(c, '-' | '+' | '1'..='9'))
+}
+
+/// Whether the first line of a sequence item's text opens a block under its
+/// first key: `a:`, or `a: |`. A quoted first line is a scalar.
+fn opens_compact_block(head: &str) -> bool {
+    if head.starts_with(['"', '\'']) {
+        return false;
+    }
+    let head = head.trim_end();
+    head.ends_with(':')
+        || head
+            .rsplit_once(": ")
+            .is_some_and(|(_, t)| opens_a_block(t))
 }
 
 /// The leading whitespace of the line `pos` sits on.

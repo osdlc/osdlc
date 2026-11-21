@@ -18,7 +18,7 @@ use crate::edit::{
 };
 use crate::parse::{self, Ev, EvKind, ItemSpan, KeySpan, MapEntry, Parsed};
 use crate::render::{self, EmitOptions};
-use crate::splice::{apply_eol, line_start, value_assignment, value_edit};
+use crate::splice::{apply_eol, item_edit, line_start, value_assignment, value_edit};
 use crate::value::{Mapping, Value};
 
 /// What a path edit does at its last segment.
@@ -409,6 +409,7 @@ fn walk_seq(
             append_item(cx, &items, &nested, parent)
         }
         Op::Remove if last => Ok(Vec::new()),
+        Op::Rename(_) if last => Err(mismatch(cx, depth, "a sequence")),
         _ => Err(not_found(cx, depth)),
     }
 }
@@ -540,7 +541,7 @@ fn replace_item(
         assign_end: item.value_range.start,
         value_range: item.value_range.clone(),
     };
-    Ok(value_edit(cx.src, &span, text))
+    Ok(item_edit(cx.src, &span, text))
 }
 
 /// A new key after the last entry of a block mapping, at the keys' column.
@@ -711,7 +712,10 @@ fn remove(
     // line cannot go.
     if shares_line(cx.src, key_start) {
         if only {
-            return Ok(vec![(key_start..after, "{}".to_string())]);
+            return Ok(vec![(
+                key_start..after.max(span.assign_end),
+                "{}".to_string(),
+            )]);
         }
         let Some(next) = entries.get(i + 1) else {
             return Err(unsupported(cx, "the first key of a list item"));
@@ -959,7 +963,7 @@ fn model_rename(
 
 #[cfg(test)]
 mod tests {
-    use crate::{FieldEdit, PathSegment, edit_yaml};
+    use crate::{FieldEdit, PathSegment, Value, edit_yaml};
 
     fn remove(src: &str, path: &[PathSegment]) -> String {
         let edit = FieldEdit::RemovePath {
@@ -999,5 +1003,58 @@ mod tests {
     fn removing_the_last_item_leaves_an_empty_sequence() {
         let path: Vec<PathSegment> = vec!["s".into(), 0usize.into()];
         assert_eq!(remove("s:\n  - a\nz: 1\n", &path), "s: []\nz: 1\n");
+    }
+
+    fn set(src: &str, path: Vec<PathSegment>, value: Value) -> Result<String, crate::EditError> {
+        let edit = FieldEdit::SetPath { path, value };
+        let out = edit_yaml(src.as_bytes(), &[edit])?;
+        Ok(String::from_utf8(out.bytes).unwrap())
+    }
+
+    #[test]
+    fn an_item_after_a_removed_first_key_can_still_be_edited() {
+        let src = "s:\n  - a: 1\n    # c\n    b: 2\n";
+        let once = remove(src, &at("s", 0, "a"));
+        let twice = set(&once, at("s", 0, "b"), Value::Int(3)).unwrap();
+        assert_eq!(twice, "s:\n  -\n    # c\n    b: 3\n");
+    }
+
+    #[test]
+    fn an_item_that_is_a_block_scalar_or_has_an_anchor_takes_an_append() {
+        let one: Vec<PathSegment> = vec!["s".into(), 1usize.into()];
+        assert_eq!(
+            set("s:\n  - |\n    x\n", one.clone(), Value::Int(1)).unwrap(),
+            "s:\n  - |\n    x\n  - 1\n"
+        );
+        assert_eq!(
+            set("s:\n  - &x foo\n", one, Value::Int(1)).unwrap(),
+            "s:\n  - &x foo\n  - 1\n"
+        );
+    }
+
+    #[test]
+    fn removing_the_only_null_key_of_an_item_leaves_an_empty_mapping() {
+        assert_eq!(remove("s:\n  - a:\n", &at("s", 0, "a")), "s:\n  - {}\n");
+    }
+
+    #[test]
+    fn a_comment_on_an_item_survives_a_compact_block_scalar_value() {
+        let map = Value::Map(
+            [("a".to_string(), Value::Str("x\ny\n".into()))]
+                .into_iter()
+                .collect(),
+        );
+        let out = set("s:\n  - x # c\n", vec!["s".into(), 0usize.into()], map).unwrap();
+        assert_eq!(out, "s:\n  - a: | # c\n      x\n      y\n");
+    }
+
+    #[test]
+    fn renaming_past_the_end_of_a_sequence_is_a_type_mismatch() {
+        let edit = FieldEdit::RenamePath {
+            path: vec!["s".into(), 2usize.into()],
+            to: "x".into(),
+        };
+        let err = edit_yaml(b"s:\n  - x\n", &[edit]).unwrap_err();
+        assert!(matches!(err, crate::EditError::PathTypeMismatch { .. }));
     }
 }
