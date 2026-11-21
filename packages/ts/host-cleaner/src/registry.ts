@@ -8,7 +8,10 @@ import { gitPlugin } from './git.ts'
 import { nodePlugin } from './node.ts'
 import type { Plugin } from './types.ts'
 
-/** What a factory is told: its own entry in the config's `plugins`, and the sweep's `--only`. */
+/**
+ * What a factory is told: its own entry in the config's `plugins`, and the git
+ * kinds `--worktrees` and `--branches` leave.
+ */
 export interface PluginInit {
   settings: Record<string, unknown>
   only: readonly Kind[]
