@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import type { CommandResult, CommandRunner } from '@osdlc/command-seam'
+import { processIdentity } from '@osdlc/file-lock'
 import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { sh } from './helpers.ts'
@@ -588,16 +589,18 @@ describe('default probe: ps', () => {
     expect(probe.alive(321, '2026-01-01T00:00:00Z')).toBe(false)
   })
 
-  test('a full ISO timestamp that matches is alive; the 2 s tolerance edges', () => {
+  test('an ISO time at or after the start is the owner; one that started 2 s later is not', () => {
     const probe = defaultProcessProbe({ ps: fakePs({ 321: PS_MACOS }) })
     const base = Date.parse('Sat Oct 25 18:22:19 2026 UTC')
     const iso = (offsetS: number): string => new Date(base + offsetS * 1000).toISOString()
     expect(probe.alive(321, iso(0))).toBe(true)
-    expect(probe.alive(321, iso(1))).toBe(true)
     expect(probe.alive(321, iso(-1))).toBe(true)
-    expect(probe.alive(321, iso(3))).toBe(false)
+    // A writer that recorded when it took the lock, after it started, keeps it.
+    expect(probe.alive(321, iso(3))).toBe(true)
+    expect(probe.alive(321, iso(3600))).toBe(true)
+    // The process started after the time recorded: a reused pid.
     expect(probe.alive(321, iso(-3))).toBe(false)
-    expect(probe.alive(321, String(base / 1000 + 3))).toBe(false)
+    expect(probe.alive(321, String(base / 1000 - 3))).toBe(false)
     expect(probe.alive(321, String(base + 1000))).toBe(true)
   })
 
@@ -633,11 +636,28 @@ describe('default probe: ps', () => {
     expect(item.evidence.staleLock).toBeUndefined()
   })
 
+  test.skipIf(process.platform !== 'linux')(
+    "a lock that records file-lock's Linux process identity is checked against /proc",
+    () => {
+      const probe = defaultProcessProbe()
+      const identity = processIdentity(process.pid)
+      expect(identity).toMatch(/^linux:/)
+      expect(probe.alive(process.pid, identity!)).toBe(true)
+      // An identity whose start is earlier than this process's: it started later, a reused pid.
+      const [, boot, ticks] = /^linux:(.+):(\d+)$/.exec(identity!)!
+      expect(probe.alive(process.pid, `linux:${boot}:${Number(ticks) - 1000}`)).toBe(false)
+      // Another boot: the owner ended at a reboot.
+      expect(probe.alive(process.pid, `linux:00000000-0000-0000-0000-000000000000:${ticks}`)).toBe(
+        false,
+      )
+    },
+  )
+
   test('a start time given as epoch seconds is compared as one', () => {
     const probe = defaultProcessProbe({ ps: fakePs({ 321: PS_MACOS }) })
     const epoch = String(Date.parse('Sat Oct 25 18:22:19 2026 UTC') / 1000)
     expect(probe.alive(321, epoch)).toBe(true)
-    expect(probe.alive(321, String(Number(epoch) + 3600))).toBe(false)
+    expect(probe.alive(321, String(Number(epoch) - 3600))).toBe(false)
   })
 
   test('the ps call is pinned to UTC and the C locale', () => {
@@ -659,9 +679,9 @@ describe('default probe: ps', () => {
     const probe = defaultProcessProbe({ ps: fakePs({ 321: 'Sun Nov  1 01:30:00 2026\n' }) })
     expect(startMs('Sun Nov  1 01:30:00 2026')).toBe(Date.UTC(2026, 10, 1, 1, 30, 0))
     expect(probe.alive(321, '2026-11-01T01:30:00Z')).toBe(true)
-    // Neither local reading of the repeated hour (05:30Z or 06:30Z) matches.
-    expect(probe.alive(321, '2026-11-01T05:30:00Z')).toBe(false)
-    expect(probe.alive(321, '2026-11-01T06:30:00Z')).toBe(false)
+    // Read as New York time it would be 05:30Z or 06:30Z, and a lock that
+    // recorded 01:30Z would look older than its owner: a live owner, gone.
+    expect(probe.alive(321, '2026-11-01T01:29:00Z')).toBe(false)
   })
 
   test('lstart text a lock recorded in another zone still matches the same process', () => {
