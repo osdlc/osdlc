@@ -20,6 +20,7 @@ const LIVE_PR = {
   createdAt: '2026-08-28T04:42:15Z',
   headRefName: 'feature/executor',
   headRefOid: 'cb3a85c77d6cc786233a1f61d627469d1666d925',
+  baseRefOid: '1111111111111111111111111111111111111111',
   isDraft: false,
   labels: [],
   mergeStateStatus: 'DIRTY',
@@ -51,6 +52,7 @@ describe('parsePullRequest — a live payload', () => {
     expect(pr.mergeable).toBe('CONFLICTING')
     expect(pr.mergeStateStatus).toBe('DIRTY')
     expect(pr.headRefOid).toBe('cb3a85c77d6cc786233a1f61d627469d1666d925')
+    expect(pr.baseRefOid).toBe('1111111111111111111111111111111111111111')
     expect(pr.baseRefName).toBe('feature/dispatcher')
     expect(pr.author).toEqual({ login: 'octocat', isBot: false })
     // gh sends "" for "nobody has decided yet". The model says null.

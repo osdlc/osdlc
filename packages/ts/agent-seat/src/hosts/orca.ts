@@ -34,7 +34,7 @@ import {
   type SendReceipt,
   type SendRequest,
 } from '../contract.ts'
-import { harnessOrNull, sessionViaTerminal, type Harness } from '../harness.ts'
+import { commandArgv, harnessOrNull, sessionViaTerminal, type Harness } from '../harness.ts'
 import { boundPane, rememberSessionPane } from './session-panes.ts'
 import { registryDirOf, type HostStateOptions } from './registry.ts'
 
@@ -61,7 +61,7 @@ export function orcaCreateArgv(req: CommandRequest): string[] {
     '--title',
     req.title,
     '--command',
-    commandString(req.argv),
+    commandString(commandArgv(req)),
     '--json',
   ]
 }
