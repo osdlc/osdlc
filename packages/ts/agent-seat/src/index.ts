@@ -100,6 +100,7 @@ export {
   makeTmuxHost,
   tmuxAttachArgv,
   tmuxIdSessionName,
+  tmuxRunSessionName,
   tmuxSessionName,
   tmuxSwitchClientArgv,
 } from './hosts/tmux.ts'

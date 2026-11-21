@@ -1333,6 +1333,9 @@ importers:
       '@osdlc/agent-call':
         specifier: workspace:^
         version: link:../agent-call
+      '@osdlc/agent-seat':
+        specifier: workspace:^
+        version: link:../agent-seat
       '@osdlc/cli-tool':
         specifier: workspace:^
         version: link:../cli-tool
