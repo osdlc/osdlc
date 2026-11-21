@@ -72,6 +72,15 @@ export interface ListFlag extends FlagCommon {
   default?: readonly string[]
   /** Split a single occurrence on commas (`--scope a,b`). On by default. */
   commaSeparated?: boolean
+  /**
+   * Take a value only after `=`. A bare `--remote` adds an empty entry,
+   * `--remote=upstream` adds `upstream`, and in `--remote upstream` the
+   * `upstream` stays a positional for the caller to read. Help shows
+   * `--remote[=<name>]`. For a flag whose common case needs no value, where
+   * reading the next word as its value would swallow a positional. It takes
+   * no `short`.
+   */
+  valueAfterEquals?: boolean
 }
 
 /** A flag counted by how many times it appears: `-vv`. */
@@ -243,9 +252,40 @@ function optionFlags(name: string, decl: Exclude<FlagDecl, TristateFlag>): strin
   return `${short}--${long} <${value}>`
 }
 
+/** How a {@link ListFlag} with `valueAfterEquals` reads in the help. */
+function equalsTerm(name: string, decl: ListFlag): string {
+  return `--${kebab(name)}[=<${decl.valueName ?? 'value'}>]`
+}
+
+/** The `valueAfterEquals` flags, by long form (`--remote`), each with its help term. */
+function equalsFlags(flags: FlagSpec): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const [name, decl] of Object.entries(flags)) {
+    if (decl.kind === 'list' && decl.valueAfterEquals === true) {
+      out.set(`--${kebab(name)}`, equalsTerm(name, decl))
+    }
+  }
+  return out
+}
+
+/**
+ * Spell each bare `--name` of a `valueAfterEquals` flag `--name=`, so
+ * commander reads it as an empty value rather than taking the next word.
+ * Nothing after a `--` terminator is touched.
+ */
+function equalsOnly(argv: readonly string[], bare: ReadonlyMap<string, string>): string[] {
+  const end = argv.indexOf('--')
+  return argv.map((arg, i) => (bare.has(arg) && (end === -1 || i < end) ? `${arg}=` : arg))
+}
+
 /** A tristate becomes two options with no default on either. See {@link TristateFlag}. */
 function buildOptions(name: string, decl: FlagDecl): Option[] {
   assertNotNegated(name)
+  if (decl.kind === 'list' && decl.valueAfterEquals === true && decl.short !== undefined) {
+    throw new Error(
+      `defineCli: flag '${name}' takes its value after '=', which a short form cannot.`,
+    )
+  }
   if (decl.kind === 'tristate') {
     const long = kebab(name)
     const short = decl.short === undefined ? '' : `-${decl.short}, `
@@ -300,6 +340,7 @@ function buildOption(name: string, decl: Exclude<FlagDecl, TristateFlag>): Optio
  * values into the next.
  */
 export function defineCli<F extends FlagSpec>(decl: CliDecl<F>): Cli<F> {
+  const terms = equalsFlags(decl.flags)
   const build = (io: CliIo, all = true): Command => {
     const command = new Command(decl.name)
       .description(decl.summary)
@@ -315,7 +356,12 @@ export function defineCli<F extends FlagSpec>(decl: CliDecl<F>): Cli<F> {
         outputError: () => {},
       })
     const width = decl.width
-    if (width !== undefined) command.configureHelp({ helpWidth: width })
+    command.configureHelp({
+      ...(width === undefined ? {} : { helpWidth: width }),
+      ...(terms.size === 0
+        ? {}
+        : { optionTerm: (option: Option) => terms.get(option.long ?? '') ?? option.flags }),
+    })
     const epilogue = all ? decl.epilogue : decl.shortEpilogue
     if (epilogue !== undefined) {
       const text = width === undefined ? epilogue : wrapText(epilogue, width)
@@ -338,7 +384,7 @@ export function defineCli<F extends FlagSpec>(decl: CliDecl<F>): Cli<F> {
     parse(argv, io) {
       const command = build(io)
       try {
-        command.parse([...argv], { from: 'user' })
+        command.parse(equalsOnly(argv, terms), { from: 'user' })
       } catch (err) {
         if (!(err instanceof CommanderError)) throw err
         // Commander has already written the help text.
