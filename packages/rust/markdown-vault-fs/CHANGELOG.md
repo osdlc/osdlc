@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/osdlc/osdlc/compare/markdown-vault-fs/v0.7.1...markdown-vault-fs/v0.8.0) - 2026-11-21
+
+### Other
+
+- Hide::Source, change an index's hide rules without rebuilding it ([#872](https://github.com/osdlc/osdlc/pull/872))
+
+### Changed
+
+- Breaking: `Hide` is `#[non_exhaustive]`, so a later variant is not a break.
+  It gained `Source` (below), so a `match` on it needs a wildcard arm.
+
+### Added
+
+- `Hide::Source(HideSource)`: a walk asks the caller for its excluded-files
+  rules at the start of each walk and each admission query, so a tool that
+  keeps the list in a file of its own can change it without a new
+  `WalkOptions`.
+
 ## [0.7.1](https://github.com/osdlc/osdlc/compare/markdown-vault-fs/v0.7.0...markdown-vault-fs/v0.7.1) - 2026-11-20
 
 ### Other

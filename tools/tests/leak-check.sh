@@ -4,7 +4,8 @@
 #
 # Each case copies the script into a fresh temporary root that holds small
 # packages/profiles/x/, packages/profiles/claims/, packages/corpora/y/,
-# packages/corpora/examples/ and packages/corpora/harness-reference/ folders,
+# packages/corpora/examples/, packages/corpora/harness-reference/,
+# packages/profiles/system-cleanup/ and packages/corpora/system-cleanup-reference/ folders,
 # writes one file, and runs the copy there.
 set -eu
 
@@ -29,9 +30,9 @@ check() {
   root="$work/$n"
   p="$root/packages"
   mkdir -p "$root/tools" "$p/profiles/x" "$p/profiles/claims" "$p/corpora/y" "$p/corpora/examples" \
-    "$p/corpora/harness-reference"
+    "$p/corpora/harness-reference" "$p/profiles/system-cleanup" "$p/corpora/system-cleanup-reference"
   cp "$script" "$root/tools/leak-check.sh"
-  for d in profiles/x profiles/claims corpora/y corpora/examples corpora/harness-reference; do
+  for d in profiles/x profiles/claims corpora/y corpora/examples corpora/harness-reference profiles/system-cleanup corpora/system-cleanup-reference; do
     echo "A clean record." >"$p/$d/README.md"
   done
   case $file in
@@ -76,6 +77,16 @@ check "home-relative path in packages/corpora/examples/ is allowed" 0 "ok: no pr
   packages/corpora/examples/README.md "The tool reads ~/.config/tool.toml."
 check "home-relative path in packages/corpora/harness-reference/ is allowed" 0 "ok: no private data" \
   packages/corpora/harness-reference/README.md "The harness reads ~/.claude/settings.json."
+check "Homebrew's /home/linuxbrew prefix is not a home path" 0 "ok: no private data" \
+  packages/corpora/y/README.md "Homebrew installs to /home/linuxbrew/.linuxbrew on Linux."
+check "a home path beside the linuxbrew prefix is still caught" 1 "leak (home path)" \
+  packages/corpora/y/README.md "Not /home/linuxbrew/.linuxbrew but /home/someone/bin."
+check "home-relative path in packages/corpora/system-cleanup-reference/ is allowed" 0 "ok: no private data" \
+  packages/corpora/system-cleanup-reference/README.md "pnpm keeps its store in ~/.local/share/pnpm/store."
+check "home path in packages/corpora/system-cleanup-reference/ is still caught" 1 "leak (home path)" \
+  packages/corpora/system-cleanup-reference/README.md "Ollama keeps models in /Users/someone/.ollama/models."
+check "home-relative path in packages/profiles/system-cleanup/ is allowed" 0 "ok: no private data" \
+  packages/profiles/system-cleanup/README.md "A store value names its path as ~/.cache/pnpm."
 check "home path in packages/corpora/harness-reference/ is still caught" 1 "leak (home path)" \
   packages/corpora/harness-reference/README.md "Open /Users/someone/.claude/settings.json."
 check "email address in packages/corpora/harness-reference/ is still caught" 1 "leak (email address)" \
