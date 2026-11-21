@@ -4,7 +4,8 @@
  * exits 2. Exit codes are in README.md, directories in `config.ts`.
  */
 
-import { appendFileSync, mkdirSync, readSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readSync, realpathSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 import {
@@ -20,12 +21,32 @@ import {
   type FlagSpec,
   type FlagValues,
 } from '@osdlc/cli-tool'
-import type { Kind } from '@osdlc/repo-cleaner'
+import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
+import { claimLock, holderGone, releaseLock } from '@osdlc/file-lock'
+import { writeJsonAtomic, type Kind } from '@osdlc/repo-cleaner'
 import { stripControls } from '@osdlc/ux'
 
+import {
+  cleanedIds,
+  failedIds,
+  leftForReview,
+  measure,
+  renderAutoReport,
+  selectUnattended,
+  type AutoReport,
+} from './auto.ts'
 import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { FACTORIES, UnknownPlugin, selectPlugins } from './registry.ts'
+import { PLUGIN_SETTINGS, disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
+import {
+  ScheduleError,
+  installSchedule,
+  parseEvery,
+  scheduleStatus,
+  uninstallSchedule,
+  type ScheduleEnv,
+} from './schedule.ts'
 import {
   SelectionError,
   clean,
@@ -91,7 +112,10 @@ const TARGETS = [
 const PHASES = `phases:
   ${NAME} status   look: every plugin's candidates, and what each objection would stop
   ${NAME} plan     save what status found, to clean later or hand over
-  ${NAME} clean    check again, show the steps, ask, delete`
+  ${NAME} clean    check again, show the steps, ask, delete; --auto cleans the safe subset unattended
+
+  ${NAME} config   print the effective settings of every plugin
+  ${NAME} schedule install, uninstall or show the launchd agent that runs clean --auto`
 
 /** What the bare command prints: the phases, and that nothing ran. */
 const OVERVIEW = `${NAME} finds what on this machine can go (worktrees and branches whose
@@ -107,6 +131,10 @@ It works in phases, as repo-cleaner does. Nothing is deleted until clean.
                 $ ${NAME} clean             asks first
                 $ ${NAME} clean -i          choose from a checklist
                 $ ${NAME} clean --plan plan.json
+                $ ${NAME} clean --auto      no person present: only what is safe
+
+\`${NAME} config\` prints each plugin's settings and where each value came from.
+\`${NAME} schedule install\` runs \`clean --auto\` on a timer (macOS).
 
 Nothing ran. Name a phase; \`${NAME} <phase> --help\` shows its options.
 `
@@ -135,6 +163,42 @@ const statusCli = () =>
       ...HELP_FLAGS,
     },
     shortEpilogue: PHASES,
+  })
+
+const configCli = () =>
+  defineCli({
+    name: `${NAME} config`,
+    summary:
+      'Print the effective settings of every plugin: each value, its default and whether the config file set it. Deletes nothing.',
+    autoHelp: false,
+    flags: {
+      config: SWEEP_FLAGS.config,
+      format: {
+        kind: 'enum',
+        choices: ['text', 'json'] as const,
+        valueName: 'form',
+        default: 'text',
+        help: 'text (the report) or json (the values)',
+      },
+      ...HELP_FLAGS,
+    },
+  })
+
+const scheduleCli = () =>
+  defineCli({
+    name: `${NAME} schedule`,
+    summary:
+      'Install a launchd user agent that runs `host-cleaner clean --auto` on a timer, remove it, or say whether it is there. macOS only.',
+    autoHelp: false,
+    positionals: [{ name: 'action', required: true, help: 'install, uninstall or status' }],
+    flags: {
+      every: {
+        kind: 'string',
+        valueName: 'hours',
+        help: 'install: run every this many hours (default 6)',
+      },
+      ...HELP_FLAGS,
+    },
   })
 
 const planCli = () =>
@@ -192,6 +256,12 @@ const cleanCli = () =>
         valueName: 'file',
         help: 'run this plan (- reads stdin) instead of sweeping',
       },
+      auto: {
+        kind: 'boolean',
+        help:
+          'clean the unattended subset with no --allow: candidates their owner marked unattended ' +
+          'that nothing refuses or protests (idle artifacts, clean worktrees). Writes a report and a receipt to the state directory',
+      },
       interactive: {
         kind: 'boolean',
         short: 'i',
@@ -238,6 +308,13 @@ export interface MainDeps {
   checklist?: Checklist
   /** Reads `--plan -`. Defaults to stdin. */
   readStdin?: () => string
+  /** `schedule`: the command the agent runs. Default: this node and this script. */
+  program?: readonly string[]
+  /** `schedule`: the platform, the uid launchd domain and the runner for `launchctl`. */
+  platform?: string
+  uid?: number
+  launchctl?: CommandRunner
+  now?: () => Date
 }
 
 const PAUSE = new Int32Array(new SharedArrayBuffer(4))
@@ -272,6 +349,7 @@ function refusal(ctx: CliContext, name: string, err: unknown): number {
     err instanceof ConfigError ||
     err instanceof UnknownPlugin ||
     err instanceof BadInput ||
+    err instanceof ScheduleError ||
     err instanceof SelectionError
   ) {
     return usageError(ctx, name, err.message)
@@ -321,26 +399,23 @@ const wanted = (v: SweepValues): string[] | undefined =>
     : [...(v.plugin ?? []), ...(v.adapter ?? [])]
 
 /** The plugins this run uses: the shipped ones built from the config, or `deps.plugins`, then chosen by flag. */
-function pluginsFor(v: SweepValues, config: Config, deps: MainDeps): Plugin[] {
+function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliContext): Plugin[] {
   // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
-  const gitSettings = config.plugins.git
-  if (
-    deps.plugins === undefined &&
-    gitSettings !== undefined &&
-    Object.keys(gitSettings).length > 0
-  ) {
-    throw new BadInput('config `plugins.git` is not read yet: the git plugin takes no settings')
-  }
   const all =
     deps.plugins ??
     Object.entries(FACTORIES).map(([name, make]) =>
-      make({ settings: config.plugins[name] ?? {}, only }),
+      make({ settings: settingsOf(name, config.plugins[name] ?? {}), only, env: ctx.env }),
     )
   const unused = Object.keys(config.plugins).filter((n) => !all.some((p) => p.name === n))
   if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
-  return orderPlugins(selectPlugins(all, wanted(v), v.skipPlugin))
+  // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
+  const named = wanted(v) ?? []
+  const chosen = selectPlugins(all, wanted(v), v.skipPlugin)
+  return orderPlugins(
+    chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins)),
+  )
 }
 
 function contextFor(
@@ -349,9 +424,14 @@ function contextFor(
   ctx: CliContext,
   allow: readonly string[],
 ): Ctx {
+  const chosen =
+    targets.length > 0 ? targets : config.targets.length > 0 ? config.targets : [ctx.cwd]
+  const home = ctx.env.HOME ?? homedir()
   return {
     cwd: ctx.cwd,
-    targets: targets.length > 0 ? targets : config.targets.length > 0 ? config.targets : [ctx.cwd],
+    targets: chosen.map((t) =>
+      resolve(ctx.cwd, t === '~' || t.startsWith('~/') ? join(home, t.slice(1)) : t),
+    ),
     allow,
   }
 }
@@ -399,7 +479,7 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   let s: ReturnType<typeof survey>
   try {
     const config = loadConfig(v, ctx)
-    s = survey(pluginsFor(v, config, deps), contextFor(parsed.positionals, config, ctx, []))
+    s = survey(pluginsFor(v, config, deps, ctx), contextFor(parsed.positionals, config, ctx, []))
   } catch (err) {
     return refusal(ctx, name, err)
   }
@@ -417,6 +497,42 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   return nothingFound(s) ? EXIT_NOTHING_TO_SWEEP : EXIT.ok
 }
 
+function runConfig(argv: readonly string[], ctx: CliContext): number {
+  const name = `${NAME} config`
+  const parsed = parseWith(configCli(), name, argv, ctx)
+  if (parsed.status === 'done') return parsed.code
+  const v = parsed.values
+  try {
+    const config = loadConfig(v, ctx)
+    const unused = Object.keys(config.plugins).filter((n) => !Object.hasOwn(PLUGIN_SETTINGS, n))
+    if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
+    const settings = effectiveSettings(config.plugins)
+    if (v.format === 'json') {
+      const values = Object.fromEntries(
+        Object.entries(settings).map(([n, rows]) => [
+          n,
+          Object.fromEntries(rows.map((r) => [r.key, r.value])),
+        ]),
+      )
+      ctx.io.stdout(JSON.stringify({ targets: config.targets, plugins: values }, null, 2) + '\n')
+      return EXIT.ok
+    }
+    const lines = [`targets: ${config.targets.length > 0 ? config.targets.join(', ') : '(none)'}`]
+    for (const [n, rows] of Object.entries(settings)) {
+      lines.push('', `plugins.${n}`)
+      for (const r of rows) {
+        lines.push(
+          `  ${r.key} = ${JSON.stringify(r.value)}  (${r.source === 'config' ? 'config' : 'default'})  ${r.description}`,
+        )
+      }
+    }
+    ctx.io.stdout(block(lines))
+  } catch (err) {
+    return refusal(ctx, name, err)
+  }
+  return EXIT.ok
+}
+
 function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
   const name = `${NAME} plan`
   const parsed = parseWith(planCli(), name, argv, ctx)
@@ -426,7 +542,7 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   try {
     const config = loadConfig(v, ctx)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow)
-    const s = survey(pluginsFor(v, config, deps), cctx)
+    const s = survey(pluginsFor(v, config, deps, ctx), cctx)
     writeWarnings(ctx, name, s.warnings)
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
     plan = makePlan(s, { targets: cctx.targets, pick: v.pick, spare: v.spare, allow: v.allow })
@@ -457,6 +573,20 @@ function cleanConflict(v: CleanValues, targets: readonly string[]): string | nul
       v.allow.length > 0 ? '--allow' : null,
     ].filter((f) => f !== null)
     if (fixed.length > 0) return `--plan already fixed what is swept; drop ${fixed.join(', ')}`
+  }
+  if (v.auto) {
+    const fixed = [
+      v.plan !== undefined ? '--plan' : null,
+      v.pick.length > 0 ? '--pick' : null,
+      v.allow.length > 0 ? '--allow' : null,
+      v.interactive ? '-i' : null,
+      v.yes ? '--yes' : null,
+      v.dryRun ? '--dry-run' : null,
+      v.receipt !== undefined ? '--receipt' : null,
+    ].filter((f) => f !== null)
+    if (fixed.length > 0) {
+      return `--auto cleans a fixed subset with nothing allowed and asks nothing; drop ${fixed.join(', ')}`
+    }
   }
   if (v.interactive && v.pick.length > 0) {
     return '-i chooses the candidates from a checklist; drop --pick, or drop -i'
@@ -551,6 +681,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   const v = parsed.values
   const conflict = cleanConflict(v, parsed.positionals)
   if (conflict !== null) return usageError(ctx, name, conflict)
+  if (v.auto) return runAuto(v, parsed.positionals, ctx, deps)
   if (v.interactive && deps.checklist === undefined && !canPrompt()) {
     return usageError(ctx, name, NO_TERMINAL_FOR_I)
   }
@@ -564,7 +695,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let preview: Decision
   try {
     const config = loadConfig(v, ctx)
-    plugins = pluginsFor(v, config, deps)
+    plugins = pluginsFor(v, config, deps, ctx)
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow)
       const s = survey(plugins, cctx)
@@ -650,12 +781,197 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   return receipt.status === 'failed' ? EXIT_STEP_FAILED : EXIT.ok
 }
 
+const LOCK_FILE = 'host-cleaner.lock'
+
+/**
+ * `clean --auto`: survey, select the unattended subset by id, less `--spare`, clean it with nothing
+ * allowed, and leave a report and a receipt in the state directory. A second
+ * run that finds the lock held exits without work.
+ */
+function runAuto(
+  v: CleanValues,
+  targets: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+): number {
+  const name = `${NAME} clean --auto`
+  const dirs = hostDirs(ctx.env)
+  try {
+    mkdirSync(dirs.state, { recursive: true })
+  } catch (err) {
+    return refusal(ctx, name, err)
+  }
+  const lockPath = join(dirs.state, LOCK_FILE)
+  const claim = claimLock(
+    lockPath,
+    { pid: process.pid, startedAt: new Date().toISOString() },
+    { isStale: holderGone<{ pid: number; startedAt: string }>((c) => [c]) },
+  )
+  if (!claim.ok) {
+    const pid = claim.holder?.content?.pid
+    ctx.io.stderr(
+      `${name}: another run holds ${lockPath}${pid === undefined ? '' : ` (pid ${pid})`}; exiting without work\n`,
+    )
+    return EXIT.ok
+  }
+  try {
+    return autoWork(v, targets, ctx, deps, dirs)
+  } finally {
+    releaseLock(lockPath, claim.token)
+  }
+}
+
+function autoWork(
+  v: CleanValues,
+  targets: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+  dirs: ReturnType<typeof hostDirs>,
+): number {
+  const name = `${NAME} clean --auto`
+  const now = deps.now ?? (() => new Date())
+  const startedAt = now()
+  let plugins: Plugin[]
+  let cctx: Ctx
+  let s: ReturnType<typeof survey>
+  try {
+    const config = loadConfig(v, ctx)
+    if (targets.length === 0 && config.targets.length === 0) {
+      throw new BadInput(
+        'clean --auto needs targets on the command line or in the config file; it does not sweep the current directory',
+      )
+    }
+    plugins = pluginsFor(v, config, deps, ctx)
+    cctx = contextFor(targets, config, ctx, [])
+    s = survey(plugins, cctx)
+  } catch (err) {
+    return refusal(ctx, name, err)
+  }
+  writeWarnings(ctx, name, s.warnings)
+  if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
+
+  const ids = selectUnattended(s.candidates, s.objections)
+  const sizes = measure(s.candidates, ids)
+  const receiptPath = join(dirs.state, 'receipts', `receipt-${stamp(startedAt)}.json`)
+  let receipt: Receipt | null = null
+  try {
+    // Skipped on an empty pick so no empty receipt is written and the status is nothing-to-clean.
+    if (ids.length > 0) {
+      mkdirSync(dirname(receiptPath), { recursive: true })
+      receipt = clean(
+        makePlan(s, { targets: cctx.targets, select: ids, spare: v.spare, now: startedAt }),
+        plugins,
+        cctx,
+        {
+          source: '(auto)',
+          receiptPath,
+          now,
+        },
+      )
+    }
+  } catch (err) {
+    return refusal(ctx, name, err)
+  }
+  const done = receipt === null ? [] : cleanedIds(receipt)
+  const cleaned = done.map((id) => ({ id, bytes: sizes.get(id) ?? 0 }))
+  const report: AutoReport = {
+    startedAt: startedAt.toISOString(),
+    finishedAt: now().toISOString(),
+    status:
+      receipt === null ? 'nothing-to-clean' : receipt.status === 'failed' ? 'failed' : 'complete',
+    receipt: receipt === null ? null : receiptPath,
+    cleaned,
+    failed: receipt === null ? [] : failedIds(receipt),
+    left: leftForReview(s.candidates, s.objections, new Set(done)),
+    bytesFreed: cleaned.reduce((sum, c) => sum + c.bytes, 0),
+  }
+  let reportFailed = false
+  const reportPath = join(dirs.state, 'reports', `report-${stamp(startedAt)}.json`)
+  try {
+    mkdirSync(dirname(reportPath), { recursive: true })
+    writeJsonAtomic(reportPath, report)
+  } catch (err) {
+    reportFailed = true
+    ctx.io.stderr(renderError(`cannot write the report: ${(err as Error).message}`, name))
+  }
+  logRun(dirs.logs, {
+    at: report.startedAt,
+    source: '(auto)',
+    receipt: report.receipt,
+    status: report.status,
+  })
+  ctx.io.stdout(
+    v.format === 'json'
+      ? `${JSON.stringify({ reportPath, report }, null, 2)}\n`
+      : renderAutoReport(report) + `report: ${stripControls(reportPath)}\n`,
+  )
+  if (report.status === 'failed') return EXIT_STEP_FAILED
+  return reportFailed ? EXIT.error : EXIT.ok
+}
+
+function runSchedule(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
+  const name = `${NAME} schedule`
+  const parsed = parseWith(scheduleCli(), name, argv, ctx)
+  if (parsed.status === 'done') return parsed.code
+  const action = parsed.positionals[0]
+  if (parsed.positionals.length !== 1 || !['install', 'uninstall', 'status'].includes(action ?? ''))
+    return usageError(ctx, name, 'say one of: install, uninstall, status')
+  if (action !== 'install' && parsed.values.every !== undefined)
+    return usageError(ctx, name, '--every applies to install only')
+  const env: ScheduleEnv = {
+    platform: deps.platform ?? process.platform,
+    home: ctx.env.HOME ?? homedir(),
+    uid: deps.uid ?? process.getuid?.() ?? 0,
+    launchctl: deps.launchctl ?? spawnRunner('launchctl'),
+    program: deps.program ?? [],
+    logFile: join(hostDirs(ctx.env).logs, `${NAME}-schedule.log`),
+    path: ctx.env.PATH,
+    vars: Object.fromEntries(
+      Object.entries(ctx.env).filter(
+        (e): e is [string, string] => e[0].startsWith('HOST_CLEANER_') && e[1] !== undefined,
+      ),
+    ),
+  }
+  try {
+    if (action === 'install') {
+      if (loadConfig({}, ctx).targets.length === 0) {
+        throw new BadInput(
+          'schedule install needs `targets` in the config file: a scheduled run starts in /, so it has nowhere else to sweep',
+        )
+      }
+      const hours = parseEvery(parsed.values.every)
+      const program = deps.program ?? [
+        process.execPath,
+        realpathSync(process.argv[1] ?? ''),
+        'clean',
+        '--auto',
+      ]
+      const file = installSchedule({ ...env, program }, hours)
+      ctx.io.stdout(
+        `installed ${stripControls(file)}: runs \`${NAME} clean --auto\` every ${hours} hour${hours === 1 ? '' : 's'}\n`,
+      )
+    } else if (action === 'uninstall') {
+      ctx.io.stdout(uninstallSchedule(env) ? 'uninstalled\n' : 'not installed\n')
+    } else {
+      const st = scheduleStatus(env)
+      ctx.io.stdout(
+        `plist: ${stripControls(st.plist)} (${st.installed ? 'present' : 'absent'})\nlaunchd: ${st.loaded ? 'loaded' : 'not loaded'}\n`,
+      )
+    }
+  } catch (err) {
+    return refusal(ctx, name, err)
+  }
+  return EXIT.ok
+}
+
 /** Returns an exit code; never exits the process. */
 export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = {}): number {
   const [sub, ...rest] = argv
   if (sub === 'status') return runStatus(rest, ctx, deps)
   if (sub === 'plan') return runPlan(rest, ctx, deps)
   if (sub === 'clean') return runClean(rest, ctx, deps)
+  if (sub === 'config') return runConfig(rest, ctx)
+  if (sub === 'schedule') return runSchedule(rest, ctx, deps)
   if (sub === '-h' || sub === '--help') {
     ctx.io.stdout(OVERVIEW)
     return EXIT.ok
@@ -668,6 +984,6 @@ export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = 
   return usageError(
     ctx,
     NAME,
-    `${JSON.stringify(sub)} is not a phase: name one of status, plan or clean, then the targets`,
+    `${JSON.stringify(sub)} is not a phase: name one of status, plan, clean, config or schedule, then the targets`,
   )
 }
