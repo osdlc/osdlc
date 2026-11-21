@@ -32,6 +32,10 @@ export const ORCA_BUNDLE_CLI = '/Applications/Orca.app/Contents/Resources/bin/or
 
 /** Agent states that mean nothing is working. Any other state counts as busy. */
 const QUIET_AGENT = new Set(['idle', 'done'])
+/** Worktree statuses that mean nothing is working. Any other status counts as busy. */
+const QUIET_STATUS = new Set(['', 'inactive', 'active', 'idle', 'done'])
+
+const RECORD_LIMIT = 1000
 
 export interface OrcaOptions {
   /** The runner for the `orca` CLI. When absent, the CLI is looked up and spawned. */
@@ -98,7 +102,7 @@ export function parseRecords(result: unknown): OrcaRecord[] {
 
 /** Whether something in the worktree is at work, or cannot be told apart from work. */
 export const busy = (r: OrcaRecord): boolean =>
-  r.status === 'working' || r.agents.some((state) => !QUIET_AGENT.has(state))
+  !QUIET_STATUS.has(r.status) || r.agents.some((state) => !QUIET_AGENT.has(state))
 
 /** A git plugin's worktree row: the only candidates this plugin acts on. */
 const isGitWorktree = (c: Candidate): boolean => c.kind === 'worktree' && c.owner === 'git'
@@ -135,8 +139,14 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
     return body.result
   }
 
-  const records = (ctx: Ctx): OrcaRecord[] =>
-    parseRecords(call(['worktree', 'ps', '--limit', '1000'], ctx))
+  const records = (ctx: Ctx): OrcaRecord[] => {
+    const result = call(['worktree', 'ps', '--limit', String(RECORD_LIMIT)], ctx)
+    // A worktree past the cap would read as not Orca's.
+    if (isObject(result) && result.truncated === true) {
+      throw new Error(`orca listed more than ${RECORD_LIMIT} worktrees`)
+    }
+    return parseRecords(result)
+  }
 
   /** The records seen at `prepare`, kept for `deleted`, since Orca may list less once git has removed the directory. */
   const prepared = new Map<string, OrcaRecord>()
@@ -253,6 +263,8 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
     },
     delete(c, ctx) {
       const orcaId = (c.evidence as { orcaId: string }).orcaId
+      // `git` may already have had Orca forget a prunable worktree of the same path.
+      if (!records(ctx).some((r) => r.id === orcaId)) return `Orca no longer lists ${c.path}`
       forget({ id: orcaId, path: c.path }, ctx)
       return `orca worktree rm forgot ${orcaId}`
     },

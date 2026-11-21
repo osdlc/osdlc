@@ -42,7 +42,13 @@ interface Row {
 /** An Orca that lists `rows`, as `orca worktree ps --json` does, and records every call. */
 function fakeOrca(
   rows: Row[],
-  over: { running?: boolean; failPs?: boolean; failRm?: boolean; repos?: string[] } = {},
+  over: {
+    running?: boolean
+    failPs?: boolean
+    truncated?: boolean
+    failRm?: boolean
+    repos?: string[]
+  } = {},
 ) {
   const live = [...rows]
   const closed: string[] = []
@@ -56,6 +62,7 @@ function fakeOrca(
     if (a === 'worktree' && b === 'ps') {
       if (over.failPs === true) return { exitCode: 1, stderr: 'runtime_unavailable' }
       return ok({
+        truncated: over.truncated === true,
         worktrees: live.map((r) => ({
           workspaceKind: 'git',
           worktreeId: `repo1::${r.path}`,
@@ -180,6 +187,16 @@ describe('objections to the git plugin worktrees', () => {
     expect(objections(survey(plugins, fx.ctx))).toContainEqual(['refuse', 'orca-agent-active'])
   })
 
+  test("a truncated listing refuses, since a worktree past the cap would read as not Orca's", () => {
+    const { fx, plugins } = withOrca((wt) => [{ path: wt }], { truncated: true })
+    expect(objections(survey(plugins, fx.ctx))).toEqual([['refuse', 'orca-unreachable']])
+  })
+
+  test('a worktree status that is not known to be quiet counts as at work', () => {
+    const { fx, plugins } = withOrca((wt) => [{ path: wt, status: 'permission' }])
+    expect(objections(survey(plugins, fx.ctx))).toContainEqual(['refuse', 'orca-agent-active'])
+  })
+
   test('when Orca cannot be read after detection, git worktrees are refused', () => {
     const { fx, plugins } = withOrca((wt) => [{ path: wt }], { failPs: true })
     const s = survey(plugins, fx.ctx)
@@ -223,9 +240,8 @@ describe('cleaning', () => {
     const p = plan(survey(plugins, fx.ctx), { select: [id] })
     const busy = fakeOrca([{ path: fx.worktree, agents: ['working'] }])
     const receipt = clean(p, [fx.git, orcaPlugin({ orca: busy.orca })], fx.ctx)
-    expect(receipt.dropped.length + receipt.steps.filter((x) => x.result === 'failed').length).toBe(
-      1,
-    )
+    expect(receipt.steps).toEqual([])
+    expect(receipt.dropped[0]).toMatchObject({ id, reason: 'blocked' })
     expect(existsSync(fx.worktree)).toBe(true)
     expect(busy.removed).toEqual([])
   })
