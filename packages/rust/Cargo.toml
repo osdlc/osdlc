@@ -73,7 +73,7 @@ toml = "0.8"
 # web-access's tests drive the guard with `ServiceExt::oneshot`. 0.5.2 is the
 # lowest axum 0.8 accepts.
 tower = { version = "0.5.2", features = ["util"] }
-tracing = "0.1"
+tracing = "0.1.35"
 # Pinned to the version slug-collate's normalisation code is built and tested against,
 # so the minimal-versions job does not resolve an older 0.1.x that predates it.
 unicode-normalization = "0.1.26"
