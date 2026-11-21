@@ -1,12 +1,35 @@
 # Mention @claude in a pull request comment, an inline review comment or a
 # review and Claude replies on the pull request. A comment that starts with
 # `@claude review [focus]` gets a /craft:code-review of the pull request
-# instead. The work is the claude-pr action (packages/gh-actions/claude-pr);
-# this file only says when it runs and with what.
+# instead, and `@claude /<plugin>:<skill> [args] [--apply]` runs a skill,
+# `@claude <text> --apply` an instruction;
+# --apply pushes its edits from a second job (packages/gh-actions/pr-apply).
+# The work is the claude-pr action (packages/gh-actions/claude-pr); this file
+# says when it runs and with what.
 #
-# Only sksizer can trigger it: the job's `if` checks the author before a
-# runner starts. The action is taken from main, never from the pull request,
-# so a pull request cannot change what runs with the API key.
+# One file for osdlc/osdlc and every repository that uses it: it runs here on
+# its own triggers, and another repository calls it (`workflow_call`) from a
+# short workflow with the same triggers and `secrets: inherit`;
+# packages/gh-actions/claude-pr/README.md shows that caller. A called workflow
+# sees the caller's event, variables and secrets.
+#
+# Settings, from the running repository (input, else variable):
+#   PR_AGENT_TRIGGER_USERS   logins that may call the agent, comma separated,
+#                            no spaces. Empty: nobody.
+#   PR_AGENT_APP_CLIENT_ID   client ID of the GitHub App that pushes --apply
+#                            commits. Not a secret.
+#   PR_AGENT_ENVIRONMENT     environment for the push job, if any.
+# Secrets: ANTHROPIC_API_KEY, and PR_AGENT_APP_PRIVATE_KEY for --apply.
+#
+# Only a trigger user can start it: the job's `if` checks the comment's author
+# before a runner starts or a secret is in reach.
+#
+# The actions run from a copy of this file's repository fetched next to the
+# repository checkout, so the agent's working tree, its patch and the push
+# never contain them. When another repository calls this file, the copy is the
+# commit it pinned (job.workflow_sha), so a pin covers the actions too. Here it
+# is the default branch, never the pull request, so a pull request cannot
+# change the actions that run with the API key.
 name: claude
 
 on:
@@ -16,13 +39,34 @@ on:
     types: [created]
   pull_request_review:
     types: [submitted]
+  workflow_call:
+    inputs:
+      trigger-users:
+        description: Logins that may call the agent, comma separated. Default the variable PR_AGENT_TRIGGER_USERS.
+        type: string
+        default: ""
+      app-client-id:
+        description: Client ID of the GitHub App that pushes --apply commits. Default the variable PR_AGENT_APP_CLIENT_ID.
+        type: string
+        default: ""
+      environment:
+        description: Environment for the push job. Default the variable PR_AGENT_ENVIRONMENT, else none.
+        type: string
+        default: ""
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: false
+      PR_AGENT_APP_PRIVATE_KEY:
+        description: "The App's private key, for --apply. `secrets: inherit` passes it."
+        required: false
 
 permissions: {}
 
 jobs:
   claude:
     if: >-
-      (github.event.comment.user.login || github.event.review.user.login) == 'sksizer'
+      contains(format(',{0},', inputs.trigger-users || vars.PR_AGENT_TRIGGER_USERS),
+               format(',{0},', github.event.comment.user.login || github.event.review.user.login))
       && contains(github.event.comment.body || github.event.review.body, '@claude')
       && (github.event_name != 'issue_comment' || github.event.issue.pull_request)
     runs-on: ubuntu-latest
@@ -31,7 +75,77 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+    outputs:
+      apply-patch: ${{ steps.agent.outputs.apply-patch }}
     steps:
-      - uses: osdlc/osdlc/packages/gh-actions/claude-pr@main
+      # The action's own checkout empties the workspace, and the agent may edit
+      # the workspace, so the actions are fetched next to it. osdlc/osdlc is
+      # public: no token.
+      - name: Fetch the agent actions
+        env:
+          # job.workflow_* name this file's repository and commit, the caller's
+          # pin when called. In its own repository it runs the default branch,
+          # so a pull request never supplies the actions.
+          TOOLS_REPO: ${{ job.workflow_repository }}
+          TOOLS_REF: ${{ job.workflow_repository == github.repository && github.event.repository.default_branch || job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          d="$GITHUB_WORKSPACE/../pr-agent-tools"
+          rm -rf "$d"
+          git init -q "$d"
+          git -C "$d" sparse-checkout set --no-cone /packages/gh-actions/
+          git -C "$d" fetch -q --depth 1 --filter=blob:none "https://github.com/$TOOLS_REPO.git" "$TOOLS_REF"
+          git -C "$d" checkout -q FETCH_HEAD
+          git -C "$d" log -1 --format="pr-agent actions: $TOOLS_REPO@%H"
+
+      - id: agent
+        uses: ./../pr-agent-tools/packages/gh-actions/claude-pr
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  # The agent never runs in this job.
+  claude-push:
+    needs: claude
+    if: needs.claude.outputs.apply-patch == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.environment || vars.PR_AGENT_ENVIRONMENT }}
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Fetch the agent actions
+        env:
+          # job.workflow_* name this file's repository and commit, the caller's
+          # pin when called. In its own repository it runs the default branch,
+          # so a pull request never supplies the actions.
+          TOOLS_REPO: ${{ job.workflow_repository }}
+          TOOLS_REF: ${{ job.workflow_repository == github.repository && github.event.repository.default_branch || job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          d="$GITHUB_WORKSPACE/../pr-agent-tools"
+          rm -rf "$d"
+          git init -q "$d"
+          git -C "$d" sparse-checkout set --no-cone /packages/gh-actions/
+          git -C "$d" fetch -q --depth 1 --filter=blob:none "https://github.com/$TOOLS_REPO.git" "$TOOLS_REF"
+          git -C "$d" checkout -q FETCH_HEAD
+          git -C "$d" log -1 --format="pr-agent actions: $TOOLS_REPO@%H"
+
+      # If this fails (client ID or key missing) the next step still runs and
+      # posts the agent's output with the reason nothing was pushed.
+      - name: Get a GitHub App token
+        id: app-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ inputs.app-client-id || vars.PR_AGENT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PR_AGENT_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - uses: ./../pr-agent-tools/packages/gh-actions/pr-apply
+        with:
+          agent: claude
+          push-token: ${{ steps.app-token.outputs.token }}
+          git-user-name: ${{ steps.app-token.outputs.app-slug && format('{0}[bot]', steps.app-token.outputs.app-slug) || 'github-actions[bot]' }}
+          git-user-email: ${{ steps.app-token.outputs.app-slug && format('{0}[bot]@users.noreply.github.com', steps.app-token.outputs.app-slug) || '41898282+github-actions[bot]@users.noreply.github.com' }}
