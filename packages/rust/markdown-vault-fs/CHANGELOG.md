@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/osdlc/osdlc/compare/markdown-vault-fs/v0.7.1...markdown-vault-fs/v0.8.0) - 2026-11-21
+
+### Other
+
+- Hide::Source, change an index's hide rules without rebuilding it ([#872](https://github.com/osdlc/osdlc/pull/872))
+
 ### Changed
 
 - Breaking: `Hide` is `#[non_exhaustive]`, so a later variant is not a break.
