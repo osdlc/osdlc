@@ -54,8 +54,19 @@ const found = survey([cache], ctx) // scope, discover, object
 const receipt = clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
 ```
 
-Without a `pick`, a plan runs every candidate nothing objects to and no plugin holds for review. With one, it
-runs the named candidates, each judged by the rules above.
+What a plan runs uses repo-cleaner's words, with their meaning:
+
+- **The default:** every candidate nothing refuses or protests and no owner
+  holds for review (`unattended: false`).
+- **`select`:** exactly these candidate ids instead of the default.
+- **`pick`:** these as well; a candidate held for review runs only when picked
+  or selected.
+- **`spare`:** leave these alone: an id, a path, a name (every candidate of
+  that name, as a branch and the worktree that has it checked out), or a glob
+  over ids, paths and names. A spared candidate that would have run is
+  dropped as `spared`.
+
+Each candidate that runs is still judged by the rules above.
 
 ## The `git` plugin
 
@@ -110,11 +121,23 @@ It never sends SIGKILL; a session that ignores SIGTERM fails its step.
 
 ## Command line
 
+The command works in repo-cleaner's phases, with its flags. Nothing runs until
+a phase is named; the bare command explains them and exits 2.
+
 ```sh
-host-cleaner [target...]   # the report; deletes nothing
+host-cleaner status [target...]   # every candidate and what objects to it; deletes nothing
 host-cleaner plan -o plan.json
-host-cleaner clean [--plan plan.json] [--pick <id>] [--allow <code>] [--yes | --dry-run]
+host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [-i] [--yes | --dry-run]
 ```
+
+| Flag | Meaning, as in repo-cleaner |
+| --- | --- |
+| `--pick <id>` | Also run this candidate. One its plugin holds for review runs only when picked. |
+| `--spare <id\|name\|glob>` | Leave these alone: an id, a path, a branch name (its worktree too) or a glob. |
+| `-i` | Choose from a checklist, the default candidates ticked; each ticked protest is asked for by code. Needs a terminal. |
+| `--allow <code>` | Accept a protest by its code. |
+| `--worktrees`, `--branches` | Only the git plugin's worktrees, or only its local branches. Remote branches are repo-cleaner's. |
+| `--all-rows` | `status`: also show candidates a plugin refuses. |
 
 `--plugin <name>` runs only those plugins (`--adapter` is an alias) and
 `--skip-plugin <name>` never runs these. Targets default to the config file's

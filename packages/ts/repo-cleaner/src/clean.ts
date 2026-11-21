@@ -189,6 +189,7 @@ function judgeRisks(
   const archived = (risk: Risk): boolean =>
     coverage?.covers.includes(risk) === true && isAllowed('discard-archived')
   const grants = (risk: Risk): boolean => isAllowed(risk) || archived(risk)
+  // A risk the archive covers is asked for as `discard-archived`.
   const asked = (risk: Risk): Risk => (coverage?.covers.includes(risk) ? 'discard-archived' : risk)
   return {
     needs: [...new Set(row.risks.map(asked))],
@@ -1003,6 +1004,8 @@ interface StepContext {
   git: Git
   probe: ProcessProbe
   removedHere: ReadonlySet<string>
+  /** A directory's size on disk, null when it could not be read. */
+  measure: (path: string) => number | null
   /**
    * Worktrees whose lock this run cleared. typed-git has no `worktree lock`
    * verb, so a failed remove cannot put the lock back; the receipt says so.
@@ -1010,8 +1013,6 @@ interface StepContext {
   unlocked: Set<string>
   /** Each archived worktree's stamp, by `<repo>\0<row>`. */
   stamps: Map<string, string>
-  /** A worktree directory's size, measured just before its removal. */
-  measure: (path: string) => number | null
 }
 
 /** Run one step and record how it went on the step: its `result`, `verification` and `error`. Never throws. */
@@ -1127,7 +1128,7 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   const stamps = new Map<string, string>()
   const measure = (path: string): number | null =>
     sizeOf(path, { du: opts.du, timeoutMs: opts.sizeTimeoutMs })
-  const ctx: StepContext = { git, probe, removedHere, unlocked, stamps, measure }
+  const ctx: StepContext = { git, probe, removedHere, measure, unlocked, stamps }
   for (const [i, [step, a]] of plannedSteps.entries()) {
     const cause = blocked.find((b) => dependsOn(step, a, b.step, b.a))
     if (cause !== undefined) {
@@ -1200,10 +1201,6 @@ function rowOfCandidate(c: CleanCandidate): Row {
  * first failure. The caller has already re-checked the candidate; this
  * refuses only what is unsafe now.
  *
- * A worktree whose removal needs `git worktree prune` is refused when the
- * prune would also drop another worktree of its repository, since this sees
- * only the one row.
- *
  * Does not throw for a refused or failed delete: see `CandidateRemoval`.
  */
 export function removeCandidate(
@@ -1269,9 +1266,9 @@ export function removeCandidate(
     git: new Git(cwd, { runner: opts.git }),
     probe: opts.probe ?? defaultProcessProbe(),
     removedHere: new Set(row.kind === 'worktree' ? [resolve(row.name)] : []),
+    measure: (path) => sizeOf(path, { du: opts.du }),
     unlocked: new Set(),
     stamps: new Map(),
-    measure: (path) => sizeOf(path, { du: opts.du }),
   }
   const taken: Step[] = []
   for (const [step, accepted] of steps) {

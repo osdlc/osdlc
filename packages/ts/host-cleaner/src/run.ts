@@ -3,7 +3,7 @@
  * `recheck` pick what runs; `clean` is prepare, delete and deleted.
  */
 
-import { sameFingerprint } from '@osdlc/repo-cleaner'
+import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 
 import {
   writeReceipt,
@@ -126,21 +126,80 @@ export function survey(all: readonly Plugin[], ctx: Ctx): Survey {
   return { plugins, ctx: scoped, candidates, objections, warnings }
 }
 
-/** A plan of `s`: every candidate and objection, and what was picked and allowed. */
+/**
+ * What a person chose, as {@link decide} reads it. Candidates are named by id.
+ *
+ *   `select` work on exactly these, instead of the default: every candidate
+ *            its owner has not held for review and nothing refuses or
+ *            protests. For a checklist (`clean -i`) or a run that already
+ *            chose.
+ *   `pick`   also run these: a candidate held for review
+ *            (`unattended: false`) runs only when picked or selected.
+ *   `spare`  leave these alone: an id, a path, a name (every candidate of
+ *            that name, as a branch and the worktree that has it), or a
+ *            glob (`*`, `**`, `?`) over ids, paths and names.
+ *
+ * The same words repo-cleaner's approval uses, with the same meaning.
+ */
+export interface Selection {
+  select: readonly string[] | null
+  pick: readonly string[]
+  spare: readonly string[]
+}
+
+/** The default selection: nothing chosen, picked or spared. */
+export const DEFAULT_SELECTION: Selection = { select: null, pick: [], spare: [] }
+
+/** Whether `entry`, one `spare`, names `c`. */
+export function spares(entry: string, c: Candidate): boolean {
+  const names = [c.id, c.path, ...(c.name === undefined ? [] : [c.name])]
+  if (isGlob(entry)) {
+    const re = globRegExp(entry)
+    return names.some((n) => re.test(n))
+  }
+  return names.includes(entry)
+}
+
+/**
+ * Refuses a selection that contradicts itself: a candidate both chosen and
+ * spared by the same text.
+ */
+export function checkSelection(sel: Selection): void {
+  const chosen = [...(sel.select ?? []), ...sel.pick]
+  const both = chosen.find((id) => sel.spare.includes(id))
+  if (both !== undefined) throw new SelectionError(`${both} is both picked and spared`)
+}
+
+/** A selection that cannot be honoured as typed. */
+export class SelectionError extends Error {
+  override name = 'SelectionError'
+}
+
+/** A plan of `s`: every candidate and objection, and what was chosen and allowed. */
 export function plan(
   s: Pick<Survey, 'candidates' | 'objections' | 'warnings'>,
   opts: {
     targets?: readonly string[] | undefined
+    select?: readonly string[] | null | undefined
     pick?: readonly string[] | undefined
+    spare?: readonly string[] | undefined
     allow?: readonly string[] | undefined
     now?: Date
   } = {},
 ): Plan {
+  const selection: Selection = {
+    select: opts.select === undefined || opts.select === null ? null : [...opts.select],
+    pick: [...(opts.pick ?? [])],
+    spare: [...(opts.spare ?? [])],
+  }
+  checkSelection(selection)
   return {
     version: PLAN_VERSION,
     createdAt: (opts.now ?? new Date()).toISOString(),
     targets: [...(opts.targets ?? [])],
-    pick: opts.pick === undefined ? null : [...opts.pick],
+    select: selection.select === null ? null : [...selection.select],
+    pick: [...selection.pick],
+    spare: [...selection.spare],
     allow: [...(opts.allow ?? [])],
     warnings: s.warnings,
     // A copy, so a plugin that mutates and returns the same objects on re-discovery cannot change the plan.
@@ -156,16 +215,18 @@ export interface Decision {
 }
 
 /**
- * What runs. The picked ids, or without a pick every candidate its owner has
- * not marked `unattended: false` and nothing objects to at `refuse` or `protest`. A refused candidate is dropped as
- * `blocked`, an un-granted protest as `not-allowed`, an unknown pick as
- * `gone`. A candidate whose requirement does not run is dropped as `blocked`,
- * and so on up the chain. A `note` never gates.
+ * What runs: the selected ids, or without a selection every candidate its
+ * owner has not marked `unattended: false` and nothing objects to at `refuse`
+ * or `protest`; then the picked ids too; then less what is spared. A spared
+ * candidate that would have run is dropped as `spared`, a refused one as
+ * `blocked`, an un-granted protest as `not-allowed`, an unknown id as `gone`.
+ * A candidate whose requirement does not run is dropped as `blocked`, and so
+ * on up the chain. A `note` never gates.
  */
 export function decide(
   candidates: readonly Candidate[],
   objections: readonly Objection[],
-  pick: readonly string[] | null,
+  selection: Selection,
   allow: readonly string[],
 ): Decision {
   const byId = new Map(candidates.map((c) => [c.id, c]))
@@ -179,8 +240,10 @@ export function decide(
     (byCandidate.get(id) ?? []).filter((o) => o.level === level)
   const unmet = (id: string): Objection[] =>
     gating(id, 'protest').filter((o) => !granted.has(o.code))
-  const ids =
-    pick ??
+  // With no selection, only what no owner has held back: an owner marks a candidate
+  // `unattended: false` when it wants a person to choose it.
+  const base =
+    selection.select ??
     candidates
       .filter(
         (c) =>
@@ -190,8 +253,13 @@ export function decide(
 
   const dropped: Dropped[] = []
   const running = new Map<string, Candidate>()
-  for (const id of new Set(ids)) {
+  for (const id of new Set([...base, ...selection.pick])) {
     const c = byId.get(id)
+    const spare = c === undefined ? undefined : selection.spare.find((e) => spares(e, c))
+    if (spare !== undefined) {
+      dropped.push({ id, reason: 'spared', detail: `--spare ${spare}` })
+      continue
+    }
     const refused = gating(id, 'refuse')
     const missing = unmet(id)
     if (c === undefined) dropped.push({ id, reason: 'gone', detail: 'no plugin proposes it now' })
@@ -255,14 +323,19 @@ function closeRequires(running: Map<string, Candidate>, dropped: Dropped[]): { r
 
 /** What the plan decided, from its own candidates and objections. */
 export function decidePlan(p: Plan): Decision {
-  return decide(p.candidates, p.objections, p.pick, p.allow)
+  return decide(
+    p.candidates,
+    p.objections,
+    { select: p.select, pick: p.pick, spare: p.spare },
+    p.allow,
+  )
 }
 
 /**
- * Judge a plan against the world now. Surveys again and decides over the same
- * picks, so a refusal that appeared since is `blocked`, a protest nobody
- * granted `not-allowed`, a vanished candidate `gone`, and one whose evidence
- * moved `changed`.
+ * Judge a plan against the world now. Surveys again and decides over exactly
+ * what the plan would run, so a refusal that appeared since is `blocked`, a
+ * protest nobody granted `not-allowed`, a vanished candidate `gone`, and one whose evidence
+ * moved (repo-cleaner's `sameFingerprint`) `changed`.
  */
 export function recheck(
   p: Plan,
@@ -274,7 +347,7 @@ export function recheck(
   const now = decide(
     fresh.candidates,
     fresh.objections,
-    planned.run.map((c) => c.id),
+    { select: planned.run.map((c) => c.id), pick: [], spare: [] },
     p.allow,
   )
   const dropped = [...planned.dropped, ...now.dropped]
