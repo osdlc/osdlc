@@ -1,6 +1,6 @@
 /**
- * A sweep's rows as plain data for a host that runs its own phases (one
- * that runs its own phases): what could be deleted, what would object,
+ * A sweep's rows as plain data for a host that runs its own phases (a
+ * `git` plugin of host-cleaner): what could be deleted, what would object,
  * and what it depends on. `removeCandidate` (in `clean.ts`) takes one back.
  */
 
@@ -21,6 +21,7 @@ import {
 
 /** One row of a sweep, as data a host can compare, object to and hand back. */
 export interface CleanCandidate {
+  /** The row id, `<kind>:<name>`. */
   id: RowId
   kind: Kind
   /** The main checkout's root the row belongs to. */
@@ -51,7 +52,8 @@ export interface CleanCandidate {
 /**
  * The rows of `sweep` that could be deleted or that object to it: every row
  * with an action or a blocker. Rows kept for structure (the primary
- * worktree, a branch a worktree holds) are left out.
+ * worktree, a branch a worktree holds) are left out. A branch freed by its
+ * worktree `requires` that worktree.
  */
 export function candidatesOf(sweep: Sweep): CleanCandidate[] {
   return sweep.repos.flatMap((swept) => {

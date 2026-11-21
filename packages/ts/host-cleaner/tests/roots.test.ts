@@ -29,12 +29,12 @@ const temp = (): string => {
 
 const ctx: Ctx = { cwd: '/', targets: [], allow: [] }
 
-/** A cache cleaner for one directory: every file in `paths` is a candidate, `rm` deletes it. */
-function cachePlugin(roots: string[], paths: string[]): Plugin {
+/** A plugin owning `roots` that proposes each of `paths` and deletes it with `rmSync`. */
+function cachePlugin(roots: string[] | (() => string[]), paths: string[]): Plugin {
   return {
     name: 'cache',
     detect: () => true,
-    roots: () => roots,
+    roots: typeof roots === 'function' ? roots : () => roots,
     discover: () =>
       paths.map((path): Candidate => ({
         id: `file:${path}`,
@@ -67,6 +67,8 @@ describe('containedIn', () => {
     expect(containedIn([root], root)).toBeNull()
     expect(containedIn([root], join(base, 'cache-2', 'a'))).toBeNull()
     expect(containedIn([root], join(root, 'out', 'b'))).toBeNull()
+    // A link is judged by its target, so one pointing out of the root is not inside.
+    expect(containedIn([root], join(root, 'out'))).toBeNull()
     expect(containedIn([root], join(root, '..', 'other', 'b'))).toBeNull()
     expect(containedIn([join(base, 'missing')], join(root, 'a'))).toBeNull()
     expect(containedIn([root], join(root, '..cache'))).toBe(root)
@@ -124,5 +126,50 @@ describe('a machine-scope plugin through plan, check, run and receipt', () => {
     const receipt = clean(plan(survey([p, swapping], ctx)), [p, swapping], ctx)
     expect(receipt.steps[0]!.result).toBe('failed')
     expect(existsSync(join(other, 'precious'))).toBe(true)
+  })
+})
+
+describe('roots that fail or are empty', () => {
+  const rows = (root: string) => [join(root, 'a'), join(root, 'b')]
+
+  test('roots that throw warn once and refuse every candidate of the plugin', () => {
+    const root = temp()
+    const p = cachePlugin(() => {
+      throw new Error('settings unreadable')
+    }, rows(root))
+    const s = survey([p], ctx)
+    expect(s.warnings).toEqual(['cache: roots failed: settings unreadable'])
+    expect(s.objections.map((o) => [o.code, o.reason.endsWith('(none)')])).toEqual([
+      [OUTSIDE_ROOTS, true],
+      [OUTSIDE_ROOTS, true],
+    ])
+  })
+
+  test('no roots refuses every candidate of the plugin', () => {
+    const root = temp()
+    const s = survey([cachePlugin([], rows(root))], ctx)
+    expect(s.objections.map((o) => o.code)).toEqual([OUTSIDE_ROOTS, OUTSIDE_ROOTS])
+  })
+
+  test('roots that throw at delete time fail the step and delete nothing', () => {
+    const root = temp()
+    const file = join(root, 'a')
+    writeFileSync(file, 'x')
+    let broken = false
+    const p = cachePlugin(() => {
+      if (broken) throw new Error('gone away')
+      return [root]
+    }, [file])
+    const breaker: Plugin = {
+      name: 'breaker',
+      detect: () => true,
+      prepare: () => void (broken = true),
+    }
+    const receipt = clean(plan(survey([p, breaker], ctx)), [p, breaker], ctx)
+    expect(receipt.steps[0]).toMatchObject({
+      result: 'failed',
+      error: 'cache: roots failed: gone away',
+    })
+    expect(existsSync(file)).toBe(true)
   })
 })

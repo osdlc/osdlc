@@ -46,4 +46,18 @@ describe('pr-update update --restack / --no-restack', () => {
   test('no flag sends no restack key', async () => {
     expect(await run()).not.toHaveProperty('restack')
   })
+
+  test('--keep-failed reaches runUpdate as keepFailed: true', async () => {
+    expect((await run('--keep-failed')).keepFailed).toBe(true)
+  })
+
+  test('--no-keep-failed reaches it as false, and no flag sends no key', async () => {
+    expect((await run('--no-keep-failed')).keepFailed).toBe(false)
+  })
+
+  test('--discard-kept reaches runUpdate', async () => {
+    const args = await run('--discard-kept')
+    expect(args.discardKept).toBe(true)
+    expect(args).not.toHaveProperty('keepFailed')
+  })
 })

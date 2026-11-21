@@ -4,8 +4,8 @@ A repository's structure, as typed data: the packages and crates it holds, the
 dependencies they declare, and how their directories nest.
 
 This is the Rust twin of [`@osdlc/system-model`](../../ts/system-model). It moves
-here from the `manifest-graph` crate. The model types and the dependency graph
-are in; the walk, the containment tree and the wire schema follow.
+here from the `manifest-graph` crate. The model types, the walk, the aspect
+scanners and the dependency graph.
 
 ## Install
 
@@ -24,7 +24,11 @@ assert!(graph.nodes.is_empty());
 The graph is deterministic: nodes keep the walk's order, external nodes are
 sorted by id and edges are sorted, so two runs diff cleanly.
 
-`tests/mini-repo` is the fixture tree both implementations will walk once the walk lands here.
+`walk_manifests(root, &WalkOptions::default())` finds and parses every
+`package.json` and `Cargo.toml` under `root`. A malformed manifest comes back as
+an entry with `error` set. Dependency tables are read in sorted key order.
+
+`tests/mini-repo` is the fixture tree the walk tests read.
 
 ## License
 
