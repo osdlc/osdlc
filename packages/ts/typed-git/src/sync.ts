@@ -78,6 +78,7 @@ import {
   type DiffNameStatusOptions,
   type DiffTextOptions,
   type DiffTreeOptions,
+  type FetchManyOptions,
   type FetchOptions,
   type ForEachRefOptions,
   type GitVerb,
@@ -872,6 +873,11 @@ export class Git {
     opts: GitSyncCallOptions & FetchOptions = {},
   ): void {
     this.exec(v.fetch(remote, refspec, opts), opts)
+  }
+
+  /** `git fetch --multiple <remote>…`. See {@link FetchManyOptions}. */
+  fetchMany(remotes: readonly string[], opts: GitSyncCallOptions & FetchManyOptions = {}): void {
+    this.exec(v.fetchMany(remotes, opts), opts)
   }
 
   /** Stage paths; `all` / `update` are `git add -A` / `-u`. */

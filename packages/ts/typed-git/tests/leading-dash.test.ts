@@ -63,6 +63,7 @@ const CASES: Array<[string, unknown[]]> = [
   ['commitTree', ['-x', { message: 'm' }]],
   ['remoteGetUrl', ['-x']],
   ['fetch', ['--upload-pack=touch FILE', 'HEAD']],
+  ['fetchMany', [['--upload-pack=touch FILE']]],
   ['clone', ['--upload-pack=touch FILE', 'dest']],
   ['push', ['--receive-pack=touch FILE', 'HEAD']],
   ['resetHard', ['-x']],
@@ -108,6 +109,7 @@ const MORE_CASES: Array<[string, unknown[]]> = [
   ['lsRemote', ['origin', '-x']],
   ['fetch', ['origin', '-x']],
   ['fetch', ['origin', ['main', '-x']]],
+  ['fetchMany', [['origin', '-x']]],
   ['clone', ['/store.git', '-x']],
   ['push', ['origin', '-x']],
   ['push', ['origin', ['HEAD', '-x']]],
@@ -149,7 +151,7 @@ describe('leading-dash positionals', () => {
   test('the cases cover every guarded verb in verbs.ts', () => {
     const cased = new Set(CASES.map(([name]) => name))
     expect([...cased].sort()).toEqual([...guardedVerbs()].sort())
-    expect(cased.size).toBe(50)
+    expect(cased.size).toBe(51)
   })
 
   test.each([...CASES, ...MORE_CASES])('Git.%s refuses before spawning', (name, args) => {
