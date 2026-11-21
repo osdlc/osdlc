@@ -38,6 +38,12 @@ function isSet(value: unknown): boolean {
 }
 
 const VERIFY_KEY = ['pr_update', 'verify'] as const
+const REPAIR_MODE_KEY = ['pr_update', 'repair', 'mode'] as const
+
+/** An interactive or terminal repair session reads the repository like an agent does. */
+function isNonHeadless(mode: unknown): boolean {
+  return typeof mode === 'string' && mode !== 'headless'
+}
 
 /** The project-file keys that choose a command to run and that the overlay does not override. */
 export function projectSourcedCommands(
@@ -48,6 +54,12 @@ export function projectSourcedCommands(
     (path) => isSet(getIn(project, path).value) && !isSet(getIn(local, path).value),
   ).map((path) => path.join('.'))
   // Not in COMMAND_KEYS: the value is a mode, not a command.
+  if (
+    isNonHeadless(getIn(project, REPAIR_MODE_KEY).value) &&
+    !isSet(getIn(local, REPAIR_MODE_KEY).value)
+  ) {
+    keys.push(REPAIR_MODE_KEY.join('.'))
+  }
   if (getIn(project, VERIFY_KEY).value === 'detect' && !isSet(getIn(local, VERIFY_KEY).value)) {
     keys.push(VERIFY_KEY.join('.'))
   }
@@ -55,19 +67,21 @@ export function projectSourcedCommands(
 }
 
 /**
- * `project` without the repair choice, for a run whose command line already
- * made it. A flag is the person's own consent. The project file's
- * `repair.command` or `repair.agent` that it overrides never runs, so it needs
- * no consent.
+ * `project` without the repair keys in `keys`, for a run whose command line
+ * already chose them. A flag is the person's own consent. A project value it
+ * overrides never runs, so it needs no consent.
  */
 export function withoutRepairChoice(
   project: Record<string, unknown> | null,
+  keys: readonly ('command' | 'agent' | 'mode')[] = ['command', 'agent', 'mode'],
 ): Record<string, unknown> | null {
   const section = project?.['pr_update']
   if (project === null || typeof section !== 'object' || section === null) return project
   const repair = (section as Record<string, unknown>)['repair']
   if (typeof repair !== 'object' || repair === null) return project
-  const { command: _command, agent: _agent, ...rest } = repair as Record<string, unknown>
+  const rest = Object.fromEntries(
+    Object.entries(repair).filter(([key]) => !keys.some((k) => k === key)),
+  )
   return { ...project, pr_update: { ...section, repair: rest } }
 }
 

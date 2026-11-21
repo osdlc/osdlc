@@ -1,0 +1,10 @@
+{
+  "name": "@mini/pkg-c",
+  "version": "0.1.0",
+  "bin": {
+    "pkg-c": "./cli.ts"
+  },
+  "dependencies": {
+    "@mini/pkg-b": "file:../pkg-b"
+  }
+}

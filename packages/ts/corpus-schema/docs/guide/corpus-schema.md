@@ -433,6 +433,8 @@ CSV results of a method the record describes.
 - Ids are compared across both shapes: `methods/Survey/Survey.md` and `methods/survey.md` collide.
 - A folder in a type folder with no record file is not a record folder. Unless its name starts with
   `_`, it is a plain folder: each `.md`, `.yaml` and `.json` file in it is a record of the type.
+  A validator may add a hint to such a file's errors, since supporting data left there is a common
+  mistake. The reference validator does. Hints change messages only, not which files are records.
 
 osdlc calls this shape a bundle: a note's folder holding `<name>/<name>.md` and the files beside it.
 Moving the folder moves the record and its files together, and their relative links keep working.
