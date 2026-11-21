@@ -174,6 +174,32 @@ describe.skipIf(noBun)('the bun-test capture path, under Bun (skipped without bu
     })
   }, 20_000)
 
+  test('a missing binary under Bun is classified not-installed, sync and async', () => {
+    // Without NODE_ENV=test the sync runner spawns in-process (see CHILD_STDIO_CORRUPTED
+    // in src/sync.ts), so both runners report Bun's text.
+    withTempDir((dir) => {
+      const { NODE_ENV: _, ...env } = bunEnv(dir, dir)
+      const { result } = runProbe(
+        dir,
+        ON_BUN,
+        [
+          'const name = "definitely-not-a-real-binary-b2";',
+          'const cwd = process.cwd();',
+          'const sync = seam.spawnRunner(name).run([], { cwd });',
+          'const later = await seam.spawnRunnerAsync(name).run([], { cwd });',
+          'report({',
+          '  sync: seam.classifyFailure(sync, { binary: name })?.kind,',
+          '  async: seam.classifyFailure(later, { binary: name })?.kind,',
+          '  error: sync.error,',
+          '});',
+        ],
+        env,
+      )
+      expect(result).toMatchObject({ sync: 'not-installed', async: 'not-installed' })
+      expect((result as { error: string }).error).toContain('Executable not found in $PATH')
+    })
+  }, 20_000)
+
   test('captures input, argv, a missing binary, -a, a timeout and bytes, then removes its temp dir', () => {
     withTempDir((dir) => {
       const tmp = join(dir, 'tmp')
