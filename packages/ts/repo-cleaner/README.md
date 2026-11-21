@@ -862,13 +862,21 @@ reason, so a free-form reason such as `keep, build running` always blocks.
   receipt records the `unlock-worktree` step.
 - The owner is alive, or cannot be ruled out: `locked-worktree`.
 - A lock writes `pid <N>` and, to guard against pid reuse, `start <time>`. The
-  time must be precise to the second: a full ISO-8601 timestamp with a time of
-  day and a zone (`2026-10-25T18:22:19Z`; one with no zone is not accepted),
-  epoch seconds (9-10 digits), epoch milliseconds (12-13 digits), or the
-  `ps -o lstart` form (`Sat Oct 25 18:22:19 2026`; matches when it is the real
-  start in some time zone, since the writer's zone is unknown). With
-  one of those, a live pid whose own start time differs by more than two
-  seconds is a reused pid and counts as dead. Anything else, a date alone, a
+  start is read by [`@osdlc/file-lock`](../file-lock/README.md)'s
+  `sameProcess`, which takes:
+  - its `processIdentity`, the most reliable form: on Linux
+    `linux:<boot id>:<start ticks>`, checked against `/proc`, which neither a
+    clock change nor a time zone moves; elsewhere `start:<ms>`;
+  - a full ISO-8601 timestamp with a time of day and a zone
+    (`2026-10-25T18:22:19Z`; one with no zone is not accepted), epoch seconds
+    (9-10 digits) or epoch milliseconds (12-13 digits);
+  - the `ps -o lstart` form (`Sat Oct 25 18:22:19 2026`), which matches when it
+    is the real start in some time zone, since the writer's zone is unknown.
+
+  A pid is reused only after its owner exits, so only a live pid whose process
+  started more than two seconds after the recorded time is a reused pid and
+  counts as dead. A recorded time later than the start, such as when the
+  owner took the lock, still names the owner. Anything else, a date alone, a
   short number or a partial date, cannot rule the owner out and the lock stays
   a blocker.
 - Only `ps` exiting 1 with no output and no error text means "no such pid".
