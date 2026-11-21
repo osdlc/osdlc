@@ -129,6 +129,7 @@ a phase is named; the bare command explains them and exits 2.
 host-cleaner status [target...]   # every candidate and what objects to it; deletes nothing
 host-cleaner plan -o plan.json
 host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [-i] [--yes | --dry-run]
+host-cleaner config [--format json]   # every plugin's effective settings
 ```
 
 | Flag | Meaning, as in repo-cleaner |
@@ -151,11 +152,21 @@ The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
 all three directories):
 
 ```json
-{ "targets": ["~/dev"], "plugins": { "git": {} } }
+{ "targets": ["~/dev"], "plugins": { "cargo": { "idleHours": 48 }, "node": { "enabled": false } } }
 ```
 
 `plugins.<name>` holds that plugin's settings; a name that no plugin has is an
-error.
+error. Each plugin's settings are a strict schema, checked when the config
+loads: a misspelt key or a wrong type is refused (exit 2), naming the plugin and
+the key.
+
+| Setting | Plugins | Default | Meaning |
+| --- | --- | --- | --- |
+| `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
+| `idleHours` | `cargo`, `node` | `24` | Hours an artifact must have sat unused before it is a candidate; a positive number. |
+
+`host-cleaner config` prints every plugin's effective settings: the value, and
+whether the file set it or it is the default. `--format json` prints the values.
 
 ### `clean --auto` and `schedule`
 

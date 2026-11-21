@@ -38,6 +38,7 @@ import {
 import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { FACTORIES, UnknownPlugin, selectPlugins } from './registry.ts'
+import { PLUGIN_SETTINGS, disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
 import {
   ScheduleError,
   installSchedule,
@@ -113,6 +114,7 @@ const PHASES = `phases:
   ${NAME} plan     save what status found, to clean later or hand over
   ${NAME} clean    check again, show the steps, ask, delete; --auto cleans the safe subset unattended
 
+  ${NAME} config   print the effective settings of every plugin
   ${NAME} schedule install, uninstall or show the launchd agent that runs clean --auto`
 
 /** What the bare command prints: the phases, and that nothing ran. */
@@ -131,6 +133,7 @@ It works in phases, as repo-cleaner does. Nothing is deleted until clean.
                 $ ${NAME} clean --plan plan.json
                 $ ${NAME} clean --auto      no person present: only what is safe
 
+\`${NAME} config\` prints each plugin's settings and where each value came from.
 \`${NAME} schedule install\` runs \`clean --auto\` on a timer (macOS).
 
 Nothing ran. Name a phase; \`${NAME} <phase> --help\` shows its options.
@@ -160,6 +163,25 @@ const statusCli = () =>
       ...HELP_FLAGS,
     },
     shortEpilogue: PHASES,
+  })
+
+const configCli = () =>
+  defineCli({
+    name: `${NAME} config`,
+    summary:
+      'Print the effective settings of every plugin: each value, its default and whether the config file set it. Deletes nothing.',
+    autoHelp: false,
+    flags: {
+      config: SWEEP_FLAGS.config,
+      format: {
+        kind: 'enum',
+        choices: ['text', 'json'] as const,
+        valueName: 'form',
+        default: 'text',
+        help: 'text (the report) or json (the values)',
+      },
+      ...HELP_FLAGS,
+    },
   })
 
 const scheduleCli = () =>
@@ -381,22 +403,19 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps): Plugin[] {
   // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
-  const gitSettings = config.plugins.git
-  if (
-    deps.plugins === undefined &&
-    gitSettings !== undefined &&
-    Object.keys(gitSettings).length > 0
-  ) {
-    throw new BadInput('config `plugins.git` is not read yet: the git plugin takes no settings')
-  }
   const all =
     deps.plugins ??
     Object.entries(FACTORIES).map(([name, make]) =>
-      make({ settings: config.plugins[name] ?? {}, only }),
+      make({ settings: settingsOf(name, config.plugins[name] ?? {}), only }),
     )
   const unused = Object.keys(config.plugins).filter((n) => !all.some((p) => p.name === n))
   if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
-  return orderPlugins(selectPlugins(all, wanted(v), v.skipPlugin))
+  // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
+  const named = wanted(v) ?? []
+  const enabled = all.filter(
+    (p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins),
+  )
+  return orderPlugins(selectPlugins(enabled, wanted(v), v.skipPlugin))
 }
 
 function contextFor(
@@ -476,6 +495,42 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
     )
   }
   return nothingFound(s) ? EXIT_NOTHING_TO_SWEEP : EXIT.ok
+}
+
+function runConfig(argv: readonly string[], ctx: CliContext): number {
+  const name = `${NAME} config`
+  const parsed = parseWith(configCli(), name, argv, ctx)
+  if (parsed.status === 'done') return parsed.code
+  const v = parsed.values
+  try {
+    const config = loadConfig(v, ctx)
+    const unused = Object.keys(config.plugins).filter((n) => !(n in PLUGIN_SETTINGS))
+    if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
+    const settings = effectiveSettings(config.plugins)
+    if (v.format === 'json') {
+      const values = Object.fromEntries(
+        Object.entries(settings).map(([n, rows]) => [
+          n,
+          Object.fromEntries(rows.map((r) => [r.key, r.value])),
+        ]),
+      )
+      ctx.io.stdout(JSON.stringify({ targets: config.targets, plugins: values }, null, 2) + '\n')
+      return EXIT.ok
+    }
+    const lines = [`targets: ${config.targets.length > 0 ? config.targets.join(', ') : '(none)'}`]
+    for (const [n, rows] of Object.entries(settings)) {
+      lines.push('', `plugins.${n}`)
+      for (const r of rows) {
+        lines.push(
+          `  ${r.key} = ${JSON.stringify(r.value)}  (${r.source === 'config' ? 'config' : 'default'})  ${r.description}`,
+        )
+      }
+    }
+    ctx.io.stdout(block(lines))
+  } catch (err) {
+    return refusal(ctx, name, err)
+  }
+  return EXIT.ok
 }
 
 function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
@@ -910,6 +965,7 @@ export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = 
   if (sub === 'status') return runStatus(rest, ctx, deps)
   if (sub === 'plan') return runPlan(rest, ctx, deps)
   if (sub === 'clean') return runClean(rest, ctx, deps)
+  if (sub === 'config') return runConfig(rest, ctx)
   if (sub === 'schedule') return runSchedule(rest, ctx, deps)
   if (sub === '-h' || sub === '--help') {
     ctx.io.stdout(OVERVIEW)
@@ -923,6 +979,6 @@ export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = 
   return usageError(
     ctx,
     NAME,
-    `${JSON.stringify(sub)} is not a phase: name one of status, plan or clean, then the targets`,
+    `${JSON.stringify(sub)} is not a phase: name one of status, plan, clean, config or schedule, then the targets`,
   )
 }
