@@ -865,12 +865,7 @@ pub(crate) fn seq_items(
         if empty_scalar {
             return None;
         }
-        // The `-` sits before the value on its line, with only blanks between.
-        let before = src[..start].trim_end_matches([' ', '\t']);
-        let dash = before
-            .len()
-            .checked_sub(1)
-            .filter(|d| src.as_bytes()[*d] == b'-')?;
+        let dash = dash_before(src, start)?;
         let after = skip_node(events, i);
         let subtree = &events[i..after];
         let scalar_end = subtree
@@ -985,6 +980,39 @@ pub(crate) fn flow_elems(
 /// The byte offset where the node that starts at event `idx` begins.
 pub(crate) fn root_start(events: &[Ev], src: &str, idx: usize) -> usize {
     byte_index(src, events[idx].span.start.index())
+}
+
+/// The offset of the `-` that starts the sequence item whose value starts at
+/// `start`. The value may be on a later line than the `-`, after comment lines,
+/// and after a block scalar header, an anchor or a tag.
+fn dash_before(src: &str, start: usize) -> Option<usize> {
+    let mut ls = src[..start].rfind('\n').map_or(0, |i| i + 1);
+    let mut line = &src[ls..start];
+    let mut earlier = false;
+    while line.trim().is_empty() || earlier && line.trim_start().starts_with('#') {
+        if ls == 0 {
+            return None;
+        }
+        let end = ls - 1;
+        ls = src[..end].rfind('\n').map_or(0, |i| i + 1);
+        line = src[ls..end].trim_end_matches('\r');
+        earlier = true;
+    }
+    if earlier && let Some(i) = line.find(" #") {
+        line = &line[..i];
+    }
+    let mut head = line.trim_end();
+    // Properties, and on an earlier line a block scalar header, sit between
+    // the `-` and the value.
+    while let Some((rest, token)) = head.rsplit_once([' ', '\t']) {
+        let header = earlier && token.starts_with(['|', '>']);
+        if !(header || token.starts_with(['&', '!'])) {
+            break;
+        }
+        head = rest.trim_end();
+    }
+    (head.ends_with('-') && head[..head.len() - 1].ends_with([' ', '\t']) || head == "-")
+        .then(|| ls + head.len() - 1)
 }
 
 /// The byte offset just past a scalar or alias event's source text.
