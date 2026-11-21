@@ -29,7 +29,7 @@ const CORPUS: &str = include_str!("fixtures/nested.json");
 const CONFORMANCE: &str = include_str!("fixtures/conformance.json");
 
 /// The tiers whose cases must pass. Raised as each tier is implemented.
-const ENABLED_TIERS: &[u64] = &[1];
+const ENABLED_TIERS: &[u64] = &[1, 2];
 
 const CATEGORIES: &[(&str, u64)] = &[
     ("set-existing", 1),

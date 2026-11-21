@@ -202,7 +202,7 @@ fn block_eol(yaml: &str) -> &'static str {
 }
 
 /// Re-point an emitter's always-LF text at the document's own line ending.
-fn apply_eol(text: &str, eol: &'static str) -> String {
+pub(crate) fn apply_eol(text: &str, eol: &'static str) -> String {
     if eol == "\n" {
         text.to_string()
     } else {

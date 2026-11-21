@@ -20,7 +20,7 @@ use model::{PathEdit, Seg, apply, read, to_field_edit};
 use yaml_splice::{EditError, Value, edit_yaml};
 
 /// The tiers whose edits run. Raised as each tier is implemented.
-const ENABLED_TIERS: &[u64] = &[1];
+const ENABLED_TIERS: &[u64] = &[1, 2];
 
 const FILES: &[(&str, &str)] = &[
     (
@@ -192,7 +192,7 @@ fn one_line_leaf(root: &Value, path: &[Seg]) -> bool {
 fn every_node_of_every_real_file_is_edited() {
     let mut planned = [0usize; 3];
     let mut written = 0usize;
-    let mut refused: std::collections::BTreeMap<String, usize> = Default::default();
+    let mut refused: std::collections::BTreeMap<&str, usize> = Default::default();
     let mut failures = Vec::new();
     for (name, src) in FILES {
         assert!(
@@ -223,6 +223,9 @@ fn every_node_of_every_real_file_is_edited() {
         failures.len(),
         failures.join("\n")
     );
+    // Every edit is written. Only a path into a flow collection, which tier 3
+    // adds, is refused, and never because the result was wrong.
+    assert_eq!(refused.get("InvalidResult"), None, "refused: {refused:?}");
     // Pinned: the files are fixed copies, so a change here means the walk or
     // the model changed.
     assert_eq!(planned, [0, 642, 1228], "edits planned by tier");
@@ -236,9 +239,8 @@ fn every_node_of_every_real_file_is_edited() {
 fn run(src: &str, p: &Planned) -> Result<Outcome, String> {
     let out = match edit_yaml(src.as_bytes(), &[to_field_edit(&p.edit)]) {
         Ok(out) => out,
-        Err(e @ (EditError::InvalidResult { .. } | EditError::UnsupportedPath { .. })) => {
-            return Ok(Outcome::Refused(e.to_string()));
-        }
+        Err(EditError::InvalidResult { .. }) => return Ok(Outcome::Refused("InvalidResult")),
+        Err(EditError::UnsupportedPath { .. }) => return Ok(Outcome::Refused("UnsupportedPath")),
         Err(e) => return Err(format!("unexpected refusal: {e}")),
     };
     let text = String::from_utf8(out.bytes).map_err(|e| e.to_string())?;
@@ -272,5 +274,5 @@ fn run(src: &str, p: &Planned) -> Result<Outcome, String> {
 
 enum Outcome {
     Written,
-    Refused(String),
+    Refused(&'static str),
 }

@@ -823,6 +823,88 @@ pub(crate) fn map_entries(
     out
 }
 
+/// One item of a block sequence: where its `-` is, and its value.
+pub(crate) struct ItemSpan {
+    /// Offset of the `-` that starts the item.
+    pub(crate) dash: usize,
+    /// The event that starts the item's value.
+    pub(crate) value_idx: usize,
+    /// The value's bytes, without the trailing newline and comment.
+    pub(crate) value_range: std::ops::Range<usize>,
+}
+
+/// The items of the block sequence that starts at event `seq_idx`, in source
+/// order, bounded like [`map_entries`] by `hard_stop`. `None` for a shape whose
+/// spans are not known: an item with no value (`-` alone), or an empty block
+/// scalar.
+pub(crate) fn seq_items(
+    events: &[Ev],
+    src: &str,
+    seq_idx: usize,
+    hard_stop: usize,
+) -> Option<Vec<ItemSpan>> {
+    struct Raw {
+        dash: usize,
+        value_idx: usize,
+        start: usize,
+        scalar_end: usize,
+        event_end: usize,
+    }
+    let mut raws: Vec<Raw> = Vec::new();
+    let mut i = seq_idx + 1;
+    while i < events.len() && !matches!(events[i].kind, EvKind::SeqEnd) {
+        let ev = &events[i];
+        let start = byte_index(src, ev.span.start.index());
+        let empty_scalar =
+            matches!(ev.kind, EvKind::Scalar(..)) && ev.span.start.index() == ev.span.end.index();
+        if empty_scalar {
+            return None;
+        }
+        // The `-` sits before the value on its line, with only blanks between.
+        let before = src[..start].trim_end_matches([' ', '\t']);
+        let dash = before
+            .len()
+            .checked_sub(1)
+            .filter(|d| src.as_bytes()[*d] == b'-')?;
+        let after = skip_node(events, i);
+        let subtree = &events[i..after];
+        let scalar_end = subtree
+            .iter()
+            .filter(|e| matches!(e.kind, EvKind::Scalar(..) | EvKind::Alias(_)))
+            .map(|e| scalar_end(src, e))
+            .max()
+            .unwrap_or(start);
+        let event_end = subtree
+            .iter()
+            .map(|e| byte_index(src, e.span.end.index()))
+            .max()
+            .unwrap_or(start);
+        raws.push(Raw {
+            dash,
+            value_idx: i,
+            start,
+            scalar_end,
+            event_end,
+        });
+        i = after;
+    }
+    let stop = hard_stop.min(src.len());
+    Some(
+        raws.iter()
+            .enumerate()
+            .map(|(n, r)| {
+                let limit = raws.get(n + 1).map_or(stop, |next| next.dash);
+                let end = trim_value_end(src, limit, r.scalar_end, r.event_end);
+                ItemSpan {
+                    dash: r.dash,
+                    value_idx: r.value_idx,
+                    value_range: r.start..end.max(r.start),
+                }
+            })
+            .collect(),
+    )
+}
+
 /// The byte offset just past a scalar or alias event's source text.
 ///
 /// `saphyr-parser`'s span end is not always that offset, and [`trim_value_end`]

@@ -11,9 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Nested edits by path: `FieldEdit::SetPath`, `RemovePath` and `RenamePath`,
   over a `PathSegment` list (`Key` or `Index`). A one-segment path is exactly
-  the top-level edit of the same name. This release edits keys through block
-  mappings. A path that steps into a sequence or a flow collection is refused
-  as `UnsupportedPath`.
+  the top-level edit of the same name. Keys are edited through block mappings
+  and block sequences, `- key:` items included: an index sets an item, one
+  past the end appends, and `RemovePath` deletes an item. A path that steps
+  into a flow collection is refused as `UnsupportedPath`.
 - `EditError::PathNotFound`, `PathTypeMismatch` and `UnsupportedPath`.
 
 ### Fixed
