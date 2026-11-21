@@ -406,17 +406,17 @@ const inNarrative = (dir: string, path: string): boolean =>
     .slice(0, -1)
     .some((part) => part.startsWith('_'))
 
+/** The extension a new record gets: `.md` when `extensions` allows it, else the first. */
+export function preferredExtension(extensions: string[]): string {
+  return extensions.includes('.md') ? '.md' : (extensions[0] ?? '.md')
+}
+
 /**
  * A record's id, from `name`, its file stem or record-folder name. With no `x-id-pattern` up the
  * chain it is `name`. Otherwise it is the longest of `name` and the parts of `name` that end just
  * before a `-` that every pattern matches, so `P-0002-be-kind` with `^P-[0-9]{4}$` has the id
  * `P-0002`. Undefined when none matches.
  */
-/** The extension a new record gets: `.md` when `extensions` allows it, else the first. */
-export function preferredExtension(extensions: string[]): string {
-  return extensions.includes('.md') ? '.md' : (extensions[0] ?? '.md')
-}
-
 export function idOf(types: Type[], name: string): string | undefined {
   const patterns = types.flatMap((t) => (t.idPattern === undefined ? [] : [t.idPattern]))
   if (patterns.length === 0) return name
