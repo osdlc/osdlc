@@ -821,6 +821,14 @@ async fn check(state: &GuardState, mut req: Request<Body>, next: Next) -> Respon
     // Under `serve`, the connection the request arrived on.
     let conn = req.extensions().get::<Arc<Conn>>().cloned();
     if let Some(c) = &conn {
+        // A connection's tag holds one token, so only HTTP/1 is safe on it.
+        // Cargo feature unification can turn axum's `http2` on under us.
+        if req.version() == axum::http::Version::HTTP_2 {
+            return refuse(
+                StatusCode::HTTP_VERSION_NOT_SUPPORTED,
+                "HTTP/2 is not supported; use HTTP/1.1",
+            );
+        }
         req.extensions_mut().insert(c.signal());
     }
     let peer = req

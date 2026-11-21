@@ -59,6 +59,15 @@ describe('integration verbs — argv', () => {
     expect(() => git.rebase('abc123', { upstream: '-x' })).toThrow(/upstream must not start/)
   })
 
+  test('rebase forkPoint emits --fork-point before the ref, and upstream wins over it', () => {
+    const { runner, calls } = recorder(res(0))
+    const git = new Git('/repo', { runner })
+    git.rebase('origin/topic', { forkPoint: true })
+    git.rebase('abc123', { upstream: 'def456', forkPoint: true })
+    expect(calls[0]).toEqual(['rebase', '--fork-point', 'origin/topic'])
+    expect(calls[1]).toEqual(['rebase', '--onto', 'abc123', 'def456'])
+  })
+
   test('rebase --continue stubs the editor through git config, not an env var', () => {
     const { runner, calls } = recorder(res(0))
     new Git('/repo', { runner }).rebaseContinue()

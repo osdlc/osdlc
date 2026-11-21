@@ -55,7 +55,9 @@ describe('spawnRunner', () => {
   }, 10_000)
 
   test("a timeout keeps the child's own stderr, and error still names the timeout", () => {
-    const r = sh.run(['-c', 'echo working >&2; sleep 10'], { cwd: CWD, timeoutMs: 300 })
+    // 2s, not less: the shell has to start and write before the kill, and a loaded runner can take
+    // longer than 300ms to get there (macOS CI did, and stderr came back empty).
+    const r = sh.run(['-c', 'echo working >&2; sleep 10'], { cwd: CWD, timeoutMs: 2000 })
     expect(r.stderr).toBe('working\n')
     expect(r.error).toContain('ETIMEDOUT')
   }, 10_000)
@@ -153,9 +155,11 @@ describe('spawnRunnerAsync', () => {
   }, 10_000)
 
   test("a timeout keeps the child's own stderr, and error still names the timeout", async () => {
-    const r = await sh.run(['-c', 'echo working >&2; sleep 10'], { cwd: CWD, timeoutMs: 300 })
+    // 2s, not less: the shell has to start and write before the kill, and a loaded runner can take
+    // longer than 300ms to get there (macOS CI did, and stderr came back empty).
+    const r = await sh.run(['-c', 'echo working >&2; sleep 10'], { cwd: CWD, timeoutMs: 2000 })
     expect(r.stderr).toBe('working\n')
-    expect(r.error).toBe('timed out after 300ms')
+    expect(r.error).toBe('timed out after 2000ms')
   }, 10_000)
 
   test('an abort is abort', async () => {

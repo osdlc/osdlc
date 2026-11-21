@@ -1,5 +1,37 @@
 # @osdlc/pr-update
 
+## 0.16.0
+
+### Minor Changes
+
+- 3f84b08: `update` rebases with `--fork-point` when it does not know the parent's old head. A child of a PR rebased in an earlier run, without `--restack`, now leaves the parent's old commits behind when the clone's reflog still holds them, instead of replaying them onto their new versions. A fresh clone has no such reflog and rebases as before. `git.rebase(onto, { forkPoint: true })` in typed-git passes `--fork-point`.
+- 8d79790: Repair with the person watching: `repair.mode: interactive` runs the repair agent's own CLI in this terminal (stdio inherited, needs a terminal), and `repair.mode: terminal` opens it in a detached tmux session through `@osdlc/agent-seat` and waits for it to end. `--repair-mode <mode>` sets it for one run. The prompt is the same, given as the first message, and after the session ends the same checks as a headless repair decide the result. A mode other than `headless` in the project file is trust-gated like `repair.agent`.
+
+### Patch Changes
+
+- Updated dependencies [8d79790]
+- Updated dependencies [3f84b08]
+  - @osdlc/agent-seat@0.10.2
+  - @osdlc/typed-git@0.21.0
+  - @osdlc/code-host@0.8.5
+  - @osdlc/ref-lease@0.3.6
+  - @osdlc/trust-repo@0.5.13
+
+## 0.15.0
+
+### Minor Changes
+
+- b58c2d3: `update --apply --keep-failed` (or `pr_update.keep_failed: true`) moves the worktree of a PR that ended `conflict` or `failed` to `.pr-update/failed/<owner>-<name>-<number>/`, on a branch named for the PR, with a failed verify's log in `.pr-update-verify.log`. The result gains `keptWorktree` and the text names it. A later run skips that PR (`failed worktree kept at <path>`) until its head or base moves; `--retry-failed` and `--discard-kept` remove kept worktrees.
+
+### Patch Changes
+
+- Updated dependencies [a1651e3]
+- Updated dependencies [1ba6088]
+  - @osdlc/ref-lease@0.3.5
+  - @osdlc/typed-git@0.20.0
+  - @osdlc/code-host@0.8.4
+  - @osdlc/trust-repo@0.5.12
+
 ## 0.14.0
 
 ### Minor Changes
