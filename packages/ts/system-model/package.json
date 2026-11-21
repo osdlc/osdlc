@@ -39,6 +39,10 @@
       "types": "./dist/aspect.d.ts",
       "default": "./dist/aspect.js"
     },
+    "./build": {
+      "types": "./dist/build.d.ts",
+      "default": "./dist/build.js"
+    },
     "./client": {
       "types": "./dist/client.d.ts",
       "default": "./dist/client.js"

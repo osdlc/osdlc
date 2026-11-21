@@ -11,7 +11,7 @@ import type { SystemGraph } from './graph.ts'
  * It is defined here, not inside a viewer. So a host can be written against
  * the contract without depending on the viewer, and a viewer can be written
  * without knowing which host it runs in. Two hosts implement it and share no
- * code. SDF reaches the Rust `manifest-graph` crate through ontogen's
+ * code. SDF reaches the Rust `system-model` crate through ontogen's
  * generated transport. `product-system-graph` calls the crate's TypeScript
  * counterpart in-process over one Nitro route.
  */
