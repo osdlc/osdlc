@@ -1,5 +1,13 @@
 # @osdlc/agent-seat
 
+## 0.10.2
+
+### Patch Changes
+
+- 8d79790: Export `tmuxRunSessionName`, the name of the tmux session a waiting run opens, so a caller can tell a person which session to attach to.
+- Updated dependencies [3f84b08]
+  - @osdlc/typed-git@0.21.0
+
 ## 0.10.1
 
 ### Patch Changes
