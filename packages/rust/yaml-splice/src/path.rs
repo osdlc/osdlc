@@ -140,6 +140,14 @@ pub(crate) fn apply(
             let (next, changed) = set(current, parsed, first, &nested, opts, eol, bom_len)?;
             return finish(&cx, parsed, next, changed);
         }
+        (_, Some(root))
+            if starts_with(current, parse::root_start(&events, current, root), b'{') =>
+        {
+            return Err(unsupported(
+                &cx,
+                "a flow mapping as the document root is not edited",
+            ));
+        }
         (_, Some(root)) => {
             let root_value = parsed
                 .root
@@ -219,6 +227,8 @@ fn unsupported(cx: &Cx<'_>, message: &str) -> EditError {
         message: message.to_string(),
     }
 }
+
+mod flow;
 
 // --- the walk ---------------------------------------------------------------
 
@@ -316,7 +326,7 @@ fn step_into(
         c if c.is_empty_collection() => vivify(cx, slot, depth),
         Value::Map(child_map) => {
             if starts_with(cx.src, slot.value_start(), b'{') {
-                return Err(unsupported(cx, "flow mappings are not edited yet"));
+                return flow::walk_flow(cx, value_idx, child, next);
             }
             walk_map(
                 cx,
@@ -331,7 +341,7 @@ fn step_into(
             PathSegment::Key(_) => Err(mismatch(cx, next, "a sequence")),
             PathSegment::Index(_) => {
                 if starts_with(cx.src, slot.value_start(), b'[') {
-                    return Err(unsupported(cx, "flow sequences are not edited yet"));
+                    return flow::walk_flow(cx, value_idx, child, next);
                 }
                 walk_seq(cx, value_idx, child_stop, slot.parent(), items, next)
             }

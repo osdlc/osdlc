@@ -409,7 +409,12 @@ pub(crate) fn plain_is_non_string(text: &str) -> bool {
 /// string, and a plain token is a string only if it does not resolve to a
 /// scalar of another type.
 pub(crate) fn is_string_key(src: &str, span: &KeySpan) -> bool {
-    let raw = src[span.key_range.clone()].trim();
+    range_is_string_key(src, &span.key_range)
+}
+
+/// [`is_string_key`] for a key given by its byte range.
+pub(crate) fn range_is_string_key(src: &str, range: &std::ops::Range<usize>) -> bool {
+    let raw = src[range.clone()].trim();
     if raw.starts_with('\'') || raw.starts_with('"') {
         return true;
     }
@@ -903,6 +908,83 @@ pub(crate) fn seq_items(
             })
             .collect(),
     )
+}
+
+/// One element of a flow collection: an item of `[a, b]`, or a `key: value`
+/// pair of `{a: 1}`.
+pub(crate) struct FlowElem {
+    /// The key and its range, for a mapping.
+    pub(crate) key: Option<(String, std::ops::Range<usize>)>,
+    /// The event that starts the value.
+    pub(crate) value_idx: usize,
+    /// The value's bytes: the scalar, or the collection with its brackets.
+    pub(crate) value_range: std::ops::Range<usize>,
+}
+
+/// The elements of the flow collection that starts at event `open_idx`
+/// (`{` when `is_map`, `[` otherwise), in source order. `None` for a shape
+/// whose spans are not known: a key that is not a scalar, a pair written
+/// inside a flow sequence, or an element with no value (`{a, b: 1}`).
+pub(crate) fn flow_elems(
+    events: &[Ev],
+    src: &str,
+    open_idx: usize,
+    is_map: bool,
+) -> Option<Vec<FlowElem>> {
+    let end_kind = |k: &EvKind| {
+        if is_map {
+            matches!(k, EvKind::MapEnd)
+        } else {
+            matches!(k, EvKind::SeqEnd)
+        }
+    };
+    let mut out = Vec::new();
+    let mut i = open_idx + 1;
+    while i < events.len() && !end_kind(&events[i].kind) {
+        let key = if is_map {
+            let ev = &events[i];
+            let EvKind::Scalar(text, ..) = &ev.kind else {
+                return None;
+            };
+            let start = byte_index(src, ev.span.start.index());
+            let range = start..scalar_end(src, ev);
+            i += 1;
+            Some((text.clone(), range))
+        } else {
+            None
+        };
+        let value_idx = i;
+        let first = events.get(value_idx)?;
+        let after = skip_node(events, value_idx);
+        let start = byte_index(src, first.span.start.index());
+        let empty = matches!(first.kind, EvKind::Scalar(..)) && first.span.start == first.span.end;
+        let nested_pair = !is_map
+            && matches!(first.kind, EvKind::MapStart(_))
+            && src.as_bytes().get(start) != Some(&b'{');
+        if empty || nested_pair {
+            return None;
+        }
+        let end = events[value_idx..after]
+            .iter()
+            .map(|e| match e.kind {
+                EvKind::Scalar(..) | EvKind::Alias(_) => scalar_end(src, e),
+                _ => byte_index(src, e.span.end.index()),
+            })
+            .max()
+            .unwrap_or(start);
+        out.push(FlowElem {
+            key,
+            value_idx,
+            value_range: start..end,
+        });
+        i = after;
+    }
+    Some(out)
+}
+
+/// The byte offset where the node that starts at event `idx` begins.
+pub(crate) fn root_start(events: &[Ev], src: &str, idx: usize) -> usize {
+    byte_index(src, events[idx].span.start.index())
 }
 
 /// The byte offset just past a scalar or alias event's source text.
