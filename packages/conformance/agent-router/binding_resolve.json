@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.4",
+  "referenceVersion": "0.4.5",
   "sections": {
     "binding_resolve": {
       "description": "resolveBinding: a named profile, an inline profile list or a single reference (a wildcard walks the chain), and the binding errors; an inline list of the wrong shape drops its zod text, which is not mirrored",
