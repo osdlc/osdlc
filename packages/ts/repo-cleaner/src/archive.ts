@@ -23,6 +23,7 @@ import type { Git } from '@osdlc/typed-git'
 
 import type { ArchiveRecord } from './receipt.ts'
 import type { Risk, Row, RowId } from './types.ts'
+import { globRegExp } from './util.ts'
 
 /** What the `archive` option takes. */
 export interface ArchiveOptions {
@@ -48,25 +49,6 @@ export interface LeftOut {
 /** File names that look like secrets. */
 const SECRET_NAME =
   /^(\.env.*|.*\.pem|.*\.key|.*\.p12|.*\.pfx|id_rsa.*|id_ed25519.*|\.npmrc|\.netrc|credentials(\..*)?)$/i
-
-/** A glob as a regular expression. */
-function globRegExp(glob: string): RegExp {
-  let out = ''
-  for (let i = 0; i < glob.length; i++) {
-    const c = glob[i]!
-    if (c === '*') {
-      if (glob[i + 1] === '*') {
-        i += 1
-        if (glob[i + 1] === '/') {
-          i += 1
-          out += '(?:.*/)?'
-        } else out += '.*'
-      } else out += '[^/]*'
-    } else if (c === '?') out += '[^/]'
-    else out += c.replace(/[.+^${}()|[\]\\]/g, '\\$&')
-  }
-  return new RegExp(`^${out}$`)
-}
 
 /** The reason `path` stays out of a snapshot, or null. `root` is where `path` is read for its size. */
 export function leftOutReason(
