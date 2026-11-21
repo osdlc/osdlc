@@ -3,9 +3,11 @@ import assert from 'node:assert/strict'
 import {
   existsSync,
   mkdtempSync,
+  readdirSync,
   mkdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -214,9 +216,119 @@ test('--clean still replaces the output when the source has notes', () => {
   writeFileSync(join(config.vault, 'Notes', 'b.md'), 'b\n')
   transform(config)
   rmSync(join(config.vault, 'Notes', 'b.md'))
-  transform(config, { clean: true })
+  transform(config, { clean: true, yes: true })
   assert.ok(existsSync(join(config.astroRoot, 'src/content/notes/a.md')))
   assert.ok(!existsSync(join(config.astroRoot, 'src/content/notes/b.md')), 'a stale note survived')
+})
+
+describe('--clean builds aside, reports removals, then swaps', () => {
+  function withOrphan() {
+    const root = mkdtempSync(join(tmpdir(), 'oa-run-'))
+    const config = cleanConfig(root)
+    mkdirSync(join(config.vault, 'Notes'), { recursive: true })
+    writeFileSync(join(config.vault, 'Notes', 'a.md'), 'new a\n')
+    const dst = join(config.astroRoot, 'src/content/notes')
+    mkdirSync(dst, { recursive: true })
+    writeFileSync(join(dst, 'a.md'), 'old a\n')
+    writeFileSync(join(dst, 'orphan.md'), 'only here\n')
+    return { config, dst }
+  }
+
+  test('refuses without --yes, names the orphan and leaves the destination alone', () => {
+    const { config, dst } = withOrphan()
+    assert.throws(
+      () => transform(config, { clean: true }),
+      (e: Error) =>
+        /--clean would remove 1 file[\s\S]*--yes/.test(e.message) &&
+        e.message.includes(join(dst, 'orphan.md')),
+    )
+    assert.equal(readFileSync(join(dst, 'orphan.md'), 'utf8'), 'only here\n')
+    assert.equal(readFileSync(join(dst, 'a.md'), 'utf8'), 'old a\n')
+    assert.ok(!existsSync(`${dst}.markdown-vault-astro-tmp`), 'the temp build was left behind')
+  })
+
+  test('--yes removes the orphan and swaps the new build in', () => {
+    const { config, dst } = withOrphan()
+    const stats = transform(config, { clean: true, yes: true })
+    assert.deepEqual(stats.removed, [join(dst, 'orphan.md')])
+    assert.equal(stats.changed, 1)
+    assert.equal(stats.added, 0)
+    assert.ok(!existsSync(join(dst, 'orphan.md')))
+    assert.equal(readFileSync(join(dst, 'a.md'), 'utf8'), 'new a\n')
+    assert.ok(!existsSync(`${dst}.markdown-vault-astro-tmp`))
+    assert.ok(!existsSync(`${dst}.markdown-vault-astro-old`))
+  })
+
+  test('--dry-run reports the removal and writes nothing, even with --yes', () => {
+    const { config, dst } = withOrphan()
+    const stats = transform(config, { clean: true, yes: true, dryRun: true })
+    assert.deepEqual(stats.removed, [join(dst, 'orphan.md')])
+    assert.equal(readFileSync(join(dst, 'a.md'), 'utf8'), 'old a\n')
+    assert.ok(existsSync(join(dst, 'orphan.md')))
+  })
+
+  test('a run that throws partway leaves the destination unchanged', () => {
+    const { config, dst } = withOrphan()
+    writeFileSync(join(config.vault, 'Notes', 'b.md'), 'b\n')
+    let n = 0
+    const include = () => {
+      if (++n === 2) throw new Error('boom')
+      return true
+    }
+    assert.throws(() => transform(config, { clean: true, yes: true, include }), /boom/)
+    assert.equal(readFileSync(join(dst, 'a.md'), 'utf8'), 'old a\n')
+    assert.ok(existsSync(join(dst, 'orphan.md')))
+    assert.ok(!existsSync(join(dst, 'b.md')))
+    assert.ok(!existsSync(`${dst}.markdown-vault-astro-tmp`))
+  })
+
+  test('without --clean, orphans are warned about and kept', () => {
+    const { config, dst } = withOrphan()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const stats = transform(config)
+    assert.deepEqual(stats.orphans, [join(dst, 'orphan.md')])
+    assert.equal(warn.mock.calls.length, 1)
+    assert.match(String(warn.mock.calls[0]?.[0]), /1 file\(s\).*no source/)
+    assert.ok(existsSync(join(dst, 'orphan.md')))
+    assert.equal(readFileSync(join(dst, 'a.md'), 'utf8'), 'new a\n')
+  })
+
+  test('an interrupted swap is recovered, not deleted, by the next run', () => {
+    const { config, dst } = withOrphan()
+    renameSync(dst, `${dst}.markdown-vault-astro-old`)
+    assert.throws(() => transform(config, { clean: true }), /orphan\.md/)
+    assert.ok(existsSync(join(dst, 'orphan.md')))
+  })
+
+  test('a plain run recovers an interrupted swap too', () => {
+    const { config, dst } = withOrphan()
+    renameSync(dst, `${dst}.markdown-vault-astro-old`)
+    transform(config, {})
+    assert.ok(existsSync(join(dst, 'orphan.md')))
+    assert.ok(!existsSync(`${dst}.markdown-vault-astro-old`))
+  })
+
+  test('a leftover -old next to a live destination is refused, not deleted', () => {
+    const { config, dst } = withOrphan()
+    mkdirSync(`${dst}.markdown-vault-astro-old`)
+    writeFileSync(join(`${dst}.markdown-vault-astro-old`, 'lost.md'), 'x\n')
+    assert.throws(() => transform(config, { clean: true, yes: true }), /earlier run/)
+    assert.ok(existsSync(join(`${dst}.markdown-vault-astro-old`, 'lost.md')))
+  })
+
+  test('a filter that rejects every note still swaps in an empty collection', () => {
+    const { config, dst } = withOrphan()
+    transform(config, { clean: true, yes: true, include: () => false })
+    assert.deepEqual(readdirSync(dst), [])
+  })
+
+  test('a destination with no orphans cleans without --yes', () => {
+    const { config, dst } = withOrphan()
+    rmSync(join(dst, 'orphan.md'))
+    const stats = transform(config, { clean: true })
+    assert.deepEqual(stats.removed, [])
+    assert.equal(readFileSync(join(dst, 'a.md'), 'utf8'), 'new a\n')
+  })
 })
 
 test('exportVault does not copy through a `..` in a published URL', () => {
@@ -370,7 +482,7 @@ describe('--clean refuses a destination broader than the collection', () => {
     }
     transform(exp, { clean: true })
     writeFileSync(join(vault, 'Notes', 'stale.md'), 's\n')
-    exportVault(exp, { clean: true })
+    exportVault(exp, { clean: true, yes: true })
     assert.ok(!existsSync(join(vault, 'Notes', 'stale.md')))
     assert.ok(existsSync(join(vault, 'Notes', 'a.md')))
     assert.ok(existsSync(join(vault, 'precious.txt')))

@@ -59,6 +59,9 @@ fn source_markers() -> (BTreeSet<String>, BTreeSet<String>) {
     let mut unstable = BTreeSet::new();
     for entry in fs::read_dir(&src).expect("src is readable") {
         let path = entry.expect("a directory entry").path();
+        if path.is_dir() {
+            continue;
+        }
         let module = path.file_stem().unwrap().to_string_lossy().to_string();
         let text = fs::read_to_string(&path).expect("a source file is readable");
         let lines: Vec<&str> = text.lines().collect();
