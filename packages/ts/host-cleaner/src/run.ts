@@ -123,11 +123,18 @@ export function survey(all: readonly Plugin[], ctx: Ctx): Survey {
 
   const known = new Set(candidates.map((c) => c.id))
   const objections: Objection[] = []
-  const byPlugin = new Map(plugins.map((p) => [p.name, p]))
+  // Asked once per plugin, so a throwing `roots` warns once.
+  const rootsOf = new Map<string, readonly string[]>()
+  for (const p of plugins) {
+    if (p.roots === undefined) continue
+    rootsOf.set(
+      p.name,
+      guarded(p, 'roots', [], () => p.roots!(scoped)),
+    )
+  }
   for (const c of candidates) {
-    const owner = byPlugin.get(c.owner)
-    if (owner?.roots === undefined) continue
-    const roots = guarded(owner, 'roots', [] as readonly string[], () => owner.roots!(scoped))
+    const roots = rootsOf.get(c.owner)
+    if (roots === undefined) continue
     if (containedIn(roots, c.path) === null) {
       objections.push({
         by: 'host-cleaner',
