@@ -26,9 +26,11 @@ import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { cannedGh, sh } from './helpers.ts'
 import { resolveApproval, type Approval } from '../src/approval.ts'
+import { candidatesOf } from '../src/candidates.ts'
 import {
   check,
   networkRemoteKey,
+  removeCandidate,
   run,
   type CheckOptions,
   type Preview,
@@ -1502,5 +1504,138 @@ describe('plan files', () => {
       ['branch:wt-branch', 'keep', 'checked out in a worktree (handle via that worktree)'],
       [wt(fx.worktree), 'keep', expect.any(String)],
     ])
+  })
+})
+
+describe('candidatesOf and removeCandidate', () => {
+  const idle = { alive: () => false, holders: () => [] }
+  const candidate = (fx: Fixture, id: string) => {
+    const c = candidatesOf(sweepOf([fx.root], fx.root)).find((x) => x.id === id)
+    if (c === undefined) throw new Error(`no candidate ${id}`)
+    return c
+  }
+
+  test('lists rows as data: a branch freed by its worktree requires it, risks and blockers ride along', () => {
+    const fx = buildFixture()
+    mergeWorktreeBranch(fx)
+    const all = candidatesOf(sweepOf([fx.root], fx.root))
+    const byId = new Map(all.map((c) => [c.id, c]))
+    expect(byId.get('branch:wt-branch')?.requires).toEqual([wt(fx.worktree)])
+    expect(byId.get(wt(fx.worktree))).toMatchObject({
+      kind: 'worktree',
+      repo: realpathSync(fx.root),
+      path: fx.worktree,
+      action: 'remove',
+      blockers: [],
+      remote: 'origin',
+    })
+    expect(byId.get('branch:merged-a')?.requires).toBeUndefined()
+    expect(byId.get('branch:unmerged')?.risks).toContain('abandon-unmerged')
+    expect(JSON.parse(JSON.stringify(byId.get('branch:merged-a')))).toEqual(
+      byId.get('branch:merged-a'),
+    )
+  })
+
+  test('removes a worktree, then the branch it freed', () => {
+    const fx = buildFixture()
+    mergeWorktreeBranch(fx)
+    const worktree = removeCandidate(candidate(fx, wt(fx.worktree)), { cwd: fx.root, probe: idle })
+    expect(worktree).toMatchObject({ ok: true, archiveFailed: false, error: null })
+    expect(worktree.steps.map((s) => [s.action, s.result, s.verification])).toEqual([
+      ['remove-worktree', 'ok', 'directory gone and unregistered'],
+    ])
+    const branch = removeCandidate(candidate(fx, 'branch:wt-branch'), { cwd: fx.root, probe: idle })
+    expect(branch.ok).toBe(true)
+    expect(refs(fx.root)).not.toContain('refs/heads/wt-branch ')
+  })
+
+  test('a candidate with a live process is refused, and nothing is removed', () => {
+    const fx = buildFixture()
+    mergeWorktreeBranch(fx)
+    const probe = {
+      alive: () => false,
+      holders: () => [{ pid: 42, command: 'node', cwd: fx.worktree, ppid: 1 }],
+    } as never
+    const out = removeCandidate(candidate(fx, wt(fx.worktree)), { cwd: fx.root, probe })
+    expect(out.ok).toBe(false)
+    expect(out.error).toMatch(/^refused: running in .*node \(pid 42\)/)
+    expect(existsSync(fx.worktree)).toBe(true)
+  })
+
+  test('the worktree the caller stands in is refused, and stays', () => {
+    const fx = buildFixture()
+    mergeWorktreeBranch(fx)
+    const out = removeCandidate(candidate(fx, wt(fx.worktree)), { cwd: fx.worktree, probe: idle })
+    expect(out).toMatchObject({ ok: false, steps: [] })
+    expect(out.error).toMatch(/the worktree the caller stands in/)
+    expect(existsSync(fx.worktree)).toBe(true)
+  })
+
+  test('archive with no remote is refused before anything runs', () => {
+    const fx = buildFixture()
+    const c = { ...candidate(fx, 'branch:unmerged'), remote: null }
+    const out = removeCandidate(c, {
+      cwd: fx.root,
+      probe: idle,
+      allow: ['abandon-unmerged'],
+      archive: { now: new Date(0) } as never,
+    })
+    expect(out.ok).toBe(false)
+    expect(out.error).toMatch(/no remote/)
+  })
+
+  test('a risk not granted refuses the delete; granted, it runs', () => {
+    const fx = buildFixture()
+    const refused = removeCandidate(candidate(fx, 'branch:unmerged'), { cwd: fx.root, probe: idle })
+    expect(refused).toMatchObject({
+      ok: false,
+      steps: [],
+      error: expect.stringContaining('needs abandon-unmerged'),
+    })
+    const done = removeCandidate(candidate(fx, 'branch:unmerged'), {
+      cwd: fx.root,
+      probe: idle,
+      allow: ['abandon-unmerged'],
+    })
+    expect(done.ok).toBe(true)
+  })
+
+  test('a blocked candidate is refused', () => {
+    const fx = buildFixture()
+    const c = { ...candidate(fx, 'branch:merged-a'), verdict: 'blocked' as const, action: null }
+    expect(removeCandidate(c, { cwd: fx.root, probe: idle })).toMatchObject({
+      ok: false,
+      steps: [],
+    })
+  })
+
+  test('with archive, the work is pushed first and then deleted', () => {
+    const fx = buildFixture()
+    const out = removeCandidate(candidate(fx, 'branch:unmerged'), {
+      cwd: fx.root,
+      probe: idle,
+      allow: ['discard-archived'],
+      archive: {},
+    })
+    expect(out.steps.map((s) => [s.action, s.result])).toEqual([
+      ['archive', 'ok'],
+      ['delete-branch', 'ok'],
+    ])
+    expect(out.steps[0]!.archive?.ref).toMatch(/^refs\/heads\/archive\//)
+    expect(out.ok).toBe(true)
+  })
+
+  test('a failed archive push is told apart and deletes nothing', () => {
+    const fx = buildFixture()
+    const c = { ...candidate(fx, 'branch:unmerged'), remote: join(fx.root, 'no-such-remote') }
+    const out = removeCandidate(c, {
+      cwd: fx.root,
+      probe: idle,
+      allow: ['discard-archived'],
+      archive: {},
+    })
+    expect(out).toMatchObject({ ok: false, archiveFailed: true })
+    expect(out.steps.map((s) => s.action)).toEqual(['archive'])
+    expect(refs(fx.root)).toContain('refs/heads/unmerged ')
   })
 })

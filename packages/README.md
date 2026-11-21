@@ -169,6 +169,7 @@ Developed here, in this repository:
   can hold one lock file in turn)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
+- `packages/rust/system-model` (`system-model` on crates.io, the Rust twin of `@osdlc/system-model`)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
 - `packages/rust/tradecraft` (`tradecraft` on crates.io, the CLI's old
   name. It only points to `skillwright`.)
@@ -297,6 +298,9 @@ Developed here, in this repository:
   that finds the branches, worktrees and remote branches that have been merged
   and can go away, with the evidence and the command for each, and applies an
   approved plan compare-and-swap)
+- `packages/ts/host-cleaner` (`@osdlc/host-cleaner` on npm once published, a tool and
+  library that runs machine cleanup as plugins, each proposing candidates and
+  objecting to others', through one plan, one re-check and one receipt)
 - `packages/ts/rule-review` (`@osdlc/rule-review` on npm, a tool and library
   that reviews a change against the `CLAUDE.md` and `AGENTS.md` files that
   govern it, one headless agent judgement per rule file, and runs a folder of
@@ -315,6 +319,11 @@ Developed here, in this repository:
   on git refs: create, replace and delete a ref at any git remote only if it
   still holds the sha you read, through `git push --force-with-lease`, with the
   payload as canonical JSON in the ref's commit)
+- `packages/ts/story-harness` (`@osdlc/story-harness` on npm, a component's
+  static Storybook build as its test harness: exact Linux screenshot
+  baselines from a pinned Playwright container, Playwright helpers for
+  interaction and perf specs, an in-page metrics hook and a perf report that
+  parallel workers merge)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
@@ -438,6 +447,7 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    Held now (each crate's `Cargo.toml` names what it waits for):
    - `gfm-pipe-table`, until its first release can have a release-plz run of
      its own: it needs `CARGO_REGISTRY_TOKEN` (rules 3, 4 and 7).
+   - `system-model`, for the same reason.
 
 #### Versions and breaking changes
 
