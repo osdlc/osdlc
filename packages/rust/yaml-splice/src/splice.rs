@@ -356,7 +356,7 @@ pub(crate) fn line_indent(yaml: &str, pos: usize) -> String {
         .collect()
 }
 
-fn line_start(s: &str, pos: usize) -> usize {
+pub(crate) fn line_start(s: &str, pos: usize) -> usize {
     s[..pos].rfind('\n').map(|i| i + 1).unwrap_or(0)
 }
 
