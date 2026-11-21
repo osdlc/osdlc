@@ -20,7 +20,7 @@ use model::{PathEdit, Seg, apply, read, to_field_edit};
 use yaml_splice::{EditError, Value, edit_yaml};
 
 /// The tiers whose edits run. Raised as each tier is implemented.
-const ENABLED_TIERS: &[u64] = &[1, 2];
+const ENABLED_TIERS: &[u64] = &[1, 2, 3];
 
 const FILES: &[(&str, &str)] = &[
     (
@@ -223,8 +223,9 @@ fn every_node_of_every_real_file_is_edited() {
         failures.len(),
         failures.join("\n")
     );
-    // No edit is refused because its result was wrong.
-    assert_eq!(refused.get("InvalidResult"), None, "refused: {refused:?}");
+    // Every edit is written: none is refused, and none reads back wrong.
+    assert!(refused.is_empty(), "refused: {refused:?}");
+    assert_eq!(written, planned[1] + planned[2], "edits written");
     // Pinned: the files are fixed copies, so a change here means the walk or
     // the model changed.
     assert_eq!(planned, [0, 642, 1228], "edits planned by tier");

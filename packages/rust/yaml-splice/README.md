@@ -103,9 +103,8 @@ one-segment path is exactly the top-level edit of the same name. Every
 segment is matched like a top-level key. Only the bytes of the addressed
 node change, so the comments, quoting and layout around it stay.
 
-This release edits keys through block mappings and block sequences, compact
-`- key:` items included. A path that steps into a flow collection (`{...}`,
-`[...]`) is refused as `UnsupportedPath`.
+Keys are edited through block mappings, block sequences (compact `- key:`
+items included) and flow collections (`{...}`, `[...]`).
 
 A sequence is addressed by `PathSegment::Index`. `SetPath` on an index
 replaces the item, and on the index one past the end appends an item at the
@@ -116,6 +115,18 @@ the only item leaves `[]`. A new mapping or sequence item is written compact,
 `- key: v`, with its other keys under the first. Removing the first key of a
 `- key:` item moves the next key up to follow the `-`, or, when a comment line
 sits between them, leaves the `-` alone on its line over the comment.
+
+Inside a flow collection a new or replaced value is written on one line in
+flow style (`{b: 1, c: [x, y]}`), and a string that needs it is quoted: one
+with a comma or a bracket is quoted, one with a line break is double-quoted.
+`SetPath` of an absent key or of the index one past the end adds the element
+after the last one, as `, d: 1`. A collection written one element to a line
+gets the new element on a line of its own, at the same indent. `RemovePath`
+deletes the element and one comma, and the only element leaves `{}` or `[]`. A
+comment inside the collection that the edit would delete is refused as
+`UnsupportedPath`, so no comment is lost. Under a block key, an empty flow
+collection (`a: {}`) given a path is replaced by a block collection, as an
+empty value is.
 
 - **`SetPath`** replaces the value at the path. A missing key is appended
   after the last key of its mapping, at the keys' indent, after any comment
@@ -135,8 +146,9 @@ sits between them, leaves the `-` alone on its line over the comment.
   name that another key has at a different depth is fine.
 
 A path through an alias (`*x`), or through a merge key (`<<`), is
-`UnsupportedPath`. An edit inside an anchored node that an alias reads from
-is refused as `InvalidResult`, because the alias would change too.
+`UnsupportedPath`, as is a flow mapping that is the whole document. An edit
+inside an anchored node that an alias reads from is refused as
+`InvalidResult`, because the alias would change too.
 
 New values are written the way the npm `yaml` package (version 2) writes them:
 the same quoting, the same block or flow layout, the same number formatting.
@@ -160,8 +172,8 @@ byte span.
   whose source is missing (`MissingKey`) or whose destination exists
   (`KeyConflict`).
 - A path whose parent is missing (`PathNotFound`), that steps into the wrong
-  kind of value (`PathTypeMismatch`), or that goes through an alias, a merge
-  key or a shape not edited yet (`UnsupportedPath`).
+  kind of value (`PathTypeMismatch`), or that goes through an alias or a merge
+  key, or edits a shape it does not handle (`UnsupportedPath`).
 - A value or key the emitter cannot write (`UnrenderableValue`). The edit
   functions render at line width 0, where the emitter has no error, so this
   release does not return it.
@@ -192,8 +204,7 @@ byte span.
 
 ## When not to use it
 
-- You need to reorder keys, or to edit inside a flow collection (not yet
-  supported).
+- You need to reorder keys.
 - You want to reformat or normalize a document. yaml-splice never does.
 - You read YAML into your own types. Use a serde-based crate; yaml-splice's
   `Value` is a plain tree for edits, not a deserializer.
@@ -232,7 +243,8 @@ fields and want the smallest possible diff, or output that matches JavaScript's
 | BOM, CRLF and mixed line endings are kept | conformance `a_bom_is_preserved_and_outside_every_span`, `crlf_line_endings_survive_outside_the_edited_span`, `mixed_line_endings_are_not_normalized` |
 | An appended key uses the document's line ending, and lands before `...` | conformance `an_appended_key_uses_the_documents_line_ending`, `an_append_lands_before_an_explicit_document_end_marker` |
 | `Remove` takes the key, its value and its inline comment | conformance `remove_takes_the_key_its_value_and_its_inline_comment` |
-| A nested edit changes only the node it addresses, in block mappings and sequences | `nested_corpus::cases_pass`, `real_files::every_node_of_every_real_file_is_edited`, `neighbours_nested::a_nested_edit_changes_only_the_key_it_addresses` |
+| A nested edit changes only the node it addresses, in block mappings, sequences and flow collections | `nested_corpus::cases_pass`, `real_files::every_node_of_every_real_file_is_edited`, `neighbours_nested::a_nested_edit_changes_only_the_key_it_addresses` |
+| A flow edit changes only the element it addresses | `neighbours_flow::a_flow_edit_changes_only_the_element_it_addresses` |
 | A one-segment path equals the top-level edit | `nested_corpus::one_segment_paths_match_the_conformance_corpus` |
 | `Rename` keeps the value and position; missing source and existing destination are refused | conformance `rename_changes_the_key_token_in_place`, `rename_of_a_missing_source_is_a_missing_key_refusal`, `rename_onto_an_existing_destination_is_a_key_conflict` |
 | Keys match case-insensitively by default, exactly on request | conformance `addressing_is_case_insensitive_by_default`, `case_sensitive_mode_treats_case_variants_as_distinct` |

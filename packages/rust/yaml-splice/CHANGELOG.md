@@ -13,8 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   over a `PathSegment` list (`Key` or `Index`). A one-segment path is exactly
   the top-level edit of the same name. Keys are edited through block mappings
   and block sequences, `- key:` items included: an index sets an item, one
-  past the end appends, and `RemovePath` deletes an item. A path that steps
-  into a flow collection is refused as `UnsupportedPath`.
+  past the end appends, and `RemovePath` deletes an item. Flow collections
+  (`{a: 1}`, `[x, y]`) are edited too: an element is replaced, appended after
+  the last one or removed with one comma, and a new value is written in flow
+  style on one line.
 - `EditError::PathNotFound`, `PathTypeMismatch` and `UnsupportedPath`.
 
 ### Fixed

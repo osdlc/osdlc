@@ -191,6 +191,46 @@ pub(crate) fn assignment(value: &Value, key_indent: &str) -> Result<String, Rend
     Ok(out)
 }
 
+/// A value in flow style on one line, as it is written inside `{...}` or
+/// `[...]`: collections in brackets, strings quoted where a flow context
+/// needs it, and a string with a line break double-quoted.
+pub(crate) fn flow_text(value: &Value) -> Result<String, RenderError> {
+    flow(value, &flow_ctx(false))
+}
+
+/// A key in flow style: quoted where a flow context needs it.
+pub(crate) fn flow_key(key: &str) -> Result<String, RenderError> {
+    stringify_string(key, &flow_ctx(true))
+}
+
+fn flow_ctx(implicit_key: bool) -> Ctx {
+    Ctx {
+        indent: String::new(),
+        indent_at_start: None,
+        implicit_key,
+        in_flow: true,
+        opts: EmitOptions::line_width_0(),
+    }
+}
+
+fn flow(value: &Value, ctx: &Ctx) -> Result<String, RenderError> {
+    match value {
+        Value::Seq(items) => {
+            let parts: Result<Vec<String>, _> = items.iter().map(|v| flow(v, ctx)).collect();
+            Ok(format!("[{}]", parts?.join(", ")))
+        }
+        Value::Map(map) => {
+            let mut parts = Vec::new();
+            for (k, v) in map.iter() {
+                parts.push(format!("{}: {}", flow_key(k)?, flow(v, ctx)?));
+            }
+            Ok(format!("{{{}}}", parts.join(", ")))
+        }
+        Value::Str(s) if s.contains('\n') => Ok(double_quoted_string(s, ctx)),
+        scalar => stringify(scalar, ctx),
+    }
+}
+
 /// Render just a key's token (quoted if the emitter would quote it), for an
 /// appended entry or a `Rename`. `key: null` is rendered and everything from
 /// the final `:` on is dropped; `null` carries no colon of its own, so the
