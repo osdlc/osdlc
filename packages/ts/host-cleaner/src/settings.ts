@@ -18,9 +18,11 @@ const enabled = z
 
 const idleHours = z
   .number()
-  .positive()
-  .default(DEFAULT_IDLE_HOURS)
-  .describe('Hours an artifact must have sat unused before it is a candidate.')
+  .nonnegative()
+  .optional()
+  .describe(
+    `Hours an artifact must have sat unused before it is a candidate; 0 takes every one. Unset: the config's top-level idleHours, else ${DEFAULT_IDLE_HOURS}.`,
+  )
 
 /** The shipped plugins' settings by plugin name; a name without an entry takes no validated settings. */
 export const PLUGIN_SETTINGS = {
@@ -48,10 +50,27 @@ export function settingsIssues(plugins: Entries): string[] {
   })
 }
 
-/** `name`'s settings with defaults filled in; `raw` as given for a plugin with no schema. */
-export function settingsOf(name: string, raw: Record<string, unknown>): Record<string, unknown> {
+/** What every plugin inherits when it does not set its own: the config's top-level settings. */
+export interface Shared {
+  idleHours?: number | undefined
+}
+
+/**
+ * `name`'s settings with defaults filled in, and `idleHours` taken from `shared`
+ * when the plugin has that setting and does not set it; `raw` as given for a
+ * plugin with no schema.
+ */
+export function settingsOf(
+  name: string,
+  raw: Record<string, unknown>,
+  shared: Shared = {},
+): Record<string, unknown> {
   const schema = schemaOf(name)
-  return schema === undefined ? raw : (schema.parse(raw) as Record<string, unknown>)
+  if (schema === undefined) return raw
+  const parsed = schema.parse(raw) as Record<string, unknown>
+  return 'idleHours' in (schema as z.ZodObject).shape
+    ? { ...parsed, idleHours: parsed.idleHours ?? shared.idleHours ?? DEFAULT_IDLE_HOURS }
+    : parsed
 }
 
 /** Whether the config switches `name` off with `enabled: false`. */
@@ -62,24 +81,31 @@ export interface SettingRow {
   key: string
   value: unknown
   default: unknown
-  /** `config` when the file sets it, else `default`. */
-  source: 'config' | 'default'
+  /** `config` when the plugin's entry sets it, `shared` when the top-level setting gave it, else `default`. */
+  source: 'config' | 'shared' | 'default'
   description: string
 }
 
 /** Every setting of every shipped plugin: its effective value, its default and whether the config set it. */
-export function effectiveSettings(plugins: Entries): Record<string, SettingRow[]> {
+export function effectiveSettings(
+  plugins: Entries,
+  shared: Shared = {},
+): Record<string, SettingRow[]> {
   const out: Record<string, SettingRow[]> = {}
   for (const name of Object.keys(PLUGIN_SETTINGS)) {
     const raw = plugins[name] ?? {}
-    const value = settingsOf(name, raw)
+    const value = settingsOf(name, raw, shared)
     out[name] = configFields({ [name]: schemaOf(name)! }).map((f) => {
       const key = f.path.slice(1).join('.')
       return {
         key,
         value: value[key],
-        default: f.default,
-        source: Object.hasOwn(raw, key) ? 'config' : 'default',
+        default: key === 'idleHours' ? DEFAULT_IDLE_HOURS : f.default,
+        source: Object.hasOwn(raw, key)
+          ? 'config'
+          : key === 'idleHours' && shared.idleHours !== undefined
+            ? 'shared'
+            : 'default',
         description: f.description,
       }
     })

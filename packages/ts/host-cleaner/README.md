@@ -163,7 +163,21 @@ the key.
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
-| `idleHours` | `cargo`, `node` | `24` | Hours an artifact must have sat unused before it is a candidate; a positive number. |
+| `idleHours` | `cargo`, `node` | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
+
+Two settings sit at the top of the config and apply to every plugin:
+
+```json
+{ "targets": ["~/dev"], "ignore": ["~/dev/dashboard"], "idleHours": 0 }
+```
+
+- `ignore` lists paths nothing may be deleted in or below (`~` is home; a path
+  is matched by its real path too). `--ignore <dir>` adds to it and can repeat.
+  A candidate there is left out, with a warning saying how many; `status` prints
+  the active list, a plan records it, and `clean --plan` honours the plan's list
+  and the current one, dropping a planned candidate as `ignored`.
+- `idleHours` is the default for every plugin that has the setting and does not
+  set its own. `0` is allowed and makes every idle-checked artifact a candidate.
 
 `host-cleaner config` prints every plugin's effective settings: the value, and
 whether the file set it or it is the default. `--format json` prints the values.
