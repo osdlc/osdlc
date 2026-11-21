@@ -407,14 +407,14 @@ const wanted = (v: SweepValues): string[] | undefined =>
     : [...(v.plugin ?? []), ...(v.adapter ?? [])]
 
 /** The plugins this run uses: the shipped ones built from the config, or `deps.plugins`, then chosen by flag. */
-function pluginsFor(v: SweepValues, config: Config, deps: MainDeps): Plugin[] {
+function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliContext): Plugin[] {
   // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
   const all =
     deps.plugins ??
     Object.entries(FACTORIES).map(([name, make]) =>
-      make({ settings: settingsOf(name, config.plugins[name] ?? {}, config), only }),
+      make({ settings: settingsOf(name, config.plugins[name] ?? {}, config), only, env: ctx.env }),
     )
   const unused = Object.keys(config.plugins).filter((n) => !all.some((p) => p.name === n))
   if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
@@ -488,7 +488,7 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   try {
     const config = loadConfig(v, ctx)
     s = survey(
-      pluginsFor(v, config, deps),
+      pluginsFor(v, config, deps, ctx),
       contextFor(parsed.positionals, config, ctx, [], v.ignore),
     )
   } catch (err) {
@@ -571,7 +571,7 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   try {
     const config = loadConfig(v, ctx)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
-    const s = survey(pluginsFor(v, config, deps), cctx)
+    const s = survey(pluginsFor(v, config, deps, ctx), cctx)
     writeWarnings(ctx, name, s.warnings)
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
     plan = makePlan(s, {
@@ -730,7 +730,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let preview: Decision
   try {
     const config = loadConfig(v, ctx)
-    plugins = pluginsFor(v, config, deps)
+    plugins = pluginsFor(v, config, deps, ctx)
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
       const s = survey(plugins, cctx)
@@ -881,7 +881,7 @@ function autoWork(
   let s: ReturnType<typeof survey>
   try {
     const config = loadConfig(v, ctx)
-    plugins = pluginsFor(v, config, deps)
+    plugins = pluginsFor(v, config, deps, ctx)
     cctx = contextFor(targets, config, ctx, [], v.ignore)
     s = survey(plugins, cctx)
   } catch (err) {
