@@ -704,7 +704,7 @@ fn top_level_spans(events: &[Ev], src: &str) -> Vec<KeySpan> {
         .collect()
 }
 
-/// One string-keyed entry of a mapping: its spans, and the index of the
+/// One scalar-keyed entry of a mapping: its spans, and the index of the
 /// event that starts its value.
 pub(crate) struct MapEntry {
     pub(crate) span: KeySpan,

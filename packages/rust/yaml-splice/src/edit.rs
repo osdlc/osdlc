@@ -569,8 +569,6 @@ fn apply_one(
     bom_len: usize,
 ) -> Result<(String, bool), EditError> {
     let parsed = parse::parse_with_spans(current).map_err(|e| map_parse_error(e, bom_len))?;
-    // A one-segment path is the top-level edit it names, so it takes the same
-    // route and gives the same bytes.
     let one_segment = single_key_edit(edit);
     let edit = one_segment.as_ref().unwrap_or(edit);
     let (next, changed) = match edit {
@@ -609,7 +607,8 @@ fn apply_one(
     Ok((next, changed))
 }
 
-/// The top-level edit a one-segment key path stands for.
+/// The top-level edit a one-segment key path stands for, so both forms give
+/// the same bytes.
 fn single_key_edit(edit: &FieldEdit) -> Option<FieldEdit> {
     let key = |path: &[PathSegment]| match path {
         [PathSegment::Key(k)] => Some(k.clone()),
