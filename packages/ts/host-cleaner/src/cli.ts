@@ -779,11 +779,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
         cwd: ctx.cwd,
         targets: plan.targets,
         allow: plan.allow,
-        ignore: ignorePaths(
-          [...config.ignore, ...v.ignore],
-          ctx.cwd,
-          ctx.env.HOME ?? homedir(),
-        ),
+        ignore: ignorePaths([...config.ignore, ...v.ignore], ctx.cwd, ctx.env.HOME ?? homedir()),
       }
       const checked = recheck(plan, plugins, cctx)
       writeWarnings(ctx, name, checked.survey.warnings)
