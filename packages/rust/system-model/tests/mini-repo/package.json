@@ -1,0 +1,8 @@
+{
+  "name": "mini-root",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "layers/*"
+  ]
+}
