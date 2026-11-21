@@ -1,5 +1,22 @@
 # @osdlc/rule-review
 
+## 0.4.8
+
+### Patch Changes
+
+- Updated dependencies [fa8118b]
+- Updated dependencies [63b5800]
+- Updated dependencies [976bbee]
+- Updated dependencies [976bbee]
+- Updated dependencies [6d37030]
+- Updated dependencies [c8470d6]
+- Updated dependencies [0ce8abc]
+- Updated dependencies [9c0f5ae]
+  - @osdlc/agent-call@0.15.0
+  - @osdlc/cli-tool@0.21.0
+  - @osdlc/command-seam@0.15.1
+  - @osdlc/typed-git@0.19.0
+
 ## 0.4.7
 
 ### Patch Changes
