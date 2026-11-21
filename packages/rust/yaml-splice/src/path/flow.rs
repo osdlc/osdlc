@@ -76,7 +76,7 @@ pub(super) fn walk_flow(
         _ => return Err(mismatch(cx, depth, "a sequence")),
     };
     match found {
-        None => absent(cx, open_idx, &elems, child, depth, last),
+        None => absent(cx, &elems, depth, last),
         Some(i) if last => leaf(cx, open_idx, &elems, i, child),
         Some(i) => {
             let value = match child {
@@ -170,14 +170,7 @@ fn leaf(
 }
 
 /// The last segment names an element that is not there.
-fn absent(
-    cx: &Cx<'_>,
-    open_idx: usize,
-    elems: &[FlowElem],
-    child: &Value,
-    depth: usize,
-    last: bool,
-) -> Result<Edits, EditError> {
+fn absent(cx: &Cx<'_>, elems: &[FlowElem], depth: usize, last: bool) -> Result<Edits, EditError> {
     let seg = &cx.path[depth];
     match (cx.op, seg) {
         (Op::Set(value), PathSegment::Key(key)) => {
@@ -194,7 +187,6 @@ fn absent(
         }
         (Op::Remove, _) if last => Ok(Vec::new()),
         (Op::Rename(_), PathSegment::Key(key)) if last => {
-            let _ = (open_idx, child);
             Err(EditError::MissingKey { key: key.clone() })
         }
         _ => Err(not_found(cx, depth)),
