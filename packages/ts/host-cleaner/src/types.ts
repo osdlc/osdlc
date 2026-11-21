@@ -66,6 +66,12 @@ export interface Plugin {
   detect(ctx: Ctx): boolean
   /** Roots to look in, beyond the targets. */
   scope?(ctx: Ctx): string[]
+  /**
+   * Directories outside any checkout that this plugin cleans: fixed, or from its settings.
+   * Every candidate it owns must sit strictly inside one by its real path. The core
+   * refuses (`outside-roots`) one that does not, and checks again right before `delete`.
+   */
+  roots?(ctx: Ctx): readonly string[]
   discover?(ctx: Ctx): Candidate[]
   /** Objections to any candidate in `all`. It sees no other plugin's objections. */
   object?(all: readonly Candidate[], ctx: Ctx): Objection[]

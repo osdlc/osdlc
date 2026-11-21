@@ -68,6 +68,18 @@ What a plan runs uses repo-cleaner's words, with their meaning:
 
 Each candidate that runs is still judged by the rules above.
 
+### Machine-scope plugins
+
+A plugin that cleans outside any checkout (a cache directory, a toolchain
+folder) declares `roots(ctx)`: the directories it cleans, fixed or taken from
+its own settings. Every candidate it owns must sit strictly below one of them,
+proven on real paths with `@osdlc/path-guard`, so a `..` or a symlink that
+leaves is not inside, and the root itself is never a candidate. The core
+refuses one that is not (`outside-roots`, by `host-cleaner`) and checks again
+right before `delete`, failing that step if the path moved out since the
+re-check. `containedIn(roots, path)` is exported for plugin code that wants the
+same check. `ignore` applies to these candidates as to any other.
+
 ## The `git` plugin
 
 `gitPlugin(options)` proposes repo-cleaner's worktrees and branches. Its
