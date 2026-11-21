@@ -1489,6 +1489,9 @@ importers:
       '@osdlc/command-seam':
         specifier: workspace:^
         version: link:../command-seam
+      '@osdlc/file-lock':
+        specifier: workspace:^
+        version: link:../file-lock
       '@osdlc/path-guard':
         specifier: workspace:^
         version: link:../path-guard

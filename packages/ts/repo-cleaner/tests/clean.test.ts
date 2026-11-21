@@ -780,25 +780,29 @@ describe('resolveApproval refuses', () => {
 })
 
 describe('check and run', () => {
-  test('onStepDone hears each finished step, even when the receipt then cannot be saved', () => {
-    const fx = buildFixture()
-    const p = makePlan(fx.root)
-    const receiptDir = join(fx.root, '.receipts')
-    const done: string[] = []
-    const runIt = () =>
-      run(check(p, { select: ['branch:merged-a'] }, { cwd: fx.root }), {
-        cwd: fx.root,
-        receiptPath: join(receiptDir, 'r.json'),
-        source: 'plan.json',
-        // The receipt is saved once before the first step; lock its directory
-        // once that has happened, so the save after the step fails.
-        onStep: () => chmodSync(receiptDir, 0o500),
-        onStepDone: (_i, _n, step) => done.push(`${step.action}:${step.result}`),
-      })
-    cleanups.push(() => chmodSync(receiptDir, 0o700))
-    expect(runIt).toThrow()
-    expect(done).toEqual(['delete-branch:ok'])
-  })
+  // Root writes into a read-only directory, so the receipt can always be saved there.
+  test.skipIf(process.getuid?.() === 0)(
+    'onStepDone hears each finished step, even when the receipt then cannot be saved',
+    () => {
+      const fx = buildFixture()
+      const p = makePlan(fx.root)
+      const receiptDir = join(fx.root, '.receipts')
+      const done: string[] = []
+      const runIt = () =>
+        run(check(p, { select: ['branch:merged-a'] }, { cwd: fx.root }), {
+          cwd: fx.root,
+          receiptPath: join(receiptDir, 'r.json'),
+          source: 'plan.json',
+          // The receipt is saved once before the first step; lock its directory
+          // once that has happened, so the save after the step fails.
+          onStep: () => chmodSync(receiptDir, 0o500),
+          onStepDone: (_i, _n, step) => done.push(`${step.action}:${step.result}`),
+        })
+      cleanups.push(() => chmodSync(receiptDir, 0o700))
+      expect(runIt).toThrow()
+      expect(done).toEqual(['delete-branch:ok'])
+    },
+  )
 
   test('runs worktree, local, remote in order and verifies each', () => {
     const fx = buildFixture()
