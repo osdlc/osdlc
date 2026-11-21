@@ -16,9 +16,9 @@ use std::ops::Range;
 use crate::edit::{
     EditError, EditOptions, PathSegment, key_eq, offset, path_text, same_value, set, value_eq,
 };
-use crate::parse::{self, Ev, EvKind, KeySpan, MapEntry, Parsed};
-use crate::render;
-use crate::splice::{line_start, value_assignment, value_edit};
+use crate::parse::{self, Ev, EvKind, ItemSpan, KeySpan, MapEntry, Parsed};
+use crate::render::{self, EmitOptions};
+use crate::splice::{apply_eol, item_edit, line_start, value_assignment, value_edit};
 use crate::value::{Mapping, Value};
 
 /// What a path edit does at its last segment.
@@ -39,6 +39,58 @@ struct Cx<'a> {
     opts: &'a EditOptions,
     eol: &'static str,
     bom_len: usize,
+}
+
+/// What encloses the collection being walked: where an emptied collection's
+/// `{}` or `[]` goes, and the column a new child's comment lines must stay
+/// right of.
+#[derive(Clone, Copy)]
+enum Parent<'a> {
+    /// The value of a mapping entry: `{}` or `[]` goes after its `:`.
+    Entry(&'a KeySpan),
+    /// An item of a sequence, given by the offset of its `-`.
+    Item(usize),
+}
+
+impl Parent<'_> {
+    /// Where an emptied collection's `{}` or `[]` is written.
+    fn after(self) -> usize {
+        match self {
+            Parent::Entry(k) => k.assign_end,
+            Parent::Item(dash) => dash + 1,
+        }
+    }
+
+    /// The offset of the key or `-` the collection hangs from.
+    fn at(self) -> usize {
+        match self {
+            Parent::Entry(k) => k.key_range.start,
+            Parent::Item(dash) => dash,
+        }
+    }
+}
+
+/// A place that holds a value: where a path vivifies or replaces one.
+#[derive(Clone, Copy)]
+enum Slot<'a> {
+    Entry(&'a KeySpan),
+    Item(&'a ItemSpan),
+}
+
+impl<'a> Slot<'a> {
+    fn parent(self) -> Parent<'a> {
+        match self {
+            Slot::Entry(k) => Parent::Entry(k),
+            Slot::Item(i) => Parent::Item(i.dash),
+        }
+    }
+
+    fn value_start(self) -> usize {
+        match self {
+            Slot::Entry(k) => k.value_range.start,
+            Slot::Item(i) => i.value_range.start,
+        }
+    }
 }
 
 /// Applies one path edit to `current`. Returns the new text and whether it
@@ -177,7 +229,7 @@ fn walk_map(
     cx: &Cx<'_>,
     map_idx: usize,
     hard_stop: usize,
-    parent: Option<&KeySpan>,
+    parent: Option<Parent<'_>>,
     m: &Mapping,
     depth: usize,
 ) -> Result<Edits, EditError> {
@@ -202,7 +254,7 @@ fn walk_map(
     }
     let last = depth + 1 == cx.path.len();
     let Some(&i) = hits.first() else {
-        return absent(cx, &entries, key, depth, last);
+        return absent(cx, &entries, key, parent, depth, last);
     };
     if last {
         return leaf(cx, &entries, i, parent, m);
@@ -210,7 +262,16 @@ fn walk_map(
     let child_stop = entries
         .get(i + 1)
         .map_or(hard_stop, |n| n.span.key_range.start);
-    descend(cx, &entries[i], child_stop, m, depth)
+    let span = &entries[i].span;
+    let child = m.get(&span.key).unwrap_or(&Value::Null);
+    step_into(
+        cx,
+        Slot::Entry(span),
+        entries[i].value_idx,
+        child_stop,
+        child,
+        depth,
+    )
 }
 
 /// The key is not in the mapping.
@@ -218,6 +279,7 @@ fn absent(
     cx: &Cx<'_>,
     entries: &[MapEntry],
     key: &str,
+    parent: Option<Parent<'_>>,
     depth: usize,
     last: bool,
 ) -> Result<Edits, EditError> {
@@ -230,7 +292,7 @@ fn absent(
     match cx.op {
         Op::Set(value) => {
             let nested = nest(cx, depth + 1, value)?;
-            append(cx, entries, key, &nested)
+            append_entry_line(cx, entries, key, &nested, parent)
         }
         Op::Remove if last => Ok(Vec::new()),
         Op::Rename(_) if last => Err(EditError::MissingKey {
@@ -240,31 +302,43 @@ fn absent(
     }
 }
 
-/// The key is there and more segments follow: step into its value.
-fn descend(
+/// The slot is there and more segments follow: step into its value.
+/// `depth` is the segment that named the slot.
+fn step_into(
     cx: &Cx<'_>,
-    entry: &MapEntry,
+    slot: Slot<'_>,
+    value_idx: usize,
     child_stop: usize,
-    m: &Mapping,
+    child: &Value,
     depth: usize,
 ) -> Result<Edits, EditError> {
-    let span = &entry.span;
-    if matches!(cx.events[entry.value_idx].kind, EvKind::Alias(_)) {
+    if matches!(cx.events[value_idx].kind, EvKind::Alias(_)) {
         return Err(unsupported(cx, "the path goes through an alias"));
     }
-    let child = m.get(&span.key).unwrap_or(&Value::Null);
     let next = depth + 1;
     match child {
-        c if matches!(c, Value::Null) || c.is_empty_collection() => vivify(cx, entry, depth),
+        c if matches!(c, Value::Null) || c.is_empty_collection() => vivify(cx, slot, depth),
         Value::Map(child_map) => {
-            if starts_with(cx.src, entry.span.value_range.start, b'{') {
+            if starts_with(cx.src, slot.value_start(), b'{') {
                 return Err(unsupported(cx, "flow mappings are not edited yet"));
             }
-            walk_map(cx, entry.value_idx, child_stop, Some(span), child_map, next)
+            walk_map(
+                cx,
+                value_idx,
+                child_stop,
+                Some(slot.parent()),
+                child_map,
+                next,
+            )
         }
-        Value::Seq(_) => match cx.path[next] {
+        Value::Seq(items) => match cx.path[next] {
             PathSegment::Key(_) => Err(mismatch(cx, next, "a sequence")),
-            PathSegment::Index(_) => Err(unsupported(cx, "sequences are not edited yet")),
+            PathSegment::Index(_) => {
+                if starts_with(cx.src, slot.value_start(), b'[') {
+                    return Err(unsupported(cx, "flow sequences are not edited yet"));
+                }
+                walk_seq(cx, value_idx, child_stop, slot.parent(), items, next)
+            }
         },
         _ => Err(mismatch(cx, next, "a scalar")),
     }
@@ -273,12 +347,12 @@ fn descend(
 /// An empty parent (`a:`, `a: ~`, `a: {}`, `a: []`) on the way: a `SetPath`
 /// writes the collection the rest of the path asks for in its place. The
 /// others find nothing below it.
-fn vivify(cx: &Cx<'_>, entry: &MapEntry, depth: usize) -> Result<Edits, EditError> {
+fn vivify(cx: &Cx<'_>, slot: Slot<'_>, depth: usize) -> Result<Edits, EditError> {
     let next = depth + 1;
     match cx.op {
         Op::Set(value) => {
             let nested = nest(cx, next, value)?;
-            Ok(vec![replace_value(cx, &entry.span, &nested)?])
+            Ok(vec![replace_slot(cx, slot, &nested)?])
         }
         Op::Remove if next + 1 == cx.path.len() => Ok(Vec::new()),
         Op::Rename(_) if next + 1 == cx.path.len() => match &cx.path[next] {
@@ -289,12 +363,61 @@ fn vivify(cx: &Cx<'_>, entry: &MapEntry, depth: usize) -> Result<Edits, EditErro
     }
 }
 
+/// Handles the segment at `depth`, which names an item of the block sequence
+/// that starts at event `seq_idx`.
+fn walk_seq(
+    cx: &Cx<'_>,
+    seq_idx: usize,
+    hard_stop: usize,
+    parent: Parent<'_>,
+    vals: &[Value],
+    depth: usize,
+) -> Result<Edits, EditError> {
+    let PathSegment::Index(i) = cx.path[depth] else {
+        return Err(mismatch(cx, depth, "a sequence"));
+    };
+    let Some(items) = parse::seq_items(cx.events, cx.src, seq_idx, hard_stop) else {
+        return Err(unsupported(
+            cx,
+            "a sequence with an empty, anchored or tagged item is not edited",
+        ));
+    };
+    let last = depth + 1 == cx.path.len();
+    if let Some(item) = items.get(i) {
+        if !last {
+            let stop = items.get(i + 1).map_or(hard_stop, |n| n.dash);
+            let child = vals.get(i).unwrap_or(&Value::Null);
+            return step_into(cx, Slot::Item(item), item.value_idx, stop, child, depth);
+        }
+        return match cx.op {
+            Op::Set(value) => {
+                if vals.get(i).is_some_and(|e| same_value(e, value)) {
+                    return Ok(Vec::new());
+                }
+                Ok(vec![replace_item(cx, item, value)?])
+            }
+            Op::Remove => remove_item(cx, &items, i, parent),
+            Op::Rename(_) => Err(mismatch(cx, depth, "a sequence")),
+        };
+    }
+    match cx.op {
+        // One past the end appends. Anything further is a gap.
+        Op::Set(value) if i == items.len() => {
+            let nested = nest(cx, depth + 1, value)?;
+            append_item(cx, &items, &nested, parent)
+        }
+        Op::Remove if last => Ok(Vec::new()),
+        Op::Rename(_) if last => Err(mismatch(cx, depth, "a sequence")),
+        _ => Err(not_found(cx, depth)),
+    }
+}
+
 /// The last segment names an existing key.
 fn leaf(
     cx: &Cx<'_>,
     entries: &[MapEntry],
     i: usize,
-    parent: Option<&KeySpan>,
+    parent: Option<Parent<'_>>,
     m: &Mapping,
 ) -> Result<Edits, EditError> {
     let span = &entries[i].span;
@@ -364,14 +487,69 @@ fn replace_value(
     Ok(value_edit(cx.src, span, text))
 }
 
+fn replace_slot(
+    cx: &Cx<'_>,
+    slot: Slot<'_>,
+    value: &Value,
+) -> Result<(Range<usize>, String), EditError> {
+    match slot {
+        Slot::Entry(span) => replace_value(cx, span, value),
+        Slot::Item(item) => replace_item(cx, item, value),
+    }
+}
+
+/// The text of a sequence item's value whose first line starts at column
+/// `col`: a collection is compact, its lines under the first.
+fn item_text(cx: &Cx<'_>, col: usize, value: &Value) -> Result<String, EditError> {
+    let rendered = render::render_value(value, EmitOptions::line_width_0()).map_err(|e| {
+        EditError::UnrenderableValue {
+            key: path_text(cx.path),
+            message: e.to_string(),
+        }
+    })?;
+    let rendered = rendered.strip_suffix('\n').unwrap_or(&rendered);
+    // Every line after the first sits under the first: the content of a
+    // block scalar, or the next key of a compact collection.
+    let pad = " ".repeat(col);
+    let mut out = String::with_capacity(rendered.len() + pad.len());
+    for (n, line) in rendered.split('\n').enumerate() {
+        if n > 0 {
+            out.push('\n');
+            if !line.is_empty() {
+                out.push_str(&pad);
+            }
+        }
+        out.push_str(line);
+    }
+    Ok(apply_eol(&out, cx.eol))
+}
+
+fn replace_item(
+    cx: &Cx<'_>,
+    item: &ItemSpan,
+    value: &Value,
+) -> Result<(Range<usize>, String), EditError> {
+    let start = item.value_range.start;
+    let text = item_text(cx, start - line_start(cx.src, start), value)?;
+    // The value replaces what follows the `-` on its line. `KeySpan` already
+    // carries what `value_edit` needs to keep a trailing comment.
+    let span = KeySpan {
+        key: String::new(),
+        key_range: item.dash..item.dash + 1,
+        assign_end: item.value_range.start,
+        value_range: item.value_range.clone(),
+    };
+    Ok(item_edit(cx.src, &span, text))
+}
+
 /// A new key after the last entry of a block mapping, at the keys' column.
-///
-/// It goes after the lines of the last value and after the comment lines at
-/// the keys' column or deeper that follow it, which belong to the block. Blank
-/// lines and less indented comments after the block stay after the new key. A
-/// keep-chomped (`|+`) last value owns its trailing blank lines, so the key
-/// goes after them.
-fn append(cx: &Cx<'_>, entries: &[MapEntry], key: &str, value: &Value) -> Result<Edits, EditError> {
+fn append_entry_line(
+    cx: &Cx<'_>,
+    entries: &[MapEntry],
+    key: &str,
+    value: &Value,
+    parent: Option<Parent<'_>>,
+) -> Result<Edits, EditError> {
     let (Some(first), Some(last)) = (entries.first(), entries.last()) else {
         return Err(unsupported(cx, "the mapping has no editable key"));
     };
@@ -381,11 +559,61 @@ fn append(cx: &Cx<'_>, entries: &[MapEntry], key: &str, value: &Value) -> Result
             key: key.to_string(),
             message: e.to_string(),
         })?;
-    let entry = format!("{indent}{}:{assign}", key_text(key)?);
-
+    let line = format!("{indent}{}:{assign}", key_text(key)?);
     let after = last.span.value_range.end.max(last.span.key_range.end);
+    Ok(insert_line(
+        cx,
+        after,
+        last.value_idx,
+        indent.len(),
+        parent,
+        line,
+    ))
+}
+
+/// A new item after the last item of a block sequence, at the `-` column.
+fn append_item(
+    cx: &Cx<'_>,
+    items: &[ItemSpan],
+    value: &Value,
+    parent: Parent<'_>,
+) -> Result<Edits, EditError> {
+    let (Some(first), Some(last)) = (items.first(), items.last()) else {
+        return Err(unsupported(cx, "the sequence has no editable item"));
+    };
+    let col = first.dash - line_start(cx.src, first.dash);
+    let line = format!("{}- {}", " ".repeat(col), item_text(cx, col + 2, value)?);
+    Ok(insert_line(
+        cx,
+        last.value_range.end,
+        last.value_idx,
+        col,
+        Some(parent),
+        line,
+    ))
+}
+
+/// Inserts `line` (without its line break) after the block whose last value
+/// ends at `after` and starts at event `last_idx`, in a collection whose
+/// children sit at column `child_col` under `parent`.
+///
+/// It goes after the lines of the last value and after the comment lines at
+/// the children's column or deeper, and deeper than the parent, that follow
+/// it: they belong to the block. Blank lines and less indented comments after
+/// the block stay after the new line. A keep-chomped (`|+`) last value owns
+/// its trailing blank lines, so the line goes after them. A document with no
+/// final line break gets none.
+fn insert_line(
+    cx: &Cx<'_>,
+    after: usize,
+    last_idx: usize,
+    child_col: usize,
+    parent: Option<Parent<'_>>,
+    line: String,
+) -> Edits {
+    let parent_col = parent.map_or(0, |p| p.at() - line_start(cx.src, p.at()));
     let mut p = line_end_after(cx.src, after);
-    if keeps_trailing_blanks(cx, last) {
+    if keeps_trailing_blanks(cx, last_idx) {
         while is_blank_line(cx.src, p) {
             p = line_end_after(cx.src, p);
         }
@@ -393,11 +621,12 @@ fn append(cx: &Cx<'_>, entries: &[MapEntry], key: &str, value: &Value) -> Result
     let mut q = p;
     while q < cx.src.len() {
         let line_end = line_end_after(cx.src, q);
-        let line = &cx.src[q..line_end];
-        let trimmed = line.trim_start();
+        let text = &cx.src[q..line_end];
+        let trimmed = text.trim_start();
+        let indent = text.len() - trimmed.len();
         if trimmed.is_empty() {
             q = line_end;
-        } else if trimmed.starts_with('#') && line.len() - trimmed.len() >= indent.len() {
+        } else if trimmed.starts_with('#') && indent >= child_col && indent > parent_col {
             p = line_end;
             q = line_end;
         } else {
@@ -405,22 +634,27 @@ fn append(cx: &Cx<'_>, entries: &[MapEntry], key: &str, value: &Value) -> Result
         }
     }
     let text = if p >= cx.src.len() && !cx.src.ends_with('\n') {
-        format!("{}{entry}", cx.eol)
+        format!("{}{line}", cx.eol)
     } else {
-        format!("{entry}{}", cx.eol)
+        format!("{line}{}", cx.eol)
     };
-    Ok(vec![(p..p, text)])
+    vec![(p..p, text)]
+}
+
+/// Whether anything but blanks precedes `pos` on its line.
+fn shares_line(src: &str, pos: usize) -> bool {
+    !src[line_start(src, pos)..pos].trim().is_empty()
 }
 
 fn is_blank_line(src: &str, pos: usize) -> bool {
     pos < src.len() && src[pos..line_end_after(src, pos)].trim().is_empty()
 }
 
-/// Whether the last scalar of an entry's value is a block scalar with the
-/// keep (`+`) chomping indicator.
-fn keeps_trailing_blanks(cx: &Cx<'_>, entry: &MapEntry) -> bool {
-    let end = parse::skip_node(cx.events, entry.value_idx);
-    let Some(ev) = cx.events[entry.value_idx..end]
+/// Whether the last scalar of the value that starts at event `value_idx` is a
+/// block scalar with the keep (`+`) chomping indicator.
+fn keeps_trailing_blanks(cx: &Cx<'_>, value_idx: usize) -> bool {
+    let end = parse::skip_node(cx.events, value_idx);
+    let Some(ev) = cx.events[value_idx..end]
         .iter()
         .rev()
         .find(|e| matches!(e.kind, EvKind::Scalar(..) | EvKind::Alias(_)))
@@ -459,22 +693,71 @@ fn keeps_trailing_blanks(cx: &Cx<'_>, entry: &MapEntry) -> bool {
     false
 }
 
-/// Removes a key and its lines. The only key of a nested mapping leaves `{}`
-/// after the parent's `:` and any anchor or tag.
+/// Removes a key and its lines. The first key of a `- key:` item keeps the
+/// `-`: the next key moves up to it, or the `-` stays alone over a comment
+/// line. The only key of a nested mapping leaves `{}` after the parent's `:`
+/// or `-` and any anchor or tag.
 fn remove(
     cx: &Cx<'_>,
     entries: &[MapEntry],
     i: usize,
-    parent: Option<&KeySpan>,
+    parent: Option<Parent<'_>>,
     m: &Mapping,
 ) -> Result<Edits, EditError> {
     let span = &entries[i].span;
-    let start = line_start(cx.src, span.key_range.start);
+    let key_start = span.key_range.start;
     let after = span.value_range.end.max(span.key_range.end);
-    let end = line_end_after(cx.src, after);
     let only = entries.len() == 1 && m.len() == 1;
-    let Some(owner) = parent.filter(|_| only) else {
-        return Ok(vec![(start..end, String::new())]);
+    // The first key of a `- key:` item shares its line with the `-`, so the
+    // line cannot go.
+    if shares_line(cx.src, key_start) {
+        if only {
+            return Ok(vec![(
+                key_start..after.max(span.assign_end),
+                "{}".to_string(),
+            )]);
+        }
+        let Some(next) = entries.get(i + 1) else {
+            return Err(unsupported(cx, "the first key of a list item"));
+        };
+        let gap = &cx.src[after..next.span.key_range.start];
+        let (_, rest) = gap.split_once('\n').unwrap_or((gap, ""));
+        if rest.trim().is_empty() {
+            // Only blanks follow the key's line: the key and its trailing
+            // comment go, and the next key moves up to follow the `-`.
+            return Ok(vec![(key_start..next.span.key_range.start, String::new())]);
+        }
+        // A comment line lies between and stays. The rest of the `-` line
+        // goes, trailing comment included, leaving the `-` alone over the
+        // comment.
+        let dash = cx.src[..key_start].trim_end().len();
+        let line_end = line_end_after(cx.src, after);
+        let end = cx.src[..line_end].trim_end_matches(['\r', '\n']).len();
+        return Ok(vec![(dash..end, String::new())]);
+    }
+    Ok(cut_lines(
+        cx,
+        key_start,
+        after,
+        parent.filter(|_| only),
+        "{}",
+    ))
+}
+
+/// The whole lines from the one holding `from` to the end of the one holding
+/// `to`, cut out. With a parent whose last child this was, `empty` (`{}` or
+/// `[]`) is written after the parent's `:` or `-`.
+fn cut_lines(
+    cx: &Cx<'_>,
+    from: usize,
+    to: usize,
+    emptied: Option<Parent<'_>>,
+    empty: &str,
+) -> Edits {
+    let start = line_start(cx.src, from);
+    let end = line_end_after(cx.src, to);
+    let Some(parent) = emptied else {
+        return vec![(start..end, String::new())];
     };
     // A document without a final line break loses the break before the
     // removed line too, or `a: {}` would gain one.
@@ -489,11 +772,35 @@ fn remove(
     } else {
         start
     };
-    let at = after_properties(cx.src, owner.assign_end);
-    Ok(vec![
-        (at..at, " {}".to_string()),
+    let at = after_properties(cx.src, parent.after());
+    vec![
+        (at..at, format!(" {empty}")),
         (start.max(at)..end, String::new()),
-    ])
+    ]
+}
+
+/// Removes a sequence item and its lines. The only item leaves `[]`.
+fn remove_item(
+    cx: &Cx<'_>,
+    items: &[ItemSpan],
+    i: usize,
+    parent: Parent<'_>,
+) -> Result<Edits, EditError> {
+    let item = &items[i];
+    if shares_line(cx.src, item.dash) {
+        return Err(unsupported(
+            cx,
+            "an item that shares its line with another `-`",
+        ));
+    }
+    let only = items.len() == 1;
+    Ok(cut_lines(
+        cx,
+        item.dash,
+        item.value_range.end.max(item.dash),
+        only.then_some(parent),
+        "[]",
+    ))
 }
 
 /// The offset after any anchor or tag that follows `pos` on its line: an
@@ -658,4 +965,102 @@ fn model_rename(
         .map(|(k, v)| (if k == from { to } else { k }.to_string(), v.clone()))
         .collect();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{FieldEdit, PathSegment, Value, edit_yaml};
+
+    fn remove(src: &str, path: &[PathSegment]) -> String {
+        let edit = FieldEdit::RemovePath {
+            path: path.to_vec(),
+        };
+        String::from_utf8(edit_yaml(src.as_bytes(), &[edit]).unwrap().bytes).unwrap()
+    }
+
+    fn at(first: &str, index: usize, key: &str) -> Vec<PathSegment> {
+        vec![first.into(), index.into(), key.into()]
+    }
+
+    #[test]
+    fn removing_the_first_key_of_a_list_item_moves_the_next_key_up() {
+        let src = "s:\n  - id: 1 # c\n    t: 2\n  - id: 3\n";
+        assert_eq!(remove(src, &at("s", 0, "id")), "s:\n  - t: 2\n  - id: 3\n");
+    }
+
+    #[test]
+    fn removing_the_first_key_keeps_a_comment_line_after_it() {
+        let src = "s:\n  - id: 1\n    # about t\n    t: 2\n";
+        assert_eq!(
+            remove(src, &at("s", 0, "id")),
+            "s:\n  -\n    # about t\n    t: 2\n"
+        );
+    }
+
+    #[test]
+    fn removing_the_only_key_of_a_list_item_leaves_an_empty_mapping() {
+        assert_eq!(
+            remove("s:\n  - id: 1 # c\n", &at("s", 0, "id")),
+            "s:\n  - {} # c\n"
+        );
+    }
+
+    #[test]
+    fn removing_the_last_item_leaves_an_empty_sequence() {
+        let path: Vec<PathSegment> = vec!["s".into(), 0usize.into()];
+        assert_eq!(remove("s:\n  - a\nz: 1\n", &path), "s: []\nz: 1\n");
+    }
+
+    fn set(src: &str, path: Vec<PathSegment>, value: Value) -> Result<String, crate::EditError> {
+        let edit = FieldEdit::SetPath { path, value };
+        let out = edit_yaml(src.as_bytes(), &[edit])?;
+        Ok(String::from_utf8(out.bytes).unwrap())
+    }
+
+    #[test]
+    fn an_item_after_a_removed_first_key_can_still_be_edited() {
+        let src = "s:\n  - a: 1\n    # c\n    b: 2\n";
+        let once = remove(src, &at("s", 0, "a"));
+        let twice = set(&once, at("s", 0, "b"), Value::Int(3)).unwrap();
+        assert_eq!(twice, "s:\n  -\n    # c\n    b: 3\n");
+    }
+
+    #[test]
+    fn an_item_that_is_a_block_scalar_or_has_an_anchor_takes_an_append() {
+        let one: Vec<PathSegment> = vec!["s".into(), 1usize.into()];
+        assert_eq!(
+            set("s:\n  - |\n    x\n", one.clone(), Value::Int(1)).unwrap(),
+            "s:\n  - |\n    x\n  - 1\n"
+        );
+        assert_eq!(
+            set("s:\n  - &x foo\n", one, Value::Int(1)).unwrap(),
+            "s:\n  - &x foo\n  - 1\n"
+        );
+    }
+
+    #[test]
+    fn removing_the_only_null_key_of_an_item_leaves_an_empty_mapping() {
+        assert_eq!(remove("s:\n  - a:\n", &at("s", 0, "a")), "s:\n  - {}\n");
+    }
+
+    #[test]
+    fn a_comment_on_an_item_survives_a_compact_block_scalar_value() {
+        let map = Value::Map(
+            [("a".to_string(), Value::Str("x\ny\n".into()))]
+                .into_iter()
+                .collect(),
+        );
+        let out = set("s:\n  - x # c\n", vec!["s".into(), 0usize.into()], map).unwrap();
+        assert_eq!(out, "s:\n  - a: | # c\n      x\n      y\n");
+    }
+
+    #[test]
+    fn renaming_past_the_end_of_a_sequence_is_a_type_mismatch() {
+        let edit = FieldEdit::RenamePath {
+            path: vec!["s".into(), 2usize.into()],
+            to: "x".into(),
+        };
+        let err = edit_yaml(b"s:\n  - x\n", &[edit]).unwrap_err();
+        assert!(matches!(err, crate::EditError::PathTypeMismatch { .. }));
+    }
 }

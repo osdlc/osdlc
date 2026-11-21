@@ -359,9 +359,9 @@ describe('nested path edits', () => {
     expect(codeOf([{ SetPath: { path: ['name', 'x'], value: 1 } }])).toBe('PathTypeMismatch')
     expect(codeOf([{ SetPath: { path: [], value: 1 } }])).toBe('UnsupportedPath')
     expect(codeOf([{ SetPath: { path: ['server', 0], value: 1 } }])).toBe('PathTypeMismatch')
-    expect(codeOf([{ SetPath: { path: ['l', 0], value: 1 } }], enc('l:\n  - a\n'))).toBe(
-      'UnsupportedPath',
-    )
+    expect(
+      codeOf([{ SetPath: { path: ['c', 'b'], value: 1 } }], enc('a: &x\n  b: 1\nc: *x\n')),
+    ).toBe('UnsupportedPath')
   })
 
   test('a path segment that is not a string or a non-negative integer is InvalidEdit', () => {

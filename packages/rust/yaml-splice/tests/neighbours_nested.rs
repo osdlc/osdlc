@@ -24,8 +24,8 @@ use std::collections::BTreeMap;
 
 use yaml_splice::{EditError, FieldEdit, Mapping, PathSegment, Value, edit_yaml, parse::parse};
 
-/// The layouts whose edits run. `SeqItem` needs tier 2.
-const ENABLED_LAYOUTS: &[Layout] = &[Layout::Map];
+/// The layouts whose edits run.
+const ENABLED_LAYOUTS: &[Layout] = &[Layout::Map, Layout::SeqItem];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Layout {
@@ -188,7 +188,7 @@ fn a_nested_edit_changes_only_the_key_it_addresses() {
     );
     // Pinned; the causes are those of `Cause` in tests/neighbours.rs, at depth.
     let refusals: usize = refused.values().sum();
-    assert_eq!(refusals, 4_630, "refusals, by message: {refused:?}");
+    assert_eq!(refusals, 9_260, "refusals, by message: {refused:?}");
     // Every shape pair parses in both layouts, as it does at the top level.
     assert_eq!(documents, 7_500, "documents generated");
     assert_eq!(planned, 180_000, "edits planned");

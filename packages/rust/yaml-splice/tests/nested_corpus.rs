@@ -29,7 +29,7 @@ const CORPUS: &str = include_str!("fixtures/nested.json");
 const CONFORMANCE: &str = include_str!("fixtures/conformance.json");
 
 /// The tiers whose cases must pass. Raised as each tier is implemented.
-const ENABLED_TIERS: &[u64] = &[1];
+const ENABLED_TIERS: &[u64] = &[1, 2];
 
 const CATEGORIES: &[(&str, u64)] = &[
     ("set-existing", 1),
@@ -390,5 +390,56 @@ fn a_set_creates_a_sequence_partway_down_the_path() {
     assert_eq!(
         String::from_utf8(out.bytes).unwrap(),
         "a:\n  b: 1\n  c:\n    - d: 1\n"
+    );
+}
+
+fn set_path(
+    src: &str,
+    path: Vec<yaml_splice::PathSegment>,
+    value: Value,
+) -> Result<String, EditError> {
+    let edit = FieldEdit::SetPath { path, value };
+    edit_yaml_with(src.as_bytes(), &[edit], &EditOptions::default())
+        .map(|out| String::from_utf8(out.bytes).unwrap())
+}
+
+fn mapping_xy() -> Value {
+    let mut m = yaml_splice::Mapping::new();
+    m.insert("x", Value::Int(1));
+    m.insert("y", Value::Int(2));
+    Value::Map(m)
+}
+
+#[test]
+fn an_item_set_to_a_collection_follows_the_values_own_column() {
+    use yaml_splice::PathSegment::{Index, Key};
+    let got = set_path(
+        "s:\n  -   a\n",
+        vec![Key("s".into()), Index(0)],
+        mapping_xy(),
+    );
+    assert_eq!(got.unwrap(), "s:\n  -   x: 1\n      y: 2\n");
+}
+
+#[test]
+fn an_item_whose_value_is_on_the_next_line_is_edited() {
+    use yaml_splice::PathSegment::{Index, Key};
+    let path = vec![Key("s".into()), Index(0), Index(0)];
+    let got = set_path("s:\n  -\n    - a\n", path, Value::Int(1));
+    assert_eq!(got.unwrap(), "s:\n  -\n    - 1\n");
+}
+
+#[test]
+fn an_item_sharing_its_line_with_another_dash_is_refused() {
+    use yaml_splice::PathSegment::{Index, Key};
+    let path = vec![Key("s".into()), Index(0), Index(0)];
+    let got = edit_yaml_with(
+        b"s:\n  - - a\n",
+        &[FieldEdit::RemovePath { path }],
+        &EditOptions::default(),
+    );
+    assert!(
+        matches!(got, Err(EditError::UnsupportedPath { .. })),
+        "{got:?}"
     );
 }
