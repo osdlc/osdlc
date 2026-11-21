@@ -1,5 +1,18 @@
 # @osdlc/harness-knowledge
 
+## 0.3.0
+
+### Minor Changes
+
+- 202203c: `loadKnowledge` imports the compiled data as a JSON module, so a program that bundles the package
+  no longer fails at startup looking for `../data/harness-knowledge.json` beside the bundle. The data
+  is compiled from the corpus when the package is built instead of being committed; the published
+  package is unchanged. `DATA_DIR` is deprecated and nothing reads it.
+- 202203c: Add `HARNESS_SLUGS`, `slugFor` and `idFor` to map the short harness ids other packages use
+  (`claude`, `copilot`, `deepseek`) to the file's slugs and back. Add `credentialEnv` and
+  `configDirEnv`, which return the environment variables the file states for a harness's
+  credentials and config folder.
+
 ## 0.2.0
 
 ### Minor Changes
