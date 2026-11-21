@@ -881,6 +881,11 @@ function autoWork(
   let s: ReturnType<typeof survey>
   try {
     const config = loadConfig(v, ctx)
+    if (targets.length === 0 && config.targets.length === 0) {
+      throw new BadInput(
+        'clean --auto needs targets on the command line or in the config file; it does not sweep the current directory',
+      )
+    }
     plugins = pluginsFor(v, config, deps, ctx)
     cctx = contextFor(targets, config, ctx, [], v.ignore)
     s = survey(plugins, cctx)
