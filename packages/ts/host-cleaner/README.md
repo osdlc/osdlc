@@ -54,8 +54,19 @@ const found = survey([cache], ctx) // scope, discover, object
 const receipt = clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
 ```
 
-Without a `pick`, a plan runs every candidate nothing objects to. With one, it
-runs the named candidates, each judged by the rules above.
+What a plan runs uses repo-cleaner's words, with their meaning:
+
+- **The default:** every candidate nothing refuses or protests and no owner
+  holds for review (`unattended: false`).
+- **`select`:** exactly these candidate ids instead of the default.
+- **`pick`:** these as well; a candidate held for review runs only when picked
+  or selected.
+- **`spare`:** leave these alone: an id, a path, a name (every candidate of
+  that name, as a branch and the worktree that has it checked out), or a glob
+  over ids, paths and names. A spared candidate that would have run is
+  dropped as `spared`.
+
+Each candidate that runs is still judged by the rules above.
 
 ## The `git` plugin
 
