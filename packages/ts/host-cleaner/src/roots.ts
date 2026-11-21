@@ -2,7 +2,8 @@
  * Machine-scope containment. A plugin that cleans outside any checkout
  * declares `roots`; every candidate it owns must sit strictly below one of
  * them, proven by `@osdlc/path-guard` on real paths, so a `..` or a symlink
- * that leads out is not inside.
+ * that leads out is not inside. A candidate that is itself a link is judged by
+ * its target: a link inside a root that points out of it is not inside.
  */
 
 import { realpathSync } from 'node:fs'
@@ -10,7 +11,7 @@ import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
 
 import { nodeGuard } from '@osdlc/path-guard/node'
 
-/** Real path of the parent directory plus the leaf name, so a leaf that is itself a link is judged by where it sits. */
+/** `path` with only its parent resolved, so a leaf that does not exist yet still compares against a real root; `path` as given when the parent does not resolve. The guard then follows a leaf that is a link. */
 const realLeaf = (path: string): string => {
   const dir = dirname(path)
   try {

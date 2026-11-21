@@ -74,7 +74,9 @@ A plugin that cleans outside any checkout (a cache directory, a toolchain
 folder) declares `roots(ctx)`: the directories it cleans, fixed or taken from
 its own settings. Every candidate it owns must sit strictly below one of them,
 proven on real paths with `@osdlc/path-guard`, so a `..` or a symlink that
-leaves is not inside, and the root itself is never a candidate. The core
+leaves is not inside, and the root itself is never a candidate. A candidate
+that is itself a link is judged by its target, so a link pointing out of the
+roots is refused. A plugin's `delete` must act on the candidate's path alone. The core
 refuses one that is not (`outside-roots`, by `host-cleaner`) and checks again
 right before `delete`, failing that step if the path moved out since the
 re-check. `containedIn(roots, path)` is exported for plugin code that wants the
