@@ -33,10 +33,15 @@ const COMMAND_KEYS: readonly (readonly string[])[] = [
 export const COMMAND_KEY_NAMES: readonly string[] = COMMAND_KEYS.map((path) => path.join('.'))
 
 /**
- * The keys `config set` writes from the command line only: every command key, and `verify`, whose
- * `detect` value makes the repository's own files choose a command to run.
+ * The keys `config set` writes from the command line only: every command key, `verify`, whose
+ * `detect` value makes the repository's own files choose a command to run, and `repair.mode`,
+ * whose attended modes run the agent without the headless call's project-settings isolation.
  */
-export const CLI_ONLY_KEYS: readonly string[] = [...COMMAND_KEY_NAMES, 'pr_update.verify']
+export const CLI_ONLY_KEYS: readonly string[] = [
+  ...COMMAND_KEY_NAMES,
+  'pr_update.verify',
+  'pr_update.repair.mode',
+]
 
 function isSet(value: unknown): boolean {
   if (value === undefined || value === null) return false

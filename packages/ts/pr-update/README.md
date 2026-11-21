@@ -321,7 +321,8 @@ host's GitHub tokens. When the session ends, the same checks as a headless repai
 unmoved, no refs, no conflict markers, `git diff --check` clean, then stage, commit, verify and
 push. A session that exits non-zero, or that you quit without a fix, gives `conflict` or `failed`
 as a headless repair that gave up does. `repair.mode` other than `headless` in the project file
-needs trust like `repair.agent`; `--repair-mode` is your own consent.
+needs trust like `repair.agent`; `--repair-mode` is your own consent. `config set pr_update.repair.mode`
+works from the command line only and is refused over MCP and HTTP.
 
 ## Git submodules
 
