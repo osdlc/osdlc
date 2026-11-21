@@ -14,6 +14,8 @@ import { z } from 'zod'
 
 import { envVars, systemDirs } from '@osdlc/cli-tool'
 
+import { settingsIssues } from './settings.ts'
+
 const VENDOR_DIRS = { vendor: 'host-cleaner', envVars: envVars('HOST_CLEANER') }
 
 export const ConfigSchema = z.strictObject({
@@ -47,7 +49,7 @@ export class ConfigError extends Error {
  * The config at `path`; empty when the file does not exist, unless `required`
  * (a file the person named).
  *
- * @throws ConfigError for a file that is not valid
+ * @throws ConfigError for a file that is not valid, a plugin entry with a key its settings do not have included
  */
 export function readConfig(path: string, opts: { required?: boolean } = {}): Config {
   if (!existsSync(path)) {
@@ -62,5 +64,7 @@ export function readConfig(path: string, opts: { required?: boolean } = {}): Con
   }
   const parsed = ConfigSchema.safeParse(raw)
   if (!parsed.success) throw new ConfigError(`bad config ${path}: ${parsed.error.message}`)
+  const issues = settingsIssues(parsed.data.plugins)
+  if (issues.length > 0) throw new ConfigError(`bad config ${path}: ${issues.join('; ')}`)
   return parsed.data
 }
