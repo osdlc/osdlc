@@ -249,7 +249,8 @@ protests, and grants no `--allow`. That is a clean worktree (`git`) and an
 artifact idle past its threshold with nothing building in its checkout
 (`cargo`, `node`). Branches, sessions and anything with a protest are left for
 a person. `--spare` leaves more out; `--pick`, `--allow`, `-i`, `--yes` and
-`--dry-run` are refused. A lock in the state directory stops a second run; the
+`--dry-run` are refused. It needs targets on the command line or in the config
+file, and never falls back to the current directory. A lock in the state directory stops a second run; the
 run writes a report to `reports/`, a receipt to `receipts/` and a log line.
 
 `host-cleaner schedule install [--every <hours>]` (default 6) writes a launchd

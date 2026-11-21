@@ -45,6 +45,13 @@ function setup() {
   }
 }
 
+/** Write the config file `--auto` needs, naming `targets`. */
+function configure(env: Record<string, string>, targets: string[]): void {
+  const file = configFile(hostDirs(env))
+  mkdirSync(join(file, '..'), { recursive: true })
+  writeFileSync(file, JSON.stringify({ targets }))
+}
+
 function run(argv: string[], cwd: string, env: Record<string, string>, deps: MainDeps = {}) {
   const ctx = captureContext({ cwd, env })
   // The shipped plugins would talk to this machine's Orca and sweep every repository it lists.
@@ -103,6 +110,7 @@ describe('selectUnattended', () => {
 describe('host-cleaner clean --auto', () => {
   test('cleans the unattended subset only, and leaves a report, a receipt and a log line', () => {
     const { env, cwd } = setup()
+    configure(env, [cwd])
     const plugin = fake(
       [
         cand('artifact:idle', { unattended: true, bytes: 2048 }),
@@ -132,6 +140,7 @@ describe('host-cleaner clean --auto', () => {
 
   test('with nothing unattended it runs nothing, though a plain clean would run the rest', () => {
     const { env, cwd } = setup()
+    configure(env, [cwd])
     const plugin = fake([cand('artifact:manual')])
     const r = run(['clean', '--auto', '--format', 'json'], cwd, env, { plugins: [plugin] })
     expect(r.code).toBe(0)
@@ -146,6 +155,7 @@ describe('host-cleaner clean --auto', () => {
     const git = new Git(dir, { env: { ...IDENTITY } })
     git.rawChecked(['commit', '--allow-empty', '-m', 'initial'])
     git.rawChecked(['branch', 'merged-a'])
+    configure(env, [dir])
     const r = run(['clean', '--auto'], dir, env)
     expect(r.code).toBe(0)
     expect(r.out).toContain('nothing-to-clean')
@@ -154,6 +164,7 @@ describe('host-cleaner clean --auto', () => {
 
   test('a failed delete exits 11 and the report names it', () => {
     const { env, cwd } = setup()
+    configure(env, [cwd])
     const broken: Plugin = {
       ...fake([cand('artifact:a', { unattended: true })]),
       delete: () => {
@@ -167,6 +178,7 @@ describe('host-cleaner clean --auto', () => {
 
   test('a second run that finds the lock held exits without work', () => {
     const { env, cwd } = setup()
+    configure(env, [cwd])
     const dirs = hostDirs(env)
     mkdirSync(dirs.state, { recursive: true })
     const lock = join(dirs.state, 'host-cleaner.lock')
@@ -184,6 +196,23 @@ describe('host-cleaner clean --auto', () => {
     expect(plugin.removed).toEqual([])
   })
 
+  test('with no targets on the command line or in the config it refuses with exit 2', () => {
+    const { env, cwd } = setup()
+    const plugin = fake([cand('artifact:a', { unattended: true })])
+    const r = run(['clean', '--auto'], cwd, env, { plugins: [plugin] })
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('needs targets')
+    expect(plugin.removed).toEqual([])
+  })
+
+  test('targets on the command line are enough without a config file', () => {
+    const { env, cwd } = setup()
+    const plugin = fake([cand('artifact:a', { unattended: true })])
+    const r = run(['clean', '--auto', cwd], cwd, env, { plugins: [plugin] })
+    expect(r.code).toBe(0)
+    expect(plugin.removed).toEqual(['artifact:a'])
+  })
+
   test('what --auto fixes for itself is refused with exit 2', () => {
     const { env, cwd } = setup()
     for (const extra of [['--pick', 'x'], ['--allow', 'lossy'], ['-i'], ['--yes'], ['--dry-run']]) {
@@ -196,6 +225,7 @@ describe('host-cleaner clean --auto', () => {
 
   test('--spare leaves a candidate out of the unattended subset', () => {
     const { env, cwd } = setup()
+    configure(env, [cwd])
     const plugin = fake([cand('artifact:idle', { unattended: true })])
     const r = run(['clean', '--auto', '--spare', 'artifact:*'], cwd, env, { plugins: [plugin] })
     expect(r.code).toBe(0)
@@ -206,11 +236,7 @@ describe('host-cleaner clean --auto', () => {
 describe('host-cleaner schedule', () => {
   function sched(argv: string[], over: MainDeps = {}, targets: string[] | null = ['~/dev']) {
     const { env, cwd, home } = setup()
-    if (targets !== null) {
-      const file = configFile(hostDirs(env))
-      mkdirSync(join(file, '..'), { recursive: true })
-      writeFileSync(file, JSON.stringify({ targets }))
-    }
+    if (targets !== null) configure(env, targets)
     const calls: string[][] = []
     const launchctl = fakeRunner((a) => {
       calls.push(a)
