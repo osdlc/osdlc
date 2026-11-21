@@ -58,6 +58,19 @@ describe('classifyFailure on real runs', () => {
     }
   })
 
+  test("Bun's missing-executable text is not-installed", () => {
+    const run = {
+      exitCode: 1,
+      neverExited: true,
+      reason: 'spawn' as const,
+      error: `Executable not found in $PATH: "${MISSING}"`,
+    }
+    expect(classifyFailure(run, { binary: MISSING })).toMatchObject({
+      kind: 'not-installed',
+      message: `\`${MISSING}\` is not installed or not on PATH.`,
+    })
+  })
+
   test('a missing cwd is bad-cwd, not not-installed, on every runner', async () => {
     const cwd = join(dir, 'nope')
     const ctx = { binary: 'sh' }

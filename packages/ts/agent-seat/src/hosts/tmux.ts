@@ -25,7 +25,7 @@ import type {
   SendRequest,
 } from '../contract.ts'
 import { onPath, quietRun, supportsPlatform, WAIT_TIMEOUT_EXIT } from '../contract.ts'
-import { sessionViaTerminal } from '../harness.ts'
+import { commandArgv, sessionViaTerminal } from '../harness.ts'
 
 /**
  * The cwd-derived tmux session name: stable across repeated calls with the same
@@ -124,7 +124,7 @@ export function tmuxCreateArgv(req: CommandRequest): string[] {
     '-c',
     req.cwd,
     '--',
-    ...sessionCommand(req.argv),
+    ...sessionCommand(commandArgv(req)),
   ]
   if (req.wait === undefined) return create
   // A waiting launch keeps the dead pane so its exit status can be read. The option is set in the
