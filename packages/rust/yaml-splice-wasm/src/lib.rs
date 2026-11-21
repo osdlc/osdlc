@@ -218,13 +218,9 @@ fn span_of(e: &EditError) -> Option<Range<usize>> {
 mod tests {
     use super::*;
 
-    fn parse(json: &str) -> Result<Vec<FieldEdit>, String> {
-        parse_edits(json)
-    }
-
     #[test]
     fn path_edits_decode_keys_and_indices() {
-        let edits = parse(
+        let edits = parse_edits(
             r#"[{"SetPath":{"path":["a",0,"b"],"value":1}},
                 {"RemovePath":{"path":["a"]}},
                 {"RenamePath":{"path":["a","b"],"to":"c"}}]"#,
@@ -254,7 +250,7 @@ mod tests {
 
     #[test]
     fn an_empty_path_passes_through_to_the_crate() {
-        let edits = parse(r#"[{"RemovePath":{"path":[]}}]"#).unwrap();
+        let edits = parse_edits(r#"[{"RemovePath":{"path":[]}}]"#).unwrap();
         assert_eq!(edits[0], FieldEdit::RemovePath { path: vec![] });
     }
 
@@ -262,13 +258,13 @@ mod tests {
     fn a_bad_path_segment_is_refused() {
         for seg in ["-1", "1.5", "true", "null", "[]", "1e30"] {
             let json = format!(r#"[{{"RemovePath":{{"path":["a",{seg}]}}}}]"#);
-            let err = parse(&json).unwrap_err();
+            let err = parse_edits(&json).unwrap_err();
             assert!(err.contains("path[1]"), "{seg}: {err}");
         }
-        assert!(parse(r#"[{"RemovePath":{"path":"a"}}]"#).is_err());
-        assert!(parse(r#"[{"RemovePath":{}}]"#).is_err());
-        assert!(parse(r#"[{"RenamePath":{"path":["a"]}}]"#).is_err());
-        assert!(parse(r#"[{"SetPath":{"path":["a"]}}]"#).is_err());
+        assert!(parse_edits(r#"[{"RemovePath":{"path":"a"}}]"#).is_err());
+        assert!(parse_edits(r#"[{"RemovePath":{}}]"#).is_err());
+        assert!(parse_edits(r#"[{"RenamePath":{"path":["a"]}}]"#).is_err());
+        assert!(parse_edits(r#"[{"SetPath":{"path":["a"]}}]"#).is_err());
     }
 
     #[test]

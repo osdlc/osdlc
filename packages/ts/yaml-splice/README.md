@@ -105,9 +105,9 @@ Each export has TSDoc in the source. Your editor shows it.
   of a missing key changes nothing. `Rename` of a missing key is
   `MissingKey`; a rename onto an existing key is `KeyConflict`.
 - A one-segment path is exactly the top-level edit. `SetPath` appends a missing
-  last key to its mapping, and creates the collection below an empty parent
-  (`a:`, `a: {}`). `RemovePath` of an absent last key changes nothing; a
-  missing parent is `PathNotFound`. Removing the only key of a mapping leaves
+  last key to its mapping, creates every missing level, and fills the collection below an
+  empty parent (`a:`, `a: {}`). `RemovePath` of an absent last key changes nothing; a
+  missing parent on a remove or rename is `PathNotFound`. Removing the only key of a mapping leaves
   `{}`. A path that steps a key into a sequence, an index into a mapping, or
   anything into a scalar is `PathTypeMismatch`. An empty path, and a path
   across a sequence or a flow collection, is `UnsupportedPath`.

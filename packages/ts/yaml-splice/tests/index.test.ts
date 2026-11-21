@@ -370,6 +370,7 @@ describe('nested path edits', () => {
       expect(codeOf(edits)).toBe('InvalidEdit')
     }
     expect(codeOf([{ RemovePath: { path: 'a' } }] as unknown as FieldEdit[])).toBe('InvalidEdit')
+    expect(codeOf([{ SetPath: null }] as unknown as FieldEdit[])).toBe('InvalidEdit')
   })
 
   test('a non-finite number in a SetPath value is UnrenderableValue', () => {

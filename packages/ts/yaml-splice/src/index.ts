@@ -175,12 +175,18 @@ export function editYaml(source: Uint8Array, edits: readonly FieldEdit[]): EditO
 function assertValid(edits: readonly FieldEdit[]): void {
   for (const edit of edits) {
     if ('Set' in edit) assertFiniteValue(edit.Set.value, edit.Set.key)
-    else if ('SetPath' in edit) {
-      assertPath(edit.SetPath.path)
-      assertFiniteValue(edit.SetPath.value, formatPath(edit.SetPath.path))
-    } else if ('RemovePath' in edit) assertPath(edit.RemovePath.path)
-    else if ('RenamePath' in edit) assertPath(edit.RenamePath.path)
+    else if ('SetPath' in edit) assertPathEdit(edit.SetPath, true)
+    else if ('RemovePath' in edit) assertPathEdit(edit.RemovePath, false)
+    else if ('RenamePath' in edit) assertPathEdit(edit.RenamePath, false)
   }
+}
+
+function assertPathEdit(body: { path: EditPath; value?: EditValue } | null, hasValue: boolean) {
+  if (body === null || typeof body !== 'object') {
+    throw new EditError('InvalidEdit', 'a path edit must be an object with a path')
+  }
+  assertPath(body.path)
+  if (hasValue && body.value !== undefined) assertFiniteValue(body.value, formatPath(body.path))
 }
 
 function assertPath(path: EditPath): void {
