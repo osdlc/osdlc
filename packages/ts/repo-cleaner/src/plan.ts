@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { PROVIDER_CHOICES } from './providers/types.ts'
 import {
+  judgedRemotes,
   ACTIONS,
   KINDS,
   RISKS,
@@ -147,7 +148,7 @@ export function plan(sweep: Sweep, now: Date = new Date()): Plan {
         : [
             {
               root: s.repo.root,
-              remotes: s.repo.remotes.map((r) => r.name),
+              remotes: judgedRemotes(s.repo).map((r) => r.name),
               fetched: s.repo.fetchedRemotes,
               rows: planRows(s.rows),
             },

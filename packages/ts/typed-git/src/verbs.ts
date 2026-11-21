@@ -2051,6 +2051,41 @@ export function fetch(
   return { argv, absent: NONE, parse: nothing }
 }
 
+/** Options for {@link fetchMany}. */
+export interface FetchManyOptions extends Omit<FetchOptions, 'depth'> {
+  /**
+   * `--jobs=<n>` — fetch up to `n` remotes at once. Default: git's own
+   * (`fetch.parallel`, 1 unless set). Anything but a positive integer throws a
+   * `TypeError`.
+   */
+  jobs?: number | undefined
+}
+
+/**
+ * `git fetch --multiple <remote>…`: every remote in one invocation, in
+ * parallel with `jobs`. Git fetches each remote it can and exits non-zero
+ * when any failed, naming it on stderr; the classified failure carries that
+ * text. Throws a `TypeError` for an empty list.
+ */
+export function fetchMany(remotes: readonly string[], opts: FetchManyOptions = {}): GitVerb<void> {
+  if (remotes.length === 0) throw new TypeError('typed-git: fetchMany: no remote given')
+  const argv = ['fetch', '--multiple']
+  if (opts.quiet) argv.push('--quiet')
+  if (opts.prune) argv.push('--prune')
+  if (opts.noWriteFetchHead) argv.push('--no-write-fetch-head')
+  if (opts.noTags) argv.push('--no-tags')
+  if (opts.jobs !== undefined) {
+    if (!Number.isSafeInteger(opts.jobs) || opts.jobs < 1) {
+      throw new TypeError(
+        `typed-git: fetchMany: jobs must be a positive integer (got ${JSON.stringify(opts.jobs)})`,
+      )
+    }
+    argv.push(`--jobs=${opts.jobs}`)
+  }
+  for (const remote of remotes) argv.push(positional('fetchMany', 'remote', remote))
+  return { argv, absent: NONE, parse: nothing }
+}
+
 /** Options for {@link add}. */
 export interface AddOptions {
   /** `--all` — stage deletions and untracked files too, not just changes. */

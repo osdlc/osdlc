@@ -801,6 +801,7 @@ Integration, declares exit 1 absent and returns the rejected refs.
 | Method | git |
 | --- | --- |
 | `fetch(remote, refspec, { prune, quiet, noWriteFetchHead, depth, noTags })` | `fetch` |
+| `fetchMany(remotes, { prune, quiet, noWriteFetchHead, noTags, jobs })` | `fetch --multiple [--jobs=<n>]` — every remote in one call, `jobs` at once; an empty list or a `jobs` that is not a positive integer throws a `TypeError` |
 | `add(paths, { all, update, intentToAdd })` | `add` (paths go after `--`) |
 | `commit({ message, body } \| { messageFile } \| { messageStdin }, plus { allowEmpty, amend, noVerify, signoff, paths } in the same object)` | `commit` — one argument, e.g. `commit({ message, allowEmpty: true })`; one message source, enforced by the types; `messageStdin` is `-F -` with the string on stdin, no temp file. `paths` appends `-- <paths…>`: only those paths are committed, from the working tree, and anything else staged stays staged. An empty `paths` throws a `TypeError`, because git would commit everything staged |
 | `configSet(key, value, { scope })` | `config` |

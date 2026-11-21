@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.4",
+  "referenceVersion": "0.4.5",
   "sections": {
     "ref_parse": {
       "description": "parseRef: the README reference table, the parsing rules and every typed error; `formatted` is formatRef of the parsed reference",
