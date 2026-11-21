@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 
 import {
+  askChecklist,
   askChoice,
   askText,
   askYesNo,
@@ -52,7 +53,9 @@ import {
   runMain,
   systemDirs,
   TieredDirs,
+  type AskChecklistOptions,
   type AskChoiceOptions,
+  type ChecklistItem,
   type AskTextOptions,
   type AskYesNoOptions,
   type BooleanFlag,
@@ -284,7 +287,7 @@ test('keys typed before a question are thrown away, through stty on a terminal',
 
 test('asking for text or one of a list, with an answer required', () => {
   const file = join(dir, 'answers')
-  writeFileSync(file, 'feature\n7\nupstream\n')
+  writeFileSync(file, 'feature\n7\nupstream\n2\n\n')
   const fd = openSync(file, 'r')
   const written: string[] = []
   // `isTerminal` stands in for a real terminal; `required` then lets it answer.
@@ -300,6 +303,14 @@ test('asking for text or one of a list, with an answer required', () => {
     const choice: AskChoiceOptions<'origin' | 'upstream'> = { ...common, default: 'origin' }
     // `7` is not on the list, so it asks again and reads the next line.
     expect(askChoice('Push to?', ['origin', 'upstream'], choice)).toBe('upstream')
+    // A checklist: `2` ticks the second row, the empty line accepts.
+    const rows: ChecklistItem[] = [
+      { label: 'branch:feat/a', checked: true },
+      { label: 'branch:feat/b' },
+      { label: 'branch:main', disabled: 'the default branch' },
+    ]
+    const checklist: AskChecklistOptions = common
+    expect(askChecklist('Delete which?', rows, checklist)).toEqual([0, 1])
   } finally {
     closeSync(fd)
   }

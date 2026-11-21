@@ -12,7 +12,8 @@ import type { CommandFailed, NeverExitedReason } from './sync.ts'
 /**
  * Why a command did not succeed:
  *
- * - `not-installed`: the binary is not on `PATH` (spawn `ENOENT`).
+ * - `not-installed`: the binary is not on `PATH` (spawn `ENOENT`, or Bun's
+ *   `Executable not found in $PATH`).
  * - `not-executable`: the binary exists but cannot be run (`EACCES`, `EPERM`,
  *   `ENOEXEC`).
  * - `bad-cwd`: the working directory is missing, not a directory, or cannot be entered.
@@ -217,7 +218,8 @@ function spawnFailure(
       detail,
     )
   }
-  if (/\bENOENT\b/.test(error)) {
+  // Bun reports a missing binary as `Executable not found in $PATH`, with no `ENOENT`.
+  if (/\bENOENT\b|Executable not found in \$PATH/.test(error)) {
     return make('not-installed', `${subject} is not installed or not on PATH.`, detail)
   }
   if (/\b(EACCES|EPERM|ENOEXEC)\b/.test(error)) {
