@@ -1,5 +1,20 @@
 # @osdlc/cli-tool
 
+## 0.21.0
+
+### Minor Changes
+
+- 976bbee: New experimental `askChecklist(question, items)`: a numbered checklist on one terminal line at a time. Typed numbers and ranges toggle items, an empty line accepts, and items that cannot be ticked show why. Returns the ticked indexes.
+- 976bbee: A `list` flag can take its value only after `=` (`valueAfterEquals: true`). A bare `--remote` adds an empty entry, `--remote=upstream` adds `upstream`, and in `--remote upstream` the word stays a positional, so a flag whose usual form has no value cannot swallow the next argument. Help shows `--remote[=<name>]`.
+
+### Patch Changes
+
+- Updated dependencies [6d37030]
+- Updated dependencies [0297b95]
+- Updated dependencies [2ee6d62]
+  - @osdlc/command-seam@0.15.1
+  - @osdlc/config-layers@0.11.0
+
 ## 0.20.0
 
 ### Minor Changes
