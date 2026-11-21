@@ -1,5 +1,16 @@
 # @osdlc/ref-lease
 
+## 0.3.4
+
+### Patch Changes
+
+- Updated dependencies [6d37030]
+- Updated dependencies [c8470d6]
+- Updated dependencies [0ce8abc]
+- Updated dependencies [9c0f5ae]
+  - @osdlc/command-seam@0.15.1
+  - @osdlc/typed-git@0.19.0
+
 ## 0.3.3
 
 ### Patch Changes

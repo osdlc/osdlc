@@ -862,13 +862,21 @@ reason, so a free-form reason such as `keep, build running` always blocks.
   receipt records the `unlock-worktree` step.
 - The owner is alive, or cannot be ruled out: `locked-worktree`.
 - A lock writes `pid <N>` and, to guard against pid reuse, `start <time>`. The
-  time must be precise to the second: a full ISO-8601 timestamp with a time of
-  day and a zone (`2026-10-25T18:22:19Z`; one with no zone is not accepted),
-  epoch seconds (9-10 digits), epoch milliseconds (12-13 digits), or the
-  `ps -o lstart` form (`Sat Oct 25 18:22:19 2026`; matches when it is the real
-  start in some time zone, since the writer's zone is unknown). With
-  one of those, a live pid whose own start time differs by more than two
-  seconds is a reused pid and counts as dead. Anything else, a date alone, a
+  start is read by [`@osdlc/file-lock`](../file-lock/README.md)'s
+  `sameProcess`, which takes:
+  - its `processIdentity`, the most reliable form: on Linux
+    `linux:<boot id>:<start ticks>`, checked against `/proc`, which neither a
+    clock change nor a time zone moves; elsewhere `start:<ms>`;
+  - a full ISO-8601 timestamp with a time of day and a zone
+    (`2026-10-25T18:22:19Z`; one with no zone is not accepted), epoch seconds
+    (9-10 digits) or epoch milliseconds (12-13 digits);
+  - the `ps -o lstart` form (`Sat Oct 25 18:22:19 2026`), which matches when it
+    is the real start in some time zone, since the writer's zone is unknown.
+
+  A pid is reused only after its owner exits, so only a live pid whose process
+  started more than two seconds after the recorded time is a reused pid and
+  counts as dead. A recorded time later than the start, such as when the
+  owner took the lock, still names the owner. Anything else, a date alone, a
   short number or a partial date, cannot rule the owner out and the lock stays
   a blocker.
 - Only `ps` exiting 1 with no output and no error text means "no such pid".
@@ -1229,7 +1237,11 @@ const receipt = run(preview)
 | `check(plan, approval, opts?)` | Resolve `{ select, pick, spare, allow }` against the plan, sweep again, and return a `Preview`: the steps, the rows dropped and why, the allows no row needed, and `notes`, what the re-check judged without. Deletes nothing |
 | `run(preview, opts?)` | Sweep once more and take the preview's steps, writing a `Receipt` (to `receiptPath` after every step, when given). `onNotes` hears what its own re-check judged without. Each worktree it removes is measured with `du` first, into the step's `freedBytes` |
 | `inspectWorktree(path, opts?)` | One worktree judged as a sweep judges it, submodules included |
-| `readPlan`, `writePlan` | Plans on disk |
+| `candidatesOf(sweep)` | The sweep's deletable or objecting rows as plain data (`CleanCandidate`): id, kind, path, evidence, fingerprint, `requires`, blockers, risks |
+| `removeCandidate(candidate, opts?)` | Delete one candidate as `run` takes one row: archive first with `archive`, the live-process and unsafe-force checks, the removal, its verification. Returns a `CandidateRemoval` (`ok`, `steps`, `error`, and `archiveFailed` for a failed archive push, which a host should treat as fatal). Never throws for a refused or failed delete |
+| `readPlan`, `writePlan`, `PlanSchema` | Plans on disk |
+| `fingerprint`, `sameFingerprint` | The evidence a row rests on and the rule that compares two of them |
+| `writeJsonAtomic`, `busyHolders` | The atomic JSON write the receipt uses; the holders of a worktree that are not idle shells |
 | `render` | The command line's formats: `text`, `json`, `summary`, `commands`, `preview`, `receipt` |
 | `defaultProcessProbe`, `providers` | The defaults a host can wrap or replace |
 | `RepoCleanerError` | Every refusal, with a `code`: `conflict`, `bad-input`, `not-found`, `ambiguous`, `spared-changed`, `bad-plan` |
@@ -1281,6 +1293,16 @@ reaches on its own evidence outranks anything a host could contribute, so a
 host rarely has to veto one. It mostly sharpens the rows left at `keep` or
 `review`. A worktree the host holds back keeps its branch: the sweep applies
 that rule after the hook.
+
+### Taking one candidate at a time
+
+A host that runs its own phases (discover, object, re-check, delete) uses
+`candidatesOf` and `removeCandidate` instead of `plan`, `check` and `run`. The
+host re-checks a candidate by sweeping again and comparing `fingerprint` with
+`sameFingerprint`, and turns `blockers` and `risks` into its own objections. It
+deletes what a branch `requires` (its worktree) first. `removeCandidate` keeps the safety model of
+`run`: a risk not in `allow` is refused, and with `archive` the push is made
+and verified before the delete, one archive per candidate.
 
 ## Providers (prototype)
 
