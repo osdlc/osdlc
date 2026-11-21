@@ -412,10 +412,10 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps): Plugin[] {
   if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
   // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
   const named = wanted(v) ?? []
-  const enabled = all.filter(
-    (p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins),
+  const chosen = selectPlugins(all, wanted(v), v.skipPlugin)
+  return orderPlugins(
+    chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins)),
   )
-  return orderPlugins(selectPlugins(enabled, wanted(v), v.skipPlugin))
 }
 
 function contextFor(
@@ -504,7 +504,7 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
   const v = parsed.values
   try {
     const config = loadConfig(v, ctx)
-    const unused = Object.keys(config.plugins).filter((n) => !(n in PLUGIN_SETTINGS))
+    const unused = Object.keys(config.plugins).filter((n) => !Object.hasOwn(PLUGIN_SETTINGS, n))
     if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
     const settings = effectiveSettings(config.plugins)
     if (v.format === 'json') {

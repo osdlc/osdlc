@@ -33,7 +33,9 @@ export const PLUGIN_SETTINGS = {
 type Entries = Readonly<Record<string, Record<string, unknown>>>
 
 const schemaOf = (name: string): z.ZodType | undefined =>
-  (PLUGIN_SETTINGS as Record<string, z.ZodType>)[name]
+  Object.hasOwn(PLUGIN_SETTINGS, name)
+    ? (PLUGIN_SETTINGS as Record<string, z.ZodType>)[name]
+    : undefined
 
 /** One line per problem in `plugins`, each starting `plugins.<name>[.<key>]`. */
 export function settingsIssues(plugins: Entries): string[] {
