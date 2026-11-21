@@ -191,6 +191,27 @@ Two settings sit at the top of the config and apply to every plugin:
 - `idleHours` is the default for every plugin that has the setting and does not
   set its own. `0` is allowed and makes every idle-checked artifact a candidate.
 
+### Profiles
+
+`profiles` holds named overrides, chosen with `--profile <name>` on `status`,
+`plan`, `clean` (`--auto` included) and `config`:
+
+```json
+{
+  "targets": ["~/dev"],
+  "idleHours": 24,
+  "profiles": { "deep": { "idleHours": 0, "plugins": { "node": { "enabled": false } } } }
+}
+```
+
+`host-cleaner clean --profile deep --yes` is then the "disk is nearly full"
+command. A profile may set `targets`, `ignore`, `idleHours` and `plugins`; it
+is deep-merged over the rest of the config, a list in it replaces the config's,
+except `ignore`, which only grows, so a profile cannot lift a protection. Each
+profile is checked when the config loads, like `plugins`; an unknown profile
+name is refused (exit 2) with the names there are. `schedule install` does not
+take a profile yet.
+
 `host-cleaner config` prints every plugin's effective settings: the value, and
 whether the file set it or it is the default. `--format json` prints the values.
 
