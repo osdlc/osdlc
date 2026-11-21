@@ -50,7 +50,9 @@ exports.EditResult = EditResult;
  * Edit `source` (raw UTF-8 YAML bytes) with `edits_json`, an array of
  * externally-tagged field edits, e.g.
  * `[{"Set":{"key":"status","value":"done"}}]`,
- * `[{"Remove":{"key":"draft"}}]`, `[{"Rename":{"from":"a","to":"b"}}]`.
+ * `[{"Remove":{"key":"draft"}}]`, `[{"Rename":{"from":"a","to":"b"}}]`, and
+ * the nested forms `[{"SetPath":{"path":["a",0,"b"],"value":1}}]`,
+ * `RemovePath {path}` and `RenamePath {path, to}`.
  * @param {Uint8Array} source
  * @param {string} edits_json
  * @returns {EditResult}

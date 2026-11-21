@@ -1499,6 +1499,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "system-model"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2048,7 +2055,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "yaml-splice"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "saphyr-parser",
  "serde_json",
