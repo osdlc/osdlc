@@ -15,7 +15,7 @@ import { streamRunner, type StreamRunner } from '@osdlc/command-seam'
 
 import type { CommandRequest, Host, SessionRequest } from '../contract.ts'
 import { onPath } from '../contract.ts'
-import { wrapperSession } from '../harness.ts'
+import { commandArgv, wrapperSession } from '../harness.ts'
 
 /**
  * The current-terminal host: runs the command right here with inherited stdio and waits for it.
@@ -26,7 +26,7 @@ export function makeTerminalHost(
 ): Host {
   const makeRunner = opts.streamRunner ?? streamRunner
   const terminal = (req: CommandRequest): number => {
-    const [bin, ...rest] = req.argv
+    const [bin, ...rest] = commandArgv(req)
     if (bin === undefined) throw new Error('empty argv')
     if (!onPath(bin)) throw new Error(`'${bin}' is not on PATH`)
     return makeRunner(bin).run(rest, { cwd: req.cwd }).exitCode

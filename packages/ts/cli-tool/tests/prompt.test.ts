@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { isatty } from 'node:tty'
 
 import {
+  askChecklist,
   askChoice,
   askText,
   askYesNo,
@@ -327,6 +328,51 @@ describe('askText', () => {
     )
     expect(answer).toBe('x')
     expect(written).toEqual(['(ignored what was typed before this question)\n', 'Name? [x] '])
+  })
+})
+
+describe('askChecklist', () => {
+  const ROWS = [
+    { label: 'branch:feat/a', checked: true },
+    { label: 'branch:feat/b' },
+    { label: 'branch:main', disabled: 'keep: default branch' },
+  ]
+
+  function tick(input: string, terminal = true): { chosen: number[]; written: string } {
+    const written: string[] = []
+    const chosen = withInput(input, (fd) =>
+      askChecklist('Which rows?', ROWS, { ...onTerminal(fd, written), isTerminal: terminal }),
+    )
+    return { chosen, written: written.join('') }
+  }
+
+  test('shows the list ticked as given, and Enter accepts it', () => {
+    const { chosen, written } = tick('\n')
+    expect(chosen).toEqual([0])
+    expect(written).toBe(
+      'Which rows?\n  1 [x] branch:feat/a\n  2 [ ] branch:feat/b\n  3 [-] branch:main  (keep: default branch)\nToggle numbers (1 3-5), or Enter to accept: ',
+    )
+  })
+
+  test('numbers and ranges toggle, and the list is shown again', () => {
+    expect(tick('1 2\n\n').chosen).toEqual([1])
+    expect(tick('1-2\n2\n\n').chosen).toEqual([])
+    expect(tick('2,1\n\n').chosen).toEqual([1])
+  })
+
+  test('end of input accepts the list as it stands', () => {
+    expect(tick('2\n').chosen).toEqual([0, 1])
+  })
+
+  test('a row that cannot be ticked, or a word that is no number, is asked again', () => {
+    const { chosen, written } = tick('3\nx\n2\n\n')
+    expect(chosen).toEqual([0, 1])
+    expect(written).toContain('3 cannot be ticked (keep: default branch).')
+    expect(written).toContain("'x' is not a list of item numbers from 1 to 3.")
+  })
+
+  test('off a terminal, a bad answer throws', () => {
+    expect(() => tick('9\n', false)).toThrow("'9' is not a list of item numbers from 1 to 3")
   })
 })
 
