@@ -35,6 +35,7 @@ import {
   selectUnattended,
   type AutoReport,
 } from './auto.ts'
+import { expandHome, ignorePaths } from './ignore.ts'
 import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { FACTORIES, UnknownPlugin, selectPlugins } from './registry.ts'
@@ -89,6 +90,13 @@ const SWEEP_FLAGS = {
     kind: 'string',
     valueName: 'file',
     help: 'read this config file instead of the one in the config directory',
+  },
+  ignore: {
+    kind: 'list',
+    valueName: 'dir',
+    default: [] as readonly string[],
+    commaSeparated: false,
+    help: 'never delete in or below this directory, as the config file’s ignore; repeatable',
   },
 } as const
 
@@ -406,7 +414,7 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps): Plugin[] {
   const all =
     deps.plugins ??
     Object.entries(FACTORIES).map(([name, make]) =>
-      make({ settings: settingsOf(name, config.plugins[name] ?? {}), only }),
+      make({ settings: settingsOf(name, config.plugins[name] ?? {}, config), only }),
     )
   const unused = Object.keys(config.plugins).filter((n) => !all.some((p) => p.name === n))
   if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
@@ -423,16 +431,16 @@ function contextFor(
   config: Config,
   ctx: CliContext,
   allow: readonly string[],
+  ignore: readonly string[],
 ): Ctx {
   const chosen =
     targets.length > 0 ? targets : config.targets.length > 0 ? config.targets : [ctx.cwd]
   const home = ctx.env.HOME ?? homedir()
   return {
     cwd: ctx.cwd,
-    targets: chosen.map((t) =>
-      resolve(ctx.cwd, t === '~' || t.startsWith('~/') ? join(home, t.slice(1)) : t),
-    ),
+    targets: chosen.map((t) => resolve(ctx.cwd, expandHome(t, home))),
     allow,
+    ignore: ignorePaths([...config.ignore, ...ignore], ctx.cwd, home),
   }
 }
 
@@ -479,18 +487,22 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   let s: ReturnType<typeof survey>
   try {
     const config = loadConfig(v, ctx)
-    s = survey(pluginsFor(v, config, deps), contextFor(parsed.positionals, config, ctx, []))
+    s = survey(
+      pluginsFor(v, config, deps),
+      contextFor(parsed.positionals, config, ctx, [], v.ignore),
+    )
   } catch (err) {
     return refusal(ctx, name, err)
   }
   if (v.format === 'json') {
     ctx.io.stdout(
-      `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), warnings: s.warnings, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
+      `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), ignore: s.ctx.ignore, warnings: s.warnings, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
     )
   } else {
     writeWarnings(ctx, name, s.warnings)
     ctx.io.stdout(
       `plugins: ${s.plugins.map((p) => p.name).join(', ') || '(none)'}\n` +
+        ((s.ctx.ignore ?? []).length > 0 ? `ignoring: ${s.ctx.ignore!.join(', ')}\n` : '') +
         renderCandidates(s.candidates, s.objections, v.allRows),
     )
   }
@@ -506,7 +518,7 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
     const config = loadConfig(v, ctx)
     const unused = Object.keys(config.plugins).filter((n) => !Object.hasOwn(PLUGIN_SETTINGS, n))
     if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
-    const settings = effectiveSettings(config.plugins)
+    const settings = effectiveSettings(config.plugins, config)
     if (v.format === 'json') {
       const values = Object.fromEntries(
         Object.entries(settings).map(([n, rows]) => [
@@ -514,15 +526,31 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
           Object.fromEntries(rows.map((r) => [r.key, r.value])),
         ]),
       )
-      ctx.io.stdout(JSON.stringify({ targets: config.targets, plugins: values }, null, 2) + '\n')
+      ctx.io.stdout(
+        JSON.stringify(
+          {
+            targets: config.targets,
+            ignore: config.ignore,
+            idleHours: config.idleHours ?? null,
+            plugins: values,
+          },
+          null,
+          2,
+        ) + '\n',
+      )
       return EXIT.ok
     }
-    const lines = [`targets: ${config.targets.length > 0 ? config.targets.join(', ') : '(none)'}`]
+    const list = (xs: readonly string[]): string => (xs.length > 0 ? xs.join(', ') : '(none)')
+    const lines = [
+      `targets: ${list(config.targets)}`,
+      `ignore: ${list(config.ignore)}`,
+      `idleHours: ${config.idleHours ?? '(not set)'}`,
+    ]
     for (const [n, rows] of Object.entries(settings)) {
       lines.push('', `plugins.${n}`)
       for (const r of rows) {
         lines.push(
-          `  ${r.key} = ${JSON.stringify(r.value)}  (${r.source === 'config' ? 'config' : 'default'})  ${r.description}`,
+          `  ${r.key} = ${JSON.stringify(r.value)}  (${r.source === 'shared' ? 'idleHours' : r.source})  ${r.description}`,
         )
       }
     }
@@ -541,11 +569,17 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   let plan: Plan
   try {
     const config = loadConfig(v, ctx)
-    const cctx = contextFor(parsed.positionals, config, ctx, v.allow)
+    const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = survey(pluginsFor(v, config, deps), cctx)
     writeWarnings(ctx, name, s.warnings)
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
-    plan = makePlan(s, { targets: cctx.targets, pick: v.pick, spare: v.spare, allow: v.allow })
+    plan = makePlan(s, {
+      targets: cctx.targets,
+      ignore: cctx.ignore,
+      pick: v.pick,
+      spare: v.spare,
+      allow: v.allow,
+    })
   } catch (err) {
     return refusal(ctx, name, err)
   }
@@ -697,7 +731,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
     const config = loadConfig(v, ctx)
     plugins = pluginsFor(v, config, deps)
     if (v.plan === undefined) {
-      cctx = contextFor(parsed.positionals, config, ctx, v.allow)
+      cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
       const s = survey(plugins, cctx)
       writeWarnings(ctx, name, s.warnings)
       if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
@@ -837,7 +871,7 @@ function autoWork(
   try {
     const config = loadConfig(v, ctx)
     plugins = pluginsFor(v, config, deps)
-    cctx = contextFor(targets, config, ctx, [])
+    cctx = contextFor(targets, config, ctx, [], v.ignore)
     s = survey(plugins, cctx)
   } catch (err) {
     return refusal(ctx, name, err)

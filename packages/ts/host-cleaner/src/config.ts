@@ -21,6 +21,10 @@ const VENDOR_DIRS = { vendor: 'host-cleaner', envVars: envVars('HOST_CLEANER') }
 export const ConfigSchema = z.strictObject({
   /** Checkouts and directories of checkouts, swept when none is named on the command line. */
   targets: z.array(z.string().min(1)).default([]),
+  /** Paths no candidate may sit in or below, for every plugin; `--ignore` adds to them. `~` is the home directory. */
+  ignore: z.array(z.string().min(1)).default([]),
+  /** Hours an artifact must have sat unused, for every plugin that does not set its own; 0 or more. */
+  idleHours: z.number().nonnegative().optional(),
   /** Settings by plugin name; a plugin reads only its own entry. */
   plugins: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
 })
