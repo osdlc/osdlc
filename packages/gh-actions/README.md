@@ -5,13 +5,14 @@ except the two named below the table. The actions may later move to a
 repository of their own for the GitHub Marketplace, which needs `action.yml`
 at a repository's root.
 
-| Action                        | What it does                                                              |
-| ----------------------------- | ------------------------------------------------------------------------- |
-| [`agent-setup`](agent-setup/) | Installs a pinned claude, codex or cursor CLI and, optionally, plugins.   |
-| [`claude-pr`](claude-pr/)     | Answers `@claude` on a pull request, or reviews it with `@claude review`. |
-| [`codex-pr`](codex-pr/)       | The same for `@codex`, with the Codex CLI.                                |
-| [`cursor-pr`](cursor-pr/)     | The same for `@cursor`, with the Cursor CLI.                              |
-| [`pr-update`](pr-update/)     | Keeps open PRs up to date with their base using `@osdlc/pr-update`.       |
+| Action                        | What it does                                                                                                                |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| [`agent-setup`](agent-setup/) | Installs a pinned claude, codex or cursor CLI and, optionally, plugins.                                                     |
+| [`claude-pr`](claude-pr/)     | Answers `@claude` on a pull request, reviews it with `@claude review`, or runs a `/skill` or an instruction with `--apply`. |
+| [`codex-pr`](codex-pr/)       | The same for `@codex`, with the Codex CLI.                                                                                  |
+| [`cursor-pr`](cursor-pr/)     | The same for `@cursor`, with the Cursor CLI.                                                                                |
+| [`pr-apply`](pr-apply/)       | The push half of `--apply`: checks the agent's patch and pushes it.                                                         |
+| [`pr-update`](pr-update/)     | Keeps open PRs up to date with their base using `@osdlc/pr-update`.                                                         |
 
 [`pr-common`](pr-common/) is not an action: it holds the scripts that
 claude-pr, codex-pr and cursor-pr share (it has no `action.yml` or changelog).
@@ -46,11 +47,15 @@ jobs:
     uses: osdlc/osdlc/.github/workflows/ts-packages-ci.yml@<commit-sha> # gh-actions/v1
 ```
 
-Inside this repository, call it by local path (`./packages/gh-actions/<name>`)
-from a checkout of the default branch, not of a pull request, so a pull
-request cannot change the action that runs with the workflow's secrets.
-[`.github/workflows/claude.yml`](../../.github/workflows/claude.yml) is the
-place a workflow would do this.
+The agent workflows `claude.yml`, `codex.yml` and `cursor.yml` are reusable
+too: another repository calls them with `secrets: inherit` and sets a few
+variables (see [`claude-pr`](claude-pr/#use-the-workflow)). They fetch their
+actions from their own commit, so the pin covers the actions as well.
+
+Inside this repository, call an action by local path
+(`./packages/gh-actions/<name>`) from a checkout of the default branch, not of a
+pull request, so a pull request cannot change the action that runs with the
+workflow's secrets.
 
 ## Reports
 
