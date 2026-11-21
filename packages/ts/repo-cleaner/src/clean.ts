@@ -59,6 +59,7 @@ import { fingerprint, runnable, sameFingerprint, type Plan, type PlanRepo } from
 import { busyHolders, defaultProcessProbe, parseLockOwner, type ProcessProbe } from './processes.ts'
 import { RECEIPT_VERSION, type Dropped, type Receipt, type Step } from './receipt.ts'
 import { defaultCacheDir, mirrorProblem } from './remote-mirror.ts'
+import { sizeOf } from './size.ts'
 import { inspectSubmodules, submoduleHazards } from './submodules.ts'
 import { holdFreedBranches, sweepRepo, type Runners } from './sweep.ts'
 import {
@@ -129,6 +130,11 @@ export interface RunOptions extends Shared {
    * listing fails only at the run.
    */
   onNotes?: ((notes: RepoNote[]) => void) | undefined
+  /**
+   * How long measuring a worktree before its removal may take, in ms, for the
+   * step's `freedBytes`. Defaults to {@link sizeOf}'s cap.
+   */
+  sizeTimeoutMs?: number | undefined
 }
 
 /** What a run would do, for a person to approve: the steps, and the rows dropped and why. */
@@ -866,6 +872,8 @@ function execute(
   git: Git,
   probe: ProcessProbe,
   removedHere: ReadonlySet<string>,
+  /** A directory's size on disk, null when it could not be read. */
+  measure: (path: string) => number | null,
   archive: {
     job: ArchiveJob | undefined
     options: ArchiveOptions | undefined
@@ -942,9 +950,13 @@ function execute(
       }
       const force = removeIsForced(row.evidence)
       if (force) assertSafeToForce(path, git, a!)
+      // Measured last, just before the remove: what this step frees. Recorded
+      // only once the remove took; a failed remove frees nothing.
+      const bytes = measure(path)
       at.worktreeRemove(path, { force })
       if (existsSync(path)) throw new Error(`directory still exists: ${path}`)
       if (registered(path)) throw new Error(`still registered: ${path}`)
+      step.freedBytes = bytes
       return 'directory gone and unregistered'
     }
     case 'delete-branch': {
@@ -1002,6 +1014,8 @@ interface StepContext {
   git: Git
   probe: ProcessProbe
   removedHere: ReadonlySet<string>
+  /** Bytes a worktree directory takes, read just before its removal. */
+  measure: (path: string) => number | null
   /**
    * Worktrees whose lock this run cleared. typed-git has no `worktree lock`
    * verb, so a failed remove cannot put the lock back; the receipt says so.
@@ -1019,7 +1033,7 @@ function runStep(
   archive: { job: ArchiveJob | undefined; options: ArchiveOptions | undefined; now: Date },
 ): void {
   try {
-    const done = execute(step, a, ctx.git, ctx.probe, ctx.removedHere, {
+    const done = execute(step, a, ctx.git, ctx.probe, ctx.removedHere, ctx.measure, {
       ...archive,
       stamps: ctx.stamps,
     })
@@ -1045,7 +1059,8 @@ function runStep(
  * the preview, and runs the rest in order, compare-and-swap, verifying each
  * step. A failed step skips only the steps that depend on it, except a failed
  * spared-tip check, which stops the run. Only what the preview showed runs; a
- * row it dropped stays dropped.
+ * row it dropped stays dropped. Each worktree directory it removes is measured
+ * with `du` just before, into that step's `freedBytes`.
  *
  * @throws RepoCleanerError (`spared-changed`) when a spared remote branch moved
  *   since the preview, and a plain `Error` when the re-check cannot read a
@@ -1116,7 +1131,9 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   // step at the root of it.
   const blocked: Array<{ step: Step; a: Accepted | null; root: Step }> = []
   const stamps = new Map<string, string>()
-  const ctx: StepContext = { git, probe, removedHere, unlocked, stamps }
+  const measure = (path: string): number | null =>
+    sizeOf(path, { du: opts.du, timeoutMs: opts.sizeTimeoutMs })
+  const ctx: StepContext = { git, probe, removedHere, measure, unlocked, stamps }
   for (const [i, [step, a]] of plannedSteps.entries()) {
     const cause = blocked.find((b) => dependsOn(step, a, b.step, b.a))
     if (cause !== undefined) {
@@ -1260,6 +1277,7 @@ export function removeCandidate(
     git: new Git(cwd, { runner: opts.git }),
     probe: opts.probe ?? defaultProcessProbe(),
     removedHere: new Set(row.kind === 'worktree' ? [resolve(row.name)] : []),
+    measure: (path) => sizeOf(path, { du: opts.du }),
     unlocked: new Set(),
     stamps: new Map(),
   }

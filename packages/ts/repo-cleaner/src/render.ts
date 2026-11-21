@@ -24,6 +24,7 @@ import {
   type Row,
   type Sweep,
 } from './types.ts'
+import { formatBytes } from './size.ts'
 import { plural } from './util.ts'
 
 /** Branches first, then worktrees, then remotes, whatever order they were gathered in. */
@@ -101,13 +102,31 @@ function risksNote(row: Pick<Row, 'risks' | 'evidence'>): string {
   return `needs --allow ${names.join(', ')}`
 }
 
+/** What a row's size read gave: bytes, null when `du` could not say, undefined when none was read. */
+function sizeRead(row: Row): number | null | undefined {
+  return row.kind === 'worktree' ? row.evidence.sizeBytes : undefined
+}
+
+/** The bytes a row's size was read as; -1 when none was, so those rows follow the sized ones. */
+function sizeRank(row: Row): number {
+  return sizeRead(row) ?? -1
+}
+
 function sortRows(rows: readonly Row[]): Row[] {
   const kindRank = (r: Row): number => KIND_ORDER.indexOf(r.kind)
   const verdictRank = (r: Row): number => VERDICT_ORDER.indexOf(r.verdict)
   return [...rows].sort(
     (a, b) =>
-      kindRank(a) - kindRank(b) || verdictRank(a) - verdictRank(b) || a.name.localeCompare(b.name),
+      kindRank(a) - kindRank(b) ||
+      verdictRank(a) - verdictRank(b) ||
+      sizeRank(b) - sizeRank(a) ||
+      a.name.localeCompare(b.name),
   )
+}
+
+function sizeCell(row: Row): string {
+  const size = sizeRead(row)
+  return size === undefined ? '' : size === null ? '?' : formatBytes(size)
 }
 
 function repoHeader(sweep: RepoSweep): string {
@@ -163,11 +182,13 @@ export function renderRepo(sweep: RepoSweep, opts: { all?: boolean; style?: Styl
 
   const nameWidth = Math.min(38, Math.max(...shown.map((r) => ellipsize(r.name, 38).length)))
   const kindWidth = Math.max(...shown.map((r) => r.kind.length))
+  const sizeWidth = Math.max(...shown.map((r) => sizeCell(r).length))
   for (const row of shown) {
     const word = verdictWord(row)
     const note = risksNote(row)
+    const size = sizeWidth === 0 ? '' : `${sizeCell(row).padStart(sizeWidth)}  `
     lines.push(
-      `  ${pad(row.kind, kindWidth)}  ${pad(ellipsize(row.name, 38), nameWidth)}  ${wordStyle(style, word)(pad(word, 7))}  ${row.why}${note ? `; ${note}` : ''}`,
+      `  ${pad(row.kind, kindWidth)}  ${pad(ellipsize(row.name, 38), nameWidth)}  ${size}${wordStyle(style, word)(pad(word, 7))}  ${row.why}${note ? `; ${note}` : ''}`,
     )
     // A blocked row has no commands; what to do about each blocker goes there instead.
     const detail = row.verdict === 'blocked' ? row.notes : row.commands
@@ -217,7 +238,11 @@ export function renderTotals(sweep: Sweep, style: Style = PLAIN): string {
   const suffix = tail.length > 0 ? ` (${tail.join(', ')})` : ''
   const prune = t.prune > 0 ? `${style.prune(`${t.prune} to prune`)}, ` : ''
   const blocked = t.blocked > 0 ? `, ${style.review(`${t.blocked} blocked`)}` : ''
-  return `${style.delete(`${t.delete} to delete`)}, ${prune}${style.review(`${t.review} to review`)}${blocked}, across ${repos}${suffix}.`
+  const line = `${style.delete(`${t.delete} to delete`)}, ${prune}${style.review(`${t.review} to review`)}${blocked}, across ${repos}${suffix}.`
+  const freed = sweep.reclaimableBytes
+  if (freed === null) return line
+  const unsized = freed.unsized > 0 ? ` (${freed.unsized} not measured)` : ''
+  return `${line} Reclaimable: ${style.delete(formatBytes(freed.delete))} to delete, ${style.review(formatBytes(freed.review))} to review${unsized}.`
 }
 
 const KIND_LABEL: Record<Kind, string> = {
@@ -313,6 +338,7 @@ export function renderJson(sweep: Sweep, extra: Record<string, unknown> = {}): s
         scan: sweep.scan,
         duplicates: sweep.duplicates,
         counts: sweep.counts,
+        reclaimableBytes: sweep.reclaimableBytes,
         totals: totalOf(sweep.counts),
       },
       null,
@@ -353,6 +379,14 @@ export interface RunSummary {
   skipped: number
   /** Row steps never reached because a spared tip check failed and stopped the run. */
   notRun: number
+  /**
+   * Bytes the removed worktrees took on disk, each measured just before its
+   * removal: the `freedBytes` of every `remove-worktree` step that ran `ok`.
+   * 0 in a preview, which measures nothing.
+   */
+  freedBytes: number
+  /** Removed worktrees whose size could not be read, so `freedBytes` leaves them out. */
+  unmeasured: number
 }
 
 /** Count what `steps` did and `dropped` left out. A preview's `would-run` steps count as done. */
@@ -369,12 +403,18 @@ export function summarizeRun(r: {
     failed: 0,
     skipped: 0,
     notRun: 0,
+    freedBytes: 0,
+    unmeasured: 0,
   }
   for (const d of r.dropped) out.dropped[d.reason] = (out.dropped[d.reason] ?? 0) + 1
   for (const s of r.steps) {
     if (s.result === 'failed') out.failed += 1
     if (s.result === 'skipped') out.skipped += 1
     if (s.result === 'ok') out.succeeded += 1
+    if (s.result === 'ok' && s.action === 'remove-worktree') {
+      if (typeof s.freedBytes === 'number') out.freedBytes += s.freedBytes
+      else out.unmeasured += 1
+    }
     if (s.result === 'pending') {
       // Rows not reached are rows a run would have deleted; an unlock or a
       // tip check deletes nothing.
@@ -403,6 +443,19 @@ export function summarizeRun(r: {
 /** Rows a run deletes or prunes, which is what a person is asked to approve. */
 export function rowsActedOn(summary: RunSummary): number {
   return KINDS.reduce((n, k) => n + summary.deleted[k], 0) + summary.pruned
+}
+
+/**
+ * What a run's removed worktrees freed, as `freed: 4.2 GB (2 worktrees)`, or
+ * null when it removed none.
+ */
+export function renderFreed(s: RunSummary): string | null {
+  const removed = s.deleted.worktree
+  if (removed === 0) return null
+  const worktrees = plural(removed, 'worktree', 'worktrees')
+  if (s.unmeasured === 0) return `freed: ${formatBytes(s.freedBytes)} (${worktrees})`
+  if (s.unmeasured === removed) return `freed: not measured (${worktrees})`
+  return `freed: at least ${formatBytes(s.freedBytes)} (${worktrees}, ${s.unmeasured} not measured)`
 }
 
 /**
@@ -568,7 +621,8 @@ export function renderReceipt(
   const [counts = '', ...rest] = renderRunSummary(receipt, {
     preview: receipt.status === 'dry-run',
   })
-  lines.push(style.strong(counts), ...rest.map(style.review))
+  const freed = receipt.status === 'dry-run' ? null : renderFreed(summarizeRun(receipt))
+  lines.push(style.strong(counts), ...(freed === null ? [] : [freed]), ...rest.map(style.review))
   lines.push(
     style.muted(
       receiptPath === null
