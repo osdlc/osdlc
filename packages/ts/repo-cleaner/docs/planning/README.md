@@ -35,18 +35,7 @@ what shipped.
 
 ## Open tasks
 
-- [T-C665](tasks/T-C665-remote-contained-worktree.md): a clean worktree whose
-  HEAD is on a remote branch can be removed
-  ([#659](https://github.com/osdlc/osdlc/issues/659))
-- [T-602K](tasks/T-602K-sizes-and-ranking.md): report each worktree's disk
-  size and the total a clean would free
-  ([#660](https://github.com/osdlc/osdlc/issues/660))
-- [T-R61B](tasks/T-R61B-archive-before-delete.md): archive unlanded work to
-  the remote before clean deletes it
-  ([#661](https://github.com/osdlc/osdlc/issues/661))
-- [T-FZEU](tasks/T-FZEU-utc-safe-process-probe.md): the process probe
-  compares start times in UTC
-  ([#679](https://github.com/osdlc/osdlc/issues/679))
+None.
 
 ## Done tasks
 
@@ -67,3 +56,17 @@ what shipped.
 - [T-UH0R](tasks/T-UH0R-a-failed-step-skips-only-what-depends-on-it.md): a
   failed step skips only what depends on it
   ([#646](https://github.com/osdlc/osdlc/issues/646))
+- [T-C665](tasks/T-C665-remote-contained-worktree.md): a clean worktree whose
+  HEAD is on a remote branch can be removed
+  ([#919](https://github.com/osdlc/osdlc/pull/919))
+- [T-R61B](tasks/T-R61B-archive-before-delete.md): archive unlanded work to
+  the remote before clean deletes it
+  ([#941](https://github.com/osdlc/osdlc/pull/941))
+- [T-FZEU](tasks/T-FZEU-utc-safe-process-probe.md): the process probe
+  compares start times in UTC
+  ([#910](https://github.com/osdlc/osdlc/pull/910))
+- [T-79IP](tasks/T-79IP-the-cli-by-use-case.md): the command line by phase,
+  scope and remote ([#968](https://github.com/osdlc/osdlc/pull/968))
+- [T-602K](tasks/T-602K-sizes-and-ranking.md): report each worktree's disk
+  size and the space a clean freed
+  ([#936](https://github.com/osdlc/osdlc/pull/936))
