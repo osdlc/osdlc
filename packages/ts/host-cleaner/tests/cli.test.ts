@@ -59,7 +59,10 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
 
 function run(argv: string[], cwd: string, env: Record<string, string>, deps: MainDeps = {}) {
   const ctx = captureContext({ cwd, env })
-  const code = main(argv, ctx, { confirm: () => null, ...deps })
+  // The shipped plugins would talk to this machine's Orca and sweep every repository it lists.
+  const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
+  const args = phase && deps.plugins === undefined ? [...argv, '--skip-plugin', 'orca'] : argv
+  const code = main(args, ctx, { confirm: () => null, ...deps })
   return { code, out: ctx.io.out, err: ctx.io.err }
 }
 
