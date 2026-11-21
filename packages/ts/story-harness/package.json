@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/story-harness",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "description": "A static Storybook build as a component test harness: exact Linux screenshot baselines shot in a pinned Playwright container, Playwright helpers for interaction and perf specs against the build, an in-page metrics hook and a seeded PRNG for stories, and a perf report that parallel workers merge.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
