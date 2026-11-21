@@ -1,5 +1,17 @@
 # @osdlc/config-layers
 
+## 0.11.0
+
+### Minor Changes
+
+- 0297b95: Per-leaf field metadata and a field walker. `configFields(shape)` lists every leaf of a config schema as a `ConfigField` (path, label, description, help, control, hidden, secret, optional, default, choices), so a tool can render its example file, `config list` or a settings screen from one schema. Any field, nested ones included, may now carry `label`, `help`, `control` and `hidden` in `.meta()` (`FieldMeta`); a top-level key's meta accepts them too. New exports: `configFields`, `defaultControl`, `ConfigField`, `FieldMeta`.
+- 2ee6d62: The machine file reads through any Standard Schema validator (zod 4, valibot, arktype or a hand-written one), not only zod. `machineConfigFile`'s `schema` is now a `StandardSchemaV1`, and its issues come out as `path: message`. New exports: `validateStandard`, `StandardSchemaV1`, `StandardIssue`, `StandardValidation`. With a non-zod schema an unknown key is reported as `invalid` rather than `unknown_key`. Everything that reads a schema's shape (sections, the project loader, `configNeeds`, scaffold, reference) stays zod-only.
+
+### Patch Changes
+
+- Updated dependencies [03e5690]
+  - @osdlc/gfm-table@0.5.1
+
 ## 0.10.0
 
 ### Minor Changes

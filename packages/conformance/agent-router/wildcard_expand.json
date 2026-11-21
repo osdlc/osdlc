@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.4",
+  "referenceVersion": "0.4.5",
   "sections": {
     "wildcard_expand": {
       "description": "expandWildcard: a wildcard becomes the tier chain, kept to knownTools; the candidates resolved, the others skipped with a code",

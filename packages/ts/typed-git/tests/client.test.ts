@@ -431,6 +431,23 @@ describe('Git — argv construction (fake runner)', () => {
     ])
   })
 
+  test('fetchMany fetches every remote in one call, jobs at once', () => {
+    const { runner, calls } = recorder(OK(''))
+    const git = new Git('/repo', { runner })
+    git.fetchMany(['origin', 'upstream'], { prune: true, quiet: true, jobs: 2 })
+    expect(calls[0]!.argv).toEqual([
+      'fetch',
+      '--multiple',
+      '--quiet',
+      '--prune',
+      '--jobs=2',
+      'origin',
+      'upstream',
+    ])
+    expect(() => git.fetchMany([])).toThrow(TypeError)
+    expect(() => git.fetchMany(['origin'], { jobs: 0 })).toThrow(TypeError)
+  })
+
   test('fetch takes many refspecs and the quiet/no-write-fetch-head flags', () => {
     const { runner, calls } = recorder(OK(''))
     const git = new Git('/repo', { runner })
