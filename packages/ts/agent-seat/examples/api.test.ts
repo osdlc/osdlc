@@ -19,7 +19,9 @@ import {
   claudeResumeArgv,
   claudeSessionArgv,
   codexSessionsDir,
+  commandArgv,
   ensureWorkspace,
+  envPrefixLine,
   findCodexSessionId,
   hasInteractiveArgv,
   harnessArgv,
@@ -32,13 +34,18 @@ import {
   makeHerdrHost,
   makeOrcaHost,
   makeOttyHost,
+  makeTerminalAppOpener,
   makeTerminalHost,
   makeWeztermHost,
+  makeWindowHost,
   onPath,
   parseRolloutMeta,
   requirePart,
+  terminalAppArgv,
   terminalHost,
   walkRolloutFiles,
+  windowHost,
+  windowShellCommand,
   withEnv,
   wrapperSession,
   type ClaudeLaunchFlags,
@@ -58,6 +65,7 @@ import {
   type OpenWorkspaceQuery,
   type SendReceipt,
   type SendRequest,
+  type WindowOpener,
   type SessionRequest,
   type WaitRequest,
 } from '@osdlc/agent-seat'
@@ -172,6 +180,7 @@ describe('registry and state', () => {
         'tmux',
         'vscode',
         'wezterm',
+        'window',
       ].sort(),
     )
     expect(hostRegistryDir(runtimeDir, 'herdr')).toBe(join(runtimeDir, 'hosts', 'herdr'))
@@ -429,6 +438,36 @@ describe('otty host', () => {
   })
 })
 
+describe('window host', () => {
+  test('a command opens in a new window and the call returns at once', () => {
+    const { runner, calls } = recorder(() => ok())
+    const window = makeWindowHost({ runner })
+    requirePart(window, 'terminal')({ cwd: '/work/repo', argv: ['claude'], title: 'review' })
+    expect(calls[0]).toContain('do script "cd /work/repo && claude"')
+    expect(windowShellCommand({ cwd: '/w', argv: ['ls'], title: 't' })).toBe('cd /w && ls')
+    expect(terminalAppArgv('ls', { focus: false })).not.toContain('activate')
+    expect(makeTerminalAppOpener({ exists: () => false }).available()).toBe(false)
+    expect(windowHost.name).toBe('window')
+  })
+
+  test('a caller-supplied opener launches another app', () => {
+    const { runner, calls } = recorder(() => ok())
+    const opener: WindowOpener = {
+      available: () => true,
+      argv: (shellCommand) => ['open-in-iterm', shellCommand],
+    }
+    requirePart(
+      makeWindowHost({ runner, opener }),
+      'terminal',
+    )({
+      cwd: '/w',
+      argv: ['claude'],
+      title: 't',
+    })
+    expect(calls[0]).toEqual(['cd /w && claude'])
+  })
+})
+
 describe('wezterm host', () => {
   test('a pane is spawned with the command after --, and send needs a pane this host spawned', () => {
     const { runner, calls } = recorder((argv) => (argv[1] === 'spawn' ? ok('12\n') : ok('[]')))
@@ -547,6 +586,20 @@ describe('harness argv and Claude flags', () => {
       'hi',
     ])
     expect(withEnv(['claude'], undefined)).toEqual(['claude'])
+  })
+
+  test('commandArgv runs a CommandRequest under its env, as a workspace shell needs', () => {
+    expect(commandArgv({ argv: ['zsh'], env: { TAG: 'pr-7' } }, 'linux')).toEqual([
+      'env',
+      'TAG=pr-7',
+      'zsh',
+    ])
+  })
+
+  test('envPrefixLine is the plain K=V prefix, so a shell function or alias still runs', () => {
+    expect(envPrefixLine(['claude', 'hi there'], { MODE: 'review' }, 'linux')).toBe(
+      "MODE=review claude 'hi there'",
+    )
   })
 
   test('wrapperSession is the body of a host session(): argv under env, then the id lookup', () => {

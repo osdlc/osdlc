@@ -38,3 +38,22 @@ const oneLine = (text: string): string => text.replace(/\s*\n\s*/g, ' ').trim()
 /** `1 commit`, `3 commits`. */
 export const plural = (n: number, one: string, many: string): string =>
   `${n} ${n === 1 ? one : many}`
+
+/** A glob as a regular expression: `*` stays inside a `/`-separated segment, `**` does not, `?` is one character. */
+export function globRegExp(glob: string): RegExp {
+  let out = ''
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i]!
+    if (c === '*') {
+      if (glob[i + 1] === '*') {
+        i += 1
+        if (glob[i + 1] === '/') {
+          i += 1
+          out += '(?:.*/)?'
+        } else out += '.*'
+      } else out += '[^/]*'
+    } else if (c === '?') out += '[^/]'
+    else out += c.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+  }
+  return new RegExp(`^${out}$`)
+}
