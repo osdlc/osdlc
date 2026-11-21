@@ -173,8 +173,8 @@ minor line. Experimental items, when there are any, are listed here as `- \`name
 
 ## Platforms
 
-Linux and macOS, where the tests run. Windows is not tested yet. The library itself has no
-platform branches. It needs git 2.29 or later, for `fetch --no-write-fetch-head`.
+Linux and macOS, where the tests run. Windows runs them in the tier-2 workflow, which reports and
+never blocks. The library itself has no platform branches. It needs git 2.29 or later, for `fetch --no-write-fetch-head`.
 
 ## Conformance cases
 

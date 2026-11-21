@@ -1,0 +1,9 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`seeded > is pinned, so a fixture built from it never moves 1`] = `
+[
+  "0.601104",
+  "0.448291",
+  "0.852466",
+]
+`;

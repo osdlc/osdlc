@@ -63,8 +63,11 @@ export const HostNameSchema = z.enum(HOST_NAMES)
 export interface SessionRequest extends ClaudeLaunchFlags {
   cwd: string
   harness: Harness
-  /** The harness's executable: a name on PATH or an absolute path. */
-  binary: string
+  /**
+   * The harness's executable: a name on PATH or an absolute path, or a launcher
+   * prefix (`['npx', '-y', 'claude']`) whose words lead the argv.
+   */
+  binary: string | readonly string[]
   prompt: string
   /** Tab / workspace title for hosts that show one. */
   title: string
