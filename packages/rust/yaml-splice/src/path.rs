@@ -375,7 +375,7 @@ fn walk_seq(
     let Some(items) = parse::seq_items(cx.events, cx.src, seq_idx, hard_stop) else {
         return Err(unsupported(
             cx,
-            "a sequence item with no value is not edited",
+            "a sequence with an empty, anchored or tagged item is not edited",
         ));
     };
     let last = depth + 1 == cx.path.len();
