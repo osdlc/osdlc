@@ -321,7 +321,8 @@ host's GitHub tokens. When the session ends, the same checks as a headless repai
 unmoved, no refs, no conflict markers, `git diff --check` clean, then stage, commit, verify and
 push. A session that exits non-zero, or that you quit without a fix, gives `conflict` or `failed`
 as a headless repair that gave up does. `repair.mode` other than `headless` in the project file
-needs trust like `repair.agent`; `--repair-mode` is your own consent.
+needs trust like `repair.agent`; `--repair-mode` is your own consent. `config set pr_update.repair.mode`
+works from the command line only and is refused over MCP and HTTP.
 
 ## Git submodules
 
@@ -386,11 +387,15 @@ the first rung that matches:
 The run prints the choice for each PR on stderr
 (`pr-update: verify: detect owner/name#12: make test  (Makefile test target)`).
 When no rung matches, that PR's update fails, naming what was looked for; the
-other PRs go on. Nothing beyond the ladder is guessed. Because the repository's
+other PRs go on. A failure of that kind is reported but not recorded as a failed
+attempt, so it does not block a retry once a test command exists. Nothing beyond the ladder is guessed. Because the repository's
 own files choose the command, `verify: detect` in the project file is gated
 like `test_command`: it needs `--trust` or a recorded trust. A host that
 supplies `Ports.resolveVerifyVerbs` receives `which: 'detect'` and may call the
-exported `detectVerifyCommand(dir, testCommand?)` for the same ladder.
+exported `detectVerifyCommand(dir, testCommand?)` for the same ladder, and may
+throw `NothingDetectedError` when it finds none. `pr_update.verify` is also
+written from the command line only: `config set pr_update.verify` is refused
+over MCP and HTTP, since `detect` lets the repository choose a command.
 
 Detection runs once per PR, so a PR that adds or removes a `justfile`, `Makefile`
 or `package.json` test script is judged by its own files. Every other `verify`

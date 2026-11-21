@@ -38,7 +38,7 @@ export {
   type RepairAgent,
 } from './repair/agents.ts'
 export { commandRepair, standalonePorts } from './defaults.ts'
-export { detectVerifyCommand, type DetectedVerify } from './detect.ts'
+export { detectVerifyCommand, NothingDetectedError, type DetectedVerify } from './detect.ts'
 export { attemptFile, attemptsDir, fileAttemptStore, listAttempts } from './update/attempts.ts'
 export { refAttemptStore, type RefAttemptStore } from './update/ref-attempts.ts'
 export { refBranchLease, defaultLeaseTtlSeconds } from './update/lease.ts'
