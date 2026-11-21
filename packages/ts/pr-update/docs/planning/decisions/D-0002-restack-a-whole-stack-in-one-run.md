@@ -110,8 +110,11 @@ run on real stacks.
 `git rebase --fork-point` could find a rebased parent's old head from the
 remote-tracking ref's reflog, which would fix the replay in the one-level-
 per-run path too. It depends on this clone's reflog having seen the old
-head, which a fresh clone or CI checkout has not. Not adopted. A host that
-updates stacks should use `--restack`.
+head, which a fresh clone or CI checkout has not. Not adopted as the answer.
+A host that updates stacks should use `--restack`. Later (#766) the executor
+passes `--fork-point` on a rebase that has no `onto`, as a best effort: where
+the reflog has the old head it helps, and where it has not, git falls back to
+the plain merge base.
 
 ## Consequences
 
@@ -120,8 +123,9 @@ updates stacks should use `--restack`.
   `UpdateOutcome`'s `updated` arm gains `builtOid`.
 - typed-git's `RebaseOptions` gains `upstream`.
 - Without `--restack`, a child of a parent rebased in an earlier run is
-  still rebased with a plain `git rebase`, and can still replay its parent's
-  old commits. See the `--fork-point` option above.
+  rebased with `git rebase --fork-point`. That drops the parent's old commits
+  only when this clone's reflog holds them, so a fresh clone can still replay
+  them. See the `--fork-point` option above.
 
 ## Open questions
 

@@ -713,9 +713,13 @@ describe('AsyncGit — diff-text parity', () => {
 
     sync.diffText('abc123', { paths: ['src/a.ts'] })
     sync.diffAddedFile('src/new.ts')
+    sync.diffText('abc123', { context: 0, findRenames: true })
+    sync.diffAddedFile('src/new.ts', { context: 0 })
 
     await asyncGit.diffText('abc123', { paths: ['src/a.ts'] })
     await asyncGit.diffAddedFile('src/new.ts')
+    await asyncGit.diffText('abc123', { context: 0, findRenames: true })
+    await asyncGit.diffAddedFile('src/new.ts', { context: 0 })
 
     // The verb table is the single source of argv. A difference here means one
     // client built its own argv.
