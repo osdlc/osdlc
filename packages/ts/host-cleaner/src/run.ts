@@ -179,6 +179,7 @@ export class SelectionError extends Error {
 export function plan(
   s: Pick<Survey, 'candidates' | 'objections' | 'warnings'>,
   opts: {
+    targets?: readonly string[] | undefined
     select?: readonly string[] | null | undefined
     pick?: readonly string[] | undefined
     spare?: readonly string[] | undefined
@@ -195,6 +196,7 @@ export function plan(
   return {
     version: PLAN_VERSION,
     createdAt: (opts.now ?? new Date()).toISOString(),
+    targets: [...(opts.targets ?? [])],
     select: selection.select === null ? null : [...selection.select],
     pick: [...selection.pick],
     spare: [...selection.spare],
@@ -331,8 +333,8 @@ export function decidePlan(p: Plan): Decision {
 
 /**
  * Judge a plan against the world now. Surveys again and decides over exactly
- * what the plan would run, so a refusal that appeared since is `blocked`, a protest nobody
- * granted `not-allowed`, a vanished candidate `gone`, and one whose evidence
+ * what the plan would run, so a refusal that appeared since is `blocked`, a
+ * protest nobody granted `not-allowed`, a vanished candidate `gone`, and one whose evidence
  * moved (repo-cleaner's `sameFingerprint`) `changed`.
  */
 export function recheck(
@@ -388,7 +390,7 @@ export function clean(
   try {
     checked = recheck(p, plugins, ctx)
   } catch (err) {
-    // A plugin that cannot be re-read still leaves a receipt saying nothing ran.
+    // A throw from the re-check still leaves a receipt saying nothing ran.
     if (opts.receiptPath !== undefined && opts.dryRun !== true) {
       const at = now().toISOString()
       try {
