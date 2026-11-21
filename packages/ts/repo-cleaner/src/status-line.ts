@@ -18,6 +18,7 @@ const STEP_TEXT: Record<SweepProgress['step'], string> = {
   worktree: 'checking worktrees',
   branch: 'checking local branches',
   remote: 'checking remote branches',
+  size: 'measuring worktrees',
 }
 
 /** `~/x` for a path under the home directory. */
