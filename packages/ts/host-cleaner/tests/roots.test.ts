@@ -70,7 +70,7 @@ describe('containedIn', () => {
     expect(containedIn([root], join(root, '..', 'other', 'b'))).toBeNull()
     expect(containedIn([join(base, 'missing')], join(root, 'a'))).toBeNull()
     expect(containedIn([root], join(root, '..cache'))).toBe(root)
-    expect(containedIn([root], join(root, 'out', '..', 'victim'))).toBeNull()
+    expect(containedIn([root], `${root}/out/../victim`)).toBeNull()
     expect(containedIn([root], 'relative/path')).toBeNull()
   })
 })
