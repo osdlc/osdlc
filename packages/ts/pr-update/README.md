@@ -307,6 +307,22 @@ An agent reads the repository and can run tools, so a `repair.agent` (like a
 `--repair-agent` and `--repair-command` on the command line are your own
 consent and need no trust. They override whatever the config names.
 
+### Repairing with the person watching
+
+`repair.mode` (or `update --repair-mode <mode>`) says how `repair.agent` runs. `headless` is the
+default. `interactive` runs the agent's own CLI in this terminal with stdio inherited, so you can
+answer its questions or stop it; it needs a terminal (a usage error without one) and repairs one
+PR at a time. `terminal` opens the session through `@osdlc/agent-seat` in a detached tmux session,
+named `sd-pr-update-<pr>-<pid>` in the run's notes (`tmux attach -t <name>`), and waits for it to
+end. tmux is the only agent-seat host that holds a launch until the session ends, so it is the only
+one `terminal` uses, and the run waits on that session before the next PR. The prompt is the same
+`repairPrompt(req)`, given as the session's first message, and the agent CLI runs without the
+host's GitHub tokens. When the session ends, the same checks as a headless repair decide: HEAD
+unmoved, no refs, no conflict markers, `git diff --check` clean, then stage, commit, verify and
+push. A session that exits non-zero, or that you quit without a fix, gives `conflict` or `failed`
+as a headless repair that gave up does. `repair.mode` other than `headless` in the project file
+needs trust like `repair.agent`; `--repair-mode` is your own consent.
+
 ## Git submodules
 
 The update worktree is made with `git worktree add`, which leaves submodules
@@ -562,7 +578,7 @@ above). A host that embeds the package supplies `Ports.attempts` and `Ports.leas
 
 Five values name a command, or an agent that can run tools, that the tool will
 start: `lockfile_install`, `resolvers[].run`, `repair.command`, `repair.agent`
-and `test_command`. When one is set in the project file (and not overridden in
+and `test_command`, and a `repair.mode` other than `headless` is gated the same way. When one is set in the project file (and not overridden in
 `pr-update.local.yaml`), `update` exits `21` until you consent. Pass `--trust`
 for one run, or run `pr-update trust` once to record the repository (kept under
 `$XDG_STATE_HOME/pr-update/trusted/`). `trust` is cli-tool's shared command:
