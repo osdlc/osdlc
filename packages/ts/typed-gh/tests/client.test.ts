@@ -192,6 +192,17 @@ describe('Gh — argv', () => {
     expect(pr?.headRefOid).toBe('abc')
   })
 
+  test('prView can request baseRefOid, and it is null when not asked', () => {
+    const { runner, calls } = recorder([
+      json({ number: 12, baseRefOid: 'def' }),
+      json({ number: 12 }),
+    ])
+    const gh = new Gh('/repo', { runner })
+    expect(gh.prView(12, { fields: ['baseRefOid'] })?.baseRefOid).toBe('def')
+    expect(calls[0]).toEqual(['pr', 'view', '12', '--json', 'number,baseRefOid'])
+    expect(gh.prView(12, { fields: ['number'] })?.baseRefOid).toBeNull()
+  })
+
   test('prView names each field once', () => {
     const { runner, calls } = recorder([json({ number: 12 })])
     new Gh('/repo', { runner }).prView(12, { fields: ['number', 'number', 'title'] })

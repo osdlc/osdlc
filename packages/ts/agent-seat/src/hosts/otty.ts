@@ -43,7 +43,7 @@ import {
   type SendReceipt,
   type SendRequest,
 } from '../contract.ts'
-import { sessionViaTerminal } from '../harness.ts'
+import { commandArgv, sessionViaTerminal } from '../harness.ts'
 
 /**
  * A tag appended to the tab title so a later `find` can match it: stable for the
@@ -64,7 +64,7 @@ export function ottyCreateArgv(req: CommandRequest): string[] {
     '--cwd',
     req.cwd,
     '--command',
-    commandString(req.argv),
+    commandString(commandArgv(req)),
     '--title',
     `${req.title} ${ottyTag(req.cwd, req.sessionId)}`,
     '--no-focus',
