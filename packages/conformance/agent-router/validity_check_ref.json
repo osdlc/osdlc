@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.4",
+  "referenceVersion": "0.4.5",
   "sections": {
     "validity_check_ref": {
       "description": "checkRef: the README validity table (error, skip, warning, ok) on the snapshot and a small catalogue",

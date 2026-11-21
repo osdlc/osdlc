@@ -129,7 +129,14 @@ export function discoverRepo(
   const known = probedOnce(opts.providers ?? providers({ gh, glab: opts.glab }))
   const scoped = [...new Set(names)]
   const urls = new Map<string, string | null>()
-  for (const name of new Set([...(remote === null ? [] : [remote]), ...scoped])) {
+  const touched = [
+    ...new Set([
+      ...(remote === null ? [] : [remote]),
+      ...scoped,
+      ...(against === null ? [] : [against]),
+    ]),
+  ]
+  for (const name of touched) {
     const url = at.try.remoteGetUrl(name)
     urls.set(name, url.ok && typeof url.value === 'string' ? url.value : null)
   }
@@ -163,19 +170,19 @@ export function discoverRepo(
     remote,
     currentBranch: at.headRef() ?? '',
     provider,
-    fetched: false,
     fetchedRemotes: [],
     allRemotes: all,
     // Another remote's default branch is read after the fetch, by
-    // resolveRemoteDefaults: until then it is ''.
-    remotes: scoped.map((name) => ({
+    // resolveRemoteDefaults: until then it is ''. Only a judged remote's
+    // provider is asked.
+    remotes: touched.map((name) => ({
       name,
+      judged: scoped.includes(name),
       defaultBranch: name === remote ? mainBranch : '',
       slug: remoteSlugOf(urlOf(name)),
-      provider: name === remote ? provider : probe(name),
+      provider: name === remote ? provider : scoped.includes(name) ? probe(name) : null,
     })),
-    against:
-      against === null ? null : { remote: against, branch: against === remote ? mainBranch : '' },
+    against,
   }
 }
 
@@ -209,9 +216,11 @@ function probedOnce(all: Record<ProviderName, PrProvider>): Record<ProviderName,
  */
 export function resolveRemoteDefaults(info: RepoInfo, git: Git): RepoInfo {
   const at = git.at(info.root)
+  const unread = info.remotes.filter((r) => r.defaultBranch === '').map((r) => r.name)
+  const defaults = remoteDefaults(at, unread)
   const known = (name: string, branch: string): string => {
     if (branch !== '') return branch
-    const found = remoteDefault(at, name)
+    const found = defaults.get(name) ?? null
     if (found === null) {
       const fix =
         at.refs(`refs/remotes/${name}/`).length === 0
@@ -224,10 +233,6 @@ export function resolveRemoteDefaults(info: RepoInfo, git: Git): RepoInfo {
   return {
     ...info,
     remotes: info.remotes.map((r) => ({ ...r, defaultBranch: known(r.name, r.defaultBranch) })),
-    against:
-      info.against === null
-        ? null
-        : { ...info.against, branch: known(info.against.remote, info.against.branch) },
   }
 }
 
@@ -248,14 +253,34 @@ function remoteHead(at: Git, remote: string): string | null {
   return head?.startsWith(prefix) === true ? head.slice(prefix.length) : null
 }
 
-/** {@link remoteHead}, else `main`, then `master`, where the remote has them; null for none. */
-function remoteDefault(at: Git, remote: string): string | null {
-  const head = remoteHead(at, remote)
-  if (head !== null) return head
-  for (const candidate of ['main', 'master']) {
-    if (at.resolveRef(`refs/remotes/${remote}/${candidate}`) !== null) return candidate
+/**
+ * Each of `remotes`' default branches: what `refs/remotes/<remote>/HEAD`
+ * points at, else `main`, then `master`, where the remote has them; null for
+ * none. One `for-each-ref` reads them all, where asking each remote took up to
+ * three calls.
+ */
+function remoteDefaults(at: Git, remotes: readonly string[]): Map<string, string | null> {
+  const out = new Map<string, string | null>()
+  if (remotes.length === 0) return out
+  const lines = at.forEachRef(
+    remotes.map((r) => `refs/remotes/${r}/`),
+    { format: '%(refname)%09%(symref)' },
+  )
+  const refs = new Map(
+    lines.map((line) => {
+      const [ref = '', target = ''] = line.split('\t')
+      return [ref, target] as const
+    }),
+  )
+  for (const remote of remotes) {
+    const prefix = `refs/remotes/${remote}/`
+    // Whole ref names, so `origin/mirror/main` is never `origin`'s `main`.
+    const head = refs.get(`${prefix}HEAD`)
+    const fromHead = head?.startsWith(prefix) === true ? head.slice(prefix.length) : null
+    const found = fromHead ?? ['main', 'master'].find((b) => refs.has(`${prefix}${b}`)) ?? null
+    out.set(remote, found)
   }
-  return null
+  return out
 }
 
 /**
