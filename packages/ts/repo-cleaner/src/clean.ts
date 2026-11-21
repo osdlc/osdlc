@@ -66,6 +66,7 @@ import {
   KINDS,
   RepoCleanerError,
   type Kind,
+  judgedRemotes,
   landedFor,
   refOf,
   type RemoteRow,
@@ -216,7 +217,9 @@ function resweep(
   // preview shows what the run will do.
   const readFromDisk =
     kinds.includes('remote') &&
-    given?.repo?.remotes.every((r) => given.repo!.fetchedRemotes.includes(r.name)) !== true
+    (given?.repo === undefined ||
+      given.repo === null ||
+      !judgedRemotes(given.repo).every((r) => given.repo!.fetchedRemotes.includes(r.name)))
   if (given !== undefined && given.error === null && !readFromDisk) {
     // Its notes are reported with the rest of that sweep's, by `recheck`.
     return { rows: holdFreedBranches([...given.rows], branchScoped), notes: [], info: given.repo! }
@@ -253,15 +256,12 @@ interface Rechecked {
 /**
  * Re-sweep, then split the selection into rows to run and rows dropped: the
  * selected rows, or every row that could run, and the picked rows, less the
- * spared. `mustDelete` names the rows that run only while the re-sweep judges
- * them `delete`: those no one picked or selected by name.
+ * spared. A row no one picked or selected by name runs only while the
+ * re-sweep judges it `delete`.
  */
-function recheck(
-  plan: Plan,
-  approval: ResolvedApproval,
-  opts: CheckOptions,
-  mustDelete: (s: Resolved) => boolean,
-): Rechecked {
+function recheck(plan: Plan, approval: ResolvedApproval, opts: CheckOptions): Rechecked {
+  const chosen = new Set([...(approval.select ?? []), ...approval.pick].map(keyOf))
+  const mustDelete = (s: Resolved): boolean => !chosen.has(keyOf(s))
   const spared = new Set([...approval.spare, ...approval.spareMatched].map(keyOf))
   // By default every row that could run: a plan also holds the blocked and
   // structural rows, so a pick of one can be skipped with its reason.
@@ -627,21 +627,10 @@ interface ArchiveJob {
   defaultRef: string
 }
 
-/** Rows no one picked or selected by name: they run only while judged `delete`. */
-function unchosen(approval: ResolvedApproval): (s: Resolved) => boolean {
-  const chosen = new Set([...(approval.select ?? []), ...approval.pick].map(keyOf))
-  return (s) => !chosen.has(keyOf(s))
-}
-
-function planSteps(
-  plan: Plan,
-  approval: ResolvedApproval,
-  opts: CheckOptions,
-  mustDelete: (s: Resolved) => boolean,
-): Planned {
+function planSteps(plan: Plan, approval: ResolvedApproval, opts: CheckOptions): Planned {
   const cwd = opts.cwd ?? process.cwd()
   const git = new Git(cwd, { runner: opts.git })
-  const rechecked = recheck(plan, approval, opts, mustDelete)
+  const rechecked = recheck(plan, approval, opts)
   const unique = onePerRemoteBranch(rechecked, git)
   const dropped = [...unique.dropped]
   // A worktree whose directory is left without its `.git` goes only by the
@@ -748,7 +737,7 @@ export function check(plan: Plan, approval: Approval, opts: CheckOptions = {}): 
   if (opts.archive === undefined && resolved.allow.some((a) => a.risk === 'discard-archived')) {
     throw new RepoCleanerError('conflict', '--allow discard-archived has no effect without archive')
   }
-  const { steps, dropped, accepted, notes } = planSteps(plan, resolved, opts, unchosen(resolved))
+  const { steps, dropped, accepted, notes } = planSteps(plan, resolved, opts)
   for (const [step] of steps) step.result = 'would-run'
   const unusedAllows = resolved.allow
     .filter(
@@ -1072,17 +1061,30 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   const cwd = opts.cwd ?? process.cwd()
   // Only the rows the preview would run, pinned to their repositories. A
   // spared tip check is not a selection; the approval carries it again.
-  const shown = preview.steps.flatMap((s) =>
-    s.action === 'verify-remote' || s.action === 'archive' ? [] : [{ repo: s.repo, id: s.row }],
+  const shown = uniq(
+    preview.steps.flatMap((s) =>
+      s.action === 'verify-remote' || s.action === 'archive' ? [] : [{ repo: s.repo, id: s.row }],
+    ),
   )
-  const pick = uniq(shown)
+  // The same approval, narrowed to what the preview showed: the rows chosen
+  // by name stay picked, every other runnable row it did not show is left
+  // alone, and the rest run by the default rule, so a row the preview ran only
+  // for its `delete` verdict drops if the re-check now judges it `review`.
+  const shownKeys = new Set(shown.map(keyOf))
+  const named = new Set([...(preview.approval.select ?? []), ...preview.approval.pick].map(keyOf))
+  const unshown = preview.plan.repos.flatMap((r) =>
+    r.rows
+      .filter(runnable)
+      .map((row) => ({ repo: r.root, id: row.id }))
+      .filter((s) => !shownKeys.has(keyOf(s))),
+  )
   const approval: ResolvedApproval = {
-    select: pick,
-    pick: [],
+    select: null,
+    pick: shown.filter((s) => named.has(keyOf(s))),
     spare: preview.approval.spare,
-    spareMatched: preview.approval.spareMatched,
+    spareMatched: uniq([...preview.approval.spareMatched, ...unshown]),
     allow: preview.approval.allow.filter(
-      (a) => a.row === null || pick.some((p) => same(p, a.row!)),
+      (a) => a.row === null || shown.some((p) => same(p, a.row!)),
     ),
   }
   const receipt: Receipt = {
@@ -1103,17 +1105,9 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
     save()
     return receipt
   }
-  if (pick.length === 0) return finish('complete')
-  // A row the preview ran only for its `delete` verdict keeps that guard, so
-  // one the re-check now judges `review` drops rather than runs.
-  const mustDelete = unchosen(preview.approval)
+  if (shown.length === 0) return finish('complete')
   const archive = opts.archive ?? preview.archive
-  const planned = planSteps(
-    preview.plan,
-    approval,
-    { ...opts, archive, sweep: undefined },
-    mustDelete,
-  )
+  const planned = planSteps(preview.plan, approval, { ...opts, archive, sweep: undefined })
   opts.onNotes?.(planned.notes)
   const known = new Set(receipt.dropped.map((d) => `${d.repo}\0${d.row}`))
   for (const d of planned.dropped) {
