@@ -96,6 +96,12 @@ export const StepSchema = z.object({
   gone: z.literal(true).optional(),
   /** What an `archive` step pushed; set once it succeeded. */
   archive: ArchiveSchema.optional(),
+  /**
+   * Bytes a `remove-worktree` step freed: its directory's size on disk (`du`),
+   * measured just before the remove. Set once the remove succeeded; null when
+   * the measurement failed or timed out. Absent on every other step.
+   */
+  freedBytes: z.number().int().nonnegative().nullable().optional(),
 })
 
 export type Step = z.infer<typeof StepSchema>
