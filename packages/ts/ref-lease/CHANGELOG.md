@@ -1,5 +1,13 @@
 # @osdlc/ref-lease
 
+## 0.3.5
+
+### Patch Changes
+
+- a1651e3: README: the platform note says the tests run on Windows in the tier-2 workflow, which reports and never blocks.
+- Updated dependencies [1ba6088]
+  - @osdlc/typed-git@0.20.0
+
 ## 0.3.4
 
 ### Patch Changes
