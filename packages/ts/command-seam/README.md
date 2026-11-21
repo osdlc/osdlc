@@ -703,7 +703,7 @@ runner's `CommandResult`, a `StreamResult` or a `ManagedProcessExit`. A
 
 | `kind`           | When                                                                 | `message`                                                      |
 | ---------------- | -------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `not-installed`  | spawn `ENOENT` on the binary                                         | `` `gh` is not installed or not on PATH. ``                    |
+| `not-installed`  | spawn `ENOENT` (Bun: `Executable not found in $PATH`) on the binary                                         | `` `gh` is not installed or not on PATH. ``                    |
 | `not-executable` | spawn `EACCES`, `EPERM` or `ENOEXEC`                                 | `` `gh` cannot be run: permission denied or not an executable. `` |
 | `bad-cwd`        | the working directory is missing, is not a directory, or cannot be entered | `The working directory "/x" is missing or is not a directory.`, or `The working directory "/x" cannot be entered: permission denied.` |
 | `timeout`        | `timeoutMs` ran out                                                  | `` `gh` timed out and was stopped. ``                          |

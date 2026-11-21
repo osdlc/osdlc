@@ -15,6 +15,7 @@ import {
   type VscodeTransport,
   type VscodeWindow,
 } from '../src/hosts/vscode-client.ts'
+import { commandArgv } from '../src/harness.ts'
 import { RUNTIME } from './fixtures/runtime.ts'
 
 const win = (pid: number, folders: string[], startedAt = ''): VscodeWindow => ({
@@ -73,6 +74,15 @@ describe('host over a fake transport', () => {
       'no VS Code window has /w open — open it, with the sdlc-host extension installed',
     )
     expect(calls).toEqual([])
+  })
+
+  test('terminal: req.env reaches the open op', () => {
+    const { transport, calls } = fakeTransport({ open: ok({ terminalId: 't1' }) })
+    const host = makeVscodeHost({ runtimeDir: RUNTIME, windows: () => [win(1, ['/w'])], transport })
+    host.terminal!({ cwd: '/w', argv: ['zsh'], title: 'T', env: { SDLC_SESSION: 's1' } })
+    expect(calls[0]?.body['argv']).toEqual(
+      commandArgv({ argv: ['zsh'], env: { SDLC_SESSION: 's1' } }),
+    )
   })
 
   test('terminal/send/find/focus map to ops', () => {
