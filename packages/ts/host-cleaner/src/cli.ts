@@ -440,9 +440,13 @@ function contextFor(
     cwd: ctx.cwd,
     targets: chosen.map((t) => resolve(ctx.cwd, expandHome(t, home))),
     allow,
-    ignore: ignorePaths([...config.ignore, ...ignore], ctx.cwd, home),
+    ignore: ignoreFor(config, ignore, ctx),
   }
 }
+
+/** The config's ignore list with `extra` (`--ignore`) added, as absolute paths. */
+const ignoreFor = (config: Config, extra: readonly string[], ctx: CliContext): string[] =>
+  ignorePaths([...config.ignore, ...extra], ctx.cwd, ctx.env.HOME ?? homedir())
 
 /** The lines as one control-stripped block, or nothing for no lines. */
 const block = (lines: readonly string[]): string =>
@@ -759,11 +763,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
         cwd: ctx.cwd,
         targets: plan.targets,
         allow: plan.allow,
-        ignore: ignorePaths(
-          [...loadConfig(v, ctx).ignore, ...v.ignore],
-          ctx.cwd,
-          ctx.env.HOME ?? homedir(),
-        ),
+        ignore: ignoreFor(config, v.ignore, ctx),
       }
       const checked = recheck(plan, plugins, cctx)
       writeWarnings(ctx, name, checked.survey.warnings)
