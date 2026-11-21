@@ -13,7 +13,8 @@
 //! [`LinkGraph::default_walk`] is the walk above. [`LinkGraph::with_walk`]
 //! replaces it: other roots, pruned folders, dot files, refused symlinks,
 //! propagated errors or excluded files of the caller's own
-//! ([`Hide::Rules`]). [`LinkGraph::apply_changes`] asks the walk about each
+//! ([`Hide::Rules`], or [`Hide::Source`] for a list that changes: change it,
+//! then `refresh_now`). [`LinkGraph::apply_changes`] asks the walk about each
 //! path ([`WalkOptions::admission`]): it ignores one outside the walk, drops
 //! one the walk would no longer list, and reads the rest.
 //! [`LinkGraph::with_split`]
