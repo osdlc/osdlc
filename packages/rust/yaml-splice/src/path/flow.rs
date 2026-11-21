@@ -145,7 +145,7 @@ fn leaf(
         Op::Remove => remove(cx, open_idx, elems, i),
         Op::Rename(to) => {
             let Some((_, range)) = &elem.key else {
-                return Err(mismatch(cx, cx.path.len() - 1, "a sequence"));
+                return Err(mismatch(cx, cx.path.len() - 1, "a mapping"));
             };
             let conflict = elems.iter().enumerate().find(|(j, e)| {
                 *j != i
@@ -211,6 +211,13 @@ fn append(cx: &Cx<'_>, elems: &[FlowElem], text: String) -> Result<Edits, EditEr
         ", ".to_string()
     };
     let at = last.value_range.end;
+    let before_close = cx.src[at..]
+        .split([']', '}', '\n', '\r'])
+        .next()
+        .unwrap_or("");
+    if before_close.contains('#') {
+        return Err(unsupported(cx, "a comment after the last element"));
+    }
     Ok(vec![(at..at, format!("{sep}{text}"))])
 }
 
@@ -242,7 +249,18 @@ fn remove(cx: &Cx<'_>, open_idx: usize, elems: &[FlowElem], i: usize) -> Result<
     } else {
         elems[i - 1].value_range.end..elem.value_range.end
     };
-    if elems.len() > 1 && cx.src[range.clone()].contains('#') {
+    // A `#` in the value's own text is a comment only inside a nested collection.
+    let gap_has_comment = |gap: Range<usize>| cx.src[gap].contains('#');
+    let comment = if elems.len() == 1 {
+        false
+    } else if i == 0 {
+        gap_has_comment(elem.value_range.end..elem_start(&elems[1]))
+    } else {
+        gap_has_comment(elems[i - 1].value_range.end..elem_start(elem))
+    } || (elems.len() > 1
+        && !matches!(cx.events[elem.value_idx].kind, EvKind::Scalar(..))
+        && cx.src[elem.value_range.clone()].contains('#'));
+    if comment {
         return Err(unsupported(cx, "a comment inside the flow collection"));
     }
     Ok(vec![(range, String::new())])
