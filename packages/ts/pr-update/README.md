@@ -179,6 +179,11 @@ flag. `--restack` and `--no-restack` override it for one run.
 - A failure recorded for the child (see below) is checked against its new base
   sha, the head its parent just got.
 
+A rebase that does not come from `--restack` passes `--fork-point`. Where this clone's reflog still
+holds the parent's old head, a child updated in a later run leaves the parent's old commits behind
+instead of replaying them. A fresh clone or CI checkout has no such reflog and rebases as before, so
+a host that updates stacks should still use `--restack`.
+
 ## Conflicts, predicted before anything is checked out
 
 `survey` predicts each PR's merge with `git merge-tree`, which merges in the
