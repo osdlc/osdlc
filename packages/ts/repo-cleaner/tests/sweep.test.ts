@@ -36,9 +36,9 @@ import {
   inspectWorktree,
   sweep,
   sweepRepo,
-  sweptWith,
   type SweepOptions,
 } from '../src/sweep.ts'
+import { sweptWith } from '../src/scope.ts'
 import {
   KINDS,
   RepoCleanerError,
@@ -163,7 +163,7 @@ describe('sweep', () => {
     expect(branch?.commands).toEqual([`git update-ref -d refs/heads/merged-branch ${sha}`])
     expect(branch?.evidence.ancestorOfRemoteMain).toBe(true)
     // No remote, so the local default branch is the measure.
-    expect(branch?.evidence.compareAgainst).toBe('main')
+    expect(branch?.evidence.landedAgainst).toBe('main')
   })
 
   test('a diverged branch with no other signal is left for a person', () => {
@@ -334,8 +334,9 @@ describe('sweep', () => {
     // engine is what meets a path that is no repository.
     const swept = sweepRepo(container, {
       only: ['worktree', 'branch'],
+      remotes: [],
       provider: 'none',
-      fetch: false,
+      fetch: [],
       cwd: container,
     })
     expect(swept.error).toContain('not a git repository')
@@ -370,8 +371,8 @@ describe('contradictory options', () => {
   })
 
   test('remote with an only that leaves remote out', () => {
-    refusesBoth([root], { cwd: root, remote: true, only: ['branch'] })
-    refusesBoth([root], { cwd: root, remote: true, only: ['worktree', 'branch'] })
+    refusesBoth([root], { cwd: root, remotes: [''], only: ['branch'] })
+    refusesBoth([root], { cwd: root, remotes: [''], only: ['worktree', 'branch'] })
   })
 
   test('a URL target mixed with a path target', () => {
@@ -399,9 +400,9 @@ describe('contradictory options', () => {
 
   test('only remote implies remote', () => {
     const asked = { cwd: root, only: ['remote'] as Kind[], provider: 'none' as const }
-    expect(sweptWith([root], asked)).toMatchObject({ remote: true, only: ['remote'] })
+    expect(sweptWith([root], asked)).toMatchObject({ remotes: [''], only: ['remote'] })
     const swept = sweep([root], asked)
-    expect(swept.options.remote).toBe(true)
+    expect(swept.options.remotes).toEqual([''])
     expect(swept.options.only).toEqual(['remote'])
     expect(swept.repos[0]?.error).toBeNull()
   })
@@ -512,7 +513,7 @@ describe('worktree blockers', () => {
       cwd: checkout,
       gh,
       provider: 'github',
-      remote: true,
+      remotes: [''],
       offline: true,
     })
     expect(swept.error).toBeNull()
@@ -591,7 +592,7 @@ describe('worktree blockers', () => {
         cwd: checkout,
         gh,
         provider: 'github',
-        remote: true,
+        remotes: [''],
         offline: true,
         branch,
       })
@@ -895,7 +896,7 @@ describe('ancestry against the remote default branch', () => {
     const branch = rowsOf(swept.rows, 'branch').get('unpushed')
     expect(branch?.verdict).toBe('review')
     expect(branch?.evidence.ancestorOfRemoteMain).toBe(false)
-    expect(branch?.evidence.compareAgainst).toBe('origin/main')
+    expect(branch?.evidence.landedAgainst).toBe('origin/main')
   })
 
   test('a branch reachable from origin/main is deletable', () => {
@@ -909,7 +910,7 @@ describe('ancestry against the remote default branch', () => {
     const branch = rowsOf(swept.rows, 'branch').get('pushed')
     expect(branch?.verdict).toBe('delete')
     expect(branch?.why).toBe('fully merged into origin/main')
-    expect(branch?.evidence.compareAgainst).toBe('origin/main')
+    expect(branch?.evidence.landedAgainst).toBe('origin/main')
   })
 
   test('a missing remote default branch leaves ancestry unknown', () => {
@@ -957,7 +958,7 @@ describe('merged-PR evidence', () => {
     gh,
     // The remote is a local path, so name the provider: `auto` asks none.
     provider: 'github',
-    remote: true,
+    remotes: [''],
     offline: true,
     ...opts,
   })
@@ -1304,7 +1305,7 @@ describe('fetch', () => {
 
       const unfetched = sweepOne(stale, {
         cwd: stale,
-        remote: true,
+        remotes: [''],
         offline: true,
         provider: 'none',
       })
@@ -1312,7 +1313,7 @@ describe('fetch', () => {
       expect(remoteFeature(unfetched)?.verdict).toBe('review')
       expect(renderRepo(unfetched)).toContain('not fetched')
 
-      const fetched = sweepOne(stale, { cwd: stale, remote: true, provider: 'none' })
+      const fetched = sweepOne(stale, { cwd: stale, remotes: [''], provider: 'none' })
       expect(fetched.error).toBeNull()
       expect(fetched.repo?.fetched).toBe(true)
       expect(remoteFeature(fetched)?.verdict).toBe('delete')
@@ -1328,9 +1329,9 @@ describe('fetch', () => {
       git(['remote', 'set-url', 'origin', join(base, 'gone')], broken)
       const healthy = clone('healthy')
 
-      const result = sweep([broken, healthy], { cwd: base, remote: true, provider: 'none' })
+      const result = sweep([broken, healthy], { cwd: base, remotes: [''], provider: 'none' })
       const [bad, good] = result.repos
-      expect(bad?.error?.startsWith('fetch failed:')).toBe(true)
+      expect(bad?.error?.startsWith('fetch of origin failed:')).toBe(true)
       expect(bad?.rows).toEqual([])
       expect(good?.error).toBeNull()
       expect(good?.repo?.fetched).toBe(true)
@@ -1340,7 +1341,7 @@ describe('fetch', () => {
   )
 
   test('a repository with no remote is swept without a fetch', () => {
-    const swept = sweepOne(root, { cwd: root, remote: true, provider: 'none' })
+    const swept = sweepOne(root, { cwd: root, remotes: [''], provider: 'none' })
     expect(swept.error).toBeNull()
     expect(swept.repo?.fetched).toBe(false)
   })
@@ -1454,7 +1455,7 @@ describe('a clean worktree whose HEAD is on a remote branch (#659)', () => {
     return { root, wt }
   }
   const remoteSweep = (root: string, extra: SweepOptions = {}): RepoSweep =>
-    sweepOne(root, { cwd: root, remote: true, provider: 'none', ...extra })
+    sweepOne(root, { cwd: root, remotes: [''], provider: 'none', ...extra })
   const rowAt = (swept: RepoSweep, wt: string): RowOf<'worktree'> | undefined =>
     rowsOf(swept.rows, 'worktree').get(realpathSync(wt))
   const pr = (state: 'OPEN' | 'CLOSED', root: string) =>
@@ -1508,14 +1509,14 @@ describe('a clean worktree whose HEAD is on a remote branch (#659)', () => {
     const row = rowAt(sweepOne(root, { cwd: root }), wt)
     expect(row?.verdict).toBe('review')
     expect(row?.evidence.recoverableFrom).toBeUndefined()
-    expect(row?.notes?.join('\n')).toContain('`--remote` without `--offline` would check')
+    expect(row?.notes?.join('\n')).toContain('`--fetch` would check')
   })
 
   test('a local sweep notes it on an unlanded row too', () => {
     const { root, wt } = setup({ upstream: false })
     const row = rowAt(sweepOne(root, { cwd: root }), wt)
     expect(row?.risks).toContain('abandon-unmerged')
-    expect(row?.notes?.join('\n')).toContain('`--remote` without `--offline` would check')
+    expect(row?.notes?.join('\n')).toContain('`--fetch` would check')
   })
 
   test('a dirty worktree keeps its verdict', () => {
@@ -1576,7 +1577,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
   }, HOOK_TIMEOUT_MS)
 
   const sweepHere = (o: Partial<SweepOptions>) =>
-    sweepOne(checkout, { cwd: checkout, remote: true, offline: true, ...o })
+    sweepOne(checkout, { cwd: checkout, remotes: [''], offline: true, ...o })
 
   test('offline reads remote branches from the remote-tracking refs, never the remote', () => {
     const counted = lsRemoteGit(false)
@@ -1637,7 +1638,9 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     expect(renderRepo(swept)).toContain('note: Listing PRs with `gh pr list` failed')
     expect(
       JSON.parse(
-        renderJson(sweep([checkout], { cwd: checkout, remote: true, offline: true, ...sweepOpts })),
+        renderJson(
+          sweep([checkout], { cwd: checkout, remotes: [''], offline: true, ...sweepOpts }),
+        ),
       ).repos[0].notes,
     ).toEqual(swept.notes)
   })
@@ -1675,8 +1678,8 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     expect(noteOf('auto', 'https://github.com/acme/gone.git')).not.toContain(hint)
   })
 
-  test('a fork is noted as incomplete, and deleting a remote branch needs confirm-open-pr', () => {
-    const gh = cannedGh([], { fork: 'upstream/app' })
+  test('a fork whose parent is not named is noted as incomplete, and deleting a remote branch needs confirm-open-pr', () => {
+    const gh = cannedGh([], { forkWithoutParent: true })
     const swept = sweepHere({
       provider: 'github',
       gh,
@@ -1686,7 +1689,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     expect(swept.repo?.provider?.listError).toBeUndefined()
     expect(swept.notes).toHaveLength(1)
     expect(swept.notes[0]).toMatch(
-      /^The PR listing from `gh pr list` is incomplete \(the repository is a fork of upstream\/app.*\), so a remote branch with no PR found needs confirm-open-pr to delete\./,
+      /^The PR listing from `gh pr list` is incomplete \(the repository is a fork of its parent.*\), so a remote branch with no PR found needs confirm-open-pr to delete\./,
     )
     const lists = gh.calls.filter((argv) => argv[1] === 'list')
     expect(lists.every((argv) => argv.includes('github.com/me/app'))).toBe(true)
@@ -1699,7 +1702,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
   test('in an incomplete listing a merged PR does not rule out an open one', () => {
     const gh = cannedGh(
       [{ number: 5, state: 'MERGED', headRefName: 'merged', headRefOid: 'moved' }],
-      { fork: 'upstream/app' },
+      { forkWithoutParent: true },
     )
     const swept = sweepHere({
       provider: 'github',
@@ -1801,7 +1804,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
       mkdirSync(dir)
       makeGitFixture({ dir, initialBranch: 'main' })
       commit(dir, 'initial commit')
-      const sw = sweepOne(dir, { cwd: dir, remote: true, offline: true, provider: 'github', gh })
+      const sw = sweepOne(dir, { cwd: dir, remotes: [''], offline: true, provider: 'github', gh })
       expect(sw.error).toBeNull()
       expect(sw.notes).toEqual([])
     })
@@ -1820,7 +1823,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     }
     const head = git(['rev-parse', 'HEAD'], dir.dir).trim()
     git(['update-ref', 'refs/remotes/origin/mirror/main', head], dir.dir)
-    const sw = sweepOne(dir.dir, { cwd: dir.dir, remote: true, offline: true, provider: 'none' })
+    const sw = sweepOne(dir.dir, { cwd: dir.dir, remotes: [''], offline: true, provider: 'none' })
     expect([...rowsOf(sw.rows, 'remote').keys()].filter((n) => n.includes('mirror'))).toEqual([])
   })
 
@@ -1830,7 +1833,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     makeGitFixture({ dir, initialBranch: 'main' })
     commit(dir, 'initial commit')
     git(['remote', 'add', 'origin', join(parent, 'nowhere.git')], dir)
-    const sw = sweepOne(dir, { cwd: dir, remote: true, offline: true, provider: 'none' })
+    const sw = sweepOne(dir, { cwd: dir, remotes: [''], offline: true, provider: 'none' })
     expect(sw.notes).toContainEqual(
       expect.stringMatching(/^No remote-tracking refs for `origin` on disk/),
     )
