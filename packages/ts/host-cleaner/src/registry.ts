@@ -2,14 +2,15 @@
 
 import type { Kind } from '@osdlc/repo-cleaner'
 
-import { ConfigError } from './config.ts'
 import { cargoPlugin } from './cargo.ts'
+import { claudeCodePlugin } from './claude.ts'
 import { gitPlugin } from './git.ts'
 import { nodePlugin } from './node.ts'
 import type { Plugin } from './types.ts'
 
 /**
- * What a factory is told: its own entry in the config's `plugins`, and the git
+ * What a factory is told: its own entry in the config's `plugins`, validated with
+ * its defaults filled in (`./settings.ts`), and the git
  * kinds `--worktrees` and `--branches` leave.
  */
 export interface PluginInit {
@@ -22,17 +23,9 @@ export type PluginFactory = (init: PluginInit) => Plugin
 /** The shipped plugins by name; `orderPlugins` sets the run order. */
 export const FACTORIES: Readonly<Record<string, PluginFactory>> = {
   git: ({ only }) => gitPlugin({ sweep: { only: [...only] } }),
-  cargo: ({ settings }) => cargoPlugin(artifactSettings('cargo', settings)),
-  node: ({ settings }) => nodePlugin(artifactSettings('node', settings)),
-}
-
-/** `idleHours` from a plugin's settings; a wrong type is a config error, not a silent default. */
-function artifactSettings(name: string, settings: Record<string, unknown>) {
-  const idle = settings.idleHours
-  if (idle !== undefined && (typeof idle !== 'number' || !(idle > 0))) {
-    throw new ConfigError(`plugins.${name}.idleHours must be a positive number`)
-  }
-  return { idleHours: idle }
+  cargo: ({ settings }) => cargoPlugin({ idleHours: settings.idleHours as number }),
+  node: ({ settings }) => nodePlugin({ idleHours: settings.idleHours as number }),
+  'claude-code': () => claudeCodePlugin(),
 }
 
 /** A `--plugin` or `--skip-plugin` that names no plugin. */

@@ -23,8 +23,9 @@ export interface Candidate {
   /** The name a person knows it by, which `spare` matches: a branch's name, the branch a worktree has checked out. */
   name?: string | undefined
   /**
-   * False when the owner wants a person to choose it: only a pick or a selection runs it.
-   * True or absent: unattended runs may take it, if nothing objects.
+   * True: `clean --auto` may take it if nothing refuses or protests.
+   * False: the default leaves it out; only a pick or a selection runs it.
+   * Absent: the default takes it; `clean --auto` does not.
    */
   unattended?: boolean | undefined
 }

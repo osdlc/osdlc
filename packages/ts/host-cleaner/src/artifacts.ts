@@ -4,7 +4,8 @@
  * removing one artifact directory under the same checks that listed it.
  *
  * A candidate is `artifact:<absolute path>`; its evidence is built in
- * `artifactRow` and `refusedRow`. `idleHours` is rounded down.
+ * `artifactRow` and `refusedRow`. It leaves out `idleHours`, which moves with the
+ * clock and would make every saved plan read as changed.
  */
 
 import { existsSync, lstatSync, readdirSync, realpathSync, rmSync } from 'node:fs'
@@ -188,7 +189,6 @@ export const objectionsTo = (owner: string, row: Row): Objection[] =>
 
 /** The row for one artifact directory: a candidate, refused while a process works in the checkout or the process table cannot be read. */
 export function artifactRow(owner: string, f: ArtifactFacts, now: Date): Row {
-  const idleHours = f.newestMtimeMs === null ? null : idleHoursSince(f.newestMtimeMs, now)
   const blockers = [
     ...(f.held.names.length > 0
       ? [
@@ -223,7 +223,6 @@ export function artifactRow(owner: string, f: ArtifactFacts, now: Date): Row {
         path: f.path,
         checkout: f.checkout,
         sizeBytes,
-        idleHours,
         newestMtimeMs: f.newestMtimeMs,
         unattended: blockers.length === 0 && f.idle,
         notes: f.notes ?? [],
@@ -248,7 +247,6 @@ export function refusedRow(owner: string, kind: ArtifactKind, path: string, chec
         path,
         checkout,
         sizeBytes: null,
-        idleHours: null,
         newestMtimeMs: null,
         unattended: false,
       },
