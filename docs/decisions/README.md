@@ -13,6 +13,7 @@ random keys, so parallel branches do not collide.
 | [D-L7N5](D-L7N5-host-cleaner.md)                         | Machine cleanup is a `host-cleaner` package over repo-cleaner, with optional detected adapters |
 | [D-QMVA](D-QMVA-wayfinder-skill-handoff.md)              | wayfinder hands a skill to an agent CLI only when asked                                        |
 | [D-SM4K](D-SM4K-markdown-ecosystem-home.md)              | The markdown ecosystem stays in this repository, flat in `packages/` for now                   |
+| [D-W6QE](D-W6QE-markdown-link-keeps-its-scanner.md)      | `markdown-link` keeps its own scanner and stops growing its code detection                     |
 
 Decisions about one package live in that package's
 `docs/planning/decisions/`, such as
