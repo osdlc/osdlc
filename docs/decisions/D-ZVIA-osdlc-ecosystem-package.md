@@ -51,18 +51,20 @@ A list per tool means one list to keep up per tool, and the lists drift.
   | `roots: []`                           | Scan nothing                                                                                                                                                                                                                                                                                                                                                                   |
   | No file, or no `roots`                | The directory that holds the caller's main checkout, or the one above it when that directory is named after the owner in the caller's own `origin`, so an `<owner>/<name>` layout resolves to the directory above every owner. It never steps to or above the person's home directory: a checkout directly in `$HOME` keeps `$HOME`. Nothing when the caller names no checkout |
 
-- **The package matches checkouts.** `@osdlc/ecosystem/repositories` exports
-  the loader and `locateCheckout(owner/name)`. The matching moves here from
-  sdlc's `locateRepo`: owner and name in any case, the host when both sides
-  name one, an SSH host alias resolved through `ssh -G`. It also:
-  - resolves each match to its main checkout and counts it once, since
-    `discoverCheckouts` lists linked worktrees as checkouts;
-  - returns every match, not only the first, so a caller can check each for
-    unpushed work;
-  - builds one index per call site, so a run with many targets scans once.
+- **The package locates checkouts; `typed-git` does the git work.** The
+  split follows the two kinds of package above:
 
-  The filesystem scan stays in `@osdlc/typed-git` (`discoverCheckouts`),
-  because it is a general building block.
+  | Part                                                                                                                                                                               | Home                                                                                                                                               | Why                                                           |
+  | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+  | Scanning a directory for checkouts (`discoverCheckouts`), finding a worktree's main checkout (`Git#mainCheckout`), parsing a remote URL (`parseRemoteRepo`)                        | `@osdlc/typed-git`, as today                                                                                                                       | General git facts                                             |
+  | Reading a remote with its SSH host alias resolved through `ssh -G`, and deciding whether two remotes name one repository (owner and name in any case, the host when both name one) | `@osdlc/typed-git`, new. It moves from sdlc's `readRemote`, `sshAliasResolver` and `sameRepo`, and takes the `ssh` runner as an optional parameter | Any tool that reads git remotes needs it, inside osdlc or not |
+  | Reading `roots`, the default roots and the home-directory stop, and `locateCheckout(owner/name)`                                                                                   | `@osdlc/ecosystem/repositories`, new                                                                                                               | osdlc policy                                                  |
+
+  `locateCheckout` resolves each match to its main checkout and counts it
+  once, since `discoverCheckouts` lists linked worktrees as checkouts. It
+  returns every match, not only the first, so a caller can check each for
+  unpushed work. It builds one index per call site, so a run with many
+  targets scans once.
 
 - **Machine-only.** A repository's config cannot set `roots`, so a cloned
   repository cannot point a tool at directories on a person's disk.
@@ -91,8 +93,12 @@ A list per tool means one list to keep up per tool, and the lists drift.
 
 - One package versions every shared concern together, so a breaking change
   to one bumps them all. Subpath exports keep what each tool imports small.
-- Dependencies: `typed-git`, `config-layers`, `tiered-dirs`, `command-seam`.
-- sdlc's matching code has two homes until sdlc imports it from here.
+- It builds on existing libraries. `tiered-dirs` and `command-seam` need no
+  change. `config-layers` needs none for family files. `typed-git` gains the
+  remote matching above. The planned `app` option in `machineConfigFile` is
+  for tools' own files, not this package.
+- sdlc's remote matching has two homes until sdlc imports it from
+  `typed-git`.
 - A test that spawns a tool's CLI follows the isolation rule in
   machine-files.md, or the child reads, and may write, the person's real files.
 
