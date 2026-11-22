@@ -31,10 +31,10 @@ A list per tool means one list to keep up per tool, and the lists drift.
   | Ecosystem convention: a fact or rule every osdlc tool shares | Where checkouts live                                     | All in `@osdlc/ecosystem`. A new concern is a new module and subpath export, not a new package |
 
 - **The package owns the family's own files.** Each sits directly in the
-  osdlc config home: `standalone('osdlc').config()` with `envVars('OSDLC')`,
-  pinned to the Xdg convention, which is `~/.config/osdlc/` on Linux and
-  macOS. One file per concern, so a tool reads only what it needs. A tool's
-  own files stay in `osdlc/<tool>/`.
+  osdlc config home, `~/.config/osdlc/` on Linux and macOS, resolved as
+  [machine-files.md](../../standards/machine-files.md#where-files-go) says.
+  One file per concern, so a tool reads only what it needs. A tool's own
+  files stay in `osdlc/<tool>/`.
 - **The first file is `repositories.yaml`.**
 
   ```yaml
@@ -66,14 +66,13 @@ A list per tool means one list to keep up per tool, and the lists drift.
 
 - **Machine-only.** A repository's config cannot set `roots`, so a cloned
   repository cannot point a tool at directories on a person's disk.
-- **Relocation.** `OSDLC_REPOSITORIES` moves the file. The package passes it
-  to `machineConfigFile` explicitly, since the default would be
-  `OSDLC_MACHINE_CONFIG`. `OSDLC_ROOT` moves the whole family root.
-- **Writing goes through the package.** It reads and writes with
-  config-layers' `machineConfigFile` (tool `osdlc`, file
-  `repositories.yaml`), which places a file directly in that home and writes
-  with a compare-and-swap. A tool that asks the person where their checkouts
-  are asks through the package, so every tool asks the same question.
+- **Reading and writing go through the package**, with config-layers'
+  `machineConfigFile`: tool `osdlc`, file `repositories.yaml`, the
+  Xdg-pinned `dirs` the standard gives, and `env: 'OSDLC_REPOSITORIES'`
+  passed explicitly, since the default would be `OSDLC_MACHINE_CONFIG`. It
+  writes with a compare-and-swap. A tool that asks the person where their
+  checkouts are asks through the package, so every tool asks the same
+  question.
 - **Adoption.** pr-update reads it first (D-0005). sdlc is published outside
   the `@osdlc` scope and keeps `~/.config/sdlc/`. In a later change it reads
   `repositories.yaml` in place of its machine `repos:` (owner, 2026-11-21).
@@ -94,10 +93,9 @@ A list per tool means one list to keep up per tool, and the lists drift.
   to one bumps them all. Subpath exports keep what each tool imports small.
 - Dependencies: `typed-git`, `config-layers`, `tiered-dirs`, `command-seam`.
 - sdlc's matching code has two homes until sdlc imports it from here.
-- Inside a test runner, an unset `OSDLC_ROOT` already resolves to
-  tiered-dirs' per-process test root. A test that spawns a tool's CLI as a
-  child process does not get that, and reads the person's real
-  `repositories.yaml` unless it sets `OSDLC_ROOT` or injects directories.
+- A test that spawns a tool's CLI must set `OSDLC_ROOT` or inject
+  directories, or the child reads the person's real `repositories.yaml`
+  (the `OSDLC_ROOT` rule in machine-files.md).
 
 ## What would reopen it
 
