@@ -169,10 +169,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   | Kept worktrees of non-root targets | state | `~/.local/state/osdlc/pr-update/kept/<host>/<owner>/<name>/<number>` |
   | File attempts of non-root targets | state | `~/.local/state/osdlc/pr-update/attempts/` |
 
-  Every per-repository path is lower-cased and carries the host. Today's
-  kept-worktree name, `<owner>-<name>-<number>` (`keptName` in
-  `src/update/kept.ts`), changes to match, and `findKept` matches on host as
-  well as repository. Kept worktrees and attempt records are not cache: a person may have work to
+  Every per-repository path of a non-root target is lower-cased and carries
+  the host. For those targets `keptName` and `findKept` (`src/update/kept.ts`)
+  use that layout and match on host as well as repository. No non-root
+  target has a kept worktree today, so nothing needs to move. The project
+  root keeps today's `<owner>-<name>-<number>` name, so worktrees already
+  kept there are still found. Kept worktrees and attempt records are not cache: a person may have work to
   finish in one, and the other is history nothing re-derives. The project root
   keeps today's `<projectRoot>/.pr-update/` for all three.
 - **Machine file.** Read and written with `machineConfigFile`, which gets an
@@ -196,7 +198,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   matches each checkout's `origin`. With no roots it scans the directory that
   holds the project root's main checkout, or the one above it when that
   directory is named after the project root's own owner (an `<owner>/<name>`
-  layout).
+  layout). It never steps to or above the person's home directory.
   Rules:
   - Each match resolves to its main checkout and is counted once. Linked
     worktrees are not separate checkouts.
@@ -305,10 +307,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   without pruning the cache keeps one clone for every repository a run ever
   targeted.
 - **Pruning clones.** A run takes a clone's lock while it uses the clone, and
-  writes the last-used stamp when it takes the lock. A directory with no
-  marker was not made by this tool and is never removed. A temporary
-  directory left by a killed clone is removed only when its clone's lock is
-  free.
+  writes the last-used stamp when it takes the lock. Pruning takes the same
+  lock without waiting, and holds it through the stamp check and the
+  removal. A clone or temporary directory whose lock it cannot take is
+  skipped. A directory with no marker was not made by this tool and is never
+  removed. A temporary directory left by a killed clone is removed.
   - *Automatic.* At the end of a run that used the cache, the run removes
     clones whose stamp is older than `mirror_max_age_days`, and prints each
     one removed and the space freed. A run that never touches the cache never
