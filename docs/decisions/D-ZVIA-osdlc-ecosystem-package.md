@@ -43,13 +43,13 @@ A list per tool means one list to keep up per tool, and the lists drift.
     - ~/dev/repos
   ```
 
-  | Case                                  | Meaning                                                                                                                                                                                                                                                                  |
-  | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-  | An absolute path, or one starting `~` | A root. `~` is expanded                                                                                                                                                                                                                                                  |
-  | A relative path                       | Dropped, with a warning naming the file                                                                                                                                                                                                                                  |
-  | A root that does not exist            | Skipped silently: the file may list another machine's directories                                                                                                                                                                                                        |
-  | `roots: []`                           | Scan nothing                                                                                                                                                                                                                                                             |
-  | No file, or no `roots`                | The directory that holds the caller's main checkout, or the one above it when that directory is named after the owner in the caller's own `origin`, so an `<owner>/<name>` layout resolves to the directory above every owner. Nothing when the caller names no checkout |
+  | Case                                  | Meaning                                                                                                                                                                                                                                                                                                                                                                        |
+  | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | An absolute path, or one starting `~` | A root. `~` is expanded                                                                                                                                                                                                                                                                                                                                                        |
+  | A relative path                       | Dropped, with a warning naming the file                                                                                                                                                                                                                                                                                                                                        |
+  | A root that does not exist            | Skipped silently: the file may list another machine's directories                                                                                                                                                                                                                                                                                                              |
+  | `roots: []`                           | Scan nothing                                                                                                                                                                                                                                                                                                                                                                   |
+  | No file, or no `roots`                | The directory that holds the caller's main checkout, or the one above it when that directory is named after the owner in the caller's own `origin`, so an `<owner>/<name>` layout resolves to the directory above every owner. It never steps to or above the person's home directory: a checkout directly in `$HOME` keeps `$HOME`. Nothing when the caller names no checkout |
 
 - **The package matches checkouts.** `@osdlc/ecosystem/repositories` exports
   the loader and `locateCheckout(owner/name)`. The matching moves here from
@@ -93,9 +93,8 @@ A list per tool means one list to keep up per tool, and the lists drift.
   to one bumps them all. Subpath exports keep what each tool imports small.
 - Dependencies: `typed-git`, `config-layers`, `tiered-dirs`, `command-seam`.
 - sdlc's matching code has two homes until sdlc imports it from here.
-- A test that spawns a tool's CLI sets `OSDLC_ROOT` and clears every
-  file-level relocation variable the tool reads, or the child reads, and may
-  write, the person's real files (the isolation rule in machine-files.md).
+- A test that spawns a tool's CLI follows the isolation rule in
+  machine-files.md, or the child reads, and may write, the person's real files.
 
 ## What would reopen it
 

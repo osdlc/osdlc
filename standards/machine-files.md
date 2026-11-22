@@ -19,13 +19,16 @@ under the `@osdlc` npm scope.
 
 ## Where files go
 
-Every path comes from `@osdlc/tiered-dirs`: `standalone('osdlc')` with
+Every path comes from `@osdlc/tiered-dirs`, through config-layers'
+`systemDirs`: `standalone('osdlc')` with
 `envVars('OSDLC')`, pinned to the Xdg convention with `conventionFromEnv:
 false`, so that one file has one path whichever program reads it and
 `OSDLC_CONVENTION` moves none of them. tiered-dirs resolves under `native`
 by default, so the pin is never left out. No path is built by hand.
 
 ```ts
+import { envVars, systemDirs } from "@osdlc/config-layers";
+
 const dirs = () =>
   systemDirs(
     { vendor: "osdlc", envVars: envVars("OSDLC") },
