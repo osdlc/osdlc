@@ -153,12 +153,12 @@ describe('comment removal grows linearly with the note', () => {
     })),
   })
 
-  /** Cost of one pass over `n` paragraphs, best of several windows of equal total volume. */
+  /** Cost of one pass over `n` paragraphs, best of nine windows of equal total volume. */
   const cost = (n: number, total: number, text: (i: number) => string): number => {
     const run = remarkComments()
     const passes = total / n
     let best = Infinity
-    for (let rep = 0; rep < 5; rep++) {
+    for (let rep = 0; rep < 9; rep++) {
       const trees = Array.from({ length: passes }, () => tree(n, text))
       const start = performance.now()
       for (const t of trees) run(t)
@@ -167,15 +167,19 @@ describe('comment removal grows linearly with the note', () => {
     return best
   }
 
-  // Equal volume per rung: linear holds the ratio near 1, quadratic reads ~10. CI has measured 3.1 on a linear pass.
+  // Equal volume per rung, 80x apart in n: linear holds the ratio near 1 (CI
+  // has read 3-5 on rungs only 10x apart), a quadratic pass reads 10-80
+  // depending on whether its inner loop is a memmove or a scan. The bound of 8
+  // sits clear of both. Not raised further: one window over 80k paragraphs
+  // reads 7-15 on a linear pass, from GC and cache pressure alone.
   test.each([
     ['whole comments in one text node each', () => '%%x%%'],
     ['comments straddling two paragraphs', (i: number) => (i % 2 === 0 ? '%% a' : 'b %%')],
   ])('%s', (_name, text) => {
-    cost(200, 2000, text)
-    const small = cost(500, 5000, text)
-    const large = cost(5000, 5000, text)
-    expect(large).toBeLessThan(small * 5)
+    cost(250, 20_000, text)
+    const small = cost(250, 20_000, text)
+    const large = cost(20_000, 20_000, text)
+    expect(large).toBeLessThan(small * 8)
   })
 })
 

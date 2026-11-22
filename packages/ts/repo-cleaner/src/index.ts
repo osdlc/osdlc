@@ -17,16 +17,38 @@
 export { sweep, inspectWorktree, type Runners, type SweepOptions } from './sweep.ts'
 export {
   PLAN_VERSION,
+  PlanSchema,
+  fingerprint,
   plan,
   readPlan,
+  sameFingerprint,
   writePlan,
   type Plan,
   type PlanRepo,
   type PlanRow,
 } from './plan.ts'
 export { DEFAULT_MAX_FILE_BYTES, type ArchiveOptions, type LeftOut } from './archive.ts'
-export { type Allow, type Approval, type ResolvedApproval, type Resolved } from './approval.ts'
-export { check, run, type CheckOptions, type Preview, type RunOptions } from './clean.ts'
+export { DEFAULT_MAX_DEPTH } from './resolve.ts'
+export {
+  isGlob,
+  type Allow,
+  type Approval,
+  type ResolvedApproval,
+  type Resolved,
+} from './approval.ts'
+export { globRegExp } from './util.ts'
+export {
+  check,
+  removeCandidate,
+  run,
+  type CandidateRemoval,
+  type CheckOptions,
+  type Preview,
+  type RemoveCandidateOptions,
+  type RunOptions,
+} from './clean.ts'
+export { candidatesOf, type CleanCandidate } from './candidates.ts'
+export { writeJsonAtomic } from './write-json.ts'
 export {
   RECEIPT_VERSION,
   ReceiptSchema,
@@ -38,7 +60,12 @@ export {
 } from './receipt.ts'
 export { render, type RunSummary, type Style } from './render.ts'
 export { formatBytes, sizeOf, type SizeOfOptions } from './size.ts'
-export { defaultProcessProbe, type ProcessHolder, type ProcessProbe } from './processes.ts'
+export {
+  busyHolders,
+  defaultProcessProbe,
+  type ProcessHolder,
+  type ProcessProbe,
+} from './processes.ts'
 export { providers, type PrProvider, type ProviderChoice } from './providers/index.ts'
 export type { Annotate } from './hooks.ts'
 export {
