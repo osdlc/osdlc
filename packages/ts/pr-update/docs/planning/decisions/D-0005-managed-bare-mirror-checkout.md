@@ -203,9 +203,10 @@ lost on criterion 1, C on cost and the guard. Details to build:
   so every tool gets it. Until then the file is edited by hand or rewritten by
   the prompt.
 - Move devlink's files and the trust store under `osdlc/pr-update/`, or keep
-  them where they are on purpose. The trust store needs an `app` option in
-  trust-repo, and its markers stay keyed by `pr-update`, never by `osdlc`, so
-  consent given to pr-update covers no other osdlc tool.
+  them where they are on purpose. The trust store first needs to resolve
+  through tiered-dirs, with an `app` option (osdlc/osdlc#1010). Its markers
+  stay keyed by `pr-update`, never by `osdlc`, so consent given to pr-update
+  covers no other osdlc tool.
 - Project config at `<repo>/.osdlc/pr-update.yaml` instead of `pr-update.yaml`
   at the root. No repository commits a `pr-update.yaml` today, so the move would
   break no one, but it is not part of this record.
