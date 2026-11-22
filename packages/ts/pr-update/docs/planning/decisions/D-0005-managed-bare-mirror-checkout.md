@@ -273,16 +273,16 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   `host/owner/name`), else github.com. A Forgejo target with no checkout is
   skipped with a message, as today. Steps:
   1. take the clone's lock (`@osdlc/file-lock`);
-  2. make a temporary directory beside the final one, named
-     `.tmp-<name>.git-<pid>`, and write the tool's marker in it;
-  3. `gh repo clone <host/owner/name> <tmp> --no-upstream -- --bare` into it;
-  4. delete every `refs/heads/*`, set the fetch refspec, fetch with `--prune`;
-  5. in the clone's own config, set `credential.https://<host>.helper` to an
+  2. `gh repo clone <host/owner/name> <tmp> --no-upstream -- --bare`, where
+     `<tmp>` is `.tmp-<name>.git-<pid>` beside the final directory (git
+     needs an empty or missing target, so nothing is written there first);
+  3. delete every `refs/heads/*`, set the fetch refspec, fetch with `--prune`;
+  4. in the clone's own config, set `credential.https://<host>.helper` to an
      empty value and then to `!gh auth git-credential`, the two lines
      `gh auth setup-git` writes, so later fetches and pushes authenticate
      whatever the person's global git config holds;
-  6. set `core.longpaths=true` (Windows paths under the cache are deep);
-  7. write the stamp, then rename into place.
+  5. set `core.longpaths=true` (Windows paths under the cache are deep);
+  6. write the stamp and marker, then rename into place.
 - **Trust.** The trust gate runs for each target before a command its own
   files choose (`verify: detect`, `lockfile_install`). A located checkout is
   keyed by its path, as the project root is. A clone is keyed by
@@ -325,9 +325,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   the lock without waiting and holds it through the stamp check and the
   removal. Under it, pruning first removes worktrees whose run is dead (the
   executor's existing check), then skips a clone that still has any. A clone
-  or temporary directory whose lock it cannot take is skipped. A directory
-  without the tool's marker was not made by this tool and is never removed.
-  A `.tmp-*` directory carries the marker from step 2, so one left by a
+  or temporary directory whose lock it cannot take is skipped. A clone
+  directory without the tool's marker was not made by this tool and is never
+  removed. A `.tmp-*.git-<pid>` directory is recognised by its name instead,
+  inside a mirror directory that carries the tool's marker, so one left by a
   killed clone is removed.
   - *Automatic.* At the end of a run that used the cache, the run removes
     clones whose stamp is older than `mirror_max_age_days`, and prints each
