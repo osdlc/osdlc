@@ -33,8 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `is_note`: whether a name or path ends in `.md`, in any case, the rule the
-  walk and both caches in `markdown-corpus` share.
+- `is_note`: whether a name or path ends in `.md`, in any case; the rule the
+  walk uses to tell a note.
 
 ## [0.7.0] - 2026-11-14
 

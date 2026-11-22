@@ -60,12 +60,19 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
           id,
           kind: row.kind,
           path: row.kind === 'worktree' ? row.path : `${row.repo}:${row.path}`,
+          ...(row.kind === 'worktree' ? {} : { at: row.repo }),
           ...(nameOf(row) === null ? {} : { name: nameOf(row)! }),
           owner: 'git',
           why: row.why,
           evidence: row.fingerprint,
           ...(row.requires === undefined ? {} : { requires: row.requires }),
-          unattended: row.verdict === 'delete',
+          // `clean --auto` takes a clean worktree only; branches are left for a person. The
+          // default run skips what is not `delete`.
+          ...(row.verdict !== 'delete'
+            ? { unattended: false }
+            : row.kind === 'worktree' && row.risks.length === 0
+              ? { unattended: true }
+              : {}),
         }
       })
     },

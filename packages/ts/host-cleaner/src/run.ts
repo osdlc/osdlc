@@ -5,6 +5,8 @@
 
 import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 
+import { coveredBy, containsIgnored } from './ignore.ts'
+import { containedIn } from './roots.ts'
 import {
   writeReceipt,
   PLAN_VERSION,
@@ -31,6 +33,9 @@ export function orderPlugins(plugins: readonly Plugin[]): Plugin[] {
     .map(({ p }) => p)
 }
 
+/** The refusal for a machine-scope candidate that is not inside its owner's roots. */
+export const OUTSIDE_ROOTS = 'outside-roots'
+
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 export interface Survey {
@@ -41,6 +46,14 @@ export interface Survey {
   candidates: Candidate[]
   objections: Objection[]
   warnings: string[]
+}
+
+/** The ignore entry a candidate sits in, or holds (deleting a directory takes what is inside it). */
+function ignoredBy(c: Candidate, ignore: readonly string[]): string | undefined {
+  return (
+    coveredBy(c.at ?? c.path, ignore) ??
+    (c.at === undefined ? containsIgnored(c.path, ignore) : undefined)
+  )
 }
 
 /**
@@ -77,15 +90,16 @@ export function survey(all: readonly Plugin[], ctx: Ctx): Survey {
     }
   }
 
-  const targets = [...ctx.targets]
+  const ignore = ctx.ignore ?? []
+  const targets = ctx.targets.filter((t) => coveredBy(t, ignore) === undefined)
   for (const p of plugins) {
     for (const root of guarded(p, 'scope', [], () => p.scope?.(ctx) ?? [])) {
-      if (!targets.includes(root)) targets.push(root)
+      if (!targets.includes(root) && coveredBy(root, ignore) === undefined) targets.push(root)
     }
   }
   const scoped: Ctx = { ...ctx, targets }
 
-  const candidates: Candidate[] = []
+  const discovered: Candidate[] = []
   const first = new Map<string, string>()
   for (const p of plugins) {
     for (const c of guarded(p, 'discover', [], () => p.discover?.(scoped) ?? [])) {
@@ -95,13 +109,42 @@ export function survey(all: readonly Plugin[], ctx: Ctx): Survey {
         warnings.push(`duplicate ${c.id}: kept ${first.get(c.id)}'s, dropped ${p.name}'s`)
       } else {
         first.set(c.id, p.name)
-        candidates.push(c)
+        discovered.push(c)
       }
     }
   }
+  const left = new Map<string, number>()
+  const candidates = discovered.filter((c) => {
+    const dir = ignoredBy(c, ignore)
+    if (dir !== undefined) left.set(dir, (left.get(dir) ?? 0) + 1)
+    return dir === undefined
+  })
+  for (const [dir, n] of left) warnings.push(`ignore ${dir}: left out ${n} candidate(s)`)
 
   const known = new Set(candidates.map((c) => c.id))
   const objections: Objection[] = []
+  // Asked once per plugin, so a throwing `roots` warns once.
+  const rootsOf = new Map<string, readonly string[]>()
+  for (const p of plugins) {
+    if (p.roots === undefined) continue
+    rootsOf.set(
+      p.name,
+      guarded(p, 'roots', [], () => p.roots!(scoped)),
+    )
+  }
+  for (const c of candidates) {
+    const roots = rootsOf.get(c.owner)
+    if (roots === undefined) continue
+    if (containedIn(roots, c.path) === null) {
+      objections.push({
+        by: 'host-cleaner',
+        candidate: c.id,
+        level: 'refuse',
+        code: OUTSIDE_ROOTS,
+        reason: `${c.path} is not inside ${c.owner}'s roots (${roots.join(', ') || 'none'})`,
+      })
+    }
+  }
   for (const p of plugins) {
     if (p.object === undefined) continue
     try {
@@ -180,6 +223,7 @@ export function plan(
   s: Pick<Survey, 'candidates' | 'objections' | 'warnings'>,
   opts: {
     targets?: readonly string[] | undefined
+    ignore?: readonly string[] | undefined
     select?: readonly string[] | null | undefined
     pick?: readonly string[] | undefined
     spare?: readonly string[] | undefined
@@ -201,6 +245,7 @@ export function plan(
     pick: [...selection.pick],
     spare: [...selection.spare],
     allow: [...(opts.allow ?? [])],
+    ignore: [...(opts.ignore ?? [])],
     warnings: s.warnings,
     // A copy, so a plugin that mutates and returns the same objects on re-discovery cannot change the plan.
     candidates: structuredClone(s.candidates),
@@ -342,8 +387,15 @@ export function recheck(
   plugins: readonly Plugin[],
   ctx: Ctx,
 ): { decision: Decision; survey: Survey } {
-  const planned = decidePlan(p)
-  const fresh = survey(plugins, { ...ctx, allow: p.allow })
+  const decided = decidePlan(p)
+  const ignore = [...new Set([...(ctx.ignore ?? []), ...p.ignore])]
+  const fresh = survey(plugins, { ...ctx, ignore, allow: p.allow })
+  const planned: Decision = { ...decided, run: [], dropped: [...decided.dropped] }
+  for (const c of decided.run) {
+    const dir = ignoredBy(c, ignore)
+    if (dir === undefined) planned.run.push(c)
+    else planned.dropped.push({ id: c.id, reason: 'ignored', detail: `inside ignored ${dir}` })
+  }
   const now = decide(
     fresh.candidates,
     fresh.objections,
@@ -498,6 +550,14 @@ function runOne(c: Candidate, step: Step, s: Survey, owner: Plugin | undefined):
   }
   if (owner?.delete === undefined) {
     return fail(`${c.owner} cannot delete`)
+  }
+  try {
+    const roots = owner.roots?.(s.ctx)
+    if (roots !== undefined && containedIn(roots, c.path) === null) {
+      return fail(`${c.path} is not inside ${c.owner}'s roots`)
+    }
+  } catch (err) {
+    return fail(err, `${c.owner}: roots failed: `)
   }
   try {
     step.delete = owner.delete(c, s.ctx)

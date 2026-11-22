@@ -12,6 +12,8 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
+import { busyHolders } from '@osdlc/repo-cleaner'
+
 import {
   artifactPlugin,
   artifactRow,
@@ -30,8 +32,6 @@ import {
 import type { Plugin } from './types.ts'
 
 export const CARGO_PLUGIN = 'cargo'
-
-const BUILDERS = /^(cargo|rustc)$/
 
 /** Whether `cargo` runs on this machine. */
 function cargoOnPath(env: Env): boolean {
@@ -95,7 +95,7 @@ function rowsOrThrow(env: Env, checkout: Checkout): Row[] {
   if (safeTarget === null) return [refusedRow(CARGO_PLUGIN, 'cargo-target', target, checkout.path)]
   if (!existsSync(join(safeTarget, 'CACHEDIR.TAG'))) return []
 
-  const held = holdersIn(env, checkout.path, (all) => all.filter((h) => BUILDERS.test(h.command)))
+  const held = holdersIn(env, checkout.path, busyHolders)
   const now = env.now()
   const profiles = profileDirs(safeTarget)
   const prints = profiles.flatMap((p) => {

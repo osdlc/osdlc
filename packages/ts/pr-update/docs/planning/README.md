@@ -25,6 +25,8 @@ They are never reused.
   whole stack in one run, opt-in
 - [D-0003](decisions/D-0003-survey-and-update-on-the-command-model.md): survey
   and update run on cli-tool's command model
+- [D-0005](decisions/D-0005-managed-bare-mirror-checkout.md): run without a
+  local checkout from a managed bare clone (proposed)
 
 ## Backlog
 
