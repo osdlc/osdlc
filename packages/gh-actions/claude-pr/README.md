@@ -34,9 +34,9 @@ reaches the scripts only through environment variables and is passed to the
 agent as text, never evaluated.
 
 ```
-@claude /craft:simplify
-@claude /craft:simplify src/ --apply
-@claude /craft:simplify focus on the tests
+@claude /craft:comment-review
+@claude /craft:comment-review src/ --apply
+@claude /craft:comment-review focus on the tests
 please keep behaviour identical
 ```
 
@@ -51,7 +51,7 @@ please keep behaviour identical
   output, the diffstat and commit sha, or why nothing was pushed. If the agent
   changed nothing, the agent job posts its output and says so. On a failed agent
   run the agent job posts the failure.
-- **Invocation.** The comment's first line becomes the prompt, `/craft:simplify <args>`, which `claude -p` runs as a slash command. The "How you were called" block (below) goes in `--append-system-prompt`, because claude would pass every later prompt line to the skill as its arguments.
+- **Invocation.** The comment's first line becomes the prompt, `/craft:comment-review <args>`, which `claude -p` runs as a slash command. The "How you were called" block (below) goes in `--append-system-prompt`, because claude would pass every later prompt line to the skill as its arguments.
 - **How you were called.** One block, the same words for every harness: the
   harness, repo, PR number and title, base and head sha, headless (no human to
   ask), the exact skill and args, the rest of the comment as fenced data, read-only or

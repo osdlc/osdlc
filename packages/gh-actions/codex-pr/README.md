@@ -42,9 +42,9 @@ reaches the scripts only through environment variables and is passed to the
 agent as text, never evaluated.
 
 ```
-@codex /craft:simplify
-@codex /craft:simplify src/ --apply
-@codex /craft:simplify focus on the tests
+@codex /craft:comment-review
+@codex /craft:comment-review src/ --apply
+@codex /craft:comment-review focus on the tests
 please keep behaviour identical
 ```
 
@@ -59,7 +59,7 @@ please keep behaviour identical
   output, the diffstat and commit sha, or why nothing was pushed. If the agent
   changed nothing, the agent job posts its output and says so. On a failed agent
   run the agent job posts the failure.
-- **Invocation.** The prompt is `$craft:simplify <args>` (codex's plugin-skill syntax, as review mode's `$craft:code-review`). The "How you were called" block goes in codex's `developer_instructions` config key (`-c developer_instructions=...`).
+- **Invocation.** The prompt is `$craft:comment-review <args>` (codex's plugin-skill syntax, as review mode's `$craft:code-review`). The "How you were called" block goes in codex's `developer_instructions` config key (`-c developer_instructions=...`).
 - **How you were called.** One block, the same words for every harness: the
   harness, repo, PR number and title, base and head sha, headless (no human to
   ask), the exact skill and args, the rest of the comment as fenced data, read-only or
