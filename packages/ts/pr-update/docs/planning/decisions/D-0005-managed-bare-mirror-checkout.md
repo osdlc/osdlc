@@ -223,8 +223,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     inside the checkout but git's own worktree records.
 - **Who clones.** Only `update --apply`, with `checkout: mirror` or a consent
   below. `survey` and a rehearsal fetch a clone that exists and otherwise
-  report the target as not measured, naming `pr-update mirror enable`. So
-  `survey` still writes nothing but the fetch.
+  report the target as not measured, naming `pr-update mirror enable`. They
+  take the clone's lock for the fetch but write no stamp and prune nothing.
+  So `survey` still writes nothing but the fetch.
 - **Consent.** Any one of these is consent to clone for the run: `--mirror-dir
   <dir>`, `PR_UPDATE_MIRROR_DIR`, or `checkout: mirror`. `--mirror-dir` and
   the variable win over `checkout: local` for that run. `OSDLC_ROOT` and the
@@ -273,16 +274,18 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   `host/owner/name`), else github.com. A Forgejo target with no checkout is
   skipped with a message, as today. Steps:
   1. take the clone's lock (`@osdlc/file-lock`);
-  2. `gh repo clone <host/owner/name> <tmp> --no-upstream -- --bare`, where
+  2. write the tool's marker at the root of the mirror directory if it is not
+     there yet, whichever location the directory came from;
+  3. `gh repo clone <host/owner/name> <tmp> --no-upstream -- --bare`, where
      `<tmp>` is `.tmp-<name>.git-<pid>` beside the final directory (git
      needs an empty or missing target, so nothing is written there first);
-  3. delete every `refs/heads/*`, set the fetch refspec, fetch with `--prune`;
-  4. in the clone's own config, set `credential.https://<host>.helper` to an
+  4. delete every `refs/heads/*`, set the fetch refspec, fetch with `--prune`;
+  5. in the clone's own config, set `credential.https://<host>.helper` to an
      empty value and then to `!gh auth git-credential`, the two lines
      `gh auth setup-git` writes, so later fetches and pushes authenticate
      whatever the person's global git config holds;
-  5. set `core.longpaths=true` (Windows paths under the cache are deep);
-  6. write the stamp and marker, then rename into place.
+  6. set `core.longpaths=true` (Windows paths under the cache are deep);
+  7. write the clone's stamp and marker, then rename into place.
 - **Trust.** The trust gate runs for each target before a command its own
   files choose (`verify: detect`, `lockfile_install`). A located checkout is
   keyed by its path, as the project root is. A clone is keyed by
@@ -317,20 +320,21 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   Neither macOS nor common Linux setups clear `~/.cache` on their own, so
   without pruning the cache keeps one clone for every repository a run ever
   targeted.
-- **Pruning clones.** A run holds a clone's lock only while it clones,
-  fetches, or adds or removes a worktree, and writes the last-used stamp when
-  it takes the lock. It waits up to 60 seconds for the lock, then skips the
-  target with reason `mirror busy`. Between those steps the clone is in use
-  through the run's worktree, which git records in the clone. Pruning takes
+- **Pruning clones.** An `update --apply` holds a clone's lock from its clone
+  or fetch through its `git worktree add`, as one step, and again for
+  `worktree remove`. It writes the last-used stamp when it first takes the
+  lock. It waits up to 60 seconds for the lock, then skips the target with
+  reason `mirror busy`. Between those steps the clone is in use through the
+  run's worktree, which git records in the clone. Pruning takes
   the lock without waiting and holds it through the stamp check and the
   removal. Under it, pruning first removes worktrees whose run is dead (the
   executor's existing check), then skips a clone that still has any. A clone
   or temporary directory whose lock it cannot take is skipped. A clone
   directory without the tool's marker was not made by this tool and is never
   removed. A `.tmp-*.git-<pid>` directory is recognised by its name instead,
-  inside a mirror directory that carries the tool's marker, so one left by a
-  killed clone is removed.
-  - *Automatic.* At the end of a run that used the cache, the run removes
+  inside a mirror directory that carries the tool's marker (clone step 2), so
+  one left by a killed clone is removed.
+  - *Automatic.* At the end of an `update --apply` that used the cache, the run removes
     clones whose stamp is older than `mirror_max_age_days`, and prints each
     one removed and the space freed. A run that never touches the cache never
     removes anything.
