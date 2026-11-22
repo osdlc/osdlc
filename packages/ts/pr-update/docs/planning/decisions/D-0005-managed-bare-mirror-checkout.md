@@ -166,10 +166,13 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   | Machine file | config | `~/.config/osdlc/pr-update/config.yaml` |
   | Clones | cache | `~/.cache/osdlc/pr-update/repos/<host>/<owner>/<name>.git` |
   | Run worktrees of non-root targets | cache | `~/.cache/osdlc/pr-update/worktrees/<host>/<owner>/<name>/<run>` |
-  | Kept worktrees of non-root targets | state | `~/.local/state/osdlc/pr-update/kept/` |
+  | Kept worktrees of non-root targets | state | `~/.local/state/osdlc/pr-update/kept/<host>/<owner>/<name>/<number>` |
   | File attempts of non-root targets | state | `~/.local/state/osdlc/pr-update/attempts/` |
 
-  Kept worktrees and attempt records are not cache: a person may have work to
+  Every per-repository path is lower-cased and carries the host. Today's
+  kept-worktree name, `<owner>-<name>-<number>` (`keptName` in
+  `src/update/kept.ts`), changes to match, and `findKept` matches on host as
+  well as repository. Kept worktrees and attempt records are not cache: a person may have work to
   finish in one, and the other is history nothing re-derives. The project root
   keeps today's `<projectRoot>/.pr-update/` for all three.
 - **Machine file.** Read and written with `machineConfigFile`, which gets an
@@ -192,7 +195,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   `@osdlc/ecosystem` (D-ZVIA). It reads `roots` from `repositories.yaml` and
   matches each checkout's `origin`. With no roots it scans the directory that
   holds the project root's main checkout, or the one above it when that
-  directory is named after the target's owner (an `<owner>/<name>` layout).
+  directory is named after the project root's own owner (an `<owner>/<name>`
+  layout).
   Rules:
   - Each match resolves to its main checkout and is counted once. Linked
     worktrees are not separate checkouts.
@@ -223,8 +227,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   One `<host>/<owner>/<name>.git` each, lower-cased. The host keeps an
   Enterprise `acme/api` apart from github.com's, and separate segments keep
   `a-b/c` apart from `a/b-c`.
-- **First use asks.** The prompt runs in `update --apply` when a target has no
-  checkout and nothing above gives or refuses consent. It names the
+- **First use asks.** The prompt runs in `update --apply` when a GitHub
+  target has no checkout and nothing above gives or refuses consent. A target
+  the clone cannot serve (below) never prompts. It names the
   repositories, the roots it searched and `repositories.yaml`, the clone
   directory, the expected size (`gh repo view --json diskUsage`), and that
   working trees are never touched. Answers:
@@ -237,8 +242,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 
   The run prints the machine file's path. A write that loses a race to
   another run's prompt re-reads the file and uses the answer it finds.
-- **No terminal.** When `canPrompt()` is false and nothing gives or refuses
-  consent, `update --apply` exits 2 and names `--mirror-dir`,
+- **No terminal.** When `canPrompt()` is false, a GitHub target has no
+  checkout, and nothing gives or refuses consent, `update --apply` exits 2 and names `--mirror-dir`,
   `PR_UPDATE_MIRROR_DIR` and `pr-update mirror enable`. This changes one case:
   an unattended `--apply` whose `--repo` has no checkout now fails instead of
   skipping it. `checkout: local` restores the skip. The nightly
@@ -316,8 +321,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     kept worktree, even with `--all`. `mirror prune --discard-kept` removes
     the kept worktrees first.
   - Removing a clone leaves its repository's attempt records in the state
-    home. They are history, not cache, and a located checkout of the same
-    repository may use them.
+    home. They are history, not cache, and later runs that reach the
+    repository from outside it, located or cloned, read them.
 
 ## Consequences
 
@@ -337,6 +342,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   whose local checkout holds commits that were never pushed. The README states
   this next to the mode, and the run's notice names the searched roots so a
   missed one is visible.
+- **`file` attempt records are per entry point.** A run started inside a
+  repository reads and writes `<projectRoot>/.pr-update/attempts`. A run that
+  reaches the same repository with `--repo` reads and writes the state store.
+  Neither sees the other's records, so a PR skipped from one may be retried
+  from the other. This keeps criterion 5. `git-ref` shares records across
+  both, and across machines (B-0003).
 - pr-update keeps state under two roots for a while: everything above under
   `osdlc/pr-update/`, and devlink's files and the trust store
   (`$XDG_STATE_HOME/pr-update/trusted/`) under `pr-update/`. Each category lives
