@@ -1,5 +1,26 @@
 # @osdlc/agent-seat
 
+## 0.10.2
+
+### Patch Changes
+
+- 8d79790: Export `tmuxRunSessionName`, the name of the tmux session a waiting run opens, so a caller can tell a person which session to attach to.
+- Updated dependencies [3f84b08]
+  - @osdlc/typed-git@0.21.0
+
+## 0.10.1
+
+### Patch Changes
+
+- Updated dependencies [1ba6088]
+  - @osdlc/typed-git@0.20.0
+
+## 0.10.0
+
+### Minor Changes
+
+- 7165bf2: `harnessArgv`, `harnessAvailable` and `SessionRequest.binary` accept a launcher prefix such as `['npx', '-y', 'claude']` as well as one binary word; the prefix leads the argv and the session flags follow it. The pure per-host argv builders (`orcaCreateArgv`, `cmuxCreateArgv`, `ottyCreateArgv`, `herdrWorkspaceCreateArgv`, `weztermSpawnArgv`, `tmuxCreateArgv` and their send, focus, close, list and read companions) are now exported from the package entry.
+
 ## 0.9.0
 
 ### Minor Changes

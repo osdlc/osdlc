@@ -91,23 +91,36 @@ export { hasInteractiveArgv }
 
 /**
  * The argv that opens `harness`, run as `binary` (a name on PATH or an
- * absolute path), interactively with `prompt` as its first message: a thin
- * form of `interactiveArgv` (`@osdlc/agent-call`), which owns each CLI's
- * command line. Throws for a tool with no interactive launch, or a `choice` it
- * has no model or effort flags for.
+ * absolute path, or a launcher prefix such as `['npx', '-y', 'claude']`
+ * whose words lead the argv), interactively with `prompt` as its first
+ * message: a thin form of `interactiveArgv` (`@osdlc/agent-call`), which owns
+ * each CLI's command line. Throws for a tool with no interactive launch, or a
+ * `choice` it has no model or effort flags for.
  *
  * `injected` is the argv a per-launch observation adds (pi's
  * `--session-id` and `-e <extension>`); it sits before the prompt.
  */
 export function harnessArgv(
   harness: Harness,
-  binary: string,
+  binary: string | readonly string[],
   prompt: string,
   claude: ClaudeLaunchFlags = {},
   choice: ModelChoice = {},
   injected: readonly string[] = [],
 ): string[] {
-  return interactiveArgv(harness, { binary, prompt, claude, choice, injected })
+  const bin = typeof binary === 'string' ? [binary] : binary
+  if (bin.length === 0 || bin.some((w) => w === '')) {
+    throw new Error('harnessArgv needs a binary: a non-empty word, or a list of non-empty words')
+  }
+  // agent-call takes one binary word; the launcher's remaining words follow it.
+  const [first, ...rest] = interactiveArgv(harness, {
+    binary: bin[0]!,
+    prompt,
+    claude,
+    choice,
+    injected,
+  })
+  return [first!, ...bin.slice(1), ...rest]
 }
 
 /** Session flags only `claude` takes; a caller can store them to resume with the same flags. */
@@ -136,12 +149,14 @@ export type { ClaudeLaunchFlags, ClaudeSessionFlags }
 export { CLAUDE_HOOK_EVENTS, claudeHookSettings, claudeResumeArgv, claudeSessionArgv }
 
 /**
- * Whether `harness`'s CLI, `binary` (a name on PATH or an absolute path), is
- * on PATH. A synchronous lookup that spawns nothing. Only a PATH hit counts: an
- * installed app bundle (Cursor.app) gives a session nothing to run.
+ * Whether the first word of `binary` (a name on PATH, an absolute path, or a
+ * launcher prefix) is on PATH: a synchronous lookup that spawns nothing. Only a
+ * PATH hit counts: an installed app bundle (Cursor.app) gives a session nothing
+ * to run.
  */
-export function harnessAvailable(_harness: Harness, binary: string): boolean {
-  return which(binary) !== null
+export function harnessAvailable(_harness: Harness, binary: string | readonly string[]): boolean {
+  const first = typeof binary === 'string' ? binary : binary[0]
+  return first !== undefined && which(first) !== null
 }
 
 /** {@link SendReceipt}'s shape, reused here under its own name: both answer "did the message get in", one via a host, one via the harness's own process/daemon directly. */

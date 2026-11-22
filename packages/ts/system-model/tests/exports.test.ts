@@ -42,6 +42,7 @@ const ENTRIES = [
     'groups',
     'schema',
     'graph',
+    'build',
     'aspect',
     'client',
     'saved-view',

@@ -11,7 +11,7 @@ import { mkdirSync, rmSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
-import { EXIT, failWith, failureOf, type CliContext } from '@osdlc/cli-tool'
+import { EXIT, canPrompt, failWith, failureOf, type CliContext } from '@osdlc/cli-tool'
 import {
   CommandError,
   UsageError,
@@ -28,7 +28,13 @@ import { selectedCodeHostFor } from './code-host.ts'
 import { loadConfigLayers } from './config-file.ts'
 import { standalonePorts } from './defaults.ts'
 import { gitMissingFailure, preflight, type WhichSeam } from './preflight.ts'
-import { REPAIR_AGENTS, REPAIR_AGENT_SUMMARIES, type RepairAgent } from './repair/names.ts'
+import {
+  REPAIR_AGENTS,
+  REPAIR_AGENT_SUMMARIES,
+  REPAIR_MODES,
+  type RepairAgent,
+  type RepairMode,
+} from './repair/names.ts'
 import {
   SurveyUsageError,
   output as surveyOutputSchema,
@@ -180,10 +186,11 @@ function runEnv(
   ctx: CliContext,
   layers: ReturnType<typeof loadConfigLayers>,
   seams: CliSeams,
-  repairFlags: { agent: RepairAgent | null; command: string | null } = {
-    agent: null,
-    command: null,
-  },
+  repairFlags: {
+    agent: RepairAgent | null
+    command: string | null
+    mode: RepairMode | null
+  } = { agent: null, command: null, mode: null },
   remote = 'origin',
   notice: (line: string) => void = () => {},
 ): UpdateEnv {
@@ -191,10 +198,16 @@ function runEnv(
   const gh = seams.gh ?? spawnRunner('gh', { absolutePathOnly: true })
   const projectRoot = ctx.cwd
   const loaded = layers.merged.pr_update
-  const cfg =
-    repairFlags.agent === null && repairFlags.command === null
-      ? loaded
-      : { ...loaded, repair: { ...loaded.repair, ...repairFlags } }
+  const cfg = {
+    ...loaded,
+    repair: {
+      ...loaded.repair,
+      ...(repairFlags.agent === null && repairFlags.command === null
+        ? {}
+        : { agent: repairFlags.agent, command: repairFlags.command }),
+      ...(repairFlags.mode === null ? {} : { mode: repairFlags.mode }),
+    },
+  }
   return {
     projectRoot,
     dryRun: false,
@@ -389,7 +402,17 @@ export function updateCommand(seams: CliSeams) {
       },
       retryFailed: {
         kind: 'boolean',
-        help: 'Attempt PRs whose update already failed at their current head and base.',
+        help: 'Attempt PRs whose update already failed at their current head and base. Discards a kept worktree of such a PR first.',
+      },
+      keepFailed: {
+        kind: 'tristate',
+        offHelp:
+          'Do not keep failed worktrees this run, overriding a configured pr_update.keep_failed: true.',
+        help: "Move the worktree of a PR that ended conflict or failed to .pr-update/failed/<owner>-<name>-<number>/, on a branch named for the PR, with a failed verify's log in it, for a person to finish and push. The run goes on in a fresh worktree. Needs --apply.",
+      },
+      discardKept: {
+        kind: 'boolean',
+        help: 'Remove every kept worktree before the run. Needs --apply.',
       },
       repairAgent: {
         kind: 'enum',
@@ -401,6 +424,12 @@ export function updateCommand(seams: CliSeams) {
         kind: 'string',
         valueName: 'cmd',
         help: 'Repair a conflict no resolver claims by running this shell command in the update worktree (request as JSON on stdin). Beats repair.agent and repair.command in config; not with --repair-agent.',
+      },
+      repairMode: {
+        kind: 'enum',
+        choices: REPAIR_MODES,
+        valueName: 'mode',
+        help: "How the repair agent runs. headless (default) is unattended; interactive runs the agent's own CLI in this terminal (needs a terminal); terminal opens it in a detached tmux session and waits. Beats repair.mode in config. Needs a repair agent.",
       },
       strategy: {
         kind: 'enum',
@@ -424,6 +453,7 @@ export function updateCommand(seams: CliSeams) {
       'update --apply --strategy rebase',
       'update --branch --apply',
       'update --pr 12 --apply --report out.json',
+      'update --apply --keep-failed',
     ],
     output: updateOutputSchema,
     kind: 'update',
@@ -437,6 +467,7 @@ export function updateCommand(seams: CliSeams) {
       flags.trust === true ||
       flags.repairAgent !== undefined ||
       flags.repairCommand !== undefined ||
+      flags.repairMode !== undefined ||
       flags.report !== undefined
         ? 'cli-only'
         : 'all',
@@ -457,12 +488,19 @@ export function updateCommand(seams: CliSeams) {
       if (flags.repairAgent !== undefined && flags.repairCommand !== undefined) {
         throw new UsageError('--repair-agent and --repair-command are mutually exclusive')
       }
-      // A repair chosen on the command line is the person's own consent. It
-      // replaces whatever the project file names, which then never runs.
-      const repairFlag = flags.repairAgent !== undefined || flags.repairCommand !== undefined
+      // A repair chosen on the command line is the person's own consent. Either of
+      // --repair-agent and --repair-command replaces both of the project file's choices,
+      // which then never run; --repair-mode consents to the mode alone.
+      const consented: ('command' | 'agent' | 'mode')[] = [
+        ...(flags.repairAgent !== undefined || flags.repairCommand !== undefined
+          ? (['command', 'agent'] as const)
+          : []),
+        ...(flags.repairMode !== undefined ? (['mode'] as const) : []),
+      ]
       const refusal = await untrustedMessage({
         root: ctx.cwd,
-        project: repairFlag ? withoutRepairChoice(layers.project) : layers.project,
+        project:
+          consented.length > 0 ? withoutRepairChoice(layers.project, consented) : layers.project,
         local: layers.local,
         trust: flags.trust,
         env: ctx.env,
@@ -471,6 +509,28 @@ export function updateCommand(seams: CliSeams) {
         throw new CommandError(refusal, { exit: EXIT_UNTRUSTED, code: 'untrusted' })
       }
       checkStart(ctx, layers, seams, flags)
+      const repairCfg = layers.merged.pr_update.repair
+      // A repair command is headless; the configured mode applies to the agent it replaced.
+      const mode =
+        flags.repairMode ?? (flags.repairCommand === undefined ? repairCfg.mode : 'headless')
+      const agent =
+        flags.repairAgent ?? (flags.repairCommand === undefined ? repairCfg.agent : null)
+      const command =
+        flags.repairCommand ?? (flags.repairAgent === undefined ? repairCfg.command : null)
+      if (command !== null && mode !== 'headless') {
+        throw new UsageError(
+          `repair mode ${mode} runs an agent; it cannot be used with a repair command`,
+        )
+      }
+      // The agent shares stdout, which `--json` and a pipe own.
+      if (
+        flags.apply &&
+        agent !== null &&
+        mode === 'interactive' &&
+        (!canPrompt() || process.stdout.isTTY !== true)
+      ) {
+        throw new UsageError('repair mode interactive needs a terminal on stdin, stdout and stderr')
+      }
       const env: UpdateEnv = runEnv(
         ctx,
         layers,
@@ -478,6 +538,7 @@ export function updateCommand(seams: CliSeams) {
         {
           agent: flags.repairAgent ?? null,
           command: flags.repairCommand ?? null,
+          mode: flags.repairMode ?? (flags.repairCommand === undefined ? null : 'headless'),
         },
         flags.remote,
         (line) => ctx.note(line),
@@ -499,6 +560,8 @@ export function updateCommand(seams: CliSeams) {
             trust: flags.trust,
             retryFailed: flags.retryFailed,
             ...(flags.restack !== undefined ? { restack: flags.restack } : {}),
+            ...(flags.keepFailed !== undefined ? { keepFailed: flags.keepFailed } : {}),
+            ...(flags.discardKept ? { discardKept: true } : {}),
             ...(flags.strategy !== undefined ? { strategy: flags.strategy } : {}),
           },
           env,

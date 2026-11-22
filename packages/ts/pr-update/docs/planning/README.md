@@ -27,6 +27,8 @@ They are never reused.
   and update run on cli-tool's command model
 - [D-0004](decisions/D-0004-update-repositories-in-parallel-with-jobs.md): update
   repositories in parallel with `--jobs`, one child process per repository
+- [D-0005](decisions/D-0005-managed-bare-mirror-checkout.md): run without a
+  local checkout from a managed bare clone (proposed)
 
 ## Backlog
 

@@ -1,5 +1,12 @@
 # @osdlc/config-layers
 
+## 0.11.1
+
+### Patch Changes
+
+- Updated dependencies [0e47e68]
+  - @osdlc/yaml-splice@0.4.0
+
 ## 0.11.0
 
 ### Minor Changes

@@ -120,13 +120,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   file but no revision is an error.
 - `diff_text` returns the diff untrimmed. It passes `--no-color`,
   `--no-ext-diff`, `--no-textconv`, `--src-prefix=a/`, `--dst-prefix=b/`,
-  `--no-relative`, `--submodule=short` and `--unified=3`, so the text is a
-  plain unified diff with `a/` and `b/` prefixes and three lines of context
-  under the user's colour, external diff, textconv, prefix, `diff.relative`,
+  `--no-relative`, `--submodule=short` and `--unified=3` (`context(n)` sets
+  `--unified=<n>`), so the text is a plain unified diff with `a/` and `b/`
+  prefixes and three lines of context by default, under the user's colour, external diff, textconv, prefix, `diff.relative`,
   `diff.submodule` and `diff.context` settings. Other settings still apply:
-  rename detection (`diff.renames`), `diff.ignoreSubmodules` and
-  `diff.algorithm`. The `GIT_DIFF_OPTS` environment variable also still
-  applies: `-u0` there overrides the three lines of context.
+  rename detection (`diff.renames`, unless `find_renames()` pins `-M` on),
+  `diff.ignoreSubmodules` and `diff.algorithm`. The `GIT_DIFF_OPTS` environment variable also still
+  applies: `-u0` there overrides the lines of context.
 - `diff_name_status` passes `--no-relative`, so its paths are relative to the
   repository root and cover the whole repository. It passes `--no-color` as a
   guard: git does not colour that output. An unmerged path can be two rows in

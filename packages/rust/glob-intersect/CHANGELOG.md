@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (`packages/ts/intersect/fixtures/`), so the pinned copy, `PIN.json` and
   `tests/pin.rs` are gone. This adds the corpus's three dot-file cases for the
   `fs` layer.
+- `Matcher::matches`, `matches`, `which_match`, `Registry::matching` and the
+  `fs` layer's filtering run each compiled pattern over the path's segments
+  directly. They no longer quote the path into a pattern and search the
+  product of two automata built again on every call. A path now takes
+  microseconds rather than about a millisecond for each pattern, in time
+  linear in the path's length, with no backtracking on `**` or `*`. The
+  answers and the refusals are unchanged.
+- `Matcher` compiles each pattern once. `intersects`, `overlapping` and
+  `witness` build each pattern's automaton once for each call, not once for
+  each pair of patterns.
 
 ## [0.3.0] - 2026-10-20
 
