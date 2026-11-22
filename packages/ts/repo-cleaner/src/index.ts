@@ -28,6 +28,7 @@ export {
   type PlanRow,
 } from './plan.ts'
 export { DEFAULT_MAX_FILE_BYTES, type ArchiveOptions, type LeftOut } from './archive.ts'
+export { DEFAULT_MAX_DEPTH } from './resolve.ts'
 export {
   isGlob,
   type Allow,
