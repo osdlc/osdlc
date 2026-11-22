@@ -71,7 +71,6 @@ export interface SessionEvidence {
   /** host-cleaner runs inside this session, so closing it would end the run. */
   ownSession: boolean
   worktree: string | null
-  unattended: false
 }
 
 /** A path with symlinks resolved, so differently spelled paths to one place compare equal; the path itself when it does not resolve. */
@@ -189,7 +188,7 @@ function lastWriteMs(projects: string, cwd: string | null, resumeId: string | nu
 
 /**
  * Lists each running Claude Code session as a `session:<pid>` candidate
- * carrying a `close-session` protest; none is `unattended`. A session
+ * carrying a `close-session` protest and held for review. A session
  * host-cleaner runs inside is refused.
  *
  * `delete` checks the pid still has the planned start time and command, sends
@@ -284,7 +283,6 @@ export function claudeCodePlugin(options: ClaudeOptions = {}): Plugin {
         orphan,
         ownSession: own.has(p.pid),
         worktree,
-        unattended: false,
       }
       const facts = [
         cwd === null ? 'working directory unreadable' : `in ${cwd}`,
@@ -299,7 +297,7 @@ export function claudeCodePlugin(options: ClaudeOptions = {}): Plugin {
         path: cwd ?? `pid ${p.pid}`,
         owner: CLAUDE_PLUGIN,
         why: `Claude Code session started ${p.startedAt}, ${facts.join('; ')}`,
-        unattended: false,
+        held: true,
         evidence: evidence as unknown as Record<string, unknown>,
       }
     })

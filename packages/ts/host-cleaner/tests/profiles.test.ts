@@ -119,7 +119,7 @@ describe('--profile', () => {
     }
   })
 
-  test('status and clean --auto take the profile: its ignore and disabled plugins apply', () => {
+  test('status and clean take the profile: its ignore and disabled plugins apply', () => {
     const c = configFile({
       profiles: { deep: { ignore: ['/skip'], plugins: { off: { enabled: false } } } },
     })
@@ -130,7 +130,6 @@ describe('--profile', () => {
       owner,
       why: 'idle',
       evidence: {},
-      unattended: true,
     })
     const plugins: Plugin[] = [
       {
@@ -153,7 +152,12 @@ describe('--profile', () => {
     expect(withProfile.out).not.toContain('a:1')
     expect(withProfile.out).toContain('a:2')
     expect(withProfile.out).not.toContain('b:1')
-    const auto = run(['clean', '--auto', '--config', c.file, '--profile', 'deep'], c, plugins)
-    expect(auto.err).not.toContain('no profile')
+    const clean = run(
+      ['clean', '--dry-run', '--format', 'json', '--config', c.file, '--profile', 'deep'],
+      c,
+      plugins,
+    )
+    expect(clean.code).toBe(0)
+    expect(JSON.parse(clean.out).run).toEqual(['a:2'])
   })
 })
