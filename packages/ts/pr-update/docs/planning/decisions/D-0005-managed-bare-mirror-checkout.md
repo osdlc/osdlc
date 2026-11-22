@@ -3,9 +3,9 @@ type: decision
 schema_version: '2'
 id: D-0005
 title: Run without a local checkout from a managed bare clone
-state: open/proposed
+state: open/accepted
 created: '2026-11-19'
-last_reviewed: '2026-11-21'
+last_reviewed: '2026-11-22'
 tags:
   - pr-update
   - checkout
@@ -15,14 +15,14 @@ tags:
 
 ## Summary
 
-Proposed: a standalone run keeps one bare clone per repository under a cache
+Accepted: a standalone run keeps one bare clone per repository under a cache
 directory, and uses it for a `--repo` that has no local checkout. The clone is
 not a `git clone --mirror`: it keeps the `origin/<branch>` remote-tracking
 layout that `survey` and `update` already read. The project root and `locate`
 stay first, and the clone is the fallback. The first run that needs a clone
 asks before making one, and the answer is saved in a machine file,
-`~/.config/osdlc/pr-update/config.yaml`. Nothing is built yet. The owner answered the
-configuration questions on 2026-11-21; the rest are below (osdlc/osdlc#844).
+`~/.config/osdlc/pr-update/config.yaml`. The owner answered every question on
+2026-11-21 and 2026-11-22. Nothing is built yet (osdlc/osdlc#844).
 
 ^summary
 
@@ -99,7 +99,7 @@ scans the directories its `repos:` lists name and matches each checkout's
   disk per repository. Forecloses the cheap worktree and the trivial
   `unpushed_local`. Scores: 1 yes, 2 yes, 3 yes, 4 yes, 5 yes, but heavier.
 
-## Owner answers (2026-11-21)
+## Owner answers (2026-11-21 and 2026-11-22)
 
 - A managed local cache is wanted. Server-side updates with no clone at all
   were considered and not taken.
@@ -112,11 +112,16 @@ scans the directories its `repos:` lists name and matches each checkout's
   `~/.cache/osdlc/pr-update/`.
 - Project-level config stays where it is: `pr-update.yaml` and its `.local`
   overlay for a standalone run, the `pr_update:` block of `sdlc.yaml` under sdlc.
+- Option A, a bare clone with the remote-tracking layout, over the issue's
+  literal `--mirror`.
+- Clone through `gh repo clone`.
+- File attempts go in a store in the mirror directory. Requiring `git-ref` in
+  this mode is backlogged as [B-0003](../backlog/B-0003-require-git-ref-attempts-for-mirror-targets.md).
+- No "mirror only" value now. Backlogged as [B-0002](../backlog/B-0002-a-mirror-only-checkout-value.md).
 
 ## Decision
 
-Option A, once the owner confirms it over the issue's literal `--mirror`. B
-lost on criterion 1, C on cost and the guard. Details to build:
+Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 
 - **Scope.** The standalone binary only: its `standalonePorts` gets the new
   `locate`, and it alone prompts and reads the machine file. A host's `Ports`
@@ -132,7 +137,7 @@ lost on criterion 1, C on cost and the guard. Details to build:
   - `checkout: local | mirror`. Unset until the prompt answers it. `mirror`
     means project root and `locate` first, the clone as the fallback. `local`
     means today's behaviour: a repository with no checkout is skipped. A
-    stricter "mirror only" value is not added until asked.
+    stricter "mirror only" value waits for a standalone `locate` (B-0002).
   - `mirror_dir: <path>`, optional.
 
   Neither key is in the project schema, so neither `pr-update.yaml` nor its
@@ -173,8 +178,19 @@ lost on criterion 1, C on cost and the guard. Details to build:
 - **Worktrees and attempts.** `.pr-update/<run>` goes inside the bare clone's
   directory. With `attempts.store: file` in this mode the store lives in the
   mirror directory, one per cache, keyed by repo in each record; `git-ref` is
-  unchanged.
+  unchanged. B-0003 holds the simpler alternative: require `git-ref` here.
 - **Branch mode.** `branch` mode skips mirror targets.
+- **Cleanup.** What removes what:
+
+  | Item | Removed by |
+  | --- | --- |
+  | A run's worktree and scratch branch | The run, in a `finally` (`src/update/execute.ts`). A killed run's are removed by the next run |
+  | A kept worktree (`keep_failed`) | `--discard-kept`, `--retry-failed`, or the PR moving. It sits at `<clone>/.pr-update/failed/`, so the run prints its path |
+  | `origin/<branch>` for a deleted branch | `fetch --prune`, each run |
+  | Unreachable objects | git's automatic `gc` |
+  | A whole clone the person no longer targets | Nothing yet. `mirror prune` is a follow-up. Deleting a clone by hand works: the next run clones again. It also deletes any kept worktree inside it and, for the whole directory, the file attempts store |
+
+  Neither macOS nor common Linux setups clear `~/.cache` on their own.
 
 ## Consequences
 
@@ -218,10 +234,3 @@ lost on criterion 1, C on cost and the guard. Details to build:
 A host where `gh repo clone` cannot authenticate; evidence that
 `git worktree add` from a bare clone misbehaves with this tool's submodule
 handling; or an owner need for a literal `--mirror` push of all refs.
-
-## Open questions for the owner
-
-1. Option A over the issue's literal `--mirror`?
-2. Clone through `gh repo clone`, or a URL from config?
-3. File attempts store in the mirror directory, or require `git-ref` in this mode?
-4. Is a "mirror only" value wanted now?
