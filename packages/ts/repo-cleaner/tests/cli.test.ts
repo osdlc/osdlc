@@ -156,6 +156,9 @@ describe('arguments', () => {
     expect(run(['status', '--bogus'], cwd).code).toBe(2)
     expect(run(['status', '--only', 'nope'], cwd).code).toBe(2)
     expect(run(['status', '--scope', 'worktree'], cwd).code).toBe(2)
+    for (const n of ['0', '-1', '2.5', 'deep', '']) {
+      expect(run(['status', `--max-depth=${n}`], cwd).code).toBe(2)
+    }
     expect(run(['status', '--branch', 'x', 'some/path', 'other/path'], cwd).code).toBe(2)
     expect(run(['status', '--all-rows', '--format', 'json'], cwd).code).toBe(2)
     expect(run(['status', '--write-plan'], cwd).code).toBe(2)
