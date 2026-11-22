@@ -208,7 +208,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     `local` never clones: a target with no checkout is skipped. A stricter
     "mirror only" value is deferred (B-0002).
   - `mirror_dir: <path>`, optional.
-  - `mirror_max_age_days: <n>`, default 30. `0` turns automatic pruning off.
+  - `mirror_max_age_days: <n>`, default 30. `0` turns automatic pruning off,
+    and a bare `mirror prune` then exits 2 and names `--older-than` and
+    `--all`.
 
   None of these keys is in the project schema, so neither `pr-update.yaml` nor
   its `.local` overlay can set them. A repository cannot choose where the tool
@@ -294,13 +296,16 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   3. `gh repo clone <host/owner/name> <tmp> --no-upstream -- --bare`, where
      `<tmp>` is `.tmp-<name>.git-<pid>` beside the final directory (git
      needs an empty or missing target, so nothing is written there first);
-  4. delete every `refs/heads/*`, set the fetch refspec, fetch with `--prune`;
-  5. in the clone's own config, set `credential.https://<host>.helper` to an
+  4. in the clone's own config, set `credential.https://<host>.helper` to an
      empty value and then to `!gh auth git-credential`, the two lines
-     `gh auth setup-git` writes, so later fetches and pushes authenticate
-     whatever the person's global git config holds;
-  6. set `core.longpaths=true` (Windows paths under the cache are deep);
+     `gh auth setup-git` writes, so the fetch in step 6 and later fetches and
+     pushes authenticate whatever the person's global git config holds;
+  5. set `core.longpaths=true` (Windows paths under the cache are deep);
+  6. delete every `refs/heads/*`, set the fetch refspec, fetch with `--prune`;
   7. write the clone's stamp and marker, then rename into place.
+
+  A step that fails removes `<tmp>`, and the target is skipped with the
+  error.
 - **Trust.** The trust gate runs for each target before a command its own
   files choose (`verify: detect`, `lockfile_install`). A located checkout is
   keyed by its path, as the project root is. A clone is keyed by
@@ -362,7 +367,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     clones whose stamp is older than `mirror_max_age_days`, and prints each
     one removed and the space freed. A run that never touches the cache never
     removes anything.
-  - *By hand.* `pr-update mirror prune` removes clones past the age.
+  - *By hand.* `pr-update mirror prune` removes clones past the age (with
+    the age at `0`, it needs `--older-than` or `--all`).
     `--older-than <days>` overrides it, `--all` takes every clone,
     `--dry-run` only reports. It and `list` take `--mirror-dir`, so a
     directory left behind by a moved `mirror_dir` can be cleaned.
