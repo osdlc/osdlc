@@ -66,6 +66,11 @@ scans the directories its `repos:` lists name and matches each checkout's
   `push --dry-run`.
 - `git worktree add --detach` works from a bare clone. Verified the same day,
   on a repository without submodules.
+- `git worktree move` is a plain `rename()` with no copy fallback, so it fails
+  with `Invalid cross-device link` when the source and target are on
+  different filesystems. `keepWorktree` (`src/update/kept.ts`) moves the run
+  worktree to its kept path. For non-root targets those are in the cache and
+  state homes, which can be on different disks. Reproduced in review.
 - `unpushed_local` asks `git worktree list` for a worktree on the head
   (`unpushedLocalWork` in `src/survey.ts`). A bare clone this tool owns has
   none, so the guard is false by construction there and never fires.
@@ -191,7 +196,14 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   run. When that directory is gone, it removes only the kept directory and
   record. `--retry-failed` uses a kept worktree only when the run is served
   from its owner. Otherwise the run names the kept worktree and its owner,
-  leaves both alone, and skips the PR with reason `kept elsewhere`. Kept worktrees
+  leaves both alone, and skips the PR with reason `kept elsewhere`.
+
+  A non-root target's run worktree (cache) and kept worktree (state) can be
+  on different filesystems, where `git worktree move` fails (facts above).
+  Then keeping falls back to `git worktree add` at the kept path from the run
+  worktree's `HEAD`, copies the verify log in, and removes the run worktree.
+  The kept tree has the same commit and log; untracked build output is not
+  carried over. Kept worktrees
   and attempt records are not cache: a person may have work to finish in one,
   and the other is history nothing re-derives. The project root keeps today's
   `<projectRoot>/.pr-update/` for all three, and today's
@@ -240,8 +252,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - **Who clones.** Only `update --apply`, with `checkout: mirror` or a consent
   below. `survey` and a rehearsal fetch a clone that exists and otherwise
   report the target as not measured, naming `pr-update mirror enable`. They
-  take the clone's lock for the fetch but write no stamp and prune nothing.
-  So `survey` still writes nothing but the fetch.
+  take the clone's lock for the fetch and write the clone's last-used stamp,
+  so a clone only surveyed is not pruned as unused. They prune nothing.
+  So `survey` still writes nothing but the fetch and that stamp, both inside
+  the clone.
 - **Consent.** Any one of these is consent to clone for the run: `--mirror-dir
   <dir>`, `PR_UPDATE_MIRROR_DIR`, or `checkout: mirror`. `--mirror-dir` and
   the variable win over `checkout: local` for that run. `OSDLC_ROOT` and the
@@ -358,9 +372,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 
   Pruning also walks `worktrees/` in the cache, which holds the run
   worktrees of located checkouts as well as clones. A directory whose run is
-  dead (the same pid check) is removed. Its `.git` file names the git
-  directory that owns it. When that directory still exists, pruning runs
-  `git worktree prune` there and deletes the dead run's scratch branch.
+  dead (the same pid check) is removed. First its `.git` file is read: it
+  names `<common-dir>/worktrees/<id>`, whose `commondir` file gives the
+  owning git directory. Then the directory is removed, and when the owner
+  still exists, pruning runs `git worktree prune` there and deletes the dead
+  run's scratch branch.
   `mirror list` shows these directories too, so a deleted or no-longer-targeted
   checkout leaves nothing behind in the cache.
   - *Automatic.* At the end of an `update --apply` that used the cache, the run removes
