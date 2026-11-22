@@ -18,5 +18,5 @@ They are never reused.
 
 ## Backlog
 
-- [B-0001](backlog/B-0001-the-full-plugin-design.md): Bring back the full
-  plugin design
+- [B-0001](backlog/B-0001-unattended-cleaning.md): Bring back unattended
+  cleaning and profiles
