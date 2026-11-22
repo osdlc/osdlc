@@ -6,6 +6,7 @@
 import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 
 import { coveredBy, containsIgnored } from './ignore.ts'
+import { containedIn } from './roots.ts'
 import {
   writeReceipt,
   PLAN_VERSION,
@@ -31,6 +32,9 @@ export function orderPlugins(plugins: readonly Plugin[]): Plugin[] {
     .sort((a, b) => rank(a.p) - rank(b.p) || a.i - b.i)
     .map(({ p }) => p)
 }
+
+/** The refusal for a machine-scope candidate that is not inside its owner's roots. */
+export const OUTSIDE_ROOTS = 'outside-roots'
 
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
@@ -119,6 +123,28 @@ export function survey(all: readonly Plugin[], ctx: Ctx): Survey {
 
   const known = new Set(candidates.map((c) => c.id))
   const objections: Objection[] = []
+  // Asked once per plugin, so a throwing `roots` warns once.
+  const rootsOf = new Map<string, readonly string[]>()
+  for (const p of plugins) {
+    if (p.roots === undefined) continue
+    rootsOf.set(
+      p.name,
+      guarded(p, 'roots', [], () => p.roots!(scoped)),
+    )
+  }
+  for (const c of candidates) {
+    const roots = rootsOf.get(c.owner)
+    if (roots === undefined) continue
+    if (containedIn(roots, c.path) === null) {
+      objections.push({
+        by: 'host-cleaner',
+        candidate: c.id,
+        level: 'refuse',
+        code: OUTSIDE_ROOTS,
+        reason: `${c.path} is not inside ${c.owner}'s roots (${roots.join(', ') || 'none'})`,
+      })
+    }
+  }
   for (const p of plugins) {
     if (p.object === undefined) continue
     try {
@@ -524,6 +550,14 @@ function runOne(c: Candidate, step: Step, s: Survey, owner: Plugin | undefined):
   }
   if (owner?.delete === undefined) {
     return fail(`${c.owner} cannot delete`)
+  }
+  try {
+    const roots = owner.roots?.(s.ctx)
+    if (roots !== undefined && containedIn(roots, c.path) === null) {
+      return fail(`${c.path} is not inside ${c.owner}'s roots`)
+    }
+  } catch (err) {
+    return fail(err, `${c.owner}: roots failed: `)
   }
   try {
     step.delete = owner.delete(c, s.ctx)
