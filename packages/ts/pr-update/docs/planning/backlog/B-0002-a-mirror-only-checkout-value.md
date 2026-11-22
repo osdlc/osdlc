@@ -29,6 +29,7 @@ What it costs:
   From the clone it cannot, and a force-push can overwrite them.
 - A second copy of each repository on disk.
 
-Why not now (owner, 2026-11-22): a standalone `locate` finds nothing yet, so
-the only checkout a standalone run sees is the project root. The value would
-change one repository's behaviour. Revisit once a standalone `locate` exists.
+Why not now (owner, 2026-11-22): using the checkout a person already has is
+the safer default, and D-0005's standalone `locate` makes that work beyond the
+project root. Revisit if someone needs a run that never writes inside their
+checkouts.
