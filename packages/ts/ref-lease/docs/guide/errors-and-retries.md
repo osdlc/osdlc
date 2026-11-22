@@ -58,7 +58,7 @@ ref with a reason kind: `stale` (the lease check failed), `already-exists` or `l
 writer got to the authority first) and `non-fast-forward` are a lost race. `hook-declined`,
 `ref-conflict` and anything else are a `GitFailed`, as is a push that never got an answer (a bad
 URL, no network, a declined local `pre-push` hook). The mapping is listed as data in
-[tests/conformance/push.json](../../tests/conformance/push.json).
+the `push_outcome` section of [the conformance suite](../../../../conformance/ref-lease/suite.json).
 
 Pushes and fetches run git in the C locale, so this works whatever language the user's git speaks.
 

@@ -233,6 +233,52 @@ describe("diffText, diffAddedFile and diffNameStatus under the user's diff confi
       fx.cleanup()
     }
   })
+
+  test('context sets the lines of context, for both verbs, and rejects a bad value', async () => {
+    const fx = makeGitFixture()
+    try {
+      const before = Array.from({ length: 12 }, (_, i) => `${i + 1}\n`).join('')
+      fx.commit('first', { 'a.md': before })
+      fx.git.configSet('diff.context', '8')
+      writeFileSync(join(fx.dir, 'a.md'), before.replace('6\n', ''))
+      writeFileSync(join(fx.dir, 'new.md'), 'x\ny\n')
+
+      expect(fx.git.diffText(undefined, { context: 0 })).toContain('\n@@ -6 +5,0 @@\n')
+      expect(fx.git.diffText(undefined, { context: 1 })).toContain('\n@@ -5,3 +5,2 @@\n')
+      expect(fx.git.diffText()).toContain('\n@@ -3,7 +3,6 @@\n')
+      expect(fx.git.diffAddedFile('new.md', { context: 0 })).toContain('+y')
+      const asyncGit = new AsyncGit(fx.dir)
+      expect(await asyncGit.diffText(undefined, { context: 0 })).toBe(
+        fx.git.diffText(undefined, { context: 0 }),
+      )
+
+      for (const bad of [-1, 1.5, Number.NaN]) {
+        expect(() => fx.git.diffText(undefined, { context: bad })).toThrow(TypeError)
+        expect(() => fx.git.diffAddedFile('new.md', { context: bad })).toThrow(TypeError)
+      }
+    } finally {
+      fx.cleanup()
+    }
+  })
+
+  test('findRenames reads a moved file as a rename under diff.renames=false', () => {
+    const fx = makeGitFixture()
+    try {
+      fx.commit('first', { 'old.md': Array.from({ length: 10 }, (_, i) => `line ${i}\n`).join('') })
+      fx.git.configSet('diff.renames', 'false')
+      fx.git.rawChecked(['mv', 'old.md', 'moved.md'])
+
+      const plain = fx.git.diffText(undefined, { staged: true })
+      expect(plain).toContain('deleted file mode')
+      expect(plain).not.toContain('rename from')
+
+      const renamed = fx.git.diffText(undefined, { staged: true, findRenames: true })
+      expect(renamed).toContain('rename from old.md\nrename to moved.md')
+      expect(renamed).not.toContain('deleted file mode')
+    } finally {
+      fx.cleanup()
+    }
+  })
 })
 
 describe('diffText and diffNameStatus never read the rev as a path', () => {
