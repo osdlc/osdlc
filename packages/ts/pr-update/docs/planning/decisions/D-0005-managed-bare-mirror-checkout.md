@@ -181,7 +181,17 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   Every per-repository path of a non-root target is lower-cased and carries
   the host. For those targets `keptName` and `findKept` (`src/update/kept.ts`)
   use that layout and match on host as well as repository. No non-root
-  target has a kept worktree today, so nothing needs to move. Kept worktrees
+  target has a kept worktree today, so nothing needs to move.
+
+  The same repository can be served from different git repositories on
+  different runs: one located checkout, another, or the clone. So a kept
+  record of a non-root target also stores the git directory that owns the
+  worktree (`git rev-parse --git-common-dir`). Discarding, by hand or because
+  the PR moved, goes through that git directory, not the one serving the
+  run. When that directory is gone, it removes only the kept directory and
+  record. `--retry-failed` uses a kept worktree only when the run is served
+  from its owner. Otherwise the run names the kept worktree and its owner,
+  leaves both alone, and skips the PR with reason `kept elsewhere`. Kept worktrees
   and attempt records are not cache: a person may have work to finish in one,
   and the other is history nothing re-derives. The project root keeps today's
   `<projectRoot>/.pr-update/` for all three, and today's
@@ -222,8 +232,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     matched, whatever `--remote` says. `--remote` applies to the project root.
   - Its run worktree goes under the cache (table above). Inside the checkout
     the run writes only git's worktree records, its scratch branch and the
-    fetched `origin/*` refs. A killed run's scratch branch stays until a later
-    run that uses the same checkout removes it.
+    fetched `origin/*` refs. A killed run leaves its worktree and scratch
+    branch until pruning (below) or a later run on the same checkout removes
+    them.
 - **Who clones.** Only `update --apply`, with `checkout: mirror` or a consent
   below. `survey` and a rehearsal fetch a clone that exists and otherwise
   report the target as not measured, naming `pr-update mirror enable`. They
@@ -315,7 +326,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 
   | Item | Removed by |
   | --- | --- |
-  | A run's worktree and scratch branch | The run, in a `finally` (`src/update/execute.ts`). A killed run's are removed by the next run |
+  | A run's worktree and scratch branch | The run, in a `finally` (`src/update/execute.ts`). A killed run's are removed by the next run on the same repository |
+  | A killed run's worktree under `worktrees/` in the cache | Pruning, automatic or by hand, whatever repository it belongs to |
   | A kept worktree (`keep_failed`) | `--discard-kept`, `--retry-failed`, or the PR moving |
   | `origin/<branch>` for a deleted branch | `fetch --prune`, on each unscoped run that fetches |
   | Unreachable objects | git's automatic `gc` |
@@ -338,6 +350,14 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   removed. A `.tmp-*.git-<pid>` directory is recognised by its name instead,
   inside a mirror directory that carries the tool's marker (clone step 2), so
   one left by a killed clone is removed.
+
+  Pruning also walks `worktrees/` in the cache, which holds the run
+  worktrees of located checkouts as well as clones. A directory whose run is
+  dead (the same pid check) is removed. Its `.git` file names the git
+  directory that owns it. When that directory still exists, pruning runs
+  `git worktree prune` there and deletes the dead run's scratch branch.
+  `mirror list` shows these directories too, so a deleted or no-longer-targeted
+  checkout leaves nothing behind in the cache.
   - *Automatic.* At the end of an `update --apply` that used the cache, the run removes
     clones whose stamp is older than `mirror_max_age_days`, and prints each
     one removed and the space freed. A run that never touches the cache never
