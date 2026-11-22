@@ -74,7 +74,8 @@ packaging ecosystem (`node` or `rust`). Detection's ecosystems are
 
 **`./build`**: `walkManifests` finds every `package.json` and `Cargo.toml`
 under a directory, reading them through detection, and `buildDependencyGraph`
-turns them into nodes and dependency edges (`DependencyGraph`). `applyContainment` adds the containment tree, `scanAspects` reads a
+turns them into nodes and dependency edges (`DependencyGraph`). `MANIFEST_FILES` is the
+list of those file names, for a caller that lists files another way. `applyContainment` adds the containment tree, `scanAspects` reads a
 manifest's technologies, and `buildSystemGraph` does all of it and returns the
 `SystemGraph` wire payload. It is Node only,
 because it reads the filesystem, so it is a separate entry from the

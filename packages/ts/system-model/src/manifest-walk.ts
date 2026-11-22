@@ -33,10 +33,12 @@ export const DEFAULT_EXCLUDES = [
 ] as const
 
 /**
- * The manifest file names the walk reads, at any depth. Not read at
- * runtime; `MALFORMED_ECOSYSTEMS` is type-checked against it.
+ * The manifest file names `walkManifests` reads, at any depth. A caller that
+ * lists files another way (from a git tree, say) uses it to pick out the
+ * manifests. The walk does not read it at runtime; `MALFORMED_ECOSYSTEMS` is
+ * type-checked against it.
  */
-const MANIFEST_FILES = ['package.json', 'Cargo.toml'] as const
+export const MANIFEST_FILES = ['package.json', 'Cargo.toml'] as const
 
 /** What `walkManifests` accepts. */
 export interface WalkOptions {
