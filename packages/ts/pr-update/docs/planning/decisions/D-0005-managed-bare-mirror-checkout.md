@@ -5,7 +5,7 @@ id: D-0005
 title: Run without a local checkout from a managed bare clone
 state: open/proposed
 created: '2026-11-19'
-last_reviewed: '2026-11-19'
+last_reviewed: '2026-11-21'
 tags:
   - pr-update
   - checkout
@@ -15,12 +15,14 @@ tags:
 
 ## Summary
 
-Proposed: `pr_update.checkout: mirror` (and `--mirror-dir <dir>`) keeps one
-bare clone per repository under a cache directory. The clone is not a
-`git clone --mirror`: it keeps the `origin/<branch>` remote-tracking layout
-that `survey` and `update` already read. `locate` stays first and the clone is
-the fallback. Nothing is built yet. This record exists so the owner settles the
-open choices below before code is written (osdlc/osdlc#844).
+Proposed: a standalone run keeps one bare clone per repository under a cache
+directory, and uses it for a `--repo` that has no local checkout. The clone is
+not a `git clone --mirror`: it keeps the `origin/<branch>` remote-tracking
+layout that `survey` and `update` already read. The project root and `locate`
+stay first, and the clone is the fallback. The first run that needs a clone
+asks before making one, and the answer is saved in a machine file,
+`~/.config/osdlc/pr-update.yaml`. Nothing is built yet. The owner answered the
+configuration questions on 2026-11-21; the rest are below (osdlc/osdlc#844).
 
 ^summary
 
@@ -32,6 +34,10 @@ project root is reported `no local checkout — drift not measured`
 (`src/survey.ts`) and `update` skips it. The update worktree is made at
 `<checkout>/.pr-update/<run>` (`src/update.ts`), and file-store attempts live in
 `<projectRoot>/.pr-update/attempts` (`src/update/attempts.ts`). Verified in code.
+
+A host that supplies its own `Ports` also supplies its own `locate`. sdlc's
+scans the directories its `repos:` lists name and matches each checkout's
+`origin`. Nothing in this record changes a host's `locate`.
 
 ## Facts the choice rests on
 
@@ -49,6 +55,13 @@ project root is reported `no local checkout — drift not measured`
   clone (the issue says so).
 - `attempts.store: git-ref` keeps records as refs on the remote, so it needs no
   project root. Verified (`ref-attempts.ts`).
+- `@osdlc/config-layers`' `machineConfigFile` places its file at
+  `<config-home>/<tool>/<fileName>` through `standalone(tool).config()`, so
+  `tool: 'osdlc'` with `fileName: 'pr-update.yaml'` gives
+  `~/.config/osdlc/pr-update.yaml` with no library change. Verified
+  (`machine.ts`). pr-update reads no machine file today.
+- `@osdlc/cli-tool` has synchronous `askText`, `askChoice` and `canPrompt`, the
+  helpers `--confirm-push` uses (`src/update/confirm.ts`). Verified.
 
 ## Prior art
 
@@ -81,16 +94,70 @@ project root is reported `no local checkout — drift not measured`
   disk per repository. Forecloses the cheap worktree and the trivial
   `unpushed_local`. Scores: 1 yes, 2 yes, 3 yes, 4 yes, 5 yes, but heavier.
 
+## Owner answers (2026-11-21)
+
+- A managed local cache is wanted. Server-side updates with no clone at all
+  were considered and not taken.
+- The first-run prompt is the opt-in. Nobody has to set a mode first.
+- With no terminal to ask on and nothing configured, the run fails. It does not
+  clone into the default directory unasked.
+- `checkout` and the cache location are machine keys, in one file per tool
+  under a shared `osdlc` config directory: `~/.config/osdlc/pr-update.yaml`.
+- Project-level config stays where it is: `pr-update.yaml` and its `.local`
+  overlay for a standalone run, the `pr_update:` block of `sdlc.yaml` under sdlc.
+
 ## Decision
 
-Option A, once the owner confirms. B lost on criterion 1, C on cost and the
-guard. Details to build:
+Option A, once the owner confirms it over the issue's literal `--mirror`. B
+lost on criterion 1, C on cost and the guard. Details to build:
 
-- **Config and flag.** `pr_update.checkout: local | mirror` (default `local`),
-  and `--mirror-dir <dir>` which implies `mirror`. `mirror` means local first,
-  clone as fallback. A stricter "mirror only" value is not added until asked.
-- **Location.** `--mirror-dir`, else `$XDG_CACHE_HOME/pr-update/repos`, else
-  `~/.cache/pr-update/repos`; one `<owner>-<name>.git` each.
+- **Scope.** The standalone binary only: its `standalonePorts` gets the new
+  `locate`, and it alone prompts and reads the machine file. A host's `Ports`
+  are unchanged, and whether sdlc offers the cache is a later choice.
+- **Machine file.** `~/.config/osdlc/pr-update.yaml` on Linux, and on macOS
+  under the Xdg convention: `machineConfigFile({ tool: 'osdlc', fileName:
+  'pr-update.yaml', env: 'PR_UPDATE_MACHINE_CONFIG', ... })`, with the
+  `vendorDirs` `src/devlink.ts` already uses. The variable is named explicitly
+  because the default, `OSDLC_MACHINE_CONFIG`, would be shared by every osdlc
+  tool. Keys:
+  - `checkout: local | mirror`. Unset until the prompt answers it. `mirror`
+    means project root and `locate` first, the clone as the fallback. `local`
+    means today's behaviour: a repository with no checkout is skipped. A
+    stricter "mirror only" value is not added until asked.
+  - `mirror_dir: <path>`, optional.
+
+  Neither key is in the project schema, so neither `pr-update.yaml` nor its
+  `.local` overlay can set them. A repository cannot choose where the tool
+  writes on a person's disk, which also keeps these keys out of the trust gate.
+- **Location**, first match wins:
+  1. `--mirror-dir <dir>`, for one run;
+  2. `PR_UPDATE_MIRROR_DIR`, for CI and tests;
+  3. `mirror_dir` in the machine file;
+  4. `<cache-home>/osdlc/pr-update/repos` through `standalone('osdlc').cache()`,
+     which is `~/.cache/osdlc/pr-update/repos`.
+
+  One `<owner>/<name>.git` each. (`<owner>-<name>` would let `a-b/c` and
+  `a/b-c` share a directory.) A flag or the variable is consent for that run and
+  skips the prompt.
+- **First use asks.** The prompt runs when a target has no checkout from the
+  project root or `locate`, and the machine file has no `checkout`. It does not
+  run at install or on a run whose targets all have checkouts. It names the
+  repositories, the directory, the expected size (`gh repo view --json
+  diskUsage`), and that working trees are never touched. The answers are:
+  Enter for the shown directory, a typed path, or `n`. The answer is written to
+  the machine file through `MachineConfigFile.write`, and the run prints the
+  file's path. `n` writes `checkout: local`, so the question does not come
+  back. A typed path is expanded and made absolute. A path inside a git working
+  tree is refused, and so is a directory that has other files in it and no
+  marker file this tool wrote. A missing directory is created.
+- **No terminal.** When `canPrompt()` is false and nothing above decides, the
+  run fails with its own exit code (as the trust refusal has 21). The message
+  names `--mirror-dir`, `PR_UPDATE_MIRROR_DIR` and the machine file's keys.
+  This changes today's behaviour for one case: an unattended run whose `--repo`
+  has no checkout now fails instead of succeeding with that repository skipped.
+  `checkout: local` in the machine file restores the skip. A run whose targets
+  all have checkouts never reaches this. That includes the nightly
+  `pr-update.yml`, which updates only the repository it checks out.
 - **Clone URL.** The remote URL of the project-root checkout cannot serve other
   repositories. Use `gh repo clone <owner/name> <dir> -- --bare`, the
   authenticated path `gh` already provides (the tool requires `gh`).
@@ -98,15 +165,37 @@ guard. Details to build:
   directory. With `attempts.store: file` in this mode the store lives in the
   mirror directory, one per cache, keyed by repo in each record; `git-ref` is
   unchanged.
-- **Where it plugs in.** `standalonePorts` gets a `locate` that returns the
-  clone path (clone or fetch on demand) when the mode is on. `branch` mode skips
-  mirror targets.
+- **Branch mode.** `branch` mode skips mirror targets.
 
 ## Consequences
 
-Touches `src/defaults.ts` (`locate`), `src/config.ts` (the key),
-`src/commands.ts` (flag, seam), `src/update.ts` (worktree and attempts root),
-`README.md`. About 250 non-test lines. Does not supersede D-0001..D-0004.
+- Touches `src/defaults.ts` (`locate`), a new machine-file module, `src/commands.ts`
+  (flag, variable, prompt), `src/update.ts` (worktree and attempts root) and
+  `README.md`. About 350 non-test lines with the prompt, estimated. Does not
+  supersede D-0001..D-0004.
+- **Known limit: unpushed work in a checkout the tool cannot see.** A
+  standalone `locate` finds nothing, so a repository the person has cloned
+  somewhere still runs from the cache. `unpushed_local` is true by construction
+  there, and `--force-with-lease` guards only against changes on the remote. A
+  run can therefore force-push over a branch whose local checkout holds commits
+  that were never pushed. The README states this next to the mode.
+- pr-update gets two machine-local roots: this file under `osdlc/`, and the
+  trust store at `$XDG_STATE_HOME/pr-update/trusted/`.
+
+## Follow-ups
+
+- A standalone `locate` that finds existing checkouts, sharing sdlc's `repos:`
+  scan from an osdlc package. It reuses checkouts the person already has and
+  narrows the unpushed-work limit above.
+- A machine target for `pr-update config set`, in cli-tool's `config-command.ts`
+  so every tool gets it. Until then the file is edited by hand or rewritten by
+  the prompt.
+- Move the trust store under the `osdlc` root, or keep two roots on purpose.
+- Project config at `<repo>/.osdlc/pr-update.yaml` instead of `pr-update.yaml`
+  at the root. No repository commits a `pr-update.yaml` today, so the move would
+  break no one, but it is not part of this record.
+- `pr-update mirror list` and `mirror prune`. Until then, a moved `mirror_dir`
+  leaves the old directory behind, and the run prints its path.
 
 ## What would reopen it
 
