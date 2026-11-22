@@ -145,6 +145,7 @@ export {
   tmuxPasteBufferArgv,
   tmuxSendEnterArgv,
   tmuxIdSessionName,
+  tmuxRunSessionName,
   tmuxSessionName,
   tmuxSwitchClientArgv,
 } from './hosts/tmux.ts'

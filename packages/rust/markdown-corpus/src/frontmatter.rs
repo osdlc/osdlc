@@ -459,7 +459,7 @@ impl FrontmatterIndex {
         }
         {
             let mut state = self.state.lock().unwrap();
-            // Again: a sweep may have claimed another corpus during the admissions.
+            // A sweep may have claimed another corpus during the admissions.
             if state.for_vault.as_deref() != Some(vault_dir) {
                 return;
             }

@@ -9,14 +9,20 @@ import { afterAll, expect, test } from 'vitest'
 
 import {
   DEFAULT_EXCLUDES,
+  ROOT_ID,
+  applyContainment,
   buildDependencyGraph,
+  buildSystemGraph,
+  scanAspects,
   walkManifests,
+  type ContainmentOptions,
   type DepDecl,
   type DependencyGraph,
   type GraphEdge,
   type GraphNode,
   type GraphOptions,
   type ManifestInfo,
+  type SystemGraphOptions,
   type WalkOptions,
 } from '@osdlc/system-model/build'
 
@@ -45,4 +51,16 @@ test('two workspace packages produce one dependency edge', async () => {
   expect(nodes.map((n) => n.id)).toEqual(['pkg-a', 'pkg-b'])
   expect(deps.map((d) => d.specifierKind)).toEqual(['workspace'])
   expect(DEFAULT_EXCLUDES).toContain('node_modules')
+
+  const containment: ContainmentOptions = {}
+  applyContainment(graph, containment)
+  expect(graph.nodes.find((n) => n.id === 'pkg-a')!.parent).toBe(ROOT_ID)
+  expect(Array.isArray(scanAspects(manifests[0]!))).toBe(true)
+})
+
+test('buildSystemGraph returns the wire payload', async () => {
+  const options: SystemGraphOptions = { includeExternal: false }
+  const payload = await buildSystemGraph(root, options)
+  expect(payload.edges.map((e) => `${e.from} -> ${e.to}`)).toEqual(['pkg-a -> pkg-b'])
+  expect(payload.manifests_scanned).toBe(2)
 })

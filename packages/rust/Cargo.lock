@@ -943,7 +943,7 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "markdown-contract"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "comrak",
  "globset",
@@ -957,7 +957,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-corpus"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "frontmatter-lossless",
  "markdown-link",
@@ -970,7 +970,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-link"
-version = "0.11.1"
+version = "0.11.2"
 dependencies = [
  "criterion",
  "frontmatter-lossless",
@@ -981,7 +981,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-relink"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "etag-write",
  "markdown-corpus",
@@ -1005,7 +1005,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-vault-fs"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "path-guard",
  "regex",
@@ -1239,6 +1239,14 @@ checksum = "60dc65c0ff1a7ae1294b0c67b9f14baf70b644404010370171787bfac1038fc0"
 dependencies = [
  "libredox",
  "thiserror",
+]
+
+[[package]]
+name = "ref-lease"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1546,6 +1554,8 @@ name = "system-model"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
+ "toml",
 ]
 
 [[package]]
@@ -1774,7 +1784,7 @@ checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
 
 [[package]]
 name = "typed-git"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "log",
  "serial_test",
@@ -2127,7 +2137,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "yaml-splice"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "saphyr-parser",
  "serde_json",

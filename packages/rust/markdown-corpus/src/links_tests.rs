@@ -807,6 +807,22 @@ fn a_batch_cannot_undo_a_later_batch_with_what_it_read_first() {
     assert_eq!(g.backlinks("Projects/Alpha.md").total, 2);
 }
 
+#[test]
+fn after_hook_ignores_a_listing_that_does_not_list_its_path() {
+    let d = linked_vault();
+    let fired = std::cell::Cell::new(false);
+    let vfs = super::hooks::StatHook::after(&*d, join_rel(root(), "Projects/Missing.md"), || {
+        fired.set(true)
+    });
+    vfs.read_dir(&join_rel(root(), "Projects")).unwrap();
+    assert!(!fired.get(), "Missing.md is not in the listing");
+    let vfs = super::hooks::StatHook::after(&*d, join_rel(root(), "Projects/Alpha.md"), || {
+        fired.set(true)
+    });
+    vfs.read_dir(&join_rel(root(), "Projects")).unwrap();
+    assert!(fired.get(), "Alpha.md is listed");
+}
+
 // ── Cost, pinned ───────────────────────────────────────────────────────
 
 #[test]

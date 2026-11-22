@@ -30,6 +30,17 @@ bun run lint
 bun run format:check
 ```
 
+## The conformance suite
+
+`packages/conformance/ref-lease/suite.json` is the family's conformance suite,
+run by this package's `tests/conformance.test.ts` and by the Rust crate's
+`tests/conformance.rs`. This package is the family's reference. A new case goes
+into the suite first: write its `input` by hand, then run
+`pnpm run conformance:write` to write its expected value, and both packages'
+tests cover it. Neither package may add a case the other lacks.
+[S-conformance-suites](../../../docs/planning/standards/S-conformance-suites.md)
+is the standard.
+
 ## Code style
 
 - TypeScript, ES modules, and explicit `.ts` import paths.

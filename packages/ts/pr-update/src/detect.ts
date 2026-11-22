@@ -18,6 +18,14 @@ export const DETECT_LOOKED_FOR =
   'test_command, a `test` target in a justfile or Makefile, scripts.test in package.json, ' +
   'Cargo.toml, go.mod or build.sbt'
 
+/**
+ * A `verify: detect` ladder that matched nothing. It says nothing about the PR's update, so the
+ * executor reports it without recording a failed attempt.
+ */
+export class NothingDetectedError extends Error {
+  override readonly name = 'NothingDetectedError'
+}
+
 const JUSTFILES = ['justfile', 'Justfile', '.justfile']
 const MAKEFILES = ['GNUmakefile', 'makefile', 'Makefile']
 // A line-start recipe or target named exactly `test`: not `test-all`, not an indented line,

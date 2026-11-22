@@ -1,5 +1,11 @@
 # @osdlc/system-model
 
+## 0.9.0
+
+### Minor Changes
+
+- 8e61f33: `./build` now also exports `applyContainment`, `scanAspects` and `buildSystemGraph`, which walks a directory and returns the `SystemGraph` wire payload the system-graph viewer reads.
+
 ## 0.8.0
 
 ### Minor Changes
