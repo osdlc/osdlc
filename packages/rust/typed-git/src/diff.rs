@@ -181,8 +181,10 @@ impl DiffTextOptions {
     }
 
     /// Print `lines` lines of context around each change
-    /// (`--unified=<lines>`). The default is 3, whatever `diff.context` says;
-    /// 0 gives the changed lines alone.
+    /// (`--unified=<lines>`). The default is 3, whatever `diff.context` or the
+    /// `GIT_DIFF_OPTS` environment variable says; 0 gives the changed lines
+    /// alone (`--inter-hunk-context=0` keeps `diff.interHunkContext` from
+    /// merging nearby hunks with the lines between them).
     pub fn context(mut self, lines: u32) -> Self {
         self.context = Some(lines);
         self
@@ -190,7 +192,11 @@ impl DiffTextOptions {
 
     /// Detect renames (`-M`), whatever `diff.renames` says, so a moved file
     /// reads as one `rename from`/`rename to` patch and not as a delete plus
-    /// an add. Without it `diff.renames` applies.
+    /// an add. It also overrides `diff.renames=copies`, under which a new file
+    /// that copies a changed one reads as `copy from`/`copy to`: with `-M` it
+    /// is a plain add. Without it `diff.renames` applies. `diff.renameLimit`
+    /// still applies: past it git stops looking for renames and only warns on
+    /// stderr.
     pub fn find_renames(mut self) -> Self {
         self.find_renames = true;
         self
@@ -303,8 +309,9 @@ const DEFAULT_CONTEXT: u32 = 3;
 
 /// The unified diff (`git diff --no-color --no-ext-diff --no-textconv
 /// --src-prefix=a/ --dst-prefix=b/ --no-relative --submodule=short
-/// --unified=<context> [--cached] [--binary] [-M] [rev] [--] [paths]`). `--` is passed
-/// once, when there is a `rev` or a path.
+/// --inter-hunk-context=0 --unified=<context> [--cached] [--binary] [-M] [rev]
+/// [--] [paths]`, with `GIT_DIFF_OPTS` removed from git's environment). `--`
+/// is passed once, when there is a `rev` or a path.
 ///
 /// With no `rev` the diff is the working tree against the index, or the index
 /// against HEAD with [`staged`](DiffTextOptions::staged). With a `rev` it is
@@ -322,11 +329,23 @@ const DEFAULT_CONTEXT: u32 = 3;
 /// would drop changes outside it. They also keep a submodule change as a
 /// `Subproject commit` patch, whatever `diff.submodule` says, and the context
 /// at [`context`](DiffTextOptions::context) lines (default three), whatever
-/// `diff.context` says. Other settings still apply: rename detection
-/// (`diff.renames`, unless [`find_renames`](DiffTextOptions::find_renames)
-/// pins it on), `diff.ignoreSubmodules` and `diff.algorithm`. The
-/// `GIT_DIFF_OPTS` environment variable also still applies: `-u0` there
-/// overrides the lines of context.
+/// `diff.context`, `diff.interHunkContext` or the `GIT_DIFF_OPTS` environment
+/// variable says.
+///
+/// Other settings still change the text: rename detection (`diff.renames`,
+/// unless [`find_renames`](DiffTextOptions::find_renames) pins it on, and
+/// `diff.renameLimit`), `diff.algorithm` (which lines read as changed, so the
+/// line counts too), `diff.indentHeuristic` (where a hunk starts),
+/// `diff.ignoreSubmodules` and `submodule.<name>.ignore` (whether a submodule
+/// change is shown at all), `core.quotePath` (whether a non-ASCII path is
+/// C-quoted), `diff.orderFile` (the order of the files),
+/// `diff.suppressBlankEmpty` (a blank context line loses its leading space),
+/// `core.abbrev` (the length of the `index` line's hashes), a
+/// `diff.<driver>.xfuncname` (the function name after `@@`), and a `-diff` or
+/// `binary` attribute (`Binary files … differ` in place of a patch, unless
+/// [`binary`](DiffTextOptions::binary) is set). Clean filters and end-of-line
+/// conversion (`core.autocrlf`, `text`, `eol` and `filter` attributes) change
+/// the working-tree content git compares.
 ///
 /// [`paths`](DiffTextOptions::paths) are read as git pathspecs, not as
 /// literal file names: `*.md` and `pages/[slug].astro` are globs, and a name
@@ -351,6 +370,7 @@ pub fn diff_text(
         "--dst-prefix=b/",
         "--no-relative",
         "--submodule=short",
+        "--inter-hunk-context=0",
         unified.as_str(),
     ];
     if opts.staged {
@@ -366,7 +386,13 @@ pub fn diff_text(
         refuse_option("diff", rev)?;
     }
     push_rev_and_paths(&mut args, rev, &opts.paths);
-    let stdout = git().dir(repo).args(&args).run_bytes()?;
+    // git reads a `-u<n>` or `--unified=<n>` in GIT_DIFF_OPTS over
+    // `--unified`, so the child must not inherit it.
+    let stdout = git()
+        .dir(repo)
+        .env_remove("GIT_DIFF_OPTS")
+        .args(&args)
+        .run_bytes()?;
     // Valid UTF-8, the usual case, reuses the buffer. Only invalid bytes
     // cost a copy.
     Ok(String::from_utf8(stdout)
