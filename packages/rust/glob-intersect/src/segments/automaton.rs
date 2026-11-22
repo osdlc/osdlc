@@ -84,8 +84,25 @@ struct CharEdge {
 pub(crate) struct SegmentMatcher {
     eps_out: Vec<Vec<usize>>,
     char_out: Vec<Vec<CharEdge>>,
+    /// The epsilon closure of every state, computed once at compile time.
+    closures: Vec<Vec<usize>>,
     start: usize,
     accept: usize,
+    /// A shortcut [`SegmentMatcher::accepts`] takes for the two commonest
+    /// segment shapes.
+    shape: Shape,
+}
+
+/// What [`SegmentMatcher::accepts`] can answer without running the NFA.
+#[derive(Debug, Clone)]
+enum Shape {
+    /// Only literal characters: the segment must be exactly this text.
+    Literal(Vec<char>),
+    /// A lone `*` (and the matcher `**` consumes with): any name, a leading
+    /// `.` only under `dot`.
+    AnyName { dot: bool },
+    /// Anything else runs the NFA.
+    General,
 }
 
 // --- Tokenizer -------------------------------------------------------------
@@ -534,33 +551,28 @@ pub(crate) fn compile_segment(
     let chars: Vec<char> = glob.chars().collect();
     let tokens = tokenize(&chars, state)?;
     let frag = build_fragment(&mut b, &tokens, true, opts.dot);
+    let closures = (0..b.eps_out.len())
+        .map(|s| eps_closure(&b.eps_out, s))
+        .collect();
+    let shape = match tokens.as_slice() {
+        [Token::Star] => Shape::AnyName { dot: opts.dot },
+        _ => tokens
+            .iter()
+            .map(|t| match t {
+                Token::Lit(ch) => Some(*ch),
+                _ => None,
+            })
+            .collect::<Option<Vec<char>>>()
+            .map_or(Shape::General, Shape::Literal),
+    };
     Ok(SegmentMatcher {
         eps_out: b.eps_out,
         char_out: b.char_out,
+        closures,
         start: frag.start,
         accept: frag.accept,
+        shape,
     })
-}
-
-/// Check every segment of `pattern` against the supported syntax without
-/// building matchers.
-///
-/// # Errors
-///
-/// [`Error::PatternTooDeep`] or [`Error::UnsupportedSyntax`].
-pub(crate) fn assert_supported<S: AsRef<str>>(pattern: &[S]) -> Result<(), Error> {
-    let joined = pattern
-        .iter()
-        .map(AsRef::as_ref)
-        .collect::<Vec<_>>()
-        .join("/");
-    let mut state = SyntaxState::new(joined);
-    for seg in pattern {
-        if seg.as_ref() != "**" {
-            tokenize(&seg.as_ref().chars().collect::<Vec<_>>(), &mut state)?;
-        }
-    }
-    Ok(())
 }
 
 // --- Character-set intersection -------------------------------------------
@@ -700,22 +712,73 @@ fn boundary_chars(p1: &CharPred, p2: &CharPred) -> Vec<char> {
 
 // --- Segment-matcher intersection -----------------------------------------
 
-/// Epsilon closure of `from`, in the peer's stack-walk insertion order (the
-/// order product expansion iterates, so it is part of the witness contract).
-fn eps_closure(m: &SegmentMatcher, from: usize) -> Vec<usize> {
+/// Epsilon closure of `from` over the free moves `eps`, in the peer's
+/// stack-walk insertion order (the order product expansion iterates, so it is
+/// part of the witness contract). Both automaton levels use it.
+pub(crate) fn eps_closure(eps: &[Vec<usize>], from: usize) -> Vec<usize> {
     let mut set = Vec::new();
-    let mut seen = HashSet::new();
+    let mut seen = vec![false; eps.len()];
     let mut stack = vec![from];
     while let Some(s) = stack.pop() {
-        if !seen.insert(s) {
+        if std::mem::replace(&mut seen[s], true) {
             continue;
         }
         set.push(s);
-        for &t in &m.eps_out[s] {
+        for &t in &eps[s] {
             stack.push(t);
         }
     }
     set
+}
+
+impl SegmentMatcher {
+    /// Does this matcher accept the concrete segment `seg`?
+    ///
+    /// The answer [`common_segment`] gives against a literal matcher for `seg`,
+    /// found by running the NFA over `seg` directly: a set of live states
+    /// advanced one character at a time, so the cost is bounded by
+    /// `seg.len()` times the matcher's size, with no backtracking. The
+    /// leading-dot rule is the one `common_segment` applies at position 0: a
+    /// `.` there needs an edge with `dot_at_start`.
+    pub(crate) fn accepts(&self, seg: &str, opts: &Options) -> bool {
+        let ci = opts.case_insensitive;
+        match &self.shape {
+            // A literal that begins the segment may match a leading `.`.
+            Shape::Literal(want) => {
+                return seg.chars().count() == want.len()
+                    && seg.chars().zip(want).all(|(c, &w)| char_eq(c, w, ci));
+            }
+            Shape::AnyName { dot } => return *dot || !seg.starts_with('.'),
+            Shape::General => {}
+        }
+        let mut live: Vec<usize> = self.closures[self.start].clone();
+        let mut next: Vec<usize> = Vec::new();
+        let mut in_next = vec![false; self.char_out.len()];
+        for (i, c) in seg.chars().enumerate() {
+            for &s in &live {
+                for e in &self.char_out[s] {
+                    let dot_ok = i > 0 || c != '.' || e.dot_at_start;
+                    if dot_ok && test_char(&e.pred, c, ci) {
+                        for &t in &self.closures[e.to] {
+                            if !in_next[t] {
+                                in_next[t] = true;
+                                next.push(t);
+                            }
+                        }
+                    }
+                }
+            }
+            if next.is_empty() {
+                return false;
+            }
+            for &t in &next {
+                in_next[t] = false;
+            }
+            std::mem::swap(&mut live, &mut next);
+            next.clear();
+        }
+        live.contains(&self.accept)
+    }
 }
 
 /// One concrete string accepted by BOTH segment matchers, or `None` when they
@@ -750,8 +813,8 @@ pub(crate) fn common_segment(
     while let Some(st) = queue.pop_front() {
         let a = st / stride;
         let b = st % stride;
-        let ca = eps_closure(m1, a);
-        let cb = eps_closure(m2, b);
+        let ca = &m1.closures[a];
+        let cb = &m2.closures[b];
 
         if ca.contains(&m1.accept) && cb.contains(&m2.accept) {
             if st == start {
@@ -783,9 +846,9 @@ pub(crate) fn common_segment(
         // sibling brace branch begins with a dot).
         let at_segment_start = st == start;
 
-        for &ua in &ca {
+        for &ua in ca {
             for e1 in &m1.char_out[ua] {
-                for &ub in &cb {
+                for &ub in cb {
                     for e2 in &m2.char_out[ub] {
                         let disallow_dot =
                             at_segment_start && !(e1.dot_at_start && e2.dot_at_start);

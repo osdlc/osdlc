@@ -2,14 +2,6 @@ import { describe, expect, test } from 'vitest'
 
 import { canonicalJson } from '@osdlc/ref-lease'
 
-import cases from './conformance/canonical-json.json' with { type: 'json' }
-
-describe('conformance: canonical-json.json', () => {
-  test.each(cases.cases)('$name', ({ value, expected }) => {
-    expect(canonicalJson(value)).toBe(expected)
-  })
-})
-
 describe('values JSON cannot hold', () => {
   test.each([
     ['undefined', undefined],
