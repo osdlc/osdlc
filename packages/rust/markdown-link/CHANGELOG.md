@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.2](https://github.com/osdlc/osdlc/compare/markdown-link/v0.11.1...markdown-link/v0.11.2) - 2026-11-22
+
+### Other
+
+- updated the following local packages: yaml-splice
+
 ## [0.11.1] - 2026-11-18
 
 ### Fixed
