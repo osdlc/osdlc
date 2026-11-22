@@ -184,8 +184,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   | File attempts of non-root targets | state | `~/.local/state/osdlc/pr-update/attempts/` |
 
   Every per-repository path of a non-root target is lower-cased and carries
-  the host. For those targets `keptName` and `findKept` (`src/update/kept.ts`)
-  use that layout and match on host as well as repository. No non-root
+  the host. A non-root target's `host/owner/name` is lower-cased once, when
+  the target is resolved, and every clone, kept and attempt lookup compares
+  that form, so `Acme/API` and `acme/api` are one target. For those targets
+  `keptName` and `findKept` (`src/update/kept.ts`) use that layout and match
+  on host as well as repository. No non-root
   target has a kept worktree today, so nothing needs to move.
 
   The same repository can be served from different git repositories on
@@ -203,8 +206,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   Then keeping falls back to `git worktree add` at the kept path from the run
   worktree's `HEAD`, copies the verify log in, and removes the run worktree.
   The kept tree has the same commit and log; untracked build output is not
-  carried over. Kept worktrees
-  and attempt records are not cache: a person may have work to finish in one,
+  carried over. The run worktree stays until the keep has fully succeeded.
+  If a later keep step fails, the rollback is `git worktree remove --force`
+  of the kept path and deleting its branch, not a move back.
+
+  Kept worktrees and attempt records are not cache: a person may have work to finish in one,
   and the other is history nothing re-derives. The project root keeps today's
   `<projectRoot>/.pr-update/` for all three, and today's
   `<owner>-<name>-<number>` kept name, so worktrees already kept there are
@@ -220,9 +226,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     `local` never clones: a target with no checkout is skipped. A stricter
     "mirror only" value is deferred (B-0002).
   - `mirror_dir: <path>`, optional.
-  - `mirror_max_age_days: <n>`, default 30. `0` turns automatic pruning off,
-    and a bare `mirror prune` then exits 2 and names `--older-than` and
-    `--all`.
+  - `mirror_max_age_days: <n>`, default 30. It applies only to whole clones.
+    `0` turns automatic pruning of clones off, and a bare `mirror prune` then
+    removes no clone unless given `--older-than` or `--all`. Dead run
+    worktrees are removed either way.
 
   None of these keys is in the project schema, so neither `pr-update.yaml` nor
   its `.local` overlay can set them. A repository cannot choose where the tool
@@ -254,8 +261,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   report the target as not measured, naming `pr-update mirror enable`. They
   take the clone's lock for the fetch and write the clone's last-used stamp,
   so a clone only surveyed is not pruned as unused. They prune nothing.
-  So `survey` still writes nothing but the fetch and that stamp, both inside
-  the clone.
+  So `survey` writes nothing but its fetches (into a clone or a located
+  checkout's `origin/*`), the clone's stamp and the clone's lock file.
 - **Consent.** Any one of these is consent to clone for the run: `--mirror-dir
   <dir>`, `PR_UPDATE_MIRROR_DIR`, or `checkout: mirror`. `--mirror-dir` and
   the variable win over `checkout: local` for that run. `OSDLC_ROOT` and the
@@ -302,7 +309,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   project root's host when that is GitHub (github.com or Enterprise, cloned as
   `host/owner/name`), else github.com. A Forgejo target with no checkout is
   skipped with a message, as today. Steps:
-  1. take the clone's lock (`@osdlc/file-lock`);
+  1. take the clone's lock (`@osdlc/file-lock`), the file
+     `<host>/<owner>/<name>.git.lock` beside the clone, so it exists before
+     the clone does and survives the rename and the clone's removal;
   2. check the mirror directory, whichever location it came from: it must
      not be inside a git working tree, and must be missing, empty or already
      marked by this tool. Otherwise the run exits 2 and names the directory.
@@ -362,7 +371,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   reason `mirror busy`. Between those steps the clone is in use through the
   run's worktree, which git records in the clone. Pruning takes
   the lock without waiting and holds it through the stamp check and the
-  removal. Under it, pruning first removes worktrees whose run is dead (the
+  removal, and removes the lock file last. Under the lock, pruning first removes worktrees whose run is dead (the
   executor's existing check), then skips a clone that still has any. A clone
   or temporary directory whose lock it cannot take is skipped. A clone
   directory without the tool's marker was not made by this tool and is never
@@ -378,13 +387,16 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   still exists, pruning runs `git worktree prune` there and deletes the dead
   run's scratch branch.
   `mirror list` shows these directories too, so a deleted or no-longer-targeted
-  checkout leaves nothing behind in the cache.
-  - *Automatic.* At the end of an `update --apply` that used the cache, the run removes
-    clones whose stamp is older than `mirror_max_age_days`, and prints each
-    one removed and the space freed. A run that never touches the cache never
-    removes anything.
-  - *By hand.* `pr-update mirror prune` removes clones past the age (with
-    the age at `0`, it needs `--older-than` or `--all`).
+  checkout leaves nothing behind in the cache. This walk ignores the age
+  setting.
+  - *Automatic.* At the end of an `update --apply` that served a target from
+    a clone or wrote under `worktrees/`, the run walks `worktrees/` and
+    removes clones whose stamp is older than `mirror_max_age_days`. It prints
+    each one removed and the space freed. A run that never touches the cache
+    never removes anything.
+  - *By hand.* `pr-update mirror prune` walks `worktrees/` and removes clones
+    past the age (none with the age at `0`, unless `--older-than` or `--all`
+    is given).
     `--older-than <days>` overrides it, `--all` takes every clone,
     `--dry-run` only reports. It and `list` take `--mirror-dir`, so a
     directory left behind by a moved `mirror_dir` can be cleaned.
