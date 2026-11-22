@@ -52,11 +52,17 @@ scans the directories its `repos:` lists name and matches each checkout's
   and writes no `remote.origin.fetch`. Left alone, those heads go stale and
   keep old objects from `gc`. Standard git.
 - `gh repo clone` of a fork adds an `upstream` remote unless given
-  `--no-upstream`. Verified (`gh repo clone --help`). Whether a later plain
-  `git fetch` or `git push` in the clone has credentials for a private HTTPS
-  repository is not verified.
-- `git worktree add` works from a bare repository. Inferred; to confirm in the
-  build with a test.
+  `--no-upstream`. Verified (`gh repo clone --help`).
+- `gh repo clone` authenticates only its own clone. The clone's config gets
+  no credential helper, so on a machine that never ran `gh auth setup-git`, a
+  later `git fetch` or `git push` over HTTPS fails with `could not read
+  Username`. With `credential.https://github.com.helper` set to
+  `!gh auth git-credential` in the clone's own config, both work. Verified
+  2026-11-22 against a private repository, with global and system git config
+  turned off (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`) and
+  `push --dry-run`.
+- `git worktree add --detach` works from a bare clone. Verified the same day,
+  on a repository without submodules.
 - `unpushed_local` asks `git worktree list` for a worktree on the head
   (`unpushedLocalWork` in `src/survey.ts`). A bare clone this tool owns has
   none, so the guard is false by construction there and never fires.
@@ -266,13 +272,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   2. `gh repo clone <host/owner/name> <tmp> --no-upstream -- --bare`, into a
      temporary directory beside the final one;
   3. delete every `refs/heads/*`, set the fetch refspec, fetch with `--prune`;
-  4. set `core.longpaths=true` (Windows paths under the cache are deep);
-  5. write the stamp and marker, then rename into place.
-
-  The build confirms that a later `git fetch` and `git push` in the clone
-  authenticate. If they do not, it sets
-  `credential.https://<host>.helper` to `gh auth git-credential` in the
-  clone's own config.
+  4. in the clone's own config, set `credential.https://<host>.helper` to an
+     empty value and then to `!gh auth git-credential`, the two lines
+     `gh auth setup-git` writes, so later fetches and pushes authenticate
+     whatever the person's global git config holds;
+  5. set `core.longpaths=true` (Windows paths under the cache are deep);
+  6. write the stamp and marker, then rename into place.
 - **Trust.** The trust gate runs for each target before a command its own
   files choose (`verify: detect`, `lockfile_install`). A located checkout is
   keyed by its path, as the project root is. A clone is keyed by
@@ -374,7 +379,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 
 ## What would reopen it
 
-A host where `gh repo clone` cannot authenticate, or whose clone leaves later
-fetches without credentials that a helper cannot fix; evidence that
+A host where `gh repo clone` cannot authenticate, or where the clone-local
+helper does not authenticate later fetches and pushes; evidence that
 `git worktree add` from a bare clone misbehaves with this tool's submodule
 handling; or an owner need for a literal `--mirror` push of all refs.
