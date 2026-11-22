@@ -19,8 +19,9 @@ clone, even when a checkout exists.
 What it adds:
 
 - The same behaviour on every machine, whatever the person has cloned.
-- Nothing written inside a person's checkout. Today the update worktree goes
-  at `<checkout>/.pr-update/<run>`.
+- Nothing written inside the project root's checkout. D-0005 already keeps a
+  located checkout's run worktree under the cache, but the project root still
+  gets `<projectRoot>/.pr-update/<run>`.
 
 What it costs:
 
@@ -31,5 +32,5 @@ What it costs:
 
 Why not now (owner, 2026-11-22): using the checkout a person already has is
 the safer default, and D-0005's standalone `locate` makes that work beyond the
-project root. Revisit if someone needs a run that never writes inside their
-checkouts.
+project root. Revisit if someone needs a run that never writes inside the
+project root's checkout.
