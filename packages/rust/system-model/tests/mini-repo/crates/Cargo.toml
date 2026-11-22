@@ -1,0 +1,4 @@
+# Virtual workspace root — no [package], so its manifest name is null.
+[workspace]
+members = ["crate-one", "crate-two"]
+resolver = "2"

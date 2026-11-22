@@ -1,5 +1,26 @@
 # @osdlc/ref-lease
 
+## 0.3.7
+
+### Patch Changes
+
+- 611c792: The protocol's conformance cases move from `tests/conformance/*.json` to the shared suite `packages/conformance/ref-lease/suite.json`, and the new `ref-lease` Rust crate runs them too. No change to the package's behaviour or API.
+
+## 0.3.6
+
+### Patch Changes
+
+- Updated dependencies [3f84b08]
+  - @osdlc/typed-git@0.21.0
+
+## 0.3.5
+
+### Patch Changes
+
+- a1651e3: README: the platform note says the tests run on Windows in the tier-2 workflow, which reports and never blocks.
+- Updated dependencies [1ba6088]
+  - @osdlc/typed-git@0.20.0
+
 ## 0.3.4
 
 ### Patch Changes

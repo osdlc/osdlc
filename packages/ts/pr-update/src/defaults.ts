@@ -16,10 +16,11 @@ import {
   stderrOrError,
 } from '@osdlc/command-seam'
 
-import { DETECT_LOOKED_FOR, detectVerifyCommand } from './detect.ts'
+import { DETECT_LOOKED_FOR, NothingDetectedError, detectVerifyCommand } from './detect.ts'
 import type { PrUpdateConfig, PrUpdateStandaloneConfig } from './config.ts'
 import type { Ports, Repair } from './ports.ts'
 import { agentRepair } from './repair/agents.ts'
+import { seatRepair } from './repair/seat.ts'
 import { attemptsDir, fileAttemptStore } from './update/attempts.ts'
 import { defaultLeaseTtlSeconds, refBranchLease } from './update/lease.ts'
 import { attemptsPrefix, refAttemptStore } from './update/ref-attempts.ts'
@@ -73,7 +74,7 @@ export function commandRepair(command: string, timeoutSeconds: number | null = n
  * `<projectRoot>/.pr-update/attempts/`, or, with `attempts.store: git-ref`, as refs on `remote`
  * (default `origin`) along with a per-branch update lease.
  *
- * `notice` receives one line per PR naming the command `verify: detect` chose.
+ * `notice` receives one-line progress notes for the person: the command `verify: detect` chose, and where to attach a `terminal` repair.
  */
 export function standalonePorts(
   cfg?: PrUpdateConfig & Partial<PrUpdateStandaloneConfig>,
@@ -84,6 +85,7 @@ export function standalonePorts(
   const command = cfg?.repair.command ?? null
   const agent = cfg?.repair.agent ?? null
   const timeout = cfg?.repair.timeout_seconds ?? null
+  const mode = cfg?.repair.mode ?? 'headless'
   const testCommand = cfg?.test_command ?? null
   return {
     locate: () => null,
@@ -95,7 +97,7 @@ export function standalonePorts(
       if (which === 'detect') {
         const found = detectVerifyCommand(checkout, testCommand)
         if (found === null) {
-          throw new Error(
+          throw new NothingDetectedError(
             `verify: detect found no test command in ${repo}'s update worktree (looked for ${DETECT_LOOKED_FOR}) — set pr_update.test_command, or set verify: 'none'`,
           )
         }
@@ -119,10 +121,18 @@ export function standalonePorts(
     },
     ...(agent !== null
       ? {
-          repair: agentRepair(agent, {
-            model: cfg?.repair.model ?? null,
-            timeoutSeconds: timeout,
-          }),
+          repair:
+            mode === 'headless'
+              ? agentRepair(agent, {
+                  model: cfg?.repair.model ?? null,
+                  timeoutSeconds: timeout,
+                })
+              : seatRepair(
+                  agent,
+                  mode,
+                  { model: cfg?.repair.model ?? null, timeoutSeconds: timeout },
+                  { notice },
+                ),
         }
       : command !== null
         ? { repair: commandRepair(command, timeout) }

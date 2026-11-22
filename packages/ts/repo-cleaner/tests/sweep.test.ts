@@ -30,7 +30,7 @@ import { IDENTITY, makeGitFixture, makeOriginAndCheckout } from '@osdlc/typed-gi
 import { cannedGh, cannedGlab, commit, git, interposedRunner, isGetUrlOrigin } from './helpers.ts'
 import { HELD_BY_WORKTREE, localDeleteCommand, remoteDeleteCommand } from '../src/branches.ts'
 import { renderJson, renderRepo, renderScan, renderText } from '../src/render.ts'
-import { resolveEntries } from '../src/resolve.ts'
+import { DEFAULT_MAX_DEPTH, resolveEntries } from '../src/resolve.ts'
 import {
   holdFreedBranches,
   inspectWorktree,
@@ -659,6 +659,56 @@ describe('resolveEntries', () => {
 
   test('no entries means no repositories — nothing fans out on its own', () => {
     expect(resolveEntries([], { git: new Git(root) }).repos).toEqual([])
+  })
+
+  describe('maxDepth', () => {
+    let deep: string
+    // A checkout three levels below `deep` and one four levels below it.
+    const three = () => join(deep, 'a', 'b', 'three')
+    const four = () => join(deep, 'a', 'b', 'c', 'four')
+
+    beforeAll(() => {
+      deep = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-deep-')))
+      for (const dir of [three(), four()]) {
+        mkdirSync(dir, { recursive: true })
+        makeGitFixture({ dir, initialBranch: 'main' })
+        writeFileSync(join(dir, 'README.md'), '# deep\n', 'utf-8')
+        commit(dir, 'initial commit')
+      }
+    }, HOOK_TIMEOUT_MS)
+
+    afterAll(() => rmSync(deep, { recursive: true, force: true }), HOOK_TIMEOUT_MS)
+
+    test(`finds a checkout ${DEFAULT_MAX_DEPTH} levels down by default, and counts what it left`, () => {
+      expect(DEFAULT_MAX_DEPTH).toBe(3)
+      const found = resolveEntries([deep], { git: new Git(deep) })
+      expect(found.repos).toEqual([three()])
+      expect(found.scan.depthLimited).toBe(1)
+      expect(renderScan(found)).toContain('--max-depth looks deeper')
+    })
+
+    test('a larger maxDepth finds deeper checkouts', () => {
+      const found = resolveEntries([deep], { git: new Git(deep), maxDepth: 4 })
+      expect(found.repos).toEqual([three(), four()].sort())
+      expect(found.scan.depthLimited).toBe(0)
+    })
+
+    test('a smaller one stops sooner', () => {
+      const found = resolveEntries([deep], { git: new Git(deep), maxDepth: 2 })
+      expect(found.repos).toEqual([])
+      expect(found.unresolved).toEqual([{ entry: deep, reason: 'no git checkouts under it' }])
+    })
+
+    test('sweep passes it through', () => {
+      const result = sweep([deep], { cwd: deep, maxDepth: 4 })
+      expect(result.repos.map((r) => r.path).sort()).toEqual([three(), four()].sort())
+    })
+
+    test('anything but a whole number, 1 or more, is refused', () => {
+      for (const maxDepth of [0, -1, 2.5, Number.NaN]) {
+        refusal(() => resolveEntries([deep], { git: new Git(deep), maxDepth }), 'bad-input')
+      }
+    })
   })
 })
 

@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.2](https://github.com/osdlc/osdlc/compare/typed-git/v0.4.1...typed-git/v0.4.2) - 2026-11-21
+
+### Other
+
+- a context option and opt-in rename detection on the diff verbs ([#917](https://github.com/osdlc/osdlc/pull/917))
+
 ### Added
 
+- `diff`: `DiffTextOptions::context` (`--unified=<n>`, default 3) and
+  `DiffTextOptions::find_renames` (`-M`, off by default, so `diff.renames`
+  still applies).
 - `object`: `cat_file_batch` and `cat_file_batch_chunks` read many objects
   byte for byte through `git cat-file --batch`, with a size cap
   (`CatFileBatchOptions::max_bytes`) and groups of about `chunk_bytes`.
