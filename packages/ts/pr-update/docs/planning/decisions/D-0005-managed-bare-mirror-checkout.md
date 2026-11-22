@@ -212,7 +212,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 
   Kept worktrees and attempt records are not cache: a person may have work to finish in one,
   and the other is history nothing re-derives. The project root keeps today's
-  `<projectRoot>/.pr-update/` for all three, and today's
+  `<projectRoot>/.pr-update/` for its run worktrees, kept worktrees and
+  attempt records, and today's
   `<owner>-<name>-<number>` kept name, so worktrees already kept there are
   still found.
 - **Machine file.** Read and written with `machineConfigFile`, which gets an
@@ -285,7 +286,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   - Enter writes `checkout: mirror`, and no `mirror_dir`, so the default
     location can still change.
   - A typed path writes `checkout: mirror` and `mirror_dir`. It is expanded
-    and made absolute, then checked as clone step 2 checks every location.
+    and made absolute, then checked as clone step 1 checks every location.
   - `n` writes `checkout: local`, so the question does not come back.
 
   The run prints the machine file's path. A write that loses a race to
@@ -301,7 +302,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - **`pr-update mirror`.** The prompt's answers are also commands, as
   `cli-interface.md` section 8 asks:
   - `enable [--dir <dir>]` writes `checkout: mirror` and, with `--dir`,
-    `mirror_dir`, after checking it as clone step 2 does;
+    `mirror_dir`, after checking it as clone step 1 does;
   - `disable` writes `checkout: local`;
   - `list` shows each clone's repository, size, last use and kept worktrees;
   - `prune`, below.
@@ -309,13 +310,15 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   project root's host when that is GitHub (github.com or Enterprise, cloned as
   `host/owner/name`), else github.com. A Forgejo target with no checkout is
   skipped with a message, as today. Steps:
-  1. take the clone's lock (`@osdlc/file-lock`), the file
+  1. check the mirror directory, whichever location it came from: it must
+     not be inside a git working tree, and must be missing, empty or already
+     marked by this tool. Otherwise the run exits 2 and names the directory,
+     having written nothing. Then write the tool's marker at its root if it
+     is not there yet, create-if-absent, so two runs marking a new directory
+     at once do not fail each other's check;
+  2. take the clone's lock (`@osdlc/file-lock`), the file
      `<host>/<owner>/<name>.git.lock` beside the clone, so it exists before
      the clone does and survives the rename and the clone's removal;
-  2. check the mirror directory, whichever location it came from: it must
-     not be inside a git working tree, and must be missing, empty or already
-     marked by this tool. Otherwise the run exits 2 and names the directory.
-     Then write the tool's marker at its root if it is not there yet;
   3. `gh repo clone <host/owner/name> <tmp> --no-upstream -- --bare`, where
      `<tmp>` is `.tmp-<name>.git-<pid>` beside the final directory (git
      needs an empty or missing target, so nothing is written there first);
@@ -376,7 +379,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   or temporary directory whose lock it cannot take is skipped. A clone
   directory without the tool's marker was not made by this tool and is never
   removed. A `.tmp-*.git-<pid>` directory is recognised by its name instead,
-  inside a mirror directory that carries the tool's marker (clone step 2), so
+  inside a mirror directory that carries the tool's marker (clone step 1), so
   one left by a killed clone is removed.
 
   Pruning also walks `worktrees/` in the cache, which holds the run
