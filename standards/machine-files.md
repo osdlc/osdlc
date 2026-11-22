@@ -27,19 +27,24 @@ false`, so that one file has one path whichever program reads it and
 by default, so the pin is never left out. No path is built by hand.
 
 ```ts
-import { envVars, systemDirs } from "@osdlc/config-layers";
+import { envVars, machineConfigFile, systemDirs } from '@osdlc/config-layers'
 
-const dirs = () =>
-  systemDirs(
-    { vendor: "osdlc", envVars: envVars("OSDLC") },
-    { convention: "xdg", conventionFromEnv: false },
-  );
+const vendorDirs = { vendor: 'osdlc', envVars: envVars('OSDLC') }
+const dirs = () => systemDirs(vendorDirs, { convention: 'xdg', conventionFromEnv: false })
+
+// A tool's machine file, with config-layers today:
+const file = machineConfigFile({
+  tool: 'osdlc',
+  fileName: '<tool>/config.yaml',
+  env: '<TOOL>_MACHINE_CONFIG',
+  vendorDirs,
+  dirs,
+  schema,
+})
 ```
 
-A tool's machine file, with config-layers today:
-`machineConfigFile({ tool: 'osdlc', fileName: '<tool>/config.yaml', env:
-'<TOOL>_MACHINE_CONFIG', dirs, … })`. The `tool` option sets both the
-directory and the default variable, so the variable is always passed. The
+The `tool` option sets both the directory and the default variable, so the
+variable is always passed. The
 nested `fileName` is not validated; an `app` option in config-layers is
 planned to replace it.
 
@@ -53,9 +58,15 @@ A tool published outside the `@osdlc` npm scope keeps its own root
 (`standalone('<tool>')`) and may read the family files through
 `@osdlc/ecosystem`.
 
-Tools written before this standard still use `standalone('<tool>')` with
-`envVars('<TOOL>')`: devlink's files, repo-cleaner and host-cleaner. Each
-category moves under the rule below for moves, one at a time.
+Tools written before this standard keep their own roots:
+
+| Files | Where today |
+| --- | --- |
+| devlink's files, repo-cleaner, host-cleaner | `standalone('<tool>')` with `envVars('<TOOL>')` |
+| wayfinder | The same, and its config is `config.json` with a `WAYFINDER_CONFIG` override |
+| The trust stores `@osdlc/trust-repo` keeps for pr-update and wayfinder | `$XDG_STATE_HOME/<tool>/trusted/`, built by hand (osdlc/osdlc#1010) |
+
+Each category moves under the rule below for moves, one at a time.
 
 ## Rules
 
@@ -65,7 +76,7 @@ category moves under the rule below for moves, one at a time.
 | A family file holds one concern and only facts more than one tool uses                                                                                                                                                                                                                                                                                                | A tool reads only what it needs, and a tool's own setting stays in its own file                                                                         |
 | Names directly under the root are reserved for family files and directories. No tool is named after one                                                                                                                                                                                                                                                               | A tool's directory never collides with a family entry                                                                                                   |
 | A file-level relocation variable is named after the file's owner: `PR_UPDATE_MACHINE_CONFIG` for a tool's file, `OSDLC_REPOSITORIES` for a family file                                                                                                                                                                                                                | A variable named after the family would move every tool's file at once                                                                                  |
-| `OSDLC_ROOT` and `OSDLC_<HOME>_DIR` move the whole family root. A test that spawns a tool sets `OSDLC_ROOT` and, for a tool whose files have not all moved under it, that tool's `<TOOL>_ROOT`. It also clears, or points into its root, every file-level relocation variable the tool reads (`OSDLC_REPOSITORIES`, `<TOOL>_MACHINE_CONFIG`, devlink's `<TOOL>_HOME`) | A file-level variable wins over the root, and a tool not yet moved still reads its own root, so either would point the child at the person's real files |
+| `OSDLC_ROOT` and `OSDLC_<HOME>_DIR` move the whole family root. A test that spawns a tool sets `OSDLC_ROOT` and, for a tool whose files have not all moved under it, that tool's `<TOOL>_ROOT`. For a tool with a `@osdlc/trust-repo` store it also sets `XDG_STATE_HOME` inside its root, since that store reads neither root (osdlc/osdlc#1010). It clears, or points into its root, every file-level relocation variable the tool reads (`OSDLC_REPOSITORIES`, `<TOOL>_MACHINE_CONFIG`, devlink's `<TOOL>_HOME`) | A file-level variable wins over the root, and a tool or store not yet moved still reads its own place, so any of them would point the child at the person's real files |
 | A per-tool store, such as trust markers, is keyed by the tool, never by the family                                                                                                                                                                                                                                                                                    | Consent given to one tool must not cover another                                                                                                        |
 | Data a person needs back, such as kept work or history, goes in state, never in cache                                                                                                                                                                                                                                                                                 | Anything under cache may be deleted whole, at any moment                                                                                                |
 | File names stay apart across homes that share one directory (under Xdg, state and logs; on Windows, durable and config)                                                                                                                                                                                                                                               | Two homes can resolve to one directory                                                                                                                  |
