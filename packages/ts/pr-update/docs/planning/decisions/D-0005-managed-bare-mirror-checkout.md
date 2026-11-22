@@ -21,7 +21,7 @@ not a `git clone --mirror`: it keeps the `origin/<branch>` remote-tracking
 layout that `survey` and `update` already read. The project root and `locate`
 stay first, and the clone is the fallback. The first run that needs a clone
 asks before making one, and the answer is saved in a machine file,
-`~/.config/osdlc/pr-update.yaml`. Nothing is built yet. The owner answered the
+`~/.config/osdlc/pr-update/config.yaml`. Nothing is built yet. The owner answered the
 configuration questions on 2026-11-21; the rest are below (osdlc/osdlc#844).
 
 ^summary
@@ -56,10 +56,14 @@ scans the directories its `repos:` lists name and matches each checkout's
 - `attempts.store: git-ref` keeps records as refs on the remote, so it needs no
   project root. Verified (`ref-attempts.ts`).
 - `@osdlc/config-layers`' `machineConfigFile` places its file at
-  `<config-home>/<tool>/<fileName>` through `standalone(tool).config()`, so
-  `tool: 'osdlc'` with `fileName: 'pr-update.yaml'` gives
-  `~/.config/osdlc/pr-update.yaml` with no library change. Verified
-  (`machine.ts`). pr-update reads no machine file today.
+  `<config-home>/<tool>/<fileName>` through `standalone(tool).config()`, and
+  derives its default relocation variable from `tool`. It has no way to add a
+  per-tool directory under a shared root. `@osdlc/tiered-dirs` has one:
+  `Dir.app(name)`, validated as a single path segment. Verified (`machine.ts`,
+  `tiered-dirs.ts`). pr-update reads no machine file today.
+- devlink already keeps pr-update's `history.jsonl` and link file in
+  `standalone('pr-update').config()`, which is `~/.config/pr-update/`. Verified
+  (`cli-tool/src/devlink/state.ts`).
 - `@osdlc/cli-tool` has synchronous `askText`, `askChoice` and `canPrompt`, the
   helpers `--confirm-push` uses (`src/update/confirm.ts`). Verified.
 
@@ -102,7 +106,9 @@ scans the directories its `repos:` lists name and matches each checkout's
 - With no terminal to ask on and nothing configured, the run fails. It does not
   clone into the default directory unasked.
 - `checkout` and the cache location are machine keys, in one file per tool
-  under a shared `osdlc` config directory: `~/.config/osdlc/pr-update.yaml`.
+  under a shared `osdlc` root. Each tool owns a directory there, so the file
+  is `~/.config/osdlc/pr-update/config.yaml` and the cache sits under
+  `~/.cache/osdlc/pr-update/`.
 - Project-level config stays where it is: `pr-update.yaml` and its `.local`
   overlay for a standalone run, the `pr_update:` block of `sdlc.yaml` under sdlc.
 
@@ -114,12 +120,13 @@ lost on criterion 1, C on cost and the guard. Details to build:
 - **Scope.** The standalone binary only: its `standalonePorts` gets the new
   `locate`, and it alone prompts and reads the machine file. A host's `Ports`
   are unchanged, and whether sdlc offers the cache is a later choice.
-- **Machine file.** `~/.config/osdlc/pr-update.yaml` on Linux, and on macOS
-  under the Xdg convention: `machineConfigFile({ tool: 'osdlc', fileName:
-  'pr-update.yaml', env: 'PR_UPDATE_MACHINE_CONFIG', ... })`, with the
-  `vendorDirs` `src/devlink.ts` already uses. The variable is named explicitly
-  because the default, `OSDLC_MACHINE_CONFIG`, would be shared by every osdlc
-  tool. Keys:
+- **Machine file.** `~/.config/osdlc/pr-update/config.yaml` on Linux, and on
+  macOS under the Xdg convention: `standalone('osdlc').config().app('pr-update')`,
+  with the `vendorDirs` `src/devlink.ts` already uses. `machineConfigFile` needs
+  a new option for the `app` segment (a config-layers change, made first). The
+  relocation variable is `PR_UPDATE_MACHINE_CONFIG`, named explicitly, because
+  the default, `OSDLC_MACHINE_CONFIG`, would be shared by every osdlc tool.
+  Keys:
   - `checkout: local | mirror`. Unset until the prompt answers it. `mirror`
     means project root and `locate` first, the clone as the fallback. `local`
     means today's behaviour: a repository with no checkout is skipped. A
@@ -133,8 +140,8 @@ lost on criterion 1, C on cost and the guard. Details to build:
   1. `--mirror-dir <dir>`, for one run;
   2. `PR_UPDATE_MIRROR_DIR`, for CI and tests;
   3. `mirror_dir` in the machine file;
-  4. `<cache-home>/osdlc/pr-update/repos` through `standalone('osdlc').cache()`,
-     which is `~/.cache/osdlc/pr-update/repos`.
+  4. `repos/` under `standalone('osdlc').cache().app('pr-update')`, which is
+     `~/.cache/osdlc/pr-update/repos`.
 
   One `<owner>/<name>.git` each. (`<owner>-<name>` would let `a-b/c` and
   `a/b-c` share a directory.) A flag or the variable is consent for that run and
@@ -171,16 +178,19 @@ lost on criterion 1, C on cost and the guard. Details to build:
 
 - Touches `src/defaults.ts` (`locate`), a new machine-file module, `src/commands.ts`
   (flag, variable, prompt), `src/update.ts` (worktree and attempts root) and
-  `README.md`. About 350 non-test lines with the prompt, estimated. Does not
-  supersede D-0001..D-0004.
+  `README.md`. About 350 non-test lines with the prompt, estimated. Before it,
+  config-layers' `machineConfigFile` gets its `app` option. Does not supersede
+  D-0001..D-0004.
 - **Known limit: unpushed work in a checkout the tool cannot see.** A
   standalone `locate` finds nothing, so a repository the person has cloned
   somewhere still runs from the cache. `unpushed_local` is true by construction
   there, and `--force-with-lease` guards only against changes on the remote. A
   run can therefore force-push over a branch whose local checkout holds commits
   that were never pushed. The README states this next to the mode.
-- pr-update gets two machine-local roots: this file under `osdlc/`, and the
-  trust store at `$XDG_STATE_HOME/pr-update/trusted/`.
+- pr-update keeps state under two roots for a while: the machine file and the
+  cache under `osdlc/pr-update/`, and devlink's files and the trust store
+  (`$XDG_STATE_HOME/pr-update/trusted/`) under `pr-update/`. Each category lives
+  in one place, and the others can move over one at a time.
 
 ## Follow-ups
 
@@ -190,7 +200,8 @@ lost on criterion 1, C on cost and the guard. Details to build:
 - A machine target for `pr-update config set`, in cli-tool's `config-command.ts`
   so every tool gets it. Until then the file is edited by hand or rewritten by
   the prompt.
-- Move the trust store under the `osdlc` root, or keep two roots on purpose.
+- Move devlink's files and the trust store under `osdlc/pr-update/`, or keep
+  them where they are on purpose.
 - Project config at `<repo>/.osdlc/pr-update.yaml` instead of `pr-update.yaml`
   at the root. No repository commits a `pr-update.yaml` today, so the move would
   break no one, but it is not part of this record.
