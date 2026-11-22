@@ -9,8 +9,8 @@ after:
   - "[12 One TS model](12%20One%20TS%20model.md)"
 ---
 
-One query layer. Move markdown-vault-query to osdlc on top of the corpus model. After 12 and D5.
+One query layer: markdown-vault-query on top of the corpus model. After 12 and D5.
 
-Out of scope for now: markdown-vault-query is in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps it there.
+markdown-vault-query moved to osdlc on 2026-11-22, still on top of markdown-vault.
 
-Deferred: out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again if markdown-vault-query moves here.
+Deferred: it follows task 12, which is out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again with task 12.

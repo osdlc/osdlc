@@ -104,9 +104,9 @@ the query layer (task 15).
 | Layer | TypeScript | Rust |
 |---|---|---|
 | Render, edit, sites | markdown-render, markdown-render-vue, markdown-vault-astro (osdlc); markdown-editor, markdown-ui, and dev's own markdown-render and markdown-astro (dev) | none |
-| Query and store | markdown-vault-query (dev) | markdown-store, ontogen (rust-ontogen) |
+| Query and store | markdown-vault-query (osdlc) | markdown-store, ontogen (rust-ontogen) |
 | Types | model-schema and its packs (dev, open PRs); corpus-schema (osdlc) | none |
-| Corpus model | markdown-vault, vault-graph-core (dev) | markdown-corpus, markdown-relink (osdlc) |
+| Corpus model | markdown-vault (osdlc); vault-graph-core (dev) | markdown-corpus, markdown-relink (osdlc) |
 | Note parts | markdown-link, frontmatter-lossless, markdown-contract, markdown-tags, gfm-table, yaml-splice (osdlc) | a twin of each (osdlc) |
 | Files | etag-write, path-guard (osdlc) | markdown-vault-fs, vfs-walk, vfs-seam, etag-write, path-guard (osdlc) |
 
@@ -118,8 +118,12 @@ markdown-vault-astro is dev's markdown-astro under a new name. dev still has its
 pack harness is in [sksizer/dev#4069](https://github.com/sksizer/dev/pull/4069) and the first packs
 in [sksizer/dev#4070](https://github.com/sksizer/dev/pull/4070). Neither is on dev main yet.
 
-dev no longer keeps its own copy of markdown-link. markdown-vault, vault-graph-core and
-markdown-astro use the published `@osdlc/markdown-link` `^0.8.1`; 0.9.0 is the latest.
+dev no longer keeps its own copy of markdown-link. vault-graph-core and markdown-astro use the
+published `@osdlc/markdown-link` `^0.8.1`; 0.9.0 is the latest.
+
+markdown-vault and markdown-vault-query moved to osdlc on 2026-11-22, as they were
+([D-SM4K](../../decisions/D-SM4K-markdown-ecosystem-home.md), amended). Here they use the
+workspace's markdown-link, markdown-tags and frontmatter-lossless.
 
 What is published:
 

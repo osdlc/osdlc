@@ -332,6 +332,27 @@ Developed here, in this repository:
   baselines from a pinned Playwright container, Playwright helpers for
   interaction and perf specs, an in-page metrics hook and a perf report that
   parallel workers merge)
+- `packages/ts/code-stats` (`@osdlc/code-stats` on npm once published, a tool
+  and library that counts lines of source by kind for a tree or a change, says
+  what each line of a change did (added, removed, changed, moved), and writes
+  pull-request descriptions from that)
+- `packages/ts/diffkit` (`@osdlc/diffkit` on npm once published, a tool and
+  library that writes the review-prep manifest for a pull request or branch
+  diff: kept and dropped files, review groups by package root and
+  reading-order flags, from the file facts `@osdlc/code-stats` measures)
+- `packages/ts/json-canvas-core` (`@osdlc/json-canvas-core` on npm once
+  published, the model for JSON Canvas documents: types, validation, an
+  immutable operation engine with undo and redo, geometry and a view model)
+- `packages/ts/json-canvas-vue` (`@osdlc/json-canvas-vue` on npm once
+  published, a Vue 3 board that draws and edits a JSON Canvas document on
+  `@osdlc/json-canvas-core`, with undo, node components, a read-only mode and
+  a sanitizing markdown seam)
+- `packages/ts/markdown-vault` (`@osdlc/markdown-vault` on npm once published,
+  reads a vault of Markdown notes into a plain model: frontmatter, tags,
+  wikilinks, embeds and backlinks, from a folder or from data you hold)
+- `packages/ts/markdown-vault-query` (`@osdlc/markdown-vault-query` on npm once
+  published, a tool and library that runs Obsidian Bases (`.base`) queries
+  over a `@osdlc/markdown-vault` index, with no Obsidian app)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull

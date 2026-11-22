@@ -651,8 +651,8 @@
         "target"
       ],
       "repo": {
-        "present": "sksizer/dev",
-        "target": "sksizer/dev"
+        "present": "osdlc/osdlc",
+        "target": "osdlc/osdlc"
       },
       "path": {
         "present": "packages/ts/markdown-vault-query",
@@ -664,9 +664,9 @@
       "twin": null,
       "purpose": "Runs Obsidian Bases (.base) queries over a vault. In the target it becomes the one query layer, on top of the corpus model.",
       "notes": [
-        "Version 0.2.1 in dev; not on npm.",
+        "Version 0.4.1 in osdlc; not on npm. Its first release is 0.5.0.",
         "Problem F9: two query layers (this and a loader corpus-schema planned).",
-        "It stays in sksizer/dev for now (decision D19). Task 15 puts it on top of the corpus model. It also planned to move it to osdlc. Its target name is not decided; the architecture keeps the word db for this layer, and decision D5 (what db means) is open.",
+        "It moved to osdlc/osdlc from sksizer/dev on 2026-11-22, as it was, on top of markdown-vault ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md), amended). Task 15 puts it on top of the corpus model. Its target name is not decided; the architecture keeps the word db for this layer, and decision D5 (what db means) is open.",
         "Task 16 adds a build that writes every valid record to JSON files and a SQLite file."
       ],
       "tasks": [
@@ -1615,7 +1615,7 @@
         "present"
       ],
       "repo": {
-        "present": "sksizer/dev",
+        "present": "osdlc/osdlc",
         "target": null
       },
       "path": {
@@ -1628,10 +1628,10 @@
       "twin": null,
       "purpose": "Reads an Obsidian-style vault from disk: each note's frontmatter, tags, links, embeds and backlinks. It has its own link-resolving rule.",
       "notes": [
-        "Version 0.2.2 in dev; not on npm.",
+        "Version 0.3.2 in osdlc; not on npm. Its first release is 0.4.0.",
         "Problems F1 and F4: it resolves links its own way, and says vault instead of corpus.",
         "Task 12 merges it with vault-graph-core into the TypeScript markdown-corpus.",
-        "It stays in sksizer/dev for now (decision D19). Whether task 12 still retires it is not decided."
+        "It moved to osdlc/osdlc from sksizer/dev on 2026-11-22, as it was ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md), amended). Whether task 12 still retires it is not decided."
       ],
       "tasks": [
         12,
@@ -3624,7 +3624,7 @@
     },
     {
       "from": "markdown-vault",
-      "to": "markdown-tags-dev-copy",
+      "to": "markdown-tags",
       "kind": "depends",
       "states": [
         "present"
@@ -4034,7 +4034,7 @@
       "states": [
         "present"
       ],
-      "note": "Both build the note and link graph in dev with different link rules: markdown-vault tries file names first, vault-graph-core indexes every path suffix (task 12 merges them).",
+      "note": "Both build the note and link graph with different link rules: markdown-vault (osdlc) tries file names first, vault-graph-core (dev) indexes every path suffix (task 12 merges them).",
       "overlap": "partial"
     }
   ]

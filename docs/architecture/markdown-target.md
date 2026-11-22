@@ -67,7 +67,7 @@ Every note in a corpus at once.
   frontmatter is read as body only.
 - Today: markdown-corpus (Rust, osdlc) does this. markdown-relink (Rust, osdlc) moves notes and
   fixes the links that point at them. In TypeScript the same job is split between
-  markdown-vault and vault-graph-core in dev, and they resolve links in two different ways.
+  markdown-vault (osdlc) and vault-graph-core (dev), and they resolve links in two different ways.
 - Target: one TypeScript package called markdown-corpus, made from those two, the twin of the Rust
   crate. The crate keeps its name. This is decided.
 
@@ -200,8 +200,8 @@ Reading a corpus as a database.
 - It owns: loading records into memory, queries, and building other forms from them, such as JSON or
   SQLite files.
 - It reads the corpus model and corpus-schema. It does not have its own file walk or link rules.
-- Today: markdown-vault-query (dev) runs Obsidian Bases queries over a vault. It stays in
-  sksizer/dev; no move is planned. Target: it sits on top of the corpus model and becomes the one
+- Today: markdown-vault-query (osdlc) runs Obsidian Bases queries over a vault. It came from
+  sksizer/dev on 2026-11-22. Target: it sits on top of the corpus model and becomes the one
   query layer. We keep the word "db" for this layer.
 
 ### 8. Render, edit, sites
@@ -302,11 +302,11 @@ A twin can have extras the other doesn't need. It just has to pass the shared ca
 | Job | Today | Target |
 |---|---|---|
 | Note parts | osdlc; dev also has a private copy of markdown-tags | osdlc, used from npm and crates.io |
-| Corpus model, TypeScript | markdown-vault and vault-graph-core in dev | markdown-corpus in osdlc |
+| Corpus model, TypeScript | markdown-vault in osdlc and vault-graph-core in dev | markdown-corpus in osdlc |
 | Corpus model, Rust | markdown-corpus in osdlc | the same |
 | corpus-schema | osdlc; 0.2.1 is on npm, published from osdlc | the same |
 | Profiles, packs, starter corpora | model-schema and packs in dev, merged to a branch that is not on main yet; the claims and sdlc profiles and the starter are in open pull requests (osdlc/markdown#15, #16 and #19, osdlc/models#1); the planning profile is in osdlc, with the plan | profiles and the starter in osdlc, place not decided (proposed `packages/profiles/*` and `packages/corpora/*`); model-schema and the packs stay in dev for now |
-| Query | markdown-vault-query in dev | dev for now; no move is planned |
+| Query | markdown-vault-query in osdlc | osdlc, on top of the corpus model |
 | Render, edit, sites | markdown-render, markdown-render-vue and markdown-vault-astro in osdlc; the rest in dev | the same; no move out of dev is planned |
 | Typed records from Rust | markdown-store in rust-ontogen | on the shared parts; it stays in rust-ontogen for now |
 
