@@ -326,7 +326,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 
   | Item | Removed by |
   | --- | --- |
-  | A run's worktree and scratch branch | The run, in a `finally` (`src/update/execute.ts`). A killed run's are removed by the next run on the same repository |
+  | A run's worktree and scratch branch | The run, in a `finally` (`src/update/execute.ts`). A killed run's are removed by the next run served from the same git directory, or by pruning (below) |
   | A killed run's worktree under `worktrees/` in the cache | Pruning, automatic or by hand, whatever repository it belongs to |
   | A kept worktree (`keep_failed`) | `--discard-kept`, `--retry-failed`, or the PR moving |
   | `origin/<branch>` for a deleted branch | `fetch --prune`, on each unscoped run that fetches |
