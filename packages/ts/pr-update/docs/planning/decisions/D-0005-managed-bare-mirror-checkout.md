@@ -25,7 +25,8 @@ that `survey` and `update` already read. The first `update --apply` that needs
 a clone asks before making one, and the answer is saved in
 `~/.config/osdlc/pr-update/config.yaml`. Nothing is built yet
 (osdlc/osdlc#844). The `locate` parts rest on D-ZVIA, which is still proposed
-(osdlc/osdlc#1012).
+(osdlc/osdlc#1012); that PR also adds the `machine-files.md` standard linked
+below, so it merges first.
 
 ^summary
 
@@ -219,8 +220,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     executor).
   - A located checkout is fetched and pushed through `origin`, the remote that
     matched, whatever `--remote` says. `--remote` applies to the project root.
-  - Its run worktree goes under the cache (table above), so nothing is written
-    inside the checkout but git's own worktree records.
+  - Its run worktree goes under the cache (table above). Inside the checkout
+    the run writes only git's worktree records, its scratch branch and the
+    fetched `origin/*` refs. A killed run's scratch branch stays until a later
+    run that uses the same checkout removes it.
 - **Who clones.** Only `update --apply`, with `checkout: mirror` or a consent
   below. `survey` and a rehearsal fetch a clone that exists and otherwise
   report the target as not measured, naming `pr-update mirror enable`. They
@@ -248,8 +251,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   - Enter writes `checkout: mirror`, and no `mirror_dir`, so the default
     location can still change.
   - A typed path writes `checkout: mirror` and `mirror_dir`. It is expanded
-    and made absolute. A path inside a git working tree is refused, and so is
-    a directory that has other files in it and no marker this tool wrote.
+    and made absolute, then checked as clone step 2 checks every location.
   - `n` writes `checkout: local`, so the question does not come back.
 
   The run prints the machine file's path. A write that loses a race to
@@ -265,7 +267,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - **`pr-update mirror`.** The prompt's answers are also commands, as
   `cli-interface.md` section 8 asks:
   - `enable [--dir <dir>]` writes `checkout: mirror` and, with `--dir`,
-    `mirror_dir`;
+    `mirror_dir`, after checking it as clone step 2 does;
   - `disable` writes `checkout: local`;
   - `list` shows each clone's repository, size, last use and kept worktrees;
   - `prune`, below.
@@ -274,8 +276,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   `host/owner/name`), else github.com. A Forgejo target with no checkout is
   skipped with a message, as today. Steps:
   1. take the clone's lock (`@osdlc/file-lock`);
-  2. write the tool's marker at the root of the mirror directory if it is not
-     there yet, whichever location the directory came from;
+  2. check the mirror directory, whichever location it came from: it must
+     not be inside a git working tree, and must be missing, empty or already
+     marked by this tool. Otherwise the run exits 2 and names the directory.
+     Then write the tool's marker at its root if it is not there yet;
   3. `gh repo clone <host/owner/name> <tmp> --no-upstream -- --bare`, where
      `<tmp>` is `.tmp-<name>.git-<pid>` beside the final directory (git
      needs an empty or missing target, so nothing is written there first);
