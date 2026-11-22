@@ -18,7 +18,8 @@ tags:
 Accepted: a standalone run finds each `--repo` target in a checkout already on
 the machine, and uses a managed bare clone only when there is none. The order
 is the project root, then a checkout under the roots in
-`~/.config/osdlc/repositories.yaml`, then the clone. The clone is not a
+`~/.config/osdlc/repositories.yaml` (or, with none configured, beside the
+project root), then the clone. The clone is not a
 `git clone --mirror`: it keeps the `origin/<branch>` remote-tracking layout
 that `survey` and `update` already read. The first `update --apply` that needs
 a clone asks before making one, and the answer is saved in
@@ -178,11 +179,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   Every per-repository path of a non-root target is lower-cased and carries
   the host. For those targets `keptName` and `findKept` (`src/update/kept.ts`)
   use that layout and match on host as well as repository. No non-root
-  target has a kept worktree today, so nothing needs to move. The project
-  root keeps today's `<owner>-<name>-<number>` name, so worktrees already
-  kept there are still found. Kept worktrees and attempt records are not cache: a person may have work to
-  finish in one, and the other is history nothing re-derives. The project root
-  keeps today's `<projectRoot>/.pr-update/` for all three.
+  target has a kept worktree today, so nothing needs to move. Kept worktrees
+  and attempt records are not cache: a person may have work to finish in one,
+  and the other is history nothing re-derives. The project root keeps today's
+  `<projectRoot>/.pr-update/` for all three, and today's
+  `<owner>-<name>-<number>` kept name, so worktrees already kept there are
+  still found.
 - **Machine file.** Read and written with `machineConfigFile`, which gets an
   `app` option first (a config-layers change), and is passed the pinned
   `dirs`. Its relocation variable is `PR_UPDATE_MACHINE_CONFIG`, named
@@ -251,8 +253,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   The run prints the machine file's path. A write that loses a race to
   another run's prompt re-reads the file and uses the answer it finds.
 - **No terminal.** When `canPrompt()` is false, a GitHub target has no
-  checkout, and nothing gives or refuses consent, `update --apply` exits 2 and names `--mirror-dir`,
-  `PR_UPDATE_MIRROR_DIR` and `pr-update mirror enable`. This changes one case:
+  checkout, and nothing gives or refuses consent, `update --apply` exits 2
+  and names `--mirror-dir`, `PR_UPDATE_MIRROR_DIR` and
+  `pr-update mirror enable`. This changes one case:
   an unattended `--apply` whose `--repo` has no checkout now fails instead of
   skipping it. `checkout: local` restores the skip. The nightly
   `pr-update.yml` never reaches this: it updates only the repository it
@@ -291,7 +294,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   - `git-ref` for any other target is bound to that target's checkout or
     clone and its `origin`.
   - `file` for any other target is the state store (table above), one file
-    per `host/owner/name`, head and base, the key trust uses. `clear` and `prune`
+    per `host/owner/name`, head and base, whether the target is located or
+    cloned. `clear` and `prune`
     route the same way.
 - **Branch mode.** `branch` mode skips non-root targets.
 - **Report.** Each repository in the JSON report carries
@@ -311,11 +315,15 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   Neither macOS nor common Linux setups clear `~/.cache` on their own, so
   without pruning the cache keeps one clone for every repository a run ever
   targeted.
-- **Pruning clones.** A run takes a clone's lock while it uses the clone, and
-  writes the last-used stamp when it takes the lock. Pruning takes the same
-  lock without waiting, and holds it through the stamp check and the
-  removal. A clone or temporary directory whose lock it cannot take is
-  skipped. A directory with no marker was not made by this tool and is never
+- **Pruning clones.** A run holds a clone's lock only while it clones,
+  fetches, or adds or removes a worktree, and writes the last-used stamp when
+  it takes the lock. It waits up to 60 seconds for the lock, then skips the
+  target with reason `mirror busy`. Between those steps the clone is in use
+  through the run's worktree, which git records in the clone. Pruning takes
+  the lock without waiting and holds it through the stamp check and the
+  removal. Under it, pruning first removes worktrees whose run is dead (the
+  executor's existing check), then skips a clone that still has any. A clone
+  or temporary directory whose lock it cannot take is skipped. A directory with no marker was not made by this tool and is never
   removed. A temporary directory left by a killed clone is removed.
   - *Automatic.* At the end of a run that used the cache, the run removes
     clones whose stamp is older than `mirror_max_age_days`, and prints each
