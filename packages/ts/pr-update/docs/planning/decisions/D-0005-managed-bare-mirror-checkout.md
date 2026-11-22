@@ -57,9 +57,10 @@ scans the directories its `repos:` lists name and matches each checkout's
   project root. Verified (`ref-attempts.ts`).
 - `@osdlc/config-layers`' `machineConfigFile` places its file at
   `<config-home>/<tool>/<fileName>` through `standalone(tool).config()`, and
-  derives its default relocation variable from `tool`. It has no way to add a
-  per-tool directory under a shared root. `@osdlc/tiered-dirs` has one:
-  `Dir.app(name)`, validated as a single path segment. Verified (`machine.ts`,
+  derives its default relocation variable from `tool`. It reaches a per-tool
+  directory under a shared root only through a nested `fileName`
+  (`'pr-update/config.yaml'`), which skips segment validation.
+  `@osdlc/tiered-dirs` has the validated form: `Dir.app(name)`. Verified (`machine.ts`,
   `tiered-dirs.ts`). pr-update reads no machine file today.
 - devlink already keeps pr-update's `history.jsonl` and link file in
   `standalone('pr-update').config()`, which is `~/.config/pr-update/`. Verified
@@ -122,8 +123,9 @@ lost on criterion 1, C on cost and the guard. Details to build:
   are unchanged, and whether sdlc offers the cache is a later choice.
 - **Machine file.** `~/.config/osdlc/pr-update/config.yaml` on Linux, and on
   macOS under the Xdg convention: `standalone('osdlc').config().app('pr-update')`,
-  with the `vendorDirs` `src/devlink.ts` already uses. `machineConfigFile` needs
-  a new option for the `app` segment (a config-layers change, made first). The
+  with the `vendorDirs` `src/devlink.ts` already uses. `machineConfigFile` gets
+  an `app` option first (a config-layers change), rather than a nested
+  `fileName`. The
   relocation variable is `PR_UPDATE_MACHINE_CONFIG`, named explicitly, because
   the default, `OSDLC_MACHINE_CONFIG`, would be shared by every osdlc tool.
   Keys:
