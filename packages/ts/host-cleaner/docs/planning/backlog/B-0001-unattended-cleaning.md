@@ -14,10 +14,11 @@ The first version of host-cleaner runs only when a person runs it: `status`,
 `plan`, `clean` and `config`. It keeps the plugin model, with the `git`,
 `cargo`, `node` and `orca` plugins and every hook, because Orca is the first of
 several tools (other ADEs and IDEs) that take part in cleaning shared locations
-on disk. What was cut is the part that ran with no person present, and a second
+on disk. What is cut is the part that ran with no person present, and a second
 layer of config. Both were built and merged first, then rolled back before any
-release to keep the first version simple. This item keeps them on record so
-they can come back.
+release to keep the first version simple: `clean --auto` and `schedule` in the
+pull request that adds this item, profiles in the next one. This item keeps
+them on record so they can come back.
 
 ## Where the code is
 
