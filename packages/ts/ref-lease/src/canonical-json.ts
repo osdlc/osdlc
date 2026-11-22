@@ -11,7 +11,7 @@
  * - No trailing newline.
  *
  * Another implementation of the protocol must write numbers the same way to
- * produce the same bytes; `tests/conformance/canonical-json.json` has the cases.
+ * produce the same bytes; the `canonical_json` section of `packages/conformance/ref-lease/suite.json` has the cases.
  *
  * `JSON.stringify` over a key-sorted copy is not enough: a JavaScript engine
  * orders integer-like keys (`"1"`, `"10"`, `"2"`) numerically whatever the

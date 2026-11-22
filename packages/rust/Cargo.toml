@@ -9,7 +9,7 @@
 [workspace]
 # resolver 3 picks dependency versions that support `rust-version` (the MSRV).
 resolver = "3"
-members = ["agent-adapt", "agent-router", "config-layers", "etag-write", "frontmatter-lossless", "gfm-pipe-table", "glob-intersect", "markdown-contract", "markdown-corpus", "markdown-link", "markdown-relink", "markdown-tags", "markdown-vault-fs", "osdlc-file-lock", "path-guard", "slug-collate", "system-model", "tiered-dirs", "tradecraft", "typed-git", "vfs-seam", "vfs-walk", "web-access", "yaml-splice", "yaml-splice-wasm"]
+members = ["agent-adapt", "agent-router", "config-layers", "etag-write", "frontmatter-lossless", "gfm-pipe-table", "glob-intersect", "markdown-contract", "markdown-corpus", "markdown-link", "markdown-relink", "markdown-tags", "markdown-vault-fs", "osdlc-file-lock", "path-guard", "ref-lease", "slug-collate", "system-model", "tiered-dirs", "tradecraft", "typed-git", "vfs-seam", "vfs-walk", "web-access", "yaml-splice", "yaml-splice-wasm"]
 
 [workspace.package]
 edition = "2024"
@@ -98,6 +98,7 @@ markdown-relink = { path = "markdown-relink", version = "0.4.2" }
 markdown-vault-fs = { path = "markdown-vault-fs", version = "0.8.0", default-features = false }
 osdlc-file-lock = { path = "osdlc-file-lock", version = "0.4.0" }
 path-guard = { path = "path-guard", version = "0.3.4" }
+ref-lease = { path = "ref-lease", version = "0.1.0" }
 slug-collate = { path = "slug-collate", version = "0.2.0" }
 system-model = { path = "system-model", version = "0.1.0" }
 tiered-dirs = { path = "tiered-dirs", version = "0.3" }
