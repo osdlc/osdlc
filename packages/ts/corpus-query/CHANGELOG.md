@@ -1,5 +1,11 @@
 # @osdlc/corpus-query
 
+## 0.1.4
+
+### Patch Changes
+
+- c6b292d: The `watch` option says that a change made just after the server starts can go unseen: `fs.watch` has no ready signal.
+
 ## 0.1.3
 
 ### Patch Changes
