@@ -44,8 +44,8 @@ agent as text, never evaluated.
 ```
 @codex /craft:comment-review
 @codex /craft:comment-review src/ --apply
-@codex /craft:comment-review focus on the tests
-please keep behaviour identical
+@codex /craft:comment-review --report-only
+leave the license headers alone
 ```
 
 - **Read-only by default.** The skill runs, and its findings or proposed diff
