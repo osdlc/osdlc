@@ -164,8 +164,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   | What | Home | Path under Xdg |
   | --- | --- | --- |
   | Machine file | config | `~/.config/osdlc/pr-update/config.yaml` |
-  | Clones | cache | `~/.cache/osdlc/pr-update/repos/<owner>/<name>.git` |
-  | Run worktrees of non-root targets | cache | `~/.cache/osdlc/pr-update/worktrees/<owner>/<name>/<run>` |
+  | Clones | cache | `~/.cache/osdlc/pr-update/repos/<host>/<owner>/<name>.git` |
+  | Run worktrees of non-root targets | cache | `~/.cache/osdlc/pr-update/worktrees/<host>/<owner>/<name>/<run>` |
   | Kept worktrees of non-root targets | state | `~/.local/state/osdlc/pr-update/kept/` |
   | File attempts of non-root targets | state | `~/.local/state/osdlc/pr-update/attempts/` |
 
@@ -220,8 +220,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   3. `mirror_dir` in the machine file;
   4. `repos/` in the cache home (table above).
 
-  One `<owner>/<name>.git` each, lower-cased. (`<owner>-<name>` would let
-  `a-b/c` and `a/b-c` share a directory.)
+  One `<host>/<owner>/<name>.git` each, lower-cased. The host keeps an
+  Enterprise `acme/api` apart from github.com's, and separate segments keep
+  `a-b/c` apart from `a/b-c`.
 - **First use asks.** The prompt runs in `update --apply` when a target has no
   checkout and nothing above gives or refuses consent. It names the
   repositories, the roots it searched and `repositories.yaml`, the clone
@@ -278,7 +279,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   - `git-ref` for any other target is bound to that target's checkout or
     clone and its `origin`.
   - `file` for any other target is the state store (table above), one file
-    per repo, head and base, as records are keyed today. `clear` and `prune`
+    per `host/owner/name`, head and base, the key trust uses. `clear` and `prune`
     route the same way.
 - **Branch mode.** `branch` mode skips non-root targets.
 - **Report.** Each repository in the JSON report carries
@@ -301,7 +302,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - **Pruning clones.** A run takes a clone's lock while it uses the clone, and
   writes the last-used stamp when it takes the lock. A directory with no
   marker was not made by this tool and is never removed. A temporary
-  directory left by a killed clone is removed.
+  directory left by a killed clone is removed only when its clone's lock is
+  free.
   - *Automatic.* At the end of a run that used the cache, the run removes
     clones whose stamp is older than `mirror_max_age_days`, and prints each
     one removed and the space freed. A run that never touches the cache never
@@ -313,8 +315,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   - *Never removed:* a clone whose lock another process holds, or one with a
     kept worktree, even with `--all`. `mirror prune --discard-kept` removes
     the kept worktrees first.
-  - Removing a clone also removes its repository's records from the file
-    attempts store.
+  - Removing a clone leaves its repository's attempt records in the state
+    home. They are history, not cache, and a located checkout of the same
+    repository may use them.
 
 ## Consequences
 
