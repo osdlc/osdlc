@@ -68,6 +68,20 @@ What a plan runs uses repo-cleaner's words, with their meaning:
 
 Each candidate that runs is still judged by the rules above.
 
+### Machine-scope plugins
+
+A plugin that cleans outside any checkout (a cache directory, a toolchain
+folder) declares `roots(ctx)`: the directories it cleans, fixed or taken from
+its own settings. Every candidate it owns must sit strictly below one of them,
+proven on real paths with `@osdlc/path-guard`, so a `..` or a symlink that
+leaves is not inside, and the root itself is never a candidate. A candidate
+that is itself a link is judged by its target, so a link pointing out of the
+roots is refused. A plugin's `delete` must act on the candidate's path alone. The core
+refuses one that is not (`outside-roots`, by `host-cleaner`) and checks again
+right before `delete`, failing that step if the path moved out since the
+re-check. `containedIn(roots, path)` is exported for plugin code that wants the
+same check. `ignore` applies to these candidates as to any other.
+
 ## The `git` plugin
 
 `gitPlugin(options)` proposes repo-cleaner's worktrees and branches. Its
@@ -202,6 +216,27 @@ Two settings sit at the top of the config and apply to every plugin:
   and the current one, dropping a planned candidate as `ignored`.
 - `idleHours` is the default for every plugin that has the setting and does not
   set its own. `0` is allowed and makes every idle-checked artifact a candidate.
+
+### Profiles
+
+`profiles` holds named overrides, chosen with `--profile <name>` on `status`,
+`plan`, `clean` (`--auto` included) and `config`:
+
+```json
+{
+  "targets": ["~/dev"],
+  "idleHours": 24,
+  "profiles": { "deep": { "idleHours": 0, "plugins": { "node": { "enabled": false } } } }
+}
+```
+
+`host-cleaner clean --profile deep --yes` is then the "disk is nearly full"
+command. A profile may set `targets`, `ignore`, `idleHours` and `plugins`; it
+is deep-merged over the rest of the config, a list in it replaces the config's,
+except `ignore`, which only grows, so a profile cannot lift a protection. Each
+profile is checked when the config loads, like `plugins`; an unknown profile
+name is refused (exit 2) with the names there are. `schedule install` does not
+take a profile yet.
 
 `host-cleaner config` prints every plugin's effective settings: the value, and
 whether the file set it or it is the default. `--format json` prints the values.

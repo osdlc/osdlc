@@ -13,10 +13,19 @@ import { join } from 'node:path'
 import { z } from 'zod'
 
 import { envVars, systemDirs } from '@osdlc/cli-tool'
+import { deepMergeConfig } from '@osdlc/config-layers'
 
 import { settingsIssues } from './settings.ts'
 
 const VENDOR_DIRS = { vendor: 'host-cleaner', envVars: envVars('HOST_CLEANER') }
+
+/** What a profile may override: the same keys as the config, none required. */
+const ProfileSchema = z.strictObject({
+  targets: z.array(z.string().min(1)).optional(),
+  ignore: z.array(z.string().min(1)).optional(),
+  idleHours: z.number().nonnegative().optional(),
+  plugins: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+})
 
 export const ConfigSchema = z.strictObject({
   /** Checkouts and directories of checkouts, swept when none is named on the command line. */
@@ -27,6 +36,8 @@ export const ConfigSchema = z.strictObject({
   idleHours: z.number().nonnegative().optional(),
   /** Settings by plugin name; a plugin reads only its own entry. */
   plugins: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
+  /** Named overrides, chosen with `--profile <name>`; deep-merged over the rest of the config. */
+  profiles: z.record(z.string(), ProfileSchema).default({}),
 })
 
 export type Config = z.infer<typeof ConfigSchema>
@@ -68,7 +79,33 @@ export function readConfig(path: string, opts: { required?: boolean } = {}): Con
   }
   const parsed = ConfigSchema.safeParse(raw)
   if (!parsed.success) throw new ConfigError(`bad config ${path}: ${parsed.error.message}`)
-  const issues = settingsIssues(parsed.data.plugins)
+  const issues = [
+    ...settingsIssues(parsed.data.plugins),
+    ...Object.entries(parsed.data.profiles).flatMap(([name, p]) =>
+      settingsIssues(p.plugins ?? {}, `profiles.${name}.plugins`),
+    ),
+  ]
   if (issues.length > 0) throw new ConfigError(`bad config ${path}: ${issues.join('; ')}`)
   return parsed.data
+}
+
+/**
+ * `config` with profile `name` merged over it: nested settings merge, a list in
+ * the profile replaces the config's, except `ignore`, which only grows, so a
+ * profile cannot lift a protection.
+ *
+ * @throws ConfigError when no profile has that name
+ */
+export function applyProfile(config: Config, name: string): Config {
+  const profile = Object.hasOwn(config.profiles, name) ? config.profiles[name] : undefined
+  if (profile === undefined) {
+    const have = Object.keys(config.profiles)
+    throw new ConfigError(
+      `no profile named ${name}; ${have.length > 0 ? `have ${have.join(', ')}` : 'the config has none'}`,
+    )
+  }
+  const { profiles, ...base } = config
+  const merged = deepMergeConfig(base, profile)
+  const ignore = [...new Set([...config.ignore, ...(profile.ignore ?? [])])]
+  return ConfigSchema.parse({ ...merged, ignore, profiles })
 }
