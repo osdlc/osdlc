@@ -340,8 +340,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   variable, prompt, per-target trust), a new machine-file module, a new
   `mirror` command, the exit codes table and `README.md`. About 700 non-test
   lines, estimated. Before it: config-layers' `machineConfigFile` gets its
-  `app` option, `@osdlc/ecosystem` ships `repositories.yaml` and
-  `locateCheckout` (D-ZVIA), and trust-repo keys a clone by repository.
+  `app` option, `typed-git` gains SSH-alias-aware remote matching (moved
+  from sdlc), `@osdlc/ecosystem` ships `repositories.yaml` and
+  `locateCheckout` on top of it (D-ZVIA), and trust-repo keys a clone by
+  repository.
   Does not supersede D-0001..D-0004.
 - **Known limit: unpushed work in a checkout the tool cannot see.** A
   repository checked out outside every root still runs from the clone.
