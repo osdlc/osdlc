@@ -32,6 +32,7 @@ export default defineConfig({
         'groups',
         'schema',
         'graph',
+        'build',
         'aspect',
         'client',
         'saved-view',

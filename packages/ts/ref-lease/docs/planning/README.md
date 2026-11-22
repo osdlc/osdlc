@@ -23,3 +23,6 @@ one that replaces it.
 - [D-06](decisions/D-06-namespace-guard.md): The namespace guard
 - [D-07](decisions/D-07-first-version-continues-the-history.md): The first public version continues
   the history
+- [D-08](decisions/D-08-recipes-are-exported-helpers.md): Claim, update and release are exported helpers
+- [D-09](decisions/D-09-name.md): The name is `@osdlc/ref-lease` (proposed)
+- [D-10](decisions/D-10-api-0.2.4.md): The 0.2.4 API is signed off (proposed)

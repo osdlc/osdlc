@@ -1,25 +1,42 @@
+/**
+ * Runs `packages/conformance/ref-lease/suite.json`, the cases this package and
+ * the Rust `ref-lease` crate must agree on. The runner is `run` in `conformance.ts`.
+ */
 import { describe, expect, test } from 'vitest'
 
-import { fetchFailure, pushOutcome } from '../src/classify.ts'
+import { CASE_KEYS, INPUT_KEYS, checkInput, readSuite, run } from './conformance.ts'
 
-import fetchCases from './conformance/fetch.json' with { type: 'json' }
-import pushCases from './conformance/push.json' with { type: 'json' }
+const suite = readSuite()
+const sections = suite.sections
 
-type Flag = Parameters<typeof pushOutcome>[0]['flag']
-type Rejection = NonNullable<Parameters<typeof pushOutcome>[0]['rejection']>
+describe('conformance suite', () => {
+  test('is the ref-lease suite, with this package as its reference', () => {
+    expect([suite.family, suite.reference]).toEqual(['ref-lease', 'ts'])
+  })
 
-describe('conformance: push.json', () => {
-  test.each(pushCases.cases)('$name', ({ flag, rejection, keepsSha, expected }) => {
-    const ref = {
-      flag: flag as Flag,
-      ...(rejection === null ? {} : { rejection: rejection as Rejection }),
+  test('has exactly the sections this implementation runs', () => {
+    expect(Object.keys(sections).sort()).toEqual(Object.keys(INPUT_KEYS).sort())
+  })
+
+  test('every case has a shape this implementation knows', () => {
+    for (const [name, section] of Object.entries(sections)) {
+      for (const c of section.cases) {
+        expect(
+          Object.keys(c).filter((k) => !CASE_KEYS.includes(k)),
+          c.name,
+        ).toEqual([])
+        checkInput(name, c.input)
+      }
     }
-    expect(pushOutcome(ref, keepsSha)).toBe(expected)
   })
-})
 
-describe('conformance: fetch.json', () => {
-  test.each(fetchCases.cases)('$name', ({ stderr, expected }) => {
-    expect(fetchFailure(stderr)).toBe(expected)
-  })
+  for (const [name, section] of Object.entries(sections)) {
+    describe(name, () => {
+      for (const c of section.cases) {
+        test(c.name, () => {
+          expect(run(name, c.input)).toEqual(c.expect)
+        })
+      }
+    })
+  }
 })

@@ -1,0 +1,276 @@
+# @osdlc/host-cleaner
+
+Machine cleanup as plugins. A plugin proposes **candidates** (things that could
+be deleted) and **objects** to candidates. The core decides what runs, checks
+again, and has each owner delete its own candidates, with one flat plan and one
+receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
+its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
+under repo-cleaner's safety model.
+
+This release is the library, the `git`, `cargo`, `node`, `claude-code` and `orca` plugins, and the `host-cleaner` command.
+
+## Phases
+
+Plugins run in a fixed order: `git`, `cargo`, `node`, `claude-code`, `orca`, then
+any other in the order given. The order decides which plugin keeps a duplicate id, and the order `prepare` and `deleted` run in.
+
+| Phase | Who | What |
+| --- | --- | --- |
+| scope | each plugin | adds roots to look in; the only way a plugin adds a repository |
+| discover | each plugin | proposes candidates; a duplicate id keeps the first plugin's, with a warning naming both |
+| object | each plugin | objects to any candidate; sees no other plugin's objections |
+| decide | core | `refuse` blocks, `protest` needs `--allow <code>`, `note` does not gate |
+| re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved `changed` |
+| prepare | every plugin | before the delete; a throw stops only that candidate, a `FatalRun` stops the run |
+| delete | the owner | returns the receipt sentence |
+| deleted | every other plugin | after the delete; best effort, failures are in the receipt |
+
+A candidate's `requires` lists the candidates that must go first. If one is
+refused, dropped or fails, the candidate is too; requirements are deleted
+before their dependents (a branch after the worktree that holds it).
+
+```ts
+import { clean, plan, survey, type Ctx, type Plugin } from '@osdlc/host-cleaner'
+
+// A plugin that owns one candidate: a cache directory idle for a week.
+const cache: Plugin = {
+  name: 'cache',
+  detect: () => true,
+  discover: () => [
+    {
+      id: 'artifact:build-cache',
+      kind: 'artifact',
+      path: 'build-cache',
+      owner: 'cache',
+      why: 'idle for a week',
+      evidence: { bytes: 4096 },
+    },
+  ],
+  delete: (c) => `removed ${c.path}`,
+}
+
+const ctx: Ctx = { cwd: process.cwd(), targets: [], allow: [] }
+const found = survey([cache], ctx) // scope, discover, object
+const receipt = clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
+```
+
+What a plan runs uses repo-cleaner's words, with their meaning:
+
+- **The default:** every candidate nothing refuses or protests and no owner
+  holds for review (`unattended: false`).
+- **`select`:** exactly these candidate ids instead of the default.
+- **`pick`:** these as well; a candidate held for review runs only when picked
+  or selected.
+- **`spare`:** leave these alone: an id, a path, a name (every candidate of
+  that name, as a branch and the worktree that has it checked out), or a glob
+  over ids, paths and names. A spared candidate that would have run is
+  dropped as `spared`.
+
+Each candidate that runs is still judged by the rules above.
+
+### Machine-scope plugins
+
+A plugin that cleans outside any checkout (a cache directory, a toolchain
+folder) declares `roots(ctx)`: the directories it cleans, fixed or taken from
+its own settings. Every candidate it owns must sit strictly below one of them,
+proven on real paths with `@osdlc/path-guard`, so a `..` or a symlink that
+leaves is not inside, and the root itself is never a candidate. A candidate
+that is itself a link is judged by its target, so a link pointing out of the
+roots is refused. A plugin's `delete` must act on the candidate's path alone. The core
+refuses one that is not (`outside-roots`, by `host-cleaner`) and checks again
+right before `delete`, failing that step if the path moved out since the
+re-check. `containedIn(roots, path)` is exported for plugin code that wants the
+same check. `ignore` applies to these candidates as to any other.
+
+## The `git` plugin
+
+`gitPlugin(options)` proposes repo-cleaner's worktrees and branches. Its
+blockers are `refuse` objections and its risks `protest`s, so
+`--allow abandon-unmerged` and the others work as in repo-cleaner. A branch
+freed by a worktree requires it. With `archive`, unlanded work is pushed to the
+remote first; a failed push throws `FatalRun`. Grant the named risks; the
+`discard-archived` cover is not yet offered here.
+
+## The `cargo` and `node` plugins
+
+Build caches fill agent machines, so two plugins list them. Both propose
+`artifact:<absolute path>` candidates with their size, and both set
+`unattended`. Settings: `plugins.<name>.idleHours` (default 24).
+
+- `cargo`: a `target/` with a `CACHEDIR.TAG` whose newest file under
+  `target/*/.fingerprint/` is at least `idleHours` old. Where incremental
+  builds are off (`CARGO_INCREMENTAL`, else `CARGO_BUILD_INCREMENTAL`, else `cargo config
+  get build.incremental`, which only nightly cargo answers), `target/*/incremental` is its own candidate.
+- `node`: `node_modules` of a linked worktree where nothing outside
+  `node_modules`, `.git` and `target` changed for `idleHours`. A primary
+  checkout is never proposed. A `.pnpm` tree frees less than it measures.
+
+A `cargo` or `rustc` process in the checkout (any busy process for `node`), or
+a process table that cannot be read, is a `refuse`. A path that leads outside
+its checkout (checked with `@osdlc/path-guard`) is a `refuse` and is never
+measured. `delete` reads the checkout's candidates again over a fresh process
+table, removes the directory and checks it is gone; a directory that is already
+gone (its worktree went first) is not a failure.
+
+## The `claude-code` plugin
+
+Lists running Claude Code sessions (`session:<pid>`) and closes one when asked.
+Detected through `@osdlc/detect-harness` (or, with no report, the config
+folder; `CLAUDE_CONFIG_DIR` moves it). A session is a process whose executable
+is `claude` or `claude.exe`, or `node` running a `claude` script, found with
+`ps` and its working directory with `lsof`. Each candidate carries a
+`close-session` protest and is never `unattended`, so a session closes only
+when picked and allowed by name. A session that host-cleaner itself runs
+inside (an ancestor of its process) is refused with `own-session`.
+
+```sh
+host-cleaner clean --pick session:1234 --allow close-session   # the usual clean, and this session
+host-cleaner clean -i                                           # tick only the session
+```
+
+Its evidence holds the start time, the command, the working directory, the
+resume id, the transcript's last write, other sessions resuming the same id,
+and whether the directory is gone or temporary. `delete` checks the pid still
+has the planned start time and command, sends SIGTERM and waits for the exit.
+It never sends SIGKILL; a session that ignores SIGTERM fails its step.
+
+## The `orca` plugin
+
+Orca keeps its own record of some worktrees and holds terminals and agents open
+in them. Removing one with plain git leaves the record and the terminals behind,
+so this plugin works beside `git`, which still removes the directory.
+
+Detected when the `orca` CLI is on `PATH` (or at
+`/Applications/Orca.app/Contents/Resources/bin/orca`) and `orca status` says the
+app is running. Orca missing is silent; installed but not running adds a
+warning, and the plugin stays out of the run. It never fails the run. Every call
+goes through `@osdlc/command-seam` with `--json`.
+
+| Phase | What it does |
+| --- | --- |
+| scope | Adds each repository `orca repo list` names (`plugins.orca.repos: false` turns this off). |
+| discover | A record in `orca worktree ps` whose directory is gone is `orca-record:<path>`, held for a pick. |
+| object | On a `git` worktree that Orca manages: a `note` with its Orca id; a `refuse` `orca-agent-active` when an agent is at work (any state not `idle` or `done`); a `refuse` `orca-terminal-unverifiable`; a `protest` `close-terminals` when terminals are open. If Orca cannot be read, every `git` worktree is refused with `orca-unreachable`. |
+| prepare | Sees again that no agent is at work, then `orca terminal close --worktree id:<id> --all`. |
+| deleted | After `git` removed the directory, `orca worktree rm --worktree id:<id> --force` so Orca forgets the record. It is never asked while the directory exists, since it would delete it. The branch is kept. |
+
+```sh
+host-cleaner clean --pick worktree:/path/to/wt --allow close-terminals
+```
+
+## Command line
+
+The command works in repo-cleaner's phases, with its flags. Nothing runs until
+a phase is named; the bare command explains them and exits 2.
+
+```sh
+host-cleaner status [target...]   # every candidate and what objects to it; deletes nothing
+host-cleaner plan -o plan.json
+host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [-i] [--yes | --dry-run]
+host-cleaner config [--format json]   # every plugin's effective settings
+```
+
+| Flag | Meaning, as in repo-cleaner |
+| --- | --- |
+| `--pick <id>` | Also run this candidate. One its plugin holds for review runs only when picked. |
+| `--spare <id\|name\|glob>` | Leave these alone: an id, a path, a branch name (its worktree too) or a glob. |
+| `-i` | Choose from a checklist, the default candidates ticked; each ticked protest is asked for by code. Needs a terminal. |
+| `--allow <code>` | Accept a protest by its code. |
+| `--worktrees`, `--branches` | Only the git plugin's worktrees, or only its local branches. Remote branches are repo-cleaner's. |
+| `--all-rows` | `status`: also show candidates a plugin refuses. |
+
+`--plugin <name>` runs only those plugins (`--adapter` is an alias) and
+`--skip-plugin <name>` never runs these. Targets default to the config file's
+`targets`, then the directory you are in. `clean` re-checks, shows the steps,
+asks (`--yes` skips the question; with no terminal and no `--yes` it exits 2),
+deletes, and writes one receipt to `--receipt` or the state directory's
+`receipts/`, plus a line in `logs/host-cleaner.log`.
+
+The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
+all three directories):
+
+```json
+{ "targets": ["~/dev"], "plugins": { "cargo": { "idleHours": 48 }, "node": { "enabled": false } } }
+```
+
+`plugins.<name>` holds that plugin's settings; a name that no plugin has is an
+error. Each plugin's settings are a strict schema, checked when the config
+loads: a misspelt key or a wrong type is refused (exit 2), naming the plugin and
+the key.
+
+| Setting | Plugins | Default | Meaning |
+| --- | --- | --- | --- |
+| `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
+| `idleHours` | `cargo`, `node` | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
+
+Two settings sit at the top of the config and apply to every plugin:
+
+```json
+{ "targets": ["~/dev"], "ignore": ["~/dev/dashboard"], "idleHours": 0 }
+```
+
+- `ignore` lists paths nothing may be deleted in or below (`~` is home; a path
+  is matched by its real path too). `--ignore <dir>` adds to it and can repeat.
+  A candidate there is left out, with a warning saying how many; `status` prints
+  the active list, a plan records it, and `clean --plan` honours the plan's list
+  and the current one, dropping a planned candidate as `ignored`.
+- `idleHours` is the default for every plugin that has the setting and does not
+  set its own. `0` is allowed and makes every idle-checked artifact a candidate.
+
+### Profiles
+
+`profiles` holds named overrides, chosen with `--profile <name>` on `status`,
+`plan`, `clean` (`--auto` included) and `config`:
+
+```json
+{
+  "targets": ["~/dev"],
+  "idleHours": 24,
+  "profiles": { "deep": { "idleHours": 0, "plugins": { "node": { "enabled": false } } } }
+}
+```
+
+`host-cleaner clean --profile deep --yes` is then the "disk is nearly full"
+command. A profile may set `targets`, `ignore`, `idleHours` and `plugins`; it
+is deep-merged over the rest of the config, a list in it replaces the config's,
+except `ignore`, which only grows, so a profile cannot lift a protection. Each
+profile is checked when the config loads, like `plugins`; an unknown profile
+name is refused (exit 2) with the names there are. `schedule install` does not
+take a profile yet.
+
+`host-cleaner config` prints every plugin's effective settings: the value, and
+whether the file set it or it is the default. `--format json` prints the values.
+
+### `clean --auto` and `schedule`
+
+`host-cleaner clean --auto` cleans with no person present: it takes the candidates
+whose owner marked them `unattended: true` and that nothing refuses or
+protests, and grants no `--allow`. That is a clean worktree (`git`) and an
+artifact idle past its threshold with nothing building in its checkout
+(`cargo`, `node`). Branches, sessions and anything with a protest are left for
+a person. `--spare` leaves more out; `--pick`, `--allow`, `-i`, `--yes` and
+`--dry-run` are refused. It needs targets on the command line or in the config
+file, and never falls back to the current directory. A lock in the state directory stops a second run; the
+run writes a report to `reports/`, a receipt to `receipts/` and a log line.
+
+`host-cleaner schedule install [--every <hours>]` (default 6) writes a launchd
+user agent that runs `host-cleaner clean --auto`, with the `HOST_CLEANER_*`
+overrides it was installed with (it needs `targets` in the config file, since
+launchd starts the job in `/`); `schedule status` and `schedule uninstall`
+show and remove it. macOS only.
+
+Exit codes: 0 done, declined or nothing to delete; 1 failed against the state
+found; 2 cannot run as typed; 10 nothing to sweep; 11 `clean` stopped at a
+failed step. A run that finds the lock held exits 0.
+
+## Install
+
+```sh
+npm install @osdlc/host-cleaner
+```
+
+Node 22.22.2 or later, ESM only.
+
+## Licence
+
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

@@ -1,0 +1,458 @@
+# The checks every Cargo workspace gets: the format check, and clippy and the
+# tests on each runner OS, and, when asked, the same on Windows without gating
+# and the tests on the workspace `rust-version` (MSRV).
+#
+# Only a reusable workflow (`workflow_call`). osdlc/osdlc's rust-ci.yml calls
+# it for its own workspace and keeps the checks only osdlc needs (crate shape,
+# docs, minimal versions, wasm, release-plz, semver) as jobs of its own; other
+# repositories call it the same way, and add their own jobs beside it.
+# packages/gh-actions/README.md shows the caller. Why a file of its own, not
+# rust-ci.yml made callable: rust-ci.yml's other jobs, its `changes` filter
+# and its `rust` gate are osdlc's, and a caller would see each of them as a
+# skipped check. Here the shared part is one file, which osdlc runs too.
+#
+# The caller keeps the job to require: a job that needs this one and its own
+# extras, and passes when each passed or was skipped. A called workflow
+# reports each job as `<caller job> / <job>`, for example `core / format`.
+#
+# Settings: each input, else the repository variable RUST_CI_<INPUT>, else a
+# default. packages/gh-actions/README.md "Rust CI" lists them.
+#
+# The toolchain is the workspace's rust-toolchain.toml, else stable (MSRV:
+# the `rust-version` in the workspace Cargo.toml). The Rust composite actions
+# come from a checkout of this file's own repository and commit
+# (job.workflow_repository, job.workflow_sha), so a caller that pins the
+# workflow to a SHA pins them too. A `uses:` cannot take an expression, hence
+# the checkout. No job needs a secret.
+#
+# Every action is pinned to a commit SHA; the comment names its release.
+name: rust-ci-core
+
+on:
+  workflow_call:
+    inputs:
+      workspace:
+        description: The Cargo workspace, from the root. Default the variable RUST_CI_WORKSPACE, else `.`.
+        type: string
+        default: ""
+      packages:
+        description: Packages for clippy, test and MSRV, e.g. `-p a -p b`; `default` passes none. Default the variable RUST_CI_PACKAGES, else --workspace.
+        type: string
+        default: ""
+      clippy-args:
+        description: More cargo clippy arguments, before `--`. Default the variable RUST_CI_CLIPPY_ARGS.
+        type: string
+        default: ""
+      test-args:
+        description: More cargo test arguments. Default the variable RUST_CI_TEST_ARGS.
+        type: string
+        default: ""
+      locked:
+        description: true or false, --locked for clippy and test. Default the variable RUST_CI_LOCKED, else true.
+        type: string
+        default: ""
+      os:
+        description: Runner labels, space separated. Default the variable RUST_CI_OS, else `ubuntu-latest macos-latest`.
+        type: string
+        default: ""
+      windows:
+        description: true or false, a non-gating windows-latest job. Default the variable RUST_CI_WINDOWS, else false.
+        type: string
+        default: ""
+      msrv:
+        description: true or false, the MSRV job. Default the variable RUST_CI_MSRV, else false.
+        type: string
+        default: ""
+      setup:
+        description: Shell, one line, run at the root before the build. Default the variable RUST_CI_SETUP.
+        type: string
+        default: ""
+      node-version:
+        description: Node to install. Default the variable RUST_CI_NODE_VERSION, else none.
+        type: string
+        default: ""
+      bun-version:
+        description: Bun to install, a version or a file naming it. Default the variable RUST_CI_BUN_VERSION, else none.
+        type: string
+        default: ""
+      env:
+        description: NAME=value lines for each build job's environment. Default the variable RUST_CI_ENV.
+        type: string
+        default: ""
+      timeout:
+        description: Minutes for each build job. Default the variable RUST_CI_TIMEOUT, else 60.
+        type: string
+        default: ""
+      test-runner:
+        description: nextest or cargo. Default the variable RUST_CI_TEST_RUNNER, else nextest.
+        type: string
+        default: ""
+      debug:
+        description: Debug info for the dev and test profiles, line-tables-only, none, limited, full or `profile`. Default the variable RUST_CI_DEBUG, else line-tables-only.
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  settings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      workspace: ${{ steps.s.outputs.workspace }}
+      packages: ${{ steps.s.outputs.packages }}
+      clippy-args: ${{ steps.s.outputs.clippy-args }}
+      test-args: ${{ steps.s.outputs.test-args }}
+      locked: ${{ steps.s.outputs.locked }}
+      matrix: ${{ steps.s.outputs.matrix }}
+      first-os: ${{ steps.s.outputs.first-os }}
+      msrv: ${{ steps.s.outputs.msrv }}
+      setup: ${{ steps.s.outputs.setup }}
+      node-version: ${{ steps.s.outputs.node-version }}
+      bun-version: ${{ steps.s.outputs.bun-version }}
+      bun-version-file: ${{ steps.s.outputs.bun-version-file }}
+      env: ${{ steps.s.outputs.env }}
+      timeout: ${{ steps.s.outputs.timeout }}
+      debug: ${{ steps.s.outputs.debug }}
+      test-runner: ${{ steps.s.outputs.test-runner }}
+    steps:
+      - id: s
+        env:
+          WORKSPACE: ${{ inputs.workspace || vars.RUST_CI_WORKSPACE || '.' }}
+          PACKAGES: ${{ inputs.packages || vars.RUST_CI_PACKAGES || '--workspace' }}
+          CLIPPY_ARGS: ${{ inputs.clippy-args || vars.RUST_CI_CLIPPY_ARGS }}
+          TEST_ARGS: ${{ inputs.test-args || vars.RUST_CI_TEST_ARGS }}
+          LOCKED: ${{ inputs.locked || vars.RUST_CI_LOCKED || 'true' }}
+          OS: ${{ inputs.os || vars.RUST_CI_OS || 'ubuntu-latest macos-latest' }}
+          WINDOWS: ${{ inputs.windows || vars.RUST_CI_WINDOWS || 'false' }}
+          MSRV: ${{ inputs.msrv || vars.RUST_CI_MSRV || 'false' }}
+          SETUP: ${{ inputs.setup || vars.RUST_CI_SETUP }}
+          NODE_VERSION: ${{ inputs.node-version || vars.RUST_CI_NODE_VERSION }}
+          BUN_VERSION: ${{ inputs.bun-version || vars.RUST_CI_BUN_VERSION }}
+          JOB_ENV: ${{ inputs.env || vars.RUST_CI_ENV }}
+          TIMEOUT: ${{ inputs.timeout || vars.RUST_CI_TIMEOUT || '60' }}
+          TEST_RUNNER: ${{ inputs.test-runner || vars.RUST_CI_TEST_RUNNER || 'nextest' }}
+          DEBUG: ${{ inputs.debug || vars.RUST_CI_DEBUG || 'line-tables-only' }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          # Checked here, so a bad setting fails before any build.
+          for v in WORKSPACE PACKAGES CLIPPY_ARGS TEST_ARGS OS SETUP NODE_VERSION BUN_VERSION; do
+            [[ "${!v}" != *$'\n'* ]] || fail "RUST_CI_$v: one line, please (join commands with &&)"
+          done
+          for v in LOCKED WINDOWS MSRV; do
+            [[ "${!v}" =~ ^(true|false)$ ]] || fail "RUST_CI_$v: true or false, not '${!v}'"
+          done
+          [[ "$TEST_RUNNER" =~ ^(cargo|nextest)$ ]] || fail "RUST_CI_TEST_RUNNER: cargo or nextest, not '$TEST_RUNNER'"
+          [[ "$DEBUG" =~ ^(line-tables-only|none|limited|full|profile)$ ]] || fail "RUST_CI_DEBUG: line-tables-only, none, limited, full or profile, not '$DEBUG'"
+          [[ "$TIMEOUT" =~ ^[1-9][0-9]*$ ]] || fail "RUST_CI_TIMEOUT: a number of minutes, not '$TIMEOUT'"
+          while IFS= read -r line; do
+            line="${line%$'\r'}"
+            [ -z "$line" ] || [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || fail "RUST_CI_ENV: not NAME=value: $line"
+          done <<< "$JOB_ENV"
+          read -ra oses <<< "$OS"
+          [ "${#oses[@]}" -gt 0 ] || fail "RUST_CI_OS: no runner label"
+          if [ "$WINDOWS" = true ] && printf '%s\n' "${oses[@]}" | grep -qx windows-latest; then
+            fail "RUST_CI_OS has windows-latest, which gates; leave RUST_CI_WINDOWS false or take windows-latest out of RUST_CI_OS"
+          fi
+          [ "$PACKAGES" != default ] || PACKAGES=
+          [ "$LOCKED" = true ] && LOCKED=--locked || LOCKED=
+          matrix="$(jq -cn --arg os "$OS" --argjson win "$([ "$WINDOWS" = true ] && echo true || echo false)" '
+            {include: ([$os | splits(" +") | select(. != "") | {os: ., optional: false}]
+              + (if $win then [{os: "windows-latest", optional: true}] else [] end))}')"
+          bun_version= bun_file=
+          case "$BUN_VERSION" in
+            '') ;;
+            package.json|.bun-version|.tool-versions|*/*) bun_file="$BUN_VERSION" ;;
+            *) bun_version="$BUN_VERSION" ;;
+          esac
+          {
+            echo "workspace=$WORKSPACE"
+            echo "debug=$DEBUG"
+            echo "test-runner=$TEST_RUNNER"
+            echo "packages=$PACKAGES"
+            echo "clippy-args=$CLIPPY_ARGS"
+            echo "test-args=$TEST_ARGS"
+            echo "locked=$LOCKED"
+            echo "matrix=$matrix"
+            echo "first-os=${oses[0]}"
+            echo "msrv=$MSRV"
+            echo "setup=$SETUP"
+            echo "node-version=$NODE_VERSION"
+            echo "bun-version=$bun_version"
+            echo "bun-version-file=$bun_file"
+            # A JSON array of the lines, so the output stays one line.
+            echo "env=$(jq -cR '[., inputs] | map(sub("\r$"; "")) | map(select(. != ""))' <<< "$JOB_ENV")"
+            echo "timeout=$TIMEOUT"
+          } >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+  format:
+    needs: settings
+    runs-on: ${{ needs.settings.outputs.first-os }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ needs.settings.outputs.workspace }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The composite actions at this workflow file's own repository and
+      # commit (job.workflow_*; GitHub Enterprise Server lacks them, hence the
+      # fallbacks), which differ from the run's when another repository calls it.
+      - name: Check out the CI actions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository || 'osdlc/osdlc' }}
+          ref: ${{ job.workflow_sha || github.sha }}
+          path: .rust-ci-tools
+          sparse-checkout: |
+            /.github/actions/rust-toolchain/
+            /.github/actions/rust-build-cache/
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - uses: ./.rust-ci-tools/.github/actions/rust-toolchain
+        with:
+          components: rustfmt
+          workspace: ${{ needs.settings.outputs.workspace }}
+
+      - name: Format check
+        run: cargo fmt --all --check
+
+  test:
+    needs: settings
+    name: ${{ matrix.optional && format('test ({0}, not gating)', matrix.os) || format('test ({0})', matrix.os) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ fromJSON(needs.settings.outputs.timeout) }}
+    # The optional Windows entry: a failure shows, and the workflow still passes.
+    continue-on-error: ${{ matrix.optional }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.settings.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ needs.settings.outputs.workspace }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # As in `format`.
+      - name: Check out the CI actions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository || 'osdlc/osdlc' }}
+          ref: ${{ job.workflow_sha || github.sha }}
+          path: .rust-ci-tools
+          sparse-checkout: |
+            /.github/actions/rust-toolchain/
+            /.github/actions/rust-build-cache/
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Set up the environment
+        working-directory: .
+        env:
+          JOB_ENV: ${{ needs.settings.outputs.env }}
+          DEBUG: ${{ needs.settings.outputs.debug }}
+        run: |
+          echo /.rust-ci-tools/ >> .git/info/exclude
+          # Before RUST_CI_ENV, so a CARGO_PROFILE_* line there wins. Set
+          # ahead of the cache step, whose key includes CARGO_* variables.
+          if [ "$DEBUG" != profile ]; then
+            echo "CARGO_PROFILE_DEV_DEBUG=$DEBUG" >> "$GITHUB_ENV"
+            echo "CARGO_PROFILE_TEST_DEBUG=$DEBUG" >> "$GITHUB_ENV"
+          fi
+          jq -r '.[]' <<< "$JOB_ENV" >> "$GITHUB_ENV"
+
+      - uses: ./.rust-ci-tools/.github/actions/rust-toolchain
+        with:
+          components: clippy
+          workspace: ${{ needs.settings.outputs.workspace }}
+
+      - uses: ./.rust-ci-tools/.github/actions/rust-build-cache
+        with:
+          workspace: ${{ needs.settings.outputs.workspace }}
+
+      - if: needs.settings.outputs.node-version != ''
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ needs.settings.outputs.node-version }}
+
+      - if: needs.settings.outputs.bun-version != '' || needs.settings.outputs.bun-version-file != ''
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ needs.settings.outputs.bun-version }}
+          bun-version-file: ${{ needs.settings.outputs.bun-version-file }}
+
+      - name: Setup
+        if: needs.settings.outputs.setup != ''
+        working-directory: .
+        env:
+          SETUP: ${{ needs.settings.outputs.setup }}
+        run: bash -eo pipefail -c "$SETUP"
+
+      # Per OS, because code behind `cfg(unix)` or `cfg(windows)` is only
+      # linted on that OS.
+      - name: Clippy
+        env:
+          PACKAGES: ${{ needs.settings.outputs.packages }}
+          LOCKED: ${{ needs.settings.outputs.locked }}
+          ARGS: ${{ needs.settings.outputs.clippy-args }}
+        run: |
+          # shellcheck disable=SC2086 # one argument per word
+          cargo clippy $PACKAGES --all-targets $LOCKED $ARGS -- -D warnings
+
+      - if: needs.settings.outputs.test-runner == 'nextest'
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-nextest@0.9
+
+      # --no-fail-fast: run every test binary, so one failure does not hide
+      # the next.
+      - name: Test
+        env:
+          PACKAGES: ${{ needs.settings.outputs.packages }}
+          LOCKED: ${{ needs.settings.outputs.locked }}
+          ARGS: ${{ needs.settings.outputs.test-args }}
+          RUNNER: ${{ needs.settings.outputs.test-runner }}
+        run: |
+          # shellcheck disable=SC2086 # one argument per word
+          if [ "$RUNNER" = nextest ]; then
+            cargo nextest run $PACKAGES $LOCKED --no-fail-fast --no-tests=pass $ARGS
+            # cargo test --doc errors when no selected package has a library,
+            # so keep only the packages with a lib or proc-macro target.
+            libs=$(cargo metadata $LOCKED --no-deps --format-version 1 \
+              | jq -r '.packages[] | select(any(.targets[].kind[]; . == "lib" or . == "proc-macro")) | .name')
+            if [[ " $PACKAGES " == *" -p "* ]]; then
+              doc=
+              read -ra words <<< "$PACKAGES"
+              for ((i = 0; i < ${#words[@]}; i++)); do
+                if [ "${words[i]}" = -p ]; then
+                  name=${words[i + 1]}; i=$((i + 1))
+                  grep -qx "$name" <<< "$libs" && doc+=" -p $name"
+                else
+                  doc+=" ${words[i]}"
+                fi
+              done
+              has_lib=false; [[ " $doc " == *" -p "* ]] && has_lib=true
+            else
+              doc=$PACKAGES
+              has_lib=false; [ -n "$libs" ] && has_lib=true
+            fi
+            if [ "$has_lib" = true ]; then
+              cargo test --doc $doc $LOCKED --no-fail-fast
+            else
+              echo "No library among the packages, so no doctests."
+            fi
+          else
+            cargo test $PACKAGES $LOCKED --no-fail-fast $ARGS
+          fi
+
+  # Builds and tests on the workspace `rust-version` with a lockfile resolved
+  # fresh on that toolchain. resolver 3 then picks dependency versions that
+  # support it, as a consumer on that toolchain would get.
+  msrv:
+    needs: settings
+    if: needs.settings.outputs.msrv == 'true'
+    runs-on: ${{ needs.settings.outputs.first-os }}
+    timeout-minutes: ${{ fromJSON(needs.settings.outputs.timeout) }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ needs.settings.outputs.workspace }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # As in `format`.
+      - name: Check out the CI actions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository || 'osdlc/osdlc' }}
+          ref: ${{ job.workflow_sha || github.sha }}
+          path: .rust-ci-tools
+          sparse-checkout: |
+            /.github/actions/rust-toolchain/
+            /.github/actions/rust-build-cache/
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      # As in `test`, minus the debug levels: a `rust-version` below 1.71
+      # rejects the named ones, and MSRV needs no backtraces.
+      - name: Set up the environment
+        working-directory: .
+        env:
+          JOB_ENV: ${{ needs.settings.outputs.env }}
+        run: |
+          echo /.rust-ci-tools/ >> .git/info/exclude
+          jq -r '.[]' <<< "$JOB_ENV" >> "$GITHUB_ENV"
+
+      - name: Read rust-version
+        id: msrv
+        run: |
+          set -euo pipefail
+          v="$(sed -n 's/^rust-version *= *"\([^"]*\)".*$/\1/p' Cargo.toml)"
+          if [ -z "$v" ]; then
+            echo "::error::no rust-version in $(pwd)/Cargo.toml"
+            exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.rust-ci-tools/.github/actions/rust-toolchain
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+          workspace: ${{ needs.settings.outputs.workspace }}
+
+      - uses: ./.rust-ci-tools/.github/actions/rust-build-cache
+        with:
+          key: msrv
+          workspace: ${{ needs.settings.outputs.workspace }}
+
+      - if: needs.settings.outputs.node-version != ''
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ needs.settings.outputs.node-version }}
+
+      - if: needs.settings.outputs.bun-version != '' || needs.settings.outputs.bun-version-file != ''
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ needs.settings.outputs.bun-version }}
+          bun-version-file: ${{ needs.settings.outputs.bun-version-file }}
+
+      - name: Setup
+        if: needs.settings.outputs.setup != ''
+        working-directory: .
+        env:
+          SETUP: ${{ needs.settings.outputs.setup }}
+        run: bash -eo pipefail -c "$SETUP"
+
+      - name: Resolve a fresh lockfile
+        run: |
+          rm -f Cargo.lock
+          cargo generate-lockfile
+
+      - name: Test
+        env:
+          PACKAGES: ${{ needs.settings.outputs.packages }}
+          # test-args are nextest's under the default runner, so cargo test
+          # gets them only when the runner is cargo.
+          ARGS: ${{ needs.settings.outputs.test-runner == 'cargo' && needs.settings.outputs.test-args || '' }}
+        run: |
+          # shellcheck disable=SC2086 # one argument per word
+          cargo test $PACKAGES --locked --no-fail-fast $ARGS

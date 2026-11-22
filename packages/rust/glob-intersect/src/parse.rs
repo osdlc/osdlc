@@ -47,11 +47,16 @@ pub fn parse_with(path_like: &str, separator: &str) -> Vec<String> {
 
 /// The characters the segment tokenizer reads as glob syntax (and `(`, which
 /// opens an extglob).
+#[cfg(test)]
 const GLOB_META: [char; 8] = ['\\', '*', '?', '[', ']', '{', '}', '('];
 
 /// Quote a concrete path so the pattern parser reads it as the literal name it
-/// is. The root `matches` family runs a real path through this
-/// before parsing, so `pages/[id].vue` is that name and not a character class.
+/// is, so `pages/[id].vue` is that name and not a character class.
+///
+/// The root `matches` family matches a path's segments directly and never
+/// quotes it. The tests keep this to check that route against the product
+/// search over the quoted path.
+#[cfg(test)]
 pub(crate) fn literal(path: &str) -> String {
     let mut out = String::with_capacity(path.len());
     for ch in path.chars() {

@@ -390,6 +390,7 @@ repo-cleaner dev                                                   run a develop
 | | `--remote=<name>` | Branches on this remote; `*` is every remote. Repeatable, and combines with a bare `--remote`. |
 | | `--all` | `--local` and `--remote`. |
 | | `--worktrees`, `--branches` | Only worktrees, or only local branches. |
+| | `--max-depth <n>` | How many levels below a directory target a checkout may sit and still be found. Default 3: `repos/<owner>/<repo>` from `~/dev`. A whole number, 1 or more. |
 | how sure | `--fetch` | Fetch the default remote before judging local rows. Off by default. |
 | | `--offline` | No fetch; judge from the refs on disk. Pull requests are still looked up; add `--provider none` for no network at all. |
 | | `--against <remote>` | Judge every row against this remote's default branch. Without it, each remote's branches are judged against their own remote's default branch, and local rows against the default remote's. |
@@ -441,7 +442,7 @@ A target is what to sweep:
 | Target | Swept |
 | --- | --- |
 | a checkout | that repository; a linked worktree sweeps the repository it belongs to |
-| a directory | every checkout found under it, three levels deep at most |
+| a directory | every checkout found under it, three levels deep at most; `--max-depth` changes that |
 | a remote URL (`https://`, `ssh://`, `file://`, `user@host:path`) | its remote branches only, through a clone kept in the cache directory (see [A remote with no checkout](#a-remote-with-no-checkout)) |
 
 No target is the same as naming the current directory: at a checkout's root
@@ -1237,7 +1238,11 @@ const receipt = run(preview)
 | `check(plan, approval, opts?)` | Resolve `{ select, pick, spare, allow }` against the plan, sweep again, and return a `Preview`: the steps, the rows dropped and why, the allows no row needed, and `notes`, what the re-check judged without. Deletes nothing |
 | `run(preview, opts?)` | Sweep once more and take the preview's steps, writing a `Receipt` (to `receiptPath` after every step, when given). `onNotes` hears what its own re-check judged without. Each worktree it removes is measured with `du` first, into the step's `freedBytes` |
 | `inspectWorktree(path, opts?)` | One worktree judged as a sweep judges it, submodules included |
-| `readPlan`, `writePlan` | Plans on disk |
+| `candidatesOf(sweep)` | The sweep's deletable or objecting rows as plain data (`CleanCandidate`): id, kind, path, evidence, fingerprint, `requires`, blockers, risks |
+| `removeCandidate(candidate, opts?)` | Delete one candidate as `run` takes one row: archive first with `archive`, the live-process and unsafe-force checks, the removal, its verification. Returns a `CandidateRemoval` (`ok`, `steps`, `error`, and `archiveFailed` for a failed archive push, which a host should treat as fatal). Never throws for a refused or failed delete |
+| `readPlan`, `writePlan`, `PlanSchema` | Plans on disk |
+| `fingerprint`, `sameFingerprint` | The evidence a row rests on and the rule that compares two of them |
+| `writeJsonAtomic`, `busyHolders` | The atomic JSON write the receipt uses; the holders of a worktree that are not idle shells |
 | `render` | The command line's formats: `text`, `json`, `summary`, `commands`, `preview`, `receipt` |
 | `defaultProcessProbe`, `providers` | The defaults a host can wrap or replace |
 | `RepoCleanerError` | Every refusal, with a `code`: `conflict`, `bad-input`, `not-found`, `ambiguous`, `spared-changed`, `bad-plan` |
@@ -1289,6 +1294,16 @@ reaches on its own evidence outranks anything a host could contribute, so a
 host rarely has to veto one. It mostly sharpens the rows left at `keep` or
 `review`. A worktree the host holds back keeps its branch: the sweep applies
 that rule after the hook.
+
+### Taking one candidate at a time
+
+A host that runs its own phases (discover, object, re-check, delete) uses
+`candidatesOf` and `removeCandidate` instead of `plan`, `check` and `run`. The
+host re-checks a candidate by sweeping again and comparing `fingerprint` with
+`sameFingerprint`, and turns `blockers` and `risks` into its own objections. It
+deletes what a branch `requires` (its worktree) first. `removeCandidate` keeps the safety model of
+`run`: a risk not in `allow` is refused, and with `archive` the push is made
+and verified before the delete, one archive per candidate.
 
 ## Providers (prototype)
 
