@@ -21,10 +21,10 @@ they can come back.
 
 ## Where the code is
 
-Everything below is on `main` at `aee62c5b9605` (2026-11-22), the last commit
-before the rollback. Restore a piece from there rather than rewriting it. The
-pull requests that built it: #964 and #965 (`clean --auto` and `schedule`),
-#985 (profiles). The design review is in #951:
+Everything below is on `main` at `3a401796aa2d` (2026-11-22), the commit this
+rollback starts from. Restore a piece from there rather than rewriting it. The
+pull requests that built it: #965 (`clean --auto` and `schedule`) and #985
+(profiles). The design review is in #951:
 `docs/parley/host-cleaner-design.json`, with the owner's answers.
 
 ## What was removed, and what would bring it back
