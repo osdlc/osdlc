@@ -223,7 +223,7 @@ export function renderScan(sweep: Pick<Sweep, 'scan'>): string | null {
   const found = counted(scan.checkoutsFound, 'checkout', 'checkouts')
   const line = `searched ${entries}: ${dirs} read, ${found} found.`
   if (scan.depthLimited === 0) return line
-  return `${line} ${count(scan.depthLimited)} left unopened at the depth limit.`
+  return `${line} ${count(scan.depthLimited)} left unopened at the depth limit; --max-depth looks deeper.`
 }
 
 /** The one-line verdict a person reads first, and often only. */

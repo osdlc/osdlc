@@ -46,7 +46,7 @@ describe('markdown-vault-astro cli', () => {
 
 describe('markdown-vault-astro cli arguments', () => {
   test.each([
-    [['transform', '--dry-run'], /unknown option --dry-run/],
+    [['transform', '--dry-runn'], /unknown option --dry-runn/],
     [['transform', '--clena'], /unknown option --clena/],
     [['check', '-c'], /-c needs a value/],
     [['check', '--vault'], /--vault needs a value/],

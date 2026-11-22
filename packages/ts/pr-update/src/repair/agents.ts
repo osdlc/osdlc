@@ -33,7 +33,13 @@ import type { Repair, RepairRequest } from '../ports.ts'
 import type { RepairAgent } from './names.ts'
 import { repairPrompt } from './prompt.ts'
 
-export { REPAIR_AGENTS, REPAIR_AGENT_SUMMARIES, type RepairAgent } from './names.ts'
+export {
+  REPAIR_AGENTS,
+  REPAIR_AGENT_SUMMARIES,
+  REPAIR_MODES,
+  type RepairAgent,
+  type RepairMode,
+} from './names.ts'
 
 /** What a preset takes beyond the request. */
 export interface AgentRepairOptions {
@@ -56,7 +62,7 @@ const ADAPTERS: Record<RepairAgent, () => AgentAdapter> = {
 }
 
 /** Host tokens a repair agent must not inherit. Empty overrides the parent's value. */
-const SCRUBBED_ENV: Record<string, string> = {
+export const SCRUBBED_ENV: Record<string, string> = {
   GH_TOKEN: '',
   GITHUB_TOKEN: '',
   GH_ENTERPRISE_TOKEN: '',
@@ -103,6 +109,11 @@ export function planRepair(
   opts: AgentRepairOptions = {},
 ): PlannedCall {
   return planCall(ADAPTERS[agent](), repairCallSpec(req, opts, agent))
+}
+
+/** The executable `agent` runs as. */
+export function repairBinary(agent: RepairAgent): string {
+  return ADAPTERS[agent]().binary
 }
 
 /** The last non-empty line of `text`, cut to a note's size. */

@@ -376,8 +376,22 @@ describe('serveRest', () => {
           }
         ).total
       expect(await total()).toBe(3)
-      writeFileSync(join(dir, 'library/authors/Octavia Butler.md'), '---\nborn: 1947\n---\n')
-      await expect.poll(total, { timeout: 5000 }).toBe(4)
+      // fs.watch has no ready signal, and on macOS a file written just after it starts can go
+      // unseen. Write the file again on each poll until a reload sees it. The interval is longer
+      // than the 200 ms reload debounce so the writes cannot keep postponing the reload.
+      const write = (): void =>
+        writeFileSync(join(dir, 'library/authors/Octavia Butler.md'), '---\nborn: 1947\n---\n')
+      write()
+      await expect
+        .poll(
+          async () => {
+            const n = await total()
+            if (n !== 4) write()
+            return n
+          },
+          { timeout: 15000, interval: 1000 },
+        )
+        .toBe(4)
       expect(lines).toContain('reloaded library: 10 records')
     } finally {
       await watched.close()

@@ -59,7 +59,10 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
 
 function run(argv: string[], cwd: string, env: Record<string, string>, deps: MainDeps = {}) {
   const ctx = captureContext({ cwd, env })
-  const code = main(argv, ctx, { confirm: () => null, ...deps })
+  // The shipped plugins would talk to this machine's Orca and sweep every repository it lists.
+  const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
+  const args = phase && deps.plugins === undefined ? [...argv, '--skip-plugin', 'orca'] : argv
+  const code = main(args, ctx, { confirm: () => null, ...deps })
   return { code, out: ctx.io.out, err: ctx.io.err }
 }
 
@@ -197,6 +200,63 @@ describe('status', () => {
   })
 })
 
+describe('plugin settings', () => {
+  const withConfig = (config: unknown) => {
+    const { env, cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, JSON.stringify(config))
+    return { env, cwd, file }
+  }
+
+  test('a misspelt key and a wrong type are refused, each naming the plugin and the key', () => {
+    const { env, cwd, file } = withConfig({
+      plugins: { cargo: { idlehours: 3 }, node: { idleHours: -1, enabled: 'yes' } },
+    })
+    const r = run(['status', '--config', file], cwd, env)
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('plugins.cargo')
+    expect(r.err).toContain('idlehours')
+    expect(r.err).toContain('plugins.node.idleHours')
+    expect(r.err).toContain('plugins.node.enabled')
+  })
+
+  test('enabled: false leaves a plugin out, and --plugin runs it anyway', () => {
+    const { env, cwd, file } = withConfig({ plugins: { fake: { enabled: false } } })
+    const plugins = [fake('fake'), fake('other')]
+    const status = (...extra: string[]) =>
+      run(['status', '--config', file, ...extra], cwd, env, { plugins }).out
+    expect(status()).not.toContain('artifact:fake')
+    expect(status()).toContain('artifact:other')
+    expect(status('--plugin', 'fake')).toContain('artifact:fake')
+  })
+
+  test('config prints each plugin’s settings with defaults and what the file set', () => {
+    const { env, cwd, file } = withConfig({
+      targets: ['~/dev'],
+      plugins: { cargo: { idleHours: 48 }, node: { enabled: false } },
+    })
+    const text = run(['config', '--config', file], cwd, env)
+    expect(text.code).toBe(0)
+    expect(text.out).toContain('targets: ~/dev')
+    expect(text.out).toMatch(/plugins\.cargo\n {2}enabled = true {2}\(default\)/)
+    expect(text.out).toMatch(/idleHours = 48 {2}\(config\)/)
+    expect(text.out).toMatch(/plugins\.node\n {2}enabled = false {2}\(config\)/)
+    expect(text.out).toMatch(/idleHours = 24 {2}\(default\)/)
+    const json = JSON.parse(run(['config', '--config', file, '--format', 'json'], cwd, env).out)
+    expect(json.plugins.cargo).toEqual({ enabled: true, idleHours: 48 })
+    expect(json.plugins.git).toEqual({ enabled: true })
+  })
+
+  test('config refuses a bad config and a plugin nobody has', () => {
+    const bad = withConfig({ plugins: { cargo: { nope: 1 } } })
+    expect(run(['config', '--config', bad.file], bad.cwd, bad.env).code).toBe(2)
+    const ghost = withConfig({ plugins: { ghost: {} } })
+    const r = run(['config', '--config', ghost.file], ghost.cwd, ghost.env)
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('ghost')
+  })
+})
+
 describe('plan and clean', () => {
   test('plan writes one file, and clean --plan runs it into a receipt and a log line', () => {
     const { env, home, cwd } = setup()
@@ -234,13 +294,14 @@ describe('plan and clean', () => {
     )
   })
 
-  test('a plugins.git entry is refused until the git plugin reads settings', () => {
+  test('a plugins.git entry with an unknown key is refused, naming the plugin and the key', () => {
     const { env, cwd, home } = setup()
     const config = join(home, 'config.json')
     writeFileSync(config, JSON.stringify({ plugins: { git: { offline: true } } }))
     const r = run(['status', '--config', config], cwd, env)
     expect(r.code).toBe(2)
     expect(r.err).toContain('plugins.git')
+    expect(r.err).toContain('offline')
   })
 
   test('clean with the real git plugin deletes the merged branch and spares the unmerged one', () => {

@@ -20,11 +20,17 @@ export interface Candidate {
   evidence: Record<string, unknown>
   /** Candidate ids that must be deleted before this one; if one is refused or dropped, so is this. */
   requires?: string[] | undefined
+  /**
+   * The directory it belongs to when `path` is not one, such as a branch's repository.
+   * The ignore list is matched against this, else against `path`.
+   */
+  at?: string | undefined
   /** The name a person knows it by, which `spare` matches: a branch's name, the branch a worktree has checked out. */
   name?: string | undefined
   /**
-   * False when the owner wants a person to choose it: only a pick or a selection runs it.
-   * True or absent: unattended runs may take it, if nothing objects.
+   * True: `clean --auto` may take it if nothing refuses or protests.
+   * False: the default leaves it out; only a pick or a selection runs it.
+   * Absent: the default takes it; `clean --auto` does not.
    */
   unattended?: boolean | undefined
 }
@@ -51,6 +57,8 @@ export interface Ctx {
   targets: readonly string[]
   /** The protest codes granted by name. */
   allow: readonly string[]
+  /** Absolute paths nothing may be deleted in or below; the core drops candidates there, a plugin may also skip them. */
+  ignore?: readonly string[] | undefined
 }
 
 export interface Plugin {
@@ -58,12 +66,22 @@ export interface Plugin {
   detect(ctx: Ctx): boolean
   /** Roots to look in, beyond the targets. */
   scope?(ctx: Ctx): string[]
+  /**
+   * Directories outside any checkout that this plugin cleans: fixed, or from its settings.
+   * Every candidate it owns must sit strictly inside one by its real path; a candidate
+   * that is a link is judged by its target. The core refuses (`outside-roots`) one that
+   * does not, and checks again right before `delete`.
+   */
+  roots?(ctx: Ctx): readonly string[]
   discover?(ctx: Ctx): Candidate[]
   /** Objections to any candidate in `all`. It sees no other plugin's objections. */
   object?(all: readonly Candidate[], ctx: Ctx): Objection[]
   /** Before `c` is deleted, on every plugin. A throw stops only `c`; a {@link FatalRun} stops the run. */
   prepare?(c: Candidate, ctx: Ctx): void
-  /** Only called on `c.owner`. Returns the receipt sentence; a throw is a failure. */
+  /**
+   * Only called on `c.owner`. Returns the receipt sentence; a throw is a failure.
+   * It must act on `c.path` alone: that is the path the core checked against `roots` and `ignore`.
+   */
   delete?(c: Candidate, ctx: Ctx): string
   /** After `c` was deleted, on every other plugin. Synchronous and best effort. */
   deleted?(c: Candidate, ctx: Ctx): void
@@ -75,6 +93,13 @@ export class FatalRun extends Error {
 }
 
 /** Why a candidate does not run. */
-export const DROP_REASONS = ['gone', 'blocked', 'not-allowed', 'changed', 'spared'] as const
+export const DROP_REASONS = [
+  'gone',
+  'blocked',
+  'not-allowed',
+  'changed',
+  'spared',
+  'ignored',
+] as const
 
 export type DropReason = (typeof DROP_REASONS)[number]

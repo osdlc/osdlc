@@ -33,6 +33,7 @@ export {
 } from './plan.ts'
 export {
   DEFAULT_SELECTION,
+  OUTSIDE_ROOTS,
   PLUGIN_ORDER,
   SelectionError,
   checkSelection,
@@ -49,7 +50,17 @@ export {
   type Selection,
   type Survey,
 } from './run.ts'
+export { containedIn } from './roots.ts'
 export { gitPlugin, type GitPluginOptions } from './git.ts'
 export { cargoPlugin, CARGO_PLUGIN } from './cargo.ts'
 export { nodePlugin, NODE_PLUGIN } from './node.ts'
 export { DEFAULT_IDLE_HOURS, type ArtifactOptions } from './artifacts.ts'
+export { CLAUDE_PLUGIN, CLOSE_SESSION, claudeCodePlugin, type ClaudeOptions } from './claude.ts'
+export {
+  CLOSE_TERMINALS,
+  ORCA_BUNDLE_CLI,
+  ORCA_PLUGIN,
+  orcaPlugin,
+  type OrcaOptions,
+  type OrcaRecord,
+} from './orca.ts'
