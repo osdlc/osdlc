@@ -17,9 +17,9 @@
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve as resolvePath } from 'node:path'
 
-import { checkoutRoot, scanForCheckouts, type Git } from '@osdlc/typed-git'
+import { DEFAULT_MAX_DEPTH, checkoutRoot, scanForCheckouts, type Git } from '@osdlc/typed-git'
 
-import { emptyScan, type ScanStats, type UnresolvedEntry } from './types.ts'
+import { emptyScan, RepoCleanerError, type ScanStats, type UnresolvedEntry } from './types.ts'
 import { isDir } from './util.ts'
 
 export interface ResolveOptions {
@@ -31,7 +31,19 @@ export interface ResolveOptions {
    * somewhere it should not. Defaults to typed-git's line on stderr.
    */
   onWarn?: ((message: string) => void) | undefined
+  /**
+   * How many levels below a directory entry a checkout may sit and still be
+   * found. Defaults to {@link DEFAULT_MAX_DEPTH}. Must be a whole number, 1 or more.
+   */
+  maxDepth?: number | undefined
 }
+
+/**
+ * How deep a directory entry is searched by default: a checkout up to three
+ * levels below it is found, such as `repos/<owner>/<repo>` from `~/dev`.
+ * typed-git's default, where 1 is the entry's direct children.
+ */
+export { DEFAULT_MAX_DEPTH }
 
 export interface Resolution {
   /** Main-checkout roots, de-duplicated and sorted. */
@@ -62,6 +74,12 @@ export function isCheckoutRoot(dir: string): boolean {
  * worse than one that says which it could not find.
  */
 export function resolveEntries(entries: readonly string[], opts: ResolveOptions): Resolution {
+  if (opts.maxDepth !== undefined && (!Number.isInteger(opts.maxDepth) || opts.maxDepth < 1)) {
+    throw new RepoCleanerError(
+      'bad-input',
+      `maxDepth must be a whole number, 1 or more; got ${String(opts.maxDepth)}`,
+    )
+  }
   const base = opts.baseDir ?? process.cwd()
   const unresolved: UnresolvedEntry[] = []
   const byMainCheckout = new Set<string>()
@@ -92,7 +110,10 @@ export function resolveEntries(entries: readonly string[], opts: ResolveOptions)
       continue
     }
 
-    const search = scanForCheckouts(path, opts.onWarn === undefined ? {} : { onWarn: opts.onWarn })
+    const search = scanForCheckouts(path, {
+      maxDepth: opts.maxDepth ?? DEFAULT_MAX_DEPTH,
+      ...(opts.onWarn === undefined ? {} : { onWarn: opts.onWarn }),
+    })
     scan.containers += 1
     scan.directoriesScanned += search.directoriesScanned
     scan.depthLimited += search.depthLimited

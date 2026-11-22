@@ -1,5 +1,11 @@
 # @osdlc/pr-update
 
+## 0.17.0
+
+### Minor Changes
+
+- 4c93afe: `pr_update.verify: detect`: a run that detects nothing is reported as a failed PR but not recorded as a failed attempt (`NothingDetectedError`, exported), and `config set pr_update.verify` and `config set pr_update.repair.mode` are command-line only, as the other command keys are.
+
 ## 0.16.0
 
 ### Minor Changes

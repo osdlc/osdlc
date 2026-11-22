@@ -141,7 +141,7 @@ describe('cargo plugin', () => {
       kind: 'artifact',
       owner: 'cargo',
       unattended: true,
-      evidence: { kind: 'cargo-target', idleHours: 48, checkout: root, unattended: true },
+      evidence: { kind: 'cargo-target', checkout: root, unattended: true },
     })
     expect(found[0]!.bytes).toBeGreaterThanOrEqual(1000)
 
@@ -170,6 +170,13 @@ describe('cargo plugin', () => {
     expect(cargo(root, { idleHours: 6 }).candidates).toHaveLength(1)
   })
 
+  test('idleHours 0 makes an artifact built just now a candidate', () => {
+    const root = repo()
+    target(root, 0)
+    expect(cargo(root).candidates).toEqual([])
+    expect(cargo(root, { idleHours: 0 }).candidates).toHaveLength(1)
+  })
+
   test('a cargo process in the checkout refuses the candidate, and clean drops it as blocked', () => {
     const root = repo()
     const dir = target(root, 48)
@@ -186,12 +193,14 @@ describe('cargo plugin', () => {
     expect(existsSync(dir)).toBe(true)
   })
 
-  test('another process does not refuse it, and an unreadable process table does', () => {
+  test('any process working in the checkout refuses it, and so does an unreadable process table', () => {
     const root = repo()
     target(root, 48)
     expect(
-      cargo(root, { probe: probeOf([{ pid: 9, command: 'vim' } as ProcessHolder]) }).refused,
-    ).toEqual([])
+      cargo(root, {
+        probe: probeOf([{ pid: 9, command: './target/release/server' } as ProcessHolder]),
+      }).refused,
+    ).toEqual([expect.objectContaining({ code: 'live-process' })])
     const unreadable = cargo(root, { probe: probeOf(new Error('no ps')) })
     expect(unreadable.refused).toEqual([
       expect.objectContaining({ code: 'process-table-unreadable' }),
@@ -243,7 +252,7 @@ describe('cargo plugin', () => {
     symlinkSync(outside, join(root, 'target'))
     const found = cargo(root)
     expect(found.candidates).toHaveLength(1)
-    expect(found.candidates[0]).toMatchObject({ evidence: { sizeBytes: null, idleHours: null } })
+    expect(found.candidates[0]).toMatchObject({ evidence: { sizeBytes: null } })
     expect(found.refused).toEqual([expect.objectContaining({ code: 'outside-checkout' })])
     const plugin = cargoPlugin(options())
     const s = survey([plugin], ctxOf(root))
@@ -320,7 +329,7 @@ describe('node plugin', () => {
     expect(found[0]).toMatchObject({
       id: `artifact:${join(wt, 'node_modules')}`,
       owner: 'node',
-      evidence: { kind: 'node-modules', checkout: wt, idleHours: 72, unattended: true },
+      evidence: { kind: 'node-modules', checkout: wt, unattended: true },
     })
     expect(found[0]!.bytes).toBeGreaterThanOrEqual(2000)
   })

@@ -5,6 +5,7 @@
 
 import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 
+import { coveredBy, containsIgnored } from './ignore.ts'
 import {
   writeReceipt,
   PLAN_VERSION,
@@ -43,6 +44,14 @@ export interface Survey {
   warnings: string[]
 }
 
+/** The ignore entry a candidate sits in, or holds (deleting a directory takes what is inside it). */
+function ignoredBy(c: Candidate, ignore: readonly string[]): string | undefined {
+  return (
+    coveredBy(c.at ?? c.path, ignore) ??
+    (c.at === undefined ? containsIgnored(c.path, ignore) : undefined)
+  )
+}
+
 /**
  * Scope, discover and object. A plugin that throws in `scope` or `discover`
  * proposes nothing, with a warning; one that throws in `object` refuses every
@@ -77,15 +86,16 @@ export function survey(all: readonly Plugin[], ctx: Ctx): Survey {
     }
   }
 
-  const targets = [...ctx.targets]
+  const ignore = ctx.ignore ?? []
+  const targets = ctx.targets.filter((t) => coveredBy(t, ignore) === undefined)
   for (const p of plugins) {
     for (const root of guarded(p, 'scope', [], () => p.scope?.(ctx) ?? [])) {
-      if (!targets.includes(root)) targets.push(root)
+      if (!targets.includes(root) && coveredBy(root, ignore) === undefined) targets.push(root)
     }
   }
   const scoped: Ctx = { ...ctx, targets }
 
-  const candidates: Candidate[] = []
+  const discovered: Candidate[] = []
   const first = new Map<string, string>()
   for (const p of plugins) {
     for (const c of guarded(p, 'discover', [], () => p.discover?.(scoped) ?? [])) {
@@ -95,10 +105,17 @@ export function survey(all: readonly Plugin[], ctx: Ctx): Survey {
         warnings.push(`duplicate ${c.id}: kept ${first.get(c.id)}'s, dropped ${p.name}'s`)
       } else {
         first.set(c.id, p.name)
-        candidates.push(c)
+        discovered.push(c)
       }
     }
   }
+  const left = new Map<string, number>()
+  const candidates = discovered.filter((c) => {
+    const dir = ignoredBy(c, ignore)
+    if (dir !== undefined) left.set(dir, (left.get(dir) ?? 0) + 1)
+    return dir === undefined
+  })
+  for (const [dir, n] of left) warnings.push(`ignore ${dir}: left out ${n} candidate(s)`)
 
   const known = new Set(candidates.map((c) => c.id))
   const objections: Objection[] = []
@@ -180,6 +197,7 @@ export function plan(
   s: Pick<Survey, 'candidates' | 'objections' | 'warnings'>,
   opts: {
     targets?: readonly string[] | undefined
+    ignore?: readonly string[] | undefined
     select?: readonly string[] | null | undefined
     pick?: readonly string[] | undefined
     spare?: readonly string[] | undefined
@@ -201,6 +219,7 @@ export function plan(
     pick: [...selection.pick],
     spare: [...selection.spare],
     allow: [...(opts.allow ?? [])],
+    ignore: [...(opts.ignore ?? [])],
     warnings: s.warnings,
     // A copy, so a plugin that mutates and returns the same objects on re-discovery cannot change the plan.
     candidates: structuredClone(s.candidates),
@@ -342,8 +361,15 @@ export function recheck(
   plugins: readonly Plugin[],
   ctx: Ctx,
 ): { decision: Decision; survey: Survey } {
-  const planned = decidePlan(p)
-  const fresh = survey(plugins, { ...ctx, allow: p.allow })
+  const decided = decidePlan(p)
+  const ignore = [...new Set([...(ctx.ignore ?? []), ...p.ignore])]
+  const fresh = survey(plugins, { ...ctx, ignore, allow: p.allow })
+  const planned: Decision = { ...decided, run: [], dropped: [...decided.dropped] }
+  for (const c of decided.run) {
+    const dir = ignoredBy(c, ignore)
+    if (dir === undefined) planned.run.push(c)
+    else planned.dropped.push({ id: c.id, reason: 'ignored', detail: `inside ignored ${dir}` })
+  }
   const now = decide(
     fresh.candidates,
     fresh.objections,
