@@ -1,5 +1,17 @@
 # @osdlc/host-cleaner
 
+## 0.2.0
+
+### Minor Changes
+
+- af704d6: `host-cleaner clean --auto` cleans the unattended subset (candidates their owner marked `unattended: true` that nothing refuses or protests) with no `--allow`, under a lock, only over targets named on the command line or in the config file, and writes a report and a receipt to the state directory. `host-cleaner schedule install|uninstall|status` manages a launchd user agent that runs it. The `git` plugin marks only a clean worktree unattended.
+- 2feec64: The `claude-code` plugin: running Claude Code sessions as `session:<pid>` candidates with a `close-session` protest, never unattended. Closing one checks the pid's start time and command, sends SIGTERM and waits for the exit; it never sends SIGKILL.
+- af448e0: A machine-wide `ignore` list in the config, and `--ignore <dir>` on `status`, `plan` and `clean`, keep every plugin's candidates out of the listed paths; a saved plan records the list and a re-check drops what falls inside it as `ignored`. A top-level `idleHours` is the default for the `cargo` and `node` plugins, and `0` is now accepted and takes every artifact.
+- 853d9bf: A plugin can declare `roots` for cleaning outside any checkout. The core refuses (`outside-roots`) a candidate of such a plugin that is not strictly inside one of them by its real path, and checks again right before `delete`. `containedIn` is exported.
+- 8849182: New `orca` plugin. When the Orca app is running, it notes each worktree Orca manages, refuses one with an agent at work, protests (`close-terminals`) one with open terminals and closes them before the `git` plugin removes it, then asks Orca to forget the record. A record whose directory is gone is its own `orca-record` candidate, and `plugins.orca.repos` (default true) sweeps the repositories `orca repo list` names. With `orca` missing or not running the plugin stays out of the run.
+- f4c457b: Each plugin's entry in the config's `plugins` is now a validated schema (through `@osdlc/config-layers`): a misspelt key or a wrong type is refused when the config loads, naming the plugin and the key. `plugins.<name>.enabled: false` leaves a plugin out of a run (`--plugin <name>` still runs it). New `host-cleaner config` prints every plugin's effective settings, defaults included.
+- b63f74c: `profiles` in the config holds named overrides of `targets`, `ignore`, `idleHours` and `plugins`, chosen with `--profile <name>` on `status`, `plan`, `clean` and `config`. A profile is deep-merged over the config (`ignore` only grows), checked when the config loads, and an unknown name is refused.
+
 ## 0.1.2
 
 ### Patch Changes
