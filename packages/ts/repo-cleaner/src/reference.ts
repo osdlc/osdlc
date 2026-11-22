@@ -7,7 +7,8 @@
 const TARGETS = `Targets
   A target is what to sweep:
     a checkout            that repository; a linked worktree sweeps the repository it belongs to
-    a directory           every checkout found under it, three levels deep at most
+    a directory           every checkout found under it, three levels deep at most;
+                          --max-depth changes that
     a remote URL          its remote branches only, through a clone kept in the cache
                           directory (https://, ssh://, file://, or user@host:path)
   No target sweeps the directory you are in, read the same way; in a subdirectory
@@ -26,6 +27,10 @@ const SWEEP = `What to look at (status, plan and clean)
                           --local --remote=upstream.
   --worktrees             Only worktrees, of the local rows.
   --branches              Only local branches, of the local rows.
+  --max-depth <n>         How many levels below a directory target a checkout may
+                          sit and still be found. Default 3, a whole number, 1 or
+                          more. A search that stops short says how many directories
+                          it left unopened.
   Scope flags add up: --worktrees --remote is worktrees and the default remote's
   branches.
 

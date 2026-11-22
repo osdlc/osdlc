@@ -89,6 +89,7 @@ import {
 import { formatBytes } from './size.ts'
 import { stepBoard, type StepBoard } from './step-board.ts'
 import { sweptWith } from './scope.ts'
+import { DEFAULT_MAX_DEPTH } from './resolve.ts'
 import { sweep as sweepTargets, type Runners, type SweepOptions } from './sweep.ts'
 import {
   KINDS,
@@ -150,8 +151,28 @@ const SWEEP_FLAGS = {
     valueName: 'name',
     help: 'with remote rows: where pull requests come from',
   },
+  maxDepth: {
+    kind: 'string',
+    valueName: 'n',
+    help: `how many levels below a directory target a checkout may sit (default ${DEFAULT_MAX_DEPTH})`,
+  },
   progress: { kind: 'boolean', negatable: true, help: 'no progress line on stderr' },
 } as const
+
+/**
+ * `--max-depth` as a number. Throws a `bad-input` for anything but a whole
+ * number, 1 or more, written in digits.
+ */
+function maxDepthOf(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined
+  if (!/^[0-9]+$/.test(raw) || Number(raw) < 1) {
+    throw new RepoCleanerError(
+      'bad-input',
+      `--max-depth takes a whole number, 1 or more; got ${JSON.stringify(raw)}`,
+    )
+  }
+  return Number(raw)
+}
 
 /** A repeatable flag that takes a row (or `risk[=row]`) each time, never split on commas. */
 const rowList = <V extends string>(valueName: V, help: string) =>
@@ -502,6 +523,7 @@ function sweepOptions(
     ...(v.branch === undefined ? {} : { branch: v.branch }),
     ...(v.against === undefined ? {} : { against: v.against }),
     ...(v.provider === undefined ? {} : { provider: v.provider }),
+    ...(v.maxDepth === undefined ? {} : { maxDepth: maxDepthOf(v.maxDepth) }),
     cacheDir: defaultCacheDir(ctx.env),
   }
 }
@@ -662,7 +684,10 @@ function cleanConflict(v: CleanValues, targets: readonly string[]): string | nul
     const given = (Object.keys(SWEEP_FLAGS) as (keyof typeof SWEEP_FLAGS)[]).filter(
       (k) => k !== 'progress' && v[k] !== undefined && v[k] !== false,
     )
-    const fixed = [...(targets.length > 0 ? ['targets'] : []), ...given.map((k) => `--${k}`)]
+    const fixed = [
+      ...(targets.length > 0 ? ['targets'] : []),
+      ...given.map((k) => `--${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`),
+    ]
     if (fixed.length > 0) return `--plan already fixed what is swept; drop ${fixed.join(', ')}`
   }
   if (v.interactive && v.pick.length > 0) {

@@ -1,7 +1,7 @@
 /**
  * Internal: how the protocol reads git's answers. Pure functions, so another
  * implementation of the protocol can be checked against the same cases
- * (`tests/conformance/` in this package).
+ * (`packages/conformance/ref-lease/suite.json`).
  */
 
 import { type PushRefResult } from '@osdlc/typed-git'

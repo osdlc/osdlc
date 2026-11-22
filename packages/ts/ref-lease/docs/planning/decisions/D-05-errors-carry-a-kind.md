@@ -15,7 +15,7 @@ subclass takes one init object, so a field can be added without breaking callers
 
 A lost compare-and-swap is `CasFailed`; any other git failure is `GitFailed`. The split is read off
 the rejection kind `@osdlc/typed-git`'s `push` reports for the ref, run in the C locale; the
-mapping is data in `tests/conformance/push.json`. A `GitFailed` keeps typed-git's classified
+mapping is data in the `push_outcome` section of `packages/conformance/ref-lease/suite.json`. A `GitFailed` keeps typed-git's classified
 failure as its `cause`.
 
 ## Why
