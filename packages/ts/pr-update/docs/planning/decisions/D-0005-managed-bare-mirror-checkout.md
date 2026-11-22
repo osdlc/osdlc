@@ -121,7 +121,9 @@ scans the directories its `repos:` lists name and matches each checkout's
 - Old clones must not pile up: they are pruned by age automatically, and by
   hand with `mirror prune`.
 - An existing checkout is used wherever one can be found, so the standalone
-  `locate` is part of this record rather than a follow-up.
+  `locate` is part of this record rather than a follow-up. Where checkouts
+  live is shared by every osdlc tool, so it is read from
+  `~/.config/osdlc/repositories.yaml` (D-ZVIA), not from pr-update's file.
 - No "mirror only" value now. Backlogged as [B-0002](../backlog/B-0002-a-mirror-only-checkout-value.md).
 
 ## Decision
@@ -143,8 +145,6 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     means project root and `locate` first, the clone as the fallback. `local`
     means today's behaviour: a repository with no checkout is skipped. A
     stricter "mirror only" value is deferred (B-0002).
-  - `repos: [<dir>, …]`, optional: directories that hold checkouts. The same
-    name and meaning as sdlc's `repos:`.
   - `mirror_dir: <path>`, optional.
   - `mirror_max_age_days: <n>`, default 30. `0` turns automatic pruning off.
 
@@ -152,21 +152,19 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   `.local` overlay can set them. A repository cannot choose where the tool
   writes on a person's disk, which also keeps these keys out of the trust gate.
 - **Finding existing checkouts.** For each target the order is: the project
-  root, then the standalone `locate`, then the clone. `locate` scans each
-  `repos` directory for a checkout whose `origin` names the target, the match
-  sdlc's `locateRepo` makes (owner and name in any case, the host when both
-  name one, an SSH host alias resolved through `ssh -G`). With `repos` unset it
-  scans the directory that holds the project root's main checkout, where
-  sibling clones usually sit. The scan reads the filesystem only
-  (`discoverCheckouts` in `@osdlc/typed-git`: a `stat` per child, stopping at
-  each checkout, skipping dot-directories) and runs `git remote get-url` only
-  in the checkouts it finds. A found checkout is used as the project root is
+  root, then the standalone `locate`, then the clone. `locate` is
+  `locateCheckout` from `@osdlc/ecosystem`
+  ([D-ZVIA](../../../../../../docs/decisions/D-ZVIA-osdlc-ecosystem-package.md)): it reads `roots` from the family file
+  `~/.config/osdlc/repositories.yaml` and returns the first checkout under
+  them whose `origin` names the target. With no file it scans the directory
+  that holds the project root's main checkout, where sibling clones usually
+  sit. The scan reads the filesystem only (`discoverCheckouts` in
+  `@osdlc/typed-git`: a `stat` per child, stopping at each checkout, skipping
+  dot-directories) and runs `git remote get-url` only in the checkouts it
+  finds. pr-update keeps no list of its own. A found checkout is used as the project root is
   today: the run fetches `origin` there and makes its worktree at
   `<checkout>/.pr-update/<run>`, never touching the working tree, and
-  `unpushed_local` reads that checkout's worktrees. sdlc's matching code
-  (`locateRepo`, `readRemote`, `sameRepo`, the SSH alias lookup) moves into
-  `@osdlc/typed-git`, next to `discoverCheckouts` and `parseRemoteRepo`, and
-  sdlc imports it from there.
+  `unpushed_local` reads that checkout's worktrees.
 - **Location**, first match wins:
   1. `--mirror-dir <dir>`, for one run;
   2. `PR_UPDATE_MIRROR_DIR`, for CI and tests;
@@ -180,8 +178,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - **First use asks.** The prompt runs when a target has no checkout from the
   project root or `locate`, and the machine file has no `checkout`. It does not
   run at install or on a run whose targets all have checkouts. It names the
-  repositories, the directories it searched and the `repos` key that adds
-  more, the clone directory, the expected size (`gh repo view --json
+  repositories, the directories it searched and the file that adds more
+  (`repositories.yaml`), the clone directory, the expected size (`gh repo view --json
   diskUsage`), and that working trees are never touched. The answers are:
   Enter for the shown directory, a typed path, or `n`. The answer is written to
   the machine file through `MachineConfigFile.write`, and the run prints the
@@ -242,12 +240,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   (flag, variable, prompt), `src/update.ts` (worktree and attempts root) and
   `README.md`, plus a `mirror` command with `list` and `prune`. About 500
   non-test lines with the prompt, pruning and `locate`, estimated. Before it,
-  config-layers' `machineConfigFile` gets its `app` option, and sdlc's
-  checkout matching moves into `@osdlc/typed-git` (about 150 lines, moved with
-  their tests). Does not supersede
+  config-layers' `machineConfigFile` gets its `app` option, and
+  `@osdlc/ecosystem` ships `repositories.yaml` and `locateCheckout` (D-ZVIA). Does not supersede
   D-0001..D-0004.
 - **Known limit: unpushed work in a checkout the tool cannot see.** A
-  repository checked out outside every `repos` directory still runs from the
+  repository checked out outside every root in `repositories.yaml` still runs from the
   cache. `unpushed_local` is true by construction
   there, and `--force-with-lease` guards only against changes on the remote. A
   run can therefore force-push over a branch whose local checkout holds commits
@@ -260,8 +257,6 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 
 ## Follow-ups
 
-- When sdlc's machine file joins the `osdlc` root, pr-update and sdlc read one
-  `repos` list instead of two.
 - A machine target for `pr-update config set`, in cli-tool's `config-command.ts`
   so every tool gets it. Until then the file is edited by hand or rewritten by
   the prompt.
