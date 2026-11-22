@@ -50,7 +50,8 @@ planned to replace it.
 | A family file, such as `repositories.yaml` | `standalone('osdlc').config()`, then the file                    | `@osdlc/ecosystem` |
 
 A tool published outside the `@osdlc` npm scope keeps its own root
-(`standalone('<tool>')`) and may read the family files.
+(`standalone('<tool>')`) and may read the family files through
+`@osdlc/ecosystem`.
 
 Tools written before this standard still use `standalone('<tool>')` with
 `envVars('<TOOL>')`: devlink's files, repo-cleaner and host-cleaner. Each
