@@ -4,6 +4,11 @@
 //! segment patterns (via [`crate::parse`]) and defers every decision to the
 //! segment core ([`crate::segments`]). Pure — no filesystem.
 //!
+//! Each pattern is compiled once into the core's sequence automaton. Two
+//! patterns are compared by the core's product search; a concrete path is
+//! matched by running the pattern's automaton over the path's segments, which
+//! needs no product and no parsing of the path as a glob.
+//!
 //! No inference: a path-like string is the glob it literally is. A pattern with
 //! NO wildcards is an exact-path match (`src/siteA/components` matches only that
 //! path); a subtree is written explicitly (`src/siteA/components/**`).
@@ -21,41 +26,49 @@
 //! with unsupported syntax is refused with [`Error::UnsupportedSyntax`] or
 //! [`Error::PatternTooDeep`] instead of being read as plain text.
 
-use crate::segments;
-use crate::{Error, Options, parse::SEPARATOR, parse::literal, parse::parse};
+use crate::segments::{self, SeqNfa};
+use crate::{Error, Options, parse::SEPARATOR, parse::parse};
 
-/// Parse a pattern string and check it against the supported syntax.
-fn parse_pattern(pattern: &str) -> Result<Vec<String>, Error> {
+/// Parse a pattern string and compile it, refusing unsupported syntax.
+fn compile_pattern(pattern: &str, opts: Options) -> Result<SeqNfa, Error> {
     let parsed = parse(pattern);
-    segments::assert_supported(&parsed)?;
-    Ok(parsed)
+    SeqNfa::build(&as_strs(&parsed), &opts)
 }
 
-/// Parse a list of pattern strings, failing on the first unsupported one.
-fn parse_patterns<P: AsRef<str>>(patterns: &[P]) -> Result<Vec<Vec<String>>, Error> {
-    patterns.iter().map(|p| parse_pattern(p.as_ref())).collect()
+/// Compile a list of pattern strings, failing on the first unsupported one.
+fn compile_patterns<P: AsRef<str>>(patterns: &[P], opts: Options) -> Result<Vec<SeqNfa>, Error> {
+    patterns
+        .iter()
+        .map(|p| compile_pattern(p.as_ref(), opts))
+        .collect()
 }
 
-/// Parse a concrete path. It is read as the literal name it is: glob characters
-/// in it are quoted first.
-fn parse_path(path: &str) -> Vec<String> {
-    parse(&literal(path))
+/// Split a concrete path into its segments as [`parse`] does (one trailing
+/// separator dropped), borrowing instead of copying them.
+fn split_path(path: &str) -> Vec<&str> {
+    let mut segs: Vec<&str> = path.split(SEPARATOR).collect();
+    if segs.len() > 1 && segs.last().is_some_and(|s| s.is_empty()) {
+        segs.pop();
+    }
+    segs
 }
 
 fn as_strs(segs: &[String]) -> Vec<&str> {
     segs.iter().map(String::as_str).collect()
 }
 
-/// Do two parsed patterns share a path?
-fn overlap(a: &[String], b: &[String], opts: Options) -> Result<bool, Error> {
-    Ok(segments::search(&as_strs(a), &as_strs(b), &opts, false)?.is_some())
+/// Do two compiled patterns share a path?
+fn overlap(a: &SeqNfa, b: &SeqNfa, opts: Options) -> bool {
+    segments::search_nfas(a, b, &opts, false).is_some()
 }
 
 /// A compiled pattern-set for amortized queries against many paths/patterns.
 ///
-/// Parses each pattern once; every method reuses that parsed set. Amortizes the
-/// parse when a fixed scope is tested against many paths/patterns — the shape a
-/// scheduler wants when one task's claim is tested against every other's.
+/// Compiles each pattern once; every method reuses that compiled set. Amortizes
+/// the work when a fixed scope is tested against many paths/patterns — the shape
+/// a scheduler wants when one task's claim is tested against every other's.
+/// [`Matcher::matches`] runs each compiled pattern over the path directly, in
+/// time linear in the path's length.
 ///
 /// Its [`Matcher::overlapping`] filters the ARGUMENT (contrast the free
 /// [`overlapping`], which filters its first argument).
@@ -73,7 +86,7 @@ fn overlap(a: &[String], b: &[String], opts: Options) -> Result<bool, Error> {
 #[derive(Debug, Clone)]
 pub struct Matcher {
     patterns: Vec<String>,
-    parsed: Vec<Vec<String>>,
+    compiled: Vec<SeqNfa>,
     opts: Options,
 }
 
@@ -86,10 +99,10 @@ impl Matcher {
     /// pattern that uses syntax this crate refuses.
     pub fn new<P: AsRef<str>>(patterns: &[P], opts: Options) -> Result<Self, Error> {
         let patterns: Vec<String> = patterns.iter().map(|p| p.as_ref().to_string()).collect();
-        let parsed = parse_patterns(&patterns)?;
+        let compiled = compile_patterns(&patterns, opts)?;
         Ok(Self {
             patterns,
-            parsed,
+            compiled,
             opts,
         })
     }
@@ -109,32 +122,26 @@ impl Matcher {
     /// The path is read as the literal name it is, not as a glob. It cannot
     /// fail: the patterns were checked when the matcher was built.
     pub fn matches(&self, path: &str) -> bool {
-        let target = parse_path(path);
-        // A quoted path holds no syntax to refuse, and the patterns passed the
-        // same check in `new`, so the error arm is unreachable.
-        self.parsed
+        let target = split_path(path);
+        self.compiled
             .iter()
-            .any(|pat| overlap(&target, pat, self.opts).unwrap_or(false))
+            .any(|pat| pat.matches_path(&target, &self.opts))
     }
 
     /// Does this set overlap another pattern-set?
     ///
     /// Pass another matcher's [`Matcher::patterns`] to compare two compiled
-    /// sets; the argument is parsed again, so this matcher's options apply.
+    /// sets; the argument is compiled again, so this matcher's options apply.
     ///
     /// # Errors
     ///
     /// [`Error::UnsupportedSyntax`] or [`Error::PatternTooDeep`] from `other`.
     pub fn intersects<P: AsRef<str>>(&self, other: &[P]) -> Result<bool, Error> {
-        let others = parse_patterns(other)?;
-        for a in &self.parsed {
-            for b in &others {
-                if overlap(a, b, self.opts)? {
-                    return Ok(true);
-                }
-            }
-        }
-        Ok(false)
+        let others = compile_patterns(other, self.opts)?;
+        Ok(self
+            .compiled
+            .iter()
+            .any(|a| others.iter().any(|b| overlap(a, b, self.opts))))
     }
 
     /// Which of `candidates` overlap this set, in the order given (filters the
@@ -147,15 +154,8 @@ impl Matcher {
     pub fn overlapping<P: AsRef<str>>(&self, candidates: &[P]) -> Result<Vec<String>, Error> {
         let mut hits = Vec::new();
         for c in candidates {
-            let cand = parse_pattern(c.as_ref())?;
-            let mut hit = false;
-            for a in &self.parsed {
-                if overlap(a, &cand, self.opts)? {
-                    hit = true;
-                    break;
-                }
-            }
-            if hit {
+            let cand = compile_pattern(c.as_ref(), self.opts)?;
+            if self.compiled.iter().any(|a| overlap(a, &cand, self.opts)) {
                 hits.push(c.as_ref().to_string());
             }
         }
@@ -168,12 +168,12 @@ impl Matcher {
     ///
     /// [`Error::UnsupportedSyntax`] or [`Error::PatternTooDeep`] from `other`.
     pub fn witness<P: AsRef<str>>(&self, other: &[P]) -> Result<Option<String>, Error> {
-        let others = parse_patterns(other)?;
-        for a in &self.parsed {
+        let others = compile_patterns(other, self.opts)?;
+        for a in &self.compiled {
             for b in &others {
                 // `spellable`: skip a path whose last segment is empty, which no
                 // path string can spell, and search on for one that can be.
-                if let Some(w) = segments::search(&as_strs(a), &as_strs(b), &self.opts, true)? {
+                if let Some(w) = segments::search_nfas(a, b, &self.opts, true) {
                     return Ok(Some(w.join(SEPARATOR)));
                 }
             }
@@ -273,10 +273,10 @@ pub fn which_match<P: AsRef<str>>(
     patterns: &[P],
     opts: Options,
 ) -> Result<Vec<String>, Error> {
-    let target = parse_path(path);
+    let target = split_path(path);
     let mut hits = Vec::new();
     for p in patterns {
-        if overlap(&target, &parse_pattern(p.as_ref())?, opts)? {
+        if compile_pattern(p.as_ref(), opts)?.matches_path(&target, &opts) {
             hits.push(p.as_ref().to_string());
         }
     }
@@ -310,15 +310,12 @@ pub fn overlapping<Q: AsRef<str>, C: AsRef<str>>(
     candidates: &[C],
     opts: Options,
 ) -> Result<Vec<String>, Error> {
-    let parsed_candidates = parse_patterns(candidates)?;
+    let compiled_candidates = compile_patterns(candidates, opts)?;
     let mut hits = Vec::new();
     for q in query {
-        let qp = parse_pattern(q.as_ref())?;
-        for c in &parsed_candidates {
-            if overlap(&qp, c, opts)? {
-                hits.push(q.as_ref().to_string());
-                break;
-            }
+        let qp = compile_pattern(q.as_ref(), opts)?;
+        if compiled_candidates.iter().any(|c| overlap(&qp, c, opts)) {
+            hits.push(q.as_ref().to_string());
         }
     }
     Ok(hits)
@@ -352,6 +349,20 @@ pub fn witness<A: AsRef<str>, B: AsRef<str>>(
 ) -> Result<Option<String>, Error> {
     Matcher::new(a, opts)?.witness(b)
 }
+
+/// The route the `matches` family took before it ran a compiled pattern over
+/// the path: quote the path into a literal pattern and run the product search.
+/// Kept as the oracle the differential tests check the direct match against.
+#[cfg(test)]
+pub(crate) fn matches_by_search(path: &str, pattern: &str, opts: Options) -> Result<bool, Error> {
+    let target = parse(&crate::parse::literal(path));
+    let pattern = parse(pattern);
+    Ok(segments::search(&as_strs(&target), &as_strs(&pattern), &opts, false)?.is_some())
+}
+
+#[cfg(test)]
+#[path = "path_differential_tests.rs"]
+mod differential_tests;
 
 #[cfg(test)]
 mod tests {
@@ -402,6 +413,12 @@ mod tests {
         }
         assert_eq!(code(intersects(&[r"\(a|b)"], &[r"\(a|b)"], o)), "OK");
         assert_eq!(code(intersects(&["{a", "x"], &["x"], o)), "OK");
+    }
+
+    #[test]
+    fn a_matcher_can_be_shared_across_threads() {
+        fn shareable<T: Send + Sync + Clone + std::fmt::Debug>() {}
+        shareable::<Matcher>();
     }
 
     #[test]

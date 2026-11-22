@@ -179,6 +179,11 @@ flag. `--restack` and `--no-restack` override it for one run.
 - A failure recorded for the child (see below) is checked against its new base
   sha, the head its parent just got.
 
+A rebase that does not come from `--restack` passes `--fork-point`. Where this clone's reflog still
+holds the parent's old head, a child updated in a later run leaves the parent's old commits behind
+instead of replaying them. A fresh clone or CI checkout has no such reflog and rebases as before, so
+a host that updates stacks should still use `--restack`.
+
 ## Conflicts, predicted before anything is checked out
 
 `survey` predicts each PR's merge with `git merge-tree`, which merges in the
@@ -302,6 +307,23 @@ An agent reads the repository and can run tools, so a `repair.agent` (like a
 `--repair-agent` and `--repair-command` on the command line are your own
 consent and need no trust. They override whatever the config names.
 
+### Repairing with the person watching
+
+`repair.mode` (or `update --repair-mode <mode>`) says how `repair.agent` runs. `headless` is the
+default. `interactive` runs the agent's own CLI in this terminal with stdio inherited, so you can
+answer its questions or stop it; it needs a terminal (a usage error without one) and repairs one
+PR at a time. `terminal` opens the session through `@osdlc/agent-seat` in a detached tmux session,
+named `sd-pr-update-<pr>-<pid>` in the run's notes (`tmux attach -t <name>`), and waits for it to
+end. tmux is the only agent-seat host that holds a launch until the session ends, so it is the only
+one `terminal` uses, and the run waits on that session before the next PR. The prompt is the same
+`repairPrompt(req)`, given as the session's first message, and the agent CLI runs without the
+host's GitHub tokens. When the session ends, the same checks as a headless repair decide: HEAD
+unmoved, no refs, no conflict markers, `git diff --check` clean, then stage, commit, verify and
+push. A session that exits non-zero, or that you quit without a fix, gives `conflict` or `failed`
+as a headless repair that gave up does. `repair.mode` other than `headless` in the project file
+needs trust like `repair.agent`; `--repair-mode` is your own consent. `config set pr_update.repair.mode`
+works from the command line only and is refused over MCP and HTTP.
+
 ## Git submodules
 
 The update worktree is made with `git worktree add`, which leaves submodules
@@ -365,11 +387,15 @@ the first rung that matches:
 The run prints the choice for each PR on stderr
 (`pr-update: verify: detect owner/name#12: make test  (Makefile test target)`).
 When no rung matches, that PR's update fails, naming what was looked for; the
-other PRs go on. Nothing beyond the ladder is guessed. Because the repository's
+other PRs go on. A failure of that kind is reported but not recorded as a failed
+attempt, so it does not block a retry once a test command exists. Nothing beyond the ladder is guessed. Because the repository's
 own files choose the command, `verify: detect` in the project file is gated
 like `test_command`: it needs `--trust` or a recorded trust. A host that
 supplies `Ports.resolveVerifyVerbs` receives `which: 'detect'` and may call the
-exported `detectVerifyCommand(dir, testCommand?)` for the same ladder.
+exported `detectVerifyCommand(dir, testCommand?)` for the same ladder, and may
+throw `NothingDetectedError` when it finds none. `pr_update.verify` is also
+written from the command line only: `config set pr_update.verify` is refused
+over MCP and HTTP, since `detect` lets the repository choose a command.
 
 Detection runs once per PR, so a PR that adds or removes a `justfile`, `Makefile`
 or `package.json` test script is judged by its own files. Every other `verify`
@@ -448,6 +474,35 @@ git push origin --delete refs/pr-update/lock/<name>           # break a stuck le
 Some hosts accept only `refs/heads` and `refs/tags` from a push (a ruleset or a server hook). Such a
 remote refuses these refs, and the run stops with an error that names the remote and this setting.
 Set `attempts.store: file` there. The file store is the default, so nothing changes until you opt in.
+
+## Keeping a failed PR's worktree
+
+A run that ends `conflict` or `failed` normally throws its worktree away, and a person who picks the
+PR up has to fetch, rebase, re-run the resolvers and re-run verify to get back where it stopped.
+`update --apply --keep-failed` (or `pr_update.keep_failed: true`; `--no-keep-failed` overrides it)
+moves that PR's worktree to `.pr-update/failed/<owner>-<name>-<number>/`, on a branch named
+`pr-update/failed-<owner>-<name>-<number>`, and the run goes on in a fresh one. The result carries
+`keptWorktree: <path>` and the text output says `kept: <path>`.
+
+```sh
+pr-update update --apply --keep-failed
+git worktree list                    # the kept tree is ordinary worktree state
+cd .pr-update/failed/acme-widgets-12  # finish the fix, then push it yourself
+```
+
+- The tree is the state the update ended in. A failed verify leaves the built merge or rebase result.
+  A conflict is aborted, which leaves the PR's own head.
+- A failed verify's log (the verb, its exit status and its output) is written to
+  `.pr-update-verify.log` in the tree, and the repository's `info/exclude` lists it, so it is never
+  committed by accident.
+- Only `--apply` runs keep anything. A failure that says nothing about the PR (see
+  `unrecorded`) is not kept, and neither is a PR whose worktree git cannot move (one holding
+  submodules); the result's `keepError` says why.
+- A later run lists a PR with a kept worktree under `skipped`, reason
+  `failed worktree kept at <path>`, while its head and base sha are unchanged. A PR that has moved
+  is attempted again and its old tree is discarded, as is a PR named by `--retry-failed`.
+- `update --apply --discard-kept` removes every kept worktree of the surveyed repositories, then
+  runs as usual. The output's `discarded` lists what was removed.
 
 ## Seeing a force-push before it happens
 
@@ -528,7 +583,7 @@ above). A host that embeds the package supplies `Ports.attempts` and `Ports.leas
 
 Five values name a command, or an agent that can run tools, that the tool will
 start: `lockfile_install`, `resolvers[].run`, `repair.command`, `repair.agent`
-and `test_command`. When one is set in the project file (and not overridden in
+and `test_command`, and a `repair.mode` other than `headless` is gated the same way. When one is set in the project file (and not overridden in
 `pr-update.local.yaml`), `update` exits `21` until you consent. Pass `--trust`
 for one run, or run `pr-update trust` once to record the repository (kept under
 `$XDG_STATE_HOME/pr-update/trusted/`). `trust` is cli-tool's shared command:

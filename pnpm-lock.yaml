@@ -115,9 +115,24 @@ importers:
         specifier: workspace:*
         version: link:../../profiles/sdlc
 
+  packages/corpora/system-cleanup-reference:
+    devDependencies:
+      '@osdlc/corpus-profile-claims':
+        specifier: workspace:*
+        version: link:../../profiles/claims
+      '@osdlc/corpus-profile-system-cleanup':
+        specifier: workspace:*
+        version: link:../../profiles/system-cleanup
+
   packages/profiles/claims: {}
 
   packages/profiles/sdlc: {}
+
+  packages/profiles/system-cleanup:
+    devDependencies:
+      '@osdlc/corpus-profile-claims':
+        specifier: workspace:*
+        version: link:../claims
 
   packages/ts/agent-call:
     dependencies:
@@ -838,6 +853,15 @@ importers:
       '@osdlc/command-seam':
         specifier: workspace:^
         version: link:../command-seam
+      '@osdlc/config-layers':
+        specifier: workspace:^
+        version: link:../config-layers
+      '@osdlc/detect-harness':
+        specifier: workspace:^
+        version: link:../detect-harness
+      '@osdlc/file-lock':
+        specifier: workspace:^
+        version: link:../file-lock
       '@osdlc/path-guard':
         specifier: workspace:^
         version: link:../path-guard
@@ -1382,6 +1406,9 @@ importers:
       '@osdlc/agent-call':
         specifier: workspace:^
         version: link:../agent-call
+      '@osdlc/agent-seat':
+        specifier: workspace:^
+        version: link:../agent-seat
       '@osdlc/cli-tool':
         specifier: workspace:^
         version: link:../cli-tool
@@ -1453,7 +1480,7 @@ importers:
         specifier: workspace:^
         version: link:../command-seam
       '@osdlc/typed-git':
-        specifier: workspace:^0.19.0
+        specifier: workspace:^0.21.0
         version: link:../typed-git
     devDependencies:
       '@osdlc/prettier-config':
