@@ -117,6 +117,8 @@ scans the directories its `repos:` lists name and matches each checkout's
 - Clone through `gh repo clone`.
 - File attempts go in a store in the mirror directory. Requiring `git-ref` in
   this mode is backlogged as [B-0003](../backlog/B-0003-require-git-ref-attempts-for-mirror-targets.md).
+- Old clones must not pile up: they are pruned by age automatically, and by
+  hand with `mirror prune`.
 - No "mirror only" value now. Backlogged as [B-0002](../backlog/B-0002-a-mirror-only-checkout-value.md).
 
 ## Decision
@@ -139,6 +141,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     means today's behaviour: a repository with no checkout is skipped. A
     stricter "mirror only" value waits for a standalone `locate` (B-0002).
   - `mirror_dir: <path>`, optional.
+  - `mirror_max_age_days: <n>`, default 30. `0` turns automatic pruning off.
 
   Neither key is in the project schema, so neither `pr-update.yaml` nor its
   `.local` overlay can set them. A repository cannot choose where the tool
@@ -188,15 +191,35 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   | A kept worktree (`keep_failed`) | `--discard-kept`, `--retry-failed`, or the PR moving. It sits at `<clone>/.pr-update/failed/`, so the run prints its path |
   | `origin/<branch>` for a deleted branch | `fetch --prune`, each run |
   | Unreachable objects | git's automatic `gc` |
-  | A whole clone the person no longer targets | Nothing yet. `mirror prune` is a follow-up. Deleting a clone by hand works: the next run clones again. It also deletes any kept worktree inside it and, for the whole directory, the file attempts store |
+  | A whole clone the person no longer targets | Automatic pruning by age, or `pr-update mirror prune` (below) |
 
-  Neither macOS nor common Linux setups clear `~/.cache` on their own.
+  Neither macOS nor common Linux setups clear `~/.cache` on their own, so
+  without pruning the cache keeps one clone for every repository a run ever
+  targeted.
+- **Pruning clones.** Each run that uses a clone writes a last-used stamp
+  inside it. A clone with no stamp was not made by this tool and is never
+  removed.
+  - *Automatic.* At the end of a run that used the cache, the run removes
+    clones whose stamp is older than `mirror_max_age_days`, and prints each
+    one removed and the space freed. A run that never touches the cache
+    never removes anything.
+  - *By hand.* `pr-update mirror list` shows each clone's repository, size,
+    last use and kept worktrees. `pr-update mirror prune` removes clones past
+    the age (`--older-than <days>` overrides it, `--all` takes every clone,
+    `--dry-run` only reports). Both take `--mirror-dir`, so a directory left
+    behind by a moved `mirror_dir` can be cleaned.
+  - *Never removed:* a clone holding a kept worktree (the person has work to
+    finish there; `--discard-kept` comes first), or one holding a worktree
+    of a live run (the `<pid>.` prefix the executor already checks).
+  - Removing a clone also removes its repository's records from the file
+    attempts store.
 
 ## Consequences
 
 - Touches `src/defaults.ts` (`locate`), a new machine-file module, `src/commands.ts`
   (flag, variable, prompt), `src/update.ts` (worktree and attempts root) and
-  `README.md`. About 350 non-test lines with the prompt, estimated. Before it,
+  `README.md`, plus a `mirror` command with `list` and `prune`. About 450
+  non-test lines with the prompt and pruning, estimated. Before it,
   config-layers' `machineConfigFile` gets its `app` option. Does not supersede
   D-0001..D-0004.
 - **Known limit: unpushed work in a checkout the tool cannot see.** A
@@ -226,8 +249,6 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - Project config at `<repo>/.osdlc/pr-update.yaml` instead of `pr-update.yaml`
   at the root. No repository commits a `pr-update.yaml` today, so the move would
   break no one, but it is not part of this record.
-- `pr-update mirror list` and `mirror prune`. Until then, a moved `mirror_dir`
-  leaves the old directory behind, and the run prints its path.
 
 ## What would reopen it
 
