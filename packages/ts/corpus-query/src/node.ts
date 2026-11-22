@@ -84,7 +84,11 @@ export interface ServeOptions extends RestOptions {
   host?: string
   /** The port to bind. Default 0: any free port. */
   port?: number
-  /** Load the corpus again when a file below its folder changes. Only for a corpus given by path. */
+  /**
+   * Load the corpus again when a file below its folder changes. Only for a corpus given by path.
+   * It uses `fs.watch`, which has no ready signal: a change made just after the server starts can
+   * go unseen, most often on macOS, until the next change.
+   */
   watch?: boolean
   /**
    * Routes to try before the API's, such as an MCP endpoint. A handler answers, or returns
