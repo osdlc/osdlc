@@ -1,0 +1,55 @@
+# Contributing
+
+Thanks for your interest in `@osdlc/markdown-vault-query`.
+
+## Issues
+
+Report bugs and ask for features in the
+[issue tracker](https://github.com/osdlc/osdlc/issues). For a bug, include the
+library version, your runtime and its version, your operating system, and
+the call and inputs that misbehave. Report security
+problems privately. See [SECURITY.md](./SECURITY.md).
+
+## Pull requests
+
+This package lives in [osdlc/osdlc](https://github.com/osdlc/osdlc) under
+`packages/ts/markdown-vault-query`. Open pull requests there. They are reviewed and merged
+there.
+
+## Running the tests
+
+The repository is a pnpm workspace. Install from the repository root, then
+work in the package directory. The tests run on [Vitest](https://vitest.dev)
+under Node 22 or later. They run offline and read fixture vaults under
+`tests/fixtures`. The package imports `@osdlc/markdown-vault` through its built
+`dist/`, so run `pnpm run build` at the repository root first.
+
+```sh
+pnpm install
+pnpm run build
+cd packages/ts/markdown-vault-query
+pnpm test
+```
+
+To run the CLI from a checkout, build the package and run
+`node bin/markdown-vault-query.js --help`.
+
+Other checks:
+
+```sh
+pnpm run typecheck
+pnpm run lint
+pnpm run format:check
+```
+
+## Code style
+
+- TypeScript, ES modules, and explicit `.ts` import paths.
+- Prettier formats the code and oxlint checks it. Run `pnpm run format` and
+  `pnpm run lint` before you commit.
+- Add a test for each behaviour change or bug fix. A new export needs a TSDoc
+  comment and an example in `examples/`.
+- For a change users can see, add a changeset: run `pnpm changeset` at the
+  repository root. Start a breaking change's summary with `**Breaking:**`.
+  Do not edit `CHANGELOG.md` or `version` by hand. The release writes them.
+  See [packages/README.md](https://github.com/osdlc/osdlc/blob/main/packages/README.md).
