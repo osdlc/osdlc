@@ -15,6 +15,7 @@ export const CandidateSchema = z.object({
   path: z.string(),
   owner: z.string(),
   why: z.string(),
+  at: z.string().optional(),
   bytes: z.number().optional(),
   evidence: z.record(z.string(), z.unknown()),
   requires: z.array(z.string()).optional(),
@@ -43,6 +44,8 @@ export const PlanSchema = z
     spare: z.array(z.string()),
     /** The protest codes granted by name. */
     allow: z.array(z.string()),
+    /** The ignore list the plan was swept with; `clean --plan` honours it as well as the current one. */
+    ignore: z.array(z.string()).default([]),
     warnings: z.array(z.string()),
     candidates: z.array(CandidateSchema),
     objections: z.array(ObjectionSchema),

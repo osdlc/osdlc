@@ -390,6 +390,7 @@ repo-cleaner dev                                                   run a develop
 | | `--remote=<name>` | Branches on this remote; `*` is every remote. Repeatable, and combines with a bare `--remote`. |
 | | `--all` | `--local` and `--remote`. |
 | | `--worktrees`, `--branches` | Only worktrees, or only local branches. |
+| | `--max-depth <n>` | How many levels below a directory target a checkout may sit and still be found. Default 3: `repos/<owner>/<repo>` from `~/dev`. A whole number, 1 or more. |
 | how sure | `--fetch` | Fetch the default remote before judging local rows. Off by default. |
 | | `--offline` | No fetch; judge from the refs on disk. Pull requests are still looked up; add `--provider none` for no network at all. |
 | | `--against <remote>` | Judge every row against this remote's default branch. Without it, each remote's branches are judged against their own remote's default branch, and local rows against the default remote's. |
@@ -441,7 +442,7 @@ A target is what to sweep:
 | Target | Swept |
 | --- | --- |
 | a checkout | that repository; a linked worktree sweeps the repository it belongs to |
-| a directory | every checkout found under it, three levels deep at most |
+| a directory | every checkout found under it, three levels deep at most; `--max-depth` changes that |
 | a remote URL (`https://`, `ssh://`, `file://`, `user@host:path`) | its remote branches only, through a clone kept in the cache directory (see [A remote with no checkout](#a-remote-with-no-checkout)) |
 
 No target is the same as naming the current directory: at a checkout's root
