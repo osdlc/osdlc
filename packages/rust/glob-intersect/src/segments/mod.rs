@@ -10,13 +10,17 @@
 //! segment pattern with no wildcards.
 //!
 //! The engine is a synchronized product of two per-pattern sequence automata
-//! plus reachability (the private `automaton` and `product` modules).
+//! plus reachability (the private `automaton` and `product` modules). This layer
+//! reads every path as a pattern, so its `matches` runs that product too; the
+//! crate-root `matches` family, whose path is a literal name, runs one compiled
+//! automaton over the path instead.
 
 mod automaton;
 mod product;
 
-pub(crate) use automaton::assert_supported;
+#[cfg(test)]
 pub(crate) use product::search;
+pub(crate) use product::{SeqNfa, search_nfas};
 
 use crate::{Error, Options};
 

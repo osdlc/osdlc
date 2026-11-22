@@ -116,6 +116,11 @@ export interface SweepOptions extends Runners {
   onProgress?: ((progress: SweepProgress) => void) | undefined
   /** Told, mid-walk, that a target directory is enormous. Defaults to stderr. */
   onWarn?: ((message: string) => void) | undefined
+  /**
+   * How many levels below a directory target a checkout may sit and still be
+   * found. Defaults to `DEFAULT_MAX_DEPTH`, 3.
+   */
+  maxDepth?: number | undefined
 }
 
 /**
@@ -162,6 +167,7 @@ export function sweep(targets: readonly string[], opts: SweepOptions = {}): Swee
     git: new Git(cwd, { runner: opts.git }),
     baseDir: cwd,
     ...(opts.onWarn === undefined ? {} : { onWarn: opts.onWarn }),
+    ...(opts.maxDepth === undefined ? {} : { maxDepth: opts.maxDepth }),
   }
   let resolution: Resolution =
     entries.length === 0

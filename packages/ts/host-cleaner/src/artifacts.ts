@@ -4,7 +4,8 @@
  * removing one artifact directory under the same checks that listed it.
  *
  * A candidate is `artifact:<absolute path>`; its evidence is built in
- * `artifactRow` and `refusedRow`. `idleHours` is rounded down.
+ * `artifactRow` and `refusedRow`. It leaves out `idleHours`, which moves with the
+ * clock and would make every saved plan read as changed.
  */
 
 import { existsSync, lstatSync, readdirSync, realpathSync, rmSync } from 'node:fs'
@@ -15,6 +16,7 @@ import { nodeGuard } from '@osdlc/path-guard/node'
 import { defaultProcessProbe, type ProcessHolder, type ProcessProbe } from '@osdlc/repo-cleaner'
 import { Git } from '@osdlc/typed-git'
 
+import { coveredBy } from './ignore.ts'
 import type { Candidate, Ctx, Objection, Plugin } from './types.ts'
 
 export const DEFAULT_IDLE_HOURS = 24
@@ -30,7 +32,7 @@ export interface Checkout {
 
 /** What an artifact plugin is told beyond the run's context; every field has a default. */
 export interface ArtifactOptions {
-  /** Idle hours before an artifact is a candidate (default {@link DEFAULT_IDLE_HOURS}). */
+  /** Idle hours before an artifact is a candidate (default {@link DEFAULT_IDLE_HOURS}); 0 makes every artifact a candidate. */
   idleHours?: number | undefined
   /** The git runner worktrees are listed with. */
   git?: CommandRunner | undefined
@@ -48,9 +50,10 @@ export interface Env {
   now: () => Date
   idleHours: number
   targets: readonly string[]
+  ignore: readonly string[]
 }
 
-/** `opts` with defaults filled in; an `idleHours` that is not a positive finite number becomes {@link DEFAULT_IDLE_HOURS}. */
+/** `opts` with defaults filled in; an `idleHours` that is not a finite number of zero or more becomes {@link DEFAULT_IDLE_HOURS}. */
 export function envOf(opts: ArtifactOptions, ctx: Ctx): Env {
   const idle = opts.idleHours
   return {
@@ -58,8 +61,9 @@ export function envOf(opts: ArtifactOptions, ctx: Ctx): Env {
     command: opts.command ?? ((binary) => spawnRunner(binary)),
     probe: opts.probe ?? defaultProcessProbe(),
     now: opts.now ?? (() => new Date()),
-    idleHours: idle !== undefined && Number.isFinite(idle) && idle > 0 ? idle : DEFAULT_IDLE_HOURS,
+    idleHours: idle !== undefined && Number.isFinite(idle) && idle >= 0 ? idle : DEFAULT_IDLE_HOURS,
     targets: ctx.targets,
+    ignore: ctx.ignore ?? [],
   }
 }
 
@@ -79,6 +83,7 @@ export function checkoutsOf(env: Env): Checkout[] {
     }
     for (const [i, tree] of trees.entries()) {
       if (tree.bare || seen.has(tree.path) || !existsSync(tree.path)) continue
+      if (coveredBy(tree.path, env.ignore) !== undefined) continue
       seen.add(tree.path)
       out.push({ path: tree.path, primary: i === 0 })
     }
@@ -188,7 +193,6 @@ export const objectionsTo = (owner: string, row: Row): Objection[] =>
 
 /** The row for one artifact directory: a candidate, refused while a process works in the checkout or the process table cannot be read. */
 export function artifactRow(owner: string, f: ArtifactFacts, now: Date): Row {
-  const idleHours = f.newestMtimeMs === null ? null : idleHoursSince(f.newestMtimeMs, now)
   const blockers = [
     ...(f.held.names.length > 0
       ? [
@@ -223,7 +227,6 @@ export function artifactRow(owner: string, f: ArtifactFacts, now: Date): Row {
         path: f.path,
         checkout: f.checkout,
         sizeBytes,
-        idleHours,
         newestMtimeMs: f.newestMtimeMs,
         unattended: blockers.length === 0 && f.idle,
         notes: f.notes ?? [],
@@ -248,7 +251,6 @@ export function refusedRow(owner: string, kind: ArtifactKind, path: string, chec
         path,
         checkout,
         sizeBytes: null,
-        idleHours: null,
         newestMtimeMs: null,
         unattended: false,
       },
