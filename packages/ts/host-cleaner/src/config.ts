@@ -14,11 +14,17 @@ import { z } from 'zod'
 
 import { envVars, systemDirs } from '@osdlc/cli-tool'
 
+import { settingsIssues } from './settings.ts'
+
 const VENDOR_DIRS = { vendor: 'host-cleaner', envVars: envVars('HOST_CLEANER') }
 
 export const ConfigSchema = z.strictObject({
   /** Checkouts and directories of checkouts, swept when none is named on the command line. */
   targets: z.array(z.string().min(1)).default([]),
+  /** Paths no candidate may sit in or below, for every plugin; `--ignore` adds to them. `~` is the home directory. */
+  ignore: z.array(z.string().min(1)).default([]),
+  /** Hours an artifact must have sat unused, for every plugin that does not set its own; 0 or more. */
+  idleHours: z.number().nonnegative().optional(),
   /** Settings by plugin name; a plugin reads only its own entry. */
   plugins: z.record(z.string(), z.record(z.string(), z.unknown())).default({}),
 })
@@ -47,7 +53,7 @@ export class ConfigError extends Error {
  * The config at `path`; empty when the file does not exist, unless `required`
  * (a file the person named).
  *
- * @throws ConfigError for a file that is not valid
+ * @throws ConfigError for a file that is not valid, or whose plugin entry has an unknown key or a wrong type
  */
 export function readConfig(path: string, opts: { required?: boolean } = {}): Config {
   if (!existsSync(path)) {
@@ -62,5 +68,7 @@ export function readConfig(path: string, opts: { required?: boolean } = {}): Con
   }
   const parsed = ConfigSchema.safeParse(raw)
   if (!parsed.success) throw new ConfigError(`bad config ${path}: ${parsed.error.message}`)
+  const issues = settingsIssues(parsed.data.plugins)
+  if (issues.length > 0) throw new ConfigError(`bad config ${path}: ${issues.join('; ')}`)
   return parsed.data
 }

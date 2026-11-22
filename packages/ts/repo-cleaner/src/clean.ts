@@ -28,7 +28,7 @@
  */
 
 import { existsSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, resolve, sep } from 'node:path'
 
 import { shellJoin } from '@osdlc/command-seam'
 import { nodeGuard } from '@osdlc/path-guard/node'
@@ -189,7 +189,6 @@ function judgeRisks(
   const archived = (risk: Risk): boolean =>
     coverage?.covers.includes(risk) === true && isAllowed('discard-archived')
   const grants = (risk: Risk): boolean => isAllowed(risk) || archived(risk)
-  // A risk the archive covers is asked for as `discard-archived`.
   const asked = (risk: Risk): Risk => (coverage?.covers.includes(risk) ? 'discard-archived' : risk)
   return {
     needs: [...new Set(row.risks.map(asked))],
@@ -1201,6 +1200,10 @@ function rowOfCandidate(c: CleanCandidate): Row {
  * first failure. The caller has already re-checked the candidate; this
  * refuses only what is unsafe now.
  *
+ * A worktree whose removal needs `git worktree prune` is refused when the
+ * prune would also drop another worktree of its repository, since this sees
+ * only the one row.
+ *
  * Does not throw for a refused or failed delete: see `CandidateRemoval`.
  */
 export function removeCandidate(
@@ -1217,7 +1220,9 @@ export function removeCandidate(
   const row = rowOfCandidate(candidate)
   if (!runnable(row)) return refused(`refused: ${candidate.id} ${candidate.why}`)
   const cwd = opts.cwd ?? process.cwd()
-  if (row.kind === 'worktree' && nodeGuard.contains(row.name, resolve(cwd))) {
+  // Anchored without folding `..`, as the sweep does, so a `..` after a symlink is judged where it really is.
+  const absCwd = isAbsolute(cwd) ? cwd : `${process.cwd()}${sep}${cwd}`
+  if (row.kind === 'worktree' && nodeGuard.contains(row.name, absCwd)) {
     return refused(`refused: ${candidate.id} is the worktree the caller stands in`)
   }
   const allow = new Set(opts.allow ?? [])
