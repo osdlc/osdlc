@@ -666,6 +666,61 @@ describe('the folders between the clone directory and a clone (review round 2)',
     },
   )
 
+  test.skipIf(!posix)(
+    'a clone others can write to, or whose config they can, is refused (second review)',
+    () => {
+      const clone = made()
+      const config = join(clone, 'config')
+      writeFileSync(config, '[core]\n\tbare = true\n')
+      chmodSync(config, 0o644)
+      expect(checkClone(root(), clone)).toBe('clone')
+      chmodSync(clone, 0o777)
+      expect(checkClone(root(), clone)).toEqual({
+        foreign: `${clone} can be written by anyone, so ${clone} is not used; ${fix(clone)}`,
+      })
+      chmodSync(clone, 0o755)
+      chmodSync(config, 0o666)
+      expect(checkClone(root(), clone)).toEqual({
+        foreign: `${config} can be written by anyone, so ${clone} is not used; ${fix(config)}`,
+      })
+      // A config that is a link could point at a file anyone can write.
+      rmSync(config)
+      const elsewhere = join(scratch, 'their.gitconfig')
+      writeFileSync(elsewhere, '')
+      symlinkSync(elsewhere, config)
+      expect(checkClone(root(), clone)).toEqual({
+        foreign: `${config} is a symbolic link, so ${clone} is not used`,
+      })
+    },
+  )
+
+  test.skipIf(!posix)(
+    'a clone made under umask 000 is writable by no one else, and passes the check (second review)',
+    () => {
+      const final = clonePath(root(), req)
+      mkdirSync(dirname(final), { recursive: true, mode: 0o755 })
+      const old = process.umask(0)
+      try {
+        makeClone(final, req, { gh })
+      } finally {
+        process.umask(old)
+      }
+      expect(checkClone(root(), final)).toBe('clone')
+      const writable: string[] = []
+      const walk = (dir: string): void => {
+        for (const e of readdirSync(dir, { withFileTypes: true })) {
+          const path = join(dir, e.name)
+          if (e.isSymbolicLink()) continue
+          if ((statSync(path).mode & 0o022) !== 0) writable.push(path)
+          if (e.isDirectory()) walk(path)
+        }
+      }
+      if ((statSync(final).mode & 0o022) !== 0) writable.push(final)
+      walk(final)
+      expect(writable).toEqual([])
+    },
+  )
+
   test('a host or owner folder another user owns, or that is a symbolic link, is refused', () => {
     const clone = made()
     const host = join(root(), 'github.com')

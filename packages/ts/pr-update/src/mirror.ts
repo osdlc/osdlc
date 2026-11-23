@@ -15,6 +15,7 @@
  */
 
 import {
+  chmodSync,
   closeSync,
   existsSync,
   lstatSync,
@@ -122,8 +123,10 @@ export const cloneFolders: FolderCheckOptions = { fix: writableFix }
  * Either way, `root` and the folders between it and the clone (`<host>`, `<host>/<owner>`), as
  * far as they exist, must be real folders the person owns that no one else can write to
  * (`folderProblem` in `./folders.ts`); else the result is `foreign`. `root` may be a symbolic
- * link to such a folder, a folder between may not. `group` says whose private group a
- * group-writable folder may have (default this process's); a test injects another.
+ * link to such a folder, a folder between may not. The same rule holds for the clone itself and
+ * its `config`, which must not be a symbolic link either: whoever can write that file chooses
+ * what git runs there (`core.sshCommand`, a credential helper). `group` says whose private group
+ * a group-writable folder may have (default this process's); a test injects another.
  */
 export function checkClone(
   root: string,
@@ -154,7 +157,34 @@ export function checkClone(
   ] as const) {
     if (!owned(st)) return { foreign: `${what} belongs to another user, so ${path} is not used` }
   }
+  const config = join(path, 'config')
+  const conf = lstatOrNull(config)
+  if (conf?.isSymbolicLink() === true) {
+    return { foreign: `${config} is a symbolic link, so ${path} is not used` }
+  }
+  for (const [what, st] of [
+    [path, at],
+    [config, conf],
+  ] as const) {
+    const why = st === null ? null : folderProblem(what, st, owned, { ...group, ...cloneFolders })
+    if (why !== null) {
+      const fix = why.fix === undefined ? '' : `; ${why.fix}`
+      return { foreign: `${why.problem}, so ${path} is not used${fix}` }
+    }
+  }
   return 'clone'
+}
+
+/**
+ * Take write for group and others off `path` and everything under it, as `chmod -R go-w` does,
+ * without following a symbolic link. `gh repo clone` lays the clone down under the process's
+ * umask, which may let others write to it.
+ */
+function dropOthersWrite(path: string): void {
+  const st = lstatSync(path)
+  if (st.isSymbolicLink()) return
+  if ((st.mode & 0o022) !== 0) chmodSync(path, st.mode & 0o7755)
+  if (st.isDirectory()) for (const name of readdirSync(path)) dropOthersWrite(join(path, name))
 }
 
 function lstatOrNull(path: string): Stats | null {
@@ -385,7 +415,8 @@ export class CloneError extends Error {
  * 5. `core.longpaths=true`;
  * 6. every `refs/heads/*` deleted, the fetch refspec set to the remote-tracking layout, and
  *    `fetch --prune`;
- * 7. the stamp and the marker written, then `<tmp>` renamed to `final`.
+ * 7. the stamp and the marker written, write for group and others taken off everything in
+ *    `<tmp>` (`chmod -R go-w`), then `<tmp>` renamed to `final`.
  *
  * A step that fails removes `<tmp>`.
  *
@@ -437,6 +468,8 @@ export function makeClone(
         join(tmp, CLONE_MARKER),
         `${JSON.stringify({ tool: 'pr-update', repo: `${req.host}/${req.owner}/${req.name}` })}\n`,
       )
+      // Before the rename, so the clone is never at its path while others can write to it.
+      dropOthersWrite(tmp)
       renameSync(tmp, final)
     })
   } catch (e) {

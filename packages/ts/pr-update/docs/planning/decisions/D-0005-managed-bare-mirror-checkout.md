@@ -896,7 +896,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   person's (never on macOS). pr-update makes its own folders with mode
   `0o755`, so it never refuses one it made. The same rule guards the
   `<host>` and `<owner>` folders, an existing clone, and every folder pruning
-  removes from. On Windows no ownership or mode check is made, since NTFS
+  removes from. For a clone, that is its own folder and its `config` too
+  (added after review): a clone others could write to passed before. `gh`
+  lays a clone down under the umask, so `makeClone` takes write for group and
+  others off the whole tree before the rename. On Windows no ownership or mode check is made, since NTFS
   ACLs are not read: only the symbolic-link and marker checks apply.
 - **Clone locks.** As accepted, `update --apply` held a clone's lock from its
   clone or fetch through `worktree add`, and again for `worktree remove`.

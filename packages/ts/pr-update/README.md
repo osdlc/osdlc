@@ -335,13 +335,17 @@ the default is. pr-update makes the folders it creates itself (the
 clone directory and its `<host>` and `<owner>` folders, the folders that hold
 run and kept worktrees, its records) with mode `755` at most, whatever the
 umask.
-The clone folder itself and each run worktree's folder take the umask, since
-`gh` and `git` make them; for those two only the owner is checked, and the
-folders above them must pass the rule. A clone is used only when pr-update
-made it: a folder without its marker, a symbolic link in its place or in
-place of the `<host>` or `<owner>` folder above it, a clone or marker another
-user owns, or a folder above it someone else can write to, is left alone, and the
-target is skipped saying why. A clone is made with `gh repo clone
+`gh` makes a clone under the umask, so before the clone is put in place
+pr-update takes write for group and others off everything in it (`chmod -R
+go-w`). The clone folder and its `config` must then pass the rule too, since
+whoever can write that file chooses what git runs there. Each run worktree's
+folder takes the umask, since `git` makes it; for it only the owner is
+checked, and the folders above it must pass the rule. A clone is used only
+when pr-update made it: a folder without its marker, a symbolic link in its
+place, in place of its `config` or of the `<host>` or `<owner>` folder above
+it, a clone or marker another user owns, or a clone, its `config` or a
+folder above it someone else can write to, is left alone, and the target is
+skipped saying why. A clone is made with `gh repo clone
 <owner>/<name> -- --bare` (`GH_HOST` set to the target's host), with no
 `upstream` remote. Its own config gets the credential helper `gh auth
 setup-git` would write, so later fetches and pushes sign in through `gh`; your
