@@ -152,6 +152,32 @@ is not held; the core gives it an `unmeasured` protest (by `host-cleaner`), so
 it runs only with `--allow unmeasured`. The flag stays out of `evidence`, so a
 walk that finishes at the re-check does not read as `changed`.
 
+### Testing a plugin
+
+`@osdlc/host-cleaner/testing` holds what a plugin's own tests need, and no test
+runner:
+
+| Export | What it is |
+| --- | --- |
+| `fakeContext(over)` | A hook's context: no targets, nothing allowed, a signal never aborted. |
+| `fakeRunner({ program: answers })` | Fake programs for the kit: spread it into `pluginKit`'s options. A program in the table is on PATH and answers as command-seam's `fakeRunner` does; `calls` records each run. |
+| `tempHome()` | A new empty folder, by its real path, with `cleanup()`. |
+| `contractSuite(plugin, ctx)` | Surveys the plugin twice and returns one line per broken rule. |
+
+The suite checks that `limits` name hooks; that the survey warns of nothing
+(no hook throws or runs past its limit, ids are unique, each candidate is the
+plugin's and has one of a path and a ref); that every path candidate is inside
+the plugin's roots or the targets; that ids and evidence are the same in both
+surveys; that candidates and objections hold only what JSON keeps, so a plan
+reads back; and that `delete`, given a folder outside the roots and the
+targets, throws and leaves it. Give it a fixture where the plugin is detected
+and proposes something: a plugin that does not is a problem too. Every shipped
+plugin passes it:
+
+```ts
+expect(await contractSuite(plugin, { cwd: root, targets: [root] })).toEqual([])
+```
+
 ## The `git` plugin
 
 `gitPlugin(options)` proposes repo-cleaner's worktrees, as paths, and branches,
