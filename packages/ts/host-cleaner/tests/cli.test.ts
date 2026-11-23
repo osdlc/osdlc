@@ -18,7 +18,7 @@ import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, type MainDeps } from '../src/cli.ts'
-import { hostDirs } from '../src/config.ts'
+import { configFile, hostDirs } from '../src/config.ts'
 import type { Candidate, Objection, Plugin } from '../src/index.ts'
 
 const cleanups: Array<() => void> = []
@@ -296,7 +296,7 @@ describe('folders', () => {
     const { env, cwd } = setup()
     const r = run(['config'], cwd, env)
     expect(r.code).toBe(0)
-    expect(r.out).toContain(`file: ${join(hostDirs(env).config, 'config.json')}\n`)
+    expect(r.out).toContain(`file: ${configFile(hostDirs(env))}\n`)
   })
 })
 
