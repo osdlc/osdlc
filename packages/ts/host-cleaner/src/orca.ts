@@ -3,8 +3,9 @@
  * terminals and agents it holds open in them.
  *
  * Detected when the `orca` CLI is found (on `PATH`, or in the app bundle) and
- * `orca status` says the app is running. When it is installed but not running
- * the plugin stays out of the run with a warning and never fails it.
+ * answers `orca status`. When the app is installed but not running, Orca's
+ * records cannot be read, so every `git` worktree under {@link ORCA_WORKSPACES}
+ * is refused with `orca-unreachable` and the other worktrees are left to `git`.
  *
  * The `git` plugin owns a worktree, so it removes the directory. This plugin
  * objects first (an agent at work refuses; open terminals protest with
@@ -26,6 +27,9 @@ export const ORCA_PLUGIN = 'orca'
 
 /** The risk a person grants by name before the terminals in a worktree are closed. */
 export const CLOSE_TERMINALS = 'close-terminals'
+
+/** A path holding this is under Orca's workspaces folder, so the worktree is taken to be Orca's. */
+export const ORCA_WORKSPACES = '/orca/workspaces/'
 
 /** Where the desktop app puts its CLI when it is not on `PATH`. */
 export const ORCA_BUNDLE_CLI = '/Applications/Orca.app/Contents/Resources/bin/orca'
@@ -109,6 +113,9 @@ export const busy = (r: OrcaRecord): boolean =>
 /** A git plugin's worktree row: the only candidates this plugin acts on. */
 const isGitWorktree = (c: Candidate): boolean => c.kind === 'worktree' && c.owner === 'git'
 
+/** Whether `c` sits under Orca's workspaces folder, by its real path. */
+const inWorkspaces = (c: Candidate): boolean => canon(c.path).includes(ORCA_WORKSPACES)
+
 /**
  * Orca worktrees as `orca-record:<path>` candidates when their directory is
  * gone, notes, protests and refusals on `git`'s worktrees that Orca manages,
@@ -152,6 +159,9 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
     return parseRecords(result)
   }
 
+  /** Set by `detect`: installed but not running, so no call to Orca can succeed. */
+  let down = false
+
   /** The records seen at `prepare`, kept for `deleted`, since Orca may list less once git has removed the directory. */
   const prepared = new Map<string, OrcaRecord>()
 
@@ -182,16 +192,15 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
   return {
     name: ORCA_PLUGIN,
     detect(ctx) {
+      down = false
       if (found() === undefined) return false
       const status = call(['status'], ctx)
       const runtime = isObject(status) && isObject(status.runtime) ? status.runtime : {}
-      if (runtime.reachable !== true) {
-        throw new Error('Orca is installed but not running; its worktrees are left to git')
-      }
+      down = runtime.reachable !== true
       return true
     },
     scope(ctx) {
-      if (options.repos === false) return []
+      if (down || options.repos === false) return []
       const repos = call(['repo', 'list'], ctx)
       const rows = isObject(repos) && Array.isArray(repos.repos) ? repos.repos : []
       return rows.flatMap((r) =>
@@ -201,6 +210,7 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
       )
     },
     discover(ctx) {
+      if (down) return []
       return records(ctx)
         .filter((r) => !r.main && !existsSync(r.path))
         .map((r): Candidate => ({
@@ -216,6 +226,19 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
     object(all, ctx) {
       const worktrees = all.filter(isGitWorktree)
       if (worktrees.length === 0) return []
+      if (down) {
+        // No fallback to git: a worktree Orca may hold open is not taken while it cannot be asked.
+        return worktrees
+          .filter(inWorkspaces)
+          .map((c) =>
+            own(
+              c,
+              'refuse',
+              'orca-unreachable',
+              `Orca is installed but not running, and ${c.path} is under its workspaces folder`,
+            ),
+          )
+      }
       let seen: OrcaRecord[]
       try {
         seen = records(ctx)
@@ -258,6 +281,11 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
     },
     prepare(c, ctx) {
       if (!isGitWorktree(c)) return
+      if (down) {
+        if (inWorkspaces(c))
+          throw new Error(`Orca is not running and ${c.path} may be its worktree`)
+        return
+      }
       const r = recordFor(c, records(ctx))
       if (r === undefined) return
       // An agent may have started since `object`.
