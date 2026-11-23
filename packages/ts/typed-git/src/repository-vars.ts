@@ -15,6 +15,20 @@ import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
  * store to use, whatever the directory, and `GIT_CEILING_DIRECTORIES`, which
  * limits where git looks for one. Unset them to make git find the repository
  * from the directory it runs in.
+ *
+ * This is not git's own list, `git rev-parse --local-env-vars`, and is meant
+ * for a different job. git's list is what it clears before it runs git in
+ * another repository, such as a submodule.
+ * - `GIT_CEILING_DIRECTORIES` is not on git's list, since it chooses no
+ *   repository. It is here because an inherited one can stop git finding the
+ *   repository of the directory it runs in.
+ * - git's list also has `GIT_CONFIG`, `GIT_CONFIG_PARAMETERS`,
+ *   `GIT_CONFIG_COUNT`, `GIT_GRAFT_FILE`, `GIT_NO_REPLACE_OBJECTS`,
+ *   `GIT_REPLACE_REF_BASE`, `GIT_SHALLOW_FILE`, `GIT_PREFIX` and
+ *   `GIT_IMPLICIT_WORK_TREE`. They change config or how history reads inside
+ *   a repository, or are git's own bookkeeping, but do not choose one.
+ *   `GIT_CONFIG_PARAMETERS` carries the `-c` settings of the git that started
+ *   the program, and clearing it would drop them.
  */
 export const REPOSITORY_VARS: readonly string[] = Object.freeze([
   'GIT_DIR',
