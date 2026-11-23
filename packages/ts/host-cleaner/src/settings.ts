@@ -1,7 +1,7 @@
 /**
  * What each plugin's entry in the config's `plugins` may hold: the settings
  * schema of its definition in `BUILT_IN_PLUGINS`, made strict, with the core's
- * `enabled` added. It is validated when the config loads with
+ * `enabled` added and its own refinements kept. It is validated when the config loads with
  * `@osdlc/config-layers`' `validateStandard`, so a misspelt key or a wrong type
  * is a config error that names the plugin and the key. `host-cleaner config`
  * prints the same schemas' fields and defaults through `configFields`.
@@ -12,6 +12,7 @@ import { z } from 'zod'
 
 import { DEFAULT_IDLE_HOURS } from './kit.ts'
 import { BUILT_IN_PLUGINS } from './registry.ts'
+import type { PluginDefinition } from './types.ts'
 
 const enabled = z
   .boolean()
@@ -20,16 +21,27 @@ const enabled = z
 
 type Entries = Readonly<Record<string, Record<string, unknown>>>
 
-/** A shipped plugin's settings with the core's `enabled` first; undefined for a name no shipped plugin has. */
-const schemaOf = (name: string): z.ZodObject | undefined => {
-  const def = BUILT_IN_PLUGINS.find((d) => d.name === name)
-  return def === undefined ? undefined : z.strictObject({ enabled, ...def.settings.shape })
-}
+type Definitions = readonly PluginDefinition[]
 
-/** One line per problem in `plugins`, each starting `<prefix>.<name>[.<key>]`. */
-export function settingsIssues(plugins: Entries, prefix = 'plugins'): string[] {
+/**
+ * The settings schema of the plugin `name` in `defs`, with the core's
+ * `enabled` and made strict, its refinements kept; undefined for a name no
+ * definition has.
+ */
+const schemaOf = (name: string, defs: Definitions = BUILT_IN_PLUGINS): z.ZodObject | undefined =>
+  defs
+    .find((d) => d.name === name)
+    ?.settings.safeExtend({ enabled })
+    .strict()
+
+/** One line per problem in `plugins`, each starting `<prefix>.<name>[.<key>]`; `defs` are the plugins it knows. */
+export function settingsIssues(
+  plugins: Entries,
+  prefix = 'plugins',
+  defs: Definitions = BUILT_IN_PLUGINS,
+): string[] {
   return Object.entries(plugins).flatMap(([name, raw]) => {
-    const schema = schemaOf(name)
+    const schema = schemaOf(name, defs)
     if (schema === undefined) return []
     const result = validateStandard(schema, raw)
     if (result.ok) return []
@@ -45,14 +57,15 @@ export interface Shared {
 /**
  * `name`'s settings with defaults filled in, and `idleHours` taken from `shared`
  * when the plugin has that setting and does not set it; `raw` as given for a
- * plugin with no schema.
+ * plugin with no schema. `defs` are the plugins it knows.
  */
 export function settingsOf(
   name: string,
   raw: Record<string, unknown>,
   shared: Shared = {},
+  defs: Definitions = BUILT_IN_PLUGINS,
 ): Record<string, unknown> {
-  const schema = schemaOf(name)
+  const schema = schemaOf(name, defs)
   if (schema === undefined) return raw
   const parsed = schema.parse(raw) as Record<string, unknown>
   return 'idleHours' in schema.shape
@@ -82,7 +95,10 @@ export function effectiveSettings(
   for (const { name } of BUILT_IN_PLUGINS) {
     const raw = plugins[name] ?? {}
     const value = settingsOf(name, raw, shared)
-    out[name] = configFields({ [name]: schemaOf(name)! }).map((f) => {
+    const fields = configFields({ [name]: schemaOf(name)! })
+    // The core's `enabled` first, as `config` has always listed it.
+    fields.sort((a, b) => Number(b.path[1] === 'enabled') - Number(a.path[1] === 'enabled'))
+    out[name] = fields.map((f) => {
       const key = f.path.slice(1).join('.')
       return {
         key,
