@@ -567,7 +567,8 @@ describe('mirror list', () => {
       },
     ])
     expect(l.clones[0]!.bytes).toBeGreaterThan(0)
-    expect(l.worktrees).toEqual([
+    // Sorted by name, so the order depends on this process's pid: compare without it.
+    expect([...l.worktrees].sort((a, b) => Number(a.running) - Number(b.running))).toEqual([
       { path: dead, repo: 'github.com/acme/api', running: false, owner: realpathSync(clone) },
       { path: live, repo: 'github.com/acme/api', running: true, owner: realpathSync(clone) },
     ])
