@@ -909,11 +909,12 @@ interface Served {
  * The client a served checkout is updated through. Its `at()` clients run in the run's worktrees
  * and kept trees, so every call it makes runs without an inherited `GIT_DIR`, `GIT_WORK_TREE` or
  * the other variables that pick a repository: in a linked worktree they would act on the
- * repository `GIT_DIR` names and could move its checked-out branch. The project root's own
- * directory finds the same repository without them. For a target other than the project root it
- * also runs with hooks off, since a worktree checks out the PR's own files and a relative
- * `core.hooksPath` (`.husky`) would run the hooks the PR's author wrote. The project root's
- * fetch, survey and listing keep the environment as given (`survey.ts`).
+ * repository `GIT_DIR` names and could move its checked-out branch. For a target other than the
+ * project root it also runs with hooks off, since a worktree checks out the PR's own files and a
+ * relative `core.hooksPath` (`.husky`) would run the hooks the PR's author wrote. The project
+ * root's fetch, survey and listing keep the environment as given (`survey.ts`). The two agree on
+ * the project root because the CLI refuses, before it fetches, a run whose variables find another
+ * repository or another top level than the directory's own (`repositoryVarsRefusal`).
  */
 function gitOf(path: string, at: Served | undefined, env: Pick<UpdateEnv, 'git'>): Git {
   return new Git(
