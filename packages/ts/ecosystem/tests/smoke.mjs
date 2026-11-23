@@ -10,7 +10,10 @@
 // not a test-runner suite and is not in `files`.
 //
 // It keeps off the real home: OSDLC_ROOT points the osdlc directories into a
-// temp dir, OSDLC_REPOSITORIES is cleared, and `home` is passed.
+// temp dir, `home` is passed, and OSDLC_REPOSITORIES and every other variable
+// that moves an osdlc directory (`OSDLC_<HOME>_DIR`, OSDLC_CONVENTION) are
+// cleared, then restored. The list is written out, since this file may import
+// nothing but the package.
 
 import { strict as assert } from 'node:assert'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
@@ -28,9 +31,19 @@ import {
 } from '@osdlc/ecosystem/repositories'
 
 const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ecosystem-smoke-')))
-const saved = { root: process.env.OSDLC_ROOT, file: process.env.OSDLC_REPOSITORIES }
+const cleared = [
+  'OSDLC_REPOSITORIES',
+  'OSDLC_CONVENTION',
+  'OSDLC_REQUIRE_OVERRIDE',
+  ...['DURABLE', 'CONFIG', 'CACHE', 'STATE', 'LOGS', 'RUNTIME', 'SCRATCH'].map(
+    (home) => `OSDLC_${home}_DIR`,
+  ),
+]
+const saved = Object.fromEntries(
+  ['OSDLC_ROOT', ...cleared].map((name) => [name, process.env[name]]),
+)
+for (const name of cleared) delete process.env[name]
 process.env.OSDLC_ROOT = join(dir, 'osdlc')
-delete process.env.OSDLC_REPOSITORIES
 try {
   const home = join(dir, 'home')
   mkdirSync(join(home, 'dev', 'not-a-repo', '.git'), { recursive: true })
@@ -54,9 +67,10 @@ try {
   assert.deepEqual(locator.locate('acme/widgets'), [])
   assert.deepEqual(locateCheckout(parseRepoTarget('github.com/acme/widgets'), { home }), [])
 } finally {
-  if (saved.root === undefined) delete process.env.OSDLC_ROOT
-  else process.env.OSDLC_ROOT = saved.root
-  if (saved.file !== undefined) process.env.OSDLC_REPOSITORIES = saved.file
+  for (const [name, value] of Object.entries(saved)) {
+    if (value === undefined) delete process.env[name]
+    else process.env[name] = value
+  }
   rmSync(dir, { recursive: true, force: true })
 }
 
