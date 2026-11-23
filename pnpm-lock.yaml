@@ -868,6 +868,9 @@ importers:
       '@osdlc/ux':
         specifier: workspace:^
         version: link:../ux
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -884,6 +887,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
       oxlint:
         specifier: 'catalog:'
         version: 1.88.0

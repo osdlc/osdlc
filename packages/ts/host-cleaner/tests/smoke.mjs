@@ -18,6 +18,7 @@ import {
   VERSION,
   clean,
   gitPlugin,
+  parseDescriptor,
   plan,
   survey,
 } from '@osdlc/host-cleaner'
@@ -54,6 +55,13 @@ assert.deepEqual(log, ['artifact:c'])
 assert.ok(new FatalRun('x') instanceof Error)
 assert.equal(typeof contractSuite, 'function')
 assert.deepEqual(fakeContext().targets, [])
+assert.deepEqual(
+  parseDescriptor(
+    'descriptor: 1\npaths: { hub: { all: ~/.cache/hub } }\ncandidates: [{ path: hub, costDescription: re-download }]\n',
+    'hub.yaml',
+  ).paths,
+  { hub: { all: '~/.cache/hub' } },
+)
 
 // A plugin written with the plugin entry alone, through the core.
 const scratch = definePlugin({

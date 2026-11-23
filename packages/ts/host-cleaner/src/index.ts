@@ -29,7 +29,7 @@ export {
   type RefCandidate,
   type RunCtx,
 } from './types.ts'
-export { BUILT_IN_PLUGINS } from './registry.ts'
+export { BUILT_IN_PLUGINS, loadPlugins, type Loaded } from './registry.ts'
 export {
   PLAN_VERSION,
   PlanSchema,
@@ -85,6 +85,43 @@ export {
   type KitRunResult,
   type Running,
 } from './kit.ts'
+export {
+  DEFAULT_MAX_ENTRIES,
+  DESCRIPTOR_SCHEMA_URL,
+  DESCRIPTOR_VERSION,
+  DescriptorCandidateSchema,
+  DescriptorError,
+  DescriptorSchema,
+  OSES,
+  ProjectEntrySchema,
+  descriptorIssues,
+  descriptorJsonSchema,
+  parseDescriptor,
+  readDescriptor,
+  type Descriptor,
+  type DescriptorCandidate,
+  type Os,
+  type ProjectEntry,
+} from './descriptor/schema.ts'
+export {
+  IN_USE,
+  NO_PRUNE_TOOL,
+  PERSONAL_FOLDERS,
+  descriptorPlugin,
+  globMatches,
+  osOf,
+  pathProblem,
+  skipReason,
+  type DescriptorOptions,
+} from './descriptor/engine.ts'
+export {
+  DescriptorLoadError,
+  SHIPPED_DESCRIPTORS,
+  loadDescriptors,
+  type DescriptorSource,
+  type DescriptorSources,
+  type LoadedDescriptor,
+} from './descriptor/load.ts'
 export {
   CLOSE_TERMINALS,
   ORCA_BUNDLE_CLI,
