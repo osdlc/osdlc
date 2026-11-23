@@ -47,11 +47,14 @@ import { Git } from '@osdlc/typed-git'
 
 import {
   describeOutcome,
+  errorLine,
+  noHooksEnv,
   tally,
   updateAll,
   type UpdateResult,
   type UpdateTarget,
 } from './update/execute.ts'
+import { ownedUnder, type WorktreeRecords } from './update/registrations.ts'
 import {
   SCOPE_SHAPE,
   SurveyUsageError,
@@ -81,6 +84,8 @@ import {
   keptIsCurrent,
   keptIsTouched,
   keptOwnerElsewhere,
+  keptOwnerGone,
+  keptOwnerGoneReason,
   listKept,
   type KeptPlace,
 } from './update/kept.ts'
@@ -556,7 +561,8 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   // Each repository's PRs are updated in the checkout the survey measured them in, through the
   // remote it was measured against.
   const served = servedTargets(repoTargets, env)
-  const attempts = routeAttempts(served, env.ports.attempts)
+  const routed = routeAttempts(served, env.ports.attempts)
+  const attempts = routed?.store
   // Branch mode names its PR by head branch. The survey has already narrowed
   // the report to it and its stack parents. The match is by repository and
   // number, so a same-numbered PR in another repository is not swept in.
@@ -572,8 +578,16 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     maxFailedAttempts: effectiveCfg.max_failed_attempts,
     retryFailed: args.retryFailed,
   }
-  const { targets, skipped, notFound } = selectTargets(report, only, policy, {
+  const selection = selectTargets(report, only, policy, {
     restack: args.restack ?? effectiveCfg.restack,
+  })
+  const { skipped, notFound } = selection
+  // A target whose own record could not be read is left out, with the store's error.
+  const targets = selection.targets.filter((t) => {
+    const why = routed?.broken.get(t.repo)
+    if (why !== undefined)
+      skipped.push({ repo: t.repo, number: t.number, head: t.head, reason: why })
+    return why === undefined
   })
 
   const writes = wantsWrite(args, env.dryRun)
@@ -659,11 +673,23 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     confirmPush,
   }
   // Records too old to matter go before this run writes new ones. A rehearsal writes nothing.
-  if (writes) attempts?.prune?.()
+  // A target's own store is pruned only when the run updates it, so not for one the trust gate
+  // refused, and a store that fails leaves that target out.
+  if (writes) {
+    routed?.prune(new Set(groups.keys()))
+    for (const [repo, group] of groups) {
+      const why = routed?.broken.get(repo)
+      if (why === undefined) continue
+      groups.delete(repo)
+      for (const t of group.targets) {
+        skipped.push({ repo: t.repo, number: t.number, head: t.head, reason: why })
+      }
+    }
+  }
   const results: UpdateResult[] = []
   for (const [repo, { path, remote, targets: group }] of groups) {
-    const git = new Git(path, { runner: env.git })
     const at = served.get(repo)
+    const git = gitOf(path, at, env)
     // `<run>` last: a later run reads the pid of a killed one from it.
     const worktreeRoot = join(at?.worktrees ?? join(path, '.pr-update'), runId)
     const verifyVerbs =
@@ -688,6 +714,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
           apply: writes,
           worktreeRoot,
           ...(keepFailed ? { keepFailed: { place: at?.kept ?? checkoutKept(path) } } : {}),
+          ...(at?.records === undefined ? {} : { records: at.records, skipOnLeaseError: true }),
           onSkip: (s) => skipped.push(s),
           // A rehearsal cannot repair, so `writes` keeps it from recording anything. Recorded as
           // each PR finishes, so a run killed part-way (a job timeout) keeps what it
@@ -700,7 +727,9 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
             }
           },
           prepare: (target, done) => {
-            const ready = restackTarget(target, done, writes, policy)
+            // A record that failed part-way through the run leaves the rest of its PRs out.
+            const broken = routed?.broken.get(target.repo)
+            const ready = broken ?? restackTarget(target, done, writes, policy)
             if (typeof ready !== 'string') return ready
             skipped.push({
               repo: target.repo,
@@ -766,6 +795,34 @@ interface Served {
   kept: KeptPlace
   attempts: AttemptStore | undefined
   lease: BranchLease | undefined
+  /**
+   * Set for a target other than the project root, whose checkout is someone else's: git runs
+   * there with this merged into its environment (hooks off, `noHooksEnv`), and only worktrees
+   * under pr-update's own directories are cleaned up (`records`).
+   */
+  gitEnv?: Record<string, string> | undefined
+  records?: WorktreeRecords | undefined
+}
+
+/**
+ * The client for a served checkout. For a target other than the project root, every call it and
+ * its `at()` clients make runs with hooks off: a worktree checks out the PR's own files, and a
+ * relative `core.hooksPath` (`.husky`) would run the hooks the PR's author wrote.
+ */
+function gitOf(path: string, at: Served | undefined, env: Pick<UpdateEnv, 'git'>): Git {
+  return new Git(path, {
+    runner: env.git,
+    ...(at?.gitEnv === undefined ? {} : { env: at.gitEnv }),
+  })
+}
+
+/** `path` through its symlinks, or as given when it cannot be resolved. */
+function realOr(path: string): string {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
 }
 
 /**
@@ -787,32 +844,51 @@ function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<
       attempts: env.ports.attempts,
       lease: env.ports.lease,
     }
-    if (t.source === 'root' || t.source === null) {
+    // A host's `locate` may answer with the project root's own checkout: that is the project root.
+    if (t.source === 'root' || t.source === null || realOr(t.path) === realOr(env.projectRoot)) {
       out.set(t.repo, { ...own, target: null })
       continue
     }
+    // Resolved once: the trust gate, the worktrees and the kept record all see this path.
+    const path = realOr(t.path)
+    const gitEnv = noHooksEnv()
     const [owner = '', name = ''] = t.repo.split('/')
     const target: TargetCheckout = {
       host: hostKey(t.host ?? 'github.com'),
       owner,
       name,
-      path: t.path,
+      path,
       source: t.source,
       remote: t.remote,
     }
     const home = env.ports.targetHome?.(target)
     if (home === undefined) {
-      out.set(t.repo, { ...own, target })
+      out.set(t.repo, {
+        ...own,
+        path,
+        worktrees: join(path, '.pr-update'),
+        kept: checkoutKept(path),
+        target,
+        gitEnv,
+      })
       continue
     }
+    const records = ownedUnder([home.worktrees, home.kept])
     out.set(t.repo, {
-      path: t.path,
+      path,
       remote: t.remote,
       target,
       worktrees: home.worktrees,
-      kept: { dir: home.kept, naming: 'repository', gitDir: commonDirOf(t.path, env) },
+      kept: {
+        dir: home.kept,
+        naming: 'repository',
+        gitDir: commonDirOf(path, env),
+        records,
+      },
       attempts: home.attempts,
       lease: home.lease,
+      gitEnv,
+      records,
     })
   }
   return out
@@ -821,35 +897,79 @@ function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<
 /** The real path of the git common directory of the checkout at `path`, or undefined. */
 function commonDirOf(path: string, env: Pick<UpdateEnv, 'git'>): string | undefined {
   try {
-    const dir = new Git(path, { runner: env.git }).gitCommonDir()
+    const dir = new Git(path, { runner: env.git, env: noHooksEnv() }).gitCommonDir()
     return dir === null ? undefined : realpathSync(dir)
   } catch {
     return undefined
   }
 }
 
+/** The run's attempt store, routed by repository, and what went wrong with a target's own. */
+interface RoutedAttempts {
+  store: AttemptStore
+  /**
+   * The repositories whose own store failed, each with the error. Their PRs are skipped with it,
+   * and the run goes on with the others.
+   */
+  broken: Map<string, string>
+  /** Prune `fallback`, and the own store of each repository in `repos`. */
+  prune: (repos: ReadonlySet<string>) => void
+}
+
 /**
  * One attempt store over each served repository's own, by the `repo` of each key, so selection,
- * recording and clearing all reach the store of the repository the PR is in, and `prune` reaches
- * every store. `fallback` (`Ports.attempts`) serves any repository with none of its own.
+ * recording and clearing all reach the store of the repository the PR is in. `fallback`
+ * (`Ports.attempts`) serves any repository with none of its own; undefined when there is no
+ * store at all.
+ *
+ * A target's own store lives on its own remote or in its own folder, so an error from it (a
+ * remote that refuses `refs/pr-update/*`) is that target's alone: it lands in `broken`, and the
+ * call reads as no record. An error from `fallback`, the project root's store, ends the run as
+ * it always has.
  */
 function routeAttempts(
   served: ReadonlyMap<string, Served>,
   fallback: AttemptStore | undefined,
-): AttemptStore | undefined {
-  const own = new Map([...served].map(([repo, s]) => [repo, s.attempts]))
-  const stores = [...new Set([fallback, ...own.values()])].filter(
-    (s): s is AttemptStore => s !== undefined,
-  )
-  if (stores.length === 0) return undefined
-  if (stores.length === 1 && stores[0] === fallback) return fallback
-  const of = (repo: string): AttemptStore | undefined => (own.has(repo) ? own.get(repo) : fallback)
+): RoutedAttempts | undefined {
+  const own = new Map<string, AttemptStore>()
+  for (const [repo, s] of served) {
+    if (s.target !== null && s.attempts !== undefined && s.attempts !== fallback) {
+      own.set(repo, s.attempts)
+    }
+  }
+  if (own.size === 0 && fallback === undefined) return undefined
+  const broken = new Map<string, string>()
+  /** Run `call` on `repo`'s store: its own, guarded, or `fallback`. */
+  const on = <R>(repo: string, call: (store: AttemptStore) => R, none: R): R => {
+    const store = own.get(repo)
+    if (store === undefined) return fallback === undefined ? none : call(fallback)
+    if (broken.has(repo)) return none
+    try {
+      return call(store)
+    } catch (e) {
+      broken.set(repo, `attempt record: ${errorLine(e)}`)
+      return none
+    }
+  }
+  const store: AttemptStore =
+    own.size === 0
+      ? fallback!
+      : {
+          get: (key) => on(key.repo, (s) => s.get(key), null),
+          recordFailure: (key, reason) =>
+            on(key.repo, (s) => s.recordFailure(key, reason), undefined),
+          clear: (repo, head, base) => on(repo, (s) => s.clear(repo, head, base), undefined),
+          prune: () => {
+            fallback?.prune?.()
+            for (const repo of own.keys()) on(repo, (s) => s.prune?.(), undefined)
+          },
+        }
   return {
-    get: (key) => of(key.repo)?.get(key) ?? null,
-    recordFailure: (key, reason) => of(key.repo)?.recordFailure(key, reason),
-    clear: (repo, head, base) => of(repo)?.clear(repo, head, base),
-    prune: () => {
-      for (const store of stores) store.prune?.()
+    store,
+    broken,
+    prune: (repos) => {
+      fallback?.prune?.()
+      for (const repo of own.keys()) if (repos.has(repo)) on(repo, (s) => s.prune?.(), undefined)
     },
   }
 }
@@ -877,17 +997,17 @@ function settleKept(
   skipped: SkippedPr[],
 ): string[] {
   const removed: string[] = []
-  const places = new Map<string, { checkout: string; place: KeptPlace }>()
+  const places = new Map<string, { checkout: string; place: KeptPlace; at?: Served }>()
   for (const [repo, s] of served) {
-    if (!refused.has(repo)) places.set(s.kept.dir, { checkout: s.path, place: s.kept })
+    if (!refused.has(repo)) places.set(s.kept.dir, { checkout: s.path, place: s.kept, at: s })
   }
   for (const [repo, group] of groups) {
     const place = served.get(repo)?.kept ?? checkoutKept(group.path)
     if (!places.has(place.dir)) places.set(place.dir, { checkout: group.path, place })
   }
   if (args.discardKept === true) {
-    for (const { checkout, place } of places.values()) {
-      const git = new Git(checkout, { runner: env.git })
+    for (const { checkout, place, at } of places.values()) {
+      const git = gitOf(checkout, at, env)
       for (const record of listKept(place)) {
         removed.push(record.path)
         if (writes) discardKept(git, place, record)
@@ -895,8 +1015,9 @@ function settleKept(
     }
   }
   for (const [repo, group] of groups) {
-    const place = served.get(repo)?.kept ?? checkoutKept(group.path)
-    const git = new Git(group.path, { runner: env.git })
+    const at = served.get(repo)
+    const place = at?.kept ?? checkoutKept(group.path)
+    const git = gitOf(group.path, at, env)
     group.targets = group.targets.filter((t) => {
       // A restack child's base moves when its parent does, so its kept tree is stale by then.
       if (t.stackParent !== undefined) return true
@@ -906,6 +1027,10 @@ function settleKept(
         skipped.push({ repo: t.repo, number: t.number, head: t.head, reason })
         return false
       }
+      // Its owner is gone, so git cannot say whether a person changed it: it stays until
+      // `--discard-kept` (handled above).
+      const gone = keptOwnerGone(record)
+      if (gone !== null) return skip(keptOwnerGoneReason(record, gone))
       const moved = !keptIsCurrent(record, t)
       const owner = keptOwnerElsewhere(place, record)
       if (owner !== null && (args.retryFailed === true || !moved)) {

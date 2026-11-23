@@ -32,6 +32,8 @@ export interface LeasePayload {
 export interface RefBranchLeaseOptions {
   remote: string
   cwd: string
+  /** Merged over the process environment for every git call (see `noHooksEnv`). */
+  env?: Readonly<Record<string, string>> | undefined
   /** The `ref_prefix` setting. Default `refs/pr-update/`. */
   refPrefix?: string
   ttlMs: number
@@ -69,7 +71,8 @@ function decode(v: unknown): LeasePayload {
 }
 
 export function refBranchLease(opts: RefBranchLeaseOptions): BranchLease {
-  const { remote, cwd } = opts
+  const { remote } = opts
+  const git = { cwd: opts.cwd, ...(opts.env === undefined ? {} : { env: opts.env }) }
   const refPrefix = opts.refPrefix ?? DEFAULT_REF_PREFIX
   const holder = opts.holder ?? defaultHolder()
   const now = opts.now ?? (() => new Date())
@@ -79,7 +82,7 @@ export function refBranchLease(opts: RefBranchLeaseOptions): BranchLease {
       const ref = lockRef(refPrefix, head)
       try {
         const got = claim<LeasePayload>(remote, ref, {
-          cwd,
+          ...git,
           decode,
           build: () => {
             const t = now()
@@ -98,7 +101,7 @@ export function refBranchLease(opts: RefBranchLeaseOptions): BranchLease {
           ok: true,
           release() {
             try {
-              release(remote, ref, got.sha, { cwd })
+              release(remote, ref, got.sha, git)
             } catch {
               // The remote went away. The lease ends by itself at `expiresAt`, and a failed
               // release must not hide the update's own result.

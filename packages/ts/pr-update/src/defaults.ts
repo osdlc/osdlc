@@ -36,6 +36,7 @@ import type {
 import { agentRepair } from './repair/agents.ts'
 import { seatRepair } from './repair/seat.ts'
 import { attemptsDir, fileAttemptStore } from './update/attempts.ts'
+import { noHooksEnv } from './update/execute.ts'
 import { defaultLeaseTtlSeconds, refBranchLease } from './update/lease.ts'
 import { DEFAULT_REF_PREFIX, attemptsPrefix, refAttemptStore } from './update/ref-attempts.ts'
 
@@ -187,18 +188,23 @@ export function standalonePorts(
   }
 }
 
-/** The `git-ref` record and lease of `cfg`, on `remote` of the checkout at `cwd`. */
+/**
+ * The `git-ref` record and lease of `cfg`, on `remote` of the checkout at `cwd`, with `env`
+ * merged into every git call.
+ */
 function refRecords(
   cfg: Partial<PrUpdateStandaloneConfig> & Pick<PrUpdateConfig, 'repair'>,
   remote: string,
   cwd: string,
+  env?: Record<string, string>,
 ): { attempts: AttemptStore; lease: BranchLease } {
   const refPrefix = cfg.attempts?.ref_prefix ?? DEFAULT_REF_PREFIX
+  const git = { cwd, ...(env === undefined ? {} : { env }) }
   return {
-    attempts: refAttemptStore({ remote, cwd, prefix: attemptsPrefix(refPrefix) }),
+    attempts: refAttemptStore({ remote, ...git, prefix: attemptsPrefix(refPrefix) }),
     lease: refBranchLease({
       remote,
-      cwd,
+      ...git,
       refPrefix,
       ttlMs: (cfg.lease?.ttl_seconds ?? defaultLeaseTtlSeconds(cfg.repair.timeout_seconds)) * 1000,
     }),
@@ -218,7 +224,7 @@ function standaloneTargetHome(
   const own = (dir: string): string => join(dir, target.host, target.owner, target.name)
   const records =
     cfg?.attempts?.store === 'git-ref'
-      ? refRecords(cfg, target.remote, target.path)
+      ? refRecords(cfg, target.remote, target.path, noHooksEnv())
       : { attempts: fileAttemptStore(own(paths.attempts)) }
   return { worktrees: own(paths.worktrees), kept: own(paths.kept), ...records }
 }

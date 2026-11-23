@@ -10,7 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { isatty } from 'node:tty'
 
@@ -1013,12 +1013,13 @@ describe('runUpdate — two repositories that each hold a PR 1', () => {
       },
     })
     expect(asked).toEqual([
-      { which: 'check', trust: false, repo: 'a/x', checkout: a.worker.dir },
-      { which: 'check', trust: false, repo: 'b/y', checkout: b.worker.dir },
+      // A checkout other than the project root is named by its real path.
+      { which: 'check', trust: false, repo: 'a/x', checkout: realpathSync(a.worker.dir) },
+      { which: 'check', trust: false, repo: 'b/y', checkout: realpathSync(b.worker.dir) },
     ])
     expect(ran.map((r) => r.verb)).toEqual(['make check', 'cargo test'])
-    expect(ran[0]!.cwd.startsWith(join(a.worker.dir, '.pr-update'))).toBe(true)
-    expect(ran[1]!.cwd.startsWith(join(b.worker.dir, '.pr-update'))).toBe(true)
+    expect(ran[0]!.cwd.startsWith(join(realpathSync(a.worker.dir), '.pr-update'))).toBe(true)
+    expect(ran[1]!.cwd.startsWith(join(realpathSync(b.worker.dir), '.pr-update'))).toBe(true)
     expect(out.counts.updated).toBe(2)
   })
 

@@ -51,6 +51,7 @@ import {
 
 import { NothingDetectedError } from '../detect.ts'
 import { keepWorktree, type KeptPlace } from './kept.ts'
+import { PRUNE_ALL, removeWorktree, type WorktreeRecords } from './registrations.ts'
 import type {
   ConfirmPush,
   BranchLease,
@@ -263,7 +264,7 @@ function remoteLine(stderr: string): string | null {
 }
 
 /** One line naming why `e` failed: stderr (or the runner's `error`), else stdout. */
-function errorLine(e: unknown): string {
+export function errorLine(e: unknown): string {
   const failed = commandFailedOf(e)
   if (failed !== null) {
     return (
@@ -1084,8 +1085,22 @@ export async function updateAll(
     apply: boolean
     worktreeRoot: string
     onResult?: (r: UpdateResult) => void
-    /** Receives each PR left alone because another run holds its branch's lease. */
+    /**
+     * Receives each PR left alone because another run holds its branch's lease, or, under
+     * `skipOnLeaseError`, because the lease could not be taken.
+     */
     onSkip?: (s: { repo: string; number: number; head: string; reason: string }) => void
+    /**
+     * When the lease cannot be taken (its remote refuses the ref, say), skip that PR with the
+     * error as the reason and go on, instead of ending the run. Set for a target other than the
+     * project root, whose record lives on its own remote.
+     */
+    skipOnLeaseError?: boolean | undefined
+    /**
+     * Which worktrees of `git`'s repository the run may clean up, and how it forgets one it
+     * removed. Defaults to {@link PRUNE_ALL}, the project root's way.
+     */
+    records?: WorktreeRecords | undefined
     /**
      * Called before each target, with the results so far: the target to
      * run, possibly adjusted, or null to leave it out. A restack run uses it
@@ -1103,7 +1118,8 @@ export async function updateAll(
   const results: UpdateResult[] = []
   if (targets.length === 0) return results
 
-  releaseStaleScratch(git)
+  const records = opts.records ?? PRUNE_ALL
+  releaseStaleScratch(git, records)
   const start = `${settings.remote}/${targets[0]!.base}`
   git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
   const wt = git.at(opts.worktreeRoot)
@@ -1114,9 +1130,21 @@ export async function updateAll(
       const target = opts.prepare === undefined ? planned : opts.prepare(planned, results)
       if (target === null) continue
       // A rehearsal never takes a lease: it pushes nothing.
-      const grant = opts.apply
-        ? settings.lease?.acquire({ head: target.head, pr: target.number })
-        : undefined
+      let grant
+      try {
+        grant = opts.apply
+          ? settings.lease?.acquire({ head: target.head, pr: target.number })
+          : undefined
+      } catch (e) {
+        if (opts.skipOnLeaseError !== true) throw e
+        opts.onSkip?.({
+          repo: target.repo,
+          number: target.number,
+          head: target.head,
+          reason: errorLine(e),
+        })
+        continue
+      }
       if (grant !== undefined && !grant.ok) {
         opts.onSkip?.({
           repo: target.repo,
@@ -1153,7 +1181,7 @@ export async function updateAll(
           result.keepError = errorLine(e)
         }
         if (!existsSync(opts.worktreeRoot)) {
-          git.try.worktreePrune()
+          records.forget(git, opts.worktreeRoot, false)
           git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
         }
       }
@@ -1168,8 +1196,7 @@ export async function updateAll(
     // releases it. Each step uses `try`, so a failure in one still lets the
     // others run. A stray worktree is worse than a stray branch, and both are
     // worse than an exception here hiding the real one.
-    git.try.worktreeRemove(opts.worktreeRoot, { force: true })
-    git.try.worktreePrune()
+    removeWorktree(git, opts.worktreeRoot, records)
     git.try.deleteBranch(scratchBranch(opts.worktreeRoot), { force: true })
   }
   return results
@@ -1178,20 +1205,24 @@ export async function updateAll(
 /**
  * Remove a worktree that a killed run left holding a {@link WORK_BRANCH} branch, and the branch
  * itself. Without this, scratch branches and worktrees pile up. A worktree whose `<pid>.` name
- * prefix is a live process is left alone, since it belongs to a run still going.
+ * prefix is a live process is left alone, since it belongs to a run still going, and so is one
+ * `records` does not count as the run's.
  */
-function releaseStaleScratch(git: Git): void {
+function releaseStaleScratch(git: Git, records: WorktreeRecords): void {
   const stale = git
     .worktrees()
     .filter(
       (w) =>
         w.branch?.startsWith(WORK_BRANCH) === true &&
+        records.owns(w.path) &&
         !isAlive(Number(basename(w.path).split('.')[0])),
     )
-  for (const w of stale) {
-    git.try.worktreeRemove(w.path, { force: true })
+  if (records === PRUNE_ALL) {
+    for (const w of stale) git.try.worktreeRemove(w.path, { force: true })
+    if (stale.length > 0) git.try.worktreePrune()
+  } else {
+    for (const w of stale) removeWorktree(git, w.path, records)
   }
-  if (stale.length > 0) git.try.worktreePrune()
   for (const w of stale) if (w.branch) git.try.deleteBranch(w.branch, { force: true })
 }
 

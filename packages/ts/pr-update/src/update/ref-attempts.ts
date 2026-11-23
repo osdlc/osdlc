@@ -45,6 +45,8 @@ export interface RefAttemptStoreOptions {
   remote: string
   /** A checkout whose object store the commits are built in. */
   cwd: string
+  /** Merged over the process environment for every git call (see `noHooksEnv`). */
+  env?: Readonly<Record<string, string>> | undefined
   /** Where attempt refs live. Default `refs/pr-update/attempts/`. */
   prefix?: string
   now?: () => Date
@@ -97,6 +99,7 @@ export function refAttemptStore(opts: RefAttemptStoreOptions): RefAttemptStore {
   const store = refStore<Payload>({
     remote,
     cwd: opts.cwd,
+    ...(opts.env === undefined ? {} : { env: opts.env }),
     prefix: opts.prefix ?? attemptsPrefix(DEFAULT_REF_PREFIX),
     decode,
     label: labelOf,

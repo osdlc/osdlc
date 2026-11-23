@@ -66,6 +66,7 @@ import { FailureError, type Failure } from '@osdlc/result'
 import { parseTrustRepo } from '@osdlc/trust-repo'
 import { githubCodeHostFor, type CodeHostTarget } from './code-host.ts'
 import { chooseStrategy, type Strategy } from './strategy.ts'
+import { noHooksEnv } from './update/execute.ts'
 import type { PrUpdateConfig } from './config.ts'
 import type { CheckoutSource, FoundCheckout, Ports } from './ports.ts'
 
@@ -480,6 +481,19 @@ export function hostKey(host: string): string {
   return host.toLowerCase().replace(/:\d+$/, '')
 }
 
+/**
+ * Whether `part` cannot name a folder on Windows: it holds one of `<>:"|?*`, ends in `.` or a
+ * space, or is a reserved device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9`)
+ * in any case, with or without an extension.
+ */
+function notAWindowsFolder(part: string): boolean {
+  return (
+    /[<>:"|?*]/.test(part) ||
+    /[. ]$/.test(part) ||
+    /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(part)
+  )
+}
+
 /** Whether `text` reads as a trust key, `host/owner/name` (trust-repo's `parseTrustRepo`). */
 function isTrustKey(text: string): boolean {
   try {
@@ -494,8 +508,8 @@ function isTrustKey(text: string): boolean {
  * A `--repo` read as a target: its host (`defaultHost` when it names none),
  * owner and name, lower-cased. Its `host/owner/name`, with the host's port
  * left out, must be a trust key, since that key trusts a clone of it and
- * names its clone, kept and attempt paths. An owner or a name with a `:` is
- * refused too: each is a path segment, and Windows takes no `:` there.
+ * names its clone, kept and attempt paths. An owner or a name that cannot be
+ * a folder on Windows is refused too, since each is a path segment.
  *
  * @throws SurveyUsageError naming what is wrong.
  */
@@ -520,6 +534,10 @@ function parseRepoFlag(
   }
   if (owner.includes(':') || name.includes(':') || !isTrustKey(`github.com/${owner}/${name}`)) {
     throw bad
+  }
+  const unsafe = [owner, name].find(notAWindowsFolder)
+  if (unsafe !== undefined) {
+    throw new SurveyUsageError(`--repo ${text}: ${unsafe} cannot be a folder name on Windows`)
   }
   if (!isTrustKey(`${hostKey(host)}/${owner}/${name}`)) {
     throw new SurveyUsageError(`--repo ${text}: ${hostKey(host)} is not a host name`)
@@ -965,7 +983,11 @@ export function surveyWithTargets(
       target.path === null || target.source === null
         ? null
         : { path: target.path, source: target.source }
-    const git = new Git(target.path ?? env.projectRoot, { runner: env.git })
+    // A checkout other than the project root is someone else's: git runs there with hooks off,
+    // as `update` runs it (`noHooksEnv`).
+    const elsewhere = target.source === 'located' || target.source === 'clone'
+    const gitEnv = elsewhere ? { env: noHooksEnv() } : {}
+    const git = new Git(target.path ?? env.projectRoot, { runner: env.git, ...gitEnv })
 
     const isLocal = target.source === 'root'
     // Any other target is listed on its own host, named even when it is github.com. It
@@ -1053,7 +1075,7 @@ export function surveyWithTargets(
       listedWorktrees === null ? [] : listedWorktrees.ok ? listedWorktrees.value : null
     // A located checkout's others were matched by `origin`, as it was.
     const others = (target.found?.others ?? []).map((path) => {
-      const other = new Git(path, { runner: env.git })
+      const other = new Git(path, { runner: env.git, env: noHooksEnv() })
       const listed = other.try.worktrees()
       return { git: other, worktrees: listed.ok ? listed.value : null, remote: 'origin' }
     })
