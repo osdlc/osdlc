@@ -17,6 +17,8 @@ import { join } from 'node:path'
 
 import { CommandFailed, asAsync, type CommandRunner } from '@osdlc/command-seam'
 import type { ProcessHolder, ProcessProbe } from '@osdlc/repo-cleaner'
+import { Git } from '@osdlc/typed-git'
+import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 import { z } from 'zod'
 
 import { PLUGIN_API, clean, definePlugin, plan, pluginKit, survey } from '../src/index.ts'
@@ -140,6 +142,28 @@ describe('remove', () => {
     expect(existsSync(join(other, 'keep'))).toBe(true)
     // Inside the plugin's own roots is allowed.
     expect(boundKit('cache', { roots: [other] }).remove(join(other, 'keep'))).toMatch(/^removed /)
+  })
+
+  test('removes in a linked worktree outside the targets only when its main checkout is in one', () => {
+    const git = (cwd: string, args: string[]): void => {
+      new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args)
+    }
+    const worktreeOf = (repo: string): string => {
+      mkdirSync(repo)
+      makeGitFixture({ dir: repo, initialBranch: 'main' })
+      git(repo, ['commit', '--allow-empty', '-m', 'initial'])
+      const wt = join(temp(), 'wt')
+      git(repo, ['worktree', 'add', '-q', wt, '-b', 'linked'])
+      put(join(wt, 'target', 'blob'), 1)
+      return wt
+    }
+    const dev = temp()
+    const inside = worktreeOf(join(dev, 'repo'))
+    const outside = worktreeOf(join(temp(), 'repo'))
+    const kit = boundKit('cargo', { targets: [dev] })
+    expect(kit.remove(join(inside, 'target'))).toMatch(/^removed /)
+    expect(() => kit.remove(join(outside, 'target'))).toThrow(/not inside cargo's roots/)
+    expect(existsSync(join(outside, 'target', 'blob'))).toBe(true)
   })
 
   test('a folder already gone is not a failure', () => {

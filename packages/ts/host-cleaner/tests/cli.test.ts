@@ -595,6 +595,29 @@ describe('plan and clean', () => {
     expect(b.removed).toEqual(['artifact:b'])
   })
 
+  test('a candidate blocked by one it requires names it and what it needs, in the preview and the checklist', async () => {
+    const { env, cwd } = setup()
+    const plugins = () => [
+      fake('outer', { candidate: { requires: ['artifact:inner'] } }),
+      fake('inner', { candidate: { unmeasured: true } }),
+    ]
+    const why = 'requires artifact:inner, which needs --allow unmeasured'
+    const r = await run(['clean', '--dry-run'], cwd, env, { plugins: plugins() })
+    expect(r.out).toContain(`  skip    artifact:outer\n          blocked: ${why}\n`)
+    const shown: string[] = []
+    await run(['clean', '-i', '--dry-run'], cwd, env, {
+      plugins: plugins(),
+      checklist: (_q, items) => {
+        shown.push(...items.map((i) => i.label))
+        return []
+      },
+    })
+    expect(shown).toEqual([
+      `artifact:outer  delete: idle for a week (blocked: ${why})`,
+      'artifact:inner  review: idle for a week',
+    ])
+  })
+
   test('-i with no terminal is refused with exit 2', async () => {
     const { env, cwd } = setup()
     expect((await run(['clean', '-i'], cwd, env, { plugins: [fake()] })).code).toBe(2)

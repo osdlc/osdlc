@@ -4,8 +4,9 @@
  * removes a folder the same way instead of writing its own. The core builds
  * one kit per plugin, bound to its name, and hands it to `create`. Each run,
  * once the plugin's `roots` hook has answered, the core binds that kit to the
- * plugin's roots, the run's targets and their linked worktrees, which
- * `remove` checks against.
+ * plugin's roots, the run's targets and their linked worktrees (including
+ * one anywhere whose main checkout is in a target), which `remove` checks
+ * against.
  *
  * It reuses repo-cleaner's process probe, `busyHolders` and `sizeOf`, and
  * `@osdlc/path-guard` for containment (through `./roots.ts`).
@@ -119,7 +120,8 @@ export interface Kit {
   run(argv: readonly string[], opts: KitRunOptions): Promise<KitRunResult>
   /**
    * Removes the folder `path`: only if it is still inside the plugin's roots,
-   * a target or a linked worktree of one by its real path, as the core
+   * a target or a linked worktree of one (a worktree of a repository a
+   * target is in, or whose main checkout is in a target) by its real path, as the core
    * resolved them this run, after making read-only folders and files in it
    * writable. Returns the receipt sentence; a folder already gone is not a
    * failure. Throws when it is outside, when the kit is not bound to a run,

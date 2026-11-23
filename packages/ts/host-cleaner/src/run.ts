@@ -98,7 +98,7 @@ export interface Survey {
   candidates: Candidate[]
   objections: Objection[]
   warnings: string[]
-  /** The linked worktrees of the repositories among the targets, which path candidates may be or sit in. */
+  /** The linked worktrees of the repositories the targets are in, which path candidates may be or sit in. A linked worktree whose main checkout is in a target is found per candidate instead. */
   linked: string[]
   /** Each detected plugin's roots, as its `roots` hook answered; none for a plugin without the hook. */
   roots: Record<string, readonly string[]>
@@ -177,7 +177,8 @@ function nest(cs: readonly Candidate[]): Candidate[] {
  * {@link FatalRun} from any phase goes to the caller. Two candidates with the
  * same id, or path candidates with the same real path, are one: the first
  * plugin's stands, with a warning naming both. A path candidate with others
- * inside it requires them, so they go first and a refused one blocks it.
+ * inside it requires them, so they go first, and one of them that does not
+ * run blocks it.
  */
 export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Survey> {
   const warnings: string[] = []
@@ -422,7 +423,8 @@ export interface Decision {
  * candidate that would have run is dropped as `spared`, a refused one as
  * `blocked`, an un-granted protest as `not-allowed`, an unknown id as `gone`.
  * A candidate whose requirement does not run is dropped as `blocked`, and so
- * on up the chain. A `note` never gates.
+ * on up the chain, its detail naming each such requirement and what would let
+ * it run (see {@link explainer}). A `note` never gates.
  */
 export function decide(
   candidates: readonly Candidate[],
@@ -474,7 +476,56 @@ export function decide(
       dropped.push({ id, reason: 'not-allowed', detail: `needs --allow ${codes}` })
     } else running.set(id, c)
   }
-  return { ...closeRequires(running, dropped), dropped }
+  const explain = explainer(byId, gating, unmet, selection, dropped)
+  return { ...closeRequires(running, dropped, explain), dropped }
+}
+
+/** Why a candidate does not run, worded to follow "which": what would let it run. */
+type Explain = (id: string) => string
+
+/** `d` worded to follow "which". */
+function because(d: Dropped): string {
+  if (d.reason === 'not-allowed') return d.detail
+  if (d.reason === 'spared') return `is spared (${d.detail})`
+  if (d.reason === 'gone') return 'is gone'
+  return `is ${d.reason}: ${d.detail}`
+}
+
+/**
+ * Explains, from the candidates and the selection, why one does not run:
+ * gone, spared, refused (and by whom), or what it needs (`--pick <id>` for
+ * one held or not selected, `--allow <code>` for a protest not granted);
+ * failing those, its entry in `dropped`, as for one blocked by its own
+ * requirement.
+ */
+function explainer(
+  byId: ReadonlyMap<string, Candidate>,
+  gating: (id: string, level: Objection['level']) => Objection[],
+  unmet: (id: string) => Objection[],
+  selection: Selection,
+  dropped: readonly Dropped[],
+): Explain {
+  return (id) => {
+    const c = byId.get(id)
+    if (c === undefined) return 'is gone'
+    const spare = selection.spare.find((e) => spares(e, c))
+    if (spare !== undefined) return `is spared (--spare ${spare})`
+    const refused = gating(id, 'refuse')
+    if (refused.length > 0) {
+      return `is refused (${refused.map((o) => `${o.by}: ${o.reason}`).join('; ')})`
+    }
+    const chosen =
+      selection.pick.includes(id) ||
+      (selection.select === null ? c.held !== true : selection.select.includes(id))
+    const codes = [...new Set(unmet(id).map((o) => o.code))]
+    const needs = [
+      ...(chosen ? [] : [`--pick ${id}`]),
+      ...(codes.length > 0 ? [`--allow ${codes.join(', ')}`] : []),
+    ]
+    if (needs.length > 0) return `needs ${needs.join(' ')}`
+    const entry = dropped.find((d) => d.id === id)
+    return entry === undefined ? 'does not run' : because(entry)
+  }
 }
 
 /** True when following `requires` from `c` leads back to `c`. */
@@ -490,21 +541,29 @@ function requiresItself(c: Candidate, running: ReadonlyMap<string, Candidate>): 
   return false
 }
 
-/** Drop what requires something that is not running or is in a cycle, until none does; order the rest, requirements first. */
-function closeRequires(running: Map<string, Candidate>, dropped: Dropped[]): { run: Candidate[] } {
+/**
+ * Drop what requires something that is not running or is in a cycle, until
+ * none does, naming each requirement that does not run and, by `explain`,
+ * why; order the rest, requirements first.
+ */
+function closeRequires(
+  running: Map<string, Candidate>,
+  dropped: Dropped[],
+  explain: Explain,
+): { run: Candidate[] } {
   for (let again = true; again;) {
     again = false
     for (const c of running.values()) {
-      const lacking = c.requires?.find((r) => !running.has(r))
-      const cyclic = lacking === undefined && requiresItself(c, running)
-      if (lacking === undefined && !cyclic) continue
+      const lacking = (c.requires ?? []).filter((r) => !running.has(r))
+      const cyclic = lacking.length === 0 && requiresItself(c, running)
+      if (lacking.length === 0 && !cyclic) continue
       running.delete(c.id)
       dropped.push({
         id: c.id,
         reason: 'blocked',
         detail: cyclic
           ? 'its requirements form a cycle'
-          : `requires ${lacking}, which does not run`,
+          : lacking.map((r) => `requires ${r}, which ${explain(r)}`).join('; '),
       })
       again = true
     }
@@ -566,7 +625,11 @@ export async function recheck(
       dropped.push({ id: c.id, reason: 'changed', detail: 'its evidence moved since the plan' })
     } else kept.set(c.id, c)
   }
-  return { decision: { ...closeRequires(kept, dropped), dropped }, survey: fresh }
+  const explain: Explain = (id) => {
+    const entry = dropped.find((d) => d.id === id)
+    return entry === undefined ? 'does not run' : because(entry)
+  }
+  return { decision: { ...closeRequires(kept, dropped, explain), dropped }, survey: fresh }
 }
 
 export interface CleanOptions {
@@ -648,11 +711,12 @@ export async function clean(
         notified: [],
       }
       receipt.steps.push(step)
+      const halted = c.requires?.find((r) => stopped.has(r))
       const skip =
         fatal !== null
           ? `the run stopped: ${fatal}`
-          : c.requires?.some((r) => stopped.has(r))
-            ? 'a candidate it requires did not complete'
+          : halted !== undefined
+            ? `requires ${halted}, which did not complete`
             : null
       if (skip !== null) {
         step.result = 'skipped'

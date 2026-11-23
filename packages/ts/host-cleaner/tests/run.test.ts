@@ -430,10 +430,49 @@ describe('requires', () => {
     ])
   })
 
-  test('a dependent whose requirement is not selected is blocked', () => {
+  test('a dependent whose requirement is not selected is blocked, and says to pick it', () => {
     const d = decide([tree, branch], [], only(['branch:b']), [])
     expect(d.dropped).toEqual([
-      { id: 'branch:b', reason: 'blocked', detail: 'requires worktree:/w, which does not run' },
+      {
+        id: 'branch:b',
+        reason: 'blocked',
+        detail: 'requires worktree:/w, which needs --pick worktree:/w',
+      },
+    ])
+  })
+
+  test('a blocked dependent says what would let each requirement run', () => {
+    const held = cand('a:held', 'git', { held: true })
+    const lost = cand('a:lost', 'git', { held: true })
+    const protested = cand('a:protested', 'git')
+    const refused = cand('a:refused', 'git')
+    const spared = cand('a:spared', 'git')
+    const ids = [held, lost, protested, refused, spared].map((c) => c.id)
+    const outer = cand('a:outer', 'git', { requires: [...ids, 'a:missing'] })
+    const top = cand('a:top', 'git', { requires: [outer.id] })
+    const objections = [
+      objection(lost.id, 'protest', 'discard-user-data'),
+      objection(protested.id, 'protest', 'unmeasured'),
+      objection(refused.id, 'refuse', 'live-process'),
+    ]
+    const d = decide(
+      [held, lost, protested, refused, spared, outer, top],
+      objections,
+      { ...DEFAULT_SELECTION, spare: [spared.id] },
+      [],
+    )
+    const why = [
+      'requires a:held, which needs --pick a:held',
+      'requires a:lost, which needs --pick a:lost --allow discard-user-data',
+      'requires a:protested, which needs --allow unmeasured',
+      'requires a:refused, which is refused (x: live-process reason)',
+      'requires a:spared, which is spared (--spare a:spared)',
+      'requires a:missing, which is gone',
+    ].join('; ')
+    expect(d.dropped).toEqual([
+      { id: spared.id, reason: 'spared', detail: `--spare ${spared.id}` },
+      { id: outer.id, reason: 'blocked', detail: why },
+      { id: top.id, reason: 'blocked', detail: `requires a:outer, which is blocked: ${why}` },
     ])
   })
 
@@ -462,6 +501,7 @@ describe('requires', () => {
       ['artifact:/o', 'ok'],
     ])
     expect(receipt.steps[0]!.error).toBe('directory busy')
+    expect(receipt.steps[1]!.error).toBe('requires worktree:/w, which did not complete')
     expect(receipt.status).toBe('failed')
   })
 })
@@ -516,7 +556,13 @@ describe('nested candidates', () => {
     expect(d2.run).toEqual([])
     expect(d2.dropped).toEqual([
       { id: target.id, reason: 'blocked', detail: 'live: live-process reason' },
-      { id: tree.id, reason: 'blocked', detail: `requires ${target.id}, which does not run` },
+      {
+        id: tree.id,
+        reason: 'blocked',
+        detail:
+          `requires ${target.id}, which is refused (live: live-process reason); ` +
+          `requires ${deps.id}, which needs --pick ${deps.id}`,
+      },
     ])
   })
 
@@ -589,6 +635,13 @@ describe('re-check', () => {
       ['worktree:/w', 'changed'],
       ['branch:b', 'blocked'],
     ])
+    // The receipt names the requirement and why it no longer runs.
+    const receipt = await clean(p, [mutable(items('b'))], ctx)
+    expect(receipt.dropped[1]).toEqual({
+      id: 'branch:b',
+      reason: 'blocked',
+      detail: 'requires worktree:/w, which is changed: its evidence moved since the plan',
+    })
   })
 
   test('clean deletes nothing it dropped', async () => {

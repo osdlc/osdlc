@@ -46,8 +46,14 @@ refused, dropped or fails, the candidate is too; requirements are deleted
 before their dependents (a branch after the worktree that holds it). The core
 adds one itself: a path candidate requires every path candidate inside it, by
 real path, since deleting it would delete them. So `cargo`'s `target/` goes
-before the git worktree that holds it, and a refused or spared `target/` keeps
-the worktree too.
+before the git worktree that holds it, and a `target/` that does not run
+(refused, spared, held, or carrying a protest not allowed) keeps the worktree
+too. The worktree is then `blocked`, and its reason names each candidate
+inside it that does not run and what would let it run: `requires
+artifact:…/target, which needs --allow unmeasured`, `which needs --pick <id>`
+(held or not selected), `which is refused (<plugin>: <reason>)` or `which is
+spared (--spare <entry>)`. The clean preview, the `clean -i` checklist and the
+receipt show it.
 
 ```ts
 import { join } from 'node:path'
@@ -111,8 +117,14 @@ another program keeps. Ids stay `<kind>:<path>`, or `<kind>:<ref>`.
 
 Every path candidate, whatever its plugin, must sit strictly below one of its
 owner's roots or a target, or be or sit inside a linked worktree of a
-repository among the targets (its primary checkout counts only as far as a
-target covers it). A plugin that cleans outside any checkout (a
+repository a target is in, or of a repository whose main checkout is or sits
+inside a target (git's `--git-common-dir`, on real paths). So with
+`targets: ["~/dev"]`, a worktree of `~/dev/app` kept in `~/worktrees/app-fix`
+is inside, while a worktree of a repository outside `~/dev`, and any other
+folder outside it, is not. The worktree must be one its repository lists, so a
+copied `.git` file or a worktree moved from where it was added does not count.
+A repository's main checkout counts only as far as a target covers it. A
+plugin that cleans outside any checkout (a
 cache directory, a toolchain folder) declares `roots(ctx)`: the directories it
 cleans, fixed or taken from its own settings. Without `roots`, a plugin is held
 to the targets alone. Containment is proven on real paths with
@@ -134,7 +146,7 @@ A ref gets no folder checks, and the core never removes a folder for one.
 plugin's name, so a plugin measures, removes and runs things the same way
 (`pluginKit(name, options)` builds one, for tests). Each run, once the
 plugin's `roots` hook has answered, the core binds the kit it was created with
-to those roots, the run's targets and their linked worktrees, so `kit.remove`
+to those roots, the run's targets and their linked worktrees (as above), so `kit.remove`
 needs no more than the path. The plugin `create` returns through
 `definePlugin` is tied to its kit; a kit no run has bound removes nothing.
 
@@ -146,7 +158,7 @@ needs no more than the path. The plugin `create` returns through
 | `kit.onPath(program)` | Whether a program is on PATH. |
 | `kit.candidate({ kind, path \| ref, ... })` | A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and the plugin as owner. |
 | `kit.run(argv, { signal, check })` | Runs a program through `@osdlc/command-seam`, with a time limit (`RUN_LIMIT_MS`, 30 seconds) and stopped when `ctx.signal` aborts; `ok` when it exited 0, a `CommandFailed` throw with `check`. |
-| `kit.remove(path, ctx?)` | Removes a folder only if it is still inside the plugin's roots, a target or a linked worktree of one by its real path, as the core bound them this run, after making read-only folders and files in it writable; checks it is gone and returns the receipt sentence. With `ctx`, it removes nothing once `ctx.signal` has aborted. |
+| `kit.remove(path, ctx?)` | Removes a folder only if it is still inside the plugin's roots, a target or a linked worktree of one (as in [containment](#paths-refs-and-containment)) by its real path, as the core bound them this run, after making read-only folders and files in it writable; checks it is gone and returns the receipt sentence. With `ctx`, it removes nothing once `ctx.signal` has aborted. |
 
 `idleHoursSetting` is the `idleHours` setting: a plugin that declares it
 inherits the config's top-level `idleHours` when its own entry sets none.

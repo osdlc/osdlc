@@ -2,11 +2,13 @@
 
 import { afterEach, describe, expect, test } from 'vitest'
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -235,6 +237,74 @@ describe('a plugin with no roots is held to the targets', () => {
     const p = cachePlugin(null, [documents, join(dev, 'cache'), linked, dev])
     const s = await survey([p], { ...ctx, targets: [dev] })
     expect(refused(s)).toEqual([`file:${documents}`, `file:${dev}`])
+  })
+
+  /** A repository at `dir` with one commit. */
+  const repoAt = (dir: string): string => {
+    mkdirSync(dir, { recursive: true })
+    makeGitFixture({ dir, initialBranch: 'main' })
+    sh(dir, ['commit', '--allow-empty', '-m', 'initial'])
+    return dir
+  }
+
+  test('a container target holds a linked worktree outside it whose main checkout is inside, and clean deletes in it', async () => {
+    const dev = temp()
+    const repo = repoAt(join(dev, 'repo'))
+    const linked = join(temp(), 'wt')
+    sh(repo, ['worktree', 'add', '-q', linked, '-b', 'linked'])
+    const target = join(linked, 'target')
+    mkdirSync(target)
+    writeFileSync(join(target, 'blob'), 'x')
+    const plain = join(temp(), 'plain')
+    mkdirSync(plain)
+    const p = cachePlugin(null, [target, plain])
+    const run: RunCtx = { ...ctx, targets: [dev] }
+    const s = await survey([p], run)
+    // The container is not in a repository, so no target lists the worktree.
+    expect(s.linked).toEqual([])
+    expect(refused(s)).toEqual([`file:${plain}`])
+    expect((await survey([cachePlugin(null, [linked])], run)).objections).toEqual([])
+
+    const receipt = await clean(plan(s), [p], run)
+    expect(receipt.steps.map((x) => [x.id, x.result])).toEqual([[`file:${target}`, 'ok']])
+    expect(existsSync(target)).toBe(false)
+    expect(existsSync(plain)).toBe(true)
+  })
+
+  test('a linked worktree whose main checkout is outside every target is still refused, as is that checkout', async () => {
+    const dev = temp()
+    const repo = repoAt(join(temp(), 'repo'))
+    const linked = join(temp(), 'wt')
+    sh(repo, ['worktree', 'add', '-q', linked, '-b', 'linked'])
+    const p = cachePlugin(null, [linked, join(linked, 'target'), join(repo, 'target')])
+    const s = await survey([p], { ...ctx, targets: [dev] })
+    expect(refused(s)).toEqual([
+      `file:${linked}`,
+      `file:${join(linked, 'target')}`,
+      `file:${join(repo, 'target')}`,
+    ])
+  })
+
+  test('a .git file copied out of a worktree, or a worktree moved from where it was added, is not one', async () => {
+    const dev = temp()
+    const repo = repoAt(join(dev, 'repo'))
+    const linked = join(temp(), 'wt')
+    sh(repo, ['worktree', 'add', '-q', linked, '-b', 'linked'])
+    const forged = join(temp(), 'forged')
+    mkdirSync(forged)
+    copyFileSync(join(linked, '.git'), join(forged, '.git'))
+    const added = join(temp(), 'wt2')
+    sh(repo, ['worktree', 'add', '-q', added, '-b', 'moved'])
+    const moved = join(temp(), 'moved')
+    renameSync(added, moved)
+    symlinkSync(moved, added)
+    const p = cachePlugin(null, [join(forged, 'target'), moved, join(moved, 'target')])
+    const s = await survey([p], { ...ctx, targets: [dev] })
+    expect(refused(s)).toEqual([
+      `file:${join(forged, 'target')}`,
+      `file:${moved}`,
+      `file:${join(moved, 'target')}`,
+    ])
   })
 
   test('a target that is itself a linked worktree is never a candidate', async () => {

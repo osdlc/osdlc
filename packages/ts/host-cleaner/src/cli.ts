@@ -626,7 +626,8 @@ const NO_TERMINAL_FOR_I =
 
 /**
  * `-i`: the plan's candidates as a checklist, those the preview would run
- * ticked, refused ones shown but not selectable, spared ones left out; then
+ * ticked, refused ones shown but not selectable, spared ones left out, and
+ * one the preview blocks with why (a candidate inside it that does not run); then
  * each ticked candidate's protests not yet allowed, asked for by code. The
  * answer is the plan selecting exactly the ticked candidates, or null when
  * there is no one to ask.
@@ -641,10 +642,14 @@ function chooseCandidates(
   const shown = plan.candidates.filter((c) => !spared.has(c.id))
   if (shown.length === 0) return plan
   const runs = new Set(preview.run.map((c) => c.id))
+  const blocked = new Map(
+    preview.dropped.filter((d) => d.reason === 'blocked').map((d) => [d.id, d.detail]),
+  )
   const items: ChecklistItem[] = shown.map((c) => {
     const how = standing(c, plan.objections)
+    const why = how === 'refused' ? undefined : blocked.get(c.id)
     return {
-      label: `${tildeId(c.id, home)}  ${how}: ${c.why}`,
+      label: `${tildeId(c.id, home)}  ${how}: ${c.why}${why === undefined ? '' : ` (blocked: ${why})`}`,
       checked: runs.has(c.id),
       ...(how === 'refused' ? { disabled: how } : {}),
     }

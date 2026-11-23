@@ -1,13 +1,33 @@
 import { afterEach, describe, expect, test } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, realpathSync } from 'node:fs'
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
 
-import { FatalRun, ReceiptSchema, clean, gitPlugin, plan, survey, type Ctx } from '../src/index.ts'
-import { contractSuite } from '../src/testing.ts'
+import {
+  DEFAULT_SELECTION,
+  FatalRun,
+  ReceiptSchema,
+  cargoPlugin,
+  clean,
+  decide,
+  gitPlugin,
+  plan,
+  survey,
+  type Ctx,
+} from '../src/index.ts'
+import { contractSuite, fakeRunner } from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -105,6 +125,51 @@ describe('the git plugin', () => {
     const receipt = await clean({ ...p, allow: ['abandon-unmerged'] }, [fx.plugin], granted)
     expect(receipt.steps[0]!.result).toBe('ok')
     expect(branches(fx.root)).not.toContain('unmerged')
+  })
+
+  test('a merged worktree whose target/ is unmeasured is kept, naming the target/ and --allow unmeasured', async () => {
+    const fx = fixture()
+    // Ignored, as a Rust checkout's .gitignore has it, so the worktree stays clean.
+    appendFileSync(join(fx.root, '.git', 'info', 'exclude'), 'target/\n')
+    const target = join(fx.worktree, 'target')
+    const old = new Date(Date.now() - 48 * 3_600_000)
+    for (const [file, body] of [
+      ['CACHEDIR.TAG', 'Signature: 8a477f597d28d172789f06886806bc55'],
+      [join('debug', '.fingerprint', 'a', 'lib-a'), 'x'],
+    ] as const) {
+      mkdirSync(join(target, file, '..'), { recursive: true })
+      writeFileSync(join(target, file), body)
+      utimesSync(join(target, file), old, old)
+    }
+    const cargoBin = fakeRunner({
+      cargo: { 'config get build.incremental': { stdout: 'build.incremental = true\n' } },
+    })
+    // A clock a minute later at every read, so the walk runs out of its budget.
+    let t = Date.now()
+    const slow = cargoPlugin({ now: () => new Date((t += 60_000)), probe: idle, ...cargoBin })
+    const s = await survey([fx.plugin, slow], fx.ctx)
+    const tree = `worktree:${fx.worktree}`
+    const art = `artifact:${target}`
+    const branch = `branch:${realpathSync(fx.root)}:wt-branch`
+    expect(s.candidates.find((c) => c.id === art)?.unmeasured).toBe(true)
+    expect(s.candidates.find((c) => c.id === tree)?.requires).toEqual([art])
+
+    const d = decide(s.candidates, s.objections, DEFAULT_SELECTION, [])
+    expect(d.run.map((c) => c.id)).not.toContain(tree)
+    const why = `requires ${art}, which needs --allow unmeasured`
+    expect(d.dropped).toEqual([
+      { id: tree, reason: 'blocked', detail: why },
+      { id: branch, reason: 'blocked', detail: `requires ${tree}, which is blocked: ${why}` },
+    ])
+
+    const allowed = { ...fx.ctx, allow: ['unmeasured'] }
+    const receipt = await clean(plan(s, { allow: ['unmeasured'] }), [fx.plugin, slow], allowed)
+    expect(receipt.steps.map((x) => [x.id, x.result])).toEqual([
+      [art, 'ok'],
+      [tree, 'ok'],
+      [branch, 'ok'],
+    ])
+    expect(existsSync(fx.worktree)).toBe(false)
   })
 
   test('a failed archive push throws FatalRun, which stops the run', async () => {
