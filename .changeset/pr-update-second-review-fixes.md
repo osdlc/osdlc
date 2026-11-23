@@ -1,5 +1,5 @@
 ---
-"@osdlc/pr-update": patch
+"@osdlc/pr-update": minor
 ---
 
 A kept worktree's record no longer decides what is deleted. In a checkout the

@@ -257,7 +257,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   matches each checkout's `origin`. With no roots it scans the directory that
   holds the project root's main checkout, or the one above it when that
   directory is named after the project root's own owner (an `<owner>/<name>`
-  layout). It never steps to or above the person's home directory.
+  layout). It never steps above the person's home directory: a project root
+  directly in home uses home, and one that is home itself gets no default root.
   Rules:
   - Each match resolves to its main checkout and is counted once. Linked
     worktrees are not separate checkouts.
