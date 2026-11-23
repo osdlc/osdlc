@@ -193,10 +193,16 @@ describe('status', () => {
     const bad = run(['status', '--config', config], cwd, env)
     expect(bad.code).toBe(2)
     expect(bad.err).toContain('plugins.cargo.idleHours')
-    writeFileSync(config, JSON.stringify({ plugins: { ghost: {} } }))
-    const r = run(['status', '--config', config], cwd, env)
-    expect(r.code).toBe(2)
-    expect(r.err).toContain('ghost')
+  })
+
+  test('a config entry for a plugin nobody has is a warning, and the run goes on', () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { gti: {} } }))
+    const r = run(['status', '--config', config], cwd, env, { plugins: [fake()] })
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('config plugins.gti: no plugin has this name')
+    expect(r.out).toContain('artifact:fake')
   })
 
   test('there are no profiles: --profile is an unknown option and a profiles key is refused', () => {
@@ -259,13 +265,14 @@ describe('plugin settings', () => {
     expect(json.plugins.git).toEqual({ enabled: true })
   })
 
-  test('config refuses a bad config and a plugin nobody has', () => {
+  test('config refuses a bad config and warns of a plugin nobody has', () => {
     const bad = withConfig({ plugins: { cargo: { nope: 1 } } })
     expect(run(['config', '--config', bad.file], bad.cwd, bad.env).code).toBe(2)
     const ghost = withConfig({ plugins: { ghost: {} } })
     const r = run(['config', '--config', ghost.file], ghost.cwd, ghost.env)
-    expect(r.code).toBe(2)
-    expect(r.err).toContain('ghost')
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('config plugins.ghost: no plugin has this name')
+    expect(r.out).toContain('plugins.git')
   })
 })
 
@@ -464,6 +471,54 @@ describe('plan and clean', () => {
   test('-i with no terminal is refused with exit 2', () => {
     const { env, cwd } = setup()
     expect(run(['clean', '-i'], cwd, env, { plugins: [fake()] }).code).toBe(2)
+  })
+
+  test('a plan naming a plugin nobody has is refused with exit 2: sweep again', () => {
+    const { env, cwd, home } = setup()
+    const planFor = (owner: string): string =>
+      JSON.stringify({
+        version: 1,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        targets: [cwd],
+        select: null,
+        pick: [],
+        spare: [],
+        allow: [],
+        warnings: [],
+        candidates: [
+          {
+            id: `artifact:${owner}`,
+            kind: 'artifact',
+            path: owner,
+            owner,
+            why: 'idle',
+            evidence: {},
+          },
+        ],
+        objections: [],
+      })
+    // claude-code was a shipped plugin until #1017; a plan saved before then names it.
+    const planFile = join(home, 'plan.json')
+    writeFileSync(planFile, planFor('claude-code'))
+    const r = run(['clean', '--plan', planFile, '--yes'], cwd, env)
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('claude-code')
+    expect(r.err).toContain('sweep again')
+    const plugin = fake()
+    const stdin = run(['clean', '--plan', '-', '--yes'], cwd, env, {
+      plugins: [plugin],
+      readStdin: () => planFor('ghost'),
+    })
+    expect(stdin.code).toBe(2)
+    expect(stdin.err).toContain('ghost')
+    expect(plugin.removed).toEqual([])
+    // A plugin that is only skipped is still known: its candidate is dropped as gone, not refused.
+    writeFileSync(planFile, planFor('fake'))
+    const skipped = run(['clean', '--plan', planFile, '--yes', '--skip-plugin', 'fake'], cwd, env, {
+      plugins: [plugin, fake('other')],
+    })
+    expect(skipped.code).toBe(0)
+    expect(skipped.out).toContain('gone')
   })
 
   test('a plan that moved since is dropped as changed', () => {

@@ -112,6 +112,11 @@ export function readPlan(path: string): Plan {
   return parsePlan(readFileSync(path, 'utf8'), path)
 }
 
+/** The owners of `plan`'s candidates that `known` does not name, each once. */
+export const unknownOwners = (plan: Plan, known: readonly string[]): string[] => [
+  ...new Set(plan.candidates.map((c) => c.owner).filter((o) => !known.includes(o))),
+]
+
 export function writePlan(path: string, plan: Plan): void {
   writeJsonAtomic(path, plan)
 }

@@ -163,7 +163,9 @@ host-cleaner config [--format json]   # every plugin's effective settings
 `targets`, then the directory you are in. `clean` re-checks, shows the steps,
 asks (`--yes` skips the question; with no terminal and no `--yes` it exits 2),
 deletes, and writes one receipt to `--receipt` or the state directory's
-`receipts/`, plus a line in `logs/host-cleaner.log`.
+`receipts/`, plus a line in `logs/host-cleaner.log`. `clean --plan` refuses a
+plan whose candidates belong to a plugin this install does not have (exit 2):
+sweep again with `plan`.
 
 The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
 all three directories):
@@ -172,10 +174,10 @@ all three directories):
 { "targets": ["~/dev"], "plugins": { "cargo": { "idleHours": 48 }, "node": { "enabled": false } } }
 ```
 
-`plugins.<name>` holds that plugin's settings; a name that no plugin has is an
-error. Each plugin's settings are a strict schema, checked when the config
-loads: a misspelt key or a wrong type is refused (exit 2), naming the plugin and
-the key.
+`plugins.<name>` holds that plugin's settings; a name that no plugin has gets
+a warning and is otherwise ignored. Each plugin's settings are a strict schema,
+checked when the config loads: a misspelt key or a wrong type is refused (exit
+2), naming the plugin and the key.
 
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |
