@@ -164,33 +164,33 @@ copied, and a grant revoked in the new place stays revoked.
 The old markers are never changed or deleted, so an older release of the
 tool still finds every grant it knew. A process killed partway through, or a
 cleanup Windows refused, can leave a `.trusted.moving-*` folder beside the
-store. Nothing reads it, and it
-is safe to delete.
+store. Nothing reads it, and it is safe to delete.
 
 A move that fails makes `isTrusted`, `trust`, `untrust` and `untrustAll`
 throw, so nothing runs on a store that lost a grant. `list`, `listGrants`
 and `tighten` report what the new place holds. The next call tries again.
 
-Nothing is copied when the new place is the old place (Linux and macOS under
-`xdg`, with no family root), or when `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR`
-or tiered-dirs' per-process test root moved the new place. A variable counts
-only when it really moves the store: the place differs from the one resolved
-without it. Those ask for a separate store on purpose. A scratch store that inherited the person's real
-consent would defeat a test that points `<PREFIX>_ROOT` at a temp directory.
-A `dirs` factory given with neither `env` nor `home` has no old place
-either, since it was not resolved from the real environment.
+The move runs only when none of `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` and
+`<PREFIX>_CONVENTION` is set (non-empty) in the environment, the store is not
+under tiered-dirs' per-process test root, and the new place differs from the
+old place (they are the same on Linux and macOS under `xdg`, with no family
+root).
 
-Nothing is copied into a place `<PREFIX>_CONVENTION` moves the store to. The
-variable picks between two places, and each would be filled from the same
-untouched old store, so a grant revoked in one would come back in the other.
-A `dirs` factory owns its convention, so the variable is not read for one:
-fix the tool's convention there, with `conventionFromEnv: false`, before it
-opts in.
+While any of those variables is set, the store gets no old markers, whatever
+folder it lands in, and its first grant writes the record, so it never gets
+them later either. The person consents again there, which fails closed. The
+unmoved place moves once, the first time the tool runs with none of them
+set.
 
-A store such a variable moves gets no old markers, and its first grant
-writes the record, so it never gets them later either. The person consents
-again there, which fails closed. The unmoved place, used without the
-variable, still moves once as usual.
+The rule does not try to tell whether a variable really moved the store.
+That would mean looking inside a `dirs` factory, and a wrong guess fills two
+places from one untouched old store, so a grant revoked in one comes back in
+the other. A scratch store that inherited the person's real consent would
+also defeat a test that points `<PREFIX>_ROOT` at a temp directory. Fix the
+tool's convention in its `dirs` factory, with `conventionFromEnv: false`,
+before it opts in, so no person needs `<PREFIX>_CONVENTION`. A `dirs`
+factory given with neither `env` nor `home` has no old place either, since
+it was not resolved from the real environment.
 
 If the new place already exists with no record when there is something to
 move, it was made through `dir` or by hand, since a store this package

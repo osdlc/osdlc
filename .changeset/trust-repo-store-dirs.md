@@ -25,12 +25,14 @@ place later. After that only the new place is read. The old markers are
 left as they were, so an older release of the tool keeps using the old place and
 still finds every grant it knew; a grant it adds there later is not copied.
 A copy that fails leaves no new store behind and makes the trust check fail,
-so nothing runs without consent; the next run tries again. A store moved by
-`<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` or tiered-dirs' test root gets no old
-markers, and neither does one that `<PREFIX>_CONVENTION` moves; a variable
-counts only when it really changes the place. A `dirs` factory owns its
-convention: fix it there, with `conventionFromEnv: false`, before the tool
-opts in.
+so nothing runs without consent; the next run tries again.
+
+While `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` or `<PREFIX>_CONVENTION` is set,
+or under tiered-dirs' test root, the store gets no old markers, whatever
+folder it lands in, and never gets them later. The person is asked for
+consent again there. The unmoved place moves once, the first time the tool
+runs with none of those variables set. Fix the tool's convention in its
+`dirs` factory, with `conventionFromEnv: false`, before it opts in.
 
 `list`, `listGrants` and `tighten` used to be documented as never throwing.
 They now throw when the store's directory cannot be resolved, for example for

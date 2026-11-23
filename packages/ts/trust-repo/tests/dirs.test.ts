@@ -353,55 +353,80 @@ describe('the one-time move', () => {
   test.each([
     ['OSDLC_CONVENTION', () => 'native'],
     ['OSDLC_STATE_DIR', (home: string) => join(home, '.local', 'state')],
+    ['OSDLC_ROOT', (home: string) => join(home, '.local')],
   ] as const)(
-    '%s that does not move a pinned store: the move runs, and a grant revoked under it stays revoked',
+    'while %s is set the move does not run, even in the unmoved folder, and the store is recorded',
     async (name, value) => {
       const { home, env, repos, legacy } = await machine()
-      const [one] = repos as [string]
+      const [one, two] = repos as [string, string]
       await legacy().trust(one)
       const run1 = prUpdateRun(home, { ...env, [name]: value(home) })
-      expect(run1.dir()).toBe(prUpdateRun(home, env).dir())
-      expect(await run1.isTrusted(one)).toBe(true)
-      expect(await run1.untrust(one)).toBe(true)
       expect(await run1.isTrusted(one)).toBe(false)
+      // A grant written and revoked here records the store.
+      await run1.trust(two)
+      expect(await run1.untrust(two)).toBe(true)
+      expect(await readFile(join(run1.dir(), '.moved'), 'utf-8')).toBe('\n')
 
-      const run2 = prUpdateRun(home, env)
-      expect(await run2.isTrusted(one)).toBe(false)
+      // A later run in the same folder never merges the old store in.
+      const again = prUpdateRun(home, { ...env, [name]: value(home) })
+      expect(await again.isTrusted(one)).toBe(false)
+      expect(await again.isTrusted(two)).toBe(false)
+      const unmoved = prUpdateRun(home, env)
+      if (unmoved.dir() === run1.dir()) {
+        expect(await unmoved.isTrusted(one)).toBe(false)
+      } else {
+        // A place that never had a revoke moves once, the first time no
+        // variable is set.
+        expect(await unmoved.isTrusted(one)).toBe(true)
+        expect(await unmoved.untrust(one)).toBe(true)
+        expect(await prUpdateRun(home, env).isTrusted(one)).toBe(false)
+      }
       expect(await legacy().isTrusted(one)).toBe(true)
     },
   )
 
-  test.each(['OSDLC_CONVENTION', 'OSDLC_STATE_DIR'] as const)(
-    'a store first written while %s is set, with the move turned off, is recorded and never filled later',
-    async (name) => {
-      // The move does not run (here through legacyDir: null) and the
-      // variable is set; the first grant still records the store.
-      const { home, env, repos, legacy } = await machine()
-      const [one, two] = repos as [string, string]
-      await legacy().trust(one)
-      const value = name === 'OSDLC_CONVENTION' ? 'native' : join(home, '.local', 'state')
-      const runEnv = { ...env, HOME: home, USERPROFILE: home }
-      const dirs = () =>
-        new TieredDirs(
-          'osdlc',
-          systemBaseDirs(OSDLC.envVars, {
-            env: { ...runEnv, [name]: value },
-            convention: 'xdg',
-            conventionFromEnv: false,
-          }),
-        )
-      const base = { tool: 'osdlc', app: 'pr-update', vendorDirs: OSDLC, dirs }
-      const run1 = trustStore({ ...base, env: { ...runEnv, [name]: value }, legacyDir: null })
-      await run1.trust(two)
-      expect(await readFile(join(run1.dir(), '.moved'), 'utf-8')).toBe('\n')
-      expect(await run1.isTrusted(one)).toBe(false)
+  test("a variable that points a pinned store at the other convention's place copies nothing there", async () => {
+    // Pinned to xdg, OSDLC_STATE_DIR names the native place. Inferring "not
+    // moved" from a match under either convention filled both places.
+    const { home, env, repos, legacy } = await machine()
+    const [one] = repos as [string]
+    await legacy().trust(one)
+    const native = join(home, 'Library', 'Application Support')
+    const run1 = prUpdateRun(home, { ...env, OSDLC_STATE_DIR: native })
+    expect(run1.dir().startsWith(native)).toBe(true)
+    expect(await run1.isTrusted(one)).toBe(false)
+    expect(await run1.untrust(one)).toBe(false)
 
-      const run2 = prUpdateRun(home, env)
-      expect(run2.dir()).toBe(run1.dir())
-      expect(await run2.isTrusted(one)).toBe(false)
-      expect(await run2.isTrusted(two)).toBe(true)
-    },
-  )
+    // The xdg place moves once and its own revoke holds.
+    const run2 = prUpdateRun(home, env)
+    expect(await run2.isTrusted(one)).toBe(true)
+    expect(await run2.untrust(one)).toBe(true)
+    expect(await prUpdateRun(home, env).isTrusted(one)).toBe(false)
+    expect(await prUpdateRun(home, { ...env, OSDLC_STATE_DIR: native }).isTrusted(one)).toBe(false)
+  })
+
+  test('an unpinned dirs factory: OSDLC_CONVENTION stops the move, and a revoke in either place holds', async () => {
+    const { home, env, repos, legacy } = await machine()
+    const [one] = repos as [string]
+    await legacy().trust(one)
+    const run = (extra: Record<string, string>) => {
+      const runEnv = { ...env, HOME: home, USERPROFILE: home, ...extra }
+      const dirs = () => new TieredDirs('osdlc', systemBaseDirs(OSDLC.envVars, { env: runEnv }))
+      return trustStore({ tool: 'osdlc', app: 'pr-update', vendorDirs: OSDLC, dirs, env: runEnv })
+    }
+    for (const convention of ['xdg', 'native']) {
+      const s1 = run({ OSDLC_CONVENTION: convention })
+      expect(await s1.isTrusted(one)).toBe(false)
+      await s1.trust(one)
+      expect(await s1.untrust(one)).toBe(true)
+    }
+    // With no variable: the default convention's place, one of the two
+    // above, recorded and revoked.
+    expect(await run({}).isTrusted(one)).toBe(false)
+    for (const convention of ['xdg', 'native']) {
+      expect(await run({ OSDLC_CONVENTION: convention }).isTrusted(one)).toBe(false)
+    }
+  })
 
   test('a store <PREFIX>_STATE_DIR really moves gets no old markers; the unmoved place still moves once', async () => {
     const { home, env, repos, legacy } = await machine()

@@ -50,22 +50,25 @@
  * write, so nothing runs on a store that lost a grant. The next use tries
  * again.
  *
- * Some stores are never filled from the old place. A store that
- * `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` or tiered-dirs' per-process test
- * root moves asks for a separate store on purpose, and a scratch store that
- * inherited the person's real consent would defeat it. A store that
- * `<PREFIX>_CONVENTION` moves is one of two places, each of which could be
- * filled from the same untouched old store, so a grant revoked in one would
- * come back in the other. A variable counts only when it really moves the
- * store: the place differs from the one resolved without it. A `dirs`
- * factory owns its convention, so `<PREFIX>_CONVENTION` is not read for one;
- * a tool fixes its convention there, with `conventionFromEnv: false`, before
- * it opts in. A store such a variable moves gets no old markers, and its
- * first grant records `.moved`, so it never gets them later either: the
- * person consents again there, which fails closed. The unmoved place, used
- * without the variable, still moves once as usual. A `dirs` factory given
- * with neither `env` nor `home` has no old place, since it was not resolved
- * from the real environment.
+ * The move runs only when none of `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` and
+ * `<PREFIX>_CONVENTION` is set (non-empty), the store is not under
+ * tiered-dirs' per-process test root, and its place differs from the old
+ * place. While any of those variables is set, the store gets no old markers,
+ * whatever folder it lands in, and its first grant records `.moved`, so it
+ * never gets them later either. The person consents again there, which fails
+ * closed. The unmoved place moves once, the first time the tool runs with
+ * none of them set.
+ *
+ * The rule does not try to tell whether a variable really moved the store.
+ * That would mean looking inside a `dirs` factory, and a wrong guess fills
+ * two places from one untouched old store, so a grant revoked in one comes
+ * back in the other. A scratch store that inherited the person's real
+ * consent would also defeat a test that points `<PREFIX>_ROOT` at a temp
+ * directory. A tool should fix its convention in its `dirs` factory, with
+ * `conventionFromEnv: false`, before it opts in, so that no person needs
+ * `<PREFIX>_CONVENTION`. A `dirs` factory given with neither `env` nor
+ * `home` has no old place, since it was not resolved from the real
+ * environment.
  *
  * ## What a trust decision is keyed on
  *
@@ -132,7 +135,6 @@ import {
   systemBaseDirs,
   testRoot,
   TieredDirs,
-  type Convention,
   type EnvVars,
   type ResolveOptions,
 } from '@osdlc/tiered-dirs'
@@ -230,7 +232,7 @@ function locateStore(opts: TrustStoreOptions): StoreLocation {
   const none = { dir, legacy: null, recorded: true }
   const scratch = testRoot()
   if (scratch !== undefined && isWithin(dir, scratch)) return none
-  if (movedByEnv(dir, opts, opts.vendorDirs)) return none
+  if (placedByEnv(env, opts.vendorDirs.envVars)) return none
   const legacy =
     opts.legacyDir !== undefined ? opts.legacyDir : legacyFor(opts.app ?? opts.tool, opts)
   if (legacy === null || realish(legacy) === realish(dir)) return none
@@ -238,39 +240,16 @@ function locateStore(opts: TrustStoreOptions): StoreLocation {
 }
 
 /**
- * Whether `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` or `<PREFIX>_CONVENTION`
- * really moved `dir`: it differs from the place resolved with those
- * variables removed. A variable that names the place the store would have
- * anyway moves nothing. A `dirs` factory owns its convention, so
- * `<PREFIX>_CONVENTION` is not read for one, and its place is compared with
- * the unmoved place under either convention. When the unmoved place cannot
- * be resolved (no home), the store counts as moved.
+ * Whether any variable that can place the store is set: `<PREFIX>_ROOT`,
+ * `<PREFIX>_STATE_DIR` or `<PREFIX>_CONVENTION`, non-empty. Then the store
+ * gets no old markers, whatever folder it lands in. Working out whether the
+ * variable really moved the store would mean looking inside a `dirs`
+ * factory, and a wrong guess fills two places from one old store, so a grant
+ * revoked in one comes back in the other. A wrong "yes" here costs one
+ * consent asked again.
  */
-function movedByEnv(dir: string, opts: TrustStoreOptions, vendorDirs: TrustVendorDirs): boolean {
-  const env = opts.env ?? process.env
-  const vars = vendorDirs.envVars
-  const names = [vars.root, vars.dirs.state, ...(opts.dirs === undefined ? [vars.convention] : [])]
-  if (!names.some((name) => env[name])) return false
-  const stripped = Object.fromEntries(Object.entries(env).filter(([key]) => !names.includes(key)))
-  const conventions: (Convention | undefined)[] =
-    opts.dirs === undefined ? [undefined] : ['native', 'xdg']
-  try {
-    return conventions.every((convention) => {
-      const bases = systemBaseDirs(vars, {
-        env: stripped,
-        ...(opts.home !== undefined ? { home: opts.home } : {}),
-        ...(convention !== undefined ? { convention, conventionFromEnv: false } : {}),
-      })
-      const state = new TieredDirs(vendorDirs.vendor, bases).standalone(opts.tool).state()
-      const unmoved = join(
-        (opts.app !== undefined ? state.app(opts.app) : state).path,
-        TRUST_MARKER_DIR,
-      )
-      return realish(unmoved) !== realish(dir)
-    })
-  } catch {
-    return true
-  }
+function placedByEnv(env: Record<string, string | undefined>, vars: EnvVars): boolean {
+  return [vars.root, vars.dirs.state, vars.convention].some((name) => Boolean(env[name]))
 }
 
 /**
@@ -455,7 +434,8 @@ export interface TrustStoreOptions {
    * Build the directories per call instead, as `machineConfigFile` takes
    * them: a tool pins its convention here (with `conventionFromEnv: false`),
    * and a test injects a rooted one. Needs {@link vendorDirs}, whose override
-   * variables decide whether the store moves (see {@link legacyDir}). Pass
+   * variables, when set in `env`, turn the move off (see {@link legacyDir}).
+   * The factory itself is never looked into. Pass
    * the `env` and `home` the factory resolves with: without either, the
    * store has no old place.
    */
@@ -467,9 +447,9 @@ export interface TrustStoreOptions {
    * `$XDG_STATE_HOME/<app or tool>/trusted/`, or
    * `~/.local/state/<app or tool>/trusted/`, where `~` is `home`, else the
    * `HOME` of an injected `env`. Nothing is copied when it is the new place,
-   * when `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR`, `<PREFIX>_CONVENTION` (not
-   * read with {@link dirs}) or tiered-dirs' test root moved the new place,
-   * or for a {@link dirs} given with neither `env` nor `home`.
+   * while `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` or `<PREFIX>_CONVENTION` is
+   * set in `env` (whatever folder the store lands in), under tiered-dirs'
+   * test root, or for a {@link dirs} given with neither `env` nor `home`.
    */
   legacyDir?: string | null
   /** Injected for tests; defaults to `process.env`. */
