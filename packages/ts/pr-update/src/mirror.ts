@@ -196,6 +196,44 @@ function lstatOrNull(path: string): Stats | null {
   }
 }
 
+/**
+ * Make the `<host>` and `<owner>` folders above `clone`, `<root>/<host>/<owner>/<name>.git`, as
+ * far as they are missing, one level at a time. Before each is made, the folders above it are
+ * checked as {@link checkClone} checks them, so nothing is made under a symbolic link or a folder
+ * someone else can write to, and one another run made in between is checked too. Each is made
+ * with {@link FOLDER_MODE}.
+ *
+ * @returns why the clone may not be used, or why a folder could not be made; null when the
+ *   folders are in place.
+ */
+function makeCloneFolders(clone: string, owned: OwnedCheck): string | null {
+  const owner = dirname(clone)
+  const host = dirname(owner)
+  const between = [host, owner]
+  for (let i = 0; i <= between.length; i++) {
+    let folders: ReturnType<typeof foldersProblem>
+    try {
+      folders = foldersProblem(dirname(host), between.slice(0, i), owned, cloneFolders)
+    } catch (e) {
+      return `cannot read the folders above ${clone}: ${(e as Error).message}`
+    }
+    if (folders !== null) {
+      const fix = folders.fix === undefined ? '' : `; ${folders.fix}`
+      return `${folders.problem}, so ${clone} is not used${fix}`
+    }
+    const next = between[i]
+    if (next === undefined) break
+    try {
+      mkdirSync(next, { mode: FOLDER_MODE })
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') {
+        return `cannot make ${next}: ${(e as Error).message}`
+      }
+    }
+  }
+  return null
+}
+
 /** Write the last-used stamp of the clone at `clone`. */
 export function writeStamp(clone: string): void {
   writeFileSync(join(clone, CLONE_STAMP), `${new Date().toISOString()}\n`)
@@ -640,18 +678,37 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
     releaseLock(cloneLockPath(clone), token)
   }
 
-  /** Hold `clone`'s lock for the run, waiting up to `wait`. False when another run kept it. */
+  /** Why a clone {@link hold} did not take was refused, when not because it was busy. */
+  const unheld = new Map<string, string>()
+
+  /**
+   * Hold `clone`'s lock for the run, waiting up to `wait`. False when another run kept it, or
+   * when a folder above it may not be used or made (`makeCloneFolders`), with why in `unheld`.
+   */
   const hold = (clone: string, wait: number): boolean => {
     if (held.has(clone)) return true
-    mkdirSync(dirname(clone), { recursive: true, mode: FOLDER_MODE })
-    const token = claim(cloneLockPath(clone), wait)
+    const why = makeCloneFolders(clone, owned)
+    if (why !== null) {
+      unheld.set(clone, why)
+      return false
+    }
+    let token: string | null
+    try {
+      token = claim(cloneLockPath(clone), wait)
+    } catch (e) {
+      // The owner folder cannot be written to, say.
+      unheld.set(clone, `cannot take ${cloneLockPath(clone)}: ${(e as Error).message}`)
+      return false
+    }
     if (token === null) return false
+    unheld.delete(clone)
     held.set(clone, token)
     return true
   }
 
+  /** Why `clone` is not held: a folder above it, or another run's lock. */
   const busy = (clone: string): string =>
-    `mirror busy: another pr-update run holds ${cloneLockPath(clone)}`
+    unheld.get(clone) ?? `mirror busy: another pr-update run holds ${cloneLockPath(clone)}`
 
   /** The clone path of `t` under `dir`. */
   const finalOf = (t: RepoTarget, dir: string): string => {

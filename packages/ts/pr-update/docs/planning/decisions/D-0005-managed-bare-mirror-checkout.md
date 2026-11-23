@@ -899,7 +899,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   removes from. For a clone, that is its own folder and its `config` too
   (added after review): a clone others could write to passed before. `gh`
   lays a clone down under the umask, so `makeClone` takes write for group and
-  others off the whole tree before the rename. On Windows no ownership or mode check is made, since NTFS
+  others off the whole tree before the rename. The `<host>` and `<owner>`
+  folders are made one level at a time, each only once the folders above it
+  pass the rule, before the clone's lock is taken; a folder that fails it, or
+  that cannot be made or hold the lock, skips the target with why, where
+  before a symbolic link had a folder made at its far end and an unwritable
+  one ended the run with `EACCES`. On Windows no ownership or mode check is made, since NTFS
   ACLs are not read: only the symbolic-link and marker checks apply.
 - **Clone locks.** As accepted, `update --apply` held a clone's lock from its
   clone or fetch through `worktree add`, and again for `worktree remove`.

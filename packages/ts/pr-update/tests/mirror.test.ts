@@ -788,6 +788,76 @@ describe('the folders between the clone directory and a clone (review round 2)',
   )
 })
 
+describe('the folders above a clone are checked before any is made (second review)', () => {
+  const root = () => join(scratch, 'repos')
+  const posix = process.platform !== 'win32'
+  const target = {
+    repo: 'acme/api',
+    host: 'github.com',
+    path: null,
+    source: null,
+    remote: 'origin',
+    found: null,
+    github: true,
+  } as const
+  function provide(notes: string[]) {
+    const clones = managedClones({
+      env: isolatedEnv(scratch),
+      cwd: scratch,
+      flag: root(),
+      apply: true,
+      gh,
+      notice: (line) => void notes.push(line),
+      ask: { canPrompt: () => false, choose: () => 0, text: () => '' },
+      waitMs: 0,
+    })
+    try {
+      return clones.provide([target], { apply: true })[0]!
+    } finally {
+      clones.close()
+    }
+  }
+
+  test('a host folder that is a symbolic link: nothing is made where it points', () => {
+    markMirrorDir(root())
+    const foreign = join(scratch, 'foreign')
+    mkdirSync(foreign, { mode: 0o755 })
+    symlinkSync(foreign, join(root(), 'github.com'), 'dir')
+    const notes: string[] = []
+    const t = provide(notes)
+    expect(t.unserved).toBe(
+      `${join(root(), 'github.com')} is a symbolic link, so ${clonePath(root(), req)} is not used`,
+    )
+    expect(readdirSync(foreign)).toEqual([])
+    expect(notes.join('\n')).toContain('is a symbolic link')
+  })
+
+  test.skipIf(!posix)(
+    'a host or owner folder that cannot be written skips the target, without a throw',
+    () => {
+      markMirrorDir(root())
+      const host = join(root(), 'github.com')
+      mkdirSync(host, { mode: 0o555 })
+      try {
+        const t = provide([])
+        expect(t.unserved).toContain(`cannot make ${join(host, 'acme')}: EACCES`)
+        expect(readdirSync(host)).toEqual([])
+      } finally {
+        chmodSync(host, 0o755)
+      }
+      // An owner folder that cannot be written: the lock cannot be made in it.
+      const owner = join(host, 'acme')
+      mkdirSync(owner, { mode: 0o555 })
+      try {
+        const t = provide([])
+        expect(t.unserved).toContain(`cannot take ${clonePath(root(), req)}.lock: EACCES`)
+      } finally {
+        chmodSync(owner, 0o755)
+      }
+    },
+  )
+})
+
 describe('a clone pr-update did not make, or that is not yours, is not used', () => {
   test('a symbolic link at the clone path, or a marker that is not a plain file, is foreign', () => {
     const root = join(scratch, 'repos')

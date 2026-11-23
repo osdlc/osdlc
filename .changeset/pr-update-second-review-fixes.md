@@ -39,3 +39,9 @@ Only whether the tree is current waits for the parent. The gap dates from
 A restack child whose target's own attempt record fails while its new key is
 looked up is now skipped with the record's error. Before, the failed look-up
 read as no record, and the child was updated and pushed anyway.
+
+Before taking a clone's lock, `update` checks the `<host>` and `<owner>`
+folders above it and makes the missing ones one level at a time, each under a
+folder that passed the check. A `<host>` folder that is a symbolic link no
+longer has a folder made where it points, and a folder that cannot be written
+skips the target with why, where before the run ended with `EACCES`.
