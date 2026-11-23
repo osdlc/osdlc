@@ -276,8 +276,9 @@ No settings of its own.
   `volta.node`, at its root and wherever git lists one below it.
 - Kept: what they name, by prefix (`1.80` keeps `1.80-<host>` and
   `1.80.1-<host>`; `18` keeps every `18.x.y`), rustup's default, its directory
-  overrides and its active toolchain in the folder you run from, nvm's
-  `default` alias, Volta's default, and the `node` on `PATH`. nvm aliases such
+  overrides, `RUSTUP_TOOLCHAIN` and the toolchain files in the folder you run
+  from and above it, nvm's `default` alias, Volta's default, and the `node` on
+  `PATH`. nvm aliases such
   as `lts/*` are followed through nvm's `alias` folder.
 - When any of that cannot be read (an alias nvm does not have, a checkout git
   cannot list, rustup not answering), every candidate of that tool is refused

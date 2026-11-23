@@ -7,8 +7,10 @@
  * `rust-toolchain.toml`, `.nvmrc`, `.node-version` and `package.json`'s
  * `volta.node`, at its root and wherever git lists one below it. What they
  * name is kept, and so are the default and the one in use: rustup's
- * default, its directory overrides and its active toolchain in the run's
- * folder; nvm's `default` alias, Volta's default and the `node` on `PATH`.
+ * default, its directory overrides, `RUSTUP_TOOLCHAIN` and the toolchain
+ * files in the run's folder and above it; nvm's `default` alias, Volta's
+ * default and the `node` on `PATH`. rustup is not asked for its active
+ * toolchain, since an older rustup installs it when it is missing.
  * A pin is kept by prefix, so `1.80` keeps `1.80-<host>` and `1.80.1-<host>`,
  * and `18` keeps every `18.x.y`.
  *
@@ -264,16 +266,15 @@ function toolchainsPlugin(kit: Kit, env: Readonly<Record<string, string | undefi
       .filter((l) => l !== '')
   }
 
-  /** The rustup toolchains to keep beyond the pins, by full name: the default, the overrides and the active one. */
+  /** The rustup toolchains to keep beyond the pins: the default, the directory overrides and `RUSTUP_TOOLCHAIN`. */
   const rustInUse = async (ctx: Ctx): Promise<string[]> => {
     const lastWord = (l: string): string => l.split(/\s+/).at(-1)!
     const overrides = (await rustup(['override', 'list'], ctx)).filter((l) => l !== 'no overrides')
+    const fromEnv = env.RUSTUP_TOOLCHAIN?.trim()
     return [
       ...(await rustup(['default'], ctx)).slice(0, 1).map((l) => l.split(/\s+/)[0]!),
       ...overrides.map(lastWord),
-      ...(await rustup(['show', 'active-toolchain'], ctx))
-        .slice(0, 1)
-        .map((l) => l.split(/\s+/)[0]!),
+      ...(fromEnv ? [fromEnv] : []),
     ]
   }
 

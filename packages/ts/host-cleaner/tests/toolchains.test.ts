@@ -75,6 +75,7 @@ function fixture(
     rustup?: Record<string, Answer>
     node?: string
     targets?: (dev: string) => string[]
+    env?: Record<string, string>
   } = {},
 ): Fixture {
   const h = tempHome('host-cleaner-toolchains-')
@@ -92,7 +93,6 @@ function fixture(
   const answers: Record<string, Answer> = {
     default: { stdout: `stable-${HOST} (default)\n` },
     'override list': { stdout: 'no overrides\n' },
-    'show active-toolchain': { stdout: `stable-${HOST} (default)\n` },
     ...opts.rustup,
   }
   const fake = fakeRunner({
@@ -105,7 +105,7 @@ function fixture(
     },
     ...(opts.node === undefined ? {} : { node: { '--version': { stdout: `${opts.node}\n` } } }),
   })
-  const env = { HOME: home, PATH: '' }
+  const env = { HOME: home, PATH: '', ...opts.env }
   const plugin = toolchainsDefinition.create({
     settings: {},
     only: [],
@@ -211,7 +211,7 @@ describe('rustup toolchains', () => {
     expect((await proposed(fx)).names).toEqual([`1.73.0-${HOST}`])
   })
 
-  test('the default, an override and the active toolchain are kept, and so is a pin by prefix', async () => {
+  test('the default, an override and RUSTUP_TOOLCHAIN are kept, and so is a pin by prefix', async () => {
     const fx = fixture({
       rust: [
         `1.74-${HOST}`,
@@ -224,10 +224,8 @@ describe('rustup toolchains', () => {
       rustup: {
         default: { stdout: `1.74-${HOST} (default)\n` },
         'override list': { stdout: `/somewhere/else              1.75.0-${HOST}\n` },
-        'show active-toolchain': {
-          stdout: `1.76.0-${HOST} (overridden by environment variable RUSTUP_TOOLCHAIN)\n`,
-        },
       },
+      env: { RUSTUP_TOOLCHAIN: `1.76.0-${HOST}` },
     })
     repo(join(fx.dev, 'a'), { 'rust-toolchain': '1.78\n' })
     expect((await proposed(fx)).names).toEqual([`1.77.0-${HOST}`, `nightly-${HOST}`])
