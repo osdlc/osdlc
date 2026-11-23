@@ -74,7 +74,9 @@ A list per tool means one list to keep up per tool, and the lists drift.
   Xdg-pinned `dirs` the standard gives, and `env: 'OSDLC_REPOSITORIES'`
   passed explicitly, since the default would be `OSDLC_MACHINE_CONFIG`.
   `machineConfigFile` uses that variable as given, so the package rejects a
-  relative value itself. It writes with a compare-and-swap. A tool that asks the person where their
+  relative value itself. It writes with a compare-and-swap, under a
+  `@osdlc/file-lock` lock beside the file, since the check and the rename
+  alone let two processes both pass. A tool that asks the person where their
   checkouts are asks through the package, so every tool asks the same
   question.
 - **Adoption.** pr-update reads it first (D-0005). sdlc is published outside

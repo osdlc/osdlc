@@ -709,6 +709,9 @@ importers:
       '@osdlc/etag-write':
         specifier: workspace:^
         version: link:../etag-write
+      '@osdlc/file-lock':
+        specifier: workspace:^
+        version: link:../file-lock
       '@osdlc/tiered-dirs':
         specifier: workspace:^
         version: link:../tiered-dirs

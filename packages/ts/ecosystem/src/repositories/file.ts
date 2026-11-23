@@ -6,11 +6,11 @@
  * macOS with no variable set), because more than one tool reads it. Every
  * tool reads and writes it through this module, over config-layers'
  * `machineConfigFile`, so every tool parses it the same way and a write is a
- * compare-and-swap.
+ * compare-and-swap, made under a lock so two processes cannot both pass it.
  */
 
-import { existsSync } from 'node:fs'
-import { isAbsolute, resolve } from 'node:path'
+import { existsSync, mkdirSync } from 'node:fs'
+import { dirname, isAbsolute, resolve } from 'node:path'
 
 import {
   machineConfigFile,
@@ -19,6 +19,7 @@ import {
   type TieredDirs,
 } from '@osdlc/config-layers'
 import { WriteConflictError } from '@osdlc/etag-write'
+import { withLock } from '@osdlc/file-lock'
 import { expandTilde } from '@osdlc/tiered-dirs'
 import { z } from 'zod'
 
@@ -101,7 +102,9 @@ export interface RepositoriesFile {
   read(): { text: string; etag: string } | null
   /**
    * Set `roots` to `roots` and return the new etag. A compare-and-swap
-   * against `etag`. Every line outside the `roots` entry stays as written,
+   * against `etag`, made while holding `<file>.lock` (`@osdlc/file-lock`), so
+   * of two processes writing over the same read, one writes and the other
+   * gets {@link WriteConflictError}. Every line outside the `roots` entry stays as written,
    * comments included. Inside it the comments go: those inside the old list,
    * and the one on the `roots:` line, which the old value's trailing comment
    * (on its last item, or after a flow list) replaces. Throws when an entry is
@@ -160,9 +163,14 @@ export function repositoriesFile(opts: RepositoriesFileOptions = {}): Repositori
           )
         }
       }
-      // setPath edits only the `roots` entry, so every other line stays as written.
-      const text = setPath(read()?.text ?? '', ['roots'], [...roots])
-      return file.write(text, { etag: o.etag })
+      // The etag check and the rename are two steps, so two writers can both pass the check.
+      // The lock makes the read, the check and the write one step for every writer.
+      mkdirSync(dirname(at), { recursive: true })
+      return withLock(`${at}.lock`, () => {
+        // setPath edits only the `roots` entry, so every other line stays as written.
+        const text = setPath(read()?.text ?? '', ['roots'], [...roots])
+        return file.write(text, { etag: o.etag })
+      })
     },
   }
 }

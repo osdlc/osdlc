@@ -161,7 +161,10 @@ included. The comments inside the old list go, and so does the one on the
 `roots:` line: the old value's trailing comment (on its last item, or after a
 flow list) takes its place. When the file changed since it was read, it throws `WriteConflictError`,
 which this module re-exports from `@osdlc/etag-write`, and writes nothing. It
-refuses a root the reader would drop.
+reads, checks and writes while holding the lock file `repositories.yaml.lock`
+beside it (`@osdlc/file-lock`), so when two processes write over the same
+read, one writes and the other gets `WriteConflictError`; it waits up to 30
+seconds for another writer. It refuses a root the reader would drop.
 
 ## Testing a tool that uses it
 

@@ -3,8 +3,10 @@
  * schema, and the compare-and-swap write.
  */
 
+import { execFile } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 
 import { WriteConflictError as EtagWriteConflictError } from '@osdlc/etag-write'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -12,6 +14,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { osdlcDirs, OSDLC_VENDOR_DIRS } from '../src/index.ts'
 import { REPOSITORIES_ENV, WriteConflictError, repositoriesFile } from '../src/repositories.ts'
 import { makeSandbox, type Sandbox } from './helpers.ts'
+
+const run = promisify(execFile)
+const CHILD = join(import.meta.dirname, 'write-roots.child.ts')
 
 let sb: Sandbox
 beforeEach(() => {
@@ -132,6 +137,21 @@ describe('writeRoots', () => {
     const file = repositoriesFile(sb.opts)
     sb.writeFile('roots: [/b]\n')
     expect(() => file.writeRoots(['/c'], { etag: null })).toThrow(WriteConflictError)
+  })
+
+  test('two processes writing over one read: one writes, the other gets the conflict (second review)', async () => {
+    sb.writeFile('roots: [/a]\n')
+    const { etag } = repositoriesFile(sb.opts).read()!
+    const at = String(Date.now() + 1500)
+    const child = (root: string) =>
+      run(process.execPath, [CHILD, root, etag, at], {
+        env: { ...process.env, OSDLC_REPOSITORIES: sb.file },
+        timeout: 30_000,
+      })
+    const outs = (await Promise.all([child('/b'), child('/c')])).map((r) => r.stdout).sort()
+    expect(outs).toEqual(['conflict', 'ok'])
+    const roots = repositoriesFile(sb.opts).load().value.roots
+    expect([['/b'], ['/c']]).toContainEqual(roots)
   })
 
   test('WriteConflictError is the class @osdlc/etag-write throws', () => {
