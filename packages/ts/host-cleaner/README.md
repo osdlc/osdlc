@@ -190,7 +190,9 @@ blockers are `refuse` objections and its risks `protest`s, so
 `--allow abandon-unmerged` and the others work as in repo-cleaner. A branch
 freed by a worktree requires it. With `archive`, unlanded work is pushed to the
 remote first; a failed push throws `FatalRun`. Grant the named risks; the
-`discard-archived` cover is not yet offered here.
+`discard-archived` cover is not yet offered here. Its `delete` refuses a
+worktree whose folder has become a symlink, since `git worktree remove` would
+follow it and empty the folder it leads to.
 
 ## The `cargo` and `node` plugins
 

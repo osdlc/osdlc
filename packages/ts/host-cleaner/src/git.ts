@@ -3,6 +3,8 @@
  * risks as objections, and `removeCandidate` as the delete.
  */
 
+import { lstatSync } from 'node:fs'
+
 import {
   RISKS,
   candidatesOf,
@@ -101,6 +103,10 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
     delete(c, ctx) {
       const row = rows.get(c.id)
       if (row === undefined) throw new Error(`git: ${c.id} was not discovered in this run`)
+      // `git worktree remove` follows a link, and would empty the folder it leads to.
+      if (c.path !== undefined && lstatSync(c.path, { throwIfNoEntry: false })?.isSymbolicLink()) {
+        throw new Error(`git: ${c.path} is now a symlink; its worktree is not removed through it`)
+      }
       const result = removeCandidate(row, {
         ...runners,
         cwd: ctx.cwd,
