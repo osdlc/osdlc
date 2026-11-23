@@ -133,8 +133,8 @@
                 },
                 {
                   "id": "s3a-move",
-                  "title": "The one-time move of existing markers",
-                  "detail": "On first use of the new location, existing markers are copied over and checked, then only the new place is read. The old markers stay where they are, so an older release still finds them. The changelog says so. Callers: cli-tool's `trust` command, pr-update and wayfinder (which passes `dir` and so does not change).",
+                  "title": "The one-time move of existing markers (dropped by the owner, 2026-11-23)",
+                  "detail": "Dropped by the owner on 2026-11-23. Every way of telling whether a copy had run brought back a revoked grant in some case, so nothing is copied: the store under osdlc/pr-update starts empty, earlier grants stop counting, and the person runs `pr-update trust` again, once per machine. It fails closed. The old markers stay where they are, so an older release still finds them, and the changelog says so. See D-0005's Build note \"Trust granted before this build\". Callers: cli-tool's `trust` command, pr-update and wayfinder (which passes `dir` and so does not change).",
                   "source": [
                     {
                       "uri": "packages/ts/cli-tool/src/trust-command.ts"
@@ -314,7 +314,7 @@
                 {
                   "id": "s6-trust",
                   "title": "The trust gate for every target, and the store under osdlc/pr-update",
-                  "detail": "A located checkout is keyed by its path. `--trust` covers every target, and an untrusted target is skipped as `untrusted`. pr-update's store becomes `standalone('osdlc')` with `app: 'pr-update'` (S3a), so its markers move once and stay keyed by pr-update.",
+                  "detail": "A located checkout is keyed by its path. `--trust` covers every target, and an untrusted target is skipped as `untrusted`. pr-update's store becomes `standalone('osdlc')` with `app: 'pr-update'` (S3a) and stays keyed by pr-update. Its markers are not moved (s3a-move was dropped): the new store starts empty.",
                   "source": {
                     "uri": "packages/ts/pr-update/src/trust.ts"
                   },
