@@ -94,9 +94,12 @@ export {
   type OrcaRecord,
 } from './orca.ts'
 export {
+  CURSOR_PLUGIN,
   IN_USE,
   UNKNOWN_WORKSPACE,
   VSCODE_PLUGIN,
+  cursorPlugin,
+  cursorUserDir,
   vscodePlugin,
   vscodeUserDir,
   type VscodeOptions,

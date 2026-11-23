@@ -1,0 +1,5 @@
+---
+"@osdlc/host-cleaner": minor
+---
+
+Add the `cursor` plugin, which removes Cursor's storage for workspaces that no longer exist only when picked and `discard-user-data` is allowed, since that storage holds chat history.

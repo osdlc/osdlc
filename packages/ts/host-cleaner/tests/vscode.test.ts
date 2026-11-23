@@ -1,4 +1,4 @@
-/** The `vscode` plugin against VS Code storage folders laid out in a temporary home. */
+/** The `vscode` and `cursor` plugins against storage folders laid out in a temporary home. */
 
 import { afterEach, describe, expect, test } from 'vitest'
 import {
@@ -16,9 +16,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { ProcessProbe } from '@osdlc/repo-cleaner'
 
 import {
+  DISCARD_USER_DATA,
   IN_USE,
   UNKNOWN_WORKSPACE,
   clean,
+  cursorPlugin,
   plan,
   survey,
   vscodePlugin,
@@ -55,11 +57,11 @@ const probeOf = (procs: Proc[] | Error = []): ProcessProbe => ({
 /** VS Code's main process, running somewhere unrelated. */
 const CODE: Proc = { pid: 10, command: 'Code', cwd: '/' }
 
-/** A temporary home with VS Code's macOS layout and a folder for projects. */
-function home() {
+/** A temporary home with the macOS layout of the editor in `app` (VS Code's by default) and a folder for projects. */
+function home(app = 'Code') {
   const t = tempHome('host-cleaner-vscode-')
   cleanups.push(t.cleanup)
-  const user = join(t.home, 'Library', 'Application Support', 'Code', 'User')
+  const user = join(t.home, 'Library', 'Application Support', app, 'User')
   const storage = join(user, 'workspaceStorage')
   const projects = join(t.home, 'dev')
   mkdirSync(storage, { recursive: true })
@@ -372,6 +374,150 @@ describe('object', () => {
         level: 'refuse',
         code: IN_USE,
         reason: `a VS Code window still has ${gone} open`,
+      }),
+    ])
+  })
+})
+
+describe('cursor', () => {
+  /** Cursor's main process, running somewhere unrelated. */
+  const CURSOR: Proc = { pid: 20, command: 'Cursor', cwd: '/' }
+
+  test('a dead Cursor workspace is listed as held and is deleted only with the allow', async () => {
+    const h = home('Cursor')
+    mkdirSync(join(h.projects, 'live'))
+    const live = store(h.storage, 'aaa', folder(join(h.projects, 'live')))
+    const dead = store(h.storage, 'bbb', folder(join(h.projects, 'dead')))
+    const id = `workspace-storage:${dead}`
+    const plugin = cursorPlugin(h.options())
+
+    const s = await survey([plugin], ctxOf(h.home))
+    expect(s.warnings).toEqual([])
+    expect(s.candidates).toEqual([
+      expect.objectContaining({
+        id,
+        owner: 'cursor',
+        path: dead,
+        why: `Cursor kept state and chat history for ${join(h.projects, 'dead')}, which no longer exists`,
+        costDescription: 'lost',
+        held: true,
+      }),
+    ])
+    expect(s.objections).toEqual([
+      expect.objectContaining({
+        by: 'host-cleaner',
+        candidate: id,
+        level: 'protest',
+        code: DISCARD_USER_DATA,
+      }),
+    ])
+    expect(s.roots).toEqual({ cursor: [h.storage] })
+
+    const byDefault = await clean(plan(s), [plugin], ctxOf(h.home))
+    expect(byDefault.steps).toEqual([])
+    const picked = await clean(plan(s, { pick: [id] }), [plugin], ctxOf(h.home))
+    expect(picked.steps).toEqual([])
+    expect(picked.dropped).toEqual([
+      { id, reason: 'not-allowed', detail: `needs --allow ${DISCARD_USER_DATA}` },
+    ])
+    expect(existsSync(dead)).toBe(true)
+
+    const allowed = await clean(
+      plan(s, { pick: [id], allow: [DISCARD_USER_DATA] }),
+      [plugin],
+      ctxOf(h.home),
+    )
+    expect(allowed.status).toBe('complete')
+    expect(allowed.steps).toEqual([expect.objectContaining({ id, result: 'ok' })])
+    expect(existsSync(dead)).toBe(false)
+    expect(existsSync(live)).toBe(true)
+  })
+
+  test("each plugin reads only its own editor's storage, on macOS and Linux", async () => {
+    const h = home('Cursor')
+    const code = join(h.home, 'Library', 'Application Support', 'Code', 'User', 'workspaceStorage')
+    mkdirSync(code, { recursive: true })
+    const ofCursor = store(h.storage, 'a', folder(join(h.projects, 'dead')))
+    const ofCode = store(code, 'b', folder(join(h.projects, 'dead')))
+
+    const both = await survey([vscodePlugin(h.options()), cursorPlugin(h.options())], ctxOf(h.home))
+    expect(both.warnings).toEqual([])
+    expect(both.candidates.map((c) => [c.owner, c.path])).toEqual([
+      ['vscode', ofCode],
+      ['cursor', ofCursor],
+    ])
+
+    const linuxStorage = join(h.home, '.config', 'Cursor', 'User', 'workspaceStorage')
+    mkdirSync(linuxStorage, { recursive: true })
+    const onLinux = store(linuxStorage, 'c', folder(join(h.projects, 'dead')))
+    const linux = await survey([cursorPlugin(h.options({ platform: 'linux' }))], ctxOf(h.home))
+    expect(linux.candidates.map((c) => c.path)).toEqual([onLinux])
+    const windows = await survey([cursorPlugin(h.options({ platform: 'win32' }))], ctxOf(h.home))
+    expect(windows.plugins).toEqual([])
+  })
+
+  test('cursor keeps the contract', async () => {
+    const h = home('Cursor')
+    const dead = store(h.storage, 'bbb', folder(join(h.projects, 'dead')))
+    expect(await contractSuite(cursorPlugin(h.options()), { cwd: h.home })).toEqual([])
+    expect(existsSync(join(dead, 'state.vscdb'))).toBe(true)
+  })
+
+  test("refuses a storage folder that now leads outside, or one not in Cursor's workspaceStorage", async () => {
+    const h = home('Cursor')
+    const dead = store(h.storage, 'bbb', folder(join(h.projects, 'dead')))
+    const plugin = cursorPlugin(h.options())
+    const c = (await survey([plugin], ctxOf(h.home))).candidates[0]!
+
+    const elsewhere = store(h.projects, 'x', folder(join(h.projects, 'dead')))
+    await expect(deleting(plugin, { ...c, path: elsewhere } as Candidate, h.home)).rejects.toThrow(
+      /is not in Cursor's workspaceStorage/,
+    )
+    expect(existsSync(elsewhere)).toBe(true)
+
+    const outside = tempHome('host-cleaner-cursor-out-')
+    cleanups.push(outside.cleanup)
+    const moved = join(outside.home, 'moved')
+    renameSync(dead, moved)
+    symlinkSync(moved, dead)
+    await expect(deleting(plugin, c, h.home)).rejects.toThrow(
+      /is no longer storage for a workspace that is gone/,
+    )
+    expect(readdirSync(moved).sort()).toEqual(['state.vscdb', 'workspace.json'])
+  })
+
+  test("refuses git's worktree while a Cursor process works in it, and not for a VS Code one", async () => {
+    const h = home('Cursor')
+    const wt = join(h.projects, 'wt')
+    mkdirSync(join(wt, 'src'), { recursive: true })
+    const helper = { pid: 21, command: 'Cursor Helper (Plugin)', cwd: join(wt, 'src') }
+    const plugin = cursorPlugin(h.options({ probe: probeOf([CURSOR, helper]) }))
+    expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
+      {
+        by: 'cursor',
+        candidate: `worktree:${wt}`,
+        level: 'refuse',
+        code: IN_USE,
+        reason: 'Cursor works in it: Cursor Helper (Plugin) (pid 21)',
+      },
+    ])
+    const vscode = { pid: 11, command: 'Code Helper (Plugin)', cwd: join(wt, 'src') }
+    const other = cursorPlugin(h.options({ probe: probeOf([CODE, vscode]) }))
+    expect(await other.object!([worktree(wt)], fakeContext())).toEqual([])
+  })
+
+  test("refuses git's worktree a Cursor window has open while Cursor runs", async () => {
+    const h = home('Cursor')
+    const wt = join(h.projects, 'wt')
+    mkdirSync(wt)
+    windows(h.user, [wt])
+    const plugin = cursorPlugin(h.options({ probe: probeOf([CURSOR]) }))
+    expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
+      expect.objectContaining({
+        by: 'cursor',
+        level: 'refuse',
+        code: IN_USE,
+        reason: `a Cursor window has it open (${join(h.user, 'globalStorage', 'storage.json')})`,
       }),
     ])
   })

@@ -4,7 +4,7 @@ import { cargoDefinition } from './cargo.ts'
 import { gitDefinition } from './git.ts'
 import { nodeDefinition } from './node.ts'
 import { orcaDefinition } from './orca.ts'
-import { vscodeDefinition } from './vscode.ts'
+import { cursorDefinition, vscodeDefinition } from './vscode.ts'
 import type { Plugin, PluginDefinition } from './types.ts'
 
 /**
@@ -16,6 +16,7 @@ export const BUILT_IN_PLUGINS: readonly PluginDefinition[] = [
   cargoDefinition,
   nodeDefinition,
   vscodeDefinition,
+  cursorDefinition,
   orcaDefinition,
 ]
 

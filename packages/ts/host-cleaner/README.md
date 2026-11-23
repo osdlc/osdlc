@@ -7,12 +7,12 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node`, `vscode` and `orca` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `vscode`, `cursor` and `orca` plugins, and the `host-cleaner` command.
 
 ## Phases
 
 Plugins run in the order they are given. The command line runs the shipped
-ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `orca`.
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`.
 The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
@@ -253,6 +253,19 @@ that folder exists, and has no settings.
 | object | Refuses (`in-use`) a `git` worktree a VS Code process works in (by its working directory, such as a `Code Helper (Plugin)` process an extension started there), or one the window state (`User/globalStorage/storage.json`, `windowsState`) names as open while VS Code runs or the process table cannot be read. Its own candidate for a folder a window still names is refused the same way. A window state it cannot read is a `note` on each worktree. |
 | delete | Reads the folder's `workspace.json` again, checks it is a folder directly in `workspaceStorage` and its workspace is still gone, then removes it with `kit.remove`. |
 
+## The `cursor` plugin
+
+Cursor is a fork of VS Code and keeps the same `workspaceStorage`. The `cursor`
+plugin is the `vscode` plugin's code over Cursor's folders,
+`~/Library/Application Support/Cursor/User/workspaceStorage` on macOS and
+`~/.config/Cursor/User/workspaceStorage` on Linux, and over Cursor's processes
+(`Cursor`, `Cursor Helper (…)`, `cursor`). It finds, refuses and deletes what
+the `vscode` plugin does. One difference: Cursor keeps its chat history in that
+storage, so a dead workspace's folder is `costDescription: lost`. It is held,
+protested `discard-user-data`, and runs only with
+`--pick <id> --allow discard-user-data`.
+
+## The `orca` plugin
 
 Orca keeps its own record of some worktrees and holds terminals and agents open
 in them. Removing one with plain git leaves the record and the terminals behind,

@@ -1,7 +1,9 @@
 /**
  * The `vscode` plugin: VS Code's per-workspace storage
  * (`workspaceStorage/<hash>/`) for folders that no longer exist, and a
- * refusal of any `git` worktree a VS Code window has open.
+ * refusal of any `git` worktree a VS Code window has open. The `cursor`
+ * plugin is the same code over Cursor's folders and processes; its storage
+ * holds chat history, so deleting it is `lost`.
  *
  * Each storage folder names its workspace in `workspace.json`, as a `folder`
  * or a `workspace` (a `.code-workspace` file) URI. One whose `file:` URI
@@ -27,14 +29,16 @@ import {
   PLUGIN_API,
   definePlugin,
   type Candidate,
+  type CostDescription,
   type Objection,
   type PathCandidate,
   type Plugin,
 } from './types.ts'
 
 export const VSCODE_PLUGIN = 'vscode'
+export const CURSOR_PLUGIN = 'cursor'
 
-/** The refusal of a candidate a VS Code window has open. */
+/** The refusal of a candidate an editor window has open. */
 export const IN_USE = 'in-use'
 
 /** The refusal of a storage folder whose `workspace.json` is a shape this plugin does not know. */
@@ -42,8 +46,41 @@ export const UNKNOWN_WORKSPACE = 'unknown-workspace'
 
 const KIND = 'workspace-storage'
 
-/** VS Code's process names: `Code` and its `Code Helper (…)` processes on macOS, `code` on Linux. */
-const VSCODE_PROCESS = /^code(?:\s|\\x20|$)/i
+/** One editor of VS Code's family: where it keeps its state and what its processes are called. */
+interface Editor {
+  name: string
+  /** Its name in reasons. */
+  product: string
+  /** Its folder in `Application Support` on macOS and in `.config` on Linux. */
+  appDir: string
+  /** Its process names, as `kit.running` gives them without the pid. */
+  process: RegExp
+  /** What deleting a dead workspace's storage costs. */
+  costDescription: CostDescription
+  /** What that storage holds, as `why` says it. */
+  holds: string
+}
+
+const VSCODE: Editor = {
+  name: VSCODE_PLUGIN,
+  product: 'VS Code',
+  appDir: 'Code',
+  // `Code` and its `Code Helper (…)` processes on macOS, `code` on Linux.
+  process: /^code(?:\s|\\x20|$)/i,
+  costDescription: 're-download',
+  holds: 'state',
+}
+
+const CURSOR: Editor = {
+  name: CURSOR_PLUGIN,
+  product: 'Cursor',
+  appDir: 'Cursor',
+  // `Cursor` and its `Cursor Helper (…)` processes on macOS, `cursor` on Linux.
+  process: /^cursor(?:\s|\\x20|$)/i,
+  // Its chat history is kept there, and nothing brings it back.
+  costDescription: 'lost',
+  holds: 'state and chat history',
+}
 
 /** The longest `discover` may take: it sizes every dead storage folder. */
 const DISCOVER_LIMIT_MS = 5 * 60_000
@@ -53,28 +90,43 @@ const VOLUME =
   /^(\/Volumes\/[^/]+|\/run\/media\/[^/]+\/[^/]+|\/media\/[^/]+\/[^/]+|\/mnt\/[^/]+)(?:\/|$)/
 
 export interface VscodeOptions extends KitOptions {
-  /** VS Code's `User` folder. Default: under `HOME`, by platform. */
+  /** The editor's `User` folder. Default: under `HOME`, by platform. */
   userDir?: string | undefined
   /** Default: this process's. */
   platform?: NodeJS.Platform | undefined
 }
 
-/** VS Code's `User` folder on `platform`; undefined where the plugin does not know it. */
-export function vscodeUserDir(
+/** `editor`'s `User` folder on `platform`; undefined where the plugin does not know it. */
+function userDirOf(
+  editor: Editor,
   env: Readonly<Record<string, string | undefined>>,
   platform: NodeJS.Platform,
 ): string | undefined {
   const home = env.HOME ?? homedir()
-  if (platform === 'darwin') return join(home, 'Library', 'Application Support', 'Code', 'User')
-  if (platform === 'linux') return join(home, '.config', 'Code', 'User')
+  if (platform === 'darwin') {
+    return join(home, 'Library', 'Application Support', editor.appDir, 'User')
+  }
+  if (platform === 'linux') return join(home, '.config', editor.appDir, 'User')
   return undefined
 }
+
+/** VS Code's `User` folder on `platform`; undefined where the plugin does not know it. */
+export const vscodeUserDir = (
+  env: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform,
+): string | undefined => userDirOf(VSCODE, env, platform)
+
+/** Cursor's `User` folder on `platform`; undefined where the plugin does not know it. */
+export const cursorUserDir = (
+  env: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform,
+): string | undefined => userDirOf(CURSOR, env, platform)
 
 /** What one storage folder says about its workspace. */
 type Entry =
   | { state: 'gone'; workspace: string; local: string }
   | { state: 'unknown'; problem: string }
-  /** Live, remote, an empty window's, on a volume not mounted, or not a folder of VS Code's. */
+  /** Live, remote, an empty window's, on a volume not mounted, or not a folder of the editor's. */
   | { state: 'skip' }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -111,7 +163,7 @@ function localPath(uri: string): string | null {
 
 /** What the storage folder `dir` says, read from its `workspace.json`. */
 function entryOf(dir: string): Entry {
-  // VS Code makes each one a folder; a link or a file is not one of its own and is never followed.
+  // The editor makes each one a folder; a link or a file is not one of its own and is never followed.
   if (lstatSync(dir, { throwIfNoEntry: false })?.isDirectory() !== true) return { state: 'skip' }
   let text: string
   try {
@@ -196,13 +248,14 @@ function openWindows(stateFile: string): { paths: string[]; problem?: string } {
 const isGitWorktree = (c: Candidate): c is PathCandidate =>
   c.kind === 'worktree' && c.owner === 'git' && c.path !== undefined
 
-/** The VS Code processes among `kit.running`'s names. */
-const vscodeOf = (names: readonly string[]): string[] =>
-  names.filter((n) => VSCODE_PROCESS.test(n.replace(/ \(pid \d+\)$/, '')))
+/** `editor`'s processes among `kit.running`'s names. */
+const processesOf = (editor: Editor, names: readonly string[]): string[] =>
+  names.filter((n) => editor.process.test(n.replace(/ \(pid \d+\)$/, '')))
 
-function build(kit: Kit, opts: VscodeOptions): Plugin {
+function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
+  const { product } = editor
   const userDir =
-    opts.userDir ?? vscodeUserDir(opts.env ?? process.env, opts.platform ?? process.platform)
+    opts.userDir ?? userDirOf(editor, opts.env ?? process.env, opts.platform ?? process.platform)
   const root = userDir === undefined ? undefined : join(userDir, 'workspaceStorage')
   const stateFile =
     userDir === undefined ? undefined : join(userDir, 'globalStorage', 'storage.json')
@@ -218,7 +271,7 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
     code: string,
     reason: string,
   ): Objection => ({
-    by: VSCODE_PLUGIN,
+    by: editor.name,
     candidate: c.id,
     level,
     code,
@@ -226,7 +279,7 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
   })
 
   return {
-    name: VSCODE_PLUGIN,
+    name: editor.name,
     limits: { discover: DISCOVER_LIMIT_MS },
     detect: present,
     roots: () => (root !== undefined && present() ? [root] : []),
@@ -240,7 +293,7 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
         if (entry.state === 'skip') continue
         const c =
           entry.state === 'gone'
-            ? goneCandidate(kit, dir, entry)
+            ? goneCandidate(editor, kit, dir, entry)
             : kit.candidate({
                 kind: KIND,
                 path: dir,
@@ -258,31 +311,32 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
       const out: Objection[] = []
       const gone: Array<{ c: Candidate; local: string }> = []
       for (const c of all) {
-        const e = c.owner === VSCODE_PLUGIN ? entries.get(c.id) : undefined
+        const e = c.owner === editor.name ? entries.get(c.id) : undefined
         if (e?.state === 'unknown') out.push(own(c, 'refuse', UNKNOWN_WORKSPACE, e.problem))
         if (e?.state === 'gone') gone.push({ c, local: e.local })
       }
       const worktrees = all.filter(isGitWorktree)
       if (worktrees.length === 0 && gone.length === 0) return out
 
-      // The window state outlives a quit, so it counts only while VS Code runs, or may.
+      // The window state outlives a quit, so it counts only while the editor runs, or may.
       const anywhere = kit.running({ in: '/' }, ctx)
-      const running = vscodeOf(anywhere.names).length > 0 || anywhere.unknown !== undefined
+      const running =
+        processesOf(editor, anywhere.names).length > 0 || anywhere.unknown !== undefined
       const windows = running && stateFile !== undefined ? openWindows(stateFile) : { paths: [] }
       const opened = (path: string): boolean => windows.paths.some((p) => within(p, canon(path)))
 
       for (const c of worktrees) {
-        const procs = vscodeOf(kit.running({ in: c.path }, ctx).names)
+        const procs = processesOf(editor, kit.running({ in: c.path }, ctx).names)
         if (procs.length > 0) {
-          out.push(own(c, 'refuse', IN_USE, `VS Code works in it: ${procs.join(', ')}`))
+          out.push(own(c, 'refuse', IN_USE, `${product} works in it: ${procs.join(', ')}`))
         } else if (opened(c.path)) {
-          out.push(own(c, 'refuse', IN_USE, `a VS Code window has it open (${stateFile})`))
+          out.push(own(c, 'refuse', IN_USE, `a ${product} window has it open (${stateFile})`))
         } else if (windows.problem !== undefined) {
           out.push(
             own(
               c,
               'note',
-              'vscode-state-unreadable',
+              `${editor.name}-state-unreadable`,
               `${windows.problem}; only processes were checked`,
             ),
           )
@@ -290,7 +344,7 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
       }
       for (const { c, local } of gone) {
         if (windows.paths.includes(canon(local))) {
-          out.push(own(c, 'refuse', IN_USE, `a VS Code window still has ${local} open`))
+          out.push(own(c, 'refuse', IN_USE, `a ${product} window still has ${local} open`))
         }
       }
       return out
@@ -298,12 +352,12 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
     delete(c, ctx) {
       if (c.path === undefined) throw new Error(`${c.id} is not a storage folder`)
       if (root === undefined || dirname(c.path) !== root) {
-        throw new Error(`${c.path} is not in VS Code's workspaceStorage`)
+        throw new Error(`${c.path} is not in ${product}'s workspaceStorage`)
       }
       if (lstatSync(c.path, { throwIfNoEntry: false }) === undefined) {
         return `already gone: ${c.path}`
       }
-      // Read again: its workspace may be back, or the folder no longer VS Code's.
+      // Read again: its workspace may be back, or the folder no longer the editor's.
       const now = entryOf(c.path)
       if (now.state !== 'gone' || now.workspace !== c.evidence.workspace) {
         throw new Error(`${c.path} is no longer storage for a workspace that is gone`)
@@ -313,37 +367,55 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
   }
 }
 
-function goneCandidate(kit: Kit, dir: string, e: { workspace: string; local: string }): Candidate {
+function goneCandidate(
+  editor: Editor,
+  kit: Kit,
+  dir: string,
+  e: { workspace: string; local: string },
+): Candidate {
   const bytes = kit.size(dir)
   return kit.candidate({
     kind: KIND,
     path: dir,
-    why: `VS Code kept state for ${e.local}, which no longer exists`,
+    why: `${editor.product} kept ${editor.holds} for ${e.local}, which no longer exists`,
     ...(bytes === null ? {} : { bytes }),
-    costDescription: 're-download',
+    costDescription: editor.costDescription,
     evidence: { kind: KIND, path: dir, workspace: e.workspace },
   })
 }
 
-/** The `vscode` plugin as the command line builds it. No settings of its own. */
-export const vscodeDefinition = definePlugin({
-  name: VSCODE_PLUGIN,
-  api: PLUGIN_API,
-  settings: z.strictObject({}),
-  create: ({ kit, env }) => build(kit, { env }),
-})
-
-/** The `vscode` plugin on a kit built from `opts`, made through `definePlugin` so the core binds that kit each run. */
-export function vscodePlugin(opts: VscodeOptions = {}): Plugin {
-  return definePlugin({
-    name: VSCODE_PLUGIN,
+/** `editor`'s plugin as the command line builds it. No settings of its own. */
+const definitionOf = (editor: Editor) =>
+  definePlugin({
+    name: editor.name,
     api: PLUGIN_API,
     settings: z.strictObject({}),
-    create: ({ kit }) => build(kit, opts),
+    create: ({ kit, env }) => build(editor, kit, { env }),
+  })
+
+/** `editor`'s plugin on a kit built from `opts`, made through `definePlugin` so the core binds that kit each run. */
+function pluginOf(editor: Editor, opts: VscodeOptions): Plugin {
+  return definePlugin({
+    name: editor.name,
+    api: PLUGIN_API,
+    settings: z.strictObject({}),
+    create: ({ kit }) => build(editor, kit, opts),
   }).create({
     settings: {},
     only: [],
     env: opts.env ?? process.env,
-    kit: pluginKit(VSCODE_PLUGIN, opts),
+    kit: pluginKit(editor.name, opts),
   })
 }
+
+/** The `vscode` plugin as the command line builds it. No settings of its own. */
+export const vscodeDefinition = definitionOf(VSCODE)
+
+/** The `cursor` plugin as the command line builds it. No settings of its own. */
+export const cursorDefinition = definitionOf(CURSOR)
+
+/** The `vscode` plugin on a kit built from `opts`. */
+export const vscodePlugin = (opts: VscodeOptions = {}): Plugin => pluginOf(VSCODE, opts)
+
+/** The `cursor` plugin on a kit built from `opts`; `userDir` is Cursor's `User` folder. */
+export const cursorPlugin = (opts: VscodeOptions = {}): Plugin => pluginOf(CURSOR, opts)
