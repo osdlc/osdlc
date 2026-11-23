@@ -90,6 +90,10 @@ export interface PrUpdatePaths {
  * pr-update's directories under `dirs`: the osdlc family's, pinned to Xdg
  * (`osdlcDirs` from `@osdlc/ecosystem`). Pass `osdlcDirs({ env })` to read
  * only that environment.
+ *
+ * Every walk pr-update makes of these folders (listing kept trees today, pruning clones and
+ * worktrees later) skips entries whose names start with `.`: a run's temporary probe
+ * (`.pr-update-probe-*`) is one, and a hard kill can leave it.
  */
 export function prUpdatePaths(dirs: TieredDirs = osdlcDirs()): PrUpdatePaths {
   const tier = dirs.standalone('osdlc')

@@ -25,6 +25,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
 } from 'node:fs'
@@ -121,7 +122,22 @@ function readRecord(place: KeptPlace, name: string): KeptRecord | null {
   const { repo, number, path } = record
   if (typeof repo !== 'string' || !Number.isInteger(number) || typeof path !== 'string') return null
   if (name !== `${keptName(place, repo, number)}.json`) return null
-  return path === keptPath(place, repo, number) && existsSync(path) ? record : null
+  return isKeptPath(place, path, repo, number) && existsSync(path) ? record : null
+}
+
+/**
+ * Whether `path` is the kept path of `repo#number` in `place`: the same string, or the right
+ * name in a folder that resolves to `place.dir`, so a path whose spelling differs (a drive
+ * letter's case, a symlink) still counts. A folder that cannot be resolved does not.
+ */
+function isKeptPath(place: KeptPlace, path: string, repo: string, number: number): boolean {
+  if (path === keptPath(place, repo, number)) return true
+  if (basename(path) !== keptName(place, repo, number)) return false
+  try {
+    return realpathSync.native(dirname(path)) === realpathSync.native(place.dir)
+  } catch {
+    return false
+  }
 }
 
 /** The kept worktree of one PR in `place`, or null when it has no valid record or its worktree is gone. */
@@ -130,11 +146,15 @@ export function findKept(place: KeptPlace, repo: string, number: number): KeptRe
   return record !== null && record.repo === repo && record.number === number ? record : null
 }
 
-/** Every kept worktree in `place` with a valid record. */
+/**
+ * Every kept worktree in `place` with a valid record. Names starting with `.` are skipped, as in
+ * every walk pr-update makes of its own folders: a run's probe (`.pr-update-probe-*`) is one,
+ * and a hard kill can leave it behind.
+ */
 export function listKept(place: KeptPlace): KeptRecord[] {
   let names: string[]
   try {
-    names = readdirSync(place.dir).filter((n) => n.endsWith('.json'))
+    names = readdirSync(place.dir).filter((n) => !n.startsWith('.') && n.endsWith('.json'))
   } catch {
     return []
   }
@@ -210,6 +230,9 @@ export type Rename = (from: string, to: string) => void
  * `git worktree move` cannot go: git's `rename()` has no copy fallback. Found by renaming an empty
  * probe folder from one into the other and reading the error's code. Any other failure is not
  * taken as an answer, so the move is still tried.
+ *
+ * The probe is named `.pr-update-probe-*` and removed at once, but a hard kill can leave it in
+ * either folder. Its name starts with `.` so pr-update's own walks of these folders skip it.
  */
 function crossesDevice(from: string, to: string, rename: Rename): boolean {
   const probe = mkdtempSync(join(from, '.pr-update-probe-'))

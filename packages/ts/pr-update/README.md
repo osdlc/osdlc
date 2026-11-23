@@ -216,7 +216,9 @@ worktrees whose folders are missing stay listed. With `attempts.store:
 git-ref`, the record and the lease are refs on the checkout's own `origin`,
 taken per target. When a target's own record or lease fails (its remote
 refuses `refs/pr-update/*`, say), that target's PRs are skipped with the error
-and the run goes on with the others. The project root keeps `.pr-update/` in
+and the run goes on with the others. An error while saving the record of a PR
+that already ran is shown on that PR: `recordError` in JSON, `record not saved:`
+in the text; anything not shown on a PR or a skip is listed in `recordErrors`. The project root keeps `.pr-update/` in
 its own checkout, and its hooks and store errors behave as before.
 
 Commands the config names run in that worktree, so each target passes the
@@ -615,7 +617,11 @@ cd .pr-update/failed/acme-widgets-12  # finish the fix, then push it yourself
   removed through the git directory that owns it, as does `--discard-kept`.
 - A later run lists a PR with a kept worktree under `skipped`, reason
   `failed worktree kept at <path>`, while its head and base sha are unchanged. A PR that has moved
-  is attempted again and its old tree is discarded, as is a PR named by `--retry-failed`.
+  is attempted again and its old tree is discarded, as is a PR named by `--retry-failed`. A tree
+  someone has changed or committed to, or one git cannot read, is not discarded either way: the
+  PR is skipped with `kept worktree <path> has local changes; push them or pass --discard-kept`,
+  and only `--discard-kept` removes it. A record is used only when its path names the kept
+  tree's own folder, and names starting with `.` in these folders are skipped.
 - `update --apply --discard-kept` removes every kept worktree of the surveyed repositories, then
   runs as usual. The output's `discarded` lists what was removed.
 
