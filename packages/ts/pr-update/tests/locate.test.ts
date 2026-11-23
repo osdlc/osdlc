@@ -21,7 +21,7 @@ let notes: string[]
 const real = spawnRunner('git')
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'pr-update-locate-')))
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'pr-update-locate-')))
   home = join(root, 'home')
   mkdirSync(home)
   notes = []

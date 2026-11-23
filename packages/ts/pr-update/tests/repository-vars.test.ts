@@ -24,7 +24,7 @@ let asked: string[][]
 
 beforeEach(() => {
   asked = []
-  scratch = realpathSync(mkdtempSync(join(tmpdir(), 'pr-update-repo-vars-')))
+  scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'pr-update-repo-vars-')))
   // The project root, whose `origin/topic` is one commit behind `origin/main`.
   const root = makeGitFixture({ dir: join(scratch, 'widgets') })
   root.commit('base', { 'a.txt': 'a' })

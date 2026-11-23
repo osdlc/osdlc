@@ -19,7 +19,7 @@ import { FIXTURE_REMOTE, fakeTools, isolatedEnv } from './support.ts'
 
 let root: string
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'pr-update-machine-')))
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'pr-update-machine-')))
 })
 afterEach(() => {
   vi.unstubAllEnvs()

@@ -233,10 +233,10 @@ function sh(dir: string, ...argv: string[]): string {
 const worktreesOf = (dir: string): string[] =>
   new Git(dir, { runner: git }).worktrees().map((w) => w.path)
 const keptDir = () => join(paths.kept, 'github.com', 'acme', 'api')
-const ownGitDir = () => realpathSync(join(api.worker.dir, '.git'))
+const ownGitDir = () => realpathSync.native(join(api.worker.dir, '.git'))
 
 beforeEach(() => {
-  scratch = realpathSync(mkdtempSync(join(tmpdir(), 'pr-update-target-')))
+  scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'pr-update-target-')))
   web = undefined
   rootIsTarget = false
   apiPr2 = false
@@ -263,7 +263,7 @@ describe('a located target', () => {
     expect(verifiedIn[0]!.startsWith(`${runs}/`)).toBe(true)
     expect(basename(verifiedIn[0]!)).toMatch(new RegExp(`^${process.pid}\\.\\d+$`))
     expect(readdirSync(runs)).toEqual([])
-    expect(worktreesOf(api.worker.dir)).toEqual([realpathSync(api.worker.dir)])
+    expect(worktreesOf(api.worker.dir)).toEqual([realpathSync.native(api.worker.dir)])
     expect(existsSync(join(api.worker.dir, '.pr-update'))).toBe(false)
     expect(existsSync(join(root.worker.dir, '.pr-update'))).toBe(false)
   })
@@ -412,7 +412,7 @@ describe('a located target kept worktree', () => {
     expect(out.results[0]!.keptWorktree).toBe(kept)
     const record = JSON.parse(readFileSync(`${kept}.json`, 'utf8'))
     expect(record).toMatchObject({ repo: 'acme/api', number: 1, path: kept, gitDir: ownGitDir() })
-    expect(worktreesOf(api.worker.dir)).toContain(realpathSync(kept))
+    expect(worktreesOf(api.worker.dir)).toContain(realpathSync.native(kept))
     expect(sh(kept, 'branch', '--show-current')).toBe('pr-update/failed-acme-api-1')
     expect(readFileSync(join(kept, '.pr-update-verify.log'), 'utf8')).toContain('FAIL widget')
     expect(existsSync(join(api.worker.dir, '.pr-update'))).toBe(false)
@@ -437,7 +437,7 @@ describe('a located target kept worktree', () => {
       ])
     }
     expect(existsSync(kept)).toBe(true)
-    expect(worktreesOf(api.worker.dir)).toContain(realpathSync(kept))
+    expect(worktreesOf(api.worker.dir)).toContain(realpathSync.native(kept))
   })
 
   test('a PR that moved discards it through the git directory that owns it', async () => {
@@ -455,7 +455,7 @@ describe('a located target kept worktree', () => {
     expect(out.discarded).toEqual([kept])
     expect(out.results.map((r) => r.status)).toEqual(['updated'])
     expect(existsSync(kept)).toBe(false)
-    expect(worktreesOf(api.worker.dir)).toEqual([realpathSync(api.worker.dir)])
+    expect(worktreesOf(api.worker.dir)).toEqual([realpathSync.native(api.worker.dir)])
     expect(sh(api.worker.dir, 'branch', '--list', 'pr-update/*')).toBe('')
   })
 
@@ -469,7 +469,7 @@ describe('a located target kept worktree', () => {
     expect(out.discarded).toEqual([kept])
     expect(existsSync(kept)).toBe(false)
     expect(existsSync(`${kept}.json`)).toBe(false)
-    expect(worktreesOf(api.worker.dir)).toEqual([realpathSync(api.worker.dir)])
+    expect(worktreesOf(api.worker.dir)).toEqual([realpathSync.native(api.worker.dir)])
 
     await update({ args: { keepFailed: true, retryFailed: true } })
     const record = JSON.parse(readFileSync(`${kept}.json`, 'utf8'))
@@ -487,7 +487,10 @@ describe('a located target kept worktree', () => {
     const kept = join(keptDir(), '1')
     expect(out.results[0]).toMatchObject({ status: 'failed', keptWorktree: kept })
     expect(out.results[0]!.keepError).toBeUndefined()
-    expect(worktreesOf(api.worker.dir)).toEqual([realpathSync(api.worker.dir), realpathSync(kept)])
+    expect(worktreesOf(api.worker.dir)).toEqual([
+      realpathSync.native(api.worker.dir),
+      realpathSync.native(kept),
+    ])
     expect(sh(kept, 'branch', '--show-current')).toBe('pr-update/failed-acme-api-1')
     // The built result: the topic work on top of main.
     expect(existsSync(join(kept, 'topic.txt'))).toBe(true)
@@ -542,7 +545,7 @@ describe('keepWorktree across filesystems', () => {
     expect(existsSync(join(place.dir, '1'))).toBe(false)
     expect(sh(api.worker.dir, 'branch', '--list', 'pr-update/*')).toBe('')
     expect(existsSync(join(run, 'build.out'))).toBe(true)
-    expect(worktreesOf(api.worker.dir)).toEqual([realpathSync(api.worker.dir), run])
+    expect(worktreesOf(api.worker.dir)).toEqual([realpathSync.native(api.worker.dir), run])
   })
 
   test('a move that fails for another reason is not retried another way', () => {

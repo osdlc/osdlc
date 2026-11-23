@@ -71,7 +71,7 @@ function git(dir: string, ...argv: string[]): string {
 }
 
 beforeEach(() => {
-  scratch = realpathSync(mkdtempSync(join(tmpdir(), 'pr-update-prune-')))
+  scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'pr-update-prune-')))
   env = isolatedEnv(join(scratch, 'env'))
   paths = prUpdatePaths(osdlcDirs({ env }))
   const work = makeGitFixture({ dir: join(scratch, 'source') })
@@ -126,7 +126,7 @@ function keptWorktree(clone: string, repo: string, number: number): string {
     baseOid: null,
     path,
     branch,
-    gitDir: realpathSync(clone),
+    gitDir: realpathSync.native(clone),
   }
   writeFileSync(join(dir, `${number}.json`), JSON.stringify(record))
   return path
@@ -138,7 +138,7 @@ function listed(gitDir: string): string[] {
     .split('\n')
     .filter((l) => l.startsWith('worktree '))
     .map((l) => l.slice('worktree '.length))
-    .filter((p) => p !== realpathSync(gitDir) && p !== dirname(realpathSync(gitDir)))
+    .filter((p) => p !== realpathSync.native(gitDir) && p !== dirname(realpathSync.native(gitDir)))
 }
 
 function branches(gitDir: string): string[] {
@@ -645,8 +645,13 @@ describe('mirror list', () => {
     expect(l.clones[0]!.bytes).toBeGreaterThan(0)
     // Sorted by name, so the order depends on this process's pid: compare without it.
     expect([...l.worktrees].sort((a, b) => Number(a.running) - Number(b.running))).toEqual([
-      { path: dead, repo: 'github.com/acme/api', running: false, owner: realpathSync(clone) },
-      { path: live, repo: 'github.com/acme/api', running: true, owner: realpathSync(clone) },
+      {
+        path: dead,
+        repo: 'github.com/acme/api',
+        running: false,
+        owner: realpathSync.native(clone),
+      },
+      { path: live, repo: 'github.com/acme/api', running: true, owner: realpathSync.native(clone) },
     ])
     expect(readFileSync(lock, 'utf8')).toBe(lockText)
     expect(existsSync(cloneLockPath(clone))).toBe(false)
@@ -793,7 +798,7 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
           path: dead,
           skip: 'foreign',
           reason: expect.stringContaining(
-            `its owner ${realpathSync(clone)} is not a clone pr-update may change:`,
+            `its owner ${realpathSync.native(clone)} is not a clone pr-update may change:`,
           ),
         }),
       ]),

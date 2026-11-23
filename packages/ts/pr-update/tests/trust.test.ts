@@ -36,7 +36,7 @@ function repo(): { root: string; env: Record<string, string> } {
   const fx = makeGitFixture({ dir: mkdtempSync(join(scratch, `r${n}-`)) })
   fx.commit('init', { 'a.txt': 'a' })
   const env = isolatedEnv(join(scratch, `env${n++}`))
-  return { root: realpathSync(fx.dir), env }
+  return { root: realpathSync.native(fx.dir), env }
 }
 
 describe('the trust store', () => {

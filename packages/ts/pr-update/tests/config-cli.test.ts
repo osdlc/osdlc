@@ -199,7 +199,7 @@ describe('trust gate on update', () => {
     expect((await run(dir, env, 'update')).code).toBe(EXIT_UNTRUSTED)
     expect((await run(dir, env, 'trust')).code).toBe(EXIT.ok)
     expect((await run(dir, env, 'update')).code).toBe(EXIT.ok)
-    expect(await prUpdateTrustStore(env).list()).toEqual([realpathSync(dir)])
+    expect(await prUpdateTrustStore(env).list()).toEqual([realpathSync.native(dir)])
   })
 
   test('AC-6: a trusted run executes the project-sourced command; an untrusted one does not', async () => {

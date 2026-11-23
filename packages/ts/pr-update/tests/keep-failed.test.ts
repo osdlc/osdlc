@@ -112,7 +112,7 @@ describe('update --keep-failed', () => {
     expect(log).toContain('exit status: 3')
     expect(log).toContain('FAIL widget')
     expect(tree.statusEntries()).toEqual([])
-    expect(worktrees()).toContain(realpathSync(kept()))
+    expect(worktrees()).toContain(realpathSync.native(kept()))
   })
 
   test('nothing is kept without the option', async () => {
@@ -151,7 +151,9 @@ describe('update --keep-failed', () => {
     expect(out.results.map((r) => r.status)).toEqual(['updated'])
     expect(out.discarded).toEqual([kept()])
     expect(existsSync(kept())).toBe(false)
-    expect(worktrees()).not.toContain(realpathSync(fx.worker.dir) + '/.pr-update/failed/o-r-1')
+    expect(worktrees()).not.toContain(
+      realpathSync.native(fx.worker.dir) + '/.pr-update/failed/o-r-1',
+    )
     expect(fx.worker.git.resolveRef('pr-update/failed-o-r-1')).toBeNull()
   })
 

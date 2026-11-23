@@ -49,7 +49,7 @@ let scratch: string
 let source: string
 
 beforeEach(() => {
-  scratch = realpathSync(mkdtempSync(join(tmpdir(), 'pr-update-mirror-')))
+  scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'pr-update-mirror-')))
   const work = makeGitFixture({ dir: join(scratch, 'work') })
   work.commit('base', { 'a.txt': 'a' })
   work.git.rawChecked(['branch', 'topic'])

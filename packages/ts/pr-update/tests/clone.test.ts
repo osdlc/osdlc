@@ -69,7 +69,7 @@ function git(dir: string, ...argv: string[]): string {
 }
 
 beforeEach(() => {
-  scratch = realpathSync(mkdtempSync(join(tmpdir(), 'pr-update-clone-')))
+  scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'pr-update-clone-')))
   const root = makeGitFixture({ dir: join(scratch, 'dev', 'widgets') })
   root.commit('init', { 'a.txt': 'a' })
   root.git.remoteAdd('origin', 'https://github.com/o/r.git')
@@ -1192,7 +1192,10 @@ describe('mirror prune review round 1', () => {
     const lockedAt: Record<string, boolean> = {}
     const watching: CommandRunner = {
       run: (argv, opts) => {
-        if (opts?.cwd !== undefined && realpathSync(opts.cwd) === realpathSync(clone)) {
+        if (
+          opts?.cwd !== undefined &&
+          realpathSync.native(opts.cwd) === realpathSync.native(clone)
+        ) {
           lockedAt[argv.slice(0, 2).join(' ')] = existsSync(cloneLockPath(clone))
         }
         return real.run(argv, opts)

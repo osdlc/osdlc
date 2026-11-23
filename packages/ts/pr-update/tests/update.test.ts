@@ -1000,7 +1000,7 @@ describe('runUpdate — two repositories that each hold a PR 1', () => {
   })
 
   test("a host's located checkout keeps a worktree of the person's whose folder is missing", async () => {
-    const mine = join(realpathSync(join(b.worker.dir, '..')), 'mine')
+    const mine = join(realpathSync.native(join(b.worker.dir, '..')), 'mine')
     b.worker.git.rawChecked(['worktree', 'add', '-q', '--detach', mine, 'main'])
     rmSync(mine, { recursive: true, force: true })
     const out = await run({})
@@ -1029,12 +1029,12 @@ describe('runUpdate — two repositories that each hold a PR 1', () => {
     })
     expect(asked).toEqual([
       // A checkout other than the project root is named by its real path.
-      { which: 'check', trust: false, repo: 'a/x', checkout: realpathSync(a.worker.dir) },
-      { which: 'check', trust: false, repo: 'b/y', checkout: realpathSync(b.worker.dir) },
+      { which: 'check', trust: false, repo: 'a/x', checkout: realpathSync.native(a.worker.dir) },
+      { which: 'check', trust: false, repo: 'b/y', checkout: realpathSync.native(b.worker.dir) },
     ])
     expect(ran.map((r) => r.verb)).toEqual(['make check', 'cargo test'])
-    expect(ran[0]!.cwd.startsWith(join(realpathSync(a.worker.dir), '.pr-update'))).toBe(true)
-    expect(ran[1]!.cwd.startsWith(join(realpathSync(b.worker.dir), '.pr-update'))).toBe(true)
+    expect(ran[0]!.cwd.startsWith(join(realpathSync.native(a.worker.dir), '.pr-update'))).toBe(true)
+    expect(ran[1]!.cwd.startsWith(join(realpathSync.native(b.worker.dir), '.pr-update'))).toBe(true)
     expect(out.counts.updated).toBe(2)
   })
 

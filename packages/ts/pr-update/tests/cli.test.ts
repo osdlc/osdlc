@@ -203,7 +203,7 @@ describe('pr-update usage errors', () => {
     await runIn(repo.dir, 'trust')
     const shown = await runIn(repo.dir, 'trust', '--show')
     expect(shown.out).toMatch(/^trusted \/.* \(by marker\)\n$/)
-    expect((await runIn(repo.dir, 'trust', '--list')).out).toContain(realpathSync(repo.dir))
+    expect((await runIn(repo.dir, 'trust', '--list')).out).toContain(realpathSync.native(repo.dir))
     const untrust = await runIn(repo.dir, 'trust', '--untrust')
     expect(untrust.code).toBe(EXIT.ok)
     expect(untrust.out).toMatch(/^untrusted \//)

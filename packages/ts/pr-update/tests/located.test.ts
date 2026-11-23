@@ -25,7 +25,7 @@ let asked: { argv: string[]; host: string | undefined }[]
 
 beforeEach(() => {
   asked = []
-  scratch = realpathSync(mkdtempSync(join(tmpdir(), 'pr-update-located-')))
+  scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'pr-update-located-')))
   // The project root, whose `upstream` is the remote `--remote` names below.
   const root = makeGitFixture({ dir: join(scratch, 'dev', 'widgets') })
   root.commit('init', { 'a.txt': 'a' })

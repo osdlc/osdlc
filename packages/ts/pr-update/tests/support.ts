@@ -58,7 +58,7 @@ export function isolatedEnv(
   // Made, and by its real path: the default checkout roots compare real paths, and a home
   // that does not resolve would let them climb to the shared temp directory.
   mkdirSync(root, { recursive: true })
-  const home = join(realpathSync(root), 'home')
+  const home = join(realpathSync.native(root), 'home')
   mkdirSync(home, { recursive: true })
   return {
     PATH: process.env.PATH ?? '',
