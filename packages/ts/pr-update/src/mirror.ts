@@ -945,6 +945,16 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
         return why === null ? result : gone(why)
       }
       try {
+        // Looked at again under the lock: a prune may have removed it just before this run took it.
+        const state = checkClone(dirname(dirname(dirname(clone))), clone, owned)
+        if (state !== 'clone') {
+          const why =
+            state === 'missing'
+              ? `${clone} was removed (by a prune) before this run took its lock`
+              : state.foreign
+          opts.notice(why)
+          return gone(why)
+        }
         writeStamp(clone)
         return read(true)
       } finally {

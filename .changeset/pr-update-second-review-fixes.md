@@ -52,3 +52,8 @@ folder's problem and the `chmod` that fixes it; `update` leaves it too, saying
 why in `keptRefused` or in the PR's skip. A host's `Ports.targetHome` may give
 `keptRoot`, the folder of its own that holds the kept trees, which the check
 starts from.
+
+`survey` no longer fails when a prune removes a managed clone just before the
+survey takes its lock. The clone is checked again under the lock; a clone that
+is gone is reported unmeasured with a note, where before the survey ended with
+`ENOENT` writing its last-used stamp.

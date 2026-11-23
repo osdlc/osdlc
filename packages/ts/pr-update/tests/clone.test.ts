@@ -1229,6 +1229,29 @@ describe('mirror prune review round 1', () => {
     expect(out.prs).toMatchObject([{ number: 7, status: 'unknown', behind: null, baseOid: null }])
   })
 
+  test('a survey whose clone a prune removed just before it took the lock reports the target not measured (second review)', async () => {
+    writeMachine('checkout: mirror\n')
+    expect((await run('update', '--repo', 'acme/api', '--apply')).code).toBe(EXIT.ok)
+    const clone = cloneOf(repos)
+    const seams: CliSeams = {
+      ...noTerminal,
+      // A prune removes the clone and lets go of the lock as this run asks for it.
+      mirrorClaim: (path, wait) => {
+        if (path === cloneLockPath(clone)) rmSync(clone, { recursive: true, force: true })
+        return claimCloneLock(path, wait)
+      },
+    }
+
+    const r = await runWith(seams, {}, 'survey', '--repo', 'acme/api', '--json')
+
+    expect(r.code).toBe(EXIT.ok)
+    expect(r.err).toContain(`${clone} was removed (by a prune) before this run took its lock`)
+    const out = JSON.parse(r.out)
+    expect(out.repos[0]).toMatchObject({ measurable: false, checkout: null, fetched: false })
+    expect(existsSync(clone)).toBe(false)
+    expect(existsSync(cloneLockPath(clone))).toBe(false)
+  })
+
   describe('a clone removed while the run waits for its lock', () => {
     /** A clone of acme/api in `dir` that `locate` finds, and a claim that removes it first. */
     function removedOnClaim(dir: string): { clone: string; seams: CliSeams } {

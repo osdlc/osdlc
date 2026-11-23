@@ -191,8 +191,9 @@ export interface ManagedClones {
    * holds the lock already, `read` runs at once. The lock is never waited for: when another run
    * holds it, a note says so and `read(false)` runs without it, to read the clone as it is with
    * no fetch. When the clone is no longer there after that read (a prune held the lock), what
-   * `read` returned or threw is dropped, a note says so, and `gone(why)` answers instead.
-   * Returns what `read` or `gone` does.
+   * `read` returned or threw is dropped, a note says so, and `gone(why)` answers instead. A
+   * clone that is gone, or no longer passes `checkClone`, once the lock is taken is not read
+   * or stamped: a note says so, and `gone(why)` answers. Returns what `read` or `gone` does.
    */
   use<T>(clone: string, read: (mayFetch: boolean) => T, gone: (why: string) => T): T
   /**
