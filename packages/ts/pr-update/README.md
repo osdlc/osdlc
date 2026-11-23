@@ -261,11 +261,14 @@ such targets instead.
 Clones go to the first of `--mirror-dir`, `PR_UPDATE_MIRROR_DIR`, `mirror_dir`,
 or `~/.cache/osdlc/pr-update/repos/`, one `<host>/<owner>/<name>.git` each,
 lower-cased, with the host's port left out. The directory must be outside
-every git checkout and new, empty or already pr-update's, and yours;
-otherwise the run exits `2`, naming it, and writes nothing. A clone is used
-only when pr-update made it: a folder without its marker, a symbolic link in
-its place, or a clone, marker or clone directory another user owns is left
-alone, and the target is skipped saying why. A clone is made with `gh repo clone
+every git checkout and new, empty or already pr-update's, and yours, and on
+Linux and macOS no one else may write to it (`chmod go-w <dir>` fixes that);
+otherwise the run exits `2`, naming it, and writes nothing. pr-update makes
+its own folders with mode `755` at most. A clone is used only when pr-update
+made it: a folder without its marker, a symbolic link in its place or in
+place of the `<host>` or `<owner>` folder above it, or a clone, marker or
+folder another user owns or others can write to, is left alone, and the
+target is skipped saying why. A clone is made with `gh repo clone
 <owner>/<name> -- --bare` (`GH_HOST` set to the target's host), with no
 `upstream` remote. Its own config gets the credential helper `gh auth
 setup-git` would write, so later fetches and pushes sign in through `gh`; your
@@ -278,15 +281,20 @@ Each clone has a lock, `<name>.git.lock`, beside it. An `update` run, with or
 without `--apply`, holds a clone's lock:
 
 - from before its survey, when it takes the locks of every clone it will use,
-  in sorted path order, so two runs given the same targets in any order
-  never wait on each other in a cycle; this is also when it clones;
+  in sorted path order; this is also when it clones;
 - until it knows the clone has no PR to update, after picking the PRs, or else
   until that clone's run worktree is made. With several targets, a clone
   whose turn comes later stays held while the targets before it are updated;
-- and again while it removes the run worktree.
+- and again while it removes the run worktree, or discards a kept worktree
+  of the clone (`--discard-kept`, or a PR that moved).
 
 `update --apply` waits up to 60 seconds for each lock, then skips the
-target's PRs as `mirror busy`. A rehearsal (`update` without `--apply`) does
+target's PRs as `mirror busy`. Taking a lock back to remove a worktree, it
+waits only when it holds no other clone's lock, and otherwise does not wait.
+So a run that waits only ever waits for a lock later than every lock it holds,
+and no two runs wait on each other in a cycle. A worktree whose clone's lock
+it cannot get back is left in the clone, with a note naming it: `pr-update
+mirror prune` removes it once the run has ended. A rehearsal (`update` without `--apply`) does
 not wait: a clone another run holds is skipped as `mirror busy`, with a note.
 `survey` and a rehearsal never clone: they use a clone that exists, fetch it
 and stamp it as used, and otherwise report the target not measured with a

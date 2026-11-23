@@ -329,7 +329,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   1. check the mirror directory, whichever location it came from: it must
      not be inside a git working tree, and must be missing, empty or already
      marked by this tool, and belong to the person running it, as must its
-     marker, a plain file. Otherwise the run exits 2 and names the directory,
+     marker, a plain file. On POSIX no one else may write to it (`mode &
+     0o022`); the refusal names the `chmod go-w` that fixes it. The tool
+     makes its own folders with mode `0o755` at most, so it never refuses one
+     it made. Otherwise the run exits 2 and names the directory,
      having written nothing. Then write the tool's marker at its root if it
      is not there yet, create-if-absent, so two runs marking a new directory
      at once do not fail each other's check;
@@ -354,7 +357,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   A clone that exists is used only when this tool made it: a real directory,
   not a symbolic link, holding the tool's marker as a plain file, with the
   clone, the marker and the mirror directory owned by the person running it
-  (by uid, on POSIX). Anything else at the clone path is never used or
+  (by uid, on POSIX). The `<host>` and `<host>/<owner>` folders between, as
+  far as they exist, and the mirror directory must be real folders (the
+  mirror directory may be a link to one) that person owns and no one else
+  can write to; that is checked before a clone is made there too. Anything else at the clone path is never used or
   replaced, and the target is skipped saying why.
 - **Trust.** The trust gate runs for each target before a command its own
   files choose (`verify: detect`, `lockfile_install`). A located checkout is
@@ -392,12 +398,18 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   Neither macOS nor common Linux setups clear `~/.cache` on their own, so
   without pruning the cache keeps one clone for every repository a run ever
   targeted.
-- **Pruning clones.** An `update` run takes the locks of every clone it will
-  use before its survey, in sorted path order, so two runs given the same
-  targets in any order never wait on each other in a cycle. It holds each
-  from its clone or fetch through its `git worktree add`, as one step, and
-  again for `worktree remove`; a clone with no PR to update is let go as soon
-  as the run has picked its PRs. With several targets, a clone whose turn
+- **Pruning clones.** A run never changes a clone without that clone's lock.
+  An `update` run takes the locks of every clone it will use before its
+  survey, in sorted path order. It holds each from its clone or fetch
+  through its `git worktree add`, as one step, and again for `worktree
+  remove` and for discarding a kept worktree of the clone; a clone with no PR
+  to update is let go as soon as the run has picked its PRs. Taking a lock
+  back, it waits only when it holds no other clone's lock, and otherwise
+  claims without waiting. So a run waits only for a lock that sorts after
+  every lock it holds, or while it holds none, and no two runs wait on each
+  other in a cycle. A worktree whose lock it cannot get back is not removed:
+  the run leaves it, as a dead run's worktree, with a note naming it and
+  `pr-update mirror prune`. With several targets, a clone whose turn
   comes later stays held while the targets before it are updated. It writes
   the last-used stamp when it first takes the lock. `update --apply` waits up
   to 60 seconds for each lock, then skips the target with reason `mirror

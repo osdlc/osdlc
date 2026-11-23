@@ -37,7 +37,7 @@
  * the run keys its own bookkeeping by repository and number together.
  */
 
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { z } from 'zod'
@@ -78,6 +78,7 @@ import type {
   Ports,
   TargetCheckout,
 } from './ports.ts'
+import { CLONE_MARKER } from './mirror.ts'
 import { terminalConfirmPush } from './update/confirm.ts'
 import {
   checkoutKept,
@@ -90,6 +91,7 @@ import {
   keptOwnerGoneReason,
   listKept,
   type KeptPlace,
+  type KeptRecord,
 } from './update/kept.ts'
 import type { PrUpdateConfig } from './config.ts'
 
@@ -784,7 +786,7 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
           // Only a target's own lease: the host's (`Ports.lease`) ends the run on an error.
           skipOnLeaseError: at?.lease !== undefined && at.lease !== env.ports.lease,
           ...(at?.target?.source === 'clone' && env.clones !== undefined
-            ? { lock: cloneLock(env.clones, path) }
+            ? { lock: cloneLock(env.clones, path, worktreeRoot) }
             : {}),
           onSkip: (s) => skipped.push(s),
           // A rehearsal cannot repair, so `writes` keeps it from recording anything. Recorded as
@@ -859,14 +861,20 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
   }
 }
 
-/** `updateAll`'s hold on the managed clone at `path`, through the run's {@link ManagedClones}. */
+/**
+ * `updateAll`'s hold on the managed clone at `path`, whose run worktree is `worktree`, through
+ * the run's {@link ManagedClones}.
+ */
 function cloneLock(
   clones: ManagedClones,
   path: string,
+  worktree: string,
 ): { added: () => void; removing: (remove: () => void) => void } {
   return {
     added: () => clones.release(path),
-    removing: (remove) => clones.removing(path, remove),
+    removing: (remove) => {
+      clones.removing(path, worktree, remove)
+    },
   }
 }
 
@@ -1094,6 +1102,24 @@ function settleKept(
   skipped: SkippedPr[],
 ): string[] {
   const removed: string[] = []
+  // The run's managed clones, by real path, since a kept record names its owner by real path.
+  const clones = new Map<string, string>()
+  for (const s of served.values()) {
+    if (s.target?.source === 'clone') clones.set(realOr(s.path), s.path)
+  }
+  /**
+   * Discard `record`. One that a managed clone owns is discarded only under the clone's lock
+   * (`ManagedClones.removing`): false when the lock could not be had, and the tree stays.
+   */
+  const discard = (git: Git, checkout: string, place: KeptPlace, record: KeptRecord): boolean => {
+    const owner = record.gitDir ?? realOr(checkout)
+    const clone = clones.get(owner) ?? (existsSync(join(owner, CLONE_MARKER)) ? owner : undefined)
+    if (clone === undefined || env.clones === undefined) {
+      discardKept(git, place, record)
+      return true
+    }
+    return env.clones.removing(clone, record.path, () => discardKept(git, place, record))
+  }
   const places = new Map<string, { checkout: string; place: KeptPlace; at?: Served }>()
   for (const [repo, s] of served) {
     if (!refused.has(repo)) places.set(s.kept.dir, { checkout: s.path, place: s.kept, at: s })
@@ -1106,8 +1132,8 @@ function settleKept(
     for (const { checkout, place, at } of places.values()) {
       const git = gitOf(checkout, at, env)
       for (const record of listKept(place)) {
+        if (writes && !discard(git, checkout, place, record)) continue
         removed.push(record.path)
-        if (writes) discardKept(git, place, record)
       }
     }
   }
@@ -1141,8 +1167,12 @@ function settleKept(
         )
       }
       if (stale) {
+        if (writes && !discard(git, group.path, place, record)) {
+          return skip(
+            `mirror busy: kept worktree ${record.path} could not be removed under its clone's lock`,
+          )
+        }
         removed.push(record.path)
-        if (writes) discardKept(git, place, record)
         return true
       }
       return skip(`failed worktree kept at ${record.path}`)

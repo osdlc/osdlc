@@ -16,8 +16,10 @@ New commands: `pr-update mirror enable [--mirror-dir <dir>]` writes
 
 Clones go to `~/.cache/osdlc/pr-update/repos/<host>/<owner>/<name>.git` by
 default. The directory must be outside every git checkout and new, empty or
-already pr-update's. A clone pr-update did not make, a symbolic link in its
-place, or one another user owns, is never used. Each clone is made with
+already pr-update's, and yours; on Linux and macOS no one else may write to
+it, or to the `<host>` and `<owner>` folders in it (the error names the
+`chmod go-w` that fixes it). A clone pr-update did not make, a symbolic link
+in its place, or one another user owns, is never used. Each clone is made with
 `gh repo clone`, gets the `gh`
 credential helper in its own config only, and keeps the `origin/<branch>`
 layout. A clone that fails part-way is removed and the target is skipped
@@ -25,7 +27,11 @@ with the error. Each clone has a lock beside it. `update` takes the locks of
 the clones it will use before its survey, in sorted path order, lets go of a
 clone with no PR to update at once, and of the others once their worktree is
 added. `update --apply` waits up to 60 seconds for a lock and then skips the
-target as `mirror busy`; a rehearsal does not wait.
+target as `mirror busy`; a rehearsal does not wait. A run never changes a
+clone without its lock: taking a lock back to remove a worktree, or to
+discard a kept one, it waits only when it holds no other lock, and a worktree
+it cannot get the lock for is left, with a note, for `pr-update mirror
+prune`.
 
 A bad value or a YAML error in the machine file is reported with the file's
 path and ignored. When the file cannot take an answer (not YAML, or not a map

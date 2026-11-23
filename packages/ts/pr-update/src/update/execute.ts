@@ -1122,7 +1122,8 @@ export async function updateAll(
      * Set when `git`'s repository is a managed clone whose lock the run holds: `added` is
      * called once the run worktree is recorded in it, so the lock is held from the fetch through
      * `worktree add`, and `removing` runs the removal of the worktree and its scratch branch
-     * under the lock again.
+     * under the lock again, or leaves both when the lock cannot be had
+     * (`ManagedClones.removing`).
      */
     lock?: { added: () => void; removing: (remove: () => void) => void } | undefined
   },
