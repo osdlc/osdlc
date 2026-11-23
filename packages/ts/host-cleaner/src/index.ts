@@ -104,6 +104,17 @@ export {
   type ProjectEntry,
 } from './descriptor/schema.ts'
 export {
+  IN_USE,
+  NO_PRUNE_TOOL,
+  PERSONAL_FOLDERS,
+  descriptorPlugin,
+  globMatches,
+  osOf,
+  pathProblem,
+  skipReason,
+  type DescriptorOptions,
+} from './descriptor/engine.ts'
+export {
   CLOSE_TERMINALS,
   ORCA_BUNDLE_CLI,
   ORCA_PLUGIN,
