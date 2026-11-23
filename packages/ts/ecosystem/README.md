@@ -165,7 +165,8 @@ which this module re-exports from `@osdlc/etag-write`, and writes nothing. It
 reads, checks and writes while holding the lock file `repositories.yaml.lock`
 beside it (`@osdlc/file-lock`), so when two processes write over the same
 read, one writes and the other gets `WriteConflictError`; it waits up to 30
-seconds for another writer. It refuses a root the reader would drop.
+seconds for another writer. A lock is taken over only once the process that
+holds it has exited, never for its age. It refuses a root the reader would drop.
 
 ## Testing a tool that uses it
 

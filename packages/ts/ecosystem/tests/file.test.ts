@@ -4,11 +4,12 @@
  */
 
 import { execFile } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, utimesSync } from 'node:fs'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 import { WriteConflictError as EtagWriteConflictError } from '@osdlc/etag-write'
+import { claimLock, LockTimeoutError } from '@osdlc/file-lock'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { osdlcDirs, OSDLC_VENDOR_DIRS } from '../src/index.ts'
@@ -152,6 +153,27 @@ describe('writeRoots', () => {
     expect(outs).toEqual(['conflict', 'ok'])
     const roots = repositoriesFile(sb.opts).load().value.roots
     expect([['/b'], ['/c']]).toContainEqual(roots)
+  })
+
+  test('a lock held by a live process is not taken over, however old (review round 1)', () => {
+    sb.writeFile('roots: [/a]\n')
+    const file = repositoriesFile(sb.opts)
+    const { etag } = file.read()!
+    const lock = `${sb.file}.lock`
+    // This process holds it, untouched for an hour: far past file-lock's default 10 s.
+    const held = claimLock(lock, { pid: process.pid }, { isStale: () => false })
+    expect(held.ok).toBe(true)
+    const hourAgo = new Date(Date.now() - 3_600_000)
+    utimesSync(lock, hourAgo, hourAgo)
+    // Each look at the clock is a second later, so the 30 s wait ends at once.
+    let now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => (now += 1000))
+    try {
+      expect(() => file.writeRoots(['/b'], { etag })).toThrow(LockTimeoutError)
+    } finally {
+      vi.restoreAllMocks()
+    }
+    expect(readFileSync(sb.file, 'utf8')).toBe('roots: [/a]\n')
   })
 
   test('WriteConflictError is the class @osdlc/etag-write throws', () => {

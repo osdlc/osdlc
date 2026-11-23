@@ -19,7 +19,7 @@ import {
   type TieredDirs,
 } from '@osdlc/config-layers'
 import { WriteConflictError } from '@osdlc/etag-write'
-import { withLock } from '@osdlc/file-lock'
+import { holderGone, withLock } from '@osdlc/file-lock'
 import { expandTilde } from '@osdlc/tiered-dirs'
 import { z } from 'zod'
 
@@ -164,13 +164,18 @@ export function repositoriesFile(opts: RepositoriesFileOptions = {}): Repositori
         }
       }
       // The etag check and the rename are two steps, so two writers can both pass the check.
-      // The lock makes the read, the check and the write one step for every writer.
+      // The lock makes the read, the check and the write one step for every writer. It is taken
+      // over only once its holder has exited, never for its age: a slow writer keeps it.
       mkdirSync(dirname(at), { recursive: true })
-      return withLock(`${at}.lock`, () => {
-        // setPath edits only the `roots` entry, so every other line stays as written.
-        const text = setPath(read()?.text ?? '', ['roots'], [...roots])
-        return file.write(text, { etag: o.etag })
-      })
+      return withLock(
+        `${at}.lock`,
+        () => {
+          // setPath edits only the `roots` entry, so every other line stays as written.
+          const text = setPath(read()?.text ?? '', ['roots'], [...roots])
+          return file.write(text, { etag: o.etag })
+        },
+        { isStale: holderGone((h) => [h.pid]) },
+      )
     },
   }
 }
