@@ -130,9 +130,10 @@ the profile and corpus packages, and three path-filtered workflows. In short:
 
 The owner asked for `@osdlc/markdown-vault` and `@osdlc/markdown-vault-query`
 to be developed and released here, as open source. They moved from
-sksizer/dev as they were, to `packages/ts/markdown-vault` and
-`packages/ts/markdown-vault-query`. For these two, this replaces "Nothing
-moves out of sksizer/dev yet".
+sksizer/dev under their present names, to `packages/ts/markdown-vault` and
+`packages/ts/markdown-vault-query`. Their first releases list the API
+changes made on the way. For these two, this replaces "Nothing moves out
+of sksizer/dev yet".
 
 - The rest of that point holds. `vault-graph-core`, `markdown-editor`,
   `markdown-ui`, model-schema and the packs stay in sksizer/dev.

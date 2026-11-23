@@ -38,8 +38,10 @@ top of the corpus model.
 
 - Version 0.4.1 in osdlc; not on npm. Its first release is 0.5.0.
 - Problem F9: two query layers (this and a loader corpus-schema planned).
-- It moved to osdlc/osdlc from sksizer/dev on 2026-11-22, as it was, on top of markdown-vault
+- It moved to osdlc/osdlc from sksizer/dev on 2026-11-22, under its present name and on top of
+  markdown-vault
   ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md),
-  amended). Task 15 puts it on top of the corpus model. Its target name is not decided; the
+  amended). Its first release lists the API changes made on the way. Task 15 puts it on top of
+  the corpus model. Its target name is not decided; the
   architecture keeps the word db for this layer, and decision D5 (what db means) is open.
 - Task 16 adds a build that writes every valid record to JSON files and a SQLite file.

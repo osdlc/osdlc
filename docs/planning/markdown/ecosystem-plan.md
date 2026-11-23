@@ -121,9 +121,10 @@ in [sksizer/dev#4070](https://github.com/sksizer/dev/pull/4070). Neither is on d
 dev no longer keeps its own copy of markdown-link. vault-graph-core and markdown-astro use the
 published `@osdlc/markdown-link` `^0.8.1`; 0.9.0 is the latest.
 
-markdown-vault and markdown-vault-query moved to osdlc on 2026-11-22, as they were
-([D-SM4K](../../decisions/D-SM4K-markdown-ecosystem-home.md), amended). Here they use the
-workspace's markdown-link, markdown-tags and frontmatter-lossless.
+markdown-vault and markdown-vault-query moved to osdlc on 2026-11-22, under their present names
+([D-SM4K](../../decisions/D-SM4K-markdown-ecosystem-home.md), amended). Their first releases
+list the API changes made on the way. Here they use the workspace's markdown-link, markdown-tags
+and frontmatter-lossless.
 
 What is published:
 

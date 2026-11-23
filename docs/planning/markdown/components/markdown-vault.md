@@ -24,6 +24,7 @@ It has its own link-resolving rule.
 - Version 0.3.2 in osdlc; not on npm. Its first release is 0.4.0.
 - Problems F1 and F4: it resolves links its own way, and says vault instead of corpus.
 - Task 12 merges it with vault-graph-core into the TypeScript markdown-corpus.
-- It moved to osdlc/osdlc from sksizer/dev on 2026-11-22, as it was
+- It moved to osdlc/osdlc from sksizer/dev on 2026-11-22, under its present name
   ([D-SM4K](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-SM4K-markdown-ecosystem-home.md),
-  amended). Whether task 12 still retires it is not decided.
+  amended). Its first release lists the API changes made on the way. Whether task 12 still
+  retires it is not decided.
