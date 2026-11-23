@@ -257,8 +257,12 @@ describe('dead run worktrees under worktrees/', () => {
     const dead = join(dirname(other), DEAD)
     mkdirSync(dead)
     writeFileSync(join(dead, '.git'), readFileSync(join(other, '.git'), 'utf8'))
+    const { runner, calls } = recordingGit()
 
-    prune()
+    prune({ git: runner })
+
+    // Its records do not name it, so its owner is not asked to do anything.
+    expect(calls).toEqual([])
 
     expect(existsSync(dead)).toBe(false)
     expect(existsSync(other)).toBe(true)
