@@ -4,6 +4,11 @@
  * {@link TrustService} over its store and policy (usually `@osdlc/trust-repo`).
  * This module parses the command line, picks the exit code and renders the
  * answer.
+ *
+ * The repository is the working directory (or the tool's `-C`) by default. A
+ * service with `parseRepo` also takes one named as `host/owner/name`, for a
+ * clone whose folder the tool may prune and make again:
+ * `tooly trust github.com/acme/api`.
  */
 
 import { z } from 'zod'
@@ -25,8 +30,10 @@ import { safe } from './safe.ts'
  * @experimental
  */
 export interface TrustEntry {
-  /** The resolved root the store is keyed on. */
+  /** The resolved root the store is keyed on, or the repository's `host/owner/name`. */
   root: string
+  /** `repo` when {@link root} is a repository's `host/owner/name`; absent or `path` for a root. */
+  kind?: 'path' | 'repo'
   trusted: boolean
   /** What decided: `marker`, a policy layer such as `path` or `owner`, or null when nothing trusts it. */
   by: string | null
@@ -37,17 +44,25 @@ export interface TrustEntry {
 }
 
 /**
- * What `--scope` passes on, when the service supports scopes.
+ * What the command line passes on: `--scope`, when the service supports
+ * scopes, and the repository named, when it supports repositories.
  * @experimental
  */
 export interface TrustRequest {
   scope?: string
+  /**
+   * The repository named on the command line, as {@link TrustService.parseRepo}
+   * returned it. When set, the method acts on it and not on the working
+   * directory. Set only for a service with `parseRepo`.
+   */
+  repo?: string
 }
 
 /**
  * What `trust` needs from a tool. Each method receives the command context,
  * so it can resolve the root from `ctx.cwd`, or from the tool's `-C` flag in
- * `ctx.globals`.
+ * `ctx.globals`. When `req.repo` is set, the method acts on that repository
+ * instead.
  * @experimental
  */
 export interface TrustService {
@@ -60,11 +75,14 @@ export interface TrustService {
   /** Every recorded grant. */
   list(ctx: CommandContext, req: TrustRequest): Promise<TrustEntry[]>
   /**
-   * Remove every grant of the current root, each scope's included, and
-   * return the root and the grants removed. Supplying it adds
+   * Remove every grant of the current root, or of `req.repo`, each scope's
+   * included, and return the root and the grants removed. Supplying it adds
    * `--untrust-all`.
    */
-  untrustAll?(ctx: CommandContext): Promise<{ root: string; removed: TrustEntry[] }>
+  untrustAll?(
+    ctx: CommandContext,
+    req: TrustRequest,
+  ): Promise<{ root: string; removed: TrustEntry[] }>
   /** Whether `--scope` is offered. */
   scopes?: boolean
   /**
@@ -75,6 +93,18 @@ export interface TrustService {
    * either end. `*`, the whole-repository grant, is refused either way.
    */
   parseScope?(scope: string): string
+  /**
+   * Read a repository named on the command line, such as
+   * `github.com/acme/api`, as the store reads it, and throw for one it
+   * refuses. Its error becomes a usage error (exit 2). With
+   * `@osdlc/trust-repo`, pass its `parseTrustRepo`.
+   *
+   * Supplying it adds the optional `repository` argument, and every method
+   * must then act on `req.repo` when it is set. Without it the command takes
+   * no argument, so a tool whose service would ignore `req.repo` never
+   * grants the working directory in its place.
+   */
+  parseRepo?(repo: string): string
 }
 
 /** The longest scope name `--scope` takes. */
@@ -114,11 +144,21 @@ function checkScope(scope: string): void {
   }
 }
 
+/** The repository a typed argument names: the service's `parseRepo` answer, or a usage error. */
+function readRepo(parse: (repo: string) => string, raw: string): string {
+  try {
+    return parse(raw)
+  } catch (err) {
+    throw new UsageError(`repository: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
 /** The mode flags, at most one per run. Granting trust is the run with none. */
 const MODES = ['untrust', 'untrustAll', 'show', 'list'] as const
 
 const EntrySchema = z.object({
   root: z.string(),
+  kind: z.enum(['path', 'repo']).optional(),
   trusted: z.boolean(),
   by: z.string().nullable(),
   rule: z.string().optional(),
@@ -148,8 +188,12 @@ export const TrustOutputSchema = z.object({
  * | `trust --show` | report this root's trust | never: "not trusted" is an answer |
  * | `trust --list` | every recorded root | never |
  *
+ * With a service that has `parseRepo`, each mode but `--list` also takes a
+ * repository, `trust github.com/acme/api`, in place of the current root.
+ *
  * Two of the mode flags together are a usage error, and so is a `--scope`
- * that is empty, `*`, or has controls or space at either end. The JSON answer
+ * that is empty, `*`, or has controls or space at either end, a repository
+ * the service refuses, and a repository with `--list`. The JSON answer
  * has one shape for every mode: `{ action, changed, roots }`. `--untrust` on a
  * root with no marker still prints it, then exits 1. `--untrust-all` is there
  * when the service has `untrustAll`.
@@ -171,6 +215,7 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
 ): DataCommand {
   const kit = commandKit({ globals: options.globals ?? ({} as G) })
   const scoped = service.scopes === true
+  const parseRepo = service.parseRepo?.bind(service)
   const flags: FlagSpec = {
     untrust: {
       kind: 'boolean',
@@ -202,10 +247,20 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
     summary: options.summary ?? "remember that this repository's own code may run",
     ...(options.description !== undefined ? { description: options.description } : {}),
     flags,
+    ...(parseRepo !== undefined
+      ? {
+          positionals: [
+            {
+              name: 'repository',
+              help: 'a repository as host/owner/name, such as github.com/acme/api, in place of this one',
+            },
+          ],
+        }
+      : {}),
     output: TrustOutputSchema,
     kind: 'trust',
     exposureOf: ({ flags: f }) => (MODES.some((m) => f[m] === true) ? 'all' : 'cli-only'),
-    async run({ flags: f }, ctx) {
+    async run({ flags: f, positionals }, ctx) {
       const modes = MODES.filter((m) => f[m] === true)
       if (modes.length > 1) {
         throw new UsageError(
@@ -219,7 +274,18 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
           throw new UsageError('--untrust-all removes every scope; leave out --scope')
         }
       }
-      const req: TrustRequest = typeof scope === 'string' ? { scope } : {}
+      const [word] = positionals
+      let repo: string | undefined
+      if (word !== undefined && parseRepo !== undefined) {
+        if (modes[0] === 'list') {
+          throw new UsageError('--list lists every grant; leave out the repository')
+        }
+        repo = readRepo(parseRepo, word)
+      }
+      const req: TrustRequest = {
+        ...(typeof scope === 'string' ? { scope } : {}),
+        ...(repo !== undefined ? { repo } : {}),
+      }
       const strip = ({ changed: _c, ...entry }: TrustEntry & { changed: boolean }): TrustEntry =>
         entry
       switch (modes[0]) {
@@ -228,7 +294,7 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
         case 'show':
           return { action: 'show' as const, changed: false, roots: [await service.show(ctx, req)] }
         case 'untrustAll': {
-          const { root, removed } = await service.untrustAll!(ctx)
+          const { root, removed } = await service.untrustAll!(ctx, req)
           const output = {
             action: 'untrust-all' as const,
             changed: removed.length > 0,

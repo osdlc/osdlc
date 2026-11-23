@@ -107,7 +107,7 @@ const TOPICS: GuideTopic[] = [
   },
 ]
 
-function appWith(store = memoryStore(), trust = trustService(), topics = TOPICS) {
+function appWith(store = memoryStore(), trust: TrustService = trustService(), topics = TOPICS) {
   return defineApp({
     name: 't',
     version: '0.1.0',
@@ -841,5 +841,155 @@ describe('trust --scope help', () => {
     const r = await runApp(app, ['help', 'trust'])
     expect(r.out).toContain('a tool id, as "tooly tools" lists it')
     expect(r.out).not.toContain('such as one tool')
+  })
+})
+
+describe('trust with a repository', () => {
+  /** A service whose grants are keyed on `req.repo` when set, else the working directory. */
+  async function repoService() {
+    const { parseTrustRepo } = await import('@osdlc/trust-repo')
+    const marked = new Set<string>()
+    const requests: { method: string; repo?: string; scope?: string }[] = []
+    const keyOf = (ctx: { cwd: string }, repo?: string): string => repo ?? ctx.cwd
+    const entry = (key: string, repo?: string, scope?: string): TrustEntry => ({
+      root: key,
+      trusted: marked.has(`${key}\0${scope ?? '*'}`),
+      by: marked.has(`${key}\0${scope ?? '*'}`) ? 'marker' : null,
+      ...(repo !== undefined ? { kind: 'repo' as const } : {}),
+      ...(scope !== undefined ? { scope } : {}),
+    })
+    const service: TrustService = {
+      scopes: true,
+      parseRepo: parseTrustRepo,
+      async trust(ctx, req) {
+        requests.push({ method: 'trust', ...req })
+        const id = `${keyOf(ctx, req.repo)}\0${req.scope ?? '*'}`
+        const changed = !marked.has(id)
+        marked.add(id)
+        return { ...entry(keyOf(ctx, req.repo), req.repo, req.scope), changed }
+      },
+      async untrust(ctx, req) {
+        requests.push({ method: 'untrust', ...req })
+        const changed = marked.delete(`${keyOf(ctx, req.repo)}\0${req.scope ?? '*'}`)
+        return { ...entry(keyOf(ctx, req.repo), req.repo, req.scope), changed }
+      },
+      async show(ctx, req) {
+        requests.push({ method: 'show', ...req })
+        return entry(keyOf(ctx, req.repo), req.repo, req.scope)
+      },
+      async list(_ctx, req) {
+        requests.push({ method: 'list', ...req })
+        return []
+      },
+      async untrustAll(ctx, req) {
+        requests.push({ method: 'untrustAll', ...req })
+        const key = keyOf(ctx, req.repo)
+        const removed = [...marked].filter((id) => id.startsWith(`${key}\0`))
+        for (const id of removed) marked.delete(id)
+        return {
+          root: key,
+          removed: removed.map((id) => {
+            const scope = id.split('\0')[1]
+            return entry(key, req.repo, scope === '*' ? undefined : scope)
+          }),
+        }
+      },
+    }
+    return { service, marked, requests }
+  }
+
+  test('each mode acts on the repository named, read by the service', async () => {
+    const { service, marked, requests } = await repoService()
+    const app = appWith(memoryStore(), service)
+    const granted = await runApp(app, ['trust', 'GitHub.com/Acme/API', '--json'], { cwd: '/repo' })
+    expect(granted.json()).toMatchObject({
+      action: 'trust',
+      changed: true,
+      roots: [{ root: 'github.com/acme/api', kind: 'repo', trusted: true }],
+    })
+    expect(marked.has('/repo\0*')).toBe(false)
+    expect(
+      (await runApp(app, ['trust', '--show', 'github.com/acme/api'], { cwd: '/repo' })).out,
+    ).toBe('trusted github.com/acme/api (by marker)\n')
+    await runApp(app, ['trust', 'github.com/acme/api', '--scope', 'just'], { cwd: '/repo' })
+    expect(marked.has('github.com/acme/api\0just')).toBe(true)
+    const untrusted = await runApp(app, ['trust', '--untrust', 'github.com/acme/api'])
+    expect(untrusted).toMatchObject({ exit: 0, out: 'untrusted github.com/acme/api\n' })
+    const all = await runApp(app, ['trust', '--untrust-all', 'github.com/acme/api', '--json'])
+    expect(all.json()).toMatchObject({
+      action: 'untrust-all',
+      changed: true,
+      roots: [{ root: 'github.com/acme/api', kind: 'repo' }],
+    })
+    expect(marked.size).toBe(0)
+    expect(requests.map((r) => `${r.method} ${r.repo ?? '-'} ${r.scope ?? '-'}`)).toEqual([
+      'trust github.com/acme/api -',
+      'show github.com/acme/api -',
+      'trust github.com/acme/api just',
+      'untrust github.com/acme/api -',
+      'untrustAll github.com/acme/api -',
+    ])
+  })
+
+  test('with no repository the working directory is still the default', async () => {
+    const { service, marked, requests } = await repoService()
+    const app = appWith(memoryStore(), service)
+    expect((await runApp(app, ['trust'], { cwd: '/repo' })).out).toBe('trusted /repo\n')
+    expect(marked.has('/repo\0*')).toBe(true)
+    expect(requests).toEqual([{ method: 'trust' }])
+  })
+
+  test('a repository the service refuses is a usage error, and nothing is granted', async () => {
+    const { service, marked } = await repoService()
+    const app = appWith(memoryStore(), service)
+    for (const bad of ['github.com/acme', '/srv/acme/api', 'c:/acme/api', 'github.com/../api']) {
+      const r = await runApp(app, ['trust', bad], { cwd: '/repo' })
+      expect(r.exit, bad).toBe(2)
+      expect(r.err, bad).toContain('repository: trust repository must be host/owner/name')
+    }
+    expect(marked.size).toBe(0)
+  })
+
+  test('--list takes no repository', async () => {
+    const { service } = await repoService()
+    const r = await runApp(appWith(memoryStore(), service), ['trust', '--list', 'github.com/a/b'])
+    expect(r.exit).toBe(2)
+    expect(r.err).toContain('--list lists every grant; leave out the repository')
+  })
+
+  test('a service without parseRepo takes no repository, so the working directory is never granted in its place', async () => {
+    const svc = trustService()
+    const r = await runApp(appWith(memoryStore(), svc), ['trust', 'github.com/acme/api'], {
+      cwd: '/repo',
+    })
+    expect(r.exit).toBe(2)
+    expect(svc.marked.size).toBe(0)
+    const help = await runApp(appWith(memoryStore(), svc), ['help', 'trust'])
+    expect(help.out).not.toContain('repository>')
+    expect(help.out).not.toContain('host/owner/name')
+  })
+
+  test('help names the argument, and an adapter passes it as `repository`', async () => {
+    const { service, requests } = await repoService()
+    const app = appWith(memoryStore(), service)
+    const help = await runApp(app, ['help', 'trust'])
+    expect(help.out).toContain('[repository]')
+    expect(help.out).toContain('host/owner/name, such as github.com/acme/api')
+    const called = await app.call(
+      ['trust'],
+      { show: true, repository: 'github.com/acme/api' },
+      { cwd: '/repo', env: {} },
+      { surface: 'mcp' },
+    )
+    expect(called).toMatchObject({ document: { roots: [{ root: 'github.com/acme/api' }] } })
+    // Granting stays cli-only through an adapter, for a repository too.
+    const grant = await app.call(
+      ['trust'],
+      { repository: 'github.com/acme/api' },
+      { cwd: '/repo', env: {} },
+      { surface: 'mcp' },
+    )
+    expect(grant.status).toBe('refused')
+    expect(requests.map((r) => r.method)).toEqual(['show'])
   })
 })

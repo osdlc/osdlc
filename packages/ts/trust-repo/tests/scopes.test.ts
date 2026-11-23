@@ -207,7 +207,7 @@ describe('a store written before scopes existed', () => {
     expect(await store.markerPath(repo, WHOLE_REPO_SCOPE)).toBe(marker)
     expect(await store.isTrusted(repo)).toBe(true)
     expect(await store.isTrusted(repo, 'mise')).toBe(true)
-    expect(await store.listGrants()).toEqual([{ root: key, scope: '*', marker }])
+    expect(await store.listGrants()).toEqual([{ root: key, kind: 'path', scope: '*', marker }])
     expect((await store.trust(repo)).alreadyTrusted).toBe(true)
     expect(await readFile(marker, 'utf-8')).toBe(`${key}\n`)
   })

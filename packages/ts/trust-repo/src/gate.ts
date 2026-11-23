@@ -27,9 +27,12 @@
  * which can run mise's hooks. Pass every tool the command will run. The root
  * is trusted only when each scope is, and `missing` lists the ones that are
  * not.
+ *
+ * `root` is a root or a repository, `{ repo: 'host/owner/name' }`, as the
+ * store's own methods take it.
  */
 
-import { WHOLE_REPO_SCOPE, type TrustStore } from './store.ts'
+import { WHOLE_REPO_SCOPE, type TrustKey, type TrustStore } from './store.ts'
 
 /**
  * The outcome of the trust check: whether to run, the configured value, whether the root is trusted and the reason.
@@ -48,7 +51,10 @@ export interface ExecGate {
   trusted: boolean
   /** Why {@link allowExec} came out the way it did. */
   reason: 'allowed' | 'allowed-by-flag' | 'untrusted' | 'configured-off'
-  /** The resolved root the trust decision was keyed on. */
+  /**
+   * The key the trust decision was made on: the resolved root, or the
+   * lower-cased repository key.
+   */
   root: string
   /** The scopes the gate was asked about, `['*']` by default. */
   scopes: string[]
@@ -65,7 +71,8 @@ export interface ExecGate {
  * @experimental
  */
 export interface ResolveExecGateArgs {
-  root: string
+  /** The root, or the repository as `{ repo: 'host/owner/name' }`. */
+  root: TrustKey
   /** The configured value, after layering and the tool's own default. */
   configured: boolean
   /** An explicit per-run override, if one was given on the command line. */
@@ -82,7 +89,7 @@ export interface ResolveExecGateArgs {
    * a tool add a policy on top of the marker store: `trustDecision` checks
    * the store and a path/owner policy, and its result is passed in here. A
    * second, marker-only lookup could disagree with it. `root` is still
-   * resolved through `store.resolveRoot`, so both use the same resolved path.
+   * resolved through `store.resolveRoot`, so both use the same resolved key.
    */
   trusted?: boolean | ((scope: string) => boolean | Promise<boolean>)
 }
@@ -99,6 +106,8 @@ export async function resolveExecGate(
   const scopes = [...(args.scopes ?? [WHOLE_REPO_SCOPE])]
   if (scopes.length === 0) throw new TypeError('resolveExecGate: scopes must not be empty')
   const resolved = await store.resolveRoot(root)
+  // A plain string is always a path, so a repository is asked about as itself.
+  const key: TrustKey = typeof root === 'string' ? resolved : { repo: resolved }
   const base = { configured, root: resolved, scopes }
 
   if (flag === false) {
@@ -108,7 +117,7 @@ export async function resolveExecGate(
   const given = args.trusted
   const isTrusted = (scope: string): boolean | Promise<boolean> =>
     given === undefined
-      ? store.isTrusted(resolved, scope)
+      ? store.isTrusted(key, scope)
       : typeof given === 'function'
         ? given(scope)
         : given

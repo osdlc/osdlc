@@ -18,6 +18,7 @@ import {
   pathGlobToRegExp,
   policyDecision,
   policyExecGate,
+  parseTrustRepo,
   parseTrustScope,
   resolveExecGate,
   resolveTrustRoot,
@@ -39,8 +40,11 @@ import {
   type TrustBy,
   type TrustDecision,
   type TrustGrant,
+  type TrustKey,
+  type TrustKeyKind,
   type TrustPlatform,
   type TrustPolicy,
+  type TrustRepoKey,
   type TrustResult,
   type TrustRules,
   type TrustStore,
@@ -173,6 +177,31 @@ test('grant one tool, and gate on every tool a command runs', async () => {
   expect(parseTrustScope(' just ')).toBe('just')
   expect(await store.isTrusted(repo, 'cargo')).toBe(true)
   expect(await store.tighten()).toEqual([])
+})
+
+test('trust a cloned repository by its name, not its folder', async () => {
+  // A clone's folder changes each time it is made again; its name does not.
+  const api: TrustRepoKey = { repo: parseTrustRepo('GitHub.com/Acme/API') }
+  expect(api.repo).toBe('github.com/acme/api')
+  const result: TrustResult = await store.trust(api, 'just')
+  expect(result).toMatchObject({ root: 'github.com/acme/api', kind: 'repo', scope: 'just' })
+  expect(await store.isTrusted(api, 'just')).toBe(true)
+
+  // A folder named like the repository is still a path, with its own grants.
+  const lookalike: TrustKey = join(home, 'github.com', 'acme', 'api')
+  expect(await store.isTrusted(lookalike, 'just')).toBe(false)
+  await store.trust(repo)
+  const kinds: TrustKeyKind[] = (await store.listGrants()).map((g) => g.kind)
+  expect(kinds).toEqual(['path', 'repo'])
+
+  // The gate and the policy take the key too. `owners` reads the key's own owner.
+  const gate = await resolveExecGate(store, { root: api, configured: true, scopes: ['just'] })
+  expect(gate).toMatchObject({ allowExec: true, root: 'github.com/acme/api' })
+  const policy: TrustPolicy = { paths: [], owners: ['acme'] }
+  expect(await policyDecision({ repo: 'github.com/acme/web' }, policy)).toMatchObject({
+    trusted: true,
+    by: 'owner',
+  })
 })
 
 test('per-tool rules in the policy', async () => {

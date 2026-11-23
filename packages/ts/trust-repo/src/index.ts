@@ -3,7 +3,8 @@
  * scripts. A tool asks a person once and remembers the answer.
  *
  * {@link trustStore} builds one store per tool name. The store is a directory
- * of marker files, keyed on the symlink-resolved repository root and a scope:
+ * of marker files, keyed on the symlink-resolved repository root, or on a
+ * repository named `host/owner/name` ({@link parseTrustRepo}), and a scope:
  * `*` for the whole repository, or one tool's id. A tool that passes
  * `vendorDirs` keeps it in `<state home>/<tool>[/<app>]/trusted/` through
  * `@osdlc/tiered-dirs`; one that does not keeps the old place,
@@ -24,12 +25,16 @@
 export {
   TRUST_MARKER_DIR,
   WHOLE_REPO_SCOPE,
+  parseTrustRepo,
   parseTrustScope,
   trustStore,
   trustStoreDir,
 } from './store.ts'
 export type {
   TrustGrant,
+  TrustKey,
+  TrustKeyKind,
+  TrustRepoKey,
   TrustResult,
   TrustStore,
   TrustStoreOptions,
