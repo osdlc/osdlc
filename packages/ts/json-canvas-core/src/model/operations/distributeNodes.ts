@@ -5,19 +5,20 @@
 import type { ICanvasContent, INode } from '../../types.ts'
 import type { DistributeNodesOperation, HandlerResult } from '../types.ts'
 import { handlerFailure, handlerSuccess } from '../types.ts'
-import { getNode } from './helpers.ts'
+import { distinctIds, getNode } from './helpers.ts'
 
 export function handleDistributeNodes(
   canvas: ICanvasContent,
   op: DistributeNodesOperation,
 ): HandlerResult {
-  if (op.nodeIds.length < 3) {
+  const nodeIds = distinctIds(op.nodeIds)
+  if (nodeIds.length < 3) {
     return handlerFailure('INSUFFICIENT_NODES', 'Distribute requires at least 3 nodes')
   }
 
   // Holds draft elements, so the writes below land on the canvas.
   const nodes: INode[] = []
-  for (const nodeId of op.nodeIds) {
+  for (const nodeId of nodeIds) {
     const node = getNode(canvas, nodeId)
     if (!node) {
       return handlerFailure('NODE_NOT_FOUND', `Node with ID "${nodeId}" not found`)

@@ -292,8 +292,8 @@ export class CanvasViewModel {
    */
   findNodeAtPoint(point: Point): INode | null {
     // Tests the array in reverse, so the last node in it wins. A renderer that paints groups
-    // below other nodes (`sortNodesForRendering`) can disagree: see the open task "Hit testing
-    // follows paint order".
+    // below other nodes (`sortNodesForRendering`) can disagree: see T-02 in
+    // docs/planning/tasks/T-02-hit-testing-follows-paint-order.md in the package source.
     // The resize band counts as a hit, so a point just outside a node still finds it.
     const nodes = [...this._canvas.nodes].reverse()
     for (const node of nodes) {

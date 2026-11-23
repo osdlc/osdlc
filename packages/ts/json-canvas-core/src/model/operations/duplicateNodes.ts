@@ -5,7 +5,7 @@
 import type { ICanvasContent, INode } from '../../types.ts'
 import type { DuplicateNodesOperation, HandlerResult } from '../types.ts'
 import { handlerFailure, handlerSuccess } from '../types.ts'
-import { badPosition, generateId, getNode } from './helpers.ts'
+import { badPosition, distinctIds, generateId, getNode } from './helpers.ts'
 
 export function handleDuplicateNodes(
   canvas: ICanvasContent,
@@ -16,9 +16,11 @@ export function handleDuplicateNodes(
     return badOffset
   }
 
+  const nodeIds = distinctIds(op.nodeIds)
+
   // Validate all nodes exist and collect them
   const nodesToDuplicate: INode[] = []
-  for (const nodeId of op.nodeIds) {
+  for (const nodeId of nodeIds) {
     // `getNode` misses exactly when the index lookup would have returned -1.
     const node = getNode(canvas, nodeId)
     if (!node) {

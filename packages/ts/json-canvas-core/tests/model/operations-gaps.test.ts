@@ -217,3 +217,74 @@ describe('duplicateNodes', () => {
     expect(result.canvas.edges).toHaveLength(1)
   })
 })
+
+describe('an id listed more than once counts once', () => {
+  const same = (op: CanvasOperation, once: CanvasOperation) =>
+    expect(executeOperation(canvas(), op)).toEqual(executeOperation(canvas(), once))
+
+  it('moves a node once', () => {
+    same(
+      { type: 'moveNodes', nodeIds: ['a', 'a', 'b'], deltaX: 5, deltaY: 3 },
+      { type: 'moveNodes', nodeIds: ['a', 'b'], deltaX: 5, deltaY: 3 },
+    )
+  })
+
+  it('duplicates a node once', () => {
+    const result = executeOperation(canvas(), {
+      type: 'duplicateNodes',
+      nodeIds: ['a', 'a'],
+      offsetX: 10,
+      offsetY: 10,
+    })
+    expect(result.success && result.canvas.nodes).toHaveLength(4)
+    expect(result.success && result.created?.nodeIds).toHaveLength(1)
+  })
+
+  it('aligns on the distinct nodes', () => {
+    same(
+      { type: 'alignNodes', nodeIds: ['a', 'a', 'a', 'b'], direction: 'center-h' },
+      { type: 'alignNodes', nodeIds: ['a', 'b'], direction: 'center-h' },
+    )
+  })
+
+  it('counts distinct ids for the align minimum', () => {
+    const result = executeOperation(canvas(), {
+      type: 'alignNodes',
+      nodeIds: ['a', 'a'],
+      direction: 'left',
+    })
+    expect(result).toMatchObject({ success: false, error: { code: 'INSUFFICIENT_NODES' } })
+  })
+
+  it('distributes on the distinct nodes', () => {
+    same(
+      { type: 'distributeNodes', nodeIds: ['a', 'b', 'b', 'c'], direction: 'horizontal' },
+      { type: 'distributeNodes', nodeIds: ['a', 'b', 'c'], direction: 'horizontal' },
+    )
+  })
+
+  it('counts distinct ids for the distribute minimum', () => {
+    const result = executeOperation(canvas(), {
+      type: 'distributeNodes',
+      nodeIds: ['a', 'b', 'b'],
+      direction: 'horizontal',
+    })
+    expect(result).toMatchObject({ success: false, error: { code: 'INSUFFICIENT_NODES' } })
+  })
+
+  it('counts distinct ids for the match size minimum', () => {
+    const result = executeOperation(canvas(), {
+      type: 'matchNodeSize',
+      nodeIds: ['a', 'a'],
+      dimension: 'both',
+    })
+    expect(result).toMatchObject({ success: false, error: { code: 'INSUFFICIENT_NODES' } })
+  })
+
+  it('matches size to the first node with a repeat in the list', () => {
+    same(
+      { type: 'matchNodeSize', nodeIds: ['a', 'b', 'a', 'c'], dimension: 'both' },
+      { type: 'matchNodeSize', nodeIds: ['a', 'b', 'c'], dimension: 'both' },
+    )
+  })
+})

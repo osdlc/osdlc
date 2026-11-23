@@ -679,6 +679,16 @@ describe('Checkpoint and revert', () => {
     expect(history.current.nodes).toHaveLength(0)
   })
 
+  it.each([NaN, 1.5, Infinity])('should fail when the checkpoint is %s', (value) => {
+    const history = new SnapshotHistory(createEmptyCanvas())
+    addNode(history, 'n1')
+
+    const result = history.revertTo(value)
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.error.code).toBe('INVALID_OPERATION')
+    expect(history.undoSize).toBe(1)
+  })
+
   it('should fail with invalid checkpoint', () => {
     const history = new SnapshotHistory(createEmptyCanvas())
 
@@ -1104,6 +1114,17 @@ describe('History entries', () => {
       // Try index beyond total entries
       result = history.goToEntry(999)
       expect(result.success).toBe(false)
+    })
+
+    it.each([NaN, 1.5, Infinity])('should fail when the index is %s', (value) => {
+      const history = new SnapshotHistory(createEmptyCanvas())
+      addNode(history, 'n1')
+      addNode(history, 'n2')
+
+      const result = history.goToEntry(value)
+      expect(result.success).toBe(false)
+      if (!result.success) expect(result.error.code).toBe('INVALID_OPERATION')
+      expect(history.undoSize).toBe(2)
     })
   })
 })

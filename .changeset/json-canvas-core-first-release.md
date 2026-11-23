@@ -29,3 +29,8 @@ geometry helpers, and `CanvasViewModel` for selection, pan and zoom.
   compare it by identity.
 - `getResizeDirection` caps the inward resize band at a quarter of the node's size, so a node at low
   zoom keeps a central area that drags.
+- An id listed more than once in an operation's `nodeIds` counts once, so `moveNodes` moves a node
+  once, `duplicateNodes` copies it once, and the minimum counts of `alignNodes`, `distributeNodes`
+  and `matchNodeSize` use distinct ids.
+- `SnapshotHistory.revertTo` and `goToEntry` fail with `INVALID_OPERATION` for a value that is not a
+  whole number, such as `NaN` or `1.5`.

@@ -28,7 +28,11 @@ export { generateId }
 // Main Executor
 // =============================================================================
 
-/** Execute a single operation on the canvas via Immer, returning the new canvas as a Result. */
+/**
+ * Execute a single operation on the canvas via Immer, returning the new canvas as a Result.
+ *
+ * An id listed more than once in an operation's `nodeIds` or `edgeIds` counts once.
+ */
 export function executeOperation(
   canvas: ICanvasContent,
   operation: CanvasOperation,

@@ -41,6 +41,15 @@ export function getNode(canvas: ICanvasContent, nodeId: string): INode | undefin
 }
 
 // =============================================================================
+// Id Lists
+// =============================================================================
+
+/** The ids with repeats dropped, in first-seen order. An id listed twice counts once. */
+export function distinctIds(ids: readonly string[]): string[] {
+  return [...new Set(ids)]
+}
+
+// =============================================================================
 // Geometry Validation
 // =============================================================================
 

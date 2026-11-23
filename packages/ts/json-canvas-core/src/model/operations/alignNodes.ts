@@ -5,16 +5,17 @@
 import type { ICanvasContent, INode } from '../../types.ts'
 import type { AlignNodesOperation, HandlerResult } from '../types.ts'
 import { handlerFailure, handlerSuccess } from '../types.ts'
-import { getNode } from './helpers.ts'
+import { distinctIds, getNode } from './helpers.ts'
 
 export function handleAlignNodes(canvas: ICanvasContent, op: AlignNodesOperation): HandlerResult {
-  if (op.nodeIds.length < 2) {
+  const nodeIds = distinctIds(op.nodeIds)
+  if (nodeIds.length < 2) {
     return handlerFailure('INSUFFICIENT_NODES', 'Align requires at least 2 nodes')
   }
 
   // Validate all nodes exist and collect them
   const nodes: INode[] = []
-  for (const nodeId of op.nodeIds) {
+  for (const nodeId of nodeIds) {
     // `getNode` returns undefined exactly when the index lookup would have
     // returned -1, so the miss check and the narrowing are the same test.
     const node = getNode(canvas, nodeId)
