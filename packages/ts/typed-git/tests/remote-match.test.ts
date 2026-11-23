@@ -58,6 +58,21 @@ describe('readRemote', () => {
     expect(readRemote('git@ghe:acme/widgets.git', resolved)?.host).toBe('ghe.example.com')
   })
 
+  test('a nested group stays whole once the alias resolves to a known host', () => {
+    const gitlab = (alias: string) => (alias === 'gl-work' ? 'gitlab.com' : null)
+    const nested = { host: 'gitlab.com', owner: 'group/sub', repo: 'widgets' }
+    for (const url of [
+      'git@gl-work:group/sub/widgets.git',
+      'ssh://git@gl-work/group/sub/widgets.git',
+      'ssh://git@gl-work:2222/group/sub/widgets',
+      'git+ssh://gl-work/group/sub/widgets.git',
+    ]) {
+      expect(readRemote(url, gitlab), url).toEqual(nested)
+    }
+    const remote = readRemote('git@gl-work:group/sub/widgets.git', gitlab)
+    expect(sameRepo(remote!, parseRemoteRepo('https://gitlab.com/group/sub/widgets')!)).toBe(true)
+  })
+
   test('asks ssh only about an SSH remote that is not on github.com', () => {
     const never = () => {
       throw new Error('resolver called')

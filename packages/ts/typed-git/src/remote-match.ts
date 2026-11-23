@@ -63,9 +63,10 @@ export function isSshRemote(url: string): boolean {
  * A remote URL read as `{host, owner, repo}`, as {@link parseRemoteRepo}
  * reads it, but with an SSH config alias replaced by the host ssh's config
  * gives for it (`git@github-work:o/r.git` or `git@github.com-work:o/r.git`).
- * The resolved host is normalised as `parseRemoteRepo` normalises a written
- * one: lower-cased, `ssh.github.com` as `github.com`, and `www.gitlab.com`
- * as `gitlab.com`.
+ * The result is what the same URL written with the resolved host reads as:
+ * the host lower-cased, `ssh.github.com` as `github.com` and
+ * `www.gitlab.com` as `gitlab.com`, and a GitLab nested group whole in
+ * `owner` (`group/sub`).
  *
  * ssh is asked only for an SSH remote whose host is not `github.com`. The
  * hosts of other URL schemes are taken as written, and an alias ssh cannot
@@ -80,11 +81,29 @@ export function readRemote(
   if (remote === null || remote.host === 'github.com' || !isSshRemote(url)) return remote
   const target = resolveAlias(remote.host)
   if (target === null) return remote
-  // Read the resolved host through parseRemoteRepo, so it gets the same
-  // normalising as a host written in the URL: lower case, `ssh.github.com` as
-  // `github.com`, and `www.` dropped from a host hosted-git-info knows.
-  const parsed = parseRemoteRepo(`ssh://git@${target}/${remote.owner}/${remote.repo}.git`)
-  return { ...remote, host: parsed?.host ?? canonicalHost(target) }
+  // Read the URL again with only the host replaced, so the result is what
+  // the same remote written with the real host reads as: the host normalised
+  // (lower case, `ssh.github.com` as `github.com`, `www.` dropped from a host
+  // hosted-git-info knows), and a nested group whole in `owner` on a host it
+  // knows. The alias host is unknown to it, so `remote` kept only the last
+  // two path segments.
+  const path = sshPath(url)
+  const parsed = path === null ? null : parseRemoteRepo(`ssh://git@${target}/${path}`)
+  return parsed ?? { ...remote, host: canonicalHost(target) }
+}
+
+/**
+ * The repository path of an SSH remote, without a leading `/`: the part
+ * after the host of `ssh://[user@]host[:port]/path` (and its `git+ssh://`
+ * and `ssh+git://` spellings), or after the colon of `[user@]host:path`.
+ */
+function sshPath(url: string): string | null {
+  const text = url.trim()
+  const m =
+    /^(?:ssh|git\+ssh|ssh\+git):\/\/(?:[^@/]+@)?[^/]+\/(.+)$/i.exec(text) ??
+    /^(?:[^@/:]+@)?[^/:]+:(.+)$/.exec(text)
+  const path = m?.[1]?.replace(/^\/+/, '')
+  return path === undefined || path === '' ? null : path
 }
 
 /**
