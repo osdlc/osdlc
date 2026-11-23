@@ -36,8 +36,8 @@ export const EMPTY_GITCONFIG = fileURLToPath(new URL('./empty.gitconfig', import
  * The environment for a run of the CLI, under the isolation rule of the
  * machine-files standard. Every home a run reads is inside `root`:
  *
- * - `HOME`, made under `root`, so `~` and the default checkout roots never
- *   reach the real home;
+ * - `HOME` (`USERPROFILE` on Windows), made under `root`, so `~` and the
+ *   default checkout roots never reach the real home;
  * - `OSDLC_ROOT`, which moves pr-update's machine file and the family's
  *   `repositories.yaml`;
  * - `PR_UPDATE_ROOT`, for devlink's files, which have not moved under it;
@@ -62,6 +62,8 @@ export function isolatedEnv(
   return {
     PATH: process.env.PATH ?? '',
     HOME: home,
+    // Where Windows looks for the home directory instead.
+    USERPROFILE: home,
     OSDLC_ROOT: join(root, 'osdlc'),
     PR_UPDATE_ROOT: join(root, 'pr-update'),
     XDG_STATE_HOME: join(root, 'state'),
