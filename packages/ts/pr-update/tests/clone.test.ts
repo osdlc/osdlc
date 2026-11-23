@@ -30,7 +30,7 @@ import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, type CliSeams } from '../src/cli.ts'
 import { machineFile, prUpdatePaths } from '../src/machine.ts'
-import { CLONE_STAMP, claimCloneLock, cloneLockPath } from '../src/mirror.ts'
+import { CLONE_MARKER, CLONE_STAMP, claimCloneLock, cloneLockPath } from '../src/mirror.ts'
 import { allToolsInstalled, isolatedEnv } from './support.ts'
 
 const FAKE_GH = fileURLToPath(new URL('./fake-gh.mjs', import.meta.url))
@@ -125,12 +125,12 @@ const noTerminal: CliSeams = { terminal: { canPrompt: () => false } }
 const run = (...argv: string[]) => runWith(noTerminal, {}, ...argv)
 
 /** The `gh` calls the run made. */
-function ghCalls(): { argv: string[]; host: string }[] {
+function ghCalls(): { argv: string[]; host: string; hooksPath: string | null }[] {
   if (!existsSync(ghLog)) return []
   return readFileSync(ghLog, 'utf8')
     .trim()
     .split('\n')
-    .map((line) => JSON.parse(line) as { argv: string[]; host: string })
+    .map((line) => JSON.parse(line) as { argv: string[]; host: string; hooksPath: string | null })
 }
 
 const cloneOf = (dir: string) => join(dir, 'github.com', 'acme', 'api.git')
@@ -182,10 +182,12 @@ describe('update --apply with a target that has no checkout', () => {
     // The push reached the repository gh cloned from.
     expect(git(remote, 'rev-parse', 'topic')).not.toBe(topic)
 
-    // gh was asked for owner/name on its host, with no upstream remote, as a bare clone.
+    // gh was asked for owner/name on its host, with no upstream remote, as a bare clone, and
+    // the git it runs has no hooks.
     expect(clonesMade()).toEqual([
       {
         host: 'github.com',
+        hooksPath: '/dev/null',
         argv: [
           'repo',
           'clone',
@@ -342,7 +344,7 @@ describe('the first-run question', () => {
     expect(JSON.parse(r.out).results).toMatchObject([{ number: 7, status: 'updated' }])
     expect(existsSync(cloneOf(repos))).toBe(true)
     // gh was asked for the size on the target's host.
-    expect(ghCalls().find((c) => c.argv[1] === 'view')).toEqual({
+    expect(ghCalls().find((c) => c.argv[1] === 'view')).toMatchObject({
       host: 'github.com',
       argv: ['repo', 'view', 'acme/api', '--json', 'diskUsage'],
     })
@@ -517,6 +519,10 @@ describe('the trust gate for a clone', () => {
     expect(JSON.parse(refused.out).skipped[0].reason).toContain(
       'run `pr-update trust github.com/acme/api`',
     )
+    // The clone is made before the trust gate: cloning has its own consent, and runs nothing
+    // from the repository. The gate then keeps its commands from running.
+    expect(existsSync(join(cloneOf(dir), CLONE_MARKER))).toBe(true)
+    expect(git(remote, 'rev-parse', 'topic')).toBe(topic)
     expect(await run('trust', 'github.com/acme/api')).toMatchObject({ code: EXIT.ok })
     const allowed = await run(
       'update',

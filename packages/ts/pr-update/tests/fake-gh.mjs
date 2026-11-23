@@ -5,8 +5,9 @@
  * - `FAKE_GH_ROOT` holds `<host>/<owner>/<name>.git`, bare repositories that
  *   `repo clone <owner>/<name> <dir> ... -- --bare` clones from, on the host `GH_HOST` names, and
  *   `prs.json`, `{ "<owner>/<name>": [rows] }`, which `pr list --repo <owner>/<name>` prints.
- * - `FAKE_GH_LOG` is a file each call appends `{ "argv": [...], "host": "<GH_HOST>" }` to, one
- *   JSON line each.
+ * - `FAKE_GH_LOG` is a file each call appends `{ "argv": [...], "host": "<GH_HOST>",
+ *   "hooksPath": "<core.hooksPath from GIT_CONFIG_*, or null>" }` to, one JSON line each.
+ * - `repo clone` takes only the real command's flags before `--`, and needs `-- --bare`.
  * - `FAKE_GH_FAIL_CLONE`, when set, makes `repo clone` fail with that message.
  * - `FAKE_GH_SQUAT`, when set, is a path `repo clone` fills with a file after cloning, as a run
  *   that ignored the lock would.
@@ -20,7 +21,17 @@ import { spawnRunner } from '@osdlc/command-seam'
 const argv = process.argv.slice(2)
 const env = process.env
 const host = env.GH_HOST ?? ''
-if (env.FAKE_GH_LOG) appendFileSync(env.FAKE_GH_LOG, `${JSON.stringify({ argv, host })}\n`)
+/** The `core.hooksPath` the environment gives the git that gh runs, or null. */
+const hooksPath = (() => {
+  const count = Number(env.GIT_CONFIG_COUNT ?? 0)
+  for (let i = 0; i < count; i++) {
+    if (env[`GIT_CONFIG_KEY_${i}`] === 'core.hooksPath') return env[`GIT_CONFIG_VALUE_${i}`] ?? null
+  }
+  return null
+})()
+if (env.FAKE_GH_LOG) {
+  appendFileSync(env.FAKE_GH_LOG, `${JSON.stringify({ argv, host, hooksPath })}\n`)
+}
 
 const root = env.FAKE_GH_ROOT ?? ''
 const fail = (message) => {
@@ -30,7 +41,20 @@ const fail = (message) => {
 
 if (argv[0] === 'repo' && argv[1] === 'clone') {
   const [, , repo, dir] = argv
-  if (!argv.includes('--bare')) fail('fake gh clones only with -- --bare')
+  // The flags of the real `gh repo clone` (gh 2.x), so an invented one fails here as it would there.
+  const dashes = argv.indexOf('--')
+  const own = argv.slice(4, dashes === -1 ? undefined : dashes)
+  for (let i = 0; i < own.length; i++) {
+    if (own[i] === '--no-upstream') continue
+    if (own[i] === '-u' || own[i] === '--upstream-remote-name') {
+      i++
+      continue
+    }
+    fail(`unknown flag: ${own[i]}`)
+  }
+  if (dashes === -1 || !argv.slice(dashes + 1).includes('--bare')) {
+    fail('fake gh clones only with -- --bare')
+  }
   if (env.FAKE_GH_FAIL_CLONE) fail(env.FAKE_GH_FAIL_CLONE)
   const [owner, name] = repo.split('/')
   const from = join(root, host, owner, `${name}.git`)

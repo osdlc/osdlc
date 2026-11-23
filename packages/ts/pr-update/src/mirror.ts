@@ -288,7 +288,8 @@ export function makeClone(
     step('gh repo clone', () => {
       const res = deps.gh.run(
         ['repo', 'clone', `${req.owner}/${req.name}`, tmp, '--no-upstream', '--', '--bare'],
-        { cwd: parent, env: { GH_HOST: req.ghHost } },
+        // No hooks for the git gh runs, as for every git call in a target other than the root.
+        { cwd: parent, env: { ...noHooksEnv(), GH_HOST: req.ghHost } },
       )
       if (res.exitCode !== 0) throw new Error(stderrOrError(res) || `exit ${res.exitCode}`)
     })
