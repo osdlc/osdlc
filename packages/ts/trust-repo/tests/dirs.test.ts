@@ -10,7 +10,7 @@
 import { afterAll, describe, expect, test } from 'vitest'
 import { mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 import { envVars, systemBaseDirs, TieredDirs } from '@osdlc/tiered-dirs'
 
@@ -32,6 +32,12 @@ async function root(): Promise<string> {
   roots.push(dir)
   return dir
 }
+
+/**
+ * An absolute path on the host. These tests resolve on the host's own table,
+ * and `/r` is not absolute on Windows, where `resolve` adds the drive.
+ */
+const abs = (p: string): string => resolve(p)
 
 const TOOLY: TrustVendorDirs = { vendor: 'tooly', envVars: envVars('TOOLY') }
 const OSDLC: TrustVendorDirs = { vendor: 'osdlc', envVars: envVars('OSDLC') }
@@ -103,22 +109,24 @@ describe('where the store lives', () => {
   })
 
   test('<PREFIX>_ROOT and <PREFIX>_STATE_DIR move the store, as they move every other file', () => {
-    const home = '/home/dev'
-    expect(
-      trustStoreDir({ tool: 'tooly', vendorDirs: TOOLY, env: { TOOLY_ROOT: '/r' }, home }),
-    ).toBe(join('/r', 'state', 'tooly', TRUST_MARKER_DIR))
-    const env = { TOOLY_ROOT: '/r', TOOLY_STATE_DIR: '/s' }
+    const home = abs('/home/dev')
+    const [r, s] = [abs('/r'), abs('/s')]
+    expect(trustStoreDir({ tool: 'tooly', vendorDirs: TOOLY, env: { TOOLY_ROOT: r }, home })).toBe(
+      join(r, 'state', 'tooly', TRUST_MARKER_DIR),
+    )
+    const env = { TOOLY_ROOT: r, TOOLY_STATE_DIR: s }
     expect(trustStoreDir({ tool: 'tooly', vendorDirs: TOOLY, env, home })).toBe(
-      join('/s', 'tooly', TRUST_MARKER_DIR),
+      join(s, 'tooly', TRUST_MARKER_DIR),
     )
   })
 
   test('a tool under a family root: <state home>/<root>/<app>/trusted', () => {
-    const env = { OSDLC_STATE_DIR: '/s' }
-    const opts = { tool: 'osdlc', app: 'pr-update', vendorDirs: OSDLC, env, home: '/h' }
-    expect(trustStoreDir(opts)).toBe(join('/s', 'osdlc', 'pr-update', TRUST_MARKER_DIR))
+    const s = abs('/s')
+    const env = { OSDLC_STATE_DIR: s }
+    const opts = { tool: 'osdlc', app: 'pr-update', vendorDirs: OSDLC, env, home: abs('/h') }
+    expect(trustStoreDir(opts)).toBe(join(s, 'osdlc', 'pr-update', TRUST_MARKER_DIR))
     const { app: _app, ...family } = opts
-    expect(trustStoreDir(family)).toBe(join('/s', 'osdlc', TRUST_MARKER_DIR))
+    expect(trustStoreDir(family)).toBe(join(s, 'osdlc', TRUST_MARKER_DIR))
   })
 
   test('dir wins over vendorDirs', () => {
