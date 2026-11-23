@@ -2090,8 +2090,22 @@ export function remoteHead(remote: string): GitVerb<string | null> {
 
 /** Options for {@link fetch}. */
 export interface FetchOptions {
-  /** `--prune` — drop remote-tracking refs the remote no longer has. */
+  /**
+   * `true`: `--prune`, drop remote-tracking refs the remote no longer has.
+   * `false`: `--no-prune`, which beats `fetch.prune` and `remote.<name>.prune`
+   * in the repository's config. Absent: neither flag, so that config decides.
+   */
   prune?: boolean | undefined
+  /**
+   * `--refmap=<refspec>` — the refspec that maps the refs named on the command
+   * line to the refs they update, in place of the remote's configured
+   * `remote.<name>.fetch` lines. `''` gives `--refmap=`, an empty map: only the
+   * refspecs given are written. Without it, git also updates every ref a
+   * configured fetch line maps a fetched ref to, forced when the line starts
+   * with `+`, even when refspecs are given; a line such as
+   * `+refs/heads/x:refs/heads/x` then overwrites a local branch.
+   */
+  refmap?: string | undefined
   /** `--quiet` — suppress the progress report on stderr. */
   quiet?: boolean | undefined
   /**
@@ -2126,8 +2140,7 @@ export function fetch(
 ): GitVerb<void> {
   const argv = ['fetch']
   if (opts.quiet) argv.push('--quiet')
-  if (opts.prune) argv.push('--prune')
-  if (opts.noWriteFetchHead) argv.push('--no-write-fetch-head')
+  pushFetchFlags(argv, opts)
   if (opts.depth !== undefined) argv.push(depthArg('fetch', opts.depth))
   if (opts.noTags) argv.push('--no-tags')
   argv.push(positional('fetch', 'remote', remote))
@@ -2137,6 +2150,14 @@ export function fetch(
     }
   }
   return { argv, absent: NONE, parse: nothing }
+}
+
+/** The flags {@link fetch} and {@link fetchMany} share, after `--quiet`. */
+function pushFetchFlags(argv: string[], opts: Omit<FetchOptions, 'depth'>): void {
+  if (opts.prune === true) argv.push('--prune')
+  else if (opts.prune === false) argv.push('--no-prune')
+  if (opts.refmap !== undefined) argv.push(`--refmap=${opts.refmap}`)
+  if (opts.noWriteFetchHead) argv.push('--no-write-fetch-head')
 }
 
 /** Options for {@link fetchMany}. */
@@ -2159,8 +2180,7 @@ export function fetchMany(remotes: readonly string[], opts: FetchManyOptions = {
   if (remotes.length === 0) throw new TypeError('typed-git: fetchMany: no remote given')
   const argv = ['fetch', '--multiple']
   if (opts.quiet) argv.push('--quiet')
-  if (opts.prune) argv.push('--prune')
-  if (opts.noWriteFetchHead) argv.push('--no-write-fetch-head')
+  pushFetchFlags(argv, opts)
   if (opts.noTags) argv.push('--no-tags')
   if (opts.jobs !== undefined) {
     if (!Number.isSafeInteger(opts.jobs) || opts.jobs < 1) {

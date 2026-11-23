@@ -476,6 +476,19 @@ describe('Git — argv construction (fake runner)', () => {
     ])
   })
 
+  test('fetch passes --no-prune for prune: false and --refmap= for refmap', () => {
+    const { runner, calls } = recorder(OK(''))
+    const git = new Git('/repo', { runner })
+    git.fetch('origin', 'main', { prune: false, refmap: '' })
+    git.fetch('origin', 'main', { prune: true, refmap: '+refs/heads/*:refs/remotes/o/*' })
+    git.fetchMany(['origin'], { prune: false, refmap: '' })
+    expect(calls.map((c) => c.argv)).toEqual([
+      ['fetch', '--no-prune', '--refmap=', 'origin', 'main'],
+      ['fetch', '--prune', '--refmap=+refs/heads/*:refs/remotes/o/*', 'origin', 'main'],
+      ['fetch', '--multiple', '--no-prune', '--refmap=', 'origin'],
+    ])
+  })
+
   test('lsTree passes -z, orders -r/--long before the rev, pathspecs after --', () => {
     const { runner, calls } = recorder(OK(''))
     const git = new Git('/repo', { runner })
