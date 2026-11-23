@@ -44,10 +44,13 @@ write a commit and point a ref at it without the index or a checkout
   fsck uses for `hasDotgit` and `gitmodulesSymlink`. They cover any letter
   case; the NTFS forms (trailing dots and spaces, anything from `:` on, the
   short names `git~1`, `gitmod~1` to `~4` and `gi7eba~N`); and the HFS+
-  forms (`.git` with an ignorable code point such as U+200C inside). Git for
-  Windows also ends a `.gitmodules` name at a backslash, so on Windows, and
-  only there, `.gitmodules\x` reads as `.gitmodules`. These are the names
-  behind CVE-2014-9390 and CVE-2019-1352. A test writes each
+  forms (`.git` with an ignorable code point such as U+200C inside). fsck
+  also reads what follows each backslash in a name with the NTFS check for
+  `.gitmodules`, so `x\.gitmodules` and `x\gitmod~1` are `.gitmodules` on
+  every platform. The HFS+ check ends a name at a directory separator, and
+  on Windows a backslash is one: there, and only there, `.gitmodules\x` is
+  `.gitmodules`, and `.git` with U+200C inside, then `\x`, is `.git`. These
+  are the names behind CVE-2014-9390 and CVE-2019-1352. A test writes each
   one with git's own `mktree` and checks that fsck flags it, and that the
   near misses in the same table are ordinary names.
 - A submodule (`160000`) entry's sha is not checked by git, since the

@@ -95,6 +95,8 @@ const DOTGIT_ALIASES = [
   '.g‌it',
   '﻿.GIT',
   '.git⁯',
+  // HFS+ ends the name at a directory separator, and on Windows `\` is one.
+  ...(process.platform === 'win32' ? ['.gi\u200ct\\x'] : []),
 ]
 /** Names close to those that git reads as ordinary names. */
 const DOTGIT_NEAR_MISSES = [
@@ -108,6 +110,7 @@ const DOTGIT_NEAR_MISSES = [
   '.git‌.',
   // Only ASCII letters fold.
   '.gİt',
+  ...(process.platform === 'win32' ? [] : ['.gi\u200ct\\x']),
 ]
 /** Names git's fsck treats as `.gitmodules`. */
 const GITMODULES_ALIASES = [
@@ -122,14 +125,20 @@ const GITMODULES_ALIASES = [
   'gi7eba~1',
   'GI7EBA~9',
   'gi7eb~12',
-  // Git for Windows ends `.gitmodules` at a backslash; git elsewhere does not.
-  ...(process.platform === 'win32' ? ['.gitmodules\\x'] : []),
+  // fsck reads what follows each backslash as a name of its own (NTFS).
+  'x\\.gitmodules',
+  'x\\gitmod~1',
+  // HFS+ ends the name at a directory separator, and on Windows `\` is one.
+  ...(process.platform === 'win32' ? ['.gitmodules\\x', '.gitmod\u200cules\\x'] : []),
 ]
 const GITMODULES_NEAR_MISSES = [
   'gitmodules',
   '.gitmodulesx',
-  // Unlike `.git`, git does not end `.gitmodules` at a backslash, except on Windows.
-  ...(process.platform === 'win32' ? [] : ['.gitmodules\\x']),
+  // NTFS does not end `.gitmodules` at a backslash; HFS+ does only on Windows.
+  ...(process.platform === 'win32' ? [] : ['.gitmodules\\x', '.gitmod\u200cules\\x']),
+  'gitmod~1\\x',
+  'gi7eba~1\\x',
+  '.gitmodules.\\x',
   'gitmod~',
   'gitmod~5',
   'gi7ebc~1',

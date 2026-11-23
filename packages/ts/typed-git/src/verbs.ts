@@ -1857,11 +1857,20 @@ function ntfsTailIsEmpty(rest: string): boolean {
 }
 
 /**
+ * The part of `name` git's HFS+ check reads (`is_hfs_dot_generic`), which
+ * ends a name at a directory separator. On Windows a backslash is one, so
+ * there it is the part before the first backslash; elsewhere all of it.
+ */
+function hfsPart(name: string): string {
+  return process.platform === 'win32' ? name.split('\\')[0]! : name
+}
+
+/**
  * A name git's fsck reports as `hasDotgit` (git's `is_hfs_dotgit` and
  * `is_ntfs_dotgit`, which checks each part between backslashes), and checkout refuses on every platform.
  */
 function readsAsDotGit(name: string): boolean {
-  if (hfsReadsAs(name, 'git')) return true
+  if (hfsReadsAs(hfsPart(name), 'git')) return true
   for (const part of name.split('\\')) {
     const lower = asciiLower(part)
     if (lower.startsWith('.git') && ntfsTailIsEmpty(part.slice(4))) return true
@@ -1872,21 +1881,31 @@ function readsAsDotGit(name: string): boolean {
 }
 
 /**
- * A name git's fsck treats as `.gitmodules` (git's `is_hfs_dotgitmodules`
- * and `is_ntfs_dotgitmodules`): the HFS+ and NTFS spellings, the short names
- * `gitmod~1` to `~4`, and the 8.3 fallback short name, whose prefix
- * `gi7eba` git took from a hash of the long name.
- *
- * Git for Windows also ends the name at a backslash, so there `.gitmodules\x`
- * is `.gitmodules`; git elsewhere reads it as an ordinary name.
+ * A name git's fsck treats as `.gitmodules`: its HFS+ spelling
+ * (`is_hfs_dotgitmodules`, on {@link hfsPart}), or an NTFS spelling
+ * (`is_ntfs_dotgitmodules`) of the whole name or of what follows any
+ * backslash in it, as fsck's `fsck_tree` tests them. So `x\.gitmodules` is
+ * `.gitmodules` on every platform, and `.gitmodules\x` only on Windows.
  */
 function readsAsDotGitmodules(name: string): boolean {
-  if (hfsReadsAs(name, 'gitmodules')) return true
+  if (hfsReadsAs(hfsPart(name), 'gitmodules')) return true
+  if (ntfsReadsAsDotGitmodules(name)) return true
+  for (let i = name.indexOf('\\'); i !== -1; i = name.indexOf('\\', i + 1)) {
+    if (ntfsReadsAsDotGitmodules(name.slice(i + 1))) return true
+  }
+  return false
+}
+
+/**
+ * NTFS reads `name` as `.gitmodules` (git's `is_ntfs_dotgitmodules`): any
+ * letter case with its NTFS tail, the short names `gitmod~1` to `~4`, and
+ * the 8.3 fallback short name, whose prefix `gi7eba` git took from a hash of
+ * the long name. A backslash does not end the name here.
+ */
+function ntfsReadsAsDotGitmodules(name: string): boolean {
   const lower = asciiLower(name)
-  const tailIsEmpty = (rest: string) =>
-    ntfsTailIsEmpty(process.platform === 'win32' ? rest.split('\\')[0]! : rest)
-  if (lower.startsWith('.gitmodules')) return tailIsEmpty(name.slice(11))
-  if (/^gitmod~[1-4]/.test(lower)) return tailIsEmpty(name.slice(8))
+  if (lower.startsWith('.gitmodules')) return ntfsTailIsEmpty(name.slice(11))
+  if (/^gitmod~[1-4]/.test(lower)) return ntfsTailIsEmpty(name.slice(8))
   // The fallback: a leading part of `gi7eba` (at most six characters), `~`,
   // a digit 1-9, then digits up to eight characters. This follows git's loop
   // step for step, so a `~` at index 7 reads one character past eight.
@@ -1907,7 +1926,7 @@ function readsAsDotGitmodules(name: string): boolean {
       return false
     }
   }
-  return tailIsEmpty(name.slice(i))
+  return ntfsTailIsEmpty(name.slice(i))
 }
 
 /**
