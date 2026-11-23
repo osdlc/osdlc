@@ -123,6 +123,11 @@ pushed branch. Otherwise the checkout is left alone, and the result's
 `localCheckout` says why:
 `{ updated: false, detail: "the working tree has uncommitted changes" }`.
 
+`--branch` names a branch of the project root, so a `--repo` target served
+from another checkout is not updated in branch mode. Its PRs are listed under
+`skipped` with the reason `--branch names a branch of the project root; not
+updated in <path>`.
+
 ## Other repositories: `--repo`
 
 `--repo owner/name` (repeatable) puts another repository in the run, and
@@ -158,7 +163,9 @@ The search goes three levels below each root and never steps to or above
 your home directory. A linked worktree counts as its main checkout. A shallow
 checkout is skipped, since it cannot measure drift. With more than one
 checkout of a repository, the first by path is used and a note names the
-others. A checkout found this way is fetched and measured through its
+others. The `unpushed_local` guard still reads all of them, shallow ones
+included, each against its own `origin`, since any of them can hold a
+branch's unpushed commits. A checkout found this way is fetched and measured through its
 `origin`, whatever `--remote` says: `--remote` names a remote of the project
 root. That fetch writes only the remote's branches into `origin/*`, with no
 tags and no `FETCH_HEAD`, and prunes nothing, so refs the checkout's own fetch
@@ -178,8 +185,29 @@ and the file that sets them, and says when the depth limit left directories
 unopened. In JSON, each repository carries `checkout: { path, source }`, with
 `source` `root` or `located`, or `checkout: null` when there is none.
 
-`update` does not yet update a checkout found this way. It surveys it, and
-lists its PRs as skipped.
+`update` updates a checkout found this way without touching its working
+tree. The run worktrees are made from its git directory but live in
+pr-update's cache directory, under the target's host (without its port),
+owner and name:
+
+| What | Where (Linux and macOS, no variable set) |
+|---|---|
+| Run worktrees | `~/.cache/osdlc/pr-update/worktrees/<host>/<owner>/<name>/<run>/` |
+| Kept worktrees (`--keep-failed`) | `~/.local/state/osdlc/pr-update/kept/<host>/<owner>/<name>/<number>/` |
+| Failed attempts (`attempts.store: file`) | `~/.local/state/osdlc/pr-update/attempts/<host>/<owner>/<name>/` |
+
+`OSDLC_ROOT` moves all three, as it moves the machine file. The checkout keeps
+only git records: the worktree entries in its `.git`, the kept tree's branch,
+and the refs a push or fetch writes. With `attempts.store: git-ref`, the
+record and the lease are refs on the checkout's own `origin`, taken per
+target. The project root keeps `.pr-update/` in its own checkout, as before.
+
+Commands the config names run in that worktree, so each target passes the
+trust gate on its own (see Config): a checkout found this way is trusted by
+its path, so run `pr-update trust` inside it. An untrusted target's PRs are
+listed under `skipped` with a reason that starts `untrusted:` and names the
+command to run; the other targets go on. `--trust` covers every target of the
+run.
 
 ## Three things it knows that a per-PR check cannot
 
@@ -463,7 +491,7 @@ value resolves once per repository.
 
 An update that ends `conflict` or `failed` will fail the same way next time, unless the head or the
 base has moved. So `update --apply` records each failure in `.pr-update/attempts/` (one file per
-repo, head and base branch), keyed by repo, head branch, head sha, base branch and base sha. Once a
+repo, head and base branch; a `--repo` target's go in pr-update's state directory, see `--repo`), keyed by repo, head branch, head sha, base branch and base sha. Once a
 PR has failed `max_failed_attempts` times (default `1`) at its current key, later runs list it under
 `skipped` with the reason `failed N time(s) at this head and base; waiting for either to move`, and
 do not check it out. A new commit on either branch changes the key, so the next run attempts it
@@ -539,7 +567,9 @@ A run that ends `conflict` or `failed` normally throws its worktree away, and a 
 PR up has to fetch, rebase, re-run the resolvers and re-run verify to get back where it stopped.
 `update --apply --keep-failed` (or `pr_update.keep_failed: true`; `--no-keep-failed` overrides it)
 moves that PR's worktree to `.pr-update/failed/<owner>-<name>-<number>/`, on a branch named
-`pr-update/failed-<owner>-<name>-<number>`, and the run goes on in a fresh one. The result carries
+`pr-update/failed-<owner>-<name>-<number>`, and the run goes on in a fresh one. A `--repo`
+target's tree goes to `kept/<host>/<owner>/<name>/<number>/` in pr-update's state directory
+instead (see `--repo`), on the same branch name. The result carries
 `keptWorktree: <path>` and the text output says `kept: <path>`.
 
 ```sh
@@ -556,6 +586,15 @@ cd .pr-update/failed/acme-widgets-12  # finish the fix, then push it yourself
 - Only `--apply` runs keep anything. A failure that says nothing about the PR (see
   `unrecorded`) is not kept, and neither is a PR whose worktree git cannot move (one holding
   submodules); the result's `keepError` says why.
+- When the kept directory is on another filesystem than the run worktree, git cannot move it.
+  The kept tree is then made fresh with `git worktree add` at the same commit, with the verify
+  log written into it. Untracked files in the run worktree, such as build output, are not
+  carried over.
+- A kept tree's record names the git directory that owns it. A target can be served from
+  different checkouts on different runs, so a run served from another one leaves the tree alone
+  and lists the PR under `skipped`, reason `kept elsewhere: <path> is a worktree of <git dir>`,
+  while the PR is unchanged or under `--retry-failed`. A PR that has moved has its old tree
+  removed through the git directory that owns it, as does `--discard-kept`.
 - A later run lists a PR with a kept worktree under `skipped`, reason
   `failed worktree kept at <path>`, while its head and base sha are unchanged. A PR that has moved
   is attempted again and its old tree is discarded, as is a PR named by `--retry-failed`.
@@ -644,9 +683,28 @@ start: `lockfile_install`, `resolvers[].run`, `repair.command`, `repair.agent`
 and `test_command`, and a `repair.mode` other than `headless` is gated the same way. When one is set in the project file (and not overridden in
 `pr-update.local.yaml`), `update` exits `21` until you consent. Pass `--trust`
 for one run, or run `pr-update trust` once to record the repository (kept under
-`$XDG_STATE_HOME/pr-update/trusted/`). `trust` is cli-tool's shared command:
+`~/.local/state/osdlc/pr-update/trusted/` on Linux and macOS, moved by `OSDLC_ROOT`
+or `XDG_STATE_HOME`). `trust` is cli-tool's shared command:
 `--show` reports the repository's trust, `--list` every trusted repository and
 `--untrust` removes the record.
+
+**Trust recorded by an earlier release no longer counts.** The store used to be
+`$XDG_STATE_HOME/pr-update/trusted/` and was not copied over. Run `pr-update trust`
+again in each repository you had trusted.
+
+`pr-update trust` keys on the working directory's repository root. Given
+`host/owner/name` (`pr-update trust github.com/acme/api`), it records that
+repository instead, for a run that reaches it through a clone rather than a
+checkout of yours. Name the host without a port and the repository without
+`.git`: a `--repo ghe.example:8443/acme/api` is trusted by
+`pr-update trust ghe.example/acme/api`. `--show`, `--untrust` and `--list` take the same
+form. A checkout found under your roots is trusted by its path, like the
+project root; a grant by name does not cover it.
+
+Every `--repo` target passes this gate before `update` runs a command in it
+(`lockfile_install`, `resolvers`, a `verify` other than `none`, `repair.command`
+or `repair.agent`, from any config layer or flag). An untrusted target is
+skipped, not refused: the run exits `21` only for the project root.
 
 ### The machine file
 
@@ -694,7 +752,8 @@ confirmation:
 
 | Port | What it answers |
 |---|---|
-| `locate(repo, target?)` | Where `owner/name` (lower-cased; `target` adds the host) is checked out on this machine: a path, read through the run's `--remote`, or `{ path, source, remote }`, read through `remote`; `null` for none. Asked once per target per run. `update` does not yet run in a checkout returned as `{ path, source, remote }`: it surveys it and skips its PRs |
+| `locate(repo, target?)` | Where `owner/name` (lower-cased; `target` adds the host) is checked out on this machine: a path, read through the run's `--remote`, or `{ path, source, remote, others? }`, read through `remote`; `null` for none. `others` lists the repository's other checkouts, which the `unpushed_local` guard also reads. Asked once per target per run |
+| `targetHome(target)` (optional) | Where a checkout `locate` returned as `{ path, source, remote }` keeps its run worktrees, kept worktrees, failed-update record and lease. Without it, such a checkout is used as the project root is, with `.pr-update/` inside it |
 | `runVerb(verb, cwd)` | Run one shell verb, for resolvers and verify |
 | `resolveVerifyVerbs({ which, trust, repo, checkout })` | The trust-gated verb list `verify: check` or `verify: test` runs before a push, asked once per repository |
 | `generators` (optional) | In-process rebuild steps, each with `claims(path)` and `run(worktree)` |
@@ -708,7 +767,8 @@ confirmation:
 Its `locate` finds a checkout under the `repositories.yaml` roots as above, scanning them once for
 the ports object, so make one per run. It builds `repair` from `repair.agent` or `repair.command`, stores attempts in
 `<projectRoot>/.pr-update/attempts/` (`fileAttemptStore`), or, with `attempts.store: git-ref`, as
-refs on the `--remote` (`refAttemptStore`) with a per-branch `lease` (`refBranchLease`), answers `verify: test` with
+refs on the `--remote` (`refAttemptStore`) with a per-branch `lease` (`refBranchLease`). Its
+`targetHome` puts every other target in pr-update's directories, as under `--repo` above. It answers `verify: test` with
 `test_command`, and refuses `verify: check`. A standalone run has no host registry to look up
 `check` in, so set `verify: 'none'`, or embed this package as a library and supply real ports.
 `commandRepair(command, timeoutSeconds)` and `agentRepair(agent, options)` are the command and

@@ -338,8 +338,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - **Trust.** The trust gate runs for each target before a command its own
   files choose (`verify: detect`, `lockfile_install`). A located checkout is
   keyed by its path, as the project root is. A clone is keyed by
-  `host/owner/name`, which trust-repo does not support yet (with
-  osdlc/osdlc#1010). `--trust` covers every target of the run. An untrusted
+  `host/owner/name`, with the host's port left out, as trust-repo's
+  repository keys take it (`pr-update trust host/owner/name` records one).
+  `--trust` covers every target of the run. An untrusted
   target is skipped with reason `untrusted`, and the run goes on with the
   others.
 - **Attempts and the lease, per target.** The run's attempt store and lease

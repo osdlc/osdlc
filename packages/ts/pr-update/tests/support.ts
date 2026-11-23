@@ -38,10 +38,11 @@ export const EMPTY_GITCONFIG = fileURLToPath(new URL('./empty.gitconfig', import
  *
  * - `HOME` (`USERPROFILE` on Windows), made under `root`, so `~` and the
  *   default checkout roots never reach the real home;
- * - `OSDLC_ROOT`, which moves pr-update's machine file and the family's
- *   `repositories.yaml`;
+ * - `OSDLC_ROOT`, which moves pr-update's machine file, its trust store, its
+ *   cache and state directories, and the family's `repositories.yaml`;
  * - `PR_UPDATE_ROOT`, for devlink's files, which have not moved under it;
- * - `XDG_STATE_HOME`, for the trust store, which reads neither root yet.
+ * - `XDG_STATE_HOME`, where the trust store was before it moved under
+ *   `OSDLC_ROOT`, so a test of that old place never reads the real one.
  *
  * Every other variable that moves a file the run reads is left out, which
  * clears it: `OSDLC_<HOME>_DIR`, `OSDLC_REPOSITORIES`,

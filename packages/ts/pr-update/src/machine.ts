@@ -12,8 +12,10 @@
  * set them, so these keys are in no project schema (`config.ts`): a cloned
  * repository cannot choose where the tool writes on a person's disk.
  *
- * devlink's files and the trust store are not here yet. They keep their own
- * `pr-update` root until they move.
+ * The trust store (`trust.ts`) and the run worktrees, kept worktrees and
+ * failed-update records of targets other than the project root
+ * (`defaults.ts`) are here too. devlink's files are not yet: they keep their
+ * own `pr-update` root until they move.
  */
 
 import { isAbsolute, join } from 'node:path'
