@@ -43,9 +43,13 @@ export const machineConfigSchema = z.strictObject({
   mirror_dir: z
     .string()
     .trim()
-    .min(1)
+    .refine((dir) => isAbsolute(dir) || dir === '~' || dir.startsWith('~/'), {
+      message: "must be an absolute path, '~' or start with '~/'",
+    })
     .optional()
-    .describe('Where managed clones go. Default `repos/` in the cache home.'),
+    .describe(
+      'Where managed clones go: an absolute path, or one starting `~/`, which is expanded against the home directory. Default `repos/` in the cache home.',
+    ),
   mirror_max_age_days: z
     .number()
     .int()

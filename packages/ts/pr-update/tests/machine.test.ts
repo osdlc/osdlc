@@ -78,6 +78,15 @@ describe('machineFile', () => {
     })
   })
 
+  test('mirror_dir is an absolute path or starts with ~/', () => {
+    write('mirror_dir: ~/clones\n')
+    expect(machineFile({ dirs: rooted }).load().mirror_dir).toBe('~/clones')
+    write('mirror_dir: clones\n')
+    const { value, issues } = machineFile({ dirs: rooted }).loadWithIssues()
+    expect(value.mirror_dir).toBeUndefined()
+    expect(issues.map((i) => [i.code, i.path.join('.')])).toEqual([['invalid', 'mirror_dir']])
+  })
+
   test('reports an unknown key and an invalid value, and keeps the rest', () => {
     write('checkout: sometimes\nmirror_dirs: /x\nmirror_max_age_days: 7\n')
     const { value, issues } = machineFile({ dirs: rooted }).loadWithIssues()
