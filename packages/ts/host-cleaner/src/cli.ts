@@ -686,6 +686,8 @@ interface PluginRow {
   name: string
   /** `built-in`, or for a descriptor the folder it was read from: `shipped`, `user` or `flag` (`--descriptor`). */
   source: 'built-in' | DescriptorSource
+  /** For a descriptor, the file of the same name it stands in for: a shipped one, or for `flag` the one the name had. */
+  replaces?: { source: DescriptorSource; path: string }
   enabled: boolean
   detected: boolean
   /** Why it does not run: disabled in the config, or what its `detect` threw. Null when it is detected, or `detect` answered no. */
@@ -728,8 +730,10 @@ function renderPlugins(rows: readonly PluginRow[], targets: readonly string[]): 
       : r.detected
         ? `detected; roots: ${r.roots.join(', ') || 'none, the targets alone'}`
         : 'not detected'
+    const replaces =
+      r.replaces === undefined ? '' : `; replaces the ${r.replaces.source} ${r.replaces.path}`
     lines.push(
-      `  ${r.name.padEnd(width)}  ${r.source.padEnd(from)}  ${state}${r.reason === null ? '' : `: ${r.reason}`}`,
+      `  ${r.name.padEnd(width)}  ${r.source.padEnd(from)}  ${state}${r.reason === null ? '' : `: ${r.reason}`}${replaces}`,
     )
     const names = Math.max(...r.vars.map((x) => x.name.length))
     for (const x of r.vars) lines.push(varLine(x, names))
@@ -754,7 +758,7 @@ async function runPlugins(
     const { definitions, descriptors } = loadPlugins(sourcesFor(v, ctx, deps), {
       runs: runsAmong(() => enabled),
     })
-    const sources = new Map(descriptors.map((d) => [d.name, d.source]))
+    const loaded = new Map(descriptors.map((d) => [d.name, d]))
     const config = loadConfig(v, ctx, definitions)
     const all = allPlugins(config, definitions, deps, ctx)
     enabled = all.filter((p) => !disabledByConfig(p.name, config.plugins))
@@ -763,9 +767,11 @@ async function runPlugins(
     rows = all.map((p): PluginRow => {
       const off = disabledByConfig(p.name, config.plugins)
       const s = state.get(p.name)
+      const d = loaded.get(p.name)
       return {
         name: p.name,
-        source: sources.get(p.name) ?? 'built-in',
+        source: d?.source ?? 'built-in',
+        ...(d?.replaces === undefined ? {} : { replaces: d.replaces }),
         enabled: !off,
         detected: s?.detected ?? false,
         reason: off

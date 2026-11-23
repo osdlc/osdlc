@@ -357,7 +357,9 @@ whether the file set it or it is the default. `--format json` prints the values.
 `host-cleaner plugins` lists every plugin: where it came from (`built-in`, or
 for a descriptor `shipped`, `user` for the config directory or `flag` for
 `--descriptor`), whether it applies here and, when it does not, why, and its
-roots, the folders it may delete in besides the targets. It runs `detect`,
+roots, the folders it may delete in besides the targets. A descriptor that
+stands in for one of the same name ends its line with the file it replaces
+(`replaces` in JSON). It runs `detect`,
 `scope` and `roots` and nothing else, so it proposes and deletes nothing. A
 plugin whose `detect` throws shows the error as the reason; Orca installed but
 not running shows `not detected: Orca is installed but not running; its

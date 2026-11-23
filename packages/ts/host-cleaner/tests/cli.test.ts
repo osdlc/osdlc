@@ -586,6 +586,26 @@ ${extra}`
     const once = await status('--descriptor', file)
     expect(once).toContain('pnpm:~/.cache/flag-pnpm')
     expect(once).not.toContain('user-pnpm')
+    const listed = async (...extra: string[]) =>
+      (
+        await run(['plugins', '--format', 'json', ...extra], h.cwd, h.env, {
+          shippedDescriptors: h.shipped,
+        })
+      ).out
+    const pnpm = (out: string) =>
+      JSON.parse(out).plugins.find((p: { name: string }) => p.name === 'pnpm')
+    expect(pnpm(await listed())).toMatchObject({
+      source: 'user',
+      replaces: { source: 'shipped', path: join(h.shipped, 'pnpm.yaml') },
+    })
+    expect(pnpm(await listed('--descriptor', file))).toMatchObject({
+      source: 'flag',
+      replaces: { source: 'user', path: join(h.user, 'pnpm.yaml') },
+    })
+    const text = (await run(['plugins'], h.cwd, h.env, { shippedDescriptors: h.shipped })).out
+    expect(text.split('\n').find((l) => l.startsWith('  pnpm '))).toMatch(
+      `; replaces the shipped ${join(h.shipped, 'pnpm.yaml')}`,
+    )
   })
 
   test('descriptors run after the built-ins, by name', async () => {
