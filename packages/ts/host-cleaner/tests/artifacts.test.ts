@@ -118,11 +118,20 @@ const options = (over: ArtifactOptions = {}): ArtifactOptions => ({
   ...over,
 })
 
-const ctxOf = (root: string): Ctx => ({ cwd: root, targets: [root], allow: [] })
+const ctxOf = (root: string): Ctx => ({
+  cwd: root,
+  targets: [root],
+  allow: [],
+  signal: new AbortController().signal,
+})
 
 /** What one plugin proposes over `root`, and what it refuses. */
-function sweep(make: (o: ArtifactOptions) => Plugin, root: string, over: ArtifactOptions = {}) {
-  const s = survey([make(options(over))], ctxOf(root))
+async function sweep(
+  make: (o: ArtifactOptions) => Plugin,
+  root: string,
+  over: ArtifactOptions = {},
+) {
+  const s = await survey([make(options(over))], ctxOf(root))
   return { ...s, refused: s.objections.filter((o) => o.level === 'refuse') }
 }
 
@@ -130,11 +139,11 @@ const cargo = (root: string, over: ArtifactOptions = {}) => sweep(cargoPlugin, r
 const node = (root: string, over: ArtifactOptions = {}) => sweep(nodePlugin, root, over)
 
 describe('cargo plugin', () => {
-  test('a target/ idle for 48 hours is a candidate with its size; one idle for 1 hour is not', () => {
+  test('a target/ idle for 48 hours is a candidate with its size; one idle for 1 hour is not', async () => {
     const root = repo()
     writeFileSync(join(root, 'Cargo.toml'), '[package]\n')
     target(root, 48)
-    const found = cargo(root).candidates
+    const found = (await cargo(root)).candidates
     expect(found).toHaveLength(1)
     expect(found[0]).toMatchObject({
       id: `artifact:${join(root, 'target')}`,
@@ -147,127 +156,135 @@ describe('cargo plugin', () => {
 
     rmSync(join(root, 'target'), { recursive: true })
     target(root, 1)
-    expect(cargo(root).candidates).toEqual([])
+    expect((await cargo(root)).candidates).toEqual([])
   })
 
-  test('a recent --target build keeps the whole target/ from being idle', () => {
+  test('a recent --target build keeps the whole target/ from being idle', async () => {
     const root = repo()
     target(root, 100)
     put(join(root, 'target', 'x86_64-unknown-linux-gnu', 'debug', '.fingerprint', 'a', 'f'), 1)
-    expect(cargo(root).candidates).toEqual([])
+    expect((await cargo(root)).candidates).toEqual([])
   })
 
-  test('a target/ without CACHEDIR.TAG is never a candidate', () => {
+  test('a target/ without CACHEDIR.TAG is never a candidate', async () => {
     const root = repo()
     target(root, 100, false)
-    expect(cargo(root).candidates).toEqual([])
+    expect((await cargo(root)).candidates).toEqual([])
   })
 
-  test('the threshold is idleHours', () => {
+  test('the threshold is idleHours', async () => {
     const root = repo()
     target(root, 10)
-    expect(cargo(root).candidates).toEqual([])
-    expect(cargo(root, { idleHours: 6 }).candidates).toHaveLength(1)
+    expect((await cargo(root)).candidates).toEqual([])
+    expect((await cargo(root, { idleHours: 6 })).candidates).toHaveLength(1)
   })
 
-  test('idleHours 0 makes an artifact built just now a candidate', () => {
+  test('idleHours 0 makes an artifact built just now a candidate', async () => {
     const root = repo()
     target(root, 0)
-    expect(cargo(root).candidates).toEqual([])
-    expect(cargo(root, { idleHours: 0 }).candidates).toHaveLength(1)
+    expect((await cargo(root)).candidates).toEqual([])
+    expect((await cargo(root, { idleHours: 0 })).candidates).toHaveLength(1)
   })
 
-  test('a cargo process in the checkout refuses the candidate, and clean drops it as blocked', () => {
+  test('a cargo process in the checkout refuses the candidate, and clean drops it as blocked', async () => {
     const root = repo()
     const dir = target(root, 48)
     const holders = [{ pid: 7, command: 'cargo' } as ProcessHolder]
     const plugin = cargoPlugin(options({ probe: probeOf(holders) }))
-    const s = survey([plugin], ctxOf(root))
+    const s = await survey([plugin], ctxOf(root))
     expect(s.objections).toEqual([
       expect.objectContaining({ level: 'refuse', code: 'live-process', by: 'cargo' }),
     ])
     expect(s.objections[0]!.reason).toMatch(/cargo \(pid 7\)/)
-    const receipt = clean(plan(s, { select: [s.candidates[0]!.id] }), [plugin], ctxOf(root))
+    const receipt = await clean(plan(s, { select: [s.candidates[0]!.id] }), [plugin], ctxOf(root))
     expect(receipt.steps).toEqual([])
     expect(receipt.dropped).toEqual([expect.objectContaining({ reason: 'blocked' })])
     expect(existsSync(dir)).toBe(true)
   })
 
-  test('any process working in the checkout refuses it, and so does an unreadable process table', () => {
+  test('any process working in the checkout refuses it, and so does an unreadable process table', async () => {
     const root = repo()
     target(root, 48)
     expect(
-      cargo(root, {
-        probe: probeOf([{ pid: 9, command: './target/release/server' } as ProcessHolder]),
-      }).refused,
+      (
+        await cargo(root, {
+          probe: probeOf([{ pid: 9, command: './target/release/server' } as ProcessHolder]),
+        })
+      ).refused,
     ).toEqual([expect.objectContaining({ code: 'live-process' })])
-    const unreadable = cargo(root, { probe: probeOf(new Error('no ps')) })
+    const unreadable = await cargo(root, { probe: probeOf(new Error('no ps')) })
     expect(unreadable.refused).toEqual([
       expect.objectContaining({ code: 'process-table-unreadable' }),
     ])
   })
 
-  test('with incremental off, target/*/incremental is a candidate though target/ is not idle', () => {
+  test('with incremental off, target/*/incremental is a candidate though target/ is not idle', async () => {
     const root = repo()
     target(root, 1)
     put(join(root, 'target', 'debug', 'incremental', 'c-1', 'work'), 1)
-    const off = cargo(root, { command: fakeCargo({ incremental: false }) }).candidates
+    const off = (await cargo(root, { command: fakeCargo({ incremental: false }) })).candidates
     expect(off.map((c) => c.evidence.kind)).toEqual(['cargo-incremental'])
     expect(off[0]!.id).toBe(`artifact:${join(root, 'target', 'debug', 'incremental')}`)
     expect(off[0]!.held).toBe(true)
-    expect(cargo(root, { command: fakeCargo({ incremental: true }) }).candidates).toEqual([])
+    expect((await cargo(root, { command: fakeCargo({ incremental: true }) })).candidates).toEqual(
+      [],
+    )
   })
 
-  test('CARGO_BUILD_INCREMENTAL decides before cargo is asked', () => {
+  test('CARGO_BUILD_INCREMENTAL decides before cargo is asked', async () => {
     const root = repo()
     target(root, 1)
     put(join(root, 'target', 'debug', 'incremental', 'work'), 1)
     process.env.CARGO_BUILD_INCREMENTAL = 'false'
-    expect(cargo(root).candidates).toHaveLength(1)
+    expect((await cargo(root)).candidates).toHaveLength(1)
     process.env.CARGO_BUILD_INCREMENTAL = 'true'
-    expect(cargo(root, { command: fakeCargo({ incremental: false }) }).candidates).toEqual([])
+    expect((await cargo(root, { command: fakeCargo({ incremental: false }) })).candidates).toEqual(
+      [],
+    )
   })
 
-  test('CARGO_INCREMENTAL decides before CARGO_BUILD_INCREMENTAL', () => {
+  test('CARGO_INCREMENTAL decides before CARGO_BUILD_INCREMENTAL', async () => {
     const root = repo()
     target(root, 1)
     put(join(root, 'target', 'debug', 'incremental', 'work'), 1)
     process.env.CARGO_INCREMENTAL = '0'
     process.env.CARGO_BUILD_INCREMENTAL = 'true'
-    expect(cargo(root).candidates).toHaveLength(1)
+    expect((await cargo(root)).candidates).toHaveLength(1)
   })
 
-  test('an idle target/ is one candidate; its incremental directories go with it', () => {
+  test('an idle target/ is one candidate; its incremental directories go with it', async () => {
     const root = repo()
     target(root, 48)
     put(join(root, 'target', 'debug', 'incremental', 'work'), 48)
-    expect(cargo(root, { command: fakeCargo({ incremental: false }) }).candidates).toHaveLength(1)
+    expect(
+      (await cargo(root, { command: fakeCargo({ incremental: false }) })).candidates,
+    ).toHaveLength(1)
   })
 
-  test('a target/ that leads outside its checkout is refused before anything is measured', () => {
+  test('a target/ that leads outside its checkout is refused before anything is measured', async () => {
     const root = repo()
     const outside = tmp('host-cleaner-out-')
     put(join(outside, 'CACHEDIR.TAG'), 100)
     put(join(outside, 'debug', '.fingerprint', 'a', 'f'), 100)
     symlinkSync(outside, join(root, 'target'))
-    const found = cargo(root)
+    const found = await cargo(root)
     expect(found.candidates).toHaveLength(1)
     expect(found.candidates[0]).toMatchObject({ evidence: { sizeBytes: null } })
     expect(found.refused).toEqual([expect.objectContaining({ code: 'outside-checkout' })])
     const plugin = cargoPlugin(options())
-    const s = survey([plugin], ctxOf(root))
-    const receipt = clean(plan(s, { select: [s.candidates[0]!.id] }), [plugin], ctxOf(root))
+    const s = await survey([plugin], ctxOf(root))
+    const receipt = await clean(plan(s, { select: [s.candidates[0]!.id] }), [plugin], ctxOf(root))
     expect(receipt.steps).toEqual([])
     expect(existsSync(join(outside, 'CACHEDIR.TAG'))).toBe(true)
   })
 
-  test('clean removes the directory, checks it is gone and records the bytes freed', () => {
+  test('clean removes the directory, checks it is gone and records the bytes freed', async () => {
     const root = repo()
     const dir = target(root, 48)
     const plugin = cargoPlugin(options())
-    const s = survey([plugin], ctxOf(root))
+    const s = await survey([plugin], ctxOf(root))
     const bytes = s.candidates[0]!.evidence.sizeBytes as number
-    const receipt = clean(plan(s), [plugin], ctxOf(root))
+    const receipt = await clean(plan(s), [plugin], ctxOf(root))
     expect(receipt.status).toBe('complete')
     expect(receipt.steps[0]).toMatchObject({
       result: 'ok',
@@ -276,25 +293,25 @@ describe('cargo plugin', () => {
     expect(existsSync(dir)).toBe(false)
   })
 
-  test('delete refuses a directory that became busy after the survey', () => {
+  test('delete refuses a directory that became busy after the survey', async () => {
     const root = repo()
     const dir = target(root, 48)
     const quiet = cargoPlugin(options())
-    const p = plan(survey([quiet], ctxOf(root)))
+    const p = plan(await survey([quiet], ctxOf(root)))
     const busy = cargoPlugin(
       options({ probe: probeOf([{ pid: 3, command: 'rustc' } as ProcessHolder]) }),
     )
-    const receipt = clean(p, [busy], ctxOf(root))
+    const receipt = await clean(p, [busy], ctxOf(root))
     expect(receipt.dropped).toEqual([expect.objectContaining({ reason: 'blocked' })])
     expect(existsSync(dir)).toBe(true)
   })
 
-  test('a candidate inside a worktree the run removes first is already gone, not a failure', () => {
+  test('a candidate inside a worktree the run removes first is already gone, not a failure', async () => {
     const root = repo()
     const wt = linked(root)
     const dir = target(wt, 48)
     const plugin = cargoPlugin(options())
-    const s = survey([plugin], ctxOf(root))
+    const s = await survey([plugin], ctxOf(root))
     expect(s.candidates).toHaveLength(1)
     rmSync(wt, { recursive: true })
     const gone = cargoPlugin(options())
@@ -302,21 +319,21 @@ describe('cargo plugin', () => {
     expect(direct).toBe(`already gone: ${dir}`)
   })
 
-  test('a worktree removed since the plan is dropped as gone', () => {
+  test('a worktree removed since the plan is dropped as gone', async () => {
     const root = repo()
     const wt = linked(root)
     target(wt, 48)
     const plugin = cargoPlugin(options())
-    const s = survey([plugin], ctxOf(root))
+    const s = await survey([plugin], ctxOf(root))
     const p = plan(s, { select: [s.candidates[0]!.id] })
     sh(root, ['worktree', 'remove', '--force', wt])
-    const receipt = clean(p, [plugin], ctxOf(root), { dryRun: true })
+    const receipt = await clean(p, [plugin], ctxOf(root), { dryRun: true })
     expect(receipt.dropped).toEqual([expect.objectContaining({ reason: 'gone' })])
   })
 })
 
 describe('node plugin', () => {
-  test('the primary checkout is never a candidate; an idle linked worktree is', () => {
+  test('the primary checkout is never a candidate; an idle linked worktree is', async () => {
     const root = repo()
     writeFileSync(join(root, 'package.json'), '{}')
     put(join(root, 'node_modules', 'a', 'index.js'), 500)
@@ -324,7 +341,7 @@ describe('node plugin', () => {
     put(join(wt, 'package.json'), 72, '{}')
     put(join(wt, 'src', 'a.ts'), 72)
     put(join(wt, 'node_modules', 'a', 'index.js'), 1, 'z'.repeat(2000))
-    const found = node(root).candidates
+    const found = (await node(root)).candidates
     expect(found).toHaveLength(1)
     expect(found[0]).toMatchObject({
       id: `artifact:${join(wt, 'node_modules')}`,
@@ -334,34 +351,36 @@ describe('node plugin', () => {
     expect(found[0]!.bytes).toBeGreaterThanOrEqual(2000)
   })
 
-  test('a recently changed worktree has no candidate', () => {
+  test('a recently changed worktree has no candidate', async () => {
     const root = repo()
     const wt = linked(root)
     put(join(wt, 'package.json'), 72, '{}')
     put(join(wt, 'src', 'a.ts'), 2)
     put(join(wt, 'node_modules', 'a', 'index.js'), 72)
-    expect(node(root).candidates).toEqual([])
+    expect((await node(root)).candidates).toEqual([])
   })
 
-  test('a process in the worktree refuses it; an idle shell does not', () => {
+  test('a process in the worktree refuses it; an idle shell does not', async () => {
     const root = repo()
     const wt = linked(root)
     put(join(wt, 'package.json'), 72, '{}')
     put(join(wt, 'node_modules', 'a', 'index.js'), 72)
     const shell = { pid: 4, command: 'zsh', hasChildren: false } as ProcessHolder
-    expect(node(root, { probe: probeOf([shell]) }).refused).toEqual([])
-    const busy = node(root, { probe: probeOf([{ pid: 5, command: 'node' } as ProcessHolder]) })
+    expect((await node(root, { probe: probeOf([shell]) })).refused).toEqual([])
+    const busy = await node(root, {
+      probe: probeOf([{ pid: 5, command: 'node' } as ProcessHolder]),
+    })
     expect(busy.refused[0]).toMatchObject({ code: 'live-process' })
     expect(busy.refused[0]!.reason).toMatch(/node \(pid 5\)/)
   })
 
-  test('clean removes node_modules and records the bytes freed', () => {
+  test('clean removes node_modules and records the bytes freed', async () => {
     const root = repo()
     const wt = linked(root)
     put(join(wt, 'package.json'), 72, '{}')
     put(join(wt, 'node_modules', 'a', 'index.js'), 72)
     const plugin = nodePlugin(options())
-    const receipt = clean(plan(survey([plugin], ctxOf(root))), [plugin], ctxOf(root))
+    const receipt = await clean(plan(await survey([plugin], ctxOf(root))), [plugin], ctxOf(root))
     expect(receipt.status).toBe('complete')
     expect(receipt.steps[0]!.delete).toMatch(/^removed .*node_modules; freed 100 bytes$/)
     expect(existsSync(join(wt, 'node_modules'))).toBe(false)
@@ -370,9 +389,9 @@ describe('node plugin', () => {
 })
 
 describe('detection', () => {
-  test('with neither cargo nor a node or Rust checkout, both plugins drop out of the survey', () => {
+  test('with neither cargo nor a node or Rust checkout, both plugins drop out of the survey', async () => {
     const root = repo()
-    const s = survey(
+    const s = await survey(
       [cargoPlugin(options({ command: fakeCargo({ present: false }) })), nodePlugin(options())],
       ctxOf(root),
     )
@@ -380,10 +399,10 @@ describe('detection', () => {
     expect(s.candidates).toEqual([])
   })
 
-  test('a Cargo.toml detects cargo without cargo on PATH', () => {
+  test('a Cargo.toml detects cargo without cargo on PATH', async () => {
     const root = repo()
     writeFileSync(join(root, 'Cargo.toml'), '[package]\n')
-    const s = survey(
+    const s = await survey(
       [cargoPlugin(options({ command: fakeCargo({ present: false }) }))],
       ctxOf(root),
     )

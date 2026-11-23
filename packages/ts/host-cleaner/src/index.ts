@@ -9,13 +9,17 @@ export { VERSION } from './version.generated.ts'
 export {
   DROP_REASONS,
   FatalRun,
+  HOOKS,
   LEVELS,
   type Candidate,
   type Ctx,
   type DropReason,
+  type Hook,
   type Level,
+  type MaybePromise,
   type Objection,
   type Plugin,
+  type RunCtx,
 } from './types.ts'
 export {
   PLAN_VERSION,
@@ -33,6 +37,9 @@ export {
 } from './plan.ts'
 export {
   DEFAULT_SELECTION,
+  DELETE_LIMIT_MS,
+  HOOK_LIMIT_MS,
+  HookTimeout,
   OUTSIDE_ROOTS,
   PLUGIN_ORDER,
   SelectionError,

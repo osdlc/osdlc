@@ -46,7 +46,7 @@ const cache = {
   delete: (c) => (log.push(c.id), 'removed'),
 }
 const ctx = { cwd: process.cwd(), targets: [], allow: [] }
-const receipt = clean(plan(survey([cache], ctx)), [cache], ctx)
+const receipt = await clean(plan(await survey([cache], ctx)), [cache], ctx)
 assert.equal(receipt.status, 'complete')
 assert.deepEqual(log, ['artifact:c'])
 assert.ok(new FatalRun('x') instanceof Error)

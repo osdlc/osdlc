@@ -5,7 +5,7 @@
  */
 import { expect, test } from 'vitest'
 
-import { clean, plan, survey, type Ctx, type Plugin } from '@osdlc/host-cleaner'
+import { clean, plan, survey, type Plugin, type RunCtx } from '@osdlc/host-cleaner'
 
 const cache: Plugin = {
   name: 'cache',
@@ -23,9 +23,9 @@ const cache: Plugin = {
   delete: (c) => `removed ${c.path}`,
 }
 
-test("a plugin's candidate goes through survey, plan and clean", () => {
-  const ctx: Ctx = { cwd: process.cwd(), targets: [], allow: [] }
-  const receipt = clean(plan(survey([cache], ctx)), [cache], ctx)
+test("a plugin's candidate goes through survey, plan and clean", async () => {
+  const ctx: RunCtx = { cwd: process.cwd(), targets: [], allow: [] }
+  const receipt = await clean(plan(await survey([cache], ctx)), [cache], ctx)
   expect(receipt.status).toBe('complete')
   expect(receipt.steps).toMatchObject([
     { id: 'artifact:build-cache', owner: 'cache', result: 'ok', delete: 'removed build-cache' },

@@ -17,6 +17,7 @@ import {
   plan,
   survey,
   type Ctx,
+  type Survey,
 } from '../src/index.ts'
 import { parseRecords } from '../src/orca.ts'
 
@@ -106,7 +107,7 @@ function fixture() {
   sh(worktree, ['commit', '--allow-empty', '-m', 'feat'])
   sh(root, ['merge', '-q', '--no-ff', '-m', 'Merge wt-branch', 'wt-branch'])
   sh(root, ['push', '-q', 'origin', 'main'])
-  const ctx: Ctx = { cwd: root, targets: [root], allow: [] }
+  const ctx: Ctx = { cwd: root, targets: [root], allow: [], signal: new AbortController().signal }
   const git = gitPlugin({ probe: idle, sweep: { remotes: [''], offline: true, provider: 'none' } })
   return { root, worktree: realpathSync(worktree), ctx, git }
 }
@@ -118,22 +119,22 @@ const withOrca = (rows: (wt: string) => Row[], over?: Parameters<typeof fakeOrca
   return { fx, orca, plugin, plugins: [fx.git, plugin] }
 }
 
-const objections = (s: ReturnType<typeof survey>, by = 'orca') =>
+const objections = (s: Survey, by = 'orca') =>
   s.objections.filter((o) => o.by === by).map((o) => [o.level, o.code])
 
 describe('detection and scope', () => {
-  const ctx: Ctx = { cwd: tmpdir(), targets: [], allow: [] }
+  const ctx: Ctx = { cwd: tmpdir(), targets: [], allow: [], signal: new AbortController().signal }
 
-  test('an orca CLI that cannot answer `status` makes detect throw, which a survey reports as a warning', () => {
+  test('an orca CLI that cannot answer `status` makes detect throw, which a survey reports as a warning', async () => {
     const none = fakeRunner(() => undefined)
-    const s = survey([orcaPlugin({ orca: none.runner })], ctx)
+    const s = await survey([orcaPlugin({ orca: none.runner })], ctx)
     expect(s.plugins).toEqual([])
     expect(s.warnings).toEqual([expect.stringContaining('orca status failed')])
   })
 
-  test('installed but not running: detect throws a note, and a survey carries it as a warning without failing', () => {
+  test('installed but not running: detect throws a note, and a survey carries it as a warning without failing', async () => {
     const o = fakeOrca([], { running: false })
-    const s = survey([orcaPlugin({ orca: o.orca })], ctx)
+    const s = await survey([orcaPlugin({ orca: o.orca })], ctx)
     expect(s.plugins).toEqual([])
     expect(s.warnings).toEqual([expect.stringContaining('Orca is installed but not running')])
   })
@@ -166,67 +167,79 @@ describe('detection and scope', () => {
 })
 
 describe('objections to the git plugin worktrees', () => {
-  test('a worktree Orca lists with nothing open gets a note only', () => {
+  test('a worktree Orca lists with nothing open gets a note only', async () => {
     const { fx, plugins } = withOrca((wt) => [{ path: wt }])
-    const s = survey(plugins, fx.ctx)
+    const s = await survey(plugins, fx.ctx)
     expect(objections(s)).toEqual([['note', 'orca-managed']])
   })
 
-  test('a worktree Orca does not list gets no objection, and git removes it as before', () => {
+  test('a worktree Orca does not list gets no objection, and git removes it as before', async () => {
     const { fx, orca, plugins } = withOrca(() => [{ path: '/elsewhere/other' }])
-    const s = survey(plugins, fx.ctx)
+    const s = await survey(plugins, fx.ctx)
     expect(objections(s)).toEqual([])
-    const receipt = clean(plan(s, { select: [`worktree:${fx.worktree}`] }), plugins, fx.ctx)
+    const receipt = await clean(plan(s, { select: [`worktree:${fx.worktree}`] }), plugins, fx.ctx)
     expect(receipt.steps[0]).toMatchObject({ result: 'ok' })
     expect(orca.closed).toEqual([])
     expect(orca.removed).toEqual([])
   })
 
-  test('open terminals protest close-terminals; an agent at work or an uninspectable terminal refuses', () => {
+  test('open terminals protest close-terminals; an agent at work or an uninspectable terminal refuses', async () => {
     const t = withOrca((wt) => [{ path: wt, terminals: 2 }])
-    expect(objections(survey(t.plugins, t.fx.ctx))).toContainEqual(['protest', CLOSE_TERMINALS])
+    expect(objections(await survey(t.plugins, t.fx.ctx))).toContainEqual([
+      'protest',
+      CLOSE_TERMINALS,
+    ])
 
     const a = withOrca((wt) => [{ path: wt, terminals: 1, agents: ['working'], status: 'working' }])
-    expect(objections(survey(a.plugins, a.fx.ctx))).toContainEqual(['refuse', 'orca-agent-active'])
+    expect(objections(await survey(a.plugins, a.fx.ctx))).toContainEqual([
+      'refuse',
+      'orca-agent-active',
+    ])
 
     const q = withOrca((wt) => [{ path: wt, agents: ['done'] }])
-    expect(objections(survey(q.plugins, q.fx.ctx))).toEqual([['note', 'orca-managed']])
+    expect(objections(await survey(q.plugins, q.fx.ctx))).toEqual([['note', 'orca-managed']])
 
     const u = withOrca((wt) => [{ path: wt, unverifiable: 1 }])
-    expect(objections(survey(u.plugins, u.fx.ctx))).toContainEqual([
+    expect(objections(await survey(u.plugins, u.fx.ctx))).toContainEqual([
       'refuse',
       'orca-terminal-unverifiable',
     ])
   })
 
-  test('an agent state Orca reports that is not known to be quiet counts as at work', () => {
+  test('an agent state Orca reports that is not known to be quiet counts as at work', async () => {
     const { fx, plugins } = withOrca((wt) => [{ path: wt, agents: ['waiting'] }])
-    expect(objections(survey(plugins, fx.ctx))).toContainEqual(['refuse', 'orca-agent-active'])
+    expect(objections(await survey(plugins, fx.ctx))).toContainEqual([
+      'refuse',
+      'orca-agent-active',
+    ])
   })
 
-  test("a truncated listing refuses, since a worktree past the cap would read as not Orca's", () => {
+  test("a truncated listing refuses, since a worktree past the cap would read as not Orca's", async () => {
     const { fx, plugins } = withOrca((wt) => [{ path: wt }], { truncated: true })
-    expect(objections(survey(plugins, fx.ctx))).toEqual([['refuse', 'orca-unreachable']])
+    expect(objections(await survey(plugins, fx.ctx))).toEqual([['refuse', 'orca-unreachable']])
   })
 
-  test('a worktree status that is not known to be quiet counts as at work', () => {
+  test('a worktree status that is not known to be quiet counts as at work', async () => {
     const { fx, plugins } = withOrca((wt) => [{ path: wt, status: 'permission' }])
-    expect(objections(survey(plugins, fx.ctx))).toContainEqual(['refuse', 'orca-agent-active'])
+    expect(objections(await survey(plugins, fx.ctx))).toContainEqual([
+      'refuse',
+      'orca-agent-active',
+    ])
   })
 
-  test('when Orca cannot be read after detection, git worktrees are refused', () => {
+  test('when Orca cannot be read after detection, git worktrees are refused', async () => {
     const { fx, plugins } = withOrca((wt) => [{ path: wt }], { failPs: true })
-    const s = survey(plugins, fx.ctx)
+    const s = await survey(plugins, fx.ctx)
     expect(objections(s)).toEqual([['refuse', 'orca-unreachable']])
   })
 })
 
 describe('cleaning', () => {
-  test('closes the terminals, lets git remove the worktree, then has Orca forget the record', () => {
+  test('closes the terminals, lets git remove the worktree, then has Orca forget the record', async () => {
     const { fx, orca, plugins } = withOrca((wt) => [{ path: wt, terminals: 2 }])
     const id = `worktree:${fx.worktree}`
-    const p = plan(survey(plugins, fx.ctx), { select: [id], allow: [CLOSE_TERMINALS] })
-    const receipt = clean(p, plugins, { ...fx.ctx, allow: [CLOSE_TERMINALS] })
+    const p = plan(await survey(plugins, fx.ctx), { select: [id], allow: [CLOSE_TERMINALS] })
+    const receipt = await clean(p, plugins, { ...fx.ctx, allow: [CLOSE_TERMINALS] })
     expect(receipt.steps[0]).toMatchObject({
       id,
       result: 'ok',
@@ -242,41 +255,51 @@ describe('cleaning', () => {
     expect(orca.removed).toEqual([`id:repo1::${fx.worktree}`])
   })
 
-  test('open terminals are not closed unless close-terminals is granted', () => {
+  test('open terminals are not closed unless close-terminals is granted', async () => {
     const { fx, orca, plugins } = withOrca((wt) => [{ path: wt, terminals: 1 }])
     const id = `worktree:${fx.worktree}`
-    const receipt = clean(plan(survey(plugins, fx.ctx), { select: [id] }), plugins, fx.ctx)
+    const receipt = await clean(
+      plan(await survey(plugins, fx.ctx), { select: [id] }),
+      plugins,
+      fx.ctx,
+    )
     expect(receipt.dropped[0]).toMatchObject({ reason: 'not-allowed' })
     expect(existsSync(fx.worktree)).toBe(true)
     expect(orca.closed).toEqual([])
   })
 
-  test('an agent that starts after the plan stops the worktree before git touches it', () => {
+  test('an agent that starts after the plan stops the worktree before git touches it', async () => {
     const { fx, plugins } = withOrca((wt) => [{ path: wt }])
     const id = `worktree:${fx.worktree}`
-    const p = plan(survey(plugins, fx.ctx), { select: [id] })
+    const p = plan(await survey(plugins, fx.ctx), { select: [id] })
     const busy = fakeOrca([{ path: fx.worktree, agents: ['working'] }])
-    const receipt = clean(p, [fx.git, orcaPlugin({ orca: busy.orca })], fx.ctx)
+    const receipt = await clean(p, [fx.git, orcaPlugin({ orca: busy.orca })], fx.ctx)
     expect(receipt.steps).toEqual([])
     expect(receipt.dropped[0]).toMatchObject({ id, reason: 'blocked' })
     expect(existsSync(fx.worktree)).toBe(true)
     expect(busy.removed).toEqual([])
   })
 
-  test('a failed forget is recorded in the receipt and does not undo the removal', () => {
+  test('a failed forget is recorded in the receipt and does not undo the removal', async () => {
     const { fx, plugins } = withOrca((wt) => [{ path: wt }], { failRm: true })
     const id = `worktree:${fx.worktree}`
-    const receipt = clean(plan(survey(plugins, fx.ctx), { select: [id] }), plugins, fx.ctx)
+    const receipt = await clean(
+      plan(await survey(plugins, fx.ctx), { select: [id] }),
+      plugins,
+      fx.ctx,
+    )
     expect(receipt.steps[0]).toMatchObject({ result: 'ok' })
     expect(receipt.steps[0]!.notified[0]!.error).toMatch(/archive hook failed/)
     expect(existsSync(fx.worktree)).toBe(false)
   })
 
-  test('never asks Orca to remove a record whose directory still exists', () => {
+  test('never asks Orca to remove a record whose directory still exists', async () => {
     const fx = fixture()
     const orca = fakeOrca([{ path: fx.worktree }])
     const plugin = orcaPlugin({ orca: orca.orca })
-    const c = survey([fx.git], fx.ctx).candidates.find((x) => x.id === `worktree:${fx.worktree}`)!
+    const c = (await survey([fx.git], fx.ctx)).candidates.find(
+      (x) => x.id === `worktree:${fx.worktree}`,
+    )!
     plugin.prepare!(c, fx.ctx)
     expect(() => plugin.deleted!(c, fx.ctx)).toThrow(/still exists/)
     expect(orca.removed).toEqual([])
@@ -284,16 +307,16 @@ describe('cleaning', () => {
 })
 
 describe('records whose directory is gone', () => {
-  test('are their own candidates, held for a pick, and deleted through orca worktree rm', () => {
+  test('are their own candidates, held for a pick, and deleted through orca worktree rm', async () => {
     const gone = join(tmpdir(), 'orca-gone-worktree')
     const o = fakeOrca([{ path: gone }, { path: tmpdir(), main: true }])
     const plugin = orcaPlugin({ orca: o.orca })
-    const ctx: Ctx = { cwd: tmpdir(), targets: [], allow: [] }
-    const s = survey([plugin], ctx)
+    const ctx: Ctx = { cwd: tmpdir(), targets: [], allow: [], signal: new AbortController().signal }
+    const s = await survey([plugin], ctx)
     expect(s.candidates.map((c) => [c.id, c.kind, c.held])).toEqual([
       [`orca-record:${gone}`, 'orca-record', true],
     ])
-    const receipt = clean(plan(s, { pick: [`orca-record:${gone}`] }), [plugin], ctx)
+    const receipt = await clean(plan(s, { pick: [`orca-record:${gone}`] }), [plugin], ctx)
     expect(receipt.steps[0]).toMatchObject({ result: 'ok' })
     expect(o.removed).toEqual([`id:repo1::${gone}`])
   })

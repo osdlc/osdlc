@@ -16,7 +16,16 @@ import {
   type Receipt,
   type Step,
 } from './plan.ts'
-import { FatalRun, type Candidate, type Ctx, type Objection, type Plugin } from './types.ts'
+import {
+  FatalRun,
+  type Candidate,
+  type Ctx,
+  type Hook,
+  type MaybePromise,
+  type Objection,
+  type Plugin,
+  type RunCtx,
+} from './types.ts'
 
 /** The fixed plugin order: which plugin keeps a duplicate candidate (the first), and the order `prepare` and `deleted` run in. */
 export const PLUGIN_ORDER: readonly string[] = ['git', 'cargo', 'node', 'orca']
@@ -38,11 +47,58 @@ export const OUTSIDE_ROOTS = 'outside-roots'
 
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
+/** The time limit, in milliseconds, of every hook but `delete`, unless the plugin asks for another. */
+export const HOOK_LIMIT_MS = 30_000
+
+/** The time limit, in milliseconds, of `delete`, unless the plugin asks for another. */
+export const DELETE_LIMIT_MS = 10 * 60_000
+
+/** A hook that ran past its time limit. The core reports it as it would a throw. */
+export class HookTimeout extends Error {
+  override name = 'HookTimeout'
+}
+
+/** The longest delay `setTimeout` keeps; a longer one fires at once. */
+const MAX_DELAY_MS = 2 ** 31 - 1
+
+/**
+ * Calls one hook of `p` with a signal of its own and awaits its answer. Past
+ * the hook's limit the signal is aborted and {@link HookTimeout} thrown; a
+ * hook that answers straight away is never timed out.
+ */
+async function callHook<T>(
+  p: Plugin,
+  hook: Hook,
+  ctx: RunCtx,
+  f: (ctx: Ctx) => MaybePromise<T>,
+): Promise<T> {
+  const ms = p.limits?.[hook] ?? (hook === 'delete' ? DELETE_LIMIT_MS : HOOK_LIMIT_MS)
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => {
+        const err = new HookTimeout(`timed out after ${ms} ms`)
+        controller.abort(err)
+        reject(err)
+      },
+      Math.min(ms, MAX_DELAY_MS),
+    )
+  })
+  try {
+    // An async wrapper, so a synchronous throw arrives as a rejection.
+    const answer = (async () => f({ ...ctx, signal: controller.signal }))()
+    return await Promise.race([answer, late])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export interface Survey {
   /** The detected plugins, in order. */
   plugins: Plugin[]
   /** The run's context after `scope`. */
-  ctx: Ctx
+  ctx: RunCtx
   candidates: Candidate[]
   objections: Objection[]
   warnings: string[]
@@ -57,52 +113,57 @@ function ignoredBy(c: Candidate, ignore: readonly string[]): string | undefined 
 }
 
 /**
- * Scope, discover and object. A plugin that throws in `scope` or `discover`
- * proposes nothing, with a warning; one that throws in `object` refuses every
- * candidate, since what it would object to is unknown. A {@link FatalRun}
- * from any phase goes to the caller. A duplicate candidate id keeps the first
- * plugin's, with a warning naming both.
+ * Scope, discover and object, one plugin at a time, each hook awaited under
+ * its time limit. A plugin that throws or times out in `detect` is left out,
+ * and in `scope` or `discover` proposes nothing, with a warning; one that
+ * throws or times out in `object` refuses every candidate, since what it
+ * would object to is unknown. A {@link FatalRun} from any phase goes to the
+ * caller. A duplicate candidate id keeps the first plugin's, with a warning
+ * naming both.
  */
-export function survey(all: readonly Plugin[], ctx: Ctx): Survey {
+export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Survey> {
   const warnings: string[] = []
-  const names = new Set<string>()
-  const plugins = orderPlugins(all).filter((p) => {
-    if (names.has(p.name)) {
-      warnings.push(`${p.name}: a second plugin of that name was left out`)
-      return false
-    }
-    names.add(p.name)
+  const guarded = async <T>(
+    p: Plugin,
+    hook: Hook,
+    fallback: T,
+    at: RunCtx,
+    f: (ctx: Ctx) => MaybePromise<T>,
+  ): Promise<T> => {
     try {
-      return p.detect(ctx)
+      return await callHook(p, hook, at, f)
     } catch (err) {
       if (err instanceof FatalRun) throw err
-      warnings.push(`${p.name}: detect failed: ${errorText(err)}`)
-      return false
-    }
-  })
-  const guarded = <T>(p: Plugin, phase: string, fallback: T, f: () => T): T => {
-    try {
-      return f()
-    } catch (err) {
-      if (err instanceof FatalRun) throw err
-      warnings.push(`${p.name}: ${phase} failed: ${errorText(err)}`)
+      warnings.push(`${p.name}: ${hook} failed: ${errorText(err)}`)
       return fallback
     }
+  }
+  const names = new Set<string>()
+  const plugins: Plugin[] = []
+  for (const p of orderPlugins(all)) {
+    if (names.has(p.name)) {
+      warnings.push(`${p.name}: a second plugin of that name was left out`)
+      continue
+    }
+    names.add(p.name)
+    if (await guarded(p, 'detect', false, ctx, (x) => p.detect(x))) plugins.push(p)
   }
 
   const ignore = ctx.ignore ?? []
   const targets = ctx.targets.filter((t) => coveredBy(t, ignore) === undefined)
   for (const p of plugins) {
-    for (const root of guarded(p, 'scope', [], () => p.scope?.(ctx) ?? [])) {
+    if (p.scope === undefined) continue
+    for (const root of await guarded(p, 'scope', [], ctx, (x) => p.scope!(x))) {
       if (!targets.includes(root) && coveredBy(root, ignore) === undefined) targets.push(root)
     }
   }
-  const scoped: Ctx = { ...ctx, targets }
+  const scoped: RunCtx = { ...ctx, targets }
 
   const discovered: Candidate[] = []
   const first = new Map<string, string>()
   for (const p of plugins) {
-    for (const c of guarded(p, 'discover', [], () => p.discover?.(scoped) ?? [])) {
+    if (p.discover === undefined) continue
+    for (const c of await guarded(p, 'discover', [], scoped, (x) => p.discover!(x))) {
       if (c.owner !== p.name) {
         warnings.push(`${p.name}: dropped ${c.id}, which names ${c.owner} as its owner`)
       } else if (first.has(c.id)) {
@@ -127,10 +188,7 @@ export function survey(all: readonly Plugin[], ctx: Ctx): Survey {
   const rootsOf = new Map<string, readonly string[]>()
   for (const p of plugins) {
     if (p.roots === undefined) continue
-    rootsOf.set(
-      p.name,
-      guarded(p, 'roots', [], () => p.roots!(scoped)),
-    )
+    rootsOf.set(p.name, await guarded(p, 'roots', [], scoped, (x) => p.roots!(x)))
   }
   for (const c of candidates) {
     const roots = rootsOf.get(c.owner)
@@ -148,7 +206,7 @@ export function survey(all: readonly Plugin[], ctx: Ctx): Survey {
   for (const p of plugins) {
     if (p.object === undefined) continue
     try {
-      for (const o of p.object(candidates, scoped)) {
+      for (const o of await callHook(p, 'object', scoped, (x) => p.object!(candidates, x))) {
         if (known.has(o.candidate)) objections.push({ ...o, by: p.name })
       }
     } catch (err) {
@@ -381,14 +439,14 @@ export function decidePlan(p: Plan): Decision {
  * protest nobody granted `not-allowed`, a vanished candidate `gone`, and one whose evidence
  * moved (repo-cleaner's `sameFingerprint`) `changed`.
  */
-export function recheck(
+export async function recheck(
   p: Plan,
   plugins: readonly Plugin[],
-  ctx: Ctx,
-): { decision: Decision; survey: Survey } {
+  ctx: RunCtx,
+): Promise<{ decision: Decision; survey: Survey }> {
   const decided = decidePlan(p)
   const ignore = [...new Set([...(ctx.ignore ?? []), ...p.ignore])]
-  const fresh = survey(plugins, { ...ctx, ignore, allow: p.allow })
+  const fresh = await survey(plugins, { ...ctx, ignore, allow: p.allow })
   const planned: Decision = { ...decided, run: [], dropped: [...decided.dropped] }
   for (const c of decided.run) {
     const dir = ignoredBy(c, ignore)
@@ -424,22 +482,22 @@ export interface CleanOptions {
 }
 
 /**
- * Re-check `p`, then for each candidate: `prepare` on every plugin, `delete`
- * on its owner, `deleted` on the others. A throw in `prepare` or `delete`
- * fails that candidate and skips those requiring it; a {@link FatalRun} stops
- * the run and skips the rest. `deleted` failures are recorded and change
- * nothing.
+ * Re-check `p`, then for each candidate, one at a time: `prepare` on every
+ * plugin, `delete` on its owner, `deleted` on the others. A throw or time-out
+ * in `prepare` or `delete` fails that candidate and skips those requiring it;
+ * a {@link FatalRun} stops the run and skips the rest. `deleted` failures are
+ * recorded and change nothing.
  */
-export function clean(
+export async function clean(
   p: Plan,
   plugins: readonly Plugin[],
-  ctx: Ctx,
+  ctx: RunCtx,
   opts: CleanOptions = {},
-): Receipt {
+): Promise<Receipt> {
   const now = opts.now ?? (() => new Date())
-  let checked: ReturnType<typeof recheck>
+  let checked: Awaited<ReturnType<typeof recheck>>
   try {
-    checked = recheck(p, plugins, ctx)
+    checked = await recheck(p, plugins, ctx)
   } catch (err) {
     // A throw from the re-check still leaves a receipt saying nothing ran.
     if (opts.receiptPath !== undefined && opts.dryRun !== true) {
@@ -504,7 +562,7 @@ export function clean(
       } else if (opts.dryRun === true) {
         step.result = 'would-run'
       } else {
-        fatal = runOne(c, step, s, byName.get(c.owner))
+        fatal = await runOne(c, step, s, byName.get(c.owner))
       }
       if (step.result === 'failed' || step.result === 'skipped') stopped.add(c.id)
       save()
@@ -532,7 +590,12 @@ export function clean(
 }
 
 /** Prepare, delete and notify one candidate, recording on `step`. Returns the message of a {@link FatalRun}, else null. */
-function runOne(c: Candidate, step: Step, s: Survey, owner: Plugin | undefined): string | null {
+async function runOne(
+  c: Candidate,
+  step: Step,
+  s: Survey,
+  owner: Plugin | undefined,
+): Promise<string | null> {
   const fail = (err: unknown, prefix = ''): string | null => {
     step.result = 'failed'
     step.error = prefix + errorText(err)
@@ -541,7 +604,7 @@ function runOne(c: Candidate, step: Step, s: Survey, owner: Plugin | undefined):
   for (const q of s.plugins) {
     if (q.prepare === undefined) continue
     try {
-      q.prepare(c, s.ctx)
+      await callHook(q, 'prepare', s.ctx, (x) => q.prepare!(c, x))
       step.preparedBy.push(q.name)
     } catch (err) {
       return fail(err, `${q.name}: prepare failed: `)
@@ -551,7 +614,10 @@ function runOne(c: Candidate, step: Step, s: Survey, owner: Plugin | undefined):
     return fail(`${c.owner} cannot delete`)
   }
   try {
-    const roots = owner.roots?.(s.ctx)
+    const roots =
+      owner.roots === undefined
+        ? undefined
+        : await callHook(owner, 'roots', s.ctx, (x) => owner.roots!(x))
     if (roots !== undefined && containedIn(roots, c.path) === null) {
       return fail(`${c.path} is not inside ${c.owner}'s roots`)
     }
@@ -559,14 +625,14 @@ function runOne(c: Candidate, step: Step, s: Survey, owner: Plugin | undefined):
     return fail(err, `${c.owner}: roots failed: `)
   }
   try {
-    step.delete = owner.delete(c, s.ctx)
+    step.delete = await callHook(owner, 'delete', s.ctx, (x) => owner.delete!(c, x))
   } catch (err) {
     return fail(err)
   }
   for (const q of s.plugins) {
     if (q === owner || q.deleted === undefined) continue
     try {
-      q.deleted(c, s.ctx)
+      await callHook(q, 'deleted', s.ctx, (x) => q.deleted!(c, x))
       step.notified.push({ plugin: q.name, error: null })
     } catch (err) {
       step.notified.push({ plugin: q.name, error: errorText(err) })

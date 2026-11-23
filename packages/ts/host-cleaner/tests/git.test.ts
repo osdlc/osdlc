@@ -33,7 +33,7 @@ function fixture() {
   sh(worktree, ['commit', '--allow-empty', '-m', 'feat'])
   sh(root, ['merge', '-q', '--no-ff', '-m', 'Merge wt-branch', 'wt-branch'])
   sh(root, ['push', '-q', 'origin', 'main'])
-  const ctx: Ctx = { cwd: root, targets: [root], allow: [] }
+  const ctx: Ctx = { cwd: root, targets: [root], allow: [], signal: new AbortController().signal }
   const plugin = gitPlugin({
     probe: idle,
     sweep: { remotes: [''], offline: true, provider: 'none' },
@@ -44,9 +44,9 @@ function fixture() {
 const branches = (root: string): string => sh(root, ['branch', '--format=%(refname:short)'])
 
 describe('the git plugin', () => {
-  test('proposes worktrees and branches, objects with their risks, and a freed branch requires its worktree', () => {
+  test('proposes worktrees and branches, objects with their risks, and a freed branch requires its worktree', async () => {
     const fx = fixture()
-    const s = survey([fx.plugin], fx.ctx)
+    const s = await survey([fx.plugin], fx.ctx)
     const byId = new Map(s.candidates.map((c) => [c.id, c]))
     const branchId = `branch:${realpathSync(fx.root)}:wt-branch`
     expect(byId.get(branchId)?.requires).toEqual([`worktree:${fx.worktree}`])
@@ -63,13 +63,13 @@ describe('the git plugin', () => {
     )
   })
 
-  test('cleans a worktree, then the branch it freed, through one receipt', () => {
+  test('cleans a worktree, then the branch it freed, through one receipt', async () => {
     const fx = fixture()
     const dir = mkdtempSync(join(tmpdir(), 'hc-receipt-'))
     const receiptPath = join(dir, 'receipt.json')
-    const s = survey([fx.plugin], fx.ctx)
+    const s = await survey([fx.plugin], fx.ctx)
     const pick = [`worktree:${fx.worktree}`, `branch:${realpathSync(fx.root)}:wt-branch`]
-    const receipt = clean(plan(s, { select: pick }), [fx.plugin], fx.ctx, { receiptPath })
+    const receipt = await clean(plan(s, { select: pick }), [fx.plugin], fx.ctx, { receiptPath })
     expect(receipt.steps.map((x) => [x.id, x.result])).toEqual(pick.map((id) => [id, 'ok']))
     expect(receipt.steps[0]!.delete).toBe('directory gone and unregistered')
     expect(existsSync(fx.worktree)).toBe(false)
@@ -80,20 +80,22 @@ describe('the git plugin', () => {
     )
   })
 
-  test('an unmerged branch needs abandon-unmerged granted by name', () => {
+  test('an unmerged branch needs abandon-unmerged granted by name', async () => {
     const fx = fixture()
-    const unmerged = survey([fx.plugin], fx.ctx).candidates.find((c) =>
+    const unmerged = (await survey([fx.plugin], fx.ctx)).candidates.find((c) =>
       c.path.endsWith(':unmerged'),
     )!
-    const p = plan(survey([fx.plugin], fx.ctx), { select: [unmerged.id] })
-    expect(clean(p, [fx.plugin], fx.ctx).dropped[0]).toMatchObject({ reason: 'not-allowed' })
+    const p = plan(await survey([fx.plugin], fx.ctx), { select: [unmerged.id] })
+    expect((await clean(p, [fx.plugin], fx.ctx)).dropped[0]).toMatchObject({
+      reason: 'not-allowed',
+    })
     const granted = { ...fx.ctx, allow: ['abandon-unmerged'] }
-    const receipt = clean({ ...p, allow: ['abandon-unmerged'] }, [fx.plugin], granted)
+    const receipt = await clean({ ...p, allow: ['abandon-unmerged'] }, [fx.plugin], granted)
     expect(receipt.steps[0]!.result).toBe('ok')
     expect(branches(fx.root)).not.toContain('unmerged')
   })
 
-  test('a failed archive push throws FatalRun, which stops the run', () => {
+  test('a failed archive push throws FatalRun, which stops the run', async () => {
     const fx = fixture()
     sh(fx.root, ['remote', 'set-url', 'origin', '/nonexistent/remote.git'])
     sh(fx.root, ['config', 'remote.origin.pushurl', '/nonexistent/remote.git'])
@@ -102,7 +104,7 @@ describe('the git plugin', () => {
       archive: {},
       sweep: { remotes: [''], offline: true, provider: 'none' },
     })
-    const s = survey([plugin], fx.ctx)
+    const s = await survey([plugin], fx.ctx)
     const target = s.candidates.find((c) => c.path.endsWith(':unmerged'))!
     const allow = { ...fx.ctx, allow: ['abandon-unmerged', 'discard-archived'] }
     expect(() => plugin.delete!(target, allow)).toThrow(FatalRun)

@@ -20,7 +20,7 @@ import { containsIgnored, coveredBy, expandHome, ignorePaths } from '../src/igno
 import { plan, recheck, survey } from '../src/run.ts'
 import { effectiveSettings, settingsOf } from '../src/settings.ts'
 import { envOf } from '../src/artifacts.ts'
-import type { Candidate, Ctx, Plugin } from '../src/index.ts'
+import type { Candidate, Ctx, Plugin, RunCtx } from '../src/index.ts'
 
 const dirs: string[] = []
 afterEach(() => {
@@ -93,37 +93,37 @@ describe('ignorePaths and coveredBy', () => {
 })
 
 describe('survey and recheck', () => {
-  const ctx = (ignore: string[]): Ctx => ({ cwd: '/', targets: [], allow: [], ignore })
+  const ctx = (ignore: string[]): RunCtx => ({ cwd: '/', targets: [], allow: [], ignore })
 
-  test('survey drops candidates in an ignored path, by `at` when set, and says how many', () => {
+  test('survey drops candidates in an ignored path, by `at` when set, and says how many', async () => {
     const p = plugin([
       cand('a:1', '/keep/x'),
       cand('a:2', '/skip/x'),
       cand('a:3', 'repo:branch', { at: '/skip/repo' }),
     ])
-    const s = survey([p], ctx(['/skip']))
+    const s = await survey([p], ctx(['/skip']))
     expect(s.candidates.map((c) => c.id)).toEqual(['a:1'])
     expect(s.warnings).toContain('ignore /skip: left out 2 candidate(s)')
   })
 
-  test('recheck drops a planned candidate that is now ignored, and a plan keeps its own ignore list', () => {
+  test('recheck drops a planned candidate that is now ignored, and a plan keeps its own ignore list', async () => {
     const p = plugin([cand('a:1', '/keep/x'), cand('a:2', '/skip/x')])
-    const swept = plan(survey([p], ctx([])), { ignore: [] })
-    const now = recheck(swept, [p], ctx(['/skip']))
+    const swept = plan(await survey([p], ctx([])), { ignore: [] })
+    const now = await recheck(swept, [p], ctx(['/skip']))
     expect(now.decision.run.map((c) => c.id)).toEqual(['a:1'])
     expect(now.decision.dropped).toContainEqual({
       id: 'a:2',
       reason: 'ignored',
       detail: 'inside ignored /skip',
     })
-    const own = plan(survey([p], ctx([])), { ignore: ['/skip'] })
-    expect(recheck(own, [p], ctx([])).decision.run.map((c) => c.id)).toEqual(['a:1'])
+    const own = plan(await survey([p], ctx([])), { ignore: ['/skip'] })
+    expect((await recheck(own, [p], ctx([]))).decision.run.map((c) => c.id)).toEqual(['a:1'])
   })
 })
 
 describe('idleHours', () => {
   test('0 is kept, a negative value falls back, and a plugin inherits the shared one', () => {
-    const c: Ctx = { cwd: '/', targets: [], allow: [] }
+    const c: Ctx = { cwd: '/', targets: [], allow: [], signal: new AbortController().signal }
     expect(envOf({ idleHours: 0 }, c).idleHours).toBe(0)
     expect(envOf({ idleHours: -1 }, c).idleHours).toBe(24)
     expect(settingsOf('cargo', {}, { idleHours: 3 }).idleHours).toBe(3)
@@ -142,15 +142,15 @@ describe('idleHours', () => {
 })
 
 describe('the command line', () => {
-  test('--ignore and the config ignore are listed by status and recorded by plan', () => {
+  test('--ignore and the config ignore are listed by status and recorded by plan', async () => {
     const home = temp()
     const cwd = temp()
     const config = join(home, 'c.json')
     writeFileSync(config, JSON.stringify({ ignore: ['/cfg-ignored'], idleHours: 0 }))
     const env = { ...(process.env as Record<string, string>), HOST_CLEANER_ROOT: home }
-    const run = (argv: string[]) => {
+    const run = async (argv: string[]) => {
       const c = captureContext({ cwd, env })
-      const code = main(argv, c, {
+      const code = await main(argv, c, {
         plugins: [
           plugin([
             cand('a:1', '/cfg-ignored/x'),
@@ -161,14 +161,16 @@ describe('the command line', () => {
       })
       return { code, out: c.io.out }
     }
-    const status = run(['status', '--config', config, '--ignore', '/cli-ignored'])
+    const status = await run(['status', '--config', config, '--ignore', '/cli-ignored'])
     expect(status.out).toContain('ignoring: /cfg-ignored, /cli-ignored')
     expect(status.out).toContain('a:3')
     expect(status.out).not.toContain('a:1')
     expect(status.out).not.toContain('a:2')
-    const saved = JSON.parse(run(['plan', '--config', config, '--ignore', '/cli-ignored']).out)
+    const saved = JSON.parse(
+      (await run(['plan', '--config', config, '--ignore', '/cli-ignored'])).out,
+    )
     expect(saved.ignore).toEqual(['/cfg-ignored', '/cli-ignored'])
-    const shown = run(['config', '--config', config])
+    const shown = await run(['config', '--config', config])
     expect(shown.out).toContain('ignore: /cfg-ignored')
     expect(shown.out).toMatch(/idleHours = 0 {2}\(idleHours\)/)
   })

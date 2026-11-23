@@ -38,8 +38,9 @@ import {
   recheck,
   survey,
   type Decision,
+  type Survey,
 } from './run.ts'
-import type { Candidate, Ctx, Objection, Plugin } from './types.ts'
+import type { Candidate, Objection, Plugin, RunCtx } from './types.ts'
 
 const NAME = 'host-cleaner'
 const EXIT_NOTHING_TO_SWEEP = 10
@@ -383,7 +384,7 @@ function contextFor(
   ctx: CliContext,
   allow: readonly string[],
   ignore: readonly string[],
-): Ctx {
+): RunCtx {
   const chosen =
     targets.length > 0 ? targets : config.targets.length > 0 ? config.targets : [ctx.cwd]
   const home = ctx.env.HOME ?? homedir()
@@ -434,15 +435,19 @@ function renderCandidates(
   return block(lines)
 }
 
-function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
+async function runStatus(
+  argv: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+): Promise<number> {
   const name = `${NAME} status`
   const parsed = parseWith(statusCli(), name, argv, ctx)
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
-  let s: ReturnType<typeof survey>
+  let s: Survey
   try {
     const config = loadConfig(v, ctx)
-    s = survey(
+    s = await survey(
       pluginsFor(v, config, deps, ctx),
       contextFor(parsed.positionals, config, ctx, [], v.ignore),
     )
@@ -517,7 +522,7 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
   return EXIT.ok
 }
 
-function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
+async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): Promise<number> {
   const name = `${NAME} plan`
   const parsed = parseWith(planCli(), name, argv, ctx)
   if (parsed.status === 'done') return parsed.code
@@ -526,7 +531,7 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   try {
     const config = loadConfig(v, ctx)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
-    const s = survey(pluginsFor(v, config, deps, ctx), cctx)
+    const s = await survey(pluginsFor(v, config, deps, ctx), cctx)
     writeWarnings(ctx, name, s.warnings)
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
     plan = makePlan(s, {
@@ -650,7 +655,7 @@ function logRun(logs: string, entry: Record<string, unknown>): void {
   }
 }
 
-function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
+async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): Promise<number> {
   const name = `${NAME} clean`
   const parsed = parseWith(cleanCli(), name, argv, ctx)
   if (parsed.status === 'done') return parsed.code
@@ -666,14 +671,14 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let plan: Plan
   let source: string
   let plugins: Plugin[]
-  let cctx: Ctx
+  let cctx: RunCtx
   let preview: Decision
   try {
     const config = loadConfig(v, ctx)
     plugins = pluginsFor(v, config, deps, ctx)
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
-      const s = survey(plugins, cctx)
+      const s = await survey(plugins, cctx)
       writeWarnings(ctx, name, s.warnings)
       if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
       plan = makePlan(s, {
@@ -701,7 +706,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
         allow: plan.allow,
         ignore: ignoreFor(config, v.ignore, ctx),
       }
-      const checked = recheck(plan, plugins, cctx)
+      const checked = await recheck(plan, plugins, cctx)
       writeWarnings(ctx, name, checked.survey.warnings)
       preview = checked.decision
     }
@@ -748,7 +753,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
     mkdirSync(dirname(receiptPath), { recursive: true })
     // Only what the person saw as `delete`: a block that clears while they decide must not add to it.
     const approved = { ...plan, pick: preview.run.map((c) => c.id) }
-    receipt = clean(approved, plugins, cctx, { source, receiptPath })
+    receipt = await clean(approved, plugins, cctx, { source, receiptPath })
   } catch (err) {
     logRun(dirs.logs, { at: now.toISOString(), source, receipt: receiptPath, status: 'failed' })
     return refusal(ctx, name, err)
@@ -762,8 +767,12 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   return receipt.status === 'failed' ? EXIT_STEP_FAILED : EXIT.ok
 }
 
-/** Returns an exit code; never exits the process. */
-export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = {}): number {
+/** Resolves to an exit code; never exits the process. */
+export async function main(
+  argv: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps = {},
+): Promise<number> {
   const [sub, ...rest] = argv
   if (sub === 'status') return runStatus(rest, ctx, deps)
   if (sub === 'plan') return runPlan(rest, ctx, deps)

@@ -25,12 +25,21 @@ any other in the order given. The order decides which plugin keeps a duplicate i
 | delete | the owner | returns the receipt sentence |
 | deleted | every other plugin | after the delete; best effort, failures are in the receipt |
 
+Any hook may answer straight away or return a promise. The core awaits each
+one in turn, one plugin at a time, so `survey`, `recheck` and `clean` return
+promises. Each call has a time limit: 30 seconds (`HOOK_LIMIT_MS`), or 10
+minutes for `delete` (`DELETE_LIMIT_MS`); a plugin may set its own per hook in
+`limits`. Past the limit the core aborts `ctx.signal`, the call's own signal,
+and counts the call as a throw: a timed-out `detect` leaves the plugin out, a
+timed-out `object` refuses every candidate, and a timed-out `delete` fails
+that step.
+
 A candidate's `requires` lists the candidates that must go first. If one is
 refused, dropped or fails, the candidate is too; requirements are deleted
 before their dependents (a branch after the worktree that holds it).
 
 ```ts
-import { clean, plan, survey, type Ctx, type Plugin } from '@osdlc/host-cleaner'
+import { clean, plan, survey, type Plugin, type RunCtx } from '@osdlc/host-cleaner'
 
 // A plugin that owns one candidate: a cache directory idle for a week.
 const cache: Plugin = {
@@ -49,9 +58,9 @@ const cache: Plugin = {
   delete: (c) => `removed ${c.path}`,
 }
 
-const ctx: Ctx = { cwd: process.cwd(), targets: [], allow: [] }
-const found = survey([cache], ctx) // scope, discover, object
-const receipt = clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
+const ctx: RunCtx = { cwd: process.cwd(), targets: [], allow: [] }
+const found = await survey([cache], ctx) // scope, discover, object
+const receipt = await clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
 ```
 
 What a plan runs uses repo-cleaner's words, with their meaning:
