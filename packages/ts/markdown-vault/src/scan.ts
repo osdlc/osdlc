@@ -226,11 +226,14 @@ export interface ScanOptions {
  * path.
  *
  * The walk skips every entry whose name starts with `.` (so `.obsidian`,
- * `.git` and `.trash`) and every entry named `node_modules`. It follows symbolic links wherever they point, including out
- * of `root`, so scan only vaults you trust. A broken link is skipped and a link
- * back up the tree is not walked twice.
+ * `.git` and `.trash`) and every entry named `node_modules`. It follows
+ * symbolic links wherever they point, including out of `root`, so scan only
+ * vaults you trust. A broken link is skipped and a link back up the tree is
+ * not walked twice.
  *
- * Rejects with the error Node throws when `root` does not exist or cannot be read.
+ * Rejects with the error Node throws when `root` does not exist, or when
+ * `root`, a folder under it or a Markdown note in it cannot be read. One
+ * unreadable note rejects the whole scan; no partial index comes back.
  */
 export async function scanVault(root: string, options: ScanOptions = {}): Promise<VaultIndex> {
   const io = await nodeIo()

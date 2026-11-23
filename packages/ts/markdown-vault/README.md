@@ -99,6 +99,10 @@ inside code are skipped. A non-Markdown file has no properties, tags or links.
 The walk skips every entry whose name starts with `.` (so `.obsidian`, `.git` and `.trash`) and
 every entry named `node_modules`.
 
+The promise rejects with the error Node throws when `root` does not exist, or when `root`, a folder
+under it or a Markdown note in it cannot be read. One unreadable note rejects the whole scan; no
+partial index comes back.
+
 ### Building from data
 
 ```ts
@@ -122,7 +126,8 @@ expect(vault.byPath.get('notes/Ideas.md')!.properties).toEqual({
 By default links stay unresolved (`path: null`) and `backlinks` is what you supplied. With
 `resolveLinks: true` the links resolve against the notes you passed and backlinks are computed.
 `frontmatter` may be an object or a JSON string; a string that is not a JSON object gives `{}`.
-`title` and `aliases` fill the properties when the frontmatter has no such key.
+`title` and `aliases` fill the properties when the frontmatter has no such key. Give each note its
+own `path`: when two share one, both stay in `notes` and `byPath` holds the later one.
 `createVaultIndex` and `scanVault` share one normalisation, so the same data gives the same index.
 
 The package imports no `node:` module until `scanVault` first runs, so a browser bundle can import

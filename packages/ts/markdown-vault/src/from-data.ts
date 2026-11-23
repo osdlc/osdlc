@@ -19,7 +19,11 @@ import {
 
 /** One note's data as the caller holds it, the input of `createVaultIndex`. Only `path` is required. */
 export interface ExternalNote {
-  /** Vault-relative path including extension, '/'-separated (e.g. 'folder/note.md'). */
+  /**
+   * Vault-relative path including extension, '/'-separated (e.g. 'folder/note.md').
+   * Give each note its own path: when two share one, both stay in `notes` and
+   * `byPath` holds the later one.
+   */
   path: string
   /** Falls back into `properties.title` when frontmatter has no `title` key. */
   title?: string
