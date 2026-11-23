@@ -35,3 +35,7 @@ It is now skipped with `kept worktree ... has local changes`, as any other PR
 is, and when its kept tree's owner is gone or another checkout owns the tree.
 Only whether the tree is current waits for the parent. The gap dates from
 [#926](https://github.com/osdlc/osdlc/pull/926).
+
+A restack child whose target's own attempt record fails while its new key is
+looked up is now skipped with the record's error. Before, the failed look-up
+read as no record, and the child was updated and pushed anyway.

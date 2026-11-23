@@ -828,10 +828,15 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
             }
           },
           prepare: (target, done) => {
-            // A record that failed part-way through the run leaves the rest of its PRs out.
+            // A record that failed part-way through the run leaves the rest of its PRs out. Read
+            // again after `restackTarget`, whose look-up of the child's new key can fail too:
+            // the routed store then answers "no record", which must not let the child run.
             const broken = routed?.broken.get(target.repo)
-            const ready = broken ?? restackTarget(target, done, writes, policy)
+            const next = broken ?? restackTarget(target, done, writes, policy)
+            const why = routed?.broken.get(target.repo)
+            const ready = why ?? next
             if (typeof ready !== 'string') return ready
+            if (why !== undefined) shown.add(target.repo)
             skipped.push({
               repo: target.repo,
               number: target.number,

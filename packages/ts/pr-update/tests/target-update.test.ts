@@ -1186,6 +1186,57 @@ describe("errors from a target's own record and lease, during the run", () => {
     })
   })
 
+  test("a store that throws on a restack child's new key skips the child, before it runs (second review)", async () => {
+    // PR 2, `topic2`, stacked on PR 1's `topic`.
+    sh(api.worker.dir, 'checkout', '-q', '-b', 'topic2', 'origin/topic')
+    api.worker.commit('topic2 work', { 'two.txt': '2\n' })
+    sh(api.worker.dir, 'push', '-q', 'origin', 'topic2')
+    sh(api.worker.dir, 'checkout', '-q', 'main')
+    const stacked: CommandRunner = {
+      run: (argv, opts) => {
+        const listed = gh.run(argv, opts)
+        if (!argv.includes('acme/api')) return listed
+        const child = {
+          ...prOf(api, 'acme/api', false),
+          number: 2,
+          url: 'https://github.com/acme/api/pull/2',
+          baseRefName: 'topic',
+          headRefName: 'topic2',
+          headRefOid: api.worker.git.resolveRef('origin/topic2'),
+        }
+        return { ...listed, stdout: JSON.stringify([...JSON.parse(listed.stdout), child]) }
+      },
+    }
+    const topic = api.worker.git.resolveRef('origin/topic')
+    // Only the child's key on its parent's new head fails.
+    const attempts: AttemptStore = {
+      get: (key) => {
+        if (key.head === 'topic2' && key.baseOid !== topic) throw new Error('refused')
+        return null
+      },
+      recordFailure: () => {},
+      clear: () => {},
+      prune: () => {},
+    }
+    const out = await update({
+      args: { restack: true },
+      cfg: { max_failed_attempts: 2 },
+      gh: stacked,
+      ports: { targetHome: homeWith({ api: attempts }) },
+    })
+    expect(out.results.map((r) => [r.number, r.status])).toEqual([[1, 'updated']])
+    expect(out.skipped).toContainEqual({
+      repo: 'acme/api',
+      number: 2,
+      head: 'topic2',
+      reason: 'attempt record: refused',
+    })
+    // Shown once: as the skip's reason.
+    expect(out.recordErrors).toBeUndefined()
+    // Nothing was pushed to it.
+    expect(sh(api.bare.dir, 'rev-parse', 'topic2')).toBe(sh(api.worker.dir, 'rev-parse', 'topic2'))
+  })
+
   test('clear throwing mid-run is reported on the PR, and the next target is updated', async () => {
     web = behindRepo('web')
     const out = await update({
