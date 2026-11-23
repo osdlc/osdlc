@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -130,6 +130,24 @@ describe('plugin order and duplicates', () => {
     )
     expect(s.candidates.map((c) => c.owner)).toEqual(['node'])
     expect(s.warnings).toEqual(["duplicate artifact:/a: kept node's, dropped git's"])
+  })
+
+  test('two plugins on one folder give one candidate, the first plugin’s, with a warning naming both', async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'hc-overlap-')))
+    const folder = join(dir, 'cache')
+    mkdirSync(folder)
+    symlinkSync(folder, join(dir, 'link'))
+    const s = await survey(
+      [
+        fake('code', [pathCand(`cache:${folder}`, 'code', folder)], []),
+        fake('desc', [pathCand(`dir:${dir}/link`, 'desc', join(dir, 'link'))], []),
+      ],
+      { ...ctx, targets: [dir] },
+    )
+    expect(s.candidates.map((c) => c.id)).toEqual([`cache:${folder}`])
+    expect(s.warnings).toEqual([
+      `duplicate ${folder}: kept code's cache:${folder}, dropped desc's dir:${dir}/link`,
+    ])
   })
 
   test('a second plugin of the same name is left out with a warning', async () => {
@@ -428,6 +446,71 @@ describe('requires', () => {
     ])
     expect(receipt.steps[0]!.error).toBe('directory busy')
     expect(receipt.status).toBe('failed')
+  })
+})
+
+describe('nested candidates', () => {
+  // A real target, so containment passes and only the objections below gate.
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'hc-nested-')))
+  const at: RunCtx = { ...ctx, targets: [dir] }
+  const w = join(dir, 'w')
+  const tree = pathCand(`worktree:${w}`, 'git', w, { name: 'feat' })
+  const target = pathCand(`artifact:${w}/target`, 'cargo', join(w, 'target'))
+  const deps = pathCand(`artifact:${w}/a/node_modules`, 'node', join(w, 'a', 'node_modules'))
+  const plugins = (...extra: Plugin[]) => [
+    fake('git', [tree], []),
+    fake('cargo', [target], []),
+    fake('node', [deps], []),
+    ...extra,
+  ]
+
+  test('both stay, and the outer requires every candidate inside it, with no warning', async () => {
+    const branch = cand('branch:b', 'git', { requires: [tree.id] })
+    const s = await survey(
+      [fake('git', [branch, tree], []), fake('cargo', [target], []), fake('node', [deps], [])],
+      at,
+    )
+    expect(s.candidates.map((c) => [c.id, c.requires])).toEqual([
+      ['branch:b', [tree.id]],
+      [tree.id, [target.id, deps.id]],
+      [target.id, undefined],
+      [deps.id, undefined],
+    ])
+    expect(s.warnings).toEqual([])
+    expect(s.objections).toEqual([])
+    expect(tree.requires).toBeUndefined()
+  })
+
+  test('the inner ones are deleted first', async () => {
+    const receipt = await clean(plan(await survey(plugins(), at)), plugins(), at)
+    expect(receipt.steps.map((s) => s.id)).toEqual([target.id, deps.id, tree.id])
+  })
+
+  test('a refused target/ refuses its worktree', async () => {
+    const live: Plugin = {
+      name: 'live',
+      detect: () => true,
+      object: () => [objection(target.id, 'refuse', 'live-process')],
+    }
+    const s = await survey(plugins(live), at)
+    const d = decide(s.candidates, s.objections, DEFAULT_SELECTION, [])
+    expect(d.run.map((c) => c.id)).toEqual([deps.id])
+    const d2 = decide(s.candidates, s.objections, only([tree.id, target.id]), [])
+    expect(d2.run).toEqual([])
+    expect(d2.dropped).toEqual([
+      { id: target.id, reason: 'blocked', detail: 'live: live-process reason' },
+      { id: tree.id, reason: 'blocked', detail: `requires ${target.id}, which does not run` },
+    ])
+  })
+
+  test('a spared inner one keeps its outer one too', async () => {
+    const s = await survey(plugins(), at)
+    const d = decide(s.candidates, [], { ...DEFAULT_SELECTION, spare: [join(w, 'target')] }, [])
+    expect(d.run.map((c) => c.id)).toEqual([deps.id])
+    expect(d.dropped.map((x) => [x.id, x.reason])).toEqual([
+      [target.id, 'spared'],
+      [tree.id, 'blocked'],
+    ])
   })
 })
 

@@ -72,7 +72,8 @@ export interface Bounds {
   linked: readonly string[]
 }
 
-const realOr = (path: string): string => {
+/** `path`'s real path, or `path` as given when it does not resolve. */
+export const realOr = (path: string): string => {
   try {
     return realpathSync(path)
   } catch {

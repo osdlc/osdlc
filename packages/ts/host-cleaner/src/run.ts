@@ -3,10 +3,12 @@
  * `recheck` pick what runs; `clean` is prepare, delete and deleted.
  */
 
+import { dirname } from 'node:path'
+
 import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 
 import { coveredBy, containsIgnored } from './ignore.ts'
-import { boundBy, linkedCheckouts, type Bounds } from './roots.ts'
+import { boundBy, linkedCheckouts, realOr, type Bounds } from './roots.ts'
 import {
   writeReceipt,
   PLAN_VERSION,
@@ -109,6 +111,32 @@ function outside(c: PathCandidate, bounds: Bounds): string | null {
 }
 
 /**
+ * `cs`, each path candidate copied with every other one inside it by real path
+ * added to its `requires`: deleting it would delete them too.
+ */
+function nest(cs: readonly Candidate[]): Candidate[] {
+  const real = new Map<string, string>()
+  const byReal = new Map<string, string>()
+  for (const c of cs) {
+    if (c.path === undefined) continue
+    real.set(c.id, realOr(c.path))
+    byReal.set(real.get(c.id)!, c.id)
+  }
+  const inner = new Map<string, string[]>()
+  for (const [id, path] of real) {
+    for (let dir = dirname(path); ; dir = dirname(dir)) {
+      const outer = byReal.get(dir)
+      if (outer !== undefined) inner.set(outer, [...(inner.get(outer) ?? []), id])
+      if (dirname(dir) === dir) break
+    }
+  }
+  return cs.map((c) => {
+    const ids = inner.get(c.id)
+    return ids === undefined ? c : { ...c, requires: [...new Set([...(c.requires ?? []), ...ids])] }
+  })
+}
+
+/**
  * Scope, discover and object, one plugin at a time in the order of `all`,
  * each hook awaited under its time limit. A plugin that throws or times out
  * in `detect` is left out, and in `scope` or `discover` proposes nothing,
@@ -117,8 +145,10 @@ function outside(c: PathCandidate, bounds: Bounds): string | null {
  * outside its owner's roots and the targets is refused `outside-roots`; one
  * with both a path and a ref, or neither, or an unknown `costDescription`, is
  * dropped. A `lost` one is held and protested `discard-user-data`. A
- * {@link FatalRun} from any phase goes to the caller. A duplicate candidate id
- * keeps the first plugin's, with a warning naming both.
+ * {@link FatalRun} from any phase goes to the caller. Two candidates with the
+ * same id, or path candidates with the same real path, are one: the first
+ * plugin's stands, with a warning naming both. A path candidate with others
+ * inside it requires them, so they go first and a refused one blocks it.
  */
 export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Survey> {
   const warnings: string[] = []
@@ -160,6 +190,7 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
 
   const discovered: Candidate[] = []
   const first = new Map<string, string>()
+  const atReal = new Map<string, Candidate>()
   const costs = new Set<string>(COST_DESCRIPTIONS)
   for (const p of plugins) {
     if (p.discover === undefined) continue
@@ -175,17 +206,28 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
       } else if (first.has(c.id)) {
         warnings.push(`duplicate ${c.id}: kept ${first.get(c.id)}'s, dropped ${p.name}'s`)
       } else {
+        const real = c.path === undefined ? undefined : realOr(c.path)
+        const same = real === undefined ? undefined : atReal.get(real)
+        if (same !== undefined) {
+          warnings.push(
+            `duplicate ${real}: kept ${same.owner}'s ${same.id}, dropped ${p.name}'s ${c.id}`,
+          )
+          continue
+        }
         first.set(c.id, p.name)
+        if (real !== undefined) atReal.set(real, c)
         discovered.push(c.costDescription === 'lost' ? { ...c, held: true } : c)
       }
     }
   }
   const left = new Map<string, number>()
-  const candidates = discovered.filter((c) => {
-    const dir = ignoredBy(c, ignore)
-    if (dir !== undefined) left.set(dir, (left.get(dir) ?? 0) + 1)
-    return dir === undefined
-  })
+  const candidates = nest(
+    discovered.filter((c) => {
+      const dir = ignoredBy(c, ignore)
+      if (dir !== undefined) left.set(dir, (left.get(dir) ?? 0) + 1)
+      return dir === undefined
+    }),
+  )
   for (const [dir, n] of left) warnings.push(`ignore ${dir}: left out ${n} candidate(s)`)
 
   const known = new Set(candidates.map((c) => c.id))

@@ -13,7 +13,7 @@ This release is the library, the `git`, `cargo`, `node` and `orca` plugins, and 
 
 Plugins run in the order they are given. The command line runs the shipped
 ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `orca`.
-The order decides which plugin keeps a duplicate id, and the order `prepare` and `deleted` run in.
+The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
 value: `api` is `PLUGIN_API`, `settings` is the zod schema of its entry in the
@@ -23,7 +23,7 @@ builds the plugin from those settings, validated with defaults filled in.
 | Phase | Who | What |
 | --- | --- | --- |
 | scope | each plugin | adds roots to look in; the only way a plugin adds a repository |
-| discover | each plugin | proposes candidates; a duplicate id keeps the first plugin's, with a warning naming both |
+| discover | each plugin | proposes candidates; two with the same id, or path candidates with the same real path, are one: the first plugin's stands, with a warning naming both |
 | object | each plugin | objects to any candidate; sees no other plugin's objections |
 | decide | core | `refuse` blocks, `protest` needs `--allow <code>`, `note` does not gate |
 | re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved `changed` |
@@ -42,7 +42,11 @@ that step.
 
 A candidate's `requires` lists the candidates that must go first. If one is
 refused, dropped or fails, the candidate is too; requirements are deleted
-before their dependents (a branch after the worktree that holds it).
+before their dependents (a branch after the worktree that holds it). The core
+adds one itself: a path candidate requires every path candidate inside it, by
+real path, since deleting it would delete them. So `cargo`'s `target/` goes
+before the git worktree that holds it, and a refused or spared `target/` keeps
+the worktree too.
 
 ```ts
 import { join } from 'node:path'
