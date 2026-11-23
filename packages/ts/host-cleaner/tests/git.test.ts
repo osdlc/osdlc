@@ -7,6 +7,7 @@ import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { FatalRun, ReceiptSchema, clean, gitPlugin, plan, survey, type Ctx } from '../src/index.ts'
+import { contractSuite } from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -44,6 +45,12 @@ function fixture() {
 const branches = (root: string): string => sh(root, ['branch', '--format=%(refname:short)'])
 
 describe('the git plugin', () => {
+  test('keeps the contract', async () => {
+    const fx = fixture()
+    expect(await contractSuite(fx.plugin, fx.ctx)).toEqual([])
+    expect(existsSync(fx.worktree)).toBe(true)
+  })
+
   test('proposes worktrees and branches, objects with their risks, and a freed branch requires its worktree', async () => {
     const fx = fixture()
     const s = await survey([fx.plugin], fx.ctx)

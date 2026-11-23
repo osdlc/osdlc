@@ -21,6 +21,7 @@ import {
   plan,
   survey,
 } from '@osdlc/host-cleaner'
+import { contractSuite, fakeContext } from '@osdlc/host-cleaner/testing'
 
 assert.match(VERSION, /^\d+\.\d+\.\d+/)
 assert.equal(typeof gitPlugin().discover, 'function')
@@ -50,6 +51,8 @@ const receipt = await clean(plan(await survey([cache], ctx)), [cache], ctx)
 assert.equal(receipt.status, 'complete')
 assert.deepEqual(log, ['artifact:c'])
 assert.ok(new FatalRun('x') instanceof Error)
+assert.equal(typeof contractSuite, 'function')
+assert.deepEqual(fakeContext().targets, [])
 
 // The binary sits beside dist/ in the package, installed or not.
 const dist = dirname(fileURLToPath(import.meta.resolve('@osdlc/host-cleaner')))

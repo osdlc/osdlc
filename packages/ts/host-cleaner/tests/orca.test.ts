@@ -20,6 +20,7 @@ import {
   type Survey,
 } from '../src/index.ts'
 import { parseRecords } from '../src/orca.ts'
+import { contractSuite } from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -307,6 +308,13 @@ describe('cleaning', () => {
 })
 
 describe('records whose directory is gone', () => {
+  test('the plugin keeps the contract over them', async () => {
+    const gone = join(tmpdir(), 'orca-gone-worktree')
+    const o = fakeOrca([{ path: gone }, { path: tmpdir(), main: true }])
+    expect(await contractSuite(orcaPlugin({ orca: o.orca }), { cwd: tmpdir() })).toEqual([])
+    expect(o.removed).toEqual([])
+  })
+
   test('are their own ref candidates, held for a pick, and deleted through orca worktree rm', async () => {
     const gone = join(tmpdir(), 'orca-gone-worktree')
     const o = fakeOrca([{ path: gone }, { path: tmpdir(), main: true }])

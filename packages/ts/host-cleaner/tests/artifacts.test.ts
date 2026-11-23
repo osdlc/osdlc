@@ -32,6 +32,7 @@ import {
   type Ctx,
   type Plugin,
 } from '../src/index.ts'
+import { contractSuite, fakeRunner } from '../src/testing.ts'
 
 const NOW = new Date('2026-11-19T12:00:00Z')
 const HOUR = 3_600_000
@@ -451,6 +452,30 @@ describe('a folder too slow to measure (D11)', () => {
     const receipt = await clean(allowed, [nodePlugin(options())], ctxOf(root))
     expect(receipt.steps).toEqual([expect.objectContaining({ result: 'ok' })])
     expect(existsSync(join(wt, 'node_modules'))).toBe(false)
+  })
+})
+
+describe('the contract suite', () => {
+  test('cargo keeps the contract, with cargo itself faked', async () => {
+    const root = repo()
+    writeFileSync(join(root, 'Cargo.toml'), '[package]\n')
+    target(root, 48)
+    const cargoBin = fakeRunner({
+      cargo: { 'config get build.incremental': { stdout: 'build.incremental = true\n' } },
+    })
+    const plugin = cargoPlugin({ now: () => NOW, probe: probeOf(), ...cargoBin })
+    expect(await contractSuite(plugin, ctxOf(root))).toEqual([])
+    expect(existsSync(join(root, 'target'))).toBe(true)
+  })
+
+  test('node keeps the contract', async () => {
+    const root = repo()
+    writeFileSync(join(root, 'package.json'), '{}')
+    const wt = linked(root)
+    put(join(wt, 'package.json'), 72, '{}')
+    put(join(wt, 'node_modules', 'a', 'index.js'), 1)
+    expect(await contractSuite(nodePlugin(options()), ctxOf(root))).toEqual([])
+    expect(existsSync(join(wt, 'node_modules'))).toBe(true)
   })
 })
 
