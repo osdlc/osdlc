@@ -199,6 +199,10 @@ Every shipped plugin passes it:
 expect(await contractSuite(plugin, { cwd: root, targets: [root] })).toEqual([])
 ```
 
+On a real machine, `host-cleaner plugins` says whether a plugin is detected and
+where it may delete, and `host-cleaner status --plugin <name>` runs that plugin
+alone and shows its candidates and objections. Neither deletes anything.
+
 ## The `git` plugin
 
 `gitPlugin(options)` proposes repo-cleaner's worktrees, as paths, and branches,
@@ -273,6 +277,7 @@ host-cleaner status [target...]   # every candidate, what deleting it costs, and
 host-cleaner plan -o plan.json
 host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [-i] [--yes | --dry-run]
 host-cleaner config [--format json]   # every plugin's effective settings
+host-cleaner plugins [target...] [--format json]   # every plugin: where it came from, detected or why not, its roots
 ```
 
 | Flag | Meaning, as in repo-cleaner |
@@ -348,6 +353,23 @@ Two settings sit at the top of the config and apply to every plugin:
 
 `host-cleaner config` prints every plugin's effective settings: the value, and
 whether the file set it or it is the default. `--format json` prints the values.
+
+`host-cleaner plugins` lists every plugin: where it came from (`built-in` for
+now), whether it applies here and, when it does not, why, and its roots, the
+folders it may delete in besides the targets. It runs `detect`, `scope` and
+`roots` and nothing else, so it proposes and deletes nothing. A plugin whose
+`detect` throws shows the error as the reason; Orca installed but not running
+shows `not detected: Orca is installed but not running; its worktrees are left
+to git`. A plugin the config disables is listed as `disabled`, and its `detect`
+is not run. `--format json` prints the same, one object per plugin.
+
+```text
+targets: /Users/me/dev
+  git    built-in  detected; roots: none, the targets alone
+  cargo  built-in  detected; roots: none, the targets alone
+  node   built-in  disabled: plugins.node.enabled is false; --plugin node runs it anyway
+  orca   built-in  not detected: Orca is installed but not running; its worktrees are left to git
+```
 
 ### Exit codes
 

@@ -164,6 +164,121 @@ function nest(cs: readonly Candidate[]): Candidate[] {
   })
 }
 
+/** Calls one hook; a throw or a timeout, other than {@link FatalRun}, is a warning and the fallback. */
+const guard =
+  (warnings: string[]) =>
+  async <T>(
+    p: Plugin,
+    hook: Hook,
+    fallback: T,
+    at: RunCtx,
+    f: (ctx: Ctx) => MaybePromise<T>,
+  ): Promise<T> => {
+    try {
+      return await callHook(p, hook, at, f)
+    } catch (err) {
+      if (err instanceof FatalRun) throw err
+      warnings.push(`${p.name}: ${hook} failed: ${errorText(err)}`)
+      return fallback
+    }
+  }
+
+/** What `detect` said of one plugin. */
+interface Detection {
+  plugin: Plugin
+  detected: boolean
+  /** What `detect` threw or timed out with; absent when it answered. */
+  error?: string | undefined
+}
+
+/**
+ * Detect, then scope, as `survey` starts: each plugin's detection (a second
+ * plugin of a name is left out), the detected plugins, and the targets once
+ * scope added to them, less those `ignore` covers. A failed `detect` is a
+ * warning only when `warnDetect`.
+ */
+async function detectAndScope(
+  all: readonly Plugin[],
+  ctx: RunCtx,
+  warnings: string[],
+  warnDetect: boolean,
+): Promise<{ detections: Detection[]; plugins: Plugin[]; targets: string[]; scoped: RunCtx }> {
+  const guarded = guard(warnings)
+  const names = new Set<string>()
+  const detections: Detection[] = []
+  for (const p of all) {
+    if (names.has(p.name)) {
+      warnings.push(`${p.name}: a second plugin of that name was left out`)
+      continue
+    }
+    names.add(p.name)
+    try {
+      const detected = await callHook(p, 'detect', ctx, (x) => p.detect(x))
+      // A plugin written in JavaScript can answer anything; truthy has always counted as yes.
+      detections.push({ plugin: p, detected: Boolean(detected) })
+    } catch (err) {
+      if (err instanceof FatalRun) throw err
+      if (warnDetect) warnings.push(`${p.name}: detect failed: ${errorText(err)}`)
+      detections.push({ plugin: p, detected: false, error: errorText(err) })
+    }
+  }
+  const plugins = detections.filter((d) => d.detected).map((d) => d.plugin)
+
+  const ignore = ctx.ignore ?? []
+  const targets = ctx.targets.filter((t) => coveredBy(t, ignore) === undefined)
+  for (const p of plugins) {
+    if (p.scope === undefined) continue
+    for (const root of await guarded(p, 'scope', [], ctx, (x) => p.scope!(x))) {
+      if (!targets.includes(root) && coveredBy(root, ignore) === undefined) targets.push(root)
+    }
+  }
+  return { detections, plugins, targets, scoped: { ...ctx, targets } }
+}
+
+/** One plugin as `inspect` found it. */
+export interface PluginState {
+  name: string
+  detected: boolean
+  /** Why it was not detected: what `detect` threw or timed out with. Absent when `detect` answered. */
+  reason?: string | undefined
+  /** Its roots, as its `roots` hook answered; empty without the hook, or when it is not detected. */
+  roots: readonly string[]
+}
+
+export interface Inspection {
+  plugins: PluginState[]
+  /** The run's context after `scope`. */
+  ctx: RunCtx
+  /** A failed `scope` or `roots`, and a second plugin of one name. A failed `detect` is its plugin's `reason` instead. */
+  warnings: string[]
+}
+
+/**
+ * Detect, scope and roots, as `survey` calls them, and nothing else: whether
+ * each plugin applies here, why not, and where it may delete. It proposes and
+ * deletes nothing, so it is quick where `discover` walks every checkout.
+ */
+export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Inspection> {
+  const warnings: string[] = []
+  const { detections, scoped } = await detectAndScope(all, ctx, warnings, false)
+  const guarded = guard(warnings)
+  const plugins: PluginState[] = []
+  for (const d of detections) {
+    const p = d.plugin
+    const roots =
+      d.detected && p.roots !== undefined
+        ? await guarded(p, 'roots', [], scoped, (x) => p.roots!(x))
+        : []
+    plugins.push({
+      name: p.name,
+      detected: d.detected,
+      ...(d.error === undefined ? {} : { reason: d.error }),
+      roots,
+    })
+  }
+  return { plugins, ctx: scoped, warnings }
+}
+
 /**
  * Scope, discover and object, one plugin at a time in the order of `all`,
  * each hook awaited under its time limit. A plugin that throws or times out
@@ -182,41 +297,9 @@ function nest(cs: readonly Candidate[]): Candidate[] {
  */
 export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Survey> {
   const warnings: string[] = []
-  const guarded = async <T>(
-    p: Plugin,
-    hook: Hook,
-    fallback: T,
-    at: RunCtx,
-    f: (ctx: Ctx) => MaybePromise<T>,
-  ): Promise<T> => {
-    try {
-      return await callHook(p, hook, at, f)
-    } catch (err) {
-      if (err instanceof FatalRun) throw err
-      warnings.push(`${p.name}: ${hook} failed: ${errorText(err)}`)
-      return fallback
-    }
-  }
-  const names = new Set<string>()
-  const plugins: Plugin[] = []
-  for (const p of all) {
-    if (names.has(p.name)) {
-      warnings.push(`${p.name}: a second plugin of that name was left out`)
-      continue
-    }
-    names.add(p.name)
-    if (await guarded(p, 'detect', false, ctx, (x) => p.detect(x))) plugins.push(p)
-  }
-
+  const guarded = guard(warnings)
+  const { plugins, targets, scoped } = await detectAndScope(all, ctx, warnings, true)
   const ignore = ctx.ignore ?? []
-  const targets = ctx.targets.filter((t) => coveredBy(t, ignore) === undefined)
-  for (const p of plugins) {
-    if (p.scope === undefined) continue
-    for (const root of await guarded(p, 'scope', [], ctx, (x) => p.scope!(x))) {
-      if (!targets.includes(root) && coveredBy(root, ignore) === undefined) targets.push(root)
-    }
-  }
-  const scoped: RunCtx = { ...ctx, targets }
 
   const discovered: Candidate[] = []
   const first = new Map<string, string>()

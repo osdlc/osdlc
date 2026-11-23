@@ -15,13 +15,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
+import { fakeRunner } from '@osdlc/command-seam/testing'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, tildeId, untildeId, type MainDeps } from '../src/cli.ts'
 import { hostDirs } from '../src/config.ts'
 import { PLAN_VERSION, parsePlan } from '../src/plan.ts'
-import type { Candidate, Objection, Plugin, RefCandidate } from '../src/index.ts'
+import {
+  orcaPlugin,
+  type Candidate,
+  type Objection,
+  type Plugin,
+  type RefCandidate,
+} from '../src/index.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -120,7 +127,7 @@ describe('phases', () => {
   test('as root every phase is refused with exit 1 and nothing runs; --help still answers', async () => {
     const { env, cwd } = setup()
     const plugin = fake()
-    for (const phase of ['status', 'plan', 'clean', 'config']) {
+    for (const phase of ['status', 'plan', 'clean', 'config', 'plugins']) {
       const r = await run([phase, '--yes'], cwd, env, { plugins: [plugin], uid: 0 })
       expect(r.code).toBe(1)
       expect(r.err).toContain('refusing to run as root')
@@ -226,6 +233,107 @@ describe('status', () => {
     const r = await run(['status', '--config', config], cwd, env)
     expect(r.code).toBe(2)
     expect(r.err).toContain('profiles')
+  })
+})
+
+describe('plugins', () => {
+  /** The real orca plugin over a fake `orca` CLI whose `status` says the app is not reachable. */
+  const orcaDown = () => {
+    const ok = (result: unknown) => ({ stdout: JSON.stringify({ id: 'x', ok: true, result }) })
+    const cli = fakeRunner((argv) =>
+      argv[0] === 'status' ? ok({ runtime: { reachable: false } }) : undefined,
+    )
+    return orcaPlugin({ orca: cli.runner })
+  }
+
+  const plugins = (): Plugin[] => [
+    { ...fake('git'), roots: () => ['/cache/git'] },
+    fake('cargo'),
+    { ...fake('node'), detect: () => false },
+    orcaDown(),
+  ]
+
+  test('Orca not running shows "not running" with the reason, beside each plugin’s source, detection and roots', async () => {
+    const { env, cwd } = setup()
+    const r = await run(['plugins'], cwd, env, { plugins: plugins() })
+    expect(r.code).toBe(0)
+    expect(r.err).toBe('')
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  git    built-in  detected; roots: /cache/git',
+        '  cargo  built-in  detected; roots: none, the targets alone',
+        '  node   built-in  not detected',
+        '  orca   built-in  not detected: Orca is installed but not running; its worktrees are left to git',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  test('json carries every plugin, and one the config disables is listed without running detect', async () => {
+    const { env, cwd, home } = setup()
+    const file = join(home, 'c.json')
+    writeFileSync(file, JSON.stringify({ plugins: { cargo: { enabled: false } } }))
+    const all = plugins()
+    let asked = false
+    all[1] = { ...all[1]!, detect: () => (asked = true) }
+    const r = await run(['plugins', '--config', file, '--format', 'json'], cwd, env, {
+      plugins: all,
+    })
+    expect(r.code).toBe(0)
+    expect(asked).toBe(false)
+    expect(JSON.parse(r.out)).toEqual({
+      targets: [cwd],
+      warnings: [],
+      plugins: [
+        {
+          name: 'git',
+          source: 'built-in',
+          enabled: true,
+          detected: true,
+          reason: null,
+          roots: ['/cache/git'],
+        },
+        {
+          name: 'cargo',
+          source: 'built-in',
+          enabled: false,
+          detected: false,
+          reason: 'plugins.cargo.enabled is false; --plugin cargo runs it anyway',
+          roots: [],
+        },
+        {
+          name: 'node',
+          source: 'built-in',
+          enabled: true,
+          detected: false,
+          reason: null,
+          roots: [],
+        },
+        {
+          name: 'orca',
+          source: 'built-in',
+          enabled: true,
+          detected: false,
+          reason: 'Orca is installed but not running; its worktrees are left to git',
+          roots: [],
+        },
+      ],
+    })
+  })
+
+  test('it proposes and deletes nothing, and a config naming no plugin is refused with exit 2', async () => {
+    const { env, cwd, home } = setup()
+    let discovered = false
+    const plugin = { ...fake(), discover: () => ((discovered = true), []) }
+    expect((await run(['plugins'], cwd, env, { plugins: [plugin] })).code).toBe(0)
+    expect(discovered).toBe(false)
+    expect(plugin.removed).toEqual([])
+    const file = join(home, 'c.json')
+    writeFileSync(file, JSON.stringify({ plugins: { ghost: {} } }))
+    const r = await run(['plugins', '--config', file], cwd, env, { plugins: [plugin] })
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('ghost')
   })
 })
 
