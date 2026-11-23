@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { z } from 'zod'
@@ -839,9 +839,11 @@ test('name directories once and refer to them as {name}', () => {
     { dev: '/machine/dev' },
     { dev: './dev', docs: './docs' },
   )
-  expect(names).toEqual({ dev: '/machine/dev', docs: join(baseDir, 'docs') })
+  // Every value is made absolute: on Windows `/machine/dev` gains the drive.
+  const machineDev = resolve('/machine/dev')
+  expect(names).toEqual({ dev: machineDev, docs: join(baseDir, 'docs') })
 
-  expect(substitutePathNames('{dev}/tooly', names, 'repos:')).toBe('/machine/dev/tooly')
+  expect(substitutePathNames('{dev}/tooly', names, 'repos:')).toBe(`${machineDev}/tooly`)
   const options: SubstituteOptions = { defineHint: 'define it in tooly.yaml or the machine config' }
   let caught: unknown
   try {
