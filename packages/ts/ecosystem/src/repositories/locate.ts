@@ -11,7 +11,7 @@
 import { realpathSync } from 'node:fs'
 import { dirname } from 'node:path'
 
-import type { CommandRunner } from '@osdlc/command-seam'
+import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import {
   Git,
   readRemote,
@@ -103,7 +103,10 @@ export class CheckoutLocator {
   }
 
   private scan(): LocatedCheckout[] {
-    const { maxDepth, onWarn, runner, resolveAlias } = this.opts
+    const { maxDepth, onWarn, resolveAlias } = this.opts
+    const runner = withoutRepositoryVars(
+      this.opts.runner ?? spawnRunner('git', { absolutePathOnly: true }),
+    )
     const index: LocatedCheckout[] = []
     const seen = new Set<string>()
     let depthLimited = 0
@@ -117,14 +120,15 @@ export class CheckoutLocator {
         // The walk follows symlinks, so work on what the entry points to.
         const dir = realpathOr(found)
         const git = gitAt(dir, runner)
-        // Only a directory that is itself a working tree counts. When git
-        // cannot use its `.git` (an empty or half-made folder), git searches
-        // upward and answers with a repository around the root, such as a
-        // dotfiles repository at the home directory. The ceiling stops that
-        // search, but git splits it on the path delimiter with no escaping,
-        // so a parent named `a:b` defeats it. This check holds either way.
-        const top = git.try.topLevel()
-        if (!top.ok || top.value === null || realpathOr(top.value) !== dir) continue
+        // Only a directory that is itself the top of a working tree counts.
+        // When git cannot use its `.git` (an empty or half-made folder), it
+        // searches upward and answers with a repository around the root, such
+        // as a dotfiles repository at the home directory. The ceiling stops
+        // that search, but git splits it on the path delimiter with no
+        // escaping, so a parent named `a:b` defeats it. Asking git whether
+        // `dir` is a work tree's top holds either way, and compares no paths,
+        // which differ in letter case on a case-insensitive disk.
+        if (!isWorkTreeTop(git)) continue
         // A worktree and its main checkout resolve to one row.
         const main = git.try.mainCheckout()
         if (!main.ok || main.value === null) continue
@@ -143,14 +147,54 @@ export class CheckoutLocator {
 }
 
 /**
+ * Whether the directory `git` is bound to is the top of a working tree: git
+ * says it is inside one (`--is-inside-work-tree`), and the way up to its top
+ * is empty (`--show-cdup`). `--show-cdup` alone is empty in a directory whose
+ * `.git` is a bare repository too. revParse trims, so the two lines read as
+ * `true` exactly when both hold.
+ */
+function isWorkTreeTop(git: Git): boolean {
+  const out = git.try.revParse('--is-inside-work-tree', '--show-cdup')
+  return out.ok && out.value === 'true'
+}
+
+/**
+ * The variables that tell git which repository to use, whatever the
+ * directory. A git hook exports `GIT_DIR`, and with it set every directory
+ * the scan finds would answer as the hook's repository. The inherited
+ * `GIT_CEILING_DIRECTORIES` goes too; {@link gitAt} sets its own.
+ */
+const REPOSITORY_VARS = [
+  'GIT_DIR',
+  'GIT_WORK_TREE',
+  'GIT_COMMON_DIR',
+  'GIT_INDEX_FILE',
+  'GIT_OBJECT_DIRECTORY',
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'GIT_CEILING_DIRECTORIES',
+] as const
+
+/**
+ * `runner`, with {@link REPOSITORY_VARS} unset in each child: command-seam
+ * drops a variable whose value is `undefined`. A value the call sets, such
+ * as the ceiling, still wins.
+ */
+function withoutRepositoryVars(runner: CommandRunner): CommandRunner {
+  const unset = Object.fromEntries(REPOSITORY_VARS.map((name) => [name, undefined]))
+  return {
+    ...(runner.binary === undefined ? {} : { binary: runner.binary }),
+    run: (argv, opts) => runner.run(argv, { ...opts, env: { ...unset, ...opts.env } }),
+  }
+}
+
+/**
  * A client for `dir`, a real path. `GIT_CEILING_DIRECTORIES` is its parent,
  * so git does not search above `dir` for a repository. The scan still checks
  * git's answer, since a parent path holding the path delimiter cannot be
  * written in the variable.
  */
-function gitAt(dir: string, runner: CommandRunner | undefined): Git {
-  const env = { GIT_CEILING_DIRECTORIES: dirname(dir) }
-  return new Git(dir, runner === undefined ? { env } : { env, runner })
+function gitAt(dir: string, runner: CommandRunner): Git {
+  return new Git(dir, { env: { GIT_CEILING_DIRECTORIES: dirname(dir) }, runner })
 }
 
 /**
@@ -181,7 +225,8 @@ export function parseRepoTarget(text: string): RepoCoordinate {
 
 function realpathOr(path: string): string {
   try {
-    return realpathSync(path)
+    // The native call gives the name as stored, the letter case git reports.
+    return realpathSync.native(path)
   } catch {
     return path
   }

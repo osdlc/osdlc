@@ -66,13 +66,23 @@ and the host when both name one. `acme/widgets` names no host, so it matches
 on any. Every match comes back, sorted by path, each repository's main
 checkout once, so a caller can check each one for unpushed work.
 
-A directory the walk finds (a symlink is followed) counts only when git's top
-level is that same directory. A `.git` git cannot use, such as an empty or
-half-made folder, sends git upward to a repository around it, such as a
-dotfiles repository at the home directory; that answer is dropped. git runs
-with `GIT_CEILING_DIRECTORIES` set to the directory's parent, but that alone
-is not enough: the variable cannot hold a path with `:` (`;` on Windows) in
-it.
+A directory the walk finds (a symlink is followed) counts only when git, run
+in it, says it is the top of a working tree (`git rev-parse
+--is-inside-work-tree --show-cdup` prints `true` and nothing more). A `.git`
+git cannot use, such as an empty or half-made folder, sends git upward to a
+repository around it, such as a dotfiles repository at the home directory;
+that answer is dropped. git runs with `GIT_CEILING_DIRECTORIES` set to the
+directory's parent, but that alone is not enough: the variable cannot hold a
+path with `:` (`;` on Windows) in it. No paths are compared, so a root spelled
+in another letter case on a case-insensitive disk finds the same checkouts.
+
+git runs without an inherited `GIT_DIR`, `GIT_WORK_TREE` or other variable
+that picks a repository, so a locator made inside a git hook still reads each
+checkout, not the hook's repository.
+
+A bare store with its worktrees beside it (`proj/.git` a file pointing at
+`proj/.bare`) is not found yet: `proj` is not a working tree, and the walk
+does not enter it.
 
 When nothing matches, `locator.depthLimited` says how many directories the
 walk left unopened at `maxDepth`. Above zero, the checkout may sit deeper:

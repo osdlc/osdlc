@@ -3,9 +3,10 @@
  * home and a fake SSH alias resolver.
  */
 
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { makeGitFixture } from '@osdlc/typed-git/testing'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { CheckoutLocator, locateCheckout, parseRepoTarget } from '../src/repositories.ts'
@@ -133,6 +134,43 @@ describe('locateCheckout', () => {
       ])
     },
   )
+
+  test('a root spelled in another letter case finds the checkouts under it', (ctx) => {
+    // Only a case-insensitive disk, such as macOS's default, can spell a root two ways.
+    if (!existsSync(join(sb.home, 'DEV'))) ctx.skip()
+    const real = sb.checkout('dev/widgets', 'git@github.com:acme/widgets.git')
+    real.commit('first')
+    real.git.worktreeAdd(join(sb.home, 'work', 'widgets-feature'), { branch: 'feature' })
+    sb.writeFile('roots:\n  - ~/DEV\n  - ~/Work\n')
+    expect(locateCheckout('acme/widgets', sb.opts).map((c) => c.path)).toEqual([real.dir])
+    // A symlink to the checkout, spelled in another case.
+    symlinkSync(join(sb.home, 'DEV', 'WIDGETS'), join(sb.home, 'work', 'link'))
+    expect(locateCheckout('acme/widgets', sb.opts).map((c) => c.path)).toEqual([real.dir])
+  })
+
+  test.skipIf(process.platform === 'win32')('a directory name ending in a space is found', () => {
+    const real = sb.checkout('dev/widgets ', 'git@github.com:acme/widgets.git')
+    expect(locateCheckout('acme/widgets', sb.opts).map((c) => c.path)).toEqual([real.dir])
+  })
+
+  test('an inherited GIT_DIR does not make every directory answer as its repository', () => {
+    const hook = sb.checkout('../hook-repo', 'git@github.com:acme/hooked.git')
+    const real = sb.checkout('dev/widgets', 'git@github.com:acme/widgets.git')
+    mkdirSync(join(sb.home, 'dev', 'broken', '.git'), { recursive: true })
+    // What a git hook running in hook-repo exports.
+    vi.stubEnv('GIT_DIR', join(hook.dir, '.git'))
+    vi.stubEnv('GIT_WORK_TREE', hook.dir)
+    vi.stubEnv('GIT_CEILING_DIRECTORIES', '')
+    expect(new CheckoutLocator(sb.opts).checkouts()).toEqual([
+      { path: real.dir, origin: { host: 'github.com', owner: 'acme', repo: 'widgets' } },
+    ])
+  })
+
+  test('a directory whose .git is a bare repository is not a checkout', () => {
+    const bare = makeGitFixture({ dir: join(sb.home, 'dev', 'store', '.git'), bare: true })
+    bare.git.remoteAdd('origin', 'git@github.com:acme/widgets.git')
+    expect(new CheckoutLocator(sb.opts).checkouts()).toEqual([])
+  })
 
   test('no match is []', () => {
     sb.checkout('dev/acme/widgets', 'git@github.com:acme/widgets.git')

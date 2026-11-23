@@ -139,7 +139,8 @@ function within(path: string, dir: string): boolean {
 
 function realpathOr(path: string): string {
   try {
-    return realpathSync(path)
+    // The native call gives the name as stored, the letter case git reports.
+    return realpathSync.native(path)
   } catch {
     return resolve(path)
   }

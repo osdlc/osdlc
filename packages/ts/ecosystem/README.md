@@ -108,12 +108,17 @@ later call. `locateCheckout(target, opts)` is the one-shot form.
 `depthLimited` counts the directories the walk left unopened at `maxDepth`
 (three levels by default), so a caller can say a checkout may sit deeper.
 
-A directory the walk finds counts only when git's top level is that
-directory, after following a symlink. A `.git` git cannot use, such as an
-empty folder, is then skipped, rather than answering with a repository that
-encloses it, such as a dotfiles repository at the home directory. git also
-runs with `GIT_CEILING_DIRECTORIES` set to the directory's parent, so it does
-not search far.
+A directory the walk finds counts only when git, run in it, says it is the
+top of a working tree. A `.git` git cannot use, such as an empty folder, is
+then skipped, rather than answering with a repository that encloses it, such
+as a dotfiles repository at the home directory. git also runs with
+`GIT_CEILING_DIRECTORIES` set to the directory's parent, and without any
+inherited `GIT_DIR`, `GIT_WORK_TREE` or other variable that picks a
+repository, so the locator works from inside a git hook.
+
+Not supported yet: a bare store with its worktrees beside it, where
+`proj/.git` is a file pointing at `proj/.bare`. The walk stops at `proj`,
+which is not a working tree, and does not look at the worktrees inside it.
 
 `target` is `owner/name`, which matches on any host, `host/owner/name`, or a
 typed-git `RepoCoordinate`. Owner and name match in any letter case, and the

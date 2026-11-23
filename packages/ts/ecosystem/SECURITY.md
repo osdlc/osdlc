@@ -33,10 +33,13 @@ We will credit you in the release notes if you want that.
   arrays and never through a shell, to read its main checkout and its
   `origin` URL. git reads that checkout's config as it always does. Each call
   works on the real path of the directory found (a symlink is followed),
-  sets `GIT_CEILING_DIRECTORIES` to its parent, and keeps the directory only
-  when git's top level is that same directory. So git never answers with a
+  sets `GIT_CEILING_DIRECTORIES` to its parent, and unsets the variables that
+  pick a repository (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`,
+  `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`,
+  `GIT_ALTERNATE_OBJECT_DIRECTORIES`). The directory counts only when git
+  says it is the top of a working tree, so git never answers with a
   repository above it, even when the parent's path holds the path delimiter,
-  which the variable cannot carry.
+  which the ceiling variable cannot carry.
 - For an `origin` that uses an SSH host alias, `@osdlc/typed-git` runs
   `ssh -G -- <alias>` from the home directory, with a 5 s limit. It reads
   the person's SSH config; it opens no connection.
