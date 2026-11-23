@@ -543,7 +543,7 @@ describe('survey and a rehearsal', () => {
     expect(existsSync(repos)).toBe(false)
   })
 
-  test('use a clone that exists: fetch it under its lock, stamp it, and measure it there', async () => {
+  test('use a clone that exists: fetch it under its lock, pruned, stamp it, and measure it there', async () => {
     writeMachine('checkout: mirror\n')
     expect((await run('update', '--repo', 'acme/api', '--apply')).code).toBe(EXIT.ok)
     const clone = cloneOf(repos)
@@ -555,6 +555,11 @@ describe('survey and a rehearsal', () => {
     const work = join(scratch, 'work')
     git(work, 'commit', '-q', '--allow-empty', '-m', 'main again')
     git(work, 'push', '-q', remote, 'main')
+    // A branch deleted on the remote: the clone's fetch prunes it.
+    git(remote, 'branch', '-q', 'gone', 'main')
+    git(clone, 'fetch', '-q', 'origin')
+    expect(git(clone, 'branch', '-r', '--list', 'origin/gone')).not.toBe('')
+    git(remote, 'branch', '-q', '-D', 'gone')
     for (const argv of [['survey'], ['update']]) {
       const r = await run(...argv, '--repo', 'acme/api', '--json')
       expect(r.code).toBe(EXIT.ok)
@@ -568,6 +573,7 @@ describe('survey and a rehearsal', () => {
       writeFileSync(join(clone, CLONE_STAMP), 'old\n')
     }
     expect(git(clone, 'rev-parse', 'origin/main')).toBe(git(work, 'rev-parse', 'main'))
+    expect(git(clone, 'branch', '-r', '--list', 'origin/gone')).toBe('')
     expect(existsSync(cloneLockPath(clone))).toBe(false)
   })
 

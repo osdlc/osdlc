@@ -32,7 +32,9 @@ import {
   checkMirrorDir,
   claimCloneLock,
   clonePath,
+  cloneLockPath,
   makeClone,
+  managedClones,
   markMirrorDir,
   mirrorSetting,
   writeMirrorAnswer,
@@ -255,6 +257,58 @@ describe('claimCloneLock', () => {
     const token = claimCloneLock(lock, 0)
     expect(token).not.toBeNull()
     releaseLock(lock, token!)
+  })
+})
+
+describe('managedClones: the lock update --apply holds', () => {
+  test('provide holds it, added lets go, removing takes it again around the removal, close lets go', () => {
+    const clone = clonePath(join(scratch, 'repos'), {
+      host: 'github.com',
+      owner: 'acme',
+      name: 'api',
+    })
+    mkdirSync(clone, { recursive: true })
+    writeFileSync(join(clone, CLONE_MARKER), '{}\n')
+    const lock = cloneLockPath(clone)
+    const gh: CommandRunner = {
+      run: () => {
+        throw new Error('gh is not called for a clone that exists')
+      },
+    }
+    const clones = managedClones({
+      env: isolatedEnv(scratch),
+      cwd: scratch,
+      apply: true,
+      gh,
+      notice: () => {},
+      ask: { canPrompt: () => false, choose: () => 0, text: () => '' },
+      waitMs: 0,
+    })
+    const target = {
+      repo: 'acme/api',
+      host: 'github.com',
+      path: clone,
+      source: 'clone' as const,
+      remote: 'origin',
+      found: null,
+      github: true,
+    }
+    expect(clones.provide([target])).toEqual([target])
+    expect(existsSync(lock)).toBe(true)
+    expect(existsSync(join(clone, CLONE_STAMP))).toBe(true)
+    clones.added(clone)
+    expect(existsSync(lock)).toBe(false)
+    let during: boolean | undefined
+    clones.removing(clone, () => {
+      during = existsSync(lock)
+    })
+    expect(during).toBe(true)
+    expect(existsSync(lock)).toBe(false)
+    // A clone whose group never reached `worktree add` is let go at the end of the run.
+    clones.provide([target])
+    expect(existsSync(lock)).toBe(true)
+    clones.close()
+    expect(existsSync(lock)).toBe(false)
   })
 })
 
