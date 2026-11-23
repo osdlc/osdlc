@@ -8,6 +8,9 @@ candidates (things that could be deleted), may object to any candidate, and
 deletes its own. The core decides what runs and checks everything again before
 it runs. The [README](../../README.md) describes the phases and the rules; this
 guide is how to write, test and publish a plugin of your own.
+[`examples/podman-plugin`](../../examples/podman-plugin/README.md) is a whole
+plugin package written this way: ref candidates, `costDescription: 'lost'`,
+and tests on a fake runner.
 
 A plugin uses two entries of `@osdlc/host-cleaner`, and no other:
 
