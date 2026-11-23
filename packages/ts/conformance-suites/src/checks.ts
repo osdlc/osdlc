@@ -418,7 +418,7 @@ export function generatorBuildFilters(
 
 /**
  * A name under both language roots is two implementations of one family. Each
- * such name must be a registered family implementation (`registered`, a set of
+ * such name must have both directories registered (`registered`, a set of
  * directories), still reading the other's fixtures (`unmigrated`), or exempt:
  * `notFamilies` for a binding of the other language's library, `noSuiteYet` for
  * a real pair with no shared cases yet. An exemption for a name that is
@@ -438,14 +438,16 @@ export function unlistedPairs(
     const tsDir = tsByName.get(name)
     if (tsDir === undefined) continue
     const dirs = [rustDir, tsDir]
-    const isRegistered = dirs.some((d) => registered.has(d))
-    const exemptions = (['notFamilies', 'noSuiteYet'] as const).filter((k) => name in exempt[k])
-    if (isRegistered) {
+    const unregistered = dirs.filter((d) => !registered.has(d))
+    const exemptions = (['notFamilies', 'noSuiteYet'] as const).filter((k) =>
+      Object.hasOwn(exempt[k], name),
+    )
+    if (unregistered.length === 0) {
       for (const k of exemptions)
         problems.push(`${name}: in families.json and in config.json ${k}; remove it from ${k}`)
     } else if (exemptions.length === 0 && !dirs.some((d) => unmigrated.has(d))) {
       problems.push(
-        `${name}: ${dirs[0]} and ${dirs[1]} are not in families.json; register the family, or list ${name} in config.json notFamilies or noSuiteYet`,
+        `${name}: ${unregistered.join(' and ')} ${unregistered.length === 1 ? 'is' : 'are'} not in families.json; register the family, or list ${name} in config.json notFamilies or noSuiteYet`,
       )
     }
   }

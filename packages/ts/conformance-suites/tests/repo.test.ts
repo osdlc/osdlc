@@ -156,6 +156,11 @@ test('a family with one implementation needs a SPEC.md', () => {
       JSON.stringify({ dirs: { ...FAMILY, implementations: FAMILY.implementations.slice(0, 1) } }),
     )
     put('packages/rust/dirs/tests/c.rs', '// reads nothing')
+    // The fixture's Rust twin stays on disk; registering half a pair needs an exemption.
+    put(
+      'packages/conformance/config.json',
+      JSON.stringify({ noSuiteYet: { dirs: 'the Rust twin has no suite runner yet' } }),
+    )
   }
   assert.deepEqual(repo(one), [
     'dirs: a family with one implementation states its format in packages/conformance/dirs/SPEC.md',
