@@ -25,7 +25,7 @@ import { delimiter, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { EXIT, captureContext } from '@osdlc/cli-tool'
-import { spawnRunner } from '@osdlc/command-seam'
+import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { osdlcDirs } from '@osdlc/ecosystem'
 import { releaseLock } from '@osdlc/file-lock'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
@@ -876,6 +876,41 @@ describe('pruning at the end of update --apply', () => {
     expect(JSON.parse(rehearsal.out).repos[0].checkout).toEqual({ path: old, source: 'clone' })
     expect(rehearsal.err).not.toContain('pruned')
     expect(existsSync(older)).toBe(true)
+  })
+
+  test('a run that updated a located checkout under the cache prunes too', async () => {
+    const old = oldClone(repos, 400)
+    // A checkout of acme/api beside the project, found by its origin; fetch and push go to the
+    // local bare repository.
+    const url = 'https://github.com/acme/api.git'
+    const located = join(scratch, 'dev', 'api')
+    git(scratch, 'clone', '-q', remote, located)
+    git(located, 'remote', 'set-url', 'origin', url)
+    const real = spawnRunner('git')
+    const viaBare: CommandRunner = {
+      run: (argv, opts) =>
+        real.run(
+          argv[0] === 'fetch' || argv[0] === 'push'
+            ? ['-c', `url.file://${remote}.insteadOf=${url}`, ...argv]
+            : argv,
+          opts,
+        ),
+    }
+
+    const r = await runWith(
+      { ...noTerminal, git: viaBare },
+      {},
+      'update',
+      '--repo',
+      'acme/api',
+      '--apply',
+      '--json',
+    )
+
+    expect(r.code).toBe(EXIT.ok)
+    expect(JSON.parse(r.out).repos[0].checkout).toEqual({ path: located, source: 'located' })
+    expect(r.err).toMatch(new RegExp(`pruned the clone ${old.replace(/[.]/g, '\\.')} \\(`))
+    expect(existsSync(old)).toBe(false)
   })
 
   test('never waits for a clone another run holds: it is left, and the run ends at once', async () => {

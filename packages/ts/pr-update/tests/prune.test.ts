@@ -332,7 +332,7 @@ describe('managed clones', () => {
     expect(existsSync(fresh)).toBe(true)
   })
 
-  test('at mirror_max_age_days: 0 no clone is removed, unless --older-than or --all is given; dead run worktrees still are', () => {
+  test('at mirror_max_age_days: 0 no clone is removed, unless --older-than or --all-clones is given; dead run worktrees still are', () => {
     const file = machineFile({ env })
     mkdirSync(dirname(file.path()), { recursive: true })
     writeFileSync(file.path(), 'mirror_max_age_days: 0\n')
@@ -350,7 +350,7 @@ describe('managed clones', () => {
     expect(prune({ all: true }).removed.map((e) => e.path)).toEqual([other])
   })
 
-  test('one another run holds is never removed, even with --all', () => {
+  test('one another run holds is never removed, even with --all-clones', () => {
     const clone = makeClone('acme/api', 400)
     const lock = holdLock(clone)
 
@@ -365,7 +365,7 @@ describe('managed clones', () => {
     expect(existsSync(clone)).toBe(true)
   })
 
-  test('one with a kept worktree stays, even with --all; --discard-kept removes the kept tree, its branch and record, then the clone', () => {
+  test('one with a kept worktree stays, even with --all-clones; --discard-kept removes the kept tree, its branch and record, then the clone', () => {
     const clone = makeClone('acme/api', 400)
     const kept = keptWorktree(clone, 'acme/api', 7)
 
@@ -386,6 +386,29 @@ describe('managed clones', () => {
     ])
     expect(existsSync(kept)).toBe(false)
     expect(existsSync(`${kept}.json`)).toBe(false)
+    expect(existsSync(clone)).toBe(false)
+  })
+
+  test('a kept worktree with no record stays without --discard-kept, and with it goes with its branch', () => {
+    const clone = makeClone('acme/api', 400)
+    const path = join(paths.kept, 'github.com', 'acme', 'api', '9')
+    mkdirSync(dirname(path), { recursive: true })
+    git(clone, 'worktree', 'add', '-q', '-b', 'pr-update/failed-acme-api-9', path, 'origin/main')
+
+    expect(prune({ all: true }).skipped).toEqual([
+      expect.objectContaining({
+        path: clone,
+        reason: expect.stringContaining('has kept worktrees'),
+      }),
+    ])
+    expect(existsSync(path)).toBe(true)
+
+    const r = prune({ all: true, discardKept: true })
+    expect(r.removed.map((e) => [e.kind, e.path])).toEqual([
+      ['kept', path],
+      ['clone', clone],
+    ])
+    expect(existsSync(path)).toBe(false)
     expect(existsSync(clone)).toBe(false)
   })
 
@@ -623,7 +646,7 @@ describe('pr-update mirror list and prune, on the command line', () => {
     })
   })
 
-  test('prune --older-than, --all, --dry-run and --mirror-dir', async () => {
+  test('prune --older-than, --all-clones, --dry-run and --mirror-dir', async () => {
     const elsewhere = join(scratch, 'moved')
     const left = makeClone('acme/api', 5, elsewhere)
     const clone = makeClone('acme/web', 5)
