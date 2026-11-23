@@ -95,10 +95,11 @@ group (lockfiles, `*.min.*`, `*.map`, `_generated/`, `*.generated.*`, snapshots,
 file in the `vendored` group (`linguist-vendored`, `vendor/`, `node_modules/`, …), then a file whose
 change category is `formatting` (only whitespace that cannot change meaning, or only blank lines).
 Prep classifies nothing itself. A repository marks its own generated trees in `.gitattributes`, as
-GitHub reads them. A file whose changed lines are all comments, docs or blank is kept, with
-`category: "comments"`, because comment accuracy is reviewed. A generated or vendored file is dropped
-whatever its status. Of the rest, added, deleted and renamed files are always kept, and so is a
-reformatted test or doc file, because the categories put those first. See
+GitHub reads them. A source file whose changed lines are all comments or doc comments, with or
+without blank lines among them, is kept, with `category: "comments"`, because comment accuracy is
+reviewed. A generated or vendored file is dropped whatever its status. Of the rest, added, deleted
+and renamed files are always kept, and so is a reformatted test or doc file, because the
+categories put those first. See
 code-stats' [Changes guide](https://github.com/osdlc/osdlc/blob/main/packages/ts/code-stats/docs/guide/changes.md)
 for the categories.
 
@@ -123,8 +124,8 @@ shown to be fine: every check is cheap, deterministic and partial. Each carries
 `basis`: `measured` is a count taken from the diff and the syntax tree (the number is
 exact, whether it matters is a judgement); `heuristic` is a pattern that is often right
 and sometimes not, with its `measurements` giving the evidence to check. The checks cover
-TypeScript and JavaScript sources (not declaration files, and not files under `dist/`,
-`fixtures/` or `vendored/`) and need the `typescript` compiler
+TypeScript and JavaScript sources (not deleted files, not declaration files, and not files under
+`dist/`, `fixtures/` or `vendored/`) and need the `typescript` compiler
 API, the checkout's own copy when it has one, else the one beside code-stats; without it they
 are skipped and `notes` says so. A source too large for code-stats to read (over 2 MB) is
 named in `notes`. A test file is one code-stats puts in its `tests` group.
