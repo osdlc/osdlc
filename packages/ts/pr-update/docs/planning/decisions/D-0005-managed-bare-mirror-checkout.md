@@ -693,6 +693,18 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   Different filesystems are found by renaming an empty probe folder,
   `.pr-update-probe-*`, into the kept directory and reading `EXDEV`; git's
   text, read in the C locale, is only a fallback.
+- **Kept records are not trusted.** A checkout's kept place,
+  `.pr-update/failed/`, is in its working tree, so a cloned repository can
+  commit a record there that names another repository's git directory and a
+  branch to delete. Built after review, a record is refused when its branch
+  is not `pr-update/failed-<owner>-<name>-<number>`, its path is not an
+  absolute path to that PR's kept folder, or it names a `gitDir` in a
+  checkout's own place, where pr-update never writes one. A tree is removed
+  only through the git directory serving its place, and only when `git
+  worktree list` there shows the folder on the record's branch; that check
+  runs before any git runs in the folder. A refused record and its folder are
+  left as they are, listed in the report's `keptRefused`, and the PR is
+  updated as if nothing were kept, so a committed file cannot hold a PR back.
 - **Names starting with `.`.** A hard kill can leave the probe in
   `worktrees/<host>/<owner>/<name>/` or `kept/<host>/<owner>/<name>/`. Every
   walk pr-update makes of its own folders skips names starting with `.`:

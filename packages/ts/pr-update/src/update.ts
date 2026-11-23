@@ -88,10 +88,13 @@ import {
   keptIsTouched,
   keptOwnerElsewhere,
   keptOwnerGone,
+  keptNotWorktree,
   keptOwnerGoneReason,
+  keptRefusal,
   listKept,
   type KeptPlace,
   type KeptRecord,
+  type KeptRefusal,
 } from './update/kept.ts'
 import type { PrUpdateConfig } from './config.ts'
 
@@ -423,6 +426,17 @@ export const output = z.object({
     .describe(
       'Kept worktrees this run removed (`--discard-kept`, `--retry-failed`, or a PR that moved).',
     ),
+  keptRefused: z
+    .array(
+      z.object({
+        record: z.string().describe("The kept record's file."),
+        reason: z.string(),
+      }),
+    )
+    .optional()
+    .describe(
+      'Kept records the run would not act on: one that names another branch, path or git directory than pr-update gives it, or whose folder is not a worktree on its branch. Neither the record nor its folder is removed, and its PR is updated as if nothing were kept.',
+    ),
   repos: z
     .array(repoEntry)
     .describe(
@@ -725,7 +739,15 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
       )
     }
   }
-  const discarded = settleKept(args, writes, env, served, refused, groups, skipped)
+  const { removed: discarded, refused: keptRefused } = settleKept(
+    args,
+    writes,
+    env,
+    served,
+    refused,
+    groups,
+    skipped,
+  )
   const settings = {
     resolvers: effectiveCfg.resolvers,
     lockfileInstall: effectiveCfg.lockfile_install,
@@ -849,6 +871,7 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
     notFound,
     ...(recordErrors.length > 0 ? { recordErrors } : {}),
     ...(discarded.length > 0 ? { discarded } : {}),
+    ...(keptRefused.length > 0 ? { keptRefused } : {}),
     repos: report.repos,
     counts: {
       updated: t['updated'] ?? 0,
@@ -1096,7 +1119,11 @@ function routeAttempts(
  * the PR is skipped as `kept elsewhere`, and the tree and its owner are left alone. A target the
  * trust gate `refused` is not touched.
  *
- * @returns the paths removed.
+ * A record the checkout's content could have forged is refused (`KeptRefusal`): one that breaks
+ * `readRecord`'s rules, or whose folder its owner does not list as a worktree on its branch. It
+ * is left alone, tree and file, and its PR goes on as if nothing were kept.
+ *
+ * @returns the paths removed, and the records refused.
  */
 function settleKept(
   args: UpdateArgs,
@@ -1106,8 +1133,18 @@ function settleKept(
   refused: ReadonlySet<string>,
   groups: Map<string, Group>,
   skipped: SkippedPr[],
-): string[] {
+): { removed: string[]; refused: KeptRefusal[] } {
   const removed: string[] = []
+  const refusals: KeptRefusal[] = []
+  const onRefused = (r: KeptRefusal): void => {
+    if (!refusals.some((x) => x.record === r.record)) refusals.push(r)
+  }
+  /** Whether `record`'s folder is a worktree its owner lists on its branch; else it is refused. */
+  const isWorktree = (git: Git, place: KeptPlace, record: KeptRecord): boolean => {
+    const why = keptNotWorktree(git, place, record)
+    if (why !== null) onRefused(keptRefusal(place, record, why))
+    return why === null
+  }
   // The run's managed clones, by real path, since a kept record names its owner by real path.
   const clones = new Map<string, string>()
   for (const s of served.values()) {
@@ -1139,7 +1176,8 @@ function settleKept(
   if (args.discardKept === true) {
     for (const { checkout, place, at } of places.values()) {
       const git = gitOf(checkout, at, env)
-      for (const record of listKept(place)) {
+      for (const record of listKept(place, onRefused)) {
+        if (!isWorktree(git, place, record)) continue
         if (writes && !discard(git, checkout, place, record)) continue
         removed.push(record.path)
       }
@@ -1152,7 +1190,7 @@ function settleKept(
     group.targets = group.targets.filter((t) => {
       // A restack child's base moves when its parent does, so its kept tree is stale by then.
       if (t.stackParent !== undefined) return true
-      const record = findKept(place, t.repo, t.number)
+      const record = findKept(place, t.repo, t.number, onRefused)
       if (record === null || removed.includes(record.path)) return true
       const skip = (reason: string): false => {
         skipped.push({ repo: t.repo, number: t.number, head: t.head, reason })
@@ -1167,6 +1205,8 @@ function settleKept(
       if (owner !== null && (args.retryFailed === true || !moved)) {
         return skip(`kept elsewhere: ${record.path} is a worktree of ${owner}`)
       }
+      // Before `keptIsTouched` runs git in the folder.
+      if (!isWorktree(git, place, record)) return true
       const stale = args.retryFailed === true || moved
       // `--retry-failed` too: only `--discard-kept` removes a tree with a person's changes in it.
       if (stale && keptIsTouched(git, record)) {
@@ -1186,7 +1226,7 @@ function settleKept(
       return skip(`failed worktree kept at ${record.path}`)
     })
   }
-  return writes ? removed : []
+  return { removed: writes ? removed : [], refused: refusals }
 }
 
 /**
@@ -1271,6 +1311,9 @@ export function renderUpdateText(out: UpdateOutput): string {
   }
   for (const e of out.recordErrors ?? []) lines.push(`! ${e.repo}  ${e.error}`)
   for (const path of out.discarded ?? []) lines.push(`- discarded kept worktree ${path}`)
+  for (const r of out.keptRefused ?? []) {
+    lines.push(`! kept record ${r.record} left alone: ${r.reason}`)
+  }
   for (const s of out.skipped) {
     lines.push(`- ${prKey(s.repo, s.number)}  ${s.head}  ${s.reason}`)
   }

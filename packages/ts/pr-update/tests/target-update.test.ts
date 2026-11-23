@@ -1282,7 +1282,8 @@ describe('a kept tree, round 2', () => {
     verifyOk = false
     const kept = join(keptDir(), '1')
     expect((await update({ args: { keepFailed: true } })).results[0]!.keptWorktree).toBe(kept)
-    expect(listKept({ dir: keptDir(), naming: 'repository' }).map((r) => r.path)).toEqual([kept])
+    const place = { dir: keptDir(), naming: 'repository' as const, gitDir: ownGitDir() }
+    expect(listKept(place).map((r) => r.path)).toEqual([kept])
     expect((await update({ args: { discardKept: true } })).discarded).toEqual([kept])
     for (const p of probes) expect(existsSync(p)).toBe(true)
   })

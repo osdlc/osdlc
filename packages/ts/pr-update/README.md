@@ -846,6 +846,13 @@ cd .pr-update/failed/acme-widgets-12  # finish the fix, then push it yourself
   PR is skipped with `kept worktree <path> has local changes; push them or pass --discard-kept`,
   and only `--discard-kept` removes it. A record is used only when its path names the kept
   tree's own folder, and names starting with `.` in these folders are skipped.
+- `.pr-update/failed/` is inside the working tree, so a repository's own files can put a record
+  there. A record is refused when its branch is not `pr-update/failed-<owner>-<name>-<number>`,
+  its path is not that PR's kept folder, it names a git directory (a checkout's own records never
+  do), or `git worktree list` in the checkout does not show its folder on its branch. A refused
+  record and its folder are left as they are, the output's `keptRefused` lists the record with
+  why, the text says `kept record <file> left alone: <why>`, and the PR is updated as if nothing
+  were kept.
 - `update --apply --discard-kept` removes every kept worktree of the surveyed repositories, then
   runs as usual. The output's `discarded` lists what was removed.
 
