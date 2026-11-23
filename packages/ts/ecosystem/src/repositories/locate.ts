@@ -113,10 +113,20 @@ export class CheckoutLocator {
         ...(onWarn === undefined ? {} : { onWarn }),
       })
       depthLimited += scan.depthLimited
-      for (const checkout of scan.checkouts) {
-        // A worktree and its main checkout resolve to one row. Something that
-        // looks like a checkout but that git cannot read is not one.
-        const main = gitAt(checkout, runner).try.mainCheckout()
+      for (const found of scan.checkouts) {
+        // The walk follows symlinks, so work on what the entry points to.
+        const dir = realpathOr(found)
+        const git = gitAt(dir, runner)
+        // Only a directory that is itself a working tree counts. When git
+        // cannot use its `.git` (an empty or half-made folder), git searches
+        // upward and answers with a repository around the root, such as a
+        // dotfiles repository at the home directory. The ceiling stops that
+        // search, but git splits it on the path delimiter with no escaping,
+        // so a parent named `a:b` defeats it. This check holds either way.
+        const top = git.try.topLevel()
+        if (!top.ok || top.value === null || realpathOr(top.value) !== dir) continue
+        // A worktree and its main checkout resolve to one row.
+        const main = git.try.mainCheckout()
         if (!main.ok || main.value === null) continue
         const path = realpathOr(main.value)
         if (seen.has(path)) continue
@@ -133,13 +143,13 @@ export class CheckoutLocator {
 }
 
 /**
- * A client for a directory the walk found. `GIT_CEILING_DIRECTORIES` stops
- * git at that directory's parent: a `.git` git cannot use, such as an empty
- * folder, would otherwise send it upward to the repository that encloses the
- * root, which may be a dotfiles repository at the home directory.
+ * A client for `dir`, a real path. `GIT_CEILING_DIRECTORIES` is its parent,
+ * so git does not search above `dir` for a repository. The scan still checks
+ * git's answer, since a parent path holding the path delimiter cannot be
+ * written in the variable.
  */
 function gitAt(dir: string, runner: CommandRunner | undefined): Git {
-  const env = { GIT_CEILING_DIRECTORIES: realpathOr(dirname(dir)) }
+  const env = { GIT_CEILING_DIRECTORIES: dirname(dir) }
   return new Git(dir, runner === undefined ? { env } : { env, runner })
 }
 

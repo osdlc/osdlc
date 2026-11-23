@@ -32,8 +32,11 @@ We will credit you in the release notes if you want that.
 - It runs `git` in each checkout it finds under the roots, with argument
   arrays and never through a shell, to read its main checkout and its
   `origin` URL. git reads that checkout's config as it always does. Each call
-  sets `GIT_CEILING_DIRECTORIES` to the found directory's parent, so git never
-  answers with a repository above it.
+  works on the real path of the directory found (a symlink is followed),
+  sets `GIT_CEILING_DIRECTORIES` to its parent, and keeps the directory only
+  when git's top level is that same directory. So git never answers with a
+  repository above it, even when the parent's path holds the path delimiter,
+  which the variable cannot carry.
 - For an `origin` that uses an SSH host alias, `@osdlc/typed-git` runs
   `ssh -G -- <alias>` from the home directory, with a 5 s limit. It reads
   the person's SSH config; it opens no connection.

@@ -3,7 +3,7 @@
  * home and a fake SSH alias resolver.
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -106,6 +106,33 @@ describe('locateCheckout', () => {
     mkdirSync(join(sb.home, 'dev', 'half-made', '.git'), { recursive: true })
     expect(locateCheckout('me/dotfiles', sb.opts)).toEqual([])
   })
+
+  test('a symlink under a root to a broken .git elsewhere does not answer with the home repository', () => {
+    sb.checkout('', 'git@github.com:me/dotfiles.git')
+    mkdirSync(join(sb.home, 'stash', 'half', '.git'), { recursive: true })
+    symlinkSync(join(sb.home, 'stash', 'half'), join(sb.home, 'dev', 'link'))
+    expect(new CheckoutLocator(sb.opts).checkouts()).toEqual([])
+  })
+
+  test('a symlink under a root to a real checkout resolves to the checkout', () => {
+    const real = sb.checkout('../elsewhere/widgets', 'git@github.com:acme/widgets.git')
+    symlinkSync(real.dir, join(sb.home, 'dev', 'widgets'))
+    expect(locateCheckout('acme/widgets', sb.opts).map((c) => c.path)).toEqual([real.dir])
+  })
+
+  test.skipIf(process.platform === 'win32')(
+    'a parent path holding the path delimiter does not defeat the stop',
+    () => {
+      // `a:b` cannot be written in GIT_CEILING_DIRECTORIES, so git searches upward.
+      sb.checkout('', 'git@github.com:me/dotfiles.git')
+      mkdirSync(join(sb.home, 'a:b', 'broken', '.git'), { recursive: true })
+      const real = sb.checkout('a:b/widgets', 'git@github.com:acme/widgets.git')
+      sb.writeFile('roots:\n  - ~/a:b\n')
+      expect(new CheckoutLocator(sb.opts).checkouts()).toEqual([
+        { path: real.dir, origin: { host: 'github.com', owner: 'acme', repo: 'widgets' } },
+      ])
+    },
+  )
 
   test('no match is []', () => {
     sb.checkout('dev/acme/widgets', 'git@github.com:acme/widgets.git')

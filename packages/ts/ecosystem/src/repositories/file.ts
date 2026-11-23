@@ -100,9 +100,12 @@ export interface RepositoriesFile {
   /** The file's text and etag, to hand back to {@link writeRoots}. `null` when there is no file. */
   read(): { text: string; etag: string } | null
   /**
-   * Set `roots` to `roots`, keeping every byte outside the `roots` value as
-   * written (a comment inside the old list goes with it), and return the new etag. A compare-and-swap against `etag`. Throws when
-   * an entry is not absolute, `~` or `~/…`, since the reader would drop it.
+   * Set `roots` to `roots` and return the new etag. A compare-and-swap
+   * against `etag`. Every line outside the `roots` entry stays as written,
+   * comments included. Inside it the comments go: those inside the old list,
+   * and the one on the `roots:` line, which the old value's trailing comment
+   * (on its last item, or after a flow list) replaces. Throws when an entry is
+   * not absolute, `~` or `~/…`, since the reader would drop it.
    */
   writeRoots(roots: readonly string[], opts: WriteRootsOptions): string
 }
@@ -157,7 +160,7 @@ export function repositoriesFile(opts: RepositoriesFileOptions = {}): Repositori
           )
         }
       }
-      // setPath edits only the `roots` value, so every other byte of the file stays as written.
+      // setPath edits only the `roots` entry, so every other line stays as written.
       const text = setPath(read()?.text ?? '', ['roots'], [...roots])
       return file.write(text, { etag: o.etag })
     },
