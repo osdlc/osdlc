@@ -262,6 +262,28 @@ describe('the one-time move', () => {
     expect(await readdir(dirname(store.dir()))).toEqual([TRUST_MARKER_DIR])
   })
 
+  test("an injected env without home moves from that env's HOME, never the real one", async () => {
+    const { home, env, repos, legacy } = await machine()
+    await legacy().trust(repos[0]!)
+    const store = trustStore({
+      tool: 'osdlc',
+      app: 'pr-update',
+      vendorDirs: OSDLC,
+      env: { ...env, HOME: home, USERPROFILE: home },
+    })
+    expect(store.dir().startsWith(home)).toBe(true)
+    expect(await store.isTrusted(repos[0]!)).toBe(true)
+    // With no HOME in the env there is no old place, and nothing is read.
+    const homeless = trustStore({
+      tool: 'osdlc',
+      app: 'pr-update',
+      vendorDirs: OSDLC,
+      dirs: () => new TieredDirs('osdlc', rootedBaseDirs(join(home, 'rooted'))),
+      env: {},
+    })
+    expect(await homeless.isTrusted(repos[0]!)).toBe(false)
+  })
+
   test('legacyDir names another old store, and null turns the move off', async () => {
     const { home, env, repos, current } = await machine()
     const other = join(home, 'old-trust')

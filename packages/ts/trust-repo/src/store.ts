@@ -109,6 +109,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 
 import { atomicWriteAsync } from '@osdlc/etag-write'
 import {
+  homeDir as tieredHomeDir,
   systemBaseDirs,
   testRoot,
   TieredDirs,
@@ -167,14 +168,13 @@ function isWithin(child: string, parent: string): boolean {
 function locateStore(opts: TrustStoreOptions): StoreLocation {
   if (opts.dir !== undefined) return { dir: opts.dir, legacy: null }
   const env = opts.env ?? process.env
-  const home = (): string => opts.home ?? homeDir()
   if (opts.vendorDirs === undefined) {
     if (opts.dirs !== undefined || opts.app !== undefined) {
       throw new TypeError(
         `trust store: ${opts.dirs !== undefined ? 'dirs' : 'app'} needs vendorDirs; without it the store keeps its old place, which has no app directory`,
       )
     }
-    return { dir: legacyStoreDir(opts.tool, env, home()), legacy: null }
+    return { dir: legacyStoreDir(opts.tool, env, opts.home ?? homeDir()), legacy: null }
   }
   // Only what the caller injected is passed, so tiered-dirs' test rules still
   // apply to a store built from the real environment.
@@ -187,18 +187,34 @@ function locateStore(opts: TrustStoreOptions): StoreLocation {
     new TieredDirs(opts.vendorDirs.vendor, systemBaseDirs(opts.vendorDirs.envVars, resolveOpts))
   const state = dirs.standalone(opts.tool).state()
   const dir = join((opts.app !== undefined ? state.app(opts.app) : state).path, TRUST_MARKER_DIR)
-  const legacy =
-    opts.legacyDir !== undefined
-      ? opts.legacyDir
-      : legacyStoreDir(opts.app ?? opts.tool, env, home())
-  if (legacy === null || resolve(legacy) === resolve(dir)) return { dir, legacy: null }
   // A store moved on purpose starts empty: see "How a store moves".
   const vars = opts.vendorDirs.envVars
   const scratch = testRoot()
   if (env[vars.root] || env[vars.dirs.state] || (scratch !== undefined && isWithin(dir, scratch))) {
     return { dir, legacy: null }
   }
+  const legacy =
+    opts.legacyDir !== undefined ? opts.legacyDir : legacyFor(opts.app ?? opts.tool, opts)
+  if (legacy === null || resolve(legacy) === resolve(dir)) return { dir, legacy: null }
   return { dir, legacy }
+}
+
+/**
+ * The old place for `name`, with the home the new place was resolved with:
+ * `opts.home`, else the injected environment's `HOME` (`USERPROFILE` on
+ * Windows), else the user's. Reading the real home for an injected
+ * environment would copy the developer's real store into a test's tree.
+ * Null when that environment names no home: then there is no old place.
+ */
+function legacyFor(name: string, opts: TrustStoreOptions): string | null {
+  const env = opts.env ?? process.env
+  if (opts.home !== undefined) return legacyStoreDir(name, env, opts.home)
+  if (opts.env === undefined) return legacyStoreDir(name, env, homeDir())
+  try {
+    return legacyStoreDir(name, env, tieredHomeDir({ env }))
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -369,9 +385,10 @@ export interface TrustStoreOptions {
    * `null` for none. Defaults to the place a release before `vendorDirs`
    * used, named after `app` when set, else `tool`:
    * `$XDG_STATE_HOME/<app or tool>/trusted/`, or
-   * `~/.local/state/<app or tool>/trusted/`. Nothing is copied when it is the
-   * new place, or when `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` or tiered-dirs'
-   * test root moved the new one.
+   * `~/.local/state/<app or tool>/trusted/`, where `~` is `home`, else the
+   * `HOME` of an injected `env`. Nothing is copied when it is the new place,
+   * or when `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` or tiered-dirs' test root
+   * moved the new one.
    */
   legacyDir?: string | null
   /** Injected for tests; defaults to `process.env`. */
