@@ -70,8 +70,6 @@ describe('where the store lives', () => {
         tool: 'tooly',
         vendorDirs: TOOLY,
         dirs: dirsFor(TOOLY, 'win32', env, 'C:\\Users\\dev', convention),
-        env,
-        home: 'C:\\Users\\dev',
       }
       expect(trustStoreDir(opts)).toBe(join(local, 'state', 'tooly', TRUST_MARKER_DIR))
       expect(trustStore(opts).dir()).toBe(trustStoreDir(opts))
@@ -82,21 +80,26 @@ describe('where the store lives', () => {
     const home = '/Users/dev'
     const native = dirsFor(TOOLY, 'darwin', {}, home, 'native')
     const xdg = dirsFor(TOOLY, 'darwin', {}, home, 'xdg')
-    const base = { tool: 'tooly', vendorDirs: TOOLY, env: {}, home }
+    const base = { tool: 'tooly', vendorDirs: TOOLY }
     expect(trustStoreDir({ ...base, dirs: native })).toBe(
       join(home, 'Library', 'Application Support', 'tooly', TRUST_MARKER_DIR),
     )
     expect(trustStoreDir({ ...base, dirs: xdg })).toBe(trustStoreDir('tooly', {}, home))
   })
 
-  test('<PREFIX>_CONVENTION picks the table when vendorDirs alone is passed', () => {
-    // The host's own table: on Linux both conventions are XDG; on macOS the
-    // variable moves the store out of Application Support.
+  test('<PREFIX>_CONVENTION picks the table', () => {
     const home = '/Users/dev'
     const env = { TOOLY_CONVENTION: 'xdg' }
-    expect(trustStoreDir({ tool: 'tooly', vendorDirs: TOOLY, env, home })).toBe(
-      join(systemBaseDirs(TOOLY.envVars, { env, home }).state, 'tooly', TRUST_MARKER_DIR),
-    )
+    const xdgPlace = join(home, '.local', 'state', 'tooly', TRUST_MARKER_DIR)
+    // macOS, whose default would be Application Support.
+    const darwin = () =>
+      new TieredDirs(TOOLY.vendor, systemBaseDirs(TOOLY.envVars, { platform: 'darwin', env, home }))
+    expect(trustStoreDir({ tool: 'tooly', vendorDirs: TOOLY, dirs: darwin })).toBe(xdgPlace)
+    // vendorDirs alone reads the variable from the injected env on the host's
+    // own table, which is XDG on Linux and on macOS under xdg.
+    if (process.platform !== 'win32') {
+      expect(trustStoreDir({ tool: 'tooly', vendorDirs: TOOLY, env, home })).toBe(xdgPlace)
+    }
   })
 
   test('<PREFIX>_ROOT and <PREFIX>_STATE_DIR move the store, as they move every other file', () => {
@@ -121,6 +124,31 @@ describe('where the store lives', () => {
   test('dir wins over vendorDirs', () => {
     const opts = { tool: 'osdlc', app: 'a', vendorDirs: OSDLC, env: {}, home: '/h', dir: '/x' }
     expect(trustStore(opts).dir()).toBe('/x')
+  })
+
+  test('env or home beside dirs is refused, since dirs alone places the store', () => {
+    const dirs = dirsFor(OSDLC, 'linux', {}, '/h')
+    const base = { tool: 'osdlc', app: 'a', vendorDirs: OSDLC, dirs }
+    expect(() => trustStore({ ...base, env: {} })).toThrow(TypeError)
+    expect(() => trustStore({ ...base, home: '/h' })).toThrow(TypeError)
+    expect(() => trustStoreDir({ ...base, env: {} })).toThrow(/env is ignored/)
+  })
+
+  test("a pinned dirs factory closes over the tool's env, as the README shows", () => {
+    const env = { OSDLC_ROOT: '/r', OSDLC_CONVENTION: 'native' }
+    const dirs = () =>
+      new TieredDirs(
+        OSDLC.vendor,
+        systemBaseDirs(OSDLC.envVars, {
+          env,
+          home: '/h',
+          platform: 'darwin',
+          convention: 'xdg',
+          conventionFromEnv: false,
+        }),
+      )
+    const store = trustStore({ tool: 'osdlc', app: 'pr-update', vendorDirs: OSDLC, dirs })
+    expect(store.dir()).toBe(join('/r', 'state', 'osdlc', 'pr-update', TRUST_MARKER_DIR))
   })
 
   test('app and dirs need vendorDirs', () => {
@@ -225,6 +253,25 @@ describe('opting in', () => {
 })
 
 describe('listGrants', () => {
+  test.skipIf(process.platform === 'win32')(
+    'a root whose path ends in whitespace keeps its per-scope grants listed',
+    async () => {
+      const home = await root()
+      const repo = join(home, 'repo ')
+      await mkdir(repo)
+      const store = trustStore({ tool: 'tooly', env: {}, home })
+      await store.trust(repo, 'just')
+      expect(await store.isTrusted(repo, 'just')).toBe(true)
+      const resolved = await store.resolveRoot(repo)
+      expect(resolved.endsWith(' ')).toBe(true)
+      expect(await store.listGrants()).toEqual([
+        expect.objectContaining({ root: resolved, scope: 'just' }),
+      ])
+      expect(await store.untrustAll(repo)).toEqual(['just'])
+      expect(await store.isTrusted(repo, 'just')).toBe(false)
+    },
+  )
+
   test("a per-scope marker filed in another root's folder is not listed", async () => {
     const { repos, legacy } = await machine()
     const [one, two] = repos as [string, string]

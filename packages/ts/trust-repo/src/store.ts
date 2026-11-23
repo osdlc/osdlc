@@ -34,6 +34,11 @@
  * whether the two places differ, had a case that brought back a grant the
  * person had revoked.
  *
+ * The new place is the old folder only on Linux, or macOS under `xdg`, with
+ * no `app`, no `<PREFIX>_ROOT` or `<PREFIX>_STATE_DIR`, and an
+ * `XDG_STATE_HOME` that is unset or absolute. There the grants are already
+ * in place; anywhere else the store starts empty.
+ *
  * A tool that passes neither `vendorDirs` nor `dir` keeps the place every
  * release before this one used: `$XDG_STATE_HOME/<tool>/trusted/`, or
  * `~/.local/state/<tool>/trusted/` when the variable is unset, on every
@@ -137,16 +142,31 @@ function legacyStoreDir(
 }
 
 /** The store's directory for `opts`. See "Where the store lives" above. */
-function locateStore(opts: TrustStoreOptions): string {
-  if (opts.dir !== undefined) return opts.dir
-  const env = opts.env ?? process.env
+/**
+ * Refuse options that would be silently ignored: `app` or `dirs` without
+ * `vendorDirs`, and `env` or `home` beside `dirs`, which alone places the
+ * store. A `TypeError`, since each is a mistake in the calling code.
+ */
+function checkOptions(opts: TrustStoreOptions): void {
+  if (opts.dir !== undefined) return
   if (opts.vendorDirs === undefined) {
     if (opts.dirs !== undefined || opts.app !== undefined) {
       throw new TypeError(
         `trust store: ${opts.dirs !== undefined ? 'dirs' : 'app'} needs vendorDirs; without it the store keeps its old place, which has no app directory`,
       )
     }
-    return legacyStoreDir(opts.tool, env, opts.home ?? homeDir())
+  } else if (opts.dirs !== undefined && (opts.env !== undefined || opts.home !== undefined)) {
+    throw new TypeError(
+      `trust store: ${opts.env !== undefined ? 'env' : 'home'} is ignored when dirs is given; close over it in the dirs factory instead`,
+    )
+  }
+}
+
+function locateStore(opts: TrustStoreOptions): string {
+  if (opts.dir !== undefined) return opts.dir
+  checkOptions(opts)
+  if (opts.vendorDirs === undefined) {
+    return legacyStoreDir(opts.tool, opts.env ?? process.env, opts.home ?? homeDir())
   }
   // Only what the caller injected is passed, so tiered-dirs' test rules still
   // apply to a store built from the real environment.
@@ -173,10 +193,10 @@ function locateStore(opts: TrustStoreOptions): string {
  * `dir` when set, else `<state home>/<tool>[/<app>]/trusted/` through
  * `@osdlc/tiered-dirs` when `vendorDirs` is set, else the old place.
  *
- * Throws a `TypeError` for `app` or `dirs` without `vendorDirs`, and
- * tiered-dirs' `TieredDirsError` when the state home cannot be resolved,
- * such as for a relative `<PREFIX>_ROOT` or a `tool` or `app` that is not
- * one path segment.
+ * Throws a `TypeError` for `app` or `dirs` without `vendorDirs`, or for
+ * `env` or `home` beside `dirs`, and tiered-dirs' `TieredDirsError` when the
+ * state home cannot be resolved, such as for a relative `<PREFIX>_ROOT` or a
+ * `tool` or `app` that is not one path segment.
  * @experimental
  */
 export function trustStoreDir(opts: TrustStoreOptions): string
@@ -279,9 +299,13 @@ function scopeFileName(scope: string): string {
 /** A marker's root and scope, or null when the text is not a grant. */
 function parseMarker(text: string): { root: string; scope: string } | null {
   const [first = '', second = ''] = text.split('\n')
-  const root = first.trim()
-  if (root === '') return null
-  return { root, scope: second.trim() === '' ? WHOLE_REPO_SCOPE : second.trim() }
+  // Only the line ending is stripped: a root is a real path, and one that
+  // ends in whitespace must still match the marker name built from it. A
+  // blank line is still no grant.
+  const root = first.replace(/\r$/, '')
+  if (root.trim() === '') return null
+  const scope = second.trim()
+  return { root, scope: scope === '' ? WHOLE_REPO_SCOPE : scope }
 }
 
 /** The text of a marker for `root` and `scope`. */
@@ -313,7 +337,11 @@ export interface TrustStoreOptions {
    * `<PREFIX>_ROOT` and `<PREFIX>_STATE_DIR` overrides these name. The
    * convention is tiered-dirs' default, `native`, unless
    * `<PREFIX>_CONVENTION` or {@link dirs} says otherwise. Such a store reads
-   * only its new place: grants in the old place are not carried over.
+   * only its new place: grants in the old place are not carried over. The
+   * new place is the old folder only on Linux, or macOS under `xdg`, with no
+   * `app`, no `<PREFIX>_ROOT` or `<PREFIX>_STATE_DIR`, and an
+   * `XDG_STATE_HOME` that is unset or absolute; anywhere else the store
+   * starts empty.
    * Without it the store keeps its old place:
    * `$XDG_STATE_HOME/<tool>/trusted/`, or `~/.local/state/<tool>/trusted/`.
    */
@@ -321,12 +349,22 @@ export interface TrustStoreOptions {
   /**
    * Build the directories per call instead, as `machineConfigFile` takes
    * them: a tool pins its convention here (with `conventionFromEnv: false`),
-   * and a test injects a rooted one. Needs {@link vendorDirs}.
+   * and a test injects a rooted one. The factory alone places the store, so
+   * it closes over the environment and home it resolves from, and passing
+   * {@link env} or {@link home} beside it throws a `TypeError`. Needs
+   * {@link vendorDirs}.
    */
   dirs?: () => TieredDirs
-  /** Injected for tests; defaults to `process.env`. */
+  /**
+   * The environment that places the store; defaults to `process.env`.
+   * Injected for tests, or a tool's run environment. Not with {@link dirs}:
+   * pass it to the factory instead.
+   */
   env?: Record<string, string | undefined>
-  /** Injected for tests; defaults to {@link homeDir}. */
+  /**
+   * The home directory; defaults to {@link homeDir}. Injected for tests. Not
+   * with {@link dirs}: pass it to the factory instead.
+   */
   home?: string
   /**
    * Sets the store's directory directly and skips every other lookup. For a
@@ -464,6 +502,7 @@ async function entries(dir: string): Promise<string[]> {
  */
 export function trustStore(opts: TrustStoreOptions): TrustStore {
   const { tool } = opts
+  checkOptions(opts)
 
   const dir = (): string => locateStore(opts)
   const scopesDir = (resolved: string): string =>

@@ -119,9 +119,14 @@ import { envVars, trustStore } from '@osdlc/trust-repo'
 import { systemDirs } from '@osdlc/config-layers'
 
 const vendorDirs = { vendor: 'osdlc', envVars: envVars('OSDLC') }
-const dirs = () => systemDirs(vendorDirs, { convention: 'xdg', conventionFromEnv: false })
+// `env` is the tool's run environment.
+const dirs = () => systemDirs(vendorDirs, { env, convention: 'xdg', conventionFromEnv: false })
 const trust = trustStore({ tool: 'osdlc', app: 'pr-update', vendorDirs, dirs })
 ```
+
+The factory alone places the store, so it closes over the environment and
+home it resolves from. Passing `env` or `home` to `trustStore` beside `dirs`
+throws a `TypeError`, since they would be ignored.
 
 A store with an `app` is that app's alone. A grant through app `a` is not
 seen through app `b`, nor through the family root with no app, because
@@ -135,15 +140,18 @@ platform. A relative `XDG_STATE_HOME` is ignored, as the XDG spec says, so
 the store never lands inside the directory a tool runs in. No tool changes
 place until it opts in.
 
-### Opting in starts an empty store
+### Opting in reads only the new place
 
 A store opened with `vendorDirs` reads only its new place. Grants made
 before, in the old place, are not carried over, so the person runs the
 tool's `trust` command again, once per tool per machine. The old markers are
 never read or touched, so an older release of the tool keeps using the old
-place and still finds every grant it knew. Where the new place is the old
-one (Linux, or macOS under `xdg`, with no `app`), it is the same folder, so
-its grants are already there.
+place and still finds every grant it knew.
+
+The new place is the old folder only on Linux, or macOS under `xdg`, with no
+`app`, no `<PREFIX>_ROOT` or `<PREFIX>_STATE_DIR`, and an `XDG_STATE_HOME`
+that is unset or absolute. There the grants are already in place; anywhere
+else the store starts empty.
 
 Carrying grants over was tried and dropped. Each way of telling whether the
 copy had already been made, and whether the old and new places really
@@ -359,7 +367,9 @@ Runs under Bun and Node. It uses `node:fs/promises`, `node:path`, `node:crypto`,
 The package is 0.x, so any minor release may break the API. Every export is
 experimental. The package decides whether a repository's own scripts may run,
 and its policy layer is new. Its shape stays open until it has had a security
-review. Any release may change or remove an experimental export.
+review. Any release may change or remove an experimental export. The one
+exception is `envVars`, a re-export of `@osdlc/tiered-dirs`, where it is
+stable; this package re-exports it as it is.
 
 The experimental exports of `@osdlc/trust-repo`:
 

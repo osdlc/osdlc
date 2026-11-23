@@ -18,6 +18,14 @@ place (`$XDG_STATE_HOME/<tool>/trusted/`, or `~/.local/state/<tool>/trusted/`),
 are not carried over, so the person runs the tool's `trust` command again,
 once per tool per machine. The old markers are never read or touched, so an
 older release of the tool keeps using the old place.
+The new place is the old folder only on Linux, or macOS under `xdg`, with no
+`app`, no `<PREFIX>_ROOT` or `<PREFIX>_STATE_DIR`, and an `XDG_STATE_HOME`
+that is unset or absolute. There the grants are already in place; anywhere
+else the store starts empty.
+
+A `dirs` factory alone places the store. Passing `env` or `home` beside it
+throws a `TypeError`, since they would be ignored; the factory closes over
+them instead.
 
 A tool that passes neither `vendorDirs` nor `dir` keeps exactly the place it
 used before.
