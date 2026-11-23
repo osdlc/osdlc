@@ -166,17 +166,22 @@ runner:
 | `fakeContext(over)` | A hook's context: no targets, nothing allowed, a signal never aborted. |
 | `fakeRunner({ program: answers })` | Fake programs for the kit: spread it into `pluginKit`'s options. A program in the table is on PATH and answers as command-seam's `fakeRunner` does; `calls` records each run. |
 | `tempHome()` | A new empty folder, by its real path, with `cleanup()`. |
-| `contractSuite(plugin, ctx)` | Surveys the plugin twice and returns one line per broken rule. |
+| `contractSuite(plugin, ctx, { deleteLimitMs })` | Surveys the plugin twice and returns one line per broken rule. |
 
 The suite checks that `limits` name hooks; that the survey warns of nothing
 (no hook throws or runs past its limit, ids are unique, each candidate is the
 plugin's and has one of a path and a ref); that every path candidate is inside
 the plugin's roots or the targets; that ids and evidence are the same in both
 surveys; that candidates and objections hold only what JSON keeps, so a plan
-reads back; and that `delete`, given a folder outside the roots and the
-targets, throws and leaves it. Give it a fixture where the plugin is detected
-and proposes something: a plugin that does not is a problem too. Every shipped
-plugin passes it:
+reads back; and that `delete` refuses a folder outside the roots and the
+targets. For that last check it moves one of the plugin's own path candidates
+into a folder of its own, outside the roots and the targets (it checks that),
+leaves a symlink in its place and calls `delete`. `delete` must throw within
+`deleteLimitMs` (`SUITE_DELETE_LIMIT_MS`, 30 seconds) and leave the moved
+folder as it was; the suite then puts it back. A plugin with no path candidate
+on disk gets a made-up one outside instead. Give it a fixture where the plugin
+is detected and proposes something: a plugin that does not is a problem too.
+Every shipped plugin passes it:
 
 ```ts
 expect(await contractSuite(plugin, { cwd: root, targets: [root] })).toEqual([])

@@ -1,7 +1,8 @@
 /** `@osdlc/host-cleaner/testing`: the fakes, and the contract suite against a plugin that keeps it and plugins that each break one rule. */
 
 import { afterEach, describe, expect, test } from 'vitest'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { z } from 'zod'
@@ -48,10 +49,11 @@ function cachePlugin(over: (root: string) => Partial<Plugin> = () => ({})) {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 describe('contractSuite', () => {
-  test('a plugin that keeps the contract has no problems, and its folder is still there', async () => {
+  test('a plugin that keeps the contract has no problems, and its folder is put back as it was', async () => {
     const { plugin, dir } = cachePlugin()
     expect(await contractSuite(plugin)).toEqual([])
-    expect(existsSync(dir)).toBe(true)
+    expect(lstatSync(dir).isDirectory()).toBe(true)
+    expect(existsSync(join(dir, 'blob'))).toBe(true)
   })
 
   test('a path candidate outside the roots and the targets', async () => {
@@ -129,25 +131,54 @@ describe('contractSuite', () => {
     ])
   })
 
-  test('a delete that removes a folder outside the roots', async () => {
-    const { plugin } = cachePlugin(() => ({
+  test('a delete that follows its folder, moved outside the roots, and removes it', async () => {
+    const { plugin, dir } = cachePlugin(() => ({
       delete: (c) => {
-        rmSync(c.path!, { recursive: true })
-        return `removed ${c.path}`
+        const real = realpathSync(c.path!)
+        rmSync(real, { recursive: true })
+        return `removed ${real}`
       },
     }))
     expect(await contractSuite(plugin)).toEqual([
       expect.stringMatching(
-        /^cache: delete removed .*host-cleaner-outside-.*, which is outside its roots and the targets$/,
+        new RegExp(
+          `^cache: delete removed ${dir} \\(moved to .*host-cleaner-suite-.*/outside/moved\\), which is outside its roots and the targets$`,
+        ),
       ),
     ])
   })
 
   test('a delete that returns without refusing a folder outside the roots', async () => {
-    const { plugin } = cachePlugin(() => ({ delete: () => 'done' }))
+    const { plugin, dir } = cachePlugin(() => ({ delete: () => 'done' }))
     expect(await contractSuite(plugin)).toEqual([
       expect.stringMatching(/^cache: delete returned "done" for .*; it must throw$/),
     ])
+    expect(lstatSync(dir).isDirectory()).toBe(true)
+  })
+
+  test('a delete that never finishes is reported, not waited on', async () => {
+    const { plugin, dir } = cachePlugin(() => ({ delete: () => new Promise<string>(() => {}) }))
+    expect(await contractSuite(plugin, {}, { deleteLimitMs: 50 })).toEqual([
+      expect.stringMatching(/^cache: delete did not finish within 50 ms for /),
+    ])
+    expect(lstatSync(dir).isDirectory()).toBe(true)
+  })
+
+  test("roots that hold the suite's own folder are reported, and delete is not called", async () => {
+    let called = false
+    const { plugin } = cachePlugin(() => ({
+      roots: () => [tmpdir()],
+      delete: () => {
+        called = true
+        throw new Error('refused')
+      },
+    }))
+    expect(await contractSuite(plugin)).toEqual([
+      expect.stringMatching(
+        /^cache: the suite's folder .*host-cleaner-suite-.* is inside its roots or the targets/,
+      ),
+    ])
+    expect(called).toBe(false)
   })
 
   test('a hook that runs past its time limit, and limits that are not hooks or not positive', async () => {

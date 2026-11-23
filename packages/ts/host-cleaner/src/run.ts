@@ -100,6 +100,8 @@ export interface Survey {
   warnings: string[]
   /** The linked worktrees of the repositories among the targets, which path candidates may be or sit in. */
   linked: string[]
+  /** Each detected plugin's roots, as its `roots` hook answered; none for a plugin without the hook. */
+  roots: Record<string, readonly string[]>
 }
 
 /** The ignore entry a candidate sits in, or a path candidate holds (deleting a directory takes what is inside it). */
@@ -319,7 +321,8 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
       }
     }
   }
-  return { plugins, ctx: scoped, candidates, objections, warnings, linked }
+  const roots = Object.fromEntries(plugins.map((p) => [p.name, rootsOf.get(p.name) ?? []]))
+  return { plugins, ctx: scoped, candidates, objections, warnings, linked, roots }
 }
 
 /**

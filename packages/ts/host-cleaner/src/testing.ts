@@ -11,7 +11,19 @@
  * found, so `expect(await contractSuite(plugin, ctx)).toEqual([])` reads well.
  */
 
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -20,6 +32,7 @@ import { fakeRunner as seamRunner } from '@osdlc/command-seam/testing'
 import { sameFingerprint } from '@osdlc/repo-cleaner'
 
 import { PlanSchema } from './plan.ts'
+import { boundBy, type Bounds } from './roots.ts'
 import { OUTSIDE_ROOTS, plan, survey, type Survey } from './run.ts'
 import { HOOKS, type Candidate, type Ctx, type PathCandidate, type Plugin } from './types.ts'
 
@@ -148,10 +161,19 @@ const errorText = (err: unknown): string => (err instanceof Error ? err.message 
  * - the ids, and each candidate's evidence, are the same in both surveys;
  * - candidates and objections hold only what JSON keeps (D14), and a plan of
  *   them reads back from JSON;
- * - `delete`, given a path candidate outside its roots and the targets,
- *   throws and leaves the folder there.
+ * - `delete`, given one of its own path candidates whose folder was moved
+ *   outside its roots and the targets and replaced by a symlink to it, throws
+ *   within `opts.deleteLimitMs` (default {@link SUITE_DELETE_LIMIT_MS}) and
+ *   leaves the moved folder as it was. The folder is put back after. A
+ *   plugin with no path candidate on disk is given a made-up candidate
+ *   outside instead. The outside folder is made in a temporary folder of the
+ *   suite's own, checked to be outside the plugin's roots and the targets.
  */
-export async function contractSuite(plugin: Plugin, ctx: Partial<Ctx> = {}): Promise<string[]> {
+export async function contractSuite(
+  plugin: Plugin,
+  ctx: Partial<Ctx> = {},
+  opts: { deleteLimitMs?: number | undefined } = {},
+): Promise<string[]> {
   const problems: string[] = []
   const say = (text: string): void => {
     problems.push(`${plugin.name}: ${text}`)
@@ -219,46 +241,114 @@ export async function contractSuite(plugin: Plugin, ctx: Partial<Ctx> = {}): Pro
     say(`a plan of its survey does not read back from JSON: ${errorText(err)}`)
   }
 
-  if (plugin.delete !== undefined) await escapedDelete(plugin, first, say)
+  if (plugin.delete !== undefined) {
+    await escapedDelete(plugin, second, say, opts.deleteLimitMs ?? SUITE_DELETE_LIMIT_MS)
+  }
   return problems
 }
 
-/** Calls `plugin.delete` on a folder outside its roots and the targets; it must throw and leave the folder. */
+/** How long the suite waits for `delete` on an escaped candidate before it reports it and goes on, in milliseconds, unless it is given another. */
+export const SUITE_DELETE_LIMIT_MS = 30_000
+
+/** What `dir` holds, by name, sorted; null when it is not a folder. */
+function listing(dir: string): string | null {
+  if (lstatSync(dir, { throwIfNoEntry: false })?.isDirectory() !== true) return null
+  return readdirSync(dir).sort().join('\n')
+}
+
+/**
+ * Calls `plugin.delete` on a path candidate whose real path is outside its
+ * roots and the targets: one of its own, its folder moved out and a symlink
+ * left in its place, or, with none on disk, a made-up one. It must throw
+ * within `limitMs` and leave the moved folder as it was.
+ */
 async function escapedDelete(
   plugin: Plugin,
   s: Survey,
   say: (text: string) => void,
+  limitMs: number,
 ): Promise<void> {
-  const outside = tempHome('host-cleaner-outside-')
+  const scratch = tempHome('host-cleaner-suite-')
+  const bounds: Bounds = {
+    roots: s.roots[plugin.name] ?? [],
+    targets: s.ctx.targets,
+    linked: s.linked,
+  }
+  const outside = join(scratch.home, 'outside')
+  const moved = join(outside, 'moved')
+  let putBack: (() => void) | undefined
   try {
-    const path = outside.home
-    writeFileSync(join(path, 'keep'), 'not the plugin to delete')
-    // Shaped like the plugin's own path candidates, so it fails on where it is, not what it is.
-    const like = s.candidates.find((c): c is PathCandidate => c.path !== undefined)
-    const kind = like?.kind ?? 'escaped'
-    const c: Candidate = {
-      id: `${kind}:${path}`,
-      kind,
-      owner: plugin.name,
-      why: 'the contract suite: a folder outside the roots and the targets',
-      path,
-      evidence: { ...like?.evidence, path },
+    mkdirSync(outside)
+    if (boundBy(bounds, moved) !== null) {
+      say(
+        `the suite's folder ${outside} is inside its roots or the targets, so delete could not be given one outside`,
+      )
+      return
     }
-    let said: string
-    try {
-      said = await plugin.delete!(c, { ...s.ctx, signal: new AbortController().signal })
-    } catch {
-      if (!existsSync(join(path, 'keep'))) {
-        say(`delete removed ${path} before refusing it, which is outside its roots and the targets`)
+    const own = s.candidates.find(
+      (c): c is PathCandidate => c.path !== undefined && listing(c.path) !== null,
+    )
+    let c: Candidate
+    if (own === undefined) {
+      mkdirSync(moved)
+      writeFileSync(join(moved, 'keep'), 'not the plugin to delete')
+      c = {
+        id: `escaped:${moved}`,
+        kind: 'escaped',
+        owner: plugin.name,
+        why: 'the contract suite: a folder outside the roots and the targets',
+        path: moved,
+        evidence: { path: moved },
       }
+    } else {
+      renameSync(own.path, moved)
+      symlinkSync(moved, own.path)
+      putBack = () => {
+        if (lstatSync(own.path, { throwIfNoEntry: false })?.isSymbolicLink() === true) {
+          unlinkSync(own.path)
+        }
+        if (existsSync(moved) && !existsSync(own.path)) renameSync(moved, own.path)
+      }
+      c = own
+    }
+    const before = listing(moved)
+    const where = own === undefined ? moved : `${c.path} (moved to ${moved})`
+
+    const stop = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const late = new Promise<{ late: true }>((resolve) => {
+      timer = setTimeout(() => {
+        stop.abort(new Error(`the contract suite stopped it after ${limitMs} ms`))
+        resolve({ late: true })
+      }, limitMs)
+    })
+    let said: string | { late: true }
+    try {
+      const deleting = (async () => plugin.delete!(c, { ...s.ctx, signal: stop.signal }))()
+      said = await Promise.race([deleting, late])
+    } catch {
+      if (listing(moved) !== before) {
+        say(
+          `delete removed ${where} before refusing it, which is outside its roots and the targets`,
+        )
+      }
+      return
+    } finally {
+      clearTimeout(timer)
+    }
+    if (typeof said !== 'string') {
+      say(
+        `delete did not finish within ${limitMs} ms for ${where}, which is outside its roots and the targets`,
+      )
       return
     }
     say(
-      existsSync(join(path, 'keep'))
-        ? `delete returned "${said}" for ${path}, which is outside its roots and the targets; it must throw`
-        : `delete removed ${path}, which is outside its roots and the targets`,
+      listing(moved) === before
+        ? `delete returned "${said}" for ${where}, which is outside its roots and the targets; it must throw`
+        : `delete removed ${where}, which is outside its roots and the targets`,
     )
   } finally {
-    outside.cleanup()
+    putBack?.()
+    scratch.cleanup()
   }
 }
