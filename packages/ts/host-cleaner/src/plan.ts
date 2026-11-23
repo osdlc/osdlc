@@ -111,14 +111,27 @@ export type Receipt = z.infer<typeof ReceiptSchema>
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
+/** `c` with its evidence's `sizeBytes` and `newestMtimeMs` left out. */
+function withoutMeasures(
+  c: Record<string, unknown>,
+  evidence: Record<string, unknown>,
+): Record<string, unknown> {
+  const { sizeBytes: _size, newestMtimeMs: _mtime, ...rest } = evidence
+  return { ...c, evidence: rest }
+}
+
 /**
  * A version 1 candidate as a version 2 one. Version 1 had only paths: a
  * branch's was `<repo>:<name>` with `at` its repository, and an Orca record's
- * was its gone directory. Both are refs now, under the same id.
+ * was its gone directory. Both are refs now, under the same id. A `cargo` or
+ * `node` artifact's evidence loses `sizeBytes` and `newestMtimeMs`, which
+ * version 2 leaves out, so the re-check does not read it as changed.
  */
-function upgradeCandidate(c: unknown): unknown {
-  if (!isObject(c) || typeof c.path !== 'string') return c
-  const { path, ...rest } = c
+function upgradeCandidate(v1: unknown): unknown {
+  if (!isObject(v1) || typeof v1.path !== 'string') return v1
+  const c = v1.kind === 'artifact' && isObject(v1.evidence) ? withoutMeasures(v1, v1.evidence) : v1
+  const path = v1.path
+  const { path: _path, ...rest } = c
   if (typeof c.at === 'string' && path.startsWith(`${c.at}:`)) {
     return { ...rest, ref: path.slice(c.at.length + 1) }
   }

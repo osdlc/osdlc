@@ -25,6 +25,7 @@ import {
   cargoPlugin,
   clean,
   nodePlugin,
+  parsePlan,
   plan,
   recheck,
   survey,
@@ -373,6 +374,28 @@ describe('node plugin', () => {
     })
     expect(busy.refused[0]).toMatchObject({ code: 'live-process' })
     expect(busy.refused[0]!.reason).toMatch(/node \(pid 5\)/)
+  })
+
+  test('a version 1 plan of it, whose evidence held the size and modification time, is not changed at the re-check', async () => {
+    const root = repo()
+    const wt = linked(root)
+    put(join(wt, 'package.json'), 72, '{}')
+    put(join(wt, 'node_modules', 'a', 'index.js'), 72)
+    const plugin = nodePlugin(options())
+    const v2 = plan(await survey([plugin], ctxOf(root)))
+    const v1 = {
+      ...v2,
+      version: 1,
+      candidates: v2.candidates.map((c) => ({
+        ...c,
+        evidence: { ...c.evidence, sizeBytes: 4096, newestMtimeMs: ago(72).getTime() },
+      })),
+    }
+    const read = parsePlan(JSON.stringify(v1), 'v1.json')
+    expect(read.candidates[0]!.evidence).toEqual(v2.candidates[0]!.evidence)
+    const { decision } = await recheck(read, [plugin], ctxOf(root))
+    expect(decision.run.map((c) => c.id)).toEqual([`artifact:${join(wt, 'node_modules')}`])
+    expect(decision.dropped).toEqual([])
   })
 
   test('clean removes node_modules and records the bytes freed', async () => {
