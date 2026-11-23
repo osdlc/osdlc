@@ -93,3 +93,12 @@ export {
   type OrcaOptions,
   type OrcaRecord,
 } from './orca.ts'
+export {
+  IN_USE,
+  OLLAMA_MODEL,
+  OLLAMA_PLUGIN,
+  ollamaPlugin,
+  type LoadedModel,
+  type OllamaModel,
+  type OllamaOptions,
+} from './ollama.ts'

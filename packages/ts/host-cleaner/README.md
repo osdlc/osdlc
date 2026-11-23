@@ -7,12 +7,12 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node` and `orca` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `orca` and `ollama` plugins, and the `host-cleaner` command.
 
 ## Phases
 
 Plugins run in the order they are given. The command line runs the shipped
-ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `orca`.
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `orca`, `ollama`.
 The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
@@ -262,6 +262,21 @@ goes through `@osdlc/command-seam` with `--json`.
 ```sh
 host-cleaner clean --pick worktree:/path/to/wt --allow close-terminals
 ```
+
+## The `ollama` plugin
+
+Models that nobody has pulled or changed for `plugins.ollama.idleHours` (default
+24, or the config's top-level `idleHours`). Detected when `ollama` is on `PATH`.
+If its server does not answer, the survey warns and the plugin proposes nothing.
+
+| Phase | What it does |
+| --- | --- |
+| discover | Each model in `ollama list` is `ollama-model:<name>`, a ref with `costDescription: re-download` and its size as shown. Its age is the least time the MODIFIED text can mean (`4 days ago` is at least 95.5 hours); a model younger than the threshold, or with an age it cannot read, is held for a pick. Cloud models, with nothing on disk, are left out. Evidence is the name and the ID. |
+| object | A model `ollama ps` shows loaded, by name or ID, is refused `in-use`. If `ollama ps` fails, every model is refused `ollama-ps-failed`. |
+| delete | Reads `ollama ps` and `ollama list` again: a model now loaded or with another ID is not removed, one already gone is not a failure. Then `ollama rm <name>`, and checks the list no longer shows it. |
+
+ollama records when a model was pulled, not when it was last run, so an old
+model you run every day is still proposed unless it is loaded.
 
 ## Command line
 
