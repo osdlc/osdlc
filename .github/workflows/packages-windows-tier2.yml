@@ -1,10 +1,11 @@
 # Runs the libraries that start programs or resolve paths (command-seam,
-# trust-repo, tiered-dirs, cli-tool, system-model, wayfinder, ref-lease, file-lock) on Windows.
+# trust-repo, tiered-dirs, cli-tool, system-model, wayfinder, ref-lease,
+# file-lock, typed-git, config-layers, ecosystem, pr-update) on Windows.
 # Windows is tier 2 for them (S-0021): this workflow reports, but never blocks
 # a pull request or a release.
 #
 # packages-ci.yml calls it on a pull request with the packages it picked. A
-# push to main runs it on its own, with all eight, in a run apart from
+# push to main runs it on its own, with all twelve, in a run apart from
 # packages-publish.yml: the release neither waits for it nor queues behind it.
 #
 # `continue-on-error: true` keeps a failed test from failing the run. Each
@@ -22,7 +23,7 @@ on:
   workflow_call:
     inputs:
       packages:
-        description: The picked packages as a JSON list; empty runs all eight.
+        description: The picked packages as a JSON list; empty runs all twelve.
         type: string
         default: ''
 
@@ -39,10 +40,10 @@ jobs:
   windows-tier2:
     name: windows tier 2 (windows-latest, node ${{ matrix.node }})
     # A full run takes about 2.5 minutes. The limit is the sum of the step
-    # limits below (bounded-run test 2, install 5, build 5, eight tests at 4,
+    # limits below (bounded-run test 2, install 5, build 5, twelve tests at 4,
     # smoke 3) plus 3 for setup, so a hung step never cancels the steps after
     # it.
-    timeout-minutes: 50
+    timeout-minutes: 66
     runs-on: windows-latest
     continue-on-error: true
     strategy:
@@ -53,7 +54,7 @@ jobs:
       run:
         shell: bash
     env:
-      PACKAGES: ${{ inputs.packages || '["packages/ts/command-seam","packages/ts/trust-repo","packages/ts/tiered-dirs","packages/ts/cli-tool","packages/ts/system-model","packages/ts/wayfinder","packages/ts/ref-lease","packages/ts/file-lock"]' }}
+      PACKAGES: ${{ inputs.packages || '["packages/ts/command-seam","packages/ts/trust-repo","packages/ts/tiered-dirs","packages/ts/cli-tool","packages/ts/system-model","packages/ts/wayfinder","packages/ts/ref-lease","packages/ts/file-lock","packages/ts/typed-git","packages/ts/config-layers","packages/ts/ecosystem","packages/ts/pr-update"]' }}
     steps:
       # Git for Windows checks text out with CRLF by default. The tests read
       # their own sources and docs, written with LF.
@@ -71,7 +72,7 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
 
-      # The picked packages among the eight. `build` adds their workspace
+      # The picked packages among the twelve. `build` adds their workspace
       # dependencies, which pnpm's `...` suffix selects. A path selector needs
       # braces for the suffix: `{./path}...`.
       - name: Pick the tier-2 packages
@@ -79,7 +80,8 @@ jobs:
         run: |
           filter=''
           build=''
-          for p in command-seam trust-repo tiered-dirs cli-tool system-model wayfinder ref-lease file-lock; do
+          for p in command-seam trust-repo tiered-dirs cli-tool system-model wayfinder ref-lease file-lock \
+            typed-git config-layers ecosystem pr-update; do
             if grep -q "\"packages/ts/$p\"" <<< "$PACKAGES"; then
               filter="$filter --filter ./packages/ts/$p"
               build="$build --filter {./packages/ts/$p}..."
@@ -151,6 +153,26 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/file-lock"') }}
         timeout-minutes: 4
         run: node scripts/bounded-run.ts 210 "pnpm --filter ./packages/ts/file-lock run test"
+
+      - name: Test typed-git
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/typed-git"') }}
+        timeout-minutes: 4
+        run: node scripts/bounded-run.ts 210 "pnpm --filter ./packages/ts/typed-git run test"
+
+      - name: Test config-layers
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/config-layers"') }}
+        timeout-minutes: 4
+        run: node scripts/bounded-run.ts 210 "pnpm --filter ./packages/ts/config-layers run test"
+
+      - name: Test ecosystem
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/ecosystem"') }}
+        timeout-minutes: 4
+        run: node scripts/bounded-run.ts 210 "pnpm --filter ./packages/ts/ecosystem run test"
+
+      - name: Test pr-update
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/pr-update"') }}
+        timeout-minutes: 4
+        run: node scripts/bounded-run.ts 210 "pnpm --filter ./packages/ts/pr-update run test"
 
       - name: Smoke the built packages under Node
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
