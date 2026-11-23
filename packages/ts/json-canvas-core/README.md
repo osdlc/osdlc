@@ -176,9 +176,9 @@ history.current.nodes[0]?.x // 50
 
 `checkpoint()` returns an opaque handle for the current state and `revertTo`
 goes back to it. Treat the handle as a token: it is not an index. Pruning is
-lazy: the undo stack can grow to `floor(1.2 × maxSize)` steps, and once it does
-it is cut back to `maxSize` (500 by default). A checkpoint older than the oldest
-step kept is refused.
+lazy: the undo stack can hold `floor(1.2 × maxSize)` steps, and the step after
+that cuts it back to `maxSize` (500 by default). A checkpoint older than the
+oldest step kept is refused.
 
 ## View model
 

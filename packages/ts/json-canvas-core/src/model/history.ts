@@ -23,8 +23,9 @@ interface HistoryState {
 /** Options for `SnapshotHistory`. */
 export interface HistoryOptions {
   /**
-   * Number of undo entries to keep after pruning. The undo stack can grow to
-   * `floor(1.2 × maxSize)` entries before it is cut back to `maxSize`. Default: 500
+   * Number of undo entries to keep after pruning. The undo stack can hold
+   * `floor(1.2 × maxSize)` entries, and the entry after that cuts it back to
+   * `maxSize`. Default: 500
    */
   maxSize?: number
 }
