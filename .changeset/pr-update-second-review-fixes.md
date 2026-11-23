@@ -17,3 +17,7 @@ writes any ref but the remote's branches under `origin/*`. A checkout whose
 own `remote.origin.fetch` had a forced line into `refs/heads/` (such as
 `+refs/heads/topic:refs/heads/topic`) had that local branch overwritten,
 losing commits not yet pushed. The fetch now passes `--refmap=`.
+
+A checkout found on the machine is fetched with `--no-prune`, so a
+`fetch.prune` or `remote.origin.prune` in its config no longer deletes refs
+its own fetch lines keep under `origin/`, such as `origin/pr/*`.

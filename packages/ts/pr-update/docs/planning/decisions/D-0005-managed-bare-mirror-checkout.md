@@ -753,9 +753,14 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - **A located checkout's fetch does not prune.** The Cleanup table's row for
   `origin/<branch>` said every unscoped fetch prunes. A checkout other than
   the project root is fetched with the refspec
-  `+refs/heads/*:refs/remotes/origin/*`, no tags and no `FETCH_HEAD`, so its
-  own fetch lines cannot widen the fetch. Against that refspec, `--prune`
-  would delete refs its own fetch lines keep, such as `origin/pr/*`. A stale
+  `+refs/heads/*:refs/remotes/origin/*`, no tags and no `FETCH_HEAD`. A
+  refspec on the command line does not stop git from also applying the
+  checkout's own fetch lines to what it fetches, so after review every such
+  fetch, scoped or not and a clone's too, passes an empty `--refmap=`;
+  without it a forced line into `refs/heads/` overwrote a local branch.
+  Against that refspec, `--prune` would delete refs its own fetch lines keep,
+  such as `origin/pr/*`, so a located checkout is fetched with `--no-prune`,
+  which beats a `fetch.prune` or `remote.origin.prune` in its config. A stale
   `origin/<deleted>` there is harmless: survey reads only the listed PRs'
   head and base. The project root and a managed clone still prune.
 - **Several checkouts of one repository.** The record did not say which one

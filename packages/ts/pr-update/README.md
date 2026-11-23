@@ -233,9 +233,12 @@ included, each against its own `origin`, since any of them can hold a
 branch's unpushed commits. A checkout found this way is fetched and measured through its
 `origin`, whatever `--remote` says: `--remote` names a remote of the project
 root. That fetch writes only the remote's branches into `origin/*`, with no
-tags and no `FETCH_HEAD`, and prunes nothing, so refs the checkout's own fetch
-lines keep under `origin/` (such as `origin/pr/*`) stay. A checkout a library
-host's `locate` returns is fetched the same way.
+tags and no `FETCH_HEAD`. It never writes a local branch, even one the
+checkout's own fetch lines map a remote branch into (`--refmap=`). It prunes
+nothing, even with `fetch.prune` or `remote.origin.prune` set (`--no-prune`),
+so refs the checkout's own fetch lines keep under `origin/` (such as
+`origin/pr/*`) stay. A checkout a library host's `locate` returns is fetched
+the same way.
 
 A target with no checkout is still listed, reported `no local checkout —
 drift not measured`, and a note on stderr names the roots that were searched

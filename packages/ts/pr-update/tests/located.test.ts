@@ -369,6 +369,28 @@ describe('fetching a located checkout', () => {
       expect(git(located, 'rev-parse', 'refs/remotes/origin/topic')).toBe(topic)
     },
   )
+
+  test.each(['fetch.prune', 'remote.origin.prune'])(
+    'keeps a ref its own fetch line keeps under origin/ with %s set',
+    async (key) => {
+      const { tip, viaBare } = bareOrigin()
+      keepPr1()
+      git(located, 'config', key, 'true')
+
+      const r = await runWith(
+        { git: viaBare },
+        'survey',
+        '--repo',
+        'acme/api',
+        '--remote',
+        'upstream',
+        '--json',
+      )
+      expect(r.code).toBe(EXIT.ok)
+      expect(git(located, 'rev-parse', 'refs/remotes/origin/main')).toBe(tip)
+      expect(git(located, 'rev-parse', 'refs/remotes/origin/pr/1')).toBe(topic)
+    },
+  )
 })
 
 describe('the host of a bare owner/name', () => {
