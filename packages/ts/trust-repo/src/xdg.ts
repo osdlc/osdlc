@@ -1,5 +1,11 @@
 /**
- * Resolves the trust store's state directory relative to the home directory.
+ * The old way the trust store found its state home: `XDG_STATE_HOME`, else
+ * `~/.local/state`, on every platform. A store whose tool passes no
+ * `vendorDirs` still lives there, and a store that does pass them moves its
+ * markers from there once. A store with `vendorDirs` resolves through
+ * `@osdlc/tiered-dirs` instead, as `@osdlc/config-layers` does, so it
+ * follows the convention, the `<PREFIX>_*` overrides and Windows' own
+ * places. See `./store.ts`.
  *
  * ## Why the tilde is expanded
  *
@@ -13,8 +19,7 @@
  * passes it, so a test cannot read or write the developer's real home
  * directory.
  *
- * Only `XDG_STATE_HOME`, the one variable {@link trustStoreDir} needs, is
- * handled.
+ * Only `XDG_STATE_HOME`, the one variable the old place needs, is handled.
  */
 
 import { isAbsolute, join } from 'node:path'
@@ -32,9 +37,10 @@ import { expandTilde } from './paths.ts'
  * `xdgHome(env, home, "XDG_STATE_HOME", ".local", "state")` is
  * `~/.local/state`.
  *
- * XDG paths are used on every platform, macOS included. Nothing in this
- * package branches on `process.platform` for storage. This matches the
- * config home lookup in `@osdlc/config-layers`.
+ * This is the XDG rule on every platform, macOS and Windows included. It is
+ * not the rule `@osdlc/tiered-dirs` applies on macOS under its `native`
+ * convention or on Windows, so it gives the old trust store's place, not a
+ * tool's current state home.
  * @experimental
  */
 export function xdgHome(

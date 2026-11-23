@@ -13,17 +13,42 @@
  *
  * ## Where the store lives
  *
- * `$XDG_STATE_HOME/<tool>/trusted/`, or `~/.local/state/<tool>/trusted/`
- * when the variable is unset. This is the XDG state directory, not the
- * config directory. Trust is state a program keeps, not configuration a
- * person edits, so it is not stored next to a tool's `config.yaml`. People
- * sync config files between machines, for example in a dotfiles repo. A
- * consent record for one machine that is copied to another is no longer
- * consent.
+ * In a state directory, not a config directory. Trust is state a program
+ * keeps, not configuration a person edits, so it is not stored next to a
+ * tool's `config.yaml`. People sync config files between machines, for
+ * example in a dotfiles repo. A consent record for one machine that is copied
+ * to another is no longer consent.
  *
- * XDG paths are used on every platform, macOS included, as in
- * `@osdlc/config-layers`. A leading `~` in the variable is expanded, because
- * direnv, `.env` loaders and CI YAML pass a literal `~` through.
+ * A tool that passes `vendorDirs` gets its store from `@osdlc/tiered-dirs`,
+ * like its other machine-local files: `<state home>/<tool>[/<app>]/trusted/`.
+ * The convention and the `<PREFIX>_ROOT` and `<PREFIX>_STATE_DIR` overrides
+ * of those vendor dirs move it. A tool under a family root passes the family
+ * as `tool` and itself as `app`, so its markers stay its own. Consent given
+ * to one tool must never cover another.
+ *
+ * A tool that passes neither `vendorDirs` nor `dir` keeps the place every
+ * release before this one used: `$XDG_STATE_HOME/<tool>/trusted/`, or
+ * `~/.local/state/<tool>/trusted/` when the variable is unset, on every
+ * platform. No tool moves until it opts in.
+ *
+ * ## How a store moves
+ *
+ * When `vendorDirs` puts the store somewhere other than that old place, the
+ * old markers are copied once, on first use. They are copied into a private
+ * staging folder, read back and checked there, and the folder is renamed
+ * into place with a `.moved` record inside. The rename is the one step that
+ * publishes the copy, so the new store is either complete and recorded or
+ * not there at all. Two processes that move at once each build their own
+ * copy, and the second rename fails because the first already landed. After
+ * the move only the new place is read. The old markers are never changed or
+ * deleted, so an older release still finds them.
+ *
+ * A failed move throws from {@link TrustStore.isTrusted} and the methods that
+ * write, so nothing runs on a store that lost a grant. The next use tries
+ * again. A store moved by an override, or by tiered-dirs' per-process test
+ * root, is not filled from the old place: such a move asks for a separate
+ * store on purpose, and a scratch store that inherited the person's real
+ * consent would defeat it.
  *
  * ## What a trust decision is keyed on
  *
@@ -78,36 +103,135 @@
  * {@link TrustStore.tighten}.
  */
 
-import { createHash } from 'node:crypto'
-import { chmod, mkdir, readdir, readFile, rm, rmdir, stat } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { createHash, randomBytes } from 'node:crypto'
+import { access, chmod, mkdir, readdir, readFile, rename, rm, rmdir, stat } from 'node:fs/promises'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
 import { atomicWriteAsync } from '@osdlc/etag-write'
+import {
+  systemBaseDirs,
+  testRoot,
+  TieredDirs,
+  type EnvVars,
+  type ResolveOptions,
+} from '@osdlc/tiered-dirs'
 
 import { homeDir } from './home.ts'
 import { resolveTrustRoot } from './paths.ts'
 import { xdgHome } from './xdg.ts'
 
 /**
- * Directory under `$XDG_STATE_HOME/<tool>/` holding the marker files.
+ * The directory that holds the marker files, under the tool's state
+ * directory.
  *
  * @experimental
  */
 export const TRUST_MARKER_DIR = 'trusted'
 
 /**
- * Where a tool's store lives. Pure. `env` and `home` are parameters because
- * a test that read the real environment would read the developer's own
- * trust store, and a test that wrote would grant trust on their machine.
+ * Whose state home a store lives in: the vendor and its override variables.
+ * The same shape `@osdlc/config-layers`' `machineConfigFile` takes as
+ * `vendorDirs`, so a tool passes one value to both.
+ *
  * @experimental
  */
+export interface TrustVendorDirs {
+  /** The vendor segment, e.g. `com.example`. */
+  vendor: string
+  /** The override variables, e.g. `envVars('TOOLY')` from `@osdlc/tiered-dirs`. */
+  envVars: EnvVars
+}
+
+/** The old place: `$XDG_STATE_HOME/<name>/trusted/`, else `~/.local/state/<name>/trusted/`. */
+function legacyStoreDir(
+  name: string,
+  env: Record<string, string | undefined>,
+  home: string,
+): string {
+  return join(xdgHome(env, home, 'XDG_STATE_HOME', '.local', 'state'), name, TRUST_MARKER_DIR)
+}
+
+/** Where a store's markers are, and the old place to move them from, if any. */
+interface StoreLocation {
+  dir: string
+  legacy: string | null
+}
+
+/** Whether `child` is `parent` or inside it. */
+function isWithin(child: string, parent: string): boolean {
+  const rel = relative(resolve(parent), resolve(child))
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
+/** A store's directory and the old place to move from. See "How a store moves" above. */
+function locateStore(opts: TrustStoreOptions): StoreLocation {
+  if (opts.dir !== undefined) return { dir: opts.dir, legacy: null }
+  const env = opts.env ?? process.env
+  const home = (): string => opts.home ?? homeDir()
+  if (opts.vendorDirs === undefined) {
+    if (opts.dirs !== undefined || opts.app !== undefined) {
+      throw new TypeError(
+        `trust store: ${opts.dirs !== undefined ? 'dirs' : 'app'} needs vendorDirs; without it the store keeps its old place, which has no app directory`,
+      )
+    }
+    return { dir: legacyStoreDir(opts.tool, env, home()), legacy: null }
+  }
+  // Only what the caller injected is passed, so tiered-dirs' test rules still
+  // apply to a store built from the real environment.
+  const resolveOpts: ResolveOptions = {
+    ...(opts.env !== undefined ? { env: opts.env } : {}),
+    ...(opts.home !== undefined ? { home: opts.home } : {}),
+  }
+  const dirs =
+    opts.dirs?.() ??
+    new TieredDirs(opts.vendorDirs.vendor, systemBaseDirs(opts.vendorDirs.envVars, resolveOpts))
+  const state = dirs.standalone(opts.tool).state()
+  const dir = join((opts.app !== undefined ? state.app(opts.app) : state).path, TRUST_MARKER_DIR)
+  const legacy =
+    opts.legacyDir !== undefined
+      ? opts.legacyDir
+      : legacyStoreDir(opts.app ?? opts.tool, env, home())
+  if (legacy === null || resolve(legacy) === resolve(dir)) return { dir, legacy: null }
+  // A store moved on purpose starts empty: see "How a store moves".
+  const vars = opts.vendorDirs.envVars
+  const scratch = testRoot()
+  if (env[vars.root] || env[vars.dirs.state] || (scratch !== undefined && isWithin(dir, scratch))) {
+    return { dir, legacy: null }
+  }
+  return { dir, legacy }
+}
+
+/**
+ * Where a tool's store lives. Pure: it reads nothing on disk and moves
+ * nothing. `env` and `home` are parameters because a test that read the real
+ * environment would read the developer's own trust store, and a test that
+ * wrote would grant trust on their machine.
+ *
+ * Given a tool name, the old place: `$XDG_STATE_HOME/<tool>/trusted/`, or
+ * `~/.local/state/<tool>/trusted/` when the variable is unset. Given
+ * {@link TrustStoreOptions}, the directory {@link trustStore} uses for them:
+ * `dir` when set, else `<state home>/<tool>[/<app>]/trusted/` through
+ * `@osdlc/tiered-dirs` when `vendorDirs` is set, else the old place.
+ *
+ * Throws a `TypeError` for `app` or `dirs` without `vendorDirs`, and
+ * tiered-dirs' `TieredDirsError` when the state home cannot be resolved,
+ * such as for a relative `<PREFIX>_ROOT` or a `tool` or `app` that is not
+ * one path segment.
+ * @experimental
+ */
+export function trustStoreDir(opts: TrustStoreOptions): string
 export function trustStoreDir(
   tool: string,
+  env?: Record<string, string | undefined>,
+  home?: string,
+): string
+export function trustStoreDir(
+  tool: string | TrustStoreOptions,
   env: Record<string, string | undefined> = process.env,
-  home: string = homeDir(),
+  home?: string,
 ): string {
-  const stateHome = xdgHome(env, home, 'XDG_STATE_HOME', '.local', 'state')
-  return join(stateHome, tool, TRUST_MARKER_DIR)
+  if (typeof tool !== 'string') return locateStore(tool).dir
+  return legacyStoreDir(tool, env, home ?? homeDir())
 }
 
 /**
@@ -206,21 +330,59 @@ function markerText(root: string, scope: string): string {
 }
 
 /**
- * Options for opening a trust store: the tool name, and the environment and home directory for tests.
+ * Options for opening a trust store: the tool name, where its state home is,
+ * and the environment and home directory for tests.
  * @experimental
  */
 export interface TrustStoreOptions {
-  /** The tool's standalone name: the directory segment under the state home. */
+  /**
+   * The tool's standalone name: the directory segment under the state home.
+   * For a tool under a family root, the family's root (`osdlc`), with the
+   * tool itself as {@link app}.
+   */
   tool: string
+  /**
+   * The tool's own directory under a family root `tool`:
+   * `<state home>/<tool>/<app>/trusted/`. Its grants are its own: no other
+   * app, and not the family root, sees them. Needs {@link vendorDirs}.
+   */
+  app?: string
+  /**
+   * Resolve the store through `@osdlc/tiered-dirs`:
+   * `<state home>/<tool>[/<app>]/trusted/`, honouring the convention and the
+   * `<PREFIX>_ROOT` and `<PREFIX>_STATE_DIR` overrides these name. The
+   * convention is tiered-dirs' default, `native`, unless
+   * `<PREFIX>_CONVENTION` or {@link dirs} says otherwise. Without it the
+   * store keeps its old place: `$XDG_STATE_HOME/<tool>/trusted/`, or
+   * `~/.local/state/<tool>/trusted/`.
+   */
+  vendorDirs?: TrustVendorDirs
+  /**
+   * Build the directories per call instead, as `machineConfigFile` takes
+   * them: a tool pins its convention here, and a test injects a rooted one.
+   * Needs {@link vendorDirs}, whose override variables decide whether the
+   * store moves (see {@link legacyDir}).
+   */
+  dirs?: () => TieredDirs
+  /**
+   * With {@link vendorDirs}: the old store to copy markers from once, or
+   * `null` for none. Defaults to the place a release before `vendorDirs`
+   * used, named after `app` when set, else `tool`:
+   * `$XDG_STATE_HOME/<app or tool>/trusted/`, or
+   * `~/.local/state/<app or tool>/trusted/`. Nothing is copied when it is the
+   * new place, or when `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` or tiered-dirs'
+   * test root moved the new one.
+   */
+  legacyDir?: string | null
   /** Injected for tests; defaults to `process.env`. */
   env?: Record<string, string | undefined>
   /** Injected for tests; defaults to {@link homeDir}. */
   home?: string
   /**
-   * Sets the store's directory directly and skips the `tool` and XDG lookup.
-   * For a tool with its own environment variable (for example
-   * `TOOLY_TRUST_STATE`) that names the marker directory itself, not an
-   * `XDG_STATE_HOME` to add `tool` and `trusted` to.
+   * Sets the store's directory directly and skips every other lookup. Nothing
+   * is moved into it. For a tool with its own environment variable (for
+   * example `TOOLY_TRUST_STATE`) that names the marker directory itself, not
+   * a state home to add `tool` and `trusted` to.
    */
   dir?: string
 }
@@ -262,12 +424,21 @@ export interface TrustGrant {
  * {@link WHOLE_REPO_SCOPE}. A scope is trimmed first, so `'just '` is
  * `'just'`. A scope that is then empty, longer than 200 characters or holds a
  * control character throws a `TypeError`.
+ *
+ * Every method but {@link dir}, {@link resolveRoot} and {@link markerPath}
+ * first moves an old store's markers in, once, when the store has one to move
+ * (see {@link TrustStoreOptions.legacyDir}). A move that fails makes
+ * {@link isTrusted}, {@link trust}, {@link untrust} and {@link untrustAll}
+ * throw, and is tried again on the next call.
  * @experimental
  */
 export interface TrustStore {
-  /** The tool name this store was built for. */
+  /** The `tool` this store was built for: the tool, or its family root when it has an `app`. */
   readonly tool: string
-  /** `$XDG_STATE_HOME/<tool>/trusted/`, or its home-relative fallback. */
+  /**
+   * The store's directory, as {@link trustStoreDir} resolves it from the
+   * options. Resolved on each call, so a store follows a change to `env`.
+   */
   dir(): string
   /** The absolute, symlink-resolved key a root's grant is stored under. */
   resolveRoot(root: string): Promise<string>
@@ -301,17 +472,22 @@ export interface TrustStore {
    * sorted.
    */
   untrustAll(root: string): Promise<string[]>
-  /** Every root with a whole-repository grant, sorted. Never throws. */
+  /**
+   * Every root with a whole-repository grant, sorted. Throws only when
+   * {@link dir} does; a failed move lists what the new place holds.
+   */
   list(): Promise<string[]>
   /**
    * Every grant, whole-repository and per-scope, sorted by root and then
-   * scope, with `*` first. Never throws.
+   * scope, with `*` first. Throws only when {@link dir} does, as
+   * {@link list}.
    */
   listGrants(): Promise<TrustGrant[]>
   /**
    * Set the store directory to 0700 and every marker to 0600 where they are
    * looser. Returns the paths it changed. {@link trust} calls it. A no-op on
-   * Windows, where these modes do not apply. Never throws.
+   * Windows, where these modes do not apply. Throws only when {@link dir}
+   * does, as {@link list}.
    */
   tighten(): Promise<string[]>
 }
@@ -337,39 +513,179 @@ async function entries(dir: string): Promise<string[]> {
   }
 }
 
+/** Whether anything is at `path`. */
+async function exists(path: string): Promise<boolean> {
+  return access(path).then(
+    () => true,
+    () => false,
+  )
+}
+
+/** The marker file for `resolved` and an already-normalized `scope`, in the store at `dir`. */
+function grantPath(dir: string, resolved: string, scope: string): string {
+  return scope === WHOLE_REPO_SCOPE
+    ? join(dir, markerName(resolved))
+    : join(dir, `${markerName(resolved)}${SCOPES_SUFFIX}`, scopeFileName(scope))
+}
+
+/** The grant a marker file holds, or null when it holds none or cannot be read. */
+async function readGrant(path: string): Promise<{ root: string; scope: string } | null> {
+  try {
+    return parseMarker(await readFile(path, 'utf-8'))
+  } catch {
+    return null
+  }
+}
+
+/** Every grant in the store at `dir`, unsorted. A missing directory has none. */
+async function grantsIn(dir: string): Promise<TrustGrant[]> {
+  const grants: TrustGrant[] = []
+  for (const name of await entries(dir)) {
+    // A temp file left by a killed process is not a grant.
+    if (name.endsWith('.tmp')) continue
+    const path = join(dir, name)
+    if (name.endsWith(SCOPES_SUFFIX)) {
+      for (const inner of await entries(path)) {
+        if (inner.endsWith('.tmp')) continue
+        const grant = await readGrant(join(path, inner))
+        // A per-scope marker must name its scope, and its file name must be
+        // the one that scope maps to. A marker written for `'just '`
+        // without trimming reads as `just` but sits under another name, so
+        // `isTrusted` never finds it; it is not listed either.
+        if (
+          grant !== null &&
+          grant.scope !== WHOLE_REPO_SCOPE &&
+          inner === scopeFileName(grant.scope)
+        ) {
+          grants.push({ ...grant, marker: join(path, inner) })
+        }
+      }
+      continue
+    }
+    const grant = await readGrant(path)
+    // Likewise a whole-repository marker must sit under its root's marker
+    // name. A stray or renamed file (`old-repo`, an editor's `repo~`, the
+    // `.moved` record) is never what `isTrusted` reads, nor what
+    // `untrustAll` removes.
+    if (grant !== null && name === markerName(grant.root)) {
+      grants.push({ root: grant.root, scope: WHOLE_REPO_SCOPE, marker: path })
+    }
+  }
+  return grants
+}
+
+/**
+ * The record a moved store keeps, holding the old store's path. Its name can
+ * never be a marker's, which always ends in `-<16 hex digits>`.
+ */
+const MOVED_RECORD = '.moved'
+
+/** Write every grant into the store at `dir`, unless it is there already. */
+async function copyGrants(grants: readonly TrustGrant[], dir: string): Promise<void> {
+  for (const { root, scope } of grants) {
+    const target = grantPath(dir, root, scope)
+    const found = await readGrant(target)
+    if (found?.root === root && found.scope === scope) continue
+    if (scope !== WHOLE_REPO_SCOPE) {
+      await mkdir(dirname(target), { recursive: true, mode: DIR_MODE })
+    }
+    await atomicWriteAsync(target, markerText(root, scope), { mode: MARKER_MODE })
+  }
+}
+
+/** Throw unless every grant reads back from the store at `dir` as it was written. */
+async function checkGrants(
+  grants: readonly TrustGrant[],
+  dir: string,
+  from: string,
+): Promise<void> {
+  for (const { root, scope } of grants) {
+    const found = await readGrant(grantPath(dir, root, scope))
+    if (found?.root !== root || found.scope !== scope) {
+      throw new Error(
+        `trust store move: the copy of ${root} (${scope}) from ${from} did not read back; ${from} is unchanged`,
+      )
+    }
+  }
+}
+
+/**
+ * Copy the grants in the old store `from` into the new store `to`, once. See
+ * "How a store moves" in the module comment. A no-op when `to` holds the
+ * record of a move, or `from` holds no grant. `from` is only read.
+ */
+async function moveStore(from: string, to: string): Promise<void> {
+  const record = join(to, MOVED_RECORD)
+  if (await exists(record)) return
+  const grants = await grantsIn(from)
+  if (grants.length === 0) return
+  if (await exists(to)) {
+    // The new store was written before there was anything to move, so it is
+    // merged into in place. Each marker is still written atomically.
+    await copyGrants(grants, to)
+    await checkGrants(grants, to, from)
+    await atomicWriteAsync(record, `${from}\n`, { mode: MARKER_MODE })
+    return
+  }
+  const parent = dirname(to)
+  await mkdir(parent, { recursive: true, mode: DIR_MODE })
+  const staging = join(parent, `.${basename(to)}.moving-${randomBytes(6).toString('hex')}`)
+  try {
+    await mkdir(staging, { mode: DIR_MODE })
+    await copyGrants(grants, staging)
+    await checkGrants(grants, staging, from)
+    await atomicWriteAsync(join(staging, MOVED_RECORD), `${from}\n`, { mode: MARKER_MODE })
+    try {
+      await rename(staging, to)
+    } catch (error) {
+      // Another process's copy landed first. It holds the same grants.
+      if (!(await exists(record))) throw error
+    }
+  } finally {
+    await rm(staging, { recursive: true, force: true })
+  }
+}
+
 /**
  * Build a trust store scoped to one tool. Two stores for two different
- * `tool` names never share a directory and so never see each other's
- * grants, even when `env`/`home` are the same.
+ * `tool` names, or two `app`s under one `tool`, never share a directory and
+ * so never see each other's grants, even when `env`/`home` are the same.
  * @experimental
  */
 export function trustStore(opts: TrustStoreOptions): TrustStore {
   const { tool } = opts
-  const env = opts.env ?? process.env
-  const home = opts.home ?? homeDir()
-  const override = opts.dir
 
-  const dir = (): string => override ?? trustStoreDir(tool, env, home)
+  const dir = (): string => locateStore(opts).dir
   const scopesDir = (resolved: string): string =>
     join(dir(), `${markerName(resolved)}${SCOPES_SUFFIX}`)
   /** `scope` must already be normalized. */
-  const markerPath = (resolved: string, scope: string): string => {
-    return scope === WHOLE_REPO_SCOPE
-      ? join(dir(), markerName(resolved))
-      : join(scopesDir(resolved), scopeFileName(scope))
+  const markerPath = (resolved: string, scope: string): string => grantPath(dir(), resolved, scope)
+
+  // One move per new place, kept for the life of the store. A failed one is
+  // dropped so that the next call tries again.
+  const moves = new Map<string, Promise<void>>()
+  const moved = (): Promise<void> => {
+    const { dir: to, legacy } = locateStore(opts)
+    if (legacy === null) return Promise.resolve()
+    let move = moves.get(to)
+    if (move === undefined) {
+      move = moveStore(legacy, to)
+      moves.set(to, move)
+      move.catch(() => moves.delete(to))
+    }
+    return move
+  }
+  /** For the methods that never throw for a failed move: they read what the new place holds. */
+  const movedOrNot = async (): Promise<void> => {
+    const move = moved()
+    await move.catch(() => {})
   }
 
-  const readGrant = async (path: string): Promise<{ root: string; scope: string } | null> => {
-    try {
-      return parseMarker(await readFile(path, 'utf-8'))
-    } catch {
-      return null
-    }
-  }
   const hasGrant = async (resolved: string, scope: string): Promise<boolean> =>
     (await readGrant(markerPath(resolved, scope))) !== null
 
   const tighten = async (): Promise<string[]> => {
+    await movedOrNot()
     if (process.platform === 'win32') return []
     const changed: string[] = []
     const fix = async (path: string, mode: number): Promise<void> => {
@@ -400,38 +716,8 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
   }
 
   const listGrants = async (): Promise<TrustGrant[]> => {
-    const d = dir()
-    const grants: TrustGrant[] = []
-    for (const name of await entries(d)) {
-      // A temp file left by a killed process is not a grant.
-      if (name.endsWith('.tmp')) continue
-      const path = join(d, name)
-      if (name.endsWith(SCOPES_SUFFIX)) {
-        for (const inner of await entries(path)) {
-          if (inner.endsWith('.tmp')) continue
-          const grant = await readGrant(join(path, inner))
-          // A per-scope marker must name its scope, and its file name must be
-          // the one that scope maps to. A marker written for `'just '`
-          // without trimming reads as `just` but sits under another name, so
-          // `isTrusted` never finds it; it is not listed either.
-          if (
-            grant !== null &&
-            grant.scope !== WHOLE_REPO_SCOPE &&
-            inner === scopeFileName(grant.scope)
-          ) {
-            grants.push({ ...grant, marker: join(path, inner) })
-          }
-        }
-        continue
-      }
-      const grant = await readGrant(path)
-      // Likewise a whole-repository marker must sit under its root's marker
-      // name. A stray or renamed file (`old-repo`, an editor's `repo~`) is
-      // never what `isTrusted` reads, nor what `untrustAll` removes.
-      if (grant !== null && name === markerName(grant.root)) {
-        grants.push({ root: grant.root, scope: WHOLE_REPO_SCOPE, marker: path })
-      }
-    }
+    await movedOrNot()
+    const grants = await grantsIn(dir())
     // Code-unit order, as `Array.prototype.sort` uses, with `*` first within a root.
     const key = (g: TrustGrant): string =>
       `${g.root}\0${g.scope === WHOLE_REPO_SCOPE ? '' : g.scope}`
@@ -450,6 +736,7 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
 
     async isTrusted(root, given = WHOLE_REPO_SCOPE) {
       const scope = normalizeScope(given)
+      await moved()
       const resolved = await resolveTrustRoot(root)
       if (await hasGrant(resolved, WHOLE_REPO_SCOPE)) return true
       return scope !== WHOLE_REPO_SCOPE && hasGrant(resolved, scope)
@@ -461,6 +748,7 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
     // grants needs to care.
     async trust(root, given) {
       const scope = given === undefined ? WHOLE_REPO_SCOPE : parseTrustScope(given)
+      await moved()
       const resolved = await resolveTrustRoot(root)
       const marker = markerPath(resolved, scope)
       const alreadyTrusted = await hasGrant(resolved, scope)
@@ -483,6 +771,7 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
 
     async untrust(root, scope = WHOLE_REPO_SCOPE) {
       const normalized = normalizeScope(scope)
+      await moved()
       return removeGrant(await resolveTrustRoot(root), normalized)
     },
 
@@ -490,6 +779,7 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
     // `.scopes` folder. A marker whose name no scope maps to (one written
     // for `'just '` without trimming) goes too.
     async untrustAll(root) {
+      await moved()
       const resolved = await resolveTrustRoot(root)
       const removed = (await listGrants()).filter((g) => g.root === resolved).map((g) => g.scope)
       await rm(join(dir(), markerName(resolved)), { force: true })

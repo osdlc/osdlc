@@ -1,0 +1,28 @@
+---
+'@osdlc/trust-repo': minor
+---
+
+A trust store can now live where the tool's other machine-local files live.
+Pass `vendorDirs` (the same `{ vendor, envVars }` value `machineConfigFile`
+takes) and the store is `<state home>/<tool>/trusted/`, resolved through
+`@osdlc/tiered-dirs`. It follows the convention, Windows' own state home, and
+the `<PREFIX>_ROOT` and `<PREFIX>_STATE_DIR` overrides. A `dirs` factory pins
+the convention or injects a rooted tree. A tool under a family root passes
+`app`, as in `{ tool: 'osdlc', app: 'pr-update' }`, and gets
+`<state home>/osdlc/pr-update/trusted/`. Its grants are its own: no other app,
+and not the family root, sees them. `trustStoreDir` takes the same options.
+`envVars` and the `TrustVendorDirs` type are exported.
+
+A tool that passes neither `vendorDirs` nor `dir` keeps exactly the place it
+used before, so nothing moves until a tool opts in.
+
+When a tool opts in and its new place differs from the old one
+(`$XDG_STATE_HOME/<tool>/trusted/`, or `~/.local/state/<tool>/trusted/`), the
+existing markers are copied to the new place once, checked, and recorded as
+moved. After that only the new place is read. The old markers are left as
+they were, so an older release of the tool keeps using the old place and
+still finds every grant it knew; a grant it adds there later is not copied.
+A copy that fails leaves no new store behind and makes the trust check fail,
+so nothing runs without consent; the next run tries again. A store moved by
+`<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` or tiered-dirs' test root starts empty
+and copies nothing.

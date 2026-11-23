@@ -44,11 +44,11 @@ Any CLI tool gets its own store by name.
 
 ## The store
 
-`trustStore({ tool, env?, home?, dir? })` returns:
+`trustStore({ tool, app?, vendorDirs?, dirs?, legacyDir?, env?, home?, dir? })` returns:
 
 | Member | Does |
 |---|---|
-| `dir()` | the store's directory: `dir` verbatim when given, else `$XDG_STATE_HOME/<tool>/trusted/`, or `~/.local/state/<tool>/trusted/` when unset |
+| `dir()` | the store's directory: `dir` verbatim when given, else `<state home>/<tool>[/<app>]/trusted/` when `vendorDirs` is given, else `$XDG_STATE_HOME/<tool>/trusted/`, or `~/.local/state/<tool>/trusted/` when unset ([Where the store lives](#where-the-store-lives)) |
 | `resolveRoot(root)` | the absolute, symlink-resolved key a root's grant is stored under |
 | `markerPath(root, scope?)` | the marker file's path for a grant, without creating it (for a `--show` command) |
 | `isTrusted(root, scope?)` | whether the root has a whole-repository grant or a grant for `scope` |
@@ -78,21 +78,105 @@ folder the tool runs in.
 
 A test passes its own `env` and `home`, so it never reads or writes the
 developer's real trust store. `dir` sets the store's directory directly and
-skips the `tool` and XDG lookup. Use it when a tool has its own environment
-variable (for example `TOOLY_TRUST_STATE`) that names the marker directory
-itself, not an `XDG_STATE_HOME` to add `tool` and `trusted` to.
+skips every other lookup, and nothing is moved into it. Use it when a tool
+has its own environment variable (for example `TOOLY_TRUST_STATE`) that names
+the marker directory itself, not a state home to add `tool` and `trusted` to.
+
+`trustStoreDir(options)` returns the directory a store built from the same
+options uses, without reading the disk or moving anything.
+`trustStoreDir(tool, env?, home?)` returns the old place for `tool`.
 
 ### Where the store lives
 
-In the XDG state directory, not the config directory: `$XDG_STATE_HOME`, or
-`~/.local/state` when it is unset. A relative `XDG_STATE_HOME` is ignored, as
-the XDG spec says, so the store never lands inside the directory a tool runs
-in. This holds on every platform, macOS
-included, and matches the paths `@osdlc/config-layers` uses. Trust is state
-a program keeps, not configuration a person edits, so it is not stored next
-to a tool's `config.yaml`. People sync config files between machines, for
+In a state directory, not a config directory. Trust is state a program
+keeps, not configuration a person edits, so it is not stored next to a
+tool's `config.yaml`. People sync config files between machines, for
 example in a dotfiles repo. A consent record for one machine that is copied
 to another machine is no longer consent.
+
+A tool that passes `vendorDirs` gets its store from `@osdlc/tiered-dirs`,
+like its other machine-local files: `<state home>/<tool>/trusted/`, or
+`<state home>/<tool>/<app>/trusted/` with `app`. `vendorDirs` is the value
+`@osdlc/config-layers`' `machineConfigFile` takes, `{ vendor, envVars }`, and
+this package re-exports `envVars` to build it. So the store follows the same
+rules as the tool's machine file:
+
+| Case | Store |
+|---|---|
+| Linux, or macOS under the `xdg` convention | `$XDG_STATE_HOME/<tool>/trusted/`, else `~/.local/state/<tool>/trusted/` |
+| macOS under the `native` convention | `~/Library/Application Support/<tool>/trusted/` |
+| Windows | `%LOCALAPPDATA%\state\<tool>\trusted\` |
+| `<PREFIX>_ROOT=/r` | `/r/state/<tool>/trusted/` |
+| `<PREFIX>_STATE_DIR=/s` | `/s/<tool>/trusted/` |
+| a family root, `tool: 'osdlc', app: 'pr-update'` | `<state home>/osdlc/pr-update/trusted/` |
+
+The convention is tiered-dirs' default, `native`, unless `<PREFIX>_CONVENTION`
+names another. A tool that pins its convention, as the osdlc family pins
+`xdg`, passes the same `dirs` factory it gives `machineConfigFile`:
+
+```ts
+import { envVars, trustStore } from '@osdlc/trust-repo'
+import { systemDirs } from '@osdlc/config-layers'
+
+const vendorDirs = { vendor: 'osdlc', envVars: envVars('OSDLC') }
+const dirs = () => systemDirs(vendorDirs, { convention: 'xdg', conventionFromEnv: false })
+const trust = trustStore({ tool: 'osdlc', app: 'pr-update', vendorDirs, dirs })
+```
+
+A store with an `app` is that app's alone. A grant through app `a` is not
+seen through app `b`, nor through the family root with no app, because
+consent given to one tool must never cover another. Pass the tool itself as
+`app`, never only the family.
+
+A tool that passes neither `vendorDirs` nor `dir` keeps the place every
+release before this one used: `$XDG_STATE_HOME/<tool>/trusted/`, or
+`~/.local/state/<tool>/trusted/` when the variable is unset, on every
+platform. A relative `XDG_STATE_HOME` is ignored, as the XDG spec says, so
+the store never lands inside the directory a tool runs in. No tool moves
+until it opts in.
+
+### How a store moves
+
+When `vendorDirs` puts the store somewhere other than the old place, the old
+markers are copied over once, on first use. The old place is
+`$XDG_STATE_HOME/<app or tool>/trusted/`, or
+`~/.local/state/<app or tool>/trusted/`. For
+`{ tool: 'osdlc', app: 'pr-update' }` it is pr-update's old store. `legacyDir` names another old
+store, or `null` turns the move off.
+
+1. Every grant in the old store is copied into a new, private folder beside
+   the new place.
+2. Each copy is read back and checked against the grant it came from.
+3. A `.moved` record, holding the old store's path, is written into the
+   folder, and the folder is renamed into place.
+
+The rename is the one step that publishes the copy. So the new store is
+either complete and recorded, or not there at all, and a copy that failed
+partway leaves nothing behind. Two processes that move at once each build
+their own folder; the second rename fails because the first already landed,
+and the second process uses that one. Once the record is there, only the new
+place is read. A grant an older release adds to the old place later is not
+copied, and a grant revoked in the new place stays revoked.
+
+The old markers are never changed or deleted, so an older release of the
+tool still finds every grant it knew. A process killed partway through can
+leave a `.trusted.moving-*` folder beside the store. Nothing reads it, and it
+is safe to delete.
+
+A move that fails makes `isTrusted`, `trust`, `untrust` and `untrustAll`
+throw, so nothing runs on a store that lost a grant. `list`, `listGrants`
+and `tighten` report what the new place holds. The next call tries again.
+
+Nothing is copied when the new place is the old place (Linux and macOS under
+`xdg`, with no family root), or when `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR`
+or tiered-dirs' per-process test root moved the new place. Those ask for a
+separate store on purpose. A scratch store that inherited the person's real
+consent would defeat a test that points `<PREFIX>_ROOT` at a temp directory.
+
+If the new place already exists when there is something to move (the tool
+used it while the old place was empty, and an older release wrote the old
+place since), the old grants are copied into it in place, each marker
+atomically, then the record is written.
 
 ### What a decision is keyed on
 
@@ -133,8 +217,9 @@ trusted repositories is private. `trust()` tightens a store that an older
 release left at 0755 and 0644, and `tighten()` does it on demand. On Windows
 these modes do not apply and `tighten()` does nothing.
 
-Two stores for two different `tool` names never share a directory, so
-`tooly`'s grants and another tool's grants are independent even on one machine.
+Two stores for two different `tool` names, or two `app`s under one `tool`,
+never share a directory, so `tooly`'s grants and another tool's grants are
+independent even on one machine.
 
 ## The gate
 
@@ -294,7 +379,7 @@ argument. A tool with a nested verb (`tooly repo trust`) or a different flag nam
 ## Runtime
 
 Runs under Bun and Node. It uses `node:fs/promises`, `node:path`, `node:crypto`,
-`node:os`, `@osdlc/etag-write` and `@osdlc/path-guard`. It does not use `child_process`.
+`node:os`, `@osdlc/etag-write`, `@osdlc/path-guard` and `@osdlc/tiered-dirs`. It does not use `child_process`.
 `@osdlc/trust-repo/git` runs git through `@osdlc/command-seam` and `@osdlc/typed-git`.
 
 ## Stability
@@ -309,7 +394,7 @@ The experimental exports of `@osdlc/trust-repo`:
 `ExecGate`, `ExpandTrustPathOptions`, `PolicyBy`, `PolicyDecision`, `PolicyDecisionOptions`,
 `PolicyExecGate`, `ResolveExecGateArgs`, `TRUST_MARKER_DIR`, `TrustBy`, `TrustDecision`,
 `TrustGrant`, `TrustPlatform`, `TrustPolicy`, `TrustResult`, `TrustRules`, `TrustStore`,
-`TrustStoreOptions`, `WHOLE_REPO_SCOPE`, `expandTilde`, `expandTrustPath`, `homeDir`,
+`TrustStoreOptions`, `TrustVendorDirs`, `WHOLE_REPO_SCOPE`, `expandTilde`, `expandTrustPath`, `homeDir`,
 `normalizeTrustPath`, `parseTrustScope`, `pathGlobToRegExp`, `policyDecision`, `policyExecGate`, `resolveExecGate`, `resolveTrustRoot`,
 `trustDecision`, `trustStore`, `trustStoreDir`, `withheldHint`, `xdgHome`
 
@@ -322,9 +407,10 @@ A test compares this list with the `@experimental` tags in the source.
 ## Platforms and runtimes
 
 Linux and macOS for the 0.x line. Trust paths match on Windows (see Windows
-paths), and those rules are tested on every platform. The store still uses XDG
-state paths on Windows, under `%USERPROFILE%\.local\state`, and file modes do
-not apply there. Full Windows support is planned before 1.0.
+paths), and those rules are tested on every platform. A store with
+`vendorDirs` lives in Windows' own state home, `%LOCALAPPDATA%\state`; one
+without keeps the old XDG place, under `%USERPROFILE%\.local\state`. File
+modes do not apply there. Full Windows support is planned before 1.0.
 
 Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, ESM only. Bun also runs it, through the compiled `dist/`. The tests run
 on Vitest under Node.
