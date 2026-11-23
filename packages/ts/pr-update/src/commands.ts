@@ -149,8 +149,8 @@ function scopeFlags(verb: 'survey' | 'update', remoteHelp: string) {
       valueName: 'dir',
       help:
         verb === 'survey'
-          ? 'Where the managed clones are, an absolute path; beats PR_UPDATE_MIRROR_DIR and mirror_dir. survey uses a clone that exists and never makes one.'
-          : 'Where managed clones go, an absolute path; beats PR_UPDATE_MIRROR_DIR and mirror_dir. With --apply, consent to clone a --repo target that has no checkout on this machine, for this run.',
+          ? 'Where the managed clones are, an absolute path or one starting ~/; beats PR_UPDATE_MIRROR_DIR and mirror_dir. survey uses a clone that exists and never makes one.'
+          : 'Where managed clones go, an absolute path or one starting ~/; beats PR_UPDATE_MIRROR_DIR and mirror_dir. With --apply, consent to clone a --repo target that has no checkout on this machine, for this run.',
     },
     currentBranch: {
       kind: 'boolean',
@@ -624,7 +624,7 @@ export function updateCommand(seams: CliSeams) {
     },
     exits: {
       1: 'a PR ended conflict or failed',
-      14: 'the config file is invalid or unreadable',
+      14: 'the config file is invalid or unreadable, or the machine file cannot take the answer about cloning (not YAML, or not a map)',
       [EXIT_UNTRUSTED]: "refused: the repository's config names commands it is not trusted to run",
     },
     examples: [

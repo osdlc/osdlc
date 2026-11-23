@@ -128,7 +128,7 @@ const pruneOutput = z.object({
 })
 
 const MIRROR_DIR_HELP =
-  'The clone directory to walk, an absolute path, instead of PR_UPDATE_MIRROR_DIR, mirror_dir or the default: a directory left behind by a moved mirror_dir, say.'
+  'The clone directory to walk, an absolute path or one starting ~/, instead of PR_UPDATE_MIRROR_DIR, mirror_dir or the default: a directory left behind by a moved mirror_dir, say.'
 
 /** The `--mirror-dir` of `list` and `prune`, made absolute. Not consent: neither command clones. */
 function walkedDir(raw: string | undefined, env: Record<string, string | undefined>) {
@@ -171,9 +171,10 @@ export function mirrorCommand(
           mirrorDir: {
             kind: 'string',
             valueName: 'dir',
-            help: 'Keep the clones here (mirror_dir), an absolute path. It must be outside every git checkout, and new, empty or already pr-update’s.',
+            help: 'Keep the clones here (mirror_dir), an absolute path or one starting ~/. It must be outside every git checkout, and new, empty or already pr-update’s.',
           },
         },
+        exits: { 14: 'the machine file is not valid YAML, or not a map; it is left as it is' },
         examples: ['mirror enable', 'mirror enable --mirror-dir ~/clones'],
         output,
         kind: 'mirror',
@@ -198,6 +199,7 @@ export function mirrorCommand(
       }),
       disable: defineCommand({
         summary: 'never clone: skip a --repo target with no checkout (checkout: local)',
+        exits: { 14: 'the machine file is not valid YAML, or not a map; it is left as it is' },
         examples: ['mirror disable'],
         output,
         kind: 'mirror',

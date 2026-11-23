@@ -105,6 +105,49 @@ A list per tool means one list to keep up per tool, and the lists drift.
 - A test that spawns a tool's CLI follows the isolation rule in
   machine-files.md, or the child reads, and may write, the person's real files.
 
+## Build notes
+
+Built in [#1058](https://github.com/osdlc/osdlc/pull/1058) (the package) and
+[#1055](https://github.com/osdlc/osdlc/pull/1055) (typed-git's remote
+matching), within the pr-update omnibus
+[#1016](https://github.com/osdlc/osdlc/pull/1016).
+
+- **No tool asks where checkouts are yet.** So the package has no shared
+  question. `repositoriesFile().writeRoots(roots, { etag })` is what such a
+  question would write through, and the first tool that asks adds it here.
+  pr-update's only question is whether to clone.
+- **The scan is `scanForCheckouts`.** The table names `discoverCheckouts`.
+  The package uses typed-git's `scanForCheckouts`, the same walk, which also
+  reports `depthLimited`, the directories it left unopened at `maxDepth` (3
+  by default), so a caller can say a checkout may be deeper.
+- **One index per call site is `CheckoutLocator`.** One locator scans once
+  for all its targets and gives the roots it searched and the file's path for
+  messages. The `locateCheckout()` function scans on each call.
+- **The ssh runner.** It is a parameter of `sshAliasResolver(runner?)`;
+  `readRemote` takes a resolver. The default runner finds `ssh` on absolute
+  `PATH` entries only.
+- **What the scan trusts.** A directory counts only when git, run in it with
+  `GIT_CEILING_DIRECTORIES` at its parent, says it is the top of a working
+  tree, so a broken `.git` never answers with the repository around a root,
+  such as a dotfiles repository at the home directory. Every git call the
+  package makes unsets an inherited `GIT_DIR` and the other variables that
+  pick a repository, so the answer is the same inside a git hook. The home
+  stop compares real paths.
+- **Roots the table does not cover.** `~user/…` is not expanded: it is
+  dropped with the relative-path warning, and `writeRoots` refuses it. A
+  `roots` value that is not a list is reported with the file's path, and the
+  default roots apply.
+- **`OSDLC_REPOSITORIES` is read from `process.env`.** `machineConfigFile`
+  reads its variable there and takes no environment, so the package's
+  relative-path check reads the same place.
+- **Not found yet:** a bare store with its worktrees beside it (`proj/.git`
+  pointing at `proj/.bare`). The package README says so.
+- **Machine-only has no test.** No project config reaches the package, so
+  there is nothing for a repository to set `roots` through. pr-update's
+  project schema refuses unknown keys besides.
+- **Adoption.** pr-update reads `repositories.yaml` through the package.
+  sdlc's change is in the release phase, after this build.
+
 ## What would reopen it
 
 A shared concern whose readers need different release cadences, so that one

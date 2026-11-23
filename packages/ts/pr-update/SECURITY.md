@@ -41,4 +41,19 @@ are in scope.
   but it does not sandbox the agent.
 - **GitHub credentials belong to `gh`.** The package reads no GitHub token.
 - **The remote picks the host.** `origin` decides which adapter and which
-  repository the updates go to.
+  repository the updates go to. A `--repo` target names its own host, or
+  takes the host of the project root's `origin`.
+- **Other repositories run with hooks off.** For a `--repo` target, every git
+  command, in a checkout found on the machine, a managed clone or their run
+  worktrees, runs with `core.hooksPath=/dev/null`, so a hook the PR commits
+  does not run. Each target passes the trust gate on its own. The project
+  root's git runs as before.
+- **A managed clone holds a credential helper.** Its own git config gets
+  `!gh auth git-credential` for its host, so fetches and pushes sign in
+  through `gh`. Your global git config is not changed.
+- **Pruning deletes folders.** `mirror prune`, and the pruning at the end of
+  an `update --apply`, delete folders only inside pr-update's cache and
+  state directories, and in the git directory that owns a dead run's
+  worktree only that worktree's record and scratch branch. They never follow a symbolic link, and on Linux and macOS
+  they remove nothing from a folder another user owns or others can write
+  to. Windows gets no such check.

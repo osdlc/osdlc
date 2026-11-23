@@ -29,7 +29,7 @@ cache and state directories belong to one machine and must not be shared.
 `update --apply` now prunes the same way when it ends, if it used a clone or
 made a run worktree in the cache, unless a signal stopped it. It notes what it
 removed, what it left for a folder someone else could write to, and the space
-freed. `mirror_max_age_days` now takes effect.
+freed.
 
 The folder check of the clone directory, `worktrees/` and `kept/` accepts a
 folder writable by its group only for a user private group (not on macOS; the

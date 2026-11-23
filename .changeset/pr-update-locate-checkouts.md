@@ -14,8 +14,8 @@ through GitHub over `gh` with `GH_HOST` set to that host. Hosts are compared
 without a port, and an SSH config alias in the project root's remote counts
 as the host `ssh -G` resolves it to. When a target has
 no checkout, a note names the roots searched and the file that sets them. The
-JSON report gives each repository `checkout: { path, source }` (`root` or
-`located`), or `null`.
+JSON report gives each repository `checkout: { path, source }` (`root`,
+`located` or `clone`), or `null`.
 
 `--repo` takes `host/owner/name` as well as `owner/name`. A bare `owner/name`
 means the host of the project root's `origin` when that is GitHub, else
@@ -32,11 +32,12 @@ settings of the clone cache: `checkout`, `mirror_dir` and
 For library hosts:
 
 - `Ports.locate` is now called with a lower-cased `owner/name` and a second
-  argument carrying the host, and may return `{ path, source, remote }` to name
-  the remote a checkout is read through. A
-  `locate` that takes one argument and returns a path works as before. A
-  checkout returned either way is fetched without tags, `FETCH_HEAD` or
-  pruning.
+  argument carrying the host, and may return `{ path, source, remote, others }`
+  to name the remote a checkout is read through and the repository's other
+  checkouts, which the `unpushed_local` guard also reads. A `locate` that
+  takes one argument and returns a path works as before. A checkout returned
+  either way is fetched without tags or `FETCH_HEAD`, and without pruning
+  unless its `source` is `clone`.
 - A target other than the project root is lower-cased everywhere: in the
   report's `repo`, in `owner/name#N` keys, and in the `repo` of attempt keys.
   An attempt record a host's store holds under a mixed-case `repo` is no

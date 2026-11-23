@@ -19,7 +19,9 @@ default. The directory must be outside every git checkout and new, empty or
 already pr-update's, and yours; on Linux and macOS no one else may write to
 it, or to the `<host>` and `<owner>` folders in it (the error names the
 `chmod go-w` that fixes it, and the ways to choose a clone directory on a
-filesystem with Unix permissions). A clone pr-update did not make, a symbolic link
+filesystem with Unix permissions). On Windows no ownership or mode check is
+made, so keep the clone directory under your user profile, as the default is.
+A clone pr-update did not make, a symbolic link
 in its place, or one another user owns, is never used. Each clone is made with
 `gh repo clone`, gets the `gh`
 credential helper in its own config only, and keeps the `origin/<branch>`
