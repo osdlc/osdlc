@@ -2,7 +2,7 @@
  * The command line for querying a vault with Obsidian Bases syntax. `src/bin.ts` runs `main`.
  *
  *   markdown-vault-query query <file.base> [--vault <dir>] [--view <name>] [--this <vault-path>] [--json]
- *   markdown-vault-query filter '<expression>' [--vault <dir>] [--json]
+ *   markdown-vault-query filter '<expression>' [--vault <dir>] [--this <vault-path>] [--json]
  *   markdown-vault-query check <file.base> [...]
  *   markdown-vault-query views <file.base>
  */
@@ -45,7 +45,7 @@ function parseArgs(argv: readonly string[]): Flags {
   let problem: string | undefined
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
-    // In range by the loop bound, even after a flag consumes argv[++i].
+    // In range by the loop bound.
     if (arg === undefined) continue
     if (arg === '--') {
       flags.positional.push(...argv.slice(i + 1))
@@ -89,7 +89,7 @@ function usage(code: number): number {
   const print = code === 0 ? console.log : console.error
   print(`Usage:
   markdown-vault-query query <file.base> [--vault <dir>] [--view <name>] [--this <vault-path>] [--json]
-  markdown-vault-query filter '<expression>' [--vault <dir>] [--json]
+  markdown-vault-query filter '<expression>' [--vault <dir>] [--this <vault-path>] [--json]
   markdown-vault-query check <file.base> [...]
   markdown-vault-query views <file.base>
 

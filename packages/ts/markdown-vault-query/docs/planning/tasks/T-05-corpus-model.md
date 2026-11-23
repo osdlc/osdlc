@@ -13,9 +13,10 @@ Run the query engine over the planned corpus model when it replaces `@osdlc/mark
 
 ## Today
 
-The package imports `VaultIndex`, `VaultNote` and `createLinkResolver` from `@osdlc/markdown-vault`
-at run time. A planned corpus model may absorb that package, and its query layer may sit on the
-corpus model instead.
+The package imports `createLinkResolver` (in `src/expr/eval.ts`) and `scanVault` (in `src/cli.ts`)
+from `@osdlc/markdown-vault` at run time, and `VaultIndex` and `VaultNote` as types only. A
+planned corpus model may absorb that package, and its query layer may sit on the corpus model
+instead.
 
 ## Approach
 

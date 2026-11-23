@@ -1,8 +1,9 @@
 /**
  * Query execution: run a BaseDef (or one of its views) against a VaultIndex.
  *
- * Pipeline (matching Obsidian): global filters AND view filters → evaluate
- * per-row values (columns/formulas) → sort → group → limit → summaries.
+ * Pipeline: global filters AND view filters → sort → limit → evaluate the
+ * columns of the rows kept → group → summaries. Groups and summaries cover
+ * the rows after the limit.
  */
 
 import type { BaseDef, BaseViewDef, FilterNode, SortKey } from './base/parse.ts'

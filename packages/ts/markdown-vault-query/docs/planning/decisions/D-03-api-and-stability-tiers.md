@@ -17,7 +17,7 @@ The package has one entry point, `@osdlc/markdown-vault-query`, and one command,
 | Item                                                                     | Decision                                                                                       |
 | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
 | `tokenize`, `Token`, `TokenType`                                         | Experimental. The lexer is an implementation detail of `parseExpression`.                      |
-| `Expr` and the twelve node types of the syntax tree                      | Experimental. `evaluate` takes an `Expr`, so they stay exported, but the grammar may change.   |
+| `Expr` and the eleven node types of the syntax tree                      | Experimental. `evaluate` takes an `Expr`, so they stay exported, but the grammar may change.   |
 | `EvalContext`                                                            | Stable. The formula stack that cycle detection uses is an internal type and is not part of it. |
 | `LinkResolver`, `runLinkResolver`                                        | Exported. `fromFrontmatter` and `EvalContext.resolveLink` need them.                           |
 | `EvalError`                                                              | Renamed `ExpressionEvalError`, so it no longer shadows the global `EvalError`. No alias.       |

@@ -242,7 +242,8 @@ export function parseBase(source: string): BaseDef {
   try {
     return parseBaseSource(source)
   } catch (e) {
-    // The only RangeError parsing can raise is a stack overflow from recursion.
+    // The only RangeError that reaches here is a stack overflow from recursion over the
+    // parsed file. One inside the YAML parser is reported as invalid YAML.
     if (e instanceof RangeError) {
       throw new BaseParseError('Base file is nested too deeply', 'root', e)
     }

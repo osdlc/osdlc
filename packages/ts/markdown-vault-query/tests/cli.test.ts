@@ -117,6 +117,23 @@ describe('markdown-vault-query cli', () => {
     expect(JSON.parse(json.out)).toContain('planning/tasks/task-1-fix-lexer.md')
   })
 
+  test('filter sets `this` from --this', async () => {
+    const vault = join(SCRATCH, 'filter-this-vault')
+    mkdirSync(vault, { recursive: true })
+    writeFileSync(join(vault, 'a.md'), '# A\n')
+    writeFileSync(join(vault, 'b.md'), '# B\n')
+    const expression = 'file.path == this.file.path'
+
+    const withThis = await run('filter', expression, '--vault', vault, '--this', 'a.md', '--json')
+    expect(withThis.code).toBe(0)
+    expect(JSON.parse(withThis.out)).toEqual(['a.md'])
+
+    // Without --this, `this` is unset and no note matches.
+    const without = await run('filter', expression, '--vault', vault, '--json')
+    expect(without.code).toBe(0)
+    expect(JSON.parse(without.out)).toEqual([])
+  })
+
   test('filter without an expression prints usage and exits 1', async () => {
     const r = await run('filter')
     expect(r.code).toBe(1)

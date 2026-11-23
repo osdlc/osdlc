@@ -23,7 +23,7 @@ the query completes.
 | Rendering             | None. The package returns rows, groups and summaries.                                                                                         |
 | Backlinks             | `file.backlinks` is what the vault index holds. The index is a snapshot, so a new link needs a new index.                                      |
 | Lenient input         | A bare list of filters is read as `and`. A sort key may be `"prop"` or `"-prop"`, or use the legacy `column:` spelling.                       |
-| Numbers               | `number()` and the numeric summaries skip a blank or non-numeric cell. A blank string is not 0.                                               |
+| Numbers               | `number()` turns a blank or non-numeric value into an error. The numeric summaries skip such cells. A blank string is not 0. |
 | Empty and filled      | The Empty and Filled summaries use `isEmpty()`: an empty string, list or object is empty.                                                     |
 | Dates                 | A date-only value plus an hour, minute or second duration stays date-only only while the result is at local midnight. Calendar days and months keep it date-only. |
 | Unknown keys          | Unknown top-level and view keys are kept in `extra`, so a base round-trips through the parser.                                                |

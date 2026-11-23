@@ -154,14 +154,15 @@ markdown-vault-query views some.base
 | Command | Does | Exit code |
 | --- | --- | --- |
 | `query <file.base>` | Runs a view and prints a table. `--view <name>` picks the view, `--this <vault-path>` sets `this`, `--json` prints JSON. `this` defaults to the base file's own path when the file is inside the vault. | 0, or 1 on an invalid base or an error |
-| `filter '<expression>'` | Prints the paths of the matching notes. | 0, or 1 on an error |
+| `filter '<expression>'` | Prints the paths of the matching notes. `--this <vault-path>` sets `this`, `--json` prints JSON. | 0, or 1 on an error |
 | `check <file.base> ...` | Parses each base and prints `ok` or `FAIL` per file. | 1 when any file fails |
 | `views <file.base>` | Lists the view types and names. | 0, or 1 on an error |
 
 `--vault <dir>` sets the vault root for `query` and `filter`. It defaults to the
 current directory. `--help` and `--version` print usage and the version. An
 unknown option, or `--vault`, `--view` or `--this` with no value, prints one
-line on stderr and exits 1. A missing or unknown command, or a command with
+line on stderr and exits 1. The value of `--vault`, `--view` or `--this` may
+not start with `--`. A missing or unknown command, or a command with
 its argument missing, prints the usage text on stderr and exits 1. An argument
 after `--` is not read as an option, so an expression that starts with `-`
 goes there: `markdown-vault-query filter --vault vault -- '-price < 0'`.
@@ -182,7 +183,8 @@ Each export has TSDoc in the source. Your editor shows it.
 `evaluate` throws `ExpressionEvalError`, which is not the global `EvalError`,
 and a `RangeError` for an expression nested too deeply for the stack.
 `evaluateSafe` returns an `ErrorValue` for both. `queryVault` throws a
-`RangeError` when `offset` or `limit` is not a non-negative integer. A caller
+`RangeError` when `offset` or `limit` is not a non-negative integer, so
+`Infinity` is refused. Leave `limit` out for no limit. A caller
 that evaluates many expressions against one index builds one resolver with
 `runLinkResolver(vault)` and passes it as `EvalContext.resolveLink`, so the
 index's name table is built once. Examples of each export are in
@@ -209,8 +211,8 @@ command line. See the decision note
 
 The package is 0.x, so any minor release may break the API. Within that, each
 export is stable or experimental. A breaking change to a stable export is
-listed in the CHANGELOG under "Breaking". Any release may change or remove an
-experimental export.
+listed in the CHANGELOG as an entry that starts with "Breaking:". Any release
+may change or remove an experimental export.
 
 The experimental exports of `@osdlc/markdown-vault-query`:
 
