@@ -86,6 +86,24 @@ export {
   type Running,
 } from './kit.ts'
 export {
+  DEFAULT_MAX_ENTRIES,
+  DESCRIPTOR_SCHEMA_URL,
+  DESCRIPTOR_VERSION,
+  DescriptorCandidateSchema,
+  DescriptorError,
+  DescriptorSchema,
+  OSES,
+  ProjectEntrySchema,
+  descriptorIssues,
+  descriptorJsonSchema,
+  parseDescriptor,
+  readDescriptor,
+  type Descriptor,
+  type DescriptorCandidate,
+  type Os,
+  type ProjectEntry,
+} from './descriptor/schema.ts'
+export {
   CLOSE_TERMINALS,
   ORCA_BUNDLE_CLI,
   ORCA_PLUGIN,

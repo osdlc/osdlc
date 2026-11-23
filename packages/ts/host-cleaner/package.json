@@ -36,6 +36,7 @@
   "files": [
     "dist/",
     "bin/",
+    "schemas/",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-MIT",
@@ -57,7 +58,8 @@
     "format:check": "prettier --check .",
     "lint": "oxlint .",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
-    "stamp-version": "cli-tool-stamp-version"
+    "stamp-version": "cli-tool-stamp-version",
+    "write:descriptor-schema": "node scripts/write-descriptor-schema.ts"
   },
   "dependencies": {
     "@osdlc/cli-tool": "workspace:^",
@@ -67,6 +69,7 @@
     "@osdlc/repo-cleaner": "workspace:^",
     "@osdlc/typed-git": "workspace:^",
     "@osdlc/ux": "workspace:^",
+    "yaml": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -74,6 +77,7 @@
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "ajv": "^8.20.0",
     "oxlint": "catalog:",
     "prettier": "catalog:",
     "typescript": "catalog:",
