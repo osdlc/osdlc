@@ -80,6 +80,7 @@ import type {
 } from './ports.ts'
 import { ownedByMe, placeProblem } from './folders.ts'
 import { CLONE_MARKER } from './mirror.ts'
+import { realOr } from './real-path.ts'
 import { terminalConfirmPush } from './update/confirm.ts'
 import {
   checkoutKept,
@@ -964,15 +965,6 @@ function gitOf(path: string, at: Served | undefined, env: Pick<UpdateEnv, 'git'>
     path,
     at?.elsewhere === true ? targetGitOptions(env.git) : { runner: withoutRepositoryVars(env.git) },
   )
-}
-
-/** `path` through its symlinks and any Windows short name (`RUNNER~1`), or as given when it cannot be resolved. */
-function realOr(path: string): string {
-  try {
-    return realpathSync.native(path)
-  } catch {
-    return path
-  }
 }
 
 /**

@@ -12,8 +12,6 @@
  * after the call failed. `@osdlc/cli-tool` prints them with their exit codes.
  */
 
-import { realpathSync } from 'node:fs'
-
 import { CommandFailed, which as whichOnPath, type CommandRunner } from '@osdlc/command-seam'
 import {
   badRemoteFailure,
@@ -24,6 +22,7 @@ import {
 import { type Failure } from '@osdlc/result'
 import { Git, REPOSITORY_VARS, classifyGitFailure, withoutRepositoryVars } from '@osdlc/typed-git'
 
+import { realOr } from './real-path.ts'
 import { remoteSlug } from './survey.ts'
 
 /** Finds a binary on `PATH`; a test substitutes one. */
@@ -94,14 +93,7 @@ function checkoutAt(cwd: string, runner: CommandRunner): string | null {
   const common = git.try.gitCommonDir()
   const top = git.try.topLevel()
   if (!common.ok || !top.ok || common.value === null || top.value === null) return null
-  const real = (path: string) => {
-    try {
-      return realpathSync.native(path)
-    } catch {
-      return path
-    }
-  }
-  return `${real(common.value)}\n${real(top.value)}`
+  return `${realOr(common.value)}\n${realOr(top.value)}`
 }
 
 /**

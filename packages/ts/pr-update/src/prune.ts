@@ -63,6 +63,7 @@ import {
   cloneLockPath,
   loadMirrorSetting,
 } from './mirror.ts'
+import { realOr } from './real-path.ts'
 import { scratchBranch, targetGitOptions } from './update/execute.ts'
 import { discardKept, listKept, type KeptPlace } from './update/kept.ts'
 import { ownedUnder, removeWorktree } from './update/registrations.ts'
@@ -620,12 +621,12 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
   // What the walk did with each run worktree, so the clones' own lists below neither report one
   // twice (a dry run) nor remove one it left (a folder someone else could write to, say).
   const reported = new Set(
-    report.removed.filter((e) => e.kind === 'worktree').map((e) => canonicalOr(e.path)),
+    report.removed.filter((e) => e.kind === 'worktree').map((e) => realOr(e.path)),
   )
   const left = new Set(
     [...report.skipped, ...report.failed]
       .filter((e) => e.kind === 'worktree')
-      .map((e) => canonicalOr(e.path)),
+      .map((e) => realOr(e.path)),
   )
 
   // Probes a hard kill left, in `worktrees/` and `kept/`.
@@ -750,7 +751,7 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       if (w.bare) continue
       const run = RUN_NAME.exec(basename(w.path))
       if (ownedUnder([at.worktrees]).owns(w.path) && run !== null) {
-        const key = canonicalOr(w.path)
+        const key = realOr(w.path)
         if (reported.has(key)) continue
         if (isRunning(run, alive)) inUse.push(w.path)
         else if (left.has(key)) stays.push(w.path)
@@ -807,11 +808,11 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       done({ ...entry, bytes })
       return
     }
-    const recordsOf = new Map(listKept(place).map((r) => [canonicalOr(r.path), r]))
+    const recordsOf = new Map(listKept(place).map((r) => [realOr(r.path), r]))
     for (const k of kept) {
       const keptEntry: PruneEntry = { kind: 'kept', path: k.path, repo, bytes: sizeOf(k.path) }
       try {
-        const record = recordsOf.get(canonicalOr(k.path))
+        const record = recordsOf.get(realOr(k.path))
         if (record !== undefined) discardKept(git, place, record)
         else {
           // A kept tree with no record (a run stopped between making it and writing one).
@@ -861,14 +862,6 @@ function namesIn(dir: string): string[] {
     return readdirSync(dir).sort()
   } catch {
     return []
-  }
-}
-
-function canonicalOr(path: string): string {
-  try {
-    return realpathSync.native(path)
-  } catch {
-    return path
   }
 }
 

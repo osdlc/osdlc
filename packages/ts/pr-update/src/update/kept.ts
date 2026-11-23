@@ -43,6 +43,7 @@ import { atomicWrite } from '@osdlc/etag-write'
 import type { Git } from '@osdlc/typed-git'
 
 import { FOLDER_MODE } from '../folders.ts'
+import { realOr } from '../real-path.ts'
 import { PRUNE_ALL, type WorktreeRecords } from './registrations.ts'
 
 /** The log a failed verify leaves in a kept worktree. */
@@ -258,15 +259,6 @@ export function keptOwnerElsewhere(place: KeptPlace, record: KeptRecord): string
   if (owner === undefined || place.gitDir === undefined) return null
   if (owner === place.gitDir || realOr(owner) === realOr(place.gitDir)) return null
   return existsSync(owner) ? owner : null
-}
-
-/** `path` through its symlinks and any Windows short name, or as given when it cannot be resolved. */
-function realOr(path: string): string {
-  try {
-    return realpathSync.native(path)
-  } catch {
-    return path
-  }
 }
 
 /**
