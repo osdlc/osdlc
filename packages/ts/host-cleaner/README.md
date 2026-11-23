@@ -7,12 +7,12 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node` and `orca` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `vscode` and `orca` plugins, and the `host-cleaner` command.
 
 ## Phases
 
 Plugins run in the order they are given. The command line runs the shipped
-ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `orca`.
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `orca`.
 The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
@@ -239,7 +239,20 @@ measured. `delete` reads the checkout's candidates again over a fresh process
 table, then removes the directory with `kit.remove`; a directory that is already
 gone (its worktree went first) is not a failure.
 
-## The `orca` plugin
+## The `vscode` plugin
+
+VS Code keeps state for every folder it opened in `workspaceStorage/<hash>/`
+and never removes it when the folder goes. Its root is
+`~/Library/Application Support/Code/User/workspaceStorage` on macOS and
+`~/.config/Code/User/workspaceStorage` on Linux; the plugin is detected when
+that folder exists, and has no settings.
+
+| Phase | What it does |
+| --- | --- |
+| discover | Reads each folder's `workspace.json`. One whose `folder` or `workspace` (a `.code-workspace` file) is a `file:` URI naming nothing on disk is `workspace-storage:<path>`, with its size and `costDescription: re-download`. A remote URI, a folder with no `workspace.json` (an empty window's), a link, and a path on a volume that is not mounted are left alone. A `workspace.json` of any other shape is never guessed at: the folder is proposed held and refused `unknown-workspace`, naming what was found, so it shows under `--all-rows`. |
+| object | Refuses (`in-use`) a `git` worktree a VS Code process works in (by its working directory, as the extension host's is), or one the window state (`User/globalStorage/storage.json`, `windowsState`) names as open while VS Code runs or the process table cannot be read. Its own candidate for a folder a window still names is refused the same way. A window state it cannot read is a `note` on each worktree. |
+| delete | Reads the folder's `workspace.json` again, checks it is a folder directly in `workspaceStorage` and its workspace is still gone, then removes it with `kit.remove`. |
+
 
 Orca keeps its own record of some worktrees and holds terminals and agents open
 in them. Removing one with plain git leaves the record and the terminals behind,

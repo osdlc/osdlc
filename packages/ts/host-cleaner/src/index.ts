@@ -93,3 +93,11 @@ export {
   type OrcaOptions,
   type OrcaRecord,
 } from './orca.ts'
+export {
+  IN_USE,
+  UNKNOWN_WORKSPACE,
+  VSCODE_PLUGIN,
+  vscodePlugin,
+  vscodeUserDir,
+  type VscodeOptions,
+} from './vscode.ts'
