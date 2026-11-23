@@ -300,14 +300,17 @@ describe('update --apply with a target that has no checkout', () => {
     writeMachine('checkout: mirror\n')
     const r = await run('update', '--repo', 'acme/api', '--apply', '--json')
     expect(r.code).toBe(EXIT.ok)
-    expect(JSON.parse(r.out).repos[0].checkout).toEqual({ path: cloneOf(repos), source: 'clone' })
+    expect(JSON.parse(r.out).repos[0].checkout, r.err).toEqual({
+      path: cloneOf(repos),
+      source: 'clone',
+    })
   })
 
   test('checkout: mirror with mirror_dir under ~/ clones there', async () => {
     writeMachine('checkout: mirror\nmirror_dir: ~/clones\n')
     const r = await run('update', '--repo', 'acme/api', '--apply', '--json')
     expect(r.code).toBe(EXIT.ok)
-    expect(JSON.parse(r.out).repos[0].checkout.path).toBe(cloneOf(join(env.HOME!, 'clones')))
+    expect(JSON.parse(r.out).repos[0].checkout.path, r.err).toBe(cloneOf(join(env.HOME!, 'clones')))
   })
 
   test('checkout: local skips it without asking; --mirror-dir beats it for one run', async () => {
@@ -384,7 +387,7 @@ describe('the first-run question', () => {
     expect(r.code).toBe(EXIT.ok)
     const dir = join(env.HOME!, 'clones')
     expect(readMachine()).toBe(`checkout: mirror\nmirror_dir: ${dir}\n`)
-    expect(JSON.parse(r.out).repos[0].checkout.path).toBe(cloneOf(dir))
+    expect(JSON.parse(r.out).repos[0].checkout.path, r.err).toBe(cloneOf(dir))
   })
 
   test('no writes checkout: local, and the PR is skipped', async () => {
@@ -770,7 +773,10 @@ describe('review round 1', () => {
     expect(r.code).toBe(EXIT.ok)
     // The path has the host without its port.
     const clone = join(dir, 'ghe.example', 'acme', 'api.git')
-    expect(JSON.parse(r.out).repos[0].checkout).toMatchObject({ path: clone, source: 'clone' })
+    expect(JSON.parse(r.out).repos[0].checkout, r.err).toMatchObject({
+      path: clone,
+      source: 'clone',
+    })
     expect(clonesMade()).toMatchObject([{ host: 'ghe.example:8443' }])
     expect(JSON.parse(r.out).results).toMatchObject([{ number: 7, status: 'updated' }])
     expect(git(clone, 'config', '--get-all', 'credential.https://ghe.example:8443.helper')).toBe(
@@ -881,7 +887,10 @@ describe('pruning at the end of update --apply', () => {
 
     // A rehearsal served from one old clone leaves the other.
     const rehearsal = await run('update', '--repo', 'acme/old', '--json')
-    expect(JSON.parse(rehearsal.out).repos[0].checkout).toEqual({ path: old, source: 'clone' })
+    expect(JSON.parse(rehearsal.out).repos[0].checkout, rehearsal.err).toEqual({
+      path: old,
+      source: 'clone',
+    })
     expect(rehearsal.err).not.toContain('pruned')
     expect(existsSync(older)).toBe(true)
   })
@@ -916,7 +925,7 @@ describe('pruning at the end of update --apply', () => {
     )
 
     expect(r.code).toBe(EXIT.ok)
-    expect(JSON.parse(r.out).repos[0].checkout).toEqual({ path: located, source: 'located' })
+    expect(JSON.parse(r.out).repos[0].checkout, r.err).toEqual({ path: located, source: 'located' })
     expect(r.err).toMatch(new RegExp(`pruned the clone ${literal(old)} \\(`))
     expect(existsSync(old)).toBe(false)
   })
