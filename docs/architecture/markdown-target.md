@@ -52,8 +52,8 @@ The pieces of one note.
 - Twins: markdown-link, frontmatter-lossless, markdown-tags, markdown-contract, and gfm-table
   (TypeScript) with gfm-pipe-table (Rust). yaml-splice is a binding: the Rust crate, built to
   WebAssembly for TypeScript.
-- dev no longer has its own copy of markdown-link. markdown-vault, vault-graph-core and
-  markdown-astro use the published package, `^0.8.1` (sksizer/dev 48b62783).
+- dev no longer has its own copy of markdown-link. vault-graph-core and markdown-astro use the
+  published package, `^0.8.1` (sksizer/dev 48b62783).
 - Target: TypeScript markdown-link gets the same link resolver as the Rust one, called `LinkIndex`.
   Then it is the only place in each language that decides what a link points to.
 
@@ -293,7 +293,8 @@ A twin can have extras the other doesn't need. It just has to pass the shared ca
 - General code lives in the osdlc org. osdlc/osdlc holds the Markdown libraries, the corpus-schema
   spec and validator, and examples, beside the general libraries
   ([D-SM4K](../decisions/D-SM4K-markdown-ecosystem-home.md)). The profiles and the starter corpus
-  come there too. osdlc/markdown and osdlc/models are holding pens. dev's markdown packages,
+  come there too. osdlc/markdown and osdlc/models are holding pens. markdown-vault and
+  markdown-vault-query moved to osdlc/osdlc on 2026-11-22. dev's other markdown packages,
   model-schema and the packs stay in sksizer/dev for now. Apps use the packages and keep only their
   own rules.
 

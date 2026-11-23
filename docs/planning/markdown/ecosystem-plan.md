@@ -173,7 +173,8 @@ We follow four rules:
 3. One word for each idea.
 4. Anything general lives in the osdlc org. osdlc/osdlc holds the Markdown libraries, the spec
    and examples, beside the general libraries. The profiles and the starter corpus are there too,
-   in `packages/profiles/` and `packages/corpora/` (decision D19). osdlc/markdown and osdlc/models are holding pens. dev's markdown packages,
+   in `packages/profiles/` and `packages/corpora/` (decision D19). osdlc/markdown and osdlc/models are holding pens. markdown-vault
+   and markdown-vault-query moved to osdlc/osdlc on 2026-11-22. dev's other markdown packages,
    model-schema and the packs stay in sksizer/dev for now. Apps use the packages from npm and
    crates.io.
 
