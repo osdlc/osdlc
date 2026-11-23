@@ -21,7 +21,13 @@ import {
   type RepoCoordinate,
 } from '@osdlc/typed-git'
 
-import { resolveRoots, type ResolvedRoots, type RootsOptions, type RootsSource } from './roots.ts'
+import {
+  resolveRoots,
+  withoutRepositoryVars,
+  type ResolvedRoots,
+  type RootsOptions,
+  type RootsSource,
+} from './roots.ts'
 
 /** A checkout of a repository, found under a root. */
 export interface LocatedCheckout {
@@ -103,7 +109,8 @@ export class CheckoutLocator {
   }
 
   private scan(): LocatedCheckout[] {
-    const { maxDepth, onWarn, runner, resolveAlias } = this.opts
+    const { maxDepth, onWarn, resolveAlias } = this.opts
+    const runner = withoutRepositoryVars(this.opts.runner)
     const index: LocatedCheckout[] = []
     const seen = new Set<string>()
     let depthLimited = 0
@@ -113,10 +120,21 @@ export class CheckoutLocator {
         ...(onWarn === undefined ? {} : { onWarn }),
       })
       depthLimited += scan.depthLimited
-      for (const checkout of scan.checkouts) {
-        // A worktree and its main checkout resolve to one row. Something that
-        // looks like a checkout but that git cannot read is not one.
-        const main = gitAt(checkout, runner).try.mainCheckout()
+      for (const found of scan.checkouts) {
+        // The walk follows symlinks, so work on what the entry points to.
+        const dir = realpathOr(found)
+        const git = gitAt(dir, runner)
+        // Only a directory that is itself the top of a working tree counts.
+        // When git cannot use its `.git` (an empty or half-made folder), it
+        // searches upward and answers with a repository around the root, such
+        // as a dotfiles repository at the home directory. The ceiling stops
+        // that search, but git splits it on the path delimiter with no
+        // escaping, so a parent named `a:b` defeats it. Asking git whether
+        // `dir` is a work tree's top holds either way, and compares no paths,
+        // which differ in letter case on a case-insensitive disk.
+        if (!isWorkTreeTop(git)) continue
+        // A worktree and its main checkout resolve to one row.
+        const main = git.try.mainCheckout()
         if (!main.ok || main.value === null) continue
         const path = realpathOr(main.value)
         if (seen.has(path)) continue
@@ -133,14 +151,25 @@ export class CheckoutLocator {
 }
 
 /**
- * A client for a directory the walk found. `GIT_CEILING_DIRECTORIES` stops
- * git at that directory's parent: a `.git` git cannot use, such as an empty
- * folder, would otherwise send it upward to the repository that encloses the
- * root, which may be a dotfiles repository at the home directory.
+ * Whether the directory `git` is bound to is the top of a working tree: git
+ * says it is inside one (`--is-inside-work-tree`), and the way up to its top
+ * is empty (`--show-cdup`). `--show-cdup` alone is empty in a directory whose
+ * `.git` is a bare repository too. revParse trims, so the two lines read as
+ * `true` exactly when both hold.
  */
-function gitAt(dir: string, runner: CommandRunner | undefined): Git {
-  const env = { GIT_CEILING_DIRECTORIES: realpathOr(dirname(dir)) }
-  return new Git(dir, runner === undefined ? { env } : { env, runner })
+function isWorkTreeTop(git: Git): boolean {
+  const out = git.try.revParse('--is-inside-work-tree', '--show-cdup')
+  return out.ok && out.value === 'true'
+}
+
+/**
+ * A client for `dir`, a real path. `GIT_CEILING_DIRECTORIES` is its parent,
+ * so git does not search above `dir` for a repository. The scan still checks
+ * git's answer, since a parent path holding the path delimiter cannot be
+ * written in the variable.
+ */
+function gitAt(dir: string, runner: CommandRunner): Git {
+  return new Git(dir, { env: { GIT_CEILING_DIRECTORIES: dirname(dir) }, runner })
 }
 
 /**
@@ -171,7 +200,8 @@ export function parseRepoTarget(text: string): RepoCoordinate {
 
 function realpathOr(path: string): string {
   try {
-    return realpathSync(path)
+    // The native call gives the name as stored, the letter case git reports.
+    return realpathSync.native(path)
   } catch {
     return path
   }

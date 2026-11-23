@@ -7,7 +7,7 @@
 import { existsSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 
-import type { CommandRunner } from '@osdlc/command-seam'
+import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { homeDir } from '@osdlc/tiered-dirs'
 import { Git, readRemote, type SshAliasResolver } from '@osdlc/typed-git'
 
@@ -25,7 +25,11 @@ export interface RootsOptions extends RepositoriesFileOptions {
    * one. Defaults to typed-git's, which runs `ssh -G`. Tests pass a fake.
    */
   resolveAlias?: SshAliasResolver | undefined
-  /** Runs git. Defaults to typed-git's, which spawns the `git` on an absolute `PATH` entry. */
+  /**
+   * Runs git. Defaults to typed-git's, which spawns the `git` on an absolute
+   * `PATH` entry. Either way, every call unsets the inherited variables that
+   * pick a repository, such as the `GIT_DIR` a git hook exports.
+   */
   runner?: CommandRunner | undefined
   /**
    * Called with each warning: a relative root, or a part of the file the
@@ -98,10 +102,8 @@ export function resolveRoots(opts: RootsOptions = {}): ResolvedRoots {
  */
 export function defaultRoots(opts: RootsOptions = {}): string[] {
   if (opts.caller === undefined || !existsSync(opts.caller)) return []
-  const git = new Git(
-    resolve(opts.caller),
-    opts.runner === undefined ? {} : { runner: opts.runner },
-  )
+  // No ceiling here: the caller may be a subdirectory of its checkout.
+  const git = new Git(resolve(opts.caller), { runner: withoutRepositoryVars(opts.runner) })
   const found = git.mainCheckout()
   if (found === null) return []
   // Compare real paths: git reports them, and a home under a symlink would never match.
@@ -117,6 +119,39 @@ export function defaultRoots(opts: RootsOptions = {}): string[] {
   const owner = originOwner(git.at(main), opts.resolveAlias)
   const named = owner !== null && basename(holder).toLowerCase() === owner.toLowerCase()
   return [named ? above : holder]
+}
+
+/**
+ * The variables that tell git which repository to use, whatever the
+ * directory. A git hook exports `GIT_DIR`, and with it set the caller's
+ * checkout, and every directory the scan finds, would answer as the hook's
+ * repository. The inherited `GIT_CEILING_DIRECTORIES` goes too; the scan sets
+ * its own.
+ */
+const REPOSITORY_VARS = [
+  'GIT_DIR',
+  'GIT_WORK_TREE',
+  'GIT_COMMON_DIR',
+  'GIT_INDEX_FILE',
+  'GIT_OBJECT_DIRECTORY',
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'GIT_CEILING_DIRECTORIES',
+] as const
+
+/**
+ * `runner`, or the default git runner, with {@link REPOSITORY_VARS} unset in
+ * each child: command-seam
+ * drops a variable whose value is `undefined`. A value the call sets, such
+ * as the ceiling, still wins.
+ */
+export function withoutRepositoryVars(
+  runner: CommandRunner = spawnRunner('git', { absolutePathOnly: true }),
+): CommandRunner {
+  const unset = Object.fromEntries(REPOSITORY_VARS.map((name) => [name, undefined]))
+  return {
+    ...(runner.binary === undefined ? {} : { binary: runner.binary }),
+    run: (argv, opts) => runner.run(argv, { ...opts, env: { ...unset, ...opts.env } }),
+  }
 }
 
 /** The owner the `origin` of the checkout `git` is bound to names, or null. */
@@ -139,7 +174,8 @@ function within(path: string, dir: string): boolean {
 
 function realpathOr(path: string): string {
   try {
-    return realpathSync(path)
+    // The native call gives the name as stored, the letter case git reports.
+    return realpathSync.native(path)
   } catch {
     return resolve(path)
   }

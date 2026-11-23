@@ -108,10 +108,21 @@ later call. `locateCheckout(target, opts)` is the one-shot form.
 `depthLimited` counts the directories the walk left unopened at `maxDepth`
 (three levels by default), so a caller can say a checkout may sit deeper.
 
-git runs in each directory the walk finds with `GIT_CEILING_DIRECTORIES` set
-to its parent. A `.git` git cannot use, such as an empty folder, is then
-skipped, rather than answering with a repository that encloses the root, such
-as a dotfiles repository at the home directory.
+A directory the walk finds counts only when git, run in it, says it is the
+top of a working tree. A `.git` git cannot use, such as an empty folder, is
+then skipped, rather than answering with a repository that encloses it, such
+as a dotfiles repository at the home directory. git also runs with
+`GIT_CEILING_DIRECTORIES` set to the directory's parent.
+
+Every git call the package makes, in the caller's checkout for the default
+roots and in each directory the walk finds, runs without an inherited
+`GIT_DIR`, `GIT_WORK_TREE` or other variable that picks a repository. So the
+default roots and the locator give the same answer inside a git hook as
+outside one.
+
+Not supported yet: a bare store with its worktrees beside it, where
+`proj/.git` is a file pointing at `proj/.bare`. The walk stops at `proj`,
+which is not a working tree, and does not look at the worktrees inside it.
 
 `target` is `owner/name`, which matches on any host, `host/owner/name`, or a
 typed-git `RepoCoordinate`. Owner and name match in any letter case, and the
@@ -143,9 +154,10 @@ try {
 }
 ```
 
-It edits only the `roots` value: every other byte of the file stays as
-written, its comments included, and a comment inside the old list goes with
-it. When the file changed since it was read, it throws `WriteConflictError`,
+It edits only the `roots` entry. Every other line stays as written, comments
+included. The comments inside the old list go, and so does the one on the
+`roots:` line: the old value's trailing comment (on its last item, or after a
+flow list) takes its place. When the file changed since it was read, it throws `WriteConflictError`,
 which this module re-exports from `@osdlc/etag-write`, and writes nothing. It
 refuses a root the reader would drop.
 

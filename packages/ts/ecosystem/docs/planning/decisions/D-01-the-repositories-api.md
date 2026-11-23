@@ -34,14 +34,35 @@ created: 2026-11-23
   `roots: []` scans nothing.
 - **A checkout git cannot read, or one with no `origin` that names a
   repository, is not in the index.** The walk finds a `.git` entry; git then
-  has to agree. Each git call the scan makes for a found directory sets
-  `GIT_CEILING_DIRECTORIES` to its parent, so git cannot search upward from a
-  `.git` it cannot use and answer with a repository around the root.
+  has to agree. The scan works on the real path of each directory it finds,
+  sets `GIT_CEILING_DIRECTORIES` to its parent, and keeps it only when
+  `git rev-parse --is-inside-work-tree --show-cdup` prints `true` and an
+  empty cdup. The ceiling alone is not enough: git splits it on the path
+  delimiter with no escaping, so a parent such as `~/a:b` defeats it. The
+  check compares no paths, since Node's `realpathSync` keeps the case it was
+  given and git reports the case on disk, and git trims nothing that matters
+  (a name ending in a space). `--show-cdup` alone would pass a directory
+  whose `.git` is a bare repository.
+- **Inherited repository variables are unset** for every git call the
+  package makes, in the caller's checkout and in the scan: `GIT_DIR`,
+  `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_INDEX_FILE`,
+  `GIT_OBJECT_DIRECTORY`, `GIT_ALTERNATE_OBJECT_DIRECTORIES` and the
+  inherited `GIT_CEILING_DIRECTORIES`. A git hook exports `GIT_DIR` (a
+  receive hook as `.`), and with it the caller's checkout and every found
+  directory would answer as the hook's repository, or as none. The default
+  roots set no ceiling, since the caller may be a subdirectory of its
+  checkout. The runner
+  is wrapped to pass them as `undefined`, which command-seam drops from the
+  child's environment; typed-git is unchanged.
+- **A bare store with worktrees beside it is not supported yet.** In that
+  layout `proj/.git` is a file pointing at `proj/.bare`, so the walk stops at
+  `proj`, which is not a working tree, and never sees the worktrees inside.
 - **`depthLimited` is on the locator,** summed over the roots, so a caller
   can say why nothing was found. It is known only after a scan, so reading it
   scans.
-- **`writeRoots` edits the `roots` value only** (config-layers' `setPath`),
+- **`writeRoots` edits the `roots` entry only** (config-layers' `setPath`),
   so no other key is read and written back through a second YAML parser.
+  Comments inside the old entry go, as `setPath` places them.
 - **`WriteConflictError` is re-exported,** so a caller catches it without
   depending on `@osdlc/etag-write` itself.
 - **The owner is read only when it can matter.** When the directory above

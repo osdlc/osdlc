@@ -66,10 +66,24 @@ and the host when both name one. `acme/widgets` names no host, so it matches
 on any. Every match comes back, sorted by path, each repository's main
 checkout once, so a caller can check each one for unpushed work.
 
-git runs in each directory the walk finds with `GIT_CEILING_DIRECTORIES` set
-to that directory's parent. A `.git` git cannot use, such as an empty or
-half-made folder, is skipped, rather than sending git upward to a repository
-that encloses the root, such as a dotfiles repository at the home directory.
+A directory the walk finds (a symlink is followed) counts only when git, run
+in it, says it is the top of a working tree (`git rev-parse
+--is-inside-work-tree --show-cdup` prints `true` and nothing more). A `.git`
+git cannot use, such as an empty or half-made folder, sends git upward to a
+repository around it, such as a dotfiles repository at the home directory;
+that answer is dropped. git runs with `GIT_CEILING_DIRECTORIES` set to the
+directory's parent, but that alone is not enough: the variable cannot hold a
+path with `:` (`;` on Windows) in it. No paths are compared, so a root spelled
+in another letter case on a case-insensitive disk finds the same checkouts.
+
+Every git call the package makes, for the default roots too, runs without an
+inherited `GIT_DIR`, `GIT_WORK_TREE` or other variable that picks a
+repository. So inside a git hook, the default roots come from the caller's
+own checkout and the locator reads each checkout, not the hook's repository.
+
+A bare store with its worktrees beside it (`proj/.git` a file pointing at
+`proj/.bare`) is not found yet: `proj` is not a working tree, and the walk
+does not enter it.
 
 When nothing matches, `locator.depthLimited` says how many directories the
 walk left unopened at `maxDepth`. Above zero, the checkout may sit deeper:
@@ -112,9 +126,10 @@ file.writeRoots(['~/dev/repos'], { etag: current?.etag ?? null })
 
 The write is a compare-and-swap: if the file changed since `read`, it throws
 `WriteConflictError`, which `@osdlc/ecosystem/repositories` re-exports from
-`@osdlc/etag-write`, and writes nothing. It edits only the `roots` value, so
-every other byte of the file stays as written, and it refuses a root the
-reader would drop.
+`@osdlc/etag-write`, and writes nothing. It edits only the `roots` entry:
+every other line stays as written, comments included. The comments inside the
+old list go, and the old value's trailing comment replaces the one on the
+`roots:` line. It refuses a root the reader would drop.
 
 ## 6. In tests
 
