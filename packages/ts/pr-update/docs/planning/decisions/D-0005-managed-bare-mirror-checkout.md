@@ -836,23 +836,28 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     `lockfile_install` (the standalone `runVerb`), a repair command, a
     headless repair agent (agent-call's `unsetEnv`) and an attended one.
 
-  The project root's fetch, survey, PR listing and branch mode's sync keep
-  the environment as given: they run where the person ran pr-update. So the two must find the
-  same repository. When one of these variables is set, `survey` and `update`
-  first find the checkout twice, with the variables and without them, and
-  compare the common directory and the top level. They differ, or either
-  finds none, and the run stops with exit 2 before it lists or fetches:
-  "pr-update runs in a git checkout; GIT_DIR and GIT_WORK_TREE are set and
-  point elsewhere — unset them". A bare repository with `GIT_WORK_TREE` (a
-  dotfiles setup) and a `GIT_DIR` naming another repository are refused. A
-  git hook's own `GIT_DIR` passes, since a hook runs at the top of the work
-  tree. So does a run from a subdirectory with no variables, or with both
-  `GIT_DIR` and `GIT_WORK_TREE` naming the checkout. `GIT_DIR` alone from a
-  subdirectory is refused: git then takes that subdirectory as the top of
-  the work tree. A target's `git-ref` record
-  and lease run through ref-lease, which makes its own git client and takes no
-  runner (Follow-ups). Their environment names the target's repository
-  instead: `GIT_DIR` and `GIT_COMMON_DIR` are its common directory,
+  The project root's fetch, survey, PR listing and branch mode's sync keep the
+  environment as given: they run where the person ran pr-update. So the two
+  must find the same repository. When one of these variables is set, `survey`
+  and `update` first find the checkout twice, with the variables and without
+  them, and compare the common directory and the top level. If only one finds
+  a checkout, or they find different ones, the run stops with exit 2 before it
+  lists or fetches: "pr-update runs in a git checkout; GIT_DIR and
+  GIT_WORK_TREE are set and point elsewhere — unset them". A bare repository
+  with `GIT_WORK_TREE` (a dotfiles setup) and a `GIT_DIR` naming another
+  repository are refused. A git hook's own `GIT_DIR` passes, since a hook runs
+  at the top of the work tree. So does a run from a subdirectory with no
+  variables, or with both `GIT_DIR` and `GIT_WORK_TREE` naming the checkout.
+  `GIT_DIR` alone from a subdirectory is refused: git then takes that
+  subdirectory as the top of the work tree. When neither finds a checkout, as
+  for a `--repo` run outside one or with git not installed, the run goes ahead
+  and the later checks report what is missing. `GIT_CEILING_DIRECTORIES` is
+  among these variables, though it chooses no repository: an inherited one can
+  stop git finding the directory's own, so it is cleared with the rest
+  (typed-git's `REPOSITORY_VARS` gives the reasons). A target's `git-ref`
+  record and lease run through ref-lease, which makes its own git client and
+  takes no runner (Follow-ups). Their environment names the target's
+  repository instead: `GIT_DIR` and `GIT_COMMON_DIR` are its common directory,
   `GIT_OBJECT_DIRECTORY` its objects, and `GIT_ALTERNATE_OBJECT_DIRECTORIES`
   is empty, and a value set wins over an inherited one. ref-lease runs only
   `hash-object`, `mktree`, `commit-tree`, `update-ref`, `fetch`, `push` and

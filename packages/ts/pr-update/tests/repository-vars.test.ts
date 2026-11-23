@@ -9,11 +9,11 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { EXIT, captureContext } from '@osdlc/cli-tool'
-import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
+import { EXIT, EXIT_FAILURE, captureContext } from '@osdlc/cli-tool'
+import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { main } from '../src/cli.ts'
+import { main, type CliSeams } from '../src/cli.ts'
 import { allToolsInstalled, isolatedEnv } from './support.ts'
 
 let scratch: string
@@ -66,7 +66,17 @@ const gh: CommandRunner = {
 }
 
 /** Run the CLI in `cwd` with `vars` set in the environment git inherits. */
-async function runIn(
+function runIn(
+  cwd: string,
+  vars: Record<string, string>,
+  ...argv: string[]
+): Promise<{ code: number; out: string; err: string }> {
+  return runInWith({}, cwd, vars, ...argv)
+}
+
+/** {@link runIn}, with `seams` in place of the default ones. */
+async function runInWith(
+  seams: CliSeams,
   cwd: string,
   vars: Record<string, string>,
   ...argv: string[]
@@ -74,7 +84,7 @@ async function runIn(
   for (const [name, value] of Object.entries(vars)) vi.stubEnv(name, value)
   const ctx = captureContext({ cwd, env: isolatedEnv(join(scratch, 'env')) })
   try {
-    const code = await main(argv, ctx, { which: allToolsInstalled, gh })
+    const code = await main(argv, ctx, { which: allToolsInstalled, gh, ...seams })
     return { code, out: ctx.io.out, err: ctx.io.err }
   } finally {
     vi.unstubAllEnvs()
@@ -166,5 +176,44 @@ describe('variables that find the checkout the run is in', () => {
     const update = await runIn(sub, vars, 'update', '--no-fetch', '--json')
     expect(update.code).toBe(EXIT.ok)
     expect(JSON.parse(update.out).results).toMatchObject([{ number: 7 }])
+  })
+})
+
+describe('variables set where no checkout is found', () => {
+  test('outside a checkout, GIT_CEILING_DIRECTORIES does not refuse survey --repo', async () => {
+    const outside = join(scratch, 'outside')
+    mkdirSync(outside)
+    const r = await runIn(
+      outside,
+      { GIT_CEILING_DIRECTORIES: '/nonexistent' },
+      'survey',
+      '--repo',
+      'acme/widgets',
+      '--no-fetch',
+      '--json',
+    )
+    expect(r.err).not.toContain('pr-update runs in a git checkout')
+    expect(r.code).toBe(EXIT.ok)
+  })
+
+  test("without git, a run with GIT_DIR set gets preflight's missing-tool exit", async () => {
+    const noGit: CommandRunner = {
+      run: (): CommandResult => ({
+        exitCode: 1,
+        stdout: '',
+        stderr: '',
+        neverExited: true,
+        reason: 'spawn',
+        error: 'spawn git ENOENT',
+      }),
+    }
+    const r = await runInWith(
+      { git: noGit, which: (b) => (b === 'git' ? undefined : `/usr/bin/${b}`) },
+      project,
+      { GIT_DIR: join(project, '.git') },
+      'survey',
+    )
+    expect(r.code).toBe(EXIT_FAILURE.missingTool)
+    expect(r.err).toContain('`git` is not installed')
   })
 })

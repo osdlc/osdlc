@@ -85,7 +85,10 @@ export function preflight(opts: {
   return remoteSlug(url) === null ? badRemoteFailure(name, opts.remote, url) : null
 }
 
-/** The repository `cwd` is in, as its common dir and top level through symlinks, or null when git cannot say. */
+/**
+ * The repository `cwd` is in, as its common dir and top level through symlinks, or null when
+ * there is none or git cannot say (not installed, say).
+ */
 function checkoutAt(cwd: string, runner: CommandRunner): string | null {
   const git = new Git(cwd, { runner })
   const common = git.try.gitCommonDir()
@@ -105,10 +108,12 @@ function checkoutAt(cwd: string, runner: CommandRunner): string | null {
  * The refusal for a run whose git variables name another repository than the checkout it runs
  * in, or null. `GIT_DIR`, `GIT_WORK_TREE` and the rest are read from `env`, the environment the
  * git runner inherits. When one is set, the checkout is found twice: once as given, once without
- * them. The run goes ahead only when both find the same common dir and top level, as they do when
- * a git hook exports the root's own `GIT_DIR`. Otherwise the survey would measure one repository
- * and the update, whose git calls clear these variables, act on another. The top level is
- * compared, not the directory, so a run from a subdirectory goes ahead.
+ * them. The run is refused when only one of the two finds a checkout, or they find different
+ * common dirs or top levels: the survey would measure one repository and the update, whose git
+ * calls clear these variables, act on another. It goes ahead when both find the same checkout, as
+ * they do when a git hook exports the root's own `GIT_DIR`, and when neither finds one (a
+ * `--repo` run outside a checkout, or no git at all), which the later checks report on. The top
+ * level is compared, not the directory, so a run from a subdirectory goes ahead.
  */
 export function repositoryVarsRefusal(
   cwd: string,
@@ -117,8 +122,7 @@ export function repositoryVarsRefusal(
 ): string | null {
   const set = REPOSITORY_VARS.filter((name) => env[name] !== undefined)
   if (set.length === 0) return null
-  const given = checkoutAt(cwd, git)
-  if (given !== null && given === checkoutAt(cwd, withoutRepositoryVars(git))) return null
+  if (checkoutAt(cwd, git) === checkoutAt(cwd, withoutRepositoryVars(git))) return null
   const names =
     set.length === 1 ? set[0] : `${set.slice(0, -1).join(', ')} and ${set[set.length - 1]}`
   const [verb, them] = set.length === 1 ? ['is', 'it'] : ['are', 'them']
