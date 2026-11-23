@@ -3,7 +3,7 @@
  * and the other variables that pick a repository.
  */
 
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -16,11 +16,20 @@ import {
   withoutRepositoryVars,
   type CommandRunner,
 } from '../src/index.ts'
-import { makeGitFixture } from '../src/testing.ts'
+import { IDENTITY, makeGitFixture } from '../src/testing.ts'
 
 let scratch: string
+/**
+ * git reads no config but the repositories' own, so a developer's global hooks or `insteadOf`
+ * cannot change what a test sees: given to the fixtures, and to the run as a whole.
+ */
+let isolated: Record<string, string>
 beforeEach(() => {
   scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'typed-git-repo-vars-')))
+  const empty = join(scratch, 'empty.gitconfig')
+  writeFileSync(empty, '')
+  isolated = { GIT_CONFIG_GLOBAL: empty, GIT_CONFIG_NOSYSTEM: '1' }
+  for (const [name, value] of Object.entries(isolated)) vi.stubEnv(name, value)
 })
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -60,14 +69,15 @@ describe('withoutRepositoryVars', () => {
   })
 
   test('git run through it answers for the directory it runs in, not an inherited GIT_DIR', () => {
-    const mine = makeGitFixture({ dir: join(scratch, 'mine') })
+    const identity = { ...IDENTITY, ...isolated }
+    const mine = makeGitFixture({ dir: join(scratch, 'mine'), identity })
     mine.commit('mine', { 'm.txt': 'm' })
-    const other = makeGitFixture({ dir: join(scratch, 'other') })
+    const other = makeGitFixture({ dir: join(scratch, 'other'), identity })
     other.commit('other', { 'o.txt': 'o' })
     vi.stubEnv('GIT_DIR', join(other.dir, '.git'))
     const plain = new Git(mine.dir, { runner: spawnRunner('git') }).revParse('HEAD')
     const cleared = new Git(mine.dir, { runner: withoutRepositoryVars() }).revParse('HEAD')
-    vi.unstubAllEnvs()
+    vi.stubEnv('GIT_DIR', undefined)
     expect(plain).toBe(other.git.revParse('HEAD'))
     expect(cleared).toBe(mine.git.revParse('HEAD'))
   })
