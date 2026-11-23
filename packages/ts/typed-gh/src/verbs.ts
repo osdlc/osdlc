@@ -181,6 +181,10 @@ function hostArgs(target: GhTarget | undefined): string[] {
  * two force variables map to `undefined`, which removes them (see
  * `CommandRunOptions.env` in @osdlc/command-seam), because gh may read any
  * value as on.
+ *
+ * `raw` and `rawChecked` do not get it. A caller that parses their output can
+ * set it itself: `withDefaults(runner, { env: NO_COLOUR_ENV })` from
+ * @osdlc/command-seam, or `env: NO_COLOUR_ENV` on its own run options.
  */
 export const NO_COLOUR_ENV: Readonly<Record<string, string | undefined>> = {
   NO_COLOR: '1',
@@ -223,6 +227,11 @@ export const PR_REF_FIELDS = ['number', 'state', 'headRefName', 'url'] as const
  * `mergeable` and `mergeStateStatus` are the costly pair. GitHub computes
  * them only when asked and answers `UNKNOWN` until it has. So a first query
  * over many PRs often needs a retry. `prViewSettled` on the clients does it.
+ *
+ * `baseRefOid` is left out: gh knows it only from v2.63.0, and an older gh
+ * rejects the whole call over a field it does not know. Ask for it with
+ * `fields: [...PR_LIST_FIELDS, 'baseRefOid']`; without it
+ * `PullRequest.baseRefOid` is `null`.
  */
 export const PR_LIST_FIELDS = [
   'number',
@@ -233,7 +242,6 @@ export const PR_LIST_FIELDS = [
   'baseRefName',
   'headRefName',
   'headRefOid',
-  'baseRefOid',
   'isCrossRepository',
   'mergeable',
   'mergeStateStatus',
@@ -1909,6 +1917,13 @@ export function createReview(
  * in `argv`. It is a `probe`, so `runVerb` returns a failed or cut-short
  * result rather than throwing, and it is not `readOnly`, since the library
  * cannot tell what `argv` does.
+ *
+ * It runs with the caller's environment, colour settings included: unlike
+ * the other verbs it does not get {@link NO_COLOUR_ENV}. So `CLICOLOR_FORCE`
+ * or `GH_FORCE_TTY` in the environment can put escape codes in its output,
+ * and `GH_FORCE_TTY` can also send it through `GH_PAGER`. A caller that
+ * parses the output can run it with `NO_COLOUR_ENV`, for example through
+ * `withDefaults(runner, { env: NO_COLOUR_ENV })` from @osdlc/command-seam.
  */
 export function raw(argv: readonly string[]): GhVerb<CommandResult> {
   return {
@@ -1926,6 +1941,10 @@ export function raw(argv: readonly string[]): GhVerb<CommandResult> {
  * `CommandResult` when gh exits 0 with its whole output, and otherwise throws
  * a `FailureError` carrying the classified `GhFailure`. So a tool that runs
  * one call the verb table lacks needs no `Gh` for it.
+ *
+ * Like {@link raw}, it keeps the caller's colour settings: it does not get
+ * {@link NO_COLOUR_ENV}, so `CLICOLOR_FORCE` or `GH_FORCE_TTY` can colour its
+ * output or run `GH_PAGER`.
  */
 export function rawChecked(argv: readonly string[]): GhVerb<CommandResult> {
   return { argv: [...argv], checked: true, readOnly: false, leaveColour: true, parse: (r) => r }
