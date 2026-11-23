@@ -141,7 +141,9 @@ A store opened with `vendorDirs` reads only its new place. Grants made
 before, in the old place, are not carried over, so the person runs the
 tool's `trust` command again, once per tool per machine. The old markers are
 never read or touched, so an older release of the tool keeps using the old
-place and still finds every grant it knew.
+place and still finds every grant it knew. Where the new place is the old
+one (Linux, or macOS under `xdg`, with no `app`), it is the same folder, so
+its grants are already there.
 
 Carrying grants over was tried and dropped. Each way of telling whether the
 copy had already been made, and whether the old and new places really
