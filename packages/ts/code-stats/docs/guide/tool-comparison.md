@@ -41,7 +41,7 @@ Building on these keeps code-stats small and its behaviour familiar:
 | scc | Its language table: comment and string syntax for 366 languages, vendored and pinned. |
 | cloc, tokei, scc | Their counting rules: whole files, per line, and a line holding both code and a comment counts as code. `count` matches them. |
 | GitHub linguist | Its `.gitattributes` attributes, so files you already marked as generated for GitHub are treated as generated here. |
-| git `--color-moved` | The 20-character minimum before a run of lines counts as moved, so a lone `}` never does. |
+| git `--color-moved` | The minimum of 20 letters and digits before a run of lines counts as moved, so a lone `}` never does. |
 | GitClear | The idea of recording what happened to a line separately from what kind of line it is. |
 | lizard | Complexity for languages other than TypeScript and JavaScript, when it's installed. |
 | tree-sitter | The optional syntax-tree scanners, through web-tree-sitter and the official grammar packages. |

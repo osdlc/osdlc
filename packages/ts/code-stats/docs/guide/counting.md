@@ -77,7 +77,7 @@ as your source:
 | `instructions` | Agent instructions (`CLAUDE.md`, `AGENTS.md`, `SKILL.md`, …). Their prose counts as logic, since it steers what agents do. |
 | `other` | Config, data and licences. |
 | `generated` | Lockfiles, minified files, source maps, snapshots, `*.generated.*`, and files whose first lines say `DO NOT EDIT` or `@generated`. |
-| `vendored` | `vendor/`, `third_party/` and `node_modules/`. |
+| `vendored` | `vendor/`, `third_party/`, `third-party/`, `node_modules/` and `bower_components/`. |
 
 Generated and vendored files are counted by lines only. They are not part of the kind totals,
 since nobody wrote them line by line.

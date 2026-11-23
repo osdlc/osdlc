@@ -40,7 +40,10 @@ Each layer only knows the ones below it:
   file contents at a commit, and edits PR descriptions. It is the only layer that runs `git` or
   `gh`, and it does so through `@osdlc/command-seam`.
 - **Measure** (`src/measure.ts`, `src/files/count.ts`): it wires a source to the reports. Each
-  public function names its source: `countDirectory` reads disk, and everything else reads git.
+  public function names its source: `countDirectory` reads disk, and `countTree` and the change
+  functions read git. For uncommitted work (`--worktree`) the change functions read the new
+  side from disk, and `describeChange` reads the manifests there too. The report builders
+  (`buildCountReport`, `buildDiffReport`) read nothing: the caller passes the content.
 - **CLI** (`src/cli`): each command is declared once with
   [`@osdlc/cli-tool`](https://github.com/osdlc/osdlc/tree/main/packages/ts/cli-tool)'s
   `defineCommand`: its flags, its arguments and the zod schema of its output. `defineApp` parses

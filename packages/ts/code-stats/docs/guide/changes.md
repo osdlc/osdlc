@@ -62,7 +62,8 @@ says how many lines of that kind were gained or lost.
 ### A worked example
 
 This change renames `qty` to `quantity`, rewords a comment, moves `isEmpty` above `subtotal`,
-and adds a `total` function and a `tax.ts` file.
+and adds a `total` function and a `tax.ts` file of two lines: a doc comment and the `TAX_RATE`
+constant.
 
 ```diff
  import { round } from './money.ts'
@@ -178,9 +179,10 @@ worked example are. Unrelated lines are not, even in the same block:
 ```
 
 When two candidates are equally alike, the one nearer the line's own place in the block wins, so
-repeated lines such as `}` keep their order. A block with more than 64 lines on a side compares
-each removed line with the 32 added lines either side of its place, unless one side is short
-enough to compare in full.
+repeated lines such as `}` keep their order. A block with more than 64 lines on a side still
+compares every removed line with every added one while `removed × added` is at most 32 times
+`removed + added`, so a few lines against hundreds pair by similarity. Past that, it compares
+each removed line with the 32 added lines either side of its place.
 
 The 30% mark was chosen by experiment, on 3,000 edits of real code with known answers and on 400
 commits of the same repository. In blocks of up to 64 lines it removes 90% of the wrong
