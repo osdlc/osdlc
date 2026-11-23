@@ -6,7 +6,9 @@
  */
 
 import { lstatSync, statSync, type Stats } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, relative, resolve, sep } from 'node:path'
+
+import { realOr } from './real-path.ts'
 
 /**
  * Whether a file belongs to the person running pr-update. The default, {@link ownedByMe},
@@ -125,6 +127,12 @@ export function foldersProblem(
  * What is wrong with the folders between `root` and `path` ({@link foldersProblem}), or with
  * `path` itself, which must be the person's own; null when nothing is. Every walk that removes
  * something asks it first: nothing is removed from a folder someone else could write to.
+ *
+ * `root` is compared by its real path (`realOr`), since `path` may come from git, which names a
+ * worktree by its real path, while `root` is spelled as configured. A `path` spelled through
+ * `root` is read under the real root. The folders between are not resolved, so one that is a
+ * symbolic link is still refused. A `path` that is not under `root` either way, as when a folder
+ * between is a link out of it, is refused.
  */
 export function placeProblem(
   root: string,
@@ -132,19 +140,32 @@ export function placeProblem(
   owned: OwnedCheck,
   check: FolderCheckOptions,
 ): string | null {
+  const real = realOr(root)
+  const at = within(root, path) ? resolve(real, relative(root, path)) : resolve(path)
+  if (!within(real, at)) return `${path} is not under ${root}`
   const between: string[] = []
-  for (
-    let d = dirname(path);
-    d !== root && d.startsWith(root) && dirname(d) !== d;
-    d = dirname(d)
-  ) {
-    between.unshift(d)
-  }
-  const folders = foldersProblem(root, between, owned, check)
+  for (let d = dirname(at); within(real, d) && !same(d, real); d = dirname(d)) between.unshift(d)
+  const folders = foldersProblem(real, between, owned, check)
   if (folders !== null)
     return `${folders.problem}${folders.fix === undefined ? '' : `; ${folders.fix}`}`
   const st = lstatOrNull(path)
   return st !== null && !owned(st) ? `${path} belongs to another user` : null
+}
+
+/** Whether `path` is `root` or under it, compared without case on Windows and macOS. */
+function within(root: string, path: string): boolean {
+  const r = fold(resolve(root))
+  const p = fold(resolve(path))
+  return p === r || p.startsWith(r.endsWith(sep) ? r : r + sep)
+}
+
+function same(a: string, b: string): boolean {
+  return fold(resolve(a)) === fold(resolve(b))
+}
+
+/** Windows and macOS compare file names without case by default. */
+function fold(path: string): string {
+  return process.platform === 'win32' || process.platform === 'darwin' ? path.toLowerCase() : path
 }
 
 function lstatOrNull(path: string): Stats | null {

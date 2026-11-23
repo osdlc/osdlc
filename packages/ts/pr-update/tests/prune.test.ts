@@ -22,7 +22,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 
 import { EXIT, captureContext } from '@osdlc/cli-tool'
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
@@ -831,6 +831,43 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
       for (const dir of [keptOwner, dirname(kept)]) chmodSync(dir, 0o755)
     }
   })
+
+  test.skipIf(process.platform === 'win32')(
+    'a kept tree in a folder others can write to, under a state directory reached through a symbolic link, is not discarded (review round 1)',
+    () => {
+      // git names the kept tree by its real path; the state directory is configured through a link.
+      const realState = join(scratch, 'real-state')
+      mkdirSync(realState)
+      symlinkSync(realState, join(scratch, 'state-link'), 'dir')
+      env = { ...env, OSDLC_STATE_DIR: join(scratch, 'state-link') }
+      paths = prUpdatePaths(osdlcDirs({ env }))
+      expect(paths.kept.startsWith(join(scratch, 'state-link'))).toBe(true)
+      const clone = makeClone('acme/api', 400)
+      const kept = keptWorktree(clone, 'acme/api', 7)
+      const keptOwner = join(
+        realState,
+        relative(join(scratch, 'state-link'), paths.kept),
+        'github.com',
+        'acme',
+      )
+      chmodSync(keptOwner, 0o777)
+      try {
+        const r = prune({ allClones: true, discardKept: true })
+        expect(r.removed).toEqual([])
+        expect(r.skipped).toEqual([
+          expect.objectContaining({
+            kind: 'clone',
+            path: clone,
+            skip: 'folder',
+            reason: `${keptOwner} can be written by anyone; run \`chmod -R go-w ${paths.kept}\``,
+          }),
+        ])
+        expect(existsSync(kept)).toBe(true)
+      } finally {
+        chmodSync(keptOwner, 0o755)
+      }
+    },
+  )
 
   test('a dead run worktree the walk left for its folder keeps its clone: the clone’s own list does not remove it', () => {
     const clone = makeClone('acme/api', 400)

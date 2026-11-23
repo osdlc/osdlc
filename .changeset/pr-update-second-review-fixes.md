@@ -62,3 +62,7 @@ The pruning at the end of an `update --apply` now also runs when a located
 target's run worktree was made in the cache but none of its PRs got a result,
 as when every lease was refused. The report says so in the new
 `madeTargetWorktree`.
+
+The folder check before a removal compares the cache or state directory by its
+real path. A directory reached through a symbolic link no longer skips the
+folders between it and the tree, and a tree that is not under it is left.

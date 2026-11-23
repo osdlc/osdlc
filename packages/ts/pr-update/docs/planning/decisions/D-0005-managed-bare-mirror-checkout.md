@@ -908,7 +908,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   one ended the run with `EACCES`. A kept tree is removed, by `mirror
   prune --discard-kept` or by `update`, only when the folders from `kept/`
   down to it pass the rule; before review only run worktrees, leftovers and
-  `.tmp-*` folders were checked. `Ports.targetHome` gained `keptRoot` for it. On Windows no ownership or mode check is made, since NTFS
+  `.tmp-*` folders were checked. `Ports.targetHome` gained `keptRoot` for it.
+  The root is compared by its real path, since git names a worktree by its
+  real path: before the first review of these fixes, a state directory
+  reached through a symbolic link skipped every folder between it and a kept
+  tree. A path that is not under the root at all is refused. On Windows no ownership or mode check is made, since NTFS
   ACLs are not read: only the symbolic-link and marker checks apply.
 - **Clone locks.** As accepted, `update --apply` held a clone's lock from its
   clone or fetch through `worktree add`, and again for `worktree remove`.
