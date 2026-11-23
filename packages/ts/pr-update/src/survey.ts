@@ -159,6 +159,12 @@ export interface RepoTarget {
   unserved?: string | undefined
 }
 
+/** A worktree {@link ManagedClones.removing} takes out of a clone: the run's own, or a kept one. */
+export interface RemovedTree {
+  path: string
+  kind: 'run' | 'kept'
+}
+
 /**
  * The managed clones of a standalone run (`mirror.ts`), as the survey and `update` use them.
  * A run without it treats a `clone` checkout as any other.
@@ -191,17 +197,19 @@ export interface ManagedClones {
    */
   release(clone: string): void
   /**
-   * Run `remove`, which changes the clone at `clone` (takes `worktree`, the run's worktree or a
+   * Run `remove`, which changes the clone at `clone` (takes `tree`, the run's worktree or a
    * kept one, out of it), holding the clone's lock. A lock the run holds is used as it is. One
    * it does not hold is taken back: `update --apply` waits for it only when the run holds no
    * other clone's lock, so a run that waits holds nothing another run could be waiting for; a
    * rehearsal, or a run that holds another lock, does not wait.
    *
    * A clone is never changed without its lock: when the lock cannot be taken, `remove` is not
-   * run, a note names `worktree` and `pr-update mirror prune`, which removes a dead run's
-   * worktree, and the result is false. A lock taken back here is let go before it returns.
+   * run, the result is false, and a note names `tree.path` and what removes it later: for a run
+   * worktree the next run in the clone (which removes a dead run's worktree) or
+   * `pr-update mirror prune`; for a kept worktree another `--discard-kept`. A lock taken back
+   * here is let go before it returns.
    */
-  removing(clone: string, worktree: string, remove: () => void): boolean
+  removing(clone: string, tree: RemovedTree, remove: () => void): boolean
   /** Let go of every lock the run still holds. */
   close(): void
 }

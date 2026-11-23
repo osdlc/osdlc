@@ -873,7 +873,7 @@ function cloneLock(
   return {
     added: () => clones.release(path),
     removing: (remove) => {
-      clones.removing(path, worktree, remove)
+      clones.removing(path, { path: worktree, kind: 'run' }, remove)
     },
   }
 }
@@ -1118,7 +1118,9 @@ function settleKept(
       discardKept(git, place, record)
       return true
     }
-    return env.clones.removing(clone, record.path, () => discardKept(git, place, record))
+    return env.clones.removing(clone, { path: record.path, kind: 'kept' }, () =>
+      discardKept(git, place, record),
+    )
   }
   const places = new Map<string, { checkout: string; place: KeptPlace; at?: Served }>()
   for (const [repo, s] of served) {

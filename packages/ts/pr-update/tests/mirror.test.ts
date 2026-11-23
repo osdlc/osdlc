@@ -309,7 +309,7 @@ describe('managedClones: the locks update holds', () => {
     clones.release(clone)
     expect(existsSync(lock)).toBe(false)
     let during: boolean | undefined
-    const removed = clones.removing(clone, join(scratch, 'wt'), () => {
+    const removed = clones.removing(clone, { path: join(scratch, 'wt'), kind: 'run' }, () => {
       during = existsSync(lock)
     })
     expect(removed).toBe(true)
@@ -391,7 +391,9 @@ describe('managedClones: the locks update holds', () => {
     expect(held).toEqual(api)
     expect(existsSync(lock)).toBe(true)
     clones.release(api.path)
-    expect(clones.removing(api.path, join(scratch, 'wt'), () => {})).toBe(true)
+    expect(clones.removing(api.path, { path: join(scratch, 'wt'), kind: 'run' }, () => {})).toBe(
+      true,
+    )
     expect(waits).toEqual([0, 0, 0])
     expect(existsSync(lock)).toBe(false)
   })
@@ -453,12 +455,14 @@ describe('managedClones: taking a lock back to remove a worktree (review round 2
     let ran = false
     const worktree = join(scratch, 'worktrees', 'run')
     const started = Date.now()
-    expect(clones.removing(api.path, worktree, () => (ran = true))).toBe(false)
+    expect(clones.removing(api.path, { path: worktree, kind: 'run' }, () => (ran = true))).toBe(
+      false,
+    )
     expect(Date.now() - started).toBeLessThan(5_000)
     expect(waits).toEqual([0])
     expect(ran).toBe(false)
     expect(notes).toEqual([
-      `${api.path}: another pr-update run holds ${cloneLockPath(api.path)}, so ${worktree} is left in the clone; \`pr-update mirror prune\` removes it once this run has ended`,
+      `${worktree} is left, because another run holds its clone (${cloneLockPath(api.path)}); the next run in this clone, or \`pr-update mirror prune\`, removes it`,
     ])
     releaseLock(cloneLockPath(api.path), token)
     clones.close()
@@ -473,17 +477,37 @@ describe('managedClones: taking a lock back to remove a worktree (review round 2
     waits.length = 0
     let ran = false
     const started = Date.now()
-    expect(clones.removing(api.path, join(scratch, 'wt'), () => (ran = true))).toBe(false)
+    expect(
+      clones.removing(api.path, { path: join(scratch, 'wt'), kind: 'run' }, () => (ran = true)),
+    ).toBe(false)
     expect(Date.now() - started).toBeGreaterThanOrEqual(280)
     expect(waits).toEqual([300])
     expect(ran).toBe(false)
-    expect(notes[0]).toContain('`pr-update mirror prune` removes it')
+    expect(notes[0]).toContain(
+      'the next run in this clone, or `pr-update mirror prune`, removes it',
+    )
     releaseLock(cloneLockPath(api.path), token)
 
     // Free again, it is taken back, the removal runs, and it is let go.
-    expect(clones.removing(api.path, join(scratch, 'wt'), () => (ran = true))).toBe(true)
+    expect(
+      clones.removing(api.path, { path: join(scratch, 'wt'), kind: 'run' }, () => (ran = true)),
+    ).toBe(true)
     expect(ran).toBe(true)
     expect(existsSync(cloneLockPath(api.path))).toBe(false)
+  })
+
+  test('a kept worktree left behind is named as kept, with --discard-kept as the way to remove it', () => {
+    const api = existing('api')
+    const { clones, notes } = setup(60_000)
+    const token = otherRun(api.path)
+    const kept = join(scratch, 'kept', 'github.com', 'acme', 'api', '7')
+    let ran = false
+    expect(clones.removing(api.path, { path: kept, kind: 'kept' }, () => (ran = true))).toBe(false)
+    expect(ran).toBe(false)
+    expect(notes).toEqual([
+      `the kept worktree ${kept} is left in place, because another run holds its clone (${cloneLockPath(api.path)}); run with --discard-kept again to remove it`,
+    ])
+    releaseLock(cloneLockPath(api.path), token)
   })
 
   test('a lock the run still holds is used as it is, and kept', () => {
@@ -495,7 +519,7 @@ describe('managedClones: taking a lock back to remove a worktree (review round 2
     expect(
       clones.removing(
         api.path,
-        join(scratch, 'kept'),
+        { path: join(scratch, 'kept'), kind: 'kept' },
         () => (during = existsSync(cloneLockPath(api.path))),
       ),
     ).toBe(true)
@@ -518,6 +542,9 @@ describe('the folders between the clone directory and a clone (review round 2)',
     return clone
   }
   const posix = process.platform !== 'win32'
+  const fix = (dir: string) =>
+    `run \`chmod go-w ${dir}\`, or choose a clone directory on a filesystem with Unix permissions ` +
+    '(--mirror-dir, PR_UPDATE_MIRROR_DIR or `pr-update mirror enable --mirror-dir`)'
 
   test.skipIf(!posix)(
     'a clone directory, host or owner folder others can write to is refused, naming the chmod',
@@ -528,7 +555,7 @@ describe('the folders between the clone directory and a clone (review round 2)',
       for (const dir of [root(), host, owner]) {
         chmodSync(dir, 0o775)
         expect(checkClone(root(), clone)).toEqual({
-          foreign: `${dir} can be written by its group or others (run \`chmod go-w ${dir}\`), so ${clone} is not used`,
+          foreign: `${dir} can be written by its group or others, so ${clone} is not used; ${fix(dir)}`,
         })
         chmodSync(dir, 0o755)
       }
@@ -537,12 +564,12 @@ describe('the folders between the clone directory and a clone (review round 2)',
       chmodSync(owner, 0o777)
       const missing = join(owner, 'web.git')
       expect(checkClone(root(), missing)).toEqual({
-        foreign: `${owner} can be written by its group or others (run \`chmod go-w ${owner}\`), so ${missing} is not used`,
+        foreign: `${owner} can be written by its group or others, so ${missing} is not used; ${fix(owner)}`,
       })
       chmodSync(owner, 0o755)
       chmodSync(root(), 0o777)
       expect(() => checkMirrorDir(root())).toThrow(
-        `the clone directory ${root()} can be written by its group or others (run \`chmod go-w ${root()}\`)`,
+        `the clone directory ${root()} can be written by its group or others; ${fix(root())}`,
       )
       chmodSync(root(), 0o755)
     },

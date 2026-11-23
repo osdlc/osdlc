@@ -330,7 +330,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
      not be inside a git working tree, and must be missing, empty or already
      marked by this tool, and belong to the person running it, as must its
      marker, a plain file. On POSIX no one else may write to it (`mode &
-     0o022`); the refusal names the `chmod go-w` that fixes it. The tool
+     0o022`); the refusal names the `chmod go-w` that fixes it, or choosing
+     a clone directory on a filesystem with Unix permissions (`--mirror-dir`,
+     `PR_UPDATE_MIRROR_DIR`, `mirror enable --mirror-dir`), since exFAT, FAT
+     and SMB shares show every folder as writable by all. The tool
      makes its own folders with mode `0o755` at most, so it never refuses one
      it made. Otherwise the run exits 2 and names the directory,
      having written nothing. Then write the tool's marker at its root if it
@@ -408,8 +411,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   claims without waiting. So a run waits only for a lock that sorts after
   every lock it holds, or while it holds none, and no two runs wait on each
   other in a cycle. A worktree whose lock it cannot get back is not removed:
-  the run leaves it, as a dead run's worktree, with a note naming it and
-  `pr-update mirror prune`. With several targets, a clone whose turn
+  the run leaves it, with a note naming it. A run worktree is then a dead
+  run's, which the next run in that clone or `pr-update mirror prune`
+  removes; a kept worktree waits for another `--discard-kept`. With several targets, a clone whose turn
   comes later stays held while the targets before it are updated. It writes
   the last-used stamp when it first takes the lock. `update --apply` waits up
   to 60 seconds for each lock, then skips the target with reason `mirror
