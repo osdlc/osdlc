@@ -3,7 +3,7 @@
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 
 import { afterAll, expect, test } from 'vitest'
 
@@ -54,7 +54,7 @@ test('two workspace packages produce one dependency edge', async () => {
   expect(DEFAULT_EXCLUDES).toContain('node_modules')
   // Every manifest the walk found has one of the names the walk reads.
   const names: readonly string[] = MANIFEST_FILES
-  expect(manifests.every((m) => names.includes(m.path.split('/').at(-1)!))).toBe(true)
+  expect(manifests.every((m) => names.includes(basename(m.path)))).toBe(true)
 
   const containment: ContainmentOptions = {}
   applyContainment(graph, containment)
