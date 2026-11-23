@@ -12,6 +12,10 @@
  * whatever `--remote` says: `--remote` names a remote of the project root.
  * A shallow checkout is skipped, since it cannot measure drift.
  *
+ * With no usable checkout, a managed clone that already exists serves the
+ * target (`mirror.ts`). This module never makes one: only `update --apply`
+ * does, before its survey.
+ *
  * A host that supplies its own `Ports` supplies its own `locate`, and this
  * module is not used.
  */
@@ -34,6 +38,31 @@ export interface StandaloneLocateOptions {
   notice?: ((line: string) => void) | undefined
   /** Passed to the locator as given: `resolveAlias` (the CLI passes its own), and for a test `dirs`, `home`, `maxDepth`. */
   locator?: Pick<LocateOptions, 'resolveAlias' | 'dirs' | 'home' | 'maxDepth'> | undefined
+  /** The run's managed clones, the fallback for a target with no usable checkout. Default none. */
+  clones?: CloneLookup | undefined
+}
+
+/** A target with no usable checkout, as {@link CloneLookup.missed} is told about it. */
+export interface MissedCheckout {
+  /** The target as notes name it, `host/owner/name`. */
+  label: string
+  /** Where the search looked, as the not-found note says it: `no checkout under <roots> (…)`. */
+  where: string
+  /** The shallow checkouts of it that were skipped. */
+  shallow: string[]
+}
+
+/** How {@link standaloneLocate} reaches the run's managed clones. */
+export interface CloneLookup {
+  /** The clone that serves `target`, when one exists and the run may use it, else null. */
+  existing(target: LocateTarget): string | null
+  /**
+   * True in `update --apply`, whose clone step speaks for a target with no checkout and no
+   * clone: locate then prints no note for it, so the person reads one line, not two.
+   */
+  deferMissing: boolean
+  /** Told about each target with neither a usable checkout nor a clone. */
+  missed(target: LocateTarget, miss: MissedCheckout): void
 }
 
 /**
@@ -65,14 +94,32 @@ export function standaloneLocate(
     const matches = locator.locate(
       target === undefined ? repo : { host: target.host, owner: target.owner, repo: target.name },
     )
+    const shallow: string[] = []
     const usable = matches.filter((m) => {
-      const shallow = isShallow(m.path, opts.git)
-      if (shallow) notice(`${label}: skipped ${m.path}: a shallow checkout cannot measure drift`)
-      return !shallow
+      if (!isShallow(m.path, opts.git)) return true
+      notice(`${label}: ${m.path} is shallow, so it is not used`)
+      shallow.push(m.path)
+      return false
     })
     const [first, ...rest] = usable
     if (first === undefined) {
-      notice(notFound(label, locator))
+      const where = notFound(locator)
+      const clone = target === undefined ? null : (opts.clones?.existing(target) ?? null)
+      if (clone !== null) {
+        notice(`${label}: ${where}; using the clone ${clone}`)
+        // A shallow checkout cannot be measured, but can hold unpushed commits.
+        return {
+          path: clone,
+          source: 'clone',
+          remote: 'origin',
+          ...(shallow.length > 0 ? { others: shallow } : {}),
+        }
+      }
+      if (target !== undefined && opts.clones !== undefined) {
+        opts.clones.missed(target, { label, where, shallow })
+        if (opts.clones.deferMissing && target.github === true) return null
+      }
+      notice(`${label}: ${where}${cloneHint(target)}`)
       return null
     }
     if (rest.length > 0) {
@@ -96,8 +143,19 @@ export function standaloneLocate(
   }
 }
 
-/** The note for a target with no usable checkout: where the search looked, and where that is set. */
-function notFound(label: string, locator: CheckoutLocator): string {
+/** What the not-found note adds about a managed clone: how to allow one, or that none is made. */
+function cloneHint(target: LocateTarget | undefined): string {
+  if (target?.github === true) {
+    return '; run `pr-update mirror enable` so `update --apply` can clone it'
+  }
+  if (target?.github === false) {
+    return `; there is no managed clone for ${target.host}: only GitHub repositories are cloned`
+  }
+  return ''
+}
+
+/** Where the search for a target looked, and where that is set, for the not-found note. */
+function notFound(locator: CheckoutLocator): string {
   const where =
     locator.roots.length === 0
       ? 'no checkout found: no roots to search'
@@ -111,7 +169,7 @@ function notFound(label: string, locator: CheckoutLocator): string {
     limited === 0
       ? ''
       : `; ${limited} ${limited === 1 ? 'directory was' : 'directories were'} not opened past the depth limit, so a checkout may sit deeper`
-  return `${label}: ${where} (${from})${deeper}`
+  return `${where} (${from})${deeper}`
 }
 
 /** Whether the checkout at `path` is shallow. Unknown counts as not shallow: the measure then says what it can. */

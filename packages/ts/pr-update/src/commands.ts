@@ -11,7 +11,15 @@ import { mkdirSync, rmSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
-import { EXIT, canPrompt, failWith, failureOf, type CliContext } from '@osdlc/cli-tool'
+import {
+  EXIT,
+  askChoice,
+  askText,
+  canPrompt,
+  failWith,
+  failureOf,
+  type CliContext,
+} from '@osdlc/cli-tool'
 import {
   CommandError,
   UsageError,
@@ -23,10 +31,12 @@ import { forwardedExitCode, spawnRunner, type CommandRunner } from '@osdlc/comma
 import { describe, type Failure } from '@osdlc/result'
 import { Git, sshAliasResolver, type SshAliasResolver } from '@osdlc/typed-git'
 import { CONFIG_INVALID_EXIT, ConfigInvalidError, type ConfigFileSpec } from '@osdlc/config-layers'
+import { homeDir } from '@osdlc/tiered-dirs'
 
 import { selectedCodeHostFor } from './code-host.ts'
 import { loadConfigLayers } from './config-file.ts'
 import { standalonePorts } from './defaults.ts'
+import { MirrorDirError, managedClones, mirrorDirFrom, type MirrorAsker } from './mirror.ts'
 import { gitMissingFailure, preflight, type WhichSeam } from './preflight.ts'
 import {
   REPAIR_AGENTS,
@@ -71,6 +81,13 @@ export interface CliSeams {
   which?: WhichSeam
   /** The config file to read instead of {@link PR_UPDATE_CONFIG_FILE}. */
   configFile?: ConfigFileSpec
+  /**
+   * Where the question about cloning is asked: whether someone can answer, and the descriptor
+   * answers are read from and where the question is written. Default the terminal.
+   */
+  terminal?: { canPrompt: () => boolean; fd?: number; write?: (text: string) => void }
+  /** How long `update --apply` waits for a managed clone another run holds, in ms. Default 60 s. */
+  mirrorWaitMs?: number
 }
 
 /** The schema version of the `survey` and `update` documents. */
@@ -121,6 +138,14 @@ function scopeFlags(verb: 'survey' | 'update', remoteHelp: string) {
       help: remoteHelp,
     },
     branch: { kind: 'string', valueName: 'name', help: BRANCH_HELP },
+    mirrorDir: {
+      kind: 'string',
+      valueName: 'dir',
+      help:
+        verb === 'survey'
+          ? 'Where the managed clones are, an absolute path; beats PR_UPDATE_MIRROR_DIR and mirror_dir. survey uses a clone that exists and never makes one.'
+          : 'Where managed clones go, an absolute path; beats PR_UPDATE_MIRROR_DIR and mirror_dir. With --apply, consent to clone a --repo target that has no checkout on this machine, for this run.',
+    },
     currentBranch: {
       kind: 'boolean',
       hidden: true,
@@ -204,6 +229,45 @@ function aliasResolver(seams: CliSeams, notice: (line: string) => void): SshAlia
   })
 }
 
+/** The first-run question on the terminal, or where `seams.terminal` says. */
+function mirrorAsker(seams: CliSeams): MirrorAsker {
+  const at = seams.terminal
+  const where = {
+    ...(at?.fd === undefined ? {} : { fd: at.fd }),
+    ...(at?.write === undefined ? {} : { write: at.write }),
+  }
+  return {
+    canPrompt: at?.canPrompt ?? canPrompt,
+    choose: (question, choices) =>
+      choices.indexOf(
+        askChoice(question, choices, {
+          ...where,
+          ...(choices[0] === undefined ? {} : { default: choices[0] }),
+        }),
+      ),
+    text: (question) => askText(question, where),
+  }
+}
+
+/** `--mirror-dir`, made absolute; a relative one is a usage error. */
+function mirrorDirFlag(ctx: CliContext, raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined
+  try {
+    return mirrorDirFrom(raw, homeDir({ env: ctx.env }), '--mirror-dir')
+  } catch (e) {
+    if (e instanceof MirrorDirError) throw new UsageError(e.message)
+    throw e
+  }
+}
+
+/** How a run reaches its managed clones: where they are, and whether this run may make one. */
+interface MirrorRun {
+  /** `--mirror-dir`, absolute. */
+  dir?: string | undefined
+  /** `update --apply`: the run may clone, and waits for a clone another run holds. */
+  apply: boolean
+}
+
 function runEnv(
   ctx: CliContext,
   layers: ReturnType<typeof loadConfigLayers>,
@@ -215,11 +279,23 @@ function runEnv(
   } = { agent: null, command: null, mode: null },
   remote = 'origin',
   notice: (line: string) => void = () => {},
+  mirror: MirrorRun = { apply: false },
 ): UpdateEnv {
   const git = gitRunner(seams)
   const gh = seams.gh ?? spawnRunner('gh', { absolutePathOnly: true })
   const projectRoot = ctx.cwd
   const resolveAlias = aliasResolver(seams, notice)
+  const clones = managedClones({
+    env: ctx.env,
+    flag: mirror.dir,
+    cwd: ctx.cwd,
+    apply: mirror.apply,
+    gh,
+    git,
+    notice,
+    ask: mirrorAsker(seams),
+    waitMs: seams.mirrorWaitMs,
+  })
   const loaded = layers.merged.pr_update
   const cfg = {
     ...loaded,
@@ -246,10 +322,12 @@ function runEnv(
     codeHostOverride: layers.merged.code_host.override,
     resolveAlias,
     cfg,
+    clones,
     ports: standalonePorts(cfg, projectRoot, remote, notice, {
       git,
       env: ctx.env,
       locator: { resolveAlias },
+      clones,
     }),
   }
 }
@@ -331,7 +409,10 @@ export function surveyCommand(seams: CliSeams) {
       const pr = parsePrFlags(flags.pr)
       const layers = loadLayers(ctx, seams)
       checkStart(ctx, layers, seams, flags)
-      const env = runEnv(ctx, layers, seams, undefined, flags.remote, (line) => ctx.note(line))
+      const env = runEnv(ctx, layers, seams, undefined, flags.remote, (line) => ctx.note(line), {
+        dir: mirrorDirFlag(ctx, flags.mirrorDir),
+        apply: false,
+      })
       let report
       try {
         report = runSurvey(
@@ -578,6 +659,7 @@ export function updateCommand(seams: CliSeams) {
         },
         flags.remote,
         (line) => ctx.note(line),
+        { dir: mirrorDirFlag(ctx, flags.mirrorDir), apply: flags.apply },
       )
       // A --repo target is gated by its own trust, whatever chose the command: the commands run
       // in its files. --trust covers it too.

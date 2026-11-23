@@ -1473,12 +1473,18 @@ importers:
       '@osdlc/etag-write':
         specifier: workspace:^
         version: link:../etag-write
+      '@osdlc/file-lock':
+        specifier: workspace:^
+        version: link:../file-lock
       '@osdlc/ref-lease':
         specifier: workspace:^
         version: link:../ref-lease
       '@osdlc/result':
         specifier: workspace:^
         version: link:../result
+      '@osdlc/tiered-dirs':
+        specifier: workspace:^
+        version: link:../tiered-dirs
       '@osdlc/trust-repo':
         specifier: workspace:^
         version: link:../trust-repo

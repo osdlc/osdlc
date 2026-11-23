@@ -62,7 +62,9 @@ import {
   prKey,
   repoEntry,
   selectorLabel,
+  surveyTargets,
   surveyWithTargets,
+  type ManagedClones,
   type PrSelector,
   type RepoTarget,
   type SurveyEnv,
@@ -99,6 +101,9 @@ export interface SkippedPr {
   head: string
   reason: string
 }
+
+/** The reason a PR whose drift the survey could not measure is skipped. */
+const UNMEASURED = 'drift could not be measured'
 
 /** What `selectTargets` makes of a survey. */
 export interface Selection {
@@ -209,7 +214,7 @@ export function selectTargets(
             : ''
         note(`blocked on #${row.blockedBy ?? '?'}${why}`)
       }
-    } else if (row.status === 'unknown') note('drift could not be measured')
+    } else if (row.status === 'unknown') note(UNMEASURED)
     else if (row.status === 'up-to-date') note('already up to date')
     else {
       const target: UpdateTarget = {
@@ -568,9 +573,28 @@ function bindConfirmPush(args: UpdateArgs, ports: Ports, dryRun: boolean): Confi
  * not need.
  */
 export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput> {
+  try {
+    return await updateRun(args, env)
+  } finally {
+    // A clone whose group never reached `worktree add` still holds its lock.
+    env.clones?.close()
+  }
+}
+
+async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput> {
   const confirmPush = bindConfirmPush(args, env.ports, env.dryRun)
   const effectiveCfg = applyStrategyOverride(env.cfg, args.strategy)
-  const { report, targets: repoTargets } = surveyWithTargets(args, { ...env, cfg: effectiveCfg })
+  const writes = wantsWrite(args, env.dryRun)
+  const resolved = surveyTargets(args, env)
+  // Only `update --apply` makes clones, and before its survey, so the survey measures them.
+  if (writes && env.clones !== undefined) {
+    resolved.targets = env.clones.provide(resolved.targets)
+  }
+  const { report, targets: repoTargets } = surveyWithTargets(
+    args,
+    { ...env, cfg: effectiveCfg },
+    resolved,
+  )
   // Each repository's PRs are updated in the checkout the survey measured them in, through the
   // remote it was measured against.
   const served = servedTargets(repoTargets, env)
@@ -595,6 +619,15 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     restack: args.restack ?? effectiveCfg.restack,
   })
   const { skipped, notFound } = selection
+  // A target the run looked for and could not serve (a clone another run holds, say) is
+  // skipped with why, not as one whose drift could not be measured.
+  const unserved = new Map(
+    repoTargets.flatMap((t) => (t.unserved === undefined ? [] : [[t.repo, t.unserved] as const])),
+  )
+  for (const s of skipped) {
+    const why = unserved.get(s.repo)
+    if (why !== undefined && s.reason === UNMEASURED) s.reason = why
+  }
   // A target whose own record could not be read is left out, with the store's error.
   // Each `broken` entry is shown once: as a skip reason, or on the PR it happened to.
   const shown = new Set<string>()
@@ -607,7 +640,6 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     return why === undefined
   })
 
-  const writes = wantsWrite(args, env.dryRun)
   const keepFailed = (args.keepFailed ?? effectiveCfg.keep_failed) && writes
   if (args.keepFailed === true && !args.apply)
     throw new UpdateUsageError('--keep-failed needs --apply')
@@ -735,6 +767,9 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
           ...(at?.records === undefined ? {} : { records: at.records }),
           // Only a target's own lease: the host's (`Ports.lease`) ends the run on an error.
           skipOnLeaseError: at?.lease !== undefined && at.lease !== env.ports.lease,
+          ...(at?.target?.source === 'clone' && env.clones !== undefined
+            ? { lock: cloneLock(env.clones, path) }
+            : {}),
           onSkip: (s) => skipped.push(s),
           // A rehearsal cannot repair, so `writes` keeps it from recording anything. Recorded as
           // each PR finishes, so a run killed part-way (a job timeout) keeps what it
@@ -806,6 +841,14 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
       notFound: notFound.length,
     },
   }
+}
+
+/** `updateAll`'s hold on the managed clone at `path`, through the run's {@link ManagedClones}. */
+function cloneLock(
+  clones: ManagedClones,
+  path: string,
+): { added: () => void; removing: (remove: () => void) => void } {
+  return { added: () => clones.added(path), removing: (remove) => clones.removing(path, remove) }
 }
 
 /** One repository's PRs to update, in the checkout and through the remote that serve it. */

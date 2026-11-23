@@ -23,7 +23,7 @@ import { osdlcDirs } from '@osdlc/ecosystem'
 
 import { DETECT_LOOKED_FOR, NothingDetectedError, detectVerifyCommand } from './detect.ts'
 import type { PrUpdateConfig, PrUpdateStandaloneConfig } from './config.ts'
-import { standaloneLocate, type StandaloneLocateOptions } from './locate.ts'
+import { standaloneLocate, type CloneLookup, type StandaloneLocateOptions } from './locate.ts'
 import { prUpdatePaths } from './machine.ts'
 import type {
   AttemptStore,
@@ -91,6 +91,8 @@ export interface StandalonePortsOptions {
   env?: Record<string, string | undefined> | undefined
   /** Passed to `locate`'s `CheckoutLocator` as given: the CLI's SSH alias resolver, or a test's settings. */
   locator?: StandaloneLocateOptions['locator']
+  /** The run's managed clones, which serve a target with no checkout (`mirror.ts`). Default none. */
+  clones?: CloneLookup | undefined
 }
 
 /**
@@ -108,6 +110,8 @@ export interface StandalonePortsOptions {
  * `worktrees/`, kept worktrees in the state's `kept/`, and file attempts in the state's
  * `attempts/`. With `git-ref`, its record and lease are refs on its own checkout's remote, written
  * with git's hooks off, as every git call in that checkout is.
+ *
+ * With `opts.clones`, a target with no checkout is served from its managed clone when one exists.
  *
  * `notice` receives one-line notes for the person: the command `verify: detect` chose, where to
  * attach a `terminal` repair, and a `--repo` target with no checkout and the roots searched for it.
@@ -131,6 +135,7 @@ export function standalonePorts(
       env: opts.env,
       notice,
       locator: opts.locator,
+      clones: opts.clones,
     }),
     runVerb: (verb, cwd) => sh.run(verb, { cwd }),
     // A standalone run has no host registry to look up `check` in, and `test` runs only

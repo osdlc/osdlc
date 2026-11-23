@@ -16,6 +16,7 @@ import { FailureError } from '@osdlc/result'
 
 import { prUpdateConfigSchema } from '../src/config.ts'
 import {
+  hostKey,
   measure,
   nearestBehindAncestor,
   parentEdges,
@@ -381,6 +382,7 @@ describe('resolveTargets', () => {
     source: path === null ? null : 'located',
     remote: 'origin',
     found: null,
+    github: hostKey(host) === 'github.com',
   })
   const opts = { rootHost: 'github.com', defaultHost: 'github.com' }
 
@@ -436,8 +438,29 @@ describe('resolveTargets', () => {
       },
       { rootHost: 'github.acme.com', defaultHost: 'github.acme.com' },
     )
-    expect(asked).toEqual([['acme/api', { host: 'github.acme.com', owner: 'acme', name: 'api' }]])
+    expect(asked).toEqual([
+      ['acme/api', { host: 'github.acme.com', owner: 'acme', name: 'api', github: false }],
+    ])
     expect(out).toEqual([at('acme/api', null, 'github.acme.com')])
+  })
+
+  test('a target on github.com, or on the GitHub host of the project root, is one a clone could serve', () => {
+    const out = resolveTargets(
+      'o/r',
+      '/repo',
+      ['github.acme.com:8443/acme/api', 'github.com/x/y', 'forgejo.example/z/w'],
+      locate({}),
+      {
+        rootHost: 'github.acme.com',
+        defaultHost: 'github.acme.com',
+        githubHost: 'github.acme.com',
+      },
+    )
+    expect(out.map((t) => [t.repo, t.github])).toEqual([
+      ['acme/api', true],
+      ['x/y', true],
+      ['z/w', false],
+    ])
   })
 
   test('a checkout that names its own remote is read through it', () => {
@@ -447,7 +470,15 @@ describe('resolveTargets', () => {
       remote: 'upstream',
     })
     expect(out).toEqual([
-      { repo: 'x/y', host: 'github.com', path: '/x', source: 'located', remote: 'origin', found },
+      {
+        repo: 'x/y',
+        host: 'github.com',
+        path: '/x',
+        source: 'located',
+        remote: 'origin',
+        found,
+        github: true,
+      },
     ])
   })
 

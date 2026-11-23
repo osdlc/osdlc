@@ -1118,6 +1118,13 @@ export async function updateAll(
      * for a person to pick up (see `./kept.ts`). The run goes on in a fresh one.
      */
     keepFailed?: { place: KeptPlace }
+    /**
+     * Set when `git`'s repository is a managed clone whose lock the run holds: `added` is
+     * called once the run worktree is recorded in it, so the lock is held from the fetch through
+     * `worktree add`, and `removing` runs the removal of the worktree and its scratch branch
+     * under the lock again.
+     */
+    lock?: { added: () => void; removing: (remove: () => void) => void } | undefined
   },
 ): Promise<UpdateResult[]> {
   const results: UpdateResult[] = []
@@ -1127,6 +1134,7 @@ export async function updateAll(
   releaseStaleScratch(git, records)
   const start = `${settings.remote}/${targets[0]!.base}`
   git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
+  opts.lock?.added()
   const wt = git.at(opts.worktreeRoot)
   try {
     for (const planned of targets) {
@@ -1201,8 +1209,12 @@ export async function updateAll(
     // releases it. Each step uses `try`, so a failure in one still lets the
     // others run. A stray worktree is worse than a stray branch, and both are
     // worse than an exception here hiding the real one.
-    removeWorktree(git, opts.worktreeRoot, records)
-    git.try.deleteBranch(scratchBranch(opts.worktreeRoot), { force: true })
+    const remove = (): void => {
+      removeWorktree(git, opts.worktreeRoot, records)
+      git.try.deleteBranch(scratchBranch(opts.worktreeRoot), { force: true })
+    }
+    if (opts.lock === undefined) remove()
+    else opts.lock.removing(remove)
   }
   return results
 }

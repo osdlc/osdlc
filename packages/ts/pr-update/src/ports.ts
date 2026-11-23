@@ -150,6 +150,11 @@ export interface LocateTarget {
   host: string
   owner: string
   name: string
+  /**
+   * Whether the target's code host is GitHub (github.com, or the project root's host when that
+   * is GitHub), so a managed clone could serve it. Unset when the caller does not say.
+   */
+  github?: boolean | undefined
 }
 
 /** Where a checkout came from: the project root, a checkout found on this machine, or a managed clone. */

@@ -146,6 +146,45 @@ export interface RepoTarget {
    * {@link FoundCheckout} rather than a bare path. Null otherwise.
    */
   found: FoundCheckout | null
+  /**
+   * For a target other than the project root: whether a managed clone could serve it, since its
+   * code host is GitHub (github.com, or the project root's host when that is GitHub). Unset for
+   * the project root.
+   */
+  github?: boolean | undefined
+  /**
+   * Why the run has no checkout for this target although it looked for one, such as a managed
+   * clone another run holds (`mirror busy`). `update` skips its PRs with this reason.
+   */
+  unserved?: string | undefined
+}
+
+/**
+ * The managed clones of a standalone run (`mirror.ts`), as the survey and `update` use them.
+ * A run without it treats a `clone` checkout as any other.
+ */
+export interface ManagedClones {
+  /**
+   * `update --apply` only, before its survey: serve each target with no checkout from a clone
+   * where consent allows, making the clone when there is none, and hold the lock of every
+   * clone the run uses. Returns the targets, those it serves pointed at their clone, those it
+   * cannot with {@link RepoTarget.unserved} set.
+   *
+   * @throws SurveyUsageError when it must ask and cannot, or the clone directory is unusable.
+   */
+  provide(targets: readonly RepoTarget[]): RepoTarget[]
+  /**
+   * Run `fetch` under the lock of the clone at `clone`, and write the clone's last-used stamp.
+   * When this run holds the lock already, `fetch` runs at once. When another run holds it,
+   * `fetch` is not run, a note says so, and the result is false: the clone is read as it is.
+   */
+  use(clone: string, fetch: () => boolean): boolean
+  /** The run's worktree is now recorded in the clone: let go of the lock `provide` took. */
+  added(clone: string): void
+  /** Run `remove`, which takes the run's worktree out of the clone, holding the clone's lock. */
+  removing(clone: string, remove: () => void): void
+  /** Let go of every lock the run still holds. */
+  close(): void
 }
 
 export interface SurveyRow {
@@ -553,6 +592,12 @@ export interface ResolveTargetsOptions {
   rootHost?: string | null | undefined
   /** The host a bare `owner/name` means. Default `github.com`. */
   defaultHost?: string | undefined
+  /**
+   * The project root's host when its code host is GitHub (an Enterprise host with
+   * `code_host.override: github`, say), else null. A target there or on github.com could be
+   * served by a managed clone. Default null.
+   */
+  githubHost?: string | null | undefined
 }
 
 /**
@@ -592,6 +637,7 @@ export function resolveTargets(
   const remote = opts.remote ?? 'origin'
   const rootHost = opts.rootHost ?? null
   const defaultHost = opts.defaultHost ?? 'github.com'
+  const githubHost = opts.githubHost ?? null
   const root: RepoTarget | null =
     localRepo === null
       ? null
@@ -626,12 +672,15 @@ export function resolveTargets(
       out.push(root)
       continue
     }
-    const checkout = locate(repo, { host: hostKey(host), owner, name })
+    const github =
+      hostKey(host) === 'github.com' ||
+      (githubHost !== null && hostKey(host) === hostKey(githubHost))
+    const checkout = locate(repo, { host: hostKey(host), owner, name, github })
     out.push(
       checkout === null
-        ? { repo, host, path: null, source: null, remote, found: null }
+        ? { repo, host, path: null, source: null, remote, found: null, github }
         : typeof checkout === 'string'
-          ? { repo, host, path: checkout, source: 'located', remote, found: null }
+          ? { repo, host, path: checkout, source: 'located', remote, found: null, github }
           : {
               repo,
               host,
@@ -639,6 +688,7 @@ export function resolveTargets(
               source: checkout.source,
               remote: checkout.remote,
               found: checkout,
+              github,
             },
     )
   }
@@ -843,6 +893,11 @@ export interface SurveyEnv {
   resolveAlias?: SshAliasResolver | undefined
   cfg: PrUpdateConfig
   ports: Pick<Ports, 'locate'>
+  /**
+   * The standalone run's managed clones: a clone is fetched under its lock and stamped as used.
+   * Absent means a `clone` checkout is fetched as a located one is.
+   */
+  clones?: ManagedClones | undefined
 }
 
 /**
@@ -868,6 +923,15 @@ export function remoteSlug(url: string): string | null {
   return ref === null ? null : `${ref.owner}/${ref.repo}`
 }
 
+/** What {@link surveyTargets} resolved: the project root's hosts and every target. */
+export interface ResolvedTargets {
+  localRepo: string | null
+  rootHost: string | null
+  /** The host of the project root's `origin`, which its code host is picked from. */
+  codeHostHost: string | null
+  targets: RepoTarget[]
+}
+
 /**
  * The repositories a run covers and where each is checked out, from the
  * `remote` and `repo` scope flags.
@@ -887,12 +951,7 @@ export function remoteSlug(url: string): string | null {
 export function surveyTargets(
   args: Pick<SurveyArgs, 'remote' | 'repo'>,
   env: Pick<SurveyEnv, 'projectRoot' | 'git' | 'ports' | 'codeHostOverride' | 'resolveAlias'>,
-): {
-  localRepo: string | null
-  rootHost: string | null
-  codeHostHost: string | null
-  targets: RepoTarget[]
-} {
+): ResolvedTargets {
   const localGit = new Git(env.projectRoot, { runner: env.git })
   const read = (url: string | null): RemoteRepo | null =>
     url === null
@@ -918,6 +977,7 @@ export function surveyTargets(
       remote: args.remote,
       rootHost,
       defaultHost: onGithub ? codeHostHost : 'github.com',
+      githubHost: onGithub ? codeHostHost : null,
     }),
   }
 }
@@ -936,14 +996,17 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
 /**
  * {@link runSurvey}, with the targets it resolved. `update` reads them to know
  * which checkout each target's PRs are updated in, so every target is
- * resolved, and located, once per run.
+ * resolved, and located, once per run. `resolved` is {@link surveyTargets}'
+ * answer when the caller has it already (`update --apply` clones between the
+ * two), so nothing is located twice.
  */
 export function surveyWithTargets(
   args: SurveyArgs,
   env: SurveyEnv,
+  resolved: ResolvedTargets = surveyTargets(args, env),
 ): { report: SurveyReport; targets: RepoTarget[] } {
   const { cfg } = env
-  const { codeHostHost, targets } = surveyTargets(args, env)
+  const { codeHostHost, targets } = resolved
   const codeHostFor = env.codeHost ?? githubCodeHostFor(env.gh)
 
   // Flags beat config; config beats the built-in default.
@@ -1055,19 +1118,28 @@ export function surveyWithTargets(
     // explicit refspec, so the checkout's own `remote.<name>.fetch` cannot
     // widen it. It does not prune: against that refspec, prune would delete
     // every `<remote>/*` ref with no branch behind it, such as a `pr/*` the
-    // checkout's own fetch line keeps there.
+    // checkout's own fetch line keeps there. A managed clone is the run's own, so its
+    // unscoped fetch prunes, and runs under the clone's lock, which stamps it as used.
     const { remote } = target
     const own = target.source === 'root'
+    const clone = target.source === 'clone'
     const refspecs = scoped ? scopedRefspecs(prs, remote) : []
     const quiet = own ? {} : { noTags: true, noWriteFetchHead: true }
-    const fetched =
+    const fetch = (): boolean =>
       measurable && !args.noFetch && !env.dryRun
         ? scoped
           ? refspecs.length === 0 || git.try.fetch(remote, refspecs, quiet).ok
           : own
             ? git.try.fetch(remote, undefined, { prune: true }).ok
-            : git.try.fetch(remote, [`+refs/heads/*:refs/remotes/${remote}/*`], quiet).ok
+            : git.try.fetch(remote, [`+refs/heads/*:refs/remotes/${remote}/*`], {
+                ...quiet,
+                ...(clone ? { prune: true } : {}),
+              }).ok
         : false
+    const fetched =
+      clone && target.path !== null && env.clones !== undefined
+        ? env.clones.use(target.path, fetch)
+        : fetch()
     // `try`, not `soft`: a failed listing must not read as "no checkout holds
     // this branch", which would clear a force-push. `null` counts as unsafe.
     const listedWorktrees = measurable ? git.try.worktrees() : null

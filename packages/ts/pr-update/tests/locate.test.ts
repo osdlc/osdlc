@@ -102,9 +102,7 @@ describe('standaloneLocate', () => {
     real.run(['clone', '--quiet', '--depth', '1', `file://${source}`, shallow], { cwd: home })
     real.run(['remote', 'set-url', 'origin', 'https://github.com/acme/api.git'], { cwd: shallow })
     expect(locateIn().target('github.com', 'acme', 'api')).toBeNull()
-    expect(notes[0]).toBe(
-      `github.com/acme/api: skipped ${shallow}: a shallow checkout cannot measure drift`,
-    )
+    expect(notes[0]).toBe(`github.com/acme/api: ${shallow} is shallow, so it is not used`)
   })
 
   test('a target not found names the roots searched and repositories.yaml', () => {

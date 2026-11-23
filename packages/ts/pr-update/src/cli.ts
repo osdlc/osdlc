@@ -2,7 +2,8 @@
  * `pr-update`: the standalone CLI, a `@osdlc/cli-tool` command tree.
  *
  * `survey` and `update` are declared in `commands.ts`; `config` and `trust`
- * are cli-tool's shared commands over pr-update's files (`config-cli.ts`).
+ * are cli-tool's shared commands over pr-update's files (`config-cli.ts`);
+ * `mirror` writes the machine file's answer on cloning (`mirror-cli.ts`).
  * `pr-update` alone prints the help and exits 0.
  *
  * Config layers and exit codes: see README.md (## Config, ## Exit codes); each
@@ -30,6 +31,7 @@ import {
 
 import { PR_UPDATE_CONFIG_FILE, surveyCommand, updateCommand, type CliSeams } from './commands.ts'
 import { configCommand } from './config-cli.ts'
+import { mirrorCommand } from './mirror-cli.ts'
 import { prUpdateTrustStore } from './trust.ts'
 import { VERSION } from './version.generated.ts'
 
@@ -86,7 +88,7 @@ export interface AppOptions {
   checkOutput?: boolean
 }
 
-/** The `pr-update` command tree over `seams`: `survey`, `update`, `config` and `trust`. */
+/** The `pr-update` command tree over `seams`: `survey`, `update`, `config`, `mirror` and `trust`. */
 export function createApp(seams: CliSeams = {}, options: AppOptions = {}): App {
   return defineApp({
     name: 'pr-update',
@@ -96,6 +98,7 @@ export function createApp(seams: CliSeams = {}, options: AppOptions = {}): App {
       survey: surveyCommand(seams),
       update: updateCommand(seams),
       config: configCommand(seams.configFile ?? PR_UPDATE_CONFIG_FILE),
+      mirror: mirrorCommand(),
       trust: trustCommand(trustService, {
         summary: "record consent to run the commands this repository's config names",
         description:
