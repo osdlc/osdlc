@@ -29,7 +29,7 @@ export {
   type RefCandidate,
   type RunCtx,
 } from './types.ts'
-export { BUILT_IN_PLUGINS } from './registry.ts'
+export { BUILT_IN_PLUGINS, loadPlugins, type Loaded } from './registry.ts'
 export {
   PLAN_VERSION,
   PlanSchema,
@@ -114,6 +114,14 @@ export {
   skipReason,
   type DescriptorOptions,
 } from './descriptor/engine.ts'
+export {
+  DescriptorLoadError,
+  SHIPPED_DESCRIPTORS,
+  loadDescriptors,
+  type DescriptorSource,
+  type DescriptorSources,
+  type LoadedDescriptor,
+} from './descriptor/load.ts'
 export {
   CLOSE_TERMINALS,
   ORCA_BUNDLE_CLI,

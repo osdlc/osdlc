@@ -25,10 +25,19 @@ import type { Kind } from '@osdlc/repo-cleaner'
 import { stripControls } from '@osdlc/ux'
 
 import { expandHome, ignorePaths } from './ignore.ts'
-import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
+import {
+  ConfigError,
+  configFile,
+  descriptorsDir,
+  hostDirs,
+  readConfig,
+  type Config,
+} from './config.ts'
+import { DescriptorLoadError, type DescriptorSources } from './descriptor/load.ts'
+import { DescriptorError } from './descriptor/schema.ts'
 import { pluginKit } from './kit.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
-import { BUILT_IN_PLUGINS, UnknownPlugin, selectPlugins } from './registry.ts'
+import { UnknownPlugin, loadPlugins, runsAmong, selectPlugins } from './registry.ts'
 import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
 import {
   SelectionError,
@@ -45,6 +54,7 @@ import {
   type Candidate,
   type Objection,
   type Plugin,
+  type PluginDefinition,
   type RunCtx,
 } from './types.ts'
 
@@ -78,6 +88,13 @@ const SWEEP_FLAGS = {
     kind: 'string',
     valueName: 'file',
     help: 'read this config file instead of the one in the config directory',
+  },
+  descriptor: {
+    kind: 'list',
+    valueName: 'file',
+    default: [] as readonly string[],
+    commaSeparated: false,
+    help: 'also load this descriptor, in place of one of the same name, for this run; repeatable',
   },
   ignore: {
     kind: 'list',
@@ -155,7 +172,9 @@ const statusCli = () =>
       },
       ...HELP_FLAGS,
     },
-    shortEpilogue: PHASES,
+    shortEpilogue: `${PHASES}
+
+To try a descriptor you are writing: ${NAME} status --descriptor <file> --plugin <name>`,
   })
 
 const configCli = () =>
@@ -166,6 +185,7 @@ const configCli = () =>
     autoHelp: false,
     flags: {
       config: SWEEP_FLAGS.config,
+      descriptor: SWEEP_FLAGS.descriptor,
       format: {
         kind: 'enum',
         choices: ['text', 'json'] as const,
@@ -272,8 +292,10 @@ const terminalChecklist: Checklist = (question, items) =>
   canPrompt() ? askChecklist(question, items) : null
 
 export interface MainDeps {
-  /** The plugins that exist; default is the shipped ones, built from the config. */
+  /** The plugins that exist; default is the built-ins and the descriptors, built from the config. */
   plugins?: readonly Plugin[]
+  /** The folder of shipped descriptors. Defaults to the package's `descriptors/`. */
+  shippedDescriptors?: string
   confirm?: Confirm
   /** Answers `clean -i`. Defaults to a checklist on the terminal. */
   checklist?: Checklist
@@ -313,6 +335,8 @@ const usageError = (ctx: CliContext, name: string, message: string): number => {
 function refusal(ctx: CliContext, name: string, err: unknown): number {
   if (
     err instanceof ConfigError ||
+    err instanceof DescriptorError ||
+    err instanceof DescriptorLoadError ||
     err instanceof UnknownPlugin ||
     err instanceof BadInput ||
     err instanceof SelectionError
@@ -352,10 +376,26 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
-const loadConfig = (v: { config?: string | undefined }, ctx: CliContext): Config =>
+/** The config, its `plugins` entries checked against `plugins`. */
+const loadConfig = (
+  v: { config?: string | undefined },
+  ctx: CliContext,
+  plugins: readonly PluginDefinition[],
+): Config =>
   v.config === undefined
-    ? readConfig(configFile(hostDirs(ctx.env)))
-    : readConfig(resolve(ctx.cwd, v.config), { required: true })
+    ? readConfig(configFile(hostDirs(ctx.env)), { plugins })
+    : readConfig(resolve(ctx.cwd, v.config), { required: true, plugins })
+
+/** Where this run's descriptors come from: the shipped folder, the user's, and each `--descriptor`. */
+const sourcesFor = (
+  v: { descriptor: readonly string[] },
+  ctx: CliContext,
+  deps: MainDeps,
+): DescriptorSources => ({
+  shipped: deps.shippedDescriptors,
+  user: descriptorsDir(hostDirs(ctx.env)),
+  flag: v.descriptor.map((f) => resolve(ctx.cwd, f)),
+})
 
 /** `--plugin` and its alias `--adapter`, as one list; undefined when neither is given. */
 const wanted = (v: SweepValues): string[] | undefined =>
@@ -367,16 +407,43 @@ const wanted = (v: SweepValues): string[] | undefined =>
 const unknownPlugins = (config: Config, known: (name: string) => boolean): string[] =>
   Object.keys(config.plugins).filter((n) => !known(n))
 
-/** The plugins this run uses: the shipped ones built from the config, or `deps.plugins`, then chosen by flag. */
-function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliContext): Plugin[] {
+/**
+ * The config and the plugins this run uses: the built-ins and the descriptors
+ * loaded, the config checked against them, each built from its entry (or
+ * `deps.plugins`), then chosen by flag. A descriptor's `supersededBy` plugin
+ * runs when it is among those chosen and detects.
+ */
+function setUp(
+  v: SweepValues,
+  ctx: CliContext,
+  deps: MainDeps,
+): { config: Config; plugins: Plugin[] } {
+  let chosen: readonly Plugin[] = []
+  const { definitions } = loadPlugins(sourcesFor(v, ctx, deps), {
+    runs: runsAmong(() => chosen),
+  })
+  const config = loadConfig(v, ctx, definitions)
+  const plugins = pluginsFor(v, config, definitions, deps, ctx)
+  chosen = plugins
+  return { config, plugins }
+}
+
+/** The plugins this run uses: `definitions` built from the config, or `deps.plugins`, then chosen by flag. */
+function pluginsFor(
+  v: SweepValues,
+  config: Config,
+  definitions: readonly PluginDefinition[],
+  deps: MainDeps,
+  ctx: CliContext,
+): Plugin[] {
   // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
   const all =
     deps.plugins ??
-    BUILT_IN_PLUGINS.map((d) =>
+    definitions.map((d) =>
       d.create({
-        settings: settingsOf(d.name, config.plugins[d.name] ?? {}, config),
+        settings: settingsOf(d.name, config.plugins[d.name] ?? {}, config, definitions),
         only,
         env: ctx.env,
         kit: pluginKit(d.name, { env: ctx.env }),
@@ -482,11 +549,8 @@ async function runStatus(
   const v = parsed.values
   let s: Survey
   try {
-    const config = loadConfig(v, ctx)
-    s = await survey(
-      pluginsFor(v, config, deps, ctx),
-      contextFor(parsed.positionals, config, ctx, [], v.ignore),
-    )
+    const { config, plugins } = setUp(v, ctx, deps)
+    s = await survey(plugins, contextFor(parsed.positionals, config, ctx, [], v.ignore))
   } catch (err) {
     return refusal(ctx, name, err)
   }
@@ -506,16 +570,17 @@ async function runStatus(
   return nothingFound(s) ? EXIT_NOTHING_TO_SWEEP : EXIT.ok
 }
 
-function runConfig(argv: readonly string[], ctx: CliContext): number {
+function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
   const name = `${NAME} config`
   const parsed = parseWith(configCli(), name, argv, ctx)
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
-    const config = loadConfig(v, ctx)
-    const unused = unknownPlugins(config, (n) => BUILT_IN_PLUGINS.some((d) => d.name === n))
+    const { definitions } = loadPlugins(sourcesFor(v, ctx, deps))
+    const config = loadConfig(v, ctx, definitions)
+    const unused = unknownPlugins(config, (n) => definitions.some((d) => d.name === n))
     if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
-    const settings = effectiveSettings(config.plugins, config)
+    const settings = effectiveSettings(config.plugins, config, definitions)
     if (v.format === 'json') {
       const values = Object.fromEntries(
         Object.entries(settings).map(([n, rows]) => [
@@ -565,9 +630,9 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
   const v = parsed.values
   let plan: Plan
   try {
-    const config = loadConfig(v, ctx)
+    const { config, plugins } = setUp(v, ctx, deps)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
-    const s = await survey(pluginsFor(v, config, deps, ctx), cctx)
+    const s = await survey(plugins, cctx)
     writeWarnings(ctx, name, s.warnings)
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
     plan = makePlan(s, {
@@ -726,8 +791,9 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   let cctx: RunCtx
   let preview: Decision
   try {
-    const config = loadConfig(v, ctx)
-    plugins = pluginsFor(v, config, deps, ctx)
+    const run = setUp(v, ctx, deps)
+    const config = run.config
+    plugins = run.plugins
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
       const s = await survey(plugins, cctx)
@@ -837,7 +903,7 @@ export async function main(
   if (sub === 'status') return runStatus(rest, ctx, deps)
   if (sub === 'plan') return runPlan(rest, ctx, deps)
   if (sub === 'clean') return runClean(rest, ctx, deps)
-  if (sub === 'config') return runConfig(rest, ctx)
+  if (sub === 'config') return runConfig(rest, ctx, deps)
   if (sub === '-h' || sub === '--help') {
     ctx.io.stdout(OVERVIEW)
     return EXIT.ok

@@ -1,7 +1,7 @@
 /**
  * What each plugin's entry in the config's `plugins` may hold: the settings
- * schema of its definition in `BUILT_IN_PLUGINS`, made strict, with the core's
- * `enabled` added and its own refinements kept. It is validated when the config loads with
+ * schema of its definition, a built-in's or a descriptor's, made strict, with
+ * the core's `enabled` added and its own refinements kept. It is validated when the config loads with
  * `@osdlc/config-layers`' `validateStandard`, so a misspelt key or a wrong type
  * is a config error that names the plugin and the key. `host-cleaner config`
  * prints the same schemas' fields and defaults through `configFields`.
@@ -86,16 +86,17 @@ export interface SettingRow {
   description: string
 }
 
-/** Every setting of every shipped plugin: its effective value, its default and whether the config set it. */
+/** Every setting of every plugin in `defs`: its effective value, its default and whether the config set it. */
 export function effectiveSettings(
   plugins: Entries,
   shared: Shared = {},
+  defs: Definitions = BUILT_IN_PLUGINS,
 ): Record<string, SettingRow[]> {
   const out: Record<string, SettingRow[]> = {}
-  for (const { name } of BUILT_IN_PLUGINS) {
+  for (const { name } of defs) {
     const raw = plugins[name] ?? {}
-    const value = settingsOf(name, raw, shared)
-    const fields = configFields({ [name]: schemaOf(name)! })
+    const value = settingsOf(name, raw, shared, defs)
+    const fields = configFields({ [name]: schemaOf(name, defs)! })
     // The core's `enabled` first, as `config` has always listed it.
     fields.sort((a, b) => Number(b.path[1] === 'enabled') - Number(a.path[1] === 'enabled'))
     out[name] = fields.map((f) => {

@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, test } from 'vitest'
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -282,6 +283,173 @@ describe('plugin settings', () => {
     const r = await run(['config', '--config', ghost.file], ghost.cwd, ghost.env)
     expect(r.code).toBe(2)
     expect(r.err).toContain('ghost')
+  })
+})
+
+describe('descriptors', () => {
+  /** A descriptor whose one folder is `~/<folder>`. */
+  const store = (folder: string, extra = ''): string => `descriptor: 1
+paths:
+  store: { all: ~/${folder} }
+candidates:
+  - { path: store, costDescription: re-download }
+${extra}`
+
+  /**
+   * A fixture home, its `.cache/<name>` folders made with a file in each, an
+   * empty shipped folder by default, and the user's descriptor folder.
+   */
+  function withHome(made: string[] = []) {
+    const { env, cwd, home } = setup()
+    for (const name of made) {
+      mkdirSync(join(home, '.cache', name), { recursive: true })
+      writeFileSync(join(home, '.cache', name, 'blob'), 'x')
+    }
+    const user = join(hostDirs(env).config, 'descriptors')
+    mkdirSync(user, { recursive: true })
+    const shipped = join(tempDir(), 'shipped')
+    mkdirSync(shipped)
+    return { env: { ...env, HOME: home }, cwd, home, user, shipped }
+  }
+
+  test('status --descriptor <file> --plugin <name> shows what that one descriptor would propose', async () => {
+    const h = withHome(['mine'])
+    const file = join(h.cwd, 'mine.yaml')
+    writeFileSync(file, store('.cache/mine'))
+    const r = await run(['status', '--descriptor', file, '--plugin', 'mine'], h.cwd, h.env, {
+      shippedDescriptors: h.shipped,
+    })
+    expect(r.code).toBe(0)
+    expect(r.out).toContain('plugins: mine\n')
+    expect(r.out).toMatch(/review\s+re-download mine:~\/\.cache\/mine\n/)
+    expect(r.out).toContain('(threshold 24)')
+  })
+
+  test('a descriptor named git is an error, from the user folder or --descriptor', async () => {
+    const h = withHome()
+    writeFileSync(join(h.user, 'git.yaml'), store('.cache/git'))
+    const r = await run(['status'], h.cwd, h.env, { shippedDescriptors: h.shipped })
+    expect(r.code).toBe(2)
+    expect(r.err).toContain(`descriptor ${join(h.user, 'git.yaml')} is named git`)
+    rmSync(join(h.user, 'git.yaml'))
+    const file = join(h.cwd, 'git.yaml')
+    writeFileSync(file, store('.cache/git'))
+    const flag = await run(['status', '--descriptor', file], h.cwd, h.env, {
+      shippedDescriptors: h.shipped,
+    })
+    expect(flag.code).toBe(2)
+    expect(flag.err).toContain('is named git, as the built-in plugin')
+  })
+
+  test('a user pnpm.yaml replaces the shipped one; --descriptor replaces both for one run', async () => {
+    const h = withHome(['shipped-pnpm', 'user-pnpm', 'flag-pnpm'])
+    writeFileSync(join(h.shipped, 'pnpm.yaml'), store('.cache/shipped-pnpm'))
+    const status = async (...extra: string[]) =>
+      (
+        await run(['status', '--plugin', 'pnpm', ...extra], h.cwd, h.env, {
+          shippedDescriptors: h.shipped,
+        })
+      ).out
+    expect(await status()).toContain('pnpm:~/.cache/shipped-pnpm')
+    writeFileSync(join(h.user, 'pnpm.yaml'), store('.cache/user-pnpm'))
+    const replaced = await status()
+    expect(replaced).toContain('pnpm:~/.cache/user-pnpm')
+    expect(replaced).not.toContain('shipped-pnpm')
+    const file = join(h.cwd, 'pnpm.yaml')
+    writeFileSync(file, store('.cache/flag-pnpm'))
+    const once = await status('--descriptor', file)
+    expect(once).toContain('pnpm:~/.cache/flag-pnpm')
+    expect(once).not.toContain('user-pnpm')
+  })
+
+  test('descriptors run after the built-ins, by name', async () => {
+    const h = withHome(['b', 'a'])
+    writeFileSync(join(h.user, 'zeta.yaml'), store('.cache/b'))
+    writeFileSync(join(h.shipped, 'alpha.yaml'), store('.cache/a'))
+    const r = await run(['status', '--skip-plugin', 'cargo,node'], h.cwd, h.env, {
+      shippedDescriptors: h.shipped,
+    })
+    expect(r.out).toContain('plugins: git, alpha, zeta\n')
+  })
+
+  test('plugins.<name>.enabled and idleHours apply to a descriptor', async () => {
+    const h = withHome(['mine'])
+    writeFileSync(join(h.user, 'mine.yaml'), store('.cache/mine'))
+    const file = join(h.home, 'config.json')
+    const status = async (config: unknown, ...extra: string[]) => {
+      writeFileSync(file, JSON.stringify(config))
+      return run(
+        ['status', '--config', file, '--skip-plugin', 'cargo,node', ...extra],
+        h.cwd,
+        h.env,
+        {
+          shippedDescriptors: h.shipped,
+        },
+      )
+    }
+    const off = { plugins: { mine: { enabled: false } } }
+    expect((await status(off)).out).not.toContain('mine:')
+    expect((await status(off, '--plugin', 'mine')).out).toContain('mine:~/.cache/mine')
+    expect((await status({ idleHours: 5 })).out).toContain('(threshold 5)')
+    const own = (await status({ idleHours: 5, plugins: { mine: { idleHours: 0 } } })).out
+    expect(own).toContain('(threshold 0)')
+    expect(own).toMatch(/delete\s+re-download mine:~\/\.cache\/mine/)
+    const bad = await status({ plugins: { mine: { idleHours: -1, nope: 1 } } })
+    expect(bad.code).toBe(2)
+    expect(bad.err).toContain('plugins.mine.idleHours')
+    expect(bad.err).toContain('nope')
+  })
+
+  test('config prints a descriptor’s settings; --descriptor adds one for that run', async () => {
+    const h = withHome()
+    writeFileSync(join(h.user, 'mine.yaml'), store('.cache/mine'))
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { mine: { idleHours: 48 } } }))
+    const deps = { shippedDescriptors: h.shipped }
+    const r = await run(['config', '--config', file], h.cwd, h.env, deps)
+    expect(r.code).toBe(0)
+    expect(r.out).toMatch(/plugins\.mine\n {2}enabled = true {2}\(default\)/)
+    expect(r.out).toMatch(/idleHours = 48 {2}\(config\)/)
+    const extra = join(h.cwd, 'extra.yaml')
+    writeFileSync(extra, store('.cache/extra'))
+    const json = JSON.parse(
+      (await run(['config', '--descriptor', extra, '--format', 'json'], h.cwd, h.env, deps)).out,
+    )
+    expect(json.plugins.extra).toEqual({ enabled: true, idleHours: 24 })
+  })
+
+  test('a descriptor file that is not valid is refused with exit 2, naming the file and the line', async () => {
+    const h = withHome()
+    writeFileSync(join(h.user, 'mine.yaml'), 'descriptor: 1\npaths: {}\ncandidates: []\n')
+    const r = await run(['status'], h.cwd, h.env, { shippedDescriptors: h.shipped })
+    expect(r.code).toBe(2)
+    expect(r.err).toContain(`bad descriptor ${join(h.user, 'mine.yaml')}: line 2: paths`)
+  })
+
+  test('supersededBy: left out while that plugin runs, used when it is skipped', async () => {
+    const h = withHome(['mine'])
+    writeFileSync(join(h.user, 'mine.yaml'), store('.cache/mine', 'supersededBy: git\n'))
+    const deps = { shippedDescriptors: h.shipped }
+    const on = await run(['status', '--skip-plugin', 'cargo,node'], h.cwd, h.env, deps)
+    expect(on.out).toContain('plugins: git\n')
+    const off = await run(['status', '--skip-plugin', 'git,cargo,node'], h.cwd, h.env, deps)
+    expect(off.out).toContain('plugins: mine\n')
+  })
+
+  test('clean deletes a descriptor’s folder through the kit', async () => {
+    const h = withHome(['mine'])
+    writeFileSync(join(h.user, 'mine.yaml'), store('.cache/mine'))
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { mine: { idleHours: 0 } } }))
+    const r = await run(
+      ['clean', '--config', file, '--plugin', 'mine', '--yes', '--receipt', join(h.cwd, 'r.json')],
+      h.cwd,
+      h.env,
+      { shippedDescriptors: h.shipped },
+    )
+    expect(r.code).toBe(0)
+    expect(r.out).toMatch(/done\s+mine:~\/\.cache\/mine/)
+    expect(existsSync(join(h.home, '.cache', 'mine'))).toBe(false)
   })
 })
 

@@ -295,6 +295,16 @@ asks (`--yes` skips the question; with no terminal and no `--yes` it exits 2),
 deletes, and writes one receipt to `--receipt` or the state directory's
 `receipts/`, plus a line in `logs/host-cleaner.log`.
 
+Descriptors (plugins written as YAML or JSON files) come from three places,
+and each file's name, less `.yaml`, `.yml` or `.json`, is its plugin name: the
+package's `descriptors/`, `descriptors/` in the config directory, and
+`--descriptor <file>` for one run. A file in the config directory replaces a
+shipped one of the same name, and `--descriptor` replaces either for that run.
+Every plugin has one name, so any other clash, such as a descriptor named `git`
+or two files of one name in one folder, is refused (exit 2). Descriptors run
+after the built-ins, by name. To try one you are writing:
+`host-cleaner status --descriptor ./uv.yaml --plugin uv`.
+
 The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
 all three directories):
 
@@ -310,7 +320,7 @@ the key.
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
-| `idleHours` | `cargo`, `node` | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
+| `idleHours` | `cargo`, `node`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
 
 Two settings sit at the top of the config and apply to every plugin:
 
