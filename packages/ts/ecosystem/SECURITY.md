@@ -31,7 +31,9 @@ We will credit you in the release notes if you want that.
   cloned repository cannot point a tool at directories on a person's disk.
 - It runs `git` in each checkout it finds under the roots, with argument
   arrays and never through a shell, to read its main checkout and its
-  `origin` URL. git reads that checkout's config as it always does.
+  `origin` URL. git reads that checkout's config as it always does. Each call
+  sets `GIT_CEILING_DIRECTORIES` to the found directory's parent, so git never
+  answers with a repository above it.
 - For an `origin` that uses an SSH host alias, `@osdlc/typed-git` runs
   `ssh -G -- <alias>` from the home directory, with a 5 s limit. It reads
   the person's SSH config; it opens no connection.

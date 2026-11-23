@@ -102,9 +102,16 @@ main checkout.
 
 `new CheckoutLocator(opts)` resolves the roots at once, so `roots`, `source`
 (`file` or `default`) and `file` are there for a caller's messages. The first
-`locate(target)` walks the roots with typed-git's `discoverCheckouts`, reads
+`locate(target)` walks the roots with typed-git's `scanForCheckouts`, reads
 each checkout's `origin` with `readRemote`, and keeps the index for every
 later call. `locateCheckout(target, opts)` is the one-shot form.
+`depthLimited` counts the directories the walk left unopened at `maxDepth`
+(three levels by default), so a caller can say a checkout may sit deeper.
+
+git runs in each directory the walk finds with `GIT_CEILING_DIRECTORIES` set
+to its parent. A `.git` git cannot use, such as an empty folder, is then
+skipped, rather than answering with a repository that encloses the root, such
+as a dotfiles repository at the home directory.
 
 `target` is `owner/name`, which matches on any host, `host/owner/name`, or a
 typed-git `RepoCoordinate`. Owner and name match in any letter case, and the
@@ -124,17 +131,23 @@ A tool that asks the person where their checkouts are writes the answer
 through the package, with a compare-and-swap:
 
 ```ts
-import { repositoriesFile } from '@osdlc/ecosystem/repositories'
+import { repositoriesFile, WriteConflictError } from '@osdlc/ecosystem/repositories'
 
 const file = repositoriesFile()
 const current = file.read() // { text, etag } or null
-file.writeRoots(['~/dev/repos'], { etag: current?.etag ?? null })
+try {
+  file.writeRoots(['~/dev/repos'], { etag: current?.etag ?? null })
+} catch (err) {
+  if (!(err instanceof WriteConflictError)) throw err
+  // Another tool wrote the file since `read`: read it again and ask again.
+}
 ```
 
-It replaces `roots` whole and keeps the rest of the file, with its comments. When the
-file changed since it was read, it throws `WriteConflictError` from
-`@osdlc/etag-write` and writes nothing. It refuses a root the reader would
-drop.
+It edits only the `roots` value: every other byte of the file stays as
+written, its comments included, and a comment inside the old list goes with
+it. When the file changed since it was read, it throws `WriteConflictError`,
+which this module re-exports from `@osdlc/etag-write`, and writes nothing. It
+refuses a root the reader would drop.
 
 ## Testing a tool that uses it
 
@@ -142,7 +155,9 @@ Every function takes `env`, `home` and `dirs`, so a test keeps off the real
 home: pass `home` and an `env` with no osdlc variables, or a `dirs` rooted in a
 temp directory. `OSDLC_REPOSITORIES` is read from `process.env`, as
 config-layers reads it, so a test clears it. Pass `resolveAlias` so `ssh` never
-runs. A test that spawns a tool follows the isolation rule in the
+runs. git reads the person's global and system config too, so a `url.<base>.insteadOf`
+there changes what `origin` reads as: point `GIT_CONFIG_GLOBAL` at an empty
+file and set `GIT_CONFIG_NOSYSTEM=1`. A test that spawns a tool follows the isolation rule in the
 machine-files standard.
 
 ## Stability

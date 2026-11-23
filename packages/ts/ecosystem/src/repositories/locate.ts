@@ -2,19 +2,21 @@
  * Finding a person's checkouts of a repository: scan the roots, read each
  * checkout's `origin`, and match it.
  *
- * typed-git does the git work: `discoverCheckouts` walks a root,
+ * typed-git does the git work: `scanForCheckouts` walks a root,
  * `Git#mainCheckout` finds a worktree's main checkout, and `readRemote` and
  * `sameRepo` read and match a remote. This module is the osdlc policy over
  * them: which roots, and one row per repository.
  */
 
 import { realpathSync } from 'node:fs'
+import { dirname } from 'node:path'
 
+import type { CommandRunner } from '@osdlc/command-seam'
 import {
-  discoverCheckouts,
   Git,
   readRemote,
   sameRepo,
+  scanForCheckouts,
   type RemoteRepo,
   type RepoCoordinate,
 } from '@osdlc/typed-git'
@@ -47,6 +49,7 @@ export class CheckoutLocator {
   private readonly opts: LocateOptions
   private readonly resolved: ResolvedRoots
   private index: LocatedCheckout[] | undefined
+  private limited = 0
 
   /** Resolves the roots. Throws when `OSDLC_REPOSITORIES` is relative. */
   constructor(opts: LocateOptions = {}) {
@@ -70,6 +73,17 @@ export class CheckoutLocator {
   }
 
   /**
+   * Directories the walk left unopened because `maxDepth` stopped it there,
+   * summed over the roots. Scans the roots if no {@link locate} has yet. A
+   * count above zero is a reason to tell the person a checkout may sit
+   * deeper, and to raise `maxDepth`.
+   */
+  get depthLimited(): number {
+    this.checkouts()
+    return this.limited
+  }
+
+  /**
    * Every checkout whose `origin` names `target`: owner and name in any
    * letter case, and the host when both name one. Each repository's main
    * checkout appears once, sorted by path. `[]` when none matches.
@@ -90,30 +104,43 @@ export class CheckoutLocator {
 
   private scan(): LocatedCheckout[] {
     const { maxDepth, onWarn, runner, resolveAlias } = this.opts
-    const gitOpts = runner === undefined ? {} : { runner }
     const index: LocatedCheckout[] = []
     const seen = new Set<string>()
+    let depthLimited = 0
     for (const root of this.resolved.roots) {
-      const found = discoverCheckouts(root, {
+      const scan = scanForCheckouts(root, {
         ...(maxDepth === undefined ? {} : { maxDepth }),
         ...(onWarn === undefined ? {} : { onWarn }),
       })
-      for (const checkout of found) {
+      depthLimited += scan.depthLimited
+      for (const checkout of scan.checkouts) {
         // A worktree and its main checkout resolve to one row. Something that
         // looks like a checkout but that git cannot read is not one.
-        const main = new Git(checkout, gitOpts).try.mainCheckout()
+        const main = gitAt(checkout, runner).try.mainCheckout()
         if (!main.ok || main.value === null) continue
         const path = realpathOr(main.value)
         if (seen.has(path)) continue
         seen.add(path)
-        const url = new Git(path, gitOpts).try.remoteGetUrl('origin')
+        const url = gitAt(path, runner).try.remoteGetUrl('origin')
         if (!url.ok || url.value === null) continue
         const origin = readRemote(url.value, resolveAlias)
         if (origin !== null) index.push({ path, origin })
       }
     }
+    this.limited = depthLimited
     return index.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
   }
+}
+
+/**
+ * A client for a directory the walk found. `GIT_CEILING_DIRECTORIES` stops
+ * git at that directory's parent: a `.git` git cannot use, such as an empty
+ * folder, would otherwise send it upward to the repository that encloses the
+ * root, which may be a dotfiles repository at the home directory.
+ */
+function gitAt(dir: string, runner: CommandRunner | undefined): Git {
+  const env = { GIT_CEILING_DIRECTORIES: realpathOr(dirname(dir)) }
+  return new Git(dir, runner === undefined ? { env } : { env, runner })
 }
 
 /**

@@ -62,13 +62,12 @@
   "dependencies": {
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/config-layers": "workspace:^",
+    "@osdlc/etag-write": "workspace:^",
     "@osdlc/tiered-dirs": "workspace:^",
     "@osdlc/typed-git": "workspace:^",
-    "yaml": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@osdlc/etag-write": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",

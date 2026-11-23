@@ -1,8 +1,12 @@
 /**
  * A sandbox for the tests: a temporary home, the osdlc directories under it,
- * and git checkouts laid out inside it. Nothing reads the real home, and
- * `OSDLC_REPOSITORIES` is cleared so a value in the developer's shell cannot
- * point a test at their real file.
+ * and git checkouts laid out inside it. The osdlc directories never reach the
+ * real home, and `OSDLC_REPOSITORIES` is cleared so a value in the
+ * developer's shell cannot point a test at their real file.
+ *
+ * git reads no config but the repositories' own: `GIT_CONFIG_GLOBAL` points
+ * at an empty file in the sandbox and `GIT_CONFIG_NOSYSTEM` is set, so a
+ * developer's `url.<base>.insteadOf` or hooks cannot change what a test sees.
  */
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -38,8 +42,8 @@ export const fakeAliases = (alias: string): string | null =>
   ({ 'github-work': 'github.com', forge: 'git.example.com' })[alias] ?? null
 
 export function makeSandbox(): Sandbox {
-  vi.stubEnv('OSDLC_REPOSITORIES', '')
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'ecosystem-')))
+  isolateEnv(root)
   const home = join(root, 'home')
   mkdirSync(home)
   const warnings: string[] = []
@@ -72,4 +76,16 @@ export function makeSandbox(): Sandbox {
       rmSync(root, { recursive: true, force: true })
     },
   }
+}
+
+/**
+ * Clear `OSDLC_REPOSITORIES` and keep git off the developer's global and
+ * system config, for this test. `vi.unstubAllEnvs()` undoes it.
+ */
+export function isolateEnv(root: string): void {
+  const gitconfig = join(root, 'gitconfig')
+  writeFileSync(gitconfig, '')
+  vi.stubEnv('OSDLC_REPOSITORIES', '')
+  vi.stubEnv('GIT_CONFIG_GLOBAL', gitconfig)
+  vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1')
 }

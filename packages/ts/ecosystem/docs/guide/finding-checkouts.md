@@ -54,7 +54,7 @@ const locator = new CheckoutLocator({ caller: process.cwd() })
 const matches = locator.locate('github.com/acme/widgets')
 ```
 
-The first `locate` walks each root with typed-git's `discoverCheckouts`
+The first `locate` walks each root with typed-git's `scanForCheckouts`
 (three levels deep by default, `maxDepth` to change it), resolves each
 checkout to its main checkout, and reads its `origin` with `readRemote`. An
 `origin` such as `git@github-work:acme/widgets.git` uses an SSH config alias;
@@ -65,6 +65,20 @@ A target matches when `sameRepo` says so: owner and name in any letter case,
 and the host when both name one. `acme/widgets` names no host, so it matches
 on any. Every match comes back, sorted by path, each repository's main
 checkout once, so a caller can check each one for unpushed work.
+
+git runs in each directory the walk finds with `GIT_CEILING_DIRECTORIES` set
+to that directory's parent. A `.git` git cannot use, such as an empty or
+half-made folder, is skipped, rather than sending git upward to a repository
+that encloses the root, such as a dotfiles repository at the home directory.
+
+When nothing matches, `locator.depthLimited` says how many directories the
+walk left unopened at `maxDepth`. Above zero, the checkout may sit deeper:
+
+```ts
+if (matches.length === 0 && locator.depthLimited > 0) {
+  console.log(`${locator.depthLimited} directories were deeper than the scan looked`)
+}
+```
 
 ## 4. Many targets, one scan
 
@@ -97,9 +111,10 @@ file.writeRoots(['~/dev/repos'], { etag: current?.etag ?? null })
 ```
 
 The write is a compare-and-swap: if the file changed since `read`, it throws
-`WriteConflictError` from `@osdlc/etag-write` and writes nothing. It keeps the
-file's other text and its comments, though not a comment inside the `roots`
-list, which is replaced whole, and refuses a root the reader would drop.
+`WriteConflictError`, which `@osdlc/ecosystem/repositories` re-exports from
+`@osdlc/etag-write`, and writes nothing. It edits only the `roots` value, so
+every other byte of the file stays as written, and it refuses a root the
+reader would drop.
 
 ## 6. In tests
 
@@ -108,5 +123,8 @@ list, which is replaced whole, and refuses a root the reader would drop.
 - Clear `OSDLC_REPOSITORIES` in `process.env` (`vi.stubEnv('OSDLC_REPOSITORIES', '')`):
   it is read there, as config-layers reads it.
 - Pass `resolveAlias`, so `ssh` never runs.
+- Keep git off the person's own config: point `GIT_CONFIG_GLOBAL` at an empty
+  file and set `GIT_CONFIG_NOSYSTEM=1`. A global `url.<base>.insteadOf` would
+  otherwise change what each `origin` reads as.
 - Compare real paths: git reports them, and macOS's temp directory is a
   symlink.

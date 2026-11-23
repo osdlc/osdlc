@@ -14,15 +14,22 @@ import { isAbsolute, resolve } from 'node:path'
 
 import {
   machineConfigFile,
-  reconcileYaml,
+  setPath,
   type MachineConfigIssue,
   type TieredDirs,
 } from '@osdlc/config-layers'
+import { WriteConflictError } from '@osdlc/etag-write'
 import { expandTilde } from '@osdlc/tiered-dirs'
-import { parse, stringify } from 'yaml'
 import { z } from 'zod'
 
 import { OSDLC_VENDOR_DIRS, osdlcDirs, type OsdlcDirsOptions } from '../index.ts'
+
+/**
+ * Thrown by {@link RepositoriesFile.writeRoots} when the file changed since
+ * the caller read it. Re-exported from `@osdlc/etag-write`, so a caller needs
+ * no import of its own to catch it.
+ */
+export { WriteConflictError }
 
 /** The variable that moves `repositories.yaml`. Its value must be an absolute path. */
 export const REPOSITORIES_ENV = 'OSDLC_REPOSITORIES'
@@ -71,8 +78,8 @@ export interface RepositoriesLoad {
 export interface WriteRootsOptions {
   /**
    * The etag {@link RepositoriesFile.read} gave, or `null` when it found no
-   * file. The write throws `WriteConflictError` from `@osdlc/etag-write`, and
-   * writes nothing, when the file changed since.
+   * file. The write throws {@link WriteConflictError}, and writes nothing,
+   * when the file changed since.
    */
   etag: string | null
 }
@@ -93,8 +100,8 @@ export interface RepositoriesFile {
   /** The file's text and etag, to hand back to {@link writeRoots}. `null` when there is no file. */
   read(): { text: string; etag: string } | null
   /**
-   * Set `roots` to `roots`, keeping the file's other keys and the comments
-   * outside `roots` (the list is replaced whole), and return the new etag. A compare-and-swap against `etag`. Throws when
+   * Set `roots` to `roots`, keeping every byte outside the `roots` value as
+   * written (a comment inside the old list goes with it), and return the new etag. A compare-and-swap against `etag`. Throws when
    * an entry is not absolute, `~` or `~/…`, since the reader would drop it.
    */
   writeRoots(roots: readonly string[], opts: WriteRootsOptions): string
@@ -150,23 +157,11 @@ export function repositoriesFile(opts: RepositoriesFileOptions = {}): Repositori
           )
         }
       }
-      const current = read()
-      const text =
-        current === null
-          ? stringify({ roots: [...roots] })
-          : reconcileYaml(current.text, { ...mappingOf(current.text, at), roots: [...roots] })
+      // setPath edits only the `roots` value, so every other byte of the file stays as written.
+      const text = setPath(read()?.text ?? '', ['roots'], [...roots])
       return file.write(text, { etag: o.etag })
     },
   }
-}
-
-/** The file's top-level mapping, so `reconcileYaml` keeps every other key. */
-function mappingOf(text: string, at: string): Record<string, unknown> {
-  const raw: unknown = parse(text) ?? {}
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-    throw new Error(`${at}: the document is not a mapping`)
-  }
-  return raw as Record<string, unknown>
 }
 
 /**

@@ -1,10 +1,11 @@
 /**
  * The README's examples, through the package name, in a temporary home. Each
  * call adds the options that keep it there: `home`, an `env` with no osdlc
- * variables, and a resolver so ssh never runs.
+ * variables, and a resolver so ssh never runs. git reads an empty global
+ * config and no system config, so a developer's `insteadOf` changes nothing.
  */
 
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -16,6 +17,7 @@ import {
   CheckoutLocator,
   REPOSITORIES_ENV,
   REPOSITORIES_FILE,
+  WriteConflictError,
   defaultRoots,
   locateCheckout,
   parseRepoTarget,
@@ -27,8 +29,12 @@ let home: string
 let isolated: { home: string; env: Record<string, string>; resolveAlias: () => null }
 
 beforeEach(() => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ecosystem-example-')))
+  writeFileSync(join(root, 'gitconfig'), '')
   vi.stubEnv(REPOSITORIES_ENV, '')
-  home = join(realpathSync(mkdtempSync(join(tmpdir(), 'ecosystem-example-'))), 'home')
+  vi.stubEnv('GIT_CONFIG_GLOBAL', join(root, 'gitconfig'))
+  vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1')
+  home = join(root, 'home')
   mkdirSync(home)
   isolated = { home, env: { HOME: home }, resolveAlias: () => null }
 })
@@ -73,6 +79,10 @@ test('writing roots, then reading them back', () => {
   const file = repositoriesFile(isolated)
   const current = file.read()
   file.writeRoots(['~/dev'], { etag: current?.etag ?? null })
+  // A second write against the first read is a conflict: the file changed since.
+  expect(() => file.writeRoots(['~/work'], { etag: current?.etag ?? null })).toThrow(
+    WriteConflictError,
+  )
 
   expect(resolveRoots(isolated)).toEqual({
     roots: [join(home, 'dev')],

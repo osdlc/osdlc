@@ -21,6 +21,7 @@ export {
   type RepositoriesFileOptions,
   type RepositoriesLoad,
   type WriteRootsOptions,
+  WriteConflictError,
 } from './repositories/file.ts'
 
 export {

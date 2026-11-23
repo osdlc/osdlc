@@ -88,6 +88,25 @@ describe('locateCheckout', () => {
     expect(locateCheckout('acme/widgets', sb.opts).map((c) => c.path)).toEqual([good.dir])
   })
 
+  test('a broken .git under a root does not answer with the repository around the root', () => {
+    // ~/outer is a repository, and the only root sits inside it.
+    sb.checkout('outer', 'git@github.com:acme/outer.git')
+    mkdirSync(join(sb.home, 'outer', 'sub', 'broken', '.git'), { recursive: true })
+    const real = sb.checkout('outer/sub/widgets', 'git@github.com:acme/widgets.git')
+    real.commit('first')
+    real.git.worktreeAdd(join(sb.home, 'outer', 'sub', 'widgets-feature'), { branch: 'feature' })
+    sb.writeFile('roots:\n  - ~/outer/sub\n')
+    expect(new CheckoutLocator(sb.opts).checkouts()).toEqual([
+      { path: real.dir, origin: { host: 'github.com', owner: 'acme', repo: 'widgets' } },
+    ])
+  })
+
+  test('a dotfiles repository at the home directory is never the answer', () => {
+    sb.checkout('', 'git@github.com:me/dotfiles.git')
+    mkdirSync(join(sb.home, 'dev', 'half-made', '.git'), { recursive: true })
+    expect(locateCheckout('me/dotfiles', sb.opts)).toEqual([])
+  })
+
   test('no match is []', () => {
     sb.checkout('dev/acme/widgets', 'git@github.com:acme/widgets.git')
     expect(locateCheckout('acme/other', sb.opts)).toEqual([])
@@ -97,6 +116,16 @@ describe('locateCheckout', () => {
     sb.checkout('dev/a/b/c/widgets', 'git@github.com:acme/widgets.git')
     expect(locateCheckout('acme/widgets', sb.opts)).toEqual([])
     expect(locateCheckout('acme/widgets', { ...sb.opts, maxDepth: 4 })).toHaveLength(1)
+  })
+
+  test('depthLimited counts the directories maxDepth left unopened, over every root', () => {
+    sb.checkout('dev/a/b/c/widgets', 'git@github.com:acme/widgets.git')
+    sb.checkout('work/x/y/z/gadgets', 'git@github.com:acme/gadgets.git')
+    const shallow = new CheckoutLocator(sb.opts)
+    expect(shallow.locate('acme/widgets')).toEqual([])
+    expect(shallow.depthLimited).toBe(2)
+    // Read before any locate, it scans.
+    expect(new CheckoutLocator({ ...sb.opts, maxDepth: 4 }).depthLimited).toBe(0)
   })
 
   test('with no file, the default roots of the caller are scanned', () => {

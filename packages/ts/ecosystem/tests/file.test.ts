@@ -6,11 +6,11 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { WriteConflictError } from '@osdlc/etag-write'
+import { WriteConflictError as EtagWriteConflictError } from '@osdlc/etag-write'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { osdlcDirs, OSDLC_VENDOR_DIRS } from '../src/index.ts'
-import { REPOSITORIES_ENV, repositoriesFile } from '../src/repositories.ts'
+import { REPOSITORIES_ENV, WriteConflictError, repositoriesFile } from '../src/repositories.ts'
 import { makeSandbox, type Sandbox } from './helpers.ts'
 
 let sb: Sandbox
@@ -110,6 +110,15 @@ describe('writeRoots', () => {
     expect(file.load().value).toEqual({ roots: ['~'] })
   })
 
+  test('keeps every key other than roots byte for byte', () => {
+    sb.writeFile('limit: .inf # mine\nnote: !!str 007\nroots: [/a]\n')
+    const file = repositoriesFile(sb.opts)
+    file.writeRoots(['/b'], { etag: file.read()!.etag })
+    const text = readFileSync(sb.file, 'utf-8')
+    expect(text).toContain('limit: .inf # mine\nnote: !!str 007\n')
+    expect(file.load().value.roots).toEqual(['/b'])
+  })
+
   test('is a compare-and-swap: a file changed since it was read is not written', () => {
     sb.writeFile('roots: [/a]\n')
     const file = repositoriesFile(sb.opts)
@@ -123,6 +132,10 @@ describe('writeRoots', () => {
     const file = repositoriesFile(sb.opts)
     sb.writeFile('roots: [/b]\n')
     expect(() => file.writeRoots(['/c'], { etag: null })).toThrow(WriteConflictError)
+  })
+
+  test('WriteConflictError is the class @osdlc/etag-write throws', () => {
+    expect(WriteConflictError).toBe(EtagWriteConflictError)
   })
 
   test('refuses a root the reader would drop', () => {

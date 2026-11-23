@@ -34,7 +34,16 @@ created: 2026-11-23
   `roots: []` scans nothing.
 - **A checkout git cannot read, or one with no `origin` that names a
   repository, is not in the index.** The walk finds a `.git` entry; git then
-  has to agree.
+  has to agree. Each git call the scan makes for a found directory sets
+  `GIT_CEILING_DIRECTORIES` to its parent, so git cannot search upward from a
+  `.git` it cannot use and answer with a repository around the root.
+- **`depthLimited` is on the locator,** summed over the roots, so a caller
+  can say why nothing was found. It is known only after a scan, so reading it
+  scans.
+- **`writeRoots` edits the `roots` value only** (config-layers' `setPath`),
+  so no other key is read and written back through a second YAML parser.
+- **`WriteConflictError` is re-exported,** so a caller catches it without
+  depending on `@osdlc/etag-write` itself.
 - **The owner is read only when it can matter.** When the directory above
   the holder is the home directory or above it, there is no step up to
   decide, and no `origin` is read.
