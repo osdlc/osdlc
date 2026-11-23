@@ -113,9 +113,9 @@ function writableFix(dir: string): string {
 
 /**
  * What is wrong with `dir`, a folder clones or run worktrees live under (the clone directory, or
- * a folder between it and a clone), whose stat is `st`, and how to fix it; null when nothing is. It must belong
- * to the person running pr-update, and on POSIX must not be writable by its group or others,
- * who could otherwise put a folder of their own where a clone goes. A filesystem with no Unix
+ * a folder between it and a clone), whose stat is `st`, and how to fix it; null when nothing is.
+ * It must belong to the person running pr-update, and on POSIX must not be writable by its group
+ * or others, who could otherwise put a folder of their own where a clone goes. A filesystem with no Unix
  * permissions (exFAT, FAT, an SMB share) shows every folder as writable by all, so the fix also
  * names the ways to choose another clone directory.
  */

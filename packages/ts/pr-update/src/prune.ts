@@ -656,6 +656,9 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       // Under the lock, again: a run may have used it since the walk began.
       if (checkClone(at.mirrorDir, path, owned) !== 'clone' || !old(path)) continue
       pruneClone(path, repo, entry)
+    } catch (e) {
+      // git could not read the clone, say: it stays, and the other clones are still pruned.
+      fail({ ...entry, bytes: sizeOf(path) }, e)
     } finally {
       // The lock file goes last.
       if (token !== null) releaseLock(lock, token)

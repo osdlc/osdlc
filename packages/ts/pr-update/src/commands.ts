@@ -363,10 +363,14 @@ function pruneAfterRun(
       git: gitRunner(seams),
       claim: seams.mirrorClaim,
     })
+    const what = {
+      clone: 'the clone',
+      worktree: 'the run worktree',
+      kept: 'the kept worktree',
+      leftover: 'the leftover',
+    }
     for (const e of report.removed) {
-      ctx.note(
-        `pruned ${e.kind === 'clone' ? 'the clone' : 'the run worktree'} ${e.path} (${formatBytes(e.bytes)})`,
-      )
+      ctx.note(`pruned ${what[e.kind]} ${e.path} (${formatBytes(e.bytes)})`)
     }
     for (const e of report.failed) ctx.note(`could not prune ${e.path}: ${e.reason ?? ''}`)
     if (report.removed.length > 0) ctx.note(`pruning freed ${formatBytes(report.freedBytes)}`)

@@ -458,6 +458,19 @@ describe('managed clones', () => {
     expect(existsSync(aside)).toBe(false)
   })
 
+  test('a clone git cannot read is left with the error, and the other clones are still removed', () => {
+    const broken = makeClone('acme/api', 400)
+    const other = makeClone('acme/web', 400)
+    rmSync(join(broken, 'HEAD'))
+
+    const r = prune({ all: true })
+
+    expect(r.failed).toEqual([expect.objectContaining({ kind: 'clone', path: broken })])
+    expect(r.removed.map((e) => e.path)).toEqual([other])
+    expect(existsSync(broken)).toBe(true)
+    expect(existsSync(cloneLockPath(broken))).toBe(false)
+  })
+
   test('a dry run says what would go, takes no lock and changes nothing', () => {
     const clone = makeClone('acme/api', 400)
     const dead = runWorktree(clone, 'acme/api')
