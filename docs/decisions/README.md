@@ -14,6 +14,7 @@ random keys, so parallel branches do not collide.
 | [D-H3QW](D-H3QW-host-cleaner-plugin-model.md) | `host-cleaner` is a flat plugin model; repo-cleaner becomes its `git` plugin (supersedes D-L7N5's adapters) |
 | [D-QMVA](D-QMVA-wayfinder-skill-handoff.md)              | wayfinder hands a skill to an agent CLI only when asked                                        |
 | [D-SM4K](D-SM4K-markdown-ecosystem-home.md)              | The markdown ecosystem stays in this repository, flat in `packages/` for now                   |
+| [D-ZVIA](D-ZVIA-osdlc-ecosystem-package.md)              | Settings osdlc tools share live in `@osdlc/ecosystem` (proposed)                               |
 
 Decisions about one package live in that package's
 `docs/planning/decisions/`, such as
