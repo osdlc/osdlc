@@ -11,10 +11,12 @@ import {
   FatalRun,
   HOOK_LIMIT_MS,
   HookTimeout,
+  DISCARD_USER_DATA,
   PLUGIN_API,
   SelectionError,
   clean,
   decide,
+  parsePlan,
   plan,
   recheck,
   survey,
@@ -233,6 +235,48 @@ describe('objection levels', () => {
       'a: dropped a:both, which must have one of a path and a ref',
       'a: dropped a:neither, which must have one of a path and a ref',
     ])
+  })
+
+  test('a lost candidate is held and protested discard-user-data; rebuild and re-download are not', async () => {
+    const items = [
+      cand('a:lost', 'a', { costDescription: 'lost' }),
+      cand('a:built', 'a', { costDescription: 'rebuild' }),
+      cand('a:fetched', 'a', { costDescription: 're-download' }),
+    ]
+    const s = await survey([fake('a', items, [])], ctx)
+    expect(s.candidates.map((c) => [c.id, c.held])).toEqual([
+      ['a:lost', true],
+      ['a:built', undefined],
+      ['a:fetched', undefined],
+    ])
+    expect(s.objections).toEqual([
+      {
+        by: 'host-cleaner',
+        candidate: 'a:lost',
+        level: 'protest',
+        code: DISCARD_USER_DATA,
+        reason: 'deleting it loses data that cannot be fetched or built again',
+      },
+    ])
+    expect(decide(s.candidates, s.objections, DEFAULT_SELECTION, [DISCARD_USER_DATA]).run).toEqual([
+      items[1],
+      items[2],
+    ])
+  })
+
+  test('a candidate with an unknown costDescription is dropped with a warning', async () => {
+    const odd = cand('a:odd', 'a', { costDescription: 'free' as 'lost' })
+    const s = await survey([fake('a', [odd, cand('a:ok', 'a')], [])], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:ok'])
+    expect(s.warnings).toEqual([
+      'a: dropped a:odd, whose costDescription is not one of re-download, rebuild, lost',
+    ])
+  })
+
+  test('a saved plan keeps each candidate’s costDescription', async () => {
+    const s = await survey([fake('a', [cand('a:lost', 'a', { costDescription: 'lost' })], [])], ctx)
+    const back = parsePlan(JSON.stringify(plan(s)), 'plan.json')
+    expect(back.candidates[0]).toMatchObject({ costDescription: 'lost', held: true })
   })
 
   test('a plugin cannot object under another name, or to a candidate nobody proposed', async () => {

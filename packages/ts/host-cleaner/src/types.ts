@@ -25,7 +25,17 @@ interface CandidateBase {
   name?: string | undefined
   /** True: held for review. The default leaves it out; only a pick or a selection runs it. */
   held?: boolean | undefined
+  /**
+   * What deleting it costs. The core holds a `lost` one for review and adds a
+   * `discard-user-data` protest, so it runs only when picked and allowed.
+   */
+  costDescription?: CostDescription | undefined
 }
+
+/** What deleting a candidate costs: fetched again, built again, or gone for good. */
+export const COST_DESCRIPTIONS = ['re-download', 'rebuild', 'lost'] as const
+
+export type CostDescription = (typeof COST_DESCRIPTIONS)[number]
 
 /**
  * A folder its owner deletes. It must sit strictly inside one of the owner's

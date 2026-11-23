@@ -17,6 +17,7 @@ import {
   type Step,
 } from './plan.ts'
 import {
+  COST_DESCRIPTIONS,
   FatalRun,
   type Candidate,
   type Ctx,
@@ -30,6 +31,9 @@ import {
 
 /** The refusal for a path candidate that is not inside its owner's roots or the targets. */
 export const OUTSIDE_ROOTS = 'outside-roots'
+
+/** The protest on a candidate whose `costDescription` is `lost`. */
+export const DISCARD_USER_DATA = 'discard-user-data'
 
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
@@ -111,9 +115,10 @@ function outside(c: PathCandidate, bounds: Bounds): string | null {
  * with a warning; one that throws or times out in `object` refuses every
  * candidate, since what it would object to is unknown. A path candidate
  * outside its owner's roots and the targets is refused `outside-roots`; one
- * with both a path and a ref, or neither, is dropped. A {@link FatalRun}
- * from any phase goes to the caller. A duplicate candidate id keeps the first
- * plugin's, with a warning naming both.
+ * with both a path and a ref, or neither, or an unknown `costDescription`, is
+ * dropped. A `lost` one is held and protested `discard-user-data`. A
+ * {@link FatalRun} from any phase goes to the caller. A duplicate candidate id
+ * keeps the first plugin's, with a warning naming both.
  */
 export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Survey> {
   const warnings: string[] = []
@@ -155,6 +160,7 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
 
   const discovered: Candidate[] = []
   const first = new Map<string, string>()
+  const costs = new Set<string>(COST_DESCRIPTIONS)
   for (const p of plugins) {
     if (p.discover === undefined) continue
     for (const c of await guarded(p, 'discover', [], scoped, (x) => p.discover!(x))) {
@@ -162,11 +168,15 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
         warnings.push(`${p.name}: dropped ${c.id}, which names ${c.owner} as its owner`)
       } else if ((typeof c.path === 'string') === (typeof c.ref === 'string')) {
         warnings.push(`${p.name}: dropped ${c.id}, which must have one of a path and a ref`)
+      } else if (c.costDescription !== undefined && !costs.has(c.costDescription)) {
+        warnings.push(
+          `${p.name}: dropped ${c.id}, whose costDescription is not one of ${COST_DESCRIPTIONS.join(', ')}`,
+        )
       } else if (first.has(c.id)) {
         warnings.push(`duplicate ${c.id}: kept ${first.get(c.id)}'s, dropped ${p.name}'s`)
       } else {
         first.set(c.id, p.name)
-        discovered.push(c)
+        discovered.push(c.costDescription === 'lost' ? { ...c, held: true } : c)
       }
     }
   }
@@ -188,6 +198,15 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
   }
   const linked = linkedCheckouts(targets)
   for (const c of candidates) {
+    if (c.costDescription === 'lost') {
+      objections.push({
+        by: 'host-cleaner',
+        candidate: c.id,
+        level: 'protest',
+        code: DISCARD_USER_DATA,
+        reason: 'deleting it loses data that cannot be fetched or built again',
+      })
+    }
     if (c.path === undefined) continue
     const why = outside(c, { roots: rootsOf.get(c.owner) ?? [], targets, linked })
     if (why !== null) {

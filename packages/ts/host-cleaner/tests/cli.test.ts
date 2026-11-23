@@ -133,8 +133,8 @@ describe('status', () => {
     const r = await run(['status'], repo(), env)
     expect(r.code).toBe(0)
     expect(r.out).toContain('plugins: git')
-    expect(r.out).toMatch(/delete\s+branch:.*:merged-a/)
-    expect(r.out).toMatch(/review\s+branch:.*:topic/)
+    expect(r.out).toMatch(/delete\s+-\s+branch:.*:merged-a/)
+    expect(r.out).toMatch(/review\s+-\s+branch:.*:topic/)
     expect(r.out).toContain('protest abandon-unmerged (git)')
   })
 
@@ -153,8 +153,8 @@ describe('status', () => {
     ]
     const plugins = [fake('fake', { objections })]
     expect((await run(['status'], cwd, env, { plugins })).out).not.toContain('artifact:fake')
-    expect((await run(['status', '--all-rows'], cwd, env, { plugins })).out).toContain(
-      'refused artifact:fake',
+    expect((await run(['status', '--all-rows'], cwd, env, { plugins })).out).toMatch(
+      /refused\s+-\s+artifact:fake/,
     )
   })
 
@@ -447,6 +447,39 @@ describe('plan and clean', () => {
     expect(await ran(['--spare', 'artifact:*', '--pick', 'artifact:held'])).toEqual([])
   })
 
+  test('a lost candidate is never in the default: it runs only when picked and discard-user-data is allowed', async () => {
+    const { env, cwd } = setup()
+    const plugins = [fake('lost', { candidate: { costDescription: 'lost' } }), fake('plain')]
+    const preview = async (argv: string[]) =>
+      JSON.parse(
+        (await run(['clean', '--dry-run', '--format', 'json', ...argv], cwd, env, { plugins })).out,
+      )
+    expect((await preview([])).run).toEqual(['artifact:plain'])
+    expect((await preview(['--allow', 'discard-user-data'])).run).toEqual(['artifact:plain'])
+    const picked = await preview(['--pick', 'artifact:lost'])
+    expect(picked.run).toEqual(['artifact:plain'])
+    expect(picked.dropped).toEqual([
+      { id: 'artifact:lost', reason: 'not-allowed', detail: 'needs --allow discard-user-data' },
+    ])
+    expect(
+      (await preview(['--pick', 'artifact:lost', '--allow', 'discard-user-data'])).run,
+    ).toEqual(['artifact:plain', 'artifact:lost'])
+  })
+
+  test('status shows what deleting each candidate costs, and the protest a lost one carries', async () => {
+    const { env, cwd } = setup()
+    const plugins = [
+      fake('lost', { candidate: { costDescription: 'lost' } }),
+      fake('built', { candidate: { costDescription: 'rebuild' } }),
+      fake('plain'),
+    ]
+    const out = (await run(['status'], cwd, env, { plugins })).out
+    expect(out).toContain('  review  lost        artifact:lost')
+    expect(out).toContain('protest discard-user-data (host-cleaner)')
+    expect(out).toContain('  delete  rebuild     artifact:built')
+    expect(out).toContain('  delete  -           artifact:plain')
+  })
+
   test('status shows an id under the home folder with ~, and --pick and --spare take that form', async () => {
     const { env: base, cwd } = setup()
     const home = tempDir()
@@ -454,7 +487,7 @@ describe('plan and clean', () => {
     const dir = join(home, 'dev', 'cache')
     const plugins = [fake('cache', { candidate: { id: `artifact:${dir}`, held: true } })]
     const status = await run(['status'], cwd, env, { plugins })
-    expect(status.out).toContain('review  artifact:~/dev/cache')
+    expect(status.out).toMatch(/review\s+-\s+artifact:~\/dev\/cache/)
     expect(status.out).not.toContain(home)
     const ran = async (argv: string[]) =>
       JSON.parse(

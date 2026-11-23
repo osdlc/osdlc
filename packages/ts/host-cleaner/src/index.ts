@@ -7,6 +7,7 @@
 
 export { VERSION } from './version.generated.ts'
 export {
+  COST_DESCRIPTIONS,
   DROP_REASONS,
   FatalRun,
   HOOKS,
@@ -14,6 +15,7 @@ export {
   PLUGIN_API,
   definePlugin,
   type Candidate,
+  type CostDescription,
   type Ctx,
   type DropReason,
   type Hook,
@@ -45,6 +47,7 @@ export {
 export {
   DEFAULT_SELECTION,
   DELETE_LIMIT_MS,
+  DISCARD_USER_DATA,
   HOOK_LIMIT_MS,
   HookTimeout,
   OUTSIDE_ROOTS,

@@ -86,6 +86,17 @@ What a plan runs uses repo-cleaner's words, with their meaning:
 
 Each candidate that runs is still judged by the rules above.
 
+### What deleting costs
+
+A candidate may say what deleting it costs, in `costDescription`:
+`re-download` (it can be fetched again), `rebuild` (it can be built again) or
+`lost` (it is gone for good). The core applies one rule to every plugin's
+candidates: a `lost` one is held for review and carries a `discard-user-data`
+protest (by `host-cleaner`), so it runs only when it is picked and
+`--allow discard-user-data` is given. A candidate with any other value is
+dropped with a warning. `status` shows the cost in a column of its own, `-`
+when a candidate does not say.
+
 ### Paths, refs and containment
 
 A candidate is a **path** (`path`), a folder its owner deletes, or a **ref**
@@ -174,7 +185,7 @@ The command works in repo-cleaner's phases, with its flags. Nothing runs until
 a phase is named; the bare command explains them and exits 2.
 
 ```sh
-host-cleaner status [target...]   # every candidate and what objects to it; deletes nothing
+host-cleaner status [target...]   # every candidate, what deleting it costs, and what objects to it; deletes nothing
 host-cleaner plan -o plan.json
 host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [-i] [--yes | --dry-run]
 host-cleaner config [--format json]   # every plugin's effective settings

@@ -39,7 +39,13 @@ import {
   type Decision,
   type Survey,
 } from './run.ts'
-import type { Candidate, Objection, Plugin, RunCtx } from './types.ts'
+import {
+  COST_DESCRIPTIONS,
+  type Candidate,
+  type Objection,
+  type Plugin,
+  type RunCtx,
+} from './types.ts'
 
 const NAME = 'host-cleaner'
 const EXIT_NOTHING_TO_SWEEP = 10
@@ -442,6 +448,8 @@ function standing(c: Candidate, os: readonly Objection[]): 'delete' | 'review' |
   return 'delete'
 }
 
+const COST_WIDTH = Math.max(...COST_DESCRIPTIONS.map((c) => c.length))
+
 function renderCandidates(
   cs: readonly Candidate[],
   os: readonly Objection[],
@@ -452,7 +460,8 @@ function renderCandidates(
   for (const c of cs) {
     const how = standing(c, os)
     if (how === 'refused' && !all) continue
-    lines.push(`  ${how.padEnd(7)} ${tildeId(c.id, home)}`, `          ${c.why}`)
+    const cost = (c.costDescription ?? '-').padEnd(COST_WIDTH)
+    lines.push(`  ${how.padEnd(7)} ${cost} ${tildeId(c.id, home)}`, `          ${c.why}`)
     for (const o of os.filter((x) => x.candidate === c.id)) {
       lines.push(`          ${o.level} ${o.code} (${o.by}): ${o.reason}`)
     }

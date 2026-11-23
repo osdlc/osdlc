@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { writeJsonAtomic } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
-import { DROP_REASONS, LEVELS } from './types.ts'
+import { COST_DESCRIPTIONS, DROP_REASONS, LEVELS } from './types.ts'
 
 /** 2: a candidate is a path or a ref. A version 1 plan is read and upgraded (see {@link parsePlan}). */
 export const PLAN_VERSION = 2
@@ -20,6 +20,7 @@ const candidateFields = {
   requires: z.array(z.string()).optional(),
   name: z.string().optional(),
   held: z.boolean().optional(),
+  costDescription: z.enum(COST_DESCRIPTIONS).optional(),
 }
 
 export const CandidateSchema = z.union([
