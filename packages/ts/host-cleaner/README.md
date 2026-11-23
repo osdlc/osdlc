@@ -8,6 +8,12 @@ its sweep supplies worktrees and branches, and its `removeCandidate` deletes the
 under repo-cleaner's safety model.
 
 This release is the library, the `git`, `cargo`, `node` and `orca` plugins, and the `host-cleaner` command.
+It runs only when a person runs it: there is no scheduled or unattended run
+([B-0001](docs/planning/backlog/B-0001-unattended-cleaning.md)).
+
+[docs/architecture.md](docs/architecture.md) says how the package is built.
+The design it is heading to, descriptors and loadable plugins included, is the
+[system description](../../../docs/architecture/host-cleaner-system.md).
 
 ## Phases
 
@@ -49,11 +55,15 @@ real path, since deleting it would delete them. So `cargo`'s `target/` goes
 before the git worktree that holds it, and a `target/` that does not run
 (refused, spared, held, or carrying a protest not allowed) keeps the worktree
 too. The worktree is then `blocked`, and its reason names each candidate
-inside it that does not run and what would let it run: `requires
-artifact:…/target, which needs --allow unmeasured`, `which needs --pick <id>`
-(held or not selected), `which is refused (<plugin>: <reason>)` or `which is
-spared (--spare <entry>)`. The clean preview, the `clean -i` checklist and the
-receipt show it.
+inside it that does not run and what would let it run, as `requires <id>,
+which <why>`, joined by `; `. `<why>` is `needs --pick <id>` (held or not
+selected), `needs --allow <codes>`, both, `is refused (<plugin>: <reason>)`,
+`is spared (--spare <entry>)`, `is gone`, or the inner candidate's own reason
+for being dropped, such as `is blocked: requires …` down a chain. For example:
+`requires artifact:…/target, which needs --allow unmeasured`. The clean
+preview (text and JSON), the `clean -i` checklist and the receipt show it. A
+step skipped because a requirement failed during the run says `requires <id>,
+which did not complete`.
 
 ```ts
 import { join } from 'node:path'
@@ -209,8 +219,9 @@ alone and shows its candidates and objections. Neither deletes anything.
 as refs (`ref` the branch's name, `at` its repository). Its
 blockers are `refuse` objections and its risks `protest`s, so
 `--allow abandon-unmerged` and the others work as in repo-cleaner. A branch
-freed by a worktree requires it. With `archive`, unlanded work is pushed to the
-remote first; a failed push throws `FatalRun`. Grant the named risks; the
+freed by a worktree requires it. With `archive` (`clean --archive` on the
+command line), unlanded work is pushed to the remote first; a failed push
+throws `FatalRun`. Grant the named risks; the
 `discard-archived` cover is not yet offered here. Its `delete` refuses a
 worktree whose folder has become a symlink, since `git worktree remove` would
 follow it and empty the folder it leads to.
@@ -250,16 +261,19 @@ in them. Removing one with plain git leaves the record and the terminals behind,
 so this plugin works beside `git`, which still removes the directory.
 
 Detected when the `orca` CLI is on `PATH` (or at
-`/Applications/Orca.app/Contents/Resources/bin/orca`) and `orca status` says the
-app is running. Orca missing is silent; installed but not running adds a
-warning, and the plugin stays out of the run. It never fails the run. Every call
-goes through `@osdlc/command-seam` with `--json`.
+`/Applications/Orca.app/Contents/Resources/bin/orca`). Orca missing is silent.
+When it is installed but not running, or `orca status` fails or prints no JSON,
+Orca cannot be asked, and there is no fallback to git: every `git` worktree
+whose real path is under `/orca/workspaces/` is refused with `orca-unreachable`,
+and the other worktrees are left to `git`. Orca then adds no repositories and proposes
+no records. It never fails the run. Every call goes through
+`@osdlc/command-seam` with `--json`.
 
 | Phase | What it does |
 | --- | --- |
 | scope | Adds each repository `orca repo list` names (`plugins.orca.repos: false` turns this off). |
 | discover | A record in `orca worktree ps` whose directory is gone is `orca-record:<path>`, a ref to Orca's record (`at` is the gone directory), held for a pick. |
-| object | On a `git` worktree that Orca manages: a `note` with its Orca id; a `refuse` `orca-agent-active` when an agent is at work (any state not `idle` or `done`); a `refuse` `orca-terminal-unverifiable`; a `protest` `close-terminals` when terminals are open. If Orca cannot be read, every `git` worktree is refused with `orca-unreachable`. |
+| object | On a `git` worktree that Orca manages: a `note` with its Orca id; a `refuse` `orca-agent-active` when an agent is at work (any state not `idle` or `done`); a `refuse` `orca-terminal-unverifiable`; a `protest` `close-terminals` when terminals are open. If Orca is running but its worktrees cannot be read, every `git` worktree is refused with `orca-unreachable`; while it cannot be asked at all (above), only those under `/orca/workspaces/` are. |
 | prepare | Sees again that no agent is at work, then `orca terminal close --worktree id:<id> --all`. |
 | deleted | After `git` removed the directory, `orca worktree rm --worktree id:<id> --force` so Orca forgets the record. It is never asked while the directory exists, since it would delete it. The branch is kept. |
 
@@ -275,7 +289,7 @@ a phase is named; the bare command explains them and exits 2.
 ```sh
 host-cleaner status [target...]   # every candidate, what deleting it costs, and what objects to it; deletes nothing
 host-cleaner plan -o plan.json
-host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [-i] [--yes | --dry-run]
+host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [--archive] [-i] [--yes | --dry-run]
 host-cleaner config [--format json]   # every plugin's effective settings
 host-cleaner plugins [target...] [--format json]   # every plugin: where it came from, detected or why not, its roots
 ```
@@ -286,6 +300,8 @@ host-cleaner plugins [target...] [--format json]   # every plugin: where it came
 | `--spare <id\|name\|glob>` | Leave these alone: an id, a path, a branch name (its worktree too) or a glob. |
 | `-i` | Choose from a checklist, the default candidates ticked; each ticked protest is asked for by code. Needs a terminal. |
 | `--allow <code>` | Accept a protest by its code. |
+| `--archive` | `clean`: before deleting unlanded work, push it to `archive/<repo>-local-<date>` on the repository's remote, as repo-cleaner does. `abandon-unmerged` and `discard-changes` still need `--allow` by name. |
+| `--archive-exclude <glob>` | With `--archive`, leave files matching this glob out of a worktree's snapshot. Repeatable; without `--archive` it is an error (exit 2). |
 | `--worktrees`, `--branches` | Only the git plugin's worktrees, or only its local branches. Remote branches are repo-cleaner's. |
 | `--all-rows` | `status`: also show candidates a plugin refuses. |
 
@@ -293,29 +309,53 @@ The text output writes the home folder in an id as `~`
 (`worktree:~/dev/wt`, `branch:~/dev/repo:main`), and `--pick` and `--spare`
 take that form. host-cleaner refuses to run as root (exit 1).
 
-`--plugin <name>` runs only those plugins (`--adapter` is an alias) and
-`--skip-plugin <name>` never runs these. Targets default to the config file's
-`targets`, then the directory you are in. `clean` re-checks, shows the steps,
-asks (`--yes` skips the question; with no terminal and no `--yes` it exits 2),
-deletes, and writes one receipt to `--receipt` or the state directory's
-`receipts/`, plus a line in `logs/host-cleaner.log`.
+`--plugin <name>` runs only those plugins (`--adapter`, the name from before
+plugins, is still accepted) and `--skip-plugin <name>` never runs these.
+Targets default to the config file's `targets`, then the directory you are in.
+`clean` re-checks, shows the steps, asks (`--yes` skips the question; with no
+terminal and no `--yes` it exits 2), deletes, and writes one receipt to
+`--receipt` or the state directory's `receipts/`, plus a line in the log.
+`clean --plan` refuses a plan whose candidates belong to a plugin this install
+does not have (exit 2): sweep again with `plan`.
 
-The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
-all three directories):
+With `--archive`, a failed archive push stops the run: that candidate and
+every one after it are left, and the run exits 11. A repository with no remote
+cannot be archived, so its candidates that hold unlanded work fail their step,
+and the run exits 11.
+
+```sh
+host-cleaner clean --archive --pick branch:/path/to/repo:topic --allow abandon-unmerged
+```
+
+### Files and config
+
+host-cleaner keeps its files in three folders, from `@osdlc/tiered-dirs`'
+`standalone('host-cleaner')` tier under the `xdg` convention, so macOS uses the
+same folders as Linux:
+
+| What | Path, macOS and Linux | Moved by |
+| --- | --- | --- |
+| Config | `~/.config/host-cleaner/config.json` | `HOST_CLEANER_CONFIG_DIR`, or `XDG_CONFIG_HOME` |
+| Receipts | `~/.local/state/host-cleaner/receipts/` | `HOST_CLEANER_STATE_DIR`, or `XDG_STATE_HOME` |
+| Log | `~/.local/state/host-cleaner/host-cleaner.log` | `HOST_CLEANER_LOGS_DIR`, or `XDG_STATE_HOME` |
+
+`HOST_CLEANER_ROOT` moves all three folders, which is useful for tests.
+
+The config file holds the targets and each plugin's settings:
 
 ```json
 { "targets": ["~/dev"], "plugins": { "cargo": { "idleHours": 48 }, "node": { "enabled": false } } }
 ```
 
-`plugins.<name>` holds that plugin's settings; a name that no plugin has is an
-error. Each plugin's settings are a strict schema, checked when the config
+`plugins.<name>` holds that plugin's settings; a name that no plugin has gets
+a warning and is otherwise ignored. Each plugin's settings are a strict schema, checked when the config
 loads: a misspelt key or a wrong type is refused (exit 2), naming the plugin and
 the key.
 
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
-| `idleHours` | `cargo`, `node` | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
+| `idleHours` | `cargo`, `node` | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, fractions included (`0.5` is half an hour), and `0` takes every artifact. |
 
 Two settings sit at the top of the config and apply to every plugin:
 
@@ -331,8 +371,11 @@ Two settings sit at the top of the config and apply to every plugin:
 - `idleHours` is the default for every plugin that has the setting and does not
   set its own. `0` is allowed and makes every idle-checked artifact a candidate.
 
-`host-cleaner config` prints every plugin's effective settings: the value, and
-whether the file set it or it is the default. `--format json` prints the values.
+`host-cleaner config` prints the config file it read, then every plugin's
+effective settings: the value, and whether the file set it or it is the
+default. `--format json` prints the values.
+
+### Which plugins run here
 
 `host-cleaner plugins` lists every plugin: where it came from (`built-in` for
 now), whether it applies here and, when it does not, why, and its roots, the

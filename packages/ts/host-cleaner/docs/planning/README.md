@@ -16,7 +16,11 @@ there.
 Ids are numbers in order of writing, zero-padded to four digits so they sort.
 They are never reused.
 
+How the package is built today is in [architecture.md](../architecture.md).
+
 ## Backlog
 
 - [B-0001](backlog/B-0001-unattended-cleaning.md): Bring back unattended
-  cleaning and profiles
+  cleaning, profiles and the claude-code plugin
+- [B-0002](backlog/B-0002-root-only-stores.md): Clean stores that only root
+  can clean

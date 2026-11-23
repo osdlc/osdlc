@@ -31,8 +31,10 @@ of them.
 - `packages/profiles/system-cleanup/` and
   `packages/corpora/system-cleanup-reference/` are the system cleanup profile
   and reference: cited statements about where tools and apps keep data that
-  can be reclaimed from disk, which host-cleaner's descriptors are drafted
-  from. They live beside host-cleaner while it is their only user, and are not
+  can be reclaimed from disk. host-cleaner's descriptors will be drafted from
+  them; descriptors are not built yet (phase 4 of
+  [the host-cleaner plan](../docs/planning/host-cleaner-plan.md)). They live
+  beside host-cleaner while it is their only user, and are not
   published yet; the reference's backlog item B-0001 says when they will be.
 - TypeScript libraries are published to npm from CI with
   [Changesets](https://changesets.dev). `.github/workflows/packages-publish.yml`
