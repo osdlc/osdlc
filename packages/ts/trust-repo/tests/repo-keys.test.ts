@@ -4,7 +4,8 @@
  */
 
 import { afterEach, describe, expect, test } from 'vitest'
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -67,6 +68,9 @@ describe('parseTrustRepo', () => {
     ['gith_ub.com/acme/api', 'not a host name'],
     ['bücher.de/acme/api', 'not a host name'],
     [`github.com/acme/${'x'.repeat(201)}`, 'at most 200'],
+    ['github.com/acme/api.git', 'pass the name without .git'],
+    ['github.com/acme/API.GIT', 'pass the name without .git'],
+    ['github.com/acme/.git', 'pass the name without .git'],
   ])('refuses %j', (input, why) => {
     expect(() => parseTrustRepo(input)).toThrow(TypeError)
     expect(() => parseTrustRepo(input)).toThrow(why)
@@ -97,9 +101,19 @@ describe('repository grants', () => {
     expect(await store.isTrusted(API)).toBe(true)
     expect(await store.isTrusted({ repo: 'GITHUB.COM/ACME/API' })).toBe(true)
     expect((await store.trust(API)).alreadyTrusted).toBe(true)
-    expect(await store.resolveRoot({ repo: ' GitHub.com/Acme/API ' })).toBe('github.com/acme/api')
+    expect(await store.resolveRoot({ repo: ' GitHub.com/Acme/API ' })).toEqual(API)
     expect(await store.isTrusted({ repo: 'github.com/acme/web' })).toBe(false)
     expect(await store.isTrusted({ repo: 'gitlab.com/acme/api' })).toBe(false)
+  })
+
+  test('a resolved key is passed back in its own kind', async () => {
+    const { store } = await setup()
+    await store.trust(API, 'just')
+    const resolved = await store.resolveRoot({ repo: 'GitHub.com/Acme/API' })
+    expect(resolved).toEqual({ repo: 'github.com/acme/api' })
+    expect(await store.isTrusted(resolved, 'just')).toBe(true)
+    expect(await store.untrust(resolved, 'just')).toBe(true)
+    expect(await store.isTrusted(API, 'just')).toBe(false)
   })
 
   test('the marker follows the path rule, with the key in place of the root', async () => {
@@ -210,6 +224,18 @@ describe('list and listGrants', () => {
       { root: 'github.com/acme/api', kind: 'repo', scope: 'mise' },
       { root: 'gitlab.com/acme/web', kind: 'repo', scope: '*' },
     ])
+  })
+
+  test('a root sorts before a repository whose key sorts first', async () => {
+    const { store } = await setup()
+    // A Windows root, written as a release on Windows writes it: `z:/w` sorts
+    // after `a.com/x/y` by code unit, so only the kind puts it first.
+    const digest = createHash('sha256').update('z:/w').digest('hex').slice(0, 16)
+    await mkdir(store.dir(), { recursive: true })
+    await writeFile(join(store.dir(), `w-${digest}`), 'z:/w\n')
+    await store.trust({ repo: 'a.com/x/y' })
+    expect(await store.list()).toEqual(['z:/w', 'a.com/x/y'])
+    expect((await store.listGrants()).map((g) => g.kind)).toEqual(['path', 'repo'])
   })
 })
 

@@ -333,6 +333,8 @@ function repoProblem(key: string): string | null {
   if (owner.length > MAX_REPO_SEGMENT || name.length > MAX_REPO_SEGMENT) {
     return `the owner and the name take at most ${MAX_REPO_SEGMENT} characters each`
   }
+  // `api.git` and `api` would be two grants on one repository.
+  if (name.endsWith('.git')) return 'the name ends in .git; pass the name without .git'
   return null
 }
 
@@ -346,11 +348,12 @@ function repoProblem(key: string): string | null {
  * - no space, backslash or control character anywhere;
  * - the host a host name: dot-separated labels of letters, digits and `-`,
  *   so it has no `:` and no port;
- * - the owner and the name 1-200 characters each.
+ * - the owner and the name 1-200 characters each;
+ * - the name not ending in `.git`, so a clone URL's name and the bare name
+ *   are never two grants. Pass the name without it.
  *
  * No root can pass: a root starts with `/` (an empty first part), or with a
- * drive letter and `:`, which no host holds. The `.git` suffix of a clone URL
- * is not removed: pass the name without it.
+ * drive letter and `:`, which no host holds.
  *
  * @example
  * ```ts
@@ -386,6 +389,14 @@ function kindOf(key: string): TrustKeyKind {
  */
 async function resolveKey(key: TrustKey): Promise<string> {
   return typeof key === 'string' ? resolveTrustRoot(key) : parseTrustRepo(key.repo)
+}
+
+/** {@link TrustStore.resolveRoot}: the resolved key, in the kind it was given. */
+function resolveRoot(key: string): Promise<string>
+function resolveRoot(key: TrustRepoKey): Promise<TrustRepoKey>
+function resolveRoot(key: TrustKey): Promise<string | TrustRepoKey>
+async function resolveRoot(key: TrustKey): Promise<string | TrustRepoKey> {
+  return typeof key === 'string' ? resolveTrustRoot(key) : { repo: parseTrustRepo(key.repo) }
 }
 
 /** A name safe on every filesystem, from any string. */
@@ -559,12 +570,15 @@ export interface TrustStore {
    */
   dir(): string
   /**
-   * The string a key's grant is stored under: the absolute,
-   * symlink-resolved root, or the lower-cased repository key. Pass the
-   * result on as a key of the same kind: a repository's as `{ repo }`, since
-   * a plain string is always read as a path.
+   * The key a grant is stored under, in the kind it was given: a root
+   * becomes the absolute, symlink-resolved root, and `{ repo }` becomes
+   * `{ repo }` with the lower-cased key. Either can be passed back to every
+   * other method. A repository stays an object because a plain string is
+   * always read as a path.
    */
-  resolveRoot(key: TrustKey): Promise<string>
+  resolveRoot(key: string): Promise<string>
+  resolveRoot(key: TrustRepoKey): Promise<TrustRepoKey>
+  resolveRoot(key: TrustKey): Promise<string | TrustRepoKey>
   /**
    * The marker file's path for `key` and `scope`, without creating it. For a
    * `--show` command that reports where a grant would be stored, trusted or
@@ -748,7 +762,7 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
   return {
     tool,
     dir,
-    resolveRoot: resolveKey,
+    resolveRoot,
 
     async markerPath(key, scope = WHOLE_REPO_SCOPE) {
       const normalized = normalizeScope(scope)

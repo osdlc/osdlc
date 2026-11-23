@@ -5,17 +5,19 @@
  *
  * It sits beside the marker store so a tool built on `@osdlc/config-layers`
  * (whose machine schema has the `trust:` block the policy comes from) gets
- * the trust decision without writing it. This module runs no git. The
- * `owners` rule needs the owner of a root's `origin` remote, so the caller
- * supplies {@link PolicyDecisionOptions.ownerOf}. `originOwner` from
- * `@osdlc/trust-repo/git` is a git-backed one.
+ * the trust decision without writing it. This module runs no git. For a
+ * root, the `owners` rule needs the owner of its `origin` remote, so the
+ * caller supplies {@link PolicyDecisionOptions.ownerOf}. `originOwner` from
+ * `@osdlc/trust-repo/git` is a git-backed one. A repository key names its
+ * own host and owner.
  *
  * {@link trustDecision} decides trust in this order:
  *
  *   1. A marker grant in the caller's {@link TrustStore}.
  *   2. `policy.paths`: a glob over the resolved repo root.
  *   3. `policy.owners`: a case-insensitive match on the host and owner
- *      `ownerOf` returns. See {@link TrustPolicy.owners}.
+ *      `ownerOf` returns for a root, or that a repository key names. See
+ *      {@link TrustPolicy.owners}.
  *
  * The caller also expands path tokens (`~`, `{name}`, and any others its own
  * paths format defines), through {@link PolicyDecisionOptions.expandPath}.

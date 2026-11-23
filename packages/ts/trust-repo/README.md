@@ -49,7 +49,7 @@ Any CLI tool gets its own store by name.
 | Member | Does |
 |---|---|
 | `dir()` | the store's directory: `dir` verbatim when given, else `<state home>/<tool>[/<app>]/trusted/` when `vendorDirs` is given, else `$XDG_STATE_HOME/<tool>/trusted/`, or `~/.local/state/<tool>/trusted/` when unset ([Where the store lives](#where-the-store-lives)) |
-| `resolveRoot(key)` | the string a key's grant is stored under: the absolute, symlink-resolved root, or the lower-cased repository key |
+| `resolveRoot(key)` | the key a grant is stored under, in the kind it was given: the absolute, symlink-resolved root, or `{ repo }` with the lower-cased key. Either can be passed back to every other method |
 | `markerPath(key, scope?)` | the marker file's path for a grant, without creating it (for a `--show` command) |
 | `isTrusted(key, scope?)` | whether the key has a whole-repository grant or a grant for `scope` |
 | `trust(key, scope?)` | records a grant and returns `{ root, kind, scope, marker, alreadyTrusted }`. With no `scope` the grant covers the whole repository; an explicit `'*'` throws. Safe to repeat. `alreadyTrusted` says whether this exact grant already existed |
@@ -196,7 +196,8 @@ await trust.isTrusted('/work/github.com/acme/api') // false: a path is never a r
 lower-cased, and must be three parts: a host name (letters, digits, `-` and
 `.`, so no `:` and no port), then an owner and a name of 1-200 characters
 each. No part may be empty, `.` or `..`, and no space, backslash or control
-character is allowed. A `.git` suffix is not removed.
+character is allowed. A name ending in `.git` is refused, so a clone URL's
+name and the bare name never make two grants: pass the name without `.git`.
 
 A repository and a root never share a grant. A root starts with `/`, or with
 a drive letter and `:` on Windows. A repository starts with a host name,
@@ -322,7 +323,8 @@ host and owner of the root's `origin` remote as `host/owner`. An entry is
 `host/owner` (`gitlab.com/my-org`) or a bare `owner`, which means
 `github.com/owner`. A bare owner from `ownerOf` is read the same way. So
 `my-org` does not match a clone from `gitlab.com/my-org`. Without an `ownerOf`
-the `owners` rule never matches.
+the `owners` rule never matches a root. A repository key gives its own host
+and owner, so it needs no `ownerOf`.
 
 The policy takes a repository key as well as a root. `paths` never matches a
 repository: it is not a path, and `**` would otherwise match every one.

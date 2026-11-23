@@ -15,9 +15,10 @@
  *
  * {@link policyDecision}, {@link trustDecision} and {@link policyExecGate}
  * apply a `paths`/`owners` policy, read by the tool from its machine file, on
- * top of the store. {@link expandTrustPath} expands a `paths` glob. The
- * `owners` rule needs git, which this entry point does not run, so the caller
- * supplies `ownerOf`; `@osdlc/trust-repo/git` has a git-backed one.
+ * top of the store. {@link expandTrustPath} expands a `paths` glob. For a
+ * root, the `owners` rule needs git, which this entry point does not run, so
+ * the caller supplies `ownerOf`; `@osdlc/trust-repo/git` has a git-backed
+ * one. A repository key names its own host and owner.
  *
  * `./store.ts` and `./gate.ts` explain the design of the store and the gate.
  */

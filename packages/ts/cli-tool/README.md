@@ -738,7 +738,9 @@ Each store method receives the command context, so it can read `ctx.cwd`,
   so is one given with `--list`. Without the argument the command acts on the
   working directory, or `-C`, as before. A service without `parseRepo` takes
   no argument, so it never grants its working directory in place of a
-  repository it cannot read. An entry for a repository has `kind: 'repo'`.
+  repository it cannot read. Any word after `--` is a usage error, so
+  `trust -- github.com/acme/api` never grants the working directory either.
+  An entry for a repository has `kind: 'repo'`.
   Through an adapter the argument is the `repository` property.
 - `guide` prints every topic; `guide topics` lists them; `guide <topic>` prints
   one. An unknown topic exits 2.

@@ -950,6 +950,24 @@ describe('trust with a repository', () => {
     expect(marked.size).toBe(0)
   })
 
+  test('a word after -- is a usage error, and nothing is granted', async () => {
+    const { service, marked, requests } = await repoService()
+    const app = appWith(memoryStore(), service)
+    for (const args of [
+      ['trust', '--', 'github.com/acme/api'],
+      ['trust', 'github.com/acme/api', '--', 'x'],
+    ]) {
+      const r = await runApp(app, args, { cwd: '/repo' })
+      expect(r.exit, args.join(' ')).toBe(2)
+      expect(r.err).toContain('trust takes no words after --')
+    }
+    const svc = trustService()
+    const plain = await runApp(appWith(memoryStore(), svc), ['trust', '--', 'x'], { cwd: '/repo' })
+    expect(plain.exit).toBe(2)
+    expect(marked.size + svc.marked.size).toBe(0)
+    expect(requests).toEqual([])
+  })
+
   test('--list takes no repository', async () => {
     const { service } = await repoService()
     const r = await runApp(appWith(memoryStore(), service), ['trust', '--list', 'github.com/a/b'])

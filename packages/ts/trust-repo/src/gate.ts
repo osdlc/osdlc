@@ -105,9 +105,8 @@ export async function resolveExecGate(
   const { root, configured, flag } = args
   const scopes = [...(args.scopes ?? [WHOLE_REPO_SCOPE])]
   if (scopes.length === 0) throw new TypeError('resolveExecGate: scopes must not be empty')
-  const resolved = await store.resolveRoot(root)
-  // A plain string is always a path, so a repository is asked about as itself.
-  const key: TrustKey = typeof root === 'string' ? resolved : { repo: resolved }
+  const key = await store.resolveRoot(root)
+  const resolved = typeof key === 'string' ? key : key.repo
   const base = { configured, root: resolved, scopes }
 
   if (flag === false) {

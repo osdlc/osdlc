@@ -193,10 +193,10 @@ export const TrustOutputSchema = z.object({
  *
  * Two of the mode flags together are a usage error, and so is a `--scope`
  * that is empty, `*`, or has controls or space at either end, a repository
- * the service refuses, and a repository with `--list`. The JSON answer
- * has one shape for every mode: `{ action, changed, roots }`. `--untrust` on a
- * root with no marker still prints it, then exits 1. `--untrust-all` is there
- * when the service has `untrustAll`.
+ * the service refuses, a repository with `--list`, and any word after `--`.
+ * The JSON answer has one shape for every mode: `{ action, changed, roots }`.
+ * `--untrust` on a root with no marker still prints it, then exits 1.
+ * `--untrust-all` is there when the service has `untrustAll`.
  *
  * Granting trust is `cli-only`: the MCP and HTTP adapters refuse it, so an
  * agent or a web page cannot grant itself trust. `--show`, `--list`,
@@ -260,7 +260,10 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
     output: TrustOutputSchema,
     kind: 'trust',
     exposureOf: ({ flags: f }) => (MODES.some((m) => f[m] === true) ? 'all' : 'cli-only'),
-    async run({ flags: f, positionals }, ctx) {
+    async run({ flags: f, positionals, rest }, ctx) {
+      // An optional argument after `--` lands in `rest`. Read as nothing, it
+      // would turn `trust -- <repo>` into a grant on the working directory.
+      if (rest.length > 0) throw new UsageError('trust takes no words after --')
       const modes = MODES.filter((m) => f[m] === true)
       if (modes.length > 1) {
         throw new UsageError(
