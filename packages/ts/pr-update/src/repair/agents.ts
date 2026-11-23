@@ -28,6 +28,7 @@ import {
   type PlannedCall,
 } from '@osdlc/agent-call'
 import { forwardedSignal } from '@osdlc/command-seam'
+import { REPOSITORY_VARS } from '@osdlc/typed-git'
 
 import type { Repair, RepairRequest } from '../ports.ts'
 import type { RepairAgent } from './names.ts'
@@ -94,8 +95,10 @@ export function repairCallSpec(
     session: { persist: false },
     // The worktree is the PR branch's own content, which its author controls. Keep credentials
     // out of the agent's environment (an empty value overrides the inherited one), and for
-    // claude keep that branch's project settings, hooks and MCP servers from loading.
+    // claude keep that branch's project settings, hooks and MCP servers from loading. An
+    // inherited `GIT_DIR` would make the agent's git act on another repository: unset it.
     env: SCRUBBED_ENV,
+    unsetEnv: REPOSITORY_VARS,
     ...(agent === 'claude' ? CLAUDE_ISOLATION : {}),
     ...(opts.model ? { model: opts.model } : {}),
     ...(opts.timeoutSeconds ? { timeoutMs: opts.timeoutSeconds * 1000 } : {}),

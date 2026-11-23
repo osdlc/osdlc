@@ -7,9 +7,6 @@
  *   {@link defaultRoots} works out from the caller's own checkout.
  * - {@link CheckoutLocator} and {@link locateCheckout} find every checkout
  *   whose `origin` names a repository.
- * - {@link withoutRepositoryVars} wraps a runner so its children ignore an
- *   inherited `GIT_DIR` and the other variables that pick a repository, as
- *   every git call here does.
  *
  * The roots are machine-only. A repository's config cannot set them, so a
  * cloned repository cannot point a tool at directories on a person's disk.
@@ -33,7 +30,6 @@ export {
   type ResolvedRoots,
   type RootsOptions,
   type RootsSource,
-  withoutRepositoryVars,
 } from './repositories/roots.ts'
 
 export {

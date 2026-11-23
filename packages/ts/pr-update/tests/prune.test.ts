@@ -5,7 +5,7 @@
  * the real home.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   chmodSync,
   existsSync,
@@ -203,6 +203,30 @@ describe('dead run worktrees under worktrees/', () => {
     expect(listed(checkout.dir).sort()).toEqual([live, theirs].sort())
     expect(branches(checkout.dir)).not.toContain(`pr-update/scratch-${DEAD}`)
     expect(branches(checkout.dir)).toContain('feature')
+  })
+
+  test('one of a located checkout is removed through its owner with GIT_DIR set to another repository', () => {
+    const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
+    checkout.commit('init', { 'w.txt': 'w' })
+    const dead = runWorktree(checkout.dir, 'acme/web')
+    // A git hook in another checkout exports its GIT_DIR.
+    const hook = makeGitFixture({ dir: join(scratch, 'dev', 'hook') })
+    hook.commit('hook', { 'h.txt': 'h' })
+    const hookRefs = git(hook.dir, 'for-each-ref')
+
+    vi.stubEnv('GIT_DIR', join(hook.dir, '.git'))
+    let r: ReturnType<typeof prune>
+    try {
+      r = prune()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+
+    expect(r.removed.map((e) => e.path)).toEqual([dead])
+    expect(existsSync(dead)).toBe(false)
+    expect(listed(checkout.dir)).toEqual([])
+    expect(branches(checkout.dir)).not.toContain(`pr-update/scratch-${DEAD}`)
+    expect(git(hook.dir, 'for-each-ref')).toBe(hookRefs)
   })
 
   test('one registered in a managed clone is removed while holding the clone’s lock, without waiting', () => {

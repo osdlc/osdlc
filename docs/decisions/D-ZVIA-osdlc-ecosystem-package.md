@@ -132,9 +132,10 @@ matching), within the pr-update omnibus
   such as a dotfiles repository at the home directory. Every git call the
   package makes unsets an inherited `GIT_DIR` and the other variables that
   pick a repository, so the answer is the same inside a git hook. The home
-  stop compares real paths. The wrapper that does it, `withoutRepositoryVars`,
-  is exported from `./repositories`, so a tool's own git calls in a checkout
-  the locator found run the same way; pr-update's do.
+  stop compares real paths. The wrapper that does it is typed-git's
+  `withoutRepositoryVars`, a building block like the rest of the git work, so
+  a tool's own git calls in a checkout the locator found run the same way;
+  pr-update's do.
 - **The `.` entry holds the family's directories.** It exports
   `OSDLC_VENDOR_DIRS` and `osdlcDirs()`, pinned to the Xdg convention, where
   the Decision puts each concern in a subpath of its own. That keeps the

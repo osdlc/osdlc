@@ -3,7 +3,7 @@
  * check, the clone steps with git and gh as seams, the lock, and the machine-file write race.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   existsSync,
   mkdirSync,
@@ -156,6 +156,47 @@ function gitFailing(word: string | null, env: Record<string, string> = {}): Comm
 }
 
 const req = { host: 'github.com', owner: 'acme', name: 'api', ghHost: 'github.com' }
+
+describe('with GIT_DIR set to another repository, as a git hook sets it', () => {
+  /** A checkout that is not the clone's, and everything git keeps in it. */
+  function other() {
+    const fx = makeGitFixture({ dir: join(scratch, 'other') })
+    fx.commit('other', { 'o.txt': 'o' })
+    const state = () =>
+      [
+        spawnRunner('git').run(['for-each-ref'], { cwd: fx.dir }).stdout,
+        readFileSync(join(fx.dir, '.git', 'config'), 'utf8'),
+      ].join('\n')
+    return { dir: fx.dir, state }
+  }
+
+  test("makeClone's gh repo clone and git calls make the clone, and leave that repository alone", () => {
+    const hook = other()
+    const before = hook.state()
+    const final = clonePath(join(scratch, 'clones'), req)
+    mkdirSync(dirname(final), { recursive: true })
+    vi.stubEnv('GIT_DIR', join(hook.dir, '.git'))
+    try {
+      makeClone(final, req, { gh })
+    } finally {
+      vi.unstubAllEnvs()
+    }
+    const refs = spawnRunner('git').run(['for-each-ref', '--format=%(refname)'], { cwd: final })
+    expect(refs.stdout).toContain('refs/remotes/origin/topic')
+    expect(existsSync(join(final, CLONE_MARKER))).toBe(true)
+    expect(hook.state()).toBe(before)
+  })
+
+  test('checkMirrorDir does not read a directory outside every checkout as inside one', () => {
+    const hook = other()
+    vi.stubEnv('GIT_DIR', join(hook.dir, '.git'))
+    try {
+      expect(() => checkMirrorDir(join(scratch, 'clones'))).not.toThrow()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+})
 
 describe('makeClone', () => {
   test("writes the credential helper in the clone's own config only: global and system config are untouched", () => {
