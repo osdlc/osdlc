@@ -57,7 +57,14 @@ import {
   type Os,
   type ProjectEntry,
 } from './schema.ts'
-import { VAR_COMMAND_LIMIT_MS, fillTemplate, resolveVars, type Vars } from './vars.ts'
+import {
+  BUILT_IN_VARS,
+  VAR_COMMAND_LIMIT_MS,
+  fillTemplate,
+  resolveVars,
+  varRefs,
+  type Vars,
+} from './vars.ts'
 
 /** The protest on a prune whose program is not on PATH; `--allow no-prune-tool` removes the folder instead (D12). */
 export const NO_PRUNE_TOOL = 'no-prune-tool'
@@ -311,6 +318,15 @@ interface EngineAt {
   /** The config's `vars`: trusted folders. */
   vars: Readonly<Record<string, string | undefined>>
 }
+
+const resolvedVars = new WeakMap<Plugin, () => Vars | undefined>()
+
+/**
+ * The variables of `plugin`, a descriptor's, as its last `detect` worked them
+ * out: those it declares, and the built-ins it uses. Undefined for any other
+ * plugin, and for a descriptor whose `detect` has not resolved them.
+ */
+export const descriptorVars = (plugin: Plugin): Vars | undefined => resolvedVars.get(plugin)?.()
 
 function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   const config = Object.fromEntries(
@@ -685,7 +701,15 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     .flat()
     .filter((s) => 'command' in s).length
 
-  return {
+  // The variables `plugins` shows: the declared ones, and the built-ins the descriptor uses.
+  const used = new Set(varRefs(JSON.stringify([d.paths, d.vars, d.inUse?.locks])))
+  const shown = (): Vars | undefined =>
+    vars &&
+    Object.fromEntries(
+      Object.entries(vars).filter(([n]) => !Object.hasOwn(BUILT_IN_VARS, n) || used.has(n)),
+    )
+
+  const plugin: Plugin = {
     name,
     limits: {
       discover: DISCOVER_LIMIT_MS,
@@ -745,6 +769,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       return kit.remove(path, ctx)
     },
   }
+  resolvedVars.set(plugin, shown)
+  return plugin
 }
 
 const bytesText = (n: number | null): string => (n === null ? 'an unknown size' : `${n} bytes`)

@@ -354,14 +354,22 @@ Two settings sit at the top of the config and apply to every plugin:
 `host-cleaner config` prints every plugin's effective settings: the value, and
 whether the file set it or it is the default. `--format json` prints the values.
 
-`host-cleaner plugins` lists every plugin: where it came from (`built-in` for
-now), whether it applies here and, when it does not, why, and its roots, the
-folders it may delete in besides the targets. It runs `detect`, `scope` and
-`roots` and nothing else, so it proposes and deletes nothing. A plugin whose
-`detect` throws shows the error as the reason; Orca installed but not running
-shows `not detected: Orca is installed but not running; its worktrees are left
-to git`. A plugin the config disables is listed as `disabled`, and its `detect`
-is not run. `--format json` prints the same, one object per plugin.
+`host-cleaner plugins` lists every plugin: where it came from (`built-in`, or
+for a descriptor `shipped`, `user` for the config directory or `flag` for
+`--descriptor`), whether it applies here and, when it does not, why, and its
+roots, the folders it may delete in besides the targets. It runs `detect`,
+`scope` and `roots` and nothing else, so it proposes and deletes nothing. A
+plugin whose `detect` throws shows the error as the reason; Orca installed but
+not running shows `not detected: Orca is installed but not running; its
+worktrees are left to git`. A plugin the config disables is listed as
+`disabled`, and its `detect` is not run.
+
+Under a descriptor with variables, one line per variable it declares or uses
+from the built-ins: its value and the source that gave it, then each source
+tried before it and why it gave none. A command that timed out says so, and the
+source after it that gave the value is the one named. A variable no source
+gave a value has no value, and its folders are left out. `--format json` prints
+the same, one object per plugin, each with its `vars`.
 
 ```text
 targets: /Users/me/dev
@@ -369,6 +377,9 @@ targets: /Users/me/dev
   cargo  built-in  detected; roots: none, the targets alone
   node   built-in  disabled: plugins.node.enabled is false; --plugin node runs it anyway
   orca   built-in  not detected: Orca is installed but not running; its worktrees are left to git
+  go     user      detected; roots: /Users/me/go/pkg
+    ${GOPATH}      = /Users/me/go  from value (tried env GOPATH: not set)
+    ${GOMODCACHE}  = /Users/me/go/pkg/mod  from value (tried env GOMODCACHE: not set; command go env GOMODCACHE: timed out after 5 s)
 ```
 
 ### Exit codes

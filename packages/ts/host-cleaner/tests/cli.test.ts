@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
-import { fakeRunner } from '@osdlc/command-seam/testing'
+import { fakeNeverExited, fakeRunner } from '@osdlc/command-seam/testing'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
@@ -23,12 +23,16 @@ import { main, tildeId, untildeId, type MainDeps } from '../src/cli.ts'
 import { hostDirs } from '../src/config.ts'
 import { PLAN_VERSION, parsePlan } from '../src/plan.ts'
 import {
+  descriptorPlugin,
   orcaPlugin,
+  parseDescriptor,
+  pluginKit,
   type Candidate,
   type Objection,
   type Plugin,
   type RefCandidate,
 } from '../src/index.ts'
+import { fakeRunner as kitRunner, tempHome } from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -293,6 +297,7 @@ describe('plugins', () => {
           detected: true,
           reason: null,
           roots: ['/cache/git'],
+          vars: [],
         },
         {
           name: 'cargo',
@@ -301,6 +306,7 @@ describe('plugins', () => {
           detected: false,
           reason: 'plugins.cargo.enabled is false; --plugin cargo runs it anyway',
           roots: [],
+          vars: [],
         },
         {
           name: 'node',
@@ -309,6 +315,7 @@ describe('plugins', () => {
           detected: false,
           reason: null,
           roots: [],
+          vars: [],
         },
         {
           name: 'orca',
@@ -317,9 +324,118 @@ describe('plugins', () => {
           detected: false,
           reason: 'Orca is installed but not running; its worktrees are left to git',
           roots: [],
+          vars: [],
         },
       ],
     })
+  })
+
+  /** Go's module cache: GOMODCACHE, then `go env`, then under GOPATH; a build cache under XDG_CACHE_HOME; and a folder with no value. */
+  const GO = `descriptor: 1
+detect:
+  any: [{ onPath: go }]
+vars:
+  GOPATH:
+    - env: GOPATH
+    - value: ~/go
+  GOMODCACHE:
+    - env: GOMODCACHE
+    - command: [go, env, GOMODCACHE]
+    - value: '\${GOPATH}/pkg/mod'
+  TOOLDIR:
+    - env: GO_TOOL_DIR
+paths:
+  modcache: { all: '\${GOMODCACHE}' }
+  buildcache: { all: '\${XDG_CACHE_HOME}/go-build' }
+  tools: { all: '\${TOOLDIR}' }
+candidates:
+  - { path: modcache, costDescription: re-download }
+  - { path: buildcache, costDescription: rebuild }
+  - { path: tools, costDescription: rebuild }
+`
+
+  /** The go descriptor, shipped, as a plugin over a fixture home whose `go env GOMODCACHE` never answers. */
+  function goHungEnv() {
+    const h = tempHome()
+    cleanups.push(h.cleanup)
+    const shipped = tempDir()
+    writeFileSync(join(shipped, 'go.yaml'), GO)
+    const fake = kitRunner({ go: { 'env GOMODCACHE': fakeNeverExited('timeout') } })
+    const go = descriptorPlugin('go', parseDescriptor(GO, 'go.yaml'), { ownDirs: [] }).create({
+      settings: { idleHours: 0 },
+      only: [],
+      env: h.env,
+      kit: pluginKit('go', { env: h.env, ...fake }),
+    })
+    return { home: h.home, shipped, go }
+  }
+
+  test('a timed-out command shows as such, with the source used after it: one line per variable', async () => {
+    const { env, cwd } = setup()
+    const { home, shipped, go } = goHungEnv()
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [fake('git'), go],
+      shippedDescriptors: shipped,
+    })
+    expect(r.code).toBe(0)
+    expect(r.err).toBe('')
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  git  built-in  detected; roots: none, the targets alone',
+        `  go   shipped   detected; roots: ${join(home, 'go/pkg')}, ${join(home, '.cache')}`,
+        `    \${XDG_CACHE_HOME}  = ${join(home, '.cache')}  from default (tried env XDG_CACHE_HOME: not set)`,
+        `    \${GOPATH}          = ${join(home, 'go')}  from value (tried env GOPATH: not set)`,
+        `    \${GOMODCACHE}      = ${join(home, 'go/pkg/mod')}  from value (tried env GOMODCACHE: not set; command go env GOMODCACHE: timed out after 5 s)`,
+        '    ${TOOLDIR}         has no value (tried env GO_TOOL_DIR: not set)',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  test('json gives each variable its value, the source that gave it and every source that failed', async () => {
+    const { env, cwd } = setup()
+    const { home, shipped, go } = goHungEnv()
+    const r = await run(['plugins', '--format', 'json'], cwd, env, {
+      plugins: [go],
+      shippedDescriptors: shipped,
+    })
+    expect(r.code).toBe(0)
+    const [row] = JSON.parse(r.out).plugins
+    expect(row.source).toBe('shipped')
+    expect(row.vars).toEqual([
+      {
+        name: 'XDG_CACHE_HOME',
+        value: join(home, '.cache'),
+        from: 'default',
+        trusted: false,
+        tried: [{ source: 'env XDG_CACHE_HOME', failed: 'not set' }],
+      },
+      {
+        name: 'GOPATH',
+        value: join(home, 'go'),
+        from: 'value',
+        trusted: false,
+        tried: [{ source: 'env GOPATH', failed: 'not set' }],
+      },
+      {
+        name: 'GOMODCACHE',
+        value: join(home, 'go/pkg/mod'),
+        from: 'value',
+        trusted: false,
+        tried: [
+          { source: 'env GOMODCACHE', failed: 'not set' },
+          { source: 'command go env GOMODCACHE', failed: 'timed out after 5 s' },
+        ],
+      },
+      {
+        name: 'TOOLDIR',
+        value: null,
+        from: null,
+        trusted: false,
+        tried: [{ source: 'env GO_TOOL_DIR', failed: 'not set' }],
+      },
+    ])
   })
 
   test('it proposes and deletes nothing, and a config naming no plugin is refused with exit 2', async () => {
@@ -526,6 +642,48 @@ ${extra}`
       (await run(['config', '--descriptor', extra, '--format', 'json'], h.cwd, h.env, deps)).out,
     )
     expect(json.plugins.extra).toEqual({ enabled: true, idleHours: 24 })
+  })
+
+  test('plugins says where each descriptor came from and shows its variables, even when it is not detected', async () => {
+    const h = withHome()
+    writeFileSync(
+      join(h.user, 'mine.yaml'),
+      `descriptor: 1
+vars:
+  DIR:
+    - env: MINE_DIR
+    - value: ~/.cache/mine
+paths:
+  store: { all: '\${DIR}' }
+candidates:
+  - { path: store, costDescription: re-download }
+`,
+    )
+    const extra = join(h.cwd, 'extra.yaml')
+    writeFileSync(extra, store('.cache/extra'))
+    const file = join(h.home, 'config.json')
+    const config = { orca: { enabled: false }, mine: { vars: { DIR: '~/elsewhere' } } }
+    writeFileSync(file, JSON.stringify({ plugins: config }))
+    const r = await run(
+      ['plugins', '--config', file, '--descriptor', extra, '--format', 'json'],
+      h.cwd,
+      h.env,
+      { shippedDescriptors: h.shipped },
+    )
+    expect(r.code).toBe(0)
+    const rows = Object.fromEntries(
+      JSON.parse(r.out).plugins.map((p: { name: string }) => [p.name, p]),
+    )
+    expect(rows.git).toMatchObject({ source: 'built-in', vars: [] })
+    expect(rows.orca).toMatchObject({ enabled: false, vars: [] })
+    expect(rows.mine).toMatchObject({
+      source: 'user',
+      detected: false,
+      vars: [
+        { name: 'DIR', value: join(h.home, 'elsewhere'), from: 'config', trusted: true, tried: [] },
+      ],
+    })
+    expect(rows.extra).toMatchObject({ source: 'flag', vars: [] })
   })
 
   test('a descriptor file that is not valid is refused with exit 2, naming the file and the line', async () => {

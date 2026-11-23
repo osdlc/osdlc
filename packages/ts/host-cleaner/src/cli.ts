@@ -33,8 +33,14 @@ import {
   readConfig,
   type Config,
 } from './config.ts'
-import { DescriptorLoadError, type DescriptorSources } from './descriptor/load.ts'
+import { descriptorVars } from './descriptor/engine.ts'
+import {
+  DescriptorLoadError,
+  type DescriptorSource,
+  type DescriptorSources,
+} from './descriptor/load.ts'
 import { DescriptorError } from './descriptor/schema.ts'
+import type { Vars } from './descriptor/vars.ts'
 import { pluginKit } from './kit.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { UnknownPlugin, loadPlugins, runsAmong, selectPlugins } from './registry.ts'
@@ -662,21 +668,59 @@ function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   return EXIT.ok
 }
 
+/** One of a descriptor's variables, as `host-cleaner plugins` shows it. */
+interface VarRow {
+  name: string
+  /** The folder; null when no source gave one. */
+  value: string | null
+  /** The source that gave it, such as `config`, `env GOPATH` or `value`; null when none did. */
+  from: string | null
+  /** Set in the config, or a `value` that starts with such a variable: its folder may sit outside home. */
+  trusted: boolean
+  /** The sources tried before it, or all of them when none gave a value, each with why it gave none. */
+  tried: ReadonlyArray<{ source: string; failed: string }>
+}
+
 /** One row of `host-cleaner plugins`. */
 interface PluginRow {
   name: string
-  /** Where the plugin came from; every plugin ships with host-cleaner for now. */
-  source: 'built-in'
+  /** `built-in`, or for a descriptor the folder it was read from: `shipped`, `user` or `flag` (`--descriptor`). */
+  source: 'built-in' | DescriptorSource
   enabled: boolean
   detected: boolean
   /** Why it does not run: disabled in the config, or what its `detect` threw. Null when it is detected, or `detect` answered no. */
   reason: string | null
   /** Where it may delete besides the targets; empty, the targets alone. */
   roots: readonly string[]
+  /** A descriptor's variables as its `detect` worked them out; empty for a plugin that has none, or when `detect` did not get that far. */
+  vars: readonly VarRow[]
+}
+
+const varRows = (vars: Vars | undefined): VarRow[] =>
+  Object.entries(vars ?? {}).map(([name, x]) => ({
+    name,
+    value: x.value,
+    from: x.from ?? null,
+    trusted: x.trusted,
+    tried: x.tried,
+  }))
+
+/**
+ * `${NAME} = <folder>  from <source> (tried <source>: <why it gave none>; …)`,
+ * or `has no value (tried …)` when no source gave one.
+ */
+function varLine(x: VarRow, width: number): string {
+  const tried =
+    x.tried.length === 0
+      ? ''
+      : ` (tried ${x.tried.map((t) => `${t.source}: ${t.failed}`).join('; ')})`
+  const said = x.value === null ? `has no value${tried}` : `= ${x.value}  from ${x.from}${tried}`
+  return `    ${`\${${x.name}}`.padEnd(width + 3)}  ${said}`
 }
 
 function renderPlugins(rows: readonly PluginRow[], targets: readonly string[]): string {
   const width = Math.max(...rows.map((r) => r.name.length))
+  const from = Math.max(...rows.map((r) => r.source.length))
   const lines = [`targets: ${targets.join(', ') || '(none)'}`]
   for (const r of rows) {
     const state = !r.enabled
@@ -685,8 +729,10 @@ function renderPlugins(rows: readonly PluginRow[], targets: readonly string[]): 
         ? `detected; roots: ${r.roots.join(', ') || 'none, the targets alone'}`
         : 'not detected'
     lines.push(
-      `  ${r.name.padEnd(width)}  ${r.source}  ${state}${r.reason === null ? '' : `: ${r.reason}`}`,
+      `  ${r.name.padEnd(width)}  ${r.source.padEnd(from)}  ${state}${r.reason === null ? '' : `: ${r.reason}`}`,
     )
+    const names = Math.max(...r.vars.map((x) => x.name.length))
+    for (const x of r.vars) lines.push(varLine(x, names))
   }
   return block(lines)
 }
@@ -705,9 +751,10 @@ async function runPlugins(
   let warnings: readonly string[]
   try {
     let enabled: readonly Plugin[] = []
-    const { definitions } = loadPlugins(sourcesFor(v, ctx, deps), {
+    const { definitions, descriptors } = loadPlugins(sourcesFor(v, ctx, deps), {
       runs: runsAmong(() => enabled),
     })
+    const sources = new Map(descriptors.map((d) => [d.name, d.source]))
     const config = loadConfig(v, ctx, definitions)
     const all = allPlugins(config, definitions, deps, ctx)
     enabled = all.filter((p) => !disabledByConfig(p.name, config.plugins))
@@ -718,13 +765,14 @@ async function runPlugins(
       const s = state.get(p.name)
       return {
         name: p.name,
-        source: 'built-in',
+        source: sources.get(p.name) ?? 'built-in',
         enabled: !off,
         detected: s?.detected ?? false,
         reason: off
           ? `plugins.${p.name}.enabled is false; --plugin ${p.name} runs it anyway`
           : (s?.reason ?? null),
         roots: s?.roots ?? [],
+        vars: off ? [] : varRows(descriptorVars(p)),
       }
     })
     targets = found.ctx.targets
