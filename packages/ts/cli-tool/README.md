@@ -685,7 +685,7 @@ a list, for a bundler that collects the modules itself.
 | Entry | Mount it as | The tool supplies |
 |---|---|---|
 | `config-command` | `config: configCommands(store)` | a `ConfigStore`: `layers`, `defaultLayer`, `keys`, `list`, `locations`, `set`, `unset`, and optionally `cliOnlyKeys`, `resolveKey`, `dryRun` and `explain` |
-| `trust-command` | `trust: trustCommand(service)` | a `TrustService`: `trust`, `untrust`, `show`, `list`, and optionally `untrustAll` and `scopes` for `--scope` |
+| `trust-command` | `trust: trustCommand(service)` | a `TrustService`: `trust`, `untrust`, `show`, `list`, and optionally `untrustAll`, `scopes` for `--scope`, and `parseRepo` for a repository argument |
 | `guide` | `guide: guideCommand(topics, { title })` | `GuideTopic`s: `{ id, title, summary, body(ctx) }` |
 
 Each store method receives the command context, so it can read `ctx.cwd`,
@@ -729,6 +729,19 @@ Each store method receives the command context, so it can read `ctx.cwd`,
   every grant of the root. Either one with nothing to remove prints the answer
   and exits 1. A `--scope` that is empty, `*` or has controls or space at
   either end is a usage error.
+- `parseRepo` on the trust service adds an optional `repository` argument, so
+  a person can grant trust to a clone by its name rather than its folder:
+  `tooly trust github.com/acme/api`. Every mode but `--list` takes it, and the
+  service gets it as `req.repo`, as `parseRepo` returned it. With
+  `@osdlc/trust-repo`, pass `parseTrustRepo` and call the store with
+  `{ repo: req.repo }`. A repository `parseRepo` refuses is a usage error, and
+  so is one given with `--list`. Without the argument the command acts on the
+  working directory, or `-C`, as before. A service without `parseRepo` takes
+  no argument, so it never grants its working directory in place of a
+  repository it cannot read. Any word after `--` is a usage error, so
+  `trust -- github.com/acme/api` never grants the working directory either.
+  An entry for a repository has `kind: 'repo'`.
+  Through an adapter the argument is the `repository` property.
 - `guide` prints every topic; `guide topics` lists them; `guide <topic>` prints
   one. An unknown topic exits 2.
 
