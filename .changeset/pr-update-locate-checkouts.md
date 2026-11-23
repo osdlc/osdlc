@@ -27,9 +27,7 @@ matches in any letter case. A `--repo` that is neither form, or one
 pr-update has a machine file, `~/.config/osdlc/pr-update/config.yaml`
 (`PR_UPDATE_MACHINE_CONFIG` names another, as an absolute path), for the
 settings of the clone cache: `checkout`, `mirror_dir` and
-`mirror_max_age_days`. A project's `pr-update.yaml` cannot set them. The file
-takes effect with the clone cache, in a later release; writing it now changes
-nothing yet.
+`mirror_max_age_days`. A project's `pr-update.yaml` cannot set them.
 
 For library hosts:
 

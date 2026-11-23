@@ -308,7 +308,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   checks out.
 - **`pr-update mirror`.** The prompt's answers are also commands, as
   `cli-interface.md` section 8 asks:
-  - `enable [--dir <dir>]` writes `checkout: mirror` and, with `--dir`,
+  - `enable [--mirror-dir <dir>]` writes `checkout: mirror` and, with `--mirror-dir`,
     `mirror_dir`, after checking it as clone step 1 does;
   - `disable` writes `checkout: local`;
   - `list` shows each clone's repository, size, last use and kept worktrees;

@@ -99,6 +99,7 @@ export {
   row as surveyRowSchema,
   output as surveyOutputSchema,
   repoEntry as surveyRepoSchema,
+  type ManagedClones,
   type MergePrediction,
   type PrSelector,
   type RepoTarget,

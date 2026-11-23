@@ -56,8 +56,8 @@ tool built on `@osdlc/cli-tool` prints for that failure, for example
 
 ## The command line
 
-`survey`, `update`, `config` and `trust` are one `@osdlc/cli-tool` command
-tree, so every command answers the same way:
+`survey`, `update`, `config`, `mirror` and `trust` are one `@osdlc/cli-tool`
+command tree, so every command answers the same way:
 
 - `--json` (or `--output json`) prints one JSON document on stdout: the
   command's output with `schemaVersion` and `kind` in front (`"kind":
@@ -182,8 +182,9 @@ repository on a host other than the project root's is not supported.
 A target with no checkout is still listed, reported `no local checkout —
 drift not measured`, and a note on stderr names the roots that were searched
 and the file that sets them, and says when the depth limit left directories
-unopened. In JSON, each repository carries `checkout: { path, source }`, with
-`source` `root` or `located`, or `checkout: null` when there is none.
+unopened. A shallow checkout gets its own note (`<path> is shallow, so it is
+not used`). In JSON, each repository carries `checkout: { path, source }`, with
+`source` `root`, `located` or `clone`, or `checkout: null` when there is none.
 
 `update` updates a checkout found this way without touching its working
 tree, index or HEAD. The run worktrees are made from its git directory but live in
@@ -227,6 +228,63 @@ its path, so run `pr-update trust` inside it. An untrusted target's PRs are
 listed under `skipped` with a reason that starts `untrusted:` and names the
 command to run; the other targets go on. `--trust` covers every target of the
 run.
+
+### A target with no checkout: the managed clone
+
+A GitHub target with no checkout on this machine can be served from a bare
+clone pr-update keeps for it. A target counts as GitHub when it is on
+github.com, or on the project root's host when that host is GitHub (an
+Enterprise host with `code_host.override: github`). Any other host gets a note,
+`there is no managed clone for <host>`, and no clone.
+
+Only `update --apply` makes a clone, and only with your consent, given by any
+one of:
+
+- `--mirror-dir <dir>` on the run (an absolute path, or one starting `~/`);
+- `PR_UPDATE_MIRROR_DIR=<dir>` in the environment;
+- `checkout: mirror` in the machine file (below), which `pr-update mirror
+  enable` writes.
+
+The flag and the variable count for that run even over `checkout: local`.
+`OSDLC_ROOT` and the home variables are not consent. With none of them, the
+first `update --apply` that needs a clone asks, naming the repositories,
+their size, the roots it searched and the clone directory. Enter clones
+into that directory and writes `checkout: mirror`; a typed directory is
+written as `mirror_dir` too; no writes `checkout: local`, and such targets are
+skipped from then on. The run prints the machine file it wrote. When another
+run answered first, its answer is used. With no terminal to ask on, the run
+exits `2` and names `--mirror-dir`, `PR_UPDATE_MIRROR_DIR` and `pr-update
+mirror enable`, so an unattended `--apply` whose `--repo` has no checkout fails
+until one of them is set; `pr-update mirror disable` (`checkout: local`) skips
+such targets instead.
+
+Clones go to the first of `--mirror-dir`, `PR_UPDATE_MIRROR_DIR`, `mirror_dir`,
+or `~/.cache/osdlc/pr-update/repos/`, one `<host>/<owner>/<name>.git` each,
+lower-cased, with the host's port left out. The directory must be outside
+every git checkout and new, empty or already pr-update's; otherwise the run
+exits `2`, naming it, and writes nothing. A clone is made with `gh repo clone
+<owner>/<name> -- --bare` (`GH_HOST` set to the target's host), with no
+`upstream` remote. Its own config gets the credential helper `gh auth
+setup-git` would write, so later fetches and pushes sign in through `gh`; your
+global git config is not changed. It keeps the `origin/<branch>` layout, has no
+branches of its own, sets `core.longpaths`, and is fetched with `--prune`.
+A step that fails removes the half-made clone, and the target's PRs are
+skipped with the error.
+
+Each clone has a lock, `<name>.git.lock`, beside it. `update --apply` holds it
+from the clone or fetch until its worktree is made, and again while it
+removes the worktree. It waits up to 60 seconds for another run to let go,
+then skips the target's PRs as `mirror busy`. `survey` and a rehearsal
+(`update` without `--apply`) never clone: they use a clone that exists,
+fetch it under its lock and stamp it as used, and otherwise report the target
+not measured with a note naming `pr-update mirror enable`. A clone another
+run holds is read as it is, with a note, without waiting. Each use writes the
+clone's last-used stamp. `checkout: local` leaves a clone that exists unused.
+
+A run served from a clone prints `<repo>: no checkout under <roots> (…);
+using the clone <path>` every time, so a root you meant to list shows up as
+missed. A clone is updated, kept and trusted as a found checkout is (above), except that its trust is keyed by repository: run `pr-update
+trust github.com/<owner>/<name>`.
 
 ## Three things it knows that a per-PR check cannot
 
@@ -737,14 +795,18 @@ pr-update's machine file, not in `pr-update.yaml`:
 `~/.config/osdlc/pr-update/config.yaml` on Linux and macOS (`OSDLC_ROOT` or
 `XDG_CONFIG_HOME` moves it with the rest of the osdlc directories, and
 `PR_UPDATE_MACHINE_CONFIG`, an absolute path, names the file itself). It is
-for the clone cache of targets with no checkout on the machine. The cache
-comes in a later release, so writing these keys now changes nothing yet:
+for the managed clones of targets with no checkout on the machine (see
+[A target with no checkout](#a-target-with-no-checkout-the-managed-clone)).
+`pr-update mirror enable [--mirror-dir <dir>]` writes `checkout: mirror` (and
+`mirror_dir`, after checking it as a clone run does), and `pr-update mirror
+disable` writes `checkout: local`; both keep the file's other keys and
+comments.
 
 | Key | Meaning |
 |---|---|
-| `checkout: local \| mirror` | `local` never clones: a target with no checkout is skipped. `mirror` clones it. Unset by default |
+| `checkout: local \| mirror` | `local` never clones: a target with no checkout is skipped. `mirror` clones it. Unset until you answer |
 | `mirror_dir: <path>` | Where clones go: an absolute path, or one starting `~/`. Default `repos/` in pr-update's cache directory |
-| `mirror_max_age_days: <n>` | A clone unused this long is removed. Default 30; `0` turns that off |
+| `mirror_max_age_days: <n>` | A clone unused this long is removed. Default 30; `0` turns that off. Pruning is not built yet, so for now nothing is removed |
 
 An unknown key or a bad value there is reported with the file's path and
 skipped. None of these keys is accepted in `pr-update.yaml`, its `.local`
@@ -844,7 +906,7 @@ change it). With a single repository the failure is thrown.
 |---|---|
 | `0` | Clean run (`survey` always; `update` when no PR ended `conflict` or `failed`) |
 | `1` | The run finished but a PR ended `conflict` or `failed`, or an unexpected error |
-| `2` | Malformed command line, or a `--branch` with no open PR |
+| `2` | Malformed command line, a `--branch` with no open PR, an unusable clone directory, or an `update --apply` that must ask whether to clone and has no terminal |
 | `14` | The config file is invalid or unreadable |
 | `21` | `update` refused for want of repository trust |
 | `22` | A tool the run needs is not installed: `git`, and `gh` (GitHub) or `curl` (Forgejo) |
