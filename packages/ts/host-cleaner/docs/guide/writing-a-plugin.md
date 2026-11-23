@@ -202,6 +202,7 @@ test('scratch keeps the contract', async () => {
   `"plugins": { "scratch": { "package": "host-cleaner-scratch" } }`. The
   loader checks that the default export is a `definePlugin` value with that
   `name` and `api: PLUGIN_API`, and that `create` returns a plugin of the same
-  name built on the kit it was given. A plugin built with a second copy of
+  name, with a `detect` hook and functions for its other hooks, built on the
+  kit it was given. A plugin built with a second copy of
   `@osdlc/host-cleaner` fails that last check, so the package must use the copy
   the command line runs.

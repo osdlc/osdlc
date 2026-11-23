@@ -8,7 +8,8 @@
  * A package is checked as it loads: its default export must be a
  * `definePlugin` definition named as its config key, written for
  * {@link PLUGIN_API}. The plugin its `create` returns must have that name too,
- * and be tied to the kit it was given, which only this host-cleaner's
+ * a `detect` hook, only functions for its other hooks, and be tied to the kit
+ * it was given, which only this host-cleaner's
  * `definePlugin` does. Any of these failing is a {@link PackageFailure}: the
  * CLI warns for it in `status`, and refuses `clean` unless the plugin is
  * skipped.
@@ -19,7 +20,7 @@ import { basename, dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { kitOf } from './kit.ts'
-import { PLUGIN_API, type Plugin, type PluginDefinition } from './types.ts'
+import { HOOKS, PLUGIN_API, type Plugin, type PluginDefinition } from './types.ts'
 
 /** An npm package name: lowercase, optionally scoped, with no path in it. */
 const PACKAGE_NAME = /^(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*$/
@@ -176,8 +177,34 @@ function notADefinition(x: unknown): string | undefined {
 }
 
 /**
+ * What is wrong with the hooks of `plugin`, or undefined when nothing is:
+ * `detect` must be a function, every other hook a function or absent, and
+ * `limits` positive milliseconds for hooks. A plugin with a broken hook would
+ * otherwise fail only when the core calls it, and `clean` would go on without
+ * its objections.
+ */
+function misshapenHooks(plugin: Record<string, unknown>): string | undefined {
+  for (const hook of HOOKS) {
+    const f = plugin[hook]
+    if (hook === 'detect' ? typeof f !== 'function' : f !== undefined && typeof f !== 'function') {
+      return `${hook} is ${f === undefined ? 'missing' : 'not a function'}`
+    }
+  }
+  const limits = plugin.limits
+  if (limits === undefined) return undefined
+  if (!isObject(limits)) return 'limits is not an object'
+  for (const [hook, ms] of Object.entries(limits)) {
+    if (!(HOOKS as readonly string[]).includes(hook)) return `limits names ${hook}, not a hook`
+    if (typeof ms !== 'number' || !(ms > 0)) {
+      return `limits.${hook} is not a positive number of milliseconds`
+    }
+  }
+  return undefined
+}
+
+/**
  * `def` with its `create` checked: the plugin it returns must be named as
- * `def` and tied to the kit it was given.
+ * `def`, have the hooks the core calls, and be tied to the kit it was given.
  */
 function checked(def: PluginDefinition, entry: PackageEntry, label: string): PluginDefinition {
   const fail = (why: string): PackageLoadError =>
@@ -196,6 +223,8 @@ function checked(def: PluginDefinition, entry: PackageEntry, label: string): Plu
           `returned a plugin named ${JSON.stringify(isObject(plugin) ? plugin.name : plugin)} from create, not ${def.name}`,
         )
       }
+      const hooks = misshapenHooks(plugin)
+      if (hooks !== undefined) throw fail(`returned a plugin from create whose ${hooks}`)
       if (kitOf(plugin) !== init.kit) {
         throw fail(
           'was not made with the definePlugin of the host-cleaner running it; make it with definePlugin from @osdlc/host-cleaner/plugin, and have the package use that copy of @osdlc/host-cleaner rather than its own',
