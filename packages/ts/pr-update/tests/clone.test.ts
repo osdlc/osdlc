@@ -32,6 +32,7 @@ import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, type CliSeams } from '../src/cli.ts'
 import { machineFile, prUpdatePaths } from '../src/machine.ts'
+import { pruneMirror } from '../src/prune.ts'
 import {
   CLONE_MARKER,
   CLONE_STAMP,
@@ -974,6 +975,63 @@ describe('review round 2', () => {
     expect(gone.code).toBe(EXIT.ok)
     expect(trees()).toEqual([clone])
     expect(existsSync(kept!)).toBe(false)
+    expect(existsSync(lock)).toBe(false)
+  })
+})
+
+describe('mirror prune and a run worktree a run left in its clone', () => {
+  test('a run that cannot take its clone’s lock back leaves its worktree; prune removes it under the lock once the run is gone', async () => {
+    const dir = join(scratch, 'clones')
+    const clone = cloneOf(dir)
+    const lock = cloneLockPath(clone)
+    // Another run takes the lock after this run's worktree is added.
+    let claims = 0
+    const busy: CliSeams = {
+      ...noTerminal,
+      mirrorClaim: (path, wait) =>
+        path === lock && ++claims > 1 ? null : claimCloneLock(path, wait),
+    }
+    const r = await runWith(
+      busy,
+      {},
+      'update',
+      '--repo',
+      'acme/api',
+      '--mirror-dir',
+      dir,
+      '--apply',
+    )
+    expect(r.code).toBe(EXIT.ok)
+    const trees = () =>
+      git(clone, 'worktree', 'list', '--porcelain')
+        .split('\n')
+        .filter((l) => l.startsWith('worktree '))
+        .map((l) => l.slice('worktree '.length))
+        .filter((p) => p !== clone)
+    const [left, ...more] = trees()
+    expect(more).toEqual([])
+    expect(r.err).toContain(
+      `so ${left} is left in the clone; \`pr-update mirror prune\` removes it`,
+    )
+
+    // While the run that made it could still be alive, it stays.
+    expect(pruneMirror({ env, dir }).removed).toEqual([])
+    const order: string[] = []
+    const report = pruneMirror({
+      env,
+      dir,
+      // The run has ended.
+      alive: () => false,
+      claim: (path, wait) => {
+        order.push(`claim ${path} ${wait} ${existsSync(left!)}`)
+        return claimCloneLock(path, wait)
+      },
+    })
+    expect(order).toEqual([`claim ${lock} 0 true`])
+    expect(report.removed.map((e) => [e.kind, e.path])).toEqual([['worktree', left]])
+    expect(trees()).toEqual([])
+    expect(existsSync(left!)).toBe(false)
+    expect(git(clone, 'for-each-ref', 'refs/heads/')).toBe('')
     expect(existsSync(lock)).toBe(false)
   })
 })

@@ -104,12 +104,12 @@ const FOLDER_MODE = 0o755
 const POSIX = process.platform !== 'win32'
 
 /**
- * What is wrong with `dir`, a folder clones live under (the clone directory, or a folder between
- * it and a clone), whose stat is `st`; null when nothing is. It must belong to the person
- * running pr-update, and on POSIX must not be writable by its group or others, who could
- * otherwise put a folder of their own where a clone goes.
+ * What is wrong with `dir`, a folder clones or run worktrees live under (the clone directory, or
+ * a folder between it and a clone), whose stat is `st`; null when nothing is. It must belong to
+ * the person running pr-update, and on POSIX must not be writable by its group or others, who
+ * could otherwise put a folder of their own where a clone goes.
  */
-function folderProblem(dir: string, st: Stats, owned: OwnedCheck): string | null {
+export function folderProblem(dir: string, st: Stats, owned: OwnedCheck): string | null {
   if (!owned(st)) return `${dir} belongs to another user`
   if (POSIX && (st.mode & 0o022) !== 0) {
     return `${dir} can be written by its group or others (run \`chmod go-w ${dir}\`)`
@@ -137,18 +137,8 @@ export function checkClone(
   path: string,
   owned: OwnedCheck = ownedByMe,
 ): 'clone' | 'missing' | { foreign: string } {
-  const owner = dirname(path)
-  const host = dirname(owner)
-  for (const [dir, st] of [
-    [root, statOrNull(root)],
-    [host, lstatOrNull(host)],
-    [owner, lstatOrNull(owner)],
-  ] as const) {
-    if (st === null) break
-    if (st.isSymbolicLink()) return { foreign: `${dir} is a symbolic link, so ${path} is not used` }
-    const why = folderProblem(dir, st, owned)
-    if (why !== null) return { foreign: `${why}, so ${path} is not used` }
-  }
+  const folders = foldersProblem(root, [dirname(dirname(path)), dirname(path)], owned)
+  if (folders !== null) return { foreign: `${folders}, so ${path} is not used` }
   const at = lstatOrNull(path)
   if (at === null) return 'missing'
   if (at.isSymbolicLink()) return { foreign: `${path} is a symbolic link, so it is not used` }
@@ -165,6 +155,28 @@ export function checkClone(
     if (!owned(st)) return { foreign: `${what} belongs to another user, so ${path} is not used` }
   }
   return 'clone'
+}
+
+/**
+ * What is wrong with `root` (followed if it is a symbolic link) or the folders `between` it and
+ * something under it, as far as they exist ({@link folderProblem}; a folder between may not be a
+ * symbolic link); null when nothing is.
+ */
+export function foldersProblem(
+  root: string,
+  between: readonly string[],
+  owned: OwnedCheck = ownedByMe,
+): string | null {
+  for (const [dir, st] of [
+    [root, statOrNull(root)],
+    ...between.map((d) => [d, lstatOrNull(d)] as const),
+  ] as const) {
+    if (st === null) break
+    if (st.isSymbolicLink()) return `${dir} is a symbolic link`
+    const why = folderProblem(dir, st, owned)
+    if (why !== null) return why
+  }
+  return null
 }
 
 function lstatOrNull(path: string): Stats | null {

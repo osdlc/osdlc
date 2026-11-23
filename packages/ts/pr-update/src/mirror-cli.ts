@@ -140,8 +140,16 @@ function usage<T>(fn: () => T): T {
   }
 }
 
-/** The `mirror` group: `enable`, `disable`, `list` and `prune`. `git` runs git, for a test. */
-export function mirrorCommand(seams: { git?: CommandRunner | undefined } = {}): Group {
+/**
+ * The `mirror` group: `enable`, `disable`, `list` and `prune`. `git` runs git, and `claim` takes
+ * a clone's lock, for a test.
+ */
+export function mirrorCommand(
+  seams: {
+    git?: CommandRunner | undefined
+    claim?: ((path: string, waitMs: number) => string | null) | undefined
+  } = {},
+): Group {
   return defineGroup({
     summary: 'the managed clones of --repo targets with no checkout: consent, list and prune',
     description:
@@ -266,6 +274,7 @@ export function mirrorCommand(seams: { git?: CommandRunner | undefined } = {}): 
               env: ctx.env,
               dir,
               git: seams.git,
+              claim: seams.claim,
               notice: (l) => ctx.note(l),
               olderThanDays,
               all: flags.allClones === true,

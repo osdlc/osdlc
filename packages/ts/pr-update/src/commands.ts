@@ -357,7 +357,12 @@ function pruneAfterRun(
     out.results.some((r) => source.get(r.repo) === 'located')
   if (!touched) return
   try {
-    const report = pruneMirror({ env: ctx.env, dir, git: gitRunner(seams) })
+    const report = pruneMirror({
+      env: ctx.env,
+      dir,
+      git: gitRunner(seams),
+      claim: seams.mirrorClaim,
+    })
     for (const e of report.removed) {
       ctx.note(
         `pruned ${e.kind === 'clone' ? 'the clone' : 'the run worktree'} ${e.path} (${formatBytes(e.bytes)})`,

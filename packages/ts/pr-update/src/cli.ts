@@ -98,7 +98,7 @@ export function createApp(seams: CliSeams = {}, options: AppOptions = {}): App {
       survey: surveyCommand(seams),
       update: updateCommand(seams),
       config: configCommand(seams.configFile ?? PR_UPDATE_CONFIG_FILE),
-      mirror: mirrorCommand({ git: seams.git }),
+      mirror: mirrorCommand({ git: seams.git, claim: seams.mirrorClaim }),
       trust: trustCommand(trustService, {
         summary: "record consent to run the commands this repository's config names",
         description:

@@ -7,6 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -161,7 +162,7 @@ function recordingGit(): {
     calls,
     runner: {
       run: (argv, opts) => {
-        calls.push({ argv: [...argv], env: { ...(opts?.env ?? {}) } })
+        calls.push({ argv: [...argv], env: { ...opts?.env } })
         return real.run(argv, opts)
       },
     },
@@ -647,5 +648,66 @@ describe('pr-update mirror list and prune, on the command line', () => {
     const r = await run('mirror', 'prune')
     expect(r.code).toBe(EXIT.ok)
     expect(r.out).toBe('nothing to prune\n')
+  })
+})
+
+// Mode bits mean nothing on Windows; the owner check is POSIX only too.
+describe.skipIf(process.platform === 'win32')('folders someone else could write to', () => {
+  test('nothing is removed from a folder its group or others can write to, or that another user owns', () => {
+    const clone = makeClone('acme/api', 400)
+    const dead = runWorktree(clone, 'acme/api')
+    const probe = join(paths.kept, 'github.com', 'acme', 'web', '.pr-update-probe-x')
+    mkdirSync(probe, { recursive: true })
+    age(probe, 2 * 60 * 60 * 1000)
+    const tmp = join(dirname(clone), '.tmp-web.git-2147483646')
+    mkdirSync(tmp)
+    age(tmp, 2 * 60 * 60 * 1000)
+    chmodSync(join(paths.worktrees, 'github.com'), 0o777)
+    chmodSync(join(paths.kept, 'github.com', 'acme'), 0o775)
+    chmodSync(dirname(clone), 0o757)
+
+    const r = prune({ all: true })
+
+    expect(r.removed).toEqual([])
+    expect(r.skipped.map((e) => [e.path, e.reason])).toEqual(
+      expect.arrayContaining([
+        [
+          dead,
+          `${join(paths.worktrees, 'github.com')} can be written by its group or others (run \`chmod go-w ${join(paths.worktrees, 'github.com')}\`)`,
+        ],
+        [
+          probe,
+          expect.stringContaining(
+            `${join(paths.kept, 'github.com', 'acme')} can be written by its group or others`,
+          ),
+        ],
+        [tmp, expect.stringContaining(`${dirname(clone)} can be written by its group or others`)],
+        [clone, expect.stringContaining(`${dirname(clone)} can be written by its group or others`)],
+      ]),
+    )
+    for (const p of [clone, dead, probe, tmp]) expect(existsSync(p)).toBe(true)
+
+    // A run worktree in a sound folder whose owner, a clone, fails the clone checks, is left too.
+    chmodSync(join(paths.worktrees, 'github.com'), 0o755)
+    const owned = prune({ all: true })
+    expect(owned.skipped).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: dead,
+          reason: expect.stringContaining(
+            `its owner ${realpathSync(clone)} is not a clone pr-update may change:`,
+          ),
+        }),
+      ]),
+    )
+    expect(existsSync(dead)).toBe(true)
+    expect(listed(clone)).toEqual([dead])
+
+    // Another user's folders and files, through the injected check.
+    chmodSync(dirname(clone), 0o755)
+    chmodSync(join(paths.kept, 'github.com', 'acme'), 0o755)
+    const notMine = prune({ all: true, owned: () => false })
+    expect(notMine.removed).toEqual([])
+    for (const p of [clone, dead, probe, tmp]) expect(existsSync(p)).toBe(true)
   })
 })

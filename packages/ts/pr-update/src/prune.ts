@@ -49,6 +49,7 @@ import {
   MIRROR_MARKER,
   checkClone,
   claimCloneLock,
+  foldersProblem,
   cloneLockPath,
   loadMirrorSetting,
   ownedByMe,
@@ -216,13 +217,16 @@ export function worktreeOwner(tree: string): Owner | null {
   }
 }
 
-/** Whether the git directory at `path` is a managed clone: a real directory holding the clone marker. */
-function isManagedClone(path: string): boolean {
-  return (
-    lstatOrNull(path)?.isDirectory() === true &&
-    lstatOrNull(join(path, CLONE_MARKER))?.isFile() === true
-  )
+/**
+ * Whether the git directory at `path` says it is a managed clone: it holds the clone marker. Such
+ * an owner is changed only under its lock, and only when `checkClone` accepts it.
+ */
+function claimsToBeClone(path: string): boolean {
+  return lstatOrNull(join(path, CLONE_MARKER)) !== null
 }
+
+/** The clone directory of the clone at `clone`: `<root>/<host>/<owner>/<name>.git`. */
+const rootOf = (clone: string): string => dirname(dirname(dirname(clone)))
 
 /** The git client pruning uses in an owner: hooks off, as for every target other than the root. */
 function gitAt(path: string, runner: CommandRunner | undefined): Git {
@@ -264,8 +268,11 @@ export interface MirrorListing {
   worktrees: ListedWorktree[]
 }
 
-/** Every run worktree folder under `worktrees/`, with whether its run is alive. */
-function runWorktrees(root: string): { path: string; repo: string; running: boolean }[] {
+/** Every run worktree folder under `worktrees/`, with whether its run is `alive`. */
+function runWorktrees(
+  root: string,
+  alive: (pid: number) => boolean = pidAlive,
+): { path: string; repo: string; running: boolean }[] {
   const out: { path: string; repo: string; running: boolean }[] = []
   for (const { path: repoDir, parts } of threeDown(root)) {
     for (const name of subdirs(repoDir)) {
@@ -274,11 +281,31 @@ function runWorktrees(root: string): { path: string; repo: string; running: bool
       out.push({
         path: join(repoDir, name),
         repo: parts.join('/'),
-        running: pidAlive(Number(run[1])),
+        running: alive(Number(run[1])),
       })
     }
   }
   return out
+}
+
+/**
+ * What is wrong with the folders between `root` and `path` ({@link foldersProblem}), or with
+ * `path` itself, which must be the person's own; null when nothing is. Nothing is removed from a
+ * folder someone else could write to.
+ */
+function placeProblem(root: string, path: string, owned: OwnedCheck): string | null {
+  const between: string[] = []
+  for (
+    let d = dirname(path);
+    d !== root && d.startsWith(root) && dirname(d) !== d;
+    d = dirname(d)
+  ) {
+    between.unshift(d)
+  }
+  const folders = foldersProblem(root, between, owned)
+  if (folders !== null) return folders
+  const st = lstatOrNull(path)
+  return st !== null && !owned(st) ? `${path} belongs to another user` : null
 }
 
 /** The kept place of `repo` (`host/owner/name`) in pr-update's state directory, as served from `clone`. */
@@ -394,6 +421,8 @@ export interface PruneOptions extends MirrorWalkOptions {
   claim?: ((path: string, waitMs: number) => string | null) | undefined
   /** Removes a folder and everything in it. Default `rmSync`; a test passes one that fails part-way. */
   remove?: ((path: string) => void) | undefined
+  /** Whether the process with a pid is alive. Default `pidAlive`; a test ends a run this way. */
+  alive?: ((pid: number) => boolean) | undefined
 }
 
 /** One thing a prune removed, would remove, or left. */
@@ -444,6 +473,7 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
   const claim = opts.claim ?? claimCloneLock
   const remove = opts.remove ?? ((path: string) => rmSync(path, { recursive: true, force: true }))
   const dryRun = opts.dryRun === true
+  const alive = opts.alive ?? pidAlive
   const report: PruneReport = {
     dryRun,
     mirrorDir: at.mirrorDir,
@@ -481,7 +511,7 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
   }
 
   // Dead run worktrees, at any age.
-  for (const w of runWorktrees(at.worktrees)) {
+  for (const w of runWorktrees(at.worktrees, alive)) {
     if (w.running) continue
     const entry: PruneEntry = {
       kind: 'worktree',
@@ -489,12 +519,29 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       repo: w.repo,
       bytes: sizeOf(w.path),
     }
+    const place = placeProblem(at.worktrees, w.path, owned)
+    if (place !== null) {
+      report.skipped.push({ ...entry, reason: place })
+      continue
+    }
     const owner = worktreeOwner(w.path)
+    const clone = owner !== null && claimsToBeClone(owner.common)
+    if (clone) {
+      const state = checkClone(rootOf(owner.common), owner.common, owned)
+      if (state !== 'clone') {
+        const why = state === 'missing' ? 'it is gone' : state.foreign
+        report.skipped.push({
+          ...entry,
+          reason: `its owner ${owner.common} is not a clone pr-update may change: ${why}`,
+        })
+        continue
+      }
+    }
     if (dryRun) {
       done(entry)
       continue
     }
-    if (owner === null || !isManagedClone(owner.common)) {
+    if (!clone) {
       dropRunWorktree(w.path, owner, entry)
       continue
     }
@@ -521,7 +568,9 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
         const st = lstatOrNull(path)
         if (st === null || !st.isDirectory() || now - st.mtimeMs < LEFTOVER_AGE_MS) continue
         const entry: PruneEntry = { kind: 'leftover', path, bytes: sizeOf(path) }
-        if (dryRun) done(entry)
+        const place = placeProblem(root, path, owned)
+        if (place !== null) report.skipped.push({ ...entry, reason: place })
+        else if (dryRun) done(entry)
         else {
           try {
             remove(path)
@@ -554,6 +603,11 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
             path,
             repo: `${host}/${owner}/${tmp[1]!.slice(0, -'.git'.length)}`,
             bytes: sizeOf(path),
+          }
+          const place = placeProblem(at.mirrorDir, path, owned)
+          if (place !== null) {
+            report.skipped.push({ ...entry, reason: place })
+            continue
           }
           if (dryRun) {
             done(entry)
@@ -618,7 +672,7 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       if (w.bare) continue
       const run = RUN_NAME.exec(basename(w.path))
       if (ownedUnder([at.worktrees]).owns(w.path) && run !== null) {
-        if (pidAlive(Number(run[1]))) inUse.push(w.path)
+        if (alive(Number(run[1]))) inUse.push(w.path)
         // A dead run's worktree the walk above did not reach: its folder is gone, say.
         else if (!dryRun) {
           removeWorktree(git, w.path, records)
