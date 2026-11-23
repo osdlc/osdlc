@@ -1,8 +1,12 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { Colors, type ICanvasContent } from '@osdlc/json-canvas-core'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { type App, createApp, nextTick } from 'vue'
 import JsonCanvas from '../../../src/components/Canvas/index.vue'
-import stylesheet from '../../../src/index.css?raw'
+
+// Read from disk: Vitest turns every CSS import, `?raw` too, into ''.
+const stylesheet = readFileSync(resolve(import.meta.dirname, '../../../src/index.css'), 'utf8')
 
 /**
  * How `drawEdges` paints: the colours it gives paths, arrowheads and labels
@@ -77,8 +81,8 @@ describe('edge colours', () => {
     const markerId = path.getAttribute('marker-end')!.match(/#([^)]+)/)![1]!
     const polygon = host.querySelector<SVGElement>(`[id="${markerId}"] polygon`)!
     // The package's `--vjc-color-ui-3`, resolved on the wrapper when the
-    // marker is made (editing.test.ts pins the themed value); jsdom loads no
-    // stylesheet here, so it falls back to the light theme's colour.
+    // marker is made (editing.test.ts pins the themed value); the light theme's
+    // value is what it resolves here.
     expect(polygon.getAttribute('fill')).toBe('#5e0641')
   })
 

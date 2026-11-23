@@ -201,7 +201,9 @@ setActiveRenderer('shout')
 Every renderer's output goes through DOMPurify before it reaches the page,
 unless the renderer sets `sanitized: true` to say it already did. The example
 above loses its `onclick`. A renderer that sanitizes itself declares it, so the
-output is not cleaned twice.
+output is not cleaned twice. DOMPurify needs a DOM: in a server render
+`renderedMarkdown` rejects for a renderer that is not `sanitized`, and never
+returns its output uncleaned.
 
 A slow render never overwrites a newer one, and a renderer that rejects leaves
 the node showing its escaped source. Replacing the active renderer under its
@@ -218,7 +220,15 @@ A canvas file is input from someone else. The board treats it that way:
 - A click on a link node opens only `http:`, `https:` and `mailto:` URLs, in a
   new tab without an opener. Any other URL (`javascript:`, `data:`, a malformed
   URL) does nothing.
-- Text goes through the markdown seam above.
+- Text goes through the markdown seam above. A renderer that is not marked
+  `sanitized` has its output sanitized, and every element that keeps a `target`
+  attribute gets `rel="noopener noreferrer"`.
+- The default plain-text renderer fetches nothing. With a markdown renderer
+  active, a text node can make the browser fetch: the sanitizer keeps images,
+  audio and video, inline styles with a `url()`, SVG images, links and forms.
+  So `![](https://tracker.example/p.png)` requests that URL when the canvas
+  opens. A host that must prevent that removes them in its renderer, or sets a
+  Content-Security-Policy (`img-src`, `media-src` and `form-action`).
 - A group node's background image URL, and the URL of a file node's content if
   your `nodeComponents` loads one, are fetched by the browser. A host that
   opens canvases it does not control should check those URLs first.

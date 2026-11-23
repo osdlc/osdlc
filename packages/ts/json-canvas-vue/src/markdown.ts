@@ -182,11 +182,18 @@ export function useRendererVersion() {
  * The output lands in `v-html`, so this seam is where safety lives: unless
  * the renderer declares `sanitized: true`, its output goes through DOMPurify
  * here — a registered renderer cannot take sanitization out of the path by
- * simply not thinking about it.
+ * simply not thinking about it. The sanitizer keeps `target`, and every
+ * element that keeps one gets `noopener noreferrer` in its `rel`, next to any
+ * tokens the renderer put there. The `rel` is set on the DOM the sanitizer
+ * returns, not through a DOMPurify hook, because a hook is global to the
+ * shared module instance and would change the host's own use of DOMPurify.
  *
  * Async: callers await the result and should drop it if a newer render was
  * started meanwhile (see `CanvasNode`). This function is not a reactive
  * dependency site; watch `useRendererVersion()` to re-render on a switch.
+ *
+ * Rejects when the renderer does, and when DOMPurify has no DOM to work on
+ * (a server render) and the renderer is not `sanitized`.
  *
  * @param text - The markdown text to render
  * @returns HTML string, safe to inject
@@ -195,5 +202,21 @@ export async function renderedMarkdown(text: string): Promise<string> {
   const renderer = getActiveRenderer()
   const html = await renderer.render(text)
   if (renderer.sanitized) return html
-  return DOMPurify.sanitize(html, { ADD_ATTR: ['target'] })
+  // Where DOMPurify cannot run, `sanitize` is missing or hands its input back
+  // as it came.
+  if (!DOMPurify.isSupported) {
+    throw new Error(`renderedMarkdown needs a DOM to sanitize the output of "${renderer.id}"`)
+  }
+  const clean = DOMPurify.sanitize(html, { ADD_ATTR: ['target'], RETURN_DOM_FRAGMENT: true })
+  for (const el of clean.querySelectorAll('[target]')) {
+    const rel = new Set((el.getAttribute('rel') ?? '').split(/\s+/).filter(Boolean))
+    rel.add('noopener')
+    rel.add('noreferrer')
+    el.setAttribute('rel', [...rel].join(' '))
+  }
+  // A fragment has no `innerHTML`. The holder is made in the fragment's own
+  // document, the inert one the sanitizer parsed into, not the page's.
+  const holder = clean.ownerDocument.createElement('div')
+  holder.append(clean)
+  return holder.innerHTML
 }

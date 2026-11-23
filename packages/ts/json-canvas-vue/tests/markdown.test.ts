@@ -1,4 +1,5 @@
 import type { ITextNode } from '@osdlc/json-canvas-core'
+import DOMPurify from 'dompurify'
 import { afterEach, describe, expect, it } from 'vitest'
 import { type App, createApp, h, nextTick, type Ref, ref } from 'vue'
 import CanvasNode from '../src/components/CanvasNode/index.vue'
@@ -70,6 +71,61 @@ describe('renderedMarkdown', () => {
     const html = await renderedMarkdown('anything')
     expect(html).not.toContain('onerror')
     expect(html).toContain('<b>ok</b>')
+  })
+
+  describe('links that keep a target', () => {
+    async function renderWith(html: string): Promise<string> {
+      registerMarkdownRenderer({ id: 'naive', name: 'Naive', render: () => html })
+      setActiveRenderer('naive')
+      return renderedMarkdown('anything')
+    }
+
+    function relOf(html: string, selector: string): string[] {
+      const host = document.createElement('div')
+      host.innerHTML = html
+      return (host.querySelector(selector)?.getAttribute('rel') ?? '').split(' ').sort()
+    }
+
+    it('adds noopener and noreferrer to target="_blank"', async () => {
+      const html = await renderWith('<a href="https://example.com" target="_blank">x</a>')
+      expect(relOf(html, 'a')).toEqual(['noopener', 'noreferrer'])
+    })
+
+    it('keeps the tokens a renderer already put in rel', async () => {
+      const html = await renderWith(
+        '<a href="https://example.com" target="_blank" rel="nofollow">x</a>',
+      )
+      expect(relOf(html, 'a')).toEqual(['nofollow', 'noopener', 'noreferrer'])
+    })
+
+    it('leaves a link without a target without a rel', async () => {
+      const html = await renderWith('<a href="https://example.com">x</a>')
+      expect(html).not.toContain('rel=')
+    })
+
+    it('returns what DOMPurify returns for input without links', async () => {
+      const source = '<p>one <b>two</b></p><img src="x" onerror="alert(1)"><ul><li>a</li></ul>'
+      const html = await renderWith(source)
+      expect(html).toBe(DOMPurify.sanitize(source, { ADD_ATTR: ['target'] }))
+    })
+  })
+
+  it('rejects when DOMPurify cannot sanitize', async () => {
+    registerMarkdownRenderer({
+      id: 'naive',
+      name: 'Naive',
+      render: () => '<img src="x" onerror="alert(1)">',
+    })
+    setActiveRenderer('naive')
+
+    // What DOMPurify reports in a window without the DOM it needs. There,
+    // `sanitize` hands its input back as it came.
+    DOMPurify.isSupported = false
+    try {
+      await expect(renderedMarkdown('anything')).rejects.toThrow('needs a DOM')
+    } finally {
+      DOMPurify.isSupported = true
+    }
   })
 
   it('passes a sanitized renderer’s output through untouched', async () => {

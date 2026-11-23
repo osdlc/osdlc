@@ -30,5 +30,10 @@ what the `change` event reports. It can replace a node's body with its own compo
 - The exposed `execute` and `executeBatch` redraw the edges.
 - An edge that cannot be drawn no longer shifts which edge a click selects.
 - Replacing the active markdown renderer under its own id re-renders the open nodes.
-- The README lists what a canvas file's group background and file URLs make the browser fetch, for a
-  host that opens canvases it does not control.
+- The README lists what a canvas file's group background, file URLs and rendered text make the
+  browser fetch, for a host that opens canvases it does not control.
+- Sanitized markdown gives every element that keeps a `target` attribute `rel="noopener noreferrer"`,
+  the way a click on a link node opens its tab.
+- `renderedMarkdown` rejects when DOMPurify has no DOM to sanitize with and the renderer is not
+  `sanitized`. In a window without the DOM that DOMPurify needs, it returned the renderer's output
+  uncleaned.
