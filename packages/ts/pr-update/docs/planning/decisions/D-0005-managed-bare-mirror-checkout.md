@@ -950,8 +950,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   no last-used stamp is aged by the mtime of its marker, which was written
   when the clone was made.
 - **Pruning at the end of a run.** It runs after the run has let go of its
-  locks, when an `update --apply` served a target from a clone or updated a
-  located checkout under the cache, and not after a signal. Its notes name
+  locks, when an `update --apply` served a target from a clone or made a run
+  worktree for a located checkout under the cache, and not after a signal.
+  After review it reads that from the report's `madeTargetWorktree`, not from
+  the results, so a run whose every lease was refused still prunes. Its notes name
   what it removed, the space freed, failures, and what it left for a folder
   someone else could write to or a clone it may not change; a busy, kept or
   in-use clone is not noted, since that is the cache working as meant. It is

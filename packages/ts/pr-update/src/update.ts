@@ -438,6 +438,12 @@ export const output = z.object({
     .describe(
       'Kept records the run would not act on: one that names another branch, path or git directory than pr-update gives it, or whose folder is not a worktree on its branch. Neither the record nor its folder is removed, and its PR is updated as if nothing were kept.',
     ),
+  madeTargetWorktree: z
+    .literal(true)
+    .optional()
+    .describe(
+      "Present when a run that writes made a run worktree where `Ports.targetHome` puts a `--repo` target's (for the CLI, `worktrees/` in pr-update's cache directory), even when no PR there got as far as a result. The CLI's pruning after the run reads it.",
+    ),
   repos: z
     .array(repoEntry)
     .describe(
@@ -778,11 +784,15 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
   // Those the trust gate or a broken record took out.
   releaseIdle()
   const results: UpdateResult[] = []
+  let madeTargetWorktree = false
   for (const [repo, { path, remote, targets: group }] of groups) {
     const at = served.get(repo)
     const git = gitOf(path, at, env)
     // `<run>` last: a later run reads the pid of a killed one from it.
     const worktreeRoot = join(at?.worktrees ?? join(path, '.pr-update'), runId)
+    // `updateAll` makes it before it asks for any lease, so even a run whose every lease is
+    // refused wrote there.
+    if (writes && at?.home === true) madeTargetWorktree = true
     const verifyVerbs =
       verify === 'detect'
         ? (worktree: string, pr: number) =>
@@ -878,6 +888,7 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
     ...(recordErrors.length > 0 ? { recordErrors } : {}),
     ...(discarded.length > 0 ? { discarded } : {}),
     ...(keptRefused.length > 0 ? { keptRefused } : {}),
+    ...(madeTargetWorktree ? { madeTargetWorktree: true as const } : {}),
     repos: report.repos,
     counts: {
       updated: t['updated'] ?? 0,
@@ -932,6 +943,8 @@ interface Served {
    */
   elsewhere?: true | undefined
   records?: WorktreeRecords | undefined
+  /** Set when its worktrees and kept trees are where `Ports.targetHome` put them. */
+  home?: true | undefined
 }
 
 /**
@@ -1030,6 +1043,7 @@ function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<
       lease: home.lease,
       elsewhere: true,
       records,
+      home: true,
     })
   }
   return out

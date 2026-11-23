@@ -57,3 +57,8 @@ starts from.
 survey takes its lock. The clone is checked again under the lock; a clone that
 is gone is reported unmeasured with a note, where before the survey ended with
 `ENOENT` writing its last-used stamp.
+
+The pruning at the end of an `update --apply` now also runs when a located
+target's run worktree was made in the cache but none of its PRs got a result,
+as when every lease was refused. The report says so in the new
+`madeTargetWorktree`.

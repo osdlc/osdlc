@@ -28,6 +28,7 @@ import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { main } from '../src/cli.ts'
 import { prUpdateStandaloneSchema, type PrUpdateStandaloneConfig } from '../src/config.ts'
+import { touchedCache } from '../src/commands.ts'
 import { standalonePorts } from '../src/defaults.ts'
 import { prUpdatePaths, type PrUpdatePaths } from '../src/machine.ts'
 import type { AttemptStore, FoundCheckout, Ports, TargetCheckout } from '../src/ports.ts'
@@ -1286,6 +1287,36 @@ describe("errors from a target's own record and lease, during the run", () => {
     expect(out.skipped).toEqual([
       { repo: 'acme/api', number: 1, head: 'topic', reason: 'lease refused' },
     ])
+  })
+})
+
+describe('whether a run made a worktree under the cache (second review)', () => {
+  test('a located target whose every lease is refused still made its run worktree', async () => {
+    const refusing: Ports['lease'] = {
+      acquire: () => {
+        throw new Error('lease refused')
+      },
+    }
+    const out = await update({
+      ports: {
+        targetHome: (t) => ({
+          worktrees: join(paths.worktrees, t.name),
+          kept: join(paths.kept, t.name),
+          lease: refusing,
+        }),
+      },
+    })
+    expect(out.results).toEqual([])
+    expect(out.madeTargetWorktree).toBe(true)
+    expect(output.parse(out).madeTargetWorktree).toBe(true)
+    expect(touchedCache(out)).toBe(true)
+  })
+
+  test('without targetHome a located target works in its own .pr-update/, not the cache', async () => {
+    const out = await update({ ports: { targetHome: undefined } })
+    expect(out.results.map((r) => r.status)).toEqual(['updated'])
+    expect(out.madeTargetWorktree).toBeUndefined()
+    expect(touchedCache(out)).toBe(false)
   })
 })
 

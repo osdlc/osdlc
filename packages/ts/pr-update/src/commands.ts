@@ -340,6 +340,15 @@ function runEnv(
 }
 
 /**
+ * Whether an `update` touched pr-update's cache: it served a target from a managed clone, or made
+ * a run worktree where `Ports.targetHome` puts a target's (`madeTargetWorktree`). The run's
+ * results are not enough: a target whose every lease was refused made its worktree but has none.
+ */
+export function touchedCache(out: UpdateOutput): boolean {
+  return out.repos.some((r) => r.checkout?.source === 'clone') || out.madeTargetWorktree === true
+}
+
+/**
  * The pruning at the end of an `update --apply` that served a target from a clone or made a run
  * worktree under the cache (D-0005, "Automatic"): as `mirror prune` with no flags, after the run
  * has let go of its locks. A run that never touched the cache, or that a signal stopped, removes
@@ -353,11 +362,7 @@ function pruneAfterRun(
   out: UpdateOutput,
   dir: string | undefined,
 ): void {
-  const source = new Map(out.repos.map((r) => [r.repo, r.checkout?.source]))
-  const touched =
-    out.repos.some((r) => r.checkout?.source === 'clone') ||
-    out.results.some((r) => source.get(r.repo) === 'located')
-  if (!touched) return
+  if (!touchedCache(out)) return
   try {
     const report = pruneMirror({
       env: ctx.env,
