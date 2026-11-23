@@ -78,7 +78,6 @@ import type {
   Ports,
   TargetCheckout,
 } from './ports.ts'
-import { ownedByMe, placeProblem } from './folders.ts'
 import { CLONE_MARKER } from './mirror.ts'
 import { realOr } from './real-path.ts'
 import { terminalConfirmPush } from './update/confirm.ts'
@@ -90,13 +89,15 @@ import {
   keptIsTouched,
   keptOwnerElsewhere,
   keptOwnerGone,
-  keptNotWorktree,
+  keptTreeCheck,
+  keptFolderProblem,
   keptOwnerGoneReason,
   keptRefusal,
   listKept,
   type KeptPlace,
   type KeptRecord,
   type KeptRefusal,
+  type KeptTreeCheck,
 } from './update/kept.ts'
 import type { PrUpdateConfig } from './config.ts'
 
@@ -439,6 +440,12 @@ export const output = z.object({
     .describe(
       'Kept records the run would not act on: one that names another branch, path or git directory than pr-update gives it, or whose folder is not a worktree on its branch. Neither the record nor its folder is removed, and its PR is updated as if nothing were kept.',
     ),
+  keptLeft: z
+    .array(z.object({ path: z.string(), reason: z.string() }))
+    .optional()
+    .describe(
+      'Kept worktrees `--discard-kept` left because a person moved them to a branch of their own or a detached HEAD. A PR whose kept tree is like that is skipped as changed.',
+    ),
   madeTargetWorktree: z
     .literal(true)
     .optional()
@@ -747,15 +754,11 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
       )
     }
   }
-  const { removed: discarded, refused: keptRefused } = settleKept(
-    args,
-    writes,
-    env,
-    served,
-    refused,
-    groups,
-    skipped,
-  )
+  const {
+    removed: discarded,
+    refused: keptRefused,
+    left: keptLeft,
+  } = settleKept(args, writes, env, served, refused, groups, skipped)
   const settings = {
     resolvers: effectiveCfg.resolvers,
     lockfileInstall: effectiveCfg.lockfile_install,
@@ -889,6 +892,7 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
     ...(recordErrors.length > 0 ? { recordErrors } : {}),
     ...(discarded.length > 0 ? { discarded } : {}),
     ...(keptRefused.length > 0 ? { keptRefused } : {}),
+    ...(keptLeft.length > 0 ? { keptLeft } : {}),
     ...(madeTargetWorktree ? { madeTargetWorktree: true as const } : {}),
     repos: report.repos,
     counts: {
@@ -1146,28 +1150,18 @@ function settleKept(
   refused: ReadonlySet<string>,
   groups: Map<string, Group>,
   skipped: SkippedPr[],
-): { removed: string[]; refused: KeptRefusal[] } {
+): { removed: string[]; refused: KeptRefusal[]; left: { path: string; reason: string }[] } {
   const removed: string[] = []
   const refusals: KeptRefusal[] = []
   const onRefused = (r: KeptRefusal): void => {
     if (!refusals.some((x) => x.record === r.record)) refusals.push(r)
   }
-  /**
-   * Why `record`'s tree may not be removed for the folders it is in, or null. A place outside the
-   * checkout is checked from its `root`, as pruning checks it; a checkout's own place is the
-   * person's checkout, and is not.
-   */
-  const folderWhy = (place: KeptPlace, record: KeptRecord): string | null =>
-    place.root === undefined
-      ? null
-      : placeProblem(place.root, record.path, ownedByMe, {
-          fix: () => `run \`chmod -R go-w ${place.root}\``,
-        })
-  /** Whether `record`'s folder is a worktree its owner lists on its branch; else it is refused. */
-  const isWorktree = (git: Git, place: KeptPlace, record: KeptRecord): boolean => {
-    const why = keptNotWorktree(git, place, record)
-    if (why !== null) onRefused(keptRefusal(place, record, why))
-    return why === null
+  const left: { path: string; reason: string }[] = []
+  /** What its owner's worktree list says of `record`'s tree; a forged one is refused. */
+  const treeOf = (git: Git, place: KeptPlace, record: KeptRecord): KeptTreeCheck => {
+    const tree = keptTreeCheck(git, place, record)
+    if (tree.kind === 'forged') onRefused(keptRefusal(place, record, tree.why))
+    return tree
   }
   // The run's managed clones, by real path, since a kept record names its owner by real path.
   const clones = new Map<string, string>()
@@ -1201,8 +1195,13 @@ function settleKept(
     for (const { checkout, place, at } of places.values()) {
       const git = gitOf(checkout, at, env)
       for (const record of listKept(place, onRefused)) {
-        if (!isWorktree(git, place, record)) continue
-        const why = folderWhy(place, record)
+        const tree = treeOf(git, place, record)
+        if (tree.kind === 'forged') continue
+        if (tree.kind === 'moved') {
+          left.push({ path: record.path, reason: `${tree.why}, so a person moved it` })
+          continue
+        }
+        const why = keptFolderProblem(place, record)
         if (why !== null) {
           onRefused(keptRefusal(place, record, why))
           continue
@@ -1237,21 +1236,24 @@ function settleKept(
         return skip(`kept elsewhere: ${record.path} is a worktree of ${owner}`)
       }
       // Before `keptIsTouched` runs git in the folder.
-      if (!isWorktree(git, place, record)) return true
+      const tree = treeOf(git, place, record)
+      if (tree.kind === 'forged') return true
+      // A tree a person moved to a branch of their own, or detached, is theirs: changed.
+      const touched = (): boolean => tree.kind === 'moved' || keptIsTouched(git, record)
       if (child) {
-        return keptIsTouched(git, record)
+        return touched()
           ? skip(`kept worktree ${record.path} has local changes; push them or pass --discard-kept`)
           : true
       }
       const stale = args.retryFailed === true || moved
       // `--retry-failed` too: only `--discard-kept` removes a tree with a person's changes in it.
-      if (stale && keptIsTouched(git, record)) {
+      if (stale && touched()) {
         return skip(
           `kept worktree ${record.path} has local changes; push them or pass --discard-kept`,
         )
       }
       if (stale) {
-        const why = folderWhy(place, record)
+        const why = keptFolderProblem(place, record)
         if (why !== null) return skip(`kept worktree ${record.path} stays: ${why}`)
         if (writes && !discard(git, group.path, place, record)) {
           return skip(
@@ -1264,7 +1266,7 @@ function settleKept(
       return skip(`failed worktree kept at ${record.path}`)
     })
   }
-  return { removed: writes ? removed : [], refused: refusals }
+  return { removed: writes ? removed : [], refused: refusals, left }
 }
 
 /**
@@ -1352,6 +1354,7 @@ export function renderUpdateText(out: UpdateOutput): string {
   for (const r of out.keptRefused ?? []) {
     lines.push(`! kept record ${r.record} left alone: ${r.reason}`)
   }
+  for (const k of out.keptLeft ?? []) lines.push(`! kept worktree ${k.path} left: ${k.reason}`)
   for (const s of out.skipped) {
     lines.push(`- ${prKey(s.repo, s.number)}  ${s.head}  ${s.reason}`)
   }

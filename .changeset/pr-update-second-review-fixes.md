@@ -8,9 +8,14 @@ could commit one that named another repository's git directory and a branch
 there, and the next `update --apply` deleted that branch. Now a record is
 refused when its branch is not `pr-update/failed-<owner>-<name>-<number>`, its
 path is not that PR's kept folder, it names a git directory from a checkout's
-own folder, or `git worktree list` does not show its folder on its branch. A
-refused record and its folder are left alone, listed in the new `keptRefused`
-output, and the PR is updated as if nothing were kept.
+own folder, its folder is a symbolic link, or `git worktree list` does not show
+a worktree at its folder. A refused record and its folder are left alone,
+listed in the new `keptRefused` output, and the PR is updated as if nothing
+were kept. A kept tree a person switched to a branch of their own, or
+detached, counts as changed: its PR is skipped, nothing is removed, and
+`--discard-kept` leaves it, listed in the new `keptLeft`. Every removal of a
+kept tree, including a new keep replacing the PR's old tree, first checks the
+folders it is in.
 
 Fetching a checkout found on the machine, or a managed clone, no longer
 writes any ref but the remote's branches under `origin/*`. A checkout whose

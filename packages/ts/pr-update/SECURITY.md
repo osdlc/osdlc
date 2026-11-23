@@ -73,10 +73,11 @@ are in scope.
   record beside each kept tree, and in a checkout that is
   `.pr-update/failed/`, inside the working tree, where the repository's own
   files can put one. A record is acted on only when its branch and path are
-  the ones pr-update gives that PR, and its folder is a worktree that `git
-  worktree list` shows on that branch. A tree is removed through the
-  checkout's own git directory, never one a checkout's record names. Any
-  other record is left alone and reported.
+  the ones pr-update gives that PR, its folder is not a symbolic link, and
+  `git worktree list` shows a worktree at that folder. One shown on another
+  branch, or detached, is a person's, and is never removed. A tree is removed
+  through the checkout's own git directory, never one a checkout's record
+  names. Any other record is left alone and reported.
 - **Pruning deletes folders.** `mirror prune`, and the pruning at the end of
   an `update --apply`, delete folders only inside pr-update's cache and
   state directories and the clone directory, which must carry pr-update's

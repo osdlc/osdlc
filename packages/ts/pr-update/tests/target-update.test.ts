@@ -1356,6 +1356,55 @@ describe.skipIf(process.platform === 'win32')(
         chmodSync(owner, 0o755)
       }
     })
+
+    test("a failed restack child's kept tree is not replaced from such a folder (review round 1)", async () => {
+      // PR 2, `topic2`, stacked on PR 1's `topic`; its verify fails, PR 1's passes.
+      sh(api.worker.dir, 'checkout', '-q', '-b', 'topic2', 'origin/topic')
+      api.worker.commit('topic2 work', { 'two.txt': '2\n' })
+      sh(api.worker.dir, 'push', '-q', 'origin', 'topic2')
+      sh(api.worker.dir, 'checkout', '-q', 'main')
+      const stacked: CommandRunner = {
+        run: (argv, opts) => {
+          const listed = gh.run(argv, opts)
+          if (!argv.includes('acme/api')) return listed
+          const child = {
+            ...prOf(api, 'acme/api', false),
+            number: 2,
+            url: 'https://github.com/acme/api/pull/2',
+            baseRefName: 'topic',
+            headRefName: 'topic2',
+            headRefOid: api.worker.git.resolveRef('origin/topic2'),
+          }
+          return { ...listed, stdout: JSON.stringify([...JSON.parse(listed.stdout), child]) }
+        },
+      }
+      const runVerb: Ports['runVerb'] = (_verb, cwd) =>
+        existsSync(join(cwd, 'two.txt'))
+          ? { exitCode: 3, stdout: '', stderr: 'FAIL widget\n' }
+          : { exitCode: 0, stdout: '', stderr: '' }
+      const run = () =>
+        update({ args: { restack: true, keepFailed: true }, gh: stacked, ports: { runVerb } })
+      const first = await run()
+      expect(first.results.map((r) => [r.number, r.status])).toEqual([
+        [1, 'updated'],
+        [2, 'failed'],
+      ])
+      const kept = join(keptDir(), '2')
+      const builtFirst = sh(kept, 'rev-parse', 'HEAD')
+      api.worker.commit('main moves again', { 'more.txt': 'x\n' })
+      sh(api.worker.dir, 'push', '-q', 'origin', 'main')
+      const owner = join(paths.kept, 'github.com', 'acme')
+      chmodSync(owner, 0o777)
+      try {
+        const second = await run()
+        const child = second.results.find((r) => r.number === 2)
+        expect(child?.status).toBe('failed')
+        expect(child?.keepError).toContain(`${owner} can be written by anyone`)
+        expect(sh(kept, 'rev-parse', 'HEAD')).toBe(builtFirst)
+      } finally {
+        chmodSync(owner, 0o755)
+      }
+    })
   },
 )
 

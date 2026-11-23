@@ -4,8 +4,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { basename, join } from 'node:path'
 
 import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
 import { IDENTITY, makeBareAndWorker, makeGitFixture } from '@osdlc/typed-git/testing'
@@ -190,6 +190,60 @@ describe('update --keep-failed', () => {
     expect(renderUpdateText(out)).toContain(`discarded kept worktree ${kept()}`)
   })
 
+  describe('a kept tree a person moved off its kept branch (review round 1)', () => {
+    const topicOnOrigin = () => fx.bare.git.resolveRef('topic')
+
+    test('one on a branch of their own, with a new file: the PR is not pushed and the tree stays', async () => {
+      await update({ keepFailed: true })
+      fx.worker.git.at(kept()).rawChecked(['checkout', '-q', '-b', 'my-fix'])
+      writeFileSync(join(kept(), 'fix.txt'), 'mine\n')
+      fx.worker.commit('main moves again', { 'more.txt': 'x\n' })
+      fx.worker.git.push('origin', 'main')
+      fx.worker.git.fetch('origin')
+      verifyOk = true
+      const before = topicOnOrigin()
+      const out = await update({ keepFailed: true })
+      expect(out.results).toEqual([])
+      expect(out.skipped[0]!.reason).toBe(
+        `kept worktree ${kept()} has local changes; push them or pass --discard-kept`,
+      )
+      expect(out.keptRefused).toBeUndefined()
+      expect(topicOnOrigin()).toBe(before)
+      expect(existsSync(join(kept(), 'fix.txt'))).toBe(true)
+    })
+
+    test('one on a detached HEAD, unchanged: the PR is still held back', async () => {
+      await update({ keepFailed: true })
+      fx.worker.git.at(kept()).rawChecked(['checkout', '-q', '--detach'])
+      verifyOk = true
+      const before = topicOnOrigin()
+      const out = await update({ keepFailed: true })
+      expect(out.results).toEqual([])
+      expect(out.skipped[0]!.reason).toBe(`failed worktree kept at ${kept()}`)
+      expect(out.keptRefused).toBeUndefined()
+      expect(topicOnOrigin()).toBe(before)
+      expect(existsSync(kept())).toBe(true)
+    })
+
+    test('--discard-kept leaves it, with a note naming the branch', async () => {
+      await update({ keepFailed: true })
+      fx.worker.git.at(kept()).rawChecked(['checkout', '-q', '-b', 'my-fix'])
+      verifyOk = true
+      const out = await update({ discardKept: true })
+      expect(out.discarded ?? []).toEqual([])
+      expect(out.keptLeft).toEqual([
+        {
+          path: kept(),
+          reason: `${kept()} is on my-fix, not pr-update/failed-o-r-1, so a person moved it`,
+        },
+      ])
+      expect(renderUpdateText(out)).toContain(`! kept worktree ${kept()} left: `)
+      expect(out.results).toEqual([])
+      expect(existsSync(kept())).toBe(true)
+      expect(fx.worker.git.resolveRef('my-fix')).not.toBeNull()
+    })
+  })
+
   test('--keep-failed without --apply is refused', async () => {
     await expect(update({ keepFailed: true, apply: false })).rejects.toThrow('needs --apply')
   })
@@ -364,6 +418,41 @@ describe('a kept record the checkout supplies', () => {
     expect(victim.git.resolveRef('pr-update/failed-o-r-1')).not.toBeNull()
     expect(out.discarded ?? []).toEqual([])
   })
+
+  test.skipIf(process.platform === 'win32')(
+    'one whose kept path is a symbolic link to a worktree of the checkout is refused (review round 1)',
+    async () => {
+      // The person's own worktree, on a branch of theirs.
+      const theirs = join(fx.worker.dir, '..', `${basename(fx.worker.dir)}-theirs`)
+      fx.worker.git.rawChecked(['worktree', 'add', '-q', '-b', 'mine', theirs, 'main'])
+      writeFileSync(join(theirs, 'wip.txt'), 'wip\n')
+      fx.worker.commit('plant a kept record', {
+        '.pr-update/failed/o-r-1.json': `${JSON.stringify({
+          repo: 'o/r',
+          number: 1,
+          head: 'topic',
+          base: 'main',
+          headOid: null,
+          baseOid: null,
+          path: keptDir(),
+          branch: 'pr-update/failed-o-r-1',
+        })}\n`,
+      })
+      symlinkSync(theirs, keptDir(), 'dir')
+      try {
+        const out = await update({ discardKept: true })
+        expect(out.keptRefused).toEqual([
+          { record: `${keptDir()}.json`, reason: `its path ${keptDir()} is a symbolic link` },
+        ])
+        expect(out.keptLeft).toBeUndefined()
+        expect(out.results.map((r) => r.status)).toEqual(['updated'])
+        expect(existsSync(join(theirs, 'wip.txt'))).toBe(true)
+        expect(fx.worker.git.resolveRef('mine')).not.toBeNull()
+      } finally {
+        rmSync(theirs, { recursive: true, force: true })
+      }
+    },
+  )
 
   test.each([
     ['a plain --apply', {}],

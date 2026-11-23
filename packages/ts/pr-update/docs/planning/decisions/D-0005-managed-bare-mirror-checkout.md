@@ -706,6 +706,13 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   runs before any git runs in the folder. A refused record and its folder are
   left as they are, listed in the report's `keptRefused`, and the PR is
   updated as if nothing were kept, so a committed file cannot hold a PR back.
+  After the first review of these fixes, that check was split. A folder `git
+  worktree list` does not show at that path, or a kept path that is a
+  symbolic link, is refused as before. A folder it shows at that path on
+  another branch, or detached, is the person's: the PR is skipped as changed,
+  nothing is removed, and `--discard-kept` leaves it (`keptLeft`). Every
+  removal of a kept tree, a keep replacing the PR's old one included, checks
+  the folders from the place's root down to it.
 - **Names starting with `.`.** A hard kill can leave the probe in
   `worktrees/<host>/<owner>/<name>/` or `kept/<host>/<owner>/<name>/`. Every
   walk pr-update makes of its own folders skips names starting with `.`:

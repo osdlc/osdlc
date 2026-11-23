@@ -351,7 +351,13 @@ function runWorktrees(
 }
 
 /** The kept place of `repo` (`host/owner/name`) in pr-update's state directory, as served from `clone`. */
-function keptPlaceOf(kept: string, worktrees: string, repo: string, clone: string): KeptPlace {
+function keptPlaceOf(
+  kept: string,
+  worktrees: string,
+  repo: string,
+  clone: string,
+  rootCheck?: KeptPlace['rootCheck'],
+): KeptPlace {
   let gitDir: string | undefined
   try {
     gitDir = realpathSync.native(clone)
@@ -363,6 +369,8 @@ function keptPlaceOf(kept: string, worktrees: string, repo: string, clone: strin
     naming: 'repository',
     gitDir,
     records: ownedUnder([worktrees, kept]),
+    root: kept,
+    rootCheck,
   }
 }
 
@@ -742,7 +750,10 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
   /** Remove the clone at `path`, whose lock is held (or, in a dry run, say whether it would be). */
   function pruneClone(path: string, repo: string, entry: PruneEntry): void {
     const git = gitAt(path, opts.git)
-    const place = keptPlaceOf(at.kept, at.worktrees, repo, path)
+    const place = keptPlaceOf(at.kept, at.worktrees, repo, path, {
+      owned,
+      folders: ownFolders(at.kept),
+    })
     const kept: { path: string; branch: string | null }[] = []
     const inUse: string[] = []
     /** Dead runs' worktrees the walk above left, with why: the clone stays with them. */

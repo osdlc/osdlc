@@ -861,15 +861,20 @@ cd .pr-update/failed/acme-widgets-12  # finish the fix, then push it yourself
 - `.pr-update/failed/` is inside the working tree, so a repository's own files can put a record
   there. A record is refused when its branch is not `pr-update/failed-<owner>-<name>-<number>`,
   its path is not that PR's kept folder, it names a git directory (a checkout's own records never
-  do), or `git worktree list` in the checkout does not show its folder on its branch. A refused
-  record and its folder are left as they are, the output's `keptRefused` lists the record with
-  why, the text says `kept record <file> left alone: <why>`, and the PR is updated as if nothing
-  were kept.
+  do), its folder is a symbolic link, or `git worktree list` in the checkout does not show a
+  worktree at its folder. A refused record and its folder are left as they are, the output's
+  `keptRefused` lists the record with why, the text says `kept record <file> left alone: <why>`,
+  and the PR is updated as if nothing were kept.
+- A kept tree that `git worktree list` shows at its folder, but on another branch or a detached
+  HEAD, is a person's: they switched it. It counts as changed, so its PR is skipped and the tree
+  stays, and `--discard-kept` leaves it too; the output's `keptLeft` names it and its branch, and
+  the text says `kept worktree <path> left: <why>`.
 - `update --apply --discard-kept` removes every kept worktree of the surveyed repositories, then
   runs as usual. The output's `discarded` lists what was removed. A kept tree in pr-update's
   state directory is removed only when the folders from `kept/` down to it pass the folder rule
   (see the clone directory, above); otherwise it stays, and `keptRefused` says why, as does the
-  skip of a PR that moved.
+  skip of a PR that moved. The same check holds whenever a kept tree is removed, including when
+  a new keep replaces the old tree of the same PR.
 
 ## Seeing a force-push before it happens
 
