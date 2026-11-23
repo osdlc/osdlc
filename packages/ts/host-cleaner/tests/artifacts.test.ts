@@ -186,6 +186,16 @@ describe('cargo plugin', () => {
     expect((await cargo(root, { idleHours: 6 })).candidates).toHaveLength(1)
   })
 
+  test('idleHours takes fractions: 0.5 is half an hour', async () => {
+    const root = repo()
+    target(root, 0.25)
+    expect((await cargo(root, { idleHours: 0.5 })).candidates).toEqual([])
+    target(root, 0.75)
+    expect((await cargo(root, { idleHours: 0.5 })).candidates).toEqual([
+      expect.objectContaining({ why: 'no build for 0.7 hours (threshold 0.5)' }),
+    ])
+  })
+
   test('idleHours 0 makes an artifact built just now a candidate', async () => {
     const root = repo()
     target(root, 0)

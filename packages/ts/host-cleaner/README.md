@@ -140,7 +140,7 @@ needs no more than the path. The plugin `create` returns through
 
 | Helper | What it does |
 | --- | --- |
-| `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the whole hours since, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Out of time, it is `{ unmeasured: true }`. |
+| `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the hours since, fractions included, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Out of time, it is `{ unmeasured: true }`. |
 | `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
 | `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. The table is read fresh once per hook call. |
 | `kit.onPath(program)` | Whether a program is on PATH. |

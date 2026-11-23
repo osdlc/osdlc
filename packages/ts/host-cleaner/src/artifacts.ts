@@ -63,6 +63,9 @@ export function envOf(kit: Kit, opts: Pick<ArtifactOptions, 'idleHours' | 'git'>
   }
 }
 
+/** `hours` for a sentence, in tenths rounded down, so it never says more than was measured. */
+export const hoursText = (hours: number): string => String(Math.floor(hours * 10) / 10)
+
 /** Whether `path` is one of `ignore` or below one. */
 const ignored = (path: string, ignore: readonly string[]): boolean =>
   ignore.some((dir) => path === dir || path.startsWith(dir.endsWith(sep) ? dir : dir + sep))

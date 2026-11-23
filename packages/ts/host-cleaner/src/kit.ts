@@ -53,7 +53,7 @@ const HOUR_MS = 3_600_000
 
 /**
  * How long a folder has sat unchanged: the newest modification time under it
- * and the whole hours since, both null when it holds no file. `unmeasured`
+ * and the hours since, fractions included, both null when it holds no file. `unmeasured`
  * when the walk ran out of its time budget; the core then protests the
  * candidate (`unmeasured`), and the plugin leaves the outcome out of its
  * evidence, since the next walk may finish.
@@ -237,8 +237,7 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
         if (err instanceof OutOfTime) return { unmeasured: true }
         throw err
       }
-      const hours: number | null =
-        newest === null ? null : Math.max(0, Math.floor((start - newest) / HOUR_MS))
+      const hours: number | null = newest === null ? null : Math.max(0, (start - newest) / HOUR_MS)
       return { unmeasured: false, newestMs: newest, hours }
     },
     size: (path) => sizeOf(path, { timeoutMs: budget }),

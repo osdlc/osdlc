@@ -17,6 +17,7 @@ import {
   artifactPlugin,
   artifactRow,
   checkoutsOf,
+  hoursText,
   inside,
   present,
   refusedRow,
@@ -65,7 +66,7 @@ function rowOrThrow(env: Env, checkout: Checkout): Row[] {
       ...(since.unmeasured ? { unmeasured: true } : {}),
       why: since.unmeasured
         ? 'when the worktree last changed could not be measured in the time budget'
-        : `nothing changed in the worktree for ${since.hours} hours (threshold ${threshold})`,
+        : `nothing changed in the worktree for ${hoursText(since.hours!)} hours (threshold ${threshold})`,
       notes: present(join(safe, '.pnpm')) ? [PNPM_NOTE] : [],
     }),
   ]

@@ -18,6 +18,7 @@ import {
   artifactPlugin,
   artifactRow,
   checkoutsOf,
+  hoursText,
   inside,
   present,
   refusedRow,
@@ -117,14 +118,13 @@ async function rowsOrThrow(env: Env, checkout: Checkout): Promise<Row[]> {
       }),
     ]
   }
-  const idle = last.hours !== null && last.hours >= threshold
-  if (idle) {
+  if (last.hours !== null && last.hours >= threshold) {
     // An idle target/ takes its incremental directories with it.
     return [
       artifactRow(kit, {
         ...facts,
         idle: true,
-        why: `no build for ${last.hours} hours (threshold ${threshold})`,
+        why: `no build for ${hoursText(last.hours)} hours (threshold ${threshold})`,
       }),
     ]
   }

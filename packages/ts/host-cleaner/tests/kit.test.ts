@@ -92,6 +92,12 @@ describe('idle', () => {
     })
   })
 
+  test('counts fractions of an hour', () => {
+    const dir = temp()
+    put(join(dir, 'a'), 0.5)
+    expect(pluginKit('x', { now: () => NOW }).idle(dir)).toMatchObject({ hours: 0.5 })
+  })
+
   test('a folder with no file has no idle time; a missing one is no file', () => {
     const dir = temp()
     mkdirSync(join(dir, 'empty'))
