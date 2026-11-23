@@ -1312,6 +1312,17 @@ describe('whether a run made a worktree under the cache (second review)', () => 
     expect(touchedCache(out)).toBe(true)
   })
 
+  test('a located target whose every PR is held back by a kept tree made none', async () => {
+    verifyOk = false
+    await update({ args: { keepFailed: true } })
+    const out = await update({})
+    expect(out.skipped.map((s) => s.reason)).toEqual([
+      `failed worktree kept at ${join(keptDir(), '1')}`,
+    ])
+    expect(out.madeTargetWorktree).toBeUndefined()
+    expect(touchedCache(out)).toBe(false)
+  })
+
   test('without targetHome a located target works in its own .pr-update/, not the cache', async () => {
     const out = await update({ ports: { targetHome: undefined } })
     expect(out.results.map((r) => r.status)).toEqual(['updated'])

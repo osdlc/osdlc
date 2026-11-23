@@ -791,9 +791,9 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
     const git = gitOf(path, at, env)
     // `<run>` last: a later run reads the pid of a killed one from it.
     const worktreeRoot = join(at?.worktrees ?? join(path, '.pr-update'), runId)
-    // `updateAll` makes it before it asks for any lease, so even a run whose every lease is
-    // refused wrote there.
-    if (writes && at?.home === true) madeTargetWorktree = true
+    // `updateAll` makes it for any PR left, before it asks for a lease, so even a run whose
+    // every lease is refused wrote there.
+    if (writes && at?.home === true && group.length > 0) madeTargetWorktree = true
     const verifyVerbs =
       verify === 'detect'
         ? (worktree: string, pr: number) =>
