@@ -106,11 +106,11 @@ The board fills its parent, so give the parent a height.
 
 A host that stores each `change` payload and passes it back as
 `canvasContent` loops nowhere: the board recognises its own payload and keeps
-its history. A payload kept in a `ref`, a `shallowRef` or a property of a
-`reactive` object counts as the board's own, even though the host reads it back
-as a reactive proxy. A copy of the payload is a different value and replaces
-the board. A canvas that omits `nodes` or `edges` is accepted, as the format
-allows; the board fills in the missing arrays.
+its history. A payload kept in a `shallowRef`, a `ref` or a property of a
+`reactive` object counts as the board's own, although a `ref` or a `reactive`
+object can hand it back as a reactive proxy. A copy of the payload is a
+different value and replaces the board. A canvas that omits `nodes` or `edges`
+is accepted, as the format allows; the board fills in the missing arrays.
 
 An external replace while a text node is open for editing closes the editor and
 keeps the new text. Text typed into that editor and not yet committed is
