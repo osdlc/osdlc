@@ -644,7 +644,7 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
     },
 
     close() {
-      for (const clone of [...held.keys()]) release(clone)
+      for (const clone of held.keys()) release(clone)
     },
   }
 }
