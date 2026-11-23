@@ -336,13 +336,22 @@ NTFS ACLs are not read: put the clone directory under your user profile, as
 the default is. pr-update makes the folders it creates itself (the
 clone directory and its `<host>` and `<owner>` folders, the folders that hold
 run and kept worktrees, its records) with mode `755` at most, whatever the
-umask.
-`gh` makes a clone under the umask, so before the clone is put in place
-pr-update takes write for group and others off everything in it (`chmod -R
-go-w`). The clone folder and its `config` must then pass the rule too, since
-whoever can write that file chooses what git runs there. Each run worktree's
-folder takes the umask, since `git` makes it; for it only the owner is
-checked, and the folders above it must pass the rule. A clone is used only
+umask. The `pr-update` command also takes write for group and others out of
+its umask when it starts, keeping the rest, and every command it runs (git,
+`gh`, verify) inherits that: pr-update and the commands it runs never create
+a file or folder others can write to, so later fetches, run and kept
+worktrees and `FETCH_HEAD` are covered. A host that calls `runUpdate` from
+the library does not get this; it sets its own umask.
+`gh` clones into a staging folder beside the clone's place,
+`.tmp-<name>.git-<pid>-<random>`, which only you can open (`700`), so no one
+else can reach the clone while it is made. Before the clone is moved into
+place, pr-update takes write for group and others off everything in it
+(`chmod -R go-w`) and turns off git's background maintenance in it
+(`maintenance.auto=false`, `gc.auto=0`), so no git process writes in it
+after the command that started it. The clone folder and its `config` must
+then pass the rule too, since whoever can write that file chooses what git
+runs there. Each run worktree's folder is made by `git`; for it only the
+owner is checked, and the folders above it must pass the rule. A clone is used only
 when pr-update made it: a folder without its marker, a symbolic link in its
 place, in place of its `config` or of the `<host>` or `<owner>` folder above
 it, a clone or marker another user owns, or a clone, its `config` or a

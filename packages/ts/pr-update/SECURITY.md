@@ -78,6 +78,13 @@ are in scope.
   branch, or detached, is a person's, and is never removed. A tree is removed
   through the checkout's own git directory, never one a checkout's record
   names. Any other record is left alone and reported.
+- **No file others can write to.** The `pr-update` command takes write for
+  group and others out of its umask when it starts, and git, `gh` and every
+  command it runs inherit it, so none of them creates a file or folder others
+  can write to. A managed clone is made in a staging folder only its user can
+  open, hardened, and only then moved into place, with git's background
+  maintenance turned off in it. A host that calls `runUpdate` from the library
+  keeps its own umask and must set it.
 - **Pruning deletes folders.** `mirror prune`, and the pruning at the end of
   an `update --apply`, delete folders only inside pr-update's cache and
   state directories and the clone directory, which must carry pr-update's

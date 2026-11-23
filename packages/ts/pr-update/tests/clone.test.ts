@@ -209,7 +209,7 @@ describe('update --apply with a target that has no checkout', () => {
           'repo',
           'clone',
           'acme/api',
-          join(dirname(cloneOf(dir)), `.tmp-api.git-${process.pid}`),
+          expect.stringMatching(/[\\/]\.tmp-api\.git-\d+-[A-Za-z0-9]{6}[\\/]api\.git$/),
           '--no-upstream',
           '--',
           '--bare',
@@ -1134,6 +1134,58 @@ describe('mirror prune review round 1', () => {
       // So the next prune finds nothing to refuse.
       const pruned = pruneMirror({ env, dir: join(scratch, 'clones') })
       expect(pruned.skipped.filter((e) => e.skip === 'folder')).toEqual([])
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'under umask 000, nothing git writes after the clone can be written by others (review round 1)',
+    async () => {
+      writeFileSync(
+        join(project, 'pr-update.local.yaml'),
+        "pr_update:\n  verify: test\n  test_command: 'false'\n",
+      )
+      const clones = join(scratch, 'clones')
+      const old = process.umask(0)
+      let r: Awaited<ReturnType<typeof run>>
+      try {
+        r = await run(
+          'update',
+          '--repo',
+          'acme/api',
+          '--mirror-dir',
+          clones,
+          '--apply',
+          '--trust',
+          '--keep-failed',
+          '--json',
+        )
+      } finally {
+        process.umask(old)
+      }
+      expect(JSON.parse(r.out).results, r.err).toMatchObject([{ number: 7, status: 'failed' }])
+      const clone = cloneOf(clones)
+      const keptTree = join(paths().kept, 'github.com', 'acme', 'api', '7')
+      // The kept tree's admin folder in the clone, written by `git worktree add` after the clone.
+      const [admin, ...others] = readdirSync(join(clone, 'worktrees'))
+      expect(others).toEqual([])
+      const written = [
+        join(clone, 'worktrees', admin!, 'commondir'),
+        join(clone, 'worktrees', admin!, 'gitdir'),
+        join(clone, 'worktrees', admin!, 'HEAD'),
+      ]
+      for (const file of written) expect(existsSync(file), file).toBe(true)
+      const writable: string[] = []
+      const walk = (dir: string): void => {
+        for (const e of readdirSync(dir, { withFileTypes: true })) {
+          const path = join(dir, e.name)
+          if (e.isSymbolicLink()) continue
+          if ((statSync(path).mode & 0o022) !== 0) writable.push(path)
+          if (e.isDirectory()) walk(path)
+        }
+      }
+      walk(clone)
+      walk(keptTree)
+      expect(writable).toEqual([])
     },
   )
 

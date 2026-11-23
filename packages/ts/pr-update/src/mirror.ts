@@ -20,6 +20,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  mkdtempSync,
   openSync,
   readdirSync,
   renameSync,
@@ -178,8 +179,9 @@ export function checkClone(
 /**
  * Take write for group and others off `path` and everything under it, as `chmod -R go-w` does,
  * without following a symbolic link. `gh repo clone` lays the clone down under the process's
- * umask, which may let others write to it. A file that goes while the walk runs is passed over:
- * the fetch before it can leave a detached `git maintenance` taking and dropping lock files.
+ * umask, which may let others write to it. A file that goes while the walk runs is passed over.
+ * A detached `git maintenance` the fetch started once took and dropped lock files during the walk;
+ * `NO_MAINTENANCE` now keeps one from starting, and this stays as a backstop.
  */
 function dropOthersWrite(path: string): void {
   const gone = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === 'ENOENT'
@@ -452,17 +454,20 @@ export class CloneError extends Error {
  * clone's lock held by the caller:
  *
  * 3. `gh repo clone <owner>/<name> <tmp> --no-upstream -- --bare`, with `GH_HOST` set, where
- *    `<tmp>` is `.tmp-<name>.git-<pid>` beside `final`;
+ *    `<tmp>` is `<name>.git` in a staging folder beside `final`, `.tmp-<name>.git-<pid>-<random>`,
+ *    which `mkdtemp` makes `0700`: no one else can reach the clone before step 7;
  * 4. in the clone's own config, `credential.https://<host>.helper` set to an empty value and then
  *    to `!gh auth git-credential`, as `gh auth setup-git` writes them, so later fetches and
  *    pushes authenticate whatever the global git config holds;
- * 5. `core.longpaths=true`;
+ * 5. `core.longpaths=true`, and `maintenance.auto=false` and `gc.auto=0`, so no git starts a
+ *    background maintenance that writes in the clone while it is hardened, moved or read;
  * 6. every `refs/heads/*` deleted, the fetch refspec set to the remote-tracking layout, and
- *    `fetch --prune`;
+ *    `fetch --prune`, given the same two settings with `-c`;
  * 7. the stamp and the marker written, write for group and others taken off everything in
- *    `<tmp>` (`chmod -R go-w`), then `<tmp>` renamed to `final`.
+ *    `<tmp>` (`chmod -R go-w`), then `<tmp>` renamed to `final` and the staging folder removed.
  *
- * A step that fails removes `<tmp>`.
+ * A step that fails removes the staging folder. One a killed run leaves is a `.tmp-*` leftover,
+ * which pruning removes once it is an hour old.
  *
  * @throws CloneError naming the step.
  */
@@ -472,8 +477,8 @@ export function makeClone(
   deps: { gh: CommandRunner; git?: CommandRunner | undefined },
 ): void {
   const parent = dirname(final)
-  const tmp = join(parent, `.tmp-${req.name}.git-${process.pid}`)
-  rmSync(tmp, { recursive: true, force: true })
+  const staging = mkdtempSync(join(parent, `.tmp-${req.name}.git-${process.pid}-`))
+  const tmp = join(staging, `${req.name}.git`)
   const step = (what: string, fn: () => void): void => {
     try {
       fn()
@@ -488,7 +493,7 @@ export function makeClone(
       const gh = targetGitOptions(deps.gh)
       const res = gh.runner.run(
         ['repo', 'clone', `${req.owner}/${req.name}`, tmp, '--no-upstream', '--', '--bare'],
-        { cwd: parent, env: { ...gh.env, GH_HOST: req.ghHost } },
+        { cwd: staging, env: { ...gh.env, GH_HOST: req.ghHost } },
       )
       if (res.exitCode !== 0) throw new Error(stderrOrError(res) || `exit ${res.exitCode}`)
     })
@@ -499,12 +504,21 @@ export function makeClone(
       git.rawChecked(['config', '--local', '--add', helper, '!gh auth git-credential'])
     })
     step('set core.longpaths', () => git.configSet('core.longpaths', 'true', { scope: 'local' }))
+    step('turn off background maintenance', () => {
+      for (const [key, value] of NO_MAINTENANCE) git.configSet(key, value, { scope: 'local' })
+    })
     step('fetch into origin/*', () => {
       for (const { ref, sha } of git.refs('refs/heads/')) git.deleteRef(ref, { expected: sha })
       git.configSet('remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*', {
         scope: 'local',
       })
-      git.fetch('origin', undefined, { prune: true, quiet: true })
+      git.rawChecked([
+        ...NO_MAINTENANCE.flatMap(([key, value]) => ['-c', `${key}=${value}`]),
+        'fetch',
+        '--prune',
+        '--quiet',
+        'origin',
+      ])
     })
     step('put the clone in place', () => {
       writeStamp(tmp)
@@ -517,10 +531,20 @@ export function makeClone(
       renameSync(tmp, final)
     })
   } catch (e) {
-    rmSync(tmp, { recursive: true, force: true })
+    rmSync(staging, { recursive: true, force: true })
     throw e
   }
+  rmSync(staging, { recursive: true, force: true })
 }
+
+/**
+ * The settings that keep git from starting a background `git maintenance` or `gc` in a managed
+ * clone: one writes and removes lock files there after the command that started it returns.
+ */
+const NO_MAINTENANCE = [
+  ['maintenance.auto', 'false'],
+  ['gc.auto', '0'],
+] as const
 
 /** How the first-run question is asked. The CLI passes cli-tool's prompts. */
 export interface MirrorAsker {

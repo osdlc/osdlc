@@ -721,6 +721,71 @@ describe('the folders between the clone directory and a clone (review round 2)',
     },
   )
 
+  test.skipIf(!posix)(
+    'gh clones into a staging folder only this user can reach, which is gone afterwards (review round 1)',
+    () => {
+      const final = clonePath(root(), req)
+      mkdirSync(dirname(final), { recursive: true, mode: 0o755 })
+      const seen: { into: string; mode: number }[] = []
+      const recording: CommandRunner = {
+        run: (argv, opts) => {
+          const into = argv[3]!
+          seen.push({ into, mode: statSync(dirname(into)).mode & 0o777 })
+          return gh.run(argv, opts)
+        },
+      }
+      const old = process.umask(0)
+      try {
+        makeClone(final, req, { gh: recording })
+      } finally {
+        process.umask(old)
+      }
+      expect(seen).toEqual([
+        {
+          into: expect.stringMatching(
+            new RegExp(
+              `^${escapeRe(dirname(final))}/\\.tmp-api\\.git-${process.pid}-[A-Za-z0-9]{6}/api\\.git$`,
+            ),
+          ),
+          mode: 0o700,
+        },
+      ])
+      expect(existsSync(dirname(seen[0]!.into))).toBe(false)
+      expect(checkClone(root(), final)).toBe('clone')
+    },
+  )
+
+  test('the clone turns off background maintenance before its first fetch, which is given it too (review round 1)', () => {
+    const final = clonePath(root(), req)
+    mkdirSync(dirname(final), { recursive: true, mode: 0o755 })
+    const calls: string[][] = []
+    const real = spawnRunner('git')
+    const git: CommandRunner = {
+      run: (argv, opts) => {
+        calls.push([...argv])
+        return real.run(argv, opts)
+      },
+    }
+    makeClone(final, req, { gh, git })
+    const fetchAt = calls.findIndex((a) => a.includes('fetch'))
+    expect(calls[fetchAt]).toEqual([
+      '-c',
+      'maintenance.auto=false',
+      '-c',
+      'gc.auto=0',
+      'fetch',
+      '--prune',
+      '--quiet',
+      'origin',
+    ])
+    const setBefore = calls
+      .slice(0, fetchAt)
+      .filter((a) => a.includes('maintenance.auto') || a.includes('gc.auto'))
+    expect(setBefore).toHaveLength(2)
+    const config = (key: string) => real.run(['config', '--get', key], { cwd: final }).stdout.trim()
+    expect([config('maintenance.auto'), config('gc.auto')]).toEqual(['false', '0'])
+  })
+
   test('a host or owner folder another user owns, or that is a symbolic link, is refused', () => {
     const clone = made()
     const host = join(root(), 'github.com')
@@ -959,3 +1024,8 @@ describe('writeMirrorAnswer', () => {
     })
   })
 })
+
+/** `text` with every character a regular expression gives a meaning escaped. */
+function escapeRe(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}

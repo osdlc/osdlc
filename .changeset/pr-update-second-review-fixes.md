@@ -71,3 +71,11 @@ as when every lease was refused. The report says so in the new
 The folder check before a removal compares the cache or state directory by its
 real path. A directory reached through a symbolic link no longer skips the
 folders between it and the tree, and a tree that is not under it is left.
+
+A managed clone is made in a staging folder only its user can open, then
+hardened and moved into place, with git's background maintenance turned off
+in it (`maintenance.auto=false`, `gc.auto=0`), so no git process writes in it
+while it is hardened or after. The `pr-update` command takes write for group
+and others out of its umask when it starts, so it and the commands it runs
+never create a file others can write to. A host that calls `runUpdate`
+directly keeps its own umask.

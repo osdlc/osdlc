@@ -18,7 +18,8 @@
  *   not a broken clone in the way.
  *
  * Every walk skips names that start with `.`, except the two kinds of leftover it removes once
- * they are an hour old: `.tmp-<name>.git-<pid>` clone folders and `.pr-update-probe-*` probes.
+ * they are an hour old: `.tmp-<name>.git-<pid>` folders (a clone's staging folder, or a clone a
+ * removal stopped in) and `.pr-update-probe-*` probes.
  * No walk follows a symbolic link: a link is never descended into, removed through, or counted.
  * Nothing is removed from a folder someone else could write to (`folderProblem` in
  * `./folders.ts`); under `worktrees/` and `kept/` the fix named is `chmod -R go-w` on that
@@ -127,8 +128,11 @@ function isRunning(run: RegExpExecArray, alive: RunAlive): boolean {
   return alive(Number(run[1]), Number(run[2]))
 }
 
-/** A clone folder `makeClone` left, or one a prune could not finish removing: `.tmp-<name>.git-<pid>`. */
-const TMP_CLONE = /^\.tmp-(.+\.git)-\d+$/
+/**
+ * A staging folder `makeClone` left (`.tmp-<name>.git-<pid>-<random>`), or a clone a prune could
+ * not finish removing (`.tmp-<name>.git-<pid>`).
+ */
+const TMP_CLONE = /^\.tmp-(.+\.git)-\d+(?:-[A-Za-z0-9]{6})?$/
 
 const PROBE = /^\.pr-update-probe-/
 

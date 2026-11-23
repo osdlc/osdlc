@@ -152,12 +152,27 @@ export function expandBareBranch(argv: readonly string[]): string[] {
   return out
 }
 
-/** Returns an exit code and never exits. Reads nothing outside `ctx` and `seams`. */
+/**
+ * Take write for group and others out of the process's umask, keeping the rest of it. Child
+ * processes inherit the umask, so git and every command pr-update runs make no file or folder
+ * others can write to: later fetches, run and kept worktrees, `FETCH_HEAD`. Read by setting a
+ * strict mask for a moment, since `process.umask()` with no argument is deprecated.
+ */
+export function tightenUmask(): void {
+  const old = process.umask(0o077)
+  process.umask(old | 0o022)
+}
+
+/**
+ * Returns an exit code and never exits. Reads nothing outside `ctx` and `seams`. It tightens the
+ * process's umask ({@link tightenUmask}) for the rest of the process: the CLI's whole run.
+ */
 export async function main(
   argv: readonly string[],
   ctx: CliContext,
   seams: CliSeams = {},
 ): Promise<number> {
+  tightenUmask()
   const app = createApp(seams)
   if (argv.length === 0) return app.run(['help'], ctx)
   return app.run(expandBareBranch(argv), ctx)

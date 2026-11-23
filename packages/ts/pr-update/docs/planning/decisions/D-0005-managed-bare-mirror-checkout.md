@@ -919,7 +919,20 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   The root is compared by its real path, since git names a worktree by its
   real path: before the first review of these fixes, a state directory
   reached through a symbolic link skipped every folder between it and a kept
-  tree. A path that is not under the root at all is refused. On Windows no ownership or mode check is made, since NTFS
+  tree. A path that is not under the root at all is refused.
+  After the first review of these fixes, the clone is made in a staging
+  folder `mkdtemp` makes (`0700`) beside its place,
+  `.tmp-<name>.git-<pid>-<random>`, so no one else can reach it before it is
+  hardened and renamed into place; pruning's leftover rule takes the new
+  name. Its config gets `maintenance.auto=false` and `gc.auto=0` before its
+  first fetch, which gets both with `-c` too: a detached `git maintenance`
+  that fetch started had taken and dropped `objects/maintenance.lock` while
+  the hardening walk ran, and could write in the clone after it. The CLI's
+  `main` takes group and others write out of the process's umask, so
+  pr-update and every command it runs never create a file others can write
+  to: fetches after the clone, run and kept worktrees, `FETCH_HEAD`. A host
+  that calls `runUpdate` directly does not get this and sets its own umask.
+  On Windows no ownership or mode check is made, since NTFS
   ACLs are not read: only the symbolic-link and marker checks apply.
 - **Clone locks.** As accepted, `update --apply` held a clone's lock from its
   clone or fetch through `worktree add`, and again for `worktree remove`.
