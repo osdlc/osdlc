@@ -63,6 +63,7 @@ import {
 import type { CommandRunner } from '@osdlc/command-seam'
 import { parseRepoTarget } from '@osdlc/ecosystem/repositories'
 import { FailureError, type Failure } from '@osdlc/result'
+import { parseTrustRepo } from '@osdlc/trust-repo'
 import { githubCodeHostFor, type CodeHostTarget } from './code-host.ts'
 import { chooseStrategy, type Strategy } from './strategy.ts'
 import type { PrUpdateConfig } from './config.ts'
@@ -360,9 +361,16 @@ export function surveyRows(
     measurable: boolean
     /** The remote whose tracking refs are read. Defaults to `origin`. */
     remote?: string
+    /**
+     * The repository's other checkouts on this machine, each with its own worktrees (`null` when
+     * they could not be listed) and the remote they push to. The `unpushed_local` guard reads
+     * them as it reads `worktrees`.
+     */
+    others?: readonly { git: Git; worktrees: readonly Worktree[] | null; remote: string }[]
   },
 ): { rows: SurveyRow[]; cycles: number[] } {
   const remote = opts.remote ?? 'origin'
+  const others = opts.others ?? []
   const { order, cycles } = topoOrder(prs)
   const edges = parentEdges(prs)
 
@@ -390,8 +398,11 @@ export function surveyRows(
     rows: order.map((pr) => {
       const m = measured.get(pr.number)!
       const blockedBy = nearestBehindAncestor(pr.number, edges, behindOf)
+      // Each other checkout is read against its own `<remote>/<head>`. That ref is as fresh as
+      // that checkout's last fetch, and a stale one can only report more work as unpushed.
       const unpushed = opts.measurable
-        ? unpushedLocalWork(git, opts.worktrees, pr.headRef, remote)
+        ? unpushedLocalWork(git, opts.worktrees, pr.headRef, remote) ||
+          others.some((o) => unpushedLocalWork(o.git, o.worktrees, pr.headRef, o.remote))
         : false
       const decision = chooseStrategy(
         {
@@ -400,7 +411,9 @@ export function surveyRows(
           ahead: m.ahead,
           reviews: pr.reviewCount,
           unpushedLocal: unpushed,
-          worktreesUnknown: opts.measurable && opts.worktrees === null,
+          worktreesUnknown:
+            opts.measurable &&
+            (opts.worktrees === null || others.some((o) => o.worktrees === null)),
           crossRepo: pr.isCrossRepository,
         },
         opts.cfg,
@@ -460,15 +473,58 @@ export function scopeToPrs(
 /**
  * A host as two hosts are compared: lower-cased and without a port. A remote's
  * host is read without its port, and `--repo` keeps the one it names, so
- * `forgejo.local:3000` and `forgejo.local` are one host.
+ * `forgejo.local:3000` and `forgejo.local` are one host. It is also the host
+ * of every path and trust key a target gets, so none holds a `:`.
  */
-function hostKey(host: string): string {
+export function hostKey(host: string): string {
   return host.toLowerCase().replace(/:\d+$/, '')
 }
 
-/** Whether `part` can be one segment of a repository's name: not `.` or `..`, and no backslash or whitespace. */
-function isNamePart(part: string): boolean {
-  return part !== '.' && part !== '..' && !/[\\\s]/.test(part)
+/** Whether `text` reads as a trust key, `host/owner/name` (trust-repo's `parseTrustRepo`). */
+function isTrustKey(text: string): boolean {
+  try {
+    parseTrustRepo(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * A `--repo` read as a target: its host (`defaultHost` when it names none),
+ * owner and name, lower-cased. Its `host/owner/name`, with the host's port
+ * left out, must be a trust key, since that key trusts a clone of it and
+ * names its clone, kept and attempt paths. An owner or a name with a `:` is
+ * refused too: each is a path segment, and Windows takes no `:` there.
+ *
+ * @throws SurveyUsageError naming what is wrong.
+ */
+function parseRepoFlag(
+  text: string,
+  defaultHost: string,
+): { host: string; owner: string; name: string; hostGiven: boolean } {
+  const bad = new SurveyUsageError(`--repo ${text}: not owner/name or host/owner/name`)
+  let parsed
+  try {
+    parsed = parseRepoTarget(text)
+  } catch {
+    throw bad
+  }
+  const owner = parsed.owner.toLowerCase()
+  const name = parsed.repo.toLowerCase()
+  const host = parsed.host?.toLowerCase() ?? defaultHost
+  if (name.length > 4 && name.endsWith('.git')) {
+    throw new SurveyUsageError(
+      `--repo ${text}: name the repository without .git, as ${text.trim().slice(0, -4)}`,
+    )
+  }
+  if (owner.includes(':') || name.includes(':') || !isTrustKey(`github.com/${owner}/${name}`)) {
+    throw bad
+  }
+  if (!isTrustKey(`${hostKey(host)}/${owner}/${name}`)) {
+    throw new SurveyUsageError(`--repo ${text}: ${hostKey(host)} is not a host name`)
+  }
+  return { host, owner, name, hostGiven: parsed.host !== undefined }
 }
 
 /** Options for {@link resolveTargets}. */
@@ -503,7 +559,8 @@ export interface ResolveTargetsOptions {
  * unmeasurable, not dropped. Quietly surveying fewer repositories than were
  * asked for would be worse.
  *
- * @throws SurveyUsageError when a `--repo` is not `owner/name` or `host/owner/name`, or when
+ * @throws SurveyUsageError when a `--repo` is not `owner/name` or `host/owner/name` (one
+ * that cannot be a trust key, or whose name ends in `.git`), or when
  * two name one `owner/name` on different hosts: every report and `--pr` key names a
  * repository by `owner/name` alone, so the run could not tell them apart.
  */
@@ -527,30 +584,12 @@ export function resolveTargets(
   const named = new Map<string, { text: string; host: string | null }>()
   const out: RepoTarget[] = []
   for (const text of selected) {
-    let parsed
-    try {
-      parsed = parseRepoTarget(text)
-    } catch {
-      parsed = null
-    }
-    // Each part becomes a path segment of a clone, kept or attempt path, and `owner/name` a
-    // `gh --repo` argument, so a part that could step out of its directory or is not a name is refused.
-    if (
-      parsed === null ||
-      [parsed.host, parsed.owner, parsed.repo].some((p) => p !== undefined && !isNamePart(p)) ||
-      parsed.owner.includes(':') ||
-      parsed.repo.includes(':')
-    ) {
-      throw new SurveyUsageError(`--repo ${text}: not owner/name or host/owner/name`)
-    }
-    const owner = parsed.owner.toLowerCase()
-    const name = parsed.repo.toLowerCase()
-    const host = parsed.host?.toLowerCase() ?? defaultHost
+    const { host, owner, name, hostGiven } = parseRepoFlag(text, defaultHost)
     const repo = `${owner}/${name}`
     const isRoot =
       root !== null &&
       repo === root.repo.toLowerCase() &&
-      (parsed.host === undefined || (rootHost !== null && hostKey(host) === hostKey(rootHost)))
+      (!hostGiven || (rootHost !== null && hostKey(host) === hostKey(rootHost)))
     const key = isRoot ? '' : `${hostKey(host)}/${repo}`
     if (seen.has(key)) continue
     seen.add(key)
@@ -1012,6 +1051,12 @@ export function surveyWithTargets(
     const listedWorktrees = measurable ? git.try.worktrees() : null
     const worktrees =
       listedWorktrees === null ? [] : listedWorktrees.ok ? listedWorktrees.value : null
+    // A located checkout's others were matched by `origin`, as it was.
+    const others = (target.found?.others ?? []).map((path) => {
+      const other = new Git(path, { runner: env.git })
+      const listed = other.try.worktrees()
+      return { git: other, worktrees: listed.ok ? listed.value : null, remote: 'origin' }
+    })
 
     const { rows, cycles } = surveyRows(git, prs, {
       repo: target.repo,
@@ -1019,6 +1064,7 @@ export function surveyWithTargets(
       cfg,
       measurable,
       remote,
+      others,
     })
     repos.push({ repo: target.repo, measurable, checkout, fetched, cycles })
     allRows.push(...rows)

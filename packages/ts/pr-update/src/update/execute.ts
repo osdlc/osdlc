@@ -50,7 +50,7 @@ import {
 } from '@osdlc/typed-git'
 
 import { NothingDetectedError } from '../detect.ts'
-import { keepWorktree } from './kept.ts'
+import { keepWorktree, type KeptPlace } from './kept.ts'
 import type {
   ConfirmPush,
   BranchLease,
@@ -1094,10 +1094,10 @@ export async function updateAll(
      */
     prepare?: (target: UpdateTarget, done: readonly UpdateResult[]) => UpdateTarget | null
     /**
-     * Set to move the worktree of a PR that ended `conflict` or `failed` aside, under
-     * `checkout`, for a person to pick up (see `./kept.ts`). The run goes on in a fresh one.
+     * Set to move the worktree of a PR that ended `conflict` or `failed` aside, into `place`,
+     * for a person to pick up (see `./kept.ts`). The run goes on in a fresh one.
      */
-    keepFailed?: { checkout: string }
+    keepFailed?: { place: KeptPlace }
   },
 ): Promise<UpdateResult[]> {
   const results: UpdateResult[] = []
@@ -1144,7 +1144,7 @@ export async function updateAll(
         try {
           result.keptWorktree = keepWorktree(
             git,
-            opts.keepFailed.checkout,
+            opts.keepFailed.place,
             opts.worktreeRoot,
             target,
             outcome.status === 'failed' ? outcome.verifyLog : undefined,

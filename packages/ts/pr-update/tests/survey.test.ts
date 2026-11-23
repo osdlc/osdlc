@@ -494,6 +494,32 @@ describe('resolveTargets', () => {
     )
   })
 
+  test.each([
+    ['o/r.git', 'o/r'],
+    ['O/R.GIT', 'O/R'],
+    ['github.com/o/r.git', 'github.com/o/r'],
+  ])('--repo %s is a usage error naming the form without .git', (text, bare) => {
+    expect(() => resolveTargets('o/r', '/repo', [text], locate({}), opts)).toThrow(
+      `--repo ${text}: name the repository without .git, as ${bare}`,
+    )
+  })
+
+  test.each(['under_score.example/x/y', 'ghe.example:port/x/y', 'host:/x/y'])(
+    '--repo %s, whose host is not a host name, is a usage error',
+    (text) => {
+      expect(() => resolveTargets('o/r', '/repo', [text], locate({}), opts)).toThrow(
+        /^--repo .*: .* is not a host name$/,
+      )
+    },
+  )
+
+  test('an owner or a name longer than a trust key takes is a usage error', () => {
+    const long = 'n'.repeat(201)
+    expect(() => resolveTargets('o/r', '/repo', [`o/${long}`], locate({}), opts)).toThrow(
+      'not owner/name or host/owner/name',
+    )
+  })
+
   test('a host may carry a port', () => {
     expect(resolveTargets('o/r', '/repo', ['ghe.example:8443/x/y'], locate({}), opts)).toEqual([
       at('x/y', null, 'ghe.example:8443'),

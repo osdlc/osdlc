@@ -37,6 +37,7 @@
  * the run keys its own bookkeeping by repository and number together.
  */
 
+import { realpathSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { z } from 'zod'
@@ -54,23 +55,34 @@ import {
 import {
   SCOPE_SHAPE,
   SurveyUsageError,
+  hostKey,
   prKey,
   repoEntry,
   selectorLabel,
   surveyWithTargets,
   type PrSelector,
+  type RepoTarget,
   type SurveyEnv,
   type SurveyReport,
 } from './survey.ts'
-import type { AttemptKey, AttemptStore, ConfirmPush, Ports } from './ports.ts'
+import type {
+  AttemptKey,
+  AttemptStore,
+  BranchLease,
+  ConfirmPush,
+  Ports,
+  TargetCheckout,
+} from './ports.ts'
 import { terminalConfirmPush } from './update/confirm.ts'
 import {
+  checkoutKept,
   discardKept,
   findKept,
   keptIsCurrent,
   keptIsTouched,
+  keptOwnerElsewhere,
   listKept,
-  type KeptRecord,
+  type KeptPlace,
 } from './update/kept.ts'
 import type { PrUpdateConfig } from './config.ts'
 
@@ -256,7 +268,7 @@ function ancestorsOfNamed(
 export const input = z.object({
   ...SCOPE_SHAPE,
   remote: SCOPE_SHAPE.remote.describe(
-    "The project root's remote to fetch from, measure against and push to. A checkout `locate` describes with its own remote is read through that one.",
+    "The project root's remote to fetch from, measure against and push to. A checkout `locate` describes with its own remote is read and pushed through that one.",
   ),
   apply: z
     .boolean()
@@ -274,7 +286,7 @@ export const input = z.object({
     .boolean()
     .default(false)
     .describe(
-      'Treat this repo as trusted for this run, satisfying any trust gate the host puts on project-sourced commands.',
+      "Treat every repository of this run as trusted for this run, satisfying any trust gate the host puts on project-sourced commands and on commands run in a `--repo` target's checkout.",
     ),
   retryFailed: z
     .boolean()
@@ -292,7 +304,7 @@ export const input = z.object({
     .boolean()
     .optional()
     .describe(
-      'Move the worktree of a PR that ended `conflict` or `failed` to `.pr-update/failed/<owner>-<name>-<number>/`, on a branch named for the PR, for a person to finish and push; absent defers to `pr_update.keep_failed`. Needs --apply. A later run skips that PR until its head or base moves, unless --retry-failed or --discard-kept.',
+      "Move the worktree of a PR that ended `conflict` or `failed` to `.pr-update/failed/<owner>-<name>-<number>/` (a `--repo` target's, to where `Ports.targetHome` says: the standalone run's is `kept/<host>/<owner>/<name>/<number>/` in pr-update's state directory), on a branch named for the PR, for a person to finish and push; absent defers to `pr_update.keep_failed`. Needs --apply. A later run skips that PR until its head or base moves, unless --retry-failed or --discard-kept.",
     ),
   discardKept: z
     .boolean()
@@ -471,6 +483,14 @@ export type UpdateOutput = z.infer<typeof output>
 /** Everything a run needs beyond the args and the config. */
 export interface UpdateEnv extends SurveyEnv {
   ports: Ports
+  /**
+   * The trust gate for a target other than the project root: null when the run may start its
+   * commands (resolvers, lockfile install, verify, repair) in that target's worktrees, else the
+   * reason its PRs are skipped. Asked once per such target with a PR to update, before any
+   * verify list is resolved and before anything is updated. Absent means every target may: a
+   * host applies its own trust rules in `Ports.resolveVerifyVerbs`.
+   */
+  targetTrust?: ((target: TargetCheckout) => Promise<string | null>) | undefined
 }
 
 /**
@@ -533,7 +553,10 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   const confirmPush = bindConfirmPush(args, env.ports, env.dryRun)
   const effectiveCfg = applyStrategyOverride(env.cfg, args.strategy)
   const { report, targets: repoTargets } = surveyWithTargets(args, { ...env, cfg: effectiveCfg })
-  const attempts = env.ports.attempts
+  // Each repository's PRs are updated in the checkout the survey measured them in, through the
+  // remote it was measured against.
+  const served = servedTargets(repoTargets, env)
+  const attempts = routeAttempts(served, env.ports.attempts)
   // Branch mode names its PR by head branch. The survey has already narrowed
   // the report to it and its stack parents. The match is by repository and
   // number, so a same-numbered PR in another repository is not swept in.
@@ -560,40 +583,40 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   if (args.discardKept === true && !args.apply)
     throw new UpdateUsageError('--discard-kept needs --apply')
 
-  // Each repository's PRs are updated in that repository's own checkout, the
-  // one the survey measured them in, through the remote it was measured against.
-  //
-  // Not yet in a checkout `locate` described in full (a `FoundCheckout`, which
-  // the standalone run's locate returns): the run's attempt store, lease,
-  // trust check and worktree directory are all the project root's, so its PRs
-  // are surveyed and skipped. Leaving it out of `pathOf` also keeps its kept
-  // worktrees and verify list untouched.
-  const foundCheckout = new Map(
-    repoTargets.flatMap((t) => (t.found === null ? [] : [[t.repo, t.found.path] as const])),
-  )
-  const served = repoTargets.filter((t) => t.found === null)
-  const pathOf = new Map(served.map((t) => [t.repo, t.path ?? env.projectRoot]))
-  const remoteOf = new Map(served.map((t) => [t.repo, t.remote]))
-  const groups = new Map<string, { path: string; remote: string; targets: UpdateTarget[] }>()
+  const groups = new Map<string, Group>()
   for (const t of targets) {
-    const found = foundCheckout.get(t.repo)
-    if (found !== undefined) {
-      skipped.push({
-        repo: t.repo,
-        number: t.number,
-        head: t.head,
-        reason: `checked out at ${found}, which update does not run in yet; survey measures it`,
-      })
+    const at = served.get(t.repo)
+    const skip = (reason: string): void => {
+      skipped.push({ repo: t.repo, number: t.number, head: t.head, reason })
+    }
+    // `--branch` names a branch of the checkout the run was started in, so a target served from
+    // any other checkout is left alone.
+    if (args.branch !== undefined && at !== undefined && at.path !== env.projectRoot) {
+      skip(`--branch names a branch of the project root; not updated in ${at.path}`)
       continue
     }
     const group = groups.get(t.repo)
     if (group !== undefined) group.targets.push(t)
     else {
       groups.set(t.repo, {
-        path: pathOf.get(t.repo) ?? env.projectRoot,
-        remote: remoteOf.get(t.repo) ?? args.remote,
+        path: at?.path ?? env.projectRoot,
+        remote: at?.remote ?? args.remote,
         targets: [t],
       })
+    }
+  }
+  // Before any verify list is asked for, so a list the host refuses for a target skipped here
+  // does not stop the run.
+  const refused = new Set<string>()
+  for (const [repo, group] of groups) {
+    const target = served.get(repo)?.target ?? null
+    if (target === null || env.targetTrust === undefined) continue
+    const why = await env.targetTrust(target)
+    if (why === null) continue
+    refused.add(repo)
+    groups.delete(repo)
+    for (const t of group.targets) {
+      skipped.push({ repo: t.repo, number: t.number, head: t.head, reason: why })
     }
   }
   const runId = `${process.pid}.${Date.now()}`
@@ -608,8 +631,10 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   if (verify !== 'none' && verify !== 'detect') {
     const toAsk = new Map<string, string>()
     for (const { repo, measurable, failure } of report.repos) {
-      const checkout = pathOf.get(repo)
-      if (measurable && failure === undefined && checkout !== undefined) toAsk.set(repo, checkout)
+      const checkout = served.get(repo)?.path
+      if (measurable && failure === undefined && checkout !== undefined && !refused.has(repo)) {
+        toAsk.set(repo, checkout)
+      }
     }
     // Every repository with a PR to update is asked, so none is pushed
     // unverified for want of a list.
@@ -621,7 +646,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
       )
     }
   }
-  const discarded = settleKept(args, writes, env, pathOf, groups, skipped)
+  const discarded = settleKept(args, writes, env, served, refused, groups, skipped)
   const settings = {
     resolvers: effectiveCfg.resolvers,
     lockfileInstall: effectiveCfg.lockfile_install,
@@ -632,14 +657,15 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     maxRebaseStops: effectiveCfg.repair.max_rebase_stops,
     submodules: effectiveCfg.submodules,
     confirmPush,
-    lease: writes ? env.ports.lease : undefined,
   }
   // Records too old to matter go before this run writes new ones. A rehearsal writes nothing.
   if (writes) attempts?.prune?.()
   const results: UpdateResult[] = []
   for (const [repo, { path, remote, targets: group }] of groups) {
     const git = new Git(path, { runner: env.git })
-    const worktreeRoot = join(path, '.pr-update', runId)
+    const at = served.get(repo)
+    // `<run>` last: a later run reads the pid of a killed one from it.
+    const worktreeRoot = join(at?.worktrees ?? join(path, '.pr-update'), runId)
     const verifyVerbs =
       verify === 'detect'
         ? (worktree: string, pr: number) =>
@@ -651,34 +677,41 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
               checkout: worktree,
             })
         : (verifyVerbsOf.get(repo) ?? [])
+    const lease = writes ? (at === undefined ? env.ports.lease : at.lease) : undefined
     results.push(
-      ...(await updateAll(git, group, { ...settings, remote, verifyVerbs }, env.ports.runVerb, {
-        apply: writes,
-        worktreeRoot,
-        ...(keepFailed ? { keepFailed: { checkout: path } } : {}),
-        onSkip: (s) => skipped.push(s),
-        // A rehearsal cannot repair, so `writes` keeps it from recording anything. Recorded as
-        // each PR finishes, so a run killed part-way (a job timeout) keeps what it
-        // learned about the PRs it had already done. Once the host is signalled nothing more is
-        // recorded: the last PR may have failed only because it was stopped, and a recorded
-        // failure would skip that PR on the next run.
-        onResult: (r) => {
-          if (writes && attempts !== undefined && forwardedSignal() === undefined) {
-            recordAttempt(attempts, r)
-          }
+      ...(await updateAll(
+        git,
+        group,
+        { ...settings, lease, remote, verifyVerbs },
+        env.ports.runVerb,
+        {
+          apply: writes,
+          worktreeRoot,
+          ...(keepFailed ? { keepFailed: { place: at?.kept ?? checkoutKept(path) } } : {}),
+          onSkip: (s) => skipped.push(s),
+          // A rehearsal cannot repair, so `writes` keeps it from recording anything. Recorded as
+          // each PR finishes, so a run killed part-way (a job timeout) keeps what it
+          // learned about the PRs it had already done. Once the host is signalled nothing more is
+          // recorded: the last PR may have failed only because it was stopped, and a recorded
+          // failure would skip that PR on the next run.
+          onResult: (r) => {
+            if (writes && attempts !== undefined && forwardedSignal() === undefined) {
+              recordAttempt(attempts, r)
+            }
+          },
+          prepare: (target, done) => {
+            const ready = restackTarget(target, done, writes, policy)
+            if (typeof ready !== 'string') return ready
+            skipped.push({
+              repo: target.repo,
+              number: target.number,
+              head: target.head,
+              reason: ready,
+            })
+            return null
+          },
         },
-        prepare: (target, done) => {
-          const ready = restackTarget(target, done, writes, policy)
-          if (typeof ready !== 'string') return ready
-          skipped.push({
-            repo: target.repo,
-            number: target.number,
-            head: target.head,
-            reason: ready,
-          })
-          return null
-        },
-      })),
+      )),
     )
   }
 
@@ -715,11 +748,122 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   }
 }
 
+/** One repository's PRs to update, in the checkout and through the remote that serve it. */
+interface Group {
+  path: string
+  remote: string
+  targets: UpdateTarget[]
+}
+
+/** A surveyed repository's checkout, and where the run keeps what it makes for it. */
+interface Served {
+  path: string
+  remote: string
+  /** The target as `Ports.targetHome` and the trust gate see it; null for the project root. */
+  target: TargetCheckout | null
+  /** The directory the run worktrees go under. */
+  worktrees: string
+  kept: KeptPlace
+  attempts: AttemptStore | undefined
+  lease: BranchLease | undefined
+}
+
+/**
+ * Each surveyed repository with a checkout, by `owner/name`. The project root's records, lease
+ * and worktrees are the run's own (`Ports.attempts`, `Ports.lease`, `<checkout>/.pr-update/`).
+ * Any other target's are where `Ports.targetHome` puts them, outside its checkout, so a run
+ * writes in a located checkout only git's worktree records, its scratch branch and the refs it
+ * fetches. Without that port, a target is served as the project root is, from its own checkout.
+ */
+function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<string, Served> {
+  const out = new Map<string, Served>()
+  for (const t of repoTargets) {
+    if (t.path === null) continue
+    const own = {
+      path: t.path,
+      remote: t.remote,
+      worktrees: join(t.path, '.pr-update'),
+      kept: checkoutKept(t.path),
+      attempts: env.ports.attempts,
+      lease: env.ports.lease,
+    }
+    if (t.source === 'root' || t.source === null) {
+      out.set(t.repo, { ...own, target: null })
+      continue
+    }
+    const [owner = '', name = ''] = t.repo.split('/')
+    const target: TargetCheckout = {
+      host: hostKey(t.host ?? 'github.com'),
+      owner,
+      name,
+      path: t.path,
+      source: t.source,
+      remote: t.remote,
+    }
+    const home = env.ports.targetHome?.(target)
+    if (home === undefined) {
+      out.set(t.repo, { ...own, target })
+      continue
+    }
+    out.set(t.repo, {
+      path: t.path,
+      remote: t.remote,
+      target,
+      worktrees: home.worktrees,
+      kept: { dir: home.kept, naming: 'repository', gitDir: commonDirOf(t.path, env) },
+      attempts: home.attempts,
+      lease: home.lease,
+    })
+  }
+  return out
+}
+
+/** The real path of the git common directory of the checkout at `path`, or undefined. */
+function commonDirOf(path: string, env: Pick<UpdateEnv, 'git'>): string | undefined {
+  try {
+    const dir = new Git(path, { runner: env.git }).gitCommonDir()
+    return dir === null ? undefined : realpathSync(dir)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * One attempt store over each served repository's own, by the `repo` of each key, so selection,
+ * recording and clearing all reach the store of the repository the PR is in, and `prune` reaches
+ * every store. `fallback` (`Ports.attempts`) serves any repository with none of its own.
+ */
+function routeAttempts(
+  served: ReadonlyMap<string, Served>,
+  fallback: AttemptStore | undefined,
+): AttemptStore | undefined {
+  const own = new Map([...served].map(([repo, s]) => [repo, s.attempts]))
+  const stores = [...new Set([fallback, ...own.values()])].filter(
+    (s): s is AttemptStore => s !== undefined,
+  )
+  if (stores.length === 0) return undefined
+  if (stores.length === 1 && stores[0] === fallback) return fallback
+  const of = (repo: string): AttemptStore | undefined => (own.has(repo) ? own.get(repo) : fallback)
+  return {
+    get: (key) => of(key.repo)?.get(key) ?? null,
+    recordFailure: (key, reason) => of(key.repo)?.recordFailure(key, reason),
+    clear: (repo, head, base) => of(repo)?.clear(repo, head, base),
+    prune: () => {
+      for (const store of stores) store.prune?.()
+    },
+  }
+}
+
 /**
  * Settle each repository's kept worktrees before the run: `--discard-kept` removes them all, a PR
  * whose head or base moved (or that `--retry-failed` names) loses its own, and a PR whose kept
  * worktree is still current is taken out of `groups` and reported as skipped. A rehearsal removes
  * nothing, and skips only what it would not have retried.
+ *
+ * A kept worktree another git directory owns (a target served from another checkout this time)
+ * is removed only when the PR moved or `--discard-kept` asks, and through that directory. Else
+ * the PR is skipped as `kept elsewhere`, and the tree and its owner are left alone. A target the
+ * trust gate `refused` is not touched.
  *
  * @returns the paths removed.
  */
@@ -727,49 +871,58 @@ function settleKept(
   args: UpdateArgs,
   writes: boolean,
   env: UpdateEnv,
-  pathOf: ReadonlyMap<string, string>,
-  groups: Map<string, { path: string; targets: UpdateTarget[] }>,
+  served: ReadonlyMap<string, Served>,
+  refused: ReadonlySet<string>,
+  groups: Map<string, Group>,
   skipped: SkippedPr[],
 ): string[] {
   const removed: string[] = []
-  const checkouts = new Set([...pathOf.values(), ...[...groups.values()].map((g) => g.path)])
-  for (const checkout of checkouts) {
-    const git = new Git(checkout, { runner: env.git })
-    const discard = (record: KeptRecord): void => {
-      removed.push(record.path)
-      if (writes) discardKept(git, checkout, record)
-    }
-    if (args.discardKept === true) for (const record of listKept(checkout)) discard(record)
+  const places = new Map<string, { checkout: string; place: KeptPlace }>()
+  for (const [repo, s] of served) {
+    if (!refused.has(repo)) places.set(s.kept.dir, { checkout: s.path, place: s.kept })
   }
-  for (const group of groups.values()) {
+  for (const [repo, group] of groups) {
+    const place = served.get(repo)?.kept ?? checkoutKept(group.path)
+    if (!places.has(place.dir)) places.set(place.dir, { checkout: group.path, place })
+  }
+  if (args.discardKept === true) {
+    for (const { checkout, place } of places.values()) {
+      const git = new Git(checkout, { runner: env.git })
+      for (const record of listKept(place)) {
+        removed.push(record.path)
+        if (writes) discardKept(git, place, record)
+      }
+    }
+  }
+  for (const [repo, group] of groups) {
+    const place = served.get(repo)?.kept ?? checkoutKept(group.path)
     const git = new Git(group.path, { runner: env.git })
     group.targets = group.targets.filter((t) => {
       // A restack child's base moves when its parent does, so its kept tree is stale by then.
       if (t.stackParent !== undefined) return true
-      const record = findKept(group.path, t.repo, t.number)
+      const record = findKept(place, t.repo, t.number)
       if (record === null || removed.includes(record.path)) return true
-      const stale = args.retryFailed === true || !keptIsCurrent(record, t)
-      if (stale && args.retryFailed !== true && keptIsTouched(git, record)) {
-        skipped.push({
-          repo: t.repo,
-          number: t.number,
-          head: t.head,
-          reason: `kept worktree ${record.path} has local changes; push them or pass --discard-kept`,
-        })
+      const skip = (reason: string): false => {
+        skipped.push({ repo: t.repo, number: t.number, head: t.head, reason })
         return false
+      }
+      const moved = !keptIsCurrent(record, t)
+      const owner = keptOwnerElsewhere(place, record)
+      if (owner !== null && (args.retryFailed === true || !moved)) {
+        return skip(`kept elsewhere: ${record.path} is a worktree of ${owner}`)
+      }
+      const stale = args.retryFailed === true || moved
+      if (stale && args.retryFailed !== true && keptIsTouched(git, record)) {
+        return skip(
+          `kept worktree ${record.path} has local changes; push them or pass --discard-kept`,
+        )
       }
       if (stale) {
         removed.push(record.path)
-        if (writes) discardKept(git, group.path, record)
+        if (writes) discardKept(git, place, record)
         return true
       }
-      skipped.push({
-        repo: t.repo,
-        number: t.number,
-        head: t.head,
-        reason: `failed worktree kept at ${record.path}`,
-      })
-      return false
+      return skip(`failed worktree kept at ${record.path}`)
     })
   }
   return writes ? removed : []

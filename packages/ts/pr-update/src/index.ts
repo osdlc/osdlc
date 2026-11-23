@@ -62,6 +62,8 @@ export type {
   RepairRequest,
   RepairResult,
   RunVerb,
+  TargetCheckout,
+  TargetHome,
   VerifyVerbsRequest,
   VerifyWhich,
 } from './ports.ts'

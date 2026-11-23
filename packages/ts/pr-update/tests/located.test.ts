@@ -1,11 +1,11 @@
 /**
  * A `--repo` target with a checkout on this machine, through the CLI: survey
- * measures it there, through its `origin`, and reports where; update leaves
- * it alone until it can run in one.
+ * measures it there, through its `origin`, and reports where; update runs in
+ * it from a worktree under pr-update's cache, and pushes through its `origin`.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -152,20 +152,79 @@ describe('a located checkout', () => {
     )
   })
 
-  test('update skips its PRs and writes nothing in it', async () => {
-    const r = await run('update', '--repo', 'acme/api', '--no-fetch', '--json')
+  test('the unpushed_local guard reads every checkout of it, not only the one used', async () => {
+    // A second checkout of acme/api, on `topic`, holding a commit its origin has not seen.
+    const other = makeGitFixture({ dir: join(scratch, 'dev', 'api2') })
+    other.commit('base', { 'a.txt': 'a' })
+    other.git.remoteAdd('origin', 'https://github.com/acme/api.git')
+    git(other.dir, 'fetch', '-q', located, '+refs/remotes/origin/*:refs/remotes/origin/*')
+    git(other.dir, 'checkout', '-q', '-b', 'topic', topic)
+    other.commit('not pushed', { 'u.txt': 'u' })
+
+    const r = await run('survey', '--repo', 'acme/api', '--no-fetch', '--json')
+    expect(r.code).toBe(EXIT.ok)
+    expect(r.err).toContain(`using ${located}; also checked out at ${other.dir}`)
+    const out = JSON.parse(r.out)
+    expect(out.repos[0].checkout.path).toBe(located)
+    expect(out.prs[0]).toMatchObject({ number: 7, unpushedLocal: true, strategy: 'skip' })
+
+    // Pushed, it no longer holds the branch back.
+    git(other.dir, 'update-ref', 'refs/remotes/origin/topic', 'topic')
+    const after = JSON.parse(
+      (await run('survey', '--repo', 'acme/api', '--no-fetch', '--json')).out,
+    )
+    expect(after.prs[0]).toMatchObject({ unpushedLocal: false, strategy: 'rebase' })
+  })
+})
+
+describe('updating a located checkout', () => {
+  test('runs in a worktree under the cache, pushes through its origin, and leaves only git records in it', async () => {
+    // Its origin is on a host with a port; the push and fetch go to a bare repository instead.
+    const url = 'https://ghe.example:8443/acme/api.git'
+    git(located, 'remote', 'set-url', 'origin', url)
+    const bare = join(scratch, 'remote', 'api.git')
+    git(scratch, 'init', '-q', '--bare', bare)
+    const main = git(located, 'rev-parse', 'refs/remotes/origin/main')
+    git(located, 'push', '-q', bare, `${main}:refs/heads/main`, `${topic}:refs/heads/topic`)
+    const real = spawnRunner('git')
+    const viaBare: CommandRunner = {
+      run: (argv, opts): CommandResult =>
+        real.run(
+          argv[0] === 'fetch' || argv[0] === 'push'
+            ? ['-c', `url.file://${bare}.insteadOf=${url}`, ...argv]
+            : argv,
+          opts,
+        ),
+    }
+
+    const r = await runWith(
+      { git: viaBare },
+      'update',
+      '--repo',
+      'ghe.example:8443/acme/api',
+      '--apply',
+      '--json',
+    )
     expect(r.code).toBe(EXIT.ok)
     const out = JSON.parse(r.out)
-    expect(out.results).toEqual([])
-    expect(out.skipped).toEqual([
-      {
-        repo: 'acme/api',
-        number: 7,
-        head: 'topic',
-        reason: `checked out at ${located}, which update does not run in yet; survey measures it`,
-      },
+    expect(out.repos[0]).toMatchObject({ repo: 'acme/api', checkout: { path: located } })
+    expect(out.results).toMatchObject([
+      { repo: 'acme/api', number: 7, status: 'updated', pushed: true },
     ])
+    expect(asked.find((c) => c.argv.includes('acme/api'))?.host).toBe('ghe.example:8443')
+    // Rebased onto main and pushed to the origin it was found by.
+    const pushed = git(bare, 'rev-parse', 'refs/heads/topic')
+    expect(pushed).not.toBe(topic)
+    expect(git(bare, 'merge-base', main, pushed)).toBe(main)
+
+    // The run worktree was made under pr-update's cache, by the host without its port, and removed.
+    const env = isolatedEnv(join(scratch, 'env'))
+    const runs = join(env.OSDLC_ROOT!, 'cache', 'osdlc', 'pr-update', 'worktrees')
+    expect(readdirSync(join(runs, 'ghe.example', 'acme', 'api'))).toEqual([])
+    expect(readdirSync(runs)).toEqual(['ghe.example'])
     expect(existsSync(join(located, '.pr-update'))).toBe(false)
+    expect(git(located, 'worktree', 'list', '--porcelain')).not.toContain(runs)
+    expect(git(located, 'branch', '--list', 'pr-update/*')).toBe('')
   })
 })
 

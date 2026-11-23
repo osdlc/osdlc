@@ -44,7 +44,7 @@ import {
   runSurvey,
   type PrSelector,
 } from './survey.ts'
-import { EXIT_UNTRUSTED, untrustedMessage, withoutRepairChoice } from './trust.ts'
+import { EXIT_UNTRUSTED, targetTrustGate, untrustedMessage, withoutRepairChoice } from './trust.ts'
 import {
   output as updateOutputSchema,
   renderUpdateText,
@@ -429,7 +429,7 @@ export function updateCommand(seams: CliSeams) {
       },
       trust: {
         kind: 'boolean',
-        help: 'Treat this repo as trusted for this run (satisfies the trust gate on commands and agents the project file names).',
+        help: "Treat every repository of this run as trusted for this run (satisfies the trust gate on commands and agents the project file names, and on commands run in a --repo target's checkout).",
       },
       restack: {
         kind: 'tristate',
@@ -444,7 +444,7 @@ export function updateCommand(seams: CliSeams) {
         kind: 'tristate',
         offHelp:
           'Do not keep failed worktrees this run, overriding a configured pr_update.keep_failed: true.',
-        help: "Move the worktree of a PR that ended conflict or failed to .pr-update/failed/<owner>-<name>-<number>/, on a branch named for the PR, with a failed verify's log in it, for a person to finish and push. The run goes on in a fresh worktree. Needs --apply.",
+        help: "Move the worktree of a PR that ended conflict or failed to .pr-update/failed/<owner>-<name>-<number>/ (a --repo target's to kept/<host>/<owner>/<name>/<number>/ in pr-update's state directory), on a branch named for the PR, with a failed verify's log in it, for a person to finish and push. The run goes on in a fresh worktree. Needs --apply.",
       },
       discardKept: {
         kind: 'boolean',
@@ -567,7 +567,7 @@ export function updateCommand(seams: CliSeams) {
       ) {
         throw new UsageError('repair mode interactive needs a terminal on stdin, stdout and stderr')
       }
-      const env: UpdateEnv = runEnv(
+      const base = runEnv(
         ctx,
         layers,
         seams,
@@ -579,6 +579,12 @@ export function updateCommand(seams: CliSeams) {
         flags.remote,
         (line) => ctx.note(line),
       )
+      // A --repo target is gated by its own trust, whatever chose the command: the commands run
+      // in its files. --trust covers it too.
+      const env: UpdateEnv = {
+        ...base,
+        targetTrust: targetTrustGate({ cfg: base.cfg, trust: flags.trust, env: ctx.env }),
+      }
       let out: UpdateOutput
       try {
         out = await runUpdate(

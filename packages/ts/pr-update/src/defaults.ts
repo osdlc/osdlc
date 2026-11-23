@@ -17,15 +17,27 @@ import {
   type CommandRunner,
 } from '@osdlc/command-seam'
 
+import { join } from 'node:path'
+
+import { osdlcDirs } from '@osdlc/ecosystem'
+
 import { DETECT_LOOKED_FOR, NothingDetectedError, detectVerifyCommand } from './detect.ts'
 import type { PrUpdateConfig, PrUpdateStandaloneConfig } from './config.ts'
 import { standaloneLocate, type StandaloneLocateOptions } from './locate.ts'
-import type { Ports, Repair } from './ports.ts'
+import { prUpdatePaths } from './machine.ts'
+import type {
+  AttemptStore,
+  BranchLease,
+  Ports,
+  Repair,
+  TargetCheckout,
+  TargetHome,
+} from './ports.ts'
 import { agentRepair } from './repair/agents.ts'
 import { seatRepair } from './repair/seat.ts'
 import { attemptsDir, fileAttemptStore } from './update/attempts.ts'
 import { defaultLeaseTtlSeconds, refBranchLease } from './update/lease.ts'
-import { attemptsPrefix, refAttemptStore } from './update/ref-attempts.ts'
+import { DEFAULT_REF_PREFIX, attemptsPrefix, refAttemptStore } from './update/ref-attempts.ts'
 
 // Both run in a PR worktree, so `sh` comes only from an absolute PATH entry:
 // a relative entry would resolve inside the PR's own files.
@@ -72,8 +84,8 @@ export interface StandalonePortsOptions {
   /** Runs git for `locate`. Defaults to typed-git's. */
   git?: CommandRunner | undefined
   /**
-   * The environment `locate` reads the osdlc directories and the home
-   * directory from. Defaults to `process.env`.
+   * The environment `locate` and `targetHome` read the osdlc directories and
+   * the home directory from. Defaults to `process.env`.
    */
   env?: Record<string, string | undefined> | undefined
   /** Passed to `locate`'s `CheckoutLocator` as given: the CLI's SSH alias resolver, or a test's settings. */
@@ -89,6 +101,11 @@ export interface StandalonePortsOptions {
  * With `projectRoot`, failed updates are recorded in
  * `<projectRoot>/.pr-update/attempts/`, or, with `attempts.store: git-ref`, as refs on `remote`
  * (default `origin`) along with a per-branch update lease.
+ *
+ * Any other target keeps its own, in pr-update's osdlc directories (`machine.ts`), under
+ * `<host>/<owner>/<name>` with the host's port left out: run worktrees in the cache's
+ * `worktrees/`, kept worktrees in the state's `kept/`, and file attempts in the state's
+ * `attempts/`. With `git-ref`, its record and lease are refs on its own checkout's remote.
  *
  * `notice` receives one-line notes for the person: the command `verify: detect` chose, where to
  * attach a `terminal` repair, and a `--repo` target with no checkout and the roots searched for it.
@@ -164,19 +181,44 @@ export function standalonePorts(
     ...(projectRoot === undefined
       ? {}
       : cfg?.attempts?.store === 'git-ref'
-        ? {
-            attempts: refAttemptStore({
-              remote,
-              cwd: projectRoot,
-              prefix: attemptsPrefix(cfg.attempts.ref_prefix),
-            }),
-            lease: refBranchLease({
-              remote,
-              cwd: projectRoot,
-              refPrefix: cfg.attempts.ref_prefix,
-              ttlMs: (cfg.lease?.ttl_seconds ?? defaultLeaseTtlSeconds(timeout)) * 1000,
-            }),
-          }
+        ? refRecords(cfg, remote, projectRoot)
         : { attempts: fileAttemptStore(attemptsDir(projectRoot)) }),
+    targetHome: (target) => standaloneTargetHome(cfg, target, opts.env),
   }
+}
+
+/** The `git-ref` record and lease of `cfg`, on `remote` of the checkout at `cwd`. */
+function refRecords(
+  cfg: Partial<PrUpdateStandaloneConfig> & Pick<PrUpdateConfig, 'repair'>,
+  remote: string,
+  cwd: string,
+): { attempts: AttemptStore; lease: BranchLease } {
+  const refPrefix = cfg.attempts?.ref_prefix ?? DEFAULT_REF_PREFIX
+  return {
+    attempts: refAttemptStore({ remote, cwd, prefix: attemptsPrefix(refPrefix) }),
+    lease: refBranchLease({
+      remote,
+      cwd,
+      refPrefix,
+      ttlMs: (cfg.lease?.ttl_seconds ?? defaultLeaseTtlSeconds(cfg.repair.timeout_seconds)) * 1000,
+    }),
+  }
+}
+
+/**
+ * A target's own places in pr-update's directories, read from `env` when asked, so a run with
+ * no `--repo` resolves none. `target.host` carries no port, so no path segment holds a `:`.
+ */
+function standaloneTargetHome(
+  cfg: (PrUpdateConfig & Partial<PrUpdateStandaloneConfig>) | undefined,
+  target: TargetCheckout,
+  env: Record<string, string | undefined> | undefined,
+): TargetHome {
+  const paths = prUpdatePaths(osdlcDirs(env === undefined ? {} : { env }))
+  const own = (dir: string): string => join(dir, target.host, target.owner, target.name)
+  const records =
+    cfg?.attempts?.store === 'git-ref'
+      ? refRecords(cfg, target.remote, target.path)
+      : { attempts: fileAttemptStore(own(paths.attempts)) }
+  return { worktrees: own(paths.worktrees), kept: own(paths.kept), ...records }
 }

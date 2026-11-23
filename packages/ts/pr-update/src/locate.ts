@@ -42,7 +42,9 @@ export interface StandaloneLocateOptions {
  * resolved once, and its notes printed once.
  *
  * Every match resolves to its main checkout. With more than one, the first by
- * path serves the run and the note names the others.
+ * path serves the run and the note names the others. They are returned as
+ * `others`, shallow ones too, since the `unpushed_local` guard reads every
+ * checkout that could hold a branch's unpushed commits.
  */
 export function standaloneLocate(
   opts: StandaloneLocateOptions = {},
@@ -68,17 +70,23 @@ export function standaloneLocate(
       if (shallow) notice(`${label}: skipped ${m.path}: a shallow checkout cannot measure drift`)
       return !shallow
     })
-    const [first, ...others] = usable
+    const [first, ...rest] = usable
     if (first === undefined) {
       notice(notFound(label, locator))
       return null
     }
-    if (others.length > 0) {
+    if (rest.length > 0) {
       notice(
-        `${label}: using ${first.path}; also checked out at ${others.map((o) => o.path).join(', ')}`,
+        `${label}: using ${first.path}; also checked out at ${rest.map((o) => o.path).join(', ')}`,
       )
     }
-    return { path: first.path, source: 'located', remote: 'origin' }
+    const others = matches.filter((m) => m.path !== first.path).map((m) => m.path)
+    return {
+      path: first.path,
+      source: 'located',
+      remote: 'origin',
+      ...(others.length > 0 ? { others } : {}),
+    }
   }
 
   return (repo, target) => {

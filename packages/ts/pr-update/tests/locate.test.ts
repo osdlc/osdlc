@@ -140,8 +140,27 @@ describe('standaloneLocate', () => {
     writeRoots(`roots:\n  - ${home}\n`)
     const a = checkout('a/api', 'https://github.com/acme/api.git')
     const b = checkout('b/api', 'git@github.com:Acme/API.git')
-    expect(locateIn().target('github.com', 'acme', 'api')?.path).toBe(a)
+    expect(locateIn().target('github.com', 'acme', 'api')).toEqual({
+      path: a,
+      source: 'located',
+      remote: 'origin',
+      others: [b],
+    })
     expect(notes).toEqual([`github.com/acme/api: using ${a}; also checked out at ${b}`])
+  })
+
+  test('a shallow checkout is not used, but is among the others the guard reads', () => {
+    writeRoots(`roots:\n  - ${home}\n`)
+    const source = checkout('source', 'https://github.com/acme/web.git', 2)
+    const shallow = join(home, 'a', 'api')
+    mkdirSync(dirname(shallow), { recursive: true })
+    real.run(['clone', '--quiet', '--depth', '1', `file://${source}`, shallow], { cwd: home })
+    real.run(['remote', 'set-url', 'origin', 'https://github.com/acme/api.git'], { cwd: shallow })
+    const full = checkout('b/api', 'https://github.com/acme/api.git')
+    expect(locateIn().target('github.com', 'acme', 'api')).toMatchObject({
+      path: full,
+      others: [shallow],
+    })
   })
 
   test('scans the roots once per run, and resolves each target once', () => {

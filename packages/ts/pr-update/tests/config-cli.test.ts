@@ -13,7 +13,6 @@ import { join } from 'node:path'
 
 import { EXIT, captureContext } from '@osdlc/cli-tool'
 import { CONFIG_INVALID_EXIT, overlayPath } from '@osdlc/config-layers'
-import { trustStore } from '@osdlc/trust-repo'
 import type { CommandRunner } from '@osdlc/command-seam'
 import { IDENTITY, makeBareAndWorker, makeGitFixture } from '@osdlc/typed-git/testing'
 
@@ -21,7 +20,7 @@ import { FIXTURE_REMOTE, allToolsInstalled, fakeTools, isolatedEnv } from './sup
 import { PR_UPDATE_CONFIG_FILE, main } from '../src/cli.ts'
 
 const PR_UPDATE_CONFIG_FILE_NAME = PR_UPDATE_CONFIG_FILE.name
-import { EXIT_UNTRUSTED } from '../src/trust.ts'
+import { EXIT_UNTRUSTED, prUpdateTrustStore } from '../src/trust.ts'
 
 const LOCAL_FILE_NAME = overlayPath(PR_UPDATE_CONFIG_FILE_NAME)
 
@@ -200,7 +199,7 @@ describe('trust gate on update', () => {
     expect((await run(dir, env, 'update')).code).toBe(EXIT_UNTRUSTED)
     expect((await run(dir, env, 'trust')).code).toBe(EXIT.ok)
     expect((await run(dir, env, 'update')).code).toBe(EXIT.ok)
-    expect(await trustStore({ tool: 'pr-update', env }).list()).toEqual([realpathSync(dir)])
+    expect(await prUpdateTrustStore(env).list()).toEqual([realpathSync(dir)])
   })
 
   test('AC-6: a trusted run executes the project-sourced command; an untrusted one does not', async () => {
