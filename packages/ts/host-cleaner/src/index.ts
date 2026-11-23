@@ -1,8 +1,8 @@
 /**
  * `@osdlc/host-cleaner`: machine cleanup as plugins. A plugin proposes
- * candidates and objects to others'; the core runs the phases in a fixed
- * plugin order with one flat plan and one receipt. The `git` plugin is
- * repo-cleaner.
+ * candidates and objects to others'; the core runs the phases in the order
+ * the plugins are given, with one flat plan and one receipt. The `git` plugin
+ * is repo-cleaner.
  */
 
 export { VERSION } from './version.generated.ts'
@@ -11,6 +11,8 @@ export {
   FatalRun,
   HOOKS,
   LEVELS,
+  PLUGIN_API,
+  definePlugin,
   type Candidate,
   type Ctx,
   type DropReason,
@@ -19,8 +21,11 @@ export {
   type MaybePromise,
   type Objection,
   type Plugin,
+  type PluginDefinition,
+  type PluginInit,
   type RunCtx,
 } from './types.ts'
+export { BUILT_IN_PLUGINS } from './registry.ts'
 export {
   PLAN_VERSION,
   PlanSchema,
@@ -41,13 +46,11 @@ export {
   HOOK_LIMIT_MS,
   HookTimeout,
   OUTSIDE_ROOTS,
-  PLUGIN_ORDER,
   SelectionError,
   checkSelection,
   clean,
   decide,
   decidePlan,
-  orderPlugins,
   plan,
   recheck,
   spares,

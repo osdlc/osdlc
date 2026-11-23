@@ -5,15 +5,16 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import {
+  BUILT_IN_PLUGINS,
   DEFAULT_SELECTION,
   DELETE_LIMIT_MS,
   FatalRun,
   HOOK_LIMIT_MS,
   HookTimeout,
+  PLUGIN_API,
   SelectionError,
   clean,
   decide,
-  orderPlugins,
   plan,
   recheck,
   survey,
@@ -79,12 +80,26 @@ const run = async (plugins: Plugin[], opts: { select?: string[]; allow?: string[
 }
 
 describe('plugin order and duplicates', () => {
-  test('git is first, known built-ins in their order, unknown plugins after', () => {
-    const names = ['zzz', 'node', 'orca', 'git', 'cargo'].map((name) => fake(name, [], []))
-    expect(orderPlugins(names).map((p) => p.name)).toEqual(['git', 'cargo', 'node', 'orca', 'zzz'])
+  test('the shipped plugins are one definition each, in run order: git, cargo, node, orca', () => {
+    expect(BUILT_IN_PLUGINS.map((d) => d.name)).toEqual(['git', 'cargo', 'node', 'orca'])
+    expect(BUILT_IN_PLUGINS.every((d) => d.api === PLUGIN_API)).toBe(true)
   })
 
-  test('a duplicate id keeps the first plugin in order and warns, naming both', async () => {
+  test('plugins run in the order given', async () => {
+    const log: string[] = []
+    const items = (name: string) => [cand(`a:${name}`, name)]
+    const plugins = ['zzz', 'node', 'git'].map((name) => fake(name, items(name), log))
+    const s = await survey(plugins, ctx)
+    expect(s.plugins.map((p) => p.name)).toEqual(['zzz', 'node', 'git'])
+    await clean(plan(s), plugins, ctx)
+    expect(log.filter((l) => l.includes(':prepare:a:zzz'))).toEqual([
+      'zzz:prepare:a:zzz',
+      'node:prepare:a:zzz',
+      'git:prepare:a:zzz',
+    ])
+  })
+
+  test('a duplicate id keeps the first plugin in the list and warns, naming both', async () => {
     const log: string[] = []
     const s = await survey(
       [
@@ -93,8 +108,8 @@ describe('plugin order and duplicates', () => {
       ],
       ctx,
     )
-    expect(s.candidates.map((c) => c.owner)).toEqual(['git'])
-    expect(s.warnings).toEqual(["duplicate artifact:/a: kept git's, dropped node's"])
+    expect(s.candidates.map((c) => c.owner)).toEqual(['node'])
+    expect(s.warnings).toEqual(["duplicate artifact:/a: kept node's, dropped git's"])
   })
 
   test('a second plugin of the same name is left out with a warning', async () => {
@@ -510,12 +525,12 @@ describe('prepare, delete and deleted', () => {
     const log: string[] = []
     const receipt = await run([
       fake('git', [cand('a:1', 'git')], log),
+      fake('cargo', [], log),
       fake('orca', [], log, {
         deleted: () => {
           throw new Error('forget failed')
         },
       }),
-      fake('cargo', [], log),
     ])
     expect(receipt.steps[0]).toMatchObject({ result: 'ok', error: null })
     expect(receipt.steps[0]!.notified).toEqual([
@@ -586,7 +601,7 @@ describe('async hooks and time limits', () => {
     expect(receipt.status).toBe('failed')
   })
 
-  test('promised answers are awaited, one plugin at a time, in plugin order', async () => {
+  test('promised answers are awaited, one plugin at a time, in the order given', async () => {
     const log: string[] = []
     const slow = (name: string, ms: number): Plugin =>
       fake(name, [], log, {
@@ -599,7 +614,7 @@ describe('async hooks and time limits', () => {
         },
         delete: async (c) => later(ms, `removed ${c.id}`),
       })
-    const plugins = [slow('node', 1), slow('git', 15)]
+    const plugins = [slow('git', 15), slow('node', 1)]
     const s = await survey(plugins, ctx)
     expect(log).toEqual(['git:start', 'git:end', 'node:start', 'node:end'])
     const receipt = await clean(plan(s), plugins, ctx)

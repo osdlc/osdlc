@@ -15,8 +15,16 @@ import {
   type SweepOptions,
   type WorktreeEvidence,
 } from '@osdlc/repo-cleaner'
+import { z } from 'zod'
 
-import { FatalRun, type Candidate, type Objection, type Plugin } from './types.ts'
+import {
+  FatalRun,
+  PLUGIN_API,
+  definePlugin,
+  type Candidate,
+  type Objection,
+  type Plugin,
+} from './types.ts'
 
 export interface GitPluginOptions extends Runners {
   /** What the sweep judges; the plugin sets `cwd` from the run. */
@@ -104,3 +112,11 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
     },
   }
 }
+
+/** The `git` plugin as the command line builds it: no settings of its own, and the kinds `only` leaves. */
+export const gitDefinition = definePlugin({
+  name: 'git',
+  api: PLUGIN_API,
+  settings: z.strictObject({}),
+  create: ({ only }) => gitPlugin({ sweep: { only: [...only] } }),
+})

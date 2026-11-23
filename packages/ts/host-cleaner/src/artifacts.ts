@@ -15,11 +15,25 @@ import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { nodeGuard } from '@osdlc/path-guard/node'
 import { defaultProcessProbe, type ProcessHolder, type ProcessProbe } from '@osdlc/repo-cleaner'
 import { Git } from '@osdlc/typed-git'
+import { z } from 'zod'
 
 import { coveredBy } from './ignore.ts'
 import type { Candidate, Ctx, Objection, Plugin } from './types.ts'
 
 export const DEFAULT_IDLE_HOURS = 24
+
+/**
+ * The `idleHours` setting of an artifact plugin. Unset, it takes the config's
+ * top-level `idleHours` (see `settingsOf` in `./settings.ts`).
+ */
+export const idleHoursSetting = z
+  .number()
+  .nonnegative()
+  .optional()
+  .describe(
+    `Hours an artifact must have sat unused before it is a candidate; 0 takes every one. Unset: the config's top-level idleHours, else ${DEFAULT_IDLE_HOURS}.`,
+  )
+
 const HOUR_MS = 3_600_000
 
 export type ArtifactKind = 'cargo-target' | 'cargo-incremental' | 'node-modules'

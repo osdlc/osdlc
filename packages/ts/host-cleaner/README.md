@@ -11,8 +11,14 @@ This release is the library, the `git`, `cargo`, `node` and `orca` plugins, and 
 
 ## Phases
 
-Plugins run in a fixed order: `git`, `cargo`, `node`, `orca`, then
-any other in the order given. The order decides which plugin keeps a duplicate id, and the order `prepare` and `deleted` run in.
+Plugins run in the order they are given. The command line runs the shipped
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `orca`.
+The order decides which plugin keeps a duplicate id, and the order `prepare` and `deleted` run in.
+
+Each shipped plugin is one `definePlugin({ name, api, settings, create })`
+value: `api` is `PLUGIN_API`, `settings` is the zod schema of its entry in the
+config's `plugins` (the core adds `enabled` and makes it strict), and `create`
+builds the plugin from those settings, validated with defaults filled in.
 
 | Phase | Who | What |
 | --- | --- | --- |

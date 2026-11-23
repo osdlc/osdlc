@@ -12,12 +12,14 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { busyHolders } from '@osdlc/repo-cleaner'
+import { z } from 'zod'
 
 import {
   artifactPlugin,
   artifactRow,
   checkoutsOf,
   holdersIn,
+  idleHoursSetting,
   idleHoursSince,
   inside,
   newestMtime,
@@ -28,7 +30,7 @@ import {
   type Env,
   type Row,
 } from './artifacts.ts'
-import type { Plugin } from './types.ts'
+import { PLUGIN_API, definePlugin, type Plugin } from './types.ts'
 
 export const NODE_PLUGIN = 'node'
 
@@ -86,3 +88,11 @@ export function nodePlugin(opts: ArtifactOptions = {}): Plugin {
     rowFor,
   )
 }
+
+/** The `node` plugin as the command line builds it. */
+export const nodeDefinition = definePlugin({
+  name: NODE_PLUGIN,
+  api: PLUGIN_API,
+  settings: z.strictObject({ idleHours: idleHoursSetting }),
+  create: ({ settings }) => nodePlugin({ idleHours: settings.idleHours }),
+})

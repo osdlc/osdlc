@@ -13,11 +13,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
+  BUILT_IN_PLUGINS,
   FatalRun,
   VERSION,
   clean,
   gitPlugin,
-  orderPlugins,
   plan,
   survey,
 } from '@osdlc/host-cleaner'
@@ -25,8 +25,8 @@ import {
 assert.match(VERSION, /^\d+\.\d+\.\d+/)
 assert.equal(typeof gitPlugin().discover, 'function')
 assert.deepEqual(
-  orderPlugins([{ name: 'node' }, { name: 'git' }]).map((p) => p.name),
-  ['git', 'node'],
+  BUILT_IN_PLUGINS.map((d) => d.name),
+  ['git', 'cargo', 'node', 'orca'],
 )
 
 const log = []

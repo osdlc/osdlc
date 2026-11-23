@@ -27,21 +27,6 @@ import {
   type RunCtx,
 } from './types.ts'
 
-/** The fixed plugin order: which plugin keeps a duplicate candidate (the first), and the order `prepare` and `deleted` run in. */
-export const PLUGIN_ORDER: readonly string[] = ['git', 'cargo', 'node', 'orca']
-
-/** `plugins` in {@link PLUGIN_ORDER}; a plugin not named there goes after, in the order given. */
-export function orderPlugins(plugins: readonly Plugin[]): Plugin[] {
-  const rank = (p: Plugin): number => {
-    const i = PLUGIN_ORDER.indexOf(p.name)
-    return i === -1 ? PLUGIN_ORDER.length : i
-  }
-  return plugins
-    .map((p, i) => ({ p, i }))
-    .sort((a, b) => rank(a.p) - rank(b.p) || a.i - b.i)
-    .map(({ p }) => p)
-}
-
 /** The refusal for a machine-scope candidate that is not inside its owner's roots. */
 export const OUTSIDE_ROOTS = 'outside-roots'
 
@@ -113,13 +98,13 @@ function ignoredBy(c: Candidate, ignore: readonly string[]): string | undefined 
 }
 
 /**
- * Scope, discover and object, one plugin at a time, each hook awaited under
- * its time limit. A plugin that throws or times out in `detect` is left out,
- * and in `scope` or `discover` proposes nothing, with a warning; one that
- * throws or times out in `object` refuses every candidate, since what it
- * would object to is unknown. A {@link FatalRun} from any phase goes to the
- * caller. A duplicate candidate id keeps the first plugin's, with a warning
- * naming both.
+ * Scope, discover and object, one plugin at a time in the order of `all`,
+ * each hook awaited under its time limit. A plugin that throws or times out
+ * in `detect` is left out, and in `scope` or `discover` proposes nothing,
+ * with a warning; one that throws or times out in `object` refuses every
+ * candidate, since what it would object to is unknown. A {@link FatalRun}
+ * from any phase goes to the caller. A duplicate candidate id keeps the first
+ * plugin's, with a warning naming both.
  */
 export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Survey> {
   const warnings: string[] = []
@@ -140,7 +125,7 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
   }
   const names = new Set<string>()
   const plugins: Plugin[] = []
-  for (const p of orderPlugins(all)) {
+  for (const p of all) {
     if (names.has(p.name)) {
       warnings.push(`${p.name}: a second plugin of that name was left out`)
       continue

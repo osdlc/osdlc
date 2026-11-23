@@ -27,13 +27,12 @@ import { stripControls } from '@osdlc/ux'
 import { expandHome, ignorePaths } from './ignore.ts'
 import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
-import { FACTORIES, UnknownPlugin, selectPlugins } from './registry.ts'
-import { PLUGIN_SETTINGS, disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
+import { BUILT_IN_PLUGINS, UnknownPlugin, selectPlugins } from './registry.ts'
+import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
 import {
   SelectionError,
   clean,
   decidePlan,
-  orderPlugins,
   plan as makePlan,
   recheck,
   survey,
@@ -365,17 +364,19 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliCont
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
   const all =
     deps.plugins ??
-    Object.entries(FACTORIES).map(([name, make]) =>
-      make({ settings: settingsOf(name, config.plugins[name] ?? {}, config), only, env: ctx.env }),
+    BUILT_IN_PLUGINS.map((d) =>
+      d.create({
+        settings: settingsOf(d.name, config.plugins[d.name] ?? {}, config),
+        only,
+        env: ctx.env,
+      }),
     )
   const unused = unknownPlugins(config, (n) => all.some((p) => p.name === n))
   if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
   // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
   const named = wanted(v) ?? []
   const chosen = selectPlugins(all, wanted(v), v.skipPlugin)
-  return orderPlugins(
-    chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins)),
-  )
+  return chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins))
 }
 
 function contextFor(
@@ -477,7 +478,7 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
   const v = parsed.values
   try {
     const config = loadConfig(v, ctx)
-    const unused = unknownPlugins(config, (n) => Object.hasOwn(PLUGIN_SETTINGS, n))
+    const unused = unknownPlugins(config, (n) => BUILT_IN_PLUGINS.some((d) => d.name === n))
     if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
     const settings = effectiveSettings(config.plugins, config)
     if (v.format === 'json') {

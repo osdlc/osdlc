@@ -1,6 +1,7 @@
 /**
- * What each plugin's entry in the config's `plugins` may hold. A plugin's
- * settings are a strict zod object, validated when the config loads with
+ * What each plugin's entry in the config's `plugins` may hold: the settings
+ * schema of its definition in `BUILT_IN_PLUGINS`, made strict, with the core's
+ * `enabled` added. It is validated when the config loads with
  * `@osdlc/config-layers`' `validateStandard`, so a misspelt key or a wrong type
  * is a config error that names the plugin and the key. `host-cleaner config`
  * prints the same schemas' fields and defaults through `configFields`.
@@ -10,39 +11,20 @@ import { configFields, validateStandard } from '@osdlc/config-layers'
 import { z } from 'zod'
 
 import { DEFAULT_IDLE_HOURS } from './artifacts.ts'
+import { BUILT_IN_PLUGINS } from './registry.ts'
 
 const enabled = z
   .boolean()
   .default(true)
   .describe('Run this plugin. `--plugin <name>` runs it even when this is false.')
 
-const idleHours = z
-  .number()
-  .nonnegative()
-  .optional()
-  .describe(
-    `Hours an artifact must have sat unused before it is a candidate; 0 takes every one. Unset: the config's top-level idleHours, else ${DEFAULT_IDLE_HOURS}.`,
-  )
-
-const repos = z
-  .boolean()
-  .default(true)
-  .describe('Sweep the repositories `orca repo list` names, as if they were in `targets`.')
-
-/** The shipped plugins' settings by plugin name; a name without an entry takes no validated settings. */
-export const PLUGIN_SETTINGS = {
-  git: z.strictObject({ enabled }),
-  cargo: z.strictObject({ enabled, idleHours }),
-  node: z.strictObject({ enabled, idleHours }),
-  orca: z.strictObject({ enabled, repos }),
-} as const satisfies Record<string, z.ZodType>
-
 type Entries = Readonly<Record<string, Record<string, unknown>>>
 
-const schemaOf = (name: string): z.ZodType | undefined =>
-  Object.hasOwn(PLUGIN_SETTINGS, name)
-    ? (PLUGIN_SETTINGS as Record<string, z.ZodType>)[name]
-    : undefined
+/** A shipped plugin's settings with the core's `enabled` first; undefined for a name no shipped plugin has. */
+const schemaOf = (name: string): z.ZodObject | undefined => {
+  const def = BUILT_IN_PLUGINS.find((d) => d.name === name)
+  return def === undefined ? undefined : z.strictObject({ enabled, ...def.settings.shape })
+}
 
 /** One line per problem in `plugins`, each starting `<prefix>.<name>[.<key>]`. */
 export function settingsIssues(plugins: Entries, prefix = 'plugins'): string[] {
@@ -73,7 +55,7 @@ export function settingsOf(
   const schema = schemaOf(name)
   if (schema === undefined) return raw
   const parsed = schema.parse(raw) as Record<string, unknown>
-  return 'idleHours' in (schema as z.ZodObject).shape
+  return 'idleHours' in schema.shape
     ? { ...parsed, idleHours: parsed.idleHours ?? shared.idleHours ?? DEFAULT_IDLE_HOURS }
     : parsed
 }
@@ -97,7 +79,7 @@ export function effectiveSettings(
   shared: Shared = {},
 ): Record<string, SettingRow[]> {
   const out: Record<string, SettingRow[]> = {}
-  for (const name of Object.keys(PLUGIN_SETTINGS)) {
+  for (const { name } of BUILT_IN_PLUGINS) {
     const raw = plugins[name] ?? {}
     const value = settingsOf(name, raw, shared)
     out[name] = configFields({ [name]: schemaOf(name)! }).map((f) => {

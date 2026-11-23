@@ -13,12 +13,14 @@ import { existsSync, readdirSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 import { busyHolders } from '@osdlc/repo-cleaner'
+import { z } from 'zod'
 
 import {
   artifactPlugin,
   artifactRow,
   checkoutsOf,
   holdersIn,
+  idleHoursSetting,
   idleHoursSince,
   inside,
   newestMtime,
@@ -29,7 +31,7 @@ import {
   type Env,
   type Row,
 } from './artifacts.ts'
-import type { Plugin } from './types.ts'
+import { PLUGIN_API, definePlugin, type Plugin } from './types.ts'
 
 export const CARGO_PLUGIN = 'cargo'
 
@@ -170,3 +172,11 @@ export function cargoPlugin(opts: ArtifactOptions = {}): Plugin {
     rowsFor,
   )
 }
+
+/** The `cargo` plugin as the command line builds it. */
+export const cargoDefinition = definePlugin({
+  name: CARGO_PLUGIN,
+  api: PLUGIN_API,
+  settings: z.strictObject({ idleHours: idleHoursSetting }),
+  create: ({ settings }) => cargoPlugin({ idleHours: settings.idleHours }),
+})

@@ -19,8 +19,16 @@
 import { existsSync, realpathSync } from 'node:fs'
 
 import { failureText, spawnRunner, which, type CommandRunner } from '@osdlc/command-seam'
+import { z } from 'zod'
 
-import type { Candidate, Ctx, Objection, Plugin } from './types.ts'
+import {
+  PLUGIN_API,
+  definePlugin,
+  type Candidate,
+  type Ctx,
+  type Objection,
+  type Plugin,
+} from './types.ts'
 
 export const ORCA_PLUGIN = 'orca'
 
@@ -280,3 +288,16 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
     },
   }
 }
+
+/** The `orca` plugin as the command line builds it. Settings: `repos`. */
+export const orcaDefinition = definePlugin({
+  name: ORCA_PLUGIN,
+  api: PLUGIN_API,
+  settings: z.strictObject({
+    repos: z
+      .boolean()
+      .default(true)
+      .describe('Sweep the repositories `orca repo list` names, as if they were in `targets`.'),
+  }),
+  create: ({ settings, env }) => orcaPlugin({ repos: settings.repos, env }),
+})

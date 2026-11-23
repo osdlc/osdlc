@@ -4,6 +4,9 @@
  * discover, object, decide, re-check, prepare, delete, deleted.
  */
 
+import type { Kind } from '@osdlc/repo-cleaner'
+import type { z } from 'zod'
+
 /** One thing a plugin proposes for deletion. The same shape for every kind. */
 export interface Candidate {
   /** `<kind>:<path>`; unique across the run. */
@@ -115,6 +118,38 @@ export interface Plugin {
   /** After `c` was deleted, on every other plugin. Best effort: a throw is recorded and changes nothing. */
   deleted?(c: Candidate, ctx: Ctx): MaybePromise<void>
 }
+
+/** The plugin API version this host-cleaner supports; a definition's `api` must equal it. */
+export const PLUGIN_API = 1
+
+/**
+ * What `create` is told: its own entry in the config's `plugins`, validated with
+ * its defaults filled in, and the git kinds `--worktrees` and `--branches` leave.
+ */
+export interface PluginInit<S = Record<string, unknown>> {
+  settings: S
+  only: readonly Kind[]
+  /** The command line's environment, for a plugin that runs other programs. */
+  env: Readonly<Record<string, string | undefined>>
+}
+
+/**
+ * A plugin as one value: its name, the API it was written for, its settings
+ * schema and the function that builds it. The core adds `enabled` to every
+ * schema, so a plugin does not declare it.
+ */
+export interface PluginDefinition<S extends z.ZodObject = z.ZodObject> {
+  name: string
+  api: typeof PLUGIN_API
+  /** The keys its entry in `plugins` may hold; an unknown key is a config error. */
+  settings: S
+  create(init: PluginInit<z.output<S>>): Plugin
+}
+
+/** `def`, with `create`'s settings typed from its schema. */
+export const definePlugin = <S extends z.ZodObject>(
+  def: PluginDefinition<S>,
+): PluginDefinition<S> => def
 
 /** Thrown from a plugin to stop the whole run, not only the candidate it was working on. */
 export class FatalRun extends Error {
