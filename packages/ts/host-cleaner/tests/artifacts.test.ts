@@ -456,22 +456,22 @@ describe('a folder too slow to measure (D11)', () => {
 
   test('plan then re-check shows no changed, whether the second walk finishes or not', async () => {
     const { root, wt } = idleWorktree()
-    const p = plan(await survey([nodePlugin(options({ now: slow() }))], ctxOf(root)))
+    const s = await survey([nodePlugin(options({ now: slow() }))], ctxOf(root))
+    // Allowed, so the plan runs it and the re-check compares its evidence.
+    const allowed = plan(s, { allow: ['unmeasured'] })
     for (const now of [slow(), () => NOW]) {
       const { decision, survey: again } = await recheck(
-        p,
+        allowed,
         [nodePlugin(options({ now }))],
         ctxOf(root),
       )
-      expect(again.candidates[0]!.evidence).toEqual(p.candidates[0]!.evidence)
-      expect(decision.dropped.map((d) => d.reason)).not.toContain('changed')
+      expect(again.candidates[0]!.evidence).toEqual(allowed.candidates[0]!.evidence)
+      expect(decision.run.map((c) => c.id)).toEqual([`artifact:${join(wt, 'node_modules')}`])
+      expect(decision.dropped).toEqual([])
     }
     // Without --allow unmeasured, nothing runs; with it, the folder is removed.
-    const without = await clean(p, [nodePlugin(options())], ctxOf(root))
+    const without = await clean(plan(s), [nodePlugin(options())], ctxOf(root))
     expect(without.steps).toEqual([])
-    const allowed = plan(await survey([nodePlugin(options({ now: slow() }))], ctxOf(root)), {
-      allow: ['unmeasured'],
-    })
     const receipt = await clean(allowed, [nodePlugin(options())], ctxOf(root))
     expect(receipt.steps).toEqual([expect.objectContaining({ result: 'ok' })])
     expect(existsSync(join(wt, 'node_modules'))).toBe(false)
