@@ -249,6 +249,7 @@ describe('plugin settings', () => {
     })
     const text = run(['config', '--config', file], cwd, env)
     expect(text.code).toBe(0)
+    expect(text.out).toContain(`file: ${file}\n`)
     expect(text.out).toContain('targets: ~/dev')
     expect(text.out).toMatch(/plugins\.cargo\n {2}enabled = true {2}\(default\)/)
     expect(text.out).toMatch(/idleHours = 48 {2}\(config\)/)
@@ -266,6 +267,36 @@ describe('plugin settings', () => {
     const r = run(['config', '--config', ghost.file], ghost.cwd, ghost.env)
     expect(r.code).toBe(2)
     expect(r.err).toContain('ghost')
+  })
+})
+
+describe('folders', () => {
+  test('macOS uses the xdg folders, as Linux does', () => {
+    for (const platform of ['darwin', 'linux']) {
+      expect(hostDirs({}, { platform, home: '/home/me' })).toEqual({
+        config: '/home/me/.config/host-cleaner',
+        state: '/home/me/.local/state/host-cleaner',
+        logs: '/home/me/.local/state/host-cleaner',
+      })
+    }
+  })
+
+  test('the XDG and HOST_CLEANER variables move them on macOS too', () => {
+    const opts = { platform: 'darwin', home: '/home/me' }
+    expect(hostDirs({ XDG_CONFIG_HOME: '/x/cfg', XDG_STATE_HOME: '/x/st' }, opts)).toEqual({
+      config: '/x/cfg/host-cleaner',
+      state: '/x/st/host-cleaner',
+      logs: '/x/st/host-cleaner',
+    })
+    expect(hostDirs({ HOST_CLEANER_ROOT: '/r' }, opts).config).toBe('/r/config/host-cleaner')
+    expect(hostDirs({ HOST_CLEANER_CONFIG_DIR: '/c' }, opts).config).toBe('/c/host-cleaner')
+  })
+
+  test('config with no --config names config.json in the config folder', () => {
+    const { env, cwd } = setup()
+    const r = run(['config'], cwd, env)
+    expect(r.code).toBe(0)
+    expect(r.out).toContain(`file: ${join(hostDirs(env).config, 'config.json')}\n`)
   })
 })
 

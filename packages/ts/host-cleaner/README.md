@@ -163,10 +163,21 @@ host-cleaner config [--format json]   # every plugin's effective settings
 `targets`, then the directory you are in. `clean` re-checks, shows the steps,
 asks (`--yes` skips the question; with no terminal and no `--yes` it exits 2),
 deletes, and writes one receipt to `--receipt` or the state directory's
-`receipts/`, plus a line in `logs/host-cleaner.log`.
+`receipts/`, plus a line in the log.
 
-The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
-all three directories):
+host-cleaner keeps its files in three folders, from `@osdlc/tiered-dirs`'
+`standalone('host-cleaner')` tier under the `xdg` convention, so macOS uses the
+same folders as Linux:
+
+| What | Path, macOS and Linux | Moved by |
+| --- | --- | --- |
+| Config | `~/.config/host-cleaner/config.json` | `HOST_CLEANER_CONFIG_DIR`, or `XDG_CONFIG_HOME` |
+| Receipts | `~/.local/state/host-cleaner/receipts/` | `HOST_CLEANER_STATE_DIR`, or `XDG_STATE_HOME` |
+| Log | `~/.local/state/host-cleaner/host-cleaner.log` | `HOST_CLEANER_LOGS_DIR`, or `XDG_STATE_HOME` |
+
+`HOST_CLEANER_ROOT` moves all three folders, which is useful for tests.
+
+The config file holds the targets and each plugin's settings:
 
 ```json
 { "targets": ["~/dev"], "plugins": { "cargo": { "idleHours": 48 }, "node": { "enabled": false } } }
@@ -196,8 +207,9 @@ Two settings sit at the top of the config and apply to every plugin:
 - `idleHours` is the default for every plugin that has the setting and does not
   set its own. `0` is allowed and makes every idle-checked artifact a candidate.
 
-`host-cleaner config` prints every plugin's effective settings: the value, and
-whether the file set it or it is the default. `--format json` prints the values.
+`host-cleaner config` prints the config file it read, then every plugin's
+effective settings: the value, and whether the file set it or it is the
+default. `--format json` prints the values.
 
 ### Exit codes
 

@@ -155,7 +155,7 @@ const configCli = () =>
   defineCli({
     name: `${NAME} config`,
     summary:
-      'Print the effective settings of every plugin: each value, its default and whether the config file set it. Deletes nothing.',
+      'Print the config file read and the effective settings of every plugin: each value, its default and whether the config file set it. Deletes nothing.',
     autoHelp: false,
     flags: {
       config: SWEEP_FLAGS.config,
@@ -342,10 +342,12 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
+/** The config file this run reads: `--config`, else `config.json` in the config directory. */
+const configPath = (v: { config?: string | undefined }, ctx: CliContext): string =>
+  v.config === undefined ? configFile(hostDirs(ctx.env)) : resolve(ctx.cwd, v.config)
+
 const loadConfig = (v: { config?: string | undefined }, ctx: CliContext): Config =>
-  v.config === undefined
-    ? readConfig(configFile(hostDirs(ctx.env)))
-    : readConfig(resolve(ctx.cwd, v.config), { required: true })
+  readConfig(configPath(v, ctx), { required: v.config !== undefined })
 
 /** `--plugin` and its alias `--adapter`, as one list; undefined when neither is given. */
 const wanted = (v: SweepValues): string[] | undefined =>
@@ -498,6 +500,7 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
     }
     const list = (xs: readonly string[]): string => (xs.length > 0 ? xs.join(', ') : '(none)')
     const lines = [
+      `file: ${configPath(v, ctx)}`,
       `targets: ${list(config.targets)}`,
       `ignore: ${list(config.ignore)}`,
       `idleHours: ${config.idleHours ?? '(not set)'}`,
