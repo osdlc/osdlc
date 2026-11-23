@@ -76,8 +76,8 @@ compose(yaml, body, shape) === note // true
   `'\r\n'`) for both fences and `bom` (`false` by default). Pass the YAML
   text the way `split` returns it, without the line break before the closing
   fence: trim the trailing newline a YAML serializer adds.
-- `splitLenient(content)` reads hand-written input that `split` rejects: blank lines or indentation
-  before the opening fence, and trailing spaces on the fence lines. The closing fence must not be
+- `splitLenient(content)` reads hand-written input that `split` rejects: a leading BOM, blank lines
+  or indentation before the opening fence, and trailing spaces on the fence lines. The closing fence must not be
   indented. It returns a `LenientSplit` (`yaml` and `body`), or `null` when there is no block. It
   keeps no framing, so use it to read, not to rewrite.
 

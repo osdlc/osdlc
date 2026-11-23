@@ -44,8 +44,8 @@
     "implementations": [
       { "language": "rust", "dir": "packages/rust/frontmatter-lossless", "name": "frontmatter-lossless" },
       { "language": "ts", "dir": "packages/ts/frontmatter-lossless", "name": "@osdlc/frontmatter-lossless" }
-      ]
-    },
+    ]
+  },
   "gfm-table": {
     "reference": "ts",
     "generator": "pnpm --filter @osdlc/gfm-table conformance:write",
