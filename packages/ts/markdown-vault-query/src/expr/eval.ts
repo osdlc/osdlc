@@ -121,7 +121,8 @@ export function resolveNote(vault: VaultIndex, target: string, from?: VaultNote)
  * Evaluate a parsed expression against `ctx`.
  *
  * Throws {@link ExpressionEvalError} for a type error, an unknown function or formula, a circular
- * formula or a bad argument. {@link evaluateSafe} returns an {@link ErrorValue} instead.
+ * formula or a bad argument. An expression nested too deeply for the stack throws a `RangeError`.
+ * {@link evaluateSafe} returns an {@link ErrorValue} for all of these.
  */
 export function evaluate(expr: Expr, ctx: EvalContext): Value {
   switch (expr.kind) {
@@ -209,12 +210,17 @@ export function evaluate(expr: Expr, ctx: EvalContext): Value {
   }
 }
 
-/** Evaluate, converting thrown evaluation errors into ErrorValue (per-cell error model). */
+/**
+ * Evaluate, converting an {@link ExpressionEvalError} or a `RangeError` into an {@link ErrorValue}
+ * (per-cell error model). The engine raises the `RangeError`: for an expression nested too deeply
+ * for the stack, or for a value past a built-in limit such as the longest string.
+ */
 export function evaluateSafe(expr: Expr, ctx: EvalContext): Value {
   try {
     return evaluate(expr, ctx)
   } catch (e) {
-    if (e instanceof ExpressionEvalError) return new ErrorValue(e.message)
+    if (e instanceof ExpressionEvalError || e instanceof RangeError)
+      return new ErrorValue(e.message)
     throw e
   }
 }

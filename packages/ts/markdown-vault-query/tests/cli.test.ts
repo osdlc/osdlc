@@ -40,7 +40,8 @@ describe('markdown-vault-query cli', () => {
   test('a command missing its argument prints usage and exits 1', async () => {
     const r = await run('check')
     expect(r.code).toBe(1)
-    expect(r.out).toContain('Usage:')
+    expect(r.err).toContain('Usage:')
+    expect(r.out).toBe('')
     expect((await run()).code).toBe(1)
     expect((await run('bogus')).code).toBe(1)
   })
@@ -90,6 +91,21 @@ describe('markdown-vault-query cli', () => {
     expect(r.out).toBe('table\tAll tasks')
   })
 
+  test('views reports an invalid base like query does', async () => {
+    const base = join(SCRATCH, 'invalid-views.base')
+    writeFileSync(base, 'views: nope\n')
+    const r = await run('views', base)
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('Invalid base file: "views" must be a list at views')
+  })
+
+  test('--help prints usage on stdout', async () => {
+    const r = await run('--help')
+    expect(r.code).toBe(0)
+    expect(r.out).toContain('Usage:')
+    expect(r.err).toBe('')
+  })
+
   test('filter prints the matching paths, or JSON with --json', async () => {
     const plain = await run('filter', 'status == "closed/done"', '--vault', PLANNING_VAULT)
     expect(plain.code).toBe(0)
@@ -104,7 +120,47 @@ describe('markdown-vault-query cli', () => {
   test('filter without an expression prints usage and exits 1', async () => {
     const r = await run('filter')
     expect(r.code).toBe(1)
-    expect(r.out).toContain('Usage:')
+    expect(r.err).toContain('Usage:')
+  })
+
+  test('an unknown option exits 1 with one line on stderr', async () => {
+    const base = join(SCRATCH, 'known.base')
+    writeFileSync(base, 'views:\n  - type: table\n    name: All\n')
+    const r = await run('query', base, '--bogus', '--vault', BASIC_VAULT)
+    expect(r.code).toBe(1)
+    expect(r.err).toBe('Unknown option --bogus. Put an argument that starts with "-" after "--".')
+    expect(r.out).toBe('')
+    expect((await run('filter', 'true', '--vualt', BASIC_VAULT)).err).toMatch(
+      /^Unknown option --vualt\./,
+    )
+  })
+
+  test('an expression that starts with - is read after --', async () => {
+    const refused = await run('filter', '-1 < 0', '--vault', BASIC_VAULT)
+    expect(refused.code).toBe(1)
+    expect(refused.err).toMatch(/^Unknown option -1 < 0\./)
+
+    const read = await run('filter', '--vault', BASIC_VAULT, '--json', '--', '-1 < 0')
+    expect(read.code).toBe(0)
+    expect((JSON.parse(read.out) as string[]).length).toBeGreaterThan(0)
+  })
+
+  test.each(['--vault', '--view', '--this'])('%s with no value exits 1', async (flag) => {
+    const base = join(SCRATCH, 'known.base')
+    writeFileSync(base, 'views:\n  - type: table\n    name: All\n')
+    const last = await run('query', base, flag)
+    expect(last.code).toBe(1)
+    expect(last.err).toBe(`${flag} needs a value`)
+    expect((await run('query', base, flag, '--json')).err).toBe(`${flag} needs a value`)
+  })
+
+  test('--help wins over a bad option, and a single - or an argument after -- is positional', async () => {
+    expect((await run('check', '--bogus', '--help')).code).toBe(0)
+    const missing = join(SCRATCH, 'missing-after-separator.base')
+    const r = await run('check', '--', missing)
+    expect(r.code).toBe(1)
+    expect(r.err).toContain(`FAIL ${missing}`)
+    expect((await run('check', '-')).err).toContain('FAIL -')
   })
 
   test('query prints a table with the view columns and a row count', async () => {

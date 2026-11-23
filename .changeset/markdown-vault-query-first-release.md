@@ -13,3 +13,7 @@ First public release. A query engine over a markdown vault. It parses Obsidian B
 - Every export has TSDoc and a runnable example. The README says when to use each of the four query functions.
 - The README opens with who the package is for, says when not to use it, and compares it with the other packages that read Bases files. It states the tested platforms: Linux and macOS.
 - The package is licensed `MIT OR Apache-2.0`.
+- An expression or base nested too deeply for the stack ends in the package's own errors. `parseExpression` throws `ExpressionError` and `parseBase` throws `BaseParseError`. `evaluateSafe` returns an `ErrorValue`, which the query functions show in the cell or count as a false filter expression. `evaluate` throws a `RangeError`.
+- `queryVault` throws a `RangeError` when `offset` or `limit` is not a non-negative integer, and a view `limit` in a base must be a non-negative integer.
+- The CLI rejects an unknown option and `--vault`, `--view` or `--this` with no value, with one line on stderr and exit code 1. An argument after `--` is not read as an option. The usage text for a wrong command line prints on stderr, and `views` reports an invalid base like `query` does.
+- The README and SECURITY.md say that a `.base` file and an expression are code-like input, and that a regular expression in one can take unbounded time.

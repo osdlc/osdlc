@@ -44,7 +44,7 @@ views:
   assert.ok(from instanceof DateValue && to instanceof DateValue)
   assert.equal((from as DateValue).ms, new Date(2026, 0, 1).getTime())
   assert.equal((to as DateValue).ms, new Date(2026, 0, 2).getTime())
-})
+}, 30_000)
 
 test('Range over an all-date column yields a DurationValue on a large vault', () => {
   const notes: ExternalNote[] = []

@@ -12,7 +12,7 @@ created: 2026-11-22
 - The first public release is `0.5.0`, on the 0.x line. Before it the package had versions up to
   `0.4.1`. They were never published, and the CHANGELOG keeps their history.
 - The package lives in osdlc/osdlc under `packages/ts/markdown-vault-query` and is published beside
-  `@osdlc/markdown-vault`, which it imports at run time. `@osdlc/markdown-vault` releases first.
+  `@osdlc/markdown-vault`, which it imports at run time. The two are released together.
 - Node.js 22 or later, ESM only, compiled `dist/` with `.d.ts`.
 - Linux and macOS are tested. Windows is not tested ([T-02](../tasks/T-02-windows.md)).
 

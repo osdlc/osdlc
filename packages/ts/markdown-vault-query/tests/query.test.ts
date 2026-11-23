@@ -69,3 +69,24 @@ test('queryVault sorts empty property values last regardless of direction', () =
   })
   if (firstNull !== -1) assert.ok(firstNull > lastNonNull)
 })
+
+test('queryVault rejects an offset or limit that is not a non-negative integer', () => {
+  for (const bad of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(() => queryVault(basic, { offset: bad }), RangeError)
+    assert.throws(() => queryVault(basic, { limit: bad }), RangeError)
+  }
+  assert.throws(
+    () => queryVault(basic, { limit: -1 }),
+    /limit must be a non-negative integer, got -1/,
+  )
+  assert.throws(
+    () => queryVault(basic, { offset: 1.5 }),
+    /offset must be a non-negative integer, got 1.5/,
+  )
+})
+
+test('queryVault pages with a zero or positive integer offset and limit', () => {
+  const all = queryVault(basic).notes
+  assert.deepEqual(queryVault(basic, { offset: 0, limit: 0 }).notes, [])
+  assert.deepEqual(queryVault(basic, { offset: 1, limit: 1 }).notes, all.slice(1, 2))
+})

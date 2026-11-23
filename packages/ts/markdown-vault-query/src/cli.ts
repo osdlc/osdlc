@@ -1,7 +1,7 @@
 /**
  * The command line for querying a vault with Obsidian Bases syntax. `src/bin.ts` runs `main`.
  *
- *   markdown-vault-query query <file.base> [--vault <dir>] [--view <name>] [--json]
+ *   markdown-vault-query query <file.base> [--vault <dir>] [--view <name>] [--this <vault-path>] [--json]
  *   markdown-vault-query filter '<expression>' [--vault <dir>] [--json]
  *   markdown-vault-query check <file.base> [...]
  *   markdown-vault-query views <file.base>
@@ -25,6 +25,14 @@ interface Flags {
   positional: string[]
 }
 
+/** Flags that take the next argument as their value. */
+const VALUE_FLAGS = new Set(['--vault', '--view', '--this'])
+
+/**
+ * Read the arguments after the command. Throws an `Error` naming the first unknown flag or the
+ * first value flag with no value. `--help` wins over everything else on the line, including such
+ * a problem. An argument after `--` is positional.
+ */
 function parseArgs(argv: readonly string[]): Flags {
   const flags: Flags = {
     vault: process.cwd(),
@@ -34,39 +42,52 @@ function parseArgs(argv: readonly string[]): Flags {
     help: false,
     positional: [],
   }
+  let problem: string | undefined
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     // In range by the loop bound, even after a flag consumes argv[++i].
     if (arg === undefined) continue
+    if (arg === '--') {
+      flags.positional.push(...argv.slice(i + 1))
+      break
+    }
+    if (VALUE_FLAGS.has(arg)) {
+      const value = argv[i + 1]
+      if (value === undefined || value.startsWith('--')) {
+        problem ??= `${arg} needs a value`
+        continue
+      }
+      i++
+      if (arg === '--vault') flags.vault = resolve(value)
+      else if (arg === '--view') flags.view = value
+      else flags.thisPath = value
+      continue
+    }
     switch (arg) {
-      case '--vault':
-        flags.vault = resolve(argv[++i] ?? '.')
-        break
-      case '--view':
-        flags.view = argv[++i]
-        break
-      case '--this':
-        flags.thisPath = argv[++i]
-        break
       case '--json':
         flags.json = true
         break
       case '--help':
       case '-h':
-        // Help wins over everything else on the line, as it did when it
-        // exited on the spot.
         flags.help = true
         return flags
       default:
-        flags.positional.push(arg)
+        if (arg.startsWith('-') && arg !== '-') {
+          problem ??= `Unknown option ${arg}. Put an argument that starts with "-" after "--".`
+        } else flags.positional.push(arg)
     }
   }
+  if (problem !== undefined) throw new Error(problem)
   return flags
 }
 
-/** Print the usage text and return `code`, the exit code to end with. */
+/**
+ * Print the usage text and return `code`, the exit code to end with. The text goes to stdout for
+ * exit code 0 and to stderr otherwise.
+ */
 function usage(code: number): number {
-  console.log(`Usage:
+  const print = code === 0 ? console.log : console.error
+  print(`Usage:
   markdown-vault-query query <file.base> [--vault <dir>] [--view <name>] [--this <vault-path>] [--json]
   markdown-vault-query filter '<expression>' [--vault <dir>] [--json]
   markdown-vault-query check <file.base> [...]
@@ -117,7 +138,16 @@ async function run(argv: readonly string[]): Promise<number> {
   if (command === 'views') {
     const [basePath] = flags.positional
     if (!basePath) return usage(1)
-    const base = parseBase(await readFile(basePath, 'utf8'))
+    let base
+    try {
+      base = parseBase(await readFile(basePath, 'utf8'))
+    } catch (e) {
+      if (e instanceof BaseParseError) {
+        console.error(`Invalid base file: ${e.message}`)
+        return 1
+      }
+      throw e
+    }
     for (const view of base.views) {
       console.log(`${view.type}\t${view.name}`)
     }

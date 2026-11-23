@@ -98,10 +98,20 @@ function makeContext(
 }
 
 /**
- * Whether a note passes a filter tree. A null filter passes every note. An evaluation error
- * excludes the note rather than throwing. `ctx` carries the note under test.
+ * Whether a note passes a filter tree. A null filter passes every note. A bad expression does not
+ * throw: one that fails to evaluate counts as false, so a `not` group around it passes. A tree
+ * nested too deeply for the stack fails the note. `ctx` carries the note under test.
  */
 export function matchesFilter(filter: FilterNode | null, ctx: EvalContext): boolean {
+  try {
+    return passesFilter(filter, ctx)
+  } catch (e) {
+    if (e instanceof RangeError) return false
+    throw e
+  }
+}
+
+function passesFilter(filter: FilterNode | null, ctx: EvalContext): boolean {
   if (filter === null) return true
   switch (filter.type) {
     case 'expr': {
@@ -109,12 +119,12 @@ export function matchesFilter(filter: FilterNode | null, ctx: EvalContext): bool
       return !(result instanceof ErrorValue) && isTruthy(result)
     }
     case 'and':
-      return filter.children.every((child) => matchesFilter(child, ctx))
+      return filter.children.every((child) => passesFilter(child, ctx))
     case 'or':
-      return filter.children.some((child) => matchesFilter(child, ctx))
+      return filter.children.some((child) => passesFilter(child, ctx))
     case 'not':
       // "None of the following are true".
-      return !filter.children.some((child) => matchesFilter(child, ctx))
+      return !filter.children.some((child) => passesFilter(child, ctx))
   }
 }
 
@@ -207,9 +217,9 @@ export interface FilterQueryOptions extends QueryOptions {
   filter?: string
   /** Sort keys applied before limit/offset; empty keeps vault order. */
   sort?: SortKey[]
-  /** Max notes to return after sorting; omitted returns every match. */
+  /** Max notes to return after sorting; omitted returns every match. A non-negative integer. */
   limit?: number
-  /** Notes to skip after sorting; default 0. */
+  /** Notes to skip after sorting; default 0. A non-negative integer. */
   offset?: number
 }
 
@@ -226,9 +236,16 @@ export interface FilterQueryResult {
  * given keys, then page with offset/limit. Returns the page plus the pre-page
  * `total` — the ergonomic shape a UI needs when it renders its own rows
  * (unlike `runView`, which evaluates per-view columns/groups/summaries).
- * Throws {@link ExpressionError} when the filter does not parse.
+ * Throws {@link ExpressionError} when the filter does not parse, and `RangeError` when `offset` or
+ * `limit` is not a non-negative integer.
  */
 export function queryVault(vault: VaultIndex, options: FilterQueryOptions = {}): FilterQueryResult {
+  for (const name of ['offset', 'limit'] as const) {
+    const value = options[name]
+    if (value !== undefined && !(Number.isInteger(value) && value >= 0)) {
+      throw new RangeError(`${name} must be a non-negative integer, got ${value}`)
+    }
+  }
   const base: BaseDef = {
     filters: null,
     formulas: {},

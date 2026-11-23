@@ -244,7 +244,8 @@ const cache = new Map<string, Expr>()
 /**
  * Parse an expression string into an AST. Results are memoized in a bounded
  * least-recently-used table; a hot expression stays cached however many
- * one-off strings arrive alongside it. Throws {@link ExpressionError} on a syntax error.
+ * one-off strings arrive alongside it. Throws {@link ExpressionError} on a syntax error, and when
+ * the expression is nested too deeply for the stack to parse. A failed parse is not cached.
  */
 export function parseExpression(input: string): Expr {
   const cached = cache.get(input)
@@ -254,7 +255,16 @@ export function parseExpression(input: string): Expr {
     cache.set(input, cached)
     return cached
   }
-  const expr = new Parser(tokenize(input), input).parse()
+  let expr: Expr
+  try {
+    expr = new Parser(tokenize(input), input).parse()
+  } catch (e) {
+    // The only RangeError the parser can raise is a stack overflow from recursion.
+    if (e instanceof RangeError) {
+      throw new ExpressionError('Expression is nested too deeply', 0, input)
+    }
+    throw e
+  }
   cache.set(input, expr)
   if (cache.size > PARSE_CACHE_MAX) {
     const stalest = cache.keys().next().value

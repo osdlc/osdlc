@@ -216,8 +216,8 @@ function parseView(raw: unknown, index: number): BaseViewDef {
   }
 
   if (obj.limit !== undefined && obj.limit !== null) {
-    if (typeof obj.limit !== 'number' || obj.limit < 0) {
-      throw new BaseParseError('"limit" must be a non-negative number', `${path}.limit`)
+    if (typeof obj.limit !== 'number' || !Number.isInteger(obj.limit) || obj.limit < 0) {
+      throw new BaseParseError('"limit" must be a non-negative integer', `${path}.limit`)
     }
     view.limit = obj.limit
   }
@@ -235,9 +235,22 @@ function parseView(raw: unknown, index: number): BaseViewDef {
 
 /**
  * Parse the source of a `.base` file into a {@link BaseDef}. Every filter, formula and summary is
- * parsed as an expression, so a syntax error fails here. Throws {@link BaseParseError}.
+ * parsed as an expression, so a syntax error fails here. Throws {@link BaseParseError}, also for a
+ * file whose filter groups or expressions are nested too deeply for the stack.
  */
 export function parseBase(source: string): BaseDef {
+  try {
+    return parseBaseSource(source)
+  } catch (e) {
+    // The only RangeError parsing can raise is a stack overflow from recursion.
+    if (e instanceof RangeError) {
+      throw new BaseParseError('Base file is nested too deeply', 'root', e)
+    }
+    throw e
+  }
+}
+
+function parseBaseSource(source: string): BaseDef {
   let raw: unknown
   try {
     raw = YAML.parse(source) ?? {}

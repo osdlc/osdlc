@@ -126,6 +126,20 @@ What it does not do: plugin-registered expression functions do not exist here,
 and `file.backlinks` is whatever the vault index holds, so a long-lived index
 needs rebuilding to see new links.
 
+## Untrusted input
+
+A `.base` file and a filter expression are code-like input. A regular
+expression in one runs with JavaScript's backtracking matcher, and a pattern
+such as `/^(a+)+$/` against a long value can take unbounded time. Nothing in
+the package limits that. Do not evaluate bases or expressions from a party you
+do not trust in a process you share. Run them in a worker you can stop.
+
+Nesting too deep for the stack is not a hang, and it ends in an error the
+package names. `parseExpression` throws `ExpressionError` and `parseBase`
+throws `BaseParseError`. `evaluateSafe` returns an `ErrorValue`. The query
+functions show that value in the cell, or count the filter expression as
+false. `evaluate` throws a `RangeError`.
+
 ## CLI
 
 The package installs `markdown-vault-query`:
@@ -145,7 +159,12 @@ markdown-vault-query views some.base
 | `views <file.base>` | Lists the view types and names. | 0, or 1 on an error |
 
 `--vault <dir>` sets the vault root for `query` and `filter`. It defaults to the
-current directory. `--help` and `--version` print usage and the version.
+current directory. `--help` and `--version` print usage and the version. An
+unknown option, or `--vault`, `--view` or `--this` with no value, prints one
+line on stderr and exits 1. A missing or unknown command, or a command with
+its argument missing, prints the usage text on stderr and exits 1. An argument
+after `--` is not read as an option, so an expression that starts with `-`
+goes there: `markdown-vault-query filter --vault vault -- '-price < 0'`.
 
 ## API
 
@@ -160,11 +179,13 @@ Each export has TSDoc in the source. Your editor shows it.
 | Dates | `formatDateMoment`, `formatRelative` |
 | Syntax tree and lexer (experimental) | `tokenize`, `Token`, `TokenType`, and the node types listed under [Stability](#stability) |
 
-`evaluate` throws `ExpressionEvalError`, which is not the global `EvalError`.
-`evaluateSafe` returns an `ErrorValue` instead. A caller that evaluates many
-expressions against one index builds one resolver with `runLinkResolver(vault)`
-and passes it as `EvalContext.resolveLink`, so the index's name table is built
-once. Examples of each export are in
+`evaluate` throws `ExpressionEvalError`, which is not the global `EvalError`,
+and a `RangeError` for an expression nested too deeply for the stack.
+`evaluateSafe` returns an `ErrorValue` for both. `queryVault` throws a
+`RangeError` when `offset` or `limit` is not a non-negative integer. A caller
+that evaluates many expressions against one index builds one resolver with
+`runLinkResolver(vault)` and passes it as `EvalContext.resolveLink`, so the
+index's name table is built once. Examples of each export are in
 [`examples/`](https://github.com/osdlc/osdlc/tree/main/packages/ts/markdown-vault-query/examples).
 
 ## How it compares
@@ -223,7 +244,7 @@ checkout runs from source under Bun, so it needs `bun` on PATH and the checkout'
 dependencies installed and built. The installed copy says which checkout it
 hands off to on stderr; `MARKDOWN_VAULT_QUERY_QUIET=1` silences that line. `dev` is a command
 word, so `markdown-vault-query dev …` never reaches `query`, `filter`, `check` or `views`. See
-[`@osdlc/cli-tool`'s devlink](https://github.com/osdlc/osdlc/tree/main/packages/ts/cli-tool#running-from-a-checkout).
+[`@osdlc/cli-tool`'s devlink](https://github.com/osdlc/osdlc/tree/main/packages/ts/cli-tool#running-from-a-checkout-or-a-projects-pinned-copy).
 
 ## Licence
 

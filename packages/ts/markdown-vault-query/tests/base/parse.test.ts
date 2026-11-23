@@ -186,8 +186,10 @@ test('view without type is rejected; missing name gets a default', () => {
   assert.equal(base.views[0]?.name, 'View 1')
 })
 
-test('limit must be a non-negative number', () => {
+test('limit must be a non-negative integer', () => {
   assert.throws(() => parseBase('views:\n  - type: table\n    limit: -1'), BaseParseError)
+  assert.throws(() => parseBase('views:\n  - type: table\n    limit: 1.5'), BaseParseError)
+  assert.throws(() => parseBase('views:\n  - type: table\n    limit: .nan'), BaseParseError)
   const base = parseBase('views:\n  - type: table\n    limit: 10')
   assert.equal(base.views[0]?.limit, 10)
 })
