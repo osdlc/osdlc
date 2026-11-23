@@ -28,3 +28,10 @@ place, so a umask of `000` or `002` no longer leaves it open. An existing
 clone whose folder or `config` others can write to, or whose `config` is a
 symbolic link, is skipped with the fix to run, as the folders above it
 already were.
+
+Fixed: a restack child (`--restack`) skipped every kept-tree check, so its
+PR was updated and force-pushed even when a person had changed its kept tree.
+It is now skipped with `kept worktree ... has local changes`, as any other PR
+is, and when its kept tree's owner is gone or another checkout owns the tree.
+Only whether the tree is current waits for the parent. The gap dates from
+[#926](https://github.com/osdlc/osdlc/pull/926).

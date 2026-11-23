@@ -853,6 +853,9 @@ cd .pr-update/failed/acme-widgets-12  # finish the fix, then push it yourself
   PR is skipped with `kept worktree <path> has local changes; push them or pass --discard-kept`,
   and only `--discard-kept` removes it. A record is used only when its path names the kept
   tree's own folder, and names starting with `.` in these folders are skipped.
+- A restack child (`--restack`) is held back the same way when a person changed its kept tree,
+  its owner is gone, or another checkout owns it. Whether its tree is current is not judged,
+  since its base is its parent's new head: an untouched tree is left, and a new keep replaces it.
 - `.pr-update/failed/` is inside the working tree, so a repository's own files can put a record
   there. A record is refused when its branch is not `pr-update/failed-<owner>-<name>-<number>`,
   its path is not that PR's kept folder, it names a git directory (a checkout's own records never

@@ -1188,8 +1188,6 @@ function settleKept(
     const place = at?.kept ?? checkoutKept(group.path)
     const git = gitOf(group.path, at, env)
     group.targets = group.targets.filter((t) => {
-      // A restack child's base moves when its parent does, so its kept tree is stale by then.
-      if (t.stackParent !== undefined) return true
       const record = findKept(place, t.repo, t.number, onRefused)
       if (record === null || removed.includes(record.path)) return true
       const skip = (reason: string): false => {
@@ -1200,13 +1198,22 @@ function settleKept(
       // `--discard-kept` (handled above).
       const gone = keptOwnerGone(record)
       if (gone !== null) return skip(keptOwnerGoneReason(record, gone))
-      const moved = !keptIsCurrent(record, t)
+      // A restack child's base is its parent's new head, known only once the parent has run, so
+      // whether its tree is current waits: it is left, and a new keep replaces it. The checks
+      // that do not need that still hold it back.
+      const child = t.stackParent !== undefined
+      const moved = !child && !keptIsCurrent(record, t)
       const owner = keptOwnerElsewhere(place, record)
-      if (owner !== null && (args.retryFailed === true || !moved)) {
+      if (owner !== null && (child || args.retryFailed === true || !moved)) {
         return skip(`kept elsewhere: ${record.path} is a worktree of ${owner}`)
       }
       // Before `keptIsTouched` runs git in the folder.
       if (!isWorktree(git, place, record)) return true
+      if (child) {
+        return keptIsTouched(git, record)
+          ? skip(`kept worktree ${record.path} has local changes; push them or pass --discard-kept`)
+          : true
+      }
       const stale = args.retryFailed === true || moved
       // `--retry-failed` too: only `--discard-kept` removes a tree with a person's changes in it.
       if (stale && keptIsTouched(git, record)) {
