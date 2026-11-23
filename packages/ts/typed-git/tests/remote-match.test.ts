@@ -5,6 +5,8 @@
 
 import { describe, expect, test } from 'vitest'
 
+import { homedir } from 'node:os'
+
 import type { CommandRunOptions, CommandRunner } from '@osdlc/command-seam'
 
 import { isSshRemote, readRemote, sameRepo, sshAliasResolver } from '../src/index.ts'
@@ -81,8 +83,7 @@ describe('sshAliasResolver', () => {
     const ssh = fakeSsh(0, 'hostname forge.example\n')
     sshAliasResolver(ssh.runner)('forge')
     const opts = ssh.calls[0]?.opts
-    expect(typeof opts?.cwd).toBe('string')
-    expect(opts?.cwd).not.toBe('')
+    expect(opts?.cwd).toBe(homedir())
     expect(opts?.timeoutMs).toBe(5_000)
   })
 
