@@ -88,6 +88,11 @@ export interface CliSeams {
   terminal?: { canPrompt: () => boolean; fd?: number; write?: (text: string) => void }
   /** How long `update --apply` waits for a managed clone another run holds, in ms. Default 60 s. */
   mirrorWaitMs?: number
+  /**
+   * Takes a managed clone's lock, in place of `claimCloneLock` (`mirror.ts`): a test stands in
+   * for another run that takes a lock at a given moment.
+   */
+  mirrorClaim?: (path: string, waitMs: number) => string | null
 }
 
 /** The schema version of the `survey` and `update` documents. */
@@ -295,6 +300,7 @@ function runEnv(
     notice,
     ask: mirrorAsker(seams),
     waitMs: seams.mirrorWaitMs,
+    claim: seams.mirrorClaim,
   })
   const loaded = layers.merged.pr_update
   const cfg = {

@@ -70,7 +70,7 @@ beforeEach(() => {
   work.commit('main moves', { 'm.txt': 'm' })
   const ghRoot = join(scratch, 'gh')
   remote = join(ghRoot, 'github.com', 'acme', 'api.git')
-  mkdirSync(dirname(remote), { recursive: true })
+  mkdirSync(dirname(remote), { recursive: true, mode: 0o755 })
   git(scratch, 'clone', '-q', '--bare', work.dir, remote)
   writeFileSync(
     join(ghRoot, 'prs.json'),
@@ -155,7 +155,7 @@ const machinePath = () => machineFile({ env }).path()
 
 /** Write the machine file of `env`. */
 function writeMachine(text: string): void {
-  mkdirSync(dirname(machinePath()), { recursive: true })
+  mkdirSync(dirname(machinePath()), { recursive: true, mode: 0o755 })
   writeFileSync(machinePath(), text)
 }
 
@@ -441,7 +441,7 @@ describe('the clone steps', () => {
 
   test('step 2: a clone another run holds is skipped as mirror busy, after the wait', async () => {
     const dir = join(scratch, 'clones')
-    mkdirSync(dirname(cloneOf(dir)), { recursive: true })
+    mkdirSync(dirname(cloneOf(dir)), { recursive: true, mode: 0o755 })
     writeFileSync(join(dir, '.pr-update-mirror'), '')
     const token = claimCloneLock(cloneLockPath(cloneOf(dir)), 0)!
     try {
@@ -491,7 +491,7 @@ describe('the clone steps', () => {
 
   test('a folder in the clone path that pr-update did not make is not used', async () => {
     const dir = join(scratch, 'clones')
-    mkdirSync(cloneOf(dir), { recursive: true })
+    mkdirSync(cloneOf(dir), { recursive: true, mode: 0o755 })
     writeFileSync(join(dir, '.pr-update-mirror'), '')
     const r = await run('update', '--repo', 'acme/api', '--mirror-dir', dir, '--apply', '--json')
     expect(JSON.parse(r.out).skipped[0].reason).toContain(
@@ -739,7 +739,7 @@ describe('review round 1', () => {
     git(project, 'remote', 'set-url', 'origin', 'https://ghe.example:8443/o/r.git')
     writeFileSync(join(project, 'pr-update.yaml'), 'code_host:\n  override: github\n')
     const enterprise = join(scratch, 'gh', 'ghe.example_8443', 'acme', 'api.git')
-    mkdirSync(dirname(enterprise), { recursive: true })
+    mkdirSync(dirname(enterprise), { recursive: true, mode: 0o755 })
     git(scratch, 'clone', '-q', '--bare', remote, enterprise)
     const dir = join(scratch, 'clones')
     const r = await run(
@@ -765,9 +765,9 @@ describe('review round 1', () => {
   test('a symbolic link at the clone path is not used, and nothing is cloned', async () => {
     const dir = join(scratch, 'clones')
     const real = join(scratch, 'planted.git')
-    mkdirSync(real, { recursive: true })
+    mkdirSync(real, { recursive: true, mode: 0o755 })
     writeFileSync(join(real, CLONE_MARKER), '{}\n')
-    mkdirSync(dirname(cloneOf(dir)), { recursive: true })
+    mkdirSync(dirname(cloneOf(dir)), { recursive: true, mode: 0o755 })
     writeFileSync(join(dir, '.pr-update-mirror'), '')
     symlinkSync(real, cloneOf(dir), 'dir')
     const r = await run('update', '--repo', 'acme/api', '--mirror-dir', dir, '--apply', '--json')
@@ -816,5 +816,80 @@ describe('review round 1', () => {
     } finally {
       releaseLock(cloneLockPath(clone), token)
     }
+  })
+})
+
+describe('review round 2', () => {
+  test('--discard-kept removes a clone’s kept worktree only under the clone’s lock', async () => {
+    const dir = join(scratch, 'clones')
+    const clone = cloneOf(dir)
+    writeFileSync(
+      join(project, 'pr-update.local.yaml'),
+      "pr_update:\n  verify: test\n  test_command: 'false'\n",
+    )
+    const failed = await run(
+      'update',
+      '--repo',
+      'acme/api',
+      '--mirror-dir',
+      dir,
+      '--apply',
+      '--trust',
+      '--keep-failed',
+      '--json',
+    )
+    expect(failed.code).not.toBe(EXIT.usage)
+    const trees = () =>
+      git(clone, 'worktree', 'list', '--porcelain')
+        .split('\n')
+        .filter((l) => l.startsWith('worktree '))
+        .map((l) => l.slice('worktree '.length))
+    const [kept, ...more] = trees().filter((p) => p !== clone)
+    expect(more).toEqual([])
+    expect(kept).toBeDefined()
+    // acme/api has nothing to update now, so the run lets go of its clone before it discards.
+    writeFileSync(join(scratch, 'gh', 'prs.json'), '{}')
+
+    // Another run takes the lock between this run's survey and its discard.
+    const lock = cloneLockPath(clone)
+    let claims = 0
+    const busy: CliSeams = {
+      ...noTerminal,
+      mirrorClaim: (path, wait) =>
+        path === lock && ++claims > 1 ? null : claimCloneLock(path, wait),
+    }
+    const left = await runWith(
+      busy,
+      {},
+      'update',
+      '--repo',
+      'acme/api',
+      '--mirror-dir',
+      dir,
+      '--apply',
+      '--discard-kept',
+      '--json',
+    )
+    expect(left.code).toBe(EXIT.ok)
+    expect(left.err).toContain(
+      `${clone}: another pr-update run holds ${lock}, so ${kept} is left in the clone; \`pr-update mirror prune\` removes it`,
+    )
+    expect(trees()).toContain(kept)
+    expect(existsSync(kept!)).toBe(true)
+
+    const gone = await run(
+      'update',
+      '--repo',
+      'acme/api',
+      '--mirror-dir',
+      dir,
+      '--apply',
+      '--discard-kept',
+      '--json',
+    )
+    expect(gone.code).toBe(EXIT.ok)
+    expect(trees()).toEqual([clone])
+    expect(existsSync(kept!)).toBe(false)
+    expect(existsSync(lock)).toBe(false)
   })
 })

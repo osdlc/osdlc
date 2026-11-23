@@ -11,6 +11,7 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
+  chmodSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -308,9 +309,10 @@ describe('managedClones: the locks update holds', () => {
     clones.release(clone)
     expect(existsSync(lock)).toBe(false)
     let during: boolean | undefined
-    clones.removing(clone, () => {
+    const removed = clones.removing(clone, join(scratch, 'wt'), () => {
       during = existsSync(lock)
     })
+    expect(removed).toBe(true)
     expect(during).toBe(true)
     expect(existsSync(lock)).toBe(false)
     // A clone whose group never reached `worktree add` is let go at the end of the run.
@@ -389,10 +391,228 @@ describe('managedClones: the locks update holds', () => {
     expect(held).toEqual(api)
     expect(existsSync(lock)).toBe(true)
     clones.release(api.path)
-    clones.removing(api.path, () => {})
+    expect(clones.removing(api.path, join(scratch, 'wt'), () => {})).toBe(true)
     expect(waits).toEqual([0, 0, 0])
     expect(existsSync(lock)).toBe(false)
   })
+})
+
+describe('managedClones: taking a lock back to remove a worktree (review round 2)', () => {
+  const repos = () => join(scratch, 'repos')
+  const existing = (name: string) => {
+    const clone = clonePath(repos(), { host: 'github.com', owner: 'acme', name })
+    mkdirSync(clone, { recursive: true, mode: 0o755 })
+    writeFileSync(join(clone, CLONE_MARKER), '{}\n')
+    return {
+      repo: `acme/${name}`,
+      host: 'github.com',
+      path: clone,
+      source: 'clone' as const,
+      remote: 'origin',
+      found: null,
+      github: true,
+    }
+  }
+  const setup = (waitMs: number) => {
+    const waits: number[] = []
+    const notes: string[] = []
+    const clones = managedClones({
+      env: isolatedEnv(scratch),
+      cwd: scratch,
+      apply: true,
+      gh: { run: () => ({ exitCode: 1, stdout: '', stderr: 'no gh here' }) } as CommandRunner,
+      notice: (line) => notes.push(line),
+      ask: { canPrompt: () => false, choose: () => 0, text: () => '' },
+      waitMs,
+      claim: (path, wait) => {
+        waits.push(wait)
+        return claimCloneLock(path, wait)
+      },
+    })
+    return { clones, waits, notes }
+  }
+  /** Another run takes `clone`'s lock; the token releases it. */
+  const otherRun = (clone: string): string => {
+    const got = claimLock(
+      cloneLockPath(clone),
+      { holder: { pid: process.pid } },
+      { isStale: () => false },
+    )
+    expect(got.ok).toBe(true)
+    return (got as { token: string }).token
+  }
+
+  test('holding another clone, a busy retake does not wait, and leaves the worktree with a note', () => {
+    const api = existing('api')
+    const web = existing('web')
+    const { clones, waits, notes } = setup(60_000)
+    clones.provide([api, web], { apply: true })
+    clones.release(api.path) // api's worktree is added; web's turn has not come
+    const token = otherRun(api.path)
+    waits.length = 0
+    let ran = false
+    const worktree = join(scratch, 'worktrees', 'run')
+    const started = Date.now()
+    expect(clones.removing(api.path, worktree, () => (ran = true))).toBe(false)
+    expect(Date.now() - started).toBeLessThan(5_000)
+    expect(waits).toEqual([0])
+    expect(ran).toBe(false)
+    expect(notes).toEqual([
+      `${api.path}: another pr-update run holds ${cloneLockPath(api.path)}, so ${worktree} is left in the clone; \`pr-update mirror prune\` removes it once this run has ended`,
+    ])
+    releaseLock(cloneLockPath(api.path), token)
+    clones.close()
+  })
+
+  test('holding no other clone, a retake waits; when the wait times out the worktree is left too', () => {
+    const api = existing('api')
+    const { clones, waits, notes } = setup(300)
+    clones.provide([api], { apply: true })
+    clones.release(api.path)
+    const token = otherRun(api.path)
+    waits.length = 0
+    let ran = false
+    const started = Date.now()
+    expect(clones.removing(api.path, join(scratch, 'wt'), () => (ran = true))).toBe(false)
+    expect(Date.now() - started).toBeGreaterThanOrEqual(280)
+    expect(waits).toEqual([300])
+    expect(ran).toBe(false)
+    expect(notes[0]).toContain('`pr-update mirror prune` removes it')
+    releaseLock(cloneLockPath(api.path), token)
+
+    // Free again, it is taken back, the removal runs, and it is let go.
+    expect(clones.removing(api.path, join(scratch, 'wt'), () => (ran = true))).toBe(true)
+    expect(ran).toBe(true)
+    expect(existsSync(cloneLockPath(api.path))).toBe(false)
+  })
+
+  test('a lock the run still holds is used as it is, and kept', () => {
+    const api = existing('api')
+    const { clones, waits } = setup(60_000)
+    clones.provide([api], { apply: true })
+    waits.length = 0
+    let during = false
+    expect(
+      clones.removing(
+        api.path,
+        join(scratch, 'kept'),
+        () => (during = existsSync(cloneLockPath(api.path))),
+      ),
+    ).toBe(true)
+    expect(during).toBe(true)
+    expect(waits).toEqual([])
+    // Still held, for the worktree add to come.
+    expect(existsSync(cloneLockPath(api.path))).toBe(true)
+    clones.close()
+    expect(existsSync(cloneLockPath(api.path))).toBe(false)
+  })
+})
+
+describe('the folders between the clone directory and a clone (review round 2)', () => {
+  const root = () => join(scratch, 'repos')
+  const made = () => {
+    markMirrorDir(root())
+    const clone = clonePath(root(), { host: 'github.com', owner: 'acme', name: 'api' })
+    mkdirSync(clone, { recursive: true, mode: 0o755 })
+    writeFileSync(join(clone, CLONE_MARKER), '{}\n')
+    return clone
+  }
+  const posix = process.platform !== 'win32'
+
+  test.skipIf(!posix)(
+    'a clone directory, host or owner folder others can write to is refused, naming the chmod',
+    () => {
+      const clone = made()
+      const host = join(root(), 'github.com')
+      const owner = join(host, 'acme')
+      for (const dir of [root(), host, owner]) {
+        chmodSync(dir, 0o775)
+        expect(checkClone(root(), clone)).toEqual({
+          foreign: `${dir} can be written by its group or others (run \`chmod go-w ${dir}\`), so ${clone} is not used`,
+        })
+        chmodSync(dir, 0o755)
+      }
+      expect(checkClone(root(), clone)).toBe('clone')
+      // Before a clone is made too.
+      chmodSync(owner, 0o777)
+      const missing = join(owner, 'web.git')
+      expect(checkClone(root(), missing)).toEqual({
+        foreign: `${owner} can be written by its group or others (run \`chmod go-w ${owner}\`), so ${missing} is not used`,
+      })
+      chmodSync(owner, 0o755)
+      chmodSync(root(), 0o777)
+      expect(() => checkMirrorDir(root())).toThrow(
+        `the clone directory ${root()} can be written by its group or others (run \`chmod go-w ${root()}\`)`,
+      )
+      chmodSync(root(), 0o755)
+    },
+  )
+
+  test('a host or owner folder another user owns, or that is a symbolic link, is refused', () => {
+    const clone = made()
+    const host = join(root(), 'github.com')
+    const owner = join(host, 'acme')
+    for (const theirs of [host, owner]) {
+      const owned = (st: import('node:fs').Stats) => st.ino !== statSync(theirs).ino
+      expect(checkClone(root(), clone, owned)).toEqual({
+        foreign: `${theirs} belongs to another user, so ${clone} is not used`,
+      })
+    }
+    // A host folder planted as a link to somewhere else.
+    const elsewhere = join(scratch, 'elsewhere')
+    mkdirSync(join(elsewhere, 'acme'), { recursive: true, mode: 0o755 })
+    const gl = join(root(), 'gitlab.com')
+    symlinkSync(elsewhere, gl, 'dir')
+    const planted = join(gl, 'acme', 'api.git')
+    expect(checkClone(root(), planted)).toEqual({
+      foreign: `${gl} is a symbolic link, so ${planted} is not used`,
+    })
+  })
+
+  test.skipIf(!posix)(
+    'the folders pr-update makes pass its own check, even under a umask that would let the group write',
+    () => {
+      const old = process.umask(0o002)
+      try {
+        const clones = managedClones({
+          env: isolatedEnv(scratch),
+          cwd: scratch,
+          flag: root(),
+          apply: true,
+          gh: { run: () => ({ exitCode: 1, stdout: '', stderr: 'offline' }) } as CommandRunner,
+          notice: () => {},
+          ask: { canPrompt: () => false, choose: () => 0, text: () => '' },
+          waitMs: 0,
+        })
+        const [t] = clones.provide(
+          [
+            {
+              repo: 'acme/api',
+              host: 'github.com',
+              path: null,
+              source: null,
+              remote: 'origin',
+              found: null,
+              github: true,
+            },
+          ],
+          { apply: true },
+        )
+        // It got as far as gh, which is offline here: no folder was refused.
+        expect(t?.unserved).toMatch(/^the clone failed at gh repo clone: offline/)
+        for (const dir of [
+          root(),
+          join(root(), 'github.com'),
+          join(root(), 'github.com', 'acme'),
+        ]) {
+          expect(statSync(dir).mode & 0o022).toBe(0)
+        }
+        clones.close()
+      } finally {
+        process.umask(old)
+      }
+    },
+  )
 })
 
 describe('a clone pr-update did not make, or that is not yours, is not used', () => {
