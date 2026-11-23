@@ -178,13 +178,19 @@ export function checkClone(
 /**
  * Take write for group and others off `path` and everything under it, as `chmod -R go-w` does,
  * without following a symbolic link. `gh repo clone` lays the clone down under the process's
- * umask, which may let others write to it.
+ * umask, which may let others write to it. A file that goes while the walk runs is passed over:
+ * the fetch before it can leave a detached `git maintenance` taking and dropping lock files.
  */
 function dropOthersWrite(path: string): void {
-  const st = lstatSync(path)
-  if (st.isSymbolicLink()) return
-  if ((st.mode & 0o022) !== 0) chmodSync(path, st.mode & 0o7755)
-  if (st.isDirectory()) for (const name of readdirSync(path)) dropOthersWrite(join(path, name))
+  const gone = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === 'ENOENT'
+  try {
+    const st = lstatSync(path)
+    if (st.isSymbolicLink()) return
+    if ((st.mode & 0o022) !== 0) chmodSync(path, st.mode & 0o7755)
+    if (st.isDirectory()) for (const name of readdirSync(path)) dropOthersWrite(join(path, name))
+  } catch (e) {
+    if (!gone(e)) throw e
+  }
 }
 
 function lstatOrNull(path: string): Stats | null {
