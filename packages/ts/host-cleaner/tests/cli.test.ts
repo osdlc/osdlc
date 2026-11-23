@@ -541,6 +541,22 @@ describe('packages', () => {
     expect(named.err).toContain(why)
   })
 
+  test('a create that returns a plugin of another name warns in status and stops clean', async () => {
+    const h = withPackage(
+      { fixture: { package: FIXTURE } },
+      exporting(
+        "definePlugin({ name: 'fixture', api: PLUGIN_API, settings: z.object({}), create: () => ({ name: 'other', detect: () => true }) })",
+      ),
+    )
+    const why = `plugins.fixture.package: ${FIXTURE} 1.0.0 returned a plugin named "other" from create, not fixture`
+    const status = await h.go(['status', '--skip-plugin', 'cargo,node'])
+    expect(status.err).toContain(why)
+    expect(status.out).toContain('plugins: git\n')
+    const clean = await h.go(['clean', '--yes'])
+    expect(clean.code).toBe(2)
+    expect(clean.err).toContain(why)
+  })
+
   test('a package the config disables is not loaded, unless --plugin names it', async () => {
     const h = withPackage({ ghost: { package: 'host-cleaner-fixture-ghost', enabled: false } })
     const status = await h.go(['status', '--skip-plugin', 'cargo,node'])
