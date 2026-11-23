@@ -186,7 +186,7 @@ unopened. In JSON, each repository carries `checkout: { path, source }`, with
 `source` `root` or `located`, or `checkout: null` when there is none.
 
 `update` updates a checkout found this way without touching its working
-tree. The run worktrees are made from its git directory but live in
+tree, index or HEAD. The run worktrees are made from its git directory but live in
 pr-update's cache directory, under the target's host (without its port),
 owner and name:
 
@@ -196,11 +196,28 @@ owner and name:
 | Kept worktrees (`--keep-failed`) | `~/.local/state/osdlc/pr-update/kept/<host>/<owner>/<name>/<number>/` |
 | Failed attempts (`attempts.store: file`) | `~/.local/state/osdlc/pr-update/attempts/<host>/<owner>/<name>/` |
 
-`OSDLC_ROOT` moves all three, as it moves the machine file. The checkout keeps
-only git records: the worktree entries in its `.git`, the kept tree's branch,
-and the refs a push or fetch writes. With `attempts.store: git-ref`, the
-record and the lease are refs on the checkout's own `origin`, taken per
-target. The project root keeps `.pr-update/` in its own checkout, as before.
+`OSDLC_ROOT` moves all three, as it moves the machine file. In the checkout's
+git directory the run writes only git records: a `worktrees/` entry for each
+run or kept worktree, the run's scratch branch (deleted at the end) and a kept
+tree's branch, the objects the update builds, the `origin/*` refs its fetch
+and push write, and, with `attempts.store: git-ref`, local `refs/pr-update/*`
+copies of the remote's record and lease. A kept tree with a verify log adds
+`/.pr-update-verify.log` to `info/exclude` once, and with submodules the
+`submodule.*` URLs are set for the update and put back after it. A run that is
+killed can leave its worktree's entry and scratch branch, which the next run
+on that checkout removes, and `submodule.*` keys that were not put back.
+D-0005's Build notes list all of it.
+
+Every git command in that checkout and its run worktrees runs with hooks off
+(`core.hooksPath=/dev/null`): the worktree holds the PR's own files, and a
+relative `core.hooksPath` such as `.husky` would run hooks the PR's author
+wrote. The run never runs a bare `git worktree prune` there, so your own
+worktrees whose folders are missing stay listed. With `attempts.store:
+git-ref`, the record and the lease are refs on the checkout's own `origin`,
+taken per target. When a target's own record or lease fails (its remote
+refuses `refs/pr-update/*`, say), that target's PRs are skipped with the error
+and the run goes on with the others. The project root keeps `.pr-update/` in
+its own checkout, and its hooks and store errors behave as before.
 
 Commands the config names run in that worktree, so each target passes the
 trust gate on its own (see Config): a checkout found this way is trusted by
@@ -588,8 +605,9 @@ cd .pr-update/failed/acme-widgets-12  # finish the fix, then push it yourself
   submodules); the result's `keepError` says why.
 - When the kept directory is on another filesystem than the run worktree, git cannot move it.
   The kept tree is then made fresh with `git worktree add` at the same commit, with the verify
-  log written into it. Untracked files in the run worktree, such as build output, are not
-  carried over.
+  log written into it. Uncommitted changes and untracked files in the run worktree, such as
+  build output, are not carried over. The run tells the two cases apart by renaming an empty
+  probe folder into the kept directory first.
 - A kept tree's record names the git directory that owns it. A target can be served from
   different checkouts on different runs, so a run served from another one leaves the tree alone
   and lists the PR under `skipped`, reason `kept elsewhere: <path> is a worktree of <git dir>`,

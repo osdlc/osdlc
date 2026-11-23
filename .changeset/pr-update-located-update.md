@@ -6,7 +6,11 @@
 where before it only surveyed it and skipped its PRs. The run works in a
 worktree under pr-update's cache directory
 (`~/.cache/osdlc/pr-update/worktrees/<host>/<owner>/<name>/`), so the
-checkout's own working tree is not touched. Its kept worktrees and failed
+checkout's own working tree, index and HEAD are not touched. Every git
+command there runs with hooks off, so a hook the PR commits under a relative
+`core.hooksPath` does not run, and the run never prunes the checkout's other
+worktrees. If a target's own attempt record or lease fails, that target's PRs
+are skipped with the error, and the run goes on. Its kept worktrees and failed
 attempts go in pr-update's state directory, under the same
 `<host>/<owner>/<name>`, and with `attempts.store: git-ref` its record and
 lease are refs on that checkout's `origin`. The project root keeps
@@ -36,7 +40,11 @@ A kept worktree's record now names the git directory that owns it. A run
 served from another checkout of the same repository skips that PR as
 `kept elsewhere` while it is unchanged. When the kept directory is on another
 filesystem, the kept tree is made with `git worktree add` at the same commit
-instead of moved, and untracked files such as build output are not carried
-over. In branch mode, a target served from a checkout other than the project
+instead of moved, and uncommitted changes and untracked files such as build
+output are not carried over. A kept tree whose git directory is gone, or that
+git cannot read, is never removed as stale: its PR is skipped until
+`--discard-kept`. A folder left in a kept tree's place with no record is not
+moved into, and the run says how to remove it. A kept record is used only
+when its path is the kept path its file name gives. In branch mode, a target served from a checkout other than the project
 root is skipped, and the `unpushed_local` guard reads every checkout of a
 repository, not only the one the run uses.

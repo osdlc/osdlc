@@ -255,11 +255,15 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     executor).
   - A located checkout is fetched and pushed through `origin`, the remote that
     matched, whatever `--remote` says. `--remote` applies to the project root.
-  - Its run worktree goes under the cache (table above). Inside the checkout
-    the run writes only git's worktree records, its scratch branch and the
-    fetched `origin/*` refs. A killed run leaves its worktree and scratch
-    branch until pruning (below) or a later run on the same checkout removes
-    them.
+  - Its run worktree goes under the cache (table above). The checkout's
+    working tree, index and HEAD are never touched. Its git directory gets
+    git records only, listed in full under Build notes, with what a killed
+    run leaves there. A later run on the same checkout removes a killed
+    run's worktree and scratch branch, or pruning (below) does.
+  - Every git call in the checkout and its run worktrees runs with hooks off
+    (`core.hooksPath=/dev/null`). The worktree holds the PR's own files, so
+    a relative `core.hooksPath` such as `.husky` would run hooks the PR's
+    author wrote.
 - **Who clones.** Only `update --apply`, with `checkout: mirror` or a consent
   below. `survey` and a rehearsal fetch a clone that exists and otherwise
   report the target as not measured, naming `pr-update mirror enable`. They
@@ -440,10 +444,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   Neither sees the other's records, so a PR skipped from one may be retried
   from the other. This keeps criterion 5. `git-ref` shares records across
   both, and across machines (B-0003).
-- pr-update keeps state under two roots for a while: everything above under
-  `osdlc/pr-update/`, and devlink's files and the trust store
-  (`$XDG_STATE_HOME/pr-update/trusted/`) under `pr-update/`. Each category lives
-  in one place, and the others can move over one at a time.
+- pr-update keeps state under two roots for a while: everything above and the
+  trust store (`<state>/osdlc/pr-update/trusted/`) under `osdlc/pr-update/`,
+  and devlink's files under `pr-update/`. Each category lives in one place, and
+  devlink's can move over later. Trust granted under the old
+  `$XDG_STATE_HOME/pr-update/trusted/` was not carried over: a person runs
+  `pr-update trust` again.
 - A host that builds one attempt store or lease for several repositories has
   the same problem the facts name for `git-ref`. That is outside this record.
 
@@ -452,14 +458,59 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - A machine target for `pr-update config set`, in cli-tool's `config-command.ts`
   so every tool gets it. `pr-update mirror enable` and `disable` cover the
   `checkout` and `mirror_dir` keys until then.
-- Move devlink's files and the trust store under `osdlc/pr-update/`, or keep
-  them where they are on purpose. The trust store first needs to resolve
-  through tiered-dirs, with an `app` option (osdlc/osdlc#1010). Its markers
-  stay keyed by `pr-update`, never by `osdlc`, so consent given to pr-update
-  covers no other osdlc tool.
+- Move devlink's files under `osdlc/pr-update/`, or keep them where they are
+  on purpose. The trust store has moved: trust-repo resolves it through
+  tiered-dirs with its `app` option, as tool `osdlc`, app `pr-update`, so
+  consent given to pr-update covers no other osdlc tool.
 - Project config at `<repo>/.osdlc/pr-update.yaml` instead of `pr-update.yaml`
   at the root. No repository commits a `pr-update.yaml` today, so the move would
   break no one, but it is not part of this record.
+
+## Build notes
+
+- **What a run writes in a located checkout.** Nothing in its working tree,
+  index or HEAD. In its git directory:
+  - a `worktrees/<id>/` record for each run worktree and kept tree, which
+    live under pr-update's cache and state;
+  - the run's scratch branch, `pr-update/scratch-<run>`, deleted at the end;
+  - a kept tree's branch, `pr-update/failed-<owner>-<name>-<number>`, kept
+    until the tree is discarded;
+  - the objects the update builds (merges, rebases, repair commits, and the
+    record and lease commits of `git-ref`), and the reflog entries of the
+    refs above;
+  - `refs/remotes/origin/*` from the run's fetch and push;
+  - with `git-ref`, local `refs/pr-update/*` refs mirroring the remote's
+    record and lease;
+  - the line `/.pr-update-verify.log` in `info/exclude`, written once, when a
+    kept tree gets a verify log;
+  - with submodules, the `submodule.<name>.url` and `.active` keys in its
+    config, set for the update and put back as they were after each PR, and
+    the submodule clones git makes for the run worktree.
+
+  git may also run `gc --auto` there, as after any commit.
+- **What a killed run can leave in a located checkout.** The run worktree's
+  record and the scratch branch (the next run on that checkout removes them,
+  since the run's pid is in the worktree's name); `submodule.*` keys that
+  were not put back; and, when it stopped between making a kept tree and
+  writing its record, a kept tree with no record. A later keep of that PR
+  refuses to move into that folder, names it, and says how to remove it.
+  Outside the checkout it can leave the run worktree's folder under the
+  cache and, with `git-ref`, a lease ref on the remote until its TTL ends.
+- **Cleaning up in a located checkout.** The run never runs a bare
+  `git worktree prune` there, which would also drop the person's worktrees
+  whose folders are missing. When `git worktree remove` of a run's own tree
+  fails, it deletes only that tree's `worktrees/<id>/` record, after checking
+  that its `gitdir` names a folder under pr-update's own directories.
+- **Kept trees.** A record is used only when its `path` is the kept path its
+  file name gives. A tree whose owning git directory is gone, or that git
+  cannot read, is never removed for being stale: the PR is skipped until
+  `--discard-kept`. Different filesystems are found by renaming an empty probe
+  folder into the kept directory and reading `EXDEV`; git's text, read in the
+  C locale, is only a fallback.
+- **Per-target errors.** An error from a target's own attempt store or lease
+  (a remote that refuses `refs/pr-update/*`) skips that target's PRs with the
+  error, and the run goes on. An error from the project root's store ends the
+  run, as before. The stores of targets the trust gate refused are not pruned.
 
 ## What would reopen it
 

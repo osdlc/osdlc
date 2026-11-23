@@ -829,8 +829,9 @@ function realOr(path: string): string {
  * Each surveyed repository with a checkout, by `owner/name`. The project root's records, lease
  * and worktrees are the run's own (`Ports.attempts`, `Ports.lease`, `<checkout>/.pr-update/`).
  * Any other target's are where `Ports.targetHome` puts them, outside its checkout, so a run
- * writes in a located checkout only git's worktree records, its scratch branch and the refs it
- * fetches. Without that port, a target is served as the project root is, from its own checkout.
+ * writes in a located checkout only git records (D-0005's Build notes list them). Without that
+ * port, a target is served from its own checkout's `.pr-update/`. Either way git runs in it
+ * with hooks off, and its path is resolved through symlinks once, here.
  */
 function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<string, Served> {
   const out = new Map<string, Served>()

@@ -106,7 +106,8 @@ export interface StandalonePortsOptions {
  * Any other target keeps its own, in pr-update's osdlc directories (`machine.ts`), under
  * `<host>/<owner>/<name>` with the host's port left out: run worktrees in the cache's
  * `worktrees/`, kept worktrees in the state's `kept/`, and file attempts in the state's
- * `attempts/`. With `git-ref`, its record and lease are refs on its own checkout's remote.
+ * `attempts/`. With `git-ref`, its record and lease are refs on its own checkout's remote, written
+ * with git's hooks off, as every git call in that checkout is.
  *
  * `notice` receives one-line notes for the person: the command `verify: detect` chose, where to
  * attach a `terminal` repair, and a `--repo` target with no checkout and the roots searched for it.
