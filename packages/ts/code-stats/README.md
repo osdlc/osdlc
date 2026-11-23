@@ -48,8 +48,8 @@ npx @osdlc/code-stats count
 Write the scope: the unscoped npm package `code-stats` is a different tool that also installs a
 `code-stats` command.
 
-ESM only. Node.js 22 or later: the `engines` range in `package.json` is the one of
-`@osdlc/typed-git`, which the package reads git through.
+ESM only. Node.js `^22.22.2`, `^24.15.0` or `>=26.0.0`: the `engines` range in `package.json` is
+the one of `@osdlc/typed-git`, which the package reads git through.
 
 The library and the command are one package, so the install brings `@osdlc/cli-tool`, the
 framework the command is built on, and its dependencies. Importing the library loads it too, for
@@ -162,8 +162,8 @@ The [tool comparison](./docs/guide/tool-comparison.md) has the detail and says w
 
 ## Runtimes and platforms
 
-- Node.js 22 or later (`^22.22.2 || ^24.15.0 || >=26.0.0`). The repository's CI runs the tests on
-  Node 22, 24 and 26. Bun is not tested.
+- Node.js `^22.22.2`, `^24.15.0` or `>=26.0.0`. The repository's CI runs the tests on Node 22, 24
+  and 26. Bun is not tested.
 - Linux and macOS are tested. Windows is not tested. The package starts `git`, `gh` and `lizard`
   as programs and handles paths through one helper, but nothing has run it there.
 - `git` on `PATH` for anything that reads history. `gh` for pull requests. Neither is needed for

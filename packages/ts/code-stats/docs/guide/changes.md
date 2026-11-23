@@ -130,7 +130,8 @@ The `diff` table, with `tax.ts` included:
 ```
 
 So "+13 −5" across the two files was three new lines of logic (`total` and `TAX_RATE`), two
-rewritten ones (the rename), one function moved without edits, and a reworded comment.
+rewritten ones (the rename), one function moved without edits, and a reworded comment. The other
+five added lines are an import, a closing brace, two doc comments and a blank line.
 
 ### Moved and edited
 

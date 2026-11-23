@@ -42,7 +42,8 @@ Each layer only knows the ones below it:
 - **Measure** (`src/measure.ts`, `src/files/count.ts`): it wires a source to the reports. Each
   public function names its source: `countDirectory` reads disk, and `countTree` and the change
   functions read git. For uncommitted work (`--worktree`) the change functions read the new
-  side from disk, and `describeChange` reads the manifests there too. The report builders
+  side from disk, and `describeChange` reads the manifests there too, as it does for a pull
+  request whose commits are not in the local repository. The report builders
   (`buildCountReport`, `buildDiffReport`) read nothing: the caller passes the content.
 - **CLI** (`src/cli`): each command is declared once with
   [`@osdlc/cli-tool`](https://github.com/osdlc/osdlc/tree/main/packages/ts/cli-tool)'s

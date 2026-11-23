@@ -245,8 +245,8 @@ function count(cwd: string) {
 
 ## Runtimes
 
-The package is ESM and runs under Node.js 22 or later (`^22.22.2 || ^24.15.0 || >=26.0.0`, the
-range in `engines`), from the compiled JavaScript in `dist/`.
+The package is ESM and runs under Node.js `^22.22.2`, `^24.15.0` or `>=26.0.0` (the range in
+`engines`), from the compiled JavaScript in `dist/`.
 
 ## Running commands
 
