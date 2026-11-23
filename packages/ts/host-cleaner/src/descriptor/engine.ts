@@ -5,7 +5,10 @@
  *
  * - detect: `detect`'s `onPath` and `exists`, or any of its folders existing.
  *   A `system: true` descriptor never applies ({@link skipReason}), nor one
- *   whose `supersededBy` plugin runs.
+ *   whose `supersededBy` plugin runs. Otherwise it first works out its `vars`
+ *   (tier 2, {@link resolveVars}), so once per survey, and its folders with
+ *   them. A folder whose variable has no value is left out, with its
+ *   candidates.
  * - roots: the folder each of its `paths` sits in, for this OS. A candidate
  *   may be a whole folder, and the core holds a candidate strictly inside a
  *   root, so the root is the folder's parent; the engine's own checks
@@ -27,7 +30,7 @@
 
 import { lstatSync, readdirSync, realpathSync, type Dirent } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, isAbsolute, join, normalize, relative, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
 
 import { globRegExp } from '@osdlc/repo-cleaner'
 import { Git } from '@osdlc/typed-git'
@@ -36,7 +39,7 @@ import { z } from 'zod'
 import { hostDirs } from '../config.ts'
 import { DEFAULT_IDLE_HOURS, idleHoursSetting, type Kit } from '../kit.ts'
 import { containedIn } from '../roots.ts'
-import { DELETE_LIMIT_MS, OUTSIDE_ROOTS } from '../run.ts'
+import { DELETE_LIMIT_MS, HOOK_LIMIT_MS, OUTSIDE_ROOTS } from '../run.ts'
 import {
   PLUGIN_API,
   definePlugin,
@@ -54,6 +57,7 @@ import {
   type Os,
   type ProjectEntry,
 } from './schema.ts'
+import { VAR_COMMAND_LIMIT_MS, fillTemplate, resolveVars, type Vars } from './vars.ts'
 
 /** The protest on a prune whose program is not on PATH; `--allow no-prune-tool` removes the folder instead (D12). */
 export const NO_PRUNE_TOOL = 'no-prune-tool'
@@ -124,15 +128,12 @@ const within = (outer: string, inner: string): boolean => {
   return rel === '' || (rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel))
 }
 
-/** `folder` with `~` read as `home`. */
-const expand = (folder: string, home: string): string =>
-  folder === '~' ? home : /^~[/\\]/.test(folder) ? join(home, folder.slice(2)) : normalize(folder)
-
 /**
  * Why `path`, one of a descriptor's folders, may not be cleaned, or null when
  * it may: it must sit strictly inside `home`, and not be a personal folder,
  * be or hold a target or a checkout, or hold host-cleaner's own folders. Judged
- * on the path as given and on its real path.
+ * on the path as given and on its real path. A `trusted` folder, from a
+ * variable set in the config, may sit outside `home`, but not hold it.
  */
 export function pathProblem(
   path: string,
@@ -141,10 +142,13 @@ export function pathProblem(
     targets: readonly string[]
     checkouts: readonly string[]
     ownDirs: readonly string[]
+    trusted?: boolean | undefined
   },
 ): string | null {
   if (realOr(path) === realOr(at.home)) return 'it is the home folder'
-  if (containedIn([at.home], path) === null) return 'it is not inside the home folder'
+  if (at.trusted === true) {
+    if (within(path, at.home)) return 'it holds the home folder'
+  } else if (containedIn([at.home], path) === null) return 'it is not inside the home folder'
   for (const name of PERSONAL_FOLDERS) {
     if (realOr(path) === realOr(join(at.home, name))) return `it is the personal folder ~/${name}`
   }
@@ -232,16 +236,49 @@ interface Row {
   checkout?: string
 }
 
-/** The plugin for the descriptor `d`, named `name` (its file name). Settings: `idleHours`. */
+/** A folder set for a variable in the config: under home or absolute. */
+const varSetting = z
+  .string()
+  .regex(/^(~[/\\]|\/|[A-Za-z]:[/\\])/, 'must start with ~/ or be absolute')
+
+/**
+ * The descriptor plugin's settings: `idleHours`, and for a descriptor that
+ * declares variables, `vars` with one optional folder for each. A tier 1
+ * descriptor has no `vars`, so `settings.vars` is then always undefined.
+ */
+type DescriptorSettings = z.ZodObject<{
+  idleHours: typeof idleHoursSetting
+  vars: z.ZodOptional<z.ZodObject<Record<string, z.ZodOptional<typeof varSetting>>>>
+}>
+
+const settingsFor = (d: Descriptor): DescriptorSettings => {
+  const base = z.strictObject({ idleHours: idleHoursSetting })
+  if (d.vars === undefined) return base as unknown as DescriptorSettings
+  const each = Object.keys(d.vars).map((v) => [
+    v,
+    varSetting
+      .optional()
+      .describe(
+        `A folder for \${${v}}; it wins over the descriptor's sources and may sit outside the home folder.`,
+      ),
+  ])
+  return base.extend({ vars: z.strictObject(Object.fromEntries(each)).optional() })
+}
+
+/**
+ * The plugin for the descriptor `d`, named `name` (its file name). Settings:
+ * `idleHours`, and `vars` for a descriptor that declares variables, where a
+ * name it doesn't declare is an error.
+ */
 export function descriptorPlugin(
   name: string,
   d: Descriptor,
   opts: DescriptorOptions = {},
-): PluginDefinition<z.ZodObject<{ idleHours: typeof idleHoursSetting }>> {
+): PluginDefinition<DescriptorSettings> {
   return definePlugin({
     name,
     api: PLUGIN_API,
-    settings: z.strictObject({ idleHours: idleHoursSetting }),
+    settings: settingsFor(d),
     create: ({ settings, kit, env }) =>
       engine(name, d, kit, {
         home: env.HOME ?? homedir(),
@@ -249,6 +286,8 @@ export function descriptorPlugin(
         idleHours: settings.idleHours ?? DEFAULT_IDLE_HOURS,
         runs: opts.runs,
         ownDirs: opts.ownDirs ?? ownDirsOf(env),
+        env,
+        vars: settings.vars ?? {},
       }),
   })
 }
@@ -268,20 +307,56 @@ interface EngineAt {
   idleHours: number
   runs: DescriptorOptions['runs']
   ownDirs: readonly string[]
+  env: Readonly<Record<string, string | undefined>>
+  /** The config's `vars`: trusted folders. */
+  vars: Readonly<Record<string, string | undefined>>
 }
 
 function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
-  // The folders that apply on this OS, by their name in `paths`.
-  const folders = new Map<string, string>()
-  for (const [key, perOs] of Object.entries(d.paths)) {
-    const folder = perOs.all ?? perOs[at.os]
-    if (folder !== undefined) folders.set(key, expand(folder, at.home))
+  const config = Object.fromEntries(
+    Object.entries(at.vars).filter((e): e is [string, string] => e[1] !== undefined),
+  )
+  // The folders that apply on this OS, by their name in `paths`, as the last
+  // survey resolved them; and those of them a config value gave.
+  let folders = new Map<string, string>()
+  let trusted = new Set<string>()
+  let vars: Vars | undefined
+
+  const refresh = async (ctx: Ctx): Promise<void> => {
+    const now = await resolveVars(d.vars ?? {}, {
+      home: at.home,
+      os: at.os,
+      env: at.env,
+      config,
+      kit,
+      signal: ctx.signal,
+    })
+    const nextFolders = new Map<string, string>()
+    const nextTrusted = new Set<string>()
+    for (const [key, perOs] of Object.entries(d.paths)) {
+      const template = perOs.all ?? perOs[at.os]
+      if (template === undefined) continue
+      const filled = fillTemplate(template, now, at.home)
+      // A variable with no value leaves the folder out.
+      if ('missing' in filled) continue
+      nextFolders.set(key, filled.path)
+      if (filled.trusted) nextTrusted.add(key)
+    }
+    vars = now
+    folders = nextFolders
+    trusted = nextTrusted
+  }
+
+  /** Resolves the variables if no survey has yet. */
+  const ready = async (ctx: Ctx): Promise<void> => {
+    if (vars === undefined) await refresh(ctx)
   }
 
   const problems = (ctx: Ctx) => {
     const where = { ...at, targets: ctx.targets, checkouts: checkoutsIn(ctx.targets) }
     const out = new Map<string, string | null>()
-    for (const [key, folder] of folders) out.set(key, pathProblem(folder, where))
+    for (const [key, folder] of folders)
+      out.set(key, pathProblem(folder, { ...where, trusted: trusted.has(key) }))
     return out
   }
 
@@ -512,7 +587,10 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       }
     }
     for (const lock of d.inUse?.locks ?? []) {
-      const file = expand(lock, at.home)
+      const filled = fillTemplate(lock, vars ?? {}, at.home)
+      // A lock whose variable has no value can't be looked for.
+      if ('missing' in filled) continue
+      const file = filled.path
       if (present(file))
         out.push({ level: 'refuse', code: IN_USE, reason: `the lock ${file} exists` })
     }
@@ -602,14 +680,23 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
 
   let rows = new Map<string, Row>()
 
+  // Commands run one at a time, each within its own limit.
+  const commands = Object.values(d.vars ?? {})
+    .flat()
+    .filter((s) => 'command' in s).length
+
   return {
     name,
-    limits: { discover: DISCOVER_LIMIT_MS },
+    limits: {
+      discover: DISCOVER_LIMIT_MS,
+      detect: Math.max(HOOK_LIMIT_MS, (commands + 1) * VAR_COMMAND_LIMIT_MS),
+    },
     async detect(ctx) {
       if (skipReason(d) !== undefined) return false
       if (d.supersededBy !== undefined && (await at.runs?.(d.supersededBy, ctx)) === true) {
         return false
       }
+      await refresh(ctx)
       const holds = (c: { onPath?: string | undefined; exists?: string | undefined }): boolean => {
         if (c.onPath !== undefined) return kit.onPath(c.onPath)
         const folder = c.exists === undefined ? undefined : folders.get(c.exists)
@@ -619,8 +706,12 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       if (d.detect?.any !== undefined) return d.detect.any.some(holds)
       return [...folders.values()].some(present)
     },
-    roots,
-    discover(ctx) {
+    async roots(ctx) {
+      await ready(ctx)
+      return roots(ctx)
+    },
+    async discover(ctx) {
+      await ready(ctx)
       rows = new Map(rowsNow(ctx).map((r) => [r.candidate.id, r]))
       return [...rows.values()].map((r) => r.candidate)
     },
@@ -644,6 +735,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       if (path === undefined) throw new Error(`${c.id} is not a folder`)
       if (isLink(path)) throw new Error(`${path} is now a symlink; it is not followed`)
       if (!present(path)) return `already gone: ${path}`
+      await ready(ctx)
       const why = refusal(c.evidence as Evidence, path, ctx)
       if (why !== null) throw new Error(`${path} was not deleted: ${why}`)
       const ev = c.evidence as Evidence

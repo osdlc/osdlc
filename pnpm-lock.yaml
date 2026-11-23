@@ -868,6 +868,9 @@ importers:
       '@osdlc/ux':
         specifier: workspace:^
         version: link:../ux
+      smol-toml:
+        specifier: 'catalog:'
+        version: 1.9.1
       yaml:
         specifier: 'catalog:'
         version: 2.9.1

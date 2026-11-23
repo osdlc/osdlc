@@ -100,19 +100,31 @@ export function effectiveSettings(
     // The core's `enabled` first, as `config` has always listed it.
     fields.sort((a, b) => Number(b.path[1] === 'enabled') - Number(a.path[1] === 'enabled'))
     out[name] = fields.map((f) => {
-      const key = f.path.slice(1).join('.')
+      const at = f.path.slice(1)
+      const key = at.join('.')
       return {
         key,
-        value: value[key],
+        value: valueAt(value, at),
         default: key === 'idleHours' ? DEFAULT_IDLE_HOURS : f.default,
-        source: Object.hasOwn(raw, key)
-          ? 'config'
-          : key === 'idleHours' && shared.idleHours !== undefined
-            ? 'shared'
-            : 'default',
+        source:
+          valueAt(raw, at) !== undefined
+            ? 'config'
+            : key === 'idleHours' && shared.idleHours !== undefined
+              ? 'shared'
+              : 'default',
         description: f.description,
       }
     })
   }
   return out
+}
+
+/** The value at `path` in nested `record`, such as a descriptor's `vars.GOPATH`. */
+function valueAt(record: Record<string, unknown>, path: readonly string[]): unknown {
+  let at: unknown = record
+  for (const part of path) {
+    if (typeof at !== 'object' || at === null || !Object.hasOwn(at, part)) return undefined
+    at = (at as Record<string, unknown>)[part]
+  }
+  return at
 }

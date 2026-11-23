@@ -115,6 +115,16 @@ export {
   type DescriptorOptions,
 } from './descriptor/engine.ts'
 export {
+  BUILT_IN_VARS,
+  VAR_COMMAND_LIMIT_MS,
+  fillTemplate,
+  resolveVars,
+  type VarSource,
+  type VarValue,
+  type Vars,
+  type VarsAt,
+} from './descriptor/vars.ts'
+export {
   DescriptorLoadError,
   SHIPPED_DESCRIPTORS,
   loadDescriptors,

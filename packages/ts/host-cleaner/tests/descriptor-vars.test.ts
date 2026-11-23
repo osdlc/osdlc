@@ -1,0 +1,362 @@
+/**
+ * Descriptor variables: each of the four sources, the config value that wins
+ * over them and is trusted, the built-ins, a variable built from another, and
+ * a hung command that times out so the next source is tried.
+ */
+
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { afterEach, describe, expect, test } from 'vitest'
+
+import { fakeNeverExited } from '@osdlc/command-seam/testing'
+
+import { pluginKit } from '../src/index.ts'
+import {
+  BUILT_IN_VARS,
+  VAR_COMMAND_LIMIT_MS,
+  fillTemplate,
+  resolveVars,
+  type VarSource,
+  type VarsAt,
+} from '../src/descriptor/vars.ts'
+import { fakeRunner, tempHome } from '../src/testing.ts'
+
+const cleanups: Array<() => void> = []
+afterEach(() => {
+  while (cleanups.length > 0) cleanups.pop()!()
+})
+
+/** A fixture home, and `resolveVars` over it with `env`, `programs` on PATH and `over`. */
+function setup(
+  o: {
+    env?: Record<string, string>
+    programs?: Parameters<typeof fakeRunner>[0]
+  } = {},
+) {
+  const h = tempHome()
+  cleanups.push(h.cleanup)
+  const fake = fakeRunner(o.programs ?? {})
+  const env = { ...h.env, ...o.env }
+  const at: VarsAt = {
+    home: h.home,
+    os: 'linux',
+    env,
+    kit: pluginKit('x', { env, ...fake }),
+    signal: new AbortController().signal,
+  }
+  const resolve = (vars: Record<string, VarSource[]>, over: Partial<VarsAt> = {}) =>
+    resolveVars(vars, { ...at, ...over })
+  return { home: h.home, calls: fake.calls, resolve }
+}
+
+describe('the env source', () => {
+  test('a set variable gives its value', async () => {
+    const { resolve } = setup({ env: { UV_CACHE_DIR: '/data/uv' } })
+    expect((await resolve({ UV: [{ env: 'UV_CACHE_DIR' }] })).UV).toEqual({
+      value: '/data/uv',
+      from: 'env UV_CACHE_DIR',
+      trusted: false,
+      tried: [],
+    })
+  })
+
+  test('an unset, empty or relative one moves on to the next source', async () => {
+    const { home, resolve } = setup({ env: { EMPTY: '', REL: 'cache/uv' } })
+    const v = await resolve({
+      UV: [{ env: 'UNSET' }, { env: 'EMPTY' }, { env: 'REL' }, { value: '~/.cache/uv' }],
+    })
+    expect(v.UV).toEqual({
+      value: join(home, '.cache/uv'),
+      from: 'value',
+      trusted: false,
+      tried: [
+        { source: 'env UNSET', failed: 'not set' },
+        { source: 'env EMPTY', failed: 'not set' },
+        { source: 'env REL', failed: 'cache/uv is not an absolute folder' },
+      ],
+    })
+  })
+
+  test('a leading ~ is read as the home folder', async () => {
+    const { home, resolve } = setup({ env: { UV_CACHE_DIR: '~/fast/uv/' } })
+    expect((await resolve({ UV: [{ env: 'UV_CACHE_DIR' }] })).UV?.value).toBe(join(home, 'fast/uv'))
+  })
+})
+
+describe('the file source', () => {
+  /** Writes `text` to `name` under the home's `.config/tool/`. */
+  const write = (home: string, name: string, text: string): string => {
+    const dir = join(home, '.config', 'tool')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, name), text)
+    return join(dir, name)
+  }
+
+  test.each([
+    ['TOML', 'tool.toml', '[cache]\ndir = "/data/tool"\n'],
+    ['JSON', 'tool.json', '{ "cache": { "dir": "/data/tool" } }'],
+    ['YAML', 'tool.yaml', 'cache:\n  dir: /data/tool\n'],
+    ['YAML as .yml', 'tool.yml', 'cache: { dir: /data/tool }\n'],
+  ])('a dotted key in a %s file gives its value', async (_, name, text) => {
+    const { home, resolve } = setup()
+    write(home, name, text)
+    const v = await resolve({
+      DIR: [{ file: `\${XDG_CONFIG_HOME}/tool/${name}`, key: 'cache.dir' }],
+    })
+    expect(v.DIR).toEqual({
+      value: '/data/tool',
+      from: `file \${XDG_CONFIG_HOME}/tool/${name} key cache.dir`,
+      trusted: false,
+      tried: [],
+    })
+  })
+
+  test('a missing file, a missing key, a value that is not a string, or a file that does not parse moves on', async () => {
+    const { home, resolve } = setup()
+    const bad = write(home, 'bad.toml', 'cache = [\n')
+    const good = write(home, 'tool.toml', '[cache]\nsize = 3\n')
+    const v = await resolve({
+      DIR: [
+        { file: '~/.config/tool/none.toml', key: 'cache.dir' },
+        { file: '~/.config/tool/tool.toml', key: 'cache.dir' },
+        { file: '~/.config/tool/tool.toml', key: 'cache.size' },
+        { file: '~/.config/tool/bad.toml', key: 'cache' },
+        { value: '/fallback' },
+      ],
+    })
+    expect(v.DIR?.value).toBe('/fallback')
+    expect(v.DIR?.tried.map((t) => t.failed)).toEqual([
+      `no file ${join(home, '.config/tool/none.toml')}`,
+      `${good} has no cache.dir`,
+      `cache.size in ${good} is not a string`,
+      expect.stringMatching(new RegExp(`^${bad.replaceAll('/', '\\/')} does not parse: `)),
+    ])
+  })
+})
+
+describe('the command source', () => {
+  test("its output, trimmed, is the value; it runs from home with the short limit and the hook's signal", async () => {
+    const signal = new AbortController().signal
+    const { home, calls, resolve } = setup({
+      programs: { pnpm: { 'store path': { stdout: '/data/pnpm/store/v10\n' } } },
+    })
+    const v = await resolve({ STORE: [{ command: ['pnpm', 'store', 'path'] }] }, { signal })
+    expect(v.STORE).toEqual({
+      value: '/data/pnpm/store/v10',
+      from: 'command pnpm store path',
+      trusted: false,
+      tried: [],
+    })
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.argv).toEqual(['pnpm', 'store', 'path'])
+    expect(calls[0]!.opts).toMatchObject({ cwd: home, timeoutMs: VAR_COMMAND_LIMIT_MS, signal })
+  })
+
+  test('a program not on PATH is not run, and the next source is tried', async () => {
+    const { calls, resolve } = setup()
+    const v = await resolve({ STORE: [{ command: ['pnpm', 'store', 'path'] }, { value: '/x' }] })
+    expect(v.STORE?.value).toBe('/x')
+    expect(v.STORE?.tried).toEqual([
+      { source: 'command pnpm store path', failed: 'pnpm is not on PATH' },
+    ])
+    expect(calls).toEqual([])
+  })
+
+  test('a failure, no output, several lines or a relative answer moves on', async () => {
+    const { resolve } = setup({
+      programs: {
+        tool: {
+          fail: { exitCode: 2, stderr: 'no store\nmore' },
+          quiet: { stdout: '  \n' },
+          chatty: { stdout: '/a\n/b\n' },
+          relative: { stdout: 'store\n' },
+        },
+      },
+    })
+    const v = await resolve({
+      STORE: ['fail', 'quiet', 'chatty', 'relative'].map((a) => ({ command: ['tool', a] })),
+    })
+    expect(v.STORE).toEqual({
+      value: null,
+      trusted: false,
+      tried: [
+        { source: 'command tool fail', failed: 'exit 2: no store' },
+        { source: 'command tool quiet', failed: 'printed nothing' },
+        { source: 'command tool chatty', failed: 'printed more than one line' },
+        { source: 'command tool relative', failed: 'store is not an absolute folder' },
+      ],
+    })
+  })
+
+  test('a timed-out command moves on to the next source', async () => {
+    const { resolve } = setup({
+      programs: { go: { 'env GOCACHE': fakeNeverExited('timeout') } },
+    })
+    const v = await resolve({
+      GOCACHE: [{ command: ['go', 'env', 'GOCACHE'] }, { value: '${XDG_CACHE_HOME}/go-build' }],
+    })
+    expect(v.GOCACHE?.from).toBe('value')
+    expect(v.GOCACHE?.tried).toEqual([
+      {
+        source: 'command go env GOCACHE',
+        failed: `timed out after ${VAR_COMMAND_LIMIT_MS / 1000} s`,
+      },
+    ])
+  })
+
+  test('a real command that hangs is stopped at the limit, and the next source is tried', async () => {
+    const h = tempHome()
+    cleanups.push(h.cleanup)
+    const started = Date.now()
+    const v = await resolveVars(
+      { STORE: [{ command: ['sleep', '30'] }, { value: '~/store' }] },
+      {
+        home: h.home,
+        os: 'linux',
+        env: { ...process.env, ...h.env },
+        kit: pluginKit('x', { env: h.env }),
+        signal: new AbortController().signal,
+        timeoutMs: 300,
+      },
+    )
+    expect(Date.now() - started).toBeLessThan(10_000)
+    expect(v.STORE).toEqual({
+      value: join(h.home, 'store'),
+      from: 'value',
+      trusted: false,
+      tried: [{ source: 'command sleep 30', failed: 'timed out after 0.3 s' }],
+    })
+  })
+})
+
+describe('the value source', () => {
+  test('one for all, or the one for this OS', async () => {
+    const { home, resolve } = setup()
+    const v = await resolve({
+      ALL: [{ value: '~/all' }],
+      PER_OS: [{ value: { macos: '~/Library/x', linux: '~/.local/share/x' } }],
+    })
+    expect(v.ALL?.value).toBe(join(home, 'all'))
+    expect(v.PER_OS?.value).toBe(join(home, '.local/share/x'))
+    const mac = await resolve({ PER_OS: [{ value: { linux: '~/x' } }] }, { os: 'macos' })
+    expect(mac.PER_OS).toEqual({
+      value: null,
+      trusted: false,
+      tried: [{ source: 'value', failed: 'none for macos' }],
+    })
+  })
+
+  test('may use another variable, declared later or built in', async () => {
+    const { home, resolve } = setup({ env: { GOPATH: '/work/go' } })
+    const v = await resolve({
+      GOMODCACHE: [{ env: 'GOMODCACHE' }, { value: '${GOPATH}/pkg/mod' }],
+      GOPATH: [{ env: 'GOPATH' }, { value: '~/go' }],
+      GOCACHE: [{ value: '${XDG_CACHE_HOME}/go-build' }],
+    })
+    expect(v.GOMODCACHE?.value).toBe('/work/go/pkg/mod')
+    expect(v.GOCACHE?.value).toBe(join(home, '.cache/go-build'))
+    // Built-ins first, then the declared ones in the order declared.
+    expect(Object.keys(v)).toEqual([
+      ...Object.keys(BUILT_IN_VARS),
+      'GOMODCACHE',
+      'GOPATH',
+      'GOCACHE',
+    ])
+  })
+
+  test('one using a variable with no value gives none', async () => {
+    const { resolve } = setup()
+    const v = await resolve({ A: [{ env: 'A' }], B: [{ value: '${A}/b' }] })
+    expect(v.B).toEqual({
+      value: null,
+      trusted: false,
+      tried: [{ source: 'value', failed: '${A} has no value' }],
+    })
+  })
+})
+
+describe('the order of sources', () => {
+  test('the first that gives a value wins, and later ones do not run', async () => {
+    const { calls, resolve } = setup({
+      env: { GOCACHE: '/env/go-build' },
+      programs: { go: { 'env GOCACHE': { stdout: '/go/said\n' } } },
+    })
+    const v = await resolve({
+      GOCACHE: [{ env: 'GOCACHE' }, { command: ['go', 'env', 'GOCACHE'] }, { value: '/x' }],
+    })
+    expect(v.GOCACHE?.value).toBe('/env/go-build')
+    expect(calls).toEqual([])
+  })
+
+  test('a config value wins over every source, and is trusted, as is a value built on it', async () => {
+    const { calls, resolve } = setup({
+      env: { GOPATH: '/env/go' },
+      programs: { go: { 'env GOMODCACHE': { stdout: '/go/said\n' } } },
+    })
+    const v = await resolve(
+      {
+        GOPATH: [{ env: 'GOPATH' }],
+        GOMODCACHE: [{ value: '${GOPATH}/pkg/mod' }],
+        INSIDE: [{ value: '/mnt/${GOPATH}' }],
+        CMD: [{ command: ['go', 'env', 'GOMODCACHE'] }],
+      },
+      { config: { GOPATH: '/Volumes/build/go', CMD: '/Volumes/build/mod' } },
+    )
+    expect(v.GOPATH).toEqual({
+      value: '/Volumes/build/go',
+      from: 'config',
+      trusted: true,
+      tried: [],
+    })
+    expect(v.GOMODCACHE).toMatchObject({ value: '/Volumes/build/go/pkg/mod', trusted: true })
+    // Only a value that starts with a trusted variable is trusted.
+    expect(v.INSIDE).toMatchObject({ value: '/mnt/Volumes/build/go', trusted: false })
+    expect(v.CMD).toMatchObject({ value: '/Volumes/build/mod', from: 'config' })
+    expect(calls).toEqual([])
+  })
+})
+
+describe('the built-in variables', () => {
+  test('HOME, and each XDG folder at its XDG default on every OS when unset', async () => {
+    const { home, resolve } = setup()
+    for (const os of ['linux', 'macos', 'windows'] as const) {
+      const v = await resolve({}, { os })
+      expect(Object.fromEntries(Object.entries(v).map(([k, x]) => [k, x.value]))).toEqual({
+        HOME: home,
+        XDG_CACHE_HOME: join(home, '.cache'),
+        XDG_DATA_HOME: join(home, '.local/share'),
+        XDG_CONFIG_HOME: join(home, '.config'),
+        XDG_STATE_HOME: join(home, '.local/state'),
+      })
+    }
+  })
+
+  test('an XDG folder set to an absolute path is used; a relative one is ignored, as the spec says', async () => {
+    const { home, resolve } = setup({
+      env: { XDG_CACHE_HOME: '/fast/cache', XDG_DATA_HOME: 'data' },
+    })
+    const v = await resolve({})
+    expect(v.XDG_CACHE_HOME).toEqual({
+      value: '/fast/cache',
+      from: 'env XDG_CACHE_HOME',
+      trusted: false,
+      tried: [],
+    })
+    expect(v.XDG_DATA_HOME).toEqual({
+      value: join(home, '.local/share'),
+      from: 'default',
+      trusted: false,
+      tried: [{ source: 'env XDG_DATA_HOME', failed: 'data is not an absolute folder' }],
+    })
+  })
+})
+
+describe('fillTemplate', () => {
+  test('fills each variable, reads ~ as home, and names the first with no value', async () => {
+    const { home, resolve } = setup()
+    const v = await resolve({ A: [{ value: '/a/' }], NONE: [{ env: 'NONE' }] })
+    expect(fillTemplate('${A}/x', v, home)).toEqual({ path: '/a/x', trusted: false })
+    expect(fillTemplate('~/${A}', v, home)).toEqual({ path: join(home, 'a'), trusted: false })
+    expect(fillTemplate('${A}/${NONE}', v, home)).toEqual({ missing: 'NONE' })
+  })
+})

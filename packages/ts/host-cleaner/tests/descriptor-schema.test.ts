@@ -143,7 +143,7 @@ function issues(text: string): readonly string[] {
 }
 
 describe("the system description's examples", () => {
-  test.each(Object.entries(TIER_1))('%s reads', (_, text) => {
+  test.each(Object.entries({ ...TIER_1, ...TIER_2 }))('%s reads', (_, text) => {
     expect(issues(text)).toEqual([])
   })
 
@@ -174,18 +174,25 @@ describe("the system description's examples", () => {
     })
   })
 
-  test('the tier 2 examples are refused by the reader until variables are built', () => {
-    expect(issues(PNPM)).toEqual([
-      'line 3: vars: variables (tier 2) are not supported yet',
-      'line 8: paths.store.all: variables (tier 2) are not supported yet',
-    ])
-    expect(issues(GO)[0]).toBe('line 5: vars: variables (tier 2) are not supported yet')
+  test('go reads its variables in the order written', () => {
+    expect(parseDescriptor(GO, 'go.yaml').vars).toEqual({
+      GOPATH: [{ env: 'GOPATH' }, { value: '~/go' }],
+      GOMODCACHE: [
+        { env: 'GOMODCACHE' },
+        { command: ['go', 'env', 'GOMODCACHE'] },
+        { value: '${GOPATH}/pkg/mod' },
+      ],
+      GOCACHE: [
+        { env: 'GOCACHE' },
+        { command: ['go', 'env', 'GOCACHE'] },
+        { value: { macos: '~/Library/Caches/go-build', linux: '${XDG_CACHE_HOME}/go-build' } },
+      ],
+    })
   })
 
-  test('a ${VAR} in a tier 1 path is refused too', () => {
-    expect(issues(PIP_PER_OS.replace('~/.cache/pip', "'${XDG_CACHE_HOME}/pip'"))).toEqual([
-      'line 3: paths.cache.linux: variables (tier 2) are not supported yet',
-    ])
+  test('a built-in variable needs no declaration', () => {
+    expect(issues(PIP_PER_OS.replace('~/.cache/pip', "'${XDG_CACHE_HOME}/pip'"))).toEqual([])
+    expect(issues(PIP_PER_OS.replace('~/.cache/pip', "'${HOME}/.pip'"))).toEqual([])
   })
 
   test('the same descriptor as JSON reads the same', () => {
@@ -362,8 +369,75 @@ describe('a bad descriptor names the field path', () => {
       '- descriptor: 1\n',
       'line 1: (top): Invalid input: expected object, received array',
     ],
+    [
+      'a path using an undeclared variable',
+      PIP_PER_OS.replace('~/.cache/pip', "'${PIP_CACHE_DIR}'"),
+      'line 3: paths.cache.linux: no variable ${PIP_CACHE_DIR}: declare it in vars',
+    ],
+    [
+      'a variable written without braces',
+      PIP_PER_OS.replace('~/.cache/pip', "'${XDG_CACHE_HOME/pip'"),
+      'line 3: paths.cache.linux: write a variable as ${NAME}',
+    ],
+    [
+      'a value using an undeclared variable',
+      PNPM.replace('${XDG_DATA_HOME}/pnpm/store', '${DATA}/pnpm/store'),
+      'line 6: vars.STORE.1.value.linux: no variable ${DATA}: declare it in vars',
+    ],
+    [
+      'a file source using an undeclared variable',
+      PNPM.replace('- command: [pnpm, store, path]', "- { file: '${RC}/pnpm.yaml', key: store }"),
+      'line 5: vars.STORE.0.file: no variable ${RC}: declare it in vars',
+    ],
+    [
+      'a lock using an undeclared variable',
+      PNPM.replace('processes: [pnpm]', "locks: ['${LOCKS}/pnpm.lock']"),
+      'line 15: inUse.locks.0: no variable ${LOCKS}: declare it in vars',
+    ],
+    [
+      'a built-in declared again',
+      PNPM.replace('  STORE:', '  XDG_DATA_HOME:\n    - env: DATA\n  STORE:'),
+      'line 4: vars.XDG_DATA_HOME: XDG_DATA_HOME is built in; use it without declaring it',
+    ],
+    [
+      'a variable that refers to itself',
+      PNPM.replace('${XDG_DATA_HOME}/pnpm/store', '${STORE}/v10'),
+      'line 4: vars.STORE: STORE refers back to itself: STORE -> STORE',
+    ],
+    [
+      'a value that climbs out',
+      GO.replace('- value: ~/go', "- value: '${HOME}/../go'"),
+      'line 8: vars.GOPATH.1.value: must not have a .. segment',
+    ],
+    [
+      'a file source that is not TOML, JSON or YAML',
+      PNPM.replace('- command: [pnpm, store, path]', '- { file: ~/.npmrc, key: store-dir }'),
+      'line 5: vars.STORE.0.file: must be a .toml, .json, .yaml, .yml file',
+    ],
+    [
+      'a relative value',
+      GO.replace('- value: ~/go', '- value: go'),
+      'line 8: vars.GOPATH.1.value: must start with ~/, be absolute, or start with a ${VAR}',
+    ],
+    [
+      'a command source whose program is a path',
+      PNPM.replace('[pnpm, store, path]', '[/usr/bin/pnpm, store, path]'),
+      'line 5: vars.STORE.0.command: the program must be a name on PATH, not a path',
+    ],
+    [
+      'a variable name that is no environment variable name',
+      PNPM.replace('  STORE:', '  pnpm-store:'),
+      'line 4: vars.pnpm-store: Invalid key in record',
+    ],
   ])('%s', (_, text, issue) => {
     expect(issues(text)).toEqual([issue])
+  })
+
+  test('a cycle through several variables is named once, with its chain', () => {
+    const text = GO.replace('- value: ~/go', "- value: '${GOMODCACHE}/go'")
+    expect(issues(text)).toEqual([
+      'line 6: vars.GOPATH: GOPATH refers back to itself: GOPATH -> GOMODCACHE -> GOPATH',
+    ])
   })
 
   test('every problem is listed, not only the first', () => {

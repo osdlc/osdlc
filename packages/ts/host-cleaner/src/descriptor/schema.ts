@@ -4,11 +4,9 @@
  * schema as JSON Schema, for editors (`scripts/write-descriptor-schema.ts`
  * writes it). The checks one field can't make on its own, such as a
  * candidate's `path` naming an entry of `paths`, are refinements that only the
- * reader runs.
- *
- * `vars` (tier 2) is in the schema, so a tier 2 file has its shape checked,
- * but `parseDescriptor` and `readDescriptor` refuse it, and any `${VAR}` in a
- * path, until variables are built.
+ * reader runs. So are the checks on `vars` (tier 2): every `${VAR}` names a
+ * declared or built-in variable, none is declared twice over a built-in, and
+ * no variable refers back to itself.
  */
 
 import { readFileSync } from 'node:fs'
@@ -16,6 +14,7 @@ import { z } from 'zod'
 import { LineCounter, isMap, isScalar, isSeq, parseDocument, type Document } from 'yaml'
 
 import { COST_DESCRIPTIONS } from '../types.ts'
+import { BUILT_IN_VARS, VAR_FILE_EXTENSIONS, badVarRef, varRefs } from './vars.ts'
 
 /** The format version this reader takes. */
 export const DESCRIPTOR_VERSION = 1
@@ -208,12 +207,28 @@ const inUse = z
   })
   .describe('A match refuses every candidate with `in-use`.')
 
+const varFile = folder.regex(
+  new RegExp(`(${VAR_FILE_EXTENSIONS.map((e) => e.replace('.', '\\.')).join('|')})$`),
+  `must be a ${VAR_FILE_EXTENSIONS.join(', ')} file`,
+)
+
 /** Where a variable's value may come from (tier 2), tried in order. */
 const varSource = z.union([
-  z.strictObject({ env: z.string().regex(ENV_NAME) }),
-  z.strictObject({ file: folder, key: z.string().min(1) }),
-  z.strictObject({ command: argv }),
-  z.strictObject({ value: z.union([z.string().min(1), perOs]) }),
+  z.strictObject({ env: z.string().regex(ENV_NAME).describe('An environment variable.') }),
+  z.strictObject({
+    file: varFile.describe('A TOML, JSON or YAML file, by its extension.'),
+    key: z.string().min(1).describe('A dotted key in it, such as `cache.dir`.'),
+  }),
+  z.strictObject({
+    command: argv.describe(
+      'A command whose output, trimmed, is the value. It runs from the home folder, only when on PATH, with a short time limit.',
+    ),
+  }),
+  z.strictObject({
+    value: z
+      .union([folder, perOs])
+      .describe('A fixed folder, per OS or `all`, which may use other variables.'),
+  }),
 ])
 
 export const DescriptorSchema = z
@@ -248,7 +263,9 @@ export const DescriptorSchema = z
     vars: z
       .record(z.string().regex(ENV_NAME), z.array(varSource).min(1))
       .optional()
-      .describe('Tier 2 variables. Not read yet: a descriptor that sets them is refused.'),
+      .describe(
+        `Tier 2 variables, each a list of sources tried in order; the first value wins, and \`plugins.<name>.vars\` in the config wins over all. Built in: ${Object.keys(BUILT_IN_VARS).join(', ')}.`,
+      ),
   })
   .superRefine((d, ctx) => {
     const named = new Set(Object.keys(d.paths))
@@ -261,7 +278,100 @@ export const DescriptorSchema = z
       d.detect?.[mode]?.forEach((c, i) => {
         if (c.exists !== undefined) known(c.exists, ['detect', mode, i, 'exists'])
       })
+    for (const { path, message } of varIssues(d)) ctx.addIssue({ code: 'custom', message, path })
   })
+
+type VarsField = Record<string, z.output<typeof varSource>[]>
+
+/** Each folder that may use a variable, with its field path. */
+function templatesOf(d: {
+  paths: Record<string, Partial<Record<string, string>>>
+  vars?: VarsField | undefined
+  inUse?: { locks?: string[] | undefined } | undefined
+}): Array<{ text: string; path: (string | number)[]; of?: string }> {
+  const out: Array<{ text: string; path: (string | number)[]; of?: string }> = []
+  for (const [name, folders] of Object.entries(d.paths))
+    for (const [os, text] of Object.entries(folders))
+      if (text !== undefined) out.push({ text, path: ['paths', name, os] })
+  for (const [name, sources] of Object.entries(d.vars ?? {}))
+    sources.forEach((s, i) => {
+      const at = ['vars', name, i]
+      if ('file' in s) out.push({ text: s.file, path: [...at, 'file'], of: name })
+      if ('value' in s) {
+        if (typeof s.value === 'string')
+          out.push({ text: s.value, path: [...at, 'value'], of: name })
+        else
+          for (const [os, text] of Object.entries(s.value))
+            if (text !== undefined) out.push({ text, path: [...at, 'value', os], of: name })
+      }
+    })
+  d.inUse?.locks?.forEach((text, i) => out.push({ text, path: ['inUse', 'locks', i] }))
+  return out
+}
+
+/**
+ * What is wrong with the descriptor's variables: a `${` that is not a
+ * `${NAME}`, a name neither declared nor built in, a declared name that is a
+ * built-in's, or a variable whose sources refer back to it.
+ */
+function varIssues(
+  d: Parameters<typeof templatesOf>[0],
+): { path: (string | number)[]; message: string }[] {
+  const out: { path: (string | number)[]; message: string }[] = []
+  const declared = new Set(Object.keys(d.vars ?? {}))
+  for (const name of declared)
+    if (Object.hasOwn(BUILT_IN_VARS, name))
+      out.push({
+        path: ['vars', name],
+        message: `${name} is built in; use it without declaring it`,
+      })
+  const uses = new Map<string, Set<string>>()
+  for (const t of templatesOf(d)) {
+    if (badVarRef(t.text)) {
+      out.push({ path: t.path, message: 'write a variable as ${NAME}' })
+      continue
+    }
+    for (const ref of varRefs(t.text)) {
+      if (!declared.has(ref) && !Object.hasOwn(BUILT_IN_VARS, ref))
+        out.push({ path: t.path, message: `no variable \${${ref}}: declare it in vars` })
+      else if (t.of !== undefined && declared.has(ref)) {
+        if (!uses.has(t.of)) uses.set(t.of, new Set())
+        uses.get(t.of)!.add(ref)
+      }
+    }
+  }
+  // A variable on a cycle is reported once, at the first of its names declared.
+  const reported = new Set<string>()
+  for (const start of declared) {
+    const chain = cycleFrom(start, uses)
+    if (chain === undefined || chain.some((n) => reported.has(n))) continue
+    chain.forEach((n) => reported.add(n))
+    out.push({
+      path: ['vars', start],
+      message: `${start} refers back to itself: ${[...chain, start].join(' -> ')}`,
+    })
+  }
+  return out
+}
+
+/** The variables from `start` round to `start` again through `uses`, if there is such a path. */
+function cycleFrom(
+  start: string,
+  uses: ReadonlyMap<string, ReadonlySet<string>>,
+): string[] | undefined {
+  const seen = new Set<string>()
+  const walk = (name: string, chain: string[]): string[] | undefined => {
+    for (const next of uses.get(name) ?? []) {
+      if (next === start) return chain
+      if (seen.has(next)) continue
+      seen.add(next)
+      const found = walk(next, [...chain, next])
+      if (found !== undefined) return found
+    }
+    return undefined
+  }
+  return walk(start, [start])
+}
 
 export type Descriptor = z.output<typeof DescriptorSchema>
 export type DescriptorCandidate = z.output<typeof DescriptorCandidateSchema>
@@ -276,7 +386,7 @@ export function descriptorJsonSchema(): Record<string, unknown> {
   return { $schema, $id: DESCRIPTOR_SCHEMA_URL, title: 'host-cleaner descriptor', ...schema }
 }
 
-/** A descriptor that can't be used: not YAML, not the schema, or a field this release doesn't read yet. */
+/** A descriptor that can't be used: not YAML, or not the schema. */
 export class DescriptorError extends Error {
   override name = 'DescriptorError'
   readonly source: string
@@ -307,16 +417,7 @@ function issuesOf(value: unknown): { path: Path; message: string }[] {
         for (const key of i.keys) out.push({ path: [...i.path, key], message: 'unknown field' })
       else out.push({ path: i.path, message: i.message })
     }
-    return out
   }
-  // Tier 2 is described but not read yet.
-  const d = parsed.data
-  if (d.vars !== undefined)
-    out.push({ path: ['vars'], message: 'variables (tier 2) are not supported yet' })
-  for (const [name, folders] of Object.entries(d.paths))
-    for (const [os, p] of Object.entries(folders))
-      if (p?.includes('${'))
-        out.push({ path: ['paths', name, os], message: 'variables (tier 2) are not supported yet' })
   return out
 }
 
@@ -325,9 +426,9 @@ const fieldPath = (path: Path): string => (path.length === 0 ? '(top)' : path.ma
 /**
  * The descriptor in `text`, YAML or JSON; `source` names it in errors.
  *
- * @throws DescriptorError for text that is not YAML, a value that is not a
- *   descriptor, or one that uses `vars`; each issue names the field path and,
- *   when the YAML has it, the line
+ * @throws DescriptorError for text that is not YAML, or a value that is not a
+ *   descriptor; each issue names the field path and, when the YAML has it,
+ *   the line
  */
 export function parseDescriptor(text: string, source: string): Descriptor {
   const lines = new LineCounter()
