@@ -16,6 +16,7 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -31,6 +32,7 @@ import { makeGitFixture } from '@osdlc/typed-git/testing'
 import { main, type CliSeams } from '../src/cli.ts'
 import { machineFile, prUpdatePaths } from '../src/machine.ts'
 import { CLONE_MARKER, CLONE_STAMP, claimCloneLock, cloneLockPath } from '../src/mirror.ts'
+import { CONFIG_INVALID_EXIT } from '@osdlc/config-layers'
 import { allToolsInstalled, isolatedEnv } from './support.ts'
 
 const FAKE_GH = fileURLToPath(new URL('./fake-gh.mjs', import.meta.url))
@@ -640,5 +642,179 @@ describe('pr-update mirror', () => {
     expect(inside.code).toBe(EXIT.usage)
     expect(inside.err).toContain('is inside a git repository')
     expect(readMachine()).toBeNull()
+  })
+})
+
+describe('review round 1', () => {
+  /** A second repository on the fake github.com, acme/<name>, with no PRs. */
+  function idleRepo(name: string): void {
+    git(
+      scratch,
+      'clone',
+      '-q',
+      '--bare',
+      remote,
+      join(scratch, 'gh', 'github.com', 'acme', `${name}.git`),
+    )
+  }
+
+  test('a clone with nothing to do is let go before the next target’s work starts', async () => {
+    idleRepo('web')
+    const dir = join(scratch, 'clones')
+    const webLock = cloneLockPath(join(dir, 'github.com', 'acme', 'web.git'))
+    const apiLock = cloneLockPath(cloneOf(dir))
+    const seen = join(scratch, 'seen')
+    // The verify step of acme/api's PR records whether either lock is held while it runs.
+    const probe =
+      `node -e "const fs = require('fs'); fs.writeFileSync(process.argv[1], ` +
+      `[process.argv[2], process.argv[3]].map((l) => fs.existsSync(l) ? 'held' : 'free').join(' '))" ` +
+      `${seen} ${webLock} ${apiLock}`
+    writeFileSync(
+      join(project, 'pr-update.local.yaml'),
+      `pr_update:\n  verify: test\n  test_command: ${JSON.stringify(probe)}\n`,
+    )
+    const r = await run(
+      'update',
+      '--repo',
+      'acme/web',
+      '--repo',
+      'acme/api',
+      '--mirror-dir',
+      dir,
+      '--apply',
+      '--trust',
+      '--json',
+    )
+    expect(r.code).toBe(EXIT.ok)
+    expect(JSON.parse(r.out).results).toMatchObject([
+      { repo: 'acme/api', number: 7, status: 'updated' },
+    ])
+    // web, idle, was let go before api's work; api was let go once its worktree was added.
+    expect(readFileSync(seen, 'utf8')).toBe('free free')
+    expect(existsSync(webLock)).toBe(false)
+  })
+
+  test.each([
+    ['checkout: maybe\n', 'checkout: '],
+    ['mirror_dir: clones\n', 'mirror_dir: '],
+    ['checkout: [mirror\n', ''],
+  ])('a machine file holding %j is reported with its path, and ignored', async (text, key) => {
+    writeMachine(text)
+    const r = await run('survey', '--repo', 'acme/api', '--json')
+    expect(r.code).toBe(EXIT.ok)
+    const note = r.err.split('\n').find((l) => l.includes(machinePath()))
+    expect(note).toBeDefined()
+    expect(note).toContain(`${machinePath()}: ${key}`)
+    expect(note).toMatch(/; it is ignored$/)
+  })
+
+  test.each([
+    ['not valid YAML', 'checkout: [mirror\n', 'not valid YAML'],
+    ['a list, not a map', '- checkout\n- mirror\n', 'its top level is not a map of keys'],
+  ])(
+    'a machine file that is %s exits 14 before the question, and in mirror enable, and is left as it is',
+    async (_what, text, why) => {
+      writeMachine(text)
+      const { seams, asked } = answering('')
+      const r = await runWith(seams, {}, 'update', '--repo', 'acme/api', '--apply', '--json')
+      expect(r.code).toBe(CONFIG_INVALID_EXIT)
+      expect(r.err).toContain(machinePath())
+      expect(r.err).toContain(why)
+      expect(asked()).toBe('')
+      expect(clonesMade()).toEqual([])
+      for (const argv of [
+        ['mirror', 'enable'],
+        ['mirror', 'disable'],
+      ]) {
+        const m = await run(...argv)
+        expect(m.code).toBe(CONFIG_INVALID_EXIT)
+        expect(m.err).toContain(machinePath())
+        expect(m.err).toContain(why)
+      }
+      expect(readMachine()).toBe(text)
+    },
+  )
+
+  test('an Enterprise host on a port: GH_HOST keeps the port, and so does the credential key', async () => {
+    git(project, 'remote', 'set-url', 'origin', 'https://ghe.example:8443/o/r.git')
+    writeFileSync(join(project, 'pr-update.yaml'), 'code_host:\n  override: github\n')
+    const enterprise = join(scratch, 'gh', 'ghe.example_8443', 'acme', 'api.git')
+    mkdirSync(dirname(enterprise), { recursive: true })
+    git(scratch, 'clone', '-q', '--bare', remote, enterprise)
+    const dir = join(scratch, 'clones')
+    const r = await run(
+      'update',
+      '--repo',
+      'ghe.example:8443/acme/api',
+      '--mirror-dir',
+      dir,
+      '--apply',
+      '--json',
+    )
+    expect(r.code).toBe(EXIT.ok)
+    // The path has the host without its port.
+    const clone = join(dir, 'ghe.example', 'acme', 'api.git')
+    expect(JSON.parse(r.out).repos[0].checkout).toMatchObject({ path: clone, source: 'clone' })
+    expect(clonesMade()).toMatchObject([{ host: 'ghe.example:8443' }])
+    expect(JSON.parse(r.out).results).toMatchObject([{ number: 7, status: 'updated' }])
+    expect(git(clone, 'config', '--get-all', 'credential.https://ghe.example:8443.helper')).toBe(
+      '!gh auth git-credential',
+    )
+  })
+
+  test('a symbolic link at the clone path is not used, and nothing is cloned', async () => {
+    const dir = join(scratch, 'clones')
+    const real = join(scratch, 'planted.git')
+    mkdirSync(real, { recursive: true })
+    writeFileSync(join(real, CLONE_MARKER), '{}\n')
+    mkdirSync(dirname(cloneOf(dir)), { recursive: true })
+    writeFileSync(join(dir, '.pr-update-mirror'), '')
+    symlinkSync(real, cloneOf(dir), 'dir')
+    const r = await run('update', '--repo', 'acme/api', '--mirror-dir', dir, '--apply', '--json')
+    expect(r.code).toBe(EXIT.ok)
+    expect(JSON.parse(r.out).skipped[0].reason).toBe(
+      `${cloneOf(dir)} is a symbolic link, so it is not used`,
+    )
+    expect(clonesMade()).toEqual([])
+    // survey says so too, and does not read it.
+    const s = await run('survey', '--repo', 'acme/api', '--mirror-dir', dir, '--json')
+    expect(s.err).toContain(
+      `github.com/acme/api: ${cloneOf(dir)} is a symbolic link, so it is not used`,
+    )
+    expect(JSON.parse(s.out).repos[0].checkout ?? null).toBeNull()
+  })
+
+  test('a rehearsal skips a clone another run holds as mirror busy, without waiting', async () => {
+    writeMachine('checkout: mirror\n')
+    expect((await run('update', '--repo', 'acme/api', '--apply')).code).toBe(EXIT.ok)
+    const clone = cloneOf(repos)
+    const token = claimCloneLock(cloneLockPath(clone), 0)!
+    try {
+      const started = Date.now()
+      // The default wait is 60 s: a rehearsal that waited would time out this test.
+      const r = await runWith(
+        { terminal: { canPrompt: () => false } },
+        {},
+        'update',
+        '--repo',
+        'acme/api',
+        '--json',
+      )
+      expect(Date.now() - started).toBeLessThan(30_000)
+      expect(r.code).toBe(EXIT.ok)
+      expect(r.err).toContain(
+        `github.com/acme/api: mirror busy: another pr-update run holds ${cloneLockPath(clone)}`,
+      )
+      expect(JSON.parse(r.out).skipped).toMatchObject([
+        {
+          repo: 'acme/api',
+          number: 7,
+          reason: `mirror busy: another pr-update run holds ${cloneLockPath(clone)}`,
+        },
+      ])
+      expect(git(clone, 'worktree', 'list', '--porcelain').match(/^worktree /gm)).toHaveLength(1)
+    } finally {
+      releaseLock(cloneLockPath(clone), token)
+    }
   })
 })

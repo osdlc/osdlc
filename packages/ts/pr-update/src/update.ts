@@ -586,9 +586,10 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
   const effectiveCfg = applyStrategyOverride(env.cfg, args.strategy)
   const writes = wantsWrite(args, env.dryRun)
   const resolved = surveyTargets(args, env)
-  // Only `update --apply` makes clones, and before its survey, so the survey measures them.
-  if (writes && env.clones !== undefined) {
-    resolved.targets = env.clones.provide(resolved.targets)
+  // The clones the run uses are locked before the survey fetches them. Only `update --apply`
+  // makes clones, and before its survey, so the survey measures them.
+  if (env.clones !== undefined) {
+    resolved.targets = env.clones.provide(resolved.targets, { apply: writes })
   }
   const { report, targets: repoTargets } = surveyWithTargets(
     args,
@@ -668,6 +669,19 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
       })
     }
   }
+  // A clone with no PR to update is let go before anything else is done, so another run that
+  // needs it does not wait for this run's other targets. The rest are let go as each one's
+  // worktree is added.
+  const releaseIdle = (): void => {
+    if (env.clones === undefined) return
+    const working = new Set([...groups.values()].map((g) => g.path))
+    for (const t of repoTargets) {
+      if (t.source === 'clone' && t.path !== null && !working.has(t.path)) {
+        env.clones.release(t.path)
+      }
+    }
+  }
+  releaseIdle()
   // Before any verify list is asked for, so a list the host refuses for a target skipped here
   // does not stop the run.
   const refused = new Set<string>()
@@ -736,6 +750,8 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
       }
     }
   }
+  // Those the trust gate or a broken record took out.
+  releaseIdle()
   const results: UpdateResult[] = []
   for (const [repo, { path, remote, targets: group }] of groups) {
     const at = served.get(repo)
@@ -848,7 +864,10 @@ function cloneLock(
   clones: ManagedClones,
   path: string,
 ): { added: () => void; removing: (remove: () => void) => void } {
-  return { added: () => clones.added(path), removing: (remove) => clones.removing(path, remove) }
+  return {
+    added: () => clones.release(path),
+    removing: (remove) => clones.removing(path, remove),
+  }
 }
 
 /** One repository's PRs to update, in the checkout and through the remote that serve it. */

@@ -11,6 +11,7 @@ import {
   defineGroup,
   type Group,
 } from '@osdlc/cli-tool/command'
+import { CONFIG_INVALID_EXIT, ConfigInvalidError } from '@osdlc/config-layers'
 import { homeDir } from '@osdlc/tiered-dirs'
 import { z } from 'zod'
 
@@ -42,6 +43,11 @@ function write(env: Record<string, string | undefined>, answer: MirrorAnswer): O
   try {
     config = writeMirrorAnswer(file, answer).config
   } catch (e) {
+    // A file that is not YAML, or not a map, is left as it is: exit 14, as for any config file
+    // that does not load.
+    if (e instanceof ConfigInvalidError) {
+      throw new CommandError(e.message, { exit: CONFIG_INVALID_EXIT, code: 'config-invalid' })
+    }
     throw new CommandError(`cannot write ${file.path()}: ${(e as Error).message}`)
   }
   return {

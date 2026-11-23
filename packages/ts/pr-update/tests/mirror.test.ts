@@ -12,6 +12,8 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -28,6 +30,7 @@ import {
   CLONE_STAMP,
   CloneError,
   MIRROR_MARKER,
+  checkClone,
   MirrorDirError,
   checkMirrorDir,
   claimCloneLock,
@@ -260,32 +263,15 @@ describe('claimCloneLock', () => {
   })
 })
 
-describe('managedClones: the lock update --apply holds', () => {
-  test('provide holds it, added lets go, removing takes it again around the removal, close lets go', () => {
-    const clone = clonePath(join(scratch, 'repos'), {
-      host: 'github.com',
-      owner: 'acme',
-      name: 'api',
-    })
+describe('managedClones: the locks update holds', () => {
+  const repos = () => join(scratch, 'repos')
+  /** A clone of acme/<name> that pr-update made, as a target the survey found. */
+  const existing = (name: string) => {
+    const clone = clonePath(repos(), { host: 'github.com', owner: 'acme', name })
     mkdirSync(clone, { recursive: true })
     writeFileSync(join(clone, CLONE_MARKER), '{}\n')
-    const lock = cloneLockPath(clone)
-    const gh: CommandRunner = {
-      run: () => {
-        throw new Error('gh is not called for a clone that exists')
-      },
-    }
-    const clones = managedClones({
-      env: isolatedEnv(scratch),
-      cwd: scratch,
-      apply: true,
-      gh,
-      notice: () => {},
-      ask: { canPrompt: () => false, choose: () => 0, text: () => '' },
-      waitMs: 0,
-    })
-    const target = {
-      repo: 'acme/api',
+    return {
+      repo: `acme/${name}`,
       host: 'github.com',
       path: clone,
       source: 'clone' as const,
@@ -293,10 +279,33 @@ describe('managedClones: the lock update --apply holds', () => {
       found: null,
       github: true,
     }
-    expect(clones.provide([target])).toEqual([target])
+  }
+  const gh: CommandRunner = {
+    run: () => {
+      throw new Error('gh is not called for a clone that exists')
+    },
+  }
+  const run = (extra: Partial<Parameters<typeof managedClones>[0]> = {}) =>
+    managedClones({
+      env: isolatedEnv(scratch),
+      cwd: scratch,
+      apply: true,
+      gh,
+      notice: () => {},
+      ask: { canPrompt: () => false, choose: () => 0, text: () => '' },
+      waitMs: 0,
+      ...extra,
+    })
+
+  test('provide holds it, release lets go, removing takes it again around the removal, close lets go', () => {
+    const target = existing('api')
+    const clone = target.path
+    const lock = cloneLockPath(clone)
+    const clones = run()
+    expect(clones.provide([target], { apply: true })).toEqual([target])
     expect(existsSync(lock)).toBe(true)
     expect(existsSync(join(clone, CLONE_STAMP))).toBe(true)
-    clones.added(clone)
+    clones.release(clone)
     expect(existsSync(lock)).toBe(false)
     let during: boolean | undefined
     clones.removing(clone, () => {
@@ -305,10 +314,140 @@ describe('managedClones: the lock update --apply holds', () => {
     expect(during).toBe(true)
     expect(existsSync(lock)).toBe(false)
     // A clone whose group never reached `worktree add` is let go at the end of the run.
-    clones.provide([target])
+    clones.provide([target], { apply: true })
     expect(existsSync(lock)).toBe(true)
     clones.close()
     expect(existsSync(lock)).toBe(false)
+  })
+
+  test('locks are taken in sorted path order, whatever order the targets come in', () => {
+    const api = existing('api')
+    const web = existing('web')
+    for (const order of [
+      [web, api],
+      [api, web],
+    ]) {
+      const claimed: string[] = []
+      const clones = run({
+        claim: (path, wait) => {
+          claimed.push(path)
+          return claimCloneLock(path, wait)
+        },
+      })
+      clones.provide(order, { apply: true })
+      expect(claimed).toEqual([cloneLockPath(api.path), cloneLockPath(web.path)])
+      clones.close()
+    }
+  })
+
+  test('given the same clones in opposite orders, neither run is kept busy by the other’s idle one', () => {
+    const api = existing('api')
+    const web = existing('web')
+    // Run one updates api and has nothing to do in web; run two the other way round.
+    const one = run()
+    expect(one.provide([api, web], { apply: true }).every((t) => t.unserved === undefined)).toBe(
+      true,
+    )
+    one.release(web.path) // idle: let go as soon as update knows
+    one.release(api.path) // its worktree is added
+    // While run one works in api, run two takes both.
+    const two = run()
+    const served = two.provide([web, api], { apply: true })
+    expect(served.map((t) => t.unserved)).toEqual([undefined, undefined])
+    two.close()
+    one.close()
+  })
+
+  test('a rehearsal holds the lock too, without waiting: a busy clone is skipped as mirror busy', () => {
+    const api = existing('api')
+    const lock = cloneLockPath(api.path)
+    const other = claimLock(lock, { holder: { pid: process.pid } }, { isStale: () => false })
+    expect(other.ok).toBe(true)
+    const waits: number[] = []
+    const notes: string[] = []
+    const clones = run({
+      waitMs: 60_000,
+      notice: (line) => notes.push(line),
+      claim: (path, wait) => {
+        waits.push(wait)
+        return claimCloneLock(path, wait)
+      },
+    })
+    const [busy] = clones.provide([api], { apply: false })
+    expect(waits).toEqual([0])
+    expect(busy).toMatchObject({
+      path: null,
+      source: null,
+      unserved: expect.stringMatching(/^mirror busy: /),
+    })
+    expect(notes).toEqual([`github.com/acme/api: mirror busy: another pr-update run holds ${lock}`])
+    releaseLock(lock, (other as { token: string }).token)
+
+    // Free, it is held through the rehearsal's worktree add, and taken again, without waiting,
+    // to remove it.
+    const [held] = clones.provide([api], { apply: false })
+    expect(held).toEqual(api)
+    expect(existsSync(lock)).toBe(true)
+    clones.release(api.path)
+    clones.removing(api.path, () => {})
+    expect(waits).toEqual([0, 0, 0])
+    expect(existsSync(lock)).toBe(false)
+  })
+})
+
+describe('a clone pr-update did not make, or that is not yours, is not used', () => {
+  test('a symbolic link at the clone path, or a marker that is not a plain file, is foreign', () => {
+    const root = join(scratch, 'repos')
+    const real = clonePath(root, { host: 'github.com', owner: 'acme', name: 'real' })
+    mkdirSync(real, { recursive: true })
+    writeFileSync(join(real, CLONE_MARKER), '{}\n')
+    expect(checkClone(root, real)).toBe('clone')
+    const link = clonePath(root, { host: 'github.com', owner: 'acme', name: 'api' })
+    symlinkSync(real, link, 'dir')
+    expect(checkClone(root, link)).toEqual({
+      foreign: `${link} is a symbolic link, so it is not used`,
+    })
+
+    const odd = clonePath(root, { host: 'github.com', owner: 'acme', name: 'odd' })
+    mkdirSync(join(odd, CLONE_MARKER), { recursive: true })
+    expect(checkClone(root, odd)).toEqual({
+      foreign: `${join(odd, CLONE_MARKER)} is not a plain file, so ${odd} is not used`,
+    })
+    expect(checkClone(root, join(root, 'github.com', 'acme', 'none.git'))).toBe('missing')
+  })
+
+  test('a clone, a clone directory or a marker another user owns is refused', () => {
+    const root = join(scratch, 'repos')
+    markMirrorDir(root)
+    const clone = clonePath(root, { host: 'github.com', owner: 'acme', name: 'api' })
+    mkdirSync(clone, { recursive: true })
+    writeFileSync(join(clone, CLONE_MARKER), '{}\n')
+    for (const theirs of [root, clone, join(clone, CLONE_MARKER)]) {
+      const owned = (st: import('node:fs').Stats) => st.ino !== statSync(theirs).ino
+      expect(checkClone(root, clone, owned)).toEqual({
+        foreign: `${theirs} belongs to another user, so ${clone} is not used`,
+      })
+    }
+    const notMine = () => false
+    expect(() => checkMirrorDir(root, undefined, notMine)).toThrow(
+      `the clone directory ${root} belongs to another user`,
+    )
+    const marker = join(root, MIRROR_MARKER)
+    const markerTheirs = (st: import('node:fs').Stats) => st.ino !== statSync(marker).ino
+    expect(() => checkMirrorDir(root, undefined, markerTheirs)).toThrow(
+      `${marker} belongs to another user, so ${root} is not used`,
+    )
+  })
+
+  test('a marker of the clone directory that is a symbolic link is refused', () => {
+    const root = join(scratch, 'repos')
+    mkdirSync(root, { recursive: true })
+    const elsewhere = join(scratch, 'elsewhere')
+    writeFileSync(elsewhere, 'x\n')
+    symlinkSync(elsewhere, join(root, MIRROR_MARKER))
+    expect(() => checkMirrorDir(root)).toThrow(
+      `${join(root, MIRROR_MARKER)} is not a plain file, so ${root} is not used`,
+    )
   })
 })
 

@@ -162,26 +162,38 @@ export interface RepoTarget {
 /**
  * The managed clones of a standalone run (`mirror.ts`), as the survey and `update` use them.
  * A run without it treats a `clone` checkout as any other.
+ *
+ * Each clone has a lock. `update` holds it from {@link provide} until {@link release}, and again
+ * inside {@link removing}; `survey` holds it only inside {@link use}.
  */
 export interface ManagedClones {
   /**
-   * `update --apply` only, before its survey: serve each target with no checkout from a clone
-   * where consent allows, making the clone when there is none, and hold the lock of every
-   * clone the run uses. Returns the targets, those it serves pointed at their clone, those it
-   * cannot with {@link RepoTarget.unserved} set.
+   * `update` only, before its survey: take the lock of every clone the run will use, in sorted
+   * path order, and return the targets. With `apply` (`update --apply`) it first serves each
+   * target with no checkout from a clone where consent allows, making the clone when there is
+   * none, and waits for a lock another run holds; a rehearsal makes no clone and does not wait.
+   * A target it serves points at its clone; one it cannot has {@link RepoTarget.unserved} set
+   * (`mirror busy`, say).
    *
    * @throws SurveyUsageError when it must ask and cannot, or the clone directory is unusable.
+   * @throws ConfigInvalidError when the machine file cannot take the answer it would ask for.
    */
-  provide(targets: readonly RepoTarget[]): RepoTarget[]
+  provide(targets: readonly RepoTarget[], opts: { apply: boolean }): RepoTarget[]
   /**
    * Run `fetch` under the lock of the clone at `clone`, and write the clone's last-used stamp.
    * When this run holds the lock already, `fetch` runs at once. When another run holds it,
    * `fetch` is not run, a note says so, and the result is false: the clone is read as it is.
    */
   use(clone: string, fetch: () => boolean): boolean
-  /** The run's worktree is now recorded in the clone: let go of the lock `provide` took. */
-  added(clone: string): void
-  /** Run `remove`, which takes the run's worktree out of the clone, holding the clone's lock. */
+  /**
+   * Let go of the lock {@link provide} took for the clone at `clone`: the run has added its
+   * worktree there, or has nothing to do in it. Nothing when the run does not hold it.
+   */
+  release(clone: string): void
+  /**
+   * Run `remove`, which takes the run's worktree out of the clone, holding the clone's lock:
+   * taken again as {@link provide} took it. `remove` runs even when the lock stays busy.
+   */
   removing(clone: string, remove: () => void): void
   /** Let go of every lock the run still holds. */
   close(): void

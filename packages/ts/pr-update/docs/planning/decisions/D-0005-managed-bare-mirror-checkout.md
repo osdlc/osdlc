@@ -266,11 +266,16 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     author wrote.
 - **Who clones.** Only `update --apply`, with `checkout: mirror` or a consent
   below. `survey` and a rehearsal fetch a clone that exists and otherwise
-  report the target as not measured, naming `pr-update mirror enable`. They
-  take the clone's lock for the fetch and write the clone's last-used stamp,
-  so a clone only surveyed is not pruned as unused. They prune nothing.
-  So `survey` writes nothing but its fetches (into a clone or a located
-  checkout's `origin/*`), the clone's stamp and the clone's lock file.
+  report the target as not measured, naming `pr-update mirror enable`.
+  `survey` takes the clone's lock for the fetch only, without waiting; a
+  rehearsal holds it as `update --apply` does (Pruning clones, below), but
+  claimed without waiting, and skips a busy clone as `mirror busy`. Both write
+  the clone's last-used stamp, so a clone only surveyed is not pruned as
+  unused. A survey's fetch of a managed clone prunes (`--prune`), since the
+  clone is pr-update's own; a located checkout's fetch does not, since its
+  `origin/*` is the person's. Neither removes a clone. So `survey` writes
+  nothing but its fetches (into a clone or a located checkout's `origin/*`),
+  the clone's stamp and the clone's lock file.
 - **Consent.** Any one of these is consent to clone for the run: `--mirror-dir
   <dir>`, `PR_UPDATE_MIRROR_DIR`, or `checkout: mirror`. `--mirror-dir` and
   the variable win over `checkout: local` for that run. `OSDLC_ROOT` and the
@@ -297,7 +302,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   - `n` writes `checkout: local`, so the question does not come back.
 
   The run prints the machine file's path. A write that loses a race to
-  another run's prompt re-reads the file and uses the answer it finds.
+  another run's prompt re-reads the file and uses the answer it finds. When
+  the file cannot take the answer, because it is not valid YAML or its top
+  level is not a map, nothing is asked: the run exits 14, the config-invalid
+  code, naming it, and `mirror enable` and `mirror disable` do the same. A bad
+  value in it is noted with the file's path and ignored.
 - **No terminal.** When `canPrompt()` is false, a GitHub target has no
   checkout, and nothing gives or refuses consent, `update --apply` exits 2
   and names `--mirror-dir`, `PR_UPDATE_MIRROR_DIR` and
@@ -319,14 +328,16 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   skipped with a message, as today. Steps:
   1. check the mirror directory, whichever location it came from: it must
      not be inside a git working tree, and must be missing, empty or already
-     marked by this tool. Otherwise the run exits 2 and names the directory,
+     marked by this tool, and belong to the person running it, as must its
+     marker, a plain file. Otherwise the run exits 2 and names the directory,
      having written nothing. Then write the tool's marker at its root if it
      is not there yet, create-if-absent, so two runs marking a new directory
      at once do not fail each other's check;
   2. take the clone's lock (`@osdlc/file-lock`), the file
      `<host>/<owner>/<name>.git.lock` beside the clone, so it exists before
      the clone does and survives the rename and the clone's removal;
-  3. `gh repo clone <host/owner/name> <tmp> --no-upstream -- --bare`, where
+  3. `gh repo clone <owner>/<name> <tmp> --no-upstream -- --bare`, with
+     `GH_HOST` set to the target's host (port kept) and hooks off, where
      `<tmp>` is `.tmp-<name>.git-<pid>` beside the final directory (git
      needs an empty or missing target, so nothing is written there first);
   4. in the clone's own config, set `credential.https://<host>.helper` to an
@@ -339,6 +350,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 
   A step that fails removes `<tmp>`, and the target is skipped with the
   error.
+
+  A clone that exists is used only when this tool made it: a real directory,
+  not a symbolic link, holding the tool's marker as a plain file, with the
+  clone, the marker and the mirror directory owned by the person running it
+  (by uid, on POSIX). Anything else at the clone path is never used or
+  replaced, and the target is skipped saying why.
 - **Trust.** The trust gate runs for each target before a command its own
   files choose (`verify: detect`, `lockfile_install`). A located checkout is
   keyed by its path, as the project root is. A clone is keyed by
@@ -368,18 +385,23 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   | A run's worktree and scratch branch | The run, in a `finally` (`src/update/execute.ts`). A killed run's are removed by the next run served from the same git directory, or by pruning (below) |
   | A killed run's worktree under `worktrees/` in the cache | Pruning, automatic or by hand, whatever repository it belongs to |
   | A kept worktree (`keep_failed`) | `--discard-kept`, `--retry-failed`, or the PR moving, unless someone has changed it or git cannot read it; only `--discard-kept` removes that |
-  | `origin/<branch>` for a deleted branch | `fetch --prune`, on each unscoped run that fetches |
+  | `origin/<branch>` for a deleted branch | `fetch --prune` on each unscoped fetch of the project root or a managed clone. A located checkout's fetch does not prune: its own `git fetch --prune` does |
   | Unreachable objects | git's automatic `gc` |
   | A whole clone the person no longer targets | Automatic pruning by age, or `pr-update mirror prune` |
 
   Neither macOS nor common Linux setups clear `~/.cache` on their own, so
   without pruning the cache keeps one clone for every repository a run ever
   targeted.
-- **Pruning clones.** An `update --apply` holds a clone's lock from its clone
-  or fetch through its `git worktree add`, as one step, and again for
-  `worktree remove`. It writes the last-used stamp when it first takes the
-  lock. It waits up to 60 seconds for the lock, then skips the target with
-  reason `mirror busy`. Between those steps the clone is in use through the
+- **Pruning clones.** An `update` run takes the locks of every clone it will
+  use before its survey, in sorted path order, so two runs given the same
+  targets in any order never wait on each other in a cycle. It holds each
+  from its clone or fetch through its `git worktree add`, as one step, and
+  again for `worktree remove`; a clone with no PR to update is let go as soon
+  as the run has picked its PRs. With several targets, a clone whose turn
+  comes later stays held while the targets before it are updated. It writes
+  the last-used stamp when it first takes the lock. `update --apply` waits up
+  to 60 seconds for each lock, then skips the target with reason `mirror
+  busy`; a rehearsal does not wait. Between those steps the clone is in use through the
   run's worktree, which git records in the clone. Pruning takes
   the lock without waiting and holds it through the stamp check and the
   removal, and removes the lock file last. Under the lock, pruning first removes worktrees whose run is dead (the

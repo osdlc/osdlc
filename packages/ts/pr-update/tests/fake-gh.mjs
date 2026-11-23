@@ -2,7 +2,7 @@
  * A stand-in for `gh`, put on PATH by the clone tests (`tests/clone.test.ts`) so pr-update runs
  * it as the real program. It never reaches the network.
  *
- * - `FAKE_GH_ROOT` holds `<host>/<owner>/<name>.git`, bare repositories that
+ * - `FAKE_GH_ROOT` holds `<host>/<owner>/<name>.git` (a port's `:` as `_`), bare repositories that
  *   `repo clone <owner>/<name> <dir> ... -- --bare` clones from, on the host `GH_HOST` names, and
  *   `prs.json`, `{ "<owner>/<name>": [rows] }`, which `pr list --repo <owner>/<name>` prints.
  * - `FAKE_GH_LOG` is a file each call appends `{ "argv": [...], "host": "<GH_HOST>",
@@ -57,7 +57,8 @@ if (argv[0] === 'repo' && argv[1] === 'clone') {
   }
   if (env.FAKE_GH_FAIL_CLONE) fail(env.FAKE_GH_FAIL_CLONE)
   const [owner, name] = repo.split('/')
-  const from = join(root, host, owner, `${name}.git`)
+  // A host's port, `ghe.example:8443`, is `ghe.example_8443` on disk: no `:` in a Windows path.
+  const from = join(root, host.replaceAll(':', '_'), owner, `${name}.git`)
   if (!existsSync(from)) fail(`GraphQL: Could not resolve to a Repository with the name '${repo}'.`)
   const res = spawnRunner('git').run(['clone', '-q', '--bare', from, dir], { cwd: process.cwd() })
   process.stderr.write(res.stderr)

@@ -370,9 +370,16 @@ function reportRepoFailures(
   return code
 }
 
-/** Rethrows a {@link SurveyUsageError} as a {@link UsageError}; anything else, a classified failure included, is rethrown for the app to print. */
+/**
+ * Rethrows a {@link SurveyUsageError} as a {@link UsageError}, and a {@link ConfigInvalidError}
+ * (a machine file a clone answer cannot be saved into) as exit 14, as a config file that does
+ * not load is; anything else, a classified failure included, is rethrown for the app to print.
+ */
 function asUsage(e: unknown): never {
   if (e instanceof SurveyUsageError) throw new UsageError(e.message)
+  if (e instanceof ConfigInvalidError) {
+    throw new CommandError(e.message, { exit: CONFIG_INVALID_EXIT, code: 'config-invalid' })
+  }
   throw e
 }
 

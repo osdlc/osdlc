@@ -261,8 +261,11 @@ such targets instead.
 Clones go to the first of `--mirror-dir`, `PR_UPDATE_MIRROR_DIR`, `mirror_dir`,
 or `~/.cache/osdlc/pr-update/repos/`, one `<host>/<owner>/<name>.git` each,
 lower-cased, with the host's port left out. The directory must be outside
-every git checkout and new, empty or already pr-update's; otherwise the run
-exits `2`, naming it, and writes nothing. A clone is made with `gh repo clone
+every git checkout and new, empty or already pr-update's, and yours;
+otherwise the run exits `2`, naming it, and writes nothing. A clone is used
+only when pr-update made it: a folder without its marker, a symbolic link in
+its place, or a clone, marker or clone directory another user owns is left
+alone, and the target is skipped saying why. A clone is made with `gh repo clone
 <owner>/<name> -- --bare` (`GH_HOST` set to the target's host), with no
 `upstream` remote. Its own config gets the credential helper `gh auth
 setup-git` would write, so later fetches and pushes sign in through `gh`; your
@@ -271,15 +274,26 @@ branches of its own, sets `core.longpaths`, and is fetched with `--prune`.
 A step that fails removes the half-made clone, and the target's PRs are
 skipped with the error.
 
-Each clone has a lock, `<name>.git.lock`, beside it. `update --apply` holds it
-from the clone or fetch until its worktree is made, and again while it
-removes the worktree. It waits up to 60 seconds for another run to let go,
-then skips the target's PRs as `mirror busy`. `survey` and a rehearsal
-(`update` without `--apply`) never clone: they use a clone that exists,
-fetch it under its lock and stamp it as used, and otherwise report the target
-not measured with a note naming `pr-update mirror enable`. A clone another
-run holds is read as it is, with a note, without waiting. Each use writes the
-clone's last-used stamp. `checkout: local` leaves a clone that exists unused.
+Each clone has a lock, `<name>.git.lock`, beside it. An `update` run, with or
+without `--apply`, holds a clone's lock:
+
+- from before its survey, when it takes the locks of every clone it will use,
+  in sorted path order, so two runs given the same targets in any order
+  never wait on each other in a cycle; this is also when it clones;
+- until it knows the clone has no PR to update, after picking the PRs, or else
+  until that clone's run worktree is made. With several targets, a clone
+  whose turn comes later stays held while the targets before it are updated;
+- and again while it removes the run worktree.
+
+`update --apply` waits up to 60 seconds for each lock, then skips the
+target's PRs as `mirror busy`. A rehearsal (`update` without `--apply`) does
+not wait: a clone another run holds is skipped as `mirror busy`, with a note.
+`survey` and a rehearsal never clone: they use a clone that exists, fetch it
+and stamp it as used, and otherwise report the target not measured with a
+note naming `pr-update mirror enable`. `survey` holds the lock only for its
+fetch, and reads a clone another run holds as it is, with a note, without
+waiting. Each use writes the clone's last-used stamp. `checkout: local`
+leaves a clone that exists unused.
 
 A run served from a clone prints `<repo>: no checkout under <roots> (…);
 using the clone <path>` every time, so a root you meant to list shows up as
@@ -808,8 +822,12 @@ comments.
 | `mirror_dir: <path>` | Where clones go: an absolute path, or one starting `~/`. Default `repos/` in pr-update's cache directory |
 | `mirror_max_age_days: <n>` | A clone unused this long is removed. Default 30; `0` turns that off. Pruning is not built yet, so for now nothing is removed |
 
-An unknown key or a bad value there is reported with the file's path and
-skipped. None of these keys is accepted in `pr-update.yaml`, its `.local`
+An unknown key, a bad value or a YAML error there is reported, when a run
+reads the file, with the file's path, and skipped. A file pr-update cannot
+write an answer into, because it is not valid YAML or its top level is not a
+map of keys, makes `update --apply` exit `14` before it asks the clone
+question, and `mirror enable` and `mirror disable` exit `14` too; the file is
+left as it is. None of these keys is accepted in `pr-update.yaml`, its `.local`
 overlay or a host's `pr_update:` block: there they are unknown keys (exit
 `14`), so a cloned repository cannot choose where the tool writes on your
 disk.
@@ -907,7 +925,7 @@ change it). With a single repository the failure is thrown.
 | `0` | Clean run (`survey` always; `update` when no PR ended `conflict` or `failed`) |
 | `1` | The run finished but a PR ended `conflict` or `failed`, or an unexpected error |
 | `2` | Malformed command line, a `--branch` with no open PR, an unusable clone directory, or an `update --apply` that must ask whether to clone and has no terminal |
-| `14` | The config file is invalid or unreadable |
+| `14` | The config file is invalid or unreadable, or the machine file cannot take an answer about cloning |
 | `21` | `update` refused for want of repository trust |
 | `22` | A tool the run needs is not installed: `git`, and `gh` (GitHub) or `curl` (Forgejo) |
 | `23` | The code host refused the caller or answered unusably: not signed in, no `FORGEJO_TOKEN` or a refused one, no such repository, an HTTP error |
