@@ -112,9 +112,13 @@ A directory the walk finds counts only when git, run in it, says it is the
 top of a working tree. A `.git` git cannot use, such as an empty folder, is
 then skipped, rather than answering with a repository that encloses it, such
 as a dotfiles repository at the home directory. git also runs with
-`GIT_CEILING_DIRECTORIES` set to the directory's parent, and without any
-inherited `GIT_DIR`, `GIT_WORK_TREE` or other variable that picks a
-repository, so the locator works from inside a git hook.
+`GIT_CEILING_DIRECTORIES` set to the directory's parent.
+
+Every git call the package makes, in the caller's checkout for the default
+roots and in each directory the walk finds, runs without an inherited
+`GIT_DIR`, `GIT_WORK_TREE` or other variable that picks a repository. So the
+default roots and the locator give the same answer inside a git hook as
+outside one.
 
 Not supported yet: a bare store with its worktrees beside it, where
 `proj/.git` is a file pointing at `proj/.bare`. The walk stops at `proj`,

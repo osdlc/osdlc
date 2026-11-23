@@ -76,9 +76,10 @@ directory's parent, but that alone is not enough: the variable cannot hold a
 path with `:` (`;` on Windows) in it. No paths are compared, so a root spelled
 in another letter case on a case-insensitive disk finds the same checkouts.
 
-git runs without an inherited `GIT_DIR`, `GIT_WORK_TREE` or other variable
-that picks a repository, so a locator made inside a git hook still reads each
-checkout, not the hook's repository.
+Every git call the package makes, for the default roots too, runs without an
+inherited `GIT_DIR`, `GIT_WORK_TREE` or other variable that picks a
+repository. So inside a git hook, the default roots come from the caller's
+own checkout and the locator reads each checkout, not the hook's repository.
 
 A bare store with its worktrees beside it (`proj/.git` a file pointing at
 `proj/.bare`) is not found yet: `proj` is not a working tree, and the walk

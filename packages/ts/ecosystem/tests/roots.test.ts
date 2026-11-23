@@ -191,6 +191,24 @@ describe('defaultRoots', () => {
     expect(roots(checkout.dir)).toEqual([join(sb.root, 'srv')])
   })
 
+  test('an inherited GIT_DIR naming another repository does not change the answer', () => {
+    // A hook in a linked worktree of another repository exports an absolute GIT_DIR.
+    const other = sb.checkout('../elsewhere/acme/other', origin)
+    other.commit('first')
+    other.git.worktreeAdd(join(sb.root, 'wt', 'other-feature'), { branch: 'feature' })
+    const checkout = sb.checkout('dev/acme/widgets', origin)
+    vi.stubEnv('GIT_DIR', join(other.dir, '.git', 'worktrees', 'other-feature'))
+    vi.stubEnv('GIT_WORK_TREE', join(sb.root, 'wt', 'other-feature'))
+    vi.stubEnv('GIT_COMMON_DIR', join(other.dir, '.git'))
+    expect(roots(checkout.dir)).toEqual([join(sb.home, 'dev')])
+  })
+
+  test("GIT_DIR='.', as a receive hook sets it, does not change the answer", () => {
+    const checkout = sb.checkout('dev/acme/widgets', origin)
+    vi.stubEnv('GIT_DIR', '.')
+    expect(roots(checkout.dir)).toEqual([join(sb.home, 'dev')])
+  })
+
   test('no caller, or a caller outside any checkout, gives none', () => {
     expect(roots(undefined)).toEqual([])
     expect(roots(dir(join(sb.home, 'scratch')))).toEqual([])

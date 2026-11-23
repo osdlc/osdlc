@@ -11,7 +11,7 @@
 import { realpathSync } from 'node:fs'
 import { dirname } from 'node:path'
 
-import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
+import type { CommandRunner } from '@osdlc/command-seam'
 import {
   Git,
   readRemote,
@@ -21,7 +21,13 @@ import {
   type RepoCoordinate,
 } from '@osdlc/typed-git'
 
-import { resolveRoots, type ResolvedRoots, type RootsOptions, type RootsSource } from './roots.ts'
+import {
+  resolveRoots,
+  withoutRepositoryVars,
+  type ResolvedRoots,
+  type RootsOptions,
+  type RootsSource,
+} from './roots.ts'
 
 /** A checkout of a repository, found under a root. */
 export interface LocatedCheckout {
@@ -104,9 +110,7 @@ export class CheckoutLocator {
 
   private scan(): LocatedCheckout[] {
     const { maxDepth, onWarn, resolveAlias } = this.opts
-    const runner = withoutRepositoryVars(
-      this.opts.runner ?? spawnRunner('git', { absolutePathOnly: true }),
-    )
+    const runner = withoutRepositoryVars(this.opts.runner)
     const index: LocatedCheckout[] = []
     const seen = new Set<string>()
     let depthLimited = 0
@@ -156,35 +160,6 @@ export class CheckoutLocator {
 function isWorkTreeTop(git: Git): boolean {
   const out = git.try.revParse('--is-inside-work-tree', '--show-cdup')
   return out.ok && out.value === 'true'
-}
-
-/**
- * The variables that tell git which repository to use, whatever the
- * directory. A git hook exports `GIT_DIR`, and with it set every directory
- * the scan finds would answer as the hook's repository. The inherited
- * `GIT_CEILING_DIRECTORIES` goes too; {@link gitAt} sets its own.
- */
-const REPOSITORY_VARS = [
-  'GIT_DIR',
-  'GIT_WORK_TREE',
-  'GIT_COMMON_DIR',
-  'GIT_INDEX_FILE',
-  'GIT_OBJECT_DIRECTORY',
-  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
-  'GIT_CEILING_DIRECTORIES',
-] as const
-
-/**
- * `runner`, with {@link REPOSITORY_VARS} unset in each child: command-seam
- * drops a variable whose value is `undefined`. A value the call sets, such
- * as the ceiling, still wins.
- */
-function withoutRepositoryVars(runner: CommandRunner): CommandRunner {
-  const unset = Object.fromEntries(REPOSITORY_VARS.map((name) => [name, undefined]))
-  return {
-    ...(runner.binary === undefined ? {} : { binary: runner.binary }),
-    run: (argv, opts) => runner.run(argv, { ...opts, env: { ...unset, ...opts.env } }),
-  }
 }
 
 /**

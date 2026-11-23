@@ -43,11 +43,15 @@ created: 2026-11-23
   given and git reports the case on disk, and git trims nothing that matters
   (a name ending in a space). `--show-cdup` alone would pass a directory
   whose `.git` is a bare repository.
-- **Inherited repository variables are unset** for every git call the scan
-  makes: `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_INDEX_FILE`,
+- **Inherited repository variables are unset** for every git call the
+  package makes, in the caller's checkout and in the scan: `GIT_DIR`,
+  `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_INDEX_FILE`,
   `GIT_OBJECT_DIRECTORY`, `GIT_ALTERNATE_OBJECT_DIRECTORIES` and the
-  inherited `GIT_CEILING_DIRECTORIES`. A git hook exports `GIT_DIR`, and with
-  it every found directory would answer as the hook's repository. The runner
+  inherited `GIT_CEILING_DIRECTORIES`. A git hook exports `GIT_DIR` (a
+  receive hook as `.`), and with it the caller's checkout and every found
+  directory would answer as the hook's repository, or as none. The default
+  roots set no ceiling, since the caller may be a subdirectory of its
+  checkout. The runner
   is wrapped to pass them as `undefined`, which command-seam drops from the
   child's environment; typed-git is unchanged.
 - **A bare store with worktrees beside it is not supported yet.** In that

@@ -29,14 +29,15 @@ We will credit you in the release notes if you want that.
   the old file beside it.
 - The roots are machine-only. No repository's config can set them, so a
   cloned repository cannot point a tool at directories on a person's disk.
-- It runs `git` in each checkout it finds under the roots, with argument
-  arrays and never through a shell, to read its main checkout and its
-  `origin` URL. git reads that checkout's config as it always does. Each call
-  works on the real path of the directory found (a symlink is followed),
-  sets `GIT_CEILING_DIRECTORIES` to its parent, and unsets the variables that
+- It runs `git` in the caller's checkout, for the default roots, and in each
+  checkout it finds under the roots, with argument arrays and never through
+  a shell, to read its main checkout and its `origin` URL. git reads that
+  checkout's config as it always does. Every call unsets the variables that
   pick a repository (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`,
   `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`,
-  `GIT_ALTERNATE_OBJECT_DIRECTORIES`). The directory counts only when git
+  `GIT_ALTERNATE_OBJECT_DIRECTORIES`). In the scan, each call also works on
+  the real path of the directory found (a symlink is followed) and sets
+  `GIT_CEILING_DIRECTORIES` to its parent. The directory counts only when git
   says it is the top of a working tree, so git never answers with a
   repository above it, even when the parent's path holds the path delimiter,
   which the ceiling variable cannot carry.
