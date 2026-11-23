@@ -132,17 +132,21 @@ A ref gets no folder checks, and the core never removes a folder for one.
 
 `create` gets `kit`, the safety helpers the shipped plugins use, bound to the
 plugin's name, so a plugin measures, removes and runs things the same way
-(`pluginKit(name, options)` builds one, for tests):
+(`pluginKit(name, options)` builds one, for tests). Each run, once the
+plugin's `roots` hook has answered, the core binds the kit it was created with
+to those roots, the run's targets and their linked worktrees, so `kit.remove`
+needs no more than the path. The plugin `create` returns through
+`definePlugin` is tied to its kit; a kit no run has bound removes nothing.
 
 | Helper | What it does |
 | --- | --- |
 | `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the whole hours since, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Out of time, it is `{ unmeasured: true }`. |
 | `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
-| `kit.running({ in } \| { name }, ctx)` | The busy processes working in a folder (an idle shell is not busy), or those of a name; `unknown` when the process table cannot be read. The table is read fresh once per hook call. |
+| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. The table is read fresh once per hook call. |
 | `kit.onPath(program)` | Whether a program is on PATH. |
 | `kit.candidate({ kind, path \| ref, ... })` | A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and the plugin as owner. |
 | `kit.run(argv, { signal, check })` | Runs a program through `@osdlc/command-seam`, with a time limit (`RUN_LIMIT_MS`, 30 seconds) and stopped when `ctx.signal` aborts; `ok` when it exited 0, a `CommandFailed` throw with `check`. |
-| `kit.remove(path, ctx, roots)` | Removes a folder only if it is still inside `roots`, a target or a linked worktree of one by its real path, after making read-only folders and files in it writable; checks it is gone and returns the receipt sentence. |
+| `kit.remove(path, ctx?)` | Removes a folder only if it is still inside the plugin's roots, a target or a linked worktree of one by its real path, as the core bound them this run, after making read-only folders and files in it writable; checks it is gone and returns the receipt sentence. With `ctx`, it removes nothing once `ctx.signal` has aborted. |
 
 `idleHoursSetting` is the `idleHours` setting: a plugin that declares it
 inherits the config's top-level `idleHours` when its own entry sets none.

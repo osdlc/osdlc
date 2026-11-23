@@ -18,7 +18,14 @@ import type { CommandRunner } from '@osdlc/command-seam'
 import { nodeGuard } from '@osdlc/path-guard/node'
 import { Git } from '@osdlc/typed-git'
 
-import { DEFAULT_IDLE_HOURS, pluginKit, type Kit, type KitOptions, type Running } from './kit.ts'
+import {
+  DEFAULT_IDLE_HOURS,
+  attachKit,
+  pluginKit,
+  type Kit,
+  type KitOptions,
+  type Running,
+} from './kit.ts'
 import type { Candidate, Ctx, MaybePromise, Objection, Plugin } from './types.ts'
 
 export type ArtifactKind = 'cargo-target' | 'cargo-incremental' | 'node-modules'
@@ -187,8 +194,8 @@ export function refusedRow(kit: Kit, kind: ArtifactKind, path: string, checkout:
  * Remove the directory `c` names, if its checkout's rows still hold it
  * unrefused: `rowsOf` is read again for that checkout alone, and the kit reads
  * the process table fresh for this call, so idle time and holders are checked
- * now. `kit.remove` then checks the path is still inside the targets by its
- * real path and that it is gone afterwards. A directory already gone (its
+ * now. `kit.remove` then checks the path is still inside what the core
+ * bound the kit to by its real path, and that it is gone afterwards. A directory already gone (its
  * worktree was deleted first in this run) is not a failure. Returns what the
  * receipt records.
  */
@@ -225,7 +232,7 @@ export function artifactPlugin(
   kit: Kit = pluginKit(name, opts),
 ): Plugin {
   let rows = new Map<string, Row>()
-  return {
+  const plugin: Plugin = {
     name,
     limits: { discover: DISCOVER_LIMIT_MS },
     detect: (ctx) => detect(envOf(kit, opts, ctx)),
@@ -243,4 +250,7 @@ export function artifactPlugin(
       }),
     delete: (c, ctx) => removeArtifact(rowsOf, c, envOf(kit, opts, ctx)),
   }
+  // Built without `definePlugin` when called directly, so tie the kit here too.
+  attachKit(plugin, kit)
+  return plugin
 }

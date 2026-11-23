@@ -8,6 +8,7 @@ import { dirname } from 'node:path'
 import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 
 import { coveredBy, containsIgnored } from './ignore.ts'
+import { bindKit } from './kit.ts'
 import { boundBy, linkedCheckouts, realOr, type Bounds } from './roots.ts'
 import {
   writeReceipt,
@@ -265,6 +266,7 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
     rootsOf.set(p.name, await guarded(p, 'roots', [], scoped, (x) => p.roots!(x)))
   }
   const linked = linkedCheckouts(targets)
+  for (const p of plugins) bindKit(p, { roots: rootsOf.get(p.name) ?? [], targets, linked })
   for (const c of candidates) {
     if (c.costDescription === 'lost') {
       objections.push({
@@ -717,8 +719,11 @@ async function runOne(
     } catch (err) {
       return fail(err, `${c.owner}: roots failed: `)
     }
-    const why = outside(c, { roots, targets: s.ctx.targets, linked: s.linked })
+    const bounds: Bounds = { roots, targets: s.ctx.targets, linked: s.linked }
+    const why = outside(c, bounds)
     if (why !== null) return fail(why)
+    // The owner's kit removes within what was just checked.
+    bindKit(owner, bounds)
   }
   try {
     step.delete = await callHook(owner, 'delete', s.ctx, (x) => owner.delete!(c, x))

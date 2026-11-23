@@ -17,8 +17,11 @@ import { join } from 'node:path'
 
 import { CommandFailed, asAsync, type CommandRunner } from '@osdlc/command-seam'
 import type { ProcessHolder, ProcessProbe } from '@osdlc/repo-cleaner'
+import { z } from 'zod'
 
-import { pluginKit } from '../src/index.ts'
+import { PLUGIN_API, clean, definePlugin, plan, pluginKit, survey } from '../src/index.ts'
+import { attachKit, bindKit } from '../src/kit.ts'
+import type { Bounds } from '../src/roots.ts'
 
 const NOW = new Date('2026-11-19T12:00:00Z')
 const HOUR = 3_600_000
@@ -45,6 +48,15 @@ function put(path: string, hoursOld: number): void {
 }
 
 const signal = (): AbortSignal => new AbortController().signal
+
+/** A kit for `owner`, bound as the core binds one in a run. */
+function boundKit(owner: string, bounds: Partial<Bounds>) {
+  const kit = pluginKit(owner)
+  const plugin = { name: owner, detect: () => true }
+  attachKit(plugin, kit)
+  bindKit(plugin, { roots: [], targets: [], linked: [], ...bounds })
+  return kit
+}
 
 describe('candidate', () => {
   test('fills in the id and the plugin as owner', () => {
@@ -105,7 +117,7 @@ describe('remove', () => {
     put(join(dir, 'pkg', 'go.mod'), 1)
     chmodSync(join(dir, 'pkg', 'go.mod'), 0o444)
     chmodSync(join(dir, 'pkg'), 0o555)
-    const said = pluginKit('go').remove(dir, { targets: [root] })
+    const said = boundKit('go', { targets: [root] }).remove(dir)
     expect(said).toMatch(new RegExp(`^removed ${dir}; freed \\d+ bytes$`))
     expect(existsSync(dir)).toBe(false)
   })
@@ -114,21 +126,58 @@ describe('remove', () => {
     const root = temp()
     const other = temp()
     put(join(other, 'keep'), 1)
-    const kit = pluginKit('cache')
-    expect(() => kit.remove(other, { targets: [root] })).toThrow(/not inside cache's roots/)
-    expect(() => kit.remove(root, { targets: [root] })).toThrow(/not inside/)
+    const kit = boundKit('cache', { targets: [root] })
+    expect(() => kit.remove(other)).toThrow(/not inside cache's roots/)
+    expect(() => kit.remove(root)).toThrow(/not inside/)
     symlinkSync(other, join(root, 'out'))
-    expect(() => kit.remove(join(root, 'out'), { targets: [root] })).toThrow(/not inside/)
+    expect(() => kit.remove(join(root, 'out'))).toThrow(/not inside/)
     expect(existsSync(join(other, 'keep'))).toBe(true)
     // Inside the plugin's own roots is allowed.
-    expect(kit.remove(join(other, 'keep'), { targets: [] }, [other])).toMatch(/^removed /)
+    expect(boundKit('cache', { roots: [other] }).remove(join(other, 'keep'))).toMatch(/^removed /)
   })
 
   test('a folder already gone is not a failure', () => {
     const root = temp()
-    expect(pluginKit('x').remove(join(root, 'nope'), { targets: [root] })).toBe(
+    expect(boundKit('x', { targets: [root] }).remove(join(root, 'nope'))).toBe(
       `already gone: ${join(root, 'nope')}`,
     )
+  })
+
+  test('refuses everything until the core binds the kit, and after the hook is stopped', () => {
+    const root = temp()
+    put(join(root, 'a', 'keep'), 1)
+    expect(() => pluginKit('cache').remove(join(root, 'a'))).toThrow(/cache's kit is not bound/)
+    const stopped = new AbortController()
+    stopped.abort()
+    const kit = boundKit('cache', { targets: [root] })
+    expect(() => kit.remove(join(root, 'a'), { signal: stopped.signal })).toThrow(/was stopped/)
+    expect(existsSync(join(root, 'a', 'keep'))).toBe(true)
+  })
+
+  test("the core binds a definition's kit to the roots its roots hook gives, and clean removes there", async () => {
+    const root = temp()
+    const dir = join(root, 'cache', 'a')
+    put(join(dir, 'blob'), 1)
+    const def = definePlugin({
+      name: 'cache',
+      api: PLUGIN_API,
+      settings: z.strictObject({}),
+      create: ({ kit }) => ({
+        name: 'cache',
+        detect: () => true,
+        roots: () => [root],
+        discover: () => [kit.candidate({ kind: 'cache', path: dir, why: 'idle' })],
+        delete: (c) => kit.remove(c.path!),
+      }),
+    })
+    const plugin = def.create({ settings: {}, only: [], env: {}, kit: pluginKit('cache') })
+    // No target holds `dir`: only the roots the core asked the plugin for.
+    const ctx = { cwd: root, targets: [], allow: [] }
+    const receipt = await clean(plan(await survey([plugin], ctx)), [plugin], ctx)
+    expect(receipt.steps).toEqual([
+      expect.objectContaining({ result: 'ok', delete: expect.stringMatching(/^removed /) }),
+    ])
+    expect(existsSync(dir)).toBe(false)
   })
 })
 
@@ -136,7 +185,7 @@ describe('running', () => {
   const holder = (pid: number, command: string, extra: Partial<ProcessHolder> = {}) =>
     ({ pid, command, ...extra }) as ProcessHolder
 
-  test('lists the busy processes in a folder, idle shells left out, and the ones of a name', () => {
+  test('lists the busy processes in a folder, idle shells left out, and the ones of a name, given alone or as { name }', () => {
     const asked: Array<{ path: string; fresh: boolean }> = []
     const probe: ProcessProbe = {
       alive: () => true,
@@ -149,10 +198,12 @@ describe('running', () => {
     const one = signal()
     expect(kit.running({ in: '/w' }, { signal: one })).toEqual({ names: ['cargo (pid 5)'] })
     expect(kit.running({ name: 'zsh' }, { signal: one })).toEqual({ names: ['zsh (pid 4)'] })
+    expect(kit.running('cargo', { signal: one })).toEqual({ names: ['cargo (pid 5)'] })
     kit.running({ in: '/w' }, { signal: signal() })
     // The first read in each hook call is fresh.
     expect(asked).toEqual([
       { path: '/w', fresh: true },
+      { path: '/', fresh: false },
       { path: '/', fresh: false },
       { path: '/w', fresh: true },
     ])

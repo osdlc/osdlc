@@ -4,7 +4,9 @@ import { afterEach, describe, expect, test } from 'vitest'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { pluginKit, type Plugin } from '../src/index.ts'
+import { z } from 'zod'
+
+import { PLUGIN_API, definePlugin, pluginKit, type Plugin } from '../src/index.ts'
 import { contractSuite, fakeContext, fakeRunner, tempHome } from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
@@ -24,15 +26,22 @@ function cachePlugin(over: (root: string) => Partial<Plugin> = () => ({})) {
   const dir = join(root, 'cache', 'a')
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'blob'), 'x')
-  const kit = pluginKit('cache')
-  const plugin: Plugin = {
+  const def = definePlugin({
     name: 'cache',
-    detect: () => true,
-    roots: () => [root],
-    discover: () => [kit.candidate({ kind: 'cache', path: dir, why: 'idle', evidence: { n: 1 } })],
-    delete: (c, ctx) => kit.remove(c.path!, ctx, [root]),
-    ...over(root),
-  }
+    api: PLUGIN_API,
+    settings: z.strictObject({}),
+    create: ({ kit }): Plugin => ({
+      name: 'cache',
+      detect: () => true,
+      roots: () => [root],
+      discover: () => [
+        kit.candidate({ kind: 'cache', path: dir, why: 'idle', evidence: { n: 1 } }),
+      ],
+      delete: (c) => kit.remove(c.path!),
+      ...over(root),
+    }),
+  })
+  const plugin = def.create({ settings: {}, only: [], env: {}, kit: pluginKit('cache') })
   return { plugin, root, dir }
 }
 

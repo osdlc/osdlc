@@ -7,7 +7,7 @@
 import type { Kind } from '@osdlc/repo-cleaner'
 import type { z } from 'zod'
 
-import type { Kit } from './kit.ts'
+import { attachKit, type Kit } from './kit.ts'
 
 /** What every candidate has, whether a path or a ref. */
 interface CandidateBase {
@@ -173,7 +173,7 @@ export interface PluginInit<S = Record<string, unknown>> {
   only: readonly Kind[]
   /** The command line's environment, for a plugin that runs other programs. */
   env: Readonly<Record<string, string | undefined>>
-  /** The safety helpers, bound to this plugin (see `./kit.ts`). */
+  /** The safety helpers, bound to this plugin and, each run, to its roots (see `./kit.ts`). */
   kit: Kit
 }
 
@@ -190,10 +190,21 @@ export interface PluginDefinition<S extends z.ZodObject = z.ZodObject> {
   create(init: PluginInit<z.output<S>>): Plugin
 }
 
-/** `def`, with `create`'s settings typed from its schema. */
+/**
+ * `def`, with `create`'s settings typed from its schema. The plugin `create`
+ * returns is tied to the kit it was given, so the core can bind that kit to
+ * the plugin's roots each run.
+ */
 export const definePlugin = <S extends z.ZodObject>(
   def: PluginDefinition<S>,
-): PluginDefinition<S> => def
+): PluginDefinition<S> => ({
+  ...def,
+  create(init) {
+    const plugin = def.create(init)
+    attachKit(plugin, init.kit)
+    return plugin
+  },
+})
 
 /** Thrown from a plugin to stop the whole run, not only the candidate it was working on. */
 export class FatalRun extends Error {

@@ -2,7 +2,10 @@
  * The plugin kit (D4): the safety helpers the shipped plugins use, so a code
  * plugin measures idle time, asks what is running, runs a program and
  * removes a folder the same way instead of writing its own. The core builds
- * one kit per plugin, bound to its name, and hands it to `create`.
+ * one kit per plugin, bound to its name, and hands it to `create`. Each run,
+ * once the plugin's `roots` hook has answered, the core binds that kit to the
+ * plugin's roots, the run's targets and their linked worktrees, which
+ * `remove` checks against.
  *
  * It reuses repo-cleaner's process probe, `busyHolders` and `sizeOf`, and
  * `@osdlc/path-guard` for containment (through `./roots.ts`).
@@ -22,8 +25,8 @@ import {
 import { busyHolders, defaultProcessProbe, sizeOf, type ProcessProbe } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
-import { boundBy, linkedCheckouts } from './roots.ts'
-import type { Candidate, Ctx, PathCandidate, RefCandidate } from './types.ts'
+import { boundBy, type Bounds } from './roots.ts'
+import type { Candidate, Ctx, PathCandidate, Plugin, RefCandidate } from './types.ts'
 
 export const DEFAULT_IDLE_HOURS = 24
 
@@ -103,11 +106,11 @@ export interface Kit {
   /** Bytes `path` takes on disk, by repo-cleaner's `sizeOf` (`du`) within the time budget; null when it could not be read. */
   size(path: string): number | null
   /**
-   * The busy processes working in `in` (an idle shell is not busy), or the
-   * processes named `name`. The process table is read once per hook call, so
-   * a `delete` sees it fresh.
+   * The processes of a program, named as a string or as `{ name }`, or the
+   * busy processes working in `in` (an idle shell is not busy). The process
+   * table is read once per hook call, so a `delete` sees it fresh.
    */
-  running(where: { in: string } | { name: string }, ctx: Pick<Ctx, 'signal'>): Running
+  running(where: string | { in: string } | { name: string }, ctx: Pick<Ctx, 'signal'>): Running
   /** Whether `program` is on PATH. */
   onPath(program: string): boolean
   /** A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and this plugin as its owner. */
@@ -115,12 +118,14 @@ export interface Kit {
   /** Runs `argv` through `@osdlc/command-seam` with a time limit, stopped when `signal` aborts. */
   run(argv: readonly string[], opts: KitRunOptions): Promise<KitRunResult>
   /**
-   * Removes the folder `path`: only if it is still inside `roots`, a target or
-   * a linked worktree of one by its real path, after making read-only folders
-   * and files in it writable. Returns the receipt sentence; a folder already
-   * gone is not a failure. Throws when it is outside or still there after.
+   * Removes the folder `path`: only if it is still inside the plugin's roots,
+   * a target or a linked worktree of one by its real path, as the core
+   * resolved them this run, after making read-only folders and files in it
+   * writable. Returns the receipt sentence; a folder already gone is not a
+   * failure. Throws when it is outside, when the kit is not bound to a run,
+   * when `ctx.signal` has aborted, or when the folder is still there after.
    */
-  remove(path: string, ctx: Pick<Ctx, 'targets'>, roots?: readonly string[]): string
+  remove(path: string, ctx?: Pick<Ctx, 'signal'>): string
 }
 
 /** What a kit is built with; every field has a default. */
@@ -136,6 +141,23 @@ export interface KitOptions {
   which?: ((program: string) => string | undefined) | undefined
   /** The command line's environment. */
   env?: Readonly<Record<string, string | undefined>> | undefined
+}
+
+/** Each kit's setter for its bounds, kept off {@link Kit} so a plugin cannot widen its own. */
+const binders = new WeakMap<Kit, (bounds: Bounds) => void>()
+
+/** The kit each plugin was created with. */
+const kits = new WeakMap<Plugin, Kit>()
+
+/** Records that `plugin` was built on `kit`, so the core can bind it each run. `definePlugin`'s `create` calls it. */
+export function attachKit(plugin: Plugin, kit: Kit): void {
+  kits.set(plugin, kit)
+}
+
+/** Binds the kit `plugin` was built on to `bounds` for {@link Kit.remove}; a plugin built on no kit is left alone. */
+export function bindKit(plugin: Plugin, bounds: Bounds): void {
+  const kit = kits.get(plugin)
+  if (kit !== undefined) binders.get(kit)?.(bounds)
 }
 
 /** Thrown inside {@link Kit.idle}'s walk when the budget runs out. */
@@ -179,7 +201,10 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
     return probe.holders(path, fresh ? { fresh: true } : undefined)
   }
 
-  return {
+  // Unbound until the core resolves this plugin's roots in a run.
+  let bounds: Bounds | undefined
+
+  const kit: Kit = {
     owner,
     idle(path, { skip = () => false } = {}) {
       const start = now().getTime()
@@ -219,10 +244,11 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
     size: (path) => sizeOf(path, { timeoutMs: budget }),
     running(where, ctx) {
       try {
+        const by = typeof where === 'string' ? { name: where } : where
         const found =
-          'in' in where
-            ? busyHolders(holders(where.in, ctx.signal))
-            : holders('/', ctx.signal).filter((h) => h.command === where.name)
+          'in' in by
+            ? busyHolders(holders(by.in, ctx.signal))
+            : holders('/', ctx.signal).filter((h) => h.command === by.name)
         return { names: found.map((h) => `${h.command} (pid ${h.pid})`) }
       } catch (err) {
         return { names: [], unknown: err instanceof Error ? err.message : String(err) }
@@ -247,9 +273,13 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
       if (o.check === true && r.exitCode !== 0) throw new CommandFailed(args, r, program)
       return { ...r, ok: r.exitCode === 0 && r.neverExited !== true }
     },
-    remove(path, ctx, roots = []) {
+    remove(path, ctx) {
+      if (ctx?.signal.aborted === true)
+        throw new Error(`${path} was not removed: the hook was stopped`)
       if (!present(path)) return `already gone: ${path}`
-      const bounds = { roots, targets: ctx.targets, linked: linkedCheckouts(ctx.targets) }
+      if (bounds === undefined) {
+        throw new Error(`${path} was not removed: ${owner}'s kit is not bound to a run`)
+      }
       if (boundBy(bounds, path) === null) {
         throw new Error(`${path} is not inside ${owner}'s roots or the targets`)
       }
@@ -260,4 +290,8 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
       return bytes === null ? `removed ${path}` : `removed ${path}; freed ${bytes} bytes`
     },
   }
+  binders.set(kit, (b) => {
+    bounds = b
+  })
+  return kit
 }
