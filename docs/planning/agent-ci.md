@@ -413,7 +413,7 @@ same spec runs everywhere.
 
 | Term | Means | Answers | Examples |
 | --- | --- | --- | --- |
-| Spec | A reviewed file describing one kind of run | What should happen? | `.github/agents/simplify.yml` |
+| Spec | A reviewed file describing one kind of run | What should happen? | `.github/agents/comment-review.yml` |
 | Caller | Whatever starts the run | Who asked? | a PR comment, cron, `agent-call run` in a shell, Orca, another agent |
 | Harness | The coding agent program | Which agent? | claude, codex, cursor |
 | Mode | How agent-call drives the harness process | How do we talk to it? | `cli` (`claude -p`), `sdk` (a library), `acp` (JSON-RPC), `terminal` (a live session) |
@@ -497,9 +497,9 @@ when none can.
 
 ### Three runs of the same spec
 
-The spec is `/craft:simplify` with edits allowed and `changes: patch`.
+The spec is `/craft:comment-review` with edits allowed and `changes: patch`.
 
-| | PR comment `/craft:simplify --apply` | You, in Orca: "simplify this with cursor" | Nightly cron |
+| | PR comment `/craft:comment-review --apply` | You, in Orca: "review the comments with cursor" | Nightly cron |
 | --- | --- | --- | --- |
 | Caller | GitHub `issue_comment` | Orca | GitHub `schedule` |
 | Harness | claude (the action's default) | cursor (override) | codex |
