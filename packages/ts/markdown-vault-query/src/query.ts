@@ -1,9 +1,9 @@
 /**
  * Query execution: run a BaseDef (or one of its views) against a VaultIndex.
  *
- * Pipeline: global filters AND view filters → sort → limit → evaluate the
- * columns of the rows kept → group → summaries. Groups and summaries cover
- * the rows after the limit.
+ * The pipeline of a view (`runView`): global filters AND view filters → sort →
+ * limit → evaluate the columns of the rows kept → group → summaries. Groups
+ * and summaries cover the rows after the limit.
  */
 
 import type { BaseDef, BaseViewDef, FilterNode, SortKey } from './base/parse.ts'
@@ -497,8 +497,9 @@ function sameGroupKey(a: Value, b: Value): boolean {
 }
 
 /**
- * Run one view of a base over the vault: apply the base's and the view's filters, evaluate the
- * `order` columns, sort, limit, group and summarize. `total` counts the matches before the limit.
+ * Run one view of a base over the vault: apply the base's and the view's filters, sort, limit,
+ * evaluate the `order` columns of the rows kept, group and summarize. `total` counts the matches
+ * before the limit.
  * Throws when `viewName` names no view.
  */
 export function runView(

@@ -84,7 +84,7 @@ they run and what they return.
 
 | Function | Runs | Returns | Use it when |
 | --- | --- | --- | --- |
-| `runView` | One view of a base: global and view filters, `order` columns, sort, limit, groups, summaries | `ViewResult`: rows with evaluated columns, groups, summaries, and `total` before the limit | You render a base's view |
+| `runView` | One view of a base: global and view filters, sort, limit, `order` columns, groups, summaries | `ViewResult`: rows with evaluated columns, groups, summaries, and `total` before the limit | You render a base's view |
 | `queryBase` | Only the base's global filters | The matching notes, in vault order | You want the notes a base selects and no columns |
 | `queryExpression` | One filter expression | The matching notes, in vault order | You filter with a string and need no sort or paging |
 | `queryVault` | One filter expression, sort keys, `offset` and `limit` | `FilterQueryResult`: one page of notes and the `total` before paging | You page through results, as a UI list does |
