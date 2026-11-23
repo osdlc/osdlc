@@ -425,17 +425,19 @@ export function generatorBuildFilters(
  * registered is stale. A pair whose names differ is not found.
  */
 export function unlistedPairs(
-  names: { rust: readonly string[]; ts: readonly string[] },
-  roots: LibraryRoots,
+  libraries: { rust: readonly string[]; ts: readonly string[] },
   registered: ReadonlySet<string>,
   unmigrated: ReadonlySet<string>,
   exempt: { notFamilies: Record<string, string>; noSuiteYet: Record<string, string> },
 ): string[] {
   const problems: string[] = []
-  const ts = new Set(names.ts)
-  for (const name of names.rust) {
-    if (!ts.has(name)) continue
-    const dirs = [`${roots['rust']}/${name}`, `${roots['ts']}/${name}`]
+  const nameOf = (dir: string): string => dir.slice(dir.lastIndexOf('/') + 1)
+  const tsByName = new Map(libraries.ts.map((d) => [nameOf(d), d]))
+  for (const rustDir of libraries.rust) {
+    const name = nameOf(rustDir)
+    const tsDir = tsByName.get(name)
+    if (tsDir === undefined) continue
+    const dirs = [rustDir, tsDir]
     const isRegistered = dirs.some((d) => registered.has(d))
     const exemptions = (['notFamilies', 'noSuiteYet'] as const).filter((k) => name in exempt[k])
     if (isRegistered) {

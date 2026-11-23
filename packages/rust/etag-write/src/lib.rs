@@ -171,8 +171,7 @@ fn read_or_none(path: &Path) -> io::Result<Option<Vec<u8>>> {
 /// dependency; a taken name is retried by the caller.
 fn temp_name(path: &Path) -> String {
     use std::hash::{BuildHasher, Hasher};
-    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
-    hasher.write_u32(std::process::id());
+    let hasher = std::collections::hash_map::RandomState::new().build_hasher();
     let bits = hasher.finish() & 0xffff_ffff_ffff;
     format!(
         ".{}.{bits:012x}.tmp",

@@ -151,14 +151,11 @@ export function checkRepo(root: string, options: RepoOptions = {}): string[] {
     if (!libraries.includes(dir))
       problems.push(`config.json: unmigrated names ${dir}, which is not a library`)
   }
-  const namesIn = (language: string): string[] =>
-    libraries
-      .filter((d) => d.startsWith(`${config.libraries[language]}/`))
-      .map((d) => d.slice(config.libraries[language]!.length + 1))
+  const librariesIn = (language: string): string[] =>
+    libraries.filter((d) => d.startsWith(`${config.libraries[language]}/`))
   problems.push(
     ...unlistedPairs(
-      { rust: namesIn('rust'), ts: namesIn('ts') },
-      config.libraries,
+      { rust: librariesIn('rust'), ts: librariesIn('ts') },
       new Set(listed.keys()),
       new Set(config.unmigrated),
       config,

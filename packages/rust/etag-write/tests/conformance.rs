@@ -388,7 +388,9 @@ fn run(section: &str, case: &Case) -> Result<Outcome, String> {
             }
             Ok(got)
         }
+        #[cfg(unix)]
         "write_atomic_mode" => write_atomic_mode(case),
+        #[cfg(unix)]
         "write_atomic_symlink" => write_atomic_symlink(case),
         other => panic!("no runner for the section {other}"),
     }
@@ -418,12 +420,6 @@ fn write_atomic_mode(case: &Case) -> Result<Outcome, String> {
     })
 }
 
-/// The section is for `unix` only: no case reaches here on Windows.
-#[cfg(not(unix))]
-fn write_atomic_mode(case: &Case) -> Result<Outcome, String> {
-    panic!("{}: a write_atomic_mode case runs on unix only", case.name)
-}
-
 #[cfg(unix)]
 fn write_atomic_symlink(case: &Case) -> Result<Outcome, String> {
     let input: WriteAtomicSymlinkInput = case.input();
@@ -440,15 +436,6 @@ fn write_atomic_symlink(case: &Case) -> Result<Outcome, String> {
         })),
         Err(e) => Err(write_kind(&e)),
     })
-}
-
-/// The section is for `unix` only: no case reaches here on Windows.
-#[cfg(not(unix))]
-fn write_atomic_symlink(case: &Case) -> Result<Outcome, String> {
-    panic!(
-        "{}: a write_atomic_symlink case runs on unix only",
-        case.name
-    )
 }
 
 #[test]
@@ -498,8 +485,9 @@ fn every_case_in_the_suite_conforms() {
                 Err(msg) => failures.push(format!("{name}: {}: {msg}", case.name)),
             }
         }
-        // A section none of whose cases run here would pass unseen.
-        if !(cfg!(windows) && (name == "write_atomic_mode" || name == "write_atomic_symlink")) {
+        // A section none of whose cases run here would pass unseen, unless
+        // every case's `platforms` excludes this host.
+        if !section.cases.iter().all(|c| !c.for_this_host()) {
             assert!(ran > 0, "{name}: no case of this section runs on this host");
         }
     }

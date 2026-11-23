@@ -51,8 +51,8 @@ describe('conformance suite', () => {
 
   test('runs some case of every section here', () => {
     for (const [name, section] of Object.entries(sections)) {
-      // These sections are for `unix` only, so they run nowhere on Windows.
-      if (HOST === 'windows' && (name === 'write_atomic_mode' || name === 'write_atomic_symlink'))
+      // A section whose every case's `platforms` excludes this host runs nothing here.
+      if (section.cases.every((c) => c.platforms !== undefined && !c.platforms.includes(HOST)))
         continue
       expect(section.cases.filter(runsHere).length, name).toBeGreaterThan(0)
     }
