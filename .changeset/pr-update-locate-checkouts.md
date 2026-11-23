@@ -6,7 +6,11 @@
 It looks under the roots listed in the shared `~/.config/osdlc/repositories.yaml`,
 or, with none listed, beside the project root, and matches each checkout's
 `origin`. A shallow checkout is skipped. A checkout found this way is fetched
-and measured through its `origin`, whatever `--remote` says. When a target has
+and measured through its `origin`, whatever `--remote` says, with no tags, no
+`FETCH_HEAD` and no pruning, so refs its own fetch lines keep under `origin/`
+stay. A `--repo` target's PRs are listed on its own host: through the project
+root's code host when it shares the project root's host, else through GitHub
+over `gh` with `GH_HOST` set to that host. When a target has
 no checkout, a note names the roots searched and the file that sets them. The
 JSON report gives each repository `checkout: { path, source }` (`root` or
 `located`), or `null`. `update` surveys such a checkout but does not yet update
@@ -31,7 +35,9 @@ For library hosts:
   argument carrying the host, and may return `{ path, source, remote }` to name
   the remote a checkout is read through. `update` does not yet run in a
   checkout returned that way: it surveys the repository and skips its PRs. A
-  `locate` that takes one argument and returns a path works as before.
+  `locate` that takes one argument and returns a path works as before. A
+  checkout returned either way is fetched without tags, `FETCH_HEAD` or
+  pruning.
 - A target other than the project root is lower-cased everywhere: in the
   report's `repo`, in `owner/name#N` keys, and in the `repo` of attempt keys.
   An attempt record a host's store holds under a mixed-case `repo` is no
@@ -41,3 +47,6 @@ For library hosts:
 - A `--repo` that is not `owner/name` or `host/owner/name`, such as a URL,
   is now refused.
 - `standalonePorts` takes a fifth argument, `{ git, env }`, for its `locate`.
+- `selectedCodeHostFor` takes `projectRoot`, and a `SurveyEnv.codeHost`
+  factory is called with a `CodeHostTarget` (now exported): for a target other
+  than the project root it carries `host` and `onRootHost`.

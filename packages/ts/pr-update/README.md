@@ -157,7 +157,16 @@ checkout is skipped, since it cannot measure drift. With more than one
 checkout of a repository, the first by path is used and a note names the
 others. A checkout found this way is fetched and measured through its
 `origin`, whatever `--remote` says: `--remote` names a remote of the project
-root.
+root. That fetch writes only the remote's branches into `origin/*`, with no
+tags and no `FETCH_HEAD`, and prunes nothing, so refs the checkout's own fetch
+lines keep under `origin/` (such as `origin/pr/*`) stay. A checkout a library
+host's `locate` returns is fetched the same way.
+
+A target's PRs are listed on its own host. A target on the project root's
+host is listed through the project root's code host; one on any other host
+through GitHub over `gh`, with `GH_HOST` set to that host (github.com
+included, so a `GH_HOST` in your environment does not move it). A Forgejo
+repository on a host other than the project root's is not supported.
 
 A target with no checkout is still listed, reported `no local checkout —
 drift not measured`, and a note on stderr names the roots that were searched
@@ -716,7 +725,9 @@ variable name is not configurable here. It is always `FORGEJO_TOKEN`.
 `--remote` (default `origin`) names the remote whose URL gives the repository,
 the one fetched, the one whose remote-tracking refs (`<remote>/<branch>`) drift
 and conflicts are measured against, and, for `update`, the one pushed to. It
-does not change which code host is chosen: that always reads `origin`.
+does not change which code host is chosen: that always reads `origin`. A
+`--repo` target is listed by its host instead (see
+[Other repositories](#other-repositories---repo)).
 
 A host that embeds the engine as a library supplies `SurveyEnv.codeHost`, and
 none of this applies to it. When `SurveyEnv.codeHost` is absent, the library

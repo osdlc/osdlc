@@ -749,9 +749,8 @@ export interface SurveyEnv {
   /** Runs `gh` for the default GitHub code host. Unused when `codeHost` is given. */
   gh: CommandRunner
   /**
-   * The code host for one surveyed repository: `cwd` is the checkout to run
-   * from, `repo` the repository (`owner/name`), and `host` its host when that
-   * is not the project root's and not github.com. Absent means GitHub over `gh`.
+   * The code host for one surveyed repository (see {@link CodeHostTarget}).
+   * Absent means GitHub over `gh`.
    */
   codeHost?: ((target: CodeHostTarget) => CodeHost) | undefined
   /**
@@ -798,7 +797,7 @@ export function remoteSlug(url: string): string | null {
 export function surveyTargets(
   args: Pick<SurveyArgs, 'remote' | 'repo'>,
   env: Pick<SurveyEnv, 'projectRoot' | 'git' | 'ports' | 'codeHostOverride'>,
-): { localRepo: string | null; targets: RepoTarget[] } {
+): { localRepo: string | null; rootHost: string | null; targets: RepoTarget[] } {
   const localGit = new Git(env.projectRoot, { runner: env.git })
   const localUrl = localGit.soft.remoteGetUrl(args.remote)
   const local = localUrl === null ? null : parseRemoteRepo(localUrl)
@@ -808,6 +807,7 @@ export function surveyTargets(
     rootHost !== null && codeHostNameForRemote(localUrl, env.codeHostOverride ?? null) === 'github'
   return {
     localRepo,
+    rootHost,
     targets: resolveTargets(localRepo, env.projectRoot, args.repo, env.ports.locate, {
       remote: args.remote,
       rootHost,
@@ -837,7 +837,7 @@ export function surveyWithTargets(
   env: SurveyEnv,
 ): { report: SurveyReport; targets: RepoTarget[] } {
   const { cfg } = env
-  const { targets } = surveyTargets(args, env)
+  const { rootHost, targets } = surveyTargets(args, env)
   const codeHostFor = env.codeHost ?? githubCodeHostFor(env.gh)
 
   // Flags beat config; config beats the built-in default.
@@ -880,13 +880,12 @@ export function surveyWithTargets(
     const git = new Git(target.path ?? env.projectRoot, { runner: env.git })
 
     const isLocal = target.source === 'root'
-    // A target on a host other than github.com, such as GitHub Enterprise, is listed on that host.
-    const otherHost =
-      !isLocal && target.host !== null && target.host !== 'github.com' ? target.host : undefined
+    // Any other target is listed on its own host, named even when it is github.com.
+    const host = target.host ?? 'github.com'
     const codeHost = codeHostFor({
       cwd: target.path ?? env.projectRoot,
       repo: target.repo,
-      ...(otherHost === undefined ? {} : { host: otherHost }),
+      ...(isLocal ? {} : { host, onRootHost: host === rootHost }),
     })
     const listed = codeHost.listPrDetails({
       limit: args.limit,
@@ -940,7 +939,10 @@ export function surveyWithTargets(
     //
     // In a checkout other than the project root, the fetch writes only the
     // remote's branches into `<remote>/*`: no tags, no FETCH_HEAD, and an
-    // explicit refspec, so the checkout's own `remote.<name>.fetch` cannot widen it.
+    // explicit refspec, so the checkout's own `remote.<name>.fetch` cannot
+    // widen it. It does not prune: against that refspec, prune would delete
+    // every `<remote>/*` ref with no branch behind it, such as a `pr/*` the
+    // checkout's own fetch line keeps there.
     const { remote } = target
     const own = target.source === 'root'
     const refspecs = scoped ? scopedRefspecs(prs, remote) : []
@@ -951,10 +953,7 @@ export function surveyWithTargets(
           ? refspecs.length === 0 || git.try.fetch(remote, refspecs, quiet).ok
           : own
             ? git.try.fetch(remote, undefined, { prune: true }).ok
-            : git.try.fetch(remote, [`+refs/heads/*:refs/remotes/${remote}/*`], {
-                prune: true,
-                ...quiet,
-              }).ok
+            : git.try.fetch(remote, [`+refs/heads/*:refs/remotes/${remote}/*`], quiet).ok
         : false
     // `try`, not `soft`: a failed listing must not read as "no checkout holds
     // this branch", which would clear a force-push. `null` counts as unsafe.

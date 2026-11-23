@@ -170,7 +170,7 @@ describe('a located checkout', () => {
 })
 
 describe('fetching a located checkout', () => {
-  test('writes only its branches into origin/*: no tags, no FETCH_HEAD', async () => {
+  test('writes only its branches into origin/*: no tags, no FETCH_HEAD, no pruning', async () => {
     // A bare origin a commit ahead of what the checkout last fetched, with a tag on its tip.
     const bare = join(scratch, 'remote', 'api.git')
     git(scratch, 'init', '-q', '--bare', bare)
@@ -180,6 +180,15 @@ describe('fetching a located checkout', () => {
     const tip = makeGitFixture({ dir: located }).commit('main again', { 'n.txt': 'n' })
     git(located, 'push', '-q', bare, `${tip}:refs/heads/main`)
     git(bare, 'tag', 'v1', tip)
+    // A ref the checkout's own fetch line keeps under origin/, with no branch behind it.
+    git(
+      located,
+      'config',
+      '--add',
+      'remote.origin.fetch',
+      '+refs/pull/*/head:refs/remotes/origin/pr/*',
+    )
+    git(located, 'update-ref', 'refs/remotes/origin/pr/1', topic)
     // The scan reads origin as GitHub's; the fetch is sent to the bare repository instead.
     const real = spawnRunner('git')
     const viaBare: CommandRunner = {
@@ -208,6 +217,7 @@ describe('fetching a located checkout', () => {
     expect(out.prs[0]).toMatchObject({ number: 7, behind: 2 })
     expect(git(located, 'tag', '--list')).toBe('')
     expect(existsSync(join(located, '.git', 'FETCH_HEAD'))).toBe(false)
+    expect(git(located, 'rev-parse', 'refs/remotes/origin/pr/1')).toBe(topic)
   })
 })
 
@@ -235,17 +245,73 @@ describe('the host of a bare owner/name', () => {
     expect(r.err).toContain('github.acme.com/acme/gone: no checkout under')
   })
 
-  test('is github.com when the project root is on Forgejo', async () => {
+  test.each([
+    ['with a Forgejo token', 't'],
+    ['with no Forgejo token', ''],
+  ])(
+    'is github.com when the project root is on Forgejo, %s, and listed by gh',
+    async (_, token) => {
+      git(project, 'remote', 'set-url', 'origin', 'https://git.example.com/o/r.git')
+      vi.stubEnv('FORGEJO_TOKEN', token)
+      let curled = 0
+      const curl: CommandRunner = {
+        run: (): CommandResult => {
+          curled++
+          return { exitCode: 0, stdout: '[]\nHTTPSTATUS:200', stderr: '' }
+        },
+      }
+      try {
+        const r = await runWith({ curl }, 'survey', '--repo', 'acme/gone', '--no-fetch', '--json')
+        expect(r.code).toBe(EXIT.ok)
+        expect(r.err).toContain('github.com/acme/gone: no checkout under')
+        expect(r.err).not.toContain('git.example.com/acme/gone')
+        expect(curled).toBe(0)
+        const listing = asked.find((c) => c.argv.includes('acme/gone'))
+        expect(listing?.host).toBe('github.com')
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    },
+  )
+})
+
+describe('the host a target is listed on', () => {
+  test('is named for github.com too, over a GH_HOST in the environment', async () => {
+    vi.stubEnv('GH_HOST', 'ghe.example')
+    try {
+      const r = await run('survey', '--repo', 'github.com/acme/api', '--no-fetch', '--json')
+      expect(r.code).toBe(EXIT.ok)
+      const listing = asked.find((c) => c.argv.includes('acme/api'))
+      expect(listing?.host).toBe('github.com')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  test("is listed through the project root's code host when it shares the root's host", async () => {
     git(project, 'remote', 'set-url', 'origin', 'https://git.example.com/o/r.git')
+    git(located, 'remote', 'set-url', 'origin', 'https://git.example.com/acme/api.git')
     vi.stubEnv('FORGEJO_TOKEN', 't')
+    const urls: string[] = []
     const curl: CommandRunner = {
-      run: (): CommandResult => ({ exitCode: 0, stdout: '[]\nHTTPSTATUS:200', stderr: '' }),
+      run: (argv): CommandResult => {
+        urls.push(argv.join(' '))
+        return { exitCode: 0, stdout: '[]\nHTTPSTATUS:200', stderr: '' }
+      },
     }
     try {
-      const r = await runWith({ curl }, 'survey', '--repo', 'acme/gone', '--no-fetch', '--json')
+      const r = await runWith(
+        { curl },
+        'survey',
+        '--repo',
+        'git.example.com/acme/api',
+        '--no-fetch',
+        '--json',
+      )
       expect(r.code).toBe(EXIT.ok)
-      expect(r.err).toContain('github.com/acme/gone: no checkout under')
-      expect(r.err).not.toContain('git.example.com/acme/gone')
+      expect(JSON.parse(r.out).repos[0]).toMatchObject({ checkout: { path: located } })
+      expect(asked.some((c) => c.argv.includes('acme/api'))).toBe(false)
+      expect(urls.some((u) => u.includes('git.example.com') && u.includes('acme/api'))).toBe(true)
     } finally {
       vi.unstubAllEnvs()
     }

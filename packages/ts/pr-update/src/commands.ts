@@ -214,6 +214,7 @@ function runEnv(
     git,
     gh,
     codeHost: selectedCodeHostFor({
+      projectRoot,
       git,
       gh,
       curl: seams.curl,
