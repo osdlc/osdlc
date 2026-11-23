@@ -171,11 +171,16 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - **Directories.** Every path below comes from `standalone('osdlc')` with
   `envVars('OSDLC')`, pinned to the Xdg convention as devlink pins it, then
   `.app('pr-update')`. `OSDLC_ROOT` moves all of it
-  ([machine-files.md](../../../../../../standards/machine-files.md)). devlink's
+  ([machine-files.md](../../../../../../standards/machine-files.md)). The
+  table and the paths elsewhere in this record are the Linux and macOS
+  defaults. The `XDG_*` and `OSDLC_*` variables move them, and Windows uses
+  `%APPDATA%` and `%LOCALAPPDATA%`
+  ([Where files go](../../../../../../standards/machine-files.md#where-files-go)).
+  devlink's
   `PR_UPDATE_*` variables keep covering only its own files in
   `~/.config/pr-update/`.
 
-  | What | Home | Path under Xdg |
+  | What | Home | Default path on Linux and macOS |
   | --- | --- | --- |
   | Machine file | config | `~/.config/osdlc/pr-update/config.yaml` |
   | Clones | cache | `~/.cache/osdlc/pr-update/repos/<host>/<owner>/<name>.git` |
