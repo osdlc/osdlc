@@ -21,9 +21,9 @@ counts, paths and names from the repository reach the output.
 
 The `diffkit dev` commands are the exception. They write their link state and history under the
 user's configuration directory, and `dev install` writes an executable shim into the directory
-given with `--bin-dir`, by default `$XDG_BIN_HOME` or `~/.local/bin`. After `dev link <checkout>`,
-a `diffkit` run executes that checkout's source under Bun, and so does a run with `DIFFKIT_HOME`
-set to a checkout.
+given with `--bin-dir`. The default is `$XDG_BIN_HOME` when that is an absolute path, and
+`~/.local/bin` otherwise. After `dev link <checkout>`, a `diffkit` run executes that checkout's
+source under Bun, and so does a run with `DIFFKIT_HOME` set to a checkout.
 
 A way to make it run a command you did not name, read a file outside the repository, or write
 anywhere else is in scope. Where the change comes from is `@osdlc/code-stats`'s to resolve, and
