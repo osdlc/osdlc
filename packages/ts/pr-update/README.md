@@ -196,7 +196,7 @@ Step 3 is set by `checkout` in pr-update's machine file
 |---|---|
 | `mirror` | is served from a managed clone, which the first `update --apply` that needs it makes |
 | `local` | is skipped, and a clone that exists is not used |
-| not set | `update --apply` asks once and saves the answer; with no terminal it exits `2`. `survey` and a rehearsal report the target not measured |
+| not set | is served from a clone that exists. With none, `update --apply` asks once and saves the answer, or with no terminal exits `2`; `survey` and a rehearsal report the target not measured |
 
 Consent to clone is the first of these that is set: `--mirror-dir <dir>` on
 the run, `PR_UPDATE_MIRROR_DIR=<dir>` in the environment, then `checkout:
