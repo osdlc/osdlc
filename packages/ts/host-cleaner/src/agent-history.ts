@@ -10,7 +10,8 @@
  * (`<session>.jsonl`) and each `projectPath` in `sessions-index.json`. A
  * folder that records no path, or one that does not turn into its name, is
  * skipped, never guessed. A folder is a candidate when every path it records
- * is gone, unless one would be on a volume that is not mounted. It is `lost`:
+ * is gone, unless one would be on a volume that is not mounted, or nothing
+ * above it but the root exists. It is `lost`:
  * held, and deleted only when picked and allowed `discard-user-data`.
  *
  * A folder is refused while a Claude Code session in it runs
@@ -75,11 +76,16 @@ function gone(path: string): boolean {
   }
 }
 
-/** Whether `path` may be on a volume that is not mounted: the nearest folder above it that exists is where volumes are mounted. */
+/**
+ * Whether `path` may be on a volume that is not mounted: the nearest folder
+ * above it that exists is where volumes are mounted, or no folder above it
+ * exists but the root, such as `/Volumes/x` recorded on a Mac and read on
+ * Linux, or a Windows drive that is away.
+ */
 function unmounted(path: string): boolean {
   let dir = dirname(path)
   while (dirname(dir) !== dir && gone(dir)) dir = dirname(dir)
-  return MOUNTS.has(dir) || USER_MOUNTS.has(dirname(dir))
+  return dirname(dir) === dir || MOUNTS.has(dir) || USER_MOUNTS.has(dirname(dir))
 }
 
 /** The first `HEAD_BYTES` of `file`, and whether that is all of it. */

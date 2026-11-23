@@ -233,6 +233,12 @@ describe('discover', () => {
     expect((await survey([fx.plugin()], fx.ctx)).candidates).toEqual([])
   })
 
+  test('a path with no folder above it but the root is not taken for gone', async () => {
+    const fx = fixture()
+    fx.history('/host-cleaner-no-such-root/dev/app')
+    expect((await survey([fx.plugin()], fx.ctx)).candidates).toEqual([])
+  })
+
   test('a project folder that is a link is skipped', async () => {
     const fx = fixture()
     const real = join(fx.home, 'real-history')

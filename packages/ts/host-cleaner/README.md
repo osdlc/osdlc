@@ -277,8 +277,9 @@ each `projectPath` in `sessions-index.json`. A folder that records no path, or
 a path that does not give its name (it was moved, or its records disagree), is
 skipped, never guessed. A folder is proposed only when every path it records
 is gone, and not when that path would be on a volume that is not mounted
-(under `/Volumes`, `/mnt`, `/media` or `/run/media`). A folder that is a link
-is skipped.
+(under `/Volumes`, `/mnt`, `/media` or `/run/media`), or when no folder above
+it exists but the root (a path from another machine, or a drive that is away).
+A folder that is a link is skipped.
 
 History cannot be fetched or built again, so its `costDescription` is `lost`:
 it is held, and runs only when picked and allowed:
