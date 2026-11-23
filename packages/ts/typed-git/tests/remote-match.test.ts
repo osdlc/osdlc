@@ -9,7 +9,13 @@ import { homedir } from 'node:os'
 
 import type { CommandRunOptions, CommandRunner } from '@osdlc/command-seam'
 
-import { isSshRemote, readRemote, sameRepo, sshAliasResolver } from '../src/index.ts'
+import {
+  isSshRemote,
+  parseRemoteRepo,
+  readRemote,
+  sameRepo,
+  sshAliasResolver,
+} from '../src/index.ts'
 
 describe('readRemote', () => {
   const aliases = (alias: string) =>
@@ -38,6 +44,18 @@ describe('readRemote', () => {
   test('an alias for ssh.github.com reads as github.com', () => {
     const ssh443 = (alias: string) => (alias === 'github-work' ? 'ssh.github.com' : null)
     expect(readRemote('git@github-work:acme/widgets.git', ssh443)?.host).toBe('github.com')
+  })
+
+  test('a resolved host reads as parseRemoteRepo reads a written one', () => {
+    const resolved = (alias: string) =>
+      ({ 'gl-work': 'www.gitlab.com', 'bb-work': 'www.bitbucket.org', ghe: 'GHE.Example.com' })[
+        alias
+      ] ?? null
+    const gitlab = readRemote('git@gl-work:acme/widgets.git', resolved)
+    expect(gitlab?.host).toBe('gitlab.com')
+    expect(gitlab).toEqual(parseRemoteRepo('https://gitlab.com/acme/widgets'))
+    expect(readRemote('git@bb-work:acme/widgets.git', resolved)?.host).toBe('bitbucket.org')
+    expect(readRemote('git@ghe:acme/widgets.git', resolved)?.host).toBe('ghe.example.com')
   })
 
   test('asks ssh only about an SSH remote that is not on github.com', () => {

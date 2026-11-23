@@ -63,8 +63,9 @@ export function isSshRemote(url: string): boolean {
  * A remote URL read as `{host, owner, repo}`, as {@link parseRemoteRepo}
  * reads it, but with an SSH config alias replaced by the host ssh's config
  * gives for it (`git@github-work:o/r.git` or `git@github.com-work:o/r.git`).
- * The resolved host is lower-cased, and `ssh.github.com` reads as
- * `github.com`.
+ * The resolved host is normalised as `parseRemoteRepo` normalises a written
+ * one: lower-cased, `ssh.github.com` as `github.com`, and `www.gitlab.com`
+ * as `gitlab.com`.
  *
  * ssh is asked only for an SSH remote whose host is not `github.com`. The
  * hosts of other URL schemes are taken as written, and an alias ssh cannot
@@ -78,7 +79,12 @@ export function readRemote(
   const remote = parseRemoteRepo(url)
   if (remote === null || remote.host === 'github.com' || !isSshRemote(url)) return remote
   const target = resolveAlias(remote.host)
-  return target === null ? remote : { ...remote, host: canonicalHost(target) }
+  if (target === null) return remote
+  // Read the resolved host through parseRemoteRepo, so it gets the same
+  // normalising as a host written in the URL: lower case, `ssh.github.com` as
+  // `github.com`, and `www.` dropped from a host hosted-git-info knows.
+  const parsed = parseRemoteRepo(`ssh://git@${target}/${remote.owner}/${remote.repo}.git`)
+  return { ...remote, host: parsed?.host ?? canonicalHost(target) }
 }
 
 /**

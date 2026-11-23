@@ -1055,7 +1055,8 @@ config alias first. A remote such as `git@github-work:acme/widgets.git`
 names a `Host` entry in `~/.ssh/config`, the usual setup for two accounts on
 one forge, so its host is not the forge's. `readRemote` asks `ssh -G` for the
 host behind it, as `gh` does, and reads that host as `parseRemoteRepo` would
-(lower-cased, `ssh.github.com` as `github.com`). It asks only for an SSH
+(lower-cased, `ssh.github.com` as `github.com`, a known host's `www.`
+dropped). It asks only for an SSH
 remote (`ssh://`, `git+ssh://`, `ssh+git://` or scp-like; `isSshRemote`
 says which) whose host is not `github.com`. An alias ssh cannot resolve keeps
 its own name.
