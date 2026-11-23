@@ -1,5 +1,6 @@
 /** The plugins the command line knows, and the choice among them. */
 
+import { agentHistoryDefinition } from './agent-history.ts'
 import { cargoDefinition } from './cargo.ts'
 import { gitDefinition } from './git.ts'
 import { nodeDefinition } from './node.ts'
@@ -15,6 +16,7 @@ export const BUILT_IN_PLUGINS: readonly PluginDefinition[] = [
   cargoDefinition,
   nodeDefinition,
   orcaDefinition,
+  agentHistoryDefinition,
 ]
 
 /** A `--plugin` or `--skip-plugin` that names no plugin. */

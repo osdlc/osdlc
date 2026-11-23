@@ -7,12 +7,12 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node` and `orca` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `orca` and `agent-history` plugins, and the `host-cleaner` command.
 
 ## Phases
 
 Plugins run in the order they are given. The command line runs the shipped
-ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `orca`.
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `orca`, `agent-history`.
 The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
@@ -262,6 +262,41 @@ goes through `@osdlc/command-seam` with `--json`.
 ```sh
 host-cleaner clean --pick worktree:/path/to/wt --allow close-terminals
 ```
+
+## The `agent-history` plugin
+
+Claude Code keeps each project's sessions in `~/.claude/projects/<name>/`
+(`CLAUDE_CONFIG_DIR/projects` when that is set). When a worktree is removed,
+its history stays. This plugin proposes the history of a project whose folder
+no longer exists, as `claude-history:<folder>`, with its size.
+
+`<name>` is the project's path with every character but a letter or a digit
+turned into `-`, which cannot be turned back. So the path is read from what
+the folder records: the first `cwd` of each transcript (`<session>.jsonl`) and
+each `projectPath` in `sessions-index.json`. A folder that records no path, or
+a path that does not give its name (it was moved, or its records disagree), is
+skipped, never guessed. A folder is proposed only when every path it records
+is gone, and not when that path would be on a volume that is not mounted
+(under `/Volumes`, `/mnt`, `/media` or `/run/media`). A folder that is a link
+is skipped.
+
+History cannot be fetched or built again, so its `costDescription` is `lost`:
+it is held, and runs only when picked and allowed:
+
+```sh
+host-cleaner clean --pick claude-history:~/.claude/projects/-Users-me-dev-app-wt --allow discard-user-data
+```
+
+It is a `refuse` while a Claude Code session in it is running (`live-session`:
+a `~/.claude/sessions/<pid>.json` whose process is alive and whose `cwd` or
+session is the folder's), while a process still works in the gone folder
+(`live-process`), or when either cannot be read (`session-state-unreadable`,
+`process-table-unreadable`). `delete` reads the folder and the sessions again,
+then removes it with `kit.remove`. No settings.
+
+Codex is left out: it keeps sessions by date
+(`~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl`), with the working
+folder inside each file, so it has no folder per project to remove.
 
 ## Command line
 
