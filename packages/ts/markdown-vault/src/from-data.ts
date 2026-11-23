@@ -56,7 +56,7 @@ export interface CreateVaultIndexOptions {
   /**
    * Resolve `links`/`embeds` targets against the supplied note set (the rules
    * `scanVault` uses: exact path, then extension rules, then shortest path)
-   * and invert them into `backlinks`.
+   * and invert them into `backlinks`, added to any that were supplied.
    *
    * Default false: links/embeds stay unresolved (`path: null`, exactly as
    * written) and each note's `backlinks` is what was supplied, with repeats

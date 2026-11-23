@@ -124,8 +124,8 @@ expect(vault.byPath.get('notes/Ideas.md')!.properties).toEqual({
 ```
 
 By default links stay unresolved (`path: null`) and `backlinks` is what you supplied, with repeats
-dropped. With `resolveLinks: true` the links resolve against the notes you passed and backlinks
-are computed.
+dropped. With `resolveLinks: true` the links resolve against the notes you passed, and the
+backlinks computed from them are added to the ones you supplied.
 `frontmatter` may be an object or a JSON string; a string that is not a JSON object gives `{}`.
 `title` and `aliases` fill the properties when the frontmatter has no such key. Give each note its
 own `path`: when two share one, both stay in `notes` and `byPath` holds the later one.
