@@ -17,5 +17,5 @@ work the same for both.
 `trust` results and `listGrants` entries now carry `kind`, `path` or `repo`.
 `list` and `listGrants` return folders first, then repositories. In a policy,
 `paths` never matches a repository, and `owners` matches the host and owner
-the key names, without calling `ownerOf`. Stores without repository grants
-read and behave as before.
+the key names, without calling `ownerOf`. A store written before reads as it
+did.

@@ -252,7 +252,7 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
           positionals: [
             {
               name: 'repository',
-              help: 'a repository as host/owner/name, such as github.com/acme/api, in place of this one',
+              help: 'a repository as host/owner/name, such as github.com/acme/api, instead of the working directory',
             },
           ],
         }
