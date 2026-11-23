@@ -110,9 +110,14 @@ const present = (path: string): boolean => lstatSync(path, { throwIfNoEntry: fal
 const isLink = (path: string): boolean =>
   lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true
 
+/**
+ * `path`'s real path as the filesystem spells it, or `path` as given when it
+ * does not resolve. The native call matters where the filesystem ignores case,
+ * as macOS's does: there `~/documents` is `~/Documents`.
+ */
 const realOr = (path: string): string => {
   try {
-    return realpathSync(path)
+    return realpathSync.native(path)
   } catch {
     return path
   }

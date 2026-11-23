@@ -31,6 +31,7 @@ import {
   descriptorPlugin,
   globMatches,
   parseDescriptor,
+  pathProblem,
   plan,
   pluginKit,
   skipReason,
@@ -471,6 +472,37 @@ candidates:
     expect(r.candidates[0]).toMatchObject({ held: true })
     expect(r.candidates[0]!.bytes).toBeUndefined()
   })
+
+  // macOS's default filesystem ignores case, so ~/documents is ~/Documents.
+  const caseBlind = (() => {
+    const h = tempHome()
+    try {
+      mkdirSync(join(h.home, 'Probe'))
+      return existsSync(join(h.home, 'probe'))
+    } finally {
+      h.cleanup()
+    }
+  })()
+
+  test.runIf(caseBlind)(
+    'on a filesystem that ignores case, a personal folder, the home folder and a target are refused in any case',
+    async () => {
+      const b = build('x', one('~/documents'), { fill: false })
+      mkdirSync(join(b.home, 'Documents'))
+      mkdirSync(join(b.home, 'dev'))
+      const at = { home: b.home, targets: [join(b.home, 'dev')], checkouts: [], ownDirs: [] }
+      expect(pathProblem(join(b.home, 'documents'), at)).toBe(
+        'it is the personal folder ~/Documents',
+      )
+      expect(pathProblem(join(b.home, 'DEV'), at)).toBe('it is a target')
+      expect(pathProblem(b.home.toUpperCase(), at)).toBe('it is the home folder')
+      const s = await survey([b.plugin], ctxOf())
+      expect(s.objections.filter((o) => o.by === 'x').map((o) => o.reason)).toEqual([
+        `${join(b.home, 'documents')}: it is the personal folder ~/Documents`,
+      ])
+      expect(s.roots.x).toEqual([])
+    },
+  )
 
   test('a folder inside a personal folder is not', async () => {
     const r = await refusal('~/Library/Caches/pip')
