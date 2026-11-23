@@ -504,6 +504,32 @@ describe('resolveTargets', () => {
     )
   })
 
+  test.each([
+    ['acme/con', 'con'],
+    ['acme/Aux.txt', 'aux.txt'],
+    ['nul/api', 'nul'],
+    ['acme/COM1', 'com1'],
+    ['acme/lpt9.tar.gz', 'lpt9.tar.gz'],
+    ['acme/api.', 'api.'],
+    ['acme/a<b', 'a<b'],
+    ['acme/a>b', 'a>b'],
+    ['a"b/api', 'a"b'],
+    ['acme/a|b', 'a|b'],
+    ['acme/a?b', 'a?b'],
+    ['acme/a*b', 'a*b'],
+  ])('--repo %s, which Windows cannot use as a folder, is a usage error', (text, part) => {
+    expect(() => resolveTargets('o/r', '/repo', [text], locate({}), opts)).toThrow(
+      `--repo ${text}: ${part} cannot be a folder name on Windows`,
+    )
+  })
+
+  test.each(['acme/console', 'acme/com10', 'acme/lpt', 'acme/a.b'])(
+    '--repo %s is a folder name Windows takes',
+    (text) => {
+      expect(() => resolveTargets('o/r', '/repo', [text], locate({}), opts)).not.toThrow()
+    },
+  )
+
   test.each(['under_score.example/x/y', 'ghe.example:port/x/y', 'host:/x/y'])(
     '--repo %s, whose host is not a host name, is a usage error',
     (text) => {
