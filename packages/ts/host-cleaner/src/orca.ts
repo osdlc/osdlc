@@ -2,10 +2,11 @@
  * The `orca` plugin: worktrees that the Orca app keeps a record of, and the
  * terminals and agents it holds open in them.
  *
- * Detected when the `orca` CLI is found (on `PATH`, or in the app bundle) and
- * answers `orca status`. When the app is installed but not running, Orca's
- * records cannot be read, so every `git` worktree under {@link ORCA_WORKSPACES}
- * is refused with `orca-unreachable` and the other worktrees are left to `git`.
+ * Detected when the `orca` CLI is found (on `PATH`, or in the app bundle).
+ * When the app is not running, or `orca status` fails or prints no JSON,
+ * Orca's records cannot be read, so every `git` worktree under
+ * {@link ORCA_WORKSPACES} is refused with `orca-unreachable` and the other
+ * worktrees are left to `git`.
  *
  * The `git` plugin owns a worktree, so it removes the directory. This plugin
  * objects first (an agent at work refuses; open terminals protest with
@@ -159,8 +160,8 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
     return parseRecords(result)
   }
 
-  /** Set by `detect`: installed but not running, so no call to Orca can succeed. */
-  let down = false
+  /** Set by `detect` to why Orca cannot be asked (not running, or its status unreadable); no call to Orca is made then. */
+  let down: string | undefined
 
   /** The records seen at `prepare`, kept for `deleted`, since Orca may list less once git has removed the directory. */
   const prepared = new Map<string, OrcaRecord>()
@@ -192,15 +193,22 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
   return {
     name: ORCA_PLUGIN,
     detect(ctx) {
-      down = false
+      down = undefined
       if (found() === undefined) return false
-      const status = call(['status'], ctx)
+      let status: unknown
+      try {
+        status = call(['status'], ctx)
+      } catch (err) {
+        const why = err instanceof Error ? err.message : String(err)
+        down = `Orca's status could not be read (${why})`
+        return true
+      }
       const runtime = isObject(status) && isObject(status.runtime) ? status.runtime : {}
-      down = runtime.reachable !== true
+      if (runtime.reachable !== true) down = 'Orca is installed but not running'
       return true
     },
     scope(ctx) {
-      if (down || options.repos === false) return []
+      if (down !== undefined || options.repos === false) return []
       const repos = call(['repo', 'list'], ctx)
       const rows = isObject(repos) && Array.isArray(repos.repos) ? repos.repos : []
       return rows.flatMap((r) =>
@@ -210,7 +218,7 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
       )
     },
     discover(ctx) {
-      if (down) return []
+      if (down !== undefined) return []
       return records(ctx)
         .filter((r) => !r.main && !existsSync(r.path))
         .map((r): Candidate => ({
@@ -226,7 +234,8 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
     object(all, ctx) {
       const worktrees = all.filter(isGitWorktree)
       if (worktrees.length === 0) return []
-      if (down) {
+      if (down !== undefined) {
+        const why = down
         // No fallback to git: a worktree Orca may hold open is not taken while it cannot be asked.
         return worktrees
           .filter(inWorkspaces)
@@ -235,7 +244,7 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
               c,
               'refuse',
               'orca-unreachable',
-              `Orca is installed but not running, and ${c.path} is under its workspaces folder`,
+              `${why}, and ${c.path} is under its workspaces folder`,
             ),
           )
       }
@@ -281,9 +290,8 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
     },
     prepare(c, ctx) {
       if (!isGitWorktree(c)) return
-      if (down) {
-        if (inWorkspaces(c))
-          throw new Error(`Orca is not running and ${c.path} may be its worktree`)
+      if (down !== undefined) {
+        if (inWorkspaces(c)) throw new Error(`${down}, and ${c.path} may be its worktree`)
         return
       }
       const r = recordFor(c, records(ctx))
