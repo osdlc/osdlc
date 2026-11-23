@@ -38,7 +38,7 @@ flowchart LR
   k_testing["@osdlc/host-cleaner/testing with a contract suit"]
   k_plugins_cmd["host-cleaner plugins (D6)"]
   k_docs["Docs pass, and the system description lands in t"]
-  k_rename["Rename the package, bin, folders and env vars (#"]
+  k_rename["Rename the package, bin, folders and env vars"]
   k_release1["Release 1: drop private, changeset, publish"]
   k_bi_vscode["vscode: storage for folders that no longer exist"]
   k_bi_cursor["cursor: the same for Cursor, held as lost"]
@@ -161,7 +161,7 @@ it doesn't assume the review that produced it.
 - Tests, lint and typecheck pass on the branch. A task stays inside its issue's scope; anything else found on
   the way becomes a new issue under #669.
 - Follow the repository's CLAUDE.md. No AI or tool attribution in commits or PRs.
-- Owner-only steps: merging, choosing the name (#998), and publishing each release.
+- Owner-only steps: merging, choosing the package name, and publishing each release.
 
 ### Branches
 
@@ -176,7 +176,7 @@ it doesn't assume the review that produced it.
 | The plugin contract | `sksizer/hc-contract` | `sksizer/hc-trim`, from k-trim (#1017) | — | One branch and one PR for k-async (#1023), k-define (#1024), k-ref (#1025), k-cost (#1026), k-overlap (#1027), k-kit (#1028), k-testing (#1029): a commit per task, in plan order. |
 | k-plugins-cmd (#1030) | `sksizer/hc-plugins-cmd` | `sksizer/hc-contract`, from the contract | — |  |
 | k-docs (#1031) | `sksizer/hc-docs` | `sksizer/hc-plugins-cmd`, from k-plugins-cmd (#1030) | k-xdg (#1018), k-orca (#664), k-unknown (#1020), k-archive (#1021), k-sizeof (#1022) |  |
-| k-rename (#1032) | `sksizer/hc-rename` | `sksizer/hc-docs`, from k-docs (#1031) | — | Waits for a name (#998). Everything else in it can be written first, with the name as one constant. |
+| k-rename (#1032) | `sksizer/hc-rename` | `sksizer/hc-docs`, from k-docs (#1031) | — | Waits for the owner to choose the name; #998 keeps the package private until then. Everything else in it can be written first, with the name as one constant. |
 | k-release1 (#1033) | `sksizer/hc-release1` | `sksizer/hc-rename`, from k-rename (#1032) | — | Publishes only with the owner's go-ahead. |
 | k-bi-vscode (#1034) | `sksizer/hc-bi-vscode` | `sksizer/hc-contract`, from the contract | — |  |
 | k-bi-cursor (#1035) | `sksizer/hc-bi-cursor` | `sksizer/hc-bi-vscode`, from k-bi-vscode (#1034) | — |  |
@@ -221,7 +221,7 @@ it doesn't assume the review that produced it.
 | k-testing (#1029): @osdlc/host-cleaner/testing with a contract suite (D9) | p2 | k-kit | one contract PR | M |
 | k-plugins-cmd (#1030): host-cleaner plugins (D6) | p3 | k-define | new | S |
 | k-docs (#1031): Docs pass, and the system description lands in the repo | p3 | Phase 1 merged, k-plugins-cmd | new | M |
-| k-rename (#1032): Rename the package, bin, folders and env vars (#998) | p3 | A name chosen | new | S |
+| k-rename (#1032): Rename the package, bin, folders and env vars | p3 | A name chosen | new | S |
 | k-release1 (#1033): Release 1: drop private, changeset, publish | p3 | k-rename, k-docs, k-testing | new | S |
 | k-bi-vscode (#1034): vscode: storage for folders that no longer exist | p-builtins | k-testing | new | M |
 | k-bi-cursor (#1035): cursor: the same for Cursor, held as lost | p-builtins | k-bi-vscode | new | S |
@@ -230,7 +230,7 @@ it doesn't assume the review that produced it.
 | k-bi-ollama (#1038): ollama: models no recent run used | p-builtins | k-testing | new | S |
 | k-bi-toolchains (#1039): toolchains: Rust and Node versions no checkout asks for | p-builtins | k-testing | new | M |
 | k-bi-agent-history (#1040): agent-history: Claude Code and Codex folders for gone worktrees | p-builtins | k-testing | new | M |
-| k-schema (#1041): The descriptor format: JSON Schema, zod types, YAML reader | p4 | none: starts at once | new | M |
+| k-schema (#1041): The descriptor format: JSON Schema, zod types, YAML reader | p4 | nothing to use: it can be written before the contract is pushed | new | M |
 | k-draft (#1042): Drafting script: corpus store to draft descriptor | p4 | k-schema | new | M |
 | k-engine (#1043): Descriptor to plugin, built only on the kit | p4 | k-schema, k-kit, k-testing | new | L |
 | k-load (#1044): Descriptor sources and one plugin namespace | p4 | k-engine, k-xdg | new | M |
@@ -631,7 +631,7 @@ Gate: k-kit. PR: one contract PR. Size: M. Assumes: D9 = yes, D14 = js-json.
 
 ## Phase 3 · First release
 
-**Gate:** k-define merged; a name chosen (#998), for k-rename only
+**Gate:** k-define merged; the owner names the package, for k-rename only
 
 Runs beside phase 4. Ships the first version under its new name.
 
@@ -690,7 +690,7 @@ Gate: Phase 1 merged, k-plugins-cmd. PR: new. Size: M.
 
 ### Release
 
-#### k-rename (#1032): Rename the package, bin, folders and env vars (#998)
+#### k-rename (#1032): Rename the package, bin, folders and env vars
 
 Mechanical, once the name exists. The name is one constant.
 
@@ -932,7 +932,7 @@ Done when:
 - Every example in the system description validates.
 - Bad examples fail with the field path.
 
-Gate: none: starts at once. PR: new. Size: M.
+Gate: nothing to use: it can be written before the contract is pushed. PR: new. Size: M.
 
 #### k-draft (#1042): Drafting script: corpus store to draft descriptor
 
