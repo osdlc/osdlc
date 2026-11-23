@@ -723,6 +723,10 @@ integer. Both checks throw a `TypeError` before git runs.
 
 ### Queries
 
+The paths `topLevel()`, `gitCommonDir()`, `gitDir()`, `mainCheckout()` and
+`worktrees()` give are in Node's form: on Windows `C:\x`, not the `C:/x` git
+prints, so they compare equal to the paths `node:path` makes.
+
 "Absence" is the exit code this verb declares as an answer. Any other non-zero
 exit throws the classified failure.
 

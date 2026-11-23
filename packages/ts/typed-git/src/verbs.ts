@@ -13,6 +13,8 @@
  * `GitVerb` and `gate` are internal: the package entries do not export them.
  */
 
+import { normalize } from 'node:path'
+
 import { CommandFailed, notAnOption, runFailed, type CommandResult } from '@osdlc/command-seam'
 
 import { gitFailureError } from './failure.ts'
@@ -174,7 +176,7 @@ export function repoPrefix(gitDir: string | undefined, workTree: string | undefi
 
 /** One row of `git worktree list --porcelain`. */
 export interface Worktree {
-  /** Absolute path of the worktree. */
+  /** Absolute path of the worktree, in Node's form (`C:\x` on Windows, not git's `C:/x`). */
   path: string
   /** HEAD sha, or null for an entry that reports none (a bare store). */
   head: string | null
@@ -240,6 +242,21 @@ function trimmedOrNull(r: CommandResult): string | null {
   if (r.exitCode !== 0) return null
   const out = r.stdout.trim()
   return out === '' ? null : out
+}
+
+/**
+ * A path git printed, in the form Node's own paths take. Git for Windows
+ * prints `C:/x/y`, where `node:path` gives `C:\x\y`, so a caller comparing
+ * the two would see two paths. Elsewhere git's path is already that form.
+ */
+function nativePath(path: string): string {
+  return process.platform === 'win32' ? normalize(path) : path
+}
+
+/** {@link trimmedOrNull}, as a {@link nativePath}. */
+function pathOrNull(r: CommandResult): string | null {
+  const out = trimmedOrNull(r)
+  return out === null ? null : nativePath(out)
 }
 
 /** Non-blank lines of a command's stdout, verbatim. */
@@ -497,14 +514,16 @@ export function headRef(): GitVerb<string | null> {
 }
 
 /**
- * Absolute repo top-level directory, or null outside a repo.
+ * Absolute repo top-level directory, or null outside a repo. It is in Node's
+ * form, as are {@link gitCommonDir}, {@link gitDir} and {@link worktrees}
+ * paths: `C:\x` on Windows, where git prints `C:/x`.
  *
  * `absent: [128]`: for this question "not a repository" is a real answer,
  * so `if (!git.topLevel())` is the usual "am I in a repo?" check. Most
  * other verbs throw there — see {@link lsFiles}.
  */
 export function topLevel(): GitVerb<string | null> {
-  return { argv: ['rev-parse', '--show-toplevel'], absent: [128], parse: trimmedOrNull }
+  return { argv: ['rev-parse', '--show-toplevel'], absent: [128], parse: pathOrNull }
 }
 
 /**
@@ -522,7 +541,7 @@ export function gitCommonDir(): GitVerb<string | null> {
   return {
     argv: ['rev-parse', '--path-format=absolute', '--git-common-dir'],
     absent: [128],
-    parse: trimmedOrNull,
+    parse: pathOrNull,
   }
 }
 
@@ -537,7 +556,7 @@ export function gitCommonDir(): GitVerb<string | null> {
  * `absent: [128]`, as for {@link gitCommonDir}: "not a repository" is an answer.
  */
 export function gitDir(): GitVerb<string | null> {
-  return { argv: ['rev-parse', '--absolute-git-dir'], absent: [128], parse: trimmedOrNull }
+  return { argv: ['rev-parse', '--absolute-git-dir'], absent: [128], parse: pathOrNull }
 }
 
 /**
@@ -705,7 +724,7 @@ function worktreeRecords(lines: readonly string[]): Worktree[] {
   for (const line of lines) {
     if (line.startsWith('worktree ')) {
       flush()
-      cur = { path: line.slice('worktree '.length) }
+      cur = { path: nativePath(line.slice('worktree '.length)) }
     } else if (cur !== null && line.startsWith('HEAD ')) {
       cur.head = line.slice('HEAD '.length)
     } else if (cur !== null && line.startsWith('branch ')) {
@@ -1857,12 +1876,17 @@ function readsAsDotGit(name: string): boolean {
  * and `is_ntfs_dotgitmodules`): the HFS+ and NTFS spellings, the short names
  * `gitmod~1` to `~4`, and the 8.3 fallback short name, whose prefix
  * `gi7eba` git took from a hash of the long name.
+ *
+ * Git for Windows also ends the name at a backslash, so there `.gitmodules\x`
+ * is `.gitmodules`; git elsewhere reads it as an ordinary name.
  */
 function readsAsDotGitmodules(name: string): boolean {
   if (hfsReadsAs(name, 'gitmodules')) return true
   const lower = asciiLower(name)
-  if (lower.startsWith('.gitmodules')) return ntfsTailIsEmpty(name.slice(11))
-  if (/^gitmod~[1-4]/.test(lower)) return ntfsTailIsEmpty(name.slice(8))
+  const tailIsEmpty = (rest: string) =>
+    ntfsTailIsEmpty(process.platform === 'win32' ? rest.split('\\')[0]! : rest)
+  if (lower.startsWith('.gitmodules')) return tailIsEmpty(name.slice(11))
+  if (/^gitmod~[1-4]/.test(lower)) return tailIsEmpty(name.slice(8))
   // The fallback: a leading part of `gi7eba` (at most six characters), `~`,
   // a digit 1-9, then digits up to eight characters. This follows git's loop
   // step for step, so a `~` at index 7 reads one character past eight.
@@ -1883,7 +1907,7 @@ function readsAsDotGitmodules(name: string): boolean {
       return false
     }
   }
-  return ntfsTailIsEmpty(name.slice(i))
+  return tailIsEmpty(name.slice(i))
 }
 
 /**

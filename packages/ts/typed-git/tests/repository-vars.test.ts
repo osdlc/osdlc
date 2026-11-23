@@ -20,7 +20,7 @@ import { makeGitFixture } from '../src/testing.ts'
 
 let scratch: string
 beforeEach(() => {
-  scratch = realpathSync(mkdtempSync(join(tmpdir(), 'typed-git-repo-vars-')))
+  scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'typed-git-repo-vars-')))
 })
 afterEach(() => {
   vi.unstubAllEnvs()

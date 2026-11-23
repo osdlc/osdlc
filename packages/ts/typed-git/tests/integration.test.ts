@@ -367,7 +367,8 @@ describe('real git — merge-tree predicts without touching the worktree', () =>
   })
 
   test('-z returns a path needing quotes raw, not C-quoted', () => {
-    const odd = 'wéird "name".txt'
+    // A Windows file name cannot hold `"`; the `é` alone still needs quotes there.
+    const odd = process.platform === 'win32' ? 'wéird name.txt' : 'wéird "name".txt'
     branchWith('mt-odd-a', 'main', { [odd]: 'a\n' })
     branchWith('mt-odd-b', 'main', { [odd]: 'b\n' })
 
