@@ -809,6 +809,9 @@ importers:
       '@osdlc/command-seam':
         specifier: workspace:^
         version: link:../command-seam
+      '@osdlc/path-guard':
+        specifier: workspace:^
+        version: link:../path-guard
       '@osdlc/typed-git':
         specifier: workspace:^
         version: link:../typed-git

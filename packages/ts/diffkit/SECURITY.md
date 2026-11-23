@@ -15,7 +15,8 @@ Include the version, a short description, and steps to reproduce.
 The package runs `git`, and `gh` for a pull request, with an argument list and no shell. It writes
 no files and creates no temporary files. It reads the repository it runs in: the changed files from
 git, and other source files in the working tree to find importers. A file that is a symlink is not
-followed, so a tracked link cannot make it read a file outside the repository. Only counts, paths
+followed, and a file behind a linked directory is read only when its real path is inside the
+repository, so a tracked link cannot make it read a file outside the repository. Only counts, paths
 and names from the repository reach the output.
 
 A way to make it run a command you did not name, read a file outside the repository, or write

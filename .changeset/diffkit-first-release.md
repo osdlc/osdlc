@@ -11,6 +11,6 @@ First public release. `diffkit prep` and `runPrep` read a pull request, a branch
 - **Breaking:** `zod` is a peer dependency at `^4`, no longer a dependency.
 - `PACKAGE_MARKERS`, `packageRoots`, `nearestRoot` and `buildGroups` are experimental. Their shape may change in any release.
 - Every export has TSDoc and a runnable example.
-- The flags no longer follow a symlink when they read the checkout, so a tracked link cannot make a run read a file outside the repository.
+- The flags do not follow a symlink when they read the checkout, and do not read through a linked directory that leaves the repository, so a tracked link cannot make a run read a file outside the repository.
 - `--base <ref>` with `--worktree` diffs the merge base of `<ref>` and `HEAD` against the working tree.
 - The package is licensed `MIT OR Apache-2.0`.

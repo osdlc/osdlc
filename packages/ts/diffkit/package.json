@@ -62,6 +62,7 @@
     "@osdlc/cli-tool": "workspace:^",
     "@osdlc/code-stats": "workspace:^",
     "@osdlc/command-seam": "workspace:^",
+    "@osdlc/path-guard": "workspace:^",
     "@osdlc/typed-git": "workspace:^"
   },
   "peerDependencies": {

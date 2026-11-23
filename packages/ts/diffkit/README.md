@@ -152,7 +152,8 @@ Runnable examples of each are in [`examples/`](./examples/).
 ## Reading the checkout
 
 The flags read source files from the working tree to find who imports an export. A file that is a
-symlink is not followed and counts as unreadable, so a tracked link cannot make a run read a file
+symlink is not followed and counts as unreadable, and a file behind a linked directory is read only
+when its real path is still inside the repository, so a tracked link cannot make a run read a file
 outside the repository. The changed files themselves are read from git at the head commit. See
 [SECURITY.md](./SECURITY.md).
 
@@ -196,7 +197,7 @@ diffkit dev off                                    # back to the installed copy
 `DIFFKIT_HOME=<checkout> diffkit …` does the same for one run. The checkout runs from source under
 Bun, with its own installed dependencies. The installed copy says which checkout it hands off to on
 stderr; `DIFFKIT_QUIET=1` silences that line. `dev` is a command word, so `diffkit dev …` never reaches
-`prep`. See [`@osdlc/cli-tool`'s devlink](https://github.com/osdlc/osdlc/tree/main/packages/ts/cli-tool#running-from-a-checkout).
+`prep`. See [`@osdlc/cli-tool`'s devlink](https://github.com/osdlc/osdlc/tree/main/packages/ts/cli-tool#running-from-a-checkout-or-a-projects-pinned-copy).
 
 ## Licence
 

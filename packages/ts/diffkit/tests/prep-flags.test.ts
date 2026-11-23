@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 
 import { afterEach, describe, expect, test } from 'vitest'
 import { EXIT, captureContext } from '@osdlc/cli-tool'
@@ -210,6 +210,11 @@ describe('manifest and CLI', () => {
     expect((await run('nope'))[0]).toBe(EXIT.usage)
     expect((await run('--group-size=-1'))[0]).toBe(EXIT.usage)
     expect((await run('--since', 'x'))[0]).toBe(EXIT.usage)
+    for (const flag of ['base', 'head']) {
+      const [code, message] = await run('--base', 'main', `--${flag}=-x`)
+      expect(code).toBe(EXIT.usage)
+      expect(message).toContain(`diffkit prep: --${flag} must not start with '-'`)
+    }
     const [bad, err] = await run('--base', 'no-such-ref')
     expect(bad).toBe(EXIT.error)
     expect(err).toContain('no-such-ref')
@@ -317,10 +322,42 @@ describe('symlinks', () => {
     }
   })
 
+  test('a file behind a linked directory that leaves the repository is not read', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'diffkit-outside-'))
+    try {
+      writeFileSync(join(outside, 'dir.test.ts'), "import { helper } from '../src/mod'\nhelper()\n")
+      const { fx } = branchRepo(
+        { 'src/mod.ts': 'export const keep = 1\n', 'tests/dir.test.ts': 'export {}\n' },
+        { 'src/mod.ts': 'export const keep = 1\nexport function helper() { return 1 }\n' },
+      )
+      rmSync(join(fx.dir, 'tests'), { recursive: true })
+      symlinkSync(outside, join(fx.dir, 'tests'))
+      const checkout = new Checkout(fx.dir, new Git(fx.dir, { runner: spawnRunner('git') }))
+      expect(checkout.read('tests/dir.test.ts')).toBeNull()
+      expect(prep(fx).flags).toEqual([])
+    } finally {
+      rmSync(outside, { recursive: true, force: true })
+    }
+  })
+
+  test('a file behind a linked directory that stays inside the repository is read', () => {
+    const { fx } = branchRepo({}, { 'real/a.ts': 'export const a = 1\n' })
+    symlinkSync(join(fx.dir, 'real'), join(fx.dir, 'alias'))
+    const checkout = new Checkout(fx.dir, new Git(fx.dir, { runner: spawnRunner('git') }))
+    expect(checkout.read('alias/a.ts')).toBe('export const a = 1\n')
+  })
+
   test('a regular file is read', () => {
     const { fx } = branchRepo({}, { 'src/a.ts': 'export const a = 1\n' })
     const checkout = new Checkout(fx.dir, new Git(fx.dir, { runner: spawnRunner('git') }))
     expect(checkout.read('src/a.ts')).toBe('export const a = 1\n')
     expect(checkout.read('src/missing.ts')).toBeNull()
+  })
+
+  test('a checkout given as a relative path is read', () => {
+    const { fx } = branchRepo({}, { 'src/a.ts': 'export const a = 1\n' })
+    const cwd = relative(process.cwd(), fx.dir)
+    const checkout = new Checkout(cwd, new Git(fx.dir, { runner: spawnRunner('git') }))
+    expect(checkout.read('src/a.ts')).toBe('export const a = 1\n')
   })
 })

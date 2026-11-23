@@ -65,6 +65,12 @@ export async function prepMain(argv: readonly string[], ctx: CliContext): Promis
     io.stderr(`diffkit prep: not a PR number: '${raw}'\n`)
     return EXIT.usage
   }
+  for (const name of ['base', 'head'] as const) {
+    if (v[name]?.startsWith('-')) {
+      io.stderr(`diffkit prep: --${name} must not start with '-'\n`)
+      return EXIT.usage
+    }
+  }
   let groupSize: number | undefined
   if (v.groupSize !== undefined) {
     groupSize = Number(v.groupSize)
