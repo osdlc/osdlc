@@ -7,12 +7,12 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node` and `orca` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `orca` and `toolchains` plugins, and the `host-cleaner` command.
 
 ## Phases
 
 Plugins run in the order they are given. The command line runs the shipped
-ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `orca`.
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `orca`, `toolchains`.
 The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
@@ -262,6 +262,36 @@ goes through `@osdlc/command-seam` with `--json`.
 ```sh
 host-cleaner clean --pick worktree:/path/to/wt --allow close-terminals
 ```
+
+## The `toolchains` plugin
+
+rustup toolchains, and Node versions installed by nvm or Volta, that no
+checkout in your targets asks for. Each is `rust-toolchain:<folder>` or
+`node-version:<folder>`, with its size and `costDescription: re-download`.
+No settings of its own.
+
+- Every checkout under the targets (a checkout, or a folder of them, with each
+  repository's linked worktrees) is read for `rust-toolchain`,
+  `rust-toolchain.toml`, `.nvmrc`, `.node-version` and `package.json`'s
+  `volta.node`, at its root and wherever git lists one below it.
+- Kept: what they name, by prefix (`1.80` keeps `1.80-<host>` and
+  `1.80.1-<host>`; `18` keeps every `18.x.y`), rustup's default, its directory
+  overrides and its active toolchain in the folder you run from, nvm's
+  `default` alias, Volta's default, and the `node` on `PATH`. nvm aliases such
+  as `lts/*` are followed through nvm's `alias` folder.
+- When any of that cannot be read (an alias nvm does not have, a checkout git
+  cannot list, rustup not answering), every candidate of that tool is refused
+  with `unused-unknown`. With no targets nothing is proposed. A linked
+  toolchain or one that is not a release is never proposed.
+- `delete` reads everything again, then runs `rustup toolchain uninstall
+  <name>` for a toolchain, or removes an nvm or Volta folder with
+  `kit.remove`. It refuses a folder that is not in the tool's versions folder
+  or has become a link.
+
+Locations come from `RUSTUP_HOME`, `NVM_DIR` and `VOLTA_HOME`, else `~/.rustup`,
+`~/.nvm` and `~/.volta`. The command line uses the folder you run from as the
+target when none is given, so give your targets in the config before you clean
+with this plugin.
 
 ## Command line
 

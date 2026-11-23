@@ -54,15 +54,26 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
   return {
     home,
     cwd: tempDir(),
-    env: { ...(process.env as Record<string, string>), HOST_CLEANER_ROOT: home },
+    env: {
+      ...(process.env as Record<string, string>),
+      HOST_CLEANER_ROOT: home,
+      // Never this machine's toolchains, should the toolchains plugin run.
+      RUSTUP_HOME: join(home, 'rustup'),
+      NVM_DIR: join(home, 'nvm'),
+      VOLTA_HOME: join(home, 'volta'),
+    },
   }
 }
 
 async function run(argv: string[], cwd: string, env: Record<string, string>, deps: MainDeps = {}) {
   const ctx = captureContext({ cwd, env })
-  // The shipped plugins would talk to this machine's Orca and sweep every repository it lists.
+  // The shipped plugins would talk to this machine's Orca and sweep every repository it lists,
+  // and propose this machine's Rust and Node versions.
   const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
-  const args = phase && deps.plugins === undefined ? [...argv, '--skip-plugin', 'orca'] : argv
+  const args =
+    phase && deps.plugins === undefined
+      ? [...argv, '--skip-plugin', 'orca', '--skip-plugin', 'toolchains']
+      : argv
   const code = await main(args, ctx, { confirm: () => null, ...deps })
   return { code, out: ctx.io.out, err: ctx.io.err }
 }
