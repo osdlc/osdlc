@@ -9,6 +9,16 @@
 
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -92,6 +102,63 @@ const bin = join(dist, '..', 'bin', 'host-cleaner.js')
 for (const args of [['--help'], ['--version']]) {
   const r = spawnSync(process.execPath, [bin, ...args], { encoding: 'utf8' })
   assert.equal(r.status, 0, `host-cleaner ${args.join(' ')}: ${r.stderr}`)
+}
+
+// A plugin package installed under the global prefix, loaded by the binary from the config.
+const prefix = realpathSync(mkdtempSync(join(tmpdir(), 'host-cleaner-smoke-')))
+try {
+  const global =
+    process.platform === 'win32'
+      ? join(prefix, 'node_modules')
+      : join(prefix, 'lib', 'node_modules')
+  const pkg = join(global, 'host-cleaner-smoke-plugin')
+  mkdirSync(join(global, '@osdlc'), { recursive: true })
+  symlinkSync(join(dist, '..'), join(global, '@osdlc', 'host-cleaner'), 'dir')
+  mkdirSync(pkg)
+  writeFileSync(
+    join(pkg, 'package.json'),
+    JSON.stringify({
+      name: 'host-cleaner-smoke-plugin',
+      version: '1.0.0',
+      type: 'module',
+      exports: './index.js',
+    }),
+  )
+  writeFileSync(
+    join(pkg, 'index.js'),
+    `import { join } from 'node:path'
+import { PLUGIN_API, definePlugin, z } from '@osdlc/host-cleaner/plugin'
+export default definePlugin({
+  name: 'smoke',
+  api: PLUGIN_API,
+  settings: z.object({}),
+  create: ({ env, kit }) => ({
+    name: 'smoke',
+    detect: () => true,
+    roots: () => [join(env.HOME, '.smoke')],
+    discover: () => [kit.candidate({ kind: 'scratch', path: join(env.HOME, '.smoke', 'old'), why: 'smoke' })],
+    delete: (c, ctx) => kit.remove(c.path, ctx),
+  }),
+})
+`,
+  )
+  mkdirSync(join(prefix, '.smoke', 'old'), { recursive: true })
+  const config = join(prefix, 'config.json')
+  writeFileSync(
+    config,
+    JSON.stringify({ plugins: { smoke: { package: 'host-cleaner-smoke-plugin' } } }),
+  )
+  const env = { ...process.env, HOME: prefix, HOST_CLEANER_ROOT: prefix, npm_config_prefix: prefix }
+  const hc = (...args) =>
+    spawnSync(process.execPath, [bin, ...args, '--config', config], { encoding: 'utf8', env })
+  const status = hc('status', '--plugin', 'smoke', '--format', 'json')
+  assert.equal(status.status, 0, `status: ${status.stderr}`)
+  assert.deepEqual(JSON.parse(status.stdout).plugins, ['smoke'])
+  const cleaned = hc('clean', '--plugin', 'smoke', '--yes', '--receipt', join(prefix, 'r.json'))
+  assert.equal(cleaned.status, 0, `clean: ${cleaned.stderr}`)
+  assert.equal(existsSync(join(prefix, '.smoke', 'old')), false)
+} finally {
+  rmSync(prefix, { recursive: true, force: true })
 }
 
 console.log('host-cleaner smoke: OK')

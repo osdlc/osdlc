@@ -77,7 +77,21 @@ export function readConfig(
   }
   const parsed = ConfigSchema.safeParse(raw)
   if (!parsed.success) throw new ConfigError(`bad config ${path}: ${parsed.error.message}`)
-  const issues = settingsIssues(parsed.data.plugins, 'plugins', opts.plugins)
+  return checkPlugins(parsed.data, path, opts.plugins)
+}
+
+/**
+ * `config`, once each entry of its `plugins` fits the settings of the plugin
+ * of its name in `plugins`, the built-ins by default. `path` is the file it came from.
+ *
+ * @throws ConfigError for a plugin entry with an unknown key or a wrong type
+ */
+export function checkPlugins(
+  config: Config,
+  path: string,
+  plugins?: readonly PluginDefinition[],
+): Config {
+  const issues = settingsIssues(config.plugins, 'plugins', plugins)
   if (issues.length > 0) throw new ConfigError(`bad config ${path}: ${issues.join('; ')}`)
-  return parsed.data
+  return config
 }

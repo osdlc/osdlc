@@ -196,6 +196,12 @@ test('scratch keeps the contract', async () => {
   are taken).
 - Build it to JavaScript with its type declarations, and publish it as an
   ESM package with `@osdlc/host-cleaner` as a peer dependency.
-- Loading a plugin package named in the config is planned and not in this
-  release yet. Until then, a program uses a plugin by building it and passing
-  it to `survey` and `clean` from the main entry.
+- Install it where host-cleaner looks: a `node_modules` folder host-cleaner
+  itself resolves from, or the global npm prefix's. Then name it in the config
+  under its plugin `name`:
+  `"plugins": { "scratch": { "package": "host-cleaner-scratch" } }`. The
+  loader checks that the default export is a `definePlugin` value with that
+  `name` and `api: PLUGIN_API`, and that `create` returns a plugin of the same
+  name built on the kit it was given. A plugin built with a second copy of
+  `@osdlc/host-cleaner` fails that last check, so the package must use the copy
+  the command line runs.

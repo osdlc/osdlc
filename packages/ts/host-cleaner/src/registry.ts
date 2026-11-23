@@ -1,16 +1,19 @@
 /**
  * The plugins the command line knows, and the choice among them. Every
- * plugin, built in or a descriptor, has one name in one namespace.
+ * plugin, built in, loaded from a package or a descriptor, has one name in
+ * one namespace.
  */
 
 import { cargoDefinition } from './cargo.ts'
 import { descriptorPlugin, type DescriptorOptions } from './descriptor/engine.ts'
 import {
+  DescriptorLoadError,
   loadDescriptors,
   type DescriptorSources,
   type LoadedDescriptor,
 } from './descriptor/load.ts'
 import { gitDefinition } from './git.ts'
+import type { LoadedPackage, PackageEntry } from './load.ts'
 import { nodeDefinition } from './node.ts'
 import { orcaDefinition } from './orca.ts'
 import type { Ctx, Plugin, PluginDefinition } from './types.ts'
@@ -26,31 +29,56 @@ export const BUILT_IN_PLUGINS: readonly PluginDefinition[] = [
   orcaDefinition,
 ]
 
-/** A run's plugin definitions, and where each descriptor among them came from. */
+/** A run's plugin definitions, and where each package and descriptor among them came from. */
 export interface Loaded {
-  /** The built-ins in run order, then one plugin per descriptor, by name. */
+  /** The built-ins in run order, then the packages, then one plugin per descriptor, each by name. */
   definitions: readonly PluginDefinition[]
+  /** Each package loaded: its name, package, version and folder. */
+  packages: readonly LoadedPackage[]
   /** Each descriptor used: its name, where it came from and what it replaced. */
   descriptors: readonly LoadedDescriptor[]
 }
 
+/** The packages the config names: those loaded, and every entry with a `package`, loaded or not. */
+export interface Packages {
+  loaded: readonly LoadedPackage[]
+  entries: readonly PackageEntry[]
+}
+
 /**
- * The built-ins, then the descriptors from `sources` by name; `opts` is passed
- * to each descriptor's plugin.
+ * The built-ins, then the `packages` loaded, then the descriptors from
+ * `sources`, each by name; `opts` is passed to each descriptor's plugin.
  *
- * @throws DescriptorLoadError for a descriptor named as a built-in plugin, or as loadDescriptors
+ * @throws DescriptorLoadError for a descriptor named as a built-in plugin or as a package in the config, or as loadDescriptors
  * @throws DescriptorError for a descriptor file that can't be used
  */
-export function loadPlugins(sources: DescriptorSources, opts: DescriptorOptions = {}): Loaded {
+export function loadPlugins(
+  sources: DescriptorSources,
+  opts: DescriptorOptions = {},
+  packages: Packages = { loaded: [], entries: [] },
+): Loaded {
   const descriptors = loadDescriptors(
     sources,
     BUILT_IN_PLUGINS.map((d) => d.name),
   )
+  for (const d of descriptors) {
+    const entry = packages.entries.find((e) => e.name === d.name)
+    if (entry !== undefined) {
+      throw new DescriptorLoadError(
+        `descriptor ${d.path} is named ${d.name}, as the package plugins.${d.name}.package names (${entry.package}); every plugin has its own name, so rename the file`,
+      )
+    }
+  }
+  const loaded = [...packages.loaded].sort((a, b) =>
+    a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+  )
   return {
     definitions: [
       ...BUILT_IN_PLUGINS,
+      ...loaded.map((p) => p.definition),
       ...descriptors.map((d) => descriptorPlugin(d.name, d.descriptor, opts)),
     ],
+    packages: loaded,
     descriptors,
   }
 }

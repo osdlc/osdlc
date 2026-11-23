@@ -1,7 +1,8 @@
 /**
  * What each plugin's entry in the config's `plugins` may hold: the settings
- * schema of its definition, a built-in's or a descriptor's, made strict, with
- * the core's `enabled` added and its own refinements kept. It is validated when the config loads with
+ * schema of its definition, a built-in's, a package's or a descriptor's, made
+ * strict, with the core's `enabled` (and, for a package, `package`) added and
+ * its own refinements kept. It is validated when the config loads with
  * `@osdlc/config-layers`' `validateStandard`, so a misspelt key or a wrong type
  * is a config error that names the plugin and the key. `host-cleaner config`
  * prints the same schemas' fields and defaults through `configFields`.
@@ -11,6 +12,7 @@ import { configFields, validateStandard } from '@osdlc/config-layers'
 import { z } from 'zod'
 
 import { DEFAULT_IDLE_HOURS } from './kit.ts'
+import { isPackaged } from './load.ts'
 import { BUILT_IN_PLUGINS } from './registry.ts'
 import type { PluginDefinition } from './types.ts'
 
@@ -19,20 +21,26 @@ const enabled = z
   .default(true)
   .describe('Run this plugin. `--plugin <name>` runs it even when this is false.')
 
+const packageKey = z.string().describe('The npm package this plugin is loaded from.')
+
 type Entries = Readonly<Record<string, Record<string, unknown>>>
 
 type Definitions = readonly PluginDefinition[]
 
 /**
  * The settings schema of the plugin `name` in `defs`, with the core's
- * `enabled` and made strict, its refinements kept; undefined for a name no
- * definition has.
+ * `enabled` (and `package` for a package's plugin) and made strict, its
+ * refinements kept; undefined for a name no definition has.
  */
-const schemaOf = (name: string, defs: Definitions = BUILT_IN_PLUGINS): z.ZodObject | undefined =>
-  defs
-    .find((d) => d.name === name)
-    ?.settings.safeExtend({ enabled })
-    .strict()
+function schemaOf(name: string, defs: Definitions = BUILT_IN_PLUGINS): z.ZodObject | undefined {
+  const def = defs.find((d) => d.name === name)
+  if (def === undefined) return undefined
+  return (
+    isPackaged(def)
+      ? def.settings.safeExtend({ enabled, package: packageKey })
+      : def.settings.safeExtend({ enabled })
+  ).strict()
+}
 
 /** One line per problem in `plugins`, each starting `<prefix>.<name>[.<key>]`; `defs` are the plugins it knows. */
 export function settingsIssues(

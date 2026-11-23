@@ -22,6 +22,7 @@ import { main, tildeId, untildeId, type MainDeps } from '../src/cli.ts'
 import { hostDirs } from '../src/config.ts'
 import { PLAN_VERSION, parsePlan } from '../src/plan.ts'
 import type { Candidate, Objection, Plugin, RefCandidate } from '../src/index.ts'
+import { FIXTURE, FIXTURE_PLUGIN, exporting, nodeModules } from './fixtures/packages.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -450,6 +451,119 @@ ${extra}`
     expect(r.code).toBe(0)
     expect(r.out).toMatch(/done\s+mine:~\/\.cache\/mine/)
     expect(existsSync(join(h.home, '.cache', 'mine'))).toBe(false)
+  })
+})
+
+describe('packages', () => {
+  /**
+   * A fixture home with `~/.fixture/old` and `~/.fixture/kept`, a config file
+   * holding `plugins`, and the fixture package installed in a `node_modules`
+   * the run looks in alone.
+   */
+  function withPackage(plugins: Record<string, unknown>, source = FIXTURE_PLUGIN) {
+    const { env, cwd, home } = setup()
+    for (const name of ['old', 'kept']) {
+      mkdirSync(join(home, '.fixture', name), { recursive: true })
+      writeFileSync(join(home, '.fixture', name, 'blob'), 'x')
+    }
+    const config = join(home, 'config.json')
+    writeFileSync(config, JSON.stringify({ plugins }))
+    const nm = nodeModules(tempDir())
+    const path = nm.add(FIXTURE, source)
+    const deps: MainDeps = { packageRoots: [nm.root], shippedDescriptors: tempDir() }
+    const go = (argv: string[]) =>
+      run([...argv, '--config', config], cwd, { ...env, HOME: home }, deps)
+    return { home, cwd, path, go }
+  }
+
+  const fixture = { fixture: { package: FIXTURE, keep: ['kept'] } }
+
+  test('a package the config names loads, runs, is listed with its version, and cleans through the kit', async () => {
+    const h = withPackage(fixture)
+    const status = await h.go(['status', '--skip-plugin', 'cargo,node'])
+    expect(status.err).toBe('')
+    expect(status.out).toContain('plugins: git, fixture\n')
+    expect(status.out).toContain('scratch:~/.fixture/old')
+    expect(status.out).not.toContain('kept')
+
+    const config = await h.go(['config'])
+    expect(config.code).toBe(0)
+    expect(config.out).toContain(`plugins.fixture  from ${FIXTURE} 1.0.0 at ${h.path}\n`)
+    expect(config.out).toContain(`  package = "${FIXTURE}"  (config)`)
+    expect(config.out).toContain('  keep = ["kept"]  (config)')
+    const json = JSON.parse((await h.go(['config', '--format', 'json'])).out)
+    expect(json.packages).toEqual([
+      { name: 'fixture', package: FIXTURE, version: '1.0.0', path: h.path },
+    ])
+    expect(json.plugins.fixture).toEqual({ enabled: true, keep: ['kept'], package: FIXTURE })
+
+    const clean = await h.go([
+      'clean',
+      '--plugin',
+      'fixture',
+      '--yes',
+      '--receipt',
+      join(h.cwd, 'r.json'),
+    ])
+    expect(clean.code).toBe(0)
+    expect(clean.out).toMatch(/done\s+scratch:~\/\.fixture\/old/)
+    expect(existsSync(join(h.home, '.fixture', 'old'))).toBe(false)
+    expect(existsSync(join(h.home, '.fixture', 'kept'))).toBe(true)
+  })
+
+  test('a wrong api: status and plan warn and go on, clean exits 2 unless --skip-plugin', async () => {
+    const h = withPackage(
+      { fixture: { package: FIXTURE } },
+      exporting(
+        "definePlugin({ name: 'fixture', api: 2, settings: z.object({}), create: () => ({ name: 'fixture', detect: () => true }) })",
+      ),
+    )
+    const why = `plugins.fixture.package: ${FIXTURE} 1.0.0 is written for plugin api 2, and this host-cleaner supports plugin api 1`
+    const status = await h.go(['status', '--skip-plugin', 'cargo,node'])
+    expect(status.code).toBe(10)
+    expect(status.err).toContain(why)
+    expect(status.err).toContain('going on without fixture')
+    expect(status.out).toContain('plugins: git\n')
+    const json = JSON.parse((await h.go(['status', '--format', 'json'])).out)
+    expect(json.warnings[0]).toContain(why)
+    expect((await h.go(['plan', '-o', join(h.cwd, 'p.json')])).err).toContain(why)
+
+    const clean = await h.go(['clean', '--yes'])
+    expect(clean.code).toBe(2)
+    expect(clean.err).toContain(why)
+    expect(clean.err).toContain('pass --skip-plugin fixture')
+    const skipped = await h.go(['clean', '--yes', '--skip-plugin', 'fixture'])
+    expect(skipped.code).toBe(10)
+    expect(skipped.err).toBe('')
+
+    const named = await h.go(['status', '--plugin', 'fixture'])
+    expect(named.code).toBe(2)
+    expect(named.err).toContain(why)
+  })
+
+  test('a package the config disables is not loaded, unless --plugin names it', async () => {
+    const h = withPackage({ ghost: { package: 'host-cleaner-fixture-ghost', enabled: false } })
+    const status = await h.go(['status', '--skip-plugin', 'cargo,node'])
+    expect(status.err).toBe('')
+    expect(status.out).toContain('plugins: git\n')
+    const named = await h.go(['status', '--plugin', 'ghost'])
+    expect(named.code).toBe(2)
+    expect(named.err).toContain(
+      'plugins.ghost.package: host-cleaner-fixture-ghost is not installed; looked in',
+    )
+  })
+
+  test('a package entry that is a path, under a built-in name or with an unknown key exits 2', async () => {
+    const path = withPackage({ fixture: { package: './fixture' } })
+    const r = await path.go(['status'])
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('plugins.fixture.package: "./fixture" is not an npm package name')
+    const git = await withPackage({ git: { package: FIXTURE } }).go(['status'])
+    expect(git.code).toBe(2)
+    expect(git.err).toContain('plugins.git.package: git is the built-in plugin')
+    const key = await withPackage({ fixture: { package: FIXTURE, nope: 1 } }).go(['status'])
+    expect(key.code).toBe(2)
+    expect(key.err).toContain('nope')
   })
 })
 

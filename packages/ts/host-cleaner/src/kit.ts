@@ -156,6 +156,9 @@ export function attachKit(plugin: Plugin, kit: Kit): void {
   kits.set(plugin, kit)
 }
 
+/** The kit `plugin` was built on, as {@link attachKit} recorded it; undefined for none. */
+export const kitOf = (plugin: Plugin): Kit | undefined => kits.get(plugin)
+
 /** Binds the kit `plugin` was built on to `bounds` for {@link Kit.remove}; a plugin built on no kit is left alone. */
 export function bindKit(plugin: Plugin, bounds: Bounds): void {
   const kit = kits.get(plugin)

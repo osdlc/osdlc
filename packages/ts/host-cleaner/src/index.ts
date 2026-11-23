@@ -29,7 +29,17 @@ export {
   type RefCandidate,
   type RunCtx,
 } from './types.ts'
-export { BUILT_IN_PLUGINS, loadPlugins, type Loaded } from './registry.ts'
+export { BUILT_IN_PLUGINS, loadPlugins, type Loaded, type Packages } from './registry.ts'
+export {
+  PackageError,
+  PackageLoadError,
+  loadPackages,
+  packageEntries,
+  packageRoots,
+  type LoadedPackage,
+  type PackageEntry,
+  type PackageFailure,
+} from './load.ts'
 export {
   PLAN_VERSION,
   PlanSchema,

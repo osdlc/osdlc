@@ -18,6 +18,13 @@ export default defineConfig({
     ],
   },
   test: {
+    server: {
+      deps: {
+        // The loader's fixture packages sit in a node_modules folder, which would
+        // load them natively, on dist/. Through Vite they get the source too.
+        inline: [/host-cleaner-fixture/],
+      },
+    },
     // Real git and gh spawns on a loaded machine can pass the 5 s default.
     testTimeout: 20000,
     // The fixtures make their own commits. A runner with no git identity

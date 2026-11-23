@@ -310,6 +310,21 @@ or two files of one name in one folder, is refused (exit 2). Descriptors run
 after the built-ins, by name. To try one you are writing:
 `host-cleaner status --descriptor ./uv.yaml --plugin uv`.
 
+A code plugin published as a package runs when the config names it:
+`"plugins": { "podman": { "package": "@acme/host-cleaner-podman" } }`. Only a
+package the config names is loaded, by its npm name and never from a path: from
+the `node_modules` folders host-cleaner itself is installed in, then the global
+npm prefix (`npm_config_prefix`, else Node's own). Its default export must be a
+`definePlugin` value whose `name` is the config key and whose `api` is this
+host-cleaner's `PLUGIN_API`. A name a built-in or a descriptor has is refused
+(exit 2). Packages run after the built-ins and before the descriptors, by name.
+When one fails to load (not installed, its import throws, a wrong export, name
+or api), `status` and `plan` warn and go on without it, and `clean` exits 2
+unless you pass `--skip-plugin <name>`, since its objections would be missing
+too. A package the config disables, or that `--skip-plugin` names, is not
+loaded. `host-cleaner config` names each loaded package with its version and
+folder.
+
 The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
 all three directories):
 
@@ -325,6 +340,7 @@ the key.
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
+| `package` | a plugin loaded from a package | none | The npm package it is loaded from. |
 | `idleHours` | `cargo`, `node`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
 
 Two settings sit at the top of the config and apply to every plugin:
