@@ -45,7 +45,14 @@
 
 import { z } from 'zod'
 
-import { Git, parseRemoteRepo, type Worktree } from '@osdlc/typed-git'
+import {
+  Git,
+  parseRemoteRepo,
+  readRemote,
+  type RemoteRepo,
+  type SshAliasResolver,
+  type Worktree,
+} from '@osdlc/typed-git'
 
 import {
   codeHostNameForRemote,
@@ -450,6 +457,15 @@ export function scopeToPrs(
 // Repository targets
 // ---------------------------------------------------------------------------
 
+/**
+ * A host as two hosts are compared: lower-cased and without a port. A remote's
+ * host is read without its port, and `--repo` keeps the one it names, so
+ * `forgejo.local:3000` and `forgejo.local` are one host.
+ */
+function hostKey(host: string): string {
+  return host.toLowerCase().replace(/:\d+$/, '')
+}
+
 /** Whether `part` can be one segment of a repository's name: not `.` or `..`, and no backslash or whitespace. */
 function isNamePart(part: string): boolean {
   return part !== '.' && part !== '..' && !/[\\\s]/.test(part)
@@ -459,7 +475,7 @@ function isNamePart(part: string): boolean {
 export interface ResolveTargetsOptions {
   /** The run's `--remote`, read in the project root and in a checkout `locate` gives as a bare path. Default `origin`. */
   remote?: string | undefined
-  /** The project root's host, lower-cased, or null when its remote names none. Default null. */
+  /** The host of the project root's `remote`, lower-cased, or null when that remote names none. Default null. */
   rootHost?: string | null | undefined
   /** The host a bare `owner/name` means. Default `github.com`. */
   defaultHost?: string | undefined
@@ -534,13 +550,16 @@ export function resolveTargets(
     const isRoot =
       root !== null &&
       repo === root.repo.toLowerCase() &&
-      (parsed.host === undefined || host === rootHost)
-    const key = isRoot ? '' : `${host}/${repo}`
+      (parsed.host === undefined || (rootHost !== null && hostKey(host) === hostKey(rootHost)))
+    const key = isRoot ? '' : `${hostKey(host)}/${repo}`
     if (seen.has(key)) continue
     seen.add(key)
     const first = named.get(repo)
     const at = isRoot ? rootHost : host
-    if (first !== undefined && first.host !== at) {
+    if (
+      first !== undefined &&
+      (first.host === null ? null : hostKey(first.host)) !== (at === null ? null : hostKey(at))
+    ) {
       throw new SurveyUsageError(
         `--repo ${first.text} and --repo ${text} are ${repo} on different hosts; a run takes one of them`,
       )
@@ -550,7 +569,7 @@ export function resolveTargets(
       out.push(root)
       continue
     }
-    const checkout = locate(repo, { host, owner, name })
+    const checkout = locate(repo, { host: hostKey(host), owner, name })
     out.push(
       checkout === null
         ? { repo, host, path: null, source: null, remote, found: null }
@@ -589,7 +608,7 @@ export const SCOPE_SHAPE = {
     .array(z.string())
     .default([])
     .describe(
-      "Repository to survey as `owner/name` or `host/owner/name`, repeatable; a bare `owner/name` is on the project root's host when that is GitHub, else github.com. Defaults to the repository at --project-root alone. Others are located via the `locate` port, which in a standalone run searches the `repositories.yaml` roots; one with no checkout on this machine is listed as unmeasurable.",
+      "Repository to survey as `owner/name` or `host/owner/name`, repeatable; a bare `owner/name` is on the host of the project root's origin when that is GitHub, else github.com. Defaults to the repository at --project-root alone. Others are located via the `locate` port, which in a standalone run searches the `repositories.yaml` roots; one with no checkout on this machine is listed as unmeasurable.",
     ),
   noFetch: z
     .boolean()
@@ -759,6 +778,12 @@ export interface SurveyEnv {
    * must, so a bare `--repo owner/name` means that host. Default none.
    */
   codeHostOverride?: CodeHostName | null | undefined
+  /**
+   * Looks up the host an SSH config alias in the project root's remotes stands
+   * for (`git@github-work:o/r.git`), when a run has `--repo` targets. Default:
+   * typed-git's, which asks `ssh -G`. An alias it cannot resolve is read as written.
+   */
+  resolveAlias?: SshAliasResolver | undefined
   cfg: PrUpdateConfig
   ports: Pick<Ports, 'locate'>
 }
@@ -790,28 +815,52 @@ export function remoteSlug(url: string): string | null {
  * The repositories a run covers and where each is checked out, from the
  * `remote` and `repo` scope flags.
  *
- * A bare `--repo owner/name` means the project root's host when that is
- * GitHub (github.com, or any host with `code_host.override: github`), and
- * github.com otherwise.
+ * Two remotes of the project root are read. `--remote` names the project
+ * root's own repository, so a `--repo` naming it is the project root.
+ * `origin` is the remote the project root's code host is picked from
+ * (`selectedCodeHostFor`), so `codeHostHost`, its host, is the one a target
+ * shares that code host on, and a bare `--repo owner/name` means that host
+ * when its code host is GitHub (github.com, or any host with
+ * `code_host.override: github`), and github.com otherwise.
+ *
+ * With `--repo`, an SSH config alias in either remote is resolved to its
+ * host through `env.resolveAlias`; a run without one compares no hosts and
+ * asks ssh nothing.
  */
 export function surveyTargets(
   args: Pick<SurveyArgs, 'remote' | 'repo'>,
-  env: Pick<SurveyEnv, 'projectRoot' | 'git' | 'ports' | 'codeHostOverride'>,
-): { localRepo: string | null; rootHost: string | null; targets: RepoTarget[] } {
+  env: Pick<SurveyEnv, 'projectRoot' | 'git' | 'ports' | 'codeHostOverride' | 'resolveAlias'>,
+): {
+  localRepo: string | null
+  rootHost: string | null
+  codeHostHost: string | null
+  targets: RepoTarget[]
+} {
   const localGit = new Git(env.projectRoot, { runner: env.git })
+  const read = (url: string | null): RemoteRepo | null =>
+    url === null
+      ? null
+      : args.repo.length > 0
+        ? readRemote(url, env.resolveAlias)
+        : parseRemoteRepo(url)
   const localUrl = localGit.soft.remoteGetUrl(args.remote)
-  const local = localUrl === null ? null : parseRemoteRepo(localUrl)
+  const local = read(localUrl)
   const localRepo = local === null ? null : `${local.owner}/${local.repo}`
   const rootHost = local === null ? null : local.host.toLowerCase()
+  const originUrl = args.remote === 'origin' ? localUrl : localGit.soft.remoteGetUrl('origin')
+  const origin = args.remote === 'origin' ? local : read(originUrl)
+  const codeHostHost = origin === null ? null : origin.host.toLowerCase()
   const onGithub =
-    rootHost !== null && codeHostNameForRemote(localUrl, env.codeHostOverride ?? null) === 'github'
+    codeHostHost !== null &&
+    codeHostNameForRemote(originUrl, env.codeHostOverride ?? null) === 'github'
   return {
     localRepo,
     rootHost,
+    codeHostHost,
     targets: resolveTargets(localRepo, env.projectRoot, args.repo, env.ports.locate, {
       remote: args.remote,
       rootHost,
-      defaultHost: onGithub ? rootHost : 'github.com',
+      defaultHost: onGithub ? codeHostHost : 'github.com',
     }),
   }
 }
@@ -837,7 +886,7 @@ export function surveyWithTargets(
   env: SurveyEnv,
 ): { report: SurveyReport; targets: RepoTarget[] } {
   const { cfg } = env
-  const { rootHost, targets } = surveyTargets(args, env)
+  const { codeHostHost, targets } = surveyTargets(args, env)
   const codeHostFor = env.codeHost ?? githubCodeHostFor(env.gh)
 
   // Flags beat config; config beats the built-in default.
@@ -880,12 +929,15 @@ export function surveyWithTargets(
     const git = new Git(target.path ?? env.projectRoot, { runner: env.git })
 
     const isLocal = target.source === 'root'
-    // Any other target is listed on its own host, named even when it is github.com.
+    // Any other target is listed on its own host, named even when it is github.com. It
+    // shares the project root's code host when it is on origin's host, which that code host is
+    // picked from.
     const host = target.host ?? 'github.com'
+    const onRootHost = codeHostHost !== null && hostKey(host) === hostKey(codeHostHost)
     const codeHost = codeHostFor({
       cwd: target.path ?? env.projectRoot,
       repo: target.repo,
-      ...(isLocal ? {} : { host, onRootHost: host === rootHost }),
+      ...(isLocal ? {} : { host, onRootHost }),
     })
     const listed = codeHost.listPrDetails({
       limit: args.limit,

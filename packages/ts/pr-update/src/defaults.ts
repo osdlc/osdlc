@@ -76,7 +76,7 @@ export interface StandalonePortsOptions {
    * directory from. Defaults to `process.env`.
    */
   env?: Record<string, string | undefined> | undefined
-  /** Passed to `locate`'s `CheckoutLocator` as given, for a test. */
+  /** Passed to `locate`'s `CheckoutLocator` as given: the CLI's SSH alias resolver, or a test's settings. */
   locator?: StandaloneLocateOptions['locator']
 }
 

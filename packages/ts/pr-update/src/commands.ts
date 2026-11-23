@@ -21,7 +21,7 @@ import {
 } from '@osdlc/cli-tool/command'
 import { forwardedExitCode, spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { describe, type Failure } from '@osdlc/result'
-import { Git } from '@osdlc/typed-git'
+import { Git, sshAliasResolver, type SshAliasResolver } from '@osdlc/typed-git'
 import { CONFIG_INVALID_EXIT, ConfigInvalidError, type ConfigFileSpec } from '@osdlc/config-layers'
 
 import { selectedCodeHostFor } from './code-host.ts'
@@ -65,6 +65,8 @@ export interface CliSeams {
   git?: CommandRunner
   /** Runs `curl` for a Forgejo code host. */
   curl?: CommandRunner
+  /** Runs `ssh -G`, to read the host behind an SSH config alias in a remote. */
+  ssh?: CommandRunner
   /** Finds a binary on PATH, for the check that the run's tools are installed. */
   which?: WhichSeam
   /** The config file to read instead of {@link PR_UPDATE_CONFIG_FILE}. */
@@ -182,6 +184,26 @@ function loadLayers(ctx: CliContext, seams: CliSeams): ReturnType<typeof loadCon
   }
 }
 
+/**
+ * The run's one SSH alias resolver, for the project root's remotes and the
+ * checkout search alike, so each alias is asked once. When ssh cannot answer
+ * for an alias, a note says so, and the alias is read as written.
+ */
+function aliasResolver(seams: CliSeams, notice: (line: string) => void): SshAliasResolver {
+  const ssh = seams.ssh ?? spawnRunner('ssh', { absolutePathOnly: true })
+  return sshAliasResolver({
+    ...ssh,
+    run: (argv, opts) => {
+      const out = ssh.run(argv, opts)
+      if (out.exitCode !== 0) {
+        const alias = argv[argv.length - 1]
+        notice(`ssh -G ${alias} failed, so the host ${alias} is read as written`)
+      }
+      return out
+    },
+  })
+}
+
 function runEnv(
   ctx: CliContext,
   layers: ReturnType<typeof loadConfigLayers>,
@@ -197,6 +219,7 @@ function runEnv(
   const git = gitRunner(seams)
   const gh = seams.gh ?? spawnRunner('gh', { absolutePathOnly: true })
   const projectRoot = ctx.cwd
+  const resolveAlias = aliasResolver(seams, notice)
   const loaded = layers.merged.pr_update
   const cfg = {
     ...loaded,
@@ -221,8 +244,13 @@ function runEnv(
       override: layers.merged.code_host.override,
     }),
     codeHostOverride: layers.merged.code_host.override,
+    resolveAlias,
     cfg,
-    ports: standalonePorts(cfg, projectRoot, remote, notice, { git, env: ctx.env }),
+    ports: standalonePorts(cfg, projectRoot, remote, notice, {
+      git,
+      env: ctx.env,
+      locator: { resolveAlias },
+    }),
   }
 }
 

@@ -32,7 +32,7 @@ export interface StandaloneLocateOptions {
   env?: Record<string, string | undefined> | undefined
   /** One-line notes for the person: a target not found, and where the search looked. */
   notice?: ((line: string) => void) | undefined
-  /** Passed to the locator as given, for a test: `resolveAlias`, `dirs`, `home`, `maxDepth`. */
+  /** Passed to the locator as given: `resolveAlias` (the CLI passes its own), and for a test `dirs`, `home`, `maxDepth`. */
   locator?: Pick<LocateOptions, 'resolveAlias' | 'dirs' | 'home' | 'maxDepth'> | undefined
 }
 

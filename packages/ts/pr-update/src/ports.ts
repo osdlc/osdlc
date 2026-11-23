@@ -145,6 +145,7 @@ export type ConfirmPush = (preview: PushPreview) => boolean
  * lower-cased, with the host filled in when `--repo` named none.
  */
 export interface LocateTarget {
+  /** Without a port, as a remote's host is read: `--repo forgejo.local:3000/x/y` is asked for as `forgejo.local`. */
   host: string
   owner: string
   name: string

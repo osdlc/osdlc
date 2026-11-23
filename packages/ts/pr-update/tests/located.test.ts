@@ -317,3 +317,108 @@ describe('the host a target is listed on', () => {
     }
   })
 })
+
+describe("the project root's host", () => {
+  /** A `curl` that answers every Forgejo call with no PRs, and records each argv. */
+  function forgejo(): { curl: CommandRunner; calls: string[] } {
+    const calls: string[] = []
+    return {
+      calls,
+      curl: {
+        run: (argv): CommandResult => {
+          calls.push(argv.join(' '))
+          return { exitCode: 0, stdout: '[]\nHTTPSTATUS:200', stderr: '' }
+        },
+      },
+    }
+  }
+
+  /** An `ssh` that answers `ssh -G` from `hosts`, and fails for an alias it lacks; records each alias. */
+  function sshWith(hosts: Record<string, string>): { ssh: CommandRunner; asked: string[] } {
+    const asked: string[] = []
+    return {
+      asked,
+      ssh: {
+        run: (argv): CommandResult => {
+          const alias = argv[argv.length - 1] ?? ''
+          asked.push(alias)
+          const host = hosts[alias]
+          return host === undefined
+            ? { exitCode: 255, stdout: '', stderr: `ssh: Could not resolve hostname ${alias}` }
+            : { exitCode: 0, stdout: `host ${alias}\nhostname ${host}\nport 22\n`, stderr: '' }
+        },
+      },
+    }
+  }
+
+  test('is compared without a port', async () => {
+    git(project, 'remote', 'set-url', 'origin', 'http://forgejo.local:3000/o/r.git')
+    vi.stubEnv('FORGEJO_TOKEN', 't')
+    const { curl, calls } = forgejo()
+    try {
+      const r = await runWith(
+        { curl },
+        'survey',
+        '--repo',
+        'forgejo.local:3000/x/y',
+        '--no-fetch',
+        '--json',
+      )
+      expect(r.code).toBe(EXIT.ok)
+      // Listed through the project root's Forgejo, not gh.
+      expect(calls.some((c) => c.includes('forgejo.local:3000') && c.includes('x/y'))).toBe(true)
+      expect(asked.some((c) => c.argv.includes('x/y'))).toBe(false)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  test('behind an SSH config alias is the host ssh resolves it to', async () => {
+    git(project, 'remote', 'set-url', 'origin', 'git@github-work:o/r.git')
+    writeFileSync(join(project, 'pr-update.yaml'), 'code_host:\n  override: github\n')
+    const { ssh, asked: aliases } = sshWith({ 'github-work': 'github.com' })
+    const r = await runWith({ ssh }, 'survey', '--repo', 'acme/api', '--no-fetch', '--json')
+    expect(r.code).toBe(EXIT.ok)
+    expect(aliases).toEqual(['github-work'])
+    // The bare owner/name means github.com: found there, and listed there.
+    expect(JSON.parse(r.out).repos[0]).toMatchObject({ checkout: { path: located } })
+    expect(asked.find((c) => c.argv.includes('acme/api'))?.host).toBe('github.com')
+  })
+
+  test('behind an SSH config alias ssh cannot resolve is read as written, with a note', async () => {
+    git(project, 'remote', 'set-url', 'origin', 'git@github-work:o/r.git')
+    writeFileSync(join(project, 'pr-update.yaml'), 'code_host:\n  override: github\n')
+    const { ssh } = sshWith({})
+    const r = await runWith({ ssh }, 'survey', '--repo', 'acme/api', '--no-fetch', '--json')
+    expect(r.code).toBe(EXIT.ok)
+    expect(r.err).toContain('ssh -G github-work failed, so the host github-work is read as written')
+    expect(r.err).toContain('github-work/acme/api: no checkout under')
+    expect(asked.find((c) => c.argv.includes('acme/api'))?.host).toBe('github-work')
+  })
+
+  test("is origin's, which the code host is picked from, whatever --remote names", async () => {
+    // origin on Forgejo, upstream (the --remote) on github.com.
+    git(project, 'remote', 'set-url', 'origin', 'https://git.example.com/o/r.git')
+    vi.stubEnv('FORGEJO_TOKEN', 't')
+    const { curl, calls } = forgejo()
+    try {
+      const r = await runWith(
+        { curl },
+        'survey',
+        '--remote',
+        'upstream',
+        '--repo',
+        'acme/api',
+        '--no-fetch',
+        '--json',
+      )
+      expect(r.code).toBe(EXIT.ok)
+      // A bare owner/name on a Forgejo origin means github.com, listed by gh, not Forgejo.
+      expect(JSON.parse(r.out).repos[0]).toMatchObject({ checkout: { path: located } })
+      expect(calls).toEqual([])
+      expect(asked.find((c) => c.argv.includes('acme/api'))?.host).toBe('github.com')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+})
