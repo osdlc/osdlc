@@ -21,7 +21,7 @@ import {
   type FlagSpec,
   type FlagValues,
 } from '@osdlc/cli-tool'
-import type { Kind } from '@osdlc/repo-cleaner'
+import type { ArchiveOptions, Kind } from '@osdlc/repo-cleaner'
 import { stripControls } from '@osdlc/ux'
 
 import { expandHome, ignorePaths } from './ignore.ts'
@@ -233,6 +233,19 @@ const cleanCli = () =>
         'leave these candidates alone: an id, a path, a branch name (its worktree too) or a glob; repeatable',
       ),
       allow: idList('code', 'accept a protest by its code; repeatable'),
+      archive: {
+        kind: 'boolean',
+        help:
+          'push unlanded work to an archive branch on the remote before deleting it; ' +
+          'abandon-unmerged and discard-changes still need --allow by name',
+      },
+      archiveExclude: {
+        kind: 'list',
+        valueName: 'glob',
+        default: [] as readonly string[],
+        commaSeparated: false,
+        help: 'with --archive, leave files matching this glob out of a worktree snapshot; repeatable',
+      },
       plan: {
         kind: 'string',
         valueName: 'file',
@@ -382,15 +395,29 @@ function unknownPlugins(config: Config, known: (name: string) => boolean): strin
   return [...Object.keys(config.plugins).filter((n) => !known(n)), ...inProfiles]
 }
 
-/** The plugins this run uses: the shipped ones built from the config, or `deps.plugins`, then chosen by flag. */
-function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliContext): Plugin[] {
+/**
+ * The plugins this run uses: the shipped ones built from the config (the `git`
+ * one with `archive`), or `deps.plugins`, then chosen by flag.
+ */
+function pluginsFor(
+  v: SweepValues,
+  config: Config,
+  deps: MainDeps,
+  ctx: CliContext,
+  archive?: ArchiveOptions,
+): Plugin[] {
   // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
   const all =
     deps.plugins ??
     Object.entries(FACTORIES).map(([name, make]) =>
-      make({ settings: settingsOf(name, config.plugins[name] ?? {}, config), only, env: ctx.env }),
+      make({
+        settings: settingsOf(name, config.plugins[name] ?? {}, config),
+        only,
+        env: ctx.env,
+        archive,
+      }),
     )
   const unused = unknownPlugins(config, (n) => all.some((p) => p.name === n))
   if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
@@ -600,6 +627,9 @@ function cleanConflict(v: CleanValues, targets: readonly string[]): string | nul
   if (v.plan === '-' && !v.yes && !v.dryRun) {
     return '--plan - reads the plan from stdin, so nothing can ask; pass --yes or --dry-run'
   }
+  if (!v.archive && v.archiveExclude.length > 0) {
+    return '--archive-exclude has no effect without --archive'
+  }
   if (v.yes && v.dryRun)
     return '--yes and --dry-run contradict: one deletes without asking, the other deletes nothing'
   if (v.receipt !== undefined && v.dryRun)
@@ -697,7 +727,13 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let preview: Decision
   try {
     const config = loadConfig(v, ctx)
-    plugins = pluginsFor(v, config, deps, ctx)
+    plugins = pluginsFor(
+      v,
+      config,
+      deps,
+      ctx,
+      v.archive ? { exclude: v.archiveExclude } : undefined,
+    )
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
       const s = survey(plugins, cctx)

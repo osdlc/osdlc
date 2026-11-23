@@ -87,9 +87,10 @@ same check. `ignore` applies to these candidates as to any other.
 `gitPlugin(options)` proposes repo-cleaner's worktrees and branches. Its
 blockers are `refuse` objections and its risks `protest`s, so
 `--allow abandon-unmerged` and the others work as in repo-cleaner. A branch
-freed by a worktree requires it. With `archive`, unlanded work is pushed to the
-remote first; a failed push throws `FatalRun`. Grant the named risks; the
-`discard-archived` cover is not yet offered here.
+freed by a worktree requires it. With `archive` (`clean --archive` on the
+command line), unlanded work is pushed to the remote first; a failed push
+throws `FatalRun`. Grant the named risks; the `discard-archived` cover is not
+yet offered here.
 
 ## The `cargo` and `node` plugins
 
@@ -167,7 +168,7 @@ a phase is named; the bare command explains them and exits 2.
 ```sh
 host-cleaner status [target...]   # every candidate and what objects to it; deletes nothing
 host-cleaner plan -o plan.json
-host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [-i] [--yes | --dry-run]
+host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [--archive] [-i] [--yes | --dry-run]
 host-cleaner config [--format json]   # every plugin's effective settings
 ```
 
@@ -177,6 +178,8 @@ host-cleaner config [--format json]   # every plugin's effective settings
 | `--spare <id\|name\|glob>` | Leave these alone: an id, a path, a branch name (its worktree too) or a glob. |
 | `-i` | Choose from a checklist, the default candidates ticked; each ticked protest is asked for by code. Needs a terminal. |
 | `--allow <code>` | Accept a protest by its code. |
+| `--archive` | `clean`: before deleting unlanded work, push it to `archive/<repo>-local-<date>` on the repository's remote, as repo-cleaner does. `abandon-unmerged` and `discard-changes` still need `--allow` by name. |
+| `--archive-exclude <glob>` | With `--archive`, leave files matching this glob out of a worktree's snapshot. Repeatable. |
 | `--worktrees`, `--branches` | Only the git plugin's worktrees, or only its local branches. Remote branches are repo-cleaner's. |
 | `--all-rows` | `status`: also show candidates a plugin refuses. |
 
@@ -186,6 +189,15 @@ host-cleaner config [--format json]   # every plugin's effective settings
 asks (`--yes` skips the question; with no terminal and no `--yes` it exits 2),
 deletes, and writes one receipt to `--receipt` or the state directory's
 `receipts/`, plus a line in `logs/host-cleaner.log`.
+
+With `--archive`, a failed archive push stops the run: that candidate and
+every one after it are left, and the run exits 11. A repository with no remote
+cannot be archived, so its candidates that hold unlanded work fail their step,
+and the run exits 11.
+
+```sh
+host-cleaner clean --archive --pick branch:/path/to/repo:topic --allow abandon-unmerged
+```
 
 The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
 all three directories):

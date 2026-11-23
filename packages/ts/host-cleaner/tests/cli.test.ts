@@ -11,11 +11,11 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
 import { Git } from '@osdlc/typed-git'
-import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
+import { IDENTITY, makeBareAndWorker, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, type MainDeps } from '../src/cli.ts'
 import { hostDirs } from '../src/config.ts'
@@ -47,6 +47,27 @@ function repo(): string {
   sh(dir, ['checkout', '-q', 'main'])
   return dir
 }
+
+const git = (cwd: string, args: string[]): string =>
+  new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args).stdout.trim()
+
+/** A repository whose `main` is pushed to a bare remote, plus an unmerged branch `topic`. */
+function pushedRepo(): { dir: string; bare: string } {
+  const pair = makeBareAndWorker({ parent: tempDir() })
+  const dir = pair.worker.dir
+  sh(dir, ['commit', '--allow-empty', '-m', 'initial'])
+  sh(dir, ['push', '-q', '-u', 'origin', 'main'])
+  sh(dir, ['checkout', '-q', '-b', 'topic'])
+  sh(dir, ['commit', '--allow-empty', '-m', 'wip'])
+  sh(dir, ['checkout', '-q', 'main'])
+  return { dir, bare: pair.bare.dir }
+}
+
+/** The archive branches on the remote `bare`. */
+const archives = (bare: string): string[] =>
+  git(bare, ['for-each-ref', '--format=%(refname)', 'refs/heads/archive/'])
+    .split('\n')
+    .filter((l) => l !== '')
 
 function setup(): { home: string; cwd: string; env: Record<string, string> } {
   const home = tempDir()
@@ -315,6 +336,61 @@ describe('plan and clean', () => {
     expect(r.out).not.toContain(':topic')
   })
 
+  test('--archive pushes an unmerged branch to an archive branch on the remote, then deletes it', () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    const wip = git(dir, ['rev-parse', 'topic'])
+    const topic = `branch:${dir}:topic`
+    const r = run(
+      ['clean', '--archive', '--pick', topic, '--allow', 'abandon-unmerged', '--yes'],
+      dir,
+      env,
+    )
+    expect(r.code).toBe(0)
+    const [archive, ...more] = archives(bare)
+    expect(more).toEqual([])
+    expect(archive).toMatch(/^refs\/heads\/archive\/worker-local-\d{4}-\d{2}-\d{2}$/)
+    // The archive's first parent is the remote main, the second the work it holds.
+    expect(git(bare, ['rev-parse', `${archive}^2`])).toBe(wip)
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).not.toContain('topic')
+    expect(r.out).toContain(`done ${topic}`)
+    expect(r.out).toContain(archive)
+  })
+
+  test('without --archive the same clean deletes the branch and pushes nothing', () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    const topic = `branch:${dir}:topic`
+    const r = run(['clean', '--pick', topic, '--allow', 'abandon-unmerged', '--yes'], dir, env)
+    expect(r.code).toBe(0)
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).not.toContain('topic')
+    expect(archives(bare)).toEqual([])
+  })
+
+  test('--archive-exclude leaves matching files out of a worktree’s snapshot', () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    const wt = join(dirname(dir), 'wt-dirty')
+    sh(dir, ['worktree', 'add', '-q', '-b', 'dirty', wt, 'main'])
+    writeFileSync(join(wt, 'keep.txt'), 'kept\n')
+    writeFileSync(join(wt, 'notes.log'), 'left out\n')
+    const argv = ['clean', '--archive', '--archive-exclude', '*.log', '--yes']
+    const r = run(
+      [...argv, '--pick', `worktree:${wt}`, '--allow', 'discard-changes', '--worktrees'],
+      dir,
+      env,
+    )
+    expect(r.code).toBe(0)
+    expect(existsSync(wt)).toBe(false)
+    const [archive] = archives(bare)
+    const files = git(bare, ['ls-tree', '--name-only', `${archive}^2`]).split('\n')
+    expect(files).toContain('keep.txt')
+    expect(files).not.toContain('notes.log')
+    expect(git(bare, ['log', '-1', '--format=%B', archive!])).toContain(
+      'left out (excluded): notes.log',
+    )
+  })
+
   test('a protest is skipped until its code is allowed by name', () => {
     const { env, cwd } = setup()
     const objections: Objection[] = [
@@ -397,6 +473,9 @@ describe('plan and clean', () => {
     expect(run(['clean', '--plan', f, '--worktrees'], cwd, env).code).toBe(2)
     expect(run(['clean', '-i', '--pick', 'x'], cwd, env).code).toBe(2)
     expect(run(['clean', '-i', '--plan', '-'], cwd, env).code).toBe(2)
+    const exclude = run(['clean', '--archive-exclude', '*.log', '--dry-run'], cwd, env)
+    expect(exclude.code).toBe(2)
+    expect(exclude.err).toContain('--archive-exclude has no effect without --archive')
     const both = run(['clean', '--pick', 'a:x', '--spare', 'a:x', '--dry-run'], cwd, env, {
       plugins: [fake()],
     })
