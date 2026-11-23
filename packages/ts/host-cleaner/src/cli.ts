@@ -26,6 +26,7 @@ import { stripControls } from '@osdlc/ux'
 
 import { expandHome, ignorePaths } from './ignore.ts'
 import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
+import { gitDefinitionWith } from './git.ts'
 import { pluginKit } from './kit.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { BUILT_IN_PLUGINS, UnknownPlugin, selectPlugins } from './registry.ts'
@@ -372,12 +373,12 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliCont
   // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
+  const git = gitDefinitionWith({ sweep: { only } })
   const all =
     deps.plugins ??
-    BUILT_IN_PLUGINS.map((d) =>
+    BUILT_IN_PLUGINS.map((d) => (d.name === git.name ? git : d)).map((d) =>
       d.create({
         settings: settingsOf(d.name, config.plugins[d.name] ?? {}, config),
-        only,
         env: ctx.env,
         kit: pluginKit(d.name, { env: ctx.env }),
       }),

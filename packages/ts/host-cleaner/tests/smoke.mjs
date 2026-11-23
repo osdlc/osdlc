@@ -21,6 +21,7 @@ import {
   plan,
   survey,
 } from '@osdlc/host-cleaner'
+import { PLUGIN_API, definePlugin, pluginKit, z } from '@osdlc/host-cleaner/plugin'
 import { contractSuite, fakeContext } from '@osdlc/host-cleaner/testing'
 
 assert.match(VERSION, /^\d+\.\d+\.\d+/)
@@ -53,6 +54,29 @@ assert.deepEqual(log, ['artifact:c'])
 assert.ok(new FatalRun('x') instanceof Error)
 assert.equal(typeof contractSuite, 'function')
 assert.deepEqual(fakeContext().targets, [])
+
+// A plugin written with the plugin entry alone, through the core.
+const scratch = definePlugin({
+  name: 'scratch',
+  api: PLUGIN_API,
+  settings: z.object({ keep: z.boolean().default(false) }),
+  create: ({ settings, kit }) => ({
+    name: 'scratch',
+    detect: () => !settings.keep,
+    discover: () => [kit.candidate({ kind: 'scratch', ref: 's', why: 'unused' })],
+    delete: (c) => `dropped ${c.ref}`,
+  }),
+})
+const made = scratch.create({
+  settings: scratch.settings.parse({}),
+  env: {},
+  kit: pluginKit('scratch'),
+})
+const done = await clean(plan(await survey([made], ctx)), [made], ctx)
+assert.deepEqual(
+  done.steps.map((s) => s.delete),
+  ['dropped s'],
+)
 
 // The binary sits beside dist/ in the package, installed or not.
 const dist = dirname(fileURLToPath(import.meta.resolve('@osdlc/host-cleaner')))

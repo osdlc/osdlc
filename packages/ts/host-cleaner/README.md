@@ -19,7 +19,12 @@ Each shipped plugin is one `definePlugin({ name, api, settings, create })`
 value: `api` is `PLUGIN_API`, `settings` is the zod schema of its entry in the
 config's `plugins` (the core adds `enabled` and makes it strict), and `create`
 builds the plugin from those settings, validated with defaults filled in, and
-the plugin kit (see [The plugin kit](#the-plugin-kit)).
+the plugin kit (see [The plugin kit](#the-plugin-kit)). A plugin of your own is
+written the same way, from `@osdlc/host-cleaner/plugin`, which holds
+`definePlugin`, `PLUGIN_API`, the contract's types, the kit and `z` (the zod the
+core validates settings with), and nothing of the run. [Writing a
+plugin](./docs/guide/writing-a-plugin.md) is the guide: writing, testing and
+publishing one.
 
 | Phase | Who | What |
 | --- | --- | --- |
@@ -144,7 +149,7 @@ A ref gets no folder checks, and the core never removes a folder for one.
 
 `create` gets `kit`, the safety helpers the shipped plugins use, bound to the
 plugin's name, so a plugin measures, removes and runs things the same way
-(`pluginKit(name, options)` builds one, for tests). Each run, once the
+(`pluginKit(name, options)` builds one, for tests; both entries export it). Each run, once the
 plugin's `roots` hook has answered, the core binds the kit it was created with
 to those roots, the run's targets and their linked worktrees (as above), so `kit.remove`
 needs no more than the path. The plugin `create` returns through

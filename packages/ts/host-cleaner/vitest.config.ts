@@ -4,11 +4,16 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   resolve: {
-    // The examples import the package by name; run them on the source.
+    // The examples import the package by name; run them on the source. Every
+    // entry goes to the source, so a test never mixes it with dist/.
     alias: [
       {
         find: /^@osdlc\/host-cleaner$/,
         replacement: fileURLToPath(new URL('./src/index.ts', import.meta.url)),
+      },
+      {
+        find: /^@osdlc\/host-cleaner\/(plugin|testing)$/,
+        replacement: fileURLToPath(new URL('./src/$1.ts', import.meta.url)),
       },
     ],
   },

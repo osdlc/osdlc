@@ -26,6 +26,7 @@ import {
   type Candidate,
   type Objection,
   type Plugin,
+  type PluginDefinition,
 } from './types.ts'
 
 export interface GitPluginOptions extends Runners {
@@ -121,10 +122,18 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
   }
 }
 
-/** The `git` plugin as the command line builds it: no settings of its own, and the kinds `only` leaves. */
-export const gitDefinition = definePlugin({
-  name: 'git',
-  api: PLUGIN_API,
-  settings: z.strictObject({}),
-  create: ({ only }) => gitPlugin({ sweep: { only: [...only] } }),
-})
+/**
+ * The `git` plugin as a definition, with no settings of its own. The command
+ * line passes `--worktrees` and `--branches` here as `sweep.only`, so no other
+ * plugin's `create` sees git's kinds.
+ */
+export const gitDefinitionWith = (opts: GitPluginOptions = {}): PluginDefinition =>
+  definePlugin({
+    name: 'git',
+    api: PLUGIN_API,
+    settings: z.strictObject({}),
+    create: () => gitPlugin(opts),
+  })
+
+/** The `git` plugin's definition, sweeping worktrees and local branches. */
+export const gitDefinition = gitDefinitionWith()

@@ -42,7 +42,7 @@ function cachePlugin(over: (root: string) => Partial<Plugin> = () => ({})) {
       ...over(root),
     }),
   })
-  const plugin = def.create({ settings: {}, only: [], env: {}, kit: pluginKit('cache') })
+  const plugin = def.create({ settings: {}, env: {}, kit: pluginKit('cache') })
   return { plugin, root, dir }
 }
 

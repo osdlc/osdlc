@@ -200,7 +200,7 @@ describe('remove', () => {
         delete: (c) => kit.remove(c.path!),
       }),
     })
-    const plugin = def.create({ settings: {}, only: [], env: {}, kit: pluginKit('cache') })
+    const plugin = def.create({ settings: {}, env: {}, kit: pluginKit('cache') })
     // No target holds `dir`: only the roots the core asked the plugin for.
     const ctx = { cwd: root, targets: [], allow: [] }
     const receipt = await clean(plan(await survey([plugin], ctx)), [plugin], ctx)

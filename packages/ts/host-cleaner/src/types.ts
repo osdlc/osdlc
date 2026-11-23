@@ -4,7 +4,6 @@
  * discover, object, decide, re-check, prepare, delete, deleted.
  */
 
-import type { Kind } from '@osdlc/repo-cleaner'
 import type { z } from 'zod'
 
 import { attachKit, type Kit } from './kit.ts'
@@ -167,11 +166,10 @@ export const PLUGIN_API = 1
 
 /**
  * What `create` is told: its own entry in the config's `plugins`, validated with
- * its defaults filled in, and the git kinds `--worktrees` and `--branches` leave.
+ * its defaults filled in, the environment and the kit.
  */
 export interface PluginInit<S = Record<string, unknown>> {
   settings: S
-  only: readonly Kind[]
   /** The command line's environment, for a plugin that runs other programs. */
   env: Readonly<Record<string, string | undefined>>
   /** The safety helpers, bound to this plugin and, each run, to its roots (see `./kit.ts`). */
