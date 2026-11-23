@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -31,7 +32,13 @@ import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, type CliSeams } from '../src/cli.ts'
 import { machineFile, prUpdatePaths } from '../src/machine.ts'
-import { CLONE_MARKER, CLONE_STAMP, claimCloneLock, cloneLockPath } from '../src/mirror.ts'
+import {
+  CLONE_MARKER,
+  CLONE_STAMP,
+  claimCloneLock,
+  cloneLockPath,
+  markMirrorDir,
+} from '../src/mirror.ts'
 import { CONFIG_INVALID_EXIT } from '@osdlc/config-layers'
 import { allToolsInstalled, isolatedEnv } from './support.ts'
 
@@ -815,6 +822,83 @@ describe('review round 1', () => {
       expect(git(clone, 'worktree', 'list', '--porcelain').match(/^worktree /gm)).toHaveLength(1)
     } finally {
       releaseLock(cloneLockPath(clone), token)
+    }
+  })
+})
+
+describe('pruning at the end of update --apply', () => {
+  /** A managed clone of acme/old in `dir`, last used `daysAgo` days ago. */
+  function oldClone(dir: string, daysAgo: number): string {
+    markMirrorDir(dir)
+    const path = join(dir, 'github.com', 'acme', 'old.git')
+    mkdirSync(dirname(path), { recursive: true })
+    git(scratch, 'clone', '-q', '--bare', remote, path)
+    writeFileSync(join(path, CLONE_MARKER), '{"tool":"pr-update","repo":"github.com/acme/old"}\n')
+    writeFileSync(
+      join(path, CLONE_STAMP),
+      `${new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString()}\n`,
+    )
+    return path
+  }
+
+  test('a run served from a clone removes clones past mirror_max_age_days, and says what it freed', async () => {
+    const dir = join(scratch, 'clones')
+    const old = oldClone(dir, 40)
+    const fresh = join(dir, 'github.com', 'acme', 'fresh.git')
+    cpSync(old, fresh, { recursive: true })
+    writeFileSync(join(fresh, CLONE_STAMP), `${new Date().toISOString()}\n`)
+
+    const r = await run('update', '--repo', 'acme/api', '--mirror-dir', dir, '--apply')
+
+    expect(r.code).toBe(EXIT.ok)
+    expect(r.err).toMatch(new RegExp(`pruned the clone ${old.replace(/[.]/g, '\\.')} \\(`))
+    expect(r.err).toMatch(/pruning freed /)
+    expect(existsSync(old)).toBe(false)
+    expect(existsSync(fresh)).toBe(true)
+    // The clone the run just used is not old.
+    expect(existsSync(cloneOf(dir))).toBe(true)
+  })
+
+  test('a run that never touches the cache, and a rehearsal, remove nothing', async () => {
+    writeMachine('checkout: mirror\n')
+    const old = oldClone(repos, 400)
+    const older = join(dirname(old), 'older.git')
+    cpSync(old, older, { recursive: true })
+
+    const root = await run('update', '--apply')
+    expect(root.code).toBe(EXIT.ok)
+    expect(root.err).not.toContain('pruned')
+    expect(existsSync(old)).toBe(true)
+
+    // A rehearsal served from one old clone leaves the other.
+    const rehearsal = await run('update', '--repo', 'acme/old', '--json')
+    expect(JSON.parse(rehearsal.out).repos[0].checkout).toEqual({ path: old, source: 'clone' })
+    expect(rehearsal.err).not.toContain('pruned')
+    expect(existsSync(older)).toBe(true)
+  })
+
+  test('never waits for a clone another run holds: it is left, and the run ends at once', async () => {
+    const dir = join(scratch, 'clones')
+    const old = oldClone(dir, 40)
+    const token = claimCloneLock(cloneLockPath(old), 0)!
+    try {
+      const started = Date.now()
+      // The default wait is 60 s: pruning that waited would time out this test.
+      const r = await runWith(
+        { terminal: { canPrompt: () => false } },
+        {},
+        'update',
+        '--repo',
+        'acme/api',
+        '--mirror-dir',
+        dir,
+        '--apply',
+      )
+      expect(Date.now() - started).toBeLessThan(30_000)
+      expect(r.code).toBe(EXIT.ok)
+      expect(existsSync(old)).toBe(true)
+    } finally {
+      releaseLock(cloneLockPath(old), token)
     }
   })
 })

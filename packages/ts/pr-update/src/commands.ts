@@ -37,6 +37,7 @@ import { selectedCodeHostFor } from './code-host.ts'
 import { loadConfigLayers } from './config-file.ts'
 import { standalonePorts } from './defaults.ts'
 import { MirrorDirError, managedClones, mirrorDirFrom, type MirrorAsker } from './mirror.ts'
+import { formatBytes, pruneMirror } from './prune.ts'
 import { gitMissingFailure, preflight, type WhichSeam } from './preflight.ts'
 import {
   REPAIR_AGENTS,
@@ -329,6 +330,37 @@ function runEnv(
       locator: { resolveAlias },
       clones,
     }),
+  }
+}
+
+/**
+ * The pruning at the end of an `update --apply` that served a target from a clone or made a run
+ * worktree under the cache (D-0005, "Automatic"): as `mirror prune` with no flags, after the run
+ * has let go of its locks. A run that never touched the cache removes nothing. Each thing removed
+ * and the space freed are noted; a failure is noted and does not change the run's exit.
+ */
+function pruneAfterRun(
+  ctx: CommandContext,
+  seams: CliSeams,
+  out: UpdateOutput,
+  dir: string | undefined,
+): void {
+  const source = new Map(out.repos.map((r) => [r.repo, r.checkout?.source]))
+  const touched =
+    out.repos.some((r) => r.checkout?.source === 'clone') ||
+    out.results.some((r) => source.get(r.repo) === 'located')
+  if (!touched) return
+  try {
+    const report = pruneMirror({ env: ctx.env, dir, git: gitRunner(seams) })
+    for (const e of report.removed) {
+      ctx.note(
+        `pruned ${e.kind === 'clone' ? 'the clone' : 'the run worktree'} ${e.path} (${formatBytes(e.bytes)})`,
+      )
+    }
+    for (const e of report.failed) ctx.note(`could not prune ${e.path}: ${e.reason ?? ''}`)
+    if (report.removed.length > 0) ctx.note(`pruning freed ${formatBytes(report.freedBytes)}`)
+  } catch (e) {
+    ctx.note(`pruning after the run failed: ${(e as Error).message.split('\n')[0]}`)
   }
 }
 
@@ -707,6 +739,7 @@ export function updateCommand(seams: CliSeams) {
         }
         asUsage(e)
       }
+      if (out.applied) pruneAfterRun(ctx, seams, out, mirrorDirFlag(ctx, flags.mirrorDir))
       if (reportFile !== undefined) {
         try {
           writeReport(reportFile, out)

@@ -50,7 +50,7 @@ import {
   checkClone,
   claimCloneLock,
   cloneLockPath,
-  mirrorSetting,
+  loadMirrorSetting,
   ownedByMe,
   type OwnedCheck,
 } from './mirror.ts'
@@ -99,20 +99,19 @@ interface Where {
 
 function where(opts: MirrorWalkOptions): Where {
   const file = opts.machine ?? machineFile({ env: opts.env })
-  const { value, issues } = file.loadWithIssues()
-  for (const issue of issues) {
-    const key = issue.path.length === 0 ? '' : `${issue.path.join('.')}: `
-    const message = (issue.message.split('\n')[0] ?? '').replace(/:\s*$/, '')
-    opts.notice?.(`${file.path()}: ${key}${message}; it is ignored`)
-  }
   const home = homeDir({ env: opts.env })
-  const setting = mirrorSetting({ flag: opts.dir, env: opts.env, machine: value, home })
+  const { setting, machine } = loadMirrorSetting(file, {
+    flag: opts.dir,
+    env: opts.env,
+    home,
+    notice: opts.notice,
+  })
   const paths = prUpdatePaths(osdlcDirs({ env: opts.env, home }))
   return {
     mirrorDir: setting.dir,
     worktrees: paths.worktrees,
     kept: paths.kept,
-    maxAgeDays: value.mirror_max_age_days,
+    maxAgeDays: machine.mirror_max_age_days,
   }
 }
 
@@ -272,7 +271,11 @@ function runWorktrees(root: string): { path: string; repo: string; running: bool
     for (const name of subdirs(repoDir)) {
       const run = RUN_NAME.exec(name)
       if (run === null) continue
-      out.push({ path: join(repoDir, name), repo: parts.join('/'), running: pidAlive(Number(run[1])) })
+      out.push({
+        path: join(repoDir, name),
+        repo: parts.join('/'),
+        running: pidAlive(Number(run[1])),
+      })
     }
   }
   return out
@@ -480,7 +483,12 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
   // Dead run worktrees, at any age.
   for (const w of runWorktrees(at.worktrees)) {
     if (w.running) continue
-    const entry: PruneEntry = { kind: 'worktree', path: w.path, repo: w.repo, bytes: sizeOf(w.path) }
+    const entry: PruneEntry = {
+      kind: 'worktree',
+      path: w.path,
+      repo: w.repo,
+      bytes: sizeOf(w.path),
+    }
     const owner = worktreeOwner(w.path)
     if (dryRun) {
       done(entry)
@@ -570,14 +578,12 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
     }
   }
 
-  // Whole clones past the age.
-  const days =
-    opts.all === true
-      ? null
-      : (opts.olderThanDays ?? (at.maxAgeDays === 0 ? undefined : at.maxAgeDays))
-  report.olderThanDays = days ?? null
-  if (opts.all !== true && days === undefined) return report
-  const old = (clone: string): boolean => days === null || now - lastUsed(clone) > days * DAY_MS
+  // Whole clones past the age. At age 0 none, unless `olderThanDays` or `all` says otherwise.
+  const days = opts.olderThanDays ?? (at.maxAgeDays === 0 ? null : at.maxAgeDays)
+  report.olderThanDays = opts.all === true ? null : days
+  if (opts.all !== true && days === null) return report
+  const old = (clone: string): boolean =>
+    opts.all === true || days === null || now - lastUsed(clone) > days * DAY_MS
   for (const { path, repo, state } of clonesIn(at.mirrorDir, owned)) {
     const entry: PruneEntry = { kind: 'clone', path, repo, bytes: 0 }
     if (state !== 'clone') {

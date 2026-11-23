@@ -202,6 +202,30 @@ export function mirrorSetting(opts: {
 }
 
 /**
+ * The machine file read once, with a note for each issue in it (naming the file; the bad value is
+ * ignored), and the {@link mirrorSetting} it gives with `flag` and `env`.
+ */
+export function loadMirrorSetting(
+  file: MachineConfigFile<typeof machineConfigSchema>,
+  opts: {
+    flag?: string | undefined
+    env: Record<string, string | undefined>
+    home: string
+    notice?: ((line: string) => void) | undefined
+  },
+): { setting: MirrorSetting; machine: MachineConfig } {
+  const { value, issues } = file.loadWithIssues()
+  for (const issue of issues) {
+    const key = issue.path.length === 0 ? '' : `${issue.path.join('.')}: `
+    // A YAML error's message goes on to quote the file: its first line says enough.
+    const message = (issue.message.split('\n')[0] ?? '').replace(/:\s*$/, '')
+    opts.notice?.(`${file.path()}: ${key}${message}; it is ignored`)
+  }
+  const setting = mirrorSetting({ flag: opts.flag, env: opts.env, machine: value, home: opts.home })
+  return { setting, machine: value }
+}
+
+/**
  * Clone step 1: `dir` must not be inside a git working tree or git directory, and must be
  * missing, empty or already marked by this tool. When it exists it must belong to the person
  * running pr-update, and so must its marker, which must be a plain file. Nothing is written.
@@ -531,15 +555,7 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
   const home = (): string => homeDir({ env: opts.env })
   let setting: MirrorSetting | undefined
   const current = (): MirrorSetting => {
-    if (setting !== undefined) return setting
-    const { value, issues } = file.loadWithIssues()
-    for (const issue of issues) {
-      const key = issue.path.length === 0 ? '' : `${issue.path.join('.')}: `
-      // A YAML error's message goes on to quote the file: its first line says enough.
-      const message = (issue.message.split('\n')[0] ?? '').replace(/:\s*$/, '')
-      opts.notice(`${file.path()}: ${key}${message}; it is ignored`)
-    }
-    setting = mirrorSetting({ flag: opts.flag, env: opts.env, machine: value, home: home() })
+    setting ??= loadMirrorSetting(file, { ...opts, home: home() }).setting
     return setting
   }
   const misses = new Map<string, MissedCheckout>()

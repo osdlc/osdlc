@@ -1,0 +1,650 @@
+/**
+ * `pr-update mirror prune` and `mirror list` over pr-update's cache: run worktrees under
+ * `worktrees/`, managed clones, and the leftovers a killed run can leave. Every clone and checkout
+ * is a local repository, and every run is under `isolatedEnv`: nothing reaches the network or
+ * the real home.
+ */
+
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+
+import { EXIT, captureContext } from '@osdlc/cli-tool'
+import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
+import { osdlcDirs } from '@osdlc/ecosystem'
+import { releaseLock } from '@osdlc/file-lock'
+import { makeGitFixture } from '@osdlc/typed-git/testing'
+
+import { main } from '../src/cli.ts'
+import { machineFile, prUpdatePaths } from '../src/machine.ts'
+import {
+  CLONE_MARKER,
+  CLONE_STAMP,
+  claimCloneLock,
+  cloneLockPath,
+  markMirrorDir,
+} from '../src/mirror.ts'
+import { listMirror, pruneMirror, type PruneOptions } from '../src/prune.ts'
+import { allToolsInstalled, isolatedEnv } from './support.ts'
+
+/** No process has this pid, so a run named for it is dead. */
+const DEAD = '2147483646.1'
+const DAY = 24 * 60 * 60 * 1000
+
+let scratch: string
+let env: Record<string, string>
+let paths: ReturnType<typeof prUpdatePaths>
+/** A repository with a `main` branch the clones and checkouts are made from. */
+let source: string
+/** Locks a test took, released after it. */
+let held: { path: string; token: string }[]
+
+function git(dir: string, ...argv: string[]): string {
+  const res = spawnRunner('git').run(argv, { cwd: dir })
+  if (res.exitCode !== 0) throw new Error(`git ${argv.join(' ')}: ${res.stderr}`)
+  return res.stdout.trim()
+}
+
+beforeEach(() => {
+  scratch = realpathSync(mkdtempSync(join(tmpdir(), 'pr-update-prune-')))
+  env = isolatedEnv(join(scratch, 'env'))
+  paths = prUpdatePaths(osdlcDirs({ env }))
+  const work = makeGitFixture({ dir: join(scratch, 'source') })
+  work.commit('base', { 'a.txt': 'a' })
+  source = work.dir
+  held = []
+})
+afterEach(() => {
+  for (const { path, token } of held) releaseLock(path, token)
+  rmSync(scratch, { recursive: true, force: true })
+})
+
+/** A managed clone of `repo` (`owner/name` on github.com) in `dir`, last used `daysAgo` days ago. */
+function makeClone(repo: string, daysAgo: number, dir = paths.repos): string {
+  markMirrorDir(dir)
+  const path = join(dir, 'github.com', ...repo.split('/')) + '.git'
+  mkdirSync(dirname(path), { recursive: true })
+  git(scratch, 'clone', '-q', '--bare', source, path)
+  // The layout pr-update's clones keep: no branches of their own, the remote's under origin/*.
+  git(path, 'update-ref', 'refs/remotes/origin/main', 'refs/heads/main')
+  git(path, 'update-ref', '-d', 'refs/heads/main')
+  writeFileSync(join(path, CLONE_MARKER), `${JSON.stringify({ tool: 'pr-update', repo })}\n`)
+  writeFileSync(join(path, CLONE_STAMP), `${new Date(Date.now() - daysAgo * DAY).toISOString()}\n`)
+  return path
+}
+
+/** A run worktree of `owner` (a clone or a checkout) for `repo`, named `run`, on its scratch branch. */
+function runWorktree(owner: string, repo: string, run = DEAD): string {
+  const path = join(paths.worktrees, 'github.com', ...repo.split('/'), run)
+  mkdirSync(dirname(path), { recursive: true })
+  git(owner, 'worktree', 'add', '-q', '-b', `pr-update/scratch-${run}`, path, startOf(owner))
+  return path
+}
+
+/** Where a worktree of `owner` starts: a clone's `origin/main`, or a checkout's `main`. */
+const startOf = (owner: string): string =>
+  existsSync(join(owner, CLONE_MARKER)) ? 'origin/main' : 'main'
+
+/** A kept worktree of the clone `clone` for `repo#number`, with its record. */
+function keptWorktree(clone: string, repo: string, number: number): string {
+  const dir = join(paths.kept, 'github.com', ...repo.split('/'))
+  const path = join(dir, String(number))
+  mkdirSync(dir, { recursive: true })
+  const branch = `pr-update/failed-${repo.replace('/', '-')}-${number}`
+  git(clone, 'worktree', 'add', '-q', '-b', branch, path, startOf(clone))
+  const record = {
+    repo,
+    number,
+    head: 'topic',
+    base: 'main',
+    headOid: null,
+    baseOid: null,
+    path,
+    branch,
+    gitDir: realpathSync(clone),
+  }
+  writeFileSync(join(dir, `${number}.json`), JSON.stringify(record))
+  return path
+}
+
+/** The paths of the worktrees git lists for `gitDir`, other than the bare entry. */
+function listed(gitDir: string): string[] {
+  return git(gitDir, 'worktree', 'list', '--porcelain')
+    .split('\n')
+    .filter((l) => l.startsWith('worktree '))
+    .map((l) => l.slice('worktree '.length))
+    .filter((p) => p !== realpathSync(gitDir) && p !== dirname(realpathSync(gitDir)))
+}
+
+function branches(gitDir: string): string[] {
+  return git(gitDir, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/')
+    .split('\n')
+    .filter(Boolean)
+}
+
+/** Hold the lock of `clone` as another live run would. */
+function holdLock(clone: string): string {
+  const path = cloneLockPath(clone)
+  const token = claimCloneLock(path, 0)
+  if (token === null) throw new Error('lock busy')
+  held.push({ path, token })
+  return path
+}
+
+/** Set the mtime of `path` to `ms` ago. */
+function age(path: string, ms: number): void {
+  const t = new Date(Date.now() - ms)
+  utimesSync(path, t, t)
+}
+
+/** A git runner that records each call's argv and env. */
+function recordingGit(): {
+  runner: CommandRunner
+  calls: { argv: string[]; env: Record<string, string | undefined> }[]
+} {
+  const real = spawnRunner('git')
+  const calls: { argv: string[]; env: Record<string, string | undefined> }[] = []
+  return {
+    calls,
+    runner: {
+      run: (argv, opts) => {
+        calls.push({ argv: [...argv], env: { ...(opts?.env ?? {}) } })
+        return real.run(argv, opts)
+      },
+    },
+  }
+}
+
+const prune = (opts: Partial<PruneOptions> = {}) => pruneMirror({ env, ...opts })
+
+describe('dead run worktrees under worktrees/', () => {
+  test('one of a located checkout is removed through its owner; the person’s own worktrees stay, even one whose folder is missing', () => {
+    const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
+    checkout.commit('init', { 'w.txt': 'w' })
+    const dead = runWorktree(checkout.dir, 'acme/web')
+    const live = runWorktree(checkout.dir, 'acme/web', `${process.pid}.1`)
+    // The person's own worktree, on a drive that is not mounted: a bare prune would drop it.
+    const theirs = join(scratch, 'elsewhere', 'feature')
+    git(checkout.dir, 'worktree', 'add', '-q', '-b', 'feature', theirs, 'main')
+    rmSync(theirs, { recursive: true, force: true })
+
+    const r = prune()
+
+    expect(r.removed).toEqual([
+      expect.objectContaining({ kind: 'worktree', path: dead, repo: 'github.com/acme/web' }),
+    ])
+    expect(existsSync(dead)).toBe(false)
+    expect(existsSync(live)).toBe(true)
+    expect(listed(checkout.dir).sort()).toEqual([live, theirs].sort())
+    expect(branches(checkout.dir)).not.toContain(`pr-update/scratch-${DEAD}`)
+    expect(branches(checkout.dir)).toContain('feature')
+  })
+
+  test('one registered in a managed clone is removed while holding the clone’s lock, without waiting', () => {
+    const clone = makeClone('acme/api', 1)
+    const dead = runWorktree(clone, 'acme/api')
+    const claims: { path: string; waitMs: number }[] = []
+
+    const r = prune({
+      claim: (path, waitMs) => {
+        claims.push({ path, waitMs })
+        // The lock is held while the worktree goes.
+        const token = claimCloneLock(path, waitMs)
+        expect(existsSync(dead)).toBe(true)
+        return token
+      },
+    })
+
+    expect(claims).toEqual([{ path: cloneLockPath(clone), waitMs: 0 }])
+    expect(r.removed.map((e) => e.path)).toEqual([dead])
+    expect(existsSync(dead)).toBe(false)
+    expect(listed(clone)).toEqual([])
+    expect(branches(clone)).toEqual([])
+    // Released, and so removed: the lock file goes with the release.
+    expect(existsSync(cloneLockPath(clone))).toBe(false)
+  })
+
+  test('one in a clone another run holds is left, as mirror busy', () => {
+    const clone = makeClone('acme/api', 1)
+    const dead = runWorktree(clone, 'acme/api')
+    const lock = holdLock(clone)
+
+    const r = prune()
+
+    expect(r.skipped).toEqual([
+      expect.objectContaining({
+        kind: 'worktree',
+        path: dead,
+        reason: `mirror busy: another pr-update run holds ${lock}`,
+      }),
+    ])
+    expect(existsSync(dead)).toBe(true)
+    expect(listed(clone)).toEqual([dead])
+  })
+
+  test('one whose owner is gone has only its folder removed', () => {
+    const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'gone') })
+    checkout.commit('init', { 'g.txt': 'g' })
+    const dead = runWorktree(checkout.dir, 'acme/gone')
+    rmSync(checkout.dir, { recursive: true, force: true })
+
+    const r = prune()
+
+    expect(r.removed.map((e) => e.path)).toEqual([dead])
+    expect(r.failed).toEqual([])
+    expect(existsSync(dead)).toBe(false)
+  })
+
+  test('the .git file and commondir are read first: a record that names another tree is not touched', () => {
+    const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
+    checkout.commit('init', { 'w.txt': 'w' })
+    const other = runWorktree(checkout.dir, 'acme/web', `${process.pid}.2`)
+    // A dead run's folder whose .git names the live run's record.
+    const dead = join(dirname(other), DEAD)
+    mkdirSync(dead)
+    writeFileSync(join(dead, '.git'), readFileSync(join(other, '.git'), 'utf8'))
+
+    prune()
+
+    expect(existsSync(dead)).toBe(false)
+    expect(existsSync(other)).toBe(true)
+    expect(listed(checkout.dir)).toEqual([other])
+  })
+
+  test('a live run’s worktree is left alone, and so is a folder that is not named for a run', () => {
+    const clone = makeClone('acme/api', 1)
+    const live = runWorktree(clone, 'acme/api', `${process.pid}.1`)
+    const odd = join(dirname(live), 'notes')
+    mkdirSync(odd)
+
+    const r = prune()
+
+    expect(r.removed).toEqual([])
+    expect(existsSync(live)).toBe(true)
+    expect(existsSync(odd)).toBe(true)
+  })
+
+  test('a symbolic link is never followed out of the cache', () => {
+    const outside = join(scratch, 'outside')
+    mkdirSync(outside)
+    writeFileSync(join(outside, 'keep.txt'), 'keep')
+    // A link where a run worktree would be, and a link where a repository's folder would be.
+    const repoDir = join(paths.worktrees, 'github.com', 'acme', 'api')
+    mkdirSync(repoDir, { recursive: true })
+    symlinkSync(outside, join(repoDir, DEAD))
+    symlinkSync(outside, join(paths.worktrees, 'github.com', 'acme', 'web'))
+    // A dead run's folder holding a link out.
+    const clone = makeClone('acme/api', 1)
+    const dead = runWorktree(clone, 'acme/api', '2147483645.1')
+    symlinkSync(outside, join(dead, 'out'))
+    // A clone directory whose host folder is a link.
+    symlinkSync(outside, join(paths.repos, 'example.com'))
+
+    const r = prune({ all: true })
+
+    expect(readdirSync(outside)).toEqual(['keep.txt'])
+    expect(existsSync(join(repoDir, DEAD))).toBe(true)
+    expect(existsSync(dead)).toBe(false)
+    expect(r.removed.map((e) => e.path)).toEqual([dead, clone])
+  })
+})
+
+describe('managed clones', () => {
+  test('one unused past mirror_max_age_days (30 by default) is removed under its lock, and the lock file goes last', () => {
+    const old = makeClone('acme/old', 40)
+    const fresh = makeClone('acme/fresh', 10)
+    const order: string[] = []
+
+    const r = prune({
+      claim: (path, wait) => {
+        order.push(`claim ${path}`)
+        return claimCloneLock(path, wait)
+      },
+    })
+
+    expect(r.olderThanDays).toBe(30)
+    expect(r.removed).toEqual([
+      expect.objectContaining({ kind: 'clone', path: old, repo: 'github.com/acme/old' }),
+    ])
+    expect(r.removed[0]!.bytes).toBeGreaterThan(0)
+    expect(r.freedBytes).toBe(r.removed[0]!.bytes)
+    expect(order).toEqual([`claim ${cloneLockPath(old)}`])
+    expect(existsSync(old)).toBe(false)
+    expect(existsSync(cloneLockPath(old))).toBe(false)
+    expect(existsSync(fresh)).toBe(true)
+  })
+
+  test('at mirror_max_age_days: 0 no clone is removed, unless --older-than or --all is given; dead run worktrees still are', () => {
+    const file = machineFile({ env })
+    mkdirSync(dirname(file.path()), { recursive: true })
+    writeFileSync(file.path(), 'mirror_max_age_days: 0\n')
+    const clone = makeClone('acme/api', 400)
+    const other = makeClone('acme/web', 3)
+    const dead = runWorktree(clone, 'acme/api')
+
+    const none = prune()
+    expect(none.olderThanDays).toBeNull()
+    expect(none.removed.map((e) => e.path)).toEqual([dead])
+    expect(existsSync(clone)).toBe(true)
+
+    expect(prune({ olderThanDays: 7 }).removed.map((e) => e.path)).toEqual([clone])
+    expect(existsSync(other)).toBe(true)
+    expect(prune({ all: true }).removed.map((e) => e.path)).toEqual([other])
+  })
+
+  test('one another run holds is never removed, even with --all', () => {
+    const clone = makeClone('acme/api', 400)
+    const lock = holdLock(clone)
+
+    const r = prune({ all: true })
+
+    expect(r.skipped).toEqual([
+      expect.objectContaining({
+        path: clone,
+        reason: `mirror busy: another pr-update run holds ${lock}`,
+      }),
+    ])
+    expect(existsSync(clone)).toBe(true)
+  })
+
+  test('one with a kept worktree stays, even with --all; --discard-kept removes the kept tree, its branch and record, then the clone', () => {
+    const clone = makeClone('acme/api', 400)
+    const kept = keptWorktree(clone, 'acme/api', 7)
+
+    const stays = prune({ all: true })
+    expect(stays.skipped).toEqual([
+      expect.objectContaining({
+        path: clone,
+        reason: `has kept worktrees (${kept}); pass --discard-kept to remove them and the clone`,
+      }),
+    ])
+    expect(existsSync(clone)).toBe(true)
+    expect(existsSync(kept)).toBe(true)
+
+    const goes = prune({ all: true, discardKept: true })
+    expect(goes.removed.map((e) => [e.kind, e.path])).toEqual([
+      ['kept', kept],
+      ['clone', clone],
+    ])
+    expect(existsSync(kept)).toBe(false)
+    expect(existsSync(`${kept}.json`)).toBe(false)
+    expect(existsSync(clone)).toBe(false)
+  })
+
+  test('one with a live run’s worktree in it stays', () => {
+    const clone = makeClone('acme/api', 400)
+    const live = runWorktree(clone, 'acme/api', `${process.pid}.1`)
+
+    const r = prune({ all: true })
+
+    expect(r.skipped).toEqual([
+      expect.objectContaining({ path: clone, reason: `in use by the worktree ${live}` }),
+    ])
+    expect(existsSync(clone)).toBe(true)
+  })
+
+  test('a folder without the clone marker is never removed, and a clone directory without its marker is not walked', () => {
+    const clone = makeClone('acme/api', 400)
+    unlinkSync(join(clone, CLONE_MARKER))
+    const unmarked = join(scratch, 'unmarked')
+    mkdirSync(join(unmarked, 'github.com', 'acme'), { recursive: true })
+    git(scratch, 'clone', '-q', '--bare', source, join(unmarked, 'github.com', 'acme', 'web.git'))
+    writeFileSync(join(unmarked, 'github.com', 'acme', 'web.git', CLONE_MARKER), '{}\n')
+
+    const r = prune({ all: true })
+    expect(r.removed).toEqual([])
+    expect(r.skipped).toEqual([
+      expect.objectContaining({
+        path: clone,
+        reason: expect.stringContaining('pr-update did not make it'),
+      }),
+    ])
+    expect(existsSync(clone)).toBe(true)
+
+    expect(prune({ all: true, dir: unmarked }).removed).toEqual([])
+    expect(existsSync(join(unmarked, 'github.com', 'acme', 'web.git'))).toBe(true)
+  })
+
+  test('a removal that fails part-way leaves a .tmp-* leftover, not a broken clone, and a later prune removes it', () => {
+    const clone = makeClone('acme/api', 400)
+    const aside = join(dirname(clone), `.tmp-api.git-${process.pid}`)
+    let first = true
+    const failing = (path: string): void => {
+      if (first) {
+        first = false
+        rmSync(join(path, 'HEAD'))
+        throw new Error('EACCES: permission denied')
+      }
+      rmSync(path, { recursive: true, force: true })
+    }
+
+    const r = prune({ all: true, remove: failing })
+
+    expect(r.removed).toEqual([])
+    expect(r.failed).toEqual([
+      expect.objectContaining({
+        kind: 'clone',
+        path: clone,
+        reason: `EACCES: permission denied; what is left, ${aside}, is removed by a later prune`,
+      }),
+    ])
+    // Nothing is left at the clone path, so the next run clones afresh; the lock was let go.
+    expect(existsSync(clone)).toBe(false)
+    expect(existsSync(aside)).toBe(true)
+    expect(existsSync(cloneLockPath(clone))).toBe(false)
+
+    // Under an hour old: left.
+    expect(prune().removed).toEqual([])
+    age(aside, 2 * 60 * 60 * 1000)
+    expect(prune().removed).toEqual([expect.objectContaining({ kind: 'leftover', path: aside })])
+    expect(existsSync(aside)).toBe(false)
+  })
+
+  test('a dry run says what would go, takes no lock and changes nothing', () => {
+    const clone = makeClone('acme/api', 400)
+    const dead = runWorktree(clone, 'acme/api')
+    let claimed = 0
+
+    const r = prune({
+      dryRun: true,
+      claim: () => {
+        claimed += 1
+        return null
+      },
+    })
+
+    expect(r.dryRun).toBe(true)
+    expect(r.removed.map((e) => [e.kind, e.path])).toEqual([
+      ['worktree', dead],
+      ['clone', clone],
+    ])
+    expect(claimed).toBe(0)
+    expect(existsSync(dead)).toBe(true)
+    expect(existsSync(clone)).toBe(true)
+    expect(existsSync(cloneLockPath(clone))).toBe(false)
+  })
+
+  test('every git call runs with hooks off', () => {
+    const clone = makeClone('acme/api', 400)
+    runWorktree(clone, 'acme/api')
+    keptWorktree(clone, 'acme/api', 7)
+    const { runner, calls } = recordingGit()
+
+    prune({ all: true, discardKept: true, git: runner })
+
+    expect(calls.length).toBeGreaterThan(0)
+    for (const call of calls) {
+      const n = Number(call.env.GIT_CONFIG_COUNT) - 1
+      expect(call.env[`GIT_CONFIG_KEY_${n}`]).toBe('core.hooksPath')
+      expect(call.env[`GIT_CONFIG_VALUE_${n}`]).toBe('/dev/null')
+    }
+    expect(existsSync(clone)).toBe(false)
+  })
+})
+
+describe('leftovers', () => {
+  test('a .tmp-* clone folder and a probe older than an hour are removed; younger ones, and other names starting with ., stay', () => {
+    makeClone('acme/api', 1)
+    const parent = join(paths.repos, 'github.com', 'acme')
+    const oldTmp = join(parent, '.tmp-web.git-2147483646')
+    const newTmp = join(parent, '.tmp-cli.git-2147483646')
+    const other = join(parent, '.keep')
+    const oldProbe = join(paths.worktrees, 'github.com', 'acme', 'api', '.pr-update-probe-abc')
+    const keptProbe = join(paths.kept, 'github.com', 'acme', 'api', '.pr-update-probe-def')
+    const newProbe = join(paths.worktrees, 'github.com', 'acme', 'api', '.pr-update-probe-ghi')
+    const dotDir = join(paths.worktrees, 'github.com', 'acme', 'api', '.other')
+    for (const d of [oldTmp, newTmp, other, oldProbe, keptProbe, newProbe, dotDir]) {
+      mkdirSync(d, { recursive: true })
+    }
+    for (const d of [oldTmp, other, oldProbe, keptProbe, dotDir]) age(d, 2 * 60 * 60 * 1000)
+
+    const r = prune()
+
+    expect(r.removed.map((e) => e.path).sort()).toEqual([keptProbe, oldProbe, oldTmp].sort())
+    for (const d of [newTmp, other, newProbe, dotDir]) expect(existsSync(d)).toBe(true)
+  })
+
+  test('a .tmp-* folder whose clone’s lock another run holds is left', () => {
+    const clone = makeClone('acme/api', 1)
+    const tmp = join(dirname(clone), '.tmp-api.git-2147483646')
+    mkdirSync(tmp)
+    age(tmp, 2 * 60 * 60 * 1000)
+    const lock = holdLock(clone)
+
+    const r = prune()
+
+    expect(r.skipped).toEqual([
+      expect.objectContaining({
+        path: tmp,
+        reason: `mirror busy: another pr-update run holds ${lock}`,
+      }),
+    ])
+    expect(existsSync(tmp)).toBe(true)
+  })
+})
+
+describe('mirror list', () => {
+  test('shows each clone’s repository, size, last use and kept worktrees, and the run worktrees; it takes no lock', () => {
+    const clone = makeClone('acme/api', 3)
+    const kept = keptWorktree(clone, 'acme/api', 7)
+    const dead = runWorktree(clone, 'acme/api')
+    const live = runWorktree(clone, 'acme/api', `${process.pid}.1`)
+    const other = makeClone('acme/web', 1)
+    const lock = holdLock(other)
+    const lockText = readFileSync(lock, 'utf8')
+    const stamp = readFileSync(join(clone, CLONE_STAMP), 'utf8').trim()
+
+    const l = listMirror({ env })
+
+    expect(l.mirrorDir).toBe(paths.repos)
+    expect(l.clones).toEqual([
+      {
+        repo: 'github.com/acme/api',
+        path: clone,
+        bytes: expect.any(Number),
+        lastUsed: stamp,
+        kept: [kept],
+      },
+      {
+        repo: 'github.com/acme/web',
+        path: other,
+        bytes: expect.any(Number),
+        lastUsed: expect.any(String),
+        kept: [],
+      },
+    ])
+    expect(l.clones[0]!.bytes).toBeGreaterThan(0)
+    expect(l.worktrees).toEqual([
+      { path: dead, repo: 'github.com/acme/api', running: false, owner: realpathSync(clone) },
+      { path: live, repo: 'github.com/acme/api', running: true, owner: realpathSync(clone) },
+    ])
+    expect(readFileSync(lock, 'utf8')).toBe(lockText)
+    expect(existsSync(cloneLockPath(clone))).toBe(false)
+  })
+})
+
+describe('pr-update mirror list and prune, on the command line', () => {
+  async function run(...argv: string[]): Promise<{ code: number; out: string; err: string }> {
+    const ctx = captureContext({ cwd: scratch, env })
+    const code = await main(argv, ctx, { which: allToolsInstalled })
+    return { code, out: ctx.io.out, err: ctx.io.err }
+  }
+
+  test('list prints text and --json', async () => {
+    const clone = makeClone('acme/api', 3)
+    const dead = runWorktree(clone, 'acme/api')
+
+    const text = await run('mirror', 'list')
+    expect(text.code).toBe(EXIT.ok)
+    expect(text.out).toContain(`managed clones in ${paths.repos}:`)
+    expect(text.out).toMatch(/ {2}github\.com\/acme\/api {2}[\d.]+ (KB|MB) {2}last used /)
+    expect(text.out).toContain(
+      `  github.com/acme/api  ${dead}  (left by a run that is gone; a worktree of `,
+    )
+
+    const json = await run('mirror', 'list', '--json')
+    expect(json.code).toBe(EXIT.ok)
+    expect(JSON.parse(json.out)).toMatchObject({
+      kind: 'mirror-list',
+      clones: [{ repo: 'github.com/acme/api', path: clone, kept: [] }],
+      worktrees: [{ path: dead, running: false }],
+    })
+  })
+
+  test('prune --older-than, --all, --dry-run and --mirror-dir', async () => {
+    const elsewhere = join(scratch, 'moved')
+    const left = makeClone('acme/api', 5, elsewhere)
+    const clone = makeClone('acme/web', 5)
+
+    const dry = await run('mirror', 'prune', '--older-than', '1', '--dry-run', '--json')
+    expect(dry.code).toBe(EXIT.ok)
+    expect(JSON.parse(dry.out)).toMatchObject({
+      kind: 'mirror-prune',
+      dryRun: true,
+      olderThanDays: 1,
+    })
+    expect(existsSync(clone)).toBe(true)
+
+    const text = await run('mirror', 'prune', '--older-than', '1')
+    expect(text.code).toBe(EXIT.ok)
+    expect(text.out).toMatch(new RegExp(`^removed clone ${clone.replace(/[.]/g, '\\.')} \\(`, 'm'))
+    expect(text.out).toMatch(/^freed /m)
+    expect(existsSync(clone)).toBe(false)
+
+    const moved = await run('mirror', 'prune', '--all-clones', '--mirror-dir', elsewhere, '--json')
+    expect(JSON.parse(moved.out).removed).toEqual([expect.objectContaining({ path: left })])
+  })
+
+  test.each([
+    [['--older-than', 'ten'], "--older-than must be a whole number of days, 0 or more, got 'ten'"],
+    [['--older-than', '-1'], '--older-than must be a whole number'],
+    [
+      ['--older-than', '3', '--all-clones'],
+      '--older-than and --all-clones cannot be used together',
+    ],
+    [['--mirror-dir', 'clones'], '--mirror-dir must be an absolute path'],
+  ])('prune %j is a usage error', async (flags, message) => {
+    const r = await run('mirror', 'prune', ...flags)
+    expect(r.code).toBe(EXIT.usage)
+    expect(r.err).toContain(message)
+  })
+
+  test('a prune with nothing to do says so', async () => {
+    const r = await run('mirror', 'prune')
+    expect(r.code).toBe(EXIT.ok)
+    expect(r.out).toBe('nothing to prune\n')
+  })
+})
