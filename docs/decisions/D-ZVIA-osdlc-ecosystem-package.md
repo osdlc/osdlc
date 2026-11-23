@@ -142,9 +142,11 @@ matching), within the pr-update omnibus
   relative-path check reads the same place.
 - **Not found yet:** a bare store with its worktrees beside it (`proj/.git`
   pointing at `proj/.bare`). The package README says so.
-- **Machine-only has no test.** No project config reaches the package, so
-  there is nothing for a repository to set `roots` through. pr-update's
-  project schema refuses unknown keys besides.
+- **Not tested.** Machine-only: no project config reaches the package, so
+  there is nothing for a repository to set `roots` through, and pr-update's
+  project schema refuses unknown keys besides. The two kinds of package are
+  a policy the build kept: each building-block change stayed in its own
+  package.
 - **Adoption.** pr-update reads `repositories.yaml` through the package.
   sdlc's change is in the release phase, after this build.
 

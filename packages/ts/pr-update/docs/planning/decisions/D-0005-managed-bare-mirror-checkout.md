@@ -805,7 +805,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   `%LOCALAPPDATA%`); that devlink's `PR_UPDATE_*` variables move none of the
   files above; and that `PR_UPDATE_CONFIG` moves only the project file. The
   machine file reads only `PR_UPDATE_MACHINE_CONFIG` and the `OSDLC_*`
-  variables. Windows git's text for a cross-device rename is not checked
+  variables. Also without a test: that only the CLI reads the machine file
+  and asks (a library host gets clones only through `SurveyEnv.clones`), and
+  that removing a clone leaves its attempt records (pruning never walks
+  `attempts/`). Unreachable objects are left to git's own `gc --auto`, with
+  no code here. Windows git's text for a cross-device rename is not checked
   either; the probe decides first.
 - **Trust granted before this build.** trust-repo first copied the old
   markers into the new store, and every way of telling whether the copy had
