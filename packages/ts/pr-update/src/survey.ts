@@ -482,7 +482,9 @@ export interface ResolveTargetsOptions {
  * unmeasurable, not dropped. Quietly surveying fewer repositories than were
  * asked for would be worse.
  *
- * @throws SurveyUsageError when a `--repo` is not `owner/name` or `host/owner/name`.
+ * @throws SurveyUsageError when a `--repo` is not `owner/name` or `host/owner/name`, or when
+ * two name one `owner/name` on different hosts: every report and `--pr` key names a
+ * repository by `owner/name` alone, so the run could not tell them apart.
  */
 export function resolveTargets(
   localRepo: string | null,
@@ -500,6 +502,8 @@ export function resolveTargets(
       : { repo: localRepo, host: rootHost, path: localPath, source: 'root', remote, found: null }
   if (selected.length === 0) return root === null ? [] : [root]
   const seen = new Set<string>()
+  // `owner/name`, lower-cased, to the `--repo` that named it first.
+  const named = new Map<string, { text: string; host: string | null }>()
   const out: RepoTarget[] = []
   for (const text of selected) {
     let parsed
@@ -519,17 +523,32 @@ export function resolveTargets(
     const key = isRoot ? '' : `${host}/${repo}`
     if (seen.has(key)) continue
     seen.add(key)
+    const first = named.get(repo)
+    const at = isRoot ? rootHost : host
+    if (first !== undefined && first.host !== at) {
+      throw new SurveyUsageError(
+        `--repo ${first.text} and --repo ${text} are ${repo} on different hosts; a run takes one of them`,
+      )
+    }
+    named.set(repo, { text, host: at })
     if (isRoot) {
       out.push(root)
       continue
     }
-    const at = locate(repo, { host, owner, name })
+    const checkout = locate(repo, { host, owner, name })
     out.push(
-      at === null
+      checkout === null
         ? { repo, host, path: null, source: null, remote, found: null }
-        : typeof at === 'string'
-          ? { repo, host, path: at, source: 'located', remote, found: null }
-          : { repo, host, path: at.path, source: at.source, remote: at.remote, found: at },
+        : typeof checkout === 'string'
+          ? { repo, host, path: checkout, source: 'located', remote, found: null }
+          : {
+              repo,
+              host,
+              path: checkout.path,
+              source: checkout.source,
+              remote: checkout.remote,
+              found: checkout,
+            },
     )
   }
   return out

@@ -464,6 +464,19 @@ describe('resolveTargets', () => {
     ])
   })
 
+  test('one owner/name on two hosts is a usage error naming both', () => {
+    const both = () =>
+      resolveTargets('o/r', '/repo', ['github.com/x/y', 'git.example.com/X/Y'], locate({}), opts)
+    expect(both).toThrow(SurveyUsageError)
+    expect(both).toThrow(
+      '--repo github.com/x/y and --repo git.example.com/X/Y are x/y on different hosts; a run takes one of them',
+    )
+    // The project root counts, on its own host.
+    expect(() =>
+      resolveTargets('o/r', '/repo', ['o/r', 'git.example.com/o/r'], locate({}), opts),
+    ).toThrow('--repo o/r and --repo git.example.com/o/r are o/r on different hosts')
+  })
+
   test('a --repo that is not owner/name or host/owner/name is a usage error', () => {
     expect(() => resolveTargets('o/r', '/repo', ['nope'], locate({}), opts)).toThrow(
       SurveyUsageError,

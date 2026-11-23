@@ -131,7 +131,9 @@ project root's host when that is GitHub (github.com, or any host with
 `code_host.override: github`), and github.com otherwise. Each target is
 lower-cased once, so `Acme/API` and `acme/api` are one target, and a
 `--pr owner/name#N` matches it in any letter case. A `--repo` that names the
-project root's own repository, in any case, is the project root.
+project root's own repository, in any case, is the project root. Reports and
+`--pr` name a repository by `owner/name` alone, so one `owner/name` on two
+hosts in one run is a usage error (exit `2`).
 
 Drift is measured in a checkout, so the run looks for one already on this
 machine, matched by its `origin`:

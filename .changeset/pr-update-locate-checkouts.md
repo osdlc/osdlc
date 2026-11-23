@@ -1,5 +1,5 @@
 ---
-'@osdlc/pr-update': minor
+"@osdlc/pr-update": minor
 ---
 
 `survey` now measures a `--repo` target in a checkout already on your machine.
@@ -15,7 +15,8 @@ it: its PRs are listed as skipped.
 `--repo` takes `host/owner/name` as well as `owner/name`. A bare `owner/name`
 means the project root's host when that is GitHub, else github.com. Targets are
 lower-cased, so `Acme/API` and `acme/api` are one, and `--pr owner/name#N`
-matches in any letter case. A `--repo` that is neither form is a usage error.
+matches in any letter case. A `--repo` that is neither form, or one
+`owner/name` on two hosts in one run, is a usage error.
 
 pr-update has a machine file, `~/.config/osdlc/pr-update/config.yaml`
 (`PR_UPDATE_MACHINE_CONFIG` names another, as an absolute path), for the

@@ -126,6 +126,14 @@ describe('a located checkout', () => {
     expect(JSON.parse(r.out).prs.map((p: { number: number }) => p.number)).toEqual([7])
   })
 
+  test('one owner/name on two hosts is a usage error naming both', async () => {
+    const r = await run('survey', '--repo', 'acme/api', '--repo', 'git.example.com/acme/api')
+    expect(r.code).toBe(EXIT.usage)
+    expect(r.err).toContain(
+      '--repo acme/api and --repo git.example.com/acme/api are acme/api on different hosts',
+    )
+  })
+
   test('update skips its PRs and writes nothing in it', async () => {
     const r = await run('update', '--repo', 'acme/api', '--no-fetch', '--json')
     expect(r.code).toBe(EXIT.ok)
