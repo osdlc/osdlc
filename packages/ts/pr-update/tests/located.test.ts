@@ -276,8 +276,11 @@ describe('a run started with GIT_DIR set', () => {
 })
 
 describe('fetching a located checkout', () => {
-  test('writes only its branches into origin/*: no tags, no FETCH_HEAD, no pruning', async () => {
-    // A bare origin a commit ahead of what the checkout last fetched, with a tag on its tip.
+  /**
+   * A bare origin a commit ahead of what the checkout last fetched, with a tag on its tip, and a
+   * git that sends the checkout's fetches there. The checkout is left on a detached HEAD.
+   */
+  function bareOrigin(): { tip: string; viaBare: CommandRunner } {
     const bare = join(scratch, 'remote', 'api.git')
     git(scratch, 'init', '-q', '--bare', bare)
     const before = git(located, 'rev-parse', 'refs/remotes/origin/main')
@@ -286,15 +289,6 @@ describe('fetching a located checkout', () => {
     const tip = makeGitFixture({ dir: located }).commit('main again', { 'n.txt': 'n' })
     git(located, 'push', '-q', bare, `${tip}:refs/heads/main`)
     git(bare, 'tag', 'v1', tip)
-    // A ref the checkout's own fetch line keeps under origin/, with no branch behind it.
-    git(
-      located,
-      'config',
-      '--add',
-      'remote.origin.fetch',
-      '+refs/pull/*/head:refs/remotes/origin/pr/*',
-    )
-    git(located, 'update-ref', 'refs/remotes/origin/pr/1', topic)
     // The scan reads origin as GitHub's; the fetch is sent to the bare repository instead.
     const real = spawnRunner('git')
     const viaBare: CommandRunner = {
@@ -306,6 +300,24 @@ describe('fetching a located checkout', () => {
           opts,
         ),
     }
+    return { tip, viaBare }
+  }
+
+  /** A ref the checkout's own fetch line keeps under origin/, with no branch behind it. */
+  function keepPr1(): void {
+    git(
+      located,
+      'config',
+      '--add',
+      'remote.origin.fetch',
+      '+refs/pull/*/head:refs/remotes/origin/pr/*',
+    )
+    git(located, 'update-ref', 'refs/remotes/origin/pr/1', topic)
+  }
+
+  test('writes only its branches into origin/*: no tags, no FETCH_HEAD, no pruning', async () => {
+    const { tip, viaBare } = bareOrigin()
+    keepPr1()
 
     const r = await runWith(
       { git: viaBare },
@@ -325,6 +337,38 @@ describe('fetching a located checkout', () => {
     expect(existsSync(join(located, '.git', 'FETCH_HEAD'))).toBe(false)
     expect(git(located, 'rev-parse', 'refs/remotes/origin/pr/1')).toBe(topic)
   })
+
+  test.each([
+    ['an unscoped', []],
+    ['a scoped', ['--pr', 'acme/api#7']],
+  ])(
+    '%s fetch leaves a local branch its own fetch line maps into refs/heads/',
+    async (_, scope) => {
+      const { viaBare } = bareOrigin()
+      // `topic` here carries a commit its remote does not have; git would force it back to the
+      // remote's through this line, which it applies to every fetch from origin.
+      git(located, 'config', '--add', 'remote.origin.fetch', '+refs/heads/topic:refs/heads/topic')
+      const mine = makeGitFixture({ dir: located })
+      git(located, 'checkout', '-q', 'topic')
+      const unpushed = mine.commit('not pushed', { 'u.txt': 'u' })
+      git(located, 'checkout', '-q', '--detach')
+
+      const r = await runWith(
+        { git: viaBare },
+        'survey',
+        '--repo',
+        'acme/api',
+        ...scope,
+        '--remote',
+        'upstream',
+        '--json',
+      )
+      expect(r.code).toBe(EXIT.ok)
+      expect(JSON.parse(r.out).repos[0]).toMatchObject({ fetched: true })
+      expect(git(located, 'rev-parse', 'refs/heads/topic')).toBe(unpushed)
+      expect(git(located, 'rev-parse', 'refs/remotes/origin/topic')).toBe(topic)
+    },
+  )
 })
 
 describe('the host of a bare owner/name', () => {

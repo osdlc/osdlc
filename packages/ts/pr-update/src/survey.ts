@@ -1147,9 +1147,11 @@ export function surveyWithTargets(
     // refspec would fetch every branch.
     //
     // In a checkout other than the project root, the fetch writes only the
-    // remote's branches into `<remote>/*`: no tags, no FETCH_HEAD, and an
-    // explicit refspec, so the checkout's own `remote.<name>.fetch` cannot
-    // widen it. It does not prune: against that refspec, prune would delete
+    // remote's branches into `<remote>/*`: no tags, no FETCH_HEAD, an explicit
+    // refspec, and an empty `--refmap=`. Without that, git also applies the
+    // checkout's own `remote.<name>.fetch` lines to what it fetches, even with
+    // refspecs given, and a forced line into `refs/heads/` would overwrite a
+    // local branch. It does not prune: against that refspec, prune would delete
     // every `<remote>/*` ref with no branch behind it, such as a `pr/*` the
     // checkout's own fetch line keeps there. A managed clone is the run's own, so its
     // unscoped fetch prunes. A clone is fetched and read under its lock, which stamps it as used.
@@ -1157,15 +1159,15 @@ export function surveyWithTargets(
     const own = target.source === 'root'
     const clone = target.source === 'clone'
     const refspecs = scoped ? scopedRefspecs(prs, remote) : []
-    const quiet = own ? {} : { noTags: true, noWriteFetchHead: true }
+    const narrow = own ? {} : { noTags: true, noWriteFetchHead: true, refmap: '' }
     const fetch = (): boolean =>
       measurable && !args.noFetch && !env.dryRun
         ? scoped
-          ? refspecs.length === 0 || git.try.fetch(remote, refspecs, quiet).ok
+          ? refspecs.length === 0 || git.try.fetch(remote, refspecs, narrow).ok
           : own
             ? git.try.fetch(remote, undefined, { prune: true }).ok
             : git.try.fetch(remote, [`+refs/heads/*:refs/remotes/${remote}/*`], {
-                ...quiet,
+                ...narrow,
                 ...(clone ? { prune: true } : {}),
               }).ok
         : false

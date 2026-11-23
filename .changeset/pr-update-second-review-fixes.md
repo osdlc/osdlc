@@ -11,3 +11,9 @@ path is not that PR's kept folder, it names a git directory from a checkout's
 own folder, or `git worktree list` does not show its folder on its branch. A
 refused record and its folder are left alone, listed in the new `keptRefused`
 output, and the PR is updated as if nothing were kept.
+
+Fetching a checkout found on the machine, or a managed clone, no longer
+writes any ref but the remote's branches under `origin/*`. A checkout whose
+own `remote.origin.fetch` had a forced line into `refs/heads/` (such as
+`+refs/heads/topic:refs/heads/topic`) had that local branch overwritten,
+losing commits not yet pushed. The fetch now passes `--refmap=`.
