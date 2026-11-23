@@ -1,5 +1,5 @@
 ---
-'@osdlc/trust-repo': minor
+"@osdlc/trust-repo": minor
 ---
 
 A trust store can now live where the tool's other machine-local files live.
@@ -19,10 +19,22 @@ used before, so nothing moves until a tool opts in.
 When a tool opts in and its new place differs from the old one
 (`$XDG_STATE_HOME/<tool>/trusted/`, or `~/.local/state/<tool>/trusted/`), the
 existing markers are copied to the new place once, checked, and recorded as
-moved. After that only the new place is read. The old markers are left as
-they were, so an older release of the tool keeps using the old place and
+moved. When the old store has no grants, the first grant in the new store
+records the move. After that only the new place is read. The old markers are
+left as they were, so an older release of the tool keeps using the old place and
 still finds every grant it knew; a grant it adds there later is not copied.
 A copy that fails leaves no new store behind and makes the trust check fail,
 so nothing runs without consent; the next run tries again. A store moved by
 `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` or tiered-dirs' test root starts empty
-and copies nothing.
+and copies nothing. So does one whose place `<PREFIX>_CONVENTION` picks: fix
+the tool's convention, in a `dirs` factory with `conventionFromEnv: false`,
+before it opts in.
+
+`list`, `listGrants` and `tighten` used to be documented as never throwing.
+They now throw when the store's directory cannot be resolved, for example for
+a relative `<PREFIX>_ROOT`. A failed move does not make them throw.
+
+A per-scope marker filed in another repository's `.scopes` folder is no
+longer listed by `listGrants`, nor reported by `untrustAll` for a repository
+whose grants it did not remove. `isTrusted` never read it, and the move does
+not copy it.

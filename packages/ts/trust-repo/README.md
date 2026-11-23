@@ -154,13 +154,15 @@ The rename is the one step that publishes the copy. So the new store is
 either complete and recorded, or not there at all, and a copy that failed
 partway leaves nothing behind. Two processes that move at once each build
 their own folder; the second rename fails because the first already landed,
-and the second process uses that one. Once the record is there, only the new
-place is read. A grant an older release adds to the old place later is not
+and the second process uses that one. When the old store has no grant, the
+first grant written to the new store writes the record instead; a read
+creates nothing. Once the record is there, only the new place is read. A grant an older release adds to the old place later is not
 copied, and a grant revoked in the new place stays revoked.
 
 The old markers are never changed or deleted, so an older release of the
-tool still finds every grant it knew. A process killed partway through can
-leave a `.trusted.moving-*` folder beside the store. Nothing reads it, and it
+tool still finds every grant it knew. A process killed partway through, or a
+cleanup Windows refused, can leave a `.trusted.moving-*` folder beside the
+store. Nothing reads it, and it
 is safe to delete.
 
 A move that fails makes `isTrusted`, `trust`, `untrust` and `untrustAll`
@@ -172,11 +174,19 @@ Nothing is copied when the new place is the old place (Linux and macOS under
 or tiered-dirs' per-process test root moved the new place. Those ask for a
 separate store on purpose. A scratch store that inherited the person's real
 consent would defeat a test that points `<PREFIX>_ROOT` at a temp directory.
+A `dirs` factory given with neither `env` nor `home` has no old place
+either, since it was not resolved from the real environment.
 
-If the new place already exists when there is something to move (the tool
-used it while the old place was empty, and an older release wrote the old
-place since), the old grants are copied into it in place, each marker
-atomically, then the record is written.
+Nothing is copied while `<PREFIX>_CONVENTION` is set. The variable picks
+between two places, and each would be filled from the same untouched old
+store, so a grant revoked in one would come back in the other. Fix the
+tool's convention before it opts in, in a `dirs` factory with
+`conventionFromEnv: false`. While the variable is set, the store starts
+empty and the person consents again; that fails closed.
+
+If the new place already exists with no record when there is something to
+move (it was made through `dir`, or by hand), the old grants are copied into
+it in place, each marker atomically, then the record is written.
 
 ### What a decision is keyed on
 

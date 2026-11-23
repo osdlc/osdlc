@@ -39,16 +39,27 @@
  * into place with a `.moved` record inside. The rename is the one step that
  * publishes the copy, so the new store is either complete and recorded or
  * not there at all. Two processes that move at once each build their own
- * copy, and the second rename fails because the first already landed. After
- * the move only the new place is read. The old markers are never changed or
- * deleted, so an older release still finds them.
+ * copy, and the second rename fails because the first already landed. When
+ * the old store has no grant, the first grant written to the new store
+ * records the move instead. Once the new store exists with its record, only
+ * it is read. The old markers are never changed or deleted, so an older
+ * release still finds them.
  *
  * A failed move throws from {@link TrustStore.isTrusted} and the methods that
  * write, so nothing runs on a store that lost a grant. The next use tries
- * again. A store moved by an override, or by tiered-dirs' per-process test
- * root, is not filled from the old place: such a move asks for a separate
- * store on purpose, and a scratch store that inherited the person's real
- * consent would defeat it.
+ * again.
+ *
+ * Some stores are never filled from the old place. A store moved by
+ * `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` or tiered-dirs' per-process test
+ * root asks for a separate store on purpose, and a scratch store that
+ * inherited the person's real consent would defeat it. A store whose place
+ * `<PREFIX>_CONVENTION` picks could be one of two places, each filled from
+ * the same untouched old store, so a grant revoked in one would come back in
+ * the other. A tool fixes its convention, in a `dirs` factory with
+ * `conventionFromEnv: false`, before it opts in; while the variable is set,
+ * the store starts empty and the person consents again. A `dirs` factory
+ * given with neither `env` nor `home` has no old place, since it was not
+ * resolved from the real environment.
  *
  * ## What a trust decision is keyed on
  *
@@ -106,8 +117,10 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { access, chmod, mkdir, readdir, readFile, rename, rm, rmdir, stat } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { setTimeout as sleep } from 'node:timers/promises'
 
 import { atomicWriteAsync } from '@osdlc/etag-write'
+import { nodeGuard } from '@osdlc/path-guard/node'
 import {
   homeDir as tieredHomeDir,
   systemBaseDirs,
@@ -158,9 +171,17 @@ interface StoreLocation {
   legacy: string | null
 }
 
-/** Whether `child` is `parent` or inside it. */
+/**
+ * `path` absolute and with its symlinks resolved, as far as it exists, so
+ * `/var/...` and `/private/var/...` on macOS compare equal.
+ */
+function realish(path: string): string {
+  return nodeGuard.realPath(resolve(path))
+}
+
+/** Whether `child` is `parent` or inside it, after both are resolved through symlinks. */
 function isWithin(child: string, parent: string): boolean {
-  const rel = relative(resolve(parent), resolve(child))
+  const rel = relative(realish(parent), realish(child))
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
 }
 
@@ -187,15 +208,21 @@ function locateStore(opts: TrustStoreOptions): StoreLocation {
     new TieredDirs(opts.vendorDirs.vendor, systemBaseDirs(opts.vendorDirs.envVars, resolveOpts))
   const state = dirs.standalone(opts.tool).state()
   const dir = join((opts.app !== undefined ? state.app(opts.app) : state).path, TRUST_MARKER_DIR)
-  // A store moved on purpose starts empty: see "How a store moves".
+  // A store moved on purpose starts empty, and so does one whose place the
+  // environment's convention picks: see "How a store moves".
   const vars = opts.vendorDirs.envVars
   const scratch = testRoot()
-  if (env[vars.root] || env[vars.dirs.state] || (scratch !== undefined && isWithin(dir, scratch))) {
+  if (
+    env[vars.root] ||
+    env[vars.dirs.state] ||
+    env[vars.convention] ||
+    (scratch !== undefined && isWithin(dir, scratch))
+  ) {
     return { dir, legacy: null }
   }
   const legacy =
     opts.legacyDir !== undefined ? opts.legacyDir : legacyFor(opts.app ?? opts.tool, opts)
-  if (legacy === null || resolve(legacy) === resolve(dir)) return { dir, legacy: null }
+  if (legacy === null || realish(legacy) === realish(dir)) return { dir, legacy: null }
   return { dir, legacy }
 }
 
@@ -204,11 +231,15 @@ function locateStore(opts: TrustStoreOptions): StoreLocation {
  * `opts.home`, else the injected environment's `HOME` (`USERPROFILE` on
  * Windows), else the user's. Reading the real home for an injected
  * environment would copy the developer's real store into a test's tree.
- * Null when that environment names no home: then there is no old place.
+ * Null when that environment names no home, and for a `dirs` factory given
+ * with neither `env` nor `home`: such a tree (a rooted one in a test) was
+ * not resolved from the real environment, so the real home's store is not
+ * its old place.
  */
 function legacyFor(name: string, opts: TrustStoreOptions): string | null {
   const env = opts.env ?? process.env
   if (opts.home !== undefined) return legacyStoreDir(name, env, opts.home)
+  if (opts.dirs !== undefined && opts.env === undefined) return null
   if (opts.env === undefined) return legacyStoreDir(name, env, homeDir())
   try {
     return legacyStoreDir(name, env, tieredHomeDir({ env }))
@@ -375,9 +406,11 @@ export interface TrustStoreOptions {
   vendorDirs?: TrustVendorDirs
   /**
    * Build the directories per call instead, as `machineConfigFile` takes
-   * them: a tool pins its convention here, and a test injects a rooted one.
-   * Needs {@link vendorDirs}, whose override variables decide whether the
-   * store moves (see {@link legacyDir}).
+   * them: a tool pins its convention here (with `conventionFromEnv: false`),
+   * and a test injects a rooted one. Needs {@link vendorDirs}, whose override
+   * variables decide whether the store moves (see {@link legacyDir}). Pass
+   * the `env` and `home` the factory resolves with: without either, the
+   * store has no old place.
    */
   dirs?: () => TieredDirs
   /**
@@ -387,8 +420,9 @@ export interface TrustStoreOptions {
    * `$XDG_STATE_HOME/<app or tool>/trusted/`, or
    * `~/.local/state/<app or tool>/trusted/`, where `~` is `home`, else the
    * `HOME` of an injected `env`. Nothing is copied when it is the new place,
-   * or when `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` or tiered-dirs' test root
-   * moved the new one.
+   * when `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR`, `<PREFIX>_CONVENTION` or
+   * tiered-dirs' test root is in play, or for a {@link dirs} given with
+   * neither `env` nor `home`.
    */
   legacyDir?: string | null
   /** Injected for tests; defaults to `process.env`. */
@@ -569,10 +603,13 @@ async function grantsIn(dir: string): Promise<TrustGrant[]> {
         // the one that scope maps to. A marker written for `'just '`
         // without trimming reads as `just` but sits under another name, so
         // `isTrusted` never finds it; it is not listed either.
+        // Its folder must be its root's, too: a marker for one root filed
+        // in another root's folder is never what `isTrusted` reads.
         if (
           grant !== null &&
           grant.scope !== WHOLE_REPO_SCOPE &&
-          inner === scopeFileName(grant.scope)
+          inner === scopeFileName(grant.scope) &&
+          name === `${markerName(grant.root)}${SCOPES_SUFFIX}`
         ) {
           grants.push({ ...grant, marker: join(path, inner) })
         }
@@ -637,8 +674,11 @@ async function moveStore(from: string, to: string): Promise<void> {
   const grants = await grantsIn(from)
   if (grants.length === 0) return
   if (await exists(to)) {
-    // The new store was written before there was anything to move, so it is
-    // merged into in place. Each marker is still written atomically.
+    // Another process's copy landed since the first check.
+    if (await exists(record)) return
+    // The new store exists with no record of a move: it was made by
+    // something other than this package, such as a store opened with `dir`.
+    // It is merged into in place, each marker still written atomically.
     await copyGrants(grants, to)
     await checkGrants(grants, to, from)
     await atomicWriteAsync(record, `${from}\n`, { mode: MARKER_MODE })
@@ -653,13 +693,38 @@ async function moveStore(from: string, to: string): Promise<void> {
     await checkGrants(grants, staging, from)
     await atomicWriteAsync(join(staging, MOVED_RECORD), `${from}\n`, { mode: MARKER_MODE })
     try {
-      await rename(staging, to)
+      await renameDir(staging, to, record)
     } catch (error) {
       // Another process's copy landed first. It holds the same grants.
       if (!(await exists(record))) throw error
     }
   } finally {
-    await rm(staging, { recursive: true, force: true })
+    // A folder left behind is never read, so a failed cleanup must not hide
+    // the error that got here.
+    await rm(staging, { recursive: true, force: true, maxRetries: 3 }).catch(() => {})
+  }
+}
+
+/** Errors a Windows rename gives while a scanner or indexer holds a file open. */
+const BUSY_CODES = new Set(['EPERM', 'EBUSY', 'EACCES'])
+
+/**
+ * Rename the staging folder `from` to `to`. On Windows a scanner holding a
+ * file inside can make the rename fail for a moment, so it is tried a few
+ * times. A rename onto a store that already exists fails the same way there,
+ * so it stops as soon as `record` shows another process's copy landed.
+ */
+async function renameDir(from: string, to: string, record: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await rename(from, to)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? ''
+      if (process.platform !== 'win32' || attempt >= 5 || !BUSY_CODES.has(code)) throw error
+      if (await exists(record)) throw error
+      await sleep(20 * attempt)
+    }
   }
 }
 
@@ -691,6 +756,24 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
       move.catch(() => moves.delete(to))
     }
     return move
+  }
+  /**
+   * When the move found nothing to copy, the first grant records it, so a
+   * grant an older release writes to the old place later is never merged in:
+   * once the new store exists, only it is read. A read creates nothing.
+   */
+  const recordNothingMoved = async (): Promise<void> => {
+    const { dir: to, legacy } = locateStore(opts)
+    if (legacy === null) return
+    const record = join(to, MOVED_RECORD)
+    if (await exists(record)) return
+    // As for a marker, a Windows rename onto a record another call is writing
+    // can fail; the record is there either way.
+    await atomicWriteAsync(record, `${legacy}\n`, { mode: MARKER_MODE }).catch(
+      async (error: unknown) => {
+        if (!(await exists(record))) throw error
+      },
+    )
   }
   /** For the methods that never throw for a failed move: they read what the new place holds. */
   const movedOrNot = async (): Promise<void> => {
@@ -771,6 +854,7 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
       const alreadyTrusted = await hasGrant(resolved, scope)
       if (!alreadyTrusted) {
         await mkdir(dir(), { recursive: true, mode: DIR_MODE })
+        await recordNothingMoved()
         if (scope !== WHOLE_REPO_SCOPE)
           await mkdir(scopesDir(resolved), { mode: DIR_MODE }).catch(() => {})
         // A marker that exists is a grant, so it must never be observable half-written.

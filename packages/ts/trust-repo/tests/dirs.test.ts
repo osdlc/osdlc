@@ -6,8 +6,8 @@
  * test reads or writes the developer's real trust store.
  */
 
-import { afterAll, describe, expect, test } from 'vitest'
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat } from 'node:fs/promises'
+import { afterAll, describe, expect, test, vi } from 'vitest'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -233,16 +233,72 @@ describe('the one-time move', () => {
     await expect(stat(store.dir())).rejects.toThrow()
   })
 
-  test('a store written before the old one had grants is merged into in place', async () => {
+  test('the first grant records the move when the old store was empty, so the old place is never read again', async () => {
     const { repos, legacy, current } = await machine()
     const [one, two] = repos as [string, string]
     await current().trust(one)
+    const store = current()
+    expect(await readFile(join(store.dir(), '.moved'), 'utf-8')).toBe(`${legacy().dir()}\n`)
+
+    // An older release writes the old place after the new store exists.
+    await legacy().trust(two)
+    const again = current()
+    expect(await again.isTrusted(one)).toBe(true)
+    expect(await again.isTrusted(two)).toBe(false)
+  })
+
+  test('a new place that exists with no record, made through dir, is merged into in place', async () => {
+    const { home, env, repos, legacy, current } = await machine()
+    const [one, two] = repos as [string, string]
+    await trustStore({ tool: 'x', dir: current().dir(), env, home }).trust(one)
     await legacy().trust(two)
 
     const store = current()
     expect(await store.isTrusted(one)).toBe(true)
     expect(await store.isTrusted(two)).toBe(true)
     expect(await readFile(join(store.dir(), '.moved'), 'utf-8')).toBe(`${legacy().dir()}\n`)
+  })
+
+  test('a convention the environment picks copies nothing, so a revoked grant stays revoked', async () => {
+    const { env, home, repos, legacy } = await machine()
+    const [one] = repos as [string]
+    await legacy().trust(one)
+    const at = (extra: Record<string, string>) =>
+      trustStore({
+        tool: 'osdlc',
+        app: 'pr-update',
+        vendorDirs: OSDLC,
+        env: { ...env, ...extra },
+        home,
+      })
+    expect(await at({}).isTrusted(one)).toBe(true)
+    expect(await at({}).untrust(one)).toBe(true)
+    // Switching the convention picks another new place (on macOS); it must
+    // not be filled from the untouched old store.
+    for (const convention of ['xdg', 'native']) {
+      expect(await at({ OSDLC_CONVENTION: convention }).isTrusted(one)).toBe(false)
+    }
+  })
+
+  test('a misfiled per-scope marker is neither copied nor listed', async () => {
+    const { repos, legacy, current } = await machine()
+    const [one, two] = repos as [string, string]
+    await legacy().trust(one, 'just')
+    await legacy().trust(two, 'mise')
+    // Move two's marker into one's scope folder: no lookup ever reads it there.
+    const [twoGrant] = (await legacy().listGrants()).filter((g) => g.scope === 'mise')
+    const oneFolder = dirname((await legacy().listGrants()).find((g) => g.scope === 'just')!.marker)
+    const misfiled = join(oneFolder, twoGrant!.marker.split(/[\\/]/).pop()!)
+    await rename(twoGrant!.marker, misfiled)
+    await rm(dirname(twoGrant!.marker), { recursive: true })
+
+    expect((await legacy().listGrants()).map((g) => g.scope)).toEqual(['just'])
+    expect(await legacy().isTrusted(two, 'mise')).toBe(false)
+    const store = current()
+    expect(await store.isTrusted(two, 'mise')).toBe(false)
+    expect((await store.listGrants()).map((g) => g.scope)).toEqual(['just'])
+    // untrustAll for two removes nothing it did not list.
+    expect(await legacy().untrustAll(two)).toEqual([])
   })
 
   test('two processes moving at once leave one complete store', async () => {
@@ -260,6 +316,63 @@ describe('the one-time move', () => {
     const store = current()
     expect((await store.listGrants()).map((g) => g.scope)).toEqual(['*', 'just'])
     expect(await readdir(dirname(store.dir()))).toEqual([TRUST_MARKER_DIR])
+  })
+
+  test("pr-update's shape (a dirs pinned to xdg, the run's env) moves the old pr-update markers once", async () => {
+    const { home, env, repos, legacy } = await machine()
+    await legacy().trust(repos[0]!)
+    const runEnv = { ...env, HOME: home, USERPROFILE: home }
+    const dirs = () =>
+      new TieredDirs(
+        'osdlc',
+        systemBaseDirs(OSDLC.envVars, { env: runEnv, convention: 'xdg', conventionFromEnv: false }),
+      )
+    const store = trustStore({
+      tool: 'osdlc',
+      app: 'pr-update',
+      vendorDirs: OSDLC,
+      dirs,
+      env: runEnv,
+    })
+    expect(store.dir()).not.toBe(legacy().dir())
+    expect(await store.isTrusted(repos[0]!)).toBe(true)
+    expect(await readFile(join(store.dir(), '.moved'), 'utf-8')).toBe(`${legacy().dir()}\n`)
+  })
+
+  test('a dirs factory with neither env nor home has no old place', async () => {
+    // Were the real environment read, the old place would be this stand-in.
+    const { env, home, repos, legacy } = await machine()
+    await legacy().trust(repos[0]!)
+    vi.stubEnv('XDG_STATE_HOME', env.XDG_STATE_HOME)
+    try {
+      const dirs = () => new TieredDirs('osdlc', rootedBaseDirs(join(home, 'rooted')))
+      const store = trustStore({ tool: 'osdlc', app: 'pr-update', vendorDirs: OSDLC, dirs })
+      expect(await store.isTrusted(repos[0]!)).toBe(false)
+      await expect(stat(store.dir())).rejects.toThrow()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  test('the test root is recognised through a symlinked temp dir', async () => {
+    // On macOS the temp dir is /var/..., which resolves to /private/var/....
+    const { env, home, repos, legacy } = await machine()
+    await legacy().trust(repos[0]!)
+    const scratch = testRoot()
+    expect(scratch).toBeDefined()
+    await mkdir(scratch!, { recursive: true })
+    const tree = join(await realpath(scratch!), `trust-repo-real-${process.pid}`)
+    roots.push(tree)
+    const dirs = () => new TieredDirs('osdlc', rootedBaseDirs(tree))
+    const store = trustStore({
+      tool: 'osdlc',
+      app: 'pr-update',
+      vendorDirs: OSDLC,
+      dirs,
+      env,
+      home,
+    })
+    expect(await store.isTrusted(repos[0]!)).toBe(false)
   })
 
   test("an injected env without home moves from that env's HOME, never the real one", async () => {
