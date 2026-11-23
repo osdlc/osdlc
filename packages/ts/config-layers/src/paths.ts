@@ -13,7 +13,7 @@
 
 import { isAbsolute, resolve } from 'node:path'
 
-import { homeDir } from '@osdlc/tiered-dirs'
+import { expandTilde, homeDir } from '@osdlc/tiered-dirs'
 import { z } from 'zod'
 
 /**
@@ -56,8 +56,9 @@ export function resolveConfigPath(
   let p = value
   if (p === '~' || p.startsWith('~/')) {
     // An empty home leaves `~` as it is: expanding it would give the filesystem root.
+    // `expandTilde` joins by the platform's rules, so on Windows `~/x` is `<home>\x`.
     const home = opts.home ?? defaultHome()
-    if (home !== '') p = `${home}${p.slice(1)}`
+    if (home !== '') p = expandTilde(p, home)
   }
   if (!isAbsolute(p)) p = resolve(baseDir, p)
   return p

@@ -108,7 +108,7 @@ export interface Sandbox {
 }
 
 export function sandbox(): Sandbox {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'toolconfig-')))
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'toolconfig-')))
   const home = join(root, 'home')
   mkdirSync(home, { recursive: true })
   const dirs = systemDirs(VENDOR_DIRS, { home, env: {} })

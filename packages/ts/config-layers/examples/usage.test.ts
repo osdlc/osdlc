@@ -306,7 +306,7 @@ const MachineSchema = z
 let root: string
 let home: string
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'config-layers-example-')))
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'config-layers-example-')))
   home = join(root, 'home')
   mkdirSync(home, { recursive: true })
 })
@@ -438,7 +438,7 @@ test('layer the local overlay over the project file', () => {
 // ---------------------------------------------------------------------------
 
 test('find the project file and its overlay, or the file a variable names', () => {
-  expect(overlayPath('/work/tools/tooly.yaml')).toBe('/work/tools/tooly.local.yaml')
+  expect(overlayPath('/work/tools/tooly.yaml')).toBe(join('/work/tools', 'tooly.local.yaml'))
   expect(overlayPath('cfg.yml')).toBe('cfg.local.yml')
 
   const dir = project()
