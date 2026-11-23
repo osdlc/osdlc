@@ -620,7 +620,8 @@ describe('spawnRunnerAsync — abort', () => {
         expect(r.neverExited).toBe(true)
         expect(r.error).toBe('The operation was aborted')
         // The shell creates the file and then writes to it, so wait for the
-        // text. A read between the two finds the file empty.
+        // text. A read between the two finds the file empty, and a read
+        // before both finds no file.
         const written = (): string => {
           try {
             return readFileSync(marker, 'utf8')
@@ -628,7 +629,7 @@ describe('spawnRunnerAsync — abort', () => {
             return ''
           }
         }
-        for (let i = 0; i < 40 && written() === ''; i++) {
+        for (let i = 0; i < 40 && written() !== 'cleaned\n'; i++) {
           await new Promise((res) => setTimeout(res, 25))
         }
         expect(written()).toBe('cleaned\n')
