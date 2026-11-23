@@ -21,15 +21,13 @@ import {
   PLUGIN_API,
   clean,
   definePlugin,
-  jetbrainsPlugin,
   plan,
   pluginKit,
   survey,
   type Ctx,
-  type JetbrainsOptions,
   type Plugin,
 } from '../src/index.ts'
-import { javaHashHex } from '../src/jetbrains.ts'
+import { javaHashHex, jetbrainsPlugin, type JetbrainsOptions } from '../src/jetbrains.ts'
 import { contractSuite, fakeContext, tempHome, type TempHome } from '../src/testing.ts'
 
 const NOW = new Date('2026-11-19T12:00:00Z')
