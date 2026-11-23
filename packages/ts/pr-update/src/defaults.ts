@@ -20,6 +20,7 @@ import {
 import { join } from 'node:path'
 
 import { osdlcDirs } from '@osdlc/ecosystem'
+import { Git } from '@osdlc/typed-git'
 
 import { DETECT_LOOKED_FOR, NothingDetectedError, detectVerifyCommand } from './detect.ts'
 import type { PrUpdateConfig, PrUpdateStandaloneConfig } from './config.ts'
@@ -36,12 +37,13 @@ import type {
 import { agentRepair } from './repair/agents.ts'
 import { seatRepair } from './repair/seat.ts'
 import { attemptsDir, fileAttemptStore } from './update/attempts.ts'
-import { noHooksEnv } from './update/execute.ts'
+import { noHooksEnv, targetGitOptions, UNSET_REPOSITORY_VARS } from './update/execute.ts'
 import { defaultLeaseTtlSeconds, refBranchLease } from './update/lease.ts'
 import { DEFAULT_REF_PREFIX, attemptsPrefix, refAttemptStore } from './update/ref-attempts.ts'
 
 // Both run in a PR worktree, so `sh` comes only from an absolute PATH entry:
-// a relative entry would resolve inside the PR's own files.
+// a relative entry would resolve inside the PR's own files. Every call passes
+// `UNSET_REPOSITORY_VARS`, so a git the command runs works in that worktree.
 const sh = shellRunner(spawnRunner('sh', { absolutePathOnly: true }))
 const shAsync = shellRunnerAsync(spawnRunnerAsync('sh', { absolutePathOnly: true }))
 
@@ -59,6 +61,7 @@ export function commandRepair(command: string, timeoutSeconds: number | null = n
       cwd: req.worktree,
       input: JSON.stringify(req),
       env: {
+        ...UNSET_REPOSITORY_VARS,
         PR_UPDATE_KIND: req.kind,
         PR_UPDATE_PR: String(req.pr),
         PR_UPDATE_BASE: req.base,
@@ -137,7 +140,7 @@ export function standalonePorts(
       locator: opts.locator,
       clones: opts.clones,
     }),
-    runVerb: (verb, cwd) => sh.run(verb, { cwd }),
+    runVerb: (verb, cwd) => sh.run(verb, { cwd, env: UNSET_REPOSITORY_VARS }),
     // A standalone run has no host registry to look up `check` in, and `test` runs only
     // `test_command`. Failing is better than running no verbs and reporting a push as
     // verified when nothing was checked.
@@ -190,7 +193,7 @@ export function standalonePorts(
       : cfg?.attempts?.store === 'git-ref'
         ? refRecords(cfg, remote, projectRoot)
         : { attempts: fileAttemptStore(attemptsDir(projectRoot)) }),
-    targetHome: (target) => standaloneTargetHome(cfg, target, opts.env),
+    targetHome: (target) => standaloneTargetHome(cfg, target, opts.env, opts.git),
   }
 }
 
@@ -225,12 +228,35 @@ function standaloneTargetHome(
   cfg: (PrUpdateConfig & Partial<PrUpdateStandaloneConfig>) | undefined,
   target: TargetCheckout,
   env: Record<string, string | undefined> | undefined,
+  git: CommandRunner | undefined,
 ): TargetHome {
   const paths = prUpdatePaths(osdlcDirs(env === undefined ? {} : { env }))
   const own = (dir: string): string => join(dir, target.host, target.owner, target.name)
   const records =
     cfg?.attempts?.store === 'git-ref'
-      ? refRecords(cfg, target.remote, target.path, noHooksEnv())
+      ? refRecords(cfg, target.remote, target.path, refEnv(target.path, git))
       : { attempts: fileAttemptStore(own(paths.attempts)) }
   return { worktrees: own(paths.worktrees), kept: own(paths.kept), ...records }
+}
+
+/**
+ * The environment of a target's `git-ref` record and lease. ref-lease makes its own git client
+ * and takes no runner, so the inherited `GIT_DIR` of a git hook cannot be unset there. A set
+ * value wins over an inherited one, so this names the target's own repository: `GIT_DIR` and
+ * `GIT_COMMON_DIR` are its common directory, its objects are its own, and no alternates are
+ * added. ref-lease runs only `hash-object`, `mktree`, `commit-tree`, `update-ref`, `fetch`,
+ * `push` and `ls-remote`, which read neither a work tree nor an index, so an inherited
+ * `GIT_WORK_TREE` or `GIT_INDEX_FILE` changes nothing. Hooks are off, as for every git call in
+ * a target.
+ */
+function refEnv(path: string, git: CommandRunner | undefined): Record<string, string> {
+  const common = new Git(path, targetGitOptions(git)).try.gitCommonDir()
+  if (!common.ok || common.value === null) return noHooksEnv()
+  return {
+    ...noHooksEnv(),
+    GIT_DIR: common.value,
+    GIT_COMMON_DIR: common.value,
+    GIT_OBJECT_DIRECTORY: join(common.value, 'objects'),
+    GIT_ALTERNATE_OBJECT_DIRECTORIES: '',
+  }
 }

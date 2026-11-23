@@ -49,6 +49,16 @@ when its path is the kept path its file name gives. If a target's own record
 cannot be saved after a PR ran, the error is shown on that PR, as
 `recordError` in JSON and `record not saved:` in the text.
 
+Fixed: a run started from a git hook, which exports `GIT_DIR`, no longer
+acts on the hook's repository inside its own worktrees. In the project root's
+run worktree that moved the main checkout's branch. Every git call in a run
+worktree or kept tree, and every command started there (verify, resolvers,
+`lockfile_install`, a repair command or agent), now runs without `GIT_DIR`,
+`GIT_WORK_TREE`, `GIT_INDEX_FILE` and git's other repository variables. So
+does every git call in a `--repo` target, and a target's `git-ref` record and
+lease name its own repository. The project root's fetch, survey and listing
+are unchanged.
+
 Fixed: `--retry-failed` no longer discards a kept worktree someone has
 changed or committed to, or one git cannot read, in the project root too.
 That PR is skipped with `kept worktree <path> has local changes; push them or

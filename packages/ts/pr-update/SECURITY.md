@@ -49,13 +49,17 @@ are in scope.
   worktrees, runs with `core.hooksPath=/dev/null`, so a hook the PR commits
   does not run. Each target passes the trust gate on its own. The project
   root's git runs as before.
-- **Other repositories ignore `GIT_DIR`.** Those git commands, and the git
-  that `gh repo clone` runs, also run with `GIT_DIR`, `GIT_WORK_TREE`,
-  `GIT_INDEX_FILE` and git's other repository variables unset, so a run
-  started from a git hook, which exports `GIT_DIR`, acts on the target and
-  not on the hook's repository. The project root keeps them, since it runs
-  where you ran it. With `attempts.store: git-ref`, a target's record and
-  lease still inherit them, and so do the commands a worktree runs.
+- **pr-update's worktrees and other repositories ignore `GIT_DIR`.** A run
+  started from a git hook inherits `GIT_DIR`, which would make every git it
+  runs act on the hook's repository; in a linked worktree that moves the
+  main checkout's branch. So `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and
+  git's other repository variables are unset for every git call in a
+  `--repo` target (the git that `gh repo clone` runs included), for every git
+  call in a run worktree or kept tree, the project root's included, and for
+  every command started there: verify, resolvers, `lockfile_install` and a
+  repair command or agent. A target's `git-ref` record and lease name the
+  target's own repository instead. The project root's fetch, survey and PR
+  listing keep them, since they run where you ran pr-update.
 - **PR content picks submodule URLs.** With `submodules: auto`, the update
   clones the submodules a PR's `.gitmodules` names, over the network with the
   run's credentials. Local paths and `ext::` URLs are refused; `https` and

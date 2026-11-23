@@ -43,7 +43,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 
 import { forwardedSignal } from '@osdlc/command-seam'
-import { Git } from '@osdlc/typed-git'
+import { Git, withoutRepositoryVars } from '@osdlc/typed-git'
 
 import {
   describeOutcome,
@@ -906,13 +906,20 @@ interface Served {
 }
 
 /**
- * The client for a served checkout. For a target other than the project root, every call it and
- * its `at()` clients make runs with hooks off, since a worktree checks out the PR's own files and
- * a relative `core.hooksPath` (`.husky`) would run the hooks the PR's author wrote, and without
- * an inherited `GIT_DIR` or `GIT_WORK_TREE`, which would point it at another repository.
+ * The client a served checkout is updated through. Its `at()` clients run in the run's worktrees
+ * and kept trees, so every call it makes runs without an inherited `GIT_DIR`, `GIT_WORK_TREE` or
+ * the other variables that pick a repository: in a linked worktree they would act on the
+ * repository `GIT_DIR` names and could move its checked-out branch. The project root's own
+ * directory finds the same repository without them. For a target other than the project root it
+ * also runs with hooks off, since a worktree checks out the PR's own files and a relative
+ * `core.hooksPath` (`.husky`) would run the hooks the PR's author wrote. The project root's
+ * fetch, survey and listing keep the environment as given (`survey.ts`).
  */
 function gitOf(path: string, at: Served | undefined, env: Pick<UpdateEnv, 'git'>): Git {
-  return new Git(path, at?.elsewhere === true ? targetGitOptions(env.git) : { runner: env.git })
+  return new Git(
+    path,
+    at?.elsewhere === true ? targetGitOptions(env.git) : { runner: withoutRepositoryVars(env.git) },
+  )
 }
 
 /** `path` through its symlinks, or as given when it cannot be resolved. */

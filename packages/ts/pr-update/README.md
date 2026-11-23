@@ -60,10 +60,11 @@ tool built on `@osdlc/cli-tool` prints for that failure, for example
   `~/.local/state/osdlc/pr-update/trusted/` on Linux and macOS. Trust
   recorded by an earlier release, under `$XDG_STATE_HOME/pr-update/trusted/`,
   was not copied and no longer counts. In a repository you had trusted
-  whose `pr-update.yaml` names a command to run (`lockfile_install`,
-  `resolvers`, `test_command`, `repair.command`, `repair.agent`, or `verify:
-  detect`), `update` exits `21` until you run `pr-update trust` there again,
-  once per machine. An older release keeps reading the
+  whose `pr-update.yaml` sets one of the gated keys (`lockfile_install`,
+  `resolvers[].run`, `repair.command`, `repair.agent`, `test_command`, a
+  `repair.mode` other than `headless`, or `verify: detect`), unless
+  `pr-update.local.yaml` overrides it, `update` exits `21` until you run
+  `pr-update trust` there again, once per machine. An older release keeps reading the
   old place.
 - **An unattended `update --apply` whose GitHub `--repo` target has no
   checkout now exits `2`**, where it used to skip that target. A target on
@@ -270,7 +271,10 @@ list all of it.
 Every git command in that checkout and its run worktrees runs with hooks off
 (`core.hooksPath=/dev/null`): the worktree holds the PR's own files, and a
 relative `core.hooksPath` such as `.husky` would run hooks the PR's author
-wrote. The run never runs a bare `git worktree prune` there, so your own
+wrote. They also run without an inherited `GIT_DIR` or git's other
+repository variables, as does every git call and command in any run
+worktree, the project root's included, so a run started from a git hook acts
+on the right repository (see [SECURITY.md](SECURITY.md)). The run never runs a bare `git worktree prune` there, so your own
 worktrees whose folders are missing stay listed. With `attempts.store:
 git-ref`, the record and the lease are refs on the checkout's own `origin`,
 taken per target. When a target's own record or lease fails (its remote
@@ -920,10 +924,12 @@ A standalone run also reads `attempts.store` (`file` or `git-ref`, default `file
 `attempts.ref_prefix` (default `refs/pr-update/`) and `lease.ttl_seconds` (default derived, see
 above). A host that embeds the package supplies `Ports.attempts` and `Ports.lease` instead.
 
-Five values name a command, or an agent that can run tools, that the tool will
-start: `lockfile_install`, `resolvers[].run`, `repair.command`, `repair.agent`
-and `test_command`, and a `repair.mode` other than `headless` is gated the same way. When one is set in the project file (and not overridden in
-`pr-update.local.yaml`), `update` exits `21` until you consent. Pass `--trust`
+These settings are gated: `lockfile_install`, `resolvers[].run`,
+`repair.command`, `repair.agent`, `test_command`, a `repair.mode` other than
+`headless`, and `verify: detect`. Each makes the tool start a command, or an
+agent that can run tools, that the repository chose, or run the agent without
+the headless call's isolation. When one is set in the project file, unless
+`pr-update.local.yaml` overrides it, `update` exits `21` until you consent. Pass `--trust`
 for one run, or run `pr-update trust` once to record the repository (kept under
 `~/.local/state/osdlc/pr-update/trusted/` on Linux and macOS, moved by `OSDLC_ROOT`
 or `XDG_STATE_HOME`). `trust` is cli-tool's shared command:

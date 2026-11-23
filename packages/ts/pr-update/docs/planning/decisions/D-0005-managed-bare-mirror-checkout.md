@@ -575,11 +575,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   from the PR's tree there. Every other target runs with hooks off (Build
   note "Hooks off outside the project root"). Turning them off for the root
   too would stop the person's own hooks, so it is the owner's call.
-- `GIT_DIR` and git's other repository variables, where they still reach git
-  (Build note "Repository variables outside the project root"): a target's
-  `git-ref` record and lease, which ref-lease runs with its own git client;
-  the commands a worktree runs (`verify`, `lockfile_install`, resolvers,
-  repair), for every target; and the project root's run worktrees.
+- ref-lease should take a runner. It makes its own git client, so a target's
+  `git-ref` record and lease cannot go through `withoutRepositoryVars` and
+  instead name the target's repository in their environment (Build note
+  "Repository variables (`GIT_DIR` and the rest)").
 - A folder check on Windows. Ownership and mode are checked on POSIX only:
   NTFS ACLs are not read, so on Windows a clone directory, `worktrees/` or
   `kept/` that another user can write to is not refused.
@@ -624,7 +623,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     clone already at the clone path is used, or what happens when a prune
     removed it first. See "The folder rule" and "Clone locks".
   - Trust: "A clone is keyed by `host/owner/name`, which trust-repo does not
-    support yet (with [#1010](https://github.com/osdlc/osdlc/pull/1010))."
+    support yet (with [osdlc/osdlc#1010](https://github.com/osdlc/osdlc/issues/1010))."
     trust-repo's repository keys are now built. See "Ports in names and
     paths".
   - The Cleanup table: the kept-worktree row ended at "or the PR moving", and
@@ -820,16 +819,35 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   out the PR's own files, so a relative `core.hooksPath` such as `.husky`
   would run hooks the PR's author wrote, whether or not the target is
   trusted. The project root keeps its hooks (Follow-ups).
-- **Repository variables outside the project root.** The same calls also run
-  with `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_INDEX_FILE`,
+- **Repository variables (`GIT_DIR` and the rest).** A git hook exports
+  `GIT_DIR`, and a program it starts inherits it. Every git that program runs
+  then acts on the hook's repository, whatever directory it runs in; in a
+  linked worktree, that moves the main checkout's branch. So these run with
+  `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_INDEX_FILE`,
   `GIT_OBJECT_DIRECTORY`, `GIT_ALTERNATE_OBJECT_DIRECTORIES` and an inherited
-  `GIT_CEILING_DIRECTORIES` unset, through ecosystem's
-  `withoutRepositoryVars`, as the locator's own calls do. A run started from
-  a git hook, which exports `GIT_DIR`, would otherwise fetch, add worktrees
-  and push in the hook's repository instead of the target. The project root
-  keeps them: it runs where the person ran it. Not covered yet (Follow-ups):
-  a target's `git-ref` record and lease, since ref-lease makes its own git
-  client and takes no runner, and the commands a worktree runs.
+  `GIT_CEILING_DIRECTORIES` unset, through typed-git's
+  `withoutRepositoryVars` (`REPOSITORY_VARS`), as the locator's own calls do:
+  - every git call for a target other than the project root, including the
+    git that `gh repo clone` runs;
+  - every git call the update makes through the client it updates a checkout
+    with, the project root's included, since that client runs in the run's
+    worktrees and kept trees. In the project root's own directory git finds
+    the same repository without them;
+  - every child started in a worktree pr-update made: verify, resolvers and
+    `lockfile_install` (the standalone `runVerb`), a repair command, a
+    headless repair agent (agent-call's `unsetEnv`) and an attended one.
+
+  The project root's fetch, survey and PR listing keep the environment as
+  given: they run where the person ran pr-update. A target's `git-ref` record
+  and lease run through ref-lease, which makes its own git client and takes no
+  runner (Follow-ups). Their environment names the target's repository
+  instead: `GIT_DIR` and `GIT_COMMON_DIR` are its common directory,
+  `GIT_OBJECT_DIRECTORY` its objects, and `GIT_ALTERNATE_OBJECT_DIRECTORIES`
+  is empty, and a value set wins over an inherited one. ref-lease runs only
+  `hash-object`, `mktree`, `commit-tree`, `update-ref`, `fetch`, `push` and
+  `ls-remote`, which read neither a work tree nor an index, so an inherited
+  `GIT_WORK_TREE` or `GIT_INDEX_FILE` changes nothing there. A library host's
+  own `runVerb` and repair are its own to run.
 - **How a target's PRs are listed.** Every target other than the project
   root is listed by name. Through `gh` that is `--repo owner/name` with
   `GH_HOST` set to the target's host, port kept, github.com included, so a

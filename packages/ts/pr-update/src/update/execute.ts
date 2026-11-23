@@ -47,10 +47,11 @@ import {
   stderrOrError,
   type CommandRunner,
 } from '@osdlc/command-seam'
-import { withoutRepositoryVars } from '@osdlc/ecosystem/repositories'
 import {
   CommandFailed,
   Git,
+  REPOSITORY_VARS,
+  withoutRepositoryVars,
   type PushRefResult,
   type PushRejection,
   type PushReport,
@@ -965,10 +966,9 @@ export function noHooksEnv(
 /**
  * The git options for a checkout other than the project root, which is someone else's: hooks off
  * (`noHooksEnv`), and `runner` with `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and the other
- * variables that pick a repository unset in each child (ecosystem's `withoutRepositoryVars`). A
- * run started from a git hook, which exports `GIT_DIR`, then still acts on the target. The
- * project root keeps them: it runs where the person ran it. Pass the `gh` runner to make the git
- * that `gh repo clone` runs ignore them too.
+ * variables that pick a repository unset in each child (typed-git's `withoutRepositoryVars`). A
+ * run started from a git hook, which exports `GIT_DIR`, then still acts on the target. Pass the
+ * `gh` runner to make the git that `gh repo clone` runs ignore them too.
  */
 export function targetGitOptions(runner?: CommandRunner): {
   runner: CommandRunner
@@ -976,6 +976,16 @@ export function targetGitOptions(runner?: CommandRunner): {
 } {
   return { runner: withoutRepositoryVars(runner), env: noHooksEnv() }
 }
+
+/**
+ * Each of typed-git's `REPOSITORY_VARS`, unset: the environment of every child a run starts in a
+ * worktree it made (verify, resolvers, `lockfile_install`, a repair command or agent). With
+ * `GIT_DIR` inherited from a git hook, a git the child runs in a linked worktree acts on the
+ * repository `GIT_DIR` names, and can move its checked-out branch.
+ */
+export const UNSET_REPOSITORY_VARS: Readonly<Record<string, undefined>> = Object.freeze(
+  Object.fromEntries(REPOSITORY_VARS.map((name) => [name, undefined])),
+)
 
 const CONFLICT_MARKER = /^(<{7}|>{7})( |$)/m
 

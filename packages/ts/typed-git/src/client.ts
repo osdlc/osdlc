@@ -142,4 +142,6 @@ export {
   type CommandRunOptions,
 } from '@osdlc/command-seam'
 
+export { REPOSITORY_VARS, withoutRepositoryVars } from './repository-vars.ts'
+
 export type { CatFileBatchOptions, CatFileEntry } from './cat-file.ts'

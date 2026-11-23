@@ -17,17 +17,12 @@ import {
   readRemote,
   sameRepo,
   scanForCheckouts,
+  withoutRepositoryVars,
   type RemoteRepo,
   type RepoCoordinate,
 } from '@osdlc/typed-git'
 
-import {
-  resolveRoots,
-  withoutRepositoryVars,
-  type ResolvedRoots,
-  type RootsOptions,
-  type RootsSource,
-} from './roots.ts'
+import { resolveRoots, type ResolvedRoots, type RootsOptions, type RootsSource } from './roots.ts'
 
 /** A checkout of a repository, found under a root. */
 export interface LocatedCheckout {

@@ -4,7 +4,7 @@
  * git, a fake `gh`, and every pr-update directory under a temporary root.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   chmodSync,
   existsSync,
@@ -178,6 +178,8 @@ interface Run {
   targetTrust?: UpdateEnv['targetTrust']
   /** Ports put over the standalone ones and the test's own. */
   ports?: Partial<Ports>
+  /** The `gh` the run lists PRs through; the fake above by default. */
+  gh?: CommandRunner
 }
 
 async function update(run: Run = {}) {
@@ -213,7 +215,7 @@ async function update(run: Run = {}) {
       projectRoot: root.worker.dir,
       dryRun: false,
       git: runner,
-      gh,
+      gh: run.gh ?? gh,
       cfg,
       ports,
       ...(run.targetTrust === undefined ? {} : { targetTrust: run.targetTrust }),
@@ -985,6 +987,132 @@ describe('the attempt record of each target', () => {
     expect(sh(root.bare.dir, 'rev-parse', 'topic')).not.toBe(
       sh(root.worker.dir, 'rev-parse', 'topic'),
     )
+  })
+})
+
+describe("a run started with GIT_DIR set to the project root's .git", () => {
+  /** A `gh` that lists what `gh` above lists now, without running git while the run goes on. */
+  function listedNow(): CommandRunner {
+    const api = gh.run(['pr', 'list', '--repo', 'acme/api'], { cwd: scratch }).stdout
+    // The project root is listed without `--repo`.
+    const own = gh.run(['pr', 'list'], { cwd: scratch }).stdout
+    return {
+      run: (argv) => ({ exitCode: 0, stderr: '', stdout: argv.includes('acme/api') ? api : own }),
+    }
+  }
+
+  /** The verify command: what GIT_DIR it saw, and the repository git found from its directory. */
+  const probe = (out: string): string =>
+    `printf '%s\\n' "\${GIT_DIR-unset}" > '${out}'; git rev-parse --show-toplevel >> '${out}'`
+
+  /** The project root's checked-out branch and its local branches, as git reports them. */
+  const rootState = () => ({
+    head: sh(root.worker.dir, 'symbolic-ref', 'HEAD'),
+    branches: sh(
+      root.worker.dir,
+      'for-each-ref',
+      '--format=%(refname) %(objectname)',
+      'refs/heads/',
+    ),
+    worktrees: worktreesOf(root.worker.dir),
+  })
+
+  /** Runs `update` with GIT_DIR exported to the project root's .git, and restores it after. */
+  async function withRootGitDir(run: Run) {
+    vi.stubEnv('GIT_DIR', join(root.worker.dir, '.git'))
+    try {
+      return await update(run)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  }
+
+  test("a verify command in the project root's run worktree sees no GIT_DIR, and the root's branch does not move", async () => {
+    rootIsTarget = true
+    sh(root.worker.dir, 'checkout', '-q', '-b', 'topic')
+    root.worker.commit('root topic', { 't.txt': 't\n' })
+    sh(root.worker.dir, 'push', '-q', 'origin', 'topic')
+    sh(root.worker.dir, 'checkout', '-q', 'main')
+    root.worker.commit('root main moves', { 'm.txt': 'm\n' })
+    sh(root.worker.dir, 'push', '-q', 'origin', 'main')
+    const rootUrl = 'https://github.com/acme/root.git'
+    sh(root.worker.dir, 'remote', 'set-url', 'origin', rootUrl)
+    const viaBare: CommandRunner = {
+      run: (argv, opts) =>
+        git.run(
+          argv[0] === 'fetch' || argv[0] === 'push'
+            ? ['-c', `url.file://${root.bare.dir}.insteadOf=${rootUrl}`, ...argv]
+            : argv,
+          opts,
+        ),
+    }
+    sh(root.worker.dir, 'fetch', '-q', root.bare.dir, '+refs/heads/*:refs/remotes/origin/*')
+    const listed = listedNow()
+    const before = rootState()
+    const seen = join(scratch, 'seen.txt')
+    const standalone = standalonePorts(undefined, root.worker.dir, 'origin', () => {}, { env })
+
+    const out = await withRootGitDir({
+      args: { repo: ['acme/root'] },
+      runner: viaBare,
+      gh: listed,
+      ports: {
+        locate: () => null,
+        runVerb: standalone.runVerb,
+        resolveVerifyVerbs: async () => [probe(seen)],
+      },
+    })
+
+    expect(out.results.map((r) => [r.repo, r.status, r.pushed])).toEqual([
+      ['acme/root', 'updated', true],
+    ])
+    const [gitDir, top] = readFileSync(seen, 'utf8').trim().split('\n')
+    expect(gitDir).toBe('unset')
+    expect(top!.startsWith(join(root.worker.dir, '.pr-update'))).toBe(true)
+    expect(rootState()).toEqual(before)
+  })
+
+  test("a verify command in a located target's run worktree sees no GIT_DIR, and no branch moves", async () => {
+    const listed = listedNow()
+    const before = rootState()
+    const apiHead = sh(api.worker.dir, 'symbolic-ref', 'HEAD')
+    const apiBranches = sh(
+      api.worker.dir,
+      'for-each-ref',
+      '--format=%(refname) %(objectname)',
+      'refs/heads/',
+    )
+    const seen = join(scratch, 'seen.txt')
+    const standalone = standalonePorts(undefined, root.worker.dir, 'origin', () => {}, { env })
+
+    const out = await withRootGitDir({
+      gh: listed,
+      ports: { runVerb: standalone.runVerb, resolveVerifyVerbs: async () => [probe(seen)] },
+    })
+
+    expect(out.results.map((r) => [r.repo, r.status, r.pushed])).toEqual([
+      ['acme/api', 'updated', true],
+    ])
+    const [gitDir, top] = readFileSync(seen, 'utf8').trim().split('\n')
+    expect(gitDir).toBe('unset')
+    expect(top!.startsWith(join(paths.worktrees, 'github.com', 'acme', 'api'))).toBe(true)
+    expect(rootState()).toEqual(before)
+    expect(sh(api.worker.dir, 'symbolic-ref', 'HEAD')).toBe(apiHead)
+    expect(
+      sh(api.worker.dir, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads/'),
+    ).toBe(apiBranches)
+  })
+
+  test("with git-ref, a located target's record lands on its own origin", async () => {
+    verifyOk = false
+    const listed = listedNow()
+    const out = await withRootGitDir({ cfg: { attempts: { store: 'git-ref' } }, gh: listed })
+    expect(out.results.map((r) => r.status)).toEqual(['failed'])
+    expect(sh(api.bare.dir, 'for-each-ref', '--format=%(refname)', 'refs/pr-update/')).toMatch(
+      /^refs\/pr-update\/attempts\//,
+    )
+    expect(sh(root.bare.dir, 'for-each-ref', 'refs/pr-update/')).toBe('')
+    expect(sh(root.worker.dir, 'for-each-ref', 'refs/pr-update/')).toBe('')
   })
 })
 
