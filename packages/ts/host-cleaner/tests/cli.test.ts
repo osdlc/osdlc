@@ -60,9 +60,11 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
 
 async function run(argv: string[], cwd: string, env: Record<string, string>, deps: MainDeps = {}) {
   const ctx = captureContext({ cwd, env })
-  // The shipped plugins would talk to this machine's Orca and sweep every repository it lists.
+  // The shipped plugins would talk to this machine's Orca and sweep every repository it lists,
+  // and clean this machine's JetBrains caches.
   const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
-  const args = phase && deps.plugins === undefined ? [...argv, '--skip-plugin', 'orca'] : argv
+  const args =
+    phase && deps.plugins === undefined ? [...argv, '--skip-plugin', 'orca,jetbrains'] : argv
   const code = await main(args, ctx, { confirm: () => null, ...deps })
   return { code, out: ctx.io.out, err: ctx.io.err }
 }

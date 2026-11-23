@@ -7,12 +7,12 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node` and `orca` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `orca` and `jetbrains` plugins, and the `host-cleaner` command.
 
 ## Phases
 
 Plugins run in the order they are given. The command line runs the shipped
-ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `orca`.
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `orca`, `jetbrains`.
 The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
@@ -263,6 +263,35 @@ goes through `@osdlc/command-seam` with `--json`.
 host-cleaner clean --pick worktree:/path/to/wt --allow close-terminals
 ```
 
+## The `jetbrains` plugin
+
+JetBrains IDEs keep a cache and a log folder per version, and caches per
+project inside it. The IDE rebuilds any of them when needed
+(`costDescription: rebuild`). Roots: `~/Library/Caches/JetBrains` and
+`~/Library/Logs/JetBrains` on macOS, `~/.cache/JetBrains` (or
+`$XDG_CACHE_HOME/JetBrains`) on Linux. Detected when one of them exists.
+Settings: `plugins.jetbrains.idleHours` (default 24).
+
+- `ide-version:<path>`: a version folder, such as `RustRover2025.1`, that no
+  install names. An install is known by `dataDirectoryName` in its
+  `product-info.json`, read from each tool the Toolbox's `state.json` lists and
+  from the application folders (`/Applications` and `~/Applications` on macOS;
+  the Toolbox's `apps` folder and `/opt` on Linux). It is held while it changed
+  within `idleHours`, in case an install sits somewhere not looked in. A Toolbox
+  state or `product-info.json` that is there and cannot be read refuses every
+  version folder (`installs-unreadable`).
+- `project-cache:<path>`: inside an installed version, `projects/<name>.<hash>`
+  whose project is gone. The hash is Java's `String.hashCode` of the project's
+  path, matched against the version's recent projects
+  (`options/recentProjects.xml` in its config folder). A cache whose hash
+  matches no recent project is left alone, and so is a project on a volume that
+  is not mounted.
+
+A running process of the product (`rustrover`, `idea`, and so on), whatever its
+version, or a process table that cannot be read, is a `refuse`. Folders other
+than version folders, and links, are never looked into. `delete` finds and
+measures the folder again, then removes it with `kit.remove`.
+
 ## Command line
 
 The command works in repo-cleaner's phases, with its flags. Nothing runs until
@@ -310,7 +339,7 @@ the key.
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
-| `idleHours` | `cargo`, `node` | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
+| `idleHours` | `cargo`, `node`, `jetbrains` | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
 
 Two settings sit at the top of the config and apply to every plugin:
 

@@ -2,6 +2,7 @@
 
 import { cargoDefinition } from './cargo.ts'
 import { gitDefinition } from './git.ts'
+import { jetbrainsDefinition } from './jetbrains.ts'
 import { nodeDefinition } from './node.ts'
 import { orcaDefinition } from './orca.ts'
 import type { Plugin, PluginDefinition } from './types.ts'
@@ -15,6 +16,7 @@ export const BUILT_IN_PLUGINS: readonly PluginDefinition[] = [
   cargoDefinition,
   nodeDefinition,
   orcaDefinition,
+  jetbrainsDefinition,
 ]
 
 /** A `--plugin` or `--skip-plugin` that names no plugin. */

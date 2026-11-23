@@ -27,7 +27,7 @@ assert.match(VERSION, /^\d+\.\d+\.\d+/)
 assert.equal(typeof gitPlugin().discover, 'function')
 assert.deepEqual(
   BUILT_IN_PLUGINS.map((d) => d.name),
-  ['git', 'cargo', 'node', 'orca'],
+  ['git', 'cargo', 'node', 'orca', 'jetbrains'],
 )
 
 const log = []
