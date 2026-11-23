@@ -10,7 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync, realpathSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { isatty } from 'node:tty'
 
@@ -997,6 +997,21 @@ describe('runUpdate — two repositories that each hold a PR 1', () => {
       ['a/x', 1, 'updated'],
       ['b/y', 1, 'updated'],
     ])
+  })
+
+  test("a host's located checkout keeps a worktree of the person's whose folder is missing", async () => {
+    const mine = join(realpathSync(join(b.worker.dir, '..')), 'mine')
+    b.worker.git.rawChecked(['worktree', 'add', '-q', '--detach', mine, 'main'])
+    rmSync(mine, { recursive: true, force: true })
+    const out = await run({})
+    expect(out.results.map((r) => r.status)).toEqual(['updated', 'updated'])
+    expect(b.worker.git.rawChecked(['worktree', 'list', '--porcelain']).stdout).toContain(
+      `worktree ${mine}`,
+    )
+    expect(existsSync(join(b.worker.dir, '.pr-update'))).toBe(true)
+    expect(b.worker.git.rawChecked(['worktree', 'list', '--porcelain']).stdout).not.toContain(
+      '.pr-update',
+    )
   })
 
   test('verify verbs are resolved once per repository, naming it and its checkout, and run there', async () => {

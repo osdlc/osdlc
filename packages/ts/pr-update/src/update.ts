@@ -714,7 +714,9 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
           apply: writes,
           worktreeRoot,
           ...(keepFailed ? { keepFailed: { place: at?.kept ?? checkoutKept(path) } } : {}),
-          ...(at?.records === undefined ? {} : { records: at.records, skipOnLeaseError: true }),
+          ...(at?.records === undefined ? {} : { records: at.records }),
+          // Only a target's own lease: the host's (`Ports.lease`) ends the run on an error.
+          skipOnLeaseError: at?.lease !== undefined && at.lease !== env.ports.lease,
           onSkip: (s) => skipped.push(s),
           // A rehearsal cannot repair, so `writes` keeps it from recording anything. Recorded as
           // each PR finishes, so a run killed part-way (a job timeout) keeps what it
@@ -864,13 +866,16 @@ function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<
     }
     const home = env.ports.targetHome?.(target)
     if (home === undefined) {
+      // Still someone else's checkout: only what the run made under its `.pr-update/` is cleaned.
+      const records = ownedUnder([join(path, '.pr-update')])
       out.set(t.repo, {
         ...own,
         path,
         worktrees: join(path, '.pr-update'),
-        kept: checkoutKept(path),
+        kept: { ...checkoutKept(path), records },
         target,
         gitEnv,
+        records,
       })
       continue
     }
