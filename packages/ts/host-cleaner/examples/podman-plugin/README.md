@@ -45,4 +45,7 @@ pnpm test examples/podman-plugin
 ```
 
 There, `@osdlc/host-cleaner` resolves to the package's source. A package of
-your own installs it and builds with `tsc` instead.
+your own installs it and builds with `tsc` instead. `tests/outside.test.ts`
+does that too: it builds `src/index.ts` with `tsc` in a package that sees only
+`@osdlc/host-cleaner/plugin` and `/testing`, then loads it with the built
+host-cleaner's loader. Run `pnpm build` first.

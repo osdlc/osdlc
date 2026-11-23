@@ -19,7 +19,7 @@ import {
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import * as entry from '../src/plugin.ts'
 
@@ -33,8 +33,15 @@ afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()!()
 })
 
-/** A package holding the fixture plugin, with host-cleaner limited to the two entries. */
-function outsidePackage(): string {
+const fixtures = Object.fromEntries(
+  ['plugin.ts', 'check.ts'].map((f) => [f, join(here, 'fixtures', 'outside-plugin', f)]),
+)
+
+/**
+ * A package holding `files` in its `src/` (the fixture plugin by default),
+ * with host-cleaner limited to the two entries.
+ */
+function outsidePackage(files: Record<string, string> = fixtures): string {
   const dir = mkdtempSync(join(tmpdir(), 'host-cleaner-outside-'))
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
   const json = (path: string, value: unknown) =>
@@ -53,9 +60,7 @@ function outsidePackage(): string {
     include: ['src'],
   })
   mkdirSync(join(dir, 'src'))
-  for (const f of ['plugin.ts', 'check.ts']) {
-    copyFileSync(join(here, 'fixtures', 'outside-plugin', f), join(dir, 'src', f))
-  }
+  for (const [f, from] of Object.entries(files)) copyFileSync(from, join(dir, 'src', f))
   const hc = join(dir, 'node_modules', '@osdlc', 'host-cleaner')
   mkdirSync(hc, { recursive: true })
   const entryOf = (name: string) => ({
@@ -91,6 +96,32 @@ test('an outside package builds against ./plugin and ./testing, and its plugin k
   const out = JSON.parse(ran.stdout) as { ids: string[]; problems: string[] }
   expect(out.ids).toEqual([expect.stringMatching(/^scratch:.*\/\.scratch\/build-1$/)])
   expect(out.problems).toEqual([])
+}, 60_000)
+
+test('the podman example builds against ./plugin alone, and the loader takes it as a package', () => {
+  const example = join(pkg, 'examples', 'podman-plugin')
+  const dir = outsidePackage({ 'index.ts': join(example, 'src', 'index.ts') })
+  copyFileSync(join(example, 'package.json'), join(dir, 'package.json'))
+  const built = build(dir)
+  expect(built.stdout + built.stderr).toBe('')
+  expect(built.status).toBe(0)
+
+  // Installed under its own name, then loaded and created by the built host-cleaner.
+  const root = join(dir, 'installed')
+  mkdirSync(root)
+  symlinkSync(dir, join(root, 'host-cleaner-podman'), 'dir')
+  const script = `
+import { loadPackages, pluginKit } from ${JSON.stringify(pathToFileURL(join(pkg, 'dist', 'index.js')).href)}
+const { loaded, failed } = await loadPackages([{ name: 'podman', package: 'host-cleaner-podman' }], [${JSON.stringify(root)}])
+const def = loaded[0]?.definition
+const plugin = def?.create({ settings: def.settings.parse({}), env: {}, kit: pluginKit('podman') })
+process.stdout.write(JSON.stringify({ failed, version: loaded[0]?.version, name: plugin?.name }))
+`
+  const ran = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    encoding: 'utf8',
+  })
+  expect(ran.stderr).toBe('')
+  expect(JSON.parse(ran.stdout)).toEqual({ failed: [], version: '0.0.0', name: 'podman' })
 }, 60_000)
 
 test('the same package cannot reach the main entry', () => {

@@ -19,6 +19,10 @@ A plugin uses two entries of `@osdlc/host-cleaner`, and no other:
 | `@osdlc/host-cleaner/plugin` | `definePlugin`, `PLUGIN_API`, the contract's types, the kit (`pluginKit`, `idleHoursSetting` and its types), `containedIn`, `FatalRun`, and `z`. |
 | `@osdlc/host-cleaner/testing` | `fakeContext`, `fakeRunner`, `tempHome` and `contractSuite`, for the plugin's own tests. |
 
+A plugin's tests may also import `survey`, `plan` and `clean` from the main
+entry, `@osdlc/host-cleaner`, to run it through the core, as the example's do.
+The plugin itself uses the plugin entry alone.
+
 ## The package
 
 ```json

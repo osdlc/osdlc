@@ -36,8 +36,10 @@ export default definePlugin({
   name: 'podman',
   api: PLUGIN_API,
   settings: z.object({
-    /** Volume names never proposed, such as a database's. */
-    keepVolumes: z.array(z.string()).default([]),
+    keepVolumes: z
+      .array(z.string())
+      .default([])
+      .describe("Volume names never proposed, such as a database's."),
   }),
   create({ settings, kit }) {
     return {
