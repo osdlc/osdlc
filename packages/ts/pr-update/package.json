@@ -66,6 +66,7 @@
     "@osdlc/code-host": "workspace:^",
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/config-layers": "workspace:^",
+    "@osdlc/ecosystem": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
     "@osdlc/ref-lease": "workspace:^",
     "@osdlc/result": "workspace:^",

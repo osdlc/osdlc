@@ -14,10 +14,12 @@ import {
   spawnRunner,
   spawnRunnerAsync,
   stderrOrError,
+  type CommandRunner,
 } from '@osdlc/command-seam'
 
 import { DETECT_LOOKED_FOR, NothingDetectedError, detectVerifyCommand } from './detect.ts'
 import type { PrUpdateConfig, PrUpdateStandaloneConfig } from './config.ts'
+import { standaloneLocate, type StandaloneLocateOptions } from './locate.ts'
 import type { Ports, Repair } from './ports.ts'
 import { agentRepair } from './repair/agents.ts'
 import { seatRepair } from './repair/seat.ts'
@@ -65,22 +67,38 @@ export function commandRepair(command: string, timeoutSeconds: number | null = n
   }
 }
 
+/** Options for {@link standalonePorts} beyond its positional ones. */
+export interface StandalonePortsOptions {
+  /** Runs git for `locate`. Defaults to typed-git's. */
+  git?: CommandRunner | undefined
+  /**
+   * The environment `locate` reads the osdlc directories and the home
+   * directory from. Defaults to `process.env`.
+   */
+  env?: Record<string, string | undefined> | undefined
+  /** Passed to `locate`'s `CheckoutLocator` as given, for a test. */
+  locator?: StandaloneLocateOptions['locator']
+}
+
 /**
- * A standalone run has no repository registry, so a `--repo` that names
- * anything other than the local checkout always comes back unmeasurable.
- * There is nothing to find its path from.
+ * A standalone run has no repository registry. Its `locate` finds a `--repo`
+ * target's checkout under the roots `repositories.yaml` names, or, with none,
+ * beside the project root's main checkout (`locate.ts`). One locator serves
+ * every call on the returned ports, so make one `Ports` per run.
  *
  * With `projectRoot`, failed updates are recorded in
  * `<projectRoot>/.pr-update/attempts/`, or, with `attempts.store: git-ref`, as refs on `remote`
  * (default `origin`) along with a per-branch update lease.
  *
- * `notice` receives one-line progress notes for the person: the command `verify: detect` chose, and where to attach a `terminal` repair.
+ * `notice` receives one-line notes for the person: the command `verify: detect` chose, where to
+ * attach a `terminal` repair, and a `--repo` target with no checkout and the roots searched for it.
  */
 export function standalonePorts(
   cfg?: PrUpdateConfig & Partial<PrUpdateStandaloneConfig>,
   projectRoot?: string,
   remote = 'origin',
   notice: (line: string) => void = () => {},
+  opts: StandalonePortsOptions = {},
 ): Ports {
   const command = cfg?.repair.command ?? null
   const agent = cfg?.repair.agent ?? null
@@ -88,7 +106,13 @@ export function standalonePorts(
   const mode = cfg?.repair.mode ?? 'headless'
   const testCommand = cfg?.test_command ?? null
   return {
-    locate: () => null,
+    locate: standaloneLocate({
+      projectRoot,
+      git: opts.git,
+      env: opts.env,
+      notice,
+      locator: opts.locator,
+    }),
     runVerb: (verb, cwd) => sh.run(verb, { cwd }),
     // A standalone run has no host registry to look up `check` in, and `test` runs only
     // `test_command`. Failing is better than running no verbs and reporting a push as

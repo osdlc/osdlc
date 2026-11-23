@@ -1467,6 +1467,9 @@ importers:
       '@osdlc/config-layers':
         specifier: workspace:^
         version: link:../config-layers
+      '@osdlc/ecosystem':
+        specifier: workspace:^
+        version: link:../ecosystem
       '@osdlc/etag-write':
         specifier: workspace:^
         version: link:../etag-write

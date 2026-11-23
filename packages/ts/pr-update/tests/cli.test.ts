@@ -9,7 +9,7 @@ import { overlayPath } from '@osdlc/config-layers'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { PR_UPDATE_CONFIG_FILE, main } from '../src/cli.ts'
-import { FIXTURE_REMOTE, fakeTools } from './support.ts'
+import { FIXTURE_REMOTE, fakeTools, isolatedEnv } from './support.ts'
 import { forwarded } from './support-signal.ts'
 
 vi.mock('@osdlc/command-seam', async (original) =>
@@ -19,11 +19,6 @@ vi.mock('@osdlc/command-seam', async (original) =>
 const PR_UPDATE_CONFIG_FILE_NAME = PR_UPDATE_CONFIG_FILE.name
 
 const LOCAL_FILE_NAME = overlayPath(PR_UPDATE_CONFIG_FILE_NAME)
-
-/** An explicit environment: no ambient PR_UPDATE_CONFIG, trust state in a temp dir. */
-function isolatedEnv(root: string): Record<string, string> {
-  return { PATH: process.env.PATH ?? '', XDG_STATE_HOME: join(root, 'state') }
-}
 
 describe('pr-update update --confirm-push', () => {
   // Not a repository: a run that got past the checks would fail loudly. `--repo`

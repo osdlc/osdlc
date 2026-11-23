@@ -56,9 +56,8 @@ import {
   SurveyUsageError,
   prKey,
   repoEntry,
-  runSurvey,
   selectorLabel,
-  surveyTargets,
+  surveyWithTargets,
   type PrSelector,
   type SurveyEnv,
   type SurveyReport,
@@ -140,10 +139,13 @@ export function selectTargets(
 ): Selection {
   const store = policy.retryFailed || policy.maxFailedAttempts === 0 ? undefined : policy.attempts
   const wantedNumbers = new Set(only.filter((s): s is number => typeof s === 'number'))
-  const wantedKeys = new Set(only.filter((s): s is string => typeof s === 'string'))
+  // A key names its repository in any letter case, as `--repo` does.
+  const wantedKeys = new Set(
+    only.filter((s): s is string => typeof s === 'string').map((s) => s.toLowerCase()),
+  )
   const scoped = only.length > 0
   const named = (repo: string, number: number): boolean =>
-    !scoped || wantedNumbers.has(number) || wantedKeys.has(prKey(repo, number))
+    !scoped || wantedNumbers.has(number) || wantedKeys.has(prKey(repo, number).toLowerCase())
   const ancestors = options.restack === true && scoped ? ancestorsOfNamed(report, named) : null
   const selected = (repo: string, number: number): boolean =>
     named(repo, number) || ancestors?.has(prKey(repo, number)) === true
@@ -153,7 +155,7 @@ export function selectTargets(
   const skipped: SkippedPr[] = []
 
   for (const row of report.prs) {
-    seen.add(prKey(row.repo, row.number))
+    seen.add(prKey(row.repo, row.number).toLowerCase())
     seenNumbers.add(row.number)
     const note = (reason: string): void => {
       skipped.push({ repo: row.repo, number: row.number, head: row.head, reason })
@@ -213,7 +215,7 @@ export function selectTargets(
   // stack order. It is still a PR the survey listed, so it is reported here.
   for (const { repo, cycles } of report.repos) {
     for (const number of cycles) {
-      const key = prKey(repo, number)
+      const key = prKey(repo, number).toLowerCase()
       if (seen.has(key)) continue
       seen.add(key)
       seenNumbers.add(number)
@@ -228,7 +230,7 @@ export function selectTargets(
   // above, which see only what the survey listed. Report it here, so every
   // selector this run was asked about is accounted for.
   const notFound = only
-    .filter((s) => (typeof s === 'number' ? !seenNumbers.has(s) : !seen.has(s)))
+    .filter((s) => (typeof s === 'number' ? !seenNumbers.has(s) : !seen.has(s.toLowerCase())))
     .map(selectorLabel)
   return { targets, skipped, notFound: [...new Set(notFound)] }
 }
@@ -253,7 +255,9 @@ function ancestorsOfNamed(
 
 export const input = z.object({
   ...SCOPE_SHAPE,
-  remote: SCOPE_SHAPE.remote.describe('Remote to fetch from, measure against and push to.'),
+  remote: SCOPE_SHAPE.remote.describe(
+    "The project root's remote to fetch from, measure against and push to. A checkout `locate` describes with its own remote is read through that one.",
+  ),
   apply: z
     .boolean()
     .default(false)
@@ -528,7 +532,7 @@ function bindConfirmPush(args: UpdateArgs, ports: Ports, dryRun: boolean): Confi
 export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput> {
   const confirmPush = bindConfirmPush(args, env.ports, env.dryRun)
   const effectiveCfg = applyStrategyOverride(env.cfg, args.strategy)
-  const report = runSurvey(args, { ...env, cfg: effectiveCfg })
+  const { report, targets: repoTargets } = surveyWithTargets(args, { ...env, cfg: effectiveCfg })
   const attempts = env.ports.attempts
   // Branch mode names its PR by head branch. The survey has already narrowed
   // the report to it and its stack parents. The match is by repository and
@@ -557,14 +561,40 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     throw new UpdateUsageError('--discard-kept needs --apply')
 
   // Each repository's PRs are updated in that repository's own checkout, the
-  // one the survey measured them in.
-  const located = surveyTargets(args, env).targets
-  const pathOf = new Map(located.map((t) => [t.repo, t.path ?? env.projectRoot]))
-  const groups = new Map<string, { path: string; targets: UpdateTarget[] }>()
+  // one the survey measured them in, through the remote it was measured against.
+  //
+  // Not yet in a checkout `locate` described in full (a `FoundCheckout`, which
+  // the standalone run's locate returns): the run's attempt store, lease,
+  // trust check and worktree directory are all the project root's, so its PRs
+  // are surveyed and skipped. Leaving it out of `pathOf` also keeps its kept
+  // worktrees and verify list untouched.
+  const foundCheckout = new Map(
+    repoTargets.flatMap((t) => (t.found === null ? [] : [[t.repo, t.found.path] as const])),
+  )
+  const served = repoTargets.filter((t) => t.found === null)
+  const pathOf = new Map(served.map((t) => [t.repo, t.path ?? env.projectRoot]))
+  const remoteOf = new Map(served.map((t) => [t.repo, t.remote]))
+  const groups = new Map<string, { path: string; remote: string; targets: UpdateTarget[] }>()
   for (const t of targets) {
+    const found = foundCheckout.get(t.repo)
+    if (found !== undefined) {
+      skipped.push({
+        repo: t.repo,
+        number: t.number,
+        head: t.head,
+        reason: `checked out at ${found}, which update does not run in yet; survey measures it`,
+      })
+      continue
+    }
     const group = groups.get(t.repo)
     if (group !== undefined) group.targets.push(t)
-    else groups.set(t.repo, { path: pathOf.get(t.repo) ?? env.projectRoot, targets: [t] })
+    else {
+      groups.set(t.repo, {
+        path: pathOf.get(t.repo) ?? env.projectRoot,
+        remote: remoteOf.get(t.repo) ?? args.remote,
+        targets: [t],
+      })
+    }
   }
   const runId = `${process.pid}.${Date.now()}`
   // Once per repository, not inside `updateAll`'s per-PR loop (`detect` resolves per PR
@@ -593,7 +623,6 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   }
   const discarded = settleKept(args, writes, env, pathOf, groups, skipped)
   const settings = {
-    remote: args.remote,
     resolvers: effectiveCfg.resolvers,
     lockfileInstall: effectiveCfg.lockfile_install,
     generators: env.ports.generators,
@@ -608,7 +637,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   // Records too old to matter go before this run writes new ones. A rehearsal writes nothing.
   if (writes) attempts?.prune?.()
   const results: UpdateResult[] = []
-  for (const [repo, { path, targets: group }] of groups) {
+  for (const [repo, { path, remote, targets: group }] of groups) {
     const git = new Git(path, { runner: env.git })
     const worktreeRoot = join(path, '.pr-update', runId)
     const verifyVerbs =
@@ -623,7 +652,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
             })
         : (verifyVerbsOf.get(repo) ?? [])
     results.push(
-      ...(await updateAll(git, group, { ...settings, verifyVerbs }, env.ports.runVerb, {
+      ...(await updateAll(git, group, { ...settings, remote, verifyVerbs }, env.ports.runVerb, {
         apply: writes,
         worktreeRoot,
         ...(keepFailed ? { keepFailed: { checkout: path } } : {}),

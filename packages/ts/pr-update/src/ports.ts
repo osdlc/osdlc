@@ -140,13 +140,43 @@ export interface PushPreview {
 /** True to push. A throw counts as no. */
 export type ConfirmPush = (preview: PushPreview) => boolean
 
+/**
+ * A repository the run was pointed at with `--repo`, as the run resolved it:
+ * lower-cased, with the host filled in when `--repo` named none.
+ */
+export interface LocateTarget {
+  host: string
+  owner: string
+  name: string
+}
+
+/** Where a checkout came from: the project root, a checkout found on this machine, or a managed clone. */
+export type CheckoutSource = 'root' | 'located' | 'clone'
+
+/**
+ * A checkout `locate` found, described in full. A bare path means the run's
+ * `--remote` is read; this form names the remote the checkout itself uses.
+ */
+export interface FoundCheckout {
+  /** The checkout, absolute. */
+  path: string
+  source: Exclude<CheckoutSource, 'root'>
+  /** The remote to fetch from and measure against, such as the `origin` that matched. */
+  remote: string
+}
+
 export interface Ports {
   /**
-   * Resolve `owner/name` to a local checkout path, or null when this machine
-   * has none. Only asked about a repository the run was pointed at with
-   * `--repo`, never used to widen the scope.
+   * Resolve `owner/name` to a local checkout, or null when this machine has
+   * none. Only asked about a repository the run was pointed at with `--repo`,
+   * never used to widen the scope, and once per run for each.
+   *
+   * `repo` is lower-cased. `target` carries the host as well, for a locate
+   * that tells hosts apart. A path means the checkout is read through the
+   * run's `--remote`; a {@link FoundCheckout} names its own remote. The
+   * standalone run's locate returns that form (see `defaults.ts`).
    */
-  locate: (repo: string) => string | null
+  locate: (repo: string, target?: LocateTarget) => string | FoundCheckout | null
   /** Runs the shell verbs of resolvers and verify. See {@link RunVerb}. */
   runVerb: RunVerb
   /**

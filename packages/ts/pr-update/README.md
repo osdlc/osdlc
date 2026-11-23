@@ -123,6 +123,49 @@ pushed branch. Otherwise the checkout is left alone, and the result's
 `localCheckout` says why:
 `{ updated: false, detail: "the working tree has uncommitted changes" }`.
 
+## Other repositories: `--repo`
+
+`--repo owner/name` (repeatable) puts another repository in the run, and
+`--repo host/owner/name` names its host too. A bare `owner/name` means the
+project root's host when that is GitHub (github.com, or any host with
+`code_host.override: github`), and github.com otherwise. Each target is
+lower-cased once, so `Acme/API` and `acme/api` are one target, and a
+`--pr owner/name#N` matches it in any letter case. A `--repo` that names the
+project root's own repository, in any case, is the project root.
+
+Drift is measured in a checkout, so the run looks for one already on this
+machine, matched by its `origin`:
+
+1. the project root, for its own repository;
+2. a checkout under the roots listed in `repositories.yaml`, the file every
+   osdlc tool shares (`~/.config/osdlc/repositories.yaml` on Linux and macOS);
+3. with no roots listed there, a checkout beside the project root: in the
+   directory that holds it, or the one above when that directory is named
+   after the project root's owner (an `<owner>/<name>` layout).
+
+```yaml
+# ~/.config/osdlc/repositories.yaml
+roots:
+  - ~/dev/repos
+```
+
+The search goes three levels below each root and never steps to or above
+your home directory. A linked worktree counts as its main checkout. A shallow
+checkout is skipped, since it cannot measure drift. With more than one
+checkout of a repository, the first by path is used and a note names the
+others. A checkout found this way is fetched and measured through its
+`origin`, whatever `--remote` says: `--remote` names a remote of the project
+root.
+
+A target with no checkout is still listed, reported `no local checkout —
+drift not measured`, and a note on stderr names the roots that were searched
+and the file that sets them, and says when the depth limit left directories
+unopened. In JSON, each repository carries `checkout: { path, source }`, with
+`source` `root` or `located`, or `checkout: null` when there is none.
+
+`update` does not yet update a checkout found this way. It surveys it, and
+lists its PRs as skipped.
+
 ## Three things it knows that a per-PR check cannot
 
 Drift is measured locally. GitHub reports `mergeStateStatus: BEHIND` only
@@ -590,6 +633,27 @@ for one run, or run `pr-update trust` once to record the repository (kept under
 `--show` reports the repository's trust, `--list` every trusted repository and
 `--untrust` removes the record.
 
+### The machine file
+
+What a repository may not decide, because it is about this machine, lives in
+pr-update's machine file, not in `pr-update.yaml`:
+`~/.config/osdlc/pr-update/config.yaml` on Linux and macOS (`OSDLC_ROOT` or
+`XDG_CONFIG_HOME` moves it with the rest of the osdlc directories, and
+`PR_UPDATE_MACHINE_CONFIG`, an absolute path, names the file itself). It is
+for the clone cache of targets with no checkout on the machine:
+
+| Key | Meaning |
+|---|---|
+| `checkout: local \| mirror` | `local` never clones: a target with no checkout is skipped. `mirror` clones it. Unset by default |
+| `mirror_dir: <path>` | Where clones go. Default `repos/` in pr-update's cache directory |
+| `mirror_max_age_days: <n>` | A clone unused this long is removed. Default 30; `0` turns that off |
+
+An unknown key or a bad value there is reported with the file's path and
+skipped. None of these keys is accepted in `pr-update.yaml`, its `.local`
+overlay or a host's `pr_update:` block: there they are unknown keys (exit
+`14`), so a cloned repository cannot choose where the tool writes on your
+disk.
+
 Only one of `repair.command` and `repair.agent` may be set, checked on the
 merged config. A `pr-update.local.yaml` that wants an agent where the project
 file names a command must also set `command: null`, or the merged config names
@@ -614,7 +678,7 @@ confirmation:
 
 | Port | What it answers |
 |---|---|
-| `locate(repo)` | Where `owner/name` is checked out on this machine, or `null` |
+| `locate(repo, target?)` | Where `owner/name` (lower-cased; `target` adds the host) is checked out on this machine: a path, read through the run's `--remote`, or `{ path, source, remote }`, read through `remote`; `null` for none. Asked once per target per run |
 | `runVerb(verb, cwd)` | Run one shell verb, for resolvers and verify |
 | `resolveVerifyVerbs({ which, trust, repo, checkout })` | The trust-gated verb list `verify: check` or `verify: test` runs before a push, asked once per repository |
 | `generators` (optional) | In-process rebuild steps, each with `claims(path)` and `run(worktree)` |
@@ -625,7 +689,8 @@ confirmation:
 
 `standalonePorts(cfg, projectRoot)` gives a `pr-update` CLI run defaults for the three required ports
 (locate, runVerb, resolveVerifyVerbs) and for repair and attempts.
-It builds `repair` from `repair.agent` or `repair.command`, stores attempts in
+Its `locate` finds a checkout under the `repositories.yaml` roots as above, scanning them once for
+the ports object, so make one per run. It builds `repair` from `repair.agent` or `repair.command`, stores attempts in
 `<projectRoot>/.pr-update/attempts/` (`fileAttemptStore`), or, with `attempts.store: git-ref`, as
 refs on the `--remote` (`refAttemptStore`) with a per-branch `lease` (`refBranchLease`), answers `verify: test` with
 `test_command`, and refuses `verify: check`. A standalone run has no host registry to look up

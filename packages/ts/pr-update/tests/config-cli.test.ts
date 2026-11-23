@@ -17,7 +17,7 @@ import { trustStore } from '@osdlc/trust-repo'
 import type { CommandRunner } from '@osdlc/command-seam'
 import { IDENTITY, makeBareAndWorker, makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { FIXTURE_REMOTE, allToolsInstalled, fakeTools } from './support.ts'
+import { FIXTURE_REMOTE, allToolsInstalled, fakeTools, isolatedEnv } from './support.ts'
 import { PR_UPDATE_CONFIG_FILE, main } from '../src/cli.ts'
 
 const PR_UPDATE_CONFIG_FILE_NAME = PR_UPDATE_CONFIG_FILE.name
@@ -34,7 +34,7 @@ function project(): { dir: string; env: Record<string, string> } {
   const repo = makeGitFixture({ dir: mkdtempSync(join(scratch, `p${n++}-`)) })
   repo.commit('init', { 'a.txt': 'a' })
   repo.git.remoteAdd('origin', FIXTURE_REMOTE)
-  const env = { PATH: process.env.PATH ?? '', XDG_STATE_HOME: join(scratch, `state${n}`) }
+  const env = isolatedEnv(join(scratch, `env${n}`))
   return { dir: repo.dir, env }
 }
 

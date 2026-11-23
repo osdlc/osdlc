@@ -47,13 +47,19 @@ import { z } from 'zod'
 
 import { Git, parseRemoteRepo, type Worktree } from '@osdlc/typed-git'
 
-import type { CodeHost, CodeHostPrDetail } from '@osdlc/code-host'
+import {
+  codeHostNameForRemote,
+  type CodeHost,
+  type CodeHostName,
+  type CodeHostPrDetail,
+} from '@osdlc/code-host'
 import type { CommandRunner } from '@osdlc/command-seam'
+import { parseRepoTarget } from '@osdlc/ecosystem/repositories'
 import { FailureError, type Failure } from '@osdlc/result'
 import { githubCodeHostFor } from './code-host.ts'
 import { chooseStrategy, type Strategy } from './strategy.ts'
 import type { PrUpdateConfig } from './config.ts'
-import type { Ports } from './ports.ts'
+import type { CheckoutSource, FoundCheckout, Ports } from './ports.ts'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -109,14 +115,28 @@ export function selectorLabel(selector: PrSelector): string {
 
 /** A repository to survey, and the checkout its drift is measured in. */
 export interface RepoTarget {
-  /** `owner/name`, as the code host knows it. */
+  /**
+   * `owner/name`, as the code host knows it. Lower-cased for every target but
+   * the project root, which keeps the spelling of its own remote.
+   */
   repo: string
+  /** The host, lower-cased; null for a project root whose remote names none. */
+  host: string | null
   /**
    * Local checkout, or null when this machine has none. Drift and conflict
    * prediction read git objects, so a target with no path is listed and
    * reported unmeasurable, not guessed at.
    */
   path: string | null
+  /** Where {@link path} came from; null with it. */
+  source: CheckoutSource | null
+  /** The remote whose tracking refs are fetched and read: `--remote`, or the checkout's own. */
+  remote: string
+  /**
+   * The checkout as `locate` described it, when it returned a
+   * {@link FoundCheckout} rather than a bare path. Null otherwise.
+   */
+  found: FoundCheckout | null
 }
 
 export interface SurveyRow {
@@ -430,13 +450,29 @@ export function scopeToPrs(
 // Repository targets
 // ---------------------------------------------------------------------------
 
+/** Options for {@link resolveTargets}. */
+export interface ResolveTargetsOptions {
+  /** The run's `--remote`, read in the project root and in a checkout `locate` gives as a bare path. Default `origin`. */
+  remote?: string | undefined
+  /** The project root's host, lower-cased, or null when its remote names none. Default null. */
+  rootHost?: string | null | undefined
+  /** The host a bare `owner/name` means. Default `github.com`. */
+  defaultHost?: string | undefined
+}
+
 /**
  * Which repositories to survey, and where each is checked out.
  *
  * The repository at `--project-root` is always the default target and needs
- * no config. `--repo owner/name` names others, and `ports.locate` finds each
- * one's checkout, through the host's own registry or what a standalone run
- * provides (see `defaults.ts`).
+ * no config. `--repo owner/name` (or `host/owner/name`) names others, and
+ * `ports.locate` finds each one's checkout, through the host's own registry or
+ * what a standalone run provides (see `defaults.ts`).
+ *
+ * Each `--repo` is resolved once, here. Any other than the project root is
+ * lower-cased, and a bare `owner/name` gets `defaultHost`, so `Acme/API` and
+ * `acme/api` are one target and every later lookup compares that form. One
+ * that names the project root's repository, in any letter case, is the
+ * project root.
  *
  * Only `--repo` puts a repository in scope. A host's repository registry does
  * not, so a bare run stays on the local repository and never spreads to every
@@ -445,22 +481,56 @@ export function scopeToPrs(
  * A named repo with no checkout on this machine is kept and reported
  * unmeasurable, not dropped. Quietly surveying fewer repositories than were
  * asked for would be worse.
+ *
+ * @throws SurveyUsageError when a `--repo` is not `owner/name` or `host/owner/name`.
  */
 export function resolveTargets(
   localRepo: string | null,
   localPath: string,
   selected: readonly string[],
-  locate: (repo: string) => string | null,
+  locate: Ports['locate'],
+  opts: ResolveTargetsOptions = {},
 ): RepoTarget[] {
-  if (selected.length === 0) {
-    return localRepo === null ? [] : [{ repo: localRepo, path: localPath }]
-  }
+  const remote = opts.remote ?? 'origin'
+  const rootHost = opts.rootHost ?? null
+  const defaultHost = opts.defaultHost ?? 'github.com'
+  const root: RepoTarget | null =
+    localRepo === null
+      ? null
+      : { repo: localRepo, host: rootHost, path: localPath, source: 'root', remote, found: null }
+  if (selected.length === 0) return root === null ? [] : [root]
   const seen = new Set<string>()
   const out: RepoTarget[] = []
-  for (const repo of selected) {
-    if (seen.has(repo)) continue
-    seen.add(repo)
-    out.push({ repo, path: repo === localRepo ? localPath : locate(repo) })
+  for (const text of selected) {
+    let parsed
+    try {
+      parsed = parseRepoTarget(text)
+    } catch {
+      throw new SurveyUsageError(`--repo ${text}: not owner/name or host/owner/name`)
+    }
+    const owner = parsed.owner.toLowerCase()
+    const name = parsed.repo.toLowerCase()
+    const host = parsed.host?.toLowerCase() ?? defaultHost
+    const repo = `${owner}/${name}`
+    const isRoot =
+      root !== null &&
+      repo === root.repo.toLowerCase() &&
+      (parsed.host === undefined || host === rootHost)
+    const key = isRoot ? '' : `${host}/${repo}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    if (isRoot) {
+      out.push(root)
+      continue
+    }
+    const at = locate(repo, { host, owner, name })
+    out.push(
+      at === null
+        ? { repo, host, path: null, source: null, remote, found: null }
+        : typeof at === 'string'
+          ? { repo, host, path: at, source: 'located', remote, found: null }
+          : { repo, host, path: at.path, source: at.source, remote: at.remote, found: at },
+    )
   }
   return out
 }
@@ -485,7 +555,7 @@ export const SCOPE_SHAPE = {
     .array(z.string())
     .default([])
     .describe(
-      'Repository to survey as `owner/name`, repeatable. Defaults to the repository at --project-root alone. Others are located via the host `locate` port; one with no checkout on this machine is listed as unmeasurable.',
+      "Repository to survey as `owner/name` or `host/owner/name`, repeatable; a bare `owner/name` is on the project root's host when that is GitHub, else github.com. Defaults to the repository at --project-root alone. Others are located via the `locate` port, which in a standalone run searches the `repositories.yaml` roots; one with no checkout on this machine is listed as unmeasurable.",
     ),
   noFetch: z
     .boolean()
@@ -502,7 +572,12 @@ export const SCOPE_SHAPE = {
     .int()
     .default(100)
     .describe('Maximum number of open PRs to list per repository.'),
-  remote: z.string().default('origin').describe('Remote to fetch from and measure against.'),
+  remote: z
+    .string()
+    .default('origin')
+    .describe(
+      "The project root's remote to fetch from and measure against. A checkout `locate` describes with its own remote is read through that one.",
+    ),
   pr: z
     .array(
       z.union([
@@ -569,10 +644,23 @@ export const repoFailure = z.object({
   hint: z.string().optional(),
 })
 
+/** The checkout a repository was measured in. */
+export const checkoutEntry = z.object({
+  path: z.string().describe('The checkout, absolute.'),
+  source: z
+    .enum(['root', 'located', 'clone'])
+    .describe(
+      '`root`: the project root. `located`: a checkout found on this machine. `clone`: a managed clone.',
+    ),
+})
+
 /** One surveyed repository, as `survey` and `update` both report it. */
 export const repoEntry = z.object({
   repo: z.string().describe('`owner/name`.'),
   measurable: z.boolean().describe('False when no local checkout is known.'),
+  checkout: checkoutEntry
+    .nullable()
+    .describe('The checkout the repository was measured in; null when there is none.'),
   fetched: z.boolean(),
   cycles: z
     .array(z.number())
@@ -629,6 +717,12 @@ export interface SurveyEnv {
    * from, `repo` the repository. Absent means GitHub over `gh`.
    */
   codeHost?: ((target: { cwd: string; repo: string }) => CodeHost) | undefined
+  /**
+   * The `code_host.override` config value. With `github`, the project root's
+   * host counts as GitHub whatever its name, as a GitHub Enterprise host
+   * must, so a bare `--repo owner/name` means that host. Default none.
+   */
+  codeHostOverride?: CodeHostName | null | undefined
   cfg: PrUpdateConfig
   ports: Pick<Ports, 'locate'>
 }
@@ -658,19 +752,30 @@ export function remoteSlug(url: string): string | null {
 
 /**
  * The repositories a run covers and where each is checked out, from the
- * `remote` and `repo` scope flags. `update` reads the same answer to know
- * which checkout each target's PRs are updated in.
+ * `remote` and `repo` scope flags.
+ *
+ * A bare `--repo owner/name` means the project root's host when that is
+ * GitHub (github.com, or any host with `code_host.override: github`), and
+ * github.com otherwise.
  */
 export function surveyTargets(
   args: Pick<SurveyArgs, 'remote' | 'repo'>,
-  env: Pick<SurveyEnv, 'projectRoot' | 'git' | 'ports'>,
+  env: Pick<SurveyEnv, 'projectRoot' | 'git' | 'ports' | 'codeHostOverride'>,
 ): { localRepo: string | null; targets: RepoTarget[] } {
   const localGit = new Git(env.projectRoot, { runner: env.git })
   const localUrl = localGit.soft.remoteGetUrl(args.remote)
-  const localRepo = localUrl !== null ? remoteSlug(localUrl) : null
+  const local = localUrl === null ? null : parseRemoteRepo(localUrl)
+  const localRepo = local === null ? null : `${local.owner}/${local.repo}`
+  const rootHost = local === null ? null : local.host.toLowerCase()
+  const onGithub =
+    rootHost !== null && codeHostNameForRemote(localUrl, env.codeHostOverride ?? null) === 'github'
   return {
     localRepo,
-    targets: resolveTargets(localRepo, env.projectRoot, args.repo, env.ports.locate),
+    targets: resolveTargets(localRepo, env.projectRoot, args.repo, env.ports.locate, {
+      remote: args.remote,
+      rootHost,
+      defaultHost: onGithub ? rootHost : 'github.com',
+    }),
   }
 }
 
@@ -682,6 +787,18 @@ export function surveyTargets(
  * the survey plus an apply step, and this function keeps that true.
  */
 export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
+  return surveyWithTargets(args, env).report
+}
+
+/**
+ * {@link runSurvey}, with the targets it resolved. `update` reads them to know
+ * which checkout each target's PRs are updated in, so every target is
+ * resolved, and located, once per run.
+ */
+export function surveyWithTargets(
+  args: SurveyArgs,
+  env: SurveyEnv,
+): { report: SurveyReport; targets: RepoTarget[] } {
   const { cfg } = env
   const { localRepo, targets } = surveyTargets(args, env)
   const codeHostFor = env.codeHost ?? githubCodeHostFor(env.gh)
@@ -692,7 +809,8 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
 
   // A key names one repository. One outside this run would select nothing,
   // and a run that quietly did nothing for it would read as "that PR is fine".
-  const inRun = new Set(targets.map((t) => t.repo))
+  // In any letter case, as `--repo` is.
+  const inRun = new Map(targets.map((t) => [t.repo.toLowerCase(), t.repo]))
   const wantedNumbers: number[] = []
   const wantedIn = new Map<string, number[]>()
   for (const selector of args.pr) {
@@ -703,12 +821,13 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
     const key = parsePrKey(selector)
     if (key === null)
       throw new SurveyUsageError(`--pr ${selector}: not a PR number or owner/name#N`)
-    if (!inRun.has(key.repo)) {
+    const repo = inRun.get(key.repo.toLowerCase())
+    if (repo === undefined) {
       throw new SurveyUsageError(
         `--pr ${selector}: ${key.repo} is not a repository of this run; add --repo ${key.repo}`,
       )
     }
-    wantedIn.set(key.repo, [...(wantedIn.get(key.repo) ?? []), key.number])
+    wantedIn.set(repo, [...(wantedIn.get(repo) ?? []), key.number])
   }
 
   const repos: SurveyReport['repos'] = []
@@ -717,6 +836,10 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
 
   for (const target of targets) {
     const measurable = target.path !== null
+    const checkout =
+      target.path === null || target.source === null
+        ? null
+        : { path: target.path, source: target.source }
     const git = new Git(target.path ?? env.projectRoot, { runner: env.git })
 
     const isLocal = target.repo === localRepo
@@ -737,6 +860,7 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
       repos.push({
         repo: target.repo,
         measurable,
+        checkout,
         fetched: false,
         cycles: [],
         failure: {
@@ -769,12 +893,13 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
     // last fetch left, flagged, instead of failing the whole run. A scoped
     // run with nothing selected here fetches nothing: `git fetch` with no
     // refspec would fetch every branch.
-    const refspecs = scoped ? scopedRefspecs(prs, args.remote) : []
+    const { remote } = target
+    const refspecs = scoped ? scopedRefspecs(prs, remote) : []
     const fetched =
       measurable && !args.noFetch && !env.dryRun
         ? scoped
-          ? refspecs.length === 0 || git.try.fetch(args.remote, refspecs).ok
-          : git.try.fetch(args.remote, undefined, { prune: true }).ok
+          ? refspecs.length === 0 || git.try.fetch(remote, refspecs).ok
+          : git.try.fetch(remote, undefined, { prune: true }).ok
         : false
     // `try`, not `soft`: a failed listing must not read as "no checkout holds
     // this branch", which would clear a force-push. `null` counts as unsafe.
@@ -787,9 +912,9 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
       worktrees,
       cfg,
       measurable,
-      remote: args.remote,
+      remote,
     })
-    repos.push({ repo: target.repo, measurable, fetched, cycles })
+    repos.push({ repo: target.repo, measurable, checkout, fetched, cycles })
     allRows.push(...rows)
   }
 
@@ -798,7 +923,7 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
   }
 
   const count = (fn: (r: SurveyRow) => boolean): number => allRows.filter(fn).length
-  return {
+  const report: SurveyReport = {
     repos,
     prs: allRows,
     counts: {
@@ -813,6 +938,7 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
       skip: count((r) => r.strategy === 'skip'),
     },
   }
+  return { report, targets }
 }
 
 /**

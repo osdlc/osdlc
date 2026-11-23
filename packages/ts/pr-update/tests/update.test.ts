@@ -102,7 +102,15 @@ function row(patch: Record<string, unknown> = {}) {
 
 function report(rows: ReturnType<typeof row>[], cycles: number[] = []): SurveyReport {
   return {
-    repos: [{ repo: 'o/r', measurable: true, fetched: true, cycles }],
+    repos: [
+      {
+        repo: 'o/r',
+        measurable: true,
+        checkout: { path: '/repo', source: 'root' },
+        fetched: true,
+        cycles,
+      },
+    ],
     prs: rows as SurveyReport['prs'],
     counts: {
       total: rows.length,
@@ -174,6 +182,12 @@ describe('selectTargets', () => {
     expect(notFound).toEqual(['#999', 'o/r#998'])
   })
 
+  test('an owner/name#N selector matches in any letter case, as --repo does', () => {
+    const { targets, notFound } = selectTargets(report([row({ number: 1 })]), ['O/R#1'])
+    expect(targets.map((t) => t.number)).toEqual([1])
+    expect(notFound).toEqual([])
+  })
+
   test('a PR in a base/head cycle is reported in skipped, not lost or "not found"', () => {
     const cyclic = report([row({ number: 1 })], [3, 4])
     const reason = 'in a base/head cycle; no stack order to update it in'
@@ -202,8 +216,20 @@ describe('selectTargets — several repositories holding the same PR number', ()
     return {
       ...report([row({ repo: 'a/x', head: 'ax' }), row({ repo: 'b/y', head: 'by' })]),
       repos: [
-        { repo: 'a/x', measurable: true, fetched: true, cycles: cycles.a ?? [] },
-        { repo: 'b/y', measurable: true, fetched: true, cycles: cycles.b ?? [] },
+        {
+          repo: 'a/x',
+          measurable: true,
+          checkout: { path: '/a', source: 'located' },
+          fetched: true,
+          cycles: cycles.a ?? [],
+        },
+        {
+          repo: 'b/y',
+          measurable: true,
+          checkout: { path: '/b', source: 'located' },
+          fetched: true,
+          cycles: cycles.b ?? [],
+        },
       ],
     }
   }

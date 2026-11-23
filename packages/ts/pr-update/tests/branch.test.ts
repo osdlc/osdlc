@@ -16,6 +16,7 @@ import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { main } from '../src/cli.ts'
 import { output as updateOutput } from '../src/update.ts'
+import { isolatedEnv } from './support.ts'
 
 const scratch = mkdtempSync(join(tmpdir(), 'pr-update-branch-'))
 afterAll(() => rmSync(scratch, { recursive: true, force: true }))
@@ -65,7 +66,7 @@ function repo() {
       stdout: JSON.stringify([listed(1, 'topic'), listed(2, 'other')]),
     }),
   }
-  const env = { PATH: process.env.PATH ?? '', XDG_STATE_HOME: join(scratch, 'state'), ...IDENTITY }
+  const env = isolatedEnv(scratch, IDENTITY)
   const go = async (...argv: string[]) => {
     const ctx = captureContext({ cwd: worker.dir, env })
     const code = await main(argv, ctx, { gh })

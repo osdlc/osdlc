@@ -37,7 +37,7 @@ export {
   type CallAgent,
   type RepairAgent,
 } from './repair/agents.ts'
-export { commandRepair, standalonePorts } from './defaults.ts'
+export { commandRepair, standalonePorts, type StandalonePortsOptions } from './defaults.ts'
 export { detectVerifyCommand, NothingDetectedError, type DetectedVerify } from './detect.ts'
 export { attemptFile, attemptsDir, fileAttemptStore, listAttempts } from './update/attempts.ts'
 export { refAttemptStore, type RefAttemptStore } from './update/ref-attempts.ts'
@@ -50,8 +50,11 @@ export type {
   AttemptRecord,
   AttemptStore,
   BranchLease,
+  CheckoutSource,
   ConfirmPush,
+  FoundCheckout,
   Generator,
+  LocateTarget,
   Ports,
   PushPreview,
   Repair,
@@ -97,6 +100,7 @@ export {
   type MergePrediction,
   type PrSelector,
   type RepoTarget,
+  type ResolveTargetsOptions,
   type SurveyArgs,
   type SurveyEnv,
   type SurveyReport,

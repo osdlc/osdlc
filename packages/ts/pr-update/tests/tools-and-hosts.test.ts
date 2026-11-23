@@ -18,7 +18,7 @@ import { makeGitFixture } from '@osdlc/typed-git/testing'
 import { main, type CliSeams } from '../src/cli.ts'
 import { prUpdateConfigSchema } from '../src/config.ts'
 import { remoteSlug, runSurvey } from '../src/survey.ts'
-import { allToolsInstalled, emptyGh } from './support.ts'
+import { allToolsInstalled, emptyGh, isolatedEnv } from './support.ts'
 
 const dirs: string[] = []
 afterAll(() => {
@@ -37,7 +37,7 @@ function repoWith(
   if (config !== undefined) writeFileSync(join(repo.dir, 'pr-update.yaml'), config)
   return {
     dir: repo.dir,
-    env: { PATH: process.env.PATH ?? '', XDG_STATE_HOME: join(repo.dir, '.st') },
+    env: isolatedEnv(join(repo.dir, '.st')),
   }
 }
 
@@ -202,7 +202,8 @@ describe('a failed listing', () => {
     })
     expect(asked.some((c) => c.includes('o/a'))).toBe(true)
     expect(r.code).toBe(EXIT_FAILURE.service)
-    expect(r.err).toBe('pr-update: x/y: gh is not signed in to GitHub. Run `gh auth login`.\n')
+    // The other lines say where a checkout of each was looked for.
+    expect(r.err).toContain('pr-update: x/y: gh is not signed in to GitHub. Run `gh auth login`.\n')
     expect(r.out).toContain('x/y: could not be listed')
   })
 
@@ -219,7 +220,8 @@ describe('a failed listing', () => {
       gh,
     })
     expect(r.code).toBe(EXIT_FAILURE.unreachable)
-    expect(r.err.split('\n').filter(Boolean)).toHaveLength(2)
+    const failures = r.err.split('\n').filter((l) => !l.includes('no checkout'))
+    expect(failures.filter(Boolean)).toHaveLength(2)
   })
 
   test('update over several --repo lists the failed one in --report and exits with its code', async () => {
@@ -241,6 +243,7 @@ describe('a failed listing', () => {
       {
         repo: 'x/y',
         measurable: false,
+        checkout: null,
         fetched: false,
         cycles: [],
         failure: {
@@ -249,7 +252,7 @@ describe('a failed listing', () => {
           hint: 'Run `gh auth login`.',
         },
       },
-      { repo: 'o/a', measurable: false, fetched: false, cycles: [] },
+      { repo: 'o/a', measurable: false, checkout: null, fetched: false, cycles: [] },
     ])
   })
 

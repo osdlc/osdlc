@@ -94,7 +94,7 @@ function scopeFlags(verb: 'survey' | 'update', remoteHelp: string) {
       kind: 'list',
       valueName: 'owner/name',
       default: [],
-      help: `Repository to ${verb}; repeatable.`,
+      help: `Repository to ${verb}, as owner/name or host/owner/name; repeatable. Its checkout is looked for under the roots in repositories.yaml, or beside this one.`,
     },
     fetch: {
       kind: 'boolean',
@@ -219,8 +219,9 @@ function runEnv(
       curl: seams.curl,
       override: layers.merged.code_host.override,
     }),
+    codeHostOverride: layers.merged.code_host.override,
     cfg,
-    ports: standalonePorts(cfg, projectRoot, remote, notice),
+    ports: standalonePorts(cfg, projectRoot, remote, notice, { git, env: ctx.env }),
   }
 }
 
@@ -278,7 +279,10 @@ export function surveyCommand(seams: CliSeams) {
       'date would conflict. Stacked PRs are listed parent first. Nothing is checked out, and ' +
       'nothing is written but the fetch.',
     flags: {
-      ...scopeFlags('survey', 'Remote to fetch from and measure against.'),
+      ...scopeFlags(
+        'survey',
+        'Remote of this checkout to fetch from and measure against. A checkout found for --repo uses its origin.',
+      ),
       pr: {
         kind: 'list',
         valueName: 'n|owner/name#n',
@@ -298,7 +302,7 @@ export function surveyCommand(seams: CliSeams) {
       const pr = parsePrFlags(flags.pr)
       const layers = loadLayers(ctx, seams)
       checkStart(ctx, layers, seams, flags)
-      const env = runEnv(ctx, layers, seams)
+      const env = runEnv(ctx, layers, seams, undefined, flags.remote, (line) => ctx.note(line))
       let report
       try {
         report = runSurvey(
@@ -379,7 +383,10 @@ export function updateCommand(seams: CliSeams) {
       'The agents --repair-agent runs:\n' +
       REPAIR_AGENT_LINES,
     flags: {
-      ...scopeFlags('update', 'Remote to fetch from, measure against and push to.'),
+      ...scopeFlags(
+        'update',
+        'Remote of this checkout to fetch from, measure against and push to. A checkout found for --repo uses its origin.',
+      ),
       apply: { kind: 'boolean', help: 'Push the updates. Without it, nothing is written.' },
       confirmPush: {
         kind: 'boolean',
