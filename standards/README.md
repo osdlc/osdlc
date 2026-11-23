@@ -44,6 +44,7 @@ The standards are delivered three ways:
 | [doc-locations.md](./doc-locations.md) | Where each kind of document lives: root files, the `docs/` tree, decision records |
 | [review.md](./review.md) | How changes are reviewed: risk tiers, review layers, findings, responses, merging |
 | [cli-interface.md](./cli-interface.md) | What every command line provides: progressive help, `--json` documents, `schema`, `--version`, exit codes, streams, color |
+| [machine-files.md](./machine-files.md) | Where osdlc tools keep machine files: one `osdlc` root, a directory per tool, family files owned by `@osdlc/ecosystem` |
 
 ## Where these come from
 
