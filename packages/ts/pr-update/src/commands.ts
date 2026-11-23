@@ -438,7 +438,7 @@ export function updateCommand(seams: CliSeams) {
       },
       retryFailed: {
         kind: 'boolean',
-        help: 'Attempt PRs whose update already failed at their current head and base. Discards a kept worktree of such a PR first.',
+        help: 'Attempt PRs whose update already failed at their current head and base. Discards a kept worktree of such a PR first, unless someone has changed it or git cannot read it; only --discard-kept removes that.',
       },
       keepFailed: {
         kind: 'tristate',

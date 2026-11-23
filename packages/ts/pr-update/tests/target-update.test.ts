@@ -1063,6 +1063,28 @@ describe("errors from a target's own record and lease, during the run", () => {
     ])
   })
 
+  test('a prune error no PR or skip shows is listed in recordErrors, in JSON and text', async () => {
+    verifyOk = false
+    const keep = { args: { keepFailed: true } }
+    await update({ ...keep, ports: { targetHome: homeWith({}) } })
+    const kept = join(paths.kept, 'api', '1')
+    // Its only PR is skipped for its kept tree, but its store is still pruned, and that fails.
+    const pruning: AttemptStore = {
+      get: () => null,
+      recordFailure: () => {},
+      clear: () => {},
+      prune: () => {
+        throw new Error('prune refused')
+      },
+    }
+    const out = await update({ ...keep, ports: { targetHome: homeWith({ api: pruning }) } })
+    expect(out.results).toEqual([])
+    expect(out.skipped.map((s) => s.reason)).toEqual([`failed worktree kept at ${kept}`])
+    expect(out.recordErrors).toEqual([{ repo: 'acme/api', error: 'attempt record: prune refused' }])
+    expect(output.parse(out).recordErrors).toEqual(out.recordErrors)
+    expect(renderUpdateText(out)).toContain('! acme/api  attempt record: prune refused\n')
+  })
+
   test("a target's own lease that throws skips its PR with the error, and the other target is updated", async () => {
     web = behindRepo('web')
     const refusing: Ports['lease'] = {

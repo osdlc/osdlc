@@ -367,7 +367,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   | --- | --- |
   | A run's worktree and scratch branch | The run, in a `finally` (`src/update/execute.ts`). A killed run's are removed by the next run served from the same git directory, or by pruning (below) |
   | A killed run's worktree under `worktrees/` in the cache | Pruning, automatic or by hand, whatever repository it belongs to |
-  | A kept worktree (`keep_failed`) | `--discard-kept`, `--retry-failed`, or the PR moving |
+  | A kept worktree (`keep_failed`) | `--discard-kept`, `--retry-failed`, or the PR moving, unless someone has changed it or git cannot read it; only `--discard-kept` removes that |
   | `origin/<branch>` for a deleted branch | `fetch --prune`, on each unscoped run that fetches |
   | Unreachable objects | git's automatic `gc` |
   | A whole clone the person no longer targets | Automatic pruning by age, or `pr-update mirror prune` |
