@@ -16,6 +16,7 @@ import {
   SelectionError,
   clean,
   decide,
+  inspect,
   parsePlan,
   plan,
   recheck,
@@ -198,6 +199,60 @@ describe('plugin order and duplicates', () => {
       targets: ['/r0'],
     })
     expect(seen).toEqual([['/r0', '/r1', '/r2']])
+  })
+})
+
+describe('inspect', () => {
+  test('detect, scope and roots only: each plugin detected or why not, and its roots', async () => {
+    const log: string[] = []
+    const plugins: Plugin[] = [
+      fake('a', [], log, {
+        scope: () => ['/scoped'],
+        roots: (x) => (log.push(`roots:${x.targets.join(',')}`), ['/cache/a']),
+        discover: () => (log.push('discover'), []),
+      }),
+      fake('b', [], log),
+      fake('no', [], log, { detect: () => false, roots: () => (log.push('roots:no'), []) }),
+      fake('down', [], log, {
+        detect: () => {
+          throw new Error('the app is not running')
+        },
+      }),
+    ]
+    const found = await inspect(plugins, ctx)
+    expect(found.plugins).toEqual([
+      { name: 'a', detected: true, roots: ['/cache/a'] },
+      { name: 'b', detected: true, roots: [] },
+      { name: 'no', detected: false, roots: [] },
+      { name: 'down', detected: false, reason: 'the app is not running', roots: [] },
+    ])
+    expect(found.ctx.targets).toEqual(['/scoped'])
+    expect(found.warnings).toEqual([])
+    expect(log).toEqual(['roots:/scoped'])
+  })
+
+  test('a failed roots or scope is a warning, and a FatalRun from detect goes to the caller', async () => {
+    const failing = fake('a', [], [], {
+      scope: () => {
+        throw new Error('no list')
+      },
+      roots: () => {
+        throw new Error('no folder')
+      },
+    })
+    const found = await inspect([failing, fake('a', [], [])], ctx)
+    expect(found.plugins).toEqual([{ name: 'a', detected: true, roots: [] }])
+    expect(found.warnings).toEqual([
+      'a: a second plugin of that name was left out',
+      'a: scope failed: no list',
+      'a: roots failed: no folder',
+    ])
+    const fatal = fake('f', [], [], {
+      detect: () => {
+        throw new FatalRun('stop')
+      },
+    })
+    await expect(inspect([fatal], ctx)).rejects.toThrow('stop')
   })
 })
 
