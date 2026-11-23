@@ -20,16 +20,34 @@ import {
   survey,
   type Candidate,
   type Objection,
+  type PathCandidate,
   type Plugin,
+  type RefCandidate,
   type RunCtx,
 } from '../src/index.ts'
 
 const ctx: RunCtx = { cwd: '/work', targets: [], allow: [] }
 
-const cand = (id: string, owner: string, extra: Partial<Candidate> = {}): Candidate => ({
+/** A ref candidate: the core makes no folder checks on it. */
+const cand = (id: string, owner: string, extra: Partial<RefCandidate> = {}): Candidate => ({
   id,
   kind: id.split(':')[0]!,
-  path: id,
+  ref: id,
+  owner,
+  why: 'idle',
+  evidence: { v: 1 },
+  ...extra,
+})
+
+const pathCand = (
+  id: string,
+  owner: string,
+  path: string,
+  extra: Partial<PathCandidate> = {},
+): Candidate => ({
+  id,
+  kind: id.split(':')[0]!,
+  path,
   owner,
   why: 'idle',
   evidence: { v: 1 },
@@ -206,6 +224,17 @@ describe('objection levels', () => {
     expect(decide(cs, os, only(['a:3']), ['lossy']).run.map((c) => c.id)).toEqual(['a:3'])
   })
 
+  test('a candidate with both a path and a ref, or neither, is dropped with a warning', async () => {
+    const both = { ...pathCand('a:both', 'a', '/x'), ref: 'x' } as unknown as Candidate
+    const neither = { ...cand('a:neither', 'a'), ref: undefined } as unknown as Candidate
+    const s = await survey([fake('a', [both, neither, cand('a:ok', 'a')], [])], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:ok'])
+    expect(s.warnings).toEqual([
+      'a: dropped a:both, which must have one of a path and a ref',
+      'a: dropped a:neither, which must have one of a path and a ref',
+    ])
+  })
+
   test('a plugin cannot object under another name, or to a candidate nobody proposed', async () => {
     const lying: Plugin = {
       name: 'cargo',
@@ -233,9 +262,9 @@ describe('objection levels', () => {
 })
 
 describe('pick, select and spare', () => {
-  const branch = cand('branch:/r:feat/x', 'git', { path: '/r:feat/x', name: 'feat/x' })
-  const tree = cand('worktree:/w/x', 'git', { path: '/w/x', name: 'feat/x' })
-  const other = cand('artifact:/r/target', 'cargo', { path: '/r/target' })
+  const branch = cand('branch:/r:feat/x', 'git', { ref: 'feat/x', at: '/r', name: 'feat/x' })
+  const tree = pathCand('worktree:/w/x', 'git', '/w/x', { name: 'feat/x' })
+  const other = pathCand('artifact:/r/target', 'cargo', '/r/target')
   const cs = [branch, tree, other]
   const ran = (sel: Partial<typeof DEFAULT_SELECTION>) =>
     decide(cs, [], { ...DEFAULT_SELECTION, ...sel }, [])

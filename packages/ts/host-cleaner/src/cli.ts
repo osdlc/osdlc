@@ -246,7 +246,8 @@ const cleanCli = () =>
       },
       ...HELP_FLAGS,
     },
-    shortEpilogue: `ids: worktree:<path>, branch:<repo>:<name>, or another plugin's <kind>:<path>
+    shortEpilogue: `ids: worktree:<path>, branch:<repo>:<name>, or another plugin's <kind>:<path>;
+~ for the home folder, as status shows them.
 A candidate with a protest you did not --allow is skipped, never deleted.`,
   })
 
@@ -271,6 +272,8 @@ export interface MainDeps {
   checklist?: Checklist
   /** Reads `--plan -`. Defaults to stdin. */
   readStdin?: () => string
+  /** The user id the command runs as; 0, root, is refused. Defaults to this process's. */
+  uid?: number | undefined
 }
 
 const PAUSE = new Int32Array(new SharedArrayBuffer(4))
@@ -379,6 +382,26 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliCont
   return chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins))
 }
 
+const homeOf = (ctx: CliContext): string => ctx.env.HOME ?? homedir()
+
+/** `id` with the home folder after its `<kind>:` written `~`, as the text output shows it. */
+export function tildeId(id: string, home: string): string {
+  const colon = id.indexOf(':')
+  const rest = id.slice(colon + 1)
+  if (colon < 0 || home === '' || home === '/') return id
+  const under = rest === home || rest.startsWith(`${home}/`) || rest.startsWith(`${home}:`)
+  return under ? `${id.slice(0, colon + 1)}~${rest.slice(home.length)}` : id
+}
+
+/** `entry`, as typed to `--pick` or `--spare`, with a `~` at its start or right after `<kind>:` taken as the home folder. */
+export function untildeId(entry: string, home: string): string {
+  const colon = entry.indexOf(':')
+  const at = entry === '~' || entry.startsWith('~/') ? 0 : colon + 1
+  const rest = entry.slice(at)
+  const tilde = rest === '~' || rest.startsWith('~/') || rest.startsWith('~:')
+  return tilde && (at === 0 || colon > 0) ? `${entry.slice(0, at)}${home}${rest.slice(1)}` : entry
+}
+
 function contextFor(
   targets: readonly string[],
   config: Config,
@@ -388,7 +411,7 @@ function contextFor(
 ): RunCtx {
   const chosen =
     targets.length > 0 ? targets : config.targets.length > 0 ? config.targets : [ctx.cwd]
-  const home = ctx.env.HOME ?? homedir()
+  const home = homeOf(ctx)
   return {
     cwd: ctx.cwd,
     targets: chosen.map((t) => resolve(ctx.cwd, expandHome(t, home))),
@@ -399,7 +422,7 @@ function contextFor(
 
 /** The config's ignore list with `extra` (`--ignore`) added, as absolute paths. */
 const ignoreFor = (config: Config, extra: readonly string[], ctx: CliContext): string[] =>
-  ignorePaths([...config.ignore, ...extra], ctx.cwd, ctx.env.HOME ?? homedir())
+  ignorePaths([...config.ignore, ...extra], ctx.cwd, homeOf(ctx))
 
 /** The lines as one control-stripped block, or nothing for no lines. */
 const block = (lines: readonly string[]): string =>
@@ -423,12 +446,13 @@ function renderCandidates(
   cs: readonly Candidate[],
   os: readonly Objection[],
   all: boolean,
+  home: string,
 ): string {
   const lines: string[] = []
   for (const c of cs) {
     const how = standing(c, os)
     if (how === 'refused' && !all) continue
-    lines.push(`  ${how.padEnd(7)} ${c.id}`, `          ${c.why}`)
+    lines.push(`  ${how.padEnd(7)} ${tildeId(c.id, home)}`, `          ${c.why}`)
     for (const o of os.filter((x) => x.candidate === c.id)) {
       lines.push(`          ${o.level} ${o.code} (${o.by}): ${o.reason}`)
     }
@@ -465,7 +489,7 @@ async function runStatus(
     ctx.io.stdout(
       `plugins: ${s.plugins.map((p) => p.name).join(', ') || '(none)'}\n` +
         (ignored.length > 0 ? `ignoring: ${ignored.join(', ')}\n` : '') +
-        renderCandidates(s.candidates, s.objections, v.allRows),
+        renderCandidates(s.candidates, s.objections, v.allRows, homeOf(ctx)),
     )
   }
   return nothingFound(s) ? EXIT_NOTHING_TO_SWEEP : EXIT.ok
@@ -538,8 +562,8 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
     plan = makePlan(s, {
       targets: cctx.targets,
       ignore: cctx.ignore,
-      pick: v.pick,
-      spare: v.spare,
+      pick: v.pick.map((e) => untildeId(e, homeOf(ctx))),
+      spare: v.spare.map((e) => untildeId(e, homeOf(ctx))),
       allow: v.allow,
     })
   } catch (err) {
@@ -596,7 +620,12 @@ const NO_TERMINAL_FOR_I =
  * answer is the plan selecting exactly the ticked candidates, or null when
  * there is no one to ask.
  */
-function chooseCandidates(plan: Plan, preview: Decision, deps: MainDeps): Plan | null {
+function chooseCandidates(
+  plan: Plan,
+  preview: Decision,
+  deps: MainDeps,
+  home: string,
+): Plan | null {
   const spared = new Set(preview.dropped.filter((d) => d.reason === 'spared').map((d) => d.id))
   const shown = plan.candidates.filter((c) => !spared.has(c.id))
   if (shown.length === 0) return plan
@@ -604,7 +633,7 @@ function chooseCandidates(plan: Plan, preview: Decision, deps: MainDeps): Plan |
   const items: ChecklistItem[] = shown.map((c) => {
     const how = standing(c, plan.objections)
     return {
-      label: `${c.id}  ${how}: ${c.why}`,
+      label: `${tildeId(c.id, home)}  ${how}: ${c.why}`,
       checked: runs.has(c.id),
       ...(how === 'refused' ? { disabled: how } : {}),
     }
@@ -617,31 +646,37 @@ function chooseCandidates(plan: Plan, preview: Decision, deps: MainDeps): Plan |
     const c = shown[i]!
     for (const o of plan.objections) {
       if (o.candidate !== c.id || o.level !== 'protest' || allow.includes(o.code)) continue
-      if (ask(`${c.id} carries ${o.code} (${o.reason}): allow it?`) === true) allow.push(o.code)
+      if (ask(`${tildeId(c.id, home)} carries ${o.code} (${o.reason}): allow it?`) === true) {
+        allow.push(o.code)
+      }
     }
   }
   return { ...plan, select: ticked.map((i) => shown[i]!.id), pick: [], allow }
 }
 
 /** What a clean would do, as text: each candidate to run in order, then each one dropped and why. */
-function renderPreview(d: Decision): string {
+function renderPreview(d: Decision, home: string): string {
   const lines: string[] = []
-  for (const c of d.run) lines.push(`  delete  ${c.id}`, `          ${c.why}`)
-  for (const x of d.dropped) lines.push(`  skip    ${x.id}`, `          ${x.reason}: ${x.detail}`)
+  for (const c of d.run) lines.push(`  delete  ${tildeId(c.id, home)}`, `          ${c.why}`)
+  for (const x of d.dropped) {
+    lines.push(`  skip    ${tildeId(x.id, home)}`, `          ${x.reason}: ${x.detail}`)
+  }
   return block(lines) + `would delete: ${d.run.length} item(s)\n`
 }
 
-function renderReceipt(r: Receipt, path: string): string {
+function renderReceipt(r: Receipt, path: string, home: string): string {
   const lines: string[] = []
   for (const s of r.steps) {
     lines.push(
-      `  ${s.result === 'ok' ? 'done' : s.result.toUpperCase().padEnd(7)} ${s.id}`,
+      `  ${s.result === 'ok' ? 'done' : s.result.toUpperCase().padEnd(7)} ${tildeId(s.id, home)}`,
       `          ${s.delete ?? s.error ?? ''}`,
     )
     for (const n of s.notified)
       if (n.error !== null) lines.push(`          ${n.plugin}: ${n.error}`)
   }
-  for (const x of r.dropped) lines.push(`  skip    ${x.id}`, `          ${x.reason}: ${x.detail}`)
+  for (const x of r.dropped) {
+    lines.push(`  skip    ${tildeId(x.id, home)}`, `          ${x.reason}: ${x.detail}`)
+  }
   return block(lines) + `receipt: ${stripControls(path)} (${r.status})\n`
 }
 
@@ -685,8 +720,8 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
       plan = makePlan(s, {
         targets: cctx.targets,
         ignore: cctx.ignore,
-        pick: v.pick,
-        spare: v.spare,
+        pick: v.pick.map((e) => untildeId(e, homeOf(ctx))),
+        spare: v.spare.map((e) => untildeId(e, homeOf(ctx))),
         allow: v.allow,
         now,
       })
@@ -716,7 +751,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   }
 
   if (v.interactive) {
-    const chosen = chooseCandidates(plan, preview, deps)
+    const chosen = chooseCandidates(plan, preview, deps, homeOf(ctx))
     if (chosen === null) return usageError(ctx, name, NO_TERMINAL_FOR_I)
     plan = chosen
     preview = decidePlan(plan)
@@ -728,12 +763,12 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
     ctx.io.stdout(
       json
         ? `${JSON.stringify({ dryRun: v.dryRun, run: preview.run.map((c) => c.id), dropped: preview.dropped }, null, 2)}\n`
-        : renderPreview(preview),
+        : renderPreview(preview, homeOf(ctx)),
     )
     return EXIT.ok
   }
   if (!v.yes) {
-    ;(json ? ctx.io.stderr : ctx.io.stdout)(renderPreview(preview))
+    ;(json ? ctx.io.stderr : ctx.io.stdout)(renderPreview(preview, homeOf(ctx)))
     const answer = (deps.confirm ?? terminalConfirm)(
       `Delete ${count} item${count === 1 ? '' : 's'}?`,
     )
@@ -763,7 +798,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   ctx.io.stdout(
     json
       ? `${JSON.stringify({ receiptPath, receipt }, null, 2)}\n`
-      : renderReceipt(receipt, receiptPath),
+      : renderReceipt(receipt, receiptPath, homeOf(ctx)),
   )
   return receipt.status === 'failed' ? EXIT_STEP_FAILED : EXIT.ok
 }
@@ -775,6 +810,14 @@ export async function main(
   deps: MainDeps = {},
 ): Promise<number> {
   const [sub, ...rest] = argv
+  const phase = sub === 'status' || sub === 'plan' || sub === 'clean' || sub === 'config'
+  // It cleans one person's files; as root, a target or a root could reach everyone's.
+  if (phase && (deps.uid ?? process.getuid?.()) === 0) {
+    ctx.io.stderr(
+      renderError('refusing to run as root; run it as the user whose files it cleans', NAME),
+    )
+    return EXIT.error
+  }
   if (sub === 'status') return runStatus(rest, ctx, deps)
   if (sub === 'plan') return runPlan(rest, ctx, deps)
   if (sub === 'clean') return runClean(rest, ctx, deps)

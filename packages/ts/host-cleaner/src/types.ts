@@ -7,14 +7,12 @@
 import type { Kind } from '@osdlc/repo-cleaner'
 import type { z } from 'zod'
 
-/** One thing a plugin proposes for deletion. The same shape for every kind. */
-export interface Candidate {
-  /** `<kind>:<path>`; unique across the run. */
+/** What every candidate has, whether a path or a ref. */
+interface CandidateBase {
+  /** `<kind>:<path>`, or `<kind>:<ref>`; unique across the run. */
   id: string
   /** Free-form, e.g. `worktree`, `branch`. */
   kind: string
-  /** The thing itself. */
-  path: string
   /** The plugin that deletes it, and the only one that may. */
   owner: string
   why: string
@@ -23,16 +21,40 @@ export interface Candidate {
   evidence: Record<string, unknown>
   /** Candidate ids that must be deleted before this one; if one is refused or dropped, so is this. */
   requires?: string[] | undefined
-  /**
-   * The directory it belongs to when `path` is not one, such as a branch's repository.
-   * The ignore list is matched against this, else against `path`.
-   */
-  at?: string | undefined
   /** The name a person knows it by, which `spare` matches: a branch's name, the branch a worktree has checked out. */
   name?: string | undefined
   /** True: held for review. The default leaves it out; only a pick or a selection runs it. */
   held?: boolean | undefined
 }
+
+/**
+ * A folder its owner deletes. It must sit strictly inside one of the owner's
+ * `roots` or a target, or be or sit inside a linked worktree of a repository
+ * among the targets; the core refuses (`outside-roots`) one that is not, and
+ * checks again right before `delete`.
+ */
+export interface PathCandidate extends CandidateBase {
+  /** The folder, as an absolute path. */
+  path: string
+  ref?: undefined
+  at?: undefined
+}
+
+/**
+ * A thing with no folder of its own, deleted by name, such as a branch or a
+ * record another program keeps. The core makes no folder checks on it and
+ * never removes a folder for it.
+ */
+export interface RefCandidate extends CandidateBase {
+  /** The name its owner deletes it by, such as a branch's name. */
+  ref: string
+  /** The directory it belongs to, such as a branch's repository. The ignore list is matched against it. */
+  at?: string | undefined
+  path?: undefined
+}
+
+/** One thing a plugin proposes for deletion: a {@link PathCandidate} or a {@link RefCandidate}. */
+export type Candidate = PathCandidate | RefCandidate
 
 /** How much an objection weighs: `refuse` blocks, `protest` needs `--allow <code>`, `note` informs. */
 export const LEVELS = ['refuse', 'protest', 'note'] as const
@@ -100,9 +122,9 @@ export interface Plugin {
   scope?(ctx: Ctx): MaybePromise<string[]>
   /**
    * Directories outside any checkout that this plugin cleans: fixed, or from its settings.
-   * Every candidate it owns must sit strictly inside one by its real path; a candidate
-   * that is a link is judged by its target. The core refuses (`outside-roots`) one that
-   * does not, and checks again right before `delete`.
+   * Every path candidate it owns must sit strictly inside one by its real path, or inside
+   * the targets (see {@link PathCandidate}); a candidate that is a link is judged by its
+   * target. Without `roots`, a plugin is held to the targets alone.
    */
   roots?(ctx: Ctx): MaybePromise<readonly string[]>
   discover?(ctx: Ctx): MaybePromise<Candidate[]>
@@ -112,7 +134,8 @@ export interface Plugin {
   prepare?(c: Candidate, ctx: Ctx): MaybePromise<void>
   /**
    * Only called on `c.owner`. Returns the receipt sentence; a throw is a failure.
-   * It must act on `c.path` alone: that is the path the core checked against `roots` and `ignore`.
+   * It must act on `c.path` alone, the path the core checked against `roots`, the targets
+   * and `ignore`; or, for a ref, on `c.ref` alone, and remove no folder.
    */
   delete?(c: Candidate, ctx: Ctx): MaybePromise<string>
   /** After `c` was deleted, on every other plugin. Best effort: a throw is recorded and changes nothing. */

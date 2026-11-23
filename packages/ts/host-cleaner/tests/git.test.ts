@@ -50,9 +50,14 @@ describe('the git plugin', () => {
     const byId = new Map(s.candidates.map((c) => [c.id, c]))
     const branchId = `branch:${realpathSync(fx.root)}:wt-branch`
     expect(byId.get(branchId)?.requires).toEqual([`worktree:${fx.worktree}`])
+    // A branch is a ref in its repository, not a path.
+    expect(byId.get(branchId)).toMatchObject({ ref: 'wt-branch', at: realpathSync(fx.root) })
+    expect(byId.get(branchId)?.path).toBeUndefined()
+    // The worktree sits beside the target, not in it: a linked checkout of it is held to it.
+    expect(s.objections.filter((o) => o.code === 'outside-roots')).toEqual([])
     expect(byId.get(`worktree:${fx.worktree}`)).toMatchObject({ owner: 'git' })
     expect(byId.get(`worktree:${fx.worktree}`)?.held).toBeUndefined()
-    const unmerged = [...byId.values()].find((c) => c.path.endsWith(':unmerged'))!
+    const unmerged = [...byId.values()].find((c) => c.ref === 'unmerged')!
     expect(s.objections).toContainEqual(
       expect.objectContaining({
         by: 'git',
@@ -82,8 +87,8 @@ describe('the git plugin', () => {
 
   test('an unmerged branch needs abandon-unmerged granted by name', async () => {
     const fx = fixture()
-    const unmerged = (await survey([fx.plugin], fx.ctx)).candidates.find((c) =>
-      c.path.endsWith(':unmerged'),
+    const unmerged = (await survey([fx.plugin], fx.ctx)).candidates.find(
+      (c) => c.ref === 'unmerged',
     )!
     const p = plan(await survey([fx.plugin], fx.ctx), { select: [unmerged.id] })
     expect((await clean(p, [fx.plugin], fx.ctx)).dropped[0]).toMatchObject({
@@ -105,7 +110,7 @@ describe('the git plugin', () => {
       sweep: { remotes: [''], offline: true, provider: 'none' },
     })
     const s = await survey([plugin], fx.ctx)
-    const target = s.candidates.find((c) => c.path.endsWith(':unmerged'))!
+    const target = s.candidates.find((c) => c.ref === 'unmerged')!
     const allow = { ...fx.ctx, allow: ['abandon-unmerged', 'discard-archived'] }
     expect(() => plugin.delete!(target, allow)).toThrow(FatalRun)
   })

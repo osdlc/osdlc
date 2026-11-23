@@ -3,18 +3,23 @@
  * candidate goes through survey, plan and clean, and the receipt keeps its
  * result sentence.
  */
+import { join } from 'node:path'
+
 import { expect, test } from 'vitest'
 
 import { clean, plan, survey, type Plugin, type RunCtx } from '@osdlc/host-cleaner'
+
+// A path candidate must sit inside a target, or inside the plugin's roots.
+const dir = join(process.cwd(), 'build-cache')
 
 const cache: Plugin = {
   name: 'cache',
   detect: () => true,
   discover: () => [
     {
-      id: 'artifact:build-cache',
+      id: `artifact:${dir}`,
       kind: 'artifact',
-      path: 'build-cache',
+      path: dir,
       owner: 'cache',
       why: 'idle for a week',
       evidence: { bytes: 4096 },
@@ -24,10 +29,10 @@ const cache: Plugin = {
 }
 
 test("a plugin's candidate goes through survey, plan and clean", async () => {
-  const ctx: RunCtx = { cwd: process.cwd(), targets: [], allow: [] }
+  const ctx: RunCtx = { cwd: process.cwd(), targets: [process.cwd()], allow: [] }
   const receipt = await clean(plan(await survey([cache], ctx)), [cache], ctx)
   expect(receipt.status).toBe('complete')
   expect(receipt.steps).toMatchObject([
-    { id: 'artifact:build-cache', owner: 'cache', result: 'ok', delete: 'removed build-cache' },
+    { id: `artifact:${dir}`, owner: 'cache', result: 'ok', delete: `removed ${dir}` },
   ])
 })

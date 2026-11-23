@@ -12,7 +12,7 @@
  * terminals in `prepare`, and in `deleted` asks Orca to forget the record,
  * which `orca worktree rm` does and which would also delete the directory, so
  * it is only asked once the directory is gone. A record whose directory is
- * already gone is its own `orca-record` candidate.
+ * already gone is its own `orca-record` candidate, a ref to the record.
  * Settings: `plugins.orca.repos` (default true) adds the repositories Orca lists to the sweep.
  */
 
@@ -27,6 +27,7 @@ import {
   type Candidate,
   type Ctx,
   type Objection,
+  type PathCandidate,
   type Plugin,
 } from './types.ts'
 
@@ -115,10 +116,11 @@ export const busy = (r: OrcaRecord): boolean =>
   !QUIET_STATUS.has(r.status) || r.agents.some((state) => !QUIET_AGENT.has(state))
 
 /** A git plugin's worktree row: the only candidates this plugin acts on. */
-const isGitWorktree = (c: Candidate): boolean => c.kind === 'worktree' && c.owner === 'git'
+const isGitWorktree = (c: Candidate): c is PathCandidate =>
+  c.kind === 'worktree' && c.owner === 'git' && c.path !== undefined
 
 /**
- * Orca worktrees as `orca-record:<path>` candidates when their directory is
+ * Orca worktrees as `orca-record:<path>` refs when their directory is
  * gone, notes, protests and refusals on `git`'s worktrees that Orca manages,
  * and Orca's record forgotten after `git` removed the worktree.
  */
@@ -163,7 +165,7 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
   /** The records seen at `prepare`, kept for `deleted`, since Orca may list less once git has removed the directory. */
   const prepared = new Map<string, OrcaRecord>()
 
-  const recordFor = (c: Candidate, all: readonly OrcaRecord[]): OrcaRecord | undefined => {
+  const recordFor = (c: PathCandidate, all: readonly OrcaRecord[]): OrcaRecord | undefined => {
     const real = canon(c.path)
     return all.find((r) => !r.main && canon(r.path) === real)
   }
@@ -214,7 +216,8 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
         .map((r): Candidate => ({
           id: `orca-record:${r.path}`,
           kind: 'orca-record',
-          path: r.path,
+          ref: r.id,
+          at: r.path,
           owner: ORCA_PLUGIN,
           why: `Orca lists ${r.name}, whose directory is gone`,
           held: true,
@@ -274,11 +277,12 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
       if (r.terminals > 0) call(['terminal', 'close', '--worktree', `id:${r.id}`, '--all'], ctx)
     },
     delete(c, ctx) {
-      const orcaId = (c.evidence as { orcaId: string }).orcaId
+      if (c.ref === undefined || c.at === undefined)
+        throw new Error(`${c.id} is not an Orca record`)
       // `git` may already have had Orca forget a prunable worktree of the same path.
-      if (!records(ctx).some((r) => r.id === orcaId)) return `Orca no longer lists ${c.path}`
-      forget({ id: orcaId, path: c.path }, ctx)
-      return `orca worktree rm forgot ${orcaId}`
+      if (!records(ctx).some((r) => r.id === c.ref)) return `Orca no longer lists ${c.at}`
+      forget({ id: c.ref, path: c.at }, ctx)
+      return `orca worktree rm forgot ${c.ref}`
     },
     deleted(c, ctx) {
       if (!isGitWorktree(c)) return

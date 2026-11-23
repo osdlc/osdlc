@@ -45,17 +45,20 @@ refused, dropped or fails, the candidate is too; requirements are deleted
 before their dependents (a branch after the worktree that holds it).
 
 ```ts
+import { join } from 'node:path'
+
 import { clean, plan, survey, type Plugin, type RunCtx } from '@osdlc/host-cleaner'
 
-// A plugin that owns one candidate: a cache directory idle for a week.
+// A plugin that owns one candidate: a cache directory idle for a week, inside the target.
+const dir = join(process.cwd(), 'build-cache')
 const cache: Plugin = {
   name: 'cache',
   detect: () => true,
   discover: () => [
     {
-      id: 'artifact:build-cache',
+      id: `artifact:${dir}`,
       kind: 'artifact',
-      path: 'build-cache',
+      path: dir,
       owner: 'cache',
       why: 'idle for a week',
       evidence: { bytes: 4096 },
@@ -64,7 +67,7 @@ const cache: Plugin = {
   delete: (c) => `removed ${c.path}`,
 }
 
-const ctx: RunCtx = { cwd: process.cwd(), targets: [], allow: [] }
+const ctx: RunCtx = { cwd: process.cwd(), targets: [process.cwd()], allow: [] }
 const found = await survey([cache], ctx) // scope, discover, object
 const receipt = await clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
 ```
@@ -83,23 +86,36 @@ What a plan runs uses repo-cleaner's words, with their meaning:
 
 Each candidate that runs is still judged by the rules above.
 
-### Machine-scope plugins
+### Paths, refs and containment
 
-A plugin that cleans outside any checkout (a cache directory, a toolchain
-folder) declares `roots(ctx)`: the directories it cleans, fixed or taken from
-its own settings. Every candidate it owns must sit strictly below one of them,
-proven on real paths with `@osdlc/path-guard`, so a `..` or a symlink that
-leaves is not inside, and the root itself is never a candidate. A candidate
-that is itself a link is judged by its target, so a link pointing out of the
-roots is refused. A plugin's `delete` must act on the candidate's path alone. The core
-refuses one that is not (`outside-roots`, by `host-cleaner`) and checks again
-right before `delete`, failing that step if the path moved out since the
-re-check. `containedIn(roots, path)` is exported for plugin code that wants the
-same check. `ignore` applies to these candidates as to any other.
+A candidate is a **path** (`path`), a folder its owner deletes, or a **ref**
+(`ref`, with an optional `at`, the directory it belongs to), a thing with no
+folder of its own that its owner deletes by name, such as a branch or a record
+another program keeps. Ids stay `<kind>:<path>`, or `<kind>:<ref>`.
+
+Every path candidate, whatever its plugin, must sit strictly below one of its
+owner's roots or a target, or be or sit inside a linked worktree of a
+repository among the targets (its primary checkout counts only as far as a
+target covers it). A plugin that cleans outside any checkout (a
+cache directory, a toolchain folder) declares `roots(ctx)`: the directories it
+cleans, fixed or taken from its own settings. Without `roots`, a plugin is held
+to the targets alone. Containment is proven on real paths with
+`@osdlc/path-guard`, so a `..` or a symlink that leaves is not inside, and a
+root or a target itself is never a candidate. A candidate that is itself a link
+is judged by its target, so a link pointing out is refused. A plugin's `delete`
+must act on the candidate's path alone. The core refuses one that is not
+(`outside-roots`, by `host-cleaner`) and checks again right before `delete`,
+failing that step if the path moved out since the re-check.
+`containedIn(roots, path)` is exported for plugin code that wants the same
+check.
+
+A ref gets no folder checks, and the core never removes a folder for one.
+`ignore` applies to a path, and to a ref's `at`.
 
 ## The `git` plugin
 
-`gitPlugin(options)` proposes repo-cleaner's worktrees and branches. Its
+`gitPlugin(options)` proposes repo-cleaner's worktrees, as paths, and branches,
+as refs (`ref` the branch's name, `at` its repository). Its
 blockers are `refuse` objections and its risks `protest`s, so
 `--allow abandon-unmerged` and the others work as in repo-cleaner. A branch
 freed by a worktree requires it. With `archive`, unlanded work is pushed to the
@@ -143,7 +159,7 @@ goes through `@osdlc/command-seam` with `--json`.
 | Phase | What it does |
 | --- | --- |
 | scope | Adds each repository `orca repo list` names (`plugins.orca.repos: false` turns this off). |
-| discover | A record in `orca worktree ps` whose directory is gone is `orca-record:<path>`, held for a pick. |
+| discover | A record in `orca worktree ps` whose directory is gone is `orca-record:<path>`, a ref to Orca's record (`at` is the gone directory), held for a pick. |
 | object | On a `git` worktree that Orca manages: a `note` with its Orca id; a `refuse` `orca-agent-active` when an agent is at work (any state not `idle` or `done`); a `refuse` `orca-terminal-unverifiable`; a `protest` `close-terminals` when terminals are open. If Orca cannot be read, every `git` worktree is refused with `orca-unreachable`. |
 | prepare | Sees again that no agent is at work, then `orca terminal close --worktree id:<id> --all`. |
 | deleted | After `git` removed the directory, `orca worktree rm --worktree id:<id> --force` so Orca forgets the record. It is never asked while the directory exists, since it would delete it. The branch is kept. |
@@ -172,6 +188,10 @@ host-cleaner config [--format json]   # every plugin's effective settings
 | `--allow <code>` | Accept a protest by its code. |
 | `--worktrees`, `--branches` | Only the git plugin's worktrees, or only its local branches. Remote branches are repo-cleaner's. |
 | `--all-rows` | `status`: also show candidates a plugin refuses. |
+
+The text output writes the home folder in an id as `~`
+(`worktree:~/dev/wt`, `branch:~/dev/repo:main`), and `--pick` and `--spare`
+take that form. host-cleaner refuses to run as root (exit 1).
 
 `--plugin <name>` runs only those plugins (`--adapter` is an alias) and
 `--skip-plugin <name>` never runs these. Targets default to the config file's

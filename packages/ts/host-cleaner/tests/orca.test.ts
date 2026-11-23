@@ -307,15 +307,17 @@ describe('cleaning', () => {
 })
 
 describe('records whose directory is gone', () => {
-  test('are their own candidates, held for a pick, and deleted through orca worktree rm', async () => {
+  test('are their own ref candidates, held for a pick, and deleted through orca worktree rm', async () => {
     const gone = join(tmpdir(), 'orca-gone-worktree')
     const o = fakeOrca([{ path: gone }, { path: tmpdir(), main: true }])
     const plugin = orcaPlugin({ orca: o.orca })
     const ctx: Ctx = { cwd: tmpdir(), targets: [], allow: [], signal: new AbortController().signal }
     const s = await survey([plugin], ctx)
-    expect(s.candidates.map((c) => [c.id, c.kind, c.held])).toEqual([
-      [`orca-record:${gone}`, 'orca-record', true],
+    expect(s.candidates.map((c) => [c.id, c.kind, c.held, c.ref, c.at, c.path])).toEqual([
+      [`orca-record:${gone}`, 'orca-record', true, `repo1::${gone}`, gone, undefined],
     ])
+    // A ref has no folder for the core to check, so no target holds it and none needs to.
+    expect(s.objections).toEqual([])
     const receipt = await clean(plan(s, { pick: [`orca-record:${gone}`] }), [plugin], ctx)
     expect(receipt.steps[0]).toMatchObject({ result: 'ok' })
     expect(o.removed).toEqual([`id:repo1::${gone}`])

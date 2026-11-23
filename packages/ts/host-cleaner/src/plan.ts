@@ -6,21 +6,36 @@ import { z } from 'zod'
 
 import { DROP_REASONS, LEVELS } from './types.ts'
 
-export const PLAN_VERSION = 1
+/** 2: a candidate is a path or a ref. A version 1 plan is read and upgraded (see {@link parsePlan}). */
+export const PLAN_VERSION = 2
 export const RECEIPT_VERSION = 1
 
-export const CandidateSchema = z.object({
+const candidateFields = {
   id: z.string(),
   kind: z.string(),
-  path: z.string(),
   owner: z.string(),
   why: z.string(),
-  at: z.string().optional(),
   bytes: z.number().optional(),
   evidence: z.record(z.string(), z.unknown()),
   requires: z.array(z.string()).optional(),
+  name: z.string().optional(),
   held: z.boolean().optional(),
-})
+}
+
+export const CandidateSchema = z.union([
+  z.object({
+    ...candidateFields,
+    path: z.string(),
+    ref: z.never().optional(),
+    at: z.never().optional(),
+  }),
+  z.object({
+    ...candidateFields,
+    ref: z.string(),
+    at: z.string().optional(),
+    path: z.never().optional(),
+  }),
+])
 
 export const ObjectionSchema = z.object({
   by: z.string(),
@@ -91,13 +106,38 @@ export const ReceiptSchema = z.object({
 
 export type Receipt = z.infer<typeof ReceiptSchema>
 
-/** Parse a plan's JSON text; `source` names where it came from, for the error. */
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/**
+ * A version 1 candidate as a version 2 one. Version 1 had only paths: a
+ * branch's was `<repo>:<name>` with `at` its repository, and an Orca record's
+ * was its gone directory. Both are refs now, under the same id.
+ */
+function upgradeCandidate(c: unknown): unknown {
+  if (!isObject(c) || typeof c.path !== 'string') return c
+  const { path, ...rest } = c
+  if (typeof c.at === 'string' && path.startsWith(`${c.at}:`)) {
+    return { ...rest, ref: path.slice(c.at.length + 1) }
+  }
+  const orcaId = isObject(c.evidence) ? c.evidence.orcaId : undefined
+  if (c.kind === 'orca-record' && typeof orcaId === 'string') {
+    return { ...rest, ref: orcaId, at: path }
+  }
+  const { at: _at, ...plain } = c
+  return plain
+}
+
+/** Parse a plan's JSON text; `source` names where it came from, for the error. A version 1 plan is upgraded. */
 export function parsePlan(text: string, source: string): Plan {
   let json: unknown
   try {
     json = JSON.parse(text)
   } catch {
     throw new Error(`${source}: not JSON`)
+  }
+  if (isObject(json) && json.version === 1 && Array.isArray(json.candidates)) {
+    json = { ...json, version: PLAN_VERSION, candidates: json.candidates.map(upgradeCandidate) }
   }
   const parsed = PlanSchema.safeParse(json)
   if (!parsed.success) {

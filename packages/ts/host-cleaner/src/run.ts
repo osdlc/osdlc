@@ -6,7 +6,7 @@
 import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 
 import { coveredBy, containsIgnored } from './ignore.ts'
-import { containedIn } from './roots.ts'
+import { boundBy, linkedCheckouts, type Bounds } from './roots.ts'
 import {
   writeReceipt,
   PLAN_VERSION,
@@ -23,11 +23,12 @@ import {
   type Hook,
   type MaybePromise,
   type Objection,
+  type PathCandidate,
   type Plugin,
   type RunCtx,
 } from './types.ts'
 
-/** The refusal for a machine-scope candidate that is not inside its owner's roots. */
+/** The refusal for a path candidate that is not inside its owner's roots or the targets. */
 export const OUTSIDE_ROOTS = 'outside-roots'
 
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
@@ -87,14 +88,20 @@ export interface Survey {
   candidates: Candidate[]
   objections: Objection[]
   warnings: string[]
+  /** The linked worktrees of the repositories among the targets, which path candidates may be or sit in. */
+  linked: string[]
 }
 
-/** The ignore entry a candidate sits in, or holds (deleting a directory takes what is inside it). */
+/** The ignore entry a candidate sits in, or a path candidate holds (deleting a directory takes what is inside it). */
 function ignoredBy(c: Candidate, ignore: readonly string[]): string | undefined {
-  return (
-    coveredBy(c.at ?? c.path, ignore) ??
-    (c.at === undefined ? containsIgnored(c.path, ignore) : undefined)
-  )
+  if (c.path === undefined) return c.at === undefined ? undefined : coveredBy(c.at, ignore)
+  return coveredBy(c.path, ignore) ?? containsIgnored(c.path, ignore)
+}
+
+/** Why `bounds` does not hold path candidate `c`, or null when it does. */
+function outside(c: PathCandidate, bounds: Bounds): string | null {
+  if (boundBy(bounds, c.path) !== null) return null
+  return `${c.path} is not inside ${c.owner}'s roots (${bounds.roots.join(', ') || 'none'}) or the targets`
 }
 
 /**
@@ -102,7 +109,9 @@ function ignoredBy(c: Candidate, ignore: readonly string[]): string | undefined 
  * each hook awaited under its time limit. A plugin that throws or times out
  * in `detect` is left out, and in `scope` or `discover` proposes nothing,
  * with a warning; one that throws or times out in `object` refuses every
- * candidate, since what it would object to is unknown. A {@link FatalRun}
+ * candidate, since what it would object to is unknown. A path candidate
+ * outside its owner's roots and the targets is refused `outside-roots`; one
+ * with both a path and a ref, or neither, is dropped. A {@link FatalRun}
  * from any phase goes to the caller. A duplicate candidate id keeps the first
  * plugin's, with a warning naming both.
  */
@@ -151,6 +160,8 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
     for (const c of await guarded(p, 'discover', [], scoped, (x) => p.discover!(x))) {
       if (c.owner !== p.name) {
         warnings.push(`${p.name}: dropped ${c.id}, which names ${c.owner} as its owner`)
+      } else if ((typeof c.path === 'string') === (typeof c.ref === 'string')) {
+        warnings.push(`${p.name}: dropped ${c.id}, which must have one of a path and a ref`)
       } else if (first.has(c.id)) {
         warnings.push(`duplicate ${c.id}: kept ${first.get(c.id)}'s, dropped ${p.name}'s`)
       } else {
@@ -175,16 +186,17 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
     if (p.roots === undefined) continue
     rootsOf.set(p.name, await guarded(p, 'roots', [], scoped, (x) => p.roots!(x)))
   }
+  const linked = linkedCheckouts(targets)
   for (const c of candidates) {
-    const roots = rootsOf.get(c.owner)
-    if (roots === undefined) continue
-    if (containedIn(roots, c.path) === null) {
+    if (c.path === undefined) continue
+    const why = outside(c, { roots: rootsOf.get(c.owner) ?? [], targets, linked })
+    if (why !== null) {
       objections.push({
         by: 'host-cleaner',
         candidate: c.id,
         level: 'refuse',
         code: OUTSIDE_ROOTS,
-        reason: `${c.path} is not inside ${c.owner}'s roots (${roots.join(', ') || 'none'})`,
+        reason: why,
       })
     }
   }
@@ -209,7 +221,7 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
       }
     }
   }
-  return { plugins, ctx: scoped, candidates, objections, warnings }
+  return { plugins, ctx: scoped, candidates, objections, warnings, linked }
 }
 
 /**
@@ -238,7 +250,7 @@ export const DEFAULT_SELECTION: Selection = { select: null, pick: [], spare: [] 
 
 /** Whether `entry`, one `spare`, names `c`. */
 export function spares(entry: string, c: Candidate): boolean {
-  const names = [c.id, c.path, ...(c.name === undefined ? [] : [c.name])]
+  const names = [c.id, c.path ?? c.ref, ...(c.name === undefined ? [] : [c.name])]
   if (isGlob(entry)) {
     const re = globRegExp(entry)
     return names.some((n) => re.test(n))
@@ -598,16 +610,19 @@ async function runOne(
   if (owner?.delete === undefined) {
     return fail(`${c.owner} cannot delete`)
   }
-  try {
-    const roots =
-      owner.roots === undefined
-        ? undefined
-        : await callHook(owner, 'roots', s.ctx, (x) => owner.roots!(x))
-    if (roots !== undefined && containedIn(roots, c.path) === null) {
-      return fail(`${c.path} is not inside ${c.owner}'s roots`)
+  // A ref has no folder to check; a path is checked again on its real path, which may have moved since the survey.
+  if (c.path !== undefined) {
+    let roots: readonly string[]
+    try {
+      roots =
+        owner.roots === undefined
+          ? []
+          : await callHook(owner, 'roots', s.ctx, (x) => owner.roots!(x))
+    } catch (err) {
+      return fail(err, `${c.owner}: roots failed: `)
     }
-  } catch (err) {
-    return fail(err, `${c.owner}: roots failed: `)
+    const why = outside(c, { roots, targets: s.ctx.targets, linked: s.linked })
+    if (why !== null) return fail(why)
   }
   try {
     step.delete = await callHook(owner, 'delete', s.ctx, (x) => owner.delete!(c, x))

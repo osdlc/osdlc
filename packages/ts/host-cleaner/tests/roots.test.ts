@@ -1,4 +1,4 @@
-/** Machine-scope plugins: roots outside any checkout, and the containment that blocks a row leaving them. */
+/** Containment: a path candidate sits inside its owner's roots or the targets; a ref has no folder to check. */
 
 import { afterEach, describe, expect, test } from 'vitest'
 import {
@@ -11,8 +11,11 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
+
+import { Git } from '@osdlc/typed-git'
+import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { OUTSIDE_ROOTS, clean, containedIn, plan, survey } from '../src/index.ts'
 import type { Candidate, Plugin, RunCtx } from '../src/index.ts'
@@ -29,12 +32,12 @@ const temp = (): string => {
 
 const ctx: RunCtx = { cwd: '/', targets: [], allow: [] }
 
-/** A plugin owning `roots` that proposes each of `paths` and deletes it with `rmSync`. */
-function cachePlugin(roots: string[] | (() => string[]), paths: string[]): Plugin {
+/** A plugin owning `roots` (none when null) that proposes each of `paths` and deletes it with `rmSync`. */
+function cachePlugin(roots: string[] | (() => string[]) | null, paths: string[]): Plugin {
   return {
     name: 'cache',
     detect: () => true,
-    roots: typeof roots === 'function' ? roots : () => roots,
+    ...(roots === null ? {} : { roots: typeof roots === 'function' ? roots : () => roots }),
     discover: () =>
       paths.map((path): Candidate => ({
         id: `file:${path}`,
@@ -45,7 +48,7 @@ function cachePlugin(roots: string[] | (() => string[]), paths: string[]): Plugi
         evidence: {},
       })),
     delete: (c) => {
-      rmSync(c.path, { recursive: true })
+      rmSync(c.path!, { recursive: true })
       return `removed ${c.path}`
     },
   }
@@ -138,7 +141,7 @@ describe('roots that fail or are empty', () => {
     }, rows(root))
     const s = await survey([p], ctx)
     expect(s.warnings).toEqual(['cache: roots failed: settings unreadable'])
-    expect(s.objections.map((o) => [o.code, o.reason.endsWith('(none)')])).toEqual([
+    expect(s.objections.map((o) => [o.code, o.reason.includes("cache's roots (none)")])).toEqual([
       [OUTSIDE_ROOTS, true],
       [OUTSIDE_ROOTS, true],
     ])
@@ -170,5 +173,101 @@ describe('roots that fail or are empty', () => {
       error: 'cache: roots failed: gone away',
     })
     expect(existsSync(file)).toBe(true)
+  })
+})
+
+describe('a plugin with no roots is held to the targets', () => {
+  const sh = (cwd: string, args: string[]): void => {
+    new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args)
+  }
+  const refused = (s: { objections: readonly { candidate: string; code: string }[] }) =>
+    s.objections.filter((o) => o.code === OUTSIDE_ROOTS).map((o) => o.candidate)
+
+  test('~/Documents is refused outside-roots; a path inside a target is not, nor is a ref', async () => {
+    const target = temp()
+    const documents = join(homedir(), 'Documents')
+    const p = cachePlugin(null, [documents, join(target, 'cache')])
+    const ref: Plugin = {
+      name: 'volumes',
+      detect: () => true,
+      discover: () => [
+        {
+          id: 'volume:data',
+          kind: 'volume',
+          ref: 'data',
+          owner: 'volumes',
+          why: 'unused',
+          evidence: {},
+        },
+      ],
+    }
+    const s = await survey([p, ref], { ...ctx, targets: [target] })
+    expect(refused(s)).toEqual([`file:${documents}`])
+    expect(s.objections[0]).toMatchObject({
+      by: 'host-cleaner',
+      level: 'refuse',
+      reason: `${documents} is not inside cache's roots (none) or the targets`,
+    })
+  })
+
+  test('a target itself is refused; a linked checkout of a target outside it is not', async () => {
+    const root = temp()
+    makeGitFixture({ dir: root, initialBranch: 'main' })
+    sh(root, ['commit', '--allow-empty', '-m', 'initial'])
+    const linked = join(temp(), 'wt')
+    sh(root, ['worktree', 'add', '-q', linked, '-b', 'linked'])
+    const elsewhere = join(temp(), 'wt')
+    mkdirSync(elsewhere)
+    const p = cachePlugin(null, [root, linked, join(linked, 'target'), elsewhere])
+    const s = await survey([p], { ...ctx, targets: [root] })
+    expect(refused(s)).toEqual([`file:${root}`, `file:${elsewhere}`])
+  })
+
+  test('a target inside a repository holds only itself: a home kept in git does not open ~/Documents', async () => {
+    const home = temp()
+    makeGitFixture({ dir: home, initialBranch: 'main' })
+    sh(home, ['commit', '--allow-empty', '-m', 'initial'])
+    const dev = join(home, 'dev')
+    mkdirSync(dev)
+    const linked = join(temp(), 'wt')
+    sh(home, ['worktree', 'add', '-q', linked, '-b', 'linked'])
+    const documents = join(home, 'Documents')
+    const p = cachePlugin(null, [documents, join(dev, 'cache'), linked, dev])
+    const s = await survey([p], { ...ctx, targets: [dev] })
+    expect(refused(s)).toEqual([`file:${documents}`, `file:${dev}`])
+  })
+
+  test('a target that is itself a linked worktree is never a candidate', async () => {
+    const root = temp()
+    makeGitFixture({ dir: root, initialBranch: 'main' })
+    sh(root, ['commit', '--allow-empty', '-m', 'initial'])
+    const linked = join(temp(), 'wt')
+    sh(root, ['worktree', 'add', '-q', linked, '-b', 'linked'])
+    const s = await survey([cachePlugin(null, [linked])], { ...ctx, targets: [linked] })
+    expect(refused(s)).toEqual([`file:${linked}`])
+  })
+
+  test('a path swapped for a link out of the target fails its step at delete time', async () => {
+    const target = temp()
+    const other = temp()
+    writeFileSync(join(other, 'precious'), 'x')
+    const victim = join(target, 'dir')
+    mkdirSync(victim)
+    const p = cachePlugin(null, [victim])
+    const swapping: Plugin = {
+      name: 'swap',
+      detect: () => true,
+      prepare: () => {
+        rmSync(victim, { recursive: true })
+        symlinkSync(other, victim)
+      },
+    }
+    const run: RunCtx = { ...ctx, targets: [target] }
+    const receipt = await clean(plan(await survey([p, swapping], run)), [p, swapping], run)
+    expect(receipt.steps[0]).toMatchObject({
+      result: 'failed',
+      error: `${victim} is not inside cache's roots (none) or the targets`,
+    })
+    expect(existsSync(join(other, 'precious'))).toBe(true)
   })
 })

@@ -64,11 +64,9 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
       rows = new Map(found.map((row) => [candidateId(row), row]))
       return found.map((row): Candidate => {
         const id = candidateId(row)
-        return {
+        const common = {
           id,
           kind: row.kind,
-          path: row.kind === 'worktree' ? row.path : `${row.repo}:${row.path}`,
-          ...(row.kind === 'worktree' ? {} : { at: row.repo }),
           ...(nameOf(row) === null ? {} : { name: nameOf(row)! }),
           owner: 'git',
           why: row.why,
@@ -77,6 +75,10 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
           // The default run skips what is not `delete`.
           ...(row.verdict !== 'delete' ? { held: true } : {}),
         }
+        // A branch has no folder of its own: it is a ref in its repository.
+        return row.kind === 'worktree'
+          ? { ...common, path: row.path }
+          : { ...common, ref: row.path, at: row.repo }
       })
     },
     object(all) {

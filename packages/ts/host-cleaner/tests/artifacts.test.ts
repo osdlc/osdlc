@@ -270,7 +270,8 @@ describe('cargo plugin', () => {
     const found = await cargo(root)
     expect(found.candidates).toHaveLength(1)
     expect(found.candidates[0]).toMatchObject({ evidence: { sizeBytes: null } })
-    expect(found.refused).toEqual([expect.objectContaining({ code: 'outside-checkout' })])
+    // The core refuses it too: its real path is outside the target.
+    expect(found.refused.map((o) => o.code)).toEqual(['outside-roots', 'outside-checkout'])
     const plugin = cargoPlugin(options())
     const s = await survey([plugin], ctxOf(root))
     const receipt = await clean(plan(s, { select: [s.candidates[0]!.id] }), [plugin], ctxOf(root))

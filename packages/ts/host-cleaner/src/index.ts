@@ -20,9 +20,11 @@ export {
   type Level,
   type MaybePromise,
   type Objection,
+  type PathCandidate,
   type Plugin,
   type PluginDefinition,
   type PluginInit,
+  type RefCandidate,
   type RunCtx,
 } from './types.ts'
 export { BUILT_IN_PLUGINS } from './registry.ts'

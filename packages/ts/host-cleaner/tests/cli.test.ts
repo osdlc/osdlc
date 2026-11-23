@@ -17,9 +17,10 @@ import { captureContext } from '@osdlc/cli-tool'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { main, type MainDeps } from '../src/cli.ts'
+import { main, tildeId, untildeId, type MainDeps } from '../src/cli.ts'
 import { hostDirs } from '../src/config.ts'
-import type { Candidate, Objection, Plugin } from '../src/index.ts'
+import { PLAN_VERSION, parsePlan } from '../src/plan.ts'
+import type { Candidate, Objection, Plugin, RefCandidate } from '../src/index.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -69,7 +70,7 @@ async function run(argv: string[], cwd: string, env: Record<string, string>, dep
 /** A plugin that owns one candidate, `artifact:cache`, and records what it is asked to delete. */
 function fake(
   name = 'fake',
-  extra: { objections?: Objection[]; candidate?: Partial<Candidate> } = {},
+  extra: { objections?: Objection[]; candidate?: Partial<RefCandidate> } = {},
 ): Plugin & { removed: string[] } {
   const removed: string[] = []
   return {
@@ -79,7 +80,7 @@ function fake(
       {
         id: `artifact:${name}`,
         kind: 'artifact',
-        path: name,
+        ref: name,
         owner: name,
         why: 'idle for a week',
         evidence: { bytes: 10 },
@@ -89,7 +90,7 @@ function fake(
     object: () => extra.objections ?? [],
     delete: (c) => {
       removed.push(c.id)
-      return `removed ${c.path}`
+      return `removed ${c.ref}`
     },
     removed,
   }
@@ -111,6 +112,18 @@ describe('phases', () => {
     const r = await run([cwd], cwd, env)
     expect(r.code).toBe(2)
     expect(r.err).toContain('is not a phase')
+  })
+
+  test('as root every phase is refused with exit 1 and nothing runs; --help still answers', async () => {
+    const { env, cwd } = setup()
+    const plugin = fake()
+    for (const phase of ['status', 'plan', 'clean', 'config']) {
+      const r = await run([phase, '--yes'], cwd, env, { plugins: [plugin], uid: 0 })
+      expect(r.code).toBe(1)
+      expect(r.err).toContain('refusing to run as root')
+    }
+    expect(plugin.removed).toEqual([])
+    expect((await run(['--help'], cwd, env, { uid: 0 })).code).toBe(0)
   })
 })
 
@@ -432,6 +445,91 @@ describe('plan and clean', () => {
     expect(await ran(['--pick', 'artifact:held'])).toEqual(['artifact:plain', 'artifact:held'])
     expect(await ran(['--spare', 'artifact:plain'])).toEqual([])
     expect(await ran(['--spare', 'artifact:*', '--pick', 'artifact:held'])).toEqual([])
+  })
+
+  test('status shows an id under the home folder with ~, and --pick and --spare take that form', async () => {
+    const { env: base, cwd } = setup()
+    const home = tempDir()
+    const env = { ...base, HOME: home }
+    const dir = join(home, 'dev', 'cache')
+    const plugins = [fake('cache', { candidate: { id: `artifact:${dir}`, held: true } })]
+    const status = await run(['status'], cwd, env, { plugins })
+    expect(status.out).toContain('review  artifact:~/dev/cache')
+    expect(status.out).not.toContain(home)
+    const ran = async (argv: string[]) =>
+      JSON.parse(
+        (await run(['clean', '--dry-run', '--format', 'json', ...argv], cwd, env, { plugins })).out,
+      ).run
+    expect(await ran(['--pick', 'artifact:~/dev/cache'])).toEqual([`artifact:${dir}`])
+    expect(await ran(['--pick', 'artifact:~/dev/cache', '--spare', 'artifact:~/dev/*'])).toEqual([])
+  })
+
+  test('~ stands for the home folder right after the kind, a branch id included', () => {
+    expect(tildeId('branch:/h/me/repo:main', '/h/me')).toBe('branch:~/repo:main')
+    expect(tildeId('branch:/h/me:main', '/h/me')).toBe('branch:~:main')
+    expect(tildeId('worktree:/h/meow/x', '/h/me')).toBe('worktree:/h/meow/x')
+    expect(untildeId('branch:~/repo:main', '/h/me')).toBe('branch:/h/me/repo:main')
+    expect(untildeId('~/x', '/h/me')).toBe('/h/me/x')
+    expect(untildeId('feat/~x', '/h/me')).toBe('feat/~x')
+  })
+
+  test('a version 1 plan still runs: its branch and Orca record are read as refs, under the same ids', async () => {
+    const { env, home, cwd } = setup()
+    const plugin = fake()
+    const fakeRow = {
+      id: 'artifact:fake',
+      kind: 'artifact',
+      path: 'fake',
+      owner: 'fake',
+      why: 'idle for a week',
+      evidence: { bytes: 10 },
+    }
+    const branch = {
+      id: 'branch:/r:feat',
+      kind: 'branch',
+      owner: 'git',
+      why: 'merged',
+      evidence: {},
+    }
+    const evidence = { kind: 'orca-record', orcaId: 'repo1::/gone', path: '/gone' }
+    const record = {
+      id: 'orca-record:/gone',
+      kind: 'orca-record',
+      owner: 'orca',
+      why: 'gone',
+      evidence,
+    }
+    const v1 = {
+      version: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      targets: [cwd],
+      select: null,
+      pick: [],
+      spare: [],
+      allow: [],
+      ignore: [],
+      warnings: [],
+      candidates: [
+        fakeRow,
+        { ...branch, path: '/r:feat', at: '/r', held: true },
+        { ...record, path: '/gone', held: true },
+      ],
+      objections: [],
+    }
+    const read = parsePlan(JSON.stringify(v1), 'v1')
+    expect(read.version).toBe(PLAN_VERSION)
+    expect(read.candidates).toEqual([
+      fakeRow,
+      { ...branch, ref: 'feat', at: '/r', held: true },
+      { ...record, ref: 'repo1::/gone', at: '/gone', held: true },
+    ])
+    const planFile = join(home, 'v1.json')
+    writeFileSync(planFile, JSON.stringify(v1))
+    const r = await run(['clean', '--plan', planFile, '--dry-run', '--format', 'json'], cwd, env, {
+      plugins: [plugin],
+    })
+    expect(r.code).toBe(0)
+    expect(JSON.parse(r.out).run).toEqual(['artifact:fake'])
   })
 
   test('-i runs exactly the ticked candidates and asks for their protests by code', async () => {

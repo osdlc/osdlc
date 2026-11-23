@@ -37,7 +37,7 @@ const cache = {
     {
       id: 'artifact:c',
       kind: 'artifact',
-      path: 'c',
+      ref: 'c',
       owner: 'cache',
       why: 'idle',
       evidence: { n: 1 },

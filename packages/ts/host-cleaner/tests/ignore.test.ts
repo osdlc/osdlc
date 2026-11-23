@@ -43,14 +43,13 @@ const caseInsensitive = ((): boolean => {
   }
 })()
 
-const cand = (id: string, path: string, extra: Partial<Candidate> = {}): Candidate => ({
+const cand = (id: string, path: string): Candidate => ({
   id,
   kind: 'artifact',
   path,
   owner: 'p',
   why: 'idle',
   evidence: {},
-  ...extra,
 })
 
 const plugin = (cs: Candidate[]): Plugin => ({
@@ -93,13 +92,13 @@ describe('ignorePaths and coveredBy', () => {
 })
 
 describe('survey and recheck', () => {
-  const ctx = (ignore: string[]): RunCtx => ({ cwd: '/', targets: [], allow: [], ignore })
+  const ctx = (ignore: string[]): RunCtx => ({ cwd: '/', targets: ['/'], allow: [], ignore })
 
   test('survey drops candidates in an ignored path, by `at` when set, and says how many', async () => {
     const p = plugin([
       cand('a:1', '/keep/x'),
       cand('a:2', '/skip/x'),
-      cand('a:3', 'repo:branch', { at: '/skip/repo' }),
+      { ...cand('a:3', ''), path: undefined, ref: 'branch', at: '/skip/repo' },
     ])
     const s = await survey([p], ctx(['/skip']))
     expect(s.candidates.map((c) => c.id)).toEqual(['a:1'])
@@ -155,7 +154,7 @@ describe('the command line', () => {
           plugin([
             cand('a:1', '/cfg-ignored/x'),
             cand('a:2', '/cli-ignored/x'),
-            cand('a:3', '/ok'),
+            cand('a:3', join(cwd, 'ok')),
           ]),
         ],
       })
