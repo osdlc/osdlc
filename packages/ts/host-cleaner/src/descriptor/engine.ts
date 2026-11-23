@@ -78,7 +78,7 @@ export const PERSONAL_FOLDERS = [
 const DISCOVER_LIMIT_MS = 10 * 60_000
 
 /** Folders never walked into when looking for `project` build folders. */
-const NOT_WALKED = new Set(['.git', 'node_modules'])
+const NOT_WALKED = new Set(['.git', 'node_modules', 'target'])
 
 export interface DescriptorOptions {
   /** The OS whose `paths` apply. Default: this one. */

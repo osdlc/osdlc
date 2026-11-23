@@ -26,6 +26,7 @@ import {
   IN_USE,
   NO_PRUNE_TOOL,
   OUTSIDE_ROOTS,
+  PERSONAL_FOLDERS,
   clean,
   descriptorPlugin,
   globMatches,
@@ -463,7 +464,7 @@ candidates:
     }
   }
 
-  test.each(PERSONAL_NAMES)('~/%s is refused as a personal folder', async (name) => {
+  test.each(PERSONAL_FOLDERS)('~/%s is refused as a personal folder', async (name) => {
     const r = await refusal(`~/${name}`)
     expect(r.reasons).toEqual([`${r.path}: it is the personal folder ~/${name}`])
     expect(r.roots).toEqual([])
@@ -530,18 +531,6 @@ candidates:
     ])
   })
 })
-
-const PERSONAL_NAMES = [
-  'Documents',
-  'Desktop',
-  'Downloads',
-  'Pictures',
-  'Music',
-  'Movies',
-  'Library',
-  '.ssh',
-  '.config',
-]
 
 describe('paths per OS, detect, system and supersededBy', () => {
   test("only the OS's own folder is used; a path with no entry for it does not apply", async () => {
