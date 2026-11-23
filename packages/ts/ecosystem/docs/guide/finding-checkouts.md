@@ -98,7 +98,8 @@ file.writeRoots(['~/dev/repos'], { etag: current?.etag ?? null })
 
 The write is a compare-and-swap: if the file changed since `read`, it throws
 `WriteConflictError` from `@osdlc/etag-write` and writes nothing. It keeps the
-file's other text and its comments, and refuses a root the reader would drop.
+file's other text and its comments, though not a comment inside the `roots`
+list, which is replaced whole, and refuses a root the reader would drop.
 
 ## 6. In tests
 

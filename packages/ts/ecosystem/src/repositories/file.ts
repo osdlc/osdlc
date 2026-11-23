@@ -43,15 +43,15 @@ export interface Repositories {
   roots?: string[] | undefined
 }
 
-/** Options for {@link repositoriesFile}. */
+/**
+ * Options for {@link repositoriesFile}.
+ *
+ * `env`, `home` and `dirs` place the osdlc directories and expand `~`.
+ * `OSDLC_REPOSITORIES` is read from `process.env` whatever is given, since
+ * config-layers' `machineConfigFile` reads it there, so a test clears it.
+ */
 export interface RepositoriesFileOptions extends OsdlcDirsOptions {
-  /**
-   * The osdlc directories. Defaults to {@link osdlcDirs} over `env` and
-   * `home`. Tests pass a rooted one.
-   *
-   * `OSDLC_REPOSITORIES` is read from `process.env` whatever is given here,
-   * since `machineConfigFile` reads it there. A test clears it.
-   */
+  /** The osdlc directories. Defaults to {@link osdlcDirs} over `env` and `home`. Tests pass a rooted one. */
   dirs?: (() => TieredDirs) | undefined
 }
 
@@ -93,8 +93,8 @@ export interface RepositoriesFile {
   /** The file's text and etag, to hand back to {@link writeRoots}. `null` when there is no file. */
   read(): { text: string; etag: string } | null
   /**
-   * Set `roots` to `roots`, keeping the file's other text and its comments,
-   * and return the new etag. A compare-and-swap against `etag`. Throws when
+   * Set `roots` to `roots`, keeping the file's other keys and the comments
+   * outside `roots` (the list is replaced whole), and return the new etag. A compare-and-swap against `etag`. Throws when
    * an entry is not absolute, `~` or `~/…`, since the reader would drop it.
    */
   writeRoots(roots: readonly string[], opts: WriteRootsOptions): string

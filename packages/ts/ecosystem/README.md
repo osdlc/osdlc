@@ -131,7 +131,7 @@ const current = file.read() // { text, etag } or null
 file.writeRoots(['~/dev/repos'], { etag: current?.etag ?? null })
 ```
 
-It replaces `roots` and keeps the rest of the file and its comments. When the
+It replaces `roots` whole and keeps the rest of the file, with its comments. When the
 file changed since it was read, it throws `WriteConflictError` from
 `@osdlc/etag-write` and writes nothing. It refuses a root the reader would
 drop.
