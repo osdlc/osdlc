@@ -15,9 +15,10 @@ use it call it.
 ## Today
 
 `src/core/split.ts` holds `splitEven`, and `shardFiles` in `@osdlc/rule-review`'s `src/plan.ts`
-is the same rule. Neither package exports its copy, and each comment says to change both
-together. [D-02](../decisions/D-02-api-and-stability-tiers.md) keeps `splitEven` out of the
-public API for that reason.
+is the same rule. Neither package exports its copy, and
+[D-02](../decisions/D-02-api-and-stability-tiers.md) keeps `splitEven` out of the public API for
+that reason. The comment on diffkit's copy says to change both together. The comment on
+rule-review's copy does not mention diffkit.
 
 ## Approach
 

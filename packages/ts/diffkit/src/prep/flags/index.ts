@@ -10,7 +10,7 @@
  * manifest). Of those, only kept files are checked (see dropReason in
  * ../files.ts), and not those under `NOT_FIRST_PARTY` below. The checks need
  * the compiler API; when none can be found they are skipped and the manifest
- * says so in `notes`. `notes` also names the files too large to read.
+ * says so in `notes`. `notes` also names the changed files too large to read.
  */
 
 import { isTsSource, loadTypeScript, withParseMemo } from '@osdlc/code-stats'

@@ -21,9 +21,10 @@ created: 2026-11-22
 - What it leaves to a reviewer: whether a change is correct. A flag is not a finding. A file with
   no flag has not been shown to be fine. A language with no flag checks is listed as not covered
   in `coverage`, which is not the same as clean.
-- Added, deleted and renamed files are always kept. A file whose changed lines are all comments is
-  kept, with `category: "comments"`, because the accuracy of comments is reviewed. A reformatted
-  test or doc file is kept.
+- A generated or vendored file is dropped whatever its status. Of the rest, added, deleted and
+  renamed files are always kept. A file whose changed lines are all comments is kept, with
+  `category: "comments"`, because the accuracy of comments is reviewed. A reformatted test or doc
+  file is kept.
 - A flag has a `basis`. `measured` is a count taken from the diff and the syntax tree.
   `heuristic` is a pattern that is often right and sometimes not, and its measurements are the
   evidence to check.
