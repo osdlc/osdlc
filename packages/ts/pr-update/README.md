@@ -262,7 +262,9 @@ Clones go to the first of `--mirror-dir`, `PR_UPDATE_MIRROR_DIR`, `mirror_dir`,
 or `~/.cache/osdlc/pr-update/repos/`, one `<host>/<owner>/<name>.git` each,
 lower-cased, with the host's port left out. The directory must be outside
 every git checkout and new, empty or already pr-update's, and yours, and on
-Linux and macOS no one else may write to it (`chmod go-w <dir>` fixes that);
+Linux and macOS no one else may write to it (`chmod go-w <dir>` fixes that;
+on a filesystem with no Unix permissions, such as exFAT or an SMB share,
+choose another clone directory);
 otherwise the run exits `2`, naming it, and writes nothing. pr-update makes
 its own folders with mode `755` at most. A clone is used only when pr-update
 made it: a folder without its marker, a symbolic link in its place or in
@@ -293,8 +295,9 @@ target's PRs as `mirror busy`. Taking a lock back to remove a worktree, it
 waits only when it holds no other clone's lock, and otherwise does not wait.
 So a run that waits only ever waits for a lock later than every lock it holds,
 and no two runs wait on each other in a cycle. A worktree whose clone's lock
-it cannot get back is left in the clone, with a note naming it: `pr-update
-mirror prune` removes it once the run has ended. A rehearsal (`update` without `--apply`) does
+it cannot get back is left in the clone, with a note naming it: a run
+worktree is removed by the next run in that clone, or by `pr-update mirror
+prune`; a kept worktree by running with `--discard-kept` again. A rehearsal (`update` without `--apply`) does
 not wait: a clone another run holds is skipped as `mirror busy`, with a note.
 `survey` and a rehearsal never clone: they use a clone that exists, fetch it
 and stamp it as used, and otherwise report the target not measured with a

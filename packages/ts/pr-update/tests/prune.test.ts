@@ -677,7 +677,9 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
       expect.arrayContaining([
         [
           dead,
-          `${join(paths.worktrees, 'github.com')} can be written by its group or others (run \`chmod go-w ${join(paths.worktrees, 'github.com')}\`)`,
+          expect.stringContaining(
+            `${join(paths.worktrees, 'github.com')} can be written by its group or others; run \`chmod go-w ${join(paths.worktrees, 'github.com')}\``,
+          ),
         ],
         [
           probe,

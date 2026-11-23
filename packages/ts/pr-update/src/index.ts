@@ -101,6 +101,7 @@ export {
   output as surveyOutputSchema,
   repoEntry as surveyRepoSchema,
   type ManagedClones,
+  type RemovedTree,
   type MergePrediction,
   type PrSelector,
   type RepoTarget,

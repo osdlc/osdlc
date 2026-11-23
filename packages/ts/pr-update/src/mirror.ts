@@ -103,16 +103,30 @@ const FOLDER_MODE = 0o755
 /** Whether mode bits mean anything here: not on Windows. */
 const POSIX = process.platform !== 'win32'
 
+/** How to put right a folder others can write to, for the end of the message. */
+function writableFix(dir: string): string {
+  return (
+    `run \`chmod go-w ${dir}\`, or choose a clone directory on a filesystem with Unix permissions ` +
+    '(--mirror-dir, PR_UPDATE_MIRROR_DIR or `pr-update mirror enable --mirror-dir`)'
+  )
+}
+
 /**
  * What is wrong with `dir`, a folder clones or run worktrees live under (the clone directory, or
- * a folder between it and a clone), whose stat is `st`; null when nothing is. It must belong to
- * the person running pr-update, and on POSIX must not be writable by its group or others, who
- * could otherwise put a folder of their own where a clone goes.
+ * a folder between it and a clone), whose stat is `st`, and how to fix it; null when nothing is. It must belong
+ * to the person running pr-update, and on POSIX must not be writable by its group or others,
+ * who could otherwise put a folder of their own where a clone goes. A filesystem with no Unix
+ * permissions (exFAT, FAT, an SMB share) shows every folder as writable by all, so the fix also
+ * names the ways to choose another clone directory.
  */
-export function folderProblem(dir: string, st: Stats, owned: OwnedCheck): string | null {
-  if (!owned(st)) return `${dir} belongs to another user`
+function folderProblem(
+  dir: string,
+  st: Stats,
+  owned: OwnedCheck,
+): { problem: string; fix?: string } | null {
+  if (!owned(st)) return { problem: `${dir} belongs to another user` }
   if (POSIX && (st.mode & 0o022) !== 0) {
-    return `${dir} can be written by its group or others (run \`chmod go-w ${dir}\`)`
+    return { problem: `${dir} can be written by its group or others`, fix: writableFix(dir) }
   }
   return null
 }
@@ -138,7 +152,10 @@ export function checkClone(
   owned: OwnedCheck = ownedByMe,
 ): 'clone' | 'missing' | { foreign: string } {
   const folders = foldersProblem(root, [dirname(dirname(path)), dirname(path)], owned)
-  if (folders !== null) return { foreign: `${folders}, so ${path} is not used` }
+  if (folders !== null) {
+    const fix = folders.fix === undefined ? '' : `; ${folders.fix}`
+    return { foreign: `${folders.problem}, so ${path} is not used${fix}` }
+  }
   const at = lstatOrNull(path)
   if (at === null) return 'missing'
   if (at.isSymbolicLink()) return { foreign: `${path} is a symbolic link, so it is not used` }
@@ -159,20 +176,20 @@ export function checkClone(
 
 /**
  * What is wrong with `root` (followed if it is a symbolic link) or the folders `between` it and
- * something under it, as far as they exist ({@link folderProblem}; a folder between may not be a
- * symbolic link); null when nothing is.
+ * something under it, as far as they exist (`folderProblem`; a folder between may not be a
+ * symbolic link), and how to fix it; null when nothing is.
  */
 export function foldersProblem(
   root: string,
   between: readonly string[],
   owned: OwnedCheck = ownedByMe,
-): string | null {
+): { problem: string; fix?: string } | null {
   for (const [dir, st] of [
     [root, statOrNull(root)],
     ...between.map((d) => [d, lstatOrNull(d)] as const),
   ] as const) {
     if (st === null) break
-    if (st.isSymbolicLink()) return `${dir} is a symbolic link`
+    if (st.isSymbolicLink()) return { problem: `${dir} is a symbolic link` }
     const why = folderProblem(dir, st, owned)
     if (why !== null) return why
   }
@@ -316,7 +333,10 @@ export function checkMirrorDir(
     throw new MirrorDirError(`the clone directory ${dir} is not a directory`)
   }
   const why = folderProblem(dir, statSync(dir), owned)
-  if (why !== null) throw new MirrorDirError(`the clone directory ${why}`)
+  if (why !== null) {
+    const fix = why.fix === undefined ? '' : `; ${why.fix}`
+    throw new MirrorDirError(`the clone directory ${why.problem}${fix}`)
+  }
   const entries = readdirSync(dir)
   if (entries.length > 0 && !entries.includes(MIRROR_MARKER)) {
     throw new MirrorDirError(
@@ -604,8 +624,9 @@ function keyOf(t: { host: string | null; repo: string }): string {
  * - and again while the run worktree, or a kept worktree it discards, is removed
  *   ({@link ManagedClones.removing}). That wait happens only when the run holds no other
  *   clone's lock, so every run that waits holds nothing another run waits for, and no two runs
- *   wait on each other. A clone whose lock cannot be taken back is not changed: the worktree
- *   is left for `pr-update mirror prune`.
+ *   wait on each other. A clone whose lock cannot be taken back is not changed: a run
+ *   worktree is left for the next run in the clone or `pr-update mirror prune`, a kept one for
+ *   the next `--discard-kept`.
  *
  * `survey` holds a clone's lock only for its fetch ({@link ManagedClones.use}), and never waits.
  */
@@ -852,7 +873,7 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
 
     release,
 
-    removing(clone, worktree, remove) {
+    removing(clone, tree, remove) {
       if (held.has(clone)) {
         remove()
         return true
@@ -863,7 +884,9 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
       const token = claim(lock, applying && held.size === 0 ? waitMs : 0)
       if (token === null) {
         opts.notice(
-          `${clone}: another pr-update run holds ${lock}, so ${worktree} is left in the clone; \`pr-update mirror prune\` removes it once this run has ended`,
+          tree.kind === 'kept'
+            ? `the kept worktree ${tree.path} is left in place, because another run holds its clone (${lock}); run with --discard-kept again to remove it`
+            : `${tree.path} is left, because another run holds its clone (${lock}); the next run in this clone, or \`pr-update mirror prune\`, removes it`,
         )
         return false
       }

@@ -303,7 +303,8 @@ function placeProblem(root: string, path: string, owned: OwnedCheck): string | n
     between.unshift(d)
   }
   const folders = foldersProblem(root, between, owned)
-  if (folders !== null) return folders
+  if (folders !== null)
+    return `${folders.problem}${folders.fix === undefined ? '' : `; ${folders.fix}`}`
   const st = lstatOrNull(path)
   return st !== null && !owned(st) ? `${path} belongs to another user` : null
 }

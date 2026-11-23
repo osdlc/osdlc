@@ -957,7 +957,7 @@ describe('review round 2', () => {
     )
     expect(left.code).toBe(EXIT.ok)
     expect(left.err).toContain(
-      `${clone}: another pr-update run holds ${lock}, so ${kept} is left in the clone; \`pr-update mirror prune\` removes it`,
+      `the kept worktree ${kept} is left in place, because another run holds its clone (${lock}); run with --discard-kept again to remove it`,
     )
     expect(trees()).toContain(kept)
     expect(existsSync(kept!)).toBe(true)
@@ -1011,7 +1011,7 @@ describe('mirror prune and a run worktree a run left in its clone', () => {
     const [left, ...more] = trees()
     expect(more).toEqual([])
     expect(r.err).toContain(
-      `so ${left} is left in the clone; \`pr-update mirror prune\` removes it`,
+      `${left} is left, because another run holds its clone (${lock}); the next run in this clone, or \`pr-update mirror prune\`, removes it`,
     )
 
     // While the run that made it could still be alive, it stays.
