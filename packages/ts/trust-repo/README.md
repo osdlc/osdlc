@@ -154,9 +154,11 @@ The rename is the one step that publishes the copy. So the new store is
 either complete and recorded, or not there at all, and a copy that failed
 partway leaves nothing behind. Two processes that move at once each build
 their own folder; the second rename fails because the first already landed,
-and the second process uses that one. When the old store has no grant, the
-first grant written to the new store writes the record instead; a read
-creates nothing. Once the record is there, only the new place is read. A grant an older release adds to the old place later is not
+and the second process uses that one. In every other case (the old store has
+no grant, or the move does not run, as below) the first grant written to the
+new store writes the record instead; a read creates nothing. So a store this
+package wrote always has its record, and once the record is there, only the
+new place is read. A grant an older release adds to the old place later is not
 copied, and a grant revoked in the new place stays revoked.
 
 The old markers are never changed or deleted, so an older release of the
@@ -171,22 +173,29 @@ and `tighten` report what the new place holds. The next call tries again.
 
 Nothing is copied when the new place is the old place (Linux and macOS under
 `xdg`, with no family root), or when `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR`
-or tiered-dirs' per-process test root moved the new place. Those ask for a
-separate store on purpose. A scratch store that inherited the person's real
+or tiered-dirs' per-process test root moved the new place. A variable counts
+only when it really moves the store: the place differs from the one resolved
+without it. Those ask for a separate store on purpose. A scratch store that inherited the person's real
 consent would defeat a test that points `<PREFIX>_ROOT` at a temp directory.
 A `dirs` factory given with neither `env` nor `home` has no old place
 either, since it was not resolved from the real environment.
 
-Nothing is copied while `<PREFIX>_CONVENTION` is set. The variable picks
-between two places, and each would be filled from the same untouched old
-store, so a grant revoked in one would come back in the other. Fix the
-tool's convention before it opts in, in a `dirs` factory with
-`conventionFromEnv: false`. While the variable is set, the store starts
-empty and the person consents again; that fails closed.
+Nothing is copied into a place `<PREFIX>_CONVENTION` moves the store to. The
+variable picks between two places, and each would be filled from the same
+untouched old store, so a grant revoked in one would come back in the other.
+A `dirs` factory owns its convention, so the variable is not read for one:
+fix the tool's convention there, with `conventionFromEnv: false`, before it
+opts in.
+
+A store such a variable moves gets no old markers, and its first grant
+writes the record, so it never gets them later either. The person consents
+again there, which fails closed. The unmoved place, used without the
+variable, still moves once as usual.
 
 If the new place already exists with no record when there is something to
-move (it was made through `dir`, or by hand), the old grants are copied into
-it in place, each marker atomically, then the record is written.
+move, it was made through `dir` or by hand, since a store this package
+writes always has one. The old grants are then copied into it in place,
+each marker atomically, and the record is written.
 
 ### What a decision is keyed on
 

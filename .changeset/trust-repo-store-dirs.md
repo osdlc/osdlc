@@ -19,16 +19,18 @@ used before, so nothing moves until a tool opts in.
 When a tool opts in and its new place differs from the old one
 (`$XDG_STATE_HOME/<tool>/trusted/`, or `~/.local/state/<tool>/trusted/`), the
 existing markers are copied to the new place once, checked, and recorded as
-moved. When the old store has no grants, the first grant in the new store
-records the move. After that only the new place is read. The old markers are
+moved. When there is nothing to copy, the first grant in the new store
+records the move, so a store this package wrote is never filled from the old
+place later. After that only the new place is read. The old markers are
 left as they were, so an older release of the tool keeps using the old place and
 still finds every grant it knew; a grant it adds there later is not copied.
 A copy that fails leaves no new store behind and makes the trust check fail,
 so nothing runs without consent; the next run tries again. A store moved by
-`<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` or tiered-dirs' test root starts empty
-and copies nothing. So does one whose place `<PREFIX>_CONVENTION` picks: fix
-the tool's convention, in a `dirs` factory with `conventionFromEnv: false`,
-before it opts in.
+`<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` or tiered-dirs' test root gets no old
+markers, and neither does one that `<PREFIX>_CONVENTION` moves; a variable
+counts only when it really changes the place. A `dirs` factory owns its
+convention: fix it there, with `conventionFromEnv: false`, before the tool
+opts in.
 
 `list`, `listGrants` and `tighten` used to be documented as never throwing.
 They now throw when the store's directory cannot be resolved, for example for
