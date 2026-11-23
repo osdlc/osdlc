@@ -262,18 +262,24 @@ Clones go to the first of `--mirror-dir`, `PR_UPDATE_MIRROR_DIR`, `mirror_dir`,
 or `~/.cache/osdlc/pr-update/repos/`, one `<host>/<owner>/<name>.git` each,
 lower-cased, with the host's port left out. The directory must be outside
 every git checkout and new, empty or already pr-update's, and yours, and on
-Linux and macOS no one else may write to it: a folder anyone can write to is
-refused unless its sticky bit is set, and one its group can write to unless
-the group is your primary group, as for every folder you make under umask
-`002` with a group of your own (the default on Ubuntu, Debian and Fedora).
-`chmod go-w <dir>` fixes that; on a filesystem with no Unix permissions, such
-as exFAT or an SMB share, choose another clone directory. Otherwise the run
-exits `2`, naming it, and writes nothing. pr-update makes every folder of its
-own (clone folders, the folders that hold run and kept worktrees, its records) with
-mode `755` at most, whatever the umask. A clone is used only when pr-update
+Linux and macOS no one else may write to it. A folder anyone can write to is
+refused, sticky bit or not. One its group can write to is refused unless the
+group is a user private group of yours: not on macOS (where every user's
+primary group is the shared `staff`), and the folder's group, your primary
+group and your uid are one number, as on Ubuntu, Debian and Fedora, whose
+umask `002` makes every folder group-writable. `chmod go-w <dir>` fixes a
+refusal; on a filesystem with no Unix permissions, such as exFAT or an SMB
+share, choose another clone directory. Otherwise the run exits `2`, naming
+it, and writes nothing. pr-update makes the folders it creates itself (the
+clone directory and its `<host>` and `<owner>` folders, the folders that hold
+run and kept worktrees, its records) with mode `755` at most, whatever the
+umask.
+The clone folder itself and each run worktree's folder take the umask, since
+`gh` and `git` make them; for those two only the owner is checked, and the
+folders above them must pass the rule. A clone is used only when pr-update
 made it: a folder without its marker, a symbolic link in its place or in
-place of the `<host>` or `<owner>` folder above it, or a clone, marker or
-folder another user owns or others can write to, is left alone, and the
+place of the `<host>` or `<owner>` folder above it, a clone or marker another
+user owns, or a folder above it someone else can write to, is left alone, and the
 target is skipped saying why. A clone is made with `gh repo clone
 <owner>/<name> -- --bare` (`GH_HOST` set to the target's host), with no
 `upstream` remote. Its own config gets the credential helper `gh auth
@@ -307,9 +313,11 @@ not wait: a clone another run holds is skipped as `mirror busy`, with a note.
 and stamp it as used, and otherwise report the target not measured with a
 note naming `pr-update mirror enable`. `survey` holds the lock while it
 fetches and reads the clone, and reads a clone another run holds as it is,
-with a note, without waiting. Each use writes the clone's last-used stamp.
+with a note, without waiting; if the clone is gone after that read (a prune
+held the lock), what was read is dropped and the target is reported not
+measured, with a note. Each use writes the clone's last-used stamp.
 `checkout: local` leaves a clone that exists unused. A clone a prune removed
-while a run waited for its lock is made again, under that lock, by `update
+before a run took its lock is made again, under that lock, by `update
 --apply` with consent; otherwise its target is skipped with a note saying so.
 
 A run served from a clone prints `<repo>: no checkout under <roots> (…);
@@ -341,9 +349,11 @@ and changes nothing.
   (not `--all`, which goes with `--help`).
 
 A run is gone when no process has the pid its worktree's folder,
-`<pid>.<time>`, is named for, or the process with that pid started after
-that time, so a pid a later process reused does not keep a dead run's
-worktree. Pids belong to one machine: pr-update's cache and state
+`<pid>.<time>`, is named for, or the process with that pid started more than
+10 minutes after that time, so a pid a later process reused does not keep a
+dead run's worktree. The margin is wide because start times are read
+against the clock, which a clock step can move; a start time that cannot be
+read counts as running. Pids belong to one machine: pr-update's cache and state
 directories must not be shared between machines (a network home, a synced
 folder), or one machine's prune can remove a worktree another machine's run
 is using.

@@ -4,8 +4,8 @@
  *
  * Two walks:
  * - `worktrees/` in the cache, which holds the run worktrees of every target other than the
- *   project root, located or cloned. A run worktree whose run is dead ({@link runAlive}: by pid
- *   and start time) is removed, whatever its age, through the git directory that owns it. Its `.git` file and that record's `commondir`
+ *   project root, located or cloned. A run worktree whose run is dead ({@link runAliveWith}: by
+ *   pid and start time) is removed, whatever its age, through the git directory that owns it. Its `.git` file and that record's `commondir`
  *   are read first, so the owner is known before anything is touched. Only that worktree's own
  *   record is taken out of the owner: never a bare `git worktree prune`, which would also drop a
  *   person's worktrees whose folders are missing. A run worktree of a managed clone is removed
@@ -41,11 +41,17 @@ import { basename, dirname, join, resolve } from 'node:path'
 import type { CommandRunner } from '@osdlc/command-seam'
 import type { MachineConfigFile } from '@osdlc/config-layers'
 import { osdlcDirs } from '@osdlc/ecosystem'
-import { releaseLock, sameProcess } from '@osdlc/file-lock'
+import { pidAlive, processStartedAt, releaseLock } from '@osdlc/file-lock'
 import { homeDir } from '@osdlc/tiered-dirs'
 import { Git } from '@osdlc/typed-git'
 
-import { foldersProblem, ownedByMe, type FolderCheckOptions, type OwnedCheck } from './folders.ts'
+import {
+  foldersProblem,
+  ownedByMe,
+  type FolderCheckOptions,
+  type GroupOptions,
+  type OwnedCheck,
+} from './folders.ts'
 import { machineFile, prUpdatePaths, type machineConfigSchema } from './machine.ts'
 import {
   CLONE_MARKER,
@@ -76,12 +82,44 @@ const RUN_NAME = /^(\d+)\.(\d+)$/
 export type RunAlive = (pid: number, startedAt: number) => boolean
 
 /**
- * The process with `pid` is the one that started at or before `startedAt`, as the folder name
- * says: a pid an unrelated later process reused does not keep a dead run's worktree, and a live
- * run is never read as dead (`sameProcess`). Pids name processes of one machine, so the cache
- * must not be shared between machines.
+ * How long after the time in a run folder's name the process with its pid may have started and
+ * still be read as that run. A run names its folder with the time it began, after its process
+ * started, so its own process always started earlier. But the start time is read against the
+ * wall clock, which a clock step (NTP, a suspended laptop, a person setting the time) can move
+ * by more than the 2 s `sameProcess` allows, and a run misread as dead has its worktree
+ * force-removed. So the margin is wide: 10 minutes. The cost is small: an unrelated process
+ * that reuses a dead run's pid within 10 minutes of that run's start keeps its worktree until
+ * the pid is free again.
  */
-export const runAlive: RunAlive = (pid, startedAt) => sameProcess(pid, startedAt)
+export const RUN_START_MARGIN_MS = 10 * 60 * 1000
+
+/** The probes {@link runAliveWith} uses. Defaults: `pidAlive` and `processStartedAt` from `@osdlc/file-lock`. */
+export interface RunProbes {
+  /** Whether a process with the pid exists. */
+  alive?: ((pid: number) => boolean) | undefined
+  /** When the process with the pid started, in ms, or null when that cannot be read. */
+  startedAt?: ((pid: number) => number | null) | undefined
+}
+
+/**
+ * The run check over `probes`: a run is dead only when no process has its pid, or when the
+ * process with that pid started more than {@link RUN_START_MARGIN_MS} after the time the folder
+ * name records, so it is another, later process. A start time that cannot be read counts as
+ * alive: the run is not ruled out. Pids name processes of one machine, so the cache must not be
+ * shared between machines.
+ */
+export function runAliveWith(probes: RunProbes = {}): RunAlive {
+  const alive = probes.alive ?? pidAlive
+  const startedAt = probes.startedAt ?? ((pid: number) => processStartedAt(pid))
+  return (pid, recorded) => {
+    if (!alive(pid)) return false
+    const start = startedAt(pid)
+    return start === null || start - recorded <= RUN_START_MARGIN_MS
+  }
+}
+
+/** The default run check: {@link runAliveWith} over this machine's processes. */
+export const runAlive: RunAlive = runAliveWith()
 
 /** Whether the run a folder name matched by {@link RUN_NAME} names is alive, by `alive`. */
 function isRunning(run: RegExpExecArray, alive: RunAlive): boolean {
@@ -107,8 +145,8 @@ export interface MirrorWalkOptions {
   machine?: MachineConfigFile<typeof machineConfigSchema> | undefined
   /** Whether a file is the person's own. Default {@link ownedByMe}. */
   owned?: OwnedCheck | undefined
-  /** The group a group-writable folder may have. Default the process's primary group; a test injects another. */
-  gid?: number | undefined
+  /** Whose private group a group-writable folder may have. Default this process's; a test injects another. */
+  group?: GroupOptions | undefined
   /** The time now, in ms. A test moves it. */
   now?: (() => number) | undefined
 }
@@ -357,7 +395,7 @@ function keptPlaceOf(kept: string, worktrees: string, repo: string, clone: strin
 function clonesIn(
   mirrorDir: string,
   owned: OwnedCheck,
-  gid?: number | undefined,
+  group: GroupOptions = {},
 ): { path: string; repo: string; state: ReturnType<typeof checkClone> }[] {
   const marker = lstatOrNull(join(mirrorDir, MIRROR_MARKER))
   if (marker === null || !marker.isFile() || !owned(marker)) return []
@@ -377,7 +415,7 @@ function clonesIn(
         out.push({
           path,
           repo: `${host}/${owner}/${n.slice(0, -'.git'.length)}`,
-          state: checkClone(mirrorDir, path, owned, gid),
+          state: checkClone(mirrorDir, path, owned, group),
         })
       }
     }
@@ -513,10 +551,10 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
   const remove = opts.remove ?? ((path: string) => rmSync(path, { recursive: true, force: true }))
   const dryRun = opts.dryRun === true
   const alive = opts.alive ?? runAlive
-  const gid = opts.gid
+  const group = opts.group ?? {}
   /** The check of a folder under `worktrees/` or `kept/`, whose fix covers every folder below. */
   const ownFolders = (root: string): FolderCheckOptions => ({
-    gid,
+    ...group,
     fix: () => `run \`chmod -R go-w ${root}\``,
   })
   const report: PruneReport = {
@@ -572,7 +610,7 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
     const owner = worktreeOwner(w.path)
     const clone = owner !== null && claimsToBeClone(owner.common)
     if (clone) {
-      const state = checkClone(rootOf(owner.common), owner.common, owned, gid)
+      const state = checkClone(rootOf(owner.common), owner.common, owned, group)
       if (state !== 'clone') {
         const why = state === 'missing' ? 'it is gone' : state.foreign
         report.skipped.push({
@@ -661,7 +699,7 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
             repo: `${host}/${owner}/${tmp[1]!.slice(0, -'.git'.length)}`,
             bytes: sizeOf(path),
           }
-          const place = placeProblem(at.mirrorDir, path, owned, { ...cloneFolders, gid })
+          const place = placeProblem(at.mirrorDir, path, owned, { ...group, ...cloneFolders })
           if (place !== null) {
             report.skipped.push({ ...entry, skip: 'folder', reason: place })
             continue
@@ -695,7 +733,7 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
   if (opts.allClones !== true && days === null) return report
   const old = (clone: string): boolean =>
     opts.allClones === true || days === null || now - lastUsed(clone) > days * DAY_MS
-  for (const { path, repo, state } of clonesIn(at.mirrorDir, owned, gid)) {
+  for (const { path, repo, state } of clonesIn(at.mirrorDir, owned, group)) {
     const entry: PruneEntry = { kind: 'clone', path, repo, bytes: 0 }
     if (state !== 'clone') {
       report.skipped.push({
@@ -714,7 +752,7 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
     }
     try {
       // Under the lock, again: a run may have used it since the walk began.
-      if (checkClone(at.mirrorDir, path, owned, gid) !== 'clone' || !old(path)) continue
+      if (checkClone(at.mirrorDir, path, owned, group) !== 'clone' || !old(path)) continue
       pruneClone(path, repo, entry)
     } catch (e) {
       // git could not read the clone, say: it stays, and the other clones are still pruned.

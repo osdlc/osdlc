@@ -27,7 +27,7 @@ import { dirname, join } from 'node:path'
 import { EXIT, captureContext } from '@osdlc/cli-tool'
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { osdlcDirs } from '@osdlc/ecosystem'
-import { releaseLock } from '@osdlc/file-lock'
+import { processStartedAt, releaseLock } from '@osdlc/file-lock'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main } from '../src/cli.ts'
@@ -39,7 +39,13 @@ import {
   cloneLockPath,
   markMirrorDir,
 } from '../src/mirror.ts'
-import { listMirror, pruneMirror, type PruneOptions } from '../src/prune.ts'
+import {
+  RUN_START_MARGIN_MS,
+  listMirror,
+  pruneMirror,
+  runAliveWith,
+  type PruneOptions,
+} from '../src/prune.ts'
 import { allToolsInstalled, isolatedEnv } from './support.ts'
 
 /** No process has this pid, so a run named for it is dead. */
@@ -717,10 +723,12 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
     chmodSync(join(paths.worktrees, 'github.com'), 0o777)
     chmodSync(keptOwner, 0o775)
     chmodSync(dirname(clone), 0o757)
-    // Another group than the folders': a group-writable folder is then someone else's to write.
-    const otherGid = statSync(keptOwner).gid + 1
+    // The folder's group as a private group of the person's, on Linux; then the same group
+    // shared with others (its number is not the uid).
+    const g = statSync(keptOwner).gid
+    const privateGroup = { platform: 'linux' as const, uid: g, gid: g }
 
-    const r = prune({ allClones: true, gid: otherGid })
+    const r = prune({ allClones: true, group: { ...privateGroup, uid: g + 1 } })
 
     expect(r.removed).toEqual([])
     expect(r.skipped.map((e) => [e.path, e.skip, e.reason])).toEqual(
@@ -733,7 +741,7 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
         [
           probe,
           'folder',
-          `${keptOwner} can be written by its group, which is not your primary group; run \`chmod -R go-w ${paths.kept}\``,
+          `${keptOwner} can be written by its group, which is not a private group of yours; run \`chmod -R go-w ${paths.kept}\``,
         ],
         [
           tmp,
@@ -747,8 +755,8 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
     )
     for (const p of [clone, dead, probe, tmp]) expect(existsSync(p)).toBe(true)
 
-    // With the process's own primary group, the group-writable kept folder is the person's own.
-    expect(prune({ allClones: true }).removed).toEqual([
+    // With a private group, the group-writable kept folder is the person's own.
+    expect(prune({ allClones: true, group: privateGroup }).removed).toEqual([
       expect.objectContaining({ kind: 'leftover', path: probe }),
     ])
 
@@ -799,7 +807,7 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
     expect(listed(clone)).toEqual([dead])
   })
 
-  test('under umask 002, a run worktree made through git is pruned; so is one under a sticky folder anyone can write to', () => {
+  test('under umask 002 with a user private group, a run worktree made through git is pruned; on macOS, or under a sticky folder anyone can write to, it is left', () => {
     const old = process.umask(0o002)
     try {
       const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
@@ -807,11 +815,23 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
       const dead = runWorktree(checkout.dir, 'acme/web')
       const clone = makeClone('acme/api', 0)
       const inClone = runWorktree(clone, 'acme/api')
-      // The folders git and mkdir made are writable by the group, the person's own.
+      // The folders git and mkdir made are writable by the group.
       expect(statSync(dirname(dead)).mode & 0o777).toBe(0o775)
       expect(statSync(dirname(clone)).mode & 0o777).toBe(0o775)
+      // Their group as the person's private group: Linux, the group's number is the uid.
+      const g = statSync(dirname(dead)).gid
+      const privateGroup = { platform: 'linux' as const, uid: g, gid: g }
 
-      const r = prune()
+      // macOS: the group (`staff`) is every user's, so the folders are refused.
+      const mac = prune({ group: { ...privateGroup, platform: 'darwin' } })
+      expect(mac.removed).toEqual([])
+      expect(mac.skipped.map((e) => [e.kind, e.skip])).toEqual([
+        ['worktree', 'folder'],
+        ['worktree', 'folder'],
+        ['clone', 'foreign'],
+      ])
+
+      const r = prune({ group: privateGroup })
 
       expect(r.skipped).toEqual([])
       expect(r.removed.map((e) => [e.kind, e.path]).sort()).toEqual(
@@ -823,15 +843,20 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
       expect(existsSync(dead)).toBe(false)
       expect(listed(clone)).toEqual([])
 
+      // Writable by anyone is refused, sticky bit or not.
       const again = runWorktree(checkout.dir, 'acme/web', '2147483645.1')
-      chmodSync(join(paths.worktrees, 'github.com'), 0o1777)
-      expect(prune().removed).toEqual([expect.objectContaining({ kind: 'worktree', path: again })])
-      // Without the sticky bit, writable by anyone is refused.
-      const third = runWorktree(checkout.dir, 'acme/web', '2147483644.1')
-      chmodSync(join(paths.worktrees, 'github.com'), 0o777)
-      expect(prune().skipped).toEqual([
-        expect.objectContaining({ kind: 'worktree', path: third, skip: 'folder' }),
-      ])
+      for (const mode of [0o1777, 0o777]) {
+        chmodSync(join(paths.worktrees, 'github.com'), mode)
+        expect(prune({ group: privateGroup }).skipped).toEqual([
+          expect.objectContaining({
+            kind: 'worktree',
+            path: again,
+            skip: 'folder',
+            reason: expect.stringContaining('can be written by anyone'),
+          }),
+        ])
+      }
+      expect(existsSync(again)).toBe(true)
     } finally {
       process.umask(old)
     }
@@ -839,28 +864,45 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
 })
 
 describe('a run is judged by its pid and its start time', () => {
-  test('a folder named for this live process but a start time before it began counts as dead', () => {
-    const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
-    checkout.commit('init', { 'w.txt': 'w' })
-    // The pid of a live process, as when an unrelated later process reuses a dead run's pid.
-    const reused = runWorktree(checkout.dir, 'acme/web', `${process.pid}.${STARTED - DAY}`)
-    const running = runWorktree(checkout.dir, 'acme/web', liveRun())
+  // The real probes: Windows, or a platform whose start times cannot be read, answers alive.
+  test.skipIf(process.platform === 'win32' || processStartedAt(process.pid) === null)(
+    'a folder named for this live process with a time a day before it started counts as dead',
+    () => {
+      const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
+      checkout.commit('init', { 'w.txt': 'w' })
+      // The pid of a live process, as when an unrelated later process reuses a dead run's pid.
+      const reused = runWorktree(checkout.dir, 'acme/web', `${process.pid}.${STARTED - DAY}`)
+      const running = runWorktree(checkout.dir, 'acme/web', liveRun())
 
-    expect(
-      listMirror({ env })
-        .worktrees.map((w) => [w.path, w.running])
-        .sort(),
-    ).toEqual(
-      [
-        [reused, false],
-        [running, true],
-      ].sort(),
-    )
-    const r = prune()
+      expect(
+        listMirror({ env })
+          .worktrees.map((w) => [w.path, w.running])
+          .sort(),
+      ).toEqual(
+        [
+          [reused, false],
+          [running, true],
+        ].sort(),
+      )
+      const r = prune()
 
-    expect(r.removed).toEqual([expect.objectContaining({ kind: 'worktree', path: reused })])
-    expect(existsSync(reused)).toBe(false)
-    expect(existsSync(running)).toBe(true)
+      expect(r.removed).toEqual([expect.objectContaining({ kind: 'worktree', path: reused })])
+      expect(existsSync(reused)).toBe(false)
+      expect(existsSync(running)).toBe(true)
+    },
+  )
+
+  test('a start up to 10 minutes after the recorded time is the run (a clock step); later, or no process, is not; an unreadable start is alive', () => {
+    const recorded = 1_700_000_000_000
+    const check = (start: number | null, alive = true) =>
+      runAliveWith({ alive: () => alive, startedAt: () => start })(41, recorded)
+    expect(check(recorded - 60_000)).toBe(true)
+    expect(check(recorded + 5_000)).toBe(true)
+    expect(check(recorded + RUN_START_MARGIN_MS)).toBe(true)
+    expect(check(recorded + 11 * 60_000)).toBe(false)
+    expect(check(null)).toBe(true)
+    expect(check(recorded, false)).toBe(false)
+    expect(RUN_START_MARGIN_MS).toBe(10 * 60_000)
   })
 
   test('the default check is the pid with the start time the folder name carries', () => {

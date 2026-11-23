@@ -190,9 +190,11 @@ export interface ManagedClones {
    * prune cannot remove the clone part-way, and write the clone's last-used stamp. When this run
    * holds the lock already, `read` runs at once. The lock is never waited for: when another run
    * holds it, a note says so and `read(false)` runs without it, to read the clone as it is with
-   * no fetch. Returns what `read` does.
+   * no fetch. When the clone is no longer there after that read (a prune held the lock), what
+   * `read` returned or threw is dropped, a note says so, and `gone(why)` answers instead.
+   * Returns what `read` or `gone` does.
    */
-  use<T>(clone: string, read: (mayFetch: boolean) => T): T
+  use<T>(clone: string, read: (mayFetch: boolean) => T, gone: (why: string) => T): T
   /**
    * Let go of the lock {@link provide} took for the clone at `clone`: the run has added its
    * worktree there, or has nothing to do in it. Nothing when the run does not hold it.
@@ -1165,7 +1167,9 @@ export function surveyWithTargets(
                 ...(clone ? { prune: true } : {}),
               }).ok
         : false
-    const read = (mayFetch: boolean) => {
+    /** What reading a target gives; `unserved` when a clone a prune removed was not read. */
+    type Read = ReturnType<typeof surveyRows> & { fetched: boolean; unserved?: string }
+    const read = (mayFetch: boolean): Read => {
       const fetched = mayFetch ? fetch() : false
       // `try`, not `soft`: a failed listing must not read as "no checkout holds
       // this branch", which would clear a force-push. `null` counts as unsafe.
@@ -1183,10 +1187,29 @@ export function surveyWithTargets(
         ...surveyRows(git, prs, { repo: target.repo, worktrees, cfg, measurable, remote, others }),
       }
     }
-    const { fetched, rows, cycles } =
+    // A clone a prune removed while it was read without its lock: reported as a target with no
+    // checkout, its PRs not measured, rather than with rows read from a clone half gone.
+    const gone = (why: string): Read => ({
+      fetched: false,
+      unserved: why,
+      ...surveyRows(git, prs, {
+        repo: target.repo,
+        worktrees: [],
+        cfg,
+        measurable: false,
+        remote,
+        others: [],
+      }),
+    })
+    const { fetched, rows, cycles, unserved } =
       clone && target.path !== null && env.clones !== undefined
-        ? env.clones.use(target.path, read)
+        ? env.clones.use(target.path, read, gone)
         : read(true)
+    if (unserved !== undefined) {
+      repos.push({ repo: target.repo, measurable: false, checkout: null, fetched, cycles })
+      allRows.push(...rows)
+      continue
+    }
     repos.push({ repo: target.repo, measurable, checkout, fetched, cycles })
     allRows.push(...rows)
   }

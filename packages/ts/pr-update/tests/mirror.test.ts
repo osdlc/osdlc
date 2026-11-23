@@ -12,7 +12,6 @@ import {
   readdirSync,
   realpathSync,
   chmodSync,
-  chownSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -558,11 +557,20 @@ describe('the folders between the clone directory and a clone (review round 2)',
         expect(checkClone(root(), clone)).toEqual({
           foreign: `${dir} can be written by anyone, so ${clone} is not used; ${fix(dir)}`,
         })
-        // Writable by its group, when the group is not the process's primary one.
+        // Writable by its group, when the group is not the person's private one.
         chmodSync(dir, 0o775)
-        const other = statSync(dir).gid + 1
-        expect(checkClone(root(), clone, undefined, other)).toEqual({
-          foreign: `${dir} can be written by its group, which is not your primary group, so ${clone} is not used; ${fix(dir)}`,
+        const g = statSync(dir).gid
+        const groupRefusal = {
+          foreign: `${dir} can be written by its group, which is not a private group of yours, so ${clone} is not used; ${fix(dir)}`,
+        }
+        expect(
+          checkClone(root(), clone, undefined, { platform: 'linux', uid: g, gid: g + 1 }),
+        ).toEqual(groupRefusal)
+        // Sticky or not, writable by anyone is refused.
+        chmodSync(dir, 0o1777)
+        expect(statSync(dir).mode & 0o1000).toBe(0o1000)
+        expect(checkClone(root(), clone)).toEqual({
+          foreign: `${dir} can be written by anyone, so ${clone} is not used; ${fix(dir)}`,
         })
         chmodSync(dir, 0o755)
       }
@@ -583,23 +591,36 @@ describe('the folders between the clone directory and a clone (review round 2)',
   )
 
   test.skipIf(!posix)(
-    'a folder writable by your own primary group, or by anyone with the sticky bit set, is accepted (review round 1 of mirror prune)',
+    'a group-writable folder is accepted only for a user private group, never on macOS (review round 2 of mirror prune)',
     () => {
       const clone = made()
       const owner = join(root(), 'github.com', 'acme')
-      // What `mkdir` makes under umask 002 with a group of one's own: the group is the primary one.
-      // (Set here: on macOS a new folder takes its parent's group.)
-      for (const dir of [root(), owner]) chownSync(dir, -1, process.getgid!())
       chmodSync(owner, 0o775)
-      expect(checkClone(root(), clone)).toBe('clone')
-      chmodSync(root(), 0o775)
-      expect(() => checkMirrorDir(root())).not.toThrow()
-      // Writable by anyone, but no one can rename or remove another's entries in it.
-      chmodSync(owner, 0o1777)
-      expect(statSync(owner).mode & 0o1000).toBe(0o1000)
-      expect(checkClone(root(), clone)).toBe('clone')
+      const g = statSync(owner).gid
+      const refused = expect.objectContaining({
+        foreign: expect.stringContaining(
+          `${owner} can be written by its group, which is not a private group of yours`,
+        ),
+      })
+      // A user private group: the folder's group, the primary group and the uid are one number.
+      expect(checkClone(root(), clone, undefined, { platform: 'linux', uid: g, gid: g })).toBe(
+        'clone',
+      )
+      // macOS: every user's primary group is the shared `staff`, whatever its number.
+      expect(checkClone(root(), clone, undefined, { platform: 'darwin', uid: g, gid: g })).toEqual(
+        refused,
+      )
+      // A primary group shared with others (its number is not the uid).
+      expect(
+        checkClone(root(), clone, undefined, { platform: 'linux', uid: g + 1, gid: g }),
+      ).toEqual(refused)
+      // The folder's group is not the primary group.
+      expect(
+        checkClone(root(), clone, undefined, { platform: 'linux', uid: g + 1, gid: g + 1 }),
+      ).toEqual(refused)
+      // Only the owner is checked on Windows.
+      expect(checkClone(root(), clone, undefined, { platform: 'win32' })).toBe('clone')
       chmodSync(owner, 0o755)
-      chmodSync(root(), 0o755)
     },
   )
 

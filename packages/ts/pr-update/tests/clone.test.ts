@@ -1207,6 +1207,32 @@ describe('mirror prune review round 1', () => {
     expect(existsSync(cloneLockPath(clone))).toBe(false)
   })
 
+  test('a survey that reads a busy clone without its lock, while a prune removes it, reports the target not measured', async () => {
+    writeMachine('checkout: mirror\n')
+    expect((await run('update', '--repo', 'acme/api', '--apply')).code).toBe(EXIT.ok)
+    const clone = cloneOf(repos)
+    const seams: CliSeams = {
+      ...noTerminal,
+      // A prune holds the lock, and removes the clone while the survey reads it.
+      mirrorClaim: (path, wait) => {
+        if (path !== cloneLockPath(clone)) return claimCloneLock(path, wait)
+        rmSync(clone, { recursive: true, force: true })
+        return null
+      },
+    }
+
+    const r = await runWith(seams, {}, 'survey', '--repo', 'acme/api', '--json')
+
+    expect(r.code).toBe(EXIT.ok)
+    expect(r.err).toContain(
+      `${clone} was removed (by a prune) while this run read it without its lock`,
+    )
+    const out = JSON.parse(r.out)
+    expect(out.repos[0]).toMatchObject({ measurable: false, checkout: null, fetched: false })
+    // The PR is listed, unmeasured: nothing read from the clone half gone.
+    expect(out.prs).toMatchObject([{ number: 7, status: 'unknown', behind: null, baseOid: null }])
+  })
+
   describe('a clone removed while the run waits for its lock', () => {
     /** A clone of acme/api in `dir` that `locate` finds, and a claim that removes it first. */
     function removedOnClaim(dir: string): { clone: string; seams: CliSeams } {
@@ -1253,7 +1279,7 @@ describe('mirror prune review round 1', () => {
 
       expect(r.code).toBe(EXIT.ok)
       expect(r.err).toContain(
-        `github.com/acme/api: ${clone} was removed (by a prune) while this run waited`,
+        `github.com/acme/api: ${clone} was removed (by a prune) before this run took its lock`,
       )
       expect(clonesMade()).toHaveLength(1)
       expect(JSON.parse(r.out).results).toMatchObject([{ number: 7, status: 'updated' }])

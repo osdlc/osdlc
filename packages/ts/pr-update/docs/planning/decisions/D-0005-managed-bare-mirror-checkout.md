@@ -268,7 +268,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   below. `survey` and a rehearsal fetch a clone that exists and otherwise
   report the target as not measured, naming `pr-update mirror enable`.
   `survey` takes the clone's lock without waiting and holds it while it
-  fetches and reads the clone, so a prune cannot remove it part-way; a
+  fetches and reads the clone, so a prune cannot remove it part-way. When
+  another run holds the lock, `survey` reads the clone as it is without one;
+  if the clone is gone after that read (a prune held the lock), what was read
+  is dropped and the target is reported not measured, with a note. A
   rehearsal holds it as `update --apply` does (Pruning clones, below), but
   claimed without waiting, and skips a busy clone as `mirror busy`. Both write
   the clone's last-used stamp, so a clone only surveyed is not pruned as
@@ -331,20 +334,26 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
      not be inside a git working tree, and must be missing, empty or already
      marked by this tool, and belong to the person running it, as must its
      marker, a plain file. On POSIX no one else may write to it: writable by
-     all (`mode & 0o002`) is refused unless the sticky bit is set, and
-     writable by its group (`mode & 0o020`) unless the folder's group is the
-     process's primary group (`process.getgid()`), which is what every folder
-     a person makes under umask `002` with a group of their own looks like
-     (the default on Ubuntu, Debian and Fedora). The refusal names the
+     all (`mode & 0o002`) is refused, sticky bit or not, and writable by its
+     group (`mode & 0o020`) unless the group is a user private group of the
+     person's: the platform is not macOS (where every user's primary group
+     is the shared `staff`), and the folder's group, the process's primary
+     group (`process.getgid()`) and its uid (`process.getuid()`) are one
+     number. That is what every folder a person makes looks like under umask
+     `002` with user private groups (the default on Ubuntu, Debian and
+     Fedora). The refusal names the
      `chmod go-w` that fixes it, or choosing a clone directory on a
      filesystem with Unix permissions (`--mirror-dir`,
      `PR_UPDATE_MIRROR_DIR`, `mirror enable --mirror-dir`), since exFAT, FAT
      and SMB shares show every folder as writable by all. The tool makes
-     every folder of its own with mode `0o755` at most, whatever the umask:
-     the clone folders, the folders above each run worktree (made before
-     `git worktree add`, which would make them under the umask), each kept
-     place, the machine file's folder and the attempt records' folders. So it
-     never refuses one it made. Otherwise the run exits 2 and names the directory,
+     every folder it creates itself with mode `0o755` at most, whatever the
+     umask: the clone directory and the `<host>`/`<owner>` folders, the
+     folders above each run worktree (made before `git worktree add`, which
+     would make them under the umask), each kept place, the machine file's
+     folder and the attempt records' folders. So it never refuses one it
+     made. The clone folder itself (made by `gh`) and each run worktree's
+     folder (made by `git`) take the umask; for them only the owner is
+     checked. Otherwise the run exits 2 and names the directory,
      having written nothing. Then write the tool's marker at its root if it
      is not there yet, create-if-absent, so two runs marking a new directory
      at once do not fail each other's check;
@@ -374,9 +383,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   mirror directory may be a link to one) that person owns and no one else
   can write to (by the rule of step 1); that is checked before a clone is
   made there too. Anything else at the clone path is never used or
-  replaced, and the target is skipped saying why. A run that waited for a
-  clone's lock looks at the clone again once it holds it: one a prune
-  removed meanwhile is made again under that lock by `update --apply` with
+  replaced, and the target is skipped saying why. A run looks at a clone
+  again once it holds its lock: one a prune removed before the run took the
+  lock is made again under that lock by `update --apply` with
   `checkout: mirror` consent, and otherwise its target is skipped with a
   note, never an error.
 - **Trust.** The trust gate runs for each target before a command its own
@@ -453,9 +462,14 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   Pruning also walks `worktrees/` in the cache, which holds the run
   worktrees of located checkouts as well as clones. A directory whose run is
   dead is removed. A run directory is named `<pid>.<time>`, the time in ms
-  when the run began; the run is dead when no process has that pid or the
-  process with it started after that time (`sameProcess` in
-  `@osdlc/file-lock`), so a reused pid keeps no dead run's worktree. Pids
+  when the run began; the run is dead when no process has that pid
+  (`pidAlive`) or the process with it started more than 10 minutes after
+  that time (`processStartedAt`, both from `@osdlc/file-lock`), so a reused
+  pid keeps no dead run's worktree. The margin is wide because the start time
+  is read against the wall clock, which a clock step (NTP, a suspended
+  laptop) can move by more than `sameProcess`'s 2 seconds, and a live run
+  misread as dead would lose its worktree. A start time that cannot be read
+  counts as alive. Pids
   belong to one machine, so the cache and state directories must not be
   shared between machines. First its `.git` file is read: it
   names `<common-dir>/worktrees/<id>`, whose `commondir` file gives the

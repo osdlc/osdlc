@@ -45,6 +45,7 @@ import {
   foldersProblem,
   ownedByMe,
   type FolderCheckOptions,
+  type GroupOptions,
   type OwnedCheck,
 } from './folders.ts'
 import type { CloneLookup, MissedCheckout } from './locate.ts'
@@ -121,18 +122,18 @@ export const cloneFolders: FolderCheckOptions = { fix: writableFix }
  * Either way, `root` and the folders between it and the clone (`<host>`, `<host>/<owner>`), as
  * far as they exist, must be real folders the person owns that no one else can write to
  * (`folderProblem` in `./folders.ts`); else the result is `foreign`. `root` may be a symbolic
- * link to such a folder, a folder between may not. `gid` is the group a group-writable folder
- * may have (default the process's primary group); a test injects another.
+ * link to such a folder, a folder between may not. `group` says whose private group a
+ * group-writable folder may have (default this process's); a test injects another.
  */
 export function checkClone(
   root: string,
   path: string,
   owned: OwnedCheck = ownedByMe,
-  gid?: number | undefined,
+  group: GroupOptions = {},
 ): 'clone' | 'missing' | { foreign: string } {
   const folders = foldersProblem(root, [dirname(dirname(path)), dirname(path)], owned, {
+    ...group,
     ...cloneFolders,
-    gid,
   })
   if (folders !== null) {
     const fix = folders.fix === undefined ? '' : `; ${folders.fix}`
@@ -804,7 +805,9 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
           }
           // Made again, under the lock this run holds, where `update --apply` has consent.
           if (apply && current().consent === 'mirror' && finalOf(t, current().dir) === t.path) {
-            opts.notice(`${keyOf(t)}: ${t.path} was removed (by a prune) while this run waited`)
+            opts.notice(
+              `${keyOf(t)}: ${t.path} was removed (by a prune) before this run took its lock`,
+            )
             return serve({ ...t, path: null, source: null, found: null }, root)
           }
           release(t.path)
@@ -823,7 +826,7 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
       })
     },
 
-    use(clone, read) {
+    use(clone, read, gone) {
       if (held.has(clone)) return read(true)
       const lock = cloneLockPath(clone)
       const token = claim(lock, 0)
@@ -831,7 +834,25 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
         opts.notice(
           `${clone}: another pr-update run holds ${lock}, so the clone is read as it is, without a fetch`,
         )
-        return read(false)
+        // Without the lock, a prune may remove the clone during the read: what was read from a
+        // clone that is gone afterwards is not used, and neither is an error it caused.
+        const root = dirname(dirname(dirname(clone)))
+        const removed = (): string | null => {
+          if (checkClone(root, clone, owned) === 'clone') return null
+          const why = `${clone} was removed (by a prune) while this run read it without its lock`
+          opts.notice(why)
+          return why
+        }
+        let result: ReturnType<typeof read>
+        try {
+          result = read(false)
+        } catch (e) {
+          const why = removed()
+          if (why === null) throw e
+          return gone(why)
+        }
+        const why = removed()
+        return why === null ? result : gone(why)
       }
       try {
         writeStamp(clone)
