@@ -2103,7 +2103,8 @@ export interface FetchOptions {
    * refspecs given are written. Without it, git also updates every ref a
    * configured fetch line maps a fetched ref to, forced when the line starts
    * with `+`, even when refspecs are given; a line such as
-   * `+refs/heads/x:refs/heads/x` then overwrites a local branch.
+   * `+refs/heads/x:refs/heads/x` then overwrites a local branch. Not on
+   * {@link fetchMany}: git ignores `--refmap` with `--multiple`.
    */
   refmap?: string | undefined
   /** `--quiet` — suppress the progress report on stderr. */
@@ -2160,8 +2161,11 @@ function pushFetchFlags(argv: string[], opts: Omit<FetchOptions, 'depth'>): void
   if (opts.noWriteFetchHead) argv.push('--no-write-fetch-head')
 }
 
-/** Options for {@link fetchMany}. */
-export interface FetchManyOptions extends Omit<FetchOptions, 'depth'> {
+/**
+ * Options for {@link fetchMany}. No `refmap`: with `--multiple`, git fetches
+ * each remote by its configured fetch lines and ignores `--refmap`.
+ */
+export interface FetchManyOptions extends Omit<FetchOptions, 'depth' | 'refmap'> {
   /**
    * `--jobs=<n>` — fetch up to `n` remotes at once. Default: git's own
    * (`fetch.parallel`, 1 unless set). Anything but a positive integer throws a
@@ -2180,7 +2184,8 @@ export function fetchMany(remotes: readonly string[], opts: FetchManyOptions = {
   if (remotes.length === 0) throw new TypeError('typed-git: fetchMany: no remote given')
   const argv = ['fetch', '--multiple']
   if (opts.quiet) argv.push('--quiet')
-  pushFetchFlags(argv, opts)
+  // A `refmap` from an untyped caller is dropped, not passed for git to ignore.
+  pushFetchFlags(argv, { ...opts, refmap: undefined })
   if (opts.noTags) argv.push('--no-tags')
   if (opts.jobs !== undefined) {
     if (!Number.isSafeInteger(opts.jobs) || opts.jobs < 1) {

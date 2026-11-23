@@ -481,12 +481,20 @@ describe('Git — argv construction (fake runner)', () => {
     const git = new Git('/repo', { runner })
     git.fetch('origin', 'main', { prune: false, refmap: '' })
     git.fetch('origin', 'main', { prune: true, refmap: '+refs/heads/*:refs/remotes/o/*' })
-    git.fetchMany(['origin'], { prune: false, refmap: '' })
+    git.fetchMany(['origin'], { prune: false })
     expect(calls.map((c) => c.argv)).toEqual([
       ['fetch', '--no-prune', '--refmap=', 'origin', 'main'],
       ['fetch', '--prune', '--refmap=+refs/heads/*:refs/remotes/o/*', 'origin', 'main'],
-      ['fetch', '--multiple', '--no-prune', '--refmap=', 'origin'],
+      ['fetch', '--multiple', '--no-prune', 'origin'],
     ])
+  })
+
+  test('fetchMany takes no refmap, which git ignores with --multiple, and never passes one (review round 1)', () => {
+    const { runner, calls } = recorder(OK(''))
+    const git = new Git('/repo', { runner })
+    // @ts-expect-error -- not an option of fetchMany
+    git.fetchMany(['origin', 'up'], { refmap: '' })
+    expect(calls.map((c) => c.argv)).toEqual([['fetch', '--multiple', 'origin', 'up']])
   })
 
   test('lsTree passes -z, orders -r/--long before the rev, pathspecs after --', () => {

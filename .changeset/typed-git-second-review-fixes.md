@@ -2,7 +2,8 @@
 "@osdlc/typed-git": minor
 ---
 
-`fetch` (and `fetchMany`) take `refmap`, which passes `--refmap=<refspec>`.
+`fetch` takes `refmap`, which passes `--refmap=<refspec>`. `fetchMany` does
+not: git ignores `--refmap` with `--multiple`.
 `refmap: ''` gives an empty map, so the fetch writes only the refspecs it is
 given. Without it, git also applies the remote's configured fetch lines to the
 refs it fetches, and a forced line into `refs/heads/` overwrites a local
