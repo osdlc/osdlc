@@ -7,12 +7,12 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node` and `orca` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `orca` and `docker` plugins, and the `host-cleaner` command.
 
 ## Phases
 
 Plugins run in the order they are given. The command line runs the shipped
-ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `orca`.
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `orca`, `docker`.
 The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
@@ -263,6 +263,29 @@ goes through `@osdlc/command-seam` with `--json`.
 host-cleaner clean --pick worktree:/path/to/wt --allow close-terminals
 ```
 
+## The `docker` plugin
+
+Docker's volumes, images and build cache live in its own data folder, which
+only Docker knows how to read, so every candidate is a ref and Docker deletes
+it itself. The data folder is never touched.
+
+Detected when `docker` is on `PATH` and `docker info` answers. Docker missing is
+silent; installed but not running adds a warning with Docker's reason, and the
+plugin stays out of the run.
+
+| Candidate | Found by | Deleted by | Cost |
+| --- | --- | --- | --- |
+| `docker-volume:<name>` | `docker volume ls --filter dangling=true`: no container, running or stopped, uses it. Not one named in `plugins.docker.keepVolumes`. | `docker volume rm` | `lost`: held, and runs only when picked with `--allow discard-user-data` |
+| `docker-image:<id>` | `docker image ls --filter dangling=true`: no tag. One a container (running or stopped) was made from is left out. | `docker image rm` | `re-download` |
+| `docker-build-cache:reclaimable` | The `Reclaimable:` total of `docker builder du`, when it is more than 0. | `docker builder prune --force` | `re-download` |
+
+Docker refuses to remove a volume or image a container took up after the
+plan, so that candidate fails instead of being deleted.
+
+```sh
+host-cleaner clean --pick docker-volume:pgdata --allow discard-user-data
+```
+
 ## Command line
 
 The command works in repo-cleaner's phases, with its flags. Nothing runs until
@@ -311,6 +334,7 @@ the key.
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
 | `idleHours` | `cargo`, `node` | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
+| `keepVolumes` | `docker` | `[]` | Volume names never proposed, even when no container uses them. |
 
 Two settings sit at the top of the config and apply to every plugin:
 

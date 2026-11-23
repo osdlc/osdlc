@@ -70,6 +70,14 @@ export { containedIn } from './roots.ts'
 export { gitPlugin, type GitPluginOptions } from './git.ts'
 export { cargoPlugin, CARGO_PLUGIN } from './cargo.ts'
 export { nodePlugin, NODE_PLUGIN } from './node.ts'
+export {
+  DOCKER_BUILD_CACHE,
+  DOCKER_IMAGE,
+  DOCKER_PLUGIN,
+  DOCKER_VOLUME,
+  dockerPlugin,
+  type DockerOptions,
+} from './docker.ts'
 export { type ArtifactOptions } from './artifacts.ts'
 export {
   DEFAULT_IDLE_HOURS,
