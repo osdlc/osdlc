@@ -13,6 +13,7 @@ import { homedir } from 'node:os'
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 
 import { canonicalHost, parseRemoteRepo, type RemoteRepo } from './git-url.ts'
+import { scpParts } from './remote-url.ts'
 
 /** A repository to match: owner and repo, and its host when that is known. */
 export type RepoCoordinate = Pick<RemoteRepo, 'owner' | 'repo'> & { host?: string | undefined }
@@ -52,11 +53,13 @@ const defaultResolver: SshAliasResolver = sshAliasResolver()
 /**
  * Whether `url` is an SSH remote: `ssh://…` (or git's `git+ssh://` and
  * `ssh+git://` spellings), or the scp-like `[user@]host:path`
- * form git reads when a colon comes before any slash.
+ * form git reads when a colon comes before any slash. With no user, a single
+ * letter before the colon is a Windows drive (`C:/x`, `C:\\x`), on every
+ * platform, as git reads it on Windows.
  */
 export function isSshRemote(url: string): boolean {
   if (/^(?:ssh|git\+ssh|ssh\+git):\/\//i.test(url)) return true
-  return !url.includes('://') && /^[^/]+:/.test(url)
+  return scpParts(url) !== null
 }
 
 /**
@@ -99,10 +102,10 @@ export function readRemote(
  */
 function sshPath(url: string): string | null {
   const text = url.trim()
-  const m =
-    /^(?:ssh|git\+ssh|ssh\+git):\/\/(?:[^@/]+@)?[^/]+\/(.+)$/i.exec(text) ??
-    /^(?:[^@/:]+@)?[^/:]+:(.+)$/.exec(text)
-  const path = m?.[1]?.replace(/^\/+/, '')
+  const path = (
+    /^(?:ssh|git\+ssh|ssh\+git):\/\/(?:[^@/]+@)?[^/]+\/(.+)$/i.exec(text)?.[1] ??
+    scpParts(text)?.path
+  )?.replace(/^\/+/, '')
   return path === undefined || path === '' ? null : path
 }
 

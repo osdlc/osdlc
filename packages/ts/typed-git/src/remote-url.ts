@@ -19,11 +19,29 @@ export interface RemoteCoordinate {
 }
 
 /**
- * Parses `git@host:owner/repo.git` (scp-style) and
+ * The host and path of git's scp-like form, `[user@]host:path`, or null. git
+ * reads a remote as that form when a colon comes before any slash and no
+ * `://` follows it. With no user, a single letter before the colon is a
+ * Windows drive (`C:/x`, `C:\\x`), not a host: git reads it so on Windows
+ * only, and this reads it so on every platform, so a remote means the same
+ * wherever it is read. Not on the package entry.
+ */
+export function scpParts(url: string): { host: string; path: string } | null {
+  if (url.includes('://')) return null
+  const m = /^(?:([^@/:\\]+)@)?([^@/:\\]+):(.+)$/.exec(url)
+  if (m === null) return null
+  const [, user, host, path] = m
+  if (user === undefined && /^[A-Za-z]$/.test(host!)) return null
+  return { host: host!, path: path! }
+}
+
+/**
+ * Parses `[user@]host:owner/repo.git` (scp-style, {@link scpParts}) and
  * `scheme://[user@]host[:port]/owner/repo[.git]`. The last two path segments
  * are the owner and repo, so a nested group (`group/sub/repo`) answers
- * `owner: "sub"`. Returns null for anything else (a local path or a
- * `file://` URL, a single path segment).
+ * `owner: "sub"`. Returns null for anything else (a local path, a Windows
+ * drive path such as `C:/x` on any platform, a `file://` URL, a single path
+ * segment).
  *
  * Only an `http(s)://` port is read. An `ssh://` port is dropped, so `port` is
  * null for `ssh://git@host:2222/owner/repo.git`.
@@ -32,15 +50,14 @@ export function parseRemoteUrl(url: string): RemoteCoordinate | null {
   const trimmed = url.trim()
   // `file://localhost/srv/git/a/b.git` is a local path, not a forge coordinate.
   if (/^file:/i.test(trimmed)) return null
-  const scp = /^[\w.-]+@([^:/]+):(.+)$/.exec(trimmed)
+  const scp = scpParts(trimmed)
   const uri = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::(\d+))?\/(.+)$/i.exec(trimmed)
-  const match = scp ?? uri
-  if (match === null) return null
-  const host = match[1]!
+  if (scp === null && uri === null) return null
+  const host = scp?.host ?? uri![1]!
   // `scp` has no port syntax: its `:` separates host and path.
-  const isHttp = match === uri && /^https?:/i.test(trimmed)
-  const port = isHttp && match[2] !== undefined ? Number(match[2]) : null
-  const rest = match === uri ? match[3]! : match[2]!
+  const port =
+    uri !== null && /^https?:/i.test(trimmed) && uri[2] !== undefined ? Number(uri[2]) : null
+  const rest = scp?.path ?? uri![3]!
   // Trim the slashes first, so `repo.git/` loses its `.git` too.
   const path = rest.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '')
   const parts = path.split('/').filter((p) => p !== '')
