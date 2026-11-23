@@ -7,11 +7,12 @@ Status: draft.
 This standard is for authors of tools in the osdlc family: the CLIs published
 under the `@osdlc` npm scope.
 
-- osdlc tools share one root in each home: `osdlc`. Config is in
-  `~/.config/osdlc/`, the cache in `~/.cache/osdlc/`, state in
-  `~/.local/state/osdlc/`.
-- Each tool owns one directory there, named after the tool, in every home:
-  `~/.config/osdlc/pr-update/`.
+- osdlc tools share one root in each home: `osdlc`. On Linux and macOS,
+  with no variable set, config is in `~/.config/osdlc/`, the cache in
+  `~/.cache/osdlc/`, state in `~/.local/state/osdlc/`. The homes follow the
+  XDG variables and differ on Windows ([Where files go](#where-files-go)).
+- Each tool owns one directory there, named after the tool, in every home,
+  such as `~/.config/osdlc/pr-update/`.
 - Files directly in the root belong to the whole family. One package,
   `@osdlc/ecosystem`, owns them ([D-ZVIA](../docs/decisions/D-ZVIA-osdlc-ecosystem-package.md)).
 - Machine files hold machine facts. A repository's config never sets a path
@@ -25,6 +26,25 @@ Every path comes from `@osdlc/tiered-dirs`, through config-layers'
 false`, so that one file has one path whichever program reads it and
 `OSDLC_CONVENTION` moves none of them. tiered-dirs resolves under `native`
 by default, so the pin is never left out. No path is built by hand.
+
+The pin picks tiered-dirs' table, and the table still depends on the
+platform. Each base home is the first of these that is set: its own
+variable, such as `OSDLC_CONFIG_DIR`; `OSDLC_ROOT`, with `config/`,
+`cache/` and `state/` under it; then the table. The `osdlc` directory goes
+under the base home in every case, so `OSDLC_CONFIG_DIR=/c` puts config in
+`/c/osdlc` and `OSDLC_ROOT=/r` puts it in `/r/config/osdlc`.
+
+| Home   | Linux, and macOS under the pin                       | Windows                      |
+| ------ | ---------------------------------------------------- | ---------------------------- |
+| config | `$XDG_CONFIG_HOME/osdlc`, else `~/.config/osdlc`     | `%APPDATA%\osdlc`            |
+| cache  | `$XDG_CACHE_HOME/osdlc`, else `~/.cache/osdlc`       | `%LOCALAPPDATA%\osdlc`       |
+| state  | `$XDG_STATE_HOME/osdlc`, else `~/.local/state/osdlc` | `%LOCALAPPDATA%\state\osdlc` |
+
+Without the pin, macOS would put config and state in
+`~/Library/Application Support/osdlc` and the cache in
+`~/Library/Caches/osdlc`. A relative `XDG_*` value is ignored, as the XDG
+spec says. Paths elsewhere in this standard show the Linux and macOS
+default.
 
 ```ts
 import { envVars, machineConfigFile, systemDirs } from '@osdlc/config-layers'
