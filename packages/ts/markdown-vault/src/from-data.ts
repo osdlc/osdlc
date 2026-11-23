@@ -59,8 +59,8 @@ export interface CreateVaultIndexOptions {
    * and invert them into `backlinks`.
    *
    * Default false: links/embeds stay unresolved (`path: null`, exactly as
-   * written) and each note's `backlinks` is exactly what was supplied
-   * (default []) — no vault-wide inversion pass runs.
+   * written) and each note's `backlinks` is what was supplied, with repeats
+   * dropped (default []) — no vault-wide inversion pass runs.
    */
   resolveLinks?: boolean
 }
