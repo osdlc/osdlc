@@ -38,7 +38,7 @@ import { loadConfigLayers } from './config-file.ts'
 import { standalonePorts } from './defaults.ts'
 import { MirrorDirError, managedClones, mirrorDirFrom, type MirrorAsker } from './mirror.ts'
 import { formatBytes, pruneMirror } from './prune.ts'
-import { gitMissingFailure, preflight, type WhichSeam } from './preflight.ts'
+import { gitMissingFailure, preflight, repositoryVarsRefusal, type WhichSeam } from './preflight.ts'
 import {
   REPAIR_AGENTS,
   REPAIR_AGENT_SUMMARIES,
@@ -409,6 +409,16 @@ function checkStart(
 }
 
 /**
+ * Refuse, as a usage error, a run whose `GIT_DIR` or another repository variable names another
+ * repository than the checkout it runs in (`repositoryVarsRefusal`). It runs first, before git is
+ * asked anything. The variables are read from `process.env`, which the git runner inherits.
+ */
+function checkCheckout(ctx: CliContext, seams: CliSeams): void {
+  const refusal = repositoryVarsRefusal(ctx.cwd, gitRunner(seams))
+  if (refusal !== null) throw new UsageError(refusal)
+}
+
+/**
  * Print each repository of a several-repository run that could not be listed,
  * and return the exit code of the first, or null when none failed. The other
  * repositories were surveyed, and their rows do not hide the failure.
@@ -466,6 +476,7 @@ export function surveyCommand(seams: CliSeams) {
     schemaVersion: SCHEMA_VERSION,
     readOnly: true,
     run({ flags }, ctx) {
+      checkCheckout(ctx, seams)
       const branch = branchOf(flags, ctx.cwd, seams)
       const limit = parseIntFlag('limit', flags.limit)
       const pr = parsePrFlags(flags.pr)
@@ -651,6 +662,7 @@ export function updateCommand(seams: CliSeams) {
         ? 'cli-only'
         : 'all',
     async run({ flags }, ctx) {
+      checkCheckout(ctx, seams)
       const branch = branchOf(flags, ctx.cwd, seams)
       // A report left by an earlier run must not be mistaken for this run's.
       const reportFile = flags.report === undefined ? undefined : resolve(ctx.cwd, flags.report)

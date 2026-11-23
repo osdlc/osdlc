@@ -274,7 +274,9 @@ relative `core.hooksPath` such as `.husky` would run hooks the PR's author
 wrote. They also run without an inherited `GIT_DIR` or git's other
 repository variables, as does every git call and command in any run
 worktree, the project root's included, so a run started from a git hook acts
-on the right repository (see [SECURITY.md](SECURITY.md)). The run never runs a bare `git worktree prune` there, so your own
+on the right repository (see [SECURITY.md](SECURITY.md)). `survey` and
+`update` refuse, with exit 2, a `GIT_DIR` or `GIT_WORK_TREE` that names
+another repository than the directory's own, such as a dotfiles setup's. The run never runs a bare `git worktree prune` there, so your own
 worktrees whose folders are missing stay listed. With `attempts.store:
 git-ref`, the record and the lease are refs on the checkout's own `origin`,
 taken per target. When a target's own record or lease fails (its remote
@@ -1077,7 +1079,7 @@ change it). With a single repository the failure is thrown.
 |---|---|
 | `0` | Clean run (`survey` always; `update` when no PR ended `conflict` or `failed`) |
 | `1` | Something went wrong that no other code names, for example: the run finished but a PR ended `conflict` or `failed`; `mirror prune` could not remove something; `config set` lost a race with another write; `PR_UPDATE_MACHINE_CONFIG` is not absolute; or an unexpected error |
-| `2` | The command cannot run as typed, for example: a malformed flag, `--repo` or `--pr`, a `--branch` with no open PR, a `--pr owner/name#N` for a repository outside the run, one `owner/name` on two hosts, an unusable clone directory, or an `update --apply` that must ask whether to clone and has no terminal |
+| `2` | The command cannot run as typed, for example: a malformed flag, `--repo` or `--pr`, a `--branch` with no open PR, a `--pr owner/name#N` for a repository outside the run, one `owner/name` on two hosts, an unusable clone directory, an `update --apply` that must ask whether to clone and has no terminal, or a `GIT_DIR` or `GIT_WORK_TREE` that names another repository than the directory's own |
 | `14` | A config file is invalid or unreadable, or the machine file cannot take an answer about cloning (not valid YAML, or not a map), in `update --apply`, `mirror enable` or `mirror disable` |
 | `21` | `update` refused for want of trust in the project root. An untrusted `--repo` target is skipped instead |
 | `22` | A tool the run needs is not installed: `git`, and `gh` (GitHub) or `curl` (Forgejo) |

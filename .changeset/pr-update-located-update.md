@@ -57,7 +57,10 @@ worktree or kept tree, and every command started there (verify, resolvers,
 `GIT_WORK_TREE`, `GIT_INDEX_FILE` and git's other repository variables. So
 does every git call in a `--repo` target, and a target's `git-ref` record and
 lease name its own repository. The project root's fetch, survey and listing
-are unchanged.
+are unchanged. So `survey` and `update` now stop with exit 2 before they
+fetch when `GIT_DIR`, `GIT_WORK_TREE` or another of these variables finds
+another repository or another top level than the directory's own, as a
+dotfiles setup's bare repository does. A git hook's own `GIT_DIR` passes.
 
 Fixed: `--retry-failed` no longer discards a kept worktree someone has
 changed or committed to, or one git cannot read, in the project root too.

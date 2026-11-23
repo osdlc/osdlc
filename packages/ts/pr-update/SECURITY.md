@@ -58,8 +58,10 @@ are in scope.
   call in a run worktree or kept tree, the project root's included, and for
   every command started there: verify, resolvers, `lockfile_install` and a
   repair command or agent. A target's `git-ref` record and lease name the
-  target's own repository instead. The project root's fetch, survey and PR
-  listing keep them, since they run where you ran pr-update.
+  target's own repository instead. The project root's fetch, survey, PR
+  listing and branch mode's sync keep them, since they run where you ran pr-update. So `survey` and
+  `update` refuse to start, with exit 2, when these variables find another
+  repository than the directory's own, as a dotfiles setup's do.
 - **PR content picks submodule URLs.** With `submodules: auto`, the update
   clones the submodules a PR's `.gitmodules` names, over the network with the
   run's credentials. Local paths and `ext::` URLs are refused; `https` and
