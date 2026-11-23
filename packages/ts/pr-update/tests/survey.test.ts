@@ -477,10 +477,27 @@ describe('resolveTargets', () => {
     ).toThrow('--repo o/r and --repo git.example.com/o/r are o/r on different hosts')
   })
 
-  test('a --repo that is not owner/name or host/owner/name is a usage error', () => {
-    expect(() => resolveTargets('o/r', '/repo', ['nope'], locate({}), opts)).toThrow(
-      SurveyUsageError,
+  test.each([
+    'nope',
+    'https://github.com/o/r',
+    'o/..',
+    './r',
+    'github.com/../r',
+    'o/r\\x',
+    'o/r x',
+    'o:x/r',
+    'o/r:x',
+    'a/b/c/d',
+  ])('--repo %s is a usage error', (text) => {
+    expect(() => resolveTargets('o/r', '/repo', [text], locate({}), opts)).toThrow(
+      `--repo ${text}: not owner/name or host/owner/name`,
     )
+  })
+
+  test('a host may carry a port', () => {
+    expect(resolveTargets('o/r', '/repo', ['ghe.example:8443/x/y'], locate({}), opts)).toEqual([
+      at('x/y', null, 'ghe.example:8443'),
+    ])
   })
 
   test('a checkout whose remote cannot be resolved contributes no default target', () => {

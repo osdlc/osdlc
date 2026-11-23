@@ -56,7 +56,7 @@ import {
 import type { CommandRunner } from '@osdlc/command-seam'
 import { parseRepoTarget } from '@osdlc/ecosystem/repositories'
 import { FailureError, type Failure } from '@osdlc/result'
-import { githubCodeHostFor } from './code-host.ts'
+import { githubCodeHostFor, type CodeHostTarget } from './code-host.ts'
 import { chooseStrategy, type Strategy } from './strategy.ts'
 import type { PrUpdateConfig } from './config.ts'
 import type { CheckoutSource, FoundCheckout, Ports } from './ports.ts'
@@ -450,6 +450,11 @@ export function scopeToPrs(
 // Repository targets
 // ---------------------------------------------------------------------------
 
+/** Whether `part` can be one segment of a repository's name: not `.` or `..`, and no backslash or whitespace. */
+function isNamePart(part: string): boolean {
+  return part !== '.' && part !== '..' && !/[\\\s]/.test(part)
+}
+
 /** Options for {@link resolveTargets}. */
 export interface ResolveTargetsOptions {
   /** The run's `--remote`, read in the project root and in a checkout `locate` gives as a bare path. Default `origin`. */
@@ -510,6 +515,16 @@ export function resolveTargets(
     try {
       parsed = parseRepoTarget(text)
     } catch {
+      parsed = null
+    }
+    // Each part becomes a path segment of a clone, kept or attempt path, and `owner/name` a
+    // `gh --repo` argument, so a part that could step out of its directory or is not a name is refused.
+    if (
+      parsed === null ||
+      [parsed.host, parsed.owner, parsed.repo].some((p) => p !== undefined && !isNamePart(p)) ||
+      parsed.owner.includes(':') ||
+      parsed.repo.includes(':')
+    ) {
       throw new SurveyUsageError(`--repo ${text}: not owner/name or host/owner/name`)
     }
     const owner = parsed.owner.toLowerCase()
@@ -677,8 +692,10 @@ export const checkoutEntry = z.object({
 export const repoEntry = z.object({
   repo: z.string().describe('`owner/name`.'),
   measurable: z.boolean().describe('False when no local checkout is known.'),
+  // Optional when read, so a report written before the field existed still parses; always written.
   checkout: checkoutEntry
     .nullable()
+    .optional()
     .describe('The checkout the repository was measured in; null when there is none.'),
   fetched: z.boolean(),
   cycles: z
@@ -733,9 +750,10 @@ export interface SurveyEnv {
   gh: CommandRunner
   /**
    * The code host for one surveyed repository: `cwd` is the checkout to run
-   * from, `repo` the repository. Absent means GitHub over `gh`.
+   * from, `repo` the repository (`owner/name`), and `host` its host when that
+   * is not the project root's and not github.com. Absent means GitHub over `gh`.
    */
-  codeHost?: ((target: { cwd: string; repo: string }) => CodeHost) | undefined
+  codeHost?: ((target: CodeHostTarget) => CodeHost) | undefined
   /**
    * The `code_host.override` config value. With `github`, the project root's
    * host counts as GitHub whatever its name, as a GitHub Enterprise host
@@ -819,7 +837,7 @@ export function surveyWithTargets(
   env: SurveyEnv,
 ): { report: SurveyReport; targets: RepoTarget[] } {
   const { cfg } = env
-  const { localRepo, targets } = surveyTargets(args, env)
+  const { targets } = surveyTargets(args, env)
   const codeHostFor = env.codeHost ?? githubCodeHostFor(env.gh)
 
   // Flags beat config; config beats the built-in default.
@@ -861,8 +879,15 @@ export function surveyWithTargets(
         : { path: target.path, source: target.source }
     const git = new Git(target.path ?? env.projectRoot, { runner: env.git })
 
-    const isLocal = target.repo === localRepo
-    const codeHost = codeHostFor({ cwd: target.path ?? env.projectRoot, repo: target.repo })
+    const isLocal = target.source === 'root'
+    // A target on a host other than github.com, such as GitHub Enterprise, is listed on that host.
+    const otherHost =
+      !isLocal && target.host !== null && target.host !== 'github.com' ? target.host : undefined
+    const codeHost = codeHostFor({
+      cwd: target.path ?? env.projectRoot,
+      repo: target.repo,
+      ...(otherHost === undefined ? {} : { host: otherHost }),
+    })
     const listed = codeHost.listPrDetails({
       limit: args.limit,
       ...(isLocal ? {} : { repo: target.repo }),
@@ -912,13 +937,24 @@ export function surveyWithTargets(
     // last fetch left, flagged, instead of failing the whole run. A scoped
     // run with nothing selected here fetches nothing: `git fetch` with no
     // refspec would fetch every branch.
+    //
+    // In a checkout other than the project root, the fetch writes only the
+    // remote's branches into `<remote>/*`: no tags, no FETCH_HEAD, and an
+    // explicit refspec, so the checkout's own `remote.<name>.fetch` cannot widen it.
     const { remote } = target
+    const own = target.source === 'root'
     const refspecs = scoped ? scopedRefspecs(prs, remote) : []
+    const quiet = own ? {} : { noTags: true, noWriteFetchHead: true }
     const fetched =
       measurable && !args.noFetch && !env.dryRun
         ? scoped
-          ? refspecs.length === 0 || git.try.fetch(remote, refspecs).ok
-          : git.try.fetch(remote, undefined, { prune: true }).ok
+          ? refspecs.length === 0 || git.try.fetch(remote, refspecs, quiet).ok
+          : own
+            ? git.try.fetch(remote, undefined, { prune: true }).ok
+            : git.try.fetch(remote, [`+refs/heads/*:refs/remotes/${remote}/*`], {
+                prune: true,
+                ...quiet,
+              }).ok
         : false
     // `try`, not `soft`: a failed listing must not read as "no checkout holds
     // this branch", which would clear a force-push. `null` counts as unsafe.

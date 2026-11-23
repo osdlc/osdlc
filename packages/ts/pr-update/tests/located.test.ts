@@ -4,24 +4,27 @@
  * it alone until it can run in one.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { EXIT, captureContext } from '@osdlc/cli-tool'
-import type { CommandRunner } from '@osdlc/command-seam'
+import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { main } from '../src/cli.ts'
+import { main, type CliSeams } from '../src/cli.ts'
 import { allToolsInstalled, isolatedEnv } from './support.ts'
 
 let scratch: string
 let project: string
 let located: string
 let topic: string
+/** The argv of every `gh` call, and the `GH_HOST` it ran with. */
+let asked: { argv: string[]; host: string | undefined }[]
 
 beforeEach(() => {
+  asked = []
   scratch = realpathSync(mkdtempSync(join(tmpdir(), 'pr-update-located-')))
   // The project root, whose `upstream` is the remote `--remote` names below.
   const root = makeGitFixture({ dir: join(scratch, 'dev', 'widgets') })
@@ -46,31 +49,46 @@ afterEach(() => rmSync(scratch, { recursive: true, force: true }))
 
 /** A `gh` that lists one PR, #7 `topic` into `main`, for acme/api and none elsewhere. */
 const gh: CommandRunner = {
-  run: (argv) => ({
-    exitCode: 0,
-    stderr: '',
-    stdout: JSON.stringify(
-      argv.includes('acme/api')
-        ? [
-            {
-              number: 7,
-              state: 'OPEN',
-              title: 'topic',
-              url: 'https://github.com/acme/api/pull/7',
-              baseRefName: 'main',
-              headRefName: 'topic',
-              headRefOid: topic,
-            },
-          ]
-        : [],
-    ),
-  }),
+  run: (argv, opts) => {
+    asked.push({ argv: [...argv], host: opts?.env?.['GH_HOST'] })
+    return {
+      exitCode: 0,
+      stderr: '',
+      stdout: JSON.stringify(
+        argv.some((a) => a.endsWith('acme/api'))
+          ? [
+              {
+                number: 7,
+                state: 'OPEN',
+                title: 'topic',
+                url: 'https://github.com/acme/api/pull/7',
+                baseRefName: 'main',
+                headRefName: 'topic',
+                headRefOid: topic,
+              },
+            ]
+          : [],
+      ),
+    }
+  },
 }
 
-async function run(...argv: string[]): Promise<{ code: number; out: string; err: string }> {
+async function runWith(
+  seams: CliSeams,
+  ...argv: string[]
+): Promise<{ code: number; out: string; err: string }> {
   const ctx = captureContext({ cwd: project, env: isolatedEnv(join(scratch, 'env')) })
-  const code = await main(argv, ctx, { which: allToolsInstalled, gh })
+  const code = await main(argv, ctx, { which: allToolsInstalled, gh, ...seams })
   return { code, out: ctx.io.out, err: ctx.io.err }
+}
+
+const run = (...argv: string[]) => runWith({}, ...argv)
+
+/** Run git in `dir`, and fail the test when it fails. */
+function git(dir: string, ...argv: string[]): string {
+  const res = spawnRunner('git').run(argv, { cwd: dir })
+  if (res.exitCode !== 0) throw new Error(`git ${argv.join(' ')}: ${res.stderr}`)
+  return res.stdout.trim()
 }
 
 describe('a located checkout', () => {
@@ -148,5 +166,88 @@ describe('a located checkout', () => {
       },
     ])
     expect(existsSync(join(located, '.pr-update'))).toBe(false)
+  })
+})
+
+describe('fetching a located checkout', () => {
+  test('writes only its branches into origin/*: no tags, no FETCH_HEAD', async () => {
+    // A bare origin a commit ahead of what the checkout last fetched, with a tag on its tip.
+    const bare = join(scratch, 'remote', 'api.git')
+    git(scratch, 'init', '-q', '--bare', bare)
+    const before = git(located, 'rev-parse', 'refs/remotes/origin/main')
+    git(located, 'push', '-q', bare, `${before}:refs/heads/main`, `${topic}:refs/heads/topic`)
+    git(located, 'checkout', '-q', '--detach', before)
+    const tip = makeGitFixture({ dir: located }).commit('main again', { 'n.txt': 'n' })
+    git(located, 'push', '-q', bare, `${tip}:refs/heads/main`)
+    git(bare, 'tag', 'v1', tip)
+    // The scan reads origin as GitHub's; the fetch is sent to the bare repository instead.
+    const real = spawnRunner('git')
+    const viaBare: CommandRunner = {
+      run: (argv, opts): CommandResult =>
+        real.run(
+          argv[0] === 'fetch'
+            ? ['-c', `url.file://${bare}.insteadOf=https://github.com/Acme/API.git`, ...argv]
+            : argv,
+          opts,
+        ),
+    }
+
+    const r = await runWith(
+      { git: viaBare },
+      'survey',
+      '--repo',
+      'acme/api',
+      '--remote',
+      'upstream',
+      '--json',
+    )
+    expect(r.code).toBe(EXIT.ok)
+    const out = JSON.parse(r.out)
+    expect(out.repos[0]).toMatchObject({ fetched: true, checkout: { source: 'located' } })
+    expect(git(located, 'rev-parse', 'refs/remotes/origin/main')).toBe(tip)
+    expect(out.prs[0]).toMatchObject({ number: 7, behind: 2 })
+    expect(git(located, 'tag', '--list')).toBe('')
+    expect(existsSync(join(located, '.git', 'FETCH_HEAD'))).toBe(false)
+  })
+})
+
+describe('the host of a bare owner/name', () => {
+  test("is the project root's GitHub Enterprise host under code_host.override: github", async () => {
+    git(project, 'remote', 'set-url', 'origin', 'https://github.acme.com/o/r.git')
+    writeFileSync(join(project, 'pr-update.yaml'), 'code_host:\n  override: github\n')
+    git(located, 'remote', 'set-url', 'origin', 'https://github.acme.com/acme/api.git')
+    const r = await run(
+      'survey',
+      '--repo',
+      'acme/api',
+      '--repo',
+      'acme/gone',
+      '--no-fetch',
+      '--json',
+    )
+    expect(r.code).toBe(EXIT.ok)
+    const out = JSON.parse(r.out)
+    // Found on that host, listed there, and reported by owner/name.
+    expect(out.repos[0]).toMatchObject({ repo: 'acme/api', checkout: { path: located } })
+    const listing = asked.find((c) => c.argv.includes('acme/api'))
+    expect(listing?.host).toBe('github.acme.com')
+    expect(out.prs[0]).toMatchObject({ repo: 'acme/api', number: 7 })
+    expect(r.err).toContain('github.acme.com/acme/gone: no checkout under')
+  })
+
+  test('is github.com when the project root is on Forgejo', async () => {
+    git(project, 'remote', 'set-url', 'origin', 'https://git.example.com/o/r.git')
+    vi.stubEnv('FORGEJO_TOKEN', 't')
+    const curl: CommandRunner = {
+      run: (): CommandResult => ({ exitCode: 0, stdout: '[]\nHTTPSTATUS:200', stderr: '' }),
+    }
+    try {
+      const r = await runWith({ curl }, 'survey', '--repo', 'acme/gone', '--no-fetch', '--json')
+      expect(r.code).toBe(EXIT.ok)
+      expect(r.err).toContain('github.com/acme/gone: no checkout under')
+      expect(r.err).not.toContain('git.example.com/acme/gone')
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })

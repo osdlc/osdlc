@@ -10,11 +10,34 @@ import { GithubCodeHost, selectCodeHost, type CodeHost, type CodeHostName } from
 import type { CommandRunner } from '@osdlc/command-seam'
 import { FailureError } from '@osdlc/result'
 
+/** What a `SurveyEnv.codeHost` factory is asked for: a repository, and the checkout to run from. */
+export interface CodeHostTarget {
+  cwd: string
+  /** `owner/name`. */
+  repo: string
+  /**
+   * The repository's host, when it is not the checkout's own and not
+   * github.com, such as a GitHub Enterprise host. Unset otherwise.
+   */
+  host?: string | undefined
+}
+
+/**
+ * `gh` aimed at `host`. gh reads an `owner/name` given to `--repo` as a
+ * repository on `GH_HOST`, else github.com, so a GitHub Enterprise target is
+ * listed on its own host. typed-gh's `--repo` takes `owner/name` only.
+ */
+function ghOn(gh: CommandRunner, host: string | undefined): CommandRunner {
+  if (host === undefined) return gh
+  return {
+    ...gh,
+    run: (argv, opts) => gh.run(argv, { ...opts, env: { ...opts?.env, GH_HOST: host } }),
+  }
+}
+
 /** A `SurveyEnv.codeHost` factory that builds a `GithubCodeHost` over `gh`. */
-export function githubCodeHostFor(
-  gh: CommandRunner,
-): (target: { cwd: string; repo: string }) => CodeHost {
-  return (target) => new GithubCodeHost(target.cwd, { runner: gh })
+export function githubCodeHostFor(gh: CommandRunner): (target: CodeHostTarget) => CodeHost {
+  return (target) => new GithubCodeHost(target.cwd, { runner: ghOn(gh, target.host) })
 }
 
 /**
@@ -30,11 +53,11 @@ export function selectedCodeHostFor(deps: {
   gh: CommandRunner
   curl?: CommandRunner | undefined
   override: CodeHostName | null
-}): (target: { cwd: string; repo: string }) => CodeHost {
+}): (target: CodeHostTarget) => CodeHost {
   return (target) => {
     const selected = selectCodeHost(target.cwd, {
       git: deps.git,
-      gh: deps.gh,
+      gh: ghOn(deps.gh, target.host),
       ...(deps.curl !== undefined ? { curl: deps.curl } : {}),
       override: deps.override,
     })
