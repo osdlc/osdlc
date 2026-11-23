@@ -39,10 +39,11 @@ concurrency:
 jobs:
   windows-tier2:
     name: windows tier 2 (windows-latest, node ${{ matrix.node }})
-    # The limit is the sum of the step limits below (bounded-run test 2,
-    # install 5, build 5, eleven tests at 4, pr-update's tests 20, smoke 3)
-    # plus 3 for setup, so a hung step never cancels the steps after it.
-    timeout-minutes: 82
+    # A full run takes about 15 minutes, 6 or 7 of them pr-update's tests. The
+    # limit is the sum of the step limits below (bounded-run test 2, install
+    # 5, build 5, eleven tests at 4, pr-update's tests 12, smoke 3) plus 3 for
+    # setup, so a hung step never cancels the steps after it.
+    timeout-minutes: 74
     runs-on: windows-latest
     continue-on-error: true
     strategy:
@@ -172,8 +173,8 @@ jobs:
       # Windows, so its limit is longer.
       - name: Test pr-update
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/pr-update"') }}
-        timeout-minutes: 20
-        run: node scripts/bounded-run.ts 1170 "pnpm --filter ./packages/ts/pr-update run test"
+        timeout-minutes: 12
+        run: node scripts/bounded-run.ts 690 "pnpm --filter ./packages/ts/pr-update run test"
 
       - name: Smoke the built packages under Node
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
