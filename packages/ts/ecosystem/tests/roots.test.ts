@@ -3,7 +3,8 @@
  * directory stop.
  */
 
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
@@ -236,3 +237,54 @@ const realRunner = spawnRunner('git', { absolutePathOnly: true })
 function escape(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+
+describe('defaultRoots, with a home directory reached through a symlink', () => {
+  const origin = 'git@github.com:acme/widgets.git'
+  // <elsewhere>/link -> <root>, so <elsewhere>/link/home is the sandbox home
+  // by a path that shares no prefix with the one git reports, as macOS's
+  // /var/folders/... is /private/var/folders/... to git.
+  const elsewhere: string[] = []
+  afterEach(() => {
+    for (const dir of elsewhere.splice(0)) rmSync(dir, { recursive: true, force: true })
+  })
+  const linkedHome = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ecosystem-link-'))
+    elsewhere.push(dir)
+    symlinkSync(sb.root, join(dir, 'link'))
+    return join(dir, 'link', 'home')
+  }
+
+  test('a checkout directly in the home directory keeps the home directory', () => {
+    const home = linkedHome()
+    const checkout = sb.checkout('widgets', origin)
+    expect(defaultRoots({ ...sb.opts, home, caller: checkout.dir })).toEqual([sb.home])
+  })
+
+  test('a checkout that is the home directory gives none', () => {
+    const home = linkedHome()
+    sb.checkout('', origin)
+    expect(defaultRoots({ ...sb.opts, home, caller: sb.home })).toEqual([])
+  })
+
+  test('an owner directory directly in the home directory does not step up to it', () => {
+    const home = linkedHome()
+    const checkout = sb.checkout('acme/widgets', origin)
+    expect(defaultRoots({ ...sb.opts, home, caller: checkout.dir })).toEqual([
+      join(sb.home, 'acme'),
+    ])
+  })
+
+  test('a home that does not exist, under a symlink, still stops the climb', () => {
+    // The home is <root>/gone, reached by the link; a checkout at
+    // <root>/acme/widgets has its holder named after the owner, and the step
+    // up would reach <root>, which holds the home.
+    const home = join(linkedHome(), '..', 'gone')
+    const checkout = sb.checkout('../acme/widgets', origin)
+    expect(defaultRoots({ ...sb.opts, home, caller: checkout.dir })).toEqual([
+      join(sb.root, 'acme'),
+    ])
+    // A checkout beside the missing home: its holder holds the home.
+    const beside = sb.checkout('../widgets', origin)
+    expect(defaultRoots({ ...sb.opts, home, caller: beside.dir })).toEqual([])
+  })
+})
