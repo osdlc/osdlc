@@ -37,6 +37,9 @@ export const OUTSIDE_ROOTS = 'outside-roots'
 /** The protest on a candidate whose `costDescription` is `lost`. */
 export const DISCARD_USER_DATA = 'discard-user-data'
 
+/** The protest on a candidate whose idle time could not be measured in the time budget (D11). */
+export const UNMEASURED = 'unmeasured'
+
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 /** The time limit, in milliseconds, of every hook but `delete`, unless the plugin asks for another. */
@@ -144,7 +147,8 @@ function nest(cs: readonly Candidate[]): Candidate[] {
  * candidate, since what it would object to is unknown. A path candidate
  * outside its owner's roots and the targets is refused `outside-roots`; one
  * with both a path and a ref, or neither, or an unknown `costDescription`, is
- * dropped. A `lost` one is held and protested `discard-user-data`. A
+ * dropped. A `lost` one is held and protested `discard-user-data`, and an
+ * `unmeasured` one protested `unmeasured`. A
  * {@link FatalRun} from any phase goes to the caller. Two candidates with the
  * same id, or path candidates with the same real path, are one: the first
  * plugin's stands, with a warning naming both. A path candidate with others
@@ -247,6 +251,15 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
         level: 'protest',
         code: DISCARD_USER_DATA,
         reason: 'deleting it loses data that cannot be fetched or built again',
+      })
+    }
+    if (c.unmeasured === true) {
+      objections.push({
+        by: 'host-cleaner',
+        candidate: c.id,
+        level: 'protest',
+        code: UNMEASURED,
+        reason: 'how long it sat unused could not be measured in the time budget',
       })
     }
     if (c.path === undefined) continue

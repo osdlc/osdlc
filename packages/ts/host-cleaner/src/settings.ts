@@ -10,7 +10,7 @@
 import { configFields, validateStandard } from '@osdlc/config-layers'
 import { z } from 'zod'
 
-import { DEFAULT_IDLE_HOURS } from './artifacts.ts'
+import { DEFAULT_IDLE_HOURS } from './kit.ts'
 import { BUILT_IN_PLUGINS } from './registry.ts'
 
 const enabled = z

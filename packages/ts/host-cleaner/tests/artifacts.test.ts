@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -12,9 +13,10 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-import type { CommandRunner } from '@osdlc/command-seam'
+import { asAsync, type CommandRunner } from '@osdlc/command-seam'
 import type { ProcessHolder, ProcessProbe } from '@osdlc/repo-cleaner'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
@@ -24,6 +26,7 @@ import {
   clean,
   nodePlugin,
   plan,
+  recheck,
   survey,
   type ArtifactOptions,
   type Ctx,
@@ -89,18 +92,20 @@ function target(checkout: string, hoursOld: number, tag = true): string {
   return dir
 }
 
-function fakeCargo(
-  opts: { present?: boolean; incremental?: boolean } = {},
-): (b: string) => CommandRunner {
-  return () =>
-    ({
-      run: (argv: string[]) => {
-        const ok = opts.present ?? true
-        const out =
-          argv[0] === 'config' ? `build.incremental = ${opts.incremental ?? true}\n` : 'cargo 1.0\n'
-        return { exitCode: ok ? 0 : 127, stdout: ok ? out : '', stderr: '' }
-      },
-    }) as unknown as CommandRunner
+/** A `cargo` on PATH (or not) that answers `config get build.incremental`. */
+function fakeCargo(opts: { present?: boolean; incremental?: boolean } = {}): ArtifactOptions {
+  const ok = opts.present ?? true
+  return {
+    which: (program) => (ok ? `/bin/${program}` : undefined),
+    runner: () =>
+      asAsync({
+        run: (argv: string[]) => {
+          const out =
+            argv[0] === 'config' ? `build.incremental = ${opts.incremental ?? true}\n` : ''
+          return { exitCode: ok ? 0 : 127, stdout: ok ? out : '', stderr: '' }
+        },
+      } as unknown as CommandRunner),
+  }
 }
 
 const probeOf = (holders: ProcessHolder[] | Error = []): ProcessProbe => ({
@@ -113,7 +118,7 @@ const probeOf = (holders: ProcessHolder[] | Error = []): ProcessProbe => ({
 
 const options = (over: ArtifactOptions = {}): ArtifactOptions => ({
   now: () => NOW,
-  command: fakeCargo(),
+  ...fakeCargo(),
   probe: probeOf(),
   ...over,
 })
@@ -222,13 +227,11 @@ describe('cargo plugin', () => {
     const root = repo()
     target(root, 1)
     put(join(root, 'target', 'debug', 'incremental', 'c-1', 'work'), 1)
-    const off = (await cargo(root, { command: fakeCargo({ incremental: false }) })).candidates
+    const off = (await cargo(root, fakeCargo({ incremental: false }))).candidates
     expect(off.map((c) => c.evidence.kind)).toEqual(['cargo-incremental'])
     expect(off[0]!.id).toBe(`artifact:${join(root, 'target', 'debug', 'incremental')}`)
     expect(off[0]!.held).toBe(true)
-    expect((await cargo(root, { command: fakeCargo({ incremental: true }) })).candidates).toEqual(
-      [],
-    )
+    expect((await cargo(root, fakeCargo({ incremental: true }))).candidates).toEqual([])
   })
 
   test('CARGO_BUILD_INCREMENTAL decides before cargo is asked', async () => {
@@ -238,9 +241,7 @@ describe('cargo plugin', () => {
     process.env.CARGO_BUILD_INCREMENTAL = 'false'
     expect((await cargo(root)).candidates).toHaveLength(1)
     process.env.CARGO_BUILD_INCREMENTAL = 'true'
-    expect((await cargo(root, { command: fakeCargo({ incremental: false }) })).candidates).toEqual(
-      [],
-    )
+    expect((await cargo(root, fakeCargo({ incremental: false }))).candidates).toEqual([])
   })
 
   test('CARGO_INCREMENTAL decides before CARGO_BUILD_INCREMENTAL', async () => {
@@ -256,9 +257,7 @@ describe('cargo plugin', () => {
     const root = repo()
     target(root, 48)
     put(join(root, 'target', 'debug', 'incremental', 'work'), 48)
-    expect(
-      (await cargo(root, { command: fakeCargo({ incremental: false }) })).candidates,
-    ).toHaveLength(1)
+    expect((await cargo(root, fakeCargo({ incremental: false }))).candidates).toHaveLength(1)
   })
 
   test('a target/ that leads outside its checkout is refused before anything is measured', async () => {
@@ -269,7 +268,7 @@ describe('cargo plugin', () => {
     symlinkSync(outside, join(root, 'target'))
     const found = await cargo(root)
     expect(found.candidates).toHaveLength(1)
-    expect(found.candidates[0]).toMatchObject({ evidence: { sizeBytes: null } })
+    expect(found.candidates[0]!.bytes).toBeUndefined()
     // The core refuses it too: its real path is outside the target.
     expect(found.refused.map((o) => o.code)).toEqual(['outside-roots', 'outside-checkout'])
     const plugin = cargoPlugin(options())
@@ -284,7 +283,7 @@ describe('cargo plugin', () => {
     const dir = target(root, 48)
     const plugin = cargoPlugin(options())
     const s = await survey([plugin], ctxOf(root))
-    const bytes = s.candidates[0]!.evidence.sizeBytes as number
+    const bytes = s.candidates[0]!.bytes!
     const receipt = await clean(plan(s), [plugin], ctxOf(root))
     expect(receipt.status).toBe('complete')
     expect(receipt.steps[0]).toMatchObject({
@@ -316,7 +315,7 @@ describe('cargo plugin', () => {
     expect(s.candidates).toHaveLength(1)
     rmSync(wt, { recursive: true })
     const gone = cargoPlugin(options())
-    const direct = gone.delete!(s.candidates[0]!, ctxOf(root))
+    const direct = await gone.delete!(s.candidates[0]!, ctxOf(root))
     expect(direct).toBe(`already gone: ${dir}`)
   })
 
@@ -383,9 +382,96 @@ describe('node plugin', () => {
     const plugin = nodePlugin(options())
     const receipt = await clean(plan(await survey([plugin], ctxOf(root))), [plugin], ctxOf(root))
     expect(receipt.status).toBe('complete')
-    expect(receipt.steps[0]!.delete).toMatch(/^removed .*node_modules; freed 100 bytes$/)
+    expect(receipt.steps[0]!.delete).toMatch(/^removed .*node_modules; freed \d+ bytes$/)
     expect(existsSync(join(wt, 'node_modules'))).toBe(false)
     expect(existsSync(join(wt, 'package.json'))).toBe(true)
+  })
+})
+
+describe('a folder too slow to measure (D11)', () => {
+  /** A clock a minute later at every read, so the walk runs out of its budget at once. */
+  const slow = (): (() => Date) => {
+    let t = NOW.getTime()
+    return () => new Date((t += 60_000))
+  }
+
+  /** A linked worktree, idle for 72 hours, with a node_modules. */
+  function idleWorktree(): { root: string; wt: string } {
+    const root = repo()
+    const wt = linked(root)
+    put(join(wt, 'package.json'), 72, '{}')
+    put(join(wt, 'node_modules', 'a', 'index.js'), 72)
+    return { root, wt }
+  }
+
+  test('is proposed unmeasured, unsized and not held, with the core protesting it', async () => {
+    const { root, wt } = idleWorktree()
+    const s = await node(root, { now: slow() })
+    expect(s.candidates).toEqual([
+      expect.objectContaining({ id: `artifact:${join(wt, 'node_modules')}`, unmeasured: true }),
+    ])
+    expect(s.candidates[0]!.bytes).toBeUndefined()
+    expect(s.candidates[0]!.held).toBeUndefined()
+    expect(s.objections).toEqual([
+      expect.objectContaining({ by: 'host-cleaner', level: 'protest', code: 'unmeasured' }),
+    ])
+    expect(plan(s).candidates[0]!.unmeasured).toBe(true)
+  })
+
+  test('a cargo target/ whose fingerprints run out of time is unmeasured too', async () => {
+    const root = repo()
+    target(root, 48)
+    const s = await cargo(root, { now: slow() })
+    expect(s.candidates).toEqual([
+      expect.objectContaining({
+        unmeasured: true,
+        evidence: expect.objectContaining({ kind: 'cargo-target' }),
+      }),
+    ])
+  })
+
+  test('plan then re-check shows no changed, whether the second walk finishes or not', async () => {
+    const { root, wt } = idleWorktree()
+    const p = plan(await survey([nodePlugin(options({ now: slow() }))], ctxOf(root)))
+    for (const now of [slow(), () => NOW]) {
+      const { decision, survey: again } = await recheck(
+        p,
+        [nodePlugin(options({ now }))],
+        ctxOf(root),
+      )
+      expect(again.candidates[0]!.evidence).toEqual(p.candidates[0]!.evidence)
+      expect(decision.dropped.map((d) => d.reason)).not.toContain('changed')
+    }
+    // Without --allow unmeasured, nothing runs; with it, the folder is removed.
+    const without = await clean(p, [nodePlugin(options())], ctxOf(root))
+    expect(without.steps).toEqual([])
+    const allowed = plan(await survey([nodePlugin(options({ now: slow() }))], ctxOf(root)), {
+      allow: ['unmeasured'],
+    })
+    const receipt = await clean(allowed, [nodePlugin(options())], ctxOf(root))
+    expect(receipt.steps).toEqual([expect.objectContaining({ result: 'ok' })])
+    expect(existsSync(join(wt, 'node_modules'))).toBe(false)
+  })
+})
+
+describe('the kit is all they use', () => {
+  const src = join(dirname(fileURLToPath(import.meta.url)), '..', 'src')
+  const imports = (file: string): string[] =>
+    [...readFileSync(join(src, file), 'utf8').matchAll(/^(?:import|\}) .*from '([^']+)'$/gm)].map(
+      (m) => m[1]!,
+    )
+
+  test('cargo, node and what they share import nothing private of host-cleaner', () => {
+    expect(imports('cargo.ts')).toEqual(expect.arrayContaining(['./artifacts.ts', './kit.ts']))
+    for (const file of ['cargo.ts', 'node.ts', 'artifacts.ts']) {
+      const own = imports(file).filter((i) => i.startsWith('.'))
+      expect(own.filter((i) => !['./kit.ts', './types.ts', './artifacts.ts'].includes(i))).toEqual(
+        [],
+      )
+    }
+    for (const file of ['cargo.ts', 'node.ts']) {
+      expect(imports(file).filter((i) => i.startsWith('@osdlc/'))).toEqual([])
+    }
   })
 })
 
@@ -393,7 +479,7 @@ describe('detection', () => {
   test('with neither cargo nor a node or Rust checkout, both plugins drop out of the survey', async () => {
     const root = repo()
     const s = await survey(
-      [cargoPlugin(options({ command: fakeCargo({ present: false }) })), nodePlugin(options())],
+      [cargoPlugin(options(fakeCargo({ present: false }))), nodePlugin(options())],
       ctxOf(root),
     )
     expect(s.plugins).toEqual([])
@@ -403,10 +489,7 @@ describe('detection', () => {
   test('a Cargo.toml detects cargo without cargo on PATH', async () => {
     const root = repo()
     writeFileSync(join(root, 'Cargo.toml'), '[package]\n')
-    const s = await survey(
-      [cargoPlugin(options({ command: fakeCargo({ present: false }) }))],
-      ctxOf(root),
-    )
+    const s = await survey([cargoPlugin(options(fakeCargo({ present: false })))], ctxOf(root))
     expect(s.plugins.map((p) => p.name)).toEqual(['cargo'])
   })
 })

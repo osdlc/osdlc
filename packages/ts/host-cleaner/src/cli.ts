@@ -26,6 +26,7 @@ import { stripControls } from '@osdlc/ux'
 
 import { expandHome, ignorePaths } from './ignore.ts'
 import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
+import { pluginKit } from './kit.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { BUILT_IN_PLUGINS, UnknownPlugin, selectPlugins } from './registry.ts'
 import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
@@ -378,6 +379,7 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliCont
         settings: settingsOf(d.name, config.plugins[d.name] ?? {}, config),
         only,
         env: ctx.env,
+        kit: pluginKit(d.name, { env: ctx.env }),
       }),
     )
   const unused = unknownPlugins(config, (n) => all.some((p) => p.name === n))

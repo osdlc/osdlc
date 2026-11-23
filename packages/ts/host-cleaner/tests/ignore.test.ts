@@ -20,6 +20,7 @@ import { containsIgnored, coveredBy, expandHome, ignorePaths } from '../src/igno
 import { plan, recheck, survey } from '../src/run.ts'
 import { effectiveSettings, settingsOf } from '../src/settings.ts'
 import { envOf } from '../src/artifacts.ts'
+import { pluginKit } from '../src/kit.ts'
 import type { Candidate, Ctx, Plugin, RunCtx } from '../src/index.ts'
 
 const dirs: string[] = []
@@ -123,8 +124,8 @@ describe('survey and recheck', () => {
 describe('idleHours', () => {
   test('0 is kept, a negative value falls back, and a plugin inherits the shared one', () => {
     const c: Ctx = { cwd: '/', targets: [], allow: [], signal: new AbortController().signal }
-    expect(envOf({ idleHours: 0 }, c).idleHours).toBe(0)
-    expect(envOf({ idleHours: -1 }, c).idleHours).toBe(24)
+    expect(envOf(pluginKit('cargo'), { idleHours: 0 }, c).idleHours).toBe(0)
+    expect(envOf(pluginKit('cargo'), { idleHours: -1 }, c).idleHours).toBe(24)
     expect(settingsOf('cargo', {}, { idleHours: 3 }).idleHours).toBe(3)
     expect(settingsOf('cargo', { idleHours: 0 }, { idleHours: 3 }).idleHours).toBe(0)
     expect(settingsOf('cargo', {}).idleHours).toBe(24)

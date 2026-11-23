@@ -11,18 +11,13 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { busyHolders } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
 import {
   artifactPlugin,
   artifactRow,
   checkoutsOf,
-  holdersIn,
-  idleHoursSetting,
-  idleHoursSince,
   inside,
-  newestMtime,
   present,
   refusedRow,
   type ArtifactOptions,
@@ -30,6 +25,7 @@ import {
   type Env,
   type Row,
 } from './artifacts.ts'
+import { idleHoursSetting, type Kit } from './kit.ts'
 import { PLUGIN_API, definePlugin, type Plugin } from './types.ts'
 
 export const NODE_PLUGIN = 'node'
@@ -39,7 +35,7 @@ const PNPM_NOTE =
 
 const SKIPPED = new Set(['node_modules', '.git', 'target'])
 
-function rowFor(env: Env, checkout: Checkout): Row[] {
+async function rowFor(env: Env, checkout: Checkout): Promise<Row[]> {
   try {
     return rowOrThrow(env, checkout)
   } catch {
@@ -49,43 +45,40 @@ function rowFor(env: Env, checkout: Checkout): Row[] {
 }
 
 function rowOrThrow(env: Env, checkout: Checkout): Row[] {
-  const threshold = env.idleHours
+  const { kit, idleHours: threshold } = env
   if (checkout.primary || !existsSync(join(checkout.path, 'package.json'))) return []
   const modules = join(checkout.path, 'node_modules')
   if (!present(modules)) return []
   const safe = inside(checkout.path, 'node_modules')
-  if (safe === null) return [refusedRow(NODE_PLUGIN, 'node-modules', modules, checkout.path)]
+  if (safe === null) return [refusedRow(kit, 'node-modules', modules, checkout.path)]
 
-  const newest = newestMtime(checkout.path, (name) => SKIPPED.has(name))
-  const now = env.now()
-  if (newest === null || idleHoursSince(newest, now) < threshold) return []
+  const since = kit.idle(checkout.path, { skip: (name) => SKIPPED.has(name) })
+  if (!since.unmeasured && (since.hours === null || since.hours < threshold)) return []
 
-  const held = holdersIn(env, checkout.path, busyHolders)
   return [
-    artifactRow(
-      NODE_PLUGIN,
-      {
-        kind: 'node-modules',
-        path: safe,
-        checkout: checkout.path,
-        newestMtimeMs: newest,
-        held,
-        idle: true,
-        why: `nothing changed in the worktree for ${idleHoursSince(newest, now)} hours (threshold ${threshold})`,
-        notes: present(join(safe, '.pnpm')) ? [PNPM_NOTE] : [],
-      },
-      now,
-    ),
+    artifactRow(kit, {
+      kind: 'node-modules',
+      path: safe,
+      checkout: checkout.path,
+      held: kit.running({ in: checkout.path }, env.ctx),
+      idle: !since.unmeasured,
+      ...(since.unmeasured ? { unmeasured: true } : {}),
+      why: since.unmeasured
+        ? 'when the worktree last changed could not be measured in the time budget'
+        : `nothing changed in the worktree for ${since.hours} hours (threshold ${threshold})`,
+      notes: present(join(safe, '.pnpm')) ? [PNPM_NOTE] : [],
+    }),
   ]
 }
 
-/** `node_modules` of idle linked worktrees. Settings: `idleHours`. */
-export function nodePlugin(opts: ArtifactOptions = {}): Plugin {
+/** The `node` plugin on `kit`, or on a kit built from `opts`: `node_modules` of idle linked worktrees. Settings: `idleHours`. */
+export function nodePlugin(opts: ArtifactOptions = {}, kit?: Kit): Plugin {
   return artifactPlugin(
     NODE_PLUGIN,
     opts,
     (env) => checkoutsOf(env).some((c) => existsSync(join(c.path, 'package.json'))),
     rowFor,
+    kit,
   )
 }
 
@@ -94,5 +87,5 @@ export const nodeDefinition = definePlugin({
   name: NODE_PLUGIN,
   api: PLUGIN_API,
   settings: z.strictObject({ idleHours: idleHoursSetting }),
-  create: ({ settings }) => nodePlugin({ idleHours: settings.idleHours }),
+  create: ({ settings, kit }) => nodePlugin({ idleHours: settings.idleHours }, kit),
 })

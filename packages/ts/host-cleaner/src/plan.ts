@@ -21,6 +21,7 @@ const candidateFields = {
   name: z.string().optional(),
   held: z.boolean().optional(),
   costDescription: z.enum(COST_DESCRIPTIONS).optional(),
+  unmeasured: z.boolean().optional(),
 }
 
 export const CandidateSchema = z.union([

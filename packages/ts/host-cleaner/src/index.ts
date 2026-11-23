@@ -52,6 +52,7 @@ export {
   HookTimeout,
   OUTSIDE_ROOTS,
   SelectionError,
+  UNMEASURED,
   checkSelection,
   clean,
   decide,
@@ -69,7 +70,21 @@ export { containedIn } from './roots.ts'
 export { gitPlugin, type GitPluginOptions } from './git.ts'
 export { cargoPlugin, CARGO_PLUGIN } from './cargo.ts'
 export { nodePlugin, NODE_PLUGIN } from './node.ts'
-export { DEFAULT_IDLE_HOURS, type ArtifactOptions } from './artifacts.ts'
+export { type ArtifactOptions } from './artifacts.ts'
+export {
+  DEFAULT_IDLE_HOURS,
+  MEASURE_BUDGET_MS,
+  RUN_LIMIT_MS,
+  idleHoursSetting,
+  pluginKit,
+  type CandidateFields,
+  type Idle,
+  type Kit,
+  type KitOptions,
+  type KitRunOptions,
+  type KitRunResult,
+  type Running,
+} from './kit.ts'
 export {
   CLOSE_TERMINALS,
   ORCA_BUNDLE_CLI,

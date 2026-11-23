@@ -18,7 +18,8 @@ The order decides which plugin keeps a duplicate, and the order `prepare` and `d
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
 value: `api` is `PLUGIN_API`, `settings` is the zod schema of its entry in the
 config's `plugins` (the core adds `enabled` and makes it strict), and `create`
-builds the plugin from those settings, validated with defaults filled in.
+builds the plugin from those settings, validated with defaults filled in, and
+the plugin kit (see [The plugin kit](#the-plugin-kit)).
 
 | Phase | Who | What |
 | --- | --- | --- |
@@ -127,6 +128,30 @@ check.
 A ref gets no folder checks, and the core never removes a folder for one.
 `ignore` applies to a path, and to a ref's `at`.
 
+### The plugin kit
+
+`create` gets `kit`, the safety helpers the shipped plugins use, bound to the
+plugin's name, so a plugin measures, removes and runs things the same way
+(`pluginKit(name, options)` builds one, for tests):
+
+| Helper | What it does |
+| --- | --- |
+| `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the whole hours since, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Out of time, it is `{ unmeasured: true }`. |
+| `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
+| `kit.running({ in } \| { name }, ctx)` | The busy processes working in a folder (an idle shell is not busy), or those of a name; `unknown` when the process table cannot be read. The table is read fresh once per hook call. |
+| `kit.onPath(program)` | Whether a program is on PATH. |
+| `kit.candidate({ kind, path \| ref, ... })` | A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and the plugin as owner. |
+| `kit.run(argv, { signal, check })` | Runs a program through `@osdlc/command-seam`, with a time limit (`RUN_LIMIT_MS`, 30 seconds) and stopped when `ctx.signal` aborts; `ok` when it exited 0, a `CommandFailed` throw with `check`. |
+| `kit.remove(path, ctx, roots)` | Removes a folder only if it is still inside `roots`, a target or a linked worktree of one by its real path, after making read-only folders and files in it writable; checks it is gone and returns the receipt sentence. |
+
+`idleHoursSetting` is the `idleHours` setting: a plugin that declares it
+inherits the config's top-level `idleHours` when its own entry sets none.
+
+A candidate whose idle time ran out of the budget sets `unmeasured: true`. It
+is not held; the core gives it an `unmeasured` protest (by `host-cleaner`), so
+it runs only with `--allow unmeasured`. The flag stays out of `evidence`, so a
+walk that finishes at the re-check does not read as `changed`.
+
 ## The `git` plugin
 
 `gitPlugin(options)` proposes repo-cleaner's worktrees, as paths, and branches,
@@ -139,9 +164,9 @@ remote first; a failed push throws `FatalRun`. Grant the named risks; the
 
 ## The `cargo` and `node` plugins
 
-Build caches fill agent machines, so two plugins list them. Both propose
-`artifact:<absolute path>` candidates with their size. Settings:
-`plugins.<name>.idleHours` (default 24).
+Build caches fill agent machines, so two plugins list them. Both are built
+on the plugin kit alone and propose `artifact:<absolute path>` candidates with
+their size on disk. Settings: `plugins.<name>.idleHours` (default 24).
 
 - `cargo`: a `target/` with a `CACHEDIR.TAG` whose newest file under
   `target/*/.fingerprint/` is at least `idleHours` old. Where incremental
@@ -152,11 +177,17 @@ Build caches fill agent machines, so two plugins list them. Both propose
   `node_modules`, `.git` and `target` changed for `idleHours`. A primary
   checkout is never proposed. A `.pnpm` tree frees less than it measures.
 
+A folder whose idle time cannot be measured in the kit's budget is proposed
+`unmeasured` and not sized. Its evidence leaves out the newest modification
+time and the size, so the re-check judges idleness again instead: one no
+longer idle is `gone`. Since `discover` walks every checkout, both plugins
+give it a 10 minute limit instead of the default 30 seconds.
+
 A `cargo` or `rustc` process in the checkout (any busy process for `node`), or
 a process table that cannot be read, is a `refuse`. A path that leads outside
 its checkout (checked with `@osdlc/path-guard`) is a `refuse` and is never
 measured. `delete` reads the checkout's candidates again over a fresh process
-table, removes the directory and checks it is gone; a directory that is already
+table, then removes the directory with `kit.remove`; a directory that is already
 gone (its worktree went first) is not a failure.
 
 ## The `orca` plugin

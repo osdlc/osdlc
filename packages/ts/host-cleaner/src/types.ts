@@ -7,6 +7,8 @@
 import type { Kind } from '@osdlc/repo-cleaner'
 import type { z } from 'zod'
 
+import type { Kit } from './kit.ts'
+
 /** What every candidate has, whether a path or a ref. */
 interface CandidateBase {
   /** `<kind>:<path>`, or `<kind>:<ref>`; unique across the run. */
@@ -30,6 +32,13 @@ interface CandidateBase {
    * `discard-user-data` protest, so it runs only when picked and allowed.
    */
   costDescription?: CostDescription | undefined
+  /**
+   * True: its idle time could not be measured in the time budget. The core
+   * adds an `unmeasured` protest, so it runs only with `--allow unmeasured`.
+   * Kept out of `evidence`, so a walk that finishes at the re-check does not
+   * read as changed.
+   */
+  unmeasured?: boolean | undefined
 }
 
 /** What deleting a candidate costs: fetched again, built again, or gone for good. */
@@ -164,6 +173,8 @@ export interface PluginInit<S = Record<string, unknown>> {
   only: readonly Kind[]
   /** The command line's environment, for a plugin that runs other programs. */
   env: Readonly<Record<string, string | undefined>>
+  /** The safety helpers, bound to this plugin (see `./kit.ts`). */
+  kit: Kit
 }
 
 /**
