@@ -1,4 +1,7 @@
-# Finding checkouts
+---
+title: Finding checkouts
+description: Where osdlc tools look for a person's checkouts of a repository, how a checkout matches, and how to test it.
+---
 
 A tool that works on a repository by name, such as pr-update with a `--repo`
 that is not the project it runs in, has to find the person's own checkout of

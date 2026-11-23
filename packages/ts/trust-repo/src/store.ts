@@ -623,9 +623,9 @@ export interface TrustStore {
   listGrants(): Promise<TrustGrant[]>
   /**
    * Set the store directory to 0700 and every marker to 0600 where they are
-   * looser. Returns the paths it changed. {@link trust} calls it. A no-op on
-   * Windows, where these modes do not apply. Throws only when {@link dir}
-   * does.
+   * looser. Returns the paths it changed. {@link trust} calls it. Changes
+   * nothing on Windows, where these modes do not apply. Throws only when
+   * {@link dir} does, on every platform.
    */
   tighten(): Promise<string[]>
 }
@@ -682,12 +682,13 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
     (await readGrant(markerPath(resolved, scope))) !== null
 
   const tighten = async (): Promise<string[]> => {
+    // Resolve first, so a store that cannot be placed throws on Windows too.
+    const d = dir()
     if (process.platform === 'win32') return []
     const changed: string[] = []
     const fix = async (path: string, mode: number): Promise<void> => {
       if (await tightenOne(path, mode)) changed.push(path)
     }
-    const d = dir()
     await fix(d, DIR_MODE)
     for (const name of await entries(d)) {
       const path = join(d, name)
