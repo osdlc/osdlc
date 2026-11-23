@@ -408,7 +408,7 @@
       ]
     },
     "write_atomic": {
-      "description": "Atomic write (`atomicWrite`, Rust `write_atomic`). `input.existing` is what is at the path, `input.path` is the path under the scratch directory (default `target.txt`), `input.content` is what to write. `expect.content` is the file afterwards and `expect.entries` is every file and directory then under the scratch directory, sorted, `/`-separated: a temp file left behind would show here. An `error` kind is `io`; a failed write leaves the directory as it was. The two long-name cases assume a 255-byte file-name limit (Linux, macOS).",
+      "description": "Atomic write (`atomicWrite`, Rust `write_atomic`). `input.existing` is what is at the path, `input.path` is the path under the scratch directory (default `target.txt`), `input.content` is what to write. `expect.content` is the file afterwards and `expect.entries` is every file and directory then under the scratch directory, sorted, `/`-separated: a temp file left behind would show here. An `error` kind is `io`; a failed write leaves the directory as it was. The two long-name cases assume a 255-byte file-name limit, so they run on unix only (Linux, macOS).",
       "cases": [
         {
           "name": "a new file",
@@ -531,7 +531,10 @@
             "entries": [
               "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             ]
-          }
+          },
+          "platforms": [
+            "unix"
+          ]
         },
         {
           "name": "a file name of 255 bytes: the temp name does not fit, io",
@@ -541,7 +544,10 @@
           },
           "error": {
             "kind": "io"
-          }
+          },
+          "platforms": [
+            "unix"
+          ]
         }
       ]
     },

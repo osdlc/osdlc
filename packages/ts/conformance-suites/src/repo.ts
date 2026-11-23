@@ -136,6 +136,9 @@ export function checkRepo(root: string, options: RepoOptions = {}): string[] {
       listed.get(i.dir)!.add(name)
     }
   }
+  const registered = new Set(
+    Object.values(families).flatMap((f) => f.implementations.map((i) => i.dir)),
+  )
   const libraries = Object.values(config.libraries).flatMap((d) =>
     existsSync(join(root, d))
       ? readdirSync(join(root, d))
@@ -156,9 +159,10 @@ export function checkRepo(root: string, options: RepoOptions = {}): string[] {
   problems.push(
     ...unlistedPairs(
       { rust: librariesIn('rust'), ts: librariesIn('ts') },
-      new Set(listed.keys()),
+      registered,
       new Set(config.unmigrated),
       config,
+      { rust: config.libraries['rust']!, ts: config.libraries['ts']! },
     ),
   )
   const sources = new Map(

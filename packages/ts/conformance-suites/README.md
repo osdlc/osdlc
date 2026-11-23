@@ -97,7 +97,7 @@ command line.
   "catchingUp": { "tiered-dirs": "the crate reaches 0.5.0 with the realign work" },
   "unmigrated": ["packages/ts/gfm-table"],
   "skipScan": { "packages/ts/conformance-suites": "its tests hold suite paths as test data" },
-  "notFamilies": { "yaml-splice": "the TypeScript package is a binding of the crate" },
+  "notFamilies": { "tradecraft-wasm": "the TypeScript package wraps the crate built to wasm" },
   "noSuiteYet": { "typed-git": "no shared cases yet" }
 }
 ```

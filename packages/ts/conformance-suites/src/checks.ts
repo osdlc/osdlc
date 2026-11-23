@@ -429,6 +429,7 @@ export function unlistedPairs(
   registered: ReadonlySet<string>,
   unmigrated: ReadonlySet<string>,
   exempt: { notFamilies: Record<string, string>; noSuiteYet: Record<string, string> },
+  roots: { rust: string; ts: string } = { rust: 'packages/rust', ts: 'packages/ts' },
 ): string[] {
   const problems: string[] = []
   const nameOf = (dir: string): string => dir.slice(dir.lastIndexOf('/') + 1)
@@ -449,6 +450,15 @@ export function unlistedPairs(
       problems.push(
         `${name}: ${unregistered.join(' and ')} ${unregistered.length === 1 ? 'is' : 'are'} not in families.json; register the family, or list ${name} in config.json notFamilies or noSuiteYet`,
       )
+    }
+  }
+  const rustNames = new Set(libraries.rust.map(nameOf))
+  for (const k of ['notFamilies', 'noSuiteYet'] as const) {
+    for (const name of Object.keys(exempt[k])) {
+      if (!rustNames.has(name) || !tsByName.has(name))
+        problems.push(
+          `${name}: in config.json ${k}, but ${roots.rust}/${name} and ${roots.ts}/${name} are not both libraries; remove it from ${k}`,
+        )
     }
   }
   return problems
