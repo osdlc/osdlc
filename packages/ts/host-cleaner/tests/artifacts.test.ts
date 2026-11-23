@@ -14,7 +14,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { CommandRunner } from '@osdlc/command-seam'
+import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import type { ProcessHolder, ProcessProbe } from '@osdlc/repo-cleaner'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
@@ -89,18 +89,23 @@ function target(checkout: string, hoursOld: number, tag = true): string {
   return dir
 }
 
+/** A fake `cargo`; any other binary, such as `du`, is the real one. */
 function fakeCargo(
   opts: { present?: boolean; incremental?: boolean } = {},
 ): (b: string) => CommandRunner {
-  return () =>
-    ({
-      run: (argv: string[]) => {
-        const ok = opts.present ?? true
-        const out =
-          argv[0] === 'config' ? `build.incremental = ${opts.incremental ?? true}\n` : 'cargo 1.0\n'
-        return { exitCode: ok ? 0 : 127, stdout: ok ? out : '', stderr: '' }
-      },
-    }) as unknown as CommandRunner
+  return (binary) =>
+    binary !== 'cargo'
+      ? spawnRunner(binary)
+      : ({
+          run: (argv: string[]) => {
+            const ok = opts.present ?? true
+            const out =
+              argv[0] === 'config'
+                ? `build.incremental = ${opts.incremental ?? true}\n`
+                : 'cargo 1.0\n'
+            return { exitCode: ok ? 0 : 127, stdout: ok ? out : '', stderr: '' }
+          },
+        } as unknown as CommandRunner)
 }
 
 const probeOf = (holders: ProcessHolder[] | Error = []): ProcessProbe => ({
@@ -276,6 +281,26 @@ describe('cargo plugin', () => {
     expect(existsSync(dir)).toBe(false)
   })
 
+  test('a size du cannot read leaves out bytes, and the receipt names no bytes freed', () => {
+    const root = repo()
+    const dir = target(root, 48)
+    const cargoOnly = fakeCargo()
+    const noDu = (binary: string): CommandRunner =>
+      binary === 'du'
+        ? ({
+            run: () => ({ exitCode: 1, stdout: '', stderr: 'du: failed' }),
+          } as unknown as CommandRunner)
+        : cargoOnly(binary)
+    const plugin = cargoPlugin(options({ command: noDu }))
+    const s = survey([plugin], ctxOf(root))
+    expect(s.candidates).toHaveLength(1)
+    expect(s.candidates[0]!.bytes).toBeUndefined()
+    expect(s.candidates[0]!.evidence.sizeBytes).toBeNull()
+    const receipt = clean(plan(s), [plugin], ctxOf(root))
+    expect(receipt.steps[0]).toMatchObject({ result: 'ok', delete: `removed ${dir}` })
+    expect(existsSync(dir)).toBe(false)
+  })
+
   test('delete refuses a directory that became busy after the survey', () => {
     const root = repo()
     const dir = target(root, 48)
@@ -361,9 +386,13 @@ describe('node plugin', () => {
     put(join(wt, 'package.json'), 72, '{}')
     put(join(wt, 'node_modules', 'a', 'index.js'), 72)
     const plugin = nodePlugin(options())
-    const receipt = clean(plan(survey([plugin], ctxOf(root))), [plugin], ctxOf(root))
+    const s = survey([plugin], ctxOf(root))
+    const bytes = s.candidates[0]!.evidence.sizeBytes as number
+    const receipt = clean(plan(s), [plugin], ctxOf(root))
     expect(receipt.status).toBe('complete')
-    expect(receipt.steps[0]!.delete).toMatch(/^removed .*node_modules; freed 100 bytes$/)
+    expect(receipt.steps[0]!.delete).toBe(
+      `removed ${join(wt, 'node_modules')}; freed ${bytes} bytes`,
+    )
     expect(existsSync(join(wt, 'node_modules'))).toBe(false)
     expect(existsSync(join(wt, 'package.json'))).toBe(true)
   })

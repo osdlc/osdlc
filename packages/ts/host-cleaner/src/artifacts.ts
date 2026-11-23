@@ -13,7 +13,12 @@ import { join, relative } from 'node:path'
 
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { nodeGuard } from '@osdlc/path-guard/node'
-import { defaultProcessProbe, type ProcessHolder, type ProcessProbe } from '@osdlc/repo-cleaner'
+import {
+  defaultProcessProbe,
+  sizeOf,
+  type ProcessHolder,
+  type ProcessProbe,
+} from '@osdlc/repo-cleaner'
 import { Git } from '@osdlc/typed-git'
 
 import { coveredBy } from './ignore.ts'
@@ -89,22 +94,6 @@ export function checkoutsOf(env: Env): Checkout[] {
     }
   }
   return out
-}
-
-/** Bytes under `path`, every file counted, symlinks counted as themselves and not followed. */
-export function sizeOf(path: string): number {
-  const stat = lstatSync(path, { throwIfNoEntry: false })
-  if (stat === undefined) return 0
-  if (!stat.isDirectory()) return stat.size
-  let total = 0
-  let names: string[]
-  try {
-    names = readdirSync(path)
-  } catch {
-    return total
-  }
-  for (const name of names) total += sizeOf(join(path, name))
-  return total
 }
 
 /**
@@ -191,8 +180,12 @@ export const objectionsTo = (owner: string, row: Row): Objection[] =>
     reason: b.reason,
   }))
 
-/** The row for one artifact directory: a candidate, refused while a process works in the checkout or the process table cannot be read. */
-export function artifactRow(owner: string, f: ArtifactFacts, now: Date): Row {
+/**
+ * The row for one artifact directory: a candidate, refused while a process
+ * works in the checkout or the process table cannot be read. Its size is read
+ * with `du` through `env.command`; one that cannot be read leaves out `bytes`.
+ */
+export function artifactRow(owner: string, f: ArtifactFacts, env: Env): Row {
   const blockers = [
     ...(f.held.names.length > 0
       ? [
@@ -211,7 +204,7 @@ export function artifactRow(owner: string, f: ArtifactFacts, now: Date): Row {
           },
         ]),
   ]
-  const sizeBytes = sizeOf(f.path)
+  const sizeBytes = sizeOf(f.path, { du: env.command('du') })
   return {
     blockers,
     candidate: {
@@ -220,7 +213,7 @@ export function artifactRow(owner: string, f: ArtifactFacts, now: Date): Row {
       path: f.path,
       owner,
       why: f.why,
-      bytes: sizeBytes,
+      ...(sizeBytes === null ? {} : { bytes: sizeBytes }),
       ...(f.idle ? {} : { held: true }),
       evidence: {
         kind: f.kind,
@@ -297,10 +290,10 @@ export function removeArtifact(
   }
   const target = inside(checkout, relative(realpathSync(checkout), path))
   if (target === null || target !== path) throw new Error(`${path} resolves outside ${checkout}`)
-  const bytes = sizeOf(target)
+  const bytes = sizeOf(target, { du: env.command('du') })
   rmSync(target, { recursive: true })
   if (present(target)) throw new Error(`${target} is still there after removal`)
-  return `removed ${target}; freed ${bytes} bytes`
+  return bytes === null ? `removed ${target}` : `removed ${target}; freed ${bytes} bytes`
 }
 
 /** The plugin both artifact plugins are: `rowsOf` lists one checkout's rows, `detect` says whether the plugin applies. */

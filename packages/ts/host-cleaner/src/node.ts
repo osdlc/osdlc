@@ -72,7 +72,7 @@ function rowOrThrow(env: Env, checkout: Checkout): Row[] {
         why: `nothing changed in the worktree for ${idleHoursSince(newest, now)} hours (threshold ${threshold})`,
         notes: present(join(safe, '.pnpm')) ? [PNPM_NOTE] : [],
       },
-      now,
+      env,
     ),
   ]
 }

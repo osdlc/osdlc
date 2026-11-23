@@ -119,7 +119,7 @@ function rowsOrThrow(env: Env, checkout: Checkout): Row[] {
           why: `no build for ${idleHoursSince(newest, now)} hours (threshold ${threshold})`,
           held,
         },
-        now,
+        env,
       ),
     )
   }
@@ -152,7 +152,7 @@ function rowsOrThrow(env: Env, checkout: Checkout): Row[] {
             why: 'incremental builds are off for this checkout',
             held,
           },
-          now,
+          env,
         ),
       )
     }
