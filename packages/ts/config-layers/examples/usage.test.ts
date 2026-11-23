@@ -839,8 +839,8 @@ test('name directories once and refer to them as {name}', () => {
     { dev: '/machine/dev' },
     { dev: './dev', docs: './docs' },
   )
-  // Every value is made absolute: on Windows `/machine/dev` gains the drive.
-  const machineDev = resolve('/machine/dev')
+  // Every value is made absolute against baseDir: on Windows `/machine/dev` gains its drive.
+  const machineDev = resolve(baseDir, '/machine/dev')
   expect(names).toEqual({ dev: machineDev, docs: join(baseDir, 'docs') })
 
   expect(substitutePathNames('{dev}/tooly', names, 'repos:')).toBe(`${machineDev}/tooly`)
