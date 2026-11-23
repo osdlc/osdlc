@@ -107,6 +107,28 @@ function ignoredBy(c: Candidate, ignore: readonly string[]): string | undefined 
   return coveredBy(c.path, ignore) ?? containsIgnored(c.path, ignore)
 }
 
+/**
+ * Why `c` is neither a path candidate nor a ref candidate, or null when it is
+ * one: a string `path` and no `ref` or `at`, or a string `ref`, a string or no
+ * `at`, and no `path`. A plugin written in JavaScript can send anything.
+ */
+function misshapen(c: Candidate): string | null {
+  const path = c.path as unknown
+  const ref = c.ref as unknown
+  const at = c.at as unknown
+  if ((typeof path === 'string') === (typeof ref === 'string')) {
+    return 'which must have one of a path and a ref'
+  }
+  if (typeof path === 'string') {
+    if (ref !== undefined) return 'which must have one of a path and a ref'
+    if (at !== undefined) return 'a path candidate with an at, which only a ref may have'
+    return null
+  }
+  if (path !== undefined) return 'which must have one of a path and a ref'
+  if (at !== undefined && typeof at !== 'string') return 'whose at is not a path'
+  return null
+}
+
 /** Why `bounds` does not hold path candidate `c`, or null when it does. */
 function outside(c: PathCandidate, bounds: Bounds): string | null {
   if (boundBy(bounds, c.path) !== null) return null
@@ -146,8 +168,8 @@ function nest(cs: readonly Candidate[]): Candidate[] {
  * with a warning; one that throws or times out in `object` refuses every
  * candidate, since what it would object to is unknown. A path candidate
  * outside its owner's roots and the targets is refused `outside-roots`; one
- * with both a path and a ref, or neither, or an unknown `costDescription`, is
- * dropped. A `lost` one is held and protested `discard-user-data`, and an
+ * with both a path and a ref, or neither, or a path and an `at`, or an
+ * unknown `costDescription`, is dropped. A `lost` one is held and protested `discard-user-data`, and an
  * `unmeasured` one protested `unmeasured`. A
  * {@link FatalRun} from any phase goes to the caller. Two candidates with the
  * same id, or path candidates with the same real path, are one: the first
@@ -201,8 +223,8 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
     for (const c of await guarded(p, 'discover', [], scoped, (x) => p.discover!(x))) {
       if (c.owner !== p.name) {
         warnings.push(`${p.name}: dropped ${c.id}, which names ${c.owner} as its owner`)
-      } else if ((typeof c.path === 'string') === (typeof c.ref === 'string')) {
-        warnings.push(`${p.name}: dropped ${c.id}, which must have one of a path and a ref`)
+      } else if (misshapen(c) !== null) {
+        warnings.push(`${p.name}: dropped ${c.id}, ${misshapen(c)}`)
       } else if (c.costDescription !== undefined && !costs.has(c.costDescription)) {
         warnings.push(
           `${p.name}: dropped ${c.id}, whose costDescription is not one of ${COST_DESCRIPTIONS.join(', ')}`,

@@ -255,6 +255,23 @@ describe('objection levels', () => {
     ])
   })
 
+  test('a path or ref that is not a string, or a path with an at, is dropped, not thrown on', async () => {
+    const odd = [
+      { ...cand('a:null-path', 'a'), path: null },
+      { ...pathCand('a:null-ref', 'a', '/x'), ref: null },
+      { ...pathCand('a:path-at', 'a', '/x'), at: '/x' },
+      { ...cand('a:number-at', 'a'), at: 7 },
+    ] as unknown as Candidate[]
+    const s = await survey([fake('a', [...odd, cand('a:ok', 'a')], [])], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:ok'])
+    expect(s.warnings).toEqual([
+      'a: dropped a:null-path, which must have one of a path and a ref',
+      'a: dropped a:null-ref, which must have one of a path and a ref',
+      'a: dropped a:path-at, a path candidate with an at, which only a ref may have',
+      'a: dropped a:number-at, whose at is not a path',
+    ])
+  })
+
   test('a lost candidate is held and protested discard-user-data; rebuild and re-download are not', async () => {
     const items = [
       cand('a:lost', 'a', { costDescription: 'lost' }),
