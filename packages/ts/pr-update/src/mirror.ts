@@ -39,6 +39,14 @@ import { expandTilde, homeDir } from '@osdlc/tiered-dirs'
 import { Git } from '@osdlc/typed-git'
 import { Document, isMap, parseDocument } from 'yaml'
 
+import {
+  FOLDER_MODE,
+  folderProblem,
+  foldersProblem,
+  ownedByMe,
+  type FolderCheckOptions,
+  type OwnedCheck,
+} from './folders.ts'
 import type { CloneLookup, MissedCheckout } from './locate.ts'
 import {
   machineFile,
@@ -87,23 +95,9 @@ export function cloneLockPath(clone: string): string {
   return `${clone}.lock`
 }
 
-/**
- * Whether a file belongs to the person running pr-update. The default, {@link ownedByMe},
- * compares the owner's uid on POSIX; a test injects its own, since it cannot change an owner.
- */
-export type OwnedCheck = (st: Stats) => boolean
+export { foldersProblem, ownedByMe, type OwnedCheck } from './folders.ts'
 
-/** The owner's uid is this process's. On Windows, which has no uid, every file passes. */
-export const ownedByMe: OwnedCheck = (st) =>
-  typeof process.getuid !== 'function' || st.uid === process.getuid()
-
-/** The mode pr-update makes its folders with: never writable by group or others. */
-const FOLDER_MODE = 0o755
-
-/** Whether mode bits mean anything here: not on Windows. */
-const POSIX = process.platform !== 'win32'
-
-/** How to put right a folder others can write to, for the end of the message. */
+/** How to put right a clone folder others can write to, for the end of the message. */
 function writableFix(dir: string): string {
   return (
     `run \`chmod go-w ${dir}\`, or choose a clone directory on a filesystem with Unix permissions ` +
@@ -111,25 +105,8 @@ function writableFix(dir: string): string {
   )
 }
 
-/**
- * What is wrong with `dir`, a folder clones or run worktrees live under (the clone directory, or
- * a folder between it and a clone), whose stat is `st`, and how to fix it; null when nothing is.
- * It must belong to the person running pr-update, and on POSIX must not be writable by its group
- * or others, who could otherwise put a folder of their own where a clone goes. A filesystem with no Unix
- * permissions (exFAT, FAT, an SMB share) shows every folder as writable by all, so the fix also
- * names the ways to choose another clone directory.
- */
-function folderProblem(
-  dir: string,
-  st: Stats,
-  owned: OwnedCheck,
-): { problem: string; fix?: string } | null {
-  if (!owned(st)) return { problem: `${dir} belongs to another user` }
-  if (POSIX && (st.mode & 0o022) !== 0) {
-    return { problem: `${dir} can be written by its group or others`, fix: writableFix(dir) }
-  }
-  return null
-}
+/** The folder check of the clone directory and the folders in it (`folderProblem`), with its fix. */
+export const cloneFolders: FolderCheckOptions = { fix: writableFix }
 
 /**
  * What is at the clone path `path`, `<root>/<host>/<owner>/<name>.git` under the clone
@@ -143,15 +120,20 @@ function folderProblem(
  *
  * Either way, `root` and the folders between it and the clone (`<host>`, `<host>/<owner>`), as
  * far as they exist, must be real folders the person owns that no one else can write to
- * (`folderProblem`); else the result is `foreign`. `root` may be a symbolic link to such a
- * folder, a folder between may not.
+ * (`folderProblem` in `./folders.ts`); else the result is `foreign`. `root` may be a symbolic
+ * link to such a folder, a folder between may not. `gid` is the group a group-writable folder
+ * may have (default the process's primary group); a test injects another.
  */
 export function checkClone(
   root: string,
   path: string,
   owned: OwnedCheck = ownedByMe,
+  gid?: number | undefined,
 ): 'clone' | 'missing' | { foreign: string } {
-  const folders = foldersProblem(root, [dirname(dirname(path)), dirname(path)], owned)
+  const folders = foldersProblem(root, [dirname(dirname(path)), dirname(path)], owned, {
+    ...cloneFolders,
+    gid,
+  })
   if (folders !== null) {
     const fix = folders.fix === undefined ? '' : `; ${folders.fix}`
     return { foreign: `${folders.problem}, so ${path} is not used${fix}` }
@@ -174,40 +156,9 @@ export function checkClone(
   return 'clone'
 }
 
-/**
- * What is wrong with `root` (followed if it is a symbolic link) or the folders `between` it and
- * something under it, as far as they exist (`folderProblem`; a folder between may not be a
- * symbolic link), and how to fix it; null when nothing is.
- */
-export function foldersProblem(
-  root: string,
-  between: readonly string[],
-  owned: OwnedCheck = ownedByMe,
-): { problem: string; fix?: string } | null {
-  for (const [dir, st] of [
-    [root, statOrNull(root)],
-    ...between.map((d) => [d, lstatOrNull(d)] as const),
-  ] as const) {
-    if (st === null) break
-    if (st.isSymbolicLink()) return { problem: `${dir} is a symbolic link` }
-    const why = folderProblem(dir, st, owned)
-    if (why !== null) return why
-  }
-  return null
-}
-
 function lstatOrNull(path: string): Stats | null {
   try {
     return lstatSync(path)
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null
-    throw e
-  }
-}
-
-function statOrNull(path: string): Stats | null {
-  try {
-    return statSync(path)
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw e
@@ -303,8 +254,8 @@ export function loadMirrorSetting(
 /**
  * Clone step 1: `dir` must not be inside a git working tree or git directory, and must be
  * missing, empty or already marked by this tool. When it exists it must belong to the person
- * running pr-update and, on POSIX, not be writable by its group or others; its marker must be a
- * plain file the person owns. Nothing is written.
+ * running pr-update and pass the folder check (`folderProblem`: no one else may write to it); its
+ * marker must be a plain file the person owns. Nothing is written.
  *
  * @throws MirrorDirError naming the directory.
  */
@@ -332,7 +283,7 @@ export function checkMirrorDir(
   if (!statSync(dir).isDirectory()) {
     throw new MirrorDirError(`the clone directory ${dir} is not a directory`)
   }
-  const why = folderProblem(dir, statSync(dir), owned)
+  const why = folderProblem(dir, statSync(dir), owned, cloneFolders)
   if (why !== null) {
     const fix = why.fix === undefined ? '' : `; ${why.fix}`
     throw new MirrorDirError(`the clone directory ${why.problem}${fix}`)
@@ -556,7 +507,7 @@ export function writeMirrorAnswer(
     const doc = editableMachineFile(file.path(), before)
     doc.set('checkout', answer.checkout)
     if (answer.mirror_dir !== undefined) doc.set('mirror_dir', answer.mirror_dir)
-    mkdirSync(dirname(file.path()), { recursive: true })
+    mkdirSync(dirname(file.path()), { recursive: true, mode: FOLDER_MODE })
     try {
       file.write(String(doc), { etag: before?.etag ?? null })
       file.clearCache()
@@ -628,7 +579,8 @@ function keyOf(t: { host: string | null; repo: string }): string {
  *   worktree is left for the next run in the clone or `pr-update mirror prune`, a kept one for
  *   the next `--discard-kept`.
  *
- * `survey` holds a clone's lock only for its fetch ({@link ManagedClones.use}), and never waits.
+ * `survey` holds a clone's lock while it fetches and reads that clone ({@link ManagedClones.use}),
+ * and never waits for it.
  */
 export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
   const waitMs = opts.waitMs ?? MIRROR_LOCK_WAIT_MS
@@ -834,13 +786,31 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
 
       return targets.map((t) => {
         if (t.source === 'clone' && t.path !== null) {
-          if (held.has(t.path)) {
+          const gone = (why: string): RepoTarget => {
+            opts.notice(`${keyOf(t)}: ${why}`)
+            return { ...t, path: null, source: null, found: null, unserved: why }
+          }
+          if (!held.has(t.path)) return gone(busy(t.path))
+          // Looked at again under the lock: a prune may have removed it while this run waited.
+          const root = dirname(dirname(dirname(t.path)))
+          const state = checkClone(root, t.path, owned)
+          if (state === 'clone') {
             writeStamp(t.path)
             return t
           }
-          const why = busy(t.path)
-          opts.notice(`${keyOf(t)}: ${why}`)
-          return { ...t, path: null, source: null, found: null, unserved: why }
+          if (state !== 'missing') {
+            release(t.path)
+            return gone(state.foreign)
+          }
+          // Made again, under the lock this run holds, where `update --apply` has consent.
+          if (apply && current().consent === 'mirror' && finalOf(t, current().dir) === t.path) {
+            opts.notice(`${keyOf(t)}: ${t.path} was removed (by a prune) while this run waited`)
+            return serve({ ...t, path: null, source: null, found: null }, root)
+          }
+          release(t.path)
+          return gone(
+            `${t.path} was removed (by \`pr-update mirror prune\`, say) before this run could use it`,
+          )
         }
         if (!want.includes(t) || s === null) return t
         if (dir === null) {
@@ -853,19 +823,19 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
       })
     },
 
-    use(clone, fetch) {
-      if (held.has(clone)) return fetch()
+    use(clone, read) {
+      if (held.has(clone)) return read(true)
       const lock = cloneLockPath(clone)
       const token = claim(lock, 0)
       if (token === null) {
         opts.notice(
           `${clone}: another pr-update run holds ${lock}, so the clone is read as it is, without a fetch`,
         )
-        return false
+        return read(false)
       }
       try {
         writeStamp(clone)
-        return fetch()
+        return read(true)
       } finally {
         releaseLock(lock, token)
       }

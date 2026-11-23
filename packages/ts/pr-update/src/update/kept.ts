@@ -35,6 +35,7 @@ import { isCommandFailed } from '@osdlc/command-seam'
 import { atomicWrite } from '@osdlc/etag-write'
 import type { Git } from '@osdlc/typed-git'
 
+import { FOLDER_MODE } from '../folders.ts'
 import { PRUNE_ALL, type WorktreeRecords } from './registrations.ts'
 
 /** The log a failed verify leaves in a kept worktree. */
@@ -315,7 +316,7 @@ export function keepWorktree(
     )
   }
   const branch = `pr-update/failed-${qualifiedName(target.repo, target.number)}`
-  mkdirSync(place.dir, { recursive: true })
+  mkdirSync(place.dir, { recursive: true, mode: FOLDER_MODE })
   let moved = !crossesDevice(dirname(worktree), place.dir, opts.rename ?? renameSync)
   if (moved) {
     try {

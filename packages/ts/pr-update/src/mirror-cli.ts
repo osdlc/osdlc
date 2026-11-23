@@ -102,12 +102,18 @@ const pruneEntry = z.object({
   repo: z.string().optional().describe('host/owner/name, when known.'),
   bytes: z.number().int(),
   reason: z.string().optional().describe('Why it was left, or the error that stopped it.'),
+  skip: z
+    .enum(['folder', 'foreign', 'busy', 'in-use', 'kept'])
+    .optional()
+    .describe(
+      'For one left alone, the kind of reason: a folder someone else could write to or owns (folder), not a clone pr-update may change (foreign), another run holds its lock (busy), a worktree in use (in-use), kept worktrees (kept).',
+    ),
 })
 
 const pruneOutput = z.object({
   dryRun: z.boolean(),
   mirrorDir: z.string().describe('The clone directory walked.'),
-  all: z.boolean().describe('Every clone was eligible, whatever its age (--all-clones).'),
+  allClones: z.boolean().describe('Every clone was eligible, whatever its age (--all-clones).'),
   olderThanDays: z
     .number()
     .int()
@@ -222,7 +228,8 @@ export function mirrorCommand(
         text: renderListText,
       }),
       prune: defineCommand({
-        summary: 'remove clones unused for mirror_max_age_days, and dead runs’ worktrees',
+        summary:
+          'remove clones unused for mirror_max_age_days (every clone with --all-clones), and dead runs’ worktrees',
         description:
           'Removes the worktree of every run that is gone, whatever its age, through the git ' +
           'directory that owns it, and leftover temporary folders older than an hour. Then removes ' +
@@ -236,8 +243,11 @@ export function mirrorCommand(
             valueName: 'days',
             help: 'Remove clones unused for more than this many days, instead of mirror_max_age_days.',
           },
-          // `--all` is cli-tool's own (`--help --all`).
-          allClones: { kind: 'boolean', help: 'Remove every clone, whatever its age.' },
+          // `--all` is cli-tool's own (`--help --all`), which refuses it here.
+          allClones: {
+            kind: 'boolean',
+            help: 'Remove every clone, whatever its age. (Not --all, which goes with --help.)',
+          },
           dryRun: { kind: 'boolean', help: 'Only say what would be removed. Takes no lock.' },
           discardKept: {
             kind: 'boolean',
@@ -258,8 +268,9 @@ export function mirrorCommand(
         run({ flags }, ctx) {
           let olderThanDays: number | undefined
           if (flags.olderThan !== undefined) {
-            olderThanDays = Number(flags.olderThan)
-            if (!Number.isInteger(olderThanDays) || olderThanDays < 0) {
+            // Digits only: `Number` reads '', ' ', '1e1' and '0x7' as numbers.
+            olderThanDays = /^\d+$/.test(flags.olderThan) ? Number(flags.olderThan) : Number.NaN
+            if (!Number.isSafeInteger(olderThanDays)) {
               throw new UsageError(
                 `--older-than must be a whole number of days, 0 or more, got '${flags.olderThan}'`,
               )
@@ -277,7 +288,7 @@ export function mirrorCommand(
               claim: seams.claim,
               notice: (l) => ctx.note(l),
               olderThanDays,
-              all: flags.allClones === true,
+              allClones: flags.allClones === true,
               dryRun: flags.dryRun === true,
               discardKept: flags.discardKept === true,
             }),

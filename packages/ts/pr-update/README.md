@@ -262,11 +262,15 @@ Clones go to the first of `--mirror-dir`, `PR_UPDATE_MIRROR_DIR`, `mirror_dir`,
 or `~/.cache/osdlc/pr-update/repos/`, one `<host>/<owner>/<name>.git` each,
 lower-cased, with the host's port left out. The directory must be outside
 every git checkout and new, empty or already pr-update's, and yours, and on
-Linux and macOS no one else may write to it (`chmod go-w <dir>` fixes that;
-on a filesystem with no Unix permissions, such as exFAT or an SMB share,
-choose another clone directory);
-otherwise the run exits `2`, naming it, and writes nothing. pr-update makes
-its own folders with mode `755` at most. A clone is used only when pr-update
+Linux and macOS no one else may write to it: a folder anyone can write to is
+refused unless its sticky bit is set, and one its group can write to unless
+the group is your primary group, as for every folder you make under umask
+`002` with a group of your own (the default on Ubuntu, Debian and Fedora).
+`chmod go-w <dir>` fixes that; on a filesystem with no Unix permissions, such
+as exFAT or an SMB share, choose another clone directory. Otherwise the run
+exits `2`, naming it, and writes nothing. pr-update makes every folder of its
+own (clone folders, the folders that hold run and kept worktrees, its records) with
+mode `755` at most, whatever the umask. A clone is used only when pr-update
 made it: a folder without its marker, a symbolic link in its place or in
 place of the `<host>` or `<owner>` folder above it, or a clone, marker or
 folder another user owns or others can write to, is left alone, and the
@@ -301,10 +305,12 @@ prune`; a kept worktree by running with `--discard-kept` again. A rehearsal (`up
 not wait: a clone another run holds is skipped as `mirror busy`, with a note.
 `survey` and a rehearsal never clone: they use a clone that exists, fetch it
 and stamp it as used, and otherwise report the target not measured with a
-note naming `pr-update mirror enable`. `survey` holds the lock only for its
-fetch, and reads a clone another run holds as it is, with a note, without
-waiting. Each use writes the clone's last-used stamp. `checkout: local`
-leaves a clone that exists unused.
+note naming `pr-update mirror enable`. `survey` holds the lock while it
+fetches and reads the clone, and reads a clone another run holds as it is,
+with a note, without waiting. Each use writes the clone's last-used stamp.
+`checkout: local` leaves a clone that exists unused. A clone a prune removed
+while a run waited for its lock is made again, under that lock, by `update
+--apply` with consent; otherwise its target is skipped with a note saying so.
 
 A run served from a clone prints `<repo>: no checkout under <roots> (…);
 using the clone <path>` every time, so a root you meant to list shows up as
@@ -331,14 +337,25 @@ and changes nothing.
 - leftover `.tmp-*` clone folders and `.pr-update-probe-*` folders more than
   an hour old;
 - each clone not used for `mirror_max_age_days` (default 30). At `0` it
-  removes no clone, unless you pass `--older-than <days>` or `--all-clones`.
+  removes no clone, unless you pass `--older-than <days>` or `--all-clones`
+  (not `--all`, which goes with `--help`).
+
+A run is gone when no process has the pid its worktree's folder,
+`<pid>.<time>`, is named for, or the process with that pid started after
+that time, so a pid a later process reused does not keep a dead run's
+worktree. Pids belong to one machine: pr-update's cache and state
+directories must not be shared between machines (a network home, a synced
+folder), or one machine's prune can remove a worktree another machine's run
+is using.
 
 It never removes a clone another run holds, one with a kept worktree (unless
 `--discard-kept`, which removes those first), one a live run has a worktree
 in, or a folder without pr-update's marker, and it never follows a symbolic
 link or removes anything from a folder another user owns or others can write
-to. It never waits for a lock: a clone another run holds is left as `mirror
-busy`. `--dry-run` only says what would go, and takes no lock. `list` and
+to (the clone directory's rule above). Such a folder under the cache's
+`worktrees/` or the state's `kept/` is fixed with `chmod -R go-w` on that
+directory, which the message names. It never waits for a lock: a clone
+another run holds is left as `mirror busy`. `--dry-run` only says what would go, and takes no lock. `list` and
 `prune` take `--mirror-dir`, so a clone directory left behind by a moved
 `mirror_dir` can be cleaned. `prune` exits `1` when something could not be
 removed; a clone whose removal stops part-way is left as a `.tmp-*` folder,
@@ -346,8 +363,11 @@ which a later prune removes.
 
 At the end of an `update --apply` that used a clone or made a run worktree in
 the cache, the run prunes the same way, as a bare `mirror prune` would, and
-notes each thing removed and the space freed. A run that never touched the
-cache, and a rehearsal, remove nothing.
+notes each thing removed, each thing it left for a folder someone else could
+write to or a clone pr-update may not change, each thing it could not remove,
+and the space freed. A pruning that fails does not change the run's exit. A
+run that never touched the cache, a run a signal stopped, and a rehearsal
+remove nothing.
 
 ## Three things it knows that a per-PR check cannot
 

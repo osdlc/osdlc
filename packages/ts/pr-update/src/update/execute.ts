@@ -37,8 +37,8 @@
  */
 
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 
 import { firstLine, forwardedSignal, isCommandFailed, stderrOrError } from '@osdlc/command-seam'
 import {
@@ -50,6 +50,7 @@ import {
 } from '@osdlc/typed-git'
 
 import { NothingDetectedError } from '../detect.ts'
+import { FOLDER_MODE } from '../folders.ts'
 import { keepWorktree, type KeptPlace } from './kept.ts'
 import { PRUNE_ALL, removeWorktree, type WorktreeRecords } from './registrations.ts'
 import type {
@@ -1134,6 +1135,9 @@ export async function updateAll(
   const records = opts.records ?? PRUNE_ALL
   releaseStaleScratch(git, records)
   const start = `${settings.remote}/${targets[0]!.base}`
+  // The folders above the worktree are made here, not by git, which would make them under the
+  // umask: a prune refuses a folder someone else can write to.
+  mkdirSync(dirname(opts.worktreeRoot), { recursive: true, mode: FOLDER_MODE })
   git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
   opts.lock?.added()
   const wt = git.at(opts.worktreeRoot)
@@ -1196,6 +1200,7 @@ export async function updateAll(
         }
         if (!existsSync(opts.worktreeRoot)) {
           records.forget(git, opts.worktreeRoot, false)
+          mkdirSync(dirname(opts.worktreeRoot), { recursive: true, mode: FOLDER_MODE })
           git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
         }
       }

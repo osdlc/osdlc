@@ -12,6 +12,7 @@ import {
   readdirSync,
   realpathSync,
   chmodSync,
+  chownSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -553,9 +554,15 @@ describe('the folders between the clone directory and a clone (review round 2)',
       const host = join(root(), 'github.com')
       const owner = join(host, 'acme')
       for (const dir of [root(), host, owner]) {
-        chmodSync(dir, 0o775)
+        chmodSync(dir, 0o777)
         expect(checkClone(root(), clone)).toEqual({
-          foreign: `${dir} can be written by its group or others, so ${clone} is not used; ${fix(dir)}`,
+          foreign: `${dir} can be written by anyone, so ${clone} is not used; ${fix(dir)}`,
+        })
+        // Writable by its group, when the group is not the process's primary one.
+        chmodSync(dir, 0o775)
+        const other = statSync(dir).gid + 1
+        expect(checkClone(root(), clone, undefined, other)).toEqual({
+          foreign: `${dir} can be written by its group, which is not your primary group, so ${clone} is not used; ${fix(dir)}`,
         })
         chmodSync(dir, 0o755)
       }
@@ -564,13 +571,34 @@ describe('the folders between the clone directory and a clone (review round 2)',
       chmodSync(owner, 0o777)
       const missing = join(owner, 'web.git')
       expect(checkClone(root(), missing)).toEqual({
-        foreign: `${owner} can be written by its group or others, so ${missing} is not used; ${fix(owner)}`,
+        foreign: `${owner} can be written by anyone, so ${missing} is not used; ${fix(owner)}`,
       })
       chmodSync(owner, 0o755)
       chmodSync(root(), 0o777)
       expect(() => checkMirrorDir(root())).toThrow(
-        `the clone directory ${root()} can be written by its group or others; ${fix(root())}`,
+        `the clone directory ${root()} can be written by anyone; ${fix(root())}`,
       )
+      chmodSync(root(), 0o755)
+    },
+  )
+
+  test.skipIf(!posix)(
+    'a folder writable by your own primary group, or by anyone with the sticky bit set, is accepted (review round 1 of mirror prune)',
+    () => {
+      const clone = made()
+      const owner = join(root(), 'github.com', 'acme')
+      // What `mkdir` makes under umask 002 with a group of one's own: the group is the primary one.
+      // (Set here: on macOS a new folder takes its parent's group.)
+      for (const dir of [root(), owner]) chownSync(dir, -1, process.getgid!())
+      chmodSync(owner, 0o775)
+      expect(checkClone(root(), clone)).toBe('clone')
+      chmodSync(root(), 0o775)
+      expect(() => checkMirrorDir(root())).not.toThrow()
+      // Writable by anyone, but no one can rename or remove another's entries in it.
+      chmodSync(owner, 0o1777)
+      expect(statSync(owner).mode & 0o1000).toBe(0o1000)
+      expect(checkClone(root(), clone)).toBe('clone')
+      chmodSync(owner, 0o755)
       chmodSync(root(), 0o755)
     },
   )

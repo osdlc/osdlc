@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   chmodSync,
   cpSync,
+  statSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -42,6 +43,11 @@ import {
 } from '../src/mirror.ts'
 import { CONFIG_INVALID_EXIT } from '@osdlc/config-layers'
 import { allToolsInstalled, isolatedEnv } from './support.ts'
+import { forwarded } from './support-signal.ts'
+
+vi.mock('@osdlc/command-seam', async (original) =>
+  (await import('./support-signal.ts')).mockForwarding(original),
+)
 
 const FAKE_GH = fileURLToPath(new URL('./fake-gh.mjs', import.meta.url))
 
@@ -116,6 +122,7 @@ beforeEach(() => {
   repos = prUpdatePaths(osdlcDirs({ env })).repos
 })
 afterEach(() => {
+  forwarded.signal = undefined
   vi.unstubAllEnvs()
   rmSync(scratch, { recursive: true, force: true })
 })
@@ -1068,5 +1075,213 @@ describe('mirror prune and a run worktree a run left in its clone', () => {
     expect(existsSync(left!)).toBe(false)
     expect(git(clone, 'for-each-ref', 'refs/heads/')).toBe('')
     expect(existsSync(lock)).toBe(false)
+  })
+})
+
+describe('mirror prune review round 1', () => {
+  const paths = () => prUpdatePaths(osdlcDirs({ env }))
+  /** A managed clone of acme/old in `dir`, last used `daysAgo` days ago. */
+  function oldClone(dir: string, daysAgo: number): string {
+    markMirrorDir(dir)
+    const path = join(dir, 'github.com', 'acme', 'old.git')
+    mkdirSync(dirname(path), { recursive: true })
+    git(scratch, 'clone', '-q', '--bare', remote, path)
+    writeFileSync(join(path, CLONE_MARKER), '{"tool":"pr-update","repo":"github.com/acme/old"}\n')
+    writeFileSync(
+      join(path, CLONE_STAMP),
+      `${new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString()}\n`,
+    )
+    return path
+  }
+
+  test.skipIf(process.platform === 'win32')(
+    'under umask 002, the folders a run makes for its worktree and its kept worktree are 0755',
+    async () => {
+      writeFileSync(
+        join(project, 'pr-update.local.yaml'),
+        "pr_update:\n  verify: test\n  test_command: 'false'\n",
+      )
+      const old = process.umask(0o002)
+      let r: Awaited<ReturnType<typeof run>>
+      try {
+        r = await run(
+          'update',
+          '--repo',
+          'acme/api',
+          '--mirror-dir',
+          join(scratch, 'clones'),
+          '--apply',
+          '--trust',
+          '--keep-failed',
+          '--json',
+        )
+      } finally {
+        process.umask(old)
+      }
+      expect(JSON.parse(r.out).results).toMatchObject([{ number: 7, status: 'failed' }])
+      const { worktrees, kept } = paths()
+      for (const dir of [
+        worktrees,
+        join(worktrees, 'github.com'),
+        join(worktrees, 'github.com', 'acme'),
+        join(worktrees, 'github.com', 'acme', 'api'),
+        join(kept, 'github.com', 'acme', 'api'),
+      ]) {
+        expect([dir, statSync(dir).mode & 0o777]).toEqual([dir, 0o755])
+      }
+      // So the next prune finds nothing to refuse.
+      const pruned = pruneMirror({ env, dir: join(scratch, 'clones') })
+      expect(pruned.skipped.filter((e) => e.skip === 'folder')).toEqual([])
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'the end-of-run prune notes a run worktree it left for a folder anyone can write to',
+    async () => {
+      const { worktrees } = paths()
+      const dead = join(worktrees, 'github.com', 'acme', 'web', '2147483646.1')
+      mkdirSync(dead, { recursive: true, mode: 0o755 })
+      chmodSync(join(worktrees, 'github.com'), 0o777)
+
+      const r = await run(
+        'update',
+        '--repo',
+        'acme/api',
+        '--mirror-dir',
+        join(scratch, 'clones'),
+        '--apply',
+      )
+
+      expect(r.code).toBe(EXIT.ok)
+      expect(r.err).toContain(
+        `did not prune the run worktree ${dead}: ${join(worktrees, 'github.com')} can be written by anyone; run \`chmod -R go-w ${worktrees}\``,
+      )
+      expect(existsSync(dead)).toBe(true)
+    },
+  )
+
+  test('an end-of-run prune that fails is noted, and the run still exits 0', async () => {
+    const dir = join(scratch, 'clones')
+    const broken = oldClone(dir, 400)
+    rmSync(join(broken, 'HEAD'))
+
+    const r = await run('update', '--repo', 'acme/api', '--mirror-dir', dir, '--apply')
+
+    expect(r.code).toBe(EXIT.ok)
+    expect(r.err).toMatch(new RegExp(`could not prune ${broken.replace(/[.]/g, '\\.')}: `))
+    expect(existsSync(broken)).toBe(true)
+  })
+
+  test('a run a signal stopped prunes nothing', async () => {
+    const dir = join(scratch, 'clones')
+    const old = oldClone(dir, 400)
+    forwarded.signal = 'SIGTERM'
+
+    const r = await run('update', '--repo', 'acme/api', '--mirror-dir', dir, '--apply')
+
+    expect(r.code).toBe(128 + 15)
+    expect(r.err).not.toContain('prune')
+    expect(existsSync(old)).toBe(true)
+  })
+
+  test('survey holds a clone’s lock while it reads the clone, not only while it fetches', async () => {
+    writeMachine('checkout: mirror\n')
+    expect((await run('update', '--repo', 'acme/api', '--apply')).code).toBe(EXIT.ok)
+    const clone = cloneOf(repos)
+    const real = spawnRunner('git')
+    const lockedAt: Record<string, boolean> = {}
+    const watching: CommandRunner = {
+      run: (argv, opts) => {
+        if (opts?.cwd !== undefined && realpathSync(opts.cwd) === realpathSync(clone)) {
+          lockedAt[argv.slice(0, 2).join(' ')] = existsSync(cloneLockPath(clone))
+        }
+        return real.run(argv, opts)
+      },
+    }
+
+    const r = await runWith({ ...noTerminal, git: watching }, {}, 'survey', '--repo', 'acme/api')
+
+    expect(r.code).toBe(EXIT.ok)
+    expect(lockedAt).toMatchObject({ 'fetch --prune': true, 'worktree list': true })
+    expect(Object.values(lockedAt).every(Boolean)).toBe(true)
+    expect(existsSync(cloneLockPath(clone))).toBe(false)
+  })
+
+  describe('a clone removed while the run waits for its lock', () => {
+    /** A clone of acme/api in `dir` that `locate` finds, and a claim that removes it first. */
+    function removedOnClaim(dir: string): { clone: string; seams: CliSeams } {
+      markMirrorDir(dir)
+      const clone = cloneOf(dir)
+      mkdirSync(dirname(clone), { recursive: true, mode: 0o755 })
+      git(scratch, 'clone', '-q', '--bare', remote, clone)
+      writeFileSync(
+        join(clone, CLONE_MARKER),
+        '{"tool":"pr-update","repo":"github.com/acme/api"}\n',
+      )
+      let removed = false
+      return {
+        clone,
+        seams: {
+          ...noTerminal,
+          // As a prune would: it held the lock, removed the clone, and let go.
+          mirrorClaim: (path, wait) => {
+            if (!removed && path === cloneLockPath(clone)) {
+              removed = true
+              rmSync(clone, { recursive: true, force: true })
+            }
+            return claimCloneLock(path, wait)
+          },
+        },
+      }
+    }
+
+    test('update --apply with consent makes it again under the lock it holds', async () => {
+      const dir = join(scratch, 'clones')
+      const { clone, seams } = removedOnClaim(dir)
+
+      const r = await runWith(
+        seams,
+        {},
+        'update',
+        '--repo',
+        'acme/api',
+        '--mirror-dir',
+        dir,
+        '--apply',
+        '--json',
+      )
+
+      expect(r.code).toBe(EXIT.ok)
+      expect(r.err).toContain(
+        `github.com/acme/api: ${clone} was removed (by a prune) while this run waited`,
+      )
+      expect(clonesMade()).toHaveLength(1)
+      expect(JSON.parse(r.out).results).toMatchObject([{ number: 7, status: 'updated' }])
+      expect(existsSync(join(clone, CLONE_MARKER))).toBe(true)
+    })
+
+    test('a rehearsal reports the target unserved, and does not throw', async () => {
+      const dir = join(scratch, 'clones')
+      const { clone, seams } = removedOnClaim(dir)
+
+      const r = await runWith(
+        seams,
+        {},
+        'update',
+        '--repo',
+        'acme/api',
+        '--mirror-dir',
+        dir,
+        '--json',
+      )
+
+      expect(r.code).toBe(EXIT.ok)
+      expect(r.err).toContain(
+        `github.com/acme/api: ${clone} was removed (by \`pr-update mirror prune\`, say) before this run could use it`,
+      )
+      expect(clonesMade()).toEqual([])
+      expect(existsSync(clone)).toBe(false)
+      expect(existsSync(cloneLockPath(clone))).toBe(false)
+    })
   })
 })

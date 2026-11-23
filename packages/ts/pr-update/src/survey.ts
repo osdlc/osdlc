@@ -186,11 +186,13 @@ export interface ManagedClones {
    */
   provide(targets: readonly RepoTarget[], opts: { apply: boolean }): RepoTarget[]
   /**
-   * Run `fetch` under the lock of the clone at `clone`, and write the clone's last-used stamp.
-   * When this run holds the lock already, `fetch` runs at once. When another run holds it,
-   * `fetch` is not run, a note says so, and the result is false: the clone is read as it is.
+   * Run `read`, which fetches into and reads the clone at `clone`, under the clone's lock, so a
+   * prune cannot remove the clone part-way, and write the clone's last-used stamp. When this run
+   * holds the lock already, `read` runs at once. The lock is never waited for: when another run
+   * holds it, a note says so and `read(false)` runs without it, to read the clone as it is with
+   * no fetch. Returns what `read` does.
    */
-  use(clone: string, fetch: () => boolean): boolean
+  use<T>(clone: string, read: (mayFetch: boolean) => T): T
   /**
    * Let go of the lock {@link provide} took for the clone at `clone`: the run has added its
    * worktree there, or has nothing to do in it. Nothing when the run does not hold it.
@@ -1146,7 +1148,7 @@ export function surveyWithTargets(
     // widen it. It does not prune: against that refspec, prune would delete
     // every `<remote>/*` ref with no branch behind it, such as a `pr/*` the
     // checkout's own fetch line keeps there. A managed clone is the run's own, so its
-    // unscoped fetch prunes, and runs under the clone's lock, which stamps it as used.
+    // unscoped fetch prunes. A clone is fetched and read under its lock, which stamps it as used.
     const { remote } = target
     const own = target.source === 'root'
     const clone = target.source === 'clone'
@@ -1163,30 +1165,28 @@ export function surveyWithTargets(
                 ...(clone ? { prune: true } : {}),
               }).ok
         : false
-    const fetched =
+    const read = (mayFetch: boolean) => {
+      const fetched = mayFetch ? fetch() : false
+      // `try`, not `soft`: a failed listing must not read as "no checkout holds
+      // this branch", which would clear a force-push. `null` counts as unsafe.
+      const listedWorktrees = measurable ? git.try.worktrees() : null
+      const worktrees =
+        listedWorktrees === null ? [] : listedWorktrees.ok ? listedWorktrees.value : null
+      // A located checkout's others were matched by `origin`, as it was.
+      const others = (target.found?.others ?? []).map((path) => {
+        const other = new Git(path, { runner: env.git, env: noHooksEnv() })
+        const listed = other.try.worktrees()
+        return { git: other, worktrees: listed.ok ? listed.value : null, remote: 'origin' }
+      })
+      return {
+        fetched,
+        ...surveyRows(git, prs, { repo: target.repo, worktrees, cfg, measurable, remote, others }),
+      }
+    }
+    const { fetched, rows, cycles } =
       clone && target.path !== null && env.clones !== undefined
-        ? env.clones.use(target.path, fetch)
-        : fetch()
-    // `try`, not `soft`: a failed listing must not read as "no checkout holds
-    // this branch", which would clear a force-push. `null` counts as unsafe.
-    const listedWorktrees = measurable ? git.try.worktrees() : null
-    const worktrees =
-      listedWorktrees === null ? [] : listedWorktrees.ok ? listedWorktrees.value : null
-    // A located checkout's others were matched by `origin`, as it was.
-    const others = (target.found?.others ?? []).map((path) => {
-      const other = new Git(path, { runner: env.git, env: noHooksEnv() })
-      const listed = other.try.worktrees()
-      return { git: other, worktrees: listed.ok ? listed.value : null, remote: 'origin' }
-    })
-
-    const { rows, cycles } = surveyRows(git, prs, {
-      repo: target.repo,
-      worktrees,
-      cfg,
-      measurable,
-      remote,
-      others,
-    })
+        ? env.clones.use(target.path, read)
+        : read(true)
     repos.push({ repo: target.repo, measurable, checkout, fetched, cycles })
     allRows.push(...rows)
   }

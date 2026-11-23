@@ -342,8 +342,10 @@ function runEnv(
 /**
  * The pruning at the end of an `update --apply` that served a target from a clone or made a run
  * worktree under the cache (D-0005, "Automatic"): as `mirror prune` with no flags, after the run
- * has let go of its locks. A run that never touched the cache removes nothing. Each thing removed
- * and the space freed are noted; a failure is noted and does not change the run's exit.
+ * has let go of its locks. A run that never touched the cache, or that a signal stopped, removes
+ * nothing. Each thing removed, each thing left for a folder someone else could write to or one
+ * pr-update did not make, and the space freed are noted; a failure is noted and does not change
+ * the run's exit.
  */
 function pruneAfterRun(
   ctx: CommandContext,
@@ -371,6 +373,12 @@ function pruneAfterRun(
     }
     for (const e of report.removed) {
       ctx.note(`pruned ${what[e.kind]} ${e.path} (${formatBytes(e.bytes)})`)
+    }
+    for (const e of report.skipped) {
+      // A lock another run holds, a worktree in use or a kept one is the cache working as meant.
+      if (e.skip === 'folder' || e.skip === 'foreign') {
+        ctx.note(`did not prune ${what[e.kind]} ${e.path}: ${e.reason ?? ''}`)
+      }
     }
     for (const e of report.failed) ctx.note(`could not prune ${e.path}: ${e.reason ?? ''}`)
     if (report.removed.length > 0) ctx.note(`pruning freed ${formatBytes(report.freedBytes)}`)
@@ -754,7 +762,12 @@ export function updateCommand(seams: CliSeams) {
         }
         asUsage(e)
       }
-      if (out.applied) pruneAfterRun(ctx, seams, out, mirrorDirFlag(ctx, flags.mirrorDir))
+      // A forwarded signal stopped the run: exit 128 + its number, as forwarding itself would.
+      const interrupted = forwardedExitCode()
+      // A stopped run cleans up nothing more: the host wants it gone.
+      if (out.applied && interrupted === undefined) {
+        pruneAfterRun(ctx, seams, out, mirrorDirFlag(ctx, flags.mirrorDir))
+      }
       if (reportFile !== undefined) {
         try {
           writeReport(reportFile, out)
@@ -763,8 +776,6 @@ export function updateCommand(seams: CliSeams) {
         }
       }
       const listingFailure = reportRepoFailures(ctx, out)
-      // A forwarded signal stopped the run: exit 128 + its number, as forwarding itself would.
-      const interrupted = forwardedExitCode()
       // A conflict or failed push exits 1 though the run completed, so a script need not read `counts`.
       const exit =
         interrupted ??

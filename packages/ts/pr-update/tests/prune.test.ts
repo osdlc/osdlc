@@ -15,6 +15,7 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
   unlinkSync,
   utimesSync,
@@ -43,6 +44,10 @@ import { allToolsInstalled, isolatedEnv } from './support.ts'
 
 /** No process has this pid, so a run named for it is dead. */
 const DEAD = '2147483646.1'
+/** When this file loaded: after this process started, so a run named `<pid>.<STARTED + n>` for it is alive. */
+const STARTED = Date.now()
+/** A run worktree name for this process, which is alive; `n` makes two names differ. */
+const liveRun = (n = 0): string => `${process.pid}.${STARTED + n}`
 const DAY = 24 * 60 * 60 * 1000
 
 let scratch: string
@@ -176,7 +181,7 @@ describe('dead run worktrees under worktrees/', () => {
     const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
     checkout.commit('init', { 'w.txt': 'w' })
     const dead = runWorktree(checkout.dir, 'acme/web')
-    const live = runWorktree(checkout.dir, 'acme/web', `${process.pid}.1`)
+    const live = runWorktree(checkout.dir, 'acme/web', liveRun())
     // The person's own worktree, on a drive that is not mounted: a bare prune would drop it.
     const theirs = join(scratch, 'elsewhere', 'feature')
     git(checkout.dir, 'worktree', 'add', '-q', '-b', 'feature', theirs, 'main')
@@ -252,7 +257,7 @@ describe('dead run worktrees under worktrees/', () => {
   test('the .git file and commondir are read first: a record that names another tree is not touched', () => {
     const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
     checkout.commit('init', { 'w.txt': 'w' })
-    const other = runWorktree(checkout.dir, 'acme/web', `${process.pid}.2`)
+    const other = runWorktree(checkout.dir, 'acme/web', liveRun(1))
     // A dead run's folder whose .git names the live run's record.
     const dead = join(dirname(other), DEAD)
     mkdirSync(dead)
@@ -271,7 +276,7 @@ describe('dead run worktrees under worktrees/', () => {
 
   test('a live run’s worktree is left alone, and so is a folder that is not named for a run', () => {
     const clone = makeClone('acme/api', 1)
-    const live = runWorktree(clone, 'acme/api', `${process.pid}.1`)
+    const live = runWorktree(clone, 'acme/api', liveRun())
     const odd = join(dirname(live), 'notes')
     mkdirSync(odd)
 
@@ -298,7 +303,7 @@ describe('dead run worktrees under worktrees/', () => {
     // A clone directory whose host folder is a link.
     symlinkSync(outside, join(paths.repos, 'example.com'))
 
-    const r = prune({ all: true })
+    const r = prune({ allClones: true })
 
     expect(readdirSync(outside)).toEqual(['keep.txt'])
     expect(existsSync(join(repoDir, DEAD))).toBe(true)
@@ -347,14 +352,14 @@ describe('managed clones', () => {
 
     expect(prune({ olderThanDays: 7 }).removed.map((e) => e.path)).toEqual([clone])
     expect(existsSync(other)).toBe(true)
-    expect(prune({ all: true }).removed.map((e) => e.path)).toEqual([other])
+    expect(prune({ allClones: true }).removed.map((e) => e.path)).toEqual([other])
   })
 
   test('one another run holds is never removed, even with --all-clones', () => {
     const clone = makeClone('acme/api', 400)
     const lock = holdLock(clone)
 
-    const r = prune({ all: true })
+    const r = prune({ allClones: true })
 
     expect(r.skipped).toEqual([
       expect.objectContaining({
@@ -369,7 +374,7 @@ describe('managed clones', () => {
     const clone = makeClone('acme/api', 400)
     const kept = keptWorktree(clone, 'acme/api', 7)
 
-    const stays = prune({ all: true })
+    const stays = prune({ allClones: true })
     expect(stays.skipped).toEqual([
       expect.objectContaining({
         path: clone,
@@ -379,7 +384,7 @@ describe('managed clones', () => {
     expect(existsSync(clone)).toBe(true)
     expect(existsSync(kept)).toBe(true)
 
-    const goes = prune({ all: true, discardKept: true })
+    const goes = prune({ allClones: true, discardKept: true })
     expect(goes.removed.map((e) => [e.kind, e.path])).toEqual([
       ['kept', kept],
       ['clone', clone],
@@ -395,7 +400,7 @@ describe('managed clones', () => {
     mkdirSync(dirname(path), { recursive: true })
     git(clone, 'worktree', 'add', '-q', '-b', 'pr-update/failed-acme-api-9', path, 'origin/main')
 
-    expect(prune({ all: true }).skipped).toEqual([
+    expect(prune({ allClones: true }).skipped).toEqual([
       expect.objectContaining({
         path: clone,
         reason: expect.stringContaining('has kept worktrees'),
@@ -403,7 +408,7 @@ describe('managed clones', () => {
     ])
     expect(existsSync(path)).toBe(true)
 
-    const r = prune({ all: true, discardKept: true })
+    const r = prune({ allClones: true, discardKept: true })
     expect(r.removed.map((e) => [e.kind, e.path])).toEqual([
       ['kept', path],
       ['clone', clone],
@@ -414,9 +419,9 @@ describe('managed clones', () => {
 
   test('one with a live run’s worktree in it stays', () => {
     const clone = makeClone('acme/api', 400)
-    const live = runWorktree(clone, 'acme/api', `${process.pid}.1`)
+    const live = runWorktree(clone, 'acme/api', liveRun())
 
-    const r = prune({ all: true })
+    const r = prune({ allClones: true })
 
     expect(r.skipped).toEqual([
       expect.objectContaining({ path: clone, reason: `in use by the worktree ${live}` }),
@@ -432,7 +437,7 @@ describe('managed clones', () => {
     git(scratch, 'clone', '-q', '--bare', source, join(unmarked, 'github.com', 'acme', 'web.git'))
     writeFileSync(join(unmarked, 'github.com', 'acme', 'web.git', CLONE_MARKER), '{}\n')
 
-    const r = prune({ all: true })
+    const r = prune({ allClones: true })
     expect(r.removed).toEqual([])
     expect(r.skipped).toEqual([
       expect.objectContaining({
@@ -442,7 +447,7 @@ describe('managed clones', () => {
     ])
     expect(existsSync(clone)).toBe(true)
 
-    expect(prune({ all: true, dir: unmarked }).removed).toEqual([])
+    expect(prune({ allClones: true, dir: unmarked }).removed).toEqual([])
     expect(existsSync(join(unmarked, 'github.com', 'acme', 'web.git'))).toBe(true)
   })
 
@@ -459,7 +464,7 @@ describe('managed clones', () => {
       rmSync(path, { recursive: true, force: true })
     }
 
-    const r = prune({ all: true, remove: failing })
+    const r = prune({ allClones: true, remove: failing })
 
     expect(r.removed).toEqual([])
     expect(r.failed).toEqual([
@@ -486,7 +491,7 @@ describe('managed clones', () => {
     const other = makeClone('acme/web', 400)
     rmSync(join(broken, 'HEAD'))
 
-    const r = prune({ all: true })
+    const r = prune({ allClones: true })
 
     expect(r.failed).toEqual([expect.objectContaining({ kind: 'clone', path: broken })])
     expect(r.removed.map((e) => e.path)).toEqual([other])
@@ -524,7 +529,7 @@ describe('managed clones', () => {
     keptWorktree(clone, 'acme/api', 7)
     const { runner, calls } = recordingGit()
 
-    prune({ all: true, discardKept: true, git: runner })
+    prune({ allClones: true, discardKept: true, git: runner })
 
     expect(calls.length).toBeGreaterThan(0)
     for (const call of calls) {
@@ -582,7 +587,7 @@ describe('mirror list', () => {
     const clone = makeClone('acme/api', 3)
     const kept = keptWorktree(clone, 'acme/api', 7)
     const dead = runWorktree(clone, 'acme/api')
-    const live = runWorktree(clone, 'acme/api', `${process.pid}.1`)
+    const live = runWorktree(clone, 'acme/api', liveRun())
     const other = makeClone('acme/web', 1)
     const lock = holdLock(other)
     const lockText = readFileSync(lock, 'utf8')
@@ -656,6 +661,7 @@ describe('pr-update mirror list and prune, on the command line', () => {
     expect(JSON.parse(dry.out)).toMatchObject({
       kind: 'mirror-prune',
       dryRun: true,
+      allClones: false,
       olderThanDays: 1,
     })
     expect(existsSync(clone)).toBe(true)
@@ -673,6 +679,11 @@ describe('pr-update mirror list and prune, on the command line', () => {
   test.each([
     [['--older-than', 'ten'], "--older-than must be a whole number of days, 0 or more, got 'ten'"],
     [['--older-than', '-1'], '--older-than must be a whole number'],
+    // `Number` reads each of these as a number.
+    [['--older-than', ''], "--older-than must be a whole number of days, 0 or more, got ''"],
+    [['--older-than', ' '], "--older-than must be a whole number of days, 0 or more, got ' '"],
+    [['--older-than', '1e1'], "got '1e1'"],
+    [['--older-than', '0x7'], "got '0x7'"],
     [
       ['--older-than', '3', '--all-clones'],
       '--older-than and --all-clones cannot be used together',
@@ -693,7 +704,7 @@ describe('pr-update mirror list and prune, on the command line', () => {
 
 // Mode bits mean nothing on Windows; the owner check is POSIX only too.
 describe.skipIf(process.platform === 'win32')('folders someone else could write to', () => {
-  test('nothing is removed from a folder its group or others can write to, or that another user owns', () => {
+  test('nothing is removed from a folder anyone, another group or another user can write to', () => {
     const clone = makeClone('acme/api', 400)
     const dead = runWorktree(clone, 'acme/api')
     const probe = join(paths.kept, 'github.com', 'acme', 'web', '.pr-update-probe-x')
@@ -702,40 +713,53 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
     const tmp = join(dirname(clone), '.tmp-web.git-2147483646')
     mkdirSync(tmp)
     age(tmp, 2 * 60 * 60 * 1000)
+    const keptOwner = join(paths.kept, 'github.com', 'acme')
     chmodSync(join(paths.worktrees, 'github.com'), 0o777)
-    chmodSync(join(paths.kept, 'github.com', 'acme'), 0o775)
+    chmodSync(keptOwner, 0o775)
     chmodSync(dirname(clone), 0o757)
+    // Another group than the folders': a group-writable folder is then someone else's to write.
+    const otherGid = statSync(keptOwner).gid + 1
 
-    const r = prune({ all: true })
+    const r = prune({ allClones: true, gid: otherGid })
 
     expect(r.removed).toEqual([])
-    expect(r.skipped.map((e) => [e.path, e.reason])).toEqual(
+    expect(r.skipped.map((e) => [e.path, e.skip, e.reason])).toEqual(
       expect.arrayContaining([
         [
           dead,
-          expect.stringContaining(
-            `${join(paths.worktrees, 'github.com')} can be written by its group or others; run \`chmod go-w ${join(paths.worktrees, 'github.com')}\``,
-          ),
+          'folder',
+          `${join(paths.worktrees, 'github.com')} can be written by anyone; run \`chmod -R go-w ${paths.worktrees}\``,
         ],
         [
           probe,
+          'folder',
+          `${keptOwner} can be written by its group, which is not your primary group; run \`chmod -R go-w ${paths.kept}\``,
+        ],
+        [
+          tmp,
+          'folder',
           expect.stringContaining(
-            `${join(paths.kept, 'github.com', 'acme')} can be written by its group or others`,
+            `${dirname(clone)} can be written by anyone; run \`chmod go-w ${dirname(clone)}\`, or choose a clone directory`,
           ),
         ],
-        [tmp, expect.stringContaining(`${dirname(clone)} can be written by its group or others`)],
-        [clone, expect.stringContaining(`${dirname(clone)} can be written by its group or others`)],
+        [clone, 'foreign', expect.stringContaining(`${dirname(clone)} can be written by anyone`)],
       ]),
     )
     for (const p of [clone, dead, probe, tmp]) expect(existsSync(p)).toBe(true)
 
+    // With the process's own primary group, the group-writable kept folder is the person's own.
+    expect(prune({ allClones: true }).removed).toEqual([
+      expect.objectContaining({ kind: 'leftover', path: probe }),
+    ])
+
     // A run worktree in a sound folder whose owner, a clone, fails the clone checks, is left too.
     chmodSync(join(paths.worktrees, 'github.com'), 0o755)
-    const owned = prune({ all: true })
+    const owned = prune({ allClones: true })
     expect(owned.skipped).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           path: dead,
+          skip: 'foreign',
           reason: expect.stringContaining(
             `its owner ${realpathSync(clone)} is not a clone pr-update may change:`,
           ),
@@ -747,9 +771,177 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
 
     // Another user's folders and files, through the injected check.
     chmodSync(dirname(clone), 0o755)
-    chmodSync(join(paths.kept, 'github.com', 'acme'), 0o755)
-    const notMine = prune({ all: true, owned: () => false })
+    const notMine = prune({ allClones: true, owned: () => false })
     expect(notMine.removed).toEqual([])
-    for (const p of [clone, dead, probe, tmp]) expect(existsSync(p)).toBe(true)
+    for (const p of [clone, dead, tmp]) expect(existsSync(p)).toBe(true)
+  })
+
+  test('a dead run worktree the walk left for its folder keeps its clone: the clone’s own list does not remove it', () => {
+    const clone = makeClone('acme/api', 400)
+    const dead = runWorktree(clone, 'acme/api')
+    chmodSync(join(paths.worktrees, 'github.com'), 0o777)
+
+    const r = prune({ allClones: true })
+
+    expect(r.removed).toEqual([])
+    expect(r.skipped).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'worktree', path: dead, skip: 'folder' }),
+        expect.objectContaining({
+          kind: 'clone',
+          path: clone,
+          skip: 'in-use',
+          reason: `its run worktree ${dead} was left, so the clone stays with it`,
+        }),
+      ]),
+    )
+    expect(existsSync(dead)).toBe(true)
+    expect(listed(clone)).toEqual([dead])
+  })
+
+  test('under umask 002, a run worktree made through git is pruned; so is one under a sticky folder anyone can write to', () => {
+    const old = process.umask(0o002)
+    try {
+      const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
+      checkout.commit('init', { 'w.txt': 'w' })
+      const dead = runWorktree(checkout.dir, 'acme/web')
+      const clone = makeClone('acme/api', 0)
+      const inClone = runWorktree(clone, 'acme/api')
+      // The folders git and mkdir made are writable by the group, the person's own.
+      expect(statSync(dirname(dead)).mode & 0o777).toBe(0o775)
+      expect(statSync(dirname(clone)).mode & 0o777).toBe(0o775)
+
+      const r = prune()
+
+      expect(r.skipped).toEqual([])
+      expect(r.removed.map((e) => [e.kind, e.path]).sort()).toEqual(
+        [
+          ['worktree', dead],
+          ['worktree', inClone],
+        ].sort(),
+      )
+      expect(existsSync(dead)).toBe(false)
+      expect(listed(clone)).toEqual([])
+
+      const again = runWorktree(checkout.dir, 'acme/web', '2147483645.1')
+      chmodSync(join(paths.worktrees, 'github.com'), 0o1777)
+      expect(prune().removed).toEqual([expect.objectContaining({ kind: 'worktree', path: again })])
+      // Without the sticky bit, writable by anyone is refused.
+      const third = runWorktree(checkout.dir, 'acme/web', '2147483644.1')
+      chmodSync(join(paths.worktrees, 'github.com'), 0o777)
+      expect(prune().skipped).toEqual([
+        expect.objectContaining({ kind: 'worktree', path: third, skip: 'folder' }),
+      ])
+    } finally {
+      process.umask(old)
+    }
+  })
+})
+
+describe('a run is judged by its pid and its start time', () => {
+  test('a folder named for this live process but a start time before it began counts as dead', () => {
+    const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
+    checkout.commit('init', { 'w.txt': 'w' })
+    // The pid of a live process, as when an unrelated later process reuses a dead run's pid.
+    const reused = runWorktree(checkout.dir, 'acme/web', `${process.pid}.${STARTED - DAY}`)
+    const running = runWorktree(checkout.dir, 'acme/web', liveRun())
+
+    expect(
+      listMirror({ env })
+        .worktrees.map((w) => [w.path, w.running])
+        .sort(),
+    ).toEqual(
+      [
+        [reused, false],
+        [running, true],
+      ].sort(),
+    )
+    const r = prune()
+
+    expect(r.removed).toEqual([expect.objectContaining({ kind: 'worktree', path: reused })])
+    expect(existsSync(reused)).toBe(false)
+    expect(existsSync(running)).toBe(true)
+  })
+
+  test('the default check is the pid with the start time the folder name carries', () => {
+    const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
+    checkout.commit('init', { 'w.txt': 'w' })
+    const dead = runWorktree(checkout.dir, 'acme/web', '41.1700000000000')
+    const asked: [number, number][] = []
+
+    prune({
+      alive: (pid, startedAt) => {
+        asked.push([pid, startedAt])
+        return false
+      },
+    })
+
+    expect(asked).toEqual([[41, 1700000000000]])
+    expect(existsSync(dead)).toBe(false)
+  })
+})
+
+describe('a clone’s own dead run worktrees', () => {
+  test('one whose folder is gone is reported with the clone, and a dry run removes neither', () => {
+    const clone = makeClone('acme/api', 400)
+    const dead = runWorktree(clone, 'acme/api')
+    rmSync(dead, { recursive: true, force: true })
+
+    const dry = prune({ dryRun: true })
+    expect(dry.removed.map((e) => [e.kind, e.path])).toEqual([
+      ['worktree', dead],
+      ['clone', clone],
+    ])
+    expect(dry.freedBytes).toBe(dry.removed.reduce((n, e) => n + e.bytes, 0))
+    expect(listed(clone)).toEqual([dead])
+    expect(existsSync(clone)).toBe(true)
+
+    const r = prune()
+    expect(r.removed.map((e) => [e.kind, e.path])).toEqual([
+      ['worktree', dead],
+      ['clone', clone],
+    ])
+    expect(existsSync(clone)).toBe(false)
+  })
+})
+
+describe('pr-update mirror prune on the command line (review round 1)', () => {
+  async function run(...argv: string[]): Promise<{ code: number; out: string; err: string }> {
+    const ctx = captureContext({ cwd: scratch, env })
+    const code = await main(argv, ctx, { which: allToolsInstalled })
+    return { code, out: ctx.io.out, err: ctx.io.err }
+  }
+
+  test('exits 1 and prints ! could not remove when something could not be removed', async () => {
+    const broken = makeClone('acme/api', 400)
+    rmSync(join(broken, 'HEAD'))
+
+    const r = await run('mirror', 'prune', '--all-clones')
+
+    expect(r.code).toBe(EXIT.error)
+    expect(r.out).toMatch(
+      new RegExp(`^! could not remove clone ${broken.replace(/[.]/g, '\\.')}: `, 'm'),
+    )
+    expect(existsSync(broken)).toBe(true)
+  })
+
+  test('--all is refused, and the help names --all-clones', async () => {
+    const all = await run('mirror', 'prune', '--all')
+    expect(all.code).toBe(EXIT.usage)
+    // cli-tool's own message: `--all` belongs to `--help`.
+    expect(all.err).toContain('--all goes with --help: "--help --all"')
+
+    const help = await run('mirror', 'prune', '--help')
+    expect(help.out).toContain('(every clone with --all-clones)')
+    expect(help.out).toContain('--all-clones')
+    expect(help.out).toMatch(/Not --all, which\s+goes with --help\./)
+  })
+
+  test('the JSON names allClones', async () => {
+    const plain = JSON.parse((await run('mirror', 'prune', '--json')).out)
+    expect(plain).toMatchObject({ allClones: false })
+    expect(plain).not.toHaveProperty('all')
+    const every = JSON.parse((await run('mirror', 'prune', '--all-clones', '--json')).out)
+    expect(every).toMatchObject({ allClones: true, olderThanDays: null })
   })
 })
