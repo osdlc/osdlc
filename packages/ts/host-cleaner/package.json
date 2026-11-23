@@ -59,7 +59,8 @@
     "lint": "oxlint .",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
     "stamp-version": "cli-tool-stamp-version",
-    "write:descriptor-schema": "node scripts/write-descriptor-schema.ts"
+    "write:descriptor-schema": "node scripts/write-descriptor-schema.ts",
+    "draft:descriptor": "node scripts/draft-descriptor.ts"
   },
   "dependencies": {
     "@osdlc/cli-tool": "workspace:^",
