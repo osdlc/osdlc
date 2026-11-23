@@ -74,17 +74,20 @@ test('where the store lives: XDG state, one directory per tool', () => {
   expect(isAbsolute(homeDir())).toBe(true)
 })
 
-test('a tool under a family root keeps its own store, moved once from the old place', async () => {
+test('a tool under a family root keeps its own store, which starts empty', async () => {
   const vendorDirs: TrustVendorDirs = { vendor: 'osdlc', envVars: envVars('OSDLC') }
   const env = { XDG_STATE_HOME: join(home, '.local', 'state') }
   // A release before vendorDirs kept pr-update's markers here.
   await trustStore({ tool: 'pr-update', env, home }).trust(repo)
 
+  // Opting in reads only the new place: the person runs `trust` again, once.
   const prUpdate = trustStore({ tool: 'osdlc', app: 'pr-update', vendorDirs, env, home })
+  expect(await prUpdate.isTrusted(repo)).toBe(false)
+  await prUpdate.trust(repo)
   expect(await prUpdate.isTrusted(repo)).toBe(true)
   const other = trustStore({ tool: 'osdlc', app: 'other-tool', vendorDirs, env, home })
   expect(await other.isTrusted(repo)).toBe(false)
-  // `<PREFIX>_ROOT` moves the store with every other machine-local file.
+  // `<PREFIX>_ROOT` places the store with every other machine-local file.
   expect(
     trustStoreDir({ tool: 'osdlc', app: 'pr-update', vendorDirs, env: { OSDLC_ROOT: home }, home }),
   ).toBe(join(home, 'state', 'osdlc', 'pr-update', TRUST_MARKER_DIR))

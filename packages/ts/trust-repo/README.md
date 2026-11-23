@@ -44,7 +44,7 @@ Any CLI tool gets its own store by name.
 
 ## The store
 
-`trustStore({ tool, app?, vendorDirs?, dirs?, legacyDir?, env?, home?, dir? })` returns:
+`trustStore({ tool, app?, vendorDirs?, dirs?, env?, home?, dir? })` returns:
 
 | Member | Does |
 |---|---|
@@ -78,12 +78,12 @@ folder the tool runs in.
 
 A test passes its own `env` and `home`, so it never reads or writes the
 developer's real trust store. `dir` sets the store's directory directly and
-skips every other lookup, and nothing is moved into it. Use it when a tool
-has its own environment variable (for example `TOOLY_TRUST_STATE`) that names
-the marker directory itself, not a state home to add `tool` and `trusted` to.
+skips every other lookup. Use it when a tool has its own environment
+variable (for example `TOOLY_TRUST_STATE`) that names the marker directory
+itself, not a state home to add `tool` and `trusted` to.
 
 `trustStoreDir(options)` returns the directory a store built from the same
-options uses, without reading the disk or moving anything.
+options uses, without reading the disk.
 `trustStoreDir(tool, env?, home?)` returns the old place for `tool`.
 
 ### Where the store lives
@@ -132,89 +132,21 @@ A tool that passes neither `vendorDirs` nor `dir` keeps the place every
 release before this one used: `$XDG_STATE_HOME/<tool>/trusted/`, or
 `~/.local/state/<tool>/trusted/` when the variable is unset, on every
 platform. A relative `XDG_STATE_HOME` is ignored, as the XDG spec says, so
-the store never lands inside the directory a tool runs in. No tool moves
-until it opts in.
+the store never lands inside the directory a tool runs in. No tool changes
+place until it opts in.
 
-### How a store moves
+### Opting in starts an empty store
 
-When `vendorDirs` puts the store somewhere other than the old place, the old
-markers are copied over once, on first use. The old place is
-`$XDG_STATE_HOME/<app or tool>/trusted/`, or
-`~/.local/state/<app or tool>/trusted/`. For
-`{ tool: 'osdlc', app: 'pr-update' }` it is pr-update's old store. `legacyDir` names another old
-store, or `null` turns the move off.
+A store opened with `vendorDirs` reads only its new place. Grants made
+before, in the old place, are not carried over, so the person runs the
+tool's `trust` command again, once per tool per machine. The old markers are
+never read or touched, so an older release of the tool keeps using the old
+place and still finds every grant it knew.
 
-The move only ever fills a place that does not exist yet:
-
-1. Every grant in the old store is copied into a new, private folder beside
-   the new place.
-2. Each copy is read back and checked against the grant it came from.
-3. A `.moved` record, holding the old store's path, is written into the
-   folder, and the folder is renamed into place.
-4. A `.trusted.moved` record is written beside the store.
-
-The rename is the one step that publishes the copy. So the new store is
-either complete, or not there at all, and a copy that failed partway leaves
-nothing behind. Two processes that move at once each build their own folder;
-the second rename fails because the first already landed, and the second
-process uses that one. A new store that `trust` makes is published the same
-way, so this package never leaves a store folder without its record.
-
-The record beside the store, or the one inside it, means the store has had
-its one chance to move. From then on only the new place is read: a grant an
-older release adds to the old place later is not copied, and a grant revoked
-in the new place stays revoked. Every way the move can end writes it. When
-the old store has no grant, or the move does not run (as below), the first
-grant writes it; a read creates nothing.
-
-If the new place already exists without a record (it was made through `dir`,
-by hand, or left by a crash), nothing is copied into it. The record is
-written and the person consents again there. Copying into a live folder
-could bring back a grant revoked in it.
-
-To forget grants, use `untrust` or `untrustAll`, or delete the store folder
-to forget every grant at once. The record beside it stays, so the old place
-is not read again. Deleting the record as well would start the move once
-more.
-
-The move trusts the environment of the first run that makes it, since
-`XDG_STATE_HOME` places the old store. So the old folder is copied only when
-it is a real directory, not a symlink, and on POSIX owned by this user and
-writable by no one else (no group or world write bit). Otherwise nothing is
-copied, the record is written, and the person consents again. A store an
-older release made group-writable, under a `002` umask, is not copied for
-that reason.
-
-The old markers are never changed or deleted, so an older release of the
-tool still finds every grant it knew. A process killed partway through, or a
-cleanup Windows refused, can leave a `.trusted.moving-*` folder beside the
-store. Nothing reads it, and it is safe to delete.
-
-A move that fails makes `isTrusted`, `trust`, `untrust` and `untrustAll`
-throw, so nothing runs on a store that lost a grant. `list`, `listGrants`
-and `tighten` report what the new place holds. The next call tries again.
-
-The move runs only when none of `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` and
-`<PREFIX>_CONVENTION` is set (non-empty) in the environment, the store is not
-under tiered-dirs' per-process test root, and the new place differs from the
-old place (they are the same on Linux and macOS under `xdg`, with no family
-root).
-
-While any of those variables is set, the store gets no old markers, whatever
-folder it lands in, and its first grant writes the record, so it never gets
-them later either. The person consents again there, which fails closed. The
-unmoved place moves once, the first time the tool runs with none of them
-set.
-
-The rule does not try to tell whether a variable really moved the store.
-That would mean looking inside a `dirs` factory, and a wrong guess fills two
-places from one untouched old store, so a grant revoked in one comes back in
-the other. A scratch store that inherited the person's real consent would
-also defeat a test that points `<PREFIX>_ROOT` at a temp directory. Fix the
-tool's convention in its `dirs` factory, with `conventionFromEnv: false`,
-before it opts in, so no person needs `<PREFIX>_CONVENTION`. A `dirs`
-factory given with neither `env` nor `home` has no old place either, since
-it was not resolved from the real environment.
+Carrying grants over was tried and dropped. Each way of telling whether the
+copy had already been made, and whether the old and new places really
+differ, had a case that brought back a grant the person had revoked. Asking
+once more is the safe failure.
 
 ### What a decision is keyed on
 

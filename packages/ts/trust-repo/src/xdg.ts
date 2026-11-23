@@ -1,8 +1,7 @@
 /**
  * The old way the trust store found its state home: `XDG_STATE_HOME`, else
  * `~/.local/state`, on every platform. A store whose tool passes no
- * `vendorDirs` still lives there, and a store that does pass them moves its
- * markers from there once. A store with `vendorDirs` resolves through
+ * `vendorDirs` still lives there. A store with `vendorDirs` resolves through
  * `@osdlc/tiered-dirs` instead, as `@osdlc/config-layers` does, so it
  * follows the convention, the `<PREFIX>_*` overrides and Windows' own
  * places. See `./store.ts`.
