@@ -22,7 +22,10 @@ interface HistoryState {
 
 /** Options for `SnapshotHistory`. */
 export interface HistoryOptions {
-  /** Maximum number of undo entries to keep. Default: 500 */
+  /**
+   * Number of undo entries to keep after pruning. The undo stack can grow to
+   * `floor(1.2 × maxSize)` entries before it is cut back to `maxSize`. Default: 500
+   */
   maxSize?: number
 }
 
@@ -180,13 +183,13 @@ export class SnapshotHistory {
   /**
    * Returns to the state a checkpoint marked, by undoing everything since. Fails
    * with `INVALID_OPERATION` when pruning or `clear` has dropped that state, and
-   * for a value that is not a whole number or is ahead of the current state.
+   * for a value that is not a whole number, is negative or is ahead of the current state.
    */
   revertTo(checkpoint: number): OperationResult {
     // A checkpoint is only a position, so after an undo and a new edit drop its branch this
     // succeeds and returns another state. See T-01 in
     // docs/planning/tasks/T-01-checkpoints-name-a-state.md in the package source.
-    if (!Number.isInteger(checkpoint)) {
+    if (!Number.isInteger(checkpoint) || checkpoint < 0) {
       return failure('INVALID_OPERATION', 'Invalid checkpoint')
     }
     const checkpointIndex = checkpoint - this.prunedCount

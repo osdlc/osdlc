@@ -696,6 +696,20 @@ describe('Checkpoint and revert', () => {
     expect(result.success).toBe(false)
   })
 
+  it('should reject a negative checkpoint as invalid, not as pruned', () => {
+    const history = new SnapshotHistory(createEmptyCanvas())
+    addNode(history, 'n1')
+
+    const result = history.revertTo(-1)
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_OPERATION')
+      expect(result.error.message).toBe('Invalid checkpoint')
+    }
+    expect(history.undoSize).toBe(1)
+  })
+
   it('should still revert correctly after pruning drops older entries', () => {
     const history = new SnapshotHistory(createEmptyCanvas(), { maxSize: 2 })
 

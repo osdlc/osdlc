@@ -33,4 +33,4 @@ geometry helpers, and `CanvasViewModel` for selection, pan and zoom.
   once, `duplicateNodes` copies it once, and the minimum counts of `alignNodes`, `distributeNodes`
   and `matchNodeSize` use distinct ids.
 - `SnapshotHistory.revertTo` and `goToEntry` fail with `INVALID_OPERATION` for a value that is not a
-  whole number, such as `NaN` or `1.5`.
+  whole number, such as `NaN` or `1.5`, or for a negative value.

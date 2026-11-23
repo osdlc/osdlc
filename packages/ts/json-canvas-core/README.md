@@ -175,9 +175,10 @@ history.current.nodes[0]?.x // 50
 ```
 
 `checkpoint()` returns an opaque handle for the current state and `revertTo`
-goes back to it. Treat the handle as a token: it is not an index. History keeps
-at most `maxSize` undo steps (500 by default), and a checkpoint older than the
-oldest step kept is refused.
+goes back to it. Treat the handle as a token: it is not an index. Pruning is
+lazy: the undo stack can grow to `floor(1.2 × maxSize)` steps, and once it does
+it is cut back to `maxSize` (500 by default). A checkpoint older than the oldest
+step kept is refused.
 
 ## View model
 
