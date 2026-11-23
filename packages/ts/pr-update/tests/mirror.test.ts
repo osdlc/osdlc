@@ -618,7 +618,7 @@ describe('the folders between the clone directory and a clone (review round 2)',
       expect(
         checkClone(root(), clone, undefined, { platform: 'linux', uid: g + 1, gid: g + 1 }),
       ).toEqual(refused)
-      // Only the owner is checked on Windows.
+      // No mode check on Windows (and `ownedByMe` passes every file there): NTFS ACLs are not read.
       expect(checkClone(root(), clone, undefined, { platform: 'win32' })).toBe('clone')
       chmodSync(owner, 0o755)
     },

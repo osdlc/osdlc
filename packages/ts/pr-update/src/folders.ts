@@ -35,7 +35,10 @@ export interface FolderProblem {
  * cannot change its platform, uid or primary group.
  */
 export interface GroupOptions {
-  /** Default `process.platform`. On `win32` mode bits mean nothing, and only the owner is checked. */
+  /**
+   * Default `process.platform`. On `win32` no ownership or mode check is made: NTFS ACLs are not
+   * read, mode bits mean nothing there, and {@link ownedByMe} passes every file (no uid).
+   */
   platform?: NodeJS.Platform | undefined
   /** Default `process.getuid()`. */
   uid?: number | undefined

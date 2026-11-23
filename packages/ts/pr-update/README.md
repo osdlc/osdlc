@@ -270,7 +270,9 @@ group and your uid are one number, as on Ubuntu, Debian and Fedora, whose
 umask `002` makes every folder group-writable. `chmod go-w <dir>` fixes a
 refusal; on a filesystem with no Unix permissions, such as exFAT or an SMB
 share, choose another clone directory. Otherwise the run exits `2`, naming
-it, and writes nothing. pr-update makes the folders it creates itself (the
+it, and writes nothing. On Windows no ownership or mode check is made, since
+NTFS ACLs are not read: put the clone directory under your user profile, as
+the default is. pr-update makes the folders it creates itself (the
 clone directory and its `<host>` and `<owner>` folders, the folders that hold
 run and kept worktrees, its records) with mode `755` at most, whatever the
 umask.
