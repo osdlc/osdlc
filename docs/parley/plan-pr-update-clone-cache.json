@@ -1,0 +1,935 @@
+{
+  "id": "plan-pr-update-clone-cache",
+  "title": "Plan: pr-update clone cache and @osdlc/ecosystem",
+  "summary": "One omnibus PR, built from ten reviewed slices, that delivers D-0005, D-ZVIA and osdlc/osdlc#1010.",
+  "created": "2026-11-22",
+  "blocks": [
+    {
+      "id": "goal",
+      "type": "prose",
+      "title": "Goal, done and scope",
+      "text": "**Goal.** Build what [D-0005](packages/ts/pr-update/docs/planning/decisions/D-0005-managed-bare-mirror-checkout.md) and [D-ZVIA](docs/decisions/D-ZVIA-osdlc-ecosystem-package.md) decided: `pr-update` runs a `--repo` target from a checkout already on the machine, or from a managed bare clone when there is none, and the osdlc tools share one `repositories.yaml` through a new package, `@osdlc/ecosystem`.\n\n**How.** All of it lands in **one omnibus pull request** to `main`, which you approve and merge. I build it as a series of slices. Each slice is its own pull request against the omnibus branch, so it gets full CI and its own reviews. I merge a slice into the omnibus only when it passes the review gate below. You review nothing until the omnibus is ready, except where a question here says otherwise.\n\n**Done means:**\n\n1. The omnibus is merged to `main`, and its Version Packages release has published `@osdlc/config-layers`, `@osdlc/typed-git`, `@osdlc/trust-repo`, `@osdlc/cli-tool` and `@osdlc/pr-update` (minor each) and the first `@osdlc/ecosystem` (0.1.0).\n2. Every bullet of D-0005's Decision section has code and a test, listed in a conformance table in the omnibus body.\n3. D-0005 says what was built, D-ZVIA says Accepted with the name kept, and osdlc/osdlc#844 is closed.\n4. The published `pr-update`, installed from npm, runs `survey` on a repository with no checkout on this machine.\n5. osdlc/osdlc#1010 is done: the trust store resolves through tiered-dirs, and pr-update's markers live under `osdlc/pr-update/` (owner, 2026-11-23).\n6. sdlc's change is open in its own repository, right after the release: it reads `repositories.yaml` and imports remote matching from `typed-git` (owner, 2026-11-23). You approve that one PR too.\n\n**Out of scope** (each gets a follow-up issue after the release, unless you say otherwise):\n\n- Moving devlink's files under `osdlc/pr-update/`. #1010 covers only the trust store.\n- A machine target for `config set` in cli-tool. `pr-update mirror enable` and `disable` cover it.\n- Project config at `<repo>/.osdlc/pr-update.yaml`.\n- B-0002 (a mirror-only value) and B-0003 (requiring `git-ref` attempts for clones).\n- Moving wayfinder or host-cleaner under the osdlc root.\n\n**What I need from you, and when:**\n\n1. Now: answer the blocking questions at the end and approve this plan, or send it back.\n2. While I build: nothing, unless a finding would change one of your earlier answers. Then I ask once, on the omnibus pull request.\n3. At the end: review and approve the omnibus.\n4. After the release: approve sdlc's change in its own repository.\n5. Right after the omnibus merges: stage `@osdlc/ecosystem` on npm and add its trusted publisher. Your npm account is needed, and the omnibus body has the exact commands. Until then the release workflow publishes nothing for any TypeScript package."
+    },
+    {
+      "id": "protocol",
+      "type": "prose",
+      "title": "How each slice is reviewed and merged",
+      "text": "Every slice passes all of these before I merge it into the omnibus. The tier comes from [review.md](standards/review.md). Every slice here is **Deep**, because each changes a public API, a stored file format, trust or credentials, or locking, so each gets two independent reviews, one from a different model.\n\n1. **Author check.** In the slice's worktree: `pnpm install --frozen-lockfile`, `pnpm run build`, `pnpm run check`, the package tests, and `pnpm run check:packages`. I read the whole diff as if someone else wrote it. Docs, README, the guide and the changeset are in the same slice. The PR description lists the D-0005 or D-ZVIA bullets the slice claims, each with the test that proves it.\n2. **CI green** on the slice PR, the Windows tier-2 job included for any slice that touches paths, locks or git worktrees.\n3. **Review A, Claude, fresh context.** A new session that has not seen the work runs craft's `/code-review` against the omnibus branch. It gets the diff and the decision records as the spec, not my summary. It checks correctness first, then spec conformance, design, tests, clarity and docs, and the Deep questions: what fails halfway, what an attacker controls, how it rolls back.\n4. **Review B, a different model.** The local Codex CLI (0.167.2, read-only sandbox) runs the same rubric. The CI `@codex` workflow has only skipped in its last 100 runs, so I try it once on the first slice and use it only if it works.\n5. **Answer every finding** on the PR: fix it, decline it with a reason, or verify it first. Each finding is checked against the code. A blocking or should finding is fixed, or declined with a reason both reviewers accept. Re-reviews cover what changed, and after the third round anything unresolved goes into the omnibus body under *For the owner*.\n6. **Merge.** Squash, one commit per slice, a message in the repository's style, no attribution. Then I update the omnibus tracker (slice, PR link, rounds, findings, tests) and wait for the omnibus branch's CI to pass on the new head.\n\n**Branch rules.** The omnibus branch is never rebased or force-pushed. `main` comes in by merge, after each slice and before the final review. Slices are worked in their own worktrees and merged in the plan's order, so two slices never change the same file at once. The omnibus merges to `main` with a merge commit, as osdlc merges today, which keeps the slice commits for `bisect`.",
+      "source": {
+        "uri": "standards/review.md"
+      }
+    },
+    {
+      "id": "plan",
+      "type": "plan",
+      "title": "Phases and slices",
+      "phases": [
+        {
+          "id": "p0",
+          "title": "Open the omnibus",
+          "gate": "You approve this plan.",
+          "status": "todo",
+          "detail": "One branch and one draft pull request to main. Its body is the tracker, so no new issues are filed.",
+          "workstreams": [
+            {
+              "id": "ws0",
+              "title": "Branch, records and tracker",
+              "tasks": [
+                {
+                  "id": "t0-branch",
+                  "title": "Branch `feat/pr-update-clone-cache` from main and commit this plan",
+                  "detail": "The worktree already exists and is not pushed yet.",
+                  "status": "todo"
+                },
+                {
+                  "id": "t0-records",
+                  "title": "Bring the records up to date",
+                  "detail": "D-ZVIA: Accepted 2026-11-22, the name `@osdlc/ecosystem` kept for now. D-0005 summary: drop \"still proposed (#1012)... merges first\", since #1012 merged.",
+                  "source": [
+                    {
+                      "uri": "docs/decisions/D-ZVIA-osdlc-ecosystem-package.md"
+                    },
+                    {
+                      "uri": "packages/ts/pr-update/docs/planning/decisions/D-0005-managed-bare-mirror-checkout.md"
+                    }
+                  ],
+                  "status": "todo"
+                },
+                {
+                  "id": "t0-pr",
+                  "title": "Open the omnibus as a draft PR to main",
+                  "detail": "The body has the slice table, the review rounds, a conformance table with one row per D-0005 bullet, findings left for you, the risk tier (Deep) and the npm staging steps. Its CI runs on every slice merge.",
+                  "status": "todo"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p1",
+          "title": "Building blocks",
+          "gate": "The draft omnibus is open and its CI passes.",
+          "status": "todo",
+          "detail": "Four slices on general libraries. S1 and S2 are independent. S3 builds on S3a. I merge them in this order.",
+          "workstreams": [
+            {
+              "id": "ws-cl",
+              "title": "S1 config-layers: the app option",
+              "tasks": [
+                {
+                  "id": "s1-app",
+                  "title": "`machineConfigFile({ app })` puts a file in `<config home>/<tool>/<app>/`",
+                  "detail": "For `osdlc/pr-update/config.yaml`. `app` changes only the directory. The relocation variable keeps its default, and pr-update passes `PR_UPDATE_MACHINE_CONFIG` explicitly. Tests cover the default path, a rooted `dirs`, and the variable. README and guide updated. Changeset: minor.",
+                  "source": {
+                    "uri": "packages/ts/config-layers/src/machine.ts"
+                  },
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "ws-tg",
+              "title": "S2 typed-git: remote matching",
+              "tasks": [
+                {
+                  "id": "s2-move",
+                  "title": "Add `readRemote`, `sshAliasResolver`, `isSshRemote`, `sameRepo` and `RepoCoordinate`",
+                  "detail": "The behaviour of sdlc's functions of the same names, in a new module. The ssh runner is an optional parameter that defaults to the command seam. sdlc's test cases come over with them. #1014 changes only `verbs.ts`, so the two do not overlap. Changeset: minor.",
+                  "source": [
+                    {
+                      "uri": "packages/ts/typed-git/src/git-url.ts"
+                    },
+                    {
+                      "uri": "packages/ts/typed-git/src/index.ts"
+                    }
+                  ],
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "ws-tr0",
+              "title": "S3a trust-repo: resolve the store through tiered-dirs (#1010)",
+              "tasks": [
+                {
+                  "id": "s3a-dirs",
+                  "title": "`trustStore` and `trustStoreDir` resolve `<state home>/<root>[/<app>]/trusted/`",
+                  "detail": "Through tiered-dirs, honouring the convention and the `<PREFIX>_*` overrides of the `vendorDirs` the tool passes. `dir` stays as the explicit override. Fix the module comment in `src/xdg.ts`.",
+                  "source": [
+                    {
+                      "uri": "packages/ts/trust-repo/src/store.ts"
+                    },
+                    {
+                      "uri": "packages/ts/trust-repo/src/xdg.ts"
+                    }
+                  ],
+                  "status": "todo"
+                },
+                {
+                  "id": "s3a-app",
+                  "title": "An `app` option",
+                  "detail": "A tool under a family root keeps its markers in its own directory. Markers stay keyed by the tool, never by the family, and a test proves that consent to one tool covers no other.",
+                  "status": "todo"
+                },
+                {
+                  "id": "s3a-move",
+                  "title": "The one-time move of existing markers",
+                  "detail": "On first use of the new location, existing markers are copied over and checked, then only the new place is read. The old markers stay where they are, so an older release still finds them. The changelog says so. Callers: cli-tool's `trust` command, pr-update and wayfinder (which passes `dir` and so does not change).",
+                  "source": [
+                    {
+                      "uri": "packages/ts/cli-tool/src/trust-command.ts"
+                    },
+                    {
+                      "uri": "packages/ts/wayfinder/src/trust-store.ts"
+                    }
+                  ],
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "ws-tr",
+              "title": "S3 trust-repo: grants keyed by repository",
+              "tasks": [
+                {
+                  "id": "s3-keys",
+                  "title": "A grant can name `host/owner/name` as well as a path",
+                  "detail": "For clones, whose path changes when they are pruned and made again. Repository keys are lower-cased and kept apart from path keys, so no directory name can match a repository grant, and a test proves it. `isTrusted`, `trust`, `untrust` and `listGrants` take either kind. Changeset: minor.",
+                  "source": [
+                    {
+                      "uri": "packages/ts/trust-repo/src/store.ts"
+                    },
+                    {
+                      "uri": "packages/ts/trust-repo/src/gate.ts"
+                    }
+                  ],
+                  "status": "todo"
+                },
+                {
+                  "id": "s3-cmd",
+                  "title": "The `trust` command accepts a repository",
+                  "detail": "So `pr-update trust github.com/acme/api` grants trust to a clone for good (see the question). Changeset for cli-tool.",
+                  "source": {
+                    "uri": "packages/ts/cli-tool/src/trust-command.ts"
+                  },
+                  "status": "todo"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p2",
+          "title": "The @osdlc/ecosystem package",
+          "gate": "S2 is merged into the omnibus.",
+          "status": "todo",
+          "detail": "A new package in the shape S-package-shape-ts requires. Its first module is `./repositories`.",
+          "workstreams": [
+            {
+              "id": "ws-eco",
+              "title": "S4 ecosystem",
+              "tasks": [
+                {
+                  "id": "s4-shape",
+                  "title": "Scaffold the package",
+                  "detail": "`package.json` (dist-only ESM, `exports` with `./repositories`, Node range of typed-git, MIT OR Apache-2.0), tsconfig, vitest, README with Install and Licence, CHANGELOG, SECURITY, CONTRIBUTING, `docs/planning/` and `docs/guide/`, `examples/`, `tests/smoke.mjs`. Registered where #1015 registered its packages: `packages/README.md` and the package-shape standard's list. First-release changeset.",
+                  "source": [
+                    {
+                      "uri": "packages/README.md"
+                    },
+                    {
+                      "uri": "docs/planning/standards/S-package-shape-ts.md"
+                    }
+                  ],
+                  "status": "todo"
+                },
+                {
+                  "id": "s4-file",
+                  "title": "`repositories.yaml`: schema, read and write",
+                  "detail": "Through `machineConfigFile`: tool `osdlc`, file `repositories.yaml`, the Xdg-pinned `dirs`, `env: OSDLC_REPOSITORIES`, and a relative value rejected. Writes with compare-and-swap. The roots cases from D-ZVIA's table each have a test: absolute or `~`, relative dropped with a warning, missing skipped, `roots: []`, and none.",
+                  "source": {
+                    "uri": "docs/decisions/D-ZVIA-osdlc-ecosystem-package.md"
+                  },
+                  "status": "todo"
+                },
+                {
+                  "id": "s4-default",
+                  "title": "Default roots and the home stop",
+                  "detail": "The directory holding the caller's main checkout, or the one above when it is named after the owner in `origin`. Never at or above `$HOME`, and no default root for a checkout that is `$HOME`.",
+                  "status": "todo"
+                },
+                {
+                  "id": "s4-locate",
+                  "title": "`locateCheckout(owner/name)` with one index per call site",
+                  "detail": "Uses `discoverCheckouts`, `Git#mainCheckout` and S2's `readRemote`/`sameRepo`. Each match resolves to its main checkout and is counted once. Returns every match. Tests use temporary git repositories and a fake ssh runner.",
+                  "status": "todo"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p3",
+          "title": "pr-update",
+          "gate": "S1 to S4 are merged into the omnibus.",
+          "status": "todo",
+          "detail": "Five slices, in order. Each one leaves pr-update working and its tests passing. About 700 lines without tests, as D-0005 estimates.",
+          "workstreams": [
+            {
+              "id": "ws-s5",
+              "title": "S5 Targets, machine file and locate",
+              "tasks": [
+                {
+                  "id": "s5-dirs",
+                  "title": "The osdlc/pr-update directories and the machine file",
+                  "detail": "`standalone('osdlc')`, `envVars('OSDLC')`, pinned to Xdg, `.app('pr-update')`. Keys `checkout`, `mirror_dir` and `mirror_max_age_days`, which the project schema cannot set. The variable is `PR_UPDATE_MACHINE_CONFIG`. A test helper for an isolated environment, which every CLI-spawning test uses, follows machine-files.md's isolation rule.",
+                  "source": [
+                    {
+                      "uri": "packages/ts/pr-update/src/defaults.ts"
+                    },
+                    {
+                      "uri": "packages/ts/pr-update/src/config.ts"
+                    },
+                    {
+                      "uri": "packages/ts/pr-update/src/commands.ts"
+                    }
+                  ],
+                  "status": "todo"
+                },
+                {
+                  "id": "s5-locate",
+                  "title": "Standalone `locate` from `locateCheckout`",
+                  "detail": "Targets are lower-cased `host/owner/name` once, at resolution. A shallow checkout is skipped. One index per run, shared by survey and the executor. A located checkout uses `origin`. The report gets `checkout: { path, source }`. `survey` now measures located checkouts.",
+                  "source": [
+                    {
+                      "uri": "packages/ts/pr-update/src/defaults.ts"
+                    },
+                    {
+                      "uri": "packages/ts/pr-update/src/survey.ts"
+                    },
+                    {
+                      "uri": "packages/ts/pr-update/src/ports.ts"
+                    }
+                  ],
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "ws-s6",
+              "title": "S6 Updating a located checkout",
+              "tasks": [
+                {
+                  "id": "s6-roots",
+                  "title": "Run worktrees under the cache, attempts and the lease per target",
+                  "detail": "Non-root run worktrees go under `worktrees/<host>/<owner>/<name>/<run>`. File attempts go in the state store, one file per `host/owner/name`. `git-ref` attempts bind to the target's checkout. The project root keeps today's paths. `branch` mode skips non-root targets. `unpushed_local` reads every match.",
+                  "source": [
+                    {
+                      "uri": "packages/ts/pr-update/src/update.ts"
+                    },
+                    {
+                      "uri": "packages/ts/pr-update/src/update/execute.ts"
+                    },
+                    {
+                      "uri": "packages/ts/pr-update/src/update/attempts.ts"
+                    },
+                    {
+                      "uri": "packages/ts/pr-update/src/update/ref-attempts.ts"
+                    },
+                    {
+                      "uri": "packages/ts/pr-update/src/update/lease.ts"
+                    }
+                  ],
+                  "status": "todo"
+                },
+                {
+                  "id": "s6-kept",
+                  "title": "Kept worktrees: the new layout, the owning git directory, and keeping across filesystems",
+                  "detail": "A record stores its owner's common dir. A target served from another git directory skips the PR as `kept elsewhere`. When a move fails with EXDEV, the keep falls back to `worktree add` plus the verify log, and its rollback removes the kept tree and branch.",
+                  "source": {
+                    "uri": "packages/ts/pr-update/src/update/kept.ts"
+                  },
+                  "status": "todo"
+                },
+                {
+                  "id": "s6-trust",
+                  "title": "The trust gate for every target, and the store under osdlc/pr-update",
+                  "detail": "A located checkout is keyed by its path. `--trust` covers every target, and an untrusted target is skipped as `untrusted`. pr-update's store becomes `standalone('osdlc')` with `app: 'pr-update'` (S3a), so its markers move once and stay keyed by pr-update.",
+                  "source": {
+                    "uri": "packages/ts/pr-update/src/trust.ts"
+                  },
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "ws-s7",
+              "title": "S7 The managed clone",
+              "tasks": [
+                {
+                  "id": "s7-consent",
+                  "title": "Consent, location, prompt and no terminal",
+                  "detail": "Consent comes from `--mirror-dir`, `PR_UPDATE_MIRROR_DIR` or `checkout: mirror`, and the location follows D-0005's order. The first-run prompt goes through cli-tool's prompt, and a lost write race re-reads the file. With no terminal, the run exits 2 and names the options. `mirror enable` and `mirror disable`.",
+                  "source": [
+                    {
+                      "uri": "packages/ts/pr-update/src/commands.ts"
+                    },
+                    {
+                      "uri": "packages/ts/pr-update/src/cli.ts"
+                    }
+                  ],
+                  "status": "todo"
+                },
+                {
+                  "id": "s7-clone",
+                  "title": "The seven clone steps",
+                  "detail": "The directory check and marker, the file-lock beside the clone, `gh repo clone ... -- --bare` through the command seam, the credential helper in the clone's own config only, `core.longpaths`, the refspec and `fetch --prune`, then the stamp and the rename. A failed step removes the temporary directory. GitHub targets only. Trust for a clone is keyed by repository (S3).",
+                  "source": {
+                    "uri": "packages/ts/pr-update/src/defaults.ts"
+                  },
+                  "status": "todo"
+                },
+                {
+                  "id": "s7-survey",
+                  "title": "survey and rehearsals use an existing clone",
+                  "detail": "They fetch under the lock and write the stamp. With no clone, the target is reported as not measured and the message names `mirror enable`.",
+                  "source": {
+                    "uri": "packages/ts/pr-update/src/survey.ts"
+                  },
+                  "status": "todo"
+                },
+                {
+                  "id": "s7-tests",
+                  "title": "Tests without the network",
+                  "detail": "A fake `gh` on PATH clones a local bare fixture. A test checks that global git config is untouched. Windows tier-2 must pass.",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "ws-s8",
+              "title": "S8 Cleanup",
+              "tasks": [
+                {
+                  "id": "s8-prune",
+                  "title": "`mirror prune` and pruning at the end of a run",
+                  "detail": "Walks `worktrees/` for dead runs at any age, reading `.git` and `commondir` first. Removes clones past `mirror_max_age_days`, and none at 0 without `--older-than` or `--all`. Also `--dry-run`, `--discard-kept` and `--mirror-dir`. Never removes a locked, kept or unmarked clone. Leftover `.tmp-*` directories are removed. A clone busy for 60 seconds skips its target as `mirror busy`.",
+                  "status": "todo"
+                },
+                {
+                  "id": "s8-list",
+                  "title": "`mirror list`",
+                  "detail": "Each clone's repository, size, last use and kept worktrees, plus leftover run worktrees.",
+                  "status": "todo"
+                }
+              ]
+            },
+            {
+              "id": "ws-s9",
+              "title": "S9 Docs and the record",
+              "tasks": [
+                {
+                  "id": "s9-docs",
+                  "title": "README, exit codes and the known limit",
+                  "detail": "The mode section, the unpushed-work limit next to it, the exit codes table, and `mirror` in the CLI help and guide.",
+                  "source": {
+                    "uri": "packages/ts/pr-update/README.md"
+                  },
+                  "status": "todo"
+                },
+                {
+                  "id": "s9-record",
+                  "title": "D-0005 says what was built",
+                  "detail": "Change the summary's \"Nothing is built yet\". Add a Build notes section for each gap decided during the build, each also listed in the omnibus body. Update the follow-ups and the two-roots consequence: the trust store has moved, and devlink's files have not.",
+                  "source": {
+                    "uri": "packages/ts/pr-update/docs/planning/decisions/D-0005-managed-bare-mirror-checkout.md"
+                  },
+                  "status": "todo"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p4",
+          "title": "Make the omnibus ready",
+          "gate": "S1 to S9 are merged and the omnibus CI passes.",
+          "status": "todo",
+          "detail": "The whole change, judged as one.",
+          "workstreams": [
+            {
+              "id": "ws-final",
+              "title": "Final gate",
+              "tasks": [
+                {
+                  "id": "f-main",
+                  "title": "Merge main in, then run the whole gate locally and in CI",
+                  "detail": "Install, build, check, every package's tests, check:packages, and Windows tier-2. `changeset status --since=origin/main` must show exactly the planned bumps.",
+                  "status": "todo"
+                },
+                {
+                  "id": "f-e2e",
+                  "title": "End-to-end on this machine with a scratch `OSDLC_ROOT`",
+                  "detail": "A real `survey`, and a rehearsal, against a GitHub repository with no checkout here. `update --apply` against a local fixture, with real worktrees and pruning. I push nothing to a real PR. A cross-filesystem keep runs once against a RAM disk.",
+                  "status": "todo"
+                },
+                {
+                  "id": "f-review",
+                  "title": "Two reviews of the whole diff",
+                  "detail": "Fresh Claude `/code-review` and Codex over the full omnibus diff. The same answering rules and round cap. A search for private material: links to private repositories, home paths, e-mail addresses.",
+                  "status": "todo"
+                },
+                {
+                  "id": "f-ready",
+                  "title": "Final body, then mark ready and ask you to review",
+                  "detail": "Conformance table, slice table, findings left for you, test evidence, risk tier, release plan, and the staging steps.",
+                  "status": "todo"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "p5",
+          "title": "Release and close",
+          "gate": "You approve and merge the omnibus.",
+          "status": "todo",
+          "detail": "The packages reach npm, and the follow-ups are recorded.",
+          "workstreams": [
+            {
+              "id": "ws-rel",
+              "title": "Release",
+              "tasks": [
+                {
+                  "id": "r-stage",
+                  "title": "You stage `@osdlc/ecosystem` and add its trusted publisher",
+                  "detail": "I run `package-checks stage --dry-run` before asking, so the real run is the one command.",
+                  "status": "todo"
+                },
+                {
+                  "id": "r-vp",
+                  "title": "Merge the Version Packages PR and check the publish",
+                  "detail": "Who merges it is a question below. I check every version on npm, install pr-update from npm, and run `survey`.",
+                  "status": "todo"
+                },
+                {
+                  "id": "r-sdlc",
+                  "title": "Open sdlc's change in its own repository",
+                  "detail": "Its machine `repos:` is read from `repositories.yaml`, and `readRemote`, `sshAliasResolver` and `sameRepo` are imported from the published typed-git, with its own copies removed. The same review gate applies, and you approve it.",
+                  "status": "todo"
+                },
+                {
+                  "id": "r-close",
+                  "title": "Close and follow up",
+                  "detail": "Close #844 and #1010. File the out-of-scope items as issues. Remove the worktrees.",
+                  "status": "todo"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "risks",
+      "type": "table",
+      "title": "Risks",
+      "columns": [
+        {
+          "id": "risk",
+          "title": "Risk"
+        },
+        {
+          "id": "cost",
+          "title": "What it would cost"
+        },
+        {
+          "id": "response",
+          "title": "What I do about it"
+        }
+      ],
+      "rows": [
+        {
+          "id": "r1",
+          "cells": {
+            "risk": "Other PRs change the same packages while the omnibus is open, such as #1014 (typed-git) and #1015 (packages/README.md, the package-shape standard)",
+            "cost": "Conflicts at the end, or one release mixing two groups",
+            "response": "Merge main into the omnibus after each slice. #1014 changes only `verbs.ts`. The repository's rule keeps one package's PRs out of one release unless they are a stack. This omnibus is one group."
+          }
+        },
+        {
+          "id": "r2",
+          "cells": {
+            "risk": "The omnibus is too big to read at the end (an estimated 3,000 to 5,000 lines with tests)",
+            "cost": "A shallow final review",
+            "response": "Each slice PR keeps its own reviews, and the body links them. The conformance table maps every decision bullet to code and a test. The merge commit keeps one commit per slice."
+          }
+        },
+        {
+          "id": "r3",
+          "cells": {
+            "risk": "Building finds a gap or contradiction in D-0005",
+            "cost": "Rework, or a question to you mid-build",
+            "response": "I decide within the record's criteria, write it in D-0005's Build notes, and list it for you. I stop and ask only when it would change one of your answers."
+          }
+        },
+        {
+          "id": "r4",
+          "cells": {
+            "risk": "After the omnibus merges, no TypeScript package can publish until `@osdlc/ecosystem` is staged",
+            "cost": "Every release in the repository waits",
+            "response": "The staging steps are in the body, the dry run already passes, and I ask you the moment it merges."
+          }
+        },
+        {
+          "id": "r5",
+          "cells": {
+            "risk": "A test reads or writes the real trust store, config or cache",
+            "cost": "Real consent granted, or files written on this machine",
+            "response": "One isolated-environment helper for every CLI-spawning test. It sets `OSDLC_ROOT` and `XDG_STATE_HOME`, and clears the file-level and `<NAME>_HOME` variables. Review checks every spawn uses it."
+          }
+        },
+        {
+          "id": "r6",
+          "cells": {
+            "risk": "CI cannot reach GitHub to clone",
+            "cost": "The clone path goes untested",
+            "response": "A fake `gh` that clones a local bare fixture. I run one live clone by hand, only into a scratch root."
+          }
+        },
+        {
+          "id": "r7",
+          "cells": {
+            "risk": "CI has only one filesystem, so keeping across filesystems cannot be shown there",
+            "cost": "The EXDEV fallback goes unexercised",
+            "response": "An injected EXDEV failure in unit tests, plus one real run against a macOS RAM disk before the final review."
+          }
+        },
+        {
+          "id": "r8",
+          "cells": {
+            "risk": "Windows: long paths, renaming over open handles, lock files",
+            "cost": "A Windows-only failure after release",
+            "response": "Windows tier-2 has to pass on S6 to S8. `core.longpaths` is set on the clone."
+          }
+        },
+        {
+          "id": "r9",
+          "cells": {
+            "risk": "A repository grant could widen consent, or the credential helper could leak into global git config",
+            "cost": "Commands run without consent, or a person's git auth is changed",
+            "response": "Separate key kinds, with a negative test. The helper is written only with `git config --local` inside the clone, with a test. Both are named focus points for the reviewers."
+          }
+        },
+        {
+          "id": "r10",
+          "cells": {
+            "risk": "Review cost: two reviewers on ten slices, up to three rounds each",
+            "cost": "API spend",
+            "response": "Both reviews run locally. The CI `@claude review` runs only on the omnibus (owner, 2026-11-23)."
+          }
+        },
+        {
+          "id": "r11",
+          "cells": {
+            "risk": "Moving trust markers loses a person's consent, or an older release no longer finds them",
+            "cost": "Runs skip as `untrusted`, or a downgrade asks for consent again",
+            "response": "Copy, check, then switch, and never delete the old markers. Tests cover a partial copy and a second run. Losing consent fails closed, so nothing runs without it."
+          }
+        }
+      ]
+    },
+    {
+      "id": "decide",
+      "type": "question",
+      "title": "Questions",
+      "questions": [
+        {
+          "id": "q-omnibus",
+          "kind": "single",
+          "prompt": "How should slices reach the omnibus?",
+          "priority": "blocking",
+          "options": [
+            {
+              "id": "slice-prs",
+              "title": "A PR per slice against the omnibus branch, squash-merged by me",
+              "detail": "Each slice gets full CI and its own reviews and history, and you approve one PR. The branch is `feat/pr-update-clone-cache`. I recommend this: it is the plan as written."
+            },
+            {
+              "id": "commits",
+              "title": "Commits pushed straight to the omnibus branch, reviewed on the omnibus",
+              "detail": "Fewer PRs, but no CI or review per slice, and one long review thread."
+            }
+          ],
+          "recommended": "slice-prs",
+          "group": "How the work runs"
+        },
+        {
+          "id": "q-merge-authority",
+          "kind": "single",
+          "prompt": "May I merge each slice PR into the omnibus without asking, once it passes the review gate?",
+          "priority": "blocking",
+          "options": [
+            {
+              "id": "yes",
+              "title": "Yes, merge on a passing gate",
+              "detail": "Matches your goal of minimal input. Your approval of the omnibus is still what reaches main. I recommend this."
+            },
+            {
+              "id": "ask",
+              "title": "Ask me before each slice merge",
+              "detail": "Nine approvals from you."
+            }
+          ],
+          "recommended": "yes",
+          "group": "How the work runs"
+        },
+        {
+          "id": "q-reviewers",
+          "kind": "single",
+          "prompt": "Which reviewers should each slice get?",
+          "priority": "blocking",
+          "options": [
+            {
+              "id": "local-both",
+              "title": "Fresh Claude and local Codex on every slice; CI `@claude review` plus a final two-model review on the omnibus",
+              "detail": "Meets review.md's Deep tier on every slice. Spends Claude and OpenAI credits locally, and one CI review at the end. I recommend this."
+            },
+            {
+              "id": "ci-both",
+              "title": "CI `@claude review` and `@codex review` on every slice",
+              "detail": "Leaves a review trail on GitHub, but the codex workflow has only skipped in its last 100 runs, and every round costs API credits."
+            },
+            {
+              "id": "claude-only",
+              "title": "One fresh Claude review per slice, two models only on the omnibus",
+              "detail": "Cheaper, but below Deep for every slice."
+            }
+          ],
+          "recommended": "local-both",
+          "group": "How the work runs"
+        },
+        {
+          "id": "q-1010",
+          "kind": "single",
+          "prompt": "Does osdlc/osdlc#1010 (the trust store resolving through tiered-dirs, with a one-time move of markers) go into this omnibus?",
+          "priority": "high",
+          "options": [
+            {
+              "id": "out",
+              "title": "Out: only repository-keyed grants (S3)",
+              "detail": "D-0005 needs only the keys. #1010 moves people's existing consent files, which is a migration of its own, and pr-update can keep its trust store where it is for now, as D-0005 already accepts. I recommend this."
+            },
+            {
+              "id": "in",
+              "title": "In, as a slice before S3, and pr-update's trust store moves under osdlc/pr-update",
+              "detail": "One release moves everything at once. It adds about one more slice and a data migration to review."
+            }
+          ],
+          "recommended": "out",
+          "group": "Scope"
+        },
+        {
+          "id": "q-trust-clone",
+          "kind": "single",
+          "prompt": "Can a person grant lasting trust to a cloned repository, as `pr-update trust github.com/acme/api`?",
+          "priority": "high",
+          "options": [
+            {
+              "id": "yes",
+              "title": "Yes, through repository keys and the `trust` command",
+              "detail": "Without it, an unattended run that needs `verify: detect` on a clone must pass `--trust`, which trusts every target of the run. I recommend this."
+            },
+            {
+              "id": "flag-only",
+              "title": "No, only `--trust` per run",
+              "detail": "Smaller now, and the command can come later."
+            }
+          ],
+          "recommended": "yes",
+          "group": "Scope"
+        },
+        {
+          "id": "q-release",
+          "kind": "single",
+          "prompt": "Who merges the Version Packages PR after you stage `@osdlc/ecosystem`?",
+          "priority": "high",
+          "options": [
+            {
+              "id": "me",
+              "title": "I merge it once staging is confirmed, then check the publish",
+              "detail": "One less step for you. The release only publishes what the merged omnibus already holds. I recommend this."
+            },
+            {
+              "id": "owner",
+              "title": "You merge it",
+              "detail": "You keep the release step."
+            }
+          ],
+          "recommended": "me",
+          "group": "Release"
+        },
+        {
+          "id": "q-findings",
+          "kind": "single",
+          "prompt": "What happens to findings still unresolved after three review rounds on a slice?",
+          "priority": "normal",
+          "options": [
+            {
+              "id": "collect",
+              "title": "Listed in the omnibus body for your final review; the slice merges if none is blocking",
+              "detail": "No interruptions. A blocking finding still stops the merge. I recommend this."
+            },
+            {
+              "id": "ping",
+              "title": "You decide each one when it comes up",
+              "detail": "More interruptions, but no surprises at the end."
+            }
+          ],
+          "recommended": "collect",
+          "group": "How the work runs"
+        },
+        {
+          "id": "q-gaps",
+          "kind": "single",
+          "prompt": "When building shows that D-0005 is silent or wrong on a detail, what should I do?",
+          "priority": "normal",
+          "options": [
+            {
+              "id": "decide",
+              "title": "Decide within the record's criteria, write it in Build notes, and list it for you",
+              "detail": "Keeps the work moving. I stop and ask only when a fix would change one of your earlier answers. I recommend this."
+            },
+            {
+              "id": "stop",
+              "title": "Stop and ask each time",
+              "detail": "You see every gap first."
+            }
+          ],
+          "recommended": "decide",
+          "group": "How the work runs"
+        },
+        {
+          "id": "q-d-abs",
+          "kind": "single",
+          "prompt": "File-level variables (`OSDLC_REPOSITORIES`, `<TOOL>_MACHINE_CONFIG`) must be absolute paths, and a relative one is rejected. Keep it?",
+          "priority": "normal",
+          "options": [
+            {
+              "id": "keep",
+              "title": "Keep: reject a relative value",
+              "detail": "A relative path would depend on the directory the tool runs from, and tests that set one would write somewhere else from a different directory. The root variables already work this way. I recommend this."
+            },
+            {
+              "id": "cwd",
+              "title": "Resolve a relative value against the current directory",
+              "detail": "More forgiving, but the file moves with the working directory."
+            }
+          ],
+          "recommended": "keep",
+          "group": "Design calls already in the records"
+        },
+        {
+          "id": "q-d-json",
+          "kind": "single",
+          "prompt": "wayfinder's and host-cleaner's `config.json` become YAML when each tool moves under the osdlc root. Keep it? (Nothing in this omnibus does that move.)",
+          "priority": "low",
+          "options": [
+            {
+              "id": "keep",
+              "title": "Keep: convert to YAML in the move",
+              "detail": "One format in the osdlc home, through `machineConfigFile`. I recommend this."
+            },
+            {
+              "id": "json",
+              "title": "Keep JSON for those tools",
+              "detail": "No conversion, but two formats in one home."
+            }
+          ],
+          "recommended": "keep",
+          "group": "Design calls already in the records"
+        },
+        {
+          "id": "q-d-home",
+          "kind": "single",
+          "prompt": "A checkout that is `$HOME` itself, such as a dotfiles repository, gets no default root. Keep it?",
+          "priority": "normal",
+          "options": [
+            {
+              "id": "keep",
+              "title": "Keep: no default root",
+              "detail": "Otherwise a run would scan every directory in your home, and with home under /Users, possibly others'. I recommend this."
+            },
+            {
+              "id": "scan",
+              "title": "Scan `$HOME`'s children",
+              "detail": "Finds more checkouts, at the cost of a slow and wide scan."
+            }
+          ],
+          "recommended": "keep",
+          "group": "Design calls already in the records"
+        },
+        {
+          "id": "q-d-stamp",
+          "kind": "single",
+          "prompt": "`survey` and rehearsals write a clone's last-used stamp. Keep it?",
+          "priority": "normal",
+          "options": [
+            {
+              "id": "keep",
+              "title": "Keep: survey counts as use",
+              "detail": "A clone that is only surveyed is not pruned and then re-cloned. survey stays write-free apart from fetches, the stamp and the lock. I recommend this."
+            },
+            {
+              "id": "apply-only",
+              "title": "Only `update --apply` counts as use",
+              "detail": "survey writes less, but a surveyed clone can age out."
+            }
+          ],
+          "recommended": "keep",
+          "group": "Design calls already in the records"
+        },
+        {
+          "id": "q-d-xfs",
+          "kind": "single",
+          "prompt": "Keeping a failed worktree across filesystems rebuilds it at the same commit with the verify log, and drops untracked build output. Keep it?",
+          "priority": "normal",
+          "options": [
+            {
+              "id": "keep",
+              "title": "Keep: same commit and log, no untracked output",
+              "detail": "Safe and simple, and the build output can be made again. I recommend this."
+            },
+            {
+              "id": "copy",
+              "title": "Copy the whole tree",
+              "detail": "Keeps build output, but copying can be slow and large, and a partial copy is harder to roll back."
+            }
+          ],
+          "recommended": "keep",
+          "group": "Design calls already in the records"
+        },
+        {
+          "id": "q-d-lock",
+          "kind": "single",
+          "prompt": "The clone's lock file sits beside the clone (`<name>.git.lock`), not inside it. Keep it?",
+          "priority": "normal",
+          "options": [
+            {
+              "id": "keep",
+              "title": "Keep: beside the clone",
+              "detail": "It exists before the clone does and survives the rename and the removal, so pruning and cloning can be ordered. I recommend this."
+            },
+            {
+              "id": "inside",
+              "title": "Inside the clone directory",
+              "detail": "Tidier, but it cannot guard the clone's creation or removal."
+            }
+          ],
+          "recommended": "keep",
+          "group": "Design calls already in the records"
+        },
+        {
+          "id": "q-d-age0",
+          "kind": "single",
+          "prompt": "With `mirror_max_age_days: 0`, a bare `mirror prune` removes no clone unless given `--older-than` or `--all`. Keep it?",
+          "priority": "normal",
+          "options": [
+            {
+              "id": "keep",
+              "title": "Keep: 0 means never by age",
+              "detail": "0 turns age pruning off, and by hand you say how old. Dead run worktrees are still removed. I recommend this."
+            },
+            {
+              "id": "all",
+              "title": "0 means every clone is old",
+              "detail": "Shorter to type, but a zero that deletes everything is easy to hit by accident."
+            }
+          ],
+          "recommended": "keep",
+          "group": "Design calls already in the records"
+        },
+        {
+          "id": "q-sdlc",
+          "kind": "single",
+          "prompt": "sdlc reading `repositories.yaml` and importing remote matching from typed-git happens later, as its own change in sdlc's repository. Agreed?",
+          "priority": "low",
+          "options": [
+            {
+              "id": "later",
+              "title": "Later, as a separate change after this release",
+              "detail": "It needs the published packages first, and it is in another repository, so it cannot be in the omnibus. I file it as a follow-up. I recommend this."
+            },
+            {
+              "id": "part",
+              "title": "Part of done: I open that change right after the release",
+              "detail": "Complete sooner, but it is one more PR for you to approve."
+            }
+          ],
+          "recommended": "later",
+          "group": "Scope"
+        }
+      ]
+    }
+  ]
+}

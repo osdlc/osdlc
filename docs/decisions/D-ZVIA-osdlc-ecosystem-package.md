@@ -1,7 +1,7 @@
 # D-ZVIA: Settings osdlc tools share live in `@osdlc/ecosystem`
 
-Proposed 2026-11-22. The name is provisional (owner, 2026-11-22). The file
-rules are in [machine-files.md](../../standards/machine-files.md).
+Accepted 2026-11-23. The name `@osdlc/ecosystem` stands for now (owner,
+2026-11-23). The file rules are in [machine-files.md](../../standards/machine-files.md).
 
 ## Context
 
@@ -85,11 +85,11 @@ A list per tool means one list to keep up per tool, and the lists drift.
 
 ## Not decided yet
 
-| Candidate                                                                           | Waits for                                                             |
-| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| How new checkouts are laid out and cloned (sdlc's `checkout.layout` and `protocol`) | sdlc's adoption, which would move them here                           |
-| A shared bare-clone cache at `standalone('osdlc').cache()`                          | A second tool that wants clones. pr-update keeps its cache until then |
-| The package's final name                                                            | The owner. "ecosystem" also names the markdown ecosystem (D-SM4K)     |
+| Candidate                                                                           | Waits for                                                                |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| How new checkouts are laid out and cloned (sdlc's `checkout.layout` and `protocol`) | sdlc's adoption, which would move them here                              |
+| A shared bare-clone cache at `standalone('osdlc').cache()`                          | A second tool that wants clones. pr-update keeps its cache until then    |
+| The package's final name                                                            | The owner, later. "ecosystem" also names the markdown ecosystem (D-SM4K) |
 
 ## Consequences
 

@@ -23,10 +23,8 @@ project root), then the clone. The clone is not a
 `git clone --mirror`: it keeps the `origin/<branch>` remote-tracking layout
 that `survey` and `update` already read. The first `update --apply` that needs
 a clone asks before making one, and the answer is saved in
-`~/.config/osdlc/pr-update/config.yaml`. Nothing is built yet
-(osdlc/osdlc#844). The `locate` parts rest on D-ZVIA, which is still proposed
-(osdlc/osdlc#1012); that PR also adds the `machine-files.md` standard linked
-below, so it merges first.
+`~/.config/osdlc/pr-update/config.yaml`. It is being built
+(osdlc/osdlc#844). The `locate` parts rest on D-ZVIA, accepted 2026-11-23.
 
 ^summary
 
