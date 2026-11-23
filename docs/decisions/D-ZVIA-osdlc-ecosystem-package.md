@@ -14,12 +14,12 @@ A list per tool means one list to keep up per tool, and the lists drift.
 
 ## Options
 
-| Option                                                       | Cost                                                                   |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| A list in each tool's own machine file                       | One list per tool, kept in step by hand                                |
-| A package per shared concern                                 | Many small packages. This repository already publishes about 50        |
-| One `~/.config/osdlc/config.yaml` with a section per concern | Every tool parses every section, and one bad section can hide the rest |
-| **One package, one file per concern (chosen)**               | One package versions every concern together                            |
+| Option                                                                | Cost                                                                   |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| A list in each tool's own machine file                                | One list per tool, kept in step by hand                                |
+| A package per shared concern                                          | Many small packages. This repository already publishes about 50        |
+| One `osdlc/config.yaml` in the config home with a section per concern | Every tool parses every section, and one bad section can hide the rest |
+| **One package, one file per concern (chosen)**                        | One package versions every concern together                            |
 
 ## Decision
 
@@ -31,14 +31,15 @@ A list per tool means one list to keep up per tool, and the lists drift.
   | Ecosystem convention: a fact or rule every osdlc tool shares | Where checkouts live                                     | All in `@osdlc/ecosystem`. A new concern is a new module and subpath export, not a new package |
 
 - **The package owns the family's own files.** Each sits directly in the
-  osdlc config home, `~/.config/osdlc/` on Linux and macOS, resolved as
+  osdlc config home (`~/.config/osdlc/` on Linux and macOS when no
+  variable is set), resolved as
   [machine-files.md](../../standards/machine-files.md#where-files-go) says.
   One file per concern, so a tool reads only what it needs. A tool's own
   files stay in `osdlc/<tool>/`.
 - **The first file is `repositories.yaml`.**
 
   ```yaml
-  # ~/.config/osdlc/repositories.yaml
+  # <osdlc config home>/repositories.yaml (default ~/.config/osdlc/ on Linux and macOS)
   roots:
     - ~/dev/repos
   ```
@@ -76,7 +77,7 @@ A list per tool means one list to keep up per tool, and the lists drift.
   checkouts are asks through the package, so every tool asks the same
   question.
 - **Adoption.** pr-update reads it first (D-0005). sdlc is published outside
-  the `@osdlc` scope and keeps `~/.config/sdlc/`. In a later change it reads
+  the `@osdlc` scope and keeps its own directories. In a later change it reads
   `repositories.yaml` in place of its machine `repos:` (owner, 2026-11-21).
   Its project `repos:` and its `{paths}` names have no equivalent here, and
   stay sdlc's.
