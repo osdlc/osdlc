@@ -35,3 +35,5 @@ decision names the one that replaces it. A task is `open` or `done`.
 - [T-01](tasks/T-01-use-typed-git-and-typed-gh-verbs.md): Read objects, diffs and pull requests
   through the typed verbs
 - [T-02](tasks/T-02-windows-tier-2.md): Run the tests on Windows
+- [T-03](tasks/T-03-import-the-library-without-the-command-framework.md): Import the library
+  without the command framework

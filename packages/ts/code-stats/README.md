@@ -51,6 +51,12 @@ Write the scope: the unscoped npm package `code-stats` is a different tool that 
 ESM only. Node.js 22 or later: the `engines` range in `package.json` is the one of
 `@osdlc/typed-git`, which the package reads git through.
 
+The library and the command are one package, so the install brings `@osdlc/cli-tool`, the
+framework the command is built on, and its dependencies. Importing the library loads it too, for
+one function
+([T-03](https://github.com/osdlc/osdlc/blob/main/packages/ts/code-stats/docs/planning/tasks/T-03-import-the-library-without-the-command-framework.md)
+is the task to stop that).
+
 ## Quick start
 
 ```sh
@@ -174,8 +180,10 @@ Optional extras:
   declared in `package.json`, but never installed for you.
 - [`lizard`](https://github.com/terryyin/lizard) on `PATH`: complexity for other languages.
 
-`code-stats dev link <checkout>` makes the installed command run a checkout of this package (see
-[`@osdlc/cli-tool`'s devlink](https://github.com/osdlc/osdlc/tree/main/packages/ts/cli-tool#running-from-a-checkout)).
+`code-stats dev link <checkout>` makes the installed command run a checkout of this package. The
+checkout runs from source under Bun, with its own installed dependencies, so the hand-off needs
+`bun` on `PATH`. Nothing else in the package needs Bun. See
+[`@osdlc/cli-tool`'s devlink](https://github.com/osdlc/osdlc/tree/main/packages/ts/cli-tool#running-from-a-checkout-or-a-projects-pinned-copy).
 
 ## Stability
 
