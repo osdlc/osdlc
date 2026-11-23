@@ -144,22 +144,46 @@ markers are copied over once, on first use. The old place is
 `{ tool: 'osdlc', app: 'pr-update' }` it is pr-update's old store. `legacyDir` names another old
 store, or `null` turns the move off.
 
+The move only ever fills a place that does not exist yet:
+
 1. Every grant in the old store is copied into a new, private folder beside
    the new place.
 2. Each copy is read back and checked against the grant it came from.
 3. A `.moved` record, holding the old store's path, is written into the
    folder, and the folder is renamed into place.
+4. A `.trusted.moved` record is written beside the store.
 
 The rename is the one step that publishes the copy. So the new store is
-either complete and recorded, or not there at all, and a copy that failed
-partway leaves nothing behind. Two processes that move at once each build
-their own folder; the second rename fails because the first already landed,
-and the second process uses that one. In every other case (the old store has
-no grant, or the move does not run, as below) the first grant written to the
-new store writes the record instead; a read creates nothing. So a store this
-package wrote always has its record, and once the record is there, only the
-new place is read. A grant an older release adds to the old place later is not
-copied, and a grant revoked in the new place stays revoked.
+either complete, or not there at all, and a copy that failed partway leaves
+nothing behind. Two processes that move at once each build their own folder;
+the second rename fails because the first already landed, and the second
+process uses that one. A new store that `trust` makes is published the same
+way, so this package never leaves a store folder without its record.
+
+The record beside the store, or the one inside it, means the store has had
+its one chance to move. From then on only the new place is read: a grant an
+older release adds to the old place later is not copied, and a grant revoked
+in the new place stays revoked. Every way the move can end writes it. When
+the old store has no grant, or the move does not run (as below), the first
+grant writes it; a read creates nothing.
+
+If the new place already exists without a record (it was made through `dir`,
+by hand, or left by a crash), nothing is copied into it. The record is
+written and the person consents again there. Copying into a live folder
+could bring back a grant revoked in it.
+
+To forget grants, use `untrust` or `untrustAll`, or delete the store folder
+to forget every grant at once. The record beside it stays, so the old place
+is not read again. Deleting the record as well would start the move once
+more.
+
+The move trusts the environment of the first run that makes it, since
+`XDG_STATE_HOME` places the old store. So the old folder is copied only when
+it is a real directory, not a symlink, and on POSIX owned by this user and
+writable by no one else (no group or world write bit). Otherwise nothing is
+copied, the record is written, and the person consents again. A store an
+older release made group-writable, under a `002` umask, is not copied for
+that reason.
 
 The old markers are never changed or deleted, so an older release of the
 tool still finds every grant it knew. A process killed partway through, or a
@@ -191,11 +215,6 @@ tool's convention in its `dirs` factory, with `conventionFromEnv: false`,
 before it opts in, so no person needs `<PREFIX>_CONVENTION`. A `dirs`
 factory given with neither `env` nor `home` has no old place either, since
 it was not resolved from the real environment.
-
-If the new place already exists with no record when there is something to
-move, it was made through `dir` or by hand, since a store this package
-writes always has one. The old grants are then copied into it in place,
-each marker atomically, and the record is written.
 
 ### What a decision is keyed on
 

@@ -34,17 +34,37 @@
  * ## How a store moves
  *
  * When `vendorDirs` puts the store somewhere other than that old place, the
- * old markers are copied once, on first use. They are copied into a private
- * staging folder, read back and checked there, and the folder is renamed
- * into place with a `.moved` record inside. The rename is the one step that
- * publishes the copy, so the new store is either complete and recorded or
- * not there at all. Two processes that move at once each build their own
- * copy, and the second rename fails because the first already landed. In
- * every other case (the old store has no grant, or the move does not run)
- * the first grant written to the new store records `.moved` instead. So a
- * store this package wrote always has its record, and once it has one, only
- * it is read: a grant revoked there stays revoked. The old markers are never
- * changed or deleted, so an older release still finds them.
+ * old markers are copied once, on first use, and only into a place that does
+ * not exist yet. They are copied into a private staging folder, read back
+ * and checked there, the folder gets a `.moved` record inside, and it is
+ * renamed into place. The rename is the one step that publishes the copy, so
+ * the new store is either complete or not there at all. Two processes that
+ * move at once each build their own copy, and the second rename fails
+ * because the first already landed. A new store that `trust` makes is
+ * published the same way, so this package never leaves a store folder
+ * without its record.
+ *
+ * Then a `.trusted.moved` record is written beside the store. That record,
+ * or the one inside, means the store has had its one chance to move, and
+ * only the new place is read from then on: a grant revoked there stays
+ * revoked. Every way the move can end writes it: copied, the old place
+ * unsafe, or the new place already there. When the old store has no grant,
+ * or the move does not run, the first grant writes it. Because it sits
+ * beside the store, deleting the store folder forgets every grant and does
+ * not start the move again; so does `untrustAll` for one repository. The old
+ * markers are never changed or deleted, so an older release still finds
+ * them.
+ *
+ * When the new place already exists without a record (made through `dir`,
+ * by hand, or left by a crash), nothing is copied into it: the record is
+ * written and the person consents again. Copying into a live folder could
+ * bring back a grant revoked there.
+ *
+ * The move trusts the environment of the first run that makes it, since
+ * `XDG_STATE_HOME` places the old store. So the old folder is copied only
+ * when it is a real directory, not a symlink, and on POSIX owned by this
+ * user and writable by no one else. Otherwise nothing is copied, the record
+ * is written, and the person consents again.
  *
  * A failed move throws from {@link TrustStore.isTrusted} and the methods that
  * write, so nothing runs on a store that lost a grant. The next use tries
@@ -54,7 +74,7 @@
  * `<PREFIX>_CONVENTION` is set (non-empty), the store is not under
  * tiered-dirs' per-process test root, and its place differs from the old
  * place. While any of those variables is set, the store gets no old markers,
- * whatever folder it lands in, and its first grant records `.moved`, so it
+ * whatever folder it lands in, and its first grant writes the record, so it
  * never gets them later either. The person consents again there, which fails
  * closed. The unmoved place moves once, the first time the tool runs with
  * none of them set.
@@ -124,7 +144,18 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto'
-import { access, chmod, mkdir, readdir, readFile, rename, rm, rmdir, stat } from 'node:fs/promises'
+import {
+  access,
+  chmod,
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  rmdir,
+  stat,
+} from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
@@ -179,9 +210,9 @@ interface StoreLocation {
   dir: string
   legacy: string | null
   /**
-   * Whether the store resolves through `vendorDirs`. Such a store records
-   * `.moved` with its first grant, so a store this package wrote is never
-   * filled from the old place later.
+   * Whether the store resolves through `vendorDirs`. Such a store writes
+   * its move record with its first grant, so a store this package wrote is
+   * never filled from the old place later.
    */
   recorded: boolean
 }
@@ -656,11 +687,94 @@ async function grantsIn(dir: string): Promise<TrustGrant[]> {
 }
 
 /**
- * The record a moved store keeps, holding the old store's path, or an empty
- * line when it had none. Its name can never be a marker's, which always ends
- * in `-<16 hex digits>`.
+ * The name of the record that a store has had its one chance to move. It
+ * holds the old store's path, or an empty line when there was none. The
+ * record that counts sits beside the store, as `.trusted.moved`, so deleting
+ * the store folder does not start the move again. A store this package
+ * publishes also holds one inside, which keeps the folder from ever being
+ * empty: a rename onto it always fails. The inner name can never be a
+ * marker's, which always ends in `-<16 hex digits>`.
  */
 const MOVED_RECORD = '.moved'
+
+/** The record beside the store at `dir`: `<parent>/.trusted.moved`. */
+function recordBeside(dir: string): string {
+  return join(dirname(dir), `.${basename(dir)}${MOVED_RECORD}`)
+}
+
+/** Whether the store at `dir` has had its chance to move: a record beside it or inside it. */
+async function isRecorded(dir: string): Promise<boolean> {
+  return (await exists(recordBeside(dir))) || exists(join(dir, MOVED_RECORD))
+}
+
+/** Write the record beside the store at `dir`, unless it is there. */
+async function writeRecord(dir: string, from: string | null): Promise<void> {
+  const record = recordBeside(dir)
+  if (await exists(record)) return
+  await mkdir(dirname(dir), { recursive: true, mode: DIR_MODE })
+  // As for a marker, a Windows rename onto a record another call is writing
+  // can fail; the record is there either way.
+  await atomicWriteAsync(record, `${from ?? ''}\n`, { mode: MARKER_MODE }).catch(
+    async (error: unknown) => {
+      if (!(await exists(record))) throw error
+    },
+  )
+}
+
+/**
+ * Whether the old store at `from` may be copied: a real directory, not a
+ * symlink, and on POSIX owned by this user and writable by no one else. The
+ * move trusts the environment of the first run that makes it, and
+ * `XDG_STATE_HOME` can point the old place anywhere. A folder someone else
+ * could have written is not a record of this person's consent.
+ */
+async function oldStoreState(from: string): Promise<'missing' | 'safe' | 'unsafe'> {
+  let info
+  try {
+    info = await lstat(from)
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    return code === 'ENOENT' || code === 'ENOTDIR' ? 'missing' : 'unsafe'
+  }
+  if (info.isSymbolicLink() || !info.isDirectory()) return 'unsafe'
+  if (process.platform === 'win32') return 'safe'
+  if (process.getuid !== undefined && info.uid !== process.getuid()) return 'unsafe'
+  return (info.mode & 0o022) === 0 ? 'safe' : 'unsafe'
+}
+
+/**
+ * Publish a new store at `to`: fill a private staging folder beside it, add
+ * the inner record, and rename the folder into place. The rename is the one
+ * step that makes the store visible, so it is complete or absent, and a
+ * store this package made always holds its record. False when `to` already
+ * existed, and the staged folder was dropped.
+ */
+async function publishStore(
+  to: string,
+  from: string | null,
+  fill: (staging: string) => Promise<void>,
+): Promise<boolean> {
+  const parent = dirname(to)
+  await mkdir(parent, { recursive: true, mode: DIR_MODE })
+  const staging = join(parent, `.${basename(to)}.moving-${randomBytes(6).toString('hex')}`)
+  try {
+    await mkdir(staging, { mode: DIR_MODE })
+    await fill(staging)
+    await atomicWriteAsync(join(staging, MOVED_RECORD), `${from ?? ''}\n`, { mode: MARKER_MODE })
+    try {
+      await renameDir(staging, to)
+      return true
+    } catch (error) {
+      // Another process's store landed first.
+      if (await exists(to)) return false
+      throw error
+    }
+  } finally {
+    // A folder left behind is never read, so a failed cleanup must not hide
+    // the error that got here.
+    await rm(staging, { recursive: true, force: true, maxRetries: 3 }).catch(() => {})
+  }
+}
 
 /** Write every grant into the store at `dir`, unless it is there already. */
 async function copyGrants(grants: readonly TrustGrant[], dir: string): Promise<void> {
@@ -693,45 +807,25 @@ async function checkGrants(
 
 /**
  * Copy the grants in the old store `from` into the new store `to`, once. See
- * "How a store moves" in the module comment. A no-op when `to` holds the
- * record of a move, or `from` holds no grant. `from` is only read.
+ * "How a store moves" in the module comment. The copy is only ever published
+ * whole into a place that does not exist. When `to` already exists, or
+ * `from` is not safe to read, nothing is copied and the record is written:
+ * the person consents again. A no-op when `to` is recorded or `from` holds
+ * no grant. `from` is only read.
  */
 async function moveStore(from: string, to: string): Promise<void> {
-  const record = join(to, MOVED_RECORD)
-  if (await exists(record)) return
+  if (await isRecorded(to)) return
+  if (await exists(to)) return writeRecord(to, from)
+  const state = await oldStoreState(from)
+  if (state === 'missing') return
+  if (state === 'unsafe') return writeRecord(to, from)
   const grants = await grantsIn(from)
   if (grants.length === 0) return
-  if (await exists(to)) {
-    // Another process's copy landed since the first check.
-    if (await exists(record)) return
-    // The new store exists with no record: this package never wrote a grant
-    // to it as a `vendorDirs` store, since the first one records `.moved`. It
-    // was made through `dir` or by hand. It is merged into in place, each
-    // marker still written atomically.
-    await copyGrants(grants, to)
-    await checkGrants(grants, to, from)
-    await atomicWriteAsync(record, `${from}\n`, { mode: MARKER_MODE })
-    return
-  }
-  const parent = dirname(to)
-  await mkdir(parent, { recursive: true, mode: DIR_MODE })
-  const staging = join(parent, `.${basename(to)}.moving-${randomBytes(6).toString('hex')}`)
-  try {
-    await mkdir(staging, { mode: DIR_MODE })
+  await publishStore(to, from, async (staging) => {
     await copyGrants(grants, staging)
     await checkGrants(grants, staging, from)
-    await atomicWriteAsync(join(staging, MOVED_RECORD), `${from}\n`, { mode: MARKER_MODE })
-    try {
-      await renameDir(staging, to, record)
-    } catch (error) {
-      // Another process's copy landed first. It holds the same grants.
-      if (!(await exists(record))) throw error
-    }
-  } finally {
-    // A folder left behind is never read, so a failed cleanup must not hide
-    // the error that got here.
-    await rm(staging, { recursive: true, force: true, maxRetries: 3 }).catch(() => {})
-  }
+  })
+  await writeRecord(to, from)
 }
 
 /** Errors a Windows rename gives while a scanner or indexer holds a file open. */
@@ -741,9 +835,9 @@ const BUSY_CODES = new Set(['EPERM', 'EBUSY', 'EACCES'])
  * Rename the staging folder `from` to `to`. On Windows a scanner holding a
  * file inside can make the rename fail for a moment, so it is tried a few
  * times. A rename onto a store that already exists fails the same way there,
- * so it stops as soon as `record` shows another process's copy landed.
+ * so it stops as soon as `to` exists.
  */
-async function renameDir(from: string, to: string, record: string): Promise<void> {
+async function renameDir(from: string, to: string): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     try {
       await rename(from, to)
@@ -751,7 +845,7 @@ async function renameDir(from: string, to: string, record: string): Promise<void
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code ?? ''
       if (process.platform !== 'win32' || attempt >= 5 || !BUSY_CODES.has(code)) throw error
-      if (await exists(record)) throw error
+      if (await exists(to)) throw error
       await sleep(20 * attempt)
     }
   }
@@ -787,29 +881,34 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
     return move
   }
   /**
-   * The first grant a `vendorDirs` store writes records `.moved`, whatever
-   * the move did: copied, found nothing, or did not run because an override
-   * or the test root placed the store. A store this package wrote then always
-   * counts as moved, so the old place is never merged into it later, and a
-   * grant revoked in it stays revoked. A read creates nothing.
+   * A `vendorDirs` store records its move with its first grant, whatever the
+   * move did: copied, found nothing, or did not run because a variable or
+   * the test root placed the store. A store this package wrote then never
+   * gets the old markers later, and a grant revoked in it stays revoked. A
+   * read creates nothing, except the record beside a store that already
+   * exists or whose old place is not safe to read.
    */
   const recordStore = async (): Promise<void> => {
     const { dir: to, legacy, recorded } = locateStore(opts)
-    if (!recorded) return
-    const record = join(to, MOVED_RECORD)
-    if (await exists(record)) return
-    // As for a marker, a Windows rename onto a record another call is writing
-    // can fail; the record is there either way.
-    await atomicWriteAsync(record, `${legacy ?? ''}\n`, { mode: MARKER_MODE }).catch(
-      async (error: unknown) => {
-        if (!(await exists(record))) throw error
-      },
-    )
+    if (recorded) await writeRecord(to, legacy)
   }
   /** For the methods that never throw for a failed move: they read what the new place holds. */
   const movedOrNot = async (): Promise<void> => {
     const move = moved()
     await move.catch(() => {})
+  }
+
+  /** Write the marker for `resolved` and an already-normalized `scope` into the store at `d`. */
+  const writeMarker = async (d: string, resolved: string, scope: string): Promise<void> => {
+    if (scope !== WHOLE_REPO_SCOPE) {
+      await mkdir(join(d, `${markerName(resolved)}${SCOPES_SUFFIX}`), { mode: DIR_MODE }).catch(
+        () => {},
+      )
+    }
+    // A marker that exists is a grant, so it must never be observable half-written.
+    await atomicWriteAsync(grantPath(d, resolved, scope), markerText(resolved, scope), {
+      mode: MARKER_MODE,
+    })
   }
 
   const hasGrant = async (resolved: string, scope: string): Promise<boolean> =>
@@ -884,19 +983,23 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
       const marker = markerPath(resolved, scope)
       const alreadyTrusted = await hasGrant(resolved, scope)
       if (!alreadyTrusted) {
-        await mkdir(dir(), { recursive: true, mode: DIR_MODE })
-        await recordStore()
-        if (scope !== WHOLE_REPO_SCOPE)
-          await mkdir(scopesDir(resolved), { mode: DIR_MODE }).catch(() => {})
-        // A marker that exists is a grant, so it must never be observable half-written.
-        // On Windows a rename onto a marker another call is writing can fail
-        // with EPERM. The other call wrote the same grant, so that is success.
-        await atomicWriteAsync(marker, markerText(resolved, scope), { mode: MARKER_MODE }).catch(
-          async (error: unknown) => {
+        const { recorded, legacy } = locateStore(opts)
+        // A new `vendorDirs` store is published as the move publishes one, so
+        // this package never leaves a store folder without its record.
+        const published =
+          recorded &&
+          !(await exists(dir())) &&
+          (await publishStore(dir(), legacy, (staging) => writeMarker(staging, resolved, scope)))
+        if (!published) {
+          await mkdir(dir(), { recursive: true, mode: DIR_MODE })
+          // On Windows a rename onto a marker another call is writing can fail
+          // with EPERM. The other call wrote the same grant, so that is success.
+          await writeMarker(dir(), resolved, scope).catch(async (error: unknown) => {
             if (!(await hasGrant(resolved, scope))) throw error
-          },
-        )
+          })
+        }
       }
+      await recordStore()
       await tighten()
       return { root: resolved, scope, marker, alreadyTrusted }
     },

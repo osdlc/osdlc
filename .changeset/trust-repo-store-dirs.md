@@ -18,14 +18,22 @@ used before, so nothing moves until a tool opts in.
 
 When a tool opts in and its new place differs from the old one
 (`$XDG_STATE_HOME/<tool>/trusted/`, or `~/.local/state/<tool>/trusted/`), the
-existing markers are copied to the new place once, checked, and recorded as
-moved. When there is nothing to copy, the first grant in the new store
-records the move, so a store this package wrote is never filled from the old
-place later. After that only the new place is read. The old markers are
-left as they were, so an older release of the tool keeps using the old place and
-still finds every grant it knew; a grant it adds there later is not copied.
-A copy that fails leaves no new store behind and makes the trust check fail,
-so nothing runs without consent; the next run tries again.
+existing markers are copied to the new place once, checked, and published
+whole, only into a place that does not exist yet. A `.trusted.moved` record
+beside the store then marks the move as done, and only the new place is read.
+When there is nothing to copy, the first grant writes the record. Deleting the
+store folder forgets every grant; the record stays, so the old place is not
+read again. The old markers are left as they were, so an older release of the
+tool keeps using the old place and still finds every grant it knew; a grant it
+adds there later is not copied. A copy that fails leaves no new store behind
+and makes the trust check fail, so nothing runs without consent; the next run
+tries again.
+
+Nothing is copied, and the person is asked for consent again, when the new
+place already exists without a record, or when the old folder is a symlink or,
+on POSIX, is owned by another user or is group- or world-writable. The move
+trusts the environment of the first run that makes it, since `XDG_STATE_HOME`
+places the old store.
 
 While `<PREFIX>_ROOT`, `<PREFIX>_STATE_DIR` or `<PREFIX>_CONVENTION` is set,
 or under tiered-dirs' test root, the store gets no old markers, whatever

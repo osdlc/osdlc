@@ -7,7 +7,18 @@
  */
 
 import { afterAll, describe, expect, test, vi } from 'vitest'
-import { mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+  symlink,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -168,6 +179,11 @@ async function machine() {
   return { home, env, repos, legacy, current }
 }
 
+/** The record of a store's move, beside the store: `<parent>/.trusted.moved`. */
+function record(storeDir: string): Promise<string> {
+  return readFile(join(dirname(storeDir), `.${TRUST_MARKER_DIR}.moved`), 'utf-8')
+}
+
 /** Every file under `dir` with its bytes, mode and mtime. */
 async function snapshot(dir: string): Promise<Record<string, string>> {
   const out: Record<string, string> = {}
@@ -203,10 +219,13 @@ describe('the one-time move', () => {
     const strip = (gs: { root: string; scope: string }[]) =>
       gs.map(({ root: r, scope }) => ({ root: r, scope }))
     expect(strip(await store.listGrants())).toEqual(strip(await legacy().listGrants()))
-    expect(await readFile(join(store.dir(), '.moved'), 'utf-8')).toBe(`${legacy().dir()}\n`)
+    expect(await record(store.dir())).toBe(`${legacy().dir()}\n`)
     expect(await snapshot(legacy().dir())).toEqual(before)
     // No staging folder is left beside the store.
-    expect(await readdir(dirname(store.dir()))).toEqual([TRUST_MARKER_DIR])
+    expect((await readdir(dirname(store.dir()))).sort()).toEqual([
+      `.${TRUST_MARKER_DIR}.moved`,
+      TRUST_MARKER_DIR,
+    ])
   })
 
   test('a second run is a no-op: later old markers are not copied, and a revoked grant stays revoked', async () => {
@@ -238,7 +257,7 @@ describe('the one-time move', () => {
     const [one, two] = repos as [string, string]
     await current().trust(one)
     const store = current()
-    expect(await readFile(join(store.dir(), '.moved'), 'utf-8')).toBe(`${legacy().dir()}\n`)
+    expect(await record(store.dir())).toBe(`${legacy().dir()}\n`)
 
     // An older release writes the old place after the new store exists.
     await legacy().trust(two)
@@ -247,7 +266,7 @@ describe('the one-time move', () => {
     expect(await again.isTrusted(two)).toBe(false)
   })
 
-  test('a new place that exists with no record, made through dir, is merged into in place', async () => {
+  test('a new place that already exists, made through dir, gets no old markers', async () => {
     const { home, env, repos, legacy, current } = await machine()
     const [one, two] = repos as [string, string]
     await trustStore({ tool: 'x', dir: current().dir(), env, home }).trust(one)
@@ -255,9 +274,75 @@ describe('the one-time move', () => {
 
     const store = current()
     expect(await store.isTrusted(one)).toBe(true)
-    expect(await store.isTrusted(two)).toBe(true)
-    expect(await readFile(join(store.dir(), '.moved'), 'utf-8')).toBe(`${legacy().dir()}\n`)
+    expect(await store.isTrusted(two)).toBe(false)
+    expect(await record(store.dir())).toBe(`${legacy().dir()}\n`)
   })
+
+  test('a grant revoked through dir at the new place stays revoked when the store reopens', async () => {
+    const { home, env, repos, legacy, current } = await machine()
+    const [one] = repos as [string]
+    await legacy().trust(one)
+    const viaDir = trustStore({ tool: 'x', dir: current().dir(), env, home })
+    await viaDir.trust(one)
+    expect(await viaDir.untrust(one)).toBe(true)
+
+    expect(await current().isTrusted(one)).toBe(false)
+    expect(await current().isTrusted(one)).toBe(false)
+  })
+
+  test('a store folder left with no record (a crash after mkdir) gets no old markers', async () => {
+    const { repos, legacy, current } = await machine()
+    const [one] = repos as [string]
+    await legacy().trust(one)
+    await mkdir(current().dir(), { recursive: true })
+
+    expect(await current().isTrusted(one)).toBe(false)
+    expect(await record(current().dir())).toBe(`${legacy().dir()}\n`)
+  })
+
+  test('a new store this package makes holds its record from the moment it exists', async () => {
+    const { repos, legacy, current } = await machine()
+    const store = current()
+    await store.trust(repos[0]!, 'just')
+    // Inside, published with the folder, and beside it.
+    expect(await readFile(join(store.dir(), '.moved'), 'utf-8')).toBe(`${legacy().dir()}\n`)
+    expect(await record(store.dir())).toBe(`${legacy().dir()}\n`)
+    expect(await store.isTrusted(repos[0]!, 'just')).toBe(true)
+    expect(await store.listGrants()).toHaveLength(1)
+  })
+
+  test('deleting the store folder forgets every grant; the old place is not read again', async () => {
+    const { repos, legacy, current } = await machine()
+    const [one] = repos as [string]
+    await legacy().trust(one)
+    expect(await current().isTrusted(one)).toBe(true)
+    await rm(current().dir(), { recursive: true, force: true })
+    expect(await current().isTrusted(one)).toBe(false)
+    expect(await current().list()).toEqual([])
+  })
+
+  test.skipIf(process.platform === 'win32')(
+    'an old store others could write, or a symlink, is not copied',
+    async () => {
+      for (const plant of ['group-writable', 'world-writable', 'symlink'] as const) {
+        const { home, repos, legacy, current } = await machine()
+        const [one] = repos as [string]
+        await legacy().trust(one)
+        if (plant === 'symlink') {
+          const real = join(home, 'elsewhere')
+          await rename(legacy().dir(), real)
+          await symlink(real, legacy().dir())
+        } else {
+          await chmod(legacy().dir(), plant === 'group-writable' ? 0o720 : 0o702)
+        }
+        expect(await current().isTrusted(one)).toBe(false)
+        expect(await record(current().dir())).toBe(`${legacy().dir()}\n`)
+        // Recorded: making the old store safe later does not start the move.
+        if (plant !== 'symlink') await chmod(legacy().dir(), 0o700)
+        expect(await current().isTrusted(one)).toBe(false)
+      }
+    },
+  )
 
   test('a convention the environment picks copies nothing, so a revoked grant stays revoked', async () => {
     const { env, home, repos, legacy } = await machine()
@@ -315,7 +400,10 @@ describe('the one-time move', () => {
     expect(results).toEqual([true, true, true, true, true, true])
     const store = current()
     expect((await store.listGrants()).map((g) => g.scope)).toEqual(['*', 'just'])
-    expect(await readdir(dirname(store.dir()))).toEqual([TRUST_MARKER_DIR])
+    expect((await readdir(dirname(store.dir()))).sort()).toEqual([
+      `.${TRUST_MARKER_DIR}.moved`,
+      TRUST_MARKER_DIR,
+    ])
   })
 
   test("pr-update's shape (a dirs pinned to xdg, the run's env) moves the old pr-update markers once", async () => {
@@ -336,7 +424,7 @@ describe('the one-time move', () => {
     })
     expect(store.dir()).not.toBe(legacy().dir())
     expect(await store.isTrusted(repos[0]!)).toBe(true)
-    expect(await readFile(join(store.dir(), '.moved'), 'utf-8')).toBe(`${legacy().dir()}\n`)
+    expect(await record(store.dir())).toBe(`${legacy().dir()}\n`)
   })
 
   /** pr-update's store for one run: a dirs pinned to xdg, built from the run's env. */
@@ -365,7 +453,7 @@ describe('the one-time move', () => {
       // A grant written and revoked here records the store.
       await run1.trust(two)
       expect(await run1.untrust(two)).toBe(true)
-      expect(await readFile(join(run1.dir(), '.moved'), 'utf-8')).toBe('\n')
+      expect(await record(run1.dir())).toBe('\n')
 
       // A later run in the same folder never merges the old store in.
       const again = prUpdateRun(home, { ...env, [name]: value(home) })
@@ -436,7 +524,7 @@ describe('the one-time move', () => {
     expect(scratch.dir().startsWith(join(home, 'scratch'))).toBe(true)
     expect(await scratch.isTrusted(one)).toBe(false)
     await scratch.trust(repos[1]!)
-    expect(await readFile(join(scratch.dir(), '.moved'), 'utf-8')).toBe('\n')
+    expect(await record(scratch.dir())).toBe('\n')
     expect(await prUpdateRun(home, env).isTrusted(one)).toBe(true)
   })
 
