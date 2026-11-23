@@ -96,7 +96,9 @@ command line.
   "libraries": { "ts": "packages/ts", "rust": "packages/rust" },
   "catchingUp": { "tiered-dirs": "the crate reaches 0.5.0 with the realign work" },
   "unmigrated": ["packages/ts/gfm-table"],
-  "skipScan": { "packages/ts/conformance-suites": "its tests hold suite paths as test data" }
+  "skipScan": { "packages/ts/conformance-suites": "its tests hold suite paths as test data" },
+  "notFamilies": { "yaml-splice": "the TypeScript package is a binding of the crate" },
+  "noSuiteYet": { "typed-git": "no shared cases yet" }
 }
 ```
 
@@ -109,6 +111,12 @@ command line.
   fixtures directly. An entry that reads none fails the check.
 - `skipScan`: libraries whose tests are not scanned for suite paths, each
   with the reason.
+- `notFamilies`: names that are in both language roots but are not a second
+  implementation, such as a binding of a crate, each with the reason.
+- `noSuiteYet`: names in both roots that are a real pair with no shared cases
+  yet, each with what is missing. A name in both roots must be a registered
+  family, in `unmigrated`, or in one of these two; otherwise the check fails.
+  An entry for a name that is now a registered family is stale and fails.
 
 ## From code
 

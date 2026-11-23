@@ -20,6 +20,7 @@ import {
   registryProblems,
   suiteProblems,
   suiteReaders,
+  unlistedPairs,
   versionProblems,
   type Family,
   type Implementation,
@@ -150,6 +151,19 @@ export function checkRepo(root: string, options: RepoOptions = {}): string[] {
     if (!libraries.includes(dir))
       problems.push(`config.json: unmigrated names ${dir}, which is not a library`)
   }
+  const namesIn = (language: string): string[] =>
+    libraries
+      .filter((d) => d.startsWith(`${config.libraries[language]}/`))
+      .map((d) => d.slice(config.libraries[language]!.length + 1))
+  problems.push(
+    ...unlistedPairs(
+      { rust: namesIn('rust'), ts: namesIn('ts') },
+      config.libraries,
+      new Set(listed.keys()),
+      new Set(config.unmigrated),
+      config,
+    ),
+  )
   const sources = new Map(
     libraries.filter((d) => config.skipScan[d] === undefined).map((d) => [d, testSources(root, d)]),
   )
