@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
+# uv's cache, on the default folder. It is pruned: `uv cache prune` removes
+# only unused entries, so it runs with no idle check. Without uv on PATH it is
+# listed with a no-prune-tool protest and left alone (D12). Managed Pythons and
+# installed tools are left out: deleting them breaks environments and commands.
+descriptor: 1
+store: uv
+detect:
+  any: [{ onPath: uv }, { exists: cache }]
+paths:
+  cache: { macos: ~/.cache/uv, linux: ~/.cache/uv }
+candidates:
+  - path: cache
+    costDescription: re-download
+    command: [uv, cache, prune, --cache-dir, '{path}']
+    removes: unused
+inUse:
+  processes: [uv]

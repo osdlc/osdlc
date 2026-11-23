@@ -18,6 +18,7 @@ import {
   VERSION,
   clean,
   gitPlugin,
+  loadDescriptors,
   parseDescriptor,
   plan,
   survey,
@@ -60,6 +61,11 @@ assert.deepEqual(
     'hub.yaml',
   ).paths,
   { hub: { all: '~/.cache/hub' } },
+)
+// The shipped descriptors are in the package, where the loader looks for them.
+assert.deepEqual(
+  loadDescriptors({}, []).map((d) => d.name),
+  ['gradle', 'huggingface-hub', 'maven', 'npm', 'pip', 'pnpm', 'uv', 'yarn'],
 )
 
 // The binary sits beside dist/ in the package, installed or not.

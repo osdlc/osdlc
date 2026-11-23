@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
+# pnpm's content-addressable store and its metadata cache, on the default
+# folders. The store is pruned: `pnpm store prune` removes only the packages no
+# project references, so it runs with no idle check. Without pnpm on PATH it is
+# listed with a no-prune-tool protest and left alone (D12). The metadata cache
+# is removed as a folder once idle.
+descriptor: 1
+store: pnpm
+detect:
+  any: [{ onPath: pnpm }, { exists: store }, { exists: cache }]
+paths:
+  store: { macos: ~/Library/pnpm/store, linux: ~/.local/share/pnpm/store }
+  cache: { macos: ~/Library/Caches/pnpm, linux: ~/.cache/pnpm }
+candidates:
+  - path: store
+    costDescription: re-download
+    command: [pnpm, store, prune, --store-dir, '{path}']
+    removes: unused
+  - path: cache
+    costDescription: re-download
+inUse:
+  processes: [pnpm]

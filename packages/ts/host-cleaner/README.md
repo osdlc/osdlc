@@ -305,6 +305,16 @@ or two files of one name in one folder, is refused (exit 2). Descriptors run
 after the built-ins, by name. To try one you are writing:
 `host-cleaner status --descriptor ./uv.yaml --plugin uv`.
 
+The package ships eight, for macOS and Linux: `pnpm` (the store, pruned with
+`pnpm store prune`, and the metadata cache), `uv` (the cache, pruned with
+`uv cache prune`), `huggingface-hub` (one candidate per model or dataset, after
+30 idle days), `gradle` (the caches after a week and each wrapper distribution
+after 30 days, none while a Gradle daemon runs), `npm` (the package cache),
+`pip` (the cache), `yarn` (Berry's and Classic's global caches) and `maven` (the
+local repository, after 30 idle days). Each looks only at the tool's default
+folders: a store moved by an environment variable or a setting is not found, and
+the folder it left behind, if any, is what gets cleaned.
+
 The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
 all three directories):
 

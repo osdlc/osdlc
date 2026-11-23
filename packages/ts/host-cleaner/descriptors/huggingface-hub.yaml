@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
+# The Hugging Face hub cache, on the default folder (the same on macOS and
+# Linux). Each model and each dataset is its own candidate, removed as a folder
+# once nothing in it changed for 30 days: a model is large to download again.
+# `hf cache prune` can't be pointed at one entry, so it isn't used. No process
+# name identifies a reader (any Python program can be one), and the lock files
+# under .locks stay after a download, so neither is an in-use check.
+descriptor: 1
+store: huggingface-hub
+detect:
+  any: [{ onPath: hf }, { exists: hub }]
+paths:
+  hub: { macos: ~/.cache/huggingface/hub, linux: ~/.cache/huggingface/hub }
+candidates:
+  - path: hub
+    glob: 'models--*/'
+    costDescription: re-download
+    idleHours: 720
+  - path: hub
+    glob: 'datasets--*/'
+    costDescription: re-download
+    idleHours: 720

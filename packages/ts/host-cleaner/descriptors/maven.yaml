@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
+# Maven's local repository, on the default folder; a localRepository set in
+# settings.xml is not followed. No Maven command prunes the whole repository,
+# so it is removed as a folder once nothing in it changed for 30 days. What
+# `mvn install` put there comes back only by building those projects again.
+descriptor: 1
+store: maven
+detect:
+  any: [{ onPath: mvn }, { exists: repository }]
+paths:
+  repository: { macos: ~/.m2/repository, linux: ~/.m2/repository }
+candidates:
+  - path: repository
+    costDescription: re-download
+    idleHours: 720
