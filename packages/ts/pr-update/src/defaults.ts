@@ -236,7 +236,12 @@ function standaloneTargetHome(
     cfg?.attempts?.store === 'git-ref'
       ? refRecords(cfg, target.remote, target.path, refEnv(target.path, git))
       : { attempts: fileAttemptStore(own(paths.attempts)) }
-  return { worktrees: own(paths.worktrees), kept: own(paths.kept), ...records }
+  return {
+    worktrees: own(paths.worktrees),
+    kept: own(paths.kept),
+    keptRoot: paths.kept,
+    ...records,
+  }
 }
 
 /**

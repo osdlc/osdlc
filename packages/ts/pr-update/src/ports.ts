@@ -200,6 +200,12 @@ export interface TargetHome {
   worktrees: string
   /** The target's kept worktrees go here, as `<number>/`, each with `<number>.json` beside it. */
   kept: string
+  /**
+   * The folder of the host's own that holds {@link kept}, such as `kept/` in pr-update's state
+   * directory. A kept tree is removed only when the folders from here down to it pass the folder
+   * rule: the person owns them, and no one else can write to them. Default {@link kept} itself.
+   */
+  keptRoot?: string | undefined
   /** The target's failed-attempt record. Absent means none is kept for it. */
   attempts?: AttemptStore | undefined
   /** The target's branch lease. Absent means no locking for it. */

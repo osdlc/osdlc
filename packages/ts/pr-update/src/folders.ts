@@ -6,6 +6,7 @@
  */
 
 import { lstatSync, statSync, type Stats } from 'node:fs'
+import { dirname } from 'node:path'
 
 /**
  * Whether a file belongs to the person running pr-update. The default, {@link ownedByMe},
@@ -118,6 +119,32 @@ export function foldersProblem(
     if (why !== null) return why
   }
   return null
+}
+
+/**
+ * What is wrong with the folders between `root` and `path` ({@link foldersProblem}), or with
+ * `path` itself, which must be the person's own; null when nothing is. Every walk that removes
+ * something asks it first: nothing is removed from a folder someone else could write to.
+ */
+export function placeProblem(
+  root: string,
+  path: string,
+  owned: OwnedCheck,
+  check: FolderCheckOptions,
+): string | null {
+  const between: string[] = []
+  for (
+    let d = dirname(path);
+    d !== root && d.startsWith(root) && dirname(d) !== d;
+    d = dirname(d)
+  ) {
+    between.unshift(d)
+  }
+  const folders = foldersProblem(root, between, owned, check)
+  if (folders !== null)
+    return `${folders.problem}${folders.fix === undefined ? '' : `; ${folders.fix}`}`
+  const st = lstatOrNull(path)
+  return st !== null && !owned(st) ? `${path} belongs to another user` : null
 }
 
 function lstatOrNull(path: string): Stats | null {

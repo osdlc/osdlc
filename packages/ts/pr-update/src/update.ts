@@ -78,6 +78,7 @@ import type {
   Ports,
   TargetCheckout,
 } from './ports.ts'
+import { ownedByMe, placeProblem } from './folders.ts'
 import { CLONE_MARKER } from './mirror.ts'
 import { terminalConfirmPush } from './update/confirm.ts'
 import {
@@ -1020,6 +1021,7 @@ function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<
       worktrees: home.worktrees,
       kept: {
         dir: home.kept,
+        root: home.keptRoot ?? home.kept,
         naming: 'repository',
         gitDir: commonDirOf(path, env),
         records,
@@ -1144,6 +1146,17 @@ function settleKept(
   const onRefused = (r: KeptRefusal): void => {
     if (!refusals.some((x) => x.record === r.record)) refusals.push(r)
   }
+  /**
+   * Why `record`'s tree may not be removed for the folders it is in, or null. A place outside the
+   * checkout is checked from its `root`, as pruning checks it; a checkout's own place is the
+   * person's checkout, and is not.
+   */
+  const folderWhy = (place: KeptPlace, record: KeptRecord): string | null =>
+    place.root === undefined
+      ? null
+      : placeProblem(place.root, record.path, ownedByMe, {
+          fix: () => `run \`chmod -R go-w ${place.root}\``,
+        })
   /** Whether `record`'s folder is a worktree its owner lists on its branch; else it is refused. */
   const isWorktree = (git: Git, place: KeptPlace, record: KeptRecord): boolean => {
     const why = keptNotWorktree(git, place, record)
@@ -1183,6 +1196,11 @@ function settleKept(
       const git = gitOf(checkout, at, env)
       for (const record of listKept(place, onRefused)) {
         if (!isWorktree(git, place, record)) continue
+        const why = folderWhy(place, record)
+        if (why !== null) {
+          onRefused(keptRefusal(place, record, why))
+          continue
+        }
         if (writes && !discard(git, checkout, place, record)) continue
         removed.push(record.path)
       }
@@ -1227,6 +1245,8 @@ function settleKept(
         )
       }
       if (stale) {
+        const why = folderWhy(place, record)
+        if (why !== null) return skip(`kept worktree ${record.path} stays: ${why}`)
         if (writes && !discard(git, group.path, place, record)) {
           return skip(
             `mirror busy: kept worktree ${record.path} could not be removed under its clone's lock`,

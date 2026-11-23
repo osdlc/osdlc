@@ -904,7 +904,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   pass the rule, before the clone's lock is taken; a folder that fails it, or
   that cannot be made or hold the lock, skips the target with why, where
   before a symbolic link had a folder made at its far end and an unwritable
-  one ended the run with `EACCES`. On Windows no ownership or mode check is made, since NTFS
+  one ended the run with `EACCES`. A kept tree is removed, by `mirror
+  prune --discard-kept` or by `update`, only when the folders from `kept/`
+  down to it pass the rule; before review only run worktrees, leftovers and
+  `.tmp-*` folders were checked. `Ports.targetHome` gained `keptRoot` for it. On Windows no ownership or mode check is made, since NTFS
   ACLs are not read: only the symbolic-link and marker checks apply.
 - **Clone locks.** As accepted, `update --apply` held a clone's lock from its
   clone or fetch through `worktree add`, and again for `worktree remove`.

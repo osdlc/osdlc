@@ -45,3 +45,10 @@ folders above it and makes the missing ones one level at a time, each under a
 folder that passed the check. A `<host>` folder that is a symbolic link no
 longer has a folder made where it points, and a folder that cannot be written
 skips the target with why, where before the run ended with `EACCES`.
+
+A kept worktree is no longer removed from a folder someone else can write
+to. `mirror prune --discard-kept` leaves such a tree, and its clone, with the
+folder's problem and the `chmod` that fixes it; `update` leaves it too, saying
+why in `keptRefused` or in the PR's skip. A host's `Ports.targetHome` may give
+`keptRoot`, the folder of its own that holds the kept trees, which the check
+starts from.

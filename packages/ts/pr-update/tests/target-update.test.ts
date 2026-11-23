@@ -1289,6 +1289,34 @@ describe("errors from a target's own record and lease, during the run", () => {
   })
 })
 
+describe.skipIf(process.platform === 'win32')(
+  'a kept tree in a folder others can write to (second review)',
+  () => {
+    test('is not discarded, by --discard-kept or because its PR moved', async () => {
+      verifyOk = false
+      await update({ args: { keepFailed: true } })
+      const kept = join(keptDir(), '1')
+      const owner = join(paths.kept, 'github.com', 'acme')
+      chmodSync(owner, 0o777)
+      const why = `${owner} can be written by anyone; run \`chmod -R go-w ${paths.kept}\``
+      try {
+        const out = await update({ args: { discardKept: true } })
+        expect(out.discarded ?? []).toEqual([])
+        expect(out.keptRefused).toEqual([{ record: `${kept}.json`, reason: why }])
+        expect(existsSync(kept)).toBe(true)
+        const retried = await update({ args: { retryFailed: true } })
+        expect(retried.results).toEqual([])
+        expect(retried.skipped.map((s) => s.reason)).toEqual([
+          `kept worktree ${kept} stays: ${why}`,
+        ])
+        expect(existsSync(kept)).toBe(true)
+      } finally {
+        chmodSync(owner, 0o755)
+      }
+    })
+  },
+)
+
 describe('a kept tree, round 2', () => {
   test('--retry-failed leaves a kept tree with local changes, as only --discard-kept removes it', async () => {
     verifyOk = false

@@ -101,6 +101,12 @@ export interface KeptPlace {
    */
   gitDir?: string | undefined
   /**
+   * The folder pr-update or its host owns that holds `dir` (`TargetHome.keptRoot`). Set for a
+   * place outside the checkout: a tree there is removed only when the folders from `root` down
+   * to it pass the folder rule (`placeProblem` in `../folders.ts`).
+   */
+  root?: string | undefined
+  /**
    * How a tree removed from `dir` leaves git's records. Defaults to {@link PRUNE_ALL}, the
    * project root's way; a place outside the checkout passes `ownedUnder` (see `./registrations.ts`).
    */

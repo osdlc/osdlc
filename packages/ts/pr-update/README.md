@@ -864,7 +864,10 @@ cd .pr-update/failed/acme-widgets-12  # finish the fix, then push it yourself
   why, the text says `kept record <file> left alone: <why>`, and the PR is updated as if nothing
   were kept.
 - `update --apply --discard-kept` removes every kept worktree of the surveyed repositories, then
-  runs as usual. The output's `discarded` lists what was removed.
+  runs as usual. The output's `discarded` lists what was removed. A kept tree in pr-update's
+  state directory is removed only when the folders from `kept/` down to it pass the folder rule
+  (see the clone directory, above); otherwise it stays, and `keptRefused` says why, as does the
+  skip of a PR that moved.
 
 ## Seeing a force-push before it happens
 
@@ -1025,7 +1028,7 @@ confirmation:
 | Port | What it answers |
 |---|---|
 | `locate(repo, target?)` | Where `owner/name` (lower-cased; `target` adds the host) is checked out on this machine: a path, read through the run's `--remote`, or `{ path, source, remote, others? }`, read through `remote`; `null` for none. `source` is `located` for a checkout of the person's, fetched without pruning and trusted by its path, or `clone` for a clone the host keeps for the run, fetched with `--prune` and trusted by `host/owner/name`. A bare path counts as `located`. `others` lists the repository's other checkouts, which the `unpushed_local` guard also reads. Asked once per target per run |
-| `targetHome(target)` (optional) | Where a checkout `locate` returned as `{ path, source, remote }` keeps its run worktrees, kept worktrees, failed-update record and lease. Without it, such a checkout is used as the project root is, with `.pr-update/` inside it |
+| `targetHome(target)` (optional) | Where a checkout `locate` returned as `{ path, source, remote }` keeps its run worktrees, kept worktrees, failed-update record and lease, and `keptRoot`, the folder of the host's own that holds the kept worktrees: one is removed only when the folders from there down pass the folder rule. Without it, such a checkout is used as the project root is, with `.pr-update/` inside it |
 | `runVerb(verb, cwd)` | Run one shell verb, for resolvers and verify |
 | `resolveVerifyVerbs({ which, trust, repo, checkout })` | The trust-gated verb list `verify: check` or `verify: test` runs before a push, asked once per repository |
 | `generators` (optional) | In-process rebuild steps, each with `claims(path)` and `run(worktree)` |

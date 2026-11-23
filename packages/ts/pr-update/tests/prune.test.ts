@@ -811,6 +811,27 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
     for (const p of [clone, dead, tmp]) expect(existsSync(p)).toBe(true)
   })
 
+  test('a kept tree in a folder others can write to is not discarded, and its clone stays (second review)', () => {
+    const clone = makeClone('acme/api', 400)
+    const kept = keptWorktree(clone, 'acme/api', 7)
+    const keptOwner = join(paths.kept, 'github.com', 'acme')
+    for (const dir of [keptOwner, dirname(kept)]) chmodSync(dir, 0o777)
+    const why = `${keptOwner} can be written by anyone; run \`chmod -R go-w ${paths.kept}\``
+    try {
+      for (const dryRun of [true, false]) {
+        const r = prune({ allClones: true, discardKept: true, dryRun })
+        expect(r.removed).toEqual([])
+        expect(r.skipped).toEqual([
+          expect.objectContaining({ kind: 'clone', path: clone, skip: 'folder', reason: why }),
+        ])
+        expect(existsSync(kept)).toBe(true)
+        expect(existsSync(clone)).toBe(true)
+      }
+    } finally {
+      for (const dir of [keptOwner, dirname(kept)]) chmodSync(dir, 0o755)
+    }
+  })
+
   test('a dead run worktree the walk left for its folder keeps its clone: the clone’s own list does not remove it', () => {
     const clone = makeClone('acme/api', 400)
     const dead = runWorktree(clone, 'acme/api')

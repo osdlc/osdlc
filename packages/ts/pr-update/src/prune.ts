@@ -46,8 +46,8 @@ import { homeDir } from '@osdlc/tiered-dirs'
 import { Git } from '@osdlc/typed-git'
 
 import {
-  foldersProblem,
   ownedByMe,
+  placeProblem,
   type FolderCheckOptions,
   type GroupOptions,
   type OwnedCheck,
@@ -347,32 +347,6 @@ function runWorktrees(
     }
   }
   return out
-}
-
-/**
- * What is wrong with the folders between `root` and `path` ({@link foldersProblem}), or with
- * `path` itself, which must be the person's own; null when nothing is. Nothing is removed from a
- * folder someone else could write to.
- */
-function placeProblem(
-  root: string,
-  path: string,
-  owned: OwnedCheck,
-  check: FolderCheckOptions,
-): string | null {
-  const between: string[] = []
-  for (
-    let d = dirname(path);
-    d !== root && d.startsWith(root) && dirname(d) !== d;
-    d = dirname(d)
-  ) {
-    between.unshift(d)
-  }
-  const folders = foldersProblem(root, between, owned, check)
-  if (folders !== null)
-    return `${folders.problem}${folders.fix === undefined ? '' : `; ${folders.fix}`}`
-  const st = lstatOrNull(path)
-  return st !== null && !owned(st) ? `${path} belongs to another user` : null
 }
 
 /** The kept place of `repo` (`host/owner/name`) in pr-update's state directory, as served from `clone`. */
@@ -819,6 +793,14 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
         reason: `has kept worktrees (${kept.map((k) => k.path).join(', ')}); pass --discard-kept to remove them and the clone`,
       })
       return
+    }
+    // Nothing is removed from a folder someone else could write to, so the clone stays with it.
+    for (const k of kept) {
+      const why = placeProblem(at.kept, k.path, owned, ownFolders(at.kept))
+      if (why !== null) {
+        report.skipped.push({ ...entry, bytes, skip: 'folder', reason: why })
+        return
+      }
     }
     if (dryRun) {
       for (const k of kept) done({ kind: 'kept', path: k.path, repo, bytes: sizeOf(k.path) })
