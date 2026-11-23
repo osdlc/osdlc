@@ -1,6 +1,6 @@
 import type { ICanvasContent } from '@osdlc/json-canvas-core'
 import { afterEach, describe, expect, it } from 'vitest'
-import { type App, createApp, defineComponent, h, nextTick, shallowRef } from 'vue'
+import { type App, createApp, defineComponent, h, nextTick, reactive, ref, shallowRef } from 'vue'
 import { canvasToClient } from './_test-helpers.ts'
 import JsonCanvas from '../../../src/components/Canvas/index.vue'
 
@@ -150,6 +150,118 @@ describe('the canvasContent prop', () => {
     expect(nodeCount(host)).toBe(3)
     const undoBtn = host.querySelector<HTMLButtonElement>('.vjc-undo-btn')!
     expect(undoBtn.disabled).toBe(false)
+  })
+})
+
+describe('a host that keeps the change payload in reactive state', () => {
+  /**
+   * A real host component: `canvas` is where it keeps the document, bound to
+   * `:canvas-content`, and `@change` writes the payload back into it. A `ref`
+   * and a `reactive` object both read the payload back as a reactive proxy.
+   */
+  function mountHost(store: 'ref' | 'reactive', initial: 'plain' | 'proxy') {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const changes: ICanvasContent[] = []
+    const seeded = structuredClone(TWO_NODES)
+    // 'plain': the host starts from a plain object it has not wrapped, and only
+    // keeps the board's payloads in reactive state. 'proxy': the host's initial
+    // value is itself a reactive proxy.
+    const state = reactive<{ canvas: ICanvasContent | undefined }>({
+      canvas: initial === 'proxy' ? reactive(seeded) : undefined,
+    })
+    const box = ref<ICanvasContent | undefined>(initial === 'proxy' ? reactive(seeded) : undefined)
+    const read = () => (store === 'ref' ? box.value : state.canvas) ?? seeded
+    const write = (next: ICanvasContent) => {
+      if (store === 'ref') box.value = next
+      else state.canvas = next
+    }
+    const app = createApp(
+      defineComponent({
+        render: () =>
+          h(JsonCanvas, {
+            canvasContent: read(),
+            onChange: (next: ICanvasContent) => {
+              changes.push(next)
+              write(next)
+            },
+          }),
+      }),
+    )
+    app.mount(host)
+    mounted = { app, host }
+    const container = host.querySelector<HTMLElement>('.vjc-canvas-container')!
+    return { host, container, changes }
+  }
+
+  const settle = async () => {
+    await nextTick()
+    await nextTick()
+  }
+
+  for (const store of ['ref', 'reactive'] as const) {
+    for (const initial of ['plain', 'proxy'] as const) {
+      it(`keeps history over an edit, an undo to the first state and a redo (${store}, ${initial} initial)`, async () => {
+        const { host, container, changes } = mountHost(store, initial)
+        const undo = () => host.querySelector<HTMLButtonElement>('.vjc-undo-btn')!
+        const redo = () => host.querySelector<HTMLButtonElement>('.vjc-redo-btn')!
+
+        // An ordinary edit.
+        dblclick(container)
+        await settle()
+        expect(changes.length).toBe(1)
+        expect(nodeCount(host)).toBe(3)
+        expect(undo().disabled).toBe(false)
+
+        // Undo back to the very first state: the payload is the initial canvas.
+        undo().click()
+        await settle()
+        expect(changes.length).toBe(2)
+        expect(nodeCount(host)).toBe(2)
+        expect(undo().disabled).toBe(true)
+        expect(redo().disabled).toBe(false)
+
+        // Redo.
+        redo().click()
+        await settle()
+        expect(changes.length).toBe(3)
+        expect(nodeCount(host)).toBe(3)
+        expect(undo().disabled).toBe(false)
+        expect(redo().disabled).toBe(true)
+
+        // The history is intact: undo still walks back.
+        undo().click()
+        await settle()
+        expect(changes.length).toBe(4)
+        expect(nodeCount(host)).toBe(2)
+        expect(redo().disabled).toBe(false)
+      })
+    }
+  }
+
+  it('still treats an equal-looking copy of the payload as an external replace', async () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const box = ref<ICanvasContent>(structuredClone(TWO_NODES))
+    const app = createApp(
+      defineComponent({
+        render: () =>
+          h(JsonCanvas, {
+            canvasContent: box.value,
+            onChange: (next: ICanvasContent) => {
+              box.value = JSON.parse(JSON.stringify(next))
+            },
+          }),
+      }),
+    )
+    app.mount(host)
+    mounted = { app, host }
+
+    dblclick(host.querySelector('.vjc-canvas-container')!)
+    await settle()
+
+    expect(nodeCount(host)).toBe(3)
+    expect(host.querySelector<HTMLButtonElement>('.vjc-undo-btn')!.disabled).toBe(true)
   })
 })
 

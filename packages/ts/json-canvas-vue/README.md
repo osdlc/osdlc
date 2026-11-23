@@ -106,7 +106,10 @@ The board fills its parent, so give the parent a height.
 
 A host that stores each `change` payload and passes it back as
 `canvasContent` loops nowhere: the board recognises its own payload and keeps
-its history. A canvas that omits `nodes` or `edges` is accepted, as the format
+its history. A payload kept in a `ref`, a `shallowRef` or a property of a
+`reactive` object counts as the board's own, even though the host reads it back
+as a reactive proxy. A copy of the payload is a different value and replaces
+the board. A canvas that omits `nodes` or `edges` is accepted, as the format
 allows; the board fills in the missing arrays.
 
 An external replace while a text node is open for editing closes the editor and
@@ -187,6 +190,8 @@ becomes markup until you ask for it. To render markdown, register a renderer
 and make it active:
 
 ```ts
+import { type MarkdownRenderer, registerMarkdownRenderer, setActiveRenderer } from '@osdlc/json-canvas-vue'
+
 // A renderer turns markdown into HTML. It may return the HTML or a promise of it.
 const shout: MarkdownRenderer = {
   id: 'shout',
@@ -224,8 +229,10 @@ A canvas file is input from someone else. The board treats it that way:
   `sanitized` has its output sanitized, and every element that keeps a `target`
   attribute gets `rel="noopener noreferrer"`.
 - The default plain-text renderer fetches nothing. With a markdown renderer
-  active, a text node can make the browser fetch: the sanitizer keeps images,
-  audio and video, inline styles with a `url()`, SVG images, links and forms.
+  active, a text node can make the browser fetch: the sanitizer keeps images
+  (including `srcset`), audio and video (including `poster`), inline styles
+  with a `url()`, the `background` attribute of a table or a cell, SVG
+  images, `<input type="image">`, links and forms.
   So `![](https://tracker.example/p.png)` requests that URL when the canvas
   opens. A host that must prevent that removes them in its renderer, or sets a
   Content-Security-Policy (`img-src`, `media-src` and `form-action`).
@@ -347,6 +354,10 @@ A test compares these lists with the `@experimental` tags in the source.
 `CanvasNode` and `EditPanel` take props that mirror the board's own state, and
 the renderer registry is shared by every board. `HistoryEntry` and the two
 members follow the core, where they are experimental too.
+
+In this example `mount` is the helper of `examples/panels.test.ts`: it mounts
+the component with `createApp(component, props)` on a new element and returns
+that element.
 
 ```ts
 const host = mount(EditPanel, {

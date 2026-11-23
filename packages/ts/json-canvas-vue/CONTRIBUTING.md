@@ -20,17 +20,25 @@ merged there.
 
 The repository is a pnpm workspace. Install from the repository root, then
 work in the package directory. The tests run on Vitest in jsdom under Node 22
-or later and need no network. Build `@osdlc/json-canvas-core` first, and build
-this package before the typecheck: the examples import it by name and resolve
-it through `dist/`.
+or later and need no network. The tests run on the source of this package and
+of `@osdlc/json-canvas-core`, so they need no build. The typecheck needs the
+core built first and then this package built: it resolves both by name through
+their `dist/`.
 
 ```sh
 pnpm install
+cd packages/ts/json-canvas-vue
+pnpm test
+```
+
+Before the typecheck:
+
+```sh
 cd packages/ts/json-canvas-core
 pnpm run build
 cd ../json-canvas-vue
 pnpm run build
-pnpm test
+pnpm run typecheck
 ```
 
 `pnpm run smoke` runs `tests/smoke.mjs`, a short check of the built package
@@ -40,7 +48,6 @@ under Node. It is not published.
 Other checks:
 
 ```sh
-pnpm run typecheck
 pnpm run lint
 pnpm run format:check
 ```

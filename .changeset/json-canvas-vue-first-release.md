@@ -32,8 +32,11 @@ what the `change` event reports. It can replace a node's body with its own compo
 - Replacing the active markdown renderer under its own id re-renders the open nodes.
 - The README lists what a canvas file's group background, file URLs and rendered text make the
   browser fetch, for a host that opens canvases it does not control.
-- Sanitized markdown gives every element that keeps a `target` attribute `rel="noopener noreferrer"`,
-  the way a click on a link node opens its tab.
+- Markdown that the board sanitizes itself (a renderer not marked `sanitized`) gives every element
+  that keeps a `target` attribute `rel="noopener noreferrer"`, the way a click on a link node opens
+  its tab.
+- A `change` payload that the host keeps in a `ref` or a `reactive` object and passes back as
+  `canvasContent` is still recognised as the board's own, so the history survives.
 - `renderedMarkdown` rejects when DOMPurify has no DOM to sanitize with and the renderer is not
   `sanitized`. In a window without the DOM that DOMPurify needs, it returned the renderer's output
   uncleaned.

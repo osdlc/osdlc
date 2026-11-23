@@ -248,6 +248,7 @@ import {
   onUnmounted,
   type PropType,
   ref,
+  toRaw,
   watch,
 } from 'vue'
 import { useCanvasOperations, useCanvasViewModel } from '../../composables/index.ts'
@@ -532,19 +533,21 @@ watch(canvasContent, (newCanvas) => {
 
 // The INPUT seam: a new `canvasContent` prop value replaces the board.
 //
-// An identity-equal value is our own `change` payload coming back through the
-// host's binding and is ignored — so `:canvas-content` + `@change` round-trips
-// without loops. Anything else is an external replace (another editor wrote
-// the file, the host switched boards): the history resets — undoing across
-// someone else's save would resurrect a board the host no longer holds — the
-// selection clears (its ids may not exist anymore), and the edges redraw once
-// the new nodes are in the DOM. An untouched viewport is re-fitted to the new
-// board, which keeps "untouched means fitted" true; a viewport the reader
-// moved stays where they put it.
+// A value that is the same object is our own `change` payload coming back
+// through the host's binding and is ignored — so `:canvas-content` + `@change`
+// round-trips without loops. The comparison is on the raw objects, because a
+// host that keeps the payload in a `ref` or a `reactive` object reads it back
+// as a reactive proxy of the payload. Anything else is an external replace
+// (another editor wrote the file, the host switched boards): the history
+// resets — undoing across someone else's save would resurrect a board the host
+// no longer holds — the selection clears (its ids may not exist anymore), and
+// the edges redraw once the new nodes are in the DOM. An untouched viewport is
+// re-fitted to the new board, which keeps "untouched means fitted" true; a
+// viewport the reader moved stays where they put it.
 watch(
   () => props.canvasContent,
   (next) => {
-    if (next === canvasContent.value) return
+    if (toRaw(next) === toRaw(canvasContent.value)) return
     resetOperations(normalizeCanvas(next))
     vmClearSelection()
     editingNodeId.value = null
