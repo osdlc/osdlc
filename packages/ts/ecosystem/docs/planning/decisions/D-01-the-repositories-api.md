@@ -65,6 +65,11 @@ created: 2026-11-23
   Comments inside the old entry go, as `setPath` places them.
 - **`WriteConflictError` is re-exported,** so a caller catches it without
   depending on `@osdlc/etag-write` itself.
+- **The home directory stop compares real paths on both sides.** git
+  reports real paths, so the home directory is resolved too, symlinks and
+  letter case included. A home that does not exist yet keeps its missing
+  part on top of its nearest existing parent, resolved, so a home under
+  macOS's `/var` (which is `/private/var`) still stops the climb.
 - **The owner is read only when it can matter.** When the directory above
   the holder is the home directory or above it, there is no step up to
   decide, and no `origin` is read.

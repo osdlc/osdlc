@@ -5,7 +5,7 @@
  */
 
 import { existsSync, realpathSync, statSync } from 'node:fs'
-import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { homeDir } from '@osdlc/tiered-dirs'
@@ -106,7 +106,8 @@ export function defaultRoots(opts: RootsOptions = {}): string[] {
   const git = new Git(resolve(opts.caller), { runner: withoutRepositoryVars(opts.runner) })
   const found = git.mainCheckout()
   if (found === null) return []
-  // Compare real paths: git reports them, and a home under a symlink would never match.
+  // Compare real paths on both sides: git reports them, and a home reached
+  // through a symlink, or not made yet, would otherwise never match.
   const main = realpathOr(found)
   const home = realpathOr(homeOf(opts))
   // The checkout is the home directory, or holds it.
@@ -172,12 +173,26 @@ function within(path: string, dir: string): boolean {
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
 }
 
+/**
+ * `path` with every symlink resolved, in the letter case stored on disk, as
+ * git reports paths. A part that does not exist yet is kept as written on top
+ * of its nearest existing parent, resolved: a missing home directory under
+ * macOS's `/var`, which is `/private/var`, must still compare with git's
+ * paths.
+ */
 function realpathOr(path: string): string {
-  try {
-    // The native call gives the name as stored, the letter case git reports.
-    return realpathSync.native(path)
-  } catch {
-    return resolve(path)
+  let at = resolve(path)
+  const rest: string[] = []
+  for (;;) {
+    try {
+      // The native call gives the name as stored, the letter case git reports.
+      return join(realpathSync.native(at), ...rest)
+    } catch {
+      const parent = dirname(at)
+      if (parent === at) return resolve(path)
+      rest.unshift(basename(at))
+      at = parent
+    }
   }
 }
 
