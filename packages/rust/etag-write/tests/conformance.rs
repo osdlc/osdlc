@@ -183,6 +183,15 @@ struct WriteAtomicModeInput {
     content: Data,
 }
 
+/// Parsed on every host by `check_input`; only the unix runner reads the fields.
+#[cfg_attr(not(unix), allow(dead_code))]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct WriteAtomicSymlinkInput {
+    linked_content: Data,
+    content: Data,
+}
+
 fn from_hex(hex: &str) -> Vec<u8> {
     assert!(hex.len().is_multiple_of(2), "odd-length hex: {hex}");
     (0..hex.len())
@@ -280,13 +289,14 @@ fn check_entries(section: &str, dir: &Path, want: &[String]) -> Result<(), Strin
 }
 
 /// Every section this test runs. The suite's sections must be exactly these.
-const SECTIONS: [&str; 6] = [
+const SECTIONS: [&str; 7] = [
     "etag",
     "etag_of_file",
     "write_cas",
     "write_if_changed",
     "write_atomic",
     "write_atomic_mode",
+    "write_atomic_symlink",
 ];
 
 /// Fails on an input key this section does not know, whether or not the case
@@ -299,6 +309,7 @@ fn check_input(section: &str, case: &Case) {
         "write_if_changed" => drop(case.input::<WriteIfChangedInput>()),
         "write_atomic" => drop(case.input::<WriteAtomicInput>()),
         "write_atomic_mode" => drop(case.input::<WriteAtomicModeInput>()),
+        "write_atomic_symlink" => drop(case.input::<WriteAtomicSymlinkInput>()),
         other => panic!("the suite has a section this test does not know: {other}"),
     }
 }
@@ -378,6 +389,7 @@ fn run(section: &str, case: &Case) -> Result<Outcome, String> {
             Ok(got)
         }
         "write_atomic_mode" => write_atomic_mode(case),
+        "write_atomic_symlink" => write_atomic_symlink(case),
         other => panic!("no runner for the section {other}"),
     }
 }
@@ -410,6 +422,33 @@ fn write_atomic_mode(case: &Case) -> Result<Outcome, String> {
 #[cfg(not(unix))]
 fn write_atomic_mode(case: &Case) -> Result<Outcome, String> {
     panic!("{}: a write_atomic_mode case runs on unix only", case.name)
+}
+
+#[cfg(unix)]
+fn write_atomic_symlink(case: &Case) -> Result<Outcome, String> {
+    let input: WriteAtomicSymlinkInput = case.input();
+    let (dir, target) = scratch(DEFAULT_PATH, None);
+    let real = dir.path().join("real.txt");
+    fs::write(&real, input.linked_content.bytes()).expect("the linked file");
+    std::os::unix::fs::symlink("real.txt", &target).expect("a symlink");
+    Ok(match write_atomic(&target, &input.content.bytes()) {
+        Ok(()) => Ok(json!({
+            "content": content_of(&target),
+            "linkedContent": content_of(&real),
+            "isSymlink": fs::symlink_metadata(&target).expect("metadata").is_symlink(),
+            "entries": entries(dir.path()),
+        })),
+        Err(e) => Err(write_kind(&e)),
+    })
+}
+
+/// The section is for `unix` only: no case reaches here on Windows.
+#[cfg(not(unix))]
+fn write_atomic_symlink(case: &Case) -> Result<Outcome, String> {
+    panic!(
+        "{}: a write_atomic_symlink case runs on unix only",
+        case.name
+    )
 }
 
 #[test]
@@ -460,7 +499,7 @@ fn every_case_in_the_suite_conforms() {
             }
         }
         // A section none of whose cases run here would pass unseen.
-        if !(cfg!(windows) && name == "write_atomic_mode") {
+        if !(cfg!(windows) && (name == "write_atomic_mode" || name == "write_atomic_symlink")) {
             assert!(ran > 0, "{name}: no case of this section runs on this host");
         }
     }

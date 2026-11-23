@@ -408,7 +408,7 @@
       ]
     },
     "write_atomic": {
-      "description": "Atomic write (`atomicWrite`, Rust `write_atomic`). `input.existing` is what is at the path, `input.path` is the path under the scratch directory (default `target.txt`), `input.content` is what to write. `expect.content` is the file afterwards and `expect.entries` is every file and directory then under the scratch directory, sorted, `/`-separated: a temp file left behind would show here. An `error` kind is `io`; a failed write leaves the directory as it was.",
+      "description": "Atomic write (`atomicWrite`, Rust `write_atomic`). `input.existing` is what is at the path, `input.path` is the path under the scratch directory (default `target.txt`), `input.content` is what to write. `expect.content` is the file afterwards and `expect.entries` is every file and directory then under the scratch directory, sorted, `/`-separated: a temp file left behind would show here. An `error` kind is `io`; a failed write leaves the directory as it was. The two long-name cases assume a 255-byte file-name limit (Linux, macOS).",
       "cases": [
         {
           "name": "a new file",
@@ -519,6 +519,29 @@
           "error": {
             "kind": "io"
           }
+        },
+        {
+          "name": "a file name of 237 bytes: the temp name is 18 bytes longer and still fits 255",
+          "input": {
+            "path": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "content": "v1"
+          },
+          "expect": {
+            "content": "v1",
+            "entries": [
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+          }
+        },
+        {
+          "name": "a file name of 255 bytes: the temp name does not fit, io",
+          "input": {
+            "path": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "content": "v1"
+          },
+          "error": {
+            "kind": "io"
+          }
         }
       ]
     },
@@ -598,6 +621,30 @@
           },
           "expect": {
             "mode": "755"
+          },
+          "platforms": [
+            "unix"
+          ]
+        }
+      ]
+    },
+    "write_atomic_symlink": {
+      "description": "Atomic write onto a symlink (Unix). `input.linkedContent` is the file `real.txt` that `target.txt` links to, `input.content` is what to write to `target.txt`. `expect.content` is `target.txt` afterwards, `expect.linkedContent` is `real.txt`, `expect.isSymlink` is whether `target.txt` is still a link and `expect.entries` is every file then under the scratch directory. The rename replaces the link with a regular file and does not write through it.",
+      "cases": [
+        {
+          "name": "a symlink at the path is replaced, not written through",
+          "input": {
+            "linkedContent": "old",
+            "content": "new"
+          },
+          "expect": {
+            "content": "new",
+            "linkedContent": "old",
+            "isSymlink": false,
+            "entries": [
+              "real.txt",
+              "target.txt"
+            ]
           },
           "platforms": [
             "unix"

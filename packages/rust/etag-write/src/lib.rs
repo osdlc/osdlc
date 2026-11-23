@@ -28,8 +28,9 @@
 //! The third row matters most. No etag on an existing file is a blind write,
 //! and blind writes lose edits.
 //!
-//! Temp files are named `.<name>.etag-write-<pid>-<n>.tmp` in the target's
-//! directory. Every failed write removes its temp file.
+//! Temp files are named `.<name>.<12 hex>.tmp` in the target's directory, the
+//! name plus 18 bytes, so a target name of up to 237 bytes still fits a
+//! 255-byte file-name limit. Every failed write removes its temp file.
 //!
 //! **Stability.** Each public item's docs say "stable in 0.x": it is not
 //! expected to change. The crate stays on 0.x for now, so a breaking change,
@@ -164,14 +165,30 @@ fn read_or_none(path: &Path) -> io::Result<Option<Vec<u8>>> {
     }
 }
 
+/// `.<name>.<12 hex>.tmp`: the target's file name plus 18 bytes, as the
+/// TypeScript package's temp name is. The 48 random bits come from std's
+/// per-instance random hash keys, so the crate needs no random-number
+/// dependency; a taken name is retried by the caller.
+fn temp_name(path: &Path) -> String {
+    use std::hash::{BuildHasher, Hasher};
+    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+    hasher.write_u32(std::process::id());
+    let bits = hasher.finish() & 0xffff_ffff_ffff;
+    format!(
+        ".{}.{bits:012x}.tmp",
+        path.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    )
+}
+
 /// Removes the temp file it names when dropped, unless disarmed.
 ///
 /// Four steps can fail between creating the temp file and a successful
 /// rename: the write, setting permissions, the sync and the rename. Each
 /// failure must leave the directory as it found it. The guard does that on
-/// drop, so a new early return cannot forget it. A leaked temp file stays:
-/// names are fixed per pid and attempt, and once attempts 0..=64 are all
-/// taken the next write reports `AlreadyExists` instead of the real error.
+/// drop, so a new early return cannot forget it. A leaked temp file stays,
+/// but its random name is not tried again, so it costs nothing beyond disk.
 struct TempGuard {
     path: PathBuf,
     armed: bool,
@@ -285,15 +302,7 @@ fn write_atomic_with(
     // concurrent writers cannot share a temp file.
     let mut attempt = 0u32;
     let mut tmp = loop {
-        let name = format!(
-            ".{}.etag-write-{}-{}.tmp",
-            path.file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            std::process::id(),
-            attempt
-        );
-        let candidate = dir.join(name);
+        let candidate = dir.join(temp_name(path));
         let mut options = fs::OpenOptions::new();
         options.write(true).create_new(true);
         // Created with the kept mode (less the umask), so the content of an
@@ -581,10 +590,9 @@ mod tests {
         assert_eq!(fs::read(&p).unwrap(), b"body");
     }
 
-    /// A write that fails after the temp file exists must remove it. Leaked
-    /// temp files keep fixed names per pid and attempt, so once attempts
-    /// 0..=64 are all taken the next write reports `AlreadyExists` instead
-    /// of the real error.
+    /// A write that fails after the temp file exists must remove it. A
+    /// leaked temp file is not harmful to later writes (names are random),
+    /// but it litters the directory.
     ///
     /// This tests the guard, not each failing call. A test can make the
     /// rename fail, by argument or through `write_atomic_with`. Making
@@ -776,42 +784,25 @@ mod tests {
         assert_eq!(names_in(d.path()), vec!["x.md".to_string()]);
     }
 
-    /// The temp name this process would use on `attempt`.
-    fn temp_name(file: &str, attempt: u32) -> String {
-        format!(".{file}.etag-write-{}-{attempt}.tmp", std::process::id())
+    #[test]
+    fn the_temp_name_is_the_file_name_plus_18_bytes_and_differs_per_call() {
+        let p = Path::new("dir/x.md");
+        let a = temp_name(p);
+        assert_eq!(a.len(), "x.md".len() + 18);
+        assert!(a.starts_with(".x.md.") && a.ends_with(".tmp"), "{a}");
+        assert!(a[6..18].bytes().all(|b| b.is_ascii_hexdigit()), "{a}");
+        assert_ne!(a, temp_name(p));
     }
 
     #[test]
-    fn a_taken_temp_name_moves_on_to_the_next_attempt() {
+    fn a_file_name_of_237_bytes_is_written() {
         let d = tempfile::tempdir().unwrap();
-        for attempt in 0..3 {
-            fs::write(d.path().join(temp_name("x.md", attempt)), b"someone's").unwrap();
-        }
+        let p = d.path().join("a".repeat(237));
 
-        write_atomic(&d.path().join("x.md"), b"hello").unwrap();
+        write_atomic(&p, b"hello").unwrap();
 
-        assert_eq!(fs::read(d.path().join("x.md")).unwrap(), b"hello");
-        for attempt in 0..3 {
-            let taken = d.path().join(temp_name("x.md", attempt));
-            assert_eq!(fs::read(taken).unwrap(), b"someone's", "attempt {attempt}");
-        }
-        assert!(!d.path().join(temp_name("x.md", 3)).exists());
-    }
-
-    #[test]
-    fn every_temp_name_taken_is_an_io_error() {
-        let d = tempfile::tempdir().unwrap();
-        for attempt in 0..=64 {
-            fs::write(d.path().join(temp_name("x.md", attempt)), b"").unwrap();
-        }
-
-        let err = write_atomic(&d.path().join("x.md"), b"hello").unwrap_err();
-
-        let WriteError::Io { source, .. } = err else {
-            panic!("got {err:?}");
-        };
-        assert_eq!(source.kind(), io::ErrorKind::AlreadyExists);
-        assert!(!d.path().join("x.md").exists());
+        assert_eq!(fs::read(&p).unwrap(), b"hello");
+        assert_eq!(names_in(d.path()), vec!["a".repeat(237)]);
     }
 
     #[test]

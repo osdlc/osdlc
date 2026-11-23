@@ -51,8 +51,9 @@ describe('conformance suite', () => {
 
   test('runs some case of every section here', () => {
     for (const [name, section] of Object.entries(sections)) {
-      // `write_atomic_mode` is for `unix` only, so it runs nowhere on Windows.
-      if (HOST === 'windows' && name === 'write_atomic_mode') continue
+      // These sections are for `unix` only, so they run nowhere on Windows.
+      if (HOST === 'windows' && (name === 'write_atomic_mode' || name === 'write_atomic_symlink'))
+        continue
       expect(section.cases.filter(runsHere).length, name).toBeGreaterThan(0)
     }
   })
