@@ -1,12 +1,13 @@
 /**
  * The shipped descriptors, each read from the package's `descriptors/` and run
  * on a fixture home for macOS and Linux: the contract suite, its own refusal
- * of a folder outside its roots, and the choice its review made (prune or
- * wipe, idle time, in use). The engine's rules are tested in
- * descriptor-engine.test.ts; these test the files.
+ * of a folder outside its roots, the choice its review made (prune or wipe,
+ * idle time, in use), and each documented override finding a moved store. The
+ * engine's rules are tested in descriptor-engine.test.ts; these test the files.
  */
 
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -15,7 +16,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import { captureContext } from '@osdlc/cli-tool'
@@ -27,6 +28,7 @@ import {
   DEFAULT_IDLE_HOURS,
   IN_USE,
   NO_PRUNE_TOOL,
+  OUTSIDE_ROOTS,
   SHIPPED_DESCRIPTORS,
   clean,
   descriptorPlugin,
@@ -37,20 +39,60 @@ import {
   readDescriptor,
   survey,
   type Descriptor,
-  type Os,
   type PathCandidate,
   type Plugin,
   type RunCtx,
 } from '../../src/index.ts'
 import { contractSuite, fakeContext, fakeRunner, tempHome } from '../../src/testing.ts'
 
-/** The eight first stores, by plugin name. */
-const STORES = ['gradle', 'huggingface-hub', 'maven', 'npm', 'pip', 'pnpm', 'uv', 'yarn'] as const
+/** The shipped stores, by plugin name. */
+const STORES = [
+  'go',
+  'gradle',
+  'huggingface-hub',
+  'maven',
+  'npm',
+  'pip',
+  'pnpm',
+  'uv',
+  'yarn',
+] as const
 
-/** The stores whose candidate is a prune, and the program it runs. */
-const PRUNES: Partial<Record<(typeof STORES)[number], string>> = { pnpm: 'pnpm', uv: 'uv' }
+type Store = (typeof STORES)[number]
 
-const OSES_TESTED: readonly Os[] = ['macos', 'linux']
+/** The stores whose candidates run a tool's command, and that program. */
+const TOOLS: Partial<Record<Store, string>> = { go: 'go', pnpm: 'pnpm', uv: 'uv' }
+
+const OSES_TESTED = ['macos', 'linux'] as const
+
+type TestedOs = (typeof OSES_TESTED)[number]
+
+const both = (path: string): Record<TestedOs, string> => ({ macos: path, linux: path })
+
+/**
+ * Each store's folders by `paths` key, under the home folder, when nothing
+ * moves them: the folders the tier 1 files named.
+ */
+const DEFAULTS: Record<Store, Record<string, Record<TestedOs, string>>> = {
+  go: {
+    modcache: both('go/pkg/mod'),
+    buildcache: { macos: 'Library/Caches/go-build', linux: '.cache/go-build' },
+  },
+  gradle: { caches: both('.gradle/caches'), wrapper: both('.gradle/wrapper/dists') },
+  'huggingface-hub': { hub: both('.cache/huggingface/hub') },
+  maven: { repository: both('.m2/repository') },
+  npm: { cache: both('.npm/_cacache') },
+  pip: { cache: { macos: 'Library/Caches/pip', linux: '.cache/pip' } },
+  pnpm: {
+    store: { macos: 'Library/pnpm/store', linux: '.local/share/pnpm/store' },
+    cache: { macos: 'Library/Caches/pnpm', linux: '.cache/pnpm' },
+  },
+  uv: { cache: both('.cache/uv') },
+  yarn: {
+    berry: both('.yarn/berry/cache'),
+    classic: { macos: 'Library/Caches/Yarn', linux: '.cache/yarn' },
+  },
+}
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -65,54 +107,102 @@ const probeOf = (table: Record<string, ProcessHolder[]> = {}): ProcessProbe => (
 const shipped = (name: string): Descriptor =>
   readDescriptor(join(SHIPPED_DESCRIPTORS, `${name}.yaml`))
 
+type Programs = Parameters<typeof fakeRunner>[0]
+
+/** What moves a store's folders in one fixture home. */
+interface Moves {
+  /** Over the fixture's `HOME`. */
+  env?: Record<string, string>
+  /** The config's `plugins.<name>.vars`. */
+  vars?: Record<string, string>
+  /** On PATH, with these answers. */
+  programs?: Programs
+  /** Files written first, by their path under the home folder. */
+  files?: Record<string, string>
+  /** Where the move puts each folder, by `paths` key. */
+  moved?: Record<string, string>
+}
+
 interface Built {
   home: string
   plugin: Plugin
   d: Descriptor
   calls: ReturnType<typeof fakeRunner>['calls']
-  /** The folder of `paths.<key>` on the OS it was built for. */
+  /** The folder of `paths.<key>` on the OS it was built for: where it was moved, or the default. */
   folder(key: string): string
+}
+
+/** `folder` made with a file in it, and two matches, `a` and `b`, of each glob over `key`. */
+function fill(d: Descriptor, key: string, folder: string): void {
+  mkdirSync(folder, { recursive: true })
+  writeFileSync(join(folder, 'blob'), 'x')
+  for (const c of d.candidates) {
+    if (c.path !== key || c.glob === undefined) continue
+    for (const n of ['a', 'b']) {
+      const rel = c.glob.replace(/\/$/, '').replaceAll('*', n)
+      mkdirSync(join(folder, rel), { recursive: true })
+      writeFileSync(join(folder, rel, 'blob'), n)
+    }
+  }
 }
 
 /**
  * The shipped descriptor `name` as a plugin for `os` over a new fixture home,
- * with each of its folders made and a file in it, and two matches of each
- * glob, `a` and `b`. `programs` are on PATH; the settings are the defaults.
+ * with each of its default folders made and filled, and each folder `moves`
+ * puts elsewhere made and filled too. `programs` are on PATH; the settings are
+ * the defaults, with `moves.vars`.
  */
 function build(
-  name: string,
-  os: Os,
-  o: { programs?: Parameters<typeof fakeRunner>[0]; probe?: ProcessProbe } = {},
+  name: Store,
+  os: TestedOs,
+  o: { programs?: Programs; probe?: ProcessProbe; moves?: (home: string) => Moves } = {},
 ): Built {
   const h = tempHome()
   cleanups.push(h.cleanup)
   const d = shipped(name)
-  const folder = (key: string): string => {
-    const p = d.paths[key]!
-    const f = (p.all ?? p[os])!
-    return join(h.home, f.slice(2))
-  }
+  const m = o.moves?.(h.home) ?? {}
+  const folder = (key: string): string => m.moved?.[key] ?? join(h.home, DEFAULTS[name][key]![os])
   for (const key of Object.keys(d.paths)) {
-    mkdirSync(folder(key), { recursive: true })
-    writeFileSync(join(folder(key), 'blob'), 'x')
+    fill(d, key, join(h.home, DEFAULTS[name][key]![os]))
+    fill(d, key, folder(key))
   }
-  for (const c of d.candidates) {
-    for (const n of ['a', 'b']) {
-      if (c.glob === undefined) continue
-      const rel = c.glob.replace(/\/$/, '').replaceAll('*', n)
-      mkdirSync(join(folder(c.path), rel), { recursive: true })
-      writeFileSync(join(folder(c.path), rel, 'blob'), n)
-    }
+  for (const [rel, text] of Object.entries(m.files ?? {})) {
+    mkdirSync(dirname(join(h.home, rel)), { recursive: true })
+    writeFileSync(join(h.home, rel), text)
   }
-  const fake = fakeRunner(o.programs ?? {})
-  const kit = pluginKit(name, { env: h.env, probe: o.probe ?? probeOf(), ...fake })
+  const env = { ...h.env, ...m.env }
+  const fake = fakeRunner({ ...o.programs, ...m.programs })
+  const kit = pluginKit(name, { env, probe: o.probe ?? probeOf(), ...fake })
   const plugin = descriptorPlugin(name, d, { os, ownDirs: [] }).create({
-    settings: { idleHours: DEFAULT_IDLE_HOURS },
+    settings: { idleHours: DEFAULT_IDLE_HOURS, vars: m.vars },
     only: [],
-    env: h.env,
+    env,
     kit,
   })
   return { home: h.home, plugin, d, calls: fake.calls, folder }
+}
+
+/** The candidates' paths `b`'s descriptor gives from its folders now: each folder, or each glob match in it. */
+function expectedPaths(b: Built): string[] {
+  const out = new Set<string>()
+  for (const c of b.d.candidates) {
+    const folder = b.folder(c.path)
+    if (c.glob === undefined) out.add(folder)
+    else
+      for (const n of ['a', 'b'])
+        out.add(join(folder, c.glob.replace(/\/$/, '').replaceAll('*', n)))
+  }
+  return [...out].sort()
+}
+
+/** The calls other than a variable's `command` source: what the plugin ran to delete. */
+function actions(b: Built): string[][] {
+  const lookups = new Set(
+    Object.values(b.d.vars ?? {})
+      .flat()
+      .flatMap((s) => ('command' in s ? [s.command.join(' ')] : [])),
+  )
+  return b.calls.map((c) => c.argv).filter((argv) => !lookups.has(argv.join(' ')))
 }
 
 const ctxOf = (over: Partial<RunCtx> = {}): RunCtx => ({
@@ -142,13 +232,13 @@ function age(dir: string, hours: number): void {
 const ids = (cs: readonly { id: string }[]): string[] => cs.map((c) => c.id).sort()
 
 describe('the shipped folder', () => {
-  test('holds the eight first stores, and each reads', () => {
+  test('holds the nine stores, and each reads', () => {
     const files = readdirSync(SHIPPED_DESCRIPTORS).sort()
     expect(files).toEqual(STORES.map((s) => `${s}.yaml`))
     for (const name of STORES) expect(shipped(name).store).toBe(name)
   })
 
-  test('a run loads all eight after the built-ins, by name', () => {
+  test('a run loads all nine after the built-ins, by name', () => {
     const { definitions, descriptors } = loadPlugins({})
     expect(definitions.map((d) => d.name)).toEqual([
       ...BUILT_IN_PLUGINS.map((d) => d.name),
@@ -157,23 +247,19 @@ describe('the shipped folder', () => {
     expect(descriptors.map((d) => [d.name, d.source])).toEqual(STORES.map((s) => [s, 'shipped']))
   })
 
-  test('status lists all eight on a home that has each store', async () => {
+  test('status lists all nine on a home that has each store', async () => {
     const h = tempHome()
     cleanups.push(h.cleanup)
-    const os = osOf(process.platform)
+    const os = osOf(process.platform) as TestedOs
     for (const name of STORES) {
-      for (const p of Object.values(shipped(name).paths)) {
-        const f = p.all ?? p[os]
-        if (f !== undefined) mkdirSync(join(h.home, f.slice(2)), { recursive: true })
+      for (const p of Object.values(DEFAULTS[name])) {
+        mkdirSync(join(h.home, p[os]), { recursive: true })
       }
     }
     const cwd = join(h.home, 'work')
     mkdirSync(cwd)
-    const env = {
-      ...(process.env as Record<string, string>),
-      HOME: h.home,
-      HOST_CLEANER_ROOT: join(h.home, 'host-cleaner'),
-    }
+    // Nothing on PATH and none of this machine's settings: each store is found by its folder.
+    const env = { HOME: h.home, HOST_CLEANER_ROOT: join(h.home, 'host-cleaner'), PATH: cwd }
     const ctx = captureContext({ cwd, env })
     const code = await main(['status', '--skip-plugin', 'git,cargo,node,orca'], ctx, {
       confirm: () => null,
@@ -189,12 +275,12 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       expect(await contractSuite(build(name, os).plugin)).toEqual([])
     })
 
-    test.each(Object.entries(PRUNES))(
+    test.each(Object.entries(TOOLS) as [Store, string][])(
       '%s passes with %s on PATH, and runs it on no moved folder',
       async (name, program) => {
         const b = build(name, os, { programs: { [program]: () => ({}) } })
         expect(await contractSuite(b.plugin)).toEqual([])
-        expect(b.calls).toEqual([])
+        expect(actions(b)).toEqual([])
       },
     )
   })
@@ -203,7 +289,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
     test.each(STORES)(
       '%s: delete throws for a candidate moved out behind a symlink',
       async (name) => {
-        const program = PRUNES[name]
+        const program = TOOLS[name]
         const b = build(
           name,
           os,
@@ -217,7 +303,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
         renameSync(c.path, moved)
         symlinkSync(moved, c.path)
         await expect(b.plugin.delete!(c, fakeContext())).rejects.toThrow(/is now a symlink/)
-        expect(b.calls).toEqual([])
+        expect(actions(b)).toEqual([])
         expect(existsSync(join(moved, 'blob'))).toBe(true)
       },
     )
@@ -244,7 +330,10 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       expect(ids(s.candidates)).toEqual(
         ids([{ id: `pnpm:${b.folder('cache')}` }, { id: `pnpm:${b.folder('store')}` }]),
       )
+      // pnpm store path prints nothing here, so the default folder is used.
       expect(b.calls.map((c) => [c.argv, c.opts.cwd])).toEqual([
+        [['pnpm', 'store', 'path'], b.home],
+        [['pnpm', 'store', 'path'], b.home],
         [['pnpm', 'store', 'prune', '--store-dir', b.folder('store')], b.home],
       ])
       expect(receipt.steps.map((st) => st.result)).toEqual(['ok', 'ok'])
@@ -384,6 +473,316 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       expect(receipt.steps.map((st) => st.result)).toEqual(['ok'])
       expect(existsSync(idle.folder('repository'))).toBe(false)
       expect(existsSync(join(idle.home, '.m2'))).toBe(true)
+    })
+
+    test('a LOCAL_REPOSITORY set in the config is trusted on another disk, and cleaned', async () => {
+      const disk = tempHome()
+      cleanups.push(disk.cleanup)
+      const repo = join(disk.home, 'm2')
+      const b = build('maven', os, {
+        moves: () => ({ vars: { LOCAL_REPOSITORY: repo }, moved: { repository: repo } }),
+      })
+      age(repo, 721)
+      const { survey: s, receipt } = await surveyAndClean(b.plugin)
+      expect(s.objections).toEqual([])
+      expect(receipt.steps).toMatchObject([{ id: `maven:${repo}`, result: 'ok' }])
+      expect(existsSync(repo)).toBe(false)
+      expect(existsSync(join(b.home, '.m2/repository/blob'))).toBe(true)
+    })
+  })
+
+  describe('go', () => {
+    test('removes the module cache, read-only files and all, after 30 days, and the build cache after a week', async () => {
+      const b = build('go', os)
+      const mod = b.folder('modcache')
+      const pkg = join(mod, 'example.com', 'm@v1.0.0')
+      mkdirSync(pkg, { recursive: true })
+      writeFileSync(join(pkg, 'go.mod'), 'module example.com/m\n')
+      age(mod, 721)
+      age(b.folder('buildcache'), 169)
+      // As go leaves them: files and folders read-only.
+      chmodSync(join(pkg, 'go.mod'), 0o444)
+      chmodSync(pkg, 0o555)
+      chmodSync(dirname(pkg), 0o555)
+      cleanups.push(() => {
+        if (!existsSync(pkg)) return
+        chmodSync(dirname(pkg), 0o755)
+        chmodSync(pkg, 0o755)
+      })
+      const { receipt } = await surveyAndClean(b.plugin)
+      expect(receipt.steps.map((st) => [st.id, st.result])).toEqual([
+        [`go:${mod}`, 'ok'],
+        [`go:${b.folder('buildcache')}`, 'ok'],
+      ])
+      expect(existsSync(mod)).toBe(false)
+      expect(existsSync(b.folder('buildcache'))).toBe(false)
+      expect(existsSync(join(b.home, 'go'))).toBe(true)
+    })
+
+    test('holds the module cache until it sat 30 days unchanged', async () => {
+      const b = build('go', os)
+      age(b.folder('modcache'), 719)
+      const s = await survey([b.plugin], ctxOf())
+      expect(s.candidates.find((c) => c.path === b.folder('modcache'))!.held).toBe(true)
+    })
+
+    test('with go on PATH, each cache is where go env says, and go clean is pointed at it', async () => {
+      const b = build('go', os, {
+        moves: (home) => {
+          const mod = join(home, 'disk/mod')
+          const cache = join(home, 'disk/build')
+          return {
+            programs: {
+              go: (argv) =>
+                argv[0] === 'env' ? { stdout: `${argv[1] === 'GOMODCACHE' ? mod : cache}\n` } : {},
+            },
+            moved: { modcache: mod, buildcache: cache },
+          }
+        },
+      })
+      age(b.folder('modcache'), 721)
+      age(b.folder('buildcache'), 169)
+      const { survey: s, receipt } = await surveyAndClean(b.plugin)
+      expect(s.candidates.map((c) => c.path)).toEqual([
+        b.folder('modcache'),
+        b.folder('buildcache'),
+      ])
+      expect(receipt.steps.map((st) => st.result)).toEqual(['ok', 'ok'])
+      expect(actions(b)).toEqual([
+        ['go', 'clean', '-modcache'],
+        ['go', 'clean', '-cache'],
+      ])
+      expect(
+        b.calls
+          .filter((c) => c.argv[1] === 'clean')
+          .map((c) => [c.opts.env?.GOMODCACHE ?? c.opts.env?.GOCACHE, c.opts.cwd]),
+      ).toEqual([
+        [b.folder('modcache'), b.home],
+        [b.folder('buildcache'), b.home],
+      ])
+    })
+  })
+
+  describe('a moved store is found', () => {
+    const at = (home: string, rel: string): string => join(home, 'moved', rel)
+    const cases: Array<[Store, string, (home: string) => Moves]> = [
+      [
+        'go',
+        'GOMODCACHE',
+        (h) => ({ env: { GOMODCACHE: at(h, 'mod') }, moved: { modcache: at(h, 'mod') } }),
+      ],
+      [
+        'go',
+        'GOPATH',
+        (h) => ({ env: { GOPATH: at(h, 'gopath') }, moved: { modcache: at(h, 'gopath/pkg/mod') } }),
+      ],
+      [
+        'go',
+        'GOCACHE',
+        (h) => ({ env: { GOCACHE: at(h, 'build') }, moved: { buildcache: at(h, 'build') } }),
+      ],
+      [
+        'go',
+        'go env',
+        (h) => ({
+          programs: { go: (argv) => (argv[0] === 'env' ? { stdout: `${at(h, argv[1]!)}\n` } : {}) },
+          moved: { modcache: at(h, 'GOMODCACHE'), buildcache: at(h, 'GOCACHE') },
+        }),
+      ],
+      [
+        'gradle',
+        'GRADLE_USER_HOME',
+        (h) => ({
+          env: { GRADLE_USER_HOME: at(h, 'gradle') },
+          moved: { caches: at(h, 'gradle/caches'), wrapper: at(h, 'gradle/wrapper/dists') },
+        }),
+      ],
+      [
+        'huggingface-hub',
+        'HF_HOME',
+        (h) => ({ env: { HF_HOME: at(h, 'hf') }, moved: { hub: at(h, 'hf/hub') } }),
+      ],
+      [
+        'huggingface-hub',
+        'HF_HUB_CACHE, over HF_HOME',
+        (h) => ({
+          env: { HF_HUB_CACHE: at(h, 'hub'), HF_HOME: at(h, 'hf') },
+          moved: { hub: at(h, 'hub') },
+        }),
+      ],
+      [
+        'huggingface-hub',
+        'HUGGINGFACE_HUB_CACHE',
+        (h) => ({ env: { HUGGINGFACE_HUB_CACHE: at(h, 'hub') }, moved: { hub: at(h, 'hub') } }),
+      ],
+      [
+        'huggingface-hub',
+        'XDG_CACHE_HOME',
+        (h) => ({
+          env: { XDG_CACHE_HOME: at(h, 'xdg') },
+          moved: { hub: at(h, 'xdg/huggingface/hub') },
+        }),
+      ],
+      [
+        'maven',
+        'LOCAL_REPOSITORY in the config',
+        (h) => ({ vars: { LOCAL_REPOSITORY: at(h, 'm2') }, moved: { repository: at(h, 'm2') } }),
+      ],
+      [
+        'npm',
+        'npm_config_cache',
+        (h) => ({
+          env: { npm_config_cache: at(h, 'npm') },
+          moved: { cache: at(h, 'npm/_cacache') },
+        }),
+      ],
+      [
+        'npm',
+        'NPM_CONFIG_CACHE',
+        (h) => ({
+          env: { NPM_CONFIG_CACHE: at(h, 'npm') },
+          moved: { cache: at(h, 'npm/_cacache') },
+        }),
+      ],
+      [
+        'npm',
+        'npm config get cache',
+        (h) => ({
+          programs: {
+            npm: (argv) => (argv[0] === 'config' ? { stdout: `${at(h, 'npm')}\n` } : {}),
+          },
+          moved: { cache: at(h, 'npm/_cacache') },
+        }),
+      ],
+      [
+        'pip',
+        'PIP_CACHE_DIR',
+        (h) => ({ env: { PIP_CACHE_DIR: at(h, 'pip') }, moved: { cache: at(h, 'pip') } }),
+      ],
+      [
+        'pnpm',
+        'pnpm store path',
+        (h) => ({
+          programs: {
+            pnpm: (argv) => (argv[1] === 'path' ? { stdout: `${at(h, 'store/v10')}\n` } : {}),
+          },
+          moved: { store: at(h, 'store/v10') },
+        }),
+      ],
+      [
+        'uv',
+        'UV_CACHE_DIR',
+        (h) => ({ env: { UV_CACHE_DIR: at(h, 'uv') }, moved: { cache: at(h, 'uv') } }),
+      ],
+      [
+        'uv',
+        'cache-dir in uv.toml',
+        (h) => ({
+          files: { '.config/uv/uv.toml': `cache-dir = "${at(h, 'uv')}"\n` },
+          moved: { cache: at(h, 'uv') },
+        }),
+      ],
+      [
+        'uv',
+        'XDG_CACHE_HOME',
+        (h) => ({ env: { XDG_CACHE_HOME: at(h, 'xdg') }, moved: { cache: at(h, 'xdg/uv') } }),
+      ],
+      [
+        'yarn',
+        'YARN_GLOBAL_FOLDER',
+        (h) => ({
+          env: { YARN_GLOBAL_FOLDER: at(h, 'berry') },
+          moved: { berry: at(h, 'berry/cache') },
+        }),
+      ],
+      [
+        'yarn',
+        'globalFolder in ~/.yarnrc.yml',
+        (h) => ({
+          files: { '.yarnrc.yml': `globalFolder: ${at(h, 'berry')}\n` },
+          moved: { berry: at(h, 'berry/cache') },
+        }),
+      ],
+      [
+        'yarn',
+        'YARN_CACHE_FOLDER',
+        (h) => ({
+          env: { YARN_CACHE_FOLDER: at(h, 'classic') },
+          moved: { classic: at(h, 'classic') },
+        }),
+      ],
+    ]
+    // On Linux these follow the XDG folders; on macOS they sit in ~/Library.
+    const linuxOnly: typeof cases = [
+      [
+        'go',
+        'XDG_CACHE_HOME',
+        (h) => ({
+          env: { XDG_CACHE_HOME: at(h, 'xdg') },
+          moved: { buildcache: at(h, 'xdg/go-build') },
+        }),
+      ],
+      [
+        'pip',
+        'XDG_CACHE_HOME',
+        (h) => ({ env: { XDG_CACHE_HOME: at(h, 'xdg') }, moved: { cache: at(h, 'xdg/pip') } }),
+      ],
+      [
+        'pnpm',
+        'XDG_CACHE_HOME',
+        (h) => ({ env: { XDG_CACHE_HOME: at(h, 'xdg') }, moved: { cache: at(h, 'xdg/pnpm') } }),
+      ],
+      [
+        'pnpm',
+        'XDG_DATA_HOME',
+        (h) => ({
+          env: { XDG_DATA_HOME: at(h, 'data') },
+          moved: { store: at(h, 'data/pnpm/store') },
+        }),
+      ],
+      [
+        'yarn',
+        'XDG_CACHE_HOME',
+        (h) => ({ env: { XDG_CACHE_HOME: at(h, 'xdg') }, moved: { classic: at(h, 'xdg/yarn') } }),
+      ],
+    ]
+
+    test.each(os === 'linux' ? [...cases, ...linuxOnly] : cases)(
+      '%s follows %s, and leaves the default folder alone',
+      async (name, _how, moves) => {
+        const b = build(name, os, { moves })
+        const s = await survey([b.plugin], ctxOf())
+        expect(s.warnings).toEqual([])
+        expect(s.objections.filter((o) => o.code === OUTSIDE_ROOTS)).toEqual([])
+        expect(s.candidates.map((c) => c.path).sort()).toEqual(expectedPaths(b))
+      },
+    )
+
+    test.skipIf(os !== 'macos')(
+      'XDG_CACHE_HOME moves none of the caches kept in ~/Library',
+      async () => {
+        for (const name of ['go', 'pip', 'pnpm', 'yarn'] as const) {
+          const b = build(name, os, { moves: (h) => ({ env: { XDG_CACHE_HOME: at(h, 'xdg') } }) })
+          const s = await survey([b.plugin], ctxOf())
+          expect(s.candidates.map((c) => c.path).sort(), name).toEqual(expectedPaths(b))
+        }
+      },
+    )
+
+    test('a moved pnpm store is pruned where pnpm says it is', async () => {
+      const b = build('pnpm', os, {
+        moves: (h) => ({
+          programs: {
+            pnpm: (argv) => (argv[1] === 'path' ? { stdout: `${at(h, 'store/v10')}\n` } : {}),
+          },
+          moved: { store: at(h, 'store/v10') },
+        }),
+      })
+      const { receipt } = await surveyAndClean(b.plugin)
+      expect(receipt.steps.map((st) => [st.id, st.result])).toEqual([
+        [`pnpm:${b.folder('store')}`, 'ok'],
+      ])
+      expect(actions(b)).toEqual([['pnpm', 'store', 'prune', '--store-dir', b.folder('store')]])
     })
   })
 })

@@ -1,16 +1,27 @@
 # yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
-# Yarn's global caches on the default folders: Berry's (Yarn 2 and later) and
-# Classic's (Yarn 1). Each is removed as a folder once idle. `yarn cache clean`
-# acts on whichever Yarn the folder it runs in selects, and can't be pointed at
-# one of these folders, so it isn't used. Projects' own .yarn folders are left
-# out.
+# Yarn's global caches: Berry's (Yarn 2 and later), the cache folder under its
+# global folder, which YARN_GLOBAL_FOLDER or globalFolder in ~/.yarnrc.yml
+# moves; and Classic's (Yarn 1), which YARN_CACHE_FOLDER moves, under
+# XDG_CACHE_HOME on Linux. Each is removed as a folder once idle. `yarn cache
+# clean` acts on whichever Yarn the folder it runs in selects, and can't be
+# pointed at one of these folders, so it isn't used. Projects' own .yarn
+# folders are left out.
 descriptor: 1
 store: yarn
 detect:
   any: [{ onPath: yarn }, { exists: berry }, { exists: classic }]
+vars:
+  YARN_GLOBAL_FOLDER:
+    - env: YARN_GLOBAL_FOLDER
+    - file: ~/.yarnrc.yml
+      key: globalFolder
+    - value: { macos: ~/.yarn/berry, linux: ~/.yarn/berry }
+  YARN_CACHE_FOLDER:
+    - env: YARN_CACHE_FOLDER
+    - value: { macos: ~/Library/Caches/Yarn, linux: '${XDG_CACHE_HOME}/yarn' }
 paths:
-  berry: { macos: ~/.yarn/berry/cache, linux: ~/.yarn/berry/cache }
-  classic: { macos: ~/Library/Caches/Yarn, linux: ~/.cache/yarn }
+  berry: { macos: '${YARN_GLOBAL_FOLDER}/cache', linux: '${YARN_GLOBAL_FOLDER}/cache' }
+  classic: { macos: '${YARN_CACHE_FOLDER}', linux: '${YARN_CACHE_FOLDER}' }
 candidates:
   - path: berry
     costDescription: re-download

@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
+# Go's module cache and build cache, where `go env` says they are. GOMODCACHE
+# and GOCACHE move them, GOPATH moves the module cache to its pkg/mod, and
+# `go env -w` settings are seen through `go env`. Without go on PATH, the
+# variables and the defaults are used; a GOPATH that lists several folders is
+# then not followed. Each cache is emptied by go's own clean command pointed at
+# it, or removed as a folder without go, read-only module files included: the
+# module cache once unused for 30 days, the build cache after a week.
+descriptor: 1
+store: go
+detect:
+  any: [{ onPath: go }, { exists: modcache }, { exists: buildcache }]
+vars:
+  GOPATH:
+    - env: GOPATH
+    - value: ~/go
+  GOMODCACHE:
+    - env: GOMODCACHE
+    - command: [go, env, GOMODCACHE]
+    - value: '${GOPATH}/pkg/mod'
+  GOCACHE:
+    - env: GOCACHE
+    - command: [go, env, GOCACHE]
+    - value: { macos: ~/Library/Caches/go-build, linux: '${XDG_CACHE_HOME}/go-build' }
+paths:
+  modcache: { macos: '${GOMODCACHE}', linux: '${GOMODCACHE}' }
+  buildcache: { macos: '${GOCACHE}', linux: '${GOCACHE}' }
+candidates:
+  - path: modcache
+    costDescription: re-download
+    idleHours: 720
+    command: [go, clean, -modcache]
+    env: { GOMODCACHE: '{path}' }
+    removes: all
+  - path: buildcache
+    costDescription: rebuild
+    idleHours: 168
+    command: [go, clean, -cache]
+    env: { GOCACHE: '{path}' }
+    removes: all

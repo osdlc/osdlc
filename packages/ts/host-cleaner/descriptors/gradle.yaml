@@ -1,15 +1,22 @@
 # yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
-# Gradle's caches and wrapper distributions, on the default folders. No Gradle
-# command clears them on demand, so each is removed as a folder: the caches
-# once nothing in them changed for a week, and each wrapper distribution once
-# unused for 30 days. While a Gradle daemon runs, nothing is removed.
+# Gradle's caches and wrapper distributions, under GRADLE_USER_HOME, or
+# ~/.gradle when it is unset. No Gradle command clears them on demand, so each
+# is removed as a folder: the caches once nothing in them changed for a week,
+# and each wrapper distribution once unused for 30 days. While a Gradle daemon
+# runs, nothing is removed.
 descriptor: 1
 store: gradle
 detect:
   any: [{ onPath: gradle }, { exists: caches }, { exists: wrapper }]
+vars:
+  GRADLE_USER_HOME:
+    - env: GRADLE_USER_HOME
+    - value: { macos: ~/.gradle, linux: ~/.gradle }
 paths:
-  caches: { macos: ~/.gradle/caches, linux: ~/.gradle/caches }
-  wrapper: { macos: ~/.gradle/wrapper/dists, linux: ~/.gradle/wrapper/dists }
+  caches: { macos: '${GRADLE_USER_HOME}/caches', linux: '${GRADLE_USER_HOME}/caches' }
+  wrapper:
+    macos: '${GRADLE_USER_HOME}/wrapper/dists'
+    linux: '${GRADLE_USER_HOME}/wrapper/dists'
 candidates:
   - path: caches
     costDescription: re-download

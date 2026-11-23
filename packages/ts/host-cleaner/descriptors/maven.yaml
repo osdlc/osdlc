@@ -1,14 +1,21 @@
 # yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
-# Maven's local repository, on the default folder; a localRepository set in
-# settings.xml is not followed. No Maven command prunes the whole repository,
-# so it is removed as a folder once nothing in it changed for 30 days. What
-# `mvn install` put there comes back only by building those projects again.
+# Maven's local repository, on the default folder. A localRepository set in
+# settings.xml is not followed: XML is not a file source, and asking Maven
+# (`mvn help:evaluate`) starts a JVM, takes longer than a variable's command
+# may, and can download into the repository it would then measure. Set
+# plugins.maven.vars.LOCAL_REPOSITORY in the config for a moved one. No Maven
+# command prunes the whole repository, so it is removed as a folder once
+# nothing in it changed for 30 days. What `mvn install` put there comes back
+# only by building those projects again.
 descriptor: 1
 store: maven
 detect:
   any: [{ onPath: mvn }, { exists: repository }]
+vars:
+  LOCAL_REPOSITORY:
+    - value: { macos: ~/.m2/repository, linux: ~/.m2/repository }
 paths:
-  repository: { macos: ~/.m2/repository, linux: ~/.m2/repository }
+  repository: { macos: '${LOCAL_REPOSITORY}', linux: '${LOCAL_REPOSITORY}' }
 candidates:
   - path: repository
     costDescription: re-download

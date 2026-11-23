@@ -1,16 +1,22 @@
 # yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
-# pnpm's content-addressable store and its metadata cache, on the default
-# folders. The store is pruned: `pnpm store prune` removes only the packages no
-# project references, so it runs with no idle check. Without pnpm on PATH it is
-# listed with a no-prune-tool protest and left alone (D12). The metadata cache
-# is removed as a folder once idle.
+# pnpm's content-addressable store, where `pnpm store path` says it is, and
+# its metadata cache. The store is pruned: `pnpm store prune` removes only the
+# packages no project references, so it runs with no idle check. pnpm prints
+# the versioned folder inside the store (such as store/v10), and --store-dir
+# takes that folder as it is. Without pnpm on PATH the default folder is used,
+# listed with a no-prune-tool protest and left alone (D12). The metadata cache,
+# under XDG_CACHE_HOME on Linux, is removed as a folder once idle.
 descriptor: 1
 store: pnpm
 detect:
   any: [{ onPath: pnpm }, { exists: store }, { exists: cache }]
+vars:
+  STORE:
+    - command: [pnpm, store, path]
+    - value: { macos: ~/Library/pnpm/store, linux: '${XDG_DATA_HOME}/pnpm/store' }
 paths:
-  store: { macos: ~/Library/pnpm/store, linux: ~/.local/share/pnpm/store }
-  cache: { macos: ~/Library/Caches/pnpm, linux: ~/.cache/pnpm }
+  store: { macos: '${STORE}', linux: '${STORE}' }
+  cache: { macos: ~/Library/Caches/pnpm, linux: '${XDG_CACHE_HOME}/pnpm' }
 candidates:
   - path: store
     costDescription: re-download
