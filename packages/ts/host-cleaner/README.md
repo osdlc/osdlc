@@ -11,7 +11,7 @@ This release is the library, the `git`, `cargo`, `node` and `orca` plugins, and 
 It runs only when a person runs it: there is no scheduled or unattended run
 ([B-0001](docs/planning/backlog/B-0001-unattended-cleaning.md)).
 
-[docs/architecture.md](docs/architecture.md) says how the package is built.
+[docs/guide/how-it-works.md](docs/guide/how-it-works.md) says how the package is built.
 The design it is heading to, descriptors and loadable plugins included, is the
 [system description](../../../docs/architecture/host-cleaner-system.md).
 

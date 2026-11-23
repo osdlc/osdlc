@@ -16,7 +16,7 @@ there.
 Ids are numbers in order of writing, zero-padded to four digits so they sort.
 They are never reused.
 
-How the package is built today is in [architecture.md](../architecture.md).
+How the package is built today is in [how-it-works.md](../guide/how-it-works.md).
 
 ## Backlog
 

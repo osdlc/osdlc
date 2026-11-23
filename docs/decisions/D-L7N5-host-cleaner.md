@@ -17,7 +17,7 @@ repo-cleaner 0.18. Builds on
 > so they can come back. What still holds: repo-cleaner's own gaps, the
 > `ProcessProbe`, the one safety model, and the command seam. How the package
 > is built now is in
-> [host-cleaner's architecture](../../packages/ts/host-cleaner/docs/architecture.md).
+> [host-cleaner's architecture](../../packages/ts/host-cleaner/docs/guide/how-it-works.md).
 
 ## Decision
 

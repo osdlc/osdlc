@@ -4,19 +4,19 @@ How `@osdlc/host-cleaner` is built today: the modules, one run from survey to
 receipt, the rules the core applies to every plugin, and where the code still
 differs from the design.
 
-- The [README](../README.md) says how to use the package and the command.
-- The [system description](../../../../docs/architecture/host-cleaner-system.md)
+- The [README](../../README.md) says how to use the package and the command.
+- The [system description](../../../../../docs/architecture/host-cleaner-system.md)
   is the whole design, descriptors and loadable plugins included, with
   decisions D1 to D14. This page describes the part built so far.
-- [D-H3QW](../../../../docs/decisions/D-H3QW-host-cleaner-plugin-model.md)
+- [D-H3QW](../../../../../docs/decisions/D-H3QW-host-cleaner-plugin-model.md)
   records the plugin model. It replaced the adapter model of
-  [D-L7N5](../../../../docs/decisions/D-L7N5-host-cleaner.md), which is kept
+  [D-L7N5](../../../../../docs/decisions/D-L7N5-host-cleaner.md), which is kept
   as history.
-- The [plan](../../../../docs/planning/host-cleaner-plan.md) orders the work;
+- The [plan](../../../../../docs/planning/host-cleaner-plan.md) orders the work;
   [#669](https://github.com/osdlc/osdlc/issues/669) tracks it.
 
 repo-cleaner's own model (sweep, risks, fingerprint, archive, receipt) is in
-its [README](../../repo-cleaner/README.md). This page does not repeat it.
+its [README](../../../repo-cleaner/README.md). This page does not repeat it.
 
 ## What it is
 
@@ -181,7 +181,7 @@ plugin (D3). `create` gets the plugin's settings, validated and with defaults
 filled in, the environment, and a kit made for it (D4). The kit holds the
 helpers the shipped plugins use: `idle`, `size`, `running`, `onPath`,
 `candidate`, `run` and `remove`. The README's
-[plugin kit](../README.md#the-plugin-kit) section lists each one.
+[plugin kit](../../README.md#the-plugin-kit) section lists each one.
 
 Binding is how `kit.remove(path)` knows where it may delete without being
 told. The core binds a kit after the plugin's `roots` hook answers at the
@@ -249,10 +249,10 @@ Not built yet, by plan phase:
 
 Recorded in host-cleaner's backlog so they can come back:
 
-- [B-0001](planning/backlog/B-0001-unattended-cleaning.md): `clean --auto`,
+- [B-0001](../planning/backlog/B-0001-unattended-cleaning.md): `clean --auto`,
   `schedule` (a launchd agent), the `unattended` candidate field, profiles,
   and the `claude-code` plugin with its `close-session` risk.
-- [B-0002](planning/backlog/B-0002-root-only-stores.md): stores that only root
+- [B-0002](../planning/backlog/B-0002-root-only-stores.md): stores that only root
   can clean, such as APT, pacman and Snap.
 
 ## Open
