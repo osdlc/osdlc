@@ -46,7 +46,7 @@ import {
   runAliveWith,
   type PruneOptions,
 } from '../src/prune.ts'
-import { allToolsInstalled, isolatedEnv } from './support.ts'
+import { allToolsInstalled, isolatedEnv, literal, worktreePaths } from './support.ts'
 
 /** No process has this pid, so a run named for it is dead. */
 const DEAD = '2147483646.1'
@@ -134,11 +134,9 @@ function keptWorktree(clone: string, repo: string, number: number): string {
 
 /** The paths of the worktrees git lists for `gitDir`, other than the bare entry. */
 function listed(gitDir: string): string[] {
-  return git(gitDir, 'worktree', 'list', '--porcelain')
-    .split('\n')
-    .filter((l) => l.startsWith('worktree '))
-    .map((l) => l.slice('worktree '.length))
-    .filter((p) => p !== realpathSync.native(gitDir) && p !== dirname(realpathSync.native(gitDir)))
+  return worktreePaths(git(gitDir, 'worktree', 'list', '--porcelain')).filter(
+    (p) => p !== realpathSync.native(gitDir) && p !== dirname(realpathSync.native(gitDir)),
+  )
 }
 
 function branches(gitDir: string): string[] {
@@ -703,7 +701,7 @@ describe('pr-update mirror list and prune, on the command line', () => {
 
     const text = await run('mirror', 'prune', '--older-than', '1')
     expect(text.code).toBe(EXIT.ok)
-    expect(text.out).toMatch(new RegExp(`^removed clone ${clone.replace(/[.]/g, '\\.')} \\(`, 'm'))
+    expect(text.out).toMatch(new RegExp(`^removed clone ${literal(clone)} \\(`, 'm'))
     expect(text.out).toMatch(/^freed /m)
     expect(existsSync(clone)).toBe(false)
 
@@ -990,9 +988,7 @@ describe('pr-update mirror prune on the command line (review round 1)', () => {
     const r = await run('mirror', 'prune', '--all-clones')
 
     expect(r.code).toBe(EXIT.error)
-    expect(r.out).toMatch(
-      new RegExp(`^! could not remove clone ${broken.replace(/[.]/g, '\\.')}: `, 'm'),
-    )
+    expect(r.out).toMatch(new RegExp(`^! could not remove clone ${literal(broken)}: `, 'm'))
     expect(existsSync(broken)).toBe(true)
   })
 

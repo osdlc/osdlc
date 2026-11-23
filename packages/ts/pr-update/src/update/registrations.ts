@@ -32,10 +32,10 @@ export const PRUNE_ALL: WorktreeRecords = {
   },
 }
 
-/** `path` with every part that exists resolved through symlinks. */
+/** `path` with every part that exists resolved through symlinks and Windows short names. */
 function canonical(path: string): string {
   try {
-    return realpathSync(path)
+    return realpathSync.native(path)
   } catch {
     const parent = dirname(path)
     return parent === path ? path : join(canonical(parent), basename(path))

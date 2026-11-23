@@ -36,6 +36,9 @@ export default defineConfig({
       PR_UPDATE_HOME: '',
     },
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
+    // A test here runs real git many times over. Starting a process costs
+    // several times more on Windows, where 5 s (the default) is not enough.
+    ...(process.platform === 'win32' ? { testTimeout: 30_000 } : {}),
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

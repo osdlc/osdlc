@@ -6,6 +6,7 @@ import { isatty } from 'node:tty'
 
 import { EXIT, captureContext } from '@osdlc/cli-tool'
 import { overlayPath } from '@osdlc/config-layers'
+import { normalizeTrustPath } from '@osdlc/trust-repo'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { PR_UPDATE_CONFIG_FILE, main } from '../src/cli.ts'
@@ -187,26 +188,33 @@ describe('pr-update usage errors', () => {
     expect(r.err).toContain("unknown command 'frobnicate'")
   })
 
+  // A trust key is the absolute path in trust-repo's form: `c:/x` on Windows.
+  const KEY = String.raw`(?:/|[a-z]:/)`
+
   test('trust takes no arguments, and says so the second time it is run', async () => {
     const repo = makeGitFixture({ dir: mkdtempSync(join(cwd, 'repo-')) })
     repo.commit('init', { 'a.txt': 'a' })
     const extra = await runIn(repo.dir, 'trust', 'x')
     expect(extra.code).toBe(EXIT.usage)
-    expect((await runIn(repo.dir, 'trust')).out).toMatch(/^trusted \//)
-    expect((await runIn(repo.dir, 'trust')).out).toMatch(/^already trusted \//)
+    expect((await runIn(repo.dir, 'trust')).out).toMatch(new RegExp(`^trusted ${KEY}`))
+    expect((await runIn(repo.dir, 'trust')).out).toMatch(new RegExp(`^already trusted ${KEY}`))
   })
 
   test('trust --show, --list and --untrust', async () => {
     const repo = makeGitFixture({ dir: mkdtempSync(join(cwd, 'repo-')) })
     repo.commit('init', { 'a.txt': 'a' })
-    expect((await runIn(repo.dir, 'trust', '--show')).out).toMatch(/^not trusted \//)
+    expect((await runIn(repo.dir, 'trust', '--show')).out).toMatch(
+      new RegExp(`^not trusted ${KEY}`),
+    )
     await runIn(repo.dir, 'trust')
     const shown = await runIn(repo.dir, 'trust', '--show')
-    expect(shown.out).toMatch(/^trusted \/.* \(by marker\)\n$/)
-    expect((await runIn(repo.dir, 'trust', '--list')).out).toContain(realpathSync.native(repo.dir))
+    expect(shown.out).toMatch(new RegExp(`^trusted ${KEY}.* \\(by marker\\)\n$`))
+    expect((await runIn(repo.dir, 'trust', '--list')).out).toContain(
+      normalizeTrustPath(realpathSync.native(repo.dir)),
+    )
     const untrust = await runIn(repo.dir, 'trust', '--untrust')
     expect(untrust.code).toBe(EXIT.ok)
-    expect(untrust.out).toMatch(/^untrusted \//)
+    expect(untrust.out).toMatch(new RegExp(`^untrusted ${KEY}`))
     const again = await runIn(repo.dir, 'trust', '--untrust')
     expect(again.code).toBe(EXIT.error)
     expect(again.err).toContain('not trusted')

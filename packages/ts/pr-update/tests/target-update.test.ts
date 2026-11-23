@@ -18,7 +18,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, join, normalize, sep } from 'node:path'
 
 import { EXIT, captureContext } from '@osdlc/cli-tool'
 import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
@@ -49,7 +49,7 @@ import {
 } from '../src/update/kept.ts'
 import { refBranchLease } from '../src/update/lease.ts'
 import { refAttemptStore } from '../src/update/ref-attempts.ts'
-import { allToolsInstalled, isolatedEnv } from './support.ts'
+import { allToolsInstalled, isolatedEnv, worktreePaths } from './support.ts'
 
 const ARGS: UpdateArgs = {
   repo: ['acme/api'],
@@ -260,7 +260,7 @@ describe('a located target', () => {
     ])
     const runs = join(paths.worktrees, 'github.com', 'acme', 'api')
     expect(verifiedIn).toHaveLength(1)
-    expect(verifiedIn[0]!.startsWith(`${runs}/`)).toBe(true)
+    expect(verifiedIn[0]!.startsWith(`${runs}${sep}`)).toBe(true)
     expect(basename(verifiedIn[0]!)).toMatch(new RegExp(`^${process.pid}\\.\\d+$`))
     expect(readdirSync(runs)).toEqual([])
     expect(worktreesOf(api.worker.dir)).toEqual([realpathSync.native(api.worker.dir)])
@@ -644,7 +644,7 @@ describe("the person's own checkout", () => {
     sh(api.worker.dir, 'worktree', 'add', '-q', '--detach', mine, 'main')
     rmSync(mine, { recursive: true, force: true })
     expect((await update()).results.map((r) => r.status)).toEqual(['updated'])
-    expect(sh(api.worker.dir, 'worktree', 'list', '--porcelain')).toContain(`worktree ${mine}`)
+    expect(worktreePaths(sh(api.worker.dir, 'worktree', 'list', '--porcelain'))).toContain(mine)
   })
 
   test('when removing the run worktree fails, only its record goes, and nothing is pruned', async () => {
@@ -666,9 +666,9 @@ describe("the person's own checkout", () => {
     expect(calls.some((c) => c[0] === 'worktree' && c[1] === 'prune')).toBe(false)
     const runs = join(paths.worktrees, 'github.com', 'acme', 'api')
     expect(readdirSync(runs)).toEqual([])
-    const listed = sh(api.worker.dir, 'worktree', 'list', '--porcelain')
-    expect(listed).toContain(`worktree ${mine}`)
-    expect(listed).not.toContain(runs)
+    const listed = worktreePaths(sh(api.worker.dir, 'worktree', 'list', '--porcelain'))
+    expect(listed).toContain(mine)
+    expect(listed.filter((p) => p.startsWith(runs))).toEqual([])
     expect(sh(api.worker.dir, 'branch', '--list', 'pr-update/*')).toBe('')
   })
 })
@@ -1069,9 +1069,11 @@ describe("a run started with GIT_DIR set to the project root's .git", () => {
     expect(out.results.map((r) => [r.repo, r.status, r.pushed])).toEqual([
       ['acme/root', 'updated', true],
     ])
-    const [gitDir, top] = readFileSync(seen, 'utf8').trim().split('\n')
+    const [gitDir, printed] = readFileSync(seen, 'utf8').trim().split('\n')
+    // Printed by git, which writes `C:/x` on Windows.
+    const top = normalize(printed!)
     expect(gitDir).toBe('unset')
-    expect(top!.startsWith(join(root.worker.dir, '.pr-update'))).toBe(true)
+    expect(top.startsWith(join(root.worker.dir, '.pr-update'))).toBe(true)
     expect(rootState()).toEqual(before)
   })
 
@@ -1096,9 +1098,11 @@ describe("a run started with GIT_DIR set to the project root's .git", () => {
     expect(out.results.map((r) => [r.repo, r.status, r.pushed])).toEqual([
       ['acme/api', 'updated', true],
     ])
-    const [gitDir, top] = readFileSync(seen, 'utf8').trim().split('\n')
+    const [gitDir, printed] = readFileSync(seen, 'utf8').trim().split('\n')
+    // Printed by git, which writes `C:/x` on Windows.
+    const top = normalize(printed!)
     expect(gitDir).toBe('unset')
-    expect(top!.startsWith(join(paths.worktrees, 'github.com', 'acme', 'api'))).toBe(true)
+    expect(top.startsWith(join(paths.worktrees, 'github.com', 'acme', 'api'))).toBe(true)
     expect(rootState()).toEqual(before)
     expect(sh(api.worker.dir, 'symbolic-ref', 'HEAD')).toBe(apiHead)
     expect(

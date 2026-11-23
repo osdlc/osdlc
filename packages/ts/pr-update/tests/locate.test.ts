@@ -28,6 +28,9 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(root, { recursive: true, force: true }))
 
+/** The sandbox home, as `HOME` and as `USERPROFILE`, where Windows looks for it. */
+const homeEnv = () => ({ HOME: home, USERPROFILE: home })
+
 /** A checkout at `rel` under the home directory, its `origin` set to `url`. */
 function checkout(rel: string, url: string, commits = 1): string {
   const fx = makeGitFixture({ dir: join(home, rel) })
@@ -39,9 +42,7 @@ function checkout(rel: string, url: string, commits = 1): string {
 /** Write `repositories.yaml` in the sandbox's osdlc config home. */
 function writeRoots(text: string): string {
   const file = join(
-    osdlcDirs({ env: { HOME: home } })
-      .standalone('osdlc')
-      .config().path,
+    osdlcDirs({ env: homeEnv() }).standalone('osdlc').config().path,
     'repositories.yaml',
   )
   mkdirSync(dirname(file), { recursive: true })
@@ -61,7 +62,7 @@ function locateIn(projectRoot?: string) {
   const locate = standaloneLocate({
     projectRoot,
     git,
-    env: { HOME: home },
+    env: homeEnv(),
     notice: (line) => void notes.push(line),
     locator: { resolveAlias: () => null },
   })
@@ -116,9 +117,7 @@ describe('standaloneLocate', () => {
 
   test('with no roots at all, the note says so and where to set them', () => {
     const file = join(
-      osdlcDirs({ env: { HOME: home } })
-        .standalone('osdlc')
-        .config().path,
+      osdlcDirs({ env: homeEnv() }).standalone('osdlc').config().path,
       'repositories.yaml',
     )
     expect(locateIn().target('github.com', 'acme', 'api')).toBeNull()
@@ -178,7 +177,7 @@ describe('standaloneLocate', () => {
   test('a run with no --repo reads no file and scans nothing', () => {
     // A relative OSDLC_ROOT throws the moment the osdlc directories are read.
     const ports = standalonePorts(undefined, undefined, 'origin', () => {}, {
-      env: { HOME: home, OSDLC_ROOT: 'relative' },
+      env: { ...homeEnv(), OSDLC_ROOT: 'relative' },
     })
     expect(typeof ports.locate).toBe('function')
   })

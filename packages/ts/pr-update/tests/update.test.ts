@@ -1005,9 +1005,8 @@ describe('runUpdate — two repositories that each hold a PR 1', () => {
     rmSync(mine, { recursive: true, force: true })
     const out = await run({})
     expect(out.results.map((r) => r.status)).toEqual(['updated', 'updated'])
-    expect(b.worker.git.rawChecked(['worktree', 'list', '--porcelain']).stdout).toContain(
-      `worktree ${mine}`,
-    )
+    // Through typed-git, whose paths are in Node's form; git prints `C:/x` on Windows.
+    expect(b.worker.git.worktrees().map((w) => w.path)).toContain(mine)
     expect(existsSync(join(b.worker.dir, '.pr-update'))).toBe(true)
     expect(b.worker.git.rawChecked(['worktree', 'list', '--porcelain']).stdout).not.toContain(
       '.pr-update',

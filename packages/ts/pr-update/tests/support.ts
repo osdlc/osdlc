@@ -4,7 +4,7 @@
  */
 
 import { mkdirSync, realpathSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import type { CommandRunner } from '@osdlc/command-seam'
@@ -72,4 +72,17 @@ export function isolatedEnv(
     GIT_CONFIG_NOSYSTEM: '1',
     ...extra,
   }
+}
+
+/** The worktree paths in `git worktree list --porcelain` output, in Node's form: git prints `C:/x` on Windows. */
+export function worktreePaths(porcelain: string): string[] {
+  return porcelain
+    .split('\n')
+    .filter((l) => l.startsWith('worktree '))
+    .map((l) => normalize(l.slice('worktree '.length)))
+}
+
+/** `text` escaped for a `RegExp`, so a Windows path's backslashes match themselves. */
+export function literal(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

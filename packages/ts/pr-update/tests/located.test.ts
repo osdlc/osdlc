@@ -14,7 +14,7 @@ import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/comm
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, type CliSeams } from '../src/cli.ts'
-import { allToolsInstalled, isolatedEnv } from './support.ts'
+import { allToolsInstalled, isolatedEnv, worktreePaths } from './support.ts'
 
 let scratch: string
 let project: string
@@ -223,7 +223,11 @@ describe('updating a located checkout', () => {
     expect(readdirSync(join(runs, 'ghe.example', 'acme', 'api'))).toEqual([])
     expect(readdirSync(runs)).toEqual(['ghe.example'])
     expect(existsSync(join(located, '.pr-update'))).toBe(false)
-    expect(git(located, 'worktree', 'list', '--porcelain')).not.toContain(runs)
+    expect(
+      worktreePaths(git(located, 'worktree', 'list', '--porcelain')).filter((p) =>
+        p.startsWith(runs),
+      ),
+    ).toEqual([])
     expect(git(located, 'branch', '--list', 'pr-update/*')).toBe('')
   })
 })

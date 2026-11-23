@@ -42,7 +42,7 @@ import {
   markMirrorDir,
 } from '../src/mirror.ts'
 import { CONFIG_INVALID_EXIT } from '@osdlc/config-layers'
-import { allToolsInstalled, isolatedEnv } from './support.ts'
+import { allToolsInstalled, isolatedEnv, literal, worktreePaths } from './support.ts'
 import { forwarded } from './support-signal.ts'
 
 vi.mock('@osdlc/command-seam', async (original) =>
@@ -680,10 +680,11 @@ describe('review round 1', () => {
     const apiLock = cloneLockPath(cloneOf(dir))
     const seen = join(scratch, 'seen')
     // The verify step of acme/api's PR records whether either lock is held while it runs.
+    // The paths are quoted for sh, which would read a Windows path's backslashes as escapes.
     const probe =
       `node -e "const fs = require('fs'); fs.writeFileSync(process.argv[1], ` +
       `[process.argv[2], process.argv[3]].map((l) => fs.existsSync(l) ? 'held' : 'free').join(' '))" ` +
-      `${seen} ${webLock} ${apiLock}`
+      `'${seen}' '${webLock}' '${apiLock}'`
     writeFileSync(
       join(project, 'pr-update.local.yaml'),
       `pr_update:\n  verify: test\n  test_command: ${JSON.stringify(probe)}\n`,
@@ -859,7 +860,7 @@ describe('pruning at the end of update --apply', () => {
     const r = await run('update', '--repo', 'acme/api', '--mirror-dir', dir, '--apply')
 
     expect(r.code).toBe(EXIT.ok)
-    expect(r.err).toMatch(new RegExp(`pruned the clone ${old.replace(/[.]/g, '\\.')} \\(`))
+    expect(r.err).toMatch(new RegExp(`pruned the clone ${literal(old)} \\(`))
     expect(r.err).toMatch(/pruning freed /)
     expect(existsSync(old)).toBe(false)
     expect(existsSync(fresh)).toBe(true)
@@ -916,7 +917,7 @@ describe('pruning at the end of update --apply', () => {
 
     expect(r.code).toBe(EXIT.ok)
     expect(JSON.parse(r.out).repos[0].checkout).toEqual({ path: located, source: 'located' })
-    expect(r.err).toMatch(new RegExp(`pruned the clone ${old.replace(/[.]/g, '\\.')} \\(`))
+    expect(r.err).toMatch(new RegExp(`pruned the clone ${literal(old)} \\(`))
     expect(existsSync(old)).toBe(false)
   })
 
@@ -966,11 +967,7 @@ describe('review round 2', () => {
       '--json',
     )
     expect(failed.code).not.toBe(EXIT.usage)
-    const trees = () =>
-      git(clone, 'worktree', 'list', '--porcelain')
-        .split('\n')
-        .filter((l) => l.startsWith('worktree '))
-        .map((l) => l.slice('worktree '.length))
+    const trees = () => worktreePaths(git(clone, 'worktree', 'list', '--porcelain'))
     const [kept, ...more] = trees().filter((p) => p !== clone)
     expect(more).toEqual([])
     expect(kept).toBeDefined()
@@ -1045,11 +1042,7 @@ describe('mirror prune and a run worktree a run left in its clone', () => {
     )
     expect(r.code).toBe(EXIT.ok)
     const trees = () =>
-      git(clone, 'worktree', 'list', '--porcelain')
-        .split('\n')
-        .filter((l) => l.startsWith('worktree '))
-        .map((l) => l.slice('worktree '.length))
-        .filter((p) => p !== clone)
+      worktreePaths(git(clone, 'worktree', 'list', '--porcelain')).filter((p) => p !== clone)
     const [left, ...more] = trees()
     expect(more).toEqual([])
     expect(r.err).toContain(
@@ -1168,7 +1161,7 @@ describe('mirror prune review round 1', () => {
     const r = await run('update', '--repo', 'acme/api', '--mirror-dir', dir, '--apply')
 
     expect(r.code).toBe(EXIT.ok)
-    expect(r.err).toMatch(new RegExp(`could not prune ${broken.replace(/[.]/g, '\\.')}: `))
+    expect(r.err).toMatch(new RegExp(`could not prune ${literal(broken)}: `))
     expect(existsSync(broken)).toBe(true)
   })
 

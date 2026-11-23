@@ -18,7 +18,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { osdlcDirs } from '@osdlc/ecosystem'
@@ -61,8 +61,9 @@ afterEach(() => rmSync(scratch, { recursive: true, force: true }))
 const machine = (raw: Record<string, unknown> = {}) => machineConfigSchema.parse(raw)
 
 describe('mirrorSetting', () => {
-  const home = '/home/me'
-  const env = { OSDLC_ROOT: '/osdlc', HOME: home }
+  // Absolute on this platform: on Windows `/osdlc` has no drive, and tiered-dirs refuses it.
+  const home = resolve('/home/me')
+  const env = { OSDLC_ROOT: resolve('/osdlc'), HOME: home, USERPROFILE: home }
 
   test('with nothing set there is no consent, and clones go to repos/ in the cache directory', () => {
     // OSDLC_ROOT and the home variables move the directory; they are not consent.
@@ -80,22 +81,22 @@ describe('mirrorSetting', () => {
   })
 
   test('PR_UPDATE_MIRROR_DIR beats mirror_dir and checkout: local', () => {
-    const local = machine({ checkout: 'local', mirror_dir: '/m' })
+    const local = machine({ checkout: 'local', mirror_dir: resolve('/m') })
     expect(
-      mirrorSetting({ env: { ...env, PR_UPDATE_MIRROR_DIR: '/e' }, machine: local, home }),
-    ).toEqual({ consent: 'mirror', dir: '/e', from: 'env' })
+      mirrorSetting({ env: { ...env, PR_UPDATE_MIRROR_DIR: resolve('/e') }, machine: local, home }),
+    ).toEqual({ consent: 'mirror', dir: resolve('/e'), from: 'env' })
   })
 
   test('--mirror-dir beats the variable, mirror_dir and checkout: local', () => {
-    const local = machine({ checkout: 'local', mirror_dir: '/m' })
+    const local = machine({ checkout: 'local', mirror_dir: resolve('/m') })
     expect(
       mirrorSetting({
-        flag: '/f',
-        env: { ...env, PR_UPDATE_MIRROR_DIR: '/e' },
+        flag: resolve('/f'),
+        env: { ...env, PR_UPDATE_MIRROR_DIR: resolve('/e') },
         machine: local,
         home,
       }),
-    ).toEqual({ consent: 'mirror', dir: '/f', from: 'flag' })
+    ).toEqual({ consent: 'mirror', dir: resolve('/f'), from: 'flag' })
   })
 
   test('an empty PR_UPDATE_MIRROR_DIR is unset; a relative one is refused', () => {

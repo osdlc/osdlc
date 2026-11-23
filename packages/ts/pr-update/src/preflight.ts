@@ -96,7 +96,7 @@ function checkoutAt(cwd: string, runner: CommandRunner): string | null {
   if (!common.ok || !top.ok || common.value === null || top.value === null) return null
   const real = (path: string) => {
     try {
-      return realpathSync(path)
+      return realpathSync.native(path)
     } catch {
       return path
     }

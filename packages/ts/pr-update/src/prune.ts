@@ -271,7 +271,7 @@ export function worktreeOwner(tree: string): Owner | null {
     const record = resolve(tree, match[1]!.trim())
     const common = resolve(record, readFileSync(join(record, 'commondir'), 'utf8').trim())
     const back = resolve(record, readFileSync(join(record, 'gitdir'), 'utf8').trim())
-    if (realpathSync(back) !== realpathSync(dotGit)) return null
+    if (realpathSync.native(back) !== realpathSync.native(dotGit)) return null
     return { common }
   } catch {
     return null
@@ -379,7 +379,7 @@ function placeProblem(
 function keptPlaceOf(kept: string, worktrees: string, repo: string, clone: string): KeptPlace {
   let gitDir: string | undefined
   try {
-    gitDir = realpathSync(clone)
+    gitDir = realpathSync.native(clone)
   } catch {
     gitDir = undefined
   }
@@ -884,7 +884,7 @@ function namesIn(dir: string): string[] {
 
 function canonicalOr(path: string): string {
   try {
-    return realpathSync(path)
+    return realpathSync.native(path)
   } catch {
     return path
   }

@@ -924,10 +924,10 @@ function gitOf(path: string, at: Served | undefined, env: Pick<UpdateEnv, 'git'>
   )
 }
 
-/** `path` through its symlinks, or as given when it cannot be resolved. */
+/** `path` through its symlinks and any Windows short name (`RUNNER~1`), or as given when it cannot be resolved. */
 function realOr(path: string): string {
   try {
-    return realpathSync(path)
+    return realpathSync.native(path)
   } catch {
     return path
   }
@@ -1009,7 +1009,7 @@ function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<
 function commonDirOf(path: string, env: Pick<UpdateEnv, 'git'>): string | undefined {
   try {
     const dir = new Git(path, targetGitOptions(env.git)).gitCommonDir()
-    return dir === null ? undefined : realpathSync(dir)
+    return dir === null ? undefined : realpathSync.native(dir)
   } catch {
     return undefined
   }
