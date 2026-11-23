@@ -115,8 +115,90 @@ flowchart LR
   k_example --> k_release4
 ```
 
-What can start at once: all of phase 1 (after #1009) and k-schema. k-async follows k-trim. Everything else
-starts on its parent's branch (stacked dispatch, as chosen), and pr-update restacks it as parents merge.
+Every task starts on its base branch as soon as that branch has the code it needs, as "Dispatch: stacked"
+below describes. Phase 1 starts first, on #1009's branch; the contract follows k-trim, and everything after
+it builds on the contract.
+
+## Dispatch: stacked
+
+The owner chose stacked dispatch. This section is everything an agent or system running the plan needs;
+it doesn't assume the review that produced it.
+
+### The rule
+
+- **Every task starts as soon as its base branch has the code it needs pushed**, not when the base merges.
+  That is the difference from waves, which wait for each merge. Nothing waits for review except merging.
+- Each task gets its own branch, made from its base branch (the table below), and its PR targets that base
+  branch, so the PR shows only its own work.
+- The plugin contract is one branch and one PR, `sksizer/hc-contract`: one commit per task in plan order
+  (k-async (#1023), k-define (#1024), k-ref (#1025), k-cost (#1026), k-overlap (#1027), k-kit (#1028), k-testing (#1029)).
+  A task stacked on it starts once the commits it uses are pushed.
+- A task whose parent isn't written yet codes to the parent's issue. If the parent's code then differs, the
+  child is fixed before its own review.
+
+### Keeping the stack current
+
+- After any push to a parent branch, or any merge to `main`, run `pr-update update --restack --apply`. It
+  rebases each child onto its parent's new head and replays only the child's own commits. Rehearse first,
+  without `--apply`, when a stack is more than three deep.
+- When a parent merges, GitHub deletes its branch and retargets its children to `main` (this repository
+  deletes head branches on merge). A squash merge leaves the parent's old commits in each child, so rebase
+  each child with `git rebase --onto origin/main <parent's last head> <child>` unless `pr-update` has
+  already done it. Check the child PR's diff shows only its own work.
+- When review changes a parent, push the fix, restack, and fix every child that used what changed, in the
+  same pass. Most rework comes from the contract PR, since about 25 tasks build on it, so its review goes
+  first.
+
+### Merging
+
+- A PR merges only when its base and every task under "Also on main first" have merged, its checks are
+  green, and the owner has approved it. Merge parents before children, and phase 1 in its listed order.
+- The owner merges #1009. Until it merges, phase 1 stacks on its branch.
+
+### Every PR
+
+- The body says `Closes #<issue>` and `Part of #669`, and copies the issue's "Done when" checklist, ticked.
+- Tests, lint and typecheck pass on the branch. A task stays inside its issue's scope; anything else found on
+  the way becomes a new issue under #669.
+- Follow the repository's CLAUDE.md. No AI or tool attribution in commits or PRs.
+- Owner-only steps: merging, choosing the name (#998), and publishing each release.
+
+### Branches
+
+| Task | Branch | Base branch | Also on main first | Note |
+| --- | --- | --- | --- | --- |
+| k-trim (#1017) | `sksizer/hc-trim` | `sksizer/host-cleaner-remove-scheduling`, from #1009 | — |  |
+| k-xdg (#1018) | `sksizer/hc-xdg` | `sksizer/hc-trim`, from k-trim (#1017) | — |  |
+| k-orca (#664) | `sksizer/hc-orca` | `sksizer/host-cleaner-remove-scheduling`, from #1009 | — |  |
+| k-unknown (#1020) | `sksizer/hc-unknown` | `sksizer/hc-trim`, from k-trim (#1017) | — | On k-trim, since its test uses the removed `claude-code` plugin. |
+| k-archive (#1021) | `sksizer/hc-archive` | `sksizer/host-cleaner-remove-scheduling`, from #1009 | — |  |
+| k-sizeof (#1022) | `sksizer/hc-sizeof` | `sksizer/host-cleaner-remove-scheduling`, from #1009 | — |  |
+| The plugin contract | `sksizer/hc-contract` | `sksizer/hc-trim`, from k-trim (#1017) | — | One branch and one PR for k-async (#1023), k-define (#1024), k-ref (#1025), k-cost (#1026), k-overlap (#1027), k-kit (#1028), k-testing (#1029): a commit per task, in plan order. |
+| k-plugins-cmd (#1030) | `sksizer/hc-plugins-cmd` | `sksizer/hc-contract`, from the contract | — |  |
+| k-docs (#1031) | `sksizer/hc-docs` | `sksizer/hc-plugins-cmd`, from k-plugins-cmd (#1030) | k-xdg (#1018), k-orca (#664), k-unknown (#1020), k-archive (#1021), k-sizeof (#1022) |  |
+| k-rename (#1032) | `sksizer/hc-rename` | `sksizer/hc-docs`, from k-docs (#1031) | — | Waits for a name (#998). Everything else in it can be written first, with the name as one constant. |
+| k-release1 (#1033) | `sksizer/hc-release1` | `sksizer/hc-rename`, from k-rename (#1032) | — | Publishes only with the owner's go-ahead. |
+| k-bi-vscode (#1034) | `sksizer/hc-bi-vscode` | `sksizer/hc-contract`, from the contract | — |  |
+| k-bi-cursor (#1035) | `sksizer/hc-bi-cursor` | `sksizer/hc-bi-vscode`, from k-bi-vscode (#1034) | — |  |
+| k-bi-jetbrains (#1036) | `sksizer/hc-bi-jetbrains` | `sksizer/hc-contract`, from the contract | — |  |
+| k-bi-docker (#1037) | `sksizer/hc-bi-docker` | `sksizer/hc-contract`, from the contract | — |  |
+| k-bi-ollama (#1038) | `sksizer/hc-bi-ollama` | `sksizer/hc-contract`, from the contract | — |  |
+| k-bi-toolchains (#1039) | `sksizer/hc-bi-toolchains` | `sksizer/hc-contract`, from the contract | — |  |
+| k-bi-agent-history (#1040) | `sksizer/hc-bi-agent-history` | `sksizer/hc-contract`, from the contract | — |  |
+| k-schema (#1041) | `sksizer/hc-schema` | `sksizer/hc-contract`, from the contract | — | Doesn't use the contract; stacked on it to keep tier 1 one line. |
+| k-draft (#1042) | `sksizer/hc-draft` | `sksizer/hc-schema`, from k-schema (#1041) | — |  |
+| k-engine (#1043) | `sksizer/hc-engine` | `sksizer/hc-draft`, from k-draft (#1042) | — | Doesn't use the drafting script; stacked on it to keep one line. |
+| k-load (#1044) | `sksizer/hc-load` | `sksizer/hc-engine`, from k-engine (#1043) | k-xdg (#1018) |  |
+| k-stores1 (#1045) | `sksizer/hc-stores1` | `sksizer/hc-load`, from k-load (#1044) | — |  |
+| k-release2 (#1046) | `sksizer/hc-release2` | `sksizer/hc-stores1`, from k-stores1 (#1045) | k-release1 (#1033) | Publishes only with the owner's go-ahead. |
+| k-vars (#1047) | `sksizer/hc-vars` | `sksizer/hc-stores1`, from k-stores1 (#1045) | — |  |
+| k-plugins-vars (#1048) | `sksizer/hc-plugins-vars` | `sksizer/hc-vars`, from k-vars (#1047) | k-plugins-cmd (#1030) |  |
+| k-stores2 (#1049) | `sksizer/hc-stores2` | `sksizer/hc-vars`, from k-vars (#1047) | — |  |
+| k-release3 (#1050) | `sksizer/hc-release3` | `sksizer/hc-stores2`, from k-stores2 (#1049) | k-release2 (#1046), k-plugins-vars (#1048) | Publishes only with the owner's go-ahead. |
+| k-public-api (#1051) | `sksizer/hc-public-api` | `sksizer/hc-contract`, from the contract | — |  |
+| k-loader (#1052) | `sksizer/hc-loader` | `sksizer/hc-public-api`, from k-public-api (#1051) | k-load (#1044) |  |
+| k-example (#1053) | `sksizer/hc-example` | `sksizer/hc-loader`, from k-loader (#1052) | — |  |
+| k-release4 (#1054) | `sksizer/hc-release4` | `sksizer/hc-example`, from k-example (#1053) | k-release3 (#1050) | Publishes only with the owner's go-ahead. |
 
 ## Summary
 
