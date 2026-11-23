@@ -836,8 +836,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     `lockfile_install` (the standalone `runVerb`), a repair command, a
     headless repair agent (agent-call's `unsetEnv`) and an attended one.
 
-  The project root's fetch, survey and PR listing keep the environment as
-  given: they run where the person ran pr-update. So the two must find the
+  The project root's fetch, survey, PR listing and branch mode's sync keep
+  the environment as given: they run where the person ran pr-update. So the two must find the
   same repository. When one of these variables is set, `survey` and `update`
   first find the checkout twice, with the variables and without them, and
   compare the common directory and the top level. They differ, or either

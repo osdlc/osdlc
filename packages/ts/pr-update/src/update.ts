@@ -912,9 +912,10 @@ interface Served {
  * repository `GIT_DIR` names and could move its checked-out branch. For a target other than the
  * project root it also runs with hooks off, since a worktree checks out the PR's own files and a
  * relative `core.hooksPath` (`.husky`) would run the hooks the PR's author wrote. The project
- * root's fetch, survey and listing keep the environment as given (`survey.ts`). The two agree on
- * the project root because the CLI refuses, before it fetches, a run whose variables find another
- * repository or another top level than the directory's own (`repositoryVarsRefusal`).
+ * root's fetch, survey, listing and branch mode's sync keep the environment as given
+ * (`survey.ts`, `syncLocalCheckout`). The two agree on the project root because the CLI refuses,
+ * before it fetches, a run whose variables find another repository or another top level than the
+ * directory's own (`repositoryVarsRefusal`).
  */
 function gitOf(path: string, at: Served | undefined, env: Pick<UpdateEnv, 'git'>): Git {
   return new Git(
