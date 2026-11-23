@@ -25,10 +25,10 @@ over and no longer counts: run `pr-update trust` again in each repository you
 had trusted. `pr-update trust` also takes a repository as `host/owner/name`,
 such as `pr-update trust github.com/acme/api`.
 
-`--repo` is checked more strictly. It must name a repository that can be
-trusted by name, so a part with a `:` or longer than trust-repo allows exits
-`2`, and so does a name ending in `.git`, with a message that gives the form
-without it. A host's port is left out of every path and trust key:
+`--repo` is checked more strictly. Its `host/owner/name` must be a key a
+repository can be trusted by, so an owner or name longer than trust-repo
+allows, or a host that is not a host name, exits `2`. So does a name ending
+in `.git`, with a message that gives the form without it. A host's port is left out of every path and trust key:
 `--repo ghe.example:8443/acme/api` is trusted by
 `pr-update trust ghe.example/acme/api`.
 
