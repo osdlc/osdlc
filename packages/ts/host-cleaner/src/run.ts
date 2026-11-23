@@ -19,7 +19,7 @@ import {
 import { FatalRun, type Candidate, type Ctx, type Objection, type Plugin } from './types.ts'
 
 /** The fixed plugin order: which plugin keeps a duplicate candidate (the first), and the order `prepare` and `deleted` run in. */
-export const PLUGIN_ORDER: readonly string[] = ['git', 'cargo', 'node', 'claude-code', 'orca']
+export const PLUGIN_ORDER: readonly string[] = ['git', 'cargo', 'node', 'orca']
 
 /** `plugins` in {@link PLUGIN_ORDER}; a plugin not named there goes after, in the order given. */
 export function orderPlugins(plugins: readonly Plugin[]): Plugin[] {
