@@ -302,15 +302,27 @@ describe('the contract', () => {
     expect(calls()).not.toContain('ollama rm old:7b')
   })
 
-  test('the command line builds it from its definition, with idleHours', () => {
+  test('the command line builds it from its definition, with idleHours', async () => {
     const def = BUILT_IN_PLUGINS.find((d) => d.name === 'ollama')!
+    const fake = fakeRunner({
+      ollama: {
+        list: { stdout: listText([{ name: 'a:1b', modified: '3 hours ago' }]) },
+        ps: { stdout: psText([]) },
+      },
+    })
     const plugin = def.create({
       settings: { idleHours: 2 },
       only: [],
       env: {},
-      kit: pluginKit('ollama'),
+      kit: pluginKit('ollama', fake),
     })
     expect(plugin.name).toBe('ollama')
+    // Under the default of 24 hours a model 3 hours old would be held.
+    const [c] = (await survey([plugin], ctx)).candidates
+    expect(c!.held).toBeUndefined()
+    expect(c!.why).toBe(
+      'not pulled or changed for at least 2.5 hours, by ollama list (threshold 2)',
+    )
   })
 
   test('it imports nothing of host-cleaner but the kit and the plugin types', () => {
