@@ -29,8 +29,9 @@
  * `logLines`). Each client writes them, so a change must be made in both.
  *
  * Subpath exports: `./client` is everything here except the git-reference
- * parsers and the checkout walks (and so without `hosted-git-info` on the
- * module graph); `./testing` is the temp-repo fixture builder.
+ * parsers, the remote matching built on them, and the checkout walks (and so
+ * without `hosted-git-info` on the module graph); `./testing` is the
+ * temp-repo fixture builder.
  */
 
 export * from './client.ts'
@@ -45,6 +46,15 @@ export {
   type RepoRef,
   type CloneProtocol,
 } from './git-url.ts'
+
+export {
+  readRemote,
+  sshAliasResolver,
+  isSshRemote,
+  sameRepo,
+  type SshAliasResolver,
+  type RepoCoordinate,
+} from './remote-match.ts'
 
 export {
   checkoutRoot,

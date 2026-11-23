@@ -11,6 +11,8 @@ import {
   parseGitUrl,
   parseRemoteRepo,
   parseRepoRef,
+  readRemote,
+  sameRepo,
 } from '@osdlc/typed-git'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
@@ -43,6 +45,19 @@ export function run(): void {
     owner: 'team',
     repo: 'app',
   })
+
+  // An SSH config alias reads as the host it stands for. The resolver here
+  // stands in for `ssh -G`, which the default asks.
+  const aliases = (alias: string) => (alias === 'github-work' ? 'ssh.github.com' : null)
+  const work = readRemote('git@github-work:acme/widgets.git', aliases)
+  assert.deepEqual(work, { host: 'github.com', owner: 'acme', repo: 'widgets' })
+
+  // Owner and repo match in any case; the host counts only when both name one.
+  assert.equal(sameRepo(work!, { owner: 'Acme', repo: 'Widgets' }), true)
+  assert.equal(
+    sameRepo(work!, { host: 'forge.example.com', owner: 'acme', repo: 'widgets' }),
+    false,
+  )
 
   const root = mkdtempSync(join(tmpdir(), 'typed-git-refs-'))
   const fx = makeGitFixture({ dir: join(root, 'acme', 'widgets') })

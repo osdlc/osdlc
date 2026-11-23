@@ -87,7 +87,8 @@ export function parseRemoteRepo(url: string): RemoteRepo | null {
  */
 const GITHUB_ALIASES = new Set(['ssh.github.com', 'www.github.com'])
 
-function canonicalHost(host: string): string {
+/** `host` lower-cased, with GitHub's other names read as `github.com`. Not on the package entry. */
+export function canonicalHost(host: string): string {
   const lower = host.toLowerCase()
   return GITHUB_ALIASES.has(lower) ? 'github.com' : lower
 }
