@@ -7,9 +7,11 @@ on your machine, from a bare clone pr-update keeps for it. It clones only with
 your consent: `--mirror-dir <dir>` on the run, `PR_UPDATE_MIRROR_DIR` in the
 environment, or `checkout: mirror` in the machine file. With none of them it
 asks once, and saves your answer in `~/.config/osdlc/pr-update/config.yaml`.
-With no terminal to ask on it exits 2 and names those three. So an unattended
-`update --apply` whose `--repo` has no checkout now fails where it used to skip
-the target; `pr-update mirror disable` makes it skip again.
+With no terminal to ask on it exits 2 and names `--mirror-dir`,
+`PR_UPDATE_MIRROR_DIR`, `pr-update mirror enable` and `pr-update mirror
+disable`. So an unattended `update --apply` whose GitHub `--repo` target has
+no checkout now fails where it used to skip the target; `pr-update mirror
+disable` makes it skip again.
 
 New commands: `pr-update mirror enable [--mirror-dir <dir>]` writes
 `checkout: mirror`, and `pr-update mirror disable` writes `checkout: local`.

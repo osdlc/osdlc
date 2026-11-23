@@ -10,7 +10,12 @@ import { join } from 'node:path'
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { REPOSITORIES_ENV, defaultRoots, resolveRoots } from '../src/repositories.ts'
+import {
+  REPOSITORIES_ENV,
+  defaultRoots,
+  resolveRoots,
+  withoutRepositoryVars,
+} from '../src/repositories.ts'
 import { makeSandbox, type Sandbox } from './helpers.ts'
 
 let sb: Sandbox
@@ -286,5 +291,33 @@ describe('defaultRoots, with a home directory reached through a symlink', () => 
     // A checkout beside the missing home: its holder holds the home.
     const beside = sb.checkout('../widgets', origin)
     expect(defaultRoots({ ...sb.opts, home, caller: beside.dir })).toEqual([])
+  })
+})
+
+describe('withoutRepositoryVars', () => {
+  test('unsets every variable that picks a repository, and keeps what the call sets', () => {
+    const seen: (Record<string, string | undefined> | undefined)[] = []
+    const runner: CommandRunner = {
+      binary: 'git',
+      run(_args, opts) {
+        seen.push(opts.env)
+        return { exitCode: 0, stdout: '', stderr: '' }
+      },
+    }
+    const wrapped = withoutRepositoryVars(runner)
+    expect(wrapped.binary).toBe('git')
+    wrapped.run(['status'], { cwd: '/', env: { GIT_CEILING_DIRECTORIES: '/srv', LC_ALL: 'C' } })
+    expect(seen).toEqual([
+      {
+        GIT_DIR: undefined,
+        GIT_WORK_TREE: undefined,
+        GIT_COMMON_DIR: undefined,
+        GIT_INDEX_FILE: undefined,
+        GIT_OBJECT_DIRECTORY: undefined,
+        GIT_ALTERNATE_OBJECT_DIRECTORIES: undefined,
+        GIT_CEILING_DIRECTORIES: '/srv',
+        LC_ALL: 'C',
+      },
+    ])
   })
 })

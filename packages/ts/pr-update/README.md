@@ -59,11 +59,15 @@ tool built on `@osdlc/cli-tool` prints for that failure, for example
 - **Run `pr-update trust` again.** The trust store has moved to
   `~/.local/state/osdlc/pr-update/trusted/` on Linux and macOS. Trust
   recorded by an earlier release, under `$XDG_STATE_HOME/pr-update/trusted/`,
-  was not copied and no longer counts. `update` exits `21` in a repository
-  you had trusted until you run `pr-update trust` there again, once per
-  machine. An older release keeps reading the old place.
-- **An unattended `update --apply` whose `--repo` has no checkout now exits
-  `2`**, where it used to skip that target. `pr-update mirror disable` keeps
+  was not copied and no longer counts. In a repository you had trusted
+  whose `pr-update.yaml` names a command to run (`lockfile_install`,
+  `resolvers`, `test_command`, `repair.command`, `repair.agent`, or `verify:
+  detect`), `update` exits `21` until you run `pr-update trust` there again,
+  once per machine. An older release keeps reading the
+  old place.
+- **An unattended `update --apply` whose GitHub `--repo` target has no
+  checkout now exits `2`**, where it used to skip that target. A target on
+  another code host is still skipped. `pr-update mirror disable` keeps
   the skip; `pr-update mirror enable` lets the run clone it (see
   [Where a target is served from](#where-a-target-is-served-from)).
 - **`--retry-failed` no longer discards a kept worktree someone has changed**,
@@ -176,10 +180,11 @@ For each target the run uses the first of these it finds:
 1. **The project root**, for its own repository.
 2. **A checkout already on this machine**, matched by its `origin`, under the
    roots listed in `repositories.yaml`, the file every osdlc tool shares
-   (`~/.config/osdlc/repositories.yaml` on Linux and macOS). With no roots
-   listed there, the run looks beside the project root: in the directory that
-   holds it, or the one above when that directory is named after the project
-   root's owner (an `<owner>/<name>` layout).
+   (`~/.config/osdlc/repositories.yaml` on Linux and macOS). With no such
+   file, or one with no `roots` key, the run looks beside the project root:
+   in the directory that holds it, or the one above when that directory is
+   named after the project root's owner (an `<owner>/<name>` layout).
+   `roots: []` searches nothing.
 3. **A managed bare clone** pr-update keeps for the target. Only a GitHub
    repository gets one, and only with your consent.
 
@@ -217,8 +222,9 @@ roots it searched (`<repo>: no checkout under <roots> (…); using the clone
 
 ### A checkout found on this machine
 
-The search goes three levels below each root and never steps to or above
-your home directory. A linked worktree counts as its main checkout. A shallow
+The search goes three levels below each root. A default root, found beside
+the project root, is never your home directory or a directory above it; a
+root you list in `repositories.yaml` is searched wherever it is. A linked worktree counts as its main checkout. A shallow
 checkout is skipped, since it cannot measure drift. With more than one
 checkout of a repository, the first by path is used and a note names the
 others. The `unpushed_local` guard still reads all of them, shallow ones
@@ -380,7 +386,10 @@ github.com/<owner>/<name>`.
 
 `enable` and `disable` keep the machine file's other keys and its comments,
 print the file they wrote, and exit `14`, leaving the file as it is, when it
-is not valid YAML or its top level is not a map. All four take `--json`.
+is not valid YAML or its top level is not a map. When another run writes the
+file at the same moment, `enable` and `disable` write again over it, while the
+first-run question's answer gives way to the one already there. All four take
+`--json`.
 
 ### Cleaning up: `mirror list` and `mirror prune`
 
@@ -401,7 +410,8 @@ and changes nothing.
   are missing stay listed. With the owner gone, only the folder goes;
 - leftover `.tmp-*` clone folders and `.pr-update-probe-*` folders more than
   an hour old;
-- each clone not used for `mirror_max_age_days` (default 30). At `0` it
+- each clone not used for `mirror_max_age_days` (default 30), going by its
+  last-used stamp, or by when its marker was written if it has no stamp. At `0` it
   removes no clone, unless you pass `--older-than <days>` or `--all-clones`
   (not `--all`, which goes with `--help`).
 
@@ -989,7 +999,7 @@ confirmation:
 
 | Port | What it answers |
 |---|---|
-| `locate(repo, target?)` | Where `owner/name` (lower-cased; `target` adds the host) is checked out on this machine: a path, read through the run's `--remote`, or `{ path, source, remote, others? }`, read through `remote`; `null` for none. `others` lists the repository's other checkouts, which the `unpushed_local` guard also reads. Asked once per target per run |
+| `locate(repo, target?)` | Where `owner/name` (lower-cased; `target` adds the host) is checked out on this machine: a path, read through the run's `--remote`, or `{ path, source, remote, others? }`, read through `remote`; `null` for none. `source` is `located` for a checkout of the person's, fetched without pruning and trusted by its path, or `clone` for a clone the host keeps for the run, fetched with `--prune` and trusted by `host/owner/name`. A bare path counts as `located`. `others` lists the repository's other checkouts, which the `unpushed_local` guard also reads. Asked once per target per run |
 | `targetHome(target)` (optional) | Where a checkout `locate` returned as `{ path, source, remote }` keeps its run worktrees, kept worktrees, failed-update record and lease. Without it, such a checkout is used as the project root is, with `.pr-update/` inside it |
 | `runVerb(verb, cwd)` | Run one shell verb, for resolvers and verify |
 | `resolveVerifyVerbs({ which, trust, repo, checkout })` | The trust-gated verb list `verify: check` or `verify: test` runs before a push, asked once per repository |
@@ -1008,6 +1018,10 @@ refs on the `--remote` (`refAttemptStore`) with a per-branch `lease` (`refBranch
 `targetHome` puts every other target in pr-update's directories, as under `--repo` above. It answers `verify: test` with
 `test_command`, and refuses `verify: check`. A standalone run has no host registry to look up
 `check` in, so set `verify: 'none'`, or embed this package as a library and supply real ports.
+`runUpdate` updates every target with a checkout, not only the project root. Before it runs a
+command in a target's worktree it asks `UpdateEnv.targetTrust(target)`, which gives null to go
+on or the reason to skip the target. Without `targetTrust` no target is checked: each may run
+its commands, and the host's own trust rules apply only through `Ports.resolveVerifyVerbs`.
 `commandRepair(command, timeoutSeconds)` and `agentRepair(agent, options)` are the command and
 agent repairs, for a host that does its own trust check. `planRepair` shows the call a preset would
 make without running it.
@@ -1056,14 +1070,15 @@ change it). With a single repository the failure is thrown.
 | Code | Meaning |
 |---|---|
 | `0` | Clean run (`survey` always; `update` when no PR ended `conflict` or `failed`) |
-| `1` | The run finished but a PR ended `conflict` or `failed`; `mirror prune` could not remove something; `config set` lost a race with another write; or an unexpected error |
-| `2` | The command cannot run as typed: a malformed flag, `--repo` or `--pr`, a `--branch` with no open PR, a `--pr owner/name#N` for a repository outside the run, one `owner/name` on two hosts, an unusable clone directory, or an `update --apply` that must ask whether to clone and has no terminal |
+| `1` | Something went wrong that no other code names, for example: the run finished but a PR ended `conflict` or `failed`; `mirror prune` could not remove something; `config set` lost a race with another write; `PR_UPDATE_MACHINE_CONFIG` is not absolute; or an unexpected error |
+| `2` | The command cannot run as typed, for example: a malformed flag, `--repo` or `--pr`, a `--branch` with no open PR, a `--pr owner/name#N` for a repository outside the run, one `owner/name` on two hosts, an unusable clone directory, or an `update --apply` that must ask whether to clone and has no terminal |
 | `14` | A config file is invalid or unreadable, or the machine file cannot take an answer about cloning (not valid YAML, or not a map), in `update --apply`, `mirror enable` or `mirror disable` |
 | `21` | `update` refused for want of trust in the project root. An untrusted `--repo` target is skipped instead |
 | `22` | A tool the run needs is not installed: `git`, and `gh` (GitHub) or `curl` (Forgejo) |
 | `23` | The code host refused the caller or answered unusably: not signed in, no `FORGEJO_TOKEN` or a refused one, no such repository, an HTTP error |
 | `24` | There is no repository to work on: no readable git remote, one that names no repository, or not a git checkout (pass `--remote` or `--repo`) |
 | `25` | The code host could not be reached, timed out or rate-limited the caller; try again later |
+| `128+N` | `update` was stopped by signal N (`130` for Ctrl-C, `143` for `SIGTERM`). It runs no end-of-run prune |
 
 `22` to `25` are not pr-update's own. They are the failure codes every tool
 built on `@osdlc/cli-tool` shares (`EXIT_FAILURE`), so a script that handles one

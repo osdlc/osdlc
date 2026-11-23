@@ -48,8 +48,8 @@ import { Git } from '@osdlc/typed-git'
 import {
   describeOutcome,
   errorLine,
-  noHooksEnv,
   tally,
+  targetGitOptions,
   updateAll,
   type UpdateResult,
   type UpdateTarget,
@@ -898,23 +898,21 @@ interface Served {
   lease: BranchLease | undefined
   /**
    * Set for a target other than the project root, whose checkout is someone else's: git runs
-   * there with this merged into its environment (hooks off, `noHooksEnv`), and only worktrees
-   * under pr-update's own directories are cleaned up (`records`).
+   * there with hooks off and without an inherited `GIT_DIR` (`targetGitOptions`), and only
+   * worktrees under pr-update's own directories are cleaned up (`records`).
    */
-  gitEnv?: Record<string, string> | undefined
+  elsewhere?: true | undefined
   records?: WorktreeRecords | undefined
 }
 
 /**
  * The client for a served checkout. For a target other than the project root, every call it and
- * its `at()` clients make runs with hooks off: a worktree checks out the PR's own files, and a
- * relative `core.hooksPath` (`.husky`) would run the hooks the PR's author wrote.
+ * its `at()` clients make runs with hooks off, since a worktree checks out the PR's own files and
+ * a relative `core.hooksPath` (`.husky`) would run the hooks the PR's author wrote, and without
+ * an inherited `GIT_DIR` or `GIT_WORK_TREE`, which would point it at another repository.
  */
 function gitOf(path: string, at: Served | undefined, env: Pick<UpdateEnv, 'git'>): Git {
-  return new Git(path, {
-    runner: env.git,
-    ...(at?.gitEnv === undefined ? {} : { env: at.gitEnv }),
-  })
+  return new Git(path, at?.elsewhere === true ? targetGitOptions(env.git) : { runner: env.git })
 }
 
 /** `path` through its symlinks, or as given when it cannot be resolved. */
@@ -953,7 +951,6 @@ function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<
     }
     // Resolved once: the trust gate, the worktrees and the kept record all see this path.
     const path = realOr(t.path)
-    const gitEnv = noHooksEnv()
     const [owner = '', name = ''] = t.repo.split('/')
     const target: TargetCheckout = {
       host: hostKey(t.host ?? 'github.com'),
@@ -973,7 +970,7 @@ function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<
         worktrees: join(path, '.pr-update'),
         kept: { ...checkoutKept(path), records },
         target,
-        gitEnv,
+        elsewhere: true,
         records,
       })
       continue
@@ -992,7 +989,7 @@ function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<
       },
       attempts: home.attempts,
       lease: home.lease,
-      gitEnv,
+      elsewhere: true,
       records,
     })
   }
@@ -1002,7 +999,7 @@ function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<
 /** The real path of the git common directory of the checkout at `path`, or undefined. */
 function commonDirOf(path: string, env: Pick<UpdateEnv, 'git'>): string | undefined {
   try {
-    const dir = new Git(path, { runner: env.git, env: noHooksEnv() }).gitCommonDir()
+    const dir = new Git(path, targetGitOptions(env.git)).gitCommonDir()
     return dir === null ? undefined : realpathSync(dir)
   } catch {
     return undefined

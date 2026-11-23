@@ -228,6 +228,49 @@ describe('updating a located checkout', () => {
   })
 })
 
+describe('a run started with GIT_DIR set', () => {
+  test('acts on the located target, not on the repository GIT_DIR names', async () => {
+    // A git hook in the project root exports GIT_DIR; the run's git calls in the target clear it.
+    const url = 'https://github.com/Acme/API.git'
+    const bare = join(scratch, 'remote', 'api.git')
+    git(scratch, 'init', '-q', '--bare', bare)
+    const main = git(located, 'rev-parse', 'refs/remotes/origin/main')
+    git(located, 'push', '-q', bare, `${main}:refs/heads/main`, `${topic}:refs/heads/topic`)
+    const real = spawnRunner('git')
+    const viaBare: CommandRunner = {
+      run: (argv, opts): CommandResult =>
+        real.run(
+          argv[0] === 'fetch' || argv[0] === 'push'
+            ? ['-c', `url.file://${bare}.insteadOf=${url}`, ...argv]
+            : argv,
+          opts,
+        ),
+    }
+
+    vi.stubEnv('GIT_DIR', join(project, '.git'))
+    let r: { code: number; out: string; err: string }
+    try {
+      r = await runWith({ git: viaBare }, 'update', '--repo', 'acme/api', '--apply', '--json')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+    expect(r.code).toBe(EXIT.ok)
+    expect(JSON.parse(r.out).results).toMatchObject([
+      { repo: 'acme/api', number: 7, status: 'updated', pushed: true },
+    ])
+    // The fetch and the worktree were the target's: the rebased branch reached its origin, and
+    // its own origin/topic records the push.
+    const pushed = git(bare, 'rev-parse', 'refs/heads/topic')
+    expect(git(bare, 'merge-base', main, pushed)).toBe(main)
+    expect(git(located, 'rev-parse', 'refs/remotes/origin/topic')).toBe(pushed)
+    // Nothing of the run landed in the project root.
+    expect(git(project, 'for-each-ref', '--format=%(refname)', 'refs/remotes/origin')).toBe('')
+    expect(git(project, 'branch', '--list', 'pr-update/*')).toBe('')
+    expect(git(project, 'worktree', 'list', '--porcelain').split('\n\n')).toHaveLength(1)
+    expect(existsSync(join(project, '.git', 'worktrees'))).toBe(false)
+  })
+})
+
 describe('fetching a located checkout', () => {
   test('writes only its branches into origin/*: no tags, no FETCH_HEAD, no pruning', async () => {
     // A bare origin a commit ahead of what the checkout last fetched, with a tag on its tip.

@@ -119,6 +119,8 @@ roots and in each directory the walk finds, runs without an inherited
 `GIT_DIR`, `GIT_WORK_TREE` or other variable that picks a repository. So the
 default roots and the locator give the same answer inside a git hook as
 outside one.
+`withoutRepositoryVars(runner)` is the wrapper that does it, exported so a
+tool's own git calls in a checkout the locator found can run the same way.
 
 Not supported yet: a bare store with its worktrees beside it, where
 `proj/.git` is a file pointing at `proj/.bare`. The walk stops at `proj`,

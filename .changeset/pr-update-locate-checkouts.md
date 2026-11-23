@@ -46,7 +46,17 @@ For library hosts:
   report is parsed, so an older report still parses.
 - A `--repo` that is not `owner/name` or `host/owner/name`, such as a URL,
   is now refused.
-- `standalonePorts` takes a fifth argument, `{ git, env }`, for its `locate`.
+- `standalonePorts` takes a fifth argument, `StandalonePortsOptions`:
+  `git` and `env` for its `locate` and `targetHome`, `locator` for its
+  `CheckoutLocator`, and `clones`, the run's managed clones.
+- `RepoTarget` has new required fields: `host`, `source` (`root`, `located`
+  or `clone`), `remote` and `found` (the `FoundCheckout` `locate` returned,
+  or null). Code that builds one must set them.
+- `runUpdate` now updates every `--repo` target with a checkout, not only
+  the project root, in a worktree from that checkout. `UpdateEnv.targetTrust` is its
+  trust gate: asked once per such target, it gives null to go on or the
+  reason to skip the target. Without it no target is checked, and a host's
+  trust rules apply only through `Ports.resolveVerifyVerbs`.
 - `selectedCodeHostFor` takes `projectRoot`, and a `SurveyEnv.codeHost`
   factory is called with a `CodeHostTarget` (now exported): for a target other
   than the project root it carries `host` and `onRootHost`.

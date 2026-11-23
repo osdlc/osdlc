@@ -979,6 +979,13 @@ describe('pr-update mirror prune on the command line (review round 1)', () => {
     expect(help.out).toMatch(/Not --all, which\s+goes with --help\./)
   })
 
+  test('the full help lists exit 1 once, and the description says when prune exits 1', async () => {
+    const help = await run('mirror', 'prune', '--help', '--all')
+    expect(help.code).toBe(EXIT.ok)
+    expect(help.out.match(/^\s+1\s/gm)).toHaveLength(1)
+    expect(help.out).toMatch(/It exits 1 when\s+something\s+could\s+not\s+be\s+removed\./)
+  })
+
   test('the JSON names allClones', async () => {
     const plain = JSON.parse((await run('mirror', 'prune', '--json')).out)
     expect(plain).toMatchObject({ allClones: false })

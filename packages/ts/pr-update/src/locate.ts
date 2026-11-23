@@ -25,7 +25,7 @@ import { CheckoutLocator, type LocateOptions } from '@osdlc/ecosystem/repositori
 import { Git } from '@osdlc/typed-git'
 
 import type { FoundCheckout, LocateTarget } from './ports.ts'
-import { noHooksEnv } from './update/execute.ts'
+import { targetGitOptions } from './update/execute.ts'
 
 /** Options for {@link standaloneLocate}. */
 export interface StandaloneLocateOptions {
@@ -175,8 +175,8 @@ function notFound(locator: CheckoutLocator): string {
 
 /** Whether the checkout at `path` is shallow. Unknown counts as not shallow: the measure then says what it can. */
 function isShallow(path: string, runner: CommandRunner | undefined): boolean {
-  // A checkout other than the project root: no hooks, as for every git call made in one.
-  const git = new Git(path, { ...(runner === undefined ? {} : { runner }), env: noHooksEnv() })
+  // A checkout other than the project root, as for every git call made in one.
+  const git = new Git(path, targetGitOptions(runner))
   const answer = git.try.revParse('--is-shallow-repository')
   return answer.ok && answer.value === 'true'
 }

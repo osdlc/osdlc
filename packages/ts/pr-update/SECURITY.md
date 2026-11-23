@@ -42,18 +42,31 @@ are in scope.
 - **GitHub credentials belong to `gh`.** The package reads no GitHub token.
 - **The remote picks the host.** `origin` decides which adapter and which
   repository the updates go to. A `--repo` target names its own host, or
-  takes the host of the project root's `origin`.
+  takes the host of the project root's `origin` when that is GitHub, else
+  github.com.
 - **Other repositories run with hooks off.** For a `--repo` target, every git
   command, in a checkout found on the machine, a managed clone or their run
   worktrees, runs with `core.hooksPath=/dev/null`, so a hook the PR commits
   does not run. Each target passes the trust gate on its own. The project
   root's git runs as before.
+- **Other repositories ignore `GIT_DIR`.** Those git commands, and the git
+  that `gh repo clone` runs, also run with `GIT_DIR`, `GIT_WORK_TREE`,
+  `GIT_INDEX_FILE` and git's other repository variables unset, so a run
+  started from a git hook, which exports `GIT_DIR`, acts on the target and
+  not on the hook's repository. The project root keeps them, since it runs
+  where you ran it. With `attempts.store: git-ref`, a target's record and
+  lease still inherit them, and so do the commands a worktree runs.
+- **PR content picks submodule URLs.** With `submodules: auto`, the update
+  clones the submodules a PR's `.gitmodules` names, over the network with the
+  run's credentials. Local paths and `ext::` URLs are refused; `https` and
+  `ssh` ones are not. See [Git submodules](README.md#git-submodules).
 - **A managed clone holds a credential helper.** Its own git config gets
   `!gh auth git-credential` for its host, so fetches and pushes sign in
   through `gh`. Your global git config is not changed.
 - **Pruning deletes folders.** `mirror prune`, and the pruning at the end of
   an `update --apply`, delete folders only inside pr-update's cache and
-  state directories, and in the git directory that owns a dead run's
-  worktree only that worktree's record and scratch branch. They never follow a symbolic link, and on Linux and macOS
+  state directories and the clone directory, which must carry pr-update's
+  marker, and in the git directory that owns a dead run's worktree only that
+  worktree's record and scratch branch. They never follow a symbolic link, and on Linux and macOS
   they remove nothing from a folder another user owns or others can write
   to. Windows gets no such check.

@@ -57,7 +57,7 @@ import {
 } from './machine.ts'
 import type { LocateTarget } from './ports.ts'
 import { SurveyUsageError, hostKey, type ManagedClones, type RepoTarget } from './survey.ts'
-import { noHooksEnv } from './update/execute.ts'
+import { targetGitOptions } from './update/execute.ts'
 
 /** The variable that names the clone directory for a run. Setting it is consent to clone. */
 export const MIRROR_DIR_ENV = 'PR_UPDATE_MIRROR_DIR'
@@ -271,10 +271,11 @@ export function checkMirrorDir(
     if (up === at) break
     at = up
   }
-  const answer = new Git(at, {
-    ...(git === undefined ? {} : { runner: git }),
-    env: noHooksEnv(),
-  }).raw(['rev-parse', '--is-inside-work-tree', '--is-inside-git-dir'])
+  const answer = new Git(at, targetGitOptions(git)).raw([
+    'rev-parse',
+    '--is-inside-work-tree',
+    '--is-inside-git-dir',
+  ])
   if (answer.exitCode === 0 && /\btrue\b/.test(answer.stdout)) {
     throw new MirrorDirError(
       `the clone directory ${dir} is inside a git repository; choose one outside every checkout`,
@@ -407,17 +408,16 @@ export function makeClone(
   }
   try {
     step('gh repo clone', () => {
-      const res = deps.gh.run(
+      // The git gh runs gets what every git call in a target other than the root gets: hooks
+      // off, and no inherited `GIT_DIR`, which would make `git clone` write into that repository.
+      const gh = targetGitOptions(deps.gh)
+      const res = gh.runner.run(
         ['repo', 'clone', `${req.owner}/${req.name}`, tmp, '--no-upstream', '--', '--bare'],
-        // No hooks for the git gh runs, as for every git call in a target other than the root.
-        { cwd: parent, env: { ...noHooksEnv(), GH_HOST: req.ghHost } },
+        { cwd: parent, env: { ...gh.env, GH_HOST: req.ghHost } },
       )
       if (res.exitCode !== 0) throw new Error(stderrOrError(res) || `exit ${res.exitCode}`)
     })
-    const git = new Git(tmp, {
-      ...(deps.git === undefined ? {} : { runner: deps.git }),
-      env: noHooksEnv(),
-    })
+    const git = new Git(tmp, targetGitOptions(deps.git))
     const helper = `credential.https://${req.ghHost}.helper`
     step('set the credential helper', () => {
       git.rawChecked(['config', '--local', helper, ''])

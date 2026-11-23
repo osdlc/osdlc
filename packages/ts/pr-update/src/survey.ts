@@ -66,7 +66,7 @@ import { FailureError, type Failure } from '@osdlc/result'
 import { parseTrustRepo } from '@osdlc/trust-repo'
 import { githubCodeHostFor, type CodeHostTarget } from './code-host.ts'
 import { chooseStrategy, type Strategy } from './strategy.ts'
-import { noHooksEnv } from './update/execute.ts'
+import { targetGitOptions } from './update/execute.ts'
 import type { PrUpdateConfig } from './config.ts'
 import type { CheckoutSource, FoundCheckout, Ports } from './ports.ts'
 
@@ -1077,11 +1077,13 @@ export function surveyWithTargets(
       target.path === null || target.source === null
         ? null
         : { path: target.path, source: target.source }
-    // A checkout other than the project root is someone else's: git runs there with hooks off,
-    // as `update` runs it (`noHooksEnv`).
+    // A checkout other than the project root is someone else's: git runs there with hooks off
+    // and without an inherited `GIT_DIR`, as `update` runs it (`targetGitOptions`).
     const elsewhere = target.source === 'located' || target.source === 'clone'
-    const gitEnv = elsewhere ? { env: noHooksEnv() } : {}
-    const git = new Git(target.path ?? env.projectRoot, { runner: env.git, ...gitEnv })
+    const git = new Git(
+      target.path ?? env.projectRoot,
+      elsewhere ? targetGitOptions(env.git) : { runner: env.git },
+    )
 
     const isLocal = target.source === 'root'
     // Any other target is listed on its own host, named even when it is github.com. It
@@ -1178,7 +1180,7 @@ export function surveyWithTargets(
         listedWorktrees === null ? [] : listedWorktrees.ok ? listedWorktrees.value : null
       // A located checkout's others were matched by `origin`, as it was.
       const others = (target.found?.others ?? []).map((path) => {
-        const other = new Git(path, { runner: env.git, env: noHooksEnv() })
+        const other = new Git(path, targetGitOptions(env.git))
         const listed = other.try.worktrees()
         return { git: other, worktrees: listed.ok ? listed.value : null, remote: 'origin' }
       })

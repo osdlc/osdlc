@@ -40,7 +40,14 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 
-import { firstLine, forwardedSignal, isCommandFailed, stderrOrError } from '@osdlc/command-seam'
+import {
+  firstLine,
+  forwardedSignal,
+  isCommandFailed,
+  stderrOrError,
+  type CommandRunner,
+} from '@osdlc/command-seam'
+import { withoutRepositoryVars } from '@osdlc/ecosystem/repositories'
 import {
   CommandFailed,
   Git,
@@ -955,6 +962,21 @@ export function noHooksEnv(
   }
 }
 
+/**
+ * The git options for a checkout other than the project root, which is someone else's: hooks off
+ * (`noHooksEnv`), and `runner` with `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and the other
+ * variables that pick a repository unset in each child (ecosystem's `withoutRepositoryVars`). A
+ * run started from a git hook, which exports `GIT_DIR`, then still acts on the target. The
+ * project root keeps them: it runs where the person ran it. Pass the `gh` runner to make the git
+ * that `gh repo clone` runs ignore them too.
+ */
+export function targetGitOptions(runner?: CommandRunner): {
+  runner: CommandRunner
+  env: Record<string, string>
+} {
+  return { runner: withoutRepositoryVars(runner), env: noHooksEnv() }
+}
+
 const CONFLICT_MARKER = /^(<{7}|>{7})( |$)/m
 
 function hasConflictMarkers(file: string): boolean {
@@ -1120,10 +1142,12 @@ export async function updateAll(
      */
     keepFailed?: { place: KeptPlace }
     /**
-     * Set when `git`'s repository is a managed clone whose lock the run holds: `added` is
-     * called once the run worktree is recorded in it, so the lock is held from the fetch through
-     * `worktree add`, and `removing` runs the removal of the worktree and its scratch branch
-     * under the lock again, or leaves both when the lock cannot be had
+     * Set when `git`'s repository is a managed clone whose lock the run holds, taken before the
+     * survey (`ManagedClones.provide`). `added` lets the lock go once the run worktree is
+     * recorded in the clone, so the lock covers the survey's fetch, the removal of a killed
+     * run's worktree and `worktree add`. `removing` takes it back to remove the worktree and its
+     * scratch branch, waiting only in `update --apply` and only when the run holds no other
+     * clone's lock, and leaves both, with a note, when it cannot be had
      * (`ManagedClones.removing`).
      */
     lock?: { added: () => void; removing: (remove: () => void) => void } | undefined

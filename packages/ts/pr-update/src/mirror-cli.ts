@@ -238,7 +238,8 @@ export function mirrorCommand(
           'each managed clone not used for mirror_max_age_days (default 30; at 0 none, unless ' +
           '--older-than or --all-clones). It never removes a clone another run holds, one with a kept ' +
           'worktree (unless --discard-kept), or a folder pr-update did not make. It never waits ' +
-          'for a lock. update --apply prunes the same way when it ends, if it used the cache.',
+          'for a lock. It exits 1 when something could not be removed. update --apply prunes ' +
+          'the same way when it ends, if it used the cache.',
         flags: {
           olderThan: {
             kind: 'string',
@@ -257,7 +258,8 @@ export function mirrorCommand(
           },
           mirrorDir: { kind: 'string', valueName: 'dir', help: MIRROR_DIR_HELP },
         },
-        exits: { 1: 'something could not be removed' },
+        // Exit 1 is in the description: cli-tool lists its universal codes, 1 among them, before a
+        // command's own `exits`, so naming 1 here would print it twice.
         examples: [
           'mirror prune',
           'mirror prune --dry-run',

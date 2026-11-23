@@ -63,7 +63,7 @@ import {
   cloneLockPath,
   loadMirrorSetting,
 } from './mirror.ts'
-import { noHooksEnv, scratchBranch } from './update/execute.ts'
+import { scratchBranch, targetGitOptions } from './update/execute.ts'
 import { discardKept, listKept, type KeptPlace } from './update/kept.ts'
 import { ownedUnder, removeWorktree } from './update/registrations.ts'
 
@@ -289,9 +289,9 @@ function claimsToBeClone(path: string): boolean {
 /** The clone directory of the clone at `clone`: `<root>/<host>/<owner>/<name>.git`. */
 const rootOf = (clone: string): string => dirname(dirname(dirname(clone)))
 
-/** The git client pruning uses in an owner: hooks off, as for every target other than the root. */
+/** The git client pruning uses in an owner, as for every target other than the root (`targetGitOptions`). */
 function gitAt(path: string, runner: CommandRunner | undefined): Git {
-  return new Git(path, { ...(runner === undefined ? {} : { runner }), env: noHooksEnv() })
+  return new Git(path, targetGitOptions(runner))
 }
 
 /** One run worktree under `worktrees/`. */
