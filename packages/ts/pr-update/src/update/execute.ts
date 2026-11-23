@@ -213,6 +213,11 @@ export interface UpdateResult extends UpdateTarget {
   keptWorktree?: string
   /** Set when `keepFailed` could not keep it: why. The outcome is unchanged. */
   keepError?: string
+  /**
+   * Set when the target's own attempt record could not be read or written for this PR: the
+   * error. The outcome is unchanged, and the target's later PRs in the run are skipped.
+   */
+  recordError?: string
 }
 
 /**

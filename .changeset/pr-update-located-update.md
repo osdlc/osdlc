@@ -45,6 +45,15 @@ output are not carried over. A kept tree whose git directory is gone, or that
 git cannot read, is never removed as stale: its PR is skipped until
 `--discard-kept`. A folder left in a kept tree's place with no record is not
 moved into, and the run says how to remove it. A kept record is used only
-when its path is the kept path its file name gives. In branch mode, a target served from a checkout other than the project
+when its path is the kept path its file name gives. If a target's own record
+cannot be saved after a PR ran, the error is shown on that PR, as
+`recordError` in JSON and `record not saved:` in the text.
+
+Fixed: `--retry-failed` no longer discards a kept worktree someone has
+changed or committed to, or one git cannot read, in the project root too.
+That PR is skipped with `kept worktree <path> has local changes; push them or
+pass --discard-kept`, and only `--discard-kept` removes the tree.
+
+In branch mode, a target served from a checkout other than the project
 root is skipped, and the `unpushed_local` guard reads every checkout of a
 repository, not only the one the run uses.

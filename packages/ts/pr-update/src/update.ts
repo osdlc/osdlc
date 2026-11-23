@@ -309,7 +309,7 @@ export const input = z.object({
     .boolean()
     .optional()
     .describe(
-      "Move the worktree of a PR that ended `conflict` or `failed` to `.pr-update/failed/<owner>-<name>-<number>/` (a `--repo` target's, to where `Ports.targetHome` says: the standalone run's is `kept/<host>/<owner>/<name>/<number>/` in pr-update's state directory), on a branch named for the PR, for a person to finish and push; absent defers to `pr_update.keep_failed`. Needs --apply. A later run skips that PR until its head or base moves, unless --retry-failed or --discard-kept.",
+      "Move the worktree of a PR that ended `conflict` or `failed` to `.pr-update/failed/<owner>-<name>-<number>/` (a `--repo` target's, to where `Ports.targetHome` says: the standalone run's is `kept/<host>/<owner>/<name>/<number>/` in pr-update's state directory), on a branch named for the PR, for a person to finish and push; absent defers to `pr_update.keep_failed`. Needs --apply. A later run skips that PR until its head or base moves, unless --retry-failed or --discard-kept; a kept tree someone has changed stays until --discard-kept.",
     ),
   discardKept: z
     .boolean()
@@ -372,6 +372,12 @@ export const result = z.object({
     .string()
     .optional()
     .describe('Present when `keepFailed` could not keep the worktree (one holding submodules).'),
+  recordError: z
+    .string()
+    .optional()
+    .describe(
+      "Present when a `--repo` target's own attempt record could not be read or written for this PR (its remote refused `refs/pr-update/*`, say): the error. The outcome stands; the target's later PRs in this run are skipped with it.",
+    ),
   restackedOnto: z
     .number()
     .optional()
@@ -397,6 +403,12 @@ export const output = z.object({
     .array(z.string())
     .describe(
       '`--pr` selectors no surveyed PR matched, as `#N` (a number no repository has) or `owner/name#N`: a typo, or a PR that closed.',
+    ),
+  recordErrors: z
+    .array(z.object({ repo: z.string().describe('`owner/name`.'), error: z.string() }))
+    .optional()
+    .describe(
+      "Errors from a `--repo` target's own attempt record that no PR's `recordError` or `skipped` reason already shows.",
     ),
   discarded: z
     .array(z.string())
@@ -440,6 +452,7 @@ export function toResult(r: UpdateResult, localCheckout?: LocalCheckout): z.infe
     ...(localCheckout === undefined ? {} : { localCheckout }),
     ...(r.keptWorktree === undefined ? {} : { keptWorktree: r.keptWorktree }),
     ...(r.keepError === undefined ? {} : { keepError: r.keepError }),
+    ...(r.recordError === undefined ? {} : { recordError: r.recordError }),
     ...(r.onto === undefined ? {} : { restackedOnto: r.onto.parent }),
   }
 }
@@ -583,10 +596,14 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   })
   const { skipped, notFound } = selection
   // A target whose own record could not be read is left out, with the store's error.
+  // Each `broken` entry is shown once: as a skip reason, or on the PR it happened to.
+  const shown = new Set<string>()
   const targets = selection.targets.filter((t) => {
     const why = routed?.broken.get(t.repo)
-    if (why !== undefined)
+    if (why !== undefined) {
       skipped.push({ repo: t.repo, number: t.number, head: t.head, reason: why })
+      shown.add(t.repo)
+    }
     return why === undefined
   })
 
@@ -681,6 +698,7 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
       const why = routed?.broken.get(repo)
       if (why === undefined) continue
       groups.delete(repo)
+      if (group.targets.length > 0) shown.add(repo)
       for (const t of group.targets) {
         skipped.push({ repo: t.repo, number: t.number, head: t.head, reason: why })
       }
@@ -727,6 +745,12 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
             if (writes && attempts !== undefined && forwardedSignal() === undefined) {
               recordAttempt(attempts, r)
             }
+            // An error from this target's own record, during this PR, is reported on it.
+            const why = routed?.broken.get(r.repo)
+            if (why !== undefined && !shown.has(r.repo)) {
+              r.recordError = why
+              shown.add(r.repo)
+            }
           },
           prepare: (target, done) => {
             // A record that failed part-way through the run leaves the rest of its PRs out.
@@ -760,12 +784,17 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     }
   }
 
+  // Anything a target's own record raised that no PR or skip shows yet.
+  const recordErrors = [...(routed?.broken ?? [])]
+    .filter(([repo]) => !shown.has(repo))
+    .map(([repo, error]) => ({ repo, error }))
   const t = tally(results)
   return {
     applied: writes,
     results: results.map((r) => toResult(r, local.get(prKey(r.repo, r.number)))),
     skipped,
     notFound,
+    ...(recordErrors.length > 0 ? { recordErrors } : {}),
     ...(discarded.length > 0 ? { discarded } : {}),
     repos: report.repos,
     counts: {
@@ -1043,7 +1072,8 @@ function settleKept(
         return skip(`kept elsewhere: ${record.path} is a worktree of ${owner}`)
       }
       const stale = args.retryFailed === true || moved
-      if (stale && args.retryFailed !== true && keptIsTouched(git, record)) {
+      // `--retry-failed` too: only `--discard-kept` removes a tree with a person's changes in it.
+      if (stale && keptIsTouched(git, record)) {
         return skip(
           `kept worktree ${record.path} has local changes; push them or pass --discard-kept`,
         )
@@ -1132,12 +1162,14 @@ export function renderUpdateText(out: UpdateOutput): string {
     lines.push(`${mark} ${prKey(r.repo, r.number)}  ${r.strategy}  ${r.head}  ${r.detail}${onto}`)
     if (r.keptWorktree !== undefined) lines.push(`    kept: ${r.keptWorktree}`)
     if (r.keepError !== undefined) lines.push(`    could not keep the worktree: ${r.keepError}`)
+    if (r.recordError !== undefined) lines.push(`    record not saved: ${r.recordError}`)
     if (r.localCheckout !== undefined) {
       lines.push(
         `    checkout: ${r.localCheckout.updated ? 'moved' : 'left'} — ${r.localCheckout.detail}`,
       )
     }
   }
+  for (const e of out.recordErrors ?? []) lines.push(`! ${e.repo}  ${e.error}`)
   for (const path of out.discarded ?? []) lines.push(`- discarded kept worktree ${path}`)
   for (const s of out.skipped) {
     lines.push(`- ${prKey(s.repo, s.number)}  ${s.head}  ${s.reason}`)

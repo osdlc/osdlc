@@ -502,15 +502,26 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   fails, it deletes only that tree's `worktrees/<id>/` record, after checking
   that its `gitdir` names a folder under pr-update's own directories.
 - **Kept trees.** A record is used only when its `path` is the kept path its
-  file name gives. A tree whose owning git directory is gone, or that git
-  cannot read, is never removed for being stale: the PR is skipped until
-  `--discard-kept`. Different filesystems are found by renaming an empty probe
-  folder into the kept directory and reading `EXDEV`; git's text, read in the
-  C locale, is only a fallback.
+  file name gives, compared by the real path of its folder. A tree whose
+  owning git directory is gone, or that git cannot read, or that someone has
+  changed, is never removed for being stale, `--retry-failed` included: the
+  PR is skipped until `--discard-kept`. This holds for the project root's
+  kept trees too, where `--retry-failed` used to discard a changed one.
+  Different filesystems are found by renaming an empty probe folder,
+  `.pr-update-probe-*`, into the kept directory and reading `EXDEV`; git's
+  text, read in the C locale, is only a fallback.
+- **Names starting with `.`.** A hard kill can leave the probe in
+  `worktrees/<host>/<owner>/<name>/` or `kept/<host>/<owner>/<name>/`. Every
+  walk pr-update makes of its own folders skips names starting with `.`:
+  listing kept trees does today, and the prune and list walks (`mirror
+  prune`, `mirror list`) must too.
 - **Per-target errors.** An error from a target's own attempt store or lease
   (a remote that refuses `refs/pr-update/*`) skips that target's PRs with the
-  error, and the run goes on. An error from the project root's store ends the
-  run, as before. The stores of targets the trust gate refused are not pruned.
+  error, and the run goes on. An error saving the record of a PR that already
+  ran is reported on that PR (`recordError`), and any error no PR or skip
+  shows is listed in the report's `recordErrors`. An error from the project
+  root's store ends the run, as before. The stores of targets the trust gate
+  refused are not pruned.
 
 ## What would reopen it
 

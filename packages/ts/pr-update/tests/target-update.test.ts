@@ -14,6 +14,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -31,7 +32,13 @@ import { standalonePorts } from '../src/defaults.ts'
 import { prUpdatePaths, type PrUpdatePaths } from '../src/machine.ts'
 import type { AttemptStore, FoundCheckout, Ports, TargetCheckout } from '../src/ports.ts'
 import { targetTrustGate } from '../src/trust.ts'
-import { runUpdate, type UpdateArgs, type UpdateEnv } from '../src/update.ts'
+import {
+  output,
+  renderUpdateText,
+  runUpdate,
+  type UpdateArgs,
+  type UpdateEnv,
+} from '../src/update.ts'
 import {
   checkoutKept,
   findKept,
@@ -92,6 +99,8 @@ let verbsAskedFor: string[]
 let web: ReturnType<typeof makeBareAndWorker> | undefined
 /** Whether the project root is acme/root, with a PR of its own. */
 let rootIsTarget: boolean
+/** Whether acme/api also has PR 2, `topic2` into `main`. */
+let apiPr2: boolean
 
 /** PR 1 of `repo`, `topic` into `main`, as `gh` lists it, after a fetch of its checkout. */
 function prOf(fx: ReturnType<typeof makeBareAndWorker>, repo: string, fetch = true) {
@@ -110,7 +119,20 @@ function prOf(fx: ReturnType<typeof makeBareAndWorker>, repo: string, fetch = tr
 const gh: CommandRunner = {
   run: (argv): CommandResult => {
     const prs = argv.includes('acme/api')
-      ? [prOf(api, 'acme/api')]
+      ? [
+          prOf(api, 'acme/api'),
+          ...(apiPr2
+            ? [
+                {
+                  ...prOf(api, 'acme/api', false),
+                  number: 2,
+                  url: 'https://github.com/acme/api/pull/2',
+                  headRefName: 'topic2',
+                  headRefOid: api.worker.git.resolveRef('origin/topic2'),
+                },
+              ]
+            : []),
+        ]
       : argv.includes('acme/web')
         ? web === undefined
           ? []
@@ -215,6 +237,7 @@ beforeEach(() => {
   scratch = realpathSync(mkdtempSync(join(tmpdir(), 'pr-update-target-')))
   web = undefined
   rootIsTarget = false
+  apiPr2 = false
   api = behindRepo('api')
   root = makeBareAndWorker({ initialBranch: 'main', parent: join(scratch, 'root') })
   root.worker.commit('init', { 'r.txt': 'r\n' })
@@ -962,5 +985,148 @@ describe('the attempt record of each target', () => {
     expect(sh(root.bare.dir, 'rev-parse', 'topic')).not.toBe(
       sh(root.worker.dir, 'rev-parse', 'topic'),
     )
+  })
+})
+
+describe("errors from a target's own record and lease, during the run", () => {
+  /** A store whose `call` throws `message`; the rest do nothing. */
+  function throwing(call: 'recordFailure' | 'clear', message: string): AttemptStore {
+    const fail = (): never => {
+      throw new Error(message)
+    }
+    return {
+      get: () => null,
+      recordFailure: call === 'recordFailure' ? fail : () => {},
+      clear: call === 'clear' ? fail : () => {},
+      prune: () => {},
+    }
+  }
+  const homeWith =
+    (attempts: Record<string, AttemptStore>, lease?: Ports['lease']): Ports['targetHome'] =>
+    (t) => ({
+      worktrees: join(paths.worktrees, t.name),
+      kept: join(paths.kept, t.name),
+      ...(attempts[t.name] === undefined ? {} : { attempts: attempts[t.name] }),
+      ...(lease === undefined || t.name !== 'api' ? {} : { lease }),
+    })
+  const both = { repo: ['acme/api', 'acme/web'] }
+
+  test("recordFailure throwing on a target's last PR is reported on it, in JSON and text", async () => {
+    verifyOk = false
+    const out = await update({
+      ports: { targetHome: homeWith({ api: throwing('recordFailure', 'refused') }) },
+    })
+    expect(out.results.map((r) => [r.repo, r.status, r.recordError])).toEqual([
+      ['acme/api', 'failed', 'attempt record: refused'],
+    ])
+    expect(output.parse(out).results[0]!.recordError).toBe('attempt record: refused')
+    expect(out.recordErrors).toBeUndefined()
+    expect(renderUpdateText(out)).toContain('    record not saved: attempt record: refused\n')
+  })
+
+  test("recordFailure throwing mid-run skips the target's later PRs, and the next target is updated", async () => {
+    web = behindRepo('web')
+    apiPr2 = true
+    sh(api.worker.dir, 'checkout', '-q', '-b', 'topic2', 'origin/main~1')
+    api.worker.commit('topic2 work', { 'two.txt': '2\n' })
+    sh(api.worker.dir, 'push', '-q', 'origin', 'topic2')
+    sh(api.worker.dir, 'checkout', '-q', 'main')
+    verifyOk = false
+    const out = await update({
+      args: both,
+      ports: {
+        locate: locateBoth,
+        targetHome: homeWith({ api: throwing('recordFailure', 'refused') }),
+      },
+    })
+    expect(out.results.map((r) => [r.repo, r.number, r.recordError])).toEqual([
+      ['acme/api', 1, 'attempt record: refused'],
+      ['acme/web', 1, undefined],
+    ])
+    expect(out.skipped).toContainEqual({
+      repo: 'acme/api',
+      number: 2,
+      head: 'topic2',
+      reason: 'attempt record: refused',
+    })
+  })
+
+  test('clear throwing mid-run is reported on the PR, and the next target is updated', async () => {
+    web = behindRepo('web')
+    const out = await update({
+      args: both,
+      ports: { locate: locateBoth, targetHome: homeWith({ api: throwing('clear', 'gone') }) },
+    })
+    expect(out.results.map((r) => [r.repo, r.status, r.recordError])).toEqual([
+      ['acme/api', 'updated', 'attempt record: gone'],
+      ['acme/web', 'updated', undefined],
+    ])
+  })
+
+  test("a target's own lease that throws skips its PR with the error, and the other target is updated", async () => {
+    web = behindRepo('web')
+    const refusing: Ports['lease'] = {
+      acquire: () => {
+        throw new Error('lease refused')
+      },
+    }
+    const out = await update({
+      args: both,
+      ports: { locate: locateBoth, targetHome: homeWith({}, refusing) },
+    })
+    expect(out.results.map((r) => [r.repo, r.status])).toEqual([['acme/web', 'updated']])
+    expect(out.skipped).toEqual([
+      { repo: 'acme/api', number: 1, head: 'topic', reason: 'lease refused' },
+    ])
+  })
+})
+
+describe('a kept tree, round 2', () => {
+  test('--retry-failed leaves a kept tree with local changes, as only --discard-kept removes it', async () => {
+    verifyOk = false
+    await update({ args: { keepFailed: true } })
+    const kept = join(keptDir(), '1')
+    writeFileSync(join(kept, 'fix.txt'), 'half a fix\n')
+    const out = await update({ args: { keepFailed: true, retryFailed: true } })
+    expect(out.results).toEqual([])
+    expect(out.skipped.map((s) => s.reason)).toEqual([
+      `kept worktree ${kept} has local changes; push them or pass --discard-kept`,
+    ])
+    expect(readFileSync(join(kept, 'fix.txt'), 'utf8')).toBe('half a fix\n')
+    expect((await update({ args: { discardKept: true } })).discarded).toEqual([kept])
+  })
+
+  test('a record whose path names its folder another way is still its own', async () => {
+    verifyOk = false
+    await update({ args: { keepFailed: true } })
+    const kept = join(keptDir(), '1')
+    const link = join(scratch, 'kept-link')
+    symlinkSync(keptDir(), link)
+    const record = JSON.parse(readFileSync(`${kept}.json`, 'utf8'))
+    writeFileSync(`${kept}.json`, JSON.stringify({ ...record, path: join(link, '1') }))
+    expect((await update()).skipped.map((s) => s.reason)).toEqual([
+      `failed worktree kept at ${join(link, '1')}`,
+    ])
+    // The right name in another folder is not.
+    const elsewhere = join(scratch, 'elsewhere', '1')
+    mkdirSync(elsewhere, { recursive: true })
+    writeFileSync(`${kept}.json`, JSON.stringify({ ...record, path: elsewhere }))
+    expect((await update({ args: { discardKept: true } })).discarded ?? []).toEqual([])
+    expect(existsSync(elsewhere)).toBe(true)
+  })
+
+  test("a probe left by a killed run is skipped by the run's own walks and left alone", async () => {
+    const probes = [
+      join(paths.worktrees, 'github.com', 'acme', 'api', '.pr-update-probe-abc'),
+      join(keptDir(), '.pr-update-probe-abc'),
+    ]
+    for (const p of probes) mkdirSync(p, { recursive: true })
+    writeFileSync(join(keptDir(), '.pr-update-probe-abc.json'), '{}')
+    verifyOk = false
+    const kept = join(keptDir(), '1')
+    expect((await update({ args: { keepFailed: true } })).results[0]!.keptWorktree).toBe(kept)
+    expect(listKept({ dir: keptDir(), naming: 'repository' }).map((r) => r.path)).toEqual([kept])
+    expect((await update({ args: { discardKept: true } })).discarded).toEqual([kept])
+    for (const p of probes) expect(existsSync(p)).toBe(true)
   })
 })
