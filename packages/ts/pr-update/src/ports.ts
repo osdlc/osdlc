@@ -175,6 +175,9 @@ export interface Ports {
    * that tells hosts apart. A path means the checkout is read through the
    * run's `--remote`; a {@link FoundCheckout} names its own remote. The
    * standalone run's locate returns that form (see `defaults.ts`).
+   *
+   * `update` does not yet run in a checkout returned as a {@link FoundCheckout}:
+   * it surveys that repository and skips its PRs. A path is updated as before.
    */
   locate: (repo: string, target?: LocateTarget) => string | FoundCheckout | null
   /** Runs the shell verbs of resolvers and verify. See {@link RunVerb}. */

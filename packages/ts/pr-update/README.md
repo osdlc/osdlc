@@ -642,12 +642,13 @@ pr-update's machine file, not in `pr-update.yaml`:
 `~/.config/osdlc/pr-update/config.yaml` on Linux and macOS (`OSDLC_ROOT` or
 `XDG_CONFIG_HOME` moves it with the rest of the osdlc directories, and
 `PR_UPDATE_MACHINE_CONFIG`, an absolute path, names the file itself). It is
-for the clone cache of targets with no checkout on the machine:
+for the clone cache of targets with no checkout on the machine. The cache
+comes in a later release, so writing these keys now changes nothing yet:
 
 | Key | Meaning |
 |---|---|
 | `checkout: local \| mirror` | `local` never clones: a target with no checkout is skipped. `mirror` clones it. Unset by default |
-| `mirror_dir: <path>` | Where clones go. Default `repos/` in pr-update's cache directory |
+| `mirror_dir: <path>` | Where clones go: an absolute path, or one starting `~/`. Default `repos/` in pr-update's cache directory |
 | `mirror_max_age_days: <n>` | A clone unused this long is removed. Default 30; `0` turns that off |
 
 An unknown key or a bad value there is reported with the file's path and
@@ -680,7 +681,7 @@ confirmation:
 
 | Port | What it answers |
 |---|---|
-| `locate(repo, target?)` | Where `owner/name` (lower-cased; `target` adds the host) is checked out on this machine: a path, read through the run's `--remote`, or `{ path, source, remote }`, read through `remote`; `null` for none. Asked once per target per run |
+| `locate(repo, target?)` | Where `owner/name` (lower-cased; `target` adds the host) is checked out on this machine: a path, read through the run's `--remote`, or `{ path, source, remote }`, read through `remote`; `null` for none. Asked once per target per run. `update` does not yet run in a checkout returned as `{ path, source, remote }`: it surveys it and skips its PRs |
 | `runVerb(verb, cwd)` | Run one shell verb, for resolvers and verify |
 | `resolveVerifyVerbs({ which, trust, repo, checkout })` | The trust-gated verb list `verify: check` or `verify: test` runs before a push, asked once per repository |
 | `generators` (optional) | In-process rebuild steps, each with `claims(path)` and `run(worktree)` |

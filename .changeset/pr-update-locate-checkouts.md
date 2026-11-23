@@ -21,10 +21,23 @@ matches in any letter case. A `--repo` that is neither form, or one
 pr-update has a machine file, `~/.config/osdlc/pr-update/config.yaml`
 (`PR_UPDATE_MACHINE_CONFIG` names another, as an absolute path), for the
 settings of the clone cache: `checkout`, `mirror_dir` and
-`mirror_max_age_days`. A project's `pr-update.yaml` cannot set them.
+`mirror_max_age_days`. A project's `pr-update.yaml` cannot set them. The file
+takes effect with the clone cache, in a later release; writing it now changes
+nothing yet.
 
-For library hosts: `Ports.locate` is now called with a lower-cased `owner/name`
-and a second argument carrying the host, and may return
-`{ path, source, remote }` to name the remote a checkout is read through. A
-`locate` that takes one argument and returns a path works as before.
-`standalonePorts` takes a fifth argument, `{ git, env }`, for its `locate`.
+For library hosts:
+
+- `Ports.locate` is now called with a lower-cased `owner/name` and a second
+  argument carrying the host, and may return `{ path, source, remote }` to name
+  the remote a checkout is read through. `update` does not yet run in a
+  checkout returned that way: it surveys the repository and skips its PRs. A
+  `locate` that takes one argument and returns a path works as before.
+- A target other than the project root is lower-cased everywhere: in the
+  report's `repo`, in `owner/name#N` keys, and in the `repo` of attempt keys.
+  An attempt record a host's store holds under a mixed-case `repo` is no
+  longer matched, so that PR may be tried once more.
+- Each repository in the report has a `checkout` field. It is optional when a
+  report is parsed, so an older report still parses.
+- A `--repo` that is not `owner/name` or `host/owner/name`, such as a URL,
+  is now refused.
+- `standalonePorts` takes a fifth argument, `{ git, env }`, for its `locate`.
