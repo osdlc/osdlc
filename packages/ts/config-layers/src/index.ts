@@ -3,7 +3,8 @@
  * command runs before it starts.
  *
  * A tool has a committed project file (the tool picks its name) and a
- * per-machine file in its standalone config home (`<config>/<tool>/config.yaml`).
+ * per-machine file in its standalone config home (`<config>/<tool>/config.yaml`,
+ * or `<config>/<tool>/<app>/config.yaml` under a family root).
  * Each is read through a Zod schema. {@link machineConfigFile} loads the machine
  * file. It never throws, keeps the valid sections and reports what it dropped.
  * An env var can move the file. It migrates older files in memory and writes

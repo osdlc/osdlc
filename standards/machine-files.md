@@ -55,10 +55,10 @@ import { envVars, machineConfigFile, systemDirs } from '@osdlc/config-layers'
 const vendorDirs = { vendor: 'osdlc', envVars: envVars('OSDLC') }
 const dirs = () => systemDirs(vendorDirs, { convention: 'xdg', conventionFromEnv: false })
 
-// A tool's machine file, with config-layers today:
+// A tool's machine file:
 const file = machineConfigFile({
   tool: 'osdlc',
-  fileName: '<tool>/config.yaml',
+  app: '<tool>',
   env: '<TOOL>_MACHINE_CONFIG',
   vendorDirs,
   dirs,
@@ -66,12 +66,11 @@ const file = machineConfigFile({
 })
 ```
 
-The `tool` option sets both the directory and the default variable, so the
-variable is always passed. `machineConfigFile` uses the variable's value as
-given, so the tool checks that it is absolute and fails before reading the
-file (the rule for file-level variables below). The
-nested `fileName` is not validated; an `app` option in config-layers is
-planned to replace it.
+The `tool` option sets both the directory and the default variable, and
+`app` changes only the directory, so the variable is always passed.
+`machineConfigFile` uses the variable's value as given, so the tool checks
+that it is absolute and fails before reading the file (the rule for
+file-level variables below).
 
 | File                                       | Path                                                             | Owner              |
 | ------------------------------------------ | ---------------------------------------------------------------- | ------------------ |

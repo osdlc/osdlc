@@ -97,8 +97,9 @@ A list per tool means one list to keep up per tool, and the lists drift.
   to one bumps them all. Subpath exports keep what each tool imports small.
 - It builds on existing libraries. `tiered-dirs` and `command-seam` need no
   change. `config-layers` needs none for family files. `typed-git` gains the
-  remote matching above. The planned `app` option in `machineConfigFile` is
-  for tools' own files, not this package.
+  remote matching above. The `app` option in `machineConfigFile`
+  ([#1056](https://github.com/osdlc/osdlc/pull/1056)) is for tools' own
+  files, not this package.
 - sdlc's remote matching has two homes until sdlc imports it from
   `typed-git`.
 - A test that spawns a tool's CLI follows the isolation rule in
