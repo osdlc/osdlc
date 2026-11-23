@@ -178,11 +178,23 @@ export function keptOwnerGoneReason(record: KeptRecord, gitDir: string): string 
 /**
  * The git directory that owns `record`'s tree, when it is not the one serving `place`'s run and
  * it still exists; null otherwise. A run leaves such a tree alone: it is another checkout's.
+ * The two are compared by real path, so a record an older run wrote under another spelling of
+ * the same directory (a Windows short name, another letter case on macOS) is still this run's.
  */
 export function keptOwnerElsewhere(place: KeptPlace, record: KeptRecord): string | null {
   const owner = record.gitDir
-  if (owner === undefined || place.gitDir === undefined || owner === place.gitDir) return null
+  if (owner === undefined || place.gitDir === undefined) return null
+  if (owner === place.gitDir || realOr(owner) === realOr(place.gitDir)) return null
   return existsSync(owner) ? owner : null
+}
+
+/** `path` through its symlinks and any Windows short name, or as given when it cannot be resolved. */
+function realOr(path: string): string {
+  try {
+    return realpathSync.native(path)
+  } catch {
+    return path
+  }
 }
 
 /**

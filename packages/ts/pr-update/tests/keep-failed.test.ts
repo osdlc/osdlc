@@ -152,7 +152,7 @@ describe('update --keep-failed', () => {
     expect(out.discarded).toEqual([kept()])
     expect(existsSync(kept())).toBe(false)
     expect(worktrees()).not.toContain(
-      realpathSync.native(fx.worker.dir) + '/.pr-update/failed/o-r-1',
+      join(realpathSync.native(fx.worker.dir), '.pr-update', 'failed', 'o-r-1'),
     )
     expect(fx.worker.git.resolveRef('pr-update/failed-o-r-1')).toBeNull()
   })
