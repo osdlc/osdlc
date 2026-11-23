@@ -232,7 +232,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   - `mirror_dir: <path>`, optional.
   - `mirror_max_age_days: <n>`, default 30. It applies only to whole clones.
     `0` turns automatic pruning of clones off, and a bare `mirror prune` then
-    removes no clone unless given `--older-than` or `--all`. Dead run
+    removes no clone unless given `--older-than` or `--all-clones`. Dead run
     worktrees are removed either way.
 
   None of these keys is in the project schema, so neither `pr-update.yaml` nor
@@ -426,15 +426,26 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   directory without the tool's marker was not made by this tool and is never
   removed. A `.tmp-*.git-<pid>` directory is recognised by its name instead,
   inside a mirror directory that carries the tool's marker (clone step 1), so
-  one left by a killed clone is removed.
+  one left by a killed clone is removed once it is an hour old, as is a
+  `.pr-update-probe-*` folder under `worktrees/` or `kept/`. A clone is renamed
+  to such a name before it is deleted, so a removal that stops part-way leaves
+  a leftover the next prune removes, not a broken clone at the clone path.
+  Nothing is removed from a folder that `checkClone` would refuse (another
+  user's, or writable by group or others), and no walk follows a symbolic
+  link.
 
   Pruning also walks `worktrees/` in the cache, which holds the run
   worktrees of located checkouts as well as clones. A directory whose run is
   dead (the same pid check) is removed. First its `.git` file is read: it
   names `<common-dir>/worktrees/<id>`, whose `commondir` file gives the
-  owning git directory. Then the directory is removed, and when the owner
-  still exists, pruning runs `git worktree prune` there and deletes the dead
-  run's scratch branch.
+  owning git directory; that record's `gitdir` must name the directory back.
+  When the owner still exists, pruning runs `git worktree remove --force`
+  there and deletes the dead run's scratch branch, holding the clone's lock
+  when the owner is a managed clone. If the removal fails, only the
+  directory and that one `worktrees/<id>/` record are deleted, never a bare
+  `git worktree prune`, which would drop the person's own worktrees whose
+  folders are missing. With the owner gone, or records that do not name the
+  directory, only the directory is removed.
   `mirror list` shows these directories too, so a deleted or no-longer-targeted
   checkout leaves nothing behind in the cache. This walk ignores the age
   setting.
@@ -444,14 +455,17 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     each one removed and the space freed. A run that never touches the cache
     never removes anything.
   - *By hand.* `pr-update mirror prune` walks `worktrees/` and removes clones
-    past the age (none with the age at `0`, unless `--older-than` or `--all`
-    is given).
-    `--older-than <days>` overrides it, `--all` takes every clone,
-    `--dry-run` only reports. It and `list` take `--mirror-dir`, so a
-    directory left behind by a moved `mirror_dir` can be cleaned.
-  - *Never removed:* a clone whose lock another process holds, or one with a
-    kept worktree, even with `--all`. `mirror prune --discard-kept` removes
-    the kept worktrees first.
+    past the age (none with the age at `0`, unless `--older-than` or
+    `--all-clones` is given).
+    `--older-than <days>` overrides it, `--all-clones` takes every clone
+    (`--all` is cli-tool's own, for `--help --all`), `--dry-run` only
+    reports and takes no lock. It and `list` take `--mirror-dir`, so a
+    directory left behind by a moved `mirror_dir` can be cleaned. It exits 1
+    when something could not be removed.
+  - *Never removed:* a clone whose lock another process holds, one with a
+    kept worktree, or one with a live run's worktree, even with
+    `--all-clones`. `mirror prune --discard-kept` removes the kept worktrees
+    of a clone it is removing first.
   - Removing a clone leaves its repository's attempt records in the state
     home. They are history, not cache, and later runs that reach the
     repository from outside it, located or cloned, read them.

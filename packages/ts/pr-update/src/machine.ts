@@ -58,7 +58,7 @@ export const machineConfigSchema = z.strictObject({
     .min(0)
     .default(30)
     .describe(
-      'A clone unused for this many days is removed. 0 turns automatic removal off. It applies only to whole clones.',
+      'A clone unused for this many days is removed, by `pr-update mirror prune` and at the end of an `update --apply` that used the cache. 0 turns that off. It applies only to whole clones.',
     ),
 })
 
@@ -91,9 +91,10 @@ export interface PrUpdatePaths {
  * (`osdlcDirs` from `@osdlc/ecosystem`). Pass `osdlcDirs({ env })` to read
  * only that environment.
  *
- * Every walk pr-update makes of these folders (listing kept trees today, pruning clones and
- * worktrees later) skips entries whose names start with `.`: a run's temporary probe
- * (`.pr-update-probe-*`) is one, and a hard kill can leave it.
+ * Every walk pr-update makes of these folders (listing kept trees, `mirror list` and
+ * `mirror prune`, `prune.ts`) skips entries whose names start with `.`: a run's temporary probe
+ * (`.pr-update-probe-*`) is one, and a hard kill can leave it. Only pruning looks at two kinds
+ * of them, to remove a probe or a `.tmp-*` clone folder once it is an hour old.
  */
 export function prUpdatePaths(dirs: TieredDirs = osdlcDirs()): PrUpdatePaths {
   const tier = dirs.standalone('osdlc')

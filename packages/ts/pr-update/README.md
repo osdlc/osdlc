@@ -311,6 +311,44 @@ using the clone <path>` every time, so a root you meant to list shows up as
 missed. A clone is updated, kept and trusted as a found checkout is (above), except that its trust is keyed by repository: run `pr-update
 trust github.com/<owner>/<name>`.
 
+### Cleaning up: `mirror list` and `mirror prune`
+
+`pr-update mirror list` (or `--json`) shows each managed clone with its
+repository, size, last use (its stamp) and kept worktrees, and then every run
+worktree under `~/.cache/osdlc/pr-update/worktrees/`, saying whether the run
+that made it is still going and which git directory owns it. It takes no lock
+and changes nothing.
+
+`pr-update mirror prune` removes:
+
+- the worktree of every run that is gone, at any age, whatever repository it
+  belongs to. It reads the worktree's `.git` file and its record's
+  `commondir` to find the checkout or clone that owns it, and removes it
+  through that one with `git worktree remove`, deleting the run's scratch
+  branch. In a clone it does this only while holding the clone's lock. It
+  never runs a bare `git worktree prune`, so your own worktrees whose folders
+  are missing stay listed. With the owner gone, only the folder goes;
+- leftover `.tmp-*` clone folders and `.pr-update-probe-*` folders more than
+  an hour old;
+- each clone not used for `mirror_max_age_days` (default 30). At `0` it
+  removes no clone, unless you pass `--older-than <days>` or `--all-clones`.
+
+It never removes a clone another run holds, one with a kept worktree (unless
+`--discard-kept`, which removes those first), one a live run has a worktree
+in, or a folder without pr-update's marker, and it never follows a symbolic
+link or removes anything from a folder another user owns or others can write
+to. It never waits for a lock: a clone another run holds is left as `mirror
+busy`. `--dry-run` only says what would go, and takes no lock. `list` and
+`prune` take `--mirror-dir`, so a clone directory left behind by a moved
+`mirror_dir` can be cleaned. `prune` exits `1` when something could not be
+removed; a clone whose removal stops part-way is left as a `.tmp-*` folder,
+which a later prune removes.
+
+At the end of an `update --apply` that used a clone or made a run worktree in
+the cache, the run prunes the same way, as a bare `mirror prune` would, and
+notes each thing removed and the space freed. A run that never touched the
+cache, and a rehearsal, remove nothing.
+
 ## Three things it knows that a per-PR check cannot
 
 Drift is measured locally. GitHub reports `mergeStateStatus: BEHIND` only
@@ -831,7 +869,7 @@ comments.
 |---|---|
 | `checkout: local \| mirror` | `local` never clones: a target with no checkout is skipped. `mirror` clones it. Unset until you answer |
 | `mirror_dir: <path>` | Where clones go: an absolute path, or one starting `~/`. Default `repos/` in pr-update's cache directory |
-| `mirror_max_age_days: <n>` | A clone unused this long is removed. Default 30; `0` turns that off. Pruning is not built yet, so for now nothing is removed |
+| `mirror_max_age_days: <n>` | A clone unused this long is removed by `mirror prune` and at the end of an `update --apply` that used the cache. Default 30; `0` turns that off (dead runs' worktrees are still removed) |
 
 An unknown key, a bad value or a YAML error there is reported, when a run
 reads the file, with the file's path, and skipped. A file pr-update cannot
