@@ -224,8 +224,10 @@ roots it searched (`<repo>: no checkout under <roots> (…); using the clone
 ### A checkout found on this machine
 
 The search goes three levels below each root. A default root, found beside
-the project root, is never your home directory or a directory above it; a
-root you list in `repositories.yaml` is searched wherever it is. A linked worktree counts as its main checkout. A shallow
+the project root, is never above your home directory: a project root directly
+in your home directory (`~/widgets`) uses home, and one that is your home
+directory itself gets no default root. A root you list in `repositories.yaml`
+is searched wherever it is. A linked worktree counts as its main checkout. A shallow
 checkout is skipped, since it cannot measure drift. With more than one
 checkout of a repository, the first by path is used and a note names the
 others. The `unpushed_local` guard still reads all of them, shallow ones

@@ -95,8 +95,9 @@ resolves to the directory above every owner.
 | `~` itself                        | none                |
 | No caller, or not in a checkout   | none                |
 
-It never steps to or above the home directory. A linked worktree counts as its
-main checkout.
+It never steps up to the home directory or above it: a checkout directly in
+home uses home, the folder it is in, and a checkout that is home itself gets
+none. A linked worktree counts as its main checkout.
 
 ## Finding checkouts
 
