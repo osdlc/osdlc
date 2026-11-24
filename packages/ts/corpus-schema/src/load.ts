@@ -152,7 +152,7 @@ export interface RecordTarget {
  * @experimental
  */
 export interface RecordReference {
-  /** The top-level field that holds the value. */
+  /** The field that holds the value: a top-level name, or the names down to it joined with `.`. */
   field: string
   /** The value's place in the record's data, as a JSON Pointer: `/owner`, or `/sources/2` in a list. */
   pointer: string
@@ -336,8 +336,8 @@ function graph(root: Corpus): { byKey: Map<string, Corpus>; keyOf: (c: Corpus) =
   return { byKey, keyOf: (c) => keys.get(sameAs(c)) as string }
 }
 
-const pointer = (field: string, index: number | undefined): string =>
-  `/${field.replace(/~/g, '~0').replace(/\//g, '~1')}${index === undefined ? '' : `/${index}`}`
+const pointer = (at: (string | number)[]): string =>
+  at.map((k) => `/${String(k).replace(/~/g, '~0').replace(/\//g, '~1')}`).join('')
 
 const asList = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
 const stringOr = <T>(v: unknown, otherwise: T): string | T =>
@@ -360,7 +360,7 @@ function byFile<T extends { file: string }>(found: T[]): Map<string, T[]> {
 function nearest(refs: FoundRef[]): FoundRef[] {
   const seen = new Set<string>()
   return refs.filter((r) => {
-    const at = pointer(r.ref.field, r.index)
+    const at = pointer(r.at)
     if (seen.has(at)) return false
     seen.add(at)
     return true
@@ -416,7 +416,7 @@ function model(
     const fields = new Map<string, CorpusField>()
     for (const t of [...types].reverse())
       for (const [field, schema] of Object.entries(asMap(t.schema?.['properties']))) {
-        const ref = t.refs.find((r) => r.field === field)
+        const ref = t.refs.find((r) => r.path.length === 1 && r.field === field)
         fields.set(field, {
           name: field,
           schema,
@@ -429,7 +429,7 @@ function model(
                   types: ref.types,
                   targets: ref.targets?.map(typeRef) ?? null,
                   form: ref.form,
-                  items: ref.items,
+                  items: ref.lists.at(-1) === true,
                 },
         })
       }
@@ -475,7 +475,7 @@ function model(
       references: nearest(refs.get(path) ?? [])
         .map((r) => ({
           field: r.ref.field,
-          pointer: pointer(r.ref.field, r.index),
+          pointer: pointer(r.at),
           value: r.value,
           form: r.ref.form,
           target: r.to === undefined ? null : target(r.to),

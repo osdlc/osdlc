@@ -75,6 +75,7 @@ export {
   repoView,
   searchPrs,
   setIssueLabel,
+  NO_COLOUR_ENV,
   PR_LIST_FIELDS,
   PR_REF_FIELDS,
   PR_VIEW_FIELDS,

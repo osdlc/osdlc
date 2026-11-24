@@ -330,6 +330,29 @@ contract. Both are geometry, so neither has a dark-mode value.
 - Heading and block ids are *not* prefixed with `user-content-`, and footnote
   ids carry `markdownRender_` — see *Sanitization* above.
 
+### Where the rendered page and the link scanner differ
+
+The renderer places the links `@osdlc/markdown-link`'s scanner finds, but it
+shows a page, so a few links the scanner records are not shown (or the reverse).
+`tests/link-conformance.test.ts` runs the shared body cases and names each case
+that differs, with the reason; the test fails if a listed case starts to agree.
+
+- **Self links.** `[[#Heading]]` and `[[|alias]]` link to the note itself.
+  `[[]]` and `[[ ]]` stay text.
+- **Code inside a target.** ``[[a `x` b]]`` stays literal text on the page. The
+  scanner blanks the code to spaces and records a link to a note named
+  `a     b`, which no note has. An alias keeps its code span in the anchor, but
+  the label the host gets is the text without the backticks.
+- **A table row with no delimiter row.** GFM reads the line as a paragraph, so a
+  backtick run holds `[[x]]` as code and the page shows no link. The scanner
+  ends a cell at `|` even inside backticks and records it.
+- **HTML comments.** A link inside `<!-- -->` is hidden with the comment, so it
+  is not rendered; the scanner finds it by default. For the same reason a
+  backtick in a comment line does not change what the page shows.
+- **A link inside a markdown link.** `[see [[Note]]](a.md)` renders one anchor,
+  the markdown link, since an anchor inside an anchor is split by `rehype-raw`.
+  The same goes for `[[a]](...)` read as a link.
+
 ## Testing
 
 ```sh

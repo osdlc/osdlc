@@ -43,7 +43,6 @@ function cachePlugin(roots: string[] | (() => string[]), paths: string[]): Plugi
         owner: 'cache',
         why: 'old',
         evidence: {},
-        unattended: true,
       })),
     delete: (c) => {
       rmSync(c.path, { recursive: true })
