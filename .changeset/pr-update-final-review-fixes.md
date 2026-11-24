@@ -28,3 +28,9 @@ worktree and adding the run worktree back now happen under the clone's lock.
 A `mirror prune --all-clones --discard-kept` between the two could remove the
 kept tree and the clone. When another run holds the lock, the tree is not
 kept, `keepError` says `mirror busy`, and the run goes on.
+
+Fixed: two runs answering the first-run question at once could both write
+the machine file, the second overwriting the first. The check and the write
+now hold the lock file `<machine file>.lock`, taken over once its holder has
+exited or it is ten minutes old, so the first answer wins and the other run
+uses it. The question is still asked outside the lock.

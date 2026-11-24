@@ -840,7 +840,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   and `mirror enable` and `mirror disable` exit 14 too, leaving it as it is.
   A bad value in it is noted with the file's path and ignored. A relative
   `PR_UPDATE_MACHINE_CONFIG` is an error, exit 1. Every write is a
-  compare-and-swap. When another write lands first, `mirror enable` and
+  compare-and-swap, made holding the lock file `<machine file>.lock`, by the
+  rule `repositories.yaml`'s lock follows (taken over once its holder has
+  exited or it is ten minutes old). The final review of the omnibus found
+  that without it two processes could both pass the check, and the second
+  answer overwrote the first. The question itself is asked outside the
+  lock. When another write lands first, `mirror enable` and
   `mirror disable` write again over it, since the person just asked for that
   value, while the first-run answer gives way to a `checkout` already there.
 - **`mirror enable --mirror-dir`.** Accepted as `--dir`. It is

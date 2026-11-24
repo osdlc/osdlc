@@ -36,7 +36,16 @@ import { shellJoin, stderrOrError, which, type CommandRunner } from '@osdlc/comm
 import { ConfigInvalidError, type MachineConfigFile } from '@osdlc/config-layers'
 import { osdlcDirs } from '@osdlc/ecosystem'
 import { WriteConflictError } from '@osdlc/etag-write'
-import { claimLock, holderGone, processIdentity, releaseLock } from '@osdlc/file-lock'
+import {
+  claimLock,
+  holderGone,
+  processIdentity,
+  releaseLock,
+  untouchedFor,
+  withLock,
+  type SectionHolder,
+  type StaleRule,
+} from '@osdlc/file-lock'
 import { expandTilde, homeDir } from '@osdlc/tiered-dirs'
 import { Git } from '@osdlc/typed-git'
 import { Document, isMap, parseDocument } from 'yaml'
@@ -617,39 +626,71 @@ export function editableMachineFile(path: string, read: { text: string } | null)
 }
 
 /**
+ * How old the machine file's lock may get before it counts as a dead writer's, whatever its pid
+ * says: far longer than the read, check and write it covers. The rule `@osdlc/ecosystem`'s
+ * `repositories.yaml` lock uses.
+ */
+export const MACHINE_LOCK_STALE_MS = 10 * 60_000
+
+const writerExited = holderGone<SectionHolder>((h) => [h.pid])
+const writerLongGone = untouchedFor<SectionHolder>(MACHINE_LOCK_STALE_MS)
+
+/**
+ * When the machine file's lock may be taken over: its holder has exited, or it is older than
+ * {@link MACHINE_LOCK_STALE_MS}. `withLock` records only the pid, which another process may later
+ * have, so the pid alone could keep a killed writer's lock for good.
+ */
+const machineLockStale: StaleRule<SectionHolder> = (held) =>
+  writerExited(held) || writerLongGone(held)
+
+/**
  * Write `answer` into the machine file as a compare-and-swap against `before` (the file as read
  * before asking, or null for none; default: read now), keeping the file's other keys and
  * comments. When the swap loses to another run's write: with `yield`, a file that now holds a
  * `checkout` is what won, and is returned unwritten; otherwise, or when it holds none, the write
  * is tried again on the new file.
  *
+ * The check and the write hold the lock file `<machine file>.lock` (`@osdlc/file-lock`), taken
+ * over once its holder has exited or it is {@link MACHINE_LOCK_STALE_MS} old: the etag check and
+ * the rename are two steps, so without it two processes could both pass the check, and the
+ * second would overwrite the first answer. With it, of two runs that read the same file, the
+ * first to write wins, and the other sees the conflict. The question is asked before, outside the
+ * lock.
+ *
  * @returns the machine file as it stands, and whether this write is what it holds.
  * @throws ConfigInvalidError from {@link editableMachineFile}, before anything is written.
+ * @throws LockTimeoutError (`@osdlc/file-lock`) when another live process holds the lock for 30 s.
  */
 export function writeMirrorAnswer(
   file: MachineConfigFile<typeof machineConfigSchema>,
   answer: MirrorAnswer,
   opts: { before?: { text: string; etag: string } | null; yield?: boolean } = {},
 ): { config: MachineConfig; wrote: boolean } {
-  let before = opts.before === undefined ? file.read() : opts.before
-  for (let tries = 0; tries < 5; tries++) {
-    const doc = editableMachineFile(file.path(), before)
-    doc.set('checkout', answer.checkout)
-    if (answer.mirror_dir !== undefined) doc.set('mirror_dir', answer.mirror_dir)
-    mkdirSync(dirname(file.path()), { recursive: true, mode: FOLDER_MODE })
-    try {
-      file.write(String(doc), { etag: before?.etag ?? null })
-      file.clearCache()
-      return { config: file.load(), wrote: true }
-    } catch (e) {
-      if (!(e instanceof WriteConflictError)) throw e
-    }
-    file.clearCache()
-    const now = file.load()
-    if (opts.yield === true && now.checkout !== undefined) return { config: now, wrote: false }
-    before = file.read()
-  }
-  throw new Error(`${file.path()} kept changing while pr-update wrote to it; run again`)
+  mkdirSync(dirname(file.path()), { recursive: true, mode: FOLDER_MODE })
+  return withLock(
+    `${file.path()}.lock`,
+    () => {
+      let before = opts.before === undefined ? file.read() : opts.before
+      for (let tries = 0; tries < 5; tries++) {
+        const doc = editableMachineFile(file.path(), before)
+        doc.set('checkout', answer.checkout)
+        if (answer.mirror_dir !== undefined) doc.set('mirror_dir', answer.mirror_dir)
+        try {
+          file.write(String(doc), { etag: before?.etag ?? null })
+          file.clearCache()
+          return { config: file.load(), wrote: true }
+        } catch (e) {
+          if (!(e instanceof WriteConflictError)) throw e
+        }
+        file.clearCache()
+        const now = file.load()
+        if (opts.yield === true && now.checkout !== undefined) return { config: now, wrote: false }
+        before = file.read()
+      }
+      throw new Error(`${file.path()} kept changing while pr-update wrote to it; run again`)
+    },
+    { isStale: machineLockStale },
+  )
 }
 
 /** Options for {@link managedClones}. */

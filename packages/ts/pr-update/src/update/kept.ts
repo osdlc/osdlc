@@ -92,8 +92,11 @@ export type OnKeptRefused = (refusal: KeptRefusal) => void
 /** A kept tree that {@link discardKept} would not remove. */
 export class KeptRefusedError extends Error {
   override name = 'KeptRefusedError'
-  constructor(readonly refusal: KeptRefusal) {
+  // A field, not a parameter property, so Node can run this file by stripping its types.
+  readonly refusal: KeptRefusal
+  constructor(refusal: KeptRefusal) {
     super(`kept record ${refusal.record} left alone: ${refusal.reason}`)
+    this.refusal = refusal
   }
 }
 

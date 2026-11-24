@@ -15,14 +15,17 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
+import { execFile } from 'node:child_process'
 import { tmpdir } from 'node:os'
+import { promisify } from 'node:util'
 import { delimiter, dirname, join, resolve } from 'node:path'
 
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { osdlcDirs } from '@osdlc/ecosystem'
-import { claimLock, releaseLock } from '@osdlc/file-lock'
+import { claimLock, LockTimeoutError, releaseLock } from '@osdlc/file-lock'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { machineConfigSchema, machineFile, prUpdatePaths } from '../src/machine.ts'
@@ -32,6 +35,7 @@ import {
   CloneError,
   MIRROR_MARKER,
   checkClone,
+  MACHINE_LOCK_STALE_MS,
   MirrorDirError,
   checkMirrorDir,
   claimCloneLock,
@@ -45,6 +49,9 @@ import {
   writeMirrorAnswer,
 } from '../src/mirror.ts'
 import { isolatedEnv } from './support.ts'
+
+const run = promisify(execFile)
+const CHILD = join(import.meta.dirname, 'write-answer.child.ts')
 
 let scratch: string
 let source: string
@@ -1078,6 +1085,49 @@ describe('writeMirrorAnswer', () => {
       config: { checkout: 'local' },
     })
     expect(readFileSync(file.path(), 'utf8')).toBe('checkout: local\n')
+  })
+
+  test('two processes answering over no file: the first answer wins, the other yields to it (final review)', async () => {
+    const env = isolatedEnv(join(scratch, 'env'))
+    const at = String(Date.now() + 1500)
+    const child = (checkout: string) =>
+      run(process.execPath, [CHILD, JSON.stringify(env), checkout, at], { timeout: 30_000 })
+    const outs = await Promise.all([child('mirror'), child('local')])
+    expect(outs.map((r) => r.stdout).sort()).toEqual(['wrote', 'yielded'])
+    const winner = outs[0]!.stdout === 'wrote' ? 'mirror' : 'local'
+    expect(readFileSync(machineFile({ env }).path(), 'utf8')).toBe(`checkout: ${winner}\n`)
+  })
+
+  test('the check and the write wait for a lock another live process holds (final review)', () => {
+    const file = fileFor()
+    const before = file.read()
+    mkdirSync(dirname(file.path()), { recursive: true })
+    const lock = `${file.path()}.lock`
+    // This process holds it, as another run would while it writes its answer.
+    expect(claimLock(lock, { pid: process.pid }, { isStale: () => false }).ok).toBe(true)
+    // Each look at the clock is a second later, so the 30 s wait ends at once.
+    let now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => (now += 1000))
+    try {
+      expect(() => writeMirrorAnswer(file, { checkout: 'mirror' }, { before })).toThrow(
+        LockTimeoutError,
+      )
+    } finally {
+      vi.restoreAllMocks()
+    }
+    expect(existsSync(file.path())).toBe(false)
+  })
+
+  test('a lock past the bound is taken over, though its pid is alive (final review)', () => {
+    const file = fileFor()
+    mkdirSync(dirname(file.path()), { recursive: true })
+    const lock = `${file.path()}.lock`
+    // A killed writer's lock, whose pid a live process (this one) now has, past the bound.
+    expect(claimLock(lock, { pid: process.pid }, { isStale: () => false }).ok).toBe(true)
+    const past = new Date(Date.now() - MACHINE_LOCK_STALE_MS - 60_000)
+    utimesSync(lock, past, past)
+    expect(writeMirrorAnswer(file, { checkout: 'mirror' }).wrote).toBe(true)
+    expect(existsSync(lock)).toBe(false)
   })
 
   test('a lost race without yield, or to a write that set no checkout, writes again on the new file', () => {
