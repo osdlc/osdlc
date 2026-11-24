@@ -10,12 +10,21 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { existsSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { isatty } from 'node:tty'
 
 import type { CodeHost, CodeHostPrDetail } from '@osdlc/code-host'
 import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
+import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { forwarded } from './support-signal.ts'
@@ -920,6 +929,84 @@ describe('runUpdate — a located repository', () => {
     expect(other.worker.git.isAncestor(other.worker.git.resolveRef('origin/main')!, after)).toBe(
       true,
     )
+  })
+})
+
+describe("runUpdate — the project root's run worktree", () => {
+  let fx: ReturnType<typeof makeBareAndWorker>
+  let markers: string
+
+  beforeEach(() => {
+    fx = makeBareAndWorker({ initialBranch: 'main' })
+    fx.worker.commit('initial', { 'README.md': 'fixture\n' })
+    fx.worker.git.push('origin', 'main')
+    markers = join(fx.parent, 'markers')
+    mkdirSync(markers)
+    // The PR's head commits husky-style hooks, which write a marker when they run.
+    const { git } = fx.worker
+    git.checkout('main', { branch: 'topic' })
+    const files: Record<string, string> = { 'a.txt': 'a\n' }
+    for (const hook of ['post-checkout', 'pre-push']) {
+      files[`.husky/${hook}`] = `#!/bin/sh\n: > '${join(markers, hook)}'\n`
+    }
+    fx.worker.commit('topic work, with hooks', files)
+    for (const hook of ['post-checkout', 'pre-push']) {
+      chmodSync(join(fx.worker.dir, '.husky', hook), 0o755)
+      git.raw(['update-index', '--chmod=+x', `.husky/${hook}`])
+    }
+    git.raw(['commit', '-q', '--amend', '--no-edit'])
+    git.push('origin', 'topic')
+    git.checkout('main')
+    fx.worker.commit('main moves', { 'b.txt': 'b\n' })
+    git.push('origin', 'main')
+    git.fetch('origin')
+    // The project's own checkout points core.hooksPath at the folder the PR commits.
+    git.raw(['config', 'core.hooksPath', '.husky'])
+  })
+  afterEach(() => fx.cleanup())
+
+  test('runs none of the hooks a PR commits under a relative core.hooksPath (final review)', async () => {
+    // The control: checking the PR's head out in a worktree of the root fires its post-checkout.
+    const control = join(fx.parent, 'control')
+    fx.worker.git.raw(['worktree', 'add', '-q', '--detach', control, 'origin/main'])
+    new Git(control).raw(['checkout', '-q', '--detach', 'origin/topic'])
+    expect(readdirSync(markers)).toEqual(['post-checkout'])
+    fx.worker.git.raw(['worktree', 'remove', '--force', control])
+    rmSync(join(markers, 'post-checkout'))
+
+    const headSha = fx.worker.git.resolveRef('origin/topic')
+    const detail: CodeHostPrDetail = {
+      number: 5,
+      title: 'topic',
+      url: 'https://github.com/o/r/pull/5',
+      baseRef: 'main',
+      headRef: 'topic',
+      headSha,
+      isDraft: false,
+      labels: [],
+      reviewCount: 0,
+      isCrossRepository: false,
+    }
+    const real = spawnRunner('git')
+    const git: CommandRunner = {
+      run: (argv, opts) => real.run(argv, { ...opts, env: { ...IDENTITY, ...opts.env } }),
+    }
+    const out = await runUpdate(
+      // The root's own repository, found where the run started.
+      { ...ARGS, repo: ['o/r'], apply: true, strategy: 'merge' },
+      {
+        projectRoot: fx.worker.dir,
+        dryRun: false,
+        git,
+        gh: UNREACHABLE_GH,
+        codeHost: () =>
+          ({ listPrDetails: () => ({ ok: true, value: [detail] }) }) as unknown as CodeHost,
+        cfg: cfg(),
+        ports: fakePorts({ locate: () => fx.worker.dir }),
+      },
+    )
+    expect(out.results.map((r) => [r.number, r.status, r.pushed])).toEqual([[5, 'updated', true]])
+    expect(readdirSync(markers)).toEqual([])
   })
 })
 

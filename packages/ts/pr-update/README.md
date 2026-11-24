@@ -274,9 +274,12 @@ on that checkout removes, and `submodule.*` keys that were not put back.
 list all of it.
 
 Every git command in that checkout and its run worktrees runs with hooks off
-(`core.hooksPath=/dev/null`): the worktree holds the PR's own files, and a
+(`core.hooksPath=/dev/null`, set after any `-c core.hooksPath` an inherited
+`GIT_CONFIG_PARAMETERS` holds): the worktree holds the PR's own files, and a
 relative `core.hooksPath` such as `.husky` would run hooks the PR's author
-wrote. They also run without an inherited `GIT_DIR` or git's other
+wrote. So does every git command in the project root's run worktrees and kept
+trees, so your own pre-push hook does not run on pr-update's pushes; the
+root's own fetch and survey keep its hooks. They also run without an inherited `GIT_DIR` or git's other
 repository variables, as does every git call and command in any run
 worktree, the project root's included, so a run started from a git hook acts
 on the right repository (see [SECURITY.md](SECURITY.md)). `survey` and

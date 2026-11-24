@@ -571,11 +571,6 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - Project config at `<repo>/.osdlc/pr-update.yaml` instead of `pr-update.yaml`
   at the root. No repository commits a `pr-update.yaml` today, so the move would
   break no one, but it is not part of this record.
-- Hooks in the project root. Its run worktrees still run git with hooks on,
-  as before, so a relative `core.hooksPath` (such as `.husky`) runs hooks
-  from the PR's tree there. Every other target runs with hooks off (Build
-  note "Hooks off outside the project root"). Turning them off for the root
-  too would stop the person's own hooks, so it is the owner's call.
 - ref-lease should take a runner. It makes its own git client, so a target's
   `git-ref` record and lease cannot go through `withoutRepositoryVars` and
   instead name the target's repository in their environment (Build note
@@ -603,7 +598,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     "What a run writes in a located checkout" and "What a killed run can
     leave in a located checkout".
   - Hooks off in a located checkout: not in the accepted text. See "Hooks off
-    outside the project root".
+    in run worktrees and other repositories".
   - Who clones: "They take the clone's lock for the fetch and write the
     clone's last-used stamp, so a clone only surveyed is not pruned as
     unused. They prune nothing." See "`survey`, rehearsals and the clone
@@ -619,7 +614,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     owner or mode. See "The folder rule".
   - Clone step 3: "`gh repo clone <host/owner/name> <tmp> --no-upstream --
     --bare`", with no `GH_HOST` and nothing on hooks. See "Clone step 3" and
-    "Hooks off outside the project root".
+    "Hooks off in run worktrees and other repositories".
   - A clone that exists: not in the accepted text, which did not say when a
     clone already at the clone path is used, or what happens when a prune
     removed it first. See "The folder rule" and "Clone locks".
@@ -834,7 +829,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   in `GH_HOST`, with its port. `GH_HOST` is set for every target other than
   the project root, github.com included, so a `GH_HOST` in the person's
   environment cannot move a target. `--no-upstream` is a real flag of gh 2.x.
-- **Hooks off outside the project root.** The accepted text said nothing
+- **Hooks off in run worktrees and other repositories.** The accepted text said nothing
   about hooks. Built, every git call pr-update makes for a target other than
   the project root runs with hooks off (`noHooksEnv`, which sets
   `core.hooksPath=/dev/null`): in a located checkout or a managed clone, in
@@ -843,7 +838,18 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   build (S6, round 1) found hooks on there blocking: the run worktree checks
   out the PR's own files, so a relative `core.hooksPath` such as `.husky`
   would run hooks the PR's author wrote, whether or not the target is
-  trusted. The project root keeps its hooks (Follow-ups).
+  trusted. The final review of the omnibus turned them off in the project
+  root's run worktrees and kept trees too (`gitOf` in `update.ts`), where
+  `worktree add`, the forced checkout of the PR's head and the push ran the
+  hooks a PR commits, with no trust gate, as on main before this work. The
+  person's own pre-push hook no longer runs on pr-update's pushes either. The
+  root's own fetch, survey, PR listing and branch mode's sync, in the
+  person's checkout, keep its hooks. The same review found that an inherited
+  `GIT_CONFIG_PARAMETERS`, which a git alias or hook started as
+  `git -c core.hooksPath=.husky` passes on, beat `noHooksEnv`'s
+  `GIT_CONFIG_COUNT` entry, since git reads it later. `noHooksEnv` is now
+  typed-git's `hooksOffEnv`, which also appends `'core.hookspath'='/dev/null'`
+  to `GIT_CONFIG_PARAMETERS`.
 - **Repository variables (`GIT_DIR` and the rest).** A git hook exports
   `GIT_DIR`, and a program it starts inherits it. Every git that program runs
   then acts on the hook's repository, whatever directory it runs in; in a

@@ -43,7 +43,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 
 import { forwardedSignal } from '@osdlc/command-seam'
-import { Git, withoutRepositoryVars } from '@osdlc/typed-git'
+import { Git } from '@osdlc/typed-git'
 
 import {
   describeOutcome,
@@ -791,7 +791,7 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
   let madeTargetWorktree = false
   for (const [repo, { path, remote, targets: group }] of groups) {
     const at = served.get(repo)
-    const git = gitOf(path, at, env)
+    const git = gitOf(path, env)
     // `<run>` last: a later run reads the pid of a killed one from it.
     const worktreeRoot = join(at?.worktrees ?? join(path, '.pr-update'), runId)
     // `updateAll` makes it for any PR left, before it asks for a lease, so even a run whose
@@ -942,11 +942,9 @@ interface Served {
   attempts: AttemptStore | undefined
   lease: BranchLease | undefined
   /**
-   * Set for a target other than the project root, whose checkout is someone else's: git runs
-   * there with hooks off and without an inherited `GIT_DIR` (`targetGitOptions`), and only
-   * worktrees under pr-update's own directories are cleaned up (`records`).
+   * Set for a target other than the project root, whose checkout is someone else's: only
+   * worktrees under pr-update's own directories are cleaned up.
    */
-  elsewhere?: true | undefined
   records?: WorktreeRecords | undefined
   /** Set when its worktrees and kept trees are where `Ports.targetHome` put them. */
   home?: true | undefined
@@ -956,19 +954,18 @@ interface Served {
  * The client a served checkout is updated through. Its `at()` clients run in the run's worktrees
  * and kept trees, so every call it makes runs without an inherited `GIT_DIR`, `GIT_WORK_TREE` or
  * the other variables that pick a repository: in a linked worktree they would act on the
- * repository `GIT_DIR` names and could move its checked-out branch. For a target other than the
- * project root it also runs with hooks off, since a worktree checks out the PR's own files and a
- * relative `core.hooksPath` (`.husky`) would run the hooks the PR's author wrote. The project
- * root's fetch, survey, listing and branch mode's sync keep the environment as given
- * (`survey.ts`, `syncLocalCheckout`). The two agree on the project root because the CLI refuses,
- * before it fetches, a run whose variables find another repository or another top level than the
+ * repository `GIT_DIR` names and could move its checked-out branch. It also runs with hooks off,
+ * the project root's included, since a worktree checks out the PR's own files and a relative
+ * `core.hooksPath` (`.husky`) would run the hooks the PR's author wrote: at `worktree add`, at
+ * the checkout of the PR's head, and at the push. So a person's own pre-push hook does not run
+ * on pr-update's pushes either. The project root's fetch, survey, listing and branch mode's sync,
+ * in the person's own checkout, keep the environment as given (`survey.ts`,
+ * `syncLocalCheckout`). The two agree on the project root because the CLI refuses, before it
+ * fetches, a run whose variables find another repository or another top level than the
  * directory's own (`repositoryVarsRefusal`).
  */
-function gitOf(path: string, at: Served | undefined, env: Pick<UpdateEnv, 'git'>): Git {
-  return new Git(
-    path,
-    at?.elsewhere === true ? targetGitOptions(env.git) : { runner: withoutRepositoryVars(env.git) },
-  )
+function gitOf(path: string, env: Pick<UpdateEnv, 'git'>): Git {
+  return new Git(path, targetGitOptions(env.git))
 }
 
 /**
@@ -1017,7 +1014,6 @@ function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<
         worktrees: join(path, '.pr-update'),
         kept: { ...checkoutKept(path), records },
         target,
-        elsewhere: true,
         records,
       })
       continue
@@ -1037,7 +1033,6 @@ function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<
       },
       attempts: home.attempts,
       lease: home.lease,
-      elsewhere: true,
       records,
       home: true,
     })
@@ -1185,17 +1180,17 @@ function settleKept(
       discardKept(git, place, record),
     )
   }
-  const places = new Map<string, { checkout: string; place: KeptPlace; at?: Served }>()
+  const places = new Map<string, { checkout: string; place: KeptPlace }>()
   for (const [repo, s] of served) {
-    if (!refused.has(repo)) places.set(s.kept.dir, { checkout: s.path, place: s.kept, at: s })
+    if (!refused.has(repo)) places.set(s.kept.dir, { checkout: s.path, place: s.kept })
   }
   for (const [repo, group] of groups) {
     const place = served.get(repo)?.kept ?? checkoutKept(group.path)
     if (!places.has(place.dir)) places.set(place.dir, { checkout: group.path, place })
   }
   if (args.discardKept === true) {
-    for (const { checkout, place, at } of places.values()) {
-      const git = gitOf(checkout, at, env)
+    for (const { checkout, place } of places.values()) {
+      const git = gitOf(checkout, env)
       for (const record of listKept(place, onRefused)) {
         const tree = treeOf(git, place, record)
         if (tree.kind === 'forged') continue
@@ -1216,7 +1211,7 @@ function settleKept(
   for (const [repo, group] of groups) {
     const at = served.get(repo)
     const place = at?.kept ?? checkoutKept(group.path)
-    const git = gitOf(group.path, at, env)
+    const git = gitOf(group.path, env)
     group.targets = group.targets.filter((t) => {
       const record = findKept(place, t.repo, t.number, onRefused)
       if (record === null || removed.includes(record.path)) return true

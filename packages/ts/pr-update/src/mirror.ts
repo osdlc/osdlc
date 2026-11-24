@@ -7,7 +7,7 @@
  * use a clone that exists. Every use takes the clone's lock, the file `<name>.git.lock` beside
  * the clone, and writes its last-used stamp, so pruning can tell a clone in use from one nobody
  * needs. Every git call in a clone runs with hooks off, as in any checkout other than the
- * project root.
+ * project root and in every run worktree.
  *
  * Consent is any one of `--mirror-dir`, `PR_UPDATE_MIRROR_DIR` and `checkout: mirror` in the
  * machine file (`machine.ts`); the first two beat `checkout: local` for the run. With none of

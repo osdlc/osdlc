@@ -44,11 +44,17 @@ are in scope.
   repository the updates go to. A `--repo` target names its own host, or
   takes the host of the project root's `origin` when that is GitHub, else
   github.com.
-- **Other repositories run with hooks off.** For a `--repo` target, every git
-  command, in a checkout found on the machine, a managed clone or their run
-  worktrees, runs with `core.hooksPath=/dev/null`, so a hook the PR commits
-  does not run. Each target passes the trust gate on its own. The project
-  root's git runs as before.
+- **Hooks are off wherever a PR's files are checked out.** Every git command
+  in a run worktree or kept tree, the project root's included, runs with
+  `core.hooksPath=/dev/null`, set after any `-c core.hooksPath` a parent git
+  passed on in `GIT_CONFIG_PARAMETERS`. So a hook the PR commits under a
+  relative `core.hooksPath` such as `.husky` does not run at `worktree add`,
+  at the checkout of the PR's head or at the push, and neither does your own
+  pre-push hook on pr-update's pushes. For a `--repo` target, every git
+  command in a checkout found on the machine or a managed clone runs that way
+  too. Each target passes the trust gate on its own. The project root's own
+  fetch, survey, PR listing and branch mode's sync, in your checkout, keep
+  its hooks.
 - **pr-update's worktrees and other repositories ignore `GIT_DIR`.** A run
   started from a git hook inherits `GIT_DIR`, which would make every git it
   runs act on the hook's repository; in a linked worktree that moves the

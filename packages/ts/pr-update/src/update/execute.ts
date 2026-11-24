@@ -961,7 +961,8 @@ export function noHooksEnv(
 }
 
 /**
- * The git options for a checkout other than the project root, which is someone else's: hooks off
+ * The git options for a checkout other than the project root, which is someone else's, and for
+ * every run worktree and kept tree, the project root's included, which hold a PR's files: hooks off
  * (`noHooksEnv`), and `runner` with `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and the other
  * variables that pick a repository unset in each child (typed-git's `withoutRepositoryVars`). A
  * run started from a git hook, which exports `GIT_DIR`, then still acts on the target. Pass the
