@@ -2,7 +2,9 @@
 # Gradle's caches and wrapper distributions, on the default folders. No Gradle
 # command clears them on demand, so each is removed as a folder: the caches
 # once nothing in them changed for a week, and each wrapper distribution once
-# unused for 30 days. While a Gradle daemon runs, nothing is removed.
+# unused for 30 days. While a process with the word GradleDaemon in its command
+# line runs (the daemon is a java process), every candidate is refused in-use,
+# at the survey and again before each delete.
 descriptor: 1
 store: gradle
 detect:

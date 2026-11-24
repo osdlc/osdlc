@@ -51,6 +51,23 @@ const STORES = ['gradle', 'huggingface-hub', 'maven', 'npm', 'pip', 'pnpm', 'uv'
 /** The stores whose candidate is a prune, and the program it runs. */
 const PRUNES: Partial<Record<(typeof STORES)[number], string>> = { pnpm: 'pnpm', uv: 'uv' }
 
+/**
+ * For each store with an `inUse` process, the command line its program runs
+ * as, the way `ps -axo args=` prints it, and the name a refusal shows for it
+ * (the first word's last segment).
+ */
+const RUNNING: Partial<Record<(typeof STORES)[number], { command: string; shown: string }>> = {
+  gradle: {
+    command:
+      '/usr/bin/java -Xmx512m -cp /home/me/.gradle/wrapper/dists/gradle-8.10-bin/6o1bb8kk/gradle-8.10/lib/gradle-launcher-8.10.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.10',
+    shown: 'java',
+  },
+  npm: { command: 'node /usr/local/bin/npm install', shown: 'node' },
+  pnpm: { command: 'node /opt/homebrew/bin/pnpm dev', shown: 'node' },
+  uv: { command: '/home/me/.local/bin/uv sync', shown: 'uv' },
+  yarn: { command: 'node /usr/local/bin/yarn install', shown: 'node' },
+}
+
 const OSES_TESTED: readonly Os[] = ['macos', 'linux']
 
 const cleanups: Array<() => void> = []
@@ -168,6 +185,11 @@ describe('the shipped folder', () => {
     for (const name of STORES) expect(shipped(name).store).toBe(name)
   })
 
+  test('the stores with an in-use process are those with a command line to fake', () => {
+    const named = STORES.filter((name) => (shipped(name).inUse?.processes ?? []).length > 0)
+    expect(named).toEqual(Object.keys(RUNNING))
+  })
+
   test('a run loads all eight after the built-ins, by name', () => {
     const { definitions, descriptors } = loadPlugins({})
     expect(definitions.map((d) => d.name)).toEqual([
@@ -256,6 +278,32 @@ describe.each(OSES_TESTED)('on %s', (os) => {
     })
   })
 
+  describe('in use', () => {
+    test.each(Object.entries(RUNNING))(
+      '%s: its program running refuses every candidate',
+      async (name, { command, shown }) => {
+        const b = build(name, os, { processes: processes({ '/': [{ pid: 7, command }] }) })
+        const s = await survey([b.plugin], ctxOf())
+        const inUse = s.objections.filter((o) => o.code === IN_USE)
+        expect(s.candidates.length).toBeGreaterThan(0)
+        expect(inUse.map((o) => o.candidate).sort()).toEqual(ids(s.candidates))
+        expect(inUse.map((o) => o.reason)).toContain(`running: ${shown} (pid 7)`)
+      },
+    )
+
+    test.each(Object.keys(RUNNING))(
+      "%s: the other stores' programs running refuse none of its candidates",
+      async (name) => {
+        const others = Object.entries(RUNNING)
+          .filter(([store]) => store !== name)
+          .map(([, r], i) => ({ pid: 10 + i, command: r.command }))
+        const b = build(name, os, { processes: processes({ '/': others }) })
+        const s = await survey([b.plugin], ctxOf())
+        expect(s.objections.filter((o) => o.code === IN_USE)).toEqual([])
+      },
+    )
+  })
+
   describe('pnpm', () => {
     test('prunes the store with pnpm, pointed at it, and removes the idle metadata cache', async () => {
       const b = build('pnpm', os, { programs: { pnpm: () => ({}) } })
@@ -281,13 +329,6 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       ])
       expect(receipt.steps).toEqual([])
       expect(existsSync(join(b.folder('store'), 'blob'))).toBe(true)
-    })
-
-    test('a running pnpm refuses both', async () => {
-      const table = { '/': [{ pid: 7, command: 'node /opt/homebrew/bin/pnpm install' }] }
-      const b = build('pnpm', os, { processes: processes(table) })
-      const s = await survey([b.plugin], ctxOf())
-      expect(s.objections.filter((o) => o.code === IN_USE)).toHaveLength(2)
     })
   })
 
@@ -341,9 +382,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
     })
 
     test('a running Gradle daemon refuses every candidate', async () => {
-      const daemon =
-        'java -cp gradle-launcher.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.10'
-      const table = { '/': [{ pid: 9, command: daemon }] }
+      const table = { '/': [{ pid: 9, command: RUNNING.gradle!.command }] }
       const b = build('gradle', os, { processes: processes(table) })
       age(b.folder('caches'), 169)
       const { survey: s, receipt } = await surveyAndClean(b.plugin)
