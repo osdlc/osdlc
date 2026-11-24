@@ -18,8 +18,12 @@ describe('DEVLINK_SPEC', () => {
     expect(isCheckout(DEVLINK_SPEC, fileURLToPath(new URL('../..', import.meta.url)))).toBe(false)
   })
 
-  test('the launcher is executable, as the `dev install` shim runs it directly', () => {
-    const launcher = fileURLToPath(new URL(`../${DEVLINK_SPEC.launcher}`, import.meta.url))
-    expect(statSync(launcher).mode & 0o111).not.toBe(0)
-  })
+  // Windows has no executable bit.
+  test.skipIf(process.platform === 'win32')(
+    'the launcher is executable, as the `dev install` shim runs it directly',
+    () => {
+      const launcher = fileURLToPath(new URL(`../${DEVLINK_SPEC.launcher}`, import.meta.url))
+      expect(statSync(launcher).mode & 0o111).not.toBe(0)
+    },
+  )
 })
