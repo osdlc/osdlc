@@ -30,7 +30,6 @@ import {
   PLUGIN_API,
   definePlugin,
   type Candidate,
-  type CostDescription,
   type Objection,
   type PathCandidate,
   type Plugin,
@@ -56,10 +55,8 @@ interface Editor {
   appDir: string
   /** Its process names, as `kit.running` gives them without the pid. */
   process: RegExp
-  /** What deleting a dead workspace's storage costs. */
-  costDescription: CostDescription
-  /** What that storage holds, as `why` says it. */
-  holds: string
+  /** True when its workspace storage always holds chat history, so deleting it is `lost`. */
+  keepsChat: boolean
 }
 
 const VSCODE: Editor = {
@@ -68,8 +65,7 @@ const VSCODE: Editor = {
   appDir: 'Code',
   // `Code` and its `Code Helper (…)` processes on macOS, `code` on Linux.
   process: /^code(?:\s|\\x20|$)/i,
-  costDescription: 're-download',
-  holds: 'state',
+  keepsChat: false,
 }
 
 const CURSOR: Editor = {
@@ -79,8 +75,7 @@ const CURSOR: Editor = {
   // `Cursor` and its `Cursor Helper (…)` processes on macOS, `cursor` on Linux.
   process: /^cursor(?:\s|\\x20|$)/i,
   // Its chat history is kept there, and nothing brings it back.
-  costDescription: 'lost',
-  holds: 'state and chat history',
+  keepsChat: true,
 }
 
 /** The longest `discover` may take: it sizes every dead storage folder. */
@@ -387,7 +382,6 @@ const processesOf = (editor: Editor, names: readonly string[]): string[] =>
   names.filter((n) => editor.process.test(n.replace(/ \(pid \d+\)$/, '')))
 
 function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
-  const { product } = editor
   const userDir =
     opts.userDir ?? userDirOf(editor, opts.env ?? process.env, opts.platform ?? process.platform)
   const root = userDir === undefined ? undefined : join(userDir, 'workspaceStorage')
@@ -462,9 +456,9 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
       for (const c of worktrees) {
         const procs = processesOf(editor, kit.running({ in: c.path }, ctx).names)
         if (procs.length > 0) {
-          out.push(own(c, 'refuse', IN_USE, `${product} works in it: ${procs.join(', ')}`))
+          out.push(own(c, 'refuse', IN_USE, `${editor.product} works in it: ${procs.join(', ')}`))
         } else if (opened(c.path)) {
-          out.push(own(c, 'refuse', IN_USE, `a ${product} window has it open (${stateFile})`))
+          out.push(own(c, 'refuse', IN_USE, `a ${editor.product} window has it open (${stateFile})`))
         } else if (windows.problem !== undefined) {
           out.push(
             own(
@@ -478,7 +472,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
       }
       for (const { c, local } of gone) {
         if (windows.paths.includes(canon(local))) {
-          out.push(own(c, 'refuse', IN_USE, `a ${product} window still has ${local} open`))
+          out.push(own(c, 'refuse', IN_USE, `a ${editor.product} window still has ${local} open`))
         }
       }
       return out
@@ -486,7 +480,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
     delete(c, ctx) {
       if (c.path === undefined) throw new Error(`${c.id} is not a storage folder`)
       if (root === undefined || dirname(c.path) !== root) {
-        throw new Error(`${c.path} is not in ${product}'s workspaceStorage`)
+        throw new Error(`${c.path} is not in ${editor.product}'s workspaceStorage`)
       }
       if (lstatSync(c.path, { throwIfNoEntry: false }) === undefined) {
         return `already gone: ${c.path}`
@@ -515,10 +509,10 @@ function goneCandidate(
   return kit.candidate({
     kind: KIND,
     path: dir,
-    why: `${editor.product} kept ${editor.holds} for ${e.local}, which no longer exists${hasHistory ? `, with chat or agent history in ${e.history.join(', ')}` : ''}`,
+    why: `${editor.product} kept ${editor.keepsChat ? 'state and chat history' : 'state'} for ${e.local}, which no longer exists${hasHistory ? `, with chat or agent history in ${e.history.join(', ')}` : ''}`,
     ...(bytes === null ? {} : { bytes }),
     // A `lost` candidate is held, and runs only with `--allow discard-user-data`.
-    costDescription: hasHistory ? 'lost' : editor.costDescription,
+    costDescription: hasHistory || editor.keepsChat ? 'lost' : 're-download',
     evidence: {
       kind: KIND,
       path: dir,
@@ -528,23 +522,18 @@ function goneCandidate(
   })
 }
 
-/** `editor`'s plugin as the command line builds it. No settings of its own. */
-const definitionOf = (editor: Editor) =>
+/** `editor`'s plugin definition, built over `opts` or else the command line's `env`. No settings of its own. */
+const definitionOf = (editor: Editor, opts?: VscodeOptions) =>
   definePlugin({
     name: editor.name,
     api: PLUGIN_API,
     settings: z.strictObject({}),
-    create: ({ kit, env }) => build(editor, kit, { env }),
+    create: ({ kit, env }) => build(editor, kit, opts ?? { env }),
   })
 
 /** `editor`'s plugin on a kit built from `opts`, made through `definePlugin` so the core binds that kit each run. */
 function pluginOf(editor: Editor, opts: VscodeOptions): Plugin {
-  return definePlugin({
-    name: editor.name,
-    api: PLUGIN_API,
-    settings: z.strictObject({}),
-    create: ({ kit }) => build(editor, kit, opts),
-  }).create({
+  return definitionOf(editor, opts).create({
     settings: {},
     only: [],
     env: opts.env ?? process.env,
