@@ -1,8 +1,7 @@
 /**
  * Where host-cleaner keeps its files, and what its config file holds. The
  * directories are `@osdlc/tiered-dirs`' `standalone('host-cleaner')` tier
- * under the `xdg` convention, so `~/.config/host-cleaner` and
- * `~/.local/state/host-cleaner` on macOS as on Linux, moved by the
+ * under the `xdg` convention (see {@link hostDirs}), moved by the
  * `HOST_CLEANER_*` override variables:
  *
  *   config  `config.json`: the targets to sweep and each plugin's settings
