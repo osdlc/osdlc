@@ -46,6 +46,20 @@ and counts the call as a throw: a timed-out `detect` leaves the plugin out, a
 timed-out `object` refuses every candidate, and a timed-out `delete` fails
 that step.
 
+`detect` answers `true`, `false`, or `{ active, note }`: `active` is whether
+the plugin runs, and `note` is a sentence for a person, such as why a plugin
+that still runs is degraded (Orca installed but not running: its worktrees
+must still be refused, so it stays active). The core keeps each plugin's note,
+whether it runs or not, in the survey's `notes` (plugin name to note, plain
+JSON), and `status` prints each as a warning line naming the plugin, and under
+`notes` in `--format json`. An answer of any other shape leaves the plugin out
+with a warning.
+
+Every hook's `ctx` carries `targetsGiven`: true when a person named the
+targets, in the config or on the command line, and false when the command line
+fell back to the directory it runs in (and when a `RunCtx` leaves it unset). A
+plan keeps it, so `clean --plan` tells the plugins the same.
+
 A candidate's `requires` lists the candidates that must go first. If one is
 refused, dropped or fails, the candidate is too; requirements are deleted
 before their dependents (a branch after the worktree that holds it). The core
@@ -83,7 +97,7 @@ const cache: Plugin = {
   delete: (c) => `removed ${c.path}`,
 }
 
-const ctx: RunCtx = { cwd: process.cwd(), targets: [process.cwd()], allow: [] }
+const ctx: RunCtx = { cwd: process.cwd(), targets: [process.cwd()], targetsGiven: true, allow: [] }
 const found = await survey([cache], ctx) // scope, discover, object
 const receipt = await clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
 ```
@@ -134,7 +148,23 @@ cache directory, a toolchain folder) declares `roots(ctx)`: the directories it
 cleans, fixed or taken from its own settings. Without `roots`, a plugin is held
 to the targets alone. Containment is proven on real paths with
 `@osdlc/path-guard`, so a `..` or a symlink that leaves is not inside, and a
-root or a target itself is never a candidate. A candidate that is itself a link
+plain root or a target itself is never a candidate. A store that is removed
+whole, such as `~/.npm`, is declared `{ path, self: true }` among the roots:
+that folder may then be a candidate itself, as well as anything inside it.
+
+The core refuses a root, plain or self, that is the filesystem root (`/`), is
+or holds the home folder, is a personal folder (`PERSONAL_FOLDERS`:
+`~/Documents`, `~/Desktop`, `~/Downloads`, `~/Pictures`, `~/Music`,
+`~/Movies`, `~/Library`, `~/.ssh`, `~/.config`), is or holds a target or a
+linked worktree, or is a checkout (holds `.git`), and a self root that is a
+symlink. It leaves such a root out with a warning (`<plugin>: roots: left out
+the root <path>: <why>`), so its candidates are refused `outside-roots`. The
+same check runs again right before `delete` and in `kit.remove`, so a self
+root that has become a checkout or a symlink since the survey is not removed.
+
+Real paths are read with `realpathSync.native`, which spells a path as the
+filesystem does: where it ignores case, as macOS's does, `~/documents` is
+`~/Documents`, and compares so. A candidate that is itself a link
 is judged by its target, so a link pointing out is refused. A plugin's `delete`
 must act on the candidate's path alone. The core refuses one that is not
 (`outside-roots`, by `host-cleaner`) and checks again right before `delete`,
@@ -159,11 +189,11 @@ needs no more than the path. The plugin `create` returns through
 | --- | --- |
 | `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the hours since, fractions included, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Out of time, it is `{ unmeasured: true }`. |
 | `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
-| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. The table is read fresh once per hook call. |
+| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. The table is read fresh once per hook call. |
 | `kit.onPath(program)` | Whether a program is on PATH. |
 | `kit.candidate({ kind, path \| ref, ... })` | A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and the plugin as owner. |
 | `kit.run(argv, { signal, check })` | Runs a program through `@osdlc/command-seam`, with a time limit (`RUN_LIMIT_MS`, 30 seconds) and stopped when `ctx.signal` aborts; `ok` when it exited 0, a `CommandFailed` throw with `check`. |
-| `kit.remove(path, ctx?)` | Removes a folder only if it is still inside the plugin's roots, a target or a linked worktree of one (as in [containment](#paths-refs-and-containment)) by its real path, as the core bound them this run, after making read-only folders and files in it writable; checks it is gone and returns the receipt sentence. With `ctx`, it removes nothing once `ctx.signal` has aborted. |
+| `kit.remove(path, ctx?)` | Removes a folder only if it is still inside the plugin's roots, is one of its self roots, or is inside a target or a linked worktree of one (as in [containment](#paths-refs-and-containment)) by its real path, as the core bound them this run, after making read-only folders and files in it writable; checks it is gone and returns the receipt sentence. With `ctx`, it removes nothing once `ctx.signal` has aborted. |
 
 `idleHoursSetting` is the `idleHours` setting: a plugin that declares it
 inherits the config's top-level `idleHours` when its own entry sets none.
@@ -180,15 +210,17 @@ runner:
 
 | Export | What it is |
 | --- | --- |
-| `fakeContext(over)` | A hook's context: no targets, nothing allowed, a signal never aborted. |
+| `fakeContext(over)` | A hook's context: no targets, `targetsGiven: false`, nothing allowed, a signal never aborted. |
 | `fakeRunner({ program: answers })` | Fake programs for the kit: spread it into `pluginKit`'s options. A program in the table is on PATH and answers as command-seam's `fakeRunner` does; `calls` records each run. |
 | `tempHome()` | A new empty folder, by its real path, with `cleanup()`. |
 | `contractSuite(plugin, ctx, { deleteLimitMs })` | Surveys the plugin twice and returns one line per broken rule. |
 
 The suite checks that `limits` name hooks; that the survey warns of nothing
-(no hook throws or runs past its limit, ids are unique, each candidate is the
-plugin's and has one of a path and a ref); that every path candidate is inside
-the plugin's roots or the targets; that ids and evidence are the same in both
+(no hook throws or runs past its limit, `detect`'s answer and each root has a
+shape the core takes, ids are unique, each candidate is the plugin's and has
+one of a path and a ref; a `detect` note is not a problem); that every path
+candidate is inside the plugin's roots or the targets, or is one of its self
+roots; that ids and evidence are the same in both
 surveys; that candidates and objections hold only what JSON keeps, so a plan
 reads back; and that `delete` refuses a folder outside the roots and the
 targets. For that last check it moves one of the plugin's own path candidates
@@ -291,7 +323,9 @@ host-cleaner config [--format json]   # every plugin's effective settings
 
 The text output writes the home folder in an id as `~`
 (`worktree:~/dev/wt`, `branch:~/dev/repo:main`), and `--pick` and `--spare`
-take that form. host-cleaner refuses to run as root (exit 1).
+take that form. host-cleaner refuses to run as root (exit 1). `status`
+prints each plugin's `detect` note as a warning line naming the plugin, with
+the survey's warnings.
 
 `--plugin <name>` runs only those plugins (`--adapter` is an alias) and
 `--skip-plugin <name>` never runs these. Targets default to the config file's

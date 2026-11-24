@@ -17,6 +17,7 @@ export {
   type Candidate,
   type CostDescription,
   type Ctx,
+  type Detection,
   type Hook,
   type Level,
   type MaybePromise,
@@ -26,6 +27,7 @@ export {
   type PluginDefinition,
   type PluginInit,
   type RefCandidate,
+  type Root,
   type RunCtx,
 } from './types.ts'
 export {

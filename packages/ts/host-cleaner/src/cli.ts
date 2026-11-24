@@ -582,6 +582,7 @@ function contextFor(
   return {
     cwd: ctx.cwd,
     targets: chosen.map((t) => resolve(ctx.cwd, expandHome(t, home))),
+    targetsGiven: targets.length > 0 || config.targets.length > 0,
     allow,
     ignore: ignoreFor(config, ignore, ctx),
   }
@@ -651,10 +652,13 @@ async function runStatus(
   const ignored = s.ctx.ignore ?? []
   if (v.format === 'json') {
     ctx.io.stdout(
-      `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), ignore: ignored, warnings, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
+      `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), ignore: ignored, warnings, notes: s.notes, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
     )
   } else {
-    writeWarnings(ctx, name, warnings)
+    writeWarnings(ctx, name, [
+      ...warnings,
+      ...Object.entries(s.notes).map(([plugin, note]) => `${plugin}: ${note}`),
+    ])
     ctx.io.stdout(
       `plugins: ${s.plugins.map((p) => p.name).join(', ') || '(none)'}\n` +
         (ignored.length > 0 ? `ignoring: ${ignored.join(', ')}\n` : '') +
@@ -751,6 +755,7 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
     plan = makePlan(s, {
       targets: cctx.targets,
+      targetsGiven: cctx.targetsGiven,
       ignore: cctx.ignore,
       pick: v.pick.map((e) => untildeId(e, homeOf(ctx))),
       spare: v.spare.map((e) => untildeId(e, homeOf(ctx))),
@@ -916,6 +921,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
       if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
       plan = makePlan(s, {
         targets: cctx.targets,
+        targetsGiven: cctx.targetsGiven,
         ignore: cctx.ignore,
         pick: v.pick.map((e) => untildeId(e, homeOf(ctx))),
         spare: v.spare.map((e) => untildeId(e, homeOf(ctx))),
@@ -936,6 +942,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
       cctx = {
         cwd: ctx.cwd,
         targets: plan.targets,
+        targetsGiven: plan.targetsGiven,
         allow: plan.allow,
         ignore: ignoreFor(config, v.ignore, ctx),
       }

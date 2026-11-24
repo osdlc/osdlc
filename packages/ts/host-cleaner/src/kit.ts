@@ -14,14 +14,16 @@
 
 import { chmodSync, lstatSync, readdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 
 import {
   CommandFailed,
+  spawnRunner,
   spawnRunnerAsync,
   which,
   type AsyncCommandRunner,
   type CommandResult,
+  type CommandRunner,
 } from '@osdlc/command-seam'
 import { busyHolders, defaultProcessProbe, sizeOf, type ProcessProbe } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
@@ -108,7 +110,11 @@ export interface Kit {
   size(path: string): number | null
   /**
    * The processes of a program, named as a string or as `{ name }`, or the
-   * busy processes working in `in` (an idle shell is not busy). The process
+   * busy processes working in `in` (an idle shell is not busy). A name
+   * matches a process when it is a word of its command line (`ps -axo
+   * pid=,args=`) by {@link commandHasName}, so `pnpm` finds `node
+   * /opt/homebrew/bin/pnpm dev` and `GradleDaemon` and `gradle` find `java
+   * ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. The process
    * table is read once per hook call, so a `delete` sees it fresh.
    */
   running(where: string | { in: string } | { name: string }, ctx: Pick<Ctx, 'signal'>): Running
@@ -137,6 +143,8 @@ export interface KitOptions {
   /** Default {@link MEASURE_BUDGET_MS}. */
   budgetMs?: number | undefined
   probe?: ProcessProbe | undefined
+  /** The runner for `ps`, which {@link Kit.running} reads command lines with. Default: `spawnRunner('ps')`. */
+  ps?: CommandRunner | undefined
   /** The runner for a program, by name. Default: `spawnRunnerAsync`. */
   runner?: ((program: string) => AsyncCommandRunner) | undefined
   /** Where `program` is on PATH. Default: command-seam's `which` over `env`. */
@@ -191,6 +199,42 @@ function makeWritable(path: string): void {
   for (const name of names) makeWritable(join(path, name))
 }
 
+/**
+ * Whether `name` is a word of the command line `args`: a word, split on
+ * whitespace, whose last path segment is `name`, or has `name` as one of its
+ * dot-separated parts. So `pnpm` matches `/opt/homebrew/bin/pnpm` and
+ * `.../bin/pnpm.cjs`, and both `GradleDaemon` and `gradle` match
+ * `org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. It errs
+ * towards a match, since a match only stops a delete.
+ */
+export function commandHasName(args: string, name: string): boolean {
+  if (name === '') return false
+  return args.split(/\s+/).some((word) => {
+    const last = word.slice(word.lastIndexOf('/') + 1)
+    return last === name || last.split('.').includes(name)
+  })
+}
+
+/** `ps` reads its own locale; `LC_ALL=C` keeps its output plain. */
+const PS_ENV = { LC_ALL: 'C' } as const
+
+/** Each process with its command line, this one left out. Throws when `ps` gives no table. */
+function commandLines(ps: CommandRunner): Array<{ pid: number; args: string }> {
+  const r = ps.run(['-axo', 'pid=,args='], { cwd: '/', env: PS_ENV, timeoutMs: 60_000 })
+  if (r.neverExited === true) throw new Error(`ps did not run: ${r.error ?? r.stderr.trim()}`)
+  if (r.exitCode !== 0 || r.stdout.trim() === '') {
+    throw new Error(`ps failed (exit ${r.exitCode}): ${r.stderr.trim() || 'no output'}`)
+  }
+  const rows: Array<{ pid: number; args: string }> = []
+  for (const line of r.stdout.split('\n')) {
+    const m = /^\s*(\d+)\s+(.*)$/.exec(line)
+    if (m === null) continue
+    const pid = Number(m[1])
+    if (pid !== process.pid) rows.push({ pid, args: m[2]!.trim() })
+  }
+  return rows
+}
+
 /** The kit for the plugin `owner`. */
 export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
   const now = opts.now ?? (() => new Date())
@@ -198,12 +242,23 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
   const probe = opts.probe ?? defaultProcessProbe()
   const runner = opts.runner ?? ((program: string) => spawnRunnerAsync(program))
   const lookup = opts.which ?? ((program: string) => which(program, { env: opts.env }))
+  const ps = opts.ps ?? spawnRunner('ps')
   // The hook calls that have read the process table: the first read in each is fresh.
   const read = new WeakSet<AbortSignal>()
   const holders = (path: string, signal: AbortSignal) => {
     const fresh = !read.has(signal)
     read.add(signal)
     return probe.holders(path, fresh ? { fresh: true } : undefined)
+  }
+  // The command lines, read once per hook call.
+  const lines = new WeakMap<AbortSignal, Array<{ pid: number; args: string }>>()
+  const commands = (signal: AbortSignal) => {
+    let rows = lines.get(signal)
+    if (rows === undefined) {
+      rows = commandLines(ps)
+      lines.set(signal, rows)
+    }
+    return rows
   }
 
   // Unbound until the core resolves this plugin's roots in a run.
@@ -249,11 +304,14 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
     running(where, ctx) {
       try {
         const by = typeof where === 'string' ? { name: where } : where
-        const found =
-          'in' in by
-            ? busyHolders(holders(by.in, ctx.signal))
-            : holders('/', ctx.signal).filter((h) => h.command === by.name)
-        return { names: found.map((h) => `${h.command} (pid ${h.pid})`) }
+        if ('in' in by) {
+          const found = busyHolders(holders(by.in, ctx.signal))
+          return { names: found.map((h) => `${h.command} (pid ${h.pid})`) }
+        }
+        const found = commands(ctx.signal).filter((row) => commandHasName(row.args, by.name))
+        return {
+          names: found.map((row) => `${basename(row.args.split(/\s+/)[0]!)} (pid ${row.pid})`),
+        }
       } catch (err) {
         return { names: [], unknown: err instanceof Error ? err.message : String(err) }
       }
