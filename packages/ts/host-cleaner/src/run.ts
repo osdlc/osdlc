@@ -559,7 +559,7 @@ export function plan(
     version: PLAN_VERSION,
     createdAt: (opts.now ?? new Date()).toISOString(),
     targets: [...(opts.targets ?? [])],
-    ...(opts.targetsGiven === undefined ? {} : { targetsGiven: opts.targetsGiven }),
+    targetsGiven: opts.targetsGiven ?? false,
     select: selection.select === null ? null : [...selection.select],
     pick: [...selection.pick],
     spare: [...selection.spare],
