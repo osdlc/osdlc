@@ -35,7 +35,7 @@ import { z } from 'zod'
 
 import { hostDirs } from '../config.ts'
 import { DEFAULT_IDLE_HOURS, idleHoursSetting, type Kit } from '../kit.ts'
-import { containedIn } from '../roots.ts'
+import { PERSONAL_FOLDERS, containedIn } from '../roots.ts'
 import { DELETE_LIMIT_MS, OUTSIDE_ROOTS } from '../run.ts'
 import {
   PLUGIN_API,
@@ -60,19 +60,6 @@ export const NO_PRUNE_TOOL = 'no-prune-tool'
 
 /** The refusal while an `inUse` process runs or lock exists. */
 export const IN_USE = 'in-use'
-
-/** Folders under home that a descriptor path may never be: they hold a person's own files. */
-export const PERSONAL_FOLDERS = [
-  'Documents',
-  'Desktop',
-  'Downloads',
-  'Pictures',
-  'Music',
-  'Movies',
-  'Library',
-  '.ssh',
-  '.config',
-] as const
 
 /** How long a descriptor's `discover` may take: it measures every folder, and walks the checkouts for `project`. */
 const DISCOVER_LIMIT_MS = 10 * 60_000
