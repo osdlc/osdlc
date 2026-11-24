@@ -17,6 +17,7 @@ export {
   type Candidate,
   type CostDescription,
   type Ctx,
+  type Detection,
   type DropReason,
   type Hook,
   type Level,
@@ -27,6 +28,7 @@ export {
   type PluginDefinition,
   type PluginInit,
   type RefCandidate,
+  type Root,
   type RunCtx,
 } from './types.ts'
 export { BUILT_IN_PLUGINS, loadPlugins, type Loaded } from './registry.ts'
@@ -69,7 +71,7 @@ export {
   type Selection,
   type Survey,
 } from './run.ts'
-export { containedIn } from './roots.ts'
+export { PERSONAL_FOLDERS, containedIn } from './roots.ts'
 export { gitPlugin, type GitPluginOptions } from './git.ts'
 export { cargoPlugin, CARGO_PLUGIN } from './cargo.ts'
 export { nodePlugin, NODE_PLUGIN } from './node.ts'
@@ -78,6 +80,7 @@ export {
   DEFAULT_IDLE_HOURS,
   MEASURE_BUDGET_MS,
   RUN_LIMIT_MS,
+  commandHasName,
   idleHoursSetting,
   pluginKit,
   type CandidateFields,
@@ -109,7 +112,6 @@ export {
 export {
   IN_USE,
   NO_PRUNE_TOOL,
-  PERSONAL_FOLDERS,
   descriptorPlugin,
   globMatches,
   osOf,

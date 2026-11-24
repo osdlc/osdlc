@@ -18,6 +18,7 @@ import {
   loadDescriptors,
   loadPlugins,
   pluginKit,
+  type Detection,
   type LoadedDescriptor,
   type Plugin,
 } from '../src/index.ts'
@@ -234,14 +235,21 @@ describe('the run’s plugins', () => {
   })
 
   test('supersededBy: a plugin runs only when chosen and detected', async () => {
-    const plugin = (name: string, detected: boolean): Plugin => ({
+    const plugin = (name: string, detected: boolean | Detection): Plugin => ({
       name,
       detect: () => detected,
     })
-    let chosen: Plugin[] = [plugin('cargo', true), plugin('node', false)]
+    let chosen: Plugin[] = [
+      plugin('cargo', true),
+      plugin('node', false),
+      plugin('docker', { active: true, note: 'up' }),
+      plugin('ollama', { active: false, note: 'not running' }),
+    ]
     const runs = runsAmong(() => chosen)
     expect(await runs('cargo', fakeContext())).toBe(true)
     expect(await runs('node', fakeContext())).toBe(false)
+    expect(await runs('docker', fakeContext())).toBe(true)
+    expect(await runs('ollama', fakeContext())).toBe(false)
     expect(await runs('orca', fakeContext())).toBe(false)
     chosen = []
     expect(await runs('cargo', fakeContext())).toBe(false)

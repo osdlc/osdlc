@@ -309,6 +309,42 @@ describe('a small corpus', () => {
     expect(() => draftStore(corpus, 'other')).toThrow(DraftError)
   })
 
+  test('a corpus that is not as the corpus records it is a DraftError that names the file or field', () => {
+    expect(() => draftStore(join(corpus, 'none'), 'tool')).toThrow(
+      `${join(corpus, 'none')} is not a corpus: it has no stores folder`,
+    )
+    store('Tool', { slug: 'tool' }, { 'location/data-dirs': { dirs: 'not a list' } })
+    expect(() => draftStore(corpus, 'tool')).toThrow(
+      new DraftError('tool: location/data-dirs: dirs is not a list'),
+    )
+    store('Tool', { slug: 'tool' }, { 'location/data-dirs': { dirs: [{ path: '~/.tool' }] } })
+    expect(() => draftStore(corpus, 'tool')).toThrow(
+      new DraftError('tool: location/data-dirs: dirs.0 is not what the corpus records'),
+    )
+    store(
+      'Tool',
+      { slug: 'tool' },
+      {
+        'location/data-dirs': {
+          dirs: [{ platform: 'all', path: '~/.tool', holds: 'cache', rebuild: 're-download' }],
+        },
+        'location/override': { vars: [1] },
+      },
+    )
+    expect(() => draftStore(corpus, 'tool')).toThrow(
+      new DraftError('tool: location/override: vars.0 is not what the corpus records'),
+    )
+    const statement = join(corpus, 'statements', 'Tool', 'broken.md')
+    writeFileSync(statement, markdown({ status: 'current', proposition: 'location/data-dirs' }))
+    expect(() => draftStore(corpus, 'tool')).toThrow(
+      new DraftError(
+        `${statement}: a current statement needs a proposition with a predicate and an object`,
+      ),
+    )
+    writeFileSync(statement, '---\nstatus: [current\n---\n')
+    expect(() => draftStore(corpus, 'tool')).toThrow(`${statement}: front matter is not YAML`)
+  })
+
   test('writing keeps a file that is there, unless forced', () => {
     store(
       'Tool',
@@ -347,5 +383,13 @@ describe('the command line', () => {
     const r = run('no-such-store')
     expect(r.status).toBe(1)
     expect(r.stderr).toContain('no store with slug no-such-store')
+  })
+
+  test('an unknown flag is a usage error, not a stack trace', () => {
+    const r = run('--bogus', 'pip')
+    expect(r.status).toBe(2)
+    expect(r.stderr).toContain("Unknown option '--bogus'")
+    expect(r.stderr).toContain('usage: draft-descriptor')
+    expect(r.stderr).not.toContain('    at ')
   })
 })

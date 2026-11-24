@@ -82,10 +82,22 @@ export interface CorpusStore {
   statements: ReadonlyMap<string, Statement>
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
 const frontMatter = (file: string): Record<string, unknown> => {
   const m = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(readFileSync(file, 'utf8'))
   if (m === null) throw new DraftError(`${file}: no front matter`)
-  return (parse(m[1] ?? '') ?? {}) as Record<string, unknown>
+  let fm: unknown
+  try {
+    fm = parse(m[1] ?? '') ?? {}
+  } catch (err) {
+    throw new DraftError(
+      `${file}: front matter is not YAML: ${(err as Error).message.split('\n')[0]}`,
+    )
+  }
+  if (!isRecord(fm)) throw new DraftError(`${file}: front matter is not a map`)
+  return fm
 }
 
 /**
@@ -95,6 +107,8 @@ const frontMatter = (file: string): Record<string, unknown> => {
  */
 export function readStore(corpus: string, slug: string): CorpusStore {
   const stores = join(corpus, 'stores')
+  if (!existsSync(stores))
+    throw new DraftError(`${corpus} is not a corpus: it has no stores folder`)
   for (const file of readdirSync(stores).filter((f) => f.endsWith('.md'))) {
     const fm = frontMatter(join(stores, file))
     if (fm['slug'] !== slug) continue
@@ -104,11 +118,15 @@ export function readStore(corpus: string, slug: string): CorpusStore {
     for (const f of existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')) : []) {
       const s = frontMatter(join(dir, f))
       if (s['status'] !== 'current') continue
-      const prop = s['proposition'] as { predicate: string; object: Record<string, unknown> }
-      statements.set(prop.predicate, {
-        object: prop.object,
-        open: (s['open'] as string[] | undefined) ?? [],
-      })
+      const prop = s['proposition']
+      if (!isRecord(prop) || typeof prop['predicate'] !== 'string' || !isRecord(prop['object']))
+        throw new DraftError(
+          `${join(dir, f)}: a current statement needs a proposition with a predicate and an object`,
+        )
+      const open = s['open'] ?? []
+      if (!Array.isArray(open) || !open.every((o) => typeof o === 'string'))
+        throw new DraftError(`${join(dir, f)}: open is not a list of strings`)
+      statements.set(prop['predicate'], { object: prop['object'], open })
     }
     return {
       slug,
@@ -232,13 +250,31 @@ export function draftDescriptor(store: CorpusStore): Draft {
   const st = (subject: string) => store.statements.get(subject)
   const left: string[] = []
 
-  const dirs = ((st('location/data-dirs')?.object['dirs'] as DataDir[] | undefined) ?? []).filter(
-    (d) => {
-      if (fixedFolder(d.path)) return true
-      left.push(`${d.platform} ${d.path} (${d.holds}): not a fixed folder`)
-      return false
-    },
-  )
+  /** `key` of `subject`'s object as a list of `T`; empty when unset. */
+  const listIn = <T>(subject: string, key: string, ok: (item: unknown) => boolean): T[] => {
+    const v = st(subject)?.object[key]
+    if (v === undefined || v === null) return []
+    if (!Array.isArray(v)) throw new DraftError(`${store.slug}: ${subject}: ${key} is not a list`)
+    v.forEach((item, i) => {
+      if (!ok(item))
+        throw new DraftError(
+          `${store.slug}: ${subject}: ${key}.${i} is not what the corpus records`,
+        )
+    })
+    return v as T[]
+  }
+  const text = (v: unknown): boolean => typeof v === 'string' && v !== ''
+  const dirEntry = (d: unknown): boolean =>
+    isRecord(d) &&
+    text(d['path']) &&
+    text(d['holds']) &&
+    (d['platform'] === 'all' || (OSES as readonly unknown[]).includes(d['platform']))
+
+  const dirs = listIn<DataDir>('location/data-dirs', 'dirs', dirEntry).filter((d) => {
+    if (fixedFolder(d.path)) return true
+    left.push(`${d.platform} ${d.path} (${d.holds}): not a fixed folder`)
+    return false
+  })
   const groups = groupDirs(dirs)
   if (groups.length === 0)
     throw new DraftError(`${store.slug}: the corpus gives no data folder as a fixed path`)
@@ -252,21 +288,23 @@ export function draftDescriptor(store: CorpusStore): Draft {
     ],
   }
 
-  const inUseObject = st('liveness/in-use')?.object as
-    { processes?: string[]; locks?: string[] } | undefined
-  const locks = (inUseObject?.locks ?? []).filter((l) => {
+  const processes = listIn<string>('liveness/in-use', 'processes', text)
+  const locks = listIn<string>('liveness/in-use', 'locks', text).filter((l) => {
     if (fixedFolder(l) && !/[/\\]$/.test(l)) return true
     left.push(`lock ${l}: not a fixed file path`)
     return false
   })
   const inUse = Object.fromEntries(
-    Object.entries({ processes: inUseObject?.processes ?? [], locks }).filter(
-      ([, v]) => v.length > 0,
-    ),
+    Object.entries({ processes, locks }).filter(([, v]) => v.length > 0),
   )
 
   const project: Record<string, unknown>[] = []
-  for (const b of (st('project/build-dirs')?.object['dirs'] as BuildDir[] | undefined) ?? []) {
+  const buildDirs = listIn<BuildDir>(
+    'project/build-dirs',
+    'dirs',
+    (b) => isRecord(b) && text(b['path']) && (b['marker'] === undefined || text(b['marker'])),
+  )
+  for (const b of buildDirs) {
     const covered = COVERED.find(
       (c) => c.dir === b.path && (c.marker === undefined || c.marker === b.marker),
     )
@@ -320,19 +358,21 @@ export function draftDescriptor(store: CorpusStore): Draft {
         ' and add a command with removes where the tool has one that can be pointed at the folder.',
     ),
   ]
-  const clean = st('clean/command')?.object as
-    { supported: boolean; commands?: { command: string; removes: string }[] } | undefined
+  const clean = st('clean/command')?.object
   if (clean !== undefined) {
+    const commands = listIn<{ command: string; removes: string }>(
+      'clean/command',
+      'commands',
+      (c) => isRecord(c) && text(c['command']) && text(c['removes']),
+    )
     header.push('', ' Clean commands in the corpus. A command must name the folder with a')
     header.push(' {path} argument or an env entry, and set removes (unused or all):')
-    if (!clean.supported || (clean.commands ?? []).length === 0) header.push(...bullet('none'))
-    for (const c of clean.commands ?? []) header.push(...bullet(`${c.command}: ${c.removes}`))
+    if (clean['supported'] !== true || commands.length === 0) header.push(...bullet('none'))
+    for (const c of commands) header.push(...bullet(`${c.command}: ${c.removes}`))
   }
-  const override = st('location/override')?.object as
-    { vars?: string[]; settings?: string[] } | undefined
   const movedBy = [
-    ...(override?.vars ?? []).map((v) => `$${v}`),
-    ...(override?.settings ?? []).map((s) => `setting ${s}`),
+    ...listIn<string>('location/override', 'vars', text).map((v) => `$${v}`),
+    ...listIn<string>('location/override', 'settings', text).map((s) => `setting ${s}`),
   ]
   if (movedBy.length > 0)
     header.push(
@@ -377,23 +417,31 @@ export function writeDraft(dir: string, draft: Draft, force = false): string {
   return file
 }
 
+const USAGE =
+  'usage: draft-descriptor [--corpus <dir>] [--out <dir>] [--force] (<slug>... | --first-set)\n' +
+  'Without --out, give one slug and the draft is printed.\n'
+
 function main(argv: readonly string[]): number {
-  const { values, positionals } = parseArgs({
-    args: [...argv],
-    allowPositionals: true,
-    options: {
-      corpus: { type: 'string', default: CORPUS_DIR },
-      out: { type: 'string' },
-      force: { type: 'boolean', default: false },
-      'first-set': { type: 'boolean', default: false },
-    },
-  })
+  let args
+  try {
+    args = parseArgs({
+      args: [...argv],
+      allowPositionals: true,
+      options: {
+        corpus: { type: 'string', default: CORPUS_DIR },
+        out: { type: 'string' },
+        force: { type: 'boolean', default: false },
+        'first-set': { type: 'boolean', default: false },
+      },
+    })
+  } catch (err) {
+    process.stderr.write(`${(err as Error).message}\n${USAGE}`)
+    return 2
+  }
+  const { values, positionals } = args
   const slugs = [...(values['first-set'] ? FIRST_SET : []), ...positionals]
   if (slugs.length === 0 || (values.out === undefined && slugs.length > 1)) {
-    process.stderr.write(
-      'usage: draft-descriptor [--corpus <dir>] [--out <dir>] [--force] (<slug>... | --first-set)\n' +
-        'Without --out, give one slug and the draft is printed.\n',
-    )
+    process.stderr.write(USAGE)
     return 2
   }
   let failed = 0

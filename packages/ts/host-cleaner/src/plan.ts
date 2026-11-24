@@ -53,6 +53,8 @@ export const PlanSchema = z
     createdAt: z.string(),
     /** The targets the plan was swept over, so `clean --plan` checks the same place. */
     targets: z.array(z.string()),
+    /** Whether a person named the targets, as `RunCtx.targetsGiven`, so `clean --plan` tells plugins the same; missing is false. */
+    targetsGiven: z.boolean().optional(),
     /** Exactly these candidate ids; null means the default: every one nothing objects to and no owner holds for review. */
     select: z.array(z.string()).nullable(),
     /** Candidate ids run as well as the default or the selection. */
