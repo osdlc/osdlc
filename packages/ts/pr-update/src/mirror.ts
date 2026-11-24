@@ -961,6 +961,10 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
       misses.set(`${target.host}/${target.owner}/${target.name}`, miss)
     },
 
+    consent() {
+      return { consent: current().consent, file: file.path() }
+    },
+
     provide(targets, { apply }) {
       applying = apply
       const wait = apply ? waitMs : 0

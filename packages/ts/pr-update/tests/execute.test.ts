@@ -1201,6 +1201,25 @@ describe('the executor against real git', () => {
       expect(out).toMatchObject({ status: 'updated', pushed: true })
     })
 
+    test('a verify that writes only to stdout is named by its last line (final gate)', async () => {
+      makeBehindPr('vstdout', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
+      const runs = recorder({
+        exitCode: 1,
+        stdout: 'running 3 tests\n  x adds\n\n1 test failed\n\n',
+        stderr: '',
+      })
+      const out = await inWorktree((wt) =>
+        updateOne(wt, target({ head: 'vstdout' }), settings({ verifyVerbs: ['check'] }), runs, {
+          apply: true,
+          worktree: wtRoot,
+        }),
+      )
+      expect(out).toMatchObject({
+        status: 'failed',
+        reason: 'verify `check` failed: 1 test failed',
+      })
+    })
+
     test('a verify that still fails after the repair reports failed', async () => {
       makeBehindPr('vstill', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
       const { git } = fx.worker

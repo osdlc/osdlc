@@ -607,6 +607,21 @@ describe('survey and a rehearsal', () => {
     expect(existsSync(repos)).toBe(false)
   })
 
+  test('with no clone, the note follows what the machine file says (final gate)', async () => {
+    writeMachine('checkout: mirror\n')
+    const allowed = await run('survey', '--repo', 'acme/api', '--json')
+    expect(allowed.code).toBe(EXIT.ok)
+    expect(allowed.err).toContain('; `update --apply` will clone it')
+    expect(allowed.err).not.toContain('mirror enable')
+
+    writeMachine('checkout: local\n')
+    const refused = await run('survey', '--repo', 'acme/api', '--json')
+    expect(refused.err).toContain(
+      `; checkout: local in ${machinePath()} makes no clone (\`pr-update mirror enable\` changes it)`,
+    )
+    expect(clonesMade()).toEqual([])
+  })
+
   test('use a clone that exists: fetch it under its lock, pruned, stamp it, and measure it there', async () => {
     writeMachine('checkout: mirror\n')
     expect((await run('update', '--repo', 'acme/api', '--apply')).code).toBe(EXIT.ok)

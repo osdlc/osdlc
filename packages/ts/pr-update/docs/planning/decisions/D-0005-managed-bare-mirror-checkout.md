@@ -292,9 +292,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   the clone's last-used stamp, so a clone only surveyed is not pruned as
   unused. A survey's unscoped fetch of a managed clone prunes (`--prune`), since the
   clone is pr-update's own; a located checkout's fetch does not, since its
-  `origin/*` is the person's. Neither removes a clone. So `survey` writes
-  nothing but its fetches (into a clone or a located checkout's `origin/*`),
-  the clone's stamp and the clone's lock file. (changed during the build: Build note 1)
+  `origin/*` is the person's. Neither removes a clone. In a clone, `survey`
+  runs `git maintenance run --auto` in the foreground after its fetch, while
+  it holds the lock, as every fetch of a clone does (Build note "The folder
+  rule"). So `survey` writes nothing but its fetches (into a clone or a
+  located checkout's `origin/*`), a clone's maintenance, the clone's stamp
+  and the clone's lock file. (changed during the build: Build note 1)
 - **Consent.** Any one of these is consent to clone for the run: `--mirror-dir
   <dir>`, `PR_UPDATE_MIRROR_DIR`, or `checkout: mirror`. `--mirror-dir` and
   the variable win over `checkout: local` for that run. `OSDLC_ROOT` and the
@@ -710,7 +713,13 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   kept trees too, where `--retry-failed` used to discard a changed one.
   Different filesystems are found by renaming an empty probe folder,
   `.pr-update-probe-*`, into the kept directory and reading `EXDEV`; git's
-  text, read in the C locale, is only a fallback.
+  text, read in the C locale, is only a fallback. After the second review, a
+  restack child (`--restack`) gets every kept-tree check another PR gets
+  (changed, owner gone, kept elsewhere); before, a child whose kept tree a
+  person had changed was updated and force-pushed. And a child's target's
+  own attempt record is checked for an error again after `restackTarget`
+  (`broken`), whose look-up of the child's new key can fail too; before, that
+  failure read as no record and the child was pushed.
 - **Kept records are not trusted.** A checkout's kept place,
   `.pr-update/failed/`, is in its working tree, so a cloned repository can
   commit a record there that names another repository's git directory and a
@@ -1053,8 +1062,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   variables. Also without a test: that only the CLI reads the machine file
   and asks (a library host gets clones only through `SurveyEnv.clones`), and
   that removing a clone leaves its attempt records (pruning never walks
-  `attempts/`). Unreachable objects are left to git's own `gc --auto`, with
-  no code here. Windows git's text for a cross-device rename is not checked
+  `attempts/`). In a located checkout, unreachable objects are left to
+  git's own `gc --auto`, with no code here; a managed clone gets the
+  foreground `git maintenance run --auto` after each fetch instead (Build note
+  "The folder rule"). Windows git's text for a cross-device rename is not checked
   either; the probe decides first.
 - **Trust granted before this build.** trust-repo first copied the old
   markers into the new store, and every way of telling whether the copy had

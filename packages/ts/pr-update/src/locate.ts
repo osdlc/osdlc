@@ -64,6 +64,11 @@ export interface CloneLookup {
   deferMissing: boolean
   /** Told about each target with neither a usable checkout nor a clone. */
   missed(target: LocateTarget, miss: MissedCheckout): void
+  /**
+   * Whether the run may clone (`mirrorSetting`'s `consent`), and the machine file that says so,
+   * for the note on a target with no checkout and no clone.
+   */
+  consent(): { consent: 'mirror' | 'local' | null; file: string }
 }
 
 /**
@@ -120,7 +125,7 @@ export function standaloneLocate(
         opts.clones.missed(target, { label, where, shallow })
         if (opts.clones.deferMissing && target.github === true) return null
       }
-      notice(`${label}: ${where}${cloneHint(target)}`)
+      notice(`${label}: ${where}${cloneHint(target, opts.clones)}`)
       return null
     }
     if (rest.length > 0) {
@@ -145,8 +150,13 @@ export function standaloneLocate(
 }
 
 /** What the not-found note adds about a managed clone: how to allow one, or that none is made. */
-function cloneHint(target: LocateTarget | undefined): string {
+function cloneHint(target: LocateTarget | undefined, clones: CloneLookup | undefined): string {
   if (target?.github === true) {
+    const said = clones?.consent()
+    if (said?.consent === 'mirror') return '; `update --apply` will clone it'
+    if (said?.consent === 'local') {
+      return `; checkout: local in ${said.file} makes no clone (\`pr-update mirror enable\` changes it)`
+    }
     return '; run `pr-update mirror enable` so `update --apply` can clone it'
   }
   if (target?.github === false) {

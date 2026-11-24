@@ -928,6 +928,15 @@ function rebuild(
   return null
 }
 
+/** The last non-blank line of `text`, trimmed, or `''` when there is none. */
+function lastLine(text: string): string {
+  const lines = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '')
+  return lines[lines.length - 1] ?? ''
+}
+
 /** Run the verify verbs in order. Returns the first failure, or null when all pass. */
 function runVerify(
   verbs: readonly string[],
@@ -939,8 +948,10 @@ function runVerify(
     if (res.exitCode !== 0) {
       const stderr = res.stderr || res.error || ''
       const output = `${res.stdout}\n${stderr}`.trim()
+      // A command that writes only to stdout, as many test runners do, ends with its summary.
+      const why = firstLine(stderr) || lastLine(res.stdout) || `exit status ${res.exitCode}`
       return {
-        summary: `verify \`${verb}\` failed: ${firstLine(stderr)}`,
+        summary: `verify \`${verb}\` failed: ${why}`,
         // The tail, where test runners print their summary.
         detail: `verify \`${verb}\` failed:\n${output.slice(-4000)}`,
         log: `$ ${verb}\nexit status: ${res.exitCode}\n\n${output}\n`,

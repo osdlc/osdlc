@@ -45,3 +45,14 @@ Pruning no longer takes a path it cannot read for one that is not there: an
 `lstat` that fails with anything but "no such file" (such as `EACCES`) is now
 an error, where `mirror prune` skipped the path before. `survey --help` now
 says it also writes a managed clone's last-used stamp and its lock file.
+
+The note for a `--repo` target with no checkout and no clone now follows the
+machine file. With consent to clone, it says `update --apply` will clone it.
+With `checkout: local`, it names the file that says so and
+`pr-update mirror enable`, which changes it. Before, it always said to run
+`pr-update mirror enable`, even after you had.
+
+A verify command that fails writing only to standard output, as many test
+runners do, is now named with the last line it printed, as in
+`verify \`check\` failed: 1 test failed`. Before, the reason ended at
+`failed: `.
