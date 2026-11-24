@@ -13,7 +13,7 @@ import {
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import type { ProcessHolder, ProcessProbe } from '@osdlc/repo-cleaner'
+import type { CommandRunner } from '@osdlc/command-seam'
 import { z } from 'zod'
 
 import {
@@ -90,17 +90,23 @@ function twoVersions(): TempHome {
   return h
 }
 
-const probeOf = (holders: ProcessHolder[] | Error = []): ProcessProbe => ({
-  alive: () => true,
-  holders: () => {
-    if (holders instanceof Error) throw holders
-    return holders
-  },
+/** A `ps` that lists launchd and `rows` as `pid args` lines, or fails with `rows`' message. */
+const psOf = (rows: Array<{ pid: number; args: string }> | Error = []): CommandRunner => ({
+  run: () =>
+    rows instanceof Error
+      ? { exitCode: 1, stdout: '', stderr: rows.message }
+      : {
+          exitCode: 0,
+          stdout: [{ pid: 1, args: '/sbin/launchd' }, ...rows]
+            .map((r) => `${r.pid} ${r.args}\n`)
+            .join(''),
+          stderr: '',
+        },
 })
 
 interface Make {
   idleHours?: number
-  probe?: ProcessProbe
+  ps?: CommandRunner
   options?: JetbrainsOptions
 }
 
@@ -126,7 +132,7 @@ function make(h: TempHome, over: Make = {}): Plugin {
     settings: {},
     only: [],
     env: h.env,
-    kit: pluginKit(JETBRAINS_PLUGIN, { now: () => NOW, probe: over.probe ?? probeOf() }),
+    kit: pluginKit(JETBRAINS_PLUGIN, { now: () => NOW, ps: over.ps ?? psOf() }),
   })
 }
 
@@ -244,7 +250,11 @@ describe('version folders', () => {
   test('the product running refuses its folders; the process table unread refuses too', async () => {
     const h = twoVersions()
     const busy = await survey(
-      [make(h, { probe: probeOf([{ pid: 7, command: 'rustrover' }]) })],
+      [
+        make(h, {
+          ps: psOf([{ pid: 7, args: '/Applications/RustRover.app/Contents/MacOS/rustrover' }]),
+        }),
+      ],
       ctx(),
     )
     expect(busy.objections).toEqual([
@@ -255,11 +265,15 @@ describe('version folders', () => {
       expect.objectContaining({ code: 'live-process' }),
     ])
     const other = await survey(
-      [make(h, { probe: probeOf([{ pid: 8, command: 'webstorm' }]) })],
+      [
+        make(h, {
+          ps: psOf([{ pid: 8, args: '/Applications/WebStorm.app/Contents/MacOS/webstorm' }]),
+        }),
+      ],
       ctx(),
     )
     expect(other.objections).toEqual([])
-    const unread = await survey([make(h, { probe: probeOf(new Error('lsof failed')) })], ctx())
+    const unread = await survey([make(h, { ps: psOf(new Error('ps: not allowed')) })], ctx())
     expect(unread.objections.map((o) => o.code)).toEqual([
       'process-table-unreadable',
       'process-table-unreadable',
@@ -269,7 +283,7 @@ describe('version folders', () => {
   test('with no install at all, a product the table does not know is watched by its lowercased name', async () => {
     const h = home()
     version(h, 'Fleetish2025.1')
-    const s = await survey([make(h, { probe: probeOf([{ pid: 9, command: 'fleetish' }]) })], ctx())
+    const s = await survey([make(h, { ps: psOf([{ pid: 9, args: 'fleetish --wait' }]) })], ctx())
     expect(s.objections.map((o) => o.code)).toEqual(['live-process', 'live-process'])
   })
 })
