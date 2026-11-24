@@ -278,41 +278,53 @@ async function detectAndScope(
 export interface PluginState {
   name: string
   detected: boolean
-  /** Why it was not detected: what `detect` threw or timed out with. Absent when `detect` answered. */
+  /** Why it was not detected: what `detect` threw or timed out with, or why its answer was left out. Absent when `detect` answered. */
   reason?: string | undefined
-  /** Its roots, as its `roots` hook answered; empty without the hook, or when it is not detected. */
+  /** The note `detect` gave with its answer, whether the plugin is detected or not. */
+  note?: string | undefined
+  /** Its roots by path, as its `roots` hook answered less those the core refused; empty without the hook, or when it is not detected. */
   roots: readonly string[]
+  /** The roots among `roots` declared `{ path, self: true }`, which may be candidates themselves. */
+  selfRoots: readonly string[]
 }
 
 export interface Inspection {
   plugins: PluginState[]
   /** The run's context after `scope`. */
   ctx: RunCtx
-  /** A failed `scope` or `roots`, and a second plugin of one name. A failed `detect` is its plugin's `reason` instead. */
+  /** A failed `scope` or `roots`, a root the core refused, and a second plugin of one name. A failed `detect` is its plugin's `reason` instead. */
   warnings: string[]
 }
 
 /**
  * Detect, scope and roots, as `survey` calls them, and nothing else: whether
- * each plugin applies here, why not, and where it may delete. It proposes and
- * deletes nothing, so it is quick where `discover` walks every checkout.
+ * each plugin applies here, why not, and where it may delete. A root the core
+ * refuses (see `rootProblem` in `./roots.ts`) is left out with a warning, as
+ * in `survey`. It proposes and deletes nothing, so it is quick where
+ * `discover` walks every checkout.
  */
 export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Inspection> {
   const warnings: string[] = []
-  const { detections, scoped } = await detectAndScope(all, ctx, warnings, false)
+  const { detections, targets, scoped } = await detectAndScope(all, ctx, warnings, false)
   const guarded = guard(warnings)
+  const at = { targets, linked: linkedCheckouts(targets), home: homedir() }
   const plugins: PluginState[] = []
   for (const d of detections) {
     const p = d.plugin
-    const roots =
-      d.detected && p.roots !== undefined
-        ? await guarded(p, 'roots', [], scoped, (x) => p.roots!(x))
-        : []
+    let accepted = { roots: [] as string[], self: [] as string[] }
+    if (d.detected && p.roots !== undefined) {
+      const answer = await guarded<unknown>(p, 'roots', [], scoped, (x) => p.roots!(x))
+      const checked = acceptRoots(answer, at)
+      for (const problem of checked.problems) warnings.push(`${p.name}: roots: ${problem}`)
+      accepted = checked
+    }
     plugins.push({
       name: p.name,
       detected: d.detected,
       ...(d.error === undefined ? {} : { reason: d.error }),
-      roots,
+      ...(d.note === undefined ? {} : { note: d.note }),
+      roots: accepted.roots,
+      selfRoots: accepted.self,
     })
   }
   return { plugins, ctx: scoped, warnings }

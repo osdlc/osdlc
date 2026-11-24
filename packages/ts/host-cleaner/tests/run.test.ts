@@ -261,10 +261,16 @@ describe('inspect', () => {
     ]
     const found = await inspect(plugins, ctx)
     expect(found.plugins).toEqual([
-      { name: 'a', detected: true, roots: ['/cache/a'] },
-      { name: 'b', detected: true, roots: [] },
-      { name: 'no', detected: false, roots: [] },
-      { name: 'down', detected: false, reason: 'the app is not running', roots: [] },
+      { name: 'a', detected: true, roots: ['/cache/a'], selfRoots: [] },
+      { name: 'b', detected: true, roots: [], selfRoots: [] },
+      { name: 'no', detected: false, roots: [], selfRoots: [] },
+      {
+        name: 'down',
+        detected: false,
+        reason: 'the app is not running',
+        roots: [],
+        selfRoots: [],
+      },
     ])
     expect(found.ctx.targets).toEqual(['/scoped'])
     expect(found.warnings).toEqual([])
@@ -281,7 +287,7 @@ describe('inspect', () => {
       },
     })
     const found = await inspect([failing, fake('a', [], [])], ctx)
-    expect(found.plugins).toEqual([{ name: 'a', detected: true, roots: [] }])
+    expect(found.plugins).toEqual([{ name: 'a', detected: true, roots: [], selfRoots: [] }])
     expect(found.warnings).toEqual([
       'a: a second plugin of that name was left out',
       'a: scope failed: no list',
@@ -293,6 +299,39 @@ describe('inspect', () => {
       },
     })
     await expect(inspect([fatal], ctx)).rejects.toThrow('stop')
+  })
+
+  test('a note is kept whether detected or not, an answer that is neither is the reason, and roots are checked as survey checks them', async () => {
+    const self = realpathSync(mkdtempSync(join(tmpdir(), 'hc-inspect-self-')))
+    const found = await inspect(
+      [
+        fake('a', [], [], {
+          detect: () => ({ active: true, note: 'cache is shared' }),
+          roots: () => ['/', '/cache/a', { path: self, self: true }],
+        }),
+        fake('b', [], [], { detect: () => ({ active: false, note: 'no daemon' }) }),
+        fake('c', [], [], { detect: () => 'yes' as unknown as boolean }),
+      ],
+      ctx,
+    )
+    expect(found.plugins).toEqual([
+      {
+        name: 'a',
+        detected: true,
+        note: 'cache is shared',
+        roots: ['/cache/a', self],
+        selfRoots: [self],
+      },
+      { name: 'b', detected: false, note: 'no daemon', roots: [], selfRoots: [] },
+      {
+        name: 'c',
+        detected: false,
+        reason: 'detect answered "yes", which is neither a boolean nor { active, note? }',
+        roots: [],
+        selfRoots: [],
+      },
+    ])
+    expect(found.warnings).toEqual(['a: roots: left out the root /: it is the filesystem root'])
   })
 })
 

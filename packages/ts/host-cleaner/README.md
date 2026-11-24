@@ -374,8 +374,11 @@ folders it may delete in besides the targets. It runs `detect`, `scope` and
 `roots` and nothing else, so it proposes and deletes nothing. A plugin whose
 `detect` throws shows the error as the reason; Orca installed but not running
 shows `not detected: Orca is installed but not running; its worktrees are left
-to git`. A plugin the config disables is listed as `disabled`, and its `detect`
-is not run. `--format json` prints the same, one object per plugin.
+to git`. A note its `detect` gives follows the plugin's state (`; note: ...`).
+A root the core refuses is left out with a warning, as `status` does, and a
+self root is marked `(itself too)`. A plugin the config disables is listed as
+`disabled`, and its `detect` is not run. `--format json` prints the same, one
+object per plugin.
 
 ```text
 targets: /Users/me/dev
