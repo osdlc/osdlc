@@ -20,6 +20,7 @@ import {
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 
+import type { CommandRunner } from '@osdlc/command-seam'
 import type { ProcessHolder, ProcessProbe } from '@osdlc/repo-cleaner'
 import { fakeNeverExited } from '@osdlc/command-seam/testing'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
@@ -34,6 +35,7 @@ import {
   descriptorPlugin,
   globMatches,
   parseDescriptor,
+  pathProblem,
   plan,
   pluginKit,
   skipReason,
@@ -53,10 +55,28 @@ afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()!()
 })
 
-/** A process table: `cwd` maps a folder to the processes working in it; `/` lists every process. */
-const probeOf = (table: Record<string, ProcessHolder[]> = {}): ProcessProbe => ({
-  alive: () => false,
-  holders: (path) => table[path] ?? [],
+/** The kit's process table, as its `probe` and `ps` options. */
+interface Processes {
+  probe: ProcessProbe
+  ps: CommandRunner
+}
+
+/**
+ * A process table: `cwd` maps a folder to the processes working in it, for
+ * the probe; `/` lists every process, read by `ps` with `command` as its
+ * command line. Both read `table` when asked, so it may change.
+ */
+const processes = (table: Record<string, ProcessHolder[]> = {}): Processes => ({
+  probe: { alive: () => false, holders: (path) => table[path] ?? [] },
+  ps: {
+    run: () => ({
+      exitCode: 0,
+      stdout: [{ pid: 1, command: '/sbin/init' }, ...(table['/'] ?? [])]
+        .map((h) => `${h.pid} ${h.command}\n`)
+        .join(''),
+      stderr: '',
+    }),
+  },
 })
 
 const OS: Os = 'linux'
@@ -80,7 +100,7 @@ function build(
   o: {
     programs?: Parameters<typeof fakeRunner>[0]
     idleHours?: number
-    probe?: ProcessProbe
+    processes?: Processes
     fill?: boolean
     opts?: DescriptorOptions
   } = {},
@@ -112,7 +132,7 @@ function build(
     }
   }
   const fake = fakeRunner(o.programs ?? {})
-  const kit = pluginKit(name, { env: h.env, probe: o.probe ?? probeOf(), ...fake })
+  const kit = pluginKit(name, { env: h.env, ...(o.processes ?? processes()), ...fake })
   const plugin = descriptorPlugin(name, d, { os: OS, ownDirs: [], ...o.opts }).create({
     settings: { idleHours: o.idleHours ?? 0 },
     only: [],
@@ -396,7 +416,7 @@ candidates:
     mkdirSync(join(h.home, '.local/share/pnpm/store'), { recursive: true })
     const kit = pluginKit('pnpm', {
       env: h.env,
-      probe: probeOf(),
+      ...processes(),
       which: (p) => (onPath && p === 'pnpm' ? '/bin/pnpm' : undefined),
     })
     const plugin = descriptorPlugin('pnpm', d, { os: OS, ownDirs: [] }).create({
@@ -475,6 +495,37 @@ candidates:
     expect(r.candidates[0]!.bytes).toBeUndefined()
   })
 
+  // macOS's default filesystem ignores case, so ~/documents is ~/Documents.
+  const caseBlind = (() => {
+    const h = tempHome()
+    try {
+      mkdirSync(join(h.home, 'Probe'))
+      return existsSync(join(h.home, 'probe'))
+    } finally {
+      h.cleanup()
+    }
+  })()
+
+  test.runIf(caseBlind)(
+    'on a filesystem that ignores case, a personal folder, the home folder and a target are refused in any case',
+    async () => {
+      const b = build('x', one('~/documents'), { fill: false })
+      mkdirSync(join(b.home, 'Documents'))
+      mkdirSync(join(b.home, 'dev'))
+      const at = { home: b.home, targets: [join(b.home, 'dev')], checkouts: [], ownDirs: [] }
+      expect(pathProblem(join(b.home, 'documents'), at)).toBe(
+        'it is the personal folder ~/Documents',
+      )
+      expect(pathProblem(join(b.home, 'DEV'), at)).toBe('it is a target')
+      expect(pathProblem(b.home.toUpperCase(), at)).toBe('it is the home folder')
+      const s = await survey([b.plugin], ctxOf())
+      expect(s.objections.filter((o) => o.by === 'x').map((o) => o.reason)).toEqual([
+        `${join(b.home, 'documents')}: it is the personal folder ~/Documents`,
+      ])
+      expect(s.roots.x).toEqual([])
+    },
+  )
+
   test('a folder inside a personal folder is not', async () => {
     const r = await refusal('~/Library/Caches/pip')
     expect(r.reasons).toEqual([])
@@ -526,7 +577,7 @@ candidates:
       settings: { idleHours: 0 },
       only: [],
       env: { HOME: b.home },
-      kit: pluginKit('x', { env: { HOME: b.home }, probe: probeOf() }),
+      kit: pluginKit('x', { env: { HOME: b.home }, ...processes() }),
     })
     const s = await survey([plugin], ctxOf())
     expect(s.objections.filter((o) => o.by === 'x').map((o) => o.reason)).toEqual([
@@ -558,7 +609,7 @@ candidates:
         settings: { idleHours: 0 },
         only: [],
         env: h.env,
-        kit: pluginKit('pip', { env: h.env, probe: probeOf() }),
+        kit: pluginKit('pip', { env: h.env, ...processes() }),
       })
       return (await survey([plugin], ctxOf())).candidates.map((c) => c.id)
     }
@@ -715,7 +766,9 @@ candidates:
 
 describe('inUse', () => {
   test('a running process or a lock file refuses every candidate', async () => {
-    const running = build('uv', UV, { probe: probeOf({ '/': [{ pid: 7, command: 'uv' }] }) })
+    const running = build('uv', UV, {
+      processes: processes({ '/': [{ pid: 7, command: 'uv' }] }),
+    })
     const s = await survey([running.plugin], ctxOf())
     expect(s.objections.filter((o) => o.level === 'refuse')).toEqual([
       {
@@ -737,7 +790,9 @@ describe('inUse', () => {
 
   test('delete checks again: a process that started after the plan fails the step', async () => {
     const table: Record<string, ProcessHolder[]> = {}
-    const b = build('pip', `${PIP_PER_OS}inUse: { processes: [pip] }\n`, { probe: probeOf(table) })
+    const b = build('pip', `${PIP_PER_OS}inUse: { processes: [pip] }\n`, {
+      processes: processes(table),
+    })
     const ctx = ctxOf()
     const p = plan(await survey([b.plugin], ctx))
     // The re-check's survey sees no process; delete, after it, does.
@@ -769,7 +824,7 @@ describe('project', () => {
     })
 
     const busy = build('dotnet', DOTNET_PROJECT, {
-      probe: probeOf({ [repo]: [{ pid: 3, command: 'dotnet' }] }),
+      processes: processes({ [repo]: [{ pid: 3, command: 'dotnet' }] }),
     })
     const live = await survey([busy.plugin], ctxOf({ targets: [repo] }))
     expect(live.objections.map((o) => [o.candidate, o.code])).toEqual([

@@ -12,7 +12,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { CommandFailed, asAsync, type CommandRunner } from '@osdlc/command-seam'
@@ -21,7 +21,15 @@ import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 import { z } from 'zod'
 
-import { PLUGIN_API, clean, definePlugin, plan, pluginKit, survey } from '../src/index.ts'
+import {
+  PLUGIN_API,
+  clean,
+  commandHasName,
+  definePlugin,
+  plan,
+  pluginKit,
+  survey,
+} from '../src/index.ts'
 import { attachKit, bindKit } from '../src/kit.ts'
 import type { Bounds } from '../src/roots.ts'
 
@@ -56,7 +64,7 @@ function boundKit(owner: string, bounds: Partial<Bounds>) {
   const kit = pluginKit(owner)
   const plugin = { name: owner, detect: () => true }
   attachKit(plugin, kit)
-  bindKit(plugin, { roots: [], targets: [], linked: [], ...bounds })
+  bindKit(plugin, { roots: [], self: [], targets: [], linked: [], home: homedir(), ...bounds })
   return kit
 }
 
@@ -215,6 +223,15 @@ describe('running', () => {
   const holder = (pid: number, command: string, extra: Partial<ProcessHolder> = {}) =>
     ({ pid, command, ...extra }) as ProcessHolder
 
+  /** A `ps` that prints `table` for `-axo pid=,args=`, counting its calls. */
+  const fakePs = (table: string, calls: { n: number } = { n: 0 }): CommandRunner => ({
+    run: (argv) => {
+      calls.n++
+      expect(argv).toEqual(['-axo', 'pid=,args='])
+      return { exitCode: 0, stdout: table, stderr: '' }
+    },
+  })
+
   test('lists the busy processes in a folder, idle shells left out, and the ones of a name, given alone or as { name }', () => {
     const asked: Array<{ path: string; fresh: boolean }> = []
     const probe: ProcessProbe = {
@@ -224,19 +241,50 @@ describe('running', () => {
         return [holder(4, 'zsh', { hasChildren: false }), holder(5, 'cargo')]
       },
     }
-    const kit = pluginKit('cargo', { probe })
+    const calls = { n: 0 }
+    const ps = fakePs('    4 -zsh\n    5 /Users/me/.cargo/bin/cargo build\n', calls)
+    const kit = pluginKit('cargo', { probe, ps })
     const one = signal()
     expect(kit.running({ in: '/w' }, { signal: one })).toEqual({ names: ['cargo (pid 5)'] })
-    expect(kit.running({ name: 'zsh' }, { signal: one })).toEqual({ names: ['zsh (pid 4)'] })
+    expect(kit.running({ name: 'cargo' }, { signal: one })).toEqual({ names: ['cargo (pid 5)'] })
     expect(kit.running('cargo', { signal: one })).toEqual({ names: ['cargo (pid 5)'] })
+    expect(kit.running('rustc', { signal: one })).toEqual({ names: [] })
     kit.running({ in: '/w' }, { signal: signal() })
-    // The first read in each hook call is fresh.
+    kit.running('cargo', { signal: signal() })
+    // The first read in each hook call is fresh; `ps` is read once per hook call.
     expect(asked).toEqual([
       { path: '/w', fresh: true },
-      { path: '/', fresh: false },
-      { path: '/', fresh: false },
       { path: '/w', fresh: true },
     ])
+    expect(calls.n).toBe(2)
+  })
+
+  test('a name matches a word of the command line, not only the command: pnpm under node, the Gradle daemon under java', () => {
+    const table = [
+      '  101 node /opt/homebrew/bin/pnpm dev',
+      '  102 java -Xmx2g -cp /Users/me/.gradle/wrapper/dists/gradle-8.10/lib/gradle-launcher-8.10.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.10',
+      '  103 node /Users/me/.cache/node/corepack/pnpm/9.12.0/bin/pnpm.cjs install',
+      '  104 /usr/bin/vim notes-about-pnpmish.txt',
+      '  105 node server.js',
+    ].join('\n')
+    const kit = pluginKit('x', { ps: fakePs(table) })
+    const ask = (name: string) => kit.running({ name }, { signal: signal() }).names
+    expect(ask('pnpm')).toEqual(['node (pid 101)', 'node (pid 103)'])
+    expect(ask('GradleDaemon')).toEqual(['java (pid 102)'])
+    expect(ask('gradle')).toEqual(['java (pid 102)'])
+    expect(ask('node')).toEqual(['node (pid 101)', 'node (pid 103)', 'node (pid 105)'])
+    expect(ask('npm')).toEqual([])
+    expect(ask('yarn')).toEqual([])
+  })
+
+  test('commandHasName: the last path segment, or one of its dot-separated parts; case counts', () => {
+    expect(commandHasName('/opt/homebrew/bin/pnpm dev', 'pnpm')).toBe(true)
+    expect(
+      commandHasName('org.gradle.launcher.daemon.bootstrap.GradleDaemon', 'GradleDaemon'),
+    ).toBe(true)
+    expect(commandHasName('gradledaemon', 'GradleDaemon')).toBe(false)
+    expect(commandHasName('pnpmx', 'pnpm')).toBe(false)
+    expect(commandHasName('node', '')).toBe(false)
   })
 
   test('an unreadable process table is unknown, not empty', () => {
@@ -249,6 +297,13 @@ describe('running', () => {
     expect(pluginKit('x', { probe }).running({ in: '/w' }, { signal: signal() })).toEqual({
       names: [],
       unknown: 'no lsof',
+    })
+    const noPs: CommandRunner = {
+      run: () => ({ exitCode: 1, stdout: '', stderr: 'ps: not allowed' }),
+    }
+    expect(pluginKit('x', { ps: noPs }).running('pnpm', { signal: signal() })).toEqual({
+      names: [],
+      unknown: 'ps failed (exit 1): ps: not allowed',
     })
   })
 })

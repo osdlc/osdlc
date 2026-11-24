@@ -3,13 +3,14 @@
  * `recheck` pick what runs; `clean` is prepare, delete and deleted.
  */
 
+import { homedir } from 'node:os'
 import { dirname } from 'node:path'
 
 import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 
 import { coveredBy, containsIgnored } from './ignore.ts'
 import { bindKit } from './kit.ts'
-import { boundBy, linkedCheckouts, realOr, type Bounds } from './roots.ts'
+import { acceptRoots, boundBy, linkedCheckouts, realOr, type Bounds } from './roots.ts'
 import {
   writeReceipt,
   PLAN_VERSION,
@@ -24,6 +25,7 @@ import {
   FatalRun,
   type Candidate,
   type Ctx,
+  type Detection,
   type Hook,
   type MaybePromise,
   type Objection,
@@ -83,7 +85,8 @@ async function callHook<T>(
   })
   try {
     // An async wrapper, so a synchronous throw arrives as a rejection.
-    const answer = (async () => f({ ...ctx, signal: controller.signal }))()
+    const answer = (async () =>
+      f({ ...ctx, targetsGiven: ctx.targetsGiven ?? false, signal: controller.signal }))()
     return await Promise.race([answer, late])
   } finally {
     clearTimeout(timer)
@@ -100,8 +103,26 @@ export interface Survey {
   warnings: string[]
   /** The linked worktrees of the repositories the targets are in, which path candidates may be or sit in. A linked worktree whose main checkout is in a target is found per candidate instead. */
   linked: string[]
-  /** Each detected plugin's roots, as its `roots` hook answered; none for a plugin without the hook. */
+  /** Each detected plugin's roots by path, as its `roots` hook answered less those the core refused; none for a plugin without the hook. */
   roots: Record<string, readonly string[]>
+  /** The roots among `roots` each detected plugin declared `{ path, self: true }`, which may be candidates themselves. */
+  selfRoots: Record<string, readonly string[]>
+  /** The note each plugin's `detect` gave with its answer, by plugin name, whether it runs or not. */
+  notes: Record<string, string>
+}
+
+/**
+ * `detect`'s answer as whether the plugin runs and its note; null when it is
+ * neither a boolean nor a {@link Detection} with a boolean `active` and a
+ * string or no `note`.
+ */
+function detection(answer: unknown): { active: boolean; note?: string } | null {
+  if (typeof answer === 'boolean') return { active: answer }
+  if (typeof answer !== 'object' || answer === null) return null
+  const { active, note } = answer as Partial<Record<keyof Detection, unknown>>
+  if (typeof active !== 'boolean') return null
+  if (note === undefined) return { active }
+  return typeof note === 'string' ? { active, note } : null
 }
 
 /** The ignore entry a candidate sits in, or a path candidate holds (deleting a directory takes what is inside it). */
@@ -167,10 +188,14 @@ function nest(cs: readonly Candidate[]): Candidate[] {
 /**
  * Scope, discover and object, one plugin at a time in the order of `all`,
  * each hook awaited under its time limit. A plugin that throws or times out
- * in `detect` is left out, and in `scope` or `discover` proposes nothing,
+ * in `detect`, or answers neither a boolean nor a {@link Detection}, is left
+ * out; a note it gives is kept in `notes`. One that throws or times out
+ * in `scope` or `discover` proposes nothing,
  * with a warning; one that throws or times out in `object` refuses every
  * candidate, since what it would object to is unknown. A path candidate
- * outside its owner's roots and the targets is refused `outside-roots`; one
+ * outside its owner's roots and the targets is refused `outside-roots`, and a
+ * root the core refuses (see `rootProblem` in `./roots.ts`) is left out with a
+ * warning; one
  * with both a path and a ref, or neither, or a path and an `at`, or an
  * unknown `costDescription`, is dropped. A `lost` one is held and protested `discard-user-data`, and an
  * `unmeasured` one protested `unmeasured`. A
@@ -199,13 +224,23 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
   }
   const names = new Set<string>()
   const plugins: Plugin[] = []
+  const notes: Record<string, string> = {}
   for (const p of all) {
     if (names.has(p.name)) {
       warnings.push(`${p.name}: a second plugin of that name was left out`)
       continue
     }
     names.add(p.name)
-    if (await guarded(p, 'detect', false, ctx, (x) => p.detect(x))) plugins.push(p)
+    const answer = await guarded<unknown>(p, 'detect', false, ctx, (x) => p.detect(x))
+    const found = detection(answer)
+    if (found === null) {
+      warnings.push(
+        `${p.name}: detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note? }; it was left out`,
+      )
+      continue
+    }
+    if (found.note !== undefined) notes[p.name] = found.note
+    if (found.active) plugins.push(p)
   }
 
   const ignore = ctx.ignore ?? []
@@ -262,14 +297,25 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
 
   const known = new Set(candidates.map((c) => c.id))
   const objections: Objection[] = []
+  const linked = linkedCheckouts(targets)
+  const home = homedir()
   // Asked once per plugin, so a throwing `roots` warns once.
-  const rootsOf = new Map<string, readonly string[]>()
+  const rootsOf = new Map<string, { roots: readonly string[]; self: readonly string[] }>()
   for (const p of plugins) {
     if (p.roots === undefined) continue
-    rootsOf.set(p.name, await guarded(p, 'roots', [], scoped, (x) => p.roots!(x)))
+    const answer = await guarded<unknown>(p, 'roots', [], scoped, (x) => p.roots!(x))
+    const accepted = acceptRoots(answer, { targets, linked, home })
+    for (const problem of accepted.problems) warnings.push(`${p.name}: roots: ${problem}`)
+    rootsOf.set(p.name, accepted)
   }
-  const linked = linkedCheckouts(targets)
-  for (const p of plugins) bindKit(p, { roots: rootsOf.get(p.name) ?? [], targets, linked })
+  const boundsOf = (name: string): Bounds => ({
+    roots: rootsOf.get(name)?.roots ?? [],
+    self: rootsOf.get(name)?.self ?? [],
+    targets,
+    linked,
+    home,
+  })
+  for (const p of plugins) bindKit(p, boundsOf(p.name))
   for (const c of candidates) {
     if (c.costDescription === 'lost') {
       objections.push({
@@ -290,7 +336,7 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
       })
     }
     if (c.path === undefined) continue
-    const why = outside(c, { roots: rootsOf.get(c.owner) ?? [], targets, linked })
+    const why = outside(c, boundsOf(c.owner))
     if (why !== null) {
       objections.push({
         by: 'host-cleaner',
@@ -322,8 +368,19 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
       }
     }
   }
-  const roots = Object.fromEntries(plugins.map((p) => [p.name, rootsOf.get(p.name) ?? []]))
-  return { plugins, ctx: scoped, candidates, objections, warnings, linked, roots }
+  const roots = Object.fromEntries(plugins.map((p) => [p.name, boundsOf(p.name).roots]))
+  const selfRoots = Object.fromEntries(plugins.map((p) => [p.name, boundsOf(p.name).self]))
+  return {
+    plugins,
+    ctx: scoped,
+    candidates,
+    objections,
+    warnings,
+    linked,
+    roots,
+    selfRoots,
+    notes,
+  }
 }
 
 /**
@@ -380,6 +437,7 @@ export function plan(
   s: Pick<Survey, 'candidates' | 'objections' | 'warnings'>,
   opts: {
     targets?: readonly string[] | undefined
+    targetsGiven?: boolean | undefined
     ignore?: readonly string[] | undefined
     select?: readonly string[] | null | undefined
     pick?: readonly string[] | undefined
@@ -398,6 +456,7 @@ export function plan(
     version: PLAN_VERSION,
     createdAt: (opts.now ?? new Date()).toISOString(),
     targets: [...(opts.targets ?? [])],
+    ...(opts.targetsGiven === undefined ? {} : { targetsGiven: opts.targetsGiven }),
     select: selection.select === null ? null : [...selection.select],
     pick: [...selection.pick],
     spare: [...selection.spare],
@@ -777,16 +836,18 @@ async function runOne(
   }
   // A ref has no folder to check; a path is checked again on its real path, which may have moved since the survey.
   if (c.path !== undefined) {
-    let roots: readonly string[]
+    let answer: unknown
     try {
-      roots =
+      answer =
         owner.roots === undefined
           ? []
           : await callHook(owner, 'roots', s.ctx, (x) => owner.roots!(x))
     } catch (err) {
       return fail(err, `${c.owner}: roots failed: `)
     }
-    const bounds: Bounds = { roots, targets: s.ctx.targets, linked: s.linked }
+    const at = { targets: s.ctx.targets, linked: s.linked, home: homedir() }
+    const { roots, self } = acceptRoots(answer, at)
+    const bounds: Bounds = { roots, self, ...at }
     const why = outside(c, bounds)
     if (why !== null) return fail(why)
     // The owner's kit removes within what was just checked.
