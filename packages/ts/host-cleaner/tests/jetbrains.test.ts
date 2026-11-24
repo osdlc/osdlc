@@ -90,7 +90,10 @@ function twoVersions(): TempHome {
   return h
 }
 
-/** A `ps` that lists launchd and `rows` as `pid args` lines, or fails with `rows`' message. */
+/**
+ * A `ps` that lists launchd and `rows`, children of launchd, as `pid ppid args`
+ * lines, or fails with `rows`' message.
+ */
 const psOf = (rows: Array<{ pid: number; args: string }> | Error = []): CommandRunner => ({
   run: () =>
     rows instanceof Error
@@ -98,7 +101,7 @@ const psOf = (rows: Array<{ pid: number; args: string }> | Error = []): CommandR
       : {
           exitCode: 0,
           stdout: [{ pid: 1, args: '/sbin/launchd' }, ...rows]
-            .map((r) => `${r.pid} ${r.args}\n`)
+            .map((r) => `${r.pid} ${r.pid === 1 ? 0 : 1} ${r.args}\n`)
             .join(''),
           stderr: '',
         },
