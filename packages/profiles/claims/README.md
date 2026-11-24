@@ -31,7 +31,7 @@ pnpm add -D @osdlc/corpus-profile-claims
 Install it in the folder that holds your corpus, or in any folder above it. The validator finds the
 package the way Node.js does. The package's `"corpus"` field names its corpus folder, `corpus/`.
 
-You need a corpus-schema validator that reads `extends`: `@osdlc/corpus-schema` 0.4.0 or later.
+You need a corpus-schema validator that reads `extends`: `@osdlc/corpus-schema` 0.6.0 or later, which allows `x-ref` inside nested objects.
 
 ## Use it
 
@@ -68,8 +68,8 @@ x-extends: claims/statements
 Keep the profile's folder names, `documents`, `methods`, `study-results` and `statements`, unless
 you have a reason not to. A typed link in the profile, such as a statement's `specifiedBy`
 (`x-ref: methods`), accepts a record of any local type that extends the named type, whatever its
-folder is called. One rule does need the name: each evidence item must point into a folder named
-`study-results` (see departure 4 below).
+folder is called. That holds for evidence items too: each one is `x-ref: study-results`, so a record
+of a type that extends `study-results` counts as evidence (see departure 4 below).
 
 To add fields to a type, list them beside `x-extends`. See
 [Adding your own kinds](#adding-your-own-kinds).
@@ -77,7 +77,7 @@ To add fields to a type, list them beside `x-extends`. See
 Validate as usual:
 
 ```sh
-npx --yes @osdlc/corpus-schema@^0.4.0 validate my-corpus
+npx --yes @osdlc/corpus-schema@^0.6.0 validate my-corpus
 ```
 
 `extends` brings in types only, so your corpus keeps no copy of the profile, and
@@ -226,15 +226,9 @@ A contribution has `contributor` (an Agent with `name` and `agentType`), `activi
    `specifiedBy` or `reportedIn`, we take a relative Markdown link to a record. Top-level links use
    corpus-schema's `x-ref`, so the validator checks that each one points at a record of the right
    type.
-4. Evidence items are not type-checked by `x-ref`. corpus-schema v0 allows `x-ref` only on
-   top-level fields, and `hasEvidenceItems` sits inside an evidence line. Each link must still
-   resolve, and a pattern checks that it points into `study-results`, does not step back out with
-   `..`, plain or percent-encoded, and does not point at the type's schema file. The pattern has
-   two gaps. A link to a `.md` file inside a record folder that is not the record itself still
-   passes. A link that climbs above the corpus into some other `study-results` folder gets only a
-   warning, and `corpus-schema validate` still exits 0. corpus-schema does not support `x-ref`
-   inside nested objects yet. Once it does, both gaps close: the pattern becomes
-   `x-ref: study-results`.
+4. Evidence items are type-checked by `x-ref`, inside the evidence line. Each link must point at the
+   record file of a study result, or of a type that extends `study-results`. A link to the type's
+   schema file, to another file in a record folder, or out of the corpus is an error.
 5. Evidence items are study results only. VA-Spec also lets an evidence line cite statements and
    other information entities. Citing another statement can come later.
 6. Strength is a plain word, not a concept object. VA-Spec's `strength` and
@@ -248,8 +242,9 @@ A contribution has `contributor` (an Agent with `name` and `agentType`), `activi
    abstract class whose `subject` and `object` are entities. Here `subject` and `predicate` are
    text, and `object` is any JSON value except null: text, a number, true or false, an object or a
    list. The corpus decides the object's shape. `subject` may be a slug or a link to a record. The
-   validator checks that a link resolves, but not what type it points at, because corpus-schema
-   does not support `x-ref` inside nested objects yet. The proposition has no `type`.
+   validator checks that a link resolves, but not what type it points at, because the claims types
+   name no type for a subject. A corpus can add `x-ref` to `proposition.subject`. The proposition
+   has no `type`.
 9. Some optional fields are required. `title` on a document, `contributions` on study results and
    statements, `hasEvidenceItems` on an evidence line, and all three parts of a contribution. A
    record without them does not carry enough to check.
@@ -297,10 +292,9 @@ Linux only, and a claim that lists the config paths for each platform.
   [fernlog config paths by platform](example/statements/fernlog%20config%20paths%20by%20platform.md)
   has one `{ platform, path, precedence }` entry per path.
 
-A nested field can hold a link, but the validator checks only that the link resolves, not what
-type of record it points at. Typed links from nested fields need `x-ref` inside nested objects,
-which corpus-schema does not support yet. Until then, typed links go in top-level fields, and
-evidence items use the pattern described in departure 4.
+A nested field can hold a typed link: `x-ref` works inside objects and lists of objects, as
+`hasEvidenceItems` does (departure 4). It does not work through `$ref`, so inline the schema that
+holds it.
 
 Check the profile and the example from the root of this repository. The validator is this
 repository's `packages/ts/corpus-schema`, built first, since the published 0.2.x does not read
@@ -383,7 +377,7 @@ Extend the profile, as [Use it](#use-it) says. Then:
 - Add your fields to your type's schema, beside `x-extends`, so the validator checks them. A field
   you leave out of the schema is still allowed, but nothing checks it.
 - Add your own types, such as `harnesses` or `subjects`, as folders beside the claims types. A
-  top-level field can point at them with `x-ref`.
+  field can point at them with `x-ref`.
 - Keep the field names the claims types use. If you add a field that VA-Spec defines and the claims
   types leave out, such as `score`, give it VA-Spec's meaning.
 - For strict checking, close your type with `additionalProperties: false`. The profile's fields
@@ -412,8 +406,8 @@ properties:
   scope: { type: object }
 ```
 
-`harness` and `subject` are top-level fields here, so they can be typed links. A typed link inside
-the proposition needs `x-ref` in nested objects, which corpus-schema does not support yet.
+`harness` and `subject` are top-level fields here. A typed link inside the proposition also works:
+put `x-ref` on the nested property.
 
 ### What stays in your corpus
 

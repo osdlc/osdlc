@@ -50,7 +50,8 @@ describe('the git plugin', () => {
     const byId = new Map(s.candidates.map((c) => [c.id, c]))
     const branchId = `branch:${realpathSync(fx.root)}:wt-branch`
     expect(byId.get(branchId)?.requires).toEqual([`worktree:${fx.worktree}`])
-    expect(byId.get(`worktree:${fx.worktree}`)).toMatchObject({ owner: 'git', unattended: true })
+    expect(byId.get(`worktree:${fx.worktree}`)).toMatchObject({ owner: 'git' })
+    expect(byId.get(`worktree:${fx.worktree}`)?.held).toBeUndefined()
     const unmerged = [...byId.values()].find((c) => c.path.endsWith(':unmerged'))!
     expect(s.objections).toContainEqual(
       expect.objectContaining({

@@ -290,8 +290,8 @@ describe('records whose directory is gone', () => {
     const plugin = orcaPlugin({ orca: o.orca })
     const ctx: Ctx = { cwd: tmpdir(), targets: [], allow: [] }
     const s = survey([plugin], ctx)
-    expect(s.candidates.map((c) => [c.id, c.kind, c.unattended])).toEqual([
-      [`orca-record:${gone}`, 'orca-record', false],
+    expect(s.candidates.map((c) => [c.id, c.kind, c.held])).toEqual([
+      [`orca-record:${gone}`, 'orca-record', true],
     ])
     const receipt = clean(plan(s, { pick: [`orca-record:${gone}`] }), [plugin], ctx)
     expect(receipt.steps[0]).toMatchObject({ result: 'ok' })
