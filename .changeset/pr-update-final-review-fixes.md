@@ -22,3 +22,9 @@ found on the absolute `PATH` entries only. It was `!gh auth git-credential`,
 which the shell looked up on `PATH` in the run worktree a push runs in, so
 with `.` on `PATH` a `gh` the PR committed could run. When no `gh` is found
 that way, no helper is set and a note says so.
+
+Fixed: with `--keep-failed` on a managed clone, keeping a failed PR's
+worktree and adding the run worktree back now happen under the clone's lock.
+A `mirror prune --all-clones --discard-kept` between the two could remove the
+kept tree and the clone. When another run holds the lock, the tree is not
+kept, `keepError` says `mirror busy`, and the run goes on.

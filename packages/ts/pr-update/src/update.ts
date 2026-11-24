@@ -51,6 +51,7 @@ import {
   tally,
   targetGitOptions,
   updateAll,
+  type CloneLock,
   type UpdateResult,
   type UpdateTarget,
 } from './update/execute.ts'
@@ -914,9 +915,10 @@ function cloneLock(
   clones: ManagedClones,
   path: string,
   worktree: string,
-): { added: () => void; removing: (remove: () => void) => void } {
+): CloneLock {
   return {
     added: () => clones.release(path),
+    keeping: (keep) => clones.keeping(path, worktree, keep),
     removing: (remove) => {
       clones.removing(path, { path: worktree, kind: 'run' }, remove)
     },

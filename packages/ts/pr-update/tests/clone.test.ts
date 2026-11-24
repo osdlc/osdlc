@@ -1065,6 +1065,53 @@ describe('review round 2', () => {
   })
 })
 
+describe('keeping a failed worktree in a clone (final review)', () => {
+  test('happens under the clone’s lock, so a prune between the keep and the worktree added back finds the clone busy', async () => {
+    const dir = join(scratch, 'clones')
+    const clone = cloneOf(dir)
+    writeFileSync(
+      join(project, 'pr-update.local.yaml'),
+      "pr_update:\n  verify: test\n  test_command: 'false'\n",
+    )
+    // A `mirror prune --all-clones --discard-kept` run at the worst moment: the failed PR's
+    // worktree has been moved aside as a kept tree, and the run worktree is not back yet.
+    const real = spawnRunner('git', { absolutePathOnly: true })
+    let moved = false
+    let pruned: ReturnType<typeof pruneMirror> | undefined
+    const racing: CommandRunner = {
+      binary: 'git',
+      run: (argv, opts) => {
+        const at = argv.indexOf('worktree')
+        if (at !== -1 && argv[at + 1] === 'move') moved = true
+        else if (at !== -1 && argv[at + 1] === 'add' && moved && pruned === undefined) {
+          pruned = pruneMirror({ env, dir, allClones: true, discardKept: true })
+        }
+        return real.run(argv, opts)
+      },
+    }
+    const r = await runWith(
+      { ...noTerminal, git: racing },
+      {},
+      'update',
+      '--repo',
+      'acme/api',
+      '--mirror-dir',
+      dir,
+      '--apply',
+      '--trust',
+      '--keep-failed',
+      '--json',
+    )
+    expect(pruned?.removed).toEqual([])
+    expect(pruned?.skipped.map((e) => [e.kind, e.path, e.skip])).toEqual([['clone', clone, 'busy']])
+    expect(JSON.parse(r.out).results).toMatchObject([
+      { number: 7, status: 'failed', keptWorktree: expect.any(String) },
+    ])
+    expect(existsSync(clone)).toBe(true)
+    expect(existsSync(JSON.parse(r.out).results[0].keptWorktree)).toBe(true)
+  })
+})
+
 describe('mirror prune and a run worktree a run left in its clone', () => {
   test('a run that cannot take its clone’s lock back leaves its worktree; prune removes it under the lock once the run is gone', async () => {
     const dir = join(scratch, 'clones')

@@ -1679,6 +1679,9 @@ describe('updateAll', () => {
       worktreeRoot,
       lock: {
         added: () => events.push(`added: listed ${listed()}`),
+        keeping: () => {
+          throw new Error('nothing failed, so nothing is kept')
+        },
         removing: (remove) => {
           events.push(`removing: listed ${listed()}`)
           remove()

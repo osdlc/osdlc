@@ -701,8 +701,9 @@ function keyOf(t: { host: string | null; repo: string }): string {
  *   rehearsal does not wait;
  * - until {@link ManagedClones.release}: `update` releases a clone with no PR to update as soon
  *   as it knows, and the others once their run worktree is added;
- * - and again while the run worktree, or a kept worktree it discards, is removed
- *   ({@link ManagedClones.removing}). That wait happens only when the run holds no other
+ * - and again while a failed PR's run worktree is kept and the run worktree added back
+ *   ({@link ManagedClones.keeping}), and while the run worktree, or a kept worktree it discards,
+ *   is removed ({@link ManagedClones.removing}). That wait happens only when the run holds no other
  *   clone's lock, so every run that waits holds nothing another run waits for, and no two runs
  *   wait on each other. A clone whose lock cannot be taken back is not changed: a run
  *   worktree is left for the next run in the clone or `pr-update mirror prune`, a kept one for
@@ -761,6 +762,35 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
     unheld.delete(clone)
     held.set(clone, token)
     return true
+  }
+
+  /**
+   * Run `change` holding `clone`'s lock: the one the run holds, or else taken back, waiting only
+   * in `update --apply` and only when the run holds no other clone's lock. Waiting while holding
+   * another clone's lock could close a cycle with a run that holds this one and waits for that
+   * one. False, with the note `busyNote` gives, when it cannot be had.
+   */
+  const underLock = (
+    clone: string,
+    change: () => void,
+    busyNote: (lock: string) => string,
+  ): boolean => {
+    if (held.has(clone)) {
+      change()
+      return true
+    }
+    const lock = cloneLockPath(clone)
+    const token = claim(lock, applying && held.size === 0 ? waitMs : 0)
+    if (token === null) {
+      opts.notice(busyNote(lock))
+      return false
+    }
+    try {
+      change()
+      return true
+    } finally {
+      releaseLock(lock, token)
+    }
   }
 
   /** Why `clone` is not held: a folder above it, or another run's lock. */
@@ -1022,28 +1052,20 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
     release,
 
     removing(clone, tree, remove) {
-      if (held.has(clone)) {
-        remove()
-        return true
-      }
-      const lock = cloneLockPath(clone)
-      // Waiting while holding another clone's lock could close a cycle with a run that holds
-      // this one and waits for that one.
-      const token = claim(lock, applying && held.size === 0 ? waitMs : 0)
-      if (token === null) {
-        opts.notice(
-          tree.kind === 'kept'
-            ? `the kept worktree ${tree.path} is left in place, because another run holds its clone (${lock}); run with --discard-kept again to remove it`
-            : `${tree.path} is left, because another run holds its clone (${lock}); the next run in this clone, or \`pr-update mirror prune\`, removes it`,
-        )
-        return false
-      }
-      try {
-        remove()
-        return true
-      } finally {
-        releaseLock(lock, token)
-      }
+      return underLock(clone, remove, (lock) =>
+        tree.kind === 'kept'
+          ? `the kept worktree ${tree.path} is left in place, because another run holds its clone (${lock}); run with --discard-kept again to remove it`
+          : `${tree.path} is left, because another run holds its clone (${lock}); the next run in this clone, or \`pr-update mirror prune\`, removes it`,
+      )
+    },
+
+    keeping(clone, tree, keep) {
+      return underLock(
+        clone,
+        keep,
+        (lock) =>
+          `${tree} is not kept, because another run holds its clone (${lock}); the run goes on in it`,
+      )
     },
 
     close() {

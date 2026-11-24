@@ -983,8 +983,14 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   path order; lets go of a clone with no PR to update once its PRs are
   picked; takes a lock back to remove a worktree or discard a kept one, and
   then waits only when it holds no other lock. A worktree whose lock it
-  cannot get back is left, with a note. Rehearsals hold locks too, without
-  waiting. The wait polls with `Atomics.wait`, which blocks the process: fine
+  cannot get back is left, with a note. The final review of the omnibus
+  found that keeping a failed PR's worktree (`--keep-failed`) and adding the
+  run worktree back ran without the lock, so a `mirror prune --all-clones
+  --discard-kept` between the two saw no run worktree and removed the kept
+  tree and the clone. The run now takes the lock back for both, by the same
+  rule (`ManagedClones.keeping`), and when it cannot, keeps nothing, says so
+  in `keepError`, and goes on in the worktree as it is. Rehearsals hold locks
+  too, without waiting. The wait polls with `Atomics.wait`, which blocks the process: fine
   for the CLI, not for a host with its own event loop.
 - **Telling a dead run.** Pruning reads the run folder's `<pid>.<time>`: the
   run is dead when no process has the pid, or the process with it started

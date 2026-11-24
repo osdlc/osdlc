@@ -556,6 +556,33 @@ describe('managedClones: taking a lock back to remove a worktree (review round 2
     clones.close()
   })
 
+  test('keeping a failed worktree takes the lock back; when it is busy nothing is kept, with a note (final review)', () => {
+    const api = existing('api')
+    const { clones, waits, notes } = setup(300)
+    clones.provide([api], { apply: true })
+    clones.release(api.path)
+    const worktree = join(scratch, 'worktrees', 'run')
+    // Free: the keep runs holding the lock, which is let go after.
+    let heldDuring = false
+    expect(
+      clones.keeping(api.path, worktree, () => (heldDuring = existsSync(cloneLockPath(api.path)))),
+    ).toBe(true)
+    expect(heldDuring).toBe(true)
+    expect(existsSync(cloneLockPath(api.path))).toBe(false)
+    // Busy: it waits, as `removing` does, then gives up without running the keep.
+    const token = otherRun(api.path)
+    waits.length = 0
+    let ran = false
+    expect(clones.keeping(api.path, worktree, () => (ran = true))).toBe(false)
+    expect(waits).toEqual([300])
+    expect(ran).toBe(false)
+    expect(notes).toEqual([
+      `${worktree} is not kept, because another run holds its clone (${cloneLockPath(api.path)}); the run goes on in it`,
+    ])
+    releaseLock(cloneLockPath(api.path), token)
+    clones.close()
+  })
+
   test('holding no other clone, a retake waits; when the wait times out the worktree is left too', () => {
     const api = existing('api')
     const { clones, waits, notes } = setup(300)

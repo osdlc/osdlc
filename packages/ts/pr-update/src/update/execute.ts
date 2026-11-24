@@ -1103,6 +1103,25 @@ export function describeOutcome(o: UpdateOutcome): string {
 }
 
 /**
+ * `updateAll`'s hold on a managed clone whose lock the run took before the survey
+ * (`ManagedClones.provide`).
+ * - `added` lets the lock go once the run worktree is recorded in the clone, so the lock covers
+ *   the survey's fetch, the removal of a killed run's worktree and `worktree add`.
+ * - `keeping` takes it back to keep a failed PR's worktree and add the run worktree back
+ *   (`ManagedClones.keeping`); false, with nothing done, when it cannot be had.
+ * - `removing` takes it back to remove the worktree and its scratch branch, and leaves both,
+ *   with a note, when it cannot be had (`ManagedClones.removing`).
+ *
+ * Taking it back waits only in `update --apply` and only when the run holds no other clone's
+ * lock.
+ */
+export interface CloneLock {
+  added: () => void
+  keeping: (keep: () => void) => boolean
+  removing: (remove: () => void) => void
+}
+
+/**
  * Update a list of PRs in one temporary worktree.
  *
  * `targets` must already be in dependency order (the survey's topological
@@ -1149,16 +1168,8 @@ export async function updateAll(
      * for a person to pick up (see `./kept.ts`). The run goes on in a fresh one.
      */
     keepFailed?: { place: KeptPlace }
-    /**
-     * Set when `git`'s repository is a managed clone whose lock the run holds, taken before the
-     * survey (`ManagedClones.provide`). `added` lets the lock go once the run worktree is
-     * recorded in the clone, so the lock covers the survey's fetch, the removal of a killed
-     * run's worktree and `worktree add`. `removing` takes it back to remove the worktree and its
-     * scratch branch, waiting only in `update --apply` and only when the run holds no other
-     * clone's lock, and leaves both, with a note, when it cannot be had
-     * (`ManagedClones.removing`).
-     */
-    lock?: { added: () => void; removing: (remove: () => void) => void } | undefined
+    /** Set when `git`'s repository is a managed clone whose lock the run holds (see {@link CloneLock}). */
+    lock?: CloneLock | undefined
   },
 ): Promise<UpdateResult[]> {
   const results: UpdateResult[] = []
@@ -1215,25 +1226,34 @@ export async function updateAll(
       }
       const ran = 'strategyFallback' in outcome ? 'merge' : target.strategy
       const result: UpdateResult = { ...target, strategy: ran, outcome }
+      const place = opts.keepFailed?.place
       if (
-        opts.keepFailed !== undefined &&
+        place !== undefined &&
         (outcome.status === 'conflict' || (outcome.status === 'failed' && !outcome.unrecorded))
       ) {
-        try {
-          result.keptWorktree = keepWorktree(
-            git,
-            opts.keepFailed.place,
-            opts.worktreeRoot,
-            target,
-            outcome.status === 'failed' ? outcome.verifyLog : undefined,
-          ).path
-        } catch (e) {
-          result.keepError = errorLine(e)
+        // The keep and the worktree added back in its place are one change to the clone: a prune
+        // between them would find no run worktree and could remove the kept tree and the clone.
+        const keep = (): void => {
+          try {
+            result.keptWorktree = keepWorktree(
+              git,
+              place,
+              opts.worktreeRoot,
+              target,
+              outcome.status === 'failed' ? outcome.verifyLog : undefined,
+            ).path
+          } catch (e) {
+            result.keepError = errorLine(e)
+          }
+          if (!existsSync(opts.worktreeRoot)) {
+            records.forget(git, opts.worktreeRoot, false)
+            mkdirSync(dirname(opts.worktreeRoot), { recursive: true, mode: FOLDER_MODE })
+            git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
+          }
         }
-        if (!existsSync(opts.worktreeRoot)) {
-          records.forget(git, opts.worktreeRoot, false)
-          mkdirSync(dirname(opts.worktreeRoot), { recursive: true, mode: FOLDER_MODE })
-          git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
+        if (opts.lock === undefined) keep()
+        else if (!opts.lock.keeping(keep)) {
+          result.keepError = "mirror busy: another pr-update run holds the clone's lock"
         }
       }
       results.push(result)
