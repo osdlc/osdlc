@@ -169,7 +169,7 @@ export interface ArtifactFacts {
   newestMtimeMs: number | null
   /** What {@link holdersIn} found in the checkout. */
   held: Held
-  /** Idle for the threshold, which decides `unattended`. */
+  /** Idle for the threshold; an artifact that is not is held for review. */
   idle: boolean
   why: string
   notes?: string[]
@@ -221,14 +221,13 @@ export function artifactRow(owner: string, f: ArtifactFacts, now: Date): Row {
       owner,
       why: f.why,
       bytes: sizeBytes,
-      unattended: blockers.length === 0 && f.idle,
+      ...(f.idle ? {} : { held: true }),
       evidence: {
         kind: f.kind,
         path: f.path,
         checkout: f.checkout,
         sizeBytes,
         newestMtimeMs: f.newestMtimeMs,
-        unattended: blockers.length === 0 && f.idle,
         notes: f.notes ?? [],
       },
     },
@@ -245,14 +244,13 @@ export function refusedRow(owner: string, kind: ArtifactKind, path: string, chec
       path,
       owner,
       why: 'resolves outside its checkout',
-      unattended: false,
+      held: true,
       evidence: {
         kind,
         path,
         checkout,
         sizeBytes: null,
         newestMtimeMs: null,
-        unattended: false,
       },
     },
   }

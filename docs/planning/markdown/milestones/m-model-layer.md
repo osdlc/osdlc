@@ -19,6 +19,12 @@ tasks:
   - "[94 Publish USDA FDC](../tasks/94%20Publish%20USDA%20FDC.md)"
   - "[95 Food corpus consumers](../tasks/95%20Food%20corpus%20consumers.md)"
   - "[96 Other food sources](../tasks/96%20Other%20food%20sources.md)"
+  - "[97 Fitness corpora](../tasks/97%20Fitness%20corpora.md)"
+  - "[98 Muscles corpus](../tasks/98%20Muscles%20corpus.md)"
+  - "[99 Fitness vocab corpus](../tasks/99%20Fitness%20vocab%20corpus.md)"
+  - "[100 Exercises corpus](../tasks/100%20Exercises%20corpus.md)"
+  - "[101 Fitness evidence corpus](../tasks/101%20Fitness%20evidence%20corpus.md)"
+  - "[102 Fitness corpora consumers](../tasks/102%20Fitness%20corpora%20consumers.md)"
 ---
 
 The model gains named relations and augments, and corpus-schema's x-body points at a
