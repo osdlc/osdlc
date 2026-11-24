@@ -191,7 +191,7 @@ describe('the clients pass the env through', () => {
     expect(gh.searchPrs('x')).toEqual({ rows: [], truncated: false })
     await agh.repoList('acme')
     await agh.soft.repoView('acme/widgets')
-    expect(seen.map((o) => o.env)).toEqual([
+    expect(seen.map((o) => o.env)).toStrictEqual([
       { ...NO_COLOUR_ENV, GH_HOST: 'ghe.acme.com' },
       { ...NO_COLOUR_ENV, GH_HOST: 'ghe.acme.com' },
       NO_COLOUR_ENV,

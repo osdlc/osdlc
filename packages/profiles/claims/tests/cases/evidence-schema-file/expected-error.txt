@@ -1,1 +1,1 @@
-statements/evidence-schema-file.md: hasEvidenceLines.0.hasEvidenceItems.0: must match pattern
+statements/evidence-schema-file.md: hasEvidenceLines.0.hasEvidenceItems: study-results/study-results.schema.md is not a record of type claims/study-results

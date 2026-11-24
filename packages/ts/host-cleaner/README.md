@@ -298,9 +298,9 @@ Detected when the `orca` CLI is on `PATH` (or at
 When it is installed but not running, or `orca status` fails or prints no JSON,
 Orca cannot be asked, and there is no fallback to git: every `git` worktree
 whose real path is under `/orca/workspaces/` is refused with `orca-unreachable`,
-and the other worktrees are left to `git`. Orca then adds no repositories and proposes
-no records. It never fails the run. Every call goes through
-`@osdlc/command-seam` with `--json`.
+and the other worktrees are left to `git`. Orca then adds no repositories and
+proposes no records, and `detect` gives the reason as its note. It never fails
+the run. Every call goes through `@osdlc/command-seam` with `--json`.
 
 | Phase | What it does |
 | --- | --- |
@@ -416,11 +416,10 @@ default. `--format json` prints the values.
 now), whether it applies here and, when it does not, why, and its roots, the
 folders it may delete in besides the targets. It runs `detect`, `scope` and
 `roots` and nothing else, so it proposes and deletes nothing. A plugin whose
-`detect` throws shows the error as the reason; Orca installed but not running
-shows `not detected: Orca is installed but not running; its worktrees are left
-to git`. A note its `detect` gives follows the plugin's state (`; note: ...`),
-whether it is detected or not, so a degraded plugin (`{ active: true, note }`)
-shows as detected with its note; the JSON row has it as `note`.
+`detect` throws shows the error as the reason. A note its `detect` gives
+follows the plugin's state (`; note: ...`), whether it is detected or not, so a
+degraded plugin (`{ active: true, note }`) shows as detected with its note, as
+Orca installed but not running does; the JSON row has it as `note`.
 A root the core refuses is left out with a warning, as `status` does, and a
 self root is marked `(itself too)`. A plugin the config disables is listed as
 `disabled`, and its `detect` is not run. `--format json` prints the same, one
@@ -432,7 +431,7 @@ targets: /Users/me/dev
   git    built-in  detected; roots: none, the targets alone
   cargo  built-in  detected; roots: none, the targets alone
   node   built-in  disabled: plugins.node.enabled is false; --plugin node runs it anyway
-  orca   built-in  not detected: Orca is installed but not running; its worktrees are left to git
+  orca   built-in  detected; roots: none, the targets alone; note: Orca is installed but not running
 ```
 
 ### Exit codes

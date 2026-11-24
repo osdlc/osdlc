@@ -197,6 +197,7 @@ may state its type's identity in `x-identity`, and then it must match.
 ```sh
 corpus-schema validate [--fix] [--strict] <folder>...
 corpus-schema sync [<folder>...]
+corpus-schema types [--out <file>] <folder>
 ```
 
 `validate` checks every corpus at or below each folder. It prints one line per problem, as
@@ -211,6 +212,13 @@ errors, so CI can hold a corpus to no warnings.
 corpus syncs after the corpora it extends or references, so a chain of corpora in one repository
 syncs in one run. It prints `wrote:` and `removed:` for each file it changes, and `synced: <name>: <counts>`.
 Run it again and it changes nothing.
+
+`types` writes TypeScript types for one corpus's records, to stdout or to `--out`: an interface
+per type, with the fields of its whole `x-extends` chain (required ones not optional), a `Ref<T>`
+string for each `x-ref` field, and `CorpusTypes`, which maps each type name to its interface. It
+exits 1, after printing the corpus's errors, when the corpus does not validate. The same source
+comes from `generateTypes(loadCorpus(folder))`, which returns the module's source. JSON Schema keywords it does not model (`$ref`,
+`if`, `not`, patterns) give `unknown`, and the types of corpora the corpus extends or references are not emitted.
 
 `sync` owns `_references/` outright. It removes every file there that no referenced corpus holds,
 so in a corpus with no `references` it empties the folder. It does not write through a symbolic
@@ -326,9 +334,10 @@ CorpusModel
 A `TypeRef` is `corpus`, `type` and `name`, the name being the type as the corpus writes it, such
 as `org/principles`. A `RefForm` is `link`, `id` or `wikilink`. `fields` holds the top-level
 properties of the whole chain, the parents' first. `references` holds every value of every `x-ref`
-field, with a JSON Pointer such as `/owner` or `/sources/2`. `x-ref` works on a top-level property
-and on its `items`, so those are the two places a reference sits. `links` holds only the body
-links that point at a record's file. A reference or a link into a referenced corpus has that
+field, with a JSON Pointer such as `/owner`, `/sources/2` or `/lines/0/items/1`. `x-ref` works on
+a property at any depth, inside objects and lists of objects, and on a list's `items`. A reference
+in a nested field has the dotted field `lines.items`, and the top-level field's `ref` is null.
+`links` holds only the body links that point at a record's file. A reference or a link into a referenced corpus has that
 corpus's key in its target, and the record is in `corpora`.
 
 A corpus with errors still loads. `errors` holds the lines, and the rest is what could be read: a
@@ -411,6 +420,7 @@ release.
 
 The experimental exports, which may change in any release:
 
+- `generateTypes`, while the generated types' shape settles
 - `npmPackageUrl`, `packageUrl` and `PackageUrl`, while the spec's Identity section is new
 - `loadCorpus`, `getCorpus`, `getType`, `recordsOf`, `getRecord`, `resolveTarget`, and the model's
   types `LoadedCorpus`, `LoadOptions`, `CorpusModel`, `CorpusType`, `CorpusField`, `FieldRef`,
