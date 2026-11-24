@@ -46,14 +46,16 @@ the plugin runs, and `note` is a sentence for a person, such as why a plugin
 that still runs is degraded (Orca installed but not running: its worktrees
 must still be refused, so it stays active). The core keeps each plugin's note,
 whether it runs or not, in the survey's `notes` (plugin name to note, plain
-JSON), and `status` prints each as a warning line naming the plugin, and under
-`notes` in `--format json`. An answer of any other shape leaves the plugin out
-with a warning.
+JSON). `status`, `plan` and `clean` print each as a warning line naming the
+plugin, so a degraded plugin shows on the commands that act too, and
+`status --format json` and `clean --format json` carry them under `notes`. An
+answer of any other shape leaves the plugin out with a warning.
 
 Every hook's `ctx` carries `targetsGiven`: true when a person named the
 targets, in the config or on the command line, and false when the command line
 fell back to the directory it runs in (and when a `RunCtx` leaves it unset). A
-plan keeps it, so `clean --plan` tells the plugins the same.
+plan keeps it, so `clean --plan` tells the plugins the same; a plan without it
+is refused: sweep again.
 
 A candidate's `requires` lists the candidates that must go first. If one is
 refused, dropped or fails, the candidate is too; requirements are deleted
@@ -184,7 +186,7 @@ needs no more than the path. The plugin `create` returns through
 | --- | --- |
 | `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the hours since, fractions included, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Out of time, it is `{ unmeasured: true }`. |
 | `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
-| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. The table is read fresh once per hook call. |
+| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and every ancestor of it are left out, so the `npm exec` or `pnpm dlx` that started it does not count. The table is read fresh once per hook call. |
 | `kit.onPath(program)` | Whether a program is on PATH. |
 | `kit.candidate({ kind, path \| ref, ... })` | A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and the plugin as owner. |
 | `kit.run(argv, { signal, check })` | Runs a program through `@osdlc/command-seam`, with a time limit (`RUN_LIMIT_MS`, 30 seconds) and stopped when `ctx.signal` aborts; `ok` when it exited 0, a `CommandFailed` throw with `check`. |
@@ -335,11 +337,11 @@ host-cleaner config [--format json]   # every plugin's effective settings
 
 The text output writes the home folder in an id as `~`
 (`worktree:~/dev/wt`, `branch:~/dev/repo:main`), and `--pick` and `--spare`
-take that form. host-cleaner refuses to run as root (exit 1). `status`
-prints each plugin's `detect` note as a warning line naming the plugin, with
-the survey's warnings.
+take that form. host-cleaner refuses to run as root (exit 1). `status`,
+`plan` and `clean` print each plugin's `detect` note as a warning line naming
+the plugin, with the survey's warnings.
 
-`--plugin <name>` runs only those plugins (`--adapter` is an alias) and
+`--plugin <name>` runs only those plugins and
 `--skip-plugin <name>` never runs these. Targets default to the config file's
 `targets`, then the directory you are in. `clean` re-checks, shows the steps,
 asks (`--yes` skips the question; with no terminal and no `--yes` it exits 2),
