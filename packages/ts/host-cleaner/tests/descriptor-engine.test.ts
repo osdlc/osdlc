@@ -930,7 +930,7 @@ function buildVars(
     settings: { idleHours: 0, vars: o.vars },
     only: [],
     env,
-    kit: pluginKit(name, { env, probe: probeOf(), ...fake }),
+    kit: pluginKit(name, { env, ...processes(), ...fake }),
   })
   return { home: h.home, plugin, def, calls: fake.calls }
 }
