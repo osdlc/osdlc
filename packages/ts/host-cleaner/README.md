@@ -7,11 +7,11 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node`, `claude-code` and `orca` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node` and `orca` plugins, and the `host-cleaner` command.
 
 ## Phases
 
-Plugins run in a fixed order: `git`, `cargo`, `node`, `claude-code`, `orca`, then
+Plugins run in a fixed order: `git`, `cargo`, `node`, `orca`, then
 any other in the order given. The order decides which plugin keeps a duplicate id, and the order `prepare` and `deleted` run in.
 
 | Phase | Who | What |
@@ -113,28 +113,6 @@ measured. `delete` reads the checkout's candidates again over a fresh process
 table, removes the directory and checks it is gone; a directory that is already
 gone (its worktree went first) is not a failure.
 
-## The `claude-code` plugin
-
-Lists running Claude Code sessions (`session:<pid>`) and closes one when asked.
-Detected through `@osdlc/detect-harness` (or, with no report, the config
-folder; `CLAUDE_CONFIG_DIR` moves it). A session is a process whose executable
-is `claude` or `claude.exe`, or `node` running a `claude` script, found with
-`ps` and its working directory with `lsof`. Each candidate carries a
-`close-session` protest and is held for review, so a session closes only
-when picked and allowed by name. A session that host-cleaner itself runs
-inside (an ancestor of its process) is refused with `own-session`.
-
-```sh
-host-cleaner clean --pick session:1234 --allow close-session   # the usual clean, and this session
-host-cleaner clean -i                                           # tick only the session
-```
-
-Its evidence holds the start time, the command, the working directory, the
-resume id, the transcript's last write, other sessions resuming the same id,
-and whether the directory is gone or temporary. `delete` checks the pid still
-has the planned start time and command, sends SIGTERM and waits for the exit.
-It never sends SIGKILL; a session that ignores SIGTERM fails its step.
-
 ## The `orca` plugin
 
 Orca keeps its own record of some worktrees and holds terminals and agents open
@@ -142,16 +120,17 @@ in them. Removing one with plain git leaves the record and the terminals behind,
 so this plugin works beside `git`, which still removes the directory.
 
 Detected when the `orca` CLI is on `PATH` (or at
-`/Applications/Orca.app/Contents/Resources/bin/orca`) and `orca status` says the
-app is running. Orca missing is silent; installed but not running adds a
-warning, and the plugin stays out of the run. It never fails the run. Every call
-goes through `@osdlc/command-seam` with `--json`.
+`/Applications/Orca.app/Contents/Resources/bin/orca`). Orca missing is silent.
+When it is installed but not running, or `orca status` fails or prints no JSON,
+there is no fallback to git: every `git` worktree whose path is under
+`/orca/workspaces/` is refused with `orca-unreachable`, and the rest are left to
+`git`. It never fails the run. Every call goes through `@osdlc/command-seam` with `--json`.
 
 | Phase | What it does |
 | --- | --- |
 | scope | Adds each repository `orca repo list` names (`plugins.orca.repos: false` turns this off). |
 | discover | A record in `orca worktree ps` whose directory is gone is `orca-record:<path>`, held for a pick. |
-| object | On a `git` worktree that Orca manages: a `note` with its Orca id; a `refuse` `orca-agent-active` when an agent is at work (any state not `idle` or `done`); a `refuse` `orca-terminal-unverifiable`; a `protest` `close-terminals` when terminals are open. If Orca cannot be read, every `git` worktree is refused with `orca-unreachable`. |
+| object | On a `git` worktree that Orca manages: a `note` with its Orca id; a `refuse` `orca-agent-active` when an agent is at work (any state not `idle` or `done`); a `refuse` `orca-terminal-unverifiable`; a `protest` `close-terminals` when terminals are open. If Orca is running but cannot be read, every `git` worktree is refused with `orca-unreachable`; while it is not running or its status cannot be read, only those under `/orca/workspaces/` are. |
 | prepare | Sees again that no agent is at work, then `orca terminal close --worktree id:<id> --all`. |
 | deleted | After `git` removed the directory, `orca worktree rm --worktree id:<id> --force` so Orca forgets the record. It is never asked while the directory exists, since it would delete it. The branch is kept. |
 
@@ -217,26 +196,6 @@ Two settings sit at the top of the config and apply to every plugin:
   and the current one, dropping a planned candidate as `ignored`.
 - `idleHours` is the default for every plugin that has the setting and does not
   set its own. `0` is allowed and makes every idle-checked artifact a candidate.
-
-### Profiles
-
-`profiles` holds named overrides, chosen with `--profile <name>` on `status`,
-`plan`, `clean` and `config`:
-
-```json
-{
-  "targets": ["~/dev"],
-  "idleHours": 24,
-  "profiles": { "deep": { "idleHours": 0, "plugins": { "node": { "enabled": false } } } }
-}
-```
-
-`host-cleaner clean --profile deep --yes` is then the "disk is nearly full"
-command. A profile may set `targets`, `ignore`, `idleHours` and `plugins`; it
-is deep-merged over the rest of the config, a list in it replaces the config's,
-except `ignore`, which only grows, so a profile cannot lift a protection. Each
-profile is checked when the config loads, like `plugins`; an unknown profile
-name is refused (exit 2) with the names there are.
 
 `host-cleaner config` prints every plugin's effective settings: the value, and
 whether the file set it or it is the default. `--format json` prints the values.
