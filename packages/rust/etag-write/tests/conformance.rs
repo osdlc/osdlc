@@ -485,8 +485,7 @@ fn every_case_in_the_suite_conforms() {
                 Err(msg) => failures.push(format!("{name}: {}: {msg}", case.name)),
             }
         }
-        // A section none of whose cases run here would pass unseen, unless
-        // every case's `platforms` excludes this host.
+        // A section none of whose cases run here would pass unseen.
         if section.cases.iter().any(Case::for_this_host) {
             assert!(ran > 0, "{name}: no case of this section runs on this host");
         }

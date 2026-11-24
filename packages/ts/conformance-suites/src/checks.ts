@@ -417,12 +417,17 @@ export function generatorBuildFilters(
 }
 
 /**
- * A name under both language roots is two implementations of one family. Each
- * such name must have both directories registered (`registered`, a set of
- * directories), still reading the other's fixtures (`unmigrated`), or exempt:
- * `notFamilies` for a binding of the other language's library, `noSuiteYet` for
- * a real pair with no shared cases yet. An exemption for a name that is
- * registered is stale. A pair whose names differ is not found.
+ * A name under both language roots is two implementations of one family, so
+ * each such name must be registered, unmigrated, or exempt. An exemption is
+ * stale when its name is registered or is not a library in both roots. A pair
+ * whose names differ is not found.
+ *
+ * @param registered - Implementation directories listed in families.json; both twins must be in it.
+ * @param unmigrated - Directories still reading the other language's fixtures.
+ * @param exempt - `notFamilies` for a binding of the other language's library,
+ *   `noSuiteYet` for a real pair with no shared cases yet.
+ * @param roots - The language roots, used only in messages.
+ * @returns One message per problem; empty when every pair is accounted for.
  */
 export function unlistedPairs(
   libraries: { rust: readonly string[]; ts: readonly string[] },

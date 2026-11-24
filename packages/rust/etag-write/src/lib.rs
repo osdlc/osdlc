@@ -166,19 +166,19 @@ fn read_or_none(path: &Path) -> io::Result<Option<Vec<u8>>> {
     }
 }
 
-/// `.<name>.<12 hex>.tmp`: the target's file name plus 18 bytes, as the
-/// TypeScript package's temp name is. The 48 random bits come from std's
-/// per-instance random hash keys, so the crate needs no random-number
-/// dependency; a taken name is retried by the caller. The process id is mixed
-/// in because those keys are per thread and a forked child inherits them, so a
-/// parent and child would otherwise draw the same names. The name is built
-/// from the raw `OsStr`, so a non-UTF-8 name still grows by exactly 18 bytes.
+/// A fresh temp name for `path`, in the format the crate docs give and the
+/// TypeScript package shares. The 48 random bits come from std's random hash
+/// keys, so the crate needs no random-number dependency; the caller retries a
+/// taken name.
 fn temp_name(path: &Path) -> OsString {
     use std::hash::{BuildHasher, Hasher};
     let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+    // The keys are per thread and a forked child inherits them; without the
+    // pid a parent and child draw the same names.
     hasher.write_u32(std::process::id());
     let bits = hasher.finish() & 0xffff_ffff_ffff;
     let mut name = OsString::from(".");
+    // Raw `OsStr`, so a non-UTF-8 name still grows by exactly 18 bytes.
     name.push(path.file_name().unwrap_or_default());
     name.push(format!(".{bits:012x}.tmp"));
     name
@@ -593,9 +593,7 @@ mod tests {
         assert_eq!(fs::read(&p).unwrap(), b"body");
     }
 
-    /// A write that fails after the temp file exists must remove it. A
-    /// leaked temp file is not harmful to later writes (names are random),
-    /// but it litters the directory.
+    /// A write that fails after the temp file exists must remove it.
     ///
     /// This tests the guard, not each failing call. A test can make the
     /// rename fail, by argument or through `write_atomic_with`. Making

@@ -37,10 +37,10 @@ two implementations' messages differ by design, so a case never sets
 
 - The temp file's name. Both sides name it `.<name>.<12 hex>.tmp`, with random
   digits, and remove it before a write returns, so its digits are not
-  observable. Its length is: the temp name is 18 bytes longer than the target's
-  file name, so a name over 237 bytes fails on a 255-byte limit. The
-  237-byte and 255-byte file-name cases in `write_atomic` hold that edge. TypeScript fails on a taken
-  temp name. Rust tries 65 names.
+  observable. Its length is observable: the target's file name plus 18
+  bytes, so a name over 237 bytes fails on a 255-byte limit. The 237-byte and
+  255-byte file-name cases in `write_atomic` hold that edge. TypeScript fails
+  on a taken temp name. Rust tries 65 names.
 - The mode of a new file, which depends on the umask. `write_atomic_mode`
   covers the mode an overwrite keeps, on Unix only. It leaves out the sticky
   bit, which macOS refuses to set on a file.

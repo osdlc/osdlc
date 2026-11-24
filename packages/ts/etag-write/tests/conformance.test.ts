@@ -55,9 +55,7 @@ describe('conformance suite', () => {
 
   test('runs some case of every section here', () => {
     for (const [name, section] of Object.entries(sections)) {
-      // A section whose every case's `platforms` excludes this host runs nothing here.
-      if (!section.cases.some(onThisPlatform))
-        continue
+      if (!section.cases.some(onThisPlatform)) continue
       expect(section.cases.filter(runsHere).length, name).toBeGreaterThan(0)
     }
   })
