@@ -468,7 +468,7 @@ describe('the plugin refuses an outside folder itself', () => {
     mkdirSync(other)
     const c = { ...(s.candidates[0] as PathCandidate), id: `uv:${other}`, path: other }
     await expect(b.plugin.delete!(c, fakeContext())).rejects.toThrow(
-      `${other} was not deleted: it is not one of uv's roots or inside one`,
+      `${other} was not deleted: it is not inside uv's roots`,
     )
     expect(existsSync(other)).toBe(true)
   })

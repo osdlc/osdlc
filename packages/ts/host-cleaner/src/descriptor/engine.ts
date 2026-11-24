@@ -561,7 +561,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     } else {
       const now = rootPaths(ctx)
       if (!now.some((r) => realOr(r) === realOr(path)) && containedIn(now, path) === null) {
-        return `it is not one of ${name}'s roots or inside one`
+        return `it is not inside ${name}'s roots`
       }
       const entry = d.candidates[ev.candidate ?? -1]
       const folder = entry === undefined ? undefined : folders.get(entry.path)
