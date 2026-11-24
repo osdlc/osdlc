@@ -1186,6 +1186,124 @@ fn diff_text_find_renames_pins_rename_detection() {
 
 #[test]
 #[serial]
+fn diff_text_find_renames_overrides_diff_renames_copies() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    init_repo(repo);
+    let body: String = (0..10).map(|i| format!("line {i}\n")).collect();
+    commit_files(repo, &[("old.txt", &body)], "base");
+    run(repo, &["config", "diff.renames", "copies"]);
+    // Without --find-copies-harder git takes a copy's source only from a
+    // changed file, so change old.txt as well.
+    fs::write(repo.join("old.txt"), format!("{body}more\n")).unwrap();
+    fs::write(repo.join("copy.txt"), &body).unwrap();
+    run(repo, &["add", "-A"]);
+
+    let plain = diff::diff_text(repo, None, &DiffTextOptions::new().staged()).unwrap();
+    assert!(
+        plain.contains("copy from old.txt\ncopy to copy.txt"),
+        "{plain}"
+    );
+    let pinned =
+        diff::diff_text(repo, None, &DiffTextOptions::new().staged().find_renames()).unwrap();
+    assert!(!pinned.contains("copy from"), "{pinned}");
+    assert!(
+        pinned.contains("diff --git a/copy.txt b/copy.txt\nnew file mode"),
+        "{pinned}"
+    );
+}
+
+/// A repository with a 12-line `a.txt` whose lines 5 and 9 changed in the
+/// working tree.
+fn two_hunks(repo: &Path) {
+    init_repo(repo);
+    let before: String = (1..=12).map(|i| format!("{i}\n")).collect();
+    commit_files(repo, &[("a.txt", &before)], "base");
+    let after = before
+        .replace("\n5\n", "\nfive\n")
+        .replace("\n9\n", "\nnine\n");
+    fs::write(repo.join("a.txt"), after).unwrap();
+}
+
+/// The `@@` lines of a patch.
+fn hunks(text: &str) -> Vec<&str> {
+    text.lines().filter(|l| l.starts_with("@@")).collect()
+}
+
+#[test]
+#[serial]
+fn diff_text_context_zero_keeps_hunks_apart_under_inter_hunk_context() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    two_hunks(repo);
+    run(repo, &["config", "diff.interHunkContext", "10"]);
+
+    // Unpinned, git merges the hunks and prints lines 6 to 8 between them.
+    let merged = git()
+        .dir(repo)
+        .args(&["diff", "--unified=0"])
+        .run()
+        .unwrap();
+    assert_eq!(hunks(&merged), ["@@ -5,5 +5,5 @@"]);
+
+    let text = diff::diff_text(repo, None, &DiffTextOptions::new().context(0)).unwrap();
+    assert_eq!(hunks(&text), ["@@ -5 +5 @@", "@@ -9 +9 @@"], "{text}");
+    assert!(!text.contains("\n 6\n"), "{text}");
+}
+
+/// The variable the child run of
+/// [`diff_text_ignores_git_diff_opts_in_the_environment`] checks for.
+const DIFF_OPTS_CHILD: &str = "TYPED_GIT_DIFF_OPTS_CHILD";
+
+/// The crate forbids `unsafe`, so a test cannot call `std::env::set_var`.
+/// This one runs itself again in a child test process with `GIT_DIFF_OPTS`
+/// set, and the child makes the checks.
+#[test]
+#[serial]
+fn diff_text_ignores_git_diff_opts_in_the_environment() {
+    if std::env::var_os(DIFF_OPTS_CHILD).is_none() {
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "diff_text_ignores_git_diff_opts_in_the_environment",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(DIFF_OPTS_CHILD, "1")
+            .env("GIT_DIFF_OPTS", "-u2")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "{stdout}{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        // A filter that matched nothing would also succeed.
+        assert!(stdout.contains("1 passed"), "{stdout}");
+        return;
+    }
+    assert_eq!(std::env::var("GIT_DIFF_OPTS").as_deref(), Ok("-u2"));
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    two_hunks(repo);
+
+    // Unpinned, git reads -u2 over --unified=0.
+    let widened = git()
+        .dir(repo)
+        .args(&["diff", "--unified=0"])
+        .run()
+        .unwrap();
+    assert_eq!(hunks(&widened), ["@@ -3,9 +3,9 @@"]);
+
+    let none = diff::diff_text(repo, None, &DiffTextOptions::new().context(0)).unwrap();
+    assert_eq!(hunks(&none), ["@@ -5 +5 @@", "@@ -9 +9 @@"], "{none}");
+    let default = diff::diff_text(repo, None, &DiffTextOptions::new()).unwrap();
+    assert_eq!(hunks(&default), ["@@ -2,11 +2,11 @@"], "{default}");
+}
+
+#[test]
+#[serial]
 fn diff_text_staged_binary_and_empty() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path();
