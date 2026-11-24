@@ -57,8 +57,7 @@ describe('countTree', () => {
   })
 })
 
-// A symlink on Windows needs a privilege the CI runner does not grant.
-test.skipIf(process.platform === 'win32')('countTree from a cwd reached through a symlink', () => {
+test('countTree from a cwd reached through a symlink', () => {
   const { r } = sampleRepo()
   const link = join(mkdtempSync(join(tmpdir(), 'code-stats-link-')), 'repo')
   symlinkSync(r.dir, link)
