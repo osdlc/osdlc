@@ -220,15 +220,23 @@ describe('status', () => {
     ).toBe(10)
   })
 
-  test('--plugin, its alias --adapter, and --skip-plugin choose among plugins', async () => {
+  test('--plugin and --skip-plugin choose among plugins', async () => {
     const { env, cwd } = setup()
     const plugins = [fake('a'), fake('b')]
     const ids = async (argv: string[]) =>
       JSON.parse((await run(['status', ...argv, '--format', 'json'], cwd, env, { plugins })).out)
         .plugins
     expect(await ids(['--plugin', 'a'])).toEqual(['a'])
-    expect(await ids(['--adapter', 'b'])).toEqual(['b'])
     expect(await ids(['--skip-plugin', 'a'])).toEqual(['b'])
+  })
+
+  test('--adapter, the old name of --plugin, is an unknown option', async () => {
+    const { env, cwd } = setup()
+    for (const phase of ['status', 'plan', 'clean']) {
+      const r = await run([phase, '--adapter', 'a'], cwd, env, { plugins: [fake('a')] })
+      expect(r.code).toBe(2)
+      expect(r.err).toContain("unknown option '--adapter'")
+    }
   })
 
   test('--worktrees and --branches narrow the git candidates, as in repo-cleaner', async () => {
@@ -637,6 +645,68 @@ describe('packages', () => {
 })
 
 describe('plan and clean', () => {
+  /** A plugin that runs degraded, with a note, and one that does not run, with a note. */
+  const noted = (): Plugin[] => [
+    {
+      ...fake('orcish'),
+      detect: () => ({
+        active: true,
+        note: 'installed but not running; its worktrees are refused',
+      }),
+    },
+    { ...fake('sleepy'), detect: () => ({ active: false, note: 'not set up' }) },
+  ]
+  const NOTES = {
+    orcish: 'installed but not running; its worktrees are refused',
+    sleepy: 'not set up',
+  }
+  const noteLines = (err: string) => {
+    expect(err).toContain('orcish: installed but not running; its worktrees are refused')
+    expect(err).toContain('sleepy: not set up')
+  }
+
+  test("plan prints each plugin's detect note as a warning line naming it", async () => {
+    const { env, home, cwd } = setup()
+    const planFile = join(home, 'plan.json')
+    const toFile = await run(['plan', '-o', planFile], cwd, env, { plugins: noted() })
+    expect(toFile.code).toBe(0)
+    noteLines(toFile.err)
+    const toStdout = await run(['plan'], cwd, env, { plugins: noted() })
+    noteLines(toStdout.err)
+    expect(JSON.parse(toStdout.out).candidates).toHaveLength(1)
+  })
+
+  test("clean prints each plugin's detect note as a warning line, and its json carries them under notes", async () => {
+    const { env, home, cwd } = setup()
+    const swept = await run(['clean', '--dry-run'], cwd, env, { plugins: noted() })
+    expect(swept.code).toBe(0)
+    noteLines(swept.err)
+    const dry = await run(['clean', '--dry-run', '--format', 'json'], cwd, env, {
+      plugins: noted(),
+    })
+    noteLines(dry.err)
+    expect(JSON.parse(dry.out)).toMatchObject({
+      dryRun: true,
+      notes: NOTES,
+      run: ['artifact:orcish'],
+    })
+
+    // With a saved plan, the notes are the re-check's.
+    const planFile = join(home, 'plan.json')
+    await run(['plan', '-o', planFile], cwd, env, { plugins: noted() })
+    const later = await run(['clean', '--plan', planFile, '--dry-run'], cwd, env, {
+      plugins: noted(),
+    })
+    noteLines(later.err)
+    const plugins = noted()
+    const done = await run(['clean', '--plan', planFile, '--yes', '--format', 'json'], cwd, env, {
+      plugins,
+    })
+    expect(done.code).toBe(0)
+    noteLines(done.err)
+    expect(JSON.parse(done.out)).toMatchObject({ notes: NOTES, receipt: { status: 'complete' } })
+  })
+
   test('plan writes one file, and clean --plan runs it into a receipt and a log line', async () => {
     const { env, home, cwd } = setup()
     const plugin = fake()
@@ -881,6 +951,37 @@ describe('plan and clean', () => {
     })
     expect(r.code).not.toBe(0)
     expect(r.err).toContain('a version 1 plan; this host-cleaner reads version 2: sweep again')
+  })
+
+  test('a version 2 plan without targetsGiven is refused: sweep again', async () => {
+    const { env, home, cwd } = setup()
+    const old = {
+      version: PLAN_VERSION,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      targets: [cwd],
+      select: null,
+      pick: [],
+      spare: [],
+      allow: [],
+      ignore: [],
+      warnings: [],
+      candidates: [],
+      objections: [],
+    }
+    const refusal =
+      /^old\.json: a version 2 plan this host-cleaner cannot read \(targetsGiven: .*\): sweep again$/
+    expect(() => parsePlan(JSON.stringify(old), 'old.json')).toThrow(refusal)
+    expect(
+      parsePlan(JSON.stringify({ ...old, targetsGiven: false }), 'new.json').targetsGiven,
+    ).toBe(false)
+    const planFile = join(home, 'old.json')
+    writeFileSync(planFile, JSON.stringify(old))
+    const r = await run(['clean', '--plan', planFile, '--dry-run'], cwd, env, {
+      plugins: [fake()],
+    })
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('a version 2 plan this host-cleaner cannot read (targetsGiven: ')
+    expect(r.err).toContain('): sweep again')
   })
 
   test('-i runs exactly the ticked candidates and asks for their protests by code', async () => {

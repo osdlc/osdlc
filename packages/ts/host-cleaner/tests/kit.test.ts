@@ -223,11 +223,11 @@ describe('running', () => {
   const holder = (pid: number, command: string, extra: Partial<ProcessHolder> = {}) =>
     ({ pid, command, ...extra }) as ProcessHolder
 
-  /** A `ps` that prints `table` for `-axo pid=,args=`, counting its calls. */
+  /** A `ps` that prints `table` for `-axo pid=,ppid=,args=`, counting its calls. */
   const fakePs = (table: string, calls: { n: number } = { n: 0 }): CommandRunner => ({
     run: (argv) => {
       calls.n++
-      expect(argv).toEqual(['-axo', 'pid=,args='])
+      expect(argv).toEqual(['-axo', 'pid=,ppid=,args='])
       return { exitCode: 0, stdout: table, stderr: '' }
     },
   })
@@ -242,7 +242,7 @@ describe('running', () => {
       },
     }
     const calls = { n: 0 }
-    const ps = fakePs('    4 -zsh\n    5 /Users/me/.cargo/bin/cargo build\n', calls)
+    const ps = fakePs('    4     1 -zsh\n    5     4 /Users/me/.cargo/bin/cargo build\n', calls)
     const kit = pluginKit('cargo', { probe, ps })
     const one = signal()
     expect(kit.running({ in: '/w' }, { signal: one })).toEqual({ names: ['cargo (pid 5)'] })
@@ -261,11 +261,11 @@ describe('running', () => {
 
   test('a name matches a word of the command line, not only the command: pnpm under node, the Gradle daemon under java', () => {
     const table = [
-      '  101 node /opt/homebrew/bin/pnpm dev',
-      '  102 java -Xmx2g -cp /Users/me/.gradle/wrapper/dists/gradle-8.10/lib/gradle-launcher-8.10.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.10',
-      '  103 node /Users/me/.cache/node/corepack/pnpm/9.12.0/bin/pnpm.cjs install',
-      '  104 /usr/bin/vim notes-about-pnpmish.txt',
-      '  105 node server.js',
+      '  101     1 node /opt/homebrew/bin/pnpm dev',
+      '  102     1 java -Xmx2g -cp /Users/me/.gradle/wrapper/dists/gradle-8.10/lib/gradle-launcher-8.10.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.10',
+      '  103     1 node /Users/me/.cache/node/corepack/pnpm/9.12.0/bin/pnpm.cjs install',
+      '  104     1 /usr/bin/vim notes-about-pnpmish.txt',
+      '  105     1 node server.js',
     ].join('\n')
     const kit = pluginKit('x', { ps: fakePs(table) })
     const ask = (name: string) => kit.running({ name }, { signal: signal() }).names
@@ -275,6 +275,43 @@ describe('running', () => {
     expect(ask('node')).toEqual(['node (pid 101)', 'node (pid 103)', 'node (pid 105)'])
     expect(ask('npm')).toEqual([])
     expect(ask('yarn')).toEqual([])
+  })
+
+  /**
+   * A process tree where this process is host-cleaner, started through
+   * `launcher` from a shell; `others` are rows of processes outside the tree.
+   */
+  const startedBy = (launcher: string, others: string[] = []): string =>
+    [
+      '    1     0 /sbin/launchd',
+      '   41     1 -zsh',
+      `   42    41 ${launcher}`,
+      `   43    42 sh -c host-cleaner clean`,
+      `${process.pid}    43 node /Users/me/.npm/_npx/1a2b/node_modules/.bin/host-cleaner clean`,
+      ...others,
+    ].join('\n')
+
+  test('host-cleaner and every process above it are left out: the npm exec or pnpm dlx that started it is not running', () => {
+    const ask = (table: string, name: string) =>
+      pluginKit('x', { ps: fakePs(table) }).running({ name }, { signal: signal() }).names
+    const npx = startedBy('npm exec @osdlc/host-cleaner clean')
+    expect(ask(npx, 'npm')).toEqual([])
+    expect(ask(npx, 'host-cleaner')).toEqual([])
+    expect(ask(npx, 'node')).toEqual([])
+    const dlx = startedBy('node /opt/homebrew/bin/pnpm dlx @osdlc/host-cleaner clean')
+    expect(ask(dlx, 'pnpm')).toEqual([])
+    expect(ask(dlx, 'node')).toEqual([])
+  })
+
+  test("a pnpm outside host-cleaner's own line still matches, beside the pnpm dlx that started it", () => {
+    const table = startedBy('node /opt/homebrew/bin/pnpm dlx @osdlc/host-cleaner clean', [
+      '   99    41 node /opt/homebrew/bin/pnpm install',
+      `  100 ${process.pid} ps -axo pid=,ppid=,args=`,
+    ])
+    const kit = pluginKit('x', { ps: fakePs(table) })
+    expect(kit.running({ name: 'pnpm' }, { signal: signal() }).names).toEqual(['node (pid 99)'])
+    // A child of host-cleaner is not an ancestor: it is seen.
+    expect(kit.running('ps', { signal: signal() }).names).toEqual(['ps (pid 100)'])
   })
 
   test('commandHasName: the last path segment, or one of its dot-separated parts; case counts', () => {

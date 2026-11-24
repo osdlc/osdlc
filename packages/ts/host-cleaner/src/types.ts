@@ -118,7 +118,8 @@ export interface Ctx extends RunCtx {
 /**
  * `detect`'s answer with a note: `active` is whether the plugin runs, and
  * `note` says why it runs degraded, or why it does not, for a person to read.
- * The core keeps the note on the survey (`Survey.notes`) and `status` prints it.
+ * The core keeps the note on the survey (`Survey.notes`), and `status`, `plan`
+ * and `clean` print it.
  */
 export interface Detection {
   active: boolean
