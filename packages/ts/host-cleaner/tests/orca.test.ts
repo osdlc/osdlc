@@ -20,7 +20,7 @@ import {
   type Survey,
 } from '../src/index.ts'
 import { parseRecords } from '../src/orca.ts'
-import { contractSuite } from '../src/testing.ts'
+import { contractSuite, fakeContext } from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -108,7 +108,7 @@ function fixture() {
   sh(worktree, ['commit', '--allow-empty', '-m', 'feat'])
   sh(root, ['merge', '-q', '--no-ff', '-m', 'Merge wt-branch', 'wt-branch'])
   sh(root, ['push', '-q', 'origin', 'main'])
-  const ctx: Ctx = { cwd: root, targets: [root], allow: [], signal: new AbortController().signal }
+  const ctx: Ctx = fakeContext({ cwd: root, targets: [root] })
   const git = gitPlugin({ probe: idle, sweep: { remotes: [''], offline: true, provider: 'none' } })
   return { root, worktree: realpathSync(worktree), ctx, git }
 }
@@ -124,7 +124,7 @@ const objections = (s: Survey, by = 'orca') =>
   s.objections.filter((o) => o.by === by).map((o) => [o.level, o.code])
 
 describe('detection and scope', () => {
-  const ctx: Ctx = { cwd: tmpdir(), targets: [], allow: [], signal: new AbortController().signal }
+  const ctx: Ctx = fakeContext({ cwd: tmpdir(), targets: [] })
 
   test('an orca CLI that cannot answer `status` makes detect throw, which a survey reports as a warning', async () => {
     const none = fakeRunner(() => undefined)
@@ -319,7 +319,7 @@ describe('records whose directory is gone', () => {
     const gone = join(tmpdir(), 'orca-gone-worktree')
     const o = fakeOrca([{ path: gone }, { path: tmpdir(), main: true }])
     const plugin = orcaPlugin({ orca: o.orca })
-    const ctx: Ctx = { cwd: tmpdir(), targets: [], allow: [], signal: new AbortController().signal }
+    const ctx: Ctx = fakeContext({ cwd: tmpdir(), targets: [] })
     const s = await survey([plugin], ctx)
     expect(s.candidates.map((c) => [c.id, c.kind, c.held, c.ref, c.at, c.path])).toEqual([
       [`orca-record:${gone}`, 'orca-record', true, `repo1::${gone}`, gone, undefined],
