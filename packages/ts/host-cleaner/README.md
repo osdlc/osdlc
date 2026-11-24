@@ -397,12 +397,10 @@ roots, the folders it may delete in besides the targets. A descriptor that
 stands in for one of the same name ends its line with the file it replaces
 (`replaces` in JSON). It runs `detect`,
 `scope` and `roots` and nothing else, so it proposes and deletes nothing. A
-plugin whose `detect` throws shows the error as the reason; Orca installed but
-not running shows `not detected: Orca is installed but not running; its
-worktrees are left to git`. A note its `detect` gives follows the plugin's
-state (`; note: ...`), whether it is detected or not, so a degraded plugin
-(`{ active: true, note }`) shows as detected with its note; the JSON row has it
-as `note`. A root the core refuses is left out with a warning, as `status`
+plugin whose `detect` throws shows the error as the reason. A note its `detect`
+gives follows the plugin's state (`; note: ...`), whether it is detected or not,
+so a degraded plugin (`{ active: true, note }`) shows as detected with its note,
+as Orca installed but not running does; the JSON row has it as `note`. A root the core refuses is left out with a warning, as `status`
 does, and a self root is marked `(itself too)`. A plugin the config disables is
 listed as `disabled`, and its `detect` is not run.
 
@@ -418,7 +416,7 @@ targets: /Users/me/dev
   git    built-in  detected; roots: none, the targets alone
   cargo  built-in  detected; roots: none, the targets alone
   node   built-in  disabled: plugins.node.enabled is false; --plugin node runs it anyway
-  orca   built-in  not detected: Orca is installed but not running; its worktrees are left to git
+  orca   built-in  detected; roots: none, the targets alone; note: Orca is installed but not running
   go     user      detected; roots: /Users/me/go/pkg/mod (itself too)
     ${GOPATH}      = /Users/me/go  from value (tried env GOPATH: not set)
     ${GOMODCACHE}  = /Users/me/go/pkg/mod  from value (tried env GOMODCACHE: not set; command go env GOMODCACHE: timed out after 5 s)

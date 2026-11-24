@@ -310,7 +310,7 @@ describe('plugins', () => {
     orcaDown(),
   ]
 
-  test('Orca not running shows "not running" with the reason, beside each plugin’s source, detection and roots', async () => {
+  test('Orca not running shows as detected with its note, beside each plugin’s source, detection and roots', async () => {
     const { env, cwd } = setup()
     const r = await run(['plugins'], cwd, env, { plugins: plugins() })
     expect(r.code).toBe(0)
@@ -321,7 +321,7 @@ describe('plugins', () => {
         '  git    built-in  detected; roots: /cache/git',
         '  cargo  built-in  detected; roots: none, the targets alone',
         '  node   built-in  not detected',
-        '  orca   built-in  not detected: Orca is installed but not running; its worktrees are left to git',
+        '  orca   built-in  detected; roots: none, the targets alone; note: Orca is installed but not running',
         '',
       ].join('\n'),
     )
@@ -380,11 +380,11 @@ describe('plugins', () => {
           name: 'orca',
           source: 'built-in',
           enabled: true,
-          detected: false,
-          reason: 'Orca is installed but not running; its worktrees are left to git',
+          detected: true,
+          reason: null,
           roots: [],
           selfRoots: [],
-          note: null,
+          note: 'Orca is installed but not running',
           vars: [],
         },
       ],
