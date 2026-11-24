@@ -261,6 +261,11 @@ describe('a bad descriptor names the field path', () => {
       'line 5: candidates.0.glob: must stay inside the path: no .. segment, not absolute',
     ],
     [
+      'a glob that names no entry, only the path itself',
+      hfWith("{ path: hub, costDescription: rebuild, glob: './' }"),
+      'line 5: candidates.0.glob: must name entries under the path, such as models--*/',
+    ],
+    [
       'maxEntries without a glob',
       hfWith('{ path: hub, costDescription: rebuild, maxEntries: 10 }'),
       'line 5: candidates.0.maxEntries: only with glob',
