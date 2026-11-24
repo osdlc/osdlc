@@ -53,8 +53,8 @@ export const PlanSchema = z
     createdAt: z.string(),
     /** The targets the plan was swept over, so `clean --plan` checks the same place. */
     targets: z.array(z.string()),
-    /** Whether a person named the targets, as `RunCtx.targetsGiven`, so `clean --plan` tells plugins the same; missing is false. */
-    targetsGiven: z.boolean().optional(),
+    /** Whether a person named the targets, as `RunCtx.targetsGiven`, so `clean --plan` tells plugins the same. */
+    targetsGiven: z.boolean(),
     /** Exactly these candidate ids; null means the default: every one nothing objects to and no owner holds for review. */
     select: z.array(z.string()).nullable(),
     /** Candidate ids run as well as the default or the selection. */
@@ -110,7 +110,11 @@ export const ReceiptSchema = z.object({
 
 export type Receipt = z.infer<typeof ReceiptSchema>
 
-/** Parse a plan's JSON text; `source` names where it came from, for the error. A plan of another version is refused: sweep again. */
+/**
+ * Parse a plan's JSON text; `source` names where it came from, for the error.
+ * A plan of another version, or a version 2 plan this one cannot read (one
+ * written before a field it needs, such as `targetsGiven`), is refused: sweep again.
+ */
 export function parsePlan(text: string, source: string): Plan {
   let json: unknown
   try {
@@ -125,6 +129,12 @@ export function parsePlan(text: string, source: string): Plan {
     )
   }
   const parsed = PlanSchema.safeParse(json)
+  if (!parsed.success && version === PLAN_VERSION) {
+    const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '(plan)'}: ${i.message}`)
+    throw new Error(
+      `${source}: a version ${PLAN_VERSION} plan this host-cleaner cannot read (${issues.join('; ')}): sweep again`,
+    )
+  }
   if (!parsed.success) {
     throw new Error(
       `${source}: not a host-cleaner plan (version ${PLAN_VERSION}): ${parsed.error.message}`,
