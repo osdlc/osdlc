@@ -358,7 +358,12 @@ const registered = (deps: MainDeps): string[] =>
   deps.plugins?.map((p) => p.name) ?? Object.keys(FACTORIES)
 
 /** Warns of each name in the config's `plugins` that `known` lacks; its settings go unused. */
-function warnUnknownPlugins(ctx: CliContext, name: string, config: Config, known: string[]): void {
+function warnUnknownPlugins(
+  ctx: CliContext,
+  name: string,
+  config: Config,
+  known: readonly string[],
+): void {
   const unused = Object.keys(config.plugins).filter((n) => !known.includes(n))
   writeWarnings(
     ctx,
@@ -383,7 +388,7 @@ function pluginsFor(
     Object.entries(FACTORIES).map(([n, make]) =>
       make({ settings: settingsOf(n, config.plugins[n] ?? {}, config), only, env: ctx.env }),
     )
-  warnUnknownPlugins(ctx, name, config, registered(deps))
+  warnUnknownPlugins(ctx, name, config, all.map((p) => p.name))
   // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
   const named = wanted(v) ?? []
   const chosen = selectPlugins(all, wanted(v), v.skipPlugin)
