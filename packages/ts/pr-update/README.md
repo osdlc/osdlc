@@ -458,7 +458,10 @@ folder), or one machine's prune can remove a worktree another machine's run
 is using.
 
 It never removes a clone another run holds, one with a kept worktree (unless
-`--discard-kept`, which removes those first), one a live run has a worktree
+`--discard-kept`, which removes those first; a kept worktree with no record
+goes only while it is on its `pr-update/failed-*` branch, and one a person
+switched to another branch or detached keeps itself and its clone), one a
+live run has a worktree
 in, or a folder without pr-update's marker, and it never follows a symbolic
 link or removes anything from a folder another user owns or others can write
 to (the clone directory's rule above). Such a folder under the cache's

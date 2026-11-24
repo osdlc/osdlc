@@ -729,7 +729,13 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   another branch, or detached, is the person's: the PR is skipped as changed,
   nothing is removed, and `--discard-kept` leaves it (`keptLeft`). Every
   removal of a kept tree, a keep replacing the PR's old one included, checks
-  the folders from the place's root down to it.
+  the folders from the place's root down to it. The final review of the
+  omnibus found that `mirror prune --discard-kept` force-removed a kept tree
+  of a clone with no record, or with a refused one, whatever its branch. It
+  now removes such a tree only while the clone lists it on a
+  `pr-update/failed-*` branch, as a run stopped before writing the record
+  leaves it; on any other branch, or detached, it is skipped as kept and
+  reported, and the clone stays.
 - **Names starting with `.`.** A hard kill can leave the probe in
   `worktrees/<host>/<owner>/<name>/` or `kept/<host>/<owner>/<name>/`. Every
   walk pr-update makes of its own folders skips names starting with `.`:

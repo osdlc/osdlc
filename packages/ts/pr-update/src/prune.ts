@@ -12,7 +12,8 @@
  *   only while holding the clone's lock, since a run never changes a clone without it.
  * - the clone directory, which must carry pr-update's marker. A clone past the age is removed
  *   under its lock, after its dead run worktrees. One with a kept worktree stays, unless
- *   `discardKept`; one with any other worktree, one whose lock another run holds, and a folder
+ *   `discardKept`, and even then when a kept tree with no record is not on a
+ *   `pr-update/failed-*` branch; one with any other worktree, one whose lock another run holds, and a folder
  *   without the clone marker are never removed. A clone is first renamed to a `.tmp-*` name
  *   beside it, so a removal that fails part-way leaves a leftover the next prune recognises,
  *   not a broken clone in the way.
@@ -818,23 +819,36 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
         return
       }
     }
+    const recordsOf = new Map(listKept(place).map((r) => [realOr(r.path), r]))
+    // A kept tree with no record, or one whose record was refused, is removed only while the
+    // clone lists it on a `pr-update/failed-*` branch: a run stopped between making it and
+    // writing its record. On any other branch, or detached, a person has taken it over.
+    const unrecorded = kept.filter(
+      (k) => !recordsOf.has(realOr(k.path)) && k.branch?.startsWith('pr-update/failed-') !== true,
+    )
+    if (unrecorded.length > 0) {
+      report.skipped.push({
+        ...entry,
+        bytes,
+        skip: 'kept',
+        reason: `its kept worktree ${unrecorded.map((k) => k.path).join(', ')} has no record and is not on a pr-update/failed-* branch, so a person may have taken it over; it stays, and so does the clone`,
+      })
+      return
+    }
     if (dryRun) {
       for (const k of kept) done({ kind: 'kept', path: k.path, repo, bytes: sizeOf(k.path) })
       done({ ...entry, bytes })
       return
     }
-    const recordsOf = new Map(listKept(place).map((r) => [realOr(r.path), r]))
     for (const k of kept) {
       const keptEntry: PruneEntry = { kind: 'kept', path: k.path, repo, bytes: sizeOf(k.path) }
       try {
         const record = recordsOf.get(realOr(k.path))
         if (record !== undefined) discardKept(git, place, record)
         else {
-          // A kept tree with no record (a run stopped between making it and writing one).
+          // On a `pr-update/failed-*` branch (checked above), with no record.
           removeWorktree(git, k.path, records)
-          if (k.branch?.startsWith('pr-update/failed-') === true) {
-            git.try.deleteBranch(k.branch, { force: true })
-          }
+          git.try.deleteBranch(k.branch!, { force: true })
         }
         done(keptEntry)
       } catch (e) {

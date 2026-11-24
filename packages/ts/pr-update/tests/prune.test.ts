@@ -445,6 +445,39 @@ describe('managed clones', () => {
     expect(existsSync(clone)).toBe(false)
   })
 
+  test.each([
+    ['switched to a branch of its own', ['switch', '-q', '-c', 'my-work']],
+    ['detached', ['switch', '-q', '--detach']],
+  ])(
+    'a kept worktree with no record, %s, survives --discard-kept, and so does its clone (final review)',
+    (_, move) => {
+      const clone = makeClone('acme/api', 400)
+      const path = join(paths.kept, 'github.com', 'acme', 'api', '9')
+      mkdirSync(dirname(path), { recursive: true })
+      git(clone, 'worktree', 'add', '-q', '-b', 'pr-update/failed-acme-api-9', path, 'origin/main')
+      // A person takes the tree over and works in it.
+      git(path, ...move)
+      writeFileSync(join(path, 'mine.txt'), 'mine\n')
+
+      for (const dryRun of [true, false]) {
+        const r = prune({ allClones: true, discardKept: true, dryRun })
+        expect(r.removed).toEqual([])
+        expect(r.skipped).toEqual([
+          expect.objectContaining({
+            kind: 'clone',
+            path: clone,
+            skip: 'kept',
+            reason: expect.stringContaining(
+              `its kept worktree ${path} has no record and is not on a pr-update/failed-* branch`,
+            ),
+          }),
+        ])
+      }
+      expect(readFileSync(join(path, 'mine.txt'), 'utf8')).toBe('mine\n')
+      expect(existsSync(clone)).toBe(true)
+    },
+  )
+
   test('one with a live run’s worktree in it stays', () => {
     const clone = makeClone('acme/api', 400)
     const live = runWorktree(clone, 'acme/api', liveRun())

@@ -911,11 +911,7 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
  * `updateAll`'s hold on the managed clone at `path`, whose run worktree is `worktree`, through
  * the run's {@link ManagedClones}.
  */
-function cloneLock(
-  clones: ManagedClones,
-  path: string,
-  worktree: string,
-): CloneLock {
+function cloneLock(clones: ManagedClones, path: string, worktree: string): CloneLock {
   return {
     added: () => clones.release(path),
     keeping: (keep) => clones.keeping(path, worktree, keep),

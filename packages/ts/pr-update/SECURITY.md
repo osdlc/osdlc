@@ -84,7 +84,9 @@ are in scope.
   files can put one. A record is acted on only when its branch and path are
   the ones pr-update gives that PR, its folder is not a symbolic link, and
   `git worktree list` shows a worktree at that folder. One shown on another
-  branch, or detached, is a person's, and is never removed. A tree is removed
+  branch, or detached, is a person's, and is never removed; `mirror prune
+  --discard-kept` removes a kept tree with no record only while it is on its
+  `pr-update/failed-*` branch. A tree is removed
   through the checkout's own git directory, never one a checkout's record
   names. Any other record is left alone and reported.
 - **No file others can write to.** The `pr-update` command takes write for

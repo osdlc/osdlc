@@ -34,3 +34,9 @@ the machine file, the second overwriting the first. The check and the write
 now hold the lock file `<machine file>.lock`, taken over once its holder has
 exited or it is ten minutes old, so the first answer wins and the other run
 uses it. The question is still asked outside the lock.
+
+Fixed: `mirror prune --discard-kept` removed a clone's kept worktree that had
+no record, or a refused one, whatever branch it was on. It now removes such a
+tree only while it is on its `pr-update/failed-*` branch. One a person
+switched to a branch of their own, or detached, is left and reported, and its
+clone stays.
