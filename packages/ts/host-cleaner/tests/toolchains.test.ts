@@ -1,7 +1,16 @@
 /** The `toolchains` plugin against real repositories, a fake `rustup` and `node`, and version folders in a temp home. */
 
 import { afterEach, describe, expect, test } from 'vitest'
-import { existsSync, mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import { Git } from '@osdlc/typed-git'
@@ -9,7 +18,13 @@ import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { clean, plan, pluginKit, survey, type Ctx, type Plugin } from '../src/index.ts'
 import { contractSuite, fakeRunner, tempHome } from '../src/testing.ts'
-import { keeps, rustPin, toolchainsDefinition } from '../src/toolchains.ts'
+import {
+  NO_TARGETS_NOTE,
+  keeps,
+  lastUsedMs,
+  rustPin,
+  toolchainsDefinition,
+} from '../src/toolchains.ts'
 
 const HOST = 'aarch64-apple-darwin'
 
@@ -55,10 +70,21 @@ interface Fixture {
   plugin: Plugin
 }
 
-/** One installed version: a folder with a file in it. */
+const HOUR_MS = 3_600_000
+
+/** One installed version: a folder with a file in its `bin`, last used a year ago. */
 const install = (dir: string, name: string): string => {
-  write(join(dir, name, 'bin', 'tool'), 'x'.repeat(100))
+  const tool = join(dir, name, 'bin', 'tool')
+  write(tool, 'x'.repeat(100))
+  const old = new Date(Date.now() - 365 * 24 * HOUR_MS)
+  utimesSync(tool, old, old)
   return join(dir, name)
+}
+
+/** Marks the version `name` in `dir` as run `hoursAgo` hours ago, as running its `bin/tool` would. */
+const use = (dir: string, name: string, hoursAgo = 0): void => {
+  const tool = join(dir, name, 'bin', 'tool')
+  utimesSync(tool, new Date(Date.now() - hoursAgo * HOUR_MS), statSync(tool).mtime)
 }
 
 /**
@@ -75,6 +101,8 @@ function fixture(
     rustup?: Record<string, Answer>
     node?: string
     targets?: (dev: string) => string[]
+    targetsGiven?: boolean
+    idleHours?: number
     env?: Record<string, string>
   } = {},
 ): Fixture {
@@ -107,7 +135,7 @@ function fixture(
   })
   const env = { HOME: home, PATH: '', ...opts.env }
   const plugin = toolchainsDefinition.create({
-    settings: {},
+    settings: opts.idleHours === undefined ? {} : { idleHours: opts.idleHours },
     only: [],
     env,
     kit: pluginKit('toolchains', { env, runner: fake.runner, which: fake.which }),
@@ -123,7 +151,7 @@ function fixture(
     ctx: {
       cwd: home,
       targets: opts.targets?.(dev) ?? [dev],
-      targetsGiven: true,
+      targetsGiven: opts.targetsGiven ?? true,
       allow: [],
       signal: new AbortController().signal,
     },
@@ -254,12 +282,84 @@ describe('rustup toolchains', () => {
     expect(refused[0]!.reason).toContain('no default toolchain is configured')
   })
 
+  test('with the targets not given, only the run folder in their place, nothing is proposed, rustup is not asked, and detect says why', async () => {
+    const fx = fixture({ rust: [`1.75.0-${HOST}`, `stable-${HOST}`], targetsGiven: false })
+    repo(join(fx.dev, 'a'))
+    const s = await survey([fx.plugin], fx.ctx)
+    expect(s.plugins.map((p) => p.name)).toEqual(['toolchains'])
+    expect(s.candidates).toEqual([])
+    expect(s.notes).toEqual({ toolchains: NO_TARGETS_NOTE })
+    expect(fx.calls).toEqual([])
+  })
+
   test('with no targets nothing is proposed and rustup is not asked', async () => {
     const fx = fixture({ rust: [`1.75.0-${HOST}`, `stable-${HOST}`], targets: () => [] })
     const s = await survey([fx.plugin], fx.ctx)
     expect(s.plugins.map((p) => p.name)).toEqual(['toolchains'])
     expect(s.candidates).toEqual([])
+    expect(s.notes).toEqual({})
     expect(fx.calls).toEqual([])
+  })
+
+  test('cargo +nightly with no pin file: a nightly run an hour ago is kept, one run two days ago is proposed', async () => {
+    const fx = fixture({
+      rust: [`stable-${HOST}`, `nightly-${HOST}`, `nightly-2026-01-01-${HOST}`],
+    })
+    repo(join(fx.dev, 'a'))
+    use(fx.rustup, `nightly-${HOST}`, 1)
+    use(fx.rustup, `nightly-2026-01-01-${HOST}`, 48)
+
+    const { s, names, refused } = await proposed(fx)
+    expect(names).toEqual([`nightly-2026-01-01-${HOST}`])
+    expect(refused).toEqual([])
+    expect(s.candidates[0]!.why).toMatch(/; last used 4[78](\.\d)? hours ago \(threshold 24\)$/)
+    expect(s.candidates[0]!.evidence).toEqual({
+      kind: 'toolchain',
+      tool: 'rustup',
+      name: `nightly-2026-01-01-${HOST}`,
+      path: join(fx.rustup, `nightly-2026-01-01-${HOST}`),
+    })
+  })
+
+  test('idleHours sets how recent a use keeps a toolchain, and 0 keeps none by use', async () => {
+    const two = fixture({ rust: [`stable-${HOST}`, `nightly-${HOST}`], idleHours: 3 })
+    repo(join(two.dev, 'a'))
+    use(two.rustup, `nightly-${HOST}`, 2)
+    expect((await proposed(two)).names).toEqual([])
+
+    const one = fixture({ rust: [`stable-${HOST}`, `nightly-${HOST}`], idleHours: 1 })
+    repo(join(one.dev, 'a'))
+    use(one.rustup, `nightly-${HOST}`, 2)
+    expect((await proposed(one)).names).toEqual([`nightly-${HOST}`])
+
+    const zero = fixture({ rust: [`stable-${HOST}`, `nightly-${HOST}`], idleHours: 0 })
+    repo(join(zero.dev, 'a'))
+    use(zero.rustup, `nightly-${HOST}`)
+    expect((await proposed(zero)).names).toEqual([`nightly-${HOST}`])
+  })
+
+  test('a toolchain with no bin folder is refused, since when it was last used cannot be told', async () => {
+    const fx = fixture({ rust: [`1.75.0-${HOST}`, `stable-${HOST}`] })
+    repo(join(fx.dev, 'a'))
+    rmSync(join(fx.rustup, `1.75.0-${HOST}`, 'bin'), { recursive: true })
+    const { names, refused } = await proposed(fx)
+    expect(names).toEqual([`1.75.0-${HOST}`])
+    expect(refused).toHaveLength(1)
+    expect(refused[0]).toMatchObject({ code: 'unused-unknown' })
+    expect(refused[0]!.reason).toMatch(/bin folder could not be read or holds no file$/)
+  })
+
+  test('a toolchain run after the plan is kept: it is gone at the re-check and not uninstalled', async () => {
+    const fx = fixture({ rust: [`1.75.0-${HOST}`, `stable-${HOST}`] })
+    repo(join(fx.dev, 'a'))
+    const p = plan(await survey([fx.plugin], fx.ctx))
+    expect(p.candidates.map((c) => c.name)).toEqual([`1.75.0-${HOST}`])
+    use(fx.rustup, `1.75.0-${HOST}`)
+
+    const receipt = await clean(p, [fx.plugin], fx.ctx)
+    expect(receipt.steps).toEqual([])
+    expect(receipt.dropped.map((d) => d.reason)).toEqual(['gone'])
+    expect(uninstalls(fx)).toEqual([])
   })
 
   test('rustup missing from PATH, and no nvm or Volta: not detected', async () => {
@@ -292,6 +392,16 @@ describe('nvm and Volta Node versions', () => {
       kind: 'node-version',
       costDescription: 're-download',
     })
+  })
+
+  test('an nvm or Volta version run within idleHours is kept, through a link in bin as well', async () => {
+    const fx = fixture({ nvm: ['v14.21.3', 'v16.20.0'], volta: ['18.17.0', '21.0.0'] })
+    repo(join(fx.dev, 'a'))
+    use(fx.nvm, 'v16.20.0', 2)
+    const cli = join(fx.volta, '21.0.0', 'lib', 'npm-cli.js')
+    write(cli, '')
+    symlinkSync(cli, join(fx.volta, '21.0.0', 'bin', 'npm'))
+    expect((await proposed(fx)).names).toEqual(['18.17.0', 'v14.21.3'])
   })
 
   test('clean removes the version folders through the kit', async () => {
@@ -387,6 +497,19 @@ describe('reading pins', () => {
       'nightly-2026-01-01',
     )
     expect(rustPin('[toolchain]\npath = "/opt/rust"\n')).toBeNull()
+  })
+
+  test('last used is the newest access or modification time in bin, links followed; null with no bin', () => {
+    const h = tempHome('host-cleaner-toolchains-')
+    cleanups.push(h.cleanup)
+    const dir = install(h.home, 'v1.0.0')
+    const tool = join(dir, 'bin', 'tool')
+    const at = new Date('2026-01-02T00:00:00Z')
+    utimesSync(tool, at, new Date('2026-01-01T00:00:00Z'))
+    expect(lastUsedMs(dir)).toBe(at.getTime())
+    utimesSync(tool, new Date('2025-01-01T00:00:00Z'), at)
+    expect(lastUsedMs(dir)).toBe(at.getTime())
+    expect(lastUsedMs(join(h.home, 'missing'))).toBeNull()
   })
 
   test('a pin keeps the same name, or one that goes on after a - or a .', () => {

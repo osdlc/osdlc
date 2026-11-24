@@ -300,7 +300,13 @@ host-cleaner clean --pick worktree:/path/to/wt --allow close-terminals
 rustup toolchains, and Node versions installed by nvm or Volta, that no
 checkout in your targets asks for. Each is `rust-toolchain:<folder>` or
 `node-version:<folder>`, with its size and `costDescription: re-download`.
-No settings of its own.
+Settings: `plugins.toolchains.idleHours`, which inherits the top-level
+`idleHours` (default 24).
+
+- Nothing is proposed unless you gave the targets, in the config or on the
+  command line. When the command line falls back to the folder you run from,
+  the plugin proposes nothing and `status` warns
+  `toolchains: no targets were given (the folder it runs from is not enough), so it proposes nothing`.
 
 - Every checkout under the targets (a checkout, or a folder of them, with each
   repository's linked worktrees) is read for `rust-toolchain`,
@@ -312,19 +318,29 @@ No settings of its own.
   from and above it, nvm's `default` alias, Volta's default, and the `node` on
   `PATH`. nvm aliases such
   as `lts/*` are followed through nvm's `alias` folder.
+- Also kept: any version used in the last `idleHours`, so `cargo +nightly`
+  with no pin file keeps nightly while you use it. Used means the newest
+  access or modification time of the files in the version's `bin` folder,
+  links followed. Every use runs one of them (rustup's proxies, nvm's `PATH`,
+  Volta's shims), and running a file updates its access time. On a volume
+  mounted `noatime` a run leaves no trace, so only the files' modification
+  time (about when it was installed) counts. Linux's default `relatime`
+  updates the access time at most once a day, so there a use can read up to
+  a day older than it was. A backup or indexer that reads those files only
+  makes a version look used, and keeps it.
 - When any of that cannot be read (an alias nvm does not have, a checkout git
   cannot list, rustup not answering), every candidate of that tool is refused
-  with `unused-unknown`. With no targets nothing is proposed. A linked
-  toolchain or one that is not a release is never proposed.
+  with `unused-unknown`; a version whose `bin` folder cannot be read is
+  refused on its own. A linked toolchain or one that is not a release is
+  never proposed.
 - `delete` reads everything again, then runs `rustup toolchain uninstall
   <name>` for a toolchain, or removes an nvm or Volta folder with
   `kit.remove`. It refuses a folder that is not in the tool's versions folder
-  or has become a link.
+  or has become a link. A version pinned or used since the plan is gone at
+  that check, and is left alone.
 
 Locations come from `RUSTUP_HOME`, `NVM_DIR` and `VOLTA_HOME`, else `~/.rustup`,
-`~/.nvm` and `~/.volta`. The command line uses the folder you run from as the
-target when none is given, so give your targets in the config before you clean
-with this plugin.
+`~/.nvm` and `~/.volta`.
 
 ## Command line
 
@@ -375,7 +391,7 @@ the key.
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
-| `idleHours` | `cargo`, `node` | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
+| `idleHours` | `cargo`, `node`, `toolchains` | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
 
 Two settings sit at the top of the config and apply to every plugin:
 

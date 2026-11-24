@@ -14,26 +14,35 @@
  * A pin is kept by prefix, so `1.80` keeps `1.80-<host>` and `1.80.1-<host>`,
  * and `18` keeps every `18.x.y`.
  *
+ * A version used in the last `idleHours` is kept too, so `cargo +nightly`
+ * with no pin file keeps nightly while it is in use. Used means the newest
+ * access or modification time of the files in the version's `bin` folder,
+ * links followed: every use runs one of them, and running a file updates its
+ * access time.
+ *
  * When any of that cannot be read (a pin such as `lts/*` with no nvm alias
- * for it, a checkout git cannot list, rustup failing to answer), every
- * candidate of that tool is refused, since what is unused cannot be told.
- * With no targets nothing is proposed. A toolchain that is a symlink (one
- * `rustup toolchain link` made) or whose name is not a release channel is
- * never proposed.
+ * for it, a checkout git cannot list, rustup failing to answer, a `bin`
+ * folder that is missing), the candidate is refused, every candidate of that
+ * tool when it is a pin or what is in use, since what is unused cannot be
+ * told. Nothing is proposed unless the targets were given (`ctx.targetsGiven`),
+ * not the run's folder taken in their place. A toolchain that is a symlink
+ * (one `rustup toolchain link` made) or whose name is not a release channel
+ * is never proposed.
  *
  * Deleted with `rustup toolchain uninstall`; an nvm or Volta version folder
  * through `kit.remove`. Locations come from `RUSTUP_HOME`, `NVM_DIR` and
- * `VOLTA_HOME`, else their folders in `HOME`. No settings of its own.
+ * `VOLTA_HOME`, else their folders in `HOME`.
+ * Settings: `plugins.toolchains.idleHours` (default {@link DEFAULT_IDLE_HOURS}).
  */
 
-import { lstatSync, readdirSync, readFileSync } from 'node:fs'
+import { lstatSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 
 import { Git, checkoutRoot, scanForCheckouts } from '@osdlc/typed-git'
 import { z } from 'zod'
 
-import type { Kit } from './kit.ts'
+import { DEFAULT_IDLE_HOURS, idleHoursSetting, type Kit } from './kit.ts'
 import { containedIn } from './roots.ts'
 import {
   PLUGIN_API,
@@ -67,6 +76,12 @@ const DISCOVER_LIMIT_MS = 10 * 60_000
 
 /** The longest `rustup toolchain uninstall` may take. */
 const UNINSTALL_LIMIT_MS = 5 * 60_000
+
+const HOUR_MS = 3_600_000
+
+/** What {@link Detection.note} says when the targets are the run's folder, taken because none were given. */
+export const NO_TARGETS_NOTE =
+  'no targets were given (the folder it runs from is not enough), so it proposes nothing'
 
 type Tool = 'rustup' | 'nvm' | 'volta'
 
@@ -234,6 +249,33 @@ function readPins(targets: readonly string[], cwd: string): Pins {
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
+/**
+ * When the version in `dir` was last used: the newest access or modification
+ * time of the files in its `bin` folder, links followed. Every use runs one of
+ * them (rustup's proxies, nvm's `PATH`, Volta's shims), and running a file
+ * updates its access time. Null when `bin` cannot be read or holds no file.
+ */
+export function lastUsedMs(dir: string): number | null {
+  const bin = join(dir, 'bin')
+  let names: string[]
+  try {
+    names = readdirSync(bin)
+  } catch {
+    return null
+  }
+  let newest: number | null = null
+  for (const name of names) {
+    const stat = statSync(join(bin, name), { throwIfNoEntry: false })
+    if (stat === undefined || !stat.isFile()) continue
+    const t = Math.max(stat.atimeMs, stat.mtimeMs)
+    if (newest === null || t > newest) newest = t
+  }
+  return newest
+}
+
+/** `hours` to one decimal, rounded down. */
+const hoursText = (hours: number): string => String(Math.floor(hours * 10) / 10)
+
 /** Whether the pin `pin` keeps the version `name`: the same, or `name` is `pin` with more after a `-` or a `.`. */
 export const keeps = (pin: string, name: string): boolean =>
   name === pin || name.startsWith(`${pin}-`) || name.startsWith(`${pin}.`)
@@ -244,9 +286,21 @@ interface Row {
   blockers: Array<{ code: string; reason: string }>
 }
 
-/** The `toolchains` plugin on `kit`; `env` is where each tool keeps its versions (`HOME`, `RUSTUP_HOME`, `NVM_DIR`, `VOLTA_HOME`). */
-function toolchainsPlugin(kit: Kit, env: Readonly<Record<string, string | undefined>>): Plugin {
+/**
+ * The `toolchains` plugin on `kit`; `env` is where each tool keeps its
+ * versions (`HOME`, `RUSTUP_HOME`, `NVM_DIR`, `VOLTA_HOME`). `idleHours` that
+ * is not a finite number of zero or more becomes {@link DEFAULT_IDLE_HOURS}.
+ */
+function toolchainsPlugin(
+  kit: Kit,
+  env: Readonly<Record<string, string | undefined>>,
+  idleHours: number | undefined,
+): Plugin {
   const homes = homesOf(env)
+  const threshold =
+    idleHours !== undefined && Number.isFinite(idleHours) && idleHours >= 0
+      ? idleHours
+      : DEFAULT_IDLE_HOURS
   const rustupEnv = { RUSTUP_HOME: homes.rustup, RUSTUP_AUTO_INSTALL: '0' }
 
   /** The lines rustup prints for `args`, blank ones left out; throws when it does not answer. */
@@ -324,26 +378,44 @@ function toolchainsPlugin(kit: Kit, env: Readonly<Record<string, string | undefi
     return { keep, unknown }
   }
 
-  const row = (tool: Tool, name: string, unknown: readonly string[]): Row => {
+  /** The row for a version no pin or default keeps; none when it was used in the last {@link threshold} hours. */
+  const row = (tool: Tool, name: string, unknown: readonly string[]): Row[] => {
     const path = join(versionsDir(tool, homes), name)
+    const used = lastUsedMs(path)
+    const hours = used === null ? null : Math.max(0, (Date.now() - used) / HOUR_MS)
+    if (hours !== null && hours < threshold) return []
     const bytes = kit.size(path)
-    return {
-      candidate: kit.candidate({
-        kind: tool === 'rustup' ? 'rust-toolchain' : 'node-version',
-        path,
-        name,
-        why: `no checkout in the targets asks for ${tool === 'rustup' ? 'this toolchain' : 'this Node version'}, and it is not the default or in use`,
-        costDescription: 're-download',
-        ...(bytes === null ? {} : { bytes }),
-        evidence: { kind: 'toolchain', tool, name, path },
-      }),
-      blockers: unknown.map((reason) => ({ code: 'unused-unknown', reason })),
+    const what = tool === 'rustup' ? 'this toolchain' : 'this Node version'
+    const blockers = unknown.map((reason) => ({ code: 'unused-unknown', reason }))
+    if (hours === null) {
+      blockers.push({
+        code: 'unused-unknown',
+        reason: `when ${path} was last used could not be told: its bin folder could not be read or holds no file`,
+      })
     }
+    return [
+      {
+        candidate: kit.candidate({
+          kind: tool === 'rustup' ? 'rust-toolchain' : 'node-version',
+          path,
+          name,
+          why:
+            `no checkout in the targets asks for ${what}, and it is not the default or in use` +
+            (hours === null
+              ? ''
+              : `; last used ${hoursText(hours)} hours ago (threshold ${threshold})`),
+          costDescription: 're-download',
+          ...(bytes === null ? {} : { bytes }),
+          evidence: { kind: 'toolchain', tool, name, path },
+        }),
+        blockers,
+      },
+    ]
   }
 
-  /** Every toolchain no checkout asks for, refused when what is asked for could not be read. */
+  /** Every toolchain no checkout asks for and nobody used lately, refused when what is asked for could not be read. */
   const scan = async (ctx: Ctx): Promise<Row[]> => {
-    if (ctx.targets.length === 0) return []
+    if (!ctx.targetsGiven || ctx.targets.length === 0) return []
     const pins = readPins(ctx.targets, ctx.cwd)
     const rows: Row[] = []
 
@@ -357,7 +429,7 @@ function toolchainsPlugin(kit: Kit, env: Readonly<Record<string, string | undefi
         unknown.push(`what rustup has in use could not be read: ${message(err)}`)
       }
       for (const name of rust) {
-        if (!keep.some((pin) => keeps(pin, name))) rows.push(row('rustup', name, unknown))
+        if (!keep.some((pin) => keeps(pin, name))) rows.push(...row('rustup', name, unknown))
       }
     }
 
@@ -379,7 +451,7 @@ function toolchainsPlugin(kit: Kit, env: Readonly<Record<string, string | undefi
       }
       for (const tool of ['nvm', 'volta'] as const) {
         for (const name of node[tool]) {
-          if (!keep.some((pin) => keeps(pin, plain(name)))) rows.push(row(tool, name, unknown))
+          if (!keep.some((pin) => keeps(pin, plain(name)))) rows.push(...row(tool, name, unknown))
         }
       }
     }
@@ -396,10 +468,13 @@ function toolchainsPlugin(kit: Kit, env: Readonly<Record<string, string | undefi
   return {
     name: TOOLCHAINS_PLUGIN,
     limits: { discover: DISCOVER_LIMIT_MS },
-    detect: () =>
-      (kit.onPath('rustup') && isDir(versionsDir('rustup', homes))) ||
-      isDir(versionsDir('nvm', homes)) ||
-      isDir(versionsDir('volta', homes)),
+    detect: (ctx) => {
+      const active =
+        (kit.onPath('rustup') && isDir(versionsDir('rustup', homes))) ||
+        isDir(versionsDir('nvm', homes)) ||
+        isDir(versionsDir('volta', homes))
+      return active && !ctx.targetsGiven ? { active, note: NO_TARGETS_NOTE } : active
+    },
     roots: () => (['rustup', 'nvm', 'volta'] as const).map((t) => versionsDir(t, homes)),
     async discover(ctx) {
       const found = await scan(ctx)
@@ -458,10 +533,10 @@ const byVersion = (a: string, b: string): number => {
   return 0
 }
 
-/** The `toolchains` plugin as the command line builds it: no settings of its own. */
+/** The `toolchains` plugin as the command line builds it. Settings: `idleHours`. */
 export const toolchainsDefinition = definePlugin({
   name: TOOLCHAINS_PLUGIN,
   api: PLUGIN_API,
-  settings: z.strictObject({}),
-  create: ({ kit, env }) => toolchainsPlugin(kit, env),
+  settings: z.strictObject({ idleHours: idleHoursSetting }),
+  create: ({ settings, kit, env }) => toolchainsPlugin(kit, env, settings.idleHours),
 })
