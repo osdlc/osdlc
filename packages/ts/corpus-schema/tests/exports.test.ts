@@ -51,6 +51,7 @@ test('the entry point exports these names', () => {
       'FieldRef',
       'findCorpora',
       'fold',
+      'generateTypes',
       'getCorpus',
       'getRecord',
       'getType',

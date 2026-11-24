@@ -70,15 +70,21 @@ export type RefForm = 'link' | 'id' | 'wikilink'
 const REF_FORMS: readonly string[] = ['link', 'id', 'wikilink']
 
 export interface Ref {
+  /** The property names from the record's top level to the `x-ref`, joined with `.`. */
   field: string
+  /** `field`'s names, unjoined. */
+  path: string[]
+  /**
+   * Per name in `path`: the property holds a list, and the walk goes through each item. On the
+   * last name, the `x-ref` sits on the list's `items`, so each item is a reference.
+   */
+  lists: boolean[]
   /** The corpus whose schema holds the `x-ref`. */
   corpus: Corpus
   /** The types as the schema names them: `<type>` or `<prefix>/<type>`. */
   types: string[]
   /** The types they name. Undefined until resolved, or when a name names no type. */
   targets: Type[] | undefined
-  /** The `x-ref` sits on the property's `items`, so each item is a reference. */
-  items: boolean
   form: RefForm
 }
 
@@ -131,8 +137,11 @@ export interface Found {
 export interface FoundRef {
   file: string
   ref: Ref
-  /** The value's place in the field's list, or undefined when the field holds the value itself. */
-  index: number | undefined
+  /**
+   * The value's place in the record's data: property names, and the index of each list entry on
+   * the way, such as `['hasEvidenceLines', 0, 'hasEvidenceItems', 1]`.
+   */
+  at: (string | number)[]
   value: unknown
   to: Found | undefined
   why: string | undefined
@@ -385,6 +394,47 @@ function places(keyword: string, node: unknown, path: string[] = []): string[][]
   if (node === null || typeof node !== 'object') return []
   const here = !Array.isArray(node) && keyword in node ? [path] : []
   return [...here, ...Object.entries(node).flatMap(([k, v]) => places(keyword, v, [...path, k]))]
+}
+
+/**
+ * The property names and list flags of the `x-ref` at schema `place`, or undefined when it sits
+ * where a value is not reached: `properties.<name>` steps, each optionally followed by `items`,
+ * and the last either on the property or on its `items`.
+ */
+function refPath(place: string[]): { path: string[]; lists: boolean[] } | undefined {
+  const path: string[] = []
+  const lists: boolean[] = []
+  for (let i = 0; i < place.length;) {
+    const name = place[i + 1]
+    if (place[i] !== 'properties' || name === undefined) return undefined
+    const list = place[i + 2] === 'items'
+    path.push(name)
+    lists.push(list)
+    i += list ? 3 : 2
+  }
+  return path.length === 0 ? undefined : { path, lists }
+}
+
+/** Each value `ref` reaches in `data`, with its place. Missing and null values, and levels that are not objects, yield nothing. */
+function refValues(data: Data, ref: Ref): { at: (string | number)[]; value: unknown }[] {
+  const out: { at: (string | number)[]; value: unknown }[] = []
+  const walk = (node: unknown, depth: number, at: (string | number)[]): void => {
+    if (node === null || typeof node !== 'object' || Array.isArray(node)) return
+    const key = ref.path[depth] as string
+    const value = Object.hasOwn(node, key) ? (node as Data)[key] : undefined
+    const here = [...at, key]
+    const last = depth === ref.path.length - 1
+    // On the last name, a list property holding a non-list is one value; on an inner name the walk stops. The schema says whether either is allowed.
+    const list = ref.lists[depth] === true && Array.isArray(value)
+    for (const [i, v] of (list ? (value as unknown[]) : [value]).entries()) {
+      const place = list ? [...here, i] : here
+      if (last) {
+        if (v !== undefined && v !== null) out.push({ at: place, value: v })
+      } else if (list || !ref.lists[depth]) walk(v, depth + 1, place)
+    }
+  }
+  walk(data, 0, [])
+  return out
 }
 
 const stem = (file: string): string => basename(file, extname(file))
@@ -874,16 +924,20 @@ function readTypes(c: Corpus, dirs: string[], used: Map<string, Used>): Set<stri
           `${schemaFile}: x-record-file: must be a file name with a .md, .yaml or .json extension, such as README.md`,
         )
     for (const place of places('x-ref', schema)) {
-      const [first, field, third] = place
-      const items = third === 'items'
-      if (first !== 'properties' || field === undefined || place.length !== (items ? 3 : 2)) {
+      const walked = refPath(place)
+      if (walked === undefined) {
         c.errors.push(
-          `${schemaFile}: ${place.join('.')}: v0 defines x-ref only on top-level properties and their items`,
+          `${schemaFile}: ${place.join('.')}: x-ref sits only on a property, or on the items of a list property, of the record or of an object or list of objects inside it`,
         )
         continue
       }
-      const prop = (schema['properties'] as Record<string, Data>)[field] as Data
-      const holder = (items ? prop['items'] : prop) as Data
+      const { path, lists } = walked
+      const field = path.join('.')
+      let holder = schema as Data
+      for (const [i, key] of path.entries()) {
+        holder = (holder['properties'] as Record<string, Data>)[key] as Data
+        if (lists[i]) holder = holder['items'] as Data
+      }
       const named = holder['x-ref']
       const types = typeof named === 'string' ? [named] : named
       if (!Array.isArray(types) || types.length === 0 || types.some((t) => typeof t !== 'string')) {
@@ -895,7 +949,15 @@ function readTypes(c: Corpus, dirs: string[], used: Map<string, Used>): Set<stri
         c.errors.push(`${schemaFile}: ${field}: x-ref-form must be link, id or wikilink`)
         continue
       }
-      type.refs.push({ field, corpus: c, types, targets: undefined, items, form: form as RefForm })
+      type.refs.push({
+        field,
+        path,
+        lists,
+        corpus: c,
+        types,
+        targets: undefined,
+        form: form as RefForm,
+      })
     }
     for (const place of places('x-ref-form', schema)) {
       const holder = place.reduce<unknown>((n, k) => (n as Data)[k], schema) as Data
@@ -1482,17 +1544,24 @@ function intoReference(c: Corpus, path: string, file: string, dest: string): Res
   return { problem: `${dest}: no such file in ${prefix}` }
 }
 
-/** Calls `visit` with each string in `value` and the dotted field it sits in. */
+/**
+ * Calls `visit` with each string in `value` and the dotted field it sits in. `skip` holds places
+ * to leave out, each as its names and list indexes joined with `\0`; `at` is `value`'s place.
+ */
 function eachString(
   value: unknown,
   field: string,
   visit: (field: string, s: string) => void,
+  skip: ReadonlySet<string> = new Set(),
+  at: (string | number)[] = [],
 ): void {
+  if (skip.has(at.join('\0'))) return
   if (typeof value === 'string') visit(field, value)
-  else if (Array.isArray(value)) value.forEach((v) => eachString(v, field, visit))
+  else if (Array.isArray(value))
+    value.forEach((v, i) => eachString(v, field, visit, skip, [...at, i]))
   else if (value !== null && typeof value === 'object')
     for (const [k, v] of Object.entries(value))
-      eachString(v, field === '' ? k : `${field}.${k}`, visit)
+      eachString(v, field === '' ? k : `${field}.${k}`, visit, skip, [...at, k])
 }
 
 /** The keywords whose strings are prose in a schema, and may hold links. */
@@ -1508,13 +1577,21 @@ function eachProse(node: unknown, field: string, visit: (field: string, s: strin
   }
 }
 
-/** The top-level fields of `file`'s type chain that hold references by id, not links. */
-function idFields(c: Corpus, file: string): Set<string> {
+/** The places in `data`, `file`'s record, of values that refer by id or wikilink, not by link. */
+function idPlaces(c: Corpus, file: string, data: Data): (string | number)[][] {
   const type = c.recordFiles.get(file)?.type
-  if (type === undefined) return new Set()
-  const refs = chain(type).flatMap((t) => t.refs)
-  return new Set(refs.filter((r) => r.form !== 'link').map((r) => r.field))
+  if (type === undefined) return []
+  return chain(type)
+    .flatMap((t) => t.refs)
+    .filter((r) => r.form !== 'link')
+    .flatMap((r) => refValues(data, r).map((v) => v.at))
 }
+
+const valueAt = (data: unknown, at: (string | number)[]): unknown =>
+  at.reduce<unknown>(
+    (n, k) => (n === null || typeof n !== 'object' ? undefined : (n as Data)[k]),
+    data,
+  )
 
 /** Check every link in the checked files, and every `x-ref` field. */
 function checkLinks(c: Corpus): void {
@@ -1544,10 +1621,9 @@ function checkLinks(c: Corpus): void {
       eachProse(data ?? {}, '', visit)
       continue
     }
-    // A field that refers by id holds no link: checkRef checks its values.
-    const byId = idFields(c, file)
-    for (const [key, value] of Object.entries(data ?? {}))
-      if (!byId.has(key)) eachString(value, key, visit)
+    // A value that refers by id holds no link: its x-ref check reads it.
+    const byId = new Set(idPlaces(c, file, data ?? {}).map((at) => at.join('\0')))
+    eachString(data ?? {}, '', visit, byId)
   }
 
   const refsOf = new Map<Type, Ref[]>()
@@ -1560,16 +1636,11 @@ function checkLinks(c: Corpus): void {
       refsOf.set(record.type, refs)
     }
     for (const ref of refs) {
-      const value = data[ref.field]
-      // null refers to nothing; the schema says whether it is allowed.
-      if (value === undefined || value === null) continue
-      const list = ref.items && Array.isArray(value)
-      for (const [i, v] of (list ? value : [value]).entries()) {
-        if (v === null) continue
+      for (const { at, value: v } of refValues(data, ref)) {
         const found: FoundRef = {
           file,
           ref,
-          index: list ? i : undefined,
+          at,
           value: v,
           to: undefined,
           why: undefined,
@@ -1585,12 +1656,21 @@ function checkLinks(c: Corpus): void {
         else found.why = r.problem
         // An invalid record's references are still resolved, for loadCorpus, but not reported.
         if (!record.valid) continue
-        if ('problem' in r && !r.reported) c.errors.push(`${file}: ${ref.field}: ${r.problem}`)
+        if ('problem' in r && !r.reported)
+          c.errors.push(`${file}: ${refLabel(found)}: ${r.problem}`)
         if ('to' in r && r.via !== undefined) c.linked.add(r.via)
       }
     }
   }
 }
+
+/**
+ * Where a value sits, for an error line: its property names, and the index of each list entry
+ * before the last name. `hasEvidenceLines.0.hasEvidenceItems` for the value at
+ * `hasEvidenceLines.0.hasEvidenceItems.1`; a top-level field is its own name.
+ */
+const refLabel = (f: FoundRef): string =>
+  f.at.slice(0, f.ref.lists.at(-1) && typeof f.at.at(-1) === 'number' ? -1 : undefined).join('.')
 
 /** The record file a resolved link points at, or undefined when it points at none. */
 function recordAt(c: Corpus, r: Resolution): Found | undefined {
@@ -1847,12 +1927,12 @@ function fixWikilinks(c: Corpus): { fixed: string[]; warnings: string[]; errors:
     } else regions.push([0, extractLinks(text)])
 
     // A wikilink in a field that refers by id is the field's form, so it stays.
-    const byId = idFields(c, file)
+    const byId = idPlaces(c, file, data)
     const keepsIdFields = (start: number, end: number, replacement: string): boolean => {
-      if (byId.size === 0) return true
+      if (byId.length === 0) return true
       try {
         const after = readData(`${text.slice(0, start)}${replacement}${text.slice(end)}`, ext)
-        return [...byId].every((k) => isDeepStrictEqual(after[k], data[k]))
+        return byId.every((at) => isDeepStrictEqual(valueAt(after, at), valueAt(data, at)))
       } catch {
         // The check on the whole file below reports it.
         return true
