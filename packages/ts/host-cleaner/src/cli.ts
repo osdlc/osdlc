@@ -413,6 +413,7 @@ function contextFor(
     cwd: ctx.cwd,
     targets: chosen.map((t) => resolve(ctx.cwd, expandHome(t, home))),
     targetsGiven: targets.length > 0 || config.targets.length > 0,
+    home,
     allow,
     ignore: ignoreFor(config, ignore, ctx),
   }
@@ -756,6 +757,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         cwd: ctx.cwd,
         targets: plan.targets,
         targetsGiven: plan.targetsGiven,
+        home: homeOf(ctx),
         allow: plan.allow,
         ignore: ignoreFor(config, v.ignore, ctx),
       }

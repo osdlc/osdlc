@@ -106,6 +106,8 @@ export interface RunCtx {
    * line; false when the CLI fell back to the folder it runs in. Unset is false.
    */
   targetsGiven?: boolean | undefined
+  /** The home folder, which no root may be or hold; the process's when unset. The CLI sets it from `HOME`, as it expands `~`. */
+  home?: string | undefined
 }
 
 /** What a hook is given: the run, and a signal of its own. */

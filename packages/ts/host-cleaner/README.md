@@ -36,7 +36,8 @@ Any hook may answer straight away or return a promise. The core awaits each
 one in turn, one plugin at a time, so `survey`, `recheck` and `clean` return
 promises. Each call has a time limit: 30 seconds (`HOOK_LIMIT_MS`), or 10
 minutes for `delete` (`DELETE_LIMIT_MS`); a plugin may set its own per hook in
-`limits`. Past the limit the core aborts `ctx.signal`, the call's own signal,
+`limits` (a positive number of milliseconds; any other value is warned of and
+the default used). Past the limit the core aborts `ctx.signal`, the call's own signal,
 and counts the call as a throw: a timed-out `detect` leaves the plugin out, a
 timed-out `object` refuses every candidate, and a timed-out `delete` fails
 that step.
@@ -56,6 +57,10 @@ targets, in the config or on the command line, and false when the command line
 fell back to the directory it runs in (and when a `RunCtx` leaves it unset). A
 plan keeps it, so `clean --plan` tells the plugins the same; a plan without it
 is refused: sweep again.
+
+A `RunCtx` may name `home`, the home folder no root may be or hold (see the
+roots rules); unset, it is the process's. The CLI sets it from `HOME`, the
+same home it expands `~` with.
 
 A candidate's `requires` lists the candidates that must go first. If one is
 refused, dropped or fails, the candidate is too; requirements are deleted
@@ -106,9 +111,10 @@ What a plan runs uses repo-cleaner's words, with their meaning:
 - **`select`:** exactly these candidate ids instead of the default.
 - **`pick`:** these as well; a candidate held for review runs only when picked
   or selected.
-- **`spare`:** leave these alone: an id, a path, a name (every candidate of
-  that name, as a branch and the worktree that has it checked out), or a glob
-  over ids, paths and names. A spared candidate that would have run is
+- **`spare`:** leave these alone: an id, a path (a ref candidate's `ref` or
+  the folder it is `at`), a name (every candidate of that name, as a branch
+  and the worktree that has it checked out), or a glob over ids, paths and
+  names. A spared candidate that would have run is
   dropped as `spared`.
 
 Each candidate that runs is still judged by the rules above.
@@ -213,7 +219,7 @@ runner:
 | `contractSuite(plugin, ctx, { deleteLimitMs })` | Surveys the plugin twice and returns one line per broken rule. |
 
 The suite checks that `limits` name hooks; that the survey warns of nothing
-(no hook throws or runs past its limit, `detect`'s answer and each root has a
+(every limit is a positive number, no hook throws or runs past its limit, `detect`'s answer and each root has a
 shape the core takes, ids are unique, each candidate is the plugin's and has
 one of a path and a ref; a `detect` note is not a problem); that every path
 candidate is inside the plugin's roots or the targets, or is one of its self

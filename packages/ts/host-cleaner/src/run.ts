@@ -12,6 +12,7 @@ import { coveredBy, containsIgnored } from './ignore.ts'
 import { bindKit } from './kit.ts'
 import { acceptRoots, boundBy, linkedCheckouts, realOr, type Bounds } from './roots.ts'
 import {
+  CandidateSchema,
   writeReceipt,
   PLAN_VERSION,
   RECEIPT_VERSION,
@@ -21,7 +22,6 @@ import {
   type Step,
 } from './plan.ts'
 import {
-  COST_DESCRIPTIONS,
   FatalRun,
   type Candidate,
   type Ctx,
@@ -59,18 +59,38 @@ export class HookTimeout extends Error {
 /** The longest delay `setTimeout` keeps; a longer one fires at once. */
 const MAX_DELAY_MS = 2 ** 31 - 1
 
+/** Whether `ms` is a time limit the core takes: a positive number of milliseconds. */
+const validLimit = (ms: unknown): ms is number =>
+  typeof ms === 'number' && Number.isFinite(ms) && ms > 0
+
+/** The time limit of `hook` on `p`: its own when valid, else the default. */
+const limitOf = (p: Plugin, hook: Hook): number => {
+  const own = p.limits?.[hook]
+  return validLimit(own) ? own : hook === 'delete' ? DELETE_LIMIT_MS : HOOK_LIMIT_MS
+}
+
 /**
  * Calls one hook of `p` with a signal of its own and awaits its answer. Past
  * the hook's limit the signal is aborted and {@link HookTimeout} thrown; a
  * hook that answers straight away is never timed out.
  */
-async function callHook<T>(
+const callHook = <T>(
   p: Plugin,
   hook: Hook,
   ctx: RunCtx,
   f: (ctx: Ctx) => MaybePromise<T>,
+): Promise<T> => callWithin(limitOf(p, hook), ctx, f)
+
+/**
+ * Calls `f` with `ctx`, `targetsGiven` defaulted and a signal of its own, and
+ * awaits its answer. Past `ms` the signal is aborted and {@link HookTimeout}
+ * thrown. How the core calls every hook; the contract suite calls `delete` so too.
+ */
+export async function callWithin<T>(
+  ms: number,
+  ctx: RunCtx,
+  f: (ctx: Ctx) => MaybePromise<T>,
 ): Promise<T> {
-  const ms = p.limits?.[hook] ?? (hook === 'delete' ? DELETE_LIMIT_MS : HOOK_LIMIT_MS)
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
   const late = new Promise<never>((_, reject) => {
@@ -153,6 +173,19 @@ function misshapen(c: Candidate): string | null {
   return null
 }
 
+/**
+ * Why a plan would refuse `c`, one of a path and a ref, by the plan's own
+ * {@link CandidateSchema}, so survey never keeps a candidate `clean --plan`
+ * then refuses; null when the plan takes it.
+ */
+function unplannable(c: Candidate): string | null {
+  const [pathShape, refShape] = CandidateSchema.options
+  const read = (c.path === undefined ? refShape : pathShape).safeParse(c)
+  if (read.success) return null
+  const issue = read.error.issues[0]!
+  return `whose ${issue.path.join('.') || 'shape'} a plan refuses: ${issue.message}`
+}
+
 /** Why `bounds` does not hold path candidate `c`, or null when it does. */
 function outside(c: PathCandidate, bounds: Bounds): string | null {
   if (boundBy(bounds, c.path) !== null) return null
@@ -196,8 +229,10 @@ function nest(cs: readonly Candidate[]): Candidate[] {
  * outside its owner's roots and the targets is refused `outside-roots`, and a
  * root the core refuses (see `rootProblem` in `./roots.ts`) is left out with a
  * warning; one
- * with both a path and a ref, or neither, or a path and an `at`, or an
- * unknown `costDescription`, is dropped. A `lost` one is held and protested `discard-user-data`, and an
+ * with both a path and a ref, or neither, or a path and an `at`, or any field
+ * a plan would refuse (such as an unknown `costDescription`), is dropped. A
+ * `limits` entry that is not a positive number is warned of and the default
+ * used. A `lost` candidate is held and protested `discard-user-data`, and an
  * `unmeasured` one protested `unmeasured`. A
  * {@link FatalRun} from any phase goes to the caller. Two candidates with the
  * same id, or path candidates with the same real path, are one: the first
@@ -231,6 +266,13 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
       continue
     }
     names.add(p.name)
+    for (const [hook, ms] of Object.entries(p.limits ?? {})) {
+      if (ms !== undefined && !validLimit(ms)) {
+        warnings.push(
+          `${p.name}: limits.${hook} is ${String(ms)}, not a positive number of milliseconds; the default was used`,
+        )
+      }
+    }
     const answer = await guarded<unknown>(p, 'detect', false, ctx, (x) => p.detect(x))
     const found = detection(answer)
     if (found === null) {
@@ -256,18 +298,14 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
   const discovered: Candidate[] = []
   const first = new Map<string, string>()
   const atReal = new Map<string, Candidate>()
-  const costs = new Set<string>(COST_DESCRIPTIONS)
   for (const p of plugins) {
     if (p.discover === undefined) continue
     for (const c of await guarded(p, 'discover', [], scoped, (x) => p.discover!(x))) {
+      const bad = c.owner === p.name ? (misshapen(c) ?? unplannable(c)) : null
       if (c.owner !== p.name) {
         warnings.push(`${p.name}: dropped ${c.id}, which names ${c.owner} as its owner`)
-      } else if (misshapen(c) !== null) {
-        warnings.push(`${p.name}: dropped ${c.id}, ${misshapen(c)}`)
-      } else if (c.costDescription !== undefined && !costs.has(c.costDescription)) {
-        warnings.push(
-          `${p.name}: dropped ${c.id}, whose costDescription is not one of ${COST_DESCRIPTIONS.join(', ')}`,
-        )
+      } else if (bad !== null) {
+        warnings.push(`${p.name}: dropped ${c.id}, ${bad}`)
       } else if (first.has(c.id)) {
         warnings.push(`duplicate ${c.id}: kept ${first.get(c.id)}'s, dropped ${p.name}'s`)
       } else {
@@ -298,7 +336,7 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
   const known = new Set(candidates.map((c) => c.id))
   const objections: Objection[] = []
   const linked = linkedCheckouts(targets)
-  const home = homedir()
+  const home = ctx.home ?? homedir()
   // Asked once per plugin, so a throwing `roots` warns once.
   const rootsOf = new Map<string, { roots: readonly string[]; self: readonly string[] }>()
   for (const p of plugins) {
@@ -392,7 +430,8 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
  *            chose.
  *   `pick`   also run these: a candidate held for review
  *            (`held: true`) runs only when picked or selected.
- *   `spare`  leave these alone: an id, a path, a name (every candidate of
+ *   `spare`  leave these alone: an id, a path (a ref candidate's ref or
+ *            `at`), a name (every candidate of
  *            that name, as a branch and the worktree that has it), or a
  *            glob (`*`, `**`, `?`) over ids, paths and names.
  *
@@ -409,7 +448,12 @@ export const DEFAULT_SELECTION: Selection = { select: null, pick: [], spare: [] 
 
 /** Whether `entry`, one `spare`, names `c`. */
 export function spares(entry: string, c: Candidate): boolean {
-  const names = [c.id, c.path ?? c.ref, ...(c.name === undefined ? [] : [c.name])]
+  const names = [
+    c.id,
+    c.path ?? c.ref,
+    ...(c.at === undefined ? [] : [c.at]),
+    ...(c.name === undefined ? [] : [c.name]),
+  ]
   if (isGlob(entry)) {
     const re = globRegExp(entry)
     return names.some((n) => re.test(n))
@@ -845,11 +889,13 @@ async function runOne(
     } catch (err) {
       return fail(err, `${c.owner}: roots failed: `)
     }
-    const at = { targets: s.ctx.targets, linked: s.linked, home: homedir() }
-    const { roots, self } = acceptRoots(answer, at)
+    const at = { targets: s.ctx.targets, linked: s.linked, home: s.ctx.home ?? homedir() }
+    const { roots, self, problems } = acceptRoots(answer, at)
     const bounds: Bounds = { roots, self, ...at }
     const why = outside(c, bounds)
-    if (why !== null) return fail(why)
+    if (why !== null) {
+      return fail(problems.length === 0 ? why : `${why}; roots refused: ${problems.join('; ')}`)
+    }
     // The owner's kit removes within what was just checked.
     bindKit(owner, bounds)
   }

@@ -12,12 +12,12 @@
  */
 
 import { lstatSync } from 'node:fs'
-import { sep } from 'node:path'
 
 import type { CommandRunner } from '@osdlc/command-seam'
 import { nodeGuard } from '@osdlc/path-guard/node'
 import { Git } from '@osdlc/typed-git'
 
+import { coveredBy } from './ignore.ts'
 import {
   DEFAULT_IDLE_HOURS,
   attachKit,
@@ -66,10 +66,6 @@ export function envOf(kit: Kit, opts: Pick<ArtifactOptions, 'idleHours' | 'git'>
 /** `hours` for a sentence, in tenths rounded down, so it never says more than was measured. */
 export const hoursText = (hours: number): string => String(Math.floor(hours * 10) / 10)
 
-/** Whether `path` is one of `ignore` or below one. */
-const ignored = (path: string, ignore: readonly string[]): boolean =>
-  ignore.some((dir) => path === dir || path.startsWith(dir.endsWith(sep) ? dir : dir + sep))
-
 /**
  * The checkouts of every repository among the run's targets, primary first; a
  * target that is not a repository adds none. Bare, missing and ignored worktrees are left out.
@@ -86,7 +82,7 @@ export function checkoutsOf(env: Env): Checkout[] {
     }
     for (const [i, tree] of trees.entries()) {
       if (tree.bare || seen.has(tree.path) || !present(tree.path)) continue
-      if (ignored(tree.path, env.ctx.ignore ?? [])) continue
+      if (coveredBy(tree.path, env.ctx.ignore ?? []) !== undefined) continue
       seen.add(tree.path)
       out.push({ path: tree.path, primary: i === 0 })
     }
@@ -197,7 +193,8 @@ export function refusedRow(kit: Kit, kind: ArtifactKind, path: string, checkout:
  * Remove the directory `c` names, if its checkout's rows still hold it
  * unrefused: `rowsOf` is read again for that checkout alone, and the kit reads
  * the process table fresh for this call, so idle time and holders are checked
- * now. `kit.remove` then checks the path is still inside what the core
+ * now; one the plan had as idle that is now held or unmeasured is kept.
+ * `kit.remove` then checks the path is still inside what the core
  * bound the kit to by its real path, and that it is gone afterwards. A directory already gone (its
  * worktree was deleted first in this run) is not a failure. Returns what the
  * receipt records.
@@ -217,6 +214,11 @@ export async function removeArtifact(
   if (now.blockers.length > 0) {
     throw new Error(`${path} is refused: ${now.blockers.map((b) => b.reason).join(', ')}`)
   }
+  // One the plan ran as idle, not picked or allowed `unmeasured`, must still be idle and measured.
+  if (now.candidate.unmeasured === true && c.unmeasured !== true) {
+    throw new Error(`${path} could not be measured idle in the time budget now`)
+  }
+  if (now.candidate.held === true && c.held !== true) throw new Error(`${path} is no longer idle`)
   return env.kit.remove(path, env.ctx)
 }
 
