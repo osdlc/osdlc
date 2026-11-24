@@ -417,7 +417,7 @@ targets: /Users/me/dev
   cargo  built-in  detected; roots: none, the targets alone
   node   built-in  disabled: plugins.node.enabled is false; --plugin node runs it anyway
   orca   built-in  not detected: Orca is installed but not running; its worktrees are left to git
-  go     user      detected; roots: /Users/me/go/pkg
+  go     user      detected; roots: /Users/me/go/pkg/mod (itself too)
     ${GOPATH}      = /Users/me/go  from value (tried env GOPATH: not set)
     ${GOMODCACHE}  = /Users/me/go/pkg/mod  from value (tried env GOMODCACHE: not set; command go env GOMODCACHE: timed out after 5 s)
 ```

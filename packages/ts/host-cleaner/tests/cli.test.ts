@@ -444,7 +444,7 @@ candidates:
       [
         `targets: ${cwd}`,
         '  git  built-in  detected; roots: none, the targets alone',
-        `  go   shipped   detected; roots: ${join(home, 'go/pkg')}, ${join(home, '.cache')}`,
+        `  go   shipped   detected; roots: ${join(home, 'go/pkg/mod')} (itself too), ${join(home, '.cache/go-build')} (itself too)`,
         `    \${XDG_CACHE_HOME}  = ${join(home, '.cache')}  from default (tried env XDG_CACHE_HOME: not set)`,
         `    \${GOPATH}          = ${join(home, 'go')}  from value (tried env GOPATH: not set)`,
         `    \${GOMODCACHE}      = ${join(home, 'go/pkg/mod')}  from value (tried env GOMODCACHE: not set; command go env GOMODCACHE: timed out after 5 s)`,
@@ -545,6 +545,7 @@ candidates:
         roots: [cache],
         selfRoots: [cache],
         note: 'one note',
+        vars: [],
       },
       {
         name: 'cargo',
@@ -555,6 +556,7 @@ candidates:
         roots: [],
         selfRoots: [],
         note: 'no cargo',
+        vars: [],
       },
     ])
   })
