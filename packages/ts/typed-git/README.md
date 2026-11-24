@@ -103,7 +103,8 @@ The package is on the 0.x line. A breaking change ships only in a new minor
 release, with a CHANGELOG entry that starts with `Breaking:`.
 
 - `Git`, `AsyncGit`, `cliBackend`, the verbs, `git.try`, `git.soft`, the
-  URL and checkout helpers, and `./testing` are stable in 0.x.
+  URL, remote-matching and checkout helpers, and `./testing` are stable in
+  0.x.
 - `GitBackend`, `GitRequest`, `GitResults` and `partialBackend` are
   experimental. Each new verb adds a request kind, so a minor release can
   break a backend written as an exhaustive `switch`. Use `partialBackend`
@@ -1077,6 +1078,38 @@ parseRemoteRepo("ssh://git@ssh.github.com:443/acme/widgets.git");
 parseRemoteRepo("/srv/git/repo.git"); // null — a local path names no project
 ```
 
+`readRemote` reads a remote as `parseRemoteRepo` does, but resolves an SSH
+config alias first. A remote such as `git@github-work:acme/widgets.git`
+names a `Host` entry in `~/.ssh/config`, the usual setup for two accounts on
+one forge, so its host is not the forge's. `readRemote` asks `ssh -G` for the
+host behind it, as `gh` does, and reads the URL again with that host in
+place of the alias. So the answer is what `parseRemoteRepo` gives for the
+real host: lower-cased, `ssh.github.com` as `github.com`, a known host's
+`www.` dropped, and a GitLab nested group whole in `owner`. It asks only for an SSH
+remote (`ssh://`, `git+ssh://`, `ssh+git://` or scp-like; `isSshRemote`
+says which) whose host is not `github.com`. An alias ssh cannot resolve keeps
+its own name.
+
+The second argument is the resolver. `sshAliasResolver(runner?)` builds one
+that runs `ssh -G -- <alias>` from the home directory with a 5 s limit, and
+caches each answer for its own life. `runner` defaults to command-seam's
+`spawnRunner("ssh")`, found on absolute `PATH` entries only; pass a fake to
+test without ssh. Without a resolver, `readRemote` uses one built that way,
+shared by the process.
+
+`sameRepo(a, b)` says whether two coordinates name one repository: owner and
+repo in any letter case, and the host too when both carry one. A
+`RepoCoordinate` is `{ owner, repo, host? }`, so a `RemoteRepo` is one.
+
+```ts
+const resolve = sshAliasResolver(); // or sshAliasResolver(fakeRunner)
+readRemote("git@github-work:acme/widgets.git", resolve);
+// { host: "github.com", owner: "acme", repo: "widgets" }
+//   when ~/.ssh/config maps github-work to ssh.github.com
+sameRepo({ owner: "Acme", repo: "Widgets" }, { host: "github.com", owner: "acme", repo: "widgets" });
+// true — no host on the left, so the host is not compared
+```
+
 `parseRepoRef` answers the question a clone command asks. Given anything a
 person might paste (a clone URL, the page of a pull request or a file, a bare
 `owner/repo`), which repository is it, and what does `git clone` take? It returns
@@ -1096,7 +1129,9 @@ parseRepoRef("./a/local/path"); // null — the input names no repository
 ## Subpath exports
 
 `@osdlc/typed-git/client` is everything above except the URL parsers
-(`parseGitUrl`, `gitSshUrl`, `parseRemoteRepo`, `parseRepoRef` and their types) and the checkout
+(`parseGitUrl`, `gitSshUrl`, `parseRemoteRepo`, `parseRepoRef` and their types),
+the remote matching built on them (`readRemote`, `sshAliasResolver`,
+`isSshRemote`, `sameRepo` and their types) and the checkout
 walks (`checkoutRoot`, `discoverCheckouts`, `scanForCheckouts`, their types,
 `DEFAULT_MAX_DEPTH` and `DEFAULT_WARN_AFTER`). It has no `hosted-git-info` on
 your module graph. That package stays in `dependencies` either way, so this

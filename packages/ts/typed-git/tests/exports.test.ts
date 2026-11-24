@@ -124,13 +124,17 @@ describe('public surface', () => {
     }
   })
 
-  test('the client.ts entry leaves out the URL parsers and the checkout walks', async () => {
+  test('the client.ts entry leaves out the URL parsers, remote matching and the checkout walks', async () => {
     const mod = (await import('../src/client.ts')) as Record<string, unknown>
     for (const name of [
       'parseGitUrl',
       'gitSshUrl',
       'parseRemoteRepo',
       'parseRepoRef',
+      'readRemote',
+      'sshAliasResolver',
+      'isSshRemote',
+      'sameRepo',
       'checkoutRoot',
     ]) {
       expect(name in mod).toBe(false)
