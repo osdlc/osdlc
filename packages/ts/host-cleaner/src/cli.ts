@@ -226,13 +226,10 @@ const cleanCli = () =>
           'push unlanded work to an archive branch on the remote before deleting it; ' +
           'abandon-unmerged and discard-changes still need --allow by name',
       },
-      archiveExclude: {
-        kind: 'list',
-        valueName: 'glob',
-        default: [] as readonly string[],
-        commaSeparated: false,
-        help: 'with --archive, leave files matching this glob out of a worktree snapshot; repeatable',
-      },
+      archiveExclude: idList(
+        'glob',
+        'with --archive, leave files matching this glob out of a worktree snapshot; repeatable',
+      ),
       plan: {
         kind: 'string',
         valueName: 'file',

@@ -32,8 +32,12 @@ function tempDir(): string {
   return dir
 }
 
+/** Runs git in `cwd`, throwing on failure; returns its trimmed stdout. */
+const git = (cwd: string, args: string[]): string =>
+  new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args).stdout.trim()
+
 const sh = (cwd: string, args: string[]): void => {
-  new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args)
+  git(cwd, args)
 }
 
 /** A repository with a merged branch and an unmerged one. */
@@ -47,9 +51,6 @@ function repo(): string {
   sh(dir, ['checkout', '-q', 'main'])
   return dir
 }
-
-const git = (cwd: string, args: string[]): string =>
-  new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args).stdout.trim()
 
 /** A repository whose `main` is pushed to a bare remote, plus an unmerged branch `topic`. */
 function pushedRepo(): { dir: string; bare: string } {
