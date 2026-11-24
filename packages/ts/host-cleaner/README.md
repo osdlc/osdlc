@@ -291,16 +291,18 @@ in them. Removing one with plain git leaves the record and the terminals behind,
 so this plugin works beside `git`, which still removes the directory.
 
 Detected when the `orca` CLI is on `PATH` (or at
-`/Applications/Orca.app/Contents/Resources/bin/orca`) and `orca status` says the
-app is running. Orca missing is silent; installed but not running adds a
-warning, and the plugin stays out of the run. It never fails the run. Every call
-goes through `@osdlc/command-seam` with `--json`.
+`/Applications/Orca.app/Contents/Resources/bin/orca`). Orca missing is silent.
+When it is installed but not running, or `orca status` fails or prints no JSON,
+there is no fallback to git: every `git` worktree whose path is under
+`/orca/workspaces/` is refused with `orca-unreachable`, and the rest are left to
+`git`; `detect` gives the reason as its note. It never fails the run. Every
+call goes through `@osdlc/command-seam` with `--json`.
 
 | Phase | What it does |
 | --- | --- |
 | scope | Adds each repository `orca repo list` names (`plugins.orca.repos: false` turns this off). |
 | discover | A record in `orca worktree ps` whose directory is gone is `orca-record:<path>`, a ref to Orca's record (`at` is the gone directory), held for a pick. |
-| object | On a `git` worktree that Orca manages: a `note` with its Orca id; a `refuse` `orca-agent-active` when an agent is at work (any state not `idle` or `done`); a `refuse` `orca-terminal-unverifiable`; a `protest` `close-terminals` when terminals are open. If Orca cannot be read, every `git` worktree is refused with `orca-unreachable`. |
+| object | On a `git` worktree that Orca manages: a `note` with its Orca id; a `refuse` `orca-agent-active` when an agent is at work (any state not `idle` or `done`); a `refuse` `orca-terminal-unverifiable`; a `protest` `close-terminals` when terminals are open. If Orca is running but cannot be read, every `git` worktree is refused with `orca-unreachable`; while it is not running or its status cannot be read, only those under `/orca/workspaces/` are. |
 | prepare | Sees again that no agent is at work, then `orca terminal close --worktree id:<id> --all`. |
 | deleted | After `git` removed the directory, `orca worktree rm --worktree id:<id> --force` so Orca forgets the record. It is never asked while the directory exists, since it would delete it. The branch is kept. |
 

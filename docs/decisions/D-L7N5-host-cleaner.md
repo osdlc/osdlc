@@ -1,6 +1,7 @@
 # D-L7N5: Machine cleanup is a `host-cleaner` package over repo-cleaner, with optional detected adapters
 
-Accepted 2026-10-07 in sksizer/dev. Moved here on 2026-11-07, restated for
+Superseded in part by [D-H3QW](D-H3QW-host-cleaner-plugin-model.md): the adapter
+model became a plugin model. Accepted 2026-10-07 in sksizer/dev. Moved here on 2026-11-07, restated for
 repo-cleaner 0.18. Builds on
 [D-RSWP](../../packages/ts/repo-cleaner/docs/planning/decisions/D-RSWP-standalone.md).
 
