@@ -101,8 +101,8 @@ function stamp(opts: OpOptions): string {
 // ── install ───────────────────────────────────────────────────────────────────
 
 /**
- * `${XDG_BIN_HOME:-$HOME/.local/bin}`, the default install destination. Only
- * an absolute `XDG_BIN_HOME` counts.
+ * The default install destination: `XDG_BIN_HOME` when it is an absolute
+ * path, else `.local/bin` under the home directory.
  *
  * Not a tiered-dirs home, on purpose. This is a directory on the user's PATH,
  * not a place the tool stores anything. What it must provide is "a shell
