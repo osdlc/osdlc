@@ -10,7 +10,7 @@ export interface Candidate {
   id: string
   /** Free-form, e.g. `worktree`, `branch`. */
   kind: string
-  /** The thing itself; for a session, its working directory. */
+  /** The thing itself. */
   path: string
   /** The plugin that deletes it, and the only one that may. */
   owner: string
@@ -27,12 +27,8 @@ export interface Candidate {
   at?: string | undefined
   /** The name a person knows it by, which `spare` matches: a branch's name, the branch a worktree has checked out. */
   name?: string | undefined
-  /**
-   * True: `clean --auto` may take it if nothing refuses or protests.
-   * False: the default leaves it out; only a pick or a selection runs it.
-   * Absent: the default takes it; `clean --auto` does not.
-   */
-  unattended?: boolean | undefined
+  /** True: held for review. The default leaves it out; only a pick or a selection runs it. */
+  held?: boolean | undefined
 }
 
 /** How much an objection weighs: `refuse` blocks, `protest` needs `--allow <code>`, `note` informs. */
