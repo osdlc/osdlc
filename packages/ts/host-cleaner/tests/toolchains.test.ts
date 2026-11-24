@@ -123,6 +123,7 @@ function fixture(
     ctx: {
       cwd: home,
       targets: opts.targets?.(dev) ?? [dev],
+      targetsGiven: true,
       allow: [],
       signal: new AbortController().signal,
     },
