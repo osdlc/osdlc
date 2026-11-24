@@ -37,7 +37,7 @@ owner delete it. The first version ships four plugins: `git` (repo-cleaner),
 | --- | --- |
 | `src/types.ts` | The contract: `Candidate` (a path or a ref), `Objection`, `Plugin` and its hooks, `definePlugin`, `PluginInit`, `PLUGIN_API`. |
 | `src/run.ts` | The phase runner: `survey`, `plan`, `decide`, `recheck`, `clean`; hook time limits; the core's own objections; nesting. |
-| `src/roots.ts` | Containment: `containedIn`, `boundBy`, `linkedCheckouts`, `linkedWorktreeOf`. |
+| `src/roots.ts` | Containment: `containedIn`, `boundBy`, `linkedCheckouts`, `linkedWorktreeOf`; which roots a plugin may have: `rootProblem`, `acceptRoots`. |
 | `src/kit.ts` | The plugin kit: `pluginKit`, the helpers, and the binding the core does each run. |
 | `src/plan.ts` | The plan and receipt schemas (plan version 2, receipt version 1), and the upgrade of a version 1 plan. |
 | `src/registry.ts` | `BUILT_IN_PLUGINS` in run order (`git`, `cargo`, `node`, `orca`), and `--plugin` / `--skip-plugin`. |
@@ -71,8 +71,12 @@ flowchart LR
   DD --> REC[receipt]
 ```
 
-1. **detect.** Each plugin says whether it applies. A throw or a time-out
-   leaves it out with a warning.
+1. **detect.** Each plugin says whether it applies: `true`, `false`, or
+   `{ active, note }`. The survey keeps every note, whether the plugin runs or
+   not, and `status` prints each as a warning naming the plugin. A throw, a
+   time-out, or any other answer leaves it out with a warning. Every hook's
+   `ctx.targetsGiven` says whether the targets were given (on the command line
+   or in the config) or the core fell back to the current folder.
 2. **scope.** Plugins add targets: `orca` adds the repositories Orca lists.
 3. **discover.** Each plugin proposes candidates. The core drops, with a
    warning, a candidate whose owner is not the plugin proposing it, one that is
@@ -81,8 +85,12 @@ flowchart LR
    the same real path (the earlier plugin's stands, D1). Candidates in an
    `ignore` folder are left out.
 4. **roots.** Each plugin names the folders it may delete in besides the
-   targets. The core then binds every plugin's kit to its roots, the targets
-   and their linked worktrees.
+   targets: a path, or `{ path, self: true }` when the folder itself may be a
+   candidate. The core leaves out, with a warning, a root that is `/`, is or
+   holds the home folder, is a personal folder (`~/Documents`, `~/Library`,
+   `~/.ssh` and the others), is or holds a target or a linked worktree, or
+   holds `.git`, and a self root that is a symlink. It then binds every
+   plugin's kit to its accepted roots, the targets and their linked worktrees.
 5. **core objections.** `lost` gets a `discard-user-data` protest and is held;
    `unmeasured` gets an `unmeasured` protest; a path outside its owner's bounds
    is refused `outside-roots`. All are by `host-cleaner`.
@@ -114,7 +122,9 @@ path)` in `src/roots.ts`. It runs at the survey, right before `delete`, and in
 when:
 
 1. it sits strictly inside one of its owner's roots, a target, or a linked
-   worktree of a repository a target sits in (`Survey.linked`); or
+   worktree of a repository a target sits in (`Survey.linked`), or it is one
+   of its owner's self roots, not a link, that still passes the root checks;
+   or
 2. it is one of those linked worktrees (a target itself never is); or
 3. failing both, `linkedWorktreeOf(targets, path)` finds that it is, or sits
    inside, a linked worktree whose main checkout is or sits inside a target.
@@ -227,13 +237,13 @@ and receipts and the log under `~/.local/state/host-cleaner/`.
 | Topic | The design | The code |
 | --- | --- | --- |
 | Public entry | `@osdlc/host-cleaner/plugin`, with `z` re-exported | the main entry and `/testing`; plugins import zod themselves. `/plugin` is k-public-api (#1051). |
-| `kit.run`, `kit.running` | `kit.run(argv)`, `kit.running(name)` | `kit.run` requires `opts.signal`; `kit.running` requires `ctx`, and also takes `{ in: folder }` |
+| `kit.run`, `kit.running` | `kit.run(argv)`, `kit.running(name)` | `kit.run` requires `opts.signal`; `kit.running` requires `ctx` and takes `{ name }`, matched against a word of each `ps` command line (`commandHasName`), or `{ in: folder }` |
 | `kit.idle` | how long since anything changed | returns `{ unmeasured: false, newestMs, hours }` or `{ unmeasured: true }` |
 | Kit helpers | the design's list | adds `kit.size` and `kit.owner`; `kit.remove` takes an optional `ctx` |
 | Binding | a per-call argument | per-kit state the core sets each run |
 | Contract suite | checks that `delete` returns a sentence | does not check that `delete` returns one. For `cargo` and `node`, the escaped delete is refused by their own re-check before `kit.remove` is reached. |
 | Nesting | an inner refusal refuses the outer (D1) | any inner candidate that does not run blocks the outer, and the reason names it (owner's decision) |
-| Containment | inside the plugin's roots or a target (D10) | also inside a linked worktree of a target's repository, or one whose main checkout is in a target (owner's decision) |
+| Containment | inside the plugin's roots or a target (D10) | also inside a linked worktree of a target's repository, or one whose main checkout is in a target, and a self root itself (owner's decisions) |
 
 Not built yet, by plan phase:
 
