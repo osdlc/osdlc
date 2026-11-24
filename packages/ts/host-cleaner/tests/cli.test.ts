@@ -219,6 +219,18 @@ describe('status', () => {
     expect(r.code).toBe(2)
     expect(r.err).toContain('ghost')
   })
+
+  test('there are no profiles: --profile is an unknown option and a profiles key is refused', () => {
+    const { env, home, cwd } = setup()
+    const flag = run(['status', '--profile', 'x'], cwd, env)
+    expect(flag.code).toBe(2)
+    expect(flag.err).toContain("unknown option '--profile'")
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ profiles: { deep: { idleHours: 0 } } }))
+    const r = run(['status', '--config', config], cwd, env)
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('profiles')
+  })
 })
 
 describe('plugin settings', () => {

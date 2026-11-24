@@ -10,7 +10,7 @@ export interface Candidate {
   id: string
   /** Free-form, e.g. `worktree`, `branch`. */
   kind: string
-  /** The thing itself; for a session, its working directory. */
+  /** The thing itself. */
   path: string
   /** The plugin that deletes it, and the only one that may. */
   owner: string

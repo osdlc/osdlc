@@ -1,0 +1,15 @@
+type: object
+properties:
+  lines:
+    type: array
+    items:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { type: string, x-ref: tasks }
+        owner: { type: string, x-ref: tasks, x-ref-form: id }
+  meta:
+    type: object
+    properties:
+      parent: { type: string, x-ref: tasks }

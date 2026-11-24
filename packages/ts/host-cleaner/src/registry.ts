@@ -3,7 +3,6 @@
 import type { ArchiveOptions, Kind } from '@osdlc/repo-cleaner'
 
 import { cargoPlugin } from './cargo.ts'
-import { claudeCodePlugin } from './claude.ts'
 import { gitPlugin } from './git.ts'
 import { nodePlugin } from './node.ts'
 import { orcaPlugin } from './orca.ts'
@@ -30,7 +29,6 @@ export const FACTORIES: Readonly<Record<string, PluginFactory>> = {
   git: ({ only, archive }) => gitPlugin({ sweep: { only: [...only] }, archive }),
   cargo: ({ settings }) => cargoPlugin({ idleHours: settings.idleHours as number }),
   node: ({ settings }) => nodePlugin({ idleHours: settings.idleHours as number }),
-  'claude-code': () => claudeCodePlugin(),
   orca: ({ settings, env }) => orcaPlugin({ repos: settings.repos as boolean, env }),
 }
 

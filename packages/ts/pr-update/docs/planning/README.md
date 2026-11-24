@@ -25,10 +25,16 @@ They are never reused.
   whole stack in one run, opt-in
 - [D-0003](decisions/D-0003-survey-and-update-on-the-command-model.md): survey
   and update run on cli-tool's command model
+- [D-0004](decisions/D-0004-update-repositories-in-parallel-with-jobs.md): update
+  repositories in parallel with `--jobs`, one child process per repository
 - [D-0005](decisions/D-0005-managed-bare-mirror-checkout.md): run without a
-  local checkout from a managed bare clone (proposed)
+  local checkout from a managed bare clone
 
 ## Backlog
 
 - [B-0001](backlog/B-0001-route-the-repair-agent-through-model-routing-profiles.md):
   Route the repair agent through model-routing profiles
+- [B-0002](backlog/B-0002-a-mirror-only-checkout-value.md): A "mirror only"
+  checkout value
+- [B-0003](backlog/B-0003-require-git-ref-attempts-for-mirror-targets.md):
+  Require `git-ref` attempts for mirror targets

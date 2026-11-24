@@ -25,14 +25,7 @@ import type { ArchiveOptions, Kind } from '@osdlc/repo-cleaner'
 import { stripControls } from '@osdlc/ux'
 
 import { expandHome, ignorePaths } from './ignore.ts'
-import {
-  ConfigError,
-  applyProfile,
-  configFile,
-  hostDirs,
-  readConfig,
-  type Config,
-} from './config.ts'
+import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { FACTORIES, UnknownPlugin, selectPlugins } from './registry.ts'
 import { PLUGIN_SETTINGS, disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
@@ -78,11 +71,6 @@ const SWEEP_FLAGS = {
     kind: 'string',
     valueName: 'file',
     help: 'read this config file instead of the one in the config directory',
-  },
-  profile: {
-    kind: 'string',
-    valueName: 'name',
-    help: 'apply this profile of the config file over the rest of it',
   },
   ignore: {
     kind: 'list',
@@ -171,7 +159,6 @@ const configCli = () =>
     autoHelp: false,
     flags: {
       config: SWEEP_FLAGS.config,
-      profile: SWEEP_FLAGS.profile,
       format: {
         kind: 'enum',
         choices: ['text', 'json'] as const,
@@ -368,16 +355,10 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
-const loadConfig = (
-  v: { config?: string | undefined; profile?: string | undefined },
-  ctx: CliContext,
-): Config => {
-  const config =
-    v.config === undefined
-      ? readConfig(configFile(hostDirs(ctx.env)))
-      : readConfig(resolve(ctx.cwd, v.config), { required: true })
-  return v.profile === undefined ? config : applyProfile(config, v.profile)
-}
+const loadConfig = (v: { config?: string | undefined }, ctx: CliContext): Config =>
+  v.config === undefined
+    ? readConfig(configFile(hostDirs(ctx.env)))
+    : readConfig(resolve(ctx.cwd, v.config), { required: true })
 
 /** `--plugin` and its alias `--adapter`, as one list; undefined when neither is given. */
 const wanted = (v: SweepValues): string[] | undefined =>
@@ -385,15 +366,9 @@ const wanted = (v: SweepValues): string[] | undefined =>
     ? undefined
     : [...(v.plugin ?? []), ...(v.adapter ?? [])]
 
-/** The plugin names in `plugins` and in every profile's `plugins` (as `profiles.<p>.plugins.<name>`) that `known` refuses. */
-function unknownPlugins(config: Config, known: (name: string) => boolean): string[] {
-  const inProfiles = Object.entries(config.profiles).flatMap(([p, profile]) =>
-    Object.keys(profile.plugins ?? {})
-      .filter((n) => !known(n))
-      .map((n) => `profiles.${p}.plugins.${n}`),
-  )
-  return [...Object.keys(config.plugins).filter((n) => !known(n)), ...inProfiles]
-}
+/** The plugin names in `plugins` that `known` refuses. */
+const unknownPlugins = (config: Config, known: (name: string) => boolean): string[] =>
+  Object.keys(config.plugins).filter((n) => !known(n))
 
 /**
  * The plugins this run uses: the shipped ones built from the config (the `git`
@@ -537,7 +512,6 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
       ctx.io.stdout(
         JSON.stringify(
           {
-            profile: v.profile ?? null,
             targets: config.targets,
             ignore: config.ignore,
             idleHours: config.idleHours ?? null,
@@ -551,7 +525,6 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
     }
     const list = (xs: readonly string[]): string => (xs.length > 0 ? xs.join(', ') : '(none)')
     const lines = [
-      ...(v.profile === undefined ? [] : [`profile: ${v.profile}`]),
       `targets: ${list(config.targets)}`,
       `ignore: ${list(config.ignore)}`,
       `idleHours: ${config.idleHours ?? '(not set)'}`,
