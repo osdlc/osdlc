@@ -578,12 +578,12 @@ describe('x-ref', () => {
     assert.ok(has(errors(), 'tag: x-ref names unknown type "ghost"'))
   })
 
-  test('an x-ref inside a nested object fails', () => {
+  test('an x-ref where no value is reached fails', () => {
     put(
       'tags/tags.schema.yaml',
-      `${TAGS_SCHEMA}  meta:\n    properties:\n      by: { x-ref: notes }\n`,
+      `${TAGS_SCHEMA}  meta:\n    allOf:\n      - properties:\n          by: { x-ref: notes }\n`,
     )
-    assert.ok(has(errors(), 'properties.meta.properties.by: v0 defines x-ref only'))
+    assert.ok(has(errors(), 'properties.meta.allOf.0.properties.by: x-ref sits only'))
   })
 })
 

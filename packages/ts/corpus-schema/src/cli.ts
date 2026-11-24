@@ -4,22 +4,25 @@
  *
  *   corpus-schema validate [--fix] [--strict] [--no-rules] <folder>...
  *   corpus-schema sync [<folder>...]
+ *   corpus-schema types [--out <file>] <folder>
  *
  * `validate` checks every corpus at or below each folder. `sync` writes each one's `_references/`
  * copies, the folder defaulting to `.`. After a corpus passes, `validate` runs the rules of the
- * corpora it extends, unless `--no-rules`. Exits 1 on any error, or with `--strict` on any warning,
- * and 2 on bad usage.
+ * corpora it extends, unless `--no-rules`. `types` writes the TypeScript types of the one corpus
+ * at or below the folder to stdout or `--out`. Exits 1 on any error, or with `--strict` on any
+ * warning, and 2 on bad usage.
  */
-import { existsSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { loadCorpus } from './load.ts'
 import { runRules } from './rules.ts'
 import { namedRoots, syncCorpus } from './sync.ts'
+import { generateTypes } from './types.ts'
 import { findCorpora, validateCorpus } from './validate.ts'
 
 const USAGE =
-  'usage: corpus-schema validate [--fix] [--strict] [--no-rules] <folder>...\n       corpus-schema sync [<folder>...]\n'
+  'usage: corpus-schema validate [--fix] [--strict] [--no-rules] <folder>...\n       corpus-schema sync [<folder>...]\n       corpus-schema types [--out <file>] <folder>\n'
 const usage = (): never => {
   process.stderr.write(USAGE)
   process.exit(2)
@@ -33,6 +36,7 @@ const parse = () => {
         fix: { type: 'boolean' },
         strict: { type: 'boolean' },
         'no-rules': { type: 'boolean' },
+        out: { type: 'string' },
       },
     })
   } catch {
@@ -44,6 +48,33 @@ const fix = parsed.values.fix === true
 const strict = parsed.values.strict === true
 const noRules = parsed.values['no-rules'] === true
 const [verb, ...args] = parsed.positionals
+const out = parsed.values.out
+if (verb === 'types') {
+  if (args.length !== 1 || fix || strict || noRules) usage()
+  const [dir] = args as [string]
+  const found = existsSync(dir) && statSync(dir).isDirectory() ? findCorpora(dir) : []
+  if (found.length !== 1) {
+    const how = found.length === 0 ? 'no' : 'more than one'
+    process.stderr.write(`${dir}: ${how} corpus root file at or below it\n`)
+    process.exit(1)
+  }
+  const model = loadCorpus(found[0] as string, { bodies: false })
+  for (const e of model.errors) process.stderr.write(`${e}\n`)
+  const text = generateTypes(model)
+  if (model.errors.length > 0) process.exit(1)
+  try {
+    if (out === undefined)
+      await new Promise<void>((done, fail) =>
+        process.stdout.write(text, (e) => (e ? fail(e) : done())),
+      )
+    else writeFileSync(out, text)
+  } catch (e) {
+    process.stderr.write(`${out ?? 'stdout'}: cannot write (${(e as Error).message})\n`)
+    process.exit(1)
+  }
+  process.exit(0)
+}
+if (out !== undefined) usage()
 if (verb === 'validate' ? args.length === 0 : verb !== 'sync' || fix || strict || noRules) usage()
 const dirs = args.length === 0 ? ['.'] : args
 

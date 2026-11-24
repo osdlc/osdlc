@@ -28,7 +28,7 @@ const cli = (...args: string[]): { status: number | null; stdout: string; stderr
   return { status: r.status, stdout: r.stdout, stderr: r.stderr }
 }
 const USAGE =
-  'usage: corpus-schema validate [--fix] [--strict] [--no-rules] <folder>...\n       corpus-schema sync [<folder>...]\n'
+  'usage: corpus-schema validate [--fix] [--strict] [--no-rules] <folder>...\n       corpus-schema sync [<folder>...]\n       corpus-schema types [--out <file>] <folder>\n'
 const corpus = (rel: string, id: string): void => {
   put(
     `${rel}/${basename(rel)}.corpus-schema.yaml`,

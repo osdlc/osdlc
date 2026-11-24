@@ -21,6 +21,7 @@ import {
   type FieldRef,
   findCorpora,
   fold,
+  generateTypes,
   getCorpus,
   getRecord,
   getType,
@@ -236,6 +237,12 @@ describe('loading a corpus as data', () => {
     const targets: TypeRef[] = ref?.targets ?? []
     expect([form, targets]).toEqual(['id', [{ corpus: '', type: 'authors', name: 'authors' }]])
     expect(getType(corpus, 'authors')?.title).toBe('Author')
+  })
+
+  test('generateTypes writes the types of the records', () => {
+    const source: string = generateTypes(loadCorpus(readingList()))
+    expect(source).toContain('export interface Books {')
+    expect(source).toContain('author: Ref<"authors">')
   })
 
   test('a record holds its data, its body, its references, its links and its backlinks', () => {

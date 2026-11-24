@@ -19,7 +19,7 @@ export const CandidateSchema = z.object({
   bytes: z.number().optional(),
   evidence: z.record(z.string(), z.unknown()),
   requires: z.array(z.string()).optional(),
-  unattended: z.boolean().optional(),
+  held: z.boolean().optional(),
 })
 
 export const ObjectionSchema = z.object({
