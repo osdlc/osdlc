@@ -406,7 +406,7 @@ describe('plan and clean', () => {
 
   test('--pick adds a candidate held for review to the default; --spare takes one away', () => {
     const { env, cwd } = setup()
-    const held = fake('held', { candidate: { unattended: false } })
+    const held = fake('held', { candidate: { held: true } })
     const plain = fake('plain')
     const plugins = [held, plain]
     const ran = (argv: string[]) =>

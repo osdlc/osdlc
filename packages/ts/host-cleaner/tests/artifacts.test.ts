@@ -140,9 +140,9 @@ describe('cargo plugin', () => {
       id: `artifact:${join(root, 'target')}`,
       kind: 'artifact',
       owner: 'cargo',
-      unattended: true,
-      evidence: { kind: 'cargo-target', checkout: root, unattended: true },
+      evidence: { kind: 'cargo-target', checkout: root },
     })
+    expect(found[0]!.held).toBeUndefined()
     expect(found[0]!.bytes).toBeGreaterThanOrEqual(1000)
 
     rmSync(join(root, 'target'), { recursive: true })
@@ -214,7 +214,7 @@ describe('cargo plugin', () => {
     const off = cargo(root, { command: fakeCargo({ incremental: false }) }).candidates
     expect(off.map((c) => c.evidence.kind)).toEqual(['cargo-incremental'])
     expect(off[0]!.id).toBe(`artifact:${join(root, 'target', 'debug', 'incremental')}`)
-    expect(off[0]!.evidence.unattended).toBe(false)
+    expect(off[0]!.held).toBe(true)
     expect(cargo(root, { command: fakeCargo({ incremental: true }) }).candidates).toEqual([])
   })
 
@@ -329,7 +329,7 @@ describe('node plugin', () => {
     expect(found[0]).toMatchObject({
       id: `artifact:${join(wt, 'node_modules')}`,
       owner: 'node',
-      evidence: { kind: 'node-modules', checkout: wt, unattended: true },
+      evidence: { kind: 'node-modules', checkout: wt },
     })
     expect(found[0]!.bytes).toBeGreaterThanOrEqual(2000)
   })
