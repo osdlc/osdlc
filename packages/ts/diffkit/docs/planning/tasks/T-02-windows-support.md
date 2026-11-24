@@ -15,8 +15,8 @@ The README can say that the package works on Windows, because CI runs it there.
 
 The README says Linux and macOS are tested and Windows is not. The package runs `git` and `gh`
 through argv and reads files with `join(cwd, path)`, and has no platform branch, so it may work.
-Its tests build real repositories and have not been run on Windows. The repository's Windows
-tier-2 workflow does not include it.
+Its tests build real repositories. The repository's Windows tier-2 workflow now includes it, so
+the tests run on Windows; the results of the next run are pending.
 
 ## Approach
 

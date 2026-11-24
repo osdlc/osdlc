@@ -164,8 +164,8 @@ The [tool comparison](./docs/guide/tool-comparison.md) has the detail and says w
 
 - Node.js `^22.22.2`, `^24.15.0` or `>=26.0.0`. The repository's CI runs the tests on Node 22, 24
   and 26. Bun is not tested.
-- Linux and macOS are tested. Windows is not tested. The package starts `git`, `gh` and `lizard`
-  as programs and handles paths through one helper, but nothing has run it there.
+- Linux and macOS are tested. The tests run on Windows in CI; the first results are pending. The
+  package starts `git`, `gh` and `lizard` as programs and handles paths through one helper.
 - `git` on `PATH` for anything that reads history. `gh` for pull requests. Neither is needed for
   `count` or for the scanner.
 

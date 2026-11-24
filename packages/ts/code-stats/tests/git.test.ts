@@ -187,14 +187,20 @@ describe('resolveChange and readDiff', () => {
   })
 })
 
+const WINDOWS = process.platform === 'win32'
+
 describe('untracked files in the working-tree diff', () => {
+  // Windows forbids `"`, `\` and control characters in a file name.
+  const ODD_NAMES: Record<string, string> = {
+    'é "quoted"\\name.md': '# hi\n',
+    'tab\there.txt': 'x\n',
+  }
   const FILES: Record<string, string | Buffer> = {
     'text.ts': 'export const a = 1\nexport const b = 2\n',
     'one line.txt': 'one',
     'crlf.txt': 'a\r\nb\r\n',
     'empty.txt': '',
-    'é "quoted"\\name.md': '# hi\n',
-    'tab\there.txt': 'x\n',
+    ...(WINDOWS ? {} : ODD_NAMES),
     'bin.dat': Buffer.from([1, 0, 2, 0x0a, 3]),
     'forced.lock': 'text but -diff\n',
     'forced.bin': Buffer.from('a\0b\n'),
@@ -207,10 +213,11 @@ describe('untracked files in the working-tree diff', () => {
     r.commit('one', { '.gitattributes': '*.lock -diff\n*.bin diff\n' })
     r.write(FILES)
     chmodSync(join(r.dir, 'run.sh'), 0o755)
-    symlinkSync('text.ts', join(r.dir, 'link'))
+    // Windows has no executable bit, and a symlink there needs a privilege.
+    if (!WINDOWS) symlinkSync('text.ts', join(r.dir, 'link'))
     const repo = r.open()
     const untracked = repo.git.lsFiles({ others: true, excludeStandard: true })
-    expect(untracked).toHaveLength(Object.keys(FILES).length + 1)
+    expect(untracked).toHaveLength(Object.keys(FILES).length + (WINDOWS ? 0 : 1))
     const parsed = parseDiff(readDiff(repo, resolveChange(repo, { kind: 'worktree' })))
     expect(parsed.map((f) => f.path).sort()).toEqual([...untracked].sort())
     expect(
@@ -219,7 +226,7 @@ describe('untracked files in the working-tree diff', () => {
         .map((f) => f.path)
         .sort(),
     ).toEqual(['bin.dat', 'forced.lock'])
-    expect(parsed.find((f) => f.path === 'link')?.entry).toBe('symlink')
+    if (!WINDOWS) expect(parsed.find((f) => f.path === 'link')?.entry).toBe('symlink')
     expect(parsed.find((f) => f.path === 'crlf.txt')?.added.map((l) => l.text)).toEqual(['a', 'b'])
   })
 })

@@ -14,8 +14,9 @@ The README can say Windows is tested, because the tests ran there.
 ## Today
 
 The tests run on Linux and macOS. The package starts `git`, `gh` and `lizard`, reads `.gitignore`
-and `.gitattributes` files, and turns paths to `/` form in one helper, `src/paths.ts`. No test has
-run on Windows, and the package is not in the home's Windows tier-2 workflow.
+and `.gitattributes` files, and turns paths to `/` form in one helper, `src/paths.ts`. The package is in the home's Windows tier-2 workflow, so its tests now run on Windows; the
+results of the next run are pending, and the fixes so far are path normalisation in `countTree` and
+Windows skips in the tests.
 
 ## Approach
 
