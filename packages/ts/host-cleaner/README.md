@@ -176,6 +176,13 @@ same folders as Linux:
 | Log | `~/.local/state/host-cleaner/host-cleaner.log` | `HOST_CLEANER_LOGS_DIR`, or `XDG_STATE_HOME` |
 
 `HOST_CLEANER_ROOT` moves all three folders, which is useful for tests.
+`HOST_CLEANER_CONVENTION=native` puts them back in macOS's own folders under
+`~/Library`. Windows has no `xdg` folders and keeps its own: the config is
+`%APPDATA%\host-cleaner\config.json`.
+
+0.2 kept the macOS config in `~/Library/Application Support/host-cleaner/`.
+When only that file exists, host-cleaner reads it and warns you to move it to
+`~/.config/host-cleaner/`.
 
 The config file holds the targets and each plugin's settings:
 
@@ -207,9 +214,10 @@ Two settings sit at the top of the config and apply to every plugin:
 - `idleHours` is the default for every plugin that has the setting and does not
   set its own. `0` is allowed and makes every idle-checked artifact a candidate.
 
-`host-cleaner config` prints the config file it read, then every plugin's
-effective settings: the value, and whether the file set it or it is the
-default. `--format json` prints the values.
+`host-cleaner config` prints the config file it looked for (and says when it
+is missing, so the defaults apply), then every plugin's effective settings:
+the value, and whether the file set it or it is the default. `--format json`
+prints the values, with `file` and `fileExists`.
 
 ### Exit codes
 

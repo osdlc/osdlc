@@ -4,7 +4,7 @@
  * exits 2. Exit codes are in README.md, directories in `config.ts`.
  */
 
-import { appendFileSync, mkdirSync, readSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
@@ -25,7 +25,14 @@ import type { Kind } from '@osdlc/repo-cleaner'
 import { stripControls } from '@osdlc/ux'
 
 import { expandHome, ignorePaths } from './ignore.ts'
-import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
+import {
+  ConfigError,
+  configFile,
+  hostDirs,
+  oldConfigFile,
+  readConfig,
+  type Config,
+} from './config.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { FACTORIES, UnknownPlugin, selectPlugins } from './registry.ts'
 import { PLUGIN_SETTINGS, disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
@@ -342,12 +349,45 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
-/** The config file this run reads: `--config`, else `config.json` in the config directory. */
-const configPath = (v: { config?: string | undefined }, ctx: CliContext): string =>
-  v.config === undefined ? configFile(hostDirs(ctx.env)) : resolve(ctx.cwd, v.config)
+interface ConfigSource {
+  path: string
+  /** Given with `--config`, so it must exist. */
+  named: boolean
+  exists: boolean
+  /** Set when `path` is the file 0.2 left in macOS's native folder: where it belongs now. */
+  moveTo?: string
+}
 
-const loadConfig = (v: { config?: string | undefined }, ctx: CliContext): Config =>
-  readConfig(configPath(v, ctx), { required: v.config !== undefined })
+/**
+ * The config file this run reads: `--config`; else `config.json` in the config
+ * directory, or the one 0.2 used when only that one exists.
+ */
+function findConfig(v: { config?: string | undefined }, ctx: CliContext): ConfigSource {
+  if (v.config !== undefined) {
+    const path = resolve(ctx.cwd, v.config)
+    return { path, named: true, exists: existsSync(path) }
+  }
+  const path = configFile(hostDirs(ctx.env))
+  if (existsSync(path)) return { path, named: false, exists: true }
+  const old = oldConfigFile(ctx.env)
+  return old === undefined
+    ? { path, named: false, exists: false }
+    : { path: old, named: false, exists: true, moveTo: path }
+}
+
+function loadConfig(
+  v: { config?: string | undefined },
+  ctx: CliContext,
+  name: string,
+): { source: ConfigSource; config: Config } {
+  const source = findConfig(v, ctx)
+  if (source.moveTo !== undefined) {
+    writeWarnings(ctx, name, [
+      `reading ${source.path}, where host-cleaner 0.2 kept its config; move it to ${source.moveTo}`,
+    ])
+  }
+  return { source, config: readConfig(source.path, { required: source.named }) }
+}
 
 /** `--plugin` and its alias `--adapter`, as one list; undefined when neither is given. */
 const wanted = (v: SweepValues): string[] | undefined =>
@@ -443,7 +483,7 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   const v = parsed.values
   let s: ReturnType<typeof survey>
   try {
-    const config = loadConfig(v, ctx)
+    const { config } = loadConfig(v, ctx, name)
     s = survey(
       pluginsFor(v, config, deps, ctx),
       contextFor(parsed.positionals, config, ctx, [], v.ignore),
@@ -473,7 +513,7 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
-    const config = loadConfig(v, ctx)
+    const { source, config } = loadConfig(v, ctx, name)
     const unused = unknownPlugins(config, (n) => Object.hasOwn(PLUGIN_SETTINGS, n))
     if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
     const settings = effectiveSettings(config.plugins, config)
@@ -487,6 +527,8 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
       ctx.io.stdout(
         JSON.stringify(
           {
+            file: source.path,
+            fileExists: source.exists,
             targets: config.targets,
             ignore: config.ignore,
             idleHours: config.idleHours ?? null,
@@ -500,7 +542,7 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
     }
     const list = (xs: readonly string[]): string => (xs.length > 0 ? xs.join(', ') : '(none)')
     const lines = [
-      `file: ${configPath(v, ctx)}`,
+      `file: ${source.path}${source.exists ? '' : '  (not found: defaults)'}`,
       `targets: ${list(config.targets)}`,
       `ignore: ${list(config.ignore)}`,
       `idleHours: ${config.idleHours ?? '(not set)'}`,
@@ -527,7 +569,7 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   const v = parsed.values
   let plan: Plan
   try {
-    const config = loadConfig(v, ctx)
+    const { config } = loadConfig(v, ctx, name)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = survey(pluginsFor(v, config, deps, ctx), cctx)
     writeWarnings(ctx, name, s.warnings)
@@ -672,7 +714,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let cctx: Ctx
   let preview: Decision
   try {
-    const config = loadConfig(v, ctx)
+    const { config } = loadConfig(v, ctx, name)
     plugins = pluginsFor(v, config, deps, ctx)
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)

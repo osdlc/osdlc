@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, test } from 'vitest'
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -11,14 +12,14 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, type MainDeps } from '../src/cli.ts'
-import { configFile, hostDirs } from '../src/config.ts'
+import { configFile, hostDirs, oldConfigFile } from '../src/config.ts'
 import type { Candidate, Objection, Plugin } from '../src/index.ts'
 
 const cleanups: Array<() => void> = []
@@ -292,11 +293,26 @@ describe('folders', () => {
     expect(hostDirs({ HOST_CLEANER_CONFIG_DIR: '/c' }, opts).config).toBe('/c/host-cleaner')
   })
 
-  test('config with no --config names config.json in the config folder', () => {
+  test('config names the default config file and says it is missing', () => {
     const { env, cwd } = setup()
     const r = run(['config'], cwd, env)
     expect(r.code).toBe(0)
-    expect(r.out).toContain(`file: ${configFile(hostDirs(env))}\n`)
+    expect(r.out).toContain(`file: ${configFile(hostDirs(env))}  (not found: defaults)\n`)
+    const json = JSON.parse(run(['config', '--format', 'json'], cwd, env).out)
+    expect(json).toMatchObject({ file: configFile(hostDirs(env)), fileExists: false })
+  })
+
+  test('the macOS config 0.2 left under ~/Library is found when the paths differ', () => {
+    const home = mkdtempSync(join(tmpdir(), 'hc-home-'))
+    cleanups.push(() => rmSync(home, { recursive: true, force: true }))
+    const opts = { platform: 'darwin', home }
+    expect(oldConfigFile({}, opts)).toBeUndefined()
+    const old = join(home, 'Library', 'Application Support', 'host-cleaner', 'config.json')
+    mkdirSync(dirname(old), { recursive: true })
+    writeFileSync(old, '{}')
+    expect(oldConfigFile({}, opts)).toBe(old)
+    expect(oldConfigFile({ HOST_CLEANER_CONVENTION: 'native' }, opts)).toBeUndefined()
+    expect(oldConfigFile({}, { platform: 'linux', home })).toBeUndefined()
   })
 })
 
