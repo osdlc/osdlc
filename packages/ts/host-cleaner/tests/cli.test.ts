@@ -295,11 +295,12 @@ describe('folders', () => {
 
   test('config names the default config file and says it is missing', () => {
     const { env, cwd } = setup()
+    const file = configFile(hostDirs(env))
     const r = run(['config'], cwd, env)
     expect(r.code).toBe(0)
-    expect(r.out).toContain(`file: ${configFile(hostDirs(env))}  (not found: defaults)\n`)
+    expect(r.out).toContain(`file: ${file}  (not found: defaults)\n`)
     const json = JSON.parse(run(['config', '--format', 'json'], cwd, env).out)
-    expect(json).toMatchObject({ file: configFile(hostDirs(env)), fileExists: false })
+    expect(json).toMatchObject({ file, fileExists: false })
   })
 
   test('the macOS config 0.2 left under ~/Library is found when the paths differ', () => {
