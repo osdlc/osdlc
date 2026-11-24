@@ -51,6 +51,7 @@ const PLAIN_PATCH = [
   '--dst-prefix=b/',
   '--no-relative',
   '--submodule=short',
+  '--inter-hunk-context=0',
   '--unified=3',
 ]
 
@@ -246,15 +247,19 @@ describe("diffText, diffAddedFile and diffNameStatus under the user's diff confi
       expect(fx.git.diffText(undefined, { context: 0 })).toContain('\n@@ -6 +5,0 @@\n')
       expect(fx.git.diffText(undefined, { context: 1 })).toContain('\n@@ -5,3 +5,2 @@\n')
       expect(fx.git.diffText()).toContain('\n@@ -3,7 +3,6 @@\n')
-      expect(fx.git.diffAddedFile('new.md', { context: 0 })).toContain('+y')
+      // A diff from /dev/null has no context lines, so context changes nothing.
+      expect(fx.git.diffAddedFile('new.md', { context: 0 })).toBe(fx.git.diffAddedFile('new.md'))
       const asyncGit = new AsyncGit(fx.dir)
       expect(await asyncGit.diffText(undefined, { context: 0 })).toBe(
         fx.git.diffText(undefined, { context: 0 }),
       )
 
-      for (const bad of [-1, 1.5, Number.NaN]) {
-        expect(() => fx.git.diffText(undefined, { context: bad })).toThrow(TypeError)
+      for (const bad of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+        // The message names the value as given: `NaN`, not `null`.
+        const message = `context must be a non-negative integer (got ${String(bad)})`
+        expect(() => fx.git.diffText(undefined, { context: bad })).toThrow(message)
         expect(() => fx.git.diffAddedFile('new.md', { context: bad })).toThrow(TypeError)
+        expect(() => fx.git.diffAddedFile('new.md', { context: bad })).toThrow(message)
       }
     } finally {
       fx.cleanup()
@@ -276,6 +281,80 @@ describe("diffText, diffAddedFile and diffNameStatus under the user's diff confi
       expect(renamed).toContain('rename from old.md\nrename to moved.md')
       expect(renamed).not.toContain('deleted file mode')
     } finally {
+      fx.cleanup()
+    }
+  })
+
+  test('findRenames reads a copy as a plain add under diff.renames=copies', () => {
+    const fx = makeGitFixture()
+    try {
+      const body = Array.from({ length: 10 }, (_, i) => `line ${i}\n`).join('')
+      fx.commit('first', { 'old.md': body })
+      fx.git.configSet('diff.renames', 'copies')
+      // Without --find-copies-harder git takes a copy's source only from a
+      // changed file, so change old.md as well.
+      writeFileSync(join(fx.dir, 'old.md'), `${body}more\n`)
+      writeFileSync(join(fx.dir, 'copy.md'), body)
+      fx.git.add(['.'])
+
+      const plain = fx.git.diffText(undefined, { staged: true })
+      expect(plain).toContain('copy from old.md\ncopy to copy.md')
+
+      const pinned = fx.git.diffText(undefined, { staged: true, findRenames: true })
+      expect(pinned).not.toContain('copy from')
+      expect(pinned).toContain('diff --git a/copy.md b/copy.md\nnew file mode')
+    } finally {
+      fx.cleanup()
+    }
+  })
+
+  /** A 12-line `a.md` with lines 5 and 9 changed in the working tree, under `config`. */
+  function twoHunksUnder(config: Record<string, string>) {
+    const fx = makeGitFixture()
+    const before = Array.from({ length: 12 }, (_, i) => `${i + 1}\n`).join('')
+    fx.commit('first', { 'a.md': before })
+    for (const [key, value] of Object.entries(config)) fx.git.configSet(key, value)
+    writeFileSync(join(fx.dir, 'a.md'), before.replace('5\n', 'five\n').replace('9\n', 'nine\n'))
+    writeFileSync(join(fx.dir, 'new.md'), 'x\ny\n')
+    return fx
+  }
+
+  /** The `@@` lines of a patch. */
+  const hunks = (text: string) => text.split('\n').filter((l) => l.startsWith('@@'))
+
+  test('context: 0 keeps two hunks apart under diff.interHunkContext', async () => {
+    const fx = twoHunksUnder({ 'diff.interHunkContext': '10' })
+    try {
+      // Unpinned, git merges the hunks and prints lines 6 to 8 between them.
+      const merged = fx.git.rawChecked(['diff', '--unified=0']).stdout
+      expect(hunks(merged)).toEqual(['@@ -5,5 +5,5 @@'])
+
+      const text = fx.git.diffText(undefined, { context: 0 })
+      expect(hunks(text)).toEqual(['@@ -5 +5 @@', '@@ -9 +9 @@'])
+      expect(text).not.toContain('\n 6\n')
+      expect(await new AsyncGit(fx.dir).diffText(undefined, { context: 0 })).toBe(text)
+    } finally {
+      fx.cleanup()
+    }
+  })
+
+  test('GIT_DIFF_OPTS in the environment does not change the context', async () => {
+    const fx = twoHunksUnder({})
+    const saved = process.env.GIT_DIFF_OPTS
+    process.env.GIT_DIFF_OPTS = '-u2'
+    try {
+      // Unpinned, git reads -u2 over --unified=0.
+      const widened = fx.git.rawChecked(['diff', '--unified=0']).stdout
+      expect(hunks(widened)).toEqual(['@@ -3,9 +3,9 @@'])
+
+      const text = fx.git.diffText(undefined, { context: 0 })
+      expect(hunks(text)).toEqual(['@@ -5 +5 @@', '@@ -9 +9 @@'])
+      expect(fx.git.diffText()).toContain('\n@@ -2,11 +2,11 @@\n')
+      expect(await new AsyncGit(fx.dir).diffText(undefined, { context: 0 })).toBe(text)
+      expect(fx.git.diffAddedFile('new.md')).toContain('\n@@ -0,0 +1,2 @@\n+x\n+y\n')
+    } finally {
+      if (saved === undefined) delete process.env.GIT_DIFF_OPTS
+      else process.env.GIT_DIFF_OPTS = saved
       fx.cleanup()
     }
   })
@@ -331,10 +410,14 @@ describe('call options on revParse, diffText and diffAddedFile', () => {
       ['diff', ...PLAIN_PATCH, '--cached', 'HEAD', '--', 'a.md'],
       ['diff', ...PLAIN_PATCH, '--no-index', '--', '/dev/null', 'a.md'],
     ])
-    for (const i of [0, 2, 3]) {
-      expect(r.calls[i]!.opts.timeoutMs).toBe(5000)
-      expect(r.calls[i]!.opts.env).toEqual({ PROBE: '1' })
-    }
+    for (const i of [0, 2, 3]) expect(r.calls[i]!.opts.timeoutMs).toBe(5000)
+    // The diff verbs remove GIT_DIFF_OPTS: the key is there, set to undefined.
+    expect(r.calls.map((c) => c.opts.env)).toStrictEqual([
+      { PROBE: '1' },
+      undefined,
+      { PROBE: '1', GIT_DIFF_OPTS: undefined },
+      { PROBE: '1', GIT_DIFF_OPTS: undefined },
+    ])
     expect(r.calls[1]!.opts.timeoutMs).toBeUndefined()
   })
 
@@ -349,10 +432,12 @@ describe('call options on revParse, diffText and diffAddedFile', () => {
       ['diff', ...PLAIN_PATCH, '--cached', 'HEAD', '--', 'a.md'],
       ['diff', ...PLAIN_PATCH, '--no-index', '--', '/dev/null', 'a.md'],
     ])
-    for (const c of r.calls) {
-      expect(c.opts.timeoutMs).toBe(5000)
-      expect(c.opts.env).toEqual({ PROBE: '1' })
-    }
+    for (const c of r.calls) expect(c.opts.timeoutMs).toBe(5000)
+    expect(r.calls.map((c) => c.opts.env)).toStrictEqual([
+      { PROBE: '1' },
+      { PROBE: '1', GIT_DIFF_OPTS: undefined },
+      { PROBE: '1', GIT_DIFF_OPTS: undefined },
+    ])
   })
 })
 
