@@ -633,18 +633,16 @@ const machineLockStale: StaleRule<SectionHolder> = (held) =>
   writerExited(held) || writerLongGone(held)
 
 /**
- * Write `answer` into the machine file as a compare-and-swap against `before` (the file as read
- * before asking, or null for none; default: read now), keeping the file's other keys and
- * comments. When the swap loses to another run's write: with `yield`, a file that now holds a
- * `checkout` is what won, and is returned unwritten; otherwise, or when it holds none, the write
- * is tried again on the new file.
+ * Write `answer` into the machine file, keeping the file's other keys and comments. With `yield`,
+ * a file that already holds a `checkout` is left as it is and returned unwritten: another run
+ * answered first.
  *
- * The check and the write hold the lock file `<machine file>.lock` (`@osdlc/file-lock`), taken
- * over once its holder has exited or it is {@link MACHINE_LOCK_STALE_MS} old: the etag check and
- * the rename are two steps, so without it two processes could both pass the check, and the
- * second would overwrite the first answer. With it, of two runs that read the same file, the
- * first to write wins, and the other sees the conflict. The question is asked before, outside the
- * lock.
+ * The read and the write hold the lock file `<machine file>.lock` (`@osdlc/file-lock`), taken
+ * over once its holder has exited or it is {@link MACHINE_LOCK_STALE_MS} old, so of two runs that
+ * answer at once, the first to take the lock writes, and the other reads that answer. The write
+ * is also a compare-and-swap against the file as read under the lock, tried again on the new file
+ * when something that takes no lock (an editor, say) changed it. The question is asked before,
+ * outside the lock.
  *
  * @returns the machine file as it stands, and whether this write is what it holds.
  * @throws ConfigInvalidError from {@link editableMachineFile}, before anything is written.
@@ -653,15 +651,20 @@ const machineLockStale: StaleRule<SectionHolder> = (held) =>
 export function writeMirrorAnswer(
   file: MachineConfigFile<typeof machineConfigSchema>,
   answer: MirrorAnswer,
-  opts: { before?: { text: string; etag: string } | null; yield?: boolean } = {},
+  opts: { yield?: boolean } = {},
 ): { config: MachineConfig; wrote: boolean } {
   mkdirSync(dirname(file.path()), { recursive: true, mode: FOLDER_MODE })
   return withLock(
     `${file.path()}.lock`,
     () => {
-      let before = opts.before === undefined ? file.read() : opts.before
       for (let tries = 0; tries < 5; tries++) {
+        const before = file.read()
         const doc = editableMachineFile(file.path(), before)
+        file.clearCache()
+        if (opts.yield === true && before !== null) {
+          const now = file.load()
+          if (now.checkout !== undefined) return { config: now, wrote: false }
+        }
         doc.set('checkout', answer.checkout)
         if (answer.mirror_dir !== undefined) doc.set('mirror_dir', answer.mirror_dir)
         try {
@@ -671,10 +674,6 @@ export function writeMirrorAnswer(
         } catch (e) {
           if (!(e instanceof WriteConflictError)) throw e
         }
-        file.clearCache()
-        const now = file.load()
-        if (opts.yield === true && now.checkout !== undefined) return { config: now, wrote: false }
-        before = file.read()
       }
       throw new Error(`${file.path()} kept changing while pr-update wrote to it; run again`)
     },
@@ -850,8 +849,12 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
     return 'size unknown'
   }
 
-  /** Ask whether to clone `want`, write the answer, and return the setting that holds now. */
-  const ask = (want: readonly RepoTarget[]): MirrorSetting => {
+  /**
+   * Ask whether to clone `want`, write the answer, and return the setting that holds now. When
+   * another run saved a different answer while this one asked, `refused` says so: the run follows
+   * neither, and clones nothing.
+   */
+  const ask = (want: readonly RepoTarget[]): { setting: MirrorSetting; refused?: string } => {
     const before = file.read()
     // Never ask a question whose answer cannot be saved.
     editableMachineFile(file.path(), before)
@@ -882,22 +885,47 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
       'Do not clone: skip a repository with no checkout',
     ])
     let answer: MirrorAnswer
-    if (choice === 2) answer = { checkout: 'local' }
-    else if (choice === 1) {
+    /** Where the person said the clones go: null for none. */
+    let typedDir: string | null
+    if (choice === 2) {
+      answer = { checkout: 'local' }
+      typedDir = null
+    } else if (choice === 1) {
       const typed = opts.ask.text('Directory for the clones:').trim()
       if (typed === '') throw new MirrorDirError('no directory was given for the clones')
       const chosen = resolve(opts.cwd, expandTilde(typed, home()))
       checkMirrorDir(chosen, opts.git, owned)
       answer = { checkout: 'mirror', mirror_dir: chosen }
-    } else answer = { checkout: 'mirror' }
-    const { config, wrote } = writeMirrorAnswer(file, answer, { before, yield: true })
-    opts.notice(
-      wrote
-        ? `wrote checkout: ${answer.checkout}${answer.mirror_dir === undefined ? '' : ` and mirror_dir: ${answer.mirror_dir}`} to ${file.path()}`
-        : `another run answered first; ${file.path()} says checkout: ${config.checkout}, which this run follows`,
-    )
+      typedDir = chosen
+    } else {
+      answer = { checkout: 'mirror' }
+      typedDir = dir
+    }
+    const { config, wrote } = writeMirrorAnswer(file, answer, { yield: true })
     setting = mirrorSetting({ flag: opts.flag, env: opts.env, machine: config, home: home() })
-    return setting
+    if (wrote) {
+      opts.notice(
+        `wrote checkout: ${answer.checkout}${answer.mirror_dir === undefined ? '' : ` and mirror_dir: ${answer.mirror_dir}`} to ${file.path()}`,
+      )
+      return { setting }
+    }
+    const said = (consent: string, at: string | null): string =>
+      `checkout: ${consent}${at === null ? '' : ` (clones in ${at})`}`
+    const stored = said(
+      setting.consent ?? 'unset',
+      setting.consent === 'mirror' ? setting.dir : null,
+    )
+    if (setting.consent === answer.checkout && (typedDir === null || setting.dir === typedDir)) {
+      opts.notice(`another run saved the same answer first: ${file.path()} says ${stored}`)
+      return { setting }
+    }
+    // The person answered this run's question; another run's answer is not theirs to adopt here.
+    return {
+      setting,
+      refused:
+        `another run saved ${stored} to ${file.path()} while this run asked, not the answer given here (${said(answer.checkout, typedDir)}), so this run clones nothing; ` +
+        '`pr-update mirror enable [--mirror-dir <dir>]` or `pr-update mirror disable` changes it',
+    }
   }
 
   /**
@@ -971,6 +999,8 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
       // Only `update --apply` clones, so only it needs consent.
       const want = apply ? targets.filter((t) => t.source === null && t.github === true) : []
       let s: MirrorSetting | null = null
+      /** Why this run's targets with no checkout are not cloned, when its answer lost a race. */
+      let refused: string | null = null
       if (want.length > 0) {
         s = current()
         if (s.consent === null) {
@@ -981,9 +1011,11 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
                 `pass --mirror-dir <dir>, set ${MIRROR_DIR_ENV}, or run \`pr-update mirror enable\` (\`pr-update mirror disable\` skips such repositories)`,
             )
           }
-          s = ask(want)
+          const asked = ask(want)
+          s = asked.setting
+          refused = asked.refused ?? null
         }
-        if (s.consent === 'mirror') {
+        if (s.consent === 'mirror' && refused === null) {
           checkMirrorDir(s.dir, opts.git, owned)
           markMirrorDir(s.dir)
         }
@@ -992,7 +1024,7 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
       // targets in different orders then never hold one each while waiting for the other.
       const paths = new Set<string>()
       for (const t of targets) if (t.source === 'clone' && t.path !== null) paths.add(t.path)
-      const dir = s?.consent === 'mirror' ? s.dir : null
+      const dir = s?.consent === 'mirror' && refused === null ? s.dir : null
       if (dir !== null) for (const t of want) paths.add(finalOf(t, dir))
       for (const path of [...paths].sort()) hold(path, wait)
 
@@ -1028,7 +1060,9 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
         }
         if (!want.includes(t) || s === null) return t
         if (dir === null) {
-          const why = `no checkout on this machine, and checkout: local in ${file.path()} makes no clone`
+          const why =
+            refused ??
+            `no checkout on this machine, and checkout: local in ${file.path()} makes no clone`
           const miss = misses.get(keyOf(t))
           opts.notice(`${miss?.label ?? keyOf(t)}: ${miss?.where ?? 'no checkout found'}; ${why}`)
           return { ...t, unserved: why }

@@ -1100,12 +1100,11 @@ describe('writeMirrorAnswer', () => {
     )
   })
 
-  test('a lost race with yield uses the answer that won, and writes nothing', () => {
+  test('with yield, a file that already holds a checkout is returned, and nothing is written', () => {
     const file = fileFor()
-    const before = file.read()
     mkdirSync(dirname(file.path()), { recursive: true })
     writeFileSync(file.path(), 'checkout: local\n')
-    expect(writeMirrorAnswer(file, { checkout: 'mirror' }, { before, yield: true })).toMatchObject({
+    expect(writeMirrorAnswer(file, { checkout: 'mirror' }, { yield: true })).toMatchObject({
       wrote: false,
       config: { checkout: 'local' },
     })
@@ -1123,9 +1122,8 @@ describe('writeMirrorAnswer', () => {
     expect(readFileSync(machineFile({ env }).path(), 'utf8')).toBe(`checkout: ${winner}\n`)
   })
 
-  test('the check and the write wait for a lock another live process holds (final review)', () => {
+  test('the read and the write wait for a lock another live process holds (final review)', () => {
     const file = fileFor()
-    const before = file.read()
     mkdirSync(dirname(file.path()), { recursive: true })
     const lock = `${file.path()}.lock`
     // This process holds it, as another run would while it writes its answer.
@@ -1134,7 +1132,7 @@ describe('writeMirrorAnswer', () => {
     let now = Date.now()
     vi.spyOn(Date, 'now').mockImplementation(() => (now += 1000))
     try {
-      expect(() => writeMirrorAnswer(file, { checkout: 'mirror' }, { before })).toThrow(
+      expect(() => writeMirrorAnswer(file, { checkout: 'mirror' }, { yield: true })).toThrow(
         LockTimeoutError,
       )
     } finally {
@@ -1155,18 +1153,16 @@ describe('writeMirrorAnswer', () => {
     expect(existsSync(lock)).toBe(false)
   })
 
-  test('a lost race without yield, or to a write that set no checkout, writes again on the new file', () => {
+  test('with yield, a file with no checkout is written, its keys kept; without, a checkout is replaced', () => {
     const file = fileFor()
-    const before = file.read()
     mkdirSync(dirname(file.path()), { recursive: true })
     writeFileSync(file.path(), 'mirror_max_age_days: 3\n')
-    expect(writeMirrorAnswer(file, { checkout: 'mirror' }, { before, yield: true })).toMatchObject({
+    expect(writeMirrorAnswer(file, { checkout: 'mirror' }, { yield: true })).toMatchObject({
       wrote: true,
       config: { checkout: 'mirror', mirror_max_age_days: 3 },
     })
-    const again = file.read()
     writeFileSync(file.path(), 'checkout: local\n')
-    expect(writeMirrorAnswer(file, { checkout: 'mirror' }, { before: again })).toMatchObject({
+    expect(writeMirrorAnswer(file, { checkout: 'mirror' })).toMatchObject({
       wrote: true,
       config: { checkout: 'mirror' },
     })

@@ -41,6 +41,8 @@ import {
   cloneLockPath,
   credentialHelper,
   markMirrorDir,
+  writeMirrorAnswer,
+  type MirrorAnswer,
 } from '../src/mirror.ts'
 import { CONFIG_INVALID_EXIT } from '@osdlc/config-layers'
 import { allToolsInstalled, isolatedEnv, literal, worktreePaths } from './support.ts'
@@ -437,30 +439,81 @@ describe('the first-run question', () => {
     expect(JSON.parse(r.out).skipped[0].reason).toContain('checkout: local')
   })
 
-  test('an answer that loses the race to another run is dropped, and the run follows the one that won', async () => {
-    // Another run answers "no" while this one is still asking.
-    let answeredElsewhere = false
-    const { seams } = answering('1')
+  /**
+   * A terminal answering with `lines` that, when the question is shown, has another run save
+   * `elsewhere` to the machine file through the same locked write, as if it answered first.
+   */
+  function racing(
+    elsewhere: MirrorAnswer,
+    ...lines: string[]
+  ): { seams: CliSeams; raced: () => boolean } {
+    let raced = false
+    const { seams } = answering(...lines)
     const terminal = seams.terminal!
-    const racing: CliSeams = {
-      terminal: {
-        ...terminal,
-        write: (text) => {
-          terminal.write?.(text)
-          if (!answeredElsewhere && text.includes('Choose')) {
-            answeredElsewhere = true
-            writeMachine('checkout: local\n')
-          }
+    return {
+      seams: {
+        terminal: {
+          ...terminal,
+          write: (text) => {
+            terminal.write?.(text)
+            if (!raced && text.includes('Choose')) {
+              raced = true
+              writeMirrorAnswer(machineFile({ env }), elsewhere, { yield: true })
+            }
+          },
         },
       },
+      raced: () => raced,
     }
-    const r = await runWith(racing, {}, 'update', '--repo', 'acme/api', '--apply', '--json')
+  }
+
+  test('another run saved local while this one was answered yes: nothing is cloned, and the note says how to change it (final review)', async () => {
+    const { seams, raced } = racing({ checkout: 'local' }, '1')
+    const r = await runWith(seams, {}, 'update', '--repo', 'acme/api', '--apply', '--json')
     expect(r.code).toBe(EXIT.ok)
-    expect(answeredElsewhere).toBe(true)
+    expect(raced()).toBe(true)
     expect(readMachine()).toBe('checkout: local\n')
-    expect(r.err).toContain('another run answered first')
     expect(clonesMade()).toEqual([])
-    expect(JSON.parse(r.out).skipped[0].reason).toContain('checkout: local')
+    const reason = JSON.parse(r.out).skipped[0].reason
+    expect(reason).toContain(
+      `another run saved checkout: local to ${machinePath()} while this run asked`,
+    )
+    expect(reason).toContain('pr-update mirror enable')
+  })
+
+  test('two runs answer differently: the second, answered no, clones nothing though the first said yes (final review)', async () => {
+    const { seams, raced } = racing({ checkout: 'mirror' }, '3')
+    const r = await runWith(seams, {}, 'update', '--repo', 'acme/api', '--apply', '--json')
+    expect(r.code).toBe(EXIT.ok)
+    expect(raced()).toBe(true)
+    expect(readMachine()).toBe('checkout: mirror\n')
+    expect(clonesMade()).toEqual([])
+    const reason = JSON.parse(r.out).skipped[0].reason
+    expect(reason).toContain('another run saved checkout: mirror (clones in ')
+    expect(reason).toContain('not the answer given here (checkout: local)')
+    expect(reason).toContain('pr-update mirror disable')
+  })
+
+  test('two runs give different directories: the second clones into neither (final review)', async () => {
+    const theirs = join(scratch, 'theirs')
+    const { seams, raced } = racing({ checkout: 'mirror', mirror_dir: theirs }, '2', '~/mine')
+    const r = await runWith(seams, {}, 'update', '--repo', 'acme/api', '--apply', '--json')
+    expect(r.code).toBe(EXIT.ok)
+    expect(raced()).toBe(true)
+    expect(readMachine()).toBe(`checkout: mirror\nmirror_dir: ${theirs}\n`)
+    expect(clonesMade()).toEqual([])
+    expect(JSON.parse(r.out).skipped[0].reason).toContain(
+      `not the answer given here (checkout: mirror (clones in ${join(env.HOME!, 'mine')}))`,
+    )
+  })
+
+  test('another run saved the same answer: this run follows it and clones (final review)', async () => {
+    const { seams, raced } = racing({ checkout: 'mirror' }, '1')
+    const r = await runWith(seams, {}, 'update', '--repo', 'acme/api', '--apply', '--json')
+    expect(r.code).toBe(EXIT.ok)
+    expect(raced()).toBe(true)
+    expect(r.err).toContain('another run saved the same answer first')
+    expect(clonesMade()).toHaveLength(1)
   })
 
   test('a shallow checkout of it is named in a note and in the question', async () => {
