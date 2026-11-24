@@ -153,6 +153,59 @@ describe('status', () => {
     expect(doc.candidates.map((c: Candidate) => c.id)).toEqual(['artifact:fake'])
   })
 
+  test("a plugin's detect note is a warning line naming it, and the json carries it under notes", async () => {
+    const { env, cwd } = setup()
+    const degraded: Plugin = {
+      ...fake('orcish'),
+      detect: () => ({
+        active: true,
+        note: 'installed but not running; its worktrees are refused',
+      }),
+    }
+    const asleep: Plugin = {
+      ...fake('sleepy'),
+      detect: () => ({ active: false, note: 'not set up' }),
+    }
+    const plugins = [degraded, asleep]
+    const text = await run(['status'], cwd, env, { plugins })
+    expect(text.err).toContain('orcish: installed but not running; its worktrees are refused')
+    expect(text.err).toContain('sleepy: not set up')
+    expect(text.out).toContain('plugins: orcish\n')
+    const doc = JSON.parse((await run(['status', '--format', 'json'], cwd, env, { plugins })).out)
+    expect(doc.notes).toEqual({
+      orcish: 'installed but not running; its worktrees are refused',
+      sleepy: 'not set up',
+    })
+  })
+
+  test('targetsGiven: true for targets on the command line or in the config, false for the folder it runs in', async () => {
+    const { env, home, cwd } = setup()
+    const seen: boolean[] = []
+    const plugin: Plugin = {
+      ...fake(),
+      detect: (c) => {
+        seen.push(c.targetsGiven)
+        return true
+      },
+    }
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ targets: [cwd] }))
+    await run(['status'], cwd, env, { plugins: [plugin] })
+    await run(['status', cwd], cwd, env, { plugins: [plugin] })
+    await run(['status', '--config', config], cwd, env, { plugins: [plugin] })
+    expect(seen).toEqual([false, true, true])
+
+    // A plan keeps it, so clean --plan tells the plugins the same.
+    seen.length = 0
+    const planFile = join(home, 'plan.json')
+    await run(['plan', '-o', planFile], cwd, env, { plugins: [plugin] })
+    expect(JSON.parse(readFileSync(planFile, 'utf8')).targetsGiven).toBe(false)
+    await run(['clean', '--plan', planFile, '--dry-run'], cwd, env, { plugins: [plugin] })
+    await run(['plan', cwd, '-o', planFile], cwd, env, { plugins: [plugin] })
+    await run(['clean', '--plan', planFile, '--dry-run'], cwd, env, { plugins: [plugin] })
+    expect(seen).toEqual([false, false, true, true])
+  })
+
   test('a refused candidate is hidden unless --all-rows', async () => {
     const { env, cwd } = setup()
     const objections: Objection[] = [
@@ -290,6 +343,8 @@ describe('plugins', () => {
           detected: true,
           reason: null,
           roots: ['/cache/git'],
+          selfRoots: [],
+          note: null,
         },
         {
           name: 'cargo',
@@ -298,6 +353,8 @@ describe('plugins', () => {
           detected: false,
           reason: 'plugins.cargo.enabled is false; --plugin cargo runs it anyway',
           roots: [],
+          selfRoots: [],
+          note: null,
         },
         {
           name: 'node',
@@ -306,6 +363,8 @@ describe('plugins', () => {
           detected: false,
           reason: null,
           roots: [],
+          selfRoots: [],
+          note: null,
         },
         {
           name: 'orca',
@@ -314,6 +373,8 @@ describe('plugins', () => {
           detected: false,
           reason: 'Orca is installed but not running; its worktrees are left to git',
           roots: [],
+          selfRoots: [],
+          note: null,
         },
       ],
     })
@@ -331,6 +392,29 @@ describe('plugins', () => {
     const r = await run(['plugins', '--config', file], cwd, env, { plugins: [plugin] })
     expect(r.code).toBe(2)
     expect(r.err).toContain('ghost')
+  })
+  test('a note follows its plugin’s state, and a self root is marked', async () => {
+    const { env, cwd } = setup()
+    const cache = tempDir()
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [
+        {
+          ...fake('git'),
+          detect: () => ({ active: true, note: 'one note' }),
+          roots: () => [{ path: cache, self: true }],
+        },
+        { ...fake('cargo'), detect: () => ({ active: false, note: 'no cargo' }) },
+      ],
+    })
+    expect(r.code).toBe(0)
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        `  git    built-in  detected; roots: ${cache} (itself too); note: one note`,
+        '  cargo  built-in  not detected; note: no cargo',
+        '',
+      ].join('\n'),
+    )
   })
 })
 

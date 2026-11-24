@@ -188,6 +188,46 @@ describe('plugin order and duplicates', () => {
     expect(s.warnings).toEqual(['node: detect failed: no stat'])
   })
 
+  test('detect may answer { active, note }: the note is kept on the survey, whether the plugin runs or not', async () => {
+    const degraded = fake('orca', [cand('a:1', 'orca')], [], {
+      detect: () => ({ active: true, note: 'installed but not running' }),
+    })
+    const off = fake('cargo', [cand('a:2', 'cargo')], [], {
+      detect: async () => ({ active: false, note: 'no cargo on PATH' }),
+    })
+    const plain = fake('git', [cand('a:3', 'git')], [], { detect: () => ({ active: true }) })
+    const s = await survey([degraded, off, plain], ctx)
+    expect(s.plugins.map((p) => p.name)).toEqual(['orca', 'git'])
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:1', 'a:3'])
+    expect(s.notes).toEqual({ orca: 'installed but not running', cargo: 'no cargo on PATH' })
+    expect(s.warnings).toEqual([])
+    expect(JSON.parse(JSON.stringify(s.notes))).toEqual(s.notes)
+  })
+
+  test('a detect answer of another shape leaves the plugin out with a warning', async () => {
+    const answers: unknown[] = [1, 'yes', null, { note: 'x' }, { active: true, note: 7 }]
+    for (const answer of answers) {
+      const odd = fake('odd', [cand('a:1', 'odd')], [], { detect: () => answer as boolean })
+      const s = await survey([odd], ctx)
+      expect(s.plugins).toEqual([])
+      expect(s.notes).toEqual({})
+      expect(s.warnings).toEqual([
+        `odd: detect answered ${JSON.stringify(answer)}, which is neither a boolean nor { active, note? }; it was left out`,
+      ])
+    }
+  })
+
+  test('every hook sees targetsGiven, false when the run leaves it unset', async () => {
+    const seen: boolean[] = []
+    const p = fake('git', [], [], {
+      detect: (c) => (seen.push(c.targetsGiven), true),
+      discover: (c) => (seen.push(c.targetsGiven), []),
+    })
+    await survey([p], ctx)
+    await survey([p], { ...ctx, targetsGiven: true })
+    expect(seen).toEqual([false, false, true, true])
+  })
+
   test('scope adds roots before discover, once', async () => {
     const seen: string[][] = []
     const scoping = fake('orca', [], [], {
@@ -221,10 +261,16 @@ describe('inspect', () => {
     ]
     const found = await inspect(plugins, ctx)
     expect(found.plugins).toEqual([
-      { name: 'a', detected: true, roots: ['/cache/a'] },
-      { name: 'b', detected: true, roots: [] },
-      { name: 'no', detected: false, roots: [] },
-      { name: 'down', detected: false, reason: 'the app is not running', roots: [] },
+      { name: 'a', detected: true, roots: ['/cache/a'], selfRoots: [] },
+      { name: 'b', detected: true, roots: [], selfRoots: [] },
+      { name: 'no', detected: false, roots: [], selfRoots: [] },
+      {
+        name: 'down',
+        detected: false,
+        reason: 'the app is not running',
+        roots: [],
+        selfRoots: [],
+      },
     ])
     expect(found.ctx.targets).toEqual(['/scoped'])
     expect(found.warnings).toEqual([])
@@ -241,7 +287,7 @@ describe('inspect', () => {
       },
     })
     const found = await inspect([failing, fake('a', [], [])], ctx)
-    expect(found.plugins).toEqual([{ name: 'a', detected: true, roots: [] }])
+    expect(found.plugins).toEqual([{ name: 'a', detected: true, roots: [], selfRoots: [] }])
     expect(found.warnings).toEqual([
       'a: a second plugin of that name was left out',
       'a: scope failed: no list',
@@ -253,6 +299,39 @@ describe('inspect', () => {
       },
     })
     await expect(inspect([fatal], ctx)).rejects.toThrow('stop')
+  })
+
+  test('a note is kept whether detected or not, an answer that is neither is the reason, and roots are checked as survey checks them', async () => {
+    const self = realpathSync(mkdtempSync(join(tmpdir(), 'hc-inspect-self-')))
+    const found = await inspect(
+      [
+        fake('a', [], [], {
+          detect: () => ({ active: true, note: 'cache is shared' }),
+          roots: () => ['/', '/cache/a', { path: self, self: true }],
+        }),
+        fake('b', [], [], { detect: () => ({ active: false, note: 'no daemon' }) }),
+        fake('c', [], [], { detect: () => 'yes' as unknown as boolean }),
+      ],
+      ctx,
+    )
+    expect(found.plugins).toEqual([
+      {
+        name: 'a',
+        detected: true,
+        note: 'cache is shared',
+        roots: ['/cache/a', self],
+        selfRoots: [self],
+      },
+      { name: 'b', detected: false, note: 'no daemon', roots: [], selfRoots: [] },
+      {
+        name: 'c',
+        detected: false,
+        reason: 'detect answered "yes", which is neither a boolean nor { active, note? }',
+        roots: [],
+        selfRoots: [],
+      },
+    ])
+    expect(found.warnings).toEqual(['a: roots: left out the root /: it is the filesystem root'])
   })
 })
 
