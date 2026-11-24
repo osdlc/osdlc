@@ -119,7 +119,6 @@ export {
 export {
   IN_USE,
   NO_PRUNE_TOOL,
-  PERSONAL_FOLDERS,
   descriptorPlugin,
   globMatches,
   osOf,
