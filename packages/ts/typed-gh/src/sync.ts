@@ -192,12 +192,21 @@ export class Gh {
    * no `--repo`: on a client built without a directory it runs in
    * `process.cwd()`, so gh reads that clone. Add `--repo` to `argv`, or call
    * `.at(dir)` first.
+   *
+   * It keeps the caller's colour settings, unlike the other methods: it is
+   * not run with `NO_COLOUR_ENV`. So `CLICOLOR_FORCE` or `GH_FORCE_TTY` in
+   * the environment can put escape codes in its output, and `GH_FORCE_TTY`
+   * can send it through `GH_PAGER`. To parse the output, build the client on
+   * `withDefaults(runner, { env: NO_COLOUR_ENV })` from @osdlc/command-seam.
    */
   raw(argv: string[], opts: { timeoutMs?: number | undefined } = {}): CommandResult {
     return this.exec(v.raw(argv), opts.timeoutMs)
   }
 
-  /** Run any `gh` call. Throws the classified failure on a non-zero exit. Adds no `--repo`, as {@link Gh.raw}. */
+  /**
+   * Run any `gh` call. Throws the classified failure on a non-zero exit. Adds
+   * no `--repo` and keeps the caller's colour settings, as {@link Gh.raw}.
+   */
   rawChecked(argv: string[], opts: { timeoutMs?: number | undefined } = {}): CommandResult {
     return this.exec(v.rawChecked(argv), opts.timeoutMs)
   }
