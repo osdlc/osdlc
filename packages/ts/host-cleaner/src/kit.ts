@@ -112,10 +112,12 @@ export interface Kit {
    * The processes of a program, named as a string or as `{ name }`, or the
    * busy processes working in `in` (an idle shell is not busy). A name
    * matches a process when it is a word of its command line (`ps -axo
-   * pid=,args=`) by {@link commandHasName}, so `pnpm` finds `node
+   * pid=,ppid=,args=`) by {@link commandHasName}, so `pnpm` finds `node
    * /opt/homebrew/bin/pnpm dev` and `GradleDaemon` and `gradle` find `java
-   * ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. The process
-   * table is read once per hook call, so a `delete` sees it fresh.
+   * ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. This process and
+   * every ancestor of it are left out, so the `npm exec` or `pnpm dlx` that
+   * started host-cleaner does not count. The process table is read once per
+   * hook call, so a `delete` sees it fresh.
    */
   running(where: string | { in: string } | { name: string }, ctx: Pick<Ctx, 'signal'>): Running
   /** Whether `program` is on PATH. */
@@ -215,21 +217,34 @@ export function commandHasName(args: string, name: string): boolean {
 /** `ps` reads its own locale; `LC_ALL=C` keeps its output plain. */
 const PS_ENV = { LC_ALL: 'C' } as const
 
-/** Each process with its command line, this one left out. Throws when `ps` gives no table. */
+/**
+ * Each process with its command line, this one and its ancestors left out:
+ * the `npm exec` or `pnpm dlx` that started it is not a use of the store.
+ * Throws when `ps` gives no table.
+ */
 function commandLines(ps: CommandRunner): Array<{ pid: number; args: string }> {
-  const r = ps.run(['-axo', 'pid=,args='], { cwd: '/', env: PS_ENV, timeoutMs: 60_000 })
+  const r = ps.run(['-axo', 'pid=,ppid=,args='], { cwd: '/', env: PS_ENV, timeoutMs: 60_000 })
   if (r.neverExited === true) throw new Error(`ps did not run: ${r.error ?? r.stderr.trim()}`)
   if (r.exitCode !== 0 || r.stdout.trim() === '') {
     throw new Error(`ps failed (exit ${r.exitCode}): ${r.stderr.trim() || 'no output'}`)
   }
   const rows: Array<{ pid: number; args: string }> = []
+  const parents = new Map<number, number>()
   for (const line of r.stdout.split('\n')) {
-    const m = /^\s*(\d+)\s+(.*)$/.exec(line)
+    const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line)
     if (m === null) continue
     const pid = Number(m[1])
-    if (pid !== process.pid) rows.push({ pid, args: m[2]!.trim() })
+    parents.set(pid, Number(m[2]))
+    rows.push({ pid, args: m[3]!.trim() })
   }
-  return rows
+  // Up from this process to pid 1; `own` is also the guard against a loop.
+  const own = new Set<number>()
+  let up: number | undefined = process.pid
+  while (up !== undefined && up > 0 && !own.has(up)) {
+    own.add(up)
+    up = parents.get(up)
+  }
+  return rows.filter((row) => !own.has(row.pid))
 }
 
 /** The kit for the plugin `owner`. */
