@@ -43,7 +43,13 @@ import { DescriptorError } from './descriptor/schema.ts'
 import type { Vars } from './descriptor/vars.ts'
 import { pluginKit } from './kit.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
-import { UnknownPlugin, loadPlugins, runsAmong, selectPlugins } from './registry.ts'
+import {
+  UnknownPlugin,
+  loadPlugins,
+  runsAmong,
+  selectPlugins,
+  type Loaded,
+} from './registry.ts'
 import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
 import {
   SelectionError,
@@ -432,23 +438,29 @@ const unknownPlugins = (config: Config, known: (name: string) => boolean): strin
 /**
  * The config and the plugins this run uses: the built-ins and the descriptors
  * loaded, the config checked against them, each built from its entry (or
- * `deps.plugins`), then chosen by flag. A descriptor's `supersededBy` plugin
- * runs when it is among those chosen and detects.
+ * `deps.plugins`), then chosen by `choose` (by flag unless given). A
+ * descriptor's `supersededBy` plugin runs when it is among those chosen and
+ * detects.
  */
-function setUp(
-  v: SweepValues,
+function setUp<V extends { config?: string | undefined; descriptor: readonly string[] }>(
+  v: V,
   ctx: CliContext,
   deps: MainDeps,
-): { config: Config; plugins: Plugin[] } {
+  choose: (config: Config, definitions: readonly PluginDefinition[]) => Plugin[],
+): { config: Config; plugins: Plugin[]; descriptors: Loaded['descriptors'] } {
   let chosen: readonly Plugin[] = []
-  const { definitions } = loadPlugins(sourcesFor(v, ctx, deps), {
+  const { definitions, descriptors } = loadPlugins(sourcesFor(v, ctx, deps), {
     runs: runsAmong(() => chosen),
   })
   const config = loadConfig(v, ctx, definitions)
-  const plugins = pluginsFor(v, config, definitions, deps, ctx)
+  const plugins = choose(config, definitions)
   chosen = plugins
-  return { config, plugins }
+  return { config, plugins, descriptors }
 }
+
+/** {@link setUp} with the plugins chosen by flag. */
+const setUpSweep = (v: SweepValues, ctx: CliContext, deps: MainDeps) =>
+  setUp(v, ctx, deps, (config, definitions) => pluginsFor(v, config, definitions, deps, ctx))
 
 /** Every plugin, enabled or not: `definitions` built from the config, or `deps.plugins`. */
 function allPlugins(
@@ -590,7 +602,7 @@ async function runStatus(
   const v = parsed.values
   let s: Survey
   try {
-    const { config, plugins } = setUp(v, ctx, deps)
+    const { config, plugins } = setUpSweep(v, ctx, deps)
     s = await survey(plugins, contextFor(parsed.positionals, config, ctx, [], v.ignore))
   } catch (err) {
     return refusal(ctx, name, err)
@@ -754,18 +766,20 @@ async function runPlugins(
   let targets: readonly string[]
   let warnings: readonly string[]
   try {
-    let enabled: readonly Plugin[] = []
-    const { definitions, descriptors } = loadPlugins(sourcesFor(v, ctx, deps), {
-      runs: runsAmong(() => enabled),
+    let all: readonly Plugin[] = []
+    const {
+      config,
+      plugins: enabled,
+      descriptors,
+    } = setUp(v, ctx, deps, (config, definitions) => {
+      all = allPlugins(config, definitions, deps, ctx)
+      return all.filter((p) => !disabledByConfig(p.name, config.plugins))
     })
     const loaded = new Map(descriptors.map((d) => [d.name, d]))
-    const config = loadConfig(v, ctx, definitions)
-    const all = allPlugins(config, definitions, deps, ctx)
-    enabled = all.filter((p) => !disabledByConfig(p.name, config.plugins))
     const found = await inspect(enabled, contextFor(parsed.positionals, config, ctx, [], v.ignore))
     const state = new Map(found.plugins.map((s) => [s.name, s]))
     rows = all.map((p): PluginRow => {
-      const off = disabledByConfig(p.name, config.plugins)
+      const off = !enabled.includes(p)
       const s = state.get(p.name)
       const d = loaded.get(p.name)
       return {
@@ -804,7 +818,7 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
   const v = parsed.values
   let plan: Plan
   try {
-    const { config, plugins } = setUp(v, ctx, deps)
+    const { config, plugins } = setUpSweep(v, ctx, deps)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = await survey(plugins, cctx)
     writeWarnings(ctx, name, surveyWarnings(s))
@@ -967,7 +981,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   let preview: Decision
   let notes: Record<string, string>
   try {
-    const run = setUp(v, ctx, deps)
+    const run = setUpSweep(v, ctx, deps)
     const config = run.config
     plugins = run.plugins
     if (v.plan === undefined) {
