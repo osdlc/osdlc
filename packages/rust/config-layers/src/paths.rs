@@ -21,7 +21,8 @@ const DEFAULT_DEFINE_HINT: &str = "define it under paths:";
 ///
 /// URLs (`scheme://…`) and bare words that do not look like paths are
 /// returned unchanged, because a value may be a name rather than a place. A
-/// leading `~` or `~/…` is replaced by `home`. A `~user/…` form is not
+/// leading `~` or `~/…` is replaced by `home`, with the `.` and `..` parts of
+/// `~/…` folded, as the TypeScript package does. A `~user/…` form is not
 /// expanded and resolves as a relative path. If `home` is empty, `~` is left
 /// as written, because expanding it would give the file system root. `home`
 /// is used as given; this crate never reads `$HOME`. A relative path resolves
@@ -43,7 +44,7 @@ pub fn resolve_config_path(value: &str, base_dir: &Path, home: &Path) -> String 
     }
     let mut p = value.to_string();
     if !home.as_os_str().is_empty() && (p == "~" || p.starts_with("~/")) {
-        p = format!("{}{}", home.to_string_lossy(), &p[1..]);
+        p = expand_tilde(&p, home);
     }
     if Path::new(&p).is_absolute() {
         p
@@ -54,9 +55,36 @@ pub fn resolve_config_path(value: &str, base_dir: &Path, home: &Path) -> String 
     }
 }
 
+/// `~` or `~/rest` with `home` in place of `~`, as the TypeScript package's
+/// `expandTilde` gives it (Node's `path.join`): `~` alone is `home` as given;
+/// otherwise `.` and `..` are folded and doubled separators collapsed, and a
+/// trailing separator is kept.
+fn expand_tilde(value: &str, home: &Path) -> String {
+    if value == "~" {
+        return home.to_string_lossy().into_owned();
+    }
+    let rest = &value[2..];
+    let home_text = home.to_string_lossy();
+    // `path.join` drops an empty part, so `~/` is `home` as given, trailing separator and all.
+    let trailing = if rest.is_empty() {
+        home_text.ends_with(std::path::is_separator)
+    } else {
+        rest.ends_with(std::path::is_separator)
+    };
+    // `Path::join` with an absolute part replaces the base; `path.join` appends it (`~//x`).
+    let mut out = normalize_path(&home.join(rest.trim_start_matches(std::path::is_separator)))
+        .to_string_lossy()
+        .into_owned();
+    if trailing && !out.ends_with(std::path::is_separator) {
+        out.push(std::path::MAIN_SEPARATOR);
+    }
+    out
+}
+
 /// Normalize a path as text: resolve `.` and `..` components without
 /// touching the file system. Unlike `std::fs::canonicalize`, it resolves no
-/// symlinks and does not check that the path exists.
+/// symlinks and does not check that the path exists. A `..` at the root is
+/// dropped, as Node's `path.resolve` and `path.join` drop it: `/..` is `/`.
 fn normalize_path(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for component in path.components() {
@@ -66,6 +94,7 @@ fn normalize_path(path: &Path) -> PathBuf {
                 Some(Component::Normal(_)) => {
                     out.pop();
                 }
+                Some(Component::RootDir | Component::Prefix(_)) => {}
                 _ => out.push(".."),
             },
             other => out.push(other.as_os_str()),

@@ -1009,6 +1009,132 @@
           "platforms": [
             "unix"
           ]
+        },
+        {
+          "name": "tilde slash dot dot leaves the home",
+          "input": {
+            "value": "~/../x",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/home/x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "tilde slash dot is under the home",
+          "input": {
+            "value": "~/./x",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/home/me/x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "tilde with a doubled slash is under the home",
+          "input": {
+            "value": "~//x",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/home/me/x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "tilde slash with a nested dot dot",
+          "input": {
+            "value": "~/a/../b",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/home/me/b"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "tilde slash dot dot stops at the root",
+          "input": {
+            "value": "~/../../../x",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "tilde slash keeps a trailing slash",
+          "input": {
+            "value": "~/x/",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/home/me/x/"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a home with a trailing slash, under tilde slash",
+          "input": {
+            "value": "~/x",
+            "base_dir": "/base",
+            "home": "/home/me/"
+          },
+          "expect": {
+            "path": "/home/me/x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a home with a trailing slash, as tilde alone",
+          "input": {
+            "value": "~",
+            "base_dir": "/base",
+            "home": "/home/me/"
+          },
+          "expect": {
+            "path": "/home/me/"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a relative path above the root stops at the root",
+          "input": {
+            "value": "../../x",
+            "base_dir": "/base",
+            "home": "/base"
+          },
+          "expect": {
+            "path": "/x"
+          },
+          "platforms": [
+            "unix"
+          ]
         }
       ]
     },
