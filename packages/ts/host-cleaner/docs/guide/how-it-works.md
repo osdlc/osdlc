@@ -217,7 +217,8 @@ an outside plugin would be.
 While Orca is installed but cannot be asked (not running, or `orca status`
 fails or prints no JSON), there is no fallback to git: `git` worktrees whose
 real path is under `/orca/workspaces/` are refused with `orca-unreachable`,
-and the rest are left to `git`.
+and the rest are left to `git`. `detect` still answers active, with the reason
+as its note.
 
 ## Command line
 
@@ -285,9 +286,9 @@ that plugin:
   folder as its root today, so for `~/.npm` the root is home. Declaring
   whole-folder stores as self roots lands on #1078. Its `inUse.processes`
   already uses `kit.running({ name })` there.
-- **`orca`'s note (#1089).** `orca`'s `detect` still throws when Orca is
-  installed but not running, so `plugins` shows it `not detected`. Answering
-  `{ active: true, note }` instead is #1089.
+- **`orca`'s note (#1089).** `orca`'s `detect` answers `{ active: true, note }`
+  when Orca is installed but cannot be asked, so `plugins` shows it detected
+  with its note. It came with main's #1060, merged into #1065.
 
 ## Where the code differs from the system description
 
