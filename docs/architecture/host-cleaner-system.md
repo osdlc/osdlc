@@ -797,6 +797,7 @@ Every decision was made in review. The text above follows them.
 | D12 | The tool's command when it's on PATH, otherwise remove the folder. You chose that (q-prefer). | A prune (`removes: unused`) never falls back on its own. Without the program it gets a `no-prune-tool` protest; `--allow no-prune-tool` removes the folder instead, with the idle check. Wipes (`removes: all`) still fall back. | A prune runs with no idle check. Falling back to a removal would wipe a whole pnpm store in daily use. |
 | D13 | Must every tool command name the checked folder? | Yes: a `{path}` argument or an `env` entry, or the schema rejects it. | Tier 1 has no variables, so without this a command cleans wherever the tool is configured, such as a moved `UV_CACHE_DIR`, not the folder host-cleaner checked. |
 | D14 | Must a tier 3 plugin be TypeScript, or can it be any program over stdio? | JavaScript or TypeScript, in-process, for tier 3. Keep every hook's input and output plain JSON, so a stdio bridge can come later as one built-in plugin. | In-process shares the kit and types directly, with no protocol to design. Plain JSON keeps the door open for other languages without a breaking change. |
+| D15 | Must a version read what an earlier version wrote? | No, not before 1.0. No code reads an old config location, upgrades an old plan or file version, or keeps a renamed field working. An old plan is refused with "sweep again". | Before 1.0 the formats still change, and each migration is code to keep and test for users who don't exist yet. |
 
 ## Review log
 
