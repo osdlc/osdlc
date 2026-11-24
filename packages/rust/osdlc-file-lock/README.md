@@ -28,7 +28,10 @@ When not to use it:
 
 - Only Rust processes take the lock. Use [the OS lock](#the-os-lock) in this
   crate: the system lets it go when the process dies, with no staleness rule
-  to choose.
+  to choose. It never waits and has one holder. For a lock that waits, or
+  that readers share, use
+  [`std::fs::File::lock`](https://doc.rust-lang.org/std/fs/struct.File.html#method.lock)
+  and `lock_shared`.
 - The lock must hold across machines, or the directory is on a network file
   system. `link()` and `rename()` are relied on to be atomic.
 
@@ -156,12 +159,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Replace the record while the lock is held. The pid stays in it.
     lock.record(&json!({ "started_at": "2026-11-24T10:00:00Z" }))?;
 
-    // A process that only asks, such as a `stop` command, takes nothing.
+    // A process that only asks, such as a `stop` command, keeps no lock.
     match OsLock::holder(&path)? {
         OsLockState::Held(holder) => println!("held by pid {}: {:?}", holder.pid, holder.record),
         OsLockState::HeldUnnamed => println!("held, and the file does not say by whom"),
         OsLockState::GuardBusy => println!("a start or a question is under way"),
         OsLockState::Free => println!("free"),
+        _ => println!("a state this program does not know"),
     }
 
     drop(lock); // or the death of the process
@@ -176,10 +180,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   bytes.
 - `lock.record(&record)` replaces the record while the lock is held.
 - `OsLock::holder(path)` asks who holds the lock. It keeps no lock and writes
-  nothing, so a process that asks is never named as the holder and never
-  makes a real taker lose.
-- `OsLock::acquire_unnamed(path)` takes the lock and names nobody: the file is
-  emptied. Use it for a lock that only has to exclude.
+  nothing into the lock's file, so a process that asks is never named as the
+  holder and never makes a real taker lose. It creates the guard's file when
+  the lock's file is there and the guard's is not, and nothing else.
 - Dropping the `OsLock` unlocks. The file stays, with the last record.
 
 A taker that is refused gets an `OsLockError`, and the caller maps it:
@@ -192,7 +195,8 @@ A taker that is refused gets an `OsLockError`, and the caller maps it:
 | `Io`          | A file could not be opened, locked or written, or the record is not a JSON object or is too long |
 
 `OsLock::holder` answers with an `OsLockState`: `Free`, `Held(holder)`,
-`HeldUnnamed` or `GuardBusy`.
+`HeldUnnamed` or `GuardBusy`. `OsLockState`, `Holder` and `OsLockError` can
+gain cases and fields: match them with a `_` arm.
 
 What to know:
 
@@ -211,8 +215,25 @@ What to know:
   other fields are read back unchecked.
 - **The answer is about one moment.** The holder can be gone, and its pid
   given to another process, before you act on it.
+- **One path for one lock.** The guard is found from the text of the lock's
+  path, so every process must name the lock by the same path. Through a
+  second path, such as a symbolic link, the lock still excludes, but a taker
+  can be given an earlier holder's name.
+- **Asking needs only to read the two files.** A taker creates them; a
+  process that only asks, run by another user, needs to read them.
 - **Within one process** two takes of one path conflict, as between
-  processes. Take the lock after any `fork`, not before.
+  processes. Take the lock after any `fork`, not before. A forked child that
+  drops its copy of the `OsLock` leaves its parent's lock held; a parent
+  that drops its own frees the lock for both.
+- **While a holder replaces its record** a reader is never given another pid.
+  On macOS every answer we measured named the holder. On Linux 128 of
+  457,418 had no name for that one answer: ask again.
+- **Other programs on the same two files.** A program that follows this
+  protocol with its own code and this crate exclude each other and name each
+  other. Two things to know then. This crate reads the first line of the
+  file: a program that parses the whole file gets no pid for a moment each
+  time a holder here replaces a longer record with a shorter one. And a
+  record such a program writes on several lines gets no name here.
 - **Windows.** The lock also stops every other open of the file from reading
   it, so the record cannot be read while the lock is held. A holder is always
   reported as `HeldUnnamed`. The rest is the same.

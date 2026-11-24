@@ -141,6 +141,7 @@ fn ask_until_stdin(path: &Path) {
         Ok(OsLockState::Held(holder)) => format!("held:{}", holder.pid),
         Ok(OsLockState::HeldUnnamed) => "unnamed".to_owned(),
         Ok(OsLockState::GuardBusy) => "busy".to_owned(),
+        Ok(other) => format!("error:{other:?}").replace(' ', "_"),
         Err(e) => format!("error:{}", e.to_string().replace(' ', "_")),
     };
     say("ready");
@@ -278,7 +279,7 @@ fn asked(path: &Path) -> Outcome {
         OsLockState::Held(holder) => Outcome::Held(holder.pid),
         OsLockState::HeldUnnamed => Outcome::Unnamed,
         OsLockState::GuardBusy => Outcome::Busy,
-        OsLockState::Free => panic!("the lock is free"),
+        other => panic!("expected a held lock, got {other:?}"),
     }
 }
 

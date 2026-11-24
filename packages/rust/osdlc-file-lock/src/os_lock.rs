@@ -26,7 +26,7 @@
 //!     Err(OsLockError::HeldUnnamed { .. }) => {} // Windows: the record cannot be read
 //!     other => panic!("{other:?}"),
 //! }
-//! // A process that only asks takes nothing and writes nothing.
+//! // A process that only asks keeps no lock and writes no record.
 //! assert!(!matches!(OsLock::holder(&path)?, OsLockState::Free));
 //!
 //! drop(lock); // or the death of the process
@@ -50,7 +50,8 @@
 //!   while they try the lock and write the record, or read the holder's, and
 //!   let it go before they return. Nothing tries the lock outside the guard.
 //!   So while the lock is held and the guard is free, the file holds the
-//!   record of the lock's holder, never an earlier holder's.
+//!   record of the lock's holder, never an earlier holder's. The guard's file
+//!   is opened before the lock's.
 //! - **A process that only asks** calls [`OsLock::holder`]. It takes the lock
 //!   for a moment, under the guard, and lets it go there, so no other taker or
 //!   asker ever finds the lock held by an asker.
@@ -66,22 +67,45 @@
 //! - **`acquire` and `holder` can block the thread** for up to [`GUARD_WAIT`].
 //!   On an async runtime, call them where blocking is allowed.
 //! - **Two opens of the file conflict within one process.** A process that
-//!   calls `acquire` twice on one path is refused the second time, naming
-//!   itself.
-//! - **A forked child shares the lock.** Take the lock after any `fork`: the
-//!   child holds the same lock, and either process unlocks it for both when
-//!   it drops its [`OsLock`]. A child that a `Command` starts shares the open
-//!   file only until its exec, and dropping the `OsLock` meanwhile unlocks it
-//!   at once all the same. Only a holder that is killed while such a child is
-//!   between fork and exec leaves the lock held until the exec, a moment
-//!   later.
+//!   calls `acquire` twice on one path is refused the second time. It is
+//!   given its own pid where the record can be read, so not on Windows.
+//! - **One path for one lock.** The guard's file is found from the text of
+//!   the lock's path. Every process must name the lock by the same path. A
+//!   lock reached by two paths, such as through a symbolic link, has two
+//!   guards: the lock still excludes, but a taker can then be given an
+//!   earlier holder's name.
+//! - **A process that only asks needs to read the two files**, not to write
+//!   them. The guard's file must then be there, or the asker must be able to
+//!   create it: a taker creates it the first time.
+//! - **A forked child shares the lock.** Take the lock after any `fork`. Only
+//!   the process that took the lock unlocks it when it drops its [`OsLock`]:
+//!   a forked child that drops its copy leaves its parent's lock held. The
+//!   other way round is a limit: when the parent drops its `OsLock` the lock
+//!   is free, though the child still has its copy. A child that a `Command`
+//!   starts shares the open file only until its exec, and dropping the
+//!   `OsLock` meanwhile unlocks it at once all the same. Only a holder that
+//!   is killed while such a child is between fork and exec leaves the lock
+//!   held until the exec, a moment later.
+//! - **At the death of a process the system chooses the order.** A process
+//!   that dies in the middle of `acquire` or `holder` can hold the guard and
+//!   the lock, and the lock must go first: a taker that got the guard while
+//!   the lock was still held would read the record of an earlier holder. No
+//!   system documents the order. Measured with two open files and 150 deaths
+//!   each way, on macOS (APFS) and on Linux 6.12 (overlayfs): with the
+//!   guard's file opened first, as here, the guard was never free while the
+//!   lock was held; with the lock's file opened first it was, in 23 to 111 of
+//!   150 deaths, for a few microseconds.
 //! - **Never delete the lock's file or the guard's** while a process may use
 //!   them. A new file at the same path is a second lock, and both can be held.
 //! - **The record's read relies on one read never seeing half of one write**
-//!   to the same file. Where a file system mixes them, the answer can be a
-//!   holder with no name, or a record whose other fields are mixed; the `pid`
-//!   stays right, because it is at the same place in every record a holder
-//!   writes.
+//!   to the same file, and no system promises that. [`OsLock::record`] is not
+//!   under the guard, so a reader can meet its write. The answer is then a
+//!   holder with no name, or with this holder's pid: never another pid, since
+//!   the `pid` is at the same place in every record a holder writes, and the
+//!   file is never emptied. Measured while a holder replaced a long and a
+//!   short record in turn: on macOS (APFS) 48,106 of 48,106 answers named
+//!   the holder; on Linux 6.12 (overlayfs) 457,290 of 457,418 did, and 128
+//!   had no name. Ask again after an answer with no name.
 //! - **Local file systems only**, as for the rest of this crate.
 //! - **Windows.** This module is built for Unix and Windows. On Windows the
 //!   lock also blocks every other open of the file from reading it, so the
@@ -90,7 +114,7 @@
 //!   [`OsLockState::HeldUnnamed`]). Taking, refusing, asking and the release
 //!   at the holder's death are the same.
 
-use std::fs::{File, OpenOptions, TryLockError};
+use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -122,12 +146,13 @@ pub const MAX_RECORD_LEN: usize = 4096;
 /// record.
 #[derive(Debug)]
 pub struct OsLock {
-    file: File,
+    held: Locked,
     path: PathBuf,
 }
 
 /// The process that holds a lock, as its file names it.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct Holder {
     /// The holder's process id. Never 0.
     pub pid: u32,
@@ -138,15 +163,15 @@ pub struct Holder {
 
 /// What [`OsLock::holder`] found.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum OsLockState {
     /// No process holds the lock, or its file is not there.
     Free,
     /// A process holds the lock, and the file names it.
     Held(Holder),
-    /// A process holds the lock, and the file does not name it: the file is
-    /// not a record with a `pid`, or it could not be read. A holder that took
-    /// the lock with [`OsLock::acquire_unnamed`] is seen this way, and on
-    /// Windows every holder is.
+    /// A process holds the lock, and the file does not name it: the first
+    /// line of the file is not a record with a `pid`, or the file could not
+    /// be read. On Windows every holder is seen this way.
     HeldUnnamed,
     /// Another process still held the guard after [`GUARD_WAIT`]: it is
     /// stopped in the middle of taking the lock or of asking. The lock was
@@ -187,7 +212,9 @@ pub enum OsLockError {
     /// than [`MAX_RECORD_LEN`].
     #[error("lock file {}: {source}", path.display())]
     Io {
-        /// The file the error is about: the lock's, or its guard's.
+        /// The file the error is about: the lock's, or its guard's. The
+        /// guard's file is opened first, so a folder that is not there is
+        /// reported on the guard's path.
         path: PathBuf,
         /// The error.
         source: io::Error,
@@ -214,7 +241,7 @@ impl OsLock {
     ///
     /// [`OsLockError::GuardBusy`] when another process still holds the guard
     /// after [`GUARD_WAIT`], which this waits out, blocking. The lock is then
-    /// not tried at all.
+    /// not tried at all, and its file is not created.
     ///
     /// After any error the lock and the guard are both free of this call.
     pub fn acquire(path: &Path) -> Result<Self, OsLockError> {
@@ -229,16 +256,6 @@ impl OsLock {
         Self::acquire_within(path, GUARD_WAIT, |lock| lock.write(&line))
     }
 
-    /// [`acquire`](Self::acquire) for a holder that names nobody: the file is
-    /// emptied, so an earlier holder's record does not name the dead. Others
-    /// see [`OsLockError::HeldUnnamed`] and [`OsLockState::HeldUnnamed`].
-    ///
-    /// It goes through the guard like every taker. A try outside the guard
-    /// could be refused by a process that is only asking.
-    pub fn acquire_unnamed(path: &Path) -> Result<Self, OsLockError> {
-        Self::acquire_within(path, GUARD_WAIT, |lock| lock.file.set_len(0))
-    }
-
     /// Takes the lock, waiting `guard_wait` for the guard and writing the
     /// record with `write`.
     fn acquire_within(
@@ -246,14 +263,6 @@ impl OsLock {
         guard_wait: Duration,
         write: impl FnOnce(&OsLock) -> io::Result<()>,
     ) -> Result<Self, OsLockError> {
-        // The lock's file is opened before the guard's and closed before it.
-        let file = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(path)
-            .map_err(io_at(path))?;
         let Some(guard) = Guard::take(&guard_path(path), guard_wait)? else {
             return Err(OsLockError::GuardBusy {
                 path: path.to_path_buf(),
@@ -261,18 +270,25 @@ impl OsLock {
         };
         // `take` has ended, and has let the lock go when the write failed,
         // before the guard is let go.
-        let taken = Self::take(file, path, write);
-        drop(guard);
+        let taken = Self::take(path, write);
+        guard.let_go();
         taken
     }
 
-    /// The part of `acquire` under the guard: takes the lock on `file` and
-    /// writes the record, or reads the holder's when the lock is held.
+    /// The part of `acquire` under the guard: opens the lock's file, takes
+    /// the lock and writes the record, or reads the holder's when the lock is
+    /// held.
     fn take(
-        file: File,
         path: &Path,
         write: impl FnOnce(&OsLock) -> io::Result<()>,
     ) -> Result<Self, OsLockError> {
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(path)
+            .map_err(io_at(path))?;
         match try_lock(&file, path)? {
             OsLockState::Free => {}
             OsLockState::Held(holder) => {
@@ -289,7 +305,7 @@ impl OsLock {
             }
         }
         let lock = OsLock {
-            file,
+            held: Locked::new(file),
             path: path.to_path_buf(),
         };
         write(&lock).map_err(io_at(path))?;
@@ -297,15 +313,17 @@ impl OsLock {
     }
 
     /// Who holds the lock at `path`. For a process that only asks: it keeps
-    /// no lock and writes nothing, so it is never named as the holder, and
-    /// the file keeps the record it had.
+    /// no lock and never writes into the lock's file, so it is never named as
+    /// the holder, and the file keeps the record it had. It needs to read the
+    /// two files, not to write them.
     ///
     /// The lock is tried under the guard and let go at once, still under the
     /// guard, so no other taker or asker finds it held meanwhile.
     /// [`OsLockState::Free`] also when the lock's file is not there, and then
     /// nothing is created. When it is there, the guard's file is created if it
-    /// is missing. [`OsLockState::GuardBusy`] when another process still holds
-    /// the guard after [`GUARD_WAIT`], which this waits out, blocking.
+    /// is missing, which is the one thing this may write.
+    /// [`OsLockState::GuardBusy`] when another process still holds the guard
+    /// after [`GUARD_WAIT`], which this waits out, blocking.
     ///
     /// The answer is about the moment of the call. The holder can be gone,
     /// and its pid given to another process, before the caller acts on it.
@@ -315,29 +333,43 @@ impl OsLock {
 
     /// `holder`, waiting `guard_wait` for the guard.
     fn holder_within(path: &Path, guard_wait: Duration) -> Result<OsLockState, OsLockError> {
-        let file = match File::open(path) {
-            Ok(file) => file,
+        // Before the guard's file is opened, so that nothing is created
+        // beside a lock that is not there, or beside a folder.
+        match fs::metadata(path) {
+            Ok(found) if found.is_dir() => {
+                return Err(io_at(path)(ErrorKind::IsADirectory.into()));
+            }
+            Ok(_) => {}
             Err(e) if e.kind() == ErrorKind::NotFound => return Ok(OsLockState::Free),
             Err(source) => return Err(io_at(path)(source)),
-        };
+        }
         let Some(guard) = Guard::take(&guard_path(path), guard_wait)? else {
             return Ok(OsLockState::GuardBusy);
         };
-        let found = try_lock(&file, path);
-        // The lock, when this took it, goes before the guard.
-        if matches!(found, Ok(OsLockState::Free)) {
-            let _ = file.unlock();
-        }
-        drop(file);
-        drop(guard);
+        let found = match File::open(path) {
+            Ok(file) => {
+                let found = try_lock(&file, path);
+                // The lock, when this took it, goes before the guard.
+                if matches!(found, Ok(OsLockState::Free)) {
+                    let _ = file.unlock();
+                }
+                found
+            }
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(OsLockState::Free),
+            Err(source) => Err(io_at(path)(source)),
+        };
+        guard.let_go();
         found
     }
 
     /// Replaces the record in the file. `record` must serialise to a JSON
     /// object. Its `pid` is set to this process's, and written first.
     ///
-    /// Not under the guard: a reader gets the old record or the new one. A
-    /// failed write leaves the lock held, and the file may then hold neither.
+    /// Not under the guard. The file is never empty meanwhile and its `pid`
+    /// does not change, so a reader is never given another pid. Where one
+    /// read never sees half of one write, it gets the old record or the new
+    /// one, whole; where it can, it may get no name for that one answer. See
+    /// the module's limits. A failed write leaves the lock held.
     pub fn record(&mut self, record: &impl Serialize) -> Result<(), OsLockError> {
         let line = record_line(record).map_err(io_at(&self.path))?;
         self.write(&line).map_err(io_at(&self.path))
@@ -353,43 +385,78 @@ impl OsLock {
     /// first line, and `line` ends in a newline, so the end of a longer old
     /// record that is still there before the cut is not read.
     fn write(&self, line: &str) -> io::Result<()> {
-        write_at_start(&self.file, line.as_bytes())?;
-        self.file.set_len(line.len() as u64)
-    }
-}
-
-impl Drop for OsLock {
-    fn drop(&mut self) {
-        // Unlocked, not only closed: a child process that still shares the
-        // open file would keep the lock until its exec.
-        let _ = self.file.unlock();
+        write_at_start(&self.held.file, line.as_bytes())?;
+        self.held.file.set_len(line.len() as u64)
     }
 }
 
 /// The guard's file for the lock at `lock`: the same path with `.guard` after
-/// it.
+/// it. It is found from the path's text, so every process must name the lock
+/// by the same path.
 pub fn guard_path(lock: &Path) -> PathBuf {
     sibling(lock, ".guard")
 }
 
-/// The held guard. Dropping it lets the guard go.
-struct Guard(File);
+/// A file this process locked. Dropping it unlocks the file, and does not
+/// only close it: a child process that a `Command` starts shares the open
+/// file until its exec, and would keep the lock that long.
+///
+/// Only the process that took the lock unlocks it. A forked child has a copy
+/// of this value on the same open file; when the child drops its copy, the
+/// file is closed there and its parent's lock stays.
+#[derive(Debug)]
+struct Locked {
+    file: File,
+    /// The process that took the lock.
+    taker: u32,
+}
+
+impl Locked {
+    /// `file`, which this process has just locked.
+    fn new(file: File) -> Self {
+        Locked {
+            file,
+            taker: std::process::id(),
+        }
+    }
+}
+
+impl Drop for Locked {
+    fn drop(&mut self) {
+        if std::process::id() == self.taker {
+            let _ = self.file.unlock();
+        }
+    }
+}
+
+/// The held guard.
+struct Guard(Locked);
 
 impl Guard {
-    /// Opens the guard's file, creating it when missing, and takes its lock,
-    /// trying every `GUARD_PAUSE` until `wait` has passed. `None` when another
-    /// still holds it then.
+    /// Opens the guard's file and takes its lock, trying every `GUARD_PAUSE`
+    /// until `wait` has passed. `None` when another still holds it then.
+    ///
+    /// The file is opened to read when it is there, so a process that may not
+    /// write it can still ask. It is created when missing.
+    ///
+    /// A caller opens the guard's file before the lock's. When a process dies
+    /// with both locks, the system chooses which goes first, and the lock
+    /// must go first: see "At the death of a process" in the module's limits.
     fn take(path: &Path, wait: Duration) -> Result<Option<Self>, OsLockError> {
-        let file = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(path)
-            .map_err(io_at(path))?;
+        let file = match File::open(path) {
+            Ok(file) => file,
+            Err(e) if e.kind() == ErrorKind::NotFound => OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .write(true)
+                .open(path)
+                .map_err(io_at(path))?,
+            Err(source) => return Err(io_at(path)(source)),
+        };
         let deadline = Instant::now() + wait;
         loop {
             match file.try_lock() {
-                Ok(()) => return Ok(Some(Guard(file))),
+                Ok(()) => return Ok(Some(Guard(Locked::new(file)))),
                 Err(TryLockError::WouldBlock) if Instant::now() < deadline => {
                     std::thread::sleep(GUARD_PAUSE);
                 }
@@ -400,10 +467,13 @@ impl Guard {
     }
 }
 
-impl Drop for Guard {
-    fn drop(&mut self) {
-        // As for `OsLock`.
-        let _ = self.0.unlock();
+impl Guard {
+    /// Lets the guard go.
+    fn let_go(self) {
+        // A test looks at the lock at this moment.
+        #[cfg(test)]
+        tests::before_the_guard_goes();
+        drop(self.0);
     }
 }
 
@@ -424,8 +494,8 @@ fn try_lock(file: &File, path: &Path) -> Result<OsLockState, OsLockError> {
 /// The holder the lock file open as `file` names, or `None` when the file
 /// cannot be read or names nobody.
 ///
-/// The file is read with one read. Several reads can fall on both sides of a
-/// holder's write and join the start of one record to the end of another.
+/// One read is enough: a record is at most [`MAX_RECORD_LEN`] bytes, and a
+/// reader takes its first line.
 fn read_holder(file: &File) -> Option<Holder> {
     let mut buf = [0u8; MAX_RECORD_LEN];
     let len = read_at_start(file, &mut buf).ok()?;
@@ -508,6 +578,8 @@ fn read_at_start(file: &File, buf: &mut [u8]) -> io::Result<usize> {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
     use serde_json::json;
@@ -539,6 +611,33 @@ mod tests {
         let path = dir.path().join("x.lock");
         let guard = guard_path(&path);
         (path, guard)
+    }
+
+    thread_local! {
+        /// What a test runs at the moment a guard is let go on its thread.
+        static BEFORE_THE_GUARD_GOES: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
+    }
+
+    /// Called by `Guard::let_go`, with the guard still held.
+    pub(super) fn before_the_guard_goes() {
+        BEFORE_THE_GUARD_GOES.with_borrow(|look| {
+            if let Some(look) = look {
+                look();
+            }
+        });
+    }
+
+    /// Runs `run`, and says whether the lock at `path` was held each time
+    /// `run` let a guard go.
+    fn lock_held_as_the_guard_goes<T>(path: &Path, run: impl FnOnce() -> T) -> (T, Vec<bool>) {
+        let seen = Rc::new(RefCell::new(Vec::new()));
+        let (at, into) = (path.to_path_buf(), Rc::clone(&seen));
+        BEFORE_THE_GUARD_GOES.set(Some(Box::new(move || {
+            into.borrow_mut().push(is_held(&at));
+        })));
+        let result = run();
+        BEFORE_THE_GUARD_GOES.set(None);
+        (result, seen.take())
     }
 
     #[test]
@@ -651,6 +750,64 @@ mod tests {
         assert_eq!(read(&path), LEFT_BEHIND);
     }
 
+    #[test]
+    fn a_taker_keeps_the_lock_when_it_lets_the_guard_go() {
+        let dir = tempfile::tempdir().unwrap();
+        let (path, _) = lock_and_guard(&dir);
+        std::fs::write(&path, LEFT_BEHIND).unwrap();
+
+        let (lock, held) = lock_held_as_the_guard_goes(&path, || OsLock::acquire(&path));
+
+        assert!(lock.is_ok(), "{:?}", lock.err());
+        assert_eq!(held, [true]);
+    }
+
+    #[test]
+    fn a_failed_write_lets_the_lock_go_before_the_guard() {
+        let dir = tempfile::tempdir().unwrap();
+        let (path, _) = lock_and_guard(&dir);
+        std::fs::write(&path, LEFT_BEHIND).unwrap();
+
+        let (failed, held) = lock_held_as_the_guard_goes(&path, || {
+            OsLock::acquire_within(&path, GUARD_WAIT, |_| Err(io::Error::other("full")))
+        });
+
+        assert!(matches!(failed, Err(OsLockError::Io { .. })), "{failed:?}");
+        assert_eq!(held, [false]);
+    }
+
+    #[test]
+    fn an_asker_lets_the_lock_go_before_the_guard() {
+        let dir = tempfile::tempdir().unwrap();
+        let (path, _) = lock_and_guard(&dir);
+        std::fs::write(&path, LEFT_BEHIND).unwrap();
+
+        let (found, held) = lock_held_as_the_guard_goes(&path, || OsLock::holder(&path));
+
+        assert_eq!(found.unwrap(), OsLockState::Free);
+        assert_eq!(held, [false]);
+    }
+
+    /// The guard's file is opened before the lock's, and a taker that finds
+    /// the guard busy has not come to the lock's file yet.
+    #[test]
+    fn a_busy_guard_refuses_before_the_locks_file_is_created() {
+        let dir = tempfile::tempdir().unwrap();
+        let (path, guard) = lock_and_guard(&dir);
+        std::fs::write(&guard, "").unwrap();
+        let _guard = hold(&guard);
+
+        let refused = OsLock::acquire_within(&path, Duration::from_millis(50), |_| {
+            panic!("the record was written without the guard")
+        });
+
+        assert!(
+            matches!(refused, Err(OsLockError::GuardBusy { .. })),
+            "{refused:?}"
+        );
+        assert!(!path.exists());
+    }
+
     /// `acquire`, with a short wait, while the test holds the guard, and the
     /// lock too when `lock_held`.
     fn acquire_while_the_guard_is_held(lock_held: bool) {
@@ -712,11 +869,45 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (path, _) = lock_and_guard(&dir);
         let lock = OsLock::acquire(&path).unwrap();
-        let _shared = lock.file.try_clone().unwrap();
+        let _shared = lock.held.file.try_clone().unwrap();
         assert!(is_held(&path));
 
         drop(lock);
 
+        assert!(!is_held(&path));
+    }
+
+    #[test]
+    fn the_guard_is_free_at_once_though_its_open_file_is_still_shared() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_, guard_file) = lock_and_guard(&dir);
+        let guard = Guard::take(&guard_file, GUARD_WAIT).unwrap().unwrap();
+        let _shared = guard.0.file.try_clone().unwrap();
+        assert!(is_held(&guard_file));
+
+        guard.let_go();
+
+        assert!(!is_held(&guard_file));
+    }
+
+    /// What a forked child has is a copy of the lock's value on the same open
+    /// file, in a process that did not take the lock. A real fork needs
+    /// unsafe code, which this crate forbids, so the copy is made here with a
+    /// taker that is not this process: the same comparison decides.
+    #[test]
+    fn a_copy_dropped_in_a_process_that_did_not_take_the_lock_leaves_it_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let (path, _) = lock_and_guard(&dir);
+        let lock = OsLock::acquire(&path).unwrap();
+        let copy = Locked {
+            file: lock.held.file.try_clone().unwrap(),
+            taker: lock.held.taker.wrapping_add(1),
+        };
+
+        drop(copy);
+
+        assert!(is_held(&path));
+        drop(lock);
         assert!(!is_held(&path));
     }
 

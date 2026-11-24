@@ -11,9 +11,7 @@ use std::fs::{self, File};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-use osdlc_file_lock::os_lock::{
-    Holder, MAX_RECORD_LEN, OsLock, OsLockError, OsLockState, guard_path,
-};
+use osdlc_file_lock::os_lock::{MAX_RECORD_LEN, OsLock, OsLockError, OsLockState, guard_path};
 use serde_json::{Value, json};
 
 /// A record a holder that died left in the lock file.
@@ -67,9 +65,11 @@ fn assert_holder(found: &OsLockState, record: Value) {
         assert_eq!(*found, OsLockState::HeldUnnamed);
         return;
     }
-    let record = record.as_object().unwrap().clone();
-    let pid = u32::try_from(record["pid"].as_u64().unwrap()).unwrap();
-    assert_eq!(*found, OsLockState::Held(Holder { pid, record }));
+    let OsLockState::Held(holder) = found else {
+        panic!("expected a named holder, got {found:?}");
+    };
+    assert_eq!(Some(u64::from(holder.pid)), record["pid"].as_u64());
+    assert_eq!(Value::Object(holder.record.clone()), record);
 }
 
 #[test]
@@ -160,10 +160,6 @@ fn a_second_taker_is_refused_and_told_the_holder_until_the_lock_is_dropped() {
         &refused(OsLock::acquire_with(&path, &json!({ "n": 2 })), &path),
         json!({ "pid": pid }),
     );
-    assert_holder(
-        &refused(OsLock::acquire_unnamed(&path), &path),
-        json!({ "pid": pid }),
-    );
 
     drop(first);
     // The refused takers wrote nothing.
@@ -219,41 +215,6 @@ fn a_held_lock_names_the_pid_and_the_record_in_its_file() {
 }
 
 #[test]
-fn an_unnamed_lock_empties_the_file_and_names_nobody() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = lock_in(&dir);
-    fs::write(&path, LEFT_BEHIND).unwrap();
-
-    let mut lock = OsLock::acquire_unnamed(&path).unwrap();
-
-    assert_eq!(names(dir.path()), ["x.lock", "x.lock.guard"]);
-    assert_eq!(OsLock::holder(&path).unwrap(), OsLockState::HeldUnnamed);
-    assert_eq!(
-        refused(OsLock::acquire(&path), &path),
-        OsLockState::HeldUnnamed
-    );
-
-    // It can name itself later.
-    lock.record(&json!({})).unwrap();
-    assert_holder(
-        &OsLock::holder(&path).unwrap(),
-        json!({ "pid": std::process::id() }),
-    );
-}
-
-#[test]
-fn an_unnamed_lock_leaves_an_empty_file() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = lock_in(&dir);
-    fs::write(&path, LEFT_BEHIND).unwrap();
-
-    drop(OsLock::acquire_unnamed(&path).unwrap());
-
-    assert_eq!(read(&path), "");
-    assert_eq!(OsLock::holder(&path).unwrap(), OsLockState::Free);
-}
-
-#[test]
 fn holder_is_free_and_creates_nothing_without_a_lock_file() {
     let dir = tempfile::tempdir().unwrap();
 
@@ -303,14 +264,49 @@ fn a_missing_directory_is_an_io_error() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("missing").join("x.lock");
 
+    // The guard's file is opened first, so the error is about it.
     match OsLock::acquire(&path) {
         Err(OsLockError::Io { path: at, source }) => {
-            assert_eq!(at, path);
+            assert_eq!(at, guard_path(&path));
             assert_eq!(source.kind(), ErrorKind::NotFound);
         }
         other => panic!("expected Io, got {other:?}"),
     }
     assert!(names(dir.path()).is_empty());
+}
+
+#[test]
+fn holder_on_a_folder_is_an_io_error_and_creates_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("x.lock");
+    fs::create_dir(&folder).unwrap();
+
+    match OsLock::holder(&folder) {
+        Err(OsLockError::Io { path: at, .. }) => assert_eq!(at, folder),
+        other => panic!("expected Io, got {other:?}"),
+    }
+    assert_eq!(names(dir.path()), ["x.lock"]);
+}
+
+/// A process that only asks, run by a user who may read the two files and
+/// not write them. Run as root, this shows nothing: root may write.
+#[cfg(unix)]
+#[test]
+fn an_asker_needs_only_to_read_the_two_files() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    drop(OsLock::acquire(&path).unwrap());
+    fs::write(&path, "{\"pid\":4242}\n").unwrap();
+    for file in [&path, &guard_path(&path)] {
+        fs::set_permissions(file, fs::Permissions::from_mode(0o444)).unwrap();
+    }
+
+    assert_eq!(OsLock::holder(&path).unwrap(), OsLockState::Free);
+    let held = hold(&path);
+    assert_holder(&OsLock::holder(&path).unwrap(), json!({ "pid": 4242 }));
+    drop(held);
 }
 
 #[test]
@@ -361,12 +357,13 @@ fn an_error_says_which_lock_and_who_holds_it() {
 }
 
 /// A holder replaces its record, a long one and a short one in turn, while
-/// others ask. Whatever the timing, nobody is told the lock is free or given
-/// another pid.
+/// others ask and, on Unix, read the file. Whatever the timing, nobody is
+/// told the lock is free or given another pid, and the file is never empty
+/// and always starts with the holder's pid.
 ///
 /// Where a file system never lets one read see half of one write, every
-/// answer is also one of the two records, whole. That is counted, not
-/// asserted: `--nocapture` shows the counts.
+/// answer is also one of the two records, whole. No system promises that to
+/// this test, so it is counted, not asserted: `--nocapture` shows the counts.
 #[test]
 fn a_holder_is_named_by_its_pid_while_it_replaces_its_record() {
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -383,6 +380,7 @@ fn a_holder_is_named_by_its_pid_while_it_replaces_its_record() {
         record
     };
     let (whole_long, whole_short) = (whole(&long), whole(&short));
+    let pid_first = format!("{{\"pid\":{pid}");
     let mut lock = OsLock::acquire(&path).unwrap();
     let done = AtomicBool::new(false);
     let (asked, in_whole, mixed, unnamed) = (
@@ -407,10 +405,19 @@ fn a_holder_is_named_by_its_pid_while_it_replaces_its_record() {
                         }
                         OsLockState::HeldUnnamed => &unnamed,
                         OsLockState::GuardBusy => continue,
-                        OsLockState::Free => panic!("free while it is held"),
+                        other => panic!("{other:?} while it is held"),
                     };
                     count.fetch_add(1, Ordering::SeqCst);
                     asked.fetch_add(1, Ordering::SeqCst);
+                    // On Windows the lock blocks this read.
+                    if cfg!(unix) {
+                        let text = fs::read(&path).unwrap();
+                        assert!(
+                            text.starts_with(pid_first.as_bytes()),
+                            "the file does not start with the pid: {:?}",
+                            String::from_utf8_lossy(&text)
+                        );
+                    }
                 }
             });
         }
