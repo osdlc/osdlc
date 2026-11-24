@@ -351,9 +351,10 @@ place, pr-update takes write for group and others off everything in it
 (`chmod -R go-w`) and turns off git's background maintenance in it
 (`maintenance.auto=false`, `gc.auto=0`), so no git process writes in it
 after the command that started it. Instead, after each fetch of a clone and
-while it still holds the clone's lock, pr-update runs `git maintenance run
---auto` in the foreground, so a clone used every day is still repacked. The clone folder and its `config` must
-then pass the rule too, since whoever can write that file chooses what git
+while it still holds the clone's lock, pr-update runs
+`git maintenance run --auto` in the foreground, so a clone used every day is
+still repacked. The clone folder and its `config` must then pass the rule
+too, since whoever can write that file chooses what git
 runs there. Each run worktree's folder is made by `git`; for it only the
 owner is checked, and the folders above it must pass the rule. A clone is used only
 when pr-update made it: a folder without its marker, a symbolic link in its

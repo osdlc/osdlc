@@ -180,8 +180,8 @@ export function repositoriesFile(opts: RepositoriesFileOptions = {}): Repositori
 }
 
 /**
- * How long a `repositories.yaml` lock may stand before it is a dead writer's whatever its pid
- * says: far beyond the read, check and write it covers, which take well under a second.
+ * How old a `repositories.yaml` lock may get before it counts as a dead writer's, whatever its
+ * pid says: far longer than the read, check and write it covers, which take well under a second.
  */
 export const ROOTS_LOCK_STALE_MS = 10 * 60_000
 
