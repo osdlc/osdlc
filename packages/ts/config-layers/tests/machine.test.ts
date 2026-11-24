@@ -11,6 +11,7 @@ import {
 import { dirname, join } from 'node:path'
 
 import { etag, etagOfFile, WriteConflictError } from '@osdlc/etag-write'
+import { TieredDirsError } from '@osdlc/tiered-dirs'
 import { z } from 'zod'
 
 import { envStem } from '../src/dirs.ts'
@@ -85,6 +86,89 @@ describe('machineConfigFile', () => {
     })
     expect(m.env).toBe('TOOLY_CFG')
     expect(m.path()).toMatch(/tooly[/\\]machine\.yaml$/)
+  })
+
+  describe('app', () => {
+    const withApp = (app: string) =>
+      machineConfigFile({
+        tool: 'tooly',
+        app,
+        schema: MachineSchema,
+        vendorDirs: VENDOR_DIRS,
+        dirs: () => sb.dirs,
+      })
+
+    test("puts the file in the app's directory; the default variable is still the tool's", () => {
+      const m = withApp('pr-update')
+      expect(m.env).toBe('TOOLY_MACHINE_CONFIG')
+      expect(m.path()).toBe(
+        join(sb.dirs.standalone('tooly').config().app('pr-update').path, 'config.yaml'),
+      )
+    })
+
+    test('without app, the file stays directly in the tool directory', () => {
+      expect(dirname(sb.machine.path())).toBe(sb.dirs.standalone('tooly').config().path)
+    })
+
+    test('under <PREFIX>_ROOT, the app goes under the tool, then the file name', () => {
+      const saved = process.env.TOOLY_ROOT
+      process.env.TOOLY_ROOT = sb.root
+      try {
+        const m = machineConfigFile({
+          tool: 'tooly',
+          app: 'pr-update',
+          fileName: 'machine.yaml',
+          schema: MachineSchema,
+          vendorDirs: VENDOR_DIRS,
+        })
+        expect(m.path()).toBe(join(sb.root, 'config', 'tooly', 'pr-update', 'machine.yaml'))
+      } finally {
+        if (saved === undefined) delete process.env.TOOLY_ROOT
+        else process.env.TOOLY_ROOT = saved
+      }
+    })
+
+    test('the relocation variable still wins, as given', () => {
+      const m = machineConfigFile({
+        tool: 'tooly',
+        app: 'pr-update',
+        env: 'PR_UPDATE_MACHINE_CONFIG',
+        schema: MachineSchema,
+        vendorDirs: VENDOR_DIRS,
+        dirs: () => sb.dirs,
+      })
+      const saved = process.env.PR_UPDATE_MACHINE_CONFIG
+      process.env.PR_UPDATE_MACHINE_CONFIG = '/x/pr-update.yaml'
+      try {
+        expect(m.env).toBe('PR_UPDATE_MACHINE_CONFIG')
+        expect(m.path()).toBe('/x/pr-update.yaml')
+      } finally {
+        if (saved === undefined) delete process.env.PR_UPDATE_MACHINE_CONFIG
+        else process.env.PR_UPDATE_MACHINE_CONFIG = saved
+      }
+    })
+
+    test('an app that is not a single path segment throws, as a bad tool does', () => {
+      const codeOf = (f: () => unknown): string | undefined => {
+        try {
+          f()
+        } catch (err) {
+          return err instanceof TieredDirsError ? err.code : 'not a TieredDirsError'
+        }
+        return undefined
+      }
+      const badTool = machineConfigFile({
+        tool: 'a/b',
+        schema: MachineSchema,
+        vendorDirs: VENDOR_DIRS,
+        dirs: () => sb.dirs,
+      })
+      expect(codeOf(() => badTool.path())).toBe('INVALID_KEY')
+      for (const app of ['a/b', '..', '', 'run']) {
+        expect(codeOf(() => withApp(app).path())).toBe('INVALID_KEY')
+      }
+      expect(() => withApp('a/b').path()).toThrow(/invalid app key "a\/b"/)
+    })
   })
 
   test('missing file → defaults', () => {
