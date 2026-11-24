@@ -143,5 +143,6 @@ export {
 } from '@osdlc/command-seam'
 
 export { REPOSITORY_VARS, withoutRepositoryVars } from './repository-vars.ts'
+export { hooksOffEnv } from './hooks-off.ts'
 
 export type { CatFileBatchOptions, CatFileEntry } from './cat-file.ts'

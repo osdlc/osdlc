@@ -51,6 +51,7 @@ import {
   CommandFailed,
   Git,
   REPOSITORY_VARS,
+  hooksOffEnv,
   withoutRepositoryVars,
   type PushRefResult,
   type PushRejection,
@@ -949,18 +950,14 @@ function runVerify(
   return null
 }
 
-/** Commit hooks off for one call, because the project's checks belong to `verify:`. */
+/**
+ * Hooks off for one call (typed-git's `hooksOffEnv`): commit hooks because the project's checks
+ * belong to `verify:`, and every hook in a worktree that holds a PR's files.
+ */
 export function noHooksEnv(
   parent: Record<string, string | undefined> = process.env,
 ): Record<string, string> {
-  // Append to any GIT_CONFIG_* the parent already set instead of overwriting it.
-  const parsed = Number.parseInt(parent.GIT_CONFIG_COUNT ?? '', 10)
-  const i = Number.isInteger(parsed) && parsed > 0 ? parsed : 0
-  return {
-    GIT_CONFIG_COUNT: String(i + 1),
-    [`GIT_CONFIG_KEY_${i}`]: 'core.hooksPath',
-    [`GIT_CONFIG_VALUE_${i}`]: '/dev/null',
-  }
+  return hooksOffEnv(parent)
 }
 
 /**

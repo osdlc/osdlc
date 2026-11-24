@@ -609,6 +609,43 @@ describe('git in a located checkout', () => {
   })
 })
 
+describe('git in a located checkout, under an inherited -c core.hooksPath', () => {
+  test('runs no hook when a parent git passed GIT_CONFIG_PARAMETERS on (final review)', async () => {
+    const markers = join(scratch, 'markers')
+    mkdirSync(markers)
+    sh(api.worker.dir, 'checkout', '-q', 'topic')
+    mkdirSync(join(api.worker.dir, '.husky'))
+    for (const hook of ['post-checkout', 'pre-push']) {
+      const file = join(api.worker.dir, '.husky', hook)
+      writeFileSync(file, `#!/bin/sh\n: > '${join(markers, hook)}'\n`)
+      chmodSync(file, 0o755)
+    }
+    sh(api.worker.dir, 'add', '.husky')
+    sh(api.worker.dir, 'commit', '-q', '-m', 'hooks')
+    sh(api.worker.dir, 'push', '-q', 'origin', 'topic')
+    sh(api.worker.dir, 'checkout', '-q', 'main')
+    // No core.hooksPath in the checkout's config: it comes from the environment, as when
+    // pr-update runs from a git alias or hook started as `git -c core.hooksPath=.husky`.
+    vi.stubEnv('GIT_CONFIG_PARAMETERS', "'core.hooksPath'='.husky'")
+    try {
+      // The control: with that variable, checking the PR's head out fires its post-checkout.
+      const control = join(scratch, 'control')
+      sh(api.worker.dir, 'worktree', 'add', '-q', '--detach', control, 'origin/main')
+      sh(control, 'checkout', '-q', '--detach', 'origin/topic')
+      expect(existsSync(join(markers, 'post-checkout'))).toBe(true)
+      sh(api.worker.dir, 'worktree', 'remove', '--force', control)
+      rmSync(markers, { recursive: true, force: true })
+      mkdirSync(markers)
+
+      const out = await update({ args: { strategy: 'merge' } })
+      expect(out.results.map((r) => [r.status, r.pushed])).toEqual([['updated', true]])
+      expect(readdirSync(markers)).toEqual([])
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+})
+
 describe("the person's own checkout", () => {
   const stateOf = (dir: string) => ({
     head: sh(dir, 'rev-parse', 'HEAD'),

@@ -4,6 +4,7 @@
  */
 
 import { afterEach, describe, expect, test } from 'vitest'
+import type { CommandRunner } from '@osdlc/command-seam'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -258,13 +259,44 @@ describe('originOwner — hostile git environment', () => {
     )
   })
 
-  test("the caller's git variables are back in place after the lookup", async () => {
+  test("the lookup leaves the caller's git variables in process.env", async () => {
     const mine = repoWithOrigin('https://github.com/mine/x.git')
 
     await withEnv({ GIT_DIR: join(mine.dir, '.git'), GIT_CONFIG_COUNT: '0' }, async () => {
       await policyDecision(mine.dir, owners, withGit)
       expect(process.env.GIT_DIR).toBe(join(mine.dir, '.git'))
       expect(process.env.GIT_CONFIG_COUNT).toBe('0')
+    })
+  })
+
+  test('git runs without the repository and config variables, and with hooks off', async () => {
+    const seen: Record<string, string | undefined>[] = []
+    const recording: CommandRunner = {
+      binary: 'git',
+      run: (_argv, opts) => {
+        seen.push(opts.env ?? {})
+        return { exitCode: 0, stdout: 'https://github.com/mine/x.git\n', stderr: '' }
+      },
+    }
+    await withEnv(
+      {
+        GIT_DIR: '/elsewhere/.git',
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'core.hooksPath',
+        GIT_CONFIG_VALUE_0: '.husky',
+        GIT_CONFIG_PARAMETERS: "'core.hooksPath'='.husky'",
+      },
+      async () => {
+        expect(originOwner('/somewhere', recording)).toBe('github.com/mine')
+      },
+    )
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({
+      GIT_DIR: undefined,
+      GIT_CONFIG_KEY_0: 'core.hooksPath',
+      GIT_CONFIG_VALUE_0: '/dev/null',
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_PARAMETERS: "'core.hookspath'='/dev/null'",
     })
   })
 })

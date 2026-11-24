@@ -360,10 +360,13 @@ const expandPath = (raw: string) => expandTrustPath(raw, home)
 `@osdlc/trust-repo/git` exports `originOwner(root)`, the `ownerOf` for the
 `owners` rule. It returns the host and owner of `root`'s `origin` remote as
 `host/owner`, or `null`. It runs `git remote get-url origin` with
-`core.fsmonitor` off and with the caller's `GIT_DIR`, `GIT_WORK_TREE`,
-`GIT_INDEX_FILE`, `GIT_COMMON_DIR`, `GIT_CONFIG`, `GIT_CONFIG_PARAMETERS`,
-`GIT_CONFIG_COUNT` and `GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` variables
-removed, so they cannot point git at another repository. `GIT_CONFIG_GLOBAL`,
+`core.fsmonitor` off, with hooks off (typed-git's `hooksOffEnv`), and without
+the caller's repository variables (typed-git's `REPOSITORY_VARS`: `GIT_DIR`,
+`GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_COMMON_DIR` and the others) or its
+`GIT_CONFIG`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT` and
+`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` variables, so they cannot point git at
+another repository or rewrite the remote. They are left out of git's
+environment only; `process.env` is not changed. `GIT_CONFIG_GLOBAL`,
 `GIT_CONFIG_SYSTEM` and `GIT_CONFIG_NOSYSTEM` are kept on purpose, as user
 setup, so they can still change how the remote URL is read. A remote that is a local path, a
 `github:` style shortcut or an unknown host has no owner.

@@ -1831,14 +1831,18 @@ describe('noHooksEnv', () => {
       GIT_CONFIG_COUNT: '1',
       GIT_CONFIG_KEY_0: 'core.hooksPath',
       GIT_CONFIG_VALUE_0: '/dev/null',
+      GIT_CONFIG_PARAMETERS: "'core.hookspath'='/dev/null'",
     })
   })
 
-  test('appends after the git config the parent already set', () => {
-    expect(noHooksEnv({ GIT_CONFIG_COUNT: '2' })).toEqual({
+  test('appends after the git config the parent already set, -c settings included', () => {
+    expect(
+      noHooksEnv({ GIT_CONFIG_COUNT: '2', GIT_CONFIG_PARAMETERS: "'core.hooksPath'='.husky'" }),
+    ).toEqual({
       GIT_CONFIG_COUNT: '3',
       GIT_CONFIG_KEY_2: 'core.hooksPath',
       GIT_CONFIG_VALUE_2: '/dev/null',
+      GIT_CONFIG_PARAMETERS: "'core.hooksPath'='.husky' 'core.hookspath'='/dev/null'",
     })
   })
 })

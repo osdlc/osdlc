@@ -1048,6 +1048,17 @@ can go through it too.
 const git = new Git(checkout, { runner: withoutRepositoryVars() });
 ```
 
+`hooksOffEnv(parent?)` gives the variables that turn hooks off in git, to pass
+as a call's `env`. It sets `core.hooksPath=/dev/null` after whatever `parent`
+(default `process.env`) holds, both as the next `GIT_CONFIG_KEY_<n>` pair and
+at the end of `GIT_CONFIG_PARAMETERS`. git reads `GIT_CONFIG_PARAMETERS`
+last, so a `-c core.hooksPath=.husky` that a parent git passed on, as to a
+program a git alias or hook started, does not win over it.
+
+```ts
+new Git(checkout, { runner: withoutRepositoryVars() }).checkout(sha, { env: hooksOffEnv() });
+```
+
 The runner and result types, `CommandFailed`, `spawnRunner`, `spawnRunnerAsync`,
 `spawnRunnerBytes`, `spawnRunnerBytesAsync`, `runChecked`, `runCheckedAsync`
 and `asAsync` are re-exported from command-seam, so wiring a runner or catching
