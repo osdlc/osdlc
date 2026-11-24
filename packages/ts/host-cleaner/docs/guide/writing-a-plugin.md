@@ -116,14 +116,21 @@ What it relies on:
 - **`env`** is the command line's environment.
 - **`kit.candidate`** fills in the id (`<kind>:<path>` or `<kind>:<ref>`) and
   the owner.
+- **`detect`** answers `true`, `false`, or `{ active, note }` (`Detection`).
+  `status` prints the note as a warning naming the plugin, whether it runs or
+  not. `ctx.targetsGiven` says whether the person gave targets or the run fell
+  back to the current folder.
 
 The rules every plugin keeps:
 
 - **Paths and refs.** A candidate is a path, a folder its owner deletes, or a
   ref, a thing deleted by name with no folder of its own. A path must sit
-  strictly inside the plugin's `roots`, a target or a linked worktree of one;
-  the core refuses it otherwise (`outside-roots`) and checks again right
-  before `delete`.
+  strictly inside the plugin's `roots`, a target or a linked worktree of one,
+  or be one of its roots declared `{ path, self: true }` (`Root`); the core
+  refuses it otherwise (`outside-roots`) and checks again right before
+  `delete`. The core leaves out a root that is `/`, is or holds home, is a
+  personal folder such as `~/Documents`, is or holds a target or a checkout,
+  and a self root that is a symlink.
 - **Delete with `kit.remove`.** Never remove a folder yourself. `kit.remove`
   checks the path is still inside the bounds by its real path, makes
   read-only files writable, removes the folder and returns the receipt
