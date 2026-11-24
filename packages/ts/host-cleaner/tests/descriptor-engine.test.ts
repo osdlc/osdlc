@@ -7,17 +7,20 @@
  * trusted values.
  */
 
+import { execFileSync } from 'node:child_process'
 import {
   existsSync,
   mkdirSync,
   readdirSync,
+  realpathSync,
   renameSync,
   rmSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs'
-import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import type { CommandRunner } from '@osdlc/command-seam'
@@ -452,11 +455,23 @@ describe('the plugin refuses an outside folder itself', () => {
   test('delete throws for a path no entry gives, even inside its roots', async () => {
     const b = build('uv', UV)
     const s = await survey([b.plugin], ctxOf())
-    const other = join(b.home, '.cache', 'other')
+    const other = join(b.folder('cache'), 'other')
     mkdirSync(other)
     const c = { ...(s.candidates[0] as PathCandidate), id: `uv:${other}`, path: other }
     await expect(b.plugin.delete!(c, fakeContext())).rejects.toThrow(
       `${other} was not deleted: it is no longer ${b.folder('cache')}`,
+    )
+    expect(existsSync(other)).toBe(true)
+  })
+
+  test('delete throws for a sibling of the folder, which no root holds', async () => {
+    const b = build('uv', UV)
+    const s = await survey([b.plugin], ctxOf())
+    const other = join(b.home, '.cache', 'other')
+    mkdirSync(other)
+    const c = { ...(s.candidates[0] as PathCandidate), id: `uv:${other}`, path: other }
+    await expect(b.plugin.delete!(c, fakeContext())).rejects.toThrow(
+      `${other} was not deleted: it is not inside uv's roots`,
     )
     expect(existsSync(other)).toBe(true)
   })
@@ -470,7 +485,11 @@ candidates:
   - { path: data, costDescription: re-download }
 `
 
-  /** The plugin's own outside-roots refusal of `folder`, and whether its roots name its parent. */
+  /**
+   * The plugin's own outside-roots refusal of `folder`, its roots and self
+   * roots, and the core's warnings about its roots (none while the engine
+   * refuses first).
+   */
   async function refusal(folder: string, over: Partial<RunCtx> = {}, opts: DescriptorOptions = {}) {
     const b = build('x', one(folder), { fill: false, opts })
     const path = folder.startsWith('~/') ? join(b.home, folder.slice(2)) : folder
@@ -483,16 +502,42 @@ candidates:
         .filter((o) => o.by === 'x' && o.code === OUTSIDE_ROOTS)
         .map((o) => o.reason),
       roots: s.roots.x,
+      selfRoots: s.selfRoots.x,
+      rootWarnings: s.warnings.filter((w) => w.startsWith('x: roots:')),
       candidates: s.candidates,
     }
   }
 
-  test.each(PERSONAL_FOLDERS)('~/%s is refused as a personal folder', async (name) => {
-    const r = await refusal(`~/${name}`)
-    expect(r.reasons).toEqual([`${r.path}: it is the personal folder ~/${name}`])
+  /** A refused folder: one reason from the engine, no root, and nothing for the core to leave out. */
+  function refused(r: Awaited<ReturnType<typeof refusal>>, why: string): void {
+    expect(r.reasons).toEqual([`${r.path}: ${why}`])
     expect(r.roots).toEqual([])
+    expect(r.selfRoots).toEqual([])
+    expect(r.rootWarnings).toEqual([])
     expect(r.candidates[0]).toMatchObject({ held: true })
     expect(r.candidates[0]!.bytes).toBeUndefined()
+  }
+
+  test('the root is the folder itself, as a self root', async () => {
+    const r = await refusal('~/.npm')
+    expect(r.reasons).toEqual([])
+    expect(r.roots).toEqual([r.path])
+    expect(r.selfRoots).toEqual([r.path])
+    expect(r.rootWarnings).toEqual([])
+    expect(r.candidates.map((c) => c.path)).toEqual([r.path])
+  })
+
+  test('the whole folder is removed through its self root', async () => {
+    const b = build('x', one('~/.npm'))
+    const { receipt } = await surveyAndClean(b.plugin)
+    expect(receipt.steps).toMatchObject([
+      { result: 'ok', delete: expect.stringMatching(/^removed /) },
+    ])
+    expect(existsSync(b.folder('data'))).toBe(false)
+  })
+
+  test.each(PERSONAL_FOLDERS)('~/%s is refused as a personal folder', async (name) => {
+    refused(await refusal(`~/${name}`), `it is the personal folder ~/${name}`)
   })
 
   // macOS's default filesystem ignores case, so ~/documents is ~/Documents.
@@ -529,41 +574,99 @@ candidates:
   test('a folder inside a personal folder is not', async () => {
     const r = await refusal('~/Library/Caches/pip')
     expect(r.reasons).toEqual([])
-    expect(r.roots).toEqual([join(r.b.home, 'Library', 'Caches')])
+    expect(r.roots).toEqual([r.path])
+    expect(r.selfRoots).toEqual([r.path])
+  })
+
+  test('the filesystem root', async () => {
+    refused(await refusal('/'), 'it is the filesystem root')
   })
 
   test('the home folder itself', async () => {
     const r = await refusal('~/')
-    expect(r.reasons).toEqual([`${r.b.home}: it is the home folder`])
+    expect(r.path).toBe(r.b.home)
+    refused(r, 'it is the home folder')
+  })
+
+  test('a folder holding home', async () => {
+    const above = realpathSync.native(tmpdir())
+    const b = build('x', one(above), { fill: false })
+    expect(dirname(b.home)).toBe(above)
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.objections.filter((o) => o.by === 'x').map((o) => o.reason)).toEqual([
+      `${above}: it holds the home folder`,
+    ])
+    expect(s.roots.x).toEqual([])
+    expect(s.warnings.filter((w) => w.startsWith('x: roots:'))).toEqual([])
   })
 
   test('a folder outside home', async () => {
     const elsewhere = tempHome()
     cleanups.push(elsewhere.cleanup)
-    const r = await refusal(join(elsewhere.home, 'cache'))
-    expect(r.reasons).toEqual([`${r.path}: it is not inside the home folder`])
+    refused(await refusal(join(elsewhere.home, 'cache')), 'it is not inside the home folder')
   })
 
-  test('a target, a folder holding one, and a checkout', async () => {
-    const holds = await refusal('~/work')
-    expect(holds.reasons).toEqual([])
-    const target = await survey([holds.b.plugin], ctxOf({ targets: [holds.path] }))
-    expect(target.objections.filter((o) => o.by === 'x').map((o) => o.reason)).toEqual([
-      `${holds.path}: it is a target`,
-    ])
-    const inner = join(holds.path, 'repo')
-    mkdirSync(inner)
-    const again = await survey([holds.b.plugin], ctxOf({ targets: [inner] }))
-    expect(again.objections.filter((o) => o.by === 'x').map((o) => o.reason)).toEqual([
-      `${holds.path}: it holds the target ${inner}`,
-    ])
-    const checkout = build('x', one('~/src'), { fill: false })
-    mkdirSync(join(checkout.home, 'src'))
-    makeGitFixture({ dir: join(checkout.home, 'src'), initialBranch: 'main' })
-    const s = await survey([checkout.plugin], ctxOf())
+  test('a symlink', async () => {
+    const b = build('x', one('~/.npm'), { fill: false })
+    const real = join(b.home, 'npm-real')
+    mkdirSync(real)
+    symlinkSync(real, join(b.home, '.npm'))
+    const s = await survey([b.plugin], ctxOf())
     expect(s.objections.filter((o) => o.by === 'x').map((o) => o.reason)).toEqual([
-      `${join(checkout.home, 'src')}: it is a checkout`,
+      `${join(b.home, '.npm')}: it is a symlink`,
     ])
+    expect(s.roots.x).toEqual([])
+    expect(s.warnings.filter((w) => w.startsWith('x: roots:'))).toEqual([])
+  })
+
+  test('a target', async () => {
+    const b = build('x', one('~/work'), { fill: false })
+    const work = join(b.home, 'work')
+    mkdirSync(work)
+    const s = await survey([b.plugin], ctxOf({ targets: [work] }))
+    expect(s.objections.filter((o) => o.by === 'x').map((o) => o.reason)).toEqual([
+      `${work}: it is a target`,
+    ])
+    expect(s.roots.x).toEqual([])
+    expect(s.warnings.filter((w) => w.startsWith('x: roots:'))).toEqual([])
+  })
+
+  test('a folder holding a target', async () => {
+    const b = build('x', one('~/work'), { fill: false })
+    const inner = join(b.home, 'work', 'repo')
+    mkdirSync(inner, { recursive: true })
+    const s = await survey([b.plugin], ctxOf({ targets: [inner] }))
+    expect(s.objections.filter((o) => o.by === 'x').map((o) => o.reason)).toEqual([
+      `${join(b.home, 'work')}: it holds the target ${inner}`,
+    ])
+    expect(s.roots.x).toEqual([])
+    expect(s.warnings.filter((w) => w.startsWith('x: roots:'))).toEqual([])
+  })
+
+  test('a checkout', async () => {
+    const b = build('x', one('~/src'), { fill: false })
+    mkdirSync(join(b.home, 'src'))
+    makeGitFixture({ dir: join(b.home, 'src'), initialBranch: 'main' })
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.objections.filter((o) => o.by === 'x').map((o) => o.reason)).toEqual([
+      `${join(b.home, 'src')}: it is a checkout`,
+    ])
+    expect(s.roots.x).toEqual([])
+    expect(s.warnings.filter((w) => w.startsWith('x: roots:'))).toEqual([])
+  })
+
+  test("a folder holding a checkout of the targets' repositories", async () => {
+    const b = build('x', one('~/trees'), { fill: false })
+    const repo = dotnetCheckout(b.home)
+    const tree = join(b.home, 'trees', 'app-b')
+    mkdirSync(dirname(tree))
+    execFileSync('git', ['-C', repo, 'worktree', 'add', '-q', '-b', 'b', tree])
+    const s = await survey([b.plugin], ctxOf({ targets: [repo] }))
+    expect(s.objections.filter((o) => o.by === 'x').map((o) => o.reason)).toEqual([
+      `${join(b.home, 'trees')}: it holds the checkout ${tree}`,
+    ])
+    expect(s.roots.x).toEqual([])
+    expect(s.warnings.filter((w) => w.startsWith('x: roots:'))).toEqual([])
   })
 
   test("a folder holding host-cleaner's own", async () => {
@@ -974,7 +1077,7 @@ describe('variables (tier 2)', () => {
     filled(b.home, '.local/share/pnpm/store')
     const { survey: s } = await surveyAndClean(b.plugin)
     expect(s.candidates.map((c) => c.path)).toEqual([moved])
-    expect(s.roots.pnpm).toEqual([join(b.home, 'disk')])
+    expect(s.roots.pnpm).toEqual([moved])
     expect(b.calls.map((c) => c.argv)).toEqual([
       // The survey, the re-check, then the prune.
       ['pnpm', 'store', 'path'],
@@ -1044,7 +1147,7 @@ candidates:
     const other = filled(b.home, '.cache/other')
     const s = await survey([b.plugin], ctxOf())
     expect(s.candidates.map((c) => c.path)).toEqual([other])
-    expect(s.roots.tool).toEqual([join(b.home, '.cache')])
+    expect(s.roots.tool).toEqual([other])
   })
 
   test('each survey works the folder out again; a store moved after the plan is not deleted', async () => {
@@ -1072,7 +1175,7 @@ candidates:
     expect(s.objections.filter((o) => o.by === 'go')).toMatchObject([
       { code: OUTSIDE_ROOTS, reason: `${elsewhere}: it is not inside the home folder` },
     ])
-    expect(s.roots.go).not.toContain(join(elsewhere, '..'))
+    expect(s.roots.go).not.toContain(elsewhere)
     const c = s.candidates.find((x) => x.path === elsewhere)!
     expect(c).toMatchObject({ held: true })
     await expect(b.plugin.delete!(c, fakeContext())).rejects.toThrow(
@@ -1090,7 +1193,7 @@ candidates:
     const b = buildVars('go', GO_VARS, { vars: { GOMODCACHE: mod } })
     const { survey: s, receipt } = await surveyAndClean(b.plugin)
     expect(s.objections).toEqual([])
-    expect(s.roots.go).toContain(join(disk, 'go'))
+    expect(s.roots.go).toContain(mod)
     expect(receipt.steps).toMatchObject([{ id: `go:${mod}`, result: 'ok' }])
     expect(existsSync(mod)).toBe(false)
   })
