@@ -8,7 +8,8 @@
  * Each storage folder names its workspace in `workspace.json`, as a `folder`
  * or a `workspace` (a `.code-workspace` file) URI. One whose `file:` URI
  * names nothing on disk is a candidate; deleting it costs the window's
- * settings and state (`re-download`). A remote URI cannot be checked from
+ * settings and state (`re-download`), or, when it holds chat or agent history
+ * (see {@link HISTORY_FOLDERS}), that history (`lost`). A remote URI cannot be checked from
  * here and a folder with no `workspace.json` is an empty window's, so both are
  * left alone. A `workspace.json` of any other shape is never guessed at: the
  * folder is proposed and refused (`unknown-workspace`), which is how it shows
@@ -85,6 +86,20 @@ const CURSOR: Editor = {
 /** The longest `discover` may take: it sizes every dead storage folder. */
 const DISCOVER_LIMIT_MS = 5 * 60_000
 
+/**
+ * The folders in a storage folder that hold chat or agent history, which
+ * nothing can fetch or build again: VS Code's chats (`chatSessions`, from
+ * `chatSessionStore.ts`) and the edits its agents made, with the file contents
+ * before and after (`chatEditingSessions`, from `chatEditingSessionStorage.ts`),
+ * and the Copilot extension's agent transcripts and repository memories.
+ */
+const HISTORY_FOLDERS = [
+  'chatSessions',
+  'chatEditingSessions',
+  'GitHub.copilot-chat/transcripts',
+  'GitHub.copilot-chat/memory-tool/memories',
+] as const
+
 /** A mount point and the folder a volume is mounted on; a path under one that is missing or empty is on a volume that is not mounted. */
 const VOLUME =
   /^(\/Volumes\/[^/]+|\/run\/media\/[^/]+\/[^/]+|\/media\/[^/]+\/[^/]+|\/mnt\/[^/]+)(?:\/|$)/
@@ -124,7 +139,7 @@ export const cursorUserDir = (
 
 /** What one storage folder says about its workspace. */
 type Entry =
-  | { state: 'gone'; workspace: string; local: string }
+  | { state: 'gone'; workspace: string; local: string; history: string[] }
   | { state: 'unknown'; problem: string }
   /** Live, remote, an empty window's, on a volume not mounted, or not a folder of the editor's. */
   | { state: 'skip' }
@@ -153,6 +168,19 @@ function unmounted(path: string): boolean {
   } catch {
     return true
   }
+}
+
+/** The {@link HISTORY_FOLDERS} in `dir` that are folders with something in them; one that cannot be read counts. */
+function historyIn(dir: string): string[] {
+  return HISTORY_FOLDERS.filter((name) => {
+    const path = join(dir, name)
+    try {
+      if (lstatSync(path, { throwIfNoEntry: false })?.isDirectory() !== true) return false
+      return readdirSync(path).length > 0
+    } catch {
+      return true
+    }
+  })
 }
 
 /** The local path a `file:` URI names; null for another scheme; throws when it is not a URI. */
@@ -205,7 +233,8 @@ function entryOf(dir: string): Entry {
     // It cannot be told whether it is there.
     return { state: 'skip' }
   }
-  return unmounted(local) ? { state: 'skip' } : { state: 'gone', workspace, local }
+  if (unmounted(local)) return { state: 'skip' }
+  return { state: 'gone', workspace, local, history: historyIn(dir) }
 }
 
 /** The local folders and workspace files the window state names; `problem` when it is not a shape this plugin knows. */
@@ -362,6 +391,9 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
       if (now.state !== 'gone' || now.workspace !== c.evidence.workspace) {
         throw new Error(`${c.path} is no longer storage for a workspace that is gone`)
       }
+      if (now.history.length > 0 && c.costDescription !== 'lost') {
+        throw new Error(`${c.path} now holds chat or agent history (${now.history.join(', ')})`)
+      }
       return kit.remove(c.path, ctx)
     },
   }
@@ -371,16 +403,23 @@ function goneCandidate(
   editor: Editor,
   kit: Kit,
   dir: string,
-  e: { workspace: string; local: string },
+  e: { workspace: string; local: string; history: string[] },
 ): Candidate {
   const bytes = kit.size(dir)
+  const hasHistory = e.history.length > 0
   return kit.candidate({
     kind: KIND,
     path: dir,
-    why: `${editor.product} kept ${editor.holds} for ${e.local}, which no longer exists`,
+    why: `${editor.product} kept ${editor.holds} for ${e.local}, which no longer exists${hasHistory ? `, with chat or agent history in ${e.history.join(', ')}` : ''}`,
     ...(bytes === null ? {} : { bytes }),
-    costDescription: editor.costDescription,
-    evidence: { kind: KIND, path: dir, workspace: e.workspace },
+    // A `lost` candidate is held, and runs only with `--allow discard-user-data`.
+    costDescription: hasHistory ? 'lost' : editor.costDescription,
+    evidence: {
+      kind: KIND,
+      path: dir,
+      workspace: e.workspace,
+      ...(hasHistory ? { history: e.history } : {}),
+    },
   })
 }
 
