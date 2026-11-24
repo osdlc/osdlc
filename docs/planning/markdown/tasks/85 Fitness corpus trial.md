@@ -34,3 +34,5 @@ written in this record. A trial that ends with a list of gaps and no merged corp
 Before the pull request opens, the owner confirms the content may be public. sksizer/dev is private.
 The vault's own content is CC BY 4.0, and imported rows (free-exercise-db, wger, OpenPowerlifting,
 FoodData Central) keep their upstream licences, listed in the vault's `Attributions.md`.
+
+Plan for the model half (muscles, exercises, measurement profiles, activity kinds) and for the claims mapping: [97 Fitness corpora](97%20Fitness%20corpora.md) and `docs/planning/fitness-corpora.md`. Its section 6 answers the four questions above for the model half; a trial on the real conversion may correct it.
