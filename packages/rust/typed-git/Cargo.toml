@@ -1,6 +1,6 @@
 [package]
 name = "typed-git"
-version = "0.4.2"
+version = "0.4.3"
 edition.workspace = true
 rust-version.workspace = true
 description = "Typed functions over the git command line: repository queries and a parsed status, commits and reverts limited to named paths, push to the upstream, cache clones, worktrees, and a command builder for everything else."
