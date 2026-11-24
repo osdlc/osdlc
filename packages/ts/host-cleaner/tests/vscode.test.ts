@@ -89,6 +89,12 @@ function store(storage: string, hash: string, body?: unknown): string {
 
 const folder = (path: string) => ({ folder: pathToFileURL(path).href })
 
+/** A folder `name` in the storage folder `dir`, with one file in it unless `empty`. */
+function history(dir: string, name: string, empty = false): void {
+  mkdirSync(join(dir, name), { recursive: true })
+  if (!empty) writeFileSync(join(dir, name, 'f2c4.jsonl'), '{"kind":0}\n')
+}
+
 /** VS Code's window state naming `paths` as open windows. */
 function windows(user: string, paths: string[]): void {
   mkdirSync(join(user, 'globalStorage'), { recursive: true })
@@ -225,6 +231,85 @@ describe('discover', () => {
       ctxOf(t.home),
     )
     expect(s.plugins).toEqual([])
+  })
+})
+
+describe('chat and agent history', () => {
+  test('a dead workspace with chats is lost: held, and run only when picked with discard-user-data', async () => {
+    const h = home()
+    const dead = store(h.storage, 'bbb', folder(join(h.projects, 'dead')))
+    history(dead, 'chatSessions')
+    const id = `workspace-storage:${dead}`
+    const plugin = vscodePlugin(h.options())
+
+    const s = await survey([plugin], ctxOf(h.home))
+    expect(s.warnings).toEqual([])
+    expect(s.candidates).toEqual([
+      expect.objectContaining({
+        id,
+        costDescription: 'lost',
+        held: true,
+        why: `VS Code kept state for ${join(h.projects, 'dead')}, which no longer exists, with chat or agent history in chatSessions`,
+        evidence: expect.objectContaining({ history: ['chatSessions'] }),
+      }),
+    ])
+    expect(s.objections).toEqual([
+      expect.objectContaining({
+        by: 'host-cleaner',
+        candidate: id,
+        level: 'protest',
+        code: 'discard-user-data',
+      }),
+    ])
+
+    const kept = await clean(plan(s), [plugin], ctxOf(h.home))
+    expect(kept.steps).toEqual([])
+    expect(existsSync(dead)).toBe(true)
+    const picked = await clean(plan(s, { pick: [id], allow: ['discard-user-data'] }), [plugin], {
+      ...ctxOf(h.home),
+      allow: ['discard-user-data'],
+    })
+    expect(picked.steps).toEqual([expect.objectContaining({ id, result: 'ok' })])
+    expect(existsSync(dead)).toBe(false)
+  })
+
+  test('agent edits, Copilot transcripts and memories are history too; an empty chatSessions is not', async () => {
+    const h = home()
+    const shapes: Array<[string, string[], boolean]> = [
+      ['a', ['chatEditingSessions'], false],
+      ['b', ['GitHub.copilot-chat/transcripts'], false],
+      ['c', ['GitHub.copilot-chat/memory-tool/memories'], false],
+      ['d', ['chatSessions', 'chatEditingSessions'], false],
+      ['e', ['chatSessions'], true],
+      ['f', ['GitHub.copilot-chat/chat-session-resources'], false],
+    ]
+    for (const [hash, names, empty] of shapes) {
+      const dir = store(h.storage, hash, folder(join(h.projects, `dead-${hash}`)))
+      for (const name of names) history(dir, name, empty)
+    }
+
+    const s = await survey([vscodePlugin(h.options())], ctxOf(h.home))
+    expect(s.candidates.map((c) => [c.path, c.costDescription, c.evidence.history])).toEqual([
+      [join(h.storage, 'a'), 'lost', ['chatEditingSessions']],
+      [join(h.storage, 'b'), 'lost', ['GitHub.copilot-chat/transcripts']],
+      [join(h.storage, 'c'), 'lost', ['GitHub.copilot-chat/memory-tool/memories']],
+      [join(h.storage, 'd'), 'lost', ['chatSessions', 'chatEditingSessions']],
+      [join(h.storage, 'e'), 're-download', undefined],
+      [join(h.storage, 'f'), 're-download', undefined],
+    ])
+  })
+
+  test('delete refuses a storage folder planned as re-download that now holds chats', async () => {
+    const h = home()
+    const dead = store(h.storage, 'bbb', folder(join(h.projects, 'dead')))
+    const plugin = vscodePlugin(h.options())
+    const c = (await survey([plugin], ctxOf(h.home))).candidates[0]!
+    expect(c.costDescription).toBe('re-download')
+    history(dead, 'chatSessions')
+    await expect(deleting(plugin, c, h.home)).rejects.toThrow(
+      /now holds chat or agent history \(chatSessions\)/,
+    )
+    expect(existsSync(join(dead, 'chatSessions'))).toBe(true)
   })
 })
 
