@@ -296,15 +296,13 @@ export async function loadPackages(
   entries: readonly PackageEntry[],
   roots: readonly string[],
 ): Promise<{ loaded: LoadedPackage[]; failed: PackageFailure[] }> {
+  const results = await Promise.allSettled(entries.map((e) => loadPackage(e, roots)))
   const loaded: LoadedPackage[] = []
   const failed: PackageFailure[] = []
-  for (const entry of entries) {
-    try {
-      loaded.push(await loadPackage(entry, roots))
-    } catch (err) {
-      if (!(err instanceof PackageLoadError)) throw err
-      failed.push(err.failure)
-    }
+  for (const r of results) {
+    if (r.status === 'fulfilled') loaded.push(r.value)
+    else if (r.reason instanceof PackageLoadError) failed.push(r.reason.failure)
+    else throw r.reason
   }
   return { loaded, failed }
 }

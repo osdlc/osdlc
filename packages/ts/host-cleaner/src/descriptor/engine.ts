@@ -25,17 +25,18 @@
  * either may be unmeasured in one survey and measured in the next.
  */
 
-import { lstatSync, readdirSync, realpathSync, type Dirent } from 'node:fs'
+import { readdirSync, realpathSync, type Dirent } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, isAbsolute, join, normalize, relative, sep } from 'node:path'
+import { basename, dirname, join, normalize } from 'node:path'
 
 import { globRegExp } from '@osdlc/repo-cleaner'
 import { Git } from '@osdlc/typed-git'
 import { z } from 'zod'
 
+import { hoursText, present } from '../artifacts.ts'
 import { hostDirs } from '../config.ts'
 import { DEFAULT_IDLE_HOURS, idleHoursSetting, type Kit } from '../kit.ts'
-import { containedIn, realOr, rootProblem } from '../roots.ts'
+import { containedIn, isLink, realOr, rootProblem, within } from '../roots.ts'
 import { DELETE_LIMIT_MS, OUTSIDE_ROOTS } from '../run.ts'
 import {
   PLUGIN_API,
@@ -90,18 +91,6 @@ export function skipReason(d: Descriptor): string | undefined {
   return d.system === true
     ? 'skipped: it describes data that needs root (system: true), which host-cleaner does not clean'
     : undefined
-}
-
-/** True when `path` exists as itself, a link counted as present. */
-const present = (path: string): boolean => lstatSync(path, { throwIfNoEntry: false }) !== undefined
-
-const isLink = (path: string): boolean =>
-  lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true
-
-/** Whether `inner` is `outer` or below it, by real paths. */
-const within = (outer: string, inner: string): boolean => {
-  const rel = relative(realOr(outer), realOr(inner))
-  return rel === '' || (rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel))
 }
 
 /** `folder` with `~` read as `home`. */
@@ -179,9 +168,6 @@ export function globMatches(folder: string, glob: string): string[] {
   }
   return level.sort()
 }
-
-/** `hours` for a sentence, in tenths rounded down, so it never says more than was measured. */
-const hoursText = (hours: number): string => String(Math.floor(hours * 10) / 10)
 
 /** How a candidate is deleted: by the tool's command, or by removing the folder. */
 type Action = 'command' | 'remove'
@@ -265,9 +251,13 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   const actionOf = (entry: DescriptorCandidate): Action =>
     entry.command !== undefined && kit.onPath(entry.command[0]!) ? 'command' : 'remove'
 
-  /** One folder's row: a whole folder, or one glob match. */
-  const folderRow = (entry: DescriptorCandidate, index: number, path: string): Row | null => {
-    const action = actionOf(entry)
+  /** One folder's row: a whole folder, or one glob match; `action` is `actionOf(entry)`. */
+  const folderRow = (
+    entry: DescriptorCandidate,
+    index: number,
+    path: string,
+    action: Action,
+  ): Row | null => {
     const prune = entry.command !== undefined && entry.removes === 'unused'
     const program = entry.command?.[0]
     const objections: Row['objections'] = []
@@ -421,6 +411,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       const folder = folders.get(entry.path)
       if (folder === undefined || !present(folder)) continue
       const problem = refused.get(entry.path) ?? null
+      const action = actionOf(entry)
       if (problem !== null) {
         // Listed so `status` says why, but nothing under it is measured.
         rows.push({
@@ -431,13 +422,13 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
             why: `refused: ${problem}`,
             costDescription: entry.costDescription,
             held: true,
-            evidence: { path: folder, candidate: index, action: actionOf(entry) },
+            evidence: { path: folder, candidate: index, action },
           }),
         })
         continue
       }
       if (entry.glob === undefined) {
-        const row = folderRow(entry, index, folder)
+        const row = folderRow(entry, index, folder, action)
         if (row !== null) rows.push(row)
         continue
       }
@@ -446,7 +437,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       const listed: Row[] = []
       for (const match of matches.slice(0, max)) {
         if (containedIn([folder], match) === null) continue
-        const row = folderRow(entry, index, match)
+        const row = folderRow(entry, index, match, action)
         if (row !== null) listed.push(row)
       }
       const last = listed.at(-1)

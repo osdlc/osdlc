@@ -296,10 +296,14 @@ type Path = readonly PropertyKey[]
 
 /** The schema's problems with `value`, one `<field path>: <message>` each; empty when it is a descriptor. */
 export function descriptorIssues(value: unknown): string[] {
-  return issuesOf(value).map(({ path, message }) => `${fieldPath(path)}: ${message}`)
+  return issuesOf(value).issues.map(({ path, message }) => `${fieldPath(path)}: ${message}`)
 }
 
-function issuesOf(value: unknown): { path: Path; message: string }[] {
+/** `value` parsed, when the schema accepts it, and its problems; `data` is set even when tier 2 problems remain. */
+function issuesOf(value: unknown): {
+  data: Descriptor | undefined
+  issues: { path: Path; message: string }[]
+} {
   const parsed = DescriptorSchema.safeParse(value, {
     error: (iss) => (iss.input === undefined && iss.code !== 'custom' ? 'required' : undefined),
   })
@@ -310,7 +314,7 @@ function issuesOf(value: unknown): { path: Path; message: string }[] {
         for (const key of i.keys) out.push({ path: [...i.path, key], message: 'unknown field' })
       else out.push({ path: i.path, message: i.message })
     }
-    return out
+    return { data: undefined, issues: out }
   }
   // Tier 2 is described but not read yet.
   const d = parsed.data
@@ -320,7 +324,7 @@ function issuesOf(value: unknown): { path: Path; message: string }[] {
     for (const [os, p] of Object.entries(folders))
       if (p?.includes('${'))
         out.push({ path: ['paths', name, os], message: 'variables (tier 2) are not supported yet' })
-  return out
+  return { data: d, issues: out }
 }
 
 const fieldPath = (path: Path): string => (path.length === 0 ? '(top)' : path.map(String).join('.'))
@@ -342,8 +346,8 @@ export function parseDescriptor(text: string, source: string): Descriptor {
       `${lineOf(lines, error.pos[0])}: ${error.message.split('\n')[0]}`,
     ])
   const value: unknown = doc.toJS()
-  const issues = issuesOf(value)
-  if (issues.length > 0)
+  const { data, issues } = issuesOf(value)
+  if (data === undefined || issues.length > 0)
     throw new DescriptorError(
       source,
       issues.map(({ path, message }) => {
@@ -352,7 +356,7 @@ export function parseDescriptor(text: string, source: string): Descriptor {
         return `${where}${fieldPath(path)}: ${message}`
       }),
     )
-  return DescriptorSchema.parse(value)
+  return data
 }
 
 /**
