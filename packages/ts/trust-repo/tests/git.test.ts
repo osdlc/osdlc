@@ -296,7 +296,7 @@ describe('originOwner — hostile git environment', () => {
       GIT_CONFIG_KEY_0: 'core.hooksPath',
       GIT_CONFIG_VALUE_0: '/dev/null',
       GIT_CONFIG_COUNT: '1',
-      GIT_CONFIG_PARAMETERS: "'core.hookspath'='/dev/null'",
+      GIT_CONFIG_PARAMETERS: "'core.hooksPath'='/dev/null'",
     })
   })
 })

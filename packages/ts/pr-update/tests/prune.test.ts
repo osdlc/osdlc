@@ -594,9 +594,9 @@ describe('managed clones', () => {
 
     expect(calls.length).toBeGreaterThan(0)
     for (const call of calls) {
-      const n = Number(call.env.GIT_CONFIG_COUNT) - 1
-      expect(call.env[`GIT_CONFIG_KEY_${n}`]).toBe('core.hooksPath')
-      expect(call.env[`GIT_CONFIG_VALUE_${n}`]).toBe('/dev/null')
+      // The last word on each key is git's, read from GIT_CONFIG_PARAMETERS after the pairs.
+      expect(call.env.GIT_CONFIG_PARAMETERS).toMatch(/'core\.hooksPath'='\/dev\/null'/)
+      expect(call.env.GIT_CONFIG_PARAMETERS).toMatch(/'gc\.auto'='0'$/)
     }
     expect(existsSync(clone)).toBe(false)
   })

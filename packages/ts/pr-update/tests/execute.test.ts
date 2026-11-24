@@ -30,7 +30,7 @@ vi.mock('@osdlc/command-seam', async (original) =>
 import type { Generator, PushPreview, Repair, RepairRequest, RepairResult } from '../src/ports.ts'
 import { toResult } from '../src/update.ts'
 import { NothingDetectedError } from '../src/detect.ts'
-import { noHooksEnv } from '../src/update/execute.ts'
+import { targetGitEnv } from '../src/update/execute.ts'
 import {
   WORK_BRANCH,
   scratchBranch,
@@ -1847,24 +1847,34 @@ describe('isStalePush', () => {
   })
 })
 
-describe('noHooksEnv', () => {
-  test('turns hooks off with no parent git config', () => {
-    expect(noHooksEnv({})).toEqual({
-      GIT_CONFIG_COUNT: '1',
+describe('targetGitEnv', () => {
+  test('turns hooks and background maintenance off with no parent git config', () => {
+    expect(targetGitEnv({})).toEqual({
+      GIT_CONFIG_COUNT: '3',
       GIT_CONFIG_KEY_0: 'core.hooksPath',
       GIT_CONFIG_VALUE_0: '/dev/null',
-      GIT_CONFIG_PARAMETERS: "'core.hookspath'='/dev/null'",
+      GIT_CONFIG_KEY_1: 'maintenance.auto',
+      GIT_CONFIG_VALUE_1: 'false',
+      GIT_CONFIG_KEY_2: 'gc.auto',
+      GIT_CONFIG_VALUE_2: '0',
+      GIT_CONFIG_PARAMETERS:
+        "'core.hooksPath'='/dev/null' 'maintenance.auto'='false' 'gc.auto'='0'",
     })
   })
 
   test('appends after the git config the parent already set, -c settings included', () => {
-    expect(
-      noHooksEnv({ GIT_CONFIG_COUNT: '2', GIT_CONFIG_PARAMETERS: "'core.hooksPath'='.husky'" }),
-    ).toEqual({
-      GIT_CONFIG_COUNT: '3',
-      GIT_CONFIG_KEY_2: 'core.hooksPath',
-      GIT_CONFIG_VALUE_2: '/dev/null',
-      GIT_CONFIG_PARAMETERS: "'core.hooksPath'='.husky' 'core.hookspath'='/dev/null'",
-    })
+    expect(targetGitEnv({ GIT_CONFIG_COUNT: '2', GIT_CONFIG_PARAMETERS: "'gc.auto'='1'" })).toEqual(
+      {
+        GIT_CONFIG_COUNT: '5',
+        GIT_CONFIG_KEY_2: 'core.hooksPath',
+        GIT_CONFIG_VALUE_2: '/dev/null',
+        GIT_CONFIG_KEY_3: 'maintenance.auto',
+        GIT_CONFIG_VALUE_3: 'false',
+        GIT_CONFIG_KEY_4: 'gc.auto',
+        GIT_CONFIG_VALUE_4: '0',
+        GIT_CONFIG_PARAMETERS:
+          "'gc.auto'='1' 'core.hooksPath'='/dev/null' 'maintenance.auto'='false' 'gc.auto'='0'",
+      },
+    )
   })
 })

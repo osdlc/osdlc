@@ -569,7 +569,9 @@ function finishKeep(
   target: KeptTarget,
   verifyLog: string | undefined,
 ): KeptRecord {
-  git.at(path).checkout('HEAD', { branch, resetBranch: true })
+  // `noTrack`: no `branch.<kept>.remote` or `.merge` in the checkout's config, even under
+  // `branch.autoSetupMerge=always`.
+  git.at(path).checkout('HEAD', { branch, resetBranch: true, noTrack: true })
   if (verifyLog !== undefined) {
     atomicWrite(join(path, VERIFY_LOG), verifyLog)
     // The exclude file is shared by the repository's worktrees, and names only this file.

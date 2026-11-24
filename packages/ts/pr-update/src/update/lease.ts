@@ -32,7 +32,7 @@ export interface LeasePayload {
 export interface RefBranchLeaseOptions {
   remote: string
   cwd: string
-  /** Merged over the process environment for every git call (see `noHooksEnv`). */
+  /** Merged over the process environment for every git call (see `targetGitEnv`). */
   env?: Readonly<Record<string, string>> | undefined
   /** The `ref_prefix` setting. Default `refs/pr-update/`. */
   refPrefix?: string

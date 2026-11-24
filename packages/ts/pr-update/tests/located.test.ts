@@ -187,14 +187,23 @@ describe('updating a located checkout', () => {
     const main = git(located, 'rev-parse', 'refs/remotes/origin/main')
     git(located, 'push', '-q', bare, `${main}:refs/heads/main`, `${topic}:refs/heads/topic`)
     const real = spawnRunner('git')
+    /** The located checkout's branch.pr-update/* keys, read at each push, while the run is on. */
+    const tracking: string[] = []
     const viaBare: CommandRunner = {
-      run: (argv, opts): CommandResult =>
-        real.run(
+      run: (argv, opts): CommandResult => {
+        if (argv[0] === 'push') {
+          const keys = real.run(['config', '--get-regexp', '^branch\\.pr-update/'], {
+            cwd: located,
+          })
+          tracking.push(keys.stdout)
+        }
+        return real.run(
           argv[0] === 'fetch' || argv[0] === 'push'
             ? ['-c', `url.file://${bare}.insteadOf=${url}`, ...argv]
             : argv,
           opts,
-        ),
+        )
+      },
     }
 
     const r = await runWith(
@@ -229,6 +238,12 @@ describe('updating a located checkout', () => {
       ),
     ).toEqual([])
     expect(git(located, 'branch', '--list', 'pr-update/*')).toBe('')
+    // The scratch branch is made with --no-track: the person's config gets no branch.pr-update/*
+    // keys, not even while the run is on, and none are left after it (final review).
+    expect(tracking.length).toBeGreaterThan(0)
+    expect(tracking.every((keys) => keys === '')).toBe(true)
+    const keys = real.run(['config', '--get-regexp', '^branch\\.pr-update/'], { cwd: located })
+    expect(keys.stdout).toBe('')
   })
 })
 

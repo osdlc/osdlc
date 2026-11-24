@@ -45,7 +45,7 @@ export interface RefAttemptStoreOptions {
   remote: string
   /** A checkout whose object store the commits are built in. */
   cwd: string
-  /** Merged over the process environment for every git call (see `noHooksEnv`). */
+  /** Merged over the process environment for every git call (see `targetGitEnv`). */
   env?: Readonly<Record<string, string>> | undefined
   /** Where attempt refs live. Default `refs/pr-update/attempts/`. */
   prefix?: string

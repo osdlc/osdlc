@@ -51,13 +51,14 @@ import {
   CommandFailed,
   Git,
   REPOSITORY_VARS,
-  hooksOffEnv,
+  gitConfigEnv,
   withoutRepositoryVars,
   type PushRefResult,
   type PushRejection,
   type PushReport,
 } from '@osdlc/typed-git'
 
+import { NO_MAINTENANCE } from '../clone-maintenance.ts'
 import { NothingDetectedError } from '../detect.ts'
 import { FOLDER_MODE } from '../folders.ts'
 import { keepWorktree, type KeptPlace } from './kept.ts'
@@ -436,10 +437,14 @@ async function updateOneUnscoped(
   const head = `${settings.remote}/${target.head}`
 
   try {
+    // `noTrack`: `head` is a remote-tracking branch, and git would otherwise write
+    // `branch.<scratch>.remote` and `.merge` into the checkout's config, a located checkout's
+    // included, and leave them there after the branch is gone.
     git.checkout(head, {
       branch: scratchBranch(opts.worktree),
       resetBranch: true,
       force: true,
+      noTrack: true,
     })
   } catch (e) {
     return { status: 'failed', reason: `checkout ${head}: ${errorLine(e)}` }
@@ -584,7 +589,7 @@ async function rebaseThroughRungs(
   try {
     outcome = git.rebase(base, {
       autostash: false,
-      env: noHooksEnv(),
+      env: targetGitEnv(),
       // Without a known old parent head, let git look for it in the reflog.
       ...(limits.upstream === undefined ? { forkPoint: true } : { upstream: limits.upstream }),
     })
@@ -636,7 +641,7 @@ async function rebaseThroughRungs(
       // continue with a half-regenerated tree. This is safe because the
       // worktree is temporary and holds nothing but this integration.
       git.add(['.'])
-      outcome = git.rebaseContinue({ env: noHooksEnv() })
+      outcome = git.rebaseContinue({ env: targetGitEnv() })
     } catch (e) {
       return failed(`continuing the rebase: ${errorLine(e)}`)
     }
@@ -751,7 +756,7 @@ async function integrateAndPush(
         // The project's checks belong to `verify:`, run once per PR under the
         // caller's control. Otherwise git would run the commit hooks here and
         // nowhere else, so whether they ran would depend on the strategy. The
-        // rebase path turns hooks off the same way (see `noHooksEnv`).
+        // rebase path turns hooks off the same way (see `targetGitEnv`).
         noVerify: true,
       })
     } catch (e) {
@@ -962,20 +967,29 @@ function runVerify(
 }
 
 /**
- * Hooks off for one call (typed-git's `hooksOffEnv`): commit hooks because the project's checks
- * belong to `verify:`, and every hook in a worktree that holds a PR's files.
+ * The config every git call in a target gets, set after what `parent` holds (typed-git's
+ * `gitConfigEnv`), so neither the repository's config nor an inherited `GIT_CONFIG_PARAMETERS`
+ * (a parent git's `-c`) wins over it:
+ * - `core.hooksPath=/dev/null`, hooks off: commit hooks because the project's checks belong to
+ *   `verify:`, and every hook in a worktree that holds a PR's files;
+ * - `maintenance.auto=false` and `gc.auto=0` (`NO_MAINTENANCE`): no git pr-update runs starts a
+ *   background maintenance or `gc`, which in a managed clone would write and remove files after
+ *   the clone's lock is let go. A clone's own config says the same; this keeps an inherited `-c`
+ *   from turning it back on. A clone's foreground maintenance passes its own `-c`, which git reads
+ *   later still (`maintainClone`). In a located checkout, the person's own git commands still run
+ *   git's `gc --auto`.
  */
-export function noHooksEnv(
+export function targetGitEnv(
   parent: Record<string, string | undefined> = process.env,
 ): Record<string, string> {
-  return hooksOffEnv(parent)
+  return gitConfigEnv([['core.hooksPath', '/dev/null'], ...NO_MAINTENANCE], parent)
 }
 
 /**
  * The git options for a checkout other than the project root, which is someone else's, and for
- * every run worktree and kept tree, the project root's included, which hold a PR's files: hooks off
- * (`noHooksEnv`), and `runner` with `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and the other
- * variables that pick a repository unset in each child (typed-git's `withoutRepositoryVars`). A
+ * every run worktree and kept tree, the project root's included, which hold a PR's files: hooks
+ * and background maintenance off (`targetGitEnv`), and `runner` with `GIT_DIR`, `GIT_WORK_TREE`,
+ * `GIT_INDEX_FILE` and the other variables that pick a repository unset in each child (typed-git's `withoutRepositoryVars`). A
  * run started from a git hook, which exports `GIT_DIR`, then still acts on the target. Pass the
  * `gh` runner to make the git that `gh repo clone` runs ignore them too.
  */
@@ -983,7 +997,7 @@ export function targetGitOptions(runner?: CommandRunner): {
   runner: CommandRunner
   env: Record<string, string>
 } {
-  return { runner: withoutRepositoryVars(runner), env: noHooksEnv() }
+  return { runner: withoutRepositoryVars(runner), env: targetGitEnv() }
 }
 
 /**
