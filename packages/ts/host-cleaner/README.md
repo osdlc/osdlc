@@ -181,9 +181,9 @@ same folders as Linux:
 `~/Library`. Windows has no `xdg` folders and keeps its own: the config is
 `%APPDATA%\host-cleaner\config.json`.
 
-0.2 kept the macOS config in `~/Library/Application Support/host-cleaner/`.
-When only that file exists, host-cleaner reads it and warns you to move it to
-`~/.config/host-cleaner/`. 0.2's receipts and log stay where it wrote them, in
+0.2 kept the macOS config in `~/Library/Application Support/host-cleaner/`;
+it now lives in `~/.config/host-cleaner/`, and host-cleaner does not read the
+old file. 0.2's receipts and log stay where it wrote them, in
 `~/Library/Application Support/host-cleaner/receipts/` and
 `~/Library/Logs/host-cleaner/`; new ones go to `~/.local/state/host-cleaner/`.
 

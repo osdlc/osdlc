@@ -67,19 +67,6 @@ export function hostDirs(
 
 export const configFile = (dirs: HostDirs): string => join(dirs.config, 'config.json')
 
-/**
- * The config file 0.2 used, under the native convention, when it exists and
- * is not the one {@link hostDirs} names: on macOS,
- * `~/Library/Application Support/host-cleaner/config.json`.
- */
-export function oldConfigFile(
-  env: Record<string, string | undefined> = process.env,
-  opts: MachineOpts = {},
-): string | undefined {
-  const old = configFile(dirsUnder('native', env, opts))
-  return old !== configFile(hostDirs(env, opts)) && existsSync(old) ? old : undefined
-}
-
 /** A config file that cannot be used; the CLI exits 2 for it. */
 export class ConfigError extends Error {
   override name = 'ConfigError'

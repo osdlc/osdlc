@@ -3,7 +3,6 @@
 import { afterEach, describe, expect, test } from 'vitest'
 import {
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -12,14 +11,14 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, type MainDeps } from '../src/cli.ts'
-import { configFile, hostDirs, oldConfigFile } from '../src/config.ts'
+import { configFile, hostDirs } from '../src/config.ts'
 import type { Candidate, Objection, Plugin } from '../src/index.ts'
 
 const cleanups: Array<() => void> = []
@@ -301,47 +300,6 @@ describe('folders', () => {
     expect(r.out).toContain(`file: ${file}  (not found: defaults)\n`)
     const json = JSON.parse(run(['config', '--format', 'json'], cwd, env).out)
     expect(json).toMatchObject({ file, fileExists: false })
-  })
-
-  test('the macOS config 0.2 left under ~/Library is found when the paths differ', () => {
-    const home = mkdtempSync(join(tmpdir(), 'hc-home-'))
-    cleanups.push(() => rmSync(home, { recursive: true, force: true }))
-    const opts = { platform: 'darwin', home }
-    expect(oldConfigFile({}, opts)).toBeUndefined()
-    const old = join(home, 'Library', 'Application Support', 'host-cleaner', 'config.json')
-    mkdirSync(dirname(old), { recursive: true })
-    writeFileSync(old, '{}')
-    expect(oldConfigFile({}, opts)).toBe(old)
-    expect(oldConfigFile({ HOST_CLEANER_CONVENTION: 'native' }, opts)).toBeUndefined()
-    expect(oldConfigFile({}, { platform: 'linux', home })).toBeUndefined()
-  })
-
-  test('on macOS the 0.2 config is read with a warning until the new one exists', () => {
-    const home = tempDir()
-    const cwd = tempDir()
-    const machine = { platform: 'darwin', home }
-    const old = join(home, 'Library', 'Application Support', 'host-cleaner', 'config.json')
-    const now = join(home, '.config', 'host-cleaner', 'config.json')
-    mkdirSync(dirname(old), { recursive: true })
-    writeFileSync(old, JSON.stringify({ idleHours: 72 }))
-
-    const r = run(['config'], cwd, {}, { machine })
-    expect(r.code).toBe(0)
-    expect(r.out).toContain(`file: ${old}\n`)
-    expect(r.out).toContain('idleHours: 72')
-    expect(r.err).toContain(`move it to ${now}`)
-
-    const s = run(['status', '--format', 'json', cwd], cwd, {}, { machine, plugins: [fake()] })
-    const { warnings } = JSON.parse(s.out) as { warnings: string[] }
-    expect(warnings.some((w) => w.includes(`move it to ${now}`))).toBe(true)
-    expect(s.err).not.toContain('move it to')
-
-    mkdirSync(dirname(now), { recursive: true })
-    writeFileSync(now, JSON.stringify({ idleHours: 12 }))
-    const after = run(['config'], cwd, {}, { machine })
-    expect(after.out).toContain(`file: ${now}\n`)
-    expect(after.out).toContain('idleHours: 12')
-    expect(after.err).not.toContain('move it to')
   })
 
   test('a bad HOST_CLEANER_CONVENTION is refused by clean, not thrown', () => {
