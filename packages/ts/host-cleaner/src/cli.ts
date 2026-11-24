@@ -81,11 +81,6 @@ const SWEEP_FLAGS = {
     valueName: 'names',
     help: 'run only these plugins',
   },
-  adapter: {
-    kind: 'list',
-    valueName: 'names',
-    help: 'alias of --plugin',
-  },
   skipPlugin: {
     kind: 'list',
     valueName: 'names',
@@ -430,12 +425,6 @@ const sourcesFor = (
   flag: v.descriptor.map((f) => resolve(ctx.cwd, f)),
 })
 
-/** `--plugin` and its alias `--adapter`, as one list; undefined when neither is given. */
-const wanted = (v: SweepValues): string[] | undefined =>
-  v.plugin === undefined && v.adapter === undefined
-    ? undefined
-    : [...(v.plugin ?? []), ...(v.adapter ?? [])]
-
 /** The plugin names in `plugins` that `known` refuses. */
 const unknownPlugins = (config: Config, known: (name: string) => boolean): string[] =>
   Object.keys(config.plugins).filter((n) => !known(n))
@@ -497,8 +486,8 @@ function pluginsFor(
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
   const all = allPlugins(config, definitions, deps, ctx, only)
   // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
-  const named = wanted(v) ?? []
-  const chosen = selectPlugins(all, wanted(v), v.skipPlugin)
+  const named = v.plugin ?? []
+  const chosen = selectPlugins(all, v.plugin, v.skipPlugin)
   return chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins))
 }
 
@@ -555,6 +544,12 @@ function writeWarnings(ctx: CliContext, name: string, warnings: readonly string[
   for (const w of warnings) ctx.io.stderr(renderError(w, name))
 }
 
+/** The survey's warnings, then each plugin's `detect` note as `<plugin>: <note>`. */
+const surveyWarnings = (s: Pick<Survey, 'warnings' | 'notes'>): string[] => [
+  ...s.warnings,
+  ...Object.entries(s.notes).map(([plugin, note]) => `${plugin}: ${note}`),
+]
+
 /** What a candidate would do by default, with nothing allowed. */
 function standing(c: Candidate, os: readonly Objection[]): 'delete' | 'review' | 'refused' {
   const mine = os.filter((o) => o.candidate === c.id)
@@ -606,10 +601,7 @@ async function runStatus(
       `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), ignore: ignored, warnings: s.warnings, notes: s.notes, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
     )
   } else {
-    writeWarnings(ctx, name, [
-      ...s.warnings,
-      ...Object.entries(s.notes).map(([plugin, note]) => `${plugin}: ${note}`),
-    ])
+    writeWarnings(ctx, name, surveyWarnings(s))
     ctx.io.stdout(
       `plugins: ${s.plugins.map((p) => p.name).join(', ') || '(none)'}\n` +
         (ignored.length > 0 ? `ignoring: ${ignored.join(', ')}\n` : '') +
@@ -815,7 +807,7 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
     const { config, plugins } = setUp(v, ctx, deps)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = await survey(plugins, cctx)
-    writeWarnings(ctx, name, s.warnings)
+    writeWarnings(ctx, name, surveyWarnings(s))
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
     plan = makePlan(s, {
       targets: cctx.targets,
@@ -973,6 +965,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   let plugins: Plugin[]
   let cctx: RunCtx
   let preview: Decision
+  let notes: Record<string, string>
   try {
     const run = setUp(v, ctx, deps)
     const config = run.config
@@ -980,7 +973,8 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
       const s = await survey(plugins, cctx)
-      writeWarnings(ctx, name, s.warnings)
+      writeWarnings(ctx, name, surveyWarnings(s))
+      notes = s.notes
       if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
       plan = makePlan(s, {
         targets: cctx.targets,
@@ -1010,7 +1004,8 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         ignore: ignoreFor(config, v.ignore, ctx),
       }
       const checked = await recheck(plan, plugins, cctx)
-      writeWarnings(ctx, name, checked.survey.warnings)
+      writeWarnings(ctx, name, surveyWarnings(checked.survey))
+      notes = checked.survey.notes
       preview = checked.decision
     }
   } catch (err) {
@@ -1029,7 +1024,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   if (v.dryRun || count === 0) {
     ctx.io.stdout(
       json
-        ? `${JSON.stringify({ dryRun: v.dryRun, run: preview.run.map((c) => c.id), dropped: preview.dropped }, null, 2)}\n`
+        ? `${JSON.stringify({ dryRun: v.dryRun, notes, run: preview.run.map((c) => c.id), dropped: preview.dropped }, null, 2)}\n`
         : renderPreview(preview, homeOf(ctx)),
     )
     return EXIT.ok
@@ -1064,7 +1059,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   logRun(dirs.logs, { at: now.toISOString(), source, receipt: receiptPath, status: receipt.status })
   ctx.io.stdout(
     json
-      ? `${JSON.stringify({ receiptPath, receipt }, null, 2)}\n`
+      ? `${JSON.stringify({ receiptPath, notes, receipt }, null, 2)}\n`
       : renderReceipt(receipt, receiptPath, homeOf(ctx)),
   )
   return receipt.status === 'failed' ? EXIT_STEP_FAILED : EXIT.ok
