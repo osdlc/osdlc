@@ -512,19 +512,18 @@ candidates:
     expect(r.code).toBe(2)
     expect(r.err).toContain('ghost')
   })
-  test('a note follows its plugin’s state, and a self root is marked', async () => {
+  test('a degraded plugin shows as detected with its note, in text and json, and a self root is marked', async () => {
     const { env, cwd } = setup()
     const cache = tempDir()
-    const r = await run(['plugins'], cwd, env, {
-      plugins: [
-        {
-          ...fake('git'),
-          detect: () => ({ active: true, note: 'one note' }),
-          roots: () => [{ path: cache, self: true }],
-        },
-        { ...fake('cargo'), detect: () => ({ active: false, note: 'no cargo' }) },
-      ],
-    })
+    const noted = (): Plugin[] => [
+      {
+        ...fake('git'),
+        detect: () => ({ active: true, note: 'one note' }),
+        roots: () => [{ path: cache, self: true }],
+      },
+      { ...fake('cargo'), detect: () => ({ active: false, note: 'no cargo' }) },
+    ]
+    const r = await run(['plugins'], cwd, env, { plugins: noted() })
     expect(r.code).toBe(0)
     expect(r.out).toBe(
       [
@@ -534,6 +533,30 @@ candidates:
         '',
       ].join('\n'),
     )
+    const json = await run(['plugins', '--format', 'json'], cwd, env, { plugins: noted() })
+    expect(json.code).toBe(0)
+    expect(JSON.parse(json.out).plugins).toEqual([
+      {
+        name: 'git',
+        source: 'built-in',
+        enabled: true,
+        detected: true,
+        reason: null,
+        roots: [cache],
+        selfRoots: [cache],
+        note: 'one note',
+      },
+      {
+        name: 'cargo',
+        source: 'built-in',
+        enabled: true,
+        detected: false,
+        reason: null,
+        roots: [],
+        selfRoots: [],
+        note: 'no cargo',
+      },
+    ])
   })
 })
 

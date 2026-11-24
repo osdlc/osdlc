@@ -398,9 +398,11 @@ stands in for one of the same name ends its line with the file it replaces
 plugin whose `detect` throws shows the error as the reason; Orca installed but
 not running shows `not detected: Orca is installed but not running; its
 worktrees are left to git`. A note its `detect` gives follows the plugin's
-state (`; note: ...`). A root the core refuses is left out with a warning, as
-`status` does, and a self root is marked `(itself too)`. A plugin the config
-disables is listed as `disabled`, and its `detect` is not run.
+state (`; note: ...`), whether it is detected or not, so a degraded plugin
+(`{ active: true, note }`) shows as detected with its note; the JSON row has it
+as `note`. A root the core refuses is left out with a warning, as `status`
+does, and a self root is marked `(itself too)`. A plugin the config disables is
+listed as `disabled`, and its `detect` is not run.
 
 Under a descriptor with variables, one line per variable it declares or uses
 from the built-ins: its value and the source that gave it, then each source
