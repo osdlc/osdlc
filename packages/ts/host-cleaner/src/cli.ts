@@ -394,7 +394,7 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
-/** Which plugins a run names: `--plugin` (or `--adapter`) and `--skip-plugin`. */
+/** Which plugins a run names: `--plugin` and `--skip-plugin`. */
 interface Naming {
   want?: readonly string[] | undefined
   skip?: readonly string[] | undefined
