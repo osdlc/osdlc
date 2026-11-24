@@ -83,8 +83,10 @@ are in scope.
   command it runs inherit it, so none of them creates a file or folder others
   can write to. A managed clone is made in a staging folder only its user can
   open, hardened, and only then moved into place, with git's background
-  maintenance turned off in it. A host that calls `runUpdate` from the library
-  keeps its own umask and must set it.
+  maintenance turned off in it. The umask also covers what pr-update and its
+  commands write in the person's own checkout, so a checkout shared by a group
+  should set `core.sharedRepository=group`. A host that calls `runUpdate` from
+  the library keeps its own umask and must set it.
 - **Pruning deletes folders.** `mirror prune`, and the pruning at the end of
   an `update --apply`, delete folders only inside pr-update's cache and
   state directories and the clone directory, which must carry pr-update's

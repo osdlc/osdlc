@@ -340,7 +340,9 @@ umask. The `pr-update` command also takes write for group and others out of
 its umask when it starts, keeping the rest, and every command it runs (git,
 `gh`, verify) inherits that: pr-update and the commands it runs never create
 a file or folder others can write to, so later fetches, run and kept
-worktrees and `FETCH_HEAD` are covered. A host that calls `runUpdate` from
+worktrees and `FETCH_HEAD` are covered. It also covers what pr-update and
+its commands write in your own checkout, so a checkout shared by a group
+should set `core.sharedRepository=group`. A host that calls `runUpdate` from
 the library does not get this; it sets its own umask.
 `gh` clones into a staging folder beside the clone's place,
 `.tmp-<name>.git-<pid>-<random>`, which only you can open (`700`), so no one
