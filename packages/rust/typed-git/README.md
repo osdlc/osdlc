@@ -120,13 +120,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   file but no revision is an error.
 - `diff_text` returns the diff untrimmed. It passes `--no-color`,
   `--no-ext-diff`, `--no-textconv`, `--src-prefix=a/`, `--dst-prefix=b/`,
-  `--no-relative`, `--submodule=short` and `--unified=3` (`context(n)` sets
-  `--unified=<n>`), so the text is a plain unified diff with `a/` and `b/`
-  prefixes and three lines of context by default, under the user's colour, external diff, textconv, prefix, `diff.relative`,
-  `diff.submodule` and `diff.context` settings. Other settings still apply:
-  rename detection (`diff.renames`, unless `find_renames()` pins `-M` on),
-  `diff.ignoreSubmodules` and `diff.algorithm`. The `GIT_DIFF_OPTS` environment variable also still
-  applies: `-u0` there overrides the lines of context.
+  `--no-relative`, `--submodule=short`, `--inter-hunk-context=0` and
+  `--unified=3` (`context(n)` sets `--unified=<n>`), and it removes
+  `GIT_DIFF_OPTS` from git's environment. So the text is a plain unified diff
+  with `a/` and `b/` prefixes and three lines of context by default, under the
+  user's colour, external diff, textconv, prefix, `diff.relative`,
+  `diff.submodule`, `diff.context` and `diff.interHunkContext` settings and
+  `GIT_DIFF_OPTS`; `context(0)` gives the changed lines alone.
+  `find_renames()` passes `-M`, which reads a moved file as one rename patch
+  whatever `diff.renames` says, and also turns `diff.renames=copies` off, so a
+  new file that copies a changed one is a plain add. Other settings still
+  change the text:
+  - rename detection: `diff.renames`, unless `find_renames()` is set, and
+    `diff.renameLimit`, past which git stops looking for renames and only
+    warns on stderr;
+  - `diff.algorithm`, which changes which lines read as changed, and so the
+    line counts, not just the layout;
+  - `diff.indentHeuristic`, which moves where a hunk starts;
+  - `diff.ignoreSubmodules` and `submodule.<name>.ignore`, which can hide a
+    submodule change;
+  - `core.quotePath`: with `false`, a non-ASCII path is printed raw, not
+    C-quoted;
+  - `diff.orderFile`, which changes the order of the files;
+  - `diff.suppressBlankEmpty`, under which a blank context line loses its
+    leading space;
+  - `core.abbrev`, which changes the length of the hashes on the `index` line;
+  - a `diff.<driver>.xfuncname`, which changes the function name after `@@`;
+  - a `-diff` or `binary` attribute, which prints `Binary files … differ` in
+    place of a patch (`binary()` writes a binary patch instead);
+  - clean filters and end-of-line conversion (`core.autocrlf`, and the
+    `text`, `eol` and `filter` attributes), which change the working-tree
+    content git compares.
 - `diff_name_status` passes `--no-relative`, so its paths are relative to the
   repository root and cover the whole repository. It passes `--no-color` as a
   guard: git does not colour that output. An unmerged path can be two rows in

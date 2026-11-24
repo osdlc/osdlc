@@ -247,7 +247,7 @@ describe('candidates', () => {
     )
   })
 
-  test('the checkout the cwd falls in is named; every candidate is a close-session protest and never unattended', () => {
+  test('the checkout the cwd falls in is named; every candidate is a close-session protest and held for review', () => {
     const root = repo()
     const inner = join(root, 'sub')
     mkdirSync(inner)
@@ -262,9 +262,9 @@ describe('candidates', () => {
       kind: 'session',
       owner: 'claude-code',
       path: inner,
-      unattended: false,
+      held: true,
     })
-    expect(c.evidence).toMatchObject({ worktree: root, unattended: false })
+    expect(c.evidence).toMatchObject({ worktree: root })
     expect(s.objections).toEqual([
       expect.objectContaining({ candidate: 'session:100', level: 'protest', code: CLOSE_SESSION }),
     ])
