@@ -128,6 +128,7 @@ const options = (over: ArtifactOptions = {}): ArtifactOptions => ({
 const ctxOf = (root: string): Ctx => ({
   cwd: root,
   targets: [root],
+  targetsGiven: true,
   allow: [],
   signal: new AbortController().signal,
 })

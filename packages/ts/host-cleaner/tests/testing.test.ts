@@ -202,13 +202,34 @@ describe('contractSuite', () => {
     expect(await contractSuite(plugin)).toEqual([
       'cache: detect said no in this fixture, so nothing else could be checked',
     ])
+    const noted = cachePlugin(() => ({ detect: () => ({ active: false, note: 'not set up' }) }))
+    expect(await contractSuite(noted.plugin)).toEqual([
+      'cache: detect said no in this fixture, so nothing else could be checked (its note: not set up)',
+    ])
+  })
+
+  test('detect may answer { active, note }: a note on a plugin that runs is no problem', async () => {
+    const { plugin } = cachePlugin(() => ({
+      detect: () => ({ active: true, note: 'degraded: the daemon is down' }),
+    }))
+    expect(await contractSuite(plugin)).toEqual([])
+  })
+
+  test('a detect answer that is neither a boolean nor { active, note? }', async () => {
+    const { plugin } = cachePlugin(() => ({
+      detect: () => ({ active: true, note: 3 }) as unknown as boolean,
+    }))
+    expect(await contractSuite(plugin)).toEqual([
+      'cache: detect said no in this fixture, so nothing else could be checked',
+      'cache: the survey warned: cache: detect answered {"active":true,"note":3}, which is neither a boolean nor { active, note? }; it was left out',
+    ])
   })
 })
 
 describe('the fakes', () => {
   test('fakeContext fills in what a hook is given', () => {
     const ctx = fakeContext({ targets: ['/r'] })
-    expect(ctx).toMatchObject({ targets: ['/r'], allow: [] })
+    expect(ctx).toMatchObject({ targets: ['/r'], targetsGiven: false, allow: [] })
     expect(ctx.signal.aborted).toBe(false)
   })
 

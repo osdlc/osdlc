@@ -27,7 +27,7 @@ import {
   survey,
   type Ctx,
 } from '../src/index.ts'
-import { contractSuite, fakeRunner } from '../src/testing.ts'
+import { contractSuite, fakeContext, fakeRunner } from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -54,7 +54,7 @@ function fixture() {
   sh(worktree, ['commit', '--allow-empty', '-m', 'feat'])
   sh(root, ['merge', '-q', '--no-ff', '-m', 'Merge wt-branch', 'wt-branch'])
   sh(root, ['push', '-q', 'origin', 'main'])
-  const ctx: Ctx = { cwd: root, targets: [root], allow: [], signal: new AbortController().signal }
+  const ctx: Ctx = fakeContext({ cwd: root, targets: [root] })
   const plugin = gitPlugin({
     probe: idle,
     sweep: { remotes: [''], offline: true, provider: 'none' },
