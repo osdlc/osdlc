@@ -3,8 +3,13 @@
  * `env`, `input`, timeout and checked contract, and both clients use them.
  */
 
+import { withDefaults } from '@osdlc/command-seam'
 import { FailureError } from '@osdlc/result'
 import { describe, expect, test } from 'vitest'
+
+import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { delimiter, join } from 'node:path'
 
 import {
   AsyncGh,
@@ -24,8 +29,8 @@ import {
   type CommandRunOptions,
   type CommandRunner,
   type GhFailure,
+  NO_COLOUR_ENV,
 } from '../src/index.ts'
-import { NO_COLOUR_ENV } from '../src/verbs.ts'
 
 const ok = (stdout: string): CommandResult => ({ exitCode: 0, stdout, stderr: '' })
 
@@ -53,7 +58,10 @@ describe('runVerb', () => {
     })
     const search = spy(ok('[]'))
     runVerb(searchPrs('x', {}, HOST), search.runner, { cwd: '/repo' })
-    expect(search.calls[0]!.opts?.env).toEqual({ ...NO_COLOUR_ENV, GH_HOST: 'ghe.example.com' })
+    expect(search.calls[0]!.opts?.env).toStrictEqual({
+      ...NO_COLOUR_ENV,
+      GH_HOST: 'ghe.example.com',
+    })
   })
 
   test('forces colour off for a parsed verb, and leaves a raw call to the caller', () => {
@@ -70,6 +78,14 @@ describe('runVerb', () => {
     expect(rawCall.calls[1]!.opts?.env).toBeUndefined()
   })
 
+  test('a raw caller can opt out of colour with NO_COLOUR_ENV through withDefaults', () => {
+    const { calls, runner } = spy(ok(''))
+    const quiet = withDefaults(runner as CommandRunner, { env: NO_COLOUR_ENV })
+    runVerb(raw(['pr', 'list']), quiet, { cwd: '/repo' })
+    new Gh('/repo', { runner: quiet }).rawChecked(['pr', 'list'])
+    expect(calls.map((c) => c.opts?.env)).toStrictEqual([NO_COLOUR_ENV, NO_COLOUR_ENV])
+  })
+
   test('passes input (stdin) to the runner', () => {
     const { calls, runner } = spy(ok('{"html_url":"u"}'))
     const verb = createReview(1, { commitId: 'abc', body: 'b', comments: [] })
@@ -81,7 +97,8 @@ describe('runVerb', () => {
   test('omits options the verb and caller do not set', () => {
     const { calls, runner } = spy(ok('{"number":1}'))
     runVerb(prView('1', ['number']), runner, { cwd: '/repo' })
-    expect(calls[0]!.opts).toEqual({ cwd: '/repo', env: NO_COLOUR_ENV })
+    // toStrictEqual: the `undefined` keys that remove the colour variables count.
+    expect(calls[0]!.opts).toStrictEqual({ cwd: '/repo', env: NO_COLOUR_ENV })
   })
 
   test('throws the classified failure for a failed unchecked read', () => {
@@ -299,5 +316,52 @@ describe('output cut short (outputIncomplete) is a failure', () => {
 
   test('runVerb throws for it', () => {
     expect(() => runVerb(prView(7), spy(PARTIAL).runner, { cwd: '/repo' })).toThrow(FailureError)
+  })
+})
+
+// The spy tests above check the options handed to a runner. This one checks
+// that the child really loses the variables, which rests on command-seam's
+// rule that an `undefined` env value removes the variable.
+describe.skipIf(process.platform === 'win32')('the default runner and colour', () => {
+  const NAMES = ['PATH', 'CLICOLOR_FORCE', 'GH_FORCE_TTY', 'NO_COLOR'] as const
+
+  /** Runs `body` with a `gh` stub first on PATH and both force variables set. */
+  async function withStub(body: (dir: string) => Promise<void>): Promise<void> {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'typed-gh-colour-')))
+    // A PR whose title is the colour variables as the child sees them.
+    const title =
+      'CLICOLOR_FORCE=${CLICOLOR_FORCE-unset} GH_FORCE_TTY=${GH_FORCE_TTY-unset} NO_COLOR=${NO_COLOR-unset}'
+    writeFileSync(
+      join(dir, 'gh'),
+      `#!/bin/sh\necho "{\\"number\\":1,\\"title\\":\\"${title}\\"}"\n`,
+    )
+    chmodSync(join(dir, 'gh'), 0o755)
+    const saved = Object.fromEntries(NAMES.map((n) => [n, process.env[n]]))
+    process.env['PATH'] = `${dir}${delimiter}${saved['PATH'] ?? ''}`
+    process.env['CLICOLOR_FORCE'] = '1'
+    process.env['GH_FORCE_TTY'] = '1'
+    delete process.env['NO_COLOR']
+    try {
+      await body(dir)
+    } finally {
+      for (const n of NAMES) {
+        if (saved[n] === undefined) delete process.env[n]
+        else process.env[n] = saved[n]
+      }
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  test('a parsed verb runs without the force variables, and raw keeps them', async () => {
+    await withStub(async (dir) => {
+      const off = 'CLICOLOR_FORCE=unset GH_FORCE_TTY=unset NO_COLOR=1'
+      const kept = 'CLICOLOR_FORCE=1 GH_FORCE_TTY=1 NO_COLOR=unset'
+      const gh = new Gh(dir)
+      expect(gh.prView(1, { fields: ['number', 'title'] })?.title).toBe(off)
+      expect(gh.raw(['pr', 'view', '1']).stdout).toContain(kept)
+      const agh = new AsyncGh(dir)
+      expect((await agh.prView(1, { fields: ['number', 'title'] }))?.title).toBe(off)
+      expect((await agh.raw(['pr', 'view', '1'])).stdout).toContain(kept)
+    })
   })
 })
