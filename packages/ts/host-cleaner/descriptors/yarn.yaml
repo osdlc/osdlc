@@ -15,7 +15,7 @@ vars:
     - env: YARN_GLOBAL_FOLDER
     - file: ~/.yarnrc.yml
       key: globalFolder
-    - value: { macos: ~/.yarn/berry, linux: ~/.yarn/berry }
+    - value: ~/.yarn/berry
   YARN_CACHE_FOLDER:
     - env: YARN_CACHE_FOLDER
     - value: { macos: ~/Library/Caches/Yarn, linux: '${XDG_CACHE_HOME}/yarn' }

@@ -169,14 +169,17 @@ interface Built {
   folder(key: string): string
 }
 
-/** `folder` made with a file in it, and two matches, `a` and `b`, of each glob over `key`. */
+/** The two fixture matches of `glob`, `a` and `b`, relative to its folder. */
+const globMatches = (glob: string): Array<[name: string, rel: string]> =>
+  ['a', 'b'].map((n): [string, string] => [n, glob.replace(/\/$/, '').replaceAll('*', n)])
+
+/** `folder` made with a file in it, and the matches of each glob over `key`. */
 function fill(d: Descriptor, key: string, folder: string): void {
   mkdirSync(folder, { recursive: true })
   writeFileSync(join(folder, 'blob'), 'x')
   for (const c of d.candidates) {
     if (c.path !== key || c.glob === undefined) continue
-    for (const n of ['a', 'b']) {
-      const rel = c.glob.replace(/\/$/, '').replaceAll('*', n)
+    for (const [n, rel] of globMatches(c.glob)) {
       mkdirSync(join(folder, rel), { recursive: true })
       writeFileSync(join(folder, rel, 'blob'), n)
     }
@@ -198,10 +201,11 @@ function build(
   cleanups.push(h.cleanup)
   const d = shipped(name)
   const m = o.moves?.(h.home) ?? {}
-  const folder = (key: string): string => m.moved?.[key] ?? join(h.home, DEFAULTS[name][key]![os])
+  const defaultFolder = (key: string): string => join(h.home, DEFAULTS[name][key]![os])
+  const folder = (key: string): string => m.moved?.[key] ?? defaultFolder(key)
   for (const key of Object.keys(d.paths)) {
-    fill(d, key, join(h.home, DEFAULTS[name][key]![os]))
-    fill(d, key, folder(key))
+    fill(d, key, defaultFolder(key))
+    if (folder(key) !== defaultFolder(key)) fill(d, key, folder(key))
   }
   for (const [rel, text] of Object.entries(m.files ?? {})) {
     mkdirSync(dirname(join(h.home, rel)), { recursive: true })
@@ -225,22 +229,27 @@ function expectedPaths(b: Built): string[] {
   for (const c of b.d.candidates) {
     const folder = b.folder(c.path)
     if (c.glob === undefined) out.add(folder)
-    else
-      for (const n of ['a', 'b'])
-        out.add(join(folder, c.glob.replace(/\/$/, '').replaceAll('*', n)))
+    else for (const [, rel] of globMatches(c.glob)) out.add(join(folder, rel))
   }
   return [...out].sort()
 }
 
 /** The calls other than a variable's `command` source: what the plugin ran to delete. */
-function actions(b: Built): string[][] {
+function actionCalls(b: Built): Built['calls'] {
   const lookups = new Set(
     Object.values(b.d.vars ?? {})
       .flat()
       .flatMap((s) => ('command' in s ? [s.command.join(' ')] : [])),
   )
-  return b.calls.map((c) => c.argv).filter((argv) => !lookups.has(argv.join(' ')))
+  return b.calls.filter((c) => !lookups.has(c.argv.join(' ')))
 }
+
+/** The argv of each of {@link actionCalls}. */
+const actions = (b: Built): string[][] => actionCalls(b).map((c) => c.argv)
+
+/** `Object.entries` of a per-store table, keyed by {@link Store}. */
+const storeEntries = <V>(r: Partial<Record<Store, V>>): Array<[Store, V]> =>
+  Object.entries(r) as Array<[Store, V]>
 
 const ctxOf = (over: Partial<RunCtx> = {}): RunCtx => ({
   cwd: '/',
@@ -317,7 +326,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       expect(await contractSuite(build(name, os).plugin)).toEqual([])
     })
 
-    test.each(Object.entries(TOOLS) as [Store, string][])(
+    test.each(storeEntries(TOOLS))(
       '%s passes with %s on PATH, and runs it on no moved folder',
       async (name, program) => {
         const b = build(name, os, { programs: { [program]: () => ({}) } })
@@ -365,7 +374,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
   })
 
   describe('in use', () => {
-    test.each(Object.entries(RUNNING) as [Store, { command: string; shown: string }][])(
+    test.each(storeEntries(RUNNING))(
       '%s: its program running refuses every candidate',
       async (name, { command, shown }) => {
         const b = build(name, os, { processes: processes({ '/': [{ pid: 7, command }] }) })
@@ -377,7 +386,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       },
     )
 
-    test.each(Object.keys(RUNNING) as Store[])(
+    test.each(storeEntries(RUNNING).map(([name]) => name))(
       "%s: the other stores' programs running refuse none of its candidates",
       async (name) => {
         const others = Object.entries(RUNNING)
@@ -399,9 +408,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
         ids([{ id: `pnpm:${b.folder('cache')}` }, { id: `pnpm:${b.folder('store')}` }]),
       )
       // pnpm store path prints nothing here, so the default folder is used.
-      expect(b.calls.map((c) => [c.argv, c.opts.cwd])).toEqual([
-        [['pnpm', 'store', 'path'], b.home],
-        [['pnpm', 'store', 'path'], b.home],
+      expect(actionCalls(b).map((c) => [c.argv, c.opts.cwd])).toEqual([
         [['pnpm', 'store', 'prune', '--store-dir', b.folder('store')], b.home],
       ])
       expect(receipt.steps.map((st) => st.result)).toEqual(['ok', 'ok'])
@@ -614,9 +621,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
         ['go', 'clean', '-cache'],
       ])
       expect(
-        b.calls
-          .filter((c) => c.argv[1] === 'clean')
-          .map((c) => [c.opts.env?.GOMODCACHE ?? c.opts.env?.GOCACHE, c.opts.cwd]),
+        actionCalls(b).map((c) => [c.opts.env?.GOMODCACHE ?? c.opts.env?.GOCACHE, c.opts.cwd]),
       ).toEqual([
         [b.folder('modcache'), b.home],
         [b.folder('buildcache'), b.home],
@@ -626,6 +631,12 @@ describe.each(OSES_TESTED)('on %s', (os) => {
 
   describe('a moved store is found', () => {
     const at = (home: string, rel: string): string => join(home, 'moved', rel)
+    const pnpmStorePath = (h: string): Moves => ({
+      programs: {
+        pnpm: (argv) => (argv[1] === 'path' ? { stdout: `${at(h, 'store/v10')}\n` } : {}),
+      },
+      moved: { store: at(h, 'store/v10') },
+    })
     const cases: Array<[Store, string, (home: string) => Moves]> = [
       [
         'go',
@@ -720,16 +731,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
         'PIP_CACHE_DIR',
         (h) => ({ env: { PIP_CACHE_DIR: at(h, 'pip') }, moved: { cache: at(h, 'pip') } }),
       ],
-      [
-        'pnpm',
-        'pnpm store path',
-        (h) => ({
-          programs: {
-            pnpm: (argv) => (argv[1] === 'path' ? { stdout: `${at(h, 'store/v10')}\n` } : {}),
-          },
-          moved: { store: at(h, 'store/v10') },
-        }),
-      ],
+      ['pnpm', 'pnpm store path', pnpmStorePath],
       [
         'uv',
         'UV_CACHE_DIR',
@@ -831,14 +833,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
     )
 
     test('a moved pnpm store is pruned where pnpm says it is', async () => {
-      const b = build('pnpm', os, {
-        moves: (h) => ({
-          programs: {
-            pnpm: (argv) => (argv[1] === 'path' ? { stdout: `${at(h, 'store/v10')}\n` } : {}),
-          },
-          moved: { store: at(h, 'store/v10') },
-        }),
-      })
+      const b = build('pnpm', os, { moves: pnpmStorePath })
       const { receipt } = await surveyAndClean(b.plugin)
       expect(receipt.steps.map((st) => [st.id, st.result])).toEqual([
         [`pnpm:${b.folder('store')}`, 'ok'],

@@ -13,7 +13,7 @@ detect:
 vars:
   GRADLE_USER_HOME:
     - env: GRADLE_USER_HOME
-    - value: { macos: ~/.gradle, linux: ~/.gradle }
+    - value: ~/.gradle
 paths:
   caches: { macos: '${GRADLE_USER_HOME}/caches', linux: '${GRADLE_USER_HOME}/caches' }
   wrapper:

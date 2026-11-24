@@ -14,7 +14,7 @@ vars:
     - env: UV_CACHE_DIR
     - file: '${XDG_CONFIG_HOME}/uv/uv.toml'
       key: cache-dir
-    - value: { macos: '${XDG_CACHE_HOME}/uv', linux: '${XDG_CACHE_HOME}/uv' }
+    - value: '${XDG_CACHE_HOME}/uv'
 paths:
   cache: { macos: '${UV_CACHE_DIR}', linux: '${UV_CACHE_DIR}' }
 candidates:

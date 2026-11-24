@@ -14,7 +14,7 @@ vars:
     - env: npm_config_cache
     - env: NPM_CONFIG_CACHE
     - command: [npm, config, get, cache]
-    - value: { macos: ~/.npm, linux: ~/.npm }
+    - value: ~/.npm
 paths:
   cache: { macos: '${NPM_CONFIG_CACHE}/_cacache', linux: '${NPM_CONFIG_CACHE}/_cacache' }
 candidates:

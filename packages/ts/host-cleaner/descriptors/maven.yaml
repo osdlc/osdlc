@@ -13,7 +13,7 @@ detect:
   any: [{ onPath: mvn }, { exists: repository }]
 vars:
   LOCAL_REPOSITORY:
-    - value: { macos: ~/.m2/repository, linux: ~/.m2/repository }
+    - value: ~/.m2/repository
 paths:
   repository: { macos: '${LOCAL_REPOSITORY}', linux: '${LOCAL_REPOSITORY}' }
 candidates:

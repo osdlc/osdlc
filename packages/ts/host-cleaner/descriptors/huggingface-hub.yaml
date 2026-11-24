@@ -14,9 +14,7 @@ detect:
 vars:
   HF_HOME:
     - env: HF_HOME
-    - value:
-        macos: '${XDG_CACHE_HOME}/huggingface'
-        linux: '${XDG_CACHE_HOME}/huggingface'
+    - value: '${XDG_CACHE_HOME}/huggingface'
   HF_HUB_CACHE:
     - env: HF_HUB_CACHE
     - env: HUGGINGFACE_HUB_CACHE
