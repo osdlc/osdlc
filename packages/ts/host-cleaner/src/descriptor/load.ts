@@ -87,23 +87,35 @@ function filesIn(dir: string, source: DescriptorSource): Found[] {
     )
     .map((e) => join(dir, e.name))
     .sort()
-  return files.map((path) => found(path, source, files))
+  return foundIn(files, source)
 }
 
-function found(path: string, source: DescriptorSource, all: readonly string[]): Found {
-  const name = nameOf(path)
-  if (!NAME.test(name)) {
-    throw new DescriptorLoadError(
-      `descriptor ${path}: "${name}" is not a plugin name: lowercase letters, digits and -, starting with a letter`,
-    )
+/**
+ * `paths` as descriptors of `source`, in order.
+ *
+ * @throws DescriptorLoadError for two paths of one name, or a name that is no plugin name
+ */
+function foundIn(paths: readonly string[], source: DescriptorSource): Found[] {
+  const byName = new Map<string, string[]>()
+  for (const path of paths) {
+    const name = nameOf(path)
+    if (!NAME.test(name)) {
+      throw new DescriptorLoadError(
+        `descriptor ${path}: "${name}" is not a plugin name: lowercase letters, digits and -, starting with a letter`,
+      )
+    }
+    const twins = byName.get(name)
+    if (twins === undefined) byName.set(name, [path])
+    else twins.push(path)
   }
-  const twins = all.filter((p) => nameOf(p) === name)
-  if (twins.length > 1) {
-    throw new DescriptorLoadError(
-      `${twins.join(' and ')} are both the descriptor ${name}; keep one`,
-    )
+  for (const [name, twins] of byName) {
+    if (twins.length > 1) {
+      throw new DescriptorLoadError(
+        `${twins.join(' and ')} are both the descriptor ${name}; keep one`,
+      )
+    }
   }
-  return { name, source, path }
+  return [...byName].map(([name, [path]]) => ({ name, source, path: path! }))
 }
 
 /**
@@ -119,13 +131,12 @@ export function loadDescriptors(
   sources: DescriptorSources,
   reserved: readonly string[],
 ): LoadedDescriptor[] {
-  const flag = sources.flag ?? []
   const layers = [
     filesIn(sources.shipped ?? SHIPPED_DESCRIPTORS, 'shipped'),
     sources.user === undefined ? [] : filesIn(sources.user, 'user'),
-    flag.map((path) => found(path, 'flag', flag)),
+    foundIn(sources.flag ?? [], 'flag'),
   ]
-  const chosen = new Map<string, Found & { replaces?: Found }>()
+  const chosen = new Map<string, Omit<LoadedDescriptor, 'descriptor'>>()
   for (const layer of layers) {
     for (const f of layer) {
       if (reserved.includes(f.name)) {
@@ -134,18 +145,15 @@ export function loadDescriptors(
         )
       }
       const before = chosen.get(f.name)
-      chosen.set(f.name, before === undefined ? f : { ...f, replaces: before })
+      chosen.set(
+        f.name,
+        before === undefined
+          ? f
+          : { ...f, replaces: { source: before.source, path: before.path } },
+      )
     }
   }
   return [...chosen.values()]
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-    .map((f) => ({
-      name: f.name,
-      source: f.source,
-      path: f.path,
-      ...(f.replaces === undefined
-        ? {}
-        : { replaces: { source: f.replaces.source, path: f.replaces.path } }),
-      descriptor: readDescriptor(f.path),
-    }))
+    .map((f) => ({ ...f, descriptor: readDescriptor(f.path) }))
 }

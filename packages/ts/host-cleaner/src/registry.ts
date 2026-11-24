@@ -13,6 +13,7 @@ import {
 import { gitDefinition } from './git.ts'
 import { nodeDefinition } from './node.ts'
 import { orcaDefinition } from './orca.ts'
+import { detection } from './run.ts'
 import type { Ctx, Plugin, PluginDefinition } from './types.ts'
 
 /**
@@ -64,15 +65,7 @@ export const runsAmong =
   (chosen: () => readonly Plugin[]) =>
   async (name: string, ctx: Ctx): Promise<boolean> => {
     const p = chosen().find((x) => x.name === name)
-    if (p === undefined) return false
-    const answer: unknown = await p.detect(ctx)
-    return (
-      answer === true ||
-      (typeof answer === 'object' &&
-        answer !== null &&
-        'active' in answer &&
-        answer.active === true)
-    )
+    return p !== undefined && detection(await p.detect(ctx))?.active === true
   }
 
 /** A `--plugin` or `--skip-plugin` that names no plugin. */
