@@ -438,7 +438,7 @@ export const output = z.object({
     )
     .optional()
     .describe(
-      'Kept records the run would not act on: one that names another branch, path or git directory than pr-update gives it, or whose folder is not a worktree on its branch. Neither the record nor its folder is removed, and its PR is updated as if nothing were kept.',
+      'Kept records the run would not act on: one that names another branch, path or git directory than pr-update gives it, whose path is a symbolic link, or whose folder its checkout does not list as a worktree. Neither the record nor its folder is removed, and its PR is updated as if nothing were kept.',
     ),
   keptLeft: z
     .array(z.object({ path: z.string(), reason: z.string() }))
@@ -1137,10 +1137,12 @@ function routeAttempts(
  * trust gate `refused` is not touched.
  *
  * A record the checkout's content could have forged is refused (`KeptRefusal`): one that breaks
- * `readRecord`'s rules, or whose folder its owner does not list as a worktree on its branch. It
- * is left alone, tree and file, and its PR goes on as if nothing were kept.
+ * `readRecord`'s rules, or whose folder its owner does not list as a worktree at that path. It
+ * is left alone, tree and file, and its PR goes on as if nothing were kept. A tree its owner lists
+ * on another branch or detached is a person's (`KeptTreeCheck`): it counts as changed, and
+ * `--discard-kept` leaves it.
  *
- * @returns the paths removed, and the records refused.
+ * @returns the paths removed, the records refused, and the trees `--discard-kept` left.
  */
 function settleKept(
   args: UpdateArgs,
