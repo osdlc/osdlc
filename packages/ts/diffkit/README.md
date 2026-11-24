@@ -46,7 +46,7 @@ one. Without it, no flag is computed and `notes` says so.
 
 ESM only. Node.js `^22.22.2`, `^24.15.0` or `>=26.0.0`. The tool runs `git` and, for a pull request,
 `gh`, so both must be on `PATH`, and `gh` authenticated for a PR. Linux and macOS are tested. The tests
-run on Windows in CI; the first results are pending.
+run and pass on Windows in tier-2 CI on Node 22 and 24, except the executable-bit check.
 
 ## Quick start
 

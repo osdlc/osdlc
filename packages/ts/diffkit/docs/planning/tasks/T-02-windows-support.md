@@ -13,10 +13,9 @@ The README can say that the package works on Windows, because CI runs it there.
 
 ## Today
 
-The README says Linux and macOS are tested and Windows is not. The package runs `git` and `gh`
-through argv and reads files with `join(cwd, path)`, and has no platform branch, so it may work.
-Its tests build real repositories. The repository's Windows tier-2 workflow now includes it, so
-the tests run on Windows; the results of the next run are pending.
+The package runs `git` and `gh` through argv, reads files with `join(cwd, path)`, and has no
+platform branch. Its tests build real repositories. The repository's Windows tier-2 workflow now includes it, and
+the tests run and pass there on Node 22 and 24.
 
 ## Approach
 
@@ -27,5 +26,8 @@ the tests run on Windows; the results of the next run are pending.
 
 ## Acceptance criteria
 
-- [ ] The package's tests pass on Windows in CI.
+- [x] The package's tests pass on Windows in CI.
 - [ ] A manifest made on Windows has the same paths as one made on Linux.
+
+Result: the tests pass on Windows in tier-2 CI on Node 22 and 24, except the executable-bit check.
+Run [45358781696](https://github.com/osdlc/osdlc/actions/runs/45358781696).
