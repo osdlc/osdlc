@@ -31,9 +31,11 @@ export interface GitVerb<T> {
   /**
    * Environment entries the verb needs, set over the client's and the call's
    * `env`. The integration verbs set `LC_ALL=C` here so their parsers read
-   * English git output.
+   * English git output. An `undefined` value removes the variable from the
+   * child's environment (see `CommandRunOptions.env` in @osdlc/command-seam):
+   * `diffText` and `diffAddedFile` remove `GIT_DIFF_OPTS` this way.
    */
-  env?: Readonly<Record<string, string>> | undefined
+  env?: Readonly<Record<string, string | undefined>> | undefined
   /**
    * Exit codes that mean "asked and answered: not there" for this verb — not
    * "git failed". `config --get` exits 1 for an unset key, `cat-file -e` exits
@@ -357,7 +359,7 @@ function configKey(verb: string, key: string): string {
 function depthArg(verb: string, depth: number): string {
   if (!Number.isSafeInteger(depth) || depth < 1) {
     throw new TypeError(
-      `typed-git: ${verb}: depth must be a positive integer (got ${JSON.stringify(depth)})`,
+      `typed-git: ${verb}: depth must be a positive integer (got ${shown(depth)})`,
     )
   }
   return `--depth=${depth}`
@@ -390,7 +392,9 @@ function pushRevAndPaths(
  * The `git diff` flags that pin patch text against the user's git settings:
  * no colour codes, no external diff tool, no textconv conversion, the `a/`
  * and `b/` prefixes, paths that are not cut to the cwd, a submodule change as
- * a `Subproject commit` patch. The context is {@link unifiedArg}'s.
+ * a `Subproject commit` patch, and no context lines between hunks
+ * (`diff.interHunkContext`), so nearby hunks are not merged. The context is
+ * {@link unifiedArg}'s.
  */
 const PLAIN_PATCH: readonly string[] = [
   '--no-color',
@@ -400,7 +404,18 @@ const PLAIN_PATCH: readonly string[] = [
   '--dst-prefix=b/',
   '--no-relative',
   '--submodule=short',
+  '--inter-hunk-context=0',
 ]
+
+/**
+ * The child env of the patch verbs: `GIT_DIFF_OPTS` removed, because git
+ * reads a `-u<n>` or `--unified=<n>` there over the `--unified` flag. The
+ * `undefined` value removes it (see `CommandRunOptions.env` in
+ * @osdlc/command-seam).
+ */
+const PLAIN_PATCH_ENV: Readonly<Record<string, string | undefined>> = Object.freeze({
+  GIT_DIFF_OPTS: undefined,
+})
 
 /** The lines of context {@link diffText} and {@link diffAddedFile} print by default. */
 const DEFAULT_CONTEXT = 3
@@ -414,10 +429,19 @@ function unifiedArg(verb: string, context: number | undefined): string {
   const n = context ?? DEFAULT_CONTEXT
   if (!Number.isSafeInteger(n) || n < 0) {
     throw new TypeError(
-      `typed-git: ${verb}: context must be a non-negative integer (got ${JSON.stringify(n)})`,
+      `typed-git: ${verb}: context must be a non-negative integer (got ${shown(n)})`,
     )
   }
   return `--unified=${n}`
+}
+
+/**
+ * A bad option value for an error message: a number as `String` prints it, so
+ * `NaN` and `Infinity` read as themselves (`JSON.stringify` prints `null`), and
+ * anything else as JSON, so a string keeps its quotes.
+ */
+function shown(value: unknown): string {
+  return typeof value === 'number' ? String(value) : JSON.stringify(value)
 }
 
 /** The child env that makes git print English, whatever the caller's locale. */
@@ -1447,15 +1471,20 @@ export interface DiffTextOptions {
   binary?: boolean | undefined
   /**
    * `--unified=<n>`: lines of context around each change. Default 3, whatever
-   * `diff.context` says; 0 gives a patch of the changed lines alone. A
-   * non-negative integer, else the verb throws a `TypeError`.
+   * `diff.context` or `GIT_DIFF_OPTS` says; 0 gives a patch of the changed
+   * lines alone (`--inter-hunk-context=0` keeps `diff.interHunkContext` from
+   * merging nearby hunks with the lines between them). A non-negative
+   * integer, else the verb throws a `TypeError`.
    */
   context?: number | undefined
   /**
    * `-M`: detect renames, whatever `diff.renames` says, so a moved file reads
    * as one `rename from`/`rename to` patch and not as a delete plus an add.
-   * Off by default: without it `diff.renames` applies (git's own default is
-   * on).
+   * It also overrides `diff.renames=copies`, under which a new file that
+   * copies a changed one reads as `copy from`/`copy to`: with `-M` it is a
+   * plain add. Off by default: without it `diff.renames` applies (git's own
+   * default is on). `diff.renameLimit` still applies: past it git stops
+   * looking for renames and only warns on stderr.
    */
   findRenames?: boolean | undefined
   /** Pathspecs, passed after `--`. */
@@ -1464,14 +1493,20 @@ export interface DiffTextOptions {
 
 /** Options for {@link diffAddedFile}. */
 export interface DiffAddedFileOptions {
-  /** `--unified=<n>`: lines of context. As {@link DiffTextOptions.context}. */
+  /**
+   * `--unified=<n>`, checked as {@link DiffTextOptions.context}. It does not
+   * change the text: a diff from `/dev/null` is one all-added hunk with no
+   * context lines, whatever the number. It is accepted so a caller can pass
+   * the same options to both verbs.
+   */
   context?: number | undefined
 }
 
 /**
  * The unified diff text (`git diff --no-color --no-ext-diff --no-textconv
  * --src-prefix=a/ --dst-prefix=b/ --no-relative --submodule=short
- * --unified=<context> [--cached] [--binary] [-M] [rev] [--] [paths]`), for the same rev
+ * --inter-hunk-context=0 --unified=<context> [--cached] [--binary] [-M] [rev]
+ * [--] [paths]`, with `GIT_DIFF_OPTS` removed from git's environment), for the same rev
  * and staged shape {@link diffNameStatus} lists paths for. `--` is passed
  * once, when there is a rev or a path. Empty when nothing differs.
  * {@link diffNameOnly} selects the same paths except under `diff.relative`,
@@ -1484,18 +1519,33 @@ export interface DiffAddedFileOptions {
  * `diff.dstPrefix`) and `diff.relative`, which with a cwd below the
  * repository root would drop changes outside it. They also keep a submodule
  * change as a `Subproject commit` patch, whatever `diff.submodule` says, and
- * the context at `context` lines (default three), whatever `diff.context`
- * says. Other settings still apply: rename detection (`diff.renames`, unless
- * `findRenames` pins it on), `diff.ignoreSubmodules` and `diff.algorithm`; so
- * does the `GIT_DIFF_OPTS` environment variable, where `-u0` overrides the
- * lines of context. The rev is followed by `--`, so git never reads it as a
+ * the context at `context` lines (default three), whatever `diff.context`,
+ * `diff.interHunkContext` or the `GIT_DIFF_OPTS` environment variable says.
+ *
+ * Other settings still change the text, so a caller that compares or counts
+ * lines across machines should know them: rename detection (`diff.renames`,
+ * unless `findRenames` pins it on, and `diff.renameLimit`), `diff.algorithm`
+ * (which lines read as changed, so the line counts too),
+ * `diff.indentHeuristic` (where a hunk starts), `diff.ignoreSubmodules` and
+ * `submodule.<name>.ignore` (whether a submodule change is shown at all),
+ * `core.quotePath` (whether a non-ASCII path is C-quoted), `diff.orderFile`
+ * (the order of the files), `diff.suppressBlankEmpty` (a blank context line
+ * loses its leading space), `core.abbrev` (the length of the `index` line's
+ * hashes), a `diff.<driver>.xfuncname` (the function name after `@@`), and a
+ * `-diff` or `binary` attribute (`Binary files … differ` in place of a
+ * patch, unless `binary` is set). Clean filters and end-of-line conversion
+ * (`core.autocrlf`, `text`, `eol` and `filter` attributes) change the
+ * working-tree content git compares.
+ *
+ * The rev is followed by `--`, so git never reads it as a
  * path: a rev that names a file but no revision throws, and a branch that
  * shares its name with a file works.
  *
  * The text is decoded as UTF-8. A text file whose lines are not valid UTF-8
  * comes back with U+FFFD in them, and the patch no longer applies. For a
  * patch that must replay byte for byte, run the same argv through
- * `rawBytesChecked`.
+ * `rawBytesChecked`, with `env: { GIT_DIFF_OPTS: '' }` (git ignores an empty
+ * value) so the context stays as asked.
  *
  * `absent: []`. A rev that does not resolve exits 128, and outside a
  * repository `git diff` exits 129. Both throw, so "git failed" never reads as
@@ -1507,16 +1557,18 @@ export function diffText(rev?: string | undefined, opts: DiffTextOptions = {}): 
   if (opts.binary === true) argv.push('--binary')
   if (opts.findRenames === true) argv.push('-M')
   pushRevAndPaths(argv, optionalPositional('diffText', 'rev', rev), opts.paths)
-  return { argv, absent: NONE, parse: (r) => r.stdout }
+  return { argv, env: PLAIN_PATCH_ENV, absent: NONE, parse: (r) => r.stdout }
 }
 
 /**
  * One untracked file rendered as an all-added diff (`diff --no-color
  * --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --no-relative
- * --submodule=short --unified=<context> --no-index -- /dev/null <path>`), so a new
+ * --submodule=short --inter-hunk-context=0 --unified=<context> --no-index --
+ * /dev/null <path>`, with `GIT_DIFF_OPTS` removed from git's environment), so a new
  * file reaches a consumer in the same shape as a modified one: the flags are
  * the ones {@link diffText} passes, and the text is as plain. An empty
- * existing file still gives a diff header.
+ * existing file still gives a diff header. `context` is checked but does not
+ * change the text (see {@link DiffAddedFileOptions.context}).
  *
  * `--no-index` exits 1 whenever the inputs differ, which for a real file is
  * always, so exit 1 is the success case. git also exits 1, with empty stdout,
@@ -1534,6 +1586,7 @@ export function diffAddedFile(relPath: string, opts: DiffAddedFileOptions = {}):
       '/dev/null',
       relPath,
     ],
+    env: PLAIN_PATCH_ENV,
     absent: [1],
     parse(r, ranArgv) {
       if (r.exitCode !== 0 && r.stdout === '') throw new CommandFailed(ranArgv, r)
@@ -2190,7 +2243,7 @@ export function fetchMany(remotes: readonly string[], opts: FetchManyOptions = {
   if (opts.jobs !== undefined) {
     if (!Number.isSafeInteger(opts.jobs) || opts.jobs < 1) {
       throw new TypeError(
-        `typed-git: fetchMany: jobs must be a positive integer (got ${JSON.stringify(opts.jobs)})`,
+        `typed-git: fetchMany: jobs must be a positive integer (got ${shown(opts.jobs)})`,
       )
     }
     argv.push(`--jobs=${opts.jobs}`)

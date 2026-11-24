@@ -13,6 +13,10 @@ export default defineConfig({
     ],
   },
   test: {
+    // The tests run real git (clones, merges, rebases, worktrees) and a test
+    // can make several updates in a row; on a loaded CI runner that passes the
+    // 5 s default.
+    testTimeout: 20000,
     // pr-update makes its own commits (merges, rebases) in the fixtures' repos.
     // A runner with no git identity configured, such as a Linux CI image,
     // would refuse them, so the tests name one.

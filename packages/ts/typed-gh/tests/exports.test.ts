@@ -66,6 +66,9 @@ const FUNCTIONS = [
 
 const CLASSES = ['AsyncGh', 'CommandFailed', 'Gh']
 
+/** Constants that are not field lists. */
+const CONSTANTS = ['NO_COLOUR_ENV']
+
 const FIELD_LISTS = [
   'PR_LIST_FIELDS',
   'PR_REF_FIELDS',
@@ -76,7 +79,13 @@ const FIELD_LISTS = [
 
 describe('the package entry point', () => {
   test('exports exactly the documented runtime names', () => {
-    const expected = [...FUNCTIONS, ...CLASSES, ...FIELD_LISTS, 'defaultRunnerFactory']
+    const expected = [
+      ...FUNCTIONS,
+      ...CLASSES,
+      ...FIELD_LISTS,
+      ...CONSTANTS,
+      'defaultRunnerFactory',
+    ]
     expect(Object.keys(pkg).sort()).toEqual(expected.sort())
   })
 

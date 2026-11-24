@@ -1784,7 +1784,7 @@ checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
 
 [[package]]
 name = "typed-git"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "log",
  "serial_test",
