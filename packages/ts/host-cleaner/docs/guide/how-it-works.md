@@ -7,7 +7,7 @@ differs from the design.
 - The [README](../../README.md) says how to use the package and the command.
 - The [system description](../../../../../docs/architecture/host-cleaner-system.md)
   is the whole design, descriptors and loadable plugins included, with
-  decisions D1 to D14. This page describes the part built so far.
+  decisions D1 to D15. This page describes the part built so far.
 - [D-H3QW](../../../../../docs/decisions/D-H3QW-host-cleaner-plugin-model.md)
   records the plugin model. It replaced the adapter model of
   [D-L7N5](../../../../../docs/decisions/D-L7N5-host-cleaner.md), which is kept
@@ -39,7 +39,7 @@ owner delete it. The first version ships four plugins: `git` (repo-cleaner),
 | `src/run.ts` | The phase runner: `survey`, `plan`, `decide`, `recheck`, `clean`; hook time limits; the core's own objections; nesting. |
 | `src/roots.ts` | Containment: `containedIn`, `boundBy`, `linkedCheckouts`, `linkedWorktreeOf`; which roots a plugin may have: `rootProblem`, `acceptRoots`. |
 | `src/kit.ts` | The plugin kit: `pluginKit`, the helpers, and the binding the core does each run. |
-| `src/plan.ts` | The plan and receipt schemas (plan version 2, receipt version 1). A plan of another version is refused with an error that says to sweep again. |
+| `src/plan.ts` | The plan and receipt schemas (plan version 2, receipt version 1). A plan of another version, or one the schema refuses, such as one without `targetsGiven`, is refused with an error that says to sweep again (D15). |
 | `src/registry.ts` | `BUILT_IN_PLUGINS` in run order (`git`, `cargo`, `node`, `orca`), and `--plugin` / `--skip-plugin`. |
 | `src/settings.ts` | Each plugin's settings schema made strict, with the core's `enabled`; `idleHours` inheritance. |
 | `src/config.ts` | The config file and the three folders (see [Files](#files)). |
@@ -73,9 +73,9 @@ flowchart LR
 
 1. **detect.** Each plugin says whether it applies: `true`, `false`, or
    `{ active, note }`. The survey keeps every note, whether the plugin runs or
-   not; `status` prints each as a warning naming the plugin, and `plugins`
-   shows it after the plugin's state. A throw, a time-out, or any other answer
-   leaves it out with a warning. Every hook's
+   not; `status`, `plan` and `clean` print each as a warning naming the
+   plugin, and `plugins` shows it after the plugin's state. A throw, a
+   time-out, or any other answer leaves it out with a warning. Every hook's
    `ctx.targetsGiven` says whether the targets were given (on the command line
    or in the config) or the core fell back to the current folder.
 2. **scope.** Plugins add targets: `orca` adds the repositories Orca lists.
@@ -267,10 +267,10 @@ described above where it applies.
 | --- | --- |
 | Linked worktrees | A linked worktree counts when its main checkout is or sits inside a target, wherever the worktree is kept ([containment](#containment), rule 3). |
 | Nesting | An outer candidate is blocked when any candidate inside it does not run, and its `blocked` detail names each one and what would let it run ([nesting](#nesting)). |
-| Detect notes | `detect` may answer `{ active, note }`. The core keeps the note for every plugin, whether it runs or not (`Survey.notes`). `status` prints it as the warning `<plugin>: <note>`, and under `notes` with `--format json`; `plugins` shows it after the plugin's state. |
-| `targetsGiven` | Every hook's `ctx.targetsGiven` is true when the targets came from the command line or the config, and false when the command line fell back to the current folder. The plan keeps it, so `clean --plan` passes it on; a plan without it reads as false. |
+| Detect notes | `detect` may answer `{ active, note }`. The core keeps the note for every plugin, whether it runs or not (`Survey.notes`). `status`, `plan` and `clean` print it as the warning `<plugin>: <note>`, and `status --format json` and `clean --format json` carry it under `notes`; `plugins` shows it after the plugin's state. |
+| `targetsGiven` | Every hook's `ctx.targetsGiven` is true when the targets came from the command line or the config, and false when the command line fell back to the current folder. The plan keeps it, so `clean --plan` passes it on; a plan without it is refused: sweep again (D15). |
 | Self roots | `roots` may name `{ path, self: true }`, so a store removed whole, such as `~/.npm`, may be a candidate itself. The core's root checks apply to it as to a plain root, and it must not be a symlink. |
-| `kit.running({ name })` | Matches a word of each command line from `ps -axo pid=,args=` (`commandHasName`): a word whose last path segment is the name, or has it as one of its `.`-separated parts. It errs toward a match, since a false match only stops a delete: `pnpm` finds `node /opt/homebrew/bin/pnpm dev`, and `gradle` finds the Gradle daemon's `java` command line. `npm` does not match `pnpm`, and case counts. |
+| `kit.running({ name })` | Matches a word of each command line from `ps -axo pid=,ppid=,args=` (`commandHasName`): a word whose last path segment is the name, or has it as one of its `.`-separated parts. It errs toward a match, since a false match only stops a delete: `pnpm` finds `node /opt/homebrew/bin/pnpm dev`, and `gradle` finds the Gradle daemon's `java` command line. `npm` does not match `pnpm`, and case counts. host-cleaner's own process and every ancestor of it are left out, so the `npm exec` or `pnpm dlx` that started it does not count. |
 
 The first two and the contract for the rest are on #1065; `plugins` and its
 note are on #1066. Where a decision changes a plugin, the change lands with
