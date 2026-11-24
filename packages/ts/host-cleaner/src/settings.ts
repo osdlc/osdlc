@@ -34,7 +34,6 @@ export const PLUGIN_SETTINGS = {
   git: z.strictObject({ enabled }),
   cargo: z.strictObject({ enabled, idleHours }),
   node: z.strictObject({ enabled, idleHours }),
-  'claude-code': z.strictObject({ enabled }),
   orca: z.strictObject({ enabled, repos }),
 } as const satisfies Record<string, z.ZodType>
 

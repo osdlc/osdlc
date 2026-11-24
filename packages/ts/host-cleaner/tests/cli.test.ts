@@ -198,6 +198,18 @@ describe('status', () => {
     expect(r.code).toBe(2)
     expect(r.err).toContain('ghost')
   })
+
+  test('there are no profiles: --profile is an unknown option and a profiles key is refused', () => {
+    const { env, home, cwd } = setup()
+    const flag = run(['status', '--profile', 'x'], cwd, env)
+    expect(flag.code).toBe(2)
+    expect(flag.err).toContain("unknown option '--profile'")
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ profiles: { deep: { idleHours: 0 } } }))
+    const r = run(['status', '--config', config], cwd, env)
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('profiles')
+  })
 })
 
 describe('plugin settings', () => {
@@ -406,7 +418,7 @@ describe('plan and clean', () => {
 
   test('--pick adds a candidate held for review to the default; --spare takes one away', () => {
     const { env, cwd } = setup()
-    const held = fake('held', { candidate: { unattended: false } })
+    const held = fake('held', { candidate: { held: true } })
     const plain = fake('plain')
     const plugins = [held, plain]
     const ran = (argv: string[]) =>
