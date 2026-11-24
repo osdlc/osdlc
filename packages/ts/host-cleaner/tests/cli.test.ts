@@ -350,6 +350,8 @@ describe('plugins', () => {
           detected: true,
           reason: null,
           roots: ['/cache/git'],
+          selfRoots: [],
+          note: null,
           vars: [],
         },
         {
@@ -359,6 +361,8 @@ describe('plugins', () => {
           detected: false,
           reason: 'plugins.cargo.enabled is false; --plugin cargo runs it anyway',
           roots: [],
+          selfRoots: [],
+          note: null,
           vars: [],
         },
         {
@@ -368,6 +372,8 @@ describe('plugins', () => {
           detected: false,
           reason: null,
           roots: [],
+          selfRoots: [],
+          note: null,
           vars: [],
         },
         {
@@ -377,6 +383,8 @@ describe('plugins', () => {
           detected: false,
           reason: 'Orca is installed but not running; its worktrees are left to git',
           roots: [],
+          selfRoots: [],
+          note: null,
           vars: [],
         },
       ],
@@ -503,6 +511,29 @@ candidates:
     const r = await run(['plugins', '--config', file], cwd, env, { plugins: [plugin] })
     expect(r.code).toBe(2)
     expect(r.err).toContain('ghost')
+  })
+  test('a note follows its plugin’s state, and a self root is marked', async () => {
+    const { env, cwd } = setup()
+    const cache = tempDir()
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [
+        {
+          ...fake('git'),
+          detect: () => ({ active: true, note: 'one note' }),
+          roots: () => [{ path: cache, self: true }],
+        },
+        { ...fake('cargo'), detect: () => ({ active: false, note: 'no cargo' }) },
+      ],
+    })
+    expect(r.code).toBe(0)
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        `  git    built-in  detected; roots: ${cache} (itself too); note: one note`,
+        '  cargo  built-in  not detected; note: no cargo',
+        '',
+      ].join('\n'),
+    )
   })
 })
 

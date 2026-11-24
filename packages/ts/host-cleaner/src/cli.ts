@@ -698,6 +698,10 @@ interface PluginRow {
   reason: string | null
   /** Where it may delete besides the targets; empty, the targets alone. */
   roots: readonly string[]
+  /** The roots among `roots` that may be deleted themselves (`{ path, self: true }`). */
+  selfRoots: readonly string[]
+  /** The note its `detect` gave, whether it is detected or not; null when it gave none. */
+  note: string | null
   /** A descriptor's variables as its `detect` worked them out; empty for a plugin that has none, or when `detect` did not get that far. */
   vars: readonly VarRow[]
 }
@@ -732,12 +736,12 @@ function renderPlugins(rows: readonly PluginRow[], targets: readonly string[]): 
     const state = !r.enabled
       ? 'disabled'
       : r.detected
-        ? `detected; roots: ${r.roots.join(', ') || 'none, the targets alone'}`
+        ? `detected; roots: ${r.roots.map((root) => (r.selfRoots.includes(root) ? `${root} (itself too)` : root)).join(', ') || 'none, the targets alone'}`
         : 'not detected'
     const replaces =
       r.replaces === undefined ? '' : `; replaces the ${r.replaces.source} ${r.replaces.path}`
     lines.push(
-      `  ${r.name.padEnd(width)}  ${r.source.padEnd(from)}  ${state}${r.reason === null ? '' : `: ${r.reason}`}${replaces}`,
+      `  ${r.name.padEnd(width)}  ${r.source.padEnd(from)}  ${state}${r.reason === null ? '' : `: ${r.reason}`}${r.note === null ? '' : `; note: ${r.note}`}${replaces}`,
     )
     const names = Math.max(...r.vars.map((x) => x.name.length))
     for (const x of r.vars) lines.push(varLine(x, names))
@@ -782,6 +786,8 @@ async function runPlugins(
           ? `plugins.${p.name}.enabled is false; --plugin ${p.name} runs it anyway`
           : (s?.reason ?? null),
         roots: s?.roots ?? [],
+        selfRoots: s?.selfRoots ?? [],
+        note: s?.note ?? null,
         vars: off ? [] : varRows(descriptorVars(p)),
       }
     })
