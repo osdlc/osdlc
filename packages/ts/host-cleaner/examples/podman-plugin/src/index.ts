@@ -6,7 +6,7 @@
  * given.
  */
 
-import { PLUGIN_API, definePlugin, z, type Candidate, type Kit } from '@osdlc/host-cleaner/plugin'
+import { PLUGIN_API, definePlugin, z, type Kit } from '@osdlc/host-cleaner/plugin'
 
 /** A volume name as Podman accepts one; anything else is not a volume this plugin proposed. */
 const VOLUME_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/
@@ -50,10 +50,9 @@ export default definePlugin({
         return (await kit.run(['podman', 'info'], { signal: ctx.signal })).ok
       },
       async discover(ctx) {
-        const unused = await unusedVolumes(kit, ctx.signal)
-        return unused
+        return (await unusedVolumes(kit, ctx.signal))
           .filter((v) => !settings.keepVolumes.includes(v.Name))
-          .map((v): Candidate =>
+          .map((v) =>
             kit.candidate({
               kind: 'volume',
               ref: v.Name,
