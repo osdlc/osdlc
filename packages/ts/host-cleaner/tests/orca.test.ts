@@ -1,7 +1,7 @@
 /** The `orca` plugin over a fake `orca` CLI shaped like the recorded `--json` output, with the real `git` plugin beside it. */
 
 import { afterEach, describe, expect, test } from 'vitest'
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -46,6 +46,8 @@ function fakeOrca(
   rows: Row[],
   over: {
     running?: boolean
+    /** How `orca status` fails: a non-zero exit, or output that is not JSON. */
+    failStatus?: 'exit' | 'garbage'
     failPs?: boolean
     truncated?: boolean
     failRm?: boolean
@@ -58,7 +60,11 @@ function fakeOrca(
   const ok = (result: unknown) => ({ stdout: JSON.stringify({ id: 'x', ok: true, result }) })
   const fake = fakeRunner((argv) => {
     const [a, b] = argv
-    if (a === 'status') return ok({ runtime: { reachable: over.running !== false } })
+    if (a === 'status') {
+      if (over.failStatus === 'exit') return { exitCode: 1, stderr: 'socket refused' }
+      if (over.failStatus === 'garbage') return { stdout: 'Orca 1.2.0\n' }
+      return ok({ runtime: { reachable: over.running !== false } })
+    }
     if (a === 'repo')
       return ok({ repos: (over.repos ?? []).map((path) => ({ path, kind: 'git' })) })
     if (a === 'worktree' && b === 'ps') {
@@ -96,14 +102,15 @@ function fakeOrca(
   return { orca: fake.runner, closed, removed, calls }
 }
 
-/** A repository whose `wt-branch` is merged and checked out in a clean worktree. */
-function fixture() {
+/** A repository whose `wt-branch` is merged and checked out in a clean worktree at `at`, under the repository's parent. */
+function fixture(at = 'wt-a') {
   const pair = makeBareAndWorker()
   cleanups.push(pair.cleanup)
   const root = pair.worker.dir
   sh(root, ['commit', '--allow-empty', '-m', 'initial'])
   sh(root, ['push', '-q', '-u', 'origin', 'main'])
-  const worktree = join(pair.parent, 'wt-a')
+  const worktree = join(pair.parent, at)
+  mkdirSync(join(worktree, '..'), { recursive: true })
   sh(root, ['worktree', 'add', '-q', '-b', 'wt-branch', worktree, 'main'])
   sh(worktree, ['commit', '--allow-empty', '-m', 'feat'])
   sh(root, ['merge', '-q', '--no-ff', '-m', 'Merge wt-branch', 'wt-branch'])
@@ -126,18 +133,23 @@ const objections = (s: Survey, by = 'orca') =>
 describe('detection and scope', () => {
   const ctx: Ctx = fakeContext({ cwd: tmpdir(), targets: [] })
 
-  test('an orca CLI that cannot answer `status` makes detect throw, which a survey reports as a warning', async () => {
+  test('an orca CLI that cannot answer `status` leaves the plugin active with a note and no warning, asking Orca nothing more', async () => {
     const none = fakeRunner(() => undefined)
     const s = await survey([orcaPlugin({ orca: none.runner })], ctx)
-    expect(s.plugins).toEqual([])
-    expect(s.warnings).toEqual([expect.stringContaining('orca status failed')])
+    expect(s.plugins.map((p) => p.name)).toEqual(['orca'])
+    expect(s.warnings).toEqual([])
+    expect(s.notes.orca).toMatch(/^Orca's status could not be read/)
+    expect(none.calls.map((c) => c.argv.join(' '))).toEqual(['status --json'])
   })
 
-  test('installed but not running: detect throws a note, and a survey carries it as a warning without failing', async () => {
-    const o = fakeOrca([], { running: false })
+  test('installed but not running: active with a note and no warning, and scope and discover ask Orca nothing', async () => {
+    const o = fakeOrca([], { running: false, repos: [tmpdir()] })
     const s = await survey([orcaPlugin({ orca: o.orca })], ctx)
-    expect(s.plugins).toEqual([])
-    expect(s.warnings).toEqual([expect.stringContaining('Orca is installed but not running')])
+    expect(s.plugins.map((p) => p.name)).toEqual(['orca'])
+    expect(s.warnings).toEqual([])
+    expect(s.notes).toEqual({ orca: 'Orca is installed but not running' })
+    expect(s.candidates).toEqual([])
+    expect(o.calls()).toEqual(['status --json'])
   })
 
   test('running: active, and scope names the repositories Orca lists that exist', () => {
@@ -232,6 +244,68 @@ describe('objections to the git plugin worktrees', () => {
     const { fx, plugins } = withOrca((wt) => [{ path: wt }], { failPs: true })
     const s = await survey(plugins, fx.ctx)
     expect(objections(s)).toEqual([['refuse', 'orca-unreachable']])
+  })
+})
+
+describe('while Orca is installed but not running', () => {
+  test('a worktree under its workspaces folder is refused orca-unreachable, and git does not delete it', async () => {
+    const fx = fixture('orca/workspaces/repo/wt-a')
+    const orca = fakeOrca([], { running: false })
+    const plugins = [fx.git, orcaPlugin({ orca: orca.orca })]
+    const id = `worktree:${fx.worktree}`
+    const s = await survey(plugins, fx.ctx)
+    expect(objections(s)).toEqual([['refuse', 'orca-unreachable']])
+    expect(s.objections.find((o) => o.by === 'orca')!.reason).toMatch(/not running/)
+    const receipt = await clean(plan(s, { select: [id] }), plugins, fx.ctx)
+    expect(receipt.steps).toEqual([])
+    expect(existsSync(fx.worktree)).toBe(true)
+    expect(orca.calls().every((c) => c.startsWith('status'))).toBe(true)
+  })
+
+  test('a worktree outside its workspaces folder gets no objection, and git removes it', async () => {
+    const fx = fixture()
+    const orca = fakeOrca([], { running: false })
+    const plugins = [fx.git, orcaPlugin({ orca: orca.orca })]
+    const id = `worktree:${fx.worktree}`
+    const s = await survey(plugins, fx.ctx)
+    expect(objections(s)).toEqual([])
+    const receipt = await clean(plan(s, { select: [id] }), plugins, fx.ctx)
+    expect(receipt.steps[0]).toMatchObject({ id, result: 'ok' })
+    expect(existsSync(fx.worktree)).toBe(false)
+    expect(orca.calls().every((c) => c.startsWith('status'))).toBe(true)
+  })
+})
+
+describe('while Orca status cannot be read', () => {
+  for (const failStatus of ['exit', 'garbage'] as const) {
+    test(`with ${failStatus === 'exit' ? 'a non-zero exit' : 'output that is not JSON'}, a worktree under its workspaces folder is refused orca-unreachable, and git does not delete it`, async () => {
+      const fx = fixture('orca/workspaces/repo/wt-a')
+      const orca = fakeOrca([], { failStatus })
+      const plugins = [fx.git, orcaPlugin({ orca: orca.orca })]
+      const id = `worktree:${fx.worktree}`
+      const s = await survey(plugins, fx.ctx)
+      expect(s.warnings).toEqual([])
+      expect(objections(s)).toEqual([['refuse', 'orca-unreachable']])
+      expect(s.objections.find((o) => o.by === 'orca')!.reason).toMatch(
+        /^Orca's status could not be read/,
+      )
+      const receipt = await clean(plan(s, { select: [id] }), plugins, fx.ctx)
+      expect(receipt.steps).toEqual([])
+      expect(existsSync(fx.worktree)).toBe(true)
+      expect(orca.calls().every((c) => c.startsWith('status'))).toBe(true)
+    })
+  }
+
+  test('a worktree outside its workspaces folder gets no objection, and git removes it', async () => {
+    const fx = fixture()
+    const orca = fakeOrca([], { failStatus: 'exit' })
+    const plugins = [fx.git, orcaPlugin({ orca: orca.orca })]
+    const id = `worktree:${fx.worktree}`
+    const s = await survey(plugins, fx.ctx)
+    expect(objections(s)).toEqual([])
+    const receipt = await clean(plan(s, { select: [id] }), plugins, fx.ctx)
+    expect(receipt.steps[0]).toMatchObject({ id, result: 'ok' })
+    expect(existsSync(fx.worktree)).toBe(false)
   })
 })
 
