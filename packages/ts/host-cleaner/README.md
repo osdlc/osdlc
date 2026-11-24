@@ -57,7 +57,7 @@ const receipt = clean(plan(found), [cache], ctx) // re-check, prepare, delete, d
 What a plan runs uses repo-cleaner's words, with their meaning:
 
 - **The default:** every candidate nothing refuses or protests and no owner
-  holds for review (`unattended: false`).
+  holds for review (`held: true`).
 - **`select`:** exactly these candidate ids instead of the default.
 - **`pick`:** these as well; a candidate held for review runs only when picked
   or selected.
@@ -94,13 +94,14 @@ remote first; a failed push throws `FatalRun`. Grant the named risks; the
 ## The `cargo` and `node` plugins
 
 Build caches fill agent machines, so two plugins list them. Both propose
-`artifact:<absolute path>` candidates with their size, and both set
-`unattended`. Settings: `plugins.<name>.idleHours` (default 24).
+`artifact:<absolute path>` candidates with their size. Settings:
+`plugins.<name>.idleHours` (default 24).
 
 - `cargo`: a `target/` with a `CACHEDIR.TAG` whose newest file under
   `target/*/.fingerprint/` is at least `idleHours` old. Where incremental
   builds are off (`CARGO_INCREMENTAL`, else `CARGO_BUILD_INCREMENTAL`, else `cargo config
-  get build.incremental`, which only nightly cargo answers), `target/*/incremental` is its own candidate.
+  get build.incremental`, which only nightly cargo answers), `target/*/incremental` is its own candidate,
+  held for review while it is not idle.
 - `node`: `node_modules` of a linked worktree where nothing outside
   `node_modules`, `.git` and `target` changed for `idleHours`. A primary
   checkout is never proposed. A `.pnpm` tree frees less than it measures.
@@ -119,7 +120,7 @@ Detected through `@osdlc/detect-harness` (or, with no report, the config
 folder; `CLAUDE_CONFIG_DIR` moves it). A session is a process whose executable
 is `claude` or `claude.exe`, or `node` running a `claude` script, found with
 `ps` and its working directory with `lsof`. Each candidate carries a
-`close-session` protest and is never `unattended`, so a session closes only
+`close-session` protest and is held for review, so a session closes only
 when picked and allowed by name. A session that host-cleaner itself runs
 inside (an ancestor of its process) is refused with `own-session`.
 
@@ -220,7 +221,7 @@ Two settings sit at the top of the config and apply to every plugin:
 ### Profiles
 
 `profiles` holds named overrides, chosen with `--profile <name>` on `status`,
-`plan`, `clean` (`--auto` included) and `config`:
+`plan`, `clean` and `config`:
 
 ```json
 {
@@ -235,33 +236,15 @@ command. A profile may set `targets`, `ignore`, `idleHours` and `plugins`; it
 is deep-merged over the rest of the config, a list in it replaces the config's,
 except `ignore`, which only grows, so a profile cannot lift a protection. Each
 profile is checked when the config loads, like `plugins`; an unknown profile
-name is refused (exit 2) with the names there are. `schedule install` does not
-take a profile yet.
+name is refused (exit 2) with the names there are.
 
 `host-cleaner config` prints every plugin's effective settings: the value, and
 whether the file set it or it is the default. `--format json` prints the values.
 
-### `clean --auto` and `schedule`
+### Exit codes
 
-`host-cleaner clean --auto` cleans with no person present: it takes the candidates
-whose owner marked them `unattended: true` and that nothing refuses or
-protests, and grants no `--allow`. That is a clean worktree (`git`) and an
-artifact idle past its threshold with nothing building in its checkout
-(`cargo`, `node`). Branches, sessions and anything with a protest are left for
-a person. `--spare` leaves more out; `--pick`, `--allow`, `-i`, `--yes` and
-`--dry-run` are refused. It needs targets on the command line or in the config
-file, and never falls back to the current directory. A lock in the state directory stops a second run; the
-run writes a report to `reports/`, a receipt to `receipts/` and a log line.
-
-`host-cleaner schedule install [--every <hours>]` (default 6) writes a launchd
-user agent that runs `host-cleaner clean --auto`, with the `HOST_CLEANER_*`
-overrides it was installed with (it needs `targets` in the config file, since
-launchd starts the job in `/`); `schedule status` and `schedule uninstall`
-show and remove it. macOS only.
-
-Exit codes: 0 done, declined or nothing to delete; 1 failed against the state
-found; 2 cannot run as typed; 10 nothing to sweep; 11 `clean` stopped at a
-failed step. A run that finds the lock held exits 0.
+0 done, declined or nothing to delete; 1 failed against the state found; 2
+cannot run as typed; 10 nothing to sweep; 11 `clean` stopped at a failed step.
 
 ## Install
 
