@@ -58,6 +58,7 @@ import {
   type machineConfigSchema,
 } from './machine.ts'
 import type { LocateTarget } from './ports.ts'
+import { NO_MAINTENANCE, maintainClone } from './clone-maintenance.ts'
 import { SurveyUsageError, hostKey, type ManagedClones, type RepoTarget } from './survey.ts'
 import { targetGitOptions } from './update/execute.ts'
 
@@ -462,7 +463,8 @@ export class CloneError extends Error {
  * 5. `core.longpaths=true`, and `maintenance.auto=false` and `gc.auto=0`, so no git starts a
  *    background maintenance that writes in the clone while it is hardened, moved or read;
  * 6. every `refs/heads/*` deleted, the fetch refspec set to the remote-tracking layout, and
- *    `fetch --prune`, given the same two settings with `-c`;
+ *    `fetch --prune`, given the same two settings with `-c`, then `git maintenance run --auto` in
+ *    the foreground (`maintainClone`), as after every fetch of a clone;
  * 7. the stamp and the marker written, write for group and others taken off everything in
  *    `<tmp>` (`chmod -R go-w`), then `<tmp>` renamed to `final` and the staging folder removed.
  *
@@ -519,6 +521,7 @@ export function makeClone(
         '--quiet',
         'origin',
       ])
+      maintainClone(git)
     })
     step('put the clone in place', () => {
       writeStamp(tmp)
@@ -536,15 +539,6 @@ export function makeClone(
   }
   rmSync(staging, { recursive: true, force: true })
 }
-
-/**
- * The settings that keep git from starting a background `git maintenance` or `gc` in a managed
- * clone: one writes and removes lock files there after the command that started it returns.
- */
-const NO_MAINTENANCE = [
-  ['maintenance.auto', 'false'],
-  ['gc.auto', '0'],
-] as const
 
 /** How the first-run question is asked. The CLI passes cli-tool's prompts. */
 export interface MirrorAsker {

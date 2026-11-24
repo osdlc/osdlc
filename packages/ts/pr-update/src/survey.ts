@@ -64,6 +64,7 @@ import type { CommandRunner } from '@osdlc/command-seam'
 import { parseRepoTarget } from '@osdlc/ecosystem/repositories'
 import { FailureError, type Failure } from '@osdlc/result'
 import { parseTrustRepo } from '@osdlc/trust-repo'
+import { maintainClone } from './clone-maintenance.ts'
 import { githubCodeHostFor, type CodeHostTarget } from './code-host.ts'
 import { chooseStrategy, type Strategy } from './strategy.ts'
 import { targetGitOptions } from './update/execute.ts'
@@ -1179,6 +1180,8 @@ export function surveyWithTargets(
     type Read = ReturnType<typeof surveyRows> & { fetched: boolean; unserved?: string }
     const read = (mayFetch: boolean): Read => {
       const fetched = mayFetch ? fetch() : false
+      // Under the clone's lock, which `use` holds when it lets this run fetch.
+      if (clone && fetched) maintainClone(git)
       // `try`, not `soft`: a failed listing must not read as "no checkout holds
       // this branch", which would clear a force-push. `null` counts as unsafe.
       const listedWorktrees = measurable ? git.try.worktrees() : null

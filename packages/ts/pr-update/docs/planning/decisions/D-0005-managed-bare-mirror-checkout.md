@@ -927,7 +927,13 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   name. Its config gets `maintenance.auto=false` and `gc.auto=0` before its
   first fetch, which gets both with `-c` too: a detached `git maintenance`
   that fetch started had taken and dropped `objects/maintenance.lock` while
-  the hardening walk ran, and could write in the clone after it. The CLI's
+  the hardening walk ran, and could write in the clone after it. They stay
+  in the clone's config, so no git command there starts maintenance in the
+  background, where it would write without the clone's lock. After the
+  second review, so a clone used every day is still repacked, pr-update runs
+  `git maintenance run --auto` in the foreground after each fetch of a
+  clone, while it still holds the clone's lock, giving `gc.auto` git's
+  default back for that call and turning off both `autoDetach` settings. The CLI's
   `main` takes group and others write out of the process's umask, so
   pr-update and every command it runs never create a file others can write
   to: fetches after the clone, run and kept worktrees, `FETCH_HEAD`. A host

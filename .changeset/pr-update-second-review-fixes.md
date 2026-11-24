@@ -79,3 +79,7 @@ while it is hardened or after. The `pr-update` command takes write for group
 and others out of its umask when it starts, so it and the commands it runs
 never create a file others can write to. A host that calls `runUpdate`
 directly keeps its own umask.
+
+After each fetch of a managed clone, while it holds the clone's lock,
+pr-update runs `git maintenance run --auto` in the foreground, so a clone
+used every day is still repacked though nothing runs in the background there.

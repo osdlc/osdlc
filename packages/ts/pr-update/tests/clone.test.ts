@@ -1264,6 +1264,51 @@ describe('mirror prune review round 1', () => {
     expect(existsSync(cloneLockPath(clone))).toBe(false)
   })
 
+  test('after a clone is fetched, git maintenance runs in the foreground under its lock (review round 2)', async () => {
+    writeMachine('checkout: mirror\n')
+    expect((await run('update', '--repo', 'acme/api', '--apply')).code).toBe(EXIT.ok)
+    const clone = cloneOf(repos)
+    const real = spawnRunner('git')
+    const calls: { argv: string[]; locked: boolean }[] = []
+    const watching: CommandRunner = {
+      run: (argv, opts) => {
+        if (
+          opts?.cwd !== undefined &&
+          realpathSync.native(opts.cwd) === realpathSync.native(clone)
+        ) {
+          calls.push({ argv: [...argv], locked: existsSync(cloneLockPath(clone)) })
+        }
+        return real.run(argv, opts)
+      },
+    }
+
+    const r = await runWith({ ...noTerminal, git: watching }, {}, 'survey', '--repo', 'acme/api')
+
+    expect(r.code, r.err).toBe(EXIT.ok)
+    const fetchAt = calls.findIndex((c) => c.argv.includes('fetch'))
+    const maintainAt = calls.findIndex((c) => c.argv.includes('maintenance'))
+    expect(fetchAt).toBeGreaterThanOrEqual(0)
+    expect(maintainAt).toBeGreaterThan(fetchAt)
+    expect(calls[maintainAt]).toEqual({
+      argv: [
+        '-c',
+        'gc.auto=6700',
+        '-c',
+        'gc.autoDetach=false',
+        '-c',
+        'maintenance.autoDetach=false',
+        'maintenance',
+        'run',
+        '--auto',
+        '--quiet',
+      ],
+      locked: true,
+    })
+    // The clone's own config still keeps every other git from starting one in the background.
+    expect(git(clone, 'config', '--get', 'maintenance.auto')).toBe('false')
+    expect(git(clone, 'config', '--get', 'gc.auto')).toBe('0')
+  })
+
   test('a survey that reads a busy clone without its lock, while a prune removes it, reports the target not measured', async () => {
     writeMachine('checkout: mirror\n')
     expect((await run('update', '--repo', 'acme/api', '--apply')).code).toBe(EXIT.ok)
