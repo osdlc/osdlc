@@ -48,7 +48,9 @@ pub fn git() -> GitCommand {
 pub struct GitCommand {
     args: Vec<String>,
     cwd: Option<PathBuf>,
-    envs: Vec<(String, String)>,
+    /// Variables to set (`Some`) or remove (`None`), applied in order, so a
+    /// later entry for a key wins.
+    envs: Vec<(String, Option<String>)>,
     stdin: Option<Vec<u8>>,
 }
 
@@ -77,7 +79,15 @@ impl GitCommand {
 
     /// Set an environment variable for the git subprocess.
     pub fn env(&mut self, key: impl Into<String>, val: impl Into<String>) -> &mut Self {
-        self.envs.push((key.into(), val.into()));
+        self.envs.push((key.into(), Some(val.into())));
+        self
+    }
+
+    /// Remove an environment variable from the git subprocess, so it does not
+    /// inherit the parent's value. A later [`env`](Self::env) for the same key
+    /// sets it again.
+    pub fn env_remove(&mut self, key: impl Into<String>) -> &mut Self {
+        self.envs.push((key.into(), None));
         self
     }
 
@@ -89,7 +99,7 @@ impl GitCommand {
         V: Into<String>,
     {
         for (k, v) in vars {
-            self.envs.push((k.into(), v.into()));
+            self.envs.push((k.into(), Some(v.into())));
         }
         self
     }
@@ -153,7 +163,10 @@ impl GitCommand {
         }
 
         for (k, v) in &self.envs {
-            cmd.env(k, v);
+            match v {
+                Some(v) => cmd.env(k, v),
+                None => cmd.env_remove(k),
+            };
         }
 
         let Some(bytes) = &self.stdin else {
@@ -264,6 +277,29 @@ mod tests {
             out.len() > 64 * 1024,
             "the child must outrun one pipe buffer"
         );
+    }
+
+    #[test]
+    fn env_remove_unsets_a_variable_and_a_later_env_sets_it_again() {
+        // `GIT_CONFIG_COUNT` and its pairs add config entries, so whether
+        // `x.y` is set shows whether the child saw the count.
+        let get = |remove: bool, set_again: bool| {
+            let mut cmd = GitCommand::new();
+            cmd.env("GIT_CONFIG_COUNT", "1")
+                .env("GIT_CONFIG_KEY_0", "typedgit.probe")
+                .env("GIT_CONFIG_VALUE_0", "seen");
+            if remove {
+                cmd.env_remove("GIT_CONFIG_COUNT");
+            }
+            if set_again {
+                cmd.env("GIT_CONFIG_COUNT", "1");
+            }
+            cmd.args(&["config", "--get", "typedgit.probe"]);
+            cmd.run_raw().unwrap()
+        };
+        assert_eq!(String::from_utf8_lossy(&get(false, false).stdout), "seen\n");
+        assert_eq!(get(true, false).status.code(), Some(1));
+        assert_eq!(String::from_utf8_lossy(&get(true, true).stdout), "seen\n");
     }
 
     #[test]

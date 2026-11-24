@@ -59,8 +59,8 @@ console.log(gh.rawChecked(['api', 'repos/{owner}/{repo}/pulls/7/files']).stdout)
 
 /**
  * The exports the verb path calls, or that what it calls needs: the runner,
- * the failure classifier `rawChecked` throws through, and the error the
- * runner throws.
+ * the failure classifier `rawChecked` throws through, the error the runner
+ * throws, and the colour variables `runVerb` sets on `prDiff`.
  */
 const VERB_PATH_NEEDS = new Set([
   'prDiff',
@@ -69,6 +69,7 @@ const VERB_PATH_NEEDS = new Set([
   'defaultRunnerFactory',
   'classifyGhFailure',
   'CommandFailed',
+  'NO_COLOUR_ENV',
 ])
 
 /** Helpers the clients use that the package does not export. */
