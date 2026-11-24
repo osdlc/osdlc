@@ -208,8 +208,11 @@ writing, delete that file. It refuses a root the reader would drop.
 ## Testing a tool that uses it
 
 Every function takes `env`, `home` and `dirs`, so a test keeps off the real
-home: pass `home` and an `env` with no osdlc variables, or a `dirs` rooted in a
-temp directory. `OSDLC_REPOSITORIES` is read from `process.env`, as
+home. Always pass `home`, or an `env` whose `HOME` is a temp directory, with no
+osdlc variables: `~` in a root, and the stop at the home directory when roots
+are found beside a checkout, use that home. A `dirs` rooted in a temp directory
+only moves `repositories.yaml`; on its own it leaves `~` pointing at the real
+home. `OSDLC_REPOSITORIES` is read from `process.env`, as
 config-layers reads it, so a test clears it. Pass `resolveAlias` so `ssh` never
 runs. git reads the person's global and system config too, so a `url.<base>.insteadOf`
 there changes what `origin` reads as: point `GIT_CONFIG_GLOBAL` at an empty

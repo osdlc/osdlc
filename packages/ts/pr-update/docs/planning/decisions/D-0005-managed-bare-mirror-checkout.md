@@ -676,7 +676,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   index or HEAD. In its git directory:
   - a `worktrees/<id>/` record for each run worktree and kept tree, which
     live under pr-update's cache and state;
-  - the run's scratch branch, `pr-update/scratch-<run>`, deleted at the end;
+  - the run's scratch branch, `pr-update/scratch-<run>`, deleted at the end,
+    made with `--no-track` so it writes no `branch.<name>.remote` or `.merge`
+    keys in the checkout's config (the final review of the omnibus found
+    them written while a run was on, and left by a killed one);
   - a kept tree's branch, `pr-update/failed-<owner>-<name>-<number>`, kept
     until the tree is discarded;
   - the objects the update builds (merges, rebases, repair commits, and the
@@ -691,7 +694,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     config, set for the update and put back as they were after each PR, and
     the submodule clones git makes for the run worktree.
 
-  git may also run `gc --auto` there, as after any commit.
+  pr-update's own git calls there start no `gc --auto` (`targetGitEnv`
+  sets `gc.auto=0` and `maintenance.auto=false`); the person's own git
+  commands still do.
 - **What a killed run can leave in a located checkout.** The run worktree's
   record and the scratch branch (the next run on that checkout removes them,
   since the run's pid is in the worktree's name); `submodule.*` keys that
@@ -857,12 +862,21 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   `PR_UPDATE_MACHINE_CONFIG` is an error, exit 1. Every write is a
   compare-and-swap, made holding the lock file `<machine file>.lock`, by the
   rule `repositories.yaml`'s lock follows (taken over once its holder has
-  exited or it is ten minutes old). The final review of the omnibus found
-  that without it two processes could both pass the check, and the second
-  answer overwrote the first. The question itself is asked outside the
-  lock. When another write lands first, `mirror enable` and
-  `mirror disable` write again over it, since the person just asked for that
-  value, while the first-run answer gives way to a `checkout` already there.
+  exited or it is ten minutes old). The read the write is based on is made
+  under the lock too. The final review of the omnibus found that without it
+  two processes could both pass the check, and the second answer overwrote
+  the first. The question itself is asked outside the lock, and the lock is
+  never held while a person answers. `mirror enable` and `mirror disable`
+  write over a `checkout` already there, since the person just asked for that
+  value. The first-run answer never does: when the file under the lock
+  already holds a `checkout`, nothing is written. If that is the answer the
+  person gave (with the same clone directory), the run goes on with it. If
+  not, the run adopts neither: it clones nothing, and each target with no
+  checkout is skipped with a note naming what the file holds and
+  `pr-update mirror enable [--mirror-dir <dir>]` or
+  `pr-update mirror disable`, which change it. The CI review of the
+  omnibus asked for this: adopting the other answer could clone for a person
+  who had just said no, or into a directory they did not give.
 - **`mirror enable --mirror-dir`.** Accepted as `--dir`. It is
   `--mirror-dir`, the flag's name on `survey` and `update`. It checks the
   directory as clone step 1 does, but neither makes nor marks it; the first
@@ -873,7 +887,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   environment cannot move a target. `--no-upstream` is a real flag of gh 2.x.
 - **Hooks off in run worktrees and other repositories.** The accepted text said nothing
   about hooks. Built, every git call pr-update makes for a target other than
-  the project root runs with hooks off (`noHooksEnv`, which sets
+  the project root runs with hooks off (`noHooksEnv` then, `targetGitEnv` now, which sets
   `core.hooksPath=/dev/null`): in a located checkout or a managed clone, in
   their run worktrees, the git that `gh repo clone` runs, and pruning's calls
   in the git directory that owns a dead run's worktree. A review during the
@@ -889,9 +903,15 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   person's checkout, keep its hooks. The same review found that an inherited
   `GIT_CONFIG_PARAMETERS`, which a git alias or hook started as
   `git -c core.hooksPath=.husky` passes on, beat `noHooksEnv`'s
-  `GIT_CONFIG_COUNT` entry, since git reads it later. `noHooksEnv` is now
-  typed-git's `hooksOffEnv`, which also appends `'core.hookspath'='/dev/null'`
-  to `GIT_CONFIG_PARAMETERS`.
+  `GIT_CONFIG_COUNT` entry, since git reads it later. That function is now
+  `targetGitEnv`, built on typed-git's `gitConfigEnv`, which also appends
+  `'core.hooksPath'='/dev/null'` to `GIT_CONFIG_PARAMETERS`. The CI review
+  of the omnibus asked for the same for a clone's `NO_MAINTENANCE` keys, which
+  an inherited `-c gc.auto=…` could turn back on: `targetGitEnv` sets
+  `maintenance.auto=false` and `gc.auto=0` the same way, for every git call
+  in a target and for a target's `git-ref` record and lease (`refEnv` in
+  `defaults.ts`). A clone's foreground maintenance still gets git's default
+  `gc.auto` through its own `-c`, which git reads after both.
 - **Repository variables (`GIT_DIR` and the rest).** A git hook exports
   `GIT_DIR`, and a program it starts inherits it. Every git that program runs
   then acts on the hook's repository, whatever directory it runs in; in a
@@ -977,7 +997,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   that fetch started had taken and dropped `objects/maintenance.lock` while
   the hardening walk ran, and could write in the clone after it. They stay
   in the clone's config, so no git command there starts maintenance in the
-  background, where it would write without the clone's lock. After the
+  background, where it would write without the clone's lock. pr-update's own
+  calls also get them after any inherited `-c` (Build note "Hooks off in run
+  worktrees and other repositories"). After the
   second review, so a clone used every day is still repacked, pr-update runs
   `git maintenance run --auto` in the foreground after each fetch of a
   clone, while it still holds the clone's lock, giving `gc.auto` git's
@@ -1063,7 +1085,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   and asks (a library host gets clones only through `SurveyEnv.clones`), and
   that removing a clone leaves its attempt records (pruning never walks
   `attempts/`). In a located checkout, unreachable objects are left to
-  git's own `gc --auto`, with no code here; a managed clone gets the
+  the `gc --auto` of the person's own git commands, with no code here; a managed clone gets the
   foreground `git maintenance run --auto` after each fetch instead (Build note
   "The folder rule"). Windows git's text for a cross-device rename is not checked
   either; the probe decides first.

@@ -28,7 +28,7 @@
 # runs from its own push trigger.
 #
 # `old-git` runs typed-git and the packages that run real git (pr-update,
-# trust-repo) on git 2.34, typed-git's supported floor, when any of them is
+# trust-repo, ecosystem) on git 2.34, typed-git's supported floor, when any of them is
 # picked. `verify` runs a current git, so without it the fallbacks for older
 # git never run against a real one. A run that is not a pull request picks
 # every package, so a failure here also blocks a release.
@@ -123,7 +123,8 @@ jobs:
       !cancelled() && (
       contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/typed-git') ||
       contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/pr-update') ||
-      contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/trust-repo'))
+      contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/trust-repo') ||
+      contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/ecosystem'))
     runs-on: ubuntu-22.04
     steps:
       - name: Install git 2.34
@@ -153,19 +154,20 @@ jobs:
         run: >-
           pnpm install --frozen-lockfile
           --filter '@osdlc/typed-git...' --filter '@osdlc/pr-update...' --filter '@osdlc/trust-repo...'
+          --filter '@osdlc/ecosystem...'
 
       - name: Build
         run: >-
           pnpm --filter '@osdlc/typed-git...' --filter '@osdlc/pr-update...' --filter '@osdlc/trust-repo...'
-          --if-present run build
+          --filter '@osdlc/ecosystem...' --if-present run build
 
       # No `...` here: install and build need the workspace dependencies, but
-      # only these three packages run real git. One package at a time, as in
+      # only these four packages run real git. One package at a time, as in
       # ts-packages-ci.yml: parallel packages starve trivial tests of CPU.
       - name: Test
         run: >-
           pnpm --filter @osdlc/typed-git --filter @osdlc/pr-update --filter @osdlc/trust-repo
-          --workspace-concurrency=1 --no-bail run test
+          --filter @osdlc/ecosystem --workspace-concurrency=1 --no-bail run test
 
   # Not required by the ruleset; see the header.
   story-harness:

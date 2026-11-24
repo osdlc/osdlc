@@ -198,6 +198,9 @@ lower-cased, and must be three parts: a host name (letters, digits, `-` and
 each. No part may be empty, `.` or `..`, and no space, backslash or control
 character is allowed. A name ending in `.git` is refused, so a clone URL's
 name and the bare name never make two grants: pass the name without `.git`.
+There is one grant per host name, whatever the port: a key has no `:`, and
+that is what keeps a repository apart from a Windows root such as `C:\x`
+(below). Two servers on one host name, on different ports, share their grants.
 
 A repository and a root never share a grant. A root starts with `/`, or with
 a drive letter and `:` on Windows. A repository starts with a host name,

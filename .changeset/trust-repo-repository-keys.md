@@ -2,6 +2,10 @@
 "@osdlc/trust-repo": minor
 ---
 
+**Breaking:** the `TrustStore` interface now has overloads that take
+`{ repo }` beside a path. Code that implements `TrustStore` itself must
+provide them, or delegate to the store `trustStore()` returns instead.
+
 A grant can now name a repository as well as a folder. Pass
 `{ repo: 'github.com/acme/api' }` wherever a store method, `resolveExecGate`,
 `trustDecision`, `policyDecision` or `policyExecGate` takes a root. This is for

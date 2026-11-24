@@ -2,6 +2,10 @@
 "@osdlc/pr-update": minor
 ---
 
+**Breaking:** the trust store moved to `~/.local/state/osdlc/pr-update/trusted/`,
+and trust granted by an earlier release no longer counts. Run `pr-update trust`
+again in each repository you had trusted, or pass `--trust` for one run.
+
 `update` now updates a `--repo` target found as a checkout on this machine,
 where before it only surveyed it and skipped its PRs. The run works in a
 worktree under pr-update's cache directory

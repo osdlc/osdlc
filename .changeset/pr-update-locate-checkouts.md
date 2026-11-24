@@ -2,6 +2,14 @@
 "@osdlc/pr-update": minor
 ---
 
+**Breaking:** a `--repo` given as a URL is refused as a usage error. Pass
+`owner/name` or `host/owner/name` instead.
+
+**Breaking:** `RepoTarget` has new required fields: `host`, `source`, `remote`
+and `found`. Code that builds a `RepoTarget` must set them. For the project
+root: its host (null when its remote names none), `source: 'root'`, its
+remote, and `found: null`.
+
 `survey` now measures a `--repo` target in a checkout already on your machine.
 It looks under the roots listed in the shared `~/.config/osdlc/repositories.yaml`,
 or, with none listed, beside the project root, and matches each checkout's

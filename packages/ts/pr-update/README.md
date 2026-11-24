@@ -262,7 +262,8 @@ owner and name:
 
 `OSDLC_ROOT` moves all three, as it moves the machine file. In the checkout's
 git directory the run writes only git records: a `worktrees/` entry for each
-run or kept worktree, the run's scratch branch (deleted at the end) and a kept
+run or kept worktree, the run's scratch branch (deleted at the end, and made
+with `--no-track`, so it adds no `branch.*` keys to your config) and a kept
 tree's branch, the objects the update builds, the `origin/*` refs its fetch
 and push write, and, with `attempts.store: git-ref`, local `refs/pr-update/*`
 copies of the remote's record and lease. A kept tree with a verify log adds
@@ -275,7 +276,8 @@ list all of it.
 
 Every git command in that checkout and its run worktrees runs with hooks off
 (`core.hooksPath=/dev/null`, set after any `-c core.hooksPath` an inherited
-`GIT_CONFIG_PARAMETERS` holds): the worktree holds the PR's own files, and a
+`GIT_CONFIG_PARAMETERS` holds, and `gc.auto=0` and `maintenance.auto=false`
+the same way, so pr-update's own calls start no background `gc` there): the worktree holds the PR's own files, and a
 relative `core.hooksPath` such as `.husky` would run hooks the PR's author
 wrote. So does every git command in the project root's run worktrees and kept
 trees, so your own pre-push hook does not run on pr-update's pushes; the
@@ -318,7 +320,10 @@ shallow checkout of them, and the clone directory. Enter clones into that
 directory and writes `checkout: mirror`; a typed directory is written as
 `mirror_dir` too; no writes `checkout: local`, and such targets are skipped
 from then on. The run prints the machine file it wrote. When another run
-answered first, its answer is used. With no terminal to ask on, the run exits
+saved the same answer first, the run goes on with it. When another run saved
+a different answer, or another directory, while you were answering, this run
+clones nothing: it names what the file holds and says that
+`pr-update mirror enable` or `pr-update mirror disable` changes it. With no terminal to ask on, the run exits
 `2` and names `--mirror-dir`, `PR_UPDATE_MIRROR_DIR`, `pr-update mirror
 enable`, and `pr-update mirror disable`, which skips such targets instead.
 
@@ -993,8 +998,11 @@ counts; see [Upgrading](#upgrading-from-017-or-earlier).
 repository instead, for a run that reaches it through a clone rather than a
 checkout of yours. Name the host without a port and the repository without
 `.git`: a `--repo ghe.example:8443/acme/api` is trusted by
-`pr-update trust ghe.example/acme/api`. `--show`, `--untrust` and `--list` take the same
-form. A checkout found under your roots is trusted by its path, like the
+`pr-update trust ghe.example/acme/api`. So there is one grant per host name,
+whatever the port: trust-repo's repository keys hold no `:`, which keeps them
+apart from a Windows path such as `C:\x`, and a clone's folders name the host
+without its port too, since a Windows folder name cannot hold a `:`. `--show` and `--untrust` take the same form;
+`--list` takes none. A checkout found under your roots is trusted by its path, like the
 project root; a grant by name does not cover it.
 
 Every `--repo` target passes this gate before `update` runs a command in it
