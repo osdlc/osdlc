@@ -78,7 +78,7 @@ const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v)
 /** A path with symlinks resolved, so two spellings of one place compare equal. */
 function canon(path: string): string {
   try {
-    return realpathSync(path)
+    return realpathSync.native(path)
   } catch {
     return path
   }
