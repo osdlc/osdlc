@@ -48,7 +48,8 @@ export type CostDescription = (typeof COST_DESCRIPTIONS)[number]
 
 /**
  * A folder its owner deletes. It must sit strictly inside one of the owner's
- * `roots` or a target, or be or sit inside a linked worktree of a repository
+ * `roots` or a target, be a root its owner declared `{ path, self: true }`,
+ * or be or sit inside a linked worktree of a repository
  * a target is in, or of one whose main checkout is or sits inside a target;
  * the core refuses (`outside-roots`) one that is not, and checks again right
  * before `delete`.
@@ -100,13 +101,40 @@ export interface RunCtx {
   allow: readonly string[]
   /** Absolute paths nothing may be deleted in or below; the core drops candidates there, a plugin may also skip them. */
   ignore?: readonly string[] | undefined
+  /**
+   * True when a person named the targets, in the config or on the command
+   * line; false when the CLI fell back to the folder it runs in. Unset is false.
+   */
+  targetsGiven?: boolean | undefined
 }
 
 /** What a hook is given: the run, and a signal of its own. */
 export interface Ctx extends RunCtx {
   /** Aborted when this call runs past its time limit; pass it to whatever the hook waits on. */
   signal: AbortSignal
+  /** {@link RunCtx.targetsGiven}, false when the run left it unset. */
+  targetsGiven: boolean
 }
+
+/**
+ * `detect`'s answer with a note: `active` is whether the plugin runs, and
+ * `note` says why it runs degraded, or why it does not, for a person to read.
+ * The core keeps the note on the survey (`Survey.notes`) and `status` prints it.
+ */
+export interface Detection {
+  active: boolean
+  note?: string | undefined
+}
+
+/**
+ * A folder a plugin cleans. A path: its candidates sit strictly inside it.
+ * `{ path, self: true }`: the folder itself may be a candidate as well, for a
+ * store such as `~/.npm` that is removed whole. The core refuses, with a
+ * warning, a root that is the filesystem root, is or holds the home folder,
+ * is a personal folder such as `~/Documents`, is or holds a target or a
+ * checkout, or, for a self root, is a symlink.
+ */
+export type Root = string | { path: string; self: true }
 
 /** A hook's answer, now or later. */
 export type MaybePromise<T> = T | Promise<T>
@@ -137,16 +165,21 @@ export interface Plugin {
    * `delete`, which is long. For a plugin that waits on a slow program.
    */
   limits?: Partial<Record<Hook, number>> | undefined
-  detect(ctx: Ctx): MaybePromise<boolean>
+  /**
+   * Whether the plugin runs this time: `true`, `false`, or a {@link Detection}
+   * that adds a note, such as why a plugin that still runs is degraded.
+   */
+  detect(ctx: Ctx): MaybePromise<boolean | Detection>
   /** Roots to look in, beyond the targets. */
   scope?(ctx: Ctx): MaybePromise<string[]>
   /**
    * Directories outside any checkout that this plugin cleans: fixed, or from its settings.
-   * Every path candidate it owns must sit strictly inside one by its real path, or inside
-   * the targets (see {@link PathCandidate}); a candidate that is a link is judged by its
-   * target. Without `roots`, a plugin is held to the targets alone.
+   * Every path candidate it owns must sit strictly inside one by its real path, be a root
+   * declared `{ path, self: true }`, or sit inside the targets (see {@link PathCandidate});
+   * a candidate that is a link is judged by its target. Without `roots`, a plugin is held
+   * to the targets alone. See {@link Root} for the roots the core refuses.
    */
-  roots?(ctx: Ctx): MaybePromise<readonly string[]>
+  roots?(ctx: Ctx): MaybePromise<readonly Root[]>
   discover?(ctx: Ctx): MaybePromise<Candidate[]>
   /** Objections to any candidate in `all`. It sees no other plugin's objections. */
   object?(all: readonly Candidate[], ctx: Ctx): MaybePromise<Objection[]>
