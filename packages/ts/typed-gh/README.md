@@ -18,6 +18,9 @@ npm install @osdlc/typed-gh
 `pnpm add @osdlc/typed-gh` and `yarn add @osdlc/typed-gh` work too.
 
 It needs Node `^22.22.2 || ^24.15.0 || >=26.0.0`, the range of its dependency `@osdlc/typed-git`. Bun also works, through the compiled `dist/`. It also needs the `gh` CLI on `PATH`, signed in with `gh auth login`.
+Asking for a field the installed `gh` does not know fails the whole call ("Unknown JSON field"), so
+the default field lists leave out `baseRefOid`, which `gh` knows only from v2.63.0. Ask for it with
+`fields: [...PR_LIST_FIELDS, 'baseRefOid']`.
 It is supported on macOS and Linux. Windows is not supported yet. It will be once a Windows CI job
 runs the tests.
 
@@ -96,7 +99,7 @@ that decides whether to merge can then match every member.
 | `gh.query()` (the method that throws) | the value | throws a `FailureError` carrying the classified `GhFailure` (kind `unreadable` when `gh` succeeded but its output cannot be read) |
 | `gh.try.query()` | `{ ok: true, value }` | `{ ok: false, error: GhFailure }` |
 | `gh.soft.query()` | the value | `null` (queries only. A mutation has no soft form.) |
-| `raw(argv)` | the raw `CommandResult`. You decide. | the same |
+| `raw(argv)` | the raw `CommandResult`. You decide. It keeps your colour settings (see below). | the same |
 
 A query returns a list or a value, never an empty list on failure.
 `prList()` returning `{ rows: [], truncated: false }` means this repository
@@ -249,6 +252,14 @@ and any other valid branch name is a branch. Bare digits are tried as a PR
 number first and then as a branch, since a branch can be named `42`. A branch
 gives its open PR, or else its newest closed or merged one, so a tool run
 after the merge still finds it.
+
+`PullRequest.baseRefOid`, the base branch's commit, is `null` unless you ask for it, because
+`gh` before v2.63.0 rejects the field:
+
+```ts
+const withBase = gh.prView(42, { fields: [...PR_VIEW_FIELDS, 'baseRefOid'] })
+withBase?.baseRefOid // the base sha; three dots, `base...head`, give the diff GitHub shows
+```
 
 `prList({ head })` matches the head branch exactly: `task/foo` never returns
 `task/foo-2`. Two forks can share a branch name. Ask for
@@ -460,6 +471,21 @@ const repos = await runVerbAsync(repoList('acme', {}, { hostname: 'ghe.example.c
 table does not have. Through `runVerb`, `raw` returns the `CommandResult` whatever the exit code,
 and `rawChecked` returns it when `gh` exits 0 with its whole output and throws the classified
 failure otherwise. Like the methods, they add no `--repo` and no host.
+
+`raw` and `rawChecked`, as verbs and as methods, run with your environment as it is. Every other
+verb runs with `NO_COLOUR_ENV`: `NO_COLOR=1`, with `CLICOLOR_FORCE` and `GH_FORCE_TTY` removed. So
+under `CLICOLOR_FORCE` or `GH_FORCE_TTY` a raw call's output can hold escape codes, and
+`GH_FORCE_TTY` can send it through `GH_PAGER`. To parse a raw call's output, run it with the same
+variables:
+
+```ts
+import { spawnRunner, withDefaults } from '@osdlc/command-seam'
+import { Gh, NO_COLOUR_ENV } from '@osdlc/typed-gh'
+
+const quiet = withDefaults(spawnRunner('gh', { absolutePathOnly: true }), { env: NO_COLOUR_ENV })
+const plain = new Gh('/repo', { runner: quiet })
+plain.rawChecked(['pr', 'view', '42', '--json', 'number']).stdout // no escape codes
+```
 
 ## Keeping a bundle small
 
@@ -709,7 +735,7 @@ experimental.
 Methods on both clients:
 
 - Direct calls: `raw` runs any `gh` call and returns the result. `rawChecked` throws on a failed
-  exit. `at` returns the same client rooted at another directory, `withRepo` the same client
+  exit. Both keep the caller's colour settings (see `NO_COLOUR_ENV` under Verbs). `at` returns the same client rooted at another directory, `withRepo` the same client
   aimed at another repository, and `withHostname` the same client aimed at another host.
 - Pull request queries: `prList`, `prView`, `prFind`, `openPrFor`, `prViewSettled`, `prBody`,
   `prReviewThreads`, `prActivity` and `searchPrs`.
@@ -734,7 +760,8 @@ A verb is plain data: argv, a `checked` flag, a `readOnly` flag, optional stdin 
 and a `parse` function. `runVerb` and both clients run every verb but `raw` and `rawChecked` with
 `NO_COLOR=1` set and `CLICOLOR_FORCE` and `GH_FORCE_TTY` removed, so a colour setting in the caller's
 environment cannot put escape codes into the JSON or diff they parse. A `raw` call keeps the
-caller's environment. `readOnly` is true for every query and `prDiff`, and false for every
+caller's environment. `NO_COLOUR_ENV` is those variables, exported so a `raw` caller can set them
+too. `readOnly` is true for every query and `prDiff`, and false for every
 mutation and for `raw` and `rawChecked`, so a caller that keeps an allowlist of safe calls can check
 a verb before running it. Each verb takes an optional `GhTarget` last, except `raw` and
 `rawChecked`, which take only argv. Each client method has a verb of the same name, except `at`,
@@ -750,7 +777,10 @@ a verb before running it. Each verb takes an optional `GhTarget` last, except `r
   `installed` and `authStatus`.
 - `raw` and `rawChecked`: any argv as a verb whose value is the `CommandResult`. `raw` returns it
   whatever the exit code; `rawChecked` throws the classified failure unless `gh` exits 0 with its
-  whole output.
+  whole output. Neither gets `NO_COLOUR_ENV`.
+- `NO_COLOUR_ENV`: `{ NO_COLOR: '1', CLICOLOR_FORCE: undefined, GH_FORCE_TTY: undefined }`, the
+  environment every verb but `raw` and `rawChecked` runs with. An `undefined` value removes the
+  variable.
 - `pickPrForBranch`: the first row whose head branch is exactly the one you name. `prList({ head })`
   already filters exactly. This is for rows from elsewhere, such as a `head:` search. It takes plain
   rows or a `ListResult`, so `openPrsForBranch`'s or `prList`'s parsed answer passes straight in.
@@ -758,7 +788,8 @@ a verb before running it. Each verb takes an optional `GhTarget` last, except `r
   partial pages, with their errors.
 - Field lists: `PR_REF_FIELDS` (enough to identify a PR), `PR_LIST_FIELDS` (for triage),
   `PR_VIEW_FIELDS` (the full set), `REPO_FIELDS` and `SEARCH_PR_FIELDS`. `PR_LIST_FIELDS` and
-  `PR_VIEW_FIELDS` both include `baseRefOid` and `headRefOid`.
+  `PR_VIEW_FIELDS` both include `headRefOid`. Neither includes `baseRefOid`, which needs `gh`
+  v2.63.0 or later: add it to `fields` to get it.
 - Option and result types: `ListResult`, `PrListOptions`, `IssueListOptions`, `RepoListOptions`,
   `SearchPrsOptions`, `CreatePrOptions`, `CreateReviewOptions`, `ReviewComment`,
   `CreateLabelOptions`, `ApiOptions`, `ApiResponse`, `GraphqlOptions`, `GraphqlPartialOptions`,
