@@ -50,7 +50,8 @@ that step.
 `detect` answers `true`, `false`, or `{ active, note }`: `active` is whether
 the plugin runs, and `note` is a sentence for a person, such as why a plugin
 that still runs is degraded (Orca installed but not running: its worktrees
-must still be refused, so it stays active). The core keeps each plugin's note,
+must still be refused, so it stays active; the `orca` plugin does not answer so
+yet). The core keeps each plugin's note,
 whether it runs or not, in the survey's `notes` (plugin name to note, plain
 JSON), and `status` prints each as a warning line naming the plugin, and under
 `notes` in `--format json`. An answer of any other shape leaves the plugin out
@@ -423,7 +424,8 @@ shows as detected with its note; the JSON row has it as `note`.
 A root the core refuses is left out with a warning, as `status` does, and a
 self root is marked `(itself too)`. A plugin the config disables is listed as
 `disabled`, and its `detect` is not run. `--format json` prints the same, one
-object per plugin.
+object per plugin: `{ name, source, enabled, detected, reason, roots,
+selfRoots, note }`, under `plugins` beside `targets` and `warnings`.
 
 ```text
 targets: /Users/me/dev

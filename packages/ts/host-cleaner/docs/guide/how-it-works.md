@@ -73,8 +73,9 @@ flowchart LR
 
 1. **detect.** Each plugin says whether it applies: `true`, `false`, or
    `{ active, note }`. The survey keeps every note, whether the plugin runs or
-   not, and `status` prints each as a warning naming the plugin. A throw, a
-   time-out, or any other answer leaves it out with a warning. Every hook's
+   not; `status` prints each as a warning naming the plugin, and `plugins`
+   shows it after the plugin's state. A throw, a time-out, or any other answer
+   leaves it out with a warning. Every hook's
    `ctx.targetsGiven` says whether the targets were given (on the command line
    or in the config) or the core fell back to the current folder.
 2. **scope.** Plugins add targets: `orca` adds the repositories Orca lists.
@@ -225,6 +226,30 @@ and the rest are left to `git`.
 archive options to the `git` plugin. `clean --plan` refuses a plan that names a
 plugin this install does not have. host-cleaner refuses to run as root.
 
+`plugins` runs `detect`, `scope` and `roots` and nothing else (`inspect` in
+`src/run.ts`), with the same limits and the same root checks as the survey. It
+prints `targets: <targets>`, then one line per plugin:
+
+```text
+  <name>  <source>  <state>[: <reason>][; note: <note>]
+```
+
+- `<source>` is `built-in` for every plugin today.
+- `<state>` is `disabled`, `not detected`, or `detected; roots: <roots>`. A
+  self root is followed by ` (itself too)`; a plugin with no roots reads
+  `none, the targets alone`.
+- `<reason>` says why it does not run: the config disables it, or `detect`
+  threw, timed out, or answered something that is neither a boolean nor
+  `{ active, note? }`.
+- `<note>` is the note `detect` gave, shown whether the plugin is detected or
+  not. So a degraded plugin, one that answers `{ active: true, note }`, reads
+  `detected; roots: …; note: <note>`.
+
+A refused root is left out with the warning `<plugin>: roots: left out the
+root <path>: <why>` on stderr. `--format json` prints `{ targets, warnings,
+plugins }`, each plugin as `{ name, source, enabled, detected, reason, roots,
+selfRoots, note }`, with `reason` and `note` null when there is none.
+
 ### Files
 
 The folders are `@osdlc/tiered-dirs`' `standalone('host-cleaner')` tier under
@@ -232,12 +257,47 @@ the `xdg` convention on every OS (D5): `~/.config/host-cleaner/config.json`,
 and receipts and the log under `~/.local/state/host-cleaner/`.
 `HOST_CLEANER_ROOT` and the other `HOST_CLEANER_*` variables move them.
 
+## Owner decisions
+
+Decided since the system description was written, and built. Each is
+described above where it applies.
+
+| Decision | What the code does |
+| --- | --- |
+| Linked worktrees | A linked worktree counts when its main checkout is or sits inside a target, wherever the worktree is kept ([containment](#containment), rule 3). |
+| Nesting | An outer candidate is blocked when any candidate inside it does not run, and its `blocked` detail names each one and what would let it run ([nesting](#nesting)). |
+| Detect notes | `detect` may answer `{ active, note }`. The core keeps the note for every plugin, whether it runs or not (`Survey.notes`). `status` prints it as the warning `<plugin>: <note>`, and under `notes` with `--format json`; `plugins` shows it after the plugin's state. |
+| `targetsGiven` | Every hook's `ctx.targetsGiven` is true when the targets came from the command line or the config, and false when the command line fell back to the current folder. The plan keeps it, so `clean --plan` passes it on; a plan without it reads as false. |
+| Self roots | `roots` may name `{ path, self: true }`, so a store removed whole, such as `~/.npm`, may be a candidate itself. The core's root checks apply to it as to a plain root, and it must not be a symlink. |
+| `kit.running({ name })` | Matches a word of each command line from `ps -axo pid=,args=` (`commandHasName`): a word whose last path segment is the name, or has it as one of its `.`-separated parts. It errs toward a match, since a false match only stops a delete: `pnpm` finds `node /opt/homebrew/bin/pnpm dev`, and `gradle` finds the Gradle daemon's `java` command line. `npm` does not match `pnpm`, and case counts. |
+
+The first two and the contract for the rest are on #1065; `plugins` and its
+note are on #1066. Where a decision changes a plugin, the change lands with
+that plugin:
+
+- **`vscode` chats (#1073).** VS Code's `workspaceStorage/<hash>/` also holds
+  Copilot chat sessions (`chatSessions/`). What the `vscode` plugin does with
+  a storage folder that holds them lands with the plugin, on #1073.
+- **`toolchains` (#1074).** Which toolchains it proposes depends on the
+  checkouts it reads, so it is the plugin `targetsGiven` was added for. Its
+  use of it lands on #1074.
+- **Descriptor engine roots (#1078).** The engine gives each store's parent
+  folder as its root today, so for `~/.npm` the root is home. Declaring
+  whole-folder stores as self roots lands on #1078. Its `inUse.processes`
+  already uses `kit.running({ name })` there.
+- **`orca`'s note (#1089).** `orca`'s `detect` still throws when Orca is
+  installed but not running, so `plugins` shows it `not detected`. Answering
+  `{ active: true, note }` instead is #1089.
+
 ## Where the code differs from the system description
 
 | Topic | The design | The code |
 | --- | --- | --- |
 | Public entry | `@osdlc/host-cleaner/plugin`, with `z` re-exported | the main entry and `/testing`; plugins import zod themselves. `/plugin` is k-public-api (#1051). |
-| `kit.run`, `kit.running` | `kit.run(argv)`, `kit.running(name)` | `kit.run` requires `opts.signal`; `kit.running` requires `ctx` and takes `{ name }`, matched against a word of each `ps` command line (`commandHasName`), or `{ in: folder }` |
+| `detect` | does this plugin apply? | `true`, `false`, or `{ active, note }`; the note is kept and shown for every plugin (owner's decision) |
+| `ctx` | `ctx.signal` | also `targetsGiven`: whether the targets were given or the command line fell back to the current folder (owner's decision) |
+| `roots` | folders the plugin may delete inside | also `{ path, self: true }`, where the folder itself may be a candidate. The core refuses `/`, home, a personal folder, a target, a linked worktree or a checkout as any plugin's root, where the design checks only descriptor paths (owner's decision) |
+| `kit.run`, `kit.running` | `kit.run(argv)`, `kit.running(name)` | `kit.run` requires `opts.signal`; `kit.running` requires `ctx` and takes `{ name }`, matched against a word of each `ps` command line (`commandHasName`, owner's decision), or `{ in: folder }` |
 | `kit.idle` | how long since anything changed | returns `{ unmeasured: false, newestMs, hours }` or `{ unmeasured: true }` |
 | Kit helpers | the design's list | adds `kit.size` and `kit.owner`; `kit.remove` takes an optional `ctx` |
 | Binding | a per-call argument | per-kit state the core sets each run |
