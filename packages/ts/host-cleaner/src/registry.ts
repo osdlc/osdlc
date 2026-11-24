@@ -57,13 +57,22 @@ export function loadPlugins(sources: DescriptorSources, opts: DescriptorOptions 
 
 /**
  * A descriptor's `runs`, for `supersededBy`: whether the plugin of that name is
- * among those `chosen` gives (enabled and not skipped) and detects.
+ * among those `chosen` gives (enabled and not skipped) and detects: its
+ * `detect` answers `true` or `{ active: true }`.
  */
 export const runsAmong =
   (chosen: () => readonly Plugin[]) =>
   async (name: string, ctx: Ctx): Promise<boolean> => {
     const p = chosen().find((x) => x.name === name)
-    return p !== undefined && Boolean(await p.detect(ctx))
+    if (p === undefined) return false
+    const answer: unknown = await p.detect(ctx)
+    return (
+      answer === true ||
+      (typeof answer === 'object' &&
+        answer !== null &&
+        'active' in answer &&
+        answer.active === true)
+    )
   }
 
 /** A `--plugin` or `--skip-plugin` that names no plugin. */
