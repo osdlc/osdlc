@@ -39,7 +39,7 @@ The supported floor is git 2.34, the git of Ubuntu 22.04 LTS. CI tests the
 git that the GitHub-hosted runners ship. On 2026-10-20 that was git 2.55.0 on
 `ubuntu-latest` (Ubuntu 24.04) and git 2.56.0 on `macos-latest` (macOS 26), as
 the checkout step logs it. An `old git` job also runs this package's tests,
-and pr-update's and trust-repo's, on git 2.34 on Ubuntu 22.04, so the floor
+and pr-update's, trust-repo's and ecosystem's, on git 2.34 on Ubuntu 22.04, so the floor
 and the fallbacks below run against a real git. The behaviour tables below
 were measured against git 2.50.1.
 
@@ -858,7 +858,7 @@ Integration, declares exit 1 absent and returns the rejected refs.
 | `remoteSetHead(remote, { branch } \| { auto: true } \| { delete: true })` | `remote set-head <remote> <branch>\|--auto\|--delete` — exactly one, enforced by the types and at run time |
 | `remoteSetBranches(remote, branches, { add })` | `remote set-branches [--add]` — an empty `branches` throws a `TypeError`, because git would clear every fetch refspec |
 | `gc({ auto, aggressive, prune, quiet })` | `gc` — `prune` is a date such as `'now'` for `--prune=<date>`, or `false` for `--no-prune` |
-| `checkout(ref, { branch, resetBranch, force })` | `checkout` — `resetBranch` picks `-B` |
+| `checkout(ref, { branch, resetBranch, force, noTrack })` | `checkout` — `resetBranch` picks `-B`; `noTrack` adds `--no-track`, so the new branch gets no `branch.<name>.remote` or `.merge` |
 | `checkoutSide(side, paths)` | `checkout --ours\|--theirs --` |
 | `mergeAbort()` / `rebaseAbort()` | `merge --abort` / `rebase --abort` |
 
@@ -1048,15 +1048,19 @@ can go through it too.
 const git = new Git(checkout, { runner: withoutRepositoryVars() });
 ```
 
-`hooksOffEnv(parent?)` gives the variables that turn hooks off in git, to pass
-as a call's `env`. It sets `core.hooksPath=/dev/null` after whatever `parent`
-(default `process.env`) holds, both as the next `GIT_CONFIG_KEY_<n>` pair and
-at the end of `GIT_CONFIG_PARAMETERS`. git reads `GIT_CONFIG_PARAMETERS`
-last, so a `-c core.hooksPath=.husky` that a parent git passed on, as to a
-program a git alias or hook started, does not win over it.
+`gitConfigEnv(entries, parent?)` gives the variables that set each
+`[key, value]` in `entries` for every git they reach, to pass as a call's
+`env`. It sets each one after whatever `parent` (default `process.env`)
+holds, both as the next `GIT_CONFIG_KEY_<n>` pair and at the end of
+`GIT_CONFIG_PARAMETERS`. git reads `GIT_CONFIG_PARAMETERS` last, so a `-c`
+that a parent git passed on, as to a program a git alias or hook started,
+does not win over it. `hooksOffEnv(parent?)` is `gitConfigEnv` with
+`core.hooksPath=/dev/null`: no hook runs, not even one a relative
+`-c core.hooksPath=.husky` points at in the checked-out files.
 
 ```ts
 new Git(checkout, { runner: withoutRepositoryVars() }).checkout(sha, { env: hooksOffEnv() });
+new Git(clone).fetch('origin', undefined, { env: gitConfigEnv([['gc.auto', '0']]) });
 ```
 
 The runner and result types, `CommandFailed`, `spawnRunner`, `spawnRunnerAsync`,

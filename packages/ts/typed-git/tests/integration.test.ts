@@ -83,6 +83,15 @@ describe('integration verbs — argv', () => {
     expect(calls[1]).toEqual(['checkout', '--force', '-B', 'x', 'origin/x'])
   })
 
+  test('checkout noTrack adds --no-track after the branch, and only with one', () => {
+    const { runner, calls } = recorder(res(0))
+    const git = new Git('/repo', { runner })
+    git.checkout('origin/x', { branch: 'x', resetBranch: true, noTrack: true })
+    git.checkout('origin/x', { noTrack: true })
+    expect(calls[0]).toEqual(['checkout', '-B', 'x', '--no-track', 'origin/x'])
+    expect(calls[1]).toEqual(['checkout', 'origin/x'])
+  })
+
   test('checkoutSide separates paths with -- so a path cannot read as a ref', () => {
     const { runner, calls } = recorder(res(0))
     new Git('/repo', { runner }).checkoutSide('theirs', ['a.ts', 'b.ts'])

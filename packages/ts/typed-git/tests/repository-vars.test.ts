@@ -1,7 +1,7 @@
 /**
  * withoutRepositoryVars: a runner whose children ignore an inherited GIT_DIR
- * and the other variables that pick a repository. hooksOffEnv: hooks off,
- * whatever config the environment brings.
+ * and the other variables that pick a repository. gitConfigEnv and hooksOffEnv:
+ * settings, hooks off among them, that win over the config the environment brings.
  */
 
 import {
@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import {
   Git,
+  gitConfigEnv,
   hooksOffEnv,
   REPOSITORY_VARS,
   spawnRunner,
@@ -93,13 +94,61 @@ describe('withoutRepositoryVars', () => {
   })
 })
 
+describe('gitConfigEnv', () => {
+  test('sets each entry after the inherited pairs and GIT_CONFIG_PARAMETERS', () => {
+    expect(
+      gitConfigEnv(
+        [
+          ['gc.auto', '0'],
+          ['maintenance.auto', 'false'],
+        ],
+        { GIT_CONFIG_COUNT: '1', GIT_CONFIG_PARAMETERS: "'gc.auto'='9'" },
+      ),
+    ).toEqual({
+      GIT_CONFIG_COUNT: '3',
+      GIT_CONFIG_KEY_1: 'gc.auto',
+      GIT_CONFIG_VALUE_1: '0',
+      GIT_CONFIG_KEY_2: 'maintenance.auto',
+      GIT_CONFIG_VALUE_2: 'false',
+      GIT_CONFIG_PARAMETERS: "'gc.auto'='9' 'gc.auto'='0' 'maintenance.auto'='false'",
+    })
+    // A count that is not a positive number starts the pairs at 0.
+    expect(gitConfigEnv([['a.b', 'c']], { GIT_CONFIG_COUNT: 'x' })).toMatchObject({
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'a.b',
+    })
+  })
+
+  test('git reads each value back, quotes and ! included, over an inherited -c', () => {
+    const fixture = makeGitFixture({
+      dir: join(scratch, 'repo'),
+      identity: { ...IDENTITY, ...isolated },
+    })
+    const inherited = { GIT_CONFIG_PARAMETERS: "'gc.auto'='9' 'x.odd'='no'" }
+    const env = {
+      ...inherited,
+      ...gitConfigEnv(
+        [
+          ['gc.auto', '0'],
+          ['x.odd', "it's !here"],
+        ],
+        inherited,
+      ),
+    }
+    const read = (key: string) =>
+      spawnRunner('git').run(['config', key], { cwd: fixture.dir, env }).stdout.trim()
+    expect(read('gc.auto')).toBe('0')
+    expect(read('x.odd')).toBe("it's !here")
+  })
+})
+
 describe('hooksOffEnv', () => {
   test('appends to the inherited GIT_CONFIG_* pairs and GIT_CONFIG_PARAMETERS', () => {
     expect(hooksOffEnv({})).toEqual({
       GIT_CONFIG_COUNT: '1',
       GIT_CONFIG_KEY_0: 'core.hooksPath',
       GIT_CONFIG_VALUE_0: '/dev/null',
-      GIT_CONFIG_PARAMETERS: "'core.hookspath'='/dev/null'",
+      GIT_CONFIG_PARAMETERS: "'core.hooksPath'='/dev/null'",
     })
     expect(
       hooksOffEnv({ GIT_CONFIG_COUNT: '2', GIT_CONFIG_PARAMETERS: " 'core.hookspath'='.husky' " }),
@@ -107,7 +156,7 @@ describe('hooksOffEnv', () => {
       GIT_CONFIG_COUNT: '3',
       GIT_CONFIG_KEY_2: 'core.hooksPath',
       GIT_CONFIG_VALUE_2: '/dev/null',
-      GIT_CONFIG_PARAMETERS: "'core.hookspath'='.husky' 'core.hookspath'='/dev/null'",
+      GIT_CONFIG_PARAMETERS: "'core.hookspath'='.husky' 'core.hooksPath'='/dev/null'",
     })
   })
 
