@@ -7,11 +7,11 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node`, `claude-code` and `orca` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node` and `orca` plugins, and the `host-cleaner` command.
 
 ## Phases
 
-Plugins run in a fixed order: `git`, `cargo`, `node`, `claude-code`, `orca`, then
+Plugins run in a fixed order: `git`, `cargo`, `node`, `orca`, then
 any other in the order given. The order decides which plugin keeps a duplicate id, and the order `prepare` and `deleted` run in.
 
 | Phase | Who | What |
@@ -57,7 +57,7 @@ const receipt = clean(plan(found), [cache], ctx) // re-check, prepare, delete, d
 What a plan runs uses repo-cleaner's words, with their meaning:
 
 - **The default:** every candidate nothing refuses or protests and no owner
-  holds for review (`unattended: false`).
+  holds for review (`held: true`).
 - **`select`:** exactly these candidate ids instead of the default.
 - **`pick`:** these as well; a candidate held for review runs only when picked
   or selected.
@@ -94,13 +94,14 @@ remote first; a failed push throws `FatalRun`. Grant the named risks; the
 ## The `cargo` and `node` plugins
 
 Build caches fill agent machines, so two plugins list them. Both propose
-`artifact:<absolute path>` candidates with their size, and both set
-`unattended`. Settings: `plugins.<name>.idleHours` (default 24).
+`artifact:<absolute path>` candidates with their size. Settings:
+`plugins.<name>.idleHours` (default 24).
 
 - `cargo`: a `target/` with a `CACHEDIR.TAG` whose newest file under
   `target/*/.fingerprint/` is at least `idleHours` old. Where incremental
   builds are off (`CARGO_INCREMENTAL`, else `CARGO_BUILD_INCREMENTAL`, else `cargo config
-  get build.incremental`, which only nightly cargo answers), `target/*/incremental` is its own candidate.
+  get build.incremental`, which only nightly cargo answers), `target/*/incremental` is its own candidate,
+  held for review while it is not idle.
 - `node`: `node_modules` of a linked worktree where nothing outside
   `node_modules`, `.git` and `target` changed for `idleHours`. A primary
   checkout is never proposed. A `.pnpm` tree frees less than it measures.
@@ -112,28 +113,6 @@ measured. `delete` reads the checkout's candidates again over a fresh process
 table, removes the directory and checks it is gone; a directory that is already
 gone (its worktree went first) is not a failure.
 
-## The `claude-code` plugin
-
-Lists running Claude Code sessions (`session:<pid>`) and closes one when asked.
-Detected through `@osdlc/detect-harness` (or, with no report, the config
-folder; `CLAUDE_CONFIG_DIR` moves it). A session is a process whose executable
-is `claude` or `claude.exe`, or `node` running a `claude` script, found with
-`ps` and its working directory with `lsof`. Each candidate carries a
-`close-session` protest and is never `unattended`, so a session closes only
-when picked and allowed by name. A session that host-cleaner itself runs
-inside (an ancestor of its process) is refused with `own-session`.
-
-```sh
-host-cleaner clean --pick session:1234 --allow close-session   # the usual clean, and this session
-host-cleaner clean -i                                           # tick only the session
-```
-
-Its evidence holds the start time, the command, the working directory, the
-resume id, the transcript's last write, other sessions resuming the same id,
-and whether the directory is gone or temporary. `delete` checks the pid still
-has the planned start time and command, sends SIGTERM and waits for the exit.
-It never sends SIGKILL; a session that ignores SIGTERM fails its step.
-
 ## The `orca` plugin
 
 Orca keeps its own record of some worktrees and holds terminals and agents open
@@ -141,16 +120,17 @@ in them. Removing one with plain git leaves the record and the terminals behind,
 so this plugin works beside `git`, which still removes the directory.
 
 Detected when the `orca` CLI is on `PATH` (or at
-`/Applications/Orca.app/Contents/Resources/bin/orca`) and `orca status` says the
-app is running. Orca missing is silent; installed but not running adds a
-warning, and the plugin stays out of the run. It never fails the run. Every call
-goes through `@osdlc/command-seam` with `--json`.
+`/Applications/Orca.app/Contents/Resources/bin/orca`). Orca missing is silent.
+When it is installed but not running, or `orca status` fails or prints no JSON,
+there is no fallback to git: every `git` worktree whose path is under
+`/orca/workspaces/` is refused with `orca-unreachable`, and the rest are left to
+`git`. It never fails the run. Every call goes through `@osdlc/command-seam` with `--json`.
 
 | Phase | What it does |
 | --- | --- |
 | scope | Adds each repository `orca repo list` names (`plugins.orca.repos: false` turns this off). |
 | discover | A record in `orca worktree ps` whose directory is gone is `orca-record:<path>`, held for a pick. |
-| object | On a `git` worktree that Orca manages: a `note` with its Orca id; a `refuse` `orca-agent-active` when an agent is at work (any state not `idle` or `done`); a `refuse` `orca-terminal-unverifiable`; a `protest` `close-terminals` when terminals are open. If Orca cannot be read, every `git` worktree is refused with `orca-unreachable`. |
+| object | On a `git` worktree that Orca manages: a `note` with its Orca id; a `refuse` `orca-agent-active` when an agent is at work (any state not `idle` or `done`); a `refuse` `orca-terminal-unverifiable`; a `protest` `close-terminals` when terminals are open. If Orca is running but cannot be read, every `git` worktree is refused with `orca-unreachable`; while it is not running or its status cannot be read, only those under `/orca/workspaces/` are. |
 | prepare | Sees again that no agent is at work, then `orca terminal close --worktree id:<id> --all`. |
 | deleted | After `git` removed the directory, `orca worktree rm --worktree id:<id> --force` so Orca forgets the record. It is never asked while the directory exists, since it would delete it. The branch is kept. |
 
@@ -217,51 +197,13 @@ Two settings sit at the top of the config and apply to every plugin:
 - `idleHours` is the default for every plugin that has the setting and does not
   set its own. `0` is allowed and makes every idle-checked artifact a candidate.
 
-### Profiles
-
-`profiles` holds named overrides, chosen with `--profile <name>` on `status`,
-`plan`, `clean` (`--auto` included) and `config`:
-
-```json
-{
-  "targets": ["~/dev"],
-  "idleHours": 24,
-  "profiles": { "deep": { "idleHours": 0, "plugins": { "node": { "enabled": false } } } }
-}
-```
-
-`host-cleaner clean --profile deep --yes` is then the "disk is nearly full"
-command. A profile may set `targets`, `ignore`, `idleHours` and `plugins`; it
-is deep-merged over the rest of the config, a list in it replaces the config's,
-except `ignore`, which only grows, so a profile cannot lift a protection. Each
-profile is checked when the config loads, like `plugins`; an unknown profile
-name is refused (exit 2) with the names there are. `schedule install` does not
-take a profile yet.
-
 `host-cleaner config` prints every plugin's effective settings: the value, and
 whether the file set it or it is the default. `--format json` prints the values.
 
-### `clean --auto` and `schedule`
+### Exit codes
 
-`host-cleaner clean --auto` cleans with no person present: it takes the candidates
-whose owner marked them `unattended: true` and that nothing refuses or
-protests, and grants no `--allow`. That is a clean worktree (`git`) and an
-artifact idle past its threshold with nothing building in its checkout
-(`cargo`, `node`). Branches, sessions and anything with a protest are left for
-a person. `--spare` leaves more out; `--pick`, `--allow`, `-i`, `--yes` and
-`--dry-run` are refused. It needs targets on the command line or in the config
-file, and never falls back to the current directory. A lock in the state directory stops a second run; the
-run writes a report to `reports/`, a receipt to `receipts/` and a log line.
-
-`host-cleaner schedule install [--every <hours>]` (default 6) writes a launchd
-user agent that runs `host-cleaner clean --auto`, with the `HOST_CLEANER_*`
-overrides it was installed with (it needs `targets` in the config file, since
-launchd starts the job in `/`); `schedule status` and `schedule uninstall`
-show and remove it. macOS only.
-
-Exit codes: 0 done, declined or nothing to delete; 1 failed against the state
-found; 2 cannot run as typed; 10 nothing to sweep; 11 `clean` stopped at a
-failed step. A run that finds the lock held exits 0.
+0 done, declined or nothing to delete; 1 failed against the state found; 2
+cannot run as typed; 10 nothing to sweep; 11 `clean` stopped at a failed step.
 
 ## Install
 

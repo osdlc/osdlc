@@ -1,0 +1,7 @@
+type: object
+properties:
+  a:
+    type: object
+    allOf:
+      - properties:
+          b: { type: string, x-ref: tasks }
