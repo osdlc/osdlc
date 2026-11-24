@@ -11,7 +11,7 @@ created: 2026-10-18
 
 `SessionRunState`, `SessionOutcome`, `SessionOrigin`, `LogSource` and
 `AgentStatus` are closed unions. A caller may switch over them exhaustively.
-This decision covers exactly these five. It does not yet say whether
+This decision covers exactly these five, and `TranscriptCoverage` (D-11) joins them. It does not yet say whether
 `SessionCapture`, `SessionKind`, `SessionNameSource` and `SessionDoneOutcome`
 are closed.
 
