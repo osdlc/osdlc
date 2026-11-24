@@ -97,6 +97,34 @@ function history(dir: string, name: string, empty = false): void {
   if (!empty) writeFileSync(join(dir, name, 'f2c4.jsonl'), '{"kind":0}\n')
 }
 
+/** One request of a chat, as VS Code stores it. */
+const REQUEST = { requestId: 'request_1', message: { text: 'fix the build' }, response: [] }
+
+/** A chat's log line holding the whole chat, with `requests`. */
+const whole = (requests: unknown[] = []) => ({
+  kind: 0,
+  v: { version: 3, sessionId: 'f2c4', requests },
+})
+
+/** A chat file `file` in the storage folder `dir`: `body` as it is when a string, else each item a line of a log. */
+function chat(dir: string, body: string | unknown[], file = 'f2c4.jsonl'): void {
+  mkdirSync(join(dir, 'chatSessions'), { recursive: true })
+  writeFileSync(
+    join(dir, 'chatSessions', file),
+    typeof body === 'string' ? body : body.map((line) => `${JSON.stringify(line)}\n`).join(''),
+  )
+}
+
+/** An editing session in the storage folder `dir`, with `files` in its `contents/` (none: no `contents/` at all). */
+function editing(dir: string, files?: string[]): void {
+  const session = join(dir, 'chatEditingSessions', '01109945-a276-4dcd-a5c9-9d6947717683')
+  mkdirSync(session, { recursive: true })
+  writeFileSync(join(session, 'state.json'), '{"version":2,"timeline":{}}')
+  if (files === undefined) return
+  mkdirSync(join(session, 'contents'))
+  for (const f of files) writeFileSync(join(session, 'contents', f), 'before')
+}
+
 /** VS Code's window state naming `paths` as open windows. */
 function windows(user: string, paths: string[]): void {
   mkdirSync(join(user, 'globalStorage'), { recursive: true })
@@ -240,7 +268,7 @@ describe('chat and agent history', () => {
   test('a dead workspace with chats is lost: held, and run only when picked with discard-user-data', async () => {
     const h = home()
     const dead = store(h.storage, 'bbb', folder(join(h.projects, 'dead')))
-    history(dead, 'chatSessions')
+    chat(dead, [whole([REQUEST])])
     const id = `workspace-storage:${dead}`
     const plugin = vscodePlugin(h.options())
 
@@ -277,18 +305,22 @@ describe('chat and agent history', () => {
 
   test('agent edits, Copilot transcripts and memories are history too; an empty chatSessions is not', async () => {
     const h = home()
-    const shapes: Array<[string, string[], boolean]> = [
-      ['a', ['chatEditingSessions'], false],
-      ['b', ['GitHub.copilot-chat/transcripts'], false],
-      ['c', ['GitHub.copilot-chat/memory-tool/memories'], false],
-      ['d', ['chatSessions', 'chatEditingSessions'], false],
-      ['e', ['chatSessions'], true],
-      ['f', ['GitHub.copilot-chat/chat-session-resources'], false],
+    const shapes: Array<[string, (dir: string) => void]> = [
+      ['a', (d) => editing(d, ['0.ts'])],
+      ['b', (d) => history(d, 'GitHub.copilot-chat/transcripts')],
+      ['c', (d) => history(d, 'GitHub.copilot-chat/memory-tool/memories')],
+      [
+        'd',
+        (d) => {
+          chat(d, [whole([REQUEST])])
+          editing(d, ['0.ts'])
+        },
+      ],
+      ['e', (d) => history(d, 'chatSessions', true)],
+      ['f', (d) => history(d, 'GitHub.copilot-chat/chat-session-resources')],
     ]
-    for (const [hash, names, empty] of shapes) {
-      const dir = store(h.storage, hash, folder(join(h.projects, `dead-${hash}`)))
-      for (const name of names) history(dir, name, empty)
-    }
+    for (const [hash, make] of shapes)
+      make(store(h.storage, hash, folder(join(h.projects, `dead-${hash}`))))
 
     const s = await survey([vscodePlugin(h.options())], ctxOf(h.home))
     expect(s.candidates.map((c) => [c.path, c.costDescription, c.evidence.history])).toEqual([
@@ -301,13 +333,78 @@ describe('chat and agent history', () => {
     ])
   })
 
+  test('a chat counts only with a request, and one that cannot be read counts', async () => {
+    const h = home()
+    const noise = { kind: 1, k: ['responderUsername'], v: 'GitHub Copilot' }
+    const shapes: Array<[string, (dir: string) => void]> = [
+      // An empty chat file, and a chat opened but never asked anything.
+      ['a', (d) => chat(d, '')],
+      ['b', (d) => chat(d, [whole(), noise, { kind: 1, k: ['inputState'], v: {} }])],
+      ['c', (d) => chat(d, JSON.stringify(whole().v, null, 2), 'f2c4.json')],
+      // A request pushed onto an empty chat, one in the whole chat, one in a `.json` chat.
+      ['d', (d) => chat(d, [whole(), noise, { kind: 2, k: ['requests'], v: [REQUEST] }])],
+      ['e', (d) => chat(d, [whole([REQUEST])])],
+      ['f', (d) => chat(d, JSON.stringify(whole([REQUEST]).v, null, 2), 'f2c4.json')],
+      // A request's response changed: that request is there.
+      ['g', (d) => chat(d, [whole(), { kind: 1, k: ['requests', 0, 'response'], v: [] }])],
+      // Requests pushed and then cut back to none.
+      [
+        'h',
+        (d) =>
+          chat(d, [
+            whole(),
+            { kind: 2, k: ['requests'], v: [REQUEST] },
+            { kind: 2, k: ['requests'], i: 0 },
+          ]),
+      ],
+      // Files that cannot be read as a chat: kept.
+      ['i', (d) => chat(d, '{"kind":0,"v":{"requests":[]}}\n{ broken')],
+      ['j', (d) => chat(d, '{ broken', 'f2c4.json')],
+      ['k', (d) => chat(d, [{ kind: 0 }])],
+      ['l', (d) => chat(d, [{ kind: 2, k: ['requests'], v: [REQUEST] }])],
+      ['m', (d) => chat(d, [whole(), { kind: 9, k: ['requests'] }])],
+      ['n', (d) => chat(d, [whole(), { kind: 3, k: ['requests'] }])],
+      // A file VS Code does not read as a chat.
+      ['o', (d) => chat(d, 'x', '.DS_Store')],
+    ]
+    const kept = new Set(['d', 'e', 'f', 'g', 'i', 'j', 'k', 'l', 'm', 'n'])
+    for (const [hash, make] of shapes)
+      make(store(h.storage, hash, folder(join(h.projects, `dead-${hash}`))))
+
+    const s = await survey([vscodePlugin(h.options())], ctxOf(h.home))
+    expect(s.warnings).toEqual([])
+    expect(s.candidates.map((c) => [c.path, c.costDescription])).toEqual(
+      shapes.map(([hash]) => [join(h.storage, hash), kept.has(hash) ? 'lost' : 're-download']),
+    )
+  })
+
+  test('an editing session counts only when its contents/ has the files it changed', async () => {
+    const h = home()
+    const shapes: Array<[string, (dir: string) => void]> = [
+      ['a', (d) => editing(d, [])],
+      ['b', (d) => editing(d)],
+      ['c', (d) => editing(d, ['0.ts', '1.ts'])],
+      ['d', (d) => history(d, 'chatEditingSessions')],
+    ]
+    for (const [hash, make] of shapes)
+      make(store(h.storage, hash, folder(join(h.projects, `dead-${hash}`))))
+
+    const s = await survey([vscodePlugin(h.options())], ctxOf(h.home))
+    expect(s.candidates.map((c) => [c.path, c.costDescription])).toEqual([
+      [join(h.storage, 'a'), 're-download'],
+      [join(h.storage, 'b'), 're-download'],
+      [join(h.storage, 'c'), 'lost'],
+      [join(h.storage, 'd'), 're-download'],
+    ])
+  })
+
   test('delete refuses a storage folder planned as re-download that now holds chats', async () => {
     const h = home()
     const dead = store(h.storage, 'bbb', folder(join(h.projects, 'dead')))
     const plugin = vscodePlugin(h.options())
     const c = (await survey([plugin], ctxOf(h.home))).candidates[0]!
     expect(c.costDescription).toBe('re-download')
-    history(dead, 'chatSessions')
+    chat(dead, [whole([REQUEST])])
     await expect(deleting(plugin, c, h.home)).rejects.toThrow(
       /now holds chat or agent history \(chatSessions\)/,
     )

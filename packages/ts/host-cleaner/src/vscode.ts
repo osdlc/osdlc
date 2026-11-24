@@ -9,7 +9,7 @@
  * or a `workspace` (a `.code-workspace` file) URI. One whose `file:` URI
  * names nothing on disk is a candidate; deleting it costs the window's
  * settings and state (`re-download`), or, when it holds chat or agent history
- * (see {@link HISTORY_FOLDERS}), that history (`lost`). A remote URI cannot be checked from
+ * (see {@link historyIn}), that history (`lost`). A remote URI cannot be checked from
  * here and a folder with no `workspace.json` is an empty window's, so both are
  * left alone. A `workspace.json` of any other shape is never guessed at: the
  * folder is proposed and refused (`unknown-workspace`), which is how it shows
@@ -100,6 +100,112 @@ const HISTORY_FOLDERS = [
   'GitHub.copilot-chat/memory-tool/memories',
 ] as const
 
+const LogPath = z.array(z.union([z.string(), z.number().int().nonnegative()]))
+
+/** One line of a `.jsonl` chat: VS Code's object mutation log (`objectMutationLog.ts`). */
+const LogEntry = z.discriminatedUnion('kind', [
+  /** The whole chat. */
+  z.object({ kind: z.literal(0), v: z.unknown() }),
+  /** A property replaced. */
+  z.object({ kind: z.literal(1), k: LogPath, v: z.unknown() }),
+  /** An array cut to `i` when given, then `v` pushed on. */
+  z.object({
+    kind: z.literal(2),
+    k: LogPath,
+    v: z.array(z.unknown()).optional(),
+    i: z.number().int().nonnegative().optional(),
+  }),
+  /** A property deleted. */
+  z.object({ kind: z.literal(3), k: LogPath }),
+])
+
+/** The length of a chat's `requests`; throws when it is not an array. */
+function requestsOf(chat: unknown): number {
+  if (!isObject(chat) || !Array.isArray(chat.requests)) throw new Error('no requests array')
+  return chat.requests.length
+}
+
+/**
+ * How many requests the chat in `text` holds: a `.json` file is the chat, a
+ * `.jsonl` file its mutation log, replayed for `requests` alone. Throws on
+ * anything else, so a chat that cannot be read counts as holding some.
+ */
+function chatRequests(text: string, log: boolean): number {
+  if (text.trim() === '') return 0
+  if (!log) return requestsOf(JSON.parse(text))
+  let count: number | undefined
+  for (const line of text.split('\n')) {
+    if (line.trim() === '') continue
+    const entry = LogEntry.parse(JSON.parse(line))
+    if (entry.kind === 0) {
+      count = requestsOf(entry.v)
+      continue
+    }
+    if (count === undefined) throw new Error('the log does not start with the whole chat')
+    const [key, index] = entry.k
+    if (key !== 'requests') continue
+    if (entry.k.length > 1) {
+      // A change inside one request: that request is there.
+      if (typeof index !== 'number') throw new Error('a request is not named by its index')
+      count = Math.max(count, index + 1)
+    } else if (entry.kind === 1) {
+      if (!Array.isArray(entry.v)) throw new Error('requests set to something else')
+      count = entry.v.length
+    } else if (entry.kind === 2) {
+      count = (entry.i ?? count) + (entry.v?.length ?? 0)
+    } else {
+      throw new Error('requests deleted')
+    }
+  }
+  if (count === undefined) throw new Error('the log has no whole chat')
+  return count
+}
+
+/** True when the folder `path` holds something; one that cannot be read does. */
+function filled(path: string): boolean {
+  try {
+    return readdirSync(path).length > 0
+  } catch {
+    return true
+  }
+}
+
+/** True when `dir` is a folder, not followed through a link. */
+const isDir = (dir: string): boolean =>
+  lstatSync(dir, { throwIfNoEntry: false })?.isDirectory() === true
+
+/**
+ * True when the history folder `name`, at `path`, holds history that cannot be
+ * had again: a chat with at least one request (one that cannot be read counts,
+ * an empty file is a chat with none), an editing session whose `contents/`
+ * has the files it changed, or anything at all in Copilot's folders.
+ */
+function holdsHistory(name: (typeof HISTORY_FOLDERS)[number], path: string): boolean {
+  if (name === 'chatSessions') {
+    return readdirSync(path).some((file) => {
+      const log = file.endsWith('.jsonl')
+      // VS Code reads no other files there.
+      if (!log && !file.endsWith('.json')) return false
+      try {
+        return chatRequests(readFileSync(join(path, file), 'utf8'), log) > 0
+      } catch {
+        return true
+      }
+    })
+  }
+  if (name === 'chatEditingSessions') {
+    return readdirSync(path).some((session) => {
+      const contents = join(path, session, 'contents')
+      try {
+        return isDir(join(path, session)) && isDir(contents) && filled(contents)
+      } catch {
+        return true
+      }
+    })
+  }
+  return filled(path)
+}
+
 /** A mount point and the folder a volume is mounted on; a path under one that is missing or empty is on a volume that is not mounted. */
 const VOLUME =
   /^(\/Volumes\/[^/]+|\/run\/media\/[^/]+\/[^/]+|\/media\/[^/]+\/[^/]+|\/mnt\/[^/]+)(?:\/|$)/
@@ -170,13 +276,12 @@ function unmounted(path: string): boolean {
   }
 }
 
-/** The {@link HISTORY_FOLDERS} in `dir` that are folders with something in them; one that cannot be read counts. */
+/** The {@link HISTORY_FOLDERS} in `dir` that are folders holding history (see {@link holdsHistory}); one that cannot be read counts. */
 function historyIn(dir: string): string[] {
   return HISTORY_FOLDERS.filter((name) => {
     const path = join(dir, name)
     try {
-      if (lstatSync(path, { throwIfNoEntry: false })?.isDirectory() !== true) return false
-      return readdirSync(path).length > 0
+      return isDir(path) && holdsHistory(name, path)
     } catch {
       return true
     }
