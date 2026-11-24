@@ -253,22 +253,21 @@ const message = (err: unknown): string => (err instanceof Error ? err.message : 
  * When the version in `dir` was last used: the newest access or modification
  * time of the files in its `bin` folder, links followed. Every use runs one of
  * them (rustup's proxies, nvm's `PATH`, Volta's shims), and running a file
- * updates its access time. Null when `bin` cannot be read or holds no file.
+ * updates its access time. Null when `bin` or a file in it cannot be read, or it holds no file.
  */
 export function lastUsedMs(dir: string): number | null {
   const bin = join(dir, 'bin')
-  let names: string[]
-  try {
-    names = readdirSync(bin)
-  } catch {
-    return null
-  }
   let newest: number | null = null
-  for (const name of names) {
-    const stat = statSync(join(bin, name), { throwIfNoEntry: false })
-    if (stat === undefined || !stat.isFile()) continue
-    const t = Math.max(stat.atimeMs, stat.mtimeMs)
-    if (newest === null || t > newest) newest = t
+  try {
+    for (const name of readdirSync(bin)) {
+      const stat = statSync(join(bin, name), { throwIfNoEntry: false })
+      if (stat === undefined || !stat.isFile()) continue
+      const t = Math.max(stat.atimeMs, stat.mtimeMs)
+      if (newest === null || t > newest) newest = t
+    }
+  } catch {
+    // A file that cannot be read may be the one in use.
+    return null
   }
   return newest
 }
