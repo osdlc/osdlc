@@ -340,6 +340,95 @@ fn a_record_that_is_not_a_json_object_is_refused_and_nothing_is_written() {
     assert_eq!(read(&path), format!("{{\"pid\":{}}}\n", std::process::id()));
 }
 
+#[test]
+fn an_error_says_which_lock_and_who_holds_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    fs::write(&path, "{\"pid\":4242}\n").unwrap();
+    let _held = hold(&path);
+
+    let refused = OsLock::acquire(&path).unwrap_err().to_string();
+
+    let lock = path.display();
+    if cfg!(windows) {
+        assert_eq!(
+            refused,
+            format!("lock {lock} is held, and its file does not name the holder")
+        );
+    } else {
+        assert_eq!(refused, format!("lock {lock} is held by pid 4242"));
+    }
+}
+
+/// A holder replaces its record, a long one and a short one in turn, while
+/// others ask. Whatever the timing, nobody is told the lock is free or given
+/// another pid.
+///
+/// Where a file system never lets one read see half of one write, every
+/// answer is also one of the two records, whole. That is counted, not
+/// asserted: `--nocapture` shows the counts.
+#[test]
+fn a_holder_is_named_by_its_pid_while_it_replaces_its_record() {
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+    const WRITES: usize = 2000;
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    let pid = std::process::id();
+    let long = json!({ "boot_id": "boot_0123", "started_at": "2026-11-24T10:00:00.250Z" });
+    let short = json!({});
+    let whole = |record: &Value| {
+        let mut record = record.as_object().unwrap().clone();
+        record.insert("pid".to_owned(), json!(pid));
+        record
+    };
+    let (whole_long, whole_short) = (whole(&long), whole(&short));
+    let mut lock = OsLock::acquire(&path).unwrap();
+    let done = AtomicBool::new(false);
+    let (asked, in_whole, mixed, unnamed) = (
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+    );
+
+    std::thread::scope(|scope| {
+        for _ in 0..3 {
+            scope.spawn(|| {
+                while !done.load(Ordering::SeqCst) {
+                    let count = match OsLock::holder(&path).unwrap() {
+                        OsLockState::Held(holder) => {
+                            assert_eq!(holder.pid, pid, "another pid: {holder:?}");
+                            if holder.record == whole_long || holder.record == whole_short {
+                                &in_whole
+                            } else {
+                                &mixed
+                            }
+                        }
+                        OsLockState::HeldUnnamed => &unnamed,
+                        OsLockState::GuardBusy => continue,
+                        OsLockState::Free => panic!("free while it is held"),
+                    };
+                    count.fetch_add(1, Ordering::SeqCst);
+                    asked.fetch_add(1, Ordering::SeqCst);
+                }
+            });
+        }
+        for write in 0..WRITES {
+            let record = if write % 2 == 0 { &long } else { &short };
+            if let Err(failed) = lock.record(record) {
+                done.store(true, Ordering::SeqCst);
+                panic!("{failed}");
+            }
+        }
+        done.store(true, Ordering::SeqCst);
+    });
+    eprintln!(
+        "{WRITES} records replaced, {asked:?} asks: {in_whole:?} a whole record, \
+         {mixed:?} a mixed one, {unnamed:?} no name"
+    );
+}
+
 /// The README says the two protocols do not exclude each other on one path.
 /// This is how: a claim takes over the file an OS lock is held on, and a
 /// second OS lock is then taken on the new file.
