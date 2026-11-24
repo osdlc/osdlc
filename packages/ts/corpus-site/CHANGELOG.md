@@ -1,5 +1,16 @@
 # @osdlc/corpus-site
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [fb0034a]
+- Updated dependencies [3e9f995]
+- Updated dependencies [f9fc6f0]
+- Updated dependencies [54690ce]
+  - @osdlc/corpus-schema@0.6.0
+  - @osdlc/markdown-render@0.8.3
+
 ## 0.1.0
 
 ### Minor Changes
