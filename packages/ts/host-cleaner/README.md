@@ -72,11 +72,9 @@ before the git worktree that holds it, and a `target/` that does not run
 (refused, spared, held, or carrying a protest not allowed) keeps the worktree
 too. The worktree is then `blocked`, and its reason names each candidate
 inside it that does not run and what would let it run, as `requires <id>,
-which <why>`, joined by `; `. `<why>` is `needs --pick <id>` (held or not
-selected), `needs --allow <codes>`, both, `is refused (<plugin>: <reason>)`,
-`is spared (--spare <entry>)`, `is gone`, or the inner candidate's own reason
-for being dropped, such as `is blocked: requires …` down a chain. For example:
-`requires artifact:…/target, which needs --allow unmeasured`. The clean
+which <why>`, joined by `; `. For example: `requires artifact:…/target, which
+needs --allow unmeasured`. Every form `<why>` takes is listed under
+[nesting](docs/guide/how-it-works.md#nesting) in how-it-works. The clean
 preview (text and JSON), the `clean -i` checklist and the receipt show it. A
 step skipped because a requirement failed during the run says `requires <id>,
 which did not complete`.
@@ -384,9 +382,9 @@ The config file holds the targets and each plugin's settings:
 ```
 
 `plugins.<name>` holds that plugin's settings; a name that no plugin has gets
-a warning and is otherwise ignored. Each plugin's settings are a strict schema, checked when the config
-loads: a misspelt key or a wrong type is refused (exit 2), naming the plugin and
-the key.
+a warning and is otherwise ignored. Each plugin's settings are a strict
+schema, checked when the config loads: a misspelt key or a wrong type is
+refused (exit 2), naming the plugin and the key.
 
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |

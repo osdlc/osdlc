@@ -254,9 +254,9 @@ selfRoots, note }`, with `reason` and `note` null when there is none.
 ### Files
 
 The folders are `@osdlc/tiered-dirs`' `standalone('host-cleaner')` tier under
-the `xdg` convention on every OS (D5): `~/.config/host-cleaner/config.json`,
-and receipts and the log under `~/.local/state/host-cleaner/`.
-`HOST_CLEANER_ROOT` and the other `HOST_CLEANER_*` variables move them.
+the `xdg` convention on every OS (D5). The README's
+[Files and config](../../README.md#files-and-config) lists each folder and the
+variables that move it.
 
 ## Owner decisions
 
