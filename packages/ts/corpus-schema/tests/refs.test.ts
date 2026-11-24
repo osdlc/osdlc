@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
+import { loadCorpus } from '../src/load.ts'
 import { syncCorpus } from '../src/sync.ts'
 import { validateCorpus } from '../src/validate.ts'
 
@@ -219,5 +220,94 @@ describe('x-ref-form placement', () => {
     assert.deepEqual(errors(), [])
     put('c/notes/N.md', '---\nabout: T-0001\n---\n')
     assert.deepEqual(errors(), ['notes/N.md: about: must be one link, such as "[Name](Name.md)"'])
+  })
+})
+
+describe('x-ref inside nested objects', () => {
+  const schema = `type: object
+properties:
+  lines:
+    type: array
+    items:
+      type: object
+      properties:
+        items: { type: array, items: { type: string, x-ref: tasks, x-ref-form: id } }
+  meta:
+    type: object
+    properties:
+      owner: { type: string, x-ref: tasks, x-ref-form: wikilink }
+`
+  const notes = (data: string): void => {
+    plan('{ type: string }')
+    put('c/notes/notes.schema.yaml', schema)
+    put('c/notes/N.md', `---\n${data}\n---\n`)
+  }
+
+  test('each value is checked, and an error names the field down to it', () => {
+    notes('lines:\n  - items: [T-0001]\n  - items: [T-0001, T-9]\nmeta: { owner: "[[T-0002]]" }')
+    assert.deepEqual(
+      errors().map((e) => e.split(': ').slice(0, 2).join(': ')),
+      ['notes/N.md: lines.1.items'],
+    )
+    notes('meta: { owner: "[[D-0001]]" }')
+    assert.deepEqual(
+      errors().map((e) => e.split(': ').slice(0, 2).join(': ')),
+      ['notes/N.md: meta.owner'],
+    )
+  })
+
+  test('a missing, null or mis-shaped level holds no value', () => {
+    notes('lines: [null, 3, {}, { items: null }, { items: [null] }]\nmeta: null')
+    assert.deepEqual(
+      errors().filter((e) => !/: must be /.test(e)),
+      [],
+    )
+  })
+
+  test('x-ref where no value is reached is an error', () => {
+    plan('{ type: string }')
+    put(
+      'c/notes/notes.schema.yaml',
+      'type: object\nproperties:\n  a:\n    type: object\n    additionalProperties: { type: string, x-ref: tasks }\n',
+    )
+    assert.match(errors().join('\n'), /properties\.a\.additionalProperties: x-ref sits only/)
+  })
+
+  test('an id-form value exempts only itself: a sibling link is still checked, and fixed', () => {
+    plan('{ type: string }')
+    put(
+      'c/notes/notes.schema.yaml',
+      'type: object\nproperties:\n  lines:\n    type: array\n    items:\n      type: object\n      properties:\n        owner: { type: string, x-ref: tasks, x-ref-form: wikilink }\n        note: { type: string }\n',
+    )
+    put(
+      'c/notes/N.md',
+      '---\nlines:\n  - owner: "[[T-0001]]"\n    note: "[gone](../none.md)"\n---\n',
+    )
+    assert.match(errors().join('\n'), /notes\/N\.md: lines\.note: .*none\.md/)
+    put('c/notes/N.md', '---\nlines:\n  - owner: "[[T-0001]]"\n    note: "[[T-0002]]"\n---\n')
+    report('c', true)
+    assert.match(read('c/notes/N.md'), /owner: "\[\[T-0001\]\]"/)
+    assert.match(read('c/notes/N.md'), /note: .*\]\(\.\.\/tasks\/done\/T-0002\.yaml\)/)
+  })
+
+  test('x-ref-form on a nested property needs an x-ref beside it', () => {
+    plan('{ type: string }')
+    put(
+      'c/notes/notes.schema.yaml',
+      'type: object\nproperties:\n  meta:\n    type: object\n    properties:\n      by: { type: string, x-ref-form: id }\n',
+    )
+    assert.match(
+      errors().join('\n'),
+      /properties\.meta\.properties\.by: x-ref-form sits only beside x-ref/,
+    )
+  })
+
+  test('loadCorpus gives each value its full pointer', () => {
+    notes('lines:\n  - items: [T-0001]\nmeta: { owner: "[[T-0001]]" }')
+    const record = loadCorpus(join(dir, 'c')).records.find((r) => r.type === 'notes')
+    assert.deepEqual(record?.references.map((r) => [r.field, r.pointer, r.target?.id]).sort(), [
+      ['lines.items', '/lines/0/items/0', 'T-0001'],
+      ['meta.owner', '/meta/owner', 'T-0001'],
+    ])
   })
 })
