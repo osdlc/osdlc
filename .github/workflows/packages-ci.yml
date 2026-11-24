@@ -212,7 +212,9 @@ jobs:
       contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/system-model') ||
       contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/wayfinder') ||
       contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/ref-lease') ||
-      contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/file-lock'))
+      contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/file-lock') ||
+      contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/code-stats') ||
+      contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/diffkit'))
     uses: ./.github/workflows/packages-windows-tier2.yml
     with:
       packages: ${{ needs.packages.outputs.packages }}
