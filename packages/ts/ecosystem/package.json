@@ -1,0 +1,80 @@
+{
+  "name": "@osdlc/ecosystem",
+  "version": "0.0.0",
+  "description": "The facts every osdlc tool shares, one module per concern. `./repositories` reads and writes the family's repositories.yaml, works out the roots to scan when it names none, and finds a person's checkouts of a repository by their origin remote.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/ecosystem"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/ecosystem#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "osdlc",
+    "config",
+    "xdg",
+    "git",
+    "checkout",
+    "repositories",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./repositories": {
+      "types": "./dist/repositories.d.ts",
+      "default": "./dist/repositories.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/command-seam": "workspace:^",
+    "@osdlc/config-layers": "workspace:^",
+    "@osdlc/etag-write": "workspace:^",
+    "@osdlc/tiered-dirs": "workspace:^",
+    "@osdlc/typed-git": "workspace:^",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
