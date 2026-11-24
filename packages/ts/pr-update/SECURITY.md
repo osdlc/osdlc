@@ -41,4 +41,56 @@ are in scope.
   but it does not sandbox the agent.
 - **GitHub credentials belong to `gh`.** The package reads no GitHub token.
 - **The remote picks the host.** `origin` decides which adapter and which
-  repository the updates go to.
+  repository the updates go to. A `--repo` target names its own host, or
+  takes the host of the project root's `origin` when that is GitHub, else
+  github.com.
+- **Other repositories run with hooks off.** For a `--repo` target, every git
+  command, in a checkout found on the machine, a managed clone or their run
+  worktrees, runs with `core.hooksPath=/dev/null`, so a hook the PR commits
+  does not run. Each target passes the trust gate on its own. The project
+  root's git runs as before.
+- **pr-update's worktrees and other repositories ignore `GIT_DIR`.** A run
+  started from a git hook inherits `GIT_DIR`, which would make every git it
+  runs act on the hook's repository; in a linked worktree that moves the
+  main checkout's branch. So `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and
+  git's other repository variables are unset for every git call in a
+  `--repo` target (the git that `gh repo clone` runs included), for every git
+  call in a run worktree or kept tree, the project root's included, and for
+  every command started there: verify, resolvers, `lockfile_install` and a
+  repair command or agent. A target's `git-ref` record and lease name the
+  target's own repository instead. The project root's fetch, survey, PR
+  listing and branch mode's sync keep them, since they run where you ran pr-update. So `survey` and
+  `update` refuse to start, with exit 2, when these variables find another
+  repository than the directory's own, as a dotfiles setup's do.
+- **PR content picks submodule URLs.** With `submodules: auto`, the update
+  clones the submodules a PR's `.gitmodules` names, over the network with the
+  run's credentials. Local paths and `ext::` URLs are refused; `https` and
+  `ssh` ones are not. See [Git submodules](README.md#git-submodules).
+- **A managed clone holds a credential helper.** Its own git config gets
+  `!gh auth git-credential` for its host, so fetches and pushes sign in
+  through `gh`. Your global git config is not changed.
+- **A kept record does not choose what is deleted.** `--keep-failed` writes a
+  record beside each kept tree, and in a checkout that is
+  `.pr-update/failed/`, inside the working tree, where the repository's own
+  files can put one. A record is acted on only when its branch and path are
+  the ones pr-update gives that PR, its folder is not a symbolic link, and
+  `git worktree list` shows a worktree at that folder. One shown on another
+  branch, or detached, is a person's, and is never removed. A tree is removed
+  through the checkout's own git directory, never one a checkout's record
+  names. Any other record is left alone and reported.
+- **No file others can write to.** The `pr-update` command takes write for
+  group and others out of its umask when it starts, and git, `gh` and every
+  command it runs inherit it, so none of them creates a file or folder others
+  can write to. A managed clone is made in a staging folder only its user can
+  open, hardened, and only then moved into place, with git's background
+  maintenance turned off in it. The umask also covers what pr-update and its
+  commands write in the person's own checkout, so a checkout shared by a group
+  should set `core.sharedRepository=group`. A host that calls `runUpdate` from
+  the library keeps its own umask and must set it.
+- **Pruning deletes folders.** `mirror prune`, and the pruning at the end of
+  an `update --apply`, delete folders only inside pr-update's cache and
+  state directories and the clone directory, which must carry pr-update's
+  marker, and in the git directory that owns a dead run's worktree only that
+  worktree's record and scratch branch. They never follow a symbolic link, and on Linux and macOS
+  they remove nothing from a folder another user owns or others can write
+  to. Windows gets no such check.

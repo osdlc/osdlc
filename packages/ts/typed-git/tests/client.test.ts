@@ -21,7 +21,7 @@ import type { GitFailure } from '../src/failure.ts'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, normalize } from 'node:path'
 
 import {
   Git,
@@ -96,6 +96,8 @@ const DOTGIT_ALIASES = [
   '.g‌it',
   '﻿.GIT',
   '.git⁯',
+  // HFS+ ends the name at a directory separator, and on Windows `\` is one.
+  ...(process.platform === 'win32' ? ['.gi\u200ct\\x'] : []),
 ]
 /** Names close to those that git reads as ordinary names. */
 const DOTGIT_NEAR_MISSES = [
@@ -109,6 +111,7 @@ const DOTGIT_NEAR_MISSES = [
   '.git‌.',
   // Only ASCII letters fold.
   '.gİt',
+  ...(process.platform === 'win32' ? [] : ['.gi\u200ct\\x']),
 ]
 /** Names git's fsck treats as `.gitmodules`. */
 const GITMODULES_ALIASES = [
@@ -123,12 +126,20 @@ const GITMODULES_ALIASES = [
   'gi7eba~1',
   'GI7EBA~9',
   'gi7eb~12',
+  // fsck reads what follows each backslash as a name of its own (NTFS).
+  'x\\.gitmodules',
+  'x\\gitmod~1',
+  // HFS+ ends the name at a directory separator, and on Windows `\` is one.
+  ...(process.platform === 'win32' ? ['.gitmodules\\x', '.gitmod\u200cules\\x'] : []),
 ]
 const GITMODULES_NEAR_MISSES = [
   'gitmodules',
   '.gitmodulesx',
-  // Unlike `.git`, git does not end `.gitmodules` at a backslash.
-  '.gitmodules\\x',
+  // NTFS does not end `.gitmodules` at a backslash; HFS+ does only on Windows.
+  ...(process.platform === 'win32' ? [] : ['.gitmodules\\x', '.gitmod\u200cules\\x']),
+  'gitmod~1\\x',
+  'gi7eba~1\\x',
+  '.gitmodules.\\x',
   'gitmod~',
   'gitmod~5',
   'gi7ebc~1',
@@ -464,6 +475,27 @@ describe('Git — argv construction (fake runner)', () => {
       'refs/notes/*:refs/notes/*',
       'main',
     ])
+  })
+
+  test('fetch passes --no-prune for prune: false and --refmap= for refmap', () => {
+    const { runner, calls } = recorder(OK(''))
+    const git = new Git('/repo', { runner })
+    git.fetch('origin', 'main', { prune: false, refmap: '' })
+    git.fetch('origin', 'main', { prune: true, refmap: '+refs/heads/*:refs/remotes/o/*' })
+    git.fetchMany(['origin'], { prune: false })
+    expect(calls.map((c) => c.argv)).toEqual([
+      ['fetch', '--no-prune', '--refmap=', 'origin', 'main'],
+      ['fetch', '--prune', '--refmap=+refs/heads/*:refs/remotes/o/*', 'origin', 'main'],
+      ['fetch', '--multiple', '--no-prune', 'origin'],
+    ])
+  })
+
+  test('fetchMany takes no refmap, which git ignores with --multiple, and never passes one (review round 1)', () => {
+    const { runner, calls } = recorder(OK(''))
+    const git = new Git('/repo', { runner })
+    // @ts-expect-error -- not an option of fetchMany
+    git.fetchMany(['origin', 'up'], { refmap: '' })
+    expect(calls.map((c) => c.argv)).toEqual([['fetch', '--multiple', 'origin', 'up']])
   })
 
   test('lsTree passes -z, orders -r/--long before the rev, pathspecs after --', () => {
@@ -1328,7 +1360,7 @@ describe('Git — argv construction (fake runner)', () => {
       const rows = new Git('/repo', { runner, gitVersion: version }).worktrees()
       expect(rows).toEqual([
         {
-          path: '/repo',
+          path: normalize('/repo'),
           head: 'aaaa',
           branch: 'main',
           detached: false,
@@ -1337,7 +1369,7 @@ describe('Git — argv construction (fake runner)', () => {
           lockReason: null,
         },
         {
-          path: '/repo-wt/x',
+          path: normalize('/repo-wt/x'),
           head: 'bbbb',
           branch: null,
           detached: true,
@@ -1346,7 +1378,7 @@ describe('Git — argv construction (fake runner)', () => {
           lockReason: null,
         },
         {
-          path: '/store.git',
+          path: normalize('/store.git'),
           head: null,
           branch: null,
           detached: false,
@@ -1401,7 +1433,7 @@ describe('Git — argv construction (fake runner)', () => {
   test('worktrees() reads a path with a newline under -z', () => {
     const porcelain = ['worktree /a\nb', 'HEAD aaaa', 'detached', ''].join('\x00')
     const rows = new Git('/repo', { runner: recorder(OK(porcelain)).runner }).worktrees()
-    expect(rows.map((r) => r.path)).toEqual(['/a\nb'])
+    expect(rows.map((r) => r.path)).toEqual([normalize('/a\nb')])
   })
 
   // `bare` is read from the porcelain, not inferred from a missing HEAD: an
@@ -1727,8 +1759,19 @@ describe('Git — argv construction (fake runner)', () => {
   // checkout; the verb passes `--path-format=absolute`.
   test('gitCommonDir asks git for an absolute path itself', () => {
     const { runner, calls } = recorder(OK('/repo/.git\n'))
-    expect(new Git('/repo', { runner }).gitCommonDir()).toBe('/repo/.git')
+    expect(new Git('/repo', { runner }).gitCommonDir()).toBe(normalize('/repo/.git'))
     expect(calls[0]!.argv).toEqual(['rev-parse', '--path-format=absolute', '--git-common-dir'])
+  })
+
+  // Git for Windows prints `C:/x`; the path answers come back in Node's form.
+  test('the path answers are in the form node:path gives on this platform', () => {
+    const windows = process.platform === 'win32'
+    const answer = (stdout: string) => new Git('/repo', { runner: recorder(OK(stdout)).runner })
+    expect(answer('C:/r/.git\n').gitCommonDir()).toBe(windows ? 'C:\\r\\.git' : 'C:/r/.git')
+    expect(answer('C:/r/.git\n').gitDir()).toBe(windows ? 'C:\\r\\.git' : 'C:/r/.git')
+    expect(answer('C:/r\n').topLevel()).toBe(windows ? 'C:\\r' : 'C:/r')
+    const rows = answer('worktree C:/r\x00HEAD aaaa\x00detached\x00\x00').worktrees()
+    expect(rows.map((r) => r.path)).toEqual([windows ? 'C:\\r' : 'C:/r'])
   })
 })
 
@@ -2125,7 +2168,7 @@ describe("Git — probing 'does this repo have history?'", () => {
   const at = (name: string) => new Git(join(scratch, name))
 
   beforeAll(() => {
-    scratch = realpathSync(mkdtempSync(join(tmpdir(), 'typedgit-head-probe-')))
+    scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'typedgit-head-probe-')))
     // Without its object store, `noobjects` is no longer a repository to git,
     // which then searches the parent directories. If the temp dir sits inside
     // another repository (as on some CI runners), git answers for that one.
@@ -2152,10 +2195,13 @@ describe("Git — probing 'does this repo have history?'", () => {
     )
     // A HEAD ref that is fine and an object store that is gone. A plain file
     // takes its place, so nothing can recreate the directory behind the test's
-    // back and git still finds no object store there.
+    // back and git still finds no object store there. Not on Windows: Git for
+    // Windows (2.56) took that file for the object store and read the
+    // repository as sound. There the directory is only removed, and
+    // maintenance is off above.
     const objects = join(scratch, 'noobjects', '.git', 'objects')
     rmSync(objects, { recursive: true, force: true })
-    writeFileSync(objects, '')
+    if (process.platform !== 'win32') writeFileSync(objects, '')
   })
 
   afterAll(() => {
@@ -2259,7 +2305,7 @@ describe('Git — mainCheckout and symbolicRef against real git', () => {
   })
 
   test('mainCheckout names the checkout, not the store, when the store is not <checkout>/.git', () => {
-    const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'typedgit-sepdir-')))
+    const scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'typedgit-sepdir-')))
     try {
       const checkout = join(scratch, 'checkout')
       const store = join(scratch, 'store.git')

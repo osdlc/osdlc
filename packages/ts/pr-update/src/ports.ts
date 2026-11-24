@@ -10,8 +10,9 @@
  * repair is offered only on a merge (a rebase falls back to a merge first). A
  * verify repair runs for either strategy. The optional `attempts` port records
  * failed updates across runs. The optional `lease` port locks each head branch
- * while it is updated. `confirmPush` asks before each rebase force-push. A standalone run (see `defaults.ts`) supplies simple versions of
- * the same ports that work with any host.
+ * while it is updated. `confirmPush` asks before each rebase force-push. `targetHome` places the
+ * worktrees, record and lease of a target other than the project root. A standalone run (see
+ * `defaults.ts`) supplies simple versions of the same ports that work with any host.
  */
 
 import type { CommandResult } from '@osdlc/command-seam'
@@ -140,13 +141,102 @@ export interface PushPreview {
 /** True to push. A throw counts as no. */
 export type ConfirmPush = (preview: PushPreview) => boolean
 
+/**
+ * A repository the run was pointed at with `--repo`, as the run resolved it:
+ * lower-cased, with the host filled in when `--repo` named none.
+ */
+export interface LocateTarget {
+  /** Without a port, as a remote's host is read: `--repo forgejo.local:3000/x/y` is asked for as `forgejo.local`. */
+  host: string
+  owner: string
+  name: string
+  /**
+   * Whether the target's code host is GitHub (github.com, or the project root's host when that
+   * is GitHub), so a managed clone could serve it. Unset when the caller does not say.
+   */
+  github?: boolean | undefined
+}
+
+/** Where a checkout came from: the project root, a checkout found on this machine, or a managed clone. */
+export type CheckoutSource = 'root' | 'located' | 'clone'
+
+/**
+ * A checkout `locate` found, described in full. A bare path means the run's
+ * `--remote` is read; this form names the remote the checkout itself uses.
+ */
+export interface FoundCheckout {
+  /** The checkout, absolute. */
+  path: string
+  source: Exclude<CheckoutSource, 'root'>
+  /** The remote to fetch from, measure against and push to, such as the `origin` that matched. */
+  remote: string
+  /**
+   * Every other checkout of the same repository on this machine, absolute. The run is not served
+   * from them, but the `unpushed_local` guard reads each one's worktrees through its `origin`, so
+   * a branch with unpushed commits there is not rewritten. Absent means none.
+   */
+  others?: readonly string[] | undefined
+}
+
+/**
+ * A target other than the project root, as {@link Ports.targetHome} is asked about it: the
+ * repository, lower-cased, and the checkout serving the run.
+ */
+export interface TargetCheckout extends LocateTarget {
+  /** The checkout the run is served from, absolute. */
+  path: string
+  /** Where {@link path} came from. */
+  source: Exclude<CheckoutSource, 'root'>
+  /** The checkout's remote the run fetches from and pushes to. */
+  remote: string
+}
+
+/**
+ * Where a run keeps what it makes for one target other than the project root, outside that
+ * target's checkout. Each directory is that target's own.
+ */
+export interface TargetHome {
+  /** The target's run worktrees go here, one `<run>` directory each. */
+  worktrees: string
+  /** The target's kept worktrees go here, as `<number>/`, each with `<number>.json` beside it. */
+  kept: string
+  /**
+   * The folder of the host's own that holds {@link kept}, such as `kept/` in pr-update's state
+   * directory. A kept tree is removed only when the folders from here down to it pass the folder
+   * rule: the person owns them, and no one else can write to them. Default {@link kept} itself.
+   */
+  keptRoot?: string | undefined
+  /** The target's failed-attempt record. Absent means none is kept for it. */
+  attempts?: AttemptStore | undefined
+  /** The target's branch lease. Absent means no locking for it. */
+  lease?: BranchLease | undefined
+}
+
 export interface Ports {
   /**
-   * Resolve `owner/name` to a local checkout path, or null when this machine
-   * has none. Only asked about a repository the run was pointed at with
-   * `--repo`, never used to widen the scope.
+   * Resolve `owner/name` to a local checkout, or null when this machine has
+   * none. Only asked about a repository the run was pointed at with `--repo`,
+   * never used to widen the scope, and once per run for each.
+   *
+   * `repo` is lower-cased. `target` carries the host as well, for a locate
+   * that tells hosts apart. A path means the checkout is read through the
+   * run's `--remote`; a {@link FoundCheckout} names its own remote. The
+   * standalone run's locate returns that form (see `defaults.ts`).
+   *
+   * `update` runs in the checkout it returns. Its run worktree and kept
+   * worktrees go where {@link targetHome} says, or, without that port, under
+   * the checkout's own `.pr-update/`.
    */
-  locate: (repo: string) => string | null
+  locate: (repo: string, target?: LocateTarget) => string | FoundCheckout | null
+  /**
+   * Where `update` keeps the run worktrees, kept worktrees, failed-attempt
+   * record and lease of a target other than the project root. Asked once per
+   * run for each such target with a checkout. Absent means each target's
+   * worktrees go under its checkout's `.pr-update/`, and {@link attempts} and
+   * {@link lease} serve every target. The standalone run supplies it (see
+   * `defaults.ts`).
+   */
+  targetHome?: ((target: TargetCheckout) => TargetHome) | undefined
   /** Runs the shell verbs of resolvers and verify. See {@link RunVerb}. */
   runVerb: RunVerb
   /**

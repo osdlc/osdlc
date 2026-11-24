@@ -14,19 +14,36 @@ import {
   spawnRunner,
   spawnRunnerAsync,
   stderrOrError,
+  type CommandRunner,
 } from '@osdlc/command-seam'
+
+import { join } from 'node:path'
+
+import { osdlcDirs } from '@osdlc/ecosystem'
+import { Git } from '@osdlc/typed-git'
 
 import { DETECT_LOOKED_FOR, NothingDetectedError, detectVerifyCommand } from './detect.ts'
 import type { PrUpdateConfig, PrUpdateStandaloneConfig } from './config.ts'
-import type { Ports, Repair } from './ports.ts'
+import { standaloneLocate, type CloneLookup, type StandaloneLocateOptions } from './locate.ts'
+import { prUpdatePaths } from './machine.ts'
+import type {
+  AttemptStore,
+  BranchLease,
+  Ports,
+  Repair,
+  TargetCheckout,
+  TargetHome,
+} from './ports.ts'
 import { agentRepair } from './repair/agents.ts'
 import { seatRepair } from './repair/seat.ts'
 import { attemptsDir, fileAttemptStore } from './update/attempts.ts'
+import { noHooksEnv, targetGitOptions, UNSET_REPOSITORY_VARS } from './update/execute.ts'
 import { defaultLeaseTtlSeconds, refBranchLease } from './update/lease.ts'
-import { attemptsPrefix, refAttemptStore } from './update/ref-attempts.ts'
+import { DEFAULT_REF_PREFIX, attemptsPrefix, refAttemptStore } from './update/ref-attempts.ts'
 
 // Both run in a PR worktree, so `sh` comes only from an absolute PATH entry:
-// a relative entry would resolve inside the PR's own files.
+// a relative entry would resolve inside the PR's own files. Every call passes
+// `UNSET_REPOSITORY_VARS`, so a git the command runs works in that worktree.
 const sh = shellRunner(spawnRunner('sh', { absolutePathOnly: true }))
 const shAsync = shellRunnerAsync(spawnRunnerAsync('sh', { absolutePathOnly: true }))
 
@@ -44,6 +61,7 @@ export function commandRepair(command: string, timeoutSeconds: number | null = n
       cwd: req.worktree,
       input: JSON.stringify(req),
       env: {
+        ...UNSET_REPOSITORY_VARS,
         PR_UPDATE_KIND: req.kind,
         PR_UPDATE_PR: String(req.pr),
         PR_UPDATE_BASE: req.base,
@@ -65,22 +83,48 @@ export function commandRepair(command: string, timeoutSeconds: number | null = n
   }
 }
 
+/** Options for {@link standalonePorts} beyond its positional ones. */
+export interface StandalonePortsOptions {
+  /** Runs git for `locate`. Defaults to typed-git's. */
+  git?: CommandRunner | undefined
+  /**
+   * The environment `locate` and `targetHome` read the osdlc directories and
+   * the home directory from. Defaults to `process.env`.
+   */
+  env?: Record<string, string | undefined> | undefined
+  /** Passed to `locate`'s `CheckoutLocator` as given: the CLI's SSH alias resolver, or a test's settings. */
+  locator?: StandaloneLocateOptions['locator']
+  /** The run's managed clones, which serve a target with no checkout (`mirror.ts`). Default none. */
+  clones?: CloneLookup | undefined
+}
+
 /**
- * A standalone run has no repository registry, so a `--repo` that names
- * anything other than the local checkout always comes back unmeasurable.
- * There is nothing to find its path from.
+ * A standalone run has no repository registry. Its `locate` finds a `--repo`
+ * target's checkout under the roots `repositories.yaml` names, or, with none,
+ * beside the project root's main checkout (`locate.ts`). One locator serves
+ * every call on the returned ports, so make one `Ports` per run.
  *
  * With `projectRoot`, failed updates are recorded in
  * `<projectRoot>/.pr-update/attempts/`, or, with `attempts.store: git-ref`, as refs on `remote`
  * (default `origin`) along with a per-branch update lease.
  *
- * `notice` receives one-line progress notes for the person: the command `verify: detect` chose, and where to attach a `terminal` repair.
+ * Any other target keeps its own, in pr-update's osdlc directories (`machine.ts`), under
+ * `<host>/<owner>/<name>` with the host's port left out: run worktrees in the cache's
+ * `worktrees/`, kept worktrees in the state's `kept/`, and file attempts in the state's
+ * `attempts/`. With `git-ref`, its record and lease are refs on its own checkout's remote, written
+ * with git's hooks off, as every git call in that checkout is.
+ *
+ * With `opts.clones`, a target with no checkout is served from its managed clone when one exists.
+ *
+ * `notice` receives one-line notes for the person: the command `verify: detect` chose, where to
+ * attach a `terminal` repair, and a `--repo` target with no checkout and the roots searched for it.
  */
 export function standalonePorts(
   cfg?: PrUpdateConfig & Partial<PrUpdateStandaloneConfig>,
   projectRoot?: string,
   remote = 'origin',
   notice: (line: string) => void = () => {},
+  opts: StandalonePortsOptions = {},
 ): Ports {
   const command = cfg?.repair.command ?? null
   const agent = cfg?.repair.agent ?? null
@@ -88,8 +132,15 @@ export function standalonePorts(
   const mode = cfg?.repair.mode ?? 'headless'
   const testCommand = cfg?.test_command ?? null
   return {
-    locate: () => null,
-    runVerb: (verb, cwd) => sh.run(verb, { cwd }),
+    locate: standaloneLocate({
+      projectRoot,
+      git: opts.git,
+      env: opts.env,
+      notice,
+      locator: opts.locator,
+      clones: opts.clones,
+    }),
+    runVerb: (verb, cwd) => sh.run(verb, { cwd, env: UNSET_REPOSITORY_VARS }),
     // A standalone run has no host registry to look up `check` in, and `test` runs only
     // `test_command`. Failing is better than running no verbs and reporting a push as
     // verified when nothing was checked.
@@ -140,19 +191,77 @@ export function standalonePorts(
     ...(projectRoot === undefined
       ? {}
       : cfg?.attempts?.store === 'git-ref'
-        ? {
-            attempts: refAttemptStore({
-              remote,
-              cwd: projectRoot,
-              prefix: attemptsPrefix(cfg.attempts.ref_prefix),
-            }),
-            lease: refBranchLease({
-              remote,
-              cwd: projectRoot,
-              refPrefix: cfg.attempts.ref_prefix,
-              ttlMs: (cfg.lease?.ttl_seconds ?? defaultLeaseTtlSeconds(timeout)) * 1000,
-            }),
-          }
+        ? refRecords(cfg, remote, projectRoot)
         : { attempts: fileAttemptStore(attemptsDir(projectRoot)) }),
+    targetHome: (target) => standaloneTargetHome(cfg, target, opts.env, opts.git),
+  }
+}
+
+/**
+ * The `git-ref` record and lease of `cfg`, on `remote` of the checkout at `cwd`, with `env`
+ * merged into every git call.
+ */
+function refRecords(
+  cfg: Partial<PrUpdateStandaloneConfig> & Pick<PrUpdateConfig, 'repair'>,
+  remote: string,
+  cwd: string,
+  env?: Record<string, string>,
+): { attempts: AttemptStore; lease: BranchLease } {
+  const refPrefix = cfg.attempts?.ref_prefix ?? DEFAULT_REF_PREFIX
+  const git = { cwd, ...(env === undefined ? {} : { env }) }
+  return {
+    attempts: refAttemptStore({ remote, ...git, prefix: attemptsPrefix(refPrefix) }),
+    lease: refBranchLease({
+      remote,
+      ...git,
+      refPrefix,
+      ttlMs: (cfg.lease?.ttl_seconds ?? defaultLeaseTtlSeconds(cfg.repair.timeout_seconds)) * 1000,
+    }),
+  }
+}
+
+/**
+ * A target's own places in pr-update's directories, read from `env` when asked, so a run with
+ * no `--repo` resolves none. `target.host` carries no port, so no path segment holds a `:`.
+ */
+function standaloneTargetHome(
+  cfg: (PrUpdateConfig & Partial<PrUpdateStandaloneConfig>) | undefined,
+  target: TargetCheckout,
+  env: Record<string, string | undefined> | undefined,
+  git: CommandRunner | undefined,
+): TargetHome {
+  const paths = prUpdatePaths(osdlcDirs(env === undefined ? {} : { env }))
+  const own = (dir: string): string => join(dir, target.host, target.owner, target.name)
+  const records =
+    cfg?.attempts?.store === 'git-ref'
+      ? refRecords(cfg, target.remote, target.path, refEnv(target.path, git))
+      : { attempts: fileAttemptStore(own(paths.attempts)) }
+  return {
+    worktrees: own(paths.worktrees),
+    kept: own(paths.kept),
+    keptRoot: paths.kept,
+    ...records,
+  }
+}
+
+/**
+ * The environment of a target's `git-ref` record and lease. ref-lease makes its own git client
+ * and takes no runner, so the inherited `GIT_DIR` of a git hook cannot be unset there. A set
+ * value wins over an inherited one, so this names the target's own repository: `GIT_DIR` and
+ * `GIT_COMMON_DIR` are its common directory, its objects are its own, and no alternates are
+ * added. ref-lease runs only `hash-object`, `mktree`, `commit-tree`, `update-ref`, `fetch`,
+ * `push` and `ls-remote`, which read neither a work tree nor an index, so an inherited
+ * `GIT_WORK_TREE` or `GIT_INDEX_FILE` changes nothing. Hooks are off, as for every git call in
+ * a target.
+ */
+function refEnv(path: string, git: CommandRunner | undefined): Record<string, string> {
+  const common = new Git(path, targetGitOptions(git)).try.gitCommonDir()
+  if (!common.ok || common.value === null) return noHooksEnv()
+  return {
+    ...noHooksEnv(),
+    GIT_DIR: common.value,
+    GIT_COMMON_DIR: common.value,
+    GIT_OBJECT_DIRECTORY: join(common.value, 'objects'),
+    GIT_ALTERNATE_OBJECT_DIRECTORIES: '',
   }
 }

@@ -3,15 +3,22 @@
  * schema, and the compare-and-swap write.
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { execFile } from 'node:child_process'
+import { existsSync, readFileSync, utimesSync } from 'node:fs'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 
 import { WriteConflictError as EtagWriteConflictError } from '@osdlc/etag-write'
+import { claimLock, LockTimeoutError } from '@osdlc/file-lock'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { osdlcDirs, OSDLC_VENDOR_DIRS } from '../src/index.ts'
 import { REPOSITORIES_ENV, WriteConflictError, repositoriesFile } from '../src/repositories.ts'
+import { ROOTS_LOCK_STALE_MS } from '../src/repositories/file.ts'
 import { makeSandbox, type Sandbox } from './helpers.ts'
+
+const run = promisify(execFile)
+const CHILD = join(import.meta.dirname, 'write-roots.child.ts')
 
 let sb: Sandbox
 beforeEach(() => {
@@ -132,6 +139,57 @@ describe('writeRoots', () => {
     const file = repositoriesFile(sb.opts)
     sb.writeFile('roots: [/b]\n')
     expect(() => file.writeRoots(['/c'], { etag: null })).toThrow(WriteConflictError)
+  })
+
+  test('two processes writing over one read: one writes, the other gets the conflict (second review)', async () => {
+    sb.writeFile('roots: [/a]\n')
+    const { etag } = repositoriesFile(sb.opts).read()!
+    const at = String(Date.now() + 1500)
+    const child = (root: string) =>
+      run(process.execPath, [CHILD, root, etag, at], {
+        env: { ...process.env, OSDLC_REPOSITORIES: sb.file },
+        timeout: 30_000,
+      })
+    const outs = (await Promise.all([child('/b'), child('/c')])).map((r) => r.stdout).sort()
+    expect(outs).toEqual(['conflict', 'ok'])
+    const roots = repositoriesFile(sb.opts).load().value.roots
+    expect([['/b'], ['/c']]).toContainEqual(roots)
+  })
+
+  test('a fresh lock held by a live process is not taken over (review rounds 1 and 2)', () => {
+    sb.writeFile('roots: [/a]\n')
+    const file = repositoriesFile(sb.opts)
+    const { etag } = file.read()!
+    const lock = `${sb.file}.lock`
+    // This process holds it, untouched for a minute: past file-lock's default 10 s.
+    const held = claimLock(lock, { pid: process.pid }, { isStale: () => false })
+    expect(held.ok).toBe(true)
+    const minuteAgo = new Date(Date.now() - 60_000)
+    utimesSync(lock, minuteAgo, minuteAgo)
+    // Each look at the clock is a second later, so the 30 s wait ends at once.
+    let now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => (now += 1000))
+    try {
+      expect(() => file.writeRoots(['/b'], { etag })).toThrow(LockTimeoutError)
+    } finally {
+      vi.restoreAllMocks()
+    }
+    expect(readFileSync(sb.file, 'utf8')).toBe('roots: [/a]\n')
+  })
+
+  test('a lock whose pid is alive but whose file is past the bound is taken over (review round 2)', () => {
+    sb.writeFile('roots: [/a]\n')
+    const file = repositoriesFile(sb.opts)
+    const { etag } = file.read()!
+    const lock = `${sb.file}.lock`
+    // A killed writer's lock, whose pid a live process (this one) now has.
+    const held = claimLock(lock, { pid: process.pid }, { isStale: () => false })
+    expect(held.ok).toBe(true)
+    const past = new Date(Date.now() - ROOTS_LOCK_STALE_MS - 60_000)
+    utimesSync(lock, past, past)
+    file.writeRoots(['/b'], { etag })
+    expect(file.load().value.roots).toEqual(['/b'])
+    expect(existsSync(lock)).toBe(false)
   })
 
   test('WriteConflictError is the class @osdlc/etag-write throws', () => {

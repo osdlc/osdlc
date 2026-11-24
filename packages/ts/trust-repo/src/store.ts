@@ -48,8 +48,10 @@
  *
  * ## What a trust decision is keyed on
  *
- * A root and a scope. The root is the absolute, symlink-resolved repository
- * root. The scope says what the grant covers: {@link WHOLE_REPO_SCOPE} (`*`)
+ * A key and a scope. The key is a root or a repository. A root is the
+ * absolute, symlink-resolved repository root. A repository is
+ * `{ repo: 'host/owner/name' }`, for a clone whose folder is made again in
+ * another place: a grant on its path would be lost each time. The scope says what the grant covers: {@link WHOLE_REPO_SCOPE} (`*`)
  * is the whole repository, and any other string is one tool, named as the
  * caller chooses (a tool or runner id). This package gives a scope no
  * meaning. A whole-repository grant covers every scope.
@@ -62,6 +64,12 @@
  * repository (a symlinked checkout, or a `/tmp` that is really
  * `/private/tmp`) share one decision. The person answered about the
  * repository, not about the path they typed.
+ *
+ * A repository key is lower-cased and checked by {@link parseTrustRepo}. It
+ * can never equal a root. A root starts with `/`, or a drive letter and `:`
+ * on Windows. A repository key starts with a host name, which is never empty
+ * and never holds a `:`. So no folder, whatever it is named, shares a grant
+ * with a repository, and a path rule never matches one.
  *
  * The key is a path, not a hash of the repository's contents. mise does the
  * same. A trusted repository stays trusted if it later pulls hostile
@@ -81,12 +89,17 @@
  * them back.
  *
  * A whole-repository marker is named
- * `${basename(root)}-${sha256(root).slice(0, 16)}`. The hash tells apart
+ * `${basename(root)}-${sha256(root).slice(0, 16)}`, and a repository's
+ * `${name}-${sha256('host/owner/name').slice(0, 16)}`: the same rule, with the
+ * key in place of the root. The hash tells apart
  * repositories with the same name. The basename keeps an `ls` of the store
  * readable. The file contains the resolved absolute path and a newline. mise
  * uses a symlink to the path instead, which breaks once the repository is
  * deleted. A plain file keeps {@link TrustStore.list} exact and readable by
- * eye. The write is atomic, so a partial write is never read as a grant.
+ * eye. The write is atomic, so a partial write is never read as a grant. A
+ * repository's marker holds its key the same way, so an older release lists
+ * it as a root named `host/owner/name` and never reads it as a grant on a
+ * folder.
  *
  * A grant for one scope lives in `<marker>.scopes/`, in a file named
  * `${slug(scope)}-${sha256(scope).slice(0, 16)}` that holds the root and the
@@ -141,7 +154,6 @@ function legacyStoreDir(
   return join(xdgHome(env, home, 'XDG_STATE_HOME', '.local', 'state'), tool, TRUST_MARKER_DIR)
 }
 
-/** The store's directory for `opts`. See "Where the store lives" above. */
 /**
  * Refuse options that would be silently ignored: `app` or `dirs` without
  * `vendorDirs`, and `env` or `home` beside `dirs`, which alone places the
@@ -162,6 +174,7 @@ function checkOptions(opts: TrustStoreOptions): void {
   }
 }
 
+/** The store's directory for `opts`. See "Where the store lives" above. */
 function locateStore(opts: TrustStoreOptions): string {
   if (opts.dir !== undefined) return opts.dir
   checkOptions(opts)
@@ -222,6 +235,11 @@ export function trustStoreDir(
  */
 export const WHOLE_REPO_SCOPE = '*'
 
+/** Whether `c` is a control character. */
+function isControl(c: string): boolean {
+  return c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f
+}
+
 /**
  * `scope` with leading and trailing whitespace removed, so `'just '` and
  * `'just'` name one grant. Throws a `TypeError` unless the result can name a
@@ -229,13 +247,12 @@ export const WHOLE_REPO_SCOPE = '*'
  * whitespace-only scope throws.
  */
 function normalizeScope(scope: string): string {
-  const control = (c: string): boolean => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f
   const trimmed = typeof scope === 'string' ? scope.trim() : scope
   if (
     typeof trimmed !== 'string' ||
     trimmed === '' ||
     trimmed.length > 200 ||
-    [...trimmed].some(control)
+    [...trimmed].some(isControl)
   ) {
     throw new TypeError(
       `trust scope must be 1-200 characters with no control characters: ${JSON.stringify(scope)}`,
@@ -266,6 +283,120 @@ export function parseTrustScope(input: string): string {
     )
   }
   return scope
+}
+
+/**
+ * A repository a grant can name instead of a root: `{ repo: 'host/owner/name' }`.
+ * For a clone, whose folder changes each time it is made again. See
+ * {@link parseTrustRepo} for the form `repo` must have.
+ *
+ * @experimental
+ */
+export interface TrustRepoKey {
+  repo: string
+}
+
+/**
+ * What a grant is keyed on: a root (a path, resolved through symlinks) or a
+ * repository ({@link TrustRepoKey}).
+ *
+ * @experimental
+ */
+export type TrustKey = string | TrustRepoKey
+
+/**
+ * Which kind of key a grant has: a `path` (a root) or a `repo`.
+ *
+ * @experimental
+ */
+export type TrustKeyKind = 'path' | 'repo'
+
+/** The longest owner or name a repository key takes, so its marker name stays short. */
+const MAX_REPO_SEGMENT = 200
+
+/** One DNS label: letters, digits and `-`, not at either end. */
+const HOST_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+
+/** Why `key`, already lower-cased, is not `host/owner/name`; null when it is. */
+function repoProblem(key: string): string | null {
+  const parts = key.split('/')
+  if (parts.length !== 3) return 'it needs exactly three parts, host/owner/name'
+  if (parts.some((p) => p === '')) return 'a part is empty'
+  if (parts.some((p) => p === '.' || p === '..')) return 'a part is . or ..'
+  if (/[\s\\]/.test(key) || [...key].some(isControl)) {
+    return 'it holds a space, a backslash or a control character'
+  }
+  const [host, owner, name] = parts as [string, string, string]
+  if (host.length > 253 || !host.split('.').every((label) => HOST_LABEL.test(label))) {
+    return `${JSON.stringify(host)} is not a host name`
+  }
+  if (owner.length > MAX_REPO_SEGMENT || name.length > MAX_REPO_SEGMENT) {
+    return `the owner and the name take at most ${MAX_REPO_SEGMENT} characters each`
+  }
+  // `api.git` and `api` would be two grants on one repository.
+  if (name.endsWith('.git')) return 'the name ends in .git; pass the name without .git'
+  return null
+}
+
+/**
+ * A repository key, ready to grant: `input` trimmed and lower-cased, as
+ * every store method reads `{ repo }`. Throws a `TypeError` naming the
+ * problem, which a CLI can report as a usage error, unless the result is
+ * `host/owner/name`:
+ *
+ * - exactly three parts, none empty, `.` or `..`;
+ * - no space, backslash or control character anywhere;
+ * - the host a host name: dot-separated labels of letters, digits and `-`,
+ *   so it has no `:` and no port;
+ * - the owner and the name 1-200 characters each;
+ * - the name not ending in `.git`, so a clone URL's name and the bare name
+ *   are never two grants. Pass the name without it.
+ *
+ * No root can pass: a root starts with `/` (an empty first part), or with a
+ * drive letter and `:`, which no host holds.
+ *
+ * @example
+ * ```ts
+ * parseTrustRepo('GitHub.com/Acme/API') // 'github.com/acme/api'
+ * parseTrustRepo('/srv/acme/api') // throws TypeError
+ * ```
+ * @experimental
+ */
+export function parseTrustRepo(input: string): string {
+  const key = typeof input === 'string' ? input.trim().toLowerCase() : ''
+  const problem = typeof input === 'string' ? repoProblem(key) : 'it is not a string'
+  if (problem !== null) {
+    throw new TypeError(
+      `trust repository must be host/owner/name, such as github.com/acme/api; ${problem}: ${JSON.stringify(input)}`,
+    )
+  }
+  return key
+}
+
+/** Whether a stored key is a repository key. A root never is. */
+function isRepoKey(key: string): boolean {
+  return repoProblem(key) === null && key === key.toLowerCase()
+}
+
+/** The kind of a stored key. */
+function kindOf(key: string): TrustKeyKind {
+  return isRepoKey(key) ? 'repo' : 'path'
+}
+
+/**
+ * The string a grant is stored under: a root resolved by
+ * {@link resolveTrustRoot}, or a repository key read by {@link parseTrustRepo}.
+ */
+async function resolveKey(key: TrustKey): Promise<string> {
+  return typeof key === 'string' ? resolveTrustRoot(key) : parseTrustRepo(key.repo)
+}
+
+/** {@link TrustStore.resolveRoot}: the resolved key, in the kind it was given. */
+function resolveRoot(key: string): Promise<string>
+function resolveRoot(key: TrustRepoKey): Promise<TrustRepoKey>
+function resolveRoot(key: TrustKey): Promise<string | TrustRepoKey>
+async function resolveRoot(key: TrustKey): Promise<string | TrustRepoKey> {
+  return typeof key === 'string' ? resolveTrustRoot(key) : { repo: parseTrustRepo(key.repo) }
 }
 
 /** A name safe on every filesystem, from any string. */
@@ -381,8 +512,13 @@ export interface TrustStoreOptions {
  * @experimental
  */
 export interface TrustResult {
-  /** The resolved root the grant is keyed on. */
+  /**
+   * The key the grant is stored under: the resolved root, or for a
+   * repository the key {@link parseTrustRepo} made of it.
+   */
   root: string
+  /** Whether {@link root} is a root (`path`) or a repository (`repo`). */
+  kind: TrustKeyKind
   /** The scope granted: {@link WHOLE_REPO_SCOPE} or one tool. */
   scope: string
   /** The marker file's path. */
@@ -396,22 +532,33 @@ export interface TrustResult {
 }
 
 /**
- * One grant in a store: a root, the scope it covers and its marker file.
+ * One grant in a store: its key, the kind of key, the scope it covers and
+ * its marker file.
  *
  * @experimental
  */
 export interface TrustGrant {
+  /** The resolved root, or the repository key (`host/owner/name`). */
   root: string
+  /** Whether {@link root} is a root (`path`) or a repository (`repo`). */
+  kind: TrustKeyKind
   scope: string
   marker: string
 }
 
 /**
  * A store of the grants a person has given to run a repository's commands,
- * kept as marker files under the state home. Every `scope` defaults to
- * {@link WHOLE_REPO_SCOPE}. A scope is trimmed first, so `'just '` is
- * `'just'`. A scope that is then empty, longer than 200 characters or holds a
- * control character throws a `TypeError`.
+ * kept as marker files under the state home.
+ *
+ * Each method takes a {@link TrustKey}: a root (a path, resolved through
+ * symlinks first) or `{ repo: 'host/owner/name' }`, read by
+ * {@link parseTrustRepo}, which throws a `TypeError` for a bad key. The two
+ * kinds never share a grant: a folder named like a repository is still a
+ * path. Scopes work the same for both.
+ *
+ * Every `scope` defaults to {@link WHOLE_REPO_SCOPE}. A scope is trimmed
+ * first, so `'just '` is `'just'`. A scope that is then empty, longer than
+ * 200 characters or holds a control character throws a `TypeError`.
  * @experimental
  */
 export interface TrustStore {
@@ -422,46 +569,56 @@ export interface TrustStore {
    * options. Resolved on each call, so a store follows a change to `env`.
    */
   dir(): string
-  /** The absolute, symlink-resolved key a root's grant is stored under. */
-  resolveRoot(root: string): Promise<string>
   /**
-   * The marker file's path for `root` and `scope`, without creating it. For a
+   * The key a grant is stored under, in the kind it was given: a root
+   * becomes the absolute, symlink-resolved root, and `{ repo }` becomes
+   * `{ repo }` with the lower-cased key. Either can be passed back to every
+   * other method. A repository stays an object because a plain string is
+   * always read as a path.
+   */
+  resolveRoot(key: string): Promise<string>
+  resolveRoot(key: TrustRepoKey): Promise<TrustRepoKey>
+  resolveRoot(key: TrustKey): Promise<string | TrustRepoKey>
+  /**
+   * The marker file's path for `key` and `scope`, without creating it. For a
    * `--show` command that reports where a grant would be stored, trusted or
    * not.
    */
-  markerPath(root: string, scope?: string): Promise<string>
+  markerPath(key: TrustKey, scope?: string): Promise<string>
   /**
-   * Whether `scope` is trusted in `root`: the root has a whole-repository
-   * grant or a grant for `scope`. An empty or blank marker is not a grant.
+   * Whether `scope` is trusted for `key`: it has a whole-repository grant or
+   * a grant for `scope`. An empty or blank marker is not a grant.
    * {@link list} and {@link listGrants} skip such markers too, so they agree.
    */
-  isTrusted(root: string, scope?: string): Promise<boolean>
+  isTrusted(key: TrustKey, scope?: string): Promise<boolean>
   /**
    * Record a grant. With no `scope`, the grant covers the whole repository.
    * An explicit `'*'` throws a `TypeError`: a typed scope must never widen
    * into a whole-repository grant (see {@link parseTrustScope}). See
    * {@link TrustResult.alreadyTrusted}.
    */
-  trust(root: string, scope?: string): Promise<TrustResult>
+  trust(key: TrustKey, scope?: string): Promise<TrustResult>
   /**
    * Remove one grant, exactly the one `scope` names. `false` when it did not
    * exist. Removing the whole-repository grant leaves per-scope grants.
    */
-  untrust(root: string, scope?: string): Promise<boolean>
+  untrust(key: TrustKey, scope?: string): Promise<boolean>
   /**
-   * Remove every grant for `root`: its marker and its whole folder of
+   * Remove every grant for `key`: its marker and its whole folder of
    * per-scope markers. Returns the scopes {@link listGrants} listed for it,
    * sorted.
    */
-  untrustAll(root: string): Promise<string[]>
+  untrustAll(key: TrustKey): Promise<string[]>
   /**
-   * Every root with a whole-repository grant, sorted. Throws only when
-   * {@link dir} does.
+   * Every key with a whole-repository grant: roots first, then repositories,
+   * each sorted. A repository key never starts with `/` or a drive letter, so
+   * the two read apart. Throws only when {@link dir} does.
    */
   list(): Promise<string[]>
   /**
-   * Every grant, whole-repository and per-scope, sorted by root and then
-   * scope, with `*` first. Throws only when {@link dir} does.
+   * Every grant, whole-repository and per-scope, with its `kind`: roots
+   * first, then repositories, each sorted by key and then scope, with `*`
+   * first. Throws only when {@link dir} does.
    */
   listGrants(): Promise<TrustGrant[]>
   /**
@@ -578,7 +735,7 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
             inner === scopeFileName(grant.scope) &&
             name === `${markerName(grant.root)}${SCOPES_SUFFIX}`
           ) {
-            grants.push({ ...grant, marker: join(path, inner) })
+            grants.push({ ...grant, kind: kindOf(grant.root), marker: join(path, inner) })
           }
         }
         continue
@@ -588,28 +745,34 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
       // name. A stray or renamed file (`old-repo`, an editor's `repo~`) is
       // never what `isTrusted` reads, nor what `untrustAll` removes.
       if (grant !== null && name === markerName(grant.root)) {
-        grants.push({ root: grant.root, scope: WHOLE_REPO_SCOPE, marker: path })
+        grants.push({
+          root: grant.root,
+          kind: kindOf(grant.root),
+          scope: WHOLE_REPO_SCOPE,
+          marker: path,
+        })
       }
     }
-    // Code-unit order, as `Array.prototype.sort` uses, with `*` first within a root.
+    // Roots before repositories, then code-unit order, as `Array.prototype.sort`
+    // uses, with `*` first within a key.
     const key = (g: TrustGrant): string =>
-      `${g.root}\0${g.scope === WHOLE_REPO_SCOPE ? '' : g.scope}`
+      `${g.kind === 'repo' ? 1 : 0}\0${g.root}\0${g.scope === WHOLE_REPO_SCOPE ? '' : g.scope}`
     return grants.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0))
   }
 
   return {
     tool,
     dir,
-    resolveRoot: resolveTrustRoot,
+    resolveRoot,
 
-    async markerPath(root, scope = WHOLE_REPO_SCOPE) {
+    async markerPath(key, scope = WHOLE_REPO_SCOPE) {
       const normalized = normalizeScope(scope)
-      return markerPath(await resolveTrustRoot(root), normalized)
+      return markerPath(await resolveKey(key), normalized)
     },
 
-    async isTrusted(root, given = WHOLE_REPO_SCOPE) {
+    async isTrusted(key, given = WHOLE_REPO_SCOPE) {
       const scope = normalizeScope(given)
-      const resolved = await resolveTrustRoot(root)
+      const resolved = await resolveKey(key)
       if (await hasGrant(resolved, WHOLE_REPO_SCOPE)) return true
       return scope !== WHOLE_REPO_SCOPE && hasGrant(resolved, scope)
     },
@@ -618,9 +781,9 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
     // Overlapping calls for one grant can each report `alreadyTrusted: false`.
     // The store still ends with one marker. Only a caller that counts new
     // grants needs to care.
-    async trust(root, given) {
+    async trust(key, given) {
       const scope = given === undefined ? WHOLE_REPO_SCOPE : parseTrustScope(given)
-      const resolved = await resolveTrustRoot(root)
+      const resolved = await resolveKey(key)
       const marker = markerPath(resolved, scope)
       const alreadyTrusted = await hasGrant(resolved, scope)
       if (!alreadyTrusted) {
@@ -637,19 +800,19 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
         )
       }
       await tighten()
-      return { root: resolved, scope, marker, alreadyTrusted }
+      return { root: resolved, kind: kindOf(resolved), scope, marker, alreadyTrusted }
     },
 
-    async untrust(root, scope = WHOLE_REPO_SCOPE) {
+    async untrust(key, scope = WHOLE_REPO_SCOPE) {
       const normalized = normalizeScope(scope)
-      return removeGrant(await resolveTrustRoot(root), normalized)
+      return removeGrant(await resolveKey(key), normalized)
     },
 
     // Removes by path, not by scope name: the root's marker and its whole
     // `.scopes` folder. A marker whose name no scope maps to (one written
     // for `'just '` without trimming) goes too.
-    async untrustAll(root) {
-      const resolved = await resolveTrustRoot(root)
+    async untrustAll(key) {
+      const resolved = await resolveKey(key)
       const removed = (await listGrants()).filter((g) => g.root === resolved).map((g) => g.scope)
       await rm(join(dir(), markerName(resolved)), { force: true })
       await rm(scopesDir(resolved), { recursive: true, force: true })

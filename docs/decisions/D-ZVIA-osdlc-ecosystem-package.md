@@ -74,7 +74,13 @@ A list per tool means one list to keep up per tool, and the lists drift.
   Xdg-pinned `dirs` the standard gives, and `env: 'OSDLC_REPOSITORIES'`
   passed explicitly, since the default would be `OSDLC_MACHINE_CONFIG`.
   `machineConfigFile` uses that variable as given, so the package rejects a
-  relative value itself. It writes with a compare-and-swap. A tool that asks the person where their
+  relative value itself. It writes with a compare-and-swap, under a
+  `@osdlc/file-lock` lock beside the file, since the check and the rename
+  alone let two processes both pass. The lock is taken over once its holder
+  has exited (`holderGone`), or once it is 10 minutes old: `withLock` records
+  only a pid, and a killed writer's pid may later belong to a live process,
+  which would hold the lock for good. 10 minutes is far past the section, so
+  a slow writer keeps it. A tool that asks the person where their
   checkouts are asks through the package, so every tool asks the same
   question.
 - **Adoption.** pr-update reads it first (D-0005). sdlc is published outside
@@ -104,6 +110,60 @@ A list per tool means one list to keep up per tool, and the lists drift.
   `typed-git`.
 - A test that spawns a tool's CLI follows the isolation rule in
   machine-files.md, or the child reads, and may write, the person's real files.
+
+## Build notes
+
+Built in [#1058](https://github.com/osdlc/osdlc/pull/1058) (the package) and
+[#1055](https://github.com/osdlc/osdlc/pull/1055) (typed-git's remote
+matching), within the pr-update omnibus
+[#1016](https://github.com/osdlc/osdlc/pull/1016).
+
+- **No tool asks where checkouts are yet.** So the package has no shared
+  question. `repositoriesFile().writeRoots(roots, { etag })` is what such a
+  question would write through, and the first tool that asks adds it here.
+  pr-update's only question is whether to clone.
+- **The scan is `scanForCheckouts`.** The table names `discoverCheckouts`.
+  The package uses typed-git's `scanForCheckouts`, the same walk, which also
+  reports `depthLimited`, the directories it left unopened at `maxDepth` (3
+  by default), so a caller can say a checkout may be deeper.
+- **One index per call site is `CheckoutLocator`.** One locator scans once
+  for all its targets and gives the roots it searched and the file's path for
+  messages. The `locateCheckout()` function scans on each call.
+- **The ssh runner.** It is a parameter of `sshAliasResolver(runner?)`;
+  `readRemote` takes a resolver. The default runner finds `ssh` on absolute
+  `PATH` entries only.
+- **What the scan trusts.** A directory counts only when git, run in it with
+  `GIT_CEILING_DIRECTORIES` at its parent, says it is the top of a working
+  tree, so a broken `.git` never answers with the repository around a root,
+  such as a dotfiles repository at the home directory. Every git call the
+  package makes unsets an inherited `GIT_DIR` and the other variables that
+  pick a repository, so the answer is the same inside a git hook. The home
+  stop compares real paths. The wrapper that does it is typed-git's
+  `withoutRepositoryVars`, a building block like the rest of the git work, so
+  a tool's own git calls in a checkout the locator found run the same way;
+  pr-update's do.
+- **The `.` entry holds the family's directories.** It exports
+  `OSDLC_VENDOR_DIRS` and `osdlcDirs()`, pinned to the Xdg convention, where
+  the Decision puts each concern in a subpath of its own. That keeps the
+  rule: the directories are not a concern but where every concern's files
+  go. `./repositories` and any later concern resolve their files through
+  them, and a tool needs them without importing any concern.
+- **Roots the table does not cover.** `~user/…` is not expanded: it is
+  dropped with the relative-path warning, and `writeRoots` refuses it. A
+  `roots` value that is not a list is reported with the file's path, and the
+  default roots apply.
+- **`OSDLC_REPOSITORIES` is read from `process.env`.** `machineConfigFile`
+  reads its variable there and takes no environment, so the package's
+  relative-path check reads the same place.
+- **Not found yet:** a bare store with its worktrees beside it (`proj/.git`
+  pointing at `proj/.bare`). The package README says so.
+- **Not tested.** Machine-only: no project config reaches the package, so
+  there is nothing for a repository to set `roots` through, and pr-update's
+  project schema refuses unknown keys besides. The two kinds of package are
+  a policy the build kept: each building-block change stayed in its own
+  package.
+- **Adoption.** pr-update reads `repositories.yaml` through the package.
+  sdlc's change is in the release phase, after this build.
 
 ## What would reopen it
 

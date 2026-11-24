@@ -62,7 +62,9 @@ export interface RemoteRepo {
  * (`group/sub`). Any other clone URL, such as a GitHub Enterprise or a
  * self-hosted Forgejo remote, is read host-agnostically by `parseRemoteUrl`:
  * `host/owner/repo`, scp-style or `scheme://`, where `owner` is the second to
- * last path segment.
+ * last path segment. scp-style needs no user (`github-work:owner/repo.git`),
+ * as for git; with no user, a single letter before the colon is a Windows
+ * drive (`C:/x`), on every platform, so a drive path is null.
  *
  * `ssh.github.com` (GitHub's SSH over port 443) and `www.github.com` read as
  * `github.com`.

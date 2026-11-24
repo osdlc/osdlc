@@ -16,12 +16,12 @@ export function run(): void {
 
     git.worktreeAdd(linked, { branch: 'topic' })
     const added = git.worktrees().find((w) => w.branch === 'topic')
-    assert.equal(added?.path, realpathSync(linked))
+    assert.equal(added?.path, realpathSync.native(linked))
 
     git.worktreeMove(linked, moved)
     assert.deepEqual(
       git.worktrees().map((w) => w.path),
-      [realpathSync(fx.dir), realpathSync(moved)],
+      [realpathSync.native(fx.dir), realpathSync.native(moved)],
     )
 
     git.worktreeRemove(moved)

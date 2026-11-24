@@ -383,6 +383,59 @@ describe('against real git', () => {
     }
   })
 
+  test("fetch's refmap: '' writes only the refspecs given, not a fetch line's local branch", () => {
+    const pair = makeBareAndWorker()
+    try {
+      const { worker, remoteName } = pair
+      worker.commit('first', { 'a.md': 'one\n' })
+      worker.git.push(remoteName, 'main')
+      worker.git.rawChecked(['branch', 'topic'])
+      worker.git.push(remoteName, 'topic')
+      const remoteTopic = worker.git.resolveRef('topic')
+      worker.git.rawChecked(['checkout', '-q', 'topic'])
+      const mine = worker.commit('not pushed', { 'b.md': 'two\n' })
+      worker.git.rawChecked(['checkout', '-q', '--detach'])
+      worker.git.rawChecked([
+        'config',
+        '--add',
+        `remote.${remoteName}.fetch`,
+        '+refs/heads/topic:refs/heads/topic',
+      ])
+      const spec = `+refs/heads/*:refs/remotes/${remoteName}/*`
+
+      worker.git.fetch(remoteName, spec, { refmap: '' })
+      expect(worker.git.resolveRef('refs/heads/topic')).toBe(mine)
+      expect(worker.git.resolveRef(`refs/remotes/${remoteName}/topic`)).toBe(remoteTopic)
+
+      // Without it, git applies the configured line too, and forces the branch back.
+      worker.git.fetch(remoteName, spec)
+      expect(worker.git.resolveRef('refs/heads/topic')).toBe(remoteTopic)
+    } finally {
+      pair.cleanup()
+    }
+  })
+
+  test('fetch prune: false passes --no-prune, which beats fetch.prune in the config', () => {
+    const pair = makeBareAndWorker()
+    try {
+      const { worker, remoteName } = pair
+      worker.commit('first', { 'a.md': 'one\n' })
+      worker.git.push(remoteName, 'main')
+      worker.git.fetch(remoteName)
+      const kept = `refs/remotes/${remoteName}/pr/1`
+      worker.git.rawChecked(['update-ref', kept, 'HEAD'])
+      worker.git.rawChecked(['config', 'fetch.prune', 'true'])
+
+      worker.git.fetch(remoteName, undefined, { prune: false })
+      expect(worker.git.resolveRef(kept)).not.toBeNull()
+      // Absent, the config decides.
+      worker.git.fetch(remoteName)
+      expect(worker.git.resolveRef(kept)).toBeNull()
+    } finally {
+      pair.cleanup()
+    }
+  })
+
   test('remoteSetHead sets, deletes and auto-detects origin/HEAD', () => {
     const pair = makeBareAndWorker()
     try {

@@ -19,7 +19,7 @@ let dir: string
 let savedPath: string | undefined
 
 beforeAll(() => {
-  dir = realpathSync(mkdtempSync(join(tmpdir(), 'typed-git-planted-')))
+  dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'typed-git-planted-')))
   writeFileSync(join(dir, 'git'), `#!/bin/sh\necho ${MARKER}\n`)
   chmodSync(join(dir, 'git'), 0o755)
   savedPath = process.env['PATH']

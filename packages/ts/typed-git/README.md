@@ -751,6 +751,10 @@ integer. Both checks throw a `TypeError` before git runs.
 
 ### Queries
 
+The paths `topLevel()`, `gitCommonDir()`, `gitDir()`, `mainCheckout()` and
+`worktrees()` give are in Node's form: on Windows `C:\x`, not the `C:/x` git
+prints, so they compare equal to the paths `node:path` makes.
+
 "Absence" is the exit code this verb declares as an answer. Any other non-zero
 exit throws the classified failure.
 
@@ -1030,6 +1034,19 @@ runner passes it straight through, without a conditional spread. `cliBackend`
 accepts it too. The same holds for `bytesRunner`, the runner behind
 `rawBytes` (see [Byte-exact output](#byte-exact-output)). A fake `runner`
 needs a fake `bytesRunner` beside it before `rawBytes` can run.
+
+A git hook exports `GIT_DIR`, so a program it starts runs every git against
+the hook's repository, whatever directory it runs in. `withoutRepositoryVars(runner?)`
+wraps a runner so its children do not inherit `GIT_DIR`, `GIT_WORK_TREE`,
+`GIT_COMMON_DIR`, `GIT_INDEX_FILE`, the object-store variables or
+`GIT_CEILING_DIRECTORIES` (the list is `REPOSITORY_VARS`), and git finds the
+repository from the directory it runs in. A value a call sets itself still
+wins. It wraps any runner, so a program that runs git for you, such as `gh`,
+can go through it too.
+
+```ts
+const git = new Git(checkout, { runner: withoutRepositoryVars() });
+```
 
 The runner and result types, `CommandFailed`, `spawnRunner`, `spawnRunnerAsync`,
 `spawnRunnerBytes`, `spawnRunnerBytesAsync`, `runChecked`, `runCheckedAsync`

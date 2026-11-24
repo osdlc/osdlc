@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { captureContext } from '@osdlc/cli-tool'
 
 import { main } from '../src/cli.ts'
-import { fakeTools } from './support.ts'
+import { fakeTools, isolatedEnv } from './support.ts'
 
 const seen = vi.hoisted(() => ({ args: [] as Record<string, unknown>[] }))
 
@@ -26,10 +26,7 @@ describe('pr-update update --restack / --no-restack', () => {
   })
 
   async function run(...flags: string[]): Promise<Record<string, unknown>> {
-    const ctx = captureContext({
-      cwd,
-      env: { PATH: process.env.PATH ?? '', XDG_STATE_HOME: join(cwd, 'state') },
-    })
+    const ctx = captureContext({ cwd, env: isolatedEnv(cwd) })
     await main(['update', '--repo', 'o/r', ...flags], ctx, fakeTools)
     expect(seen.args).toHaveLength(1)
     return seen.args[0]!

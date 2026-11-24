@@ -71,7 +71,7 @@ let root: string
 let env: Record<string, string | undefined>
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'tooly-e2e-')))
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'tooly-e2e-')))
   env = {}
 })
 afterEach(() => rmSync(root, { recursive: true, force: true }))

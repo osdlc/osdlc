@@ -177,6 +177,22 @@ describe('parseRemoteUrl', () => {
     expect(parseRemoteUrl('git@github.com:acme/widgets.git/')?.repo).toBe('widgets')
   })
 
+  test('scp-style with no user, as git reads it, but not a drive letter (second review)', () => {
+    expect(parseRemoteUrl('github.com:acme/widgets.git')).toEqual({
+      host: 'github.com',
+      port: null,
+      owner: 'acme',
+      repo: 'widgets',
+    })
+    expect(parseRemoteUrl('github-work:acme/widgets.git')?.host).toBe('github-work')
+    // One letter before the colon is a Windows drive, on every platform.
+    expect(parseRemoteUrl('C:/src/acme/widgets.git')).toBeNull()
+    expect(parseRemoteUrl('C:\\src\\acme\\widgets.git')).toBeNull()
+    expect(parseRemoteUrl('c:acme/widgets.git')).toBeNull()
+    // A user makes it scp whatever the host.
+    expect(parseRemoteUrl('git@c:acme/widgets.git')?.host).toBe('c')
+  })
+
   test('local paths, file:// URLs and single-segment URLs are null', () => {
     expect(parseRemoteUrl('/srv/git/repo.git')).toBeNull()
     expect(parseRemoteUrl('file://localhost/srv/git/a/b.git')).toBeNull()

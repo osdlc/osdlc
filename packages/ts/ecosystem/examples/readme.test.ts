@@ -29,7 +29,7 @@ let home: string
 let isolated: { home: string; env: Record<string, string>; resolveAlias: () => null }
 
 beforeEach(() => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ecosystem-example-')))
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ecosystem-example-')))
   writeFileSync(join(root, 'gitconfig'), '')
   vi.stubEnv(REPOSITORIES_ENV, '')
   vi.stubEnv('GIT_CONFIG_GLOBAL', join(root, 'gitconfig'))

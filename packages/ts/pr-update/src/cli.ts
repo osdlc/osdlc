@@ -2,7 +2,8 @@
  * `pr-update`: the standalone CLI, a `@osdlc/cli-tool` command tree.
  *
  * `survey` and `update` are declared in `commands.ts`; `config` and `trust`
- * are cli-tool's shared commands over pr-update's files (`config-cli.ts`).
+ * are cli-tool's shared commands over pr-update's files (`config-cli.ts`);
+ * `mirror` writes the machine file's answer on cloning (`mirror-cli.ts`).
  * `pr-update` alone prints the help and exits 0.
  *
  * Config layers and exit codes: see README.md (## Config, ## Exit codes); each
@@ -14,37 +15,70 @@
  */
 
 import type { CliContext } from '@osdlc/cli-tool'
-import { defineApp, type App } from '@osdlc/cli-tool/command'
-import { trustCommand, type TrustService } from '@osdlc/cli-tool/trust-command'
+import { defineApp, type App, type CommandContext } from '@osdlc/cli-tool/command'
+import {
+  trustCommand,
+  type TrustEntry,
+  type TrustRequest,
+  type TrustService,
+} from '@osdlc/cli-tool/trust-command'
+import {
+  WHOLE_REPO_SCOPE,
+  parseTrustRepo,
+  type TrustKey,
+  type TrustRepoKey,
+} from '@osdlc/trust-repo'
 
 import { PR_UPDATE_CONFIG_FILE, surveyCommand, updateCommand, type CliSeams } from './commands.ts'
 import { configCommand } from './config-cli.ts'
+import { mirrorCommand } from './mirror-cli.ts'
 import { prUpdateTrustStore } from './trust.ts'
 import { VERSION } from './version.generated.ts'
 
 export { PR_UPDATE_CONFIG_FILE, writeErrorReport, type CliSeams } from './commands.ts'
 
-/** The whole-repository marker `pr-update trust` records, keyed on the working directory. */
+/**
+ * The key a `trust` request acts on: the repository it names, as
+ * `{ repo: 'host/owner/name' }`, else the working directory. A repository
+ * stays an object all the way to the store, since a plain string is a path.
+ */
+function keyOf(ctx: CommandContext, req: TrustRequest): TrustKey {
+  return req.repo === undefined ? ctx.cwd : { repo: req.repo }
+}
+
+/** A resolved key as the command prints it. */
+function entryOf(key: string | TrustRepoKey): Pick<TrustEntry, 'root' | 'kind'> {
+  return typeof key === 'string' ? { root: key, kind: 'path' } : { root: key.repo, kind: 'repo' }
+}
+
+/**
+ * The whole-repository marker `pr-update trust` records, keyed on the
+ * working directory, or on a repository named as `host/owner/name`.
+ */
 const trustService: TrustService = {
-  async trust(ctx) {
-    const r = await prUpdateTrustStore(ctx.env).trust(ctx.cwd)
-    return { root: r.root, trusted: true, by: 'marker', changed: !r.alreadyTrusted }
+  parseRepo: parseTrustRepo,
+  async trust(ctx, req) {
+    const r = await prUpdateTrustStore(ctx.env).trust(keyOf(ctx, req))
+    return { root: r.root, kind: r.kind, trusted: true, by: 'marker', changed: !r.alreadyTrusted }
   },
-  async untrust(ctx) {
+  async untrust(ctx, req) {
     const store = prUpdateTrustStore(ctx.env)
-    const root = await store.resolveRoot(ctx.cwd)
-    const removed = await store.untrust(root)
-    return { root, trusted: false, by: null, changed: removed }
+    const key = await store.resolveRoot(keyOf(ctx, req))
+    const removed = await store.untrust(key)
+    return { ...entryOf(key), trusted: false, by: null, changed: removed }
   },
-  async show(ctx) {
+  async show(ctx, req) {
     const store = prUpdateTrustStore(ctx.env)
-    const root = await store.resolveRoot(ctx.cwd)
-    const trusted = await store.isTrusted(root)
-    return { root, trusted, by: trusted ? 'marker' : null }
+    const key = await store.resolveRoot(keyOf(ctx, req))
+    const trusted = await store.isTrusted(key)
+    return { ...entryOf(key), trusted, by: trusted ? 'marker' : null }
   },
   async list(ctx) {
-    const roots = await prUpdateTrustStore(ctx.env).list()
-    return roots.map((root) => ({ root, trusted: true, by: 'marker' }))
+    const grants = await prUpdateTrustStore(ctx.env).listGrants()
+    // `pr-update trust` records only whole-repository grants.
+    return grants
+      .filter((g) => g.scope === WHOLE_REPO_SCOPE)
+      .map((g) => ({ root: g.root, kind: g.kind, trusted: true, by: 'marker' }))
   },
 }
 
@@ -54,7 +88,7 @@ export interface AppOptions {
   checkOutput?: boolean
 }
 
-/** The `pr-update` command tree over `seams`: `survey`, `update`, `config` and `trust`. */
+/** The `pr-update` command tree over `seams`: `survey`, `update`, `config`, `mirror` and `trust`. */
 export function createApp(seams: CliSeams = {}, options: AppOptions = {}): App {
   return defineApp({
     name: 'pr-update',
@@ -64,13 +98,16 @@ export function createApp(seams: CliSeams = {}, options: AppOptions = {}): App {
       survey: surveyCommand(seams),
       update: updateCommand(seams),
       config: configCommand(seams.configFile ?? PR_UPDATE_CONFIG_FILE),
+      mirror: mirrorCommand({ git: seams.git, claim: seams.mirrorClaim }),
       trust: trustCommand(trustService, {
         summary: "record consent to run the commands this repository's config names",
         description:
           'The project file can name commands pr-update runs (lockfile_install, resolvers, ' +
           'repair.command, repair.agent, test_command). A setting the repository writes cannot ' +
           'authorize running it, so update refuses them (exit 21) until the repository is ' +
-          'trusted. Trust is kept outside the repository, keyed on its resolved path. ' +
+          'trusted. Trust is kept outside the repository, keyed on its resolved path, or on ' +
+          'host/owner/name when one is named (github.com/acme/api). A --repo target is ' +
+          'trusted the same way before update runs commands in it, and is skipped until it is. ' +
           '--trust on update allows one run without recording anything.',
       }),
     },
@@ -115,12 +152,27 @@ export function expandBareBranch(argv: readonly string[]): string[] {
   return out
 }
 
-/** Returns an exit code and never exits. Reads nothing outside `ctx` and `seams`. */
+/**
+ * Take write for group and others out of the process's umask, keeping the rest of it. Child
+ * processes inherit the umask, so git and every command pr-update runs make no file or folder
+ * others can write to: later fetches, run and kept worktrees, `FETCH_HEAD`. Read by setting a
+ * strict mask for a moment, since `process.umask()` with no argument is deprecated.
+ */
+export function tightenUmask(): void {
+  const old = process.umask(0o077)
+  process.umask(old | 0o022)
+}
+
+/**
+ * Returns an exit code and never exits. Reads nothing outside `ctx` and `seams`. It tightens the
+ * process's umask ({@link tightenUmask}) for the rest of the process: the CLI's whole run.
+ */
 export async function main(
   argv: readonly string[],
   ctx: CliContext,
   seams: CliSeams = {},
 ): Promise<number> {
+  tightenUmask()
   const app = createApp(seams)
   if (argv.length === 0) return app.run(['help'], ctx)
   return app.run(expandBareBranch(argv), ctx)

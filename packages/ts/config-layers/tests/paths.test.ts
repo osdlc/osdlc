@@ -21,7 +21,9 @@ describe('resolveConfigPath', () => {
   })
 
   test('a home option replaces the real home, with or without a trailing slash', () => {
-    expect(resolveConfigPath('~/Developer', ROOT, { home: '/home/me' })).toBe('/home/me/Developer')
+    expect(resolveConfigPath('~/Developer', ROOT, { home: '/home/me' })).toBe(
+      join('/home/me', 'Developer'),
+    )
     expect(resolveConfigPath('~', ROOT, { home: '/home/me' })).toBe('/home/me')
   })
 
@@ -58,14 +60,17 @@ describe('resolveConfigPath', () => {
     }
   })
 
+  // On Windows the home is `%USERPROFILE%`, and `HOME` is not read.
   test('without a home option, ~ follows $HOME at call time', () => {
-    const prev = process.env['HOME']
-    process.env['HOME'] = '/home/tester'
+    const name = process.platform === 'win32' ? 'USERPROFILE' : 'HOME'
+    const prev = process.env[name]
+    const home = resolve('/home/tester')
+    process.env[name] = home
     try {
-      expect(resolveConfigPath('~/auth', ROOT)).toBe('/home/tester/auth')
+      expect(resolveConfigPath('~/auth', ROOT)).toBe(join(home, 'auth'))
     } finally {
-      if (prev === undefined) delete process.env['HOME']
-      else process.env['HOME'] = prev
+      if (prev === undefined) delete process.env[name]
+      else process.env[name] = prev
     }
   })
 
@@ -86,7 +91,7 @@ describe('pathNames', () => {
 describe('pathNames with a home', () => {
   test('~ expands to the given home', () => {
     expect(pathNames(ROOT, { dev: '~/Machine' }, {}, { home: '/home/me' })['dev']).toBe(
-      '/home/me/Machine',
+      resolve('/home/me', 'Machine'),
     )
   })
 })

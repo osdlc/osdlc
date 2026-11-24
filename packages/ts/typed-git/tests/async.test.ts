@@ -15,7 +15,7 @@ import type { GitFailure } from '../src/failure.ts'
 
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, normalize } from 'node:path'
 
 import {
   AsyncGit,
@@ -349,7 +349,7 @@ describe('AsyncGit — parity with Git', () => {
     expect(await asyncGit.currentBranch()).toEqual(sync.currentBranch())
     expect(sync.worktrees()).toEqual([
       {
-        path: '/repo',
+        path: normalize('/repo'),
         head: 'abc',
         branch: 'main',
         detached: false,
@@ -358,7 +358,7 @@ describe('AsyncGit — parity with Git', () => {
         lockReason: null,
       },
       {
-        path: '/wt',
+        path: normalize('/wt'),
         head: 'def',
         branch: null,
         detached: true,
@@ -839,7 +839,7 @@ describe('AsyncGit — symbolicRef, mainCheckout, mergeBase, checkIgnoreVerbose'
   })
 
   test('mainCheckout names a --separate-git-dir checkout, and a bare store has none', async () => {
-    const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'typed-git-sepdir-')))
+    const scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'typed-git-sepdir-')))
     try {
       const checkout = join(scratch, 'checkout')
       const store = join(scratch, 'store.git')

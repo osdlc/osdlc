@@ -42,7 +42,7 @@ export const fakeAliases = (alias: string): string | null =>
   ({ 'github-work': 'github.com', forge: 'git.example.com' })[alias] ?? null
 
 export function makeSandbox(): Sandbox {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ecosystem-')))
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ecosystem-')))
   isolateEnv(root)
   const home = join(root, 'home')
   mkdirSync(home)

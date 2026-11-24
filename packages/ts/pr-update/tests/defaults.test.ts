@@ -1,6 +1,6 @@
 /** The standalone `Ports` built from a `PrUpdateConfig`. */
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -43,6 +43,16 @@ describe('commandRepair', () => {
       note: 'abc123 add a main',
     })
     expect(await repair(request())).toEqual({ ok: true, note: 'unset unset unset' })
+  })
+
+  test('runs without an inherited GIT_DIR, which a git hook exports', async () => {
+    vi.stubEnv('GIT_DIR', join(dir, 'elsewhere.git'))
+    try {
+      const repair = commandRepair('echo "${GIT_DIR-unset} ${GIT_WORK_TREE-unset}"')
+      expect(await repair(request())).toEqual({ ok: true, note: 'unset unset' })
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   test('a non-zero exit is a failed repair, with its last line as the note', async () => {

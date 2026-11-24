@@ -13,7 +13,8 @@ export function run(): void {
   const plain = mkdtempSync(join(tmpdir(), 'typed-git-plain-'))
   try {
     fx.commit('first', { 'a.md': 'one\n' })
-    const root = realpathSync(fx.dir)
+    // git answers with the real path; `.native` also expands a Windows short name (`RUNNER~1`).
+    const root = realpathSync.native(fx.dir)
 
     assert.equal(fx.git.topLevel(), root)
     assert.equal(fx.git.gitCommonDir(), join(root, '.git'))
@@ -21,7 +22,7 @@ export function run(): void {
 
     fx.git.worktreeAdd(linked, { detach: true, startPoint: 'HEAD' })
     const inLinked = fx.git.at(linked)
-    assert.equal(inLinked.topLevel(), realpathSync(linked))
+    assert.equal(inLinked.topLevel(), realpathSync.native(linked))
     assert.equal(inLinked.mainCheckout(), root) // the primary checkout, not the linked one
     // gitDir is the worktree's own directory, where a rebase in progress leaves its state.
     assert.equal(inLinked.gitDir(), join(root, '.git', 'worktrees', basename(linked)))

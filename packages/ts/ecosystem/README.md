@@ -95,8 +95,9 @@ resolves to the directory above every owner.
 | `~` itself                        | none                |
 | No caller, or not in a checkout   | none                |
 
-It never steps to or above the home directory. A linked worktree counts as its
-main checkout.
+It never steps up to the home directory or above it: a checkout directly in
+home uses home, the folder it is in, and a checkout that is home itself gets
+none. A linked worktree counts as its main checkout.
 
 ## Finding checkouts
 
@@ -119,6 +120,8 @@ roots and in each directory the walk finds, runs without an inherited
 `GIT_DIR`, `GIT_WORK_TREE` or other variable that picks a repository. So the
 default roots and the locator give the same answer inside a git hook as
 outside one.
+It runs them through typed-git's `withoutRepositoryVars`, which a tool can
+use for its own git calls in a checkout the locator found.
 
 Not supported yet: a bare store with its worktrees beside it, where
 `proj/.git` is a file pointing at `proj/.bare`. The walk stops at `proj`,
@@ -159,7 +162,13 @@ included. The comments inside the old list go, and so does the one on the
 `roots:` line: the old value's trailing comment (on its last item, or after a
 flow list) takes its place. When the file changed since it was read, it throws `WriteConflictError`,
 which this module re-exports from `@osdlc/etag-write`, and writes nothing. It
-refuses a root the reader would drop.
+reads, checks and writes while holding the lock file `repositories.yaml.lock`
+beside it (`@osdlc/file-lock`), so when two processes write over the same
+read, one writes and the other gets `WriteConflictError`; it waits up to 30
+seconds for another writer. A lock is taken over once the process that holds
+it has exited, or once it is 10 minutes old, far longer than a write takes.
+If writes keep timing out on `repositories.yaml.lock` and no osdlc tool is
+writing, delete that file. It refuses a root the reader would drop.
 
 ## Testing a tool that uses it
 

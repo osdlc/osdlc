@@ -5,17 +5,19 @@
  *
  * It sits beside the marker store so a tool built on `@osdlc/config-layers`
  * (whose machine schema has the `trust:` block the policy comes from) gets
- * the trust decision without writing it. This module runs no git. The
- * `owners` rule needs the owner of a root's `origin` remote, so the caller
- * supplies {@link PolicyDecisionOptions.ownerOf}. `originOwner` from
- * `@osdlc/trust-repo/git` is a git-backed one.
+ * the trust decision without writing it. This module runs no git. For a
+ * root, the `owners` rule needs the owner of its `origin` remote, so the
+ * caller supplies {@link PolicyDecisionOptions.ownerOf}. `originOwner` from
+ * `@osdlc/trust-repo/git` is a git-backed one. A repository key names its
+ * own host and owner.
  *
  * {@link trustDecision} decides trust in this order:
  *
  *   1. A marker grant in the caller's {@link TrustStore}.
  *   2. `policy.paths`: a glob over the resolved repo root.
  *   3. `policy.owners`: a case-insensitive match on the host and owner
- *      `ownerOf` returns. See {@link TrustPolicy.owners}.
+ *      `ownerOf` returns for a root, or that a repository key names. See
+ *      {@link TrustPolicy.owners}.
  *
  * The caller also expands path tokens (`~`, `{name}`, and any others its own
  * paths format defines), through {@link PolicyDecisionOptions.expandPath}.
@@ -23,6 +25,15 @@
  * A decision can be for one scope (one tool). A whole-repository marker and
  * the top-level `paths`/`owners` cover every scope. `policy.scopes[scope]`
  * adds rules for that scope alone, checked after the top-level ones.
+ *
+ * A repository key, `{ repo: 'host/owner/name' }`, is decided the same way,
+ * with two differences. `paths` never matches it: it is not a path, and a
+ * glob such as `**` would otherwise match every repository. `owners` matches
+ * the host and owner the key names, and `ownerOf` is not called. An `owners`
+ * rule is about who owns a repository, which a key names outright. For a
+ * path, the owner comes from the remote URL in the repository's own git
+ * config, which the repository can choose. For a key, it comes from whoever
+ * named the key: the person, or the tool that made the clone.
  *
  * {@link policyExecGate} turns trust decisions into the boolean a tool acts
  * on. It feeds `trustDecision` into {@link resolveExecGate}, so `configured`
@@ -34,7 +45,7 @@
 
 import { resolveExecGate, type ExecGate, type ResolveExecGateArgs } from './gate.ts'
 import { normalizeTrustPath, resolveTrustRoot } from './paths.ts'
-import { WHOLE_REPO_SCOPE, type TrustStore } from './store.ts'
+import { WHOLE_REPO_SCOPE, parseTrustRepo, type TrustKey, type TrustStore } from './store.ts'
 
 /**
  * Converts a glob to a regular expression for string matching. It does not
@@ -78,12 +89,16 @@ export function pathGlobToRegExp(pattern: string): RegExp {
  * @experimental
  */
 export interface TrustRules {
-  /** Glob patterns (see {@link pathGlobToRegExp}'s dialect) over the resolved, symlink-free repo root. */
+  /**
+   * Glob patterns (see {@link pathGlobToRegExp}'s dialect) over the resolved,
+   * symlink-free repo root. Never matched against a repository key.
+   */
   paths: string[]
   /**
    * Owners, each `host/owner` (`gitlab.com/acme`) or a bare `owner`, which
    * means `github.com/owner`. Matched case-insensitively against what
-   * {@link PolicyDecisionOptions.ownerOf} returns, host and owner both.
+   * {@link PolicyDecisionOptions.ownerOf} returns, host and owner both, or
+   * for a repository key against its own host and owner.
    */
   owners: string[]
 }
@@ -161,7 +176,8 @@ export interface PolicyDecisionOptions {
   /**
    * The host and owner of `root`'s `origin` remote as `host/owner`
    * (`github.com/acme`), or null when there is none to read. A bare owner
-   * is read as `github.com/owner`. Without it `policy.owners` never matches.
+   * is read as `github.com/owner`. Without it `policy.owners` never matches
+   * a path. It is not called for a repository key, which names its owner.
    * `originOwner` from `@osdlc/trust-repo/git` is the git-backed lookup.
    */
   ownerOf?: (root: string) => string | null
@@ -189,11 +205,12 @@ export interface PolicyDecisionOptions {
  * @experimental
  */
 export async function policyDecision(
-  root: string,
+  root: TrustKey,
   policy: TrustPolicy,
   opts: PolicyDecisionOptions = {},
 ): Promise<PolicyDecision> {
   const scope = opts.scope ?? WHOLE_REPO_SCOPE
+  const repo = typeof root === 'string' ? null : parseTrustRepo(root.repo)
   const layers: [string, TrustRules][] = [[WHOLE_REPO_SCOPE, policy]]
   // An own key only, so a scope named `constructor` or `__proto__` does not
   // read the prototype chain.
@@ -209,7 +226,7 @@ export async function policyDecision(
   // Looked up at most once, and only when an `owners` rule needs it.
   let owner: string | null | undefined
   for (const [from, rules] of layers) {
-    if (rules.paths.length > 0) {
+    if (rules.paths.length > 0 && typeof root === 'string') {
       resolvedRoot ??= opts.store
         ? await opts.store.resolveRoot(root)
         : await resolveTrustRoot(root)
@@ -222,9 +239,13 @@ export async function policyDecision(
         }
       }
     }
-    if (rules.owners.length > 0 && opts.ownerOf !== undefined) {
-      if (owner === undefined) owner = opts.ownerOf(root)
-      if (owner !== null) {
+    if (rules.owners.length > 0) {
+      if (owner === undefined) {
+        // A repository key's first two parts are its host and owner.
+        if (repo !== null) owner = repo.split('/').slice(0, 2).join('/')
+        else if (typeof root === 'string' && opts.ownerOf !== undefined) owner = opts.ownerOf(root)
+      }
+      if (owner !== undefined && owner !== null) {
         const key = ownerKey(owner)
         const hit = rules.owners.find((o) => ownerKey(o) === key)
         if (hit !== undefined) return { trusted: true, by: 'owner', rule: hit, scope: from }
@@ -244,15 +265,15 @@ function ownerKey(value: string): string {
 }
 
 /**
- * Whether `root` is trusted for `opts.scope` (`*` by default), and by which
- * layer: a marker grant in `store` first (whole-repository, then the
- * scope's), then `policy` ({@link policyDecision}). A symlink and its target
- * get the same decision.
+ * Whether `root`, a root or a repository key, is trusted for `opts.scope`
+ * (`*` by default), and by which layer: a marker grant in `store` first
+ * (whole-repository, then the scope's), then `policy`
+ * ({@link policyDecision}). A symlink and its target get the same decision.
  * @experimental
  */
 export async function trustDecision(
   store: TrustStore,
-  root: string,
+  root: TrustKey,
   policy: TrustPolicy,
   opts: PolicyDecisionOptions = {},
 ): Promise<TrustDecision> {
@@ -304,7 +325,7 @@ export async function policyExecGate(
   store: TrustStore,
   policy: TrustPolicy,
   args: {
-    root: string
+    root: TrustKey
     configured: boolean
     flag?: boolean | undefined
     scopes?: readonly string[] | undefined

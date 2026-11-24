@@ -30,6 +30,25 @@ describe('readRemote', () => {
     expect(readRemote('git@forge:acme/widgets.git', aliases)?.host).toBe('git.example.com')
   })
 
+  test('resolves the alias of an scp-style remote with no user (second review)', () => {
+    expect(readRemote('github-work:acme/widgets.git', aliases)).toEqual({
+      host: 'github.com',
+      owner: 'acme',
+      repo: 'widgets',
+    })
+    expect(readRemote('github.com:acme/widgets.git', aliases)).toEqual({
+      host: 'github.com',
+      owner: 'acme',
+      repo: 'widgets',
+    })
+    expect(parseRemoteRepo('forge:acme/widgets.git')).toEqual({
+      host: 'forge',
+      owner: 'acme',
+      repo: 'widgets',
+    })
+    expect(readRemote('C:/acme/widgets.git', aliases)).toBeNull()
+  })
+
   test('resolves an alias with a dot in it', () => {
     const dotted = (alias: string) => (alias === 'github.com-work' ? 'github.com' : null)
     expect(readRemote('git@github.com-work:acme/widgets.git', dotted)?.host).toBe('github.com')
@@ -165,6 +184,8 @@ describe('isSshRemote', () => {
       'file:///srv/o/r.git',
       '/srv/git/o/r.git',
       './a:b/r.git',
+      'C:/src/o/r.git',
+      'C:\\src\\o\\r.git',
     ]) {
       expect(isSshRemote(url), url).toBe(false)
     }

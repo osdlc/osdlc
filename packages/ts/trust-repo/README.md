@@ -49,15 +49,18 @@ Any CLI tool gets its own store by name.
 | Member | Does |
 |---|---|
 | `dir()` | the store's directory: `dir` verbatim when given, else `<state home>/<tool>[/<app>]/trusted/` when `vendorDirs` is given, else `$XDG_STATE_HOME/<tool>/trusted/`, or `~/.local/state/<tool>/trusted/` when unset ([Where the store lives](#where-the-store-lives)) |
-| `resolveRoot(root)` | the absolute, symlink-resolved key a root's grant is stored under |
-| `markerPath(root, scope?)` | the marker file's path for a grant, without creating it (for a `--show` command) |
-| `isTrusted(root, scope?)` | whether the root has a whole-repository grant or a grant for `scope` |
-| `trust(root, scope?)` | records a grant and returns `{ root, scope, marker, alreadyTrusted }`. With no `scope` the grant covers the whole repository; an explicit `'*'` throws. Safe to repeat. `alreadyTrusted` says whether this exact grant already existed |
-| `untrust(root, scope?)` | removes exactly that grant; `false` when there was none |
-| `untrustAll(root)` | removes every grant for the root (its marker and its whole `.scopes/` folder) and returns the scopes removed |
-| `list()` | every root with a whole-repository grant, sorted; `[]` when the store has never been written to |
-| `listGrants()` | every grant as `{ root, scope, marker }`, sorted by root, then scope with `*` first |
+| `resolveRoot(key)` | the key a grant is stored under, in the kind it was given: the absolute, symlink-resolved root, or `{ repo }` with the lower-cased key. Either can be passed back to every other method |
+| `markerPath(key, scope?)` | the marker file's path for a grant, without creating it (for a `--show` command) |
+| `isTrusted(key, scope?)` | whether the key has a whole-repository grant or a grant for `scope` |
+| `trust(key, scope?)` | records a grant and returns `{ root, kind, scope, marker, alreadyTrusted }`. With no `scope` the grant covers the whole repository; an explicit `'*'` throws. Safe to repeat. `alreadyTrusted` says whether this exact grant already existed |
+| `untrust(key, scope?)` | removes exactly that grant; `false` when there was none |
+| `untrustAll(key)` | removes every grant for the key (its marker and its whole `.scopes/` folder) and returns the scopes removed |
+| `list()` | every key with a whole-repository grant, roots first, then repositories, each sorted; `[]` when the store has never been written to |
+| `listGrants()` | every grant as `{ root, kind, scope, marker }`, roots first, then repositories, each sorted by key, then scope with `*` first. `kind` is `path` or `repo` |
 | `tighten()` | sets the store directory to 0700 and each marker to 0600 where looser; returns the paths it changed |
+
+A key is a root (a path) or a repository, `{ repo: 'host/owner/name' }`. See
+[What a decision is keyed on](#what-a-decision-is-keyed-on).
 
 `scope` defaults to `WHOLE_REPO_SCOPE` (`'*'`), the whole repository. A scope
 is trimmed first, so `'just '` and `'just'` are one grant. A scope that is
@@ -160,7 +163,7 @@ once more is the safe failure.
 
 ### What a decision is keyed on
 
-A root and a scope. The scope is `*` for the whole repository, or one tool:
+A key and a scope. The key is a root or a repository. The scope is `*` for the whole repository, or one tool:
 any string the tool chooses, such as a runner id. This package gives a scope
 no meaning. A whole-repository grant covers every scope.
 
@@ -178,11 +181,39 @@ hostile changes. `untrust` is the only way to remove the grant. A content
 hash would ask again after ordinary edits. People asked that often learn to
 approve without reading, which is less safe than a simple path rule.
 
+A repository is `{ repo: 'host/owner/name' }`. It is for a clone that a tool
+makes and may prune and make again in another folder: a grant on its path
+would be lost each time. Scopes work the same as for a root.
+
+```ts
+await trust.trust({ repo: 'github.com/acme/api' })
+await trust.isTrusted({ repo: 'GitHub.com/Acme/API' }) // true: keys are lower-cased
+await trust.isTrusted('/work/github.com/acme/api') // false: a path is never a repository
+```
+
+`parseTrustRepo(input)` reads a key as every method does, and throws a
+`TypeError` a CLI can report as a usage error. The key is trimmed and
+lower-cased, and must be three parts: a host name (letters, digits, `-` and
+`.`, so no `:` and no port), then an owner and a name of 1-200 characters
+each. No part may be empty, `.` or `..`, and no space, backslash or control
+character is allowed. A name ending in `.git` is refused, so a clone URL's
+name and the bare name never make two grants: pass the name without `.git`.
+
+A repository and a root never share a grant. A root starts with `/`, or with
+a drive letter and `:` on Windows. A repository starts with a host name,
+which is never empty and has no `:`. So a folder named `github.com/acme/api`,
+wherever it is, is a path with grants of its own. A plain string is always a
+path: `isTrusted('github.com/acme/api')` asks about that folder under the
+current directory.
+
 ### How it is stored
 
 A directory of marker files, one per trusted root, named
 `${basename(root)}-${sha256(root).slice(0, 16)}`, containing the resolved
-absolute path. Creating and deleting a file are atomic and independent, so
+absolute path. A repository's marker follows the same rule with its key in
+place of the root: `api-<hash>`, holding `github.com/acme/api`. An older
+release lists it as a root of that name and never reads it as a grant on a
+folder. Creating and deleting a file are atomic and independent, so
 two processes that trust two repositories at the same time cannot lose each
 other's write. Each marker is written to a temp file and then renamed, so a
 marker that exists is always complete.
@@ -219,6 +250,9 @@ boolean the tool acts on. Every caller that uses it gets the same answer:
 consent for one run. The result's `trusted` field still reports whether the
 root is trusted, but the flag is never saved. A one-time `--trust` does not
 become a lasting grant that nobody remembers giving.
+
+`root` is a root or a repository, `{ repo: 'host/owner/name' }`. The result's
+`root` is the resolved key either way.
 
 `scopes` lists what the run needs trusted, `['*']` by default. The root counts
 as trusted only when every scope is. The result's `scopes` echoes the list and
@@ -289,15 +323,22 @@ host and owner of the root's `origin` remote as `host/owner`. An entry is
 `host/owner` (`gitlab.com/my-org`) or a bare `owner`, which means
 `github.com/owner`. A bare owner from `ownerOf` is read the same way. So
 `my-org` does not match a clone from `gitlab.com/my-org`. Without an `ownerOf`
-the `owners` rule never matches.
+the `owners` rule never matches a root. A repository key gives its own host
+and owner, so it needs no `ownerOf`.
 
-Owner trust believes the repository about itself. A git-backed `ownerOf`
+The policy takes a repository key as well as a root. `paths` never matches a
+repository: it is not a path, and `**` would otherwise match every one.
+`owners` matches the host and owner the key names, without calling
+`ownerOf`, so `owners: ['acme']` trusts `{ repo: 'github.com/acme/api' }`.
+
+For a root, owner trust believes the repository about itself. A git-backed `ownerOf`
 reads the remote URL the repository's own git config reports, and that
 config arrives with the directory. A folder unpacked from an archive, copied
 from a shared drive, or cloned by someone else can name any owner. So
 `owners` fits clones you made yourself. `paths` is the stronger form: it
 names where the repository is on your disk, which the repository cannot
-choose.
+choose. A repository key does not have this weakness: its owner is the one
+named in the key, by the person or by the tool that made the clone.
 
 ### Expanding paths
 
@@ -375,9 +416,9 @@ The experimental exports of `@osdlc/trust-repo`:
 
 `ExecGate`, `ExpandTrustPathOptions`, `PolicyBy`, `PolicyDecision`, `PolicyDecisionOptions`,
 `PolicyExecGate`, `ResolveExecGateArgs`, `TRUST_MARKER_DIR`, `TrustBy`, `TrustDecision`,
-`TrustGrant`, `TrustPlatform`, `TrustPolicy`, `TrustResult`, `TrustRules`, `TrustStore`,
-`TrustStoreOptions`, `TrustVendorDirs`, `WHOLE_REPO_SCOPE`, `expandTilde`, `expandTrustPath`, `homeDir`,
-`normalizeTrustPath`, `parseTrustScope`, `pathGlobToRegExp`, `policyDecision`, `policyExecGate`, `resolveExecGate`, `resolveTrustRoot`,
+`TrustGrant`, `TrustKey`, `TrustKeyKind`, `TrustPlatform`, `TrustPolicy`, `TrustRepoKey`, `TrustResult`,
+`TrustRules`, `TrustStore`, `TrustStoreOptions`, `TrustVendorDirs`, `WHOLE_REPO_SCOPE`, `expandTilde`,
+`expandTrustPath`, `homeDir`, `normalizeTrustPath`, `parseTrustRepo`, `parseTrustScope`, `pathGlobToRegExp`, `policyDecision`, `policyExecGate`, `resolveExecGate`, `resolveTrustRoot`,
 `trustDecision`, `trustStore`, `trustStoreDir`, `withheldHint`, `xdgHome`
 
 The experimental exports of `@osdlc/trust-repo/git`:

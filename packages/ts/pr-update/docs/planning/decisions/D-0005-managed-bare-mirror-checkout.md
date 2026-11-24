@@ -5,7 +5,7 @@ id: D-0005
 title: Run without a local checkout from a managed bare clone
 state: open/accepted
 created: '2026-11-19'
-last_reviewed: '2026-11-22'
+last_reviewed: '2026-11-23'
 tags:
   - pr-update
   - checkout
@@ -23,8 +23,22 @@ project root), then the clone. The clone is not a
 `git clone --mirror`: it keeps the `origin/<branch>` remote-tracking layout
 that `survey` and `update` already read. The first `update --apply` that needs
 a clone asks before making one, and the answer is saved in
-`~/.config/osdlc/pr-update/config.yaml`. It is being built
-(osdlc/osdlc#844). The `locate` parts rest on D-ZVIA, accepted 2026-11-23.
+`~/.config/osdlc/pr-update/config.yaml`. The `locate` parts rest on D-ZVIA,
+accepted 2026-11-23.
+
+Built in the omnibus [#1016](https://github.com/osdlc/osdlc/pull/1016), for
+[#844](https://github.com/osdlc/osdlc/issues/844) and
+[#1010](https://github.com/osdlc/osdlc/issues/1010). `update --apply` updates
+a `--repo` target in a checkout found on the machine, or in a managed clone it
+makes with consent; `survey` measures either; `pr-update mirror` has `enable`,
+`disable`, `list` and `prune`; the trust store lives under `osdlc/pr-update/`.
+Under it are config-layers' `app` option
+([#1056](https://github.com/osdlc/osdlc/pull/1056)), typed-git's remote
+matching ([#1055](https://github.com/osdlc/osdlc/pull/1055)), trust-repo's
+store through tiered-dirs ([#1057](https://github.com/osdlc/osdlc/pull/1057))
+and its repository keys, and `@osdlc/ecosystem`
+([#1058](https://github.com/osdlc/osdlc/pull/1058)). What the build settled
+that this record left open, and where it differs, is under Build notes.
 
 ^summary
 
@@ -232,8 +246,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   - `mirror_dir: <path>`, optional.
   - `mirror_max_age_days: <n>`, default 30. It applies only to whole clones.
     `0` turns automatic pruning of clones off, and a bare `mirror prune` then
-    removes no clone unless given `--older-than` or `--all`. Dead run
-    worktrees are removed either way.
+    removes no clone unless given `--older-than` or `--all-clones`. Dead run
+    worktrees are removed either way. (changed during the build: Build note 1)
 
   None of these keys is in the project schema, so neither `pr-update.yaml` nor
   its `.local` overlay can set them. A repository cannot choose where the tool
@@ -243,7 +257,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   matches each checkout's `origin`. With no roots it scans the directory that
   holds the project root's main checkout, or the one above it when that
   directory is named after the project root's own owner (an `<owner>/<name>`
-  layout). It never steps to or above the person's home directory.
+  layout). It never steps above the person's home directory: a project root
+  directly in home uses home, and one that is home itself gets no default root.
   Rules:
   - Each match resolves to its main checkout and is counted once. Linked
     worktrees are not separate checkouts.
@@ -255,18 +270,31 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     executor).
   - A located checkout is fetched and pushed through `origin`, the remote that
     matched, whatever `--remote` says. `--remote` applies to the project root.
-  - Its run worktree goes under the cache (table above). Inside the checkout
-    the run writes only git's worktree records, its scratch branch and the
-    fetched `origin/*` refs. A killed run leaves its worktree and scratch
-    branch until pruning (below) or a later run on the same checkout removes
-    them.
+  - Its run worktree goes under the cache (table above). The checkout's
+    working tree, index and HEAD are never touched. Its git directory gets
+    git records only, listed in full under Build notes, with what a killed
+    run leaves there. A later run on the same checkout removes a killed
+    run's worktree and scratch branch, or pruning (below) does. (changed during the build: Build note 1)
+  - Every git call in the checkout and its run worktrees runs with hooks off
+    (`core.hooksPath=/dev/null`). The worktree holds the PR's own files, so
+    a relative `core.hooksPath` such as `.husky` would run hooks the PR's
+    author wrote. (added during the build: Build note 1)
 - **Who clones.** Only `update --apply`, with `checkout: mirror` or a consent
   below. `survey` and a rehearsal fetch a clone that exists and otherwise
-  report the target as not measured, naming `pr-update mirror enable`. They
-  take the clone's lock for the fetch and write the clone's last-used stamp,
-  so a clone only surveyed is not pruned as unused. They prune nothing.
-  So `survey` writes nothing but its fetches (into a clone or a located
-  checkout's `origin/*`), the clone's stamp and the clone's lock file.
+  report the target as not measured, naming `pr-update mirror enable`.
+  `survey` takes the clone's lock without waiting and holds it while it
+  fetches and reads the clone, so a prune cannot remove it part-way. When
+  another run holds the lock, `survey` reads the clone as it is without one;
+  if the clone is gone after that read (a prune held the lock), what was read
+  is dropped and the target is reported not measured, with a note. A
+  rehearsal holds it as `update --apply` does (Pruning clones, below), but
+  claimed without waiting, and skips a busy clone as `mirror busy`. Both write
+  the clone's last-used stamp, so a clone only surveyed is not pruned as
+  unused. A survey's unscoped fetch of a managed clone prunes (`--prune`), since the
+  clone is pr-update's own; a located checkout's fetch does not, since its
+  `origin/*` is the person's. Neither removes a clone. So `survey` writes
+  nothing but its fetches (into a clone or a located checkout's `origin/*`),
+  the clone's stamp and the clone's lock file. (changed during the build: Build note 1)
 - **Consent.** Any one of these is consent to clone for the run: `--mirror-dir
   <dir>`, `PR_UPDATE_MIRROR_DIR`, or `checkout: mirror`. `--mirror-dir` and
   the variable win over `checkout: local` for that run. `OSDLC_ROOT` and the
@@ -293,7 +321,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   - `n` writes `checkout: local`, so the question does not come back.
 
   The run prints the machine file's path. A write that loses a race to
-  another run's prompt re-reads the file and uses the answer it finds.
+  another run's prompt re-reads the file and uses the answer it finds. When
+  the file cannot take the answer, because it is not valid YAML or its top
+  level is not a map, nothing is asked: the run exits 14, the config-invalid
+  code, naming it, and `mirror enable` and `mirror disable` do the same. A bad
+  value in it is noted with the file's path and ignored. (changed during the build: Build note 1)
 - **No terminal.** When `canPrompt()` is false, a GitHub target has no
   checkout, and nothing gives or refuses consent, `update --apply` exits 2
   and names `--mirror-dir`, `PR_UPDATE_MIRROR_DIR` and
@@ -304,8 +336,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   checks out.
 - **`pr-update mirror`.** The prompt's answers are also commands, as
   `cli-interface.md` section 8 asks:
-  - `enable [--dir <dir>]` writes `checkout: mirror` and, with `--dir`,
-    `mirror_dir`, after checking it as clone step 1 does;
+  - `enable [--mirror-dir <dir>]` writes `checkout: mirror` and, with `--mirror-dir`,
+    `mirror_dir`, after checking it as clone step 1 does (changed during the build: Build note 1);
   - `disable` writes `checkout: local`;
   - `list` shows each clone's repository, size, last use and kept worktrees;
   - `prune`, below.
@@ -315,16 +347,39 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   skipped with a message, as today. Steps:
   1. check the mirror directory, whichever location it came from: it must
      not be inside a git working tree, and must be missing, empty or already
-     marked by this tool. Otherwise the run exits 2 and names the directory,
+     marked by this tool, and belong to the person running it, as must its
+     marker, a plain file. On POSIX no one else may write to it: writable by
+     all (`mode & 0o002`) is refused, sticky bit or not, and writable by its
+     group (`mode & 0o020`) unless the group is a user private group of the
+     person's: the platform is not macOS (where every user's primary group
+     is the shared `staff`), and the folder's group, the process's primary
+     group (`process.getgid()`) and its uid (`process.getuid()`) are one
+     number. That is what every folder a person makes looks like under umask
+     `002` with user private groups (the default on Ubuntu, Debian and
+     Fedora). The refusal names the
+     `chmod go-w` that fixes it, or choosing a clone directory on a
+     filesystem with Unix permissions (`--mirror-dir`,
+     `PR_UPDATE_MIRROR_DIR`, `mirror enable --mirror-dir`), since exFAT, FAT
+     and SMB shares show every folder as writable by all. The tool makes
+     every folder it creates itself with mode `0o755` at most, whatever the
+     umask: the clone directory and the `<host>`/`<owner>` folders, the
+     folders above each run worktree (made before `git worktree add`, which
+     would make them under the umask), each kept place, the machine file's
+     folder and the attempt records' folders. So it never refuses one it
+     made. The clone folder itself (made by `gh`) and each run worktree's
+     folder (made by `git`) take the umask; for them only the owner is
+     checked. Otherwise the run exits 2 and names the directory,
      having written nothing. Then write the tool's marker at its root if it
      is not there yet, create-if-absent, so two runs marking a new directory
-     at once do not fail each other's check;
+     at once do not fail each other's check (changed during the build: Build note 1);
   2. take the clone's lock (`@osdlc/file-lock`), the file
      `<host>/<owner>/<name>.git.lock` beside the clone, so it exists before
      the clone does and survives the rename and the clone's removal;
-  3. `gh repo clone <host/owner/name> <tmp> --no-upstream -- --bare`, where
+  3. `gh repo clone <owner>/<name> <tmp> --no-upstream -- --bare`, with
+     `GH_HOST` set to the target's host (port kept) and hooks off, where
      `<tmp>` is `.tmp-<name>.git-<pid>` beside the final directory (git
-     needs an empty or missing target, so nothing is written there first);
+     needs an empty or missing target, so nothing is written there first)
+     (changed during the build: Build note 1);
   4. in the clone's own config, set `credential.https://<host>.helper` to an
      empty value and then to `!gh auth git-credential`, the two lines
      `gh auth setup-git` writes, so the fetch in step 6 and later fetches and
@@ -335,13 +390,28 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 
   A step that fails removes `<tmp>`, and the target is skipped with the
   error.
+
+  A clone that exists is used only when this tool made it: a real directory,
+  not a symbolic link, holding the tool's marker as a plain file, with the
+  clone, the marker and the mirror directory owned by the person running it
+  (by uid, on POSIX). The `<host>` and `<host>/<owner>` folders between, as
+  far as they exist, and the mirror directory must be real folders (the
+  mirror directory may be a link to one) that person owns and no one else
+  can write to (by the rule of step 1); that is checked before a clone is
+  made there too. Anything else at the clone path is never used or
+  replaced, and the target is skipped saying why. A run looks at a clone
+  again once it holds its lock: one a prune removed before the run took the
+  lock is made again under that lock by `update --apply` with
+  `checkout: mirror` consent, and otherwise its target is skipped with a
+  note, never an error. (added during the build: Build note 1)
 - **Trust.** The trust gate runs for each target before a command its own
   files choose (`verify: detect`, `lockfile_install`). A located checkout is
   keyed by its path, as the project root is. A clone is keyed by
-  `host/owner/name`, which trust-repo does not support yet (with
-  osdlc/osdlc#1010). `--trust` covers every target of the run. An untrusted
+  `host/owner/name`, with the host's port left out, as trust-repo's
+  repository keys take it (`pr-update trust host/owner/name` records one).
+  `--trust` covers every target of the run. An untrusted
   target is skipped with reason `untrusted`, and the run goes on with the
-  others.
+  others. (changed during the build: Build note 1)
 - **Attempts and the lease, per target.** The run's attempt store and lease
   route by repository:
   - The project root keeps today's store, `--remote` and lease.
@@ -362,53 +432,94 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   | --- | --- |
   | A run's worktree and scratch branch | The run, in a `finally` (`src/update/execute.ts`). A killed run's are removed by the next run served from the same git directory, or by pruning (below) |
   | A killed run's worktree under `worktrees/` in the cache | Pruning, automatic or by hand, whatever repository it belongs to |
-  | A kept worktree (`keep_failed`) | `--discard-kept`, `--retry-failed`, or the PR moving |
-  | `origin/<branch>` for a deleted branch | `fetch --prune`, on each unscoped run that fetches |
+  | A kept worktree (`keep_failed`) | `--discard-kept`, `--retry-failed`, or the PR moving, unless someone has changed it or git cannot read it; only `--discard-kept` removes that (changed during the build: Build note 1) |
+  | `origin/<branch>` for a deleted branch | `fetch --prune` on each unscoped fetch of the project root or a managed clone. A located checkout's fetch does not prune: its own `git fetch --prune` does (changed during the build: Build note 1) |
   | Unreachable objects | git's automatic `gc` |
   | A whole clone the person no longer targets | Automatic pruning by age, or `pr-update mirror prune` |
 
   Neither macOS nor common Linux setups clear `~/.cache` on their own, so
   without pruning the cache keeps one clone for every repository a run ever
   targeted.
-- **Pruning clones.** An `update --apply` holds a clone's lock from its clone
-  or fetch through its `git worktree add`, as one step, and again for
-  `worktree remove`. It writes the last-used stamp when it first takes the
-  lock. It waits up to 60 seconds for the lock, then skips the target with
-  reason `mirror busy`. Between those steps the clone is in use through the
+- **Pruning clones.** A run never changes a clone without that clone's lock.
+  An `update` run takes the locks of every clone it will use before its
+  survey, in sorted path order. It holds each from its clone or fetch
+  through its `git worktree add`, as one step, and again for `worktree
+  remove` and for discarding a kept worktree of the clone; a clone with no PR
+  to update is let go as soon as the run has picked its PRs. Taking a lock
+  back, it waits only when it holds no other clone's lock, and otherwise
+  claims without waiting. So a run waits only for a lock that sorts after
+  every lock it holds, or while it holds none, and no two runs wait on each
+  other in a cycle. A worktree whose lock it cannot get back is not removed:
+  the run leaves it, with a note naming it. A run worktree is then a dead
+  run's, which the next run in that clone or `pr-update mirror prune`
+  removes; a kept worktree waits for another `--discard-kept`. With several targets, a clone whose turn
+  comes later stays held while the targets before it are updated. It writes
+  the last-used stamp when it first takes the lock. `update --apply` waits up
+  to 60 seconds for each lock, then skips the target with reason `mirror
+  busy`; a rehearsal does not wait. Between those steps the clone is in use through the
   run's worktree, which git records in the clone. Pruning takes
   the lock without waiting and holds it through the stamp check and the
-  removal, and removes the lock file last. Under the lock, pruning first removes worktrees whose run is dead (the
-  executor's existing check), then skips a clone that still has any. A clone
+  removal, and removes the lock file last. Under the lock, pruning first removes worktrees whose run is dead (by pid
+  and start time, below), then skips a clone that still has any. A clone
   or temporary directory whose lock it cannot take is skipped. A clone
   directory without the tool's marker was not made by this tool and is never
   removed. A `.tmp-*.git-<pid>` directory is recognised by its name instead,
   inside a mirror directory that carries the tool's marker (clone step 1), so
-  one left by a killed clone is removed.
+  one left by a killed clone is removed once it is an hour old, as is a
+  `.pr-update-probe-*` folder under `worktrees/` or `kept/`. A clone is renamed
+  to such a name before it is deleted, so a removal that stops part-way leaves
+  a leftover the next prune removes, not a broken clone at the clone path.
+  Nothing is removed from a folder that `checkClone` would refuse (another
+  user's, or one someone else can write to by the rule of clone step 1), and
+  no walk follows a symbolic link. Under `worktrees/` and `kept/` the refusal
+  names `chmod -R go-w <worktrees or kept directory>`; under the clone
+  directory, clone step 1's fix. (changed during the build: Build note 1)
 
   Pruning also walks `worktrees/` in the cache, which holds the run
   worktrees of located checkouts as well as clones. A directory whose run is
-  dead (the same pid check) is removed. First its `.git` file is read: it
+  dead is removed. A run directory is named `<pid>.<time>`, the time in ms
+  when the run began; the run is dead when no process has that pid
+  (`pidAlive`) or the process with it started more than 10 minutes after
+  that time (`processStartedAt`, both from `@osdlc/file-lock`), so a reused
+  pid keeps no dead run's worktree. The margin is wide because the start time
+  is read against the wall clock, which a clock step (NTP, a suspended
+  laptop) can move by more than `sameProcess`'s 2 seconds, and a live run
+  misread as dead would lose its worktree. A start time that cannot be read
+  counts as alive. Pids
+  belong to one machine, so the cache and state directories must not be
+  shared between machines. First its `.git` file is read: it
   names `<common-dir>/worktrees/<id>`, whose `commondir` file gives the
-  owning git directory. Then the directory is removed, and when the owner
-  still exists, pruning runs `git worktree prune` there and deletes the dead
-  run's scratch branch.
+  owning git directory; that record's `gitdir` must name the directory back.
+  When the owner still exists, pruning runs `git worktree remove --force`
+  there and deletes the dead run's scratch branch, holding the clone's lock
+  when the owner is a managed clone. If the removal fails, only the
+  directory and that one `worktrees/<id>/` record are deleted, never a bare
+  `git worktree prune`, which would drop the person's own worktrees whose
+  folders are missing. With the owner gone, or records that do not name the
+  directory, only the directory is removed.
   `mirror list` shows these directories too, so a deleted or no-longer-targeted
   checkout leaves nothing behind in the cache. This walk ignores the age
-  setting.
+  setting. (changed during the build: Build note 1)
   - *Automatic.* At the end of an `update --apply` that served a target from
     a clone or wrote under `worktrees/`, the run walks `worktrees/` and
-    removes clones whose stamp is older than `mirror_max_age_days`. It prints
-    each one removed and the space freed. A run that never touches the cache
-    never removes anything.
+    removes clones whose stamp is older than `mirror_max_age_days`. It notes
+    each thing removed, each thing left for a folder someone else could
+    write to or a clone it may not change, each failure, and the space
+    freed; a failure does not change the run's exit. A run that never
+    touches the cache, or that a signal stopped, never removes anything.
+    (changed during the build: Build note 1)
   - *By hand.* `pr-update mirror prune` walks `worktrees/` and removes clones
-    past the age (none with the age at `0`, unless `--older-than` or `--all`
-    is given).
-    `--older-than <days>` overrides it, `--all` takes every clone,
-    `--dry-run` only reports. It and `list` take `--mirror-dir`, so a
-    directory left behind by a moved `mirror_dir` can be cleaned.
-  - *Never removed:* a clone whose lock another process holds, or one with a
-    kept worktree, even with `--all`. `mirror prune --discard-kept` removes
-    the kept worktrees first.
+    past the age (none with the age at `0`, unless `--older-than` or
+    `--all-clones` is given).
+    `--older-than <days>` overrides it, `--all-clones` takes every clone
+    (`--all` is cli-tool's own, for `--help --all`), `--dry-run` only
+    reports and takes no lock. It and `list` take `--mirror-dir`, so a
+    directory left behind by a moved `mirror_dir` can be cleaned. It exits 1
+    when something could not be removed. (changed during the build: Build note 1)
+  - *Never removed:* a clone whose lock another process holds, one with a
+    kept worktree, or one with a live run's worktree, even with
+    `--all-clones`. `mirror prune --discard-kept` removes the kept worktrees
+    of a clone it is removing first. (changed during the build: Build note 1)
   - Removing a clone leaves its repository's attempt records in the state
     home. They are history, not cache, and later runs that reach the
     repository from outside it, located or cloned, read them.
@@ -439,10 +550,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   Neither sees the other's records, so a PR skipped from one may be retried
   from the other. This keeps criterion 5. `git-ref` shares records across
   both, and across machines (B-0003).
-- pr-update keeps state under two roots for a while: everything above under
-  `osdlc/pr-update/`, and devlink's files and the trust store
-  (`$XDG_STATE_HOME/pr-update/trusted/`) under `pr-update/`. Each category lives
-  in one place, and the others can move over one at a time.
+- pr-update keeps state under two roots for a while: everything above and the
+  trust store (`<state>/osdlc/pr-update/trusted/`) under `osdlc/pr-update/`,
+  and devlink's files under `pr-update/`. Each category lives in one place, and
+  devlink's can move over later. Trust granted under the old
+  `$XDG_STATE_HOME/pr-update/trusted/` was not carried over: a person runs
+  `pr-update trust` again.
 - A host that builds one attempt store or lease for several repositories has
   the same problem the facts name for `git-ref`. That is outside this record.
 
@@ -451,14 +564,455 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - A machine target for `pr-update config set`, in cli-tool's `config-command.ts`
   so every tool gets it. `pr-update mirror enable` and `disable` cover the
   `checkout` and `mirror_dir` keys until then.
-- Move devlink's files and the trust store under `osdlc/pr-update/`, or keep
-  them where they are on purpose. The trust store first needs to resolve
-  through tiered-dirs, with an `app` option (osdlc/osdlc#1010). Its markers
-  stay keyed by `pr-update`, never by `osdlc`, so consent given to pr-update
-  covers no other osdlc tool.
+- Move devlink's files under `osdlc/pr-update/`, or keep them where they are
+  on purpose. The trust store has moved: trust-repo resolves it through
+  tiered-dirs with its `app` option, as tool `osdlc`, app `pr-update`, so
+  consent given to pr-update covers no other osdlc tool.
 - Project config at `<repo>/.osdlc/pr-update.yaml` instead of `pr-update.yaml`
   at the root. No repository commits a `pr-update.yaml` today, so the move would
   break no one, but it is not part of this record.
+- Hooks in the project root. Its run worktrees still run git with hooks on,
+  as before, so a relative `core.hooksPath` (such as `.husky`) runs hooks
+  from the PR's tree there. Every other target runs with hooks off (Build
+  note "Hooks off outside the project root"). Turning them off for the root
+  too would stop the person's own hooks, so it is the owner's call.
+- ref-lease should take a runner. It makes its own git client, so a target's
+  `git-ref` record and lease cannot go through `withoutRepositoryVars` and
+  instead name the target's repository in their environment (Build note
+  "Repository variables (`GIT_DIR` and the rest)").
+- A folder check on Windows. Ownership and mode are checked on POSIX only:
+  NTFS ACLs are not read, so on Windows a clone directory, `worktrees/` or
+  `kept/` that another user can write to is not refused.
+- The next run's cleanup of a killed run's worktree (`releaseStaleScratch`)
+  judges the run by its pid alone; pruning also reads its start time (Build
+  notes).
+
+## Build notes
+
+- **Decision text edited during the build.** This is Build note 1. S6 to S8 changed the Decision
+  to match the code as it was built. Each block they changed ends with
+  "(changed during the build: Build note 1)", and each block they added with
+  "(added during the build: Build note 1)". The accepted wording of each, and
+  the note that explains the change:
+  - `mirror_max_age_days`: "a bare `mirror prune` then removes no clone
+    unless given `--older-than` or `--all`". See "`mirror prune`'s flags".
+  - A located checkout's run worktree: "Inside the checkout the run writes
+    only git's worktree records, its scratch branch and the fetched
+    `origin/*` refs. A killed run leaves its worktree and scratch branch until
+    pruning (below) or a later run on the same checkout removes them." See
+    "What a run writes in a located checkout" and "What a killed run can
+    leave in a located checkout".
+  - Hooks off in a located checkout: not in the accepted text. See "Hooks off
+    outside the project root".
+  - Who clones: "They take the clone's lock for the fetch and write the
+    clone's last-used stamp, so a clone only surveyed is not pruned as
+    unused. They prune nothing." See "`survey`, rehearsals and the clone
+    lock".
+  - First use asks: the accepted text ended at "re-reads the file and uses the
+    answer it finds", with nothing on a machine file that cannot take the
+    answer (exit 14) or a bad value in it. See "A machine file that cannot
+    take an answer".
+  - `pr-update mirror`: "`enable [--dir <dir>]` writes `checkout: mirror`
+    and, with `--dir`, `mirror_dir`". See "`mirror enable --mirror-dir`".
+  - Clone step 1: the directory "must not be inside a git working tree, and
+    must be missing, empty or already marked by this tool", with no rule on
+    owner or mode. See "The folder rule".
+  - Clone step 3: "`gh repo clone <host/owner/name> <tmp> --no-upstream --
+    --bare`", with no `GH_HOST` and nothing on hooks. See "Clone step 3" and
+    "Hooks off outside the project root".
+  - A clone that exists: not in the accepted text, which did not say when a
+    clone already at the clone path is used, or what happens when a prune
+    removed it first. See "The folder rule" and "Clone locks".
+  - Trust: "A clone is keyed by `host/owner/name`, which trust-repo does not
+    support yet (with [osdlc/osdlc#1010](https://github.com/osdlc/osdlc/issues/1010))."
+    trust-repo's repository keys are now built. See "Ports in names and
+    paths".
+  - The Cleanup table: the kept-worktree row ended at "or the PR moving", and
+    the `origin/<branch>` row read "`fetch --prune`, on each unscoped run that
+    fetches". See "Kept trees" and "A located checkout's fetch does not
+    prune".
+  - Pruning clones: "An `update --apply` holds a clone's lock from its clone
+    or fetch through its `git worktree add`, as one step, and again for
+    `worktree remove`. … It waits up to 60 seconds for the lock, then skips
+    the target with reason `mirror busy`." Dead worktrees were found by "the
+    executor's existing check", and a `.tmp-*.git-<pid>` folder "left by a
+    killed clone is removed", with no hour's wait, no probe folders, no
+    rename before deleting, and no folder rule. See "Clone locks", "Telling a
+    dead run", "Leftovers" and "The folder rule".
+  - The walk of `worktrees/`: "A directory whose run is dead (the same pid
+    check) is removed. … pruning runs `git worktree prune` there and deletes
+    the dead run's scratch branch." See "Telling a dead run" and "Removing a
+    dead run's worktree".
+  - *Automatic*: "It prints each one removed and the space freed. A run that
+    never touches the cache never removes anything." Nothing on failures,
+    folders it left, or a signal. See "Pruning at the end of a run".
+  - *By hand*: "`--all` takes every clone, `--dry-run` only reports", with
+    nothing on locks or the exit code. See "`mirror prune`'s flags".
+  - *Never removed*: "a clone whose lock another process holds, or one with a
+    kept worktree, even with `--all`. `mirror prune --discard-kept` removes
+    the kept worktrees first." Nothing on a live run's worktree. See
+    "`mirror prune`'s flags".
+- **What a run writes in a located checkout.** Nothing in its working tree,
+  index or HEAD. In its git directory:
+  - a `worktrees/<id>/` record for each run worktree and kept tree, which
+    live under pr-update's cache and state;
+  - the run's scratch branch, `pr-update/scratch-<run>`, deleted at the end;
+  - a kept tree's branch, `pr-update/failed-<owner>-<name>-<number>`, kept
+    until the tree is discarded;
+  - the objects the update builds (merges, rebases, repair commits, and the
+    record and lease commits of `git-ref`), and the reflog entries of the
+    refs above;
+  - `refs/remotes/origin/*` from the run's fetch and push;
+  - with `git-ref`, local `refs/pr-update/*` refs mirroring the remote's
+    record and lease;
+  - the line `/.pr-update-verify.log` in `info/exclude`, written once, when a
+    kept tree gets a verify log;
+  - with submodules, the `submodule.<name>.url` and `.active` keys in its
+    config, set for the update and put back as they were after each PR, and
+    the submodule clones git makes for the run worktree.
+
+  git may also run `gc --auto` there, as after any commit.
+- **What a killed run can leave in a located checkout.** The run worktree's
+  record and the scratch branch (the next run on that checkout removes them,
+  since the run's pid is in the worktree's name); `submodule.*` keys that
+  were not put back; and, when it stopped between making a kept tree and
+  writing its record, a kept tree with no record. A later keep of that PR
+  refuses to move into that folder, names it, and says how to remove it.
+  Outside the checkout it can leave the run worktree's folder under the
+  cache and, with `git-ref`, a lease ref on the remote until its TTL ends.
+- **Cleaning up in a located checkout.** The run never runs a bare
+  `git worktree prune` there, which would also drop the person's worktrees
+  whose folders are missing. When `git worktree remove` of a run's own tree
+  fails, it deletes only that tree's `worktrees/<id>/` record, after checking
+  that its `gitdir` names a folder under pr-update's own directories.
+- **Kept trees.** A record is used only when its `path` is the kept path its
+  file name gives, compared by the real path of its folder. A tree whose
+  owning git directory is gone, or that git cannot read, or that someone has
+  changed, is never removed for being stale, `--retry-failed` included: the
+  PR is skipped until `--discard-kept`. This holds for the project root's
+  kept trees too, where `--retry-failed` used to discard a changed one.
+  Different filesystems are found by renaming an empty probe folder,
+  `.pr-update-probe-*`, into the kept directory and reading `EXDEV`; git's
+  text, read in the C locale, is only a fallback.
+- **Kept records are not trusted.** A checkout's kept place,
+  `.pr-update/failed/`, is in its working tree, so a cloned repository can
+  commit a record there that names another repository's git directory and a
+  branch to delete. Built after review, a record is refused when its branch
+  is not `pr-update/failed-<owner>-<name>-<number>`, its path is not an
+  absolute path to that PR's kept folder, or it names a `gitDir` in a
+  checkout's own place, where pr-update never writes one. A tree is removed
+  only through the git directory serving its place, and only when `git
+  worktree list` there shows the folder on the record's branch; that check
+  runs before any git runs in the folder. A refused record and its folder are
+  left as they are, listed in the report's `keptRefused`, and the PR is
+  updated as if nothing were kept, so a committed file cannot hold a PR back.
+  After the first review of these fixes, that check was split. A folder `git
+  worktree list` does not show at that path, or a kept path that is a
+  symbolic link, is refused as before. A folder it shows at that path on
+  another branch, or detached, is the person's: the PR is skipped as changed,
+  nothing is removed, and `--discard-kept` leaves it (`keptLeft`). Every
+  removal of a kept tree, a keep replacing the PR's old one included, checks
+  the folders from the place's root down to it.
+- **Names starting with `.`.** A hard kill can leave the probe in
+  `worktrees/<host>/<owner>/<name>/` or `kept/<host>/<owner>/<name>/`. Every
+  walk pr-update makes of its own folders skips names starting with `.`:
+  listing kept trees, and the walks of `mirror prune` and `mirror list`.
+  Pruning removes a `.pr-update-probe-*` folder once it is an hour old.
+- **Per-target errors.** An error from a target's own attempt store or lease
+  (a remote that refuses `refs/pr-update/*`) skips that target's PRs with the
+  error, and the run goes on. An error saving the record of a PR that already
+  ran is reported on that PR (`recordError`), and any error no PR or skip
+  shows is listed in the report's `recordErrors`. An error from the project
+  root's store ends the run, as before. The stores of targets the trust gate
+  refused are not pruned.
+- **A host's `Ports`.** Scope says they are unchanged. `Ports.locate` is
+  widened in a compatible way: `(repo, target?) => string | FoundCheckout |
+  null`, asked with a lower-cased `owner/name` and the target's host. A
+  one-argument `locate` that returns a path still compiles and is read
+  through `--remote`, as before. `FoundCheckout` carries `others`, the
+  repository's other checkouts, for the `unpushed_local` guard. A new
+  optional port, `Ports.targetHome(target)`, says where a checkout keeps its
+  run worktrees, kept trees, attempts and lease; without it, a host's
+  checkout is served from its own `.pr-update/`, as the project root is. A
+  host gets managed clones only by supplying `SurveyEnv.clones`.
+- **The host of a bare `owner/name`.** "The project root's host" is the host
+  of its `origin`, the remote its code host is picked from, after an SSH
+  config alias is resolved with `ssh -G`. When `ssh -G` cannot resolve it, a
+  note says so and the alias is used as written. A root that is not on
+  GitHub gives github.com. `--remote` names only the project root's own
+  repository and the remote it fetches.
+- **Which targets can be cloned.** "GitHub only" means github.com, or the
+  project root's host when its code host is GitHub (an Enterprise host with
+  `code_host.override: github`). Any other host gets the note `there is no
+  managed clone for <host>`, is never asked about, and runs no `gh repo
+  clone`. Such a target is still listed through `gh` on its own host, so an
+  Enterprise host named from a github.com root can be surveyed in a checkout
+  but not cloned.
+- **Ports in names and paths.** A host's port is kept for `GH_HOST`, the
+  clone's credential key and the report. Every clone, run worktree, kept and
+  attempt path, and the trust key, use `hostKey`: the host lower-cased with
+  no port. So `forgejo.local:3000/x/y` and `forgejo.local/x/y` are one
+  target, and no path segment holds a `:`.
+- **What `--repo` accepts.** Its `host/owner/name`, port dropped, must be a
+  key trust-repo accepts (`parseTrustRepo`): a host name, owner and name of
+  at most 200 characters, and no name ending in `.git` (the message gives the
+  form without it). A part Windows cannot use as a folder name is refused
+  too. Each of these exits 2.
+- **A located checkout's fetch does not prune.** The Cleanup table's row for
+  `origin/<branch>` said every unscoped fetch prunes. A checkout other than
+  the project root is fetched with the refspec
+  `+refs/heads/*:refs/remotes/origin/*`, no tags and no `FETCH_HEAD`. A
+  refspec on the command line does not stop git from also applying the
+  checkout's own fetch lines to what it fetches, so after review every such
+  fetch, scoped or not and a clone's too, passes an empty `--refmap=`;
+  without it a forced line into `refs/heads/` overwrote a local branch.
+  Against that refspec, `--prune` would delete refs its own fetch lines keep,
+  such as `origin/pr/*`, so a located checkout is fetched with `--no-prune`,
+  which beats a `fetch.prune` or `remote.origin.prune` in its config. A stale
+  `origin/<deleted>` there is harmless: survey reads only the listed PRs'
+  head and base. The project root and a managed clone still prune.
+- **Several checkouts of one repository.** The record did not say which one
+  serves the run. The first by path does, and a note names the others. The
+  `unpushed_local` guard reads every one, shallow ones included, each against
+  its own `origin/<head>`.
+- **A shallow-only checkout.** It counts as no checkout. A note says `<path>
+  is shallow, so it is not used`, the first-run question names it, and a
+  clone is still allowed.
+- **`roots: []`.** "With no roots" means no file or no `roots` key, as
+  D-ZVIA's table says. `roots: []` scans nothing.
+- **File attempts.** "One file per `host/owner/name`, head and base" is one
+  store per repository, `attempts/<host>/<owner>/<name>/` in the state home,
+  holding one file per head and base branch, as the project root's store
+  does. A repository with no store of its own falls back to `Ports.attempts`.
+- **Kept names.** In a repository's own kept folder a tree is named
+  `<number>`. Its branch stays `pr-update/failed-<owner>-<name>-<number>`, so
+  branches in a shared checkout stay apart. A record stores the owning git
+  directory (`gitDir`) only for places outside a checkout, so the project
+  root's records are unchanged.
+- **What a target's trust gate covers.** The Trust bullet names commands a
+  target's own files choose (`verify: detect`, `lockfile_install`). Built, it
+  covers every setting that starts a command in a target's worktree, from any
+  config layer or flag: `lockfile_install`, `resolvers`, a `verify` other
+  than `none`, `repair.command` and `repair.agent`. A target's own files
+  decide what each of these runs. With none set, no trust is needed. The gate
+  runs before any verify list is asked for and before kept trees are
+  settled. A grant by name does not cover a located checkout.
+- **A clone is made before the trust gate.** Cloning has its own consent and
+  runs nothing from the repository. An untrusted target's clone stays, and
+  nothing runs or is pushed in it.
+- **When the clone is made.** `survey` never clones. `update --apply`
+  resolves its targets once, clones those with no checkout after consent, and
+  then surveys the resolved targets. For a target that can be cloned it holds
+  back locate's not-found note, so the person reads one line.
+- **`survey`, rehearsals and the clone lock.** As accepted, they took the
+  lock for the fetch and pruned nothing. Built, a survey's unscoped fetch of a
+  managed clone prunes, since nothing outside pr-update keeps refs there; a
+  fetch scoped by `--pr` or `--branch` asks for named refs and does not. `survey`
+  takes the lock without waiting and holds it while it fetches and reads the
+  clone. When another run holds it, `survey` reads the clone as it is,
+  without a fetch, with a note; if the clone is gone after that read, what
+  was read is dropped and the target is reported not measured. A rehearsal
+  holds locks as `update --apply` does but never waits, and skips a busy
+  clone as `mirror busy`.
+- **`checkout: local` and a clone that exists.** The clone is not used:
+  `local` means no clone.
+- **No terminal.** The error also names `pr-update mirror disable`, the way
+  to keep the old skip.
+- **A machine file that cannot take an answer.** When it is not valid YAML,
+  or its top level is not a map, `update --apply` exits 14 before it asks,
+  and `mirror enable` and `mirror disable` exit 14 too, leaving it as it is.
+  A bad value in it is noted with the file's path and ignored. A relative
+  `PR_UPDATE_MACHINE_CONFIG` is an error, exit 1. Every write is a
+  compare-and-swap. When another write lands first, `mirror enable` and
+  `mirror disable` write again over it, since the person just asked for that
+  value, while the first-run answer gives way to a `checkout` already there.
+- **`mirror enable --mirror-dir`.** Accepted as `--dir`. It is
+  `--mirror-dir`, the flag's name on `survey` and `update`. It checks the
+  directory as clone step 1 does, but neither makes nor marks it; the first
+  clone does.
+- **Clone step 3.** `gh repo clone` takes `<owner>/<name>`, so the host goes
+  in `GH_HOST`, with its port. `GH_HOST` is set for every target other than
+  the project root, github.com included, so a `GH_HOST` in the person's
+  environment cannot move a target. `--no-upstream` is a real flag of gh 2.x.
+- **Hooks off outside the project root.** The accepted text said nothing
+  about hooks. Built, every git call pr-update makes for a target other than
+  the project root runs with hooks off (`noHooksEnv`, which sets
+  `core.hooksPath=/dev/null`): in a located checkout or a managed clone, in
+  their run worktrees, the git that `gh repo clone` runs, and pruning's calls
+  in the git directory that owns a dead run's worktree. A review during the
+  build (S6, round 1) found hooks on there blocking: the run worktree checks
+  out the PR's own files, so a relative `core.hooksPath` such as `.husky`
+  would run hooks the PR's author wrote, whether or not the target is
+  trusted. The project root keeps its hooks (Follow-ups).
+- **Repository variables (`GIT_DIR` and the rest).** A git hook exports
+  `GIT_DIR`, and a program it starts inherits it. Every git that program runs
+  then acts on the hook's repository, whatever directory it runs in; in a
+  linked worktree, that moves the main checkout's branch. So these run with
+  `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_INDEX_FILE`,
+  `GIT_OBJECT_DIRECTORY`, `GIT_ALTERNATE_OBJECT_DIRECTORIES` and an inherited
+  `GIT_CEILING_DIRECTORIES` unset, through typed-git's
+  `withoutRepositoryVars` (`REPOSITORY_VARS`), as the locator's own calls do:
+  - every git call for a target other than the project root, including the
+    git that `gh repo clone` runs;
+  - every git call the update makes through the client it updates a checkout
+    with, the project root's included, since that client runs in the run's
+    worktrees and kept trees;
+  - every child started in a worktree pr-update made: verify, resolvers and
+    `lockfile_install` (the standalone `runVerb`), a repair command, a
+    headless repair agent (agent-call's `unsetEnv`) and an attended one.
+
+  The project root's fetch, survey, PR listing and branch mode's sync keep the
+  environment as given: they run where the person ran pr-update. So the two
+  must find the same repository. When one of these variables is set, `survey`
+  and `update` first find the checkout twice, with the variables and without
+  them, and compare the common directory and the top level. If only one finds
+  a checkout, or they find different ones, the run stops with exit 2 before it
+  lists or fetches: "pr-update runs in a git checkout; GIT_DIR and
+  GIT_WORK_TREE are set and point elsewhere — unset them". A bare repository
+  with `GIT_WORK_TREE` (a dotfiles setup) and a `GIT_DIR` naming another
+  repository are refused. A git hook's own `GIT_DIR` passes, since a hook runs
+  at the top of the work tree. So does a run from a subdirectory with no
+  variables, or with both `GIT_DIR` and `GIT_WORK_TREE` naming the checkout.
+  `GIT_DIR` alone from a subdirectory is refused: git then takes that
+  subdirectory as the top of the work tree. When neither finds a checkout, as
+  for a `--repo` run outside one or with git not installed, the run goes ahead
+  and the later checks report what is missing. `GIT_CEILING_DIRECTORIES` is
+  among these variables, though it chooses no repository: an inherited one can
+  stop git finding the directory's own, so it is cleared with the rest
+  (typed-git's `REPOSITORY_VARS` gives the reasons). A target's `git-ref`
+  record and lease run through ref-lease, which makes its own git client and
+  takes no runner (Follow-ups). Their environment names the target's
+  repository instead: `GIT_DIR` and `GIT_COMMON_DIR` are its common directory,
+  `GIT_OBJECT_DIRECTORY` its objects, and `GIT_ALTERNATE_OBJECT_DIRECTORIES`
+  is empty, and a value set wins over an inherited one. ref-lease runs only
+  `hash-object`, `mktree`, `commit-tree`, `update-ref`, `fetch`, `push` and
+  `ls-remote`, which read neither a work tree nor an index, so an inherited
+  `GIT_WORK_TREE` or `GIT_INDEX_FILE` changes nothing there. A library host's
+  own `runVerb` and repair are its own to run.
+- **How a target's PRs are listed.** Every target other than the project
+  root is listed by name. Through `gh` that is `--repo owner/name` with
+  `GH_HOST` set to the target's host, port kept, github.com included, so a
+  `GH_HOST` in the person's environment cannot move it. The code host is chosen from the target's host, not from the remotes of
+  the checkout that serves it: a target on the project root's host is listed
+  through the project root's code host, and one on any other host through
+  GitHub over `gh`. So a Forgejo target on another host is not supported.
+  `--remote` names the project root's repository and the remote it fetches;
+  the project root's `origin` picks the code host.
+- **The folder rule.** Clone step 1 grew the ownership and mode rule now in
+  it: a folder anyone can write to is refused, sticky bit or not, and a
+  group-writable one unless the group is a user private group of the
+  person's (never on macOS). pr-update makes its own folders with mode
+  `0o755`, so it never refuses one it made. The same rule guards the
+  `<host>` and `<owner>` folders, an existing clone, and every folder pruning
+  removes from. For a clone, that is its own folder and its `config` too
+  (added after review): a clone others could write to passed before. `gh`
+  lays a clone down under the umask, so `makeClone` takes write for group and
+  others off the whole tree before the rename. The `<host>` and `<owner>`
+  folders are made one level at a time, each only once the folders above it
+  pass the rule, before the clone's lock is taken; a folder that fails it, or
+  that cannot be made or hold the lock, skips the target with why, where
+  before a symbolic link had a folder made at its far end and an unwritable
+  one ended the run with `EACCES`. A kept tree is removed, by `mirror
+  prune --discard-kept` or by `update`, only when the folders from `kept/`
+  down to it pass the rule; before review only run worktrees, leftovers and
+  `.tmp-*` folders were checked. `Ports.targetHome` gained `keptRoot` for it.
+  The root is compared by its real path, since git names a worktree by its
+  real path: before the first review of these fixes, a state directory
+  reached through a symbolic link skipped every folder between it and a kept
+  tree. A path that is not under the root at all is refused.
+  After the first review of these fixes, the clone is made in a staging
+  folder `mkdtemp` makes (`0700`) beside its place,
+  `.tmp-<name>.git-<pid>-<random>`, so no one else can reach it before it is
+  hardened and renamed into place; pruning's leftover rule takes the new
+  name. Its config gets `maintenance.auto=false` and `gc.auto=0` before its
+  first fetch, which gets both with `-c` too: a detached `git maintenance`
+  that fetch started had taken and dropped `objects/maintenance.lock` while
+  the hardening walk ran, and could write in the clone after it. They stay
+  in the clone's config, so no git command there starts maintenance in the
+  background, where it would write without the clone's lock. After the
+  second review, so a clone used every day is still repacked, pr-update runs
+  `git maintenance run --auto` in the foreground after each fetch of a
+  clone, while it still holds the clone's lock, giving `gc.auto` git's
+  default back for that call and turning off both `autoDetach` settings. The CLI's
+  `main` takes group and others write out of the process's umask, so
+  pr-update and every command it runs never create a file others can write
+  to: fetches after the clone, run and kept worktrees, `FETCH_HEAD`. A host
+  that calls `runUpdate` directly does not get this and sets its own umask.
+  On Windows no ownership or mode check is made, since NTFS
+  ACLs are not read: only the symbolic-link and marker checks apply.
+- **Clone locks.** As accepted, `update --apply` held a clone's lock from its
+  clone or fetch through `worktree add`, and again for `worktree remove`.
+  Built, an `update` takes every lock it needs before its survey, in sorted
+  path order; lets go of a clone with no PR to update once its PRs are
+  picked; takes a lock back to remove a worktree or discard a kept one, and
+  then waits only when it holds no other lock. A worktree whose lock it
+  cannot get back is left, with a note. Rehearsals hold locks too, without
+  waiting. The wait polls with `Atomics.wait`, which blocks the process: fine
+  for the CLI, not for a host with its own event loop.
+- **Telling a dead run.** Pruning reads the run folder's `<pid>.<time>`: the
+  run is dead when no process has the pid, or the process with it started
+  more than 10 minutes after the time. `sameProcess`'s 2 seconds was too
+  tight for a clock step. A start time that cannot be read counts as alive.
+  Pids belong to one machine, so the cache and state directories must not be
+  shared between machines. The next run in the same git directory, which also removes a killed run's
+  worktree (`releaseStaleScratch`), still judges by pid alone: a reused pid
+  keeps a dead run's worktree there until the pid is free or pruning removes
+  it. It never removes a live run's.
+- **Removing a dead run's worktree.** As accepted, pruning removed the
+  directory and then ran `git worktree prune` in the owner. Built, it checks
+  that the owner's record names the directory back, runs `git worktree
+  remove --force` there (under the clone's lock in a clone) and deletes the
+  scratch branch. When that fails it deletes only the folder and that one
+  record. It never runs a bare `git worktree prune`, which would drop the
+  person's own worktrees whose folders are missing.
+- **Leftovers.** A `.tmp-*.git-<pid>` folder or a `.pr-update-probe-*`
+  folder is removed once it is an hour old, so a clone in progress is never
+  taken. A clone is renamed to a `.tmp-*` name before it is deleted, so a
+  removal that stops part-way leaves a leftover, not a broken clone. Empty
+  `<host>` and `<owner>` folders stay: removing them raced with another
+  run's `mkdir`.
+- **`mirror prune`'s flags.** `--all-clones`, not `--all`, which cli-tool
+  keeps for `--help --all`. `--older-than` with `--all-clones` is a usage
+  error. `--dry-run` takes no lock. `--discard-kept` reaches only the kept
+  trees of a clone being removed, and removes a kept tree with no record
+  there too. It exits 1 when something could not be removed; what it skipped
+  (busy, kept, in use, not its own) is not a failure. A clone a live run has
+  a worktree in is in use, and stays even with `--all-clones`. A clone with
+  no last-used stamp is aged by the mtime of its marker, which was written
+  when the clone was made.
+- **Pruning at the end of a run.** It runs after the run has let go of its
+  locks, when an `update --apply` served a target from a clone or made a run
+  worktree for a located checkout under the cache, and not after a signal.
+  After review it reads that from the report's `madeTargetWorktree`, not from
+  the results, so a run whose every lease was refused still prunes. Its notes name
+  what it removed, the space freed, failures, and what it left for a folder
+  someone else could write to or a clone it may not change; a busy, kept or
+  in-use clone is not noted, since that is the cache working as meant. It is
+  not in the JSON output.
+- **Not tested.** Built by construction, with no test that shows it: the
+  results of `osdlcDirs` and `prUpdatePaths` on win32 (tiered-dirs tests its
+  Xdg convention's Windows paths, `%APPDATA%` and `%LOCALAPPDATA%`, but not
+  these two over it); that devlink's `PR_UPDATE_*` variables move none of the
+  files above; and that `PR_UPDATE_CONFIG` moves only the project file. The
+  machine file reads only `PR_UPDATE_MACHINE_CONFIG` and the `OSDLC_*`
+  variables. Also without a test: that only the CLI reads the machine file
+  and asks (a library host gets clones only through `SurveyEnv.clones`), and
+  that removing a clone leaves its attempt records (pruning never walks
+  `attempts/`). Unreachable objects are left to git's own `gc --auto`, with
+  no code here. Windows git's text for a cross-device rename is not checked
+  either; the probe decides first.
+- **Trust granted before this build.** trust-repo first copied the old
+  markers into the new store, and every way of telling whether the copy had
+  run brought back a revoked grant in some case. The owner dropped the copy
+  (2026-11-23): the store under `osdlc/pr-update/` starts empty, so earlier
+  grants stop counting and the person runs `pr-update trust` again, once per
+  machine. It fails closed. The README says so where an upgrading user looks
+  first.
+- **Size.** About 4,700 lines were added to pr-update's `src/`, against the
+  estimate of 700, and about 5,700 to its tests.
+- **Nested groups.** `--repo` takes exactly `owner/name` or
+  `host/owner/name`, so a GitLab repository in a nested group can be found
+  by the locator but not named as a target. The clone is GitHub only.
 
 ## What would reopen it
 

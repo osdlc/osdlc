@@ -688,7 +688,7 @@ describe(`real git (${LOCAL_GIT.text})`, () => {
     'worktrees() reads -z records: a newline in a path, detached and prunable',
     () => {
       const fx = makeGitFixture()
-      const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'typedgit-wt-')))
+      const scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'typedgit-wt-')))
       try {
         fx.commit('base', { 'a.txt': 'a\n' })
         const head = fx.git.revParse('HEAD')

@@ -10,7 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { isatty } from 'node:tty'
 
@@ -102,7 +102,15 @@ function row(patch: Record<string, unknown> = {}) {
 
 function report(rows: ReturnType<typeof row>[], cycles: number[] = []): SurveyReport {
   return {
-    repos: [{ repo: 'o/r', measurable: true, fetched: true, cycles }],
+    repos: [
+      {
+        repo: 'o/r',
+        measurable: true,
+        checkout: { path: '/repo', source: 'root' },
+        fetched: true,
+        cycles,
+      },
+    ],
     prs: rows as SurveyReport['prs'],
     counts: {
       total: rows.length,
@@ -174,6 +182,12 @@ describe('selectTargets', () => {
     expect(notFound).toEqual(['#999', 'o/r#998'])
   })
 
+  test('an owner/name#N selector matches in any letter case, as --repo does', () => {
+    const { targets, notFound } = selectTargets(report([row({ number: 1 })]), ['O/R#1'])
+    expect(targets.map((t) => t.number)).toEqual([1])
+    expect(notFound).toEqual([])
+  })
+
   test('a PR in a base/head cycle is reported in skipped, not lost or "not found"', () => {
     const cyclic = report([row({ number: 1 })], [3, 4])
     const reason = 'in a base/head cycle; no stack order to update it in'
@@ -202,8 +216,20 @@ describe('selectTargets — several repositories holding the same PR number', ()
     return {
       ...report([row({ repo: 'a/x', head: 'ax' }), row({ repo: 'b/y', head: 'by' })]),
       repos: [
-        { repo: 'a/x', measurable: true, fetched: true, cycles: cycles.a ?? [] },
-        { repo: 'b/y', measurable: true, fetched: true, cycles: cycles.b ?? [] },
+        {
+          repo: 'a/x',
+          measurable: true,
+          checkout: { path: '/a', source: 'located' },
+          fetched: true,
+          cycles: cycles.a ?? [],
+        },
+        {
+          repo: 'b/y',
+          measurable: true,
+          checkout: { path: '/b', source: 'located' },
+          fetched: true,
+          cycles: cycles.b ?? [],
+        },
       ],
     }
   }
@@ -973,6 +999,20 @@ describe('runUpdate — two repositories that each hold a PR 1', () => {
     ])
   })
 
+  test("a host's located checkout keeps a worktree of the person's whose folder is missing", async () => {
+    const mine = join(realpathSync.native(join(b.worker.dir, '..')), 'mine')
+    b.worker.git.rawChecked(['worktree', 'add', '-q', '--detach', mine, 'main'])
+    rmSync(mine, { recursive: true, force: true })
+    const out = await run({})
+    expect(out.results.map((r) => r.status)).toEqual(['updated', 'updated'])
+    // Through typed-git, whose paths are in Node's form; git prints `C:/x` on Windows.
+    expect(b.worker.git.worktrees().map((w) => w.path)).toContain(mine)
+    expect(existsSync(join(b.worker.dir, '.pr-update'))).toBe(true)
+    expect(b.worker.git.rawChecked(['worktree', 'list', '--porcelain']).stdout).not.toContain(
+      '.pr-update',
+    )
+  })
+
   test('verify verbs are resolved once per repository, naming it and its checkout, and run there', async () => {
     const asked: { which: string; trust: boolean; repo: string; checkout: string }[] = []
     const ran: { verb: string; cwd: string }[] = []
@@ -987,12 +1027,13 @@ describe('runUpdate — two repositories that each hold a PR 1', () => {
       },
     })
     expect(asked).toEqual([
-      { which: 'check', trust: false, repo: 'a/x', checkout: a.worker.dir },
-      { which: 'check', trust: false, repo: 'b/y', checkout: b.worker.dir },
+      // A checkout other than the project root is named by its real path.
+      { which: 'check', trust: false, repo: 'a/x', checkout: realpathSync.native(a.worker.dir) },
+      { which: 'check', trust: false, repo: 'b/y', checkout: realpathSync.native(b.worker.dir) },
     ])
     expect(ran.map((r) => r.verb)).toEqual(['make check', 'cargo test'])
-    expect(ran[0]!.cwd.startsWith(join(a.worker.dir, '.pr-update'))).toBe(true)
-    expect(ran[1]!.cwd.startsWith(join(b.worker.dir, '.pr-update'))).toBe(true)
+    expect(ran[0]!.cwd.startsWith(join(realpathSync.native(a.worker.dir), '.pr-update'))).toBe(true)
+    expect(ran[1]!.cwd.startsWith(join(realpathSync.native(b.worker.dir), '.pr-update'))).toBe(true)
     expect(out.counts.updated).toBe(2)
   })
 
@@ -1305,6 +1346,50 @@ describe('runUpdate --restack — a three-level stack, against real git', () => 
     expect(out.skipped.map((s) => [s.number, s.reason])).toEqual([
       [2, 'blocked on #1; parent #1 was not pushed (push declined)'],
       [3, 'blocked on #2; parent #2 was not updated'],
+    ])
+  })
+
+  /** A kept tree for #2, `p`, built from the heads the run sees now, as `--keep-failed` leaves it. */
+  function keepP(): string {
+    const { git } = fx.worker
+    const path = join(fx.worker.dir, '.pr-update', 'failed', 'o-r-2')
+    git.worktreeAdd(path, { branch: 'pr-update/failed-o-r-2', startPoint: tip('p') })
+    const record = {
+      repo: 'o/r',
+      number: 2,
+      head: 'p',
+      base: 'g',
+      headOid: tip('p'),
+      baseOid: tip('g'),
+      path,
+      branch: 'pr-update/failed-o-r-2',
+      builtOid: tip('p'),
+    }
+    writeFileSync(`${path}.json`, `${JSON.stringify(record)}\n`)
+    return path
+  }
+
+  test('a restack child whose kept tree a person changed is skipped, and the tree stays (second review)', async () => {
+    const kept = keepP()
+    writeFileSync(join(kept, 'wip.txt'), 'unfinished\n')
+    const before = tip('p')
+    const out = await run({ apply: true, strategy: 'merge' })
+    expect(out.results.map((r) => [r.number, r.status])).toEqual([[1, 'updated']])
+    expect(out.skipped.map((s) => [s.number, s.reason])).toEqual([
+      [2, `kept worktree ${kept} has local changes; push them or pass --discard-kept`],
+      [3, 'blocked on #2; parent #2 was not updated'],
+    ])
+    expect(tip('p')).toBe(before)
+    expect(existsSync(join(kept, 'wip.txt'))).toBe(true)
+  })
+
+  test('a restack child whose kept tree is untouched is still restacked (second review)', async () => {
+    keepP()
+    const out = await run({ apply: true, strategy: 'merge' })
+    expect(out.results.map((r) => [r.number, r.status, r.restackedOnto])).toEqual([
+      [1, 'updated', undefined],
+      [2, 'updated', 1],
+      [3, 'updated', 2],
     ])
   })
 

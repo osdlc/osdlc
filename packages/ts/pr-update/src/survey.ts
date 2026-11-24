@@ -45,15 +45,31 @@
 
 import { z } from 'zod'
 
-import { Git, parseRemoteRepo, type Worktree } from '@osdlc/typed-git'
+import {
+  Git,
+  parseRemoteRepo,
+  readRemote,
+  type RemoteRepo,
+  type SshAliasResolver,
+  type Worktree,
+} from '@osdlc/typed-git'
 
-import type { CodeHost, CodeHostPrDetail } from '@osdlc/code-host'
+import {
+  codeHostNameForRemote,
+  type CodeHost,
+  type CodeHostName,
+  type CodeHostPrDetail,
+} from '@osdlc/code-host'
 import type { CommandRunner } from '@osdlc/command-seam'
+import { parseRepoTarget } from '@osdlc/ecosystem/repositories'
 import { FailureError, type Failure } from '@osdlc/result'
-import { githubCodeHostFor } from './code-host.ts'
+import { parseTrustRepo } from '@osdlc/trust-repo'
+import { maintainClone } from './clone-maintenance.ts'
+import { githubCodeHostFor, type CodeHostTarget } from './code-host.ts'
 import { chooseStrategy, type Strategy } from './strategy.ts'
+import { targetGitOptions } from './update/execute.ts'
 import type { PrUpdateConfig } from './config.ts'
-import type { Ports } from './ports.ts'
+import type { CheckoutSource, FoundCheckout, Ports } from './ports.ts'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -109,14 +125,99 @@ export function selectorLabel(selector: PrSelector): string {
 
 /** A repository to survey, and the checkout its drift is measured in. */
 export interface RepoTarget {
-  /** `owner/name`, as the code host knows it. */
+  /**
+   * `owner/name`, as the code host knows it. Lower-cased for every target but
+   * the project root, which keeps the spelling of its own remote.
+   */
   repo: string
+  /** The host, lower-cased; null for a project root whose remote names none. */
+  host: string | null
   /**
    * Local checkout, or null when this machine has none. Drift and conflict
    * prediction read git objects, so a target with no path is listed and
    * reported unmeasurable, not guessed at.
    */
   path: string | null
+  /** Where {@link path} came from; null with it. */
+  source: CheckoutSource | null
+  /** The remote whose tracking refs are fetched and read: `--remote`, or the checkout's own. */
+  remote: string
+  /**
+   * The checkout as `locate` described it, when it returned a
+   * {@link FoundCheckout} rather than a bare path. Null otherwise.
+   */
+  found: FoundCheckout | null
+  /**
+   * For a target other than the project root: whether a managed clone could serve it, since its
+   * code host is GitHub (github.com, or the project root's host when that is GitHub). Unset for
+   * the project root.
+   */
+  github?: boolean | undefined
+  /**
+   * Why the run has no checkout for this target although it looked for one, such as a managed
+   * clone another run holds (`mirror busy`). `update` skips its PRs with this reason.
+   */
+  unserved?: string | undefined
+}
+
+/** A worktree {@link ManagedClones.removing} takes out of a clone: the run's own, or a kept one. */
+export interface RemovedTree {
+  path: string
+  kind: 'run' | 'kept'
+}
+
+/**
+ * The managed clones of a standalone run (`mirror.ts`), as the survey and `update` use them.
+ * A run without it treats a `clone` checkout as any other.
+ *
+ * Each clone has a lock. `update` holds it from {@link provide} until {@link release}, and again
+ * inside {@link removing}; `survey` holds it only inside {@link use}.
+ */
+export interface ManagedClones {
+  /**
+   * `update` only, before its survey: take the lock of every clone the run will use, in sorted
+   * path order, and return the targets. With `apply` (`update --apply`) it first serves each
+   * target with no checkout from a clone where consent allows, making the clone when there is
+   * none, and waits for a lock another run holds; a rehearsal makes no clone and does not wait.
+   * A target it serves points at its clone; one it cannot has {@link RepoTarget.unserved} set
+   * (`mirror busy`, say).
+   *
+   * @throws SurveyUsageError when it must ask and cannot, or the clone directory is unusable.
+   * @throws ConfigInvalidError when the machine file cannot take the answer it would ask for.
+   */
+  provide(targets: readonly RepoTarget[], opts: { apply: boolean }): RepoTarget[]
+  /**
+   * Run `read`, which fetches into and reads the clone at `clone`, under the clone's lock, so a
+   * prune cannot remove the clone part-way, and write the clone's last-used stamp. When this run
+   * holds the lock already, `read` runs at once. The lock is never waited for: when another run
+   * holds it, a note says so and `read(false)` runs without it, to read the clone as it is with
+   * no fetch. When the clone is no longer there after that read (a prune held the lock), what
+   * `read` returned or threw is dropped, a note says so, and `gone(why)` answers instead. A
+   * clone that is gone, or no longer passes `checkClone`, once the lock is taken is not read
+   * or stamped: a note says so, and `gone(why)` answers. Returns what `read` or `gone` does.
+   */
+  use<T>(clone: string, read: (mayFetch: boolean) => T, gone: (why: string) => T): T
+  /**
+   * Let go of the lock {@link provide} took for the clone at `clone`: the run has added its
+   * worktree there, or has nothing to do in it. Nothing when the run does not hold it.
+   */
+  release(clone: string): void
+  /**
+   * Run `remove`, which changes the clone at `clone` (takes `tree`, the run's worktree or a
+   * kept one, out of it), holding the clone's lock. A lock the run holds is used as it is. One
+   * it does not hold is taken back: `update --apply` waits for it only when the run holds no
+   * other clone's lock, so a run that waits holds nothing another run could be waiting for; a
+   * rehearsal, or a run that holds another lock, does not wait.
+   *
+   * A clone is never changed without its lock: when the lock cannot be taken, `remove` is not
+   * run, the result is false, and a note names `tree.path` and what removes it later: for a run
+   * worktree the next run in the clone (which removes a dead run's worktree) or
+   * `pr-update mirror prune`; for a kept worktree another `--discard-kept`. A lock taken back
+   * here is let go before it returns.
+   */
+  removing(clone: string, tree: RemovedTree, remove: () => void): boolean
+  /** Let go of every lock the run still holds. */
+  close(): void
 }
 
 export interface SurveyRow {
@@ -333,9 +434,16 @@ export function surveyRows(
     measurable: boolean
     /** The remote whose tracking refs are read. Defaults to `origin`. */
     remote?: string
+    /**
+     * The repository's other checkouts on this machine, each with its own worktrees (`null` when
+     * they could not be listed) and the remote they push to. The `unpushed_local` guard reads
+     * them as it reads `worktrees`.
+     */
+    others?: readonly { git: Git; worktrees: readonly Worktree[] | null; remote: string }[]
   },
 ): { rows: SurveyRow[]; cycles: number[] } {
   const remote = opts.remote ?? 'origin'
+  const others = opts.others ?? []
   const { order, cycles } = topoOrder(prs)
   const edges = parentEdges(prs)
 
@@ -363,8 +471,11 @@ export function surveyRows(
     rows: order.map((pr) => {
       const m = measured.get(pr.number)!
       const blockedBy = nearestBehindAncestor(pr.number, edges, behindOf)
+      // Each other checkout is read against its own `<remote>/<head>`. That ref is as fresh as
+      // that checkout's last fetch, and a stale one can only report more work as unpushed.
       const unpushed = opts.measurable
-        ? unpushedLocalWork(git, opts.worktrees, pr.headRef, remote)
+        ? unpushedLocalWork(git, opts.worktrees, pr.headRef, remote) ||
+          others.some((o) => unpushedLocalWork(o.git, o.worktrees, pr.headRef, o.remote))
         : false
       const decision = chooseStrategy(
         {
@@ -373,7 +484,9 @@ export function surveyRows(
           ahead: m.ahead,
           reviews: pr.reviewCount,
           unpushedLocal: unpushed,
-          worktreesUnknown: opts.measurable && opts.worktrees === null,
+          worktreesUnknown:
+            opts.measurable &&
+            (opts.worktrees === null || others.some((o) => o.worktrees === null)),
           crossRepo: pr.isCrossRepository,
         },
         opts.cfg,
@@ -431,12 +544,108 @@ export function scopeToPrs(
 // ---------------------------------------------------------------------------
 
 /**
+ * A host as two hosts are compared: lower-cased and without a port. A remote's
+ * host is read without its port, and `--repo` keeps the one it names, so
+ * `forgejo.local:3000` and `forgejo.local` are one host. It is also the host
+ * of every path and trust key a target gets, so none holds a `:`.
+ */
+export function hostKey(host: string): string {
+  return host.toLowerCase().replace(/:\d+$/, '')
+}
+
+/**
+ * Whether `part` cannot name a folder on Windows: it holds one of `<>:"|?*`, ends in `.` or a
+ * space, or is a reserved device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9`)
+ * in any case, with or without an extension.
+ */
+function notAWindowsFolder(part: string): boolean {
+  return (
+    /[<>:"|?*]/.test(part) ||
+    /[. ]$/.test(part) ||
+    /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(part)
+  )
+}
+
+/** Whether `text` reads as a trust key, `host/owner/name` (trust-repo's `parseTrustRepo`). */
+function isTrustKey(text: string): boolean {
+  try {
+    parseTrustRepo(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * A `--repo` read as a target: its host (`defaultHost` when it names none),
+ * owner and name, lower-cased. Its `host/owner/name`, with the host's port
+ * left out, must be a trust key, since that key trusts a clone of it and
+ * names its clone, kept and attempt paths. An owner or a name that cannot be
+ * a folder on Windows is refused too, since each is a path segment.
+ *
+ * @throws SurveyUsageError naming what is wrong.
+ */
+function parseRepoFlag(
+  text: string,
+  defaultHost: string,
+): { host: string; owner: string; name: string; hostGiven: boolean } {
+  const bad = new SurveyUsageError(`--repo ${text}: not owner/name or host/owner/name`)
+  let parsed
+  try {
+    parsed = parseRepoTarget(text)
+  } catch {
+    throw bad
+  }
+  const owner = parsed.owner.toLowerCase()
+  const name = parsed.repo.toLowerCase()
+  const host = parsed.host?.toLowerCase() ?? defaultHost
+  if (name.length > 4 && name.endsWith('.git')) {
+    throw new SurveyUsageError(
+      `--repo ${text}: name the repository without .git, as ${text.trim().slice(0, -4)}`,
+    )
+  }
+  if (owner.includes(':') || name.includes(':') || !isTrustKey(`github.com/${owner}/${name}`)) {
+    throw bad
+  }
+  const unsafe = [owner, name].find(notAWindowsFolder)
+  if (unsafe !== undefined) {
+    throw new SurveyUsageError(`--repo ${text}: ${unsafe} cannot be a folder name on Windows`)
+  }
+  if (!isTrustKey(`${hostKey(host)}/${owner}/${name}`)) {
+    throw new SurveyUsageError(`--repo ${text}: ${hostKey(host)} is not a host name`)
+  }
+  return { host, owner, name, hostGiven: parsed.host !== undefined }
+}
+
+/** Options for {@link resolveTargets}. */
+export interface ResolveTargetsOptions {
+  /** The run's `--remote`, read in the project root and in a checkout `locate` gives as a bare path. Default `origin`. */
+  remote?: string | undefined
+  /** The host of the project root's `remote`, lower-cased, or null when that remote names none. Default null. */
+  rootHost?: string | null | undefined
+  /** The host a bare `owner/name` means. Default `github.com`. */
+  defaultHost?: string | undefined
+  /**
+   * The project root's host when its code host is GitHub (an Enterprise host with
+   * `code_host.override: github`, say), else null. A target there or on github.com could be
+   * served by a managed clone. Default null.
+   */
+  githubHost?: string | null | undefined
+}
+
+/**
  * Which repositories to survey, and where each is checked out.
  *
  * The repository at `--project-root` is always the default target and needs
- * no config. `--repo owner/name` names others, and `ports.locate` finds each
- * one's checkout, through the host's own registry or what a standalone run
- * provides (see `defaults.ts`).
+ * no config. `--repo owner/name` (or `host/owner/name`) names others, and
+ * `ports.locate` finds each one's checkout, through the host's own registry or
+ * what a standalone run provides (see `defaults.ts`).
+ *
+ * Each `--repo` is resolved once, here. Any other than the project root is
+ * lower-cased, and a bare `owner/name` gets `defaultHost`, so `Acme/API` and
+ * `acme/api` are one target and every later lookup compares that form. One
+ * that names the project root's repository, in any letter case, is the
+ * project root.
  *
  * Only `--repo` puts a repository in scope. A host's repository registry does
  * not, so a bare run stays on the local repository and never spreads to every
@@ -445,22 +654,76 @@ export function scopeToPrs(
  * A named repo with no checkout on this machine is kept and reported
  * unmeasurable, not dropped. Quietly surveying fewer repositories than were
  * asked for would be worse.
+ *
+ * @throws SurveyUsageError when a `--repo` is not `owner/name` or `host/owner/name` (one
+ * that cannot be a trust key, or whose name ends in `.git`), or when
+ * two name one `owner/name` on different hosts: every report and `--pr` key names a
+ * repository by `owner/name` alone, so the run could not tell them apart.
  */
 export function resolveTargets(
   localRepo: string | null,
   localPath: string,
   selected: readonly string[],
-  locate: (repo: string) => string | null,
+  locate: Ports['locate'],
+  opts: ResolveTargetsOptions = {},
 ): RepoTarget[] {
-  if (selected.length === 0) {
-    return localRepo === null ? [] : [{ repo: localRepo, path: localPath }]
-  }
+  const remote = opts.remote ?? 'origin'
+  const rootHost = opts.rootHost ?? null
+  const defaultHost = opts.defaultHost ?? 'github.com'
+  const githubHost = opts.githubHost ?? null
+  const root: RepoTarget | null =
+    localRepo === null
+      ? null
+      : { repo: localRepo, host: rootHost, path: localPath, source: 'root', remote, found: null }
+  if (selected.length === 0) return root === null ? [] : [root]
   const seen = new Set<string>()
+  // `owner/name`, lower-cased, to the `--repo` that named it first.
+  const named = new Map<string, { text: string; host: string | null }>()
   const out: RepoTarget[] = []
-  for (const repo of selected) {
-    if (seen.has(repo)) continue
-    seen.add(repo)
-    out.push({ repo, path: repo === localRepo ? localPath : locate(repo) })
+  for (const text of selected) {
+    const { host, owner, name, hostGiven } = parseRepoFlag(text, defaultHost)
+    const repo = `${owner}/${name}`
+    const isRoot =
+      root !== null &&
+      repo === root.repo.toLowerCase() &&
+      (!hostGiven || (rootHost !== null && hostKey(host) === hostKey(rootHost)))
+    const key = isRoot ? '' : `${hostKey(host)}/${repo}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const first = named.get(repo)
+    const at = isRoot ? rootHost : host
+    if (
+      first !== undefined &&
+      (first.host === null ? null : hostKey(first.host)) !== (at === null ? null : hostKey(at))
+    ) {
+      throw new SurveyUsageError(
+        `--repo ${first.text} and --repo ${text} are ${repo} on different hosts; a run takes one of them`,
+      )
+    }
+    named.set(repo, { text, host: at })
+    if (isRoot) {
+      out.push(root)
+      continue
+    }
+    const github =
+      hostKey(host) === 'github.com' ||
+      (githubHost !== null && hostKey(host) === hostKey(githubHost))
+    const checkout = locate(repo, { host: hostKey(host), owner, name, github })
+    out.push(
+      checkout === null
+        ? { repo, host, path: null, source: null, remote, found: null, github }
+        : typeof checkout === 'string'
+          ? { repo, host, path: checkout, source: 'located', remote, found: null, github }
+          : {
+              repo,
+              host,
+              path: checkout.path,
+              source: checkout.source,
+              remote: checkout.remote,
+              found: checkout,
+              github,
+            },
+    )
   }
   return out
 }
@@ -485,7 +748,7 @@ export const SCOPE_SHAPE = {
     .array(z.string())
     .default([])
     .describe(
-      'Repository to survey as `owner/name`, repeatable. Defaults to the repository at --project-root alone. Others are located via the host `locate` port; one with no checkout on this machine is listed as unmeasurable.',
+      "Repository to survey as `owner/name` or `host/owner/name`, repeatable; a bare `owner/name` is on the host of the project root's origin when that is GitHub, else github.com. Defaults to the repository at --project-root alone. Others are located via the `locate` port, which in a standalone run searches the `repositories.yaml` roots; one with no checkout on this machine is listed as unmeasurable.",
     ),
   noFetch: z
     .boolean()
@@ -502,7 +765,12 @@ export const SCOPE_SHAPE = {
     .int()
     .default(100)
     .describe('Maximum number of open PRs to list per repository.'),
-  remote: z.string().default('origin').describe('Remote to fetch from and measure against.'),
+  remote: z
+    .string()
+    .default('origin')
+    .describe(
+      "The project root's remote to fetch from and measure against. A checkout `locate` describes with its own remote is read through that one.",
+    ),
   pr: z
     .array(
       z.union([
@@ -569,10 +837,25 @@ export const repoFailure = z.object({
   hint: z.string().optional(),
 })
 
+/** The checkout a repository was measured in. */
+export const checkoutEntry = z.object({
+  path: z.string().describe('The checkout, absolute.'),
+  source: z
+    .enum(['root', 'located', 'clone'])
+    .describe(
+      '`root`: the project root. `located`: a checkout found on this machine. `clone`: a managed clone.',
+    ),
+})
+
 /** One surveyed repository, as `survey` and `update` both report it. */
 export const repoEntry = z.object({
   repo: z.string().describe('`owner/name`.'),
   measurable: z.boolean().describe('False when no local checkout is known.'),
+  // Optional when read, so a report written before the field existed still parses; always written.
+  checkout: checkoutEntry
+    .nullable()
+    .optional()
+    .describe('The checkout the repository was measured in; null when there is none.'),
   fetched: z.boolean(),
   cycles: z
     .array(z.number())
@@ -625,12 +908,29 @@ export interface SurveyEnv {
   /** Runs `gh` for the default GitHub code host. Unused when `codeHost` is given. */
   gh: CommandRunner
   /**
-   * The code host for one surveyed repository: `cwd` is the checkout to run
-   * from, `repo` the repository. Absent means GitHub over `gh`.
+   * The code host for one surveyed repository (see {@link CodeHostTarget}).
+   * Absent means GitHub over `gh`.
    */
-  codeHost?: ((target: { cwd: string; repo: string }) => CodeHost) | undefined
+  codeHost?: ((target: CodeHostTarget) => CodeHost) | undefined
+  /**
+   * The `code_host.override` config value. With `github`, the project root's
+   * host counts as GitHub whatever its name, as a GitHub Enterprise host
+   * must, so a bare `--repo owner/name` means that host. Default none.
+   */
+  codeHostOverride?: CodeHostName | null | undefined
+  /**
+   * Looks up the host an SSH config alias in the project root's remotes stands
+   * for (`git@github-work:o/r.git`), when a run has `--repo` targets. Default:
+   * typed-git's, which asks `ssh -G`. An alias it cannot resolve is read as written.
+   */
+  resolveAlias?: SshAliasResolver | undefined
   cfg: PrUpdateConfig
   ports: Pick<Ports, 'locate'>
+  /**
+   * The standalone run's managed clones: a clone is fetched under its lock and stamped as used.
+   * Absent means a `clone` checkout is fetched as a located one is.
+   */
+  clones?: ManagedClones | undefined
 }
 
 /**
@@ -656,21 +956,62 @@ export function remoteSlug(url: string): string | null {
   return ref === null ? null : `${ref.owner}/${ref.repo}`
 }
 
+/** What {@link surveyTargets} resolved: the project root's hosts and every target. */
+export interface ResolvedTargets {
+  localRepo: string | null
+  rootHost: string | null
+  /** The host of the project root's `origin`, which its code host is picked from. */
+  codeHostHost: string | null
+  targets: RepoTarget[]
+}
+
 /**
  * The repositories a run covers and where each is checked out, from the
- * `remote` and `repo` scope flags. `update` reads the same answer to know
- * which checkout each target's PRs are updated in.
+ * `remote` and `repo` scope flags.
+ *
+ * Two remotes of the project root are read. `--remote` names the project
+ * root's own repository, so a `--repo` naming it is the project root.
+ * `origin` is the remote the project root's code host is picked from
+ * (`selectedCodeHostFor`), so `codeHostHost`, its host, is the one a target
+ * shares that code host on, and a bare `--repo owner/name` means that host
+ * when its code host is GitHub (github.com, or any host with
+ * `code_host.override: github`), and github.com otherwise.
+ *
+ * With `--repo`, an SSH config alias in either remote is resolved to its
+ * host through `env.resolveAlias`; a run without one compares no hosts and
+ * asks ssh nothing.
  */
 export function surveyTargets(
   args: Pick<SurveyArgs, 'remote' | 'repo'>,
-  env: Pick<SurveyEnv, 'projectRoot' | 'git' | 'ports'>,
-): { localRepo: string | null; targets: RepoTarget[] } {
+  env: Pick<SurveyEnv, 'projectRoot' | 'git' | 'ports' | 'codeHostOverride' | 'resolveAlias'>,
+): ResolvedTargets {
   const localGit = new Git(env.projectRoot, { runner: env.git })
+  const read = (url: string | null): RemoteRepo | null =>
+    url === null
+      ? null
+      : args.repo.length > 0
+        ? readRemote(url, env.resolveAlias)
+        : parseRemoteRepo(url)
   const localUrl = localGit.soft.remoteGetUrl(args.remote)
-  const localRepo = localUrl !== null ? remoteSlug(localUrl) : null
+  const local = read(localUrl)
+  const localRepo = local === null ? null : `${local.owner}/${local.repo}`
+  const rootHost = local === null ? null : local.host.toLowerCase()
+  const originUrl = args.remote === 'origin' ? localUrl : localGit.soft.remoteGetUrl('origin')
+  const origin = args.remote === 'origin' ? local : read(originUrl)
+  const codeHostHost = origin === null ? null : origin.host.toLowerCase()
+  const onGithub =
+    codeHostHost !== null &&
+    codeHostNameForRemote(originUrl, env.codeHostOverride ?? null) === 'github'
   return {
     localRepo,
-    targets: resolveTargets(localRepo, env.projectRoot, args.repo, env.ports.locate),
+    rootHost,
+    codeHostHost,
+    targets: resolveTargets(localRepo, env.projectRoot, args.repo, env.ports.locate, {
+      remote: args.remote,
+      rootHost,
+      defaultHost: onGithub ? codeHostHost : 'github.com',
+      githubHost: onGithub ? codeHostHost : null,
+    }),
   }
 }
 
@@ -682,8 +1023,23 @@ export function surveyTargets(
  * the survey plus an apply step, and this function keeps that true.
  */
 export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
+  return surveyWithTargets(args, env).report
+}
+
+/**
+ * {@link runSurvey}, with the targets it resolved. `update` reads them to know
+ * which checkout each target's PRs are updated in, so every target is
+ * resolved, and located, once per run. `resolved` is {@link surveyTargets}'
+ * answer when the caller has it already (`update --apply` clones between the
+ * two), so nothing is located twice.
+ */
+export function surveyWithTargets(
+  args: SurveyArgs,
+  env: SurveyEnv,
+  resolved: ResolvedTargets = surveyTargets(args, env),
+): { report: SurveyReport; targets: RepoTarget[] } {
   const { cfg } = env
-  const { localRepo, targets } = surveyTargets(args, env)
+  const { codeHostHost, targets } = resolved
   const codeHostFor = env.codeHost ?? githubCodeHostFor(env.gh)
 
   // Flags beat config; config beats the built-in default.
@@ -692,7 +1048,8 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
 
   // A key names one repository. One outside this run would select nothing,
   // and a run that quietly did nothing for it would read as "that PR is fine".
-  const inRun = new Set(targets.map((t) => t.repo))
+  // In any letter case, as `--repo` is.
+  const inRun = new Map(targets.map((t) => [t.repo.toLowerCase(), t.repo]))
   const wantedNumbers: number[] = []
   const wantedIn = new Map<string, number[]>()
   for (const selector of args.pr) {
@@ -703,12 +1060,13 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
     const key = parsePrKey(selector)
     if (key === null)
       throw new SurveyUsageError(`--pr ${selector}: not a PR number or owner/name#N`)
-    if (!inRun.has(key.repo)) {
+    const repo = inRun.get(key.repo.toLowerCase())
+    if (repo === undefined) {
       throw new SurveyUsageError(
         `--pr ${selector}: ${key.repo} is not a repository of this run; add --repo ${key.repo}`,
       )
     }
-    wantedIn.set(key.repo, [...(wantedIn.get(key.repo) ?? []), key.number])
+    wantedIn.set(repo, [...(wantedIn.get(repo) ?? []), key.number])
   }
 
   const repos: SurveyReport['repos'] = []
@@ -717,10 +1075,29 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
 
   for (const target of targets) {
     const measurable = target.path !== null
-    const git = new Git(target.path ?? env.projectRoot, { runner: env.git })
+    const checkout =
+      target.path === null || target.source === null
+        ? null
+        : { path: target.path, source: target.source }
+    // A checkout other than the project root is someone else's: git runs there with hooks off
+    // and without an inherited `GIT_DIR`, as `update` runs it (`targetGitOptions`).
+    const elsewhere = target.source === 'located' || target.source === 'clone'
+    const git = new Git(
+      target.path ?? env.projectRoot,
+      elsewhere ? targetGitOptions(env.git) : { runner: env.git },
+    )
 
-    const isLocal = target.repo === localRepo
-    const codeHost = codeHostFor({ cwd: target.path ?? env.projectRoot, repo: target.repo })
+    const isLocal = target.source === 'root'
+    // Any other target is listed on its own host, named even when it is github.com. It
+    // shares the project root's code host when it is on origin's host, which that code host is
+    // picked from.
+    const host = target.host ?? 'github.com'
+    const onRootHost = codeHostHost !== null && hostKey(host) === hostKey(codeHostHost)
+    const codeHost = codeHostFor({
+      cwd: target.path ?? env.projectRoot,
+      repo: target.repo,
+      ...(isLocal ? {} : { host, onRootHost }),
+    })
     const listed = codeHost.listPrDetails({
       limit: args.limit,
       ...(isLocal ? {} : { repo: target.repo }),
@@ -737,6 +1114,7 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
       repos.push({
         repo: target.repo,
         measurable,
+        checkout,
         fetched: false,
         cycles: [],
         failure: {
@@ -769,27 +1147,81 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
     // last fetch left, flagged, instead of failing the whole run. A scoped
     // run with nothing selected here fetches nothing: `git fetch` with no
     // refspec would fetch every branch.
-    const refspecs = scoped ? scopedRefspecs(prs, args.remote) : []
-    const fetched =
+    //
+    // In a checkout other than the project root, the fetch writes only the
+    // remote's branches into `<remote>/*`: no tags, no FETCH_HEAD, an explicit
+    // refspec, and an empty `--refmap=`. Without that, git also applies the
+    // checkout's own `remote.<name>.fetch` lines to what it fetches, even with
+    // refspecs given, and a forced line into `refs/heads/` would overwrite a
+    // local branch. A located checkout is fetched with `--no-prune`, which beats
+    // a `fetch.prune` in its config: against that refspec, prune would delete
+    // every `<remote>/*` ref with no branch behind it, such as a `pr/*` the
+    // checkout's own fetch line keeps there. A managed clone is the run's own, so its
+    // unscoped fetch prunes. A clone is fetched and read under its lock, which stamps it as used.
+    const { remote } = target
+    const own = target.source === 'root'
+    const clone = target.source === 'clone'
+    const refspecs = scoped ? scopedRefspecs(prs, remote) : []
+    const narrow = own
+      ? {}
+      : { noTags: true, noWriteFetchHead: true, refmap: '', prune: clone ? undefined : false }
+    const fetch = (): boolean =>
       measurable && !args.noFetch && !env.dryRun
         ? scoped
-          ? refspecs.length === 0 || git.try.fetch(args.remote, refspecs).ok
-          : git.try.fetch(args.remote, undefined, { prune: true }).ok
+          ? refspecs.length === 0 || git.try.fetch(remote, refspecs, narrow).ok
+          : own
+            ? git.try.fetch(remote, undefined, { prune: true }).ok
+            : git.try.fetch(remote, [`+refs/heads/*:refs/remotes/${remote}/*`], {
+                ...narrow,
+                ...(clone ? { prune: true } : {}),
+              }).ok
         : false
-    // `try`, not `soft`: a failed listing must not read as "no checkout holds
-    // this branch", which would clear a force-push. `null` counts as unsafe.
-    const listedWorktrees = measurable ? git.try.worktrees() : null
-    const worktrees =
-      listedWorktrees === null ? [] : listedWorktrees.ok ? listedWorktrees.value : null
-
-    const { rows, cycles } = surveyRows(git, prs, {
-      repo: target.repo,
-      worktrees,
-      cfg,
-      measurable,
-      remote: args.remote,
+    /** What reading a target gives; `unserved` when a clone a prune removed was not read. */
+    type Read = ReturnType<typeof surveyRows> & { fetched: boolean; unserved?: string }
+    const read = (mayFetch: boolean): Read => {
+      const fetched = mayFetch ? fetch() : false
+      // Under the clone's lock, which `use` holds when it lets this run fetch.
+      if (clone && fetched) maintainClone(git)
+      // `try`, not `soft`: a failed listing must not read as "no checkout holds
+      // this branch", which would clear a force-push. `null` counts as unsafe.
+      const listedWorktrees = measurable ? git.try.worktrees() : null
+      const worktrees =
+        listedWorktrees === null ? [] : listedWorktrees.ok ? listedWorktrees.value : null
+      // A located checkout's others were matched by `origin`, as it was.
+      const others = (target.found?.others ?? []).map((path) => {
+        const other = new Git(path, targetGitOptions(env.git))
+        const listed = other.try.worktrees()
+        return { git: other, worktrees: listed.ok ? listed.value : null, remote: 'origin' }
+      })
+      return {
+        fetched,
+        ...surveyRows(git, prs, { repo: target.repo, worktrees, cfg, measurable, remote, others }),
+      }
+    }
+    // A clone a prune removed while it was read without its lock: reported as a target with no
+    // checkout, its PRs not measured, rather than with rows read from a clone half gone.
+    const gone = (why: string): Read => ({
+      fetched: false,
+      unserved: why,
+      ...surveyRows(git, prs, {
+        repo: target.repo,
+        worktrees: [],
+        cfg,
+        measurable: false,
+        remote,
+        others: [],
+      }),
     })
-    repos.push({ repo: target.repo, measurable, fetched, cycles })
+    const { fetched, rows, cycles, unserved } =
+      clone && target.path !== null && env.clones !== undefined
+        ? env.clones.use(target.path, read, gone)
+        : read(true)
+    if (unserved !== undefined) {
+      repos.push({ repo: target.repo, measurable: false, checkout: null, fetched, cycles })
+      allRows.push(...rows)
+      continue
+    }
+    repos.push({ repo: target.repo, measurable, checkout, fetched, cycles })
     allRows.push(...rows)
   }
 
@@ -798,7 +1230,7 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
   }
 
   const count = (fn: (r: SurveyRow) => boolean): number => allRows.filter(fn).length
-  return {
+  const report: SurveyReport = {
     repos,
     prs: allRows,
     counts: {
@@ -813,6 +1245,7 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
       skip: count((r) => r.strategy === 'skip'),
     },
   }
+  return { report, targets }
 }
 
 /**

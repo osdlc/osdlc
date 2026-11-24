@@ -1662,6 +1662,39 @@ describe('updateAll', () => {
     forwarded.signal = undefined
   })
 
+  test('with a lock, it lets go once the worktree is added and takes it again to remove it', async () => {
+    const { git } = fx.worker
+    git.checkout('main', { branch: 'a' })
+    fx.worker.commit('a work', { 'a.txt': 'a\n' })
+    git.push('origin', 'a')
+    git.checkout('main')
+    git.fetch('origin')
+
+    const worktreeRoot = join(fx.worker.dir, '.pr-update', 'locked')
+    const listed = (): boolean =>
+      git.worktrees().some((w) => w.path.endsWith(join('.pr-update', 'locked')))
+    const events: string[] = []
+    await updateAll(git, [target({ number: 1, head: 'a' })], SETTINGS, recorder(), {
+      apply: true,
+      worktreeRoot,
+      lock: {
+        added: () => events.push(`added: listed ${listed()}`),
+        removing: (remove) => {
+          events.push(`removing: listed ${listed()}`)
+          remove()
+          events.push(`removed: listed ${listed()}`)
+        },
+      },
+      onResult: (r) => events.push(`result ${r.number}`),
+    })
+    expect(events).toEqual([
+      'added: listed true',
+      'result 1',
+      'removing: listed true',
+      'removed: listed false',
+    ])
+  })
+
   test("untracked output one PR's verify left is not committed into the next PR", async () => {
     const { git } = fx.worker
     for (const [branch, file] of [

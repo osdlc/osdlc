@@ -16,6 +16,7 @@ import { FailureError } from '@osdlc/result'
 
 import { prUpdateConfigSchema } from '../src/config.ts'
 import {
+  hostKey,
   measure,
   nearestBehindAncestor,
   parentEdges,
@@ -366,41 +367,219 @@ describe('surveyRows', () => {
 describe('resolveTargets', () => {
   /** A stand-in for the host's own repo-registry scan. */
   const locate = (known: Record<string, string>) => (repo: string) => known[repo] ?? null
+  const root = {
+    repo: 'o/r',
+    host: 'github.com',
+    path: '/repo',
+    source: 'root',
+    remote: 'origin',
+    found: null,
+  }
+  const at = (repo: string, path: string | null, host = 'github.com') => ({
+    repo,
+    host,
+    path,
+    source: path === null ? null : 'located',
+    remote: 'origin',
+    found: null,
+    github: hostKey(host) === 'github.com',
+  })
+  const opts = { rootHost: 'github.com', defaultHost: 'github.com' }
 
   test('the repository you are standing in needs no config', () => {
-    expect(resolveTargets('o/r', '/repo', [], locate({}))).toEqual([{ repo: 'o/r', path: '/repo' }])
+    expect(resolveTargets('o/r', '/repo', [], locate({}), opts)).toEqual([root])
   })
 
   test('a bare run stays local, however many containers are configured', () => {
     // The host's registry says where checkouts are, not that all of them are
     // in scope. Surveying every checkout on the machine by default would be a
     // surprise.
-    const out = resolveTargets('o/r', '/repo', [], locate({ 'x/y': '/x', 'a/b': '/a' }))
-    expect(out).toEqual([{ repo: 'o/r', path: '/repo' }])
+    const out = resolveTargets('o/r', '/repo', [], locate({ 'x/y': '/x', 'a/b': '/a' }), opts)
+    expect(out).toEqual([root])
   })
 
   test('--repo names the repositories to survey, and they are located', () => {
-    const out = resolveTargets('o/r', '/repo', ['x/y'], locate({ 'x/y': '/x' }))
-    expect(out).toEqual([{ repo: 'x/y', path: '/x' }])
+    const out = resolveTargets('o/r', '/repo', ['x/y'], locate({ 'x/y': '/x' }), opts)
+    expect(out).toEqual([at('x/y', '/x')])
   })
 
-  test('the local checkout is used for its own repo without a scan', () => {
+  test('the local checkout is used for its own repo without a scan, in any letter case', () => {
     // Running inside the repository is enough. No registry needs to list it.
-    expect(resolveTargets('o/r', '/repo', ['o/r'], locate({}))).toEqual([
-      { repo: 'o/r', path: '/repo' },
+    expect(resolveTargets('o/r', '/repo', ['o/r'], locate({}), opts)).toEqual([root])
+    expect(resolveTargets('o/r', '/repo', ['O/R'], locate({}), opts)).toEqual([root])
+    expect(resolveTargets('o/r', '/repo', ['github.com/o/r'], locate({}), opts)).toEqual([root])
+  })
+
+  test('the same owner/name on another host is not the project root', () => {
+    const out = resolveTargets('o/r', '/repo', ['git.example.com/o/r'], locate({}), opts)
+    expect(out).toEqual([at('o/r', null, 'git.example.com')])
+  })
+
+  test('a repeated --repo yields one target, however it is spelt', () => {
+    const out = resolveTargets(
+      'o/r',
+      '/repo',
+      ['x/y', 'X/Y', 'github.com/x/y'],
+      locate({ 'x/y': '/x' }),
+      opts,
+    )
+    expect(out).toEqual([at('x/y', '/x')])
+  })
+
+  test('a target is lower-cased once, and locate is asked with its host', () => {
+    const asked: unknown[] = []
+    const out = resolveTargets(
+      'o/r',
+      '/repo',
+      ['Acme/API'],
+      (repo, target) => {
+        asked.push([repo, target])
+        return null
+      },
+      { rootHost: 'github.acme.com', defaultHost: 'github.acme.com' },
+    )
+    expect(asked).toEqual([
+      ['acme/api', { host: 'github.acme.com', owner: 'acme', name: 'api', github: false }],
+    ])
+    expect(out).toEqual([at('acme/api', null, 'github.acme.com')])
+  })
+
+  test('a target on github.com, or on the GitHub host of the project root, is one a clone could serve', () => {
+    const out = resolveTargets(
+      'o/r',
+      '/repo',
+      ['github.acme.com:8443/acme/api', 'github.com/x/y', 'forgejo.example/z/w'],
+      locate({}),
+      {
+        rootHost: 'github.acme.com',
+        defaultHost: 'github.acme.com',
+        githubHost: 'github.acme.com',
+      },
+    )
+    expect(out.map((t) => [t.repo, t.github])).toEqual([
+      ['acme/api', true],
+      ['x/y', true],
+      ['z/w', false],
     ])
   })
 
-  test('a repeated --repo yields one target', () => {
-    const out = resolveTargets('o/r', '/repo', ['x/y', 'x/y'], locate({ 'x/y': '/x' }))
-    expect(out).toEqual([{ repo: 'x/y', path: '/x' }])
+  test('a checkout that names its own remote is read through it', () => {
+    const found = { path: '/x', source: 'located', remote: 'origin' } as const
+    const out = resolveTargets('o/r', '/repo', ['x/y'], () => found, {
+      ...opts,
+      remote: 'upstream',
+    })
+    expect(out).toEqual([
+      {
+        repo: 'x/y',
+        host: 'github.com',
+        path: '/x',
+        source: 'located',
+        remote: 'origin',
+        found,
+        github: true,
+      },
+    ])
+  })
+
+  test('a bare path is read through --remote, as before', () => {
+    const out = resolveTargets('o/r', '/repo', ['x/y'], () => '/x', { ...opts, remote: 'upstream' })
+    expect(out[0]!.remote).toBe('upstream')
   })
 
   test('a named repository with no checkout is listed, not dropped', () => {
     // Surveying fewer repositories than asked for is the worse failure. The
     // caller would read a short list as "nothing to do there".
-    expect(resolveTargets('o/r', '/repo', ['far/away'], locate({}))).toEqual([
-      { repo: 'far/away', path: null },
+    expect(resolveTargets('o/r', '/repo', ['far/away'], locate({}), opts)).toEqual([
+      at('far/away', null),
+    ])
+  })
+
+  test('one owner/name on two hosts is a usage error naming both', () => {
+    const both = () =>
+      resolveTargets('o/r', '/repo', ['github.com/x/y', 'git.example.com/X/Y'], locate({}), opts)
+    expect(both).toThrow(SurveyUsageError)
+    expect(both).toThrow(
+      '--repo github.com/x/y and --repo git.example.com/X/Y are x/y on different hosts; a run takes one of them',
+    )
+    // The project root counts, on its own host.
+    expect(() =>
+      resolveTargets('o/r', '/repo', ['o/r', 'git.example.com/o/r'], locate({}), opts),
+    ).toThrow('--repo o/r and --repo git.example.com/o/r are o/r on different hosts')
+  })
+
+  test.each([
+    'nope',
+    'https://github.com/o/r',
+    'o/..',
+    './r',
+    'github.com/../r',
+    'o/r\\x',
+    'o/r x',
+    'o:x/r',
+    'o/r:x',
+    'a/b/c/d',
+  ])('--repo %s is a usage error', (text) => {
+    expect(() => resolveTargets('o/r', '/repo', [text], locate({}), opts)).toThrow(
+      `--repo ${text}: not owner/name or host/owner/name`,
+    )
+  })
+
+  test.each([
+    ['o/r.git', 'o/r'],
+    ['O/R.GIT', 'O/R'],
+    ['github.com/o/r.git', 'github.com/o/r'],
+  ])('--repo %s is a usage error naming the form without .git', (text, bare) => {
+    expect(() => resolveTargets('o/r', '/repo', [text], locate({}), opts)).toThrow(
+      `--repo ${text}: name the repository without .git, as ${bare}`,
+    )
+  })
+
+  test.each([
+    ['acme/con', 'con'],
+    ['acme/Aux.txt', 'aux.txt'],
+    ['nul/api', 'nul'],
+    ['acme/COM1', 'com1'],
+    ['acme/lpt9.tar.gz', 'lpt9.tar.gz'],
+    ['acme/api.', 'api.'],
+    ['acme/a<b', 'a<b'],
+    ['acme/a>b', 'a>b'],
+    ['a"b/api', 'a"b'],
+    ['acme/a|b', 'a|b'],
+    ['acme/a?b', 'a?b'],
+    ['acme/a*b', 'a*b'],
+  ])('--repo %s, which Windows cannot use as a folder, is a usage error', (text, part) => {
+    expect(() => resolveTargets('o/r', '/repo', [text], locate({}), opts)).toThrow(
+      `--repo ${text}: ${part} cannot be a folder name on Windows`,
+    )
+  })
+
+  test.each(['acme/console', 'acme/com10', 'acme/lpt', 'acme/a.b'])(
+    '--repo %s is a folder name Windows takes',
+    (text) => {
+      expect(() => resolveTargets('o/r', '/repo', [text], locate({}), opts)).not.toThrow()
+    },
+  )
+
+  test.each(['under_score.example/x/y', 'ghe.example:port/x/y', 'host:/x/y'])(
+    '--repo %s, whose host is not a host name, is a usage error',
+    (text) => {
+      expect(() => resolveTargets('o/r', '/repo', [text], locate({}), opts)).toThrow(
+        /^--repo .*: .* is not a host name$/,
+      )
+    },
+  )
+
+  test('an owner or a name longer than a trust key takes is a usage error', () => {
+    const long = 'n'.repeat(201)
+    expect(() => resolveTargets('o/r', '/repo', [`o/${long}`], locate({}), opts)).toThrow(
+      'not owner/name or host/owner/name',
+    )
+  })
+
+  test('a host may carry a port', () => {
+    expect(resolveTargets('o/r', '/repo', ['ghe.example:8443/x/y'], locate({}), opts)).toEqual([
+      at('x/y', null, 'ghe.example:8443'),
     ])
   })
 
@@ -408,7 +587,7 @@ describe('resolveTargets', () => {
     expect(resolveTargets(null, '/repo', [], locate({}))).toEqual([])
     // But an explicit --repo still works, located by the scan.
     expect(resolveTargets(null, '/repo', ['x/y'], locate({ 'x/y': '/x' }))).toEqual([
-      { repo: 'x/y', path: '/x' },
+      at('x/y', '/x'),
     ])
   })
 })
@@ -914,7 +1093,15 @@ describe('renderSurveyText', () => {
 
   test('prints the notes, the cycle line and the counts line', () => {
     const text = renderSurveyText({
-      repos: [{ repo: 'o/r', measurable: true, fetched: true, cycles: [7, 8] }],
+      repos: [
+        {
+          repo: 'o/r',
+          measurable: true,
+          checkout: { path: '/repo', source: 'root' },
+          fetched: true,
+          cycles: [7, 8],
+        },
+      ],
       prs: [
         { ...base, number: 1, head: 'root' },
         {

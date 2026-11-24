@@ -94,6 +94,9 @@ describe('terminal mode', () => {
       wait: { runId: `pr-update-7-${process.pid}` },
     })
     expect(sessions[0]!.env?.GH_TOKEN).toBe('')
+    // An inherited GIT_DIR is unset (`env -u`), so the agent's git works in the worktree.
+    expect(Object.hasOwn(sessions[0]!.env ?? {}, 'GIT_DIR')).toBe(true)
+    expect(sessions[0]!.env?.['GIT_DIR']).toBeUndefined()
     expect(notice).toHaveBeenCalledWith(expect.stringContaining('tmux attach -t sd-pr-update-7-'))
   })
 
