@@ -324,12 +324,17 @@ Settings: `plugins.toolchains.idleHours`, which inherits the top-level
   with no pin file keeps nightly while you use it. Used means the newest
   access or modification time of the files in the version's `bin` folder,
   links followed. Every use runs one of them (rustup's proxies, nvm's `PATH`,
-  Volta's shims), and running a file updates its access time. On a volume
-  mounted `noatime` a run leaves no trace, so only the files' modification
-  time (about when it was installed) counts. Linux's default `relatime`
-  updates the access time at most once a day, so there a use can read up to
-  a day older than it was. A backup or indexer that reads those files only
+  Volta's shims), and running a file updates its access time. Linux's
+  default `relatime` updates the access time at most once a day, so there a
+  use can read up to a day older than it was. A backup or indexer that reads those files only
   makes a version look used, and keeps it.
+- On a volume mounted `noatime` a run leaves no trace, so a versions folder
+  there proposes nothing, and `status` warns
+  `toolchains: <folder> is on a volume mounted noatime, so last use can't be measured and every version in it is kept`.
+  The volume is the one `df` names for the folder, and its options come from
+  `mount` on macOS and `/proc/self/mounts` on Linux. When they cannot be read
+  (`df` or `mount` failing, another platform), the access times are
+  trusted.
 - When any of that cannot be read (an alias nvm does not have, a checkout git
   cannot list, rustup not answering), every candidate of that tool is refused
   with `unused-unknown`; a version whose `bin` folder cannot be read is

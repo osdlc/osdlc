@@ -18,7 +18,11 @@
  * with no pin file keeps nightly while it is in use. Used means the newest
  * access or modification time of the files in the version's `bin` folder,
  * links followed: every use runs one of them, and running a file updates its
- * access time.
+ * access time. On a volume mounted `noatime` running a file leaves no trace,
+ * so a versions folder on one proposes nothing, and `detect` says so in its
+ * note. Its mount is the one `df` names for it, and its options come from
+ * `mount` on macOS and `/proc/self/mounts` on Linux; when they cannot be read,
+ * the access times are trusted.
  *
  * When any of that cannot be read (a pin such as `lts/*` with no nvm alias
  * for it, a checkout git cannot list, rustup failing to answer, a `bin`
@@ -82,6 +86,10 @@ const HOUR_MS = 3_600_000
 /** What {@link Detection.note} says when the targets are the run's folder, taken because none were given. */
 export const NO_TARGETS_NOTE =
   'no targets were given (the folder it runs from is not enough), so it proposes nothing'
+
+/** What {@link Detection.note} says when the versions folder `dir` is on a volume mounted `noatime`. */
+export const noatimeNote = (dir: string): string =>
+  `${dir} is on a volume mounted noatime, so last use can't be measured and every version in it is kept`
 
 type Tool = 'rustup' | 'nvm' | 'volta'
 
@@ -279,22 +287,99 @@ const hoursText = (hours: number): string => String(Math.floor(hours * 10) / 10)
 export const keeps = (pin: string, name: string): boolean =>
   name === pin || name.startsWith(`${pin}-`) || name.startsWith(`${pin}.`)
 
+/**
+ * The options of the mount that holds the folder `path` (`noatime`,
+ * `relatime`, ...); null when they cannot be read.
+ */
+export type MountOptions = (path: string, ctx: Ctx) => Promise<readonly string[] | null>
+
+/** A mount in a mount table: where it is mounted and its options. */
+export interface Mount {
+  on: string
+  options: string[]
+}
+
+/** The mount point `df -P` prints for the one path it was given; null when it prints none. */
+export function dfMountPoint(stdout: string): string | null {
+  const last = stdout.trimEnd().split(/\r?\n/).at(-1) ?? ''
+  return /\s(?:\d+%|-)\s+(\/.*)$/.exec(last)?.[1] ?? null
+}
+
+/** macOS's `mount` output: `<device> on <mount point> (<type>, <option>, ...)`, the type left out. */
+export function parseMountOutput(stdout: string): Mount[] {
+  const mounts: Mount[] = []
+  for (const line of stdout.split(/\r?\n/)) {
+    const m = /^(.+?) on (.+) \(([^()]*)\)$/.exec(line)
+    if (m !== null) mounts.push({ on: m[2]!, options: m[3]!.split(/,\s*/).slice(1) })
+  }
+  return mounts
+}
+
+/** Linux's `/proc/self/mounts`: `<device> <mount point> <type> <options> ...`, with `\040` and the like for a space. */
+export function parseProcMounts(text: string): Mount[] {
+  const unescape = (s: string): string =>
+    s.replace(/\\([0-7]{3})/g, (_, oct: string) => String.fromCharCode(parseInt(oct, 8)))
+  const mounts: Mount[] = []
+  for (const line of text.split('\n')) {
+    const fields = line.split(' ')
+    if (fields.length >= 4)
+      mounts.push({ on: unescape(fields[1]!), options: fields[3]!.split(',') })
+  }
+  return mounts
+}
+
+/**
+ * The {@link MountOptions} the command line uses: the mount `df -P` names for
+ * the folder, the last of that name in the mount table (`mount` on macOS,
+ * `/proc/self/mounts` on Linux), since a later mount hides an earlier one.
+ * Null on any other platform, or when either cannot be read.
+ */
+export function mountOptionsBy(
+  kit: Kit,
+  platform: NodeJS.Platform = process.platform,
+): MountOptions {
+  return async (path, ctx) => {
+    if (platform !== 'darwin' && platform !== 'linux') return null
+    const run = (argv: string[]) => kit.run(argv, { env: { LC_ALL: 'C' }, signal: ctx.signal })
+    const df = await run(['df', '-P', path])
+    const on = df.ok ? dfMountPoint(df.stdout) : null
+    if (on === null) return null
+    let table: Mount[]
+    if (platform === 'darwin') {
+      const r = await run(['mount'])
+      if (!r.ok) return null
+      table = parseMountOutput(r.stdout)
+    } else {
+      table = parseProcMounts(readFileSync('/proc/self/mounts', 'utf8'))
+    }
+    return table.filter((m) => m.on === on).at(-1)?.options ?? null
+  }
+}
+
 /** A candidate and the refusals it rests on. */
 interface Row {
   candidate: Candidate
   blockers: Array<{ code: string; reason: string }>
 }
 
+export interface ToolchainsOptions {
+  /** Not a finite number of zero or more: {@link DEFAULT_IDLE_HOURS}. */
+  idleHours?: number | undefined
+  /** Default: {@link mountOptionsBy} on the plugin's kit. */
+  mountOptions?: MountOptions | undefined
+}
+
 /**
  * The `toolchains` plugin on `kit`; `env` is where each tool keeps its
- * versions (`HOME`, `RUSTUP_HOME`, `NVM_DIR`, `VOLTA_HOME`). `idleHours` that
- * is not a finite number of zero or more becomes {@link DEFAULT_IDLE_HOURS}.
+ * versions (`HOME`, `RUSTUP_HOME`, `NVM_DIR`, `VOLTA_HOME`).
  */
-function toolchainsPlugin(
+export function toolchainsPlugin(
   kit: Kit,
   env: Readonly<Record<string, string | undefined>>,
-  idleHours: number | undefined,
+  opts: ToolchainsOptions = {},
 ): Plugin {
+  const { idleHours } = opts
+  const mountOptions = opts.mountOptions ?? mountOptionsBy(kit)
   const homes = homesOf(env)
   const threshold =
     idleHours !== undefined && Number.isFinite(idleHours) && idleHours >= 0
@@ -412,13 +497,41 @@ function toolchainsPlugin(
     ]
   }
 
+  /** The tools whose versions folder is there: rustup's only when rustup is on PATH. */
+  const present = (): Tool[] =>
+    (['rustup', 'nvm', 'volta'] as const).filter(
+      (t) => (t !== 'rustup' || kit.onPath('rustup')) && isDir(versionsDir(t, homes)),
+    )
+
+  /** The tools among `tools` whose versions folder is on a volume mounted `noatime`; one whose options cannot be read is not. */
+  const noatime = async (tools: readonly Tool[], ctx: Ctx): Promise<Set<Tool>> => {
+    const out = new Set<Tool>()
+    for (const tool of tools) {
+      let options: readonly string[] | null
+      try {
+        options = await mountOptions(versionsDir(tool, homes), ctx)
+      } catch {
+        options = null
+      }
+      if (options?.includes('noatime') === true) out.add(tool)
+    }
+    return out
+  }
+
   /** Every toolchain no checkout asks for and nobody used lately, refused when what is asked for could not be read. */
   const scan = async (ctx: Ctx): Promise<Row[]> => {
     if (!ctx.targetsGiven || ctx.targets.length === 0) return []
+    // A version run daily on a noatime volume would read as unused, so none there is proposed.
+    const tools = present()
+    const skip = await noatime(tools, ctx)
+    if (tools.every((t) => skip.has(t))) return []
     const pins = readPins(ctx.targets, ctx.cwd)
     const rows: Row[] = []
 
-    const rust = kit.onPath('rustup') ? installed(versionsDir('rustup', homes), RUST_RELEASE) : []
+    const rust =
+      tools.includes('rustup') && !skip.has('rustup')
+        ? installed(versionsDir('rustup', homes), RUST_RELEASE)
+        : []
     if (rust.length > 0) {
       const unknown = [...pins.rustUnknown]
       const keep = [...pins.rust]
@@ -449,6 +562,7 @@ function toolchainsPlugin(
         } else keep.push(...found)
       }
       for (const tool of ['nvm', 'volta'] as const) {
+        if (skip.has(tool)) continue
         for (const name of node[tool]) {
           if (!keep.some((pin) => keeps(pin, plain(name)))) rows.push(...row(tool, name, unknown))
         }
@@ -467,12 +581,14 @@ function toolchainsPlugin(
   return {
     name: TOOLCHAINS_PLUGIN,
     limits: { discover: DISCOVER_LIMIT_MS },
-    detect: (ctx) => {
-      const active =
-        (kit.onPath('rustup') && isDir(versionsDir('rustup', homes))) ||
-        isDir(versionsDir('nvm', homes)) ||
-        isDir(versionsDir('volta', homes))
-      return active && !ctx.targetsGiven ? { active, note: NO_TARGETS_NOTE } : active
+    async detect(ctx) {
+      const tools = present()
+      if (tools.length === 0) return false
+      if (!ctx.targetsGiven) return { active: true, note: NO_TARGETS_NOTE }
+      const skip = await noatime(tools, ctx)
+      if (skip.size === 0) return true
+      const note = tools.filter((t) => skip.has(t)).map((t) => noatimeNote(versionsDir(t, homes)))
+      return { active: true, note: note.join('; ') }
     },
     roots: () => (['rustup', 'nvm', 'volta'] as const).map((t) => versionsDir(t, homes)),
     async discover(ctx) {
@@ -537,5 +653,5 @@ export const toolchainsDefinition = definePlugin({
   name: TOOLCHAINS_PLUGIN,
   api: PLUGIN_API,
   settings: z.strictObject({ idleHours: idleHoursSetting }),
-  create: ({ settings, kit, env }) => toolchainsPlugin(kit, env, settings.idleHours),
+  create: ({ settings, kit, env }) => toolchainsPlugin(kit, env, { idleHours: settings.idleHours }),
 })

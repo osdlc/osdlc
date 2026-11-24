@@ -17,13 +17,21 @@ import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { clean, plan, pluginKit, survey, type Ctx, type Plugin } from '../src/index.ts'
+import { attachKit } from '../src/kit.ts'
 import { contractSuite, fakeRunner, tempHome } from '../src/testing.ts'
 import {
   NO_TARGETS_NOTE,
+  dfMountPoint,
   keeps,
   lastUsedMs,
+  mountOptionsBy,
+  noatimeNote,
+  parseMountOutput,
+  parseProcMounts,
   rustPin,
   toolchainsDefinition,
+  toolchainsPlugin,
+  type MountOptions,
 } from '../src/toolchains.ts'
 
 const HOST = 'aarch64-apple-darwin'
@@ -92,6 +100,7 @@ const use = (dir: string, name: string, hoursAgo = 0): void => {
  * versions, and a `dev` folder of checkouts as the one target. `rustup`
  * answers `answers.rustup` over a default of `stable` with no overrides and
  * removes a toolchain it uninstalls; `node` is on PATH only when given.
+ * `mounts` gives each versions folder's mount options, by default none.
  */
 function fixture(
   opts: {
@@ -104,6 +113,7 @@ function fixture(
     targetsGiven?: boolean
     idleHours?: number
     env?: Record<string, string>
+    mounts?: MountOptions
   } = {},
 ): Fixture {
   const h = tempHome('host-cleaner-toolchains-')
@@ -134,12 +144,12 @@ function fixture(
     ...(opts.node === undefined ? {} : { node: { '--version': { stdout: `${opts.node}\n` } } }),
   })
   const env = { HOME: home, PATH: '', ...opts.env }
-  const plugin = toolchainsDefinition.create({
-    settings: opts.idleHours === undefined ? {} : { idleHours: opts.idleHours },
-    only: [],
-    env,
-    kit: pluginKit('toolchains', { env, runner: fake.runner, which: fake.which }),
+  const kit = pluginKit('toolchains', { env, runner: fake.runner, which: fake.which })
+  const plugin = toolchainsPlugin(kit, env, {
+    idleHours: opts.idleHours,
+    mountOptions: opts.mounts ?? (async () => []),
   })
+  attachKit(plugin, kit)
   return {
     home,
     dev,
@@ -439,6 +449,197 @@ describe('nvm and Volta Node versions', () => {
     expect(refused.map((o) => o.reason)).toEqual([
       expect.stringMatching(/package\.json is not JSON$/),
     ])
+  })
+})
+
+describe('a versions folder on a noatime volume', () => {
+  /** Mount options by tool: rustup's, nvm's and Volta's versions folders; `rw` when not given. */
+  const mounts =
+    (by: { rustup?: string[] | null; nvm?: string[] | null }): MountOptions =>
+    async (path) =>
+      path.endsWith(join('.rustup', 'toolchains'))
+        ? by.rustup === undefined
+          ? ['rw']
+          : by.rustup
+        : path.endsWith(join('.nvm', 'versions', 'node'))
+          ? by.nvm === undefined
+            ? ['rw']
+            : by.nvm
+          : ['rw']
+
+  test('noatime: none of its versions is proposed, rustup is not asked, and detect says why', async () => {
+    const fx = fixture({
+      rust: [`1.75.0-${HOST}`, `stable-${HOST}`],
+      nvm: ['v14.21.3'],
+      mounts: mounts({ rustup: ['rw', 'nosuid', 'noatime'] }),
+    })
+    repo(join(fx.dev, 'a'))
+    const { s, names, refused } = await proposed(fx)
+    expect(names).toEqual(['v14.21.3'])
+    expect(refused).toEqual([])
+    expect(s.notes).toEqual({
+      toolchains: `${fx.rustup} is on a volume mounted noatime, so last use can't be measured and every version in it is kept`,
+    })
+    expect(fx.calls.filter((c) => c.argv[0] === 'rustup')).toEqual([])
+  })
+
+  test('relatime, or nodiratime: access times are trusted, and there is no note', async () => {
+    const fx = fixture({
+      rust: [`1.75.0-${HOST}`, `stable-${HOST}`],
+      nvm: ['v14.21.3'],
+      mounts: mounts({ rustup: ['rw', 'relatime'], nvm: ['rw', 'nodiratime'] }),
+    })
+    repo(join(fx.dev, 'a'))
+    const { s, names } = await proposed(fx)
+    expect(names).toEqual([`1.75.0-${HOST}`, 'v14.21.3'])
+    expect(s.notes).toEqual({})
+  })
+
+  test('options that cannot be read, or a lookup that throws: access times are trusted, and there is no note', async () => {
+    const fx = fixture({
+      rust: [`1.75.0-${HOST}`, `stable-${HOST}`],
+      nvm: ['v14.21.3'],
+      mounts: async (path) => {
+        if (path.endsWith('node')) throw new Error('mount table unreadable')
+        return null
+      },
+    })
+    repo(join(fx.dev, 'a'))
+    const { s, names } = await proposed(fx)
+    expect(names).toEqual([`1.75.0-${HOST}`, 'v14.21.3'])
+    expect(s.notes).toEqual({})
+  })
+
+  test('every folder noatime: nothing is proposed, nothing is asked, and the note names each', async () => {
+    const fx = fixture({
+      rust: [`1.75.0-${HOST}`, `stable-${HOST}`],
+      volta: ['16.0.0'],
+      mounts: async () => ['noatime'],
+    })
+    repo(join(fx.dev, 'a'))
+    const { s, names } = await proposed(fx)
+    expect(names).toEqual([])
+    expect(s.notes).toEqual({
+      toolchains: `${noatimeNote(fx.rustup)}; ${noatimeNote(fx.volta)}`,
+    })
+    expect(fx.calls).toEqual([])
+  })
+
+  test('a version planned before its folder turned noatime is not removed', async () => {
+    let noatime = false
+    const fx = fixture({
+      nvm: ['v14.21.3', 'v18.17.0'],
+      mounts: async () => (noatime ? ['noatime'] : ['rw']),
+    })
+    repo(join(fx.dev, 'a'), { '.nvmrc': '18\n' })
+    const p = plan(await survey([fx.plugin], fx.ctx))
+    expect(p.candidates.map((c) => c.name)).toEqual(['v14.21.3'])
+    noatime = true
+    const receipt = await clean(p, [fx.plugin], fx.ctx)
+    expect(receipt.steps.filter((st) => st.result === 'ok')).toEqual([])
+    expect(readdirSync(fx.nvm).sort()).toEqual(['v14.21.3', 'v18.17.0'])
+  })
+})
+
+describe('reading mount options', () => {
+  const signal = new AbortController().signal
+  const ctx = { signal } as Ctx
+
+  test("df's mount point, spaces and all", () => {
+    expect(
+      dfMountPoint(
+        'Filesystem   512-blocks       Used  Available Capacity  Mounted on\n' +
+          '/dev/disk3s5 3896910480 2220769152 1605425008    59%    /System/Volumes/Data\n',
+      ),
+    ).toBe('/System/Volumes/Data')
+    expect(
+      dfMountPoint(
+        'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sdb1 100 50 50 50% /mnt/my disk\n',
+      ),
+    ).toBe('/mnt/my disk')
+    expect(dfMountPoint('')).toBeNull()
+  })
+
+  test("macOS's mount output and Linux's /proc/self/mounts", () => {
+    expect(
+      parseMountOutput(
+        '/dev/disk3s5 on /System/Volumes/Data (apfs, local, journaled, nobrowse, protect, root data)\n' +
+          'map auto_home on /System/Volumes/Data/home (autofs, automounted, nobrowse)\n' +
+          '/dev/disk4s1 on /Volumes/Fast Disk (apfs, local, nodev, nosuid, journaled, noatime)\n',
+      ),
+    ).toEqual([
+      {
+        on: '/System/Volumes/Data',
+        options: ['local', 'journaled', 'nobrowse', 'protect', 'root data'],
+      },
+      { on: '/System/Volumes/Data/home', options: ['automounted', 'nobrowse'] },
+      {
+        on: '/Volumes/Fast Disk',
+        options: ['local', 'nodev', 'nosuid', 'journaled', 'noatime'],
+      },
+    ])
+    expect(
+      parseProcMounts(
+        '/dev/sda1 / ext4 rw,relatime 0 0\n/dev/sdb1 /mnt/my\\040disk ext4 rw,noatime 0 0\n',
+      ),
+    ).toEqual([
+      { on: '/', options: ['rw', 'relatime'] },
+      { on: '/mnt/my disk', options: ['rw', 'noatime'] },
+    ])
+  })
+
+  test('on macOS, the last mount of the name df gives; null when df or mount fails, or off macOS and Linux', async () => {
+    const fake = (df: Answer, mount: Answer) => {
+      const f = fakeRunner({ df: () => df, mount: () => mount })
+      return pluginKit('toolchains', { env: {}, runner: f.runner, which: f.which })
+    }
+    const df = {
+      stdout:
+        'Filesystem 512-blocks Used Available Capacity Mounted on\n/dev/disk4s1 10 5 5 50% /Volumes/Fast\n',
+    }
+    const table = {
+      stdout:
+        '/dev/disk3s5 on /System/Volumes/Data (apfs, local)\n' +
+        '/dev/disk4s1 on /Volumes/Fast (apfs, local)\n' +
+        '/dev/disk4s1 on /Volumes/Fast (apfs, local, noatime)\n',
+    }
+    expect(await mountOptionsBy(fake(df, table), 'darwin')('/Volumes/Fast/x', ctx)).toEqual([
+      'local',
+      'noatime',
+    ])
+    expect(
+      await mountOptionsBy(fake({ exitCode: 1 }, table), 'darwin')('/Volumes/Fast/x', ctx),
+    ).toBeNull()
+    expect(
+      await mountOptionsBy(fake(df, { exitCode: 1 }), 'darwin')('/Volumes/Fast/x', ctx),
+    ).toBeNull()
+    expect(await mountOptionsBy(fake(df, table), 'win32')('C:\\x', ctx)).toBeNull()
+  })
+
+  test('the definition reads idleHours from its settings and asks df for each versions folder', async () => {
+    const h = tempHome('host-cleaner-toolchains-')
+    cleanups.push(h.cleanup)
+    const nvm = join(h.home, '.nvm', 'versions', 'node')
+    install(nvm, 'v14.21.3')
+    use(nvm, 'v14.21.3', 2)
+    const dev = repo(join(h.home, 'dev', 'a'))
+    const f = fakeRunner({ df: () => ({ exitCode: 1 }) })
+    const env = { HOME: h.home, PATH: '' }
+    const plugin = toolchainsDefinition.create({
+      settings: { idleHours: 1 },
+      only: [],
+      env,
+      kit: pluginKit('toolchains', { env, runner: f.runner, which: f.which }),
+    })
+    const s = await survey([plugin], {
+      cwd: h.home,
+      targets: [dev],
+      targetsGiven: true,
+      allow: [],
+    })
+    expect(s.candidates.map((c) => c.name)).toEqual(['v14.21.3'])
+    expect(s.notes).toEqual({})
+    expect(f.calls.map((c) => c.argv)).toContainEqual(['df', '-P', nvm])
   })
 })
 
