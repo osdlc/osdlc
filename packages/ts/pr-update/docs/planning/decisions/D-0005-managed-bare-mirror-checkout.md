@@ -1074,8 +1074,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   grants stop counting and the person runs `pr-update trust` again, once per
   machine. It fails closed. The README says so where an upgrading user looks
   first.
-- **Size.** About 4,700 lines were added to pr-update's `src/`, against the
-  estimate of 700, and about 5,700 to its tests.
+- **Size.** Against main, at the end of the omnibus, pr-update's `src/` has
+  5,530 lines added and 364 removed, against the estimate of 700, and its
+  `tests/` 7,635 added and 80 removed (`git diff --shortstat
+  origin/main...HEAD`).
 - **Nested groups.** `--repo` takes exactly `owner/name` or
   `host/owner/name`, so a GitLab repository in a nested group can be found
   by the locator but not named as a target. The clone is GitHub only.
