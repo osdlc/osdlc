@@ -1077,7 +1077,7 @@ describe('variables (tier 2)', () => {
     filled(b.home, '.local/share/pnpm/store')
     const { survey: s } = await surveyAndClean(b.plugin)
     expect(s.candidates.map((c) => c.path)).toEqual([moved])
-    expect(s.roots.pnpm).toEqual([join(b.home, 'disk')])
+    expect(s.roots.pnpm).toEqual([moved])
     expect(b.calls.map((c) => c.argv)).toEqual([
       // The survey, the re-check, then the prune.
       ['pnpm', 'store', 'path'],
@@ -1147,7 +1147,7 @@ candidates:
     const other = filled(b.home, '.cache/other')
     const s = await survey([b.plugin], ctxOf())
     expect(s.candidates.map((c) => c.path)).toEqual([other])
-    expect(s.roots.tool).toEqual([join(b.home, '.cache')])
+    expect(s.roots.tool).toEqual([other])
   })
 
   test('each survey works the folder out again; a store moved after the plan is not deleted', async () => {
@@ -1175,7 +1175,7 @@ candidates:
     expect(s.objections.filter((o) => o.by === 'go')).toMatchObject([
       { code: OUTSIDE_ROOTS, reason: `${elsewhere}: it is not inside the home folder` },
     ])
-    expect(s.roots.go).not.toContain(join(elsewhere, '..'))
+    expect(s.roots.go).not.toContain(elsewhere)
     const c = s.candidates.find((x) => x.path === elsewhere)!
     expect(c).toMatchObject({ held: true })
     await expect(b.plugin.delete!(c, fakeContext())).rejects.toThrow(
@@ -1193,7 +1193,7 @@ candidates:
     const b = buildVars('go', GO_VARS, { vars: { GOMODCACHE: mod } })
     const { survey: s, receipt } = await surveyAndClean(b.plugin)
     expect(s.objections).toEqual([])
-    expect(s.roots.go).toContain(join(disk, 'go'))
+    expect(s.roots.go).toContain(mod)
     expect(receipt.steps).toMatchObject([{ id: `go:${mod}`, result: 'ok' }])
     expect(existsSync(mod)).toBe(false)
   })
