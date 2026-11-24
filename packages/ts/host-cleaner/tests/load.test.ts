@@ -188,6 +188,41 @@ describe('what a package must export', () => {
     )
   })
 
+  test('create must return a plugin whose hooks the core can call', async () => {
+    const returning = async (plugin: string) => {
+      const r = await load(
+        exporting(
+          `definePlugin({ name: 'fixture', api: PLUGIN_API, settings: z.object({}), create: () => (${plugin}) })`,
+        ),
+      )
+      expect(r.failed).toEqual([])
+      let reason = ''
+      try {
+        created(r.loaded[0]!.definition)
+      } catch (err) {
+        expect(err).toBeInstanceOf(PackageLoadError)
+        reason = (err as PackageLoadError).failure.reason
+      }
+      return reason
+    }
+    const from = `plugins.fixture.package: ${FIXTURE} 1.0.0 returned a plugin from create whose`
+    expect(await returning("{ name: 'fixture' }")).toBe(`${from} detect is missing`)
+    expect(await returning("{ name: 'fixture', detect: () => true, discover: [] }")).toBe(
+      `${from} discover is not a function`,
+    )
+    expect(
+      await returning("{ name: 'fixture', detect: () => true, limits: { detect: 'soon' } }"),
+    ).toBe(`${from} limits.detect is not a positive number of milliseconds`)
+    expect(await returning("{ name: 'fixture', detect: () => true, limits: { sweep: 10 } }")).toBe(
+      `${from} limits names sweep, not a hook`,
+    )
+    expect(
+      await returning(
+        "{ name: 'fixture', detect: () => true, roots: () => [], limits: { roots: 5 } }",
+      ),
+    ).toBe('')
+  })
+
   test('a definition not made with this host-cleaner’s definePlugin is refused when created', async () => {
     const r = await load(
       exporting(

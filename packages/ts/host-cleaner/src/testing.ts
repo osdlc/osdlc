@@ -24,7 +24,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import type { AsyncCommandRunner, AsyncCommandRunOptions } from '@osdlc/command-seam'
@@ -36,11 +36,12 @@ import { boundBy, type Bounds } from './roots.ts'
 import { OUTSIDE_ROOTS, plan, survey, type Survey } from './run.ts'
 import { HOOKS, type Candidate, type Ctx, type PathCandidate, type Plugin } from './types.ts'
 
-/** A hook's context: no targets, nothing allowed, and a signal that is never aborted, under `over`. */
+/** A hook's context: no targets, none given, nothing allowed, and a signal that is never aborted, under `over`. */
 export function fakeContext(over: Partial<Ctx> = {}): Ctx {
   return {
     cwd: process.cwd(),
     targets: [],
+    targetsGiven: false,
     allow: [],
     signal: new AbortController().signal,
     ...over,
@@ -113,7 +114,7 @@ export interface TempHome {
  * process's `HOME`.
  */
 export function tempHome(prefix = 'host-cleaner-home-'): TempHome {
-  const home = realpathSync(mkdtempSync(join(tmpdir(), prefix)))
+  const home = realpathSync.native(mkdtempSync(join(tmpdir(), prefix)))
   return {
     home,
     env: { HOME: home },
@@ -155,9 +156,11 @@ const errorText = (err: unknown): string => (err instanceof Error ? err.message 
  * or the checks have nothing to check. It checks that:
  * - its `limits` name hooks and are positive numbers of milliseconds;
  * - the survey warns of nothing: no hook throws or runs past its time limit,
- *   every candidate's id is unique, and each names the plugin as its owner
- *   and has one of a path and a ref;
- * - every path candidate is inside the plugin's roots or the targets;
+ *   `detect` and `roots` answer in shapes the core takes and no root is
+ *   refused, every candidate's id is unique, and each names the plugin as its
+ *   owner and has one of a path and a ref (a `detect` note is no problem);
+ * - every path candidate is inside the plugin's roots or the targets, or is
+ *   one of its self roots;
  * - the ids, and each candidate's evidence, are the same in both surveys;
  * - candidates and objections hold only what JSON keeps (D14), and a plan of
  *   them reads back from JSON;
@@ -198,7 +201,10 @@ export async function contractSuite(
     return problems
   }
   if (first.plugins.length === 0) {
-    say('detect said no in this fixture, so nothing else could be checked')
+    const note = first.notes[plugin.name]
+    say(
+      `detect said no in this fixture, so nothing else could be checked${note === undefined ? '' : ` (its note: ${note})`}`,
+    )
     for (const w of first.warnings) say(`the survey warned: ${w}`)
     return problems
   }
@@ -271,8 +277,10 @@ async function escapedDelete(
   const scratch = tempHome('host-cleaner-suite-')
   const bounds: Bounds = {
     roots: s.roots[plugin.name] ?? [],
+    self: s.selfRoots[plugin.name] ?? [],
     targets: s.ctx.targets,
     linked: s.linked,
+    home: homedir(),
   }
   const outside = join(scratch.home, 'outside')
   const moved = join(outside, 'moved')
@@ -324,7 +332,12 @@ async function escapedDelete(
     })
     let said: string | { late: true }
     try {
-      const deleting = (async () => plugin.delete!(c, { ...s.ctx, signal: stop.signal }))()
+      const deleting = (async () =>
+        plugin.delete!(c, {
+          ...s.ctx,
+          targetsGiven: s.ctx.targetsGiven ?? false,
+          signal: stop.signal,
+        }))()
       said = await Promise.race([deleting, late])
     } catch {
       if (listing(moved) !== before) {

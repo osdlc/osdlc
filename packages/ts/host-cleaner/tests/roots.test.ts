@@ -1,6 +1,6 @@
 /** Containment: a path candidate sits inside its owner's roots or the targets; a ref has no folder to check. */
 
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   copyFileSync,
   existsSync,
@@ -14,16 +14,30 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { OUTSIDE_ROOTS, clean, containedIn, plan, survey } from '../src/index.ts'
-import type { Candidate, Plugin, RunCtx } from '../src/index.ts'
+import { z } from 'zod'
+
+import {
+  OUTSIDE_ROOTS,
+  PLUGIN_API,
+  clean,
+  containedIn,
+  definePlugin,
+  plan,
+  pluginKit,
+  survey,
+} from '../src/index.ts'
+import type { Candidate, Plugin, Root, RunCtx } from '../src/index.ts'
+import { boundBy, rootProblem } from '../src/roots.ts'
+import { contractSuite } from '../src/testing.ts'
 
 const dirs: string[] = []
 afterEach(() => {
+  vi.unstubAllEnvs()
   while (dirs.length > 0) rmSync(dirs.pop()!, { recursive: true, force: true })
 })
 const temp = (): string => {
@@ -339,5 +353,207 @@ describe('a plugin with no roots is held to the targets', () => {
       error: `${victim} is not inside cache's roots (none) or the targets`,
     })
     expect(existsSync(join(other, 'precious'))).toBe(true)
+  })
+})
+
+describe('a root declared { path, self: true }', () => {
+  const sh = (cwd: string, args: string[]): void => {
+    new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args)
+  }
+  const refusedIds = (s: { objections: readonly { candidate: string; code: string }[] }) =>
+    s.objections.filter((o) => o.code === OUTSIDE_ROOTS).map((o) => o.candidate)
+
+  /** A plugin built on a kit, owning `roots` and proposing each of `paths`, which `delete` removes with `kit.remove`. */
+  function storePlugin(roots: () => readonly Root[], paths: readonly string[]): Plugin {
+    const def = definePlugin({
+      name: 'store',
+      api: PLUGIN_API,
+      settings: z.strictObject({}),
+      create: ({ kit }): Plugin => ({
+        name: 'store',
+        detect: () => true,
+        roots,
+        discover: () => paths.map((path) => kit.candidate({ kind: 'store', path, why: 'idle' })),
+        delete: (c) => kit.remove(c.path!),
+      }),
+    })
+    return def.create({ settings: {}, env: {}, kit: pluginKit('store') })
+  }
+
+  /** A home folder of its own, as `HOME`, with `.npm/_cacache/blob` in it. */
+  const homeWithStore = (): { home: string; store: string } => {
+    const home = join(temp(), 'home')
+    const store = join(home, '.npm')
+    mkdirSync(join(store, '_cacache'), { recursive: true })
+    writeFileSync(join(store, '_cacache', 'blob'), 'x')
+    vi.stubEnv('HOME', home)
+    return { home, store }
+  }
+
+  test('the store folder itself is a candidate, and clean removes it through kit.remove; a plain root still is not', async () => {
+    const { home, store } = homeWithStore()
+    const plain = storePlugin(() => [store], [store])
+    expect(refusedIds(await survey([plain], ctx))).toEqual([`store:${store}`])
+
+    const p = storePlugin(() => [{ path: store, self: true }], [store, join(store, '_cacache')])
+    const s = await survey([p], ctx)
+    expect(s.warnings).toEqual([])
+    expect(s.objections).toEqual([])
+    expect(s.roots).toEqual({ store: [store] })
+    expect(s.selfRoots).toEqual({ store: [store] })
+    const receipt = await clean(plan(s), [p], ctx)
+    expect(receipt.steps.map((x) => [x.id, x.result])).toEqual([
+      [`store:${join(store, '_cacache')}`, 'ok'],
+      [`store:${store}`, 'ok'],
+    ])
+    expect(existsSync(store)).toBe(false)
+    expect(existsSync(home)).toBe(true)
+  })
+
+  test('the contract suite accepts a plugin whose candidate is its self root, and catches it moved behind a link', async () => {
+    const { store } = homeWithStore()
+    const p = storePlugin(() => [{ path: store, self: true }], [store])
+    expect(await contractSuite(p)).toEqual([])
+    expect(existsSync(join(store, '_cacache', 'blob'))).toBe(true)
+  })
+
+  test('refused as a root, plain or self, with a warning, and its candidates refused outside-roots: /, home, a folder holding home, a personal folder, a target, a folder holding a target, a checkout, a folder holding a linked checkout', async () => {
+    const { home } = homeWithStore()
+    const documents = join(home, 'Documents')
+    mkdirSync(documents)
+    const target = join(temp(), 'target')
+    mkdirSync(target)
+    makeGitFixture({ dir: target, initialBranch: 'main' })
+    sh(target, ['commit', '--allow-empty', '-m', 'initial'])
+    const holder = temp()
+    const linked = join(holder, 'wt')
+    sh(target, ['worktree', 'add', '-q', linked, '-b', 'linked'])
+    const checkout = join(temp(), 'checkout')
+    mkdirSync(join(checkout, '.git'), { recursive: true })
+    const cases: Array<[string, string]> = [
+      ['/', 'it is the filesystem root'],
+      [home, 'it is the home folder'],
+      [dirname(home), 'it holds the home folder'],
+      [documents, 'it is the personal folder ~/Documents'],
+      [target, 'it is a target'],
+      [dirname(target), `it holds the target ${target}`],
+      [checkout, 'it is a checkout'],
+      [holder, `it holds the checkout ${realpathSync(linked)}`],
+    ]
+    for (const [root, why] of cases) {
+      for (const entry of [root, { path: root, self: true as const }]) {
+        const inside = join(root, 'inside')
+        const p = storePlugin(() => [entry], [root, inside])
+        const s = await survey([p], { ...ctx, targets: [target] })
+        expect(s.warnings, root).toEqual([`store: roots: left out the root ${root}: ${why}`])
+        expect(s.roots, root).toEqual({ store: [] })
+        // A target holds what is inside it, so only the target itself is refused there.
+        const out = root === target ? [`store:${root}`] : [`store:${root}`, `store:${inside}`]
+        expect(refusedIds(s), root).toEqual(out)
+      }
+    }
+  })
+
+  test('a self root that is a symlink is refused; a relative one, or an entry of another shape, is left out', async () => {
+    homeWithStore()
+    const base = temp()
+    const real = join(base, 'real')
+    mkdirSync(real)
+    const link = join(base, 'link')
+    symlinkSync(real, link)
+    const p = storePlugin(
+      () => [
+        { path: link, self: true },
+        'relative',
+        { path: real } as unknown as Root,
+        7 as unknown as Root,
+      ],
+      [link],
+    )
+    const s = await survey([p], ctx)
+    expect(s.warnings).toEqual([
+      `store: roots: left out the root ${link}: it is a symlink`,
+      'store: roots: left out the root relative: it is not an absolute path without ..',
+      `store: roots: left out {"path":"${real}"}, which is neither a path nor { path, self: true }`,
+      'store: roots: left out 7, which is neither a path nor { path, self: true }',
+    ])
+    expect(refusedIds(s)).toEqual([`store:${link}`])
+  })
+
+  test('checked again before delete: a self root that became a checkout, or a symlink, since the survey is not deleted', async () => {
+    const { store } = homeWithStore()
+    const p = storePlugin(() => [{ path: store, self: true }], [store])
+    const s = await survey([p], ctx)
+    expect(s.objections).toEqual([])
+    mkdirSync(join(store, '.git'))
+    const asCheckout = await clean(plan(s), [p], ctx)
+    expect(asCheckout.steps).toEqual([])
+    expect(asCheckout.dropped).toEqual([expect.objectContaining({ reason: 'blocked' })])
+    expect(existsSync(store)).toBe(true)
+
+    // Between the re-check and delete: `prepare` turns the root into a checkout.
+    rmSync(join(store, '.git'), { recursive: true })
+    const turning: Plugin = {
+      name: 'turn',
+      detect: () => true,
+      prepare: () => {
+        mkdirSync(join(store, '.git'))
+      },
+    }
+    const late = await clean(plan(await survey([p, turning], ctx)), [p, turning], ctx)
+    expect(late.steps).toEqual([
+      expect.objectContaining({
+        result: 'failed',
+        error: expect.stringContaining(`${store} is not inside store's roots`),
+      }),
+    ])
+    expect(existsSync(join(store, '_cacache', 'blob'))).toBe(true)
+  })
+
+  test('kit.remove refuses a self root that is no longer allowed, through boundBy', () => {
+    const { home, store } = homeWithStore()
+    const bounds = { roots: [store], self: [store], targets: [], linked: [], home }
+    expect(boundBy(bounds, store)).toBe(store)
+    expect(rootProblem(store, bounds, true)).toBeNull()
+    mkdirSync(join(store, '.git'))
+    expect(boundBy(bounds, store)).toBeNull()
+    expect(rootProblem(store, bounds, true)).toBe('it is a checkout')
+  })
+})
+
+/** Whether the filesystem under the temporary folder ignores case, as macOS's does by default. */
+const ignoresCase = (() => {
+  const d = realpathSync(mkdtempSync(join(tmpdir(), 'host-cleaner-case-')))
+  try {
+    mkdirSync(join(d, 'Probe'))
+    return existsSync(join(d, 'probe'))
+  } finally {
+    rmSync(d, { recursive: true, force: true })
+  }
+})()
+
+describe.skipIf(!ignoresCase)('where the filesystem ignores case', () => {
+  test('a root, a target and a personal folder compare by their real spelling', async () => {
+    const base = temp()
+    const store = join(base, 'Store')
+    mkdirSync(join(store, 'blob'), { recursive: true })
+    const lower = join(base, 'store')
+    expect(containedIn([lower], join(store, 'blob'))).toBe(lower)
+    expect(containedIn([store], join(lower, 'blob'))).toBe(store)
+
+    const home = join(base, 'Home')
+    mkdirSync(join(home, 'Documents'), { recursive: true })
+    const at = { targets: [store], linked: [], home }
+    expect(rootProblem(join(base, 'home'), at)).toBe('it is the home folder')
+    expect(rootProblem(join(home, 'documents'), at)).toBe('it is the personal folder ~/Documents')
+    expect(rootProblem(lower, at)).toBe('it is a target')
+    expect(boundBy({ ...at, roots: [], self: [], targets: [lower] }, store)).toBeNull()
+    expect(
+      boundBy({ ...at, roots: [], self: [join(base, 'other')], targets: [] }, join(base, 'OTHER')),
+    ).toBeNull()
+    mkdirSync(join(base, 'Other'))
+    expect(
+      boundBy({ ...at, roots: [], self: [join(base, 'other')], targets: [] }, join(base, 'OTHER')),
+    ).toBe(join(base, 'other'))
   })
 })
