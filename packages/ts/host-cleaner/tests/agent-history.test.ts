@@ -17,9 +17,9 @@ import {
   pluginKit,
   survey,
   type Candidate,
+  type Ctx,
   type PathCandidate,
   type Plugin,
-  type RunCtx,
 } from '../src/index.ts'
 import {
   agentHistoryDefinition,
@@ -52,7 +52,7 @@ interface Fixture {
   /** A session record in `<config>/sessions/<pid>.json`. */
   session(pid: number, body: Record<string, unknown> | string): void
   plugin(probe?: ProcessProbe, env?: Record<string, string>): Plugin
-  ctx: RunCtx
+  ctx: Ctx
 }
 
 /** A home with `~/.claude/projects` and a repository with two worktrees, `live` and `gone`, the second removed. */
@@ -101,13 +101,13 @@ function fixture(): Fixture {
         env,
         kit: pluginKit(AGENT_HISTORY_PLUGIN, { probe, env }),
       }),
-    ctx: { cwd: home, targets: [], allow: [] },
+    ctx: fakeContext({ cwd: home, targets: [] }),
   }
 }
 
 /** `plugin.delete` on `c`, a throw as a rejection. */
-const deleting = async (plugin: Plugin, c: Candidate, ctx: RunCtx): Promise<string> =>
-  plugin.delete!(c, fakeContext(ctx))
+const deleting = async (plugin: Plugin, c: Candidate, ctx: Ctx): Promise<string> =>
+  plugin.delete!(c, ctx)
 
 const refusals = (s: Awaited<ReturnType<typeof survey>>, id: string): string[] =>
   s.objections.filter((o) => o.candidate === id && o.level === 'refuse').map((o) => o.code)
