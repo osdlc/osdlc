@@ -24,11 +24,14 @@ Fixed: hooks stay off when pr-update runs from a git alias or hook started as
 `GIT_CONFIG_PARAMETERS`, which it reads after the `GIT_CONFIG_COUNT` entry
 that turned hooks off, so a target's checkout ran the PR's hooks. The setting
 is now also appended to `GIT_CONFIG_PARAMETERS` (typed-git's `gitConfigEnv`).
-The same goes for `maintenance.auto=false` and `gc.auto=0`, which every git
-call in a target, and a target's `git-ref` record and lease, now get that way
-too: an inherited `-c gc.auto=…` no longer starts a background `gc` in a
-managed clone after its lock is let go. In a located checkout, your own git
-commands still run `gc --auto`.
+The same goes for `maintenance.auto=false` and `gc.auto=0`: an inherited
+`-c gc.auto=…` no longer starts a background `gc` in a managed clone after its
+lock is let go. They are set with hooks off, so they reach every git call
+pr-update makes in a `--repo` target and in the project root's run worktrees
+and kept trees, and a target's `git-ref` record and lease. So pr-update's own
+rebases, merges, commits and pushes there no longer start `gc --auto`, and in
+a located checkout neither does its fetch. The project root's own fetch still
+can, and so can your own git commands in any checkout.
 
 Fixed: a managed clone's credential helper names `gh` by its absolute path,
 found on the absolute `PATH` entries only. It was `!gh auth git-credential`,

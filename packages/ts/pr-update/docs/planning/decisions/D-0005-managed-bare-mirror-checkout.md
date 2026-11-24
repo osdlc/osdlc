@@ -910,7 +910,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   an inherited `-c gc.auto=…` could turn back on: `targetGitEnv` sets
   `maintenance.auto=false` and `gc.auto=0` the same way, for every git call
   in a target and for a target's `git-ref` record and lease (`refEnv` in
-  `defaults.ts`). A clone's foreground maintenance still gets git's default
+  `defaults.ts`). Since `targetGitOptions` also serves the project root's
+  run worktrees and kept trees, pr-update's rebases, merges, commits and
+  pushes there start no `gc --auto` either; the root's own fetch still can,
+  and one rule for every call that carries hooks off keeps a per-call `env`
+  from dropping a key. A clone's foreground maintenance still gets git's default
   `gc.auto` through its own `-c`, which git reads after both.
 - **Repository variables (`GIT_DIR` and the rest).** A git hook exports
   `GIT_DIR`, and a program it starts inherits it. Every git that program runs

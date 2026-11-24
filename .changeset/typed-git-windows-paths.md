@@ -1,5 +1,5 @@
 ---
-"@osdlc/typed-git": patch
+"@osdlc/typed-git": minor
 ---
 
 **Breaking:** on Windows, `topLevel()`, `gitCommonDir()`, `gitDir()`,
