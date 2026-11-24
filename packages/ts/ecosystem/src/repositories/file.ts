@@ -19,7 +19,7 @@ import {
   type TieredDirs,
 } from '@osdlc/config-layers'
 import { WriteConflictError } from '@osdlc/etag-write'
-import { holderGone, withLock } from '@osdlc/file-lock'
+import { holderGone, untouchedFor, withLock, type SectionHolder } from '@osdlc/file-lock'
 import { expandTilde } from '@osdlc/tiered-dirs'
 import { z } from 'zod'
 
@@ -164,8 +164,7 @@ export function repositoriesFile(opts: RepositoriesFileOptions = {}): Repositori
         }
       }
       // The etag check and the rename are two steps, so two writers can both pass the check.
-      // The lock makes the read, the check and the write one step for every writer. It is taken
-      // over only once its holder has exited, never for its age: a slow writer keeps it.
+      // The lock makes the read, the check and the write one step for every writer.
       mkdirSync(dirname(at), { recursive: true })
       return withLock(
         `${at}.lock`,
@@ -174,11 +173,30 @@ export function repositoriesFile(opts: RepositoriesFileOptions = {}): Repositori
           const text = setPath(read()?.text ?? '', ['roots'], [...roots])
           return file.write(text, { etag: o.etag })
         },
-        { isStale: holderGone((h) => [h.pid]) },
+        { isStale: rootsLockStale },
       )
     },
   }
 }
+
+/**
+ * How long a `repositories.yaml` lock may stand before it is a dead writer's whatever its pid
+ * says: far beyond the read, check and write it covers, which take well under a second.
+ */
+export const ROOTS_LOCK_STALE_MS = 10 * 60_000
+
+const holderExited = holderGone<SectionHolder>((h) => [h.pid])
+const longUntouched = untouchedFor<SectionHolder>(ROOTS_LOCK_STALE_MS)
+
+/**
+ * When the `repositories.yaml` lock may be taken over: its holder has exited, or the lock is older
+ * than {@link ROOTS_LOCK_STALE_MS}. The pid alone is not enough: `withLock` records only the pid,
+ * so a writer killed in the section (or a power loss) leaves a lock whose pid another process
+ * may later have, another user's included, and the lock would never go. The age bound is far
+ * enough past the section that a live, slow writer keeps its lock.
+ */
+const rootsLockStale = (held: Parameters<typeof holderExited>[0]): boolean =>
+  holderExited(held) || longUntouched(held)
 
 /**
  * A root as written, made absolute: `~` and `~/…` expanded against `home`.
