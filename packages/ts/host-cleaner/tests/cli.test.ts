@@ -559,32 +559,8 @@ describe('plan and clean', () => {
     expect(untildeId('feat/~x', '/h/me')).toBe('feat/~x')
   })
 
-  test('a version 1 plan still runs: its branch and Orca record are read as refs, under the same ids', async () => {
+  test('a plan of another version is refused: sweep again', async () => {
     const { env, home, cwd } = setup()
-    const plugin = fake()
-    const fakeRow = {
-      id: 'artifact:fake',
-      kind: 'artifact',
-      path: 'fake',
-      owner: 'fake',
-      why: 'idle for a week',
-      evidence: { bytes: 10 },
-    }
-    const branch = {
-      id: 'branch:/r:feat',
-      kind: 'branch',
-      owner: 'git',
-      why: 'merged',
-      evidence: {},
-    }
-    const evidence = { kind: 'orca-record', orcaId: 'repo1::/gone', path: '/gone' }
-    const record = {
-      id: 'orca-record:/gone',
-      kind: 'orca-record',
-      owner: 'orca',
-      why: 'gone',
-      evidence,
-    }
     const v1 = {
       version: 1,
       createdAt: '2026-01-01T00:00:00.000Z',
@@ -595,27 +571,18 @@ describe('plan and clean', () => {
       allow: [],
       ignore: [],
       warnings: [],
-      candidates: [
-        fakeRow,
-        { ...branch, path: '/r:feat', at: '/r', held: true },
-        { ...record, path: '/gone', held: true },
-      ],
+      candidates: [],
       objections: [],
     }
-    const read = parsePlan(JSON.stringify(v1), 'v1')
-    expect(read.version).toBe(PLAN_VERSION)
-    expect(read.candidates).toEqual([
-      fakeRow,
-      { ...branch, ref: 'feat', at: '/r', held: true },
-      { ...record, ref: 'repo1::/gone', at: '/gone', held: true },
-    ])
+    const refusal = `v1.json: a version 1 plan; this host-cleaner reads version ${PLAN_VERSION}: sweep again`
+    expect(() => parsePlan(JSON.stringify(v1), 'v1.json')).toThrow(refusal)
     const planFile = join(home, 'v1.json')
     writeFileSync(planFile, JSON.stringify(v1))
-    const r = await run(['clean', '--plan', planFile, '--dry-run', '--format', 'json'], cwd, env, {
-      plugins: [plugin],
+    const r = await run(['clean', '--plan', planFile, '--dry-run'], cwd, env, {
+      plugins: [fake()],
     })
-    expect(r.code).toBe(0)
-    expect(JSON.parse(r.out).run).toEqual(['artifact:fake'])
+    expect(r.code).not.toBe(0)
+    expect(r.err).toContain('a version 1 plan; this host-cleaner reads version 2: sweep again')
   })
 
   test('-i runs exactly the ticked candidates and asks for their protests by code', async () => {
