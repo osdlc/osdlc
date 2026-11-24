@@ -478,7 +478,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   and start time, below), then skips a clone that still has any. A clone
   or temporary directory whose lock it cannot take is skipped. A clone
   directory without the tool's marker was not made by this tool and is never
-  removed. A `.tmp-*.git-<pid>` directory is recognised by its name instead,
+  removed. A `.tmp-<name>.git-<pid>[-<random>]` directory is recognised by its name instead,
   inside a mirror directory that carries the tool's marker (clone step 1), so
   one left by a killed clone is removed once it is an hour old, as is a
   `.pr-update-probe-*` folder under `worktrees/` or `kept/`. A clone is renamed
@@ -1019,7 +1019,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   scratch branch. When that fails it deletes only the folder and that one
   record. It never runs a bare `git worktree prune`, which would drop the
   person's own worktrees whose folders are missing.
-- **Leftovers.** A `.tmp-*.git-<pid>` folder or a `.pr-update-probe-*`
+- **Leftovers.** A `.tmp-<name>.git-<pid>[-<random>]` folder (a clone's
+  staging folder, or a clone a prune could not finish removing) or a `.pr-update-probe-*`
   folder is removed once it is an hour old, so a clone in progress is never
   taken. A clone is renamed to a `.tmp-*` name before it is deleted, so a
   removal that stops part-way leaves a leftover, not a broken clone. Empty

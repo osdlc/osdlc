@@ -28,7 +28,6 @@ import {
   statSync,
   writeFileSync,
   writeSync,
-  type Stats,
 } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
@@ -54,6 +53,7 @@ import {
   FOLDER_MODE,
   folderProblem,
   foldersProblem,
+  lstatOrNull,
   ownedByMe,
   type FolderCheckOptions,
   type GroupOptions,
@@ -107,8 +107,6 @@ export function clonePath(root: string, key: CloneKey): string {
 export function cloneLockPath(clone: string): string {
   return `${clone}.lock`
 }
-
-export { foldersProblem, ownedByMe, type OwnedCheck } from './folders.ts'
 
 /** How to put right a clone folder others can write to, for the end of the message. */
 function writableFix(dir: string): string {
@@ -202,15 +200,6 @@ function dropOthersWrite(path: string): void {
     if (st.isDirectory()) for (const name of readdirSync(path)) dropOthersWrite(join(path, name))
   } catch (e) {
     if (!gone(e)) throw e
-  }
-}
-
-function lstatOrNull(path: string): Stats | null {
-  try {
-    return lstatSync(path)
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null
-    throw e
   }
 }
 

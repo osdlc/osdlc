@@ -48,6 +48,7 @@ import {
   mirrorSetting,
   writeMirrorAnswer,
 } from '../src/mirror.ts'
+import { lstatOrNull } from '../src/folders.ts'
 import { isolatedEnv } from './support.ts'
 
 const run = promisify(execFile)
@@ -339,6 +340,30 @@ describe('credentialHelper (final review)', () => {
       `${final}: no credential helper set, since \`pr-update-no-such-gh\` is not on an absolute PATH entry; fetches and pushes there use your git config's helper`,
     ])
   })
+})
+
+describe('lstatOrNull (final review)', () => {
+  test('null for a missing path and for one through a file; any other error is thrown', () => {
+    expect(lstatOrNull(join(scratch, 'missing'))).toBeNull()
+    writeFileSync(join(scratch, 'file'), '')
+    expect(lstatOrNull(join(scratch, 'file', 'below'))).toBeNull()
+    expect(lstatOrNull(join(scratch, 'file'))?.isFile()).toBe(true)
+  })
+
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'a path under a folder that cannot be searched is not taken for a missing one',
+    () => {
+      const shut = join(scratch, 'shut')
+      mkdirSync(shut)
+      writeFileSync(join(shut, 'inside'), '')
+      chmodSync(shut, 0o600)
+      try {
+        expect(() => lstatOrNull(join(shut, 'inside'))).toThrow(/EACCES/)
+      } finally {
+        chmodSync(shut, 0o700)
+      }
+    },
+  )
 })
 
 describe('claimCloneLock', () => {

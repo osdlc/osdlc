@@ -19,7 +19,7 @@
  *   not a broken clone in the way.
  *
  * Every walk skips names that start with `.`, except the two kinds of leftover it removes once
- * they are an hour old: `.tmp-<name>.git-<pid>` folders (a clone's staging folder, or a clone a
+ * they are an hour old: `.tmp-<name>.git-<pid>[-<random>]` folders (a clone's staging folder, or a clone a
  * removal stopped in) and `.pr-update-probe-*` probes.
  * No walk follows a symbolic link: a link is never descended into, removed through, or counted.
  * Nothing is removed from a folder someone else could write to (`folderProblem` in
@@ -36,7 +36,6 @@ import {
   realpathSync,
   renameSync,
   rmSync,
-  type Stats,
 } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 
@@ -48,6 +47,7 @@ import { homeDir } from '@osdlc/tiered-dirs'
 import { Git } from '@osdlc/typed-git'
 
 import {
+  lstatOrNull,
   ownedByMe,
   placeProblem,
   type FolderCheckOptions,
@@ -180,14 +180,6 @@ function where(opts: MirrorWalkOptions): Where {
     worktrees: paths.worktrees,
     kept: paths.kept,
     maxAgeDays: machine.mirror_max_age_days,
-  }
-}
-
-function lstatOrNull(path: string): Stats | null {
-  try {
-    return lstatSync(path)
-  } catch {
-    return null
   }
 }
 

@@ -40,3 +40,8 @@ no record, or a refused one, whatever branch it was on. It now removes such a
 tree only while it is on its `pr-update/failed-*` branch. One a person
 switched to a branch of their own, or detached, is left and reported, and its
 clone stays.
+
+Pruning no longer takes a path it cannot read for one that is not there: an
+`lstat` that fails with anything but "no such file" (such as `EACCES`) is now
+an error, where `mirror prune` skipped the path before. `survey --help` now
+says it also writes a managed clone's last-used stamp and its lock file.

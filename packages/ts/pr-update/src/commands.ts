@@ -461,7 +461,8 @@ export function surveyCommand(seams: CliSeams) {
       'Lists the open PRs of the repository (or each --repo), measures how far each is behind ' +
       'its base with the local refs, and predicts with git merge-tree whether bringing it up to ' +
       'date would conflict. Stacked PRs are listed parent first. Nothing is checked out, and ' +
-      'nothing is written but the fetch.',
+      "nothing is written but the fetch and, for a managed clone, the clone's last-used stamp " +
+      'and its lock file.',
     flags: {
       ...scopeFlags(
         'survey',
