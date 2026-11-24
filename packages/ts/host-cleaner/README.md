@@ -344,8 +344,8 @@ take that form. host-cleaner refuses to run as root (exit 1). `status`
 prints each plugin's `detect` note as a warning line naming the plugin, with
 the survey's warnings.
 
-`--plugin <name>` runs only those plugins (`--adapter`, the name from before
-plugins, is still accepted) and `--skip-plugin <name>` never runs these.
+`--plugin <name>` runs only those plugins and `--skip-plugin <name>` never
+runs these.
 Targets default to the config file's `targets`, then the directory you are in.
 `clean` re-checks, shows the steps, asks (`--yes` skips the question; with no
 terminal and no `--yes` it exits 2), deletes, and writes one receipt to

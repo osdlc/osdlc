@@ -39,7 +39,7 @@ owner delete it. The first version ships four plugins: `git` (repo-cleaner),
 | `src/run.ts` | The phase runner: `survey`, `plan`, `decide`, `recheck`, `clean`; hook time limits; the core's own objections; nesting. |
 | `src/roots.ts` | Containment: `containedIn`, `boundBy`, `linkedCheckouts`, `linkedWorktreeOf`; which roots a plugin may have: `rootProblem`, `acceptRoots`. |
 | `src/kit.ts` | The plugin kit: `pluginKit`, the helpers, and the binding the core does each run. |
-| `src/plan.ts` | The plan and receipt schemas (plan version 2, receipt version 1), and the upgrade of a version 1 plan. |
+| `src/plan.ts` | The plan and receipt schemas (plan version 2, receipt version 1). A plan of another version is refused with an error that says to sweep again. |
 | `src/registry.ts` | `BUILT_IN_PLUGINS` in run order (`git`, `cargo`, `node`, `orca`), and `--plugin` / `--skip-plugin`. |
 | `src/settings.ts` | Each plugin's settings schema made strict, with the core's `enabled`; `idleHours` inheritance. |
 | `src/config.ts` | The config file and the three folders (see [Files](#files)). |
@@ -345,5 +345,3 @@ Not decided. Each is written as open, not answered here.
   offered through host-cleaner yet; the named risks must be granted.
 - **Archive refs.** From D-L7N5, still open: where archive refs go on a remote
   that rejects new branches, and how long they live.
-- **`--adapter`.** The name from before plugins is still accepted as an alias
-  for `--plugin`. Whether to drop it before release is not decided.
