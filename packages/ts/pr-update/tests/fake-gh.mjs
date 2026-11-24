@@ -8,6 +8,7 @@
  * - `FAKE_GH_LOG` is a file each call appends `{ "argv": [...], "host": "<GH_HOST>",
  *   "hooksPath": "<core.hooksPath from GIT_CONFIG_*, or null>" }` to, one JSON line each.
  * - `repo clone` takes only the real command's flags before `--`, and needs `-- --bare`.
+ * - `auth git-credential get` answers with a fake token, as a credential helper.
  * - `FAKE_GH_FAIL_CLONE`, when set, makes `repo clone` fail with that message.
  * - `FAKE_GH_SQUAT`, when set, is a path `repo clone` fills with a file after cloning, as a run
  *   that ignored the lock would.
@@ -81,6 +82,12 @@ if (argv[0] === 'pr' && argv[1] === 'list') {
   const file = join(root, 'prs.json')
   const prs = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {}
   process.stdout.write(`${JSON.stringify(prs[repo] ?? [])}\n`)
+  process.exit(0)
+}
+
+if (argv[0] === 'auth' && argv[1] === 'git-credential') {
+  // A credential for `get`, as the real helper gives a signed-in user; nothing for the others.
+  if (argv[2] === 'get') process.stdout.write('username=x-access-token\npassword=fake\n')
   process.exit(0)
 }
 

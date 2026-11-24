@@ -18,7 +18,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { delimiter, dirname, join, resolve } from 'node:path'
 
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { osdlcDirs } from '@osdlc/ecosystem'
@@ -37,6 +37,7 @@ import {
   claimCloneLock,
   clonePath,
   cloneLockPath,
+  credentialHelper,
   makeClone,
   managedClones,
   markMirrorDir,
@@ -138,7 +139,12 @@ describe('checkMirrorDir and markMirrorDir', () => {
 })
 
 /** A gh whose `repo clone` makes a bare clone of `source`. */
+/** Where the fake gh says its binary is: the credential helper names it. */
+const GH_BINARY = resolve('/opt/fake/gh')
+const GH_HELPER = `!${GH_BINARY.replaceAll('\\', '/')} auth git-credential`
+
 const gh: CommandRunner = {
+  binary: GH_BINARY,
   run: (argv, opts) => {
     if (argv[0] !== 'repo' || argv[1] !== 'clone') return { exitCode: 1, stdout: '', stderr: '?' }
     return spawnRunner('git').run(['clone', '-q', '--bare', source, argv[3]!], opts)
@@ -226,7 +232,7 @@ describe('makeClone', () => {
       ],
       { cwd: scratch },
     )
-    expect(own.stdout).toBe('\n!gh auth git-credential\n')
+    expect(own.stdout).toBe(`\n${GH_HELPER}\n`)
     // The helper is seen only in the clone.
     const outside = spawnRunner('git').run(
       ['config', '--get-all', 'credential.https://github.com.helper'],
@@ -284,7 +290,47 @@ describe('makeClone', () => {
       ],
       { cwd: scratch },
     )
-    expect(own.stdout).toBe('\n!gh auth git-credential\n')
+    expect(own.stdout).toBe(`\n${GH_HELPER}\n`)
+  })
+})
+
+describe('credentialHelper (final review)', () => {
+  test('names gh by an absolute path found on the absolute PATH entries only, shell-quoted', () => {
+    const bin = join(scratch, 'my bin')
+    mkdirSync(bin)
+    const name = process.platform === 'win32' ? 'gh.exe' : 'gh'
+    writeFileSync(join(bin, name), '#!/bin/sh\n')
+    chmodSync(join(bin, name), 0o755)
+    const path = join(bin, name).replaceAll('\\', '/')
+    expect(credentialHelper({ binary: 'gh' }, { PATH: bin })).toBe(`!'${path}' auth git-credential`)
+    // A relative entry is never searched: the one a push runs in could hold a `gh` a PR commits.
+    const planted = join(scratch, 'planted')
+    mkdirSync(planted)
+    writeFileSync(join(planted, name), '#!/bin/sh\n')
+    chmodSync(join(planted, name), 0o755)
+    expect(credentialHelper({ binary: 'gh' }, { PATH: `.${delimiter}planted` })).toBeNull()
+  })
+
+  test('makeClone sets no helper, with a note, when gh is not found on an absolute PATH entry', () => {
+    const final = clonePath(join(scratch, 'clones'), req)
+    mkdirSync(dirname(final), { recursive: true })
+    const notes: string[] = []
+    const missing = { binary: 'pr-update-no-such-gh', run: gh.run }
+    makeClone(final, req, { gh: missing, notice: (l) => notes.push(l) })
+    const own = spawnRunner('git').run(
+      [
+        'config',
+        '--file',
+        join(final, 'config'),
+        '--get-all',
+        'credential.https://github.com.helper',
+      ],
+      { cwd: scratch },
+    )
+    expect(own.stdout).toBe('')
+    expect(notes).toEqual([
+      `${final}: no credential helper set, since \`pr-update-no-such-gh\` is not on an absolute PATH entry; fetches and pushes there use your git config's helper`,
+    ])
   })
 })
 

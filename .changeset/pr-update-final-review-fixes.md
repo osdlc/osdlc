@@ -16,3 +16,9 @@ Fixed: hooks stay off when pr-update runs from a git alias or hook started as
 `GIT_CONFIG_PARAMETERS`, which it reads after the `GIT_CONFIG_COUNT` entry
 that turned hooks off, so a target's checkout ran the PR's hooks. The setting
 is now also appended to `GIT_CONFIG_PARAMETERS` (typed-git's `hooksOffEnv`).
+
+Fixed: a managed clone's credential helper names `gh` by its absolute path,
+found on the absolute `PATH` entries only. It was `!gh auth git-credential`,
+which the shell looked up on `PATH` in the run worktree a push runs in, so
+with `.` on `PATH` a `gh` the PR committed could run. When no `gh` is found
+that way, no helper is set and a note says so.

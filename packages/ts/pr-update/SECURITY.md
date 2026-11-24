@@ -73,8 +73,11 @@ are in scope.
   run's credentials. Local paths and `ext::` URLs are refused; `https` and
   `ssh` ones are not. See [Git submodules](README.md#git-submodules).
 - **A managed clone holds a credential helper.** Its own git config gets
-  `!gh auth git-credential` for its host, so fetches and pushes sign in
-  through `gh`. Your global git config is not changed.
+  `!<gh> auth git-credential` for its host, so fetches and pushes sign in
+  through `gh`. `<gh>` is the absolute path of `gh`, found on the absolute
+  `PATH` entries only, so a `gh` a PR commits is never the one run, even with
+  `.` on `PATH`. Without one, no helper is set. Your global git config is not
+  changed.
 - **A kept record does not choose what is deleted.** `--keep-failed` writes a
   record beside each kept tree, and in a checkout that is
   `.pr-update/failed/`, inside the working tree, where the repository's own

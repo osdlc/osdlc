@@ -377,19 +377,34 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
      the clone does and survives the rename and the clone's removal;
   3. `gh repo clone <owner>/<name> <tmp> --no-upstream -- --bare`, with
      `GH_HOST` set to the target's host (port kept) and hooks off, where
-     `<tmp>` is `.tmp-<name>.git-<pid>` beside the final directory (git
-     needs an empty or missing target, so nothing is written there first)
+     `<tmp>` is `<name>.git` inside a staging folder beside the final
+     directory, `.tmp-<name>.git-<pid>-<random>`, which `mkdtemp` makes with
+     mode `0700`, so no one else can reach the clone before step 7 (git needs
+     an empty or missing target, so nothing is written at `<tmp>` first)
      (changed during the build: Build note 1);
   4. in the clone's own config, set `credential.https://<host>.helper` to an
-     empty value and then to `!gh auth git-credential`, the two lines
+     empty value and then to `!<gh> auth git-credential`, the two lines
      `gh auth setup-git` writes, so the fetch in step 6 and later fetches and
-     pushes authenticate whatever the person's global git config holds;
-  5. set `core.longpaths=true` (Windows paths under the cache are deep);
-  6. delete every `refs/heads/*`, set the fetch refspec, fetch with `--prune`;
-  7. write the clone's stamp and marker, then rename into place.
+     pushes authenticate whatever the person's global git config holds.
+     `<gh>` is `gh`'s absolute path, found on the absolute `PATH` entries
+     only, shell-quoted: git runs the helper through the shell in the run
+     worktree, which holds the PR's files. When no such `gh` is found, no
+     helper is set, with a note (changed during the build: Build note 1);
+  5. set `core.longpaths=true` (Windows paths under the cache are deep), and
+     `maintenance.auto=false` and `gc.auto=0`, so no git starts a background
+     maintenance that writes in the clone while it is hardened, moved or read
+     without its lock (changed during the build: Build note 1);
+  6. delete every `refs/heads/*`, set the fetch refspec, fetch with `--prune`,
+     given the two settings of step 5 with `-c` too, then run
+     `git maintenance run --auto` in the foreground, as after every fetch of
+     a clone while its lock is held;
+  7. write the clone's stamp and marker, take write for group and others off
+     everything in `<tmp>` (`chmod -R go-w`), then rename `<tmp>` into place
+     and remove the staging folder (changed during the build: Build note 1).
 
-  A step that fails removes `<tmp>`, and the target is skipped with the
-  error.
+  A step that fails removes the staging folder, and the target is skipped
+  with the error. A staging folder a killed run leaves is a `.tmp-*`
+  leftover, which pruning removes once it is an hour old.
 
   A clone that exists is used only when this tool made it: a real directory,
   not a symbolic link, holding the tool's marker as a plain file, with the
@@ -613,8 +628,15 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     must be missing, empty or already marked by this tool", with no rule on
     owner or mode. See "The folder rule".
   - Clone step 3: "`gh repo clone <host/owner/name> <tmp> --no-upstream --
-    --bare`", with no `GH_HOST` and nothing on hooks. See "Clone step 3" and
-    "Hooks off in run worktrees and other repositories".
+    --bare`", with no `GH_HOST` and nothing on hooks, where "`<tmp>` is
+    `.tmp-<name>.git-<pid>` beside the final directory". See "Clone step 3",
+    "Hooks off in run worktrees and other repositories" and "The folder
+    rule".
+  - Clone step 4: the helper was "`!gh auth git-credential`", `gh` looked up
+    on `PATH` by the shell. See "The credential helper".
+  - Clone step 5: "set `core.longpaths=true`" only. Clone step 6 ended at
+    "fetch with `--prune`", and step 7 was "write the clone's stamp and
+    marker, then rename into place". See "The folder rule".
   - A clone that exists: not in the accepted text, which did not say when a
     clone already at the clone path is used, or what happens when a prune
     removed it first. See "The folder rule" and "Clone locks".
@@ -946,6 +968,15 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   that calls `runUpdate` directly does not get this and sets its own umask.
   On Windows no ownership or mode check is made, since NTFS
   ACLs are not read: only the symbolic-link and marker checks apply.
+- **The credential helper.** As accepted, a clone's config got
+  `!gh auth git-credential`, which git runs through the shell, finding `gh`
+  on `PATH`. The final review of the omnibus found that a relative `PATH`
+  entry such as `.` then runs a `gh` the PR commits, since a push runs the
+  helper in the run worktree. The helper now names `gh` by its absolute
+  path, found on the absolute `PATH` entries only, as command-seam's
+  `absolutePathOnly` finds a binary, and shell-quoted (`credentialHelper` in
+  `mirror.ts`). Without such a `gh`, no helper is set and a note says so.
+  Clones made before this change keep the old helper: none was released.
 - **Clone locks.** As accepted, `update --apply` held a clone's lock from its
   clone or fetch through `worktree add`, and again for `worktree remove`.
   Built, an `update` takes every lock it needs before its survey, in sorted

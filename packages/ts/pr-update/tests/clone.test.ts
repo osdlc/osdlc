@@ -39,6 +39,7 @@ import {
   CLONE_STAMP,
   claimCloneLock,
   cloneLockPath,
+  credentialHelper,
   markMirrorDir,
 } from '../src/mirror.ts'
 import { CONFIG_INVALID_EXIT } from '@osdlc/config-layers'
@@ -152,6 +153,12 @@ function ghCalls(): { argv: string[]; host: string; hooksPath: string | null }[]
 
 const cloneOf = (dir: string) => join(dir, 'github.com', 'acme', 'api.git')
 
+/** The helper a clone gets: the fake gh by its absolute path (on Windows, `gh.cmd`, with `/`). */
+const ghHelper = () =>
+  process.platform === 'win32'
+    ? credentialHelper({ binary: 'gh' })
+    : `!${join(scratch, 'bin', 'gh')} auth git-credential`
+
 /** A terminal that answers with `lines`, and records what was asked. */
 function answering(...lines: string[]): { seams: CliSeams; asked: () => string } {
   const file = join(scratch, `answers-${Math.random().toString(36).slice(2)}`)
@@ -177,6 +184,36 @@ function writeMachine(text: string): void {
 const readMachine = () => (existsSync(machinePath()) ? readFileSync(machinePath(), 'utf8') : null)
 
 const clonesMade = () => ghCalls().filter((c) => c.argv[1] === 'clone')
+
+describe("a managed clone's credential helper", () => {
+  test.skipIf(process.platform === 'win32')(
+    'never runs a gh planted in the worktree a push runs in, with . on PATH (final review)',
+    async () => {
+      const dir = join(scratch, 'clones')
+      const r = await run('update', '--repo', 'acme/api', '--mirror-dir', dir, '--apply')
+      expect(r.code).toBe(EXIT.ok)
+      // A worktree of the clone holding an executable `gh`, as a PR could commit one.
+      const tree = join(scratch, 'tree')
+      git(cloneOf(dir), 'worktree', 'add', '-q', '--detach', tree, 'origin/topic')
+      const planted = join(scratch, 'planted-ran')
+      writeFileSync(join(tree, 'gh'), `#!/bin/sh\n: > '${planted}'\n`)
+      chmodSync(join(tree, 'gh'), 0o755)
+      // The credential git asks for when it pushes over https, from that worktree.
+      const res = spawnRunner('git').run(['credential', 'fill'], {
+        cwd: tree,
+        env: { PATH: `.${delimiter}${process.env.PATH ?? ''}`, GIT_TERMINAL_PROMPT: '0' },
+        input: 'protocol=https\nhost=github.com\n\n',
+      })
+      expect(res.stdout).toContain('password=fake')
+      expect(existsSync(planted)).toBe(false)
+      expect(ghCalls().map((c) => c.argv.slice(0, 3))).toContainEqual([
+        'auth',
+        'git-credential',
+        'get',
+      ])
+    },
+  )
+})
 
 describe('update --apply with a target that has no checkout', () => {
   test('--mirror-dir clones it with gh, updates the PR from the clone and pushes to its origin', async () => {
@@ -228,7 +265,8 @@ describe('update --apply with a target that has no checkout', () => {
       ['config', '--local', '--get-all', 'credential.https://github.com.helper'],
       { cwd: c },
     )
-    expect(helpers.stdout).toBe('\n!gh auth git-credential\n')
+    // gh by its absolute path, so a `gh` in the directory a push runs in is never the one run.
+    expect(helpers.stdout).toBe(`\n${ghHelper()}\n`)
     expect(existsSync(join(c, CLONE_STAMP))).toBe(true)
     expect(existsSync(join(dir, '.pr-update-mirror'))).toBe(true)
     // The lock beside the clone is released, and no temporary directory is left.
@@ -780,7 +818,7 @@ describe('review round 1', () => {
     expect(clonesMade()).toMatchObject([{ host: 'ghe.example:8443' }])
     expect(JSON.parse(r.out).results).toMatchObject([{ number: 7, status: 'updated' }])
     expect(git(clone, 'config', '--get-all', 'credential.https://ghe.example:8443.helper')).toBe(
-      '!gh auth git-credential',
+      ghHelper(),
     )
   })
 

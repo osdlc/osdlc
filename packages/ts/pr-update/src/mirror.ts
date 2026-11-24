@@ -32,7 +32,7 @@ import {
 } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
-import { stderrOrError, type CommandRunner } from '@osdlc/command-seam'
+import { shellJoin, stderrOrError, which, type CommandRunner } from '@osdlc/command-seam'
 import { ConfigInvalidError, type MachineConfigFile } from '@osdlc/config-layers'
 import { osdlcDirs } from '@osdlc/ecosystem'
 import { WriteConflictError } from '@osdlc/etag-write'
@@ -458,8 +458,11 @@ export class CloneError extends Error {
  *    `<tmp>` is `<name>.git` in a staging folder beside `final`, `.tmp-<name>.git-<pid>-<random>`,
  *    which `mkdtemp` makes `0700`: no one else can reach the clone before step 7;
  * 4. in the clone's own config, `credential.https://<host>.helper` set to an empty value and then
- *    to `!gh auth git-credential`, as `gh auth setup-git` writes them, so later fetches and
- *    pushes authenticate whatever the global git config holds;
+ *    to `!<gh> auth git-credential`, as `gh auth setup-git` writes them, so later fetches and
+ *    pushes authenticate whatever the global git config holds. `<gh>` is the absolute path
+ *    {@link credentialHelper} finds, never a name the shell looks up on `PATH`: a push runs the
+ *    helper in the run worktree, which holds the PR's files, so a relative `PATH` entry such as
+ *    `.` would run a `gh` the PR commits. When it finds none, no helper is set, with a note;
  * 5. `core.longpaths=true`, and `maintenance.auto=false` and `gc.auto=0`, so no git starts a
  *    background maintenance that writes in the clone while it is hardened, moved or read;
  * 6. every `refs/heads/*` deleted, the fetch refspec set to the remote-tracking layout, and
@@ -476,7 +479,11 @@ export class CloneError extends Error {
 export function makeClone(
   final: string,
   req: CloneRequest,
-  deps: { gh: CommandRunner; git?: CommandRunner | undefined },
+  deps: {
+    gh: CommandRunner
+    git?: CommandRunner | undefined
+    notice?: ((line: string) => void) | undefined
+  },
 ): void {
   const parent = dirname(final)
   const staging = mkdtempSync(join(parent, `.tmp-${req.name}.git-${process.pid}-`))
@@ -501,10 +508,17 @@ export function makeClone(
     })
     const git = new Git(tmp, targetGitOptions(deps.git))
     const helper = `credential.https://${req.ghHost}.helper`
-    step('set the credential helper', () => {
-      git.rawChecked(['config', '--local', helper, ''])
-      git.rawChecked(['config', '--local', '--add', helper, '!gh auth git-credential'])
-    })
+    const command = credentialHelper(deps.gh)
+    if (command === null) {
+      deps.notice?.(
+        `${final}: no credential helper set, since \`${deps.gh.binary ?? 'gh'}\` is not on an absolute PATH entry; fetches and pushes there use your git config's helper`,
+      )
+    } else {
+      step('set the credential helper', () => {
+        git.rawChecked(['config', '--local', helper, ''])
+        git.rawChecked(['config', '--local', '--add', helper, command])
+      })
+    }
     step('set core.longpaths', () => git.configSet('core.longpaths', 'true', { scope: 'local' }))
     step('turn off background maintenance', () => {
       for (const [key, value] of NO_MAINTENANCE) git.configSet(key, value, { scope: 'local' })
@@ -538,6 +552,25 @@ export function makeClone(
     throw e
   }
   rmSync(staging, { recursive: true, force: true })
+}
+
+/**
+ * The credential helper a clone's config gets: `!<path> auth git-credential`, where `<path>` is
+ * the absolute path of `gh`'s binary (its `binary`, default `gh`), found on the absolute `PATH`
+ * entries only, as command-seam's `absolutePathOnly` finds it, and shell-quoted. git runs the
+ * helper through the shell in the directory of the git that needs it, a run worktree holding the
+ * PR's files, so a name looked up on `PATH` there could run a `gh` the PR commits. On Windows the
+ * path is written with `/`, which Git for Windows' shell reads. Null when there is no such `gh`.
+ */
+export function credentialHelper(
+  gh: Pick<CommandRunner, 'binary'>,
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  const name = gh.binary ?? 'gh'
+  const found = isAbsolute(name) ? name : which(name, { absolutePathOnly: true, env })
+  if (found === undefined) return null
+  const path = process.platform === 'win32' ? found.replaceAll('\\', '/') : found
+  return `!${shellJoin([path, 'auth', 'git-credential'])}`
 }
 
 /** How the first-run question is asked. The CLI passes cli-tool's prompts. */
