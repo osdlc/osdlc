@@ -177,7 +177,7 @@ export function survey(all: readonly Plugin[], ctx: Ctx): Survey {
  *            protests. For a checklist (`clean -i`) or a run that already
  *            chose.
  *   `pick`   also run these: a candidate held for review
- *            (`unattended: false`) runs only when picked or selected.
+ *            (`held: true`) runs only when picked or selected.
  *   `spare`  leave these alone: an id, a path, a name (every candidate of
  *            that name, as a branch and the worktree that has it), or a
  *            glob (`*`, `**`, `?`) over ids, paths and names.
@@ -261,7 +261,7 @@ export interface Decision {
 
 /**
  * What runs: the selected ids, or without a selection every candidate its
- * owner has not marked `unattended: false` and nothing objects to at `refuse`
+ * owner has not marked `held: true` and nothing objects to at `refuse`
  * or `protest`; then the picked ids too; then less what is spared. A spared
  * candidate that would have run is dropped as `spared`, a refused one as
  * `blocked`, an un-granted protest as `not-allowed`, an unknown id as `gone`.
@@ -286,13 +286,12 @@ export function decide(
   const unmet = (id: string): Objection[] =>
     gating(id, 'protest').filter((o) => !granted.has(o.code))
   // With no selection, only what no owner has held back: an owner marks a candidate
-  // `unattended: false` when it wants a person to choose it.
+  // `held: true` when it wants a person to choose it.
   const base =
     selection.select ??
     candidates
       .filter(
-        (c) =>
-          c.unattended !== false && gating(c.id, 'refuse').length === 0 && unmet(c.id).length === 0,
+        (c) => c.held !== true && gating(c.id, 'refuse').length === 0 && unmet(c.id).length === 0,
       )
       .map((c) => c.id)
 

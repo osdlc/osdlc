@@ -165,8 +165,8 @@ describe('objection levels', () => {
     expect(d.dropped).toEqual([])
   })
 
-  test('by default, a candidate its owner marked unattended: false does not run; a pick adds it', () => {
-    const held = [cand('a:1', 'git', { unattended: false }), cand('a:2', 'git')]
+  test('by default, a candidate its owner marked held does not run; a pick adds it', () => {
+    const held = [cand('a:1', 'git', { held: true }), cand('a:2', 'git')]
     expect(decide(held, [], DEFAULT_SELECTION, []).run.map((c) => c.id)).toEqual(['a:2'])
     expect(
       decide(held, [], { ...DEFAULT_SELECTION, pick: ['a:1'] }, []).run.map((c) => c.id),
@@ -229,7 +229,7 @@ describe('pick, select and spare', () => {
     decide(cs, [], { ...DEFAULT_SELECTION, ...sel }, [])
 
   test('a pick adds to the default; a selection replaces it', () => {
-    const held = [...cs, cand('session:9', 'claude-code', { unattended: false })]
+    const held = [...cs, cand('session:9', 'claude-code', { held: true })]
     const pick = decide(held, [], { ...DEFAULT_SELECTION, pick: ['session:9'] }, [])
     expect(pick.run.map((c) => c.id)).toEqual([...cs.map((c) => c.id), 'session:9'])
     const select = decide(held, [], { ...DEFAULT_SELECTION, select: ['session:9'] }, [])

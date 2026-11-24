@@ -209,7 +209,7 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
           path: r.path,
           owner: ORCA_PLUGIN,
           why: `Orca lists ${r.name}, whose directory is gone`,
-          unattended: false,
+          held: true,
           evidence: { kind: 'orca-record', orcaId: r.id, path: r.path },
         }))
     },

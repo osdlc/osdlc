@@ -10,6 +10,9 @@ export default defineConfig({
     alias: [{ find: /^@osdlc\/ref-lease$/, replacement: src('./src/index.ts') }],
   },
   test: {
+    // The recipes race real git pushes against a remote; on a loaded CI
+    // runner (Windows above all) one can pass the 5 s default.
+    testTimeout: 20000,
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
     coverage: {
       provider: 'v8',
