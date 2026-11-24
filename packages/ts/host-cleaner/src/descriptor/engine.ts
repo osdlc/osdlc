@@ -6,10 +6,10 @@
  * - detect: `detect`'s `onPath` and `exists`, or any of its folders existing.
  *   A `system: true` descriptor never applies ({@link skipReason}), nor one
  *   whose `supersededBy` plugin runs.
- * - roots: the folder each of its `paths` sits in, for this OS. A candidate
- *   may be a whole folder, and the core holds a candidate strictly inside a
- *   root, so the root is the folder's parent; the engine's own checks
- *   ({@link pathProblem}) and `delete` keep it to the folder.
+ * - roots: each of its `paths` for this OS that passes {@link pathProblem},
+ *   as a self root (`{ path, self: true }`): a candidate may be the whole
+ *   folder, so `~/.npm`'s root is `~/.npm` itself, and `delete` checks the
+ *   folder again.
  * - discover: one candidate per folder, or per `glob` match inside it, and
  *   `project` build folders in the targets' checkouts. Each is
  *   `<name>:<path>`. A folder the checks refuse is listed, unmeasured, and
@@ -35,7 +35,7 @@ import { z } from 'zod'
 
 import { hostDirs } from '../config.ts'
 import { DEFAULT_IDLE_HOURS, idleHoursSetting, type Kit } from '../kit.ts'
-import { PERSONAL_FOLDERS, containedIn } from '../roots.ts'
+import { containedIn, realOr, rootProblem } from '../roots.ts'
 import { DELETE_LIMIT_MS, OUTSIDE_ROOTS } from '../run.ts'
 import {
   PLUGIN_API,
@@ -46,6 +46,7 @@ import {
   type Objection,
   type Plugin,
   type PluginDefinition,
+  type Root,
 } from '../types.ts'
 import {
   DEFAULT_MAX_ENTRIES,
@@ -97,19 +98,6 @@ const present = (path: string): boolean => lstatSync(path, { throwIfNoEntry: fal
 const isLink = (path: string): boolean =>
   lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true
 
-/**
- * `path`'s real path as the filesystem spells it, or `path` as given when it
- * does not resolve. The native call matters where the filesystem ignores case,
- * as macOS's does: there `~/documents` is `~/Documents`.
- */
-const realOr = (path: string): string => {
-  try {
-    return realpathSync.native(path)
-  } catch {
-    return path
-  }
-}
-
 /** Whether `inner` is `outer` or below it, by real paths. */
 const within = (outer: string, inner: string): boolean => {
   const rel = relative(realOr(outer), realOr(inner))
@@ -122,9 +110,11 @@ const expand = (folder: string, home: string): string =>
 
 /**
  * Why `path`, one of a descriptor's folders, may not be cleaned, or null when
- * it may: it must sit strictly inside `home`, and not be a personal folder,
- * be or hold a target or a checkout, or hold host-cleaner's own folders. Judged
- * on the path as given and on its real path.
+ * it may. It must pass the core's check of a self root ({@link rootProblem}):
+ * not `/`, not a symlink, not be or hold home, not be a personal folder, not
+ * be or hold a target or a checkout. It must also sit strictly inside `home`
+ * and not hold host-cleaner's own folders. Judged on the path as given and on
+ * its real path, as the filesystem spells it.
  */
 export function pathProblem(
   path: string,
@@ -135,17 +125,9 @@ export function pathProblem(
     ownDirs: readonly string[]
   },
 ): string | null {
-  if (realOr(path) === realOr(at.home)) return 'it is the home folder'
+  const root = rootProblem(path, { ...at, linked: at.checkouts }, true)
+  if (root !== null) return root
   if (containedIn([at.home], path) === null) return 'it is not inside the home folder'
-  for (const name of PERSONAL_FOLDERS) {
-    if (realOr(path) === realOr(join(at.home, name))) return `it is the personal folder ~/${name}`
-  }
-  for (const t of at.targets) {
-    if (within(path, t))
-      return realOr(path) === realOr(t) ? 'it is a target' : `it holds the target ${t}`
-  }
-  if (present(join(path, '.git'))) return 'it is a checkout'
-  for (const c of at.checkouts) if (within(path, c)) return `it holds the checkout ${c}`
   for (const own of at.ownDirs) {
     if (within(path, own)) return `it holds host-cleaner's own folder ${own}`
   }
@@ -536,10 +518,11 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     ]
   }
 
-  const roots = (ctx: Ctx): string[] => {
+  /** Each folder that passes the checks: the plugin's roots, each a self root. */
+  const rootPaths = (ctx: Ctx): string[] => {
     const refused = problems(ctx)
     const out = new Set<string>()
-    for (const [key, folder] of folders) if (refused.get(key) === null) out.add(dirname(folder))
+    for (const [key, folder] of folders) if (refused.get(key) === null) out.add(folder)
     return [...out]
   }
 
@@ -576,7 +559,10 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       }
       busy.push(...liveIn(checkout, ctx))
     } else {
-      if (containedIn(roots(ctx), path) === null) return `it is not inside ${name}'s roots`
+      const now = rootPaths(ctx)
+      if (!now.some((r) => realOr(r) === realOr(path)) && containedIn(now, path) === null) {
+        return `it is not inside ${name}'s roots`
+      }
       const entry = d.candidates[ev.candidate ?? -1]
       const folder = entry === undefined ? undefined : folders.get(entry.path)
       if (entry === undefined || folder === undefined) return 'no candidate entry gives it now'
@@ -611,7 +597,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       if (d.detect?.any !== undefined) return d.detect.any.some(holds)
       return [...folders.values()].some(present)
     },
-    roots,
+    roots: (ctx): Root[] => rootPaths(ctx).map((path) => ({ path, self: true })),
     discover(ctx) {
       rows = new Map(rowsNow(ctx).map((r) => [r.candidate.id, r]))
       return [...rows.values()].map((r) => r.candidate)
