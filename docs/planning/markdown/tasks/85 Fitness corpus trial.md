@@ -35,4 +35,6 @@ Before the pull request opens, the owner confirms the content may be public. sks
 The vault's own content is CC BY 4.0, and imported rows (free-exercise-db, wger, OpenPowerlifting,
 FoodData Central) keep their upstream licences, listed in the vault's `Attributions.md`.
 
+Overlap with [89 Food corpus](89%20Food%20corpus.md): foods and nutrients should come from the corpora planned there (`food-nutrients`, `usda-fdc`), and the vault's own food notes should reference them, not convert them again. Agree the shape of `food-nutrients` with [91 Food nutrients corpus](91%20Food%20nutrients%20corpus.md) before converting the foods and nutrients folders.
+
 Plan for the model half (muscles, exercises, measurement profiles, activity kinds) and for the claims mapping: [97 Fitness corpora](97%20Fitness%20corpora.md) and `docs/planning/fitness-corpora.md`. Its section 6 answers the four questions above for the model half; a trial on the real conversion may correct it.
