@@ -25,10 +25,11 @@ supplies, so it needs one written over `VaultIndex`.
 
 ## Acceptance criteria
 
-- [x] D-02 is confirmed or superseded, with the comparison as its evidence.
+- [ ] D-02 is confirmed or superseded, with the comparison as its evidence.
+      The comparison supports D-02; it waits on the owner's confirmation.
 
 ## Result
 
-D-02 is confirmed. The comparison and its evidence are in
+The comparison supports D-02. The comparison and its evidence are in
 [D-02](../decisions/D-02-alternatives.md#findings-of-the-spike). The task stays open until the owner
 confirms D-02.
