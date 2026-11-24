@@ -1,0 +1,376 @@
+//! The OS lock within one process: take, refuse, record, ask. Another open of
+//! the lock's file stands in for another process, since two opens conflict
+//! within one process too. `os_lock_processes.rs` has the tests with real
+//! processes.
+//!
+//! No test here reads the lock's file while the lock is held: on Windows the
+//! lock blocks that read.
+#![cfg(any(unix, windows))]
+
+use std::fs::{self, File};
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+
+use osdlc_file_lock::os_lock::{
+    Holder, MAX_RECORD_LEN, OsLock, OsLockError, OsLockState, guard_path,
+};
+use serde_json::{Value, json};
+
+/// A record a holder that died left in the lock file.
+const LEFT_BEHIND: &str = "{\"pid\":1,\"boot\":\"old\",\"started_at\":\"2026-11-01\"}\n";
+
+fn lock_in(dir: &tempfile::TempDir) -> PathBuf {
+    dir.path().join("x.lock")
+}
+
+fn read(path: &Path) -> String {
+    fs::read_to_string(path).unwrap()
+}
+
+/// Every name in the directory.
+fn names(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+/// A lock of the test's own on the file at `path`, which must exist.
+fn hold(path: &Path) -> File {
+    let file = File::open(path).unwrap();
+    file.try_lock().unwrap();
+    file
+}
+
+/// What a refused taker is told.
+fn refused(taken: Result<OsLock, OsLockError>, path: &Path) -> OsLockState {
+    match taken {
+        Err(OsLockError::Held { path: at, holder }) => {
+            assert_eq!(at, path);
+            OsLockState::Held(holder)
+        }
+        Err(OsLockError::HeldUnnamed { path: at }) => {
+            assert_eq!(at, path);
+            OsLockState::HeldUnnamed
+        }
+        other => panic!("expected a held lock, got {other:?}"),
+    }
+}
+
+/// Asserts that `found` is a held lock whose file holds `record`. On Unix the
+/// record is read. On Windows the lock blocks the read, so the holder has no
+/// name.
+fn assert_holder(found: &OsLockState, record: Value) {
+    if cfg!(windows) {
+        assert_eq!(*found, OsLockState::HeldUnnamed);
+        return;
+    }
+    let record = record.as_object().unwrap().clone();
+    let pid = u32::try_from(record["pid"].as_u64().unwrap()).unwrap();
+    assert_eq!(*found, OsLockState::Held(Holder { pid, record }));
+}
+
+#[test]
+fn a_free_lock_is_taken_and_its_file_holds_the_pid() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+
+    let lock = OsLock::acquire(&path).unwrap();
+
+    assert_eq!(lock.path(), path);
+    assert_eq!(guard_path(&path), dir.path().join("x.lock.guard"));
+    assert_eq!(names(dir.path()), ["x.lock", "x.lock.guard"]);
+    drop(lock);
+    assert_eq!(read(&path), format!("{{\"pid\":{}}}\n", std::process::id()));
+    assert_eq!(read(&guard_path(&path)), "");
+}
+
+#[test]
+fn the_record_is_replaced_while_the_lock_is_held() {
+    #[derive(serde::Serialize)]
+    struct Info {
+        pid: u32,
+        boot_id: &'static str,
+        started_at: &'static str,
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    let pid = std::process::id();
+    let mut lock = OsLock::acquire(&path).unwrap();
+
+    // The pid is this process's, whatever the caller's record says.
+    let info = Info {
+        pid: 7,
+        boot_id: "boot_0123",
+        started_at: "2026-11-24T10:00:00.250Z",
+    };
+    lock.record(&info).unwrap();
+    let whole =
+        json!({ "pid": pid, "boot_id": "boot_0123", "started_at": "2026-11-24T10:00:00.250Z" });
+    assert_holder(&OsLock::holder(&path).unwrap(), whole.clone());
+    assert_holder(&refused(OsLock::acquire(&path), &path), whole);
+
+    // A shorter record: the file is cut to it.
+    lock.record(&json!({ "boot_id": "b" })).unwrap();
+    assert_holder(
+        &OsLock::holder(&path).unwrap(),
+        json!({ "pid": pid, "boot_id": "b" }),
+    );
+    drop(lock);
+    assert_eq!(
+        read(&path),
+        format!("{{\"pid\":{pid},\"boot_id\":\"b\"}}\n")
+    );
+}
+
+#[test]
+fn the_record_can_be_written_as_the_lock_is_taken() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    fs::write(&path, LEFT_BEHIND).unwrap();
+    let pid = std::process::id();
+
+    let lock = OsLock::acquire_with(&path, &json!({ "startedAt": "t" })).unwrap();
+
+    assert_holder(
+        &OsLock::holder(&path).unwrap(),
+        json!({ "pid": pid, "startedAt": "t" }),
+    );
+    drop(lock);
+    assert_eq!(
+        read(&path),
+        format!("{{\"pid\":{pid},\"startedAt\":\"t\"}}\n")
+    );
+}
+
+#[test]
+fn a_second_taker_is_refused_and_told_the_holder_until_the_lock_is_dropped() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    let pid = std::process::id();
+
+    let first = OsLock::acquire(&path).unwrap();
+    assert_holder(
+        &refused(OsLock::acquire(&path), &path),
+        json!({ "pid": pid }),
+    );
+    assert_holder(
+        &refused(OsLock::acquire_with(&path, &json!({ "n": 2 })), &path),
+        json!({ "pid": pid }),
+    );
+    assert_holder(
+        &refused(OsLock::acquire_unnamed(&path), &path),
+        json!({ "pid": pid }),
+    );
+
+    drop(first);
+    // The refused takers wrote nothing.
+    assert_eq!(read(&path), format!("{{\"pid\":{pid}}}\n"));
+    let again = OsLock::acquire(&path);
+    assert!(again.is_ok(), "{:?}", again.err());
+}
+
+#[test]
+fn a_file_left_behind_is_taken_and_its_record_replaced() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    fs::write(&path, LEFT_BEHIND).unwrap();
+
+    let lock = OsLock::acquire(&path).unwrap();
+
+    drop(lock);
+    assert_eq!(read(&path), format!("{{\"pid\":{}}}\n", std::process::id()));
+}
+
+#[test]
+fn a_held_lock_whose_file_names_nobody_is_held_unnamed() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    fs::write(&path, "garbage").unwrap();
+    let held = hold(&path);
+
+    assert_eq!(
+        refused(OsLock::acquire(&path), &path),
+        OsLockState::HeldUnnamed
+    );
+    assert_eq!(OsLock::holder(&path).unwrap(), OsLockState::HeldUnnamed);
+
+    drop(held);
+    assert_eq!(read(&path), "garbage");
+}
+
+/// A record as another writer would leave it: spaced, with no newline.
+#[test]
+fn a_held_lock_names_the_pid_and_the_record_in_its_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    let text = "{\"pid\": 4242, \"startedAt\": \"2026-11-24T10:00:00.000Z\"}";
+    fs::write(&path, text).unwrap();
+    let held = hold(&path);
+
+    let record = json!({ "pid": 4242, "startedAt": "2026-11-24T10:00:00.000Z" });
+    assert_holder(&refused(OsLock::acquire(&path), &path), record.clone());
+    assert_holder(&OsLock::holder(&path).unwrap(), record);
+
+    drop(held);
+    assert_eq!(read(&path), text);
+}
+
+#[test]
+fn an_unnamed_lock_empties_the_file_and_names_nobody() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    fs::write(&path, LEFT_BEHIND).unwrap();
+
+    let mut lock = OsLock::acquire_unnamed(&path).unwrap();
+
+    assert_eq!(names(dir.path()), ["x.lock", "x.lock.guard"]);
+    assert_eq!(OsLock::holder(&path).unwrap(), OsLockState::HeldUnnamed);
+    assert_eq!(
+        refused(OsLock::acquire(&path), &path),
+        OsLockState::HeldUnnamed
+    );
+
+    // It can name itself later.
+    lock.record(&json!({})).unwrap();
+    assert_holder(
+        &OsLock::holder(&path).unwrap(),
+        json!({ "pid": std::process::id() }),
+    );
+}
+
+#[test]
+fn an_unnamed_lock_leaves_an_empty_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    fs::write(&path, LEFT_BEHIND).unwrap();
+
+    drop(OsLock::acquire_unnamed(&path).unwrap());
+
+    assert_eq!(read(&path), "");
+    assert_eq!(OsLock::holder(&path).unwrap(), OsLockState::Free);
+}
+
+#[test]
+fn holder_is_free_and_creates_nothing_without_a_lock_file() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let no_file = OsLock::holder(&dir.path().join("x.lock")).unwrap();
+    let no_folder = OsLock::holder(&dir.path().join("missing").join("x.lock")).unwrap();
+
+    assert_eq!(no_file, OsLockState::Free);
+    assert_eq!(no_folder, OsLockState::Free);
+    assert!(names(dir.path()).is_empty());
+}
+
+#[test]
+fn holder_is_free_on_a_free_lock_and_leaves_it_as_it_was() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    fs::write(&path, LEFT_BEHIND).unwrap();
+
+    assert_eq!(OsLock::holder(&path).unwrap(), OsLockState::Free);
+
+    assert_eq!(read(&path), LEFT_BEHIND);
+    // It kept neither the lock nor the guard.
+    let taken = OsLock::acquire(&path);
+    assert!(taken.is_ok(), "{:?}", taken.err());
+}
+
+#[test]
+fn holder_leaves_a_held_lock_and_its_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    let pid = std::process::id();
+    let lock = OsLock::acquire(&path).unwrap();
+
+    for _ in 0..3 {
+        assert_holder(&OsLock::holder(&path).unwrap(), json!({ "pid": pid }));
+    }
+
+    assert_holder(
+        &refused(OsLock::acquire(&path), &path),
+        json!({ "pid": pid }),
+    );
+    drop(lock);
+    assert_eq!(read(&path), format!("{{\"pid\":{pid}}}\n"));
+}
+
+#[test]
+fn a_missing_directory_is_an_io_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("missing").join("x.lock");
+
+    match OsLock::acquire(&path) {
+        Err(OsLockError::Io { path: at, source }) => {
+            assert_eq!(at, path);
+            assert_eq!(source.kind(), ErrorKind::NotFound);
+        }
+        other => panic!("expected Io, got {other:?}"),
+    }
+    assert!(names(dir.path()).is_empty());
+}
+
+#[test]
+fn a_record_that_is_not_a_json_object_is_refused_and_nothing_is_written() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    let invalid = |result: Result<(), OsLockError>| match result {
+        Err(OsLockError::Io { path: at, source }) => {
+            assert_eq!(at, path);
+            assert_eq!(source.kind(), ErrorKind::InvalidInput);
+        }
+        other => panic!("expected Io, got {other:?}"),
+    };
+
+    invalid(OsLock::acquire_with(&path, &json!([1])).map(drop));
+    assert!(names(dir.path()).is_empty());
+
+    let mut lock = OsLock::acquire(&path).unwrap();
+    invalid(lock.record(&json!("x")));
+    invalid(lock.record(&json!({ "k": "x".repeat(MAX_RECORD_LEN) })));
+    // Still held, with the record it had.
+    assert_holder(
+        &OsLock::holder(&path).unwrap(),
+        json!({ "pid": std::process::id() }),
+    );
+    drop(lock);
+    assert_eq!(read(&path), format!("{{\"pid\":{}}}\n", std::process::id()));
+}
+
+/// The README says the two protocols do not exclude each other on one path.
+/// This is how: a claim takes over the file an OS lock is held on, and a
+/// second OS lock is then taken on the new file.
+#[cfg(unix)]
+#[test]
+fn a_file_existence_claim_does_not_see_an_os_lock_on_the_same_path() {
+    use osdlc_file_lock::{HeldLock, LockClaim, claim_lock};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    let _first = OsLock::acquire(&path).unwrap();
+
+    let claim = claim_lock(&path, &json!({}), |_: &HeldLock| true).unwrap();
+    assert!(matches!(claim, LockClaim::Claimed { .. }));
+    let second = OsLock::acquire(&path);
+    assert!(second.is_ok(), "{:?}", second.err());
+}
+
+/// What is true on Windows: while the lock is held, another open of its file
+/// cannot read it, so nobody but the holder can read the record.
+#[cfg(windows)]
+#[test]
+fn on_windows_a_held_lock_blocks_the_read_of_its_file() {
+    const ERROR_LOCK_VIOLATION: i32 = 33;
+    let dir = tempfile::tempdir().unwrap();
+    let path = lock_in(&dir);
+    let lock = OsLock::acquire(&path).unwrap();
+
+    let blocked = fs::read(&path).unwrap_err();
+
+    assert_eq!(blocked.raw_os_error(), Some(ERROR_LOCK_VIOLATION));
+    drop(lock);
+    assert_eq!(read(&path), format!("{{\"pid\":{}}}\n", std::process::id()));
+}
