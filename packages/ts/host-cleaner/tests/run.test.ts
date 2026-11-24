@@ -194,6 +194,46 @@ describe('plugin order and duplicates', () => {
     expect(s.warnings).toEqual(['node: detect failed: no stat'])
   })
 
+  test('detect may answer { active, note }: the note is kept on the survey, whether the plugin runs or not', async () => {
+    const degraded = fake('orca', [cand('a:1', 'orca')], [], {
+      detect: () => ({ active: true, note: 'installed but not running' }),
+    })
+    const off = fake('cargo', [cand('a:2', 'cargo')], [], {
+      detect: async () => ({ active: false, note: 'no cargo on PATH' }),
+    })
+    const plain = fake('git', [cand('a:3', 'git')], [], { detect: () => ({ active: true }) })
+    const s = await survey([degraded, off, plain], ctx)
+    expect(s.plugins.map((p) => p.name)).toEqual(['orca', 'git'])
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:1', 'a:3'])
+    expect(s.notes).toEqual({ orca: 'installed but not running', cargo: 'no cargo on PATH' })
+    expect(s.warnings).toEqual([])
+    expect(JSON.parse(JSON.stringify(s.notes))).toEqual(s.notes)
+  })
+
+  test('a detect answer of another shape leaves the plugin out with a warning', async () => {
+    const answers: unknown[] = [1, 'yes', null, { note: 'x' }, { active: true, note: 7 }]
+    for (const answer of answers) {
+      const odd = fake('odd', [cand('a:1', 'odd')], [], { detect: () => answer as boolean })
+      const s = await survey([odd], ctx)
+      expect(s.plugins).toEqual([])
+      expect(s.notes).toEqual({})
+      expect(s.warnings).toEqual([
+        `odd: detect answered ${JSON.stringify(answer)}, which is neither a boolean nor { active, note? }; it was left out`,
+      ])
+    }
+  })
+
+  test('every hook sees targetsGiven, false when the run leaves it unset', async () => {
+    const seen: boolean[] = []
+    const p = fake('git', [], [], {
+      detect: (c) => (seen.push(c.targetsGiven), true),
+      discover: (c) => (seen.push(c.targetsGiven), []),
+    })
+    await survey([p], ctx)
+    await survey([p], { ...ctx, targetsGiven: true })
+    expect(seen).toEqual([false, false, true, true])
+  })
+
   test('scope adds roots before discover, once', async () => {
     const seen: string[][] = []
     const scoping = fake('orca', [], [], {
