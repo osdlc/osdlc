@@ -377,7 +377,7 @@ describe('a root declared { path, self: true }', () => {
         delete: (c) => kit.remove(c.path!),
       }),
     })
-    return def.create({ settings: {}, only: [], env: {}, kit: pluginKit('store') })
+    return def.create({ settings: {}, env: {}, kit: pluginKit('store') })
   }
 
   /** A home folder of its own, as `HOME`, with `.npm/_cacache/blob` in it. */
