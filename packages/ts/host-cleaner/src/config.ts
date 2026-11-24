@@ -13,7 +13,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 
-import { envVars, systemDirs } from '@osdlc/cli-tool'
+import { envVars, systemDirs, type ResolveOptions } from '@osdlc/cli-tool'
 
 import { settingsIssues } from './settings.ts'
 
@@ -39,19 +39,7 @@ export interface HostDirs {
 }
 
 /** `platform` and `home` stand in for this machine's, for tests. */
-export interface MachineOpts {
-  platform?: string
-  home?: string
-}
-
-const dirsUnder = (
-  convention: 'native' | 'xdg',
-  env: Record<string, string | undefined>,
-  opts: MachineOpts,
-): HostDirs => {
-  const tier = systemDirs(VENDOR_DIRS, { env, convention, ...opts }).standalone('host-cleaner')
-  return { config: tier.config().path, state: tier.state().path, logs: tier.logs().path }
-}
+export type MachineOpts = Pick<ResolveOptions, 'platform' | 'home'>
 
 /**
  * The directories, under the `xdg` convention. Windows has no `xdg` folders
@@ -62,7 +50,9 @@ export function hostDirs(
   env: Record<string, string | undefined> = process.env,
   opts: MachineOpts = {},
 ): HostDirs {
-  return dirsUnder('xdg', env, opts)
+  const dirs = systemDirs(VENDOR_DIRS, { env, convention: 'xdg', ...opts })
+  const tier = dirs.standalone('host-cleaner')
+  return { config: tier.config().path, state: tier.state().path, logs: tier.logs().path }
 }
 
 export const configFile = (dirs: HostDirs): string => join(dirs.config, 'config.json')

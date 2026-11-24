@@ -349,29 +349,17 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
-interface ConfigSource {
-  path: string
-  /** Given with `--config`, so it must exist. */
-  named: boolean
-  exists: boolean
-}
-
-/** The config file this run reads: `--config`; else `config.json` in the config directory. */
-function findConfig(v: { config?: string | undefined }, ctx: CliContext): ConfigSource {
-  // A named file that is missing never gets past readConfig.
-  if (v.config !== undefined) {
-    return { path: resolve(ctx.cwd, v.config), named: true, exists: true }
-  }
-  const path = configFile(hostDirs(ctx.env))
-  return { path, named: false, exists: existsSync(path) }
-}
-
+/** Reads `--config`, which must exist; else `config.json` in the config directory, if any. */
 function loadConfig(
   v: { config?: string | undefined },
   ctx: CliContext,
-): { source: ConfigSource; config: Config } {
-  const source = findConfig(v, ctx)
-  return { source, config: readConfig(source.path, { required: source.named }) }
+): { file: string; config: Config } {
+  if (v.config !== undefined) {
+    const file = resolve(ctx.cwd, v.config)
+    return { file, config: readConfig(file, { required: true }) }
+  }
+  const file = configFile(hostDirs(ctx.env))
+  return { file, config: readConfig(file) }
 }
 
 /** `--plugin` and its alias `--adapter`, as one list; undefined when neither is given. */
@@ -498,7 +486,8 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
-    const { source, config } = loadConfig(v, ctx)
+    const { file, config } = loadConfig(v, ctx)
+    const fileExists = existsSync(file)
     const unused = unknownPlugins(config, (n) => Object.hasOwn(PLUGIN_SETTINGS, n))
     if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
     const settings = effectiveSettings(config.plugins, config)
@@ -512,8 +501,8 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
       ctx.io.stdout(
         JSON.stringify(
           {
-            file: source.path,
-            fileExists: source.exists,
+            file,
+            fileExists,
             targets: config.targets,
             ignore: config.ignore,
             idleHours: config.idleHours ?? null,
@@ -527,7 +516,7 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
     }
     const list = (xs: readonly string[]): string => (xs.length > 0 ? xs.join(', ') : '(none)')
     const lines = [
-      `file: ${source.path}${source.exists ? '' : '  (not found: defaults)'}`,
+      `file: ${file}${fileExists ? '' : '  (not found: defaults)'}`,
       `targets: ${list(config.targets)}`,
       `ignore: ${list(config.ignore)}`,
       `idleHours: ${config.idleHours ?? '(not set)'}`,
