@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.3](https://github.com/osdlc/osdlc/compare/typed-git/v0.4.2...typed-git/v0.4.3) - 2026-11-24
+
+### Other
+
+- pin diff.interHunkContext and GIT_DIFF_OPTS on the diff verbs
+
+### Added
+
+- `cmd`: `GitCommand::env_remove` removes a variable from the git
+  subprocess's environment.
+
+### Fixed
+
+- `diff`: `diff_text` passes `--inter-hunk-context=0` and removes
+  `GIT_DIFF_OPTS` from git's environment, so `diff.interHunkContext` and a
+  `-u<n>` in `GIT_DIFF_OPTS` no longer change the lines of context, and
+  `context(0)` gives the changed lines alone. The docs list every setting that
+  still changes the text, and say that `find_renames()` also overrides
+  `diff.renames=copies`.
+
 ## [0.4.2](https://github.com/osdlc/osdlc/compare/typed-git/v0.4.1...typed-git/v0.4.2) - 2026-11-21
 
 ### Other

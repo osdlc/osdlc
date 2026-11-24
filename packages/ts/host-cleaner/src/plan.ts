@@ -6,7 +6,7 @@ import { z } from 'zod'
 
 import { COST_DESCRIPTIONS, DROP_REASONS, LEVELS } from './types.ts'
 
-/** 2: a candidate is a path or a ref. A version 1 plan is read and upgraded (see {@link parsePlan}). */
+/** 2: a candidate is a path or a ref. A plan of another version is refused (see {@link parsePlan}). */
 export const PLAN_VERSION = 2
 export const RECEIPT_VERSION = 1
 
@@ -110,42 +110,7 @@ export const ReceiptSchema = z.object({
 
 export type Receipt = z.infer<typeof ReceiptSchema>
 
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
-
-/** `c` with its evidence's `sizeBytes` and `newestMtimeMs` left out. */
-function withoutMeasures(
-  c: Record<string, unknown>,
-  evidence: Record<string, unknown>,
-): Record<string, unknown> {
-  const { sizeBytes: _size, newestMtimeMs: _mtime, ...rest } = evidence
-  return { ...c, evidence: rest }
-}
-
-/**
- * A version 1 candidate as a version 2 one. Version 1 had only paths: a
- * branch's was `<repo>:<name>` with `at` its repository, and an Orca record's
- * was its gone directory. Both are refs now, under the same id. A `cargo` or
- * `node` artifact's evidence loses `sizeBytes` and `newestMtimeMs`, which
- * version 2 leaves out, so the re-check does not read it as changed.
- */
-function upgradeCandidate(v1: unknown): unknown {
-  if (!isObject(v1) || typeof v1.path !== 'string') return v1
-  const c = v1.kind === 'artifact' && isObject(v1.evidence) ? withoutMeasures(v1, v1.evidence) : v1
-  const path = v1.path
-  const { path: _path, ...rest } = c
-  if (typeof c.at === 'string' && path.startsWith(`${c.at}:`)) {
-    return { ...rest, ref: path.slice(c.at.length + 1) }
-  }
-  const orcaId = isObject(c.evidence) ? c.evidence.orcaId : undefined
-  if (c.kind === 'orca-record' && typeof orcaId === 'string') {
-    return { ...rest, ref: orcaId, at: path }
-  }
-  const { at: _at, ...plain } = c
-  return plain
-}
-
-/** Parse a plan's JSON text; `source` names where it came from, for the error. A version 1 plan is upgraded. */
+/** Parse a plan's JSON text; `source` names where it came from, for the error. A plan of another version is refused: sweep again. */
 export function parsePlan(text: string, source: string): Plan {
   let json: unknown
   try {
@@ -153,8 +118,11 @@ export function parsePlan(text: string, source: string): Plan {
   } catch {
     throw new Error(`${source}: not JSON`)
   }
-  if (isObject(json) && json.version === 1 && Array.isArray(json.candidates)) {
-    json = { ...json, version: PLAN_VERSION, candidates: json.candidates.map(upgradeCandidate) }
+  const version = (json as { version?: unknown } | null)?.version
+  if (version !== undefined && version !== PLAN_VERSION) {
+    throw new Error(
+      `${source}: a version ${JSON.stringify(version)} plan; this host-cleaner reads version ${PLAN_VERSION}: sweep again`,
+    )
   }
   const parsed = PlanSchema.safeParse(json)
   if (!parsed.success) {
