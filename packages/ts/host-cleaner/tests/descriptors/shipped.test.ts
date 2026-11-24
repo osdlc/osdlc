@@ -20,6 +20,7 @@ import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import { captureContext } from '@osdlc/cli-tool'
+import type { CommandRunner } from '@osdlc/command-seam'
 import type { ProcessHolder, ProcessProbe } from '@osdlc/repo-cleaner'
 
 import { main } from '../../src/cli.ts'
@@ -99,9 +100,28 @@ afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()!()
 })
 
-const probeOf = (table: Record<string, ProcessHolder[]> = {}): ProcessProbe => ({
-  alive: () => false,
-  holders: (path) => table[path] ?? [],
+/** The kit's process table, as its `probe` and `ps` options. */
+interface Processes {
+  probe: ProcessProbe
+  ps: CommandRunner
+}
+
+/**
+ * A process table: `cwd` maps a folder to the processes working in it, for
+ * the probe; `/` lists every process, read by `ps` with `command` as its
+ * command line.
+ */
+const processes = (table: Record<string, ProcessHolder[]> = {}): Processes => ({
+  probe: { alive: () => false, holders: (path) => table[path] ?? [] },
+  ps: {
+    run: () => ({
+      exitCode: 0,
+      stdout: [{ pid: 1, command: '/sbin/init' }, ...(table['/'] ?? [])]
+        .map((h) => `${h.pid} ${h.command}\n`)
+        .join(''),
+      stderr: '',
+    }),
+  },
 })
 
 const shipped = (name: string): Descriptor =>
@@ -155,7 +175,7 @@ function fill(d: Descriptor, key: string, folder: string): void {
 function build(
   name: Store,
   os: TestedOs,
-  o: { programs?: Programs; probe?: ProcessProbe; moves?: (home: string) => Moves } = {},
+  o: { programs?: Programs; processes?: Processes; moves?: (home: string) => Moves } = {},
 ): Built {
   const h = tempHome()
   cleanups.push(h.cleanup)
@@ -172,7 +192,7 @@ function build(
   }
   const env = { ...h.env, ...m.env }
   const fake = fakeRunner({ ...o.programs, ...m.programs })
-  const kit = pluginKit(name, { env, probe: o.probe ?? probeOf(), ...fake })
+  const kit = pluginKit(name, { env, ...(o.processes ?? processes()), ...fake })
   const plugin = descriptorPlugin(name, d, { os, ownDirs: [] }).create({
     settings: { idleHours: DEFAULT_IDLE_HOURS, vars: m.vars },
     only: [],
@@ -353,8 +373,8 @@ describe.each(OSES_TESTED)('on %s', (os) => {
     })
 
     test('a running pnpm refuses both', async () => {
-      const table = { '/': [{ pid: 7, command: 'pnpm' }] }
-      const b = build('pnpm', os, { probe: probeOf(table) })
+      const table = { '/': [{ pid: 7, command: 'node /opt/homebrew/bin/pnpm install' }] }
+      const b = build('pnpm', os, { processes: processes(table) })
       const s = await survey([b.plugin], ctxOf())
       expect(s.objections.filter((o) => o.code === IN_USE)).toHaveLength(2)
     })
@@ -410,8 +430,10 @@ describe.each(OSES_TESTED)('on %s', (os) => {
     })
 
     test('a running Gradle daemon refuses every candidate', async () => {
-      const table = { '/': [{ pid: 9, command: 'GradleDaemon' }] }
-      const b = build('gradle', os, { probe: probeOf(table) })
+      const daemon =
+        'java -cp gradle-launcher.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.10'
+      const table = { '/': [{ pid: 9, command: daemon }] }
+      const b = build('gradle', os, { processes: processes(table) })
       age(b.folder('caches'), 169)
       const { survey: s, receipt } = await surveyAndClean(b.plugin)
       expect(s.candidates).toHaveLength(3)

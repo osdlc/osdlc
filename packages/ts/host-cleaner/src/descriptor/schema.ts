@@ -124,6 +124,9 @@ export const DescriptorCandidateSchema = z
       .refine((g) => !CLIMBS.test(g) && !/^([/\\]|~|[A-Za-z]:)/.test(g), {
         message: 'must stay inside the path: no .. segment, not absolute',
       })
+      .refine((g) => g.split(/[/\\]/).some((part) => part !== '' && part !== '.'), {
+        message: 'must name entries under the path, such as models--*/',
+      })
       .optional()
       .describe('Entries under the path, one candidate each, such as `models--*/`.'),
     maxEntries: z
