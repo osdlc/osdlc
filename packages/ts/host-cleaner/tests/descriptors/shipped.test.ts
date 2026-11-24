@@ -125,8 +125,8 @@ interface Processes {
 
 /**
  * A process table: `cwd` maps a folder to the processes working in it, for
- * the probe; `/` lists every process, read by `ps` with `command` as its
- * command line.
+ * the probe; `/` lists every process, read by `ps` as a child of init with
+ * `command` as its command line.
  */
 const processes = (table: Record<string, ProcessHolder[]> = {}): Processes => ({
   probe: { alive: () => false, holders: (path) => table[path] ?? [] },
@@ -134,7 +134,7 @@ const processes = (table: Record<string, ProcessHolder[]> = {}): Processes => ({
     run: () => ({
       exitCode: 0,
       stdout: [{ pid: 1, command: '/sbin/init' }, ...(table['/'] ?? [])]
-        .map((h) => `${h.pid} ${h.command}\n`)
+        .map((h) => `${h.pid} ${h.pid === 1 ? 0 : 1} ${h.command}\n`)
         .join(''),
       stderr: '',
     }),
