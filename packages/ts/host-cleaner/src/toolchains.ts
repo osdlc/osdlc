@@ -350,7 +350,11 @@ export function mountOptionsBy(
       if (!r.ok) return null
       table = parseMountOutput(r.stdout)
     } else {
-      table = parseProcMounts(readFileSync('/proc/self/mounts', 'utf8'))
+      try {
+        table = parseProcMounts(readFileSync('/proc/self/mounts', 'utf8'))
+      } catch {
+        return null
+      }
     }
     return table.filter((m) => m.on === on).at(-1)?.options ?? null
   }

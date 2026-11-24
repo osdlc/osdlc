@@ -536,7 +536,8 @@ describe('a versions folder on a noatime volume', () => {
     expect(p.candidates.map((c) => c.name)).toEqual(['v14.21.3'])
     noatime = true
     const receipt = await clean(p, [fx.plugin], fx.ctx)
-    expect(receipt.steps.filter((st) => st.result === 'ok')).toEqual([])
+    expect(receipt.steps).toEqual([])
+    expect(receipt.dropped.map((d) => d.reason)).toEqual(['gone'])
     expect(readdirSync(fx.nvm).sort()).toEqual(['v14.21.3', 'v18.17.0'])
   })
 })
