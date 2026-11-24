@@ -315,6 +315,41 @@ describe('folders', () => {
     expect(oldConfigFile({ HOST_CLEANER_CONVENTION: 'native' }, opts)).toBeUndefined()
     expect(oldConfigFile({}, { platform: 'linux', home })).toBeUndefined()
   })
+
+  test('on macOS the 0.2 config is read with a warning until the new one exists', () => {
+    const home = tempDir()
+    const cwd = tempDir()
+    const machine = { platform: 'darwin', home }
+    const old = join(home, 'Library', 'Application Support', 'host-cleaner', 'config.json')
+    const now = join(home, '.config', 'host-cleaner', 'config.json')
+    mkdirSync(dirname(old), { recursive: true })
+    writeFileSync(old, JSON.stringify({ idleHours: 72 }))
+
+    const r = run(['config'], cwd, {}, { machine })
+    expect(r.code).toBe(0)
+    expect(r.out).toContain(`file: ${old}\n`)
+    expect(r.out).toContain('idleHours: 72')
+    expect(r.err).toContain(`move it to ${now}`)
+
+    const s = run(['status', '--format', 'json', cwd], cwd, {}, { machine, plugins: [fake()] })
+    const { warnings } = JSON.parse(s.out) as { warnings: string[] }
+    expect(warnings.some((w) => w.includes(`move it to ${now}`))).toBe(true)
+    expect(s.err).not.toContain('move it to')
+
+    mkdirSync(dirname(now), { recursive: true })
+    writeFileSync(now, JSON.stringify({ idleHours: 12 }))
+    const after = run(['config'], cwd, {}, { machine })
+    expect(after.out).toContain(`file: ${now}\n`)
+    expect(after.out).toContain('idleHours: 12')
+    expect(after.err).not.toContain('move it to')
+  })
+
+  test('a bad HOST_CLEANER_CONVENTION is refused by clean, not thrown', () => {
+    const { env, cwd } = setup()
+    const r = run(['clean', '--yes', cwd], cwd, { ...env, HOST_CLEANER_CONVENTION: 'Native' })
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('HOST_CLEANER_CONVENTION must be')
+  })
 })
 
 describe('plan and clean', () => {

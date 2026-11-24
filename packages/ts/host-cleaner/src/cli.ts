@@ -32,6 +32,8 @@ import {
   oldConfigFile,
   readConfig,
   type Config,
+  type HostDirs,
+  type MachineOpts,
 } from './config.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { FACTORIES, UnknownPlugin, selectPlugins } from './registry.ts'
@@ -278,6 +280,8 @@ export interface MainDeps {
   checklist?: Checklist
   /** Reads `--plan -`. Defaults to stdin. */
   readStdin?: () => string
+  /** Stands in for this machine's platform and home when finding host-cleaner's folders. */
+  machine?: MachineOpts
 }
 
 const PAUSE = new Int32Array(new SharedArrayBuffer(4))
@@ -362,14 +366,18 @@ interface ConfigSource {
  * The config file this run reads: `--config`; else `config.json` in the config
  * directory, or the one 0.2 used when only that one exists.
  */
-function findConfig(v: { config?: string | undefined }, ctx: CliContext): ConfigSource {
+function findConfig(
+  v: { config?: string | undefined },
+  ctx: CliContext,
+  deps: MainDeps,
+): ConfigSource {
+  // A named file that is missing never gets past readConfig.
   if (v.config !== undefined) {
-    const path = resolve(ctx.cwd, v.config)
-    return { path, named: true, exists: existsSync(path) }
+    return { path: resolve(ctx.cwd, v.config), named: true, exists: true }
   }
-  const path = configFile(hostDirs(ctx.env))
+  const path = configFile(hostDirs(ctx.env, deps.machine))
   if (existsSync(path)) return { path, named: false, exists: true }
-  const old = oldConfigFile(ctx.env)
+  const old = oldConfigFile(ctx.env, deps.machine)
   return old === undefined
     ? { path, named: false, exists: false }
     : { path: old, named: false, exists: true, moveTo: path }
@@ -378,15 +386,16 @@ function findConfig(v: { config?: string | undefined }, ctx: CliContext): Config
 function loadConfig(
   v: { config?: string | undefined },
   ctx: CliContext,
-  name: string,
-): { source: ConfigSource; config: Config } {
-  const source = findConfig(v, ctx)
-  if (source.moveTo !== undefined) {
-    writeWarnings(ctx, name, [
-      `reading ${source.path}, where host-cleaner 0.2 kept its config; move it to ${source.moveTo}`,
-    ])
-  }
-  return { source, config: readConfig(source.path, { required: source.named }) }
+  deps: MainDeps,
+): { source: ConfigSource; config: Config; warnings: string[] } {
+  const source = findConfig(v, ctx, deps)
+  const warnings =
+    source.moveTo === undefined
+      ? []
+      : [
+          `reading ${source.path}, where host-cleaner 0.2 kept its config; move it to ${source.moveTo}`,
+        ]
+  return { source, config: readConfig(source.path, { required: source.named }), warnings }
 }
 
 /** `--plugin` and its alias `--adapter`, as one list; undefined when neither is given. */
@@ -482,22 +491,24 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   let s: ReturnType<typeof survey>
+  let warnings: string[]
   try {
-    const { config } = loadConfig(v, ctx, name)
+    const { config, warnings: configWarnings } = loadConfig(v, ctx, deps)
     s = survey(
       pluginsFor(v, config, deps, ctx),
       contextFor(parsed.positionals, config, ctx, [], v.ignore),
     )
+    warnings = [...configWarnings, ...s.warnings]
   } catch (err) {
     return refusal(ctx, name, err)
   }
   const ignored = s.ctx.ignore ?? []
   if (v.format === 'json') {
     ctx.io.stdout(
-      `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), ignore: ignored, warnings: s.warnings, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
+      `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), ignore: ignored, warnings, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
     )
   } else {
-    writeWarnings(ctx, name, s.warnings)
+    writeWarnings(ctx, name, warnings)
     ctx.io.stdout(
       `plugins: ${s.plugins.map((p) => p.name).join(', ') || '(none)'}\n` +
         (ignored.length > 0 ? `ignoring: ${ignored.join(', ')}\n` : '') +
@@ -507,13 +518,14 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   return nothingFound(s) ? EXIT_NOTHING_TO_SWEEP : EXIT.ok
 }
 
-function runConfig(argv: readonly string[], ctx: CliContext): number {
+function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
   const name = `${NAME} config`
   const parsed = parseWith(configCli(), name, argv, ctx)
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
-    const { source, config } = loadConfig(v, ctx, name)
+    const { source, config, warnings } = loadConfig(v, ctx, deps)
+    writeWarnings(ctx, name, warnings)
     const unused = unknownPlugins(config, (n) => Object.hasOwn(PLUGIN_SETTINGS, n))
     if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
     const settings = effectiveSettings(config.plugins, config)
@@ -569,7 +581,8 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   const v = parsed.values
   let plan: Plan
   try {
-    const { config } = loadConfig(v, ctx, name)
+    const { config, warnings } = loadConfig(v, ctx, deps)
+    writeWarnings(ctx, name, warnings)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = survey(pluginsFor(v, config, deps, ctx), cctx)
     writeWarnings(ctx, name, s.warnings)
@@ -707,14 +720,16 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   }
 
   const now = new Date()
-  const dirs = hostDirs(ctx.env)
+  let dirs: HostDirs
   let plan: Plan
   let source: string
   let plugins: Plugin[]
   let cctx: Ctx
   let preview: Decision
   try {
-    const { config } = loadConfig(v, ctx, name)
+    dirs = hostDirs(ctx.env, deps.machine)
+    const { config, warnings } = loadConfig(v, ctx, deps)
+    writeWarnings(ctx, name, warnings)
     plugins = pluginsFor(v, config, deps, ctx)
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
@@ -813,7 +828,7 @@ export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = 
   if (sub === 'status') return runStatus(rest, ctx, deps)
   if (sub === 'plan') return runPlan(rest, ctx, deps)
   if (sub === 'clean') return runClean(rest, ctx, deps)
-  if (sub === 'config') return runConfig(rest, ctx)
+  if (sub === 'config') return runConfig(rest, ctx, deps)
   if (sub === '-h' || sub === '--help') {
     ctx.io.stdout(OVERVIEW)
     return EXIT.ok

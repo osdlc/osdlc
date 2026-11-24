@@ -182,7 +182,9 @@ same folders as Linux:
 
 0.2 kept the macOS config in `~/Library/Application Support/host-cleaner/`.
 When only that file exists, host-cleaner reads it and warns you to move it to
-`~/.config/host-cleaner/`.
+`~/.config/host-cleaner/`. 0.2's receipts and log stay where it wrote them, in
+`~/Library/Application Support/host-cleaner/receipts/` and
+`~/Library/Logs/host-cleaner/`; new ones go to `~/.local/state/host-cleaner/`.
 
 The config file holds the targets and each plugin's settings:
 
