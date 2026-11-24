@@ -77,14 +77,8 @@ const run = (plugins: Plugin[], opts: { select?: string[]; allow?: string[] } = 
 
 describe('plugin order and duplicates', () => {
   test('git is first, known built-ins in their order, unknown plugins after', () => {
-    const names = ['zzz', 'node', 'claude-code', 'git', 'cargo'].map((name) => fake(name, [], []))
-    expect(orderPlugins(names).map((p) => p.name)).toEqual([
-      'git',
-      'cargo',
-      'node',
-      'claude-code',
-      'zzz',
-    ])
+    const names = ['zzz', 'node', 'orca', 'git', 'cargo'].map((name) => fake(name, [], []))
+    expect(orderPlugins(names).map((p) => p.name)).toEqual(['git', 'cargo', 'node', 'orca', 'zzz'])
   })
 
   test('a duplicate id keeps the first plugin in order and warns, naming both', () => {
@@ -229,11 +223,11 @@ describe('pick, select and spare', () => {
     decide(cs, [], { ...DEFAULT_SELECTION, ...sel }, [])
 
   test('a pick adds to the default; a selection replaces it', () => {
-    const held = [...cs, cand('session:9', 'claude-code', { held: true })]
-    const pick = decide(held, [], { ...DEFAULT_SELECTION, pick: ['session:9'] }, [])
-    expect(pick.run.map((c) => c.id)).toEqual([...cs.map((c) => c.id), 'session:9'])
-    const select = decide(held, [], { ...DEFAULT_SELECTION, select: ['session:9'] }, [])
-    expect(select.run.map((c) => c.id)).toEqual(['session:9'])
+    const held = [...cs, cand('orca-record:9', 'orca', { held: true })]
+    const pick = decide(held, [], { ...DEFAULT_SELECTION, pick: ['orca-record:9'] }, [])
+    expect(pick.run.map((c) => c.id)).toEqual([...cs.map((c) => c.id), 'orca-record:9'])
+    const select = decide(held, [], { ...DEFAULT_SELECTION, select: ['orca-record:9'] }, [])
+    expect(select.run.map((c) => c.id)).toEqual(['orca-record:9'])
   })
 
   test('a name spares every candidate of that name, a branch and the worktree that has it', () => {
@@ -518,11 +512,11 @@ describe('prepare, delete and deleted', () => {
           throw new Error('forget failed')
         },
       }),
-      fake('claude-code', [], log),
+      fake('cargo', [], log),
     ])
     expect(receipt.steps[0]).toMatchObject({ result: 'ok', error: null })
     expect(receipt.steps[0]!.notified).toEqual([
-      { plugin: 'claude-code', error: null },
+      { plugin: 'cargo', error: null },
       { plugin: 'orca', error: 'forget failed' },
     ])
     expect(receipt.status).toBe('complete')

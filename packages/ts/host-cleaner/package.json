@@ -59,7 +59,6 @@
     "@osdlc/cli-tool": "workspace:^",
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/config-layers": "workspace:^",
-    "@osdlc/detect-harness": "workspace:^",
     "@osdlc/path-guard": "workspace:^",
     "@osdlc/repo-cleaner": "workspace:^",
     "@osdlc/typed-git": "workspace:^",
