@@ -114,6 +114,8 @@ interface Make {
   options?: JetbrainsOptions
   /** The kit's budget clock. */
   clock?: () => number
+  /** The clock idle time is read from. */
+  now?: () => Date
 }
 
 /** The plugin on `h`, built through `definePlugin` as a plugin author's would be, so the core binds its kit. */
@@ -138,7 +140,7 @@ function make(h: TempHome, over: Make = {}): Plugin {
     only: [],
     env: h.env,
     kit: pluginKit(JETBRAINS_PLUGIN, {
-      now: () => NOW,
+      now: over.now ?? (() => NOW),
       clock: over.clock,
       ps: over.ps ?? psOf(),
     }),
@@ -380,23 +382,62 @@ describe('version folders', () => {
     expect(existsSync(c.path!)).toBe(true)
   })
 
-  test('a running JetBrains Client refuses its folders', async () => {
+  test('a running JetBrains Client refuses its folders, whichever launcher it has', async () => {
     const h = home()
     version(h, 'JetBrainsClient2024.3')
-    const s = await survey(
-      [
-        make(h, {
-          ps: psOf([
-            {
-              pid: 7,
-              args: '/home/u/.cache/JetBrains/JetBrainsClient2024.3/bin/jetbrains_client --remote',
-            },
-          ]),
-        }),
-      ],
-      ctx(),
+    const dist = '/Users/u/Library/Caches/JetBrains/JetBrainsClientDist/JetBrainsClient-243.1'
+    for (const args of [
+      `${dist}/JetBrains Client.app/Contents/MacOS/jetbrains_client thinClient tcp://127.0.0.1:1`,
+      '/home/u/dist/jbr/bin/java -Djb.vmOptionsFile=/home/u/dist/bin/jetbrains_client64.vmoptions com.intellij.idea.Main',
+      '/bin/sh /home/u/dist/bin/cwm_guest.sh thinClient',
+      '/home/u/dist/bin/intellij_client64',
+    ]) {
+      const s = await survey([make(h, { ps: psOf([{ pid: 7, args }]) })], ctx())
+      expect(s.objections.map((o) => o.code)).toEqual(['live-process', 'live-process'])
+    }
+  })
+
+  test('delete sees an install that came back since the survey', async () => {
+    const h = twoVersions()
+    const plugin = make(h)
+    const s = await survey([plugin], ctx())
+    const c = s.candidates.find((x) => x.path === join(caches(h), 'RustRover2025.1'))!
+    install(h, 'RustRover Old', 'RustRover2025.1')
+    await expect((async () => plugin.delete!(c, ctx()))()).rejects.toThrow(
+      'is no longer a candidate',
     )
-    expect(s.objections.map((o) => o.code)).toEqual(['live-process', 'live-process'])
+    expect(existsSync(c.path!)).toBe(true)
+  })
+
+  test('one picked while held still runs once it is idle, and one that was idle and is held now does not', async () => {
+    const h = home()
+    install(h, 'RustRover', 'RustRover2026.1')
+    put(join(caches(h), 'RustRover2025.1', 'x'), 23.9)
+    let now = NOW
+    const plugin = make(h, { now: () => now })
+    const s = await survey([plugin], ctx())
+    const c = s.candidates[0]!
+    expect(c.held).toBe(true)
+    now = ago(-0.2)
+    const receipt = await clean(plan(s, { pick: [c.id] }), [plugin], ctx())
+    expect(receipt.dropped).toEqual([])
+    expect(receipt.steps.map((x) => x.result)).toEqual(['ok'])
+    expect(existsSync(c.path!)).toBe(false)
+
+    put(join(caches(h), 'RustRover2025.1', 'x'), 48)
+    const idle = await survey([plugin], ctx())
+    put(join(caches(h), 'RustRover2025.1', 'fresh'), 1)
+    const again = await clean(plan(idle, { pick: [c.id] }), [plugin], ctx())
+    expect(again.dropped).toEqual([expect.objectContaining({ id: c.id, reason: 'changed' })])
+    expect(existsSync(c.path!)).toBe(true)
+  })
+
+  test('delete of one already gone is not a failure', async () => {
+    const h = twoVersions()
+    const plugin = make(h)
+    const c = (await survey([plugin], ctx())).candidates[0]!
+    renameSync(c.path!, join(h.home, 'moved'))
+    expect(await plugin.delete!(c, ctx())).toBe(`already gone: ${c.path}`)
   })
 
   test('built directly with jetbrainsPlugin, its kit is still bound by the core', async () => {

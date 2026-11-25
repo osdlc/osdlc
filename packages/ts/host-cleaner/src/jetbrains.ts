@@ -31,12 +31,13 @@ import { z } from 'zod'
 import {
   DISCOVER_LIMIT_MS,
   checkAgain,
+  errorText,
   hoursText,
   isObject,
   objectionsTo,
   type Row,
 } from './helpers.ts'
-import { attachKit, idleHoursOr, idleHoursSetting, type Kit } from './kit.ts'
+import { attachKit, idleHoursOr, idleHoursSetting, present, type Kit } from './kit.ts'
 import { PLUGIN_API, definePlugin, type Ctx, type Plugin } from './types.ts'
 
 export const JETBRAINS_PLUGIN = 'jetbrains'
@@ -47,27 +48,27 @@ const VERSION_DIR = /^([A-Za-z]+)(\d{4}\.\d+)$/
 /** A project's cache folder: its name, a dot and the hash of its path. */
 const PROJECT_DIR = /^(.+)\.([0-9a-f]{1,8})$/
 
-/** The launcher each product runs as, for a version no install describes. */
-const LAUNCHERS: Readonly<Record<string, string>> = {
-  AppCode: 'appcode',
-  Aqua: 'aqua',
-  CLion: 'clion',
-  DataGrip: 'datagrip',
-  DataSpell: 'dataspell',
-  GoLand: 'goland',
-  IdeaIC: 'idea',
-  IntelliJIdea: 'idea',
-  // The Gateway's client, whose distribution sits under the caches, so no install names it.
-  JetBrainsClient: 'jetbrains_client',
-  JetBrainsGateway: 'gateway',
-  PhpStorm: 'phpstorm',
-  PyCharm: 'pycharm',
-  PyCharmCE: 'pycharm',
-  Rider: 'rider',
-  RubyMine: 'rubymine',
-  RustRover: 'rustrover',
-  WebStorm: 'webstorm',
-  Writerside: 'writerside',
+/** The launchers each product runs as, for a version no install describes. */
+const LAUNCHERS: Readonly<Record<string, readonly string[]>> = {
+  AppCode: ['appcode'],
+  Aqua: ['aqua'],
+  CLion: ['clion'],
+  DataGrip: ['datagrip'],
+  DataSpell: ['dataspell'],
+  GoLand: ['goland'],
+  IdeaIC: ['idea'],
+  IntelliJIdea: ['idea'],
+  // Its distribution sits under the caches, so no install names it; the Gateway starts whichever of these it has.
+  JetBrainsClient: ['jetbrains_client', 'cwm_guest', 'intellij_client'],
+  JetBrainsGateway: ['gateway'],
+  PhpStorm: ['phpstorm'],
+  PyCharm: ['pycharm'],
+  PyCharmCE: ['pycharm'],
+  Rider: ['rider'],
+  RubyMine: ['rubymine'],
+  RustRover: ['rustrover'],
+  WebStorm: ['webstorm'],
+  Writerside: ['writerside'],
 }
 
 /** The folders volumes are mounted under, which {@link gone} treats apart. */
@@ -139,8 +140,8 @@ function layoutOf(opts: JetbrainsOptions): Layout {
   return { home, roots: [], config: '', toolbox: '', apps: [] }
 }
 
-/** True when `path` exists as itself, a link counted as present. One that cannot be checked counts as present, so it is never taken as gone. */
-function present(path: string): boolean {
+/** Whether `path` exists as itself or may: one that cannot be checked counts as present, so it is never taken as gone. */
+function mayExist(path: string): boolean {
   return exists(path) !== false
 }
 
@@ -234,9 +235,7 @@ function installsOf(layout: Layout): Installs {
     try {
       info = JSON.parse(readFileSync(file, 'utf8'))
     } catch (err) {
-      found.problems.push(
-        `${file} could not be read: ${err instanceof Error ? err.message : String(err)}`,
-      )
+      found.problems.push(`${file} could not be read: ${errorText(err)}`)
       return
     }
     const name = isObject(info) ? info.dataDirectoryName : undefined
@@ -254,7 +253,7 @@ function installsOf(layout: Layout): Installs {
     }
     if (names.size > 0) found.launchers.set(product, names)
   }
-  if (present(layout.toolbox)) {
+  if (mayExist(layout.toolbox)) {
     let state: unknown
     try {
       state = JSON.parse(readFileSync(layout.toolbox, 'utf8'))
@@ -266,7 +265,7 @@ function installsOf(layout: Layout): Installs {
     } else {
       for (const tool of state.tools) {
         const where = isObject(tool) ? tool.installLocation : undefined
-        if (typeof where !== 'string' || !isAbsolute(where) || !present(where)) continue
+        if (typeof where !== 'string' || !isAbsolute(where) || !mayExist(where)) continue
         read(where, true)
       }
     }
@@ -316,7 +315,7 @@ export interface DiskProbe {
   device: (path: string) => number | undefined
 }
 
-const DISK: DiskProbe = { present, device: deviceOf }
+const DISK: DiskProbe = { present: mayExist, device: deviceOf }
 
 /**
  * Whether `path` is gone from a volume that is there. A missing one under a
@@ -408,8 +407,7 @@ function runningOf(env: Env, product: string): Row['blockers'] {
   if (cached !== undefined) return cached
   const blockers: Row['blockers'] = []
   const names = new Set(env.installs.launchers.get(product))
-  const fixed = LAUNCHERS[product]
-  if (fixed !== undefined) names.add(fixed)
+  for (const l of LAUNCHERS[product] ?? []) names.add(l)
   if (names.size === 0) names.add(product.toLowerCase())
   const running = new Set<string>()
   // A Linux `.sh` launcher runs `java -Djb.vmOptionsFile=.../bin/<name>64.vmoptions ...`.
@@ -481,8 +479,6 @@ function rowOf(env: Env, f: Found, sized = true): Row | null {
         path: f.path,
         version: f.version,
         ...(f.project === undefined ? {} : { project: f.project }),
-        // A version used again since the plan then reads as changed, picked or not.
-        ...(held ? { recent: true } : {}),
       },
     }),
   }

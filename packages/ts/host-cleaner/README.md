@@ -27,7 +27,7 @@ the plugin kit (see [The plugin kit](#the-plugin-kit)).
 | discover | each plugin | proposes candidates; two with the same id, or path candidates with the same real path, are one: the first plugin's stands, with a warning naming both |
 | object | each plugin | objects to any candidate; sees no other plugin's objections |
 | decide | core | `refuse` blocks, `protest` needs `--allow <code>`, `note` does not gate |
-| re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved `changed` |
+| re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved, or that its owner holds now and did not in the plan, `changed` |
 | prepare | every plugin | before the delete; a throw stops only that candidate, a `FatalRun` stops the run |
 | delete | the owner | returns the receipt sentence |
 | deleted | every other plugin | after the delete; best effort, failures are in the receipt |
@@ -118,7 +118,9 @@ What a plan runs uses repo-cleaner's words, with their meaning:
   holds for review (`held: true`).
 - **`select`:** exactly these candidate ids instead of the default.
 - **`pick`:** these as well; a candidate held for review runs only when picked
-  or selected.
+  or selected. One the plan did not hold and its owner holds at the re-check is
+  dropped as `changed`, picked or not; one held in the plan and held no longer
+  still runs.
 - **`spare`:** leave these alone: an id, a path (a ref candidate's `ref` or
   the folder it is `at`), a name (every candidate of that name, as a branch
   and the worktree that has it checked out), or a glob over ids, paths and

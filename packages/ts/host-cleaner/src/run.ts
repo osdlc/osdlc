@@ -728,7 +728,8 @@ export function decidePlan(p: Plan): Decision {
  * Judge a plan against the world now. Surveys again and decides over exactly
  * what the plan would run, so a refusal that appeared since is `blocked`, a
  * protest nobody granted `not-allowed`, a vanished candidate `gone`, and one whose evidence
- * moved (repo-cleaner's `sameFingerprint`) `changed`.
+ * moved (repo-cleaner's `sameFingerprint`), or that its owner holds now and did not
+ * then, `changed`. One held then that is held no longer still runs.
  */
 export async function recheck(
   p: Plan,
@@ -757,6 +758,13 @@ export async function recheck(
     const before = plannedById.get(c.id)
     if (before !== undefined && !sameFingerprint(before.evidence, c.evidence)) {
       dropped.push({ id: c.id, reason: 'changed', detail: 'its evidence moved since the plan' })
+    } else if (before !== undefined && before.held !== true && c.held === true) {
+      // Nobody chose it held, not even by a pick.
+      dropped.push({
+        id: c.id,
+        reason: 'changed',
+        detail: 'it is held for review now, and was not in the plan',
+      })
     } else kept.set(c.id, c)
   }
   const explain: Explain = (id) => {
