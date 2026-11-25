@@ -41,6 +41,8 @@ const CLIMBS = /(^|[/\\])\.\.([/\\]|$)/
 /**
  * A glob alternative that climbs or starts outside: a `..` segment, or a
  * leading `/`, `\`, `~/` or drive, at the start or after a brace's `{` or `,`.
+ * Test it on each of {@link braceExpansions}' results too, for one that a brace
+ * splits, such as `.{.,x}`.
  */
 const GLOB_ESCAPES = /(^|[/\\{,])\.\.([/\\},]|$)|(^|[{,])([/\\]|~([/\\,}]|$)|[A-Za-z]:)/
 
@@ -50,7 +52,7 @@ const GLOB_ESCAPES = /(^|[/\\{,])\.\.([/\\},]|$)|(^|[{,])([/\\]|~([/\\,}]|$)|[A-
  * or `${USERPROFILE}`. Test it on {@link withoutDots}' result.
  */
 const HOME_FOLDER =
-  /^(\/root|\/(private\/)?var\/root|\/(home|Users)(\/[^/]*)?|[A-Za-z]:[/\\]Users([/\\][^/\\]*)?|\$\{(HOME|USERPROFILE)\})[/\\]*$/i
+  /^(\/root|\/(private[/\\])?var[/\\]root|\/(home|Users)([/\\][^/]*)?|[A-Za-z]:[/\\]Users([/\\][^/\\]*)?|\$\{(HOME|USERPROFILE)\})[/\\]*$/i
 
 const NAME = /^[A-Za-z][A-Za-z0-9_-]*$/
 
@@ -67,34 +69,52 @@ const MAX_ALTERNATIVES = 1024
 
 /**
  * Every string the `{a,b}` alternatives in `glob` expand to, nested ones too; a
- * brace with no top-level comma stays as written. Undefined past
+ * brace with no comma of its own stays as written. Undefined past
  * {@link MAX_ALTERNATIVES}.
  */
 function braceExpansions(glob: string): string[] | undefined {
-  for (let open = glob.indexOf('{'); open !== -1; open = glob.indexOf('{', open + 1)) {
-    let depth = 0
-    const bounds = [open]
-    for (let i = open; i < glob.length; i++) {
-      const ch = glob[i]
-      if (ch === '{') depth++
-      else if (ch === ',' && depth === 1) bounds.push(i)
-      else if (ch === '}' && --depth === 0) {
-        if (bounds.length === 1) break
-        bounds.push(i)
-        const out: string[] = []
-        for (let k = 0; k + 1 < bounds.length; k++) {
-          const alternative = glob.slice(bounds[k]! + 1, bounds[k + 1])
-          const rest = braceExpansions(glob.slice(0, open) + alternative + glob.slice(i + 1))
-          if (rest === undefined) return undefined
-          out.push(...rest)
-          if (out.length > MAX_ALTERNATIVES) return undefined
-        }
-        return out
-      }
+  const out: string[] = []
+  const todo = [glob]
+  for (let g = todo.pop(); g !== undefined; g = todo.pop()) {
+    const bounds = outermostBraces(g)
+    if (bounds === undefined) out.push(g)
+    else {
+      const [open, close] = [bounds[0]!, bounds.at(-1)!]
+      for (let k = 0; k + 1 < bounds.length; k++)
+        todo.push(g.slice(0, open) + g.slice(bounds[k]! + 1, bounds[k + 1]) + g.slice(close + 1))
+    }
+    if (out.length + todo.length > MAX_ALTERNATIVES) return undefined
+  }
+  return out
+}
+
+/** Where the first outermost `{a,b}` in `glob` has its `{`, its own commas and its `}`. */
+function outermostBraces(glob: string): number[] | undefined {
+  let first: number[] | undefined
+  const stack: number[][] = []
+  for (let i = 0; i < glob.length; i++) {
+    if (glob[i] === '{') stack.push([i])
+    else if (glob[i] === ',') stack.at(-1)?.push(i)
+    else if (glob[i] === '}') {
+      const bounds = stack.pop()
+      if (bounds !== undefined && bounds.length > 1 && bounds[0]! < (first?.[0] ?? Infinity))
+        first = [...bounds, i]
     }
   }
-  return [glob]
+  return first
 }
+
+const everyAlternative = (glob: string, ok: (alternative: string) => boolean): boolean =>
+  braceExpansions(glob)?.every(ok) ?? false
+
+/** A glob whose `{a,b}` alternatives can all be checked; the checks after it don't run on any other. */
+const globText = z
+  .string()
+  .min(1)
+  .refine((g) => braceExpansions(g) !== undefined, {
+    message: `must have no more than ${MAX_ALTERNATIVES} {a,b} alternatives`,
+    abort: true,
+  })
 
 /**
  * A folder: under the home folder (`~/…`), absolute, or starting with a
@@ -193,13 +213,11 @@ const detect = z
 export const DescriptorCandidateSchema = z
   .strictObject({
     path: z.string().min(1).describe('A name from `paths`.'),
-    glob: z
-      .string()
-      .min(1)
-      .refine((g) => !GLOB_ESCAPES.test(g), {
+    glob: globText
+      .refine((g) => !GLOB_ESCAPES.test(g) && everyAlternative(g, (a) => !GLOB_ESCAPES.test(a)), {
         message: 'must stay inside the path: no .. segment, not absolute',
       })
-      .refine((g) => braceExpansions(g)?.every(namesEntry) ?? false, {
+      .refine((g) => everyAlternative(g, namesEntry), {
         message: 'must name entries under the path, in every {a,b} alternative, such as models--*/',
       })
       .optional()
@@ -260,21 +278,15 @@ export const DescriptorCandidateSchema = z
 /** Whether `n` names one entry: not empty, `.` or `..`, and with no folder in it. */
 const isEntryName = (n: string): boolean => !/[/\\]/.test(n) && n !== '' && n !== '.' && n !== '..'
 
-/** A file name, or with `glob` a glob whose every `{a,b}` alternative is one. */
-const entryName = (what: string, glob = false) =>
-  z
+export const ProjectEntrySchema = z.strictObject({
+  dir: z
     .string()
     .min(1)
-    .refine(
-      (n) => (glob ? (braceExpansions(n)?.every(isEntryName) ?? false) : isEntryName(n)),
-      `must be a ${what}, not a path`,
-    )
-
-export const ProjectEntrySchema = z.strictObject({
-  dir: entryName('folder name').describe("The build folder's name, such as `obj`."),
-  marker: entryName('file name or glob', true).describe(
-    'A file name or glob beside it that marks the project, such as `*.csproj`.',
-  ),
+    .refine(isEntryName, 'must be a folder name, not a path')
+    .describe("The build folder's name, such as `obj`."),
+  marker: globText
+    .refine((g) => everyAlternative(g, isEntryName), 'must be a file name or glob, not a path')
+    .describe('A file name or glob beside it that marks the project, such as `*.csproj`.'),
   costDescription,
   idleHours,
 })

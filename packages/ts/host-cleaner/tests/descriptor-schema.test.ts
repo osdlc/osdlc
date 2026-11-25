@@ -4,8 +4,10 @@
  */
 
 import { Ajv2020 } from 'ajv/dist/2020.js'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { cpSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
 
@@ -232,11 +234,16 @@ describe("the system description's examples", () => {
     ).toEqual([])
   })
 
-  test('a glob with too many {a,b} alternatives is refused', () => {
-    const glob = '{a,b}'.repeat(11)
+  test.each([11, 20_000])('a glob or marker with %i {a,b} braces is refused, not a crash', (n) => {
+    const glob = '{a,b}'.repeat(n)
     expect(issues(hfWith(`{ path: hub, costDescription: rebuild, glob: '${glob}' }`))).toEqual([
-      'line 5: candidates.0.glob: must name entries under the path, in every {a,b} alternative, such as models--*/',
+      'line 5: candidates.0.glob: must have no more than 1024 {a,b} alternatives',
     ])
+    expect(
+      issues(
+        `${HUGGING_FACE}project:\n  - { dir: obj, marker: '${glob}', costDescription: rebuild }\n`,
+      ),
+    ).toEqual(['line 11: project.0.marker: must have no more than 1024 {a,b} alternatives'])
   })
 
   test('a glob may start with ~ when it names an entry, such as ~$*', () => {
@@ -320,18 +327,20 @@ describe('a bad descriptor names the field path', () => {
       hfWith("{ path: hub, costDescription: rebuild, glob: './' }"),
       'line 5: candidates.0.glob: must name entries under the path, in every {a,b} alternative, such as models--*/',
     ],
-    ...['{.,x}', '{x,.}/', '{,x}', '{b,{.,c}}', '{x,{,y}}/'].map(
+    ...['{.,x}', '{x,.}/', '{,x}', '{b,{.,c}}', '{x,{,y}}'].map(
       (glob): [string, string, string] => [
         `a glob with an alternative that names the path itself, ${glob}`,
         hfWith(`{ path: hub, costDescription: rebuild, glob: '${glob}' }`),
         'line 5: candidates.0.glob: must name entries under the path, in every {a,b} alternative, such as models--*/',
       ],
     ),
-    ...['{..,x}', '{x,a/b}', '{,x}', '{x,{.,y}}'].map((marker): [string, string, string] => [
-      `a project marker with an alternative that is not a name, ${marker}`,
-      `${HUGGING_FACE}project:\n  - { dir: obj, marker: '${marker}', costDescription: rebuild }\n`,
-      'line 11: project.0.marker: must be a file name or glob, not a path',
-    ]),
+    ...['{..,x}', '.{.,x}', '{x,a/b}', '{,x}', '{x,{.,y}}'].map(
+      (marker): [string, string, string] => [
+        `a project marker with an alternative that is not a name, ${marker}`,
+        `${HUGGING_FACE}project:\n  - { dir: obj, marker: '${marker}', costDescription: rebuild }\n`,
+        'line 11: project.0.marker: must be a file name or glob, not a path',
+      ],
+    ),
     [
       'maxEntries without a glob',
       hfWith('{ path: hub, costDescription: rebuild, maxEntries: 10 }'),
@@ -401,16 +410,27 @@ describe('a bad descriptor names the field path', () => {
       '/home//alice',
       'C:/Users//alice',
       '/home/./alice',
+      '/Users\\alice',
+      '/var\\root',
       '/var/root',
       '/private/var/root/',
-    ].map(
-      (home): [string, string, string] => [
-        `a home folder written out, ${home}`,
-        HUGGING_FACE.replace('~/.cache/huggingface/hub', `'${home}'`),
-        'line 4: paths.hub.all: must name a folder below a home folder, not a home folder itself',
-      ],
-    ),
-    ...['{..,x}/*', '{/etc,x}', 'a/{x,~/y}', '{x,C:/y}'].map((glob): [string, string, string] => [
+    ].map((home): [string, string, string] => [
+      `a home folder written out, ${home}`,
+      HUGGING_FACE.replace('~/.cache/huggingface/hub', `'${home}'`),
+      'line 4: paths.hub.all: must name a folder below a home folder, not a home folder itself',
+    ]),
+    ...[
+      '{..,x}/*',
+      '{/etc,x}',
+      'a/{x,~/y}',
+      '{x,C:/y}',
+      '.{.,x}/*',
+      '{.,x}./*',
+      'a/.{.,x}',
+      '{,x}/etc',
+      '{,x}~/y',
+      '{C,x}:/y',
+    ].map((glob): [string, string, string] => [
       `a glob with an alternative that leaves the path, ${glob}`,
       hfWith(`{ path: hub, costDescription: rebuild, glob: '${glob}' }`),
       'line 5: candidates.0.glob: must stay inside the path: no .. segment, not absolute',
@@ -583,6 +603,28 @@ describe('the shipped JSON Schema', () => {
   test('schemas/descriptor-1.json is what write-descriptor-schema writes', () => {
     const stale = 'stale: run `pnpm run write:descriptor-schema` and commit the result'
     expect(shippedText, stale).toBe(descriptorSchemaText())
+  })
+
+  test('write-descriptor-schema writes it from a checkout under a symlink too', () => {
+    const dir = tempHome('hc-descriptor-')
+    try {
+      // A copy, so the run writes to the temp folder and not to this checkout.
+      const real = join(dir.home, 'real')
+      const pkg = fileURLToPath(new URL('..', import.meta.url))
+      for (const part of ['package.json', 'scripts', 'src'])
+        cpSync(join(pkg, part), join(real, part), { recursive: true })
+      symlinkSync(join(pkg, 'node_modules'), join(real, 'node_modules'))
+      mkdirSync(join(real, 'schemas'))
+      symlinkSync(real, join(dir.home, 'link'))
+      execFileSync(process.execPath, [
+        join(dir.home, 'link', 'scripts', 'write-descriptor-schema.ts'),
+      ])
+      expect(readFileSync(join(real, 'schemas', 'descriptor-1.json'), 'utf8')).toBe(
+        descriptorSchemaText(),
+      )
+    } finally {
+      dir.cleanup()
+    }
   })
 
   test('its $id is the URL the README names, on no release', () => {
