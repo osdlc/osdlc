@@ -11,6 +11,7 @@ import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import {
   CLOSE_TERMINALS,
+  HOOK_LIMIT_MS,
   clean,
   gitPlugin,
   orcaPlugin,
@@ -19,7 +20,7 @@ import {
   type Ctx,
   type Survey,
 } from '../src/index.ts'
-import { parseRecords } from '../src/orca.ts'
+import { ORCA_STATUS_LIMIT_MS, parseRecords } from '../src/orca.ts'
 import { contractSuite, fakeContext } from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
@@ -46,8 +47,8 @@ function fakeOrca(
   rows: Row[],
   over: {
     running?: boolean
-    /** How `orca status` fails: a non-zero exit, or output that is not JSON. */
-    failStatus?: 'exit' | 'garbage'
+    /** How `orca status` fails: a non-zero exit, output that is not JSON, or no answer within its time limit. */
+    failStatus?: 'exit' | 'garbage' | 'slow'
     failPs?: boolean
     truncated?: boolean
     failRm?: boolean
@@ -58,9 +59,17 @@ function fakeOrca(
   const closed: string[] = []
   const removed: string[] = []
   const ok = (result: unknown) => ({ stdout: JSON.stringify({ id: 'x', ok: true, result }) })
-  const fake = fakeRunner((argv) => {
+  const fake = fakeRunner((argv, opts) => {
     const [a, b] = argv
     if (a === 'status') {
+      if (over.failStatus === 'slow') {
+        return {
+          exitCode: 1,
+          neverExited: true,
+          reason: 'timeout',
+          error: `timed out after ${opts.timeoutMs}ms`,
+        }
+      }
       if (over.failStatus === 'exit') return { exitCode: 1, stderr: 'socket refused' }
       if (over.failStatus === 'garbage') return { stdout: 'Orca 1.2.0\n' }
       return ok({ runtime: { reachable: over.running !== false } })
@@ -277,8 +286,13 @@ describe('while Orca is installed but not running', () => {
 })
 
 describe('while Orca status cannot be read', () => {
-  for (const failStatus of ['exit', 'garbage'] as const) {
-    test(`with ${failStatus === 'exit' ? 'a non-zero exit' : 'output that is not JSON'}, a worktree under its workspaces folder is refused orca-unreachable, and git does not delete it`, async () => {
+  const how = {
+    exit: 'a non-zero exit',
+    garbage: 'output that is not JSON',
+    slow: 'no answer within a limit below that of detect',
+  }
+  for (const failStatus of ['exit', 'garbage', 'slow'] as const) {
+    test(`with ${how[failStatus]}, a worktree under its workspaces folder is refused orca-unreachable, and git does not delete it`, async () => {
       const fx = fixture('orca/workspaces/repo/wt-a')
       const orca = fakeOrca([], { failStatus })
       const plugins = [fx.git, orcaPlugin({ orca: orca.orca })]
@@ -287,8 +301,11 @@ describe('while Orca status cannot be read', () => {
       expect(s.warnings).toEqual([])
       expect(objections(s)).toEqual([['refuse', 'orca-unreachable']])
       expect(s.objections.find((o) => o.by === 'orca')!.reason).toMatch(
-        /^Orca's status could not be read/,
+        failStatus === 'slow'
+          ? `could not be read (orca status failed: timed out after ${ORCA_STATUS_LIMIT_MS}ms)`
+          : /^Orca's status could not be read/,
       )
+      expect(ORCA_STATUS_LIMIT_MS).toBeLessThan(HOOK_LIMIT_MS)
       const receipt = await clean(plan(s, { select: [id] }), plugins, fx.ctx)
       expect(receipt.steps).toEqual([])
       expect(existsSync(fx.worktree)).toBe(true)

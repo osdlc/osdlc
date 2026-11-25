@@ -20,10 +20,19 @@
 
 import { existsSync } from 'node:fs'
 
-import { failureText, spawnRunner, which, type CommandRunner } from '@osdlc/command-seam'
+import { spawnRunner, which, type CommandRunner } from '@osdlc/command-seam'
 import { z } from 'zod'
 
-import { realOr } from './roots.ts'
+import {
+  errorText,
+  failureReason,
+  isGitWorktree,
+  isObject,
+  num,
+  objector,
+  realOr,
+  str,
+} from './helpers.ts'
 import {
   PLUGIN_API,
   definePlugin,
@@ -52,6 +61,13 @@ const QUIET_STATUS = new Set(['', 'inactive', 'active', 'idle', 'done'])
 
 const RECORD_LIMIT = 1000
 
+/**
+ * The time limit of `orca status`, in milliseconds, below `detect`'s own: a
+ * slow Orca then counts as one that cannot be asked, where a `detect` past its
+ * limit would leave the plugin, and its refusals, out of the run.
+ */
+export const ORCA_STATUS_LIMIT_MS = 20_000
+
 export interface OrcaOptions {
   /** The runner for the `orca` CLI. When absent, the CLI is looked up and spawned. */
   orca?: CommandRunner | undefined
@@ -75,11 +91,6 @@ export interface OrcaRecord {
   agents: string[]
   status: string
 }
-
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
-const str = (v: unknown): string => (typeof v === 'string' ? v : '')
-const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 
 /** The records in `orca worktree ps --json`; folder workspaces and rows without a path are left out. */
 export function parseRecords(result: unknown): OrcaRecord[] {
@@ -112,10 +123,6 @@ export function parseRecords(result: unknown): OrcaRecord[] {
 export const busy = (r: OrcaRecord): boolean =>
   !QUIET_STATUS.has(r.status) || r.agents.some((state) => !QUIET_AGENT.has(state))
 
-/** A git plugin's worktree row: the only candidates this plugin acts on. */
-const isGitWorktree = (c: Candidate): c is PathCandidate =>
-  c.kind === 'worktree' && c.owner === 'git' && c.path !== undefined
-
 /** Whether `c` sits under Orca's workspaces folder, by its real path. */
 const inWorkspaces = (c: PathCandidate): boolean => realOr(c.path).includes(ORCA_WORKSPACES)
 
@@ -134,12 +141,15 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
   }
 
   /** The `result` of `orca <args> --json`; throws with Orca's own message when it fails. */
-  const call = (args: readonly string[], ctx: Ctx): unknown => {
+  const call = (args: readonly string[], ctx: Ctx, timeoutMs?: number): unknown => {
     const runner = found()
     if (runner === undefined) throw new Error('the orca CLI was not found')
-    const r = runner.run([...args, '--json'], { cwd: ctx.cwd, env: options.env })
-    const reason = (): string => failureText(r) || r.error || `exit ${r.exitCode}`
-    if (r.exitCode !== 0) throw new Error(`orca ${args.join(' ')} failed: ${reason()}`)
+    const r = runner.run([...args, '--json'], {
+      cwd: ctx.cwd,
+      env: options.env,
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    })
+    if (r.exitCode !== 0) throw new Error(`orca ${args.join(' ')} failed: ${failureReason(r)}`)
     let body: unknown
     try {
       body = JSON.parse(r.stdout)
@@ -179,18 +189,7 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
     call(['worktree', 'rm', '--worktree', `id:${r.id}`, '--force'], ctx)
   }
 
-  const own = (
-    c: Candidate,
-    level: Objection['level'],
-    code: string,
-    reason: string,
-  ): Objection => ({
-    by: ORCA_PLUGIN,
-    candidate: c.id,
-    level,
-    code,
-    reason,
-  })
+  const own = objector(ORCA_PLUGIN)
 
   return {
     name: ORCA_PLUGIN,
@@ -199,10 +198,9 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
       if (found() === undefined) return false
       let status: unknown
       try {
-        status = call(['status'], ctx)
+        status = call(['status'], ctx, ORCA_STATUS_LIMIT_MS)
       } catch (err) {
-        const why = err instanceof Error ? err.message : String(err)
-        down = `Orca's status could not be read (${why})`
+        down = `Orca's status could not be read (${errorText(err)})`
         return { active: true, note: down }
       }
       const runtime = isObject(status) && isObject(status.runtime) ? status.runtime : {}
@@ -257,7 +255,7 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
         seen = records(ctx)
       } catch (err) {
         // A worktree might be Orca's and cannot be told; none is taken meanwhile.
-        const why = err instanceof Error ? err.message : String(err)
+        const why = errorText(err)
         return worktrees.map((c) => own(c, 'refuse', 'orca-unreachable', why))
       }
       return worktrees.flatMap((c): Objection[] => {

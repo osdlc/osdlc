@@ -11,18 +11,18 @@ import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 import { LineCounter, isMap, isScalar, isSeq, parseDocument, type Document } from 'yaml'
 
-import { COST_DESCRIPTIONS } from '../types.ts'
+import { COST_DESCRIPTIONS } from '../cost.ts'
 import { BUILT_IN_VARS, VAR_FILE_EXTENSIONS, badVarRef, varRefs } from './vars.ts'
-import { VERSION } from '../version.generated.ts'
 
 /** The format version this reader takes. */
 export const DESCRIPTOR_VERSION = 1
 
-/** The release line, `major.minor` of package.json's version. */
-const RELEASE_LINE = VERSION.split('.').slice(0, 2).join('.')
-
-/** Where this release line publishes the JSON Schema; a descriptor's `$schema` may name it. */
-export const DESCRIPTOR_SCHEMA_URL = `https://unpkg.com/@osdlc/host-cleaner@${RELEASE_LINE}/schemas/descriptor-1.json`
+/**
+ * Where the JSON Schema is published; a descriptor's `$schema` may name it.
+ * The file name carries the format version, so the URL names no release.
+ */
+export const DESCRIPTOR_SCHEMA_URL =
+  'https://unpkg.com/@osdlc/host-cleaner/schemas/descriptor-1.json'
 
 /** How many glob matches become candidates of their own before the rest are combined into one. */
 export const DEFAULT_MAX_ENTRIES = 200
@@ -38,22 +38,80 @@ const CLIMBS = /(^|[/\\])\.\.([/\\]|$)/
 /**
  * A glob alternative that climbs or starts outside: a `..` segment, or a
  * leading `/`, `\`, `~/` or drive, at the start or after a brace's `{` or `,`.
+ * Test it on each of {@link braceExpansions}' results too, for one that a brace
+ * splits, such as `.{.,x}`.
  */
 const GLOB_ESCAPES = /(^|[/\\{,])\.\.([/\\},]|$)|(^|[{,])([/\\]|~([/\\,}]|$)|[A-Za-z]:)/
 
 /**
  * A home folder, or the folder that holds them, written out: `/root`,
- * `/home/<user>`, `/Users/<user>`, `C:\Users\<user>`, `${HOME}` or
- * `${USERPROFILE}`.
+ * `/var/root`, `/home/<user>`, `/Users/<user>`, `C:\Users\<user>`, `${HOME}`
+ * or `${USERPROFILE}`. Test it on {@link withoutDots}' result.
  */
 const HOME_FOLDER =
-  /^(\/root|\/(home|Users)(\/[^/]*)?|[A-Za-z]:[/\\]Users([/\\][^/\\]*)?|\$\{(HOME|USERPROFILE)\})[/\\]*$/i
+  /^(\/root|\/(private[/\\])?var[/\\]root|\/(home|Users)([/\\][^/]*)?|[A-Za-z]:[/\\]Users([/\\][^/\\]*)?|\$\{(HOME|USERPROFILE)\})[/\\]*$/i
 
 const NAME = /^[A-Za-z][A-Za-z0-9_-]*$/
 
 /** Whether a path names something below where it starts: a segment other than empty or `.`. */
 const namesEntry = (p: string): boolean =>
   p.split(/[/\\]/).some((part) => part !== '' && part !== '.')
+
+/** `p` without its `.` segments and with each run of separators as one: `//home/./alice` is `/home/alice`. */
+const withoutDots = (p: string): string =>
+  p.replace(/[/\\]\.(?=[/\\]|$)/g, '').replace(/([/\\])[/\\]+/g, '$1')
+
+/** Past this many `{a,b}` alternatives, a glob is refused rather than expanded. */
+const MAX_ALTERNATIVES = 1024
+
+/**
+ * Every string the `{a,b}` alternatives in `glob` expand to, nested ones too; a
+ * brace with no comma of its own stays as written. Undefined past
+ * {@link MAX_ALTERNATIVES}.
+ */
+function braceExpansions(glob: string): string[] | undefined {
+  const out: string[] = []
+  const todo = [glob]
+  for (let g = todo.pop(); g !== undefined; g = todo.pop()) {
+    const bounds = outermostBraces(g)
+    if (bounds === undefined) out.push(g)
+    else {
+      const [open, close] = [bounds[0]!, bounds.at(-1)!]
+      for (let k = 0; k + 1 < bounds.length; k++)
+        todo.push(g.slice(0, open) + g.slice(bounds[k]! + 1, bounds[k + 1]) + g.slice(close + 1))
+    }
+    if (out.length + todo.length > MAX_ALTERNATIVES) return undefined
+  }
+  return out
+}
+
+/** Where the first outermost `{a,b}` in `glob` has its `{`, its own commas and its `}`. */
+function outermostBraces(glob: string): number[] | undefined {
+  let first: number[] | undefined
+  const stack: number[][] = []
+  for (let i = 0; i < glob.length; i++) {
+    if (glob[i] === '{') stack.push([i])
+    else if (glob[i] === ',') stack.at(-1)?.push(i)
+    else if (glob[i] === '}') {
+      const bounds = stack.pop()
+      if (bounds !== undefined && bounds.length > 1 && bounds[0]! < (first?.[0] ?? Infinity))
+        first = [...bounds, i]
+    }
+  }
+  return first
+}
+
+const everyAlternative = (glob: string, ok: (alternative: string) => boolean): boolean =>
+  braceExpansions(glob)?.every(ok) ?? false
+
+/** A glob whose `{a,b}` alternatives can all be checked; the checks after it don't run on any other. */
+const globText = z
+  .string()
+  .min(1)
+  .refine((g) => braceExpansions(g) !== undefined, {
+    message: `must have no more than ${MAX_ALTERNATIVES} {a,b} alternatives`,
+    abort: true,
+  })
 
 /**
  * A folder: under the home folder (`~/…`), absolute, or starting with a
@@ -72,7 +130,7 @@ const folder = z
     'must name a folder below the home folder or a root, not the home folder or a root itself',
   )
   .refine(
-    (p) => !HOME_FOLDER.test(p.replace(/[/\\]\.(?=[/\\]|$)/g, '')),
+    (p) => !HOME_FOLDER.test(withoutDots(p)),
     'must name a folder below a home folder, not a home folder itself',
   )
 
@@ -103,7 +161,7 @@ const idleHours = z
   .nonnegative()
   .optional()
   .describe(
-    "Hours it must sit unchanged before it's selected by default; fractions count. Unset: the plugin's idleHours setting.",
+    "Hours it must sit unchanged before it's selected by default; fractions count. The config's plugins.<name>.idleHours wins over it, and its top-level idleHours can only raise it. Unset: the plugin's idleHours setting.",
   )
 
 const costDescription = z
@@ -152,14 +210,12 @@ const detect = z
 export const DescriptorCandidateSchema = z
   .strictObject({
     path: z.string().min(1).describe('A name from `paths`.'),
-    glob: z
-      .string()
-      .min(1)
-      .refine((g) => !GLOB_ESCAPES.test(g), {
+    glob: globText
+      .refine((g) => !GLOB_ESCAPES.test(g) && everyAlternative(g, (a) => !GLOB_ESCAPES.test(a)), {
         message: 'must stay inside the path: no .. segment, not absolute',
       })
-      .refine(namesEntry, {
-        message: 'must name entries under the path, such as models--*/',
+      .refine((g) => everyAlternative(g, namesEntry), {
+        message: 'must name entries under the path, in every {a,b} alternative, such as models--*/',
       })
       .optional()
       .describe('Entries under the path, one candidate each, such as `models--*/`.'),
@@ -221,23 +277,33 @@ export const DescriptorCandidateSchema = z
     if (c.glob?.includes('${') === true) at('glob', `\${ ${unfilled}`)
   })
 
-/** A file or glob name, with no folder in it. */
-const entryName = (what: string) =>
-  z
-    .string()
-    .min(1)
-    .refine((n) => !/[/\\]/.test(n) && n !== '.' && n !== '..', `must be a ${what}, not a path`)
+/** Whether `n` names one entry: not empty, `.` or `..`, and with no folder in it. */
+export const isEntryName = (n: string): boolean =>
+  !/[/\\]/.test(n) && n !== '' && n !== '.' && n !== '..'
 
 export const ProjectEntrySchema = z.strictObject({
-  dir: entryName('folder name').describe("The build folder's name, such as `obj`."),
-  marker: entryName('file name or glob').describe(
-    'A file name or glob beside it that marks the project, such as `*.csproj`.',
-  ),
+  dir: z
+    .string()
+    .min(1)
+    .refine(isEntryName, 'must be a folder name, not a path')
+    .describe("The build folder's name, such as `obj`."),
+  marker: globText
+    .refine((g) => everyAlternative(g, isEntryName), 'must be a file name or glob, not a path')
+    .describe('A file name or glob beside it that marks the project, such as `*.csproj`.'),
   costDescription,
   idleHours,
 })
 
 const lock = folder.refine((p) => !/[/\\]$/.test(p), 'must be a file, not a folder')
+
+/** Whether `name` can name a folder in `paths`. */
+export const isPathsName = (name: string): boolean => NAME.test(name)
+
+/** Whether `p` can be a folder in `paths`. */
+export const isFolder = (p: string): boolean => folder.safeParse(p).success
+
+/** Whether `p` can be an `inUse` lock. */
+export const isLock = (p: string): boolean => lock.safeParse(p).success
 
 const inUse = z
   .strictObject({
@@ -273,6 +339,9 @@ const varSource = z.union([
   }),
 ])
 
+/** A plugin name: lowercase letters, digits and -, starting with a letter. */
+export const PLUGIN_NAME = /^[a-z][a-z0-9-]*$/
+
 export const DescriptorSchema = z
   .strictObject({
     $schema: z.string().optional(),
@@ -295,7 +364,7 @@ export const DescriptorSchema = z
     project: z.array(ProjectEntrySchema).min(1).optional(),
     supersededBy: z
       .string()
-      .regex(/^[a-z][a-z0-9-]*$/, 'must be a plugin name')
+      .regex(PLUGIN_NAME, 'must be a plugin name')
       .optional()
       .describe("A code plugin's name. While that plugin runs, this descriptor doesn't."),
     system: z
