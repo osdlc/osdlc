@@ -235,8 +235,8 @@ function readPins(targets: readonly string[], cwd: string): Pins {
   try {
     found = checkoutsUnder(targets)
   } catch (err) {
-    const why = `the checkouts under the targets could not be listed: ${message(err)}`
-    return { ...pins, rustUnknown: [why], nodeUnknown: [why] }
+    unknown(`the checkouts under the targets could not be listed: ${message(err)}`)
+    return pins
   }
   const queue = [...found.checkouts]
   const seen = new Set(queue)
@@ -553,17 +553,25 @@ export function toolchainsPlugin(
     return new Map(tools.map((t, i) => [t, modes[i]!]))
   }
 
+  /** The present tools, their mounts' {@link AtimeMode}, and those on a `noatime` mount. */
+  const survey = async (ctx: Ctx) => {
+    const tools = presentTools()
+    const modes = await atimeModes(tools, ctx)
+    return { tools, modes, noatime: tools.filter((t) => modes.get(t) === 'noatime') }
+  }
+
   /**
    * Every toolchain no checkout asks for and nobody used lately, refused when
    * what is asked for could not be read; sized only when `measure` is set.
+   * Only the versions of `only` when it is given.
    */
-  const scan = async (ctx: Ctx, measure: boolean): Promise<Row[]> => {
+  const scan = async (ctx: Ctx, measure: boolean, only?: Tool): Promise<Row[]> => {
     if (!ctx.targetsGiven || ctx.targets.length === 0) return []
     // A version run daily on a noatime volume would read as unused, so none there is proposed.
-    const tools = presentTools()
-    const modes = await atimeModes(tools, ctx)
-    const skip = new Set(tools.filter((t) => modes.get(t) === 'noatime'))
-    if (tools.every((t) => skip.has(t))) return []
+    const { tools, modes, noatime } = await survey(ctx)
+    const wanted = (t: Tool): boolean =>
+      tools.includes(t) && !noatime.includes(t) && (only === undefined || only === t)
+    if (!TOOLS.some(wanted)) return []
     const pins = readPins(ctx.targets, ctx.cwd)
     const rows: Row[] = []
     const add = (tool: Tool, name: string, unknown: readonly string[]): void => {
@@ -571,31 +579,32 @@ export function toolchainsPlugin(
       if (r !== null) rows.push(r)
     }
 
-    const rust =
-      tools.includes('rustup') && !skip.has('rustup')
-        ? installed(versions.rustup, RUST_RELEASE)
-        : []
+    const rust = wanted('rustup') ? installed(versions.rustup, RUST_RELEASE) : []
+    const node = {
+      nvm: installed(versions.nvm, NODE_VERSION),
+      volta: installed(versions.volta, NODE_VERSION),
+    }
+    const nodeTools = (['nvm', 'volta'] as const).filter((t) => wanted(t) && node[t].length > 0)
+    // nvm's `node` and `latest` name the newest version nvm has, not Volta's.
+    const newest = node.nvm.map(plain).sort(byVersion).at(-1)
+    const [rustKeep, inUse] = await Promise.all([
+      // Why what rustup has in use could not be read, in place of the list.
+      rust.length > 0 ? rustInUse(ctx).catch(message) : [],
+      nodeTools.length > 0 ? nodeInUse(ctx, newest) : null,
+    ])
+
     if (rust.length > 0) {
       const unknown = [...pins.rustUnknown]
       const keep = [...pins.rust]
-      try {
-        keep.push(...(await rustInUse(ctx)))
-      } catch (err) {
-        unknown.push(`what rustup has in use could not be read: ${message(err)}`)
-      }
+      if (typeof rustKeep === 'string') {
+        unknown.push(`what rustup has in use could not be read: ${rustKeep}`)
+      } else keep.push(...rustKeep)
       for (const name of rust) {
         if (!keep.some((pin) => keeps(pin, name))) add('rustup', name, unknown)
       }
     }
 
-    const node = {
-      nvm: installed(versions.nvm, NODE_VERSION),
-      volta: installed(versions.volta, NODE_VERSION),
-    }
-    if (node.nvm.length + node.volta.length > 0) {
-      // nvm's `node` and `latest` name the newest version nvm has, not Volta's.
-      const newest = node.nvm.map(plain).sort(byVersion).at(-1)
-      const inUse = await nodeInUse(ctx, newest)
+    if (inUse !== null) {
       const unknown = [...pins.nodeUnknown]
       const keep = [...inUse.keep]
       for (const pin of pins.node) {
@@ -604,8 +613,7 @@ export function toolchainsPlugin(
           unknown.push(`a checkout asks for node ${JSON.stringify(pin)}, which names no version`)
         } else keep.push(...found)
       }
-      for (const tool of ['nvm', 'volta'] as const) {
-        if (skip.has(tool)) continue
+      for (const tool of nodeTools) {
         const refused = [...unknown, ...inUse.unknown[tool]]
         for (const name of node[tool]) {
           if (!keep.some((pin) => keeps(pin, plain(name)))) add(tool, name, refused)
@@ -626,14 +634,11 @@ export function toolchainsPlugin(
     // A delete surveys again before it removes, so it may take a survey and an uninstall.
     limits: { discover: DISCOVER_LIMIT_MS, delete: DISCOVER_LIMIT_MS + UNINSTALL_LIMIT_MS },
     async detect(ctx) {
-      const tools = presentTools()
-      if (tools.length === 0) return false
+      if (presentTools().length === 0) return false
       if (!ctx.targetsGiven) return { active: true, note: NO_TARGETS_NOTE }
-      const modes = await atimeModes(tools, ctx)
-      const skip = tools.filter((t) => modes.get(t) === 'noatime')
-      if (skip.length === 0) return true
-      const note = skip.map((t) => noatimeNote(versions[t]))
-      return { active: true, note: note.join('; ') }
+      const { noatime } = await survey(ctx)
+      if (noatime.length === 0) return true
+      return { active: true, note: noatime.map((t) => noatimeNote(versions[t])).join('; ') }
     },
     roots: () => TOOLS.map((t) => versions[t]),
     async discover(ctx) {
@@ -658,7 +663,7 @@ export function toolchainsPlugin(
       // `rustup toolchain uninstall` would remove what a link leads to.
       if (!stat.isDirectory()) throw new Error(`${path} is no longer a folder`)
       // A checkout may have pinned it, or it may have become the default, since the survey.
-      const now = (await scan(ctx, false)).find((r) => r.candidate.id === c.id)
+      const now = (await scan(ctx, false, tool)).find((r) => r.candidate.id === c.id)
       if (now === undefined) throw new Error(`${path} is no longer a candidate`)
       if (now.blockers.length > 0) {
         throw new Error(`${path} is refused: ${now.blockers.map((b) => b.reason).join(', ')}`)
