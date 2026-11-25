@@ -312,6 +312,25 @@ describe('objection levels', () => {
     ])
   })
 
+  test('a scope or discover that answers no list, or a list entry of the wrong kind, is warned of, not thrown on', async () => {
+    const none = fake('a', [], [], {
+      scope: async () => undefined as unknown as string[],
+      discover: async () => undefined as unknown as Candidate[],
+    })
+    const odd = fake('b', [7, null, cand('b:ok', 'b')] as unknown as Candidate[], [], {
+      scope: () => [7] as unknown as string[],
+    })
+    const s = await survey([none, odd], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['b:ok'])
+    expect(s.warnings).toEqual([
+      'a: scope answered undefined, which is not a list; it proposed nothing',
+      'b: scope: left out 7, which is not a path',
+      'a: discover answered undefined, which is not a list; it proposed nothing',
+      'b: dropped 7, which is not a candidate',
+      'b: dropped null, which is not a candidate',
+    ])
+  })
+
   test('a lost candidate is held and protested discard-user-data; rebuild and re-download are not', async () => {
     const items = [
       cand('a:lost', 'a', { costDescription: 'lost' }),
@@ -344,7 +363,42 @@ describe('objection levels', () => {
     const s = await survey([fake('a', [odd, cand('a:ok', 'a')], [])], ctx)
     expect(s.candidates.map((c) => c.id)).toEqual(['a:ok'])
     expect(s.warnings).toEqual([
-      'a: dropped a:odd, whose costDescription is not one of re-download, rebuild, lost',
+      expect.stringMatching(/^a: dropped a:odd, whose costDescription a plan refuses: /),
+    ])
+  })
+
+  test('a candidate a plan would refuse is dropped, so a plan of the survey reads back', async () => {
+    const odd = cand('a:bytes', 'a', { bytes: '10' as unknown as number })
+    const s = await survey([fake('a', [odd, cand('a:ok', 'a')], [])], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:ok'])
+    expect(s.warnings).toEqual([
+      expect.stringMatching(/^a: dropped a:bytes, whose bytes a plan refuses: /),
+    ])
+    expect(parsePlan(JSON.stringify(plan(s)), 'plan.json').candidates).toHaveLength(1)
+  })
+
+  test('a limit that is not a positive number warns and falls back to the default', async () => {
+    const slow: Plugin = {
+      ...fake('a', [cand('a:ok', 'a')], []),
+      limits: { discover: Number.NaN },
+      discover: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        return [cand('a:ok', 'a')]
+      },
+    }
+    const s = await survey([slow], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:ok'])
+    expect(s.warnings).toEqual([
+      'a: limits.discover is NaN, not a positive number of milliseconds; the default was used',
+    ])
+  })
+
+  test('a spare of the folder a ref candidate is at spares it', () => {
+    const rec = cand('orca:1', 'orca', { at: '/home/me/orca/x' })
+    const d = decide([rec], [], { select: null, pick: [], spare: ['/home/me/orca/x'] }, [])
+    expect(d.run).toEqual([])
+    expect(d.dropped).toEqual([
+      { id: 'orca:1', reason: 'spared', detail: '--spare /home/me/orca/x' },
     ])
   })
 
