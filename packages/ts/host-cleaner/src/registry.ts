@@ -11,6 +11,7 @@ import {
   type DescriptorSources,
   type LoadedDescriptor,
 } from './descriptor/load.ts'
+import { shareKit } from './kit.ts'
 import { detection } from './run.ts'
 import type { Ctx, Plugin, PluginDefinition } from './types.ts'
 
@@ -74,15 +75,19 @@ export function supersession(): Supersession {
     runs: (name) => detection(answers.get(name))?.active === true,
     track: (plugins) => {
       answers.clear()
-      return plugins.map((p) => ({
-        ...p,
-        detect: async (ctx: Ctx) => {
-          answers.delete(p.name)
-          const answer = await p.detect(ctx)
-          answers.set(p.name, answer)
-          return answer
-        },
-      }))
+      return plugins.map((p) => {
+        const tracked: Plugin = {
+          ...p,
+          detect: async (ctx: Ctx) => {
+            answers.delete(p.name)
+            const answer = await p.detect(ctx)
+            answers.set(p.name, answer)
+            return answer
+          },
+        }
+        shareKit(p, tracked)
+        return tracked
+      })
     },
   }
 }
