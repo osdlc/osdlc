@@ -129,7 +129,8 @@ const TIER_1 = { UV, HUGGING_FACE, PIP_PER_OS, PNPM_TIER_1, DOTNET_PROJECT }
 const TIER_2 = { PNPM, GO }
 
 const ajv = new Ajv2020({ allErrors: true, strict: false })
-const jsonSchema = ajv.compile(JSON.parse(readFileSync(DESCRIPTOR_SCHEMA_FILE, 'utf8')))
+const shippedText = readFileSync(DESCRIPTOR_SCHEMA_FILE, 'utf8')
+const jsonSchema = ajv.compile(JSON.parse(shippedText))
 
 /** The issues `parseDescriptor` throws for `text`; empty when it reads. */
 function issues(text: string): readonly string[] {
@@ -454,7 +455,7 @@ describe('the YAML reader', () => {
 describe('the shipped JSON Schema', () => {
   test('schemas/descriptor-1.json is what write-descriptor-schema writes', () => {
     const stale = 'stale: run `pnpm run write:descriptor-schema` and commit the result'
-    expect(readFileSync(DESCRIPTOR_SCHEMA_FILE, 'utf8'), stale).toBe(descriptorSchemaText())
+    expect(shippedText, stale).toBe(descriptorSchemaText())
   })
 
   test('its $id is the URL the examples name, pinned to descriptor-1', () => {

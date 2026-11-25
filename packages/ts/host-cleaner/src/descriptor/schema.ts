@@ -296,31 +296,32 @@ type Path = readonly PropertyKey[]
 
 /** The schema's problems with `value`, one `<field path>: <message>` each; empty when it is a descriptor. */
 export function descriptorIssues(value: unknown): string[] {
-  return issuesOf(value).map(({ path, message }) => `${fieldPath(path)}: ${message}`)
+  return check(value).issues.map(({ path, message }) => `${fieldPath(path)}: ${message}`)
 }
 
-function issuesOf(value: unknown): { path: Path; message: string }[] {
+const TIER_2 = 'variables (tier 2) are not supported yet'
+
+/** `value` checked once: its issues, and the descriptor when it has none. */
+function check(value: unknown): { data?: Descriptor; issues: { path: Path; message: string }[] } {
   const parsed = DescriptorSchema.safeParse(value, {
     error: (iss) => (iss.input === undefined && iss.code !== 'custom' ? 'required' : undefined),
   })
-  const out: { path: Path; message: string }[] = []
+  const issues: { path: Path; message: string }[] = []
   if (!parsed.success) {
     for (const i of parsed.error.issues) {
       if (i.code === 'unrecognized_keys')
-        for (const key of i.keys) out.push({ path: [...i.path, key], message: 'unknown field' })
-      else out.push({ path: i.path, message: i.message })
+        for (const key of i.keys) issues.push({ path: [...i.path, key], message: 'unknown field' })
+      else issues.push({ path: i.path, message: i.message })
     }
-    return out
+    return { issues }
   }
   // Tier 2 is described but not read yet.
   const d = parsed.data
-  if (d.vars !== undefined)
-    out.push({ path: ['vars'], message: 'variables (tier 2) are not supported yet' })
+  if (d.vars !== undefined) issues.push({ path: ['vars'], message: TIER_2 })
   for (const [name, folders] of Object.entries(d.paths))
     for (const [os, p] of Object.entries(folders))
-      if (p?.includes('${'))
-        out.push({ path: ['paths', name, os], message: 'variables (tier 2) are not supported yet' })
-  return out
+      if (p?.includes('${')) issues.push({ path: ['paths', name, os], message: TIER_2 })
+  return issues.length > 0 ? { issues } : { data: d, issues }
 }
 
 const fieldPath = (path: Path): string => (path.length === 0 ? '(top)' : path.map(String).join('.'))
@@ -342,8 +343,8 @@ export function parseDescriptor(text: string, source: string): Descriptor {
       `${lineOf(lines, error.pos[0])}: ${error.message.split('\n')[0]}`,
     ])
   const value: unknown = doc.toJS()
-  const issues = issuesOf(value)
-  if (issues.length > 0)
+  const { data, issues } = check(value)
+  if (data === undefined)
     throw new DescriptorError(
       source,
       issues.map(({ path, message }) => {
@@ -352,7 +353,7 @@ export function parseDescriptor(text: string, source: string): Descriptor {
         return `${where}${fieldPath(path)}: ${message}`
       }),
     )
-  return DescriptorSchema.parse(value)
+  return data
 }
 
 /**
