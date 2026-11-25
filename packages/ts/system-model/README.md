@@ -73,13 +73,15 @@ packaging ecosystem (`node` or `rust`). Detection's ecosystems are
 `EcosystemDef`s, a wider set.
 
 **`./build`**: `walkManifests` finds every `package.json` and `Cargo.toml`
-under a directory, reading them through detection, and `buildDependencyGraph`
+under a directory, reading them through detection; `MANIFEST_FILES` lists
+those two names, for a caller that picks manifests out of a file list itself.
+`buildDependencyGraph`
 turns them into nodes and dependency edges (`DependencyGraph`). `applyContainment` adds the containment tree, `scanAspects` reads a
 manifest's technologies, and `buildSystemGraph` does all of it and returns the
 `SystemGraph` wire payload. It is Node only,
 because it reads the filesystem, so it is a separate entry from the
 browser-safe `./graph`. It is the TypeScript half of the `system-model` Rust
-crate (arriving in a later change), which will walk one fixture tree (`tests/fixtures/mini-repo`, a symlink to
+crate, and the two walk one fixture tree (`tests/fixtures/mini-repo`, a symlink to
 `packages/rust/system-model/tests/mini-repo`) and assert the same contract.
 
 **`./aspect`**: `Aspect`, `Evidence`, `EvidenceKind` and `EVIDENCE_TIERS`.

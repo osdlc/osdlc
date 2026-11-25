@@ -9,6 +9,7 @@ import { afterAll, expect, test } from 'vitest'
 
 import {
   DEFAULT_EXCLUDES,
+  MANIFEST_FILES,
   ROOT_ID,
   applyContainment,
   buildDependencyGraph,
@@ -51,6 +52,12 @@ test('two workspace packages produce one dependency edge', async () => {
   expect(nodes.map((n) => n.id)).toEqual(['pkg-a', 'pkg-b'])
   expect(deps.map((d) => d.specifierKind)).toEqual(['workspace'])
   expect(DEFAULT_EXCLUDES).toContain('node_modules')
+
+  // Pick manifests out of a file list, as a caller with no directory to walk does.
+  const listed = ['pkg-a/package.json', 'pkg-a/README.md', 'crates/x/Cargo.toml']
+  const isManifest = (path: string) =>
+    (MANIFEST_FILES as readonly string[]).includes(path.slice(path.lastIndexOf('/') + 1))
+  expect(listed.filter(isManifest)).toEqual(['pkg-a/package.json', 'crates/x/Cargo.toml'])
 
   const containment: ContainmentOptions = {}
   applyContainment(graph, containment)
