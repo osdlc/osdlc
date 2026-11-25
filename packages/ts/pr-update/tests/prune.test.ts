@@ -8,12 +8,14 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -1297,5 +1299,672 @@ describe('pr-update mirror prune on the command line (review round 1)', () => {
     expect(plain).not.toHaveProperty('all')
     const every = JSON.parse((await run('mirror', 'prune', '--all-clones', '--json')).out)
     expect(every).toMatchObject({ allClones: true, olderThanDays: null })
+  })
+})
+
+// Windows has no mode bits for chmod to take away, and root reads any folder.
+const unreadableTest = test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)
+
+describe('every removal passes one check, the same in a dry run (final review round 3)', () => {
+  /** Run `act` while `path` has `mode`, and put its mode back. */
+  function withMode(path: string, mode: number, act: () => void): void {
+    const was = statSync(path).mode & 0o7777
+    chmodSync(path, mode)
+    try {
+      act()
+    } finally {
+      chmodSync(path, was)
+    }
+  }
+
+  /** A dry run and then a real one with the same options, which must report the same, sizes aside. */
+  function bothModes(opts: Partial<PruneOptions>): ReturnType<typeof prune> {
+    const [dry, real] = [true, false].map((dryRun) => {
+      const r = prune({ ...opts, dryRun })
+      const plain = (es: typeof r.removed) => es.map((e) => [e.kind, e.path, e.skip])
+      return { r, said: [plain(r.removed), plain(r.skipped), plain(r.failed)] }
+    })
+    expect(dry!.said).toEqual(real!.said)
+    return real!.r
+  }
+
+  const everything = { allClones: true, discardKept: true }
+
+  /** The kept tree `path`, switched to a person's branch with an uncommitted file in it. */
+  function takeOver(path: string): string {
+    git(path, 'switch', '-q', '-c', 'my-work')
+    const mine = join(path, 'mine.txt')
+    writeFileSync(mine, 'mine\n')
+    return mine
+  }
+
+  describe('a kept tree', () => {
+    test.each([
+      ['moved', false],
+      ['moved and repaired', true],
+    ])(
+      'a person switched, with its record, stays with its clone when the clones folder was %s',
+      (_, repair) => {
+        const before = join(scratch, 'clones-a')
+        const after = join(scratch, 'clones-b')
+        const clone = makeClone('acme/api', 400, before)
+        const path = keptWorktree(clone, 'acme/api', 7)
+        const mine = takeOver(path)
+        renameSync(before, after)
+        const moved = join(after, 'github.com', 'acme', 'api.git')
+        if (repair) git(moved, 'worktree', 'repair', path)
+
+        const r = bothModes({ ...everything, dir: after })
+
+        expect(r.removed).toEqual([])
+        expect(r.failed).toEqual([])
+        expect(r.skipped).toEqual([
+          expect.objectContaining({
+            kind: 'clone',
+            path: moved,
+            skip: 'kept',
+            reason: expect.stringContaining(
+              `its kept worktree ${path} is on my-work, not pr-update/failed-acme-api-7`,
+            ),
+          }),
+        ])
+        expect(readFileSync(mine, 'utf8')).toBe('mine\n')
+        expect(existsSync(moved)).toBe(true)
+      },
+    )
+
+    test('on its own branch, in a clones folder that was moved, goes once the clone is repaired, and not before', () => {
+      const before = join(scratch, 'clones-a')
+      const after = join(scratch, 'clones-b')
+      const path = keptWorktree(makeClone('acme/api', 400, before), 'acme/api', 7)
+      renameSync(before, after)
+      const moved = join(after, 'github.com', 'acme', 'api.git')
+
+      // Its `.git` file names the old place, so nothing says the tree is this clone's.
+      const r = bothModes({ ...everything, dir: after })
+      expect(r.removed).toEqual([])
+      expect(r.skipped).toEqual([
+        expect.objectContaining({
+          path: moved,
+          skip: 'kept',
+          reason: expect.stringContaining(`git -C ${moved} worktree repair ${path}`),
+        }),
+      ])
+      expect(existsSync(path)).toBe(true)
+
+      git(moved, 'worktree', 'repair', path)
+      expect(prune({ ...everything, dir: after }).removed.map((e) => e.path)).toEqual([path, moved])
+      expect(existsSync(path)).toBe(false)
+      expect(existsSync(`${path}.json`)).toBe(false)
+    })
+
+    test.each([
+      ['with no record', false],
+      ['whose record names an owner that is gone', true],
+    ])(
+      '%s is not removed through a copy of its clone, which lists it on the branch it was on when copied',
+      (_, record) => {
+        const clone = makeClone('acme/api', 400)
+        const path = keptWorktree(clone, 'acme/api', 7)
+        const file = `${path}.json`
+        if (record) {
+          const text = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+          writeFileSync(file, JSON.stringify({ ...text, gitDir: join(scratch, 'gone.git') }))
+        } else unlinkSync(file)
+        const copies = join(scratch, 'copies')
+        cpSync(paths.repos, copies, { recursive: true })
+        const mine = takeOver(path)
+
+        const r = bothModes({ ...everything, dir: copies })
+
+        expect(r.removed).toEqual([])
+        expect(r.skipped.map((e) => [e.kind, e.skip])).toEqual([['clone', 'kept']])
+        expect(readFileSync(mine, 'utf8')).toBe('mine\n')
+        expect(git(path, 'branch', '--show-current')).toBe('my-work')
+        expect(existsSync(join(copies, 'github.com', 'acme', 'api.git'))).toBe(true)
+      },
+    )
+
+    unreadableTest(
+      'whose record names a repository that cannot be reached stays with its clone: switched, it is the person’s; not switched, its owner is unread and that fails',
+      () => {
+        const clone = makeClone('acme/api', 400)
+        const path = keptWorktree(clone, 'acme/api', 7)
+        const other = makeGitFixture({ dir: join(scratch, 'dev', 'other') })
+        other.commit('init', { 'o.txt': 'o' })
+        const file = `${path}.json`
+        const record = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+        const gitDir = realpathSync.native(join(other.dir, '.git'))
+        writeFileSync(file, JSON.stringify({ ...record, gitDir }))
+        writeFileSync(join(path, 'mine.txt'), 'mine\n')
+
+        withMode(dirname(other.dir), 0o000, () => {
+          const unread = bothModes(everything)
+          expect(unread.removed).toEqual([])
+          expect(unread.failed).toEqual([
+            expect.objectContaining({
+              kind: 'clone',
+              path: clone,
+              reason: expect.stringContaining(`${path}: its owner's worktrees could not be listed`),
+            }),
+          ])
+          git(path, 'switch', '-q', '-c', 'my-work')
+          const switched = bothModes(everything)
+          expect(switched.removed).toEqual([])
+          expect(switched.failed).toEqual([])
+          expect(switched.skipped.map((e) => [e.kind, e.skip])).toEqual([['clone', 'kept']])
+        })
+        expect(readFileSync(join(path, 'mine.txt'), 'utf8')).toBe('mine\n')
+        expect(existsSync(file)).toBe(true)
+        expect(existsSync(clone)).toBe(true)
+      },
+    )
+
+    test('whose owner’s worktrees cannot be listed fails the clone, and the prune exits 1', async () => {
+      const clone = makeClone('acme/api', 400)
+      const path = keptWorktree(clone, 'acme/api', 7)
+      const other = makeGitFixture({ dir: join(scratch, 'dev', 'other') })
+      other.commit('init', { 'o.txt': 'o' })
+      const file = `${path}.json`
+      const record = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+      const gitDir = realpathSync.native(join(other.dir, '.git'))
+      writeFileSync(file, JSON.stringify({ ...record, gitDir }))
+      rmSync(join(gitDir, 'HEAD'))
+
+      const r = bothModes(everything)
+      expect(r.removed).toEqual([])
+      expect(r.failed.map((e) => [e.kind, e.path])).toEqual([['clone', clone]])
+
+      const ctx = captureContext({ cwd: scratch, env })
+      const argv = ['mirror', 'prune', '--all-clones', '--discard-kept']
+      expect(await main(argv, ctx, { which: allToolsInstalled })).toBe(EXIT.error)
+      expect(ctx.io.out).toContain("its owner's worktrees could not be listed")
+      expect(existsSync(path)).toBe(true)
+      expect(existsSync(clone)).toBe(true)
+    })
+
+    unreadableTest('whose record file cannot be read stays, and so does its clone', () => {
+      const clone = makeClone('acme/api', 400)
+      const path = keptWorktree(clone, 'acme/api', 7)
+      withMode(`${path}.json`, 0o000, () => {
+        const r = bothModes(everything)
+        expect(r.removed).toEqual([])
+        expect(r.failed).toEqual([
+          expect.objectContaining({
+            kind: 'clone',
+            path: clone,
+            reason: expect.stringContaining(`${path}.json`),
+          }),
+        ])
+      })
+      expect(existsSync(path)).toBe(true)
+      expect(existsSync(clone)).toBe(true)
+    })
+
+    unreadableTest('that holds a folder that cannot be listed stays, and so does its clone', () => {
+      const clone = makeClone('acme/api', 400)
+      const path = keptWorktree(clone, 'acme/api', 7)
+      const shut = join(path, 'shut')
+      mkdirSync(shut)
+      writeFileSync(join(shut, 'inside'), 'x')
+      withMode(shut, 0o000, () => {
+        const r = bothModes(everything)
+        expect(r.removed).toEqual([])
+        expect(r.failed.map((e) => [e.kind, e.path])).toEqual([['clone', clone]])
+      })
+      expect(listed(clone)).toEqual([path])
+      expect(existsSync(join(path, 'a.txt'))).toBe(true)
+    })
+
+    test.each(['outside kept/', 'inside kept/'])(
+      'that is a symbolic link to where a person moved it, %s, is not removed through',
+      (where) => {
+        const clone = makeClone('acme/api', 400)
+        const path = keptWorktree(clone, 'acme/api', 7)
+        const theirs = where === 'outside kept/' ? join(scratch, 'theirs') : `${path}-mine`
+        renameSync(path, theirs)
+        symlinkSync(theirs, path, 'junction')
+
+        const r = bothModes(everything)
+
+        expect(r.removed).toEqual([])
+        expect(r.skipped.map((e) => [e.kind, e.path])).toEqual([['clone', clone]])
+        expect(existsSync(join(theirs, 'a.txt'))).toBe(true)
+        expect(existsSync(clone)).toBe(true)
+      },
+    )
+
+    unreadableTest('folder `mirror list` cannot list is noted', () => {
+      const path = keptWorktree(makeClone('acme/api', 400), 'acme/api', 7)
+      const notes: string[] = []
+      withMode(dirname(path), 0o300, () => {
+        const l = listMirror({ env, notice: (n) => notes.push(n) })
+        expect(l.clones).toEqual([expect.objectContaining({ kept: [] })])
+      })
+      expect(notes.join('\n')).toContain(`${dirname(path)} could not be read: EACCES`)
+    })
+
+    unreadableTest('record `mirror list` cannot read is noted', () => {
+      const path = keptWorktree(makeClone('acme/api', 400), 'acme/api', 7)
+      const notes: string[] = []
+      withMode(`${path}.json`, 0o000, () => {
+        listMirror({ env, notice: (n) => notes.push(n) })
+      })
+      expect(notes.join('\n')).toContain(`${path}.json could not be read: EACCES`)
+    })
+  })
+
+  describe('a clone’s dead run worktree', () => {
+    for (const link of [false, true]) {
+      unreadableTest.each([
+        ['owner folder', 'acme', 0o600],
+        ['owner folder', 'acme', 0o000],
+        ['owner folder', 'acme', 0o300],
+        ['repository folder', join('acme', 'api'), 0o600],
+        ['repository folder', join('acme', 'api'), 0o300],
+        ['repository folder, which others can write to,', join('acme', 'api'), 0o333],
+      ])(
+        `under an unreadable %s stays, and so does the clone (%s, mode %o${link ? ', symlinked root' : ''})`,
+        (_, below, mode) => {
+          if (link) {
+            mkdirSync(join(scratch, 'real'))
+            symlinkSync(join(scratch, 'real'), join(scratch, 'linked'))
+            env = { ...env, OSDLC_ROOT: join(scratch, 'linked') }
+            paths = prUpdatePaths(osdlcDirs({ env }))
+          }
+          const clone = makeClone('acme/api', 400)
+          const dead = runWorktree(clone, 'acme/api')
+          const sibling = makeClone('other/web', 400)
+
+          withMode(join(paths.worktrees, 'github.com', below), mode, () => {
+            const r = bothModes({ allClones: true })
+            expect(r.removed.map((e) => e.path)).toEqual([sibling])
+            expect(r.failed.map((e) => e.kind)).toContain('worktree')
+            expect([...r.failed, ...r.skipped].map((e) => e.path)).toContain(clone)
+          })
+
+          expect(existsSync(join(dead, 'a.txt'))).toBe(true)
+          expect(listed(clone)).toHaveLength(1)
+        },
+      )
+    }
+
+    test('whose folder is gone, with the whole cache folder, goes with the clone under a symlinked root too', () => {
+      mkdirSync(join(scratch, 'real'))
+      symlinkSync(join(scratch, 'real'), join(scratch, 'linked'), 'junction')
+      env = { ...env, OSDLC_ROOT: join(scratch, 'linked') }
+      paths = prUpdatePaths(osdlcDirs({ env }))
+      const clone = makeClone('acme/api', 400)
+      runWorktree(clone, 'acme/api')
+      rmSync(paths.worktrees, { recursive: true, force: true })
+
+      const r = bothModes({ allClones: true })
+
+      expect(r.removed.map((e) => e.kind)).toEqual(['worktree', 'clone'])
+      expect(existsSync(clone)).toBe(false)
+    })
+
+    test('whose folder is gone, below one others can write to, stays with the clone', () => {
+      if (process.platform === 'win32') return
+      const clone = makeClone('acme/api', 400)
+      const dead = runWorktree(clone, 'acme/api')
+      rmSync(dead, { recursive: true, force: true })
+      withMode(dirname(dead), 0o777, () => {
+        const r = bothModes({ allClones: true })
+        expect(r.removed).toEqual([])
+        expect(r.skipped.map((e) => [e.kind, e.path, e.skip])).toEqual([['clone', clone, 'in-use']])
+      })
+      expect(listed(clone)).toEqual([dead])
+    })
+
+    unreadableTest(
+      'holding a folder that cannot be listed is left whole, and so is the clone',
+      () => {
+        const clone = makeClone('acme/api', 400)
+        const dead = runWorktree(clone, 'acme/api')
+        const shut = join(dead, 'shut')
+        mkdirSync(shut)
+        writeFileSync(join(shut, 'inside'), 'x')
+        withMode(shut, 0o000, () => {
+          const r = bothModes({ allClones: true })
+          expect(r.removed).toEqual([])
+          expect(r.failed.map((e) => e.path)).toEqual([dead, clone])
+        })
+        expect(existsSync(join(dead, 'a.txt'))).toBe(true)
+        expect(listed(clone)).toEqual([dead])
+      },
+    )
+
+    unreadableTest.each(['a folder in it', 'the folder it is in'])(
+      'that could be removed only in part, for %s that cannot be written to, is left whole, and so is the clone',
+      (what) => {
+        const clone = makeClone('acme/api', 400)
+        const dead = runWorktree(clone, 'acme/api')
+        const inside = join(dead, 'shut')
+        mkdirSync(inside)
+        writeFileSync(join(inside, 'inside'), 'x')
+        withMode(what === 'a folder in it' ? inside : dirname(dead), 0o500, () => {
+          const r = bothModes({ allClones: true })
+          expect(r.removed).toEqual([])
+          expect(r.failed.map((e) => e.path)).toEqual([dead, clone])
+        })
+        expect(existsSync(join(dead, 'a.txt'))).toBe(true)
+        expect(listed(clone)).toEqual([dead])
+      },
+    )
+
+    unreadableTest('whose clone’s lock cannot be taken is left', () => {
+      const clone = makeClone('acme/api', 1)
+      const dead = runWorktree(clone, 'acme/api')
+      withMode(dirname(clone), 0o500, () => {
+        const r = bothModes({})
+        expect(r.removed).toEqual([])
+        expect(r.failed.map((e) => e.path)).toEqual([dead])
+      })
+      expect(listed(clone)).toEqual([dead])
+    })
+
+    test('that a copy of the clone lists keeps the copy while another run holds the clone’s lock', () => {
+      const clone = makeClone('acme/api', 400)
+      const dead = runWorktree(clone, 'acme/api')
+      const copies = join(scratch, 'copies')
+      cpSync(paths.repos, copies, { recursive: true })
+      holdLock(clone)
+
+      const r = bothModes({ allClones: true, dir: copies })
+
+      expect(r.removed).toEqual([])
+      expect(r.skipped.map((e) => [e.path, e.skip])).toEqual([
+        [dead, 'busy'],
+        [join(copies, 'github.com', 'acme', 'api.git'), 'in-use'],
+      ])
+      expect(listed(clone)).toEqual([dead])
+    })
+
+    test.skipIf(process.platform === 'win32').each(['EISDIR', 'ELOOP'])(
+      'whose record cannot be read (%s) is left for the clone’s lock, which another run holds',
+      (code) => {
+        const clone = makeClone('acme/api', 1)
+        const dead = runWorktree(clone, 'acme/api')
+        holdLock(clone)
+        const commondir = join(clone, 'worktrees', DEAD, 'commondir')
+        unlinkSync(commondir)
+        if (code === 'EISDIR') mkdirSync(commondir)
+        else symlinkSync(commondir, commondir)
+
+        const r = bothModes({})
+
+        expect(r.removed).toEqual([])
+        expect(r.failed).toEqual([
+          expect.objectContaining({
+            kind: 'worktree',
+            path: dead,
+            reason: expect.stringContaining(code),
+          }),
+        ])
+        expect(existsSync(dead)).toBe(true)
+      },
+    )
+  })
+
+  test('a dead run worktree whose owner git cannot read stays, and a sibling’s goes', () => {
+    const broken = makeGitFixture({ dir: join(scratch, 'dev', 'api') })
+    broken.commit('init', { 'a.txt': 'a' })
+    const dead = runWorktree(broken.dir, 'acme/api')
+    const web = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
+    web.commit('init', { 'w.txt': 'w' })
+    const sibling = runWorktree(web.dir, 'other/web')
+    rmSync(join(broken.dir, '.git', 'HEAD'))
+
+    const r = bothModes({})
+
+    expect(r.removed.map((e) => e.path)).toEqual([sibling])
+    expect(r.failed.map((e) => e.path)).toEqual([dead])
+    expect(existsSync(join(dead, 'a.txt'))).toBe(true)
+  })
+
+  describe('a clone', () => {
+    unreadableTest.each([
+      ['worktrees', 0o000],
+      ['worktrees', 0o600],
+      ['worktrees', 0o300],
+      [join('worktrees', '7'), 0o000],
+      [join('worktrees', '7', 'gitdir'), 0o000],
+      [join('worktrees', '7', 'HEAD'), 0o000],
+    ])(
+      'stays while a worktree record of it cannot be read, which git leaves out of its list (%s, mode %o)',
+      (below, mode) => {
+        const clone = makeClone('acme/api', 400)
+        const path = keptWorktree(clone, 'acme/api', 7)
+        const sibling = makeClone('other/web', 400)
+        git(path, 'commit', '-q', '--allow-empty', '-m', 'mine')
+        const tip = git(path, 'rev-parse', 'HEAD')
+
+        withMode(join(clone, below), mode, () => {
+          for (const opts of [{}, everything]) {
+            for (const dryRun of [true, false]) {
+              const r = prune({ ...opts, dryRun })
+              expect(r.removed.map((e) => e.path).filter((p) => p !== sibling)).toEqual([])
+              expect(r.failed).toContainEqual(
+                expect.objectContaining({
+                  kind: 'clone',
+                  path: clone,
+                  reason: expect.stringContaining('EACCES'),
+                }),
+              )
+            }
+          }
+        })
+        expect(existsSync(sibling)).toBe(false)
+        expect(git(path, 'rev-parse', 'HEAD')).toBe(tip)
+      },
+    )
+
+    test('git cannot read stays, when git answers for a bare repository it is inside', () => {
+      const outer = join(scratch, 'outer.git')
+      git(scratch, 'clone', '-q', '--bare', source, outer)
+      const dir = join(outer, 'clones')
+      const clone = makeClone('acme/api', 400, dir)
+      const path = keptWorktree(clone, 'acme/api', 7)
+      rmSync(join(clone, 'HEAD'))
+
+      const r = bothModes({ ...everything, dir })
+
+      expect(r.removed).toEqual([])
+      expect(r.failed.map((e) => [e.kind, e.path])).toEqual([['clone', clone]])
+      expect(existsSync(path)).toBe(true)
+      expect(existsSync(clone)).toBe(true)
+    })
+
+    unreadableTest('whose lock cannot be taken fails alone; a sibling is still pruned', () => {
+      const clone = makeClone('acme/api', 400)
+      const sibling = makeClone('other/web', 400)
+      withMode(dirname(clone), 0o500, () => {
+        const r = bothModes({ allClones: true })
+        expect(r.removed.map((e) => e.path)).toEqual([sibling])
+        expect(r.failed).toEqual([
+          expect.objectContaining({
+            kind: 'clone',
+            path: clone,
+            reason: expect.stringContaining('EACCES'),
+          }),
+        ])
+      })
+      expect(existsSync(clone)).toBe(true)
+      expect(existsSync(sibling)).toBe(false)
+    })
+
+    test('whose lock another run holds is left in a dry run too, with its run worktree and leftover', () => {
+      const clone = makeClone('acme/api', 400)
+      const dead = runWorktree(clone, 'acme/api')
+      const tmp = join(dirname(clone), '.tmp-api.git-2147483646')
+      mkdirSync(tmp)
+      age(tmp, 2 * 60 * 60 * 1000)
+      const lock = holdLock(clone)
+      const text = readFileSync(lock, 'utf8')
+
+      const r = bothModes({ allClones: true })
+
+      expect(r.removed).toEqual([])
+      expect(r.skipped.map((e) => [e.path, e.skip])).toEqual([
+        [dead, 'busy'],
+        [tmp, 'busy'],
+        [clone, 'busy'],
+      ])
+      expect(readFileSync(lock, 'utf8')).toBe(text)
+    })
+
+    test('whose lock a dead run left is not busy, in a dry run either', () => {
+      const clone = makeClone('acme/api', 400)
+      const lock = { tool: 'pr-update', holder: { pid: 2147483646 }, token: 'x' }
+      writeFileSync(cloneLockPath(clone), JSON.stringify(lock))
+      expect(bothModes({ allClones: true }).removed.map((e) => e.path)).toEqual([clone])
+    })
+
+    unreadableTest('whose lock file cannot be read fails alone', () => {
+      const clone = makeClone('acme/api', 400)
+      const sibling = makeClone('other/web', 400)
+      const lock = holdLock(clone)
+      withMode(lock, 0o000, () => {
+        const r = bothModes({ allClones: true })
+        expect(r.removed.map((e) => e.path)).toEqual([sibling])
+        expect(r.failed.map((e) => e.path)).toEqual([clone])
+      })
+      expect(existsSync(clone)).toBe(true)
+    })
+
+    test.each(['a folder', 'a link to a lock a dead run left'])(
+      'whose lock path holds %s fails alone',
+      (what) => {
+        const clone = makeClone('acme/api', 400)
+        const sibling = makeClone('other/web', 400)
+        const lock = cloneLockPath(clone)
+        if (what === 'a folder') mkdirSync(lock)
+        else {
+          const other = join(scratch, 'other.lock')
+          const text = { tool: 'pr-update', holder: { pid: 2147483646 }, token: 'x' }
+          writeFileSync(other, JSON.stringify(text))
+          symlinkSync(other, lock)
+        }
+        const r = bothModes({ allClones: true })
+        expect(r.removed.map((e) => e.path)).toEqual([sibling])
+        expect(r.failed.map((e) => [e.path, e.reason])).toEqual([
+          [clone, expect.stringContaining('not a lock file')],
+        ])
+        expect(existsSync(clone)).toBe(true)
+      },
+    )
+
+    unreadableTest('whose last-used stamp cannot be read is not taken for an old one', () => {
+      const clone = makeClone('acme/api', 1)
+      age(join(clone, CLONE_MARKER), 400 * DAY)
+      withMode(join(clone, CLONE_STAMP), 0o000, () => {
+        const r = bothModes({})
+        expect(r.removed).toEqual([])
+        expect(r.failed.map((e) => [e.kind, e.path])).toEqual([['clone', clone]])
+        const notes: string[] = []
+        expect(listMirror({ env, notice: (n) => notes.push(n) }).clones).toHaveLength(1)
+        expect(notes.join('\n')).toContain(`${join(clone, CLONE_STAMP)} could not be read: EACCES`)
+      })
+      expect(existsSync(clone)).toBe(true)
+    })
+
+    unreadableTest.each(['file', 'folder'])(
+      'is not aged by the default when the machine file cannot be read for its %s',
+      (what) => {
+        const clone = makeClone('acme/api', 400)
+        const file = machineFile({ env }).path()
+        mkdirSync(dirname(file), { recursive: true })
+        writeFileSync(file, 'mirror_max_age_days: 0\n')
+        withMode(what === 'file' ? file : dirname(file), 0o000, () => {
+          const r = bothModes({ machine: machineFile({ env }) })
+          expect(r.removed).toEqual([])
+          expect(r.failed).toEqual([
+            expect.objectContaining({
+              kind: 'clone',
+              path: paths.repos,
+              reason: expect.stringContaining('mirror_max_age_days could not be read: EACCES'),
+            }),
+          ])
+          expect(existsSync(clone)).toBe(true)
+          // An age on the command line does not need the file.
+          const asked = prune({ machine: machineFile({ env }), olderThanDays: 30 })
+          expect(asked.removed.map((e) => e.path)).toEqual([clone])
+        })
+      },
+    )
+
+    unreadableTest(
+      'with an earlier removal’s leftover at its name that cannot be read stays',
+      () => {
+        const clone = makeClone('acme/api', 400)
+        const aside = join(dirname(clone), `.tmp-api.git-${process.pid}`)
+        mkdirSync(aside)
+        withMode(aside, 0o000, () => {
+          const r = bothModes({ allClones: true })
+          expect(r.removed).toEqual([])
+          expect(r.failed.map((e) => e.path)).toEqual([clone])
+        })
+        expect(existsSync(clone)).toBe(true)
+        expect(existsSync(aside)).toBe(true)
+      },
+    )
+  })
+
+  describe('a leftover', () => {
+    const oldFolder = (path: string): string => {
+      mkdirSync(path, { recursive: true })
+      age(path, 2 * 60 * 60 * 1000)
+      return path
+    }
+
+    unreadableTest('`.tmp-*` folder whose clone’s lock cannot be taken fails alone', () => {
+      const clone = makeClone('acme/api', 1)
+      const tmp = oldFolder(join(dirname(clone), '.tmp-api.git-2147483646'))
+      const sibling = makeClone('other/web', 400)
+      withMode(dirname(tmp), 0o500, () => {
+        const r = bothModes({})
+        expect(r.removed.map((e) => e.path)).toEqual([sibling])
+        expect(r.failed.map((e) => [e.kind, e.path])).toEqual([['leftover', tmp]])
+      })
+      expect(existsSync(tmp)).toBe(true)
+    })
+
+    test('whose own check throws fails alone, a probe and a `.tmp-*` folder alike', () => {
+      const clone = makeClone('acme/api', 1)
+      const tmp = oldFolder(join(dirname(clone), '.tmp-api.git-2147483646'))
+      const probe = oldFolder(join(paths.kept, 'github.com', 'acme', 'api', '.pr-update-probe-abc'))
+      const sibling = oldFolder(join(paths.kept, 'github.com', 'acme', 'api', '.pr-update-probe-d'))
+      const bad = new Set([statSync(tmp).mtimeMs, statSync(probe).mtimeMs])
+      utimesSync(sibling, new Date(0), new Date(0))
+
+      const r = bothModes({
+        owned: (st) => {
+          if (bad.has(st.mtimeMs)) throw new Error('the owner cannot be read')
+          return true
+        },
+      })
+
+      expect(r.removed.map((e) => e.path)).toEqual([sibling])
+      expect(r.failed.map((e) => [e.path, e.reason])).toEqual([
+        [probe, 'the owner cannot be read'],
+        [tmp, 'the owner cannot be read'],
+      ])
+    })
+
+    unreadableTest('that holds a folder that cannot be listed is left, in a dry run too', () => {
+      const clone = makeClone('acme/api', 1)
+      const tmp = join(dirname(clone), '.tmp-api.git-2147483646')
+      const probe = join(paths.worktrees, 'github.com', 'acme', 'api', '.pr-update-probe-abc')
+      for (const p of [tmp, probe]) mkdirSync(join(p, 'shut'), { recursive: true })
+      for (const p of [tmp, probe]) age(p, 2 * 60 * 60 * 1000)
+      withMode(join(tmp, 'shut'), 0o000, () =>
+        withMode(join(probe, 'shut'), 0o000, () => {
+          const r = bothModes({})
+          expect(r.removed).toEqual([])
+          expect(r.failed.map((e) => e.path)).toEqual([probe, tmp])
+        }),
+      )
+    })
   })
 })

@@ -5,18 +5,24 @@
  * Two walks:
  * - `worktrees/` in the cache, which holds the run worktrees of every target other than the
  *   project root, located or cloned. A run worktree whose run is dead ({@link runAliveWith}: by
- *   pid and start time) is removed, whatever its age, through the git directory that owns it. Its `.git` file and that record's `commondir`
- *   are read first, so the owner is known before anything is touched. Only that worktree's own
- *   record is taken out of the owner: never a bare `git worktree prune`, which would also drop a
- *   person's worktrees whose folders are missing. A run worktree of a managed clone is removed
- *   only while holding the clone's lock, since a run never changes a clone without it.
+ *   pid and start time) is removed, whatever its age, through the git directory that owns it, when
+ *   that lists it. Its `.git` file and that record's `commondir` are read first, so the owner is
+ *   known before anything is touched. Only that worktree's own record is taken out of the owner:
+ *   never a bare `git worktree prune`, which would also drop a person's worktrees whose folders
+ *   are missing. A run worktree of a managed clone is removed only while holding the clone's
+ *   lock, since a run never changes a clone without it.
  * - the clone directory, which must carry pr-update's marker. A clone past the age is removed
  *   under its lock, after its dead run worktrees. One with a kept worktree stays, unless
- *   `discardKept`, and even then when a kept tree with no record is not on a
- *   `pr-update/failed-*` branch; one with any other worktree, one whose lock another run holds, and a folder
- *   without the clone marker are never removed. A clone is first renamed to a `.tmp-*` name
- *   beside it, so a removal that fails part-way leaves a leftover the next prune recognises,
- *   not a broken clone in the way.
+ *   `discardKept`, and even then when the clone does not list the tree on its record's branch (on
+ *   a `pr-update/failed-*` branch, with no record); one with any other worktree, one whose lock
+ *   another run holds, and a folder without the clone marker are never removed. A clone is first
+ *   renamed to a `.tmp-*` name beside it, so a removal that fails part-way leaves a leftover the
+ *   next prune recognises, not a broken clone in the way.
+ *
+ * Every removal passes one check first (`mayRemove` in {@link pruneMirror}, with the owner's
+ * `git worktree list` and lock), and a dry run passes it too, so both decide the same way. What
+ * cannot be read stays, and is reported under `failed`; only `ENOENT` and `ENOTDIR` say that
+ * something is gone.
  *
  * Every walk skips names that start with `.`, except the two kinds of leftover it removes once
  * they are an hour old: `.tmp-<name>.git-<pid>[-<random>]` folders (a clone's staging folder, or a clone a
@@ -29,7 +35,8 @@
  */
 
 import {
-  existsSync,
+  accessSync,
+  constants,
   lstatSync,
   readFileSync,
   readdirSync,
@@ -45,9 +52,10 @@ import type { MachineConfigFile } from '@osdlc/config-layers'
 import { osdlcDirs } from '@osdlc/ecosystem'
 import { pidAlive, processStartedAt, releaseLock } from '@osdlc/file-lock'
 import { homeDir } from '@osdlc/tiered-dirs'
-import { Git } from '@osdlc/typed-git'
+import { Git, type Worktree } from '@osdlc/typed-git'
 
 import {
+  isGone,
   lstatOrNull,
   ownedByMe,
   placeProblem,
@@ -63,12 +71,19 @@ import {
   checkClone,
   claimCloneLock,
   cloneFolders,
+  cloneLockHeld,
   cloneLockPath,
   loadMirrorSetting,
 } from './mirror.ts'
 import { realOr } from './real-path.ts'
 import { scratchBranch, targetGitOptions } from './update/execute.ts'
-import { discardKept, keptTreeCheck, listKept, type KeptPlace } from './update/kept.ts'
+import {
+  discardKept,
+  keptTreeCheck,
+  listKept,
+  type KeptPlace,
+  type KeptRecord,
+} from './update/kept.ts'
 import { ownedUnder, removeWorktree } from './update/registrations.ts'
 
 /** A leftover `.tmp-*` clone folder or `.pr-update-probe-*` probe younger than this is left alone. */
@@ -164,6 +179,19 @@ interface Where {
   worktrees: string
   kept: string
   maxAgeDays: number
+  /** Why the machine file could not be read, when it could not: `maxAgeDays` is then the default. */
+  machineUnread: Error | null
+}
+
+/** Why the machine file cannot be read, or null when it can or is not there. */
+function unreadMachine(file: MachineConfigFile<typeof machineConfigSchema>): Error | null {
+  try {
+    file.read()
+    return null
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    return code === 'ENOENT' || code === 'ENOTDIR' ? null : (e as Error)
+  }
 }
 
 function where(opts: MirrorWalkOptions): Where {
@@ -181,6 +209,7 @@ function where(opts: MirrorWalkOptions): Where {
     worktrees: paths.worktrees,
     kept: paths.kept,
     maxAgeDays: machine.mirror_max_age_days,
+    machineUnread: unreadMachine(file),
   }
 }
 
@@ -193,6 +222,11 @@ type Unreadable = (path: string, err: unknown) => void
 
 /** Ignores what could not be read. */
 const IGNORE: Unreadable = () => {}
+
+/** Throws the error of what could not be read. */
+const THROW: Unreadable = (_, err) => {
+  throw err
+}
 
 /** The names in `dir`, sorted, or none when it is not there or cannot be read (told to `unreadable`). */
 function namesIn(dir: string, unreadable: Unreadable = IGNORE): string[] {
@@ -240,27 +274,45 @@ function threeDown(
 
 /**
  * The bytes the files under `path` take, by `lstat`: a link counts as itself, never its target.
- * The size is only shown, so what cannot be read (a folder that cannot be searched, say) counts
- * as 0 rather than throwing: the removal it is shown for reports its own error, per entry.
+ * What cannot be read (a folder that cannot be searched, say) counts as 0, after `unreadable` is
+ * told. With `emptying`, it is also told of a folder whose entries could not be removed.
  */
-export function sizeOf(path: string): number {
-  let st: Stats | null
-  try {
-    st = lstatOrNull(path)
-  } catch {
-    return 0
-  }
+export function sizeOf(
+  path: string,
+  unreadable: Unreadable = IGNORE,
+  emptying: boolean = false,
+): number {
+  const st = lstatOr(path, unreadable)
   if (st === null) return 0
   if (!st.isDirectory()) return st.size
-  let total = 0
-  let names: string[]
-  try {
-    names = readdirSync(path)
-  } catch {
-    return total
+  const names = namesIn(path, unreadable)
+  if (emptying && names.length > 0) {
+    try {
+      accessSync(path, constants.W_OK | constants.X_OK)
+    } catch (e) {
+      unreadable(path, e)
+    }
   }
-  for (const n of names) total += sizeOf(join(path, n))
+  let total = 0
+  for (const n of names) total += sizeOf(join(path, n), unreadable, emptying)
   return total
+}
+
+/** Something a prune may remove: what it takes, and the first error that says it would stop part-way. */
+interface Measured {
+  path: string
+  bytes: number
+  /** Set when something in it could not be read or removed, so all of it stays. */
+  stuck?: unknown
+}
+
+function measure(path: string): Measured {
+  const m: Measured = { path, bytes: 0 }
+  const stuck: Unreadable = (_, err) => {
+    m.stuck ??= err
+  }
+  m.bytes = sizeOf(path, stuck, true)
+  return m
 }
 
 /** `bytes` for a person: `12.3 MB`. */
@@ -276,15 +328,44 @@ export function formatBytes(bytes: number): string {
   return `${n.toFixed(1)} ${units[unit]}`
 }
 
-/** When the clone at `clone` was last used: its stamp, else the clone marker's mtime. */
-function lastUsed(clone: string): number {
+/** The text of `path`, or null when it is not there or cannot be read (told to `unreadable`). */
+function textOr(path: string, unreadable: Unreadable): string | null {
   try {
-    const at = Date.parse(readFileSync(join(clone, CLONE_STAMP), 'utf8').trim())
-    if (Number.isFinite(at)) return at
-  } catch {
-    // No stamp: the marker was written with it, when the clone was made.
+    return readFileSync(path, 'utf8')
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    if (code !== 'ENOENT' && code !== 'ENOTDIR') unreadable(path, e)
+    return null
   }
+}
+
+/**
+ * When the clone at `clone` was last used: its stamp, else the clone marker's mtime. A stamp that
+ * cannot be read is told to `unreadable`, which throws in a prune: the marker's time is when the
+ * clone was made.
+ */
+function lastUsed(clone: string, unreadable: Unreadable): number {
+  const at = Date.parse(textOr(join(clone, CLONE_STAMP), unreadable)?.trim() ?? '')
+  if (Number.isFinite(at)) return at
+  // No stamp: the marker was written with it, when the clone was made.
   return lstatOrNull(join(clone, CLONE_MARKER))?.mtimeMs ?? 0
+}
+
+/**
+ * Throws when a worktree record of the clone at `clone` cannot be read. `git worktree list`
+ * leaves such a worktree out, with no error, so the clone would look as if nothing used it.
+ */
+function checkRecords(clone: string): void {
+  const records = join(clone, 'worktrees')
+  for (const id of namesIn(records, THROW)) {
+    for (const file of ['gitdir', 'HEAD']) textOr(join(records, id, file), THROW)
+  }
+}
+
+/** Whether `worktrees`, a git directory's list, has the one at `path`. */
+function lists(worktrees: readonly Worktree[], path: string): boolean {
+  const real = realOr(path)
+  return worktrees.some((w) => w.path === path || realOr(w.path) === real)
 }
 
 /** The git directory that owns a run worktree, read from its `.git` file and the record's `commondir`. */
@@ -298,8 +379,9 @@ interface Owner {
  * names the record `<common>/worktrees/<id>`, whose `commondir` gives the owner, and whose
  * `gitdir` must name this tree's `.git` back: a record that names another tree is not this one's.
  *
- * @throws when permission is denied to read them: an owner that cannot be read is not one that is
- *   gone, and its tree, if it is a clone's, is removed only under the clone's lock.
+ * @throws when they cannot be read for any reason but that they are not there: an owner that
+ *   cannot be read is not one that is gone, and its tree, if it is a clone's, is removed only
+ *   under the clone's lock.
  */
 export function worktreeOwner(tree: string): Owner | null {
   try {
@@ -314,8 +396,8 @@ export function worktreeOwner(tree: string): Owner | null {
     return { common }
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code
-    if (code === 'EACCES' || code === 'EPERM') throw e
-    return null
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null
+    throw e
   }
 }
 
@@ -458,7 +540,7 @@ export function listMirror(opts: MirrorWalkOptions): MirrorListing {
   const clones = clonesIn(at.mirrorDir, owned, {}, unreadable).flatMap(({ path, repo, state }) => {
     if (state !== 'clone') return []
     const place = keptPlaceOf(at.kept, at.worktrees, repo, path)
-    const kept = listKept(place)
+    const kept = listKept(place, undefined, unreadable)
       .filter((r) => r.gitDir !== undefined && r.gitDir === place.gitDir)
       .map((r) => r.path)
     return [
@@ -466,7 +548,7 @@ export function listMirror(opts: MirrorWalkOptions): MirrorListing {
         repo,
         path,
         bytes: sizeOf(path),
-        lastUsed: new Date(lastUsed(path)).toISOString(),
+        lastUsed: new Date(lastUsed(path, unreadable)).toISOString(),
         kept,
       },
     ]
@@ -548,6 +630,12 @@ export interface PruneEntry {
 /** What kind of reason a thing was left for: {@link PruneEntry.skip}. */
 export type PruneSkip = 'folder' | 'foreign' | 'busy' | 'in-use' | 'kept'
 
+/** Why a thing was left alone, as {@link PruneEntry} holds it. */
+interface Left {
+  skip: PruneSkip
+  reason: string
+}
+
 /** What a prune did. */
 export interface PruneReport {
   dryRun: boolean
@@ -604,6 +692,9 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
     report.removed.push(e)
     report.freedBytes += e.bytes
   }
+  const skip = (e: PruneEntry, left: Left): void => {
+    report.skipped.push({ ...e, ...left })
+  }
   const fail = (e: PruneEntry, err: unknown): void => {
     report.failed.push({ ...e, reason: (err as Error).message.split('\n')[0] })
   }
@@ -622,12 +713,64 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       })
     }
   const records = ownedUnder([at.worktrees, at.kept])
-  const busy = (lock: string): string => `mirror busy: another pr-update run holds ${lock}`
+  const busy = (lock: string): Left => ({
+    skip: 'busy',
+    reason: `mirror busy: another pr-update run holds ${lock}`,
+  })
+
+  /**
+   * The check every removal passes first, a dry run's too: why what was measured under `root` may
+   * not be removed, or null. The folder rule must allow it (`placeProblem`), and it and the folders
+   * from `root` down to it must be readable, those that lose an entry writable too. `root` gone is
+   * no reason: nothing is there.
+   *
+   * @throws when one of them is not, with the error: it stays whole, and is reported under `failed`.
+   */
+  const mayRemove = (m: Measured, root: string, folders: FolderCheckOptions): Left | null => {
+    if (isGone(root)) return null
+    const place = placeProblem(root, m.path, owned, folders)
+    if (place !== null) return { skip: 'folder', reason: place }
+    const st = lstatOrNull(m.path)
+    if (st?.isSymbolicLink() === true) {
+      return { skip: 'folder', reason: `${m.path} is a symbolic link` }
+    }
+    const top = realOr(root)
+    let need = constants.R_OK | constants.X_OK
+    if (st !== null) need |= constants.W_OK
+    for (let dir = dirname(m.path); ; dir = dirname(dir)) {
+      if (!isGone(dir)) accessSync(dir, need)
+      need = constants.R_OK | constants.X_OK
+      if (dir === root || realOr(dir) === top || dir === dirname(dir)) break
+    }
+    if (m.stuck !== undefined) throw m.stuck
+    return null
+  }
+
+  /**
+   * Run `removal` holding `lock`, when there is one, and say whether it ran: false when another
+   * run holds it. A dry run only looks at the lock.
+   */
+  const underLock = (lock: string | null, removal: () => void): boolean => {
+    if (lock !== null && dryRun && cloneLockHeld(lock)) return false
+    if (lock === null || dryRun) {
+      removal()
+      return true
+    }
+    const token = claim(lock, 0)
+    if (token === null) return false
+    try {
+      removal()
+    } finally {
+      // The lock file goes last.
+      releaseLock(lock, token)
+    }
+    return true
+  }
 
   /** Remove a dead run's worktree `tree` through `owner`, whose lock (if a clone's) is held. */
   const dropRunWorktree = (tree: string, owner: Owner | null, entry: PruneEntry): void => {
     try {
-      if (owner !== null && existsSync(owner.common)) {
+      if (owner !== null) {
         const git = gitAt(owner.common, opts.git)
         removeWorktree(git, tree, records)
         git.try.deleteBranch(scratchBranch(tree), { force: true })
@@ -640,75 +783,62 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
     }
   }
 
-  /** Prune the dead run's worktree `w`, reported as `entry`. */
-  const pruneRunWorktree = (w: { path: string }, entry: PruneEntry): void => {
-    const place = placeProblem(at.worktrees, w.path, owned, ownFolders(at.worktrees))
-    if (place !== null) {
-      report.skipped.push({ ...entry, skip: 'folder', reason: place })
-      return
-    }
-    const owner = worktreeOwner(w.path)
-    const clone = owner !== null && claimsToBeClone(owner.common)
+  /**
+   * Whether the dead run's worktree that was measured may be removed, in a dry run or a real one:
+   * why not (`left`), or the owner to remove it through, null when that is gone or its records
+   * name none, and the owner's lock when it is a clone.
+   *
+   * @throws when it, its owner or its owner's list cannot be read.
+   */
+  const checkRunWorktree = (
+    m: Measured,
+  ): { left: Left } | { left: null; owner: Owner | null; lock: string | null } => {
+    const place = mayRemove(m, at.worktrees, ownFolders(at.worktrees))
+    if (place !== null) return { left: place }
+    const owner = worktreeOwner(m.path)
+    if (owner === null || isGone(owner.common)) return { left: null, owner: null, lock: null }
+    const clone = claimsToBeClone(owner.common)
+    const foreign = (reason: string): { left: Left } => ({ left: { skip: 'foreign', reason } })
     if (clone) {
       const state = checkClone(rootOf(owner.common), owner.common, owned, group)
       if (state !== 'clone') {
         const why = state === 'missing' ? 'it is gone' : state.foreign
-        report.skipped.push({
-          ...entry,
-          skip: 'foreign',
-          reason: `its owner ${owner.common} is not a clone pr-update may change: ${why}`,
-        })
-        return
+        return foreign(`its owner ${owner.common} is not a clone pr-update may change: ${why}`)
       }
     }
-    if (dryRun) {
-      done(entry)
-      return
+    if (!lists(gitAt(owner.common, opts.git).worktrees(), m.path)) {
+      return foreign(`its owner ${owner.common} does not list it as a worktree`)
     }
-    if (!clone) {
-      dropRunWorktree(w.path, owner, entry)
-      return
-    }
-    // A clone is changed only under its lock.
-    const lock = cloneLockPath(owner.common)
-    const token = claim(lock, 0)
-    if (token === null) {
-      report.skipped.push({ ...entry, skip: 'busy', reason: busy(lock) })
-      return
-    }
-    try {
-      dropRunWorktree(w.path, owner, entry)
-    } finally {
-      releaseLock(lock, token)
-    }
+    return { left: null, owner, lock: clone ? cloneLockPath(owner.common) : null }
   }
 
   // Dead run worktrees, at any age. A check that throws (its owner cannot be read, say) fails that
   // worktree alone.
   for (const w of runWorktrees(at.worktrees, alive, unreadable('worktree'))) {
     if (w.running) continue
-    const entry: PruneEntry = {
-      kind: 'worktree',
-      path: w.path,
-      repo: w.repo,
-      bytes: sizeOf(w.path),
-    }
+    const m = measure(w.path)
+    const entry: PruneEntry = { kind: 'worktree', path: w.path, repo: w.repo, bytes: m.bytes }
     try {
-      pruneRunWorktree(w, entry)
+      const check = checkRunWorktree(m)
+      if (check.left !== null) {
+        skip(entry, check.left)
+        continue
+      }
+      const { owner, lock } = check
+      // A clone is changed only under its lock.
+      const ran = underLock(lock, () => {
+        if (dryRun) done(entry)
+        else dropRunWorktree(w.path, owner, entry)
+      })
+      if (!ran) skip(entry, busy(lock!))
     } catch (e) {
       fail(entry, e)
     }
   }
 
-  // What the walk did with each run worktree, so the clones' own lists below neither report one
-  // twice (a dry run) nor remove one it left (a folder someone else could write to, say).
+  // The run worktrees a dry run reported, so a clone's own list below does not report one twice.
   const reported = new Set(
     report.removed.filter((e) => e.kind === 'worktree').map((e) => realOr(e.path)),
-  )
-  const left = new Set(
-    [...report.skipped, ...report.failed]
-      .filter((e) => e.kind === 'worktree')
-      .map((e) => realOr(e.path)),
   )
 
   // Probes a hard kill left, in `worktrees/` and `kept/`.
@@ -720,15 +850,16 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
         const path = join(dir, name)
         const st = lstatOr(path, unreadable('leftover'))
         if (st === null || !st.isDirectory() || now - st.mtimeMs < LEFTOVER_AGE_MS) continue
-        const entry: PruneEntry = { kind: 'leftover', path, bytes: sizeOf(path) }
+        const m = measure(path)
+        const entry: PruneEntry = { kind: 'leftover', path, bytes: m.bytes }
         try {
-          const place = placeProblem(root, path, owned, ownFolders(root))
-          if (place !== null) report.skipped.push({ ...entry, skip: 'folder', reason: place })
-          else if (dryRun) done(entry)
-          else {
-            remove(path)
-            done(entry)
+          const left = mayRemove(m, root, ownFolders(root))
+          if (left !== null) {
+            skip(entry, left)
+            continue
           }
+          if (!dryRun) remove(path)
+          done(entry)
         } catch (e) {
           fail(entry, e)
         }
@@ -752,40 +883,27 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
           const path = join(dir, name)
           const st = lstatOr(path, unreadable('leftover'))
           if (st === null || !st.isDirectory() || now - st.mtimeMs < LEFTOVER_AGE_MS) continue
+          const m = measure(path)
           const entry: PruneEntry = {
             kind: 'leftover',
             path,
             repo: `${host}/${owner}/${tmp[1]!.slice(0, -'.git'.length)}`,
-            bytes: sizeOf(path),
-          }
-          let place: string | null
-          try {
-            place = placeProblem(at.mirrorDir, path, owned, { ...group, ...cloneFolders })
-          } catch (e) {
-            fail(entry, e)
-            continue
-          }
-          if (place !== null) {
-            report.skipped.push({ ...entry, skip: 'folder', reason: place })
-            continue
-          }
-          if (dryRun) {
-            done(entry)
-            continue
-          }
-          const lock = cloneLockPath(join(dir, tmp[1]!))
-          const token = claim(lock, 0)
-          if (token === null) {
-            report.skipped.push({ ...entry, skip: 'busy', reason: busy(lock) })
-            continue
+            bytes: m.bytes,
           }
           try {
-            remove(path)
-            done(entry)
+            const left = mayRemove(m, at.mirrorDir, { ...group, ...cloneFolders })
+            if (left !== null) {
+              skip(entry, left)
+              continue
+            }
+            const lock = cloneLockPath(join(dir, tmp[1]!))
+            const ran = underLock(lock, () => {
+              if (!dryRun) remove(path)
+              done(entry)
+            })
+            if (!ran) skip(entry, busy(lock))
           } catch (e) {
             fail(entry, e)
-          } finally {
-            releaseLock(lock, token)
           }
         }
       }
@@ -793,11 +911,20 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
   }
 
   // Whole clones past the age. At age 0 none, unless `olderThanDays` or `allClones` says otherwise.
-  const days = opts.olderThanDays ?? (at.maxAgeDays === 0 ? null : at.maxAgeDays)
+  let days = opts.olderThanDays ?? (at.maxAgeDays === 0 ? null : at.maxAgeDays)
+  if (opts.allClones !== true && opts.olderThanDays === undefined && at.machineUnread !== null) {
+    // The age in it may be longer than the default, or 0, so no clone is taken for an old one.
+    days = null
+    if (marked) {
+      const why = at.machineUnread.message.split('\n')[0]
+      const reason = `the age of its clones, mirror_max_age_days could not be read: ${why}`
+      report.failed.push({ kind: 'clone', path: at.mirrorDir, bytes: 0, reason })
+    }
+  }
   report.olderThanDays = opts.allClones === true ? null : days
   if (opts.allClones !== true && days === null) return report
   const old = (clone: string): boolean =>
-    opts.allClones === true || days === null || now - lastUsed(clone) > days * DAY_MS
+    opts.allClones === true || days === null || now - lastUsed(clone, THROW) > days * DAY_MS
   for (const { path, repo, state } of clonesIn(at.mirrorDir, owned, group, cloneUnreadable)) {
     const entry: PruneEntry = { kind: 'clone', path, repo, bytes: 0 }
     if (state !== 'clone') {
@@ -808,81 +935,94 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       })
       continue
     }
-    if (!old(path)) continue
-    const lock = cloneLockPath(path)
-    const token = dryRun ? null : claim(lock, 0)
-    if (!dryRun && token === null) {
-      report.skipped.push({ ...entry, bytes: sizeOf(path), skip: 'busy', reason: busy(lock) })
-      continue
-    }
     try {
-      // Under the lock, again: a run may have used it since the walk began.
-      if (checkClone(at.mirrorDir, path, owned, group) !== 'clone' || !old(path)) continue
-      pruneClone(path, repo, entry)
+      if (!old(path)) continue
+      const lock = cloneLockPath(path)
+      const ran = underLock(lock, () => {
+        // Under the lock, again: a run may have used it since the walk began.
+        if (checkClone(at.mirrorDir, path, owned, group) !== 'clone' || !old(path)) return
+        pruneClone(path, repo, entry)
+      })
+      if (!ran) skip({ ...entry, bytes: sizeOf(path) }, busy(lock))
     } catch (e) {
-      // git could not read the clone, say: it stays, and the other clones are still pruned.
+      // Its lock cannot be taken, or git could not read it, say: it stays, and the other clones
+      // are still pruned.
       fail({ ...entry, bytes: sizeOf(path) }, e)
-    } finally {
-      // The lock file goes last.
-      if (token !== null) releaseLock(lock, token)
     }
   }
   return report
 
   /** Remove the clone at `path`, whose lock is held (or, in a dry run, say whether it would be). */
   function pruneClone(path: string, repo: string, entry: PruneEntry): void {
+    const m = measure(path)
+    const { bytes } = m
+    const leave = (left: Left): void => skip({ ...entry, bytes }, left)
+    const ofClones = { ...group, ...cloneFolders }
+    // Renamed to this name before it is removed. What an earlier prune left there goes first.
+    const aside = join(dirname(path), `.tmp-${basename(path)}-${process.pid}`)
+    const place =
+      mayRemove(m, at.mirrorDir, ofClones) ?? mayRemove(measure(aside), at.mirrorDir, ofClones)
+    if (place !== null) {
+      leave(place)
+      return
+    }
+    checkRecords(path)
     const git = gitAt(path, opts.git)
-    const place = keptPlaceOf(at.kept, at.worktrees, repo, path, {
+    const worktrees = git.worktrees()
+    // git in a clone it cannot read answers for a repository the clone is inside, if there is one.
+    const bare = worktrees.filter((w) => w.bare)
+    if (!lists(bare, path)) throw new Error(`git does not read ${path} as a clone of its own`)
+    const keptPlace = keptPlaceOf(at.kept, at.worktrees, repo, path, {
       owned,
       folders: ownFolders(at.kept),
     })
     const kept: { path: string; branch: string | null }[] = []
     const inUse: string[] = []
-    /** Dead runs' worktrees the walk above left, with why: the clone stays with them. */
+    /** Dead runs' worktrees that stay: the clone stays with them. */
     const stays: string[] = []
-    for (const w of git.worktrees()) {
+    const dead: Measured[] = []
+    for (const w of worktrees) {
       if (w.bare) continue
       const run = RUN_NAME.exec(basename(w.path))
       if (ownedUnder([at.worktrees]).owns(w.path) && run !== null) {
-        const key = realOr(w.path)
-        if (reported.has(key)) continue
-        if (isRunning(run, alive)) inUse.push(w.path)
-        else if (left.has(key)) stays.push(w.path)
-        else {
-          // A dead run's worktree the walk above did not reach: its folder is gone, say.
-          const dead: PruneEntry = { kind: 'worktree', path: w.path, repo, bytes: sizeOf(w.path) }
-          if (!dryRun) {
-            removeWorktree(git, w.path, records)
-            git.try.deleteBranch(scratchBranch(w.path), { force: true })
-          }
-          done(dead)
+        if (isRunning(run, alive)) {
+          inUse.push(w.path)
+          continue
         }
-      } else if (ownedUnder([place.dir]).owns(w.path)) kept.push({ path: w.path, branch: w.branch })
-      else inUse.push(w.path)
+        // The walk above removed it, or its folder was gone already. One that is still there
+        // stays, but for a dry run, where the walk removed nothing.
+        const tree = measure(w.path)
+        const check = checkRunWorktree(tree)
+        const gone = lstatOrNull(w.path) === null
+        const busyOwner =
+          check.left === null && check.lock !== null && dryRun && cloneLockHeld(check.lock)
+        if (check.left !== null || busyOwner || (!gone && !dryRun)) stays.push(w.path)
+        else dead.push(tree)
+      } else if (ownedUnder([keptPlace.dir]).owns(w.path)) {
+        kept.push({ path: w.path, branch: w.branch })
+      } else inUse.push(w.path)
     }
-    const bytes = sizeOf(path)
+    for (const d of dead) {
+      if (dryRun && reported.has(realOr(d.path))) continue
+      if (!dryRun) {
+        removeWorktree(git, d.path, records)
+        git.try.deleteBranch(scratchBranch(d.path), { force: true })
+      }
+      done({ kind: 'worktree', path: d.path, repo, bytes: d.bytes })
+    }
     if (stays.length > 0) {
-      report.skipped.push({
-        ...entry,
-        bytes,
+      leave({
         skip: 'in-use',
         reason: `its run worktree ${stays.join(', ')} was left, so the clone stays with it`,
       })
       return
     }
     if (inUse.length > 0) {
-      report.skipped.push({
-        ...entry,
-        bytes,
-        skip: 'in-use',
-        reason: `in use by the worktree ${inUse.join(', ')}`,
-      })
+      leave({ skip: 'in-use', reason: `in use by the worktree ${inUse.join(', ')}` })
       return
     }
     if (kept.length > 0 && opts.discardKept !== true) {
-      report.skipped.push({
-        ...entry,
-        bytes,
+      leave({
         skip: 'kept',
         reason: `has kept worktrees (${kept.map((k) => k.path).join(', ')}); pass --discard-kept to remove them and the clone`,
       })
@@ -890,16 +1030,19 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
     }
     // Nothing is removed from a folder someone else could write to, so the clone stays with it.
     for (const k of kept) {
-      const why = placeProblem(at.kept, k.path, owned, ownFolders(at.kept))
-      if (why !== null) {
-        report.skipped.push({ ...entry, bytes, skip: 'folder', reason: why })
+      const left = mayRemove(measure(k.path), at.kept, ownFolders(at.kept))
+      if (left !== null) {
+        leave(left)
         return
       }
     }
-    // `listKept` gives no records for a folder it cannot list, which would pass each tree here for
-    // one with no record. Listed first, so that throws and the clone fails with its kept trees.
-    if (kept.length > 0 && lstatOrNull(place.dir) !== null) readdirSync(place.dir)
-    const recordsOf = new Map(listKept(place).map((r) => [realOr(r.path), r]))
+    // A record that cannot be read is not one that is missing, so the clone fails with its trees.
+    const recordsOf = new Map(
+      (kept.length === 0 ? [] : listKept(keptPlace, undefined, THROW)).map((r) => [
+        realOr(r.path),
+        r,
+      ]),
+    )
     // A kept tree with no record, or one whose record was refused, is removed only while the
     // clone lists it on a `pr-update/failed-*` branch: a run stopped between making it and
     // writing its record. On any other branch, or detached, a person has taken it over.
@@ -907,30 +1050,16 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       (k) => !recordsOf.has(realOr(k.path)) && k.branch?.startsWith('pr-update/failed-') !== true,
     )
     if (unrecorded.length > 0) {
-      report.skipped.push({
-        ...entry,
-        bytes,
+      leave({
         skip: 'kept',
         reason: `its kept worktree ${unrecorded.map((k) => k.path).join(', ')} has no record and is not on a pr-update/failed-* branch, so a person may have taken it over; it stays, and so does the clone`,
       })
       return
     }
-    // A kept tree with a record is removed only while its checkout lists it on the record's branch
-    // (`keptTreeCheck`, which `discardKept` checks again). Checked here so a dry run says the same.
     for (const k of kept) {
-      const record = recordsOf.get(realOr(k.path))
-      if (record === undefined) continue
-      const tree = keptTreeCheck(git, place, record)
-      if (tree.kind === 'kept') continue
-      report.skipped.push({
-        ...entry,
-        bytes,
-        skip: 'kept',
-        reason:
-          tree.kind === 'moved'
-            ? `its kept worktree ${tree.why}, so a person may have taken it over; it stays, and so does the clone`
-            : `the record of its kept worktree ${k.path} is refused: ${tree.why}; the tree stays, and so does the clone`,
-      })
+      const left = keptLeft(git, path, keptPlace, k, recordsOf.get(realOr(k.path)))
+      if (left === null) continue
+      leave({ skip: 'kept', reason: left })
       return
     }
     if (dryRun) {
@@ -942,7 +1071,7 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       const keptEntry: PruneEntry = { kind: 'kept', path: k.path, repo, bytes: sizeOf(k.path) }
       try {
         const record = recordsOf.get(realOr(k.path))
-        if (record !== undefined) discardKept(git, place, record)
+        if (record !== undefined) discardKept(git, keptPlace, record)
         else {
           // On a `pr-update/failed-*` branch (checked above), with no record.
           removeWorktree(git, k.path, records)
@@ -951,18 +1080,12 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
         done(keptEntry)
       } catch (e) {
         fail(keptEntry, e)
-        report.skipped.push({
-          ...entry,
-          bytes,
-          skip: 'kept',
-          reason: `its kept worktree ${k.path} stays`,
-        })
+        leave({ skip: 'kept', reason: `its kept worktree ${k.path} stays` })
         return
       }
     }
     // Renamed aside first: a removal that stops part-way leaves a `.tmp-*` leftover, which a later
     // prune removes, rather than a clone with files missing at the clone path.
-    const aside = join(dirname(path), `.tmp-${basename(path)}-${process.pid}`)
     try {
       if (lstatOrNull(aside) !== null) remove(aside)
       renameSync(path, aside)
@@ -980,6 +1103,39 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
         reason: `${(e as Error).message.split('\n')[0]}; what is left, ${aside}, is removed by a later prune`,
       })
     }
+  }
+
+  /**
+   * Why the kept tree `k`, which the clone at `clone` lists, stays with the clone under
+   * `discardKept`, or null. The clone must list it on the branch of its `record`, if it has one
+   * (with none, its caller checked the branch), the tree's own `.git` file must name this clone,
+   * and the git directory the record names must list it too (`keptTreeCheck`, which `discardKept`
+   * checks again). A copy of a clone, or a moved one, lists the tree whatever it is on by now.
+   *
+   * @throws when that git directory's list cannot be read.
+   */
+  function keptLeft(
+    git: Git,
+    clone: string,
+    place: KeptPlace,
+    k: { path: string; branch: string | null },
+    record: KeptRecord | undefined,
+  ): string | null {
+    const stay = 'so a person may have taken it over; it stays, and so does the clone'
+    if (record !== undefined && k.branch !== record.branch) {
+      return `its kept worktree ${record.path} is on ${k.branch ?? 'a detached HEAD'}, not ${record.branch}, ${stay}`
+    }
+    const owner = worktreeOwner(k.path)
+    const named = owner !== null && realOr(owner.common) === realOr(clone)
+    if (!named && lstatOrNull(k.path) !== null) {
+      return `its kept worktree ${k.path} does not name this clone in its .git file; it stays, and so does the clone (if the clone was moved, run \`git -C ${clone} worktree repair ${k.path}\`)`
+    }
+    if (record === undefined) return null
+    const tree = keptTreeCheck(git, place, record)
+    if (tree.kind === 'kept') return null
+    if (tree.kind === 'moved') return `its kept worktree ${tree.why}, ${stay}`
+    if (tree.unlisted === true) throw new Error(`its kept worktree ${k.path}: ${tree.why}`)
+    return `the record of its kept worktree ${k.path} is refused: ${tree.why}; the tree stays, and so does the clone`
   }
 }
 

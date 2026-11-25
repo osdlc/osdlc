@@ -15,13 +15,16 @@
  */
 
 import {
+  accessSync,
   chmodSync,
   closeSync,
+  constants,
   existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
   openSync,
+  readFileSync,
   readdirSync,
   renameSync,
   rmSync,
@@ -38,10 +41,12 @@ import { WriteConflictError } from '@osdlc/etag-write'
 import {
   claimLock,
   holderGone,
+  NotALockError,
   processIdentity,
   releaseLock,
   untouchedFor,
   withLock,
+  type LockContent,
   type SectionHolder,
   type StaleRule,
 } from '@osdlc/file-lock'
@@ -435,6 +440,31 @@ export function claimCloneLock(path: string, waitMs: number): string | null {
     if (left <= 0) return null
     Atomics.wait(SLEEPER, 0, 0, Math.min(250, left))
   }
+}
+
+/**
+ * Whether another run holds the lock at `path`: what {@link claimCloneLock} with no wait would
+ * find, read without taking the lock or changing anything.
+ *
+ * @throws where a claim would: the lock cannot be read or is no plain file, or nothing can be
+ *   written in its folder.
+ */
+export function cloneLockHeld(path: string): boolean {
+  accessSync(dirname(path), constants.W_OK | constants.X_OK)
+  const st = lstatOrNull(path)
+  if (st === null) return false
+  if (!st.isFile()) throw new NotALockError(path, st.isDirectory() ? 'directory' : 'other')
+  const raw = readFileSync(path, 'utf8')
+  let content: LockContent<CloneLockContent> | null = null
+  try {
+    const value: unknown = JSON.parse(raw)
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      content = value as LockContent<CloneLockContent> | null
+    }
+  } catch {
+    // Not pr-update's lock: never stale, as for a claim.
+  }
+  return !holderIsGone({ content, mtimeMs: st.mtimeMs, raw })
 }
 
 /** The target a clone is asked for, with the host `gh` is pointed at. */
