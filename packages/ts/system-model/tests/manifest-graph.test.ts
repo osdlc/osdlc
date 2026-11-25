@@ -12,7 +12,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildDependencyGraph } from '../src/dependency-graph.ts'
-import { walkManifests } from '../src/manifest-walk.ts'
+import { MANIFEST_FILES, walkManifests } from '../src/manifest-walk.ts'
 import type { ManifestInfo } from '../src/manifest-model.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -128,6 +128,11 @@ describe('walkManifests', () => {
     expect(dep(one, 'serde')).toEqual(['prod', '1', 'registry'])
     expect(dep(one, 'tempfile')).toEqual(['dev', '3', 'registry'])
     expect(dep(one, 'cc')).toEqual(['build', '1.0', 'registry'])
+  })
+
+  test('MANIFEST_FILES names the file of every manifest the walk finds', () => {
+    const names = new Set(manifests.map((m) => m.path.slice(m.path.lastIndexOf('/') + 1)))
+    expect([...names].sort()).toEqual([...MANIFEST_FILES].sort())
   })
 
   test('the exclude option skips caller-named directories', async () => {
