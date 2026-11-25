@@ -23,8 +23,8 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { z } from 'zod'
 
-import { objectionsTo, present, type Row } from './artifacts.ts'
-import type { Kit } from './kit.ts'
+import { objectionsTo, type Row } from './artifacts.ts'
+import { present, type Kit } from './kit.ts'
 import { PLUGIN_API, definePlugin, type Ctx, type Plugin } from './types.ts'
 
 export const AGENT_HISTORY_PLUGIN = 'agent-history'
