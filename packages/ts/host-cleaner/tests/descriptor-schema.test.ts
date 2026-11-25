@@ -4,8 +4,7 @@
  */
 
 import { Ajv2020 } from 'ajv/dist/2020.js'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -20,6 +19,7 @@ import {
   parseDescriptor,
   readDescriptor,
 } from '../src/descriptor/schema.ts'
+import { tempHome } from '../src/testing.ts'
 
 // The examples as the system description gives them.
 
@@ -474,15 +474,15 @@ describe('the YAML reader', () => {
   })
 
   test('readDescriptor reads a file, and names one it cannot read', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'hc-descriptor-'))
+    const dir = tempHome('hc-descriptor-')
     try {
-      const file = join(dir, 'uv.yaml')
+      const file = join(dir.home, 'uv.yaml')
       writeFileSync(file, UV)
       expect(readDescriptor(file)).toEqual(parseDescriptor(UV, file))
-      const missing = join(dir, 'gone.yaml')
+      const missing = join(dir.home, 'gone.yaml')
       expect(() => readDescriptor(missing)).toThrow(`bad descriptor ${missing}: cannot read:`)
     } finally {
-      rmSync(dir, { recursive: true, force: true })
+      dir.cleanup()
     }
   })
 })
