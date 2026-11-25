@@ -17,6 +17,10 @@ a broken story without noticing.
   committed baseline: no pixel may differ by more than a small colour distance
   (0.02), which absorbs antialiasing noise. The same command gives the same
   answer on a laptop and in CI.
+- `story-shots --a11y` runs axe-core over every story in light and dark and
+  fails on WCAG 2.2 A and AA violations. `story-shots --walk` tabs through
+  each story and records every stop: what took focus, where, and whether it
+  showed a focus indicator.
 - `preparePage` and `openStory` make a page deterministic (fixed clock, seeded
   `Math.random`) and wait until a story is ready to shoot. They fail the story
   when Storybook reports an error from it or its `play`.
@@ -60,11 +64,12 @@ Step-by-step pages with worked examples, in [`docs/guide/`](./docs/guide/):
 | [Interaction specs](./docs/guide/interaction-specs.md) | Driving a story from a Playwright test |
 | [Perf scenes](./docs/guide/perf-scenes.md) | Measuring a big story, budgets, and the report |
 | [Shots for documentation](./docs/guide/docs-shots.md) | PNGs for a README, with no comparison |
+| [Accessibility check and keyboard walk](./docs/guide/accessibility-and-walk.md) | `story-shots --a11y` and `--walk`, and what they record |
 
 ## Screenshot baselines: `story-shots`
 
 ```sh
-story-shots <package dir> [--update] [--include p1,p2] [--exclude p3] [--settle-ms N]
+story-shots <package dir> [--update | --a11y | --walk] [--include p1,p2] [--exclude p3] [--settle-ms N]
 ```
 
 `<package dir>` holds the built `storybook-static/` (build it first) and the
@@ -100,6 +105,7 @@ A story id that ends in `-narrow` is shot at the narrow viewport only.
 |---|---|
 | `SHOT_WORKERS` | Playwright workers in the container. Default 6. |
 | `STORY_SHOTS_PLATFORM` | The container platform. Default `linux/amd64`, as on CI runners; on Apple silicon Docker emulates it. |
+| `WALK_MAX` | Stops per story in `--walk`. Default 40. |
 
 The command needs a running Docker engine and bash. It mounts the build and
 the runner read-only, and writes only the baselines and the results folders,
@@ -111,6 +117,106 @@ uses your config. `--update` rewrites only the shots that no longer match, so
 an untouched story keeps its file byte for byte, and deletes the baselines of
 stories it did not shoot. A change that can change a shot (the pinned image, or how a story is opened, settled or shot) is released as a minor version, so a patch release never moves a
 pixel.
+
+## Accessibility check: `story-shots --a11y`
+
+`story-shots <package dir> --a11y` runs axe-core over every enrolled story in
+light and dark, in the same container, and checks WCAG 2.0 to 2.2 at levels A
+and AA. Colour contrast is one of those rules, so both themes are checked. It
+reads and writes no baselines. Every story and theme with a violation is in
+`test-results/story-a11y/a11y-report.json`, and a count per rule is printed at
+the end. A story with `parameters.screenshot.skip` is left out.
+
+A story is held to it through the `parameters.a11y` that
+`@storybook/addon-a11y` reads, so the Storybook panel and this check agree:
+
+| Parameter | Effect |
+|---|---|
+| `test: 'error'` | A violation fails the check |
+| `test: 'todo'` | Violations are reported, not failed (the addon's default) |
+| `test: 'off'` | The story is not scanned |
+| `config`, `options`, `context` | Passed to `axe.configure` and `axe.run`, and as what is scanned |
+
+Set `test: 'error'` in a package's `.storybook/preview.ts` to make the check
+fail. Four whole-page rules are off, since a story is not a page:
+`html-has-lang`, `landmark-one-main`, `page-has-heading-one` and `region`.
+`@osdlc/story-harness/a11y` exports the rules (`WCAG_TAGS`, `PAGE_RULES` and
+`A11Y_OPTIONS`) with no Node imports, so a preview can pass `A11Y_OPTIONS` as
+the addon's `options` and the panel runs the same rules. axe-core 4.14.0 is
+pinned in `story-shots.sh`; keep it on the version your addon resolves to.
+
+## Keyboard walk: `story-shots --walk`
+
+`story-shots <package dir> --walk` tabs through every enrolled story in light,
+in the same container, and Shift+Tabs back. It is a survey, not a gate: it
+fails only on a story that errors, and a story leaves it out with
+`parameters.walk.skip: '<why>'` (or `parameters.screenshot.skip`). `WALK_MAX=N`
+sets the stops per story (default 40). Per story,
+`test-results/story-walk/walk/<story>/` holds `start.png`, one viewport
+screenshot per stop (`01.png`, ...) and `walk.json`; `walk-report.json` beside
+it holds every story's record.
+
+A walk starts with a zero-size `tabindex=-1` marker at the top of the body
+focused, and presses Tab until focus comes back to a stop already seen, leaves
+the page, leaves the story root, leaves an open modal dialog, or enters an
+`<iframe>` (end reason `iframe`: the walk does not go into the frame, and it
+is not a finding). It records each stop: role and accessible name
+(Playwright's `ariaSnapshot`, with a computed fallback), a selector-like
+description, its box, whether it is visible, in the viewport and not covered,
+and whether it showed a focus indicator. Transitions are switched off for the
+walk.
+
+The indicator is read from computed style: outline, box-shadow, border,
+background colour and image, text colour, opacity, filter, transform, accent
+colour and text decoration of the focused element, its two nearest ancestors,
+its next sibling, its first child and its `::before` and `::after` are
+compared with the same elements once focus has moved on (or, for a story whose
+Tab comes back to the same element, once it is blurred). Any change counts.
+That misses a ring drawn somewhere else (a distant element, an image, an SVG)
+and counts any other change as one; a stop whose element is gone by then, or
+cannot be unfocused, is unknown, not flagged. A native input that is visually
+hidden (opacity 0 or at most 1px) is judged on its label or the adjacent custom
+control instead: its box, visibility, covering and indicator come from there,
+and the stop's `proxy` names it.
+
+On the tab-order map, a stop's `pageBox` is where it was on the page at scroll
+0. A `position: fixed` stop keeps its viewport box. A stop inside a container
+scrolled away from 0, or `position: sticky` once the window has scrolled,
+cannot be placed reliably and has an empty box.
+
+Escape is pressed from the first stop inside a dialog. A dialog that closes
+should hand focus back to the element that was focused before the walk began
+(the opener, when `play` left one); focus that falls to the body, or lands
+anywhere but the opener, is recorded. A story that renders its dialog open has
+no opener, so where focus goes after Escape is not judged.
+
+`walkPage(page, WalkOptions)` is the walk of one open page, from a spec or a
+script, and returns its `WalkRecord` (`WalkStop`, `WalkBox`, `WalkEnd`,
+`WalkReverse`, `WalkDialog` and `WalkParameters` are its types).
+`parseAriaLine` reads a role and a name from an ARIA snapshot line, and
+`DEFAULT_WALK_MAX` is the default stop limit. They are exported from
+`@osdlc/story-harness/runner`.
+
+### Review pages: `@osdlc/story-harness/parley-capture`
+
+Builders for the blocks of a review page made from screenshots, with regions
+placed from a measured pixel box: `regionFromBox`, `figure`, `steps`,
+`finding`, `heading` and `parleyDocument`, plus `slug` and `idAllocator` for
+ids [parley](https://github.com/osdlc/parley) accepts. It knows nothing about
+stories or Playwright and returns plain objects, so a caller writes them with
+`JSON.stringify` and copies the image files itself. A `ParleyDocument` with
+`keep: true` shows the reviewer Keep and Drop on each image.
+
+| Builder | Takes | Returns |
+|---|---|---|
+| `regionFromBox(PixelBox, Viewport, meta)` | A box in pixels, from the image's top-left corner | A `Region` whose `FractionBox` is clipped to the image, or `null` when no area is left inside it |
+| `figure(FigureInput)` | An image and its `Region`s | A `FigureBlock` |
+| `steps(StepsInput)` | At least two `FrameInput`s | A `StepsBlock` of `Frame`s, a slide show |
+| `finding(FindingInput)` | A `Severity`, a summary and `EvidenceInput`s | A `FindingBlock` with its `Evidence` |
+| `heading({ id, title, level? })` | A title | A `HeadingBlock` |
+| `parleyDocument(DocumentInput)` | Blocks | A `ParleyDocument`; throws on no blocks or a repeated id |
+
+A `Block` is any of the four block types.
 
 ## Stories: `@osdlc/story-harness/browser`
 
@@ -191,8 +297,9 @@ container, which may be emulated.
 
 ## Host tools: `@osdlc/story-harness/runner`
 
-From [examples/capture.browser.test.ts](./examples/capture.browser.test.ts)
-and [examples/serve.test.ts](./examples/serve.test.ts):
+From [examples/capture.browser.test.ts](./examples/capture.browser.test.ts),
+[examples/serve.test.ts](./examples/serve.test.ts) and
+[examples/walk.spec.ts](./examples/walk.spec.ts):
 
 ```ts
 import { captureStories, serveStatic } from '@osdlc/story-harness/runner'
@@ -234,7 +341,7 @@ minor version.
 
 - Node 22 or later, ESM only. `@playwright/test` 1.62 or later as a peer.
 - The Playwright helpers and the perf report run wherever Playwright runs.
-- `story-shots` needs bash and Docker, and runs on Linux and macOS. On macOS
+- `story-shots`, in all three modes, needs bash and Docker, and runs on Linux and macOS. On macOS
   with Colima, start the VM with Rosetta (`colima start --vm-type vz
   --vz-rosetta`) so the amd64 image runs fast, and give it about 6 GB for six
   workers.
