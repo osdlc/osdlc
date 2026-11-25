@@ -1,0 +1,723 @@
+/*
+ * Vue JSON Canvas Component Styles
+ * All styles are scoped to .vjc-* classes to prevent leakage to host pages
+ */
+
+/* CSS Custom Properties - scoped to the canvas wrapper */
+.vjc-wrapper {
+  /* Fonts */
+  --vjc-font-content:
+    -apple-system, BlinkMacSystemFont, 'Inter', 'IBM Plex Sans', Segoe UI, Helvetica, Arial,
+    sans-serif;
+  --vjc-font-mono:
+    ui-monospace, SFMono-Regular, 'Cascadia Code', 'Roboto Mono', 'Source Code Pro',
+    'DejaVu Sans Mono', 'Liberation Mono', 'Consolas', Menlo, Monaco, monospace;
+  --vjc-line-height: 1.5;
+
+  /* Colors - Light theme (default) */
+  --vjc-color-bg-1: #fff;
+  --vjc-color-bg-2: #fafafa;
+  --vjc-color-tx-1: #3f062d;
+  --vjc-color-tx-2: #999;
+  --vjc-color-ui-1: #ddd;
+  --vjc-color-ui-2: #bbb;
+  --vjc-color-ui-3: #5e0641;
+  --vjc-color-ax-1: #8b0a5f;
+  --vjc-color-selection: rgba(139, 10, 95, 0.15);
+  /* Node surfaces. Defined through bg-1 so the dark theme and host token
+     bridges carry them automatically, but overridable on their own. */
+  --vjc-color-node-bg: var(--vjc-color-bg-1);
+  --vjc-color-node-border: #ebede9;
+  --vjc-color-group-bg: #ffffff30;
+
+  /* Z-index layers (relative within isolated stacking context) */
+  --vjc-z-edges: 50;
+  --vjc-z-nodes: 100;
+  --vjc-z-controls: 100;
+  --vjc-z-toolbar: 100;
+  --vjc-z-output: 150;
+  --vjc-z-panel: 200;
+  --vjc-z-guides: 999;
+  --vjc-z-marquee: 1000;
+  --vjc-z-context-menu: 2000;
+
+  /* Base wrapper styles */
+  color-scheme: light dark;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  background-color: var(--vjc-color-bg-1);
+  font-family: var(--vjc-font-content);
+  line-height: var(--vjc-line-height);
+  font-size: 16px;
+  color: var(--vjc-color-tx-1);
+  position: relative;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  touch-action: manipulation;
+  overflow: hidden;
+  /* Create containing block for fixed-position children */
+  transform: translateZ(0);
+  isolation: isolate;
+  /* Prevent text selection from bleeding outside */
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Scoped box-sizing inheritance */
+.vjc-wrapper *,
+.vjc-wrapper *:before,
+.vjc-wrapper *:after {
+  box-sizing: inherit;
+}
+
+/* Dark theme variant */
+.vjc-wrapper.vjc-theme-dark {
+  --vjc-color-bg-1: #1e0516;
+  --vjc-color-bg-2: #140310;
+  --vjc-color-tx-1: #fff;
+  --vjc-color-tx-2: #a28397;
+  --vjc-color-ui-1: #3f062d;
+  --vjc-color-ui-2: #68154c;
+  --vjc-color-ui-3: #b40e7a;
+  --vjc-color-ax-1: #8b0a5f;
+  --vjc-color-selection: rgba(139, 10, 95, 0.5);
+  --vjc-color-node-border: #3f062d;
+  --vjc-color-group-bg: #ffffff10;
+}
+
+/* Scoped text selection */
+.vjc-wrapper ::selection {
+  background: var(--vjc-color-selection);
+}
+
+.vjc-wrapper ::-moz-selection {
+  background: var(--vjc-color-selection);
+}
+
+/* Canvas area */
+.vjc-home {
+  overflow: hidden;
+}
+.vjc-container {
+  touch-action: none;
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  height: 100%;
+  width: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.vjc-canvas-container {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  position: relative;
+  background-color: var(--vjc-color-bg-2);
+  background-image: radial-gradient(
+    var(--vjc-color-ui-1) calc(var(--scale) * 0.5px + 0.5px),
+    transparent 0
+  );
+  background-size: calc(var(--scale) * 20px) calc(var(--scale) * 20px);
+  overflow: hidden;
+  background-position: calc(var(--pan-x) - 19px) calc(var(--pan-y) - 19px);
+  /* Performance: isolate this container's rendering from the rest of the page */
+  contain: layout style paint;
+  isolation: isolate;
+}
+.vjc-edges,
+.vjc-nodes {
+  opacity: 1;
+  transform: translate(var(--pan-x), var(--pan-y)) scale(var(--scale));
+  transform-origin: left top;
+  /* GPU acceleration: promote to compositor layer for smooth panning/zooming */
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.vjc-nodes {
+  z-index: var(--vjc-z-nodes);
+  position: relative;
+}
+.vjc-edges {
+  z-index: var(--vjc-z-edges);
+  pointer-events: none;
+  user-select: none;
+  overflow: visible;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+.vjc-edges path {
+  stroke: var(--edge-color, var(--vjc-color-ui-3));
+  stroke-width: 2;
+  fill: none;
+  cursor: pointer;
+  pointer-events: stroke;
+}
+.vjc-edges path:hover {
+  stroke-width: 4;
+}
+.vjc-edges path.is-selected {
+  stroke-width: 4;
+  filter: drop-shadow(0 0 4px var(--vjc-color-ax-1));
+}
+/* Edge labels */
+.vjc-edge-label {
+  font-size: 12px;
+  fill: var(--vjc-color-tx-1);
+  pointer-events: none;
+  user-select: none;
+}
+.vjc-edge-label-bg {
+  fill: var(--vjc-color-bg-1);
+  opacity: 0.9;
+}
+.vjc-will-pan {
+  cursor: grab;
+}
+
+/* Edge anchors — the drag-an-edge handles CanvasNode renders on each side.
+   Only an editable board shows them, and only on hover or selection. The
+   hover also unclips the node so the half of each dot outside the border
+   survives; content stays clipped by its own inner scroller. */
+.vjc-anchor {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--vjc-color-ax-1);
+  border: 2px solid var(--vjc-color-bg-1);
+  /* `visibility`, not opacity alone: a merely transparent anchor still hit-
+     tests, still sits in the accessibility tree, and still counts as visible
+     to tooling. */
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  cursor: crosshair;
+  transition: opacity 0.1s;
+  z-index: 10;
+}
+.vjc-editable .node:hover,
+.vjc-editable .node.is-selected {
+  overflow: visible;
+}
+.vjc-editable .node:hover .vjc-anchor,
+.vjc-editable .node.is-selected .vjc-anchor {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+.vjc-anchor[data-anchor-side='top'] {
+  top: -5px;
+  left: calc(50% - 5px);
+}
+.vjc-anchor[data-anchor-side='bottom'] {
+  bottom: -5px;
+  left: calc(50% - 5px);
+}
+.vjc-anchor[data-anchor-side='left'] {
+  left: -5px;
+  top: calc(50% - 5px);
+}
+.vjc-anchor[data-anchor-side='right'] {
+  right: -5px;
+  top: calc(50% - 5px);
+}
+
+/* The edge being drawn, before it lands on a node. */
+.vjc-edge-draft {
+  stroke: var(--vjc-color-ax-1);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  fill: none;
+  pointer-events: none;
+}
+
+/* Marquee selection box */
+.vjc-marquee-selection {
+  position: fixed;
+  border: 1px dashed var(--vjc-color-ax-1);
+  background: var(--vjc-color-selection);
+  pointer-events: none;
+  z-index: var(--vjc-z-marquee);
+}
+
+/* Snap alignment guides */
+.vjc-snap-guides {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: var(--vjc-z-guides);
+  overflow: visible;
+}
+
+.vjc-snap-guide-line {
+  stroke: var(--vjc-color-ax-1);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+/* Canvas output pane */
+.vjc-output.hidden {
+  transform: translateX(120%);
+}
+.vjc-output {
+  position: fixed;
+  height: 92vh;
+  top: 1rem;
+  right: 1rem;
+  bottom: auto;
+  border-radius: 12px;
+  color: var(--vjc-color-tx-1);
+  background-color: var(--vjc-color-bg-1);
+  border: 1px solid var(--vjc-color-ui-1);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+  z-index: var(--vjc-z-output);
+  width: 24em;
+  max-width: 40%;
+  display: flex;
+  flex-direction: column;
+  transition: transform 200ms;
+}
+
+/* Scoped element styles within canvas container */
+.vjc-canvas-container p {
+  margin: 0;
+}
+.vjc-canvas-container h2 + p {
+  margin-top: 0.5em;
+}
+.vjc-canvas-container pre {
+  -webkit-appearance: none;
+  font-family: var(--vjc-font-mono);
+  background-color: transparent;
+  border-radius: 4px;
+  padding: 0;
+  font-size: 85%;
+  cursor: text;
+}
+
+.vjc-output p {
+  font-size: 90%;
+  line-height: 1.3;
+  padding-right: 0.5em;
+}
+.vjc-output-code {
+  color-scheme: dark;
+  flex-grow: 1;
+  width: 100%;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 1rem;
+  border-top: 1px solid var(--vjc-color-ui-1);
+  border-bottom: 1px solid var(--vjc-color-ui-1);
+}
+.vjc-output pre {
+  color-scheme: dark;
+  width: 100%;
+  padding: 0.5em;
+  margin: 0;
+}
+.vjc-code-footer,
+.vjc-code-header {
+  font-size: 80%;
+  font-weight: 500;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  color: var(--vjc-color-tx-2);
+  gap: 8px;
+}
+.vjc-code-footer {
+  justify-content: center;
+}
+.vjc-code-header .language {
+  flex-grow: 1;
+}
+.vjc-close-output {
+  font-weight: 300;
+  cursor: pointer;
+  user-select: none;
+  -ms-user-select: none;
+  -webkit-user-select: none;
+  font-size: 24px;
+  line-height: 0;
+  display: flex;
+  align-items: center;
+  margin-top: -4px;
+}
+.vjc-close-output:hover {
+  color: var(--vjc-color-tx-1);
+}
+
+/* Canvas controls */
+.vjc-controls {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: var(--vjc-z-controls);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  -ms-user-select: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.vjc-controls .zoom-level {
+  min-width: 3.5em;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--vjc-color-tx-2);
+}
+.vjc-controls .vjc-controls-separator {
+  width: 1px;
+  height: 20px;
+  background: var(--vjc-color-ui-2);
+  margin: 0 4px;
+}
+.vjc-controls .vjc-undo-btn,
+.vjc-controls .vjc-redo-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+}
+.vjc-controls .vjc-undo-btn:disabled,
+.vjc-controls .vjc-redo-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.vjc-controls .vjc-undo-btn:disabled:hover,
+.vjc-controls .vjc-redo-btn:disabled:hover {
+  background: var(--vjc-color-bg-2);
+  border-color: var(--vjc-color-ui-1);
+}
+
+/* Canvas toolbar */
+.vjc-toolbar {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: var(--vjc-z-toolbar);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  -ms-user-select: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.vjc-toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--vjc-color-bg-1);
+  border: 1px solid var(--vjc-color-ui-1);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--vjc-color-tx-1);
+  transition:
+    background 0.1s,
+    border-color 0.1s;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.vjc-toolbar-btn:hover {
+  background: var(--vjc-color-bg-2);
+  border-color: var(--vjc-color-ui-2);
+}
+
+.vjc-toolbar-icon {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--vjc-color-ax-1);
+}
+
+.vjc-toolbar-label {
+  font-weight: 500;
+}
+
+/* Scoped element styles for canvas content (markdown nodes, etc.) */
+.vjc-canvas-container h1 {
+  line-height: 1.1;
+  margin-top: 0.25em;
+  margin-bottom: 0.5em;
+}
+
+.vjc-canvas-container h2 {
+  line-height: 1.2;
+  margin-bottom: 0;
+  margin-top: 1em;
+}
+
+.vjc-canvas-container h3 {
+  line-height: 1.3;
+  margin-bottom: 0;
+  margin-top: 0.75em;
+}
+
+.vjc-canvas-container a {
+  font-weight: 600;
+  color: var(--vjc-color-ax-1);
+  text-decoration: underline;
+}
+
+.vjc-canvas-container a:hover {
+  color: var(--vjc-color-tx-1);
+}
+
+.vjc-canvas-container hr {
+  margin: 1em 0;
+  border: 0;
+  height: 1px;
+  background-color: var(--vjc-color-ui-1);
+}
+
+.vjc-canvas-container iframe {
+  -webkit-appearance: none;
+  border: none;
+  outline: none;
+  margin: 0;
+  vertical-align: bottom;
+  border-radius: 8px;
+}
+
+.vjc-canvas-container img {
+  vertical-align: bottom;
+  max-width: 100%;
+}
+
+.vjc-canvas-container code {
+  -webkit-appearance: none;
+  font-family: var(--vjc-font-mono);
+  background-color: var(--vjc-color-bg-2);
+  border: 1px solid var(--vjc-color-ui-1);
+  border-radius: 4px;
+  padding: 0 0.2em;
+  font-size: 85%;
+  cursor: text;
+}
+
+.vjc-canvas-container pre code {
+  color: var(--vjc-color-tx-2);
+  background-color: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+.vjc-canvas-container ul {
+  padding-inline-start: 2em;
+  margin: 0.5em 0;
+}
+
+.vjc-canvas-container ol {
+  padding-inline-start: 2em;
+  margin: 0.5em 0;
+}
+
+.vjc-canvas-container li::marker {
+  color: var(--vjc-color-tx-2);
+}
+
+.vjc-canvas-container table {
+  margin: 1em 0;
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+.vjc-canvas-container tr {
+  border-bottom: 1px solid var(--vjc-color-ui-1);
+}
+
+.vjc-canvas-container td {
+  padding: 0.5em 1em 0.5em 0;
+  line-height: 1.3;
+}
+
+.vjc-canvas-container th {
+  text-align: left;
+  font-weight: 600;
+  padding: 0 1em 0.5em 0;
+}
+
+.vjc-canvas-container td:last-child,
+.vjc-canvas-container th:last-child {
+  padding-right: 0;
+}
+
+/* Button styles scoped to canvas container */
+.vjc-canvas-container button {
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  -ms-user-select: none;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: pointer;
+  font-family: var(--vjc-font-content);
+  background: var(--vjc-color-bg-1);
+  outline: none;
+  border: 1px solid var(--vjc-color-ui-1);
+  padding: 4px 8px;
+  color: var(--vjc-color-tx-1);
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.vjc-canvas-container button:hover {
+  border-color: var(--vjc-color-ui-2);
+}
+
+.vjc-wrapper.vjc-theme-dark .vjc-canvas-container button {
+  background-color: var(--vjc-color-ui-1);
+  color: var(--vjc-color-tx-2);
+  border: 1px solid var(--vjc-color-ui-2);
+}
+
+.vjc-wrapper.vjc-theme-dark .vjc-canvas-container button:hover {
+  color: var(--vjc-color-tx-1);
+  border: 1px solid var(--vjc-color-ui-3);
+}
+
+/* Mobile responsive styles */
+@media (max-width: 800px) {
+  .vjc-controls {
+    bottom: 0;
+    right: 0;
+    left: 0;
+    padding: 1rem;
+    border-top: 1px solid var(--vjc-color-ui-1);
+    width: 100%;
+    background-color: var(--vjc-color-bg-1);
+    justify-content: center;
+    height: 48px;
+  }
+  .vjc-output {
+    border-radius: 0;
+    border: none;
+    left: 0;
+    top: 0;
+    z-index: var(--vjc-z-panel);
+    width: 100vw;
+    height: calc(100% - 48px);
+    transition: none;
+    max-width: 100vw;
+    box-shadow: none;
+  }
+  .vjc-output-code {
+    padding: 1rem 1rem 6rem;
+  }
+}
+
+/* PrismJS syntax highlighting - scoped to canvas container */
+
+.vjc-canvas-container code[class*='language-'],
+.vjc-canvas-container pre[class*='language-'] {
+  text-align: left;
+  white-space: pre-wrap;
+  word-spacing: normal;
+  word-break: normal;
+  word-wrap: normal;
+  -moz-tab-size: 4;
+  -o-tab-size: 4;
+  tab-size: 4;
+  -webkit-hyphens: none;
+  -moz-hyphens: none;
+  -ms-hyphens: none;
+  hyphens: none;
+}
+
+.vjc-canvas-container pre[class*='language-'] {
+  overflow: auto;
+  overflow-x: hidden;
+}
+
+.vjc-canvas-container :not(pre) > code[class*='language-'] {
+  white-space: normal;
+}
+
+.vjc-canvas-container .token.comment,
+.vjc-canvas-container .token.prolog,
+.vjc-canvas-container .token.doctype,
+.vjc-canvas-container .token.cdata {
+  color: slategray;
+}
+
+.vjc-canvas-container .token.punctuation {
+  color: var(--vjc-color-tx-2);
+}
+
+.vjc-canvas-container .token.namespace {
+  opacity: 0.7;
+}
+
+.vjc-canvas-container .token.property,
+.vjc-canvas-container .token.tag,
+.vjc-canvas-container .token.boolean,
+.vjc-canvas-container .token.constant,
+.vjc-canvas-container .token.symbol,
+.vjc-canvas-container .token.deleted {
+  color: #f8aa59;
+}
+
+.vjc-canvas-container .token.number {
+  color: #ee529d;
+}
+
+.vjc-canvas-container .token.selector,
+.vjc-canvas-container .token.attr-name,
+.vjc-canvas-container .token.string,
+.vjc-canvas-container .token.char,
+.vjc-canvas-container .token.builtin,
+.vjc-canvas-container .token.inserted {
+  color: #fe7568;
+}
+
+.vjc-canvas-container .token.operator,
+.vjc-canvas-container .token.entity,
+.vjc-canvas-container .token.url,
+.vjc-canvas-container .language-css .token.string,
+.vjc-canvas-container .style .token.string {
+  color: var(--vjc-color-tx-2);
+}
+
+.vjc-canvas-container .token.atrule,
+.vjc-canvas-container .token.attr-value,
+.vjc-canvas-container .token.keyword {
+  color: #07a;
+}
+
+.vjc-canvas-container .token.function,
+.vjc-canvas-container .token.class-name {
+  color: #dd4a68;
+}
+
+.vjc-canvas-container .token.regex,
+.vjc-canvas-container .token.important,
+.vjc-canvas-container .token.variable {
+  color: #e90;
+}
+
+.vjc-canvas-container .token.important,
+.vjc-canvas-container .token.bold {
+  font-weight: bold;
+}
+
+.vjc-canvas-container .token.italic {
+  font-style: italic;
+}
+
+.vjc-canvas-container .token.entity {
+  cursor: help;
+}
