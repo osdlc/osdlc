@@ -324,8 +324,9 @@ directory and writes `checkout: mirror`; a typed directory is written as
 `mirror_dir` too; no writes `checkout: local`, and such targets are skipped
 from then on. The run prints the machine file it wrote. When another run
 saved the same answer first, the run goes on with it. When another run saved
-a different answer, or another directory, while you were answering, this run
-clones nothing: it names what the file holds and says that
+a different answer, or another directory, while you were answering, or the
+file was edited to another `mirror_dir` then, this run clones nothing: it
+names what the file holds and says that
 `pr-update mirror enable` or `pr-update mirror disable` changes it. With no terminal to ask on, the run exits
 `2` and names `--mirror-dir`, `PR_UPDATE_MIRROR_DIR`, `pr-update mirror
 enable`, and `pr-update mirror disable`, which skips such targets instead.

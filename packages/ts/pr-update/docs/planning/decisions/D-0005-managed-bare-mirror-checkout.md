@@ -877,6 +877,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   `pr-update mirror disable`, which change it. The CI review of the
   omnibus asked for this: adopting the other answer could clone for a person
   who had just said no, or into a directory they did not give.
+  The first review of the final fixes found the same when the answer is
+  written: a write keeps the file's other keys, so a `mirror_dir` an editor
+  saved while the question was on screen stayed beside the `checkout: mirror`
+  written, and the run cloned there. The file as written is now compared
+  with the answer the same way, and a mismatch clones nothing, with the note.
 - **`mirror enable --mirror-dir`.** Accepted as `--dir`. It is
   `--mirror-dir`, the flag's name on `survey` and `update`. It checks the
   directory as clone step 1 does, but neither makes nor marks it; the first

@@ -486,10 +486,11 @@ describe('the first-run question', () => {
 
   /**
    * A terminal answering with `lines` that, when the question is shown, has another run save
-   * `elsewhere` to the machine file through the same locked write, as if it answered first.
+   * `elsewhere` to the machine file through the same locked write, as if it answered first, or
+   * runs `elsewhere` when it is a function.
    */
   function racing(
-    elsewhere: MirrorAnswer,
+    elsewhere: MirrorAnswer | (() => void),
     ...lines: string[]
   ): { seams: CliSeams; raced: () => boolean } {
     let raced = false
@@ -503,7 +504,8 @@ describe('the first-run question', () => {
             terminal.write?.(text)
             if (!raced && text.includes('Choose')) {
               raced = true
-              writeMirrorAnswer(machineFile({ env }), elsewhere, { yield: true })
+              if (typeof elsewhere === 'function') elsewhere()
+              else writeMirrorAnswer(machineFile({ env }), elsewhere, { yield: true })
             }
           },
         },
@@ -550,6 +552,22 @@ describe('the first-run question', () => {
     expect(JSON.parse(r.out).skipped[0].reason).toContain(
       `not the answer given here (checkout: mirror (clones in ${join(env.HOME!, 'mine')}))`,
     )
+  })
+
+  test('an editor saves only a clone directory while this run asks: accepting the offered one clones into neither (review round 1)', async () => {
+    const theirs = join(scratch, 'theirs')
+    const { seams, raced } = racing(() => writeMachine(`mirror_dir: ${theirs}\n`), '1')
+    const r = await runWith(seams, {}, 'update', '--repo', 'acme/api', '--apply', '--json')
+    expect(r.code).toBe(EXIT.ok)
+    expect(raced()).toBe(true)
+    // The answer is written beside the editor's directory, which is not the one accepted.
+    expect(readMachine()).toBe(`mirror_dir: ${theirs}\ncheckout: mirror\n`)
+    expect(clonesMade()).toEqual([])
+    expect(existsSync(theirs)).toBe(false)
+    const reason = JSON.parse(r.out).skipped[0].reason as string
+    expect(reason).toContain(`says checkout: mirror (clones in ${theirs})`)
+    expect(reason).toContain(`not the answer given here (checkout: mirror (clones in ${repos}))`)
+    expect(reason).toContain('pr-update mirror enable [--mirror-dir <dir>]')
   })
 
   test('another run saved the same answer: this run follows it and clones (final review)', async () => {

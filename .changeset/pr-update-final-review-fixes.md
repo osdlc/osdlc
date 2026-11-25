@@ -68,7 +68,10 @@ answer was not the one saved, or that was given another directory, no longer
 adopts the saved one: it clones nothing, and its targets with no checkout are
 skipped with a note that says what the file holds and that
 `pr-update mirror enable` or `pr-update mirror disable` changes it. Before, a
-run answered "no" could clone because another run had said yes.
+run answered "no" could clone because another run had said yes. The same holds when
+the file is edited while the question is on screen: a `mirror_dir` saved then
+stays beside the answer written, and a run whose answer named another
+directory clones nothing, with a note.
 
 Fixed: in a located checkout, the scratch branch a run checks a PR's head out
 on wrote `branch.pr-update/scratch-<run>.remote` and `.merge` into your

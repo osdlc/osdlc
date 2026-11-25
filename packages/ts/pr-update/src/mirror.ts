@@ -855,8 +855,9 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
 
   /**
    * Ask whether to clone `want`, write the answer, and return the setting that holds now. When
-   * another run saved a different answer while this one asked, `refused` says so: the run follows
-   * neither, and clones nothing.
+   * the file then gives another consent or clone directory than the answer, `refused` says so: the
+   * run follows neither, and clones nothing. Another run may have saved its answer while this one
+   * asked, or an editor a `mirror_dir` that this run's write kept.
    */
   const ask = (want: readonly RepoTarget[]): { setting: MirrorSetting; refused?: string } => {
     const before = file.read()
@@ -907,28 +908,39 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
     }
     const { config, wrote } = writeMirrorAnswer(file, answer, { yield: true })
     setting = mirrorSetting({ flag: opts.flag, env: opts.env, machine: config, home: home() })
-    if (wrote) {
-      opts.notice(
-        `wrote checkout: ${answer.checkout}${answer.mirror_dir === undefined ? '' : ` and mirror_dir: ${answer.mirror_dir}`} to ${file.path()}`,
-      )
-      return { setting }
-    }
     const said = (consent: string, at: string | null): string =>
       `checkout: ${consent}${at === null ? '' : ` (clones in ${at})`}`
     const stored = said(
       setting.consent ?? 'unset',
       setting.consent === 'mirror' ? setting.dir : null,
     )
-    if (setting.consent === answer.checkout && (typedDir === null || setting.dir === typedDir)) {
+    const given = said(answer.checkout, typedDir)
+    const fix =
+      '`pr-update mirror enable [--mirror-dir <dir>]` or `pr-update mirror disable` changes it'
+    // What the file gives now, compared both when this run wrote and when it yielded: a write
+    // keeps the file's other keys, so a `mirror_dir` an editor saved while this run asked stays.
+    const same =
+      setting.consent === answer.checkout && (typedDir === null || setting.dir === typedDir)
+    if (wrote) {
+      const wroteNote = `wrote checkout: ${answer.checkout}${answer.mirror_dir === undefined ? '' : ` and mirror_dir: ${answer.mirror_dir}`} to ${file.path()}`
+      if (same) {
+        opts.notice(wroteNote)
+        return { setting }
+      }
+      // The person answered for one directory; a clone in another is not theirs to accept here.
+      return {
+        setting,
+        refused: `${wroteNote}, but the file was changed while this run asked and now says ${stored}, not the answer given here (${given}), so this run clones nothing; ${fix}`,
+      }
+    }
+    if (same) {
       opts.notice(`another run saved the same answer first: ${file.path()} says ${stored}`)
       return { setting }
     }
     // The person answered this run's question; another run's answer is not theirs to adopt here.
     return {
       setting,
-      refused:
-        `another run saved ${stored} to ${file.path()} while this run asked, not the answer given here (${said(answer.checkout, typedDir)}), so this run clones nothing; ` +
-        '`pr-update mirror enable [--mirror-dir <dir>]` or `pr-update mirror disable` changes it',
+      refused: `another run saved ${stored} to ${file.path()} while this run asked, not the answer given here (${given}), so this run clones nothing; ${fix}`,
     }
   }
 
