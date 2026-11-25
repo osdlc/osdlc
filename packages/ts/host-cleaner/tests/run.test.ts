@@ -718,6 +718,21 @@ describe('re-check', () => {
     expect(moved.decision.dropped.map((d) => d.reason)).toEqual(['changed'])
   })
 
+  test('changed: held now and not in the plan, picked or not; held then and not now still runs', async () => {
+    const idle = mutable([cand('a:1', 'git')])
+    const held = mutable([cand('a:1', 'git', { held: true })])
+    for (const pick of [[], ['a:1']]) {
+      const r = await recheck(plan(await survey([idle], ctx), { pick }), [held], ctx)
+      expect(r.decision.run).toEqual([])
+      expect(r.decision.dropped.map((d) => d.reason)).toEqual(['changed'])
+    }
+    const picked = plan(await survey([held], ctx), { pick: ['a:1'] })
+    for (const later of [idle, held]) {
+      const r = await recheck(picked, [later], ctx)
+      expect(r.decision.run.map((c) => c.id)).toEqual(['a:1'])
+    }
+  })
+
   test('a candidate that changed drops its dependents', async () => {
     const items = (sha: string) => [
       cand('worktree:/w', 'git', { evidence: { sha } }),
