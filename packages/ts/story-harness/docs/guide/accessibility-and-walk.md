@@ -21,7 +21,7 @@ both modes.
 
 `--a11y` opens every story in light and dark and runs [axe-core](https://github.com/dequelabs/axe-core)
 over the page. It checks WCAG 2.0 to 2.2 at levels A and AA. Colour contrast is one of those
-rules, which is why both themes are scanned. axe-core 4.14.0 is installed in the container; it is
+rules, which is why both themes are scanned. axe-core 4.14.1 is installed in the container; it is
 pinned in `story-shots.sh`, so a run gives the same answer on a laptop and in CI.
 
 Four rules are off, because a story is not a page: Storybook's iframe has no `lang`, landmarks or
