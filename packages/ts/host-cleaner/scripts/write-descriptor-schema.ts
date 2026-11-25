@@ -1,10 +1,9 @@
 // Writes schemas/descriptor-1.json from the descriptor schema in
-// src/descriptor/schema.ts. Runs on host-cleaner's source, so host-cleaner
-// needs no build, but its workspace dependencies must be built, as for the
-// tests.
+// src/descriptor/schema.ts. Runs on host-cleaner's source, which imports no
+// workspace package, so nothing needs a build.
 // tests/descriptor-schema.test.ts fails when the checked-in file is stale:
 // run `pnpm run write:descriptor-schema` and commit it.
-import { writeFileSync } from 'node:fs'
+import { realpathSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { descriptorJsonSchema } from '../src/descriptor/schema.ts'
@@ -18,6 +17,8 @@ export const DESCRIPTOR_SCHEMA_FILE = fileURLToPath(
   new URL('../schemas/descriptor-1.json', import.meta.url),
 )
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Node gives the main module's URL as its real path, but argv[1] as typed.
+const main = process.argv[1]
+if (main !== undefined && realpathSync(main) === fileURLToPath(import.meta.url)) {
   writeFileSync(DESCRIPTOR_SCHEMA_FILE, descriptorSchemaText())
 }

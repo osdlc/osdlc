@@ -35,8 +35,12 @@ import {
   readConfig,
   type Config,
 } from './config.ts'
-import type { DescriptorOptions } from './descriptor/engine.ts'
-import { DescriptorLoadError, type DescriptorSources } from './descriptor/load.ts'
+import {
+  DescriptorLoadError,
+  sameDescriptor,
+  type DescriptorProblem,
+  type DescriptorSources,
+} from './descriptor/load.ts'
 import { DescriptorError } from './descriptor/schema.ts'
 import { gitDefinitionWith } from './git.ts'
 import { pluginKit } from './kit.ts'
@@ -47,6 +51,7 @@ import {
   loadPackages,
   packageEntries,
   packageRoots,
+  type LoadedPackage,
   type PackageEntry,
   type PackageFailure,
 } from './load.ts'
@@ -54,9 +59,8 @@ import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.
 import {
   BUILT_IN_PLUGINS,
   UnknownPlugin,
-  loadPlugins,
+  findPlugins,
   selectPlugins,
-  supersession,
   type Loaded,
 } from './registry.ts'
 import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
@@ -401,48 +405,12 @@ interface Naming {
   skip?: readonly string[] | undefined
 }
 
-/** The config, every plugin it can use, the packages it names and those that failed to load. */
-interface Setup {
-  config: Config
-  loaded: Loaded
-  entries: readonly PackageEntry[]
-  failed: PackageFailure[]
-}
-
-/**
- * The config and every plugin definition: the config read, the packages it
- * names loaded, then the descriptors, then each `plugins` entry checked
- * against them all. With `--plugin`, only the packages it names are loaded;
- * without it, those the config enables. A package `--skip-plugin` names is
- * never loaded.
- */
-async function loadAll(
-  v: { config?: string | undefined; descriptor: readonly string[] },
-  naming: Naming,
-  ctx: CliContext,
-  deps: MainDeps,
-  opts: DescriptorOptions = {},
-): Promise<Setup> {
-  const path = v.config === undefined ? configFile(hostDirs(ctx.env)) : resolve(ctx.cwd, v.config)
-  const config = readConfig(path, { required: v.config !== undefined, plugins: [] })
-  const entries = packageEntries(config.plugins, (n) =>
-    BUILT_IN_PLUGINS.some((d) => d.name === n) ? 'the built-in plugin' : undefined,
-  )
-  const used = entries.filter(
-    (e) =>
-      !(naming.skip ?? []).includes(e.name) &&
-      (naming.want === undefined
-        ? config.plugins[e.name]?.enabled !== false
-        : naming.want.includes(e.name)),
-  )
-  const packages = await loadPackages(used, deps.packageRoots ?? packageRoots(ctx.env))
-  const loaded = loadPlugins(sourcesFor(v, ctx, deps), opts, {
-    loaded: packages.loaded,
-    entries,
-  })
-  checkPlugins(config, path, loaded.definitions)
-  return { config, loaded, entries, failed: packages.failed }
-}
+/** Whether a run leaves out the plugin `name`: by flag, or without `--plugin`, by the config. */
+const leftOut = (name: string, naming: Naming, config: Config): boolean =>
+  naming.skip?.includes(name) === true ||
+  (naming.want !== undefined && naming.want.length > 0
+    ? !naming.want.includes(name)
+    : disabledByConfig(name, config.plugins))
 
 /** The warning for a package that did not load, as `status`, `plan` and `config` write it. */
 const notLoaded = (f: PackageFailure): string => `${f.reason}; going on without ${f.name}`
@@ -461,50 +429,134 @@ function refuseFailed(failed: readonly PackageFailure[]): void {
   )
 }
 
-/** Where this run's descriptors come from: the shipped folder, the user's, and each `--descriptor`. */
-const sourcesFor = (
-  v: { descriptor: readonly string[] },
-  ctx: CliContext,
-  deps: MainDeps,
-): DescriptorSources => ({
-  shipped: deps.shippedDescriptors,
-  user: descriptorsDir(hostDirs(ctx.env)),
-  flag: v.descriptor.map((f) => resolve(ctx.cwd, f)),
-})
-
-/** The plugin names in `plugins` that `known` refuses. */
-const unknownPlugins = (config: Config, known: (name: string) => boolean): string[] =>
-  Object.keys(config.plugins).filter((n) => !known(n))
+/** Each `--descriptor`, as an absolute path. */
+const flagDescriptors = (v: { descriptor: readonly string[] }, ctx: CliContext): string[] =>
+  v.descriptor.map((f) => resolve(ctx.cwd, f))
 
 /**
- * The config and the plugins this run uses: {@link loadAll}, then
- * {@link pluginsFor}. `supersededBy` is answered as described at
- * `supersession` in registry.ts. `failed` are the packages that did not load
- * or build, which the run goes without.
+ * Where this run's descriptors come from: the shipped folder, the user's, and
+ * each `--descriptor`. With `--config`, which needs no config directory, one
+ * that can't be found means no user descriptors, with a warning.
+ */
+function sourcesFor(
+  v: { config?: string | undefined; descriptor: readonly string[] },
+  ctx: CliContext,
+  deps: MainDeps,
+): { sources: DescriptorSources; warnings: string[] } {
+  const sources = { shipped: deps.shippedDescriptors, flag: flagDescriptors(v, ctx) }
+  try {
+    return { sources: { ...sources, user: descriptorsDir(hostDirs(ctx.env)) }, warnings: [] }
+  } catch (err) {
+    if (v.config === undefined) throw err
+    return { sources, warnings: [`no user descriptors: ${errorText(err)}`] }
+  }
+}
+
+/** What every command loads before it runs. */
+interface Loading {
+  config: Config
+  definitions: readonly PluginDefinition[]
+  /** Each package loaded, by name. */
+  packages: readonly LoadedPackage[]
+  /** The config's entries with a `package`, loaded or not. */
+  entries: readonly PackageEntry[]
+  /** The packages that did not load. */
+  failed: PackageFailure[]
+  /** The descriptors that can't be used. */
+  problems: readonly DescriptorProblem[]
+  /** The config's `plugins` entries that name no plugin this run has. */
+  unknown: string[]
+  /** What went wrong finding the descriptors that does not stop the run. */
+  warnings: string[]
+}
+
+/**
+ * The plugin definitions and the config checked against them: the built-ins,
+ * the packages the config names and the descriptors, or with `deps.plugins`
+ * the built-ins alone, and no package or descriptor loaded. A package the run
+ * leaves out is not loaded.
+ */
+async function loadRun(
+  v: { config?: string | undefined; descriptor: readonly string[] },
+  naming: Naming,
+  ctx: CliContext,
+  deps: MainDeps,
+): Promise<Loading> {
+  const path = v.config === undefined ? configFile(hostDirs(ctx.env)) : resolve(ctx.cwd, v.config)
+  const config = readConfig(path, { required: v.config !== undefined, plugins: [] })
+  const entries = packageEntries(config.plugins, (n) =>
+    BUILT_IN_PLUGINS.some((d) => d.name === n) ? 'the built-in plugin' : undefined,
+  )
+  const from = deps.plugins === undefined ? sourcesFor(v, ctx, deps) : undefined
+  const used = from === undefined ? [] : entries.filter((e) => !leftOut(e.name, naming, config))
+  const packages = await loadPackages(used, deps.packageRoots ?? packageRoots(ctx.env))
+  const loaded: Pick<Loaded, 'definitions' | 'packages' | 'problems'> =
+    from === undefined
+      ? { definitions: BUILT_IN_PLUGINS, packages: [], problems: [] }
+      : findPlugins(from.sources, {}, { loaded: packages.loaded, entries })
+  checkPlugins(config, path, loaded.definitions)
+  const known = new Set([
+    ...(deps.plugins?.map((p) => p.name) ?? loaded.definitions.map((d) => d.name)),
+    ...entries.map((e) => e.name),
+    ...loaded.problems.map((p) => p.name),
+  ])
+  return {
+    config,
+    definitions: loaded.definitions,
+    packages: loaded.packages,
+    entries,
+    failed: packages.failed,
+    problems: loaded.problems,
+    unknown: Object.keys(config.plugins).filter((n) => !known.has(n)),
+    warnings: from?.warnings ?? [],
+  }
+}
+
+const unknownMessage = (unknown: readonly string[]): string =>
+  `config names no plugin ${unknown.join(', ')}; a descriptor of that name is not loaded`
+
+/**
+ * The config and the plugins this run uses: {@link loadRun}, each built from
+ * its entry (or `deps.plugins`), then chosen by flag, and what to warn of. A
+ * descriptor that can't be used stops the run unless the run leaves its name
+ * out. A config entry that names no plugin stops the run when `strict`.
+ * `failed` are the packages that did not load or build, which the run goes
+ * without.
  */
 async function setUp(
   v: SweepValues,
   ctx: CliContext,
   deps: MainDeps,
-): Promise<{ config: Config; plugins: Plugin[]; failed: PackageFailure[] }> {
-  const superseded = supersession()
+  strict: boolean,
+): Promise<{ config: Config; plugins: Plugin[]; failed: PackageFailure[]; warnings: string[] }> {
   const naming = { want: v.plugin, skip: v.skipPlugin }
-  const setup = await loadAll(v, naming, ctx, deps, { runs: superseded.runs })
-  const chosen = pluginsFor(v, setup, deps, ctx)
-  const plugins = deps.plugins === undefined ? superseded.track(chosen) : chosen
-  return { config: setup.config, plugins, failed: setup.failed }
+  const loading = await loadRun(v, naming, ctx, deps)
+  const { config, problems, unknown, failed } = loading
+  const warnings = [...loading.warnings]
+  if (unknown.length > 0) {
+    if (strict) {
+      throw new BadInput(
+        `${unknownMessage(unknown)}; give its --descriptor, or remove the entry from the config`,
+      )
+    }
+    warnings.push(unknownMessage(unknown))
+  }
+  for (const p of problems) {
+    if (!leftOut(p.name, naming, config)) throw p.error
+    warnings.push(`${p.error.message}; this run leaves ${p.name} out`)
+  }
+  return { config, plugins: pluginsFor(v, loading, deps, ctx), failed, warnings }
 }
 
 /**
  * The plugins this run uses: the definitions built from the config, or
  * `deps.plugins`, then chosen by flag. A package's plugin that fails to build
- * is added to `setup.failed` and left out.
+ * is added to `loading.failed` and left out.
  *
  * @throws BadInput when `--plugin` names a package that failed
  */
-function pluginsFor(v: SweepValues, setup: Setup, deps: MainDeps, ctx: CliContext): Plugin[] {
-  const { config, entries, failed } = setup
-  const { definitions } = setup.loaded
+function pluginsFor(v: SweepValues, loading: Loading, deps: MainDeps, ctx: CliContext): Plugin[] {
+  const { config, definitions, entries, failed, problems } = loading
   // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
@@ -525,19 +577,13 @@ function pluginsFor(v: SweepValues, setup: Setup, deps: MainDeps, ctx: CliContex
     }
   }
   const all = deps.plugins ?? definitions.map((d) => (d.name === git.name ? git : d)).flatMap(build)
-  // A package's plugin that is not loaded (skipped, disabled or failed) still has its name.
-  const unloaded = entries.map((e) => e.name).filter((n) => !all.some((p) => p.name === n))
-  const unused = unknownPlugins(
-    config,
-    (n) => unloaded.includes(n) || all.some((p) => p.name === n),
-  )
-  if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
   // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
   const named = v.plugin ?? []
   const broken = failed.find((f) => named.includes(f.name))
   if (broken !== undefined) throw new BadInput(broken.reason)
-  const skip = v.skipPlugin?.filter((n) => !unloaded.includes(n))
-  const chosen = selectPlugins(all, v.plugin, skip)
+  // Names `--skip-plugin` may give that have no plugin: packages not loaded, and descriptors that can't be used.
+  const absent = [...entries, ...problems].map((e) => e.name)
+  const chosen = selectPlugins(all, v.plugin, v.skipPlugin, absent)
   return chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins))
 }
 
@@ -666,19 +712,19 @@ async function runStatus(
   let s: Survey
   let warnings: string[]
   try {
-    const { config, plugins, failed } = await setUp(v, ctx, deps)
-    s = await survey(plugins, contextFor(parsed.positionals, config, ctx, [], v.ignore))
-    warnings = [...failed.map(notLoaded), ...s.warnings]
+    const run = await setUp(v, ctx, deps, false)
+    warnings = [...run.warnings, ...run.failed.map(notLoaded)]
+    s = await survey(run.plugins, contextFor(parsed.positionals, run.config, ctx, [], v.ignore))
   } catch (err) {
     return refusal(ctx, name, err)
   }
   const ignored = s.ctx.ignore ?? []
   if (v.format === 'json') {
     ctx.io.stdout(
-      `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), ignore: ignored, warnings, notes: s.notes, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
+      `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), ignore: ignored, warnings: [...warnings, ...s.warnings], notes: s.notes, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
     )
   } else {
-    writeWarnings(ctx, name, surveyWarnings({ warnings, notes: s.notes }))
+    writeWarnings(ctx, name, [...warnings, ...surveyWarnings(s)])
     ctx.io.stdout(
       `plugins: ${s.plugins.map((p) => p.name).join(', ') || '(none)'}\n` +
         (ignored.length > 0 ? `ignoring: ${ignored.join(', ')}\n` : '') +
@@ -698,14 +744,14 @@ async function runConfig(
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
-    const { config, loaded, entries, failed } = await loadAll(v, {}, ctx, deps)
-    const { definitions, packages } = loaded
-    const unused = unknownPlugins(
-      config,
-      (n) => entries.some((e) => e.name === n) || definitions.some((d) => d.name === n),
-    )
-    if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
-    writeWarnings(ctx, name, failed.map(notLoaded))
+    const loading = await loadRun(v, {}, ctx, deps)
+    const { config, definitions, packages, problems, unknown, failed, warnings } = loading
+    writeWarnings(ctx, name, [
+      ...warnings,
+      ...problems.map((p) => p.error.message),
+      ...(unknown.length > 0 ? [unknownMessage(unknown)] : []),
+      ...failed.map(notLoaded),
+    ])
     const settings = effectiveSettings(config.plugins, config, definitions)
     if (v.format === 'json') {
       const values = Object.fromEntries(
@@ -768,15 +814,16 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
   const v = parsed.values
   let plan: Plan
   try {
-    const { config, plugins, failed } = await setUp(v, ctx, deps)
+    const { config, plugins, failed, warnings } = await setUp(v, ctx, deps, false)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = await survey(plugins, cctx)
-    writeWarnings(ctx, name, [...failed.map(notLoaded), ...surveyWarnings(s)])
+    writeWarnings(ctx, name, [...warnings, ...failed.map(notLoaded), ...surveyWarnings(s)])
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
     plan = makePlan(s, {
       targets: cctx.targets,
       targetsGiven: cctx.targetsGiven,
       ignore: cctx.ignore,
+      descriptors: flagDescriptors(v, ctx),
       pick: v.pick.map((e) => untildePick(e, homeOf(ctx), s.candidates)),
       spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
       allow: v.allow,
@@ -911,6 +958,30 @@ function logRun(logs: string, entry: Record<string, unknown>): void {
   }
 }
 
+/**
+ * The plan `--plan` names, read from stdin for `-`, and where it came from.
+ *
+ * @throws BadInput when it was made with a `--descriptor` this run is not given
+ */
+function savedPlan(
+  named: string,
+  v: CleanValues,
+  ctx: CliContext,
+  deps: MainDeps,
+): { plan: Plan; source: string } {
+  const source = named === '-' ? '(stdin)' : resolve(ctx.cwd, named)
+  const plan =
+    named === '-' ? parsePlan((deps.readStdin ?? readAllStdin)(), 'stdin') : readPlan(source)
+  const given = flagDescriptors(v, ctx)
+  const missing = (plan.descriptors ?? []).filter((p) => !given.some((g) => sameDescriptor(p, g)))
+  if (missing.length > 0) {
+    throw new BadInput(
+      `the plan was made with descriptors this run does not load; add ${[...new Set(missing)].map((p) => `--descriptor ${p}`).join(' ')}`,
+    )
+  }
+  return { plan, source }
+}
+
 async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): Promise<number> {
   const name = `${NAME} clean`
   const parsed = parseWith(cleanCli(), name, argv, ctx)
@@ -931,11 +1002,13 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   let preview: Decision
   let notes: Record<string, string>
   try {
-    const run = await setUp(v, ctx, deps)
+    const saved = v.plan === undefined ? undefined : savedPlan(v.plan, v, ctx, deps)
+    const run = await setUp(v, ctx, deps, true)
     refuseFailed(run.failed)
     const config = run.config
     plugins = run.plugins
-    if (v.plan === undefined) {
+    writeWarnings(ctx, name, run.warnings)
+    if (saved === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
       const s = await survey(plugins, cctx)
       writeWarnings(ctx, name, surveyWarnings(s))
@@ -954,13 +1027,8 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
       // Swept a moment ago: `clean` checks again before it deletes.
       preview = decidePlan(plan)
     } else {
-      if (v.plan === '-') {
-        plan = parsePlan((deps.readStdin ?? readAllStdin)(), 'stdin')
-        source = '(stdin)'
-      } else {
-        source = resolve(ctx.cwd, v.plan)
-        plan = readPlan(source)
-      }
+      plan = saved.plan
+      source = saved.source
       cctx = {
         cwd: ctx.cwd,
         targets: plan.targets,

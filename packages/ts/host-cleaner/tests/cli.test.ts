@@ -271,10 +271,14 @@ describe('status', () => {
     const bad = await run(['status', '--config', config], cwd, env)
     expect(bad.code).toBe(2)
     expect(bad.err).toContain('plugins.cargo.idleHours')
+    // A name no plugin has may be a descriptor this run does not load: status warns, clean stops.
     writeFileSync(config, JSON.stringify({ plugins: { ghost: {} } }))
     const r = await run(['status', '--config', config], cwd, env)
-    expect(r.code).toBe(2)
-    expect(r.err).toContain('ghost')
+    expect(r.code).not.toBe(2)
+    expect(r.err).toContain('config names no plugin ghost')
+    const clean = await run(['clean', '--config', config, '--yes'], cwd, env)
+    expect(clean.code).toBe(2)
+    expect(clean.err).toContain('config names no plugin ghost')
   })
 
   test('there are no profiles: --profile is an unknown option and a profiles key is refused', async () => {
@@ -339,13 +343,13 @@ describe('plugin settings', () => {
     expect(json.plugins.git).toEqual({ enabled: true })
   })
 
-  test('config refuses a bad config and a plugin nobody has', async () => {
+  test('config refuses a bad config and warns of a plugin nobody has', async () => {
     const bad = withConfig({ plugins: { cargo: { nope: 1 } } })
     expect((await run(['config', '--config', bad.file], bad.cwd, bad.env)).code).toBe(2)
     const ghost = withConfig({ plugins: { ghost: {} } })
     const r = await run(['config', '--config', ghost.file], ghost.cwd, ghost.env)
-    expect(r.code).toBe(2)
-    expect(r.err).toContain('ghost')
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('config names no plugin ghost')
   })
 })
 
@@ -487,6 +491,152 @@ ${extra}`
     const r = await run(['status'], h.cwd, h.env, { shippedDescriptors: h.shipped })
     expect(r.code).toBe(2)
     expect(r.err).toContain(`bad descriptor ${join(h.user, 'mine.yaml')}: line 2: paths`)
+  })
+
+  test('a bad descriptor stops only a run that uses it; config reports it and goes on', async () => {
+    const h = withHome()
+    writeFileSync(join(h.user, 'mine.yaml'), 'descriptor: 1\npaths: {}\ncandidates: []\n')
+    writeFileSync(join(h.user, 'My_tool.yaml'), store('.cache/x'))
+    const deps = { shippedDescriptors: h.shipped }
+    const bad = `bad descriptor ${join(h.user, 'mine.yaml')}`
+    for (const argv of [
+      ['status', '--plugin', 'git'],
+      ['status', '--skip-plugin', 'mine,My_tool'],
+      ['plan', '--plugin', 'git', '-o', '-'],
+    ]) {
+      const r = await run(argv, h.cwd, h.env, deps)
+      expect(r.code, argv.join(' ')).not.toBe(2)
+      expect(r.err).toContain(bad)
+    }
+    expect((await run(['status', '--skip-plugin', 'mine'], h.cwd, h.env, deps)).code).toBe(2)
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { mine: { enabled: false } } }))
+    const off = await run(
+      ['status', '--config', file, '--skip-plugin', 'My_tool'],
+      h.cwd,
+      h.env,
+      deps,
+    )
+    expect(off.code).not.toBe(2)
+    for (const argv of [
+      ['status'],
+      ['plan', '-o', '-'],
+      ['clean', '--yes'],
+      ['clean', '--plugin', 'mine', '--yes'],
+    ]) {
+      const r = await run(argv, h.cwd, h.env, deps)
+      expect(r.code, argv.join(' ')).toBe(2)
+    }
+    const named = await run(['status', '--config', file, '--plugin', 'mine'], h.cwd, h.env, deps)
+    expect(named.code).toBe(2)
+    expect(named.err).toContain(bad)
+    const config = await run(['config'], h.cwd, h.env, deps)
+    expect(config.code).toBe(0)
+    expect(config.err).toContain(bad)
+    expect(config.err).toContain('"My_tool" is not a plugin name')
+  })
+
+  test('--skip-plugin of a built-in leaves it out although a descriptor has its name', async () => {
+    const h = withHome()
+    writeFileSync(join(h.user, 'git.yaml'), store('.cache/git'))
+    const deps = { shippedDescriptors: h.shipped }
+    const r = await run(['status', '--skip-plugin', 'git,cargo,node'], h.cwd, h.env, deps)
+    expect(r.out).toContain('plugins: (none)\n')
+    expect(r.err).toContain('is named git, as the built-in plugin')
+    const ghost = await run(['status', '--skip-plugin', 'git,ghost'], h.cwd, h.env, deps)
+    expect(ghost.code).toBe(2)
+    expect(ghost.err).toContain('no plugin named ghost')
+  })
+
+  test('a config entry for a descriptor given by --descriptor: a warning without it, and clean stops', async () => {
+    const h = withHome(['mine'])
+    const desc = join(h.cwd, 'mine.yaml')
+    writeFileSync(desc, store('.cache/mine'))
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { mine: { idleHours: 0 } } }))
+    const deps = { shippedDescriptors: h.shipped }
+    const common = ['--config', file]
+    const warning = 'config names no plugin mine; a descriptor of that name is not loaded'
+    for (const argv of [['status', '--plugin', 'git'], ['plan', '-o', '-'], ['config']]) {
+      const r = await run([...argv, ...common], h.cwd, h.env, deps)
+      expect(r.code, argv.join(' ')).not.toBe(2)
+      expect(r.err).toContain(warning)
+    }
+    const json = await run(['status', '--format', 'json', ...common], h.cwd, h.env, deps)
+    expect(JSON.parse(json.out).warnings).toContain(warning)
+    for (const argv of [['--yes'], ['--dry-run']]) {
+      const r = await run(['clean', ...argv, ...common], h.cwd, h.env, deps)
+      expect(r.code).toBe(2)
+      expect(r.err).toContain(warning)
+    }
+    expect(existsSync(join(h.home, '.cache', 'mine'))).toBe(true)
+    const given = await run(['status', '--descriptor', desc, ...common], h.cwd, h.env, deps)
+    expect(given.err).not.toContain('names no plugin')
+  })
+
+  test('--config goes on without a config directory, with no user descriptors and a warning', async () => {
+    const h = withHome(['mine'])
+    writeFileSync(join(h.shipped, 'mine.yaml'), store('.cache/mine'))
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({}))
+    const env = { ...h.env, HOST_CLEANER_ROOT: 'relative' }
+    const deps = { shippedDescriptors: h.shipped }
+    for (const argv of [['status', '--plugin', 'git'], ['config']]) {
+      const r = await run([...argv, '--config', file], h.cwd, env, deps)
+      expect(r.code, argv.join(' ')).not.toBe(1)
+      expect(r.err).toContain('no user descriptors: ')
+      expect((await run(argv, h.cwd, env, deps)).code).toBe(1)
+    }
+  })
+
+  test('with deps.plugins no descriptor is loaded, so a bad one does not matter', async () => {
+    const h = withHome()
+    writeFileSync(join(h.user, 'mine.yaml'), 'not: a descriptor\n')
+    const r = await run(['status'], h.cwd, h.env, {
+      shippedDescriptors: h.shipped,
+      plugins: [fake('only')],
+    })
+    expect(r.code).not.toBe(2)
+    expect(r.err).not.toContain('mine.yaml')
+  })
+
+  test('a plan records its --descriptor files, and clean --plan stops without them', async () => {
+    const h = withHome(['mine'])
+    const desc = join(h.cwd, 'mine.yaml')
+    writeFileSync(desc, store('.cache/mine'))
+    const deps = { shippedDescriptors: h.shipped }
+    const planFile = join(h.cwd, 'p.json')
+    const made = await run(
+      ['plan', '--descriptor', desc, '--plugin', 'mine', '-o', planFile],
+      h.cwd,
+      h.env,
+      deps,
+    )
+    expect(made.code).toBe(0)
+    expect(parsePlan(readFileSync(planFile, 'utf8'), planFile).descriptors).toEqual([desc])
+    const without = await run(['clean', '--plan', planFile, '--yes'], h.cwd, h.env, deps)
+    expect(without.code).toBe(2)
+    expect(without.err).toContain(`add --descriptor ${desc}`)
+    const other = join(tempDir(), 'mine.yaml')
+    writeFileSync(other, store('.cache/mine'))
+    const wrong = ['clean', '--plan', planFile, '--descriptor', other, '--yes']
+    expect((await run(wrong, h.cwd, h.env, deps)).code).toBe(2)
+    // The plan's descriptors are named even where the config's entry for one would stop it too.
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { mine: { idleHours: 0 } } }))
+    const configured = ['clean', '--plan', planFile, '--config', file, '--yes']
+    const both = await run(configured, h.cwd, h.env, deps)
+    expect(both.code).toBe(2)
+    expect(both.err).toContain(`add --descriptor ${desc}`)
+    expect(existsSync(join(h.home, '.cache', 'mine'))).toBe(true)
+    const dry = await run(
+      ['clean', '--plan', planFile, '--descriptor', desc, '--dry-run'],
+      h.cwd,
+      h.env,
+      deps,
+    )
+    expect(dry.code).not.toBe(2)
+    expect(dry.err).not.toContain('add --descriptor')
   })
 
   test('supersededBy: left out while that plugin runs, used when it is skipped', async () => {

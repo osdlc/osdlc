@@ -10,11 +10,10 @@ export * from './plugin.ts'
 export { DROP_REASONS, type DropReason } from './types.ts'
 export {
   BUILT_IN_PLUGINS,
+  findPlugins,
   loadPlugins,
-  supersession,
   type Loaded,
   type Packages,
-  type Supersession,
 } from './registry.ts'
 export {
   PackageError,
@@ -86,6 +85,7 @@ export {
   type ProjectEntry,
 } from './descriptor/schema.ts'
 export {
+  DUPLICATE_ENTRY,
   IN_USE,
   NO_PRUNE_TOOL,
   descriptorPlugin,
@@ -98,9 +98,12 @@ export {
 export {
   DescriptorLoadError,
   SHIPPED_DESCRIPTORS,
+  findDescriptors,
   loadDescriptors,
+  type DescriptorProblem,
   type DescriptorSource,
   type DescriptorSources,
+  type FoundDescriptors,
   type LoadedDescriptor,
 } from './descriptor/load.ts'
 export {

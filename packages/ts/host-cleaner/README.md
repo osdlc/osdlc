@@ -87,7 +87,8 @@ Every hook's `ctx` carries `targetsGiven`: true when a person named the
 targets, in the config or on the command line, and false when the command line
 fell back to the directory it runs in (and when a `RunCtx` leaves it unset). A
 plan keeps it, so `clean --plan` tells the plugins the same; a plan without it
-is refused: sweep again.
+is refused: sweep again. In `detect`, `ctx.running` holds the names of the
+plugins found active so far, in run order.
 
 A `RunCtx` may name `home`, the home folder no root may be or hold (see the
 roots rules); unset, it is the process's. The CLI sets it from `HOME`, the
@@ -285,7 +286,7 @@ named folders in `paths`, one value for `all` or one per OS, and the
 [Command line](#command-line).
 
 ```yaml
-# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@0.3/schemas/descriptor-1.json
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner/schemas/descriptor-1.json
 descriptor: 1
 detect:
   any: [{ onPath: uv }, { exists: cache }]
@@ -315,7 +316,8 @@ try {
 `descriptorIssues(value)` checks a parsed value and lists its problems without
 lines. A folder must start with `~/`, be absolute, and name something below
 the home folder or the root, not a home folder itself such as `/home/alice`. A
-glob stays inside its path, in every `{a,b}` alternative too. A tool's
+glob names entries inside its path, in every `{a,b}` alternative too, and a
+project `marker` names a file in every alternative. A tool's
 `command` must name the checked folder, as a `{path}` argument or in `env`.
 `vars` (tier 2) and any `${VAR}` elsewhere are refused until variables are
 built. `DescriptorSchema` is the zod schema, and `schemas/descriptor-1.json`,
@@ -340,14 +342,21 @@ const plugin = descriptorPlugin('pip', d)
 - **discover:** one candidate per folder, or per `glob` match inside it
   (`globMatches`; a match may be a file). Matches past `maxEntries` are
   combined into one candidate at the first of them, held while any of them
-  changed within the threshold; deleting it removes each.
-  `project` entries find build folders beside a marker in the targets'
+  changed within the threshold, and measured together in the time one folder
+  gets. `project` entries find build folders beside a marker in the targets'
   checkouts, in one walk, and in a repository's primary checkout only inside
-  the targets.
+  the targets. A build folder that several `project` entries give is one
+  candidate, by the longest of their `idleHours` and the highest of their
+  costs. Any other folder that two entries give is refused
+  (`duplicate-entry`). Home is the run's (`ctx.home`), else `HOME`.
 - **object:** a running `inUse` process or lock refuses its candidates
   (`in-use`); a prune with no program on PATH gets a `no-prune-tool` protest.
-- **delete:** checks the candidate again, then runs the tool's command from
-  the home folder, pointed at the folder, or removes it with `kit.remove`.
+- **delete:** checks the candidate again, and that one the plan ran as idle
+  is still idle and measured (a prune excepted), then runs the tool's command
+  from the home folder, pointed at the folder, or removes it with
+  `kit.remove`. A combined candidate removes each of its matches, none when
+  one is no longer idle. One that cannot be removed does not stop the others,
+  and the error says which went.
 
 ### Loading plugins from code
 
@@ -489,13 +498,21 @@ package's `descriptors/`, `descriptors/` in the config directory, and
 `--descriptor <file>` for one run. A file in the config directory replaces a
 shipped one of the same name, and `--descriptor` replaces either for that run.
 Every plugin has one name, so any other clash, such as a descriptor named `git`
-or two files of one name in one folder, is refused (exit 2). Descriptors run
-after the built-ins, by name. To try one you are writing:
-`host-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan made with
-`--descriptor` needs the same `--descriptor` on `clean --plan`, since the
-re-check loads plugins again and drops a candidate no plugin proposes as
-`gone`. A descriptor's `supersededBy` must name a built-in plugin, or a package
-the config names.
+or two files of one name in one folder, is a file that can't be used. Descriptors
+run after the built-ins, by name. To try one you are writing:
+`host-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan records the
+`--descriptor` files it was made with. `clean --plan` does not load them by
+itself: when one is not given it stops (exit 2) and names each `--descriptor`
+flag to add. A descriptor's `supersededBy` must name a built-in plugin, or a
+package the config names.
+
+`config` reports a descriptor file that can't be used (not a descriptor, a name
+that is no plugin name, or a name clash) and goes on. `status`, `plan` and
+`clean` stop (exit 2) unless the run leaves that name out (`--skip-plugin`,
+`--plugin` naming others, or `enabled: false`), and then warn of it. `--config
+<file>` replaces the config file alone: descriptors still come from the config
+directory. When that directory can't be found, such a run has no user
+descriptors, with a warning.
 
 A descriptor names its folders per OS under `paths`, then lists what may be
 deleted under `candidates`:
@@ -544,10 +561,11 @@ all three directories):
 { "targets": ["~/dev"], "plugins": { "cargo": { "idleHours": 48 }, "node": { "enabled": false } } }
 ```
 
-`plugins.<name>` holds that plugin's settings; a name that no plugin has is an
-error. Each plugin's settings are a strict schema, checked when the config
-loads: a misspelt key or a wrong type is refused (exit 2), naming the plugin and
-the key.
+`plugins.<name>` holds that plugin's settings. A name that no plugin has, such as
+a descriptor given only by `--descriptor`, is a warning for `status`, `plan` and
+`config`, and stops `clean` (exit 2). Each plugin's settings are a strict schema,
+checked when the config loads: a misspelt key or a wrong type is refused (exit 2),
+naming the plugin and the key.
 
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |
