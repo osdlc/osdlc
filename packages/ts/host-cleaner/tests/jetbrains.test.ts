@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, test } from 'vitest'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -21,13 +22,14 @@ import {
   PLUGIN_API,
   clean,
   definePlugin,
+  jetbrainsPlugin as exportedPlugin,
   plan,
   pluginKit,
   survey,
   type Ctx,
   type Plugin,
 } from '../src/index.ts'
-import { javaHashHex, jetbrainsPlugin, type JetbrainsOptions } from '../src/jetbrains.ts'
+import { gone, javaHashHex, jetbrainsPlugin, type JetbrainsOptions } from '../src/jetbrains.ts'
 import { contractSuite, fakeContext, tempHome, type TempHome } from '../src/testing.ts'
 
 const NOW = new Date('2026-11-19T12:00:00Z')
@@ -281,6 +283,93 @@ describe('version folders', () => {
     ])
   })
 
+  test('another app in the application folders, or one that cannot be looked into, refuses nothing', async () => {
+    const h = twoVersions()
+    put(
+      join(apps(h), 'Android Studio.app', 'Contents', 'Resources', 'product-info.json'),
+      48,
+      JSON.stringify({ dataDirectoryName: 'AndroidStudio2024.1.2' }),
+    )
+    const locked = join(apps(h), 'Locked.app')
+    mkdirSync(locked)
+    chmodSync(locked, 0o000)
+    cleanups.push(() => chmodSync(locked, 0o755))
+    const s = await survey([make(h)], ctx())
+    expect(s.candidates).toHaveLength(2)
+    expect(s.objections).toEqual([])
+  })
+
+  test('a Toolbox install that names no version folder refuses every version folder', async () => {
+    const h = twoVersions()
+    const odd = join(h.home, 'tools', 'Odd.app')
+    put(join(odd, 'product-info.json'), 48, JSON.stringify({ dataDirectoryName: 'Odd' }))
+    put(
+      join(config(h), 'Toolbox', 'state.json'),
+      48,
+      JSON.stringify({ tools: [{ installLocation: odd }] }),
+    )
+    const s = await survey([make(h)], ctx())
+    expect(s.objections.map((o) => o.code)).toEqual([
+      'installs-unreadable',
+      'installs-unreadable',
+    ])
+  })
+
+  test('a snap install, `<name>/current/product-info.json`, is an install', async () => {
+    const h = home()
+    version(h, 'PyCharmCE2025.1')
+    put(
+      join(h.home, 'snap-root', 'pycharm-community', 'current', 'product-info.json'),
+      48,
+      JSON.stringify({ dataDirectoryName: 'PyCharmCE2025.1' }),
+    )
+    const s = await survey([make(h, { options: { apps: [join(h.home, 'snap-root')] } })], ctx())
+    expect(s.candidates).toEqual([])
+  })
+
+  test('an IDE started through the Linux .sh launcher, as java, refuses its folders', async () => {
+    const h = twoVersions()
+    const s = await survey(
+      [
+        make(h, {
+          ps: psOf([
+            {
+              pid: 7,
+              args: '/opt/rustrover/jbr/bin/java -Djb.vmOptionsFile=/opt/rustrover/bin/rustrover64.vmoptions -Didea.paths.selector=RustRover2025.1 com.intellij.idea.Main',
+            },
+          ]),
+        }),
+      ],
+      ctx(),
+    )
+    expect(s.objections.map((o) => o.code)).toEqual(['live-process', 'live-process'])
+  })
+
+  test('delete refuses a version folder used again since it was surveyed', async () => {
+    const h = twoVersions()
+    const plugin = make(h)
+    const s = await survey([plugin], ctx())
+    const c = s.candidates.find((x) => x.path === join(caches(h), 'RustRover2025.1'))!
+    put(join(c.path!, 'caches', 'fresh.dat'), 1)
+    await expect((async () => plugin.delete!(c, ctx()))()).rejects.toThrow('was used within')
+    expect(existsSync(c.path!)).toBe(true)
+    const receipt = await clean(plan(s), [plugin], ctx())
+    expect(receipt.dropped).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: c.id, reason: 'changed' })]),
+    )
+    expect(existsSync(c.path!)).toBe(true)
+  })
+
+  test('built directly with jetbrainsPlugin, its kit is still bound by the core', async () => {
+    const h = twoVersions()
+    const plugin = exportedPlugin(
+      { env: h.env, platform: 'darwin', apps: [apps(h)] },
+      pluginKit(JETBRAINS_PLUGIN, { now: () => NOW, ps: psOf() }),
+    )
+    const receipt = await clean(plan(await survey([plugin], ctx())), [plugin], ctx())
+    expect(receipt.steps.map((x) => x.result)).toEqual(['ok', 'ok'])
+  })
+
   test('with no install at all, a product the table does not know is watched by its lowercased name', async () => {
     const h = home()
     version(h, 'Fleetish2025.1')
@@ -348,6 +437,23 @@ describe('project caches', () => {
     writeFileSync(xml, `<map><entry key="${offline}" /></map>`)
     put(join(projects, `proj.${javaHashHex(offline)}`, 'x'))
     expect((await survey([make(h)], ctx())).candidates).toEqual([])
+  })
+
+  test('under a mount folder, a missing project is gone only when its volume is mounted', () => {
+    const disk = (existing: Record<string, number>) => ({
+      present: (p: string) => p in existing,
+      device: (p: string) => existing[p],
+    })
+    // An unmounted share leaves its empty mount point on the root's device.
+    const unmounted = disk({ '/': 1, '/mnt': 1, '/mnt/nas': 1 })
+    expect(gone('/mnt/nas/proj', unmounted)).toBe(false)
+    expect(gone('/media/alice/USB/proj', disk({ '/': 1, '/media': 1, '/media/alice': 1 }))).toBe(
+      false,
+    )
+    expect(gone('/Volumes/Ext/proj', disk({ '/': 1, '/Volumes': 1 }))).toBe(false)
+    expect(gone('/mnt/nas/proj', disk({ '/': 1, '/mnt': 1, '/mnt/nas': 2 }))).toBe(true)
+    expect(gone('/home/me/proj', disk({ '/': 1, '/home': 1, '/home/me': 1 }))).toBe(true)
+    expect(gone('/nowhere/proj', disk({ '/': 1 }))).toBe(false)
   })
 })
 

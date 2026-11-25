@@ -312,21 +312,30 @@ Settings: `plugins.jetbrains.idleHours` (default 24).
   install names. An install is known by `dataDirectoryName` in its
   `product-info.json`, read from each tool the Toolbox's `state.json` lists and
   from the application folders (`/Applications` and `~/Applications` on macOS;
-  the Toolbox's `apps` folder and `/opt` on Linux). It is held while it changed
-  within `idleHours`, in case an install sits somewhere not looked in. A Toolbox
-  state or `product-info.json` that is there and cannot be read refuses every
-  version folder (`installs-unreadable`).
+  the Toolbox's `apps` folder, `/opt`, `/usr/local`, `/usr/share`, snaps under
+  `/snap`, `~/opt`, `~/.local/share` and `~/Applications` on Linux). It is held
+  while it changed within `idleHours`, in case an install sits somewhere not
+  looked in; one used again between plan and clean is dropped as changed. A
+  Toolbox state or `product-info.json` that is there and cannot be read refuses
+  every version folder (`installs-unreadable`). In the application folders, an
+  entry that cannot be looked into, or whose `product-info.json` names no
+  `<Product><year>.<n>` folder, is taken as some other app and passed over.
 - `project-cache:<path>`: inside an installed version, `projects/<name>.<hash>`
   whose project is gone. The hash is Java's `String.hashCode` of the project's
   path, matched against the version's recent projects
   (`options/recentProjects.xml` in its config folder). A cache whose hash
   matches no recent project is left alone, and so is a project on a volume that
-  is not mounted.
+  is not mounted: under `/Volumes`, `/mnt`, `/media` or `/run/media`, a missing
+  project is gone only when its nearest existing folder is on a mounted volume
+  of its own.
 
-A running process of the product (`rustrover`, `idea`, and so on), whatever its
-version, or a process table that cannot be read, is a `refuse`. Folders other
-than version folders, and links, are never looked into. `delete` finds and
-measures the folder again, then removes it with `kit.remove`.
+A running process of the product (`rustrover`, `idea`, and so on, or
+`rustrover64` as in the `.vmoptions` file a Linux `.sh` launcher passes to
+`java`), whatever its version, or a process table that cannot be read, is a
+`refuse`. Folders other than version folders, and links, are never looked into.
+`delete` finds the folder again and checks its idle time and processes, then
+removes it with `kit.remove`. `jetbrainsPlugin(options, kit)` builds the plugin
+directly, with `apps` or `platform` of your own.
 
 ## Command line
 

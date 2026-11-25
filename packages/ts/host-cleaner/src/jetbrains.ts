@@ -22,13 +22,13 @@
  * Settings: `plugins.jetbrains.idleHours` (default {@link DEFAULT_IDLE_HOURS}).
  */
 
-import { lstatSync, readFileSync, readdirSync } from 'node:fs'
+import { lstatSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, isAbsolute, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, sep } from 'node:path'
 
 import { z } from 'zod'
 
-import { DEFAULT_IDLE_HOURS, idleHoursSetting, type Kit } from './kit.ts'
+import { DEFAULT_IDLE_HOURS, attachKit, idleHoursSetting, type Kit } from './kit.ts'
 import {
   PLUGIN_API,
   definePlugin,
@@ -67,8 +67,8 @@ const LAUNCHERS: Readonly<Record<string, string>> = {
   Writerside: 'writerside',
 }
 
-/** Where a missing project's nearest existing folder means its volume is not mounted, so it is not known to be gone. */
-const MOUNT_PARENTS = new Set(['/', '/Volumes', '/mnt', '/media', '/run/media'])
+/** The folders volumes are mounted under. A missing project under one is gone only when the volume it was on is mounted. */
+const MOUNT_PARENTS = ['/Volumes', '/mnt', '/media', '/run/media']
 
 const DISCOVER_LIMIT_MS = 10 * 60_000
 
@@ -122,7 +122,18 @@ function layoutOf(opts: JetbrainsOptions): Layout {
       roots: [join(xdg('XDG_CACHE_HOME', '.cache'), 'JetBrains')],
       config: join(xdg('XDG_CONFIG_HOME', '.config'), 'JetBrains'),
       toolbox: join(data, 'state.json'),
-      apps: [...(opts.apps ?? [join(data, 'apps'), '/opt'])],
+      apps: [
+        ...(opts.apps ?? [
+          join(data, 'apps'),
+          '/opt',
+          '/usr/local',
+          '/usr/share',
+          '/snap',
+          join(home, 'opt'),
+          join(home, '.local', 'share'),
+          join(home, 'Applications'),
+        ]),
+      ],
     }
   }
   return { home, roots: [], config: '', toolbox: '', apps: [] }
@@ -130,10 +141,24 @@ function layoutOf(opts: JetbrainsOptions): Layout {
 
 /** True when `path` exists as itself, a link counted as present. One that cannot be checked counts as present, so it is never taken as gone. */
 function present(path: string): boolean {
+  return exists(path) !== false
+}
+
+/** Whether `path` exists as itself, a link counted as present; `unknown` when it cannot be checked. */
+function exists(path: string): boolean | 'unknown' {
   try {
     return lstatSync(path, { throwIfNoEntry: false }) !== undefined
   } catch (err) {
-    return (err as NodeJS.ErrnoException).code !== 'ENOTDIR'
+    return (err as NodeJS.ErrnoException).code === 'ENOTDIR' ? false : 'unknown'
+  }
+}
+
+/** The device `path` is on, links followed; undefined when it cannot be checked. */
+function deviceOf(path: string): number | undefined {
+  try {
+    return statSync(path).dev
+  } catch {
+    return undefined
   }
 }
 
@@ -177,16 +202,37 @@ interface Installs {
 /**
  * The installs in `layout`. A `product-info.json` that is missing means no
  * install; one that is there and cannot be read, or a Toolbox install whose
- * folder has none, is a problem, since an install may be missed.
+ * folder has none or names no version folder, is a problem, since an install
+ * may be missed. In the application folders, an entry that cannot be looked
+ * into, or whose `product-info.json` names no version folder, is some other
+ * app and is passed over.
  */
 function installsOf(layout: Layout): Installs {
   const found: Installs = { versions: new Set(), launchers: new Map(), problems: [] }
-  const read = (dir: string, missing: () => void): void => {
-    const file = [
+  const read = (dir: string, toolbox: boolean): void => {
+    let file: string | undefined
+    for (const f of [
       join(dir, 'Contents', 'Resources', 'product-info.json'),
       join(dir, 'product-info.json'),
-    ].find(present)
-    if (file === undefined) return missing()
+      // A snap: `/snap/<name>/current`.
+      join(dir, 'current', 'product-info.json'),
+    ]) {
+      const there = exists(f)
+      if (there === 'unknown' && toolbox) {
+        found.problems.push(`${f} could not be checked`)
+        return
+      }
+      if (there === true) {
+        file = f
+        break
+      }
+    }
+    if (file === undefined) {
+      if (toolbox) {
+        found.problems.push(`the Toolbox installed ${dir}, which has no product-info.json`)
+      }
+      return
+    }
     let info: unknown
     try {
       info = JSON.parse(readFileSync(file, 'utf8'))
@@ -199,7 +245,7 @@ function installsOf(layout: Layout): Installs {
     const name = isObject(info) ? info.dataDirectoryName : undefined
     const m = typeof name === 'string' ? VERSION_DIR.exec(name) : null
     if (!isObject(info) || m === null) {
-      found.problems.push(`${file} names no version folder`)
+      if (toolbox) found.problems.push(`${file} names no version folder`)
       return
     }
     found.versions.add(m[0])
@@ -224,9 +270,7 @@ function installsOf(layout: Layout): Installs {
       for (const tool of state.tools) {
         const where = isObject(tool) ? tool.installLocation : undefined
         if (typeof where !== 'string' || !isAbsolute(where) || !present(where)) continue
-        read(where, () =>
-          found.problems.push(`the Toolbox installed ${where}, which has no product-info.json`),
-        )
+        read(where, true)
       }
     }
   }
@@ -238,7 +282,7 @@ function installsOf(layout: Layout): Installs {
     } catch {
       continue
     }
-    for (const name of names) read(join(apps, name), () => {})
+    for (const name of names) read(join(apps, name), false)
   }
   return found
 }
@@ -269,12 +313,31 @@ function recentProjects(file: string, home: string): string[] {
   return [...out]
 }
 
-/** Whether `path` is gone from a volume that is there: a missing one under an unmounted volume is not known to be gone. */
-function gone(path: string): boolean {
-  if (present(path)) return false
+/** How {@link gone} looks at the disk. */
+export interface DiskProbe {
+  present: (path: string) => boolean
+  device: (path: string) => number | undefined
+}
+
+const DISK: DiskProbe = { present, device: deviceOf }
+
+/**
+ * Whether `path` is gone from a volume that is there. A missing one under a
+ * mount folder (`/Volumes`, `/mnt`, `/media`, `/run/media`) is gone only when
+ * its nearest existing folder there is on a device of its own, a volume that
+ * is mounted: an unmounted volume may leave its empty mount point behind.
+ */
+export function gone(path: string, disk: DiskProbe = DISK): boolean {
+  if (disk.present(path)) return false
   let dir = dirname(path)
-  while (!present(dir)) dir = dirname(dir)
-  return !MOUNT_PARENTS.has(dir) && dirname(dir) !== '/run/media'
+  while (!disk.present(dir)) dir = dirname(dir)
+  if (dir === dirname(dir)) return false
+  const mounts = MOUNT_PARENTS.find((m) => dir === m || dir.startsWith(m + '/'))
+  if (mounts === undefined) return true
+  if (dir === mounts) return false
+  const here = disk.device(dir)
+  const under = disk.device(mounts)
+  return here !== undefined && under !== undefined && here !== under
 }
 
 /** One folder that may be a candidate, before anything is measured. */
@@ -288,8 +351,8 @@ interface Found {
   project?: string
 }
 
-/** The version folders no install uses, and the caches of gone projects inside the installed ones. */
-function scan(layout: Layout, installs: Installs): Found[] {
+/** The version folders no install uses, and the caches of gone projects inside the installed ones; with `only`, just the version folder holding it. */
+function scan(layout: Layout, installs: Installs, only?: string): Found[] {
   const out: Found[] = []
   for (const root of layout.roots) {
     for (const version of folders(root)) {
@@ -297,6 +360,7 @@ function scan(layout: Layout, installs: Installs): Found[] {
       if (m === null) continue
       const product = m[1]!
       const path = join(root, version)
+      if (only !== undefined && only !== path && !only.startsWith(path + sep)) continue
       if (!installs.versions.has(version)) {
         out.push({ kind: 'ide-version', path, version, product })
         continue
@@ -358,9 +422,11 @@ function runningOf(env: Env, product: string): Row['blockers'] {
   if (fixed !== undefined) names.add(fixed)
   if (names.size === 0) names.add(product.toLowerCase())
   const running: string[] = []
+  // A Linux `.sh` launcher runs `java -Djb.vmOptionsFile=.../bin/<name>64.vmoptions ...`.
+  for (const name of [...names]) names.add(`${name}64`)
   for (const name of [...names].sort()) {
     const r = env.kit.running({ name }, env.ctx)
-    running.push(...r.names)
+    running.push(...r.names.filter((n) => !running.includes(n)))
     if (r.unknown !== undefined) {
       blockers.push({
         code: 'process-table-unreadable',
@@ -379,8 +445,8 @@ function runningOf(env: Env, product: string): Row['blockers'] {
   return blockers
 }
 
-/** The row for `f`, measured now; null when its folder cannot be read. */
-function rowOf(env: Env, f: Found): Row | null {
+/** The row for `f`, measured now, its size only when `sized`; null when its folder cannot be read. */
+function rowOf(env: Env, f: Found, sized = true): Row | null {
   const { kit, idleHours, installs } = env
   const blockers = [...runningOf(env, f.product)]
 
@@ -409,7 +475,7 @@ function rowOf(env: Env, f: Found): Row | null {
   } else {
     why = `${f.version}'s cache for ${f.project}, which is gone`
   }
-  const bytes = unmeasured ? null : kit.size(f.path)
+  const bytes = unmeasured || !sized ? null : kit.size(f.path)
   return {
     blockers,
     candidate: kit.candidate({
@@ -426,6 +492,8 @@ function rowOf(env: Env, f: Found): Row | null {
         path: f.path,
         version: f.version,
         ...(f.project === undefined ? {} : { project: f.project }),
+        // A version used again since the plan then reads as changed, picked or not.
+        ...(held ? { recent: true } : {}),
       },
     }),
   }
@@ -445,7 +513,7 @@ export function jetbrainsPlugin(opts: JetbrainsOptions, kit: Kit): Plugin {
     running: new Map(),
   })
   let rows = new Map<string, Row>()
-  return {
+  const plugin: Plugin = {
     name: JETBRAINS_PLUGIN,
     limits: { discover: DISCOVER_LIMIT_MS },
     detect: () => layout.roots.some(isDir),
@@ -473,15 +541,24 @@ export function jetbrainsPlugin(opts: JetbrainsOptions, kit: Kit): Plugin {
       if (!present(c.path)) return `already gone: ${c.path}`
       // Found and measured again, so an install, a project or a process that came back since the plan is seen.
       const env = envOf(ctx)
-      const f = scan(layout, env.installs).find((x) => x.path === c.path && x.kind === c.kind)
-      const now = f === undefined ? null : rowOf(env, f)
+      const f = scan(layout, env.installs, c.path).find(
+        (x) => x.path === c.path && x.kind === c.kind,
+      )
+      const now = f === undefined ? null : rowOf(env, f, false)
       if (now === null) throw new Error(`${c.path} is no longer a candidate`)
       if (now.blockers.length > 0) {
         throw new Error(`${c.path} is refused: ${now.blockers.map((b) => b.reason).join(', ')}`)
       }
+      // `c` is the candidate the re-check just made; its `held` is set only when it was held then.
+      if (now.candidate.held === true && c.held !== true) {
+        throw new Error(`${c.path} was used within the last ${idleHours} hours`)
+      }
       return kit.remove(c.path, ctx)
     },
   }
+  // Built without `definePlugin` when called directly, so tie the kit here too.
+  attachKit(plugin, kit)
+  return plugin
 }
 
 /** The `jetbrains` plugin as the command line builds it. */
