@@ -7,9 +7,8 @@
  * reader runs.
  *
  * `vars` (tier 2) is in the schema, so a tier 2 file has its shape checked,
- * but `parseDescriptor` and `readDescriptor` refuse it, and any `${VAR}`
- * outside it (a folder, lock, glob, command argument or env value), until
- * variables are built.
+ * but `parseDescriptor` and `readDescriptor` refuse it, and any string outside
+ * it with a `${` in it, until variables are built.
  */
 
 import { readFileSync } from 'node:fs'
@@ -25,10 +24,7 @@ export const DESCRIPTOR_VERSION = 1
 /** The release line, `major.minor` of package.json's version. */
 const RELEASE_LINE = VERSION.split('.').slice(0, 2).join('.')
 
-/**
- * Where this release line publishes the JSON Schema; a descriptor's `$schema`
- * may name it. It follows package.json's version.
- */
+/** Where this release line publishes the JSON Schema; a descriptor's `$schema` may name it. */
 export const DESCRIPTOR_SCHEMA_URL = `https://unpkg.com/@osdlc/host-cleaner@${RELEASE_LINE}/schemas/descriptor-1.json`
 
 /** How many glob matches become candidates of their own before the rest are combined into one. */
