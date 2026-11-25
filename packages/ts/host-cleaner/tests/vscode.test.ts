@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   renameSync,
   symlinkSync,
   writeFileSync,
@@ -16,6 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { ProcessProbe } from '@osdlc/repo-cleaner'
 
 import {
+  AGENT_WORKTREE,
   DISCARD_USER_DATA,
   IN_USE,
   UNKNOWN_WORKSPACE,
@@ -686,6 +688,56 @@ describe('cursor', () => {
     const vscode = { pid: 11, command: 'Code Helper (Plugin)', cwd: join(wt, 'src') }
     const other = cursorPlugin(h.options({ probe: probeOf([CODE, vscode]) }))
     expect(await other.object!([worktree(wt)], fakeContext())).toEqual([])
+  })
+
+  test('a dead Cursor workspace with chats gives its reason once and keeps no history evidence', async () => {
+    const h = home('Cursor')
+    const dead = store(h.storage, 'bbb', folder(join(h.projects, 'dead')))
+    chat(dead, [whole([REQUEST])])
+    const s = await survey([cursorPlugin(h.options())], ctxOf(h.home))
+    expect(s.candidates).toEqual([
+      expect.objectContaining({
+        why: `Cursor kept state and chat history for ${join(h.projects, 'dead')}, which no longer exists`,
+        costDescription: 'lost',
+        evidence: {
+          kind: 'workspace-storage',
+          path: dead,
+          workspace: folder(join(h.projects, 'dead')).folder,
+        },
+      }),
+    ])
+  })
+
+  test("refuses git's worktree in Cursor's agent worktrees, even while Cursor does not run", async () => {
+    const h = home('Cursor')
+    const agents = join(h.home, '.cursor', 'worktrees')
+    const wt = join(agents, 'repo', 'k3x')
+    mkdirSync(wt, { recursive: true })
+    const plugin = cursorPlugin(h.options())
+    expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
+      {
+        by: 'cursor',
+        candidate: `worktree:${wt}`,
+        level: 'refuse',
+        code: AGENT_WORKTREE,
+        reason: `Cursor's agents keep it (${realpathSync(agents)})`,
+      },
+    ])
+    expect(await vscodePlugin(h.options()).object!([worktree(wt)], fakeContext())).toEqual([])
+  })
+
+  test("refuses git's worktree the cursor-agent CLI works in", async () => {
+    const h = home('Cursor')
+    const wt = join(h.projects, 'wt')
+    mkdirSync(wt)
+    const agent = { pid: 22, command: 'cursor-agent', cwd: wt }
+    const plugin = cursorPlugin(h.options({ probe: probeOf([agent]) }))
+    expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
+      expect.objectContaining({
+        code: IN_USE,
+        reason: 'Cursor works in it: cursor-agent (pid 22)',
+      }),
+    ])
   })
 
   test("refuses git's worktree a Cursor window has open while Cursor runs", async () => {

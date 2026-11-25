@@ -44,6 +44,9 @@ export const IN_USE = 'in-use'
 /** The refusal of a storage folder whose `workspace.json` is a shape this plugin does not know. */
 export const UNKNOWN_WORKSPACE = 'unknown-workspace'
 
+/** The refusal of a `git` worktree in the folder where the editor's own agents keep theirs. */
+export const AGENT_WORKTREE = 'agent-worktree'
+
 const KIND = 'workspace-storage'
 
 /** One editor of VS Code's family: where it keeps its state and what its processes are called. */
@@ -57,6 +60,8 @@ interface Editor {
   process: RegExp
   /** True when its workspace storage always holds chat history, so deleting it is `lost`. */
   keepsChat: boolean
+  /** The folder under `HOME` where its agents make and track their own worktrees. */
+  agentWorktrees?: string
 }
 
 const VSCODE: Editor = {
@@ -72,10 +77,11 @@ const CURSOR: Editor = {
   name: CURSOR_PLUGIN,
   product: 'Cursor',
   appDir: 'Cursor',
-  // `Cursor` and its `Cursor Helper (…)` processes on macOS, `cursor` on Linux.
-  process: /^cursor(?:\s|\\x20|$)/i,
+  // `Cursor` and its `Cursor Helper (…)` processes on macOS, `cursor` on Linux, and the `cursor-agent` CLI.
+  process: /^cursor(?:-agent)?(?:\s|\\x20|$)/i,
   // Its chat history is kept there, and nothing brings it back.
   keepsChat: true,
+  agentWorktrees: join('.cursor', 'worktrees'),
 }
 
 /** The longest `discover` may take: it sizes every dead storage folder. */
@@ -226,17 +232,17 @@ function userDirOf(
   return undefined
 }
 
+/** {@link userDirOf} for one `editor`. */
+const userDirFor =
+  (editor: Editor) =>
+  (env: Readonly<Record<string, string | undefined>>, platform: NodeJS.Platform) =>
+    userDirOf(editor, env, platform)
+
 /** VS Code's `User` folder on `platform`; undefined where the plugin does not know it. */
-export const vscodeUserDir = (
-  env: Readonly<Record<string, string | undefined>>,
-  platform: NodeJS.Platform,
-): string | undefined => userDirOf(VSCODE, env, platform)
+export const vscodeUserDir = userDirFor(VSCODE)
 
 /** Cursor's `User` folder on `platform`; undefined where the plugin does not know it. */
-export const cursorUserDir = (
-  env: Readonly<Record<string, string | undefined>>,
-  platform: NodeJS.Platform,
-): string | undefined => userDirOf(CURSOR, env, platform)
+export const cursorUserDir = userDirFor(CURSOR)
 
 /** What one storage folder says about its workspace. */
 type Entry =
@@ -289,8 +295,8 @@ function localPath(uri: string): string | null {
   return url.protocol === 'file:' ? fileURLToPath(url) : null
 }
 
-/** What the storage folder `dir` says, read from its `workspace.json`. */
-function entryOf(dir: string): Entry {
+/** What the storage folder `dir` says, read from its `workspace.json`; its history is looked for only when `withHistory`. */
+function entryOf(dir: string, withHistory: boolean): Entry {
   // The editor makes each one a folder; a link or a file is not one of its own and is never followed.
   if (lstatSync(dir, { throwIfNoEntry: false })?.isDirectory() !== true) return { state: 'skip' }
   let text: string
@@ -334,7 +340,7 @@ function entryOf(dir: string): Entry {
     return { state: 'skip' }
   }
   if (unmounted(local)) return { state: 'skip' }
-  return { state: 'gone', workspace, local, history: historyIn(dir) }
+  return { state: 'gone', workspace, local, history: withHistory ? historyIn(dir) : [] }
 }
 
 /** The local folders and workspace files the window state names; `problem` when it is not a shape this plugin knows. */
@@ -387,6 +393,12 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
   const root = userDir === undefined ? undefined : join(userDir, 'workspaceStorage')
   const stateFile =
     userDir === undefined ? undefined : join(userDir, 'globalStorage', 'storage.json')
+  const agentDir =
+    editor.agentWorktrees === undefined
+      ? undefined
+      : canon(join((opts.env ?? process.env).HOME ?? homedir(), editor.agentWorktrees))
+  // Storage that always holds chat is `lost` whatever its history folders hold.
+  const withHistory = !editor.keepsChat
   const present = (): boolean =>
     root !== undefined && lstatSync(root, { throwIfNoEntry: false }) !== undefined
 
@@ -417,7 +429,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
       const out: Candidate[] = []
       for (const name of readdirSync(root).sort()) {
         const dir = join(root, name)
-        const entry = entryOf(dir)
+        const entry = entryOf(dir, withHistory)
         if (entry.state === 'skip') continue
         const c =
           entry.state === 'gone'
@@ -454,6 +466,12 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
       const opened = (path: string): boolean => windows.paths.some((p) => within(p, canon(path)))
 
       for (const c of worktrees) {
+        if (agentDir !== undefined && within(canon(c.path), agentDir)) {
+          out.push(
+            own(c, 'refuse', AGENT_WORKTREE, `${editor.product}'s agents keep it (${agentDir})`),
+          )
+          continue
+        }
         const procs = processesOf(editor, kit.running({ in: c.path }, ctx).names)
         if (procs.length > 0) {
           out.push(own(c, 'refuse', IN_USE, `${editor.product} works in it: ${procs.join(', ')}`))
@@ -486,7 +504,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
         return `already gone: ${c.path}`
       }
       // Read again: its workspace may be back, or the folder no longer the editor's.
-      const now = entryOf(c.path)
+      const now = entryOf(c.path, withHistory)
       if (now.state !== 'gone' || now.workspace !== c.evidence.workspace) {
         throw new Error(`${c.path} is no longer storage for a workspace that is gone`)
       }
@@ -509,7 +527,9 @@ function goneCandidate(
   return kit.candidate({
     kind: KIND,
     path: dir,
-    why: `${editor.product} kept ${editor.keepsChat ? 'state and chat history' : 'state'} for ${e.local}, which no longer exists${hasHistory ? `, with chat or agent history in ${e.history.join(', ')}` : ''}`,
+    why: editor.keepsChat
+      ? `${editor.product} kept state and chat history for ${e.local}, which no longer exists`
+      : `${editor.product} kept state for ${e.local}, which no longer exists${hasHistory ? `, with chat or agent history in ${e.history.join(', ')}` : ''}`,
     ...(bytes === null ? {} : { bytes }),
     // A `lost` candidate is held, and runs only with `--allow discard-user-data`.
     costDescription: hasHistory || editor.keepsChat ? 'lost' : 're-download',
@@ -522,13 +542,13 @@ function goneCandidate(
   })
 }
 
-/** `editor`'s plugin definition, built over `opts` or else the command line's `env`. No settings of its own. */
+/** `editor`'s plugin definition, built over `opts`, with the command line's `env` where `opts` gives none. No settings of its own. */
 const definitionOf = (editor: Editor, opts?: VscodeOptions) =>
   definePlugin({
     name: editor.name,
     api: PLUGIN_API,
     settings: z.strictObject({}),
-    create: ({ kit, env }) => build(editor, kit, opts ?? { env }),
+    create: ({ kit, env }) => build(editor, kit, { ...opts, env: opts?.env ?? env }),
   })
 
 /** `editor`'s plugin on a kit built from `opts`, made through `definePlugin` so the core binds that kit each run. */

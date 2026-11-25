@@ -97,6 +97,7 @@ export {
   type OrcaRecord,
 } from './orca.ts'
 export {
+  AGENT_WORKTREE,
   CURSOR_PLUGIN,
   IN_USE,
   UNKNOWN_WORKSPACE,
