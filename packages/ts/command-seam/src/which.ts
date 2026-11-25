@@ -210,6 +210,54 @@ export function absolutePathCandidates(binary: string, opts: PathCandidateOption
 }
 
 /**
+ * Options for {@link absolutePathEntries}.
+ *
+ * @experimental
+ */
+export interface AbsolutePathOptions {
+  /** The platform whose rules apply. Default `process.platform`. */
+  platform?: NodeJS.Platform | undefined
+}
+
+/**
+ * `path`, a `PATH` value, with only the entries a lookup with
+ * `absolutePathOnly` searches, in order and as written: on Windows, one with
+ * a drive (`C:\bin`) or a UNC prefix, and an entry in double quotes keeps
+ * them. A relative or empty entry is dropped, and on Windows a
+ * drive-relative one (`\bin`). Give it to a child as its `PATH` when the
+ * child looks programs up itself in a folder someone else wrote: git there
+ * starts `ssh` for a push, a `!` credential helper and `gpg` by name, and
+ * with `.` on `PATH` would start a file the folder holds.
+ *
+ * With no absolute entry left, POSIX gives `/usr/bin:/bin`, the folders a
+ * spawn searches with `PATH` unset, since a POSIX shell reads an empty `PATH`
+ * as the current folder. Windows gives `''`. An unset `PATH` stays unset.
+ *
+ * @param path - The `PATH` value, or `undefined` when it is unset.
+ * @param opts - The platform.
+ * @returns The `PATH` to pass on, or `undefined`.
+ * @experimental
+ *
+ * @example
+ * ```ts
+ * absolutePathEntries('.:/usr/bin::bin:/opt/git/bin', { platform: 'linux' }) // '/usr/bin:/opt/git/bin'
+ * ```
+ */
+export function absolutePathEntries(
+  path: string | undefined,
+  opts: AbsolutePathOptions = {},
+): string | undefined {
+  if (path === undefined) return undefined
+  const windows = (opts.platform ?? process.platform) === 'win32'
+  const separator = windows ? ';' : ':'
+  const kept = path
+    .split(separator)
+    .filter((entry) => isAbsoluteEntry(windows ? unquoted(entry) : entry, windows))
+  if (kept.length === 0) return windows ? '' : '/usr/bin:/bin'
+  return kept.join(separator)
+}
+
+/**
  * The suffixes a Windows lookup tries on `binary`: `''` alone when it already
  * ends in a `PATHEXT` extension (compared in any case), else each extension.
  */
@@ -224,7 +272,12 @@ function pathextSuffixes(binary: string, pathext: string | undefined): string[] 
  * entry such as `"C:\Program Files\x"`, so they are stripped here too.
  */
 function windowsPathDirs(path: string): string[] {
-  return path.split(';').map((entry) => (/^".*"$/.test(entry) ? entry.slice(1, -1) : entry))
+  return path.split(';').map(unquoted)
+}
+
+/** A Windows `PATH` entry without the double quotes around it, if it has them. */
+function unquoted(entry: string): string {
+  return /^".*"$/.test(entry) ? entry.slice(1, -1) : entry
 }
 
 /** Whether `binary` holds a path separator, so it is a path, not a name looked up on `PATH`. */

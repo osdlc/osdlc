@@ -141,7 +141,9 @@ export { withDefaults, type DefaultedRunner } from './defaults.ts'
 
 export {
   absolutePathCandidates,
+  absolutePathEntries,
   which,
+  type AbsolutePathOptions,
   type PathCandidateOptions,
   type WhichOptions,
 } from './which.ts'
