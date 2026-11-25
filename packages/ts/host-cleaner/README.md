@@ -21,8 +21,9 @@ config's `plugins` (the core adds `enabled` and makes it strict), and `create`
 builds the plugin from those settings, validated with defaults filled in, and
 the plugin kit (see [The plugin kit](#the-plugin-kit)). A plugin of your own is
 written the same way, from `@osdlc/host-cleaner/plugin`, which holds
-`definePlugin`, `PLUGIN_API`, the contract's types, the kit and `z` (the zod the
-core validates settings with), and nothing of the run. [Writing a
+`definePlugin`, `PLUGIN_API`, the contract's types, the kit, `CommandFailed`
+and `z` (the zod the core validates settings with), and nothing of the run; the
+main entry exports all of it too. [Writing a
 plugin](./docs/guide/writing-a-plugin.md) is the guide: writing, testing and
 publishing one.
 

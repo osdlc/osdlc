@@ -5,7 +5,7 @@
  * exports only those two entries of the built dist/, so run `pnpm build`
  * first, as for the typecheck.
  */
-import { afterAll, beforeAll, expect, test } from 'vitest'
+import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import {
   copyFileSync,
@@ -92,39 +92,41 @@ function outsidePackage(): TempHome {
   return outside
 }
 
-// One package, shared by the tests that use it.
-let dir = ''
-let cleanup = (): void => {}
-beforeAll(() => {
-  ;({ home: dir, cleanup } = outsidePackage())
-}, 60_000)
-afterAll(() => cleanup())
+// One package, shared by the tests that use it; only they need a fresh dist/.
+describe('a package outside this one', () => {
+  let dir = ''
+  let cleanup = (): void => {}
+  beforeAll(() => {
+    ;({ home: dir, cleanup } = outsidePackage())
+  }, 60_000)
+  afterAll(() => cleanup())
 
-test('an outside package builds against ./plugin and ./testing, and its plugin keeps the contract', () => {
-  const built = spawnSync(process.execPath, [tsc, '-p', dir], { cwd: dir, encoding: 'utf8' })
-  expect(built.stdout + built.stderr).toBe('')
-  expect(built.status).toBe(0)
+  test('builds against ./plugin and ./testing, and its plugin keeps the contract', () => {
+    const built = spawnSync(process.execPath, [tsc, '-p', dir], { cwd: dir, encoding: 'utf8' })
+    expect(built.stdout + built.stderr).toBe('')
+    expect(built.status).toBe(0)
 
-  const ran = spawnSync(process.execPath, [join(dir, 'dist', 'check.js')], { encoding: 'utf8' })
-  expect(ran.stderr).toBe('')
-  const out = JSON.parse(ran.stdout) as {
-    ids: string[]
-    problems: string[]
-    relative: { active: boolean; note: string }
-  }
-  // build-2 holds no files yet, so it is not idle.
-  expect(out.ids).toEqual([expect.stringMatching(/^scratch:.*\/\.scratch\/build-1$/)])
-  expect(out.problems).toEqual([])
-  expect(out.relative).toEqual({ active: false, note: '~/.scratch is not absolute' })
-}, 60_000)
+    const ran = spawnSync(process.execPath, [join(dir, 'dist', 'check.js')], { encoding: 'utf8' })
+    expect(ran.stderr).toBe('')
+    const out = JSON.parse(ran.stdout) as {
+      ids: string[]
+      problems: string[]
+      relative: { active: boolean; note: string }
+    }
+    // build-2 holds no files yet, so it is not idle.
+    expect(out.ids).toEqual([expect.stringMatching(/^scratch:.*\/\.scratch\/build-1$/)])
+    expect(out.problems).toEqual([])
+    expect(out.relative).toEqual({ active: false, note: '~/.scratch is not absolute' })
+  }, 60_000)
 
-test('the same package reaches ./plugin and ./testing, and not the main entry', () => {
-  const from = createRequire(join(dir, 'src', 'check.ts'))
-  expect(from.resolve('@osdlc/host-cleaner/plugin')).toMatch(/dist[/\\]plugin\.js$/)
-  expect(from.resolve('@osdlc/host-cleaner/testing')).toMatch(/dist[/\\]testing\.js$/)
-  expect(() => from.resolve('@osdlc/host-cleaner')).toThrow(
-    expect.objectContaining({ code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' }),
-  )
+  test('reaches ./plugin and ./testing, and not the main entry', () => {
+    const from = createRequire(join(dir, 'src', 'check.ts'))
+    expect(from.resolve('@osdlc/host-cleaner/plugin')).toMatch(/dist[/\\]plugin\.js$/)
+    expect(from.resolve('@osdlc/host-cleaner/testing')).toMatch(/dist[/\\]testing\.js$/)
+    expect(() => from.resolve('@osdlc/host-cleaner')).toThrow(
+      expect.objectContaining({ code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' }),
+    )
+  })
 })
 
 test('./plugin re-exports zod as z, the one the core validates settings with', async () => {
@@ -136,6 +138,7 @@ test('./plugin re-exports zod as z, the one the core validates settings with', a
 test('./plugin exports what a plugin is written with, and nothing of the run', () => {
   expect(Object.keys(entry).sort()).toEqual([
     'COST_DESCRIPTIONS',
+    'CommandFailed',
     'DEFAULT_IDLE_HOURS',
     'FatalRun',
     'HOOKS',
@@ -143,6 +146,7 @@ test('./plugin exports what a plugin is written with, and nothing of the run', (
     'MEASURE_BUDGET_MS',
     'PLUGIN_API',
     'RUN_LIMIT_MS',
+    'commandHasName',
     'containedIn',
     'definePlugin',
     'idleHoursSetting',

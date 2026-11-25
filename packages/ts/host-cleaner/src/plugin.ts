@@ -32,6 +32,7 @@ export {
   DEFAULT_IDLE_HOURS,
   MEASURE_BUDGET_MS,
   RUN_LIMIT_MS,
+  commandHasName,
   idleHoursSetting,
   pluginKit,
   type CandidateFields,
@@ -43,3 +44,5 @@ export {
   type Running,
 } from './kit.ts'
 export { containedIn } from './roots.ts'
+/** What `kit.run` throws, with `check: true`, when the program does not exit 0. */
+export { CommandFailed } from '@osdlc/command-seam'

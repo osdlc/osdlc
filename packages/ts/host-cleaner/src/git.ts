@@ -127,15 +127,22 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
  *
  * @param opts - Passed to `gitPlugin`. The command line passes `--worktrees`
  *   and `--branches` here as `sweep.only`, so no other plugin's `create` sees
- *   git's kinds.
+ *   git's kinds. They are copied, so changing them afterwards changes no
+ *   plugin the definition builds.
  */
-export const gitDefinitionWith = (opts: GitPluginOptions = {}): PluginDefinition =>
-  definePlugin({
+export function gitDefinitionWith(opts: GitPluginOptions = {}): PluginDefinition {
+  const { sweep, ...rest } = opts
+  const own: GitPluginOptions =
+    sweep === undefined
+      ? rest
+      : { ...rest, sweep: { ...sweep, only: sweep.only && [...sweep.only] } }
+  return definePlugin({
     name: 'git',
     api: PLUGIN_API,
     settings: z.strictObject({}),
-    create: () => gitPlugin(opts),
+    create: () => gitPlugin(own),
   })
+}
 
 /** The `git` plugin's definition, sweeping worktrees and local branches. */
 export const gitDefinition = gitDefinitionWith()

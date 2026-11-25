@@ -13,7 +13,7 @@ A plugin uses two entries of `@osdlc/host-cleaner`, and no other:
 
 | Entry | Holds |
 | --- | --- |
-| `@osdlc/host-cleaner/plugin` | `definePlugin`, `PLUGIN_API`, the contract's types, the kit (`pluginKit`, `idleHoursSetting` and its types), `containedIn`, `FatalRun`, and `z`. |
+| `@osdlc/host-cleaner/plugin` | `definePlugin`, `PLUGIN_API`, the contract's types, the kit (`pluginKit`, `idleHoursSetting`, `commandHasName` and their types), `CommandFailed` (what `kit.run` throws with `check: true`), `containedIn`, `FatalRun`, and `z`. |
 | `@osdlc/host-cleaner/testing` | `fakeContext`, `fakeRunner`, `tempHome` and `contractSuite`, for the plugin's own tests. |
 
 ## The package
@@ -114,18 +114,25 @@ What it relies on:
   no run has bound removes nothing.
 - **`api`** is `PLUGIN_API`, the plugin API this host-cleaner supports. It
   changes only with a major release.
-- **`settings`** is the schema of the plugin's entry in the config's
-  `plugins`. The core adds `enabled` and makes it strict, so an unknown key is
-  a config error. `create` gets the entry validated, with its defaults filled
-  in.
-- **`idleHoursSetting`**, declared under the key `idleHours`, inherits the
-  config's top-level `idleHours` when the plugin's own entry sets none.
-- **`env`** is the command line's environment.
+- **`settings`** is the schema of the plugin's settings. `create` gets them
+  validated, with their defaults filled in. The config cannot name a plugin
+  that is not shipped yet (see [Publishing it](#publishing-it)), so a program
+  that builds the plugin validates them itself, as `scratch.settings.parse(raw)`
+  in the test below. The core's `enabled` key, the strictness and the
+  inheritance below apply only to a shipped plugin's entry in the config's
+  `plugins`.
+- **`idleHoursSetting`**, declared under the key `idleHours`, takes the
+  config's top-level `idleHours` when a shipped plugin's entry sets none.
+  Parsed by your own program it stays unset when not given, so fall back to
+  `DEFAULT_IDLE_HOURS` as this plugin does.
+- **`env`** is the environment the plugin is given: the command line's, or
+  whatever the program that builds it passes.
 - **`kit.candidate`** fills in the id (`<kind>:<path>` or `<kind>:<ref>`) and
   the owner.
 - **`detect`** answers `true`, `false`, or `{ active, note }` (`Detection`).
-  `status`, `plan` and `clean` print the note as a warning naming the plugin,
-  whether it runs or not, so write it for the person reading every run. The
+  A survey keeps the note in `notes` under the plugin's name, whether it runs
+  or not, and `status`, `plan` and `clean` print it as a warning, so write it
+  for the person reading every run. The
   core refuses a root that is not an absolute path, so this plugin does not
   run, and says why, when `dir` is relative (`~` is not expanded) or `HOME` is
   unset. `ctx.targetsGiven` says whether the person gave targets or the run fell

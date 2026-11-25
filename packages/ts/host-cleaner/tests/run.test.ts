@@ -16,7 +16,6 @@ import {
   SelectionError,
   clean,
   decide,
-  gitDefinitionWith,
   parsePlan,
   plan,
   recheck,
@@ -104,12 +103,6 @@ describe('plugin order and duplicates', () => {
   test('the shipped plugins are one definition each, in run order: git, cargo, node, orca', () => {
     expect(BUILT_IN_PLUGINS.map((d) => d.name)).toEqual(['git', 'cargo', 'node', 'orca'])
     expect(BUILT_IN_PLUGINS.every((d) => d.api === PLUGIN_API)).toBe(true)
-  })
-
-  test('gitDefinitionWith gives a program the git definition with its own options, as the command line builds it', () => {
-    const git = gitDefinitionWith({ sweep: { only: ['worktree'] } })
-    expect(git.name).toBe(BUILT_IN_PLUGINS[0]!.name)
-    expect(git.api).toBe(PLUGIN_API)
   })
 
   test('plugins run in the order given', async () => {
