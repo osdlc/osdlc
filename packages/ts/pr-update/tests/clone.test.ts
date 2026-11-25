@@ -188,33 +188,34 @@ const readMachine = () => (existsSync(machinePath()) ? readFileSync(machinePath(
 const clonesMade = () => ghCalls().filter((c) => c.argv[1] === 'clone')
 
 describe("a managed clone's credential helper", () => {
-  test.skipIf(process.platform === 'win32')(
-    'never runs a gh planted in the worktree a push runs in, with . on PATH (final review)',
-    async () => {
-      const dir = join(scratch, 'clones')
-      const r = await run('update', '--repo', 'acme/api', '--mirror-dir', dir, '--apply')
-      expect(r.code).toBe(EXIT.ok)
-      // A worktree of the clone holding an executable `gh`, as a PR could commit one.
-      const tree = join(scratch, 'tree')
-      git(cloneOf(dir), 'worktree', 'add', '-q', '--detach', tree, 'origin/topic')
-      const planted = join(scratch, 'planted-ran')
-      writeFileSync(join(tree, 'gh'), `#!/bin/sh\n: > '${planted}'\n`)
-      chmodSync(join(tree, 'gh'), 0o755)
-      // The credential git asks for when it pushes over https, from that worktree.
-      const res = spawnRunner('git').run(['credential', 'fill'], {
-        cwd: tree,
-        env: { PATH: `.${delimiter}${process.env.PATH ?? ''}`, GIT_TERMINAL_PROMPT: '0' },
-        input: 'protocol=https\nhost=github.com\n\n',
-      })
-      expect(res.stdout).toContain('password=fake')
-      expect(existsSync(planted)).toBe(false)
-      expect(ghCalls().map((c) => c.argv.slice(0, 3))).toContainEqual([
-        'auth',
-        'git-credential',
-        'get',
-      ])
-    },
-  )
+  test('never runs a gh planted in the worktree a push runs in, with . on PATH (final review)', async () => {
+    const dir = join(scratch, 'clones')
+    const r = await run('update', '--repo', 'acme/api', '--mirror-dir', dir, '--apply')
+    expect(r.code).toBe(EXIT.ok)
+    // A worktree of the clone holding an executable `gh`, as a PR could commit one.
+    const tree = join(scratch, 'tree')
+    git(cloneOf(dir), 'worktree', 'add', '-q', '--detach', tree, 'origin/topic')
+    const planted = join(scratch, 'planted-ran')
+    writeFileSync(join(tree, 'gh'), `#!/bin/sh\n: > '${planted}'\n`)
+    chmodSync(join(tree, 'gh'), 0o755)
+    // On Windows a `gh.cmd` or `gh.bat` there is found through `PATHEXT` too.
+    for (const ext of ['.cmd', '.bat']) {
+      writeFileSync(join(tree, `gh${ext}`), `@echo off\r\ntype nul > "${planted}"\r\n`)
+    }
+    // The credential git asks for when it pushes over https, from that worktree.
+    const res = spawnRunner('git').run(['credential', 'fill'], {
+      cwd: tree,
+      env: { PATH: `.${delimiter}${process.env.PATH ?? ''}`, GIT_TERMINAL_PROMPT: '0' },
+      input: 'protocol=https\nhost=github.com\n\n',
+    })
+    expect(res.stdout).toContain('password=fake')
+    expect(existsSync(planted)).toBe(false)
+    expect(ghCalls().map((c) => c.argv.slice(0, 3))).toContainEqual([
+      'auth',
+      'git-credential',
+      'get',
+    ])
+  })
 })
 
 describe('update --apply with a target that has no checkout', () => {

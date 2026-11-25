@@ -309,11 +309,13 @@ describe('credentialHelper (final review)', () => {
     const name = process.platform === 'win32' ? 'gh.exe' : 'gh'
     writeFileSync(join(bin, name), '#!/bin/sh\n')
     chmodSync(join(bin, name), 0o755)
-    // On Windows the lookup appends each `PATHEXT` extension as `PATHEXT` spells it (`.EXE` when
-    // unset), and finds `gh.exe` by it, since Windows file names compare in any case.
+    // On Windows the lookup appends each `PATHEXT` extension as `PATHEXT` spells it, and finds
+    // `gh.exe` as `gh.EXE`, since Windows file names compare in any case. `PATHEXT` is set here,
+    // as a lookup with no `PATHEXT` in `env` reads the runner's.
     const found = process.platform === 'win32' ? join(bin, 'gh.EXE') : join(bin, name)
     const path = found.replaceAll('\\', '/')
-    expect(credentialHelper({ binary: 'gh' }, { PATH: bin })).toBe(`!'${path}' auth git-credential`)
+    const env = { PATH: bin, PATHEXT: '.COM;.EXE;.BAT;.CMD' }
+    expect(credentialHelper({ binary: 'gh' }, env)).toBe(`!'${path}' auth git-credential`)
     // A relative entry is never searched: the one a push runs in could hold a `gh` a PR commits.
     const planted = join(scratch, 'planted')
     mkdirSync(planted)
@@ -353,6 +355,7 @@ describe('lstatOrNull (final review)', () => {
     expect(lstatOrNull(join(scratch, 'file'))?.isFile()).toBe(true)
   })
 
+  // Windows has no search bit for chmod to take away, and root searches any folder.
   test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
     'a path under a folder that cannot be searched is not taken for a missing one',
     () => {
