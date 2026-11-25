@@ -80,7 +80,6 @@ describe('the first set, from the corpus', () => {
     expect(uv.project).toEqual([
       { dir: '.venv', marker: 'pyproject.toml', costDescription: 're-download' },
     ])
-    // The reviewer's material, as comments.
     expect(text).toMatch(/^# yaml-language-server: \$schema=https:\/\//)
     expect(text).toContain('# - uv cache prune: unused cache entries')
     expect(text).toContain('$UV_CACHE_DIR')

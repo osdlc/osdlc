@@ -65,7 +65,7 @@ const COVERED: readonly { dir: string; marker?: string; by: string }[] = [
   { dir: 'target', marker: 'Cargo.toml', by: CARGO_PLUGIN },
 ]
 
-/** A store that can't be drafted: not in the corpus, or nothing in it fits a tier 1 file. */
+/** A corpus or store the script can't draft from, or a draft file it won't overwrite. */
 export class DraftError extends Error {
   override name = 'DraftError'
 }
@@ -87,7 +87,7 @@ interface BuildDir {
 interface Statement {
   object: Record<string, unknown>
   open: string[]
-  /** The statement's `scope` when it narrows it (a platform, since or until), else undefined. */
+  /** The statement's `scope`, as `narrowing` returns it. */
   scope?: Record<string, unknown> | undefined
 }
 
@@ -383,7 +383,8 @@ export interface Draft {
  * the corpus gives as a fixed path, `inUse`, `project` entries no code plugin
  * covers, and comments for the rest.
  *
- * @throws DraftError when the store has no fixed data folder
+ * @throws DraftError when the store has no fixed data folder, or a subject's
+ *   list is malformed
  */
 function draftDescriptor(store: CorpusStore): Draft {
   const st = (subject: string) => store.statements.get(subject)
@@ -566,8 +567,6 @@ function draftDescriptor(store: CorpusStore): Draft {
     )
   if (nested.length > 0)
     header.push('', ' Overlapping folders (their sizes count twice):', ...nested.flatMap(bullet))
-  // The draft applies every statement on every platform; a narrower one is
-  // the reviewer's to carry over.
   const scoped = [...store.statements.entries()].flatMap(([subject, s]) =>
     s.scope === undefined ? [] : [`${subject}: ${JSON.stringify(s.scope)}`],
   )
@@ -590,8 +589,8 @@ function draftDescriptor(store: CorpusStore): Draft {
 /**
  * Drafts `slug` from `corpus` and checks the text reads back as a descriptor.
  *
- * @throws DraftError for a store the corpus lacks or that has no fixed folder,
- *   or an `index` of another corpus
+ * @throws DraftError when the store can't be read from the corpus or has no
+ *   fixed data folder, or `index` is of another corpus
  * @throws DescriptorError when the draft is not a valid descriptor
  */
 export function draftStore(
