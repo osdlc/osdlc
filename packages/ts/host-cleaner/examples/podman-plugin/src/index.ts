@@ -49,25 +49,24 @@ export default definePlugin({
         return (await kit.run(['podman', 'info'], { signal: ctx.signal })).ok
       },
       async discover(ctx) {
-        return (await unusedVolumes(kit, ctx.signal))
-          .filter((v) => !settings.keepVolumes.includes(v.Name))
-          .flatMap((v) => {
-            // Without a creation time, a volume made again under the same name
-            // would have the same evidence, so it is not proposed.
-            if (v.CreatedAt === undefined) return []
-            return kit.candidate({
-              kind: 'volume',
-              ref: v.Name,
-              name: v.Name,
-              why: ANONYMOUS.test(v.Name)
-                ? 'an anonymous volume no container uses'
-                : 'no container uses it',
-              costDescription: 'lost',
-              // A volume made again under the same name since the plan is
-              // another volume: the re-check drops it as changed.
-              evidence: { created: v.CreatedAt, driver: v.Driver ?? null },
-            })
+        return (await unusedVolumes(kit, ctx.signal)).flatMap((v) => {
+          if (settings.keepVolumes.includes(v.Name)) return []
+          // Without a creation time, a volume made again under the same name
+          // would have the same evidence, so it is not proposed.
+          if (v.CreatedAt === undefined) return []
+          return kit.candidate({
+            kind: 'volume',
+            ref: v.Name,
+            name: v.Name,
+            why: ANONYMOUS.test(v.Name)
+              ? 'an anonymous volume no container uses'
+              : 'no container uses it',
+            costDescription: 'lost',
+            // A volume made again under the same name since the plan is
+            // another volume: the re-check drops it as changed.
+            evidence: { created: v.CreatedAt, driver: v.Driver ?? null },
           })
+        })
       },
       async delete(c, ctx) {
         if (c.ref === undefined || !VOLUME_NAME.test(c.ref)) {

@@ -32,6 +32,9 @@ const volumes = (names: string[], created = '2026-05-01T09:00:00Z'): string =>
     })),
   )
 
+/** The answers of a reachable `podman` whose `volume ls` prints `stdout`. */
+const listing = (stdout: string) => ({ info: {}, [LS]: { stdout } })
+
 /**
  * The plugin with `keepVolumes` set, on a fake `podman` that answers
  * `answers`, or with no `podman` on PATH when `answers` is undefined.
@@ -56,7 +59,7 @@ const picked = (s: Survey) => plan(s, { pick: ['volume:cache'], allow: ['discard
 
 describe('the podman example', () => {
   test("keeps the contract, and refuses the suite's outside folder before running anything", async () => {
-    const { plugin, removed } = build({ info: {}, [LS]: { stdout: volumes(['cache', ANON]) } })
+    const { plugin, removed } = build(listing(volumes(['cache', ANON])))
     expect(await contractSuite(plugin)).toEqual([])
     // The suite's escaped candidate is a path; a volume is a ref, so delete
     // refuses it and never calls podman volume rm.
@@ -64,8 +67,7 @@ describe('the podman example', () => {
   })
 
   test('proposes each unused volume as a lost ref, but those in keepVolumes', async () => {
-    const answers = { info: {}, [LS]: { stdout: volumes(['pgdata', 'cache', ANON]) } }
-    const { plugin } = build(answers, ['pgdata'])
+    const { plugin } = build(listing(volumes(['pgdata', 'cache', ANON])), ['pgdata'])
     const s = await survey([plugin], ctx)
     expect(s.warnings).toEqual([])
     expect(s.candidates).toMatchObject([
@@ -94,8 +96,7 @@ describe('the podman example', () => {
 
   test('a volume runs only when picked and discard-user-data is allowed', async () => {
     const { plugin, removed } = build({
-      info: {},
-      [LS]: { stdout: volumes(['cache']) },
+      ...listing(volumes(['cache'])),
       'volume rm cache': { stdout: 'cache\n' },
     })
     const s = await survey([plugin], ctx)
@@ -133,8 +134,7 @@ describe('the podman example', () => {
 
   test('a volume podman refuses to remove fails that step', async () => {
     const { plugin } = build({
-      info: {},
-      [LS]: { stdout: volumes(['cache']) },
+      ...listing(volumes(['cache'])),
       'volume rm cache': { exitCode: 2, stderr: 'Error: volume cache is being used\n' },
     })
     const receipt = await clean(picked(await survey([plugin], go)), [plugin], go)
@@ -151,7 +151,7 @@ describe('the podman example', () => {
 
   test('a volume with no creation time is not proposed, since the re-check could not tell it changed', async () => {
     const listed = [{ Name: 'cache', Driver: 'local' }, ...JSON.parse(volumes(['logs']))]
-    const { plugin } = build({ info: {}, [LS]: { stdout: JSON.stringify(listed) } })
+    const { plugin } = build(listing(JSON.stringify(listed)))
     const s = await survey([plugin], ctx)
     expect(s.warnings).toEqual([])
     expect(s.candidates.map((c) => c.id)).toEqual(['volume:logs'])
@@ -179,7 +179,7 @@ describe('the podman example', () => {
 
   test('no volumes is no candidates, whether podman prints [], null or nothing', async () => {
     for (const stdout of ['[]\n', 'null\n', '']) {
-      const { plugin } = build({ info: {}, [LS]: { stdout } })
+      const { plugin } = build(listing(stdout))
       const s = await survey([plugin], ctx)
       expect(s.warnings).toEqual([])
       expect(s.candidates).toEqual([])
