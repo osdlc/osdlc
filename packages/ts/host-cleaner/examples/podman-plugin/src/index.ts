@@ -10,14 +10,13 @@ import { PLUGIN_API, definePlugin, z, type Kit } from '@osdlc/host-cleaner/plugi
 /** A volume name as Podman accepts one; anything else is not a volume this plugin proposed. */
 const VOLUME_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/
 
-/** An anonymous volume's name: 64 hex digits, made up by Podman. */
-const ANONYMOUS = /^[0-9a-f]{64}$/
-
 /** The fields of one entry of `podman volume ls --format json` this plugin reads. */
 const Volume = z.object({
   Name: z.string(),
   Driver: z.string().optional(),
   CreatedAt: z.string().optional(),
+  // Podman leaves it out when false.
+  Anonymous: z.boolean().optional(),
 })
 
 /** The volumes no container uses, running or stopped. */
@@ -46,11 +45,15 @@ export default definePlugin({
       async detect(ctx) {
         if (!kit.onPath('podman')) return false
         // `podman info` fails when it can't reach Podman, such as a stopped machine.
-        return (await kit.run(['podman', 'info'], { signal: ctx.signal })).ok
+        const r = await kit.run(['podman', 'info'], { signal: ctx.signal })
+        if (r.ok) return true
+        return { active: false, note: `podman info failed: ${r.stderr.trim() || 'no output'}` }
       },
       async discover(ctx) {
         return (await unusedVolumes(kit, ctx.signal)).flatMap((v) => {
           if (settings.keepVolumes.includes(v.Name)) return []
+          // delete would refuse it.
+          if (!VOLUME_NAME.test(v.Name)) return []
           // Without a creation time, a volume made again under the same name
           // would have the same evidence, so it is not proposed.
           if (v.CreatedAt === undefined) return []
@@ -58,7 +61,7 @@ export default definePlugin({
             kind: 'volume',
             ref: v.Name,
             name: v.Name,
-            why: ANONYMOUS.test(v.Name)
+            why: v.Anonymous === true
               ? 'an anonymous volume no container uses'
               : 'no container uses it',
             costDescription: 'lost',

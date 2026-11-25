@@ -38,28 +38,42 @@ const fixtures = Object.fromEntries(
   ['plugin.ts', 'check.ts'].map((f) => [f, join(here, 'fixtures', 'outside-plugin', f)]),
 )
 
-/**
- * A package holding `files` in its `src/` (the fixture plugin by default),
- * with host-cleaner limited to the two entries.
- */
-function outsidePackage(files: Record<string, string> = fixtures): string {
+interface Outside {
+  /** Copied into `src/`, by name there. */
+  files?: Record<string, string>
+  /** The entries of host-cleaner the package sees. */
+  entries?: string[]
+  /** A folder whose package.json and tsconfig.json the package takes, in place of its own. */
+  root?: string
+}
+
+/** A package holding `files` in its `src/`, with host-cleaner limited to `entries`. */
+function outsidePackage({
+  files = fixtures,
+  entries = ['plugin', 'testing'],
+  root,
+}: Outside = {}): string {
   const dir = mkdtempSync(join(tmpdir(), 'host-cleaner-outside-'))
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
   const json = (path: string, value: unknown) =>
     writeFileSync(join(dir, path), `${JSON.stringify(value, null, 2)}\n`)
-  json('package.json', { name: 'outside-plugin', private: true, type: 'module' })
-  json('tsconfig.json', {
-    compilerOptions: {
-      target: 'ES2022',
-      module: 'NodeNext',
-      moduleResolution: 'NodeNext',
-      strict: true,
-      types: ['node'],
-      rootDir: 'src',
-      outDir: 'dist',
-    },
-    include: ['src'],
-  })
+  if (root === undefined) {
+    json('package.json', { name: 'outside-plugin', private: true, type: 'module' })
+    json('tsconfig.json', {
+      compilerOptions: {
+        target: 'ES2022',
+        module: 'NodeNext',
+        moduleResolution: 'NodeNext',
+        strict: true,
+        types: ['node'],
+        rootDir: 'src',
+        outDir: 'dist',
+      },
+      include: ['src'],
+    })
+  } else {
+    for (const f of ['package.json', 'tsconfig.json']) copyFileSync(join(root, f), join(dir, f))
+  }
   mkdirSync(join(dir, 'src'))
   for (const [f, from] of Object.entries(files)) copyFileSync(from, join(dir, 'src', f))
   const hc = join(dir, 'node_modules', '@osdlc', 'host-cleaner')
@@ -73,7 +87,7 @@ function outsidePackage(files: Record<string, string> = fixtures): string {
     JSON.stringify({
       name: '@osdlc/host-cleaner',
       type: 'module',
-      exports: { './plugin': entryOf('plugin'), './testing': entryOf('testing') },
+      exports: Object.fromEntries(entries.map((e) => [`./${e}`, entryOf(e)])),
     }),
   )
   symlinkSync(join(pkg, 'dist'), join(hc, 'dist'), 'dir')
@@ -101,10 +115,11 @@ test('an outside package builds against ./plugin and ./testing, and its plugin k
 
 test('the podman example builds against ./plugin alone, and the loader takes it as a package', () => {
   const example = join(pkg, 'examples', 'podman-plugin')
-  const dir = outsidePackage({ 'index.ts': join(example, 'src', 'index.ts') })
-  for (const f of ['package.json', 'tsconfig.json']) {
-    copyFileSync(join(example, f), join(dir, f))
-  }
+  const dir = outsidePackage({
+    files: { 'index.ts': join(example, 'src', 'index.ts') },
+    entries: ['plugin'],
+    root: example,
+  })
   const built = build(dir)
   expect(built.stdout + built.stderr).toBe('')
   expect(built.status).toBe(0)

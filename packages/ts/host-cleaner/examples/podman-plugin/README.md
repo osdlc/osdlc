@@ -7,7 +7,7 @@ the guide it follows. It is not published.
 
 | File | Holds |
 | --- | --- |
-| [`package.json`](./package.json) | The package as it would be published: ESM, built to `dist/` by `npm run build`, with `@osdlc/host-cleaner` as a peer dependency. |
+| [`package.json`](./package.json) | The package as it would be published: ESM, built to `dist/` by `npm run build` and tested by `npm test`, with `@osdlc/host-cleaner` 0.3 or later as a peer dependency. |
 | [`tsconfig.json`](./tsconfig.json) | The build: `src/` to `dist/`, with the declarations the `types` export names. |
 | [`src/index.ts`](./src/index.ts) | The plugin, one `definePlugin` value. |
 | [`test/podman.test.ts`](./test/podman.test.ts) | Its tests, on a fake `podman`. |
@@ -17,7 +17,11 @@ What it shows:
 - **Ref candidates.** A volume has no folder host-cleaner may delete, so each
   candidate is a ref, `volume:<name>`, deleted by name. The core makes no
   folder checks on a ref, so `delete` checks for itself: it refuses a path
-  candidate and any name Podman would not accept.
+  candidate and any name Podman would not accept, which `discover` does not
+  propose either.
+- **A note from `detect`.** When `podman info` fails, as with a stopped
+  Podman machine, the plugin is not detected and says why, so `status`, `plan`
+  and `clean` show the reason.
 - **`costDescription: 'lost'`.** A volume holds data nothing can download or
   rebuild. The core holds each one for review: it runs only with
   `--pick volume:<name>` and `--allow discard-user-data`.
@@ -47,7 +51,9 @@ pnpm test examples/podman-plugin
 ```
 
 There, `@osdlc/host-cleaner` resolves to the package's source. A package of
-your own installs it and builds with `tsc` instead. `tests/outside.test.ts`
-does that too: it builds `src/index.ts` with `tsc` in a package that sees only
-`@osdlc/host-cleaner/plugin` and `/testing`, then loads it with the built
-host-cleaner's loader. Run `pnpm build` first.
+your own installs it, builds with `npm run build` and tests with `npm test`
+instead. `tests/outside.test.ts` builds `src/index.ts` that way: with this
+folder's `package.json` and `tsconfig.json`, in a package that sees only
+`@osdlc/host-cleaner/plugin`, then loads it with the built host-cleaner's
+loader. Run `pnpm build` first. That build is also the example's typecheck:
+host-cleaner's own `tsc --noEmit` leaves this folder out.

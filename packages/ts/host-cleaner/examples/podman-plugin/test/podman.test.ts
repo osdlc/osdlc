@@ -20,7 +20,7 @@ const ANON = 'a'.repeat(64)
 
 const LS = 'volume ls --filter dangling=true --format json'
 
-/** `podman volume ls` output for these volumes, created at `created`. */
+/** `podman volume ls` output for these volumes, created at `created`; `ANON` is anonymous. */
 const volumes = (names: string[], created = '2026-05-01T09:00:00Z'): string =>
   JSON.stringify(
     names.map((Name) => ({
@@ -29,6 +29,7 @@ const volumes = (names: string[], created = '2026-05-01T09:00:00Z'): string =>
       Mountpoint: `/var/lib/containers/storage/volumes/${Name}/_data`,
       CreatedAt: created,
       Labels: {},
+      ...(Name === ANON ? { Anonymous: true } : {}),
     })),
   )
 
@@ -157,6 +158,19 @@ describe('the podman example', () => {
     expect(s.candidates.map((c) => c.id)).toEqual(['volume:logs'])
   })
 
+  test('a volume delete would refuse is not proposed', async () => {
+    const { plugin } = build(listing(volumes(['-odd', 'logs'])))
+    const s = await survey([plugin], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['volume:logs'])
+  })
+
+  test('a 64-hex-digit name is not called anonymous unless podman says so', async () => {
+    const named = 'b'.repeat(64)
+    const { plugin } = build(listing(volumes([named])))
+    const s = await survey([plugin], ctx)
+    expect(s.candidates).toMatchObject([{ id: `volume:${named}`, why: 'no container uses it' }])
+  })
+
   test('delete refuses anything but a volume it could have proposed, and runs nothing', async () => {
     const { plugin, ran } = build({})
     const base = { kind: 'volume', owner: 'podman', why: 'x', evidence: {} }
@@ -169,11 +183,15 @@ describe('the podman example', () => {
     expect(ran()).toEqual([])
   })
 
-  test('is not detected when podman is not on PATH, or podman info fails', async () => {
+  test('is not detected when podman is not on PATH, or podman info fails, which it gives as its note', async () => {
     const missing = build(undefined)
-    expect((await survey([missing.plugin], ctx)).plugins).toEqual([])
+    const absent = await survey([missing.plugin], ctx)
+    expect(absent.plugins).toEqual([])
+    expect(absent.notes).toEqual({})
     const stopped = build({ info: { exitCode: 125, stderr: 'Cannot connect to Podman\n' } })
-    expect((await survey([stopped.plugin], ctx)).plugins).toEqual([])
+    const down = await survey([stopped.plugin], ctx)
+    expect(down.plugins).toEqual([])
+    expect(down.notes).toEqual({ podman: 'podman info failed: Cannot connect to Podman' })
     expect(stopped.ran()).toEqual(['podman info'])
   })
 
