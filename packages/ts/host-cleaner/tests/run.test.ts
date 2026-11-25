@@ -16,6 +16,7 @@ import {
   SelectionError,
   clean,
   decide,
+  gitPlugin,
   inspect,
   parsePlan,
   plan,
@@ -299,6 +300,15 @@ describe('inspect', () => {
       },
     })
     await expect(inspect([fatal], ctx)).rejects.toThrow('stop')
+  })
+
+  test('a plugin a shipped factory built is marked, and a copy of one is not', async () => {
+    const git = gitPlugin()
+    const found = await inspect([git, { ...git, name: 'mine' }], ctx)
+    expect(found.plugins).toEqual([
+      { name: 'git', detected: true, builtIn: true, roots: [], selfRoots: [] },
+      { name: 'mine', detected: true, roots: [], selfRoots: [] },
+    ])
   })
 
   test('a plugin skip picks is listed as skipped with no hook run, after the check for a second of its name', async () => {

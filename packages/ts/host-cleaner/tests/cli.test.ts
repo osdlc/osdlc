@@ -23,6 +23,7 @@ import { main, tildeId, untildeId, untildeSpare, type MainDeps } from '../src/cl
 import { hostDirs } from '../src/config.ts'
 import { PLAN_VERSION, parsePlan } from '../src/plan.ts'
 import {
+  BUILT_IN_PLUGINS,
   orcaPlugin,
   type Candidate,
   type Objection,
@@ -469,6 +470,29 @@ describe('plugins', () => {
       [`targets: ${cwd}`, '  a  given  not detected: stderr line one stderr line two', ''].join(
         '\n',
       ),
+    )
+  })
+
+  test('the shipped plugins are built in, a disabled one too', async () => {
+    const { env, cwd, home } = setup()
+    const file = join(home, 'c.json')
+    // Orca's detect would talk to this machine's Orca.
+    writeFileSync(file, JSON.stringify({ plugins: { orca: { enabled: false } } }))
+    const r = await run(['plugins', '--config', file, '--format', 'json'], cwd, env)
+    expect(r.code).toBe(0)
+    const rows = JSON.parse(r.out).plugins as Array<{ name: string; source: string }>
+    expect(rows.map((p) => [p.name, p.source])).toEqual(
+      BUILT_IN_PLUGINS.map((d) => [d.name, 'built-in']),
+    )
+  })
+
+  test('a line break in a root, or in a target a plugin adds, does not split its line', async () => {
+    const { env, cwd } = setup()
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [{ ...fake('a'), scope: () => ['/s\nt'], roots: () => ['/cache\none  two'] }],
+    })
+    expect(r.out).toBe(
+      [`targets: ${cwd}, /s t`, '  a  given  detected; roots: /cache one  two', ''].join('\n'),
     )
   })
 

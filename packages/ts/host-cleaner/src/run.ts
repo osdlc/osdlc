@@ -24,6 +24,7 @@ import {
 } from './plan.ts'
 import {
   FatalRun,
+  isBuiltIn,
   type Candidate,
   type Ctx,
   type Detection,
@@ -388,6 +389,8 @@ async function askRoots(
 export interface PluginState {
   name: string
   detected: boolean
+  /** Set when a factory host-cleaner ships built it. */
+  builtIn?: true | undefined
   /** Set when `skip` picked it: its `detect` did not run, so it is not detected. */
   skipped?: true | undefined
   /** Why it was not detected: what `detect` threw or timed out with, or why its answer was left out. Absent when `detect` answered a boolean or a {@link Detection}. */
@@ -413,7 +416,8 @@ export interface Inspection {
  * each plugin applies here, why not, and where it may delete. A root the core
  * refuses (see `rootProblem` in `./roots.ts`) is left out with a warning, as
  * in `survey`. It proposes and deletes nothing, so it is quick where
- * `discover` walks every checkout. A plugin `skip` picks is listed as
+ * `discover` walks every checkout; plugins are asked one after another (D2),
+ * so each hook that hangs adds its time limit. A plugin `skip` picks is listed as
  * `skipped`, after the check for a second plugin of its name, and none of its
  * hooks run.
  */
@@ -432,6 +436,7 @@ export async function inspect(
     return {
       name: d.plugin.name,
       detected: d.detected,
+      ...(isBuiltIn(d.plugin) ? { builtIn: true as const } : {}),
       ...(d.skipped === undefined ? {} : { skipped: d.skipped }),
       ...(d.error === undefined ? {} : { reason: d.error }),
       ...(d.note === undefined ? {} : { note: d.note }),

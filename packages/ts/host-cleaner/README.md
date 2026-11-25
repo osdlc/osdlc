@@ -412,9 +412,12 @@ whether the file set it or it is the default. `--format json` prints the values.
 own origin (`built-in` when host-cleaner ships it, even when a program passes it
 to `main`, and `given` for a plugin the program wrote), whether it applies here
 and, when it does not, why, and its roots, the folders it may delete in besides
-the targets. Targets `--ignore` or `ignore` drop show under `ignoring:`, as in
-`status`; the JSON has them as `ignore`. It runs `detect`, `scope` and
-`roots` and nothing else, so it proposes and deletes nothing. A plugin whose
+the targets. The ignored directories (`--ignore` and the config's `ignore`),
+which may leave out a target, show after `ignoring:`, as in `status`; the JSON
+has them as `ignore`. It runs `detect`, `scope` and
+`roots` and nothing else, so it proposes and deletes nothing. It asks the
+plugins one after another, so each hook that hangs adds its time limit (30
+seconds unless the plugin asks for another). A plugin whose
 `detect` throws shows the error as the reason. A note its `detect` gives
 follows the plugin's state (`; note: ...`), whether it is detected or not, so a
 degraded plugin (`{ active: true, note }`) shows as detected with its note, as

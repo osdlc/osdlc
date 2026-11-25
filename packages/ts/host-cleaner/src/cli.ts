@@ -44,7 +44,6 @@ import {
 } from './run.ts'
 import {
   COST_DESCRIPTIONS,
-  isBuiltIn,
   type Candidate,
   type Objection,
   type Plugin,
@@ -644,6 +643,9 @@ interface PluginRow {
 /** `text` on one line, so a plugin's own words cannot split a row: each run of whitespace is one space. */
 const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
 
+/** `path` on one line; it keeps its spaces, as only a line break would split a row. */
+const pathLine = (path: string): string => path.replace(/[\r\n]+/g, ' ')
+
 function renderPlugins(
   rows: readonly PluginRow[],
   targets: readonly string[],
@@ -651,15 +653,13 @@ function renderPlugins(
 ): string {
   const width = Math.max(...rows.map((r) => r.name.length))
   const sourceWidth = Math.max(...rows.map((r) => r.source.length))
-  const lines = [`targets: ${targets.join(', ') || '(none)'}`]
-  if (ignored.length > 0) lines.push(`ignoring: ${ignored.join(', ')}`)
+  const lines = [`targets: ${targets.map(pathLine).join(', ') || '(none)'}`]
+  if (ignored.length > 0) lines.push(`ignoring: ${ignored.map(pathLine).join(', ')}`)
   for (const r of rows) {
-    // A path keeps its spaces; only a line break would split the row.
-    const shown = (root: string): string => root.replace(/[\r\n]+/g, ' ')
     const state = !r.enabled
       ? 'disabled'
       : r.detected
-        ? `detected; roots: ${r.roots.map((root) => (r.selfRoots.includes(root) ? `${shown(root)} (itself too)` : shown(root))).join(', ') || 'none, the targets alone'}`
+        ? `detected; roots: ${r.roots.map((root) => pathLine(root) + (r.selfRoots.includes(root) ? ' (itself too)' : '')).join(', ') || 'none, the targets alone'}`
         : 'not detected'
     const reason = r.reason === null ? null : oneLine(r.reason)
     const note = r.note === null ? null : oneLine(r.note)
@@ -688,11 +688,9 @@ async function runPlugins(
     const all = allPlugins(config, deps, ctx)
     const at = contextFor(parsed.positionals, config, ctx, [], v.ignore)
     const found = await inspect(all, at, { skip: (p) => !enabled(p.name, config) })
-    // One row per plugin inspect kept, the first of its name; a second is left out with a warning.
-    const kept = (pluginName: string): Plugin => all.find((p) => p.name === pluginName)!
     rows = found.plugins.map((s): PluginRow => ({
       name: s.name,
-      source: isBuiltIn(kept(s.name)) ? 'built-in' : 'given',
+      source: s.builtIn === true ? 'built-in' : 'given',
       enabled: s.skipped !== true,
       detected: s.detected,
       reason:
