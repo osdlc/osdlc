@@ -1,9 +1,11 @@
 /** The `toolchains` plugin against real repositories, a fake `rustup` and `node`, and version folders in a temp home. */
 
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
   rmSync,
   statSync,
@@ -11,18 +13,28 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 
+import { which } from '@osdlc/command-seam'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { clean, plan, pluginKit, survey, type Ctx, type Plugin } from '../src/index.ts'
+import {
+  clean,
+  plan,
+  pluginKit,
+  survey,
+  type Candidate,
+  type Ctx,
+  type Plugin,
+} from '../src/index.ts'
 import { attachKit } from '../src/kit.ts'
 import { contractSuite, fakeRunner, tempHome } from '../src/testing.ts'
 import {
   NO_TARGETS_NOTE,
   UNSEARCHED_NOTE,
   dfMountPoint,
+  globalPackages,
   keeps,
   lastUsedMs,
   mountOptionsBy,
@@ -308,36 +320,92 @@ describe('rustup toolchains', () => {
     expect(refused).toEqual([])
   })
 
-  test('a target that is a link is followed; one that leads nowhere refuses every toolchain', async () => {
+  test('a target that is a link is followed, and so is the whole repository it leads into', async () => {
     const fx = fixture({
-      rust: [`1.75.0-${HOST}`, `1.79.0-${HOST}`, `stable-${HOST}`],
+      rust: [`1.75.0-${HOST}`, `1.78.0-${HOST}`, `1.79.0-${HOST}`, `stable-${HOST}`],
       targets: () => [],
     })
     const work = join(fx.home, 'volume', 'dev')
     repo(join(work, 'a'), { 'rust-toolchain': '1.79\n' })
     const link = join(fx.home, 'linked-dev')
     symlinkSync(work, link)
-    fx.ctx = { ...fx.ctx, targets: [link] }
-    expect((await proposed(fx)).names).toEqual([`1.75.0-${HOST}`])
-
-    const gone = join(fx.home, 'gone-dev')
-    symlinkSync(join(fx.home, 'unmounted'), gone)
-    fx.ctx = { ...fx.ctx, targets: [link, gone] }
-    const { refused } = await proposed(fx)
-    expect(refused.map((o) => o.reason)).toEqual([
-      expect.stringContaining('is a link that leads nowhere'),
-    ])
-  })
-
-  test('a folder whose .git names a git folder that is gone is read at its root, and refuses nothing', async () => {
-    const fx = fixture({ rust: [`1.75.0-${HOST}`, `1.79.0-${HOST}`, `stable-${HOST}`] })
-    repo(join(fx.dev, 'a'))
-    const old = join(fx.dev, 'old-wt')
-    write(join(old, '.git'), `gitdir: ${join(fx.home, 'pruned', '.git', 'worktrees', 'old')}\n`)
-    write(join(old, 'rust-toolchain'), '1.79\n')
+    const mono = repo(join(fx.home, 'mono'), { 'rust-toolchain': '1.78\n', 'apps/web/x': '' })
+    const web = join(fx.home, 'web')
+    symlinkSync(join(mono, 'apps', 'web'), web)
+    fx.ctx = { ...fx.ctx, targets: [link, web] }
     const { names, refused } = await proposed(fx)
     expect(names).toEqual([`1.75.0-${HOST}`])
     expect(refused).toEqual([])
+  })
+
+  test('a target that leads nowhere, is missing or is not a folder refuses every toolchain', async () => {
+    const fx = fixture({ rust: [`1.75.0-${HOST}`, `stable-${HOST}`] })
+    const gone = join(fx.home, 'gone-dev')
+    symlinkSync(join(fx.home, 'unmounted'), gone)
+    const file = join(fx.home, 'notes.txt')
+    write(file, '')
+    for (const target of [gone, join(fx.home, 'missing'), file]) {
+      fx.ctx = { ...fx.ctx, targets: [fx.dev, target] }
+      const { names, refused } = await proposed(fx)
+      expect(names).toEqual([`1.75.0-${HOST}`])
+      expect(refused.map((o) => o.reason)).toEqual([
+        expect.stringContaining(`the target ${target} could not be read`),
+      ])
+    }
+  })
+
+  test('a folder whose .git is broken is read on its own, to the bottom, and refuses nothing', async () => {
+    const pins = ['1.70', '1.71', '1.72', '1.73', '1.74', '1.75']
+    const fx = fixture({ rust: [...pins.map((v) => `${v}.0-${HOST}`), `1.60.0-${HOST}`] })
+    const a = repo(join(fx.dev, 'a'))
+    const old = join(fx.dev, 'old-wt')
+    write(join(old, '.git'), `gitdir: ${join(fx.home, 'pruned', '.git', 'worktrees', 'old')}\n`)
+    write(join(old, 'rust-toolchain'), '1.70\n')
+    write(join(old, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'rust-toolchain'), '1.71\n')
+    write(join(old, 'node_modules', 'x', 'rust-toolchain'), '1.60\n')
+    repo(join(old, 'vendor', 'lib'), { 'rust-toolchain': '1.72\n' })
+    mkdirSync(join(fx.dev, 'empty', '.git'), { recursive: true })
+    write(join(fx.dev, 'empty', 'rust-toolchain'), '1.73\n')
+    write(join(fx.dev, 'odd', '.git'), 'not a git file\n')
+    write(join(fx.dev, 'odd', 'rust-toolchain'), '1.74\n')
+    // A worktree its repository still lists, whose own .git names one that is gone.
+    const wt = join(fx.home, 'elsewhere', 'wt')
+    sh(a, ['worktree', 'add', '-q', wt, '-b', 'topic'])
+    write(join(wt, '.git'), `gitdir: ${join(fx.home, 'gone')}\n`)
+    write(join(wt, 'crates', 'x', 'rust-toolchain'), '1.75\n')
+
+    const { names, refused } = await proposed(fx)
+    expect(names).toEqual([`1.60.0-${HOST}`])
+    expect(refused).toEqual([])
+  })
+
+  test('a checkout git cannot read for another reason refuses every toolchain, by name', async () => {
+    const fx = fixture({ rust: [`1.75.0-${HOST}`] })
+    const a = repo(join(fx.dev, 'a'))
+    write(join(a, '.git', 'config'), '[core\n')
+    const { refused } = await proposed(fx)
+    expect(refused.map((o) => o.reason)).toEqual([
+      expect.stringContaining(`the worktrees of ${a} could not be listed`),
+    ])
+  })
+
+  test('in a home folder that is a repository, what it does not track is searched only in the targets', async () => {
+    const fx = fixture({
+      rust: ['1.70', '1.71', '1.72', '1.73', '1.74', '1.75'].map((v) => `${v}.0-${HOST}`),
+      nvm: ['v14.21.3'],
+    })
+    repo(fx.home, { 'rust-toolchain': '1.70\n', 'notes/x/rust-toolchain': '1.71\n' })
+    repo(join(fx.dev, 'a'), { 'rust-toolchain': '1.72\n' })
+    write(join(fx.dev, 'loose', 'rust-toolchain'), '1.73\n')
+    write(join(fx.home, 'other', 'rust-toolchain'), '1.74\n')
+    write(join(fx.home, 'other', 'package.json'), '{ "volta": broken')
+    repo(join(fx.home, 'other', 'b'), { 'rust-toolchain': '1.75\n' })
+    const { names, refused } = await proposed(fx)
+    expect(names).toEqual([`1.74.0-${HOST}`, `1.75.0-${HOST}`, 'v14.21.3'])
+    expect(refused).toEqual([])
+
+    fx.ctx = { ...fx.ctx, targets: [fx.home] }
+    expect((await proposed(fx)).names).toEqual(['v14.21.3'])
   })
 
   test('every candidate carries a note naming the folders not searched', async () => {
@@ -556,9 +624,9 @@ describe('nvm and Volta Node versions', () => {
     ])
   })
 
-  test("a package.json that is not JSON refuses Volta's versions, not nvm's", async () => {
+  test("a package.json that is not JSON and names volta refuses Volta's versions, not nvm's", async () => {
     const fx = fixture({ nvm: ['v18.17.0'], volta: ['16.0.0'] })
-    repo(join(fx.dev, 'a'), { 'package.json': '{ not json' })
+    repo(join(fx.dev, 'a'), { 'package.json': '{ "volta": not json' })
     const { names, refused } = await proposed(fx)
     expect(names).toEqual(['16.0.0', 'v18.17.0'])
     expect(refused).toEqual([
@@ -569,33 +637,122 @@ describe('nvm and Volta Node versions', () => {
     ])
   })
 
-  test('an nvm version holding global packages costs them: it is lost, not re-download', async () => {
-    const fx = fixture({ nvm: ['v14.21.3', 'v16.20.0'] })
+  test('a package.json that is not JSON and names no volta refuses nothing; a BOM is read past; extends is followed', async () => {
+    const fx = fixture({ nvm: ['v18.17.0'], volta: ['16.0.0', '20.0.0', '21.0.0'] })
+    repo(join(fx.dev, 'a'), {
+      'tests/fixtures/bad/package.json': '{ invalid',
+      'template/package.json': '{ "name": {{name}} }',
+      'bom/package.json': `\uFEFF${JSON.stringify({ volta: { node: '20.0.0' } })}`,
+      'child/package.json': JSON.stringify({ volta: { extends: '../base.json' } }),
+      'base.json': JSON.stringify({ volta: { node: '21.0.0', extends: 'child/package.json' } }),
+    })
+    const { names, refused } = await proposed(fx)
+    expect(names).toEqual(['16.0.0', 'v18.17.0'])
+    expect(refused).toEqual([])
+  })
+
+  /** A global package installed into the version folder `dir`. */
+  const addGlobal = (dir: string, name: string): void =>
+    write(join(dir, 'lib', 'node_modules', name, 'package.json'), '{}')
+
+  test('a Node version holding global packages is lost: held, and kept by clean unless picked and allowed', async () => {
+    const fx = fixture({ nvm: ['v14.21.3', 'v16.20.0'], volta: ['18.0.0'] })
     repo(join(fx.dev, 'a'))
-    write(join(fx.nvm, 'v14.21.3', 'lib', 'node_modules', 'npm', 'package.json'), '{}')
-    write(join(fx.nvm, 'v16.20.0', 'lib', 'node_modules', 'some-cli', 'package.json'), '{}')
+    for (const name of ['npm', 'corepack']) addGlobal(join(fx.nvm, 'v14.21.3'), name)
+    for (const name of ['npm', 'some-cli', '@org/tool']) addGlobal(join(fx.nvm, 'v16.20.0'), name)
+    addGlobal(join(fx.volta, '18.0.0'), 'other-cli')
     const { s } = await proposed(fx)
     const byName = new Map(s.candidates.map((c) => [c.name, c]))
     expect(byName.get('v14.21.3')).toMatchObject({ costDescription: 're-download' })
-    expect(byName.get('v16.20.0')).toMatchObject({ costDescription: 'lost' })
-    expect(byName.get('v16.20.0')!.why).toMatch(/global packages .*: some-cli$/)
+    expect(byName.get('v16.20.0')).toMatchObject({
+      costDescription: 'lost',
+      held: true,
+      evidence: { globalPackages: ['@org/tool', 'some-cli'] },
+    })
+    expect(byName.get('v16.20.0')!.why).toMatch(/global packages .*: @org\/tool, some-cli$/)
+    expect(byName.get('18.0.0')).toMatchObject({ costDescription: 'lost', held: true })
+
+    const receipt = await clean(plan(s), [fx.plugin], fx.ctx)
+    expect(receipt.steps.map((x) => x.id)).toEqual([byName.get('v14.21.3')!.id])
+    expect(readdirSync(fx.nvm)).toEqual(['v16.20.0'])
+    expect(readdirSync(fx.volta)).toEqual(['18.0.0'])
+
+    const ctx = { ...fx.ctx, allow: ['discard-user-data'] }
+    const opts = { pick: [byName.get('18.0.0')!.id], allow: ctx.allow }
+    await clean(plan(await survey([fx.plugin], ctx), opts), [fx.plugin], ctx)
+    expect(readdirSync(fx.nvm)).toEqual(['v16.20.0'])
+    expect(readdirSync(fx.volta)).toEqual([])
   })
 
-  test("Volta's shim first on PATH is not run, and the run folder's package.json pin is kept", async () => {
-    const fx = fixture({
-      volta: ['18.17.0', '22.1.0'],
-      node: 'v18.17.0',
-      env: (home) => ({ PATH: join(home, '.volta', 'bin') }),
-    })
-    write(join(fx.home, '.volta', 'bin', 'node'), '')
+  test('a global package installed after the plan, or right before the delete, keeps the version', async () => {
+    const fx = fixture({ nvm: ['v14.21.3', 'v16.20.0'] })
     repo(join(fx.dev, 'a'))
-    const proj = join(fx.home, 'proj')
-    write(join(proj, 'package.json'), JSON.stringify({ volta: { node: '22.1.0' } }))
-    fx.ctx = { ...fx.ctx, cwd: proj }
-    const { names, refused } = await proposed(fx)
-    expect(names).toEqual(['18.17.0'])
-    expect(refused).toEqual([])
-    expect(fx.calls.filter((c) => c.argv[0] === 'node')).toEqual([])
+    const first = join(fx.nvm, 'v14.21.3')
+    const second = join(fx.nvm, 'v16.20.0')
+    const s = await survey([fx.plugin], fx.ctx)
+    addGlobal(first, 'some-cli')
+    const late: Plugin = {
+      name: 'late',
+      detect: () => true,
+      prepare: (c) => addGlobal(c.path!, 'some-cli'),
+    }
+    const receipt = await clean(plan(s), [fx.plugin, late], fx.ctx)
+    expect(receipt.dropped).toEqual([
+      { id: `node-version:${first}`, reason: 'not-allowed', detail: expect.any(String) },
+    ])
+    expect(receipt.steps.map((x) => [x.id, x.result])).toEqual([
+      [`node-version:${second}`, 'failed'],
+    ])
+    expect(receipt.steps[0]!.error).toMatch(/changed: .*some-cli$/)
+    expect(readdirSync(fx.nvm)).toEqual(['v14.21.3', 'v16.20.0'])
+  })
+
+  test('global packages that cannot be listed are null; a folder of none is empty', () => {
+    const h = tempHome('host-cleaner-toolchains-')
+    cleanups.push(h.cleanup)
+    expect(globalPackages(h.home)).toEqual([])
+    write(join(h.home, 'lib', 'node_modules'), 'not a folder')
+    expect(globalPackages(h.home)).toBeNull()
+  })
+
+  test("Volta's shim on PATH is never run: the run folder's package.json pin, Volta's default and the next node are kept", async () => {
+    const h = tempHome('host-cleaner-toolchains-')
+    cleanups.push(h.cleanup)
+    const ran = join(h.home, 'ran')
+    const program = (path: string, body: string): void => {
+      write(path, `#!/bin/sh\n${body}\n`)
+      chmodSync(path, 0o755)
+    }
+    // Volta's own, and another folder's link to the shim, which installs what it lacks when run.
+    program(join(h.home, '.volta', 'bin', 'volta-shim'), `echo shim >> '${ran}'`)
+    symlinkSync('volta-shim', join(h.home, '.volta', 'bin', 'node'))
+    mkdirSync(join(h.home, 'links'))
+    symlinkSync(join(h.home, '.volta', 'bin', 'volta-shim'), join(h.home, 'links', 'node'))
+    program(join(h.home, 'other', 'node'), `echo other >> '${ran}'; echo v21.0.0`)
+    const volta = join(h.home, '.volta', 'tools', 'image', 'node')
+    for (const v of ['18.17.0', '20.0.0', '21.0.0', '22.1.0']) install(volta, v)
+    write(
+      join(h.home, '.volta', 'tools', 'user', 'platform.json'),
+      JSON.stringify({ node: { runtime: '20.0.0' } }),
+    )
+    const dev = repo(join(h.home, 'dev'))
+    const cwd = join(h.home, 'proj', 'sub')
+    mkdirSync(cwd, { recursive: true })
+    write(join(dirname(cwd), 'package.json'), JSON.stringify({ volta: { node: '22.1.0' } }))
+
+    const names = async (dirs: string[]): Promise<unknown[]> => {
+      const env = { HOME: h.home, PATH: dirs.map((d) => join(h.home, d)).join(delimiter) }
+      const kit = pluginKit('toolchains', { env })
+      const plugin = toolchainsPlugin(kit, env, { mountOptions: async () => [] })
+      attachKit(plugin, kit)
+      const s = await survey([plugin], { cwd, targets: [dev], targetsGiven: true, allow: [] })
+      expect(s.objections.filter((o) => o.level === 'refuse')).toEqual([])
+      return s.candidates.map((c) => c.name)
+    }
+    expect(await names(['.volta/bin', 'links'])).toEqual(['18.17.0', '21.0.0'])
+    expect(existsSync(ran)).toBe(false)
+    expect(await names(['.volta/bin', 'links', 'other'])).toEqual(['18.17.0'])
+    expect(readFileSync(ran, 'utf8')).toBe('other\n')
   })
 })
 
@@ -802,6 +959,68 @@ describe('reading mount options', () => {
     expect(s.candidates.map((c) => c.name)).toEqual(['v14.21.3'])
     expect(s.notes).toEqual({})
     expect(f.calls.map((c) => c.argv)).toContainEqual(['df', '-P', nvm])
+  })
+})
+
+describe('a clean of several versions', () => {
+  /** Puts a `git` first on PATH that logs each call, and returns how many `ls-files` it has had. */
+  function countGit(home: string): () => number {
+    const log = join(home, 'git.log')
+    const bin = join(home, 'git-bin')
+    write(join(bin, 'git'), `#!/bin/sh\necho "$*" >> '${log}'\nexec '${which('git')}' "$@"\n`)
+    chmodSync(join(bin, 'git'), 0o755)
+    vi.stubEnv('PATH', `${bin}${delimiter}${process.env.PATH}`)
+    cleanups.push(() => void vi.unstubAllEnvs())
+    return () =>
+      existsSync(log) ? (readFileSync(log, 'utf8').match(/ls-files -z/g)?.length ?? 0) : 0
+  }
+
+  test('lists the checkouts once, at the re-check, not again for each delete', async () => {
+    const fx = fixture({ nvm: ['v12.0.0', 'v14.21.3', 'v16.20.0', 'v18.17.0'] })
+    repo(join(fx.dev, 'a'), { '.nvmrc': '18\n' })
+    const p = plan(await survey([fx.plugin], fx.ctx))
+    const calls = countGit(fx.home)
+    await survey([fx.plugin], fx.ctx)
+    const one = calls()
+    expect(one).toBeGreaterThan(0)
+
+    const receipt = await clean(p, [fx.plugin], fx.ctx)
+    expect(receipt.steps.map((s) => s.result)).toEqual(['ok', 'ok', 'ok'])
+    expect(calls()).toBe(2 * one)
+  })
+
+  test('a pin made between two deletes, in a checkout known by then, keeps its version', async () => {
+    const fx = fixture({ nvm: ['v14.21.3', 'v16.20.0'] })
+    const a = repo(join(fx.dev, 'a'))
+    const pinner: Plugin = {
+      name: 'pinner',
+      detect: () => true,
+      deleted: () => write(join(a, '.nvmrc'), '16\n'),
+    }
+    const p = plan(await survey([fx.plugin, pinner], fx.ctx))
+    const receipt = await clean(p, [fx.plugin, pinner], fx.ctx)
+    expect(receipt.steps.map((s) => [s.result, s.error ?? null])).toEqual([
+      ['ok', null],
+      ['failed', expect.stringContaining('is no longer a candidate')],
+    ])
+    expect(readdirSync(fx.nvm)).toEqual(['v16.20.0'])
+  })
+
+  test('a minute after the listing, a delete lists the checkouts again', async () => {
+    const fx = fixture({ nvm: ['v14.21.3'] })
+    repo(join(fx.dev, 'a'))
+    const s = await survey([fx.plugin], fx.ctx)
+    const c = s.candidates[0] as Candidate
+    repo(join(fx.dev, 'b'), { '.nvmrc': '14\n' })
+    const now = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 61_000)
+    cleanups.push(() => clock.mockRestore())
+    await expect(fx.plugin.delete!(c, fx.ctx)).rejects.toThrow(/is no longer a candidate/)
+    // A clock that went back is not taken for a fresh listing either.
+    clock.mockReturnValue(now - 1000)
+    rmSync(join(fx.dev, 'b'), { recursive: true })
+    repo(join(fx.dev, 'c'), { '.nvmrc': '14\n' })
+    await expect(fx.plugin.delete!(c, fx.ctx)).rejects.toThrow(/is no longer a candidate/)
   })
 })
 

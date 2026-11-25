@@ -11,7 +11,9 @@ import { lstatSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, delimiter, dirname, join, resolve } from 'node:path'
 
-import { Git, checkoutRoot, scanForCheckouts } from '@osdlc/typed-git'
+import { which } from '@osdlc/command-seam'
+import { sameFingerprint } from '@osdlc/repo-cleaner'
+import { AsyncGit, checkoutRoot, scanForCheckouts, type LsFilesOptions } from '@osdlc/typed-git'
 import { z } from 'zod'
 
 import {
@@ -20,9 +22,11 @@ import {
   errorText,
   failureReason,
   hoursText,
+  isObject,
   objectionsTo,
   objector,
   realOr,
+  str,
   yieldToLimit,
   type Row,
 } from './helpers.ts'
@@ -46,6 +50,12 @@ const NEWEST = new Set(['node', 'stable', 'latest', 'current'])
 const RUST_RELEASE = /^(stable|beta|nightly|\d+\.\d+(\.\d+)?)(-|$)/
 const NODE_VERSION = /^v?\d+\.\d+\.\d+$/
 
+/**
+ * How long after the pin files were listed a `delete` still reads that list
+ * instead of listing every checkout again. Whatever it lists is read afresh.
+ */
+const LISTING_MS = 60_000
+
 /** The longest `rustup toolchain uninstall` may take. */
 const UNINSTALL_LIMIT_MS = 5 * 60_000
 
@@ -61,9 +71,20 @@ type AtimeMode = 'noatime' | 'relatime' | 'exact'
 export const NO_TARGETS_NOTE =
   'no targets were given (the folder it runs from is not enough), so it proposes nothing'
 
+/**
+ * How many levels below a target are searched for checkouts: deep enough for
+ * a bare repository's own folders, bounded against a symlink loop.
+ */
+const SEARCH_DEPTH = 8
+
+/** How many levels below a folder a checkout does not track are searched for repositories. */
+const UNTRACKED_DEPTH = 3
+
 /** The note on every candidate: where the search for pins does not look. */
 export const UNSEARCHED_NOTE =
-  "checkouts in folders whose names start with a dot, and in folders a checkout's git ignores, are not searched for pins"
+  "checkouts are not searched for in folders whose names start with a dot, in folders a checkout's git ignores, " +
+  `more than ${UNTRACKED_DEPTH} levels down in a folder it does not track, or, when the home folder is a repository, ` +
+  'in what it does not track outside the targets'
 
 /** What {@link Detection.note} says when the versions folder `dir` is on a volume mounted `noatime`. */
 export const noatimeNote = (dir: string): string =>
@@ -131,18 +152,43 @@ export function rustPin(text: string): string | null {
   return channel === null ? null : channel[1]!.trim()
 }
 
-/** The version `package.json` pins for Volta, or null. */
-const voltaPin = (text: string): string | null => {
-  const json = JSON.parse(text.replace(/^﻿/, '')) as { volta?: { node?: unknown } }
-  const node = json?.volta?.node
-  return typeof node === 'string' ? node.trim() : null
+/**
+ * The version a `package.json` pins for Volta and the file it extends, each
+ * null when it names none. Throws when it is not JSON, unless it names no
+ * `volta`: a fixture or a template, which pins nothing.
+ */
+function voltaPin(text: string): { node: string | null; extends: string | null } {
+  let json: unknown
+  try {
+    json = JSON.parse(text.replace(/^\uFEFF/, ''))
+  } catch (err) {
+    if (text.includes('"volta"')) throw err
+  }
+  const volta = isObject(json) && isObject(json.volta) ? json.volta : {}
+  return { node: str(volta.node).trim() || null, extends: str(volta.extends).trim() || null }
 }
 
-/**
- * How many levels below a target are searched for checkouts: deep enough for
- * a bare repository's own folders, bounded against a symlink loop.
- */
-const SEARCH_DEPTH = 8
+/** What every git call is given: the hook's signal, and a locale {@link brokenGit} can read. */
+const gitCall = (ctx: Ctx) => ({ signal: ctx.signal, env: { LC_ALL: 'C' } })
+
+/** Whether git failed because a folder's `.git` is no repository: a pruned worktree's, or an empty one. */
+const brokenGit = (err: unknown): boolean =>
+  /not a git repository|invalid gitfile format/.test(errorText(err))
+
+/** Whether the folder `dir` is or holds `path`, by real path. */
+const holds = (dir: string, path: string): boolean =>
+  realOr(dir) === realOr(path) || containedIn([dir], path) !== null
+
+/** The folder `target` leads to; null, with why in `unknown`, when it is not a folder that can be read. */
+function targetFolder(target: string, unknown: string[]): string | null {
+  try {
+    readdirSync(target)
+    return realOr(target)
+  } catch (err) {
+    unknown.push(`the target ${target} could not be read: ${errorText(err)}`)
+    return null
+  }
+}
 
 /** The checkouts under the target `dir`, and why the walk may have missed one. */
 function scanUnder(dir: string, unknown: string[]): string[] {
@@ -155,170 +201,192 @@ function scanUnder(dir: string, unknown: string[]): string[] {
   return scan.checkouts
 }
 
-/** Whether `checkout`'s `.git` is a file naming a git folder that is gone: a worktree its repository pruned. */
-function orphaned(checkout: string): boolean {
-  let text: string
-  try {
-    text = readFileSync(join(checkout, '.git'), 'utf8')
-  } catch {
-    return false
-  }
-  const gitdir = /^gitdir:\s*(.+?)\s*$/m.exec(text)?.[1]
-  return gitdir !== undefined && !present(resolve(checkout, gitdir))
-}
-
 /**
- * Every checkout under `targets`, with each repository's worktrees: the
+ * Every checkout under the targets, with each repository's worktrees: the
  * repository a target is in (the whole of it, as the cargo and node plugins
- * read it) and those found below a target; the `loose` folders whose `.git`
- * names a git folder that is gone, read at their root only; plus why one may
- * have been missed.
+ * read it) and those found below a target, whatever links lead to it; plus
+ * why one may have been missed.
  */
-function checkoutsUnder(targets: readonly string[]): {
-  checkouts: string[]
-  loose: string[]
-  unknown: string[]
-} {
+async function checkoutsUnder(ctx: Ctx): Promise<{ checkouts: string[]; unknown: string[] }> {
   const found = new Set<string>()
   const unknown: string[] = []
-  for (const target of targets) {
-    // A target that is a link is followed.
-    const stat = statSync(target, { throwIfNoEntry: false })
-    if (stat === undefined && lstatSync(target, { throwIfNoEntry: false }) !== undefined) {
-      unknown.push(`${target} is a link that leads nowhere, so its checkouts could not be read`)
+  for (const target of ctx.targets) {
+    const dir = targetFolder(target, unknown)
+    if (dir === null) continue
+    for (const at of [target, dir]) {
+      const root = checkoutRoot(at)
+      if (root !== null) found.add(root)
     }
-    if (stat?.isDirectory() !== true) continue
-    const root = checkoutRoot(target)
-    if (root !== null) found.add(root)
-    for (const checkout of scanUnder(target, unknown)) found.add(checkout)
+    for (const checkout of scanUnder(dir, unknown)) found.add(checkout)
   }
   // A worktree lists every worktree of its repository, a bare one's too.
   const out = new Set<string>()
-  const loose: string[] = []
   for (const checkout of found) {
     if (out.has(checkout)) continue
-    let trees: ReturnType<Git['worktrees']>
+    await yieldToLimit(ctx)
     try {
-      trees = new Git(checkout).worktrees()
+      for (const tree of await new AsyncGit(checkout).worktrees(gitCall(ctx))) {
+        if (!tree.bare && isDir(tree.path)) out.add(tree.path)
+      }
     } catch (err) {
-      if (orphaned(checkout)) loose.push(checkout)
+      if (brokenGit(err)) out.add(checkout)
       else unknown.push(`the worktrees of ${checkout} could not be listed: ${errorText(err)}`)
-      continue
-    }
-    for (const tree of trees) {
-      if (!tree.bare && isDir(tree.path)) out.add(tree.path)
     }
   }
-  return { checkouts: [...out].sort(), loose: loose.sort(), unknown }
+  return { checkouts: [...out].sort(), unknown }
+}
+
+/** The pin files named in a checkout, and the checkouts inside it that are read on their own. */
+interface Found {
+  files: string[]
+  nested: string[]
 }
 
 /**
- * The repositories inside `checkout` that git does not list the files of:
- * its submodules, and the repositories in folders it does not track.
+ * What git lists in `checkout`: the pin files at its root and wherever one
+ * sits below it, ignored ones aside, and the repositories git does not list
+ * the files of, its submodules and those in folders it does not track. What
+ * it does not track is looked for only in the folders `within`, when given.
  */
-function nestedCheckouts(checkout: string): string[] {
-  const git = new Git(checkout)
-  const out = git
-    .submodules()
+async function listedIn(
+  checkout: string,
+  within: readonly string[] | null,
+  ctx: Ctx,
+): Promise<Found> {
+  const git = new AsyncGit(checkout)
+  const call = gitCall(ctx)
+  const paths = PIN_FILES.map((f) => `:(glob)**/${f}`)
+  const others = { ...call, others: true, excludeStandard: true }
+  const files = PIN_FILES.map((f) => join(checkout, f))
+  const list = async (dir: string, opts: LsFilesOptions): Promise<void> => {
+    for (const rel of await git.at(dir).lsFiles({ ...call, ...opts, paths })) {
+      files.push(join(dir, rel))
+    }
+  }
+  if (within === null) await list(checkout, { ...others, cached: true })
+  else {
+    await list(checkout, { cached: true })
+    for (const dir of within) await list(dir, others)
+  }
+  const nested = (await git.submodules(call))
     .map((s) => join(checkout, s.path))
     .filter((dir) => present(join(dir, '.git')))
-  const untracked = git.lsFiles({ others: true, excludeStandard: true, directory: true })
-  // The walk's depth limit is not a reason to refuse here: an untracked folder is more often data than repositories.
-  for (const rel of untracked.filter((r) => r.endsWith('/'))) {
-    out.push(...scanForCheckouts(join(checkout, rel), { onWarn: () => {} }).checkouts)
+  for (const dir of within ?? [checkout]) {
+    const untracked = await git.at(dir).lsFiles({ ...others, directory: true })
+    // The walk's depth limit is not a reason to refuse here: an untracked folder is more often data than repositories.
+    for (const rel of untracked.filter((r) => r.endsWith('/'))) {
+      const scan = scanForCheckouts(join(dir, rel), { maxDepth: UNTRACKED_DEPTH, onWarn: () => {} })
+      nested.push(...scan.checkouts)
+    }
   }
-  return out
+  return { files, nested }
 }
 
-/** The pin files in `checkout`: at its root, and wherever git lists one below it, ignored ones aside. */
-function pinFiles(checkout: string): string[] {
-  const listed = new Git(checkout).lsFiles({
-    cached: true,
-    others: true,
-    excludeStandard: true,
-    paths: PIN_FILES.map((f) => `:(glob)**/${f}`),
-  })
-  const files = new Set(PIN_FILES.map((f) => join(checkout, f)))
-  for (const rel of listed) files.add(join(checkout, rel))
-  return [...files].sort()
+/**
+ * What {@link listedIn} gives, for a folder whose `.git` is broken: git lists
+ * nothing there, so everything in it is read but `.git` and `node_modules`
+ * folders, links not followed. Throws when a folder cannot be read.
+ */
+function walked(checkout: string): Found {
+  const files: string[] = []
+  const nested: string[] = []
+  const visit = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      if (!entry.isDirectory()) {
+        if (PIN_FILES.includes(entry.name)) files.push(path)
+      } else if (entry.name === '.git' || entry.name === 'node_modules') continue
+      else if (present(join(path, '.git'))) nested.push(path)
+      else visit(path)
+    }
+  }
+  visit(checkout)
+  return { files, nested }
 }
 
-/** What every checkout under `targets` and the run's folder ask for. */
-async function readPins(targets: readonly string[], ctx: Ctx): Promise<Pins> {
+/** The files every checkout under the targets may name its toolchain in, and why one may have been missed. */
+interface Listing {
+  files: string[]
+  unknown: string[]
+}
+
+/** Lists the pin files of every checkout under the targets. A repository that is or holds `home` is searched for untracked files only in the targets. */
+async function listPins(ctx: Ctx, home: string): Promise<Listing> {
+  const { checkouts, unknown } = await checkoutsUnder(ctx)
+  const withinOf = (checkout: string): string[] | null =>
+    !holds(checkout, home) || ctx.targets.some((t) => holds(t, checkout))
+      ? null
+      : ctx.targets.map(realOr).filter((t) => isDir(t) && holds(checkout, t))
+  const files = new Set<string>()
+  const queue = [...checkouts]
+  const seen = new Set(queue)
+  for (let checkout = queue.shift(); checkout !== undefined; checkout = queue.shift()) {
+    await yieldToLimit(ctx)
+    let found: Found
+    try {
+      try {
+        found = await listedIn(checkout, withinOf(checkout), ctx)
+      } catch (err) {
+        if (!brokenGit(err)) throw err
+        found = walked(checkout)
+      }
+    } catch (err) {
+      unknown.push(`${checkout} could not be listed: ${errorText(err)}`)
+      continue
+    }
+    for (const file of found.files) files.add(file)
+    for (const nested of found.nested) {
+      if (!seen.has(nested)) {
+        seen.add(nested)
+        queue.push(nested)
+      }
+    }
+  }
+  return { files: [...files].sort(), unknown }
+}
+
+/** What the files of `listing`, and those in the run's folder and above it, ask for now. */
+function readPins(listing: Listing, cwd: string): Pins {
   const pins: Pins = {
     rust: new Set(),
     node: new Set(),
-    rustUnknown: [],
-    nodeUnknown: [],
+    rustUnknown: [...listing.unknown],
+    nodeUnknown: [...listing.unknown],
     voltaUnknown: [],
   }
-  const unknownOf = (file: string): string[] => {
-    const name = basename(file)
-    if (RUST_PIN_FILES.includes(name)) return pins.rustUnknown
-    return name === 'package.json' ? pins.voltaUnknown : pins.nodeUnknown
-  }
-  const add = (file: string, text: string): void => {
-    const name = basename(file)
-    if (RUST_PIN_FILES.includes(name)) {
-      const pin = rustPin(text)
-      if (pin !== null) pins.rust.add(pin)
-      return
-    }
-    const pin = name === 'package.json' ? voltaPin(text) : firstLine(text) || null
-    if (pin !== null) pins.node.add(plain(pin))
-  }
-  const read = (file: string): void => {
+  const seen = new Set<string>()
+  const read = (file: string, name = basename(file)): void => {
+    if (seen.has(file)) return
+    seen.add(file)
+    const rust = RUST_PIN_FILES.includes(name)
+    const volta = name === 'package.json'
     let text: string
     try {
       text = readFileSync(file, 'utf8')
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return
-      unknownOf(file).push(`${file} could not be read`)
+      const unknown = rust ? pins.rustUnknown : volta ? pins.voltaUnknown : pins.nodeUnknown
+      unknown.push(`${file} could not be read`)
+      return
+    }
+    if (!volta) {
+      const pin = rust ? rustPin(text) : firstLine(text) || null
+      if (pin !== null) (rust ? pins.rust : pins.node).add(rust ? pin : plain(pin))
       return
     }
     try {
-      add(file, text)
+      const pin = voltaPin(text)
+      if (pin.node !== null) pins.node.add(plain(pin.node))
+      if (pin.extends !== null) read(resolve(dirname(file), pin.extends), 'package.json')
     } catch {
-      // Only package.json is parsed; one that is not JSON may hide a Volta pin.
+      // It may hide a Volta pin.
       pins.voltaUnknown.push(`${file} is not JSON`)
     }
   }
 
-  const unknown = (why: string): void => {
-    pins.rustUnknown.push(why)
-    pins.nodeUnknown.push(why)
-  }
-  let found: ReturnType<typeof checkoutsUnder>
-  try {
-    found = checkoutsUnder(targets)
-  } catch (err) {
-    unknown(`the checkouts under the targets could not be listed: ${errorText(err)}`)
-    return pins
-  }
-  for (const dir of found.loose) for (const f of PIN_FILES) read(join(dir, f))
-  const queue = [...found.checkouts]
-  const seen = new Set(queue)
-  for (let checkout = queue.shift(); checkout !== undefined; checkout = queue.shift()) {
-    // Each checkout is listed synchronously, so the survey's time limit can fire only between them.
-    await yieldToLimit(ctx)
-    let files: string[]
-    try {
-      files = pinFiles(checkout)
-      for (const nested of nestedCheckouts(checkout)) {
-        if (!seen.has(nested)) {
-          seen.add(nested)
-          queue.push(nested)
-        }
-      }
-    } catch (err) {
-      unknown(`${checkout} could not be listed: ${errorText(err)}`)
-      continue
-    }
-    for (const file of files) read(file)
-  }
-  for (const why of found.unknown) unknown(why)
-  // The run's folder and those above it decide what is in use there, as rustup and nvm look up.
-  for (let dir = resolve(ctx.cwd); ; dir = dirname(dir)) {
+  for (const file of listing.files) read(file)
+  // The run's folder and those above it decide what is in use there, as rustup, nvm and Volta look up.
+  for (let dir = resolve(cwd); ; dir = dirname(dir)) {
     for (const f of PIN_FILES) read(join(dir, f))
     if (dirname(dir) === dir) break
   }
@@ -329,15 +397,21 @@ async function readPins(targets: readonly string[], ctx: Ctx): Promise<Pins> {
 const BUNDLED_PACKAGES = new Set(['npm', 'corepack'])
 
 /**
- * The global packages installed into the nvm version folder `dir`, those that
- * come with Node aside; null when they cannot be listed.
+ * The global packages installed into the Node version folder `dir`, those
+ * that come with Node aside; null when they cannot be listed.
  */
 export function globalPackages(dir: string): string[] | null {
   const modules = join(dir, 'lib', 'node_modules')
-  if (lstatSync(modules, { throwIfNoEntry: false }) === undefined) return []
+  const names = (at: string): string[] => readdirSync(at).filter((n) => !n.startsWith('.'))
   try {
-    return readdirSync(modules)
-      .filter((n) => !n.startsWith('.') && !BUNDLED_PACKAGES.has(n))
+    if (!present(modules)) return []
+    return names(modules)
+      .filter((n) => !BUNDLED_PACKAGES.has(n))
+      .flatMap((n) => {
+        // A scope's own folder counts when it is empty: what was in it cannot be told.
+        const scoped = n.startsWith('@') ? names(join(modules, n)) : []
+        return scoped.length === 0 ? [n] : scoped.map((m) => `${n}/${m}`)
+      })
       .sort()
   } catch {
     return null
@@ -494,7 +568,7 @@ export function toolchainsPlugin(
     const [defaults, overrides] = await Promise.all([
       rustup(['default'], ctx).catch((err: unknown) => {
         // With no default set there is none to keep.
-        if (/no default toolchain/i.test(errorText(err))) return []
+        if (/no default toolchain (is )?configured/.test(errorText(err))) return []
         throw err
       }),
       rustup(['override', 'list'], ctx),
@@ -524,17 +598,34 @@ export function toolchainsPlugin(
     return next === '' ? null : nodeSpec(next, newest, hops + 1)
   }
 
-  /** Whether the first `node` on `PATH` is Volta's shim. */
-  const voltaShimFirst = (): boolean => {
-    const node = (env.PATH ?? '')
-      .split(delimiter)
-      .filter((d) => d !== '')
-      .map((d) => join(d, 'node'))
-      .find((p) => present(p))
-    if (node === undefined) return false
-    return (
-      dirname(node) === join(homes.volta, 'bin') || basename(realOr(node)).startsWith('volta-shim')
-    )
+  /** Whether `node` is Volta's shim: in its `bin`, or a link to the shim itself. */
+  const isVoltaShim = (node: string): boolean =>
+    present(node) &&
+    (realOr(dirname(node)) === realOr(join(homes.volta, 'bin')) ||
+      basename(realOr(node)).startsWith('volta-shim'))
+
+  /**
+   * The version the `node` on `PATH` says it is, Volta's shim passed over: it
+   * installs a pinned version it lacks, and what it runs is Volta's default,
+   * a `package.json` pin, both read from their files, or the next `node`.
+   * Undefined when there is no other `node`, null when it did not say.
+   */
+  const nodeOnPath = async (ctx: Ctx): Promise<string | null | undefined> => {
+    const dirs = (env.PATH ?? process.env.PATH ?? '').split(delimiter)
+    const rest = dirs.filter((d) => !isVoltaShim(join(d, 'node')))
+    const shimmed = rest.length < dirs.length
+    const PATH = rest.join(delimiter)
+    const found = shimmed
+      ? PATH !== '' && which('node', { cwd: ctx.cwd, env: { ...env, PATH } }) !== undefined
+      : kit.onPath('node')
+    if (!found) return undefined
+    const r = await kit.run(['node', '--version'], {
+      cwd: ctx.cwd,
+      signal: ctx.signal,
+      ...(shimmed ? { env: { PATH } } : {}),
+    })
+    const version = r.stdout.trim()
+    return r.ok && NODE_VERSION.test(version) ? plain(version) : null
   }
 
   /**
@@ -560,18 +651,12 @@ export function toolchainsPlugin(
         unknown.volta.push(`Volta's default could not be read from ${platform}: ${errorText(err)}`)
       }
     }
-    // Volta's shim installs a pinned version it lacks, so it is not run: the version
-    // it runs is Volta's default or a package.json pin, which are read already.
-    if (kit.onPath('node') && !voltaShimFirst()) {
-      const r = await kit.run(['node', '--version'], { cwd: ctx.cwd, signal: ctx.signal })
-      const version = r.stdout.trim()
-      if (r.ok && NODE_VERSION.test(version)) keep.push(plain(version))
-      else {
-        const why = `the node on PATH did not say its version`
-        unknown.nvm.push(why)
-        unknown.volta.push(why)
-      }
-    }
+    const version = await nodeOnPath(ctx)
+    if (version === null) {
+      const why = `the node on PATH did not say its version`
+      unknown.nvm.push(why)
+      unknown.volta.push(why)
+    } else if (version !== undefined) keep.push(version)
     return { keep, unknown }
   }
 
@@ -594,8 +679,8 @@ export function toolchainsPlugin(
     if (hours !== null && hours < limit) return null
     const bytes = measure ? kit.size(path) : null
     const what = tool === 'rustup' ? 'this toolchain' : 'this Node version'
-    // The global packages npm installed into an nvm version go with it, and a re-download does not bring them back.
-    const globals = tool === 'nvm' ? globalPackages(path) : []
+    // The global packages npm installed into a Node version go with it, and a re-download does not bring them back.
+    const globals = tool === 'rustup' ? [] : globalPackages(path)
     const lost =
       globals === null
         ? '; its global packages could not be listed'
@@ -623,7 +708,13 @@ export function toolchainsPlugin(
           lost,
         costDescription: lost === '' ? 're-download' : 'lost',
         ...(bytes === null ? {} : { bytes }),
-        evidence: { kind: 'toolchain', tool, name, path },
+        evidence: {
+          kind: 'toolchain',
+          tool,
+          name,
+          path,
+          ...(lost === '' ? {} : { globalPackages: globals }),
+        },
       }),
       blockers,
     }
@@ -655,26 +746,39 @@ export function toolchainsPlugin(
     return new Map(tools.map((t, i) => [t, modes[i]!]))
   }
 
-  /** The present tools, their mounts' {@link AtimeMode}, and those on a `noatime` mount. */
-  const survey = async (ctx: Ctx) => {
-    const tools = presentTools()
+  /** The present tools, `only` that one when it is given, their mounts' {@link AtimeMode}, and those on a `noatime` mount. */
+  const survey = async (ctx: Ctx, only?: Tool) => {
+    const tools = presentTools().filter((t) => only === undefined || only === t)
     const modes = await atimeModes(tools, ctx)
     return { tools, modes, noatime: tools.filter((t) => modes.get(t) === 'noatime') }
+  }
+
+  /** The last listing, the targets it is of, and when it was made. */
+  let listed: { listing: Listing; targets: string; at: number } | undefined
+
+  /** The pin files under the targets: those of the last listing when `again` and it is younger than {@link LISTING_MS}, else listed now. */
+  const listing = async (ctx: Ctx, again: boolean): Promise<Listing> => {
+    const targets = ctx.targets.join('\0')
+    const age = listed === undefined ? -1 : Date.now() - listed.at
+    if (again && listed?.targets === targets && age >= 0 && age < LISTING_MS) return listed.listing
+    const found = await listPins(ctx, ctx.home ?? env.HOME ?? homedir())
+    listed = { listing: found, targets, at: Date.now() }
+    return found
   }
 
   /**
    * Every toolchain no checkout asks for and nobody used lately, refused when
    * what is asked for could not be read; sized only when `measure` is set.
-   * Only the versions of `only` when it is given.
+   * With `only`, for a delete, the versions of that tool, by a recent listing
+   * of the checkouts ({@link LISTING_MS}); everything else is read again.
    */
   const scan = async (ctx: Ctx, measure: boolean, only?: Tool): Promise<Row[]> => {
     if (!ctx.targetsGiven || ctx.targets.length === 0) return []
     // A version run daily on a noatime volume would read as unused, so none there is proposed.
-    const { tools, modes, noatime } = await survey(ctx)
-    const wanted = (t: Tool): boolean =>
-      tools.includes(t) && !noatime.includes(t) && (only === undefined || only === t)
+    const { tools, modes, noatime } = await survey(ctx, only)
+    const wanted = (t: Tool): boolean => tools.includes(t) && !noatime.includes(t)
     if (!TOOLS.some(wanted)) return []
-    const pins = await readPins(ctx.targets, ctx)
+    const pins = readPins(await listing(ctx, only !== undefined), ctx.cwd)
     const rows: Row[] = []
     const add = (tool: Tool, name: string, unknown: readonly string[]): void => {
       const r = row(tool, name, unknown, modes.get(tool) === 'relatime', measure)
@@ -773,7 +877,12 @@ export function toolchainsPlugin(
       // `rustup toolchain uninstall` would remove what a link leads to.
       if (!stat.isDirectory()) throw new Error(`${path} is no longer a folder`)
       // A checkout may have pinned it, or it may have become the default, since the survey.
-      checkAgain(c, (await scan(ctx, false, tool)).find((r) => r.candidate.id === c.id))
+      const now = (await scan(ctx, false, tool)).find((r) => r.candidate.id === c.id)
+      checkAgain(c, now)
+      // A global package may have been installed into it, which its loss was not allowed for.
+      if (!sameFingerprint(now.candidate.evidence, c.evidence)) {
+        throw new Error(`${path} changed: ${now.candidate.why}`)
+      }
       if (tool !== 'rustup') return kit.remove(path, ctx)
       const name = basename(path)
       await kit.run(['rustup', 'toolchain', 'uninstall', name], {
