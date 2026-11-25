@@ -247,7 +247,7 @@ named folders in `paths`, one value for `all` or one per OS, and the
 does not load descriptors yet.
 
 ```yaml
-# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@0.2/schemas/descriptor-1.json
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@0.3/schemas/descriptor-1.json
 descriptor: 1
 detect:
   any: [{ onPath: uv }, { exists: cache }]
