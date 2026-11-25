@@ -101,6 +101,7 @@ const DEFAULTS: Record<Store, Record<string, Record<TestedOs, string>>> = {
  * (the first word's last segment).
  */
 const RUNNING: Partial<Record<Store, { command: string; shown: string }>> = {
+  go: { command: '/usr/local/go/bin/go test ./...', shown: 'go' },
   gradle: {
     command:
       '/usr/bin/java -Xmx512m -cp /home/me/.gradle/wrapper/dists/gradle-8.10-bin/6o1bb8kk/gradle-8.10/lib/gradle-launcher-8.10.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.10',
@@ -165,6 +166,8 @@ interface Built {
   plugin: Plugin
   d: Descriptor
   calls: ReturnType<typeof fakeRunner>['calls']
+  /** The calls made while the plugin's `delete` ran, in order. */
+  deleting: ReturnType<typeof fakeRunner>['calls']
   /** The folder of `paths.<key>` on the OS it was built for: where it was moved, or the default. */
   folder(key: string): string
 }
@@ -220,7 +223,17 @@ function build(
     env,
     kit,
   })
-  return { home: h.home, plugin, d, calls: fake.calls, folder }
+  const deleting: Built['calls'] = []
+  const del = plugin.delete!.bind(plugin)
+  plugin.delete = async (c, ctx) => {
+    const from = fake.calls.length
+    try {
+      return await del(c, ctx)
+    } finally {
+      deleting.push(...fake.calls.slice(from))
+    }
+  }
+  return { home: h.home, plugin, d, calls: fake.calls, deleting, folder }
 }
 
 /** The candidates' paths `b`'s descriptor gives from its folders now: each folder, or each glob match in it. */
@@ -234,15 +247,8 @@ function expectedPaths(b: Built): string[] {
   return [...out].sort()
 }
 
-/** The calls other than a variable's `command` source: what the plugin ran to delete. */
-function actionCalls(b: Built): Built['calls'] {
-  const lookups = new Set(
-    Object.values(b.d.vars ?? {})
-      .flat()
-      .flatMap((s) => ('command' in s ? [s.command.join(' ')] : [])),
-  )
-  return b.calls.filter((c) => !lookups.has(c.argv.join(' ')))
-}
+/** What the plugin ran to delete: every call made inside its `delete`, lookups included. */
+const actionCalls = (b: Built): Built['calls'] => b.deleting
 
 /** The argv of each of {@link actionCalls}. */
 const actions = (b: Built): string[][] => actionCalls(b).map((c) => c.argv)
@@ -433,7 +439,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       const b = build('uv', os, { programs: { uv: () => ({}) } })
       const { survey: s, receipt } = await surveyAndClean(b.plugin)
       expect(s.candidates[0]!.held).toBeUndefined()
-      expect(b.calls.map((c) => [c.argv, c.opts.cwd])).toEqual([
+      expect(actionCalls(b).map((c) => [c.argv, c.opts.cwd])).toEqual([
         [['uv', 'cache', 'prune', '--cache-dir', b.folder('cache')], b.home],
       ])
       expect(receipt.steps.map((st) => st.result)).toEqual(['ok'])
@@ -662,6 +668,15 @@ describe.each(OSES_TESTED)('on %s', (os) => {
         }),
       ],
       [
+        'go',
+        'GOMODCACHE in the config, over go env',
+        (h) => ({
+          vars: { GOMODCACHE: at(h, 'mod') },
+          programs: { go: (argv) => (argv[0] === 'env' ? { stdout: `${at(h, 'env')}\n` } : {}) },
+          moved: { modcache: at(h, 'mod'), buildcache: at(h, 'env') },
+        }),
+      ],
+      [
         'gradle',
         'GRADLE_USER_HOME',
         (h) => ({
@@ -733,6 +748,27 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       ],
       ['pnpm', 'pnpm store path', pnpmStorePath],
       [
+        'pnpm',
+        'npm_config_store_dir',
+        (h) => ({
+          env: { npm_config_store_dir: at(h, 'store') },
+          moved: { store: at(h, 'store') },
+        }),
+      ],
+      [
+        'pnpm',
+        'PNPM_HOME',
+        (h) => ({ env: { PNPM_HOME: at(h, 'pnpm') }, moved: { store: at(h, 'pnpm/store') } }),
+      ],
+      [
+        'uv',
+        'uv cache dir',
+        (h) => ({
+          programs: { uv: (argv) => (argv[1] === 'dir' ? { stdout: `${at(h, 'uv')}\n` } : {}) },
+          moved: { cache: at(h, 'uv') },
+        }),
+      ],
+      [
         'uv',
         'UV_CACHE_DIR',
         (h) => ({ env: { UV_CACHE_DIR: at(h, 'uv') }, moved: { cache: at(h, 'uv') } }),
@@ -764,6 +800,14 @@ describe.each(OSES_TESTED)('on %s', (os) => {
         (h) => ({
           files: { '.yarnrc.yml': `globalFolder: ${at(h, 'berry')}\n` },
           moved: { berry: at(h, 'berry/cache') },
+        }),
+      ],
+      [
+        'yarn',
+        'XDG_DATA_HOME',
+        (h) => ({
+          env: { XDG_DATA_HOME: at(h, 'data') },
+          moved: { berry: at(h, 'data/yarn/berry/cache') },
         }),
       ],
       [

@@ -3,7 +3,8 @@
 # its metadata cache. The store is pruned: `pnpm store prune` removes only the
 # packages no project references, so it runs with no idle check. pnpm prints
 # the versioned folder inside the store (such as store/v10), and --store-dir
-# takes that folder as it is. Without pnpm on PATH the default folder is used,
+# takes that folder as it is. Without pnpm on PATH the store is
+# npm_config_store_dir, else store under PNPM_HOME or pnpm's default home,
 # listed with a no-prune-tool protest and left alone (D12). The metadata cache,
 # under XDG_CACHE_HOME on Linux, is removed as a folder once idle.
 descriptor: 1
@@ -13,7 +14,11 @@ detect:
 vars:
   STORE:
     - command: [pnpm, store, path]
-    - value: { macos: ~/Library/pnpm/store, linux: '${XDG_DATA_HOME}/pnpm/store' }
+    - env: npm_config_store_dir
+    - value: '${PNPM_HOME}/store'
+  PNPM_HOME:
+    - env: PNPM_HOME
+    - value: { macos: ~/Library/pnpm, linux: '${XDG_DATA_HOME}/pnpm' }
 paths:
   store: { macos: '${STORE}', linux: '${STORE}' }
   cache: { macos: ~/Library/Caches/pnpm, linux: '${XDG_CACHE_HOME}/pnpm' }

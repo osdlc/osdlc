@@ -343,15 +343,23 @@ or two files of one name in one folder, is refused (exit 2). Descriptors run
 after the built-ins, by name. To try one you are writing:
 `host-cleaner status --descriptor ./uv.yaml --plugin uv`.
 
-The package ships eight, for macOS and Linux: `pnpm` (the store, pruned with
+The package ships nine, for macOS and Linux: `pnpm` (the store, pruned with
 `pnpm store prune`, and the metadata cache), `uv` (the cache, pruned with
 `uv cache prune`), `huggingface-hub` (one candidate per model or dataset, after
 30 idle days), `gradle` (the caches after a week and each wrapper distribution
 after 30 days, none while a Gradle daemon runs), `npm` (the package cache),
-`pip` (the cache), `yarn` (Berry's and Classic's global caches) and `maven` (the
-local repository, after 30 idle days). Each looks only at the tool's default
-folders: a store moved by an environment variable or a setting is not found, and
-the folder it left behind, if any, is what gets cleaned.
+`pip` (the cache), `yarn` (Berry's and Classic's global caches), `maven` (the
+local repository, after 30 idle days) and `go` (the module cache after 30 days
+with no change, the build cache after a week, emptied with `go clean`). Each
+finds a store where the tool would: from the environment variables and setting
+files the tool reads, or by asking the tool (`npm config get cache`,
+`pnpm store path`, `uv cache dir`, `go env`) when it is on PATH, else at the
+default folder. A store none of these find can be named in the config with
+`plugins.<name>.vars`:
+
+```json
+{ "plugins": { "maven": { "vars": { "LOCAL_REPOSITORY": "/data/m2/repository" } } } }
+```
 
 The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
 all three directories):
@@ -369,6 +377,7 @@ the key.
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
 | `idleHours` | `cargo`, `node`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
+| `vars` | every descriptor with `vars` | none | A folder for each named variable, such as `{ "GOMODCACHE": "/data/go/mod" }`. It wins over every source the descriptor lists, and its folder may sit outside the home folder. |
 
 Two settings sit at the top of the config and apply to every plugin:
 

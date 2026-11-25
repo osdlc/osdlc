@@ -1,7 +1,8 @@
 # yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
 # Yarn's global caches: Berry's (Yarn 2 and later), the cache folder under its
 # global folder, which YARN_GLOBAL_FOLDER or globalFolder in ~/.yarnrc.yml
-# moves; and Classic's (Yarn 1), which YARN_CACHE_FOLDER moves, under
+# moves, else yarn/berry under XDG_DATA_HOME when that is set, else
+# ~/.yarn/berry; and Classic's (Yarn 1), which YARN_CACHE_FOLDER moves, under
 # XDG_CACHE_HOME on Linux. Each is removed as a folder once idle. `yarn cache
 # clean` acts on whichever Yarn the folder it runs in selects, and can't be
 # pointed at one of these folders, so it isn't used. Projects' own .yarn
@@ -15,7 +16,11 @@ vars:
     - env: YARN_GLOBAL_FOLDER
     - file: ~/.yarnrc.yml
       key: globalFolder
+    - value: '${XDG_DATA_HOME_SET}/yarn/berry'
     - value: ~/.yarn/berry
+  # XDG_DATA_HOME only when the environment sets it: Berry ignores its default.
+  XDG_DATA_HOME_SET:
+    - env: XDG_DATA_HOME
   YARN_CACHE_FOLDER:
     - env: YARN_CACHE_FOLDER
     - value: { macos: ~/Library/Caches/Yarn, linux: '${XDG_CACHE_HOME}/yarn' }

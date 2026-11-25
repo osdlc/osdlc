@@ -5,7 +5,12 @@
 # variables and the defaults are used; a GOPATH that lists several folders is
 # then not followed. Each cache is emptied by go's own clean command pointed at
 # it, or removed as a folder without go, read-only module files included: the
-# module cache once unused for 30 days, the build cache after a week.
+# module cache once nothing in it changed for 30 days, the build cache after a
+# week. go touches the build cache entries it uses but not the module files it
+# reads, so a module cache in daily use with no new download for 30 days is
+# emptied too, and downloaded again by the next build. While go runs, both are
+# refused in-use. With go on PATH, `go env` answers before GOPATH is read, so
+# to move a cache in the config, set GOMODCACHE or GOCACHE there, not GOPATH.
 descriptor: 1
 store: go
 detect:
@@ -38,3 +43,5 @@ candidates:
     command: [go, clean, -cache]
     env: { GOCACHE: '{path}' }
     removes: all
+inUse:
+  processes: [go]
