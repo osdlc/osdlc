@@ -73,8 +73,10 @@ flowchart LR
 
 1. **detect.** Each plugin says whether it applies: `true`, `false`, or
    `{ active, note }`. The survey keeps every note, whether the plugin runs or
-   not; `status`, `plan` and `clean` print each as a warning naming the
-   plugin, and `plugins` shows it after the plugin's state. A throw, a
+   not (`Survey.notes`); `status`, `plan` and `clean` print each as the
+   warning `<plugin>: <note>`, `status --format json` and `clean --format
+   json` carry them under `notes`, and `plugins` shows it after the plugin's
+   state. A throw, a
    time-out, or any other answer leaves it out with a warning. Every hook's
    `ctx.targetsGiven` says whether the targets were given (on the command line
    or in the config) or the core fell back to the current folder.
@@ -214,11 +216,9 @@ an outside plugin would be.
 | `node` | `node_modules` of a linked worktree idle for `idleHours` | any busy process in the worktree | `kit.remove`, after reading the worktree again |
 | `orca` | `orca-record` refs for records whose folder is gone, held | notes, `orca-agent-active`, `orca-terminal-unverifiable`, `close-terminals`, `orca-unreachable` on `git`'s worktrees | `orca worktree rm` on a record; `prepare` closes terminals, `deleted` forgets the record after `git` removed the folder |
 
-While Orca is installed but cannot be asked (not running, or `orca status`
-fails or prints no JSON), there is no fallback to git: `git` worktrees whose
-real path is under `/orca/workspaces/` are refused with `orca-unreachable`,
-and the rest are left to `git`. `detect` still answers active, with the reason
-as its note.
+What `orca` does while Orca is installed but cannot be asked is in the
+README's [orca plugin](../../README.md#the-orca-plugin) section; `detect`
+still answers active, with the reason as its note.
 
 ## Command line
 
@@ -267,8 +267,8 @@ described above where it applies.
 | --- | --- |
 | Linked worktrees | A linked worktree counts when its main checkout is or sits inside a target, wherever the worktree is kept ([containment](#containment), rule 3). |
 | Nesting | An outer candidate is blocked when any candidate inside it does not run, and its `blocked` detail names each one and what would let it run ([nesting](#nesting)). |
-| Detect notes | `detect` may answer `{ active, note }`. The core keeps the note for every plugin, whether it runs or not (`Survey.notes`). `status`, `plan` and `clean` print it as the warning `<plugin>: <note>`, and `status --format json` and `clean --format json` carry it under `notes`; `plugins` shows it after the plugin's state. |
-| `targetsGiven` | Every hook's `ctx.targetsGiven` is true when the targets came from the command line or the config, and false when the command line fell back to the current folder. The plan keeps it, so `clean --plan` passes it on; a plan without it is refused: sweep again (D15). |
+| Detect notes | `detect` may answer `{ active, note }`, and the note is kept and shown for every plugin, whether it runs or not ([one run](#one-run), step 1). |
+| `targetsGiven` | Every hook's `ctx.targetsGiven` says whether the targets were given ([one run](#one-run), step 1). The plan keeps it, so `clean --plan` passes it on; a plan without it is refused ([modules](#modules), `src/plan.ts`). |
 | Self roots | `roots` may name `{ path, self: true }`, so a store removed whole, such as `~/.npm`, may be a candidate itself. The core's root checks apply to it as to a plain root, and it must not be a symlink. |
 | `kit.running({ name })` | Matches a word of each command line from `ps -axo pid=,ppid=,args=` (`commandHasName`): a word whose last path segment is the name, or has it as one of its `.`-separated parts. It errs toward a match, since a false match only stops a delete: `pnpm` finds `node /opt/homebrew/bin/pnpm dev`, and `gradle` finds the Gradle daemon's `java` command line. `npm` does not match `pnpm`, and case counts. host-cleaner's own process and every ancestor of it are left out, so the `npm exec` or `pnpm dlx` that started it does not count. |
 
