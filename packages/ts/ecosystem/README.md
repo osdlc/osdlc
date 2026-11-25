@@ -70,14 +70,22 @@ import { schema } from './config.ts' // the tool's own zod schema
 // ~/.config/osdlc on Linux and macOS, with no variable set.
 const familyHome = osdlcDirs().standalone('osdlc').config().path
 
-// A tool's own machine file, under osdlc/<tool>/.
+// A tool's own machine file, ~/.config/osdlc/mytool/config.yaml, moved by
+// its own variable: the default, OSDLC_MACHINE_CONFIG, would move every tool's.
 const file = machineConfigFile({
   tool: 'osdlc',
   app: 'mytool',
-  schema,
+  env: 'MYTOOL_MACHINE_CONFIG',
   vendorDirs: OSDLC_VENDOR_DIRS,
+  dirs: () => osdlcDirs(),
+  schema,
 })
 ```
+
+`dirs` pins the file to the family's Xdg directories. Without it,
+config-layers resolves under its native convention, which on macOS is
+`~/Library/Application Support`. See
+[the machine-files standard](https://github.com/osdlc/osdlc/blob/main/standards/machine-files.md).
 
 ## `repositories.yaml`
 
