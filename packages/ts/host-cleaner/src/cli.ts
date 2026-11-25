@@ -364,8 +364,7 @@ function loadConfig(
     return { file, found: true, config: readConfig(file, { required: true }) }
   }
   const file = configFile(dirs ?? hostDirs(ctx.env))
-  const found = existsSync(file)
-  return { file, found, config: readConfig(file, { required: found }) }
+  return { file, found: existsSync(file), config: readConfig(file) }
 }
 
 /** `--plugin` and its alias `--adapter`, as one list; undefined when neither is given. */
