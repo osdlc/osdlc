@@ -568,8 +568,7 @@ export interface WalkOptions {
 /**
  * Tab through the open page from the start of the document, then Shift+Tab
  * back, writing a screenshot per stop and `walk.json` to `outDir`. Records
- * what happened and judges nothing. The page must be a story that has been
- * opened and settled.
+ * what happened and judges nothing. The page must already be open and settled.
  *
  * @experimental
  */
