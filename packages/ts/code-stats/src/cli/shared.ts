@@ -42,7 +42,7 @@ function groupRules(values: {
 const printJson = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`
 
 const NEEDS_GIT_HINT =
-  'diff, compare, describe and count --rev read git history; count without --rev reads the files on disk and needs no git.'
+  'diff, compare, describe, prep and count --rev read git history; count without --rev reads the files on disk and needs no git.'
 
 /** A classified failure as a thrown error; cli-tool's `failureOf` reads its `failure`. */
 class ClassifiedError extends Error {

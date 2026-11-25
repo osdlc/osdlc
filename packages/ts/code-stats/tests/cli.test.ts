@@ -83,6 +83,10 @@ describe('code-stats', () => {
     expect(json).toMatchObject({ kind: 'prep', schema: 2 })
     expect(() => createApp().documentContract(['prep']).parse(json)).not.toThrow()
     expect((await run(r.dir, 'prep', 'nope')).code).toBe(2)
+    expect((await run(r.dir, 'prep', '--base', '-x')).code).toBe(2)
+    expect((await run(r.dir, 'prep', '--base', 'HEAD~1', '--group-size', 'x')).code).toBe(2)
+    expect((await run(r.dir, 'prep', '--base', 'HEAD~1', '--group-size', '-1')).code).toBe(2)
+    expect((await run(r.dir, 'prep', '--base', 'HEAD~1', '--group-size', '0')).code).toBe(0)
     expect((await run(r.dir, 'prep', '--help')).out).toContain('--group-size')
   })
 
@@ -195,7 +199,7 @@ describe('code-stats', () => {
     expect(diff.code).toBe(EXIT_FAILURE.missingTool)
     expect(diff.err).toBe(
       'code-stats: git is not installed, or not on PATH Install git from https://git-scm.com.\n' +
-        'diff, compare, describe and count --rev read git history; count without --rev reads the files on disk and needs no git.\n',
+        'diff, compare, describe, prep and count --rev read git history; count without --rev reads the files on disk and needs no git.\n',
     )
     const rev = await run(dir, 'count', '--rev', 'HEAD')
     expect(rev.code).toBe(EXIT_FAILURE.repository)

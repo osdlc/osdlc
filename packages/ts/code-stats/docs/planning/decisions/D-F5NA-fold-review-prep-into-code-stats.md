@@ -13,13 +13,14 @@ The owner has not yet confirmed this. This note proposes it.
 
 - The review-prep manifest, `prep`, is part of `@osdlc/code-stats`. It was a separate package
   with one command; that package is gone and was never published.
-- The command is `code-stats prep`, with the flags and the output the standalone command had. It
-  is wired like `count`, `diff`, `compare` and `describe`. Its JSON output follows the same rule
-  as theirs: `--json` puts `schemaVersion` and `kind` in front of the manifest.
+- The command is `code-stats prep`, with the flags the standalone command had. It is wired like
+  `count`, `diff`, `compare` and `describe`, so its output and failures follow their rules: the
+  plain output is the manifest, `--json` puts `schemaVersion` and `kind` in front of it, and a
+  classified failure (no git, no `gh`, `gh` signed out) exits with the shared codes instead of 1.
 - The library is the `@osdlc/code-stats/prep` entry point: `runPrep`, `prepManifestSchema` and
-  its types, `DEFAULT_THRESHOLDS`, and the experimental grouping pieces (`PACKAGE_MARKERS`,
-  `packageRoots`, `nearestRoot`, `buildGroups`). The first four of them are stable; the
-  grouping pieces are `@experimental`, as before.
+  its types, `DEFAULT_THRESHOLDS`, and the grouping pieces (`PACKAGE_MARKERS`, `packageRoots`,
+  `nearestRoot`, `buildGroups`). `runPrep`, `prepManifestSchema` with its types, and
+  `DEFAULT_THRESHOLDS` are stable; the grouping pieces are `@experimental`, as before.
 - `prep` raises `CodeStatsError`, not an error type of its own: `kind` is `bad-input` when the
   arguments contradict each other or name something that does not exist, so the command exits
   with the usage code, as the other commands do for a bad revision.
