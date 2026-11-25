@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 
 import { z } from 'zod'
 
-import { pluginKit, type Kit, type KitOptions } from './kit.ts'
+import { attachKit, pluginKit, type Kit, type KitOptions } from './kit.ts'
 import {
   PLUGIN_API,
   definePlugin,
@@ -139,9 +139,10 @@ const isDir = (dir: string): boolean =>
 
 /**
  * True when the history folder `name`, at `path`, holds history that cannot be
- * had again: a chat with at least one request (one that cannot be read counts,
- * an empty file is a chat with none), an editing session whose `contents/`
- * has the files it changed, or anything at all in Copilot's folders.
+ * had again: a chat with at least one request (an empty file is a chat with
+ * none), an editing session whose `contents/` has the files it changed, or
+ * anything at all in Copilot's folders. Throws on a chat or session it cannot
+ * read, which {@link historyIn} counts as history.
  */
 function holdsHistory(name: (typeof HISTORY_FOLDERS)[number], path: string): boolean {
   if (name === 'chatSessions') {
@@ -149,21 +150,13 @@ function holdsHistory(name: (typeof HISTORY_FOLDERS)[number], path: string): boo
       const log = file.endsWith('.jsonl')
       // VS Code reads no other files there.
       if (!log && !file.endsWith('.json')) return false
-      try {
-        return chatRequests(readFileSync(join(path, file), 'utf8'), log) > 0
-      } catch {
-        return true
-      }
+      return chatRequests(readFileSync(join(path, file), 'utf8'), log) > 0
     })
   }
   if (name === 'chatEditingSessions') {
     return readdirSync(path).some((session) => {
       const contents = join(path, session, 'contents')
-      try {
-        return isDir(join(path, session)) && isDir(contents) && filled(contents)
-      } catch {
-        return true
-      }
+      return isDir(join(path, session)) && isDir(contents) && filled(contents)
     })
   }
   return filled(path)
@@ -245,7 +238,7 @@ function localPath(uri: string): string | null {
 /** What the storage folder `dir` says, read from its `workspace.json`. */
 function entryOf(dir: string): Entry {
   // VS Code makes each one a folder; a link or a file is not one of its own and is never followed.
-  if (lstatSync(dir, { throwIfNoEntry: false })?.isDirectory() !== true) return { state: 'skip' }
+  if (!isDir(dir)) return { state: 'skip' }
   let text: string
   try {
     text = readFileSync(join(dir, 'workspace.json'), 'utf8')
@@ -261,12 +254,11 @@ function entryOf(dir: string): Entry {
     return { state: 'unknown', problem: 'workspace.json is not JSON' }
   }
   if (!isObject(body)) return { state: 'unknown', problem: 'workspace.json is not an object' }
-  const named = (['folder', 'workspace'] as const).filter((k) => body[k] !== undefined)
-  const key = named[0]
-  if (named.length !== 1 || key === undefined) {
+  const [key, extra] = (['folder', 'workspace'] as const).filter((k) => body[k] !== undefined)
+  if (key === undefined || extra !== undefined) {
     return {
       state: 'unknown',
-      problem: `workspace.json names ${named.length === 0 ? 'neither a folder nor a workspace' : 'both a folder and a workspace'}`,
+      problem: `workspace.json names ${key === undefined ? 'neither a folder nor a workspace' : 'both a folder and a workspace'}`,
     }
   }
   const workspace = body[key]
@@ -330,9 +322,9 @@ function openWindows(stateFile: string): { paths: string[]; problem?: string } {
 const isGitWorktree = (c: Candidate): c is PathCandidate =>
   c.kind === 'worktree' && c.owner === 'git' && c.path !== undefined
 
-/** The VS Code processes among `kit.running`'s names. */
+/** The VS Code processes among `kit.running`'s names (`<command> (pid <n>)`, which the pattern's trailing space accepts). */
 const vscodeOf = (names: readonly string[]): string[] =>
-  names.filter((n) => VSCODE_PROCESS.test(n.replace(/ \(pid \d+\)$/, '')))
+  names.filter((n) => VSCODE_PROCESS.test(n))
 
 function build(kit: Kit, opts: VscodeOptions): Plugin {
   const userDir =
@@ -340,8 +332,11 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
   const root = userDir === undefined ? undefined : join(userDir, 'workspaceStorage')
   const stateFile =
     userDir === undefined ? undefined : join(userDir, 'globalStorage', 'storage.json')
-  const present = (): boolean =>
+  /** `root` when it exists. */
+  const storage = (): string | undefined =>
     root !== undefined && lstatSync(root, { throwIfNoEntry: false }) !== undefined
+      ? root
+      : undefined
 
   /** The last discovery's entries by candidate id, kept for `object`. */
   let entries = new Map<string, Entry>()
@@ -362,14 +357,18 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
   return {
     name: VSCODE_PLUGIN,
     limits: { discover: DISCOVER_LIMIT_MS },
-    detect: present,
-    roots: () => (root !== undefined && present() ? [root] : []),
+    detect: () => storage() !== undefined,
+    roots: () => {
+      const dir = storage()
+      return dir === undefined ? [] : [dir]
+    },
     discover() {
-      if (root === undefined || !present()) return []
+      const top = storage()
+      if (top === undefined) return []
       const found = new Map<string, Entry>()
       const out: Candidate[] = []
-      for (const name of readdirSync(root).sort()) {
-        const dir = join(root, name)
+      for (const name of readdirSync(top).sort()) {
+        const dir = join(top, name)
         const entry = entryOf(dir)
         if (entry.state === 'skip') continue
         const c =
@@ -403,10 +402,14 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
       const anywhere = kit.running({ in: '/' }, ctx)
       const running = vscodeOf(anywhere.names).length > 0 || anywhere.unknown !== undefined
       const windows = running && stateFile !== undefined ? openWindows(stateFile) : { paths: [] }
-      const opened = (path: string): boolean => windows.paths.some((p) => within(p, canon(path)))
+      const opened = (path: string): boolean => {
+        const dir = canon(path)
+        return windows.paths.some((p) => within(p, dir))
+      }
 
       for (const c of worktrees) {
-        const procs = vscodeOf(kit.running({ in: c.path }, ctx).names)
+        // With no VS Code process anywhere, none works in this worktree.
+        const procs = running ? vscodeOf(kit.running({ in: c.path }, ctx).names) : []
         if (procs.length > 0) {
           out.push(own(c, 'refuse', IN_USE, `VS Code works in it: ${procs.join(', ')}`))
         } else if (opened(c.path)) {
@@ -422,8 +425,9 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
           )
         }
       }
-      for (const { c, local } of gone) {
-        if (windows.paths.includes(canon(local))) {
+      const open = new Set(windows.paths)
+      for (const { c, local } of open.size === 0 ? [] : gone) {
+        if (open.has(canon(local))) {
           out.push(own(c, 'refuse', IN_USE, `a VS Code window still has ${local} open`))
         }
       }
@@ -450,11 +454,7 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
   }
 }
 
-function goneCandidate(
-  kit: Kit,
-  dir: string,
-  e: { workspace: string; local: string; history: string[] },
-): Candidate {
+function goneCandidate(kit: Kit, dir: string, e: Extract<Entry, { state: 'gone' }>): Candidate {
   const bytes = kit.size(dir)
   const hasHistory = e.history.length > 0
   return kit.candidate({
@@ -473,25 +473,20 @@ function goneCandidate(
   })
 }
 
+/** The `vscode` plugin on `kit`, or on a kit built from `opts`; the kit is attached so the core binds it each run. */
+export function vscodePlugin(
+  opts: VscodeOptions = {},
+  kit: Kit = pluginKit(VSCODE_PLUGIN, opts),
+): Plugin {
+  const plugin = build(kit, opts)
+  attachKit(plugin, kit)
+  return plugin
+}
+
 /** The `vscode` plugin as the command line builds it. No settings of its own. */
 export const vscodeDefinition = definePlugin({
   name: VSCODE_PLUGIN,
   api: PLUGIN_API,
   settings: z.strictObject({}),
-  create: ({ kit, env }) => build(kit, { env }),
+  create: ({ kit, env }) => vscodePlugin({ env }, kit),
 })
-
-/** The `vscode` plugin on a kit built from `opts`, made through `definePlugin` so the core binds that kit each run. */
-export function vscodePlugin(opts: VscodeOptions = {}): Plugin {
-  return definePlugin({
-    name: VSCODE_PLUGIN,
-    api: PLUGIN_API,
-    settings: z.strictObject({}),
-    create: ({ kit }) => build(kit, opts),
-  }).create({
-    settings: {},
-    only: [],
-    env: opts.env ?? process.env,
-    kit: pluginKit(VSCODE_PLUGIN, opts),
-  })
-}

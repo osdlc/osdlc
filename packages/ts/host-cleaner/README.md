@@ -287,6 +287,7 @@ that folder exists, and has no settings.
 | object | Refuses (`in-use`) a `git` worktree a VS Code process works in (by its working directory, such as a `Code Helper (Plugin)` process an extension started there), or one the window state (`User/globalStorage/storage.json`, `windowsState`) names as open while VS Code runs or the process table cannot be read. Its own candidate for a folder a window still names is refused the same way. A window state it cannot read is a `note` on each worktree. |
 | delete | Reads the folder's `workspace.json` again, checks it is a folder directly in `workspaceStorage`, its workspace is still gone, and it holds no chat or agent history unless it was planned as `lost`, then removes it with `kit.remove`. |
 
+## The `orca` plugin
 
 Orca keeps its own record of some worktrees and holds terminals and agents open
 in them. Removing one with plain git leaves the record and the terminals behind,
