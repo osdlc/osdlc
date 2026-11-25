@@ -74,7 +74,8 @@ export const isPackaged = (def: PluginDefinition): boolean => fromPackage.has(de
  * The `node_modules` folders a package is looked for in, in order: those
  * above host-cleaner's own folder (`from`), as Node resolves host-cleaner's
  * own imports, then the global prefix's. The prefix is `npm_config_prefix`
- * when set, else the one Node's own install uses.
+ * when set, else npm's default: `%APPDATA%\npm` on Windows, and the one Node
+ * is installed under elsewhere or without `APPDATA`.
  */
 export function packageRoots(
   env: Readonly<Record<string, string | undefined>>,
@@ -88,7 +89,11 @@ export function packageRoots(
   const windows = process.platform === 'win32'
   const prefix =
     env.npm_config_prefix ??
-    (windows ? dirname(process.execPath) : dirname(dirname(process.execPath)))
+    (!windows
+      ? dirname(dirname(process.execPath))
+      : env.APPDATA !== undefined
+        ? join(env.APPDATA, 'npm')
+        : dirname(process.execPath))
   const global = windows ? join(prefix, 'node_modules') : join(prefix, 'lib', 'node_modules')
   return roots.includes(global) ? roots : [...roots, global]
 }

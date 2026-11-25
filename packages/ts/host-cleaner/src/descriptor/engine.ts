@@ -238,8 +238,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     if (folder !== undefined) folders.set(key, expand(folder, at.home))
   }
 
-  const problems = (ctx: Ctx) => {
-    const where = { ...at, targets: ctx.targets, checkouts: checkoutsIn(ctx.targets) }
+  const problems = (ctx: Ctx, checkouts: readonly string[] = checkoutsIn(ctx.targets)) => {
+    const where = { ...at, targets: ctx.targets, checkouts }
     const out = new Map<string, string | null>()
     for (const [key, folder] of folders) out.set(key, pathProblem(folder, where))
     return out
@@ -404,7 +404,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
 
   /** Every row now; a glob that matched more than its `maxEntries` puts a note on its last listed row. */
   const rowsNow = (ctx: Ctx): Row[] => {
-    const refused = problems(ctx)
+    const checkouts = checkoutsIn(ctx.targets)
+    const refused = problems(ctx, checkouts)
     const rows: Row[] = []
     for (const [index, entry] of d.candidates.entries()) {
       const folder = folders.get(entry.path)
@@ -455,9 +456,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       }
       rows.push(...listed)
     }
-    const projects = d.project ?? []
-    const checkouts = projects.length === 0 ? [] : checkoutsIn(ctx.targets)
-    for (const [index, entry] of projects.entries()) {
+    for (const [index, entry] of (d.project ?? []).entries()) {
       for (const checkout of checkouts) {
         if (ctx.ignore?.some((i) => within(i, checkout)) === true) continue
         rows.push(...projectRows(entry, index, checkout))

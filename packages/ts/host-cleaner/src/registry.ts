@@ -17,7 +17,7 @@ import { byName, type LoadedPackage, type PackageEntry } from './load.ts'
 import { nodeDefinition } from './node.ts'
 import { orcaDefinition } from './orca.ts'
 import { detection } from './run.ts'
-import type { Ctx, Plugin, PluginDefinition } from './types.ts'
+import type { Ctx, Detection, Plugin, PluginDefinition } from './types.ts'
 
 /**
  * The shipped plugins, in run order. Order decides which plugin keeps a
@@ -88,23 +88,56 @@ export function loadPlugins(
   }
 }
 
-/**
- * A descriptor's `runs`, for `supersededBy`: whether the plugin of that name is
- * among those `chosen` gives (enabled and not skipped) and detects: its
- * `detect` answers `true` or `{ active: true }`. A plugin whose `detect` throws
- * counts as not running, so the descriptor applies.
- */
-export const runsAmong =
-  (chosen: () => readonly Plugin[]) =>
-  async (name: string, ctx: Ctx): Promise<boolean> => {
-    const p = chosen().find((x) => x.name === name)
-    if (p === undefined) return false
+/** A descriptor's `supersededBy` test, and the plugins it answers for. */
+export interface Supersession {
+  /** `plugins`, each wrapped so its `detect` answer is kept; `runs` knows these and no others. */
+  watch(plugins: readonly Plugin[]): Plugin[]
+  /**
+   * A descriptor's `runs`: whether the plugin `name` is watched and detects, its
+   * `detect` answering `true` or `{ active: true }`. Survey asks the code plugins
+   * before the descriptors, so this is survey's own answer, under the plugin's
+   * own time limit, and `detect` runs once. One whose `detect` threw, or is still
+   * pending because survey gave up on it, counts as not running, so the
+   * descriptor applies. One not asked yet is asked here.
+   */
+  runs(name: string, ctx: Ctx): Promise<boolean>
+}
+
+export function supersession(): Supersession {
+  let watched = new Map<string, Plugin>()
+  const answers = new Map<string, 'pending' | boolean>()
+  const detect = async (p: Plugin, ctx: Ctx): Promise<boolean | Detection> => {
+    answers.set(p.name, 'pending')
     try {
-      return detection(await p.detect(ctx))?.active === true
-    } catch {
-      return false
+      const answer = await p.detect(ctx)
+      answers.set(p.name, detection(answer)?.active === true)
+      return answer
+    } catch (err) {
+      answers.set(p.name, false)
+      throw err
     }
   }
+  return {
+    watch(plugins) {
+      watched = new Map(plugins.map((p) => [p.name, p]))
+      answers.clear()
+      return plugins.map((p) =>
+        Object.assign(Object.create(p) as Plugin, {
+          name: p.name,
+          detect: (ctx: Ctx) => detect(p, ctx),
+        }),
+      )
+    },
+    async runs(name, ctx) {
+      const p = watched.get(name)
+      if (p === undefined) return false
+      const known = answers.get(name)
+      if (known !== undefined) return known === true
+      await detect(p, ctx).catch(() => undefined)
+      return answers.get(name) === true
+    },
+  }
+}
 
 /** A `--plugin` or `--skip-plugin` that names no plugin. */
 export class UnknownPlugin extends Error {

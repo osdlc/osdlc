@@ -238,6 +238,33 @@ Every shipped plugin passes it:
 expect(await contractSuite(plugin, { cwd: root, targets: [root] })).toEqual([])
 ```
 
+### Loading plugins from code
+
+The command line builds its plugin list from these exports, and a program that
+runs `survey` and `clean` itself can do the same:
+
+| Export | What it does |
+| --- | --- |
+| `packageEntries(config.plugins, taken)` | The `plugins` entries with a `package`, by name; `taken(name)` names the plugin that already has a name. Throws `PackageError`. |
+| `packageRoots(env)` | The `node_modules` folders a package is looked for in, in order. |
+| `loadPackages(entries, roots)` | Imports each entry's package: `{ loaded, failed }`. A failure is a `PackageFailure`, not a throw. |
+| `loadDescriptors({ shipped, user, flag }, reserved)` | The descriptors a run uses, each with its `source` and the file it `replaces`. Throws `DescriptorLoadError` for a name clash, `DescriptorError` for a bad file. |
+| `loadPlugins(sources, opts, { loaded, entries })` | The built-ins, then the packages, then one `descriptorPlugin` per descriptor: `{ definitions, packages, descriptors }`. |
+| `parseDescriptor(text, source)`, `readDescriptor(path)` | One descriptor, checked; `DescriptorError` lists each issue with its field and line. `descriptorIssues(value)` returns them instead. |
+| `descriptorPlugin(name, descriptor, opts)` | The `PluginDefinition` for one descriptor. |
+| `DescriptorSchema`, `descriptorJsonSchema()` | The format as a zod schema and as the JSON Schema in `schemas/descriptor-1.json`. |
+
+```ts
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { loadPackages, loadPlugins, packageEntries, packageRoots } from '@osdlc/host-cleaner'
+
+const entries = packageEntries(config.plugins, () => undefined)
+const { loaded, failed } = await loadPackages(entries, packageRoots(process.env))
+const user = join(homedir(), '.config', 'host-cleaner', 'descriptors')
+const { definitions } = loadPlugins({ user }, {}, { loaded, entries })
+```
+
 ## The `git` plugin
 
 `gitPlugin(options)` proposes repo-cleaner's worktrees, as paths, and branches,
@@ -376,7 +403,8 @@ A code plugin published as a package runs when the config names it:
 `"plugins": { "podman": { "package": "@acme/host-cleaner-podman" } }`. Only a
 package the config names is loaded, by its npm name and never from a path: from
 the `node_modules` folders host-cleaner itself is installed in, then the global
-npm prefix (`npm_config_prefix`, else Node's own). Its default export must be a
+npm prefix (`npm_config_prefix`, else npm's default: `%APPDATA%\npm` on Windows,
+Node's own elsewhere). Its default export must be a
 `definePlugin` value whose `name` is the config key and whose `api` is this
 host-cleaner's `PLUGIN_API`. A name a built-in or a descriptor has is refused
 (exit 2). Packages run after the built-ins and before the descriptors, by name.

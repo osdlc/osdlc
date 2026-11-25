@@ -79,11 +79,17 @@ describe('where a package is looked for', () => {
     )
   })
 
-  test('the global prefix defaults to the one Node is installed under', () => {
+  test('the global prefix defaults to npm’s: %APPDATA%\\npm on Windows, else where Node is installed', () => {
     const roots = packageRoots({}, '/x')
     expect(roots.at(-1)).toBe(
       process.platform === 'win32'
         ? join(dirname(process.execPath), 'node_modules')
+        : join(dirname(dirname(process.execPath)), 'lib', 'node_modules'),
+    )
+    const appData = packageRoots({ APPDATA: '/users/me/AppData/Roaming' }, '/x')
+    expect(appData.at(-1)).toBe(
+      process.platform === 'win32'
+        ? join('/users/me/AppData/Roaming', 'npm', 'node_modules')
         : join(dirname(dirname(process.execPath)), 'lib', 'node_modules'),
     )
   })

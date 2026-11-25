@@ -4,7 +4,14 @@
  * and the run's plugin list built from them.
  */
 
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,7 +29,7 @@ import {
   type LoadedDescriptor,
   type Plugin,
 } from '../src/index.ts'
-import { runsAmong } from '../src/registry.ts'
+import { supersession } from '../src/registry.ts'
 import { contractSuite, fakeContext, tempHome } from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
@@ -100,6 +107,18 @@ describe('sources', () => {
     })
     mkdirSync(join(s.shipped, 'go.yaml'))
     expect(loadDescriptors(s, RESERVED).map((d) => d.name)).toEqual(['uv'])
+  })
+
+  test('a link to a folder or a dangling link is not a descriptor; a link to a file is', () => {
+    const s = sources({ 'uv.yaml': store('.cache/uv') })
+    const elsewhere = folder(join(tempDir(), 'elsewhere'), { 'npm.yaml': store('.npm') })
+    symlinkSync(elsewhere, join(s.user, 'shared.yaml'))
+    symlinkSync(join(elsewhere, 'gone.yaml'), join(s.user, 'gone.yaml'))
+    symlinkSync(join(elsewhere, 'npm.yaml'), join(s.user, 'npm.yaml'))
+    expect(loadDescriptors(s, RESERVED).map((d) => [d.name, d.source])).toEqual([
+      ['npm', 'user'],
+      ['uv', 'shipped'],
+    ])
   })
 
   test('the shipped folder is the package’s descriptors/', () => {
@@ -238,29 +257,54 @@ describe('the run’s plugins', () => {
       name,
       detect: () => detected,
     })
-    let chosen: Plugin[] = [
+    const s = supersession()
+    s.watch([
       plugin('cargo', true),
       plugin('node', false),
       plugin('docker', { active: true, note: 'up' }),
       plugin('ollama', { active: false, note: 'not running' }),
-    ]
-    const runs = runsAmong(() => chosen)
-    expect(await runs('cargo', fakeContext())).toBe(true)
-    expect(await runs('node', fakeContext())).toBe(false)
-    expect(await runs('docker', fakeContext())).toBe(true)
-    expect(await runs('ollama', fakeContext())).toBe(false)
-    expect(await runs('orca', fakeContext())).toBe(false)
-    chosen = [
+    ])
+    expect(await s.runs('cargo', fakeContext())).toBe(true)
+    expect(await s.runs('node', fakeContext())).toBe(false)
+    expect(await s.runs('docker', fakeContext())).toBe(true)
+    expect(await s.runs('ollama', fakeContext())).toBe(false)
+    expect(await s.runs('orca', fakeContext())).toBe(false)
+    s.watch([
       {
         name: 'broken',
         detect: () => {
           throw new Error('boom')
         },
       },
-    ]
-    expect(await runs('broken', fakeContext())).toBe(false)
-    chosen = []
-    expect(await runs('cargo', fakeContext())).toBe(false)
+    ])
+    expect(await s.runs('broken', fakeContext())).toBe(false)
+    expect(await s.runs('cargo', fakeContext())).toBe(false)
+  })
+
+  test('supersededBy reuses the answer survey got, and detect runs once', async () => {
+    let calls = 0
+    const s = supersession()
+    const [docker] = s.watch([
+      {
+        name: 'docker',
+        limits: { detect: 60_000 },
+        detect: () => {
+          calls += 1
+          return false
+        },
+      },
+    ])
+    expect(docker!.limits).toEqual({ detect: 60_000 })
+    expect(await docker!.detect(fakeContext())).toBe(false)
+    expect(await s.runs('docker', fakeContext())).toBe(false)
+    expect(calls).toBe(1)
+  })
+
+  test('supersededBy: a detect survey gave up on counts as not running', async () => {
+    const s = supersession()
+    const [slow] = s.watch([{ name: 'slow', detect: () => new Promise<boolean>(() => {}) }])
+    void slow!.detect(fakeContext())
+    expect(await s.runs('slow', fakeContext())).toBe(false)
   })
 
   test('supersededBy naming a descriptor, itself or another, is refused', () => {

@@ -54,8 +54,8 @@ import {
   BUILT_IN_PLUGINS,
   UnknownPlugin,
   loadPlugins,
-  runsAmong,
   selectPlugins,
+  supersession,
   type Loaded,
 } from './registry.ts'
 import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
@@ -478,7 +478,7 @@ const unknownPlugins = (config: Config, known: (name: string) => boolean): strin
 /**
  * The config and the plugins this run uses: {@link loadAll}, then
  * {@link pluginsFor}. Descriptors test `supersededBy` against the plugins
- * chosen here (see `runsAmong` in registry.ts). `failed` are the packages that
+ * chosen here (see `supersession` in registry.ts). `failed` are the packages that
  * did not load or build, which the run goes without.
  */
 async function setUp(
@@ -486,11 +486,10 @@ async function setUp(
   ctx: CliContext,
   deps: MainDeps,
 ): Promise<{ config: Config; plugins: Plugin[]; failed: PackageFailure[] }> {
-  let chosen: readonly Plugin[] = []
+  const superseded = supersession()
   const naming = { want: v.plugin, skip: v.skipPlugin }
-  const setup = await loadAll(v, naming, ctx, deps, { runs: runsAmong(() => chosen) })
-  const plugins = pluginsFor(v, setup, deps, ctx)
-  chosen = plugins
+  const setup = await loadAll(v, naming, ctx, deps, { runs: superseded.runs })
+  const plugins = superseded.watch(pluginsFor(v, setup, deps, ctx))
   return { config: setup.config, plugins, failed: setup.failed }
 }
 

@@ -11,7 +11,7 @@
  * shipped one that no longer parses.
  */
 
-import { readdirSync, type Dirent } from 'node:fs'
+import { readdirSync, statSync, type Dirent } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -58,9 +58,18 @@ interface Found {
 
 const nameOf = (path: string): string => basename(path, extname(path))
 
+/** Whether `path` is a file, following a symlink; a dangling link is not. */
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile()
+  } catch {
+    return false
+  }
+}
+
 /**
  * The descriptor files in `dir`, by name: entries with one of
- * {@link DESCRIPTOR_EXTENSIONS}, not hidden, not folders. A missing folder has none.
+ * {@link DESCRIPTOR_EXTENSIONS}, not hidden, that are files or links to files. A missing folder has none.
  *
  * @throws DescriptorLoadError for a folder that can't be read, two files of one name, or a name that is no plugin name
  */
@@ -77,11 +86,11 @@ function filesIn(dir: string, source: DescriptorSource): Found[] {
   const files = entries
     .filter(
       (e) =>
-        !e.isDirectory() &&
         !e.name.startsWith('.') &&
         (DESCRIPTOR_EXTENSIONS as readonly string[]).includes(extname(e.name)),
     )
     .map((e) => join(dir, e.name))
+    .filter(isFile)
     .sort()
   return files.map((path) => found(path, source, files))
 }
