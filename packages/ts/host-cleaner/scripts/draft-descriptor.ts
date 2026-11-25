@@ -1,6 +1,7 @@
 // Drafts a tier 1 descriptor from one store of the system-cleanup research
 // corpus (packages/corpora/system-cleanup-reference), for a person to review.
-// Runs on the source, so it needs no build.
+// Runs on this package's source, but src/ imports the workspace's other
+// packages through their dist/, so build those first (`pnpm run build`).
 // Flags: see USAGE below.
 //
 // A draft never sets idleHours or removes.
@@ -31,6 +32,14 @@ const pathsName = (name: string): boolean =>
 
 /** Whether `name` is one file or folder name, as a `project` entry's dir and marker must be. */
 const oneName = (name: string): boolean => ProjectEntrySchema.shape.dir.safeParse(name).success
+
+/** Whether the schema takes `p` as a `paths` folder. */
+const schemaFolder = (p: string): boolean =>
+  DescriptorSchema.shape.paths.valueType.shape.all.safeParse(p).success
+
+/** Whether the schema takes `p` as an `inUse` lock. */
+const schemaLock = (p: string): boolean =>
+  DescriptorSchema.shape.inUse.unwrap().shape.locks.unwrap().element.safeParse(p).success
 
 /** The reviewed first set the package ships, by corpus slug. */
 export const FIRST_SET = [
@@ -78,6 +87,17 @@ interface BuildDir {
 interface Statement {
   object: Record<string, unknown>
   open: string[]
+  /** The statement's `scope` when it narrows it (a platform, since or until), else undefined. */
+  scope?: Record<string, unknown> | undefined
+}
+
+/** `scope` when it sets a platform, since or until; undefined when it applies everywhere. */
+function narrowing(scope: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(scope)) return undefined
+  const set = Object.entries(scope).filter(
+    ([, v]) => v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0),
+  )
+  return set.length > 0 ? Object.fromEntries(set) : undefined
 }
 
 /** One store as the corpus records it: its front matter and its current statement per subject. */
@@ -95,7 +115,9 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
 const frontMatter = (file: string): Record<string, unknown> => {
-  const m = /^﻿?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(readFileSync(file, 'utf8'))
+  const m = /^﻿?---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/.exec(
+    readFileSync(file, 'utf8'),
+  )
   if (m === null) throw new DraftError(`${file}: no front matter`)
   let fm: unknown
   try {
@@ -111,6 +133,8 @@ const frontMatter = (file: string): Record<string, unknown> => {
 
 /** The corpus's store files by slug, read once; files that can't be read are kept as errors. */
 export interface StoreIndex {
+  /** The corpus it indexes, whose statements a draft reads. */
+  corpus: string
   stores: string
   bySlug: ReadonlyMap<string, readonly { file: string; fm: Record<string, unknown> }[]>
   unreadable: readonly string[]
@@ -138,7 +162,7 @@ export function indexStores(corpus: string): StoreIndex {
     if (typeof fm['slug'] !== 'string') continue
     bySlug.set(fm['slug'], [...(bySlug.get(fm['slug']) ?? []), { file, fm }])
   }
-  return { stores, bySlug, unreadable }
+  return { corpus, stores, bySlug, unreadable }
 }
 
 /**
@@ -164,7 +188,7 @@ function field<T>(
  * @throws DraftError when the corpus has no such store or more than one, or a
  *   current statement is malformed or shares its subject with another
  */
-function readStore(corpus: string, slug: string, index: StoreIndex): CorpusStore {
+function readStore(slug: string, index: StoreIndex): CorpusStore {
   const found = index.bySlug.get(slug) ?? []
   if (found.length > 1)
     throw new DraftError(
@@ -180,8 +204,9 @@ function readStore(corpus: string, slug: string, index: StoreIndex): CorpusStore
   const storeFile = join(index.stores, file)
   const title = basename(file, '.md')
   const statements = new Map<string, Statement & { file: string }>()
-  const dir = join(corpus, 'statements', title)
-  for (const name of existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')) : []) {
+  const dir = join(index.corpus, 'statements', title)
+  const names = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')) : []
+  for (const name of names.sort()) {
     const f = join(dir, name)
     const s = frontMatter(f)
     if (s['status'] !== 'current') continue
@@ -198,7 +223,12 @@ function readStore(corpus: string, slug: string, index: StoreIndex): CorpusStore
       throw new DraftError(
         `${f}: ${before.file} is also the current statement of ${prop['predicate']}`,
       )
-    statements.set(prop['predicate'], { object: prop['object'], open, file: f })
+    statements.set(prop['predicate'], {
+      object: prop['object'],
+      open,
+      scope: narrowing(s['scope']),
+      file: f,
+    })
   }
   return {
     slug,
@@ -211,13 +241,11 @@ function readStore(corpus: string, slug: string, index: StoreIndex): CorpusStore
 }
 
 /**
- * A folder a tier 1 file can name: under home or absolute, with no variable,
- * placeholder or `..` in it, and never the home folder or a root alone.
+ * A folder a tier 1 file can name: one the schema takes, with no variable or
+ * placeholder in it, and never the home folder or a root alone.
  */
 const fixedFolder = (p: string): boolean =>
-  /^(~[/\\]|\/|[A-Za-z]:[/\\])[/\\]*[^/\\]/.test(p) &&
-  !/[$%<>{}*?]/.test(p) &&
-  !/(^|[/\\])\.\.([/\\]|$)/.test(p)
+  schemaFolder(p) && /^(~[/\\]|\/|[A-Za-z]:[/\\])[/\\]*[^/\\]/.test(p) && !/[$%<>{}*?]/.test(p)
 
 /** A name that ends in a file extension, such as `.pnp.cjs` or `Docker.raw`: a file, not a folder. */
 const looksLikeFile = (p: string): boolean =>
@@ -235,11 +263,11 @@ function sharedTail(a: string, b: string): number {
   return n
 }
 
-/** Whether `inner` is a folder inside `outer`. */
-function inside(inner: string, outer: string): boolean {
+/** Whether `inner` is `outer` or a folder inside it. */
+function within(inner: string, outer: string): boolean {
   const i = segments(inner)
   const o = segments(outer)
-  return i.length > o.length && o.every((s, n) => s === i[n])
+  return i.length >= o.length && o.every((s, n) => s === i[n])
 }
 
 interface Group {
@@ -254,8 +282,8 @@ const folderPaths = (g: Group): string[] => Object.values(g.folders) as string[]
  * The corpus lists one folder per platform and doesn't say which entries are
  * the same folder on different platforms. Entries with the same path, `holds`
  * and cost are one folder; then folders with the same `holds` and cost on
- * different platforms are joined, preferring the group whose folder ends in
- * the most of the same segments, then the corpus's order.
+ * different platforms are joined, the pair whose folders end in the most of
+ * the same segments first, then in the corpus's order.
  */
 function groupDirs(dirs: readonly DataDir[]): Group[] {
   const same: Group[] = []
@@ -272,25 +300,31 @@ function groupDirs(dirs: readonly DataDir[]): Group[] {
     if (g !== undefined) g.folders[d.platform] = d.path
     else same.push({ holds: d.holds, cost: d.rebuild, folders: { [d.platform]: d.path } })
   }
-  const groups: Group[] = []
-  for (const s of same) {
-    const oses = Object.keys(s.folders) as ('all' | Os)[]
-    const path = Object.values(s.folders)[0] ?? ''
-    const tail = (g: Group) => Math.max(...folderPaths(g).map((f) => sharedTail(f, path)))
-    let g: Group | undefined
-    for (const o of groups)
-      if (
-        o.holds === s.holds &&
-        o.cost === s.cost &&
-        o.folders.all === undefined &&
-        oses.every((os) => os !== 'all' && o.folders[os] === undefined) &&
-        (g === undefined || tail(o) > tail(g))
-      )
-        g = o
-    if (g !== undefined) Object.assign(g.folders, s.folders)
-    else groups.push(s)
+  const joinable = (a: Group, b: Group) =>
+    a.holds === b.holds &&
+    a.cost === b.cost &&
+    a.folders.all === undefined &&
+    b.folders.all === undefined &&
+    Object.keys(b.folders).every((os) => a.folders[os as Os] === undefined)
+  const tail = (a: Group, b: Group) =>
+    Math.max(...folderPaths(a).flatMap((f) => folderPaths(b).map((o) => sharedTail(f, o))))
+  // Join the best pair left until none can be joined, so a folder that
+  // matches better is never shut out by one met earlier.
+  const groups = same
+  for (;;) {
+    let best: { tail: number; i: number; j: number } | undefined
+    for (let i = 0; i < groups.length; i++)
+      for (let j = i + 1; j < groups.length; j++) {
+        const a = groups[i] as Group
+        const b = groups[j] as Group
+        if (!joinable(a, b)) continue
+        const t = tail(a, b)
+        if (best === undefined || t > best.tail) best = { tail: t, i, j }
+      }
+    if (best === undefined) return groups
+    Object.assign((groups[best.i] as Group).folders, (groups[best.j] as Group).folders)
+    groups.splice(best.j, 1)
   }
-  return groups
 }
 
 /** A `paths` name per group: its `holds`, and the folder's own name when two groups hold the same. */
@@ -397,19 +431,22 @@ function draftDescriptor(store: CorpusStore): Draft {
     throw new DraftError(`${store.slug}: the corpus gives no data folder as a fixed path`)
   const names = nameGroups(groups)
 
-  // A folder inside another one: cleaning the outer one removes the inner
-  // one too, and their sizes count twice.
+  // A folder inside another one, or the same one twice: cleaning one empties
+  // the other too, and their sizes count twice.
   const nested: string[] = []
   const entries = (g: Group) => Object.entries(g.folders) as [string, string][]
+  const overlap = (g: Group, o: Group, how: (f: string, of: string) => boolean) =>
+    entries(g).some(([os, f]) =>
+      entries(o).some(([oos, of]) => (os === oos || os === 'all' || oos === 'all') && how(f, of)),
+    )
+  const same = (f: string, of: string) => within(f, of) && within(of, f)
   groups.forEach((g, i) =>
     groups.forEach((o, j) => {
       if (i === j) return
-      const hit = entries(g).some(([os, f]) =>
-        entries(o).some(
-          ([oos, of]) => (os === oos || os === 'all' || oos === 'all') && inside(f, of),
-        ),
-      )
-      if (hit) nested.push(`paths.${names[i]} is inside paths.${names[j]}: keep one`)
+      if (overlap(g, o, same)) {
+        if (i < j) nested.push(`paths.${names[i]} and paths.${names[j]} name one folder: keep one`)
+      } else if (overlap(g, o, within))
+        nested.push(`paths.${names[i]} is inside paths.${names[j]}: keep one`)
     }),
   )
 
@@ -424,7 +461,7 @@ function draftDescriptor(store: CorpusStore): Draft {
   const processes = listIn('liveness/in-use', 'processes', text)
   const locks = keep(
     listIn('liveness/in-use', 'locks', text),
-    (l) => fixedFolder(l) && !/[/\\]$/.test(l),
+    (l) => schemaLock(l) && fixedFolder(l),
     (l) => `lock ${l}: not a fixed file path`,
   )
   const inUse = {
@@ -498,18 +535,22 @@ function draftDescriptor(store: CorpusStore): Draft {
   ]
   const clean = st('clean/command')?.object
   if (clean !== undefined) {
-    const commands = listIn(
-      'clean/command',
-      'commands',
-      (c): c is { command: string; removes: string } =>
-        isRecord(c) && text(c['command']) && text(c['removes']),
-    )
+    // Read only when supported: the entries of an unsupported one are not used.
+    const commands =
+      clean['supported'] === true
+        ? listIn(
+            'clean/command',
+            'commands',
+            (c): c is { command: string; removes: string } =>
+              isRecord(c) && text(c['command']) && text(c['removes']),
+          )
+        : []
     header.push(
       '',
       ' Clean commands in the corpus. A command must name the folder with a',
       ' {path} argument or an env entry, and set removes (unused or all):',
     )
-    if (clean['supported'] !== true || commands.length === 0) header.push(...bullet('none'))
+    if (commands.length === 0) header.push(...bullet('none'))
     else for (const c of commands) header.push(...bullet(`${c.command}: ${c.removes}`))
   }
   const movedBy = [
@@ -524,7 +565,18 @@ function draftDescriptor(store: CorpusStore): Draft {
       ),
     )
   if (nested.length > 0)
-    header.push('', ' Nested folders (their sizes count twice):', ...nested.flatMap(bullet))
+    header.push('', ' Overlapping folders (their sizes count twice):', ...nested.flatMap(bullet))
+  // The draft applies every statement on every platform; a narrower one is
+  // the reviewer's to carry over.
+  const scoped = [...store.statements.entries()].flatMap(([subject, s]) =>
+    s.scope === undefined ? [] : [`${subject}: ${JSON.stringify(s.scope)}`],
+  )
+  if (scoped.length > 0)
+    header.push(
+      '',
+      ' Scoped in the corpus (the draft applies them everywhere):',
+      ...scoped.flatMap(bullet),
+    )
   if (left.length > 0) header.push('', ' Left out:', ...left.flatMap(bullet))
   const open = [...store.statements.entries()].flatMap(([subject, s]) =>
     subject === 'inventory/command' ? [] : s.open.map((o) => `${subject}: ${o}`),
@@ -538,7 +590,8 @@ function draftDescriptor(store: CorpusStore): Draft {
 /**
  * Drafts `slug` from `corpus` and checks the text reads back as a descriptor.
  *
- * @throws DraftError for a store the corpus lacks or that has no fixed folder
+ * @throws DraftError for a store the corpus lacks or that has no fixed folder,
+ *   or an `index` of another corpus
  * @throws DescriptorError when the draft is not a valid descriptor
  */
 export function draftStore(
@@ -546,7 +599,9 @@ export function draftStore(
   slug: string,
   index: StoreIndex = indexStores(corpus),
 ): Draft {
-  const draft = draftDescriptor(readStore(corpus, slug, index))
+  if (index.corpus !== corpus)
+    throw new DraftError(`the index is of ${index.corpus}, not of ${corpus}`)
+  const draft = draftDescriptor(readStore(slug, index))
   parseDescriptor(draft.text, `${slug}.yaml (draft)`)
   return draft
 }

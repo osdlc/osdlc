@@ -114,14 +114,21 @@ test('every store in the corpus drafts a valid descriptor, or says why not', () 
   expect(realIndex.unreadable).toEqual([])
   const slugs = [...realIndex.bySlug.keys()]
   expect(slugs.length).toBeGreaterThan(FIRST_SET.length)
+  const drafted: string[] = []
+  const failed: string[] = []
   for (const slug of slugs) {
     try {
       const { text } = draftStore(CORPUS_DIR, slug, realIndex)
       expect(descriptorIssues(parse(text)), slug).toEqual([])
+      drafted.push(slug)
     } catch (err) {
       expect(err, slug).toBeInstanceOf(DraftError)
+      failed.push(slug)
     }
   }
+  // Most stores name a fixed folder; a change that stops them drafting fails here.
+  expect(drafted).toEqual(expect.arrayContaining([...FIRST_SET]))
+  expect(drafted.length, `failed: ${failed.join(', ')}`).toBeGreaterThan(failed.length)
 })
 
 describe('a small corpus', () => {
@@ -399,6 +406,75 @@ describe('a small corpus', () => {
       { macos: '~/Library/Tool/mlx/models' },
       { macos: '~/Library/Tool/llamacpp/models', linux: '~/.local/share/Tool/llamacpp/models' },
     ])
+  })
+
+  test('a folder that ends the same is not shut out by one met earlier', () => {
+    store(
+      'Tool',
+      { slug: 'tool' },
+      dirsOnly([
+        dir('linux', '~/.cache/tool'),
+        dir('macos', '~/Library/Application Support/tool/blobs'),
+        dir('macos', '~/Library/Caches/tool'),
+      ]),
+    )
+    expect(Object.values(read(draftStore(corpus, 'tool').text).paths)).toEqual([
+      { macos: '~/Library/Caches/tool', linux: '~/.cache/tool' },
+      { macos: '~/Library/Application Support/tool/blobs' },
+    ])
+  })
+
+  test('two groups that name one folder are flagged', () => {
+    store(
+      'Tool',
+      { slug: 'tool' },
+      dirsOnly([dir('all', '~/.tool'), dir('linux', '~/.tool/', 'packages')]),
+    )
+    const { text } = draftStore(corpus, 'tool')
+    expect(text).toContain('# - paths.cache and paths.packages name one folder: keep one')
+    expect(text).not.toContain('is inside')
+  })
+
+  test('a scoped statement is named for the reviewer', () => {
+    store(
+      'Tool',
+      { slug: 'tool' },
+      { ...dirsOnly([dir('all', '~/.tool')]), 'liveness/in-use': { processes: ['tool.exe'] } },
+    )
+    const file = join(corpus, 'statements', 'Tool', 'Tool liveness in-use.md')
+    writeFileSync(
+      file,
+      markdown({
+        proposition: { predicate: 'liveness/in-use', object: { processes: ['tool.exe'] } },
+        status: 'current',
+        scope: { since: null, until: null, platform: ['windows'] },
+      }),
+    )
+    const { text } = draftStore(corpus, 'tool')
+    expect(text).toContain('# - liveness/in-use: {"platform":["windows"]}')
+    expect(text).not.toContain('location/data-dirs: {')
+  })
+
+  test('the entries of an unsupported clean command are not checked', () => {
+    store(
+      'Tool',
+      { slug: 'tool' },
+      {
+        ...dirsOnly([dir('all', '~/.tool')]),
+        'clean/command': { supported: false, commands: [{ command: 'tool gc' }] },
+      },
+    )
+    expect(draftStore(corpus, 'tool').text).toContain('# - none')
+  })
+
+  test('an empty front matter block is read as empty, and an index of another corpus is refused', () => {
+    store('Tool', { slug: 'tool' }, dirsOnly([dir('all', '~/.tool')]))
+    writeFileSync(join(corpus, 'stores', 'Empty.md'), '---\n---\n\nBody.\n')
+    const index = indexStores(corpus)
+    expect(index.unreadable).toEqual([])
+    expect(() => draftStore(CORPUS_DIR, 'tool', index)).toThrow(
+      `the index is of ${corpus}, not of ${CORPUS_DIR}`,
+    )
   })
 
   test('entries the schema would refuse are a DraftError or left out, never a bad draft', () => {
