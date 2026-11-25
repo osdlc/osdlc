@@ -19,6 +19,7 @@ import {
 } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
+import { DISCOVER_LIMIT_MS, objector } from './helpers.ts'
 import {
   FatalRun,
   PLUGIN_API,
@@ -53,14 +54,39 @@ function nameOf(row: CleanCandidate): string | null {
   return row.kind === 'worktree' ? ((row.evidence as WorktreeEvidence).branch ?? null) : null
 }
 
-export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
+/** `opts` with its objects and lists copied; the runners are the caller's own. */
+function copyOf(opts: GitPluginOptions): GitPluginOptions {
+  const { sweep, archive } = opts
+  return {
+    ...opts,
+    ...(sweep && {
+      sweep: {
+        ...sweep,
+        only: sweep.only && [...sweep.only],
+        remotes: sweep.remotes && [...sweep.remotes],
+      },
+    }),
+    ...(archive && { archive: { ...archive, exclude: archive.exclude && [...archive.exclude] } }),
+  }
+}
+
+/**
+ * The `git` plugin.
+ *
+ * @param given - Copied, so changing it afterwards does not change the plugin.
+ */
+export function gitPlugin(given: GitPluginOptions = {}): Plugin {
+  const opts = copyOf(given)
   /** The last discovery's rows, kept for `object` and `delete`; `discover` makes them afresh. */
   let rows = new Map<string, CleanCandidate>()
   const runners = { git: opts.git, gh: opts.gh, glab: opts.glab, probe: opts.probe }
+  const own = objector('git')
   const isRisk = (code: string): code is Risk => (RISKS as readonly string[]).includes(code)
 
   return {
     name: 'git',
+    // The sweep covers every repository in one call that nothing can stop part way.
+    limits: { discover: DISCOVER_LIMIT_MS },
     detect: () => true,
     discover(ctx) {
       const found = candidatesOf(sweep(ctx.targets, { ...opts.sweep, ...runners, cwd: ctx.cwd }))
@@ -88,16 +114,9 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
       return all.flatMap((c): Objection[] => {
         const row = rows.get(c.id)
         if (c.owner !== 'git' || row === undefined) return []
-        const own = (level: Objection['level'], code: string, reason: string): Objection => ({
-          by: 'git',
-          candidate: c.id,
-          level,
-          code,
-          reason,
-        })
         return [
-          ...row.blockers.map((b) => own('refuse', b, `${row.why} (${b})`)),
-          ...row.risks.map((r) => own('protest', r, `deleting it risks ${r}`)),
+          ...row.blockers.map((b) => own(c, 'refuse', b, `${row.why} (${b})`)),
+          ...row.risks.map((r) => own(c, 'protest', r, `deleting it risks ${r}`)),
         ]
       })
     },
@@ -127,15 +146,11 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
  *
  * @param opts - Passed to `gitPlugin`. The command line passes `--worktrees`
  *   and `--branches` here as `sweep.only`, so no other plugin's `create` sees
- *   git's kinds. `sweep.only` is copied, so changing it afterwards changes no
- *   plugin the definition builds.
+ *   git's kinds. Copied here, so changing it afterwards changes no plugin the
+ *   definition builds.
  */
 export function gitDefinitionWith(opts: GitPluginOptions = {}): PluginDefinition {
-  const { sweep, ...rest } = opts
-  const own: GitPluginOptions =
-    sweep === undefined
-      ? rest
-      : { ...rest, sweep: { ...sweep, only: sweep.only && [...sweep.only] } }
+  const own = copyOf(opts)
   return definePlugin({
     name: 'git',
     api: PLUGIN_API,

@@ -26,12 +26,16 @@ import {
   clean,
   nodePlugin,
   plan,
+  pluginKit,
   recheck,
   survey,
   type ArtifactOptions,
   type Ctx,
+  type PathCandidate,
   type Plugin,
 } from '../src/index.ts'
+import { checkAgain, type Row } from '../src/helpers.ts'
+import * as entry from '../src/index.ts'
 import { contractSuite, fakeRunner } from '../src/testing.ts'
 
 const NOW = new Date('2026-11-19T12:00:00Z')
@@ -401,10 +405,10 @@ describe('node plugin', () => {
 })
 
 describe('a folder too slow to measure (D11)', () => {
-  /** A clock a minute later at every read, so the walk runs out of its budget at once. */
-  const slow = (): (() => Date) => {
-    let t = NOW.getTime()
-    return () => new Date((t += 60_000))
+  /** A budget clock a minute later at every read, so the walk runs out of its budget at once. */
+  const slow = (): (() => number) => {
+    let t = 0
+    return () => (t += 60_000)
   }
 
   /** A linked worktree, idle for 72 hours, with a node_modules. */
@@ -418,7 +422,7 @@ describe('a folder too slow to measure (D11)', () => {
 
   test('is proposed unmeasured, unsized and not held, with the core protesting it', async () => {
     const { root, wt } = idleWorktree()
-    const s = await node(root, { now: slow() })
+    const s = await node(root, { clock: slow() })
     expect(s.candidates).toEqual([
       expect.objectContaining({ id: `artifact:${join(wt, 'node_modules')}`, unmeasured: true }),
     ])
@@ -433,7 +437,7 @@ describe('a folder too slow to measure (D11)', () => {
   test('a cargo target/ whose fingerprints run out of time is unmeasured too', async () => {
     const root = repo()
     target(root, 48)
-    const s = await cargo(root, { now: slow() })
+    const s = await cargo(root, { clock: slow() })
     expect(s.candidates).toEqual([
       expect.objectContaining({
         unmeasured: true,
@@ -446,7 +450,7 @@ describe('a folder too slow to measure (D11)', () => {
     const { root, wt } = idleWorktree()
     const s = await node(root)
     expect(s.candidates[0]!.unmeasured).toBeUndefined()
-    const late = nodePlugin(options({ now: slow() }))
+    const late = nodePlugin(options({ clock: slow() }))
     // Surveyed first, so its kit is bound as in a run.
     await survey([late], ctxOf(root))
     await expect(late.delete!(s.candidates[0]!, ctxOf(root))).rejects.toThrow(
@@ -457,13 +461,13 @@ describe('a folder too slow to measure (D11)', () => {
 
   test('plan then re-check shows no changed, whether the second walk finishes or not', async () => {
     const { root, wt } = idleWorktree()
-    const s = await survey([nodePlugin(options({ now: slow() }))], ctxOf(root))
+    const s = await survey([nodePlugin(options({ clock: slow() }))], ctxOf(root))
     // Allowed, so the plan runs it and the re-check compares its evidence.
     const allowed = plan(s, { allow: ['unmeasured'] })
-    for (const now of [slow(), () => NOW]) {
+    for (const clock of [slow(), () => 0]) {
       const { decision, survey: again } = await recheck(
         allowed,
-        [nodePlugin(options({ now }))],
+        [nodePlugin(options({ clock }))],
         ctxOf(root),
       )
       expect(again.candidates[0]!.evidence).toEqual(allowed.candidates[0]!.evidence)
@@ -503,6 +507,98 @@ describe('the contract suite', () => {
   })
 })
 
+describe('what one hook call costs', () => {
+  test('a target/ with many profiles is dated within one budget, not one each', async () => {
+    const root = repo()
+    target(root, 48)
+    for (const triple of ['a', 'b', 'c']) {
+      put(join(root, 'target', `${triple}-linux`, 'debug', '.fingerprint', 'a', 'f'), 48)
+    }
+    // A second at every read of the budget clock: within the budget for any one profile.
+    let t = 0
+    const s = await cargo(root, { clock: () => (t += 1_000), budgetMs: 4_500 })
+    expect(s.candidates).toEqual([expect.objectContaining({ unmeasured: true })])
+  })
+
+  test('discover stops between two checkouts once its limit has passed', async () => {
+    const root = repo()
+    const trees = [linked(root)]
+    for (const name of ['two', 'three']) {
+      const path = join(tmp('host-cleaner-wt-'), 'wt')
+      sh(root, ['worktree', 'add', '-q', path, '-b', name])
+      trees.push(path)
+    }
+    for (const wt of trees) {
+      put(join(wt, 'package.json'), 72, '{}')
+      put(join(wt, 'node_modules', 'a', 'index.js'), 72)
+    }
+    const walked: string[] = []
+    const kit = pluginKit('node', options())
+    kit.idle = (path) => {
+      walked.push(String(path))
+      const end = performance.now() + 400
+      while (performance.now() < end);
+      return { unmeasured: true }
+    }
+    const plugin = { ...nodePlugin(options(), kit), limits: { discover: 300 } }
+    const s = await survey([plugin], ctxOf(root))
+    expect(s.candidates).toEqual([])
+    expect(s.warnings).toEqual(['node: discover failed: timed out after 300 ms'])
+    // Nothing goes on after the survey has moved on.
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    expect(walked.length).toBeLessThanOrEqual(1)
+  })
+
+  test('delete reads whether it may go again, and sizes the folder once, for the receipt', async () => {
+    const root = repo()
+    const wt = linked(root)
+    put(join(wt, 'package.json'), 72, '{}')
+    put(join(wt, 'node_modules', 'a', 'index.js'), 72)
+    const sized: string[] = []
+    const kit = pluginKit('node', options())
+    const size = kit.size
+    kit.size = (path) => (sized.push(path), size(path))
+    const plugin = nodePlugin(options(), kit)
+    const s = await survey([plugin], ctxOf(root))
+    expect(sized).toEqual([join(wt, 'node_modules')])
+    expect(await plugin.delete!(s.candidates[0]!, ctxOf(root))).toMatch(/; freed \d+ bytes$/)
+    expect(sized).toHaveLength(1)
+  })
+})
+
+describe('checkAgain', () => {
+  const at = (over: Partial<PathCandidate> = {}): PathCandidate => ({
+    id: 'a:/x',
+    kind: 'a',
+    path: '/x',
+    owner: 'me',
+    why: 'idle',
+    evidence: {},
+    ...over,
+  })
+  const row = (over: Partial<PathCandidate> = {}, code?: string): Row => ({
+    candidate: at(over),
+    blockers: code === undefined ? [] : [{ code, reason: `${code}!` }],
+  })
+
+  test('refuses what is gone, blocked, unmeasured now or no longer idle', () => {
+    expect(() => checkAgain(at(), undefined)).toThrow('/x is no longer a candidate')
+    expect(() => checkAgain(at(), row({}, 'busy'))).toThrow('/x is refused: busy!')
+    expect(() => checkAgain(at(), row({ unmeasured: true }))).toThrow(/could not be measured idle/)
+    expect(() => checkAgain(at(), row({ held: true }))).toThrow('/x is no longer idle')
+    expect(() => checkAgain(at({ held: true }), row({ unmeasured: true }))).toThrow(/measured idle/)
+    expect(() => checkAgain(at({ unmeasured: true }), row({ held: true }))).toThrow(/longer idle/)
+  })
+
+  test('passes one as it was: idle, or held or unmeasured in the plan too', () => {
+    checkAgain(at(), row())
+    checkAgain(at({ held: true }), row({ held: true }))
+    checkAgain(at({ held: true }), row())
+    checkAgain(at({ unmeasured: true }), row({ unmeasured: true }))
+    checkAgain(at({ unmeasured: true }), row())
+  })
+})
+
 describe('the kit is all they use', () => {
   const src = join(dirname(fileURLToPath(import.meta.url)), '..', 'src')
   const imports = (file: string): string[] =>
@@ -514,12 +610,25 @@ describe('the kit is all they use', () => {
     expect(imports('cargo.ts')).toEqual(expect.arrayContaining(['./artifacts.ts', './kit.ts']))
     for (const file of ['cargo.ts', 'node.ts', 'artifacts.ts']) {
       const own = imports(file).filter((i) => i.startsWith('.'))
-      expect(own.filter((i) => !['./kit.ts', './types.ts', './artifacts.ts'].includes(i))).toEqual(
-        [],
-      )
+      const shared = ['./kit.ts', './types.ts', './artifacts.ts', './helpers.ts']
+      expect(own.filter((i) => !shared.includes(i))).toEqual([])
     }
     for (const file of ['cargo.ts', 'node.ts']) {
       expect(imports(file).filter((i) => i.startsWith('@osdlc/'))).toEqual([])
+    }
+  })
+
+  test('what they take from the kit, a code plugin can import from the package', () => {
+    for (const file of ['cargo.ts', 'node.ts', 'artifacts.ts']) {
+      const text = readFileSync(join(src, file), 'utf8')
+      const names = /^import \{([^}]*)\} from '\.\/kit\.ts'$/m
+        .exec(text)![1]!
+        .split(',')
+        .map((n) => n.trim())
+        .filter((n) => n !== '' && !n.startsWith('type '))
+      expect(names).not.toEqual([])
+      // `attachKit` is the core's: `definePlugin` calls it for a code plugin.
+      for (const name of names.filter((n) => n !== 'attachKit')) expect(entry).toHaveProperty(name)
     }
   })
 })

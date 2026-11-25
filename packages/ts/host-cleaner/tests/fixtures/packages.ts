@@ -16,6 +16,33 @@ export const FIXTURE_PLUGIN = readFileSync(join(here, 'package-plugin', 'index.j
 /** The fixture package's name. */
 export const FIXTURE = '@acme/host-cleaner-fixture'
 
+/** The fixture plugin as a class instance, with private fields and a `name` that has only a getter. */
+export const CLASS_PLUGIN = `import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { PLUGIN_API, definePlugin, z } from '@osdlc/host-cleaner/plugin'
+class Fixture {
+  #root
+  #kit
+  constructor(root, kit) { this.#root = root; this.#kit = kit }
+  get name() { return 'fixture' }
+  detect() { return existsSync(this.#root) }
+  roots() { return [this.#root] }
+  discover() {
+    return readdirSync(this.#root).map((n) =>
+      this.#kit.candidate({ kind: 'scratch', path: join(this.#root, n), why: 'a fixture folder', costDescription: 're-download' }),
+    )
+  }
+  object(all) { return this.#root === '' ? all.map((c) => ({ by: this.name, candidate: c.id, level: 'refuse', code: 'x', reason: 'x' })) : [] }
+  delete(c, ctx) { return this.#kit.remove(c.path, ctx) }
+}
+export default definePlugin({
+  name: 'fixture',
+  api: PLUGIN_API,
+  settings: z.strictObject({ keep: z.array(z.string()).default([]) }),
+  create: ({ env, kit }) => new Fixture(join(env.HOME ?? '', '.fixture'), kit),
+})
+`
+
 /** A plugin package that imports `@osdlc/host-cleaner/plugin` and default-exports `expr`. */
 export const exporting = (expr: string): string =>
   `import { PLUGIN_API, definePlugin, z } from '@osdlc/host-cleaner/plugin'\nexport default ${expr}\n`
