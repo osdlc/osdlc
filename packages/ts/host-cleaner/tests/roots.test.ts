@@ -267,6 +267,109 @@ describe('a plugin with no roots is held to the targets', () => {
     expect(refused(s)).toEqual([`file:${root}`, `file:${elsewhere}`])
   })
 
+  describe('a linked worktree whose registered folder is no longer it', () => {
+    /** A repository as target with a linked worktree elsewhere, and a folder of a person's, with `sub/keep`, outside both. */
+    const setup = () => {
+      const root = temp()
+      makeGitFixture({ dir: root, initialBranch: 'main' })
+      sh(root, ['commit', '--allow-empty', '-m', 'initial'])
+      const above = join(temp(), 'wts')
+      const linked = join(above, 'wt')
+      sh(root, ['worktree', 'add', '-q', linked, '-b', 'linked'])
+      mkdirSync(join(linked, 'sub'))
+      const thesis = join(temp(), 'thesis')
+      mkdirSync(join(thesis, 'sub'), { recursive: true })
+      writeFileSync(join(thesis, 'sub', 'keep'), 'x')
+      return { root, above, linked, thesis, run: { ...ctx, targets: [root] } }
+    }
+    const boundsOf = (root: string, linked: string[]) => ({
+      roots: [],
+      self: [],
+      targets: [root],
+      linked,
+      home: homedir(),
+    })
+
+    test('a link in its place is not it, nor is anything below it or where it points', async () => {
+      const { root, linked, thesis, run } = setup()
+      const bounds = boundsOf(root, [linked])
+      expect(boundBy(bounds, linked)).toBe(linked)
+      expect(boundBy(bounds, join(linked, 'sub'))).toBe(linked)
+      renameSync(linked, `${linked}-moved`)
+      // Gone, it is still one: git's record of it is there to prune.
+      expect(boundBy(bounds, linked)).toBe(linked)
+      symlinkSync(thesis, linked)
+      const paths = [linked, join(linked, 'sub'), thesis, join(thesis, 'sub')]
+      for (const path of paths) expect([path, boundBy(bounds, path)]).toEqual([path, null])
+      const s = await survey([cachePlugin(null, [linked, join(linked, 'sub')])], run)
+      expect(s.linked).toEqual([linked])
+      expect(refused(s)).toEqual([`file:${linked}`, `file:${join(linked, 'sub')}`])
+      // A `.git` file there, as a worktree or submodule has, makes the link no more it.
+      writeFileSync(join(thesis, '.git'), 'gitdir: elsewhere\n')
+      for (const path of paths) expect([path, boundBy(bounds, path)]).toEqual([path, null])
+      const held = await survey([cachePlugin(null, [thesis, join(thesis, 'sub')])], run)
+      expect(refused(held)).toEqual([`file:${thesis}`, `file:${join(thesis, 'sub')}`])
+    })
+
+    test('replaced after the re-check, its step fails and nothing is deleted through the link', async () => {
+      const { linked, thesis, run } = setup()
+      const p: Plugin = {
+        ...cachePlugin(null, [linked]),
+        // As `rm -rf <path>/` or `git worktree remove` would: through the link.
+        delete: (c) => {
+          rmSync(realpathSync(c.path!), { recursive: true })
+          return `removed ${c.path}`
+        },
+      }
+      const swapping: Plugin = {
+        name: 'swap',
+        detect: () => true,
+        prepare: () => {
+          renameSync(linked, `${linked}-moved`)
+          symlinkSync(thesis, linked)
+        },
+      }
+      const receipt = await clean(plan(await survey([p, swapping], run)), [p, swapping], run)
+      expect(receipt.steps).toEqual([
+        expect.objectContaining({ result: 'failed', error: expect.stringMatching(/not inside/) }),
+      ])
+      expect(existsSync(join(thesis, 'sub', 'keep'))).toBe(true)
+    })
+
+    test('kit.remove refuses it and what is below it', async () => {
+      const { linked, thesis, run } = setup()
+      const kit = pluginKit('cache')
+      const def = definePlugin({
+        name: 'cache',
+        api: PLUGIN_API,
+        settings: z.strictObject({}),
+        create: () => ({ name: 'cache', detect: () => true }),
+      })
+      await survey([def.create({ settings: {}, only: [], env: {}, kit })], run)
+      renameSync(linked, `${linked}-moved`)
+      symlinkSync(thesis, linked)
+      for (const path of [linked, join(linked, 'sub'), join(thesis, 'sub')]) {
+        expect(() => kit.remove(path)).toThrow(/not inside cache's roots/)
+      }
+      expect(existsSync(join(thesis, 'sub', 'keep'))).toBe(true)
+    })
+
+    test('a link above it leads to a folder that is not a worktree; moved there as it is, it still is one', () => {
+      const { root, above, linked, thesis } = setup()
+      const bounds = boundsOf(root, [linked])
+      const elsewhere = join(dirname(thesis), 'elsewhere')
+      mkdirSync(join(elsewhere, 'wt', 'sub'), { recursive: true })
+      renameSync(above, `${above}-moved`)
+      symlinkSync(elsewhere, above)
+      expect(boundBy(bounds, linked)).toBeNull()
+      expect(boundBy(bounds, join(linked, 'sub'))).toBeNull()
+      rmSync(above)
+      symlinkSync(`${above}-moved`, above)
+      expect(boundBy(bounds, linked)).toBe(linked)
+      expect(boundBy(bounds, join(linked, 'sub'))).toBe(linked)
+    })
+  })
+
   test('a target inside a repository holds only itself: a home kept in git does not open ~/Documents', async () => {
     const home = temp()
     makeGitFixture({ dir: home, initialBranch: 'main' })

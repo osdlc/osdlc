@@ -162,9 +162,9 @@ describe('the git plugin', () => {
     const cargoBin = fakeRunner({
       cargo: { 'config get build.incremental': { stdout: 'build.incremental = true\n' } },
     })
-    // A clock a minute later at every read, so the walk runs out of its budget.
-    let t = Date.now()
-    const slow = cargoPlugin({ now: () => new Date((t += 60_000)), probe: idle, ...cargoBin })
+    // A budget clock a minute later at every read, so the walk runs out of its budget.
+    let t = 0
+    const slow = cargoPlugin({ clock: () => (t += 60_000), probe: idle, ...cargoBin })
     const s = await survey([fx.plugin, slow], fx.ctx)
     const tree = `worktree:${fx.worktree}`
     const art = `artifact:${target}`

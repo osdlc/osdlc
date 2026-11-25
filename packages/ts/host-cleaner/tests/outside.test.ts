@@ -148,9 +148,12 @@ test('./plugin exports what a plugin is written with, and nothing of the run', (
     'RUN_LIMIT_MS',
     'commandHasName',
     'containedIn',
+    'coveredBy',
     'definePlugin',
+    'idleHoursOr',
     'idleHoursSetting',
     'pluginKit',
+    'present',
     'z',
   ])
 })
