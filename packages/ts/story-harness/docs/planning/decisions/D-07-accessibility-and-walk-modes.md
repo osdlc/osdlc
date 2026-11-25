@@ -1,7 +1,7 @@
 ---
 id: D-07
 type: decision
-state: proposed
+state: accepted
 created: 2026-11-24
 ---
 
