@@ -27,6 +27,7 @@ import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { CORPUS_DIR, FIRST_SET, draftStore } from '../scripts/draft-descriptor.ts'
 import {
+  DUPLICATE_ENTRY,
   IN_USE,
   NO_PRUNE_TOOL,
   OUTSIDE_ROOTS,
@@ -1038,5 +1039,112 @@ describe('project', () => {
     expect(s.candidates.map((c) => c.path).sort()).toEqual(
       [b.folder('nuget'), join(lib, 'bin')].sort(),
     )
+  })
+})
+
+describe('checked again at delete', () => {
+  test('a folder the plan had as idle that changed since is not deleted', async () => {
+    const b = build('pip', PIP_PER_OS, { idleHours: 24 })
+    const cache = b.folder('cache')
+    age(cache, 48)
+    const ctx = ctxOf()
+    const p = plan(await survey([b.plugin], ctx))
+    const deleting = b.plugin.delete!.bind(b.plugin)
+    b.plugin.delete = (c, x) => {
+      writeFileSync(join(cache, 'fresh'), 'x')
+      return deleting(c, x)
+    }
+    const receipt = await clean(p, [b.plugin], ctx)
+    expect(receipt.steps).toMatchObject([
+      { result: 'failed', error: expect.stringContaining('is no longer idle') },
+    ])
+    expect(existsSync(join(cache, 'fresh'))).toBe(true)
+  })
+
+  test('a prune stopped partway does not say it did not run', async () => {
+    const b = build('uv', UV, {
+      programs: { uv: () => ({ exitCode: 1, neverExited: true, reason: 'timeout' }) },
+    })
+    const { receipt } = await surveyAndClean(b.plugin)
+    expect(receipt.steps).toMatchObject([
+      { result: 'failed', error: expect.stringContaining('stopped before it exited (timeout)') },
+    ])
+  })
+})
+
+describe('one folder, two entries', () => {
+  test('two project entries with the same dir give one row, held when either holds it', async () => {
+    const b = build(
+      'dotnet',
+      `descriptor: 1
+paths:
+  nuget: { all: ~/.nuget/packages }
+candidates:
+  - { path: nuget, costDescription: re-download }
+project:
+  - { dir: bin, marker: '*.csproj', costDescription: rebuild }
+  - { dir: bin, marker: '*.fsproj', costDescription: rebuild, idleHours: 1000 }
+`,
+    )
+    const repo = dotnetCheckout(b.home)
+    writeFileSync(join(repo, 'App.fsproj'), '<Project/>')
+    const s = await survey([b.plugin], ctxOf({ targets: [repo] }))
+    const bin = s.candidates.filter((c) => c.path === join(repo, 'bin'))
+    expect(bin).toHaveLength(1)
+    expect(bin[0]).toMatchObject({ held: true, evidence: { project: 0, idleHours: 1000 } })
+    expect(s.objections.filter((o) => o.candidate === bin[0]!.id)).toEqual([])
+  })
+
+  test('two candidates entries for one folder are refused', async () => {
+    const b = build(
+      'pip',
+      `descriptor: 1
+paths:
+  cache: { all: ~/.cache/pip }
+candidates:
+  - { path: cache, costDescription: re-download }
+  - { path: cache, costDescription: re-download, idleHours: 5 }
+`,
+    )
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.candidates.map((c) => c.id)).toEqual([`pip:${b.folder('cache')}`])
+    expect(s.objections.map((o) => [o.level, o.code])).toEqual([['refuse', DUPLICATE_ENTRY]])
+  })
+})
+
+describe('home', () => {
+  test("the run's home is used over the one the plugin was created with", async () => {
+    const b = build('pip', PIP_PER_OS)
+    const other = tempHome()
+    cleanups.push(other.cleanup)
+    const cache = join(other.home, '.cache', 'pip')
+    mkdirSync(cache, { recursive: true })
+    writeFileSync(join(cache, 'blob'), 'x')
+    const s = await survey([b.plugin], ctxOf({ home: other.home }))
+    expect(s.candidates.map((c) => c.path)).toEqual([cache])
+  })
+})
+
+describe('the combined rest, once one match changed', () => {
+  test('lists the others without measuring them, and is held', async () => {
+    const b = build(
+      'pip',
+      `descriptor: 1
+paths:
+  http: { all: ~/.cache/pip/http }
+candidates:
+  - { path: http, glob: '*/', maxEntries: 1, costDescription: re-download }
+`,
+      { idleHours: 24 },
+    )
+    const http = b.folder('http')
+    for (const n of ['c', 'd']) mkdirSync(join(http, n))
+    age(http, 48)
+    writeFileSync(join(http, 'b', 'fresh'), 'x')
+    const s = await survey([b.plugin], ctxOf())
+    const rest = s.candidates.find((c) => c.evidence.rest !== undefined)!
+    expect(rest.evidence.rest).toEqual([join(http, 'b'), join(http, 'c'), join(http, 'd')])
+    expect(rest).toMatchObject({ held: true })
+    expect(rest.bytes).toBeUndefined()
   })
 })

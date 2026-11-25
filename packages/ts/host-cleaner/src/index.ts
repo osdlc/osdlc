@@ -110,6 +110,7 @@ export {
   type ProjectEntry,
 } from './descriptor/schema.ts'
 export {
+  DUPLICATE_ENTRY,
   IN_USE,
   NO_PRUNE_TOOL,
   descriptorPlugin,

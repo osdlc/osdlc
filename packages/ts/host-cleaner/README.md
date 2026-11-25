@@ -318,14 +318,19 @@ const plugin = descriptorPlugin('pip', d)
 - **discover:** one candidate per folder, or per `glob` match inside it
   (`globMatches`; a match may be a file). Matches past `maxEntries` are
   combined into one candidate at the first of them, held while any of them
-  changed within the threshold; deleting it removes each.
+  changed within the threshold (the others are then not measured); deleting
+  it removes each, and a failure names what was already removed.
   `project` entries find build folders beside a marker in the targets'
   checkouts, in one walk, and in a repository's primary checkout only inside
-  the targets.
+  the targets. A folder two `project` entries give is one candidate, held
+  when either holds it; one any other two entries give is refused
+  (`duplicate-entry`). Home is the run's (`ctx.home`), else `HOME`.
 - **object:** a running `inUse` process or lock refuses its candidates
   (`in-use`); a prune with no program on PATH gets a `no-prune-tool` protest.
-- **delete:** checks the candidate again, then runs the tool's command from
-  the home folder, pointed at the folder, or removes it with `kit.remove`.
+- **delete:** checks the candidate again, and that one the plan ran as idle
+  is still idle and measured (a prune excepted), then runs the tool's command
+  from the home folder, pointed at the folder, or removes it with
+  `kit.remove`.
 
 ## The `git` plugin
 
