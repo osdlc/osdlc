@@ -4,6 +4,10 @@
 # expect the check to fail. Needs Docker and the built dist/.
 #
 #   pnpm run test:shots
+#
+# The work folder comes from mktemp, so it is under TMPDIR. A Docker engine in a
+# VM mounts only some folders (Colima: your home folder and /tmp/colima, not
+# macOS's /var/folders), so set TMPDIR to one it mounts, or the run times out.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
