@@ -75,6 +75,8 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@osdlc/corpus-schema": "workspace:^",
+    "@osdlc/corpus-system-cleanup-reference": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",

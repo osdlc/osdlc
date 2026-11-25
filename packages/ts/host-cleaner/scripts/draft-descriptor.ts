@@ -1,34 +1,28 @@
 // Drafts a tier 1 descriptor from one store of the system-cleanup research
 // corpus (packages/corpora/system-cleanup-reference), for a person to review.
-// Runs on this package's source, but src/ imports the workspace's other
-// packages through their dist/, so build those first (`pnpm run build`).
+// Runs on this package's source, but imports the workspace's other packages
+// through their dist/, so build those first (`pnpm run build`).
 // Flags: see USAGE below.
 //
 // A draft never sets idleHours or removes.
 // What it can't put in a valid tier 1 file (the clean commands, the location
 // overrides, folders that need a variable) goes into comments for the reviewer.
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  realpathSync,
-  writeFileSync,
-} from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
-import { Document, isMap, isNode, isSeq, parse } from 'yaml'
+import { type CorpusRecord, loadCorpus, recordsOf } from '@osdlc/corpus-schema'
+import { Document, isMap, isNode, isSeq } from 'yaml'
 
 import { CARGO_PLUGIN } from '../src/cargo.ts'
 import {
   DESCRIPTOR_SCHEMA_URL,
   DESCRIPTOR_VERSION,
   OSES,
-  isEntryName as oneName,
+  isEntryName,
   isFolder,
   isLock,
-  isPathsName as pathsName,
+  isPathsName,
   parseDescriptor,
   type Os,
 } from '../src/descriptor/schema.ts'
@@ -103,116 +97,76 @@ interface CorpusStore {
   system?: boolean | undefined
   checked?: string | undefined
   statements: ReadonlyMap<string, Statement>
+  /** Why each statement that may be any store's is not read. */
+  strays: readonly string[]
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
-const frontMatter = (file: string): Record<string, unknown> => {
-  const m = /^﻿?---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/.exec(
-    readFileSync(file, 'utf8'),
-  )
-  if (m === null) throw new DraftError(`${file}: no front matter`)
-  let fm: unknown
-  try {
-    fm = parse(m[1] ?? '') ?? {}
-  } catch (err) {
-    throw new DraftError(
-      `${file}: front matter is not YAML: ${(err as Error).message.split('\n')[0]}`,
-    )
-  }
-  if (!isRecord(fm)) throw new DraftError(`${file}: front matter is not a map`)
-  return fm
-}
-
-type Read = { file: string; fm: Record<string, unknown> }
-
-/**
- * The corpus's store files by slug and its statements by the store file they
- * link to, read once; files that can't be read are kept as errors.
- */
+/** A corpus's stores by slug, and its statements by the store they link to. */
 export interface StoreIndex {
   /** The corpus it indexes, whose statements a draft reads. */
   corpus: string
-  stores: string
-  bySlug: ReadonlyMap<string, readonly Read[]>
-  unreadable: readonly string[]
-  /** Statement files by the name of the store file their `store:` links to. */
-  statements: ReadonlyMap<string, readonly Read[]>
-  /** Statement files that can't be read, so their store isn't known. */
-  unreadableStatements: readonly { file: string; message: string }[]
-}
-
-/** The name of the store file in `stores` that `link` (a Markdown link or a path) in `file` names. */
-function linkedStore(file: string, link: unknown, stores: string): string | undefined {
-  if (typeof link !== 'string') return undefined
-  const target = /\]\(([^)]*)\)/.exec(link)?.[1] ?? link
-  let path: string
-  try {
-    path = resolve(dirname(file), decodeURIComponent(target.trim()))
-  } catch {
-    return undefined
-  }
-  return dirname(path) === resolve(stores) ? basename(path) : undefined
+  bySlug: ReadonlyMap<string, readonly CorpusRecord[]>
+  /** Why each store file with no slug has none. */
+  noSlug: readonly string[]
+  /** Statements by the path of the store their `store` link names. */
+  statements: ReadonlyMap<string, readonly CorpusRecord[]>
+  /**
+   * Statements that may be any store's: they don't read, or they are current
+   * and their `store` link names no store.
+   */
+  strays: readonly { path: string; why: string }[]
 }
 
 /**
- * Reads the front matter of every store and statement file in `corpus` once.
+ * Loads `corpus` once and indexes its stores and statements.
  *
- * @throws DraftError when `corpus` has no stores folder
+ * @throws DraftError when `corpus` is not a corpus of stores
  */
 export function indexStores(corpus: string): StoreIndex {
-  const stores = join(corpus, 'stores')
-  if (!existsSync(stores))
-    throw new DraftError(`${corpus} is not a corpus: it has no stores folder`)
-  const bySlug = new Map<string, Read[]>()
-  const unreadable: string[] = []
-  for (const file of readdirSync(stores)
-    .filter((f) => f.endsWith('.md'))
-    .sort()) {
-    let fm: Record<string, unknown>
-    try {
-      fm = frontMatter(join(stores, file))
-    } catch (err) {
-      unreadable.push((err as Error).message)
-      continue
-    }
-    if (typeof fm['slug'] !== 'string') continue
-    bySlug.set(fm['slug'], [...(bySlug.get(fm['slug']) ?? []), { file, fm }])
+  const model = loadCorpus(corpus, { bodies: false })
+  if (!model.types.some((t) => t.name === 'stores'))
+    throw new DraftError(
+      `${corpus} is not a corpus of stores: ${model.errors[0] ?? 'it has no stores folder'}`,
+    )
+  const errorOf = (r: CorpusRecord) => model.errors.find((e) => e.startsWith(`${r.path}: `))
+
+  const bySlug = new Map<string, CorpusRecord[]>()
+  const noSlug: string[] = []
+  for (const r of recordsOf(model, 'stores')) {
+    const slug = r.data['slug']
+    if (typeof slug === 'string') bySlug.set(slug, [...(bySlug.get(slug) ?? []), r])
+    else noSlug.push(errorOf(r) ?? `${r.path}: no slug`)
   }
-  const statements = new Map<string, Read[]>()
-  const unreadableStatements: { file: string; message: string }[] = []
-  const dir = join(corpus, 'statements')
-  const names = existsSync(dir) ? readdirSync(dir, { recursive: true, encoding: 'utf8' }) : []
-  for (const name of names.filter((f) => f.endsWith('.md')).sort()) {
-    const file = join(dir, name)
-    let fm: Record<string, unknown>
-    try {
-      fm = frontMatter(file)
-    } catch (err) {
-      unreadableStatements.push({ file, message: (err as Error).message })
-      continue
-    }
-    const store = linkedStore(file, fm['store'], stores)
-    if (store !== undefined) statements.set(store, [...(statements.get(store) ?? []), { file, fm }])
+
+  const statements = new Map<string, CorpusRecord[]>()
+  const strays: { path: string; why: string }[] = []
+  for (const r of recordsOf(model, 'statements')) {
+    const link = r.references.find((ref) => ref.pointer === '/store')
+    const to = link?.target
+    if (to?.corpus === '' && to.type === 'stores')
+      statements.set(to.path, [...(statements.get(to.path) ?? []), r])
+    // A record whose data does not read has none.
+    else if (Object.keys(r.data).length === 0 || r.data['status'] === 'current')
+      strays.push({
+        path: r.path,
+        why: errorOf(r) ?? `${r.path}: ${link?.unresolved ?? 'store: is not a link to a store'}`,
+      })
   }
-  return { corpus, stores, bySlug, unreadable, statements, unreadableStatements }
+  return { corpus, bySlug, noSlug, statements, strays }
 }
 
 /**
- * `key` of the front matter in `file`, or undefined when unset.
+ * `key` of `record`'s data, or undefined when unset.
  *
  * @throws DraftError when it is set but not a `type`
  */
-function field<T>(
-  file: string,
-  fm: Record<string, unknown>,
-  key: string,
-  type: 'string' | 'boolean',
-): T | undefined {
-  const v = fm[key]
+function field<T>(record: CorpusRecord, key: string, type: 'string' | 'boolean'): T | undefined {
+  const v = record.data[key]
   if (v === undefined || v === null) return undefined
-  if (typeof v !== type) throw new DraftError(`${file}: ${key} is not a ${type}`)
+  if (typeof v !== type) throw new DraftError(`${record.path}: ${key} is not a ${type}`)
   return v as T
 }
 
@@ -220,68 +174,64 @@ function field<T>(
  * The store whose `slug` is `slug`, with its current statements.
  *
  * @throws DraftError when the corpus has no such store or more than one, no
- *   statement links to it, or a current statement is malformed or shares its
- *   subject with another
+ *   statement links to it, a statement in its folder is a stray, or a current
+ *   statement is malformed or shares its subject with another
  */
 function readStore(slug: string, index: StoreIndex): CorpusStore {
   const found = index.bySlug.get(slug) ?? []
   if (found.length > 1)
     throw new DraftError(
-      `more than one store has slug ${slug}: ${found.map((s) => s.file).join(', ')}`,
+      `more than one store has slug ${slug}: ${found.map((s) => s.path).join(', ')}`,
     )
-  const [hit] = found
-  if (hit === undefined)
+  const [record] = found
+  if (record === undefined)
     throw new DraftError(
-      `no store with slug ${slug} in ${index.stores}` +
-        (index.unreadable.length > 0 ? ` (unreadable: ${index.unreadable.join('; ')})` : ''),
+      `no store with slug ${slug} in ${join(index.corpus, 'stores')}` +
+        (index.noSlug.length > 0 ? ` (with no slug: ${index.noSlug.join('; ')})` : ''),
     )
-  const { file, fm } = hit
-  const storeFile = join(index.stores, file)
-  const title = basename(file, '.md')
-  const statements = new Map<string, Statement & { file: string }>()
-  // A statement that can't be read has no known store; one in the folder
-  // named for this store is most likely its own.
-  const own = index.unreadableStatements.find(
-    (s) => dirname(s.file) === join(index.corpus, 'statements', title),
-  )
-  if (own !== undefined) throw new DraftError(own.message)
-  const linked = index.statements.get(file) ?? []
+  const title = record.name
+  // A stray in the folder named for this store is most likely its own.
+  const own = index.strays.find((s) => dirname(s.path) === `statements/${title}`)
+  if (own !== undefined) throw new DraftError(own.why)
+  const linked = index.statements.get(record.path) ?? []
   if (linked.length === 0)
     throw new DraftError(
-      `${slug}: no statement in ${join(index.corpus, 'statements')} links to ${storeFile} with store:` +
-        (index.unreadableStatements.length > 0
-          ? ` (unreadable: ${index.unreadableStatements.map((s) => s.message).join('; ')})`
+      `${slug}: no statement's store: links to ${record.path}` +
+        (index.strays.length > 0
+          ? ` (linked to no store: ${index.strays.map((s) => s.why).join('; ')})`
           : ''),
     )
-  for (const { file: f, fm: s } of linked) {
-    if (s['status'] !== 'current') continue
-    const prop = s['proposition']
+  const statements = new Map<string, Statement & { path: string }>()
+  for (const { path, data } of linked) {
+    if (data['status'] !== 'current') continue
+    const prop = data['proposition']
     if (!isRecord(prop) || typeof prop['predicate'] !== 'string' || !isRecord(prop['object']))
       throw new DraftError(
-        `${f}: a current statement needs a proposition with a predicate and an object`,
+        `${path}: a current statement needs a proposition with a predicate and an object`,
       )
-    const open = s['open'] ?? []
+    const open = data['open'] ?? []
     if (!Array.isArray(open) || !open.every((o) => typeof o === 'string'))
-      throw new DraftError(`${f}: open is not a list of strings`)
+      throw new DraftError(`${path}: open is not a list of strings`)
     const before = statements.get(prop['predicate'])
     if (before !== undefined)
       throw new DraftError(
-        `${f}: ${before.file} is also the current statement of ${prop['predicate']}`,
+        `${path}: ${before.path} is also the current statement of ${prop['predicate']}`,
       )
     statements.set(prop['predicate'], {
       object: prop['object'],
       open,
-      scope: narrowing(s['scope']),
-      file: f,
+      scope: narrowing(data['scope']),
+      path,
     })
   }
   return {
     slug,
     title,
-    cli: field<string>(storeFile, fm, 'cli', 'string'),
-    system: field<boolean>(storeFile, fm, 'system', 'boolean'),
-    checked: field<string>(storeFile, fm, 'checked', 'string'),
+    cli: field<string>(record, 'cli', 'string'),
+    system: field<boolean>(record, 'system', 'boolean'),
+    checked: field<string>(record, 'checked', 'string'),
     statements,
+    strays: index.strays.map((s) => s.why),
   }
 }
 
@@ -296,9 +246,9 @@ const looksLikeFile = (p: string): boolean =>
   /[^/\\.]\.(c?js|mjs|json|gz|zip|tar|raw|img|qcow2|vhdx|db|sqlite3?|lock|log)$/i.test(p)
 
 /**
- * A folder that holds locks, such as Maven's `.locks` or asdf's `install-locks`:
- * it stays after the run that made it, so as an `inUse` lock it would hold
- * every candidate for good.
+ * A name a folder of locks has, such as Maven's `.locks` or asdf's
+ * `install-locks`: it can stay after the run that made it, so as an `inUse`
+ * lock it would hold every candidate for good.
  */
 const locksFolder = (p: string): boolean => /(^|[/\\._-])locks[/\\]*$/i.test(p)
 
@@ -448,8 +398,8 @@ function draftDescriptor(store: CorpusStore): Draft {
 
   /**
    * `key` of `subject`'s object as a list of `T`; empty when unset. A malformed
-   * item throws, or with `leave` goes to `left`, for a subject the draft can do
-   * without.
+   * item or a value that is not a list throws, or with `leave` goes to `left`,
+   * for a subject the draft can do without.
    */
   const listIn = <T>(
     subject: string,
@@ -459,15 +409,19 @@ function draftDescriptor(store: CorpusStore): Draft {
   ): T[] => {
     const v = st(subject)?.object[key]
     if (v === undefined || v === null) return []
-    if (!Array.isArray(v)) throw new DraftError(`${store.slug}: ${subject}: ${key} is not a list`)
-    const bad = (i: number) => `${subject}: ${key}.${i} is not what the corpus records`
-    const i = v.findIndex((item) => !ok(item))
-    if (i >= 0 && !leave) throw new DraftError(`${store.slug}: ${bad(i)}`)
-    return v.filter((item, n) => {
-      if (ok(item)) return true
-      left.push(bad(n))
+    const bad = (what: string) => {
+      if (!leave) throw new DraftError(`${store.slug}: ${what}`)
+      left.push(what)
       return false
-    })
+    }
+    if (!Array.isArray(v)) {
+      bad(`${subject}: ${key} is not a list`)
+      return []
+    }
+    return v.filter(
+      (item, i): item is T =>
+        ok(item) || bad(`${subject}: ${key}.${i} is not what the corpus records`),
+    )
   }
   /** The items `fits` accepts; each other one goes to `left` as `why` says. */
   const keep = <T>(items: T[], fits: (item: T) => boolean, why: (item: T) => string): T[] =>
@@ -483,7 +437,7 @@ function draftDescriptor(store: CorpusStore): Draft {
     isRecord(d) &&
     text(d['path']) &&
     typeof d['holds'] === 'string' &&
-    pathsName(d['holds']) &&
+    isPathsName(d['holds']) &&
     cost(d['rebuild']) &&
     (d['platform'] === 'all' || (OSES as readonly unknown[]).includes(d['platform']))
 
@@ -536,7 +490,7 @@ function draftDescriptor(store: CorpusStore): Draft {
       (l) => `lock ${l}: not a fixed file path`,
     ),
     (l) => !locksFolder(l),
-    (l) => `lock ${l}: a folder of locks, there whenever the tool has run, not a lock`,
+    (l) => `lock ${l}: a folder of locks, which can stay after the tool exits`,
   )
   const inUse = {
     ...(processes.length > 0 ? { processes } : {}),
@@ -560,11 +514,11 @@ function draftDescriptor(store: CorpusStore): Draft {
       (c) => c.dir === b.path && (c.marker === undefined || c.marker === b.marker),
     )
     if (covered !== undefined) left.push(`project ${b.path}: the ${covered.by} plugin covers it`)
-    else if (!oneName(b.path))
+    else if (!isEntryName(b.path))
       left.push(`project ${b.path}: a project entry names one folder, not a path`)
     else if (looksLikeFile(b.path)) left.push(`project ${b.path}: looks like a file, not a folder`)
     else if (b.marker === undefined) left.push(`project ${b.path}: the corpus names no marker file`)
-    else if (!oneName(b.marker))
+    else if (!isEntryName(b.marker))
       left.push(`project ${b.path}: its marker ${b.marker} is a path, not a file name`)
     else project.push({ dir: b.path, marker: b.marker, costDescription: b.rebuild })
   }
@@ -640,6 +594,20 @@ function draftDescriptor(store: CorpusStore): Draft {
         `Moved by (a tier 2 variable could follow it; this file looks only at the default folders): ${movedBy.join(', ')}`,
       ),
     )
+  if (locks.length > 0)
+    header.push(
+      '',
+      ...wrap(
+        `Locks: check that each is gone once the tool exits. One that stays holds every candidate for good: ${locks.join(', ')}`,
+      ),
+    )
+  if (Object.keys(inUse).length === 0)
+    header.push(
+      '',
+      ...wrap(
+        'No inUse: nothing here tells that the tool is running. Add a process or a lock file that does.',
+      ),
+    )
   if (nested.length > 0)
     header.push('', ' Overlapping folders (their sizes count twice):', ...nested.flatMap(bullet))
   const scoped = [...store.statements.entries()].flatMap(([subject, s]) =>
@@ -656,6 +624,12 @@ function draftDescriptor(store: CorpusStore): Draft {
     subject === 'inventory/command' ? [] : s.open.map((o) => `${subject}: ${o}`),
   )
   if (open.length > 0) header.push('', ' Open in the corpus:', ...open.flatMap(bullet))
+  if (store.strays.length > 0)
+    header.push(
+      '',
+      " Statements not read, which may be this store's:",
+      ...store.strays.flatMap(bullet),
+    )
   doc.commentBefore = header.join('\n')
 
   return { slug: store.slug, text: doc.toString({ lineWidth: 0 }) }
@@ -747,16 +721,8 @@ function main(argv: readonly string[]): number {
   return failed === 0 ? 0 : 1
 }
 
-/** Whether `a` and `b` are one file once symlinks are followed. */
-const sameFile = (a: string | undefined, b: string): boolean => {
-  if (a === undefined) return false
-  try {
-    return realpathSync(a) === realpathSync(b)
-  } catch {
-    return false
-  }
-}
-
-if (sameFile(process.argv[1], fileURLToPath(import.meta.url))) {
+// Node gives the main module's URL as its real path, but argv[1] as typed.
+const script = process.argv[1]
+if (script !== undefined && realpathSync(script) === fileURLToPath(import.meta.url)) {
   process.exitCode = main(process.argv.slice(2))
 }

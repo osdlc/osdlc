@@ -18,6 +18,10 @@ import {
   DescriptorSchema,
   descriptorIssues,
   descriptorJsonSchema,
+  isEntryName,
+  isFolder,
+  isLock,
+  isPathsName,
   parseDescriptor,
   readDescriptor,
 } from '../src/descriptor/schema.ts'
@@ -553,6 +557,43 @@ describe('a bad descriptor names the field path', () => {
       expect(jsonSchema(parse(text)), text).toBe(false)
       expect(jsonSchema.errors?.map((e) => e.instancePath)).toContain(path)
     }
+  })
+})
+
+describe('the predicates a script may use take what the schema takes', () => {
+  const base = {
+    descriptor: 1,
+    paths: { a: { all: '~/a' } },
+    candidates: [{ path: 'a', costDescription: 'rebuild' }],
+  }
+  const accepts = (more: Record<string, unknown>) =>
+    descriptorIssues({ ...base, ...more }).length === 0
+  const FOLDERS = [
+    '~/a',
+    '~/a/',
+    '/var/a',
+    'C:\\a',
+    '~',
+    '~/',
+    '/',
+    '~/..',
+    '~/a/../b',
+    'a/b',
+    '/home/me',
+    '',
+  ]
+  const NAMES = ['a', 'cache-a_1', '1a', 'a b', '', '.', '..', 'a/b', 'a\\b', '.venv']
+
+  test.each(FOLDERS)('folder and lock %j', (p) => {
+    expect(isFolder(p)).toBe(accepts({ paths: { ...base.paths, b: { all: p } } }))
+    expect(isLock(p)).toBe(accepts({ inUse: { locks: [p] } }))
+  })
+
+  test.each(NAMES)('paths name and entry name %j', (n) => {
+    expect(isPathsName(n)).toBe(accepts({ paths: { ...base.paths, [n]: { all: '~/b' } } }))
+    expect(isEntryName(n)).toBe(
+      accepts({ project: [{ dir: n, marker: 'm', costDescription: 'rebuild' }] }),
+    )
   })
 })
 
