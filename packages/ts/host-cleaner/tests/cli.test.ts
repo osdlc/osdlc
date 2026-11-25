@@ -311,7 +311,7 @@ describe('plugins', () => {
     orcaDown(),
   ]
 
-  test('Orca not running shows as detected with its note, beside each plugin’s source, detection and roots', async () => {
+  test('Orca not running shows as detected with its note, beside each plugin’s source (given, as main was handed them), detection and roots', async () => {
     const { env, cwd } = setup()
     const r = await run(['plugins'], cwd, env, { plugins: plugins() })
     expect(r.code).toBe(0)
@@ -319,10 +319,10 @@ describe('plugins', () => {
     expect(r.out).toBe(
       [
         `targets: ${cwd}`,
-        '  git    built-in  detected; roots: /cache/git',
-        '  cargo  built-in  detected; roots: none, the targets alone',
-        '  node   built-in  not detected',
-        '  orca   built-in  detected; roots: none, the targets alone; note: Orca is installed but not running',
+        '  git    givendetected; roots: /cache/git',
+        '  cargo  givendetected; roots: none, the targets alone',
+        '  node   givennot detected',
+        '  orca   givendetected; roots: none, the targets alone; note: Orca is installed but not running',
         '',
       ].join('\n'),
     )
@@ -346,7 +346,7 @@ describe('plugins', () => {
       plugins: [
         {
           name: 'git',
-          source: 'built-in',
+          source: 'given',
           enabled: true,
           detected: true,
           reason: null,
@@ -356,7 +356,7 @@ describe('plugins', () => {
         },
         {
           name: 'cargo',
-          source: 'built-in',
+          source: 'given',
           enabled: false,
           detected: false,
           reason: 'plugins.cargo.enabled is false; --plugin cargo runs it anyway',
@@ -366,7 +366,7 @@ describe('plugins', () => {
         },
         {
           name: 'node',
-          source: 'built-in',
+          source: 'given',
           enabled: true,
           detected: false,
           reason: null,
@@ -376,7 +376,7 @@ describe('plugins', () => {
         },
         {
           name: 'orca',
-          source: 'built-in',
+          source: 'given',
           enabled: true,
           detected: true,
           reason: null,
@@ -417,8 +417,8 @@ describe('plugins', () => {
     expect(r.out).toBe(
       [
         `targets: ${cwd}`,
-        `  git    built-in  detected; roots: ${cache} (itself too); note: one note`,
-        '  cargo  built-in  not detected; note: no cargo',
+        `  git    givendetected; roots: ${cache} (itself too); note: one note`,
+        '  cargo  givennot detected; note: no cargo',
         '',
       ].join('\n'),
     )
@@ -427,7 +427,7 @@ describe('plugins', () => {
     expect(JSON.parse(json.out).plugins).toEqual([
       {
         name: 'git',
-        source: 'built-in',
+        source: 'given',
         enabled: true,
         detected: true,
         reason: null,
@@ -437,7 +437,7 @@ describe('plugins', () => {
       },
       {
         name: 'cargo',
-        source: 'built-in',
+        source: 'given',
         enabled: true,
         detected: false,
         reason: null,
@@ -446,6 +446,28 @@ describe('plugins', () => {
         note: 'no cargo',
       },
     ])
+  })
+
+  test('a second plugin of a name is one row with a warning, and a multi-line detect error stays on its row', async () => {
+    const { env, cwd } = setup()
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [
+        {
+          ...fake('a'),
+          detect: () => {
+            throw new Error('stderr line one\nstderr line two')
+          },
+        },
+        { ...fake('a'), detect: () => true },
+      ],
+    })
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('a: a second plugin of that name was left out')
+    expect(r.out).toBe(
+      [`targets: ${cwd}`, '  a  given  not detected: stderr line one stderr line two', ''].join(
+        '\n',
+      ),
+    )
   })
 })
 

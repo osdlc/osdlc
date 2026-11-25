@@ -410,11 +410,13 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliCont
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
   const all = allPlugins(config, deps, ctx, only)
-  // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
-  const named = v.plugin ?? []
   const chosen = selectPlugins(all, v.plugin, v.skipPlugin)
-  return chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins))
+  return chosen.filter((p) => enabled(p.name, config, v.plugin))
 }
+
+/** `enabled: false` in the config leaves a plugin out; naming it in `named` (`--plugin`) runs it anyway. */
+const enabled = (name: string, config: Config, named: readonly string[] = []): boolean =>
+  named.includes(name) || !disabledByConfig(name, config.plugins)
 
 const homeOf = (ctx: CliContext): string => ctx.env.HOME ?? homedir()
 
@@ -594,8 +596,8 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
 /** One row of `host-cleaner plugins`. */
 interface PluginRow {
   name: string
-  /** Where the plugin came from; every plugin ships with host-cleaner for now. */
-  source: 'built-in'
+  /** Where the plugin came from: shipped with host-cleaner, or given by the program that calls `main`. */
+  source: 'built-in' | 'given'
   enabled: boolean
   detected: boolean
   /** Why it does not run: disabled in the config, or what its `detect` threw. Null when it is detected, or `detect` answered no. */
@@ -617,8 +619,9 @@ function renderPlugins(rows: readonly PluginRow[], targets: readonly string[]): 
       : r.detected
         ? `detected; roots: ${r.roots.map((root) => (r.selfRoots.includes(root) ? `${root} (itself too)` : root)).join(', ') || 'none, the targets alone'}`
         : 'not detected'
+    const reason = r.reason?.replace(/\s+/g, ' ').trim() ?? null
     lines.push(
-      `  ${r.name.padEnd(width)}  ${r.source}  ${state}${r.reason === null ? '' : `: ${r.reason}`}${r.note === null ? '' : `; note: ${r.note}`}`,
+      `  ${r.name.padEnd(width)}  ${r.source}  ${state}${reason === null ? '' : `: ${reason}`}${r.note === null ? '' : `; note: ${r.note}`}`,
     )
   }
   return block(lines)
@@ -639,18 +642,17 @@ async function runPlugins(
   try {
     const config = loadConfig(v, ctx)
     const all = allPlugins(config, deps, ctx)
-    const off = new Set(
-      all.filter((p) => disabledByConfig(p.name, config.plugins)).map((p) => p.name),
-    )
-    const enabled = all.filter((p) => !off.has(p.name))
-    const found = await inspect(enabled, contextFor(parsed.positionals, config, ctx, [], v.ignore))
+    const on = all.filter((p) => enabled(p.name, config))
+    const found = await inspect(on, contextFor(parsed.positionals, config, ctx, [], v.ignore))
     const state = new Map(found.plugins.map((s) => [s.name, s]))
-    rows = all.map((p): PluginRow => {
-      const disabled = off.has(p.name)
+    // A second plugin of a name is left out, with inspect's warning.
+    const first = all.filter((p, i) => all.findIndex((q) => q.name === p.name) === i)
+    rows = first.map((p): PluginRow => {
+      const disabled = !enabled(p.name, config)
       const s = state.get(p.name)
       return {
         name: p.name,
-        source: 'built-in',
+        source: deps.plugins === undefined ? 'built-in' : 'given',
         enabled: !disabled,
         detected: s?.detected ?? false,
         reason: disabled

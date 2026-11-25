@@ -99,6 +99,17 @@ const found = await survey([cache], ctx) // scope, discover, object
 const receipt = await clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
 ```
 
+`inspect` runs `detect`, `scope` and `roots` only, as `host-cleaner plugins`
+does: whether each plugin applies here, why not, its note and its roots. It
+proposes and deletes nothing.
+
+```ts
+import { inspect } from '@osdlc/host-cleaner'
+
+const { plugins, warnings } = await inspect([cache], ctx)
+for (const p of plugins) console.log(p.name, p.detected, p.reason ?? '', p.roots)
+```
+
 What a plan runs uses repo-cleaner's words, with their meaning:
 
 - **The default:** every candidate nothing refuses or protests and no owner
@@ -372,8 +383,8 @@ Two settings sit at the top of the config and apply to every plugin:
 `host-cleaner config` prints every plugin's effective settings: the value, and
 whether the file set it or it is the default. `--format json` prints the values.
 
-`host-cleaner plugins` lists every plugin: where it came from (`built-in` for
-now), whether it applies here and, when it does not, why, and its roots, the
+`host-cleaner plugins` lists every plugin: where it came from (`built-in` when it
+ships with host-cleaner, `given` when a program hands its own to `main`), whether it applies here and, when it does not, why, and its roots, the
 folders it may delete in besides the targets. It runs `detect`, `scope` and
 `roots` and nothing else, so it proposes and deletes nothing. A plugin whose
 `detect` throws shows the error as the reason. A note its `detect` gives
