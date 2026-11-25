@@ -9,23 +9,35 @@
 
 import { lstatSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, delimiter, dirname, join, resolve } from 'node:path'
 
 import { Git, checkoutRoot, scanForCheckouts } from '@osdlc/typed-git'
 import { z } from 'zod'
 
-import { hoursText, objectionsTo, type Row } from './artifacts.ts'
-import { DEFAULT_IDLE_HOURS, idleHoursSetting, present, type Kit } from './kit.ts'
+import {
+  DISCOVER_LIMIT_MS,
+  checkAgain,
+  errorText,
+  failureReason,
+  hoursText,
+  objectionsTo,
+  objector,
+  realOr,
+  yieldToLimit,
+  type Row,
+} from './helpers.ts'
+import { idleHoursOr, idleHoursSetting, present, type Kit } from './kit.ts'
 import { containedIn } from './roots.ts'
 import { PLUGIN_API, definePlugin, type Ctx, type Plugin } from './types.ts'
 
 export const TOOLCHAINS_PLUGIN = 'toolchains'
 
 const RUST_PIN_FILES = ['rust-toolchain', 'rust-toolchain.toml']
-/** The pin files read in the run's folder and every folder above it. */
-const DIR_PIN_FILES = [...RUST_PIN_FILES, '.nvmrc', '.node-version']
-/** The files a checkout names its toolchain in, wherever they sit in it. */
-const PIN_FILES = [...DIR_PIN_FILES, 'package.json']
+/**
+ * The files a toolchain is named in: wherever they sit in a checkout, and in
+ * the run's folder and every folder above it.
+ */
+const PIN_FILES = [...RUST_PIN_FILES, '.nvmrc', '.node-version', 'package.json']
 
 /** nvm's names for the newest version it has installed. */
 const NEWEST = new Set(['node', 'stable', 'latest', 'current'])
@@ -33,9 +45,6 @@ const NEWEST = new Set(['node', 'stable', 'latest', 'current'])
 /** A rustup release channel, then a date or a host triple: a name rustup installed, not one it was given by `link`. */
 const RUST_RELEASE = /^(stable|beta|nightly|\d+\.\d+(\.\d+)?)(-|$)/
 const NODE_VERSION = /^v?\d+\.\d+\.\d+$/
-
-/** The longest a survey may take: it reads every checkout under the targets. */
-const DISCOVER_LIMIT_MS = 10 * 60_000
 
 /** The longest `rustup toolchain uninstall` may take. */
 const UNINSTALL_LIMIT_MS = 5 * 60_000
@@ -51,6 +60,10 @@ type AtimeMode = 'noatime' | 'relatime' | 'exact'
 /** What {@link Detection.note} says when the targets are the run's folder, taken because none were given. */
 export const NO_TARGETS_NOTE =
   'no targets were given (the folder it runs from is not enough), so it proposes nothing'
+
+/** The note on every candidate: where the search for pins does not look. */
+export const UNSEARCHED_NOTE =
+  "checkouts in folders whose names start with a dot, and in folders a checkout's git ignores, are not searched for pins"
 
 /** What {@link Detection.note} says when the versions folder `dir` is on a volume mounted `noatime`. */
 export const noatimeNote = (dir: string): string =>
@@ -101,6 +114,8 @@ interface Pins {
   /** Why the rust pins are not known; empty when they are. */
   rustUnknown: string[]
   nodeUnknown: string[]
+  /** Why Volta's pins in package.json are not known: they refuse Volta's versions only, since nvm does not read them. */
+  voltaUnknown: string[]
 }
 
 const firstLine = (text: string): string =>
@@ -118,7 +133,7 @@ export function rustPin(text: string): string | null {
 
 /** The version `package.json` pins for Volta, or null. */
 const voltaPin = (text: string): string | null => {
-  const json = JSON.parse(text) as { volta?: { node?: unknown } }
+  const json = JSON.parse(text.replace(/^﻿/, '')) as { volta?: { node?: unknown } }
   const node = json?.volta?.node
   return typeof node === 'string' ? node.trim() : null
 }
@@ -140,29 +155,61 @@ function scanUnder(dir: string, unknown: string[]): string[] {
   return scan.checkouts
 }
 
+/** Whether `checkout`'s `.git` is a file naming a git folder that is gone: a worktree its repository pruned. */
+function orphaned(checkout: string): boolean {
+  let text: string
+  try {
+    text = readFileSync(join(checkout, '.git'), 'utf8')
+  } catch {
+    return false
+  }
+  const gitdir = /^gitdir:\s*(.+?)\s*$/m.exec(text)?.[1]
+  return gitdir !== undefined && !present(resolve(checkout, gitdir))
+}
+
 /**
  * Every checkout under `targets`, with each repository's worktrees: the
  * repository a target is in (the whole of it, as the cargo and node plugins
- * read it) and those found below a target; plus why one may have been missed.
+ * read it) and those found below a target; the `loose` folders whose `.git`
+ * names a git folder that is gone, read at their root only; plus why one may
+ * have been missed.
  */
-function checkoutsUnder(targets: readonly string[]): { checkouts: string[]; unknown: string[] } {
+function checkoutsUnder(targets: readonly string[]): {
+  checkouts: string[]
+  loose: string[]
+  unknown: string[]
+} {
   const found = new Set<string>()
   const unknown: string[] = []
   for (const target of targets) {
-    if (!isDir(target)) continue
+    // A target that is a link is followed.
+    const stat = statSync(target, { throwIfNoEntry: false })
+    if (stat === undefined && lstatSync(target, { throwIfNoEntry: false }) !== undefined) {
+      unknown.push(`${target} is a link that leads nowhere, so its checkouts could not be read`)
+    }
+    if (stat?.isDirectory() !== true) continue
     const root = checkoutRoot(target)
     if (root !== null) found.add(root)
     for (const checkout of scanUnder(target, unknown)) found.add(checkout)
   }
   // A worktree lists every worktree of its repository, a bare one's too.
   const out = new Set<string>()
+  const loose: string[] = []
   for (const checkout of found) {
     if (out.has(checkout)) continue
-    for (const tree of new Git(checkout).worktrees()) {
+    let trees: ReturnType<Git['worktrees']>
+    try {
+      trees = new Git(checkout).worktrees()
+    } catch (err) {
+      if (orphaned(checkout)) loose.push(checkout)
+      else unknown.push(`the worktrees of ${checkout} could not be listed: ${errorText(err)}`)
+      continue
+    }
+    for (const tree of trees) {
       if (!tree.bare && isDir(tree.path)) out.add(tree.path)
     }
   }
-  return { checkouts: [...out].sort(), unknown }
+  return { checkouts: [...out].sort(), loose: loose.sort(), unknown }
 }
 
 /**
@@ -197,8 +244,19 @@ function pinFiles(checkout: string): string[] {
 }
 
 /** What every checkout under `targets` and the run's folder ask for. */
-function readPins(targets: readonly string[], cwd: string): Pins {
-  const pins: Pins = { rust: new Set(), node: new Set(), rustUnknown: [], nodeUnknown: [] }
+async function readPins(targets: readonly string[], ctx: Ctx): Promise<Pins> {
+  const pins: Pins = {
+    rust: new Set(),
+    node: new Set(),
+    rustUnknown: [],
+    nodeUnknown: [],
+    voltaUnknown: [],
+  }
+  const unknownOf = (file: string): string[] => {
+    const name = basename(file)
+    if (RUST_PIN_FILES.includes(name)) return pins.rustUnknown
+    return name === 'package.json' ? pins.voltaUnknown : pins.nodeUnknown
+  }
   const add = (file: string, text: string): void => {
     const name = basename(file)
     if (RUST_PIN_FILES.includes(name)) {
@@ -215,15 +273,14 @@ function readPins(targets: readonly string[], cwd: string): Pins {
       text = readFileSync(file, 'utf8')
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return
-      const why = `${file} could not be read`
-      ;(RUST_PIN_FILES.includes(basename(file)) ? pins.rustUnknown : pins.nodeUnknown).push(why)
+      unknownOf(file).push(`${file} could not be read`)
       return
     }
     try {
       add(file, text)
     } catch {
       // Only package.json is parsed; one that is not JSON may hide a Volta pin.
-      pins.nodeUnknown.push(`${file} is not JSON`)
+      pins.voltaUnknown.push(`${file} is not JSON`)
     }
   }
 
@@ -235,12 +292,15 @@ function readPins(targets: readonly string[], cwd: string): Pins {
   try {
     found = checkoutsUnder(targets)
   } catch (err) {
-    unknown(`the checkouts under the targets could not be listed: ${message(err)}`)
+    unknown(`the checkouts under the targets could not be listed: ${errorText(err)}`)
     return pins
   }
+  for (const dir of found.loose) for (const f of PIN_FILES) read(join(dir, f))
   const queue = [...found.checkouts]
   const seen = new Set(queue)
   for (let checkout = queue.shift(); checkout !== undefined; checkout = queue.shift()) {
+    // Each checkout is listed synchronously, so the survey's time limit can fire only between them.
+    await yieldToLimit(ctx)
     let files: string[]
     try {
       files = pinFiles(checkout)
@@ -251,21 +311,38 @@ function readPins(targets: readonly string[], cwd: string): Pins {
         }
       }
     } catch (err) {
-      unknown(`${checkout} could not be listed: ${message(err)}`)
+      unknown(`${checkout} could not be listed: ${errorText(err)}`)
       continue
     }
     for (const file of files) read(file)
   }
   for (const why of found.unknown) unknown(why)
   // The run's folder and those above it decide what is in use there, as rustup and nvm look up.
-  for (let dir = resolve(cwd); ; dir = dirname(dir)) {
-    for (const f of DIR_PIN_FILES) read(join(dir, f))
+  for (let dir = resolve(ctx.cwd); ; dir = dirname(dir)) {
+    for (const f of PIN_FILES) read(join(dir, f))
     if (dirname(dir) === dir) break
   }
   return pins
 }
 
-const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
+/** The packages that come with every Node version, which a re-download brings back. */
+const BUNDLED_PACKAGES = new Set(['npm', 'corepack'])
+
+/**
+ * The global packages installed into the nvm version folder `dir`, those that
+ * come with Node aside; null when they cannot be listed.
+ */
+export function globalPackages(dir: string): string[] | null {
+  const modules = join(dir, 'lib', 'node_modules')
+  if (lstatSync(modules, { throwIfNoEntry: false }) === undefined) return []
+  try {
+    return readdirSync(modules)
+      .filter((n) => !n.startsWith('.') && !BUNDLED_PACKAGES.has(n))
+      .sort()
+  } catch {
+    return null
+  }
+}
 
 /**
  * When the version in `dir` was last used: the newest access or modification
@@ -390,10 +467,7 @@ export function toolchainsPlugin(
   const mountOptions = opts.mountOptions ?? mountOptionsBy(kit)
   const homes = homesOf(env)
   const versions = versionsDirs(homes)
-  const threshold =
-    idleHours !== undefined && Number.isFinite(idleHours) && idleHours >= 0
-      ? idleHours
-      : DEFAULT_IDLE_HOURS
+  const threshold = idleHoursOr(idleHours)
   const rustupEnv = { RUSTUP_HOME: homes.rustup, RUSTUP_AUTO_INSTALL: '0' }
 
   /** The lines rustup prints for `args`, blank ones left out; throws when it does not answer. */
@@ -403,10 +477,7 @@ export function toolchainsPlugin(
       env: rustupEnv,
       signal: ctx.signal,
     })
-    if (!r.ok)
-      throw new Error(
-        `rustup ${args.join(' ')} failed: ${r.stderr.trim() || r.error || `exit ${r.exitCode}`}`,
-      )
+    if (!r.ok) throw new Error(`rustup ${args.join(' ')} failed: ${failureReason(r)}`)
     return r.stdout
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -421,7 +492,11 @@ export function toolchainsPlugin(
   const rustInUse = async (ctx: Ctx): Promise<string[]> => {
     const lastWord = (l: string): string => l.split(/\s+/).at(-1)!
     const [defaults, overrides] = await Promise.all([
-      rustup(['default'], ctx),
+      rustup(['default'], ctx).catch((err: unknown) => {
+        // With no default set there is none to keep.
+        if (/no default toolchain/i.test(errorText(err))) return []
+        throw err
+      }),
       rustup(['override', 'list'], ctx),
     ])
     const fromEnv = env.RUSTUP_TOOLCHAIN?.trim()
@@ -449,6 +524,19 @@ export function toolchainsPlugin(
     return next === '' ? null : nodeSpec(next, newest, hops + 1)
   }
 
+  /** Whether the first `node` on `PATH` is Volta's shim. */
+  const voltaShimFirst = (): boolean => {
+    const node = (env.PATH ?? '')
+      .split(delimiter)
+      .filter((d) => d !== '')
+      .map((d) => join(d, 'node'))
+      .find((p) => present(p))
+    if (node === undefined) return false
+    return (
+      dirname(node) === join(homes.volta, 'bin') || basename(realOr(node)).startsWith('volta-shim')
+    )
+  }
+
   /**
    * The Node versions to keep beyond the pins: nvm's default, Volta's and the
    * `node` on `PATH`, plus why any could not be read, by the tool it refuses.
@@ -469,10 +557,12 @@ export function toolchainsPlugin(
         const runtime = json?.node?.runtime
         if (typeof runtime === 'string') keep.push(plain(runtime))
       } catch (err) {
-        unknown.volta.push(`Volta's default could not be read from ${platform}: ${message(err)}`)
+        unknown.volta.push(`Volta's default could not be read from ${platform}: ${errorText(err)}`)
       }
     }
-    if (kit.onPath('node')) {
+    // Volta's shim installs a pinned version it lacks, so it is not run: the version
+    // it runs is Volta's default or a package.json pin, which are read already.
+    if (kit.onPath('node') && !voltaShimFirst()) {
       const r = await kit.run(['node', '--version'], { cwd: ctx.cwd, signal: ctx.signal })
       const version = r.stdout.trim()
       if (r.ok && NODE_VERSION.test(version)) keep.push(plain(version))
@@ -504,6 +594,14 @@ export function toolchainsPlugin(
     if (hours !== null && hours < limit) return null
     const bytes = measure ? kit.size(path) : null
     const what = tool === 'rustup' ? 'this toolchain' : 'this Node version'
+    // The global packages npm installed into an nvm version go with it, and a re-download does not bring them back.
+    const globals = tool === 'nvm' ? globalPackages(path) : []
+    const lost =
+      globals === null
+        ? '; its global packages could not be listed'
+        : globals.length > 0
+          ? `; it holds global packages a re-download does not bring back: ${globals.join(', ')}`
+          : ''
     const blockers = unknown.map((reason) => ({ code: 'unused-unknown', reason }))
     if (hours === null) {
       blockers.push({
@@ -521,8 +619,9 @@ export function toolchainsPlugin(
           (hours === null
             ? ''
             : `; last used ${hoursText(hours)} hours ago (threshold ${threshold}` +
-              (relatime ? `, plus ${RELATIME_LAG_HOURS} for a relatime mount)` : ')')),
-        costDescription: 're-download',
+              (relatime ? `, plus ${RELATIME_LAG_HOURS} for a relatime mount)` : ')')) +
+          lost,
+        costDescription: lost === '' ? 're-download' : 'lost',
         ...(bytes === null ? {} : { bytes }),
         evidence: { kind: 'toolchain', tool, name, path },
       }),
@@ -575,7 +674,7 @@ export function toolchainsPlugin(
     const wanted = (t: Tool): boolean =>
       tools.includes(t) && !noatime.includes(t) && (only === undefined || only === t)
     if (!TOOLS.some(wanted)) return []
-    const pins = readPins(ctx.targets, ctx.cwd)
+    const pins = await readPins(ctx.targets, ctx)
     const rows: Row[] = []
     const add = (tool: Tool, name: string, unknown: readonly string[]): void => {
       const r = row(tool, name, unknown, modes.get(tool) === 'relatime', measure)
@@ -592,7 +691,7 @@ export function toolchainsPlugin(
     const newest = node.nvm.map(plain).sort(byVersion).at(-1)
     const [rustKeep, inUse] = await Promise.all([
       // Why what rustup has in use could not be read, in place of the list.
-      rust.length > 0 ? rustInUse(ctx).catch(message) : [],
+      rust.length > 0 ? rustInUse(ctx).catch(errorText) : [],
       nodeTools.length > 0 ? nodeInUse(ctx, newest) : null,
     ])
 
@@ -617,7 +716,11 @@ export function toolchainsPlugin(
         } else keep.push(...found)
       }
       for (const tool of nodeTools) {
-        const refused = [...unknown, ...inUse.unknown[tool]]
+        const refused = [
+          ...unknown,
+          ...(tool === 'volta' ? pins.voltaUnknown : []),
+          ...inUse.unknown[tool],
+        ]
         for (const name of node[tool]) {
           if (!keep.some((pin) => keeps(pin, plain(name)))) add(tool, name, refused)
         }
@@ -652,7 +755,11 @@ export function toolchainsPlugin(
     object: (all) =>
       all.flatMap((c) => {
         const r = c.owner === TOOLCHAINS_PLUGIN ? rows.get(c.id) : undefined
-        return r === undefined ? [] : objectionsTo(TOOLCHAINS_PLUGIN, r)
+        if (r === undefined) return []
+        return [
+          ...objectionsTo(TOOLCHAINS_PLUGIN, r),
+          objector(TOOLCHAINS_PLUGIN)(c, 'note', 'unsearched-folders', UNSEARCHED_NOTE),
+        ]
       }),
     async delete(c, ctx) {
       const path = c.path
@@ -666,11 +773,7 @@ export function toolchainsPlugin(
       // `rustup toolchain uninstall` would remove what a link leads to.
       if (!stat.isDirectory()) throw new Error(`${path} is no longer a folder`)
       // A checkout may have pinned it, or it may have become the default, since the survey.
-      const now = (await scan(ctx, false, tool)).find((r) => r.candidate.id === c.id)
-      if (now === undefined) throw new Error(`${path} is no longer a candidate`)
-      if (now.blockers.length > 0) {
-        throw new Error(`${path} is refused: ${now.blockers.map((b) => b.reason).join(', ')}`)
-      }
+      checkAgain(c, (await scan(ctx, false, tool)).find((r) => r.candidate.id === c.id))
       if (tool !== 'rustup') return kit.remove(path, ctx)
       const name = basename(path)
       await kit.run(['rustup', 'toolchain', 'uninstall', name], {

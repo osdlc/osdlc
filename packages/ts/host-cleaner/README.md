@@ -326,7 +326,9 @@ host-cleaner clean --pick worktree:/path/to/wt --allow close-terminals
 
 rustup toolchains, and Node versions installed by nvm or Volta, that no
 checkout in your targets asks for. Each is `rust-toolchain:<folder>` or
-`node-version:<folder>`, with its size and `costDescription: re-download`.
+`node-version:<folder>`, with its size and `costDescription: re-download`;
+an nvm version holding global packages npm installed (other than `npm` and
+`corepack`) is `lost`, since they go with it, so it is held for review.
 Settings: `plugins.toolchains.idleHours`, which inherits the top-level
 `idleHours` (default 24).
 
@@ -340,13 +342,20 @@ Settings: `plugins.toolchains.idleHours`, which inherits the top-level
   `volta.node`, at its root and wherever git lists one below it. That is the
   whole repository a target sits in, every checkout up to 8 folders below a
   target, each repository's worktrees (a bare one's too), and the submodules
-  and untracked repositories inside a checkout. A target with folders deeper
-  than that refuses every candidate, since a checkout may sit there.
+  and untracked repositories inside a checkout. A target that is a link is
+  followed; one that leads nowhere refuses every candidate. A target with
+  folders more than 8 levels down refuses every candidate, since a checkout
+  may sit there. Not searched: folders whose names start with a dot, and folders a
+  checkout's git ignores; every candidate carries an `unsearched-folders`
+  note that says so. A folder whose `.git` names a git folder that is gone (a
+  pruned worktree) is read at its root only.
 - Kept: what they name, by prefix (`1.80` keeps `1.80-<host>` and
   `1.80.1-<host>`; `18` keeps every `18.x.y`), rustup's default, its directory
-  overrides, `RUSTUP_TOOLCHAIN` and the toolchain files in the folder you run
+  overrides, `RUSTUP_TOOLCHAIN` and the pin files in the folder you run
   from and above it, nvm's `default` alias, Volta's default, and the `node` on
-  `PATH`. nvm aliases such
+  `PATH` (asked with `node --version`, except when it is Volta's shim, which
+  may install a version it lacks). With no rustup default set, none is kept
+  as the default. nvm aliases such
   as `lts/*` are followed through nvm's `alias` folder, and `node` or
   `latest` keep the newest version nvm has.
 - Also kept: any version used in the last `idleHours`, so `cargo +nightly`
@@ -368,7 +377,8 @@ Settings: `plugins.toolchains.idleHours`, which inherits the top-level
 - When any of that cannot be read (an alias nvm does not have, a checkout git
   cannot list, rustup not answering), every candidate of that tool is refused
   with `unused-unknown` (nvm's default refuses only nvm's versions, Volta's
-  only Volta's, and a pin or the `node` on `PATH` both); a version whose `bin` folder cannot be read is
+  only Volta's, a `package.json` that cannot be read or is not JSON only
+  Volta's, and any other pin or the `node` on `PATH` both); a version whose `bin` folder cannot be read is
   refused on its own. A linked toolchain or one that is not a release is
   never proposed.
 - `delete` reads everything again, then runs `rustup toolchain uninstall

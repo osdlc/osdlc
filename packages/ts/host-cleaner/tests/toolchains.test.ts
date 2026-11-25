@@ -21,6 +21,7 @@ import { attachKit } from '../src/kit.ts'
 import { contractSuite, fakeRunner, tempHome } from '../src/testing.ts'
 import {
   NO_TARGETS_NOTE,
+  UNSEARCHED_NOTE,
   dfMountPoint,
   keeps,
   lastUsedMs,
@@ -112,7 +113,7 @@ function fixture(
     targets?: (dev: string) => string[]
     targetsGiven?: boolean
     idleHours?: number
-    env?: Record<string, string>
+    env?: Record<string, string> | ((home: string) => Record<string, string>)
     mounts?: MountOptions
   } = {},
 ): Fixture {
@@ -143,7 +144,11 @@ function fixture(
     },
     ...(opts.node === undefined ? {} : { node: { '--version': { stdout: `${opts.node}\n` } } }),
   })
-  const env = { HOME: home, PATH: '', ...opts.env }
+  const env = {
+    HOME: home,
+    PATH: '',
+    ...(typeof opts.env === 'function' ? opts.env(home) : opts.env),
+  }
   const kit = pluginKit('toolchains', { env, runner: fake.runner, which: fake.which })
   const plugin = toolchainsPlugin(kit, env, {
     idleHours: opts.idleHours,
@@ -282,14 +287,72 @@ describe('rustup toolchains', () => {
   test('with rustup not answering, every toolchain is refused, since what is in use cannot be told', async () => {
     const fx = fixture({
       rust: [`1.75.0-${HOST}`, `stable-${HOST}`],
-      rustup: { default: { exitCode: 1, stderr: 'error: no default toolchain is configured' } },
+      rustup: { default: { exitCode: 1, stderr: 'error: could not read settings.toml' } },
     })
     repo(join(fx.dev, 'a'))
     const { names, refused } = await proposed(fx)
     expect(names).toEqual([`1.75.0-${HOST}`, `stable-${HOST}`])
     expect(refused).toHaveLength(2)
     expect(refused[0]).toMatchObject({ by: 'toolchains', code: 'unused-unknown' })
-    expect(refused[0]!.reason).toContain('no default toolchain is configured')
+    expect(refused[0]!.reason).toContain('could not read settings.toml')
+  })
+
+  test('with no rustup default set, there is no default to keep, and nothing is refused', async () => {
+    const fx = fixture({
+      rust: [`1.75.0-${HOST}`, `1.80.0-${HOST}`, `stable-${HOST}`],
+      rustup: { default: { exitCode: 1, stderr: 'error: no default toolchain is configured' } },
+    })
+    repo(join(fx.dev, 'a'), { 'rust-toolchain': '1.80\n' })
+    const { names, refused } = await proposed(fx)
+    expect(names).toEqual([`1.75.0-${HOST}`, `stable-${HOST}`])
+    expect(refused).toEqual([])
+  })
+
+  test('a target that is a link is followed; one that leads nowhere refuses every toolchain', async () => {
+    const fx = fixture({
+      rust: [`1.75.0-${HOST}`, `1.79.0-${HOST}`, `stable-${HOST}`],
+      targets: () => [],
+    })
+    const work = join(fx.home, 'volume', 'dev')
+    repo(join(work, 'a'), { 'rust-toolchain': '1.79\n' })
+    const link = join(fx.home, 'linked-dev')
+    symlinkSync(work, link)
+    fx.ctx = { ...fx.ctx, targets: [link] }
+    expect((await proposed(fx)).names).toEqual([`1.75.0-${HOST}`])
+
+    const gone = join(fx.home, 'gone-dev')
+    symlinkSync(join(fx.home, 'unmounted'), gone)
+    fx.ctx = { ...fx.ctx, targets: [link, gone] }
+    const { refused } = await proposed(fx)
+    expect(refused.map((o) => o.reason)).toEqual([
+      expect.stringContaining('is a link that leads nowhere'),
+    ])
+  })
+
+  test('a folder whose .git names a git folder that is gone is read at its root, and refuses nothing', async () => {
+    const fx = fixture({ rust: [`1.75.0-${HOST}`, `1.79.0-${HOST}`, `stable-${HOST}`] })
+    repo(join(fx.dev, 'a'))
+    const old = join(fx.dev, 'old-wt')
+    write(join(old, '.git'), `gitdir: ${join(fx.home, 'pruned', '.git', 'worktrees', 'old')}\n`)
+    write(join(old, 'rust-toolchain'), '1.79\n')
+    const { names, refused } = await proposed(fx)
+    expect(names).toEqual([`1.75.0-${HOST}`])
+    expect(refused).toEqual([])
+  })
+
+  test('every candidate carries a note naming the folders not searched', async () => {
+    const fx = fixture({ rust: [`1.75.0-${HOST}`, `stable-${HOST}`] })
+    repo(join(fx.dev, 'a'))
+    const { s } = await proposed(fx)
+    expect(s.objections.filter((o) => o.level === 'note')).toEqual([
+      {
+        by: 'toolchains',
+        candidate: s.candidates[0]!.id,
+        level: 'note',
+        code: 'unsearched-folders',
+        reason: UNSEARCHED_NOTE,
+      },
+    ])
   })
 
   test('the worktrees of a bare repository each keep their pin', async () => {
@@ -493,13 +556,46 @@ describe('nvm and Volta Node versions', () => {
     ])
   })
 
-  test('a package.json that is not JSON refuses every Node version', async () => {
-    const fx = fixture({ nvm: ['v18.17.0'] })
+  test("a package.json that is not JSON refuses Volta's versions, not nvm's", async () => {
+    const fx = fixture({ nvm: ['v18.17.0'], volta: ['16.0.0'] })
     repo(join(fx.dev, 'a'), { 'package.json': '{ not json' })
-    const { refused } = await proposed(fx)
-    expect(refused.map((o) => o.reason)).toEqual([
-      expect.stringMatching(/package\.json is not JSON$/),
+    const { names, refused } = await proposed(fx)
+    expect(names).toEqual(['16.0.0', 'v18.17.0'])
+    expect(refused).toEqual([
+      expect.objectContaining({
+        candidate: `node-version:${join(fx.volta, '16.0.0')}`,
+        reason: expect.stringMatching(/package\.json is not JSON$/),
+      }),
     ])
+  })
+
+  test('an nvm version holding global packages costs them: it is lost, not re-download', async () => {
+    const fx = fixture({ nvm: ['v14.21.3', 'v16.20.0'] })
+    repo(join(fx.dev, 'a'))
+    write(join(fx.nvm, 'v14.21.3', 'lib', 'node_modules', 'npm', 'package.json'), '{}')
+    write(join(fx.nvm, 'v16.20.0', 'lib', 'node_modules', 'some-cli', 'package.json'), '{}')
+    const { s } = await proposed(fx)
+    const byName = new Map(s.candidates.map((c) => [c.name, c]))
+    expect(byName.get('v14.21.3')).toMatchObject({ costDescription: 're-download' })
+    expect(byName.get('v16.20.0')).toMatchObject({ costDescription: 'lost' })
+    expect(byName.get('v16.20.0')!.why).toMatch(/global packages .*: some-cli$/)
+  })
+
+  test("Volta's shim first on PATH is not run, and the run folder's package.json pin is kept", async () => {
+    const fx = fixture({
+      volta: ['18.17.0', '22.1.0'],
+      node: 'v18.17.0',
+      env: (home) => ({ PATH: join(home, '.volta', 'bin') }),
+    })
+    write(join(fx.home, '.volta', 'bin', 'node'), '')
+    repo(join(fx.dev, 'a'))
+    const proj = join(fx.home, 'proj')
+    write(join(proj, 'package.json'), JSON.stringify({ volta: { node: '22.1.0' } }))
+    fx.ctx = { ...fx.ctx, cwd: proj }
+    const { names, refused } = await proposed(fx)
+    expect(names).toEqual(['18.17.0'])
+    expect(refused).toEqual([])
+    expect(fx.calls.filter((c) => c.argv[0] === 'node')).toEqual([])
   })
 })
 
