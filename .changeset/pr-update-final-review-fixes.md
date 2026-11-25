@@ -11,6 +11,12 @@ entry gets no credential helper, and its fetches and pushes use the one your
 git config names. Put `gh` on an absolute `PATH` entry before the clone is made,
 or run `gh auth setup-git` to set a helper in your git config.
 
+**Breaking:** git commands pr-update runs in a run worktree, a kept tree or a
+`--repo` target get a `PATH` holding only the absolute entries of yours, so a
+program git starts by name (`ssh`, a `!` credential helper, `gpg`) is no
+longer found on a relative entry. Put such a program on an absolute `PATH`
+entry.
+
 Fixed: hooks a PR commits no longer run in the project root's run worktrees.
 In a repository with a relative `core.hooksPath` such as `.husky`, the
 `worktree add`, the checkout of the PR's head and the push in the root's run
@@ -38,6 +44,14 @@ found on the absolute `PATH` entries only. It was `!gh auth git-credential`,
 which the shell looked up on `PATH` in the run worktree a push runs in, so
 with `.` on `PATH` a `gh` the PR committed could run. When no `gh` is found
 that way, no helper is set and a note says so.
+
+Fixed: with a relative entry such as `.` on `PATH`, git in a run worktree
+could start a program the PR commits: the `ssh` of a push or fetch over ssh
+(a managed clone pushes over ssh when gh's `git_protocol` is `ssh`), your
+global `!gh auth git-credential` helper, or `gpg`. Every git command
+pr-update runs where a PR's files are checked out, and in a `--repo` target,
+now gets a `PATH` with only the absolute entries of yours (command-seam's
+`absolutePathEntries`); with none left, `/usr/bin:/bin` on Linux and macOS.
 
 Fixed: with `--keep-failed` on a managed clone, keeping a failed PR's
 worktree and adding the run worktree back now happen under the clone's lock.

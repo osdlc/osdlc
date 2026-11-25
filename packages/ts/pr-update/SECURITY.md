@@ -55,6 +55,23 @@ are in scope.
   too. Each target passes the trust gate on its own. The project root's own
   fetch, survey, PR listing and branch mode's sync, in your checkout, keep
   its hooks.
+- **git finds programs on the absolute `PATH` entries only where a PR's
+  files are checked out.** git and `gh` themselves are always found that way.
+  git also looks programs up on `PATH` itself, from the folder it runs in:
+  `ssh` for a fetch or push over ssh, a `!` credential helper such as the
+  `!gh auth git-credential` that `gh auth setup-git` writes, `gpg` to sign,
+  the shell's lookup for `core.sshCommand`. So with a relative entry such as
+  `.` on `PATH`, any of them could be a file the PR commits. Every git command
+  pr-update runs in a run worktree or kept tree, the project root's included,
+  and every one in a `--repo` target (the git that `gh repo clone` runs, and
+  the target's `git-ref` record and lease, included) gets a `PATH` holding
+  only the absolute entries of yours. With none left, it is `/usr/bin:/bin`
+  on Linux and macOS, never an empty `PATH`, which a shell reads as the
+  current folder. The project root's own fetch, survey, PR listing and branch
+  mode's sync run in your checkout with your `PATH`. Commands from config
+  (verify, resolvers, `lockfile_install`, a repair command or agent) run
+  the PR's code by design, under the trust gate, with your `PATH`, and so do
+  your own git commands in a kept tree.
 - **pr-update's worktrees and other repositories ignore `GIT_DIR`.** A run
   started from a git hook inherits `GIT_DIR`, which would make every git it
   runs act on the hook's repository; in a linked worktree that moves the
@@ -75,9 +92,9 @@ are in scope.
 - **A managed clone holds a credential helper.** Its own git config gets
   `!<gh> auth git-credential` for its host, so fetches and pushes sign in
   through `gh`. `<gh>` is the absolute path of `gh`, found on the absolute
-  `PATH` entries only, so a `gh` a PR commits is never the one run, even with
-  `.` on `PATH`. Without one, no helper is set. Your global git config is not
-  changed.
+  `PATH` entries only, so the helper never runs a `gh` a PR commits, even
+  when your own git command in a kept tree runs it with `.` on `PATH`.
+  Without one, no helper is set. Your global git config is not changed.
 - **A kept record does not choose what is deleted.** `--keep-failed` writes a
   record beside each kept tree, and in a checkout that is
   `.pr-update/failed/`, inside the working tree, where the repository's own

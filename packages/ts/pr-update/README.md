@@ -281,7 +281,10 @@ the same way, so pr-update's own calls start no background `gc` there): the work
 relative `core.hooksPath` such as `.husky` would run hooks the PR's author
 wrote. So does every git command in the project root's run worktrees and kept
 trees, so your own pre-push hook does not run on pr-update's pushes; the
-root's own fetch and survey keep its hooks. They also run without an inherited `GIT_DIR` or git's other
+root's own fetch and survey keep its hooks. These git commands get a `PATH`
+holding only the absolute entries of yours, so with `.` on `PATH` the `ssh` a
+push over ssh starts, a `!` credential helper or `gpg` is never a file the PR
+commits. They also run without an inherited `GIT_DIR` or git's other
 repository variables, as does every git call and command in any run
 worktree, the project root's included, so a run started from a git hook acts
 on the right repository (see [SECURITY.md](SECURITY.md)). `survey` and

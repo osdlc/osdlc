@@ -460,7 +460,9 @@ export class CloneError extends Error {
  *    pushes authenticate whatever the global git config holds. `<gh>` is the absolute path
  *    {@link credentialHelper} finds, never a name the shell looks up on `PATH`: a push runs the
  *    helper in the run worktree, which holds the PR's files, so a relative `PATH` entry such as
- *    `.` would run a `gh` the PR commits. When it finds none, no helper is set, with a note;
+ *    `.` would run a `gh` the PR commits. pr-update's own git calls there get only the absolute
+ *    `PATH` entries (`targetGitEnv`); a person's own git command in a kept tree does not. When it
+ *    finds none, no helper is set, with a note;
  * 5. `core.longpaths=true`, and `maintenance.auto=false` and `gc.auto=0`, so no git starts a
  *    background maintenance that writes in the clone while it is hardened, moved or read;
  * 6. every `refs/heads/*` deleted, the fetch refspec set to the remote-tracking layout, and
@@ -556,8 +558,10 @@ export function makeClone(
  * The credential helper a clone's config gets: `!<path> auth git-credential`, where `<path>` is
  * the absolute path of `gh`'s binary (its `binary`, default `gh`), found on the absolute `PATH`
  * entries only, as command-seam's `absolutePathOnly` finds it, and shell-quoted. git runs the
- * helper through the shell in the directory of the git that needs it, a run worktree holding the
- * PR's files, so a name looked up on `PATH` there could run a `gh` the PR commits. On Windows the
+ * helper through the shell in the directory of the git that needs it, a run worktree or kept tree
+ * holding the PR's files, so a name looked up on `PATH` there could run a `gh` the PR commits:
+ * pr-update's own git calls there get only the absolute `PATH` entries (`targetGitEnv`), but a
+ * person's git command in a kept tree gets theirs. On Windows the
  * path is written with `/`, which Git for Windows' shell reads. Null when there is no such `gh`.
  */
 export function credentialHelper(

@@ -12,6 +12,8 @@
  * - `FAKE_GH_FAIL_CLONE`, when set, makes `repo clone` fail with that message.
  * - `FAKE_GH_SQUAT`, when set, is a path `repo clone` fills with a file after cloning, as a run
  *   that ignored the lock would.
+ * - `FAKE_GH_PUSH_URL`, when set, is the clone's `remote.origin.pushurl`, as an ssh URL stands for
+ *   the origin real gh writes with `git_protocol: ssh`; fetches still read the local repository.
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -64,6 +66,11 @@ if (argv[0] === 'repo' && argv[1] === 'clone') {
   const res = spawnRunner('git').run(['clone', '-q', '--bare', from, dir], { cwd: process.cwd() })
   process.stderr.write(res.stderr)
   if (res.exitCode !== 0) process.exit(res.exitCode)
+  if (env.FAKE_GH_PUSH_URL) {
+    spawnRunner('git').run(['-C', dir, 'config', 'remote.origin.pushurl', env.FAKE_GH_PUSH_URL], {
+      cwd: process.cwd(),
+    })
+  }
   if (env.FAKE_GH_SQUAT) {
     mkdirSync(env.FAKE_GH_SQUAT, { recursive: true })
     writeFileSync(join(env.FAKE_GH_SQUAT, 'squatter'), 'not pr-update\n')

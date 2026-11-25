@@ -218,6 +218,44 @@ describe("a managed clone's credential helper", () => {
   })
 })
 
+describe('the PATH of git in a run worktree (final review)', () => {
+  test('a push over ssh never runs an ssh the PR commits, with . on PATH', async () => {
+    // The PR commits an executable `ssh`, so the run worktree holds one.
+    const ran = (name: string) => join(scratch, `${name}-ran`)
+    const pr = join(scratch, 'pr')
+    git(scratch, 'clone', '-q', '-b', 'topic', remote, pr)
+    writeFileSync(join(pr, 'ssh'), `#!/bin/sh\n: > '${ran('planted')}'\nexit 1\n`)
+    // On Windows a `ssh.cmd` or `ssh.bat` there is found through `PATHEXT` too.
+    for (const ext of ['.cmd', '.bat']) {
+      writeFileSync(
+        join(pr, `ssh${ext}`),
+        `@echo off\r\ntype nul > "${ran('planted')}"\r\nexit /b 1\r\n`,
+      )
+    }
+    git(pr, 'add', '--chmod=+x', 'ssh', 'ssh.cmd', 'ssh.bat')
+    git(pr, 'commit', '-q', '-m', 'ssh')
+    git(pr, 'push', '-q', 'origin', 'topic')
+    const head = git(pr, 'rev-parse', 'HEAD')
+    const prs = join(scratch, 'gh', 'prs.json')
+    writeFileSync(prs, readFileSync(prs, 'utf8').replace(topic, head))
+    // An `ssh` on an absolute entry, after `.`: the one a push may run. It fails the push, so
+    // nothing reaches the network.
+    const bin = join(scratch, 'bin')
+    writeFileSync(join(bin, 'ssh'), `#!/bin/sh\n: > '${ran('absolute')}'\nexit 1\n`)
+    chmodSync(join(bin, 'ssh'), 0o755)
+    vi.stubEnv('PATH', `.${delimiter}${process.env.PATH ?? ''}`)
+    // The clone pushes over ssh, as one gh makes with `git_protocol: ssh` does.
+    vi.stubEnv('FAKE_GH_PUSH_URL', 'git@ssh.invalid:acme/api.git')
+
+    const dir = join(scratch, 'clones')
+    const r = await run('update', '--repo', 'acme/api', '--mirror-dir', dir, '--apply')
+    expect(r.code, r.out + r.err).not.toBe(EXIT.ok)
+    expect(existsSync(ran('planted'))).toBe(false)
+    // Windows' git may find its own `ssh` first; elsewhere the push ran the absolute one.
+    if (process.platform !== 'win32') expect(existsSync(ran('absolute'))).toBe(true)
+  })
+})
+
 describe('update --apply with a target that has no checkout', () => {
   test('--mirror-dir clones it with gh, updates the PR from the clone and pushes to its origin', async () => {
     const dir = join(scratch, 'clones')

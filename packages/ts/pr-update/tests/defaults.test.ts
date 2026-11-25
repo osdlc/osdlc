@@ -2,16 +2,16 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { spawnRunner } from '@osdlc/command-seam'
+import { absolutePathEntries, spawnRunner } from '@osdlc/command-seam'
 import { Git } from '@osdlc/typed-git'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 
 import { prUpdateConfigSchema, prUpdateStandaloneSchema } from '../src/config.ts'
 import { commandRepair, refEnv, standalonePorts } from '../src/defaults.ts'
 import { listAttempts } from '../src/update/attempts.ts'
 import type { RepairRequest } from '../src/ports.ts'
-import { targetGitOptions } from '../src/update/execute.ts'
+import { targetGitEnv, targetGitOptions } from '../src/update/execute.ts'
 
 let dir: string
 beforeEach(() => {
@@ -149,6 +149,19 @@ describe("the config of a target's git calls (final review)", () => {
       }
     } finally {
       vi.unstubAllEnvs()
+    }
+  })
+
+  test("PATH holds only the parent's absolute entries, and never comes out empty", () => {
+    const abs = process.platform === 'win32' ? ['C:\\Git\\cmd', 'D:\\bin'] : ['/usr/bin', '/bin']
+    const path = ['.', abs[0], '', 'bin', abs[1]].join(delimiter)
+    expect(targetGitEnv({ PATH: path }).PATH).toBe(abs.join(delimiter))
+    // Windows names it in any case.
+    if (process.platform === 'win32') expect(targetGitEnv({ Path: path }).PATH).toBe(abs.join(';'))
+    else expect(targetGitEnv({ PATH: `.${delimiter}bin` }).PATH).toBe('/usr/bin:/bin')
+    expect('PATH' in targetGitEnv({})).toBe(false)
+    for (const env of [refEnv(dir, undefined), targetGitOptions().env]) {
+      expect(env.PATH).toBe(absolutePathEntries(process.env.PATH))
     }
   })
 

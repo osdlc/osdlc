@@ -1023,6 +1023,15 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   `absolutePathOnly` finds a binary, and shell-quoted (`credentialHelper` in
   `mirror.ts`). Without such a `gh`, no helper is set and a note says so.
   Clones made before this change keep the old helper: none was released.
+  The first review of the final fixes found the same hole wider: git looks
+  up `ssh` for a push over ssh, the person's global `!gh auth git-credential`
+  and `gpg` on `PATH` from the run worktree too, and a clone gets an ssh
+  origin whenever gh's `git_protocol` is `ssh`. So `targetGitEnv` also gives
+  every git call in a target, and in any run worktree or kept tree, a `PATH`
+  holding only the absolute entries of the person's (command-seam's
+  `absolutePathEntries`), `/usr/bin:/bin` on Linux and macOS when none is
+  left. The helper keeps its absolute path for the person's own git commands
+  in a kept tree, which get their own `PATH`.
 - **Clone locks.** As accepted, `update --apply` held a clone's lock from its
   clone or fetch through `worktree add`, and again for `worktree remove`.
   Built, an `update` takes every lock it needs before its survey, in sorted

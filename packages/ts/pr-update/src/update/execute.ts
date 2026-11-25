@@ -41,6 +41,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 
 import {
+  absolutePathEntries,
   firstLine,
   forwardedSignal,
   isCommandFailed,
@@ -967,9 +968,9 @@ function runVerify(
 }
 
 /**
- * The config every git call in a target gets, set after what `parent` holds (typed-git's
- * `gitConfigEnv`), so neither the repository's config nor an inherited `GIT_CONFIG_PARAMETERS`
- * (a parent git's `-c`) wins over it:
+ * The environment every git call in a target gets. The config is set after what `parent` holds
+ * (typed-git's `gitConfigEnv`), so neither the repository's config nor an inherited
+ * `GIT_CONFIG_PARAMETERS` (a parent git's `-c`) wins over it:
  * - `core.hooksPath=/dev/null`, hooks off: commit hooks because the project's checks belong to
  *   `verify:`, and every hook in a worktree that holds a PR's files;
  * - `maintenance.auto=false` and `gc.auto=0` (`NO_MAINTENANCE`): no git pr-update runs starts a
@@ -978,20 +979,36 @@ function runVerify(
  *   from turning it back on. A clone's foreground maintenance passes its own `-c`, which git reads
  *   later still (`maintainClone`). In a located checkout, the person's own git commands still run
  *   git's `gc --auto`.
+ *
+ * `PATH` is `parent`'s with only its absolute entries (command-seam's `absolutePathEntries`), the
+ * ones the git runner itself is found on. git looks programs up on `PATH` from the folder it runs
+ * in, a run worktree holding the PR's files: `ssh` for a fetch or push over ssh, a `!` credential
+ * helper such as `gh auth setup-git`'s, `gpg` to sign. With `.` on `PATH`, any of them could be a
+ * file the PR commits. An unset `PATH` stays unset.
  */
 export function targetGitEnv(
   parent: Record<string, string | undefined> = process.env,
 ): Record<string, string> {
-  return gitConfigEnv([['core.hooksPath', '/dev/null'], ...NO_MAINTENANCE], parent)
+  const env = gitConfigEnv([['core.hooksPath', '/dev/null'], ...NO_MAINTENANCE], parent)
+  const path = absolutePathEntries(pathOf(parent))
+  return path === undefined ? env : { ...env, PATH: path }
+}
+
+/** `PATH` in `env`, which Windows names in any case (`Path`). */
+function pathOf(env: Record<string, string | undefined>): string | undefined {
+  if (process.platform !== 'win32') return env.PATH
+  const key = Object.keys(env).find((k) => k.toUpperCase() === 'PATH')
+  return key === undefined ? undefined : env[key]
 }
 
 /**
  * The git options for a checkout other than the project root, which is someone else's, and for
  * every run worktree and kept tree, the project root's included, which hold a PR's files: hooks
- * and background maintenance off (`targetGitEnv`), and `runner` with `GIT_DIR`, `GIT_WORK_TREE`,
- * `GIT_INDEX_FILE` and the other variables that pick a repository unset in each child (typed-git's `withoutRepositoryVars`). A
- * run started from a git hook, which exports `GIT_DIR`, then still acts on the target. Pass the
- * `gh` runner to make the git that `gh repo clone` runs ignore them too.
+ * and background maintenance off and only the absolute `PATH` entries (`targetGitEnv`), and
+ * `runner` with `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and the other variables that pick a
+ * repository unset in each child (typed-git's `withoutRepositoryVars`). A run started from a git
+ * hook, which exports `GIT_DIR`, then still acts on the target. Pass the `gh` runner to make the
+ * git that `gh repo clone` runs ignore them too.
  */
 export function targetGitOptions(runner?: CommandRunner): {
   runner: CommandRunner
