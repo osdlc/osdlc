@@ -162,8 +162,7 @@ interface Built {
   home: string
   plugin: Plugin
   d: Descriptor
-  calls: ReturnType<typeof fakeRunner>['calls']
-  /** The calls made while the plugin's `delete` ran, in order. */
+  /** The calls made while the plugin's `delete` ran, in order, lookups included. */
   deleting: ReturnType<typeof fakeRunner>['calls']
   /** The folder of `paths.<key>` on the OS it was built for: where it was moved, or the default. */
   folder(key: string): string
@@ -220,7 +219,7 @@ function build(
     env,
     kit,
   })
-  const deleting: Built['calls'] = []
+  const deleting: Built['deleting'] = []
   const del = plugin.delete!.bind(plugin)
   plugin.delete = async (c, ctx) => {
     const from = fake.calls.length
@@ -230,7 +229,7 @@ function build(
       deleting.push(...fake.calls.slice(from))
     }
   }
-  return { home: h.home, plugin, d, calls: fake.calls, deleting, folder }
+  return { home: h.home, plugin, d, deleting, folder }
 }
 
 /** The candidates' paths `b`'s descriptor gives from its folders now: each folder, or each glob match in it. */
@@ -244,11 +243,8 @@ function expectedPaths(b: Built): string[] {
   return [...out].sort()
 }
 
-/** What the plugin ran to delete: every call made inside its `delete`, lookups included. */
-const actionCalls = (b: Built): Built['calls'] => b.deleting
-
-/** The argv of each of {@link actionCalls}. */
-const actions = (b: Built): string[][] => actionCalls(b).map((c) => c.argv)
+/** The argv of each call the plugin made while deleting. */
+const actions = (b: Built): string[][] => b.deleting.map((c) => c.argv)
 
 /** `Object.entries` of a per-store table, keyed by {@link Store}. */
 const storeEntries = <V>(r: Partial<Record<Store, V>>): Array<[Store, V]> =>
@@ -411,7 +407,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
         ids([{ id: `pnpm:${b.folder('cache')}` }, { id: `pnpm:${b.folder('store')}` }]),
       )
       // pnpm store path prints nothing here, so the default folder is used.
-      expect(actionCalls(b).map((c) => [c.argv, c.opts.cwd])).toEqual([
+      expect(b.deleting.map((c) => [c.argv, c.opts.cwd])).toEqual([
         [['pnpm', 'store', 'prune', '--store-dir', b.folder('store')], b.home],
       ])
       expect(receipt.steps.map((st) => st.result)).toEqual(['ok', 'ok'])
@@ -436,7 +432,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       const b = build('uv', os, { programs: { uv: () => ({}) } })
       const { survey: s, receipt } = await surveyAndClean(b.plugin)
       expect(s.candidates[0]!.held).toBeUndefined()
-      expect(actionCalls(b).map((c) => [c.argv, c.opts.cwd])).toEqual([
+      expect(b.deleting.map((c) => [c.argv, c.opts.cwd])).toEqual([
         [['uv', 'cache', 'prune', '--cache-dir', b.folder('cache')], b.home],
       ])
       expect(receipt.steps.map((st) => st.result)).toEqual(['ok'])
@@ -624,7 +620,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
         ['go', 'clean', '-cache'],
       ])
       expect(
-        actionCalls(b).map((c) => [c.opts.env?.GOMODCACHE ?? c.opts.env?.GOCACHE, c.opts.cwd]),
+        b.deleting.map((c) => [c.opts.env?.GOMODCACHE ?? c.opts.env?.GOCACHE, c.opts.cwd]),
       ).toEqual([
         [b.folder('modcache'), b.home],
         [b.folder('buildcache'), b.home],
@@ -640,22 +636,23 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       },
       moved: { store: at(h, 'store/v10') },
     })
-    const cases: Array<[Store, string, (home: string) => Moves]> = [
-      [
-        'go',
-        'GOMODCACHE',
-        (h) => ({ env: { GOMODCACHE: at(h, 'mod') }, moved: { modcache: at(h, 'mod') } }),
-      ],
-      [
-        'go',
-        'GOPATH',
-        (h) => ({ env: { GOPATH: at(h, 'gopath') }, moved: { modcache: at(h, 'gopath/pkg/mod') } }),
-      ],
-      [
-        'go',
-        'GOCACHE',
-        (h) => ({ env: { GOCACHE: at(h, 'build') }, moved: { buildcache: at(h, 'build') } }),
-      ],
+    type Case = [Store, string, (home: string) => Moves]
+    /** `variable` set to `moved/<rel>` moves `name`'s `paths.<key>` to `moved/<movedRel>`. */
+    const byEnv = (
+      name: Store,
+      variable: string,
+      rel: string,
+      key: string,
+      movedRel = rel,
+    ): Case => [
+      name,
+      variable,
+      (h) => ({ env: { [variable]: at(h, rel) }, moved: { [key]: at(h, movedRel) } }),
+    ]
+    const cases: Case[] = [
+      byEnv('go', 'GOMODCACHE', 'mod', 'modcache'),
+      byEnv('go', 'GOPATH', 'gopath', 'modcache', 'gopath/pkg/mod'),
+      byEnv('go', 'GOCACHE', 'build', 'buildcache'),
       [
         'go',
         'go env',
@@ -681,11 +678,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
           moved: { caches: at(h, 'gradle/caches'), wrapper: at(h, 'gradle/wrapper/dists') },
         }),
       ],
-      [
-        'huggingface-hub',
-        'HF_HOME',
-        (h) => ({ env: { HF_HOME: at(h, 'hf') }, moved: { hub: at(h, 'hf/hub') } }),
-      ],
+      byEnv('huggingface-hub', 'HF_HOME', 'hf', 'hub', 'hf/hub'),
       [
         'huggingface-hub',
         'HF_HUB_CACHE, over HF_HOME',
@@ -694,40 +687,15 @@ describe.each(OSES_TESTED)('on %s', (os) => {
           moved: { hub: at(h, 'hub') },
         }),
       ],
-      [
-        'huggingface-hub',
-        'HUGGINGFACE_HUB_CACHE',
-        (h) => ({ env: { HUGGINGFACE_HUB_CACHE: at(h, 'hub') }, moved: { hub: at(h, 'hub') } }),
-      ],
-      [
-        'huggingface-hub',
-        'XDG_CACHE_HOME',
-        (h) => ({
-          env: { XDG_CACHE_HOME: at(h, 'xdg') },
-          moved: { hub: at(h, 'xdg/huggingface/hub') },
-        }),
-      ],
+      byEnv('huggingface-hub', 'HUGGINGFACE_HUB_CACHE', 'hub', 'hub'),
+      byEnv('huggingface-hub', 'XDG_CACHE_HOME', 'xdg', 'hub', 'xdg/huggingface/hub'),
       [
         'maven',
         'LOCAL_REPOSITORY in the config',
         (h) => ({ vars: { LOCAL_REPOSITORY: at(h, 'm2') }, moved: { repository: at(h, 'm2') } }),
       ],
-      [
-        'npm',
-        'npm_config_cache',
-        (h) => ({
-          env: { npm_config_cache: at(h, 'npm') },
-          moved: { cache: at(h, 'npm/_cacache') },
-        }),
-      ],
-      [
-        'npm',
-        'NPM_CONFIG_CACHE',
-        (h) => ({
-          env: { NPM_CONFIG_CACHE: at(h, 'npm') },
-          moved: { cache: at(h, 'npm/_cacache') },
-        }),
-      ],
+      byEnv('npm', 'npm_config_cache', 'npm', 'cache', 'npm/_cacache'),
+      byEnv('npm', 'NPM_CONFIG_CACHE', 'npm', 'cache', 'npm/_cacache'),
       [
         'npm',
         'npm config get cache',
@@ -738,25 +706,10 @@ describe.each(OSES_TESTED)('on %s', (os) => {
           moved: { cache: at(h, 'npm/_cacache') },
         }),
       ],
-      [
-        'pip',
-        'PIP_CACHE_DIR',
-        (h) => ({ env: { PIP_CACHE_DIR: at(h, 'pip') }, moved: { cache: at(h, 'pip') } }),
-      ],
+      byEnv('pip', 'PIP_CACHE_DIR', 'pip', 'cache'),
       ['pnpm', 'pnpm store path', pnpmStorePath],
-      [
-        'pnpm',
-        'npm_config_store_dir',
-        (h) => ({
-          env: { npm_config_store_dir: at(h, 'store') },
-          moved: { store: at(h, 'store') },
-        }),
-      ],
-      [
-        'pnpm',
-        'PNPM_HOME',
-        (h) => ({ env: { PNPM_HOME: at(h, 'pnpm') }, moved: { store: at(h, 'pnpm/store') } }),
-      ],
+      byEnv('pnpm', 'npm_config_store_dir', 'store', 'store'),
+      byEnv('pnpm', 'PNPM_HOME', 'pnpm', 'store', 'pnpm/store'),
       [
         'uv',
         'uv cache dir',
@@ -765,11 +718,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
           moved: { cache: at(h, 'uv') },
         }),
       ],
-      [
-        'uv',
-        'UV_CACHE_DIR',
-        (h) => ({ env: { UV_CACHE_DIR: at(h, 'uv') }, moved: { cache: at(h, 'uv') } }),
-      ],
+      byEnv('uv', 'UV_CACHE_DIR', 'uv', 'cache'),
       [
         'uv',
         'cache-dir in uv.toml',
@@ -778,19 +727,8 @@ describe.each(OSES_TESTED)('on %s', (os) => {
           moved: { cache: at(h, 'uv') },
         }),
       ],
-      [
-        'uv',
-        'XDG_CACHE_HOME',
-        (h) => ({ env: { XDG_CACHE_HOME: at(h, 'xdg') }, moved: { cache: at(h, 'xdg/uv') } }),
-      ],
-      [
-        'yarn',
-        'YARN_GLOBAL_FOLDER',
-        (h) => ({
-          env: { YARN_GLOBAL_FOLDER: at(h, 'berry') },
-          moved: { berry: at(h, 'berry/cache') },
-        }),
-      ],
+      byEnv('uv', 'XDG_CACHE_HOME', 'xdg', 'cache', 'xdg/uv'),
+      byEnv('yarn', 'YARN_GLOBAL_FOLDER', 'berry', 'berry', 'berry/cache'),
       [
         'yarn',
         'globalFolder in ~/.yarnrc.yml',
@@ -799,56 +737,16 @@ describe.each(OSES_TESTED)('on %s', (os) => {
           moved: { berry: at(h, 'berry/cache') },
         }),
       ],
-      [
-        'yarn',
-        'XDG_DATA_HOME',
-        (h) => ({
-          env: { XDG_DATA_HOME: at(h, 'data') },
-          moved: { berry: at(h, 'data/yarn/berry/cache') },
-        }),
-      ],
-      [
-        'yarn',
-        'YARN_CACHE_FOLDER',
-        (h) => ({
-          env: { YARN_CACHE_FOLDER: at(h, 'classic') },
-          moved: { classic: at(h, 'classic') },
-        }),
-      ],
+      byEnv('yarn', 'XDG_DATA_HOME', 'data', 'berry', 'data/yarn/berry/cache'),
+      byEnv('yarn', 'YARN_CACHE_FOLDER', 'classic', 'classic'),
     ]
     // On Linux these follow the XDG folders; on macOS they sit in ~/Library.
-    const linuxOnly: typeof cases = [
-      [
-        'go',
-        'XDG_CACHE_HOME',
-        (h) => ({
-          env: { XDG_CACHE_HOME: at(h, 'xdg') },
-          moved: { buildcache: at(h, 'xdg/go-build') },
-        }),
-      ],
-      [
-        'pip',
-        'XDG_CACHE_HOME',
-        (h) => ({ env: { XDG_CACHE_HOME: at(h, 'xdg') }, moved: { cache: at(h, 'xdg/pip') } }),
-      ],
-      [
-        'pnpm',
-        'XDG_CACHE_HOME',
-        (h) => ({ env: { XDG_CACHE_HOME: at(h, 'xdg') }, moved: { cache: at(h, 'xdg/pnpm') } }),
-      ],
-      [
-        'pnpm',
-        'XDG_DATA_HOME',
-        (h) => ({
-          env: { XDG_DATA_HOME: at(h, 'data') },
-          moved: { store: at(h, 'data/pnpm/store') },
-        }),
-      ],
-      [
-        'yarn',
-        'XDG_CACHE_HOME',
-        (h) => ({ env: { XDG_CACHE_HOME: at(h, 'xdg') }, moved: { classic: at(h, 'xdg/yarn') } }),
-      ],
+    const linuxOnly: Case[] = [
+      byEnv('go', 'XDG_CACHE_HOME', 'xdg', 'buildcache', 'xdg/go-build'),
+      byEnv('pip', 'XDG_CACHE_HOME', 'xdg', 'cache', 'xdg/pip'),
+      byEnv('pnpm', 'XDG_CACHE_HOME', 'xdg', 'cache', 'xdg/pnpm'),
+      byEnv('pnpm', 'XDG_DATA_HOME', 'data', 'store', 'data/pnpm/store'),
+      byEnv('yarn', 'XDG_CACHE_HOME', 'xdg', 'classic', 'xdg/yarn'),
     ]
 
     test.each(os === 'linux' ? [...cases, ...linuxOnly] : cases)(
