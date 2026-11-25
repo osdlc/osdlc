@@ -32,7 +32,7 @@ export const BUILT_IN_PLUGINS: readonly PluginDefinition[] = [
 export interface Loaded {
   /** The built-ins in run order, then one plugin per descriptor, by name. */
   definitions: readonly PluginDefinition[]
-  /** Each descriptor used: its name, where it came from and what it replaced. */
+  /** Each descriptor used. */
   descriptors: readonly LoadedDescriptor[]
 }
 

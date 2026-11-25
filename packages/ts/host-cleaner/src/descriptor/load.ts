@@ -122,7 +122,7 @@ function foundIn(paths: readonly string[], source: DescriptorSource): Found[] {
 /**
  * The descriptors a run uses, sorted by name: the shipped ones, each replaced
  * by a user file of the same name, then each replaced by a `--descriptor` file
- * of the same name. `reserved` are the built-in plugins' names.
+ * of the same name.
  *
  * @throws DescriptorLoadError for a descriptor named as a built-in plugin, two
  *   files of one name in one source, or a file name that is no plugin name
@@ -130,7 +130,7 @@ function foundIn(paths: readonly string[], source: DescriptorSource): Found[] {
  */
 export function loadDescriptors(
   sources: DescriptorSources,
-  reserved: readonly string[],
+  builtIns: readonly string[],
 ): LoadedDescriptor[] {
   const layers = [
     filesIn(sources.shipped ?? SHIPPED_DESCRIPTORS, 'shipped'),
@@ -140,7 +140,7 @@ export function loadDescriptors(
   const chosen = new Map<string, Omit<LoadedDescriptor, 'descriptor'>>()
   for (const layer of layers) {
     for (const f of layer) {
-      if (reserved.includes(f.name)) {
+      if (builtIns.includes(f.name)) {
         throw new DescriptorLoadError(
           `descriptor ${f.path} is named ${f.name}, as the built-in plugin; every plugin has its own name, so rename the file`,
         )
