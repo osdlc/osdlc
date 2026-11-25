@@ -1,7 +1,7 @@
 ---
 id: D-01
 type: decision
-state: proposed
+state: accepted
 created: 2026-11-22
 ---
 
@@ -9,8 +9,7 @@ created: 2026-11-22
 
 ## Decision
 
-- The package is `@osdlc/json-canvas-vue` on npm. The owner confirms the name before the first
-  release, so the state of this note is `proposed`.
+- The package is `@osdlc/json-canvas-vue` on npm. The owner confirmed the name on 2026-11-24.
 - It is the Vue 3 renderer and editor for the JSON Canvas format. It sits on
   [`@osdlc/json-canvas-core`](../../../../json-canvas-core/README.md), which holds the model and the
   operations. The Vue board is the part that draws and takes input.

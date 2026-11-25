@@ -1,7 +1,7 @@
 ---
 id: D-02
 type: decision
-state: proposed
+state: accepted
 created: 2026-11-22
 ---
 
@@ -9,7 +9,7 @@ created: 2026-11-22
 
 ## Decision
 
-Publish this package. The owner confirms the answer, so the state of this note is `proposed`. The
+Publish this package. The owner confirmed the answer on 2026-11-24. The
 answer is `continue`, not `adopt` and not `drop`.
 
 ## Alternatives

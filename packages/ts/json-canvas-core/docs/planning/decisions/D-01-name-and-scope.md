@@ -1,7 +1,7 @@
 ---
 id: D-01
 type: decision
-state: proposed
+state: accepted
 created: 2026-11-22
 ---
 
@@ -9,8 +9,7 @@ created: 2026-11-22
 
 ## Decision
 
-- The package is `@osdlc/json-canvas-core` on npm. The owner confirms the name before the first
-  release, so the state of this note is `proposed`.
+- The package is `@osdlc/json-canvas-core` on npm. The owner confirmed the name on 2026-11-24.
 - It holds what any program needs to work with a JSON Canvas document: the format's types, a
   validator for untrusted input, an operation engine with undo and redo, geometry helpers and a view
   model for selection, pan and zoom.

@@ -20,7 +20,8 @@ not, and `duplicateNodes` does not check at all. A collision is unlikely and sil
 ## Approach
 
 - [ ] Draw a new id until it is not on the canvas, or use a stronger source such as `crypto.randomUUID`
-      where the runtime has one.
+      where the runtime has one. The build config declares no runtime globals on purpose
+      (`types: []`), so `crypto` needs a local declaration or an injected generator first.
 - [ ] Keep `generateId` internal, as [D-02](../decisions/D-02-api-for-the-first-release.md) records.
 
 ## Acceptance criteria
