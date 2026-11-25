@@ -273,7 +273,7 @@ describe('discover', () => {
     const fx = fixture()
     fx.history(fx.gone)
     const ctx = { ...fx.ctx, signal: AbortSignal.abort() }
-    await expect(Promise.resolve(fx.plugin().discover(ctx))).rejects.toThrow(/stopped/)
+    await expect(Promise.resolve(fx.plugin().discover!(ctx))).rejects.toThrow(/stopped/)
   })
 
   test('a projects folder that is a link is read', async () => {
