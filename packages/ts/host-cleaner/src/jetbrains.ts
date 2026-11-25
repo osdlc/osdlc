@@ -379,7 +379,7 @@ function scan(layout: Layout, installs: Installs, only?: string): Found[] {
       for (const name of folders(projects)) {
         const hash = PROJECT_DIR.exec(name)?.[2]
         const paths = hash === undefined ? undefined : byHash.get(hash)
-        if (paths === undefined || !paths.every(gone)) continue
+        if (paths === undefined || !paths.every((p) => gone(p))) continue
         out.push({
           kind: 'project-cache',
           path: join(projects, name),
