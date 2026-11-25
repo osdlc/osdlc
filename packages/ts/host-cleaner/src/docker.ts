@@ -40,6 +40,12 @@ export interface DockerOptions extends KitOptions {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+/** The non-blank lines of `text`, trimmed. */
+const lines = (text: string): string[] =>
+  text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '')
 
 /** Size prefixes; each one's index is the power of 1000 (or 1024) it stands for. */
 const PREFIXES = ['', 'k', 'm', 'g', 't', 'p']
@@ -57,8 +63,7 @@ export function dockerBytes(text: string): number | undefined {
 
 /** The objects in `--format '{{json .}}'` output, one per line; a line that is not one is skipped. */
 export function jsonLines(stdout: string): Record<string, unknown>[] {
-  return stdout.split('\n').flatMap((line) => {
-    if (line.trim() === '') return []
+  return lines(stdout).flatMap((line) => {
     try {
       const row: unknown = JSON.parse(line)
       return isObject(row) ? [row] : []
@@ -79,8 +84,8 @@ const INSPECT_BATCH = 500
 
 /** Whether `docker container inspect` printed at least one error line, and every one says a container is gone. */
 const onlyGone = (stderr: string): boolean => {
-  const lines = stderr.split('\n').filter((l) => l.trim() !== '')
-  return lines.length > 0 && lines.every((l) => /no such (container|object)/i.test(l))
+  const errors = lines(stderr)
+  return errors.length > 0 && errors.every((l) => /no such (container|object)/i.test(l))
 }
 
 /** Whether `docker builder du` failed only because this Docker has no `builder du` (no buildx). */
@@ -122,10 +127,7 @@ export function dockerPlugin(
    * for it is not a failure.
    */
   const imagesInUse = async (ctx: Ctx): Promise<Set<string>> => {
-    const ids = (await docker(['container', 'ls', '--all', '--quiet', '--no-trunc'], ctx))
-      .split('\n')
-      .map((l) => l.trim())
-      .filter((l) => l !== '')
+    const ids = lines(await docker(['container', 'ls', '--all', '--quiet', '--no-trunc'], ctx))
     const used = new Set<string>()
     for (let i = 0; i < ids.length; i += INSPECT_BATCH) {
       const batch = ids.slice(i, i + INSPECT_BATCH)
@@ -133,7 +135,7 @@ export function dockerPlugin(
       const r = await kit.run(['docker', ...args], { signal: ctx.signal })
       if (!r.ok && !onlyGone(r.stderr))
         throw new Error(`docker container inspect failed: ${firstLine(failureText(r))}`)
-      for (const line of r.stdout.split('\n')) if (line.trim() !== '') used.add(line.trim())
+      for (const image of lines(r.stdout)) used.add(image)
     }
     return used
   }
@@ -193,9 +195,11 @@ export function dockerPlugin(
       signal: ctx.signal,
       timeoutMs: DISCOVER_LIMIT_MS,
     })
-    // Without buildx there is no build cache to propose, but volumes and images still are.
-    if (!r.ok && noBuilderDu(failureText(r))) return []
-    if (!r.ok) throw new Error(`docker builder du failed: ${firstLine(failureText(r))}`)
+    if (!r.ok) {
+      // Without buildx there is no build cache to propose, but volumes and images still are.
+      if (noBuilderDu(failureText(r))) return []
+      throw new Error(`docker builder du failed: ${firstLine(failureText(r))}`)
+    }
     const bytes = reclaimable(r.stdout)
     if (bytes === undefined || bytes === 0) return []
     return [
