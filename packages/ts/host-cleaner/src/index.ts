@@ -100,9 +100,10 @@ export {
   type OrcaRecord,
 } from './orca.ts'
 export {
-  IN_USE,
-  UNKNOWN_WORKSPACE,
+  VSCODE_IN_USE,
   VSCODE_PLUGIN,
+  VSCODE_STATE_UNREADABLE,
+  VSCODE_UNKNOWN_WORKSPACE,
   vscodePlugin,
   vscodeUserDir,
   type VscodeOptions,

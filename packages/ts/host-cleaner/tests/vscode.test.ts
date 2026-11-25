@@ -8,6 +8,7 @@ import {
   readdirSync,
   renameSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -16,8 +17,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { ProcessProbe } from '@osdlc/repo-cleaner'
 
 import {
-  IN_USE,
-  UNKNOWN_WORKSPACE,
+  VSCODE_IN_USE,
+  VSCODE_STATE_UNREADABLE,
+  VSCODE_UNKNOWN_WORKSPACE,
   clean,
   plan,
   survey,
@@ -56,6 +58,28 @@ const probeOf = (procs: Proc[] | Error = []): ProcessProbe => ({
 /** VS Code's main process, running somewhere unrelated. */
 const CODE: Proc = { pid: 10, command: 'Code', cwd: '/' }
 
+/** `d` as `ps -o lstart=` prints it under `LC_ALL=C`. */
+const lstart = (d: Date): string =>
+  `${d.toDateString().slice(0, 10)} ${d.toTimeString().slice(0, 8)} ${d.getFullYear()}`
+
+/** A `ps` that says every process it is asked about started at `at`, or that fails when `at` is null. */
+const psAt =
+  (at: Date | null): NonNullable<VscodeOptions['runner']> =>
+  () => ({
+    run: async () =>
+      at === null
+        ? { exitCode: 1, stdout: '', stderr: 'ps: not allowed' }
+        : { exitCode: 0, stdout: `${lstart(at)}\n`, stderr: '' },
+  })
+
+const minutesAgo = (n: number): Date => new Date(Date.now() - n * 60_000)
+
+/** Sets the modification time of the storage folder `dir`, and of each entry in it, to `at`. */
+function age(dir: string, at: Date): void {
+  for (const name of readdirSync(dir)) utimesSync(join(dir, name), at, at)
+  utimesSync(dir, at, at)
+}
+
 /** A temporary home with VS Code's macOS layout and a folder for projects. */
 function home() {
   const t = tempHome('host-cleaner-vscode-')
@@ -69,6 +93,8 @@ function home() {
     env: t.env,
     platform: 'darwin',
     probe: probeOf(),
+    // VS Code started after every storage folder a test writes.
+    runner: psAt(new Date(Date.now() + 60 * 60_000)),
     ...over,
   })
   return { home: t.home, user, storage, projects, options }
@@ -248,7 +274,7 @@ describe('discover', () => {
       shapes.map(([hash, , problem]) => [
         `workspace-storage:${join(h.storage, hash)}`,
         'refuse',
-        UNKNOWN_WORKSPACE,
+        VSCODE_UNKNOWN_WORKSPACE,
         problem,
       ]),
     )
@@ -286,7 +312,7 @@ describe('discover', () => {
     const plugin = vscodePlugin(h.options())
     await expect(
       (async () => plugin.discover!(fakeContext({ signal: AbortSignal.abort() })))(),
-    ).rejects.toThrow(/discover was stopped/)
+    ).rejects.toThrow(/aborted/)
   })
 
   test('without a workspaceStorage folder it is not detected', async () => {
@@ -559,7 +585,7 @@ describe('object', () => {
         by: 'vscode',
         candidate: `worktree:${wt}`,
         level: 'refuse',
-        code: IN_USE,
+        code: VSCODE_IN_USE,
         reason: 'VS Code works in it: Code Helper (Plugin) (pid 11)',
       },
     ])
@@ -576,11 +602,11 @@ describe('object', () => {
 
     const running = vscodePlugin(h.options({ probe: probeOf([CODE]) }))
     expect(await running.object!(all, fakeContext())).toEqual([
-      expect.objectContaining({ candidate: `worktree:${wt}`, level: 'refuse', code: IN_USE }),
+      expect.objectContaining({ candidate: `worktree:${wt}`, level: 'refuse', code: VSCODE_IN_USE }),
     ])
     const unreadable = vscodePlugin(h.options({ probe: probeOf(new Error('no lsof')) }))
     expect(await unreadable.object!(all, fakeContext())).toEqual([
-      expect.objectContaining({ candidate: `worktree:${wt}`, code: IN_USE }),
+      expect.objectContaining({ candidate: `worktree:${wt}`, code: VSCODE_IN_USE }),
       expect.objectContaining({
         candidate: `worktree:${other}`,
         level: 'note',
@@ -593,14 +619,63 @@ describe('object', () => {
     expect(await quit.object!(all, fakeContext())).toEqual([])
   })
 
-  test('a window state it cannot read is a note, and processes are still checked', async () => {
+  test('a window state it cannot read refuses while VS Code runs, and not after', async () => {
     const h = home()
     const wt = join(h.projects, 'wt')
     mkdirSync(wt)
     windowState(h.user, '{ broken')
-    const plugin = vscodePlugin(h.options({ probe: probeOf([CODE]) }))
-    expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
-      expect.objectContaining({ level: 'note', code: 'vscode-state-unreadable' }),
+    const running = vscodePlugin(h.options({ probe: probeOf([CODE]) }))
+    expect(await running.object!([worktree(wt)], fakeContext())).toEqual([
+      expect.objectContaining({ level: 'refuse', code: VSCODE_STATE_UNREADABLE }),
+    ])
+    const quit = vscodePlugin(h.options())
+    expect(await quit.object!([worktree(wt)], fakeContext())).toEqual([])
+  })
+
+  test('refuses a worktree whose storage was written since VS Code started, or any time when that is not known', async () => {
+    const h = home()
+    const [recent, older, never] = ['recent', 'older', 'never'].map((n) => join(h.projects, n))
+    for (const d of [recent, older, never]) mkdirSync(d)
+    age(store(h.storage, 'r', folder(recent)), minutesAgo(1))
+    age(store(h.storage, 'o', folder(older)), minutesAgo(60))
+    const all = [worktree(recent), worktree(older), worktree(never)]
+
+    const started = vscodePlugin(
+      h.options({ probe: probeOf([CODE]), runner: psAt(minutesAgo(10)) }),
+    )
+    expect(await started.object!(all, fakeContext())).toEqual([
+      expect.objectContaining({
+        candidate: `worktree:${recent}`,
+        level: 'refuse',
+        code: VSCODE_IN_USE,
+        reason: expect.stringMatching(/written since VS Code started/),
+      }),
+    ])
+    const unknown = vscodePlugin(h.options({ probe: probeOf([CODE]), runner: psAt(null) }))
+    expect(await unknown.object!(all, fakeContext())).toEqual([
+      expect.objectContaining({ candidate: `worktree:${recent}`, code: VSCODE_IN_USE }),
+      expect.objectContaining({
+        candidate: `worktree:${older}`,
+        code: VSCODE_IN_USE,
+        reason: expect.stringMatching(/when it started is not known/),
+      }),
+    ])
+    const quit = vscodePlugin(h.options({ runner: psAt(null) }))
+    expect(await quit.object!(all, fakeContext())).toEqual([])
+  })
+
+  test('refuses storage for a gone folder written since VS Code started', async () => {
+    const h = home()
+    const recent = store(h.storage, 'r', folder(join(h.projects, 'dead-r')))
+    age(store(h.storage, 'o', folder(join(h.projects, 'dead-o'))), minutesAgo(60))
+    const plugin = vscodePlugin(h.options({ probe: probeOf([CODE]), runner: psAt(minutesAgo(10)) }))
+    const s = await survey([plugin], ctxOf(h.home))
+    expect(s.objections).toEqual([
+      expect.objectContaining({
+        candidate: `workspace-storage:${recent}`,
+        level: 'refuse',
+        code: VSCODE_IN_USE,
+      }),
     ])
   })
 
@@ -611,9 +686,10 @@ describe('object', () => {
     const other = join(h.projects, 'other')
     for (const d of [wt, abs, other]) mkdirSync(d)
     const file = join(h.home, 'proj.code-workspace')
+    // Saved with a byte order mark, as some editors do.
     writeFileSync(
       file,
-      `{
+      `﻿{
   // Two roots, one relative and one absolute.
   "folders": [
     { "path": "dev/wt" },
@@ -632,8 +708,8 @@ describe('object', () => {
     const plugin = vscodePlugin(h.options({ probe: probeOf([CODE]) }))
     const all = [worktree(wt), worktree(abs), worktree(other)]
     expect(await plugin.object!(all, fakeContext())).toEqual([
-      expect.objectContaining({ candidate: `worktree:${wt}`, code: IN_USE }),
-      expect.objectContaining({ candidate: `worktree:${abs}`, code: IN_USE }),
+      expect.objectContaining({ candidate: `worktree:${wt}`, code: VSCODE_IN_USE }),
+      expect.objectContaining({ candidate: `worktree:${abs}`, code: VSCODE_IN_USE }),
     ])
   })
 
@@ -664,6 +740,21 @@ describe('object', () => {
     )
   })
 
+  test('prepare fails its own storage for a gone folder a window opened after object', async () => {
+    const h = home()
+    const gone = join(h.projects, 'dead')
+    store(h.storage, 'bbb', folder(gone))
+    const plugin = vscodePlugin(h.options({ probe: probeOf([CODE]) }))
+    const s = await survey([plugin], ctxOf(h.home))
+    expect(s.objections).toEqual([])
+    const c = s.candidates[0]!
+    await plugin.prepare!(c, fakeContext())
+    windows(h.user, [gone])
+    await expect((async () => plugin.prepare!(c, fakeContext()))()).rejects.toThrow(
+      /a VS Code window still has .* open/,
+    )
+  })
+
   test('refuses its own storage for a gone folder a window still has open', async () => {
     const h = home()
     const gone = join(h.projects, 'dead')
@@ -674,7 +765,7 @@ describe('object', () => {
       expect.objectContaining({
         candidate: `workspace-storage:${dead}`,
         level: 'refuse',
-        code: IN_USE,
+        code: VSCODE_IN_USE,
         reason: `a VS Code window still has ${gone} open`,
       }),
     ])
@@ -687,6 +778,6 @@ describe('the kit is all it uses', () => {
     const own = [...readFileSync(src, 'utf8').matchAll(/^(?:import|\}) .*from '(\.[^']+)'$/gm)].map(
       (m) => m[1],
     )
-    expect(own.sort()).toEqual(['./kit.ts', './types.ts'])
+    expect(own.sort()).toEqual(['./helpers.ts', './kit.ts', './types.ts'])
   })
 })
