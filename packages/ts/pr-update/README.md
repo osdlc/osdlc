@@ -446,7 +446,8 @@ and changes nothing.
   belongs to. It reads the worktree's `.git` file and its record's
   `commondir` to find the checkout or clone that owns it, and removes it
   through that one with `git worktree remove`, deleting the run's scratch
-  branch. In a clone it does this only while holding the clone's lock. It
+  branch, when its `git worktree list` has it. In a clone it does this only
+  while holding the clone's lock. It
   never runs a bare `git worktree prune`, so your own worktrees whose folders
   are missing stay listed. With the owner gone, only the folder goes;
 - leftover `.tmp-*` clone folders and `.pr-update-probe-*` folders more than
@@ -467,25 +468,41 @@ folder), or one machine's prune can remove a worktree another machine's run
 is using.
 
 It never removes a clone another run holds, one with a kept worktree (unless
-`--discard-kept`, which removes those first; a kept worktree with no record
-goes only while it is on its `pr-update/failed-*` branch, one with a record
-only while the checkout the record names lists it on the record's branch, and
-one a person switched to another branch or detached keeps itself and its
-clone, in `--dry-run` too), one a live run has a worktree
+`--discard-kept`, which removes those first), one a live run has a worktree
 in, or a folder without pr-update's marker, and it never follows a symbolic
 link or removes anything from a folder another user owns or others can write
 to (the clone directory's rule above). Such a folder under the cache's
 `worktrees/` or the state's `kept/` is fixed with `chmod -R go-w` on that
 directory, which the message names. It never waits for a lock: a clone
-another run holds is left as `mirror busy`. `--dry-run` only says what would go, and takes no lock. `list` and
+another run holds is left as `mirror busy`. `--dry-run` only says what would
+go. It takes no lock, only reads whether another run holds it. `list` and
 `prune` take `--mirror-dir`, so a clone directory left behind by a moved
-`mirror_dir` can be cleaned. `prune` exits `1` when something could not be
-removed; a clone whose removal stops part-way is left as a `.tmp-*` folder,
-which a later prune removes. A folder it cannot list or look into while it
-looks for what to prune (one that cannot be searched, say) is reported as
-`could not be read`, and the rest are still pruned; `list` notes it. A dead
-run's worktree whose owning git directory cannot be read, and a clone whose
-kept worktrees' folder cannot be listed, are left and reported the same way.
+`mirror_dir` can be cleaned.
+
+With `--discard-kept`, a kept worktree goes only while the clone being pruned
+lists it on its record's branch (on a `pr-update/failed-*` branch, with no
+record), its own `.git` file names that clone, and the checkout its record
+names, if that still exists, lists it on that branch too. One a person
+switched to another branch or detached keeps itself and its clone. So does one
+whose clone was moved, until you run `git worktree repair` in the clone.
+
+Everything a prune removes passes the same checks first, in `--dry-run` too:
+the folder rule, the clone's or checkout's `git worktree list`, and the
+clone's lock. What cannot be read stays; only a path that is not there counts
+as gone. So a worktree, a leftover or a clone stays whole when a folder on its
+way or in it cannot be read, or cannot have its entries removed. A clone also
+stays when its lock, its last-used stamp or a record of one of its worktrees
+cannot be read, and with any worktree of it that stays. When the machine file
+cannot be read, no clone is removed for its age, unless you pass
+`--older-than` (or `--all-clones`).
+
+`prune` exits `1` when something could not be removed or read. Each such thing
+is reported on its own, and the rest are still pruned; `list` notes what it
+cannot read. What it skips is not a failure: a clone or worktree that is busy,
+in use or kept (a kept worktree a person switched, or whose record another
+checkout does not bear out), is not its own, or is in a folder that fails the
+folder rule. A clone whose removal stops part-way is left as a `.tmp-*` folder,
+which a later prune removes.
 
 At the end of an `update --apply` that used a clone or made a run worktree in
 the cache, the run prunes the same way, as a bare `mirror prune` would, and
@@ -1142,7 +1159,7 @@ change it). With a single repository the failure is thrown.
 | Code | Meaning |
 |---|---|
 | `0` | Clean run (`survey` always; `update` when no PR ended `conflict` or `failed`) |
-| `1` | Something went wrong that no other code names, for example: the run finished but a PR ended `conflict` or `failed`; `mirror prune` could not remove something; `config set` lost a race with another write; `PR_UPDATE_MACHINE_CONFIG` is not absolute; or an unexpected error |
+| `1` | Something went wrong that no other code names, for example: the run finished but a PR ended `conflict` or `failed`; `mirror prune` could not remove or read something; `config set` lost a race with another write; `PR_UPDATE_MACHINE_CONFIG` is not absolute; or an unexpected error |
 | `2` | The command cannot run as typed, for example: a malformed flag, `--repo` or `--pr`, a `--branch` with no open PR, a `--pr owner/name#N` for a repository outside the run, one `owner/name` on two hosts, an unusable clone directory, an `update --apply` that must ask whether to clone and has no terminal, or a `GIT_DIR` or `GIT_WORK_TREE` that names another repository than the directory's own |
 | `14` | A config file is invalid or unreadable, or the machine file cannot take an answer about cloning (not valid YAML, or not a map), in `update --apply`, `mirror enable` or `mirror disable` |
 | `21` | `update` refused for want of trust in the project root. An untrusted `--repo` target is skipped instead |

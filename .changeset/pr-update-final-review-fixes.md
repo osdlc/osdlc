@@ -87,9 +87,23 @@ branch is now skipped the same way, with the reason, in `--dry-run` too:
 `--dry-run` listed it and its clone as removed, and the real run reported it
 under `failed` and exited with an error. So is a kept tree whose record the
 checkout it names does not bear out (the record's `gitDir` is another
-repository's, which does not list the tree, or whose worktrees cannot be
-listed): nothing is removed, the clone is left with the reason, and the prune
-no longer exits with an error for it.
+repository's, which does not list the tree): nothing is removed, the clone is
+left with the reason, and the prune no longer exits with an error for it. One
+whose owner's worktrees cannot be listed is still under `failed`.
+
+Fixed: `mirror prune --discard-kept` removed a kept worktree a person had
+switched to a branch of their own, with uncommitted files in it, when the git
+directory its record named was not there (the clones folder was moved) or
+could not be read. The clone being pruned must now list the tree on its
+record's branch, whatever the record says, and the tree's own `.git` file must
+name that clone. So a kept tree of a moved clone stays until you run
+`git worktree repair` in the clone. `update --discard-kept` no longer takes a
+git directory it cannot read for one that is gone; one that is gone still lets
+the tree be removed.
+
+Fixed: `mirror prune` removed a clone in use when git could not read the
+clone's record of a worktree: `git worktree list` leaves such a worktree out
+with no error. The clone now stays, under `failed`.
 
 Pruning no longer takes a path it cannot read for one that is not there: an
 `lstat` that fails with anything but "no such file" (such as `EACCES`) is now
@@ -102,8 +116,15 @@ into (a folder that cannot be searched, say) is reported under `failed` as
 such a path and lists the rest. A dead run's worktree whose owning git
 directory cannot be read is left and reported too: it was taken for one with no
 owner, and its folder removed without its clone's lock. So is a clone with kept
-trees whose `kept/` folder cannot be listed, whose trees `--discard-kept` took
-for trees with no record. `survey --help` now
+trees whose `kept/` folder, or a record in it, cannot be read, whose trees
+`--discard-kept` took for trees with no record. So is a clone whose last-used
+stamp or lock cannot be read, or whose lock cannot be taken; one of those
+stopped the whole prune. When the machine file cannot be read, no clone is
+removed for its age, where the default of 30 days was used. Everything a prune
+removes now passes one check first (the folder rule, the owner's
+`git worktree list`, the clone's lock), and `--dry-run` passes it too, so it no
+longer lists what the real run would leave. A clone's dead run worktree in a
+folder that cannot be read keeps the clone, where the two were removed. `survey --help` now
 says it also writes a managed clone's last-used stamp and its lock file.
 
 The note for a `--repo` target with no checkout and no clone now follows the

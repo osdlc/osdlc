@@ -101,11 +101,14 @@ are in scope.
   files can put one. A record is acted on only when its branch and path are
   the ones pr-update gives that PR, its folder is not a symbolic link, and
   `git worktree list` shows a worktree at that folder. One shown on another
-  branch, or detached, is a person's, and is never removed; `mirror prune
-  --discard-kept` removes a kept tree with no record only while it is on its
-  `pr-update/failed-*` branch. A tree is removed
+  branch, or detached, is a person's, and is never removed. `mirror prune
+  --discard-kept` removes a kept tree only while the clone being pruned lists
+  it on its record's branch, or on a `pr-update/failed-*` branch with no
+  record, and the tree's own `.git` file names that clone, so neither a record
+  nor a moved or copied clone decides it alone. A tree is removed
   through the checkout's own git directory, never one a checkout's record
-  names. Any other record is left alone and reported.
+  names. Any other record is left alone and reported. A git directory that
+  cannot be read is not taken for one that is gone.
 - **No file others can write to.** The `pr-update` command takes write for
   group and others out of its umask when it starts, and git, `gh` and every
   command it runs inherit it, so none of them creates a file or folder others
@@ -121,4 +124,7 @@ are in scope.
   marker, and in the git directory that owns a dead run's worktree only that
   worktree's record and scratch branch. They never follow a symbolic link, and on Linux and macOS
   they remove nothing from a folder another user owns or others can write
-  to. Windows gets no such check.
+  to. Windows gets no such check. Before anything is removed, that folder
+  rule, the owner's `git worktree list` and the clone's lock must allow it.
+  What cannot be read stays and is reported, and `--dry-run` decides the same
+  way.
