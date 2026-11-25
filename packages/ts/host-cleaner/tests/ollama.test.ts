@@ -322,9 +322,7 @@ describe('survey', () => {
         loaded: ['loaded:7b'],
       },
     )
-    expect(refusals(await survey([plugin], ctx))).toEqual([
-      ['ollama-model:copy:7b', OLLAMA_IN_USE],
-    ])
+    expect(refusals(await survey([plugin], ctx))).toEqual([['ollama-model:copy:7b', OLLAMA_IN_USE]])
   })
 
   test('idleHours 0 proposes a model pulled a minute ago', async () => {
