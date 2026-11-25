@@ -302,17 +302,18 @@ host-cleaner clean --pick worktree:/path/to/wt --allow close-terminals
 ## The `ollama` plugin
 
 Models that nobody has pulled or changed for `plugins.ollama.idleHours` (default
-24, or the config's top-level `idleHours`). Detected when `ollama` is on `PATH`.
-Each hook first asks the server over HTTP (`$OLLAMA_HOST/api/version`), because
-the `ollama` CLI starts the app on macOS and Windows when the server is down. If
-the server does not answer, or `OLLAMA_HOST` names another machine, the survey
-warns and the plugin proposes nothing.
+24, or the config's top-level `idleHours`). Detected when `ollama` is on `PATH`
+and its server answers. Each hook first asks the server over HTTP
+(`$OLLAMA_HOST/api/version`), because the `ollama` CLI starts the app on macOS
+and Windows when the server is down. If the server does not answer, or
+`OLLAMA_HOST` names another machine or cannot be read, `detect` leaves the
+plugin out and says why in its note.
 
 | Phase | What it does |
 | --- | --- |
-| discover | Each model in `ollama list` is `ollama-model:<name>`, a ref with `costDescription: re-download` and its size as shown. Tags that share an ID share their files, so only the first carries the size. Its age is the least time the MODIFIED text can mean (`4 days ago` is at least 95.5 hours); a model younger than the threshold, or with an age or size it cannot read, is held for a pick. Cloud models (SIZE `-`), with nothing on disk, are left out. Evidence is the name and the ID. |
+| discover | Each model in `ollama list` is `ollama-model:<name>`, a ref with `costDescription: re-download` and its size as shown. Tags that share an ID share their files, so removing one alone frees nothing: each carries 0 bytes and names the size and the other tags in its reason. Its age is the least time the MODIFIED text can mean (`4 days ago` is at least 95.5 hours); a model younger than the threshold, or with an age or size it cannot read, is held for a pick. Cloud models (SIZE `-`), with nothing on disk, are left out. Evidence is the name and the ID. |
 | object | A model `ollama ps` shows loaded, by name or ID, is refused `ollama-in-use`. Every other model gets an `ollama-use-unknown` protest. If `ollama ps` fails, every model is refused `ollama-ps-failed`. |
-| delete | Reads `ollama ps` and `ollama list` again: a model now loaded or with another ID is not removed, one already gone is not a failure. Then `ollama rm <name>`, and checks the list no longer shows it; a list that fails after a successful `rm` is noted in the receipt, not a failure. |
+| delete | Reads `ollama list` and then `ollama ps` again, the loaded check last because `ollama rm` unloads a loaded model: a model now loaded or with another ID is not removed, one already gone is not a failure. Then `ollama rm <name>`, and checks the list no longer shows it; a list that fails after a successful `rm` is noted in the receipt, not a failure. |
 
 ollama records when a model was pulled, not when it was last run, so a model
 you run every day can look old. That is why every model carries the

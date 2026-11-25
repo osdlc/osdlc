@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import {
   BUILT_IN_PLUGINS,
   OLLAMA_IN_USE,
+  OLLAMA_PS_FAILED,
   OLLAMA_USE_UNKNOWN,
   clean,
   decidePlan,
@@ -151,17 +152,22 @@ describe('parsing', () => {
   })
 
   test('OLLAMA_HOST read as ollama reads it, and whether it is this machine', () => {
-    expect(serverUrl(undefined).href).toBe('http://127.0.0.1:11434/')
-    expect(serverUrl('').href).toBe('http://127.0.0.1:11434/')
-    expect(serverUrl('0.0.0.0').href).toBe('http://0.0.0.0:11434/')
-    expect(serverUrl(':8080').href).toBe('http://127.0.0.1:8080/')
-    expect(serverUrl('localhost:9000').href).toBe('http://localhost:9000/')
-    expect(serverUrl('https://ollama.example.com').href).toBe('https://ollama.example.com/')
-    for (const host of ['', '0.0.0.0', 'localhost', '127.0.0.2:1', '[::1]:11434']) {
-      expect(isLocal(serverUrl(host))).toBe(true)
+    expect(serverUrl(undefined)?.href).toBe('http://127.0.0.1:11434/')
+    expect(serverUrl('')?.href).toBe('http://127.0.0.1:11434/')
+    expect(serverUrl('0.0.0.0')?.href).toBe('http://0.0.0.0:11434/')
+    expect(serverUrl(':8080')?.href).toBe('http://127.0.0.1:8080/')
+    expect(serverUrl('localhost:9000')?.href).toBe('http://localhost:9000/')
+    expect(serverUrl('https://ollama.example.com')?.href).toBe('https://ollama.example.com/')
+    // A bare IPv6 address, as Go reads it: the whole text is the host.
+    expect(serverUrl('2001:db8::5')?.href).toBe('http://[2001:db8::5]:11434/')
+    // Text a URL cannot hold is not taken for this machine.
+    expect(serverUrl('gpu box')).toBeNull()
+    expect(serverUrl('http://[bad')).toBeNull()
+    for (const host of ['', '0.0.0.0', 'localhost', '127.0.0.2:1', '[::1]:11434', '::1']) {
+      expect(isLocal(serverUrl(host)!)).toBe(true)
     }
-    for (const host of ['gpu-box:11434', '10.0.0.5', 'https://ollama.example.com']) {
-      expect(isLocal(serverUrl(host))).toBe(false)
+    for (const host of ['gpu-box:11434', '10.0.0.5', 'https://ollama.example.com', '2001:db8::5']) {
+      expect(isLocal(serverUrl(host)!)).toBe(false)
     }
   })
 
@@ -229,18 +235,24 @@ describe('survey', () => {
     expect(decidePlan(allowed(s)).run.map((c) => c.id)).toEqual(['ollama-model:old:7b'])
   })
 
-  test('tags that share an ID count their files once', async () => {
+  test('tags that share an ID free nothing alone, and say the size they share', async () => {
     const id = idOf('base:7b')
     const { plugin } = fakeOllama([
       { name: 'base:7b', id, modified: '3 weeks ago' },
       { name: 'mine:latest', id, modified: '3 weeks ago' },
+      { name: 'other:1b', modified: '3 weeks ago' },
     ])
     const s = await survey([plugin], ctx)
     expect(s.candidates.map((c) => [c.name, c.bytes])).toEqual([
-      ['base:7b', 3_900_000_000],
+      ['base:7b', 0],
       ['mine:latest', 0],
+      ['other:1b', 3_900_000_000],
     ])
-    expect(s.candidates[1]!.why).toContain('it shares its files with base:7b')
+    expect(s.candidates[0]!.why).toContain(
+      'it shares its files (3.9 GB) with mine:latest, so removing it alone frees nothing',
+    )
+    expect(s.candidates[1]!.why).toContain('with base:7b')
+    expect(s.candidates[2]!.why).not.toContain('shares')
   })
 
   test('a size it cannot read is held with a reason, not dropped as a cloud model', async () => {
@@ -252,26 +264,55 @@ describe('survey', () => {
     expect(s.candidates[0]!.why).toContain('its size "3.9GiB" cannot be read')
   })
 
-  test('a server that is down is not started: no ollama command runs', async () => {
+  test('a server that is down is not started: detect leaves it out with a note', async () => {
     server.mockImplementation(async () => {
       throw new TypeError('fetch failed')
     })
     const { plugin, calls } = fakeOllama(models)
     const s = await survey([plugin], ctx)
     expect(s.candidates).toEqual([])
-    expect(s.warnings.join('\n')).toContain("ollama's server at 127.0.0.1:11434 does not answer")
+    expect(s.warnings).toEqual([])
+    expect(s.notes['ollama']).toBe("ollama's server at 127.0.0.1:11434 does not answer")
     expect(calls()).toEqual([])
     expect(server.mock.calls[0]![0]).toBe('http://127.0.0.1:11434/api/version')
   })
 
-  test('an OLLAMA_HOST on another machine warns and proposes nothing', async () => {
+  test('an OLLAMA_HOST on another machine leaves it out with a note', async () => {
     vi.stubEnv('OLLAMA_HOST', 'gpu-box:11434')
     const { plugin, calls } = fakeOllama(models)
     const s = await survey([plugin], ctx)
     expect(s.candidates).toEqual([])
-    expect(s.warnings.join('\n')).toContain('OLLAMA_HOST points at gpu-box:11434')
+    expect(s.notes['ollama']).toContain('OLLAMA_HOST points at gpu-box:11434')
     expect(calls()).toEqual([])
     expect(server).not.toHaveBeenCalled()
+  })
+
+  test('an OLLAMA_HOST it cannot read is not taken for this machine', async () => {
+    vi.stubEnv('OLLAMA_HOST', 'gpu box')
+    const { plugin, calls } = fakeOllama(models)
+    const s = await survey([plugin], ctx)
+    expect(s.candidates).toEqual([])
+    expect(s.notes['ollama']).toContain('OLLAMA_HOST is "gpu box", which names no server')
+    expect(calls()).toEqual([])
+    expect(server).not.toHaveBeenCalled()
+  })
+
+  test('a bare IPv6 OLLAMA_HOST on another machine is not this machine', async () => {
+    vi.stubEnv('OLLAMA_HOST', '2001:db8::5')
+    const { plugin, calls } = fakeOllama(models)
+    const s = await survey([plugin], ctx)
+    expect(s.candidates).toEqual([])
+    expect(s.notes['ollama']).toContain('OLLAMA_HOST points at [2001:db8::5]:11434')
+    expect(calls()).toEqual([])
+  })
+
+  test('the ping cancels the body it does not read', async () => {
+    const cancel = vi.fn(async () => {})
+    server.mockImplementation(async () => ({ ok: true, body: { cancel } }) as never)
+    const { plugin } = fakeOllama(models)
+    await survey([plugin], ctx)
+    expect(server).toHaveBeenCalled()
+    expect(cancel).toHaveBeenCalledTimes(server.mock.calls.length)
   })
 
   test('a loaded model is refused by its ID too, under another name', async () => {
@@ -300,7 +341,7 @@ describe('survey', () => {
   test('ollama ps failing refuses every model', async () => {
     const { plugin } = fakeOllama(models, { psFails: true })
     const s = await survey([plugin], ctx)
-    expect(new Set(refusals(s).map(([, code]) => code))).toEqual(new Set(['ollama-ps-failed']))
+    expect(new Set(refusals(s).map(([, code]) => code))).toEqual(new Set([OLLAMA_PS_FAILED]))
     expect(refusals(s)).toHaveLength(4)
     expect(s.objections[0]!.reason).toContain('connection refused')
   })
@@ -319,15 +360,15 @@ describe('survey', () => {
 })
 
 describe('clean', () => {
-  test('an old model is removed with ollama rm, after ps and list are read again', async () => {
+  test('an old model is removed with ollama rm, after list and then ps are read again', async () => {
     const { plugin, calls, live } = fakeOllama([{ name: 'old:7b', modified: '3 weeks ago' }])
     const receipt = await clean(allowed(await survey([plugin], ctx)), [plugin], ctx)
     expect(receipt.status).toBe('complete')
     expect(receipt.steps.map((s) => s.delete)).toEqual(['ollama rm removed old:7b'])
     expect(live).toEqual([])
     expect(calls().slice(-4)).toEqual([
-      'ollama ps',
       'ollama list',
+      'ollama ps',
       'ollama rm old:7b',
       'ollama list',
     ])
