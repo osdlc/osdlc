@@ -1,20 +1,21 @@
 /**
  * The `ollama` plugin: models nobody has pulled or changed for a while.
  *
- * Detected when `ollama` is on PATH and its server answers. Each model `ollama list` shows is an
- * `ollama-model:<name>` ref, deleted with `ollama rm`, and costs a
- * re-download. Its idle time is the MODIFIED column, which ollama writes as
- * rounded text ("4 days ago"), so the threshold is held against the least
- * time that text can mean. A model younger than the threshold, or whose time
- * or size cannot be read, is held for review. That time is when it was
- * pulled, not when it was last run, so every model also gets an
- * {@link OLLAMA_USE_UNKNOWN} protest. A model `ollama ps` shows loaded is
- * refused {@link OLLAMA_IN_USE}. Every hook first asks the server over HTTP,
- * because the `ollama` CLI starts the app on macOS and Windows when it is
- * down; a server that does not answer, or an `OLLAMA_HOST` on another machine
- * or that cannot be read, leaves the plugin out with that as `detect`'s note.
- * Settings:
- * `plugins.ollama.idleHours` (default {@link DEFAULT_IDLE_HOURS}).
+ * Detected when `ollama` is on PATH and its server answers. Each model
+ * `ollama list` shows is an `ollama-model:<name>` ref, deleted with
+ * `ollama rm`, and costs a re-download. Its idle time is the MODIFIED column,
+ * which ollama writes as rounded text ("4 days ago"), so the threshold is held
+ * against the least time that text can mean. A model younger than the
+ * threshold, or whose time or size cannot be read, is held for review. That
+ * time is when it was pulled, not when it was last run, so every model also
+ * gets an {@link OLLAMA_USE_UNKNOWN} protest. A model `ollama ps` shows loaded
+ * is refused {@link OLLAMA_IN_USE}. Every hook first asks the server over
+ * HTTP, because the `ollama` CLI starts the app on macOS and Windows when it
+ * is down; a server that does not answer, or an `OLLAMA_HOST` on another
+ * machine or that cannot be read, leaves the plugin out with that as
+ * `detect`'s note.
+ *
+ * Settings: `plugins.ollama.idleHours` (default {@link DEFAULT_IDLE_HOURS}).
  *
  * It uses the kit alone, as a plugin outside host-cleaner would.
  */
