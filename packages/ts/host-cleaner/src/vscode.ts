@@ -217,13 +217,12 @@ export interface VscodeOptions extends KitOptions {
   platform?: NodeJS.Platform | undefined
 }
 
-/** `editor`'s `User` folder on `platform`; undefined where the plugin does not know it. */
-function userDirOf(
-  editor: Editor,
-  env: Readonly<Record<string, string | undefined>>,
-  platform: NodeJS.Platform,
-): string | undefined {
-  const home = env.HOME ?? homedir()
+type Env = Readonly<Record<string, string | undefined>>
+
+const homeOf = (env: Env): string => env.HOME ?? homedir()
+
+/** `editor`'s `User` folder under `home` on `platform`; undefined where the plugin does not know it. */
+function userDirOf(editor: Editor, home: string, platform: NodeJS.Platform): string | undefined {
   if (platform === 'darwin') {
     return join(home, 'Library', 'Application Support', editor.appDir, 'User')
   }
@@ -231,17 +230,13 @@ function userDirOf(
   return undefined
 }
 
-/** {@link userDirOf} for one `editor`. */
-const userDirFor =
-  (editor: Editor) =>
-  (env: Readonly<Record<string, string | undefined>>, platform: NodeJS.Platform) =>
-    userDirOf(editor, env, platform)
-
 /** VS Code's `User` folder on `platform`; undefined where the plugin does not know it. */
-export const vscodeUserDir = userDirFor(VSCODE)
+export const vscodeUserDir = (env: Env, platform: NodeJS.Platform): string | undefined =>
+  userDirOf(VSCODE, homeOf(env), platform)
 
 /** Cursor's `User` folder on `platform`; undefined where the plugin does not know it. */
-export const cursorUserDir = userDirFor(CURSOR)
+export const cursorUserDir = (env: Env, platform: NodeJS.Platform): string | undefined =>
+  userDirOf(CURSOR, homeOf(env), platform)
 
 /** What one storage folder says about its workspace. */
 type Entry =
@@ -387,15 +382,13 @@ const processesOf = (editor: Editor, names: readonly string[]): string[] =>
   names.filter((n) => editor.process.test(n.replace(/ \(pid \d+\)$/, '')))
 
 function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
-  const userDir =
-    opts.userDir ?? userDirOf(editor, opts.env ?? process.env, opts.platform ?? process.platform)
+  const home = homeOf(opts.env ?? process.env)
+  const userDir = opts.userDir ?? userDirOf(editor, home, opts.platform ?? process.platform)
   const root = userDir === undefined ? undefined : join(userDir, 'workspaceStorage')
   const stateFile =
     userDir === undefined ? undefined : join(userDir, 'globalStorage', 'storage.json')
   const agentDir =
-    editor.agentWorktrees === undefined
-      ? undefined
-      : canon(join((opts.env ?? process.env).HOME ?? homedir(), editor.agentWorktrees))
+    editor.agentWorktrees === undefined ? undefined : canon(join(home, editor.agentWorktrees))
   // Storage that always holds chat is `lost` whatever its history folders hold.
   const withHistory = !editor.keepsChat
   const present = (): boolean =>
@@ -462,10 +455,9 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
       const running =
         processesOf(editor, anywhere.names).length > 0 || anywhere.unknown !== undefined
       const windows = running && stateFile !== undefined ? openWindows(stateFile) : { paths: [] }
-      const opened = (path: string): boolean => windows.paths.some((p) => within(p, canon(path)))
-
       for (const c of worktrees) {
-        if (agentDir !== undefined && within(canon(c.path), agentDir)) {
+        const real = canon(c.path)
+        if (agentDir !== undefined && within(real, agentDir)) {
           out.push(
             own(c, 'refuse', AGENT_WORKTREE, `${editor.product}'s agents keep it (${agentDir})`),
           )
@@ -474,7 +466,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
         const procs = processesOf(editor, kit.running({ in: c.path }, ctx).names)
         if (procs.length > 0) {
           out.push(own(c, 'refuse', IN_USE, `${editor.product} works in it: ${procs.join(', ')}`))
-        } else if (opened(c.path)) {
+        } else if (windows.paths.some((p) => within(p, real))) {
           out.push(own(c, 'refuse', IN_USE, `a ${editor.product} window has it open (${stateFile})`))
         } else if (windows.problem !== undefined) {
           out.push(
@@ -541,13 +533,13 @@ function goneCandidate(
   })
 }
 
-/** `editor`'s plugin definition, built over `opts`, with the command line's `env` where `opts` gives none. No settings of its own. */
+/** `editor`'s plugin definition, built over `opts` and the `env` it is created with. No settings of its own. */
 const definitionOf = (editor: Editor, opts?: VscodeOptions) =>
   definePlugin({
     name: editor.name,
     api: PLUGIN_API,
     settings: z.strictObject({}),
-    create: ({ kit, env }) => build(editor, kit, { ...opts, env: opts?.env ?? env }),
+    create: ({ kit, env }) => build(editor, kit, { ...opts, env }),
   })
 
 /** `editor`'s plugin on a kit built from `opts`, made through `definePlugin` so the core binds that kit each run. */
