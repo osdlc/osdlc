@@ -18,11 +18,12 @@
  * Settings: `plugins.orca.repos` (default true) adds the repositories Orca lists to the sweep.
  */
 
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 
 import { failureText, spawnRunner, which, type CommandRunner } from '@osdlc/command-seam'
 import { z } from 'zod'
 
+import { realOr } from './roots.ts'
 import {
   PLUGIN_API,
   definePlugin,
@@ -80,15 +81,6 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 
-/** A path with symlinks resolved, so two spellings of one place compare equal. */
-function canon(path: string): string {
-  try {
-    return realpathSync.native(path)
-  } catch {
-    return path
-  }
-}
-
 /** The records in `orca worktree ps --json`; folder workspaces and rows without a path are left out. */
 export function parseRecords(result: unknown): OrcaRecord[] {
   const rows = isObject(result) && Array.isArray(result.worktrees) ? result.worktrees : []
@@ -125,7 +117,7 @@ const isGitWorktree = (c: Candidate): c is PathCandidate =>
   c.kind === 'worktree' && c.owner === 'git' && c.path !== undefined
 
 /** Whether `c` sits under Orca's workspaces folder, by its real path. */
-const inWorkspaces = (c: PathCandidate): boolean => canon(c.path).includes(ORCA_WORKSPACES)
+const inWorkspaces = (c: PathCandidate): boolean => realOr(c.path).includes(ORCA_WORKSPACES)
 
 /**
  * Orca worktrees as `orca-record:<path>` refs when their directory is
@@ -177,8 +169,8 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
   const prepared = new Map<string, OrcaRecord>()
 
   const recordFor = (c: PathCandidate, all: readonly OrcaRecord[]): OrcaRecord | undefined => {
-    const real = canon(c.path)
-    return all.find((r) => !r.main && canon(r.path) === real)
+    const real = realOr(c.path)
+    return all.find((r) => !r.main && realOr(r.path) === real)
   }
 
   /** Asks Orca to forget `r`. `worktree rm` deletes the directory too, so it is never asked of one that exists. */
