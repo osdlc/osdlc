@@ -41,8 +41,9 @@ export interface HostDirs {
 /**
  * The directories, under the `xdg` convention. Windows has no `xdg` folders
  * and keeps its own; `HOST_CLEANER_CONVENTION=native` switches back to the
- * native ones. `opts` stands in for this machine's platform and home, for tests.
+ * native ones.
  *
+ * @param opts - A platform and home to use instead of this machine's, for tests.
  * @throws ConfigError when the environment cannot place them, such as a
  *   `HOST_CLEANER_CONVENTION` that is neither `native` nor `xdg`.
  */

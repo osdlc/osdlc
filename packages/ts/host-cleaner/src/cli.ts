@@ -350,9 +350,10 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
 /**
- * The folders, which every command resolves so a bad folder variable is
- * refused alike; then `--config`, which must exist, else `config.json` in
- * `dirs.config`, if any. `found` says whether a file was read.
+ * The folders and the config. The folders are resolved even with `--config`,
+ * so every command refuses a bad folder variable alike. The config is
+ * `--config`, which must exist, else `config.json` in `dirs.config` if present;
+ * `found` says whether a file was read.
  */
 function loadConfig(
   v: { config?: string | undefined },
