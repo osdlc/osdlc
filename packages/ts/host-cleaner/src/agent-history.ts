@@ -63,9 +63,7 @@ export function fstabMounts(text: string): string[] {
     const [source, at] = line.trim().split(/\s+/)
     if (source === undefined || source.startsWith('#') || at === undefined) return []
     // fstab writes a space in a path as `\040`.
-    const point = at.replace(/\\([0-7]{3})/g, (_, o: string) =>
-      String.fromCharCode(parseInt(o, 8)),
-    )
+    const point = at.replace(/\\([0-7]{3})/g, (_, o: string) => String.fromCharCode(parseInt(o, 8)))
     return point.startsWith('/') && point !== '/' ? [point] : []
   })
 }
@@ -121,7 +119,7 @@ export function unmounted(path: string, mounts: ReadonlySet<string> = new Set(MO
 /** Reused by every `head` read, which is synchronous. */
 let headBuf: Buffer | undefined
 
-/** The first `HEAD_BYTES` of `file`, and whether that is all of it. */
+/** The first {@link HEAD_BYTES} of `file`, and whether that is all of it. */
 function head(file: string): { text: string; whole: boolean } {
   const fd = openSync(file, 'r')
   try {
@@ -272,7 +270,7 @@ interface Seen {
 }
 
 /** The row for the project folder `dir`, or null when it is not a candidate; `sized: false` leaves out its bytes. */
-function rowFor(kit: Kit, dir: string, seen: Seen, sized = true): Row | null {
+function rowFor(kit: Kit, dir: string, seen: Seen, { sized = true } = {}): Row | null {
   const name = basename(dir)
   if (!isDir(dir)) return null
   let record: ProjectRecord | null
@@ -287,8 +285,7 @@ function rowFor(kit: Kit, dir: string, seen: Seen, sized = true): Row | null {
   const { live, unknown } = seen.sessions
   const sessions = live.filter(
     (s) =>
-      (s.cwd !== '' && isFolderOf(s.cwd, name)) ||
-      record.sessions.includes(`${s.sessionId}.jsonl`),
+      (s.cwd !== '' && isFolderOf(s.cwd, name)) || record.sessions.includes(`${s.sessionId}.jsonl`),
   )
   if (sessions.length > 0) {
     blockers.push({
@@ -381,7 +378,7 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
       }
       if (!present(c.path)) return `already gone: ${c.path}`
       // Not sized again: `kit.remove` sizes it.
-      const now = rowFor(kit, c.path, look(ctx), false)
+      const now = rowFor(kit, c.path, look(ctx), { sized: false })
       if (now === null || now.candidate.id !== c.id) {
         throw new Error(`${c.path} is no longer a candidate`)
       }
