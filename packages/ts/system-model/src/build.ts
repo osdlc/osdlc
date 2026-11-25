@@ -6,7 +6,12 @@
  * `@osdlc/system-model/graph`.
  */
 
-export { walkManifests, DEFAULT_EXCLUDES, type WalkOptions } from './manifest-walk.ts'
+export {
+  walkManifests,
+  DEFAULT_EXCLUDES,
+  MANIFEST_FILES,
+  type WalkOptions,
+} from './manifest-walk.ts'
 export { buildDependencyGraph, type GraphOptions } from './dependency-graph.ts'
 export { applyContainment, ROOT_ID, type ContainmentOptions } from './containment.ts'
 export { scanAspects } from './aspect-scan.ts'
