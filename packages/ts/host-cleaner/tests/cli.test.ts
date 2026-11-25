@@ -797,6 +797,18 @@ describe('packages', () => {
     expect(key.code).toBe(2)
     expect(key.err).toContain('nope')
   })
+
+  test('a bad built-in entry exits 2 before any package is imported', async () => {
+    const marker = join(tempDir(), 'imported')
+    const h = withPackage(
+      { git: { enabled: 'no' }, fixture: { package: FIXTURE } },
+      `import { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(marker)}, '')\n${FIXTURE_PLUGIN}`,
+    )
+    const r = await h.go(['status'])
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('plugins.git.enabled')
+    expect(existsSync(marker)).toBe(false)
+  })
 })
 
 describe('plan and clean', () => {

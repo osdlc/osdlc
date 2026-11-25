@@ -19,6 +19,7 @@ import {
   packageEntries,
   packageRoots,
   pluginKit,
+  survey,
   type PackageEntry,
   type PluginDefinition,
 } from '../src/index.ts'
@@ -86,6 +87,7 @@ describe('where a package is looked for', () => {
         ? join(dirname(process.execPath), 'node_modules')
         : join(dirname(dirname(process.execPath)), 'lib', 'node_modules'),
     )
+    expect(packageRoots({ npm_config_prefix: '' }, '/x')).toEqual(packageRoots({}, '/x'))
     const appData = packageRoots({ APPDATA: '/users/me/AppData/Roaming' }, '/x')
     expect(appData.at(-1)).toBe(
       process.platform === 'win32'
@@ -156,6 +158,41 @@ describe('what a package must export', () => {
     expect(() => plugin.delete!(c, fakeContext())).toThrow(/not inside/)
   })
 
+  test('a plugin made as a class, with a private field and a getter-only name, runs as it is', async () => {
+    const r = await load(
+      `import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { PLUGIN_API, definePlugin, z } from '@osdlc/host-cleaner/plugin'
+class Fixture {
+  #root
+  #kit
+  constructor(root, kit) { this.#root = root; this.#kit = kit }
+  get name() { return 'fixture' }
+  detect() { return existsSync(this.#root) }
+  roots() { return [this.#root] }
+  discover() {
+    return readdirSync(this.#root).map((n) =>
+      this.#kit.candidate({ kind: 'scratch', path: join(this.#root, n), why: 'a fixture folder', costDescription: 're-download' }),
+    )
+  }
+  delete(c, ctx) { return this.#kit.remove(c.path, ctx) }
+}
+export default definePlugin({
+  name: 'fixture',
+  api: PLUGIN_API,
+  settings: z.strictObject({ keep: z.array(z.string()).default([]) }),
+  create: ({ env, kit }) => new Fixture(join(env.HOME ?? '', '.fixture'), kit),
+})
+`,
+    )
+    expect(r.failed).toEqual([])
+    const { home, plugin } = created(r.loaded[0]!.definition)
+    expect(plugin.constructor.name).toBe('Fixture')
+    expect(await contractSuite(plugin)).toEqual([])
+    const s = await survey([plugin], fakeContext())
+    expect(s.candidates.map((c) => c.id)).toEqual([`scratch:${join(home, '.fixture', 'old')}`])
+  })
+
   test('a wrong api is refused, naming the package and both versions', async () => {
     const reason = await failure(
       exporting(
@@ -165,6 +202,10 @@ describe('what a package must export', () => {
     expect(reason).toBe(
       `plugins.fixture.package: ${FIXTURE} 1.0.0 is written for plugin api 2, and this host-cleaner supports plugin api ${PLUGIN_API}; install versions of the two that match`,
     )
+    // Before the shape, which another api may change.
+    expect(
+      await failure(exporting("{ name: 'fixture', api: 0, settings: {}, create() {} }")),
+    ).toContain('is written for plugin api 0')
   })
 
   test('a plugin named other than its config key is refused', async () => {
@@ -291,6 +332,13 @@ describe('config entries and the run’s plugins', () => {
       'aardvark',
     ])
     expect(loaded.packages.map((p) => p.version)).toEqual(['1.0.0', '1.0.0'])
+    expect(() =>
+      loadPlugins({ shipped, user }, {}, { loaded: [], entries: [entry('node', FIXTURE)] }),
+    ).toThrow(
+      new PackageError(
+        'plugins.node.package: node is the built-in plugin; every plugin has its own name, so a package plugin needs another',
+      ),
+    )
     writeFileSync(join(user, 'beta.yaml'), descriptor)
     expect(() => loadPlugins({ shipped, user }, {}, { loaded: [], entries })).toThrow(
       new DescriptorLoadError(

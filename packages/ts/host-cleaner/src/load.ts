@@ -17,6 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { z } from 'zod'
 
+import { byName } from './helpers.ts'
 import { builtOn } from './kit.ts'
 import { HOOKS, PLUGIN_API, type Plugin, type PluginDefinition } from './types.ts'
 
@@ -74,7 +75,7 @@ export const isPackaged = (def: PluginDefinition): boolean => fromPackage.has(de
  * The `node_modules` folders a package is looked for in, in order: those
  * above host-cleaner's own folder (`from`), as Node resolves host-cleaner's
  * own imports, then the global prefix's. The prefix is `npm_config_prefix`
- * when set, else npm's default: `%APPDATA%\npm` on Windows, and the one Node
+ * when set and not empty, else npm's default: `%APPDATA%\npm` on Windows, and the one Node
  * is installed under elsewhere or without `APPDATA`.
  */
 export function packageRoots(
@@ -87,8 +88,9 @@ export function packageRoots(
     if (dirname(dir) === dir) break
   }
   const windows = process.platform === 'win32'
+  // An empty prefix is unset, as npm reads it: it would make the root relative to the cwd.
   const prefix =
-    env.npm_config_prefix ??
+    (env.npm_config_prefix === '' ? undefined : env.npm_config_prefix) ??
     (!windows
       ? dirname(dirname(process.execPath))
       : env.APPDATA !== undefined
@@ -127,10 +129,6 @@ export function packageEntries(
   }
   return entries.sort(byName)
 }
-
-/** Orders by `name`, by code unit. */
-export const byName = (a: { name: string }, b: { name: string }): number =>
-  a.name < b.name ? -1 : a.name > b.name ? 1 : 0
 
 /** The `exports` conditions Node matches for an `import`. */
 const IMPORT_CONDITIONS = ['node', 'import', 'module-sync', 'default']
@@ -297,16 +295,19 @@ async function loadPackage(entry: PackageEntry, roots: readonly string[]): Promi
     throw fail(`${label} at ${dir} failed to import: ${(err as Error).message}`)
   }
   const def = mod.default
+  const api = isObject(def) ? def.api : undefined
+  const otherApi = (): PackageLoadError =>
+    fail(
+      `${label} is written for plugin api ${JSON.stringify(api)}, and this host-cleaner supports plugin api ${PLUGIN_API}; install versions of the two that match`,
+    )
+  // An api given is checked before the shape, which another api may change.
+  if (api !== undefined && api !== PLUGIN_API) throw otherApi()
   const shape = notADefinition(def)
   if (shape !== undefined) {
     throw fail(`${label} ${shape}; it must export default definePlugin({ ... })`)
   }
-  const { api, name } = def as { api?: unknown; name: string }
-  if (api !== PLUGIN_API) {
-    throw fail(
-      `${label} is written for plugin api ${JSON.stringify(api)}, and this host-cleaner supports plugin api ${PLUGIN_API}; install versions of the two that match`,
-    )
-  }
+  if (api !== PLUGIN_API) throw otherApi()
+  const { name } = def as { name: string }
   if (name !== entry.name) {
     throw fail(
       `${label} is the plugin ${name}, so its entry must be plugins.${name}, not plugins.${entry.name}`,

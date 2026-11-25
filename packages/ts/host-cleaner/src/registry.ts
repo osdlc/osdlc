@@ -13,7 +13,8 @@ import {
   type DescriptorSources,
   type LoadedDescriptor,
 } from './descriptor/load.ts'
-import { byName, type LoadedPackage, type PackageEntry } from './load.ts'
+import { byName } from './helpers.ts'
+import { PackageError, type LoadedPackage, type PackageEntry } from './load.ts'
 import type { Plugin, PluginDefinition } from './types.ts'
 
 export { BUILT_IN_PLUGINS }
@@ -44,6 +45,7 @@ export interface Packages {
  * config, is one of `problems`.
  *
  * @throws DescriptorLoadError for a descriptor folder that can't be read
+ * @throws PackageError for a package entry named as a built-in plugin
  */
 export function findPlugins(
   sources: DescriptorSources,
@@ -51,6 +53,12 @@ export function findPlugins(
   packages: Packages = { loaded: [], entries: [] },
 ): Loaded {
   const builtIns = BUILT_IN_PLUGINS.map((d) => d.name)
+  const clash = packages.entries.find((e) => builtIns.includes(e.name))
+  if (clash !== undefined) {
+    throw new PackageError(
+      `plugins.${clash.name}.package: ${clash.name} is the built-in plugin; every plugin has its own name, so a package plugin needs another`,
+    )
+  }
   const code = [...builtIns, ...packages.entries.map((e) => e.name)]
   const found = findDescriptors(sources, builtIns)
   const problems = [...found.problems]
@@ -96,6 +104,7 @@ export function findPlugins(
  * @throws DescriptorLoadError for a descriptor named as a built-in plugin or a
  *   package in the config, a `supersededBy` that names neither, or as loadDescriptors
  * @throws DescriptorError for a descriptor file that can't be used
+ * @throws PackageError as findPlugins
  */
 export function loadPlugins(
   sources: DescriptorSources,

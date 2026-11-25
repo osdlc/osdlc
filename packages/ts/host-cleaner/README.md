@@ -369,7 +369,7 @@ runs `survey` and `clean` itself can do the same:
 | `packageRoots(env)` | The `node_modules` folders a package is looked for in, in order. |
 | `loadPackages(entries, roots)` | Imports each entry's package: `{ loaded, failed }`. A failure is a `PackageFailure`, not a throw. |
 | `loadDescriptors({ shipped, user, flag }, reserved)` | The descriptors a run uses, each with its `source` and the file it `replaces`. Throws `DescriptorLoadError` for a name clash, `DescriptorError` for a bad file. |
-| `loadPlugins(sources, opts, { loaded, entries })` | The built-ins, then the packages, then one `descriptorPlugin` per descriptor: `{ definitions, packages, descriptors }`. |
+| `loadPlugins(sources, opts, { loaded, entries })` | The built-ins, then the packages, then one `descriptorPlugin` per descriptor: `{ definitions, packages, descriptors }`. Throws `PackageError` for a package entry named as a built-in plugin. |
 | `parseDescriptor(text, source)`, `readDescriptor(path)` | One descriptor, checked; `DescriptorError` lists each issue with its field and line. `descriptorIssues(value)` returns them instead. |
 | `descriptorPlugin(name, descriptor, opts)` | The `PluginDefinition` for one descriptor. |
 | `DescriptorSchema`, `descriptorJsonSchema()` | The format as a zod schema and as the JSON Schema in `schemas/descriptor-1.json`. |

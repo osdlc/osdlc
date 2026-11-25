@@ -487,6 +487,8 @@ async function loadRun(
   const entries = packageEntries(config.plugins, (n) =>
     BUILT_IN_PLUGINS.some((d) => d.name === n) ? 'the built-in plugin' : undefined,
   )
+  // The built-ins' entries are checked before any package's code runs.
+  checkPlugins(config, path, BUILT_IN_PLUGINS)
   const from = deps.plugins === undefined ? sourcesFor(v, ctx, deps) : undefined
   const used = from === undefined ? [] : entries.filter((e) => !leftOut(e.name, naming, config))
   const packages = await loadPackages(used, deps.packageRoots ?? packageRoots(ctx.env))

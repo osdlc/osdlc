@@ -15,8 +15,7 @@ import { readdirSync, statSync, type Dirent } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { realOr } from '../helpers.ts'
-import { byName } from '../load.ts'
+import { byName, realOr } from '../helpers.ts'
 import { DescriptorError, PLUGIN_NAME, readDescriptor, type Descriptor } from './schema.ts'
 
 /** The package's own descriptors: `descriptors/` beside `src/` and `dist/`. */
