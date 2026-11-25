@@ -56,6 +56,12 @@ test('two workspace packages produce one dependency edge', async () => {
   const names: readonly string[] = MANIFEST_FILES
   expect(manifests.every((m) => names.includes(basename(m.path)))).toBe(true)
 
+  // Pick manifests out of a file list, as a caller with no directory to walk does.
+  const listed = ['pkg-a/package.json', 'pkg-a/README.md', 'crates/x/Cargo.toml']
+  const isManifest = (path: string) =>
+    (MANIFEST_FILES as readonly string[]).includes(path.slice(path.lastIndexOf('/') + 1))
+  expect(listed.filter(isManifest)).toEqual(['pkg-a/package.json', 'crates/x/Cargo.toml'])
+
   const containment: ContainmentOptions = {}
   applyContainment(graph, containment)
   expect(graph.nodes.find((n) => n.id === 'pkg-a')!.parent).toBe(ROOT_ID)
