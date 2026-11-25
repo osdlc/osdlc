@@ -127,7 +127,7 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
  *
  * @param opts - Passed to `gitPlugin`. The command line passes `--worktrees`
  *   and `--branches` here as `sweep.only`, so no other plugin's `create` sees
- *   git's kinds. They are copied, so changing them afterwards changes no
+ *   git's kinds. `sweep.only` is copied, so changing it afterwards changes no
  *   plugin the definition builds.
  */
 export function gitDefinitionWith(opts: GitPluginOptions = {}): PluginDefinition {
