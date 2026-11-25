@@ -6,6 +6,10 @@
  * `which(binary, opts?)` returns the path a spawn would run, or `undefined`.
  * It takes `env` like the runners, so a test points `PATH` at its own folder
  * instead of depending on what the machine has.
+ *
+ * A child that looks programs up itself, as git does for `ssh`, gets
+ * `absolutePathEntries(PATH)` as its `PATH`, so it never finds one in the
+ * folder it runs in either.
  */
 
 import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -16,8 +20,10 @@ import { afterAll, expect, test } from 'vitest'
 
 import {
   absolutePathCandidates,
+  absolutePathEntries,
   spawnRunnerAsync,
   which,
+  type AbsolutePathOptions,
   type PathCandidateOptions,
   type SpawnRunnerOptions,
   type WhichOptions,
@@ -83,6 +89,29 @@ test.skipIf(process.platform === 'win32')(
         platform: 'linux',
       } satisfies PathCandidateOptions)
       expect(candidates).toEqual([join(bin, 'codex')])
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  },
+)
+
+// POSIX only: the stand-ins have no `.exe` or `.cmd` extension, so Windows rules do not match them; 19-find-on-windows covers Windows.
+test.skipIf(process.platform === 'win32')(
+  'a child that looks a program up itself gets only the absolute PATH entries',
+  async () => {
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seam-which-repo-')))
+    try {
+      writeFileSync(join(repo, 'gemini'), '#!/bin/sh\necho planted\n')
+      chmodSync(join(repo, 'gemini'), 0o755)
+      writeFileSync(join(bin, 'gemini'), '#!/bin/sh\necho installed\n')
+      chmodSync(join(bin, 'gemini'), 0o755)
+      // The shell looks `gemini` up on the PATH it is given, from `repo`.
+      const opts: AbsolutePathOptions = { platform: process.platform }
+      const path = absolutePathEntries(`.:${bin}:/usr/bin:/bin`, opts)
+      expect(path).toBe(`${bin}:/usr/bin:/bin`)
+      const sh = spawnRunnerAsync('sh', { absolutePathOnly: true })
+      const r = await sh.run(['-c', 'gemini'], { cwd: repo, env: { PATH: path ?? '' } })
+      expect(r.stdout.trim()).toBe('installed')
     } finally {
       rmSync(repo, { recursive: true, force: true })
     }
