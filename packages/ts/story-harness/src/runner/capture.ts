@@ -19,6 +19,7 @@ import {
   VIEWPORT,
 } from './story.ts'
 
+/** What {@link captureStories} shoots, where it writes and how. */
 export interface CaptureOptions {
   /** The built Storybook directory. */
   storybookDir: string

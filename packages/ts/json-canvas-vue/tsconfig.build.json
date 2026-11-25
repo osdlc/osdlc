@@ -1,0 +1,17 @@
+{
+  // Declaration config for the published dist/. Vite writes the JavaScript and
+  // the stylesheet; vue-tsc writes the declarations with this file.
+  // Sources only, and no Node types, so a Node global in a source fails the build.
+  "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
+  "compilerOptions": {
+    "rootDir": "src",
+    // src/ is not published, so a declaration map would point at nothing.
+    "declarationMap": false,
+    "types": [],
+    // The preset rewrites `./x.ts` to `./x.js` in the output, but with that on
+    // TypeScript rejects every import of a `.vue` file (TS2876).
+    // scripts/declarations.mjs rewrites both kinds after the emit.
+    "rewriteRelativeImportExtensions": false
+  },
+  "include": ["src"]
+}
