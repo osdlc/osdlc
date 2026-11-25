@@ -1,5 +1,16 @@
 # @osdlc/corpus-schema
 
+## 0.6.0
+
+### Minor Changes
+
+- fb0034a: `x-ref` and `x-ref-form` may sit at any depth: on a property of a nested object, on the items of a list nested in one, and on a list of objects' own properties, such as `hasEvidenceLines[].hasEvidenceItems[]`. Each value is checked as a top-level one is. An error line names the field with its path, such as `lines.0.items`. In `loadCorpus()`, a reference's `field` is the dotted property names and its `pointer` the full JSON Pointer, such as `/lines/0/items/1`. Other positions, such as under `allOf`, are still an error.
+- f9fc6f0: Add `corpus-schema types [--out <file>] <folder>` and `generateTypes(model)`: TypeScript types for a corpus's records, generated from its type schemas. One interface per type with the fields of the whole `x-extends` chain, `Ref<T>` for `x-ref` fields, and a `CorpusTypes` map from type name to interface.
+
+### Patch Changes
+
+- 3e9f995: validate: a file outside a record folder that fails as a record now gets a hint when it may be supporting data. That means it sits in a subfolder with no record file, or is a `.yaml`/`.json` file among mostly `.md` records. The hint says to add the record file (or set `x-record-file`) or to move the files under a `_` folder, and stays on the error's line. The `.yml` error gets one too. Messages only: which files are records is unchanged.
+
 ## 0.5.3
 
 ### Patch Changes

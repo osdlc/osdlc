@@ -13,7 +13,7 @@ A plugin uses two entries of `@osdlc/host-cleaner`, and no other:
 
 | Entry | Holds |
 | --- | --- |
-| `@osdlc/host-cleaner/plugin` | `definePlugin`, `PLUGIN_API`, the contract's types, the kit (`pluginKit`, `idleHoursSetting` and its types), `containedIn`, `FatalRun`, and `z`. |
+| `@osdlc/host-cleaner/plugin` | `definePlugin`, `PLUGIN_API`, the contract's types, the kit (`pluginKit`, `idleHoursSetting`, `commandHasName` and their types), `CommandFailed` (what `kit.run` throws with `check: true`), `containedIn`, `FatalRun`, and `z`. |
 | `@osdlc/host-cleaner/testing` | `fakeContext`, `fakeRunner`, `tempHome` and `contractSuite`, for the plugin's own tests. |
 
 ## The package
@@ -23,11 +23,15 @@ A plugin uses two entries of `@osdlc/host-cleaner`, and no other:
   "name": "host-cleaner-scratch",
   "type": "module",
   "exports": "./dist/index.js",
-  "peerDependencies": { "@osdlc/host-cleaner": "^0.2.0" },
-  "devDependencies": { "@osdlc/host-cleaner": "^0.2.0" }
+  "peerDependencies": { "@osdlc/host-cleaner": "^0.3.0" },
+  "devDependencies": { "@osdlc/host-cleaner": "^0.3.0" }
 }
 ```
 
+- The plugin entry first ships in 0.3.0; an earlier host-cleaner has no
+  `@osdlc/host-cleaner/plugin`. host-cleaner is not on npm yet, so until it
+  is, a plugin builds against a local checkout (a `link:` or `file:`
+  dependency).
 - ESM only, like host-cleaner.
 - `@osdlc/host-cleaner` is a peer dependency, so the plugin runs on the copy
   the command line has, with the same kit and the same checks.
@@ -40,7 +44,7 @@ This plugin cleans the folders under `~/.scratch` that have sat idle:
 
 ```ts
 import { existsSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 
 import {
   DEFAULT_IDLE_HOURS,
@@ -60,7 +64,9 @@ export default definePlugin({
     const idleHours = settings.idleHours ?? DEFAULT_IDLE_HOURS
     return {
       name: 'scratch',
-      detect: () => existsSync(root),
+      // The core refuses a relative root, so say why the plugin does not run.
+      detect: () =>
+        isAbsolute(root) ? existsSync(root) : { active: false, note: `${root} is not absolute` },
       roots: () => [root],
       discover() {
         return readdirSync(root, { withFileTypes: true })
@@ -78,12 +84,13 @@ export default definePlugin({
                 }),
               ]
             }
-            if (idle.hours !== null && idle.hours < idleHours) return []
+            // No files yet: just made, or still being written, so not idle.
+            if (idle.hours === null || idle.hours < idleHours) return []
             return [
               kit.candidate({
                 kind: 'scratch',
                 path,
-                why: `idle ${Math.floor(idle.hours ?? 0)} hours`,
+                why: `idle ${Math.floor(idle.hours)} hours`,
                 costDescription: 'rebuild',
                 evidence: { newestMs: idle.newestMs },
               }),
@@ -107,18 +114,28 @@ What it relies on:
   no run has bound removes nothing.
 - **`api`** is `PLUGIN_API`, the plugin API this host-cleaner supports. It
   changes only with a major release.
-- **`settings`** is the schema of the plugin's entry in the config's
-  `plugins`. The core adds `enabled` and makes it strict, so an unknown key is
-  a config error. `create` gets the entry validated, with its defaults filled
-  in.
-- **`idleHoursSetting`**, declared under the key `idleHours`, inherits the
-  config's top-level `idleHours` when the plugin's own entry sets none.
-- **`env`** is the command line's environment.
+- **`settings`** is the schema of the plugin's settings. `create` gets them
+  validated, with their defaults filled in. The config cannot name a plugin
+  that is not shipped yet (see [Publishing it](#publishing-it)), so a program
+  that builds the plugin validates them itself, as `scratch.settings.parse(raw)`
+  in the test below. The core's `enabled` key, the strictness and the
+  inheritance below apply only to a shipped plugin's entry in the config's
+  `plugins`.
+- **`idleHoursSetting`**, declared under the key `idleHours`, takes the
+  config's top-level `idleHours` when a shipped plugin's entry sets none.
+  Parsed by your own program it stays unset when not given, so fall back to
+  `DEFAULT_IDLE_HOURS` as this plugin does.
+- **`env`** is the environment the plugin is given: the command line's, or
+  whatever the program that builds it passes.
 - **`kit.candidate`** fills in the id (`<kind>:<path>` or `<kind>:<ref>`) and
   the owner.
 - **`detect`** answers `true`, `false`, or `{ active, note }` (`Detection`).
-  `status` prints the note as a warning naming the plugin, whether it runs or
-  not. `ctx.targetsGiven` says whether the person gave targets or the run fell
+  A survey keeps the note in `notes` under the plugin's name, whether it runs
+  or not, and `status`, `plan` and `clean` print it as a warning, so write it
+  for the person reading every run. The
+  core refuses a root that is not an absolute path, so this plugin does not
+  run, and says why, when `dir` is relative (`~` is not expanded) or `HOME` is
+  unset. `ctx.targetsGiven` says whether the person gave targets or the run fell
   back to the current folder.
 
 The rules every plugin keeps:
@@ -202,7 +219,8 @@ test('scratch keeps the contract', async () => {
 - Give it a `name` no shipped plugin has (`git`, `cargo`, `node` and `orca`
   are taken).
 - Build it to JavaScript with its type declarations, and publish it as an
-  ESM package with `@osdlc/host-cleaner` as a peer dependency.
+  ESM package with `@osdlc/host-cleaner` as a peer dependency, once
+  host-cleaner itself is published.
 - Install it where host-cleaner looks: a `node_modules` folder host-cleaner
   itself resolves from, or the global npm prefix's. Then name it in the config
   under its plugin `name`:

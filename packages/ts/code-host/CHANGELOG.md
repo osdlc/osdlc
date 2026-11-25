@@ -1,5 +1,15 @@
 # @osdlc/code-host
 
+## 0.8.6
+
+### Patch Changes
+
+- 93bba46: `getPr` on the GitHub host works again with gh older than v2.63.0: its field list comes from typed-gh's `PR_VIEW_FIELDS`, which no longer asks for `baseRefOid`.
+- Updated dependencies [93bba46]
+- Updated dependencies [ebdb5ad]
+  - @osdlc/typed-gh@0.20.0
+  - @osdlc/typed-git@0.22.0
+
 ## 0.8.5
 
 ### Patch Changes

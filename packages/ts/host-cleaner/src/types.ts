@@ -48,10 +48,9 @@ export type CostDescription = (typeof COST_DESCRIPTIONS)[number]
 /**
  * A folder its owner deletes. It must sit strictly inside one of the owner's
  * `roots` or a target, be a root its owner declared `{ path, self: true }`,
- * or be or sit inside a linked worktree of a repository
- * a target is in, or of one whose main checkout is or sits inside a target;
- * the core refuses (`outside-roots`) one that is not, and checks again right
- * before `delete`.
+ * or be or sit inside a linked worktree of a repository a target is in, or of
+ * one whose main checkout is or sits inside a target; the core refuses
+ * (`outside-roots`) one that is not, and checks again right before `delete`.
  */
 export interface PathCandidate extends CandidateBase {
   /** The folder, as an absolute path. */
@@ -105,6 +104,8 @@ export interface RunCtx {
    * line; false when the CLI fell back to the folder it runs in. Unset is false.
    */
   targetsGiven?: boolean | undefined
+  /** The home folder, which no root may be or hold; the process's when unset. The CLI sets it from `HOME`, as it expands `~`. */
+  home?: string | undefined
 }
 
 /** What a hook is given: the run, and a signal of its own. */
@@ -198,11 +199,9 @@ export interface Plugin {
 /** The plugin API version this host-cleaner supports; a definition's `api` must equal it. */
 export const PLUGIN_API = 1
 
-/**
- * What `create` is told: its own entry in the config's `plugins`, validated with
- * its defaults filled in, the environment and the kit.
- */
+/** What `create` is told. */
 export interface PluginInit<S = Record<string, unknown>> {
+  /** Its own entry in the config's `plugins`, validated with its defaults filled in. */
   settings: S
   /** The command line's environment, for a plugin that runs other programs. */
   env: Readonly<Record<string, string | undefined>>

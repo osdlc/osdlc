@@ -33,7 +33,15 @@ import { sameFingerprint } from '@osdlc/repo-cleaner'
 
 import { PlanSchema } from './plan.ts'
 import { boundBy, type Bounds } from './roots.ts'
-import { OUTSIDE_ROOTS, plan, survey, type Survey } from './run.ts'
+import {
+  HookTimeout,
+  OUTSIDE_ROOTS,
+  callWithin,
+  errorText,
+  plan,
+  survey,
+  type Survey,
+} from './run.ts'
 import { HOOKS, type Candidate, type Ctx, type PathCandidate, type Plugin } from './types.ts'
 
 /** A hook's context: no targets, none given, nothing allowed, and a signal that is never aborted, under `over`. */
@@ -147,15 +155,14 @@ function notJson(value: unknown, at: string): string | null {
   return null
 }
 
-const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
-
 /**
  * Checks `plugin` against the contract, surveying it twice over `ctx`, and
  * returns one line per problem, each starting with the plugin's name. Give it
  * a fixture where the plugin is detected and proposes at least one candidate,
  * or the checks have nothing to check. It checks that:
- * - its `limits` name hooks and are positive numbers of milliseconds;
- * - the survey warns of nothing: no hook throws or runs past its time limit,
+ * - its `limits` name hooks;
+ * - the survey warns of nothing: every limit is a positive number of
+ *   milliseconds, no hook throws or runs past its time limit,
  *   `detect` and `roots` answer in shapes the core takes and no root is
  *   refused, every candidate's id is unique, and each names the plugin as its
  *   owner and has one of a path and a ref (a `detect` note is no problem);
@@ -184,11 +191,9 @@ export async function contractSuite(
   const run = fakeContext(ctx)
 
   const hooks = new Set<string>(HOOKS)
-  for (const [hook, ms] of Object.entries(plugin.limits ?? {})) {
+  // A limit that is not a positive number is one of the survey's warnings.
+  for (const hook of Object.keys(plugin.limits ?? {})) {
     if (!hooks.has(hook)) say(`limits names ${hook}, which is not a hook`)
-    else if (ms !== undefined && !(Number.isFinite(ms) && ms > 0)) {
-      say(`limits.${hook} is ${ms}; it must be a positive number of milliseconds`)
-    }
   }
 
   let first: Survey
@@ -266,7 +271,9 @@ function listing(dir: string): string | null {
  * Calls `plugin.delete` on a path candidate whose real path is outside its
  * roots and the targets: one of its own, its folder moved out and a symlink
  * left in its place, or, with none on disk, a made-up one. It must throw
- * within `limitMs` and leave the moved folder as it was.
+ * within `limitMs` and leave the moved folder as it was. A folder that cannot
+ * be moved out (as across filesystems) or put back is reported, and one not
+ * put back is kept where it was moved.
  */
 async function escapedDelete(
   plugin: Plugin,
@@ -280,11 +287,11 @@ async function escapedDelete(
     self: s.selfRoots[plugin.name] ?? [],
     targets: s.ctx.targets,
     linked: s.linked,
-    home: homedir(),
+    home: s.ctx.home ?? homedir(),
   }
   const outside = join(scratch.home, 'outside')
   const moved = join(outside, 'moved')
-  let putBack: (() => void) | undefined
+  let putBack: (() => boolean) | undefined
   try {
     mkdirSync(outside)
     if (boundBy(bounds, moved) !== null) {
@@ -309,50 +316,41 @@ async function escapedDelete(
         evidence: { path: moved },
       }
     } else {
-      renameSync(own.path, moved)
-      symlinkSync(moved, own.path)
+      try {
+        renameSync(own.path, moved)
+      } catch (err) {
+        say(`the suite could not move ${own.path} out to test delete: ${errorText(err)}`)
+        return
+      }
+      // True when the folder is back, or the plugin deleted it.
       putBack = () => {
         if (lstatSync(own.path, { throwIfNoEntry: false })?.isSymbolicLink() === true) {
           unlinkSync(own.path)
         }
-        if (existsSync(moved) && !existsSync(own.path)) renameSync(moved, own.path)
+        if (!existsSync(moved)) return true
+        if (existsSync(own.path)) return false
+        renameSync(moved, own.path)
+        return true
       }
+      symlinkSync(moved, own.path)
       c = own
     }
     const before = listing(moved)
     const where = own === undefined ? moved : `${c.path} (moved to ${moved})`
 
-    const stop = new AbortController()
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const late = new Promise<{ late: true }>((resolve) => {
-      timer = setTimeout(() => {
-        stop.abort(new Error(`the contract suite stopped it after ${limitMs} ms`))
-        resolve({ late: true })
-      }, limitMs)
-    })
-    let said: string | { late: true }
+    let said: string
     try {
-      const deleting = (async () =>
-        plugin.delete!(c, {
-          ...s.ctx,
-          targetsGiven: s.ctx.targetsGiven ?? false,
-          signal: stop.signal,
-        }))()
-      said = await Promise.race([deleting, late])
-    } catch {
-      if (listing(moved) !== before) {
+      said = await callWithin(limitMs, s.ctx, (x) => plugin.delete!(c, x))
+    } catch (err) {
+      if (err instanceof HookTimeout) {
+        say(
+          `delete did not finish within ${limitMs} ms for ${where}, which is outside its roots and the targets`,
+        )
+      } else if (listing(moved) !== before) {
         say(
           `delete removed ${where} before refusing it, which is outside its roots and the targets`,
         )
       }
-      return
-    } finally {
-      clearTimeout(timer)
-    }
-    if (typeof said !== 'string') {
-      say(
-        `delete did not finish within ${limitMs} ms for ${where}, which is outside its roots and the targets`,
-      )
       return
     }
     say(
@@ -361,7 +359,14 @@ async function escapedDelete(
         : `delete removed ${where}, which is outside its roots and the targets`,
     )
   } finally {
-    putBack?.()
-    scratch.cleanup()
+    let back = true
+    try {
+      back = putBack?.() ?? true
+    } catch {
+      back = false
+    }
+    // Never remove a folder of the plugin's that was not put back.
+    if (back) scratch.cleanup()
+    else say(`the suite could not put its folder back; it is kept at ${moved}`)
   }
 }
