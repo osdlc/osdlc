@@ -25,7 +25,9 @@ const scratch = definePlugin({
 
 test('the README shows the plugin this file tests', () => {
   const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8')
-  const shown = /```ts\n(import [^\n]*'@osdlc\/host-cleaner\/plugin'\n[\s\S]*?)```/.exec(readme)?.[1]
+  const shown = /```ts\n(import [^\n]*'@osdlc\/host-cleaner\/plugin'\n[\s\S]*?)```/.exec(
+    readme,
+  )?.[1]
   const definition = shown?.split('export default ')[1]
   expect(definition).toBeDefined()
   expect(readFileSync(new URL(import.meta.url), 'utf8')).toContain(`const scratch = ${definition}`)
