@@ -93,7 +93,7 @@ function outsidePackage(): string {
   return dir
 }
 
-// One package and one compile, shared by the tests that use them.
+// One package, shared by the tests that use it.
 let dir = ''
 beforeAll(() => {
   dir = outsidePackage()

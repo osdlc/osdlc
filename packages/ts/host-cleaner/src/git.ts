@@ -123,9 +123,11 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
 }
 
 /**
- * The `git` plugin as a definition, with no settings of its own. The command
- * line passes `--worktrees` and `--branches` here as `sweep.only`, so no other
- * plugin's `create` sees git's kinds.
+ * The `git` plugin as a definition, with no settings of its own.
+ *
+ * @param opts - Passed to `gitPlugin`. The command line passes `--worktrees`
+ *   and `--branches` here as `sweep.only`, so no other plugin's `create` sees
+ *   git's kinds.
  */
 export const gitDefinitionWith = (opts: GitPluginOptions = {}): PluginDefinition =>
   definePlugin({

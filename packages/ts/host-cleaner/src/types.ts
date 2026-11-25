@@ -198,11 +198,9 @@ export interface Plugin {
 /** The plugin API version this host-cleaner supports; a definition's `api` must equal it. */
 export const PLUGIN_API = 1
 
-/**
- * What `create` is told: its own entry in the config's `plugins`, validated with
- * its defaults filled in, the environment and the kit.
- */
+/** What `create` is told. */
 export interface PluginInit<S = Record<string, unknown>> {
+  /** Its own entry in the config's `plugins`, validated with its defaults filled in. */
   settings: S
   /** The command line's environment, for a plugin that runs other programs. */
   env: Readonly<Record<string, string | undefined>>

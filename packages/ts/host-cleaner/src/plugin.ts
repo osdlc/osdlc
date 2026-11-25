@@ -1,9 +1,7 @@
 /**
  * `@osdlc/host-cleaner/plugin`: what a code plugin is written with, and
- * nothing more. `definePlugin`, the API version, the contract's types, the
- * kit, and `z`, so a plugin's settings schema uses the same zod as the core.
- * The guide is `docs/guide/writing-a-plugin.md`. A plugin's tests use
- * `@osdlc/host-cleaner/testing` beside it.
+ * nothing of the run. `z` is re-exported so a plugin's settings schema uses
+ * the same zod as the core. See `docs/guide/writing-a-plugin.md`.
  */
 
 export { z } from 'zod'
