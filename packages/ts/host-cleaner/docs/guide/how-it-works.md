@@ -40,6 +40,7 @@ owner delete it. The first version ships four plugins: `git` (repo-cleaner),
 
 | File | What it holds |
 | --- | --- |
+| `src/index.ts` | The main entry (`exports['.']` in `package.json`): re-exports the contract, the phase runner, the plan and receipt, `containedIn`, the kit and the four plugins from the files below. |
 | `src/types.ts` | The contract: `Candidate` (a path or a ref), `Objection`, `Plugin` and its hooks, `definePlugin`, `PluginInit`, `PLUGIN_API`. |
 | `src/run.ts` | The phase runner: `survey`, `plan`, `decide`, `recheck`, `clean`; hook time limits; the core's own objections; nesting. |
 | `src/roots.ts` | Containment: `containedIn`, `boundBy`, `linkedCheckouts`, `linkedWorktreeOf`; which roots a plugin may have: `rootProblem`, `acceptRoots`. |
@@ -94,7 +95,8 @@ flowchart LR
    `ignore` folder are left out.
 4. **roots.** Each plugin names the folders it may delete in besides the
    targets: a path, or `{ path, self: true }` when the folder itself may be a
-   candidate. The core leaves out, with a warning, a root that is `/`, is or
+   candidate. The core leaves out, with a warning, a root that is not an
+   absolute path or contains `..`, one that is `/`, is or
    holds the home folder, is a personal folder (`~/Documents`, `~/Library`,
    `~/.ssh` and the others), is or holds a target or a linked worktree, or
    holds `.git`, and a self root that is a symlink. It then binds every
@@ -161,7 +163,8 @@ before the git worktree that holds it.
 The owner's decision on nesting: an outer candidate is still blocked when any
 inner one does not run, since deleting it would delete the inner one too.
 What changed is that it says why. Its `blocked` detail lists each such
-requirement as `requires <id>, which <why>`, joined by `; `:
+requirement as `requires <id>, which <why>`, joined by `; `. When the
+candidates are decided from a survey, `<why>` is one of:
 
 | `<why>` | When |
 | --- | --- |
@@ -173,6 +176,21 @@ requirement as `requires <id>, which <why>`, joined by `; `:
 | `is gone` | it is no longer there |
 | `is <reason>: <detail>` | its own dropped entry, as `is blocked: requires …` down a chain, or `is changed: its evidence moved since the plan` |
 | `does not run` | none of the above applies: it is selected and has no dropped entry, yet does not run |
+
+When `clean` checks the plan again (`recheck`), `<why>` is worded from the
+inner one's own dropped entry alone:
+
+| `<why>` | When |
+| --- | --- |
+| `needs --allow <codes>` | it carries a protest the plan does not grant |
+| `is spared (--spare <entry>)` | the plan spares it |
+| `is gone` | no plugin proposes it now |
+| `is blocked: <by>: <reason>` | something refuses it now, such as an Orca agent that started in its folder since the plan |
+| `is blocked: requires …` | its own requirement does not run, down a chain |
+| `is blocked: its requirements form a cycle` | its requirements lead back to it |
+| `is ignored: inside ignored <dir>` | it is inside an `ignore` folder |
+| `is changed: its evidence moved since the plan` | its evidence moved |
+| `does not run` | it has no dropped entry, yet does not run |
 
 The detail shows in the clean preview (text and JSON), in the receipt, and in
 the `clean -i` checklist as a ` (blocked: …)` suffix. A step skipped because a
@@ -221,7 +239,7 @@ the public plugin entry (k-public-api) will offer.
 
 | Plugin | Proposes | Objects | Deletes with |
 | --- | --- | --- | --- |
-| `git` | worktrees (paths) and local branches (refs, `at` the repository), from repo-cleaner's sweep | repo-cleaner's blockers as `refuse`, its risks as `protest` | repo-cleaner's `removeCandidate`; with the `archive` option (set in code; the command line does not offer it yet), an archive push first |
+| `git` | worktrees (paths) and local branches (refs, `at` the repository), from repo-cleaner's sweep | repo-cleaner's blockers as `refuse`, its risks as `protest` | repo-cleaner's `removeCandidate`; with the [`archive` option](../../README.md#the-git-plugin), an archive push first |
 | `cargo` | `target/` with a `CACHEDIR.TAG`, idle for `idleHours`; `target/*/incremental` where incremental builds are off | a build running in the checkout, or an unreadable process table; a path leading out of its checkout | `kit.remove`, after reading the checkout again |
 | `node` | `node_modules` of a linked worktree idle for `idleHours` | any busy process in the worktree | `kit.remove`, after reading the worktree again |
 | `orca` | `orca-record` refs for records whose folder is gone, held | notes, `orca-agent-active`, `orca-terminal-unverifiable`, `close-terminals`, `orca-unreachable` on `git`'s worktrees | `orca worktree rm` on a record; `prepare` closes terminals, `deleted` forgets the record after `git` removed the folder |
@@ -233,12 +251,8 @@ still answers active, with the reason as its note.
 ## Command line
 
 `status`, `plan`, `clean`, `config` and `plugins`, in repo-cleaner's words
-(`--pick`, `--spare`, `--allow`, `-i`). There is no `--archive` yet: the
-`git` plugin's `archive` option is reachable only by building the plugin in
-code. `clean --plan` drops, as `gone`, a planned candidate no plugin proposes
-now, including one from a plugin this install does not have. A
-`plugins.<name>` entry in the config that no plugin has is refused (exit 2).
-host-cleaner refuses to run as root.
+(`--pick`, `--spare`, `--allow`, `-i`). What each command and flag does is in
+the README's [command line](../../README.md#command-line).
 
 `plugins` runs `detect`, `scope` and `roots` and nothing else (`inspect` in
 `src/run.ts`), with the same limits and the same root checks as the survey. It
@@ -248,7 +262,8 @@ prints `targets: <targets>`, then one line per plugin:
   <name>  <source>  <state>[: <reason>][; note: <note>]
 ```
 
-- `<source>` is `built-in` for every plugin today.
+- `<source>` is `built-in` or `given`; the README's
+  [which plugins run here](../../README.md#which-plugins-run-here) says which.
 - `<state>` is `disabled`, `not detected`, or `detected; roots: <roots>`. A
   self root is followed by ` (itself too)`; a plugin with no roots reads
   `none, the targets alone`.
@@ -299,15 +314,15 @@ roots and checks `inUse.processes` with `kit.running({ name })`.
 | `detect` | does this plugin apply? | may also answer `{ active, note }` (owner's decision) |
 | `ctx` | `ctx.signal` | also `targetsGiven` (owner's decision) |
 | `roots` | folders the plugin may delete inside | also `{ path, self: true }`, where the folder itself may be a candidate. The core refuses `/`, home, a personal folder, a target, a linked worktree or a checkout as any plugin's root, where the design checks only descriptor paths (owner's decision) |
-| `kit.run`, `kit.running` | `kit.run(argv)`, `kit.running(name)` | `kit.run` requires `opts.signal`; `kit.running` requires `ctx` and takes `{ name }` (owner's decision) or `{ in: folder }` |
+| `kit.run`, `kit.running` | `kit.run(argv)`, `kit.running(name)` | `kit.run` requires `opts.signal`; `kit.running` requires `ctx` and takes a folder, as a string or `{ in: folder }`, or `{ name }` (owner's decision) |
 | `kit.idle` | how long since anything changed | returns `{ unmeasured: false, newestMs, hours }` or `{ unmeasured: true }` |
 | Kit helpers | the design's list | adds `kit.size` and `kit.owner`; `kit.remove` takes an optional `ctx` |
 | Binding | a per-call argument | per-kit state the core sets each run |
 | Contract suite | checks that `delete` returns a sentence | does not check that `delete` returns one. For `cargo` and `node`, the escaped delete is refused by their own re-check before `kit.remove` is reached. |
 | Nesting | an inner refusal refuses the outer (D1) | any inner candidate that does not run blocks the outer, and the reason names it (owner's decision) |
 | Folders | the `xdg` convention on every OS (D5) | tiered-dirs' default `native` convention, so macOS uses `~/Library` unless `HOST_CLEANER_CONVENTION=xdg` is set; k-xdg (#1018) |
-| Unknown plugin names | a name no plugin has, without `package`, is a warning | an error (exit 2); a planned candidate from a plugin the install lacks is dropped as `gone`; k-unknown (#1020) |
-| `clean --archive` | not named; the plan adds it as k-archive (#1021) | not offered; the `git` plugin's `archive` is set only in code |
+| Unknown plugin names | a name no plugin has, without `package`, is a warning | as the README's [files and config](../../README.md#files-and-config) and [command line](../../README.md#command-line) say; k-unknown (#1020) |
+| `clean --archive` | not named; the plan adds it as k-archive (#1021) | not offered; see the README's [`git` plugin](../../README.md#the-git-plugin); k-archive (#1021) |
 | Containment | inside the plugin's roots or a target (D10) | also inside a linked worktree of a target's repository, or one whose main checkout is in a target, and a self root itself (owner's decisions) |
 
 Not built yet, by plan phase:

@@ -4,6 +4,12 @@ How `@osdlc/host-cleaner` is built: what it adds to
 [repo-cleaner](../../packages/ts/repo-cleaner/README.md), how a sweep, plan, check and run
 flow through it, and what each adapter does.
 
+> **Replaced.** This page is history: it describes the stack before the plugin
+> model, with `--auto`, `schedule`, the `claude-code` adapter and the adapter
+> contract, none of which the package has now. How host-cleaner is built today
+> is in its [how it works](../../packages/ts/host-cleaner/docs/guide/how-it-works.md);
+> the design is the [system description](host-cleaner-system.md).
+>
 > **Status.** This describes the stack of PRs 943 to 948 (branch
 > `sksizer/issue-666-scheduled-run` holds all six). They are not merged, so
 > `packages/ts/host-cleaner/` is not on `main` yet and the code references below

@@ -8,6 +8,8 @@ are in the review page
 [host-cleaner-plugins](../parley/host-cleaner-plugins.html) (source
 [host-cleaner-plugins.json](../parley/host-cleaner-plugins.json)).
 
+Superseded in part by [D-R8KM](D-R8KM-host-cleaner-v1-attended-only.md): the unattended subset and launchd scheduling no longer hold.
+
 ## Decision
 
 host-cleaner is a set of **plugins**, `git` among them, run through phases

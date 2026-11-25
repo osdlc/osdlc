@@ -84,13 +84,9 @@ real path, since deleting it would delete them. So `cargo`'s `target/` goes
 before the git worktree that holds it, and a `target/` that does not run
 (refused, spared, held, or carrying a protest not allowed) keeps the worktree
 too. The worktree is then `blocked`, and its reason names each candidate
-inside it that does not run and what would let it run, as `requires <id>,
-which <why>`, joined by `; `. For example: `requires artifact:…/target, which
-needs --allow unmeasured`. Every form `<why>` takes is listed under
-[nesting](docs/guide/how-it-works.md#nesting) in how-it-works. The clean
-preview (text and JSON), the `clean -i` checklist and the receipt show it. A
-step skipped because a requirement failed during the run says `requires <id>,
-which did not complete`.
+inside it that does not run and what would let it run. Its wording, and where
+it shows, are under [nesting](docs/guide/how-it-works.md#nesting) in
+how-it-works.
 
 ```ts
 import { join } from 'node:path'

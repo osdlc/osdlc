@@ -5,20 +5,7 @@ model became a plugin model. Accepted 2026-10-07 in sksizer/dev. Moved here on 2
 repo-cleaner 0.18. Builds on
 [D-RSWP](../../packages/ts/repo-cleaner/docs/planning/decisions/D-RSWP-standalone.md).
 
-> **Status, 2026-11-23.** Kept as history; the text below is not edited. Where
-> D-H3QW supersedes it, the adapters and their contract became plugins,
-> `--no-adapter` became `--skip-plugin`, and there is no `removeWorktree` hook.
-> The first version does not build what this record calls the unattended
-> subset (`--auto`), launchd scheduling, the `claude-code`
-> adapter and its `close-session` risk
-> ([#665](https://github.com/osdlc/osdlc/issues/665),
-> [#666](https://github.com/osdlc/osdlc/issues/666)). They are recorded in
-> host-cleaner's backlog,
-> [B-0001](../../packages/ts/host-cleaner/docs/planning/backlog/B-0001-unattended-cleaning.md),
-> so they can come back. What still holds: repo-cleaner's own gaps, the
-> `ProcessProbe`, the one safety model, and the command seam. How the package
-> is built now is in
-> [host-cleaner's architecture](../../packages/ts/host-cleaner/docs/guide/how-it-works.md).
+Superseded in part by [D-R8KM](D-R8KM-host-cleaner-v1-attended-only.md): the unattended subset, launchd scheduling and the `claude-code` adapter.
 
 ## Decision
 
