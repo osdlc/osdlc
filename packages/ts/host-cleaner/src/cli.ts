@@ -604,7 +604,7 @@ interface PluginRow {
   source: 'built-in' | 'given'
   enabled: boolean
   detected: boolean
-  /** Why it does not run: disabled in the config, or what its `detect` threw. Null when it is detected, or `detect` answered no. */
+  /** Why it does not run: disabled in the config, or the `reason` `inspect` gave. Null when it is detected, or `detect` answered no. */
   reason: string | null
   /** Where it may delete besides the targets; empty, the targets alone. */
   roots: readonly string[]
