@@ -178,12 +178,13 @@ same folders as Linux:
 
 Each variable names the base folder, and host-cleaner adds `host-cleaner/` to
 it: with `HOST_CLEANER_CONFIG_DIR=/srv/cfg` the config is
-`/srv/cfg/host-cleaner/config.json`. The value must be an absolute path, and
-`~` in it is not expanded, so a relative or `~` path is refused with exit 2.
+`/srv/cfg/host-cleaner/config.json`. A `HOST_CLEANER_*` folder must be an
+absolute path, and `~` in it is not expanded, so a relative or `~` path is
+refused with exit 2. A relative `XDG_*` value is ignored, as the XDG spec says.
 `HOST_CLEANER_ROOT` moves all three folders, which is useful for tests.
 `HOST_CLEANER_CONVENTION=native` puts them back in macOS's own folders under
 `~/Library`. Spaces around the value are ignored and an empty value counts as
-unset; any other value than `native` or `xdg` is refused with exit 2. With no
+unset; any value other than `native` or `xdg` is refused with exit 2. With no
 home directory to place the folders in, `clean` and every command that reads
 the default config exit 1; `status`, `plan` and `config` given `--config` still
 run.

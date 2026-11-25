@@ -95,6 +95,7 @@ import {
   stripUnknownKeys,
   systemDirs,
   TieredDirs,
+  TieredDirsError,
   PathNameError,
   topLevelKeys,
   unknownKeyMessage,
@@ -396,6 +397,16 @@ test('find the tool directories under a home that is not the real one', () => {
     scratch: join(base, 'scratch'),
   })
   expect(direct.standalone('tooly').config().path.startsWith(join(base, 'config'))).toBe(true)
+
+  // A directory that cannot be placed is a `TieredDirsError`; its `code` says why.
+  let error: unknown
+  try {
+    systemDirs(VENDOR, { env: {} })
+  } catch (e) {
+    error = e
+  }
+  expect(error).toBeInstanceOf(TieredDirsError)
+  expect((error as TieredDirsError).code).toBe('MISSING_BASE_DIR')
 })
 
 test('read a setting by dotted key and tell whether it counts as set', () => {

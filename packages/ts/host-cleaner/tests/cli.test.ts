@@ -278,6 +278,17 @@ describe('folders', () => {
       Object.entries(hostDirs(...args)).map(([k, p]) => [k, p.replaceAll('\\', '/')]),
     )
 
+  /** A home, a directory and a `--config` file, on a machine `main` takes for a Mac. */
+  const macHome = (): { home: string; cwd: string; file: string } => {
+    const real = Object.getOwnPropertyDescriptor(process, 'platform')!
+    cleanups.push(() => Object.defineProperty(process, 'platform', real))
+    Object.defineProperty(process, 'platform', { ...real, value: 'darwin' })
+    const home = tempDir()
+    const file = join(home, 'config.json')
+    writeFileSync(file, '{}')
+    return { home, cwd: tempDir(), file }
+  }
+
   test('macOS uses the xdg folders, as Linux does', () => {
     for (const platform of ['darwin', 'linux']) {
       expect(posixDirs({}, { platform, home: '/home/me' })).toEqual({
@@ -357,6 +368,46 @@ describe('folders', () => {
     expect(unreadNativeConfig({}, { platform: 'linux', home })).toBeUndefined()
   })
 
+  test.skipIf(process.platform === 'win32')(
+    'every command warns about a config left in the macOS folders, and does not read it',
+    () => {
+      const { home, cwd, file: named } = macHome()
+      const old = join(home, 'Library', 'Application Support', 'host-cleaner', 'config.json')
+      const env = { PATH: process.env.PATH ?? '', HOME: home }
+      const commands = [['config'], ['status', cwd], ['plan', cwd], ['clean', '--yes', cwd]]
+      for (const args of commands) {
+        expect(run(args, cwd, env, { plugins: [fake()] }).err).not.toContain('is not read')
+      }
+      mkdirSync(dirname(old), { recursive: true })
+      writeFileSync(old, 'not json')
+      for (const args of commands) {
+        const r = run(args, cwd, env, { plugins: [fake()] })
+        expect(r.code, args.join(' ')).toBe(0)
+        const lines = r.err.split('\n').filter((l) => l.includes('is not read'))
+        expect(lines, args.join(' ')).toEqual([
+          `host-cleaner ${args[0]}: ${old} is not read; the config is now ${configFile(hostDirs(env))}`,
+        ])
+        // A config the person named is read whatever the folders hold.
+        const given = run([...args, '--config', named], cwd, env, { plugins: [fake()] })
+        expect(given.err).not.toContain('is not read')
+      }
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'folders placed by XDG variables alone need no home, for the warning either',
+    () => {
+      const { home, cwd } = macHome()
+      const xdg = Object.fromEntries(
+        ['CONFIG', 'STATE', 'DATA', 'CACHE'].map((k) => [`XDG_${k}_HOME`, join(home, 'x')]),
+      )
+      expect(unreadNativeConfig(xdg, { platform: 'darwin' })).toBeUndefined()
+      const r = run(['config'], cwd, { PATH: process.env.PATH ?? '', ...xdg })
+      expect(r.err).toBe('')
+      expect(r.code).toBe(0)
+    },
+  )
+
   test('with no home, --config still works and clean exits 1', () => {
     const { cwd, home } = setup()
     const file = join(home, 'config.json')
@@ -365,14 +416,31 @@ describe('folders', () => {
     for (const args of [
       ['config', '--config', file],
       ['status', '--config', file, cwd],
+      ['plan', '--config', file, cwd],
     ]) {
       const r = run(args, cwd, env, { plugins: [fake()] })
-      expect(r.err, args.join(' ')).not.toContain('no home directory')
-      expect(r.code, args.join(' ')).not.toBe(2)
+      expect(r.err, args.join(' ')).toBe('')
+      expect(r.code, args.join(' ')).toBe(0)
     }
     const r = run(['clean', '--yes', '--config', file, cwd], cwd, env, { plugins: [fake()] })
     expect(r.code).toBe(1)
     expect(r.err).toContain('no home directory')
+  })
+
+  test('HOST_CLEANER_CONVENTION is trimmed, and empty counts as unset', () => {
+    const opts = { platform: 'darwin', home: '/Users/me' }
+    const native = hostDirs({ HOST_CLEANER_CONVENTION: 'native' }, opts)
+    expect(hostDirs({ HOST_CLEANER_CONVENTION: ' native ' }, opts)).toEqual(native)
+    expect(hostDirs({ HOST_CLEANER_CONVENTION: '' }, opts)).toEqual(hostDirs({}, opts))
+  })
+
+  test('a folder variable that is not absolute is a usage error, `~` included', () => {
+    const { env, cwd } = setup()
+    for (const dir of ['~/cfg', 'cfg']) {
+      const r = run(['config'], cwd, { ...env, HOST_CLEANER_CONFIG_DIR: dir })
+      expect(r.code, dir).toBe(2)
+      expect(r.err).toContain('HOST_CLEANER_CONFIG_DIR must be an absolute path')
+    }
   })
 
   test('a bad HOST_CLEANER_CONVENTION is a usage error for every command', () => {

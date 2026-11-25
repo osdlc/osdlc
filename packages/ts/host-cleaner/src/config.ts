@@ -73,7 +73,9 @@ export const configFile = (dirs: HostDirs): string => join(dirs.config, 'config.
  * The config file in the native folders, when it exists and is not the one
  * {@link hostDirs} names: on macOS, a config left in
  * `~/Library/Application Support/host-cleaner/` by versions up to 0.3. Only
- * its existence is checked; it is never read.
+ * its existence is checked; it is never read. Nothing here throws: the answer
+ * only decides a warning, so native folders that cannot be placed (the xdg ones
+ * can be, from `XDG_*` alone, with no home directory) hold no old config.
  *
  * @param opts - A platform and home to use instead of this machine's, for tests.
  */
@@ -81,10 +83,14 @@ export function unreadNativeConfig(
   env: Record<string, string | undefined> = process.env,
   opts: Pick<ResolveOptions, 'platform' | 'home'> = {},
 ): string | undefined {
-  const native = configFile(
-    dirsUnder(env, { convention: 'native', conventionFromEnv: false, ...opts }),
-  )
-  return native !== configFile(hostDirs(env, opts)) && existsSync(native) ? native : undefined
+  try {
+    const native = configFile(
+      dirsUnder(env, { convention: 'native', conventionFromEnv: false, ...opts }),
+    )
+    return native !== configFile(hostDirs(env, opts)) && existsSync(native) ? native : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** A config file, or a folder variable, that cannot be used; the CLI exits 2 for it. */
