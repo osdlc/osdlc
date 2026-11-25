@@ -1,7 +1,7 @@
 {
   "name": "harness-reference",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "description": "A versioned, cited record of how coding-agent harnesses differ, kept as one Markdown corpus, with its tools.",
   "license": "MIT OR Apache-2.0",

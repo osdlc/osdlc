@@ -106,9 +106,7 @@ function filesIn(dir: string, source: DescriptorSource): Found[] {
   const files = entries
     .filter(
       (e) =>
-        !e.name.startsWith('.') &&
-        hasDescriptorExtension(e.name) &&
-        isFile(join(dir, e.name), e),
+        !e.name.startsWith('.') && hasDescriptorExtension(e.name) && isFile(join(dir, e.name), e),
     )
     .map((e) => join(dir, e.name))
     .sort()
@@ -168,9 +166,7 @@ export function loadDescriptors(
       const before = chosen.get(f.name)
       chosen.set(
         f.name,
-        before === undefined
-          ? f
-          : { ...f, replaces: { source: before.source, path: before.path } },
+        before === undefined ? f : { ...f, replaces: { source: before.source, path: before.path } },
       )
     }
   }

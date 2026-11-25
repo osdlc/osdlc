@@ -4,14 +4,7 @@
  * and the run's plugin list built from them.
  */
 
-import {
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -330,12 +323,14 @@ describe('the run’s plugins', () => {
         return true
       },
     }
-    const uv = definitions.find((d) => d.name === 'uv')!.create({
-      settings: { idleHours: 0 },
-      only: [],
-      env: h.env,
-      kit: pluginKit('uv', { env: h.env }),
-    })
+    const uv = definitions
+      .find((d) => d.name === 'uv')!
+      .create({
+        settings: { idleHours: 0 },
+        only: [],
+        env: h.env,
+        kit: pluginKit('uv', { env: h.env }),
+      })
     const result = await survey(s.track([cargo, uv]), fakeContext())
     expect(asked).toBe(1)
     expect(result.plugins.map((p) => p.name)).toEqual(['cargo'])

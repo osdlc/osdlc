@@ -9,6 +9,7 @@
 
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -61,6 +62,10 @@ assert.deepEqual(
   ).paths,
   { hub: { all: '~/.cache/hub' } },
 )
+const schemaFile = fileURLToPath(
+  import.meta.resolve('@osdlc/host-cleaner/schemas/descriptor-1.json'),
+)
+assert.equal(JSON.parse(readFileSync(schemaFile, 'utf8')).title, 'host-cleaner descriptor')
 
 // The binary sits beside dist/ in the package, installed or not.
 const dist = dirname(fileURLToPath(import.meta.resolve('@osdlc/host-cleaner')))
