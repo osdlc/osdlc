@@ -62,11 +62,15 @@ export interface LoadedModel {
   id: string
 }
 
-/** The header and rows of an `ollama` table; throws when the header lacks a column in `need`. */
+/**
+ * The column starts and the rows of an `ollama` table, each row with its
+ * leading NAME and ID; rows without both are dropped. Throws when the header
+ * lacks a column in `need`.
+ */
 function table(
   stdout: string,
   need: readonly string[],
-): { at: Map<string, number>; rows: string[] } {
+): { at: Map<string, number>; rows: (LoadedModel & { row: string })[] } {
   const lines = stdout.split('\n').filter((l) => l.trim() !== '')
   const header = lines[0] ?? ''
   const at = new Map<string, number>()
@@ -75,18 +79,18 @@ function table(
   if (missing.length > 0) {
     throw new Error(`ollama printed a table without ${missing.join(', ')}: ${header.trim()}`)
   }
-  return { at, rows: lines.slice(1) }
+  const rows = lines.slice(1).flatMap((row) => {
+    const [name, id] = row.trim().split(/\s+/)
+    return name === undefined || id === undefined ? [] : [{ name, id, row }]
+  })
+  return { at, rows }
 }
-
-/** The text of `row` under the column starting at `start`, up to the next column. */
-const cell = (row: string, start: number, end: number | undefined): string =>
-  row.slice(start, end).trim()
 
 const UNITS: Record<string, number> = { B: 1, KB: 1e3, MB: 1e6, GB: 1e9, TB: 1e12 }
 
 /** Bytes for SIZE text such as `3.9 GB` (ollama's units are powers of 1000); null for `-` or anything else. */
 export function parseBytes(text: string): number | null {
-  const m = /^(\d+(?:\.\d+)?) (B|KB|MB|GB|TB)$/.exec(text.trim())
+  const m = /^(\d+(?:\.\d+)?) ([KMGT]?B)$/.exec(text.trim())
   return m === null ? null : Math.round(Number(m[1]) * UNITS[m[2]!]!)
 }
 
@@ -95,27 +99,17 @@ export function parseList(stdout: string): OllamaModel[] {
   const { at, rows } = table(stdout, ['NAME', 'ID', 'SIZE', 'MODIFIED'])
   const size = at.get('SIZE')!
   const modified = at.get('MODIFIED')!
-  return rows.flatMap((row): OllamaModel[] => {
-    const [name, id] = row.trim().split(/\s+/)
-    if (name === undefined || id === undefined) return []
-    return [
-      {
-        name,
-        id,
-        bytes: parseBytes(cell(row, size, modified)),
-        modified: cell(row, modified, undefined),
-      },
-    ]
-  })
+  return rows.map(({ name, id, row }) => ({
+    name,
+    id,
+    bytes: parseBytes(row.slice(size, modified).trim()),
+    modified: row.slice(modified).trim(),
+  }))
 }
 
 /** The models in `ollama ps`'s output. Throws when it is not the table ollama prints. */
 export function parsePs(stdout: string): LoadedModel[] {
-  const { rows } = table(stdout, ['NAME', 'ID'])
-  return rows.flatMap((row): LoadedModel[] => {
-    const [name, id] = row.trim().split(/\s+/)
-    return name === undefined || id === undefined ? [] : [{ name, id }]
-  })
+  return table(stdout, ['NAME', 'ID']).rows.map(({ name, id }) => ({ name, id }))
 }
 
 /**
@@ -172,7 +166,7 @@ export function ollamaPlugin(
     return r.stdout
   }
 
-  const loadedAs = (m: Pick<OllamaModel, 'name' | 'id'>, loaded: readonly LoadedModel[]) =>
+  const loadedAs = (m: LoadedModel, loaded: readonly LoadedModel[]) =>
     loaded.find((l) => l.name === m.name || l.id === m.id)
 
   const own = (c: Candidate): boolean => c.owner === OLLAMA_PLUGIN && c.kind === OLLAMA_MODEL
@@ -182,16 +176,16 @@ export function ollamaPlugin(
     detect: () => kit.onPath('ollama'),
     async discover(ctx) {
       // A cloud model has no files here: deleting it frees nothing.
-      return parseList(await ask(['list'], ctx))
-        .filter((m) => m.bytes !== null)
-        .map((m) => {
-          const hours = leastHours(m.modified)
-          const old = hours !== null && hours >= threshold
-          return kit.candidate({
+      return parseList(await ask(['list'], ctx)).flatMap((m) => {
+        if (m.bytes === null) return []
+        const hours = leastHours(m.modified)
+        const old = hours !== null && hours >= threshold
+        return [
+          kit.candidate({
             kind: OLLAMA_MODEL,
             ref: m.name,
             name: m.name,
-            bytes: m.bytes!,
+            bytes: m.bytes,
             why:
               hours === null
                 ? `ollama list shows it modified "${m.modified}", which gives no age`
@@ -200,8 +194,9 @@ export function ollamaPlugin(
             ...(old ? {} : { held: true }),
             // The MODIFIED text moves with the clock, so it stays out.
             evidence: { kind: OLLAMA_MODEL, name: m.name, id: m.id },
-          })
-        })
+          }),
+        ]
+      })
     },
     async object(all, ctx) {
       const mine = all.filter(own)
@@ -222,8 +217,7 @@ export function ollamaPlugin(
         return mine.map((c) => refuse(c, 'ollama-ps-failed', why))
       }
       return mine.flatMap((c) => {
-        const { name, id } = c.evidence as { name: string; id: string }
-        const l = loadedAs({ name, id }, loaded)
+        const l = loadedAs(c.evidence as LoadedModel, loaded)
         return l === undefined ? [] : [refuse(c, IN_USE, `ollama ps shows ${l.name} loaded`)]
       })
     },
