@@ -3,10 +3,10 @@
 # global folder, which YARN_GLOBAL_FOLDER or globalFolder in ~/.yarnrc.yml
 # moves, else yarn/berry under XDG_DATA_HOME when that is set, else
 # ~/.yarn/berry; and Classic's (Yarn 1), which YARN_CACHE_FOLDER moves, else
-# under XDG_CACHE_HOME when that is set or on Linux. Each is removed as a folder once idle. `yarn cache
-# clean` acts on whichever Yarn the folder it runs in selects, and can't be
-# pointed at one of these folders, so it isn't used. Projects' own .yarn
-# folders are left out.
+# under XDG_CACHE_HOME when that is set or on Linux. Each is removed as a
+# folder once idle. `yarn cache clean` acts on whichever Yarn the folder it
+# runs in selects, and can't be pointed at one of these folders, so it isn't
+# used. Projects' own .yarn folders are left out.
 descriptor: 1
 store: yarn
 detect:
