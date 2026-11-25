@@ -44,7 +44,11 @@ export const UNKNOWN_WORKSPACE = 'unknown-workspace'
 
 const KIND = 'workspace-storage'
 
-/** VS Code's process names: `Code` and its `Code Helper (…)` processes on macOS, `code` on Linux. */
+/**
+ * VS Code's process names: `Code` and its `Code Helper (…)` processes on macOS, `code` on Linux.
+ * `\x20` is the space as `lsof` writes it in a command name; the `\s` also accepts the
+ * ` (pid <n>)` that `kit.running` appends to a bare `code`.
+ */
 const VSCODE_PROCESS = /^code(?:\s|\\x20|$)/i
 
 /** The longest `discover` may take: it sizes every dead storage folder. */
@@ -407,7 +411,7 @@ type Windows = { paths: string[]; problem?: string; running: boolean }
 const isGitWorktree = (c: Candidate): c is PathCandidate =>
   c.kind === 'worktree' && c.owner === 'git' && c.path !== undefined
 
-/** The VS Code processes among `kit.running`'s names (`<command> (pid <n>)`, which the pattern's trailing space accepts). */
+/** The VS Code processes among `kit.running`'s names; see {@link VSCODE_PROCESS}. */
 const vscodeOf = (names: readonly string[]): string[] =>
   names.filter((n) => VSCODE_PROCESS.test(n))
 
