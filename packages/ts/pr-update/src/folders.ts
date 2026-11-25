@@ -184,6 +184,21 @@ export function lstatOrNull(path: string): Stats | null {
   }
 }
 
+/**
+ * Whether nothing is at `path` (a symbolic link is followed): only `ENOENT` and `ENOTDIR` say so,
+ * as for {@link lstatOrNull}. A path that cannot be read is not gone, where `existsSync` answers
+ * the same for both.
+ */
+export function isGone(path: string): boolean {
+  try {
+    statSync(path)
+    return false
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    return code === 'ENOENT' || code === 'ENOTDIR'
+  }
+}
+
 function statOrNull(path: string): Stats | null {
   try {
     return statSync(path)

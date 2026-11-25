@@ -734,6 +734,46 @@ describe('a located target kept worktree, when something is off', () => {
     expect(readFileSync(join(kept, 'fix.txt'), 'utf8')).toBe('half a fix\n')
   })
 
+  // Windows has no search bit for chmod to take away, and root searches any folder.
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'whose git directory cannot be read is not gone: --discard-kept leaves it too, and removes one that is gone (final review round 3)',
+    async () => {
+      verifyOk = false
+      await update({ args: { keepFailed: true } })
+      const kept = join(keptDir(), '1')
+      writeFileSync(join(kept, 'fix.txt'), 'half a fix\n')
+      const record = JSON.parse(readFileSync(`${kept}.json`, 'utf8'))
+      const shut = join(scratch, 'shut')
+      const gitDir = join(shut, 'api.git')
+      mkdirSync(gitDir, { recursive: true })
+      writeFileSync(`${kept}.json`, JSON.stringify({ ...record, gitDir }))
+      chmodSync(shut, 0o000)
+      try {
+        for (const args of [{ discardKept: true }, { retryFailed: true }, { keepFailed: true }]) {
+          const out = await update({ args })
+          expect(out.discarded ?? []).toEqual([])
+          expect(readFileSync(join(kept, 'fix.txt'), 'utf8')).toBe('half a fix\n')
+        }
+        expect((await update({ args: { discardKept: true } })).keptRefused).toEqual([
+          {
+            record: `${kept}.json`,
+            reason: "its owner's worktrees could not be listed",
+          },
+        ])
+        expect((await update()).skipped.map((s) => s.reason)).toEqual([
+          `kept elsewhere: ${kept} is a worktree of ${gitDir}`,
+        ])
+      } finally {
+        chmodSync(shut, 0o700)
+      }
+
+      rmSync(shut, { recursive: true })
+      expect((await update({ args: { discardKept: true } })).discarded).toEqual([kept])
+      expect(existsSync(kept)).toBe(false)
+      expect(existsSync(`${kept}.json`)).toBe(false)
+    },
+  )
+
   test('a tree git cannot read counts as changed', () => {
     const plain = join(scratch, 'plain')
     mkdirSync(plain)
