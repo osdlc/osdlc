@@ -391,7 +391,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
     userDir === undefined ? undefined : join(userDir, 'globalStorage', 'storage.json')
   const agentDir =
     editor.agentWorktrees === undefined ? undefined : canon(join(home, editor.agentWorktrees))
-  // Storage that always holds chat is `lost` whatever its history folders hold.
+  // Storage that always holds chat is `lost` anyway, so its history folders are not read.
   const withHistory = !editor.keepsChat
   const present = (): boolean =>
     root !== undefined && lstatSync(root, { throwIfNoEntry: false }) !== undefined
