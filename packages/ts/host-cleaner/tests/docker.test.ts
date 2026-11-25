@@ -18,7 +18,13 @@ import {
   type Candidate,
   type RunCtx,
 } from '../src/index.ts'
-import { dockerBytes, dockerDefinition, jsonLines, reclaimable } from '../src/docker.ts'
+import {
+  composeProject,
+  dockerBytes,
+  dockerDefinition,
+  jsonLines,
+  reclaimable,
+} from '../src/docker.ts'
 import { contractSuite, fakeContext, fakeRunner, tempHome } from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
@@ -36,8 +42,10 @@ interface Machine {
   images?: Array<{ ID: string; Size?: string; CreatedAt?: string }>
   /** Each container's image id. */
   containers?: Record<string, string>
-  /** What `docker builder du` prints; null: buildx is missing. */
-  du?: string | null
+  /** Containers `container ls` lists but that are removed before `container inspect`. */
+  gone?: string[]
+  /** What `docker builder du` prints; null: buildx is missing; `{ fails }`: it fails with that message. */
+  du?: string | null | { fails: string }
   /** Volumes `docker volume rm` refuses, as Docker does one a container took up. */
   inUse?: string[]
 }
@@ -72,23 +80,26 @@ function fakeDocker(m: Machine = {}, keepVolumes: string[] = []) {
         return json(images)
       if (cmd === 'container ls --all --quiet --no-trunc') {
         return {
-          stdout: Object.keys(containers)
-            .map((id) => `${id}\n`)
-            .join(''),
+          stdout: [...Object.keys(containers), ...(m.gone ?? [])].map((id) => `${id}\n`).join(''),
         }
       }
       if (argv[0] === 'container' && argv[1] === 'inspect' && argv[3] === '{{.Image}}') {
+        const asked = argv.slice(4)
+        const gone = asked.filter((id) => !(id in containers))
         return {
-          stdout: argv
-            .slice(4)
+          ...(gone.length === 0 ? {} : { exitCode: 1 }),
+          stdout: asked
+            .filter((id) => id in containers)
             .map((id) => `${containers[id]}\n`)
             .join(''),
+          stderr: gone.map((id) => `Error response from daemon: No such container: ${id}\n`).join(''),
         }
       }
       if (cmd === 'builder du') {
-        return m.du === null
-          ? { exitCode: 1, stderr: "docker: 'builder du' is not a docker command.\n" }
-          : { stdout: m.du ?? DU }
+        if (m.du === null)
+          return { exitCode: 1, stderr: "docker: 'builder du' is not a docker command.\n" }
+        if (typeof m.du === 'object') return { exitCode: 1, stderr: `${m.du.fails}\n` }
+        return { stdout: m.du ?? DU }
       }
       if (argv[0] === 'volume' && argv[1] === 'rm') {
         return m.inUse?.includes(argv[3]!) === true
@@ -99,7 +110,7 @@ function fakeDocker(m: Machine = {}, keepVolumes: string[] = []) {
           : { stdout: `${argv[3]}\n` }
       }
       if (argv[0] === 'image' && argv[1] === 'rm') return { stdout: `Deleted: ${argv[3]}\n` }
-      if (cmd === 'builder prune --force')
+      if (cmd === 'builder prune --all --force')
         return { stdout: 'ID\tRECLAIMABLE\tSIZE\nabc\ttrue\t1.5GB\nTotal:\t1.5GB\n' }
       return undefined
     },
@@ -168,6 +179,46 @@ describe('discover', () => {
     }
   })
 
+  test('a container removed between the listing and the inspect is skipped; the rest still count', async () => {
+    const { plugin } = fakeDocker({ gone: ['d'.repeat(64)] })
+    const s = await survey([plugin], ctx)
+    expect(s.warnings).toEqual([])
+    expect(ids(s.candidates)).toEqual([
+      `${DOCKER_VOLUME}:pgdata`,
+      `${DOCKER_IMAGE}:${OLD}`,
+      `${DOCKER_BUILD_CACHE}:reclaimable`,
+    ])
+  })
+
+  test('containers are inspected in batches, so the argv stays bounded', async () => {
+    const containers = Object.fromEntries(
+      Array.from({ length: 1201 }, (_, i) => [String(i).padStart(64, '0'), USED]),
+    )
+    const { plugin, ran } = fakeDocker({ containers })
+    await survey([plugin], ctx)
+    const inspects = ran().filter((c) => c.startsWith('container inspect'))
+    expect(inspects.map((c) => c.split(' ').length - 4)).toEqual([500, 500, 201])
+  })
+
+  test('builder du gets the hook limit, and a failure other than buildx missing fails discover', async () => {
+    const ok = fakeDocker()
+    await survey([ok.plugin], ctx)
+    const du = ok.calls.find((c) => c.argv.join(' ') === 'docker builder du')
+    expect(du?.opts.timeoutMs).toBe(120_000)
+    const { plugin } = fakeDocker({ du: { fails: 'ERROR: permission denied' } })
+    const s = await survey([plugin], ctx)
+    expect(s.warnings).toEqual([
+      expect.stringContaining('docker builder du failed: ERROR: permission denied'),
+    ])
+  })
+
+  test('the compose project is read from its own label, values with = and , kept', () => {
+    expect(composeProject('com.docker.compose.project=shop')).toBe('shop')
+    expect(composeProject('a=b,com.docker.compose.project=x=y,z,c=d')).toBe('x=y,z')
+    expect(composeProject('note=com.docker.compose.project=no')).toBeUndefined()
+    expect(composeProject('')).toBeUndefined()
+  })
+
   test('no container: the images are not looked up against any', async () => {
     const { plugin, ran } = fakeDocker({ containers: {} })
     const s = await survey([plugin], ctx)
@@ -184,14 +235,16 @@ describe('detect', () => {
     expect(s.warnings).toEqual([])
   })
 
-  test('the daemon not running: not detected, with the reason in a warning', async () => {
+  test('the daemon not running: not detected, with the reason in a note', async () => {
     const { plugin, ran } = fakeDocker({ running: false })
     const s = await survey([plugin], ctx)
     expect(s.plugins).toEqual([])
     expect(s.candidates).toEqual([])
-    expect(s.warnings).toEqual([
-      'docker: detect failed: Docker is installed but did not answer; its volumes, images and build cache are left alone (docker info --format {{.ServerVersion}} failed: Cannot connect to the Docker daemon at unix:///var/run/docker.sock)',
-    ])
+    expect(s.warnings).toEqual([])
+    expect(s.notes).toEqual({
+      docker:
+        'Docker is installed but did not answer; its volumes, images and build cache are left alone (docker info --format {{.ServerVersion}} failed: Cannot connect to the Docker daemon at unix:///var/run/docker.sock)',
+    })
     expect(ran()).toEqual(['info --format {{.ServerVersion}}'])
   })
 })
@@ -206,7 +259,7 @@ describe('clean', () => {
       [`${DOCKER_BUILD_CACHE}:reclaimable`, 'ok', 'docker builder prune freed 1.5GB'],
     ])
     expect(ran()).toContain(`image rm -- ${OLD}`)
-    expect(ran()).toContain('builder prune --force')
+    expect(ran()).toContain('builder prune --all --force')
     expect(ran().some((c) => c.startsWith('volume rm'))).toBe(false)
   })
 

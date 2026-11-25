@@ -306,14 +306,14 @@ only Docker knows how to read, so every candidate is a ref and Docker deletes
 it itself. The data folder is never touched.
 
 Detected when `docker` is on `PATH` and `docker info` answers. Docker missing is
-silent; installed but not running adds a warning with Docker's reason, and the
+silent; installed but not running adds a note with Docker's reason, and the
 plugin stays out of the run.
 
 | Candidate | Found by | Deleted by | Cost |
 | --- | --- | --- | --- |
 | `docker-volume:<name>` | `docker volume ls --filter dangling=true`: no container, running or stopped, uses it. Not one named in `plugins.docker.keepVolumes`. | `docker volume rm` | `lost`: held, and runs only when picked with `--allow discard-user-data` |
 | `docker-image:<id>` | `docker image ls --filter dangling=true`: no tag. One a container (running or stopped) was made from is left out. | `docker image rm` | `re-download` |
-| `docker-build-cache:reclaimable` | The `Reclaimable:` total of `docker builder du`, when it is more than 0. | `docker builder prune --force` | `re-download` |
+| `docker-build-cache:reclaimable` | The `Reclaimable:` total of `docker builder du`, when it is more than 0. | `docker builder prune --all --force` | `re-download` |
 
 Docker refuses to remove a volume or image a container took up after the
 plan, so that candidate fails instead of being deleted.

@@ -3,9 +3,9 @@
  * container uses, and the build cache Docker can reclaim.
  *
  * Detected when `docker` is on PATH and `docker info` answers. Docker missing
- * is silent; installed but not running warns, and the plugin stays out of the
- * run. Every candidate is a ref that Docker deletes itself (`docker volume rm`,
- * `docker image rm`, `docker builder prune`), so Docker's data folder is never
+ * is silent; installed but not running gives the reason as detect's note, and
+ * the plugin stays out of the run. Every candidate is a ref that Docker deletes
+ * itself (`docker volume rm`, `docker image rm`, `docker builder prune --all`), so Docker's data folder is never
  * touched and Docker refuses a volume or image a container took up since.
  * A volume is `lost`, so it is held and needs `--allow discard-user-data`;
  * images and the build cache are `re-download`.
@@ -73,12 +73,33 @@ export function reclaimable(stdout: string): number | undefined {
   return line === null ? undefined : dockerBytes(line[1]!)
 }
 
-/** The compose project a volume belongs to, from its `Labels` (`a=b,c=d`). */
-const composeProject = (labels: string): string | undefined =>
-  labels
-    .split(',')
-    .map((l) => l.split('='))
-    .find(([k]) => k === 'com.docker.compose.project')?.[1]
+/** Containers inspected per `docker container inspect`, so its argv stays well under ARG_MAX. */
+const INSPECT_BATCH = 500
+
+/** Whether every error line of `docker container inspect` says a container is gone, and there is one. */
+const onlyGone = (stderr: string): boolean => {
+  const lines = stderr.split('\n').filter((l) => l.trim() !== '')
+  return lines.length > 0 && lines.every((l) => /no such (container|object)/i.test(l))
+}
+
+/** Whether `docker builder du` failed only because this Docker has no `builder du` (no buildx). */
+const noBuilderDu = (text: string): boolean =>
+  /is not a docker command|unknown command|unknown flag/i.test(text)
+
+/** The label every Compose volume carries with its project's name. */
+const COMPOSE_PROJECT = 'com.docker.compose.project'
+
+/**
+ * The compose project a volume belongs to, from its `Labels` (`a=b,c=d`): the value
+ * after the first `=`, up to the next `,` that starts another `key=` pair.
+ */
+export const composeProject = (labels: string): string | undefined => {
+  const at = `,${labels}`.indexOf(`,${COMPOSE_PROJECT}=`)
+  if (at < 0) return undefined
+  const rest = labels.slice(at + COMPOSE_PROJECT.length + 1)
+  const next = /,[^,=]+=/.exec(rest)
+  return next === null ? rest : rest.slice(0, next.index)
+}
 
 /** The `docker` plugin on `kit`, or on a kit built from `opts`. Settings: `keepVolumes`. */
 export function dockerPlugin(
@@ -94,15 +115,26 @@ export function dockerPlugin(
     return r.stdout
   }
 
-  /** The image ids of every container, running or stopped: any one of them keeps its image. */
+  /**
+   * The image ids of every container, running or stopped: any one of them keeps its image.
+   * Inspected {@link INSPECT_BATCH} at a time. A container removed after the listing
+   * keeps no image, so `No such container` for it is not a failure.
+   */
   const imagesInUse = async (ctx: Ctx): Promise<Set<string>> => {
     const ids = (await docker(['container', 'ls', '--all', '--quiet', '--no-trunc'], ctx))
       .split('\n')
       .map((l) => l.trim())
       .filter((l) => l !== '')
-    if (ids.length === 0) return new Set()
-    const out = await docker(['container', 'inspect', '--format', '{{.Image}}', ...ids], ctx)
-    return new Set(out.split('\n').map((l) => l.trim()))
+    const used = new Set<string>()
+    for (let i = 0; i < ids.length; i += INSPECT_BATCH) {
+      const batch = ids.slice(i, i + INSPECT_BATCH)
+      const args = ['container', 'inspect', '--format', '{{.Image}}', ...batch]
+      const r = await kit.run(['docker', ...args], { signal: ctx.signal })
+      if (!r.ok && !onlyGone(r.stderr))
+        throw new Error(`docker container inspect failed: ${firstLine(failureText(r))}`)
+      for (const line of r.stdout.split('\n')) if (line.trim() !== '') used.add(line.trim())
+    }
+    return used
   }
 
   const volumes = async (ctx: Ctx): Promise<Candidate[]> => {
@@ -156,8 +188,15 @@ export function dockerPlugin(
   }
 
   const buildCache = async (ctx: Ctx): Promise<Candidate[]> => {
+    // `du` may wait on its builder, so it gets the hook's whole limit.
+    const r = await kit.run(['docker', 'builder', 'du'], {
+      signal: ctx.signal,
+      timeoutMs: DISCOVER_LIMIT_MS,
+    })
     // A Docker without buildx has no `builder du`; its volumes and images still count.
-    const bytes = reclaimable(await docker(['builder', 'du'], ctx).catch(() => ''))
+    if (!r.ok && noBuilderDu(failureText(r))) return []
+    if (!r.ok) throw new Error(`docker builder du failed: ${firstLine(failureText(r))}`)
+    const bytes = reclaimable(r.stdout)
     if (bytes === undefined || bytes === 0) return []
     return [
       kit.candidate({
@@ -181,9 +220,10 @@ export function dockerPlugin(
         await docker(['info', '--format', '{{.ServerVersion}}'], ctx)
       } catch (err) {
         const why = err instanceof Error ? err.message : String(err)
-        throw new Error(
-          `Docker is installed but did not answer; its volumes, images and build cache are left alone (${why})`,
-        )
+        return {
+          active: false,
+          note: `Docker is installed but did not answer; its volumes, images and build cache are left alone (${why})`,
+        }
       }
       return true
     },
@@ -202,7 +242,8 @@ export function dockerPlugin(
         return `docker image rm removed image ${c.ref}`
       }
       if (c.kind === DOCKER_BUILD_CACHE && c.ref === BUILD_CACHE_REF) {
-        const out = await docker(['builder', 'prune', '--force'], ctx, DELETE_LIMIT_MS)
+        // `--all`: every unused record, as du's `Reclaimable:` counts, not only dangling ones.
+        const out = await docker(['builder', 'prune', '--all', '--force'], ctx, DELETE_LIMIT_MS)
         const total = /^\s*Total(?: reclaimed space)?:\s*(\S+)\s*$/m.exec(out)?.[1]
         return total === undefined
           ? 'docker builder prune removed the build cache'
