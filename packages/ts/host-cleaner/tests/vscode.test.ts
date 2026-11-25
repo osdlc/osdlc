@@ -581,6 +581,11 @@ describe('object', () => {
     const unreadable = vscodePlugin(h.options({ probe: probeOf(new Error('no lsof')) }))
     expect(await unreadable.object!(all, fakeContext())).toEqual([
       expect.objectContaining({ candidate: `worktree:${wt}`, code: IN_USE }),
+      expect.objectContaining({
+        candidate: `worktree:${other}`,
+        level: 'note',
+        code: 'vscode-unchecked',
+      }),
     ])
     const quit = vscodePlugin(
       h.options({ probe: probeOf([{ pid: 12, command: 'codex', cwd: '/' }]) }),
