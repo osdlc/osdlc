@@ -216,6 +216,18 @@ const guard =
     return fallback
   }
 
+/** The first plugin of each name in `all`, which a run uses, and the others, which it leaves out. */
+export function firstOfEachName(all: readonly Plugin[]): { first: Plugin[]; others: Plugin[] } {
+  const names = new Set<string>()
+  const first: Plugin[] = []
+  const others: Plugin[] = []
+  for (const p of all) {
+    ;(names.has(p.name) ? others : first).push(p)
+    names.add(p.name)
+  }
+  return { first, others }
+}
+
 /** What `detect` said of one plugin. */
 interface Detected {
   plugin: Plugin
@@ -239,14 +251,10 @@ async function detectAndScope(
   warnDetect: boolean,
 ): Promise<{ detections: Detected[]; scoped: RunCtx }> {
   const guarded = guard(warnings)
-  const names = new Set<string>()
+  const { first, others } = firstOfEachName(all)
+  for (const p of others) warnings.push(`${p.name}: a second plugin of that name was left out`)
   const detections: Detected[] = []
-  for (const p of all) {
-    if (names.has(p.name)) {
-      warnings.push(`${p.name}: a second plugin of that name was left out`)
-      continue
-    }
-    names.add(p.name)
+  for (const p of first) {
     const r = await tryHook<unknown>(p, 'detect', ctx, (x) => p.detect(x))
     if ('failed' in r) {
       if (warnDetect) warnings.push(`${p.name}: detect failed: ${r.failed}`)

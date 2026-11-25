@@ -113,6 +113,20 @@ What a plan runs uses repo-cleaner's words, with their meaning:
 
 Each candidate that runs is still judged by the rules above.
 
+`inspect` asks the plugins where they stand without proposing anything: it
+calls `detect`, `scope` and `roots` as `survey` does, and nothing else. Each
+`PluginState` says whether its plugin is detected, why not (what `detect`
+threw, or why its answer was left out), the note `detect` gave, and its roots,
+less those the core refuses. A failed `scope` or `roots` is a warning. The
+`host-cleaner plugins` command prints it.
+
+```ts
+import { inspect } from '@osdlc/host-cleaner'
+
+const seen = await inspect([cache], ctx) // detect, scope, roots; seen.ctx has the scoped targets
+for (const p of seen.plugins) console.log(p.name, p.detected ? p.roots : (p.reason ?? 'not detected'))
+```
+
 ### What deleting costs
 
 A candidate may say what deleting it costs, in `costDescription`:
@@ -422,7 +436,7 @@ the same, one object per plugin, each with its `vars`.
 targets: /Users/me/dev
   git    built-in  detected; roots: none, the targets alone
   cargo  built-in  detected; roots: none, the targets alone
-  node   built-in  disabled: plugins.node.enabled is false; --plugin node runs it anyway
+  node   built-in  disabled: plugins.node.enabled is false; a sweep's --plugin node runs it anyway
   orca   built-in  detected; roots: none, the targets alone; note: Orca is installed but not running
   go     user      detected; roots: /Users/me/go/pkg/mod (itself too)
     ${GOPATH}      = /Users/me/go  from value (tried env GOPATH: not set)

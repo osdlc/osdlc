@@ -367,7 +367,7 @@ describe('plugins', () => {
           source: 'built-in',
           enabled: false,
           detected: false,
-          reason: 'plugins.cargo.enabled is false; --plugin cargo runs it anyway',
+          reason: 'plugins.cargo.enabled is false; a sweep's --plugin cargo runs it anyway',
           roots: [],
           selfRoots: [],
           note: null,

@@ -55,6 +55,7 @@ import {
   SelectionError,
   clean,
   decidePlan,
+  firstOfEachName,
   inspect,
   plan as makePlan,
   recheck,
@@ -438,8 +439,8 @@ const unknownPlugins = (config: Config, known: (name: string) => boolean): strin
  * `deps.plugins`) into `all`, then chosen by `choose`. A descriptor's
  * `supersededBy` plugin runs when it is among those chosen and detects.
  */
-function setUp<V extends { config?: string | undefined; descriptor: readonly string[] }>(
-  v: V,
+function setUp(
+  v: { config?: string | undefined; descriptor: readonly string[] },
   ctx: CliContext,
   deps: MainDeps,
   only: readonly Kind[],
@@ -763,8 +764,7 @@ async function runPlugins(
     const found = await inspect(enabled, contextFor(parsed.positionals, config, ctx, [], v.ignore))
     const state = new Map(found.plugins.map((s) => [s.name, s]))
     // One row per name: `inspect` leaves out a second plugin of a name, with a warning.
-    const first = all.filter((p, i) => all.findIndex((q) => q.name === p.name) === i)
-    rows = first.map((p): PluginRow => {
+    rows = firstOfEachName(all).first.map((p): PluginRow => {
       const off = !enabled.includes(p)
       const s = state.get(p.name)
       const d = loaded.get(p.name)
@@ -776,7 +776,7 @@ async function runPlugins(
         enabled: !off,
         detected: s?.detected ?? false,
         reason: off
-          ? `plugins.${p.name}.enabled is false; --plugin ${p.name} runs it anyway`
+          ? `plugins.${p.name}.enabled is false; a sweep's --plugin ${p.name} runs it anyway`
           : (s?.reason ?? seen?.skipped ?? null),
         roots: s?.roots ?? [],
         selfRoots: s?.selfRoots ?? [],

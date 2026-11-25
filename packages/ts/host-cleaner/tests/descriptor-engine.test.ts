@@ -1048,10 +1048,11 @@ function outsideHome(): string {
 }
 
 describe('variables (tier 2)', () => {
-  test('descriptorDetection holds what the last detect found, and nothing from a cancelled one', async () => {
+  test('descriptorDetection holds what the last finished detect found; a cancelled one records nothing', async () => {
     const text = `descriptor: 1
 vars:
   DIR:
+    - command: [sh, -c, 'echo \${XDG_CACHE_HOME}']
     - value: ~/.cache/mine
 paths:
   store: { all: '\${DIR}' }
@@ -1060,14 +1061,19 @@ candidates:
 `
     const b = buildVars('mine', text)
     expect(descriptorDetection(b.plugin)).toEqual({})
+    await b.plugin.detect({ ...fakeContext(), signal: AbortSignal.abort() })
+    expect(descriptorDetection(b.plugin)).toEqual({})
     await b.plugin.detect(fakeContext())
     expect(descriptorDetection(b.plugin)?.vars?.DIR).toMatchObject({
       value: join(b.home, '.cache/mine'),
       from: 'value',
     })
     expect(descriptorDetection(b.plugin)?.vars?.HOME).toBeUndefined()
+    // A command's args are not a template, so the built-in they name is not shown.
+    expect(descriptorDetection(b.plugin)?.vars?.XDG_CACHE_HOME).toBeUndefined()
+    // As another descriptor's `supersededBy` does, under a ctx cancelled before it finishes.
     await b.plugin.detect({ ...fakeContext(), signal: AbortSignal.abort() })
-    expect(descriptorDetection(b.plugin)).toEqual({})
+    expect(descriptorDetection(b.plugin)?.vars?.DIR?.value).toBe(join(b.home, '.cache/mine'))
     expect(descriptorDetection({ ...b.plugin })).toBeUndefined()
   })
 

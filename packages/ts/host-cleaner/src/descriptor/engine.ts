@@ -306,8 +306,9 @@ const lastDetection = new WeakMap<Plugin, () => DescriptorDetection>()
 /**
  * What the last `detect` of `plugin`, a descriptor's, found: why it skipped,
  * or the variables it worked out. A `detect` that was cancelled, such as by
- * its time limit, leaves none. Undefined for any other plugin, including a
- * wrapper around a descriptor's.
+ * its time limit, or that threw records nothing, so what an earlier one found
+ * stays. Undefined for any other plugin, including a wrapper around a
+ * descriptor's.
  */
 export const descriptorDetection = (plugin: Plugin): DescriptorDetection | undefined =>
   lastDetection.get(plugin)?.()
@@ -689,17 +690,31 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     .flat()
     .filter((s) => 'command' in s).length
 
-  // Worked out only when `descriptorDetection` asks, so a sweep never pays for it.
+  // The names in the fields that are templates, as `templatesOf` in schema.ts lists them; a
+  // command's args are not. Worked out on the first `descriptorDetection`; a sweep never asks.
+  let used: Set<string> | undefined
   const shown = (found: DescriptorDetection): DescriptorDetection => {
     if (found.vars === undefined) return found
-    const used = new Set(varRefs(JSON.stringify([d.paths, d.vars, d.inUse?.locks])))
+    used ??= new Set(
+      varRefs(
+        JSON.stringify([
+          d.paths,
+          Object.values(d.vars ?? {}).map((ss) =>
+            ss.map((s) => ('file' in s ? s.file : 'value' in s ? s.value : null)),
+          ),
+          d.inUse?.locks,
+        ]),
+      ),
+    )
     const vars = Object.fromEntries(
-      Object.entries(found.vars).filter(([n]) => !Object.hasOwn(BUILT_IN_VARS, n) || used.has(n)),
+      Object.entries(found.vars).filter(([n]) => !Object.hasOwn(BUILT_IN_VARS, n) || used!.has(n)),
     )
     return { ...found, vars }
   }
   let detected: DescriptorDetection = {}
-  // A cancelled call still runs on; what it finds after is not recorded.
+  // Only a call that finishes uncancelled records, so a cancelled one, or one that throws, leaves
+  // what an earlier call found. That covers a nested call: another descriptor's `supersededBy`
+  // calls this `detect` under its own ctx and time limit.
   const record = (ctx: Ctx, now: DescriptorDetection): void => {
     if (!ctx.signal.aborted) detected = now
   }
@@ -711,7 +726,6 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       detect: Math.max(HOOK_LIMIT_MS, (commands + 1) * VAR_COMMAND_LIMIT_MS),
     },
     async detect(ctx) {
-      detected = {}
       const skipped = skipReason(d)
       if (skipped !== undefined) {
         record(ctx, { skipped })
