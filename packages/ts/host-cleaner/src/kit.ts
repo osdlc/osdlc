@@ -107,10 +107,11 @@ export interface Kit {
    * The processes of a program, named as a string or as `{ name }`, or the
    * busy processes working in `in` (an idle shell is not busy). A name
    * matches a process when {@link commandHasName} finds it in its command
-   * line (`ps -axo pid=,ppid=,args=`). This process and
-   * every ancestor of it are left out, so the `npm exec` or `pnpm dlx` that
-   * started host-cleaner does not count. The process table is read once per
-   * hook call, so a `delete` sees it fresh.
+   * line (`ps -axo pid=,ppid=,args=`). This process and the unbroken line
+   * of ancestors above it whose command lines name host-cleaner are left
+   * out, so the `npm exec` or `pnpm dlx` that started it does not count, but
+   * an editor, terminal or `tmux` it runs inside does. The process table is
+   * read once per hook call, so a `delete` sees it fresh.
    */
   running(where: string | { in: string } | { name: string }, ctx: Pick<Ctx, 'signal'>): Running
   /** Whether `program` is on PATH. */
@@ -147,7 +148,7 @@ export interface KitOptions {
 }
 
 /** Each kit's setter for its bounds, kept off {@link Kit} so a plugin cannot widen its own. */
-const binders = new WeakMap<Kit, (bounds: Bounds) => void>()
+const binders = new WeakMap<Kit, (bounds: Bounds | undefined) => void>()
 
 /** The kit each plugin was created with. */
 const kits = new WeakMap<Plugin, Kit>()
@@ -157,8 +158,8 @@ export function attachKit(plugin: Plugin, kit: Kit): void {
   kits.set(plugin, kit)
 }
 
-/** Binds the kit `plugin` was built on to `bounds` for {@link Kit.remove}; a plugin built on no kit is left alone. */
-export function bindKit(plugin: Plugin, bounds: Bounds): void {
+/** Binds the kit `plugin` was built on to `bounds` for {@link Kit.remove}, or unbinds it with none, so it removes nothing; a plugin built on no kit is left alone. */
+export function bindKit(plugin: Plugin, bounds: Bounds | undefined): void {
   const kit = kits.get(plugin)
   if (kit !== undefined) binders.get(kit)?.(bounds)
 }
@@ -209,9 +210,12 @@ export function commandHasName(args: string, name: string): boolean {
 /** `ps` reads its own locale; `LC_ALL=C` keeps its output plain. */
 const PS_ENV = { LC_ALL: 'C' } as const
 
+/** What the command line of a launcher that started host-cleaner holds. */
+const SELF = 'host-cleaner'
+
 /**
- * Each process with its command line, this one and its ancestors left out
- * (see {@link Kit.running}). Throws when `ps` gives no table.
+ * Each process with its command line, this one and the launchers that
+ * started it left out (see {@link Kit.running}). Throws when `ps` gives no table.
  */
 function commandLines(ps: CommandRunner): Array<{ pid: number; args: string }> {
   const r = ps.run(['-axo', 'pid=,ppid=,args='], { cwd: '/', env: PS_ENV, timeoutMs: 60_000 })
@@ -221,17 +225,21 @@ function commandLines(ps: CommandRunner): Array<{ pid: number; args: string }> {
   }
   const rows: Array<{ pid: number; args: string }> = []
   const parents = new Map<number, number>()
+  const argsOf = new Map<number, string>()
   for (const line of r.stdout.split('\n')) {
     const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line)
     if (m === null) continue
     const pid = Number(m[1])
+    const args = m[3]!.trim()
     parents.set(pid, Number(m[2]))
-    rows.push({ pid, args: m[3]!.trim() })
+    argsOf.set(pid, args)
+    rows.push({ pid, args })
   }
-  // Up from this process to pid 1; `own` is also the guard against a loop.
-  const own = new Set<number>()
-  let up: number | undefined = process.pid
-  while (up !== undefined && up > 0 && !own.has(up)) {
+  // Up from this process while each parent's command line names host-cleaner;
+  // `own` is also the guard against a loop.
+  const own = new Set<number>([process.pid])
+  let up = parents.get(process.pid)
+  while (up !== undefined && up > 0 && !own.has(up) && argsOf.get(up)?.includes(SELF) === true) {
     own.add(up)
     up = parents.get(up)
   }
@@ -272,8 +280,11 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
     idle(path, { skip = () => false } = {}) {
       const start = now().getTime()
       let newest: number | null = null
-      const visit = (dir: string): void => {
+      const check = (): void => {
         if (now().getTime() - start > budget) throw new OutOfTime()
+      }
+      const visit = (dir: string): void => {
+        check()
         let entries
         try {
           entries = readdirSync(dir, { withFileTypes: true })
@@ -282,6 +293,7 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
           throw err
         }
         for (const entry of entries) {
+          check()
           if (skip(entry.name)) continue
           const full = join(dir, entry.name)
           if (entry.isDirectory()) {

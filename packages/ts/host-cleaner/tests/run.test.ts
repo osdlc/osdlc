@@ -312,6 +312,25 @@ describe('objection levels', () => {
     ])
   })
 
+  test('a scope or discover that answers no list, or a list entry of the wrong kind, is warned of, not thrown on', async () => {
+    const none = fake('a', [], [], {
+      scope: async () => undefined as unknown as string[],
+      discover: async () => undefined as unknown as Candidate[],
+    })
+    const odd = fake('b', [7, null, cand('b:ok', 'b')] as unknown as Candidate[], [], {
+      scope: () => [7] as unknown as string[],
+    })
+    const s = await survey([none, odd], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['b:ok'])
+    expect(s.warnings).toEqual([
+      'a: scope answered undefined, which is not a list; it proposed nothing',
+      'b: scope: left out 7, which is not a path',
+      'a: discover answered undefined, which is not a list; it proposed nothing',
+      'b: dropped 7, which is not a candidate',
+      'b: dropped null, which is not a candidate',
+    ])
+  })
+
   test('a lost candidate is held and protested discard-user-data; rebuild and re-download are not', async () => {
     const items = [
       cand('a:lost', 'a', { costDescription: 'lost' }),

@@ -223,7 +223,9 @@ function nest(cs: readonly Candidate[]): Candidate[] {
  * each hook awaited under its time limit. A plugin that throws or times out
  * in `detect`, or answers neither a boolean nor a {@link Detection}, is left
  * out; a note it gives is kept in `notes`. One that throws or times out in
- * `scope` or `discover` proposes nothing, with a warning; one that throws or
+ * `scope` or `discover`, or answers anything but a list, proposes nothing,
+ * with a warning, and an entry that is not a path or a candidate is left out
+ * with one; one that throws or
  * times out in `object` refuses every candidate, since what it would object
  * to is unknown. A path candidate outside its owner's roots and the targets
  * is refused `outside-roots`, and a root the core refuses (see `rootProblem`
@@ -256,6 +258,16 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
       return fallback
     }
   }
+  /** `answer` when it is a list; otherwise none, with a warning. */
+  const listFrom = (p: Plugin, hook: Hook, answer: unknown): unknown[] => {
+    if (Array.isArray(answer)) return answer
+    warnings.push(
+      `${p.name}: ${hook} answered ${JSON.stringify(answer) ?? String(answer)}, which is not a list; it proposed nothing`,
+    )
+    return []
+  }
+  // No kit keeps an earlier survey's bounds while this one's hooks run.
+  for (const p of all) bindKit(p, undefined)
   const names = new Set<string>()
   const plugins: Plugin[] = []
   const notes: Record<string, string> = {}
@@ -288,7 +300,12 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
   const targets = ctx.targets.filter((t) => coveredBy(t, ignore) === undefined)
   for (const p of plugins) {
     if (p.scope === undefined) continue
-    for (const root of await guarded(p, 'scope', [], ctx, (x) => p.scope!(x))) {
+    const answer = await guarded<unknown>(p, 'scope', [], ctx, (x) => p.scope!(x))
+    for (const root of listFrom(p, 'scope', answer)) {
+      if (typeof root !== 'string') {
+        warnings.push(`${p.name}: scope: left out ${JSON.stringify(root)}, which is not a path`)
+        continue
+      }
       if (!targets.includes(root) && coveredBy(root, ignore) === undefined) targets.push(root)
     }
   }
@@ -299,7 +316,13 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
   const atReal = new Map<string, Candidate>()
   for (const p of plugins) {
     if (p.discover === undefined) continue
-    for (const c of await guarded(p, 'discover', [], scoped, (x) => p.discover!(x))) {
+    const answer = await guarded<unknown>(p, 'discover', [], scoped, (x) => p.discover!(x))
+    for (const entry of listFrom(p, 'discover', answer)) {
+      if (typeof entry !== 'object' || entry === null) {
+        warnings.push(`${p.name}: dropped ${JSON.stringify(entry)}, which is not a candidate`)
+        continue
+      }
+      const c = entry as Candidate
       const bad = c.owner === p.name ? (misshapen(c) ?? unplannable(c)) : null
       if (c.owner !== p.name) {
         warnings.push(`${p.name}: dropped ${c.id}, which names ${c.owner} as its owner`)
@@ -896,6 +919,9 @@ async function runOne(
     }
     // The owner's kit removes within what was just checked.
     bindKit(owner, bounds)
+  } else {
+    // A ref delete removes no folder.
+    bindKit(owner, undefined)
   }
   try {
     step.delete = await callHook(owner, 'delete', s.ctx, (x) => owner.delete!(c, x))
