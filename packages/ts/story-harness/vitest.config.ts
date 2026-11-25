@@ -33,8 +33,8 @@ export default defineConfig({
     exclude: browser ? [] : ['**/*.browser.test.ts', '**/node_modules/**'],
     // A browser test launches Chromium and shoots several stories; on a busy
     // CI runner the first one, which also pays the cold start, can take over
-    // the 5 s default. The mode tests run a whole Playwright pass in a
-    // `beforeAll`, which can take over the 10 s hook default the same way.
+    // the 5 s default. The `--a11y` mode test runs a whole Playwright pass in
+    // a `beforeAll`, which can take over the 10 s hook default the same way.
     testTimeout: browser ? 30_000 : 5_000,
     hookTimeout: browser ? 60_000 : 10_000,
     coverage: {
