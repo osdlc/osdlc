@@ -92,7 +92,9 @@ function fakeDocker(m: Machine = {}, keepVolumes: string[] = []) {
             .filter((id) => id in containers)
             .map((id) => `${containers[id]}\n`)
             .join(''),
-          stderr: gone.map((id) => `Error response from daemon: No such container: ${id}\n`).join(''),
+          stderr: gone
+            .map((id) => `Error response from daemon: No such container: ${id}\n`)
+            .join(''),
         }
       }
       if (cmd === 'builder du') {
