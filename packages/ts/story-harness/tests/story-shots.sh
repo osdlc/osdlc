@@ -4,6 +4,10 @@
 # expect the check to fail. Needs Docker and the built dist/.
 #
 #   pnpm run test:shots
+#
+# The work folder comes from mktemp, so it is under TMPDIR. A Docker engine in a
+# VM mounts only some folders (Colima: your home folder and /tmp/colima, not
+# macOS's /var/folders), so set TMPDIR to one it mounts, or the run times out.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -66,6 +70,48 @@ fi
 sed -i.bak 's/#cde/#cdf/' "$WORK/storybook-static/iframe.html"
 if node "$BIN" "$WORK" --include demo-card--plain; then
   echo "the check passed on a changed story" >&2
+  exit 1
+fi
+# The accessibility check and the keyboard walk run on a build whose card has
+# a button with no accessible name and one with a name.
+A11Y="$WORK/a11y"
+mkdir -p "$A11Y/storybook-static"
+sed 's|<div id="card"|<button id="bare"></button><button id="named">Named</button><div id="card"|' \
+  "$HERE/fixtures/storybook-static/iframe.html" > "$A11Y/storybook-static/iframe.html"
+printf '{"v":5,"entries":{"demo-card--plain":{"type":"story"}}}' > "$A11Y/storybook-static/index.json"
+
+if node "$BIN" "$A11Y" --a11y; then
+  echo "--a11y passed on a button with no name" >&2
+  exit 1
+fi
+grep -q '"button-name"' "$A11Y/test-results/story-a11y/a11y-report.json" ||
+  { echo "the a11y report does not name the button-name rule" >&2; exit 1; }
+[[ ! -e "$A11Y/.storybook/baselines" ]] ||
+  { echo "--a11y made a baselines folder" >&2; exit 1; }
+
+# A story that sets parameters.a11y.test to todo is reported, not failed.
+sed -i.bak "s|{ parameters: { screenshot } }|{ parameters: { screenshot, a11y: { test: 'todo' } } }|" \
+  "$A11Y/storybook-static/iframe.html"
+node "$BIN" "$A11Y" --a11y
+grep -q '"button-name"' "$A11Y/test-results/story-a11y/a11y-report.json" ||
+  { echo "a todo story's violations are missing from the a11y report" >&2; exit 1; }
+
+# The walk is a survey: it passes, and records both buttons as stops.
+WALK_MAX=5 node "$BIN" "$A11Y" --walk
+node -e '
+  const report = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))
+  const stops = report[0]?.stops ?? []
+  if (report.length !== 1 || stops.length !== 2) {
+    console.error("the walk report holds " + report.length + " stories and " + stops.length + " stops, not 1 and 2")
+    process.exit(1)
+  }
+' "$A11Y/test-results/story-walk/walk-report.json"
+[[ -f "$A11Y/test-results/story-walk/walk/demo-card--plain/01.png" ]] ||
+  { echo "the walk wrote no screenshot of its first stop" >&2; exit 1; }
+
+# One mode at a time.
+if node "$BIN" "$A11Y" --a11y --walk 2>/dev/null; then
+  echo "--a11y and --walk were accepted together" >&2
   exit 1
 fi
 echo "story-shots e2e: OK"
