@@ -96,7 +96,7 @@ const costDescription = z
 
 const NOT_A_NAME = 'the program must be a name on PATH, not a path'
 
-/** Whether `program` is a name PATH lookup can find: no folder in it. */
+/** Whether `program` is a name PATH lookup can find: no folder and no `{path}` in it. */
 const isProgramName = (program: string): boolean => !/[/\\]|\{path\}/.test(program)
 
 /** A program and its arguments; the program is a name looked up on PATH. */
@@ -334,7 +334,6 @@ function check(value: unknown): { data?: Descriptor; issues: { path: Path; messa
     }
     return { issues }
   }
-  // Tier 2 is described but not read yet.
   const d = parsed.data
   if (d.vars !== undefined) issues.push({ path: ['vars'], message: TIER_2 })
   for (const [name, folders] of Object.entries(d.paths))
