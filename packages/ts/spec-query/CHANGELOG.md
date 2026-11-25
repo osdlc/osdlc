@@ -25,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Changed
 
-- Source moved to `src/` and the `exports` entry now points at `./src/index.ts`; tests moved to
+- The package ships built ESM from `dist/` only, with types beside it; tests live in
   `tests/` and run under Vitest; licence is now `MIT OR Apache-2.0` (adds `LICENSE-APACHE`), with
   `SECURITY.md` and `CONTRIBUTING.md`.
 
@@ -33,5 +33,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
-- Initial `@sksizer/spec-query`: `diff`/`merge` of a value against a defaults object, and
+- Initial release: `diff`/`merge` of a value against a defaults object, and
   `encode`/`decode` of that difference as a readable query string, so view state can live in the URL. No dependencies.
