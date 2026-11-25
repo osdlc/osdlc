@@ -31,6 +31,7 @@ import { lstatSync, readdirSync, realpathSync, type Dirent } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, normalize, relative, sep } from 'node:path'
 
+import { failureText, firstLine } from '@osdlc/command-seam'
 import { globRegExp } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
@@ -150,20 +151,32 @@ function walkedIn(checkout: Checkout, targets: readonly string[]): string[] {
   return targets.filter((t) => within(checkout.path, t))
 }
 
+/** A glob's parts, one per level, and whether a trailing `/` takes folders only. */
+interface GlobParts {
+  parts: RegExp[]
+  foldersOnly: boolean
+}
+
+const globParts = (glob: string): GlobParts => ({
+  parts: glob
+    .split(/[/\\]/)
+    .filter((p) => p !== '' && p !== '.')
+    .map((p) => globRegExp(p)),
+  foldersOnly: /[/\\]$/.test(glob),
+})
+
 /**
  * Whether `path`, below `folder`, is a match of `glob` there by the rules of
  * {@link globMatches}, reading only the entries on its way.
  */
-function isGlobMatch(folder: string, glob: string, path: string): boolean {
-  const foldersOnly = /[/\\]$/.test(glob)
-  const parts = glob.split(/[/\\]/).filter((p) => p !== '' && p !== '.')
+function isGlobMatch(folder: string, { parts, foldersOnly }: GlobParts, path: string): boolean {
   const rel = relative(folder, path)
   if (rel === '' || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) return false
   const names = rel.split(sep)
   if (names.length !== parts.length) return false
   let at = folder
   for (const [i, n] of names.entries()) {
-    if (!globRegExp(parts[i]!).test(n)) return false
+    if (!parts[i]!.test(n)) return false
     at = join(at, n)
     const stat = lstatSync(at, { throwIfNoEntry: false })
     if (stat === undefined || stat.isSymbolicLink()) return false
@@ -178,11 +191,9 @@ function isGlobMatch(folder: string, glob: string, path: string): boolean {
  * neither matched nor walked through.
  */
 export function globMatches(folder: string, glob: string): string[] {
-  const foldersOnly = /[/\\]$/.test(glob)
-  const parts = glob.split(/[/\\]/).filter((p) => p !== '' && p !== '.')
+  const { parts, foldersOnly } = globParts(glob)
   let level = [folder]
-  for (const [i, part] of parts.entries()) {
-    const re = globRegExp(part)
+  for (const [i, re] of parts.entries()) {
     const last = i === parts.length - 1
     const next: string[] = []
     for (const dir of level) {
@@ -275,6 +286,13 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     if (folder !== undefined) folders.set(key, expand(folder, at.home))
   }
 
+  // The `project` entries, each with its marker compiled once.
+  const projects = (d.project ?? []).map((entry, index) => ({
+    entry,
+    index,
+    marker: globRegExp(entry.marker),
+  }))
+
   const problems = (ctx: Ctx) => {
     const out = new Map<string, string | null>()
     const own = at.ownDirs
@@ -320,17 +338,22 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     action: Action,
   ): Row | null => {
     const prune = entry.command !== undefined && entry.removes === 'unused'
-    const program = entry.command?.[0]
     const objections: Row['objections'] = []
     if (prune && action === 'remove') {
       objections.push({
         level: 'protest',
         code: NO_PRUNE_TOOL,
-        reason: `${program} is not on PATH to prune it; --allow ${NO_PRUNE_TOOL} removes the whole folder instead`,
+        reason: `${entry.command![0]} is not on PATH to prune it; --allow ${NO_PRUNE_TOOL} removes the whole folder instead`,
       })
     }
     const evidence: Evidence = { path, candidate: index, action }
-    const base = { kind: name, path, costDescription: entry.costDescription, evidence }
+    const base = {
+      kind: name,
+      path,
+      costDescription: entry.costDescription,
+      evidence,
+      ...(entry.held === true ? { held: true } : {}),
+    }
     if (prune && action === 'command') {
       // A prune removes only what nothing uses: no idle check.
       const bytes = kit.size(path)
@@ -340,7 +363,6 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
           ...base,
           why: `${entry.command!.join(' ')} removes only what nothing uses`,
           ...(bytes === null ? {} : { bytes }),
-          ...(entry.held === true ? { held: true } : {}),
         }),
       }
     }
@@ -361,7 +383,6 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
           ...base,
           why: `when it last changed could not be measured in the time budget; ${how}`,
           unmeasured: true,
-          ...(entry.held === true ? { held: true } : {}),
         }),
       }
     }
@@ -377,18 +398,13 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         ...base,
         why: `${since}; ${how}`,
         ...(bytes === null ? {} : { bytes }),
-        ...(entry.held === true || !idleNow ? { held: true } : {}),
+        ...(idleNow ? {} : { held: true }),
       }),
     }
   }
 
   /** Build folders beside a marker under `walk`, in `checkout`, for every `project` entry in one walk. */
   const projectRows = (checkout: string, walk: string): Row[] => {
-    const entries = (d.project ?? []).map((entry, index) => ({
-      entry,
-      index,
-      marker: globRegExp(entry.marker),
-    }))
     const rows: Row[] = []
     const visit = (dir: string): void => {
       let found: Dirent[]
@@ -398,7 +414,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         return
       }
       const files = found.filter((e) => !e.isDirectory()).map((e) => e.name)
-      const here = entries.filter((p) => files.some((f) => p.marker.test(f)))
+      const here = projects.filter((p) => files.some((f) => p.marker.test(f)))
       for (const e of found) {
         if (!e.isDirectory() || e.isSymbolicLink()) continue
         const path = join(dir, e.name)
@@ -410,7 +426,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         if (builds.length === 0 && !NOT_WALKED.has(e.name) && !e.name.startsWith('.')) visit(path)
       }
     }
-    if (entries.length > 0) visit(walk)
+    visit(walk)
     // In `project` order, as one walk per entry listed them.
     const order = (r: Row): number => (r.candidate.evidence as Evidence).project ?? 0
     return rows.sort((x, y) => order(x) - order(y))
@@ -467,12 +483,13 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
 
   /** Every row now: past a glob's `maxEntries`, the rest as one row. */
   const rowsNow = (ctx: Ctx): Row[] => {
-    const refused = problems(ctx)
+    let refused: Map<string, string | null> | undefined
     const rows: Row[] = []
     for (const [index, entry] of d.candidates.entries()) {
       const folder = folders.get(entry.path)
       if (folder === undefined || !present(folder)) continue
       const action = actionOf(entry)
+      refused ??= problems(ctx)
       const problem = refused.get(entry.path) ?? null
       if (problem !== null) {
         // Listed so `status` says why, but nothing under it is measured.
@@ -503,11 +520,11 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         if (row !== null) rows.push(row)
       }
       if (matches.length > max) {
-        const row = restRow(entry, index, folder, matches.slice(max), action)
+        const row = restRow(entry, index, folder, matches.slice(max), max, action)
         if (row !== null) rows.push(row)
       }
     }
-    if ((d.project ?? []).length > 0) {
+    if (projects.length > 0) {
       for (const checkout of checkoutsNow(ctx)) {
         for (const walk of walkedIn(checkout, ctx.targets)) {
           rows.push(...projectRows(checkout.path, walk))
@@ -527,6 +544,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     index: number,
     folder: string,
     matches: readonly string[],
+    max: number,
     action: Action,
   ): Row | null => {
     const threshold = thresholdOf(entry)
@@ -560,7 +578,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         kind: name,
         ref: `${join(folder, entry.glob!)}:rest`,
         at: folder,
-        why: `${rest.length} matches of ${entry.glob} past the first ${entry.maxEntries ?? DEFAULT_MAX_ENTRIES}, as one; ${since}; each removed as a folder`,
+        why: `${rest.length} matches of ${entry.glob} past the first ${max}, as one; ${since}; each removed as a folder`,
         costDescription: entry.costDescription,
         evidence,
         ...(bytes === null ? {} : { bytes }),
@@ -569,12 +587,6 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       }),
     }
   }
-
-  const unreadable = (why: string): Row['objections'][number] => ({
-    level: 'refuse',
-    code: 'process-table-unreadable',
-    reason: `process table unreadable: ${why}`,
-  })
 
   /** The `inUse` objections now: a running process or a lock file refuses every candidate. */
   const inUseNow = (ctx: Ctx): Row['objections'] => {
@@ -620,11 +632,10 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   }
 
   /** Whether `dir` holds an entry, not a folder, that `marker` matches. */
-  const marked = (dir: string, marker: string): boolean => {
-    const re = globRegExp(marker)
+  const marked = (dir: string, marker: RegExp): boolean => {
     try {
       return readdirSync(dir, { withFileTypes: true }).some(
-        (e) => !e.isDirectory() && re.test(e.name),
+        (e) => !e.isDirectory() && marker.test(e.name),
       )
     } catch {
       return false
@@ -640,15 +651,16 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   const refusal = (ev: Evidence, path: string, ctx: Ctx): string | null => {
     const live: Row['objections'] = []
     if (ev.project !== undefined) {
-      const entry = d.project?.[ev.project]
+      const project = projects[ev.project]
       const checkout = ev.checkout
-      if (entry === undefined || checkout === undefined) return 'no project entry gives it now'
+      if (project === undefined || checkout === undefined) return 'no project entry gives it now'
+      const { entry, marker } = project
       const now = checkoutsNow(ctx).find((c) => c.path === checkout)
       if (now === undefined) return `${checkout} is not a checkout of the targets`
       if (containedIn(walkedIn(now, ctx.targets), path) === null) {
         return `it is not inside ${checkout} and the targets`
       }
-      if (basename(path) !== entry.dir || !marked(dirname(path), entry.marker)) {
+      if (basename(path) !== entry.dir || !marked(dirname(path), marker)) {
         return `it is no longer a ${entry.dir} folder beside ${entry.marker}`
       }
       live.push(...liveIn(checkout, ctx))
@@ -656,8 +668,9 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       const refused = problems(ctx)
       const now = rootPaths(refused)
       const paths = ev.rest ?? [path]
+      const realNow = new Set(now.map(realOr))
       for (const p of paths) {
-        if (!now.some((r) => realOr(r) === realOr(p)) && containedIn(now, p) === null) {
+        if (!realNow.has(realOr(p)) && containedIn(now, p) === null) {
           return `${p} is not inside ${name}'s roots`
         }
       }
@@ -666,8 +679,9 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       if (entry === undefined || folder === undefined) return 'no candidate entry gives it now'
       const problem = refused.get(entry.path) ?? null
       if (problem !== null) return problem
+      const glob = entry.glob === undefined ? undefined : globParts(entry.glob)
       for (const p of paths) {
-        if (entry.glob === undefined ? p !== folder : !isGlobMatch(folder, entry.glob, p)) {
+        if (glob === undefined ? p !== folder : !isGlobMatch(folder, glob, p)) {
           return `${p} is no longer ${entry.glob === undefined ? folder : `a match of ${entry.glob} in ${folder}`}`
         }
       }
@@ -742,6 +756,12 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   }
 }
 
+const unreadable = (why: string): Row['objections'][number] => ({
+  level: 'refuse',
+  code: 'process-table-unreadable',
+  reason: `process table unreadable: ${why}`,
+})
+
 const bytesText = (n: number | null): string => (n === null ? 'an unknown size' : `${n} bytes`)
 
 /** Runs `entry`'s command from `home`, `{path}` read as `path`'s real path in every argument and `env` value. */
@@ -759,7 +779,7 @@ async function runCommand(
   const before = kit.size(real)
   const r = await kit.run(argv, { signal: ctx.signal, cwd: home, env, timeoutMs: DELETE_LIMIT_MS })
   if (!r.ok) {
-    const said = (r.stderr || r.stdout).trim().split('\n')[0] ?? ''
+    const said = firstLine(failureText(r, { both: true }))
     throw new Error(
       `${argv.join(' ')} failed (${r.neverExited === true ? 'did not run' : `exit ${r.exitCode}`})${said === '' ? '' : `: ${said}`}`,
     )

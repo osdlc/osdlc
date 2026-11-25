@@ -109,22 +109,22 @@ function build(
   const h = tempHome()
   cleanups.push(h.cleanup)
   const d = parseDescriptor(text, `${name}.yaml`)
-  const folder = (key: string): string => {
+  const osFolder = (key: string): string | undefined => {
     const p = d.paths[key]!
-    const f = (p.all ?? p[OS])!
+    return p.all ?? p[OS]
+  }
+  const folder = (key: string): string => {
+    const f = osFolder(key)!
     return f.startsWith('~/') ? join(h.home, f.slice(2)) : f
   }
   if (o.fill !== false) {
     for (const key of Object.keys(d.paths)) {
-      const p = d.paths[key]!
-      if ((p.all ?? p[OS]) === undefined) continue
+      if (osFolder(key) === undefined) continue
       mkdirSync(folder(key), { recursive: true })
       writeFileSync(join(folder(key), 'blob'), 'x')
     }
     for (const c of d.candidates) {
-      if (c.glob === undefined || (d.paths[c.path]!.all ?? d.paths[c.path]![OS]) === undefined) {
-        continue
-      }
+      if (c.glob === undefined || osFolder(c.path) === undefined) continue
       for (const n of ['a', 'b']) {
         const rel = c.glob.replace(/\/$/, '').replaceAll('*', n).replaceAll('?', n)
         mkdirSync(join(folder(c.path), rel), { recursive: true })
