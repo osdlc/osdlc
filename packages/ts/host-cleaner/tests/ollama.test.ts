@@ -17,6 +17,7 @@ import {
   plan,
   pluginKit,
   survey,
+  type Plugin,
   type Survey,
 } from '../src/index.ts'
 import {
@@ -177,6 +178,22 @@ describe('parsing', () => {
     expect(serverUrl('localhost:99999')?.href).toBe('http://localhost:11434/')
     expect(serverUrl('[::1]:x')?.href).toBe('http://[::1]:11434/')
     expect(serverUrl('http://localhost:99999/p')?.href).toBe('http://localhost/p')
+    expect(serverUrl('" localhost "')?.href).toBe('http://localhost:11434/')
+    expect(serverUrl(':99999')?.href).toBe('http://127.0.0.1:11434/')
+    expect(serverUrl('localhost:')?.href).toBe('http://localhost:11434/')
+    expect(serverUrl('HTTP://localhost')?.href).toBe('http://localhost:11434/')
+    expect(serverUrl('[::1]')?.href).toBe('http://[::1]:11434/')
+    // A bad port does not make text that names no host, or another one, this machine.
+    for (const host of [
+      'localhost:1:2',
+      'localhost:x@gpu-box:99999',
+      '127.0.0.1?@gpu-box:99999',
+      '127.0.0.1\\@gpu-box:99999',
+      'localhost#gpu-box',
+    ]) {
+      expect(serverUrl(host)).toBeNull()
+    }
+    expect(isLocal(serverUrl('gpu-box:99999')!)).toBe(false)
     // Node's fetch does not dial an unspecified address everywhere; ollama's client dials it as this machine.
     expect(pingUrl(serverUrl('0.0.0.0')!)).toBe('http://127.0.0.1:11434/api/version')
     expect(pingUrl(serverUrl('[::]:8080')!)).toBe('http://[::1]:8080/api/version')
@@ -253,7 +270,7 @@ describe('survey', () => {
     expect(decidePlan(allowed(s)).run.map((c) => c.id)).toEqual(['ollama-model:old:7b'])
   })
 
-  test('tags that share an ID free nothing alone, and say the size they share', async () => {
+  test('tags that share an ID count its size once when all may run, and say how it is freed', async () => {
     const id = idOf('base:7b')
     const { plugin } = fakeOllama([
       { name: 'base:7b', id, modified: '3 weeks ago' },
@@ -262,15 +279,29 @@ describe('survey', () => {
     ])
     const s = await survey([plugin], ctx)
     expect(s.candidates.map((c) => [c.name, c.bytes])).toEqual([
-      ['base:7b', 0],
+      ['base:7b', 3_900_000_000],
       ['mine:latest', 0],
       ['other:1b', 3_900_000_000],
     ])
     expect(s.candidates[0]!.why).toContain(
-      'it shares its files (3.9 GB) with mine:latest, so removing it alone frees nothing',
+      'it shares its files (3.9 GB) with mine:latest, so removing it alone frees nothing; removing them all frees what base:7b counts',
     )
     expect(s.candidates[1]!.why).toContain('with base:7b')
     expect(s.candidates[2]!.why).not.toContain('shares')
+  })
+
+  test('tags that share an ID count nothing when one of them is held', async () => {
+    const id = idOf('base:7b')
+    const { plugin } = fakeOllama([
+      { name: 'base:7b', id, modified: '3 weeks ago' },
+      { name: 'mine:latest', id, modified: '2 hours ago' },
+    ])
+    const s = await survey([plugin], ctx)
+    expect(s.candidates.map((c) => [c.name, c.bytes, c.held === true])).toEqual([
+      ['base:7b', 0, false],
+      ['mine:latest', 0, true],
+    ])
+    expect(s.candidates[0]!.why).toMatch(/with mine:latest, so removing it alone frees nothing$/)
   })
 
   test('a size it cannot read is held with a reason, not dropped as a cloud model', async () => {
@@ -295,7 +326,65 @@ describe('survey', () => {
     expect(server.mock.calls[0]![0]).toBe('http://127.0.0.1:11434/api/version')
   })
 
-  test('each ollama command ends with the ping inside the hook limit', async () => {
+  test('OLLAMA_HOST 0.0.0.0 is pinged at the loopback address', async () => {
+    vi.stubEnv('OLLAMA_HOST', '0.0.0.0')
+    const { plugin } = fakeOllama(models)
+    const s = await survey([plugin], ctx)
+    expect(s.candidates).toHaveLength(4)
+    for (const [url] of server.mock.calls) expect(url).toBe('http://127.0.0.1:11434/api/version')
+  })
+
+  test("a stuck server refuses ollama's models and no other plugin's candidates", async () => {
+    vi.useFakeTimers()
+    try {
+      const after = (ms: number) => new Promise((done) => setTimeout(done, ms))
+      const fake = fakeRunner({ ollama: { list: { stdout: listText(models) } } })
+      const runner: typeof fake.runner = (program) => ({
+        async run(args, opts) {
+          if (args[0] !== 'ps') return fake.runner(program).run(args, opts)
+          // `ps` never answers: the runner stops it at the limit it was given.
+          const ms = Number(opts.timeoutMs)
+          await after(ms)
+          const error = `timed out after ${ms}ms`
+          return {
+            exitCode: 1,
+            neverExited: true,
+            reason: 'timeout',
+            stdout: '',
+            stderr: '',
+            error,
+          }
+        },
+      })
+      // The ping answers at the last moment.
+      server.mockImplementation(async () => {
+        await after(4_900)
+        return { ok: true }
+      })
+      const other: Plugin = {
+        name: 'other',
+        detect: () => true,
+        discover: () => [
+          { id: 'x:1', kind: 'x', ref: '1', owner: 'other', why: 'x', evidence: {} },
+        ],
+      }
+      const ollama = ollamaPlugin({}, pluginKit('ollama', { ...fake, runner }))
+      const surveyed = survey([other, ollama], ctx)
+      await vi.advanceTimersByTimeAsync(3 * HOOK_LIMIT_MS)
+      const s = await surveyed
+      expect(s.warnings).toEqual([])
+      expect(refusals(s)).toEqual(
+        ['old:7b', 'loaded:7b', 'fresh:1b', 'odd:1b'].map((m) => [
+          `ollama-model:${m}`,
+          OLLAMA_PS_FAILED,
+        ]),
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('a failure ollama explains on stdout gives that as the reason', async () => {
     const fake = fakeRunner({
       ollama: (argv) =>
         argv[0] === 'ps'
@@ -303,9 +392,6 @@ describe('survey', () => {
           : { stdout: listText(models) },
     })
     const s = await survey([ollamaPlugin({}, pluginKit('ollama', fake))], ctx)
-    expect(fake.calls.length).toBeGreaterThan(0)
-    for (const c of fake.calls) expect(c.opts.timeoutMs).toBeLessThanOrEqual(HOOK_LIMIT_MS - 5_000)
-    // What ollama printed on stdout is the reason, as for any program the kit runs.
     expect(s.objections.find((o) => o.code === OLLAMA_PS_FAILED)?.reason).toBe(
       'ollama ps failed: Error: the server is loading a model',
     )
@@ -396,13 +482,28 @@ describe('clean', () => {
     const { plugin, calls, live } = fakeOllama([{ name: 'old:7b', modified: '3 weeks ago' }])
     const receipt = await clean(allowed(await survey([plugin], ctx)), [plugin], ctx)
     expect(receipt.status).toBe('complete')
-    expect(receipt.steps.map((s) => s.delete)).toEqual(['ollama rm removed old:7b'])
+    expect(receipt.steps.map((s) => s.delete)).toEqual([
+      'ollama rm removed old:7b; freed at most 3.9 GB',
+    ])
     expect(live).toEqual([])
     expect(calls().slice(-4)).toEqual([
       'ollama list',
       'ollama ps',
       'ollama rm old:7b',
       'ollama list',
+    ])
+  })
+
+  test('the receipt says which removal of tags that share an ID freed their files', async () => {
+    const id = idOf('base:7b')
+    const { plugin } = fakeOllama([
+      { name: 'base:7b', id, modified: '3 weeks ago' },
+      { name: 'mine:latest', id, modified: '3 weeks ago' },
+    ])
+    const receipt = await clean(allowed(await survey([plugin], ctx)), [plugin], ctx)
+    expect(receipt.steps.map((s) => s.delete)).toEqual([
+      'ollama rm removed base:7b; freed nothing, its files stay for mine:latest',
+      'ollama rm removed mine:latest; freed at most 3.9 GB',
     ])
   })
 
@@ -533,12 +634,16 @@ describe('the contract', () => {
     )
   })
 
-  test('it imports nothing of host-cleaner but the kit and the plugin types', () => {
+  test('it imports nothing of host-cleaner but the kit, the shared helpers and the plugin types', () => {
     const src = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'ollama.ts'),
       'utf8',
     )
     const imports = [...src.matchAll(/^(?:import|\}) .*from '([^']+)'$/gm)].map((m) => m[1]!)
-    expect(imports.filter((i) => i !== 'zod').sort()).toEqual(['./kit.ts', './types.ts'])
+    expect(imports.filter((i) => i !== 'zod').sort()).toEqual([
+      './helpers.ts',
+      './kit.ts',
+      './types.ts',
+    ])
   })
 })

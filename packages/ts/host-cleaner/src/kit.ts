@@ -30,9 +30,6 @@ import type { Candidate, Ctx, PathCandidate, Plugin, RefCandidate } from './type
 /** The run's ignore check, for a plugin that walks checkouts itself. */
 export { coveredBy } from './ignore.ts'
 
-/** Wording the shipped plugins share, for a plugin that uses the kit alone. */
-export { failureReason, hoursText } from './helpers.ts'
-
 export const DEFAULT_IDLE_HOURS = 24
 
 /** `idle` as an `idleHours` threshold: {@link DEFAULT_IDLE_HOURS} when it is not a finite number of zero or more. */

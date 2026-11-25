@@ -17,28 +17,15 @@
  *
  * Settings: `plugins.ollama.idleHours` (default {@link DEFAULT_IDLE_HOURS}).
  *
- * It uses the kit alone, as a plugin outside host-cleaner would.
+ * It uses the kit and the helpers the shipped plugins share, and nothing
+ * private of the core.
  */
 
 import { z } from 'zod'
 
-import {
-  failureReason,
-  hoursText,
-  idleHoursOr,
-  idleHoursSetting,
-  pluginKit,
-  type Kit,
-  type KitOptions,
-} from './kit.ts'
-import {
-  PLUGIN_API,
-  definePlugin,
-  type Candidate,
-  type Ctx,
-  type Objection,
-  type Plugin,
-} from './types.ts'
+import { errorText, failureReason, hoursText, objector } from './helpers.ts'
+import { idleHoursOr, idleHoursSetting, pluginKit, type Kit, type KitOptions } from './kit.ts'
+import { PLUGIN_API, definePlugin, type Candidate, type Ctx, type Plugin } from './types.ts'
 
 export const OLLAMA_PLUGIN = 'ollama'
 
@@ -60,10 +47,11 @@ const USE_UNKNOWN_REASON = 'ollama records when a model was pulled, not when it 
 const PING_MS = 5_000
 
 /**
- * The time limit of one `ollama` command, so a hook's ping and command end
- * inside the core's 30 s hook limit and fail with ollama's own reason.
+ * The time limit of `ollama list` and `ollama ps`, below a hook's own with the
+ * ping added: a stuck server then refuses ollama's models with its reason,
+ * where an `object` past its limit would refuse every plugin's candidates.
  */
-const ASK_MS = 20_000
+const READ_LIMIT_MS = 20_000
 
 export interface OllamaOptions extends KitOptions {
   /** Idle hours before a model is a candidate (default {@link DEFAULT_IDLE_HOURS}); 0 makes every model one. */
@@ -176,29 +164,33 @@ const ROUNDED_HOURS = new Set(['hour', 'day', 'week', 'month'])
 
 /**
  * The server the `ollama` CLI talks to, read from `OLLAMA_HOST` as ollama
- * reads it: no scheme means `http` and port 11434, no host means 127.0.0.1,
- * and a bare IPv6 address is a host with no port. Null when it cannot be
- * read, since the CLI may still reach some server by it.
+ * reads it (`envconfig.Host`): every quote around it stripped, no scheme
+ * means `http` and port 11434, no host means 127.0.0.1, a bare IPv6 address
+ * is a host with no port, and a port that is no number or out of range is the
+ * default one. Null when it cannot be read, since the CLI may still reach
+ * some server by it.
  */
 export function serverUrl(host: string | undefined): URL | null {
-  let s = (host ?? '').trim().replace(/^["']+|["']+$/g, '')
-  const schemed = s.includes('://')
-  if (!schemed) {
-    if (/^[\da-f]*:[\da-f]*:[\da-f:.]*$/i.test(s)) s = `[${s}]`
-    s = `http://${s === '' || s.startsWith(':') ? `127.0.0.1${s}` : s}`
+  const text = (host ?? '')
+    .trim()
+    .replace(/^["']+|["']+$/g, '')
+    .trim()
+  const [, scheme, at, path] = /^(?:(.*?):\/\/)?([^/]*)(.*)$/s.exec(text)!
+  // Node's URL reads these in a host as something other than the host.
+  if (/[@?#%\\\s]/.test(at!)) return null
+  // `host`, `[host]` or neither before a port; text that is not that has no port.
+  const m = /^(?:\[([^[\]]*)\]|([^:[\]]*))(?::([^:[\]]*))?$/.exec(at!)
+  const name = (m === null ? at! : (m[1] ?? m[2]!)) || '127.0.0.1'
+  const port = m?.[3] ?? ''
+  const given = /^[+-]?\d+$/.test(port) && Number(port) >= 0 && Number(port) <= 65_535
+  const fallback = scheme === 'http' ? '80' : scheme === 'https' ? '443' : '11434'
+  try {
+    return new URL(
+      `${scheme ?? 'http'}://${name.includes(':') ? `[${name}]` : name}:${given ? port : fallback}${path}`,
+    )
+  } catch {
+    return null
   }
-  const parse = (text: string): URL | null => {
-    try {
-      return new URL(text)
-    } catch {
-      return null
-    }
-  }
-  // ollama takes a port it cannot read, or one out of range, as its default port.
-  const u = parse(s) ?? parse(s.replace(/^(\w[\w+.-]*:\/\/(?:\[[^\]]*\]|[^/:[\]]*)):[^/]*/, '$1'))
-  if (u === null) return null
-  if (!schemed && u.port === '') u.port = '11434'
-  return u
 }
 
 /** Whether `server` is this machine, so the models it lists are on this disk. */
@@ -218,8 +210,6 @@ export function pingUrl(server: URL): string {
   else if (u.hostname === '[::]') u.hostname = '[::1]'
   return `${u.origin}${u.pathname.replace(/\/$/, '')}/api/version`
 }
-
-const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 /** The `ollama` plugin on `kit`, or on a kit built from `opts`: models not pulled or changed for `idleHours`. */
 export function ollamaPlugin(
@@ -254,22 +244,30 @@ export function ollamaPlugin(
   }
 
   /** The output of `ollama <args>`; throws with ollama's own message when it fails. */
-  const ask = async (args: readonly string[], ctx: Ctx): Promise<string> => {
-    const r = await kit.run(['ollama', ...args], { signal: ctx.signal, timeoutMs: ASK_MS })
+  const ask = async (args: readonly string[], ctx: Ctx, timeoutMs?: number): Promise<string> => {
+    const r = await kit.run(['ollama', ...args], { signal: ctx.signal, timeoutMs })
     if (!r.ok) throw new Error(`ollama ${args.join(' ')} failed: ${failureReason(r)}`)
     return r.stdout
   }
 
-  /** The models `ollama ps` shows loaded, once the server answers. */
-  const loadedNow = async (ctx: Ctx): Promise<LoadedModel[]> => {
-    await reach(ctx)
-    return parsePs(await ask(['ps'], ctx))
-  }
+  const listed = async (ctx: Ctx): Promise<OllamaModel[]> =>
+    parseList(await ask(['list'], ctx, READ_LIMIT_MS))
+
+  const loadedNow = async (ctx: Ctx): Promise<LoadedModel[]> =>
+    parsePs(await ask(['ps'], ctx, READ_LIMIT_MS))
 
   const loadedAs = (m: LoadedModel, loaded: readonly LoadedModel[]) =>
     loaded.find((l) => l.name === m.name || l.id === m.id)
 
   const own = (c: Candidate): boolean => c.owner === OLLAMA_PLUGIN && c.kind === OLLAMA_MODEL
+
+  const objection = objector(OLLAMA_PLUGIN)
+
+  /** Whether the model may run by default: its age and size can be read, and it is at least as old as the threshold. */
+  const isOld = (m: OllamaModel): boolean => {
+    const hours = leastHours(m.modified)
+    return hours !== null && hours >= threshold && m.bytes !== null
+  }
 
   return {
     name: OLLAMA_PLUGIN,
@@ -285,32 +283,36 @@ export function ollamaPlugin(
     async discover(ctx) {
       await reach(ctx)
       // A cloud model has no files here: deleting it frees nothing.
-      const models = parseList(await ask(['list'], ctx)).filter((m) => m.size !== '-')
+      const models = (await listed(ctx)).filter((m) => m.size !== '-')
       return models.map((m) => {
         const hours = leastHours(m.modified)
-        // Tags with one ID share their files, so removing one alone frees nothing.
-        const sharers = models.filter((o) => o.id === m.id && o !== m).map((o) => o.name)
-        const shared = sharers.length > 0
+        // Tags with one ID share their files, freed only when all are removed:
+        // counted once, on the first, when all may run by default, else not at all.
+        const tags = models.filter((o) => o.id === m.id)
+        const counted = tags.every(isOld) ? tags[0] : undefined
+        const others = tags.filter((o) => o !== m).map((o) => o.name)
         const why = [
           hours === null
             ? `ollama list shows it modified "${m.modified}", which gives no age`
             : `not pulled or changed for at least ${hoursText(hours)} hours, by ollama list (threshold ${threshold})`,
           ...(m.bytes === null ? [`its size "${m.size}" cannot be read`] : []),
-          ...(shared
+          ...(others.length > 0
             ? [
-                `it shares its files (${m.size}) with ${sharers.join(', ')}, so removing it alone frees nothing`,
+                `it shares its files (${m.size}) with ${others.join(', ')}, so removing it alone frees nothing` +
+                  (counted === undefined
+                    ? ''
+                    : `; removing them all frees what ${counted.name} counts`),
               ]
             : []),
         ]
-        const old = hours !== null && hours >= threshold && m.bytes !== null
         return kit.candidate({
           kind: OLLAMA_MODEL,
           ref: m.name,
           name: m.name,
-          ...(m.bytes === null ? {} : { bytes: shared ? 0 : m.bytes }),
+          ...(m.bytes === null ? {} : { bytes: others.length > 0 && m !== counted ? 0 : m.bytes }),
           why: why.join('; '),
           costDescription: 're-download',
-          ...(old ? {} : { held: true }),
+          ...(isOld(m) ? {} : { held: true }),
           // The MODIFIED text moves with the clock, so it stays out.
           evidence: { kind: OLLAMA_MODEL, name: m.name, id: m.id },
         })
@@ -319,14 +321,9 @@ export function ollamaPlugin(
     async object(all, ctx) {
       const mine = all.filter(own)
       if (mine.length === 0) return []
-      const objection = (
-        c: Candidate,
-        level: Objection['level'],
-        code: string,
-        reason: string,
-      ): Objection => ({ by: OLLAMA_PLUGIN, candidate: c.id, level, code, reason })
       let loaded: LoadedModel[]
       try {
+        await reach(ctx)
         loaded = await loadedNow(ctx)
       } catch (err) {
         // Without `ollama ps` a loaded model cannot be told apart, so every model is refused.
@@ -343,16 +340,16 @@ export function ollamaPlugin(
       if (c.ref === undefined || !own(c)) throw new Error(`${c.id} is not an ollama model`)
       const { id } = c.evidence as { id: string }
       await reach(ctx)
-      const now = parseList(await ask(['list'], ctx)).find((m) => m.name === c.ref)
+      const now = (await listed(ctx)).find((m) => m.name === c.ref)
       if (now === undefined) return `already gone: ${c.ref}`
       if (now.id !== id) throw new Error(`${c.ref} is now ${now.id}, not ${id}`)
       // A run may have loaded it since the survey, and rm unloads a loaded model, so ps is read last.
-      const l = loadedAs({ name: c.ref, id }, parsePs(await ask(['ps'], ctx)))
+      const l = loadedAs({ name: c.ref, id }, await loadedNow(ctx))
       if (l !== undefined) throw new Error(`ollama ps now shows ${l.name} loaded`)
       await ask(['rm', c.ref], ctx)
       let after: OllamaModel[]
       try {
-        after = parseList(await ask(['list'], ctx))
+        after = await listed(ctx)
       } catch (err) {
         // rm succeeded; only the check could not run, so the step is not a failure.
         return `ollama rm removed ${c.ref}; could not list again to check: ${errorText(err)}`
@@ -360,7 +357,12 @@ export function ollamaPlugin(
       if (after.some((m) => m.name === c.ref)) {
         throw new Error(`ollama still lists ${c.ref} after ollama rm`)
       }
-      return `ollama rm removed ${c.ref}`
+      const sharers = after.filter((m) => m.id === id).map((m) => m.name)
+      const freed =
+        sharers.length > 0
+          ? `freed nothing, its files stay for ${sharers.join(', ')}`
+          : `freed at most ${now.size}`
+      return `ollama rm removed ${c.ref}; ${freed}`
     },
   }
 }
