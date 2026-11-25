@@ -33,14 +33,14 @@ import {
   readConfig,
   type Config,
 } from './config.ts'
-import { descriptorVars } from './descriptor/engine.ts'
+import { descriptorDetection } from './descriptor/engine.ts'
 import {
   DescriptorLoadError,
   type DescriptorSource,
   type DescriptorSources,
 } from './descriptor/load.ts'
 import { DescriptorError } from './descriptor/schema.ts'
-import type { Vars } from './descriptor/vars.ts'
+import type { VarValue, Vars } from './descriptor/vars.ts'
 import { pluginKit } from './kit.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import {
@@ -677,16 +677,10 @@ function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
 }
 
 /** One of a descriptor's variables, as `host-cleaner plugins` shows it. */
-interface VarRow {
+type VarRow = Omit<VarValue, 'from'> & {
   name: string
-  /** The folder; null when no source gave one. */
-  value: string | null
   /** The source that gave it, such as `config`, `env GOPATH` or `value`; null when none did. */
   from: string | null
-  /** Set in the config, or a `value` that starts with such a variable: its folder may sit outside home. */
-  trusted: boolean
-  /** The sources tried before it, or all of them when none gave a value, each with why it gave none. */
-  tried: ReadonlyArray<{ source: string; failed: string }>
 }
 
 /** One row of `host-cleaner plugins`. */
@@ -698,7 +692,7 @@ interface PluginRow {
   replaces?: { source: DescriptorSource; path: string }
   enabled: boolean
   detected: boolean
-  /** Why it does not run: disabled in the config, or what its `detect` threw. Null when it is detected, or `detect` answered no. */
+  /** Why it does not run: disabled in the config, what its `detect` threw, or why a descriptor skipped (`system: true`, superseded). Null when it is detected, or any other `detect` answered no. */
   reason: string | null
   /** Where it may delete besides the targets; empty, the targets alone. */
   roots: readonly string[]
@@ -711,13 +705,7 @@ interface PluginRow {
 }
 
 const varRows = (vars: Vars | undefined): VarRow[] =>
-  Object.entries(vars ?? {}).map(([name, x]) => ({
-    name,
-    value: x.value,
-    from: x.from ?? null,
-    trusted: x.trusted,
-    tried: x.tried,
-  }))
+  Object.entries(vars ?? {}).map(([name, x]) => ({ name, ...x, from: x.from ?? null }))
 
 /**
  * `${NAME} = <folder>  from <source> (tried <source>: <why it gave none>; …)`,
@@ -778,10 +766,13 @@ async function runPlugins(
     const loaded = new Map(descriptors.map((d) => [d.name, d]))
     const found = await inspect(enabled, contextFor(parsed.positionals, config, ctx, [], v.ignore))
     const state = new Map(found.plugins.map((s) => [s.name, s]))
-    rows = all.map((p): PluginRow => {
+    // One row per name: `inspect` leaves out a second plugin of a name, with a warning.
+    const first = all.filter((p, i) => all.findIndex((q) => q.name === p.name) === i)
+    rows = first.map((p): PluginRow => {
       const off = !enabled.includes(p)
       const s = state.get(p.name)
       const d = loaded.get(p.name)
+      const seen = off ? undefined : descriptorDetection(p)
       return {
         name: p.name,
         source: d?.source ?? 'built-in',
@@ -790,11 +781,11 @@ async function runPlugins(
         detected: s?.detected ?? false,
         reason: off
           ? `plugins.${p.name}.enabled is false; --plugin ${p.name} runs it anyway`
-          : (s?.reason ?? null),
+          : (s?.reason ?? seen?.skipped ?? null),
         roots: s?.roots ?? [],
         selfRoots: s?.selfRoots ?? [],
         note: s?.note ?? null,
-        vars: off ? [] : varRows(descriptorVars(p)),
+        vars: varRows(seen?.vars),
       }
     })
     targets = found.ctx.targets

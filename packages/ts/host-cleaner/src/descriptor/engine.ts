@@ -293,14 +293,24 @@ interface EngineAt {
   vars: Readonly<Record<string, string | undefined>>
 }
 
-const resolvedVars = new WeakMap<Plugin, () => Vars | undefined>()
+/** What a descriptor's last `detect` found, for `host-cleaner plugins`. */
+export interface DescriptorDetection {
+  /** Why it did not apply before looking: `system: true`, or its `supersededBy` plugin runs. */
+  skipped?: string
+  /** Its variables: those it declares, and the built-ins it uses. Absent when that `detect` did not finish working them out. */
+  vars?: Vars
+}
+
+const lastDetection = new WeakMap<Plugin, () => DescriptorDetection>()
 
 /**
- * The variables of `plugin`, a descriptor's, as its last `detect` worked them
- * out: those it declares, and the built-ins it uses. Undefined for any other
- * plugin, and for a descriptor whose `detect` has not resolved them.
+ * What the last `detect` of `plugin`, a descriptor's, found: why it skipped,
+ * or the variables it worked out. A `detect` that was cancelled, such as by
+ * its time limit, leaves none. Undefined for any other plugin, including a
+ * wrapper around a descriptor's.
  */
-export const descriptorVars = (plugin: Plugin): Vars | undefined => resolvedVars.get(plugin)?.()
+export const descriptorDetection = (plugin: Plugin): DescriptorDetection | undefined =>
+  lastDetection.get(plugin)?.()
 
 function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   const config = Object.fromEntries(
@@ -681,11 +691,15 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
 
   // The variables `plugins` shows: the declared ones, and the built-ins the descriptor uses.
   const used = new Set(varRefs(JSON.stringify([d.paths, d.vars, d.inUse?.locks])))
-  const shown = (): Vars | undefined =>
-    vars &&
+  const shown = (all: Vars): Vars =>
     Object.fromEntries(
-      Object.entries(vars).filter(([n]) => !Object.hasOwn(BUILT_IN_VARS, n) || used.has(n)),
+      Object.entries(all).filter(([n]) => !Object.hasOwn(BUILT_IN_VARS, n) || used.has(n)),
     )
+  let detected: DescriptorDetection = {}
+  // A cancelled call still runs on; what it finds after is not recorded.
+  const record = (ctx: Ctx, now: DescriptorDetection): void => {
+    if (!ctx.signal.aborted) detected = now
+  }
 
   const plugin: Plugin = {
     name,
@@ -694,11 +708,18 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       detect: Math.max(HOOK_LIMIT_MS, (commands + 1) * VAR_COMMAND_LIMIT_MS),
     },
     async detect(ctx) {
-      if (skipReason(d) !== undefined) return false
+      detected = {}
+      const skipped = skipReason(d)
+      if (skipped !== undefined) {
+        record(ctx, { skipped })
+        return false
+      }
       if (d.supersededBy !== undefined && (await at.runs?.(d.supersededBy, ctx)) === true) {
+        record(ctx, { skipped: `superseded: ${d.supersededBy} runs` })
         return false
       }
       await refresh(ctx)
+      record(ctx, { vars: shown(vars!) })
       const holds = (c: { onPath?: string | undefined; exists?: string | undefined }): boolean => {
         if (c.onPath !== undefined) return kit.onPath(c.onPath)
         const folder = c.exists === undefined ? undefined : folders.get(c.exists)
@@ -747,7 +768,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       return kit.remove(path, ctx)
     },
   }
-  resolvedVars.set(plugin, shown)
+  lastDetection.set(plugin, () => detected)
   return plugin
 }
 

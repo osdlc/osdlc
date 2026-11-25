@@ -50,6 +50,7 @@ import {
   type Plugin,
   type RunCtx,
 } from '../src/index.ts'
+import { descriptorDetection } from '../src/descriptor/engine.ts'
 import { effectiveSettings, settingsIssues, settingsOf } from '../src/settings.ts'
 import { contractSuite, fakeContext, fakeRunner, tempHome } from '../src/testing.ts'
 
@@ -1047,6 +1048,29 @@ function outsideHome(): string {
 }
 
 describe('variables (tier 2)', () => {
+  test('descriptorDetection holds what the last detect found, and nothing from a cancelled one', async () => {
+    const text = `descriptor: 1
+vars:
+  DIR:
+    - value: ~/.cache/mine
+paths:
+  store: { all: '\${DIR}' }
+candidates:
+  - { path: store, costDescription: re-download }
+`
+    const b = buildVars('mine', text)
+    expect(descriptorDetection(b.plugin)).toEqual({})
+    await b.plugin.detect(fakeContext())
+    expect(descriptorDetection(b.plugin)?.vars?.DIR).toMatchObject({
+      value: join(b.home, '.cache/mine'),
+      from: 'value',
+    })
+    expect(descriptorDetection(b.plugin)?.vars?.HOME).toBeUndefined()
+    await b.plugin.detect({ ...fakeContext(), signal: AbortSignal.abort() })
+    expect(descriptorDetection(b.plugin)).toEqual({})
+    expect(descriptorDetection({ ...b.plugin })).toBeUndefined()
+  })
+
   test('the contract suite passes for pnpm and go, with and without their tools', async () => {
     for (const [name, text] of [
       ['pnpm', PNPM_VARS],

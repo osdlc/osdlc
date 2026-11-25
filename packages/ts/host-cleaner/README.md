@@ -394,8 +394,11 @@ whether the file set it or it is the default. `--format json` prints the values.
 
 `host-cleaner plugins` lists every plugin: where it came from (`built-in`, or
 for a descriptor `shipped`, `user` for the config directory or `flag` for
-`--descriptor`), whether it applies here and, when it does not, why, and its
-roots, the folders it may delete in besides the targets. A descriptor that
+`--descriptor`), whether it applies here, and its roots, the folders it may
+delete in besides the targets. When it does not apply, a reason follows if one
+is known: disabled, what `detect` threw, or for a descriptor that it is
+`system: true` or superseded (`superseded: node runs`). A `detect` that just
+answers no, as most built-ins do, gives no reason: it shows `not detected`. A descriptor that
 stands in for one of the same name ends its line with the file it replaces
 (`replaces` in JSON). It runs `detect`,
 `scope` and `roots` and nothing else, so it proposes and deletes nothing. A
@@ -410,7 +413,9 @@ Under a descriptor with variables, one line per variable it declares or uses
 from the built-ins: its value and the source that gave it, then each source
 tried before it and why it gave none. A command that timed out says so, and the
 source after it that gave the value is the one named. A variable no source
-gave a value has no value, and its folders are left out. `--format json` prints
+gave a value has no value, and its folders are left out. A descriptor whose
+`detect` timed out, was skipped or was superseded shows no variables, since
+none were worked out for this run. `--format json` prints
 the same, one object per plugin, each with its `vars`.
 
 ```text

@@ -520,6 +520,21 @@ candidates:
     expect(r.code).toBe(2)
     expect(r.err).toContain('ghost')
   })
+
+  test('a second plugin of one name gets no row of its own, and the warning says it was left out', async () => {
+    const { env, cwd } = setup()
+    const twice = [
+      { ...fake('x'), roots: () => ['/cache/first'] },
+      { ...fake('x'), roots: () => ['/cache/second'] },
+    ]
+    const r = await run(['plugins'], cwd, env, { plugins: twice })
+    expect(r.code).toBe(0)
+    expect(r.out).toBe(
+      [`targets: ${cwd}`, '  x  built-in  detected; roots: /cache/first', ''].join('\n'),
+    )
+    expect(r.err).toContain('x: a second plugin of that name was left out')
+  })
+
   test('a degraded plugin shows as detected with its note, in text and json, and a self root is marked', async () => {
     const { env, cwd } = setup()
     const cache = tempDir()
@@ -839,6 +854,28 @@ candidates:
     expect(on.out).toContain('plugins: git\n')
     const off = await run(['status', '--skip-plugin', 'git,cargo,node'], h.cwd, h.env, deps)
     expect(off.out).toContain('plugins: mine\n')
+  })
+
+  test('plugins says why a superseded or system: true descriptor does not apply', async () => {
+    const h = withHome(['mine', 'root'])
+    writeFileSync(join(h.user, 'mine.yaml'), store('.cache/mine', 'supersededBy: git\n'))
+    writeFileSync(join(h.user, 'root.yaml'), store('.cache/root', 'system: true\n'))
+    const r = await run(['plugins', '--format', 'json'], h.cwd, h.env, {
+      shippedDescriptors: h.shipped,
+    })
+    expect(r.code).toBe(0)
+    const rows = Object.fromEntries(
+      JSON.parse(r.out).plugins.map((p: { name: string }) => [p.name, p]),
+    )
+    expect(rows.mine).toMatchObject({
+      detected: false,
+      reason: 'superseded: git runs',
+      vars: [],
+    })
+    expect(rows.root).toMatchObject({ detected: false, vars: [] })
+    expect(rows.root.reason).toMatch(/^skipped: .*system: true/)
+    const text = (await run(['plugins'], h.cwd, h.env, { shippedDescriptors: h.shipped })).out
+    expect(text).toMatch(/ {2}mine +user +not detected: superseded: git runs\n/)
   })
 
   test('clean deletes a descriptor’s folder through the kit', async () => {
