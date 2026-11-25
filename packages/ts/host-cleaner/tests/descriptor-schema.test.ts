@@ -220,6 +220,25 @@ describe("the system description's examples", () => {
     ])
   })
 
+  test('a glob or marker whose every {a,b} alternative names an entry is accepted', () => {
+    expect(
+      issues(hfWith("{ path: hub, costDescription: rebuild, glob: '{models,datasets}--*/' }")),
+    ).toEqual([])
+    expect(issues(hfWith("{ path: hub, costDescription: rebuild, glob: 'a/{,b}' }"))).toEqual([])
+    expect(
+      issues(
+        `${HUGGING_FACE}project:\n  - { dir: obj, marker: '*.{csproj,fsproj}', costDescription: rebuild }\n`,
+      ),
+    ).toEqual([])
+  })
+
+  test('a glob with too many {a,b} alternatives is refused', () => {
+    const glob = '{a,b}'.repeat(11)
+    expect(issues(hfWith(`{ path: hub, costDescription: rebuild, glob: '${glob}' }`))).toEqual([
+      'line 5: candidates.0.glob: must name entries under the path, in every {a,b} alternative, such as models--*/',
+    ])
+  })
+
   test('a glob may start with ~ when it names an entry, such as ~$*', () => {
     expect(issues(hfWith("{ path: hub, costDescription: rebuild, glob: '~$*' }"))).toEqual([])
   })
@@ -299,8 +318,20 @@ describe('a bad descriptor names the field path', () => {
     [
       'a glob that names no entry, only the path itself',
       hfWith("{ path: hub, costDescription: rebuild, glob: './' }"),
-      'line 5: candidates.0.glob: must name entries under the path, such as models--*/',
+      'line 5: candidates.0.glob: must name entries under the path, in every {a,b} alternative, such as models--*/',
     ],
+    ...['{.,x}', '{x,.}/', '{,x}', '{b,{.,c}}', '{x,{,y}}/'].map(
+      (glob): [string, string, string] => [
+        `a glob with an alternative that names the path itself, ${glob}`,
+        hfWith(`{ path: hub, costDescription: rebuild, glob: '${glob}' }`),
+        'line 5: candidates.0.glob: must name entries under the path, in every {a,b} alternative, such as models--*/',
+      ],
+    ),
+    ...['{..,x}', '{x,a/b}', '{,x}', '{x,{.,y}}'].map((marker): [string, string, string] => [
+      `a project marker with an alternative that is not a name, ${marker}`,
+      `${HUGGING_FACE}project:\n  - { dir: obj, marker: '${marker}', costDescription: rebuild }\n`,
+      'line 11: project.0.marker: must be a file name or glob, not a path',
+    ]),
     [
       'maxEntries without a glob',
       hfWith('{ path: hub, costDescription: rebuild, maxEntries: 10 }'),
@@ -360,7 +391,19 @@ describe('a bad descriptor names the field path', () => {
       HUGGING_FACE.replace('~/.cache/huggingface/hub', `'${root}'`),
       'line 4: paths.hub.all: must name a folder below the home folder or a root, not the home folder or a root itself',
     ]),
-    ...['/home/alice', '/Users/alice/', '/root', 'C:\\Users\\alice', '/home/alice/.'].map(
+    ...[
+      '/home/alice',
+      '/Users/alice/',
+      '/root',
+      'C:\\Users\\alice',
+      '/home/alice/.',
+      '//home/alice',
+      '/home//alice',
+      'C:/Users//alice',
+      '/home/./alice',
+      '/var/root',
+      '/private/var/root/',
+    ].map(
       (home): [string, string, string] => [
         `a home folder written out, ${home}`,
         HUGGING_FACE.replace('~/.cache/huggingface/hub', `'${home}'`),
@@ -542,13 +585,9 @@ describe('the shipped JSON Schema', () => {
     expect(shippedText, stale).toBe(descriptorSchemaText())
   })
 
-  test('its $id is the URL the README names, on this release line', () => {
-    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
-      version: string
-    }
-    const line = pkg.version.split('.').slice(0, 2).join('.')
+  test('its $id is the URL the README names, on no release', () => {
     expect(DESCRIPTOR_SCHEMA_URL).toBe(
-      `https://unpkg.com/@osdlc/host-cleaner@${line}/schemas/descriptor-1.json`,
+      'https://unpkg.com/@osdlc/host-cleaner/schemas/descriptor-1.json',
     )
     expect(descriptorJsonSchema()['$id']).toBe(DESCRIPTOR_SCHEMA_URL)
     const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8')

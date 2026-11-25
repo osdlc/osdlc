@@ -15,17 +15,17 @@ import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 import { LineCounter, isMap, isScalar, isSeq, parseDocument, type Document } from 'yaml'
 
-import { COST_DESCRIPTIONS } from '../types.ts'
-import { VERSION } from '../version.generated.ts'
+import { COST_DESCRIPTIONS } from '../cost.ts'
 
 /** The format version this reader takes. */
 export const DESCRIPTOR_VERSION = 1
 
-/** The release line, `major.minor` of package.json's version. */
-const RELEASE_LINE = VERSION.split('.').slice(0, 2).join('.')
-
-/** Where this release line publishes the JSON Schema; a descriptor's `$schema` may name it. */
-export const DESCRIPTOR_SCHEMA_URL = `https://unpkg.com/@osdlc/host-cleaner@${RELEASE_LINE}/schemas/descriptor-1.json`
+/**
+ * Where the JSON Schema is published; a descriptor's `$schema` may name it.
+ * The file name carries the format version, so the URL names no release.
+ */
+export const DESCRIPTOR_SCHEMA_URL =
+  'https://unpkg.com/@osdlc/host-cleaner/schemas/descriptor-1.json'
 
 /** How many glob matches become candidates of their own before the rest are combined into one. */
 export const DEFAULT_MAX_ENTRIES = 200
@@ -46,17 +46,55 @@ const GLOB_ESCAPES = /(^|[/\\{,])\.\.([/\\},]|$)|(^|[{,])([/\\]|~([/\\,}]|$)|[A-
 
 /**
  * A home folder, or the folder that holds them, written out: `/root`,
- * `/home/<user>`, `/Users/<user>`, `C:\Users\<user>`, `${HOME}` or
- * `${USERPROFILE}`.
+ * `/var/root`, `/home/<user>`, `/Users/<user>`, `C:\Users\<user>`, `${HOME}`
+ * or `${USERPROFILE}`. Test it on {@link withoutDots}' result.
  */
 const HOME_FOLDER =
-  /^(\/root|\/(home|Users)(\/[^/]*)?|[A-Za-z]:[/\\]Users([/\\][^/\\]*)?|\$\{(HOME|USERPROFILE)\})[/\\]*$/i
+  /^(\/root|\/(private\/)?var\/root|\/(home|Users)(\/[^/]*)?|[A-Za-z]:[/\\]Users([/\\][^/\\]*)?|\$\{(HOME|USERPROFILE)\})[/\\]*$/i
 
 const NAME = /^[A-Za-z][A-Za-z0-9_-]*$/
 
 /** Whether a path names something below where it starts: a segment other than empty or `.`. */
 const namesEntry = (p: string): boolean =>
   p.split(/[/\\]/).some((part) => part !== '' && part !== '.')
+
+/** `p` without its `.` segments and with each run of separators as one: `//home/./alice` is `/home/alice`. */
+const withoutDots = (p: string): string =>
+  p.replace(/[/\\]\.(?=[/\\]|$)/g, '').replace(/([/\\])[/\\]+/g, '$1')
+
+/** Past this many `{a,b}` alternatives, a glob is refused rather than expanded. */
+const MAX_ALTERNATIVES = 1024
+
+/**
+ * Every string the `{a,b}` alternatives in `glob` expand to, nested ones too; a
+ * brace with no top-level comma stays as written. Undefined past
+ * {@link MAX_ALTERNATIVES}.
+ */
+function braceExpansions(glob: string): string[] | undefined {
+  for (let open = glob.indexOf('{'); open !== -1; open = glob.indexOf('{', open + 1)) {
+    let depth = 0
+    const bounds = [open]
+    for (let i = open; i < glob.length; i++) {
+      const ch = glob[i]
+      if (ch === '{') depth++
+      else if (ch === ',' && depth === 1) bounds.push(i)
+      else if (ch === '}' && --depth === 0) {
+        if (bounds.length === 1) break
+        bounds.push(i)
+        const out: string[] = []
+        for (let k = 0; k + 1 < bounds.length; k++) {
+          const alternative = glob.slice(bounds[k]! + 1, bounds[k + 1])
+          const rest = braceExpansions(glob.slice(0, open) + alternative + glob.slice(i + 1))
+          if (rest === undefined) return undefined
+          out.push(...rest)
+          if (out.length > MAX_ALTERNATIVES) return undefined
+        }
+        return out
+      }
+    }
+  }
+  return [glob]
+}
 
 /**
  * A folder: under the home folder (`~/…`), absolute, or starting with a
@@ -75,7 +113,7 @@ const folder = z
     'must name a folder below the home folder or a root, not the home folder or a root itself',
   )
   .refine(
-    (p) => !HOME_FOLDER.test(p.replace(/[/\\]\.(?=[/\\]|$)/g, '')),
+    (p) => !HOME_FOLDER.test(withoutDots(p)),
     'must name a folder below a home folder, not a home folder itself',
   )
 
@@ -161,8 +199,8 @@ export const DescriptorCandidateSchema = z
       .refine((g) => !GLOB_ESCAPES.test(g), {
         message: 'must stay inside the path: no .. segment, not absolute',
       })
-      .refine(namesEntry, {
-        message: 'must name entries under the path, such as models--*/',
+      .refine((g) => braceExpansions(g)?.every(namesEntry) ?? false, {
+        message: 'must name entries under the path, in every {a,b} alternative, such as models--*/',
       })
       .optional()
       .describe('Entries under the path, one candidate each, such as `models--*/`.'),
@@ -219,16 +257,22 @@ export const DescriptorCandidateSchema = z
     if (c.maxEntries !== undefined && c.glob === undefined) at('maxEntries', 'only with glob')
   })
 
-/** A file or glob name, with no folder in it. */
-const entryName = (what: string) =>
+/** Whether `n` names one entry: not empty, `.` or `..`, and with no folder in it. */
+const isEntryName = (n: string): boolean => !/[/\\]/.test(n) && n !== '' && n !== '.' && n !== '..'
+
+/** A file name, or with `glob` a glob whose every `{a,b}` alternative is one. */
+const entryName = (what: string, glob = false) =>
   z
     .string()
     .min(1)
-    .refine((n) => !/[/\\]/.test(n) && n !== '.' && n !== '..', `must be a ${what}, not a path`)
+    .refine(
+      (n) => (glob ? (braceExpansions(n)?.every(isEntryName) ?? false) : isEntryName(n)),
+      `must be a ${what}, not a path`,
+    )
 
 export const ProjectEntrySchema = z.strictObject({
   dir: entryName('folder name').describe("The build folder's name, such as `obj`."),
-  marker: entryName('file name or glob').describe(
+  marker: entryName('file name or glob', true).describe(
     'A file name or glob beside it that marks the project, such as `*.csproj`.',
   ),
   costDescription,

@@ -262,7 +262,7 @@ named folders in `paths`, one value for `all` or one per OS, and the
 does not load descriptors yet.
 
 ```yaml
-# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@0.3/schemas/descriptor-1.json
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner/schemas/descriptor-1.json
 descriptor: 1
 detect:
   any: [{ onPath: uv }, { exists: cache }]
@@ -292,7 +292,8 @@ try {
 `descriptorIssues(value)` checks a parsed value and lists its problems without
 lines. A folder must start with `~/`, be absolute, and name something below
 the home folder or the root, not a home folder itself such as `/home/alice`. A
-glob stays inside its path, in every `{a,b}` alternative too. A tool's
+glob names entries inside its path, in every `{a,b}` alternative too, and a
+project `marker` names a file in every alternative. A tool's
 `command` must name the checked folder, as a `{path}` argument or in `env`.
 `vars` (tier 2) and any `${VAR}` elsewhere are refused until variables are
 built. `DescriptorSchema` is the zod schema, and `schemas/descriptor-1.json`,

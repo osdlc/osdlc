@@ -7,6 +7,7 @@
 import type { Kind } from '@osdlc/repo-cleaner'
 import type { z } from 'zod'
 
+import type { CostDescription } from './cost.ts'
 import { attachKit, type Kit } from './kit.ts'
 
 /** What every candidate has, whether a path or a ref. */
@@ -41,10 +42,7 @@ interface CandidateBase {
   unmeasured?: boolean | undefined
 }
 
-/** What deleting a candidate costs: fetched again, built again, or gone for good. */
-export const COST_DESCRIPTIONS = ['re-download', 'rebuild', 'lost'] as const
-
-export type CostDescription = (typeof COST_DESCRIPTIONS)[number]
+export { COST_DESCRIPTIONS, type CostDescription } from './cost.ts'
 
 /**
  * A folder its owner deletes. It must sit strictly inside one of the owner's
