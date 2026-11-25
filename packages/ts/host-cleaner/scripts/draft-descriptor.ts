@@ -12,17 +12,25 @@ import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { Document, isMap, isNode, isSeq, parse } from 'yaml'
 
+import { CARGO_PLUGIN } from '../src/cargo.ts'
 import {
   DESCRIPTOR_SCHEMA_URL,
   DESCRIPTOR_VERSION,
+  DescriptorSchema,
   OSES,
+  ProjectEntrySchema,
   parseDescriptor,
   type Os,
 } from '../src/descriptor/schema.ts'
+import { NODE_PLUGIN } from '../src/node.ts'
 import { COST_DESCRIPTIONS, type CostDescription } from '../src/types.ts'
 
-/** A data folder's `holds` becomes a `paths` name; matches `NAME` in src/descriptor/schema.ts. */
-const PATHS_NAME = /^[A-Za-z][A-Za-z0-9_-]*$/
+/** Whether `name` can be a `paths` name, which a data folder's `holds` becomes. */
+const pathsName = (name: string): boolean =>
+  DescriptorSchema.shape.paths.keyType.safeParse(name).success
+
+/** Whether `name` is one file or folder name, as a `project` entry's dir and marker must be. */
+const oneName = (name: string): boolean => ProjectEntrySchema.shape.dir.safeParse(name).success
 
 /** The reviewed first set the package ships, by corpus slug. */
 export const FIRST_SET = [
@@ -44,8 +52,8 @@ export const CORPUS_DIR = fileURLToPath(
 
 /** Project folders a code plugin already covers, by folder name and marker (any marker when unset). */
 const COVERED: readonly { dir: string; marker?: string; by: string }[] = [
-  { dir: 'node_modules', by: 'node' },
-  { dir: 'target', marker: 'Cargo.toml', by: 'cargo' },
+  { dir: 'node_modules', by: NODE_PLUGIN },
+  { dir: 'target', marker: 'Cargo.toml', by: CARGO_PLUGIN },
 ]
 
 /** A store that can't be drafted: not in the corpus, or nothing in it fits a tier 1 file. */
@@ -73,7 +81,7 @@ interface Statement {
 }
 
 /** One store as the corpus records it: its front matter and its current statement per subject. */
-export interface CorpusStore {
+interface CorpusStore {
   slug: string
   /** The store file's name without `.md`, which is also its statements folder. */
   title: string
@@ -156,11 +164,7 @@ function field<T>(
  * @throws DraftError when the corpus has no such store or more than one, or a
  *   current statement is malformed or shares its subject with another
  */
-export function readStore(
-  corpus: string,
-  slug: string,
-  index: StoreIndex = indexStores(corpus),
-): CorpusStore {
+function readStore(corpus: string, slug: string, index: StoreIndex): CorpusStore {
   const found = index.bySlug.get(slug) ?? []
   if (found.length > 1)
     throw new DraftError(
@@ -316,8 +320,9 @@ const orderedFolders = (folders: Group['folders']): Record<string, string> =>
     ),
   )
 
-/** `text` as comment lines of at most `width` characters, each starting with a space. */
-function wrap(text: string, indent = '', width = 78): string[] {
+/** `text` as comment lines of at most 78 characters, each starting with a space. */
+function wrap(text: string, indent = ''): string[] {
+  const width = 78
   const lines: string[] = []
   let line = ''
   for (const word of text.split(/\s+/).filter(Boolean)) {
@@ -346,7 +351,7 @@ export interface Draft {
  *
  * @throws DraftError when the store has no fixed data folder
  */
-export function draftDescriptor(store: CorpusStore): Draft {
+function draftDescriptor(store: CorpusStore): Draft {
   const st = (subject: string) => store.statements.get(subject)
   const left: string[] = []
 
@@ -374,7 +379,7 @@ export function draftDescriptor(store: CorpusStore): Draft {
     isRecord(d) &&
     text(d['path']) &&
     typeof d['holds'] === 'string' &&
-    PATHS_NAME.test(d['holds']) &&
+    pathsName(d['holds']) &&
     cost(d['rebuild']) &&
     (d['platform'] === 'all' || (OSES as readonly unknown[]).includes(d['platform']))
 
@@ -398,12 +403,13 @@ export function draftDescriptor(store: CorpusStore): Draft {
   const entries = (g: Group) => Object.entries(g.folders) as [string, string][]
   groups.forEach((g, i) =>
     groups.forEach((o, j) => {
+      if (i === j) return
       const hit = entries(g).some(([os, f]) =>
         entries(o).some(
           ([oos, of]) => (os === oos || os === 'all' || oos === 'all') && inside(f, of),
         ),
       )
-      if (i !== j && hit) nested.push(`paths.${names[i]} is inside paths.${names[j]}: keep one`)
+      if (hit) nested.push(`paths.${names[i]} is inside paths.${names[j]}: keep one`)
     }),
   )
 
@@ -437,7 +443,6 @@ export function draftDescriptor(store: CorpusStore): Draft {
       cost(b['rebuild']) &&
       (b['marker'] === undefined || text(b['marker'])),
   )
-  const oneName = (n: string) => !/[/\\]/.test(n) && n !== '.' && n !== '..'
   for (const b of buildDirs) {
     const covered = COVERED.find(
       (c) => c.dir === b.path && (c.marker === undefined || c.marker === b.marker),

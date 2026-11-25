@@ -37,9 +37,12 @@ type Drafted = {
 
 const read = (text: string): Drafted => parse(text) as Drafted
 
+/** The real corpus, indexed once for every test that drafts from it. */
+const realIndex = indexStores(CORPUS_DIR)
+
 describe('the first set, from the corpus', () => {
   test.each(FIRST_SET)('%s validates against the schema', (slug) => {
-    const { text } = draftStore(CORPUS_DIR, slug)
+    const { text } = draftStore(CORPUS_DIR, slug, realIndex)
     const value = read(text)
     expect(descriptorIssues(value)).toEqual([])
     expect(jsonSchema(value), JSON.stringify(jsonSchema.errors)).toBe(true)
@@ -53,7 +56,7 @@ describe('the first set, from the corpus', () => {
   })
 
   test('uv: three folders on macOS and Linux, its process, and .venv', () => {
-    const { text } = draftStore(CORPUS_DIR, 'uv')
+    const { text } = draftStore(CORPUS_DIR, 'uv', realIndex)
     const uv = read(text)
     expect(uv.paths).toEqual({
       cache: { macos: '~/.cache/uv', linux: '~/.cache/uv' },
@@ -85,22 +88,22 @@ describe('the first set, from the corpus', () => {
   })
 
   test('pnpm leaves node_modules to the node plugin', () => {
-    const { text } = draftStore(CORPUS_DIR, 'pnpm')
+    const { text } = draftStore(CORPUS_DIR, 'pnpm', realIndex)
     expect(read(text)).not.toHaveProperty('project')
     expect(text).toContain('# - project node_modules: the node plugin covers it')
   })
 
   test('two folders that hold the same are told apart by name', () => {
-    const hf = read(draftStore(CORPUS_DIR, 'huggingface-hub').text)
+    const hf = read(draftStore(CORPUS_DIR, 'huggingface-hub', realIndex).text)
     expect(Object.keys(hf.paths)).toEqual(['models', 'cache-xet', 'cache-assets'])
     expect(hf.paths['models']).toEqual({ all: '~/.cache/huggingface/hub' })
-    const gradle = read(draftStore(CORPUS_DIR, 'gradle').text)
+    const gradle = read(draftStore(CORPUS_DIR, 'gradle', realIndex).text)
     expect(gradle.candidates).toContainEqual({ path: 'logs', costDescription: 'lost' })
     expect(new Set(Object.keys(gradle.paths)).size).toBe(7)
   })
 
   test('yarn leaves out .pnp.cjs, which is a file', () => {
-    const { text } = draftStore(CORPUS_DIR, 'yarn')
+    const { text } = draftStore(CORPUS_DIR, 'yarn', realIndex)
     const dirs = (read(text).project ?? []).map((p) => p['dir'])
     expect(dirs).not.toContain('.pnp.cjs')
     expect(text).toContain('# - project .pnp.cjs: looks like a file, not a folder')
@@ -108,13 +111,13 @@ describe('the first set, from the corpus', () => {
 })
 
 test('every store in the corpus drafts a valid descriptor, or says why not', () => {
-  const index = indexStores(CORPUS_DIR)
-  expect(index.unreadable).toEqual([])
-  const slugs = [...index.bySlug.keys()]
+  expect(realIndex.unreadable).toEqual([])
+  const slugs = [...realIndex.bySlug.keys()]
   expect(slugs.length).toBeGreaterThan(FIRST_SET.length)
   for (const slug of slugs) {
     try {
-      expect(descriptorIssues(parse(draftStore(CORPUS_DIR, slug, index).text)), slug).toEqual([])
+      const { text } = draftStore(CORPUS_DIR, slug, realIndex)
+      expect(descriptorIssues(parse(text)), slug).toEqual([])
     } catch (err) {
       expect(err, slug).toBeInstanceOf(DraftError)
     }
