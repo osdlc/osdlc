@@ -1,5 +1,5 @@
 /**
- * Checks on the public surface as a whole. The three entry points are the
+ * Checks on the public surface as a whole. The four entry points are the
  * `exports` of package.json, and for each one:
  * - every export has a documentation comment,
  * - every value export is used by a file in examples/,
@@ -17,6 +17,7 @@ import ts from 'typescript'
 import { describe, expect, test } from 'vitest'
 
 import * as pkg from '@osdlc/code-stats'
+import * as prep from '@osdlc/code-stats/prep'
 import * as scan from '@osdlc/code-stats/scan'
 import * as treeSitter from '@osdlc/code-stats/tree-sitter'
 
@@ -29,6 +30,7 @@ const PACKAGE_NAME = (
 const ENTRIES = [
   { specifier: PACKAGE_NAME, entry: 'src/index.ts' },
   { specifier: `${PACKAGE_NAME}/scan`, entry: 'src/scan/index.ts' },
+  { specifier: `${PACKAGE_NAME}/prep`, entry: 'src/prep/index.ts' },
   { specifier: `${PACKAGE_NAME}/tree-sitter`, entry: 'src/tree-sitter/index.ts' },
 ]
 
@@ -131,7 +133,14 @@ function importedByExamples(): Map<string, Set<string>> {
 const IMPORTED = importedByExamples()
 
 test('examples/ imports the package name only', () => {
-  const allowed = new Set<string>([...ENTRIES.map((e) => e.specifier), 'vitest'])
+  // `@osdlc/command-seam` supplies the command runners `runPrep` takes, and `typescript` the
+  // compiler module the complexity analyzer takes.
+  const allowed = new Set<string>([
+    ...ENTRIES.map((e) => e.specifier),
+    'vitest',
+    '@osdlc/command-seam',
+    'typescript',
+  ])
   const stray = [...IMPORTED.keys()].filter((s) => !allowed.has(s) && !s.startsWith('node:'))
   expect(stray).toEqual([])
 })
@@ -208,13 +217,10 @@ test('the main entry exports exactly this surface', () => {
       "describeChange",
       "diffChange",
       "diffReportSchema",
-      "isTsSource",
-      "loadTypeScript",
       "measureChange",
       "openRepo",
       "parseChangeSpec",
       "parseDiff",
-      "parseSource",
       "readDiff",
       "renderCompare",
       "renderCount",
@@ -225,7 +231,6 @@ test('the main entry exports exactly this surface', () => {
       "riskSignals",
       "spliceDescription",
       "spliceSection",
-      "withParseMemo",
       "writeDescription",
       "writePrBody",
     ]
@@ -247,6 +252,20 @@ test('the scan entry exports exactly this surface', () => {
       "prefixKind",
       "splitLines",
       "stripBom",
+    ]
+  `)
+})
+
+test('the prep entry exports exactly this surface', () => {
+  expect(Object.keys(prep).sort()).toMatchInlineSnapshot(`
+    [
+      "DEFAULT_THRESHOLDS",
+      "PACKAGE_MARKERS",
+      "buildGroups",
+      "nearestRoot",
+      "packageRoots",
+      "prepManifestSchema",
+      "runPrep",
     ]
   `)
 })

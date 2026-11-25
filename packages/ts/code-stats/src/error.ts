@@ -1,5 +1,12 @@
 import { failureOf } from '@osdlc/cli-tool'
-import { classifyFailure, firstLine, stderrOrError, type CommandResult } from '@osdlc/command-seam'
+import {
+  classifyFailure,
+  firstLine,
+  isCommandFailed,
+  stderrOrError,
+  type CommandFailed,
+  type CommandResult,
+} from '@osdlc/command-seam'
 
 /** Why a {@link CodeStatsError} was thrown: `bad-input`, `needs-git` or `failed`. */
 export type CodeStatsErrorKind = 'bad-input' | 'needs-git' | 'failed'
@@ -68,4 +75,18 @@ export function commandError(
       ? firstLine(stderrOrError(result), `exit ${result.exitCode}`)
       : failure.message
   return new CodeStatsError(`${what}: ${why}`, { failure })
+}
+
+/**
+ * The `CommandFailed` behind a thrown failure: a bare `CommandFailed`, or the
+ * `cause` of the `FailureError` typed-git and typed-gh throw. Recognised by
+ * shape, not `instanceof`.
+ */
+export function commandFailedOf(e: unknown): CommandFailed | null {
+  if (isCommandFailed(e)) return e
+  const cause =
+    typeof e === 'object' && e !== null
+      ? (e as { failure?: { cause?: unknown } }).failure?.cause
+      : null
+  return isCommandFailed(cause) ? cause : null
 }

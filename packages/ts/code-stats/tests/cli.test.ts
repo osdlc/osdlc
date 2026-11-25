@@ -13,6 +13,7 @@ import { fakeRunner } from '@osdlc/command-seam/testing'
 import { DEVLINK_SPEC } from '../src/cli/devlink.ts'
 import type { Runners } from '../src/git/repo.ts'
 import { createApp, createMain } from '../src/cli/main.ts'
+import { prepManifestSchema } from '../src/prep/schema.ts'
 import { testRepo } from './repo-fixture.ts'
 
 async function run(cwd: string, ...argv: string[]) {
@@ -54,7 +55,7 @@ describe('code-stats', () => {
 
     const schema = JSON.parse((await run(r.dir, 'schema', '--json')).out)
     const kinds = schema.commands.map((c: { kind?: string }) => c.kind)
-    expect(kinds).toEqual(expect.arrayContaining(['count', 'diff', 'compare', 'describe']))
+    expect(kinds).toEqual(expect.arrayContaining(['count', 'diff', 'compare', 'describe', 'prep']))
 
     const app = createApp()
     const count = JSON.parse((await run(r.dir, 'count', '--json')).out)
@@ -70,6 +71,19 @@ describe('code-stats', () => {
     const bad = await run(r.dir, 'diff', 'nope..HEAD', '--json')
     expect(bad.code).toBe(2)
     expect(JSON.parse(bad.out)).toMatchObject({ kind: 'error', code: 'usage', exit: 2 })
+  })
+
+  test('prep: the manifest as JSON, the same with --json plus the app envelope', async () => {
+    const r = repo()
+    const plain = await run(r.dir, 'prep', '--base', 'HEAD~1')
+    expect(plain.code).toBe(0)
+    const manifest = prepManifestSchema.parse(JSON.parse(plain.out))
+    expect(manifest.files.kept.map((f) => f.path)).toEqual(['src/a.ts'])
+    const json = JSON.parse((await run(r.dir, 'prep', '--base', 'HEAD~1', '--json')).out)
+    expect(json).toMatchObject({ kind: 'prep', schema: 2 })
+    expect(() => createApp().documentContract(['prep']).parse(json)).not.toThrow()
+    expect((await run(r.dir, 'prep', 'nope')).code).toBe(2)
+    expect((await run(r.dir, 'prep', '--help')).out).toContain('--group-size')
   })
 
   test('count: markdown, JSON, paths relative to the working directory', async () => {

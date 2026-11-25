@@ -17,6 +17,7 @@
     "lines-of-code",
     "code-metrics",
     "pull-request",
+    "code-review",
     "diff",
     "cyclomatic-complexity",
     "cli"
@@ -34,6 +35,10 @@
     "./scan": {
       "types": "./dist/scan/index.d.ts",
       "default": "./dist/scan/index.js"
+    },
+    "./prep": {
+      "types": "./dist/prep/index.d.ts",
+      "default": "./dist/prep/index.js"
     },
     "./tree-sitter": {
       "types": "./dist/tree-sitter/index.d.ts",
@@ -78,6 +83,7 @@
     "@osdlc/cli-tool": "workspace:^",
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/gfm-table": "workspace:^",
+    "@osdlc/path-guard": "workspace:^",
     "@osdlc/system-model": "workspace:^",
     "@osdlc/typed-gh": "workspace:^",
     "@osdlc/typed-git": "workspace:^",

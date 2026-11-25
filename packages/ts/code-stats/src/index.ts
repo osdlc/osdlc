@@ -115,12 +115,5 @@ export {
   type AnalyzerSource,
   type FunctionComplexity,
 } from './analysis/complexity.ts'
-export {
-  isTsSource,
-  loadTypeScript,
-  parseSource,
-  withParseMemo,
-  type TypeScript,
-  type TypeScriptSource,
-} from './analysis/typescript.ts'
+export { type TypeScript, type TypeScriptSource } from './analysis/typescript.ts'
 export { CodeStatsError, type CodeStatsErrorKind, type Failure } from './error.ts'

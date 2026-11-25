@@ -10,6 +10,7 @@ export default defineConfig({
     alias: [
       { find: /^@osdlc\/code-stats$/, replacement: src('./src/index.ts') },
       { find: /^@osdlc\/code-stats\/scan$/, replacement: src('./src/scan/index.ts') },
+      { find: /^@osdlc\/code-stats\/prep$/, replacement: src('./src/prep/index.ts') },
       { find: /^@osdlc\/code-stats\/tree-sitter$/, replacement: src('./src/tree-sitter/index.ts') },
     ],
   },

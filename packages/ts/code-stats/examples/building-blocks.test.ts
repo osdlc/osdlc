@@ -1,3 +1,4 @@
+import ts from 'typescript'
 import { expect, test } from 'vitest'
 
 import {
@@ -18,12 +19,8 @@ import {
   defaultAnalyzers,
   dependencyChange,
   diffReportSchema,
-  isTsSource,
-  loadTypeScript,
   parseDiff,
-  parseSource,
   renderDiff,
-  withParseMemo,
 } from '@osdlc/code-stats'
 import { createScannerRegistry } from '@osdlc/code-stats/scan'
 
@@ -107,25 +104,8 @@ test('dependencyChange reads the dependencies a manifest diff adds, removes and 
   expect(dependencyChange(parseDiff(diffOf('src/a.ts', ['a'], ['b']))[0]!)).toBeNull()
 })
 
-test('isTsSource, loadTypeScript, parseSource and withParseMemo', () => {
-  expect(isTsSource('src/a.ts')).toBe(true)
-  expect(isTsSource('src/a.d.ts')).toBe(false)
-  expect(isTsSource('README.md')).toBe(false)
-
-  const ts = loadTypeScript(process.cwd())
-  expect(ts).not.toBeNull()
-  const first = parseSource(ts!, 'a.ts', 'export const a = 1\n')
-  expect(first.statements).toHaveLength(1)
-  withParseMemo(() => {
-    // Inside withParseMemo the same text is parsed once.
-    expect(parseSource(ts!, 'a.ts', 'export const b = 1\n')).toBe(
-      parseSource(ts!, 'a.ts', 'export const b = 1\n'),
-    )
-  })
-})
-
 test('the complexity analyzers score functions by cyclomatic complexity', () => {
-  const ts = loadTypeScript(process.cwd())
+  // The analyzer takes the TypeScript compiler module a consumer already has.
   const analyzer = createTypescriptAnalyzer(ts)
   expect(analyzer.matches('src/a.ts')).toBe(true)
   const scores = analyzer.analyze(

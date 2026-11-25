@@ -7,10 +7,11 @@ import { compareCommand } from './compare.ts'
 import { countCommand } from './count.ts'
 import { describeCommand } from './describe.ts'
 import { diffCommand } from './diff.ts'
+import { prepCommand } from './prep.ts'
 
 /**
- * The `code-stats` app over the given runners: `count`, `diff`, `compare` and
- * `describe`, plus the `help` and `schema` commands, `--help`, `--json`,
+ * The `code-stats` app over the given runners: `count`, `diff`, `compare`,
+ * `describe` and `prep`, plus the `help` and `schema` commands, `--help`, `--json`,
  * `--output` and `--version` that cli-tool's `defineApp` adds.
  */
 export function createApp(runners: Runners = {}): App {
@@ -23,6 +24,7 @@ export function createApp(runners: Runners = {}): App {
       diff: diffCommand(runners),
       compare: compareCommand(runners),
       describe: describeCommand(runners),
+      prep: prepCommand(runners),
     },
   })
 }
