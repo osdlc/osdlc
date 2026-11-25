@@ -1,4 +1,4 @@
-/** The `agent-history` plugin over a temporary Claude Code folder and real git worktrees, one live and one removed. */
+/** The `agent-history` plugin over a temporary Claude Code folder and two project paths, one live and one gone. */
 
 import { afterEach, describe, expect, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
@@ -6,8 +6,6 @@ import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import type { ProcessProbe } from '@osdlc/repo-cleaner'
-import { Git } from '@osdlc/typed-git'
-import { IDENTITY } from '@osdlc/typed-git/testing'
 
 import {
   AGENT_HISTORY_PLUGIN,
@@ -34,9 +32,6 @@ afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()!()
 })
 
-const sh = (cwd: string, args: string[]): string =>
-  new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args).stdout.trim()
-
 const idle: ProcessProbe = { alive: () => false, holders: () => [] }
 
 /** A pid no process has: a child's, after it exited. */
@@ -55,20 +50,14 @@ interface Fixture {
   ctx: Ctx
 }
 
-/** A home with `~/.claude/projects` and a repository with two worktrees, `live` and `gone`, the second removed. */
+/** A home with `~/.claude/projects` and two project paths: `live`, which exists, and `gone`, which does not. */
 function fixture(): Fixture {
   const t = tempHome('host-cleaner-agent-history-')
   cleanups.push(t.cleanup)
   const home = t.home
-  const repo = join(home, 'dev', 'app')
-  mkdirSync(repo, { recursive: true })
-  sh(repo, ['init', '-q', '-b', 'main'])
-  sh(repo, ['commit', '-q', '--allow-empty', '-m', 'init'])
   const live = join(home, 'dev', 'app.wt', 'live')
   const gone = join(home, 'dev', 'app.wt', 'gone_one')
-  sh(repo, ['worktree', 'add', '-q', '-b', 'live', live])
-  sh(repo, ['worktree', 'add', '-q', '-b', 'gone', gone])
-  sh(repo, ['worktree', 'remove', gone])
+  mkdirSync(live, { recursive: true })
   const config = join(home, '.claude')
   const projects = join(config, 'projects')
   mkdirSync(projects, { recursive: true })

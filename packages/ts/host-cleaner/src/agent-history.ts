@@ -27,15 +27,9 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { z } from 'zod'
 
+import { objectionsTo, present, type Row } from './artifacts.ts'
 import type { Kit } from './kit.ts'
-import {
-  PLUGIN_API,
-  definePlugin,
-  type Candidate,
-  type Ctx,
-  type Objection,
-  type Plugin,
-} from './types.ts'
+import { PLUGIN_API, definePlugin, type Ctx, type Plugin } from './types.ts'
 
 export const AGENT_HISTORY_PLUGIN = 'agent-history'
 
@@ -62,10 +56,12 @@ export function claudeConfigDir(env: Readonly<Record<string, string | undefined>
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
+const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
-/** True when `path` exists as itself, a link counted as present. */
-const present = (path: string): boolean => lstatSync(path, { throwIfNoEntry: false }) !== undefined
+const isDir = (path: string): boolean =>
+  lstatSync(path, { throwIfNoEntry: false })?.isDirectory() === true
 
 /** Whether `path` is gone; false when it cannot be told. */
 function gone(path: string): boolean {
@@ -88,11 +84,14 @@ function unmounted(path: string): boolean {
   return dirname(dir) === dir || MOUNTS.has(dir) || USER_MOUNTS.has(dirname(dir))
 }
 
+/** Reused by every `head` read, which is synchronous. */
+let headBuf: Buffer | undefined
+
 /** The first `HEAD_BYTES` of `file`, and whether that is all of it. */
 function head(file: string): { text: string; whole: boolean } {
   const fd = openSync(file, 'r')
   try {
-    const buf = Buffer.alloc(HEAD_BYTES)
+    const buf = (headBuf ??= Buffer.allocUnsafe(HEAD_BYTES))
     const n = readSync(fd, buf, 0, HEAD_BYTES, 0)
     return { text: buf.toString('utf8', 0, n), whole: n < HEAD_BYTES }
   } finally {
@@ -140,26 +139,34 @@ export interface ProjectRecord {
 
 /**
  * The paths the project folder `dir` records, or null when it records none,
- * or one that is not absolute or does not turn into the folder's name. Links
- * inside it are not followed. Throws when it cannot be read.
+ * or one that is not absolute, does not turn into the folder's name, or fails
+ * `keep`. It stops reading at the first such path. Links inside it are not
+ * followed. Throws when it cannot be read.
  */
-export function decodeFolder(dir: string): ProjectRecord | null {
+export function decodeFolder(
+  dir: string,
+  keep: (path: string) => boolean = () => true,
+): ProjectRecord | null {
   const name = basename(dir)
   const paths = new Set<string>()
   const sessions: string[] = []
+  const ok = (p: string): boolean => {
+    if (paths.has(p)) return true
+    paths.add(p)
+    return isAbsolute(p) && projectFolderName(p) === name && keep(p)
+  }
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (!entry.isFile()) continue
     const file = join(dir, entry.name)
     if (entry.name.endsWith('.jsonl')) {
       sessions.push(entry.name)
       const cwd = firstCwd(file)
-      if (cwd !== undefined) paths.add(cwd)
+      if (cwd !== undefined && !ok(cwd)) return null
     } else if (entry.name === 'sessions-index.json') {
-      for (const p of indexPaths(file)) paths.add(p)
+      if (!indexPaths(file).every(ok)) return null
     }
   }
   if (paths.size === 0) return null
-  for (const p of paths) if (!isAbsolute(p) || projectFolderName(p) !== name) return null
   return { paths: [...paths].sort(), sessions: sessions.sort() }
 }
 
@@ -168,6 +175,12 @@ interface Session {
   pid: number
   sessionId: string
   cwd: string
+}
+
+/** The live sessions, and why they may be incomplete. */
+interface Sessions {
+  live: Session[]
+  unknown?: string | undefined
 }
 
 /** Whether a process `pid` exists; true when it cannot be told. */
@@ -185,7 +198,7 @@ function alive(pid: number): boolean {
  * the folder cannot be read, or the file of a live pid cannot, since that
  * session could be in any project. No folder means no session is recorded.
  */
-function liveSessions(config: string): { live: Session[]; unknown?: string } {
+function liveSessions(config: string): Sessions {
   const dir = join(config, 'sessions')
   let names: string[]
   try {
@@ -198,8 +211,9 @@ function liveSessions(config: string): { live: Session[]; unknown?: string } {
   let unknown: string | undefined
   for (const name of names.sort()) {
     const m = /^(\d+)\.json$/.exec(name)
-    const pid = Number(m?.[1])
-    if (m === null || pid <= 0 || !alive(pid)) continue
+    if (m === null) continue
+    const pid = Number(m[1])
+    if (pid <= 0 || !alive(pid)) continue
     const file = join(dir, name)
     let body: unknown
     try {
@@ -210,38 +224,29 @@ function liveSessions(config: string): { live: Session[]; unknown?: string } {
       unknown ??= `${file} cannot be read: ${errorText(err)}`
       continue
     }
-    const str = (v: unknown): string => (typeof v === 'string' ? v : '')
     if (!isObject(body)) unknown ??= `${file} is not a session record`
     else live.push({ pid, sessionId: str(body.sessionId), cwd: str(body.cwd) })
   }
-  return unknown === undefined ? { live } : { live, unknown }
-}
-
-/** A candidate and what a refusal of it rests on. */
-interface Row {
-  candidate: Candidate
-  /** Each becomes a `refuse` objection by this plugin. */
-  blockers: Array<{ code: string; reason: string }>
+  return { live, unknown }
 }
 
 /** What a scan reads once for every folder. */
 interface Seen {
-  sessions: { live: Session[]; unknown?: string }
+  sessions: Sessions
   ctx: Ctx
 }
 
 /** The row for the project folder `dir`, or null when it is not a candidate. */
 function rowFor(kit: Kit, dir: string, seen: Seen): Row | null {
   const name = basename(dir)
-  if (lstatSync(dir, { throwIfNoEntry: false })?.isDirectory() !== true) return null
+  if (!isDir(dir)) return null
   let record: ProjectRecord | null
   try {
-    record = decodeFolder(dir)
+    record = decodeFolder(dir, (p) => gone(p) && !unmounted(p))
   } catch {
     return null
   }
   if (record === null) return null
-  if (!record.paths.every((p) => gone(p) && !unmounted(p))) return null
 
   const blockers: Row['blockers'] = []
   const { live, unknown } = seen.sessions
@@ -297,41 +302,27 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
   const projects = join(config, 'projects')
   let rows = new Map<string, Row>()
 
-  /** The rows of the folders `names` in `projects`, or of every folder there. */
-  const scan = (ctx: Ctx, names?: readonly string[]): Row[] => {
-    const all =
-      names ??
-      readdirSync(projects, { withFileTypes: true })
-        .filter((e) => e.isDirectory())
-        .map((e) => e.name)
-        .sort()
-    const seen: Seen = { sessions: liveSessions(config), ctx }
-    return all.flatMap((name) => rowFor(kit, join(projects, name), seen) ?? [])
-  }
-
-  const objectionsTo = (row: Row): Objection[] =>
-    row.blockers.map((b) => ({
-      by: AGENT_HISTORY_PLUGIN,
-      candidate: row.candidate.id,
-      level: 'refuse',
-      code: b.code,
-      reason: b.reason,
-    }))
-
   return {
     name: AGENT_HISTORY_PLUGIN,
     limits: { discover: DISCOVER_LIMIT_MS },
-    detect: () => lstatSync(projects, { throwIfNoEntry: false })?.isDirectory() === true,
+    detect: () => isDir(projects),
     roots: () => [projects],
     discover(ctx) {
-      const found = scan(ctx)
+      const seen: Seen = { sessions: liveSessions(config), ctx }
+      const found = readdirSync(projects, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .sort()
+        .flatMap((name) => rowFor(kit, join(projects, name), seen) ?? [])
       rows = new Map(found.map((r) => [r.candidate.id, r]))
       return found.map((r) => r.candidate)
     },
     object: (all) =>
       all.flatMap((c) => {
         const row = rows.get(c.id)
-        return c.owner === AGENT_HISTORY_PLUGIN && row !== undefined ? objectionsTo(row) : []
+        return c.owner === AGENT_HISTORY_PLUGIN && row !== undefined
+          ? objectionsTo(AGENT_HISTORY_PLUGIN, row)
+          : []
       }),
     delete(c, ctx) {
       // Only a folder right inside `projects`, read again now: still gone, unchanged, and not in use.
@@ -339,8 +330,10 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
         throw new Error(`${c.id} is not a Claude Code project folder in ${projects}`)
       }
       if (!present(c.path)) return `already gone: ${c.path}`
-      const now = scan(ctx, [basename(c.path)]).find((r) => r.candidate.id === c.id)
-      if (now === undefined) throw new Error(`${c.path} is no longer a candidate`)
+      const now = rowFor(kit, c.path, { sessions: liveSessions(config), ctx })
+      if (now === null || now.candidate.id !== c.id) {
+        throw new Error(`${c.path} is no longer a candidate`)
+      }
       if (JSON.stringify(now.candidate.evidence) !== JSON.stringify(c.evidence)) {
         throw new Error(`${c.path} changed since it was proposed`)
       }
