@@ -1,26 +1,22 @@
-# host-cleaner
+# host-cleaner before the plugin model
 
-How `@osdlc/host-cleaner` is built: what it adds to
+> **Replaced.** This page is history. It describes the stack of PRs 943 to 948 as it stood before
+> the plugin model ([D-H3QW](../decisions/D-H3QW-host-cleaner-plugin-model.md)) and before the first
+> version left out `--auto`, `schedule` and the `claude-code` adapter
+> ([D-R8KM](../decisions/D-R8KM-host-cleaner-v1-attended-only.md)). The package has none of these
+> now, nor the adapter contract. How host-cleaner is built today is in its
+> [how it works](../../packages/ts/host-cleaner/docs/guide/how-it-works.md); the design is the
+> [system description](host-cleaner-system.md).
+>
+> The stack was the branch `sksizer/issue-666-scheduled-run`; the code references below are paths
+> in its `packages/ts/host-cleaner/` (`src/...`). Its design review is
+> [host-cleaner-design](../parley/host-cleaner-design.html), and its decision record is
+> [D-L7N5](../decisions/D-L7N5-host-cleaner.md). Where that record differed from the code, the
+> differences are listed in "Where the code and the decision record differ".
+
+What `@osdlc/host-cleaner` added to
 [repo-cleaner](../../packages/ts/repo-cleaner/README.md), how a sweep, plan, check and run
-flow through it, and what each adapter does.
-
-> **Replaced.** This page is history: it describes the stack before the plugin
-> model, with `--auto`, `schedule`, the `claude-code` adapter and the adapter
-> contract, none of which the package has now. How host-cleaner is built today
-> is in its [how it works](../../packages/ts/host-cleaner/docs/guide/how-it-works.md);
-> the design is the [system description](host-cleaner-system.md).
->
-> **Status.** This describes the stack of PRs 943 to 948 (branch
-> `sksizer/issue-666-scheduled-run` holds all six). They are not merged, so
-> `packages/ts/host-cleaner/` is not on `main` yet and the code references below
-> are paths inside that package (`src/...`). The decisions that remain open are in the
-> design review, [host-cleaner-design](../parley/host-cleaner-design.html). The decision
-> record is [D-L7N5](../decisions/D-L7N5-host-cleaner.md); where it differs from the code, the
-> code wins and the differences are listed in "Where the code and the decision record differ".
->
-> The plugin model is approved ([D-H3QW](../decisions/D-H3QW-host-cleaner-plugin-model.md),
-> review [host-cleaner-plugins](../parley/host-cleaner-plugins.html)). This page describes the
-> stack as built and will be rewritten with the code.
+flowed through it, and what each adapter did. The text below is as it was written then.
 
 repo-cleaner's own model (plan, fingerprint, check, run, receipt, risks) is in its
 [README](../../packages/ts/repo-cleaner/README.md) and its
