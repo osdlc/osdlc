@@ -1,9 +1,8 @@
 /**
  * A tier 3 plugin: Podman volumes that no container uses. Each is a ref
  * candidate, deleted by name with `podman volume rm`, and `lost`, since a
- * volume holds data nothing can download or rebuild. So the core holds every
- * one for review: it runs only when picked and `--allow discard-user-data` is
- * given.
+ * volume holds data nothing can download or rebuild. ../README.md says what
+ * the core does with such a candidate.
  */
 
 import { PLUGIN_API, definePlugin, z, type Kit } from '@osdlc/host-cleaner/plugin'

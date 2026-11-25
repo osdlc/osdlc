@@ -108,7 +108,6 @@ test('the podman example builds against ./plugin alone, and the loader takes it 
   const built = build(dir)
   expect(built.stdout + built.stderr).toBe('')
   expect(built.status).toBe(0)
-  // The build emits every file the export map names.
   const exported = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
     exports: Record<string, Record<string, string>>
   }
