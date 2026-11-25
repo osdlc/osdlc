@@ -79,12 +79,7 @@ describe('the git plugin', () => {
 
   test('gitDefinitionWith builds the plugin with its options, copied when the definition is made', async () => {
     const fx = fixture()
-    const sweep = {
-      remotes: [''],
-      offline: true,
-      provider: 'none' as const,
-      only: ['worktree' as Kind],
-    }
+    const sweep = { only: ['worktree' as Kind] }
     const git = gitDefinitionWith({ probe: idle, sweep })
     expect(git.name).toBe(BUILT_IN_PLUGINS[0]!.name)
     expect(git.api).toBe(PLUGIN_API)
