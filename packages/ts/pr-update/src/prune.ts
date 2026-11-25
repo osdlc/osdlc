@@ -184,25 +184,53 @@ function where(opts: MirrorWalkOptions): Where {
   }
 }
 
-/** The entries of `dir` that are real directories, not links, with names not starting with `.`. */
-function subdirs(dir: string): string[] {
-  let names: string[]
+/**
+ * Told of a path a walk could not read, with the error: a folder it could not list, or an entry
+ * it could not `lstat` (one under a folder that cannot be searched, say). The walk goes on with
+ * the rest, so one such path never stops a prune; {@link pruneMirror} reports it under `failed`.
+ */
+type Unreadable = (path: string, err: unknown) => void
+
+/** Ignores what could not be read. */
+const IGNORE: Unreadable = () => {}
+
+/** The names in `dir`, sorted, or none when it is not there or cannot be read (told to `unreadable`). */
+function namesIn(dir: string, unreadable: Unreadable = IGNORE): string[] {
   try {
-    names = readdirSync(dir)
-  } catch {
+    return readdirSync(dir).sort()
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    if (code !== 'ENOENT' && code !== 'ENOTDIR') unreadable(dir, e)
     return []
   }
-  return names
-    .filter((n) => !n.startsWith('.') && lstatOrNull(join(dir, n))?.isDirectory() === true)
-    .sort()
+}
+
+/** `lstat` of `path` as {@link lstatOrNull} gives it, or null after telling `unreadable` why not. */
+function lstatOr(path: string, unreadable: Unreadable): Stats | null {
+  try {
+    return lstatOrNull(path)
+  } catch (e) {
+    unreadable(path, e)
+    return null
+  }
+}
+
+/** The entries of `dir` that are real directories, not links, with names not starting with `.`. */
+function subdirs(dir: string, unreadable: Unreadable = IGNORE): string[] {
+  return namesIn(dir, unreadable).filter(
+    (n) => !n.startsWith('.') && lstatOr(join(dir, n), unreadable)?.isDirectory() === true,
+  )
 }
 
 /** Every `<root>/<a>/<b>/<c>` folder, three levels down, through real directories only. */
-function threeDown(root: string): { path: string; parts: [string, string, string] }[] {
+function threeDown(
+  root: string,
+  unreadable: Unreadable = IGNORE,
+): { path: string; parts: [string, string, string] }[] {
   const out: { path: string; parts: [string, string, string] }[] = []
-  for (const a of subdirs(root)) {
-    for (const b of subdirs(join(root, a))) {
-      for (const c of subdirs(join(root, a, b))) {
+  for (const a of subdirs(root, unreadable)) {
+    for (const b of subdirs(join(root, a), unreadable)) {
+      for (const c of subdirs(join(root, a, b), unreadable)) {
         out.push({ path: join(root, a, b, c), parts: [a, b, c] })
       }
     }
@@ -341,10 +369,11 @@ export interface MirrorListing {
 function runWorktrees(
   root: string,
   alive: RunAlive = runAlive,
+  unreadable: Unreadable = IGNORE,
 ): { path: string; repo: string; running: boolean }[] {
   const out: { path: string; repo: string; running: boolean }[] = []
-  for (const { path: repoDir, parts } of threeDown(root)) {
-    for (const name of subdirs(repoDir)) {
+  for (const { path: repoDir, parts } of threeDown(root, unreadable)) {
+    for (const name of subdirs(repoDir, unreadable)) {
       const run = RUN_NAME.exec(name)
       if (run === null) continue
       out.push({
@@ -386,27 +415,25 @@ function clonesIn(
   mirrorDir: string,
   owned: OwnedCheck,
   group: GroupOptions = {},
+  unreadable: Unreadable = IGNORE,
 ): { path: string; repo: string; state: ReturnType<typeof checkClone> }[] {
-  const marker = lstatOrNull(join(mirrorDir, MIRROR_MARKER))
+  const marker = lstatOr(join(mirrorDir, MIRROR_MARKER), unreadable)
   if (marker === null || !marker.isFile() || !owned(marker)) return []
   const out: { path: string; repo: string; state: ReturnType<typeof checkClone> }[] = []
-  for (const host of subdirs(mirrorDir)) {
-    for (const owner of subdirs(join(mirrorDir, host))) {
+  for (const host of subdirs(mirrorDir, unreadable)) {
+    for (const owner of subdirs(join(mirrorDir, host), unreadable)) {
       const dir = join(mirrorDir, host, owner)
-      let names: string[]
-      try {
-        names = readdirSync(dir).sort()
-      } catch {
-        continue
-      }
-      for (const n of names) {
+      for (const n of namesIn(dir, unreadable)) {
         if (n.startsWith('.') || !n.endsWith('.git')) continue
         const path = join(dir, n)
-        out.push({
-          path,
-          repo: `${host}/${owner}/${n.slice(0, -'.git'.length)}`,
-          state: checkClone(mirrorDir, path, owned, group),
-        })
+        let state: ReturnType<typeof checkClone>
+        try {
+          state = checkClone(mirrorDir, path, owned, group)
+        } catch (e) {
+          unreadable(path, e)
+          continue
+        }
+        out.push({ path, repo: `${host}/${owner}/${n.slice(0, -'.git'.length)}`, state })
       }
     }
   }
@@ -420,7 +447,10 @@ function clonesIn(
 export function listMirror(opts: MirrorWalkOptions): MirrorListing {
   const at = where(opts)
   const owned = opts.owned ?? ownedByMe
-  const clones = clonesIn(at.mirrorDir, owned).flatMap(({ path, repo, state }) => {
+  // A listing changes nothing, so what it cannot read is a note, not a failure.
+  const unreadable: Unreadable = (path, e) =>
+    opts.notice?.(`${path} could not be read: ${(e as Error).message.split('\n')[0]}`)
+  const clones = clonesIn(at.mirrorDir, owned, {}, unreadable).flatMap(({ path, repo, state }) => {
     if (state !== 'clone') return []
     const place = keptPlaceOf(at.kept, at.worktrees, repo, path)
     const kept = listKept(place)
@@ -436,7 +466,7 @@ export function listMirror(opts: MirrorWalkOptions): MirrorListing {
       },
     ]
   })
-  const worktrees = runWorktrees(at.worktrees).map((w) => ({
+  const worktrees = runWorktrees(at.worktrees, runAlive, unreadable).map((w) => ({
     ...w,
     owner: worktreeOwner(w.path)?.common ?? null,
   }))
@@ -564,6 +594,20 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
   const fail = (e: PruneEntry, err: unknown): void => {
     report.failed.push({ ...e, reason: (err as Error).message.split('\n')[0] })
   }
+  /** Paths the walks could not read, each reported once under `failed`, as the walk's `kind`. */
+  const unread = new Set<string>()
+  const unreadable =
+    (kind: PruneEntry['kind']): Unreadable =>
+    (path, err) => {
+      if (unread.has(path)) return
+      unread.add(path)
+      report.failed.push({
+        kind,
+        path,
+        bytes: 0,
+        reason: `could not be read: ${(err as Error).message.split('\n')[0]}`,
+      })
+    }
   const records = ownedUnder([at.worktrees, at.kept])
   const busy = (lock: string): string => `mirror busy: another pr-update run holds ${lock}`
 
@@ -583,19 +627,12 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
     }
   }
 
-  // Dead run worktrees, at any age.
-  for (const w of runWorktrees(at.worktrees, alive)) {
-    if (w.running) continue
-    const entry: PruneEntry = {
-      kind: 'worktree',
-      path: w.path,
-      repo: w.repo,
-      bytes: sizeOf(w.path),
-    }
+  /** Prune the dead run's worktree `w`, reported as `entry`. */
+  const pruneRunWorktree = (w: { path: string }, entry: PruneEntry): void => {
     const place = placeProblem(at.worktrees, w.path, owned, ownFolders(at.worktrees))
     if (place !== null) {
       report.skipped.push({ ...entry, skip: 'folder', reason: place })
-      continue
+      return
     }
     const owner = worktreeOwner(w.path)
     const clone = owner !== null && claimsToBeClone(owner.common)
@@ -608,28 +645,45 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
           skip: 'foreign',
           reason: `its owner ${owner.common} is not a clone pr-update may change: ${why}`,
         })
-        continue
+        return
       }
     }
     if (dryRun) {
       done(entry)
-      continue
+      return
     }
     if (!clone) {
       dropRunWorktree(w.path, owner, entry)
-      continue
+      return
     }
     // A clone is changed only under its lock.
     const lock = cloneLockPath(owner.common)
     const token = claim(lock, 0)
     if (token === null) {
       report.skipped.push({ ...entry, skip: 'busy', reason: busy(lock) })
-      continue
+      return
     }
     try {
       dropRunWorktree(w.path, owner, entry)
     } finally {
       releaseLock(lock, token)
+    }
+  }
+
+  // Dead run worktrees, at any age. A check that throws (its owner cannot be read, say) fails that
+  // worktree alone.
+  for (const w of runWorktrees(at.worktrees, alive, unreadable('worktree'))) {
+    if (w.running) continue
+    const entry: PruneEntry = {
+      kind: 'worktree',
+      path: w.path,
+      repo: w.repo,
+      bytes: sizeOf(w.path),
+    }
+    try {
+      pruneRunWorktree(w, entry)
+    } catch (e) {
+      fail(entry, e)
     }
   }
 
@@ -646,42 +700,44 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
 
   // Probes a hard kill left, in `worktrees/` and `kept/`.
   for (const root of [at.worktrees, at.kept]) {
-    for (const { path: dir } of threeDown(root)) {
-      for (const name of namesIn(dir)) {
+    const cannotRead = unreadable(root === at.kept ? 'kept' : 'worktree')
+    for (const { path: dir } of threeDown(root, cannotRead)) {
+      for (const name of namesIn(dir, cannotRead)) {
         if (!PROBE.test(name)) continue
         const path = join(dir, name)
-        const st = lstatOrNull(path)
+        const st = lstatOr(path, unreadable('leftover'))
         if (st === null || !st.isDirectory() || now - st.mtimeMs < LEFTOVER_AGE_MS) continue
         const entry: PruneEntry = { kind: 'leftover', path, bytes: sizeOf(path) }
-        const place = placeProblem(root, path, owned, ownFolders(root))
-        if (place !== null) report.skipped.push({ ...entry, skip: 'folder', reason: place })
-        else if (dryRun) done(entry)
-        else {
-          try {
+        try {
+          const place = placeProblem(root, path, owned, ownFolders(root))
+          if (place !== null) report.skipped.push({ ...entry, skip: 'folder', reason: place })
+          else if (dryRun) done(entry)
+          else {
             remove(path)
             done(entry)
-          } catch (e) {
-            fail(entry, e)
           }
+        } catch (e) {
+          fail(entry, e)
         }
       }
     }
   }
 
   // Leftover `.tmp-*` clone folders, under the lock of the clone they were for.
+  const cloneUnreadable = unreadable('clone')
   const marked = (() => {
-    const m = lstatOrNull(join(at.mirrorDir, MIRROR_MARKER))
+    const m = lstatOr(join(at.mirrorDir, MIRROR_MARKER), cloneUnreadable)
     return m !== null && m.isFile() && owned(m)
   })()
   if (marked) {
-    for (const host of subdirs(at.mirrorDir)) {
-      for (const owner of subdirs(join(at.mirrorDir, host))) {
+    for (const host of subdirs(at.mirrorDir, cloneUnreadable)) {
+      for (const owner of subdirs(join(at.mirrorDir, host), cloneUnreadable)) {
         const dir = join(at.mirrorDir, host, owner)
-        for (const name of namesIn(dir)) {
+        for (const name of namesIn(dir, cloneUnreadable)) {
           const tmp = TMP_CLONE.exec(name)
           if (tmp === null) continue
           const path = join(dir, name)
-          const st = lstatOrNull(path)
+          const st = lstatOr(path, unreadable('leftover'))
           if (st === null || !st.isDirectory() || now - st.mtimeMs < LEFTOVER_AGE_MS) continue
           const entry: PruneEntry = {
             kind: 'leftover',
@@ -689,7 +745,13 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
             repo: `${host}/${owner}/${tmp[1]!.slice(0, -'.git'.length)}`,
             bytes: sizeOf(path),
           }
-          const place = placeProblem(at.mirrorDir, path, owned, { ...group, ...cloneFolders })
+          let place: string | null
+          try {
+            place = placeProblem(at.mirrorDir, path, owned, { ...group, ...cloneFolders })
+          } catch (e) {
+            fail(entry, e)
+            continue
+          }
           if (place !== null) {
             report.skipped.push({ ...entry, skip: 'folder', reason: place })
             continue
@@ -723,7 +785,7 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
   if (opts.allClones !== true && days === null) return report
   const old = (clone: string): boolean =>
     opts.allClones === true || days === null || now - lastUsed(clone) > days * DAY_MS
-  for (const { path, repo, state } of clonesIn(at.mirrorDir, owned, group)) {
+  for (const { path, repo, state } of clonesIn(at.mirrorDir, owned, group, cloneUnreadable)) {
     const entry: PruneEntry = { kind: 'clone', path, repo, bytes: 0 }
     if (state !== 'clone') {
       report.skipped.push({
@@ -902,15 +964,6 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
         reason: `${(e as Error).message.split('\n')[0]}; what is left, ${aside}, is removed by a later prune`,
       })
     }
-  }
-}
-
-/** The names in `dir`, or none when it cannot be read. */
-function namesIn(dir: string): string[] {
-  try {
-    return readdirSync(dir).sort()
-  } catch {
-    return []
   }
 }
 

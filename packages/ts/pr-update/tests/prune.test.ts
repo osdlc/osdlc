@@ -251,6 +251,62 @@ describe('dead run worktrees under worktrees/', () => {
     },
   )
 
+  // Windows has no search bit for chmod to take away, and root searches any folder.
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'an owner folder that cannot be searched fails on its own; a sibling repository is still pruned (final review round 2)',
+    () => {
+      const web = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
+      web.commit('init', { 'w.txt': 'w' })
+      const api = makeGitFixture({ dir: join(scratch, 'dev', 'api') })
+      api.commit('init', { 'a.txt': 'a' })
+      const sibling = runWorktree(web.dir, 'other/web')
+      runWorktree(api.dir, 'acme/api')
+      // Readable but not searchable: its names list, but nothing under it can be looked at.
+      const shut = join(paths.worktrees, 'github.com', 'acme')
+      chmodSync(shut, 0o600)
+      try {
+        for (const dryRun of [true, false]) {
+          const r = prune({ dryRun })
+          expect(r.removed.map((e) => e.path)).toEqual([sibling])
+          expect(r.failed).toEqual([
+            expect.objectContaining({
+              kind: 'worktree',
+              path: join(shut, 'api'),
+              reason: expect.stringContaining('could not be read: EACCES'),
+            }),
+          ])
+        }
+        expect(existsSync(sibling)).toBe(false)
+      } finally {
+        chmodSync(shut, 0o700)
+      }
+    },
+  )
+
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'a clone owner folder that cannot be searched fails on its own; a sibling clone is still pruned (final review round 2)',
+    () => {
+      makeClone('acme/api', 400)
+      const sibling = makeClone('other/web', 400)
+      const shut = join(paths.repos, 'github.com', 'acme')
+      chmodSync(shut, 0o600)
+      try {
+        const r = prune({ allClones: true })
+        expect(r.removed.map((e) => e.path)).toEqual([sibling])
+        expect(r.failed).toEqual([
+          expect.objectContaining({
+            kind: 'clone',
+            path: join(shut, 'api.git'),
+            reason: expect.stringContaining('could not be read: EACCES'),
+          }),
+        ])
+        expect(existsSync(sibling)).toBe(false)
+      } finally {
+        chmodSync(shut, 0o700)
+      }
+    },
+  )
+
   test('one registered in a managed clone is removed while holding the clone’s lock, without waiting', () => {
     const clone = makeClone('acme/api', 1)
     const dead = runWorktree(clone, 'acme/api')

@@ -91,7 +91,11 @@ Pruning no longer takes a path it cannot read for one that is not there: an
 `lstat` that fails with anything but "no such file" (such as `EACCES`) is now
 an error, where `mirror prune` skipped the path before. The error is reported
 for that one entry, under `failed`, and the rest are still pruned; a size it
-cannot count is shown as 0. `survey --help` now
+cannot count is shown as 0. The same goes for the folders a prune walks to find
+run worktrees, kept trees, clones and leftovers: one it cannot list or look
+into (a folder that cannot be searched, say) is reported under `failed` as
+`could not be read`, and its siblings are still pruned. `mirror list` notes
+such a path and lists the rest. `survey --help` now
 says it also writes a managed clone's last-used stamp and its lock file.
 
 The note for a `--repo` target with no checkout and no clone now follows the

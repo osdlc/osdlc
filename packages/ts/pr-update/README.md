@@ -481,7 +481,9 @@ another run holds is left as `mirror busy`. `--dry-run` only says what would go,
 `prune` take `--mirror-dir`, so a clone directory left behind by a moved
 `mirror_dir` can be cleaned. `prune` exits `1` when something could not be
 removed; a clone whose removal stops part-way is left as a `.tmp-*` folder,
-which a later prune removes.
+which a later prune removes. A folder it cannot list or look into while it
+looks for what to prune (one that cannot be searched, say) is reported as
+`could not be read`, and the rest are still pruned; `list` notes it.
 
 At the end of an `update --apply` that used a clone or made a run worktree in
 the cache, the run prunes the same way, as a bare `mirror prune` would, and
