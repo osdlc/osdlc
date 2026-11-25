@@ -84,8 +84,11 @@ export {
   MEASURE_BUDGET_MS,
   RUN_LIMIT_MS,
   commandHasName,
+  coveredBy,
+  idleHoursOr,
   idleHoursSetting,
   pluginKit,
+  present,
   type CandidateFields,
   type Idle,
   type Kit,
@@ -113,6 +116,7 @@ export {
   type ProjectEntry,
 } from './descriptor/schema.ts'
 export {
+  DUPLICATE_ENTRY,
   IN_USE,
   NO_PRUNE_TOOL,
   descriptorPlugin,

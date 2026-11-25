@@ -23,6 +23,7 @@ import {
 import { busyHolders, defaultProcessProbe, sizeOf, type ProcessProbe } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
+import { errorText } from './helpers.ts'
 import { boundBy, type Bounds } from './roots.ts'
 import type { Candidate, Ctx, PathCandidate, Plugin, RefCandidate } from './types.ts'
 
@@ -30,6 +31,10 @@ import type { Candidate, Ctx, PathCandidate, Plugin, RefCandidate } from './type
 export { coveredBy } from './ignore.ts'
 
 export const DEFAULT_IDLE_HOURS = 24
+
+/** `idle` as an `idleHours` threshold: {@link DEFAULT_IDLE_HOURS} when it is not a finite number of zero or more. */
+export const idleHoursOr = (idle: number | undefined): number =>
+  idle !== undefined && Number.isFinite(idle) && idle >= 0 ? idle : DEFAULT_IDLE_HOURS
 
 /**
  * The `idleHours` setting. A plugin that declares it under that key inherits
@@ -44,8 +49,11 @@ export const idleHoursSetting = z
     `Hours an artifact must have sat unused before it is a candidate; 0 takes every one. Unset: the config's top-level idleHours, else ${DEFAULT_IDLE_HOURS}.`,
   )
 
-/** How long {@link Kit.idle} and {@link Kit.size} may take on one folder, in milliseconds, unless the kit is given another. */
+/** How long one call of {@link Kit.idle} or {@link Kit.size} may take, in milliseconds, unless the kit is given another. */
 export const MEASURE_BUDGET_MS = 10_000
+
+/** How many entries {@link Kit.idle} reads between two looks at the clock. */
+const CLOCK_EVERY = 64
 
 /** The time limit of {@link Kit.run}, in milliseconds, unless the call gives another. */
 export const RUN_LIMIT_MS = 30_000
@@ -98,12 +106,16 @@ export interface Kit {
   readonly owner: string
   /**
    * How long `path` has sat unchanged, by the newest modification time of any
-   * file under it, links not followed, within the time budget. `skip` names
-   * entries to pass over, files and directories alike. Throws when a directory
-   * cannot be read, since what it hides may be recent; one that vanishes
-   * mid-walk is skipped.
+   * file under it, links not followed, within the time budget. Several paths
+   * are one answer, by the newest file under any of them, within one budget.
+   * `skip` names entries to pass over, files and directories alike. Throws
+   * when a directory cannot be read, since what it hides may be recent; one
+   * that vanishes mid-walk is skipped.
    */
-  idle(path: string, opts?: { skip?: ((name: string) => boolean) | undefined }): Idle
+  idle(
+    path: string | readonly string[],
+    opts?: { skip?: ((name: string) => boolean) | undefined },
+  ): Idle
   /** Bytes `path` takes on disk, by repo-cleaner's `sizeOf` (`du`) within the time budget; null when it could not be read. */
   size(path: string): number | null
   /**
@@ -114,7 +126,8 @@ export interface Kit {
    * of ancestors above it whose command lines name host-cleaner are left
    * out, so the `npm exec` or `pnpm dlx` that started it does not count, but
    * an editor, terminal or `tmux` it runs inside does. The process table is
-   * read once per hook call, so a `delete` sees it fresh.
+   * read once per hook call, so a `delete` sees it fresh; one that could not
+   * be read stays unknown for the rest of that call.
    */
   running(where: string | { in: string } | { name: string }, ctx: Pick<Ctx, 'signal'>): Running
   /** Whether `program` is on PATH. */
@@ -126,17 +139,21 @@ export interface Kit {
   /**
    * Removes the folder `path`: only if it is still where a {@link PathCandidate}
    * of this plugin may sit, by its real path, as the core resolved the bounds
-   * this run, after making read-only folders and files in it writable. Returns the receipt sentence; a folder already gone is not a
-   * failure. Throws when it is outside, when the kit is not bound to a run,
-   * when `ctx.signal` has aborted, or when the folder is still there after.
+   * this run. When something in it may not be removed, its read-only folders
+   * and files are made writable and the removal tried once more. Returns the
+   * receipt sentence; a folder already gone is not a failure. Throws when it is
+   * outside, when the kit is not bound to a run, when `ctx.signal` has aborted,
+   * or when the folder is still there after.
    */
   remove(path: string, ctx?: Pick<Ctx, 'signal'>): string
 }
 
 /** What a kit is built with; every field has a default. */
 export interface KitOptions {
-  /** The clock idle time and the time budget are read from. */
+  /** The clock idle time is read from. */
   now?: (() => Date) | undefined
+  /** A clock in milliseconds that only goes forward, which the time budget is read from. Default: `performance.now`. */
+  clock?: (() => number) | undefined
   /** Default {@link MEASURE_BUDGET_MS}. */
   budgetMs?: number | undefined
   probe?: ProcessProbe | undefined
@@ -153,24 +170,22 @@ export interface KitOptions {
 /** Each kit's setter for its bounds, kept off {@link Kit} so a plugin cannot widen its own. */
 const binders = new WeakMap<Kit, (bounds: Bounds | undefined) => void>()
 
-/** The kit each plugin was created with. */
-const kits = new WeakMap<Plugin, Kit>()
+/** The kits each plugin was built on: the one `create` was given, and one it built itself instead. */
+const kits = new WeakMap<Plugin, Set<Kit>>()
 
-/** Records that `plugin` was built on `kit`, so the core can bind it each run. `definePlugin`'s `create` calls it. */
+/** Records that `plugin` was built on `kit`, beside any recorded before, so the core can bind it each run. `definePlugin`'s `create` calls it. */
 export function attachKit(plugin: Plugin, kit: Kit): void {
-  kits.set(plugin, kit)
+  kits.set(plugin, (kits.get(plugin) ?? new Set()).add(kit))
 }
 
-/** Ties `wrapper`, which stands in for `plugin` in a run, to the kit `plugin` was built on, so the core binds it through either. */
+/** Ties `wrapper`, which stands in for `plugin` in a run, to each kit `plugin` was built on, so the core binds them through either. */
 export function shareKit(plugin: Plugin, wrapper: Plugin): void {
-  const kit = kits.get(plugin)
-  if (kit !== undefined) attachKit(wrapper, kit)
+  for (const kit of kits.get(plugin) ?? []) attachKit(wrapper, kit)
 }
 
-/** Binds the kit `plugin` was built on to `bounds` for {@link Kit.remove}, or unbinds it with none, so it removes nothing; a plugin built on no kit is left alone. */
+/** Binds each kit `plugin` was built on to `bounds` for {@link Kit.remove}, or unbinds it with none, so it removes nothing; a plugin built on no kit is left alone. */
 export function bindKit(plugin: Plugin, bounds: Bounds | undefined): void {
-  const kit = kits.get(plugin)
-  if (kit !== undefined) binders.get(kit)?.(bounds)
+  for (const kit of kits.get(plugin) ?? []) binders.get(kit)?.(bounds)
 }
 
 /** Thrown inside {@link Kit.idle}'s walk when the budget runs out. */
@@ -180,25 +195,34 @@ class OutOfTime extends Error {}
 export const present = (path: string): boolean =>
   lstatSync(path, { throwIfNoEntry: false }) !== undefined
 
-/** Gives the owner write (and, for a folder, search) permission on everything under `path`, links not followed. Best effort. */
-function makeWritable(path: string): void {
+/** Gives the owner write (and, for a folder, search) permission on everything under `path`, links not followed, and returns whether anything changed. Best effort. */
+function makeWritable(path: string): boolean {
   const stat = lstatSync(path, { throwIfNoEntry: false })
-  if (stat === undefined || stat.isSymbolicLink()) return
+  if (stat === undefined || stat.isSymbolicLink()) return false
   const want = stat.mode | (stat.isDirectory() ? 0o700 : 0o200)
+  let changed = false
   try {
-    if (want !== stat.mode) chmodSync(path, want & 0o7777)
+    if (want !== stat.mode) {
+      chmodSync(path, want & 0o7777)
+      changed = true
+    }
   } catch {
     // Best effort: whatever this leaves unremovable, the removal reports.
   }
-  if (!stat.isDirectory()) return
+  if (!stat.isDirectory()) return changed
   let names: string[]
   try {
     names = readdirSync(path)
   } catch {
-    return
+    return changed
   }
-  for (const name of names) makeWritable(join(path, name))
+  for (const name of names) changed = makeWritable(join(path, name)) || changed
+  return changed
 }
+
+/** Whether `err`, from `rmSync`, may come from something read-only: newer Node versions say ENOTEMPTY of the folder around it. */
+const mayBeReadOnly = (err: unknown): boolean =>
+  ['EACCES', 'EPERM', 'ENOTEMPTY'].includes((err as NodeJS.ErrnoException | null)?.code ?? '')
 
 /**
  * Whether `name` is a word of the command line `args`: a word, split on
@@ -258,27 +282,43 @@ function commandLines(ps: CommandRunner): Array<{ pid: number; args: string }> {
 /** The kit for the plugin `owner`. */
 export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
   const now = opts.now ?? (() => new Date())
+  const clock = opts.clock ?? (() => performance.now())
   const budget = opts.budgetMs ?? MEASURE_BUDGET_MS
   const probe = opts.probe ?? defaultProcessProbe()
   const runner = opts.runner ?? ((program: string) => spawnRunnerAsync(program))
   const lookup = opts.which ?? ((program: string) => which(program, { env: opts.env }))
   const ps = opts.ps ?? spawnRunner('ps')
-  // The hook calls that have read the process table: the first read in each is fresh.
-  const read = new WeakSet<AbortSignal>()
+  // What each hook call's first read of the process table threw, or null: that
+  // read is fresh, and one that failed is not tried again in the call, where the
+  // probe would answer from the table of an earlier one.
+  const read = new WeakMap<AbortSignal, { failed: unknown } | null>()
   const holders = (path: string, signal: AbortSignal) => {
-    const fresh = !read.has(signal)
-    read.add(signal)
-    return probe.holders(path, fresh ? { fresh: true } : undefined)
-  }
-  // The command lines, read once per hook call.
-  const lines = new WeakMap<AbortSignal, Array<{ pid: number; args: string }>>()
-  const commands = (signal: AbortSignal) => {
-    let rows = lines.get(signal)
-    if (rows === undefined) {
-      rows = commandLines(ps)
-      lines.set(signal, rows)
+    const before = read.get(signal)
+    if (before) throw before.failed
+    try {
+      const found = probe.holders(path, before === undefined ? { fresh: true } : undefined)
+      read.set(signal, null)
+      return found
+    } catch (failed) {
+      read.set(signal, { failed })
+      throw failed
     }
-    return rows
+  }
+  // The command lines, or what reading them threw, read once per hook call.
+  type Lines = { rows: Array<{ pid: number; args: string }> } | { failed: unknown }
+  const lines = new WeakMap<AbortSignal, Lines>()
+  const readLines = (): Lines => {
+    try {
+      return { rows: commandLines(ps) }
+    } catch (failed) {
+      return { failed }
+    }
+  }
+  const commands = (signal: AbortSignal) => {
+    const got = lines.get(signal) ?? readLines()
+    lines.set(signal, got)
+    if ('failed' in got) throw got.failed
+    return got.rows
   }
 
   // Unbound until the core resolves this plugin's roots in a run.
@@ -287,11 +327,13 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
   const kit: Kit = {
     owner,
     idle(path, { skip = () => false } = {}) {
-      const start = now().getTime()
+      const at = now().getTime()
+      const start = clock()
       let newest: number | null = null
       const check = (): void => {
-        if (now().getTime() - start > budget) throw new OutOfTime()
+        if (clock() - start > budget) throw new OutOfTime()
       }
+      let entriesRead = 0
       const visit = (dir: string): void => {
         check()
         let entries
@@ -302,7 +344,7 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
           throw err
         }
         for (const entry of entries) {
-          check()
+          if (++entriesRead % CLOCK_EVERY === 0) check()
           if (skip(entry.name)) continue
           const full = join(dir, entry.name)
           if (entry.isDirectory()) {
@@ -316,12 +358,12 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
         }
       }
       try {
-        visit(path)
+        for (const each of typeof path === 'string' ? [path] : path) visit(each)
       } catch (err) {
         if (err instanceof OutOfTime) return { unmeasured: true }
         throw err
       }
-      const hours: number | null = newest === null ? null : Math.max(0, (start - newest) / HOUR_MS)
+      const hours: number | null = newest === null ? null : Math.max(0, (at - newest) / HOUR_MS)
       return { unmeasured: false, newestMs: newest, hours }
     },
     size: (path) => sizeOf(path, { timeoutMs: budget }),
@@ -337,7 +379,7 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
           names: found.map((row) => `${basename(row.args.split(/\s+/)[0]!)} (pid ${row.pid})`),
         }
       } catch (err) {
-        return { names: [], unknown: err instanceof Error ? err.message : String(err) }
+        return { names: [], unknown: errorText(err) }
       }
     },
     onPath: (program) => lookup(program) !== undefined,
@@ -370,8 +412,13 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
         throw new Error(`${path} is not inside ${owner}'s roots or the targets`)
       }
       const bytes = sizeOf(path, { timeoutMs: budget })
-      makeWritable(path)
-      rmSync(path, { recursive: true })
+      try {
+        rmSync(path, { recursive: true })
+      } catch (err) {
+        // With nothing read-only in it, something is still writing there: not tried again.
+        if (!mayBeReadOnly(err) || !makeWritable(path)) throw err
+        rmSync(path, { recursive: true })
+      }
       if (present(path)) throw new Error(`${path} is still there after removal`)
       return bytes === null ? `removed ${path}` : `removed ${path}; freed ${bytes} bytes`
     },

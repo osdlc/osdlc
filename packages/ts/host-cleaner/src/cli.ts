@@ -24,6 +24,7 @@ import {
 import type { Kind } from '@osdlc/repo-cleaner'
 import { stripControls } from '@osdlc/ux'
 
+import { errorText, realOr } from './helpers.ts'
 import { expandHome, ignorePaths } from './ignore.ts'
 import {
   ConfigError,
@@ -38,7 +39,6 @@ import { DescriptorError } from './descriptor/schema.ts'
 import { pluginKit } from './kit.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { UnknownPlugin, loadPlugins, selectPlugins, supersession } from './registry.ts'
-import { realOr } from './roots.ts'
 import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
 import {
   SelectionError,
@@ -339,7 +339,7 @@ function refusal(ctx: CliContext, name: string, err: unknown): number {
   ) {
     return usageError(ctx, name, err.message)
   }
-  ctx.io.stderr(renderError(err instanceof Error ? err.message : String(err), name))
+  ctx.io.stderr(renderError(errorText(err), name))
   return EXIT.error
 }
 
@@ -447,13 +447,15 @@ function pluginsFor(
 /** The home folder, from `HOME` when set, with no trailing slash. */
 const homeOf = (ctx: CliContext): string => (ctx.env.HOME ?? homedir()).replace(/(.)\/+$/, '$1')
 
-/** `id` with the home folder after its `<kind>:` written `~`, as the text output shows it. */
+/** `id` with the home folder after its `<kind>:`, as `home` spells it or by its real path, written `~`, as the text output shows it. */
 export function tildeId(id: string, home: string): string {
   const colon = id.indexOf(':')
   const rest = id.slice(colon + 1)
   if (colon < 0 || home === '' || home === '/') return id
-  const under = rest === home || rest.startsWith(`${home}/`) || rest.startsWith(`${home}:`)
-  return under ? `${id.slice(0, colon + 1)}~${rest.slice(home.length)}` : id
+  const under = [home, realOr(home)].find(
+    (h) => h !== '/' && (rest === h || rest.startsWith(`${h}/`) || rest.startsWith(`${h}:`)),
+  )
+  return under === undefined ? id : `${id.slice(0, colon + 1)}~${rest.slice(under.length)}`
 }
 
 /** `entry`, as typed to `--pick` or `--spare`, with a `~` at its start or right after `<kind>:` taken as the home folder. */
@@ -474,6 +476,16 @@ export function untildeSpare(entry: string, home: string): string[] {
   const given = untildeId(entry, home)
   const real = untildeId(entry, realOr(home))
   return given === real ? [given] : [given, real]
+}
+
+/**
+ * `entry`, as typed to `--pick`, with `~` taken as the home folder in the
+ * spelling (as {@link untildeSpare} gives them) that names one of `cs`: a
+ * pick that names none is dropped, so only one is kept.
+ */
+export function untildePick(entry: string, home: string, cs: readonly Candidate[]): string {
+  const forms = untildeSpare(entry, home)
+  return forms.find((id) => cs.some((c) => c.id === id)) ?? forms[0]!
 }
 
 function contextFor(
@@ -646,7 +658,7 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
       targets: cctx.targets,
       targetsGiven: cctx.targetsGiven,
       ignore: cctx.ignore,
-      pick: v.pick.map((e) => untildeId(e, homeOf(ctx))),
+      pick: v.pick.map((e) => untildePick(e, homeOf(ctx), s.candidates)),
       spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
       allow: v.allow,
     })
@@ -813,7 +825,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         targets: cctx.targets,
         targetsGiven: cctx.targetsGiven,
         ignore: cctx.ignore,
-        pick: v.pick.map((e) => untildeId(e, homeOf(ctx))),
+        pick: v.pick.map((e) => untildePick(e, homeOf(ctx), s.candidates)),
         spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
         allow: v.allow,
         now,
