@@ -947,6 +947,47 @@ describe('async hooks and time limits', () => {
     expect(receipt.steps.map((x) => x.delete)).toEqual(['removed a:git', 'removed a:node'])
   })
 
+  /** Works synchronously for `ms`, so no timer can fire meanwhile. */
+  const block = (ms: number): void => {
+    const end = performance.now() + ms
+    while (performance.now() < end);
+  }
+
+  test('a synchronous hook that answers past its limit is timed out then, and its signal aborted', async () => {
+    let signal: AbortSignal | undefined
+    const slow = fake('node', [], [], {
+      limits: { discover: 20 },
+      discover: (x) => {
+        signal = x.signal
+        block(40)
+        return [cand('a:2', 'node')]
+      },
+    })
+    const s = await survey([fake('git', [cand('a:1', 'git')], []), slow], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:1'])
+    expect(s.warnings).toEqual(['node: discover failed: timed out after 20 ms'])
+    expect(signal?.aborted).toBe(true)
+    expect(signal?.reason).toBeInstanceOf(HookTimeout)
+  })
+
+  test('a synchronous hook that throws past its limit keeps its own error, so a FatalRun still stops the run', async () => {
+    let signal: AbortSignal | undefined
+    const git = fake('git', [cand('a:1', 'git'), cand('a:2', 'git')], [], {
+      limits: { delete: 20 },
+      delete: (_c, x) => {
+        signal = x.signal
+        block(40)
+        throw new FatalRun('archive failed')
+      },
+    })
+    const receipt = await run([git])
+    expect(receipt.steps.map((x) => [x.result, x.error])).toEqual([
+      ['failed', 'archive failed'],
+      ['skipped', 'the run stopped: archive failed'],
+    ])
+    expect(signal?.aborted).toBe(true)
+  })
+
   test('a synchronous hook works unchanged, and one that answers at once is never timed out', async () => {
     const log: string[] = []
     const quick = fake('git', [cand('a:1', 'git')], log, {

@@ -19,6 +19,7 @@ import {
 } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
+import { DISCOVER_LIMIT_MS, objector } from './helpers.ts'
 import {
   FatalRun,
   PLUGIN_API,
@@ -56,10 +57,13 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
   /** The last discovery's rows, kept for `object` and `delete`; `discover` makes them afresh. */
   let rows = new Map<string, CleanCandidate>()
   const runners = { git: opts.git, gh: opts.gh, glab: opts.glab, probe: opts.probe }
+  const own = objector('git')
   const isRisk = (code: string): code is Risk => (RISKS as readonly string[]).includes(code)
 
   return {
     name: 'git',
+    // The sweep covers every repository in one call that nothing can stop part way.
+    limits: { discover: DISCOVER_LIMIT_MS },
     detect: () => true,
     discover(ctx) {
       const found = candidatesOf(sweep(ctx.targets, { ...opts.sweep, ...runners, cwd: ctx.cwd }))
@@ -87,16 +91,9 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
       return all.flatMap((c): Objection[] => {
         const row = rows.get(c.id)
         if (c.owner !== 'git' || row === undefined) return []
-        const own = (level: Objection['level'], code: string, reason: string): Objection => ({
-          by: 'git',
-          candidate: c.id,
-          level,
-          code,
-          reason,
-        })
         return [
-          ...row.blockers.map((b) => own('refuse', b, `${row.why} (${b})`)),
-          ...row.risks.map((r) => own('protest', r, `deleting it risks ${r}`)),
+          ...row.blockers.map((b) => own(c, 'refuse', b, `${row.why} (${b})`)),
+          ...row.risks.map((r) => own(c, 'protest', r, `deleting it risks ${r}`)),
         ]
       })
     },

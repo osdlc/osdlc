@@ -17,7 +17,6 @@ import {
   artifactPlugin,
   artifactRow,
   checkoutsOf,
-  hoursText,
   inside,
   refusedRow,
   type ArtifactOptions,
@@ -25,6 +24,7 @@ import {
   type Env,
   type Row,
 } from './artifacts.ts'
+import { hoursText } from './helpers.ts'
 import { idleHoursSetting, present, type Kit } from './kit.ts'
 import { PLUGIN_API, definePlugin, type Plugin } from './types.ts'
 
@@ -47,7 +47,7 @@ function rowOrThrow(env: Env, checkout: Checkout): Row[] {
   if (!since.unmeasured && (since.hours === null || since.hours < threshold)) return []
 
   return [
-    artifactRow(kit, {
+    artifactRow(env, {
       kind: 'node-modules',
       path: safe,
       checkout: checkout.path,
