@@ -182,15 +182,16 @@ plain root or a target itself is never a candidate. A store that is removed
 whole, such as `~/.npm`, is declared `{ path, self: true }` among the roots:
 that folder may then be a candidate itself, as well as anything inside it.
 
-The core refuses a root, plain or self, that is the filesystem root (`/`), is
-or holds the home folder, is a personal folder (`PERSONAL_FOLDERS`:
-`~/Documents`, `~/Desktop`, `~/Downloads`, `~/Pictures`, `~/Music`,
-`~/Movies`, `~/Library`, `~/.ssh`, `~/.config`), is or holds a target or a
-linked worktree, or is a checkout (holds `.git`), and a self root that is a
-symlink. It leaves such a root out with a warning (`<plugin>: roots: left out
-the root <path>: <why>`), so its candidates are refused `outside-roots`. The
-same check runs again right before `delete` and in `kit.remove`, so a self
-root that has become a checkout or a symlink since the survey is not removed.
+The core refuses a root, plain or self, that is not an absolute path or has a
+`..` in it, is the filesystem root (`/`), is or holds the home folder, is a
+personal folder (`PERSONAL_FOLDERS`: `~/Documents`, `~/Desktop`,
+`~/Downloads`, `~/Pictures`, `~/Music`, `~/Movies`, `~/Library`, `~/.ssh`,
+`~/.config`), is or holds a target or a linked worktree, or is a checkout
+(holds `.git`), and a self root that is a symlink. It leaves such a root out
+with a warning (`<plugin>: roots: left out the root <path>: <why>`), so its
+candidates are refused `outside-roots`. The same check runs again right before
+`delete` and in `kit.remove`, so a self root that has become a checkout or a
+symlink since the survey is not removed.
 
 Real paths are read with `realpathSync.native`, which spells a path as the
 filesystem does: where it ignores case, as macOS's does, `~/documents` is
