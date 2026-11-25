@@ -55,7 +55,6 @@ function build(answers: FakeAnswers | undefined, keepVolumes: string[] = []) {
 const ctx: RunCtx = { cwd: process.cwd(), targets: [], allow: [] }
 const go: RunCtx = { ...ctx, allow: ['discard-user-data'] }
 
-/** The plan that picks `volume:cache` and allows discarding user data. */
 const picked = (s: Survey) => plan(s, { pick: ['volume:cache'], allow: ['discard-user-data'] })
 
 describe('the podman example', () => {
