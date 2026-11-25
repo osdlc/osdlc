@@ -14,8 +14,8 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { Git, checkoutRoot, scanForCheckouts } from '@osdlc/typed-git'
 import { z } from 'zod'
 
-import { hoursText, objectionsTo, present, type Row } from './artifacts.ts'
-import { DEFAULT_IDLE_HOURS, idleHoursSetting, type Kit } from './kit.ts'
+import { hoursText, objectionsTo, type Row } from './artifacts.ts'
+import { DEFAULT_IDLE_HOURS, idleHoursSetting, present, type Kit } from './kit.ts'
 import { containedIn } from './roots.ts'
 import { PLUGIN_API, definePlugin, type Ctx, type Plugin } from './types.ts'
 
