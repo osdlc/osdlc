@@ -159,6 +159,15 @@ It works in phases, as repo-cleaner does. Nothing is deleted until clean.
 Nothing ran. Name a phase; \`${NAME} <phase> --help\` shows its options.
 `
 
+/** `--format` of `status` and `plugins`. */
+const REPORT_FORMAT = {
+  kind: 'enum',
+  choices: ['text', 'json'] as const,
+  valueName: 'form',
+  default: 'text',
+  help: 'text (the report) or json (everything)',
+} as const
+
 const statusCli = () =>
   defineCli({
     name: `${NAME} status`,
@@ -173,13 +182,7 @@ const statusCli = () =>
         kind: 'boolean',
         help: 'also show candidates a plugin refuses (with --format text)',
       },
-      format: {
-        kind: 'enum',
-        choices: ['text', 'json'] as const,
-        valueName: 'form',
-        default: 'text',
-        help: 'text (the report) or json (everything)',
-      },
+      format: REPORT_FORMAT,
       ...HELP_FLAGS,
     },
     shortEpilogue: `${PHASES}
@@ -219,13 +222,7 @@ const pluginsCli = () =>
       config: SWEEP_FLAGS.config,
       ignore: SWEEP_FLAGS.ignore,
       descriptor: SWEEP_FLAGS.descriptor,
-      format: {
-        kind: 'enum',
-        choices: ['text', 'json'] as const,
-        valueName: 'form',
-        default: 'text',
-        help: 'text (the report) or json (everything)',
-      },
+      format: REPORT_FORMAT,
       ...HELP_FLAGS,
     },
     shortEpilogue: `To try one plugin's candidates: ${NAME} status --plugin <name>`,
@@ -438,28 +435,39 @@ const unknownPlugins = (config: Config, known: (name: string) => boolean): strin
 /**
  * The config and the plugins this run uses: the built-ins and the descriptors
  * loaded, the config checked against them, each built from its entry (or
- * `deps.plugins`), then chosen by `choose`. A descriptor's `supersededBy`
- * plugin runs when it is among those chosen and detects.
+ * `deps.plugins`) into `all`, then chosen by `choose`. A descriptor's
+ * `supersededBy` plugin runs when it is among those chosen and detects.
  */
 function setUp<V extends { config?: string | undefined; descriptor: readonly string[] }>(
   v: V,
   ctx: CliContext,
   deps: MainDeps,
-  choose: (config: Config, definitions: readonly PluginDefinition[]) => Plugin[],
-): { config: Config; plugins: Plugin[]; descriptors: Loaded['descriptors'] } {
+  only: readonly Kind[],
+  choose: (all: readonly Plugin[], config: Config) => Plugin[],
+): {
+  config: Config
+  all: readonly Plugin[]
+  plugins: Plugin[]
+  descriptors: Loaded['descriptors']
+} {
   let chosen: readonly Plugin[] = []
   const { definitions, descriptors } = loadPlugins(sourcesFor(v, ctx, deps), {
     runs: runsAmong(() => chosen),
   })
   const config = loadConfig(v, ctx, definitions)
-  const plugins = choose(config, definitions)
+  const all = allPlugins(config, definitions, deps, ctx, only)
+  const plugins = choose(all, config)
   chosen = plugins
-  return { config, plugins, descriptors }
+  return { config, all, plugins, descriptors }
 }
 
 /** {@link setUp} with the plugins chosen by flag. */
-const setUpSweep = (v: SweepValues, ctx: CliContext, deps: MainDeps) =>
-  setUp(v, ctx, deps, (config, definitions) => pluginsFor(v, config, definitions, deps, ctx))
+function setUpSweep(v: SweepValues, ctx: CliContext, deps: MainDeps) {
+  // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
+  const only: Kind[] =
+    v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
+  return setUp(v, ctx, deps, only, (all, config) => chosenByFlag(v, all, config))
+}
 
 /** Every plugin, enabled or not: `definitions` built from the config, or `deps.plugins`. */
 function allPlugins(
@@ -467,7 +475,7 @@ function allPlugins(
   definitions: readonly PluginDefinition[],
   deps: MainDeps,
   ctx: CliContext,
-  only: readonly Kind[] = ['worktree', 'branch'],
+  only: readonly Kind[],
 ): readonly Plugin[] {
   const all =
     deps.plugins ??
@@ -484,18 +492,8 @@ function allPlugins(
   return all
 }
 
-/** The plugins this run uses: {@link allPlugins}, then chosen by flag. */
-function pluginsFor(
-  v: SweepValues,
-  config: Config,
-  definitions: readonly PluginDefinition[],
-  deps: MainDeps,
-  ctx: CliContext,
-): Plugin[] {
-  // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
-  const only: Kind[] =
-    v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
-  const all = allPlugins(config, definitions, deps, ctx, only)
+/** The plugins among `all` this run uses, chosen by flag. */
+function chosenByFlag(v: SweepValues, all: readonly Plugin[], config: Config): Plugin[] {
   // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
   const named = v.plugin ?? []
   const chosen = selectPlugins(all, v.plugin, v.skipPlugin)
@@ -753,15 +751,14 @@ async function runPlugins(
   let targets: readonly string[]
   let warnings: readonly string[]
   try {
-    let all: readonly Plugin[] = []
     const {
       config,
+      all,
       plugins: enabled,
       descriptors,
-    } = setUp(v, ctx, deps, (config, definitions) => {
-      all = allPlugins(config, definitions, deps, ctx)
-      return all.filter((p) => !disabledByConfig(p.name, config.plugins))
-    })
+    } = setUp(v, ctx, deps, ['worktree', 'branch'], (all, config) =>
+      all.filter((p) => !disabledByConfig(p.name, config.plugins)),
+    )
     const loaded = new Map(descriptors.map((d) => [d.name, d]))
     const found = await inspect(enabled, contextFor(parsed.positionals, config, ctx, [], v.ignore))
     const state = new Map(found.plugins.map((s) => [s.name, s]))
@@ -1069,6 +1066,23 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   return receipt.status === 'failed' ? EXIT_STEP_FAILED : EXIT.ok
 }
 
+type PhaseRun = (
+  argv: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+) => number | Promise<number>
+
+/** Each phase's runner, in the order the usage error names them. */
+const RUNS = {
+  status: runStatus,
+  plan: runPlan,
+  clean: runClean,
+  config: runConfig,
+  plugins: runPlugins,
+} satisfies Record<string, PhaseRun>
+type Phase = keyof typeof RUNS
+const PHASE_NAMES = Object.keys(RUNS) as Phase[]
+
 /** Resolves to an exit code; never exits the process. */
 export async function main(
   argv: readonly string[],
@@ -1076,20 +1090,18 @@ export async function main(
   deps: MainDeps = {},
 ): Promise<number> {
   const [sub, ...rest] = argv
-  const phase =
-    sub === 'status' || sub === 'plan' || sub === 'clean' || sub === 'config' || sub === 'plugins'
-  // It cleans one person's files; as root, a target or a root could reach everyone's.
-  if (phase && (deps.uid ?? process.getuid?.()) === 0) {
-    ctx.io.stderr(
-      renderError('refusing to run as root; run it as the user whose files it cleans', NAME),
-    )
-    return EXIT.error
+  const run: PhaseRun | undefined =
+    sub !== undefined && Object.hasOwn(RUNS, sub) ? RUNS[sub as Phase] : undefined
+  if (run !== undefined) {
+    // It cleans one person's files; as root, a target or a root could reach everyone's.
+    if ((deps.uid ?? process.getuid?.()) === 0) {
+      ctx.io.stderr(
+        renderError('refusing to run as root; run it as the user whose files it cleans', NAME),
+      )
+      return EXIT.error
+    }
+    return run(rest, ctx, deps)
   }
-  if (sub === 'status') return runStatus(rest, ctx, deps)
-  if (sub === 'plan') return runPlan(rest, ctx, deps)
-  if (sub === 'clean') return runClean(rest, ctx, deps)
-  if (sub === 'config') return runConfig(rest, ctx, deps)
-  if (sub === 'plugins') return runPlugins(rest, ctx, deps)
   if (sub === '-h' || sub === '--help') {
     ctx.io.stdout(OVERVIEW)
     return EXIT.ok
@@ -1102,6 +1114,6 @@ export async function main(
   return usageError(
     ctx,
     NAME,
-    `${JSON.stringify(sub)} is not a phase: name one of status, plan, clean, config or plugins, then the targets`,
+    `${JSON.stringify(sub)} is not a phase: name one of ${PHASE_NAMES.slice(0, -1).join(', ')} or ${PHASE_NAMES.at(-1)}, then the targets`,
   )
 }

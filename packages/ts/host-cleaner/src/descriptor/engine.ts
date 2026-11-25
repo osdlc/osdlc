@@ -689,11 +689,15 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     .flat()
     .filter((s) => 'command' in s).length
 
-  const used = new Set(varRefs(JSON.stringify([d.paths, d.vars, d.inUse?.locks])))
-  const shown = (all: Vars): Vars =>
-    Object.fromEntries(
-      Object.entries(all).filter(([n]) => !Object.hasOwn(BUILT_IN_VARS, n) || used.has(n)),
+  // Worked out only when `descriptorDetection` asks, so a sweep never pays for it.
+  const shown = (found: DescriptorDetection): DescriptorDetection => {
+    if (found.vars === undefined) return found
+    const used = new Set(varRefs(JSON.stringify([d.paths, d.vars, d.inUse?.locks])))
+    const vars = Object.fromEntries(
+      Object.entries(found.vars).filter(([n]) => !Object.hasOwn(BUILT_IN_VARS, n) || used.has(n)),
     )
+    return { ...found, vars }
+  }
   let detected: DescriptorDetection = {}
   // A cancelled call still runs on; what it finds after is not recorded.
   const record = (ctx: Ctx, now: DescriptorDetection): void => {
@@ -718,7 +722,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         return false
       }
       await refresh(ctx)
-      record(ctx, { vars: shown(vars!) })
+      record(ctx, { vars: vars! })
       const holds = (c: { onPath?: string | undefined; exists?: string | undefined }): boolean => {
         if (c.onPath !== undefined) return kit.onPath(c.onPath)
         const folder = c.exists === undefined ? undefined : folders.get(c.exists)
@@ -767,7 +771,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       return kit.remove(path, ctx)
     },
   }
-  lastDetection.set(plugin, () => detected)
+  lastDetection.set(plugin, () => shown(detected))
   return plugin
 }
 

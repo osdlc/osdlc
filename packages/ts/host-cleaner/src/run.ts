@@ -185,6 +185,21 @@ function nest(cs: readonly Candidate[]): Candidate[] {
   })
 }
 
+/** Calls one hook; a throw or a timeout, other than {@link FatalRun}, is `failed`, its text. */
+async function tryHook<T>(
+  p: Plugin,
+  hook: Hook,
+  at: RunCtx,
+  f: (ctx: Ctx) => MaybePromise<T>,
+): Promise<{ value: T } | { failed: string }> {
+  try {
+    return { value: await callHook(p, hook, at, f) }
+  } catch (err) {
+    if (err instanceof FatalRun) throw err
+    return { failed: errorText(err) }
+  }
+}
+
 /** Calls one hook; a throw or a timeout, other than {@link FatalRun}, is a warning and the fallback. */
 const guard =
   (warnings: string[]) =>
@@ -195,13 +210,10 @@ const guard =
     at: RunCtx,
     f: (ctx: Ctx) => MaybePromise<T>,
   ): Promise<T> => {
-    try {
-      return await callHook(p, hook, at, f)
-    } catch (err) {
-      if (err instanceof FatalRun) throw err
-      warnings.push(`${p.name}: ${hook} failed: ${errorText(err)}`)
-      return fallback
-    }
+    const r = await tryHook(p, hook, at, f)
+    if ('value' in r) return r.value
+    warnings.push(`${p.name}: ${hook} failed: ${r.failed}`)
+    return fallback
   }
 
 /** What `detect` said of one plugin. */
@@ -235,15 +247,13 @@ async function detectAndScope(
       continue
     }
     names.add(p.name)
-    let answer: unknown
-    try {
-      answer = await callHook<unknown>(p, 'detect', ctx, (x) => p.detect(x))
-    } catch (err) {
-      if (err instanceof FatalRun) throw err
-      if (warnDetect) warnings.push(`${p.name}: detect failed: ${errorText(err)}`)
-      detections.push({ plugin: p, detected: false, reason: errorText(err) })
+    const r = await tryHook<unknown>(p, 'detect', ctx, (x) => p.detect(x))
+    if ('failed' in r) {
+      if (warnDetect) warnings.push(`${p.name}: detect failed: ${r.failed}`)
+      detections.push({ plugin: p, detected: false, reason: r.failed })
       continue
     }
+    const answer = r.value
     const found = detection(answer)
     if (found === null) {
       const why = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note? }`
@@ -334,8 +344,8 @@ export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Insp
   const plugins = detections.map(({ plugin, detected, reason, note }): PluginState => ({
     name: plugin.name,
     detected,
-    ...(reason === undefined ? {} : { reason }),
-    ...(note === undefined ? {} : { note }),
+    reason,
+    note,
     roots: rootsOf.get(plugin.name)?.roots ?? [],
     selfRoots: rootsOf.get(plugin.name)?.self ?? [],
   }))
