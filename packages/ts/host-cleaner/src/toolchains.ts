@@ -22,7 +22,7 @@ import { PLUGIN_API, definePlugin, type Ctx, type Plugin } from './types.ts'
 export const TOOLCHAINS_PLUGIN = 'toolchains'
 
 const RUST_PIN_FILES = ['rust-toolchain', 'rust-toolchain.toml']
-/** The pin files rustup and nvm look for in the folder they run in and above it. */
+/** The pin files read in the run's folder and every folder above it. */
 const DIR_PIN_FILES = [...RUST_PIN_FILES, '.nvmrc', '.node-version']
 /** The files a checkout names its toolchain in, wherever they sit in it. */
 const PIN_FILES = [...DIR_PIN_FILES, 'package.json']
@@ -368,7 +368,10 @@ export function mountOptionsBy(
 }
 
 export interface ToolchainsOptions {
-  /** Not a finite number of zero or more: {@link DEFAULT_IDLE_HOURS}. */
+  /**
+   * Hours a version must go unused before it is proposed; {@link DEFAULT_IDLE_HOURS}
+   * when not a finite number of zero or more.
+   */
   idleHours?: number | undefined
   /** Default: {@link mountOptionsBy} on the plugin's kit. */
   mountOptions?: MountOptions | undefined
@@ -692,7 +695,7 @@ const byVersion = (a: string, b: string): number => {
   return 0
 }
 
-/** The `toolchains` plugin as the command line builds it. Settings: `idleHours`. */
+/** The `toolchains` plugin as the command line builds it. */
 export const toolchainsDefinition = definePlugin({
   name: TOOLCHAINS_PLUGIN,
   api: PLUGIN_API,
