@@ -164,6 +164,25 @@ describe('contractSuite', () => {
     expect(lstatSync(dir).isDirectory()).toBe(true)
   })
 
+  test('a delete that leaves a new folder in place of the moved one: the moved folder is kept, not removed', async () => {
+    const { plugin, dir } = cachePlugin(() => ({
+      delete: (c) => {
+        rmSync(c.path!)
+        mkdirSync(c.path!)
+        return 'replaced'
+      },
+    }))
+    const problems = await contractSuite(plugin)
+    expect(problems).toEqual([
+      expect.stringMatching(/^cache: delete returned "replaced" for .*; it must throw$/),
+      expect.stringMatching(/^cache: the suite could not put its folder back; it is kept at /),
+    ])
+    const kept = problems[1]!.replace(/^.* it is kept at /, '')
+    cleanups.push(() => rmSync(join(kept, '..', '..'), { recursive: true, force: true }))
+    expect(existsSync(join(kept, 'blob'))).toBe(true)
+    expect(lstatSync(dir).isDirectory()).toBe(true)
+  })
+
   test("roots that hold the suite's own folder are reported, and delete is not called", async () => {
     let called = false
     const { plugin } = cachePlugin(() => ({
@@ -190,8 +209,8 @@ describe('contractSuite', () => {
       },
     }))
     expect(await contractSuite(plugin)).toEqual([
-      'cache: limits.object is 0; it must be a positive number of milliseconds',
       'cache: limits names sweep, which is not a hook',
+      'cache: the survey warned: cache: limits.object is 0, not a positive number of milliseconds; the default was used',
       'cache: the survey warned: cache: discover failed: timed out after 10 ms',
       'cache: proposed no candidate in this fixture, so the candidate checks had nothing to check',
     ])
