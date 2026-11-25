@@ -90,6 +90,15 @@ function store(storage: string, hash: string, body?: unknown): string {
 
 const folder = (path: string) => ({ folder: pathToFileURL(path).href })
 
+/** For each `[hash, make]`, a storage folder `hash` whose project is gone, then `make` on it. */
+function deadStores(
+  h: { storage: string; projects: string },
+  shapes: Array<[string, (dir: string) => void]>,
+): void {
+  for (const [hash, make] of shapes)
+    make(store(h.storage, hash, folder(join(h.projects, `dead-${hash}`))))
+}
+
 /** A folder `name` in the storage folder `dir`, with one file in it unless `empty`. */
 function history(dir: string, name: string, empty = false): void {
   mkdirSync(join(dir, name), { recursive: true })
@@ -124,14 +133,19 @@ function editing(dir: string, files?: string[]): void {
   for (const f of files) writeFileSync(join(session, 'contents', f), 'before')
 }
 
-/** VS Code's window state naming `paths` as open windows. */
-function windows(user: string, paths: string[]): void {
+/** VS Code's `storage.json` under `user`: `body` as it is when a string, else as JSON. */
+function windowState(user: string, body: unknown): void {
   mkdirSync(join(user, 'globalStorage'), { recursive: true })
-  const [first, ...rest] = paths.map((p) => ({ folder: pathToFileURL(p).href }))
   writeFileSync(
     join(user, 'globalStorage', 'storage.json'),
-    JSON.stringify({ windowsState: { lastActiveWindow: first, openedWindows: rest } }),
+    typeof body === 'string' ? body : JSON.stringify(body),
   )
+}
+
+/** VS Code's window state naming `paths` as open windows. */
+function windows(user: string, paths: string[]): void {
+  const [first, ...rest] = paths.map(folder)
+  windowState(user, { windowsState: { lastActiveWindow: first, openedWindows: rest } })
 }
 
 const ctxOf = (cwd: string): RunCtx => ({ cwd, targets: [], allow: [] })
@@ -341,8 +355,7 @@ describe('chat and agent history', () => {
       ['e', (d) => history(d, 'chatSessions', true)],
       ['f', (d) => history(d, 'GitHub.copilot-chat/chat-session-resources')],
     ]
-    for (const [hash, make] of shapes)
-      make(store(h.storage, hash, folder(join(h.projects, `dead-${hash}`))))
+    deadStores(h, shapes)
 
     const s = await survey([vscodePlugin(h.options())], ctxOf(h.home))
     expect(s.candidates.map((c) => [c.path, c.costDescription, c.evidence.history])).toEqual([
@@ -395,8 +408,7 @@ describe('chat and agent history', () => {
       ['r', (d) => chat(d, [whole(), { kind: 3, k: [] }])],
     ]
     const kept = new Set(['d', 'e', 'f', 'g', 'i', 'j', 'k', 'l', 'm', 'n', 'p', 'r'])
-    for (const [hash, make] of shapes)
-      make(store(h.storage, hash, folder(join(h.projects, `dead-${hash}`))))
+    deadStores(h, shapes)
 
     const s = await survey([vscodePlugin(h.options())], ctxOf(h.home))
     expect(s.warnings).toEqual([])
@@ -413,8 +425,7 @@ describe('chat and agent history', () => {
       ['c', (d) => editing(d, ['0.ts', '1.ts'])],
       ['d', (d) => history(d, 'chatEditingSessions')],
     ]
-    for (const [hash, make] of shapes)
-      make(store(h.storage, hash, folder(join(h.projects, `dead-${hash}`))))
+    deadStores(h, shapes)
 
     const s = await survey([vscodePlugin(h.options())], ctxOf(h.home))
     expect(s.candidates.map((c) => [c.path, c.costDescription])).toEqual([
@@ -427,15 +438,19 @@ describe('chat and agent history', () => {
 
   test('chats kept in state.vscdb from before chatSessions/ are history', async () => {
     const h = home()
-    const old = store(h.storage, 'a', folder(join(h.projects, 'dead-a')))
-    const db = 'SQLite format 3\0...interactive.sessions[{"requests":[]}]'
-    writeFileSync(join(old, 'state.vscdb'), db)
-    store(h.storage, 'b', folder(join(h.projects, 'dead-b')))
+    const vscdb = (body: string) => (d: string) => writeFileSync(join(d, 'state.vscdb'), body)
+    deadStores(h, [
+      ['a', vscdb('SQLite format 3\0...interactive.sessions[{"requests":[]}]')],
+      ['b', () => {}],
+      // The key across the seam between two chunks of the file as it is read.
+      ['c', vscdb(`${'x'.repeat((1 << 20) - 5)}interactive.sessions`)],
+    ])
 
     const s = await survey([vscodePlugin(h.options())], ctxOf(h.home))
     expect(s.candidates.map((c) => [c.path, c.costDescription, c.evidence.history])).toEqual([
       [join(h.storage, 'a'), 'lost', ['state.vscdb']],
       [join(h.storage, 'b'), 're-download', undefined],
+      [join(h.storage, 'c'), 'lost', ['state.vscdb']],
     ])
   })
 
@@ -577,8 +592,7 @@ describe('object', () => {
     const h = home()
     const wt = join(h.projects, 'wt')
     mkdirSync(wt)
-    mkdirSync(join(h.user, 'globalStorage'))
-    writeFileSync(join(h.user, 'globalStorage', 'storage.json'), '{ broken')
+    windowState(h.user, '{ broken')
     const plugin = vscodePlugin(h.options({ probe: probeOf([CODE]) }))
     expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
       expect.objectContaining({ level: 'note', code: 'vscode-state-unreadable' }),
@@ -603,17 +617,13 @@ describe('object', () => {
   "settings": { "x": "a // not a comment" },
 }`,
     )
-    mkdirSync(join(h.user, 'globalStorage'), { recursive: true })
-    writeFileSync(
-      join(h.user, 'globalStorage', 'storage.json'),
-      JSON.stringify({
-        windowsState: {
-          lastActiveWindow: {
-            workspaceIdentifier: { id: 'x', configURIPath: pathToFileURL(file).href },
-          },
+    windowState(h.user, {
+      windowsState: {
+        lastActiveWindow: {
+          workspaceIdentifier: { id: 'x', configURIPath: pathToFileURL(file).href },
         },
-      }),
-    )
+      },
+    })
     const plugin = vscodePlugin(h.options({ probe: probeOf([CODE]) }))
     const all = [worktree(wt), worktree(abs), worktree(other)]
     expect(await plugin.object!(all, fakeContext())).toEqual([

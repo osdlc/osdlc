@@ -16,7 +16,15 @@
  * Built on the plugin kit alone, as a code plugin would be.
  */
 
-import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
+import {
+  closeSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  readdirSync,
+  realpathSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -142,13 +150,34 @@ function chatRequests(text: string, log: boolean): number {
  */
 const LEGACY_CHAT_KEY = Buffer.from('interactive.sessions')
 
+/** How much of a `state.vscdb` is read at a time while looking for {@link LEGACY_CHAT_KEY}. */
+const SCAN_CHUNK = 1 << 20
+
 /** True when the `state.vscdb` at `path` names the old chat key; one that cannot be read does. */
 function legacyChats(path: string): boolean {
+  let fd: number | undefined
   try {
-    if (lstatSync(path, { throwIfNoEntry: false })?.isFile() !== true) return false
-    return readFileSync(path).includes(LEGACY_CHAT_KEY)
+    const st = lstatSync(path, { throwIfNoEntry: false })
+    if (st?.isFile() !== true) return false
+    // Read in chunks that overlap by the key's length less one, so the key is found across a seam.
+    fd = openSync(path, 'r')
+    const keep = LEGACY_CHAT_KEY.length - 1
+    const chunk = Math.min(st.size, SCAN_CHUNK)
+    // Only the bytes read are searched, so the buffer need not be zeroed.
+    const buf = Buffer.allocUnsafe(chunk + keep)
+    let held = 0
+    for (;;) {
+      const read = readSync(fd, buf, held, chunk, null)
+      if (read === 0) return false
+      const end = held + read
+      if (buf.subarray(0, end).includes(LEGACY_CHAT_KEY)) return true
+      held = Math.min(keep, end)
+      buf.copy(buf, 0, end - held, end)
+    }
   } catch {
     return true
+  } finally {
+    if (fd !== undefined) closeSync(fd)
   }
 }
 
@@ -222,7 +251,7 @@ export function vscodeUserDir(
 
 /** What one storage folder says about its workspace. */
 type Entry =
-  | { state: 'gone'; workspace: string; local: string; history: string[] }
+  | { state: 'gone'; workspace: string; local: string }
   | { state: 'unknown'; problem: string }
   /** Live, remote, an empty window's, on a volume not mounted, or not a folder of VS Code's. */
   | { state: 'skip' }
@@ -321,7 +350,7 @@ function entryOf(dir: string): Entry {
     return { state: 'skip' }
   }
   if (unmounted(local)) return { state: 'skip' }
-  return { state: 'gone', workspace, local, history: historyIn(dir) }
+  return { state: 'gone', workspace, local }
 }
 
 /** JSON's strings, and JSONC's comments and trailing commas. */
@@ -376,11 +405,14 @@ function openWindows(stateFile: string): { paths: string[]; problem?: string } {
   ]
   const paths: string[] = []
   const problems: string[] = []
+  // The last active window is usually among the opened ones too.
+  const seen = new Set<string>()
   for (const w of windows) {
     if (!isObject(w)) continue
     const id = isObject(w.workspaceIdentifier) ? w.workspaceIdentifier.configURIPath : undefined
     for (const uri of [w.folder, id]) {
-      if (typeof uri !== 'string') continue
+      if (typeof uri !== 'string' || seen.has(uri)) continue
+      seen.add(uri)
       let local: string | null
       try {
         local = localPath(uri)
@@ -418,9 +450,10 @@ const vscodeOf = (names: readonly string[]): string[] =>
 function build(kit: Kit, opts: VscodeOptions): Plugin {
   const userDir =
     opts.userDir ?? vscodeUserDir(opts.env ?? process.env, opts.platform ?? process.platform)
-  const root = userDir === undefined ? undefined : join(userDir, 'workspaceStorage')
-  const stateFile =
-    userDir === undefined ? undefined : join(userDir, 'globalStorage', 'storage.json')
+  const under = (...parts: string[]): string | undefined =>
+    userDir === undefined ? undefined : join(userDir, ...parts)
+  const root = under('workspaceStorage')
+  const stateFile = under('globalStorage', 'storage.json')
   /** `root` when it exists. */
   const storage = (): string | undefined =>
     root !== undefined && lstatSync(root, { throwIfNoEntry: false }) !== undefined
@@ -464,16 +497,16 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
     if (procs.length > 0) {
       return [own(c, 'refuse', IN_USE, `VS Code works in it: ${procs.join(', ')}`)]
     }
-    const dir = canon(c.path)
-    if (w.paths.some((p) => within(p, dir))) {
+    const dir = w.paths.length === 0 ? undefined : canon(c.path)
+    if (dir !== undefined && w.paths.some((p) => within(p, dir))) {
       return [own(c, 'refuse', IN_USE, `a VS Code window has it open (${stateFile})`)]
     }
     const unchecked = [
-      ...(here.unknown === undefined
-        ? []
-        : [`the processes working in it could not be listed (${here.unknown})`]),
-      ...(w.problem === undefined ? [] : [w.problem]),
-    ]
+      here.unknown === undefined
+        ? undefined
+        : `the processes working in it could not be listed (${here.unknown})`,
+      w.problem,
+    ].filter((s) => s !== undefined)
     if (unchecked.length === 0) return []
     const code = here.unknown === undefined ? 'vscode-state-unreadable' : 'vscode-unchecked'
     return [own(c, 'note', code, `${unchecked.join('; ')}; VS Code was not fully checked`)]
@@ -529,6 +562,7 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
       const windows = look(ctx)
       for (const c of worktrees) out.push(...worktreeCheck(c, windows, ctx))
       const open = new Set(windows.paths)
+      // A gone folder's path never resolves, so it is not even tried while no window is open.
       for (const { c, local } of open.size === 0 ? [] : gone) {
         if (open.has(canon(local))) {
           out.push(own(c, 'refuse', IN_USE, `a VS Code window still has ${local} open`))
@@ -555,8 +589,9 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
       if (now.state !== 'gone' || now.workspace !== c.evidence.workspace) {
         throw new Error(`${c.path} is no longer storage for a workspace that is gone`)
       }
-      if (now.history.length > 0 && c.costDescription !== 'lost') {
-        throw new Error(`${c.path} now holds chat or agent history (${now.history.join(', ')})`)
+      const history = c.costDescription === 'lost' ? [] : historyIn(c.path)
+      if (history.length > 0) {
+        throw new Error(`${c.path} now holds chat or agent history (${history.join(', ')})`)
       }
       return kit.remove(c.path, ctx)
     },
@@ -565,11 +600,12 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
 
 function goneCandidate(kit: Kit, dir: string, e: Extract<Entry, { state: 'gone' }>): Candidate {
   const bytes = kit.size(dir)
-  const hasHistory = e.history.length > 0
+  const history = historyIn(dir)
+  const hasHistory = history.length > 0
   return kit.candidate({
     kind: KIND,
     path: dir,
-    why: `VS Code kept state for ${e.local}, which no longer exists${hasHistory ? `, with chat or agent history in ${e.history.join(', ')}` : ''}`,
+    why: `VS Code kept state for ${e.local}, which no longer exists${hasHistory ? `, with chat or agent history in ${history.join(', ')}` : ''}`,
     ...(bytes === null ? {} : { bytes }),
     // A `lost` candidate is held, and runs only with `--allow discard-user-data`.
     costDescription: hasHistory ? 'lost' : 're-download',
@@ -577,7 +613,7 @@ function goneCandidate(kit: Kit, dir: string, e: Extract<Entry, { state: 'gone' 
       kind: KIND,
       path: dir,
       workspace: e.workspace,
-      ...(hasHistory ? { history: e.history } : {}),
+      ...(hasHistory ? { history } : {}),
     },
   })
 }

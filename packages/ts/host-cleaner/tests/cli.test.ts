@@ -54,17 +54,20 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
   return {
     home,
     cwd: tempDir(),
-    env: { ...(process.env as Record<string, string>), HOST_CLEANER_ROOT: home },
+    // VSCODE_APPDATA keeps the vscode plugin off this machine's VS Code storage.
+    env: {
+      ...(process.env as Record<string, string>),
+      HOST_CLEANER_ROOT: home,
+      VSCODE_APPDATA: home,
+    },
   }
 }
 
 async function run(argv: string[], cwd: string, env: Record<string, string>, deps: MainDeps = {}) {
   const ctx = captureContext({ cwd, env })
-  // The shipped plugins would talk to this machine's Orca and sweep every repository it lists,
-  // and read this machine's VS Code storage.
+  // The shipped plugins would talk to this machine's Orca and sweep every repository it lists.
   const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
-  const args =
-    phase && deps.plugins === undefined ? [...argv, '--skip-plugin', 'orca,vscode'] : argv
+  const args = phase && deps.plugins === undefined ? [...argv, '--skip-plugin', 'orca'] : argv
   const code = await main(args, ctx, { confirm: () => null, ...deps })
   return { code, out: ctx.io.out, err: ctx.io.err }
 }
