@@ -377,7 +377,7 @@ the key.
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
 | `idleHours` | `cargo`, `node`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
-| `vars` | every descriptor with `vars` | none | A folder for each named variable, such as `{ "GOMODCACHE": "/data/go/mod" }`. It wins over every source the descriptor lists, and its folder may sit outside the home folder. |
+| `vars` | every descriptor with `vars` | none | A folder for each named variable, such as `{ "GOMODCACHE": "/data/go/mod" }`. It wins over every source the descriptor lists for that variable, and its folder may sit outside the home folder. A variable that another one is built from counts only where that one falls back to it: with the tool on PATH, `GOPATH` (go) and `PNPM_HOME` (pnpm) are not read, so set `GOMODCACHE` or `STORE` instead. |
 
 Two settings sit at the top of the config and apply to every plugin:
 

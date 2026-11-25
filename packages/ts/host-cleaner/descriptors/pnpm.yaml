@@ -6,7 +6,10 @@
 # takes that folder as it is. Without pnpm on PATH the store is
 # npm_config_store_dir, else store under PNPM_HOME or pnpm's default home,
 # listed with a no-prune-tool protest and left alone (D12). The metadata cache,
-# under XDG_CACHE_HOME on Linux, is removed as a folder once idle.
+# under XDG_CACHE_HOME, is removed as a folder once idle. As in pnpm, a set
+# XDG_CACHE_HOME or XDG_DATA_HOME wins over ~/Library on macOS too. With pnpm
+# on PATH, `pnpm store path` answers before PNPM_HOME is read, so to move the
+# store in the config, set STORE there, not PNPM_HOME.
 descriptor: 1
 store: pnpm
 detect:
@@ -18,10 +21,20 @@ vars:
     - value: '${PNPM_HOME}/store'
   PNPM_HOME:
     - env: PNPM_HOME
+    - value: '${XDG_DATA_HOME_SET}/pnpm'
     - value: { macos: ~/Library/pnpm, linux: '${XDG_DATA_HOME}/pnpm' }
+  CACHE:
+    - value: '${XDG_CACHE_HOME_SET}/pnpm'
+    - value: { macos: ~/Library/Caches/pnpm, linux: '${XDG_CACHE_HOME}/pnpm' }
+  # The XDG folders only when the environment sets them: on macOS pnpm uses
+  # ~/Library, not their defaults.
+  XDG_DATA_HOME_SET:
+    - env: XDG_DATA_HOME
+  XDG_CACHE_HOME_SET:
+    - env: XDG_CACHE_HOME
 paths:
   store: { macos: '${STORE}', linux: '${STORE}' }
-  cache: { macos: ~/Library/Caches/pnpm, linux: '${XDG_CACHE_HOME}/pnpm' }
+  cache: { macos: '${CACHE}', linux: '${CACHE}' }
 candidates:
   - path: store
     costDescription: re-download

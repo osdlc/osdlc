@@ -625,6 +625,8 @@ describe.each(OSES_TESTED)('on %s', (os) => {
         [b.folder('modcache'), b.home],
         [b.folder('buildcache'), b.home],
       ])
+      // No toolchain switch, so go clean never downloads one into the cache.
+      expect(b.deleting.map((c) => c.opts.env?.GOTOOLCHAIN)).toEqual(['local', 'local'])
     })
   })
 
@@ -710,6 +712,9 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       ['pnpm', 'pnpm store path', pnpmStorePath],
       byEnv('pnpm', 'npm_config_store_dir', 'store', 'store'),
       byEnv('pnpm', 'PNPM_HOME', 'pnpm', 'store', 'pnpm/store'),
+      // As pnpm and Yarn Classic do, a set XDG folder wins over ~/Library on macOS.
+      byEnv('pnpm', 'XDG_CACHE_HOME', 'xdg', 'cache', 'xdg/pnpm'),
+      byEnv('pnpm', 'XDG_DATA_HOME', 'data', 'store', 'data/pnpm/store'),
       [
         'uv',
         'uv cache dir',
@@ -739,14 +744,12 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       ],
       byEnv('yarn', 'XDG_DATA_HOME', 'data', 'berry', 'data/yarn/berry/cache'),
       byEnv('yarn', 'YARN_CACHE_FOLDER', 'classic', 'classic'),
+      byEnv('yarn', 'XDG_CACHE_HOME', 'xdg', 'classic', 'xdg/yarn'),
     ]
     // On Linux these follow the XDG folders; on macOS they sit in ~/Library.
     const linuxOnly: Case[] = [
       byEnv('go', 'XDG_CACHE_HOME', 'xdg', 'buildcache', 'xdg/go-build'),
       byEnv('pip', 'XDG_CACHE_HOME', 'xdg', 'cache', 'xdg/pip'),
-      byEnv('pnpm', 'XDG_CACHE_HOME', 'xdg', 'cache', 'xdg/pnpm'),
-      byEnv('pnpm', 'XDG_DATA_HOME', 'data', 'store', 'data/pnpm/store'),
-      byEnv('yarn', 'XDG_CACHE_HOME', 'xdg', 'classic', 'xdg/yarn'),
     ]
 
     test.each(os === 'linux' ? [...cases, ...linuxOnly] : cases)(
@@ -761,9 +764,9 @@ describe.each(OSES_TESTED)('on %s', (os) => {
     )
 
     test.skipIf(os !== 'macos')(
-      'XDG_CACHE_HOME moves none of the caches kept in ~/Library',
+      "XDG_CACHE_HOME leaves go's and pip's caches in ~/Library",
       async () => {
-        for (const name of ['go', 'pip', 'pnpm', 'yarn'] as const) {
+        for (const name of ['go', 'pip'] as const) {
           const b = build(name, os, { moves: (h) => ({ env: { XDG_CACHE_HOME: at(h, 'xdg') } }) })
           const s = await survey([b.plugin], ctxOf())
           expect(s.candidates.map((c) => c.path).sort(), name).toEqual(expectedPaths(b))

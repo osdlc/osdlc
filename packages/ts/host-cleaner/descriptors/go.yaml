@@ -3,8 +3,9 @@
 # and GOCACHE move them, GOPATH moves the module cache to its pkg/mod, and
 # `go env -w` settings are seen through `go env`. Without go on PATH, the
 # variables and the defaults are used; a GOPATH that lists several folders is
-# then not followed. Each cache is emptied by go's own clean command pointed at
-# it, or removed as a folder without go, read-only module files included: the
+# then read as one folder, which is not found, so the module cache is missed.
+# Each cache is emptied by go's own clean command pointed at it, with
+# GOTOOLCHAIN=local so no other toolchain is downloaded first, or removed as a folder without go, read-only module files included: the
 # module cache once nothing in it changed for 30 days, the build cache after a
 # week. go touches the build cache entries it uses but not the module files it
 # reads, so a module cache in daily use with no new download for 30 days is
@@ -35,13 +36,13 @@ candidates:
     costDescription: re-download
     idleHours: 720
     command: [go, clean, -modcache]
-    env: { GOMODCACHE: '{path}' }
+    env: { GOMODCACHE: '{path}', GOTOOLCHAIN: local }
     removes: all
   - path: buildcache
     costDescription: rebuild
     idleHours: 168
     command: [go, clean, -cache]
-    env: { GOCACHE: '{path}' }
+    env: { GOCACHE: '{path}', GOTOOLCHAIN: local }
     removes: all
 inUse:
   processes: [go]
