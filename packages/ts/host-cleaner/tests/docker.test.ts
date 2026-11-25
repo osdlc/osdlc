@@ -22,6 +22,7 @@ import {
   composeProject,
   dockerBytes,
   dockerDefinition,
+  imageBytes,
   jsonLines,
   reclaimable,
 } from '../src/docker.ts'
@@ -38,17 +39,23 @@ const CONTAINER = 'c'.repeat(64)
 
 interface Machine {
   running?: boolean
-  volumes?: Array<{ Name: string; Driver?: string; Labels?: string }>
-  images?: Array<{ ID: string; Size?: string; CreatedAt?: string }>
+  volumes?: Array<{ Name: string; Driver?: string; Labels?: string; CreatedAt?: string }>
+  images?: Array<{ ID: string; Size?: string; SharedSize?: string; CreatedAt?: string }>
   /** Each container's image id. */
   containers?: Record<string, string>
   /** Containers `container ls` lists but that are removed before `container inspect`. */
   gone?: string[]
   /** What `docker builder du` prints; null: buildx is missing; `{ fails }`: it fails with that message. */
   du?: string | null | { fails: string }
+  /** What `docker builder du` prints from its second call on, such as at the delete. */
+  duLater?: string
   /** Volumes `docker volume rm` refuses, as Docker does one a container took up. */
   inUse?: string[]
+  /** Volumes and images someone else removed: `volume rm` and `image rm` say there is no such one. */
+  removed?: string[]
 }
+
+const CREATED = '2026-10-01T09:00:00Z'
 
 const DU =
   'ID\tRECLAIMABLE\tSIZE\tLAST ACCESSED\nabc\ttrue\t1.5GB\t2 weeks ago\nShared:\t\t0B\nPrivate:\t1.5GB\nReclaimable:\t1.5GB\nTotal:\t\t1.5GB\n'
@@ -59,9 +66,10 @@ function fakeDocker(m: Machine = {}, keepVolumes: string[] = []) {
     { Name: 'pgdata', Driver: 'local', Labels: 'com.docker.compose.project=shop' },
   ]
   const images = m.images ?? [
-    { ID: OLD, Size: '120MB', CreatedAt: '2026-01-01 00:00:00 +0000 UTC' },
-    { ID: USED, Size: '1.2GB', CreatedAt: '2026-02-01 00:00:00 +0000 UTC' },
+    { ID: OLD, Size: '120MB', SharedSize: '20MB', CreatedAt: '2026-01-01 00:00:00 +0000 UTC' },
+    { ID: USED, Size: '1.2GB', SharedSize: '0B', CreatedAt: '2026-02-01 00:00:00 +0000 UTC' },
   ]
+  let dus = 0
   const containers = m.containers ?? { [CONTAINER]: USED }
   const json = (rows: object[]) => ({ stdout: rows.map((r) => JSON.stringify(r) + '\n').join('') })
   const fake = fakeRunner({
@@ -75,7 +83,23 @@ function fakeDocker(m: Machine = {}, keepVolumes: string[] = []) {
             }
           : { stdout: '29.0.0\n' }
       }
-      if (cmd === 'volume ls --filter dangling=true --format {{json .}}') return json(volumes)
+      if (cmd === 'volume ls --filter dangling=true --format {{json .}}') {
+        // As Docker lists them: no `CreatedAt`, which only `volume inspect` gives.
+        return json(volumes.map((v) => ({ Name: v.Name, Driver: v.Driver, Labels: v.Labels })))
+      }
+      if (argv[0] === 'volume' && argv[1] === 'inspect' && argv[3] === '{{json .}}') {
+        const asked = argv.slice(4)
+        // A volume with an empty `CreatedAt` stands for one removed since `volume ls`.
+        const found = volumes.filter((v) => asked.includes(v.Name) && v.CreatedAt !== '')
+        const gone = asked.filter((n) => !found.some((v) => v.Name === n))
+        return {
+          ...(gone.length === 0 ? {} : { exitCode: 1 }),
+          ...json(found.map((v) => ({ Name: v.Name, CreatedAt: v.CreatedAt ?? CREATED }))),
+          stderr: gone
+            .map((n) => `Error response from daemon: get ${n}: no such volume\n`)
+            .join(''),
+        }
+      }
       if (cmd === 'image ls --filter dangling=true --no-trunc --format {{json .}}')
         return json(images)
       if (cmd === 'container ls --all --quiet --no-trunc') {
@@ -98,10 +122,17 @@ function fakeDocker(m: Machine = {}, keepVolumes: string[] = []) {
         }
       }
       if (cmd === 'builder du') {
+        dus += 1
+        if (dus > 1 && m.duLater !== undefined) return { stdout: m.duLater }
         if (m.du === null)
           return { exitCode: 1, stderr: "docker: 'builder du' is not a docker command.\n" }
         if (typeof m.du === 'object') return { exitCode: 1, stderr: `${m.du.fails}\n` }
         return { stdout: m.du ?? DU }
+      }
+      if (argv[1] === 'rm' && m.removed?.includes(argv[3]!) === true) {
+        return argv[0] === 'volume'
+          ? { exitCode: 1, stderr: `Error response from daemon: get ${argv[3]}: no such volume\n` }
+          : { exitCode: 1, stderr: `Error response from daemon: No such image: ${argv[3]}\n` }
       }
       if (argv[0] === 'volume' && argv[1] === 'rm') {
         return m.inUse?.includes(argv[3]!) === true
@@ -143,9 +174,12 @@ describe('discover', () => {
       costDescription: 'lost',
       held: true,
       why: 'no container uses this volume of compose project shop',
-      evidence: { kind: DOCKER_VOLUME, name: 'pgdata', driver: 'local' },
+      evidence: { kind: DOCKER_VOLUME, name: 'pgdata', driver: 'local', created: CREATED },
     })
-    expect(image).toMatchObject({ ref: OLD, bytes: 120_000_000, costDescription: 're-download' })
+    // Only the layers no other image shares are freed.
+    expect(image).toMatchObject({ ref: OLD, bytes: 100_000_000, costDescription: 're-download' })
+    // The id is the content; `CreatedAt`, printed in local time, would move with TZ.
+    expect(image!.evidence).toEqual({ kind: DOCKER_IMAGE, id: OLD })
     expect(image!.held).toBeUndefined()
     expect(cache).toMatchObject({
       bytes: 1_500_000_000,
@@ -202,16 +236,38 @@ describe('discover', () => {
     expect(inspects.map((c) => c.split(' ').length - 4)).toEqual([500, 500, 201])
   })
 
-  test('builder du gets the hook limit, and a failure other than buildx missing fails discover', async () => {
+  test('builder du has a limit inside the hook limit, and its failure leaves volumes and images proposed', async () => {
     const ok = fakeDocker()
     await survey([ok.plugin], ctx)
     const du = ok.calls.find((c) => c.argv.join(' ') === 'docker builder du')
-    expect(du?.opts.timeoutMs).toBe(120_000)
+    expect(du?.opts.timeoutMs).toBe(60_000)
     const { plugin } = fakeDocker({ du: { fails: 'ERROR: permission denied' } })
     const s = await survey([plugin], ctx)
-    expect(s.warnings).toEqual([
-      expect.stringContaining('docker builder du failed: ERROR: permission denied'),
+    expect(ids(s.candidates)).toEqual([`${DOCKER_VOLUME}:pgdata`, `${DOCKER_IMAGE}:${OLD}`])
+  })
+
+  test('discover fails only when every listing fails, with each reason', async () => {
+    const fake = fakeRunner({
+      docker: (argv) =>
+        argv[0] === 'info' ? { stdout: '29.0.0\n' } : { exitCode: 1, stderr: 'ERROR: broken\n' },
+    })
+    const s = await survey([dockerPlugin({}, pluginKit('docker', { ...fake }))], ctx)
+    expect(s.candidates).toEqual([])
+    expect(s.warnings).toEqual([expect.stringContaining('docker volume ls')])
+    expect(s.warnings[0]).toContain('docker image ls')
+    expect(s.warnings[0]).toContain('docker builder du failed: ERROR: broken')
+  })
+
+  test('a volume removed between its listing and its inspect is skipped', async () => {
+    const { plugin, ran } = fakeDocker({
+      volumes: [{ Name: 'pgdata', CreatedAt: CREATED }, { Name: 'scratch', CreatedAt: '' }],
+    })
+    const s = await survey([plugin], ctx)
+    expect(s.warnings).toEqual([])
+    expect(ids(s.candidates).filter((id) => id.startsWith(DOCKER_VOLUME))).toEqual([
+      `${DOCKER_VOLUME}:pgdata`,
     ])
+    expect(ran()).toContain('volume inspect --format {{json .}} pgdata scratch')
   })
 
   test('the compose project is read from its own label, values with = and , kept', () => {
@@ -248,6 +304,12 @@ describe('detect', () => {
         'Docker is installed but did not answer; its volumes, images and build cache are left alone (docker info --format {{.ServerVersion}} failed: Cannot connect to the Docker daemon at unix:///var/run/docker.sock)',
     })
     expect(ran()).toEqual(['info --format {{.ServerVersion}}'])
+  })
+
+  test('docker info has a limit well inside the detect hook limit', async () => {
+    const { plugin, calls } = fakeDocker()
+    await survey([plugin], ctx)
+    expect(calls.find((c) => c.argv[1] === 'info')?.opts.timeoutMs).toBe(10_000)
   })
 })
 
@@ -315,6 +377,77 @@ describe('clean', () => {
   })
 })
 
+describe('the re-check and the delete', () => {
+  const run = { ...ctx, allow: [DISCARD_USER_DATA] }
+  const volume = `${DOCKER_VOLUME}:pgdata`
+
+  test('a volume removed and made again under its name since the plan is changed, and kept', async () => {
+    const before = fakeDocker()
+    const p = plan(await survey([before.plugin], run), {
+      select: [volume],
+      pick: [volume],
+      allow: [DISCARD_USER_DATA],
+    })
+    const after = fakeDocker({
+      volumes: [{ Name: 'pgdata', Driver: 'local', CreatedAt: '2026-11-20T08:00:00Z' }],
+    })
+    const receipt = await clean(p, [after.plugin], run)
+    expect(receipt.steps).toEqual([])
+    expect(receipt.dropped).toEqual([expect.objectContaining({ id: volume, reason: 'changed' })])
+    expect(after.ran().some((c) => c.startsWith('volume rm'))).toBe(false)
+  })
+
+  test('a volume or image someone else removed after the re-check is already gone, not a failure', async () => {
+    const image = `${DOCKER_IMAGE}:${OLD}`
+    const { plugin } = fakeDocker({ removed: ['pgdata', OLD] })
+    const receipt = await clean(
+      plan(await survey([plugin], run), {
+        select: [volume, image],
+        pick: [volume],
+        allow: [DISCARD_USER_DATA],
+      }),
+      [plugin],
+      run,
+    )
+    expect(receipt.status).toBe('complete')
+    expect(receipt.steps.map((st) => [st.id, st.result, st.delete])).toEqual([
+      [volume, 'ok', 'already gone: volume pgdata'],
+      [image, 'ok', `already gone: image ${OLD}`],
+    ])
+  })
+
+  test('a build cache grown past the plan is not pruned; the same or less is', async () => {
+    const cache = `${DOCKER_BUILD_CACHE}:reclaimable`
+    const p = plan(await survey([fakeDocker().plugin], ctx), { select: [cache] })
+
+    // Grown before the re-check: the re-check reads 20GB, but the plan showed 1.5GB.
+    const grown = fakeDocker({ du: 'Reclaimable:\t20GB\n' })
+    const refused = await clean(p, [grown.plugin], ctx)
+    expect(refused.steps).toEqual([
+      expect.objectContaining({
+        id: cache,
+        result: 'failed',
+        error:
+          'changed: the build cache grew from 1500000000 to 20000000000 bytes reclaimable since the plan',
+      }),
+    ])
+    expect(grown.ran()).not.toContain('builder prune --all --force')
+
+    // Grown between the re-check and the delete.
+    const late = fakeDocker({ duLater: 'Reclaimable:\t3GB\n' })
+    const between = await clean(p, [late.plugin], ctx)
+    expect(between.steps).toEqual([
+      expect.objectContaining({ result: 'failed', error: expect.stringContaining('grew') }),
+    ])
+    expect(late.ran()).not.toContain('builder prune --all --force')
+
+    const shrunk = fakeDocker({ du: 'Reclaimable:\t1GB\n' })
+    const ok = await clean(p, [shrunk.plugin], ctx)
+    expect(ok.steps).toEqual([expect.objectContaining({ id: cache, result: 'ok' })])
+    expect(shrunk.ran()).toContain('builder prune --all --force')
+  })
+})
+
 describe('delete', () => {
   test('refuses a folder, outside or not, and a ref that is not one of its kinds, and runs nothing', async () => {
     const home = tempHome()
@@ -362,6 +495,12 @@ describe('the contract', () => {
 })
 
 describe('parsing', () => {
+  test('an image frees only the layers it does not share', () => {
+    expect(imageBytes({ Size: '120MB', SharedSize: '20MB' })).toBe(100_000_000)
+    expect(imageBytes({ Size: '120MB', SharedSize: 'N/A', UniqueSize: '5MB' })).toBe(5_000_000)
+    expect(imageBytes({ Size: '120MB', SharedSize: 'N/A', UniqueSize: 'N/A' })).toBeUndefined()
+  })
+
   test('sizes as Docker prints them', () => {
     expect(dockerBytes('0B')).toBe(0)
     expect(dockerBytes('512kB')).toBe(512_000)

@@ -16,7 +16,8 @@
 import { failureText, firstLine } from '@osdlc/command-seam'
 import { z } from 'zod'
 
-import { pluginKit, type Kit, type KitOptions } from './kit.ts'
+import { errorText, isObject, str } from './helpers.ts'
+import { pluginKit, type Kit, type KitOptions, type KitRunResult } from './kit.ts'
 import { DELETE_LIMIT_MS } from './run.ts'
 import { PLUGIN_API, definePlugin, type Candidate, type Ctx, type Plugin } from './types.ts'
 
@@ -29,6 +30,12 @@ export const DOCKER_BUILD_CACHE = 'docker-build-cache'
 /** `discover` runs several Docker commands, and `docker builder du` may wait on its builder. */
 const DISCOVER_LIMIT_MS = 2 * 60_000
 
+/** `docker builder du` waits on its builder, which may be remote or stopped; well inside {@link DISCOVER_LIMIT_MS}. */
+const DU_LIMIT_MS = 60_000
+
+/** A running daemon answers `docker info` at once; well inside detect's 30s hook limit. */
+const INFO_LIMIT_MS = 10_000
+
 /** The ref of the one build cache candidate: what `docker builder prune` reclaims. */
 const BUILD_CACHE_REF = 'reclaimable'
 
@@ -37,9 +44,6 @@ export interface DockerOptions extends KitOptions {
   keepVolumes?: readonly string[] | undefined
 }
 
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
-const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 /** The non-blank lines of `text`, trimmed. */
 const lines = (text: string): string[] =>
   text
@@ -61,6 +65,19 @@ export function dockerBytes(text: string): number | undefined {
   return Math.round(Number(m[1]) * (m[3] === '' ? 1000 : 1024) ** power)
 }
 
+/**
+ * The bytes deleting an image frees, from its `docker image ls` row: those of
+ * its layers no other image shares. Undefined when Docker did not report what
+ * is shared (`N/A`), rather than the whole size, which counts shared layers.
+ */
+export function imageBytes(row: Record<string, unknown>): number | undefined {
+  const unique = dockerBytes(str(row.UniqueSize))
+  if (unique !== undefined) return unique
+  const size = dockerBytes(str(row.Size))
+  const shared = dockerBytes(str(row.SharedSize))
+  return size === undefined || shared === undefined ? undefined : Math.max(0, size - shared)
+}
+
 /** The objects in `--format '{{json .}}'` output, one per line; a line that is not one is skipped. */
 export function jsonLines(stdout: string): Record<string, unknown>[] {
   return lines(stdout).flatMap((line) => {
@@ -79,18 +96,20 @@ export function reclaimable(stdout: string): number | undefined {
   return line === null ? undefined : dockerBytes(line[1]!)
 }
 
-/** Containers inspected per `docker container inspect`, so its argv stays well under ARG_MAX. */
+/** Containers or volumes inspected per `docker ... inspect`, so its argv stays well under ARG_MAX. */
 const INSPECT_BATCH = 500
 
-/** Whether `docker container inspect` printed at least one error line, and every one says a container is gone. */
-const onlyGone = (stderr: string): boolean => {
-  const errors = lines(stderr)
-  return errors.length > 0 && errors.every((l) => /no such (container|object)/i.test(l))
+/** Whether Docker printed at least one error line, and every one says a container, volume or image is gone. */
+const onlyGone = (r: KitRunResult): boolean => {
+  const errors = lines(r.stderr)
+  return (
+    errors.length > 0 && errors.every((l) => /no such (container|volume|image|object)/i.test(l))
+  )
 }
 
 /** Whether `docker builder du` failed only because this Docker has no `builder du` (no buildx). */
-const noBuilderDu = (text: string): boolean =>
-  /is not a docker command|unknown command|unknown flag/i.test(text)
+const noBuilderDu = (r: KitRunResult): boolean =>
+  /is not a docker command|unknown command|unknown flag/i.test(failureText(r))
 
 /** The label every Compose volume carries with its project's name. */
 const COMPOSE_PROJECT = 'com.docker.compose.project'
@@ -114,30 +133,51 @@ export function dockerPlugin(
 ): Plugin {
   const keep = new Set(opts.keepVolumes ?? [])
 
-  /** The stdout of `docker <args>`; throws with Docker's own message when it fails. */
-  const docker = async (args: readonly string[], ctx: Ctx, timeoutMs?: number): Promise<string> => {
-    const r = await kit.run(['docker', ...args], { signal: ctx.signal, timeoutMs })
-    if (!r.ok) throw new Error(`docker ${args.join(' ')} failed: ${firstLine(failureText(r))}`)
-    return r.stdout
+  /**
+   * `docker <args>` once it exited 0, or failed in a way `tolerate` accepts;
+   * otherwise throws with Docker's own message.
+   */
+  const docker = async (
+    args: readonly string[],
+    ctx: Ctx,
+    o: { timeoutMs?: number; tolerate?: (r: KitRunResult) => boolean } = {},
+  ): Promise<KitRunResult> => {
+    const r = await kit.run(['docker', ...args], { signal: ctx.signal, timeoutMs: o.timeoutMs })
+    if (!r.ok && o.tolerate?.(r) !== true) {
+      throw new Error(`docker ${args.join(' ')} failed: ${firstLine(failureText(r))}`)
+    }
+    return r
+  }
+
+  /** The stdout of `docker <args> <names>`, in batches; a name gone since its listing is not a failure. */
+  const inspect = async (args: readonly string[], names: readonly string[], ctx: Ctx) => {
+    let out = ''
+    for (let i = 0; i < names.length; i += INSPECT_BATCH) {
+      const batch = names.slice(i, i + INSPECT_BATCH)
+      out += (await docker([...args, ...batch], ctx, { tolerate: onlyGone })).stdout
+    }
+    return out
+  }
+
+  /** The image ids of every container, running or stopped: any one of them keeps its image. */
+  const imagesInUse = async (ctx: Ctx): Promise<Set<string>> => {
+    const listed = await docker(['container', 'ls', '--all', '--quiet', '--no-trunc'], ctx)
+    const ids = lines(listed.stdout)
+    const out = await inspect(['container', 'inspect', '--format', '{{.Image}}'], ids, ctx)
+    return new Set(lines(out))
   }
 
   /**
-   * The image ids of every container, running or stopped: any one of them keeps its image.
-   * A container removed after the listing keeps no image, so `No such container`
-   * for it is not a failure.
+   * Each volume's `CreatedAt` by name, as the daemon keeps it, so a volume
+   * removed and made again under its name is told apart. One removed since
+   * its listing has none.
    */
-  const imagesInUse = async (ctx: Ctx): Promise<Set<string>> => {
-    const ids = lines(await docker(['container', 'ls', '--all', '--quiet', '--no-trunc'], ctx))
-    const used = new Set<string>()
-    for (let i = 0; i < ids.length; i += INSPECT_BATCH) {
-      const batch = ids.slice(i, i + INSPECT_BATCH)
-      const args = ['container', 'inspect', '--format', '{{.Image}}', ...batch]
-      const r = await kit.run(['docker', ...args], { signal: ctx.signal })
-      if (!r.ok && !onlyGone(r.stderr))
-        throw new Error(`docker container inspect failed: ${firstLine(failureText(r))}`)
-      for (const image of lines(r.stdout)) used.add(image)
-    }
-    return used
+  const volumesCreated = async (
+    names: readonly string[],
+    ctx: Ctx,
+  ): Promise<Map<string, string>> => {
+    const out = await inspect(['volume', 'inspect', '--format', '{{json .}}'], names, ctx)
+    return new Map(jsonLines(out).map((row) => [str(row.Name), str(row.CreatedAt)]))
   }
 
   const volumes = async (ctx: Ctx): Promise<Candidate[]> => {
@@ -145,9 +185,16 @@ export function dockerPlugin(
       ['volume', 'ls', '--filter', 'dangling=true', '--format', '{{json .}}'],
       ctx,
     )
-    return jsonLines(out).flatMap((row): Candidate[] => {
+    const rows = jsonLines(out.stdout).filter(
+      (row) => str(row.Name) !== '' && !keep.has(str(row.Name)),
+    )
+    if (rows.length === 0) return []
+    const created = await volumesCreated(rows.map((row) => str(row.Name)), ctx)
+    return rows.flatMap((row): Candidate[] => {
       const name = str(row.Name)
-      if (name === '' || keep.has(name)) return []
+      const at = created.get(name) ?? ''
+      // Without its creation time, a volume made again under this name could not be told apart.
+      if (at === '') return []
       const project = composeProject(str(row.Labels))
       return [
         kit.candidate({
@@ -159,7 +206,7 @@ export function dockerPlugin(
               ? 'no container uses this volume'
               : `no container uses this volume of compose project ${project}`,
           costDescription: 'lost',
-          evidence: { kind: DOCKER_VOLUME, name, driver: str(row.Driver) },
+          evidence: { kind: DOCKER_VOLUME, name, driver: str(row.Driver), created: at },
         }),
       ]
     })
@@ -170,13 +217,13 @@ export function dockerPlugin(
       ['image', 'ls', '--filter', 'dangling=true', '--no-trunc', '--format', '{{json .}}'],
       ctx,
     )
-    const rows = jsonLines(out).filter((row) => str(row.ID) !== '')
+    const rows = jsonLines(out.stdout).filter((row) => str(row.ID) !== '')
     if (rows.length === 0) return []
     const used = await imagesInUse(ctx)
     return rows.flatMap((row): Candidate[] => {
       const id = str(row.ID)
       if (used.has(id)) return []
-      const bytes = dockerBytes(str(row.Size))
+      const bytes = imageBytes(row)
       return [
         kit.candidate({
           kind: DOCKER_IMAGE,
@@ -184,22 +231,20 @@ export function dockerPlugin(
           why: 'a dangling image: it has no tag and no container uses it',
           ...(bytes === undefined ? {} : { bytes }),
           costDescription: 're-download',
-          evidence: { kind: DOCKER_IMAGE, id, created: str(row.CreatedAt) },
+          // The id is the image's content; `CreatedAt` is printed in the local time zone, so it stays out.
+          evidence: { kind: DOCKER_IMAGE, id },
         }),
       ]
     })
   }
 
   const buildCache = async (ctx: Ctx): Promise<Candidate[]> => {
-    const r = await kit.run(['docker', 'builder', 'du'], {
-      signal: ctx.signal,
-      timeoutMs: DISCOVER_LIMIT_MS,
+    // Without buildx there is no build cache to propose.
+    const r = await docker(['builder', 'du'], ctx, {
+      timeoutMs: DU_LIMIT_MS,
+      tolerate: noBuilderDu,
     })
-    if (!r.ok) {
-      // Without buildx there is no build cache to propose, but volumes and images still are.
-      if (noBuilderDu(failureText(r))) return []
-      throw new Error(`docker builder du failed: ${firstLine(failureText(r))}`)
-    }
+    if (!r.ok) return []
     const bytes = reclaimable(r.stdout)
     if (bytes === undefined || bytes === 0) return []
     return [
@@ -209,7 +254,7 @@ export function dockerPlugin(
         why: 'build cache no build is using',
         bytes,
         costDescription: 're-download',
-        // The size moves with every build, so it stays out of the evidence.
+        // The size moves with every build, so it stays out of the evidence; `delete` holds it to the plan's.
         evidence: { kind: DOCKER_BUILD_CACHE },
       }),
     ]
@@ -221,34 +266,54 @@ export function dockerPlugin(
     async detect(ctx) {
       if (!kit.onPath('docker')) return false
       try {
-        await docker(['info', '--format', '{{.ServerVersion}}'], ctx)
+        await docker(['info', '--format', '{{.ServerVersion}}'], ctx, { timeoutMs: INFO_LIMIT_MS })
       } catch (err) {
-        const why = err instanceof Error ? err.message : String(err)
         return {
           active: false,
-          note: `Docker is installed but did not answer; its volumes, images and build cache are left alone (${why})`,
+          note: `Docker is installed but did not answer; its volumes, images and build cache are left alone (${errorText(err)})`,
         }
       }
       return true
     },
+    /**
+     * Volumes, images and the build cache, each on its own: one that fails
+     * leaves out only its own candidates. Throws when all three fail.
+     */
     async discover(ctx) {
-      return (await Promise.all([volumes(ctx), images(ctx), buildCache(ctx)])).flat()
+      const found = await Promise.allSettled([volumes(ctx), images(ctx), buildCache(ctx)])
+      const failed = found.flatMap((f) => (f.status === 'rejected' ? [errorText(f.reason)] : []))
+      if (failed.length === found.length) throw new Error(failed.join('; '))
+      return found.flatMap((f) => (f.status === 'fulfilled' ? f.value : []))
     },
     async delete(c, ctx) {
       if (c.ref === undefined)
         throw new Error(`docker: ${c.id} is not a Docker volume, image or build cache`)
       if (c.kind === DOCKER_VOLUME) {
-        await docker(['volume', 'rm', '--', c.ref], ctx)
-        return `docker volume rm removed volume ${c.ref}`
+        const r = await docker(['volume', 'rm', '--', c.ref], ctx, { tolerate: onlyGone })
+        return r.ok ? `docker volume rm removed volume ${c.ref}` : `already gone: volume ${c.ref}`
       }
       if (c.kind === DOCKER_IMAGE) {
-        await docker(['image', 'rm', '--', c.ref], ctx)
-        return `docker image rm removed image ${c.ref}`
+        const r = await docker(['image', 'rm', '--', c.ref], ctx, { tolerate: onlyGone })
+        return r.ok ? `docker image rm removed image ${c.ref}` : `already gone: image ${c.ref}`
       }
       if (c.kind === DOCKER_BUILD_CACHE && c.ref === BUILD_CACHE_REF) {
+        // The prune takes every unused record, so it runs only while they come to no more than the plan showed.
+        if (c.bytes === undefined) {
+          throw new Error('changed: the plan has no size for the build cache')
+        }
+        const du = await docker(['builder', 'du'], ctx, { timeoutMs: DU_LIMIT_MS })
+        const now = reclaimable(du.stdout)
+        if (now === undefined) throw new Error('docker builder du printed no Reclaimable: total')
+        if (now > c.bytes) {
+          throw new Error(
+            `changed: the build cache grew from ${c.bytes} to ${now} bytes reclaimable since the plan`,
+          )
+        }
         // `--all`: every unused record, as du's `Reclaimable:` counts, not only dangling ones.
-        const out = await docker(['builder', 'prune', '--all', '--force'], ctx, DELETE_LIMIT_MS)
-        const total = /^\s*Total(?: reclaimed space)?:\s*(\S+)\s*$/m.exec(out)?.[1]
+        const pruned = await docker(['builder', 'prune', '--all', '--force'], ctx, {
+          timeoutMs: DELETE_LIMIT_MS,
+        })
+        const total = /^\s*Total(?: reclaimed space)?:\s*(\S+)\s*$/m.exec(pruned.stdout)?.[1]
         return total === undefined
           ? 'docker builder prune removed the build cache'
           : `docker builder prune freed ${total}`

@@ -18,6 +18,11 @@ interface CandidateBase {
   /** The plugin that deletes it, and the only one that may. */
   owner: string
   why: string
+  /**
+   * The bytes deleting it frees. From the re-check on, `prepare`, `delete` and
+   * `deleted` see the bytes the plan showed, so an owner can refuse a delete
+   * that would now free more than was approved.
+   */
   bytes?: number | undefined
   /** What the objections rest on; the re-check compares it with repo-cleaner's `sameFingerprint`. */
   evidence: Record<string, unknown>

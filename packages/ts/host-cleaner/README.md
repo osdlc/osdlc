@@ -339,7 +339,14 @@ plugin stays out of the run.
 | `docker-build-cache:reclaimable` | The `Reclaimable:` total of `docker builder du`, when it is more than 0. | `docker builder prune --all --force` | `re-download` |
 
 Docker refuses to remove a volume or image a container took up after the
-plan, so that candidate fails instead of being deleted.
+plan, so that candidate fails instead of being deleted. A volume removed and
+made again under its name since the plan has another creation time, so the
+re-check drops it as changed. The build cache is pruned only while its
+`Reclaimable:` total, read again right before the prune, is no more than the
+plan showed; past that the step fails as changed. An image's size counts only
+the layers no other image shares, and is left out when Docker does not report
+them. A volume or image already removed by someone else is `already gone`, not a
+failure. When one of the three listings fails, the other two are still proposed.
 
 ```sh
 host-cleaner clean --pick docker-volume:pgdata --allow discard-user-data

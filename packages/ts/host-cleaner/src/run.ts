@@ -757,7 +757,8 @@ export async function recheck(
     const before = plannedById.get(c.id)
     if (before !== undefined && !sameFingerprint(before.evidence, c.evidence)) {
       dropped.push({ id: c.id, reason: 'changed', detail: 'its evidence moved since the plan' })
-    } else kept.set(c.id, c)
+    } else if (before !== undefined) kept.set(c.id, { ...c, bytes: before.bytes })
+    else kept.set(c.id, c)
   }
   const explain: Explain = (id) => {
     const entry = dropped.find((d) => d.id === id)
