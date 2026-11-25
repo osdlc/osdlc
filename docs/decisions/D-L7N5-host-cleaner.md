@@ -5,7 +5,8 @@ model became a plugin model. Accepted 2026-10-07 in sksizer/dev. Moved here on 2
 repo-cleaner 0.18. Builds on
 [D-RSWP](../../packages/ts/repo-cleaner/docs/planning/decisions/D-RSWP-standalone.md).
 
-Superseded in part by [D-R8KM](D-R8KM-host-cleaner-v1-attended-only.md): the unattended subset, launchd scheduling and the `claude-code` adapter.
+Superseded in part by [D-R8KM](D-R8KM-host-cleaner-v1-attended-only.md): the
+unattended subset, launchd scheduling and the `claude-code` adapter.
 
 ## Decision
 

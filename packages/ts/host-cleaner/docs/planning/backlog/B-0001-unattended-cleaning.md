@@ -21,8 +21,10 @@ then rolled back before any release to keep the first version simple: `clean
 `claude-code` in the next one (#1061). This item keeps them on record so they
 can come back. They are also what
 [D-L7N5](../../../../../../docs/decisions/D-L7N5-host-cleaner.md) decided and
-the first version leaves out: the unattended subset, launchd scheduling, and
-the `claude-code` adapter with its `close-session` risk.
+the first version leaves out
+([D-R8KM](../../../../../../docs/decisions/D-R8KM-host-cleaner-v1-attended-only.md)):
+the unattended subset, launchd scheduling, and the `claude-code` adapter with
+its `close-session` risk.
 
 ## Where the code is
 

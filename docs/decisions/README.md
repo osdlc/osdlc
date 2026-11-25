@@ -12,7 +12,7 @@ random keys, so parallel branches do not collide.
 | [D-ODPP](D-ODPP-markdown-corpus.md)                      | `markdown-corpus` is the one corpus model                                                      |
 | [D-L7N5](D-L7N5-host-cleaner.md)                         | Machine cleanup is a `host-cleaner` package over repo-cleaner, with optional detected adapters |
 | [D-H3QW](D-H3QW-host-cleaner-plugin-model.md) | `host-cleaner` is a flat plugin model; repo-cleaner becomes its `git` plugin (supersedes D-L7N5's adapters) |
-| [D-R8KM](D-R8KM-host-cleaner-v1-attended-only.md) | `host-cleaner`'s first version runs only when a person runs it (supersedes the unattended and launchd parts of D-L7N5 and D-H3QW) |
+| [D-R8KM](D-R8KM-host-cleaner-v1-attended-only.md) | `host-cleaner`'s first version runs only when a person runs it (supersedes the unattended and launchd parts of D-L7N5 and D-H3QW, and D-L7N5's `claude-code` adapter) |
 | [D-QMVA](D-QMVA-wayfinder-skill-handoff.md)              | wayfinder hands a skill to an agent CLI only when asked                                        |
 | [D-SM4K](D-SM4K-markdown-ecosystem-home.md)              | The markdown ecosystem stays in this repository, flat in `packages/` for now                   |
 | [D-W6QE](D-W6QE-markdown-link-keeps-its-scanner.md)      | `markdown-link` keeps its own scanner and stops growing its code detection                     |

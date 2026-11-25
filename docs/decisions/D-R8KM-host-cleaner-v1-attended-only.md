@@ -7,6 +7,16 @@ unattended subset and launchd scheduling in
 [D-H3QW](D-H3QW-host-cleaner-plugin-model.md), which kept them, and D-L7N5's
 `claude-code` adapter.
 
+## Question
+
+Does the first version build the unattended subset, launchd scheduling and the
+`claude-code` adapter that D-L7N5 decided?
+
+## Options
+
+- Build them, as D-L7N5 and D-H3QW have it.
+- Leave them out and record them in the backlog. Chosen.
+
 ## Decision
 
 The first version does not build what D-L7N5 calls the unattended subset
@@ -18,11 +28,8 @@ host-cleaner's backlog,
 so they can come back.
 
 What still holds of D-L7N5: repo-cleaner's own gaps, the `ProcessProbe`, the
-one safety model, and the command seam. Where D-H3QW supersedes it, the
-adapters and their contract became plugins, `--no-adapter` became
-`--skip-plugin`, and there is no `removeWorktree` hook. How the package is
-built now is in
-[how it works](../../packages/ts/host-cleaner/docs/guide/how-it-works.md).
+one safety model, and the command seam. How the package is built now is
+in [how it works](../../packages/ts/host-cleaner/docs/guide/how-it-works.md).
 
 ## Reopen if
 
