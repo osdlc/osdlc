@@ -119,11 +119,11 @@ const pruneOutput = z.object({
     .int()
     .nullable()
     .describe(
-      'The age a clone had to pass, in days; null with --all-clones, or at age 0 (no clone).',
+      'The age a clone had to pass, in days; null with --all-clones, or at age 0 or with a machine file that cannot be read (no clone).',
     ),
   removed: z.array(pruneEntry).describe('What was removed, or would be with --dry-run.'),
   skipped: z.array(pruneEntry).describe('What was left alone, with why.'),
-  failed: z.array(pruneEntry).describe('What could not be removed, with the error.'),
+  failed: z.array(pruneEntry).describe('What could not be removed or read, with the error.'),
   freedBytes: z.number().int(),
 })
 
@@ -238,8 +238,9 @@ export function mirrorCommand(
           'each managed clone not used for mirror_max_age_days (default 30; at 0 none, unless ' +
           '--older-than or --all-clones). It never removes a clone another run holds, one with a kept ' +
           'worktree (unless --discard-kept), or a folder pr-update did not make. It never waits ' +
-          'for a lock. It exits 1 when something could not be removed. update --apply prunes ' +
-          'the same way when it ends, if it used the cache.',
+          'for a lock. It exits 1 when something could not be removed. That includes what could ' +
+          'not be read, which stays. update --apply prunes the same way when it ends, if it used ' +
+          'the cache.',
         flags: {
           olderThan: {
             kind: 'string',

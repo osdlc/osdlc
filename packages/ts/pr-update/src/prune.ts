@@ -645,14 +645,15 @@ export interface PruneReport {
   allClones: boolean
   /**
    * The age in days a clone had to pass to be removed, or null when no age applied: with `allClones`,
-   * or at `mirror_max_age_days: 0` with no `olderThanDays`, when no clone is removed.
+   * or at `mirror_max_age_days: 0`, or with a machine file that cannot be read, and no
+   * `olderThanDays`, when no clone is removed.
    */
   olderThanDays: number | null
   /** What was removed, or would be in a dry run. */
   removed: PruneEntry[]
   /** What was left alone, with why. */
   skipped: PruneEntry[]
-  /** What could not be removed, with the error. */
+  /** What could not be removed or read, with the error. */
   failed: PruneEntry[]
   /** The bytes {@link removed} took. */
   freedBytes: number
@@ -662,7 +663,8 @@ export interface PruneReport {
  * Prune pr-update's cache: dead run worktrees under `worktrees/` at any age, leftover `.tmp-*`
  * clone folders and probes older than an hour, and managed clones past the age. The age is
  * `olderThanDays`, else `mirror_max_age_days`; at `0` no clone is removed unless `olderThanDays`
- * or `allClones` is given. No lock is waited for.
+ * or `allClones` is given. What cannot be read stays (see the top of this file). No lock is waited
+ * for.
  */
 export function pruneMirror(opts: PruneOptions): PruneReport {
   const at = where(opts)
