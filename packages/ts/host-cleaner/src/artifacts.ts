@@ -194,8 +194,8 @@ export function refusedRow(kit: Kit, kind: ArtifactKind, path: string, checkout:
  * unrefused: `rowsOf` is read again for that checkout alone, and the kit reads
  * the process table fresh for this call, so idle time and holders are checked
  * now; one the plan had as idle that is now held or unmeasured is kept.
- * `kit.remove` then checks the path is still inside what the core
- * bound the kit to by its real path, and that it is gone afterwards. A directory already gone (its
+ * `kit.remove` then checks containment again and that the directory is gone
+ * afterwards (see `Kit.remove` in `./kit.ts`). A directory already gone (its
  * worktree was deleted first in this run) is not a failure. Returns what the
  * receipt records.
  */

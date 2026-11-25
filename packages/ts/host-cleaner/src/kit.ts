@@ -4,12 +4,7 @@
  * removes a folder the same way instead of writing its own. The core builds
  * one kit per plugin, bound to its name, and hands it to `create`. Each run,
  * once the plugin's `roots` hook has answered, the core binds that kit to the
- * plugin's roots, the run's targets and their linked worktrees (including
- * one anywhere whose main checkout is in a target), which `remove` checks
- * against.
- *
- * It reuses repo-cleaner's process probe, `busyHolders` and `sizeOf`, and
- * `@osdlc/path-guard` for containment (through `./roots.ts`).
+ * bounds `remove` checks against (see `boundBy` in `./roots.ts`).
  */
 
 import { chmodSync, lstatSync, readdirSync, rmSync } from 'node:fs'
@@ -56,10 +51,10 @@ const HOUR_MS = 3_600_000
 
 /**
  * How long a folder has sat unchanged: the newest modification time under it
- * and the hours since, fractions included, both null when it holds no file. `unmeasured`
- * when the walk ran out of its time budget; the core then protests the
- * candidate (`unmeasured`), and the plugin leaves the outcome out of its
- * evidence, since the next walk may finish.
+ * and the hours since, fractions included, both null when it holds no file.
+ * `unmeasured` when the walk ran out of its time budget; the plugin then marks
+ * the candidate `unmeasured: true`, which the core protests, and leaves the
+ * outcome out of its evidence, since the next walk may finish.
  */
 export type Idle =
   { unmeasured: false; newestMs: number | null; hours: number | null } | { unmeasured: true }
@@ -111,10 +106,8 @@ export interface Kit {
   /**
    * The processes of a program, named as a string or as `{ name }`, or the
    * busy processes working in `in` (an idle shell is not busy). A name
-   * matches a process when it is a word of its command line (`ps -axo
-   * pid=,ppid=,args=`) by {@link commandHasName}, so `pnpm` finds `node
-   * /opt/homebrew/bin/pnpm dev` and `GradleDaemon` and `gradle` find `java
-   * ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. This process and
+   * matches a process when {@link commandHasName} finds it in its command
+   * line (`ps -axo pid=,ppid=,args=`). This process and
    * every ancestor of it are left out, so the `npm exec` or `pnpm dlx` that
    * started host-cleaner does not count. The process table is read once per
    * hook call, so a `delete` sees it fresh.
@@ -127,11 +120,9 @@ export interface Kit {
   /** Runs `argv` through `@osdlc/command-seam` with a time limit, stopped when `signal` aborts. */
   run(argv: readonly string[], opts: KitRunOptions): Promise<KitRunResult>
   /**
-   * Removes the folder `path`: only if it is still inside the plugin's roots,
-   * a target or a linked worktree of one (a worktree of a repository a
-   * target is in, or whose main checkout is in a target) by its real path, as the core
-   * resolved them this run, after making read-only folders and files in it
-   * writable. Returns the receipt sentence; a folder already gone is not a
+   * Removes the folder `path`: only if it is still where a {@link PathCandidate}
+   * of this plugin may sit, by its real path, as the core resolved the bounds
+   * this run, after making read-only folders and files in it writable. Returns the receipt sentence; a folder already gone is not a
    * failure. Throws when it is outside, when the kit is not bound to a run,
    * when `ctx.signal` has aborted, or when the folder is still there after.
    */
@@ -218,9 +209,8 @@ export function commandHasName(args: string, name: string): boolean {
 const PS_ENV = { LC_ALL: 'C' } as const
 
 /**
- * Each process with its command line, this one and its ancestors left out:
- * the `npm exec` or `pnpm dlx` that started it is not a use of the store.
- * Throws when `ps` gives no table.
+ * Each process with its command line, this one and its ancestors left out
+ * (see {@link Kit.running}). Throws when `ps` gives no table.
  */
 function commandLines(ps: CommandRunner): Array<{ pid: number; args: string }> {
   const r = ps.run(['-axo', 'pid=,ppid=,args='], { cwd: '/', env: PS_ENV, timeoutMs: 60_000 })

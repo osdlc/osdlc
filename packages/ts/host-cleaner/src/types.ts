@@ -49,10 +49,9 @@ export type CostDescription = (typeof COST_DESCRIPTIONS)[number]
 /**
  * A folder its owner deletes. It must sit strictly inside one of the owner's
  * `roots` or a target, be a root its owner declared `{ path, self: true }`,
- * or be or sit inside a linked worktree of a repository
- * a target is in, or of one whose main checkout is or sits inside a target;
- * the core refuses (`outside-roots`) one that is not, and checks again right
- * before `delete`.
+ * or be or sit inside a linked worktree of a repository a target is in, or of
+ * one whose main checkout is or sits inside a target; the core refuses
+ * (`outside-roots`) one that is not, and checks again right before `delete`.
  */
 export interface PathCandidate extends CandidateBase {
   /** The folder, as an absolute path. */
