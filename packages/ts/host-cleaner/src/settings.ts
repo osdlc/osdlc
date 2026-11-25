@@ -96,7 +96,7 @@ export function effectiveSettings(
     const raw = plugins[name] ?? {}
     const value = settingsOf(name, raw, shared)
     const fields = configFields({ [name]: schemaOf(name)! })
-    // The core's `enabled` first, as `config` has always listed it.
+    // The core's `enabled` first, ahead of the plugin's own settings.
     fields.sort((a, b) => Number(b.path[1] === 'enabled') - Number(a.path[1] === 'enabled'))
     out[name] = fields.map((f) => {
       const key = f.path.slice(1).join('.')
