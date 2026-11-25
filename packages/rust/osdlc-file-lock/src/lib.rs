@@ -2,7 +2,7 @@
 //! `@osdlc/file-lock`, so a Rust process and a Node.js process can take turns
 //! holding one lock file.
 //!
-//! There are two shapes, built on one mechanism:
+//! That protocol has two shapes, built on one mechanism:
 //!
 //! - **A held lock**, [`claim_lock`], for something a process owns for as long
 //!   as it runs. The lock names its holder, and you choose when a holder counts
@@ -36,8 +36,19 @@
 //! One machine only: `link()` and `rename()` must be atomic, so network file
 //! systems are not supported, and a file system without hard links fails the
 //! claim with the error `link()` gives.
+//!
+//! # The OS lock
+//!
+//! [`os_lock`] is a second protocol, for Rust processes only: an
+//! operating-system lock on the open lock file, with a record in the file that
+//! names the holder. The system lets it go when the holder dies, so it needs
+//! no staleness rule. Use it when no Node.js process takes the lock. The two
+//! protocols do not exclude each other: a path is locked with one of them,
+//! never with both.
 
 mod held;
+#[cfg(any(unix, windows))]
+pub mod os_lock;
 mod rules;
 mod section;
 
