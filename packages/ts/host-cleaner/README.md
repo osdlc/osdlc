@@ -301,8 +301,8 @@ const plugin = descriptorPlugin('pip', d)
   home, or hold or sit inside host-cleaner's own folders.
 - **discover:** one candidate per folder, or per `glob` match inside it
   (`globMatches`; a match may be a file). Matches past `maxEntries` are
-  combined into one ref candidate, `<name>:<folder>/<glob>:rest`, held while
-  any of them changed within the threshold; deleting it removes each.
+  combined into one candidate at the first of them, held while any of them
+  changed within the threshold; deleting it removes each.
   `project` entries find build folders beside a marker in the targets'
   checkouts, in one walk, and in a repository's primary checkout only inside
   the targets.

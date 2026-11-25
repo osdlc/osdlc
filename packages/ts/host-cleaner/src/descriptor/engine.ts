@@ -23,6 +23,7 @@ import { z } from 'zod'
 
 import { checkoutsOf, hoursText, type Checkout } from '../artifacts.ts'
 import { hostDirs } from '../config.ts'
+import { containsIgnored, coveredBy } from '../ignore.ts'
 import { DEFAULT_IDLE_HOURS, idleHoursSetting, present, type Idle, type Kit } from '../kit.ts'
 import { containedIn, linkedCheckouts, realOr, rootProblem } from '../roots.ts'
 import { DELETE_LIMIT_MS, OUTSIDE_ROOTS } from '../run.ts'
@@ -506,7 +507,14 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         if (row !== null) rows.push(row)
       }
       if (matches.length > max) {
-        const row = restRow(entry, index, folder, matches.slice(max), max, action)
+        // The core checks only the candidate's own path against the ignore list.
+        const ignore = ctx.ignore ?? []
+        const left = matches
+          .slice(max)
+          .filter(
+            (m) => coveredBy(m, ignore) === undefined && containsIgnored(m, ignore) === undefined,
+          )
+        const row = restRow(entry, index, folder, left, max, action)
         if (row !== null) rows.push(row)
       }
     }
@@ -521,9 +529,10 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   }
 
   /**
-   * The glob matches past `maxEntries`, combined into one ref candidate that
-   * removes each of them. Held when any of them changed within the threshold;
-   * one that cannot be read is left out, as its own row would be.
+   * The glob matches past `maxEntries`, combined into one candidate at the
+   * first of them that removes each, since the core lets only a path
+   * candidate remove folders. Held when any of them changed within the
+   * threshold; one that cannot be read is left out, as its own row would be.
    */
   const restRow = (
     entry: DescriptorCandidate,
@@ -551,7 +560,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       const size = kit.size(match)
       bytes = bytes === null || size === null ? null : bytes + size
     }
-    if (rest.length === 0) return null
+    const [path] = rest
+    if (path === undefined) return null
     const since = unmeasured
       ? 'when some last changed could not be measured in the time budget'
       : changed === 0
@@ -562,9 +572,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       objections: [],
       candidate: kit.candidate({
         kind: name,
-        ref: `${join(folder, entry.glob!)}:rest`,
-        at: folder,
-        why: `${rest.length} matches of ${entry.glob} past the first ${max}, as one; ${since}; each removed as a folder`,
+        path,
+        why: `${rest.length} matches of ${entry.glob} past the first ${max}, from this one on, as one; ${since}; each removed as a folder`,
         costDescription: entry.costDescription,
         evidence,
         ...(bytes === null ? {} : { bytes }),
@@ -721,13 +730,13 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     },
     async delete(c, ctx) {
       const ev = c.evidence as Evidence
-      if (c.ref !== undefined && Array.isArray(ev.rest)) {
+      if (Array.isArray(ev.rest)) {
         const left = ev.rest.filter(present)
-        if (left.length === 0) return `already gone: every match in ${c.ref}`
+        if (left.length === 0) return `already gone: every match of ${c.id}`
         const link = left.find(isLink)
         if (link !== undefined) throw new Error(`${link} is now a symlink; it is not followed`)
         const why = refusal({ ...ev, rest: left }, ev.path, ctx)
-        if (why !== null) throw new Error(`${c.ref} was not deleted: ${why}`)
+        if (why !== null) throw new Error(`${c.id} was not deleted: ${why}`)
         return left.map((p) => kit.remove(p, ctx)).join('; ')
       }
       const path = c.path

@@ -576,14 +576,15 @@ candidates:
     expect(r.selfRoots).toEqual([r.path])
   })
 
-  test('the filesystem root', async () => {
-    refused(await refusal('/'), 'it is the filesystem root')
-  })
-
-  test('the home folder itself', async () => {
-    const r = await refusal('~/')
-    expect(r.path).toBe(r.b.home)
-    refused(r, 'it is the home folder')
+  test('the filesystem root and the home folder itself, which the format refuses too', () => {
+    const { home, cleanup } = tempHome()
+    cleanups.push(cleanup)
+    const at = { home, targets: [], checkouts: [], ownDirs: [] }
+    expect(pathProblem('/', at)).toBe('it is the filesystem root')
+    expect(pathProblem(home, at)).toBe('it is the home folder')
+    for (const folder of ['/', '~/']) {
+      expect(() => parseDescriptor(one(folder), 'x.yaml')).toThrow(/must name a folder below/)
+    }
   })
 
   test('a folder holding home', async () => {
@@ -837,7 +838,7 @@ candidates:
     const http = b.folder('http')
     for (const n of ['c', 'd']) mkdirSync(join(http, n))
     const s = await survey([b.plugin], ctxOf())
-    const rest = `pip:${join(http, '*/')}:rest`
+    const rest = `pip:${join(http, 'c')}`
     expect(s.candidates.map((c) => c.id)).toEqual([
       `pip:${join(http, 'a')}`,
       `pip:${join(http, 'b')}`,
@@ -865,9 +866,25 @@ candidates:
     age(http, 48)
     writeFileSync(join(http, 'b', 'fresh'), 'x')
     const s = await survey([b.plugin], ctxOf())
-    const rest = s.candidates.find((c) => c.ref !== undefined)!
+    const rest = s.candidates.find((c) => c.evidence.rest !== undefined)!
     expect(rest.evidence.rest).toEqual([join(http, 'b')])
     expect(rest.held).toBe(true)
+  })
+
+  test('the combined rest leaves out a match on the ignore list', async () => {
+    const b = build(
+      'pip',
+      `descriptor: 1
+paths:
+  http: { all: ~/.cache/pip/http }
+candidates:
+  - { path: http, glob: '*/', maxEntries: 1, costDescription: re-download }
+`,
+    )
+    const http = b.folder('http')
+    for (const n of ['c', 'd']) mkdirSync(join(http, n, 'in'), { recursive: true })
+    const s = await survey([b.plugin], ctxOf({ ignore: [join(http, 'c'), join(http, 'd', 'in')] }))
+    expect(s.candidates.map((c) => c.evidence.rest)).toEqual([undefined, [join(http, 'b')]])
   })
 
   test('a glob that matches files gives one candidate per file', async () => {
