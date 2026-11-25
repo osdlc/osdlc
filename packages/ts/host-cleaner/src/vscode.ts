@@ -18,16 +18,17 @@
 
 import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, sep } from 'node:path'
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { z } from 'zod'
 
-import { attachKit, pluginKit, type Kit, type KitOptions } from './kit.ts'
+import { attachKit, pluginKit, type Kit, type KitOptions, type Running } from './kit.ts'
 import {
   PLUGIN_API,
   definePlugin,
   type Candidate,
+  type Ctx,
   type Objection,
   type PathCandidate,
   type Plugin,
@@ -106,6 +107,12 @@ function chatRequests(text: string, log: boolean): number {
     }
     if (count === undefined) throw new Error('the log does not start with the whole chat')
     const [key, index] = entry.k
+    if (key === undefined) {
+      // The whole chat replaced.
+      if (entry.kind !== 1) throw new Error('the whole chat changed other than by replacing it')
+      count = requestsOf(entry.v)
+      continue
+    }
     if (key !== 'requests') continue
     if (entry.k.length > 1) {
       // A change inside one request: that request is there.
@@ -122,6 +129,23 @@ function chatRequests(text: string, log: boolean): number {
   }
   if (count === undefined) throw new Error('the log has no whole chat')
   return count
+}
+
+/**
+ * The key under which VS Code kept a workspace's chats in its `state.vscdb`
+ * before it moved them to `chatSessions/` (`chatServiceImpl.ts`); a storage
+ * folder last used before then may hold its chats there alone.
+ */
+const LEGACY_CHAT_KEY = Buffer.from('interactive.sessions')
+
+/** True when the `state.vscdb` at `path` names the old chat key; one that cannot be read does. */
+function legacyChats(path: string): boolean {
+  try {
+    if (lstatSync(path, { throwIfNoEntry: false })?.isFile() !== true) return false
+    return readFileSync(path).includes(LEGACY_CHAT_KEY)
+  } catch {
+    return true
+  }
 }
 
 /** True when the folder `path` holds something; one that cannot be read does. */
@@ -173,15 +197,23 @@ export interface VscodeOptions extends KitOptions {
   platform?: NodeJS.Platform | undefined
 }
 
-/** VS Code's `User` folder on `platform`; undefined where the plugin does not know it. */
+/**
+ * VS Code's `User` folder on `platform`, found as VS Code finds it: under
+ * `VSCODE_APPDATA` when set, else `~/Library/Application Support` on macOS and
+ * `XDG_CONFIG_HOME` or `~/.config` on Linux; undefined where the plugin does
+ * not know it.
+ */
 export function vscodeUserDir(
   env: Readonly<Record<string, string | undefined>>,
   platform: NodeJS.Platform,
 ): string | undefined {
   const home = env.HOME ?? homedir()
-  if (platform === 'darwin') return join(home, 'Library', 'Application Support', 'Code', 'User')
-  if (platform === 'linux') return join(home, '.config', 'Code', 'User')
-  return undefined
+  const set = (v: string | undefined): string | undefined => (v === '' ? undefined : v)
+  let appData: string
+  if (platform === 'darwin') appData = join(home, 'Library', 'Application Support')
+  else if (platform === 'linux') appData = set(env.XDG_CONFIG_HOME) ?? join(home, '.config')
+  else return undefined
+  return join(set(env.VSCODE_APPDATA) ?? appData, 'Code', 'User')
 }
 
 /** What one storage folder says about its workspace. */
@@ -197,7 +229,7 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 /** A path with symlinks resolved, so two spellings of one place compare equal. */
 function canon(path: string): string {
   try {
-    return realpathSync(path)
+    return realpathSync.native(path)
   } catch {
     return path
   }
@@ -217,9 +249,13 @@ function unmounted(path: string): boolean {
   }
 }
 
-/** The {@link HISTORY_FOLDERS} in `dir` that are folders holding history (see {@link holdsHistory}); one that cannot be read counts. */
+/**
+ * The {@link HISTORY_FOLDERS} in `dir` that are folders holding history (see
+ * {@link holdsHistory}), one that cannot be read counting, and `state.vscdb`
+ * when it holds chats from before `chatSessions/` (see {@link legacyChats}).
+ */
 function historyIn(dir: string): string[] {
-  return HISTORY_FOLDERS.filter((name) => {
+  const found: string[] = HISTORY_FOLDERS.filter((name) => {
     const path = join(dir, name)
     try {
       return isDir(path) && holdsHistory(name, path)
@@ -227,6 +263,8 @@ function historyIn(dir: string): string[] {
       return true
     }
   })
+  if (legacyChats(join(dir, 'state.vscdb'))) found.push('state.vscdb')
+  return found
 }
 
 /** The local path a `file:` URI names; null for another scheme; throws when it is not a URI. */
@@ -282,7 +320,38 @@ function entryOf(dir: string): Entry {
   return { state: 'gone', workspace, local, history: historyIn(dir) }
 }
 
-/** The local folders and workspace files the window state names; `problem` when it is not a shape this plugin knows. */
+/** JSON's strings, and JSONC's comments and trailing commas. */
+const JSONC_TOKEN = /("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)|,(?=(?:\s|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*[\]}])/g
+
+/** `text` with JSONC's comments and trailing commas taken out; strings are left as they are. */
+const stripJsonc = (text: string): string =>
+  text.replace(JSONC_TOKEN, (token, quoted: string | undefined) =>
+    quoted ?? (token.startsWith(',') ? '' : ' '),
+  )
+
+/** The local folders the `.code-workspace` file `file` lists as its roots; throws when it cannot be read as one. */
+function workspaceRoots(file: string): string[] {
+  const body: unknown = JSON.parse(stripJsonc(readFileSync(file, 'utf8')))
+  if (!isObject(body) || !Array.isArray(body.folders)) throw new Error('no folders list')
+  const roots: string[] = []
+  for (const f of body.folders) {
+    if (!isObject(f)) continue
+    if (typeof f.path === 'string') {
+      roots.push(isAbsolute(f.path) ? f.path : resolve(dirname(file), f.path))
+      continue
+    }
+    if (typeof f.uri !== 'string') continue
+    try {
+      const local = localPath(f.uri)
+      if (local !== null) roots.push(local)
+    } catch {
+      // Not a URI: names nothing that could be open here.
+    }
+  }
+  return roots
+}
+
+/** The local folders, workspace files and those files' roots the window state names; `problem` when one is not a shape this plugin knows. */
 function openWindows(stateFile: string): { paths: string[]; problem?: string } {
   let body: unknown
   try {
@@ -302,21 +371,37 @@ function openWindows(stateFile: string): { paths: string[]; problem?: string } {
     ...(Array.isArray(state.openedWindows) ? state.openedWindows : []),
   ]
   const paths: string[] = []
+  const problems: string[] = []
   for (const w of windows) {
     if (!isObject(w)) continue
     const id = isObject(w.workspaceIdentifier) ? w.workspaceIdentifier.configURIPath : undefined
     for (const uri of [w.folder, id]) {
       if (typeof uri !== 'string') continue
+      let local: string | null
       try {
-        const local = localPath(uri)
-        if (local !== null) paths.push(canon(local))
+        local = localPath(uri)
       } catch {
         // Not a URI: names nothing that could be open here.
+        continue
+      }
+      if (local === null) continue
+      paths.push(canon(local))
+      if (uri !== id) continue
+      // A multi-root workspace: every folder it lists is open too.
+      try {
+        for (const r of workspaceRoots(local)) paths.push(canon(r))
+      } catch (err) {
+        // A workspace file that is gone has no window with its roots open.
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT')
+          problems.push(`the workspace file ${local} could not be read`)
       }
     }
   }
-  return { paths }
+  return problems.length === 0 ? { paths } : { paths, problem: problems.join('; ') }
 }
+
+/** What VS Code's windows have open, and whether VS Code runs, or may. */
+type Windows = { paths: string[]; problem?: string; running: boolean }
 
 /** A git plugin's worktree row. */
 const isGitWorktree = (c: Candidate): c is PathCandidate =>
@@ -354,6 +439,42 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
     reason,
   })
 
+  /** Whether VS Code runs, or may, and while it does, what its windows have open. */
+  const look = (ctx: Pick<Ctx, 'signal'>): Windows => {
+    // The window state outlives a quit, so it counts only while VS Code runs, or may.
+    const anywhere = kit.running({ in: '/' }, ctx)
+    const running = vscodeOf(anywhere.names).length > 0 || anywhere.unknown !== undefined
+    const windows = running && stateFile !== undefined ? openWindows(stateFile) : { paths: [] }
+    return { ...windows, running }
+  }
+
+  /** The objections to deleting git's worktree `c` while VS Code is as `w` says. */
+  const worktreeCheck = (
+    c: PathCandidate,
+    w: Windows,
+    ctx: Pick<Ctx, 'signal'>,
+  ): Objection[] => {
+    // With no VS Code process anywhere, none works in this worktree.
+    const here: Running = w.running ? kit.running({ in: c.path }, ctx) : { names: [] }
+    const procs = vscodeOf(here.names)
+    if (procs.length > 0) {
+      return [own(c, 'refuse', IN_USE, `VS Code works in it: ${procs.join(', ')}`)]
+    }
+    const dir = canon(c.path)
+    if (w.paths.some((p) => within(p, dir))) {
+      return [own(c, 'refuse', IN_USE, `a VS Code window has it open (${stateFile})`)]
+    }
+    const unchecked = [
+      ...(here.unknown === undefined
+        ? []
+        : [`the processes working in it could not be listed (${here.unknown})`]),
+      ...(w.problem === undefined ? [] : [w.problem]),
+    ]
+    if (unchecked.length === 0) return []
+    const code = here.unknown === undefined ? 'vscode-state-unreadable' : 'vscode-unchecked'
+    return [own(c, 'note', code, `${unchecked.join('; ')}; VS Code was not fully checked`)]
+  }
+
   return {
     name: VSCODE_PLUGIN,
     limits: { discover: DISCOVER_LIMIT_MS },
@@ -362,12 +483,15 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
       const dir = storage()
       return dir === undefined ? [] : [dir]
     },
-    discover() {
+    async discover(ctx) {
       const top = storage()
       if (top === undefined) return []
       const found = new Map<string, Entry>()
       const out: Candidate[] = []
       for (const name of readdirSync(top).sort()) {
+        // Each folder is sized; give the time limit a turn to stop the hook between them.
+        await new Promise((done) => setImmediate(done))
+        if (ctx.signal.aborted) throw new Error('discover was stopped')
         const dir = join(top, name)
         const entry = entryOf(dir)
         if (entry.state === 'skip') continue
@@ -398,33 +522,8 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
       const worktrees = all.filter(isGitWorktree)
       if (worktrees.length === 0 && gone.length === 0) return out
 
-      // The window state outlives a quit, so it counts only while VS Code runs, or may.
-      const anywhere = kit.running({ in: '/' }, ctx)
-      const running = vscodeOf(anywhere.names).length > 0 || anywhere.unknown !== undefined
-      const windows = running && stateFile !== undefined ? openWindows(stateFile) : { paths: [] }
-      const opened = (path: string): boolean => {
-        const dir = canon(path)
-        return windows.paths.some((p) => within(p, dir))
-      }
-
-      for (const c of worktrees) {
-        // With no VS Code process anywhere, none works in this worktree.
-        const procs = running ? vscodeOf(kit.running({ in: c.path }, ctx).names) : []
-        if (procs.length > 0) {
-          out.push(own(c, 'refuse', IN_USE, `VS Code works in it: ${procs.join(', ')}`))
-        } else if (opened(c.path)) {
-          out.push(own(c, 'refuse', IN_USE, `a VS Code window has it open (${stateFile})`))
-        } else if (windows.problem !== undefined) {
-          out.push(
-            own(
-              c,
-              'note',
-              'vscode-state-unreadable',
-              `${windows.problem}; only processes were checked`,
-            ),
-          )
-        }
-      }
+      const windows = look(ctx)
+      for (const c of worktrees) out.push(...worktreeCheck(c, windows, ctx))
       const open = new Set(windows.paths)
       for (const { c, local } of open.size === 0 ? [] : gone) {
         if (open.has(canon(local))) {
@@ -432,6 +531,12 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
         }
       }
       return out
+    },
+    prepare(c, ctx) {
+      if (!isGitWorktree(c)) return
+      // A window may have opened it since `object`.
+      const refusal = worktreeCheck(c, look(ctx), ctx).find((o) => o.level === 'refuse')
+      if (refusal !== undefined) throw new Error(refusal.reason)
     },
     delete(c, ctx) {
       if (c.path === undefined) throw new Error(`${c.id} is not a storage folder`)

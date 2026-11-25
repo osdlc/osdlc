@@ -22,6 +22,7 @@ import {
   plan,
   survey,
   vscodePlugin,
+  vscodeUserDir,
   type Candidate,
   type Plugin,
   type RunCtx,
@@ -251,6 +252,29 @@ describe('discover', () => {
     expect(windows.plugins).toEqual([])
   })
 
+  test('it finds the User folder as VS Code does: VSCODE_APPDATA, then XDG_CONFIG_HOME on Linux', () => {
+    const user = (s: string) => join(s, 'Code', 'User')
+    expect(vscodeUserDir({ HOME: '/h' }, 'linux')).toBe(user('/h/.config'))
+    expect(vscodeUserDir({ HOME: '/h', XDG_CONFIG_HOME: '/x' }, 'linux')).toBe(user('/x'))
+    expect(vscodeUserDir({ HOME: '/h', XDG_CONFIG_HOME: '' }, 'linux')).toBe(user('/h/.config'))
+    expect(vscodeUserDir({ HOME: '/h', XDG_CONFIG_HOME: '/x' }, 'darwin')).toBe(
+      user('/h/Library/Application Support'),
+    )
+    const both = { HOME: '/h', XDG_CONFIG_HOME: '/x', VSCODE_APPDATA: '/a' }
+    expect(vscodeUserDir(both, 'linux')).toBe(user('/a'))
+    expect(vscodeUserDir({ HOME: '/h', VSCODE_APPDATA: '/a' }, 'darwin')).toBe(user('/a'))
+    expect(vscodeUserDir({ HOME: '/h', VSCODE_APPDATA: '/a' }, 'win32')).toBeUndefined()
+  })
+
+  test('a stopped discover gives up between folders', async () => {
+    const h = home()
+    store(h.storage, 'a', folder(join(h.projects, 'dead')))
+    const plugin = vscodePlugin(h.options())
+    await expect(
+      (async () => plugin.discover!(fakeContext({ signal: AbortSignal.abort() })))(),
+    ).rejects.toThrow(/discover was stopped/)
+  })
+
   test('without a workspaceStorage folder it is not detected', async () => {
     const t = tempHome()
     cleanups.push(t.cleanup)
@@ -364,8 +388,13 @@ describe('chat and agent history', () => {
       ['n', (d) => chat(d, [whole(), { kind: 3, k: ['requests'] }])],
       // A file VS Code does not read as a chat.
       ['o', (d) => chat(d, 'x', '.DS_Store')],
+      // The whole chat replaced: by one with a request, and by one with none.
+      ['p', (d) => chat(d, [whole(), { kind: 1, k: [], v: whole([REQUEST]).v }])],
+      ['q', (d) => chat(d, [whole([REQUEST]), { kind: 1, k: [], v: whole().v }])],
+      // The whole chat changed some other way: kept.
+      ['r', (d) => chat(d, [whole(), { kind: 3, k: [] }])],
     ]
-    const kept = new Set(['d', 'e', 'f', 'g', 'i', 'j', 'k', 'l', 'm', 'n'])
+    const kept = new Set(['d', 'e', 'f', 'g', 'i', 'j', 'k', 'l', 'm', 'n', 'p', 'r'])
     for (const [hash, make] of shapes)
       make(store(h.storage, hash, folder(join(h.projects, `dead-${hash}`))))
 
@@ -393,6 +422,20 @@ describe('chat and agent history', () => {
       [join(h.storage, 'b'), 're-download'],
       [join(h.storage, 'c'), 'lost'],
       [join(h.storage, 'd'), 're-download'],
+    ])
+  })
+
+  test('chats kept in state.vscdb from before chatSessions/ are history', async () => {
+    const h = home()
+    const old = store(h.storage, 'a', folder(join(h.projects, 'dead-a')))
+    const db = 'SQLite format 3\0...interactive.sessions[{"requests":[]}]'
+    writeFileSync(join(old, 'state.vscdb'), db)
+    store(h.storage, 'b', folder(join(h.projects, 'dead-b')))
+
+    const s = await survey([vscodePlugin(h.options())], ctxOf(h.home))
+    expect(s.candidates.map((c) => [c.path, c.costDescription, c.evidence.history])).toEqual([
+      [join(h.storage, 'a'), 'lost', ['state.vscdb']],
+      [join(h.storage, 'b'), 're-download', undefined],
     ])
   })
 
@@ -540,6 +583,70 @@ describe('object', () => {
     expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
       expect.objectContaining({ level: 'note', code: 'vscode-state-unreadable' }),
     ])
+  })
+
+  test("refuses git's worktree that is a root of an open multi-root workspace", async () => {
+    const h = home()
+    const wt = join(h.projects, 'wt')
+    const abs = join(h.projects, 'abs')
+    const other = join(h.projects, 'other')
+    for (const d of [wt, abs, other]) mkdirSync(d)
+    const file = join(h.home, 'proj.code-workspace')
+    writeFileSync(
+      file,
+      `{
+  // Two roots, one relative and one absolute.
+  "folders": [
+    { "path": "dev/wt" },
+    { "uri": "${pathToFileURL(abs).href}", }, /* trailing comma */
+  ],
+  "settings": { "x": "a // not a comment" },
+}`,
+    )
+    mkdirSync(join(h.user, 'globalStorage'), { recursive: true })
+    writeFileSync(
+      join(h.user, 'globalStorage', 'storage.json'),
+      JSON.stringify({
+        windowsState: {
+          lastActiveWindow: {
+            workspaceIdentifier: { id: 'x', configURIPath: pathToFileURL(file).href },
+          },
+        },
+      }),
+    )
+    const plugin = vscodePlugin(h.options({ probe: probeOf([CODE]) }))
+    const all = [worktree(wt), worktree(abs), worktree(other)]
+    expect(await plugin.object!(all, fakeContext())).toEqual([
+      expect.objectContaining({ candidate: `worktree:${wt}`, code: IN_USE }),
+      expect.objectContaining({ candidate: `worktree:${abs}`, code: IN_USE }),
+    ])
+  })
+
+  test('a worktree whose processes could not be listed carries a note', async () => {
+    const h = home()
+    const wt = join(h.projects, 'wt')
+    mkdirSync(wt)
+    const plugin = vscodePlugin(h.options({ probe: probeOf(new Error('no lsof')) }))
+    expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
+      expect.objectContaining({
+        level: 'note',
+        code: 'vscode-unchecked',
+        reason: expect.stringMatching(/could not be listed \(.*no lsof.*\)/),
+      }),
+    ])
+  })
+
+  test('prepare fails a worktree a window opened after object', async () => {
+    const h = home()
+    const wt = join(h.projects, 'wt')
+    mkdirSync(wt)
+    const plugin = vscodePlugin(h.options({ probe: probeOf([CODE]) }))
+    expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([])
+    await plugin.prepare!(worktree(wt), fakeContext())
+    windows(h.user, [wt])
+    await expect((async () => plugin.prepare!(worktree(wt), fakeContext()))()).rejects.toThrow(
+      /a VS Code window has it open/,
+    )
   })
 
   test('refuses its own storage for a gone folder a window still has open', async () => {
