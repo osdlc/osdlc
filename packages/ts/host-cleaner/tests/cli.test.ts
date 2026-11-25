@@ -36,9 +36,7 @@ function tempDir(): string {
 const git = (cwd: string, args: string[]): string =>
   new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args).stdout.trim()
 
-const sh = (cwd: string, args: string[]): void => {
-  git(cwd, args)
-}
+const sh = (cwd: string, args: string[]): void => void git(cwd, args)
 
 /** A repository with a merged branch and an unmerged one. */
 function repo(): string {
@@ -87,6 +85,14 @@ function run(argv: string[], cwd: string, env: Record<string, string>, deps: Mai
   const code = main(args, ctx, { confirm: () => null, ...deps })
   return { code, out: ctx.io.out, err: ctx.io.err }
 }
+
+/** `clean --yes` of `dir`'s unmerged branch `topic`, with `flags` such as `--archive`. */
+const cleanTopic = (dir: string, env: Record<string, string>, ...flags: string[]) =>
+  run(
+    ['clean', ...flags, '--pick', `branch:${dir}:topic`, '--allow', 'abandon-unmerged', '--yes'],
+    dir,
+    env,
+  )
 
 /** A plugin that owns one candidate, `artifact:cache`, and records what it is asked to delete. */
 function fake(
@@ -353,12 +359,7 @@ describe('plan and clean', () => {
     const { env } = setup()
     const { dir, bare } = pushedRepo()
     const wip = git(dir, ['rev-parse', 'topic'])
-    const topic = `branch:${dir}:topic`
-    const r = run(
-      ['clean', '--archive', '--pick', topic, '--allow', 'abandon-unmerged', '--yes'],
-      dir,
-      env,
-    )
+    const r = cleanTopic(dir, env, '--archive')
     expect(r.code).toBe(0)
     const [archive, ...more] = archives(bare)
     expect(more).toEqual([])
@@ -366,15 +367,14 @@ describe('plan and clean', () => {
     // The archive's first parent is the remote main, the second the work it holds.
     expect(git(bare, ['rev-parse', `${archive}^2`])).toBe(wip)
     expect(git(dir, ['branch', '--format=%(refname:short)'])).not.toContain('topic')
-    expect(r.out).toContain(`done ${topic}`)
+    expect(r.out).toContain(`done branch:${dir}:topic`)
     expect(r.out).toContain(archive)
   })
 
   test('without --archive the same clean deletes the branch and pushes nothing', () => {
     const { env } = setup()
     const { dir, bare } = pushedRepo()
-    const topic = `branch:${dir}:topic`
-    const r = run(['clean', '--pick', topic, '--allow', 'abandon-unmerged', '--yes'], dir, env)
+    const r = cleanTopic(dir, env)
     expect(r.code).toBe(0)
     expect(git(dir, ['branch', '--format=%(refname:short)'])).not.toContain('topic')
     expect(archives(bare)).toEqual([])
@@ -384,12 +384,7 @@ describe('plan and clean', () => {
     const { env } = setup()
     const { dir } = pushedRepo()
     sh(dir, ['remote', 'set-url', 'origin', join(dirname(dir), 'gone.git')])
-    const topic = `branch:${dir}:topic`
-    const r = run(
-      ['clean', '--archive', '--pick', topic, '--allow', 'abandon-unmerged', '--yes'],
-      dir,
-      env,
-    )
+    const r = cleanTopic(dir, env, '--archive')
     expect(r.code).toBe(11)
     expect(r.out).toContain('archive failed')
     expect(git(dir, ['branch', '--format=%(refname:short)'])).toContain('topic')
@@ -398,12 +393,7 @@ describe('plan and clean', () => {
   test('--archive fails the step with exit 11 in a repository with no remote, and keeps the branch', () => {
     const { env } = setup()
     const dir = repo()
-    const topic = `branch:${dir}:topic`
-    const r = run(
-      ['clean', '--archive', '--pick', topic, '--allow', 'abandon-unmerged', '--yes'],
-      dir,
-      env,
-    )
+    const r = cleanTopic(dir, env, '--archive')
     expect(r.code).toBe(11)
     expect(r.out).toContain('has no remote')
     expect(r.out).not.toContain('archive failed')

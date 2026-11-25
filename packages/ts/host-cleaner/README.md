@@ -173,10 +173,9 @@ With `--archive`, each candidate is archived on its own: a second one in the
 same repository on the same day goes to `archive/<repo>-local-<date>-2`, and
 so on. It needs the git plugin, and `--archive-exclude` needs worktrees, so
 either one with a run that has none is refused with exit 2. A failed archive
-push stops the run: that candidate and
-every one after it are left, and the run exits 11. A repository with no remote
-cannot be archived, so its candidates that hold unlanded work fail their step,
-and the run exits 11.
+push stops the run: that candidate and every one after it are left, and the
+run exits 11. A repository with no remote cannot be archived, so its
+candidates that hold unlanded work fail their step, and the run exits 11.
 
 ```sh
 host-cleaner clean --archive --pick branch:/path/to/repo:topic --allow abandon-unmerged

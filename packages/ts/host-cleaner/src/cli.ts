@@ -372,8 +372,7 @@ const unknownPlugins = (config: Config, known: (name: string) => boolean): strin
  * `deps.plugins`, then chosen by flag.
  *
  * @param archive - `clean --archive`'s options, passed to the shipped git plugin.
- * @throws BadInput when the config names an unknown plugin, or when `archive` is
- *   set and the chosen plugins leave out git.
+ * @throws BadInput when the config names an unknown plugin.
  */
 function pluginsFor(
   v: SweepValues,
@@ -400,13 +399,9 @@ function pluginsFor(
   // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
   const named = wanted(v) ?? []
   const chosen = selectPlugins(all, wanted(v), v.skipPlugin)
-  const plugins = orderPlugins(
+  return orderPlugins(
     chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins)),
   )
-  if (archive !== undefined && !plugins.some((p) => p.name === 'git')) {
-    throw new BadInput('--archive has no effect: this run does not use the git plugin')
-  }
-  return plugins
 }
 
 function contextFor(
@@ -708,13 +703,11 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let preview: Decision
   try {
     const config = loadConfig(v, ctx)
-    plugins = pluginsFor(
-      v,
-      config,
-      deps,
-      ctx,
-      v.archive ? { exclude: v.archiveExclude } : undefined,
-    )
+    const archive = v.archive ? { exclude: v.archiveExclude } : undefined
+    plugins = pluginsFor(v, config, deps, ctx, archive)
+    if (archive !== undefined && !plugins.some((p) => p.name === 'git')) {
+      throw new BadInput('--archive has no effect: this run does not use the git plugin')
+    }
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
       const s = survey(plugins, cctx)
