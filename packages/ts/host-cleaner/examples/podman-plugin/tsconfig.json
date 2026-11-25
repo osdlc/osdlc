@@ -1,0 +1,17 @@
+{
+  // The build of the package as it would be published: src/ to dist/, with
+  // the declarations its `types` export names. In this repository the example
+  // is typechecked by host-cleaner's own tsconfig.json instead, and
+  // tests/outside.test.ts builds it with this file.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "types": ["node"],
+    "declaration": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"]
+}

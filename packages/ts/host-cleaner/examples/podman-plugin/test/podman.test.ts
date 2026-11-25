@@ -138,7 +138,23 @@ describe('the podman example', () => {
       'volume rm cache': { exitCode: 2, stderr: 'Error: volume cache is being used\n' },
     })
     const receipt = await clean(picked(await survey([plugin], go)), [plugin], go)
-    expect(receipt.steps).toMatchObject([{ id: 'volume:cache', result: 'failed' }])
+    expect(receipt.status).toBe('failed')
+    expect(receipt.steps).toMatchObject([
+      {
+        id: 'volume:cache',
+        result: 'failed',
+        delete: null,
+        error: expect.stringContaining('volume cache is being used'),
+      },
+    ])
+  })
+
+  test('a volume with no creation time is not proposed, since the re-check could not tell it changed', async () => {
+    const listed = [{ Name: 'cache', Driver: 'local' }, ...JSON.parse(volumes(['logs']))]
+    const { plugin } = build({ info: {}, [LS]: { stdout: JSON.stringify(listed) } })
+    const s = await survey([plugin], ctx)
+    expect(s.warnings).toEqual([])
+    expect(s.candidates.map((c) => c.id)).toEqual(['volume:logs'])
   })
 
   test('delete refuses anything but a volume it could have proposed, and runs nothing', async () => {
@@ -161,8 +177,8 @@ describe('the podman example', () => {
     expect(stopped.ran()).toEqual(['podman info'])
   })
 
-  test('no volumes is no candidates, whether podman prints [] or nothing', async () => {
-    for (const stdout of ['[]\n', '']) {
+  test('no volumes is no candidates, whether podman prints [], null or nothing', async () => {
+    for (const stdout of ['[]\n', 'null\n', '']) {
       const { plugin } = build({ info: {}, [LS]: { stdout } })
       const s = await survey([plugin], ctx)
       expect(s.warnings).toEqual([])

@@ -9,6 +9,7 @@ import { afterEach, expect, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -101,10 +102,19 @@ test('an outside package builds against ./plugin and ./testing, and its plugin k
 test('the podman example builds against ./plugin alone, and the loader takes it as a package', () => {
   const example = join(pkg, 'examples', 'podman-plugin')
   const dir = outsidePackage({ 'index.ts': join(example, 'src', 'index.ts') })
-  copyFileSync(join(example, 'package.json'), join(dir, 'package.json'))
+  for (const f of ['package.json', 'tsconfig.json']) {
+    copyFileSync(join(example, f), join(dir, f))
+  }
   const built = build(dir)
   expect(built.stdout + built.stderr).toBe('')
   expect(built.status).toBe(0)
+  // The build emits every file the export map names.
+  const exported = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
+    exports: Record<string, Record<string, string>>
+  }
+  for (const target of Object.values(exported.exports['.']!)) {
+    expect(existsSync(join(dir, target)), target).toBe(true)
+  }
 
   // Installed under its own name, then loaded and created by the built host-cleaner.
   const root = join(dir, 'installed')

@@ -12,16 +12,16 @@ guide is how to write, test and publish a plugin of your own.
 plugin package written this way: ref candidates, `costDescription: 'lost'`,
 and tests on a fake runner.
 
-A plugin uses two entries of `@osdlc/host-cleaner`, and no other:
+A plugin's code uses two entries of `@osdlc/host-cleaner`, and no other:
 
 | Entry | Holds |
 | --- | --- |
 | `@osdlc/host-cleaner/plugin` | `definePlugin`, `PLUGIN_API`, the contract's types, the kit (`pluginKit`, `idleHoursSetting` and its types), `containedIn`, `FatalRun`, and `z`. |
 | `@osdlc/host-cleaner/testing` | `fakeContext`, `fakeRunner`, `tempHome` and `contractSuite`, for the plugin's own tests. |
 
-A plugin's tests may also import `survey`, `plan` and `clean` from the main
-entry, `@osdlc/host-cleaner`, to run it through the core, as the example's do.
-The plugin itself uses the plugin entry alone.
+Its tests may also import `survey`, `plan` and `clean` from the main entry,
+`@osdlc/host-cleaner`, to run it through the core, as the example's do. The
+plugin's own code never does.
 
 ## The package
 

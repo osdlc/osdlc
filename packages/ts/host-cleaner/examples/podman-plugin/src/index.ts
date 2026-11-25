@@ -27,9 +27,9 @@ async function unusedVolumes(kit: Kit, signal: AbortSignal): Promise<z.output<ty
     ['podman', 'volume', 'ls', '--filter', 'dangling=true', '--format', 'json'],
     { signal, check: true },
   )
-  // Older Podman prints nothing, not `[]`, when there are no volumes.
+  // Older Podman prints nothing, not `[]`, when there are no volumes; a nil list prints `null`.
   if (r.stdout.trim() === '') return []
-  return z.array(Volume).parse(JSON.parse(r.stdout))
+  return z.array(Volume).nullable().parse(JSON.parse(r.stdout)) ?? []
 }
 
 export default definePlugin({
@@ -52,8 +52,11 @@ export default definePlugin({
       async discover(ctx) {
         return (await unusedVolumes(kit, ctx.signal))
           .filter((v) => !settings.keepVolumes.includes(v.Name))
-          .map((v) =>
-            kit.candidate({
+          .flatMap((v) => {
+            // Without a creation time, a volume made again under the same name
+            // would have the same evidence, so it is not proposed.
+            if (v.CreatedAt === undefined) return []
+            return kit.candidate({
               kind: 'volume',
               ref: v.Name,
               name: v.Name,
@@ -63,9 +66,9 @@ export default definePlugin({
               costDescription: 'lost',
               // A volume made again under the same name since the plan is
               // another volume: the re-check drops it as changed.
-              evidence: { created: v.CreatedAt ?? null, driver: v.Driver ?? null },
-            }),
-          )
+              evidence: { created: v.CreatedAt, driver: v.Driver ?? null },
+            })
+          })
       },
       async delete(c, ctx) {
         if (c.ref === undefined || !VOLUME_NAME.test(c.ref)) {

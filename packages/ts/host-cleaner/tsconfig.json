@@ -3,5 +3,15 @@
   // Workspace siblings resolve through `exports` to their built `dist/`, so
   // run the build before the typecheck.
   "extends": "@osdlc/tsconfig/node-lib",
+  "compilerOptions": {
+    // The examples import the package by name, but their own package.json is
+    // the nearest one, so the name does not resolve to this package. Map it to
+    // the source, as vitest.config.ts does.
+    "paths": {
+      "@osdlc/host-cleaner": ["./src/index.ts"],
+      "@osdlc/host-cleaner/plugin": ["./src/plugin.ts"],
+      "@osdlc/host-cleaner/testing": ["./src/testing.ts"]
+    }
+  },
   "include": ["src", "tests", "examples", "vitest.config.ts"]
 }

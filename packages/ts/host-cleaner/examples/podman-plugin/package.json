@@ -13,10 +13,15 @@
   "files": [
     "dist/"
   ],
+  "scripts": {
+    "build": "tsc"
+  },
   "peerDependencies": {
     "@osdlc/host-cleaner": "^0.2.0"
   },
   "devDependencies": {
-    "@osdlc/host-cleaner": "^0.2.0"
+    "@osdlc/host-cleaner": "^0.2.0",
+    "@types/node": "^26.1.0",
+    "typescript": "~6.0.3"
   }
 }
