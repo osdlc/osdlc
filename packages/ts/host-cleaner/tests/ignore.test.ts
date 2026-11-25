@@ -15,7 +15,7 @@ import { join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
 
-import { main } from '../src/cli.ts'
+import { main, type MainDeps } from '../src/cli.ts'
 import { containsIgnored, coveredBy, expandHome, ignorePaths } from '../src/ignore.ts'
 import { plan, recheck, survey } from '../src/run.ts'
 import { effectiveSettings, settingsOf } from '../src/settings.ts'
@@ -148,17 +148,12 @@ describe('the command line', () => {
     const config = join(home, 'c.json')
     writeFileSync(config, JSON.stringify({ ignore: ['/cfg-ignored'], idleHours: 0 }))
     const env = { ...(process.env as Record<string, string>), HOST_CLEANER_ROOT: home }
-    const run = (argv: string[]) => {
+    const plugins = [
+      plugin([cand('a:1', '/cfg-ignored/x'), cand('a:2', '/cli-ignored/x'), cand('a:3', '/ok')]),
+    ]
+    const run = (argv: string[], deps: MainDeps = { plugins }) => {
       const c = captureContext({ cwd, env })
-      const code = main(argv, c, {
-        plugins: [
-          plugin([
-            cand('a:1', '/cfg-ignored/x'),
-            cand('a:2', '/cli-ignored/x'),
-            cand('a:3', '/ok'),
-          ]),
-        ],
-      })
+      const code = main(argv, c, deps)
       return { code, out: c.io.out }
     }
     const status = run(['status', '--config', config, '--ignore', '/cli-ignored'])
@@ -168,7 +163,8 @@ describe('the command line', () => {
     expect(status.out).not.toContain('a:2')
     const saved = JSON.parse(run(['plan', '--config', config, '--ignore', '/cli-ignored']).out)
     expect(saved.ignore).toEqual(['/cfg-ignored', '/cli-ignored'])
-    const shown = run(['config', '--config', config])
+    // The shipped plugins: the fake one has no settings to show.
+    const shown = run(['config', '--config', config], {})
     expect(shown.out).toContain('ignore: /cfg-ignored')
     expect(shown.out).toMatch(/idleHours = 0 {2}\(idleHours\)/)
   })

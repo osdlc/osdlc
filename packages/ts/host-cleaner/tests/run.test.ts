@@ -365,9 +365,10 @@ describe('re-check', () => {
     const other: Plugin = { ...mutable([]), name: 'cargo' }
     expect(() => recheck(p, [other], ctx)).toThrow(StalePlan)
     expect(() => recheck(p, [other], ctx)).toThrow('no plugin named git')
-    expect(recheck(p, [other], ctx, ['git', 'cargo']).decision.dropped).toEqual([
-      { id: 'a:1', reason: 'gone', detail: 'no plugin proposes it now' },
-    ])
+    const gone = [{ id: 'a:1', reason: 'gone', detail: 'no plugin proposes it now' }]
+    expect(recheck(p, [other], ctx, ['git', 'cargo']).decision.dropped).toEqual(gone)
+    expect(() => clean(p, [other], ctx)).toThrow(StalePlan)
+    expect(clean(p, [other], ctx, { known: ['git', 'cargo'] }).dropped).toEqual(gone)
   })
 
   test('blocked: a refusal appeared since the plan', () => {

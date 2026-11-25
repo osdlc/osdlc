@@ -253,6 +253,21 @@ describe('status', () => {
     expect(plugin.removed).toEqual([])
   })
 
+  test('a package key is no special case: an unknown name warns, and a shipped plugin refuses the key', () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { podman: { package: '@x/podman' } } }))
+    const r = run(['config', '--config', config], cwd, env)
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('config plugins.podman: no plugin has this name')
+    const plugin = fake()
+    const argv = ['clean', '--config', config, '--yes']
+    expect(run(argv, cwd, env, { plugins: [plugin] }).code).toBe(2)
+    expect(plugin.removed).toEqual([])
+    writeFileSync(config, JSON.stringify({ plugins: { git: { package: '@x/git' } } }))
+    expect(run(['config', '--config', config], cwd, env).code).toBe(2)
+  })
+
   test('config shows only the plugins a run would build', () => {
     const { env, home, cwd } = setup()
     const config = join(home, 'c.json')
@@ -261,6 +276,10 @@ describe('status', () => {
     expect(r.code).toBe(0)
     expect(r.err).toContain('config plugins.git: no plugin has this name')
     expect(r.out).not.toContain('plugins.git')
+    const json = run(['config', '--config', config, '--format', 'json'], cwd, env, {
+      plugins: [fake()],
+    })
+    expect(JSON.parse(json.out).plugins).toEqual({})
   })
 
   test('there are no profiles: --profile is an unknown option and a profiles key is refused', () => {
@@ -577,6 +596,21 @@ describe('plan and clean', () => {
     })
     expect(skipped.code).toBe(0)
     expect(skipped.out).toContain('gone')
+  })
+
+  test('a saved plan runs what it can when one of its plugins is only skipped', () => {
+    const { env, cwd, home } = setup()
+    const planFile = join(home, 'plan.json')
+    const skip = fake('skip')
+    const other = fake('other')
+    const plugins = [skip, other]
+    expect(run(['plan', '-o', planFile], cwd, env, { plugins }).code).toBe(0)
+    const argv = ['clean', '--plan', planFile, '--yes', '--skip-plugin', 'skip']
+    const r = run(argv, cwd, env, { plugins })
+    expect(r.code).toBe(0)
+    expect(r.out).toContain('gone')
+    expect(skip.removed).toEqual([])
+    expect(other.removed).toEqual(['artifact:other'])
   })
 
   test('a plan that moved since is dropped as changed', () => {

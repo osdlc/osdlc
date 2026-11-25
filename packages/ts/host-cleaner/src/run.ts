@@ -389,7 +389,7 @@ export function decidePlan(p: Plan): Decision {
  *
  * `known` names every plugin this install has, skipped ones too; it defaults
  * to `plugins`' names. A candidate whose owner `known` lacks throws
- * `StalePlan` instead of being dropped as `gone`.
+ * {@link StalePlan} instead of being dropped as `gone`.
  */
 export function recheck(
   p: Plan,
@@ -437,6 +437,8 @@ export interface CleanOptions {
   dryRun?: boolean
   /** The receipt is rewritten here after every step. */
   receiptPath?: string
+  /** Every plugin name this install has, as {@link recheck} takes it. */
+  known?: Iterable<string> | undefined
   now?: () => Date
 }
 
@@ -456,7 +458,7 @@ export function clean(
   const now = opts.now ?? (() => new Date())
   let checked: ReturnType<typeof recheck>
   try {
-    checked = recheck(p, plugins, ctx)
+    checked = recheck(p, plugins, ctx, opts.known)
   } catch (err) {
     // A throw from the re-check still leaves a receipt saying nothing ran.
     if (opts.receiptPath !== undefined && opts.dryRun !== true) {

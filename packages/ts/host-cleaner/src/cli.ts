@@ -360,7 +360,8 @@ const registered = (deps: MainDeps): string[] =>
   deps.plugins?.map((p) => p.name) ?? Object.keys(FACTORIES)
 
 /**
- * The config, and a warning for each name in its `plugins` that no registered plugin has.
+ * The config, every registered plugin's name, and a warning for each name in the config's
+ * `plugins` that is not one of them.
  * With `refuse`, such a name is an error instead: `clean` deletes nothing on a config it
  * cannot apply in full, since a misspelt name would leave that plugin on its defaults.
  */
@@ -369,7 +370,7 @@ function checkedConfig(
   ctx: CliContext,
   deps: MainDeps,
   refuse = false,
-): { config: Config; warnings: string[] } {
+): { config: Config; known: ReadonlySet<string>; warnings: string[] } {
   const config = loadConfig(v, ctx)
   const known = new Set(registered(deps))
   const unused = Object.keys(config.plugins).filter((n) => !known.has(n))
@@ -379,7 +380,7 @@ function checkedConfig(
   const warnings = unused.map(
     (n) => `config plugins.${n}: no plugin has this name, so it is ignored`,
   )
-  return { config, warnings }
+  return { config, known, warnings }
 }
 
 /** The plugins this run uses: the shipped ones built from the config, or `deps.plugins`, then chosen by flag. */
@@ -495,10 +496,9 @@ function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
-    const { config, warnings } = checkedConfig(v, ctx, deps)
+    const { config, known, warnings } = checkedConfig(v, ctx, deps)
     writeWarnings(ctx, name, warnings)
     // Only the plugins a run would build: a section for one it lacks would contradict the warning.
-    const known = new Set(registered(deps))
     const settings = Object.fromEntries(
       Object.entries(effectiveSettings(config.plugins, config)).filter(([n]) => known.has(n)),
     )
@@ -694,10 +694,13 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let plan: Plan
   let source: string
   let plugins: Plugin[]
+  let known: ReadonlySet<string>
   let cctx: Ctx
   let preview: Decision
   try {
-    const { config } = checkedConfig(v, ctx, deps, true)
+    const read = checkedConfig(v, ctx, deps, true)
+    const { config } = read
+    known = read.known
     plugins = pluginsFor(v, config, deps, ctx)
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
@@ -729,7 +732,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
         allow: plan.allow,
         ignore: ignoreFor(config, v.ignore, ctx),
       }
-      const checked = recheck(plan, plugins, cctx, registered(deps))
+      const checked = recheck(plan, plugins, cctx, known)
       writeWarnings(ctx, name, checked.survey.warnings)
       preview = checked.decision
     }
@@ -776,7 +779,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
     mkdirSync(dirname(receiptPath), { recursive: true })
     // Only what the person saw as `delete`: a block that clears while they decide must not add to it.
     const approved = { ...plan, pick: preview.run.map((c) => c.id) }
-    receipt = clean(approved, plugins, cctx, { source, receiptPath })
+    receipt = clean(approved, plugins, cctx, { source, receiptPath, known })
   } catch (err) {
     logRun(dirs.logs, { at: now.toISOString(), source, receipt: receiptPath, status: 'failed' })
     return refusal(ctx, name, err)
