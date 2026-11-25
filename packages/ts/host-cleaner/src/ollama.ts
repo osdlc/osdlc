@@ -23,7 +23,9 @@
 import { z } from 'zod'
 
 import {
-  DEFAULT_IDLE_HOURS,
+  failureReason,
+  hoursText,
+  idleHoursOr,
   idleHoursSetting,
   pluginKit,
   type Kit,
@@ -56,6 +58,12 @@ const USE_UNKNOWN_REASON = 'ollama records when a model was pulled, not when it 
 
 /** How long the server has to answer before it counts as down. */
 const PING_MS = 5_000
+
+/**
+ * The time limit of one `ollama` command, so a hook's ping and command end
+ * inside the core's 30 s hook limit and fail with ollama's own reason.
+ */
+const ASK_MS = 20_000
 
 export interface OllamaOptions extends KitOptions {
   /** Idle hours before a model is a candidate (default {@link DEFAULT_IDLE_HOURS}); 0 makes every model one. */
@@ -173,18 +181,22 @@ const ROUNDED_HOURS = new Set(['hour', 'day', 'week', 'month'])
  * read, since the CLI may still reach some server by it.
  */
 export function serverUrl(host: string | undefined): URL | null {
-  let s = (host ?? '').trim().replace(/^["']|["']$/g, '')
+  let s = (host ?? '').trim().replace(/^["']+|["']+$/g, '')
   const schemed = s.includes('://')
   if (!schemed) {
     if (/^[\da-f]*:[\da-f]*:[\da-f:.]*$/i.test(s)) s = `[${s}]`
     s = `http://${s === '' || s.startsWith(':') ? `127.0.0.1${s}` : s}`
   }
-  let u: URL
-  try {
-    u = new URL(s)
-  } catch {
-    return null
+  const parse = (text: string): URL | null => {
+    try {
+      return new URL(text)
+    } catch {
+      return null
+    }
   }
+  // ollama takes a port it cannot read, or one out of range, as its default port.
+  const u = parse(s) ?? parse(s.replace(/^(\w[\w+.-]*:\/\/(?:\[[^\]]*\]|[^/:[\]]*)):[^/]*/, '$1'))
+  if (u === null) return null
   if (!schemed && u.port === '') u.port = '11434'
   return u
 }
@@ -195,8 +207,17 @@ export function isLocal(server: URL): boolean {
   return ['localhost', '0.0.0.0', '[::]', '[::1]'].includes(h) || /^127(\.\d+){3}$/.test(h)
 }
 
-/** A copy of `hoursText` in artifacts.ts, which this plugin does not import because it uses the kit alone. */
-const hoursText = (hours: number): string => String(Math.floor(hours * 10) / 10)
+/**
+ * The address to ping `server` at. An unspecified address, which ollama's Go
+ * client dials as this machine, becomes the loopback one, since Node's fetch
+ * does not dial it everywhere.
+ */
+export function pingUrl(server: URL): string {
+  const u = new URL(server.href)
+  if (u.hostname === '0.0.0.0') u.hostname = '127.0.0.1'
+  else if (u.hostname === '[::]') u.hostname = '[::1]'
+  return `${u.origin}${u.pathname.replace(/\/$/, '')}/api/version`
+}
 
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
@@ -205,9 +226,7 @@ export function ollamaPlugin(
   opts: OllamaOptions = {},
   kit: Kit = pluginKit(OLLAMA_PLUGIN, opts),
 ): Plugin {
-  const idle = opts.idleHours
-  const threshold =
-    idle !== undefined && Number.isFinite(idle) && idle >= 0 ? idle : DEFAULT_IDLE_HOURS
+  const threshold = idleHoursOr(opts.idleHours)
   const host = (opts.env ?? process.env)['OLLAMA_HOST']
   const server = serverUrl(host)
 
@@ -221,7 +240,7 @@ export function ollamaPlugin(
         `OLLAMA_HOST points at ${server.host}, not this machine, so its models are not on this disk`,
       )
     }
-    const url = `${server.origin}${server.pathname.replace(/\/$/, '')}/api/version`
+    const url = pingUrl(server)
     const signal = AbortSignal.any([ctx.signal, AbortSignal.timeout(PING_MS)])
     const up = await fetch(url, { signal }).then(
       (r) => {
@@ -236,11 +255,8 @@ export function ollamaPlugin(
 
   /** The output of `ollama <args>`; throws with ollama's own message when it fails. */
   const ask = async (args: readonly string[], ctx: Ctx): Promise<string> => {
-    const r = await kit.run(['ollama', ...args], { signal: ctx.signal })
-    if (!r.ok) {
-      const why = r.stderr.trim() || r.error || `exit ${r.exitCode}`
-      throw new Error(`ollama ${args.join(' ')} failed: ${why}`)
-    }
+    const r = await kit.run(['ollama', ...args], { signal: ctx.signal, timeoutMs: ASK_MS })
+    if (!r.ok) throw new Error(`ollama ${args.join(' ')} failed: ${failureReason(r)}`)
     return r.stdout
   }
 

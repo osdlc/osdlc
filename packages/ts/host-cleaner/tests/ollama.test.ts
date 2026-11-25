@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 import {
   BUILT_IN_PLUGINS,
+  HOOK_LIMIT_MS,
   OLLAMA_IN_USE,
   OLLAMA_PS_FAILED,
   OLLAMA_USE_UNKNOWN,
@@ -18,7 +19,15 @@ import {
   survey,
   type Survey,
 } from '../src/index.ts'
-import { isLocal, leastHours, parseBytes, parseList, parsePs, serverUrl } from '../src/ollama.ts'
+import {
+  isLocal,
+  leastHours,
+  parseBytes,
+  parseList,
+  parsePs,
+  pingUrl,
+  serverUrl,
+} from '../src/ollama.ts'
 import { contractSuite, fakeContext, fakeRunner } from '../src/testing.ts'
 
 interface Model {
@@ -163,6 +172,15 @@ describe('parsing', () => {
     // Text a URL cannot hold is not taken for this machine.
     expect(serverUrl('gpu box')).toBeNull()
     expect(serverUrl('http://[bad')).toBeNull()
+    // As ollama's envconfig: every surrounding quote stripped, and a bad port taken as the default.
+    expect(serverUrl(`"'localhost:9000'"`)?.href).toBe('http://localhost:9000/')
+    expect(serverUrl('localhost:99999')?.href).toBe('http://localhost:11434/')
+    expect(serverUrl('[::1]:x')?.href).toBe('http://[::1]:11434/')
+    expect(serverUrl('http://localhost:99999/p')?.href).toBe('http://localhost/p')
+    // Node's fetch does not dial an unspecified address everywhere; ollama's client dials it as this machine.
+    expect(pingUrl(serverUrl('0.0.0.0')!)).toBe('http://127.0.0.1:11434/api/version')
+    expect(pingUrl(serverUrl('[::]:8080')!)).toBe('http://[::1]:8080/api/version')
+    expect(pingUrl(serverUrl('localhost/sub/')!)).toBe('http://localhost:11434/sub/api/version')
     for (const host of ['', '0.0.0.0', 'localhost', '127.0.0.2:1', '[::1]:11434', '::1']) {
       expect(isLocal(serverUrl(host)!)).toBe(true)
     }
@@ -275,6 +293,22 @@ describe('survey', () => {
     expect(s.notes['ollama']).toBe("ollama's server at 127.0.0.1:11434 does not answer")
     expect(calls()).toEqual([])
     expect(server.mock.calls[0]![0]).toBe('http://127.0.0.1:11434/api/version')
+  })
+
+  test('each ollama command ends with the ping inside the hook limit', async () => {
+    const fake = fakeRunner({
+      ollama: (argv) =>
+        argv[0] === 'ps'
+          ? { exitCode: 1, stdout: 'Error: the server is loading a model' }
+          : { stdout: listText(models) },
+    })
+    const s = await survey([ollamaPlugin({}, pluginKit('ollama', fake))], ctx)
+    expect(fake.calls.length).toBeGreaterThan(0)
+    for (const c of fake.calls) expect(c.opts.timeoutMs).toBeLessThanOrEqual(HOOK_LIMIT_MS - 5_000)
+    // What ollama printed on stdout is the reason, as for any program the kit runs.
+    expect(s.objections.find((o) => o.code === OLLAMA_PS_FAILED)?.reason).toBe(
+      'ollama ps failed: Error: the server is loading a model',
+    )
   })
 
   test('an OLLAMA_HOST on another machine leaves it out with a note', async () => {
