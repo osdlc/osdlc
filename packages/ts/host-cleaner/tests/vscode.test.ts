@@ -8,6 +8,7 @@ import {
   readdirSync,
   realpathSync,
   renameSync,
+  rmSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
@@ -1026,7 +1027,7 @@ describe('cursor', () => {
       expect.objectContaining({
         code: CURSOR_IN_USE,
         reason:
-          "processes work in it (Code Helper (Plugin) (pid 11)), and Cursor's agent runs as `node`, so may be one of them",
+          "Cursor's agent may work in it, under another program's name: Code Helper (Plugin) (pid 11)",
       }),
     ])
     expect(
@@ -1041,7 +1042,7 @@ describe('cursor', () => {
     const h = home('Cursor')
     const wt = join(h.projects, 'wt')
     mkdirSync(wt)
-    // The cursor-agent CLI is a shim that runs a bundled `node`.
+    // The cursor-agent CLI is a shim that execs a bundled `node`, which is the name lsof gives it.
     const agent = { pid: 24, command: 'node', cwd: wt }
     const plugin = cursorPlugin(h.options({ probe: probeOf([agent]) }))
     expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
@@ -1074,6 +1075,17 @@ describe('cursor', () => {
         expect.objectContaining({ candidate: `worktree:${gone}`, code: AGENT_WORKTREE }),
       ])
     }
+    // With the agents' folder gone too, in either spelling, and only links above it left to resolve.
+    rmSync(join(h.home, '.cursor'), { recursive: true })
+    const real = join(realpathSync(h.home), '.cursor', 'worktrees', 'repo', 'gone')
+    expect(await plugin.object!([worktree(real), worktree(gone)], fakeContext())).toEqual([
+      expect.objectContaining({ candidate: `worktree:${real}`, code: AGENT_WORKTREE }),
+      expect.objectContaining({ candidate: `worktree:${gone}`, code: AGENT_WORKTREE }),
+    ])
+    const atHome = cursorPlugin(h.options({ env: { HOME: realpathSync(h.home) } }))
+    expect(await atHome.object!([worktree(gone)], fakeContext())).toEqual([
+      expect.objectContaining({ candidate: `worktree:${gone}`, code: AGENT_WORKTREE }),
+    ])
   })
 
   test('a dead Cursor workspace with chats gives its reason once and keeps no history evidence', async () => {
@@ -1112,18 +1124,20 @@ describe('cursor', () => {
     expect(await vscodePlugin(h.options()).object!([worktree(wt)], fakeContext())).toEqual([])
   })
 
-  test("refuses git's worktree the cursor-agent CLI works in", async () => {
+  test("knows a cursor-agent by its own name, whole or cut to lsof's 9 characters", async () => {
     const h = home('Cursor')
     const wt = join(h.projects, 'wt')
     mkdirSync(wt)
-    const agent = { pid: 22, command: 'cursor-agent', cwd: wt }
-    const plugin = cursorPlugin(h.options({ probe: probeOf([agent]) }))
-    expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
-      expect.objectContaining({
-        code: CURSOR_IN_USE,
-        reason: 'Cursor works in it: cursor-agent (pid 22)',
-      }),
-    ])
+    for (const command of ['cursor-agent', 'cursor-ag']) {
+      const agent = { pid: 22, command, cwd: wt }
+      const plugin = cursorPlugin(h.options({ probe: probeOf([agent]) }))
+      expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
+        expect.objectContaining({
+          code: CURSOR_IN_USE,
+          reason: `Cursor works in it: ${command} (pid 22)`,
+        }),
+      ])
+    }
   })
 
   test('detects Cursor by its agent worktrees alone, where its storage is not', async () => {
@@ -1140,18 +1154,32 @@ describe('cursor', () => {
     }
   })
 
-  test("knows the cursor-agent CLI by lsof's 9-character name", async () => {
+  test('only looks at where a worktree is on Windows, which has no lsof', async () => {
     const h = home('Cursor')
     const wt = join(h.projects, 'wt')
-    mkdirSync(wt)
-    const agent = { pid: 23, command: 'cursor-ag', cwd: wt }
-    const plugin = cursorPlugin(h.options({ probe: probeOf([agent]) }))
-    expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
-      expect.objectContaining({
-        code: CURSOR_IN_USE,
-        reason: 'Cursor works in it: cursor-ag (pid 23)',
-      }),
+    const agent = join(h.home, '.cursor', 'worktrees', 'repo', 'k3x')
+    for (const d of [wt, agent]) mkdirSync(d, { recursive: true })
+    let reads = 0
+    const probe: ProcessProbe = {
+      alive: () => true,
+      holders: () => {
+        reads += 1
+        throw new Error('no lsof')
+      },
+    }
+    const onWindows = cursorPlugin(h.options({ probe, platform: 'win32' }))
+    expect(await onWindows.object!([worktree(agent), worktree(wt)], fakeContext())).toEqual([
+      expect.objectContaining({ candidate: `worktree:${agent}`, code: AGENT_WORKTREE }),
     ])
+    await onWindows.prepare!(worktree(wt), fakeContext())
+    expect(reads).toBe(0)
+
+    // Elsewhere a table that cannot be read leaves the worktree unchecked, and the note says so.
+    const noLsof = cursorPlugin(h.options({ probe, platform: 'linux' }))
+    expect(await noLsof.object!([worktree(wt)], fakeContext())).toEqual([
+      expect.objectContaining({ level: 'note', code: 'cursor-unchecked' }),
+    ])
+    expect(reads).toBe(1)
   })
 
   test('reads no process table when every worktree is an agent worktree', async () => {
@@ -1186,6 +1214,15 @@ describe('cursor', () => {
         code: CURSOR_IN_USE,
         reason: `a Cursor window has it open (${join(h.user, 'globalStorage', 'storage.json')})`,
       }),
+    ])
+
+    // A worktree that is gone, named through a link, as the window's folder is.
+    const link = join(h.home, 'dev-link')
+    symlinkSync(h.projects, link)
+    const gone = join(link, 'gone')
+    windows(h.user, [gone])
+    expect(await plugin.object!([worktree(gone)], fakeContext())).toEqual([
+      expect.objectContaining({ candidate: `worktree:${gone}`, code: CURSOR_IN_USE }),
     ])
   })
 })

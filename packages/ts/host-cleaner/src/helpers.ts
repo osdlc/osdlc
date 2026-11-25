@@ -5,6 +5,7 @@
  */
 
 import { realpathSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 import { failureText, type CommandResult } from '@osdlc/command-seam'
@@ -27,6 +28,23 @@ export const realOr = (path: string): string => {
     return realpathSync.native(path)
   } catch {
     return path
+  }
+}
+
+/**
+ * `path`'s real path, or, where it does not resolve, that of the nearest folder
+ * above it that does with the rest of `path` after it: what is gone still
+ * compares through the links above it.
+ */
+export function realAbove(path: string): string {
+  let rest = ''
+  for (let at = path; ; at = dirname(at)) {
+    try {
+      return join(realpathSync.native(at), rest)
+    } catch {
+      if (dirname(at) === at) return path
+      rest = join(basename(at), rest)
+    }
   }
 }
 

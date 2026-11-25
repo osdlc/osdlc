@@ -320,19 +320,21 @@ plugin is the `vscode` plugin's code over Cursor's folders,
 `~/Library/Application Support/Cursor/User/workspaceStorage` on macOS and
 `~/.config/Cursor/User/workspaceStorage` on Linux (moved by `XDG_CONFIG_HOME`
 and `VSCODE_APPDATA` as VS Code's is), and over Cursor's processes
-(`Cursor`, `Cursor Helper (…)`, `cursor`, `cursor-agent`). It finds, refuses and deletes what
-the `vscode` plugin does. Two differences. Cursor keeps its chat history in that
+(`Cursor`, `Cursor Helper (…)`, `cursor`). It finds, refuses and deletes what
+the `vscode` plugin does. Three differences. Cursor keeps its chat history in that
 storage, so every dead workspace's folder is `costDescription: lost`, not only
 one with the history folders the `vscode` plugin looks for. It is held,
 protested `discard-user-data`, and runs only with
 `--pick <id> --allow discard-user-data`. Cursor's agents make and track
 their own worktrees under `~/.cursor/worktrees`, so the plugin refuses
 (`agent-worktree`, exported as `AGENT_WORKTREE`) any `git` worktree there,
-whether or not Cursor runs. And the `cursor-agent` CLI runs as `node`, so its
-name cannot be told from the process table: the plugin refuses
-(`cursor-in-use`) any `git` worktree that any process other than an idle
-shell works in, whether or not Cursor runs. The plugin is detected when its storage or that
-folder exists, so a host with only the `cursor-agent` CLI is covered too. Its
+whether or not Cursor runs. (For another tool's agent worktrees, list their
+folder in the config's `ignore`.) And the `cursor-agent` CLI runs as `node`, so
+the process table does not show which process is Cursor's agent: the plugin
+refuses (`cursor-in-use`) any `git` worktree that any process other than an idle
+shell works in, whether or not Cursor runs. The plugin is detected when its
+storage or the agents' folder exists; on a host with only the CLI, that is once
+it has made a worktree there. On Windows only the agents' folder is checked. Its
 codes are the `vscode` plugin's under its own name: `cursor-in-use`,
 `cursor-unknown-workspace`, `cursor-state-unreadable` and `cursor-unchecked`.
 

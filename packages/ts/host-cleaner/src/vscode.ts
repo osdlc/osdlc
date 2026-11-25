@@ -38,6 +38,7 @@ import {
   isGitWorktree,
   isObject,
   objector,
+  realAbove,
   realOr,
   yieldToLimit,
 } from './helpers.ts'
@@ -88,9 +89,9 @@ interface Editor {
   /** The folder under `HOME` where its agents make and track their own worktrees. */
   agentWorktrees?: string
   /**
-   * True when its agent runs under another program's name (the `cursor-agent`
-   * CLI runs as `node`), so any busy process working in a worktree may be it,
-   * whether or not the editor itself runs.
+   * True when its agent may run under another program's name (the
+   * `cursor-agent` CLI runs as `node`), so any busy process working in a
+   * worktree may be it, whether or not the editor itself runs.
    */
   agentUnnamed: boolean
 }
@@ -114,8 +115,8 @@ const CURSOR: Editor = {
   name: CURSOR_PLUGIN,
   product: 'Cursor',
   appDir: 'Cursor',
-  // `Cursor` and its `Cursor Helper (…)` processes on macOS, `cursor` on Linux, and the `cursor-agent` CLI,
-  // which lsof cuts to its first 9 characters, `cursor-ag`.
+  // `Cursor` and its `Cursor Helper (…)` processes on macOS, `cursor` on Linux, and `cursor-agent` (which
+  // lsof cuts to 9 characters), should the CLI ever run by its own name; see `agentUnnamed`.
   process: /^cursor(?:-ag(?:ent)?)?(?:\s|\\x20|$)/i,
   codes: {
     inUse: CURSOR_IN_USE,
@@ -647,7 +648,8 @@ const processesOf = (editor: Editor, processes: Running['processes']): Running['
 
 function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
   const env = opts.env ?? process.env
-  const userDir = opts.userDir ?? userDirOf(editor, env, opts.platform ?? process.platform)
+  const platform = opts.platform ?? process.platform
+  const userDir = opts.userDir ?? userDirOf(editor, env, platform)
   const under = (...parts: string[]): string | undefined =>
     userDir === undefined ? undefined : join(userDir, ...parts)
   const root = under('workspaceStorage')
@@ -655,15 +657,10 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
   const agentDir =
     editor.agentWorktrees === undefined ? undefined : join(homeOf(env), editor.agentWorktrees)
   /**
-   * The agents' folder, resolved now, when the worktree at `path`, whose real
-   * path is `real`, is in it; both are compared as given and as resolved, so
-   * neither a link nor a worktree folder that is gone hides it.
+   * Nothing can be told of a worktree but where it is: the editor's folders on
+   * this platform are not known, and Windows has no `lsof` to list processes with.
    */
-  const agentFolderOf = (path: string, real: string): string | undefined => {
-    if (agentDir === undefined) return undefined
-    const agents = realOr(agentDir)
-    return [path, real].some((p) => within(p, agentDir) || within(p, agents)) ? agents : undefined
-  }
+  const placeOnly = userDir === undefined && platform === 'win32'
   /** `root` when it exists. */
   const storage = (): string | undefined =>
     root !== undefined && lstatSync(root, { throwIfNoEntry: false }) !== undefined
@@ -720,10 +717,10 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
     c: PathCandidate,
     w: Windows,
     ctx: Pick<Ctx, 'signal'>,
-    dir: string = realOr(c.path),
+    dir: string = realAbove(c.path),
   ): Objection[] => {
-    // With no process of the editor's anywhere, none works in this worktree and no window has it open,
-    // unless its agent runs under another name.
+    // With no process of the editor's anywhere, none works in this worktree and no window has it open;
+    // an agent under another program's name may.
     if (!w.running && !editor.agentUnnamed) return []
     const here = kit.running({ in: c.path }, ctx)
     const procs = processesOf(editor, here.processes)
@@ -737,7 +734,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
           c,
           'refuse',
           editor.codes.inUse,
-          `processes work in it (${here.names.join(', ')}), and ${editor.product}'s agent runs as \`node\`, so may be one of them`,
+          `${editor.product}'s agent may work in it, under another program's name: ${here.names.join(', ')}`,
         ),
       ]
     }
@@ -753,7 +750,9 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
             ),
           ]
     if (!w.running) return unchecked()
-    const holds = (named: Named): boolean => named.paths.some((p) => within(p, dir))
+    // What is gone is named as the editor spelled it, so the worktree's own spelling counts too.
+    const holds = (named: Named): boolean =>
+      named.paths.some((p) => within(p, dir) || within(p, c.path))
     if (holds(w.open)) {
       return [
         own(
@@ -828,13 +827,19 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
           out.push(own(c, 'refuse', editor.codes.unknownWorkspace, e.problem))
         if (e?.state === 'gone') gone.push({ c, local: e.local })
       }
+      // Resolved here, as the folder may be newer than this plugin. A worktree is looked for in it by
+      // both spellings of each, so that neither a link nor a folder that is gone hides it.
+      const agents = agentDir === undefined ? undefined : realAbove(agentDir)
       const worktrees: Array<{ c: PathCandidate; dir: string }> = []
       for (const c of all.filter(isGitWorktree)) {
-        const dir = realOr(c.path)
-        const agents = agentFolderOf(c.path, dir)
-        if (agents !== undefined) {
-          out.push(own(c, 'refuse', AGENT_WORKTREE, `${editor.product}'s agents keep it (${agents})`))
-        } else {
+        const dir = realAbove(c.path)
+        const inside = (d: string | undefined): boolean =>
+          d !== undefined && (within(c.path, d) || within(dir, d))
+        if (inside(agentDir) || inside(agents)) {
+          out.push(
+            own(c, 'refuse', AGENT_WORKTREE, `${editor.product}'s agents keep it (${agents})`),
+          )
+        } else if (!placeOnly) {
           worktrees.push({ c, dir })
         }
       }
@@ -849,6 +854,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
       // A window may have opened it since `object`.
       let objections: Objection[] = []
       if (isGitWorktree(c)) {
+        if (placeOnly) return
         objections = worktreeCheck(c, await look(ctx, true), ctx)
       } else if (c.owner === editor.name && typeof c.evidence.workspace === 'string') {
         // One with no workspace is of a shape this plugin does not know, which `object` refuses.
