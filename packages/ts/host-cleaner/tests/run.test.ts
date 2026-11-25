@@ -8,6 +8,7 @@ import {
   DEFAULT_SELECTION,
   FatalRun,
   SelectionError,
+  StalePlan,
   clean,
   decide,
   orderPlugins,
@@ -355,6 +356,16 @@ describe('re-check', () => {
     const p = planWith(mutable(items))
     const r = recheck(p, [mutable([])], ctx)
     expect(r.decision.dropped).toEqual([
+      { id: 'a:1', reason: 'gone', detail: 'no plugin proposes it now' },
+    ])
+  })
+
+  test('a candidate whose owner is not known throws StalePlan; a known but skipped one is gone', () => {
+    const p = planWith(mutable([cand('a:1', 'git')]))
+    const other: Plugin = { ...mutable([]), name: 'cargo' }
+    expect(() => recheck(p, [other], ctx)).toThrow(StalePlan)
+    expect(() => recheck(p, [other], ctx)).toThrow('no plugin named git')
+    expect(recheck(p, [other], ctx, ['git', 'cargo']).decision.dropped).toEqual([
       { id: 'a:1', reason: 'gone', detail: 'no plugin proposes it now' },
     ])
   })

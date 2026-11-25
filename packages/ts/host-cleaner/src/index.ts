@@ -36,6 +36,7 @@ export {
   OUTSIDE_ROOTS,
   PLUGIN_ORDER,
   SelectionError,
+  StalePlan,
   checkSelection,
   clean,
   decide,

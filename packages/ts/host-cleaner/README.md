@@ -175,12 +175,13 @@ all three directories):
 { "targets": ["~/dev"], "plugins": { "cargo": { "idleHours": 48 }, "node": { "enabled": false } } }
 ```
 
-`plugins.<name>` holds that plugin's settings; a name that no plugin has gets
-a warning (kept in `status --format json` and in a plan) and is otherwise
-ignored, unless the entry sets `package`: that asks
-for a plugin this install has not loaded, so it is refused (exit 2). Each
-plugin's settings are a strict schema, checked when the config loads: a
-misspelt key or a wrong type is refused (exit 2), naming the plugin and the key.
+`plugins.<name>` holds that plugin's settings. A name that no plugin has stops
+`clean` (and `clean --plan`) with exit 2 before anything is deleted, since a
+misspelt name would leave that plugin on its defaults; `status`, `plan` and
+`config` warn (the warning is kept in `status --format json` and in a plan) and
+go on. Each plugin's settings are a strict schema, checked when the config
+loads: a misspelt key or a wrong type is refused (exit 2), naming the plugin and
+the key.
 
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |

@@ -232,13 +232,35 @@ describe('status', () => {
     expect(warnings.some((w) => w.includes('plugins.node'))).toBe(false)
   })
 
-  test('an unknown name with a package is refused: that plugin is not loaded', () => {
+  test('clean refuses a config naming a plugin nobody has, before it deletes anything', () => {
     const { env, home, cwd } = setup()
     const config = join(home, 'c.json')
-    writeFileSync(config, JSON.stringify({ plugins: { podman: { package: '@x/podman' } } }))
-    const r = run(['status', '--config', config], cwd, env)
-    expect(r.code).toBe(2)
-    expect(r.err).toContain('plugins.podman.package')
+    writeFileSync(config, JSON.stringify({ plugins: { fkae: { enabled: false } } }))
+    const plugin = fake()
+    const planFile = join(home, 'plan.json')
+    const planned = run(['plan', '--config', config, '-o', planFile], cwd, env, {
+      plugins: [plugin],
+    })
+    expect(planned.code).toBe(0)
+    for (const argv of [
+      ['clean', '--config', config, '--yes'],
+      ['clean', '--config', config, '--plan', planFile, '--yes'],
+    ]) {
+      const r = run(argv, cwd, env, { plugins: [plugin] })
+      expect(r.code).toBe(2)
+      expect(r.err).toContain('config names no plugin fkae')
+    }
+    expect(plugin.removed).toEqual([])
+  })
+
+  test('config shows only the plugins a run would build', () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { git: { enabled: false } } }))
+    const r = run(['config', '--config', config], cwd, env, { plugins: [fake()] })
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('config plugins.git: no plugin has this name')
+    expect(r.out).not.toContain('plugins.git')
   })
 
   test('there are no profiles: --profile is an unknown option and a profiles key is refused', () => {

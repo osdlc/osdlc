@@ -113,9 +113,10 @@ export function readPlan(path: string): Plan {
 }
 
 /** The owners of `plan`'s candidates that `known` does not name, each once. */
-export const unknownOwners = (plan: Plan, known: readonly string[]): string[] => [
-  ...new Set(plan.candidates.map((c) => c.owner).filter((o) => !known.includes(o))),
-]
+export function unknownOwners(plan: Plan, known: Iterable<string>): string[] {
+  const names = new Set(known)
+  return [...new Set(plan.candidates.map((c) => c.owner).filter((o) => !names.has(o)))]
+}
 
 export function writePlan(path: string, plan: Plan): void {
   writeJsonAtomic(path, plan)
