@@ -28,7 +28,7 @@ import { expandHome, ignorePaths } from './ignore.ts'
 import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
 import { parsePlan, readPlan, unknownOwners, writePlan, type Plan, type Receipt } from './plan.ts'
 import { FACTORIES, UnknownPlugin, selectPlugins } from './registry.ts'
-import { PLUGIN_SETTINGS, disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
+import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
 import {
   SelectionError,
   clean,
@@ -357,29 +357,23 @@ const wanted = (v: SweepValues): string[] | undefined =>
 const registered = (deps: MainDeps): string[] =>
   deps.plugins?.map((p) => p.name) ?? Object.keys(FACTORIES)
 
-/** Warns of each name in the config's `plugins` that `known` lacks; its settings go unused. */
-function warnUnknownPlugins(
-  ctx: CliContext,
-  name: string,
-  config: Config,
-  known: readonly string[],
-): void {
+/**
+ * A warning for each name in the config's `plugins` that `known` lacks; its settings go unused.
+ * An unknown entry with `package` is refused: it asks for a plugin to be loaded, and none was.
+ */
+function configWarnings(config: Config, known: readonly string[]): string[] {
   const unused = Object.keys(config.plugins).filter((n) => !known.includes(n))
-  writeWarnings(
-    ctx,
-    name,
-    unused.map((n) => `config plugins.${n}: no plugin has this name, so it is ignored`),
-  )
+  const loaded = unused.filter((n) => Object.hasOwn(config.plugins[n] ?? {}, 'package'))
+  if (loaded.length > 0) {
+    throw new BadInput(
+      loaded.map((n) => `config plugins.${n}.package: no plugin of this name is loaded`).join('; '),
+    )
+  }
+  return unused.map((n) => `config plugins.${n}: no plugin has this name, so it is ignored`)
 }
 
 /** The plugins this run uses: the shipped ones built from the config, or `deps.plugins`, then chosen by flag. */
-function pluginsFor(
-  v: SweepValues,
-  config: Config,
-  deps: MainDeps,
-  ctx: CliContext,
-  name: string,
-): Plugin[] {
+function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliContext): Plugin[] {
   // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
@@ -388,7 +382,6 @@ function pluginsFor(
     Object.entries(FACTORIES).map(([n, make]) =>
       make({ settings: settingsOf(n, config.plugins[n] ?? {}, config), only, env: ctx.env }),
     )
-  warnUnknownPlugins(ctx, name, config, all.map((p) => p.name))
   // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
   const named = wanted(v) ?? []
   const chosen = selectPlugins(all, wanted(v), v.skipPlugin)
@@ -462,10 +455,12 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   let s: ReturnType<typeof survey>
   try {
     const config = loadConfig(v, ctx)
+    const unknown = configWarnings(config, registered(deps))
     s = survey(
-      pluginsFor(v, config, deps, ctx, name),
+      pluginsFor(v, config, deps, ctx),
       contextFor(parsed.positionals, config, ctx, [], v.ignore),
     )
+    s = { ...s, warnings: [...unknown, ...s.warnings] }
   } catch (err) {
     return refusal(ctx, name, err)
   }
@@ -492,7 +487,7 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
   const v = parsed.values
   try {
     const config = loadConfig(v, ctx)
-    warnUnknownPlugins(ctx, name, config, Object.keys(PLUGIN_SETTINGS))
+    writeWarnings(ctx, name, configWarnings(config, registered({})))
     const settings = effectiveSettings(config.plugins, config)
     if (v.format === 'json') {
       const values = Object.fromEntries(
@@ -545,7 +540,8 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   try {
     const config = loadConfig(v, ctx)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
-    const s = survey(pluginsFor(v, config, deps, ctx, name), cctx)
+    writeWarnings(ctx, name, configWarnings(config, registered(deps)))
+    const s = survey(pluginsFor(v, config, deps, ctx), cctx)
     writeWarnings(ctx, name, s.warnings)
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
     plan = makePlan(s, {
@@ -689,7 +685,8 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let preview: Decision
   try {
     const config = loadConfig(v, ctx)
-    plugins = pluginsFor(v, config, deps, ctx, name)
+    writeWarnings(ctx, name, configWarnings(config, registered(deps)))
+    plugins = pluginsFor(v, config, deps, ctx)
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
       const s = survey(plugins, cctx)

@@ -205,6 +205,26 @@ describe('status', () => {
     expect(r.out).toContain('artifact:fake')
   })
 
+  test('with the shipped plugins, only an unknown name warns, and --format json carries it', () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { node: { enabled: false }, gti: {} } }))
+    const r = run(['status', '--config', config, '--format', 'json'], cwd, env)
+    expect(r.code).not.toBe(2)
+    const warnings: string[] = JSON.parse(r.out).warnings
+    expect(warnings).toContain('config plugins.gti: no plugin has this name, so it is ignored')
+    expect(warnings.some((w) => w.includes('plugins.node'))).toBe(false)
+  })
+
+  test('an unknown name with a package is refused: that plugin is not loaded', () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { podman: { package: '@x/podman' } } }))
+    const r = run(['status', '--config', config], cwd, env)
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('plugins.podman.package')
+  })
+
   test('there are no profiles: --profile is an unknown option and a profiles key is refused', () => {
     const { env, home, cwd } = setup()
     const flag = run(['status', '--profile', 'x'], cwd, env)
