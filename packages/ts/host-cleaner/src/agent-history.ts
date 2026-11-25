@@ -16,6 +16,7 @@ import {
   readFileSync,
   readSync,
   readdirSync,
+  realpathSync,
   statSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
@@ -29,6 +30,7 @@ import {
   checkAgain,
   errorText,
   isObject,
+  num,
   objectionsTo,
   str,
   yieldToLimit,
@@ -39,12 +41,12 @@ import { PLUGIN_API, definePlugin, type Ctx, type Plugin } from './types.ts'
 
 export const AGENT_HISTORY_PLUGIN = 'agent-history'
 
-/** The most of a transcript read for its first `cwd`. */
-const HEAD_BYTES = 256 * 1024
-/** How much more of a transcript is read each time its first `cwd` is not yet found. */
-const CHUNK_BYTES = 16 * 1024
+/** How much of a transcript is read at first for its first `cwd`; doubled while it is not found. */
+const HEAD_BYTES = 16 * 1024
+/** The most of a transcript read for it, so that one long first line, such as a pasted prompt, fits. */
+const MAX_HEAD_BYTES = 4 * 1024 * 1024
 
-/** Where removable volumes are mounted; a gone path whose nearest existing folder is one of these or below one means its volume may be away. */
+/** Where removable volumes are mounted; a gone path's volume may be away when the nearest folder above it that exists is one of these or below one. */
 const MOUNTS: readonly string[] = ['/Volumes', '/mnt', '/media', '/run/media']
 
 /** The name Claude Code gives the project folder of `path`, before it shortens a long one. */
@@ -77,21 +79,25 @@ export function fstabMounts(text: string): string[] {
   })
 }
 
-/** Where volumes are mounted on this host: {@link MOUNTS} and the mount points in `/etc/fstab`. */
+/** The mount points in this host's `/etc/fstab`. */
 function mountPoints(): ReadonlySet<string> {
-  let listed: string[] = []
   try {
-    listed = fstabMounts(readFileSync('/etc/fstab', 'utf8'))
+    return new Set(fstabMounts(readFileSync('/etc/fstab', 'utf8')))
   } catch {
     // No fstab: only the usual places.
+    return new Set()
   }
-  return new Set([...MOUNTS, ...listed])
 }
 
-/** Claude Code's config folder: `CLAUDE_CONFIG_DIR`, else `.claude` in the home folder. */
-export function claudeConfigDir(env: Readonly<Record<string, string | undefined>>): string {
+/** Claude Code's config folder: `CLAUDE_CONFIG_DIR`, a relative one under `cwd`, else `.claude` in the home folder. */
+export function claudeConfigDir(
+  env: Readonly<Record<string, string | undefined>>,
+  cwd: string,
+): string {
   const set = env.CLAUDE_CONFIG_DIR
-  return set !== undefined && set !== '' ? resolve(set) : join(env.HOME || homedir(), '.claude')
+  return set !== undefined && set !== ''
+    ? resolve(cwd, set)
+    : join(env.HOME || homedir(), '.claude')
 }
 
 const isDir = (path: string): boolean =>
@@ -107,22 +113,32 @@ function gone(path: string): boolean {
 }
 
 /**
- * Whether `path` may be on a volume that is not mounted: the nearest folder
- * above it that exists is one of `mounts`, or is or is below one of
- * {@link MOUNTS} (such as an empty `/mnt/usb` left by a drive mounted by
- * hand), or no folder above it exists but the root, such as `/Volumes/x`
- * recorded on a Mac and read on Linux, or a Windows drive that is away.
+ * Whether `path` may be on a volume that is not mounted, by the nearest folder
+ * above it that exists, as spelled and with links followed: it is one of
+ * `mounts`, or one of `roots` or below one (such as an empty `/mnt/usb`), or
+ * it is a link that leads nowhere, or it is the root, as for `/Volumes/x` recorded on a Mac and
+ * read on Linux, or a Windows drive that is away.
  */
-export function unmounted(path: string, mounts: ReadonlySet<string> = new Set(MOUNTS)): boolean {
+export function unmounted(
+  path: string,
+  mounts: ReadonlySet<string> = new Set(),
+  roots: readonly string[] = MOUNTS,
+): boolean {
   let dir = dirname(path)
   while (dirname(dir) !== dir && gone(dir)) dir = dirname(dir)
+  if (dirname(dir) === dir) return true
+  let real: string
+  try {
+    real = realpathSync.native(dir)
+  } catch {
+    return true
+  }
   return (
-    dirname(dir) === dir || mounts.has(dir) || MOUNTS.some((m) => nodeGuard.contains(m, dir))
+    mounts.has(dir) ||
+    mounts.has(real) ||
+    roots.some((r) => dir.startsWith(`${r}/`) || nodeGuard.contains(r, real))
   )
 }
-
-/** Reused by every {@link firstCwd} read, which is synchronous. */
-let headBuf: Buffer | undefined
 
 /** The `cwd` of one transcript line, or undefined when it records none. */
 function cwdOf(line: string): string | undefined {
@@ -135,32 +151,36 @@ function cwdOf(line: string): string | undefined {
   return isObject(row) && typeof row.cwd === 'string' ? row.cwd : undefined
 }
 
-/** {@link firstCwd}'s answer for a transcript whose first {@link HEAD_BYTES} hold no `cwd` but that goes on. */
+/** {@link firstCwd}'s answer for a transcript that gives no `cwd` in its first {@link MAX_HEAD_BYTES}. */
 const CUT = Symbol('cut')
 
 /**
- * The first `cwd` a transcript records within its first {@link HEAD_BYTES},
- * read {@link CHUNK_BYTES} at a time until a whole line gives one; undefined
- * when the transcript ends with none, {@link CUT} when it goes on past them.
+ * The first `cwd` a transcript records, read only as far as the line that
+ * gives it; undefined when the transcript ends before {@link MAX_HEAD_BYTES}
+ * with none, else {@link CUT}.
  */
 function firstCwd(file: string): string | undefined | typeof CUT {
   const fd = openSync(file, 'r')
   try {
-    const buf = (headBuf ??= Buffer.allocUnsafe(HEAD_BYTES))
+    let buf = Buffer.allocUnsafe(HEAD_BYTES)
     let n = 0
     // Where the first line not yet read starts.
     let from = 0
-    while (n < HEAD_BYTES) {
-      const got = readSync(fd, buf, n, Math.min(CHUNK_BYTES, HEAD_BYTES - n), n)
-      n += got
-      for (let nl = buf.indexOf(0x0a, from); nl !== -1 && nl < n; nl = buf.indexOf(0x0a, from)) {
-        const cwd = cwdOf(buf.toString('utf8', from, nl))
+    for (;;) {
+      const got = readSync(fd, buf, n, buf.length - n, n)
+      if (got === 0) return cwdOf(buf.toString('utf8', from, n))
+      const filled = buf.subarray(0, n + got)
+      // Lines before `from` are done, and those bytes of this one hold no line end.
+      for (let nl = filled.indexOf(0x0a, n); nl !== -1; nl = filled.indexOf(0x0a, from)) {
+        const cwd = cwdOf(filled.toString('utf8', from, nl))
         if (cwd !== undefined) return cwd
         from = nl + 1
       }
-      if (got === 0) return cwdOf(buf.toString('utf8', from, n))
+      n += got
+      if (n < buf.length) continue
+      if (n >= MAX_HEAD_BYTES) return CUT
+      buf = Buffer.concat([buf], n * 2)
     }
-    return CUT
   } finally {
     closeSync(fd)
   }
@@ -189,8 +209,8 @@ export interface ProjectRecord {
 /**
  * The paths the project folder `dir` records, or null when it records none,
  * or one that is not absolute, does not turn into the folder's name, or fails
- * `keep`, or a transcript with no `cwd` in its first {@link HEAD_BYTES} that
- * goes on past them. It stops reading at the first such path. Links inside it are not
+ * `keep`, or a transcript too long to read to its first `cwd`. It stops
+ * reading at the first such path or transcript. Links inside it are not
  * followed. Throws when it cannot be read.
  */
 export function decodeFolder(
@@ -211,7 +231,7 @@ export function decodeFolder(
     if (entry.name.endsWith('.jsonl')) {
       sessions.push(entry.name)
       const cwd = firstCwd(file)
-      // A transcript whose path is not within what is read could name another.
+      // The `cwd` past what was read could be another path.
       if (cwd === CUT || (cwd !== undefined && !ok(cwd))) return null
     } else if (entry.name === 'sessions-index.json') {
       if (!indexPaths(file).every(ok)) return null
@@ -235,11 +255,12 @@ interface Sessions {
 }
 
 /**
- * The live sessions in `<config>/sessions/<pid>.json`, by `kit.alive`: a
- * record with a `startedAt` is live only while its pid is the process that
- * started then, not one that reused the pid. `unknown` is set when the
- * folder cannot be read, or the file of a live pid cannot, since that session
- * could be in any project. No folder means no session is recorded.
+ * The live sessions in `<config>/sessions/<pid>.json`, by `kit.alive`. The
+ * process of a live session started before its record says it did and before
+ * the record was last written, so a process that started after both reused
+ * the pid, and the record is not live. `unknown` is set when the folder
+ * cannot be read, or the file of a live pid cannot, since that session could
+ * be in any project. No folder means no session is recorded.
  */
 function liveSessions(kit: Kit, config: string): Sessions {
   const dir = join(config, 'sessions')
@@ -256,26 +277,25 @@ function liveSessions(kit: Kit, config: string): Sessions {
     const m = /^(\d+)\.json$/.exec(name)
     if (m === null) continue
     const pid = Number(m[1])
-    if (pid <= 0 || !kit.alive(pid)) continue
+    if (pid <= 0) continue
     const file = join(dir, name)
+    let written = 0
     let body: unknown
+    let unread: string | undefined
     try {
+      written = statSync(file).mtimeMs
       body = JSON.parse(readFileSync(file, 'utf8'))
+      if (!isObject(body)) unread = `${file} is not a session record`
     } catch (err) {
       // The session ended between the listing and the read.
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue
-      unknown ??= `${file} cannot be read: ${errorText(err)}`
-      continue
+      unread = `${file} cannot be read: ${errorText(err)}`
     }
-    if (!isObject(body)) {
-      unknown ??= `${file} is not a session record`
-      continue
-    }
-    const started = body.startedAt
-    if (typeof started === 'number' || (typeof started === 'string' && started !== '')) {
-      if (!kit.alive(pid, String(started))) continue
-    }
-    live.push({ pid, sessionId: str(body.sessionId), cwd: str(body.cwd) })
+    const record = isObject(body) ? body : {}
+    const last = Math.ceil(Math.max(written, num(record.startedAt)))
+    if (!kit.alive(pid, last > 0 ? String(last) : undefined)) continue
+    if (unread !== undefined) unknown ??= unread
+    else live.push({ pid, sessionId: str(record.sessionId), cwd: str(record.cwd) })
   }
   return { live, unknown }
 }
@@ -287,17 +307,17 @@ interface Seen {
   ctx: Ctx
 }
 
-/** The row for the project folder `dir`, or null when it is not a candidate; `sized: false` leaves out its bytes. */
-function rowFor(kit: Kit, dir: string, seen: Seen, { sized = true } = {}): Row | null {
+/** The row for the project folder `dir`, or undefined when it is not a candidate; `sized: false` leaves out its bytes. */
+function rowFor(kit: Kit, dir: string, seen: Seen, { sized = true } = {}): Row | undefined {
   const name = basename(dir)
-  if (!isDir(dir)) return null
+  if (!isDir(dir)) return undefined
   let record: ProjectRecord | null
   try {
     record = decodeFolder(dir, (p) => gone(p) && !unmounted(p, seen.mounts))
   } catch {
-    return null
+    return undefined
   }
-  if (record === null) return null
+  if (record === null) return undefined
 
   const blockers: Row['blockers'] = []
   const { live, unknown } = seen.sessions
@@ -347,11 +367,11 @@ function rowFor(kit: Kit, dir: string, seen: Seen, { sized = true } = {}): Row |
 
 /** The plugin on `kit`, reading Claude Code's folders under `env`. */
 function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | undefined>>): Plugin {
-  const config = claudeConfigDir(env)
-  const projects = join(config, 'projects')
+  const configOf = (ctx: Ctx): string => claudeConfigDir(env, ctx.cwd)
+  const projectsOf = (ctx: Ctx): string => join(configOf(ctx), 'projects')
   let rows = new Map<string, Row>()
   const look = (ctx: Ctx): Seen => ({
-    sessions: liveSessions(kit, config),
+    sessions: liveSessions(kit, configOf(ctx)),
     mounts: mountPoints(),
     ctx,
   })
@@ -360,10 +380,11 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
     name: AGENT_HISTORY_PLUGIN,
     limits: { discover: DISCOVER_LIMIT_MS },
     // `projects` may be a link, such as to a synced folder; the folders in it may not.
-    detect: () => statSync(projects, { throwIfNoEntry: false })?.isDirectory() === true,
-    roots: () => [projects],
+    detect: (ctx) => statSync(projectsOf(ctx), { throwIfNoEntry: false })?.isDirectory() === true,
+    roots: (ctx) => [projectsOf(ctx)],
     async discover(ctx) {
       const seen = look(ctx)
+      const projects = projectsOf(ctx)
       const names = readdirSync(projects, { withFileTypes: true })
         .filter((e) => e.isDirectory())
         .map((e) => e.name)
@@ -372,7 +393,7 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
       for (const name of names) {
         await yieldToLimit(ctx)
         const row = rowFor(kit, join(projects, name), seen)
-        if (row !== null) found.push(row)
+        if (row !== undefined) found.push(row)
       }
       rows = new Map(found.map((r) => [r.candidate.id, r]))
       return found.map((r) => r.candidate)
@@ -385,12 +406,13 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
           : []
       }),
     delete(c, ctx) {
+      const projects = projectsOf(ctx)
       if (c.path === undefined || dirname(c.path) !== projects) {
         throw new Error(`${c.id} is not a Claude Code project folder in ${projects}`)
       }
       if (!present(c.path)) return `already gone: ${c.path}`
       // Not sized again: `kit.remove` sizes it.
-      const now = rowFor(kit, c.path, look(ctx), { sized: false }) ?? undefined
+      const now = rowFor(kit, c.path, look(ctx), { sized: false })
       checkAgain(c, now)
       if (JSON.stringify(now.candidate.evidence) !== JSON.stringify(c.evidence)) {
         throw new Error(`${c.path} changed since it was proposed`)

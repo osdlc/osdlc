@@ -326,9 +326,10 @@ host-cleaner clean --pick worktree:/path/to/wt --allow close-terminals
 ## The `agent-history` plugin
 
 Claude Code keeps each project's sessions in `~/.claude/projects/<name>/`
-(`CLAUDE_CONFIG_DIR/projects` when that is set). When a worktree is removed,
-its history stays. This plugin proposes the history of a project whose folder
-no longer exists, as `claude-history:<folder>`, with its size.
+(`CLAUDE_CONFIG_DIR/projects` when that is set, a relative one under the folder
+the command runs in). When a worktree is removed, its history stays. This
+plugin proposes the history of a project whose folder no longer exists, as
+`claude-history:<folder>`, with its size.
 
 `<name>` is the project's path with every character but a letter or a digit
 turned into `-` (past 200 characters, its first 200 and a hash), which cannot
@@ -336,14 +337,15 @@ be turned back. So the path is read from what
 the folder records: the first `cwd` of each transcript (`<session>.jsonl`) and
 each `projectPath` in `sessions-index.json`. A folder that records no path, or
 a path that does not give its name (it was moved, or its records disagree), is
-skipped, never guessed, and so is one with a transcript that has no `cwd` in
-its first 256 KiB but goes on past them. A folder is proposed only when every path it records
-is gone, and not when that path would be on a volume that is not mounted
-(its nearest folder that exists is `/Volumes`, `/mnt`, `/media`, `/run/media`
-or a folder below one, or a mount point in
-`/etc/fstab`), or when no folder above it exists but the root (a path from
-another machine, or a drive that is away). A folder that is a link is skipped;
-the `projects` folder itself may be one.
+skipped, never guessed, and so is one with a transcript that gives no `cwd` in
+its first 4 MiB. A folder is proposed only when every path it records is gone,
+and not when that path could be on a volume that is not mounted: the nearest
+folder above it that exists is `/Volumes`, `/mnt`, `/media`, `/run/media` or
+below one (so the history of a project on a volume mounted there is never
+proposed), is a mount point in `/etc/fstab`, or is the root (a path from
+another machine, or a drive that is away). A link there is followed, and one
+that leads nowhere counts as a volume that is away. A project folder in
+`projects` that is a link is skipped; `projects` itself may be one.
 
 History cannot be fetched or built again, so its `costDescription` is `lost`:
 it is held, and runs only when picked and allowed:
@@ -353,13 +355,12 @@ host-cleaner clean --pick claude-history:~/.claude/projects/-Users-me-dev-app-wt
 ```
 
 It is a `refuse` while a Claude Code session in it is running (`live-session`:
-a `~/.claude/sessions/<pid>.json` whose process is alive, by `kit.alive` and the
-record's `startedAt` when it has one so a reused pid does not count, and whose `cwd` or
-session is the folder's), while a process still works in the gone folder
-(`live-process`, by `kit.running`; macOS gives no name
-for a removed folder, so there such a process is not seen),
-or when either cannot be read (`session-state-unreadable`,
-`process-table-unreadable`). `delete` reads the folder and the sessions again,
+a `~/.claude/sessions/<pid>.json` whose process is alive and whose `cwd` or
+session is the folder's; a process that started after the file was last
+written, and after its `startedAt`, reused the pid and does not count), while a
+process still works in the gone folder (`live-process`; macOS gives no name for
+a removed folder, so there such a process is not seen), or when either cannot
+be read (`session-state-unreadable`, `process-table-unreadable`). `delete` reads the folder and the sessions again,
 then removes it with `kit.remove`. No settings.
 
 Codex is left out: it keeps sessions by date

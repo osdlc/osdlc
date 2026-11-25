@@ -260,7 +260,7 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
       try {
         roots.add(realpathSync(path))
       } catch {
-        // A directory that is gone has no holders.
+        // A directory that is gone has only the path as given.
       }
       return table
         .filter((row) =>

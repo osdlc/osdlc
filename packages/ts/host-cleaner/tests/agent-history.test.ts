@@ -1,8 +1,9 @@
 /** The `agent-history` plugin over a temporary Claude Code folder and two project paths, one live and one gone. */
 
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
+import fs, { existsSync, mkdirSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -124,10 +125,11 @@ describe('the project folder name', () => {
   })
 
   test('the config folder is CLAUDE_CONFIG_DIR, else .claude in the home folder', () => {
-    expect(claudeConfigDir({ HOME: '/h' })).toBe('/h/.claude')
-    expect(claudeConfigDir({ HOME: '/h', CLAUDE_CONFIG_DIR: '/c' })).toBe('/c')
-    expect(claudeConfigDir({ HOME: '/h', CLAUDE_CONFIG_DIR: '' })).toBe('/h/.claude')
-    expect(claudeConfigDir({ HOME: '' })).toBe(join(homedir(), '.claude'))
+    expect(claudeConfigDir({ HOME: '/h' }, '/w')).toBe('/h/.claude')
+    expect(claudeConfigDir({ HOME: '/h', CLAUDE_CONFIG_DIR: '/c' }, '/w')).toBe('/c')
+    expect(claudeConfigDir({ HOME: '/h', CLAUDE_CONFIG_DIR: '' }, '/w')).toBe('/h/.claude')
+    expect(claudeConfigDir({ HOME: '' }, '/w')).toBe(join(homedir(), '.claude'))
+    expect(claudeConfigDir({ HOME: '/h', CLAUDE_CONFIG_DIR: 'c' }, '/w')).toBe('/w/c')
   })
 
   test('a name past 200 characters is its first 200 and a hash', () => {
@@ -168,9 +170,37 @@ describe('mount points', () => {
     expect(unmounted(path, new Set([data]))).toBe(true)
   })
 
-  test('a gone path below /mnt may be unmounted, whatever folders of it are left', () => {
-    expect(unmounted('/mnt/host-cleaner-none/dev/app', new Set())).toBe(true)
-    expect(unmounted('/media/someone/usb/dev/app', new Set())).toBe(true)
+  test('a gone path whose nearest folder is an empty mount folder that fstab does not list may be unmounted', () => {
+    const t = tempHome()
+    cleanups.push(t.cleanup)
+    const mnt = join(t.home, 'mnt')
+    const usb = join(mnt, 'usb')
+    mkdirSync(join(usb, 'someone'), { recursive: true })
+    for (const above of [mnt, usb, join(usb, 'someone'), join(mnt, 'away')]) {
+      expect(unmounted(join(above, 'dev', 'app'), new Set(), [mnt])).toBe(true)
+    }
+    expect(unmounted(join(usb, 'dev', 'app'), new Set(), [])).toBe(false)
+    mkdirSync(`${mnt}-not`)
+    expect(unmounted(join(`${mnt}-not`, 'dev', 'app'), new Set(), [mnt])).toBe(false)
+  })
+
+  test('a link above a gone path is followed to the mount folder', () => {
+    const t = tempHome()
+    cleanups.push(t.cleanup)
+    const usb = join(t.home, 'mnt', 'usb')
+    mkdirSync(usb, { recursive: true })
+    symlinkSync(usb, join(t.home, 'linked'))
+    symlinkSync(join(t.home, 'mnt', 'away'), join(t.home, 'dangling'))
+    const path = join(t.home, 'linked', 'dev', 'app')
+    expect(unmounted(path, new Set(), [])).toBe(false)
+    expect(unmounted(path, new Set(), [join(t.home, 'mnt')])).toBe(true)
+    expect(unmounted(path, new Set([usb]), [])).toBe(true)
+    expect(unmounted(join(t.home, 'dangling', 'dev', 'app'), new Set(), [])).toBe(true)
+    // A link in a mount folder that leads out of it still counts.
+    symlinkSync(t.home, join(t.home, 'mnt', 'out'))
+    expect(
+      unmounted(join(t.home, 'mnt', 'out', 'dev', 'app'), new Set(), [join(t.home, 'mnt')]),
+    ).toBe(true)
   })
 })
 
@@ -279,13 +309,47 @@ describe('discover', () => {
     const fx = fixture()
     const dir = fx.history(fx.gone)
     const long = (bytes: number, cwd: string): string =>
-      [JSON.stringify({ type: 'summary', text: 'x'.repeat(bytes) }), JSON.stringify({ cwd })].join(
-        '\n',
-      )
-    writeFileSync(join(dir, 'a.jsonl'), long(40 * 1024, fx.gone))
-    expect(decodeFolder(dir)?.paths).toEqual([fx.gone])
-    writeFileSync(join(dir, 'b.jsonl'), long(300 * 1024, fx.gone))
+      [{ type: 'summary', text: 'x'.repeat(bytes) }, { cwd }]
+        .map((r) => JSON.stringify(r))
+        .join('\n')
+    const file = join(dir, 'a.jsonl')
+    for (const bytes of [40 * 1024, 300 * 1024, 3 * 1024 * 1024]) {
+      writeFileSync(file, long(bytes, fx.gone))
+      expect(decodeFolder(dir)?.paths).toEqual([fx.gone])
+      // The folder is not deleted without a later `cwd` being checked.
+      writeFileSync(file, long(bytes, fx.live))
+      expect(decodeFolder(dir)).toBeNull()
+    }
+    writeFileSync(file, long(5 * 1024 * 1024, fx.gone))
     expect(decodeFolder(dir)).toBeNull()
+  })
+
+  test('a transcript is read no further than the part that gives its cwd', () => {
+    const fx = fixture()
+    const dir = fx.history(fx.gone)
+    const file = join(dir, '0a1b2c3d-0000-4000-8000-000000000001.jsonl')
+    fs.appendFileSync(file, `\n${'x'.repeat(1024 * 1024)}\n`)
+    const read = vi.spyOn(fs, 'readSync')
+    syncBuiltinESMExports()
+    try {
+      expect(decodeFolder(dir)?.paths).toEqual([fx.gone])
+      const bytes = read.mock.results.map((r) => r.value as number)
+      expect(bytes).toEqual([16 * 1024])
+    } finally {
+      read.mockRestore()
+      syncBuiltinESMExports()
+    }
+  })
+
+  test('a long first line that gives the cwd itself, and a last line with no line end, are read', () => {
+    const fx = fixture()
+    const dir = join(fx.projects, projectFolderName(fx.gone))
+    mkdirSync(dir)
+    const row = JSON.stringify({ cwd: fx.gone, text: 'x'.repeat(300 * 1024) })
+    for (const text of [row, `${row}\n`, `${'x'.repeat(16 * 1024 - 1)}\n${row}`]) {
+      writeFileSync(join(dir, 's.jsonl'), text)
+      expect(decodeFolder(dir)?.paths).toEqual([fx.gone])
+    }
   })
 
   test('a path on a volume that is not mounted is not taken for gone', async () => {
@@ -354,6 +418,21 @@ describe('discover', () => {
     expect(s.candidates.map((c) => c.path)).toEqual([
       join(config, 'projects', projectFolderName(fx.gone)),
     ])
+  })
+
+  test('a relative CLAUDE_CONFIG_DIR is under the folder the command runs in', async () => {
+    const fx = fixture()
+    const dir = join(fx.home, 'other-config', 'projects', projectFolderName(fx.gone))
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 's.jsonl'), JSON.stringify({ cwd: fx.gone }))
+    const plugin = fx.plugin(idle, { HOME: fx.home, CLAUDE_CONFIG_DIR: 'other-config' })
+    const s = await survey([plugin], fx.ctx)
+    expect(s.candidates.map((c) => c.path)).toEqual([dir])
+    const elsewhere = { ...fx.ctx, cwd: join(fx.home, 'dev') }
+    await expect(deleting(plugin, s.candidates[0]!, elsewhere)).rejects.toThrow(
+      /not a Claude Code project folder/,
+    )
+    expect(existsSync(dir)).toBe(true)
   })
 
   test('not detected without a projects folder', async () => {
@@ -441,20 +520,31 @@ describe('a running session refuses its folder', () => {
     expect(asked).toEqual([fx.gone])
   })
 
-  test('a live pid that started after the session record is another process', async () => {
+  test('a pid that started after its session record is another process, whatever the record says', async () => {
     const fx = fixture()
     const dir = fx.history(fx.gone)
-    fx.session(process.pid, { sessionId: 'x', cwd: fx.gone, startedAt: 1_700_000_000_000 })
-    const reused: ProcessProbe = {
-      alive: (pid, startedAt) => exists(pid) && startedAt === undefined,
+    const started = Date.parse('2026-11-01T00:00:00Z')
+    /** A pid that exists and started at `started`. */
+    const probe: ProcessProbe = {
+      alive: (pid, at) => exists(pid) && (at === undefined || Number(at) >= started),
       holders: () => [],
     }
-    expect(refusals(await survey([fx.plugin(reused)], fx.ctx), `claude-history:${dir}`)).toEqual(
-      [],
-    )
-    expect(refusals(await survey([fx.plugin()], fx.ctx), `claude-history:${dir}`)).toEqual([
-      'live-session',
-    ])
+    const refused = async (body: Record<string, unknown> | string, at: number) => {
+      fx.session(process.pid, body)
+      const when = new Date(at)
+      utimesSync(join(fx.home, '.claude', 'sessions', `${process.pid}.json`), when, when)
+      return refusals(await survey([fx.plugin(probe)], fx.ctx), `claude-history:${dir}`)
+    }
+    const before = started - 60_000
+    const after = started + 1000
+    const own = { sessionId: 'x', cwd: fx.gone }
+    expect(await refused({ ...own, startedAt: before }, before)).toEqual([])
+    expect(await refused(own, before)).toEqual([])
+    expect(await refused('{not json', before)).toEqual([])
+    expect(await refused({ ...own, startedAt: after }, before)).toEqual(['live-session'])
+    // Written by the process since it started, though its `startedAt` is older.
+    expect(await refused({ ...own, startedAt: before }, after)).toEqual(['live-session'])
+    expect(await refused('{not json', after)).toEqual(['session-state-unreadable'])
   })
 })
 
@@ -467,6 +557,18 @@ describe('delete', () => {
     fx.session(process.pid, { sessionId: 'x', cwd: fx.gone })
     await expect(deleting(plugin, s.candidates[0]!, fx.ctx)).rejects.toThrow(
       /is refused: a Claude Code session is running in it/,
+    )
+    expect(existsSync(dir)).toBe(true)
+  })
+
+  test('a transcript added since the plan stops it', async () => {
+    const fx = fixture()
+    const dir = fx.history(fx.gone)
+    const plugin = fx.plugin()
+    const s = await survey([plugin], fx.ctx)
+    fx.history(fx.gone, { session: '0a1b2c3d-0000-4000-8000-000000000002' })
+    await expect(deleting(plugin, s.candidates[0]!, fx.ctx)).rejects.toThrow(
+      /changed since it was proposed/,
     )
     expect(existsSync(dir)).toBe(true)
   })
