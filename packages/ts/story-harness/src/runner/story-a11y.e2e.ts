@@ -98,6 +98,8 @@ for (const id of ids) {
       )
       if (params.test === 'todo') {
         test.info().annotations.push({ type: 'a11y-todo', description: summary.join('\n') })
+        // A todo story is not failed for violations, but a story that errors is.
+        expect(storyError, 'story error').toBeNull()
         return
       }
       expect(summary, 'WCAG A/AA violations').toEqual([])
