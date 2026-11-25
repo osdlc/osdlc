@@ -250,6 +250,9 @@ describe('the PATH of git in a run worktree (final review round 1)', () => {
     writeFileSync(join(bin, 'ssh'), `#!/bin/sh\n: > '${ran('absolute')}'\nexit 1\n`)
     chmodSync(join(bin, 'ssh'), 0o755)
     vi.stubEnv('PATH', `.${delimiter}${process.env.PATH ?? ''}`)
+    // Either would name the ssh to run, and so the person's own.
+    vi.stubEnv('GIT_SSH_COMMAND', undefined)
+    vi.stubEnv('GIT_SSH', undefined)
     // The clone pushes over ssh, as one gh makes with `git_protocol: ssh` does.
     vi.stubEnv('FAKE_GH_PUSH_URL', 'git@ssh.invalid:acme/api.git')
 
