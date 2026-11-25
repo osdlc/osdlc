@@ -105,7 +105,6 @@ const shipped = (name: string): Descriptor =>
 interface Built {
   home: string
   plugin: Plugin
-  d: Descriptor
   calls: ReturnType<typeof fakeRunner>['calls']
   /** The folder of `paths.<key>` on the OS it was built for. */
   folder(key: string): string
@@ -134,8 +133,8 @@ function build(
     writeFileSync(join(folder(key), 'blob'), 'x')
   }
   for (const c of d.candidates) {
+    if (c.glob === undefined) continue
     for (const n of ['a', 'b']) {
-      if (c.glob === undefined) continue
       const rel = c.glob.replace(/\/$/, '').replaceAll('*', n)
       mkdirSync(join(folder(c.path), rel), { recursive: true })
       writeFileSync(join(folder(c.path), rel, 'blob'), n)
@@ -149,20 +148,15 @@ function build(
     env: h.env,
     kit,
   })
-  return { home: h.home, plugin, d, calls: fake.calls, folder }
+  return { home: h.home, plugin, calls: fake.calls, folder }
 }
 
-const ctxOf = (over: Partial<RunCtx> = {}): RunCtx => ({
-  cwd: '/',
-  targets: [],
-  allow: [],
-  ...over,
-})
+const CTX: RunCtx = { cwd: '/', targets: [], allow: [] }
 
-async function surveyAndClean(plugin: Plugin, allow: string[] = []) {
-  const ctx = ctxOf({ allow })
-  const s = await survey([plugin], ctx)
-  return { survey: s, receipt: await clean(plan(s, { allow }), [plugin], ctx) }
+/** Surveys `plugin`, plans it, and cleans the plan. */
+async function surveyAndClean(plugin: Plugin) {
+  const s = await survey([plugin], CTX)
+  return { survey: s, receipt: await clean(plan(s, { allow: [] }), [plugin], CTX) }
 }
 
 /** Sets every modification time under `dir`, and its own, to `hours` ago. */
@@ -251,7 +245,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
           os,
           program === undefined ? {} : { programs: { [program]: () => ({}) } },
         )
-        const s = await survey([b.plugin], ctxOf())
+        const s = await survey([b.plugin], CTX)
         const c = s.candidates[0] as PathCandidate
         const outside = tempHome()
         cleanups.push(outside.cleanup)
@@ -266,7 +260,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
 
     test.each(STORES)('%s: delete throws for a folder outside its roots', async (name) => {
       const b = build(name, os)
-      const s = await survey([b.plugin], ctxOf())
+      const s = await survey([b.plugin], CTX)
       const outside = tempHome()
       cleanups.push(outside.cleanup)
       writeFileSync(join(outside.home, 'blob'), 'x')
@@ -283,7 +277,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       '%s: its program running refuses every candidate',
       async (name, { command, shown }) => {
         const b = build(name, os, { processes: processes({ '/': [{ pid: 7, command }] }) })
-        const s = await survey([b.plugin], ctxOf())
+        const s = await survey([b.plugin], CTX)
         const inUse = s.objections.filter((o) => o.code === IN_USE)
         expect(s.candidates.length).toBeGreaterThan(0)
         expect(inUse.map((o) => o.candidate).sort()).toEqual(ids(s.candidates))
@@ -298,7 +292,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
           .filter(([store]) => store !== name)
           .map(([, r], i) => ({ pid: 10 + i, command: r.command }))
         const b = build(name, os, { processes: processes({ '/': others }) })
-        const s = await survey([b.plugin], ctxOf())
+        const s = await survey([b.plugin], CTX)
         expect(s.objections.filter((o) => o.code === IN_USE)).toEqual([])
       },
     )
@@ -310,7 +304,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       age(b.folder('cache'), 48)
       const { survey: s, receipt } = await surveyAndClean(b.plugin)
       expect(ids(s.candidates)).toEqual(
-        ids([{ id: `pnpm:${b.folder('cache')}` }, { id: `pnpm:${b.folder('store')}` }]),
+        [`pnpm:${b.folder('cache')}`, `pnpm:${b.folder('store')}`].sort(),
       )
       expect(b.calls.map((c) => [c.argv, c.opts.cwd])).toEqual([
         [['pnpm', 'store', 'prune', '--store-dir', b.folder('store')], b.home],
