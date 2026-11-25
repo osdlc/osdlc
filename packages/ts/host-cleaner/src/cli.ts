@@ -373,6 +373,7 @@ const unknownPlugins = (config: Config, known: (name: string) => boolean): strin
  *
  * @param archive - `clean --archive`'s options, passed to the shipped git plugin.
  * @throws BadInput when the config names an unknown plugin.
+ * @throws UnknownPlugin when `--plugin` or `--skip-plugin` names one.
  */
 function pluginsFor(
   v: SweepValues,
