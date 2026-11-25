@@ -106,12 +106,11 @@ export function effectiveSettings(
         key,
         value: getIn(value, at).value,
         default: key === 'idleHours' ? DEFAULT_IDLE_HOURS : f.default,
-        source:
-          getIn(raw, at).found
-            ? 'config'
-            : key === 'idleHours' && shared.idleHours !== undefined
-              ? 'shared'
-              : 'default',
+        source: getIn(raw, at).found
+          ? 'config'
+          : key === 'idleHours' && shared.idleHours !== undefined
+            ? 'shared'
+            : 'default',
         description: f.description,
       }
     })

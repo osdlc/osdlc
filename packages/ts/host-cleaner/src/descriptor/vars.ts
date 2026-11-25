@@ -246,10 +246,7 @@ export async function resolveVars(
 }
 
 /** `record[name]` when `record` has it as its own key, so `constructor` is not read from the prototype. */
-function ownValue<T>(
-  record: Readonly<Record<string, T>> | undefined,
-  name: string,
-): T | undefined {
+function ownValue<T>(record: Readonly<Record<string, T>> | undefined, name: string): T | undefined {
   return record !== undefined && Object.hasOwn(record, name) ? record[name] : undefined
 }
 
