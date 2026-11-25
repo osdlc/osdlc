@@ -254,8 +254,7 @@ blockers are `refuse` objections and its risks `protest`s, so
 freed by a worktree requires it. With `archive`, unlanded work is pushed to the
 remote first; a failed push throws `FatalRun`. The command line does not offer
 `archive` yet; it is set only when building the plugin in code. Grant the named
-risks; the
-`discard-archived` cover is not yet offered here. Its `delete` refuses a
+risks; the `discard-archived` cover is not yet offered here. Its `delete` refuses a
 worktree whose folder has become a symlink, since `git worktree remove` would
 follow it and empty the folder it leads to.
 

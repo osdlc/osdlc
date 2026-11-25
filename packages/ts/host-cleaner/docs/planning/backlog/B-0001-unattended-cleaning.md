@@ -11,11 +11,11 @@ last_reviewed: '2026-11-23'
 # Bring back unattended cleaning, profiles and the claude-code plugin
 
 The first version of host-cleaner runs only when a person runs it: `status`,
-`plan`, `clean`, `config` and `plugins`. It keeps the plugin model, with the `git`,
-`cargo`, `node` and `orca` plugins and every hook, because Orca is the first of
-several tools (other ADEs and IDEs) that take part in cleaning shared locations
-on disk. What is cut is the part that ran with no person present, a second layer of
-config, and the `claude-code` plugin. All three were built and merged first,
+`plan`, `clean`, `config` and `plugins`. It keeps the plugin model, with the
+`git`, `cargo`, `node` and `orca` plugins and every hook, because Orca is the
+first of several tools (other ADEs and IDEs) that take part in cleaning shared
+locations on disk. What is cut is the part that ran with no person present, a
+second layer of config, and the `claude-code` plugin. All three were built and merged first,
 then rolled back before any release to keep the first version simple: `clean
 --auto` and `schedule` in the pull request that adds this item, profiles and
 `claude-code` in the next one (#1061). This item keeps them on record so they
@@ -29,7 +29,8 @@ the `claude-code` adapter with its `close-session` risk.
 Everything below is on `main` at `3a401796aa2d` (2026-11-22), the commit this
 rollback starts from. Restore a piece from there rather than rewriting it. The
 pull requests that built it: #965 (`clean --auto` and `schedule`), #985
-(profiles) and #964 (the `claude-code` plugin, `src/claude.ts`). The design review is in #951:
+(profiles) and #964 (the `claude-code` plugin, `src/claude.ts`). The design
+review is in #951:
 `docs/parley/host-cleaner-design.json`, with the owner's answers.
 
 ## What was removed, and what would bring it back

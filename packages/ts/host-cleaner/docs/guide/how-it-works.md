@@ -76,10 +76,10 @@ flowchart LR
    not (`Survey.notes`); `status`, `plan` and `clean` print each as the
    warning `<plugin>: <note>`, `status --format json` and `clean --format
    json` carry them under `notes`, and `plugins` shows it after the plugin's
-   state. A throw, a
-   time-out, or any other answer leaves it out with a warning. Every hook's
-   `ctx.targetsGiven` says whether the targets were given (on the command line
-   or in the config) or the core fell back to the current folder.
+   state. A throw, a time-out, or any other answer leaves it out with a
+   warning. Every hook's `ctx.targetsGiven` says whether the targets were
+   given (on the command line or in the config) or the core fell back to the
+   current folder.
 2. **scope.** Plugins add targets: `orca` adds the repositories Orca lists.
 3. **discover.** Each plugin proposes candidates. The core drops, with a
    warning, a candidate whose owner is not the plugin proposing it, one that is
@@ -231,8 +231,7 @@ still answers active, with the reason as its note.
 code. `clean --plan` drops, as `gone`, a planned candidate no plugin proposes
 now, including one from a plugin this install does not have. A
 `plugins.<name>` entry in the config that no plugin has is refused (exit 2).
-host-cleaner
-refuses to run as root.
+host-cleaner refuses to run as root.
 
 `plugins` runs `detect`, `scope` and `roots` and nothing else (`inspect` in
 `src/run.ts`), with the same limits and the same root checks as the survey. It
