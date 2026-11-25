@@ -23,7 +23,7 @@ import { tempHome } from '../src/testing.ts'
 
 // The examples as the system description gives them.
 
-const UV = `# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
+const UV = `# yaml-language-server: $schema=${DESCRIPTOR_SCHEMA_URL}
 descriptor: 1
 store: uv # the research corpus slug it was drafted from; optional
 detect:
@@ -195,6 +195,31 @@ describe("the system description's examples", () => {
     ])
   })
 
+  test('a ${VAR} in a command argument, an env value or a glob is refused too', () => {
+    expect(
+      issues(
+        hfWith(
+          "{ path: hub, costDescription: rebuild, command: [go, clean, '${GOCACHE}/x', '{path}'], env: { A: '${B}' }, removes: all }",
+        ),
+      ),
+    ).toEqual([
+      'line 5: candidates.0.command.2: variables (tier 2) are not supported yet',
+      'line 5: candidates.0.env.A: variables (tier 2) are not supported yet',
+    ])
+    expect(issues(hfWith("{ path: hub, costDescription: rebuild, glob: '${X}/*' }"))).toEqual([
+      'line 5: candidates.0.glob: variables (tier 2) are not supported yet',
+    ])
+  })
+
+  test('vars is reported beside the schema problems, not after they are fixed', () => {
+    expect(
+      issues(`${hfWith("{ path: hub, costDescription: rebuild, idleHours: 'x' }")}vars: {}\n`),
+    ).toEqual([
+      'line 5: candidates.0.idleHours: Invalid input: expected number, received string',
+      'line 6: vars: variables (tier 2) are not supported yet',
+    ])
+  })
+
   test('a glob may start with ~ when it names an entry, such as ~$*', () => {
     expect(issues(hfWith("{ path: hub, costDescription: rebuild, glob: '~$*' }"))).toEqual([])
   })
@@ -335,6 +360,23 @@ describe('a bad descriptor names the field path', () => {
       HUGGING_FACE.replace('~/.cache/huggingface/hub', `'${root}'`),
       'line 4: paths.hub.all: must name a folder below the home folder or a root, not the home folder or a root itself',
     ]),
+    ...['/home/alice', '/Users/alice/', '/root', 'C:\\Users\\alice', '/home/alice/.'].map(
+      (home): [string, string, string] => [
+        `a home folder written out, ${home}`,
+        HUGGING_FACE.replace('~/.cache/huggingface/hub', `'${home}'`),
+        'line 4: paths.hub.all: must name a folder below a home folder, not a home folder itself',
+      ],
+    ),
+    ...['{..,x}/*', '{/etc,x}', 'a/{x,~/y}', '{x,C:/y}'].map((glob): [string, string, string] => [
+      `a glob with an alternative that leaves the path, ${glob}`,
+      hfWith(`{ path: hub, costDescription: rebuild, glob: '${glob}' }`),
+      'line 5: candidates.0.glob: must stay inside the path: no .. segment, not absolute',
+    ]),
+    [
+      'a numeric unknown key names its own line',
+      `${HUGGING_FACE}1: x\n`,
+      'line 10: 1: unknown field',
+    ],
     [
       'a detect onPath that is a path',
       UV.replace('{ onPath: uv }', '{ onPath: /usr/local/bin/uv }'),
@@ -395,6 +437,13 @@ describe('a bad descriptor names the field path', () => {
     ],
   ])('%s', (_, text, issue) => {
     expect(issues(text)).toEqual([issue])
+  })
+
+  test('${HOME} alone is a home folder too, and a variable', () => {
+    expect(issues(HUGGING_FACE.replace('~/.cache/huggingface/hub', "'${HOME}'"))).toEqual([
+      'line 4: paths.hub.all: must name a folder below a home folder, not a home folder itself',
+      'line 4: paths.hub.all: variables (tier 2) are not supported yet',
+    ])
   })
 
   test('every problem is listed, not only the first', () => {
@@ -493,15 +542,25 @@ describe('the shipped JSON Schema', () => {
     expect(shippedText, stale).toBe(descriptorSchemaText())
   })
 
-  test('its $id is the URL the examples name, pinned to descriptor-1', () => {
+  test('its $id is the URL the README names, on this release line', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      version: string
+    }
+    const line = pkg.version.split('.').slice(0, 2).join('.')
+    expect(DESCRIPTOR_SCHEMA_URL).toBe(
+      `https://unpkg.com/@osdlc/host-cleaner@${line}/schemas/descriptor-1.json`,
+    )
     expect(descriptorJsonSchema()['$id']).toBe(DESCRIPTOR_SCHEMA_URL)
-    expect(UV).toContain(`$schema=${DESCRIPTOR_SCHEMA_URL}`)
+    const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8')
+    expect(readme).toContain(`$schema=${DESCRIPTOR_SCHEMA_URL}`)
   })
 
-  test('the package ships it', () => {
+  test('the package ships it, and exports it', () => {
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
       files: string[]
+      exports: Record<string, unknown>
     }
     expect(pkg.files).toContain('schemas/')
+    expect(pkg.exports['./schemas/descriptor-1.json']).toBe('./schemas/descriptor-1.json')
   })
 })

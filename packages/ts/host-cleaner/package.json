@@ -31,7 +31,8 @@
     "./testing": {
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
-    }
+    },
+    "./schemas/descriptor-1.json": "./schemas/descriptor-1.json"
   },
   "files": [
     "dist/",

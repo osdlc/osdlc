@@ -7,8 +7,9 @@
  * reader runs.
  *
  * `vars` (tier 2) is in the schema, so a tier 2 file has its shape checked,
- * but `parseDescriptor` and `readDescriptor` refuse it, and any `${VAR}` in a
- * folder of `paths` or `inUse.locks`, until variables are built.
+ * but `parseDescriptor` and `readDescriptor` refuse it, and any `${VAR}`
+ * outside it (a folder, lock, glob, command argument or env value), until
+ * variables are built.
  */
 
 import { readFileSync } from 'node:fs'
@@ -16,13 +17,19 @@ import { z } from 'zod'
 import { LineCounter, isMap, isScalar, isSeq, parseDocument, type Document } from 'yaml'
 
 import { COST_DESCRIPTIONS } from '../types.ts'
+import { VERSION } from '../version.generated.ts'
 
 /** The format version this reader takes. */
 export const DESCRIPTOR_VERSION = 1
 
-/** Where the published JSON Schema lives; a descriptor's `$schema` may name it. */
-export const DESCRIPTOR_SCHEMA_URL =
-  'https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json'
+/** The release line, `major.minor` of package.json's version. */
+const RELEASE_LINE = VERSION.split('.').slice(0, 2).join('.')
+
+/**
+ * Where this release line publishes the JSON Schema; a descriptor's `$schema`
+ * may name it. It follows package.json's version.
+ */
+export const DESCRIPTOR_SCHEMA_URL = `https://unpkg.com/@osdlc/host-cleaner@${RELEASE_LINE}/schemas/descriptor-1.json`
 
 /** How many glob matches become candidates of their own before the rest are combined into one. */
 export const DEFAULT_MAX_ENTRIES = 200
@@ -34,6 +41,20 @@ export type Os = (typeof OSES)[number]
 
 /** A `..` segment, which would climb out of where a path or glob is anchored. */
 const CLIMBS = /(^|[/\\])\.\.([/\\]|$)/
+
+/**
+ * A glob alternative that climbs or starts outside: a `..` segment, or a
+ * leading `/`, `\`, `~/` or drive, at the start or after a brace's `{` or `,`.
+ */
+const GLOB_ESCAPES = /(^|[/\\{,])\.\.([/\\},]|$)|(^|[{,])([/\\]|~([/\\,}]|$)|[A-Za-z]:)/
+
+/**
+ * A home folder, or the folder that holds them, written out: `/root`,
+ * `/home/<user>`, `/Users/<user>`, `C:\Users\<user>`, `${HOME}` or
+ * `${USERPROFILE}`.
+ */
+const HOME_FOLDER =
+  /^(\/root|\/(home|Users)(\/[^/]*)?|[A-Za-z]:[/\\]Users([/\\][^/\\]*)?|\$\{(HOME|USERPROFILE)\})[/\\]*$/i
 
 const NAME = /^[A-Za-z][A-Za-z0-9_-]*$/
 
@@ -56,6 +77,10 @@ const folder = z
   .refine(
     (p) => namesEntry(p.replace(/^(~|[A-Za-z]:)/, '')),
     'must name a folder below the home folder or a root, not the home folder or a root itself',
+  )
+  .refine(
+    (p) => !HOME_FOLDER.test(p.replace(/[/\\]\.(?=[/\\]|$)/g, '')),
+    'must name a folder below a home folder, not a home folder itself',
   )
 
 /** One value for every OS (`all`), or one per OS; an OS with none doesn't have the path. */
@@ -137,7 +162,7 @@ export const DescriptorCandidateSchema = z
     glob: z
       .string()
       .min(1)
-      .refine((g) => !CLIMBS.test(g) && !/^([/\\]|~([/\\]|$)|[A-Za-z]:)/.test(g), {
+      .refine((g) => !GLOB_ESCAPES.test(g), {
         message: 'must stay inside the path: no .. segment, not absolute',
       })
       .refine(namesEntry, {
@@ -326,23 +351,35 @@ function check(value: unknown): { data?: Descriptor; issues: { path: Path; messa
     error: (iss) => (iss.input === undefined && iss.code !== 'custom' ? 'required' : undefined),
   })
   const issues: { path: Path; message: string }[] = []
-  if (!parsed.success) {
+  if (!parsed.success)
     for (const i of parsed.error.issues) {
       if (i.code === 'unrecognized_keys')
         for (const key of i.keys) issues.push({ path: [...i.path, key], message: 'unknown field' })
       else issues.push({ path: i.path, message: i.message })
     }
-    return { issues }
+  issues.push(...tier2Issues(value))
+  return parsed.success && issues.length === 0 ? { data: parsed.data, issues } : { issues }
+}
+
+/**
+ * Where `value` uses variables (tier 2): `vars` itself, and every string
+ * outside it with a `${` in it. Read from the raw value, so they are reported
+ * beside the schema's problems.
+ */
+function tier2Issues(value: unknown): { path: Path; message: string }[] {
+  const issues: { path: Path; message: string }[] = []
+  const walk = (v: unknown, path: PropertyKey[]): void => {
+    if (typeof v === 'string') {
+      if (v.includes('${')) issues.push({ path, message: TIER_2 })
+    } else if (Array.isArray(v)) v.forEach((item, i) => walk(item, [...path, i]))
+    else if (typeof v === 'object' && v !== null)
+      for (const [key, item] of Object.entries(v)) {
+        if (path.length === 0 && key === 'vars') issues.push({ path: ['vars'], message: TIER_2 })
+        else walk(item, [...path, key])
+      }
   }
-  const d = parsed.data
-  if (d.vars !== undefined) issues.push({ path: ['vars'], message: TIER_2 })
-  for (const [name, folders] of Object.entries(d.paths))
-    for (const [os, p] of Object.entries(folders))
-      if (p?.includes('${')) issues.push({ path: ['paths', name, os], message: TIER_2 })
-  d.inUse?.locks?.forEach((p, i) => {
-    if (p.includes('${')) issues.push({ path: ['inUse', 'locks', i], message: TIER_2 })
-  })
-  return issues.length > 0 ? { issues } : { data: d, issues }
+  walk(value, [])
+  return issues
 }
 
 const fieldPath = (path: Path): string => (path.length === 0 ? '(top)' : path.map(String).join('.'))
@@ -409,7 +446,7 @@ function offsetOf(doc: Document, path: Path): number | undefined {
     const parent = n === 1 ? doc.contents : doc.getIn(path.slice(0, n - 1), true)
     const last = path[n - 1]
     const node = isMap(parent)
-      ? parent.items.find((pair) => isScalar(pair.key) && pair.key.value === last)?.key
+      ? parent.items.find((pair) => isScalar(pair.key) && String(pair.key.value) === String(last))?.key
       : isSeq(parent) && typeof last === 'number'
         ? parent.items[last]
         : undefined
