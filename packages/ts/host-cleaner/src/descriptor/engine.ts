@@ -116,11 +116,10 @@ const expand = (folder: string, home: string): string => {
 
 /**
  * Why `path`, one of a descriptor's folders, may not be cleaned, or null when
- * it may. It must pass the core's check of a self root ({@link rootProblem}):
- * not `/`, not a symlink, not be or hold home, not be a personal folder, not
- * be or hold a target or a checkout. It must also sit strictly inside `home`
- * and neither hold nor sit inside host-cleaner's own folders. Judged on the
- * path as given and on its real path, as the filesystem spells it.
+ * it may. It must pass the core's check of a self root ({@link rootProblem}),
+ * sit strictly inside `home`, and neither hold nor sit inside host-cleaner's
+ * own folders. Judged on the path as given and on its real path, as the
+ * filesystem spells it.
  */
 export function pathProblem(
   path: string,
