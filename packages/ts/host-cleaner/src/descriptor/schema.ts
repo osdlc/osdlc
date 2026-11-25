@@ -453,8 +453,9 @@ const fieldPath = (path: Path): string => (path.length === 0 ? '(top)' : path.ma
  * The descriptor in `text`, YAML or JSON; `source` names it in errors.
  *
  * @throws DescriptorError for text that is not YAML, a value that is not a
- *   descriptor, or one that uses `vars`; each issue names the field path and,
- *   when the YAML has it, the line
+ *   descriptor, or one that uses tier 2 variables (`vars`, or `${` in any
+ *   other string); each issue names the field path and, when the YAML has it,
+ *   the line
  */
 export function parseDescriptor(text: string, source: string): Descriptor {
   const lines = new LineCounter()

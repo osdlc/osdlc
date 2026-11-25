@@ -35,12 +35,7 @@ import {
   readConfig,
   type Config,
 } from './config.ts'
-import {
-  DescriptorLoadError,
-  sameDescriptor,
-  type DescriptorProblem,
-  type DescriptorSources,
-} from './descriptor/load.ts'
+import { DescriptorLoadError, sameDescriptor, type DescriptorSources } from './descriptor/load.ts'
 import { DescriptorError } from './descriptor/schema.ts'
 import { gitDefinitionWith } from './git.ts'
 import { pluginKit } from './kit.ts'
@@ -51,7 +46,6 @@ import {
   loadPackages,
   packageEntries,
   packageRoots,
-  type LoadedPackage,
   type PackageEntry,
   type PackageFailure,
 } from './load.ts'
@@ -61,6 +55,7 @@ import {
   UnknownPlugin,
   findPlugins,
   selectPlugins,
+  withPackages,
   type Loaded,
 } from './registry.ts'
 import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
@@ -452,78 +447,96 @@ function sourcesFor(
   }
 }
 
-/** What every command loads before it runs. */
-interface Loading {
+/** What every command finds before it loads a package. */
+interface Found {
   config: Config
-  definitions: readonly PluginDefinition[]
-  /** Each package loaded, by name. */
-  packages: readonly LoadedPackage[]
-  /** The config's entries with a `package`, loaded or not. */
+  /** The file the config came from, for its errors. */
+  path: string
+  /** The built-ins and the descriptors. */
+  found: Loaded
+  /** The config's entries with a `package`. */
   entries: readonly PackageEntry[]
-  /** The packages that did not load. */
-  failed: PackageFailure[]
-  /** The descriptors that can't be used. */
-  problems: readonly DescriptorProblem[]
   /** The config's `plugins` entries that name no plugin this run has. */
   unknown: string[]
   /** What went wrong finding the descriptors that does not stop the run. */
   warnings: string[]
 }
 
+/** {@link Found}, with the packages loaded. */
+interface Loading extends Found {
+  loaded: Loaded
+  /** The packages that did not load. */
+  failed: PackageFailure[]
+}
+
 /**
- * The plugin definitions and the config checked against them: the built-ins,
- * the packages the config names and the descriptors, or with `deps.plugins`
- * the built-ins alone, and no package or descriptor loaded. A package the run
- * leaves out is not loaded.
+ * The built-ins and the descriptors, and the config checked against them, or
+ * with `deps.plugins` the built-ins alone and no descriptor loaded. Runs no
+ * package's code, so what it refuses is refused before any is imported.
+ */
+function findRun(
+  v: { config?: string | undefined; descriptor: readonly string[] },
+  ctx: CliContext,
+  deps: MainDeps,
+): Found {
+  const path = v.config === undefined ? configFile(hostDirs(ctx.env)) : resolve(ctx.cwd, v.config)
+  const config = readConfig(path, { required: v.config !== undefined, plugins: [] })
+  const entries = packageEntries(config.plugins)
+  const from = deps.plugins === undefined ? sourcesFor(v, ctx, deps) : undefined
+  const found: Loaded =
+    from === undefined
+      ? { definitions: BUILT_IN_PLUGINS, packages: [], descriptors: [], problems: [] }
+      : findPlugins(from.sources, {}, { loaded: [], entries })
+  checkPlugins(config, path, found.definitions)
+  const known = new Set([
+    ...(deps.plugins?.map((p) => p.name) ?? found.definitions.map((d) => d.name)),
+    ...entries.map((e) => e.name),
+    ...found.problems.map((p) => p.name),
+  ])
+  return {
+    config,
+    path,
+    found,
+    entries,
+    unknown: Object.keys(config.plugins).filter((n) => !known.has(n)),
+    warnings: from?.warnings ?? [],
+  }
+}
+
+/**
+ * `run` with its packages loaded and their entries checked against their
+ * settings. A package the run leaves out is not loaded, nor any with
+ * `deps.plugins`.
  */
 async function loadRun(
-  v: { config?: string | undefined; descriptor: readonly string[] },
+  run: Found,
   naming: Naming,
   ctx: CliContext,
   deps: MainDeps,
 ): Promise<Loading> {
-  const path = v.config === undefined ? configFile(hostDirs(ctx.env)) : resolve(ctx.cwd, v.config)
-  const config = readConfig(path, { required: v.config !== undefined, plugins: [] })
-  const entries = packageEntries(config.plugins, (n) =>
-    BUILT_IN_PLUGINS.some((d) => d.name === n) ? 'the built-in plugin' : undefined,
-  )
-  // The built-ins' entries are checked before any package's code runs.
-  checkPlugins(config, path, BUILT_IN_PLUGINS)
-  const from = deps.plugins === undefined ? sourcesFor(v, ctx, deps) : undefined
-  const used = from === undefined ? [] : entries.filter((e) => !leftOut(e.name, naming, config))
+  const used =
+    deps.plugins === undefined
+      ? run.entries.filter((e) => !leftOut(e.name, naming, run.config))
+      : []
   const packages = await loadPackages(used, deps.packageRoots ?? packageRoots(ctx.env))
-  const loaded: Pick<Loaded, 'definitions' | 'packages' | 'problems'> =
-    from === undefined
-      ? { definitions: BUILT_IN_PLUGINS, packages: [], problems: [] }
-      : findPlugins(from.sources, {}, { loaded: packages.loaded, entries })
-  checkPlugins(config, path, loaded.definitions)
-  const known = new Set([
-    ...(deps.plugins?.map((p) => p.name) ?? loaded.definitions.map((d) => d.name)),
-    ...entries.map((e) => e.name),
-    ...loaded.problems.map((p) => p.name),
-  ])
-  return {
-    config,
-    definitions: loaded.definitions,
-    packages: loaded.packages,
-    entries,
-    failed: packages.failed,
-    problems: loaded.problems,
-    unknown: Object.keys(config.plugins).filter((n) => !known.has(n)),
-    warnings: from?.warnings ?? [],
-  }
+  checkPlugins(
+    run.config,
+    run.path,
+    packages.loaded.map((p) => p.definition),
+  )
+  return { ...run, loaded: withPackages(run.found, packages.loaded), failed: packages.failed }
 }
 
 const unknownMessage = (unknown: readonly string[]): string =>
   `config names no plugin ${unknown.join(', ')}; a descriptor of that name is not loaded`
 
 /**
- * The config and the plugins this run uses: {@link loadRun}, each built from
- * its entry (or `deps.plugins`), then chosen by flag, and what to warn of. A
- * descriptor that can't be used stops the run unless the run leaves its name
- * out. A config entry that names no plugin stops the run when `strict`.
- * `failed` are the packages that did not load or build, which the run goes
- * without.
+ * The config and the plugins this run uses: {@link findRun}, then
+ * {@link loadRun}, each built from its entry (or `deps.plugins`), then chosen
+ * by flag, and what to warn of. A descriptor that can't be used stops the run
+ * unless the run leaves its name out. A config entry that names no plugin
+ * stops the run when `strict`. `failed` are the packages that did not load or
+ * build, which the run goes without.
  */
 async function setUp(
   v: SweepValues,
@@ -532,9 +545,9 @@ async function setUp(
   strict: boolean,
 ): Promise<{ config: Config; plugins: Plugin[]; failed: PackageFailure[]; warnings: string[] }> {
   const naming = { want: v.plugin, skip: v.skipPlugin }
-  const loading = await loadRun(v, naming, ctx, deps)
-  const { config, problems, unknown, failed } = loading
-  const warnings = [...loading.warnings]
+  const run = findRun(v, ctx, deps)
+  const { config, found, unknown } = run
+  const warnings = [...run.warnings]
   if (unknown.length > 0) {
     if (strict) {
       throw new BadInput(
@@ -543,11 +556,12 @@ async function setUp(
     }
     warnings.push(unknownMessage(unknown))
   }
-  for (const p of problems) {
+  for (const p of found.problems) {
     if (!leftOut(p.name, naming, config)) throw p.error
     warnings.push(`${p.error.message}; this run leaves ${p.name} out`)
   }
-  return { config, plugins: pluginsFor(v, loading, deps, ctx), failed, warnings }
+  const loading = await loadRun(run, naming, ctx, deps)
+  return { config, plugins: pluginsFor(v, loading, deps, ctx), failed: loading.failed, warnings }
 }
 
 /**
@@ -558,7 +572,8 @@ async function setUp(
  * @throws BadInput when `--plugin` names a package that failed
  */
 function pluginsFor(v: SweepValues, loading: Loading, deps: MainDeps, ctx: CliContext): Plugin[] {
-  const { config, definitions, entries, failed, problems } = loading
+  const { config, entries, failed } = loading
+  const { definitions, problems } = loading.loaded
   // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
@@ -746,8 +761,9 @@ async function runConfig(
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
-    const loading = await loadRun(v, {}, ctx, deps)
-    const { config, definitions, packages, problems, unknown, failed, warnings } = loading
+    const loading = await loadRun(findRun(v, ctx, deps), {}, ctx, deps)
+    const { config, unknown, failed, warnings } = loading
+    const { definitions, packages, problems } = loading.loaded
     writeWarnings(ctx, name, [
       ...warnings,
       ...problems.map((p) => p.error.message),

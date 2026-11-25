@@ -6,7 +6,7 @@
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import {
@@ -24,7 +24,13 @@ import {
   type PluginDefinition,
 } from '../src/index.ts'
 import { contractSuite, fakeContext, tempHome } from '../src/testing.ts'
-import { FIXTURE, FIXTURE_PLUGIN, exporting, nodeModules } from './fixtures/packages.ts'
+import {
+  CLASS_PLUGIN,
+  FIXTURE,
+  FIXTURE_PLUGIN,
+  exporting,
+  nodeModules,
+} from './fixtures/packages.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -87,13 +93,24 @@ describe('where a package is looked for', () => {
         ? join(dirname(process.execPath), 'node_modules')
         : join(dirname(dirname(process.execPath)), 'lib', 'node_modules'),
     )
-    expect(packageRoots({ npm_config_prefix: '' }, '/x')).toEqual(packageRoots({}, '/x'))
     const appData = packageRoots({ APPDATA: '/users/me/AppData/Roaming' }, '/x')
     expect(appData.at(-1)).toBe(
       process.platform === 'win32'
         ? join('/users/me/AppData/Roaming', 'npm', 'node_modules')
         : join(dirname(dirname(process.execPath)), 'lib', 'node_modules'),
     )
+  })
+
+  test('no root is relative to the folder host-cleaner runs in: an empty prefix is unset, a relative one gives none', () => {
+    const beside = packageRoots({ npm_config_prefix: '/opt/npm' }, '/a').slice(0, -1)
+    expect(packageRoots({ npm_config_prefix: '' }, '/a')).toEqual(packageRoots({}, '/a'))
+    expect(packageRoots({ APPDATA: '' }, '/a')).toEqual(packageRoots({}, '/a'))
+    for (const npm_config_prefix of ['lib', '.', './npm', '../npm', '~/npm', ' ']) {
+      expect(packageRoots({ npm_config_prefix }, '/a')).toEqual(beside)
+    }
+    for (const env of [{}, { npm_config_prefix: '' }, { APPDATA: '' }, { APPDATA: 'x' }]) {
+      expect(packageRoots(env).filter((r) => !isAbsolute(r))).toEqual([])
+    }
   })
 
   test('the first root that has the package wins', async () => {
@@ -159,32 +176,7 @@ describe('what a package must export', () => {
   })
 
   test('a plugin made as a class, with a private field and a getter-only name, runs as it is', async () => {
-    const r = await load(
-      `import { existsSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
-import { PLUGIN_API, definePlugin, z } from '@osdlc/host-cleaner/plugin'
-class Fixture {
-  #root
-  #kit
-  constructor(root, kit) { this.#root = root; this.#kit = kit }
-  get name() { return 'fixture' }
-  detect() { return existsSync(this.#root) }
-  roots() { return [this.#root] }
-  discover() {
-    return readdirSync(this.#root).map((n) =>
-      this.#kit.candidate({ kind: 'scratch', path: join(this.#root, n), why: 'a fixture folder', costDescription: 're-download' }),
-    )
-  }
-  delete(c, ctx) { return this.#kit.remove(c.path, ctx) }
-}
-export default definePlugin({
-  name: 'fixture',
-  api: PLUGIN_API,
-  settings: z.strictObject({ keep: z.array(z.string()).default([]) }),
-  create: ({ env, kit }) => new Fixture(join(env.HOME ?? '', '.fixture'), kit),
-})
-`,
-    )
+    const r = await load(CLASS_PLUGIN)
     expect(r.failed).toEqual([])
     const { home, plugin } = created(r.loaded[0]!.definition)
     expect(plugin.constructor.name).toBe('Fixture')
@@ -220,7 +212,20 @@ export default definePlugin({
       `${FIXTURE} 1.0.0 has no default export; it must export default definePlugin({ ... })`,
     )
     expect(await failure(exporting("{ name: 'fixture', api: 1, create() {} }"))).toContain(
-      'default export has no zod object settings',
+      'default export has no zod object settings; it must export default definePlugin({ ... })',
+    )
+    expect(
+      await failure(exporting("{ name: 'fixture', settings: z.object({}), create() {} }")),
+    ).toContain('default export has no api; it must export default definePlugin({ ... })')
+  })
+
+  test('settings made with a zod that cannot be extended are refused as that, not as no settings', async () => {
+    expect(
+      await failure(
+        exporting("{ name: 'fixture', api: 1, settings: { shape: {}, parse() {} }, create() {} }"),
+      ),
+    ).toBe(
+      `plugins.fixture.package: ${FIXTURE} 1.0.0 has settings made with a zod this host-cleaner can't extend; make them with the z that @osdlc/host-cleaner/plugin exports`,
     )
   })
 
@@ -293,18 +298,17 @@ export default definePlugin({
 })
 
 describe('config entries and the run’s plugins', () => {
-  test('only entries with a package, by name; a path or a taken name is an error', () => {
-    const taken = (n: string) => (n === 'git' ? 'the built-in plugin' : undefined)
+  test('only entries with a package, by name; a path or a built-in name is an error', () => {
     expect(
-      packageEntries({ zeta: { package: 'z' }, cargo: {}, alpha: { package: '@a/b' } }, taken),
+      packageEntries({ zeta: { package: 'z' }, cargo: {}, alpha: { package: '@a/b' } }),
     ).toEqual([
       { name: 'alpha', package: '@a/b' },
       { name: 'zeta', package: 'z' },
     ])
     for (const bad of ['./plugin', '/abs/plugin', '../x', 'Up', 1]) {
-      expect(() => packageEntries({ x: { package: bad } }, taken)).toThrow(PackageError)
+      expect(() => packageEntries({ x: { package: bad } })).toThrow(PackageError)
     }
-    expect(() => packageEntries({ git: { package: 'git-cleaner' } }, taken)).toThrow(
+    expect(() => packageEntries({ git: { package: 'git-cleaner' } })).toThrow(
       'plugins.git.package: git is the built-in plugin; every plugin has its own name, so a package plugin needs another',
     )
   })
@@ -332,18 +336,36 @@ describe('config entries and the run’s plugins', () => {
       'aardvark',
     ])
     expect(loaded.packages.map((p) => p.version)).toEqual(['1.0.0', '1.0.0'])
-    expect(() =>
-      loadPlugins({ shipped, user }, {}, { loaded: [], entries: [entry('node', FIXTURE)] }),
-    ).toThrow(
-      new PackageError(
-        'plugins.node.package: node is the built-in plugin; every plugin has its own name, so a package plugin needs another',
-      ),
-    )
     writeFileSync(join(user, 'beta.yaml'), descriptor)
-    expect(() => loadPlugins({ shipped, user }, {}, { loaded: [], entries })).toThrow(
-      new DescriptorLoadError(
-        `descriptor ${join(user, 'beta.yaml')} is named beta, as the package plugins.beta.package names (${FIXTURE}-b); every plugin has its own name, so rename the file`,
-      ),
-    )
+    // A package of that name clashes by its entry, or by itself when the caller gives no entry.
+    for (const of of [
+      { loaded: [], entries },
+      { loaded: packages.loaded, entries: [] },
+    ]) {
+      expect(() => loadPlugins({ shipped, user }, {}, of)).toThrow(
+        new DescriptorLoadError(
+          `descriptor ${join(user, 'beta.yaml')} is named beta, as the package plugins.beta.package names (${FIXTURE}-b); every plugin has its own name, so rename the file`,
+        ),
+      )
+    }
+  })
+
+  test('a package named as a built-in is refused by its entry, or by itself', async () => {
+    const nm = nodeModules(tempDir())
+    nm.add(FIXTURE, FIXTURE_PLUGIN.replaceAll("'fixture'", "'node'"))
+    const entries = [entry('node')]
+    const { loaded, failed } = await loadPackages(entries, [nm.root])
+    expect(failed).toEqual([])
+    const sources = { shipped: tempDir() }
+    for (const of of [
+      { loaded: [], entries },
+      { loaded, entries: [] },
+    ]) {
+      expect(() => loadPlugins(sources, {}, of)).toThrow(
+        new PackageError(
+          'plugins.node.package: node is the built-in plugin; every plugin has its own name, so a package plugin needs another',
+        ),
+      )
+    }
   })
 })

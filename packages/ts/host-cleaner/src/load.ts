@@ -12,11 +12,12 @@
  */
 
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { z } from 'zod'
 
+import { BUILT_IN_PLUGINS } from './builtins.ts'
 import { byName } from './helpers.ts'
 import { builtOn } from './kit.ts'
 import { HOOKS, PLUGIN_API, type Plugin, type PluginDefinition } from './types.ts'
@@ -75,8 +76,10 @@ export const isPackaged = (def: PluginDefinition): boolean => fromPackage.has(de
  * The `node_modules` folders a package is looked for in, in order: those
  * above host-cleaner's own folder (`from`), as Node resolves host-cleaner's
  * own imports, then the global prefix's. The prefix is `npm_config_prefix`
- * when set and not empty, else npm's default: `%APPDATA%\npm` on Windows, and the one Node
- * is installed under elsewhere or without `APPDATA`.
+ * when set and not empty, as npm reads it, else npm's default:
+ * `%APPDATA%\npm` on Windows, and the one Node is installed under elsewhere or
+ * without `APPDATA`. A relative prefix gives no folder: it would be one in
+ * whatever checkout host-cleaner runs in.
  */
 export function packageRoots(
   env: Readonly<Record<string, string | undefined>>,
@@ -88,27 +91,36 @@ export function packageRoots(
     if (dirname(dir) === dir) break
   }
   const windows = process.platform === 'win32'
-  // An empty prefix is unset, as npm reads it: it would make the root relative to the cwd.
   const prefix =
-    (env.npm_config_prefix === '' ? undefined : env.npm_config_prefix) ??
+    env.npm_config_prefix ||
     (!windows
       ? dirname(dirname(process.execPath))
-      : env.APPDATA !== undefined
+      : env.APPDATA
         ? join(env.APPDATA, 'npm')
         : dirname(process.execPath))
   const global = windows ? join(prefix, 'node_modules') : join(prefix, 'lib', 'node_modules')
-  return roots.includes(global) ? roots : [...roots, global]
+  return !isAbsolute(global) || roots.includes(global) ? roots : [...roots, global]
+}
+
+/**
+ * Refuses a package plugin named as a built-in.
+ *
+ * @throws PackageError
+ */
+export function refuseBuiltInName({ name }: Pick<PackageEntry, 'name'>): void {
+  if (!BUILT_IN_PLUGINS.some((d) => d.name === name)) return
+  throw new PackageError(
+    `plugins.${name}.package: ${name} is the built-in plugin; every plugin has its own name, so a package plugin needs another`,
+  )
 }
 
 /**
  * The entries of the config's `plugins` that have a `package`, by name.
- * `taken` says which plugin already has a name, a built-in or a descriptor.
  *
- * @throws PackageError for a `package` that is not an npm package name, or a name another plugin has
+ * @throws PackageError for a `package` that is not an npm package name, or a name a built-in plugin has
  */
 export function packageEntries(
   plugins: Readonly<Record<string, Record<string, unknown>>>,
-  taken: (name: string) => string | undefined,
 ): PackageEntry[] {
   const entries: PackageEntry[] = []
   for (const [name, entry] of Object.entries(plugins)) {
@@ -119,12 +131,7 @@ export function packageEntries(
         `plugins.${name}.package: ${JSON.stringify(pkg)} is not an npm package name; host-cleaner loads a plugin only by the name it is installed under, never from a path`,
       )
     }
-    const other = taken(name)
-    if (other !== undefined) {
-      throw new PackageError(
-        `plugins.${name}.package: ${name} is ${other}; every plugin has its own name, so a package plugin needs another`,
-      )
-    }
+    refuseBuiltInName({ name })
     entries.push({ name, package: pkg })
   }
   return entries.sort(byName)
@@ -187,17 +194,19 @@ const isFile = (path: string): boolean =>
 
 const isObject = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null
 
+const MUST_EXPORT = 'it must export default definePlugin({ ... })'
+
 /** Why `x` is not a `definePlugin` definition, or undefined when it is one. */
 function notADefinition(x: unknown): string | undefined {
-  if (!isObject(x)) return 'has no default export'
-  if (typeof x.name !== 'string') return 'default export has no string name'
-  if (typeof x.create !== 'function') return 'default export has no create function'
-  if (
-    !isObject(x.settings) ||
-    typeof (x.settings as { safeExtend?: unknown }).safeExtend !== 'function'
-  )
-    return 'default export has no zod object settings'
-  return undefined
+  if (!isObject(x)) return `has no default export; ${MUST_EXPORT}`
+  if (typeof x.name !== 'string') return `default export has no string name; ${MUST_EXPORT}`
+  if (typeof x.create !== 'function') return `default export has no create function; ${MUST_EXPORT}`
+  if (x.api === undefined) return `default export has no api; ${MUST_EXPORT}`
+  const { settings } = x
+  if (isObject(settings) && typeof settings.safeExtend === 'function') return undefined
+  return isObject(settings) && typeof settings.parse === 'function'
+    ? "has settings made with a zod this host-cleaner can't extend; make them with the z that @osdlc/host-cleaner/plugin exports"
+    : `default export has no zod object settings; ${MUST_EXPORT}`
 }
 
 /**
@@ -295,18 +304,15 @@ async function loadPackage(entry: PackageEntry, roots: readonly string[]): Promi
     throw fail(`${label} at ${dir} failed to import: ${(err as Error).message}`)
   }
   const def = mod.default
+  // An api given is checked before the shape, which another api may change.
   const api = isObject(def) ? def.api : undefined
-  const otherApi = (): PackageLoadError =>
-    fail(
+  if (api !== undefined && api !== PLUGIN_API) {
+    throw fail(
       `${label} is written for plugin api ${JSON.stringify(api)}, and this host-cleaner supports plugin api ${PLUGIN_API}; install versions of the two that match`,
     )
-  // An api given is checked before the shape, which another api may change.
-  if (api !== undefined && api !== PLUGIN_API) throw otherApi()
-  const shape = notADefinition(def)
-  if (shape !== undefined) {
-    throw fail(`${label} ${shape}; it must export default definePlugin({ ... })`)
   }
-  if (api !== PLUGIN_API) throw otherApi()
+  const shape = notADefinition(def)
+  if (shape !== undefined) throw fail(`${label} ${shape}`)
   const { name } = def as { name: string }
   if (name !== entry.name) {
     throw fail(

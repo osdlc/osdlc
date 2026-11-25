@@ -365,11 +365,12 @@ runs `survey` and `clean` itself can do the same:
 
 | Export | What it does |
 | --- | --- |
-| `packageEntries(config.plugins, taken)` | The `plugins` entries with a `package`, by name; `taken(name)` names the plugin that already has a name. Throws `PackageError`. |
+| `packageEntries(config.plugins)` | The `plugins` entries with a `package`, by name. Throws `PackageError` for one that is not an npm package name or is named as a built-in plugin. |
 | `packageRoots(env)` | The `node_modules` folders a package is looked for in, in order. |
 | `loadPackages(entries, roots)` | Imports each entry's package: `{ loaded, failed }`. A failure is a `PackageFailure`, not a throw. |
 | `loadDescriptors({ shipped, user, flag }, reserved)` | The descriptors a run uses, each with its `source` and the file it `replaces`. Throws `DescriptorLoadError` for a name clash, `DescriptorError` for a bad file. |
-| `loadPlugins(sources, opts, { loaded, entries })` | The built-ins, then the packages, then one `descriptorPlugin` per descriptor: `{ definitions, packages, descriptors }`. Throws `PackageError` for a package entry named as a built-in plugin. |
+| `loadPlugins(sources, opts, { loaded, entries })` | The built-ins, then the packages, then one `descriptorPlugin` per descriptor: `{ definitions, packages, descriptors }`. Throws `PackageError` for a package named as a built-in plugin, and as `loadDescriptors`. |
+| `findPlugins(sources, opts, { loaded, entries })` | As `loadPlugins`, but a descriptor that can't be used is one of `problems`, not a throw. |
 | `parseDescriptor(text, source)`, `readDescriptor(path)` | One descriptor, checked; `DescriptorError` lists each issue with its field and line. `descriptorIssues(value)` returns them instead. |
 | `descriptorPlugin(name, descriptor, opts)` | The `PluginDefinition` for one descriptor. |
 | `DescriptorSchema`, `descriptorJsonSchema()` | The format as a zod schema and as the JSON Schema in `schemas/descriptor-1.json`. |
@@ -379,7 +380,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { loadPackages, loadPlugins, packageEntries, packageRoots } from '@osdlc/host-cleaner'
 
-const entries = packageEntries(config.plugins, () => undefined)
+const entries = packageEntries(config.plugins)
 const { loaded, failed } = await loadPackages(entries, packageRoots(process.env))
 const user = join(homedir(), '.config', 'host-cleaner', 'descriptors')
 const { definitions } = loadPlugins({ user }, {}, { loaded, entries })
@@ -542,17 +543,19 @@ A code plugin published as a package runs when the config names it:
 `"plugins": { "podman": { "package": "@acme/host-cleaner-podman" } }`. Only a
 package the config names is loaded, by its npm name and never from a path: from
 the `node_modules` folders host-cleaner itself is installed in, then the global
-npm prefix (`npm_config_prefix`, else npm's default: `%APPDATA%\npm` on Windows,
-Node's own elsewhere). Its default export must be a
-`definePlugin` value whose `name` is the config key and whose `api` is this
-host-cleaner's `PLUGIN_API`. A name a built-in or a descriptor has is refused
-(exit 2). Packages run after the built-ins and before the descriptors, by name.
-When one fails to load (not installed, its import throws, a wrong export, name
-or api), `status` and `plan` warn and go on without it, and `clean` exits 2
-unless you pass `--skip-plugin <name>`, since its objections would be missing
-too. A package the config disables, or that `--skip-plugin` names, is not
-loaded. `host-cleaner config` names each loaded package with its version and
-folder.
+npm prefix (`npm_config_prefix`, else npm's default: `%APPDATA%\npm` on
+Windows, Node's own elsewhere; a relative prefix is not used). Its default
+export must be a `definePlugin` value whose `name` is the config key and whose
+`api` is this host-cleaner's `PLUGIN_API`. A name a built-in has is refused
+(exit 2), and a descriptor of a package's name is a file that can't be used.
+Packages run after the built-ins and before the descriptors, by name. No
+package is imported until the config's other entries and the descriptors have
+been checked. When one fails to load (not installed, its import throws, a wrong
+export, name or api), `status` and `plan` warn and go on without it, and
+`clean` exits 2 unless you pass `--skip-plugin <name>`, since its objections
+would be missing too. A package the config disables, or that `--skip-plugin`
+names, is not loaded. `host-cleaner config` names each loaded package with its
+version and folder.
 
 The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
 all three directories):

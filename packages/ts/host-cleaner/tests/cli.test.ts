@@ -23,7 +23,13 @@ import { main, tildeId, untildeId, untildeSpare, type MainDeps } from '../src/cl
 import { hostDirs } from '../src/config.ts'
 import { PLAN_VERSION, parsePlan } from '../src/plan.ts'
 import type { Candidate, Objection, Plugin, RefCandidate } from '../src/index.ts'
-import { FIXTURE, FIXTURE_PLUGIN, exporting, nodeModules } from './fixtures/packages.ts'
+import {
+  CLASS_PLUGIN,
+  FIXTURE,
+  FIXTURE_PLUGIN,
+  exporting,
+  nodeModules,
+} from './fixtures/packages.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -798,16 +804,56 @@ describe('packages', () => {
     expect(key.err).toContain('nope')
   })
 
-  test('a bad built-in entry exits 2 before any package is imported', async () => {
-    const marker = join(tempDir(), 'imported')
-    const h = withPackage(
-      { git: { enabled: 'no' }, fixture: { package: FIXTURE } },
-      `import { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(marker)}, '')\n${FIXTURE_PLUGIN}`,
+  test('a plugin made as a class, with private fields and a getter-only name, runs as it is and supersedes a descriptor', async () => {
+    const h = withPackage({ fixture: { package: FIXTURE } }, CLASS_PLUGIN)
+    const file = join(tempDir(), 'scratch.yaml')
+    writeFileSync(
+      file,
+      'descriptor: 1\nsupersededBy: fixture\npaths: { s: { all: ~/.fixture } }\ncandidates: [{ path: s, costDescription: re-download, idleHours: 0 }]\n',
     )
-    const r = await h.go(['status'])
-    expect(r.code).toBe(2)
-    expect(r.err).toContain('plugins.git.enabled')
-    expect(existsSync(marker)).toBe(false)
+    const only = ['--descriptor', file, '--plugin', 'fixture,scratch']
+    const status = await h.go(['status', ...only])
+    expect(status.out).toContain('plugins: fixture\n')
+    expect(status.out).toContain('scratch:~/.fixture/old')
+    expect(status.out).not.toContain('scratch:~/.fixture\n')
+    expect(status.err).toContain('scratch: skipped: the plugin fixture runs instead')
+    const clean = await h.go(['clean', ...only, '--yes', '--receipt', join(h.cwd, 'r.json')])
+    expect(clean.code).toBe(0)
+    expect(existsSync(join(h.home, '.fixture', 'old'))).toBe(false)
+    expect(existsSync(join(h.home, '.fixture'))).toBe(true)
+  })
+
+  test('what the config and the descriptors make a run refuse is refused before any package is imported', async () => {
+    const marker = join(tempDir(), 'imported')
+    const plugin = `import { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(marker)}, '')\n${FIXTURE_PLUGIN}`
+    const refused = async (
+      argv: string[],
+      why: string,
+      over: Record<string, unknown> = {},
+      descriptor = 'uv.yaml',
+    ) => {
+      const h = withPackage({ ...fixture, ...over }, plugin)
+      const file = join(tempDir(), descriptor)
+      writeFileSync(
+        file,
+        'descriptor: 1\npaths: { s: { all: ~/.s } }\ncandidates: [{ path: s, costDescription: re-download }]\n',
+      )
+      const r = await h.go([...argv, '--descriptor', file])
+      expect(r.code).toBe(2)
+      expect(r.err).toContain(why)
+      expect(existsSync(marker)).toBe(false)
+    }
+    await refused(['status'], 'plugins.git.enabled', { git: { enabled: 'no' } })
+    await refused(['config'], 'plugins.uv.idleHours', { uv: { idleHours: 'x' } })
+    const clash = 'is named fixture, as the package plugins.fixture.package names'
+    for (const argv of [['status'], ['plan', '-o', '-'], ['clean', '--yes']]) {
+      await refused(argv, clash, {}, 'fixture.yaml')
+    }
+    await refused(['clean', '--yes'], 'config names no plugin ghost', { ghost: {} })
+
+    // Without any of these, the package is imported.
+    await withPackage(fixture, plugin).go(['status'])
+    expect(existsSync(marker)).toBe(true)
   })
 })
 

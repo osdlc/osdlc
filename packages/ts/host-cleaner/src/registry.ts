@@ -14,7 +14,7 @@ import {
   type LoadedDescriptor,
 } from './descriptor/load.ts'
 import { byName } from './helpers.ts'
-import { PackageError, type LoadedPackage, type PackageEntry } from './load.ts'
+import { refuseBuiltInName, type LoadedPackage, type PackageEntry } from './load.ts'
 import type { Plugin, PluginDefinition } from './types.ts'
 
 export { BUILT_IN_PLUGINS }
@@ -45,7 +45,7 @@ export interface Packages {
  * config, is one of `problems`.
  *
  * @throws DescriptorLoadError for a descriptor folder that can't be read
- * @throws PackageError for a package entry named as a built-in plugin
+ * @throws PackageError for a package named as a built-in plugin
  */
 export function findPlugins(
   sources: DescriptorSources,
@@ -53,13 +53,10 @@ export function findPlugins(
   packages: Packages = { loaded: [], entries: [] },
 ): Loaded {
   const builtIns = BUILT_IN_PLUGINS.map((d) => d.name)
-  const clash = packages.entries.find((e) => builtIns.includes(e.name))
-  if (clash !== undefined) {
-    throw new PackageError(
-      `plugins.${clash.name}.package: ${clash.name} is the built-in plugin; every plugin has its own name, so a package plugin needs another`,
-    )
-  }
-  const code = [...builtIns, ...packages.entries.map((e) => e.name)]
+  // A caller of the library may give a loaded package without its entry.
+  const named = new Map([...packages.loaded, ...packages.entries].map((e) => [e.name, e]))
+  for (const e of named.values()) refuseBuiltInName(e)
+  const code = [...builtIns, ...named.keys()]
   const found = findDescriptors(sources, builtIns)
   const problems = [...found.problems]
   const refused = (d: LoadedDescriptor, why: string): false => {
@@ -71,7 +68,7 @@ export function findPlugins(
     return false
   }
   const descriptors = found.descriptors.filter((d) => {
-    const entry = packages.entries.find((e) => e.name === d.name)
+    const entry = named.get(d.name)
     if (entry !== undefined) {
       return refused(
         d,
@@ -85,16 +82,31 @@ export function findPlugins(
       `: supersededBy ${by} is no built-in plugin and no package the config names; have ${code.join(', ')}`,
     )
   })
-  const loaded = [...packages.loaded].sort(byName)
+  return withPackages(
+    {
+      definitions: [
+        ...BUILT_IN_PLUGINS,
+        ...descriptors.map((d) => descriptorPlugin(d.name, d.descriptor, opts)),
+      ],
+      packages: [],
+      descriptors,
+      problems,
+    },
+    packages.loaded,
+  )
+}
+
+/** `found`, which has no package yet, with those `loaded` between the built-ins and the descriptors, by name. */
+export function withPackages(found: Loaded, loaded: readonly LoadedPackage[]): Loaded {
+  const packages = [...loaded].sort(byName)
   return {
+    ...found,
     definitions: [
       ...BUILT_IN_PLUGINS,
-      ...loaded.map((p) => p.definition),
-      ...descriptors.map((d) => descriptorPlugin(d.name, d.descriptor, opts)),
+      ...packages.map((p) => p.definition),
+      ...found.definitions.filter((d) => !BUILT_IN_PLUGINS.includes(d)),
     ],
-    packages: loaded,
-    descriptors,
-    problems,
+    packages,
   }
 }
 
