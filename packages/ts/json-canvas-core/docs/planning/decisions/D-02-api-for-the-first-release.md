@@ -1,7 +1,7 @@
 ---
 id: D-02
 type: decision
-state: proposed
+state: accepted
 created: 2026-11-22
 ---
 
@@ -10,7 +10,7 @@ created: 2026-11-22
 ## Decision
 
 The first public release keeps the API of the unpublished 0.3.1 with these changes. The owner
-confirms them before the release, so the state of this note is `proposed`.
+confirmed them on 2026-11-24.
 
 | Change | Why |
 | --- | --- |

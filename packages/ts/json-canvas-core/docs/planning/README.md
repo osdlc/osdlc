@@ -22,7 +22,7 @@ decision names the one that replaces it. A task is `open` or `done`.
 ## Decisions
 
 - [D-01](decisions/D-01-name-and-scope.md): Name and scope
-- [D-02](decisions/D-02-api-for-the-first-release.md): The API for the first release (proposed)
+- [D-02](decisions/D-02-api-for-the-first-release.md): The API for the first release
 - [D-03](decisions/D-03-version-line-and-stability.md): Version line and stability
 - [D-04](decisions/D-04-operations-return-a-result.md): Operations return a result value
 - [D-05](decisions/D-05-immutable-through-immer.md): Canvases are immutable through immer

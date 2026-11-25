@@ -22,8 +22,8 @@ decision names the one that replaces it. A task is `open` or `done`.
 ## Decisions
 
 - [D-01](decisions/D-01-name.md): Name
-- [D-02](decisions/D-02-alternatives-considered.md): Alternatives considered (proposed)
-- [D-03](decisions/D-03-api-for-the-first-release.md): The API for the first release (proposed)
+- [D-02](decisions/D-02-alternatives-considered.md): Alternatives considered
+- [D-03](decisions/D-03-api-for-the-first-release.md): The API for the first release
 - [D-04](decisions/D-04-version-line-and-stability.md): Version line and stability
 - [D-05](decisions/D-05-build-and-stylesheet.md): Build: compiled `dist/` and one stylesheet
 - [D-06](decisions/D-06-browsers.md): Supported browsers
