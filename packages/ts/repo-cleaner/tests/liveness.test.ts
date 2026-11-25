@@ -816,13 +816,28 @@ describe('default probe: lsof', () => {
     expect(probe.holders('/home/u/work/wt-a')).toEqual([
       { pid: 3001, command: 'bash', hasChildren: false },
       { pid: 3002, command: 'claude', hasChildren: false },
+      { pid: 3003, command: 'vim', hasChildren: false },
     ])
+  })
+
+  test('Linux: a process still in a removed directory, listed as `<path> (deleted)`', () => {
+    const stdout = [
+      ['p3003', 'cvim', 'n/gone/wt (deleted)'],
+      ['p3004', 'cnode', 'n/gone/wt/src (deleted)'],
+    ]
+      .flat()
+      .join('\n')
+    const lsof = canned(() => ({ stdout }))
+    const probe = defaultProcessProbe({ lsof, ps: noChildren })
+    expect(probe.holders('/gone/wt').map((h) => h.pid)).toEqual([3003, 3004])
+    expect(probe.holders('/gone/wt/src').map((h) => h.pid)).toEqual([3004])
+    expect(probe.holders('/gone/w')).toEqual([])
   })
 
   test('lsof exits 1 with partial output when it cannot read some processes; the rest count', () => {
     const lsof = canned(() => ({ exitCode: 1, stdout: LSOF_LINUX, stderr: 'lsof: WARNING: ...' }))
     expect(defaultProcessProbe({ lsof, ps: noChildren }).holders('/home/u/work/wt-a')).toHaveLength(
-      2,
+      3,
     )
   })
 
@@ -848,6 +863,7 @@ describe('default probe: lsof', () => {
     expect(defaultProcessProbe({ lsof, ps }).holders('/home/u/work/wt-a')).toEqual([
       { pid: 3001, command: 'bash', hasChildren: true },
       { pid: 3002, command: 'claude', hasChildren: false },
+      { pid: 3003, command: 'vim', hasChildren: false },
     ])
     expect(ps.calls[0]).toEqual(['-A', '-o', 'pid=,ppid='])
   })

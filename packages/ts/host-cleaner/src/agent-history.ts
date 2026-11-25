@@ -21,24 +21,31 @@ import {
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 
+import { nodeGuard } from '@osdlc/path-guard/node'
 import { z } from 'zod'
 
-import { objectionsTo, type Row } from './artifacts.ts'
+import {
+  DISCOVER_LIMIT_MS,
+  checkAgain,
+  errorText,
+  isObject,
+  objectionsTo,
+  str,
+  yieldToLimit,
+  type Row,
+} from './helpers.ts'
 import { present, type Kit } from './kit.ts'
 import { PLUGIN_API, definePlugin, type Ctx, type Plugin } from './types.ts'
 
 export const AGENT_HISTORY_PLUGIN = 'agent-history'
 
-/** How much of a transcript is read for its first `cwd`. */
+/** The most of a transcript read for its first `cwd`. */
 const HEAD_BYTES = 256 * 1024
+/** How much more of a transcript is read each time its first `cwd` is not yet found. */
+const CHUNK_BYTES = 16 * 1024
 
-/** Long, since `discover` reads every project folder and sizes each candidate. */
-const DISCOVER_LIMIT_MS = 10 * 60_000
-
-/** Where removable volumes are mounted; the folder above a gone path being one of these means its volume may be away. */
+/** Where removable volumes are mounted; a gone path whose nearest existing folder is one of these or below one means its volume may be away. */
 const MOUNTS: readonly string[] = ['/Volumes', '/mnt', '/media', '/run/media']
-/** Mount folders that hold one folder per user. */
-const USER_MOUNTS: ReadonlySet<string> = new Set(['/media', '/run/media'])
 
 /** The name Claude Code gives the project folder of `path`, before it shortens a long one. */
 export const projectFolderName = (path: string): string => path.replace(/[^A-Za-z0-9]/g, '-')
@@ -52,7 +59,9 @@ const NAME_LIMIT = 200
  */
 export function isFolderOf(path: string, name: string): boolean {
   const full = projectFolderName(path)
-  if (full.length <= NAME_LIMIT) return full === name
+  // A Claude Code that did not shorten names wrote a long one whole.
+  if (full === name) return true
+  if (full.length <= NAME_LIMIT) return false
   const cut = `${full.slice(0, NAME_LIMIT)}-`
   return name.startsWith(cut) && /^-?[0-9a-z]+$/i.test(name.slice(cut.length))
 }
@@ -85,13 +94,6 @@ export function claudeConfigDir(env: Readonly<Record<string, string | undefined>
   return set !== undefined && set !== '' ? resolve(set) : join(env.HOME || homedir(), '.claude')
 }
 
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
-
-const str = (v: unknown): string => (typeof v === 'string' ? v : '')
-
-const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
-
 const isDir = (path: string): boolean =>
   lstatSync(path, { throwIfNoEntry: false })?.isDirectory() === true
 
@@ -106,47 +108,62 @@ function gone(path: string): boolean {
 
 /**
  * Whether `path` may be on a volume that is not mounted: the nearest folder
- * above it that exists is one of `mounts` or a user's folder in one of
- * {@link USER_MOUNTS}, or no folder above it exists but the root, such as
- * `/Volumes/x` recorded on a Mac and read on Linux, or a Windows drive that is away.
+ * above it that exists is one of `mounts`, or is or is below one of
+ * {@link MOUNTS} (such as an empty `/mnt/usb` left by a drive mounted by
+ * hand), or no folder above it exists but the root, such as `/Volumes/x`
+ * recorded on a Mac and read on Linux, or a Windows drive that is away.
  */
 export function unmounted(path: string, mounts: ReadonlySet<string> = new Set(MOUNTS)): boolean {
   let dir = dirname(path)
   while (dirname(dir) !== dir && gone(dir)) dir = dirname(dir)
-  return dirname(dir) === dir || mounts.has(dir) || USER_MOUNTS.has(dirname(dir))
+  return (
+    dirname(dir) === dir || mounts.has(dir) || MOUNTS.some((m) => nodeGuard.contains(m, dir))
+  )
 }
 
-/** Reused by every `head` read, which is synchronous. */
+/** Reused by every {@link firstCwd} read, which is synchronous. */
 let headBuf: Buffer | undefined
 
-/** The first {@link HEAD_BYTES} of `file`, and whether that is all of it. */
-function head(file: string): { text: string; whole: boolean } {
+/** The `cwd` of one transcript line, or undefined when it records none. */
+function cwdOf(line: string): string | undefined {
+  let row: unknown
+  try {
+    row = JSON.parse(line)
+  } catch {
+    return undefined
+  }
+  return isObject(row) && typeof row.cwd === 'string' ? row.cwd : undefined
+}
+
+/** {@link firstCwd}'s answer for a transcript whose first {@link HEAD_BYTES} hold no `cwd` but that goes on. */
+const CUT = Symbol('cut')
+
+/**
+ * The first `cwd` a transcript records within its first {@link HEAD_BYTES},
+ * read {@link CHUNK_BYTES} at a time until a whole line gives one; undefined
+ * when the transcript ends with none, {@link CUT} when it goes on past them.
+ */
+function firstCwd(file: string): string | undefined | typeof CUT {
   const fd = openSync(file, 'r')
   try {
     const buf = (headBuf ??= Buffer.allocUnsafe(HEAD_BYTES))
-    const n = readSync(fd, buf, 0, HEAD_BYTES, 0)
-    return { text: buf.toString('utf8', 0, n), whole: n < HEAD_BYTES }
+    let n = 0
+    // Where the first line not yet read starts.
+    let from = 0
+    while (n < HEAD_BYTES) {
+      const got = readSync(fd, buf, n, Math.min(CHUNK_BYTES, HEAD_BYTES - n), n)
+      n += got
+      for (let nl = buf.indexOf(0x0a, from); nl !== -1 && nl < n; nl = buf.indexOf(0x0a, from)) {
+        const cwd = cwdOf(buf.toString('utf8', from, nl))
+        if (cwd !== undefined) return cwd
+        from = nl + 1
+      }
+      if (got === 0) return cwdOf(buf.toString('utf8', from, n))
+    }
+    return CUT
   } finally {
     closeSync(fd)
   }
-}
-
-/** The first `cwd` a transcript records, within its head; undefined when there is none. */
-function firstCwd(file: string): string | undefined {
-  const { text, whole } = head(file)
-  const lines = text.split('\n')
-  // The last line may be cut off at the read limit.
-  if (!whole) lines.pop()
-  for (const line of lines) {
-    let row: unknown
-    try {
-      row = JSON.parse(line)
-    } catch {
-      continue
-    }
-    if (isObject(row) && typeof row.cwd === 'string') return row.cwd
-  }
-  return undefined
 }
 
 /** The `projectPath` of each entry in a `sessions-index.json`; a file that does not parse names none. */
@@ -172,7 +189,8 @@ export interface ProjectRecord {
 /**
  * The paths the project folder `dir` records, or null when it records none,
  * or one that is not absolute, does not turn into the folder's name, or fails
- * `keep`. It stops reading at the first such path. Links inside it are not
+ * `keep`, or a transcript with no `cwd` in its first {@link HEAD_BYTES} that
+ * goes on past them. It stops reading at the first such path. Links inside it are not
  * followed. Throws when it cannot be read.
  */
 export function decodeFolder(
@@ -193,7 +211,8 @@ export function decodeFolder(
     if (entry.name.endsWith('.jsonl')) {
       sessions.push(entry.name)
       const cwd = firstCwd(file)
-      if (cwd !== undefined && !ok(cwd)) return null
+      // A transcript whose path is not within what is read could name another.
+      if (cwd === CUT || (cwd !== undefined && !ok(cwd))) return null
     } else if (entry.name === 'sessions-index.json') {
       if (!indexPaths(file).every(ok)) return null
     }
@@ -215,22 +234,14 @@ interface Sessions {
   unknown?: string | undefined
 }
 
-/** Whether a process `pid` exists; true when it cannot be told. */
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code !== 'ESRCH'
-  }
-}
-
 /**
- * The live sessions in `<config>/sessions/<pid>.json`. `unknown` is set when
- * the folder cannot be read, or the file of a live pid cannot, since that
- * session could be in any project. No folder means no session is recorded.
+ * The live sessions in `<config>/sessions/<pid>.json`, by `kit.alive`: a
+ * record with a `startedAt` is live only while its pid is the process that
+ * started then, not one that reused the pid. `unknown` is set when the
+ * folder cannot be read, or the file of a live pid cannot, since that session
+ * could be in any project. No folder means no session is recorded.
  */
-function liveSessions(config: string): Sessions {
+function liveSessions(kit: Kit, config: string): Sessions {
   const dir = join(config, 'sessions')
   let names: string[]
   try {
@@ -245,7 +256,7 @@ function liveSessions(config: string): Sessions {
     const m = /^(\d+)\.json$/.exec(name)
     if (m === null) continue
     const pid = Number(m[1])
-    if (pid <= 0 || !alive(pid)) continue
+    if (pid <= 0 || !kit.alive(pid)) continue
     const file = join(dir, name)
     let body: unknown
     try {
@@ -256,8 +267,15 @@ function liveSessions(config: string): Sessions {
       unknown ??= `${file} cannot be read: ${errorText(err)}`
       continue
     }
-    if (!isObject(body)) unknown ??= `${file} is not a session record`
-    else live.push({ pid, sessionId: str(body.sessionId), cwd: str(body.cwd) })
+    if (!isObject(body)) {
+      unknown ??= `${file} is not a session record`
+      continue
+    }
+    const started = body.startedAt
+    if (typeof started === 'number' || (typeof started === 'string' && started !== '')) {
+      if (!kit.alive(pid, String(started))) continue
+    }
+    live.push({ pid, sessionId: str(body.sessionId), cwd: str(body.cwd) })
   }
   return { live, unknown }
 }
@@ -296,18 +314,10 @@ function rowFor(kit: Kit, dir: string, seen: Seen, { sized = true } = {}): Row |
   if (unknown !== undefined) blockers.push({ code: 'session-state-unreadable', reason: unknown })
   let unreadable: string | undefined
   for (const p of record.paths) {
-    // Linux names the working folder of a process whose folder was removed `<path> (deleted)`.
-    const names: string[] = []
-    for (const where of [p, `${p} (deleted)`]) {
-      const held = kit.running({ in: where }, seen.ctx)
-      names.push(...held.names)
-      unreadable ??= held.unknown
-    }
-    if (names.length > 0) {
-      blockers.push({
-        code: 'live-process',
-        reason: `running in ${p}: ${[...new Set(names)].join(', ')}`,
-      })
+    const held = kit.running({ in: p }, seen.ctx)
+    unreadable ??= held.unknown
+    if (held.names.length > 0) {
+      blockers.push({ code: 'live-process', reason: `running in ${p}: ${held.names.join(', ')}` })
     }
   }
   if (unreadable !== undefined) {
@@ -340,7 +350,11 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
   const config = claudeConfigDir(env)
   const projects = join(config, 'projects')
   let rows = new Map<string, Row>()
-  const look = (ctx: Ctx): Seen => ({ sessions: liveSessions(config), mounts: mountPoints(), ctx })
+  const look = (ctx: Ctx): Seen => ({
+    sessions: liveSessions(kit, config),
+    mounts: mountPoints(),
+    ctx,
+  })
 
   return {
     name: AGENT_HISTORY_PLUGIN,
@@ -356,9 +370,7 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
         .sort()
       const found: Row[] = []
       for (const name of names) {
-        // Lets the hook's time limit fire, and stops once it has.
-        await new Promise((done) => setImmediate(done))
-        if (ctx.signal.aborted) throw new Error(`stopped after ${found.length} candidates`)
+        await yieldToLimit(ctx)
         const row = rowFor(kit, join(projects, name), seen)
         if (row !== null) found.push(row)
       }
@@ -378,15 +390,10 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
       }
       if (!present(c.path)) return `already gone: ${c.path}`
       // Not sized again: `kit.remove` sizes it.
-      const now = rowFor(kit, c.path, look(ctx), { sized: false })
-      if (now === null || now.candidate.id !== c.id) {
-        throw new Error(`${c.path} is no longer a candidate`)
-      }
+      const now = rowFor(kit, c.path, look(ctx), { sized: false }) ?? undefined
+      checkAgain(c, now)
       if (JSON.stringify(now.candidate.evidence) !== JSON.stringify(c.evidence)) {
         throw new Error(`${c.path} changed since it was proposed`)
-      }
-      if (now.blockers.length > 0) {
-        throw new Error(`${c.path} is refused: ${now.blockers.map((b) => b.reason).join(', ')}`)
       }
       return kit.remove(c.path, ctx)
     },

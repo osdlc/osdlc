@@ -181,6 +181,17 @@ function killProbe(pid: number): boolean | undefined {
  */
 const PS_ENV = { TZ: 'UTC', LC_ALL: 'C' } as const
 
+/** What Linux appends to the working directory of a process whose directory was removed. */
+const DELETED = ' (deleted)'
+
+/**
+ * The directories a working directory as lsof lists it may be: itself, and,
+ * when it ends in {@link DELETED}, the removed directory it names, since a
+ * process may still sit in a directory that is gone.
+ */
+const cwdsOf = (cwd: string): string[] =>
+  cwd.endsWith(DELETED) ? [cwd, cwd.slice(0, -DELETED.length)] : [cwd]
+
 /** True when the command ran and reported an exit status. */
 const answered = (r: CommandResult): boolean => r.neverExited !== true
 
@@ -252,7 +263,9 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
         // A directory that is gone has no holders.
       }
       return table
-        .filter((row) => [...roots].some((root) => nodeGuard.contains(root, row.cwd)))
+        .filter((row) =>
+          [...roots].some((root) => cwdsOf(row.cwd).some((cwd) => nodeGuard.contains(root, cwd))),
+        )
         .map(({ pid, command, hasChildren }) => ({ pid, command, hasChildren }))
     },
   }

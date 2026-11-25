@@ -204,6 +204,7 @@ without it to the kit it builds; a kit no run has bound removes nothing.
 | `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the hours since, fractions included, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Several folders, as a list, are one answer within one budget. Out of time, it is `{ unmeasured: true }`. |
 | `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
 | `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and the unbroken line of ancestors above it whose command lines name host-cleaner are left out, so the `npm exec` or `pnpm dlx` that started it does not count, but an editor, terminal or `tmux` it runs inside does. The table is read fresh once per hook call; one that could not be read stays `unknown` for the rest of it. |
+| `kit.alive(pid, startedAt?)` | Whether a process is running, by the process probe's `alive`. With `startedAt` (such as epoch milliseconds recorded when it started), a pid reused by a process that started later is not it. `true` when it cannot be told. |
 | `kit.onPath(program)` | Whether a program is on PATH. |
 | `kit.candidate({ kind, path \| ref, ... })` | A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and the plugin as owner. |
 | `kit.run(argv, { signal, check })` | Runs a program through `@osdlc/command-seam`, with a time limit (`RUN_LIMIT_MS`, 30 seconds) and stopped when `ctx.signal` aborts; `ok` when it exited 0, a `CommandFailed` throw with `check`. |
@@ -335,9 +336,11 @@ be turned back. So the path is read from what
 the folder records: the first `cwd` of each transcript (`<session>.jsonl`) and
 each `projectPath` in `sessions-index.json`. A folder that records no path, or
 a path that does not give its name (it was moved, or its records disagree), is
-skipped, never guessed. A folder is proposed only when every path it records
+skipped, never guessed, and so is one with a transcript that has no `cwd` in
+its first 256 KiB but goes on past them. A folder is proposed only when every path it records
 is gone, and not when that path would be on a volume that is not mounted
-(under `/Volumes`, `/mnt`, `/media`, `/run/media` or a mount point in
+(its nearest folder that exists is `/Volumes`, `/mnt`, `/media`, `/run/media`
+or a folder below one, or a mount point in
 `/etc/fstab`), or when no folder above it exists but the root (a path from
 another machine, or a drive that is away). A folder that is a link is skipped;
 the `projects` folder itself may be one.
@@ -350,9 +353,10 @@ host-cleaner clean --pick claude-history:~/.claude/projects/-Users-me-dev-app-wt
 ```
 
 It is a `refuse` while a Claude Code session in it is running (`live-session`:
-a `~/.claude/sessions/<pid>.json` whose process is alive and whose `cwd` or
+a `~/.claude/sessions/<pid>.json` whose process is alive, by `kit.alive` and the
+record's `startedAt` when it has one so a reused pid does not count, and whose `cwd` or
 session is the folder's), while a process still works in the gone folder
-(`live-process`; Linux reports it as `<path> (deleted)`, macOS gives no name
+(`live-process`, by `kit.running`; macOS gives no name
 for a removed folder, so there such a process is not seen),
 or when either cannot be read (`session-state-unreadable`,
 `process-table-unreadable`). `delete` reads the folder and the sessions again,

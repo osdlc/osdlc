@@ -913,6 +913,8 @@ process table once per probe and reuses it for every worktree: `sweep` makes
 one probe per repository, and `run` uses one probe for its re-sweep and
 reads the table afresh for each pre-unlock and pre-remove check. Where the
 table cannot be read the worktree is held back as `process-probe-failed`. A
+process whose working directory was removed, which Linux's `lsof` lists as
+`<path> (deleted)`, still counts as working in `<path>`. A
 host or test supplies its own probe.
 Nothing is ever killed.
 

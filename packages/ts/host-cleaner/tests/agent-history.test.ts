@@ -36,7 +36,18 @@ afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()!()
 })
 
-const idle: ProcessProbe = { alive: () => false, holders: () => [] }
+/** Whether `pid` exists, by `kill(pid, 0)`. */
+const exists = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** No process works in any folder; a pid is alive while it exists. */
+const idle: ProcessProbe = { alive: exists, holders: () => [] }
 
 /** A pid no process has: a child's, after it exited. */
 const deadPid = (): number => spawnSync('true').pid!
@@ -127,6 +138,11 @@ describe('the project folder name', () => {
     expect(isFolderOf(`/${'e'.repeat(250)}`, name)).toBe(false)
     expect(isFolderOf('/a/b', '-a-b')).toBe(true)
   })
+
+  test('a name past 200 characters written whole, as a Claude Code that did not shorten it did', () => {
+    const path = `/${'d'.repeat(210)}/x-y`
+    expect(isFolderOf(path, projectFolderName(path))).toBe(true)
+  })
 })
 
 describe('mount points', () => {
@@ -150,6 +166,11 @@ describe('mount points', () => {
     const path = join(data, 'dev', 'app')
     expect(unmounted(path, new Set())).toBe(false)
     expect(unmounted(path, new Set([data]))).toBe(true)
+  })
+
+  test('a gone path below /mnt may be unmounted, whatever folders of it are left', () => {
+    expect(unmounted('/mnt/host-cleaner-none/dev/app', new Set())).toBe(true)
+    expect(unmounted('/media/someone/usb/dev/app', new Set())).toBe(true)
   })
 })
 
@@ -254,6 +275,19 @@ describe('discover', () => {
     expect((await survey([fx.plugin()], fx.ctx)).candidates).toEqual([])
   })
 
+  test('a first cwd past a long first line is read, one past the read limit skips the folder', () => {
+    const fx = fixture()
+    const dir = fx.history(fx.gone)
+    const long = (bytes: number, cwd: string): string =>
+      [JSON.stringify({ type: 'summary', text: 'x'.repeat(bytes) }), JSON.stringify({ cwd })].join(
+        '\n',
+      )
+    writeFileSync(join(dir, 'a.jsonl'), long(40 * 1024, fx.gone))
+    expect(decodeFolder(dir)?.paths).toEqual([fx.gone])
+    writeFileSync(join(dir, 'b.jsonl'), long(300 * 1024, fx.gone))
+    expect(decodeFolder(dir)).toBeNull()
+  })
+
   test('a path on a volume that is not mounted is not taken for gone', async () => {
     const fx = fixture()
     fx.history('/Volumes/host-cleaner-no-such-volume/dev/app')
@@ -273,7 +307,7 @@ describe('discover', () => {
     const fx = fixture()
     fx.history(fx.gone)
     const ctx = { ...fx.ctx, signal: AbortSignal.abort() }
-    await expect(Promise.resolve(fx.plugin().discover!(ctx))).rejects.toThrow(/stopped/)
+    await expect(Promise.resolve(fx.plugin().discover!(ctx))).rejects.toThrow(/abort/i)
   })
 
   test('a projects folder that is a link is read', async () => {
@@ -392,16 +426,35 @@ describe('a running session refuses its folder', () => {
     ])
   })
 
-  test('a process whose working folder Linux reports as deleted', async () => {
+  test('the process table is asked once per recorded path', async () => {
+    const fx = fixture()
+    fx.history(fx.gone)
+    const asked: string[] = []
+    const probe: ProcessProbe = {
+      alive: exists,
+      holders: (path) => {
+        asked.push(path)
+        return []
+      },
+    }
+    await survey([fx.plugin(probe)], fx.ctx)
+    expect(asked).toEqual([fx.gone])
+  })
+
+  test('a live pid that started after the session record is another process', async () => {
     const fx = fixture()
     const dir = fx.history(fx.gone)
-    const holding: ProcessProbe = {
-      alive: () => true,
-      holders: (path) =>
-        path === `${fx.gone} (deleted)` ? [{ pid: 42, command: 'node', hasChildren: false }] : [],
+    fx.session(process.pid, { sessionId: 'x', cwd: fx.gone, startedAt: 1_700_000_000_000 })
+    const reused: ProcessProbe = {
+      alive: (pid, startedAt) => exists(pid) && startedAt === undefined,
+      holders: () => [],
     }
-    const s = await survey([fx.plugin(holding)], fx.ctx)
-    expect(refusals(s, `claude-history:${dir}`)).toEqual(['live-process'])
+    expect(refusals(await survey([fx.plugin(reused)], fx.ctx), `claude-history:${dir}`)).toEqual(
+      [],
+    )
+    expect(refusals(await survey([fx.plugin()], fx.ctx), `claude-history:${dir}`)).toEqual([
+      'live-session',
+    ])
   })
 })
 
