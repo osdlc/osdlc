@@ -20,14 +20,13 @@ import {
   checkoutsOf,
   hoursText,
   inside,
-  present,
   refusedRow,
   type ArtifactOptions,
   type Checkout,
   type Env,
   type Row,
 } from './artifacts.ts'
-import { idleHoursSetting, type Idle, type Kit } from './kit.ts'
+import { idleHoursSetting, present, type Idle, type Kit } from './kit.ts'
 import { PLUGIN_API, definePlugin, type Plugin } from './types.ts'
 
 export const CARGO_PLUGIN = 'cargo'
@@ -70,27 +69,19 @@ const profileDirs = (target: string): string[] =>
 
 /** The idle time of the newest of `dirs`; unmeasured when any one is. */
 function newestOf(env: Env, dirs: readonly string[]): Idle {
-  let newest: Idle = { unmeasured: false, newestMs: null, hours: null }
+  let newest: Extract<Idle, { unmeasured: false }> = {
+    unmeasured: false,
+    newestMs: null,
+    hours: null,
+  }
   for (const dir of dirs) {
     const one = env.kit.idle(dir)
     if (one.unmeasured) return one
-    if (
-      one.newestMs !== null &&
-      (newest.unmeasured || newest.newestMs === null || one.newestMs > newest.newestMs)
-    ) {
+    if (one.newestMs !== null && (newest.newestMs === null || one.newestMs > newest.newestMs)) {
       newest = one
     }
   }
   return newest
-}
-
-async function rowsFor(env: Env, checkout: Checkout): Promise<Row[]> {
-  try {
-    return await rowsOrThrow(env, checkout)
-  } catch {
-    // A directory that cannot be read may hide a build in progress: no row.
-    return []
-  }
 }
 
 async function rowsOrThrow(env: Env, checkout: Checkout): Promise<Row[]> {
@@ -161,7 +152,7 @@ export function cargoPlugin(opts: ArtifactOptions = {}, kit?: Kit): Plugin {
     (env) =>
       env.kit.onPath('cargo') ||
       checkoutsOf(env).some((c) => existsSync(join(c.path, 'Cargo.toml'))),
-    rowsFor,
+    rowsOrThrow,
     kit,
   )
 }

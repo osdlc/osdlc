@@ -43,7 +43,7 @@ export const DISCARD_USER_DATA = 'discard-user-data'
 /** The protest on a candidate whose idle time could not be measured in the time budget (D11). */
 export const UNMEASURED = 'unmeasured'
 
-const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
+export const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 /** The time limit, in milliseconds, of every hook but `delete`, unless the plugin asks for another. */
 export const HOOK_LIMIT_MS = 30_000
@@ -758,6 +758,7 @@ export async function clean(
   opts: CleanOptions = {},
 ): Promise<Receipt> {
   const now = opts.now ?? (() => new Date())
+  const head = { version: RECEIPT_VERSION, plan: opts.source ?? '(swept)' } as const
   let checked: Awaited<ReturnType<typeof recheck>>
   try {
     checked = await recheck(p, plugins, ctx)
@@ -767,8 +768,7 @@ export async function clean(
       const at = now().toISOString()
       try {
         writeReceipt(opts.receiptPath, {
-          version: RECEIPT_VERSION,
-          plan: opts.source ?? '(swept)',
+          ...head,
           status: 'failed',
           startedAt: at,
           finishedAt: at,
@@ -784,8 +784,7 @@ export async function clean(
   }
   const { decision, survey: s } = checked
   const receipt: Receipt = {
-    version: RECEIPT_VERSION,
-    plan: opts.source ?? '(swept)',
+    ...head,
     status: opts.dryRun === true ? 'dry-run' : 'running',
     startedAt: now().toISOString(),
     finishedAt: null,

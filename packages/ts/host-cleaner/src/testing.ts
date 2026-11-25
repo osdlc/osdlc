@@ -33,7 +33,15 @@ import { sameFingerprint } from '@osdlc/repo-cleaner'
 
 import { PlanSchema } from './plan.ts'
 import { boundBy, type Bounds } from './roots.ts'
-import { HookTimeout, OUTSIDE_ROOTS, callWithin, plan, survey, type Survey } from './run.ts'
+import {
+  HookTimeout,
+  OUTSIDE_ROOTS,
+  callWithin,
+  errorText,
+  plan,
+  survey,
+  type Survey,
+} from './run.ts'
 import { HOOKS, type Candidate, type Ctx, type PathCandidate, type Plugin } from './types.ts'
 
 /** A hook's context: no targets, none given, nothing allowed, and a signal that is never aborted, under `over`. */
@@ -147,7 +155,6 @@ function notJson(value: unknown, at: string): string | null {
   return null
 }
 
-const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 /**
  * Checks `plugin` against the contract, surveying it twice over `ctx`, and

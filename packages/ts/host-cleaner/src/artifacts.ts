@@ -11,8 +11,6 @@
  * again at the re-check instead, where one that is no longer idle is gone.
  */
 
-import { lstatSync } from 'node:fs'
-
 import type { CommandRunner } from '@osdlc/command-seam'
 import { nodeGuard } from '@osdlc/path-guard/node'
 import { Git } from '@osdlc/typed-git'
@@ -22,6 +20,7 @@ import {
   DEFAULT_IDLE_HOURS,
   attachKit,
   pluginKit,
+  present,
   type Kit,
   type KitOptions,
   type Running,
@@ -96,10 +95,6 @@ export function checkoutsOf(env: Env): Checkout[] {
  */
 export const inside = (checkout: string, rel: string): string | null =>
   nodeGuard.tryResolve(checkout, rel)
-
-/** True when `path` exists as itself, a link counted as present. */
-export const present = (path: string): boolean =>
-  lstatSync(path, { throwIfNoEntry: false }) !== undefined
 
 export interface ArtifactFacts {
   kind: ArtifactKind
@@ -226,16 +221,25 @@ export async function removeArtifact(
 const DISCOVER_LIMIT_MS = 10 * 60_000
 
 /**
- * The plugin both artifact plugins are: `rowsOf` lists one checkout's rows,
- * `detect` says whether the plugin applies. Without a kit, one is built from `opts`.
+ * The plugin both artifact plugins are: `rowsOrThrow` lists one checkout's
+ * rows, `detect` says whether the plugin applies. Without a kit, one is built
+ * from `opts`.
  */
 export function artifactPlugin(
   name: string,
   opts: ArtifactOptions,
   detect: (env: Env) => MaybePromise<boolean>,
-  rowsOf: (env: Env, checkout: Checkout) => Promise<Row[]>,
+  rowsOrThrow: (env: Env, checkout: Checkout) => MaybePromise<Row[]>,
   kit: Kit = pluginKit(name, opts),
 ): Plugin {
+  const rowsOf = async (env: Env, checkout: Checkout): Promise<Row[]> => {
+    try {
+      return await rowsOrThrow(env, checkout)
+    } catch {
+      // A directory that cannot be read may hide recent work: no row.
+      return []
+    }
+  }
   let rows = new Map<string, Row>()
   const plugin: Plugin = {
     name,

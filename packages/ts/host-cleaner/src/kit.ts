@@ -167,7 +167,8 @@ export function bindKit(plugin: Plugin, bounds: Bounds): void {
 class OutOfTime extends Error {}
 
 /** True when `path` exists as itself, a link counted as present. */
-const present = (path: string): boolean => lstatSync(path, { throwIfNoEntry: false }) !== undefined
+export const present = (path: string): boolean =>
+  lstatSync(path, { throwIfNoEntry: false }) !== undefined
 
 /** Gives the owner write (and, for a folder, search) permission on everything under `path`, links not followed. Best effort. */
 function makeWritable(path: string): void {
