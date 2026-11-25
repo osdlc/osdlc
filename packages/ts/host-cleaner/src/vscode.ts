@@ -79,7 +79,6 @@ const CURSOR: Editor = {
   appDir: 'Cursor',
   // `Cursor` and its `Cursor Helper (…)` processes on macOS, `cursor` on Linux, and the `cursor-agent` CLI.
   process: /^cursor(?:-agent)?(?:\s|\\x20|$)/i,
-  // Its chat history is kept there, and nothing brings it back.
   keepsChat: true,
   agentWorktrees: join('.cursor', 'worktrees'),
 }
@@ -295,7 +294,7 @@ function localPath(uri: string): string | null {
   return url.protocol === 'file:' ? fileURLToPath(url) : null
 }
 
-/** What the storage folder `dir` says, read from its `workspace.json`; its history is looked for only when `withHistory`. */
+/** What the storage folder `dir` says, read from its `workspace.json`. */
 function entryOf(dir: string, withHistory: boolean): Entry {
   // The editor makes each one a folder; a link or a file is not one of its own and is never followed.
   if (lstatSync(dir, { throwIfNoEntry: false })?.isDirectory() !== true) return { state: 'skip' }
@@ -570,5 +569,5 @@ export const cursorDefinition = definitionOf(CURSOR)
 /** The `vscode` plugin on a kit built from `opts`. */
 export const vscodePlugin = (opts: VscodeOptions = {}): Plugin => pluginOf(VSCODE, opts)
 
-/** The `cursor` plugin on a kit built from `opts`; `userDir` is Cursor's `User` folder. */
+/** The `cursor` plugin on a kit built from `opts`. */
 export const cursorPlugin = (opts: VscodeOptions = {}): Plugin => pluginOf(CURSOR, opts)
