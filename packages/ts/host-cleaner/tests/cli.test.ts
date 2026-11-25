@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, test } from 'vitest'
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -11,14 +12,14 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, type MainDeps } from '../src/cli.ts'
-import { configFile, hostDirs } from '../src/config.ts'
+import { configFile, hostDirs, unreadNativeConfig } from '../src/config.ts'
 import type { Candidate, Objection, Plugin } from '../src/index.ts'
 
 const cleanups: Array<() => void> = []
@@ -337,6 +338,41 @@ describe('folders', () => {
       hostDirs({ ...env, HOST_CLEANER_CONVENTION: 'native' }, opts).config,
     )
     expect(posixDirs(env, opts).config).toBe('C:/Users/me/AppData/Roaming/host-cleaner')
+  })
+
+  test('a config left in the macOS folders by 0.3 is named, never read', () => {
+    const home = tempDir()
+    const mac = { platform: 'darwin', home }
+    expect(unreadNativeConfig({}, mac)).toBeUndefined()
+    const old = join(home, 'Library', 'Application Support', 'host-cleaner', 'config.json')
+    mkdirSync(dirname(old), { recursive: true })
+    writeFileSync(old, 'not json')
+    expect(unreadNativeConfig({}, mac)?.replaceAll('\\', '/')).toBe(old.replaceAll('\\', '/'))
+    // Where the native and xdg folders are the same, there is nothing left behind.
+    expect(unreadNativeConfig({ HOST_CLEANER_ROOT: '/r' }, mac)).toBeUndefined()
+    expect(unreadNativeConfig({ HOST_CLEANER_CONVENTION: 'native' }, mac)).toBeUndefined()
+    const linuxOld = join(home, '.config', 'host-cleaner', 'config.json')
+    mkdirSync(dirname(linuxOld), { recursive: true })
+    writeFileSync(linuxOld, '{}')
+    expect(unreadNativeConfig({}, { platform: 'linux', home })).toBeUndefined()
+  })
+
+  test('with no home, --config still works and clean exits 1', () => {
+    const { cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, '{}')
+    const env = { PATH: process.env.PATH ?? '' }
+    for (const args of [
+      ['config', '--config', file],
+      ['status', '--config', file, cwd],
+    ]) {
+      const r = run(args, cwd, env, { plugins: [fake()] })
+      expect(r.err, args.join(' ')).not.toContain('no home directory')
+      expect(r.code, args.join(' ')).not.toBe(2)
+    }
+    const r = run(['clean', '--yes', '--config', file, cwd], cwd, env, { plugins: [fake()] })
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('no home directory')
   })
 
   test('a bad HOST_CLEANER_CONVENTION is a usage error for every command', () => {

@@ -15,6 +15,7 @@ import {
   canPrompt,
   defineCli,
   renderError,
+  TieredDirsError,
   type ChecklistItem,
   type Cli,
   type CliContext,
@@ -30,6 +31,7 @@ import {
   configFile,
   hostDirs,
   readConfig,
+  unreadNativeConfig,
   type Config,
   type HostDirs,
 } from './config.ts'
@@ -350,18 +352,37 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
 /**
- * The folders and the config. The folders are resolved even with `--config`,
- * so every command refuses a bad folder variable alike. The config is
- * `--config`, which must exist, else `config.json` in `dirs.config` if present;
- * `found` says whether a file was read.
+ * The config: `--config`, which must exist, else `config.json` in the config
+ * folder if present. The folders are resolved even with `--config`, so every
+ * command refuses a bad folder variable alike; a missing home only matters
+ * when the folders are used. Warns when a config in the native folders, such
+ * as macOS's from versions up to 0.3, goes unread.
+ *
+ * @param dirs - The folders, when the caller resolved them already.
  */
 function loadConfig(
   v: { config?: string | undefined },
   ctx: CliContext,
-): { dirs: HostDirs; file: string; found: boolean; config: Config } {
-  const dirs = hostDirs(ctx.env)
-  const file = v.config === undefined ? configFile(dirs) : resolve(ctx.cwd, v.config)
-  return { dirs, file, ...readConfig(file, { required: v.config !== undefined }) }
+  name: string,
+  dirs?: HostDirs,
+): { file: string; fileExists: boolean; config: Config } {
+  if (v.config !== undefined) {
+    if (dirs === undefined) {
+      try {
+        hostDirs(ctx.env)
+      } catch (err) {
+        if (!(err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR')) throw err
+      }
+    }
+    const file = resolve(ctx.cwd, v.config)
+    return { file, ...readConfig(file, { required: true }) }
+  }
+  const file = configFile(dirs ?? hostDirs(ctx.env))
+  const unread = unreadNativeConfig(ctx.env)
+  if (unread !== undefined) {
+    writeWarnings(ctx, name, [`${unread} is not read; the config is now ${file}`])
+  }
+  return { file, ...readConfig(file) }
 }
 
 /** `--plugin` and its alias `--adapter`, as one list; undefined when neither is given. */
@@ -458,7 +479,7 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   const v = parsed.values
   let s: ReturnType<typeof survey>
   try {
-    const { config } = loadConfig(v, ctx)
+    const { config } = loadConfig(v, ctx, name)
     s = survey(
       pluginsFor(v, config, deps, ctx),
       contextFor(parsed.positionals, config, ctx, [], v.ignore),
@@ -488,7 +509,7 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
-    const { file, found: fileExists, config } = loadConfig(v, ctx)
+    const { file, fileExists, config } = loadConfig(v, ctx, name)
     const unused = unknownPlugins(config, (n) => Object.hasOwn(PLUGIN_SETTINGS, n))
     if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
     const settings = effectiveSettings(config.plugins, config)
@@ -544,7 +565,7 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   const v = parsed.values
   let plan: Plan
   try {
-    const { config } = loadConfig(v, ctx)
+    const { config } = loadConfig(v, ctx, name)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = survey(pluginsFor(v, config, deps, ctx), cctx)
     writeWarnings(ctx, name, s.warnings)
@@ -689,9 +710,8 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let cctx: Ctx
   let preview: Decision
   try {
-    const loaded = loadConfig(v, ctx)
-    dirs = loaded.dirs
-    const config = loaded.config
+    dirs = hostDirs(ctx.env)
+    const { config } = loadConfig(v, ctx, name, dirs)
     plugins = pluginsFor(v, config, deps, ctx)
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)

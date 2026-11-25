@@ -177,17 +177,23 @@ same folders as Linux:
 | Log | `~/.local/state/host-cleaner/host-cleaner.log` | `HOST_CLEANER_LOGS_DIR`, or `XDG_STATE_HOME` |
 
 Each variable names the base folder, and host-cleaner adds `host-cleaner/` to
-it: with `HOST_CLEANER_CONFIG_DIR=~/cfg` the config is
-`~/cfg/host-cleaner/config.json`. `HOST_CLEANER_ROOT` moves all three folders,
-which is useful for tests.
+it: with `HOST_CLEANER_CONFIG_DIR=/srv/cfg` the config is
+`/srv/cfg/host-cleaner/config.json`. The value must be an absolute path, and
+`~` in it is not expanded, so a relative or `~` path is refused with exit 2.
+`HOST_CLEANER_ROOT` moves all three folders, which is useful for tests.
 `HOST_CLEANER_CONVENTION=native` puts them back in macOS's own folders under
-`~/Library`; any value other than `native` or `xdg` is refused with exit 2.
+`~/Library`. Spaces around the value are ignored and an empty value counts as
+unset; any other value than `native` or `xdg` is refused with exit 2. With no
+home directory to place the folders in, `clean` and every command that reads
+the default config exit 1; `status`, `plan` and `config` given `--config` still
+run.
 Windows has no `xdg` folders and keeps its own: the config is
 `%APPDATA%\host-cleaner\config.json`.
 
 Versions up to 0.3 kept the macOS config in
 `~/Library/Application Support/host-cleaner/`; it now lives in
-`~/.config/host-cleaner/`, and host-cleaner does not read the old file. Their
+`~/.config/host-cleaner/`, and host-cleaner does not read the old file; while
+it exists, every command that reads the default config warns on stderr. Their
 receipts and log stay where they were written, in
 `~/Library/Application Support/host-cleaner/receipts/` and
 `~/Library/Logs/host-cleaner/`; new ones go to `~/.local/state/host-cleaner/`.

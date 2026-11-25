@@ -13,7 +13,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 
-import { envVars, systemDirs, type ResolveOptions } from '@osdlc/cli-tool'
+import { envVars, systemDirs, TieredDirsError, type ResolveOptions } from '@osdlc/cli-tool'
 
 import { settingsIssues } from './settings.ts'
 
@@ -44,24 +44,48 @@ export interface HostDirs {
  * native ones.
  *
  * @param opts - A platform and home to use instead of this machine's, for tests.
- * @throws ConfigError when the environment cannot place them, such as a
+ * @throws ConfigError for a folder variable that cannot be used, such as a
  *   `HOST_CLEANER_CONVENTION` that is neither `native` nor `xdg`.
+ * @throws TieredDirsError with code `MISSING_BASE_DIR` when no home directory can be found.
  */
 export function hostDirs(
   env: Record<string, string | undefined> = process.env,
   opts: Pick<ResolveOptions, 'platform' | 'home'> = {},
 ): HostDirs {
+  return dirsUnder(env, { convention: 'xdg', ...opts })
+}
+
+function dirsUnder(env: Record<string, string | undefined>, opts: ResolveOptions): HostDirs {
   try {
-    const dirs = systemDirs(VENDOR_DIRS, { env, convention: 'xdg', ...opts })
-    const tier = dirs.standalone('host-cleaner')
+    const tier = systemDirs(VENDOR_DIRS, { env, ...opts }).standalone('host-cleaner')
     return { config: tier.config().path, state: tier.state().path, logs: tier.logs().path }
   } catch (err) {
-    if (err instanceof Error && err.name === 'TieredDirsError') throw new ConfigError(err.message)
+    if (err instanceof TieredDirsError && err.code !== 'MISSING_BASE_DIR') {
+      throw new ConfigError(err.message)
+    }
     throw err
   }
 }
 
 export const configFile = (dirs: HostDirs): string => join(dirs.config, 'config.json')
+
+/**
+ * The config file in the native folders, when it exists and is not the one
+ * {@link hostDirs} names: on macOS, a config left in
+ * `~/Library/Application Support/host-cleaner/` by versions up to 0.3. Only
+ * its existence is checked; it is never read.
+ *
+ * @param opts - A platform and home to use instead of this machine's, for tests.
+ */
+export function unreadNativeConfig(
+  env: Record<string, string | undefined> = process.env,
+  opts: Pick<ResolveOptions, 'platform' | 'home'> = {},
+): string | undefined {
+  const native = configFile(
+    dirsUnder(env, { convention: 'native', conventionFromEnv: false, ...opts }),
+  )
+  return native !== configFile(hostDirs(env, opts)) && existsSync(native) ? native : undefined
+}
 
 /** A config file, or a folder variable, that cannot be used; the CLI exits 2 for it. */
 export class ConfigError extends Error {
@@ -69,18 +93,18 @@ export class ConfigError extends Error {
 }
 
 /**
- * The config at `path`, and whether the file was `found`; empty when the file
- * does not exist, unless `required` (a file the person named).
+ * The config at `path`, and whether the file exists; empty when it does not,
+ * unless `required` (a file the person named).
  *
  * @throws ConfigError for a file that is not valid, or whose plugin entry has an unknown key or a wrong type
  */
 export function readConfig(
   path: string,
   opts: { required?: boolean } = {},
-): { found: boolean; config: Config } {
+): { fileExists: boolean; config: Config } {
   if (!existsSync(path)) {
     if (opts.required) throw new ConfigError(`config ${path} does not exist`)
-    return { found: false, config: ConfigSchema.parse({}) }
+    return { fileExists: false, config: ConfigSchema.parse({}) }
   }
   let raw: unknown
   try {
@@ -92,5 +116,5 @@ export function readConfig(
   if (!parsed.success) throw new ConfigError(`bad config ${path}: ${parsed.error.message}`)
   const issues = settingsIssues(parsed.data.plugins)
   if (issues.length > 0) throw new ConfigError(`bad config ${path}: ${issues.join('; ')}`)
-  return { found: true, config: parsed.data }
+  return { fileExists: true, config: parsed.data }
 }

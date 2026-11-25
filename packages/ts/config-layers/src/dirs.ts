@@ -12,9 +12,10 @@ import {
   type ResolveOptions,
   systemBaseDirs,
   TieredDirs,
+  TieredDirsError,
 } from '@osdlc/tiered-dirs'
 
-export { envVars, TieredDirs }
+export { envVars, TieredDirs, TieredDirsError }
 export type { EnvVars, ResolveOptions }
 
 /**
