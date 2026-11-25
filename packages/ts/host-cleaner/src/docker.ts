@@ -5,8 +5,9 @@
  * Detected when `docker` is on PATH and `docker info` answers. Docker missing
  * is silent; installed but not running gives the reason as detect's note, and
  * the plugin stays out of the run. Every candidate is a ref that Docker deletes
- * itself (`docker volume rm`, `docker image rm`, `docker builder prune --all`), so Docker's data folder is never
- * touched and Docker refuses a volume or image a container took up since.
+ * itself (`docker volume rm`, `docker image rm`, `docker builder prune --all`),
+ * so Docker's data folder is never touched and Docker refuses a volume or image
+ * a container took up since.
  * A volume is `lost`, so it is held and needs `--allow discard-user-data`;
  * images and the build cache are `re-download`.
  * Settings: `plugins.docker.keepVolumes` (default none), volume names never proposed.
@@ -40,7 +41,7 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 
-/** Size prefixes in order of power: `k` is 1000 (or 1024) to the first. */
+/** Size prefixes; each one's index is the power of 1000 (or 1024) it stands for. */
 const PREFIXES = ['', 'k', 'm', 'g', 't', 'p']
 
 /**
@@ -76,7 +77,7 @@ export function reclaimable(stdout: string): number | undefined {
 /** Containers inspected per `docker container inspect`, so its argv stays well under ARG_MAX. */
 const INSPECT_BATCH = 500
 
-/** Whether every error line of `docker container inspect` says a container is gone, and there is one. */
+/** Whether `docker container inspect` printed at least one error line, and every one says a container is gone. */
 const onlyGone = (stderr: string): boolean => {
   const lines = stderr.split('\n').filter((l) => l.trim() !== '')
   return lines.length > 0 && lines.every((l) => /no such (container|object)/i.test(l))
@@ -117,8 +118,8 @@ export function dockerPlugin(
 
   /**
    * The image ids of every container, running or stopped: any one of them keeps its image.
-   * Inspected {@link INSPECT_BATCH} at a time. A container removed after the listing
-   * keeps no image, so `No such container` for it is not a failure.
+   * A container removed after the listing keeps no image, so `No such container`
+   * for it is not a failure.
    */
   const imagesInUse = async (ctx: Ctx): Promise<Set<string>> => {
     const ids = (await docker(['container', 'ls', '--all', '--quiet', '--no-trunc'], ctx))
@@ -188,12 +189,11 @@ export function dockerPlugin(
   }
 
   const buildCache = async (ctx: Ctx): Promise<Candidate[]> => {
-    // `du` may wait on its builder, so it gets the hook's whole limit.
     const r = await kit.run(['docker', 'builder', 'du'], {
       signal: ctx.signal,
       timeoutMs: DISCOVER_LIMIT_MS,
     })
-    // A Docker without buildx has no `builder du`; its volumes and images still count.
+    // Without buildx there is no build cache to propose, but volumes and images still are.
     if (!r.ok && noBuilderDu(failureText(r))) return []
     if (!r.ok) throw new Error(`docker builder du failed: ${firstLine(failureText(r))}`)
     const bytes = reclaimable(r.stdout)
