@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/@osdlc/host-cleaner@0.3/schemas/descriptor-1.json",
+  "$id": "https://unpkg.com/@osdlc/host-cleaner/schemas/descriptor-1.json",
   "title": "host-cleaner descriptor",
   "type": "object",
   "properties": {

@@ -15,17 +15,20 @@ import type { CommandRunner } from '@osdlc/command-seam'
 import { nodeGuard } from '@osdlc/path-guard/node'
 import { Git } from '@osdlc/typed-git'
 
+import { DISCOVER_LIMIT_MS, checkAgain, objectionsTo, yieldToLimit, type Row } from './helpers.ts'
 import {
-  DEFAULT_IDLE_HOURS,
   attachKit,
   coveredBy,
+  idleHoursOr,
   pluginKit,
   present,
   type Kit,
   type KitOptions,
   type Running,
 } from './kit.ts'
-import type { Candidate, Ctx, MaybePromise, Objection, Plugin } from './types.ts'
+import type { Candidate, Ctx, MaybePromise, Plugin } from './types.ts'
+
+export { hoursText, objectionsTo, type Row } from './helpers.ts'
 
 export type ArtifactKind = 'cargo-target' | 'cargo-incremental' | 'node-modules'
 
@@ -49,21 +52,14 @@ export interface Env {
   git: CommandRunner | undefined
   idleHours: number
   ctx: Ctx
+  /** True: only whether an artifact may go is asked, so its size is not read. */
+  unsized?: boolean | undefined
 }
 
-/** The env of one hook call; an `idleHours` that is not a finite number of zero or more becomes {@link DEFAULT_IDLE_HOURS}. */
+/** The env of one hook call, with `idleHours` as {@link idleHoursOr} takes it. */
 export function envOf(kit: Kit, opts: Pick<ArtifactOptions, 'idleHours' | 'git'>, ctx: Ctx): Env {
-  const idle = opts.idleHours
-  return {
-    kit,
-    git: opts.git,
-    idleHours: idle !== undefined && Number.isFinite(idle) && idle >= 0 ? idle : DEFAULT_IDLE_HOURS,
-    ctx,
-  }
+  return { kit, git: opts.git, idleHours: idleHoursOr(opts.idleHours), ctx }
 }
-
-/** `hours` for a sentence, in tenths rounded down, so it never says more than was measured. */
-export const hoursText = (hours: number): string => String(Math.floor(hours * 10) / 10)
 
 /**
  * The checkouts of every repository among the run's targets, primary first; a
@@ -110,28 +106,12 @@ export interface ArtifactFacts {
   notes?: string[]
 }
 
-/** A candidate and what a refusal of it rests on. */
-export interface Row {
-  candidate: Candidate
-  /** Each becomes a `refuse` objection by the owner. */
-  blockers: Array<{ code: string; reason: string }>
-}
-
-export const objectionsTo = (owner: string, row: Row): Objection[] =>
-  row.blockers.map((b) => ({
-    by: owner,
-    candidate: row.candidate.id,
-    level: 'refuse',
-    code: b.code,
-    reason: b.reason,
-  }))
-
 /**
  * The row for one artifact directory: a candidate, refused while a process
  * works in the checkout or the process table cannot be read. An unmeasured
  * one is not sized either: a folder too slow to walk is too slow for `du`.
  */
-export function artifactRow(kit: Kit, f: ArtifactFacts): Row {
+export function artifactRow({ kit, unsized }: Pick<Env, 'kit' | 'unsized'>, f: ArtifactFacts): Row {
   const blockers = [
     ...(f.held.names.length > 0
       ? [
@@ -150,7 +130,7 @@ export function artifactRow(kit: Kit, f: ArtifactFacts): Row {
           },
         ]),
   ]
-  const bytes = f.unmeasured === true ? null : kit.size(f.path)
+  const bytes = f.unmeasured === true || unsized === true ? null : kit.size(f.path)
   return {
     blockers,
     candidate: kit.candidate({
@@ -186,10 +166,10 @@ export function refusedRow(kit: Kit, kind: ArtifactKind, path: string, checkout:
 
 /**
  * Remove the directory `c` names, if its checkout's rows still hold it
- * unrefused: `rowsOf` is read again for that checkout alone, and the kit reads
- * the process table fresh for this call, so idle time and holders are checked
- * now; one the plan had as idle that is now held or unmeasured is kept.
- * `kit.remove` then checks containment again and that the directory is gone
+ * unrefused: `rowsOf` is read again for that checkout alone, unsized, and the
+ * kit reads the process table fresh for this call, so idle time and holders
+ * are checked now ({@link checkAgain}); one the plan had as idle that is now
+ * held or unmeasured is kept. `kit.remove` then checks containment again and that the directory is gone
  * afterwards (see `Kit.remove` in `./kit.ts`). A directory already gone (its
  * worktree was deleted first in this run) is not a failure. Returns what the
  * receipt records.
@@ -202,23 +182,14 @@ export async function removeArtifact(
   const { path, checkout } = c.evidence as { path: string; checkout: string }
   if (!present(path)) return `already gone: ${path}`
   const where = checkoutsOf(env).find((x) => x.path === checkout)
-  const now = (where === undefined ? [] : await rowsOf(env, where)).find(
-    (r) => r.candidate.id === c.id,
+  const rows = where === undefined ? [] : await rowsOf({ ...env, unsized: true }, where)
+  checkAgain(
+    c,
+    rows.find((r) => r.candidate.id === c.id),
   )
-  if (now === undefined) throw new Error(`${path} is no longer a candidate`)
-  if (now.blockers.length > 0) {
-    throw new Error(`${path} is refused: ${now.blockers.map((b) => b.reason).join(', ')}`)
-  }
-  // One the plan ran as idle, not picked or allowed `unmeasured`, must still be idle and measured.
-  if (now.candidate.unmeasured === true && c.unmeasured !== true) {
-    throw new Error(`${path} could not be measured idle in the time budget now`)
-  }
-  if (now.candidate.held === true && c.held !== true) throw new Error(`${path} is no longer idle`)
+  await yieldToLimit(env.ctx)
   return env.kit.remove(path, env.ctx)
 }
-
-/** The longest a survey of every checkout may take: it walks each one. */
-const DISCOVER_LIMIT_MS = 10 * 60_000
 
 /**
  * The plugin both artifact plugins are: `rowsOrThrow` lists one checkout's
@@ -248,7 +219,10 @@ export function artifactPlugin(
     async discover(ctx) {
       const env = envOf(kit, opts, ctx)
       const found: Row[] = []
-      for (const c of checkoutsOf(env)) found.push(...(await rowsOf(env, c)))
+      for (const c of checkoutsOf(env)) {
+        await yieldToLimit(ctx)
+        found.push(...(await rowsOf(env, c)))
+      }
       rows = new Map(found.map((r) => [r.candidate.id, r]))
       return found.map((r) => r.candidate)
     },
