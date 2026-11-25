@@ -25,7 +25,8 @@ import {
   loadDescriptors,
   loadPlugins,
   pluginKit,
-  runsAmong,
+  supersession,
+  survey,
   type Detection,
   type LoadedDescriptor,
   type Plugin,
@@ -200,6 +201,16 @@ describe('one namespace', () => {
     )
   })
 
+  test('one --descriptor file named twice loads once; one not YAML or JSON is an error', () => {
+    const dir = folder(join(tempDir(), 'mine'), { 'uv.yaml': store('a'), 'notes.md': store('b') })
+    const uv = join(dir, 'uv.yaml')
+    const loaded = loadDescriptors({ shipped: tempDir(), flag: [uv, uv] }, RESERVED)
+    expect(loaded.map((d) => d.path)).toEqual([uv])
+    expect(() =>
+      loadDescriptors({ shipped: tempDir(), flag: [join(dir, 'notes.md')] }, RESERVED),
+    ).toThrow(/notes\.md: not a descriptor file; use \.yaml, \.yml, \.json/)
+  })
+
   test('a file name that is no plugin name is an error', () => {
     for (const bad of ['My_Store.yaml', '9lives.yaml', 'Uv.yaml']) {
       expect(() => loadDescriptors(sources({}, { [bad]: store('x') }), RESERVED)).toThrow(
@@ -269,24 +280,64 @@ describe('the run’s plugins', () => {
     )
   })
 
-  test('supersededBy: a plugin runs only when chosen and detected', async () => {
+  test('supersededBy: a plugin runs only when tracked and its detect answered active', async () => {
+    const calls: string[] = []
     const plugin = (name: string, detected: boolean | Detection): Plugin => ({
       name,
-      detect: () => detected,
+      detect: () => {
+        calls.push(name)
+        if (name === 'broken') throw new Error('down')
+        return detected
+      },
     })
-    let chosen: Plugin[] = [
+    const s = supersession()
+    const tracked = s.track([
       plugin('cargo', true),
       plugin('node', false),
       plugin('docker', { active: true, note: 'up' }),
       plugin('ollama', { active: false, note: 'not running' }),
-    ]
-    const runs = runsAmong(() => chosen)
-    expect(await runs('cargo', fakeContext())).toBe(true)
-    expect(await runs('node', fakeContext())).toBe(false)
-    expect(await runs('docker', fakeContext())).toBe(true)
-    expect(await runs('ollama', fakeContext())).toBe(false)
-    expect(await runs('orca', fakeContext())).toBe(false)
-    chosen = []
-    expect(await runs('cargo', fakeContext())).toBe(false)
+      plugin('broken', true),
+      plugin('late', true),
+    ])
+    await Promise.allSettled(tracked.slice(0, -1).map((p) => p.detect(fakeContext())))
+    expect(s.runs('cargo')).toBe(true)
+    expect(s.runs('node')).toBe(false)
+    expect(s.runs('docker')).toBe(true)
+    expect(s.runs('ollama')).toBe(false)
+    expect(s.runs('broken')).toBe(false)
+    expect(s.runs('late')).toBe(false)
+    expect(s.runs('orca')).toBe(false)
+    // runs reads the kept answers: detect is called once per plugin, by the caller.
+    expect(calls).toEqual(['cargo', 'node', 'docker', 'ollama', 'broken'])
+    s.track([])
+    expect(s.runs('cargo')).toBe(false)
+  })
+
+  test('supersededBy: survey asks the built-in once, and the descriptor stands down', async () => {
+    const h = tempHome()
+    cleanups.push(h.cleanup)
+    folder(join(h.home, '.cache', 'x'), { blob: 'x' })
+    const s = supersession()
+    const { definitions } = loadPlugins(
+      sources({ 'uv.yaml': `${store('.cache/x')}supersededBy: cargo\n` }),
+      { runs: s.runs },
+    )
+    let asked = 0
+    const cargo: Plugin = {
+      name: 'cargo',
+      detect: () => {
+        asked += 1
+        return true
+      },
+    }
+    const uv = definitions.find((d) => d.name === 'uv')!.create({
+      settings: { idleHours: 0 },
+      only: [],
+      env: h.env,
+      kit: pluginKit('uv', { env: h.env }),
+    })
+    const result = await survey(s.track([cargo, uv]), fakeContext())
+    expect(asked).toBe(1)
+    expect(result.plugins.map((p) => p.name)).toEqual(['cargo'])
   })
 })

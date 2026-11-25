@@ -3,7 +3,7 @@
  * plugin, built in or a descriptor, has one name in one namespace.
  */
 
-import { cargoDefinition } from './cargo.ts'
+import { BUILT_IN_PLUGINS } from './builtins.ts'
 import { descriptorPlugin, type DescriptorOptions } from './descriptor/engine.ts'
 import {
   DescriptorLoadError,
@@ -11,22 +11,10 @@ import {
   type DescriptorSources,
   type LoadedDescriptor,
 } from './descriptor/load.ts'
-import { gitDefinition } from './git.ts'
-import { nodeDefinition } from './node.ts'
-import { orcaDefinition } from './orca.ts'
 import { detection } from './run.ts'
 import type { Ctx, Plugin, PluginDefinition } from './types.ts'
 
-/**
- * The shipped plugins, in run order. Order decides which plugin keeps a
- * duplicate id, and the order `prepare` and `deleted` run in.
- */
-export const BUILT_IN_PLUGINS: readonly PluginDefinition[] = [
-  gitDefinition,
-  cargoDefinition,
-  nodeDefinition,
-  orcaDefinition,
-]
+export { BUILT_IN_PLUGINS }
 
 /** A run's plugin definitions, and where each descriptor among them came from. */
 export interface Loaded {
@@ -64,17 +52,40 @@ export function loadPlugins(sources: DescriptorSources, opts: DescriptorOptions 
   }
 }
 
+/** A descriptor's `runs` for `supersededBy`, fed by the detect answers of the plugins that run. */
+export interface Supersession {
+  /**
+   * Whether the plugin of `name` is among those given to `track` and its last
+   * `detect` answered `true` or `{ active: true }`. Never calls `detect`: one
+   * that has not answered yet, or threw, does not run.
+   */
+  runs: (name: string) => boolean
+  /** `plugins`, each `detect` answer kept for `runs`. */
+  track: (plugins: readonly Plugin[]) => Plugin[]
+}
+
 /**
- * A descriptor's `runs`, for `supersededBy`: whether the plugin of that name is
- * among those `chosen` gives (enabled and not skipped) and detects: its
- * `detect` answers `true` or `{ active: true }`.
+ * A {@link Supersession}. Survey runs the built-ins' `detect` before any
+ * descriptor's, so a descriptor reads the answer survey acted on.
  */
-export const runsAmong =
-  (chosen: () => readonly Plugin[]) =>
-  async (name: string, ctx: Ctx): Promise<boolean> => {
-    const p = chosen().find((x) => x.name === name)
-    return p !== undefined && detection(await p.detect(ctx))?.active === true
+export function supersession(): Supersession {
+  const answers = new Map<string, unknown>()
+  return {
+    runs: (name) => detection(answers.get(name))?.active === true,
+    track: (plugins) => {
+      answers.clear()
+      return plugins.map((p) => ({
+        ...p,
+        detect: async (ctx: Ctx) => {
+          answers.delete(p.name)
+          const answer = await p.detect(ctx)
+          answers.set(p.name, answer)
+          return answer
+        },
+      }))
+    },
   }
+}
 
 /** A `--plugin` or `--skip-plugin` that names no plugin. */
 export class UnknownPlugin extends Error {

@@ -37,7 +37,7 @@ import { DescriptorLoadError, type DescriptorSources } from './descriptor/load.t
 import { DescriptorError } from './descriptor/schema.ts'
 import { pluginKit } from './kit.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
-import { UnknownPlugin, loadPlugins, runsAmong, selectPlugins } from './registry.ts'
+import { UnknownPlugin, loadPlugins, selectPlugins, supersession } from './registry.ts'
 import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
 import {
   SelectionError,
@@ -400,21 +400,18 @@ const unknownPlugins = (config: Config, known: (name: string) => boolean): strin
  * The config and the plugins this run uses: the built-ins and the descriptors
  * loaded, the config checked against them, each built from its entry (or
  * `deps.plugins`), then chosen by flag. A descriptor's `supersededBy` plugin
- * runs when it is among those chosen and detects.
+ * runs when it is among those chosen and survey found it detected.
  */
 function setUp(
   v: SweepValues,
   ctx: CliContext,
   deps: MainDeps,
 ): { config: Config; plugins: Plugin[] } {
-  let chosen: readonly Plugin[] = []
-  const { definitions } = loadPlugins(sourcesFor(v, ctx, deps), {
-    runs: runsAmong(() => chosen),
-  })
+  const superseded = supersession()
+  const { definitions } = loadPlugins(sourcesFor(v, ctx, deps), { runs: superseded.runs })
   const config = loadConfig(v, ctx, definitions)
   const plugins = pluginsFor(v, config, definitions, deps, ctx)
-  chosen = plugins
-  return { config, plugins }
+  return { config, plugins: deps.plugins === undefined ? superseded.track(plugins) : plugins }
 }
 
 /** The plugins this run uses: `definitions` built from the config, or `deps.plugins`, then chosen by flag. */

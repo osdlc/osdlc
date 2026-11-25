@@ -58,6 +58,25 @@ type Found = Pick<LoadedDescriptor, 'name' | 'source' | 'path'>
 
 const nameOf = (path: string): string => basename(path, extname(path))
 
+const hasDescriptorExtension = (path: string): boolean =>
+  (DESCRIPTOR_EXTENSIONS as readonly string[]).includes(extname(path).toLowerCase())
+
+/**
+ * The `--descriptor` files, each named once.
+ *
+ * @throws DescriptorLoadError for a file without one of {@link DESCRIPTOR_EXTENSIONS}
+ */
+function flagFiles(paths: readonly string[]): string[] {
+  const unique = [...new Set(paths)]
+  const other = unique.find((p) => !hasDescriptorExtension(p))
+  if (other !== undefined) {
+    throw new DescriptorLoadError(
+      `descriptor ${other}: not a descriptor file; use ${DESCRIPTOR_EXTENSIONS.join(', ')}`,
+    )
+  }
+  return unique
+}
+
 /** Whether `e` is a file, or a link to one; a dangling link is none. */
 function isFile(path: string, e: Dirent): boolean {
   if (!e.isSymbolicLink()) return e.isFile()
@@ -88,7 +107,7 @@ function filesIn(dir: string, source: DescriptorSource): Found[] {
     .filter(
       (e) =>
         !e.name.startsWith('.') &&
-        (DESCRIPTOR_EXTENSIONS as readonly string[]).includes(extname(e.name).toLowerCase()) &&
+        hasDescriptorExtension(e.name) &&
         isFile(join(dir, e.name), e),
     )
     .map((e) => join(dir, e.name))
@@ -125,7 +144,8 @@ function foundIn(paths: readonly string[], source: DescriptorSource): Found[] {
  * of the same name.
  *
  * @throws DescriptorLoadError for a descriptor named as a built-in plugin, two
- *   files of one name in one source, or a file name that is no plugin name
+ *   files of one name in one source, a file name that is no plugin name, or a
+ *   `--descriptor` file that is not YAML or JSON by its extension
  * @throws DescriptorError for a file the run uses that can't be read or is not a descriptor
  */
 export function loadDescriptors(
@@ -135,7 +155,7 @@ export function loadDescriptors(
   const layers = [
     filesIn(sources.shipped ?? SHIPPED_DESCRIPTORS, 'shipped'),
     sources.user === undefined ? [] : filesIn(sources.user, 'user'),
-    foundIn(sources.flag ?? [], 'flag'),
+    foundIn(flagFiles(sources.flag ?? []), 'flag'),
   ]
   const chosen = new Map<string, Omit<LoadedDescriptor, 'descriptor'>>()
   for (const layer of layers) {
