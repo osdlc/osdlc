@@ -712,9 +712,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     return { ...found, vars }
   }
   let detected: DescriptorDetection = {}
-  // Only a call that finishes uncancelled records, so a cancelled one, or one that throws, leaves
-  // what an earlier call found. That covers a nested call: another descriptor's `supersededBy`
-  // calls this `detect` under its own ctx and time limit.
+  // Skipping a cancelled call (see `descriptorDetection`) also covers a nested one: another
+  // descriptor's `supersededBy` calls this `detect` under its own ctx and time limit.
   const record = (ctx: Ctx, now: DescriptorDetection): void => {
     if (!ctx.signal.aborted) detected = now
   }
