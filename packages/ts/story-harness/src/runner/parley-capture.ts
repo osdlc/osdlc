@@ -7,12 +7,21 @@
  * the caller's job.
  */
 
+/**
+ * The size of an image in pixels.
+ *
+ * @experimental
+ */
 export interface Viewport {
   width: number
   height: number
 }
 
-/** A box in pixels, from the image's top-left corner. */
+/**
+ * A box in pixels, from the image's top-left corner.
+ *
+ * @experimental
+ */
 export interface PixelBox {
   x: number
   y: number
@@ -20,7 +29,11 @@ export interface PixelBox {
   h: number
 }
 
-/** A box as fractions of the image's width and height, 0 to 1. */
+/**
+ * A box as fractions of the image's width and height, 0 to 1.
+ *
+ * @experimental
+ */
 export interface FractionBox {
   x: number
   y: number
@@ -28,6 +41,11 @@ export interface FractionBox {
   h: number
 }
 
+/**
+ * A marked area of an image, placed as fractions of it.
+ *
+ * @experimental
+ */
 export interface Region {
   id: string
   title: string
@@ -35,6 +53,11 @@ export interface Region {
   detail?: string
 }
 
+/**
+ * One image of a `steps` block, with optional regions.
+ *
+ * @experimental
+ */
 export interface Frame {
   id: string
   src: string
@@ -44,6 +67,11 @@ export interface Frame {
   regions?: Region[]
 }
 
+/**
+ * A `figure` block as parley reads it.
+ *
+ * @experimental
+ */
 export interface FigureBlock {
   id: string
   type: 'figure'
@@ -55,6 +83,11 @@ export interface FigureBlock {
   regions?: Region[]
 }
 
+/**
+ * A `steps` block: a slide show of at least two frames.
+ *
+ * @experimental
+ */
 export interface StepsBlock {
   id: string
   type: 'steps'
@@ -62,6 +95,11 @@ export interface StepsBlock {
   frames: Frame[]
 }
 
+/**
+ * A `heading` block; `level` is 1, 2 or 3.
+ *
+ * @experimental
+ */
 export interface HeadingBlock {
   id: string
   type: 'heading'
@@ -69,13 +107,27 @@ export interface HeadingBlock {
   level?: 1 | 2 | 3
 }
 
+/**
+ * How much a finding matters: `blocker` must be fixed, `should` ought to be, `nice` is optional.
+ *
+ * @experimental
+ */
 export type Severity = 'blocker' | 'should' | 'nice'
 
-/** One evidence entry: an image (figure-like) or a frame sequence. */
+/**
+ * One evidence entry: an image (figure-like) or a frame sequence.
+ *
+ * @experimental
+ */
 export type Evidence =
   | { id: string; src: string; alt: string; caption?: string; regions?: Region[] }
   | { id: string; frames: Frame[] }
 
+/**
+ * A `finding` block as parley reads it.
+ *
+ * @experimental
+ */
 export interface FindingBlock {
   id: string
   type: 'finding'
@@ -91,8 +143,18 @@ export interface FindingBlock {
   evidence?: Evidence[]
 }
 
+/**
+ * Any block this module builds.
+ *
+ * @experimental
+ */
 export type Block = FigureBlock | StepsBlock | HeadingBlock | FindingBlock
 
+/**
+ * A parley document, ready for `JSON.stringify`.
+ *
+ * @experimental
+ */
 export interface ParleyDocument {
   id: string
   title: string
@@ -106,6 +168,8 @@ export interface ParleyDocument {
  * An id parley accepts (`^[a-z0-9][a-z0-9-]*$`): lower case, runs of other
  * characters become one dash, no leading or trailing dash. Empty input gives
  * `fallback`.
+ *
+ * @experimental
  */
 export function slug(text: string, fallback = 'x'): string {
   const s = text
@@ -118,6 +182,8 @@ export function slug(text: string, fallback = 'x'): string {
 /**
  * Hands out slugged ids that are unique among the ones it gave before: a clash
  * gets `-2`, `-3`, ... Parley wants block ids unique across the whole document.
+ *
+ * @experimental
  */
 export function idAllocator(): (text: string, fallback?: string) => string {
   const used = new Set<string>()
@@ -138,6 +204,8 @@ const roundFraction = (n: number): number => Math.round(n * PRECISION) / PRECISI
  * image and written as fractions rounded to four places, so `x + w` and
  * `y + h` never pass 1. A box with no area inside the image (outside it,
  * empty, or not finite) has no region and returns `null`.
+ *
+ * @experimental
  */
 export function regionFromBox(
   box: PixelBox,
@@ -176,6 +244,11 @@ function regionsOf(regions: Array<Region | null> | undefined): { regions?: Regio
   return kept.length > 0 ? { regions: kept } : {}
 }
 
+/**
+ * What {@link steps} takes for one frame; regions may be `null`, which are dropped.
+ *
+ * @experimental
+ */
 export interface FrameInput {
   id: string
   src: string
@@ -190,6 +263,11 @@ function frameOf(input: FrameInput): Frame {
   return { id: slug(id), ...rest, ...regionsOf(regions) }
 }
 
+/**
+ * What {@link figure} takes; regions may be `null`, which are dropped.
+ *
+ * @experimental
+ */
 export interface FigureInput {
   id: string
   title?: string
@@ -200,18 +278,32 @@ export interface FigureInput {
   regions?: Array<Region | null>
 }
 
+/**
+ * A figure block: one image with optional regions marked on it. A `null` region is dropped.
+ *
+ * @experimental
+ */
 export function figure(input: FigureInput): FigureBlock {
   const { regions, id, ...rest } = input
   return { id: slug(id), type: 'figure', ...rest, ...regionsOf(regions) }
 }
 
+/**
+ * What {@link steps} takes.
+ *
+ * @experimental
+ */
 export interface StepsInput {
   id: string
   title?: string
   frames: FrameInput[]
 }
 
-/** A slide show; parley needs at least two frames, so fewer throws. */
+/**
+ * A slide show; parley needs at least two frames, so fewer throws.
+ *
+ * @experimental
+ */
 export function steps(input: StepsInput): StepsBlock {
   if (input.frames.length < 2)
     throw new Error(`steps ${input.id} needs at least 2 frames, got ${input.frames.length}`)
@@ -226,7 +318,23 @@ export function steps(input: StepsInput): StepsBlock {
   }
 }
 
-export function heading(input: { id: string; title: string; level?: 1 | 2 | 3 }): HeadingBlock {
+/**
+ * What {@link heading} takes.
+ *
+ * @experimental
+ */
+export interface HeadingInput {
+  id: string
+  title: string
+  level?: 1 | 2 | 3
+}
+
+/**
+ * A heading block that titles a section of the document.
+ *
+ * @experimental
+ */
+export function heading(input: HeadingInput): HeadingBlock {
   return {
     id: slug(input.id),
     type: 'heading',
@@ -235,6 +343,11 @@ export function heading(input: { id: string; title: string; level?: 1 | 2 | 3 })
   }
 }
 
+/**
+ * What a finding's `evidence` takes: one image, or at least two frames.
+ *
+ * @experimental
+ */
 export type EvidenceInput =
   | { id: string; src: string; alt: string; caption?: string; regions?: Array<Region | null> }
   | { id: string; frames: FrameInput[] }
@@ -249,6 +362,11 @@ function evidenceOf(input: EvidenceInput): Evidence {
   return { id: slug(id), ...rest, ...regionsOf(regions) }
 }
 
+/**
+ * What {@link finding} takes; `status` defaults to `open`.
+ *
+ * @experimental
+ */
 export interface FindingInput {
   id: string
   ref: string
@@ -262,6 +380,11 @@ export interface FindingInput {
   evidence?: EvidenceInput[]
 }
 
+/**
+ * A finding block: what was found, how severe it is, the fix, and its evidence. `status` defaults to `open`.
+ *
+ * @experimental
+ */
 export function finding(input: FindingInput): FindingBlock {
   const { id, evidence, status, ...rest } = input
   return {
@@ -273,6 +396,11 @@ export function finding(input: FindingInput): FindingBlock {
   }
 }
 
+/**
+ * What {@link parleyDocument} takes.
+ *
+ * @experimental
+ */
 export interface DocumentInput {
   id: string
   title: string
@@ -284,6 +412,13 @@ export interface DocumentInput {
   keep?: boolean
 }
 
+/**
+ * The document around `blocks`, shaped as parley's `schema.json` asks: ids
+ * slugged, `created` today when omitted. Throws on no blocks or a repeated
+ * block id.
+ *
+ * @experimental
+ */
 export function parleyDocument(input: DocumentInput): ParleyDocument {
   if (input.blocks.length === 0) throw new Error('a parley document needs at least one block')
   const seen = new Set<string>()

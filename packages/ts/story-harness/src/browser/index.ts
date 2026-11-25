@@ -3,7 +3,9 @@
  * metrics hook and a seeded PRNG for fixture generators.
  */
 
+/** Name of the mark `storyMetrics` sets when it is called. */
 export const MOUNT_MARK = 'story:mount'
+/** Name of the mark `storyMetrics` sets on the first painted frame that has rows. */
 export const FIRST_ROWS_MARK = 'story:first-rows'
 /** Marks whose name starts with this are the story's metrics. */
 export const MARK_PREFIX = 'story:'
@@ -23,6 +25,7 @@ export function seeded(seed: number): () => number {
   }
 }
 
+/** A `story:` performance mark: its name and start time in milliseconds. */
 export interface StoryMark {
   name: string
   startTime: number
@@ -44,6 +47,7 @@ declare global {
   }
 }
 
+/** What `storyMetrics` needs to know about the story. */
 export interface StoryMetricsOptions {
   /** A CSS selector for one row, or a function that counts mounted rows. */
   rows: string | (() => number)
