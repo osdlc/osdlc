@@ -53,6 +53,7 @@ owner delete it. The first version ships four plugins: `git` (repo-cleaner),
 | `src/git.ts` | The `git` plugin over repo-cleaner's `candidatesOf` and `removeCandidate`. |
 | `src/artifacts.ts`, `src/cargo.ts`, `src/node.ts` | Build caches: `cargo` and `node` over the shared walk in `artifacts.ts`. |
 | `src/orca.ts` | The `orca` plugin. |
+| `src/helpers.ts` | What the core and the plugins share: wording, objections, and the check a plugin makes again right before it deletes. |
 | `src/cli.ts`, `src/bin.ts` | The `host-cleaner` command: `status`, `plan`, `clean`, `config`, `plugins`. |
 | `src/testing.ts` | `@osdlc/host-cleaner/testing`: fakes and the contract suite. |
 
@@ -121,8 +122,8 @@ flowchart LR
 Plugins run one at a time, in the order given. Every hook may return a
 promise. Each call has a limit and its own `ctx.signal`, which is aborted
 when the limit passes (D2). The limit is the plugin's own for that hook when
-it sets one in `limits` (`cargo` and `node` give `discover` 10 minutes), else
-30 seconds, or 10 minutes for `delete`.
+it sets one in `limits` (`git`, `cargo` and `node` give `discover` 10
+minutes), else 30 seconds, or 10 minutes for `delete`.
 
 ## Rules every plugin is held to
 
@@ -149,6 +150,9 @@ from its main checkout (typed-git's `mainCheckout()`, from
 for its repository. So a copied `.git` file, or a worktree moved away with a
 symlink left behind, is refused. Nested repositories are looked through on
 the way up. git runs only for a path that rules 1 and 2 do not already hold.
+
+By rules 1 and 2 too, a linked worktree whose folder has become a link is no
+longer one (`stillLinked`).
 
 Still refused: a main checkout outside every target, a worktree of such a
 repository, and any plain folder outside. A ref gets no folder checks; the
@@ -230,7 +234,7 @@ has bound removes nothing, so a plugin's `delete` is tested through `survey`
 and `clean`, or `contractSuite`.
 
 `cargo.ts` and `node.ts` import nothing from host-cleaner but the kit, the
-types and their shared `artifacts.ts`. `artifacts.ts` is not built as an
+types, `helpers.ts` and their shared `artifacts.ts`. `artifacts.ts` is not built as an
 outside plugin would be: it imports `@osdlc/path-guard`, `@osdlc/typed-git`
 and `@osdlc/command-seam`, and calls the core's own `attachKit`, none of which
 the public plugin entry (k-public-api) will offer.
@@ -256,7 +260,8 @@ the README's [command line](../../README.md#command-line).
 
 `plugins` runs `detect`, `scope` and `roots` and nothing else (`inspect` in
 `src/run.ts`), with the same limits and the same root checks as the survey. It
-prints `targets: <targets>`, then one line per plugin:
+prints `targets: <targets>`, `ignoring: <paths>` when there are any, then one
+line per plugin:
 
 ```text
   <name>  <source>  <state>[: <reason>][; note: <note>]
