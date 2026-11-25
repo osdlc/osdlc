@@ -13,10 +13,15 @@ export default defineConfig({
   resolve: {
     // The examples import the package by name; run them on the source.
     alias: [
+      { find: /^@osdlc\/story-harness\/a11y$/, replacement: entry('./src/runner/a11y.ts') },
       { find: /^@osdlc\/story-harness\/browser$/, replacement: entry('./src/browser/index.ts') },
       {
         find: /^@osdlc\/story-harness\/playwright$/,
         replacement: entry('./src/playwright/index.ts'),
+      },
+      {
+        find: /^@osdlc\/story-harness\/parley-capture$/,
+        replacement: entry('./src/runner/parley-capture.ts'),
       },
       { find: /^@osdlc\/story-harness\/runner$/, replacement: entry('./src/runner/index.ts') },
     ],

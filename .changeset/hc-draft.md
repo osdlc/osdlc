@@ -1,5 +1,4 @@
 ---
-"@osdlc/host-cleaner": patch
 ---
 
-Add `scripts/draft-descriptor.ts`, which drafts a tier 1 descriptor from a store in the system-cleanup research corpus for a person to review.
+No release: `scripts/draft-descriptor.ts` is a contributor script that the `@osdlc/host-cleaner` package does not ship.

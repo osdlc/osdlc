@@ -2,7 +2,7 @@
 # Story screenshot baselines: shoot every enrolled story of a built Storybook in
 # light and dark, and compare each shot with its committed baseline.
 #
-#   story-shots <package dir> [--update] [--include p1,p2] [--exclude p3] [--settle-ms N]
+#   story-shots <package dir> [--update | --a11y | --walk] [--include p1,p2] [--exclude p3] [--settle-ms N]
 #
 # The package's `story-shots` command runs this script.
 #
@@ -11,6 +11,20 @@
 # `--update` rewrites the baselines instead of comparing, and prunes baselines
 # of stories that no longer exist (only those the filter covers). Commit what
 # it writes.
+#
+# `--a11y` runs the accessibility check instead: axe-core over every enrolled
+# story in light and dark, failing on any WCAG 2.2 A or AA violation unless a
+# story sets `parameters.a11y.test: 'todo'` (see story-a11y.e2e.ts). It reads
+# and writes no baselines; the violations are in
+# `<package dir>/test-results/story-a11y/a11y-report.json`.
+#
+# `--walk` runs the keyboard walk instead: every enrolled story in light is
+# tabbed through from the start of the document, and Shift+Tab back
+# (story-walk.e2e.ts). It is a survey, not a gate: it fails only on a story
+# that errors. A screenshot and the facts of each stop are in
+# `<package dir>/test-results/story-walk/walk/<story>/`, and `walk-report.json`
+# beside it holds every story's record. `WALK_MAX=N` sets the stops per story
+# (default 40).
 #
 # The browser always runs in the pinned Playwright image as linux/amd64, so a
 # laptop and CI produce the same pixels (why: D-03,
@@ -30,10 +44,13 @@ source "$RUNNER/platform.sh"
 # The image and the @playwright/test installed in it must be the same version.
 PLAYWRIGHT_VERSION="1.62.1"
 IMAGE="mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}-noble"
+# The axe-core installed for --a11y. Keep it on the version your
+# @storybook/addon-a11y resolves to, so the panel and this check agree.
+AXE_VERSION="4.14.0"
 PLATFORM="${STORY_SHOTS_PLATFORM:-linux/amd64}"
 
 usage() {
-  echo "usage: story-shots <package dir> [--update] [--include p1,p2] [--exclude p3] [--settle-ms N]" >&2
+  echo "usage: story-shots <package dir> [--update | --a11y | --walk] [--include p1,p2] [--exclude p3] [--settle-ms N]" >&2
   exit 2
 }
 fail() {
@@ -51,7 +68,9 @@ EXCLUDE=""
 SETTLE_MS=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --update) MODE="update" ;;
+    --update | --a11y | --walk)
+      [[ "$MODE" == "check" ]] || fail "pass one of --update, --a11y and --walk"
+      MODE="${1#--}" ;;
     --include | --exclude | --settle-ms)
       [[ $# -ge 2 ]] || fail "$1 needs a value"
       case "$1" in
@@ -83,10 +102,15 @@ fi
 if [[ -n "${SHOT_WORKERS:-}" ]] && { ! is_count "$SHOT_WORKERS" || [[ "$SHOT_WORKERS" -lt 1 ]]; }; then
   fail "SHOT_WORKERS takes a whole number of at least 1, got $SHOT_WORKERS"
 fi
+if [[ -n "${WALK_MAX:-}" ]] && { ! is_count "$WALK_MAX" || [[ "$WALK_MAX" -lt 1 ]]; }; then
+  fail "WALK_MAX takes a whole number of at least 1, got $WALK_MAX"
+fi
 
 STATIC="$PKG/storybook-static"
 BASELINES="$PKG/.storybook/baselines"
 RESULTS="$PKG/test-results/story-shots"
+[[ "$MODE" == "a11y" ]] && RESULTS="$PKG/test-results/story-a11y"
+[[ "$MODE" == "walk" ]] && RESULTS="$PKG/test-results/story-walk"
 
 if [[ ! -f "$STATIC/index.json" ]]; then
   echo "story-shots: $STATIC/index.json not found; build the Storybook first" >&2
@@ -125,7 +149,12 @@ pull_image() {
 cached="$(docker image inspect --format '{{.Os}}/{{.Architecture}}{{with .Variant}}/{{.}}{{end}}' "$IMAGE" 2>/dev/null || true)"
 platform_matches "$cached" "$PLATFORM" || pull_image
 
-mkdir -p "$BASELINES"
+# Only the screenshot modes read or write baselines.
+BASELINE_MOUNT=()
+if [[ "$MODE" == "check" || "$MODE" == "update" ]]; then
+  mkdir -p "$BASELINES"
+  BASELINE_MOUNT=(-v "$BASELINES:/baselines")
+fi
 rm -rf "$RESULTS"
 mkdir -p "$RESULTS"
 
@@ -135,10 +164,11 @@ echo "story-shots: $MODE run of $PKG in $IMAGE ($PLATFORM)"
 # may hold another platform's binaries. The npm cache is a named volume, so only
 # the first run downloads it. Only the baselines and results directories are
 # writable.
+status=0
 docker run --rm --platform "$PLATFORM" --ipc=host \
   -v "$RUNNER:/runner:ro" \
   -v "$STATIC:/storybook:ro" \
-  -v "$BASELINES:/baselines" \
+  ${BASELINE_MOUNT[@]+"${BASELINE_MOUNT[@]}"} \
   -v "$RESULTS:/artifacts" \
   -v "story-shots-npm-cache:/root/.npm" \
   -e "MODE=$MODE" \
@@ -146,7 +176,9 @@ docker run --rm --platform "$PLATFORM" --ipc=host \
   -e "STORY_EXCLUDE=$EXCLUDE" \
   -e "SETTLE_MS=$SETTLE_MS" \
   ${SHOT_WORKERS:+-e "SHOT_WORKERS=$SHOT_WORKERS"} \
+  ${WALK_MAX:+-e "WALK_MAX=$WALK_MAX"} \
   -e "PLAYWRIGHT_VERSION=$PLAYWRIGHT_VERSION" \
+  -e "AXE_VERSION=$AXE_VERSION" \
   -e CI=1 \
   "$IMAGE" \
   bash -c '
@@ -156,15 +188,16 @@ docker run --rm --platform "$PLATFORM" --ipc=host \
     cd /work
     npm init -y >/dev/null 2>&1
     npm pkg set type=module >/dev/null 2>&1
-    npm install --silent --no-audit --no-fund --prefer-offline "@playwright/test@$PLAYWRIGHT_VERSION"
-    # Both modes start from the committed baselines. --update rewrites only a
-    # shot that no longer matches, or is missing, so an untouched story keeps
-    # its file byte for byte.
-    cp -r /baselines/. /work/baselines/
-    if [[ "$MODE" == "check" ]]; then
-      UPDATE="--update-snapshots=none"
-    else
-      UPDATE="--update-snapshots=changed"
+    packages=("@playwright/test@$PLAYWRIGHT_VERSION")
+    if [[ "$MODE" == "a11y" ]]; then packages+=("axe-core@$AXE_VERSION"); fi
+    npm install --silent --no-audit --no-fund --prefer-offline "${packages[@]}"
+    UPDATE=""
+    if [[ "$MODE" == "check" || "$MODE" == "update" ]]; then
+      # Both screenshot modes start from the committed baselines. --update
+      # rewrites only a shot that no longer matches, or is missing, so an
+      # untouched story keeps its file byte for byte.
+      cp -r /baselines/. /work/baselines/
+      if [[ "$MODE" == "check" ]]; then UPDATE="--update-snapshots=none"; else UPDATE="--update-snapshots=changed"; fi
     fi
     : > /work/shots.txt
     set +e
@@ -191,18 +224,36 @@ docker run --rm --platform "$PLATFORM" --ipc=host \
         done
       fi
     fi
+    if [[ "$MODE" == "a11y" || "$MODE" == "walk" ]]; then
+      # One report per run: every failing story and theme, or every walked story.
+      node aggregate-report.js "$MODE" /work/test-results
+    fi
     cp -r /work/test-results/. /artifacts/ 2>/dev/null || true
     # The container runs as root. Give what it wrote to the owner of the
-    # mounted baselines folder as the container sees it, so the next run can
+    # mounted results folder as the container sees it (the host made it, like the
+    # baselines folder), so the next run can
     # replace it: that is the host user under rootful Docker, and root, which
     # maps to the host user, under a rootless engine. Docker Desktop remaps it
     # anyway.
-    owner="$(stat -c "%u:%g" /baselines)"
+    owner="$(stat -c "%u:%g" /artifacts)"
     chown -R "$owner" /baselines /artifacts 2>/dev/null || true
     exit $status
-  '
+  ' || status=$?
 
-if [[ "$MODE" == "update" ]]; then
+if [[ $status -ne 0 ]]; then
+  # An empty report means the run broke before any story was scanned.
+  if [[ "$MODE" == "a11y" ]] && grep -q '"violations"' "$RESULTS/a11y-report.json" 2>/dev/null; then
+    echo "story-shots: violations are in $RESULTS/a11y-report.json" >&2
+  fi
+  exit $status
+fi
+if [[ "$MODE" == "walk" ]]; then
+  echo "story-shots: the walk is in $RESULTS/walk-report.json and $RESULTS/walk/"
+elif [[ "$MODE" == "a11y" ]]; then
+  # `@storybook/addon-a11y` defaults every story to `test: 'todo'`, so a package
+  # with the addon sets `test: 'error'` to fail on its violations.
+  echo "story-shots: no story set to fail has WCAG A/AA violations; any others are in $RESULTS/a11y-report.json"
+elif [[ "$MODE" == "update" ]]; then
   echo "story-shots: baselines written to $BASELINES; commit them"
 else
   echo "story-shots: every shot matches its baseline"

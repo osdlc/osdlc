@@ -23,6 +23,7 @@ import type { CommandRunner } from '@osdlc/command-seam'
 import type { ProcessHolder, ProcessProbe } from '@osdlc/repo-cleaner'
 
 import { main } from '../../src/cli.ts'
+import { expandHome } from '../../src/ignore.ts'
 import {
   BUILT_IN_PLUGINS,
   DEFAULT_IDLE_HOURS,
@@ -45,7 +46,7 @@ import {
 } from '../../src/index.ts'
 import { contractSuite, fakeContext, fakeRunner, tempHome } from '../../src/testing.ts'
 
-/** The eight first stores, by plugin name. */
+/** The shipped stores, by plugin name. */
 const STORES = ['gradle', 'huggingface-hub', 'maven', 'npm', 'pip', 'pnpm', 'uv', 'yarn'] as const
 
 /** The stores whose candidate is a prune, and the program it runs. */
@@ -62,11 +63,22 @@ const RUNNING: Partial<Record<(typeof STORES)[number], { command: string; shown:
       '/usr/bin/java -Xmx512m -cp /home/me/.gradle/wrapper/dists/gradle-8.10-bin/6o1bb8kk/gradle-8.10/lib/gradle-launcher-8.10.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.10',
     shown: 'java',
   },
+  maven: {
+    command:
+      '/usr/bin/java -classpath /opt/maven/boot/plexus-classworlds-2.8.0.jar -Dclassworlds.conf=/opt/maven/bin/m2.conf -Dmaven.home=/opt/maven org.codehaus.plexus.classworlds.launcher.Launcher package',
+    shown: 'java',
+  },
   npm: { command: 'node /usr/local/bin/npm install', shown: 'node' },
   pnpm: { command: 'node /opt/homebrew/bin/pnpm dev', shown: 'node' },
   uv: { command: '/home/me/.local/bin/uv sync', shown: 'uv' },
   yarn: { command: 'node /usr/local/bin/yarn install', shown: 'node' },
 }
+
+/**
+ * The first fake process id, above any real one (Linux's pid_max is at most
+ * 2^22), so the kit never leaves a fake row out as this process or an ancestor.
+ */
+const PID = 5_000_000
 
 const OSES_TESTED: readonly Os[] = ['macos', 'linux']
 
@@ -82,16 +94,15 @@ interface Processes {
 }
 
 /**
- * A process table: `cwd` maps a folder to the processes working in it, for
- * the probe; `/` lists every process, read by `ps` as a child of init with
- * `command` as its command line.
+ * A process table where no process works in any folder, and `ps` lists
+ * `running`, each a child of init with `command` as its command line.
  */
-const processes = (table: Record<string, ProcessHolder[]> = {}): Processes => ({
-  probe: { alive: () => false, holders: (path) => table[path] ?? [] },
+const processes = (running: ProcessHolder[] = []): Processes => ({
+  probe: { alive: () => false, holders: () => [] },
   ps: {
     run: () => ({
       exitCode: 0,
-      stdout: [{ pid: 1, command: '/sbin/init' }, ...(table['/'] ?? [])]
+      stdout: [{ pid: 1, command: '/sbin/init' }, ...running]
         .map((h) => `${h.pid} ${h.pid === 1 ? 0 : 1} ${h.command}\n`)
         .join(''),
       stderr: '',
@@ -102,10 +113,16 @@ const processes = (table: Record<string, ProcessHolder[]> = {}): Processes => ({
 const shipped = (name: string): Descriptor =>
   readDescriptor(join(SHIPPED_DESCRIPTORS, `${name}.yaml`))
 
+/** The folder of `paths.<key>` in `d` on `os` under `home`; undefined when `os` has none. */
+const folderOf = (d: Descriptor, key: string, os: Os, home: string): string | undefined => {
+  const p = d.paths[key]!
+  const f = p.all ?? p[os]
+  return f === undefined ? undefined : expandHome(f, home)
+}
+
 interface Built {
   home: string
   plugin: Plugin
-  d: Descriptor
   calls: ReturnType<typeof fakeRunner>['calls']
   /** The folder of `paths.<key>` on the OS it was built for. */
   folder(key: string): string
@@ -124,18 +141,14 @@ function build(
   const h = tempHome()
   cleanups.push(h.cleanup)
   const d = shipped(name)
-  const folder = (key: string): string => {
-    const p = d.paths[key]!
-    const f = (p.all ?? p[os])!
-    return join(h.home, f.slice(2))
-  }
+  const folder = (key: string): string => folderOf(d, key, os, h.home)!
   for (const key of Object.keys(d.paths)) {
     mkdirSync(folder(key), { recursive: true })
     writeFileSync(join(folder(key), 'blob'), 'x')
   }
   for (const c of d.candidates) {
+    if (c.glob === undefined) continue
     for (const n of ['a', 'b']) {
-      if (c.glob === undefined) continue
       const rel = c.glob.replace(/\/$/, '').replaceAll('*', n)
       mkdirSync(join(folder(c.path), rel), { recursive: true })
       writeFileSync(join(folder(c.path), rel, 'blob'), n)
@@ -149,20 +162,14 @@ function build(
     env: h.env,
     kit,
   })
-  return { home: h.home, plugin, d, calls: fake.calls, folder }
+  return { home: h.home, plugin, calls: fake.calls, folder }
 }
 
-const ctxOf = (over: Partial<RunCtx> = {}): RunCtx => ({
-  cwd: '/',
-  targets: [],
-  allow: [],
-  ...over,
-})
+const CTX: RunCtx = { cwd: '/', targets: [], allow: [] }
 
-async function surveyAndClean(plugin: Plugin, allow: string[] = []) {
-  const ctx = ctxOf({ allow })
-  const s = await survey([plugin], ctx)
-  return { survey: s, receipt: await clean(plan(s, { allow }), [plugin], ctx) }
+async function surveyAndClean(plugin: Plugin) {
+  const s = await survey([plugin], CTX)
+  return { survey: s, receipt: await clean(plan(s, { allow: [] }), [plugin], CTX) }
 }
 
 /** Sets every modification time under `dir`, and its own, to `hours` ago. */
@@ -204,9 +211,10 @@ describe('the shipped folder', () => {
     cleanups.push(h.cleanup)
     const os = osOf(process.platform)
     for (const name of STORES) {
-      for (const p of Object.values(shipped(name).paths)) {
-        const f = p.all ?? p[os]
-        if (f !== undefined) mkdirSync(join(h.home, f.slice(2)), { recursive: true })
+      const d = shipped(name)
+      for (const key of Object.keys(d.paths)) {
+        const f = folderOf(d, key, os, h.home)
+        if (f !== undefined) mkdirSync(f, { recursive: true })
       }
     }
     const cwd = join(h.home, 'work')
@@ -251,7 +259,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
           os,
           program === undefined ? {} : { programs: { [program]: () => ({}) } },
         )
-        const s = await survey([b.plugin], ctxOf())
+        const s = await survey([b.plugin], CTX)
         const c = s.candidates[0] as PathCandidate
         const outside = tempHome()
         cleanups.push(outside.cleanup)
@@ -266,7 +274,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
 
     test.each(STORES)('%s: delete throws for a folder outside its roots', async (name) => {
       const b = build(name, os)
-      const s = await survey([b.plugin], ctxOf())
+      const s = await survey([b.plugin], CTX)
       const outside = tempHome()
       cleanups.push(outside.cleanup)
       writeFileSync(join(outside.home, 'blob'), 'x')
@@ -282,12 +290,12 @@ describe.each(OSES_TESTED)('on %s', (os) => {
     test.each(Object.entries(RUNNING))(
       '%s: its program running refuses every candidate',
       async (name, { command, shown }) => {
-        const b = build(name, os, { processes: processes({ '/': [{ pid: 7, command }] }) })
-        const s = await survey([b.plugin], ctxOf())
+        const b = build(name, os, { processes: processes([{ pid: PID, command }]) })
+        const s = await survey([b.plugin], CTX)
         const inUse = s.objections.filter((o) => o.code === IN_USE)
         expect(s.candidates.length).toBeGreaterThan(0)
         expect(inUse.map((o) => o.candidate).sort()).toEqual(ids(s.candidates))
-        expect(inUse.map((o) => o.reason)).toContain(`running: ${shown} (pid 7)`)
+        expect(inUse.map((o) => o.reason)).toContain(`running: ${shown} (pid ${PID})`)
       },
     )
 
@@ -296,9 +304,9 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       async (name) => {
         const others = Object.entries(RUNNING)
           .filter(([store]) => store !== name)
-          .map(([, r], i) => ({ pid: 10 + i, command: r.command }))
-        const b = build(name, os, { processes: processes({ '/': others }) })
-        const s = await survey([b.plugin], ctxOf())
+          .map(([, r], i) => ({ pid: PID + 1 + i, command: r.command }))
+        const b = build(name, os, { processes: processes(others) })
+        const s = await survey([b.plugin], CTX)
         expect(s.objections.filter((o) => o.code === IN_USE)).toEqual([])
       },
     )
@@ -310,7 +318,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       age(b.folder('cache'), 48)
       const { survey: s, receipt } = await surveyAndClean(b.plugin)
       expect(ids(s.candidates)).toEqual(
-        ids([{ id: `pnpm:${b.folder('cache')}` }, { id: `pnpm:${b.folder('store')}` }]),
+        [`pnpm:${b.folder('cache')}`, `pnpm:${b.folder('store')}`].sort(),
       )
       expect(b.calls.map((c) => [c.argv, c.opts.cwd])).toEqual([
         [['pnpm', 'store', 'prune', '--store-dir', b.folder('store')], b.home],
@@ -381,9 +389,18 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       expect(existsSync(join(b.folder('wrapper'), 'b'))).toBe(true)
     })
 
-    test('a running Gradle daemon refuses every candidate', async () => {
-      const table = { '/': [{ pid: 9, command: RUNNING.gradle!.command }] }
-      const b = build('gradle', os, { processes: processes(table) })
+    test.each([
+      ['a Gradle daemon', RUNNING.gradle!.command],
+      [
+        'a --no-daemon build through the wrapper',
+        '/usr/bin/java -classpath /home/me/app/gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain --no-daemon build',
+      ],
+      [
+        'a --no-daemon build in its own JVM',
+        '/usr/bin/java -cp /home/me/.gradle/wrapper/dists/gradle-8.10-bin/6o1bb8kk/gradle-8.10/lib/gradle-launcher-8.10.jar org.gradle.launcher.GradleMain --no-daemon build',
+      ],
+    ])('%s running refuses every candidate', async (_, command) => {
+      const b = build('gradle', os, { processes: processes([{ pid: PID, command }]) })
       age(b.folder('caches'), 169)
       const { survey: s, receipt } = await surveyAndClean(b.plugin)
       expect(s.candidates).toHaveLength(3)
@@ -405,6 +422,17 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       expect(receipt.steps.map((st) => st.result)).toEqual(['ok'])
       expect(readdirSync(npm).sort()).toEqual(['_logs', '_npx'])
     })
+
+    test.each([
+      'node /opt/homebrew/bin/npx -y some-tool',
+      'node /home/me/.volta/tools/image/node/20.0.0/lib/node_modules/npm/bin/npm-cli.js install',
+      'node /usr/lib/node_modules/npm/bin/npx-cli.js -y some-tool',
+    ])('`%s` running refuses the cache', async (command) => {
+      const b = build('npm', os, { processes: processes([{ pid: PID, command }]) })
+      const s = await survey([b.plugin], CTX)
+      const inUse = s.objections.filter((o) => o.code === IN_USE)
+      expect(inUse.map((o) => o.candidate)).toEqual([`npm:${b.folder('cache')}`])
+    })
   })
 
   describe('pip', () => {
@@ -420,13 +448,17 @@ describe.each(OSES_TESTED)('on %s', (os) => {
   })
 
   describe('yarn', () => {
-    test("removes Berry's and Classic's caches once idle, each on its own", async () => {
+    test("removes Classic's idle cache, and leaves Berry's, which Plug'n'Play projects run from", async () => {
       const b = build('yarn', os)
+      const berry = join(b.home, '.yarn', 'berry', 'cache')
+      mkdirSync(berry, { recursive: true })
+      writeFileSync(join(berry, 'pkg.zip'), 'x')
+      age(berry, 721)
       age(b.folder('classic'), 25)
       const { survey: s, receipt } = await surveyAndClean(b.plugin)
-      expect(s.candidates.find((c) => c.path === b.folder('berry'))!.held).toBe(true)
+      expect(ids(s.candidates)).toEqual([`yarn:${b.folder('classic')}`])
       expect(receipt.steps.map((st) => st.id)).toEqual([`yarn:${b.folder('classic')}`])
-      expect(existsSync(b.folder('berry'))).toBe(true)
+      expect(existsSync(join(berry, 'pkg.zip'))).toBe(true)
       expect(existsSync(b.folder('classic'))).toBe(false)
     })
   })
@@ -438,6 +470,8 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       const held = await surveyAndClean(fresh.plugin)
       expect(held.survey.candidates[0]!.held).toBe(true)
       expect(held.receipt.steps).toEqual([])
+
+      expect(held.survey.candidates[0]!.costDescription).toBe('rebuild')
 
       const idle = build('maven', os)
       age(idle.folder('repository'), 721)
