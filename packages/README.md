@@ -332,6 +332,13 @@ Developed here, in this repository:
   baselines from a pinned Playwright container, Playwright helpers for
   interaction and perf specs, an in-page metrics hook and a perf report that
   parallel workers merge)
+- `packages/ts/json-canvas-core` (`@osdlc/json-canvas-core` on npm once
+  published, the model for JSON Canvas documents: types, validation, an
+  immutable operation engine with undo and redo, geometry and a view model)
+- `packages/ts/json-canvas-vue` (`@osdlc/json-canvas-vue` on npm once
+  published, a Vue 3 board that draws and edits a JSON Canvas document on
+  `@osdlc/json-canvas-core`, with undo, node components, a read-only mode and
+  a sanitizing markdown seam)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull

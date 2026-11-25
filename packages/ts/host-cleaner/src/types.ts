@@ -158,6 +158,10 @@ export type Hook = (typeof HOOKS)[number]
  * A plugin. Every hook may answer straight away or return a promise; the core
  * awaits each in turn, one plugin at a time. Each call has a time limit (see
  * `limits`): past it, `ctx.signal` is aborted and the call counts as a throw.
+ * Synchronous work cannot be stopped part way: a hook that answers past its
+ * limit is timed out only then, and its answer dropped. So a hook that works
+ * for long waits on something between two pieces of work and looks at
+ * `ctx.signal`.
  */
 export interface Plugin {
   name: string
@@ -224,8 +228,9 @@ export interface PluginDefinition<S extends z.ZodObject = z.ZodObject> {
 
 /**
  * `def`, with `create`'s settings typed from its schema. The plugin `create`
- * returns is tied to the kit it was given, so the core can bind that kit to
- * the plugin's roots each run.
+ * returns is tied to the kit it was given, beside one it was built on instead
+ * (as `cargoPlugin` without a kit is), so the core can bind each to the
+ * plugin's roots each run.
  */
 export const definePlugin = <S extends z.ZodObject>(
   def: PluginDefinition<S>,

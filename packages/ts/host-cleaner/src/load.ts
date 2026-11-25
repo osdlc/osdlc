@@ -17,7 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { z } from 'zod'
 
-import { kitOf } from './kit.ts'
+import { builtOn } from './kit.ts'
 import { HOOKS, PLUGIN_API, type Plugin, type PluginDefinition } from './types.ts'
 
 /** An npm package name: lowercase, optionally scoped, with no path in it. */
@@ -254,7 +254,7 @@ function checked(def: PluginDefinition, entry: PackageEntry, label: string): Plu
       }
       const hooks = misshapenHooks(plugin)
       if (hooks !== undefined) throw fail(`returned a plugin from create whose ${hooks}`)
-      if (kitOf(plugin) !== init.kit) {
+      if (!builtOn(plugin, init.kit)) {
         throw fail(
           'was not made with the definePlugin of the host-cleaner running it; make it with definePlugin from @osdlc/host-cleaner/plugin, and have the package use that copy of @osdlc/host-cleaner rather than its own',
         )

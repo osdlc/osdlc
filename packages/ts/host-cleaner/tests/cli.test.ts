@@ -932,6 +932,34 @@ describe('plan and clean', () => {
     expect(untildeId('feat/~x', '/h/me')).toBe('feat/~x')
   })
 
+  test('a --pick with ~ matches when HOME goes through a symlink, whichever spelling the id has, and status shows ~', async () => {
+    const { env: base, cwd } = setup()
+    const real = tempDir()
+    const link = join(tempDir(), 'home')
+    symlinkSync(real, link)
+    const env = { ...base, HOME: link }
+    expect(tildeId(`worktree:${real}/wt`, link)).toBe('worktree:~/wt')
+    expect(tildeId(`worktree:${link}/wt`, link)).toBe('worktree:~/wt')
+    for (const home of [real, link]) {
+      const id = `artifact:${join(home, 'dev', 'cache')}`
+      const plugins = [fake('cache', { candidate: { id, held: true } })]
+      expect((await run(['status'], cwd, env, { plugins })).out).toContain('artifact:~/dev/cache')
+      const clean = ['clean', '--dry-run', '--format', 'json', '--pick', 'artifact:~/dev/cache']
+      const picked = JSON.parse((await run(clean, cwd, env, { plugins })).out)
+      expect(picked).toMatchObject({ run: [id], dropped: [] })
+      const planned = await run(['plan', '-o', '-', '--pick', 'artifact:~/dev/cache'], cwd, env, {
+        plugins,
+      })
+      expect(JSON.parse(planned.out).pick).toEqual([id])
+    }
+    // One that names nothing is dropped once, under HOME as given.
+    const plugins = [fake('cache')]
+    const none = ['clean', '--dry-run', '--format', 'json', '--pick', 'artifact:~/none']
+    expect(JSON.parse((await run(none, cwd, env, { plugins })).out).dropped).toEqual([
+      expect.objectContaining({ id: `artifact:${link}/none`, reason: 'gone' }),
+    ])
+  })
+
   test('a --spare with ~ matches whether HOME ends in a slash or is a symlink', async () => {
     const { env: base, cwd } = setup()
     const real = tempDir()

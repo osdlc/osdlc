@@ -32,6 +32,7 @@ import {
   pluginKit,
   survey,
   type Ctx,
+  type GitPluginOptions,
 } from '../src/index.ts'
 import { contractSuite, fakeContext, fakeRunner } from '../src/testing.ts'
 
@@ -87,6 +88,39 @@ describe('the git plugin', () => {
     const plugin = git.create({ settings: {}, env: {}, kit: pluginKit(git.name) })
     const s = await survey([plugin], fx.ctx)
     expect(s.candidates.map((c) => c.id)).toEqual([`worktree:${fx.worktree}`])
+  })
+
+  test('gitPlugin and gitDefinitionWith copy their options, lists and archive included', async () => {
+    for (const build of [
+      (opts: GitPluginOptions) => {
+        const plugin = gitPlugin(opts)
+        return () => plugin
+      },
+      (opts: GitPluginOptions) => {
+        const def = gitDefinitionWith(opts)
+        return () => def.create({ settings: {}, env: {}, kit: pluginKit(def.name) })
+      },
+    ]) {
+      const fx = fixture()
+      writeFileSync(join(fx.worktree, 'notes.txt'), 'kept in the archive')
+      const only: Kind[] = ['worktree']
+      const remotes: string[] = []
+      const exclude: string[] = []
+      const sweep = { only, remotes }
+      const made = build({ probe: idle, sweep, archive: { exclude } })
+      only.push('branch')
+      remotes.push('no-such-remote')
+      exclude.push('notes.txt')
+      const plugin = made()
+      const s = await survey([plugin], fx.ctx)
+      expect(s.warnings).toEqual([])
+      expect(s.candidates.map((c) => c.id)).toEqual([`worktree:${fx.worktree}`])
+      await plugin.delete!(s.candidates[0]!, { ...fx.ctx, allow: ['discard-archived'] })
+      expect(existsSync(fx.worktree)).toBe(false)
+      const archived = sh(fx.root, ['ls-remote', 'origin', 'refs/heads/archive/*']).split(/\s+/)[0]!
+      sh(fx.root, ['fetch', '-q', 'origin', archived])
+      expect(sh(fx.root, ['log', '-m', '--format=', '--name-only', archived])).toMatch(/notes\.txt/)
+    }
   })
 
   test('proposes worktrees and branches, objects with their risks, and a freed branch requires its worktree', async () => {
@@ -162,9 +196,9 @@ describe('the git plugin', () => {
     const cargoBin = fakeRunner({
       cargo: { 'config get build.incremental': { stdout: 'build.incremental = true\n' } },
     })
-    // A clock a minute later at every read, so the walk runs out of its budget.
-    let t = Date.now()
-    const slow = cargoPlugin({ now: () => new Date((t += 60_000)), probe: idle, ...cargoBin })
+    // A budget clock a minute later at every read, so the walk runs out of its budget.
+    let t = 0
+    const slow = cargoPlugin({ clock: () => (t += 60_000), probe: idle, ...cargoBin })
     const s = await survey([fx.plugin, slow], fx.ctx)
     const tree = `worktree:${fx.worktree}`
     const art = `artifact:${target}`

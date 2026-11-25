@@ -13,7 +13,7 @@ A plugin uses two entries of `@osdlc/host-cleaner`, and no other:
 
 | Entry | Holds |
 | --- | --- |
-| `@osdlc/host-cleaner/plugin` | `definePlugin`, `PLUGIN_API`, the contract's types, the kit (`pluginKit`, `idleHoursSetting`, `commandHasName` and their types), `CommandFailed` (what `kit.run` throws with `check: true`), `containedIn`, `FatalRun`, and `z`. |
+| `@osdlc/host-cleaner/plugin` | `definePlugin`, `PLUGIN_API`, the contract's types, the kit (`pluginKit`, `idleHoursSetting`, `idleHoursOr`, `commandHasName`, `coveredBy`, `present` and their types), the defaults and limits (`DEFAULT_IDLE_HOURS`, `MEASURE_BUDGET_MS`, `RUN_LIMIT_MS`), the contract's lists (`COST_DESCRIPTIONS`, `HOOKS`, `LEVELS`), `CommandFailed` (what `kit.run` throws with `check: true`), `containedIn`, `FatalRun`, and `z`. |
 | `@osdlc/host-cleaner/testing` | `fakeContext`, `fakeRunner`, `tempHome` and `contractSuite`, for the plugin's own tests. |
 
 ## The package
@@ -23,12 +23,12 @@ A plugin uses two entries of `@osdlc/host-cleaner`, and no other:
   "name": "host-cleaner-scratch",
   "type": "module",
   "exports": "./dist/index.js",
-  "peerDependencies": { "@osdlc/host-cleaner": "^0.3.0" },
-  "devDependencies": { "@osdlc/host-cleaner": "^0.3.0" }
+  "peerDependencies": { "@osdlc/host-cleaner": "^0.4.0" },
+  "devDependencies": { "@osdlc/host-cleaner": "^0.4.0" }
 }
 ```
 
-- The plugin entry first ships in 0.3.0; an earlier host-cleaner has no
+- The plugin entry first ships in 0.4.0; an earlier host-cleaner has no
   `@osdlc/host-cleaner/plugin`. host-cleaner is not on npm yet, so until it
   is, a plugin builds against a local checkout (a `link:` or `file:`
   dependency).
@@ -92,7 +92,6 @@ export default definePlugin({
                 path,
                 why: `idle ${Math.floor(idle.hours)} hours`,
                 costDescription: 'rebuild',
-                evidence: { newestMs: idle.newestMs },
               }),
             ]
           })
@@ -156,7 +155,13 @@ The rules every plugin keeps:
   only what JSON keeps.
 - **Evidence.** Put in `evidence` what your objections and your judgement
   rest on. The core surveys again before it deletes, and a candidate whose
-  evidence moved is dropped as `changed`.
+  evidence moved is dropped as `changed`. Leave out what `kit.idle` or
+  `kit.size` measured: it can be unmeasured in one survey and measured in the
+  next. The re-check discovers again, so a folder of the example that is no
+  longer idle is dropped as `gone`.
+- **Ignored paths.** The core leaves out a candidate in an ignored path. A plugin
+  that walks folders itself skips those `coveredBy(path, ctx.ignore ?? [])`
+  finds, so it does not measure what is left out.
 - **What deleting costs.** `costDescription` is `re-download`, `rebuild` or
   `lost`. A `lost` candidate is held for review and needs
   `--allow discard-user-data`.

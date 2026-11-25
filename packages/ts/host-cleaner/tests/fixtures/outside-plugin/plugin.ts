@@ -52,7 +52,6 @@ export default definePlugin({
                 path,
                 why: `idle ${Math.floor(idle.hours)} hours`,
                 costDescription: 'rebuild',
-                evidence: { newestMs: idle.newestMs },
               }),
             ]
           })
