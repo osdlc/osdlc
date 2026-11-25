@@ -11,7 +11,7 @@ import { configFields, validateStandard } from '@osdlc/config-layers'
 import { z } from 'zod'
 
 import { DEFAULT_IDLE_HOURS } from './kit.ts'
-import { BUILT_IN_PLUGINS } from './registry.ts'
+import { BUILT_IN_PLUGINS } from './builtins.ts'
 import type { PluginDefinition } from './types.ts'
 
 const enabled = z
@@ -97,7 +97,7 @@ export function effectiveSettings(
     const raw = plugins[name] ?? {}
     const value = settingsOf(name, raw, shared, defs)
     const fields = configFields({ [name]: schemaOf(name, defs)! })
-    // The core's `enabled` first, as `config` has always listed it.
+    // The core's `enabled` first, ahead of the plugin's own settings.
     fields.sort((a, b) => Number(b.path[1] === 'enabled') - Number(a.path[1] === 'enabled'))
     out[name] = fields.map((f) => {
       const key = f.path.slice(1).join('.')

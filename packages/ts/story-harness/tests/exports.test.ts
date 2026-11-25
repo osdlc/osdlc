@@ -14,7 +14,9 @@ const PACKAGE_DIR = join(import.meta.dirname, '..')
 const README = readFileSync(join(PACKAGE_DIR, 'README.md'), 'utf-8')
 const NAME = '@osdlc/story-harness'
 const ENTRIES = {
+  a11y: 'src/runner/a11y.ts',
   browser: 'src/browser/index.ts',
+  'parley-capture': 'src/runner/parley-capture.ts',
   playwright: 'src/playwright/index.ts',
   runner: 'src/runner/index.ts',
 }
