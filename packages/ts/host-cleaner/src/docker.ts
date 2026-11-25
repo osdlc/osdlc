@@ -12,6 +12,7 @@
  * Settings: `plugins.docker.keepVolumes` (default none), volume names never proposed.
  */
 
+import { failureText, firstLine } from '@osdlc/command-seam'
 import { z } from 'zod'
 
 import { pluginKit, type Kit, type KitOptions } from './kit.ts'
@@ -39,7 +40,8 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 
-const UNITS: Record<string, number> = { '': 1, k: 1e3, m: 1e6, g: 1e9, t: 1e12, p: 1e15 }
+/** Size prefixes in order of power: `k` is 1000 (or 1024) to the first. */
+const PREFIXES = ['', 'k', 'm', 'g', 't', 'p']
 
 /**
  * Bytes in a size as Docker prints it (`1.2GB`, `512kB`, `0B`, also `1.5GiB`);
@@ -48,9 +50,8 @@ const UNITS: Record<string, number> = { '': 1, k: 1e3, m: 1e6, g: 1e9, t: 1e12, 
 export function dockerBytes(text: string): number | undefined {
   const m = /^\s*(\d+(?:\.\d+)?)\s*([kmgtp]?)(i?)b\s*$/i.exec(text)
   if (m === null) return undefined
-  const unit = m[2]!.toLowerCase()
-  const scale = m[3] === '' ? UNITS[unit]! : 1024 ** Object.keys(UNITS).indexOf(unit)
-  return Math.round(Number(m[1]) * scale)
+  const power = PREFIXES.indexOf(m[2]!.toLowerCase())
+  return Math.round(Number(m[1]) * (m[3] === '' ? 1000 : 1024) ** power)
 }
 
 /** The objects in `--format '{{json .}}'` output, one per line; a line that is not one is skipped. */
@@ -89,10 +90,7 @@ export function dockerPlugin(
   /** The stdout of `docker <args>`; throws with Docker's own message when it fails. */
   const docker = async (args: readonly string[], ctx: Ctx, timeoutMs?: number): Promise<string> => {
     const r = await kit.run(['docker', ...args], { signal: ctx.signal, timeoutMs })
-    if (!r.ok) {
-      const reason = r.stderr.trim().split('\n')[0] || r.error || `exit ${r.exitCode}`
-      throw new Error(`docker ${args.join(' ')} failed: ${reason}`)
-    }
+    if (!r.ok) throw new Error(`docker ${args.join(' ')} failed: ${firstLine(failureText(r))}`)
     return r.stdout
   }
 
@@ -158,13 +156,8 @@ export function dockerPlugin(
   }
 
   const buildCache = async (ctx: Ctx): Promise<Candidate[]> => {
-    let bytes: number | undefined
-    try {
-      bytes = reclaimable(await docker(['builder', 'du'], ctx))
-    } catch {
-      // A Docker without buildx has no `builder du`; its volumes and images still count.
-      return []
-    }
+    // A Docker without buildx has no `builder du`; its volumes and images still count.
+    const bytes = reclaimable(await docker(['builder', 'du'], ctx).catch(() => ''))
     if (bytes === undefined || bytes === 0) return []
     return [
       kit.candidate({
@@ -195,7 +188,7 @@ export function dockerPlugin(
       return true
     },
     async discover(ctx) {
-      return [...(await volumes(ctx)), ...(await images(ctx)), ...(await buildCache(ctx))]
+      return (await Promise.all([volumes(ctx), images(ctx), buildCache(ctx)])).flat()
     },
     async delete(c, ctx) {
       if (c.ref === undefined)
