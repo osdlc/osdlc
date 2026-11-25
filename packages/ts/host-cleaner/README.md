@@ -233,6 +233,36 @@ Every shipped plugin passes it:
 expect(await contractSuite(plugin, { cwd: root, targets: [root] })).toEqual([])
 ```
 
+### Descriptors
+
+A descriptor is a plugin written as YAML or JSON. `parseDescriptor(text,
+file)` checks one, and `descriptorPlugin(name, descriptor)` turns it into a
+`definePlugin` value built only on the kit, with an `idleHours` setting:
+
+```ts
+const d = parseDescriptor(readFileSync('pip.yaml', 'utf8'), 'pip.yaml')
+const plugin = descriptorPlugin('pip', d)
+```
+
+- **detect:** its `detect` (`onPath`, `exists`), or any of its folders
+  existing. A `system: true` descriptor (`skipReason`) and one whose
+  `supersededBy` plugin runs answer `{ active: false, note }`.
+- **roots:** each of its `paths` for this OS that `pathProblem` passes, as a
+  self root. A path may not be a symlink (a trailing `/` is dropped first),
+  be or hold home, a personal folder, a target or a checkout, sit outside
+  home, or hold or sit inside host-cleaner's own folders.
+- **discover:** one candidate per folder, or per `glob` match inside it
+  (`globMatches`; a match may be a file). Matches past `maxEntries` are
+  combined into one ref candidate, `<name>:<folder>/<glob>:rest`, held while
+  any of them changed within the threshold; deleting it removes each.
+  `project` entries find build folders beside a marker in the targets'
+  checkouts, in one walk, and in a repository's primary checkout only inside
+  the targets.
+- **object:** a running `inUse` process or lock refuses its candidates
+  (`in-use`); a prune with no program on PATH gets a `no-prune-tool` protest.
+- **delete:** checks the candidate again, then runs the tool's command from
+  the home folder, pointed at the folder, or removes it with `kit.remove`.
+
 ## The `git` plugin
 
 `gitPlugin(options)` proposes repo-cleaner's worktrees, as paths, and branches,
