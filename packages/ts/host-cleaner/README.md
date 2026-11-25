@@ -454,7 +454,7 @@ A root the core refuses is left out with a warning, as `status` does, and a
 self root is marked `(itself too)`. A plugin the config disables is listed as
 `disabled`, and its `detect` is not run. `--format json` prints the same, one
 object per plugin: `{ name, source, enabled, detected, reason, roots,
-selfRoots, note }`, under `plugins` beside `targets` and `warnings`.
+selfRoots, note }`, under `plugins` beside `targets`, `ignore` and `warnings`.
 
 ```text
 targets: /Users/me/dev
