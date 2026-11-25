@@ -187,7 +187,7 @@ export function isLocal(server: URL): boolean {
   return ['localhost', '0.0.0.0', '[::]', '[::1]'].includes(h) || /^127(\.\d+){3}$/.test(h)
 }
 
-/** `hours` for a sentence, in tenths rounded down, so it never says more than was read. */
+/** A copy of `hoursText` in artifacts.ts, which this plugin does not import because it uses the kit alone. */
 const hoursText = (hours: number): string => String(Math.floor(hours * 10) / 10)
 
 /** The `ollama` plugin on `kit`, or on a kit built from `opts`: models not pulled or changed for `idleHours`. */
@@ -200,10 +200,7 @@ export function ollamaPlugin(
     idle !== undefined && Number.isFinite(idle) && idle >= 0 ? idle : DEFAULT_IDLE_HOURS
   const server = serverUrl((opts.env ?? process.env)['OLLAMA_HOST'])
 
-  /**
-   * Throws unless the server is on this machine and answers. Asked before any
-   * `ollama` command, because the CLI starts the app when the server is down.
-   */
+  /** Throws unless the server is on this machine and answers. Call it before any `ollama` command; the module doc says why. */
   const reach = async (ctx: Ctx): Promise<void> => {
     if (!isLocal(server)) {
       throw new Error(
@@ -284,7 +281,7 @@ export function ollamaPlugin(
         await reach(ctx)
         loaded = parsePs(await ask(['ps'], ctx))
       } catch (err) {
-        // Whether any model is loaded cannot be told; none is taken meanwhile.
+        // Without `ollama ps` a loaded model cannot be told apart, so every model is refused.
         const why = err instanceof Error ? err.message : String(err)
         return mine.map((c) => objection(c, 'refuse', 'ollama-ps-failed', why))
       }
