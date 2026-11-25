@@ -39,7 +39,6 @@ import {
   CLONE_STAMP,
   claimCloneLock,
   cloneLockPath,
-  credentialHelper,
   markMirrorDir,
   writeMirrorAnswer,
   type MirrorAnswer,
@@ -118,6 +117,8 @@ beforeEach(() => {
   writeFileSync(join(bin, 'gh.cmd'), `@node "${FAKE_GH}" %*\r\n`)
   ghLog = join(scratch, 'gh.log')
   vi.stubEnv('PATH', `${bin}${delimiter}${process.env.PATH ?? ''}`)
+  // So the Windows lookup spells the fake gh's extension one way (`ghHelper`).
+  vi.stubEnv('PATHEXT', '.COM;.EXE;.BAT;.CMD')
   vi.stubEnv('FAKE_GH_ROOT', ghRoot)
   vi.stubEnv('FAKE_GH_LOG', ghLog)
 
@@ -155,11 +156,16 @@ function ghCalls(): { argv: string[]; host: string; hooksPath: string | null }[]
 
 const cloneOf = (dir: string) => join(dir, 'github.com', 'acme', 'api.git')
 
-/** The helper a clone gets: the fake gh by its absolute path (on Windows, `gh.cmd`, with `/`). */
-const ghHelper = () =>
-  process.platform === 'win32'
-    ? credentialHelper({ binary: 'gh' })
-    : `!${join(scratch, 'bin', 'gh')} auth git-credential`
+/**
+ * The helper a clone gets: the fake gh by its absolute path. On Windows that is `gh.cmd` as
+ * `PATHEXT` spells it, `gh.CMD` (`PATHEXT` is set in `beforeEach`), with `/`, single-quoted
+ * when it holds a character the shell reads (a short name's `~`, say).
+ */
+const ghHelper = () => {
+  if (process.platform !== 'win32') return `!${join(scratch, 'bin', 'gh')} auth git-credential`
+  const path = join(scratch, 'bin', 'gh.CMD').replaceAll('\\', '/')
+  return `!${/^[\w@%+=:,./-]+$/.test(path) ? path : `'${path}'`} auth git-credential`
+}
 
 /** A terminal that answers with `lines`, and records what was asked. */
 function answering(...lines: string[]): { seams: CliSeams; asked: () => string } {

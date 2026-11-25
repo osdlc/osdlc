@@ -317,11 +317,20 @@ describe('credentialHelper (final review)', () => {
     const env = { PATH: bin, PATHEXT: '.COM;.EXE;.BAT;.CMD' }
     expect(credentialHelper({ binary: 'gh' }, env)).toBe(`!'${path}' auth git-credential`)
     // A relative entry is never searched: the one a push runs in could hold a `gh` a PR commits.
+    // Both are planted where they resolve from, the folder the lookup runs in.
     const planted = join(scratch, 'planted')
     mkdirSync(planted)
-    writeFileSync(join(planted, name), '#!/bin/sh\n')
-    chmodSync(join(planted, name), 0o755)
-    expect(credentialHelper({ binary: 'gh' }, { PATH: `.${delimiter}planted` })).toBeNull()
+    for (const dir of [scratch, planted]) {
+      writeFileSync(join(dir, name), '#!/bin/sh\n')
+      chmodSync(join(dir, name), 0o755)
+    }
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(scratch)
+    try {
+      const relative = { PATH: `.${delimiter}planted`, PATHEXT: '.COM;.EXE;.BAT;.CMD' }
+      expect(credentialHelper({ binary: 'gh' }, relative)).toBeNull()
+    } finally {
+      cwd.mockRestore()
+    }
   })
 
   test('makeClone sets no helper, with a note, when gh is not found on an absolute PATH entry', () => {
