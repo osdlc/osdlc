@@ -31,13 +31,7 @@ export {
   type Root,
   type RunCtx,
 } from './types.ts'
-export {
-  BUILT_IN_PLUGINS,
-  loadPlugins,
-  supersession,
-  type Loaded,
-  type Supersession,
-} from './registry.ts'
+export { BUILT_IN_PLUGINS, findPlugins, loadPlugins, type Loaded } from './registry.ts'
 export {
   PLAN_VERSION,
   PlanSchema,
@@ -129,8 +123,11 @@ export {
 export {
   DescriptorLoadError,
   SHIPPED_DESCRIPTORS,
+  findDescriptors,
   loadDescriptors,
+  type DescriptorProblem,
   type DescriptorSource,
+  type FoundDescriptors,
   type DescriptorSources,
   type LoadedDescriptor,
 } from './descriptor/load.ts'

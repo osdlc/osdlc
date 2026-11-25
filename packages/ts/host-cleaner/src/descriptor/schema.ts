@@ -321,6 +321,9 @@ const varSource = z.union([
   z.strictObject({ value: z.union([z.string().min(1), perOs]) }),
 ])
 
+/** A plugin name: lowercase letters, digits and -, starting with a letter. */
+export const PLUGIN_NAME = /^[a-z][a-z0-9-]*$/
+
 export const DescriptorSchema = z
   .strictObject({
     $schema: z.string().optional(),
@@ -343,7 +346,7 @@ export const DescriptorSchema = z
     project: z.array(ProjectEntrySchema).min(1).optional(),
     supersededBy: z
       .string()
-      .regex(/^[a-z][a-z0-9-]*$/, 'must be a plugin name')
+      .regex(PLUGIN_NAME, 'must be a plugin name')
       .optional()
       .describe("A code plugin's name. While that plugin runs, this descriptor doesn't."),
     system: z

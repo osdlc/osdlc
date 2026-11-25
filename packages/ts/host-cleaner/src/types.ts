@@ -105,6 +105,12 @@ export interface RunCtx {
   targetsGiven?: boolean | undefined
   /** The home folder, which no root may be or hold; the process's when unset. The CLI sets it from `HOME`, as it expands `~`. */
   home?: string | undefined
+  /**
+   * In `detect`, the plugins survey has found active so far, in run order: a
+   * plugin whose `detect` failed or ran past its limit is not among them.
+   * Survey sets it; unset elsewhere.
+   */
+  running?: readonly string[] | undefined
 }
 
 /** What a hook is given: the run, and a signal of its own. */

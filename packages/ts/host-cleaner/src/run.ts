@@ -145,7 +145,7 @@ export interface Survey {
  * neither a boolean nor a {@link Detection} with a boolean `active` and a
  * string or no `note`.
  */
-export function detection(answer: unknown): { active: boolean; note?: string } | null {
+function detection(answer: unknown): { active: boolean; note?: string } | null {
   if (typeof answer === 'boolean') return { active: answer }
   if (typeof answer !== 'object' || answer === null) return null
   const { active, note } = answer as Partial<Record<keyof Detection, unknown>>
@@ -293,7 +293,10 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
         )
       }
     }
-    const answer = await guarded<unknown>(p, 'detect', false, ctx, (x) => p.detect(x))
+    const running = plugins.map((q) => q.name)
+    const answer = await guarded<unknown>(p, 'detect', false, { ...ctx, running }, (x) =>
+      p.detect(x),
+    )
     const found = detection(answer)
     if (found === null) {
       warnings.push(

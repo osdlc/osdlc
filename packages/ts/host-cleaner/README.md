@@ -444,10 +444,19 @@ shipped one of the same name, and `--descriptor` replaces either for that run.
 Every plugin has one name, so any other clash, such as a descriptor named `git`
 or two files of one name in one folder, is refused (exit 2). Descriptors run
 after the built-ins, by name. To try one you are writing:
-`host-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan made with
-`--descriptor` needs the same `--descriptor` on `clean --plan`, since the
-re-check loads plugins again and drops a candidate no plugin proposes as
-`gone`. A descriptor's `supersededBy` must name a built-in plugin.
+`host-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan records the
+`--descriptor` files it was made with. `clean --plan` does not load them by
+itself: it stops (exit 2) and names each `--descriptor` flag to add. A
+descriptor's `supersededBy` must name a built-in plugin.
+
+A descriptor file that can't be used (not a descriptor, a name that is no
+plugin name, or a name clash) is reported. `config` reports it and goes on.
+`status`, `plan` and `clean` stop (exit 2) unless the run leaves that name out
+(`--skip-plugin`, `--plugin` naming others, or `enabled: false`). A config
+entry that names no plugin, such as a descriptor given only by `--descriptor`,
+is a warning for `status`, `plan` and `config`, and stops `clean` (exit 2).
+With `--config <file>`, a config directory that can't be found means no user
+descriptors.
 
 The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
 all three directories):
