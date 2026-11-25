@@ -64,7 +64,8 @@ Every hook's `ctx` carries `targetsGiven`: true when a person named the
 targets, in the config or on the command line, and false when the command line
 fell back to the directory it runs in (and when a `RunCtx` leaves it unset). A
 plan keeps it, so `clean --plan` tells the plugins the same; a plan without it
-is refused: sweep again.
+is refused: sweep again. In `detect`, `ctx.running` holds the names of the
+plugins found active so far, in run order.
 
 A `RunCtx` may name `home`, the home folder no root may be or hold (see the
 roots rules); unset, it is the process's. The CLI sets it from `HOME`, the
@@ -442,21 +443,20 @@ package's `descriptors/`, `descriptors/` in the config directory, and
 `--descriptor <file>` for one run. A file in the config directory replaces a
 shipped one of the same name, and `--descriptor` replaces either for that run.
 Every plugin has one name, so any other clash, such as a descriptor named `git`
-or two files of one name in one folder, is refused (exit 2). Descriptors run
-after the built-ins, by name. To try one you are writing:
+or two files of one name in one folder, is a file that can't be used. Descriptors
+run after the built-ins, by name. To try one you are writing:
 `host-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan records the
 `--descriptor` files it was made with. `clean --plan` does not load them by
-itself: it stops (exit 2) and names each `--descriptor` flag to add. A
-descriptor's `supersededBy` must name a built-in plugin.
+itself: when one is not given it stops (exit 2) and names each `--descriptor`
+flag to add. A descriptor's `supersededBy` must name a built-in plugin.
 
-A descriptor file that can't be used (not a descriptor, a name that is no
-plugin name, or a name clash) is reported. `config` reports it and goes on.
-`status`, `plan` and `clean` stop (exit 2) unless the run leaves that name out
-(`--skip-plugin`, `--plugin` naming others, or `enabled: false`). A config
-entry that names no plugin, such as a descriptor given only by `--descriptor`,
-is a warning for `status`, `plan` and `config`, and stops `clean` (exit 2).
-With `--config <file>`, a config directory that can't be found means no user
-descriptors.
+`config` reports a descriptor file that can't be used (not a descriptor, a name
+that is no plugin name, or a name clash) and goes on. `status`, `plan` and
+`clean` stop (exit 2) unless the run leaves that name out (`--skip-plugin`,
+`--plugin` naming others, or `enabled: false`), and then warn of it. `--config
+<file>` replaces the config file alone: descriptors still come from the config
+directory. When that directory can't be found, such a run has no user
+descriptors, with a warning.
 
 The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
 all three directories):
@@ -465,10 +465,11 @@ all three directories):
 { "targets": ["~/dev"], "plugins": { "cargo": { "idleHours": 48 }, "node": { "enabled": false } } }
 ```
 
-`plugins.<name>` holds that plugin's settings; a name that no plugin has is an
-error. Each plugin's settings are a strict schema, checked when the config
-loads: a misspelt key or a wrong type is refused (exit 2), naming the plugin and
-the key.
+`plugins.<name>` holds that plugin's settings. A name that no plugin has, such as
+a descriptor given only by `--descriptor`, is a warning for `status`, `plan` and
+`config`, and stops `clean` (exit 2). Each plugin's settings are a strict schema,
+checked when the config loads: a misspelt key or a wrong type is refused (exit 2),
+naming the plugin and the key.
 
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |

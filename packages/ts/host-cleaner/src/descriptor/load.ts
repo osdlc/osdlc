@@ -7,10 +7,11 @@
  *   flag     each `--descriptor <file>`, for this run only
  *
  * A user file replaces a shipped one of the same name, and a `--descriptor`
- * replaces either. Any other clash is an error: two files of one name in one
+ * replaces either. Any other clash is a problem: two files of one name in one
  * source, or a descriptor named as a built-in plugin, since every plugin has
  * one name in one namespace. Only the file a name ends up with is read, so a
- * user file can stand in for a shipped one that no longer parses.
+ * user file can stand in for a shipped one that no longer parses, or for two
+ * of one name.
  */
 
 import { readdirSync, statSync, type Dirent } from 'node:fs'
@@ -79,14 +80,16 @@ const problem = (path: string, message: string): DescriptorProblem => ({
   error: new DescriptorLoadError(message),
 })
 
+/** Whether `a` and `b` are one descriptor: the same file by real path, under the same name. */
+export const sameDescriptor = (a: string, b: string): boolean =>
+  nameOf(a) === nameOf(b) && realOr(a) === realOr(b)
+
 /**
- * The `--descriptor` files, each file once by its real path; one without one
- * of {@link DESCRIPTOR_EXTENSIONS} is a problem.
+ * The `--descriptor` files, each descriptor once (see {@link sameDescriptor});
+ * one without one of {@link DESCRIPTOR_EXTENSIONS} is a problem.
  */
 function flagFiles(paths: readonly string[]): { files: string[]; problems: DescriptorProblem[] } {
-  const byReal = new Map<string, string>()
-  for (const p of paths) if (!byReal.has(realOr(p))) byReal.set(realOr(p), p)
-  const unique = [...byReal.values()]
+  const unique = paths.filter((p, i) => paths.findIndex((q) => sameDescriptor(p, q)) === i)
   return {
     files: unique.filter(hasDescriptorExtension),
     problems: unique

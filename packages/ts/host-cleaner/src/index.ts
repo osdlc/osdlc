@@ -127,8 +127,8 @@ export {
   loadDescriptors,
   type DescriptorProblem,
   type DescriptorSource,
-  type FoundDescriptors,
   type DescriptorSources,
+  type FoundDescriptors,
   type LoadedDescriptor,
 } from './descriptor/load.ts'
 export {

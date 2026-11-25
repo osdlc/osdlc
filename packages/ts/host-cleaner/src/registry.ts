@@ -28,9 +28,7 @@ export interface Loaded {
 
 /**
  * The built-ins, then the descriptors from `sources` by name; `opts` is passed
- * to each descriptor's plugin. A descriptor whose `supersededBy` names a
- * plugin survey has found active (`RunCtx.running`) stands down, unless
- * `opts.runs` answers instead. A descriptor that can't be used, or whose
+ * to each descriptor's plugin. A descriptor that can't be used, or whose
  * `supersededBy` names no built-in plugin, is one of `problems`.
  *
  * @throws DescriptorLoadError for a descriptor folder that can't be read
@@ -51,11 +49,10 @@ export function findPlugins(sources: DescriptorSources, opts: DescriptorOptions 
     })
     return false
   })
-  const runs: DescriptorOptions['runs'] = (name, ctx) => ctx.running?.includes(name) === true
   return {
     definitions: [
       ...BUILT_IN_PLUGINS,
-      ...descriptors.map((d) => descriptorPlugin(d.name, d.descriptor, { runs, ...opts })),
+      ...descriptors.map((d) => descriptorPlugin(d.name, d.descriptor, opts)),
     ],
     descriptors,
     problems,
@@ -81,7 +78,8 @@ export class UnknownPlugin extends Error {
 }
 
 /**
- * `plugins` narrowed to `want` when given, less `skip`. A name no plugin has is an error.
+ * `plugins` narrowed to `want` when given, less `skip`. A name no plugin has is
+ * an error, except that `skip` may name one of `absent`, the descriptors that can't be used.
  *
  * @throws UnknownPlugin
  */
@@ -89,9 +87,10 @@ export function selectPlugins(
   plugins: readonly Plugin[],
   want: readonly string[] | undefined,
   skip: readonly string[] | undefined,
+  absent: readonly string[] = [],
 ): Plugin[] {
   const known = new Set(plugins.map((p) => p.name))
-  for (const name of [...(want ?? []), ...(skip ?? [])]) {
+  for (const name of [...(want ?? []), ...(skip ?? []).filter((n) => !absent.includes(n))]) {
     if (!known.has(name)) {
       throw new UnknownPlugin(`no plugin named ${name}; have ${[...known].join(', ')}`)
     }

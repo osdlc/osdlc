@@ -517,6 +517,7 @@ export function plan(
     targets?: readonly string[] | undefined
     targetsGiven?: boolean | undefined
     ignore?: readonly string[] | undefined
+    descriptors?: readonly string[] | undefined
     select?: readonly string[] | null | undefined
     pick?: readonly string[] | undefined
     spare?: readonly string[] | undefined
@@ -540,6 +541,9 @@ export function plan(
     spare: [...selection.spare],
     allow: [...(opts.allow ?? [])],
     ignore: [...(opts.ignore ?? [])],
+    ...(opts.descriptors === undefined || opts.descriptors.length === 0
+      ? {}
+      : { descriptors: [...opts.descriptors] }),
     warnings: s.warnings,
     // A copy, so a plugin that mutates and returns the same objects on re-discovery cannot change the plan.
     candidates: structuredClone(s.candidates),

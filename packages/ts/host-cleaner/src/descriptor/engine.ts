@@ -73,8 +73,8 @@ export interface DescriptorOptions {
   os?: Os | undefined
   /**
    * Whether the code plugin `plugin` runs this time: detected, enabled and not
-   * skipped. A descriptor whose `supersededBy` runs doesn't. Default: none
-   * does; the loader that builds the run's plugin list answers it.
+   * skipped. A descriptor whose `supersededBy` runs doesn't. Default: whether
+   * survey has found it active (`ctx.running`).
    */
   runs?: ((plugin: string, ctx: Ctx) => MaybePromise<boolean>) | undefined
   /** host-cleaner's own folders, which no path may contain. Default: `hostDirs(env)`. */
@@ -278,7 +278,7 @@ export function descriptorPlugin(
         home: env.HOME ?? homedir(),
         os: opts.os ?? osOf(process.platform),
         idleHours: settings.idleHours ?? DEFAULT_IDLE_HOURS,
-        runs: opts.runs,
+        runs: opts.runs ?? ((plugin, ctx) => ctx.running?.includes(plugin) === true),
         ownDirs: opts.ownDirs ?? ownDirsOf(env),
       }),
   })
@@ -298,7 +298,7 @@ interface EngineAt {
   home: string
   os: Os
   idleHours: number
-  runs: DescriptorOptions['runs']
+  runs: NonNullable<DescriptorOptions['runs']>
   ownDirs: readonly string[] | Error
 }
 
@@ -919,7 +919,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     async detect(ctx) {
       const skip = skipReason(d)
       if (skip !== undefined) return { active: false, note: skip }
-      if (d.supersededBy !== undefined && (await at.runs?.(d.supersededBy, ctx)) === true) {
+      if (d.supersededBy !== undefined && (await at.runs(d.supersededBy, ctx)) === true) {
         return { active: false, note: `skipped: the plugin ${d.supersededBy} runs instead` }
       }
       const holds = (c: { onPath?: string | undefined; exists?: string | undefined }): boolean => {

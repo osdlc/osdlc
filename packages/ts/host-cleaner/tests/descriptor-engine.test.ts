@@ -806,6 +806,18 @@ candidates:
     expect(await of(false).detect(fakeContext())).toBe(true)
     expect(asked).toEqual(['pip-code', 'pip-code'])
   })
+
+  test('supersededBy: without runs, a plugin survey found active (ctx.running) runs', async () => {
+    const { plugin } = build('pip', `${PIP_PER_OS}supersededBy: pip-code\n`, {
+      opts: { runs: undefined },
+    })
+    expect(await plugin.detect(fakeContext({ running: ['git', 'pip-code'] }))).toEqual({
+      active: false,
+      note: 'skipped: the plugin pip-code runs instead',
+    })
+    expect(await plugin.detect(fakeContext({ running: ['git'] }))).toBe(true)
+    expect(await plugin.detect(fakeContext())).toBe(true)
+  })
 })
 
 describe('candidates', () => {

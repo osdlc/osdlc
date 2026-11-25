@@ -305,28 +305,57 @@ describe('the run’s plugins', () => {
     expect(result.plugins.map((p) => p.name)).toEqual(['cargo'])
   })
 
-  test('supersededBy: a built-in whose detect ran past its limit does not run, so the descriptor does', async () => {
-    const cargo: Plugin = {
-      name: 'cargo',
-      limits: { detect: 20 },
-      detect: () => new Promise<boolean>((done) => setTimeout(() => done(true), 60)),
+  test('supersededBy: a built-in whose detect answered past its limit does not run, so the descriptor does', async () => {
+    const after = (ms: number): Promise<boolean> =>
+      new Promise((done) => setTimeout(() => done(true), ms))
+    // It answers while a later plugin's detect waits, or only once it is past its limit.
+    const late: Array<Plugin['detect']> = [
+      () => after(60),
+      () => {
+        const start = performance.now()
+        while (performance.now() - start < 40);
+        return true
+      },
+    ]
+    for (const detect of late) {
+      const cargo: Plugin = { name: 'cargo', limits: { detect: 20 }, detect }
+      const slow: Plugin = { name: 'slow', detect: () => after(200) }
+      const result = await survey([cargo, slow, supersededUv()], fakeContext())
+      expect(result.plugins.map((p) => p.name)).toEqual(['slow', 'uv'])
+      expect(result.warnings.join('\n')).toContain('cargo: detect failed')
     }
-    const result = await survey([cargo, supersededUv()], fakeContext())
-    expect(result.plugins.map((p) => p.name)).toEqual(['uv'])
-    expect(result.warnings.join('\n')).toContain('cargo: detect failed')
+  })
+
+  test('supersededBy: a built-in whose detect throws or answers no does not run', async () => {
+    const answers: Array<Plugin['detect']> = [
+      () => false,
+      () => ({ active: false, note: 'down' }),
+      () => {
+        throw new Error('down')
+      },
+    ]
+    for (const detect of answers) {
+      const result = await survey([{ name: 'cargo', detect }, supersededUv()], fakeContext())
+      expect(result.plugins.map((p) => p.name)).toEqual(['uv'])
+    }
   })
 
   test('supersededBy: survey calls a class-based plugin as itself', async () => {
     class Cargo implements Plugin {
       readonly name = 'cargo'
-      readonly #on = true
+      readonly #root: string = '/from/scope'
       detect(): boolean {
-        return this.#on
+        return this.#root !== ''
+      }
+      scope(): string[] {
+        return [this.#root]
       }
     }
     const cargo = new Cargo()
     const result = await survey([cargo, supersededUv()], fakeContext())
-    expect(result.plugins).toEqual([cargo])
+    expect(result.plugins).toHaveLength(1)
+    expect(result.plugins[0]).toBe(cargo)
+    expect(result.ctx.targets).toEqual(['/from/scope'])
   })
 })
 
@@ -360,7 +389,32 @@ describe('problems', () => {
     writeFileSync(uv, store('.cache/uv'))
     const link = join(tempDir(), 'uv.yaml')
     symlinkSync(uv, link)
-    const loaded = loadDescriptors({ shipped: tempDir(), flag: [uv, link] }, RESERVED)
+    const linked = join(tempDir(), 'linked')
+    symlinkSync(dir, linked)
+    const flag = [uv, link, join(linked, 'uv.yaml')]
+    const loaded = loadDescriptors({ shipped: tempDir(), flag }, RESERVED)
     expect(loaded.map((d) => [d.name, d.path])).toEqual([['uv', uv]])
+  })
+
+  test('a --descriptor link of another name is its own descriptor, and replaces the one of that name', () => {
+    const s = sources({ 'pip.yaml': store('shipped-pip') })
+    const dir = folder(join(tempDir(), 'mine'), { 'uv.yaml': store('.cache/uv') })
+    const uv = join(dir, 'uv.yaml')
+    const pip = join(dir, 'pip.yaml')
+    symlinkSync(uv, pip)
+    const loaded = loadDescriptors({ ...s, flag: [uv, pip] }, RESERVED)
+    expect(loaded.map((d) => [d.name, d.path])).toEqual([
+      ['pip', pip],
+      ['uv', uv],
+    ])
+  })
+
+  test('a name whose files clash in one source is usable once a later source replaces it', () => {
+    const s = sources({ 'pip.yaml': store('a'), 'pip.yml': store('b') })
+    expect(findDescriptors(s, RESERVED).problems.map((p) => p.name)).toEqual(['pip'])
+    folder(s.user, { 'pip.yaml': store('user-pip') })
+    const { descriptors, problems } = findDescriptors(s, RESERVED)
+    expect(problems).toEqual([])
+    expect(descriptors.map((d) => [d.name, d.source])).toEqual([['pip', 'user']])
   })
 })

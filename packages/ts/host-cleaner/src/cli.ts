@@ -36,6 +36,7 @@ import {
 } from './config.ts'
 import {
   DescriptorLoadError,
+  sameDescriptor,
   type DescriptorProblem,
   type DescriptorSources,
 } from './descriptor/load.ts'
@@ -397,28 +398,23 @@ const flagDescriptors = (v: { descriptor: readonly string[] }, ctx: CliContext):
   v.descriptor.map((f) => resolve(ctx.cwd, f))
 
 /**
- * The user's descriptor folder in the config directory. With `--config`, which
- * needs no config directory, one that can't be found means none.
+ * Where this run's descriptors come from: the shipped folder, the user's, and
+ * each `--descriptor`. With `--config`, which needs no config directory, one
+ * that can't be found means no user descriptors, with a warning.
  */
-function userDescriptors(v: { config?: string | undefined }, ctx: CliContext): string | undefined {
-  if (v.config === undefined) return descriptorsDir(hostDirs(ctx.env))
-  try {
-    return descriptorsDir(hostDirs(ctx.env))
-  } catch {
-    return undefined
-  }
-}
-
-/** Where this run's descriptors come from: the shipped folder, the user's, and each `--descriptor`. */
-const sourcesFor = (
+function sourcesFor(
   v: { config?: string | undefined; descriptor: readonly string[] },
   ctx: CliContext,
   deps: MainDeps,
-): DescriptorSources => ({
-  shipped: deps.shippedDescriptors,
-  user: userDescriptors(v, ctx),
-  flag: flagDescriptors(v, ctx),
-})
+): { sources: DescriptorSources; warnings: string[] } {
+  const sources = { shipped: deps.shippedDescriptors, flag: flagDescriptors(v, ctx) }
+  try {
+    return { sources: { ...sources, user: descriptorsDir(hostDirs(ctx.env)) }, warnings: [] }
+  } catch (err) {
+    if (v.config === undefined) throw err
+    return { sources, warnings: [`no user descriptors: ${errorText(err)}`] }
+  }
+}
 
 /** What every command loads before it runs. */
 interface Loading {
@@ -428,6 +424,8 @@ interface Loading {
   problems: readonly DescriptorProblem[]
   /** The config's `plugins` entries that name no plugin this run has. */
   unknown: string[]
+  /** What went wrong finding the descriptors that does not stop the run. */
+  warnings: string[]
 }
 
 /**
@@ -440,10 +438,9 @@ function loadRun(
   ctx: CliContext,
   deps: MainDeps,
 ): Loading {
+  const from = deps.plugins === undefined ? sourcesFor(v, ctx, deps) : undefined
   const loaded: Pick<Loaded, 'definitions' | 'problems'> =
-    deps.plugins === undefined
-      ? findPlugins(sourcesFor(v, ctx, deps))
-      : { definitions: BUILT_IN_PLUGINS, problems: [] }
+    from === undefined ? { definitions: BUILT_IN_PLUGINS, problems: [] } : findPlugins(from.sources)
   const config = loadConfig(v, ctx, loaded.definitions)
   const known = new Set([
     ...(deps.plugins?.map((p) => p.name) ?? loaded.definitions.map((d) => d.name)),
@@ -454,6 +451,7 @@ function loadRun(
     definitions: loaded.definitions,
     problems: loaded.problems,
     unknown: Object.keys(config.plugins).filter((n) => !known.has(n)),
+    warnings: from?.warnings ?? [],
   }
 }
 
@@ -472,8 +470,8 @@ function setUp(
   deps: MainDeps,
   strict: boolean,
 ): { config: Config; plugins: Plugin[]; warnings: string[] } {
-  const { config, definitions, problems, unknown } = loadRun(v, ctx, deps)
-  const warnings: string[] = []
+  const { config, definitions, problems, unknown, ...loading } = loadRun(v, ctx, deps)
+  const warnings = [...loading.warnings]
   if (unknown.length > 0) {
     if (strict) {
       throw new BadInput(
@@ -522,11 +520,7 @@ function pluginsFor(
     )
   // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
   const named = v.plugin ?? []
-  const chosen = selectPlugins(
-    all,
-    v.plugin,
-    v.skipPlugin?.filter((n) => !absent.includes(n)),
-  )
+  const chosen = selectPlugins(all, v.plugin, v.skipPlugin, absent)
   return chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins))
 }
 
@@ -683,8 +677,9 @@ function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
-    const { config, definitions, problems, unknown } = loadRun(v, ctx, deps)
+    const { config, definitions, problems, unknown, warnings } = loadRun(v, ctx, deps)
     writeWarnings(ctx, name, [
+      ...warnings,
       ...problems.map((p) => p.error.message),
       ...(unknown.length > 0 ? [unknownMessage(unknown)] : []),
     ])
@@ -743,18 +738,15 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
     const s = await survey(plugins, cctx)
     writeWarnings(ctx, name, [...warnings, ...surveyWarnings(s)])
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
-    const descriptors = flagDescriptors(v, ctx)
-    plan = {
-      ...makePlan(s, {
-        targets: cctx.targets,
-        targetsGiven: cctx.targetsGiven,
-        ignore: cctx.ignore,
-        pick: v.pick.map((e) => untildePick(e, homeOf(ctx), s.candidates)),
-        spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
-        allow: v.allow,
-      }),
-      ...(descriptors.length > 0 ? { descriptors } : {}),
-    }
+    plan = makePlan(s, {
+      targets: cctx.targets,
+      targetsGiven: cctx.targetsGiven,
+      ignore: cctx.ignore,
+      descriptors: flagDescriptors(v, ctx),
+      pick: v.pick.map((e) => untildePick(e, homeOf(ctx), s.candidates)),
+      spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
+      allow: v.allow,
+    })
   } catch (err) {
     return refusal(ctx, name, err)
   }
@@ -885,6 +877,30 @@ function logRun(logs: string, entry: Record<string, unknown>): void {
   }
 }
 
+/**
+ * The plan `--plan` names, read from stdin for `-`, and where it came from.
+ *
+ * @throws BadInput when it was made with a `--descriptor` this run is not given
+ */
+function savedPlan(
+  named: string,
+  v: CleanValues,
+  ctx: CliContext,
+  deps: MainDeps,
+): { plan: Plan; source: string } {
+  const source = named === '-' ? '(stdin)' : resolve(ctx.cwd, named)
+  const plan =
+    named === '-' ? parsePlan((deps.readStdin ?? readAllStdin)(), 'stdin') : readPlan(source)
+  const given = flagDescriptors(v, ctx)
+  const missing = (plan.descriptors ?? []).filter((p) => !given.some((g) => sameDescriptor(p, g)))
+  if (missing.length > 0) {
+    throw new BadInput(
+      `the plan was made with descriptors this run does not load; add ${[...new Set(missing)].map((p) => `--descriptor ${p}`).join(' ')}`,
+    )
+  }
+  return { plan, source }
+}
+
 async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): Promise<number> {
   const name = `${NAME} clean`
   const parsed = parseWith(cleanCli(), name, argv, ctx)
@@ -905,11 +921,12 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   let preview: Decision
   let notes: Record<string, string>
   try {
+    const saved = v.plan === undefined ? undefined : savedPlan(v.plan, v, ctx, deps)
     const run = setUp(v, ctx, deps, true)
     const config = run.config
     plugins = run.plugins
     writeWarnings(ctx, name, run.warnings)
-    if (v.plan === undefined) {
+    if (saved === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
       const s = await survey(plugins, cctx)
       writeWarnings(ctx, name, surveyWarnings(s))
@@ -928,20 +945,8 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
       // Swept a moment ago: `clean` checks again before it deletes.
       preview = decidePlan(plan)
     } else {
-      if (v.plan === '-') {
-        plan = parsePlan((deps.readStdin ?? readAllStdin)(), 'stdin')
-        source = '(stdin)'
-      } else {
-        source = resolve(ctx.cwd, v.plan)
-        plan = readPlan(source)
-      }
-      const given = flagDescriptors(v, ctx).map(realOr)
-      const missing = (plan.descriptors ?? []).filter((p) => !given.includes(realOr(p)))
-      if (missing.length > 0) {
-        throw new BadInput(
-          `the plan was made with descriptors this run does not load; add ${missing.map((p) => `--descriptor ${p}`).join(' ')}`,
-        )
-      }
+      plan = saved.plan
+      source = saved.source
       cctx = {
         cwd: ctx.cwd,
         targets: plan.targets,
