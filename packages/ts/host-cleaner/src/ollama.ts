@@ -317,7 +317,7 @@ export function ollamaPlugin(
         return mine.map((c) => objection(c, 'refuse', OLLAMA_PS_FAILED, errorText(err)))
       }
       return mine.map((c) => {
-        const l = loadedAs(c.evidence as LoadedModel, loaded)
+        const l = loadedAs(c.evidence as { name: string; id: string }, loaded)
         return l === undefined
           ? objection(c, 'protest', OLLAMA_USE_UNKNOWN, USE_UNKNOWN_REASON)
           : objection(c, 'refuse', OLLAMA_IN_USE, `ollama ps shows ${l.name} loaded`)
