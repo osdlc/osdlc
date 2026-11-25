@@ -1,6 +1,6 @@
 /** The `host-cleaner` CLI driven in process: exit codes, refusals, and plan to receipt through fake plugins and the real git plugin. */
 
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   existsSync,
   mkdirSync,
@@ -25,6 +25,16 @@ import type { Candidate, Objection, Plugin } from '../src/index.ts'
 const cleanups: Array<() => void> = []
 afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()!()
+  vi.unstubAllEnvs()
+})
+
+// These tests run `clean --yes` with the shipped plugins. One that read this process's environment
+// in place of the run's would find no one's own home: it is a temporary folder here, not a test's.
+beforeEach(() => {
+  const nobody = tempDir()
+  vi.stubEnv('HOME', nobody)
+  vi.stubEnv('VSCODE_APPDATA', nobody)
+  vi.stubEnv('XDG_CONFIG_HOME', nobody)
 })
 
 function tempDir(): string {
