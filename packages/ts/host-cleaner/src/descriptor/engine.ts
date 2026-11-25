@@ -58,7 +58,14 @@ import {
   type Os,
   type ProjectEntry,
 } from './schema.ts'
-import { VAR_COMMAND_LIMIT_MS, fillTemplate, resolveVars, varRefs, type Vars } from './vars.ts'
+import {
+  VAR_COMMAND_LIMIT_MS,
+  fillTemplate,
+  forOs,
+  resolveVars,
+  varRefs,
+  type Vars,
+} from './vars.ts'
 
 /** The protest on a prune whose program is not on PATH; `--allow no-prune-tool` removes the folder instead (D12). */
 export const NO_PRUNE_TOOL = 'no-prune-tool'
@@ -303,7 +310,7 @@ function varsUsed(d: Descriptor, os: Os, templates: readonly string[]): Set<stri
       for (const s of sources) {
         if ('file' in s) add(s.file)
         if ('value' in s) {
-          const v = typeof s.value === 'string' ? s.value : (s.value.all ?? s.value[os])
+          const v = forOs(s.value, os)
           if (v !== undefined) add(v)
         }
       }
@@ -322,7 +329,7 @@ function missingText(key: string, missing: string, vars: Readonly<Vars>): string
 
 function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   const pathTemplates = Object.entries(d.paths).flatMap(([key, perOs]) => {
-    const template = perOs.all ?? perOs[at.os]
+    const template = forOs(perOs, at.os)
     return template === undefined ? [] : [[key, template] as const]
   })
   const lockTemplates = d.inUse?.locks ?? []
@@ -715,13 +722,12 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         const folder = c.exists === undefined ? undefined : folders.get(c.exists)?.path
         return folder !== undefined && present(folder)
       }
-      const active =
-        d.detect?.all !== undefined
-          ? d.detect.all.every(holds)
-          : d.detect?.any !== undefined
-            ? d.detect.any.some(holds)
-            : [...folders.values()].some((f) => present(f.path))
-      return leftOut === undefined ? active : { active, note: leftOut }
+      const active = (): boolean => {
+        if (d.detect?.all !== undefined) return d.detect.all.every(holds)
+        if (d.detect?.any !== undefined) return d.detect.any.some(holds)
+        return [...folders.values()].some((f) => present(f.path))
+      }
+      return leftOut === undefined ? active() : { active: active(), note: leftOut }
     },
     async roots(ctx): Promise<Root[]> {
       await ready(ctx)

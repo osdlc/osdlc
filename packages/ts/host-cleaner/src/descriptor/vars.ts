@@ -43,10 +43,8 @@ export const BUILT_IN_VARS = {
   XDG_STATE_HOME: '.local/state',
 } as const satisfies Record<string, string | undefined>
 
-export type BuiltInVar = keyof typeof BUILT_IN_VARS
-
 /** A `${VAR}` reference; the name is an environment variable's name. */
-export const VAR_REF = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g
+const VAR_REF = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g
 
 /** The parser for each extension a `file` source may have. */
 const PARSERS = {
@@ -61,12 +59,19 @@ type VarFileExtension = keyof typeof PARSERS
 /** The extensions a `file` source may have, by the format read. */
 export const VAR_FILE_EXTENSIONS = Object.keys(PARSERS) as VarFileExtension[]
 
+/** A folder for every OS, or one per OS (`all` for every OS). */
+type PerOs = { [K in Os | 'all']?: string | undefined }
+
 /** Where one variable's value may come from, as a descriptor's `vars` lists it. */
 export type VarSource =
   | { env: string }
   | { file: string; key: string }
   | { command: string[] }
-  | { value: string | { [K in Os | 'all']?: string | undefined } }
+  | { value: string | PerOs }
+
+/** The text of `v` on `os`: `v` itself, its `all`, or its `os` entry. */
+export const forOs = (v: string | PerOs, os: Os): string | undefined =>
+  typeof v === 'string' ? v : (v.all ?? v[os])
 
 /** One variable's outcome. */
 export interface VarValue {
@@ -93,7 +98,7 @@ export const varRefs = (text: string): string[] => [...text.matchAll(VAR_REF)].m
 export const badVarRef = (text: string): boolean => text.replace(VAR_REF, '').includes('${')
 
 /** How `source` is named in an outcome. */
-export function describeSource(source: VarSource): string {
+function describeSource(source: VarSource): string {
   if ('env' in source) return `env ${source.env}`
   if ('file' in source) return `file ${source.file} key ${source.key}`
   if ('command' in source) return `command ${source.command.join(' ')}`
@@ -202,8 +207,7 @@ export async function resolveVars(
       return typeof v === 'string' ? { value: v, trusted: false } : { failed: v.failed }
     }
     if ('command' in source) return commandValue(source.command, at, limit)
-    const template =
-      typeof source.value === 'string' ? source.value : (source.value.all ?? source.value[at.os])
+    const template = forOs(source.value, at.os)
     return template === undefined ? { failed: `none for ${at.os}` } : fill(template)
   }
 
