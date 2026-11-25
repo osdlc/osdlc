@@ -12,7 +12,7 @@ import { z } from 'zod'
 
 import { DEFAULT_IDLE_HOURS } from './kit.ts'
 import { BUILT_IN_PLUGINS } from './builtins.ts'
-import type { PluginDefinition } from './types.ts'
+import type { PartIdleHours, PluginDefinition, SettingSource } from './types.ts'
 
 const enabled = z
   .boolean()
@@ -77,13 +77,35 @@ export function settingsOf(
 export const disabledByConfig = (name: string, plugins: Entries): boolean =>
   plugins[name]?.enabled === false
 
+/** Where each of `name`'s settings came from, by key: `config` for a key its entry `raw` sets, `shared` for an `idleHours` the top-level setting gave. Keys from the default are left out. */
+export function sourcesOf(
+  name: string,
+  raw: Record<string, unknown>,
+  shared: Shared = {},
+  defs: Definitions = BUILT_IN_PLUGINS,
+): Record<string, SettingSource> {
+  const out: Record<string, SettingSource> = {}
+  for (const key of Object.keys(raw)) out[key] = 'config'
+  const schema = schemaOf(name, defs)
+  if (
+    schema !== undefined &&
+    'idleHours' in schema.shape &&
+    !Object.hasOwn(raw, 'idleHours') &&
+    shared.idleHours !== undefined
+  )
+    out.idleHours = 'shared'
+  return out
+}
+
 export interface SettingRow {
   key: string
   value: unknown
   default: unknown
   /** `config` when the plugin's entry sets it, `shared` when the top-level setting gave it, else `default`. */
-  source: 'config' | 'shared' | 'default'
+  source: SettingSource
   description: string
+  /** For `idleHours`: the parts of the plugin that apply another threshold, with the one the run uses. */
+  parts?: PartIdleHours[]
 }
 
 /** Every setting of every plugin in `defs`: its effective value, its default and whether the config set it. */
@@ -93,24 +115,26 @@ export function effectiveSettings(
   defs: Definitions = BUILT_IN_PLUGINS,
 ): Record<string, SettingRow[]> {
   const out: Record<string, SettingRow[]> = {}
-  for (const { name } of defs) {
+  for (const def of defs) {
+    const { name } = def
     const raw = plugins[name] ?? {}
     const value = settingsOf(name, raw, shared, defs)
+    const sources = sourcesOf(name, raw, shared, defs)
     const fields = configFields({ [name]: schemaOf(name, defs)! })
     // The core's `enabled` first, ahead of the plugin's own settings.
     fields.sort((a, b) => Number(b.path[1] === 'enabled') - Number(a.path[1] === 'enabled'))
     out[name] = fields.map((f) => {
       const key = f.path.slice(1).join('.')
+      const source = sources[key] ?? 'default'
+      const parts =
+        key === 'idleHours' ? def.idleHoursOf?.(value[key] as number, source) : undefined
       return {
         key,
         value: value[key],
         default: key === 'idleHours' ? DEFAULT_IDLE_HOURS : f.default,
-        source: Object.hasOwn(raw, key)
-          ? 'config'
-          : key === 'idleHours' && shared.idleHours !== undefined
-            ? 'shared'
-            : 'default',
+        source,
         description: f.description,
+        ...(parts !== undefined && parts.length > 0 ? { parts } : {}),
       }
     })
   }

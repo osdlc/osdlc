@@ -50,7 +50,7 @@ import {
   selectPlugins,
   type Loaded,
 } from './registry.ts'
-import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
+import { disabledByConfig, effectiveSettings, settingsOf, sourcesOf } from './settings.ts'
 import {
   SelectionError,
   clean,
@@ -513,6 +513,7 @@ function pluginsFor(
     definitions.map((d) =>
       d.create({
         settings: settingsOf(d.name, config.plugins[d.name] ?? {}, config, definitions),
+        sources: sourcesOf(d.name, config.plugins[d.name] ?? {}, config, definitions),
         only,
         env: ctx.env,
         kit: pluginKit(d.name, { env: ctx.env }),
@@ -691,6 +692,13 @@ function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
           Object.fromEntries(rows.map((r) => [r.key, r.value])),
         ]),
       )
+      const parts: Record<string, Record<string, number>> = {}
+      for (const [n, rows] of Object.entries(settings)) {
+        for (const r of rows) {
+          if (r.parts === undefined) continue
+          parts[n] = Object.fromEntries(r.parts.map((p) => [p.part, p.idleHours]))
+        }
+      }
       ctx.io.stdout(
         JSON.stringify(
           {
@@ -698,6 +706,7 @@ function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
             ignore: config.ignore,
             idleHours: config.idleHours ?? null,
             plugins: values,
+            partIdleHours: parts,
           },
           null,
           2,
@@ -717,6 +726,7 @@ function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
         lines.push(
           `  ${r.key} = ${JSON.stringify(r.value)}  (${r.source === 'shared' ? 'idleHours' : r.source})  ${r.description}`,
         )
+        for (const p of r.parts ?? []) lines.push(`    ${p.part}: ${r.key} = ${p.idleHours}`)
       }
     }
     ctx.io.stdout(block(lines))

@@ -23,6 +23,7 @@ export {
   type Level,
   type MaybePromise,
   type Objection,
+  type PartIdleHours,
   type PathCandidate,
   type Plugin,
   type PluginDefinition,
@@ -30,6 +31,7 @@ export {
   type RefCandidate,
   type Root,
   type RunCtx,
+  type SettingSource,
 } from './types.ts'
 export { BUILT_IN_PLUGINS, findPlugins, loadPlugins, type Loaded } from './registry.ts'
 export {

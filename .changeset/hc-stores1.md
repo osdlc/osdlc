@@ -3,3 +3,5 @@
 ---
 
 Ship descriptors for eight stores on their default folders: pnpm, uv, Hugging Face Hub, Gradle, npm, pip, Yarn and Maven.
+
+A `plugins.<name>.idleHours` the user sets now wins over a descriptor entry's own `idleHours`, and a top-level `idleHours` can only raise it; `config` prints each such entry's threshold. `@osdlc/host-cleaner/testing` adds `fakeProcesses` and `ageTree`.

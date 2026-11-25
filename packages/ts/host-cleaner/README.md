@@ -212,7 +212,10 @@ without it to the kit it builds; a kit no run has bound removes nothing.
 
 `idleHoursSetting` is the `idleHours` setting: a plugin that declares it
 inherits the config's top-level `idleHours` when its own entry sets none, and
-`idleHoursOr(idle)` is the threshold it names, the default when unset. A plugin
+`idleHoursOr(idle)` is the threshold it names, the default when unset. The core
+tells `create` where each setting came from (`init.sources`: `config`, `shared`
+or `default`), and a definition's `idleHoursOf(idleHours, source)` lists the
+parts with a threshold of their own, for `config` to print. A plugin
 that walks checkouts itself skips those `coveredBy(path, ctx.ignore ?? [])`
 finds ignored; `present(path)` says whether something, a link included, is
 there.
@@ -460,17 +463,21 @@ descriptors, with a warning.
 
 The package ships eight, for macOS and Linux: `pnpm` (the store, pruned with
 `pnpm store prune`, and the metadata cache), `uv` (the cache, pruned with
-`uv cache prune`), `huggingface-hub` (one candidate per model or dataset, after
-30 idle days), `gradle` (the caches after a week and each wrapper distribution
+`uv cache prune`), `huggingface-hub` (one candidate per model, dataset or space,
+after 30 idle days), `gradle` (the caches after a week and each wrapper distribution
 after 30 days), `npm` (the package cache), `pip` (the cache), `yarn` (Classic's
 global cache; Berry's is left out, since Plug'n'Play projects run from it) and
 `maven` (the local repository, after 30 idle days, at the cost `rebuild`). While
 the tool runs, every candidate of `pnpm`, `uv`, `gradle` (any Gradle build or
-daemon), `npm` (npm or npx), `yarn` and `maven` is refused as `in-use`, at the
+daemon), `npm` (npm or npx), `pip` (pip, pip3 or `python -m pip`), `yarn` and
+`maven` (mvn, `./mvnw`, mvnd or any process naming `maven`, such as IntelliJ's
+Maven server) is refused as `in-use`, at the
 survey and again before each delete, so a long-running `pnpm dev` keeps the pnpm
 store from being pruned. Idle time is the newest modification time inside a
-folder, and reading a file doesn't change it: a Hugging Face model or a Gradle
-wrapper distribution in daily use counts as idle from its download. Each looks
+folder, and reading a file doesn't change it: a Hugging Face model, a Gradle
+wrapper distribution or a Maven repository in daily use counts as idle from its
+last download, and a Maven repository used only offline (`-o`) from its last
+online build. Raise `plugins.maven.idleHours` to keep it longer. Each looks
 only at the tool's default
 folders: a store moved by an environment variable or a setting is not found, and
 the folder it left behind, if any, is what gets cleaned.
@@ -507,8 +514,16 @@ Two settings sit at the top of the config and apply to every plugin:
 - `idleHours` is the default for every plugin that has the setting and does not
   set its own. `0` is allowed and makes every idle-checked artifact a candidate.
 
+A descriptor entry may carry its own `idleHours`, such as Maven's 720. A
+`plugins.<name>.idleHours` you set wins over it. A top-level `idleHours` you set
+can only raise it, never lower it: `"idleHours": 0` leaves Maven's repository at
+720 hours, `"idleHours": 1000` takes it to 1000. With neither set, the entry's
+own value applies.
+
 `host-cleaner config` prints every plugin's effective settings: the value, and
-whether the file set it or it is the default. `--format json` prints the values.
+whether the file set it or it is the default. Under a descriptor's `idleHours`
+it prints each entry with its own value and the threshold the run applies to it.
+`--format json` prints the values, and those thresholds under `partIdleHours`.
 
 ### Exit codes
 

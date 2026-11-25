@@ -208,12 +208,23 @@ export interface Plugin {
 /** The plugin API version this host-cleaner supports; a definition's `api` must equal it. */
 export const PLUGIN_API = 1
 
+/** Where a setting's value came from: the plugin's own entry, the config's top-level setting, or the default. */
+export type SettingSource = 'config' | 'shared' | 'default'
+
+/** One part of a plugin with an idle threshold of its own, as `config` shows it. */
+export interface PartIdleHours {
+  part: string
+  idleHours: number
+}
+
 /**
  * What `create` is told: its own entry in the config's `plugins`, validated with
  * its defaults filled in, and the git kinds `--worktrees` and `--branches` leave.
  */
 export interface PluginInit<S = Record<string, unknown>> {
   settings: S
+  /** Where each key of `settings` came from; a key it does not name came from the default. */
+  sources?: Readonly<Record<string, SettingSource>>
   only: readonly Kind[]
   /** The command line's environment, for a plugin that runs other programs. */
   env: Readonly<Record<string, string | undefined>>
@@ -232,6 +243,12 @@ export interface PluginDefinition<S extends z.ZodObject = z.ZodObject> {
   /** The keys its entry in `plugins` may hold; an unknown key is a config error. */
   settings: S
   create(init: PluginInit<z.output<S>>): Plugin
+  /**
+   * The idle threshold of each part that does not simply take the `idleHours`
+   * setting, given that setting and where it came from: what the run uses, for
+   * `config` to show.
+   */
+  idleHoursOf?(idleHours: number, source: SettingSource): PartIdleHours[]
 }
 
 /**

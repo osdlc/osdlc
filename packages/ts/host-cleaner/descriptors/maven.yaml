@@ -3,9 +3,14 @@
 # settings.xml is not followed. No Maven command prunes the whole repository,
 # so it is removed as a folder once nothing in it changed for 30 days. Its cost
 # is `rebuild`: what `mvn install` put there comes back only by building those
-# projects again. While `mvn` or Maven's launcher (a java process whose main
-# class is org.codehaus.plexus.classworlds.launcher.Launcher) runs, it is
-# refused in-use.
+# projects again. Maven only reads an artifact it already has, so a repository
+# used every day, or only offline, counts as idle from its last download.
+# While Maven runs it is refused in-use: `mvn`, Maven's launcher (a java process
+# whose main class is org.codehaus.plexus.classworlds.launcher.Launcher), the
+# jar-based `./mvnw` (org.apache.maven.wrapper.MavenWrapperMain), the mvnd
+# daemon and client (`mvnd`, org.mvndaemon.mvnd.common.MavenDaemon), and any
+# process with the dot part `maven` in a word, such as IntelliJ's embedded
+# server (org.jetbrains.idea.maven.server...).
 descriptor: 1
 store: maven
 detect:
@@ -17,4 +22,4 @@ candidates:
     costDescription: rebuild
     idleHours: 720
 inUse:
-  processes: [mvn, classworlds]
+  processes: [mvn, classworlds, MavenWrapperMain, mvnd, MavenDaemon, maven]

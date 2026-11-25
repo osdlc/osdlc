@@ -16,15 +16,13 @@ import {
   renameSync,
   rmSync,
   symlinkSync,
-  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import type { CommandRunner } from '@osdlc/command-seam'
-import type { ProcessHolder, ProcessProbe } from '@osdlc/repo-cleaner'
+import type { ProcessHolder } from '@osdlc/repo-cleaner'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { CORPUS_DIR, FIRST_SET, draftStore } from '../scripts/draft-descriptor.ts'
@@ -52,38 +50,21 @@ import {
   type RunCtx,
 } from '../src/index.ts'
 import { settingsOf } from '../src/settings.ts'
-import { contractSuite, fakeContext, fakeRunner, tempHome } from '../src/testing.ts'
+import {
+  ageTree as age,
+  contractSuite,
+  fakeContext,
+  fakeProcesses as processes,
+  fakeRunner,
+  tempHome,
+  type FakeProcesses as Processes,
+} from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
   while (cleanups.length > 0) cleanups.pop()!()
-})
-
-/** The kit's process table, as its `probe` and `ps` options. */
-interface Processes {
-  probe: ProcessProbe
-  ps: CommandRunner
-}
-
-/**
- * A process table: `cwd` maps a folder to the processes working in it, for
- * the probe; `/` lists every process, read by `ps` as a child of init with
- * `command` as its command line. Both read `table` when asked, so it may
- * change.
- */
-const processes = (table: Record<string, ProcessHolder[]> = {}): Processes => ({
-  probe: { alive: () => false, holders: (path) => table[path] ?? [] },
-  ps: {
-    run: () => ({
-      exitCode: 0,
-      stdout: [{ pid: 1, command: '/sbin/init' }, ...(table['/'] ?? [])]
-        .map((h) => `${h.pid} ${h.pid === 1 ? 0 : 1} ${h.command}\n`)
-        .join(''),
-      stderr: '',
-    }),
-  },
 })
 
 const OS: Os = 'linux'
@@ -165,20 +146,6 @@ async function surveyAndClean(plugin: Plugin, allow: string[] = [], over: Partia
   const s = await survey([plugin], ctx)
   const p = plan(s, { allow, targets: ctx.targets })
   return { survey: s, receipt: await clean(p, [plugin], ctx) }
-}
-
-/** Sets every modification time under `dir` to `hours` ago. */
-function age(dir: string, hours: number): void {
-  const at = new Date(Date.now() - hours * 3_600_000)
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name)
-    try {
-      age(p, hours)
-    } catch {
-      // `p` is a file, which readdirSync cannot read.
-    }
-    utimesSync(p, at, at)
-  }
 }
 
 // The system description's tier 1 examples (as in descriptor-schema.test.ts).

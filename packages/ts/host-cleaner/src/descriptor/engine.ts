@@ -47,6 +47,7 @@ import {
   type Plugin,
   type PluginDefinition,
   type Root,
+  type SettingSource,
 } from '../types.ts'
 import {
   DEFAULT_MAX_ENTRIES,
@@ -273,11 +274,25 @@ export function descriptorPlugin(
     name,
     api: PLUGIN_API,
     settings: z.strictObject({ idleHours: idleHoursSetting }),
-    create: ({ settings, kit, env }) =>
+    idleHoursOf: (idleHours, source) =>
+      [
+        ...d.candidates.map((c) => ({
+          part: c.glob === undefined ? c.path : `${c.path}/${c.glob}`,
+          own: c.idleHours,
+        })),
+        ...(d.project ?? []).map((p) => ({
+          part: `${p.dir} beside ${p.marker}`,
+          own: p.idleHours,
+        })),
+      ]
+        .filter((p) => p.own !== undefined)
+        .map((p) => ({ part: p.part, idleHours: entryIdleHours(p.own, idleHours, source) })),
+    create: ({ settings, sources, kit, env }) =>
       engine(name, d, kit, {
         home: env.HOME ?? homedir(),
         os: opts.os ?? osOf(process.platform),
         idleHours: settings.idleHours ?? DEFAULT_IDLE_HOURS,
+        idleHoursFrom: sources?.idleHours ?? 'default',
         runs: opts.runs ?? ((plugin, ctx) => ctx.running?.includes(plugin) === true),
         ownDirs: opts.ownDirs ?? ownDirsOf(env),
       }),
@@ -294,10 +309,28 @@ const ownDirsOf = (env: Readonly<Record<string, string | undefined>>): string[] 
   }
 }
 
+/**
+ * The idle threshold of an entry whose own `idleHours` is `own`, given the
+ * plugin's `idleHours` setting and where it came from. The plugin's own entry
+ * in the config wins; the top-level setting can only raise the entry's value;
+ * the default leaves it. An entry with none takes the setting.
+ */
+export const entryIdleHours = (
+  own: number | undefined,
+  setting: number,
+  from: SettingSource,
+): number =>
+  own === undefined || from === 'config'
+    ? setting
+    : from === 'shared'
+      ? Math.max(own, setting)
+      : own
+
 interface EngineAt {
   home: string
   os: Os
   idleHours: number
+  idleHoursFrom: SettingSource
   runs: NonNullable<DescriptorOptions['runs']>
   ownDirs: readonly string[] | Error
 }
@@ -375,7 +408,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   }
 
   const thresholdOf = (entry: { idleHours?: number | undefined }): number =>
-    entry.idleHours ?? at.idleHours
+    entryIdleHours(entry.idleHours, at.idleHours, at.idleHoursFrom)
 
   const projectThreshold = (builds: readonly Project[]): number =>
     Math.max(...builds.map((p) => thresholdOf(p.entry)))
