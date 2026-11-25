@@ -15,7 +15,6 @@ export { serveStatic } from './serve-static.ts'
 export { selectStories, type StoryFilter, type StoryIndex } from './story.ts'
 export {
   DEFAULT_WALK_MAX,
-  parseAriaLine,
   walkPage,
   type WalkBox,
   type WalkDialog,
