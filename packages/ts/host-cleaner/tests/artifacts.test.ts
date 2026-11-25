@@ -442,6 +442,19 @@ describe('a folder too slow to measure (D11)', () => {
     ])
   })
 
+  test('delete keeps one measured idle in the plan that cannot be measured now', async () => {
+    const { root, wt } = idleWorktree()
+    const s = await node(root)
+    expect(s.candidates[0]!.unmeasured).toBeUndefined()
+    const late = nodePlugin(options({ now: slow() }))
+    // Surveyed first, so its kit is bound as in a run.
+    await survey([late], ctxOf(root))
+    await expect(late.delete!(s.candidates[0]!, ctxOf(root))).rejects.toThrow(
+      /could not be measured idle/,
+    )
+    expect(existsSync(join(wt, 'node_modules', 'a', 'index.js'))).toBe(true)
+  })
+
   test('plan then re-check shows no changed, whether the second walk finishes or not', async () => {
     const { root, wt } = idleWorktree()
     const s = await survey([nodePlugin(options({ now: slow() }))], ctxOf(root))

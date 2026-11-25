@@ -19,9 +19,11 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { A11Y_OPTIONS } from '@osdlc/story-harness/a11y'
 import { seeded } from '@osdlc/story-harness/browser'
+import { slug } from '@osdlc/story-harness/parley-capture'
 import { defineStoryConfig, storyUrl } from '@osdlc/story-harness/playwright'
-import { captureStories, serveStatic } from '@osdlc/story-harness/runner'
+import { captureStories, serveStatic, walkPage } from '@osdlc/story-harness/runner'
 
 const a = seeded(7)
 const b = seeded(7)
@@ -38,6 +40,9 @@ assert.equal(
   'http://x/iframe.html?id=a--b&viewMode=story&globals=theme:dark',
 )
 assert.equal(typeof captureStories, 'function')
+assert.equal(typeof walkPage, 'function')
+assert.equal(A11Y_OPTIONS.rules.region.enabled, false)
+assert.equal(slug('A b'), 'a-b')
 
 const dir = mkdtempSync(join(tmpdir(), 'story-harness-smoke-'))
 try {
@@ -53,6 +58,8 @@ const dist = dirname(dirname(fileURLToPath(import.meta.resolve('@osdlc/story-har
 const bin = join(dist, '..', 'bin', 'story-shots.js')
 assert.ok(existsSync(join(dist, 'runner', 'story-shots.sh')), 'dist/runner/story-shots.sh ships')
 assert.ok(existsSync(join(dist, 'runner', 'platform.sh')), 'dist/runner/platform.sh ships')
+for (const name of ['story-a11y.e2e.js', 'story-walk.e2e.js', 'aggregate-report.js'])
+  assert.ok(existsSync(join(dist, 'runner', name)), `dist/runner/${name} ships`)
 const usage = spawnSync(process.execPath, [bin], { encoding: 'utf8' })
 assert.equal(usage.status, 2, `story-shots exited ${usage.status}: ${usage.stderr}`)
 assert.match(usage.stderr, /usage: story-shots <package dir>/)
@@ -69,6 +76,8 @@ refused(['--settle-ms', 'abc'], {}, /--settle-ms takes a whole number/)
 refused(['--settle-ms', '1.5'], {}, /--settle-ms takes a whole number/)
 refused(['--settle-ms'], {}, /--settle-ms needs a value/)
 refused([], { SHOT_WORKERS: '0' }, /SHOT_WORKERS takes a whole number of at least 1/)
+refused(['--a11y', '--walk'], {}, /pass one of --update, --a11y and --walk/)
+refused(['--walk'], { WALK_MAX: '0' }, /WALK_MAX takes a whole number of at least 1/)
 refused([], { SHOT_WORKERS: 'two' }, /SHOT_WORKERS takes a whole number of at least 1/)
 
 console.log('story-harness smoke: OK')

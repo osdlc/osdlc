@@ -124,6 +124,14 @@ describe('idle', () => {
     expect(kit.idle(dir)).toEqual({ unmeasured: true })
     expect(pluginKit('x', { now: () => NOW, budgetMs: 0 }).idle(dir).unmeasured).toBe(false)
   })
+
+  test('the budget holds inside one flat folder, not only on entering a folder', () => {
+    const dir = temp()
+    for (const name of ['a', 'b', 'c']) put(join(dir, name), 30)
+    let t = NOW.getTime()
+    const kit = pluginKit('x', { now: () => new Date((t += 1_000)), budgetMs: 1_500 })
+    expect(kit.idle(dir)).toEqual({ unmeasured: true })
+  })
 })
 
 describe('remove', () => {
@@ -136,6 +144,28 @@ describe('remove', () => {
     const said = boundKit('go', { targets: [root] }).remove(dir)
     expect(said).toMatch(new RegExp(`^removed ${dir}; freed \\d+ bytes$`))
     expect(existsSync(dir)).toBe(false)
+  })
+
+  test("a new survey unbinds the kit while its hooks run: no remove within an earlier survey's bounds", async () => {
+    const root = temp()
+    const dir = join(root, 'cache')
+    put(join(dir, 'x'), 1)
+    const kit = pluginKit('stale')
+    const plugin = {
+      name: 'stale',
+      detect: () => true,
+      discover: () => {
+        kit.remove(dir)
+        return []
+      },
+    }
+    attachKit(plugin, kit)
+    bindKit(plugin, { roots: [], self: [], targets: [root], linked: [], home: homedir() })
+    const s = await survey([plugin], { cwd: root, targets: [root], allow: [] })
+    expect(s.warnings).toEqual([
+      expect.stringMatching(/^stale: discover failed: .*not bound to a run/),
+    ])
+    expect(existsSync(dir)).toBe(true)
   })
 
   test('refuses a folder outside the roots and targets, a target itself, and a link that leads out', () => {
@@ -291,7 +321,7 @@ describe('running', () => {
       ...others,
     ].join('\n')
 
-  test('host-cleaner and every process above it are left out: the npm exec or pnpm dlx that started it is not running', () => {
+  test('host-cleaner and the launchers above it that name it are left out: the npm exec or pnpm dlx that started it is not running', () => {
     const ask = (table: string, name: string) =>
       pluginKit('x', { ps: fakePs(table) }).running({ name }, { signal: signal() }).names
     const npx = startedBy('npm exec @osdlc/host-cleaner clean')
@@ -301,6 +331,22 @@ describe('running', () => {
     const dlx = startedBy('node /opt/homebrew/bin/pnpm dlx @osdlc/host-cleaner clean')
     expect(ask(dlx, 'pnpm')).toEqual([])
     expect(ask(dlx, 'node')).toEqual([])
+  })
+
+  test('an ancestor whose command line does not name host-cleaner is seen: the editor or terminal it runs inside', () => {
+    const table = [
+      '    1     0 /sbin/launchd',
+      '   30     1 /Applications/Code.app/Contents/MacOS/Code',
+      '   40    30 tmux new -s work',
+      '   41    40 -zsh',
+      '   42    41 npm exec @osdlc/host-cleaner clean',
+      `${process.pid}    42 node /Users/me/.npm/_npx/1a2b/node_modules/.bin/host-cleaner clean`,
+    ].join('\n')
+    const ask = (name: string) =>
+      pluginKit('x', { ps: fakePs(table) }).running({ name }, { signal: signal() }).names
+    expect(ask('Code')).toEqual(['Code (pid 30)'])
+    expect(ask('tmux')).toEqual(['tmux (pid 40)'])
+    expect(ask('npm')).toEqual([])
   })
 
   test("a pnpm outside host-cleaner's own line still matches, beside the pnpm dlx that started it", () => {
