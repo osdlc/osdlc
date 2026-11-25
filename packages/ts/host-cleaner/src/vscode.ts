@@ -354,12 +354,14 @@ function entryOf(dir: string): Entry {
 }
 
 /** JSON's strings, and JSONC's comments and trailing commas. */
-const JSONC_TOKEN = /("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)|,(?=(?:\s|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*[\]}])/g
+const JSONC_TOKEN =
+  /("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)|,(?=(?:\s|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*[\]}])/g
 
 /** `text` with JSONC's comments and trailing commas taken out; strings are left as they are. */
 const stripJsonc = (text: string): string =>
-  text.replace(JSONC_TOKEN, (token, quoted: string | undefined) =>
-    quoted ?? (token.startsWith(',') ? '' : ' '),
+  text.replace(
+    JSONC_TOKEN,
+    (token, quoted: string | undefined) => quoted ?? (token.startsWith(',') ? '' : ' '),
   )
 
 /** The local folders the `.code-workspace` file `file` lists as its roots; throws when it cannot be read as one. */
@@ -444,8 +446,7 @@ const isGitWorktree = (c: Candidate): c is PathCandidate =>
   c.kind === 'worktree' && c.owner === 'git' && c.path !== undefined
 
 /** The VS Code processes among `kit.running`'s names; see {@link VSCODE_PROCESS}. */
-const vscodeOf = (names: readonly string[]): string[] =>
-  names.filter((n) => VSCODE_PROCESS.test(n))
+const vscodeOf = (names: readonly string[]): string[] => names.filter((n) => VSCODE_PROCESS.test(n))
 
 function build(kit: Kit, opts: VscodeOptions): Plugin {
   const userDir =
@@ -486,11 +487,7 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
   }
 
   /** The objections to deleting git's worktree `c` while VS Code is as `w` says. */
-  const worktreeCheck = (
-    c: PathCandidate,
-    w: Windows,
-    ctx: Pick<Ctx, 'signal'>,
-  ): Objection[] => {
+  const worktreeCheck = (c: PathCandidate, w: Windows, ctx: Pick<Ctx, 'signal'>): Objection[] => {
     // With no VS Code process anywhere, none works in this worktree.
     const here: Running = w.running ? kit.running({ in: c.path }, ctx) : { names: [] }
     const procs = vscodeOf(here.names)
