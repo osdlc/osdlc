@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/json-canvas-core",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Types, validation, an immutable operation engine with undo and redo, geometry and a view model for JSON Canvas",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
