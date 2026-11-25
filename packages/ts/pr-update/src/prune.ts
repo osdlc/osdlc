@@ -36,6 +36,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  type Stats,
 } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 
@@ -209,9 +210,18 @@ function threeDown(root: string): { path: string; parts: [string, string, string
   return out
 }
 
-/** The bytes the files under `path` take, by `lstat`: a link counts as itself, never its target. */
+/**
+ * The bytes the files under `path` take, by `lstat`: a link counts as itself, never its target.
+ * The size is only shown, so what cannot be read (a folder that cannot be searched, say) counts
+ * as 0 rather than throwing: the removal it is shown for reports its own error, per entry.
+ */
 export function sizeOf(path: string): number {
-  const st = lstatOrNull(path)
+  let st: Stats | null
+  try {
+    st = lstatOrNull(path)
+  } catch {
+    return 0
+  }
   if (st === null) return 0
   if (!st.isDirectory()) return st.size
   let total = 0

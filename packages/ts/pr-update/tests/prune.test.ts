@@ -227,6 +227,30 @@ describe('dead run worktrees under worktrees/', () => {
     expect(git(hook.dir, 'for-each-ref')).toBe(hookRefs)
   })
 
+  // Windows has no search bit for chmod to take away, and root searches any folder.
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'one holding a folder that cannot be searched fails on its own; the other is still removed (final review)',
+    () => {
+      const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
+      checkout.commit('init', { 'w.txt': 'w' })
+      const stuck = runWorktree(checkout.dir, 'acme/web')
+      const other = runWorktree(checkout.dir, 'acme/web', '2147483645.1')
+      // Readable but not searchable, as a PR's test run there can leave a folder.
+      const shut = join(stuck, 'shut')
+      mkdirSync(shut)
+      writeFileSync(join(shut, 'inside'), 'x')
+      chmodSync(shut, 0o600)
+      try {
+        const r = prune()
+        expect(r.removed.map((e) => e.path)).toEqual([other])
+        expect(existsSync(other)).toBe(false)
+        expect(r.failed.map((e) => e.path)).toEqual([stuck])
+      } finally {
+        chmodSync(shut, 0o700)
+      }
+    },
+  )
+
   test('one registered in a managed clone is removed while holding the clone’s lock, without waiting', () => {
     const clone = makeClone('acme/api', 1)
     const dead = runWorktree(clone, 'acme/api')
