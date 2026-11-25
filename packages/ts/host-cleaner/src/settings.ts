@@ -2,8 +2,8 @@
  * What each plugin's entry in the config's `plugins` may hold: the settings
  * schema of its definition, a built-in's, a package's or a descriptor's, made
  * strict, with the core's `enabled` added and its own refinements kept (a
- * package's definition already holds `package`; see ./load.ts). It is
- * validated when the config loads with
+ * package's definition already holds `package`; see `checked` in ./load.ts).
+ * It is validated when the config loads with
  * `@osdlc/config-layers`' `validateStandard`, so a misspelt key or a wrong type
  * is a config error that names the plugin and the key. `host-cleaner config`
  * prints the same schemas' fields and defaults through `configFields`.

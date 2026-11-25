@@ -508,7 +508,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     return [...out]
   }
 
-  /** Whether `dir` holds an entry, not a folder, that `marker` matches. */
+  /** {@link marks} over `dir`'s entries, `marker` a glob; false for a folder that can't be read. */
   const marked = (dir: string, marker: string): boolean => {
     try {
       return marks(readdirSync(dir, { withFileTypes: true }), globRegExp(marker))
