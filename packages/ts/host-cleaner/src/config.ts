@@ -45,6 +45,9 @@ export type MachineOpts = Pick<ResolveOptions, 'platform' | 'home'>
  * The directories, under the `xdg` convention. Windows has no `xdg` folders
  * and keeps its own; `HOST_CLEANER_CONVENTION=native` switches back to the
  * native ones.
+ *
+ * @throws `TieredDirsError` from `@osdlc/tiered-dirs` when
+ *   `HOST_CLEANER_CONVENTION` is neither `native` nor `xdg`.
  */
 export function hostDirs(
   env: Record<string, string | undefined> = process.env,
