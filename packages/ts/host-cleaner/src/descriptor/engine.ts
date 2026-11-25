@@ -5,9 +5,9 @@
  *
  * - detect: `detect`'s `onPath` and `exists`, or any of its folders existing.
  *   A `system: true` descriptor never applies ({@link skipReason}), nor one
- *   whose `supersededBy` plugin runs. Otherwise it first works out the `vars`
- *   its folders and locks on this OS use (tier 2, {@link resolveVars}), so
- *   once per survey, and its folders with them. A folder whose variable has
+ *   whose `supersededBy` plugin runs. Otherwise it first resolves the `vars`
+ *   its folders and locks use on this OS (tier 2, {@link resolveVars}), once
+ *   per survey, and fills its folders with them. A folder whose variable has
  *   no value is left out, with its candidates, and detect's note says why.
  * - roots: each of its `paths` for this OS that passes {@link pathProblem},
  *   as a self root (`{ path, self: true }`): a candidate may be the whole
@@ -321,7 +321,6 @@ function missingText(key: string, missing: string, vars: Readonly<Vars>): string
 }
 
 function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
-  // The folder and lock templates that apply on this OS, and the variables they use.
   const pathTemplates = Object.entries(d.paths).flatMap(([key, perOs]) => {
     const template = perOs.all ?? perOs[at.os]
     return template === undefined ? [] : [[key, template] as const]
@@ -329,9 +328,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   const lockTemplates = d.inUse?.locks ?? []
   const used = varsUsed(d, at.os, [...pathTemplates.map(([, t]) => t), ...lockTemplates])
 
-  // The folders that apply on this OS, by their name in `paths`, as the last
-  // survey resolved them, each trusted when a config value gave it; and the
-  // lock files. Undefined until a survey resolves them.
+  // The folders by their name in `paths`, and the lock files, as the last
+  // survey filled them. `locks` stays undefined until a survey runs; `ready` tests it.
   let folders = new Map<string, Folder>()
   let locks: string[] | undefined
   // Why the last survey left folders or locks out; undefined when it left none out.
@@ -347,7 +345,6 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       signal: ctx.signal,
       only: used,
     })
-    // A folder or lock whose variable has no value is left out, with a note.
     const why: string[] = []
     const next = new Map<string, Folder>()
     for (const [key, template] of pathTemplates) {
@@ -698,7 +695,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
 
   let rows = new Map<string, Row>()
 
-  // Commands run one at a time, each within its own limit; only the used variables' run.
+  // detect's limit covers the used variables' commands, which run one at a time.
   const commands = [...used].flatMap((v) => d.vars![v]!).filter((s) => 'command' in s).length
 
   return {

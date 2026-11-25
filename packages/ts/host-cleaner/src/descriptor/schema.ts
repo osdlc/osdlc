@@ -180,7 +180,7 @@ export const DescriptorCandidateSchema = z
       if (c.env !== undefined) at('env', 'only with command')
     }
     if (c.maxEntries !== undefined && c.glob === undefined) at('maxEntries', 'only with glob')
-    // Variables are filled only in folders; a command is pointed at its folder with {path}.
+    // A command reaches its folder through {path}, not a variable.
     const unfilled = 'is not filled here: variables are filled only in paths, vars and locks'
     if (c.command?.some((a) => a.includes('${')) === true) at('command', `\${ ${unfilled}`)
     if (Object.values(c.env ?? {}).some((v) => v.includes('${'))) at('env', `\${ ${unfilled}`)
@@ -291,7 +291,7 @@ export const DescriptorSchema = z
 
 type VarsField = Record<string, z.output<typeof varSource>[]>
 type FieldPath = (string | number)[]
-type Template = { text: string; path: FieldPath; of?: string }
+type Template = { text: string; path: FieldPath; inVar?: string }
 type VarIssue = { path: FieldPath; message: string }
 
 /** Each folder that may use a variable, with its field path. */
@@ -307,13 +307,13 @@ function templatesOf(d: {
   for (const [name, sources] of Object.entries(d.vars ?? {}))
     sources.forEach((s, i) => {
       const at = ['vars', name, i]
-      if ('file' in s) out.push({ text: s.file, path: [...at, 'file'], of: name })
+      if ('file' in s) out.push({ text: s.file, path: [...at, 'file'], inVar: name })
       if ('value' in s) {
         if (typeof s.value === 'string')
-          out.push({ text: s.value, path: [...at, 'value'], of: name })
+          out.push({ text: s.value, path: [...at, 'value'], inVar: name })
         else
           for (const [os, text] of Object.entries(s.value))
-            if (text !== undefined) out.push({ text, path: [...at, 'value', os], of: name })
+            if (text !== undefined) out.push({ text, path: [...at, 'value', os], inVar: name })
       }
     })
   d.inUse?.locks?.forEach((text, i) => out.push({ text, path: ['inUse', 'locks', i] }))
@@ -343,9 +343,9 @@ function varIssues(d: Parameters<typeof templatesOf>[0]): VarIssue[] {
     for (const ref of varRefs(t.text)) {
       if (!declared.has(ref) && !Object.hasOwn(BUILT_IN_VARS, ref))
         out.push({ path: t.path, message: `no variable \${${ref}}: declare it in vars` })
-      else if (t.of !== undefined && declared.has(ref)) {
-        if (!uses.has(t.of)) uses.set(t.of, new Set())
-        uses.get(t.of)!.add(ref)
+      else if (t.inVar !== undefined && declared.has(ref)) {
+        if (!uses.has(t.inVar)) uses.set(t.inVar, new Set())
+        uses.get(t.inVar)!.add(ref)
       }
     }
   }

@@ -162,9 +162,9 @@ export interface VarsAt {
 type Given = { value: string; trusted: boolean } | { failed: string }
 
 /**
- * Every variable in `declared`, or in `at.only`, and the built-ins, resolved now. Commands run
- * one at a time, so a descriptor with `n` command sources can take `n` times
- * the time limit.
+ * Every variable in `declared`, or in `at.only`, and the built-ins, resolved
+ * now. Commands run one at a time, so a descriptor with `n` command sources
+ * can take `n` times the time limit.
  */
 export async function resolveVars(
   declared: Readonly<Record<string, readonly VarSource[]>>,
@@ -231,7 +231,6 @@ export async function resolveVars(
   }
 
   for (const name of at.only ?? Object.keys(declared)) await resolve(name)
-  // Built-ins first, then the declared ones in the order declared.
   return Object.fromEntries(
     [...Object.keys(BUILT_IN_VARS), ...Object.keys(declared)]
       .filter((n) => Object.hasOwn(done, n))
