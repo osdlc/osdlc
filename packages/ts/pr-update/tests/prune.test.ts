@@ -229,7 +229,7 @@ describe('dead run worktrees under worktrees/', () => {
 
   // Windows has no search bit for chmod to take away, and root searches any folder.
   test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
-    'one holding a folder that cannot be searched fails on its own; the other is still removed (final review)',
+    'one holding a folder that cannot be searched fails on its own; the other is still removed (final review round 1)',
     () => {
       const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
       checkout.commit('init', { 'w.txt': 'w' })
@@ -502,7 +502,7 @@ describe('managed clones', () => {
     },
   )
 
-  test('a kept worktree with a record, switched to a branch of its own, survives --discard-kept, and so does its clone, in a dry run too (review round 1)', () => {
+  test('a kept worktree with a record, switched to a branch of its own, survives --discard-kept, and so does its clone, in a dry run too (final review round 1)', () => {
     const clone = makeClone('acme/api', 400)
     const path = keptWorktree(clone, 'acme/api', 7)
     // A person takes the tree over and works in it.

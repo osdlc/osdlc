@@ -224,7 +224,7 @@ describe("a managed clone's credential helper", () => {
   })
 })
 
-describe('the PATH of git in a run worktree (final review)', () => {
+describe('the PATH of git in a run worktree (final review round 1)', () => {
   test('a push over ssh never runs an ssh the PR commits, with . on PATH', async () => {
     // The PR commits an executable `ssh`, so the run worktree holds one.
     const ran = (name: string) => join(scratch, `${name}-ran`)
@@ -554,7 +554,7 @@ describe('the first-run question', () => {
     )
   })
 
-  test('an editor saves only a clone directory while this run asks: accepting the offered one clones into neither (review round 1)', async () => {
+  test('an editor saves only a clone directory while this run asks: accepting the offered one clones into neither (final review round 1)', async () => {
     const theirs = join(scratch, 'theirs')
     const { seams, raced } = racing(() => writeMachine(`mirror_dir: ${theirs}\n`), '1')
     const r = await runWith(seams, {}, 'update', '--repo', 'acme/api', '--apply', '--json')
