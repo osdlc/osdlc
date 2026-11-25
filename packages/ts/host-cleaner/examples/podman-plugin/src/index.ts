@@ -61,9 +61,10 @@ export default definePlugin({
             kind: 'volume',
             ref: v.Name,
             name: v.Name,
-            why: v.Anonymous === true
-              ? 'an anonymous volume no container uses'
-              : 'no container uses it',
+            why:
+              v.Anonymous === true
+                ? 'an anonymous volume no container uses'
+                : 'no container uses it',
             costDescription: 'lost',
             // A volume made again under the same name since the plan is
             // another volume: the re-check drops it as changed.
