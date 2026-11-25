@@ -21,9 +21,9 @@ import { failureText, firstLine } from '@osdlc/command-seam'
 import { globRegExp } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
-import { checkoutsOf, hoursText, present, type Checkout } from '../artifacts.ts'
+import { checkoutsOf, hoursText, type Checkout } from '../artifacts.ts'
 import { hostDirs } from '../config.ts'
-import { DEFAULT_IDLE_HOURS, idleHoursSetting, type Idle, type Kit } from '../kit.ts'
+import { DEFAULT_IDLE_HOURS, idleHoursSetting, present, type Idle, type Kit } from '../kit.ts'
 import { containedIn, linkedCheckouts, realOr, rootProblem } from '../roots.ts'
 import { DELETE_LIMIT_MS, OUTSIDE_ROOTS } from '../run.ts'
 import {
