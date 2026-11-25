@@ -233,6 +233,49 @@ Every shipped plugin passes it:
 expect(await contractSuite(plugin, { cwd: root, targets: [root] })).toEqual([])
 ```
 
+### Descriptors
+
+A descriptor is a plugin written as a YAML (or JSON) file, `descriptor: 1`:
+named folders in `paths`, one value for `all` or one per OS, and the
+`candidates` under them. This release reads and checks the format; the core
+does not load descriptors yet.
+
+```yaml
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
+descriptor: 1
+detect:
+  any: [{ onPath: uv }, { exists: cache }]
+paths:
+  cache: { all: ~/.cache/uv }
+candidates:
+  - path: cache
+    costDescription: re-download
+    command: [uv, cache, prune, --cache-dir, '{path}']
+    removes: unused
+inUse:
+  processes: [uv]
+```
+
+```ts
+import { DescriptorError, readDescriptor } from '@osdlc/host-cleaner'
+
+try {
+  const descriptor = readDescriptor('uv.yaml')
+} catch (err) {
+  // One line per problem, such as `line 5: candidates.0.path: no folder named "models" in paths`.
+  if (err instanceof DescriptorError) console.error(err.issues)
+}
+```
+
+`parseDescriptor(text, source)` reads text instead of a file;
+`descriptorIssues(value)` checks a parsed value and lists its problems without
+lines. A folder must start with `~/`, be absolute, and name something below
+the home folder or the root. A tool's `command` must name the checked folder,
+as a `{path}` argument or in `env`. `vars` (tier 2) and any `${VAR}` in a
+folder are refused until variables are built. `DescriptorSchema` is the zod
+schema, and `schemas/descriptor-1.json`, which the package ships, is the same
+schema as JSON Schema for editors.
+
 ## The `git` plugin
 
 `gitPlugin(options)` proposes repo-cleaner's worktrees, as paths, and branches,

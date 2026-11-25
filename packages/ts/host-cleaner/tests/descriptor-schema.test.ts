@@ -189,6 +189,16 @@ describe("the system description's examples", () => {
     ])
   })
 
+  test('a ${VAR} in a lock is refused too', () => {
+    expect(issues(UV.replace('processes: [uv]', "locks: ['${HOME}/.cache/uv/.lock']"))).toEqual([
+      'line 14: inUse.locks.0: variables (tier 2) are not supported yet',
+    ])
+  })
+
+  test('a glob may start with ~ when it names an entry, such as ~$*', () => {
+    expect(issues(hfWith("{ path: hub, costDescription: rebuild, glob: '~$*' }"))).toEqual([])
+  })
+
   test('the same descriptor as JSON reads the same', () => {
     const json = JSON.stringify(parse(HUGGING_FACE))
     expect(parseDescriptor(json, 'huggingface-hub.json')).toEqual(
@@ -320,6 +330,21 @@ describe('a bad descriptor names the field path', () => {
       HUGGING_FACE.replace('~/.cache/huggingface/hub', '~'),
       'line 4: paths.hub.all: Invalid input: expected string, received null',
     ],
+    ...['~/', '~/.', '~//', '/', '/.', 'C:\\'].map((root): [string, string, string] => [
+      `${root} alone, which would make the whole of it a root`,
+      HUGGING_FACE.replace('~/.cache/huggingface/hub', `'${root}'`),
+      'line 4: paths.hub.all: must name a folder below the home folder or a root, not the home folder or a root itself',
+    ]),
+    [
+      'a detect onPath that is a path',
+      UV.replace('{ onPath: uv }', '{ onPath: /usr/local/bin/uv }'),
+      'line 5: detect.any.0.onPath: the program must be a name on PATH, not a path',
+    ],
+    [
+      'a glob that starts at the home folder',
+      hfWith("{ path: hub, costDescription: rebuild, glob: '~/x' }"),
+      'line 5: candidates.0.glob: must stay inside the path: no .. segment, not absolute',
+    ],
     [
       'all beside a per-OS folder',
       HUGGING_FACE.replace('{ all: ~/.cache/huggingface/hub }', '{ all: ~/a, macos: ~/b }'),
@@ -430,6 +455,16 @@ describe('the YAML reader', () => {
     expect(issues(`${HUGGING_FACE}descriptor: 1\n`)).toEqual([
       expect.stringMatching(/^line 10: .*unique/i),
     ])
+  })
+
+  test('too many aliases expanded is a DescriptorError, not a crash', () => {
+    const lines = ['a: &a [x, x, x, x, x, x, x, x, x, x]']
+    for (let i = 1; i < 8; i++) {
+      const prev = String.fromCharCode(96 + i)
+      const next = String.fromCharCode(97 + i)
+      lines.push(`${next}: &${next} [${Array(10).fill(`*${prev}`).join(', ')}]`)
+    }
+    expect(issues(`${lines.join('\n')}\n`)).toEqual([expect.stringMatching(/^\(top\): .*alias/i)])
   })
 
   test('the error names the file and every issue', () => {
