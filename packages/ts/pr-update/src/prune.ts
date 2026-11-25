@@ -297,6 +297,9 @@ interface Owner {
  * Who owns the worktree at `tree`, or null when its records do not say so plainly. Its `.git` file
  * names the record `<common>/worktrees/<id>`, whose `commondir` gives the owner, and whose
  * `gitdir` must name this tree's `.git` back: a record that names another tree is not this one's.
+ *
+ * @throws when permission is denied to read them: an owner that cannot be read is not one that is
+ *   gone, and its tree, if it is a clone's, is removed only under the clone's lock.
  */
 export function worktreeOwner(tree: string): Owner | null {
   try {
@@ -309,7 +312,9 @@ export function worktreeOwner(tree: string): Owner | null {
     const back = resolve(record, readFileSync(join(record, 'gitdir'), 'utf8').trim())
     if (realpathSync.native(back) !== realpathSync.native(dotGit)) return null
     return { common }
-  } catch {
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    if (code === 'EACCES' || code === 'EPERM') throw e
     return null
   }
 }
@@ -338,7 +343,7 @@ export interface ListedWorktree {
   repo: string
   /** True while the run that made it is alive. */
   running: boolean
-  /** The git directory that owns it, or null when its records do not say. */
+  /** The git directory that owns it, or null when its records do not say or cannot be read. */
   owner: string | null
 }
 
@@ -466,9 +471,17 @@ export function listMirror(opts: MirrorWalkOptions): MirrorListing {
       },
     ]
   })
+  const ownerOf = (tree: string): string | null => {
+    try {
+      return worktreeOwner(tree)?.common ?? null
+    } catch (e) {
+      unreadable(tree, e)
+      return null
+    }
+  }
   const worktrees = runWorktrees(at.worktrees, runAlive, unreadable).map((w) => ({
     ...w,
-    owner: worktreeOwner(w.path)?.common ?? null,
+    owner: ownerOf(w.path),
   }))
   return { mirrorDir: at.mirrorDir, clones, worktreesDir: at.worktrees, worktrees }
 }
@@ -883,6 +896,9 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
         return
       }
     }
+    // `listKept` gives no records for a folder it cannot list, which would pass each tree here for
+    // one with no record. Listed first, so that throws and the clone fails with its kept trees.
+    if (kept.length > 0 && lstatOrNull(place.dir) !== null) readdirSync(place.dir)
     const recordsOf = new Map(listKept(place).map((r) => [realOr(r.path), r]))
     // A kept tree with no record, or one whose record was refused, is removed only while the
     // clone lists it on a `pr-update/failed-*` branch: a run stopped between making it and

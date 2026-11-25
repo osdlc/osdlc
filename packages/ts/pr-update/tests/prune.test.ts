@@ -307,6 +307,60 @@ describe('dead run worktrees under worktrees/', () => {
     },
   )
 
+  test
+    .skipIf(process.platform === 'win32' || process.getuid?.() === 0)
+    .each(['owner folder', 'clone'])(
+    'one whose clone cannot be read for its %s is left and reported, not removed without the clone’s lock (final review round 2)',
+    (what) => {
+      const clone = makeClone('acme/api', 1)
+      const dead = runWorktree(clone, 'acme/api')
+      const shut = what === 'clone' ? clone : dirname(clone)
+      chmodSync(shut, 0o600)
+      try {
+        for (const dryRun of [true, false]) {
+          const r = prune({ dryRun })
+          expect(r.removed).toEqual([])
+          expect(r.failed).toContainEqual(
+            expect.objectContaining({
+              kind: 'worktree',
+              path: dead,
+              reason: expect.stringContaining('EACCES'),
+            }),
+          )
+        }
+        expect(existsSync(dead)).toBe(true)
+        // A listing notes it, and shows the worktree with no owner.
+        const notes: string[] = []
+        const l = listMirror({ env, notice: (n) => notes.push(n) })
+        expect(l.worktrees).toEqual([expect.objectContaining({ path: dead, owner: null })])
+        expect(notes.join('\n')).toContain(`${dead} could not be read: EACCES`)
+      } finally {
+        chmodSync(shut, 0o700)
+      }
+    },
+  )
+
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'a kept folder that cannot be listed keeps its tree and its clone under --discard-kept, in a dry run too (final review round 2)',
+    () => {
+      const clone = makeClone('acme/api', 400)
+      const path = keptWorktree(clone, 'acme/api', 7)
+      // Searchable but not listable: the records in it cannot be found.
+      chmodSync(dirname(path), 0o300)
+      try {
+        for (const dryRun of [true, false]) {
+          const r = prune({ allClones: true, discardKept: true, dryRun })
+          expect(r.removed).toEqual([])
+          expect(r.failed.map((e) => e.path)).toEqual([dirname(path), clone])
+        }
+        expect(existsSync(path)).toBe(true)
+        expect(existsSync(clone)).toBe(true)
+      } finally {
+        chmodSync(dirname(path), 0o700)
+      }
+    },
+  )
+
   test('one registered in a managed clone is removed while holding the clone’s lock, without waiting', () => {
     const clone = makeClone('acme/api', 1)
     const dead = runWorktree(clone, 'acme/api')
