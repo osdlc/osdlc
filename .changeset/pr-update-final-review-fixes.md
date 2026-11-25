@@ -85,7 +85,11 @@ switched to a branch of their own, or detached, is left and reported, and its
 clone stays. A kept tree with a record that a person switched to another
 branch is now skipped the same way, with the reason, in `--dry-run` too:
 `--dry-run` listed it and its clone as removed, and the real run reported it
-under `failed` and exited with an error.
+under `failed` and exited with an error. So is a kept tree whose record the
+checkout it names does not bear out (the record's `gitDir` is another
+repository's, which does not list the tree, or whose worktrees cannot be
+listed): nothing is removed, the clone is left with the reason, and the prune
+no longer exits with an error for it.
 
 Pruning no longer takes a path it cannot read for one that is not there: an
 `lstat` that fails with anything but "no such file" (such as `EACCES`) is now

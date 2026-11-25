@@ -584,6 +584,35 @@ describe('managed clones', () => {
     expect(existsSync(clone)).toBe(true)
   })
 
+  test('a kept worktree whose record names another repository survives --discard-kept, and so does its clone, in a dry run too (final review round 2)', () => {
+    const clone = makeClone('acme/api', 400)
+    const path = keptWorktree(clone, 'acme/api', 7)
+    // The record names another repository's git directory, which does not list the tree.
+    const other = makeGitFixture({ dir: join(scratch, 'dev', 'other') })
+    other.commit('init', { 'o.txt': 'o' })
+    const recordFile = join(dirname(path), '7.json')
+    const record = JSON.parse(readFileSync(recordFile, 'utf8')) as Record<string, unknown>
+    const otherGitDir = realpathSync.native(join(other.dir, '.git'))
+    writeFileSync(recordFile, JSON.stringify({ ...record, gitDir: otherGitDir }))
+
+    for (const dryRun of [true, false]) {
+      const r = prune({ allClones: true, discardKept: true, dryRun })
+      expect(r.removed).toEqual([])
+      expect(r.failed).toEqual([])
+      expect(r.skipped).toEqual([
+        expect.objectContaining({
+          kind: 'clone',
+          path: clone,
+          skip: 'kept',
+          reason: `the record of its kept worktree ${path} is refused: ${path} is not a worktree of its checkout; the tree stays, and so does the clone`,
+        }),
+      ])
+    }
+    expect(existsSync(path)).toBe(true)
+    expect(existsSync(recordFile)).toBe(true)
+    expect(existsSync(clone)).toBe(true)
+  })
+
   test('one with a live run’s worktree in it stays', () => {
     const clone = makeClone('acme/api', 400)
     const live = runWorktree(clone, 'acme/api', liveRun())
