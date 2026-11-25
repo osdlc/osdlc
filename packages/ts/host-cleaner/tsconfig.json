@@ -5,6 +5,7 @@
   "extends": "@osdlc/tsconfig/node-lib",
   "include": ["src", "tests", "examples", "vitest.config.ts"],
   // A package of its own, where this package's name does not resolve.
-  // tests/outside.test.ts typechecks its source by building it.
+  // tests/outside.test.ts typechecks its source by building it, and its tests
+  // in that build's package.
   "exclude": ["examples/podman-plugin"]
 }

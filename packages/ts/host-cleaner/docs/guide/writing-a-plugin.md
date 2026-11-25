@@ -19,8 +19,9 @@ A plugin's code uses two entries of `@osdlc/host-cleaner`, and no other:
 | `@osdlc/host-cleaner/plugin` | `definePlugin`, `PLUGIN_API`, the contract's types, the kit (`pluginKit`, `idleHoursSetting`, `idleHoursOr`, `commandHasName`, `coveredBy`, `present` and their types), the defaults and limits (`DEFAULT_IDLE_HOURS`, `MEASURE_BUDGET_MS`, `RUN_LIMIT_MS`), the contract's lists (`COST_DESCRIPTIONS`, `HOOKS`, `LEVELS`), `CommandFailed` (what `kit.run` throws with `check: true`), `containedIn`, `FatalRun`, and `z`. |
 | `@osdlc/host-cleaner/testing` | `fakeContext`, `fakeRunner`, `tempHome` and `contractSuite`, for the plugin's own tests. |
 
-Its tests may also import `survey`, `plan` and `clean` from the main entry,
-`@osdlc/host-cleaner`, to run it through the core, as the example's do. The
+Its tests may also import `survey`, `plan` and `clean`, with their types
+`RunCtx` and `Survey`, from the main entry, `@osdlc/host-cleaner`, to run it
+through the core, as the example's do. The
 plugin's own code never does.
 
 ## The package

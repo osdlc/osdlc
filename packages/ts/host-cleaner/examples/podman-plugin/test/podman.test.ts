@@ -157,6 +157,17 @@ describe('the podman example', () => {
     expect(s.candidates.map((c) => c.id)).toEqual(['volume:logs'])
   })
 
+  test.each(['0001-01-01T00:00:00Z', 'not a time'])(
+    'a volume whose creation time is %s is not proposed either',
+    async (created) => {
+      const listed = [...JSON.parse(volumes(['cache'], created)), ...JSON.parse(volumes(['logs']))]
+      const { plugin } = build(listing(JSON.stringify(listed)))
+      const s = await survey([plugin], ctx)
+      expect(s.warnings).toEqual([])
+      expect(s.candidates.map((c) => c.id)).toEqual(['volume:logs'])
+    },
+  )
+
   test('a volume delete would refuse is not proposed', async () => {
     const { plugin } = build(listing(volumes(['-odd', 'logs'])))
     const s = await survey([plugin], ctx)

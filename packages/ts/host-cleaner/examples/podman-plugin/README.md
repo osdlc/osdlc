@@ -7,7 +7,7 @@ the guide it follows. It is not published.
 
 | File | Holds |
 | --- | --- |
-| [`package.json`](./package.json) | The package as it would be published: ESM, built to `dist/` by `npm run build` and tested by `npm test`, with `@osdlc/host-cleaner` 0.3 or later as a peer dependency. |
+| [`package.json`](./package.json) | The package as it would be published: ESM, built to `dist/` by `npm run build` and tested by `npm test`, with `@osdlc/host-cleaner` `^0.4.0`, which under 0.x is 0.4 only, as a peer dependency. |
 | [`tsconfig.json`](./tsconfig.json) | The build: `src/` to `dist/`, with the declarations the `types` export names. |
 | [`src/index.ts`](./src/index.ts) | The plugin, one `definePlugin` value. |
 | [`test/podman.test.ts`](./test/podman.test.ts) | Its tests, on a fake `podman`. |
@@ -27,8 +27,9 @@ What it shows:
   `--pick volume:<name>` and `--allow discard-user-data`.
 - **Evidence.** Each candidate keeps the volume's creation time. A volume made
   again under the same name since the plan is another volume, and the re-check
-  drops it as `changed`. A volume Podman lists with no creation time is not
-  proposed, since the re-check could not tell it changed.
+  drops it as `changed`. A volume Podman lists with no creation time, or with
+  Go's zero time in its place, is not proposed, since the re-check could not
+  tell it changed.
 - **A fake runner.** The tests give the kit a fake `podman` with
   `fakeRunner`, run the contract suite on it, and read `calls` to check that
   nothing was removed that should not have been.
@@ -55,5 +56,6 @@ your own installs it, builds with `npm run build` and tests with `npm test`
 instead. `tests/outside.test.ts` builds `src/index.ts` that way: with this
 folder's `package.json` and `tsconfig.json`, in a package that sees only
 `@osdlc/host-cleaner/plugin`, then loads it with the built host-cleaner's
-loader. Run `pnpm build` first. That build is also the example's typecheck:
+loader, runs the contract suite on it there, and typechecks `test/` in the
+same package. Run `pnpm build` first. That is the example's typecheck:
 host-cleaner's own `tsc --noEmit` leaves this folder out.

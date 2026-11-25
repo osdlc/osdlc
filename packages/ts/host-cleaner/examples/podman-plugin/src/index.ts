@@ -10,6 +10,9 @@ import { PLUGIN_API, definePlugin, z, type Kit } from '@osdlc/host-cleaner/plugi
 /** A volume name as Podman accepts one; anything else is not a volume this plugin proposed. */
 const VOLUME_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/
 
+/** Go's zero `time.Time`, which Podman writes for a volume with no creation time. */
+const GO_ZERO_TIME = Date.parse('0001-01-01T00:00:00Z')
+
 /** The fields of one entry of `podman volume ls --format json` this plugin reads. */
 const Volume = z.object({
   Name: z.string(),
@@ -55,8 +58,9 @@ export default definePlugin({
           // delete would refuse it.
           if (!VOLUME_NAME.test(v.Name)) return []
           // Without a creation time, a volume made again under the same name
-          // would have the same evidence, so it is not proposed.
-          if (v.CreatedAt === undefined) return []
+          // would have the same evidence, so it is not proposed. Podman gives
+          // a missing one as Go's zero time, 0001-01-01T00:00:00Z.
+          if (!(Date.parse(v.CreatedAt ?? '') > GO_ZERO_TIME)) return []
           return kit.candidate({
             kind: 'volume',
             ref: v.Name,

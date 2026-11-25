@@ -13,6 +13,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
@@ -20,6 +21,7 @@ import {
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { parse as parseYaml } from 'yaml'
 
 import { clean, plan, survey, type RunCtx } from '../src/index.ts'
 import * as entry from '../src/plugin.ts'
@@ -52,6 +54,22 @@ interface Outside {
   root?: string
 }
 
+/** Limits the host-cleaner installed in the package at `dir` to `entries`, where `.` is the main entry. */
+function hostCleanerEntries(dir: string, entries: string[]): void {
+  const { exports } = JSON.parse(readFileSync(join(pkg, 'package.json'), 'utf8')) as {
+    exports: Record<string, unknown>
+  }
+  const key = (e: string) => (e === '.' ? '.' : `./${e}`)
+  writeFileSync(
+    join(dir, 'node_modules', '@osdlc', 'host-cleaner', 'package.json'),
+    JSON.stringify({
+      name: '@osdlc/host-cleaner',
+      type: 'module',
+      exports: Object.fromEntries(entries.map((e) => [key(e), exports[key(e)]])),
+    }),
+  )
+}
+
 /** Makes `dir` a package holding `files` in its `src/`, with host-cleaner limited to `entries`. */
 function outsidePackage(
   dir: string,
@@ -82,17 +100,7 @@ function outsidePackage(
   for (const [f, from] of Object.entries(files)) copyFileSync(from, join(dir, 'src', f))
   const hc = join(dir, 'node_modules', '@osdlc', 'host-cleaner')
   mkdirSync(hc, { recursive: true })
-  const { exports } = JSON.parse(readFileSync(join(pkg, 'package.json'), 'utf8')) as {
-    exports: Record<string, unknown>
-  }
-  writeFileSync(
-    join(hc, 'package.json'),
-    JSON.stringify({
-      name: '@osdlc/host-cleaner',
-      type: 'module',
-      exports: Object.fromEntries(entries.map((e) => [`./${e}`, exports[`./${e}`]])),
-    }),
-  )
+  hostCleanerEntries(dir, entries)
   build(join(hc, 'dist'))
   // The built files find host-cleaner's dependencies here.
   symlinkSync(join(pkg, 'node_modules'), join(hc, 'node_modules'), 'dir')
@@ -139,6 +147,9 @@ describe('a package outside this one', () => {
   })
 })
 
+/** The `podman` arguments the example lists unused volumes with. */
+const LS = 'volume ls --filter dangling=true --format json'
+
 test('the podman example builds against ./plugin alone, and the loader takes it as a package', () => {
   const example = join(pkg, 'examples', 'podman-plugin')
   const { home: dir, cleanup } = tempHome('host-cleaner-outside-')
@@ -158,23 +169,99 @@ test('the podman example builds against ./plugin alone, and the loader takes it 
     expect(existsSync(join(dir, target)), target).toBe(true)
   }
 
-  // Installed under its own name, then loaded and created by the built host-cleaner.
-  const root = join(dir, 'installed')
-  mkdirSync(root)
+  // Installed under its own name, in a folder outside the package so that
+  // nothing walking the package meets a cycle, then loaded by the built
+  // host-cleaner and run through the contract suite on a fake podman.
+  const { home: root, cleanup: uninstall } = tempHome('host-cleaner-installed-')
+  onTestFinished(uninstall)
   symlinkSync(dir, join(root, 'host-cleaner-podman'), 'dir')
+  const hc = join(dir, 'node_modules', '@osdlc', 'host-cleaner')
+  const dist = (f: string) => JSON.stringify(pathToFileURL(join(hc, 'dist', f)).href)
+  const listed = [{ Name: 'cache', Driver: 'local', CreatedAt: '2026-05-01T09:00:00Z' }]
   const script = `
-import { loadPackages, pluginKit } from ${JSON.stringify(pathToFileURL(join(dir, 'node_modules', '@osdlc', 'host-cleaner', 'dist', 'index.js')).href)}
+import { loadPackages, pluginKit } from ${dist('index.js')}
+import { contractSuite, fakeRunner } from ${dist('testing.js')}
 const { loaded, failed } = await loadPackages([{ name: 'podman', package: 'host-cleaner-podman' }], [${JSON.stringify(root)}])
 const def = loaded[0]?.definition
-const plugin = def?.create({ settings: def.settings.parse({ package: 'host-cleaner-podman' }), env: {}, kit: pluginKit('podman') })
-process.stdout.write(JSON.stringify({ failed, version: loaded[0]?.version, name: plugin?.name }))
+const fake = fakeRunner({ podman: { info: {}, ${JSON.stringify(LS)}: { stdout: ${JSON.stringify(JSON.stringify(listed))} } } })
+const plugin = def?.create({ settings: def.settings.parse({ package: 'host-cleaner-podman' }), env: {}, kit: pluginKit('podman', { ...fake }) })
+const problems = plugin === undefined ? [] : await contractSuite(plugin)
+const ran = fake.calls.map((c) => c.argv.join(' '))
+process.stdout.write(JSON.stringify({ failed, version: loaded[0]?.version, name: plugin?.name, problems, ran }))
 `
   const ran = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
     encoding: 'utf8',
   })
   expect(ran.stderr).toBe('')
-  expect(JSON.parse(ran.stdout)).toEqual({ failed: [], version: '0.0.0', name: 'podman' })
+  const out = JSON.parse(ran.stdout) as { ran: string[] }
+  expect(out).toEqual({
+    failed: [],
+    version: '0.0.0',
+    name: 'podman',
+    problems: [],
+    ran: expect.arrayContaining(['podman info', `podman ${LS}`]),
+  })
+  expect(out.ran.filter((c) => c.startsWith('podman volume rm'))).toEqual([])
+
+  // The example's tests, typechecked as the package would: they also reach
+  // the main entry and ./testing, which its plugin code does not.
+  hostCleanerEntries(dir, ['.', 'plugin', 'testing'])
+  mkdirSync(join(dir, 'test'))
+  copyFileSync(join(example, 'test', 'podman.test.ts'), join(dir, 'test', 'podman.test.ts'))
+  const vitest = dirname(require.resolve('vitest/package.json'))
+  symlinkSync(vitest, join(dir, 'node_modules', 'vitest'), 'dir')
+  writeFileSync(
+    join(dir, 'tsconfig.test.json'),
+    JSON.stringify({
+      extends: './tsconfig.json',
+      compilerOptions: { noEmit: true, allowImportingTsExtensions: true, rootDir: '.' },
+      include: ['src', 'test'],
+    }),
+  )
+  const checked = spawnSync(process.execPath, [tsc, '-p', join(dir, 'tsconfig.test.json')], {
+    cwd: dir,
+    encoding: 'utf8',
+  })
+  expect(checked.stdout + checked.stderr).toBe('')
+  expect(checked.status).toBe(0)
 }, 120_000)
+
+test("the podman example's version ranges are host-cleaner's next release and the workspace catalog's", () => {
+  const example = join(pkg, 'examples', 'podman-plugin')
+  const manifest = JSON.parse(readFileSync(join(example, 'package.json'), 'utf8')) as {
+    peerDependencies: Record<string, string>
+    devDependencies: Record<string, string>
+  }
+  const { version } = JSON.parse(readFileSync(join(pkg, 'package.json'), 'utf8')) as {
+    version: string
+  }
+  // The release the pending changesets make, which a copy of the example installs.
+  const changesets = join(pkg, '..', '..', '..', '.changeset')
+  const bumps = readdirSync(changesets)
+    .filter((f) => f.endsWith('.md'))
+    .flatMap((f) => {
+      const front = /^---\n([\s\S]*?)\n---/.exec(readFileSync(join(changesets, f), 'utf8'))?.[1]
+      const bump = /^["']@osdlc\/host-cleaner["']:\s*(major|minor|patch)\s*$/m.exec(front ?? '')
+      return bump === null ? [] : [bump[1]]
+    })
+  const [major, minor] = version.split('.').map(Number) as [number, number]
+  const next = bumps.includes('major')
+    ? [major + 1, 0]
+    : bumps.includes('minor')
+      ? [major, minor + 1]
+      : [major, minor]
+  const range = next[0] === 0 ? `^0.${next[1]}.0` : `^${next[0]}.0.0`
+  expect(manifest.peerDependencies['@osdlc/host-cleaner']).toBe(range)
+  expect(manifest.devDependencies['@osdlc/host-cleaner']).toBe(range)
+  const readme = readFileSync(join(example, 'README.md'), 'utf8')
+  expect(readme).toContain(`\`@osdlc/host-cleaner\` \`${range}\``)
+
+  const yaml = readFileSync(join(pkg, '..', '..', '..', 'pnpm-workspace.yaml'), 'utf8')
+  const workspace = parseYaml(yaml) as { catalog: Record<string, string> }
+  for (const [name, wanted] of Object.entries(manifest.devDependencies)) {
+    if (name !== '@osdlc/host-cleaner') expect(wanted, name).toBe(workspace.catalog[name])
+  }
+})
 
 test('./plugin re-exports zod as z, the one the core validates settings with', async () => {
   const { z } = await import('zod')

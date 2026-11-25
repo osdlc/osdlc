@@ -18,10 +18,10 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@osdlc/host-cleaner": "^0.3.0"
+    "@osdlc/host-cleaner": "^0.4.0"
   },
   "devDependencies": {
-    "@osdlc/host-cleaner": "^0.3.0",
+    "@osdlc/host-cleaner": "^0.4.0",
     "@types/node": "^26.1.0",
     "typescript": "~6.0.3",
     "vitest": "^5.0.5"
