@@ -2,18 +2,17 @@
  * A plugin package outside this one builds and passes the contract suite
  * with `@osdlc/host-cleaner/plugin` and `@osdlc/host-cleaner/testing` alone.
  * The package is made in a temporary folder, where `@osdlc/host-cleaner`
- * exports only those two entries of the built dist/, so run `pnpm build`
- * first, as for the typecheck.
+ * exports only those two entries of src/ as built here, into a folder of
+ * this test's own. The workspace siblings resolve to their built dist/, so
+ * run `pnpm build` first, as for the typecheck.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import {
   copyFileSync,
-  existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
-  statSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -29,28 +28,22 @@ const pkg = join(here, '..')
 const require = createRequire(import.meta.url)
 const tsc = require.resolve('typescript/bin/tsc')
 
-const newestMs = (folder: string): number =>
-  Math.max(
-    0,
-    ...readdirSync(folder, { recursive: true, encoding: 'utf8' }).map(
-      (f) => statSync(join(folder, f)).mtimeMs,
-    ),
+/** Builds src/ as the published dist/ is built, into `out`, so the package checks this code. */
+function build(out: string): void {
+  const built = spawnSync(
+    process.execPath,
+    [tsc, '-p', join(pkg, 'tsconfig.build.json'), '--outDir', out],
+    { cwd: pkg, encoding: 'utf8' },
   )
-
-/** Throws unless dist/ was built after the last change to src/, so the package checks this code. */
-function assertBuilt(): void {
-  const dist = join(pkg, 'dist')
-  if (!existsSync(join(dist, 'plugin.d.ts'))) {
-    throw new Error('dist/ has no plugin entry: run `pnpm build` before these tests')
-  }
-  if (newestMs(join(pkg, 'src')) > newestMs(dist)) {
-    throw new Error('src/ changed after the last build: run `pnpm build` before these tests')
-  }
+  if (built.status !== 0) throw new Error(`building src/ failed:\n${built.stdout}${built.stderr}`)
 }
 
 /** A package holding the fixture plugin, with host-cleaner limited to the two entries. */
 function outsidePackage(): TempHome {
-  assertBuilt()
+  // Inside this package's node_modules, so the built files find its dependencies.
+  const dist = join(pkg, 'node_modules', '.outside-dist')
+  rmSync(dist, { recursive: true, force: true })
+  build(dist)
   const outside = tempHome('host-cleaner-outside-')
   const dir = outside.home
   const json = (path: string, value: unknown) =>
@@ -62,6 +55,8 @@ function outsidePackage(): TempHome {
       module: 'NodeNext',
       moduleResolution: 'NodeNext',
       strict: true,
+      // The libraries' declarations are checked where they are built.
+      skipLibCheck: true,
       types: ['node'],
       rootDir: 'src',
       outDir: 'dist',
@@ -85,20 +80,20 @@ function outsidePackage(): TempHome {
       exports: { './plugin': exports['./plugin'], './testing': exports['./testing'] },
     }),
   )
-  symlinkSync(join(pkg, 'dist'), join(hc, 'dist'), 'dir')
+  symlinkSync(dist, join(hc, 'dist'), 'dir')
   mkdirSync(join(dir, 'node_modules', '@types'))
   const types = dirname(require.resolve('@types/node/package.json'))
   symlinkSync(types, join(dir, 'node_modules', '@types', 'node'), 'dir')
   return outside
 }
 
-// One package, shared by the tests that use it; only they need a fresh dist/.
+// One package, shared by the tests that use it.
 describe('a package outside this one', () => {
   let dir = ''
   let cleanup = (): void => {}
   beforeAll(() => {
     ;({ home: dir, cleanup } = outsidePackage())
-  }, 60_000)
+  }, 120_000)
   afterAll(() => cleanup())
 
   test('builds against ./plugin and ./testing, and its plugin keeps the contract', () => {

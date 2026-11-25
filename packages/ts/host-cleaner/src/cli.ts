@@ -364,11 +364,12 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliCont
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
   const git = gitDefinitionWith({ sweep: { only } })
+  const defs = BUILT_IN_PLUGINS.map((d) => (d.name === git.name ? git : d))
   const all =
     deps.plugins ??
-    BUILT_IN_PLUGINS.map((d) =>
-      (d.name === git.name ? git : d).create({
-        settings: settingsOf(d.name, config.plugins[d.name] ?? {}, config),
+    defs.map((d) =>
+      d.create({
+        settings: settingsOf(d.name, config.plugins[d.name] ?? {}, config, defs),
         env: ctx.env,
         kit: pluginKit(d.name, { env: ctx.env }),
       }),
