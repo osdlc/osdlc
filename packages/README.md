@@ -267,6 +267,9 @@ Developed here, in this repository:
 - `packages/ts/intersect` (`@osdlc/intersect` on npm, a path-pattern overlap
   engine: do two globs share a path, with a witness path, a registry and an
   optional filesystem layer)
+- `packages/ts/spec-query` (`@osdlc/spec-query` on npm, minimal diffs against a
+  defaults object and a readable query string over them, so view state can
+  live in a URL)
 - `packages/ts/detect-harness` (`@osdlc/detect-harness` on npm, finds the
   coding-agent harnesses on a machine and in a project and reads what each has
   configured; read-only, with secrets redacted)
