@@ -15,10 +15,10 @@ import type { CommandRunner } from '@osdlc/command-seam'
 import { nodeGuard } from '@osdlc/path-guard/node'
 import { Git } from '@osdlc/typed-git'
 
-import { coveredBy } from './ignore.ts'
 import {
   DEFAULT_IDLE_HOURS,
   attachKit,
+  coveredBy,
   pluginKit,
   present,
   type Kit,
