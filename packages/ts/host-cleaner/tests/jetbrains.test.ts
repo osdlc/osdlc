@@ -108,7 +108,6 @@ const psOf = (rows: Array<{ pid: number; args: string }> | Error = []): CommandR
 })
 
 interface Make {
-  idleHours?: number
   ps?: CommandRunner
   options?: JetbrainsOptions
 }
@@ -125,7 +124,6 @@ function make(h: TempHome, over: Make = {}): Plugin {
           env,
           platform: 'darwin',
           apps: [apps(h)],
-          idleHours: over.idleHours ?? 24,
           ...over.options,
         },
         kit,
@@ -188,7 +186,7 @@ describe('version folders', () => {
     const [c] = (await survey([make(h)], ctx())).candidates
     expect(c).toMatchObject({ held: true })
     expect(c!.why).toContain('unchanged for 2 hours (threshold 24)')
-    expect((await survey([make(h, { idleHours: 1 })], ctx())).candidates[0]!.held).toBeUndefined()
+    expect((await survey([make(h, { options: { idleHours: 1 } })], ctx())).candidates[0]!.held).toBeUndefined()
   })
 
   test('an install the Toolbox lists outside the application folders counts; a record of a gone one does not', async () => {

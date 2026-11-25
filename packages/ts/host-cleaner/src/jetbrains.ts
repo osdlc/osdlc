@@ -85,6 +85,8 @@ export interface JetbrainsOptions {
 
 /** Where the plugin looks, for one home and platform. */
 interface Layout {
+  /** The home `$USER_HOME$` in recent projects stands for. */
+  home: string
   /** The roots: cache and log folders holding version folders. */
   roots: string[]
   /** The folder holding each version's config, with its recent projects. */
@@ -100,10 +102,12 @@ function layoutOf(opts: JetbrainsOptions): Layout {
   const platform = opts.platform ?? process.platform
   if (platform === 'darwin') {
     const lib = join(home, 'Library')
+    const config = join(lib, 'Application Support', 'JetBrains')
     return {
+      home,
       roots: [join(lib, 'Caches', 'JetBrains'), join(lib, 'Logs', 'JetBrains')],
-      config: join(lib, 'Application Support', 'JetBrains'),
-      toolbox: join(lib, 'Application Support', 'JetBrains', 'Toolbox', 'state.json'),
+      config,
+      toolbox: join(config, 'Toolbox', 'state.json'),
       apps: [...(opts.apps ?? ['/Applications', join(home, 'Applications')])],
     }
   }
@@ -114,13 +118,14 @@ function layoutOf(opts: JetbrainsOptions): Layout {
     }
     const data = join(xdg('XDG_DATA_HOME', '.local/share'), 'JetBrains', 'Toolbox')
     return {
+      home,
       roots: [join(xdg('XDG_CACHE_HOME', '.cache'), 'JetBrains')],
       config: join(xdg('XDG_CONFIG_HOME', '.config'), 'JetBrains'),
       toolbox: join(data, 'state.json'),
       apps: [...(opts.apps ?? [join(data, 'apps'), '/opt'])],
     }
   }
-  return { roots: [], config: '', toolbox: '', apps: [] }
+  return { home, roots: [], config: '', toolbox: '', apps: [] }
 }
 
 /** True when `path` exists as itself, a link counted as present. One that cannot be checked counts as present, so it is never taken as gone. */
@@ -193,19 +198,18 @@ function installsOf(layout: Layout): Installs {
     }
     const name = isObject(info) ? info.dataDirectoryName : undefined
     const m = typeof name === 'string' ? VERSION_DIR.exec(name) : null
-    if (m === null) {
+    if (!isObject(info) || m === null) {
       found.problems.push(`${file} names no version folder`)
       return
     }
-    found.versions.add(name as string)
-    const launch = isObject(info) && Array.isArray(info.launch) ? info.launch : []
-    for (const l of launch) {
+    found.versions.add(m[0])
+    const product = m[1]!
+    const names = found.launchers.get(product) ?? new Set<string>()
+    for (const l of Array.isArray(info.launch) ? info.launch : []) {
       const path = isObject(l) ? l.launcherPath : undefined
-      if (typeof path !== 'string' || path === '') continue
-      const names = found.launchers.get(m[1]!) ?? new Set<string>()
-      names.add(basename(path).replace(/\.sh$/, ''))
-      found.launchers.set(m[1]!, names)
+      if (typeof path === 'string' && path !== '') names.add(basename(path).replace(/\.sh$/, ''))
     }
+    if (names.size > 0) found.launchers.set(product, names)
   }
   if (present(layout.toolbox)) {
     let state: unknown
@@ -285,7 +289,7 @@ interface Found {
 }
 
 /** The version folders no install uses, and the caches of gone projects inside the installed ones. */
-function scan(layout: Layout, installs: Installs, home: string): Found[] {
+function scan(layout: Layout, installs: Installs): Found[] {
   const out: Found[] = []
   for (const root of layout.roots) {
     for (const version of folders(root)) {
@@ -301,13 +305,17 @@ function scan(layout: Layout, installs: Installs, home: string): Found[] {
       if (!isDir(projects)) continue
       const known = recentProjects(
         join(layout.config, version, 'options', 'recentProjects.xml'),
-        home,
+        layout.home,
       )
+      const byHash = new Map<string, string[]>()
+      for (const p of known) {
+        const hash = javaHashHex(p)
+        byHash.set(hash, [...(byHash.get(hash) ?? []), p])
+      }
       for (const name of folders(projects)) {
         const hash = PROJECT_DIR.exec(name)?.[2]
-        if (hash === undefined) continue
-        const paths = known.filter((p) => javaHashHex(p) === hash)
-        if (paths.length === 0 || !paths.every(gone)) continue
+        const paths = hash === undefined ? undefined : byHash.get(hash)
+        if (paths === undefined || !paths.every(gone)) continue
         out.push({
           kind: 'project-cache',
           path: join(projects, name),
@@ -333,22 +341,25 @@ interface Env {
   idleHours: number
   ctx: Ctx
   installs: Installs
+  /** What {@link runningOf} found for each product this hook call. */
+  running: Map<string, Row['blockers']>
 }
 
 /** `hours` in tenths rounded down, so a sentence never says more than was measured. */
 const hoursText = (hours: number): string => String(Math.floor(hours * 10) / 10)
 
-/** The row for `f`, measured now; null when its folder cannot be read. */
-function rowOf(env: Env, f: Found): Row | null {
-  const { kit, idleHours, installs } = env
+/** The refusals `product`'s running processes add, looked up once per hook call. */
+function runningOf(env: Env, product: string): Row['blockers'] {
+  const cached = env.running.get(product)
+  if (cached !== undefined) return cached
   const blockers: Row['blockers'] = []
-  const names = new Set(installs.launchers.get(f.product))
-  const fixed = LAUNCHERS[f.product]
+  const names = new Set(env.installs.launchers.get(product))
+  const fixed = LAUNCHERS[product]
   if (fixed !== undefined) names.add(fixed)
-  if (names.size === 0) names.add(f.product.toLowerCase())
+  if (names.size === 0) names.add(product.toLowerCase())
   const running: string[] = []
   for (const name of [...names].sort()) {
-    const r = kit.running({ name }, env.ctx)
+    const r = env.kit.running({ name }, env.ctx)
     running.push(...r.names)
     if (r.unknown !== undefined) {
       blockers.push({
@@ -361,9 +372,17 @@ function rowOf(env: Env, f: Found): Row | null {
   if (running.length > 0) {
     blockers.push({
       code: 'live-process',
-      reason: `${f.product} is running: ${running.join(', ')}`,
+      reason: `${product} is running: ${running.join(', ')}`,
     })
   }
+  env.running.set(product, blockers)
+  return blockers
+}
+
+/** The row for `f`, measured now; null when its folder cannot be read. */
+function rowOf(env: Env, f: Found): Row | null {
+  const { kit, idleHours, installs } = env
+  const blockers = [...runningOf(env, f.product)]
 
   let why: string
   let held = false
@@ -381,8 +400,7 @@ function rowOf(env: Env, f: Found): Row | null {
       unmeasured = true
       why = `no installed IDE uses ${f.version}; when it was last used could not be measured in the time budget`
     } else {
-      const hours = since.hours ?? Number.POSITIVE_INFINITY
-      held = hours < idleHours
+      held = since.hours !== null && since.hours < idleHours
       why =
         since.hours === null
           ? `no installed IDE uses ${f.version}, and it holds no file`
@@ -416,17 +434,16 @@ function rowOf(env: Env, f: Found): Row | null {
 /** The `jetbrains` plugin on `kit`: caches of uninstalled IDE versions and of gone projects. Settings: `idleHours`. */
 export function jetbrainsPlugin(opts: JetbrainsOptions, kit: Kit): Plugin {
   const layout = layoutOf(opts)
-  const home = (opts.env ?? process.env).HOME ?? homedir()
-  const envOf = (ctx: Ctx): Env => {
-    const idle = opts.idleHours
-    return {
-      kit,
-      ctx,
-      installs: installsOf(layout),
-      idleHours:
-        idle !== undefined && Number.isFinite(idle) && idle >= 0 ? idle : DEFAULT_IDLE_HOURS,
-    }
-  }
+  const idle = opts.idleHours
+  const idleHours =
+    idle !== undefined && Number.isFinite(idle) && idle >= 0 ? idle : DEFAULT_IDLE_HOURS
+  const envOf = (ctx: Ctx): Env => ({
+    kit,
+    ctx,
+    idleHours,
+    installs: installsOf(layout),
+    running: new Map(),
+  })
   let rows = new Map<string, Row>()
   return {
     name: JETBRAINS_PLUGIN,
@@ -435,7 +452,7 @@ export function jetbrainsPlugin(opts: JetbrainsOptions, kit: Kit): Plugin {
     roots: () => layout.roots,
     discover(ctx) {
       const env = envOf(ctx)
-      const found = scan(layout, env.installs, home).flatMap((f) => rowOf(env, f) ?? [])
+      const found = scan(layout, env.installs).flatMap((f) => rowOf(env, f) ?? [])
       rows = new Map(found.map((r) => [r.candidate.id, r]))
       return found.map((r) => r.candidate)
     },
@@ -456,7 +473,7 @@ export function jetbrainsPlugin(opts: JetbrainsOptions, kit: Kit): Plugin {
       if (!present(c.path)) return `already gone: ${c.path}`
       // Found and measured again, so an install, a project or a process that came back since the plan is seen.
       const env = envOf(ctx)
-      const f = scan(layout, env.installs, home).find((x) => x.path === c.path && x.kind === c.kind)
+      const f = scan(layout, env.installs).find((x) => x.path === c.path && x.kind === c.kind)
       const now = f === undefined ? null : rowOf(env, f)
       if (now === null) throw new Error(`${c.path} is no longer a candidate`)
       if (now.blockers.length > 0) {
