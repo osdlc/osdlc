@@ -166,7 +166,7 @@ function age(dir: string, hours: number): void {
     try {
       age(p, hours)
     } catch {
-      // a file
+      // `p` is a file, which readdirSync cannot read.
     }
     utimesSync(p, at, at)
   }

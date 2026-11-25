@@ -1,27 +1,13 @@
 /**
  * Descriptor to plugin (tier 1): {@link descriptorPlugin} turns a parsed
  * descriptor into a `definePlugin` value built only on the plugin kit, with
- * the same hooks a code plugin has.
+ * the same hooks a code plugin has. What each hook does: the "Descriptors"
+ * section of the package README.
  *
- * - detect: `detect`'s `onPath` and `exists`, or any of its folders existing.
- *   A `system: true` descriptor never applies ({@link skipReason}), nor one
- *   whose `supersededBy` plugin runs.
- * - roots: each of its `paths` for this OS that passes {@link pathProblem},
- *   as a self root (`{ path, self: true }`): a candidate may be the whole
- *   folder, so `~/.npm`'s root is `~/.npm` itself, and `delete` checks the
- *   folder again.
- * - discover: one candidate per folder, or per `glob` match inside it, and
- *   `project` build folders in the targets' checkouts. Each is
- *   `<name>:<path>`. Glob matches past `maxEntries` are combined into one ref
- *   candidate, `<name>:<folder>/<glob>:rest`, that removes each of them. A
- *   folder the checks refuse is listed, unmeasured, and refused
- *   `outside-roots`.
- * - object: only its own candidates: `inUse` refuses them `in-use`, a prune
- *   with no tool on PATH gets a `no-prune-tool` protest (D12), and a live
- *   process in a checkout refuses its build folders.
- * - delete: checks the candidate again, then runs the tool's command from the
- *   home folder, pointed at the checked folder (D13), or removes the folder
- *   with `kit.remove`.
+ * Roots are self roots because a candidate may be the whole folder: `~/.npm`'s
+ * root is `~/.npm` itself, so `delete` checks the folder again. A folder the
+ * checks refuse is still listed, unmeasured and refused `outside-roots`. The
+ * prune protest is D12; pointing the command at the checked folder is D13.
  *
  * Idle time and size stay out of the evidence, as for `cargo` and `node`:
  * either may be unmeasured in one survey and measured in the next.
@@ -84,7 +70,7 @@ export interface DescriptorOptions {
   ownDirs?: readonly string[] | undefined
 }
 
-/** The OS `platform` (as `process.platform` names it) is, for `paths`. */
+/** The descriptor `paths` OS for a `process.platform` value. */
 export const osOf = (platform: string): Os =>
   platform === 'darwin' ? 'macos' : platform === 'win32' ? 'windows' : 'linux'
 
