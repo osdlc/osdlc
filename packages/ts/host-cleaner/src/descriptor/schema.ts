@@ -4,9 +4,7 @@
  * schema as JSON Schema, for editors (`scripts/write-descriptor-schema.ts`
  * writes it). The checks one field can't make on its own, such as a
  * candidate's `path` naming an entry of `paths`, are refinements that only the
- * reader runs. So are the checks on `vars` (tier 2): every `${VAR}` names a
- * declared or built-in variable, none is declared twice over a built-in, and
- * no variable refers back to itself.
+ * reader runs. So are the checks on `vars` (tier 2), {@link varIssues}.
  */
 
 import { readFileSync } from 'node:fs'

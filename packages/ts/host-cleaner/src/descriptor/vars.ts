@@ -59,7 +59,7 @@ type VarFileExtension = keyof typeof PARSERS
 /** The extensions a `file` source may have, by the format read. */
 export const VAR_FILE_EXTENSIONS = Object.keys(PARSERS) as VarFileExtension[]
 
-/** A folder for every OS, or one per OS (`all` for every OS). */
+/** A folder per OS; `all` covers every OS. */
 type PerOs = { [K in Os | 'all']?: string | undefined }
 
 /** Where one variable's value may come from, as a descriptor's `vars` lists it. */
@@ -82,7 +82,10 @@ export interface VarValue {
    * `home` for `HOME`; or `default` for an `XDG_*` folder's default.
    */
   from?: string
-  /** Set in the config, or a `value` inside a trusted variable's folder ({@link fillTemplate}): its folders may sit outside home. */
+  /**
+   * Set in the config, or a `value` inside a trusted variable's folder
+   * ({@link fillTemplate}): its folders may sit outside home.
+   */
   trusted: boolean
   /** The sources before it that gave nothing, in order, and why. */
   tried: Array<{ source: string; failed: string }>
