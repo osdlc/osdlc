@@ -1,7 +1,7 @@
 /** The plugin kit: each helper on its own, against temp directories and fake runners. */
 
-import { afterEach, describe, expect, test } from 'vitest'
-import {
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import fs, {
   chmodSync,
   existsSync,
   mkdirSync,
@@ -12,6 +12,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -23,6 +24,7 @@ import { z } from 'zod'
 
 import {
   PLUGIN_API,
+  cargoPlugin,
   clean,
   commandHasName,
   definePlugin,
@@ -55,6 +57,12 @@ function put(path: string, hoursOld: number): void {
   writeFileSync(path, 'x')
   const at = new Date(NOW.getTime() - hoursOld * HOUR)
   utimesSync(path, at, at)
+}
+
+/** A budget clock a second later at every read. */
+const ticking = (): (() => number) => {
+  let t = 0
+  return () => (t += 1_000)
 }
 
 const signal = (): AbortSignal => new AbortController().signal
@@ -119,18 +127,44 @@ describe('idle', () => {
   test('a walk that runs out of its budget is unmeasured', () => {
     const dir = temp()
     put(join(dir, 'a', 'b'), 30)
-    let t = NOW.getTime()
-    const kit = pluginKit('x', { now: () => new Date((t += 1_000)), budgetMs: 1_500 })
+    const kit = pluginKit('x', { now: () => NOW, clock: ticking(), budgetMs: 1_500 })
     expect(kit.idle(dir)).toEqual({ unmeasured: true })
-    expect(pluginKit('x', { now: () => NOW, budgetMs: 0 }).idle(dir).unmeasured).toBe(false)
+    expect(pluginKit('x', { clock: () => 0, budgetMs: 0 }).idle(dir).unmeasured).toBe(false)
   })
 
   test('the budget holds inside one flat folder, not only on entering a folder', () => {
     const dir = temp()
-    for (const name of ['a', 'b', 'c']) put(join(dir, name), 30)
-    let t = NOW.getTime()
-    const kit = pluginKit('x', { now: () => new Date((t += 1_000)), budgetMs: 1_500 })
+    for (let i = 0; i < 200; i++) put(join(dir, `f${i}`), 30)
+    const kit = pluginKit('x', { now: () => NOW, clock: ticking(), budgetMs: 1_500 })
     expect(kit.idle(dir)).toEqual({ unmeasured: true })
+  })
+
+  test('the age clock is read once a call, and the budget clock far less than once an entry', () => {
+    const dir = temp()
+    for (let i = 0; i < 200; i++) put(join(dir, `f${i}`), 30)
+    const reads = { now: 0, clock: 0 }
+    const kit = pluginKit('x', {
+      now: () => (reads.now++, NOW),
+      clock: () => (reads.clock++, 0),
+    })
+    expect(kit.idle(dir)).toMatchObject({ hours: 30 })
+    expect(reads.now).toBe(1)
+    expect(reads.clock).toBeLessThan(10)
+  })
+
+  test('several folders are one answer, the newest, within one budget', () => {
+    const dir = temp()
+    const dirs = ['a', 'b', 'c'].map((name, i) => {
+      put(join(dir, name, 'f'), 30 - i)
+      return join(dir, name)
+    })
+    const kit = pluginKit('x', { now: () => NOW })
+    expect(kit.idle(dirs)).toMatchObject({ unmeasured: false, hours: 28 })
+    expect(kit.idle([])).toEqual({ unmeasured: false, newestMs: null, hours: null })
+    // One second a folder: each is within the budget alone, the three are not.
+    const slow = pluginKit('x', { now: () => NOW, clock: ticking(), budgetMs: 1_500 })
+    expect(slow.idle(dirs[0]!)).toMatchObject({ hours: 30 })
+    expect(slow.idle(dirs)).toEqual({ unmeasured: true })
   })
 })
 
@@ -144,6 +178,42 @@ describe('remove', () => {
     const said = boundKit('go', { targets: [root] }).remove(dir)
     expect(said).toMatch(new RegExp(`^removed ${dir}; freed \\d+ bytes$`))
     expect(existsSync(dir)).toBe(false)
+  })
+
+  test('a folder something still writes into, with nothing read-only in it, is not removed a second time', () => {
+    const root = temp()
+    const dir = join(root, 'busy')
+    put(join(dir, 'x'), 1)
+    const kit = boundKit('cache', { targets: [root] })
+    const rm = vi.spyOn(fs, 'rmSync').mockImplementation(() => {
+      throw Object.assign(new Error('ENOTEMPTY'), { code: 'ENOTEMPTY' })
+    })
+    syncBuiltinESMExports()
+    try {
+      expect(() => kit.remove(dir)).toThrow(/ENOTEMPTY/)
+      expect(rm).toHaveBeenCalledTimes(1)
+    } finally {
+      rm.mockRestore()
+      syncBuiltinESMExports()
+    }
+  })
+
+  test('a writable folder is removed in one pass, with no permission changed first', () => {
+    const root = temp()
+    const dir = join(root, 'mod')
+    put(join(dir, 'pkg', 'f'), 1)
+    const chmod = vi.spyOn(fs, 'chmodSync')
+    const lstat = vi.spyOn(fs, 'lstatSync')
+    syncBuiltinESMExports()
+    try {
+      expect(boundKit('go', { targets: [root] }).remove(dir)).toMatch(/^removed /)
+      expect(chmod).not.toHaveBeenCalled()
+      expect(lstat.mock.calls.filter(([p]) => String(p).startsWith(join(dir, 'pkg')))).toEqual([])
+    } finally {
+      chmod.mockRestore()
+      lstat.mockRestore()
+      syncBuiltinESMExports()
+    }
   })
 
   test("a new survey unbinds the kit while its hooks run: no remove within an earlier survey's bounds", async () => {
@@ -249,6 +319,28 @@ describe('remove', () => {
   })
 })
 
+describe('a plugin built on a kit of its own', () => {
+  test('is bound through definePlugin too: cargoPlugin without the kit create was given still removes', async () => {
+    const root = temp()
+    makeGitFixture({ dir: root, initialBranch: 'main' })
+    new Git(root, { env: { ...IDENTITY } }).rawChecked(['commit', '--allow-empty', '-m', 'initial'])
+    put(join(root, 'target', 'CACHEDIR.TAG'), 48)
+    put(join(root, 'target', 'debug', '.fingerprint', 'a', 'lib-a'), 48)
+    const probe: ProcessProbe = { alive: () => true, holders: () => [] }
+    const def = definePlugin({
+      name: 'cargo',
+      api: PLUGIN_API,
+      settings: z.strictObject({}),
+      create: () => cargoPlugin({ now: () => NOW, probe, which: () => '/bin/cargo' }),
+    })
+    const plugin = def.create({ settings: {}, only: [], env: {}, kit: pluginKit('cargo') })
+    const ctx = { cwd: root, targets: [root], allow: [] }
+    const receipt = await clean(plan(await survey([plugin], ctx)), [plugin], ctx)
+    expect(receipt.steps).toEqual([expect.objectContaining({ result: 'ok' })])
+    expect(existsSync(join(root, 'target'))).toBe(false)
+  })
+})
+
 describe('running', () => {
   const holder = (pid: number, command: string, extra: Partial<ProcessHolder> = {}) =>
     ({ pid, command, ...extra }) as ProcessHolder
@@ -275,10 +367,11 @@ describe('running', () => {
     const ps = fakePs('    4     1 -zsh\n    5     4 /Users/me/.cargo/bin/cargo build\n', calls)
     const kit = pluginKit('cargo', { probe, ps })
     const one = signal()
-    expect(kit.running({ in: '/w' }, { signal: one })).toEqual({ names: ['cargo (pid 5)'] })
-    expect(kit.running({ name: 'cargo' }, { signal: one })).toEqual({ names: ['cargo (pid 5)'] })
-    expect(kit.running('cargo', { signal: one })).toEqual({ names: ['cargo (pid 5)'] })
-    expect(kit.running('rustc', { signal: one })).toEqual({ names: [] })
+    const cargo = { names: ['cargo (pid 5)'], processes: [{ pid: 5, command: 'cargo' }] }
+    expect(kit.running({ in: '/w' }, { signal: one })).toEqual(cargo)
+    expect(kit.running({ name: 'cargo' }, { signal: one })).toEqual(cargo)
+    expect(kit.running('cargo', { signal: one })).toEqual(cargo)
+    expect(kit.running('rustc', { signal: one })).toEqual({ names: [], processes: [] })
     kit.running({ in: '/w' }, { signal: signal() })
     kit.running('cargo', { signal: signal() })
     // The first read in each hook call is fresh; `ps` is read once per hook call.
@@ -379,6 +472,7 @@ describe('running', () => {
     }
     expect(pluginKit('x', { probe }).running({ in: '/w' }, { signal: signal() })).toEqual({
       names: [],
+      processes: [],
       unknown: 'no lsof',
     })
     const noPs: CommandRunner = {
@@ -386,8 +480,50 @@ describe('running', () => {
     }
     expect(pluginKit('x', { ps: noPs }).running('pnpm', { signal: signal() })).toEqual({
       names: [],
+      processes: [],
       unknown: 'ps failed (exit 1): ps: not allowed',
     })
+  })
+})
+
+describe('running, when the table cannot be read', () => {
+  test('the failure stands for the rest of the hook call: neither lsof nor ps is started again, and no older table answers', () => {
+    const calls = { lsof: 0, ps: 0 }
+    let broken = false
+    // As repo-cleaner's: a table read once stays, and only `fresh` reads it again.
+    let table: ProcessHolder[] | null = null
+    const probe: ProcessProbe = {
+      alive: () => true,
+      holders: (_path, o) => {
+        if (table === null || o?.fresh === true) {
+          calls.lsof++
+          if (broken) throw new Error('lsof did not run')
+          table = []
+        }
+        return table
+      },
+    }
+    const ps: CommandRunner = {
+      run: () => {
+        calls.ps++
+        return { exitCode: 1, stdout: '', stderr: 'not allowed' }
+      },
+    }
+    const kit = pluginKit('x', { probe, ps })
+    const none = { names: [], processes: [] }
+    expect(kit.running({ in: '/a' }, { signal: signal() })).toEqual(none)
+    broken = true
+    const one = signal()
+    const unread = { ...none, unknown: 'lsof did not run' }
+    expect(kit.running({ in: '/a' }, { signal: one })).toEqual(unread)
+    expect(kit.running({ in: '/b' }, { signal: one })).toEqual(unread)
+    expect(kit.running('pnpm', { signal: one }).unknown).toMatch(/^ps failed/)
+    expect(kit.running('npm', { signal: one }).unknown).toMatch(/^ps failed/)
+    expect(calls).toEqual({ lsof: 2, ps: 1 })
+    // The next hook call reads afresh.
+    broken = false
+    expect(kit.running({ in: '/a' }, { signal: signal() })).toEqual(none)
+    expect(calls.lsof).toBe(3)
   })
 })
 

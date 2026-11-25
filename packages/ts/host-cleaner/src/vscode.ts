@@ -12,10 +12,10 @@
  * (see {@link historyIn}), that history (`lost`). A remote URI cannot be checked from
  * here and a folder with no `workspace.json` is an empty window's, so both are
  * left alone. A `workspace.json` of any other shape is never guessed at: the
- * folder is proposed held and refused (`unknown-workspace`), so it shows under
+ * folder is proposed held and refused (`<plugin>-unknown-workspace`), so it shows under
  * `--all-rows`. A path on a volume that is not mounted is not gone either.
  *
- * Built on the plugin kit alone, as a code plugin would be.
+ * Built on the plugin kit, as a code plugin would be, and the plugins' shared helpers.
  */
 
 import {
@@ -25,15 +25,23 @@ import {
   readFileSync,
   readSync,
   readdirSync,
-  realpathSync,
+  statSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { z } from 'zod'
 
-import { attachKit, pluginKit, type Kit, type KitOptions, type Running } from './kit.ts'
+import {
+  DISCOVER_LIMIT_MS,
+  isGitWorktree,
+  isObject,
+  objector,
+  realOr,
+  yieldToLimit,
+} from './helpers.ts'
+import { attachKit, pluginKit, present, type Kit, type KitOptions, type Running } from './kit.ts'
 import {
   PLUGIN_API,
   definePlugin,
@@ -47,11 +55,17 @@ import {
 export const VSCODE_PLUGIN = 'vscode'
 export const CURSOR_PLUGIN = 'cursor'
 
-/** The refusal of a candidate an editor window has open. */
-export const IN_USE = 'in-use'
+/** The refusal of a candidate the editor has open, or may. */
+export const VSCODE_IN_USE = 'vscode-in-use'
+export const CURSOR_IN_USE = 'cursor-in-use'
 
 /** The refusal of a storage folder whose `workspace.json` is a shape this plugin does not know. */
-export const UNKNOWN_WORKSPACE = 'unknown-workspace'
+export const VSCODE_UNKNOWN_WORKSPACE = 'vscode-unknown-workspace'
+export const CURSOR_UNKNOWN_WORKSPACE = 'cursor-unknown-workspace'
+
+/** The refusal, while the editor runs, of what it may have open when what it has open cannot be read. */
+export const VSCODE_STATE_UNREADABLE = 'vscode-state-unreadable'
+export const CURSOR_STATE_UNREADABLE = 'cursor-state-unreadable'
 
 /** The refusal of a `git` worktree in the folder where the editor's own agents keep theirs. */
 export const AGENT_WORKTREE = 'agent-worktree'
@@ -65,12 +79,10 @@ interface Editor {
   product: string
   /** Its folder in `Application Support` on macOS and in `.config` on Linux. */
   appDir: string
-  /**
-   * Its process names. `\x20` is the space as `lsof` writes it in a command
-   * name; the `\s` also accepts the ` (pid <n>)` that `kit.running` appends
-   * to a bare name.
-   */
+  /** Its process commands. `\x20` is the space as `lsof` writes it in a command name. */
   process: RegExp
+  /** The codes of its refusals. */
+  codes: { inUse: string; unknownWorkspace: string; stateUnreadable: string }
   /** True when its workspace storage always holds chat history, so deleting it is `lost`. */
   keepsChat: boolean
   /** The folder under `HOME` where its agents make and track their own worktrees. */
@@ -83,6 +95,11 @@ const VSCODE: Editor = {
   appDir: 'Code',
   // `Code` and its `Code Helper (…)` processes on macOS, `code` on Linux.
   process: /^code(?:\s|\\x20|$)/i,
+  codes: {
+    inUse: VSCODE_IN_USE,
+    unknownWorkspace: VSCODE_UNKNOWN_WORKSPACE,
+    stateUnreadable: VSCODE_STATE_UNREADABLE,
+  },
   keepsChat: false,
 }
 
@@ -93,12 +110,17 @@ const CURSOR: Editor = {
   // `Cursor` and its `Cursor Helper (…)` processes on macOS, `cursor` on Linux, and the `cursor-agent` CLI,
   // which lsof cuts to its first 9 characters, `cursor-ag`.
   process: /^cursor(?:-ag(?:ent)?)?(?:\s|\\x20|$)/i,
+  codes: {
+    inUse: CURSOR_IN_USE,
+    unknownWorkspace: CURSOR_UNKNOWN_WORKSPACE,
+    stateUnreadable: CURSOR_STATE_UNREADABLE,
+  },
   keepsChat: true,
   agentWorktrees: join('.cursor', 'worktrees'),
 }
 
-/** The longest `discover` may take: it sizes every dead storage folder. */
-const DISCOVER_LIMIT_MS = 5 * 60_000
+/** A file's text, without the byte order mark VS Code accepts and `JSON.parse` does not. */
+const readText = (file: string): string => readFileSync(file, 'utf8').replace(/^\uFEFF/, '')
 
 /**
  * The folders in a storage folder that hold chat or agent history, which
@@ -186,13 +208,41 @@ function chatRequests(text: string, log: boolean): number {
  * before it moved them to `chatSessions/` (`chatServiceImpl.ts`); a storage
  * folder last used before then may hold its chats there alone.
  */
-const LEGACY_CHAT_KEY = Buffer.from('interactive.sessions')
+const LEGACY_CHAT_KEY = 'interactive.sessions'
 
 /** How much of a `state.vscdb` is read at a time while looking for {@link LEGACY_CHAT_KEY}. */
 const SCAN_CHUNK = 1 << 20
 
-/** True when the `state.vscdb` at `path` names the old chat key; one that cannot be read does. */
-function legacyChats(path: string): boolean {
+/**
+ * True when the `state.vscdb` at `path` has the old chat key; one that cannot
+ * be read does. SQLite is asked only when the key's bytes are in the file,
+ * which keeps those of rows deleted since.
+ */
+const legacyChats = (path: string): boolean => namesLegacyChats(path) && hasLegacyChats(path)
+
+/** True when a row of the SQLite file `path` has the old chat key; one that cannot be read does. */
+function hasLegacyChats(path: string): boolean {
+  try {
+    // Read as it lies (`immutable`), so that nothing is written beside it; what
+    // SQLite keeps there is not read then, and may hold the row.
+    if (['-wal', '-journal'].some((end) => present(path + end))) return true
+    const { DatabaseSync } = process.getBuiltinModule('node:sqlite')
+    const url = pathToFileURL(path)
+    url.searchParams.set('immutable', '1')
+    const db = new DatabaseSync(url, { readOnly: true })
+    try {
+      const row = db.prepare('SELECT 1 FROM ItemTable WHERE instr(key, ?) > 0').get(LEGACY_CHAT_KEY)
+      return row !== undefined
+    } finally {
+      db.close()
+    }
+  } catch {
+    return true
+  }
+}
+
+/** True when the bytes of {@link LEGACY_CHAT_KEY} are in the file `path`; one that cannot be read holds them. */
+function namesLegacyChats(path: string): boolean {
   let fd: number | undefined
   try {
     const st = lstatSync(path, { throwIfNoEntry: false })
@@ -303,18 +353,6 @@ type Entry =
   /** Live, remote, an empty window's, on a volume not mounted, or not a folder of the editor's. */
   | { state: 'skip' }
 
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
-
-/** A path with symlinks resolved, so two spellings of one place compare equal. */
-function canon(path: string): string {
-  try {
-    return realpathSync.native(path)
-  } catch {
-    return path
-  }
-}
-
 const within = (path: string, dir: string): boolean =>
   path === dir || path.startsWith(dir.endsWith(sep) ? dir : dir + sep)
 
@@ -413,7 +451,7 @@ const stripJsonc = (text: string): string =>
 
 /** The local folders the `.code-workspace` file `file` lists as its roots; throws when it cannot be read as one. */
 function workspaceRoots(file: string): string[] {
-  const body: unknown = JSON.parse(stripJsonc(readFileSync(file, 'utf8')))
+  const body: unknown = JSON.parse(stripJsonc(readText(file)))
   if (!isObject(body) || !Array.isArray(body.folders)) throw new Error('no folders list')
   const roots: string[] = []
   for (const f of body.folders) {
@@ -433,27 +471,48 @@ function workspaceRoots(file: string): string[] {
   return roots
 }
 
-/** The local folders, workspace files and those files' roots the window state names; `problem` when one is not a shape this plugin knows. */
-function openWindows(stateFile: string): { paths: string[]; problem?: string } {
+/** The local folders, workspace files and those files' roots a file names, and why any of it could not be read. */
+interface Named {
+  paths: string[]
+  problems: string[]
+}
+
+/** Adds to `to` what `uri` names, when it is local: a folder, or (`isFile`) a workspace file and its roots. Throws when it is not a URI. */
+function addNamed(to: Named, uri: string, isFile: boolean): void {
+  const local = localPath(uri)
+  if (local === null) return
+  to.paths.push(realOr(local))
+  if (!isFile) return
+  // A multi-root workspace: every folder it lists is open too.
+  try {
+    for (const r of workspaceRoots(local)) to.paths.push(realOr(r))
+  } catch (err) {
+    // A workspace file that is gone has no window with its roots open.
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT')
+      to.problems.push(`the workspace file ${local} could not be read`)
+  }
+}
+
+/** What the window state names as open. */
+function openWindows(stateFile: string): Named {
+  const problem = (what: string): Named => ({ paths: [], problems: [`${stateFile}${what}`] })
+  const out: Named = { paths: [], problems: [] }
   let body: unknown
   try {
-    body = JSON.parse(readFileSync(stateFile, 'utf8'))
+    body = JSON.parse(readText(stateFile))
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { paths: [] }
-    return { paths: [], problem: `${stateFile} could not be read` }
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return out
+    return problem(' could not be read')
   }
-  if (!isObject(body)) return { paths: [], problem: `${stateFile} is not an object` }
+  if (!isObject(body)) return problem(' is not an object')
   const state = body.windowsState
-  if (state === undefined) return { paths: [] }
-  if (!isObject(state))
-    return { paths: [], problem: `${stateFile}'s windowsState is not an object` }
+  if (state === undefined) return out
+  if (!isObject(state)) return problem("'s windowsState is not an object")
   const windows = [
     state.lastActiveWindow,
     state.lastPluginDevelopmentHostWindow,
     ...(Array.isArray(state.openedWindows) ? state.openedWindows : []),
   ]
-  const paths: string[] = []
-  const problems: string[] = []
   // The last active window is usually among the opened ones too.
   const seen = new Set<string>()
   for (const w of windows) {
@@ -462,39 +521,121 @@ function openWindows(stateFile: string): { paths: string[]; problem?: string } {
     for (const uri of [w.folder, id]) {
       if (typeof uri !== 'string' || seen.has(uri)) continue
       seen.add(uri)
-      let local: string | null
       try {
-        local = localPath(uri)
+        addNamed(out, uri, uri === id)
       } catch {
         // Not a URI: names nothing that could be open here.
-        continue
-      }
-      if (local === null) continue
-      paths.push(canon(local))
-      if (uri !== id) continue
-      // A multi-root workspace: every folder it lists is open too.
-      try {
-        for (const r of workspaceRoots(local)) paths.push(canon(r))
-      } catch (err) {
-        // A workspace file that is gone has no window with its roots open.
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT')
-          problems.push(`the workspace file ${local} could not be read`)
       }
     }
   }
-  return problems.length === 0 ? { paths } : { paths, problem: problems.join('; ') }
+  return out
 }
 
-/** What the editor's windows have open, and whether it runs, or may. */
-type Windows = { paths: string[]; problem?: string; running: boolean }
+/**
+ * True when `dir`, or an entry directly in it, was modified at or after
+ * `since`; always when `since` is undefined, and when it cannot be read.
+ */
+function touchedSince(dir: string, since: number | undefined): boolean {
+  if (since === undefined) return true
+  const touched = (path: string): boolean =>
+    (statSync(path, { throwIfNoEntry: false })?.mtimeMs ?? 0) >= since
+  try {
+    return touched(dir) || readdirSync(dir).some((name) => touched(join(dir, name)))
+  } catch {
+    return true
+  }
+}
 
-/** A git plugin's worktree row. */
-const isGitWorktree = (c: Candidate): c is PathCandidate =>
-  c.kind === 'worktree' && c.owner === 'git' && c.path !== undefined
+/**
+ * What the storage folders in `root` written at or after `since` (every one
+ * when undefined) name: the editor writes there for a window it has open, so each
+ * may be open.
+ */
+function usedSince(root: string, since: number | undefined): Named {
+  const out: Named = { paths: [], problems: [] }
+  let names: string[]
+  try {
+    names = readdirSync(root)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT')
+      out.problems.push(`${root} could not be read`)
+    return out
+  }
+  for (const name of names) {
+    const dir = join(root, name)
+    if (!touchedSince(dir, since)) continue
+    const file = join(dir, 'workspace.json')
+    let body: unknown
+    try {
+      body = JSON.parse(readText(file))
+    } catch (err) {
+      // No workspace.json: an empty window's, which has no folder open, or not a storage folder.
+      if (!['ENOENT', 'ENOTDIR'].includes((err as NodeJS.ErrnoException).code ?? ''))
+        out.problems.push(`${file} could not be read`)
+      continue
+    }
+    const fields: Record<string, unknown> = isObject(body) ? body : {}
+    let uris = 0
+    for (const key of ['folder', 'workspace'] as const) {
+      const uri = fields[key]
+      if (typeof uri !== 'string') continue
+      uris++
+      try {
+        addNamed(out, uri, key === 'workspace')
+      } catch {
+        out.problems.push(`${file}'s ${key} is not a local file URI`)
+      }
+    }
+    if (uris === 0) out.problems.push(`${file} names no folder or workspace`)
+  }
+  return out
+}
 
-/** `editor`'s processes among `kit.running`'s names; see {@link Editor.process}. */
-const processesOf = (editor: Editor, names: readonly string[]): string[] =>
-  names.filter((n) => editor.process.test(n))
+/** `ps` reads its own zone and locale; these keep the start times it prints in one format, in UTC. */
+const PS_ENV = { TZ: 'UTC', LC_ALL: 'C' } as const
+
+/** Taken off the editor's start time: `ps` gives it, and some filesystems a modification time, only to a second or two. */
+const START_SLACK_MS = 10_000
+
+/** When the first of the processes `pids` started, in milliseconds, by `ps`; undefined when it cannot be read. */
+async function startedAt(
+  kit: Kit,
+  pids: readonly number[],
+  ctx: Pick<Ctx, 'signal'>,
+): Promise<number | undefined> {
+  if (pids.length === 0) return undefined
+  try {
+    const r = await kit.run(['ps', '-o', 'lstart=', '-p', pids.join(',')], {
+      signal: ctx.signal,
+      cwd: '/',
+      env: PS_ENV,
+    })
+    if (!r.ok || r.outputIncomplete === true) return undefined
+    const starts = r.stdout
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .map((line) => Date.parse(`${line.trim()} UTC`))
+    if (starts.length === 0 || starts.some((t) => Number.isNaN(t))) return undefined
+    return Math.min(...starts)
+  } catch {
+    return undefined
+  }
+}
+
+/** Whether the editor runs, or may, and while it does, what it may have open. */
+interface Windows {
+  running: boolean
+  /** The time storage written at or after counts as used: the editor's start, less {@link START_SLACK_MS}; undefined when that is not known. */
+  since: number | undefined
+  /** What the window state names as open. */
+  open: Named
+  /** What storage written since names; see {@link usedSince}. Not read for a storage candidate, whose own folder tells. */
+  used: Named
+}
+
+/** `editor`'s processes among `processes`; see {@link Editor.process}. */
+const processesOf = (editor: Editor, processes: Running['processes']): Running['processes'] =>
+  processes.filter((p) => editor.process.test(p.command))
 
 function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
   const env = opts.env ?? process.env
@@ -506,7 +647,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
   const agentDir =
     editor.agentWorktrees === undefined
       ? undefined
-      : canon(join(homeOf(env), editor.agentWorktrees))
+      : realOr(join(homeOf(env), editor.agentWorktrees))
   /** `root` when it exists. */
   const storage = (): string | undefined =>
     root !== undefined && lstatSync(root, { throwIfNoEntry: false }) !== undefined
@@ -516,50 +657,95 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
   /** The last discovery's entries by candidate id, kept for `object`. */
   let entries = new Map<string, Entry>()
 
-  const own = (
-    c: Candidate,
-    level: Objection['level'],
-    code: string,
-    reason: string,
-  ): Objection => ({
-    by: editor.name,
-    candidate: c.id,
-    level,
-    code,
-    reason,
-  })
+  const own = objector(editor.name)
 
-  /** Whether the editor runs, or may, and while it does, what its windows have open. */
-  const look = (ctx: Pick<Ctx, 'signal'>): Windows => {
-    // The window state outlives a quit, so it counts only while the editor runs, or may.
+  /** Whether the editor runs, or may, and while it does, what it may have open; `used` is read when `worktrees` are asked about. */
+  const look = async (ctx: Pick<Ctx, 'signal'>, worktrees: boolean): Promise<Windows> => {
+    const none: Named = { paths: [], problems: [] }
+    // What the editor wrote outlives a quit, so it counts only while the editor runs, or may.
     const anywhere = kit.running({ in: '/' }, ctx)
-    const running = processesOf(editor, anywhere.names).length > 0 || anywhere.unknown !== undefined
-    const windows = running && stateFile !== undefined ? openWindows(stateFile) : { paths: [] }
-    return { ...windows, running }
+    const pids = processesOf(editor, anywhere.processes).map((p) => p.pid)
+    const running = pids.length > 0 || anywhere.unknown !== undefined
+    if (!running) return { running, since: undefined, open: none, used: none }
+    // The window state can miss windows opened since the editor started, as the editor does not
+    // write it for each; the storage written since then names those.
+    const started = await startedAt(kit, pids, ctx)
+    const since = started === undefined ? undefined : started - START_SLACK_MS
+    const top = worktrees ? storage() : undefined
+    return {
+      running,
+      since,
+      open: stateFile === undefined ? none : openWindows(stateFile),
+      used: top === undefined ? none : usedSince(top, since),
+    }
   }
+
+  /** The reason the editor may have something open by its storage, while it is as `w` says. */
+  const usedReason = (w: Windows): string =>
+    w.since === undefined
+      ? `${editor.product} runs, or may; when it started is not known, and its storage names this (${root})`
+      : `${editor.product}'s storage for this was written since ${editor.product} started (${root})`
+
+  /** The refusal of `c` when what the editor has open could not be read because of `problems`. */
+  const unreadable = (c: Candidate, problems: readonly string[]): Objection[] =>
+    problems.length === 0
+      ? []
+      : [
+          own(
+            c,
+            'refuse',
+            editor.codes.stateUnreadable,
+            `${problems.join('; ')}; ${editor.product} runs, or may, and a window may have this open`,
+          ),
+        ]
 
   /** The objections to deleting git's worktree `c` while the editor is as `w` says. */
   const worktreeCheck = (c: PathCandidate, w: Windows, ctx: Pick<Ctx, 'signal'>): Objection[] => {
-    // With no process of the editor's anywhere, none works in this worktree.
-    const here: Running = w.running ? kit.running({ in: c.path }, ctx) : { names: [] }
-    const procs = processesOf(editor, here.names)
+    // With no process of the editor's anywhere, none works in this worktree and no window has it open.
+    if (!w.running) return []
+    const here = kit.running({ in: c.path }, ctx)
+    const procs = processesOf(editor, here.processes)
     if (procs.length > 0) {
-      return [own(c, 'refuse', IN_USE, `${editor.product} works in it: ${procs.join(', ')}`)]
+      const names = procs.map((p) => `${p.command} (pid ${p.pid})`).join(', ')
+      return [own(c, 'refuse', editor.codes.inUse, `${editor.product} works in it: ${names}`)]
     }
-    const dir = w.paths.length === 0 ? undefined : canon(c.path)
-    if (dir !== undefined && w.paths.some((p) => within(p, dir))) {
-      return [own(c, 'refuse', IN_USE, `a ${editor.product} window has it open (${stateFile})`)]
+    const dir = realOr(c.path)
+    const holds = (named: Named): boolean => named.paths.some((p) => within(p, dir))
+    if (holds(w.open)) {
+      return [
+        own(
+          c,
+          'refuse',
+          editor.codes.inUse,
+          `a ${editor.product} window has it open (${stateFile})`,
+        ),
+      ]
     }
-    const unchecked = [
-      here.unknown === undefined
-        ? undefined
-        : `the processes working in it could not be listed (${here.unknown})`,
-      w.problem,
-    ].filter((s) => s !== undefined)
-    if (unchecked.length === 0) return []
-    const kind = here.unknown === undefined ? 'state-unreadable' : 'unchecked'
-    const reason = `${unchecked.join('; ')}; ${editor.product} was not fully checked`
-    return [own(c, 'note', `${editor.name}-${kind}`, reason)]
+    if (holds(w.used)) return [own(c, 'refuse', editor.codes.inUse, usedReason(w))]
+    const refused = unreadable(c, [...w.open.problems, ...w.used.problems])
+    if (refused.length > 0 || here.unknown === undefined) return refused
+    return [
+      own(
+        c,
+        'note',
+        `${editor.name}-unchecked`,
+        `the processes working in it could not be listed (${here.unknown}); ${editor.product} was not fully checked`,
+      ),
+    ]
+  }
+
+  /** The objections to deleting `c`, storage for the gone folder `local`, while the editor is as `w` says. */
+  const goneCheck = (c: Candidate, local: string, w: Windows): Objection[] => {
+    if (!w.running) return []
+    if (w.open.paths.includes(realOr(local))) {
+      return [
+        own(c, 'refuse', editor.codes.inUse, `a ${editor.product} window still has ${local} open`),
+      ]
+    }
+    if (c.path !== undefined && touchedSince(c.path, w.since)) {
+      return [own(c, 'refuse', editor.codes.inUse, usedReason(w))]
+    }
+    return unreadable(c, w.open.problems)
   }
 
   return {
@@ -578,8 +764,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
       const out: Candidate[] = []
       for (const name of readdirSync(top).sort()) {
         // Each folder is sized; give the time limit a turn to stop the hook between them.
-        await new Promise((done) => setImmediate(done))
-        if (ctx.signal.aborted) throw new Error('discover was stopped')
+        await yieldToLimit(ctx)
         const dir = join(top, name)
         const entry = entryOf(dir)
         if (entry.state === 'skip') continue
@@ -599,17 +784,18 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
       entries = found
       return out
     },
-    object(all, ctx) {
+    async object(all, ctx) {
       const out: Objection[] = []
       const gone: Array<{ c: Candidate; local: string }> = []
       for (const c of all) {
         const e = c.owner === editor.name ? entries.get(c.id) : undefined
-        if (e?.state === 'unknown') out.push(own(c, 'refuse', UNKNOWN_WORKSPACE, e.problem))
+        if (e?.state === 'unknown')
+          out.push(own(c, 'refuse', editor.codes.unknownWorkspace, e.problem))
         if (e?.state === 'gone') gone.push({ c, local: e.local })
       }
       const worktrees: PathCandidate[] = []
       for (const c of all.filter(isGitWorktree)) {
-        if (agentDir !== undefined && within(canon(c.path), agentDir)) {
+        if (agentDir !== undefined && within(realOr(c.path), agentDir)) {
           out.push(
             own(c, 'refuse', AGENT_WORKTREE, `${editor.product}'s agents keep it (${agentDir})`),
           )
@@ -619,21 +805,22 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
       }
       if (worktrees.length === 0 && gone.length === 0) return out
 
-      const windows = look(ctx)
+      const windows = await look(ctx, worktrees.length > 0)
       for (const c of worktrees) out.push(...worktreeCheck(c, windows, ctx))
-      const open = new Set(windows.paths)
-      // A gone folder's path never resolves, so it is not even tried while no window is open.
-      for (const { c, local } of open.size === 0 ? [] : gone) {
-        if (open.has(canon(local))) {
-          out.push(own(c, 'refuse', IN_USE, `a ${editor.product} window still has ${local} open`))
-        }
-      }
+      for (const { c, local } of gone) out.push(...goneCheck(c, local, windows))
       return out
     },
-    prepare(c, ctx) {
-      if (!isGitWorktree(c)) return
+    async prepare(c, ctx) {
       // A window may have opened it since `object`.
-      const refusal = worktreeCheck(c, look(ctx), ctx).find((o) => o.level === 'refuse')
+      let objections: Objection[] = []
+      if (isGitWorktree(c)) {
+        objections = worktreeCheck(c, await look(ctx, true), ctx)
+      } else if (c.owner === editor.name && typeof c.evidence.workspace === 'string') {
+        // One with no workspace is of a shape this plugin does not know, which `object` refuses.
+        const local = localPath(c.evidence.workspace)
+        if (local !== null) objections = goneCheck(c, local, await look(ctx, false))
+      }
+      const refusal = objections.find((o) => o.level === 'refuse')
       if (refusal !== undefined) throw new Error(refusal.reason)
     },
     delete(c, ctx) {
