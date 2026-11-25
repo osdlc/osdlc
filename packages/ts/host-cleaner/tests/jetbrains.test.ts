@@ -188,7 +188,9 @@ describe('version folders', () => {
     const [c] = (await survey([make(h)], ctx())).candidates
     expect(c).toMatchObject({ held: true })
     expect(c!.why).toContain('unchanged for 2 hours (threshold 24)')
-    expect((await survey([make(h, { options: { idleHours: 1 } })], ctx())).candidates[0]!.held).toBeUndefined()
+    expect(
+      (await survey([make(h, { options: { idleHours: 1 } })], ctx())).candidates[0]!.held,
+    ).toBeUndefined()
   })
 
   test('an install the Toolbox lists outside the application folders counts; a record of a gone one does not', async () => {
@@ -309,10 +311,7 @@ describe('version folders', () => {
       JSON.stringify({ tools: [{ installLocation: odd }] }),
     )
     const s = await survey([make(h)], ctx())
-    expect(s.objections.map((o) => o.code)).toEqual([
-      'installs-unreadable',
-      'installs-unreadable',
-    ])
+    expect(s.objections.map((o) => o.code)).toEqual(['installs-unreadable', 'installs-unreadable'])
   })
 
   test('a snap install, `<name>/current/product-info.json`, is an install', async () => {
