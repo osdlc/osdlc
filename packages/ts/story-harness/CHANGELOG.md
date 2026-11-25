@@ -12,11 +12,17 @@
   - `@osdlc/story-harness/runner` also exports `walkPage`, `parseAriaLine`, `DEFAULT_WALK_MAX` and the walk's types.
   - `@osdlc/story-harness/parley-capture` builds the blocks of a review page from screenshots.
 
-## 0.4.0
+## History before the first public release
 
-### Minor Changes
+These versions were never published. They are rebuilt from the git history.
 
-- 239d1cd: The first release of `@osdlc/story-harness` on npm. It uses a component's static Storybook build as its test harness.
+The first release of `@osdlc/story-harness` on npm is 0.5.0.
+
+### [0.4.0] - 2026-11-21 (unpublished)
+
+#### Changed
+
+- The package as first prepared for npm, never published. It uses a component's static Storybook build as its test harness.
   
   - `story-shots <package dir>` shoots every story in light and dark inside the pinned Playwright image, as `linux/amd64`, and compares each shot with a committed baseline, failing on any pixel past a 0.02 colour distance. `--update` writes the baselines and deletes those of stories that are gone. `SHOT_WORKERS` sets the worker count. It needs Docker and bash, on Linux or macOS.
   - `@osdlc/story-harness/browser`: `storyMetrics`, the in-page metrics hook for perf stories, and `seeded`, a deterministic PRNG.
@@ -24,7 +30,7 @@
   - `@osdlc/story-harness/runner`: `captureStories`, `captureCli`, `serveStatic` and `selectStories`.
   - Compiled ESM with `.d.ts`, Node 22 or newer. `@playwright/test` 1.62 or newer is a peer dependency, and `@osdlc/file-lock` its one runtime dependency. Licence `MIT OR Apache-2.0`.
   
-  Changes since the last unpublished version in the history below. Some are breaking, so the first release is a minor version, 0.4.0:
+  Changes since the last unpublished version in the history below. Some are breaking, so this version is a minor, 0.4.0:
   
   - **Breaking:** the baseline check is the `story-shots` command, in place of a path to its script. The runner is one `./runner` entry (`captureStories`, `captureCli`, `serveStatic`, `selectStories`), in place of file paths. `createPerfRecorder` is no longer exported; `budget`, `record` and `recordBrowser` write the report.
   - **Breaking:** with several `themes` in the flat layout, `captureStories` writes `<name>--<theme>.png`; before, each theme overwrote the same file.
@@ -36,12 +42,6 @@
   - `story-shots` checks a story's page errors before its shot, so `--update` never writes a crashed story's baseline; trims `--include` and `--exclude` items the same way when it prunes; hands what the container wrote back to the host user on Linux; and leaves a remote Docker context's endpoint alone.
   - A perf report keeps the date, CPU and load of the run's first writer, and a writer gives up after 30 s on a lock it cannot take. `defineStoryConfig` gives each `playwright test` run its own id (`STORY_PERF_RUN`), so a new run does not merge into a report an earlier run left (reruns in `--ui` or watch mode share one, as the README says), and a writer releases only its own lock. The report's lock is `@osdlc/file-lock`'s `withLock`, in place of the package's own, which closes a window where two workers could both hold it after a stale-lock takeover.
   - `story-shots` refuses a `--settle-ms` or `SHOT_WORKERS` that is not a whole number. It works around Docker Desktop's credential helper only for the first pull of the image, so `docker run` uses your own Docker config, proxies and context included. The container's npm cache is a named volume (`story-shots-npm-cache`), so only the first run downloads `@playwright/test`.
-
-## History before the first public release
-
-These versions were never published. They are rebuilt from the git history.
-The first release of `@osdlc/story-harness` on npm is 0.4.0, and the entry for
-it is added above this section when it is released.
 
 ### [0.3.4] - 2026-11-05 (unpublished)
 

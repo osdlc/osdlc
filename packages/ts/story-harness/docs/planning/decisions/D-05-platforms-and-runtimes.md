@@ -21,5 +21,6 @@ created: 2026-11-07
 
 ## Consequences
 
-- CI tests the package on Linux and macOS on Node 22, 24 and 26, runs the
-  browser tests and the command end to end on Linux.
+- CI runs the package's typecheck, lint, tests and tarball checks on Linux
+  and macOS on Node 22, 24 and 26. One job, on ubuntu and Node 24 only, runs
+  the browser tests and the command end to end in Docker.
