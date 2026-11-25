@@ -411,8 +411,8 @@ interface Setup {
 /**
  * The config and every plugin definition: the config read, the packages it
  * names loaded, then the descriptors, then each `plugins` entry checked
- * against them all. A package `--skip-plugin` names is not loaded, nor one
- * the config disables unless `--plugin` names it.
+ * against them all. With `--plugin`, only the packages it names are loaded;
+ * without it, those the config enables. None `--skip-plugin` names is loaded.
  */
 async function loadAll(
   v: { config?: string | undefined; descriptor: readonly string[] },
@@ -429,7 +429,9 @@ async function loadAll(
   const used = entries.filter(
     (e) =>
       !(naming.skip ?? []).includes(e.name) &&
-      (config.plugins[e.name]?.enabled !== false || (naming.want ?? []).includes(e.name)),
+      (naming.want === undefined
+        ? config.plugins[e.name]?.enabled !== false
+        : naming.want.includes(e.name)),
   )
   const packages = await loadPackages(used, deps.packageRoots ?? packageRoots(ctx.env))
   const loaded = loadPlugins(sourcesFor(v, ctx, deps), opts, {

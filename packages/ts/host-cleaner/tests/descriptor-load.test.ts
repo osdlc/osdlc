@@ -250,7 +250,30 @@ describe('the run’s plugins', () => {
     expect(await runs('docker', fakeContext())).toBe(true)
     expect(await runs('ollama', fakeContext())).toBe(false)
     expect(await runs('orca', fakeContext())).toBe(false)
+    chosen = [
+      {
+        name: 'broken',
+        detect: () => {
+          throw new Error('boom')
+        },
+      },
+    ]
+    expect(await runs('broken', fakeContext())).toBe(false)
     chosen = []
     expect(await runs('cargo', fakeContext())).toBe(false)
+  })
+
+  test('supersededBy naming a descriptor, itself or another, is refused', () => {
+    expect(() =>
+      loadPlugins(sources({ 'mine.yaml': `${store('.cache/mine')}supersededBy: mine\n` })),
+    ).toThrow(/supersededBy: mine, which is a descriptor/)
+    expect(() =>
+      loadPlugins(
+        sources({
+          'a.yaml': `${store('.cache/a')}supersededBy: b\n`,
+          'b.yaml': store('.cache/b'),
+        }),
+      ),
+    ).toThrow(/supersededBy: b, which is a descriptor/)
   })
 })

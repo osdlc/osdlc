@@ -119,6 +119,15 @@ describe('where a package is looked for', () => {
     expect(r.failed).toEqual([])
     expect(r.loaded[0]!.definition.name).toBe('fixture')
   })
+
+  test.each(['index', '.', './index.js'])(
+    'a legacy main of %s resolves as Node resolves it',
+    async (main) => {
+      const r = await load(FIXTURE_PLUGIN, 'fixture', { exports: undefined, main })
+      expect(r.failed).toEqual([])
+      expect(r.loaded[0]!.definition.name).toBe('fixture')
+    },
+  )
 })
 
 describe('what a package must export', () => {

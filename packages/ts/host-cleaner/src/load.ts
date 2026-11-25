@@ -15,7 +15,7 @@
  * skipped.
  */
 
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -158,8 +158,19 @@ function entryOf(dir: string, manifest: Manifest): string | undefined {
     const file = exported(manifest.exports)
     return file === undefined ? undefined : join(dir, file)
   }
-  return join(dir, typeof manifest.main === 'string' ? manifest.main : 'index.js')
+  if (typeof manifest.main === 'string') {
+    const main = join(dir, manifest.main)
+    const file = LEGACY_MAIN_SUFFIXES.map((s) => main + s).find(isFile)
+    if (file !== undefined) return file
+  }
+  return join(dir, 'index.js')
 }
+
+/** What Node tries after a legacy `main`, in its order: the file, with an extension, then the folder's index. */
+const LEGACY_MAIN_SUFFIXES = ['', '.js', '.json', '.node', '/index.js', '/index.json', '/index.node']
+
+const isFile = (path: string): boolean =>
+  statSync(path, { throwIfNoEntry: false })?.isFile() === true
 
 const isObject = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null
 

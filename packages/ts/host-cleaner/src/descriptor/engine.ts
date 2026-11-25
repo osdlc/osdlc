@@ -102,7 +102,7 @@ const expand = (folder: string, home: string): string =>
  * it may. It must pass the core's check of a self root ({@link rootProblem}):
  * not `/`, not a symlink, not be or hold home, not be a personal folder, not
  * be or hold a target or a checkout. It must also sit strictly inside `home`
- * and not hold host-cleaner's own folders. Judged on the path as given and on
+ * and neither hold nor sit in host-cleaner's own folders. Judged on the path as given and on
  * its real path, as the filesystem spells it.
  */
 export function pathProblem(
@@ -119,6 +119,7 @@ export function pathProblem(
   if (containedIn([at.home], path) === null) return 'it is not inside the home folder'
   for (const own of at.ownDirs) {
     if (within(path, own)) return `it holds host-cleaner's own folder ${own}`
+    if (within(own, path)) return `it is inside host-cleaner's own folder ${own}`
   }
   return null
 }
@@ -435,23 +436,31 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       const matches = globMatches(folder, entry.glob)
       const max = entry.maxEntries ?? DEFAULT_MAX_ENTRIES
       const listed: Row[] = []
-      for (const match of matches.slice(0, max)) {
+      // Matches that make no row (escape the folder, not a folder) don't count toward `max`.
+      let more = 0
+      for (const [i, match] of matches.entries()) {
+        if (listed.length === max) {
+          more = matches.length - i
+          break
+        }
         if (containedIn([folder], match) === null) continue
         const row = folderRow(entry, index, match, action)
         if (row !== null) listed.push(row)
       }
       const last = listed.at(-1)
-      if (last !== undefined && matches.length > max) {
+      if (last !== undefined && more > 0) {
         last.objections.push({
           level: 'note',
           code: 'more-entries',
-          reason: `${matches.length - max} more entries match ${entry.glob} in ${folder}; they are listed once these are gone`,
+          reason: `${more} more entries match ${entry.glob} in ${folder}; they are listed once these are gone`,
         })
       }
       rows.push(...listed)
     }
-    for (const [index, entry] of (d.project ?? []).entries()) {
-      for (const checkout of checkoutsIn(ctx.targets)) {
+    const projects = d.project ?? []
+    const checkouts = projects.length === 0 ? [] : checkoutsIn(ctx.targets)
+    for (const [index, entry] of projects.entries()) {
+      for (const checkout of checkouts) {
         if (ctx.ignore?.some((i) => within(i, checkout)) === true) continue
         rows.push(...projectRows(entry, index, checkout))
       }
@@ -575,9 +584,10 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     name,
     limits: { discover: DISCOVER_LIMIT_MS },
     async detect(ctx) {
-      if (skipReason(d) !== undefined) return false
+      const skip = skipReason(d)
+      if (skip !== undefined) return { active: false, note: skip }
       if (d.supersededBy !== undefined && (await at.runs?.(d.supersededBy, ctx)) === true) {
-        return false
+        return { active: false, note: `skipped: ${d.supersededBy} runs and covers this` }
       }
       const holds = (c: { onPath?: string | undefined; exists?: string | undefined }): boolean => {
         if (c.onPath !== undefined) return kit.onPath(c.onPath)

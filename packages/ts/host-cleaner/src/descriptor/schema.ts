@@ -24,7 +24,7 @@ export const DESCRIPTOR_VERSION = 1
 export const DESCRIPTOR_SCHEMA_URL =
   'https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json'
 
-/** How many glob matches become candidates of their own before the rest are combined into one. */
+/** How many glob matches become candidates in one run; the rest wait for a later run. */
 export const DEFAULT_MAX_ENTRIES = 200
 
 /** The operating systems a path may differ on. */
@@ -135,7 +135,7 @@ export const DescriptorCandidateSchema = z
       .positive()
       .optional()
       .describe(
-        `Glob matches past this many are combined into one candidate. Default: ${DEFAULT_MAX_ENTRIES}.`,
+        `Glob matches past this many are not listed this run; a note on the last one listed counts them. Default: ${DEFAULT_MAX_ENTRIES}.`,
       ),
     costDescription,
     idleHours,

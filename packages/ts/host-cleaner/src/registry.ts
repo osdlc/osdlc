@@ -50,7 +50,7 @@ export interface Packages {
  * The built-ins, then the `packages` loaded, then the descriptors from
  * `sources`, each by name; `opts` is passed to each descriptor's plugin.
  *
- * @throws DescriptorLoadError for a descriptor named as a built-in plugin or as a package in the config, or as loadDescriptors
+ * @throws DescriptorLoadError for a descriptor named as a built-in plugin or as a package in the config, one whose `supersededBy` names a descriptor, or as loadDescriptors
  * @throws DescriptorError for a descriptor file that can't be used
  */
 export function loadPlugins(
@@ -67,6 +67,12 @@ export function loadPlugins(
     if (entry !== undefined) {
       throw new DescriptorLoadError(
         `descriptor ${d.path} is named ${d.name}, as the package plugins.${d.name}.package names (${entry.package}); every plugin has its own name, so rename the file`,
+      )
+    }
+    const over = d.descriptor.supersededBy
+    if (over !== undefined && descriptors.some((x) => x.name === over)) {
+      throw new DescriptorLoadError(
+        `descriptor ${d.path} has supersededBy: ${over}, which is a descriptor; it must name a built-in or package plugin`,
       )
     }
   }
@@ -87,14 +93,19 @@ export function loadPlugins(
 /**
  * A descriptor's `runs`, for `supersededBy`: whether the plugin of that name is
  * among those `chosen` gives (enabled and not skipped) and detects: its
- * `detect` answers `true` or `{ active: true }`.
+ * `detect` answers `true` or `{ active: true }`. A `detect` that throws does
+ * not run, so the descriptor applies.
  */
 export const runsAmong =
   (chosen: () => readonly Plugin[]) =>
   async (name: string, ctx: Ctx): Promise<boolean> => {
     const p = chosen().find((x) => x.name === name)
     if (p === undefined) return false
-    return detection(await p.detect(ctx))?.active === true
+    try {
+      return detection(await p.detect(ctx))?.active === true
+    } catch {
+      return false
+    }
   }
 
 /** A `--plugin` or `--skip-plugin` that names no plugin. */

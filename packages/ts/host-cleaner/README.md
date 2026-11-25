@@ -348,6 +348,30 @@ or two files of one name in one folder, is refused (exit 2). Descriptors run
 after the built-ins, by name. To try one you are writing:
 `host-cleaner status --descriptor ./uv.yaml --plugin uv`.
 
+A descriptor names its folders per OS under `paths`, then lists what may be
+deleted under `candidates`:
+
+```yaml
+descriptor: 1
+paths:
+  hub: { all: ~/.cache/huggingface/hub }
+candidates:
+  - path: hub
+    glob: 'models--*/' # one candidate per match, at most maxEntries (200) a run
+    costDescription: re-download
+    idleHours: 720
+```
+
+A candidate deletes its folder, or with `command` runs the tool's own command
+(naming the folder as `{path}`), with `removes: unused` for a prune or
+`removes: all` for a wipe. `inUse` lists `processes` and `locks` that make every
+candidate wait, `project` adds folders inside each checkout of the targets, and
+`detect` (`all` or `any` of `onPath` and `exists`) decides when it runs. A
+descriptor with `system: true` never runs, nor one whose `supersededBy` names a
+built-in or package plugin that runs this time; `status` gives a note for
+each. Every folder must sit inside home and pass the same checks as a plugin's
+root. The full format is the JSON Schema in `schemas/descriptor-1.json`.
+
 A code plugin published as a package runs when the config names it:
 `"plugins": { "podman": { "package": "@acme/host-cleaner-podman" } }`. Only a
 package the config names is loaded, by its npm name and never from a path: from

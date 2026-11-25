@@ -682,6 +682,22 @@ candidates:
       `${state}: it holds host-cleaner's own folder ${join(state, 'host-cleaner')}`,
     ])
   })
+
+  test("a folder inside host-cleaner's own", async () => {
+    const b = build('x', one('~/.local/state/host-cleaner/receipts'), { fill: false })
+    const own = join(b.home, '.local', 'state', 'host-cleaner')
+    const receipts = join(own, 'receipts')
+    mkdirSync(receipts, { recursive: true })
+    const plugin = descriptorPlugin('x', b.d, { os: OS, ownDirs: [own] }).create({
+      settings: { idleHours: 0 },
+      env: { HOME: b.home },
+      kit: pluginKit('x', { env: { HOME: b.home }, ...processes() }),
+    })
+    const s = await survey([plugin], ctxOf())
+    expect(s.objections.filter((o) => o.by === 'x').map((o) => o.reason)).toEqual([
+      `${receipts}: it is inside host-cleaner's own folder ${own}`,
+    ])
+  })
 })
 
 describe('paths per OS, detect, system and supersededBy', () => {
@@ -747,7 +763,10 @@ candidates:
       'skipped: it describes data that needs root (system: true), which host-cleaner does not clean',
     )
     expect(skipReason(parseDescriptor(PIP_PER_OS, 'pip.yaml'))).toBeUndefined()
-    expect(await b.plugin.detect(fakeContext())).toBe(false)
+    expect(await b.plugin.detect(fakeContext())).toEqual({
+      active: false,
+      note: skipReason(b.d),
+    })
   })
 
   test('supersededBy: not detected while that plugin runs', async () => {
@@ -761,7 +780,10 @@ candidates:
           },
         },
       }).plugin
-    expect(await of(true).detect(fakeContext())).toBe(false)
+    expect(await of(true).detect(fakeContext())).toEqual({
+      active: false,
+      note: 'skipped: pip-code runs and covers this',
+    })
     expect(await of(false).detect(fakeContext())).toBe(true)
     expect(asked).toEqual(['pip-code', 'pip-code'])
   })

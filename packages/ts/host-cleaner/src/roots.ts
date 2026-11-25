@@ -97,7 +97,7 @@ export const isLink = (path: string): boolean =>
   lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true
 
 /** Whether `inner` is `outer` or sits below it, by real paths. */
-export const within =(outer: string, inner: string): boolean => {
+export const within = (outer: string, inner: string): boolean => {
   const rel = relative(realOr(outer), realOr(inner))
   return rel === '' || (rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel))
 }

@@ -596,6 +596,10 @@ describe('packages', () => {
     const skipped = await h.go(['clean', '--yes', '--skip-plugin', 'fixture'])
     expect(skipped.code).toBe(10)
     expect(skipped.err).toBe('')
+    // --plugin leaving the package out does not load it, so nothing is refused or warned.
+    const other = await h.go(['clean', '--yes', '--plugin', 'git'])
+    expect(other.code).toBe(10)
+    expect(other.err).toBe('')
 
     const named = await h.go(['status', '--plugin', 'fixture'])
     expect(named.code).toBe(2)
