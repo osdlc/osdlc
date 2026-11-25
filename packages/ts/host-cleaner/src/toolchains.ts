@@ -1,45 +1,9 @@
 /**
  * The `toolchains` plugin: rustup toolchains, and Node versions installed
- * by nvm or Volta, that no checkout in the targets asks for.
- *
- * Every checkout under the targets (the repository a target is in, those up
- * to {@link SEARCH_DEPTH} folders below a target, each one's worktrees, and
- * the submodules and untracked repositories inside them) is read for
- * `rust-toolchain`, `rust-toolchain.toml`, `.nvmrc`, `.node-version` and
- * `package.json`'s `volta.node`, at its root and wherever git lists one below
- * it; a target with deeper folders refuses every candidate. What they
- * name is kept, and so are the default and the one in use: rustup's
- * default, its directory overrides, `RUSTUP_TOOLCHAIN` and the toolchain
- * files in the run's folder and above it; nvm's `default` alias, Volta's
- * default and the `node` on `PATH`. rustup is not asked for its active
- * toolchain, since an older rustup installs it when it is missing.
- * A pin is kept by prefix, so `1.80` keeps `1.80-<host>` and `1.80.1-<host>`,
- * and `18` keeps every `18.x.y`.
- *
- * A version used in the last `idleHours` is kept too, so `cargo +nightly`
- * with no pin file keeps nightly while it is in use. Used means the newest
- * access or modification time of the files in the version's `bin` folder,
- * links followed: every use runs one of them, and running a file updates its
- * access time; on a volume mounted `relatime` that is at most once a day, so
- * there a version is kept {@link RELATIME_LAG_HOURS} hours longer.
- * On a volume mounted `noatime` running a file leaves no trace,
- * so a versions folder on one proposes nothing, and `detect` says so in its
- * note. Its mount is the one `df` names for it, and its options come from
- * `mount` on macOS and `/proc/self/mounts` on Linux; when they cannot be read,
- * the access times are trusted.
- *
- * When any of that cannot be read (a pin such as `lts/*` with no nvm alias
- * for it, a checkout git cannot list, rustup failing to answer, a `bin`
- * folder that is missing), the candidate is refused, every candidate of that
- * tool when it is a pin or what is in use, since what is unused cannot be
- * told. Nothing is proposed unless the targets were given (`ctx.targetsGiven`),
- * not the run's folder taken in their place. A toolchain that is a symlink
- * (one `rustup toolchain link` made) or whose name is not a release channel
- * is never proposed.
- *
- * Deleted with `rustup toolchain uninstall`; an nvm or Volta version folder
- * through `kit.remove`. Locations come from `RUSTUP_HOME`, `NVM_DIR` and
- * `VOLTA_HOME`, else their folders in `HOME`.
+ * by nvm or Volta, that no checkout in the targets asks for, that are not the
+ * default or in use, and that nobody ran in the last `idleHours`. What is read,
+ * what is kept and what refuses a candidate: "The `toolchains` plugin" in this
+ * package's README.md.
  * Settings: `plugins.toolchains.idleHours` (default {@link DEFAULT_IDLE_HOURS}).
  */
 
@@ -446,7 +410,11 @@ export function toolchainsPlugin(
       .filter((l) => l !== '')
   }
 
-  /** The rustup toolchains to keep beyond the pins: the default, the directory overrides and `RUSTUP_TOOLCHAIN`. */
+  /**
+   * The rustup toolchains to keep beyond the pins: the default, the directory
+   * overrides and `RUSTUP_TOOLCHAIN`. rustup is not asked for its active
+   * toolchain, since an older rustup installs it when it is missing.
+   */
   const rustInUse = async (ctx: Ctx): Promise<string[]> => {
     const lastWord = (l: string): string => l.split(/\s+/).at(-1)!
     const [defaults, overrides] = await Promise.all([
