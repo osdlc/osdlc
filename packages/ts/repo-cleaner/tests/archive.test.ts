@@ -179,6 +179,27 @@ describe('archive before delete', () => {
     expect(existsSync(join(fx.worktree, 'late.txt'))).toBe(true)
   })
 
+  test('a change made after an archive that had nothing to hold stops the remove', () => {
+    const fx = buildFixture()
+    writeFileSync(join(fx.worktree, '.env.local'), 'TOKEN=1\n')
+    const { receipt } = apply(
+      fx,
+      makePlan(fx.root),
+      { select: [wt(fx.worktree)], allow: ['discard-changes'] },
+      {
+        onStepDone: (_i, _n, step) => {
+          if (step.action === 'archive') writeFileSync(join(fx.worktree, 'late.txt'), 'late\n')
+        },
+      },
+    )
+    expect(receipt.steps.map((s) => [s.action, s.result, s.verification ?? null])).toEqual([
+      ['archive', 'ok', 'nothing to archive'],
+      ['remove-worktree', 'failed', null],
+    ])
+    expect(receipt.steps[1]!.error).toContain('changed since it was archived')
+    expect(existsSync(join(fx.worktree, 'late.txt'))).toBe(true)
+  })
+
   test('a staged change its working file no longer shows is not held, so it needs discard-changes', () => {
     const fx = buildFixture()
     writeFileSync(join(fx.worktree, 'tracked.txt'), 'staged\n')

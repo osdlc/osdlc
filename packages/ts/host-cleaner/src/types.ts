@@ -55,6 +55,8 @@ export interface Ctx {
   allow: readonly string[]
   /** Absolute paths nothing may be deleted in or below; the core drops candidates there, a plugin may also skip them. */
   ignore?: readonly string[] | undefined
+  /** The candidates `clean` will delete, in order; set for `prepare`, `delete` and `deleted` alone. */
+  run?: readonly Candidate[] | undefined
 }
 
 export interface Plugin {

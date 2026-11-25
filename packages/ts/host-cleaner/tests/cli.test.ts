@@ -447,20 +447,49 @@ describe('plan and clean', () => {
     expect(JSON.parse(json.out).archive).toEqual([])
   })
 
-  test('--archive gives a second branch in the same repository and day the -2 suffix', () => {
+  test('--archive --dry-run does not say the work of a worktree whose directory is gone is pushed', () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    const wt = join(dirname(dir), 'wt-gone')
+    sh(dir, ['worktree', 'add', '-q', '-b', 'gone', wt, 'main'])
+    sh(wt, ['-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', bare, 'sub'])
+    sh(join(wt, 'sub'), ['commit', '--allow-empty', '-m', 'only here'])
+    // Its git dir keeps the submodule's commit, which no archive holds.
+    rmSync(wt, { recursive: true })
+    const flags = ['--pick', `worktree:${wt}`, '--allow', 'abandon-unmerged', '--dry-run']
+    const r = run(['clean', '--archive', ...flags], dir, env)
+    expect(r.out).toContain(`delete  worktree:${wt}`)
+    expect(r.out).not.toContain('archive:')
+    const json = run(['clean', '--archive', '--format', 'json', ...flags], dir, env)
+    expect(JSON.parse(json.out).archive).toEqual([])
+  })
+
+  test('--archive pushes one archive per repository a run, and gives the day’s second run the -2 suffix', () => {
     const { env } = setup()
     const { dir, bare } = pushedRepo()
     sh(dir, ['checkout', '-q', '-b', 'other'])
     sh(dir, ['commit', '--allow-empty', '-m', 'more wip'])
     sh(dir, ['checkout', '-q', 'main'])
-    const picks = ['--pick', `branch:${dir}:topic`, '--pick', `branch:${dir}:other`]
-    const argv = ['clean', '--archive', ...picks, '--allow', 'abandon-unmerged', '--yes']
-    const r = run(argv, dir, env)
-    expect(r.code).toBe(0)
+    sh(dir, ['checkout', '-q', '-b', 'later'])
+    sh(dir, ['commit', '--allow-empty', '-m', 'later wip'])
+    sh(dir, ['checkout', '-q', 'main'])
+    const tips = ['topic', 'other', 'later'].map((b) => git(dir, ['rev-parse', b]))
+    const cleaned = (...names: string[]) => {
+      const picks = names.flatMap((n) => ['--pick', `branch:${dir}:${n}`])
+      const argv = ['clean', '--archive', ...picks, '--allow', 'abandon-unmerged', '--yes']
+      return run(argv, dir, env).code
+    }
+    expect(cleaned('topic', 'other')).toBe(0)
+    expect(archives(bare)).toHaveLength(1)
+    expect(cleaned('later')).toBe(0)
     const found = archives(bare).sort()
     expect(found).toHaveLength(2)
     expect(found[0]).toMatch(/^refs\/heads\/archive\/worker-local-\d{4}-\d{2}-\d{2}$/)
     expect(found[1]).toBe(`${found[0]}-2`)
+    const work = found.map((ref) =>
+      git(bare, ['log', '-1', '--format=%P', ref]).split(' ').slice(1),
+    )
+    expect(work).toEqual([tips.slice(0, 2), tips.slice(2)])
     const left = git(dir, ['branch', '--format=%(refname:short)'])
     expect(left).not.toContain('topic')
     expect(left).not.toContain('other')

@@ -57,7 +57,13 @@ import type { Annotate } from './hooks.ts'
 import type { CleanCandidate } from './candidates.ts'
 import { fingerprint, runnable, sameFingerprint, type Plan, type PlanRepo } from './plan.ts'
 import { busyHolders, defaultProcessProbe, parseLockOwner, type ProcessProbe } from './processes.ts'
-import { RECEIPT_VERSION, type Dropped, type Receipt, type Step } from './receipt.ts'
+import {
+  RECEIPT_VERSION,
+  type ArchiveRecord,
+  type Dropped,
+  type Receipt,
+  type Step,
+} from './receipt.ts'
 import { defaultCacheDir, mirrorProblem } from './remote-mirror.ts'
 import { sizeOf } from './size.ts'
 import { inspectSubmodules, submoduleHazards } from './submodules.ts'
@@ -884,10 +890,16 @@ function execute(
         throw new Error('archive without its rows')
       }
       const { remote, defaultRef, jobs } = archive.job
-      const pushed = pushArchive(at, remote, defaultRef, jobs, archive.options, archive.now)
-      if (pushed === null) return 'nothing to archive'
-      const { record } = pushed
-      for (const [id, stamp] of pushed.stamps) archive.stamps.set(`${step.repo}\0${id}`, stamp)
+      const { record, stamps } = pushArchive(
+        at,
+        remote,
+        defaultRef,
+        jobs,
+        archive.options,
+        archive.now,
+      )
+      for (const [id, stamp] of stamps) archive.stamps.set(`${step.repo}\0${id}`, stamp)
+      if (record === null) return 'nothing to archive'
       step.archive = record
       step.command = shellJoin(['git', 'push', remote, `${record.sha}:${record.ref}`])
       return `${record.ref} lists ${record.sha}`
@@ -1163,6 +1175,12 @@ export interface RemoveCandidateOptions extends Runners {
   allow?: readonly Risk[] | undefined
   /** Archive unlanded work to the remote first, as `check` is given it. */
   archive?: ArchiveOptions | undefined
+  /**
+   * The archive {@link archiveCandidates} made that holds this candidate, in
+   * place of `archive`: nothing is pushed, and a candidate with unlanded work
+   * that the archive does not hold as it is now is refused.
+   */
+  archived?: CandidateArchive | undefined
   now?: (() => Date) | undefined
   /** Told after each step, with its `result` set. */
   onStepDone?: ((step: Step) => void) | undefined
@@ -1193,12 +1211,141 @@ function rowOfCandidate(c: CleanCandidate): Row {
   } as Parameters<typeof makeRow>[0])
 }
 
+/** Judge `candidate` as `removeCandidate` takes it: accepted, or the refusal. */
+function acceptCandidate(
+  candidate: CleanCandidate,
+  opts: RemoveCandidateOptions,
+  archive: ArchiveOptions | undefined,
+): Accepted | string {
+  const row = rowOfCandidate(candidate)
+  if (!runnable(row)) return `refused: ${candidate.id} ${candidate.why}`
+  const cwd = opts.cwd ?? process.cwd()
+  // Anchored without folding `..`, as the sweep does, so a `..` after a symlink is judged where it really is.
+  const absCwd = isAbsolute(cwd) ? cwd : `${process.cwd()}${sep}${cwd}`
+  if (row.kind === 'worktree' && nodeGuard.contains(row.name, absCwd)) {
+    return `refused: ${candidate.id} is the worktree the caller stands in`
+  }
+  const allow = new Set(opts.allow ?? [])
+  let judged: ReturnType<typeof judgeRisks>
+  try {
+    judged = judgeRisks(
+      row,
+      (risk) => allow.has(risk),
+      archive,
+      (path) => new Git(path, { runner: opts.git }),
+    )
+  } catch (err) {
+    return `refused: ${candidate.id}: ${errorText(err)}`
+  }
+  if (judged.missing.length > 0) {
+    return `refused: ${candidate.id} needs ${judged.missing.join(', ')}`
+  }
+  return {
+    repo: candidate.repo,
+    row,
+    discard: judged.discard,
+    abandon: judged.abandon,
+    discardNamed: allow.has('discard-changes'),
+    needs: judged.needs,
+  }
+}
+
+const noRemote = (repo: string): string => `archive: ${repo} has no remote to push the archive to`
+
+/** The archive of one repository's candidates, as {@link archiveCandidates} pushed it. */
+export interface CandidateArchive {
+  repo: string
+  /** The options it was made with. */
+  options: ArchiveOptions
+  /** What was pushed; null when the candidates held nothing the remote lacks. */
+  record: ArchiveRecord | null
+  /** What each archived candidate held: a branch's commit, a worktree's HEAD and files. */
+  stamps: ReadonlyMap<RowId, string>
+  /** Why a candidate was left out of it. */
+  refused: ReadonlyMap<RowId, string>
+}
+
+/**
+ * Archive the unlanded work of one repository's `candidates` to its remote, as
+ * `run` does: one commit, one push, checked with `ls-remote`. Pass the answer
+ * to {@link removeCandidate} as `archived`. A candidate with nothing unlanded
+ * is ignored, and one `removeCandidate` would refuse is left out (`refused`),
+ * so nothing is pushed that was not granted. Deletes nothing.
+ *
+ * @throws when the candidates are of several repositories, the repository has
+ *   no remote, a worktree cannot be read or held, or the push fails or cannot
+ *   be confirmed.
+ */
+export function archiveCandidates(
+  candidates: readonly CleanCandidate[],
+  opts: Omit<RemoveCandidateOptions, 'archive' | 'archived' | 'onStepDone'> & {
+    archive: ArchiveOptions
+  },
+): CandidateArchive {
+  const first = candidates[0]
+  if (first === undefined || candidates.some((c) => c.repo !== first.repo)) {
+    throw new Error("archive: takes one repository's candidates")
+  }
+  const refused = new Map<RowId, string>()
+  const jobs: ArchiveRowJob[] = []
+  for (const c of candidates) {
+    if (!mayContribute(c)) continue
+    const a = acceptCandidate(c, opts, opts.archive)
+    if (typeof a === 'string') refused.set(c.id, a)
+    else jobs.push({ id: c.id, row: a.row, discardAllowed: a.discardNamed })
+  }
+  const made = { repo: first.repo, options: opts.archive, refused }
+  if (jobs.length === 0) return { ...made, record: null, stamps: new Map() }
+  if (first.remote === null) throw new Error(noRemote(first.repo))
+  const pushed = pushArchive(
+    new Git(opts.cwd ?? process.cwd(), { runner: opts.git }).at(first.repo),
+    first.remote,
+    first.landedRef,
+    jobs,
+    opts.archive,
+    (opts.now ?? (() => new Date()))(),
+  )
+  // Of a worktree whose directory is gone there are no files to hold, and nothing to compare.
+  const stamps = new Map(jobs.map(({ id, row }) => [id, pushed.stamps.get(id) ?? tipOf(row)]))
+  return { ...made, record: pushed.record, stamps }
+}
+
+/** The commit a branch row stands for; empty for a worktree. */
+const tipOf = (row: Row): string => (row.kind === 'worktree' ? '' : row.evidence.sha)
+
+/**
+ * Why `candidate` may not be deleted on the strength of `archived`, or null
+ * when it may: it holds nothing unlanded, or the archive holds it as it is now.
+ */
+export function archiveProblem(
+  candidate: CleanCandidate,
+  archived: CandidateArchive,
+  opts: Pick<Runners, 'git'> = {},
+): string | null {
+  if (!mayContribute(candidate)) return null
+  const left = archived.refused.get(candidate.id)
+  if (left !== undefined) return left
+  const stamp = archived.repo === candidate.repo ? archived.stamps.get(candidate.id) : undefined
+  if (stamp === undefined) return `refused: ${candidate.id} was not archived`
+  const row = rowOfCandidate(candidate)
+  let now = tipOf(row)
+  if (row.kind === 'worktree' && row.evidence.onDisk !== false) {
+    const at = new Git(row.name, { runner: opts.git })
+    try {
+      now = worktreeStamp(at, archived.options, row.risks.includes('discard-changes'))
+    } catch (err) {
+      return `refused: ${candidate.id}: ${errorText(err)}`
+    }
+  }
+  return stamp === now ? null : `refused: ${candidate.path} changed since it was archived`
+}
+
 /**
  * Delete one candidate as `run` takes one row: the archive first when
- * `archive` is given and the row holds unlanded work, then the live-process
- * and unsafe-force checks, the removal and its verification, stopping at the
- * first failure. The caller has already re-checked the candidate; this
- * refuses only what is unsafe now.
+ * `archive` is given and the row holds unlanded work (or the check that
+ * `archived` holds it), then the live-process and unsafe-force checks, the
+ * removal and its verification, stopping at the first failure. The caller has
+ * already re-checked the candidate; this refuses only what is unsafe now.
  *
  * A worktree whose removal needs `git worktree prune` is refused when the
  * prune would also drop another worktree of its repository, since this sees
@@ -1217,43 +1364,20 @@ export function removeCandidate(
     archiveFailed: false,
     error,
   })
-  const row = rowOfCandidate(candidate)
-  if (!runnable(row)) return refused(`refused: ${candidate.id} ${candidate.why}`)
-  const cwd = opts.cwd ?? process.cwd()
-  // Anchored without folding `..`, as the sweep does, so a `..` after a symlink is judged where it really is.
-  const absCwd = isAbsolute(cwd) ? cwd : `${process.cwd()}${sep}${cwd}`
-  if (row.kind === 'worktree' && nodeGuard.contains(row.name, absCwd)) {
-    return refused(`refused: ${candidate.id} is the worktree the caller stands in`)
-  }
-  const allow = new Set(opts.allow ?? [])
-  let judged: ReturnType<typeof judgeRisks>
-  try {
-    judged = judgeRisks(
-      row,
-      (risk) => allow.has(risk),
-      opts.archive,
-      (path) => new Git(path, { runner: opts.git }),
-    )
-  } catch (err) {
-    return refused(`refused: ${candidate.id}: ${errorText(err)}`)
-  }
-  if (judged.missing.length > 0) {
-    return refused(`refused: ${candidate.id} needs ${judged.missing.join(', ')}`)
-  }
-  const a: Accepted = {
-    repo: candidate.repo,
-    row,
-    discard: judged.discard,
-    abandon: judged.abandon,
-    discardNamed: allow.has('discard-changes'),
-    needs: judged.needs,
-  }
+  const archive = opts.archived?.options ?? opts.archive
+  const a = acceptCandidate(candidate, opts, archive)
+  if (typeof a === 'string') return refused(a)
+  const { row } = a
   const steps: Array<[Step, Accepted | null]> = stepsFor(a).map((step) => [step, a])
+  const stamps = new Map<string, string>()
   let job: ArchiveJob | undefined
-  if (opts.archive !== undefined && mayContribute(row)) {
-    if (candidate.remote === null) {
-      return refused(`archive: ${candidate.repo} has no remote to push the archive to`)
-    }
+  if (opts.archived !== undefined) {
+    const problem = archiveProblem(candidate, opts.archived, opts)
+    if (problem !== null) return refused(problem)
+    const stamp = opts.archived.stamps.get(row.id)
+    if (stamp !== undefined) stamps.set(`${a.repo}\0${row.id}`, stamp)
+  } else if (archive !== undefined && mayContribute(row)) {
+    if (candidate.remote === null) return refused(noRemote(candidate.repo))
     const step = pending(
       candidate.repo,
       row.id,
@@ -1268,19 +1392,19 @@ export function removeCandidate(
     steps.unshift([step, null])
   }
   const ctx: StepContext = {
-    git: new Git(cwd, { runner: opts.git }),
+    git: new Git(opts.cwd ?? process.cwd(), { runner: opts.git }),
     probe: opts.probe ?? defaultProcessProbe(),
     removedHere: new Set(row.kind === 'worktree' ? [resolve(row.name)] : []),
     measure: (path) => sizeOf(path, { du: opts.du }),
     unlocked: new Set(),
-    stamps: new Map(),
+    stamps,
   }
   const taken: Step[] = []
   for (const [step, accepted] of steps) {
     taken.push(step)
     runStep(step, accepted, ctx, {
       job: step.action === 'archive' ? job : undefined,
-      options: opts.archive,
+      options: archive,
       now: now(),
     })
     opts.onStepDone?.(step)

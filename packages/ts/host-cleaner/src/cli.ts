@@ -653,7 +653,9 @@ function chooseCandidates(plan: Plan, preview: Decision, deps: MainDeps): Plan |
 
 /**
  * The ids in `d.run` whose unlanded work `clean --archive` pushes first: the
- * git plugin's candidates it protests as `abandon-unmerged` or `discard-changes`.
+ * git plugin's candidates it protests as `abandon-unmerged` or
+ * `discard-changes`, less a worktree whose directory is gone, which has
+ * nothing left an archive can hold.
  */
 function archivedIds(d: Decision, objections: readonly Objection[]): string[] {
   const holds = new Set(
@@ -666,7 +668,9 @@ function archivedIds(d: Decision, objections: readonly Objection[]): string[] {
       )
       .map((o) => o.candidate),
   )
-  return d.run.filter((c) => c.owner === 'git' && holds.has(c.id)).map((c) => c.id)
+  return d.run
+    .filter((c) => c.owner === 'git' && holds.has(c.id) && c.evidence.onDisk !== false)
+    .map((c) => c.id)
 }
 
 /**

@@ -28,6 +28,8 @@ import { cannedGh, sh } from './helpers.ts'
 import { resolveApproval, type Approval } from '../src/approval.ts'
 import { candidatesOf } from '../src/candidates.ts'
 import {
+  archiveCandidates,
+  archiveProblem,
   check,
   networkRemoteKey,
   removeCandidate,
@@ -1623,6 +1625,91 @@ describe('candidatesOf and removeCandidate', () => {
     ])
     expect(out.steps[0]!.archive?.ref).toMatch(/^refs\/heads\/archive\//)
     expect(out.ok).toBe(true)
+  })
+
+  describe('archiveCandidates', () => {
+    const allow = ['abandon-unmerged', 'discard-changes'] as const
+    const pushed = (fx: Fixture): string[] =>
+      refs(fx.bare)
+        .split('\n')
+        .filter((l) => l.startsWith('refs/heads/archive/'))
+
+    test('pushes one archive of every candidate, which removeCandidate then deletes on', () => {
+      const fx = buildFixture()
+      writeFileSync(join(fx.worktree, 'wip.txt'), 'wip\n')
+      const all = [candidate(fx, wt(fx.worktree)), candidate(fx, 'branch:unmerged')]
+      const opts = { cwd: fx.root, probe: idle, allow: [...allow] }
+      const archived = archiveCandidates(all, { ...opts, archive: {} })
+      expect(archived.record?.parents.map((p) => p.rows)).toEqual(all.map((c) => [c.id]))
+      expect(pushed(fx)).toHaveLength(1)
+      for (const c of all) {
+        const out = removeCandidate(c, { ...opts, archived })
+        expect(out).toMatchObject({ ok: true, error: null })
+        expect(out.steps.map((s) => s.action)).not.toContain('archive')
+      }
+      expect(pushed(fx)).toHaveLength(1)
+      expect(existsSync(fx.worktree)).toBe(false)
+    })
+
+    test('a worktree that changed since is refused, and stays', () => {
+      const fx = buildFixture()
+      writeFileSync(join(fx.worktree, 'wip.txt'), 'wip\n')
+      const c = candidate(fx, wt(fx.worktree))
+      const opts = { cwd: fx.root, probe: idle, allow: [...allow] }
+      const archived = archiveCandidates([c], { ...opts, archive: {} })
+      expect(archiveProblem(c, archived)).toBeNull()
+      writeFileSync(join(fx.worktree, 'wip.txt'), 'changed\n')
+      expect(archiveProblem(c, archived)).toContain('changed since it was archived')
+      const out = removeCandidate(c, { ...opts, archived })
+      expect(out).toMatchObject({ ok: false, steps: [] })
+      expect(out.error).toContain('changed since it was archived')
+      expect(readFileSync(join(fx.worktree, 'wip.txt'), 'utf8')).toBe('changed\n')
+    })
+
+    test('a candidate the archive lacks, or holds at another commit, is refused', () => {
+      const fx = buildFixture()
+      writeFileSync(join(fx.worktree, 'wip.txt'), 'wip\n')
+      const worktree = candidate(fx, wt(fx.worktree))
+      const branch = candidate(fx, 'branch:unmerged')
+      const opts = { cwd: fx.root, probe: idle, allow: [...allow] }
+      const archived = archiveCandidates([branch], { ...opts, archive: {} })
+      expect(removeCandidate(worktree, { ...opts, archived }).error).toContain('was not archived')
+      const moved = {
+        ...branch,
+        evidence: { ...branch.evidence, sha: sh(fx.root, ['rev-parse', 'main']) },
+      } as typeof branch
+      expect(removeCandidate(moved, { ...opts, archived }).error).toContain('changed since')
+      const elsewhere = { ...archived, repo: '/elsewhere' }
+      expect(removeCandidate(branch, { ...opts, archived: elsewhere }).error).toContain(
+        'was not archived',
+      )
+      expect(existsSync(fx.worktree)).toBe(true)
+      expect(refs(fx.root)).toContain('refs/heads/unmerged ')
+    })
+
+    test('a candidate whose risk is not granted is not pushed', () => {
+      const fx = buildFixture()
+      const c = candidate(fx, 'branch:unmerged')
+      const opts = { cwd: fx.root, probe: idle }
+      const archived = archiveCandidates([c], { ...opts, archive: {} })
+      expect(archived.record).toBeNull()
+      expect(archived.refused.get(c.id)).toContain('needs discard-archived')
+      expect(pushed(fx)).toEqual([])
+      expect(archiveProblem(c, archived)).toContain('needs discard-archived')
+    })
+
+    test('a repository with no remote, a failed push and two repositories throw', () => {
+      const fx = buildFixture()
+      const c = candidate(fx, 'branch:unmerged')
+      const opts = { cwd: fx.root, probe: idle, allow: [...allow], archive: {} }
+      expect(() => archiveCandidates([{ ...c, remote: null }], opts)).toThrow('no remote')
+      const gone = { ...c, remote: join(fx.root, 'no-such-remote') }
+      expect(() => archiveCandidates([gone], opts)).toThrow()
+      expect(() => archiveCandidates([c, { ...c, repo: '/elsewhere' }], opts)).toThrow(
+        "one repository's",
+      )
+      expect(refs(fx.root)).toContain('refs/heads/unmerged ')
+    })
   })
 
   test('a failed archive push is told apart and deletes nothing', () => {

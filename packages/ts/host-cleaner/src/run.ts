@@ -461,7 +461,8 @@ export function clean(
     }
     throw err
   }
-  const { decision, survey: s } = checked
+  const { decision } = checked
+  const s: Survey = { ...checked.survey, ctx: { ...checked.survey.ctx, run: [...decision.run] } }
   const receipt: Receipt = {
     version: RECEIPT_VERSION,
     plan: opts.source ?? '(swept)',
