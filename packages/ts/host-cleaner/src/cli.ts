@@ -649,19 +649,19 @@ async function runPlugins(
     const on = all.filter((p) => enabled(p.name, config))
     const found = await inspect(on, contextFor(parsed.positionals, config, ctx, [], v.ignore))
     const state = new Map(found.plugins.map((s) => [s.name, s]))
+    const source = deps.plugins === undefined ? 'built-in' : 'given'
     // A second plugin of a name is left out, with inspect's warning.
-    const first = all.filter((p, i) => all.findIndex((q) => q.name === p.name) === i)
-    rows = first.map((p): PluginRow => {
-      const disabled = !enabled(p.name, config)
-      const s = state.get(p.name)
+    rows = [...new Set(all.map((p) => p.name))].map((pluginName): PluginRow => {
+      const isEnabled = enabled(pluginName, config)
+      const s = state.get(pluginName)
       return {
-        name: p.name,
-        source: deps.plugins === undefined ? 'built-in' : 'given',
-        enabled: !disabled,
+        name: pluginName,
+        source,
+        enabled: isEnabled,
         detected: s?.detected ?? false,
-        reason: disabled
-          ? `plugins.${p.name}.enabled is false; --plugin ${p.name} runs it anyway`
-          : (s?.reason ?? null),
+        reason: isEnabled
+          ? (s?.reason ?? null)
+          : `plugins.${pluginName}.enabled is false; --plugin ${pluginName} runs it anyway`,
         roots: s?.roots ?? [],
         selfRoots: s?.selfRoots ?? [],
         note: s?.note ?? null,

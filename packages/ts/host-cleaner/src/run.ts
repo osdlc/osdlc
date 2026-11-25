@@ -212,8 +212,8 @@ interface Detected {
   note?: string | undefined
   /** What `detect` threw or timed out with, or why its answer was left out; absent when it answered a boolean or a {@link Detection}. */
   error?: string | undefined
-  /** Set when `detect` threw or timed out, rather than giving an answer that was left out. */
-  threw?: boolean
+  /** The warning `survey` gives for `error`; set exactly when `error` is. */
+  warning?: string | undefined
 }
 
 /** Each plugin's detection, in the order of `all`; a second plugin of a name is left out, with a warning. */
@@ -235,27 +235,30 @@ async function detectAll(
       answer = await callHook<unknown>(p, 'detect', ctx, (x) => p.detect(x))
     } catch (err) {
       if (err instanceof FatalRun) throw err
-      detections.push({ plugin: p, detected: false, error: errorText(err), threw: true })
+      const error = errorText(err)
+      detections.push({
+        plugin: p,
+        detected: false,
+        error,
+        warning: `${p.name}: detect failed: ${error}`,
+      })
       continue
     }
     const found = detection(answer)
     if (found === null) {
-      const why = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note? }`
-      detections.push({ plugin: p, detected: false, error: why })
+      const error = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note? }`
+      detections.push({
+        plugin: p,
+        detected: false,
+        error,
+        warning: `${p.name}: ${error}; it was left out`,
+      })
       continue
     }
     detections.push({ plugin: p, detected: found.active, note: found.note })
   }
   return detections
 }
-
-/** The warning `survey` gives for a plugin whose `detect` failed, or null. */
-const detectWarning = (d: Detected): string | null =>
-  d.error === undefined
-    ? null
-    : d.threw === true
-      ? `${d.plugin.name}: detect failed: ${d.error}`
-      : `${d.plugin.name}: ${d.error}; it was left out`
 
 /**
  * The context whose targets the detected `plugins`' `scope` added to, less
@@ -347,16 +350,17 @@ export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Insp
   const detected = detectedOf(detections)
   const scoped = await scopeOf(detected, ctx, warnings)
   const { rootsOf } = await askRoots(detected, scoped, warnings)
-  const plugins = detections.map(
-    (d): PluginState => ({
+  const plugins = detections.map((d): PluginState => {
+    const r = rootsOf.get(d.plugin.name)
+    return {
       name: d.plugin.name,
       detected: d.detected,
       ...(d.error === undefined ? {} : { reason: d.error }),
       ...(d.note === undefined ? {} : { note: d.note }),
-      roots: rootsOf.get(d.plugin.name)?.roots ?? [],
-      selfRoots: rootsOf.get(d.plugin.name)?.self ?? [],
-    }),
-  )
+      roots: r?.roots ?? [],
+      selfRoots: r?.self ?? [],
+    }
+  })
   return { plugins, ctx: scoped, warnings }
 }
 
@@ -384,8 +388,7 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
   const detections = await detectAll(all, ctx, warnings)
   const notes: Record<string, string> = {}
   for (const d of detections) {
-    const warning = detectWarning(d)
-    if (warning !== null) warnings.push(warning)
+    if (d.warning !== undefined) warnings.push(d.warning)
     if (d.note !== undefined) notes[d.plugin.name] = d.note
   }
   const plugins = detectedOf(detections)
