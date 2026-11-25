@@ -5,7 +5,15 @@
 
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -55,57 +63,16 @@ describe('the first set, from the corpus', () => {
     expect(value).not.toHaveProperty('vars')
   })
 
-  test('uv: three folders on macOS and Linux, its process, and .venv', () => {
-    const { text } = draftStore(CORPUS_DIR, 'uv', realIndex)
-    const uv = read(text)
-    expect(uv.paths).toEqual({
-      cache: { macos: '~/.cache/uv', linux: '~/.cache/uv' },
-      toolchains: { macos: '~/.local/share/uv/python', linux: '~/.local/share/uv/python' },
-      packages: { macos: '~/.local/share/uv/tools', linux: '~/.local/share/uv/tools' },
-    })
-    expect(uv.candidates).toEqual([
-      { path: 'cache', costDescription: 're-download' },
-      { path: 'toolchains', costDescription: 're-download' },
-      { path: 'packages', costDescription: 're-download' },
-    ])
-    expect(uv.detect).toEqual({
-      any: [
-        { onPath: 'uv' },
-        { exists: 'cache' },
-        { exists: 'toolchains' },
-        { exists: 'packages' },
-      ],
-    })
-    expect(uv.inUse).toEqual({ processes: ['uv'] })
-    expect(uv.project).toEqual([
-      { dir: '.venv', marker: 'pyproject.toml', costDescription: 're-download' },
-    ])
+  // What the corpus records changes with its research; these hold for any of
+  // it. The small corpus below checks exact drafts.
+  test.each(FIRST_SET)('%s: one candidate per folder, and no plugin-covered project', (slug) => {
+    const { text } = draftStore(CORPUS_DIR, slug, realIndex)
+    const value = read(text)
     expect(text).toMatch(/^# yaml-language-server: \$schema=https:\/\//)
-    expect(text).toContain('# - uv cache prune: unused cache entries')
-    expect(text).toContain('$UV_CACHE_DIR')
-    expect(text).toContain('# - linux $XDG_CACHE_HOME/uv (cache): not a fixed folder')
-  })
-
-  test('pnpm leaves node_modules to the node plugin', () => {
-    const { text } = draftStore(CORPUS_DIR, 'pnpm', realIndex)
-    expect(read(text)).not.toHaveProperty('project')
-    expect(text).toContain('# - project node_modules: the node plugin covers it')
-  })
-
-  test('two folders that hold the same are told apart by name', () => {
-    const hf = read(draftStore(CORPUS_DIR, 'huggingface-hub', realIndex).text)
-    expect(Object.keys(hf.paths)).toEqual(['models', 'cache-xet', 'cache-assets'])
-    expect(hf.paths['models']).toEqual({ all: '~/.cache/huggingface/hub' })
-    const gradle = read(draftStore(CORPUS_DIR, 'gradle', realIndex).text)
-    expect(gradle.candidates).toContainEqual({ path: 'logs', costDescription: 'lost' })
-    expect(new Set(Object.keys(gradle.paths)).size).toBe(7)
-  })
-
-  test('yarn leaves out .pnp.cjs, which is a file', () => {
-    const { text } = draftStore(CORPUS_DIR, 'yarn', realIndex)
-    const dirs = (read(text).project ?? []).map((p) => p['dir'])
-    expect(dirs).not.toContain('.pnp.cjs')
-    expect(text).toContain('# - project .pnp.cjs: looks like a file, not a folder')
+    expect(value.candidates.map((c) => c['path'])).toEqual(Object.keys(value.paths))
+    const dirs = (value.project ?? []).map((p) => p['dir'])
+    expect(dirs).not.toContain('node_modules')
+    for (const p of value.project ?? []) expect(p['dir']).not.toMatch(/\.(c?js|json)$/)
   })
 })
 
@@ -142,6 +109,9 @@ describe('a small corpus', () => {
 
   const markdown = (fm: Record<string, unknown>) => `---\n${stringify(fm)}---\n\nBody.\n`
 
+  /** A statement's `store:` link to the store file `title`, from `statements/<folder>/`. */
+  const link = (title: string) => `[${title}](../../stores/${encodeURIComponent(title)}.md)`
+
   /** A store file and one statement per subject, `current` unless `status` says otherwise. */
   function store(
     title: string,
@@ -160,6 +130,7 @@ describe('a small corpus', () => {
           proposition: { predicate: subject, object },
           status: status[subject] ?? 'current',
           open: [`about ${subject}`],
+          store: link(title),
         }),
       )
   }
@@ -348,11 +319,14 @@ describe('a small corpus', () => {
         'location/override': { vars: [1] },
       },
     )
-    expect(() => draftStore(corpus, 'tool')).toThrow(
-      new DraftError('tool: location/override: vars.0 is not what the corpus records'),
+    expect(draftStore(corpus, 'tool').text).toContain(
+      '# - location/override: vars.0 is not what the corpus records',
     )
     const statement = join(corpus, 'statements', 'Tool', 'broken.md')
-    writeFileSync(statement, markdown({ status: 'current', proposition: 'location/data-dirs' }))
+    writeFileSync(
+      statement,
+      markdown({ status: 'current', proposition: 'location/data-dirs', store: link('Tool') }),
+    )
     expect(() => draftStore(corpus, 'tool')).toThrow(
       new DraftError(
         `${statement}: a current statement needs a proposition with a predicate and an object`,
@@ -447,6 +421,7 @@ describe('a small corpus', () => {
         proposition: { predicate: 'liveness/in-use', object: { processes: ['tool.exe'] } },
         status: 'current',
         scope: { since: null, until: null, platform: ['windows'] },
+        store: link('Tool'),
       }),
     )
     const { text } = draftStore(corpus, 'tool')
@@ -524,9 +499,97 @@ describe('a small corpus', () => {
       markdown({
         proposition: { predicate: 'location/data-dirs', object: { dirs: [] } },
         status: 'current',
+        store: link('Tool'),
       }),
     )
     expect(() => draftStore(corpus, 'tool')).toThrow(/is also the current statement of location/)
+  })
+
+  test('a folder of locks is left out of inUse, and a lock file kept', () => {
+    store(
+      'Tool',
+      { slug: 'tool' },
+      {
+        ...dirsOnly([dir('all', '~/.tool')]),
+        'liveness/in-use': {
+          locks: ['~/.tool/repository/.locks', '~/.tool/install-locks', '~/.tool/tool.lock'],
+        },
+      },
+    )
+    const { text } = draftStore(corpus, 'tool')
+    expect(read(text).inUse).toEqual({ locks: ['~/.tool/tool.lock'] })
+    expect(text).toContain('# - lock ~/.tool/repository/.locks: a folder of locks')
+    expect(text).toContain('# - lock ~/.tool/install-locks: a folder of locks')
+  })
+
+  test('an entry the corpus lists twice is one folder and one candidate', () => {
+    store(
+      'Tool',
+      { slug: 'tool' },
+      dirsOnly([
+        dir('all', '~/.tool'),
+        dir('all', '~/.tool'),
+        dir('linux', '~/.cache/tool', 'state'),
+        dir('linux', '~/.cache/tool', 'state'),
+        dir('macos', '~/Library/tool', 'state'),
+      ]),
+    )
+    const d = read(draftStore(corpus, 'tool').text)
+    expect(d.paths).toEqual({
+      cache: { all: '~/.tool' },
+      state: { macos: '~/Library/tool', linux: '~/.cache/tool' },
+    })
+    expect(d.candidates).toHaveLength(2)
+  })
+
+  test('a malformed side subject item is left out, and the draft still made', () => {
+    store(
+      'Tool',
+      { slug: 'tool' },
+      {
+        ...dirsOnly([dir('all', '~/.tool')]),
+        'clean/command': {
+          supported: true,
+          commands: [{ command: 'tool gc' }, { command: 'tool prune', removes: 'unused' }],
+        },
+        'project/build-dirs': {
+          dirs: [{ path: 'out', marker: null, holds: 'build-output', rebuild: 'rebuild' }],
+        },
+      },
+    )
+    const { text } = draftStore(corpus, 'tool')
+    expect(text).toContain('# - tool prune: unused')
+    expect(text).toContain('# - clean/command: commands.0 is not what the corpus records')
+    expect(text).toContain('# - project/build-dirs: dirs.0 is not what the corpus records')
+    expect(read(text)).not.toHaveProperty('project')
+  })
+
+  test('statements are found by their store link, not by their folder', () => {
+    store('Tool', { slug: 'tool' }, {})
+    store('Other', { slug: 'other' }, dirsOnly([dir('all', '~/.other')]))
+    const elsewhere = join(corpus, 'statements', 'Renamed')
+    mkdirSync(elsewhere)
+    writeFileSync(
+      join(elsewhere, 'dirs.md'),
+      markdown({
+        proposition: { predicate: 'location/data-dirs', object: { dirs: [dir('all', '~/.tool')] } },
+        status: 'current',
+        store: link('Tool'),
+      }),
+    )
+    writeFileSync(
+      join(corpus, 'statements', 'Tool', 'stray.md'),
+      markdown({
+        proposition: { predicate: 'liveness/in-use', object: { processes: ['other'] } },
+        status: 'current',
+        store: link('Other'),
+      }),
+    )
+    const d = read(draftStore(corpus, 'tool').text)
+    expect(d.paths).toEqual({ cache: { all: '~/.tool' } })
+    expect(d).not.toHaveProperty('inUse')
+    store('Lone', { slug: 'lone' }, {})
+    expect(() => draftStore(corpus, 'lone')).toThrow(/lone: no statement in .* links to .*Lone\.md/)
   })
 
   test('writing keeps a file that is there, unless forced', () => {
@@ -578,6 +641,19 @@ describe('the command line', () => {
       expect(readdirSync(out)).toEqual(['pip.yaml'])
     } finally {
       rmSync(out, { recursive: true, force: true })
+    }
+  })
+
+  test('runs when started through a symlink', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hc-draft-link-'))
+    try {
+      const linked = join(dir, 'draft-descriptor.ts')
+      symlinkSync(SCRIPT, linked)
+      const r = spawnSync(process.execPath, [linked, 'pip'], { encoding: 'utf8' })
+      expect(r.status, r.stderr).toBe(0)
+      expect(r.stdout).toContain('store: pip')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
     }
   })
 

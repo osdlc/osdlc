@@ -276,7 +276,8 @@ export const DescriptorCandidateSchema = z
   })
 
 /** Whether `n` names one entry: not empty, `.` or `..`, and with no folder in it. */
-const isEntryName = (n: string): boolean => !/[/\\]/.test(n) && n !== '' && n !== '.' && n !== '..'
+export const isEntryName = (n: string): boolean =>
+  !/[/\\]/.test(n) && n !== '' && n !== '.' && n !== '..'
 
 export const ProjectEntrySchema = z.strictObject({
   dir: z
@@ -292,6 +293,15 @@ export const ProjectEntrySchema = z.strictObject({
 })
 
 const lock = folder.refine((p) => !/[/\\]$/.test(p), 'must be a file, not a folder')
+
+/** Whether `name` can name a folder in `paths`. */
+export const isPathsName = (name: string): boolean => NAME.test(name)
+
+/** Whether `p` can be a folder in `paths`. */
+export const isFolder = (p: string): boolean => folder.safeParse(p).success
+
+/** Whether `p` can be an `inUse` lock. */
+export const isLock = (p: string): boolean => lock.safeParse(p).success
 
 const inUse = z
   .strictObject({
