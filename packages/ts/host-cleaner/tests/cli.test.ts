@@ -380,6 +380,36 @@ describe('plan and clean', () => {
     expect(archives(bare)).toEqual([])
   })
 
+  test('--archive stops the run with exit 11 when the archive push fails, and keeps the branch', () => {
+    const { env } = setup()
+    const { dir } = pushedRepo()
+    sh(dir, ['remote', 'set-url', 'origin', join(dirname(dir), 'gone.git')])
+    const topic = `branch:${dir}:topic`
+    const r = run(
+      ['clean', '--archive', '--pick', topic, '--allow', 'abandon-unmerged', '--yes'],
+      dir,
+      env,
+    )
+    expect(r.code).toBe(11)
+    expect(r.out).toContain('archive failed')
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).toContain('topic')
+  })
+
+  test('--archive fails the step with exit 11 in a repository with no remote, and keeps the branch', () => {
+    const { env } = setup()
+    const dir = repo()
+    const topic = `branch:${dir}:topic`
+    const r = run(
+      ['clean', '--archive', '--pick', topic, '--allow', 'abandon-unmerged', '--yes'],
+      dir,
+      env,
+    )
+    expect(r.code).toBe(11)
+    expect(r.out).toContain('has no remote')
+    expect(r.out).not.toContain('archive failed')
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).toContain('topic')
+  })
+
   test('--archive-exclude leaves matching files out of a worktree’s snapshot', () => {
     const { env } = setup()
     const { dir, bare } = pushedRepo()
@@ -489,6 +519,13 @@ describe('plan and clean', () => {
     const exclude = run(['clean', '--archive-exclude', '*.log', '--dry-run'], cwd, env)
     expect(exclude.code).toBe(2)
     expect(exclude.err).toContain('--archive-exclude has no effect without --archive')
+    const branchesOnly = ['clean', '--branches', '--archive', '--archive-exclude', '*.log']
+    const noWorktree = run([...branchesOnly, '--dry-run'], cwd, env)
+    expect(noWorktree.code).toBe(2)
+    expect(noWorktree.err).toContain('--branches cleans no worktree')
+    const noGit = run(['clean', '--plugin', 'node', '--archive', '--dry-run'], cwd, env)
+    expect(noGit.code).toBe(2)
+    expect(noGit.err).toContain('this run does not use the git plugin')
     const both = run(['clean', '--pick', 'a:x', '--spare', 'a:x', '--dry-run'], cwd, env, {
       plugins: [fake()],
     })

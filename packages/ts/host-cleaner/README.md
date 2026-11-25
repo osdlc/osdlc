@@ -147,7 +147,7 @@ a phase is named; the bare command explains them and exits 2.
 ```sh
 host-cleaner status [target...]   # every candidate and what objects to it; deletes nothing
 host-cleaner plan -o plan.json
-host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [--archive] [-i] [--yes | --dry-run]
+host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [--archive [--archive-exclude <glob>]] [-i] [--yes | --dry-run]
 host-cleaner config [--format json]   # every plugin's effective settings
 ```
 
@@ -169,7 +169,11 @@ asks (`--yes` skips the question; with no terminal and no `--yes` it exits 2),
 deletes, and writes one receipt to `--receipt` or the state directory's
 `receipts/`, plus a line in `logs/host-cleaner.log`.
 
-With `--archive`, a failed archive push stops the run: that candidate and
+With `--archive`, each candidate is archived on its own: a second one in the
+same repository on the same day goes to `archive/<repo>-local-<date>-2`, and
+so on. It needs the git plugin, and `--archive-exclude` needs worktrees, so
+either one with a run that has none is refused with exit 2. A failed archive
+push stops the run: that candidate and
 every one after it are left, and the run exits 11. A repository with no remote
 cannot be archived, so its candidates that hold unlanded work fail their step,
 and the run exits 11.

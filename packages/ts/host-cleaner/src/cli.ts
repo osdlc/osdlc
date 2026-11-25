@@ -396,9 +396,13 @@ function pluginsFor(
   // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
   const named = wanted(v) ?? []
   const chosen = selectPlugins(all, wanted(v), v.skipPlugin)
-  return orderPlugins(
+  const plugins = orderPlugins(
     chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins)),
   )
+  if (archive !== undefined && !plugins.some((p) => p.name === 'git')) {
+    throw new BadInput('--archive has no effect: this run does not use the git plugin')
+  }
+  return plugins
 }
 
 function contextFor(
@@ -599,6 +603,9 @@ function cleanConflict(v: CleanValues, targets: readonly string[]): string | nul
   }
   if (!v.archive && v.archiveExclude.length > 0) {
     return '--archive-exclude has no effect without --archive'
+  }
+  if (v.archiveExclude.length > 0 && v.branches && !v.worktrees) {
+    return '--archive-exclude leaves files out of a worktree snapshot, and --branches cleans no worktree'
   }
   if (v.yes && v.dryRun)
     return '--yes and --dry-run contradict: one deletes without asking, the other deletes nothing'
