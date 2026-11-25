@@ -27,33 +27,26 @@ interface Model {
   modified: string
 }
 
-const row = (cols: string[], widths: number[]): string =>
-  cols.map((c, i) => c.padEnd(widths[i]!)).join('')
-
-/** `ollama list` as ollama prints it: aligned columns four spaces apart. */
-function listText(models: readonly Model[]): string {
-  const cols = (m: Model) => [m.name, m.id ?? idOf(m.name), m.size ?? '3.9 GB', m.modified]
-  const all = [['NAME', 'ID', 'SIZE', 'MODIFIED'], ...models.map(cols)]
-  const widths = [0, 1, 2, 3].map((i) => Math.max(...all.map((r) => r[i]!.length)) + 4)
-  return all.map((r) => row(r, widths)).join('\n') + '\n'
-}
-
-/** `ollama ps` as ollama prints it, with `loaded` the models in memory. */
-function psText(loaded: readonly string[]): string {
-  const header = ['NAME', 'ID', 'SIZE', 'PROCESSOR', 'CONTEXT', 'RUNNER', 'UNTIL']
-  const rows = loaded.map((n) => [
-    n,
-    idOf(n),
-    '6.7 GB',
-    '100% GPU',
-    '4096',
-    'llama',
-    '4 minutes from now',
-  ])
+/** A table as ollama prints one: aligned columns four spaces apart. */
+function tableText(header: string[], rows: string[][]): string {
   const all = [header, ...rows]
   const widths = header.map((_, i) => Math.max(...all.map((r) => r[i]!.length)) + 4)
-  return all.map((r) => row(r, widths)).join('\n') + '\n'
+  return all.map((r) => r.map((c, i) => c.padEnd(widths[i]!)).join('')).join('\n') + '\n'
 }
+
+/** `ollama list` as ollama prints it. */
+const listText = (models: readonly Model[]): string =>
+  tableText(
+    ['NAME', 'ID', 'SIZE', 'MODIFIED'],
+    models.map((m) => [m.name, m.id ?? idOf(m.name), m.size ?? '3.9 GB', m.modified]),
+  )
+
+/** `ollama ps` as ollama prints it, with `loaded` the models in memory. */
+const psText = (loaded: readonly string[]): string =>
+  tableText(
+    ['NAME', 'ID', 'SIZE', 'PROCESSOR', 'CONTEXT', 'RUNNER', 'UNTIL'],
+    loaded.map((n) => [n, idOf(n), '6.7 GB', '100% GPU', '4096', 'llama', '4 minutes from now']),
+  )
 
 const idOf = (name: string): string =>
   [...name]
@@ -89,7 +82,7 @@ function fakeOllama(
       return undefined
     },
   })
-  const plugin = ollamaPlugin({ idleHours: 24 }, pluginKit('ollama', { ...fake }))
+  const plugin = ollamaPlugin({ idleHours: 24 }, pluginKit('ollama', fake))
   const calls = () => fake.calls.map((c) => c.argv.join(' '))
   return { plugin, calls, live }
 }

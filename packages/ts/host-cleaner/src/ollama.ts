@@ -144,24 +144,22 @@ export function leastHours(text: string): number | null {
   if (t === 'about an hour ago') return 1
   const m = /^(\d+) (second|minute|hour|day|week|month|year)s? ago$/.exec(t)
   if (m === null) return null
-  const n = Number(m[1])
-  switch (m[2]) {
-    case 'second':
-      return n / 3600
-    case 'minute':
-      return n / 60
-    case 'hour':
-      return n - 0.5
-    case 'day':
-      return 24 * n - 0.5
-    case 'week':
-      return 168 * n - 0.5
-    case 'month':
-      return 720 * n - 0.5
-    default:
-      return 8760 * n
-  }
+  const unit = m[2]!
+  return (Number(m[1]) * UNIT_SECONDS[unit]!) / 3600 - (ROUNDED_HOURS.has(unit) ? 0.5 : 0)
 }
+
+const UNIT_SECONDS: Record<string, number> = {
+  second: 1,
+  minute: 60,
+  hour: 3600,
+  day: 86_400,
+  week: 604_800,
+  month: 2_592_000,
+  year: 31_536_000,
+}
+
+/** The units `HumanTime` counts from rounded hours. */
+const ROUNDED_HOURS = new Set(['hour', 'day', 'week', 'month'])
 
 /**
  * The server the `ollama` CLI talks to, read from `OLLAMA_HOST` as ollama
@@ -189,6 +187,8 @@ export function isLocal(server: URL): boolean {
 
 /** A copy of `hoursText` in artifacts.ts, which this plugin does not import because it uses the kit alone. */
 const hoursText = (hours: number): string => String(Math.floor(hours * 10) / 10)
+
+const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 /** The `ollama` plugin on `kit`, or on a kit built from `opts`: models not pulled or changed for `idleHours`. */
 export function ollamaPlugin(
@@ -224,6 +224,12 @@ export function ollamaPlugin(
       throw new Error(`ollama ${args.join(' ')} failed: ${why}`)
     }
     return r.stdout
+  }
+
+  /** The models `ollama ps` shows loaded, once the server answers. */
+  const loadedNow = async (ctx: Ctx): Promise<LoadedModel[]> => {
+    await reach(ctx)
+    return parsePs(await ask(['ps'], ctx))
   }
 
   const loadedAs = (m: LoadedModel, loaded: readonly LoadedModel[]) =>
@@ -278,12 +284,10 @@ export function ollamaPlugin(
       ): Objection => ({ by: OLLAMA_PLUGIN, candidate: c.id, level, code, reason })
       let loaded: LoadedModel[]
       try {
-        await reach(ctx)
-        loaded = parsePs(await ask(['ps'], ctx))
+        loaded = await loadedNow(ctx)
       } catch (err) {
         // Without `ollama ps` a loaded model cannot be told apart, so every model is refused.
-        const why = err instanceof Error ? err.message : String(err)
-        return mine.map((c) => objection(c, 'refuse', 'ollama-ps-failed', why))
+        return mine.map((c) => objection(c, 'refuse', 'ollama-ps-failed', errorText(err)))
       }
       return mine.map((c) => {
         const l = loadedAs(c.evidence as LoadedModel, loaded)
@@ -295,9 +299,8 @@ export function ollamaPlugin(
     async delete(c, ctx) {
       if (c.ref === undefined || !own(c)) throw new Error(`${c.id} is not an ollama model`)
       const { id } = c.evidence as { id: string }
-      await reach(ctx)
       // A run may have loaded it since the survey.
-      const l = loadedAs({ name: c.ref, id }, parsePs(await ask(['ps'], ctx)))
+      const l = loadedAs({ name: c.ref, id }, await loadedNow(ctx))
       if (l !== undefined) throw new Error(`ollama ps now shows ${l.name} loaded`)
       const now = parseList(await ask(['list'], ctx)).find((m) => m.name === c.ref)
       if (now === undefined) return `already gone: ${c.ref}`
@@ -308,8 +311,7 @@ export function ollamaPlugin(
         after = parseList(await ask(['list'], ctx))
       } catch (err) {
         // rm succeeded; only the check could not run, so the step is not a failure.
-        const why = err instanceof Error ? err.message : String(err)
-        return `ollama rm removed ${c.ref}; could not list again to check: ${why}`
+        return `ollama rm removed ${c.ref}; could not list again to check: ${errorText(err)}`
       }
       if (after.some((m) => m.name === c.ref)) {
         throw new Error(`ollama still lists ${c.ref} after ollama rm`)
