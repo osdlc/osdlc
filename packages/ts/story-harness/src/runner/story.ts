@@ -8,10 +8,14 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 
+/** A Storybook theme the harness shoots. */
 export type Theme = 'light' | 'dark'
+/** The themes every story is shot in. */
 export const THEMES: readonly Theme[] = ['light', 'dark']
 
+/** The viewport of a shot, in pixels. */
 export const VIEWPORT = { width: 1440, height: 900 }
+/** The viewport of a narrow shot, in pixels. */
 export const NARROW_VIEWPORT = { width: 1024, height: 720 }
 
 /** Default wait after the story's `play` finishes, for fixture reads with simulated latency. */
@@ -32,6 +36,7 @@ export interface StoryIndex {
   entries: Record<string, { type: string }>
 }
 
+/** Which stories {@link selectStories} keeps. */
 export interface StoryFilter {
   /** Id prefixes to keep; empty keeps every story. */
   include?: readonly string[]
@@ -96,6 +101,7 @@ export function isNarrowOnly(id: string): boolean {
   return id.endsWith('-narrow')
 }
 
+/** The URL of a story's iframe page on the static server, with the theme set as a Storybook global. */
 export function storyUrl(baseURL: string, id: string, theme: Theme): string {
   return `${baseURL}/iframe.html?id=${id}&viewMode=story&globals=theme:${theme}`
 }
@@ -103,6 +109,7 @@ export function storyUrl(baseURL: string, id: string, theme: Theme): string {
 /** The clock's start for every story, so relative dates render the same on every run. */
 export const START_TIME = new Date('2026-09-28T12:00:00Z')
 
+/** What {@link preparePage} takes. */
 export interface PreparePageOptions {
   /**
    * Install Playwright's clock at {@link START_TIME}. Default `true`. Perf
@@ -211,6 +218,7 @@ export async function storyParameters<T extends object>(page: Page, key: string)
   )
 }
 
+/** What {@link openStory} takes besides the story. */
 export interface OpenStoryOptions {
   /** Wait after `play` when the story sets no `settleMs`. */
   settleMs?: number
