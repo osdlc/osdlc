@@ -13,7 +13,7 @@
  * folder is proposed held and refused (`vscode-unknown-workspace`), so it shows under
  * `--all-rows`. A path on a volume that is not mounted is not gone either.
  *
- * Built on the plugin kit alone, as a code plugin would be.
+ * Built on the plugin kit, as a code plugin would be, and the plugins' shared helpers.
  */
 
 import {
@@ -23,15 +23,23 @@ import {
   readFileSync,
   readSync,
   readdirSync,
+  statSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { z } from 'zod'
 
-import { isGitWorktree, isObject, objector, realOr, yieldToLimit } from './helpers.ts'
-import { attachKit, pluginKit, type Kit, type KitOptions, type Running } from './kit.ts'
+import {
+  DISCOVER_LIMIT_MS,
+  isGitWorktree,
+  isObject,
+  objector,
+  realOr,
+  yieldToLimit,
+} from './helpers.ts'
+import { attachKit, pluginKit, present, type Kit, type KitOptions, type Running } from './kit.ts'
 import {
   PLUGIN_API,
   definePlugin,
@@ -62,10 +70,7 @@ const KIND = 'workspace-storage'
 const VSCODE_PROCESS = /^code(?:\s|\\x20|$)/i
 
 /** A file's text, without the byte order mark VS Code accepts and `JSON.parse` does not. */
-const readText = (file: string): string => readFileSync(file, 'utf8').replace(/^﻿/, '')
-
-/** The longest `discover` may take: it sizes every dead storage folder. */
-const DISCOVER_LIMIT_MS = 5 * 60_000
+const readText = (file: string): string => readFileSync(file, 'utf8').replace(/^\uFEFF/, '')
 
 /**
  * The folders in a storage folder that hold chat or agent history, which
@@ -153,13 +158,41 @@ function chatRequests(text: string, log: boolean): number {
  * before it moved them to `chatSessions/` (`chatServiceImpl.ts`); a storage
  * folder last used before then may hold its chats there alone.
  */
-const LEGACY_CHAT_KEY = Buffer.from('interactive.sessions')
+const LEGACY_CHAT_KEY = 'interactive.sessions'
 
 /** How much of a `state.vscdb` is read at a time while looking for {@link LEGACY_CHAT_KEY}. */
 const SCAN_CHUNK = 1 << 20
 
-/** True when the `state.vscdb` at `path` names the old chat key; one that cannot be read does. */
-function legacyChats(path: string): boolean {
+/**
+ * True when the `state.vscdb` at `path` has the old chat key; one that cannot
+ * be read does. SQLite is asked only when the key's bytes are in the file,
+ * which keeps those of rows deleted since.
+ */
+const legacyChats = (path: string): boolean => namesLegacyChats(path) && hasLegacyChats(path)
+
+/** True when a row of the SQLite file `path` has the old chat key; one that cannot be read does. */
+function hasLegacyChats(path: string): boolean {
+  try {
+    // Read as it lies (`immutable`), so that nothing is written beside it; what
+    // SQLite keeps there is not read then, and may hold the row.
+    if (['-wal', '-journal'].some((end) => present(path + end))) return true
+    const { DatabaseSync } = process.getBuiltinModule('node:sqlite')
+    const url = pathToFileURL(path)
+    url.searchParams.set('immutable', '1')
+    const db = new DatabaseSync(url, { readOnly: true })
+    try {
+      const row = db.prepare('SELECT 1 FROM ItemTable WHERE instr(key, ?) > 0').get(LEGACY_CHAT_KEY)
+      return row !== undefined
+    } finally {
+      db.close()
+    }
+  } catch {
+    return true
+  }
+}
+
+/** True when the bytes of {@link LEGACY_CHAT_KEY} are in the file `path`; one that cannot be read holds them. */
+function namesLegacyChats(path: string): boolean {
   let fd: number | undefined
   try {
     const st = lstatSync(path, { throwIfNoEntry: false })
@@ -305,7 +338,7 @@ function entryOf(dir: string): Entry {
   if (!isDir(dir)) return { state: 'skip' }
   let text: string
   try {
-    text = readText(join(dir, 'workspace.json'))
+    text = readFileSync(join(dir, 'workspace.json'), 'utf8')
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code
     if (code === 'ENOENT') return { state: 'skip' }
@@ -379,27 +412,48 @@ function workspaceRoots(file: string): string[] {
   return roots
 }
 
-/** The local folders, workspace files and those files' roots the window state names; `problem` when one is not a shape this plugin knows. */
-function openWindows(stateFile: string): { paths: string[]; problem?: string } {
+/** The local folders, workspace files and those files' roots a file names, and why any of it could not be read. */
+interface Named {
+  paths: string[]
+  problems: string[]
+}
+
+/** Adds to `to` what `uri` names, when it is local: a folder, or (`isFile`) a workspace file and its roots. Throws when it is not a URI. */
+function addNamed(to: Named, uri: string, isFile: boolean): void {
+  const local = localPath(uri)
+  if (local === null) return
+  to.paths.push(realOr(local))
+  if (!isFile) return
+  // A multi-root workspace: every folder it lists is open too.
+  try {
+    for (const r of workspaceRoots(local)) to.paths.push(realOr(r))
+  } catch (err) {
+    // A workspace file that is gone has no window with its roots open.
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT')
+      to.problems.push(`the workspace file ${local} could not be read`)
+  }
+}
+
+/** What the window state names as open. */
+function openWindows(stateFile: string): Named {
+  const problem = (what: string): Named => ({ paths: [], problems: [`${stateFile}${what}`] })
+  const out: Named = { paths: [], problems: [] }
   let body: unknown
   try {
     body = JSON.parse(readText(stateFile))
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { paths: [] }
-    return { paths: [], problem: `${stateFile} could not be read` }
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return out
+    return problem(' could not be read')
   }
-  if (!isObject(body)) return { paths: [], problem: `${stateFile} is not an object` }
+  if (!isObject(body)) return problem(' is not an object')
   const state = body.windowsState
-  if (state === undefined) return { paths: [] }
-  if (!isObject(state))
-    return { paths: [], problem: `${stateFile}'s windowsState is not an object` }
+  if (state === undefined) return out
+  if (!isObject(state)) return problem("'s windowsState is not an object")
   const windows = [
     state.lastActiveWindow,
     state.lastPluginDevelopmentHostWindow,
     ...(Array.isArray(state.openedWindows) ? state.openedWindows : []),
   ]
-  const paths: string[] = []
-  const problems: string[] = []
   // The last active window is usually among the opened ones too.
   const seen = new Set<string>()
   for (const w of windows) {
@@ -408,107 +462,83 @@ function openWindows(stateFile: string): { paths: string[]; problem?: string } {
     for (const uri of [w.folder, id]) {
       if (typeof uri !== 'string' || seen.has(uri)) continue
       seen.add(uri)
-      let local: string | null
       try {
-        local = localPath(uri)
+        addNamed(out, uri, uri === id)
       } catch {
         // Not a URI: names nothing that could be open here.
-        continue
-      }
-      if (local === null) continue
-      paths.push(realOr(local))
-      if (uri !== id) continue
-      // A multi-root workspace: every folder it lists is open too.
-      try {
-        for (const r of workspaceRoots(local)) paths.push(realOr(r))
-      } catch (err) {
-        // A workspace file that is gone has no window with its roots open.
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT')
-          problems.push(`the workspace file ${local} could not be read`)
       }
     }
   }
-  return problems.length === 0 ? { paths } : { paths, problem: problems.join('; ') }
+  return out
 }
 
 /**
- * True when the folder `dir`, or an entry directly in it, was modified at or
- * after `since`; always when `since` is undefined, and when it cannot be read.
+ * True when `dir`, or an entry directly in it, was modified at or after
+ * `since`; always when `since` is undefined, and when it cannot be read.
  */
 function touchedSince(dir: string, since: number | undefined): boolean {
   if (since === undefined) return true
+  const touched = (path: string): boolean =>
+    (statSync(path, { throwIfNoEntry: false })?.mtimeMs ?? 0) >= since
   try {
-    if (lstatSync(dir).mtimeMs >= since) return true
-    return readdirSync(dir).some(
-      (name) => (lstatSync(join(dir, name), { throwIfNoEntry: false })?.mtimeMs ?? 0) >= since,
-    )
+    return touched(dir) || readdirSync(dir).some((name) => touched(join(dir, name)))
   } catch {
     return true
   }
 }
 
 /**
- * The local folders, workspace files and those files' roots that the storage
- * folders in `root` written at or after `since` (every one when undefined)
- * name: VS Code writes there for a window it has open, so each may be open.
- * `problem` when such a folder's workspace cannot be read.
+ * What the storage folders in `root` written at or after `since` (every one
+ * when undefined) name: VS Code writes there for a window it has open, so each
+ * may be open.
  */
-function usedSince(root: string, since: number | undefined): { paths: string[]; problem?: string } {
+function usedSince(root: string, since: number | undefined): Named {
+  const out: Named = { paths: [], problems: [] }
   let names: string[]
   try {
     names = readdirSync(root)
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { paths: [] }
-    return { paths: [], problem: `${root} could not be read` }
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT')
+      out.problems.push(`${root} could not be read`)
+    return out
   }
-  const paths: string[] = []
-  const problems: string[] = []
   for (const name of names) {
     const dir = join(root, name)
-    if (!isDir(dir) || !touchedSince(dir, since)) continue
+    if (!touchedSince(dir, since)) continue
     const file = join(dir, 'workspace.json')
     let body: unknown
     try {
       body = JSON.parse(readText(file))
     } catch (err) {
-      // No workspace.json: an empty window's, which has no folder open.
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-        problems.push(`${file} could not be read`)
-      }
+      // No workspace.json: an empty window's, which has no folder open, or not a storage folder.
+      if (!['ENOENT', 'ENOTDIR'].includes((err as NodeJS.ErrnoException).code ?? ''))
+        out.problems.push(`${file} could not be read`)
       continue
     }
     const fields: Record<string, unknown> = isObject(body) ? body : {}
-    const uris = (['folder', 'workspace'] as const).flatMap((key) => {
+    let uris = 0
+    for (const key of ['folder', 'workspace'] as const) {
       const uri = fields[key]
-      return typeof uri === 'string' ? [{ key, uri }] : []
-    })
-    if (uris.length === 0) problems.push(`${file} names no folder or workspace`)
-    for (const { key, uri } of uris) {
-      let local: string | null
+      if (typeof uri !== 'string') continue
+      uris++
       try {
-        local = localPath(uri)
+        addNamed(out, uri, key === 'workspace')
       } catch {
-        problems.push(`${file}'s ${key} is not a URI`)
-        continue
-      }
-      if (local === null) continue
-      paths.push(realOr(local))
-      if (key !== 'workspace') continue
-      try {
-        for (const r of workspaceRoots(local)) paths.push(realOr(r))
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT')
-          problems.push(`the workspace file ${local} could not be read`)
+        out.problems.push(`${file}'s ${key} is not a local file URI`)
       }
     }
+    if (uris === 0) out.problems.push(`${file} names no folder or workspace`)
   }
-  return problems.length === 0 ? { paths } : { paths, problem: problems.join('; ') }
+  return out
 }
 
-/** `ps` reads its own locale; `LC_ALL=C` keeps the start times it prints in one format. */
-const PS_ENV = { LC_ALL: 'C' } as const
+/** `ps` reads its own zone and locale; these keep the start times it prints in one format, in UTC. */
+const PS_ENV = { TZ: 'UTC', LC_ALL: 'C' } as const
 
-/** The earliest start, in milliseconds, of the processes `pids`, by `ps`; undefined when it cannot be read. */
+/** Taken off VS Code's start time: `ps` gives it, and some filesystems a modification time, only to a second or two. */
+const START_SLACK_MS = 10_000
+
+/** When the first of the processes `pids` started, in milliseconds, by `ps`; undefined when it cannot be read. */
 async function startedAt(
   kit: Kit,
   pids: readonly number[],
@@ -521,10 +551,11 @@ async function startedAt(
       cwd: '/',
       env: PS_ENV,
     })
+    if (!r.ok || r.outputIncomplete === true) return undefined
     const starts = r.stdout
       .split('\n')
       .filter((line) => line.trim() !== '')
-      .map((line) => Date.parse(line.trim()))
+      .map((line) => Date.parse(`${line.trim()} UTC`))
     if (starts.length === 0 || starts.some((t) => Number.isNaN(t))) return undefined
     return Math.min(...starts)
   } catch {
@@ -535,14 +566,12 @@ async function startedAt(
 /** Whether VS Code runs, or may, and while it does, what it may have open. */
 interface Windows {
   running: boolean
+  /** The time storage written at or after counts as used: VS Code's start, less {@link START_SLACK_MS}; undefined when that is not known. */
+  since: number | undefined
   /** What the window state names as open. */
-  open: string[]
-  /** What storage written since VS Code started names; see {@link usedSince}. */
-  used: string[]
-  /** When VS Code started; undefined when that is not known. */
-  started: number | undefined
-  /** Why what VS Code has open could not be fully read. */
-  problem?: string
+  open: Named
+  /** What storage written since names; see {@link usedSince}. Not read for a storage candidate, whose own folder tells. */
+  used: Named
 }
 
 /** The VS Code processes among `processes`; see {@link VSCODE_PROCESS}. */
@@ -567,45 +596,43 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
 
   const own = objector(VSCODE_PLUGIN)
 
-  /** Whether VS Code runs, or may, and while it does, what it may have open. */
-  const look = async (ctx: Pick<Ctx, 'signal'>): Promise<Windows> => {
+  /** Whether VS Code runs, or may, and while it does, what it may have open; `used` is read when `worktrees` are asked about. */
+  const look = async (ctx: Pick<Ctx, 'signal'>, worktrees: boolean): Promise<Windows> => {
+    const none: Named = { paths: [], problems: [] }
     // What VS Code wrote outlives a quit, so it counts only while VS Code runs, or may.
     const anywhere = kit.running({ in: '/' }, ctx)
     const pids = vscodeOf(anywhere.processes).map((p) => p.pid)
     const running = pids.length > 0 || anywhere.unknown !== undefined
-    if (!running) return { running, open: [], used: [], started: undefined }
-    // The window state is written as VS Code quits, so it misses windows opened since it
-    // started; the storage written since then names those.
-    const started = anywhere.unknown === undefined ? await startedAt(kit, pids, ctx) : undefined
-    const state = stateFile === undefined ? { paths: [] } : openWindows(stateFile)
-    const top = storage()
-    const recent = top === undefined ? { paths: [] } : usedSince(top, started)
-    const problems = [state.problem, recent.problem].filter((p) => p !== undefined)
+    if (!running) return { running, since: undefined, open: none, used: none }
+    // The window state can miss windows opened since VS Code started, as VS Code does not write
+    // it for each; the storage written since then names those.
+    const started = await startedAt(kit, pids, ctx)
+    const since = started === undefined ? undefined : started - START_SLACK_MS
+    const top = worktrees ? storage() : undefined
     return {
       running,
-      open: state.paths,
-      used: recent.paths,
-      started,
-      ...(problems.length === 0 ? {} : { problem: problems.join('; ') }),
+      since,
+      open: stateFile === undefined ? none : openWindows(stateFile),
+      used: top === undefined ? none : usedSince(top, since),
     }
   }
 
-  /** The reason VS Code may have something open by its storage, while it runs as `w` says. */
+  /** The reason VS Code may have something open by its storage, while it is as `w` says. */
   const usedReason = (w: Windows): string =>
-    w.started === undefined
-      ? `VS Code runs, when it started is not known, and its storage names it (${root})`
-      : `VS Code's storage for it was written since VS Code started (${root})`
+    w.since === undefined
+      ? `VS Code runs, or may; when it started is not known, and its storage names this (${root})`
+      : `VS Code's storage for this was written since VS Code started (${root})`
 
-  /** The refusal of `c` while VS Code runs and what it has open could not be read. */
-  const unreadable = (c: Candidate, w: Windows): Objection[] =>
-    w.problem === undefined
+  /** The refusal of `c` when what VS Code has open could not be read because of `problems`. */
+  const unreadable = (c: Candidate, problems: readonly string[]): Objection[] =>
+    problems.length === 0
       ? []
       : [
           own(
             c,
             'refuse',
             VSCODE_STATE_UNREADABLE,
-            `${w.problem}; VS Code runs, so a window may have it open`,
+            `${problems.join('; ')}; VS Code runs, or may, and a window may have this open`,
           ),
         ]
 
@@ -620,13 +647,12 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
       return [own(c, 'refuse', VSCODE_IN_USE, `VS Code works in it: ${names}`)]
     }
     const dir = realOr(c.path)
-    if (w.open.some((p) => within(p, dir))) {
+    const holds = (named: Named): boolean => named.paths.some((p) => within(p, dir))
+    if (holds(w.open)) {
       return [own(c, 'refuse', VSCODE_IN_USE, `a VS Code window has it open (${stateFile})`)]
     }
-    if (w.used.some((p) => within(p, dir))) {
-      return [own(c, 'refuse', VSCODE_IN_USE, usedReason(w))]
-    }
-    const refused = unreadable(c, w)
+    if (holds(w.used)) return [own(c, 'refuse', VSCODE_IN_USE, usedReason(w))]
+    const refused = unreadable(c, [...w.open.problems, ...w.used.problems])
     if (refused.length > 0 || here.unknown === undefined) return refused
     return [
       own(
@@ -641,13 +667,13 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
   /** The objections to deleting `c`, storage for the gone folder `local`, while VS Code is as `w` says. */
   const goneCheck = (c: Candidate, local: string, w: Windows): Objection[] => {
     if (!w.running) return []
-    if (w.open.includes(realOr(local))) {
+    if (w.open.paths.includes(realOr(local))) {
       return [own(c, 'refuse', VSCODE_IN_USE, `a VS Code window still has ${local} open`)]
     }
-    if (c.path !== undefined && touchedSince(c.path, w.started)) {
+    if (c.path !== undefined && touchedSince(c.path, w.since)) {
       return [own(c, 'refuse', VSCODE_IN_USE, usedReason(w))]
     }
-    return unreadable(c, w)
+    return unreadable(c, w.open.problems)
   }
 
   return {
@@ -696,26 +722,21 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
       const worktrees = all.filter(isGitWorktree)
       if (worktrees.length === 0 && gone.length === 0) return out
 
-      const windows = await look(ctx)
+      const windows = await look(ctx, worktrees.length > 0)
       for (const c of worktrees) out.push(...worktreeCheck(c, windows, ctx))
       for (const { c, local } of gone) out.push(...goneCheck(c, local, windows))
       return out
     },
     async prepare(c, ctx) {
       // A window may have opened it since `object`.
-      let local: string | undefined
-      if (c.owner === VSCODE_PLUGIN) {
-        const workspace = c.evidence.workspace
-        // Storage of a workspace.json it does not know is refused in `object`.
-        if (typeof workspace !== 'string') return
-        local = localPath(workspace) ?? undefined
-        if (local === undefined) return
-      } else if (!isGitWorktree(c)) {
-        return
+      let objections: Objection[] = []
+      if (isGitWorktree(c)) {
+        objections = worktreeCheck(c, await look(ctx, true), ctx)
+      } else if (c.owner === VSCODE_PLUGIN && typeof c.evidence.workspace === 'string') {
+        // One with no workspace is of a shape this plugin does not know, which `object` refuses.
+        const local = localPath(c.evidence.workspace)
+        if (local !== null) objections = goneCheck(c, local, await look(ctx, false))
       }
-      const w = await look(ctx)
-      const objections =
-        local === undefined ? worktreeCheck(c as PathCandidate, w, ctx) : goneCheck(c, local, w)
       const refusal = objections.find((o) => o.level === 'refuse')
       if (refusal !== undefined) throw new Error(refusal.reason)
     },
