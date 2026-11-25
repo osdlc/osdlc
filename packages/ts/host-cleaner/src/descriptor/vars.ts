@@ -20,6 +20,7 @@
 import { readFileSync } from 'node:fs'
 import { extname, isAbsolute, join, normalize, sep } from 'node:path'
 
+import { getIn } from '@osdlc/config-layers'
 import { parse as parseToml } from 'smol-toml'
 import { parse as parseYaml } from 'yaml'
 
@@ -47,8 +48,18 @@ export type BuiltInVar = keyof typeof BUILT_IN_VARS
 /** A `${VAR}` reference; the name is an environment variable's name. */
 export const VAR_REF = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g
 
+/** The parser for each extension a `file` source may have. */
+const PARSERS = {
+  '.toml': parseToml,
+  '.json': JSON.parse,
+  '.yaml': parseYaml,
+  '.yml': parseYaml,
+} satisfies Record<string, (text: string) => unknown>
+
+type VarFileExtension = keyof typeof PARSERS
+
 /** The extensions a `file` source may have, by the format read. */
-export const VAR_FILE_EXTENSIONS = ['.toml', '.json', '.yaml', '.yml'] as const
+export const VAR_FILE_EXTENSIONS = Object.keys(PARSERS) as VarFileExtension[]
 
 /** Where one variable's value may come from, as a descriptor's `vars` lists it. */
 export type VarSource =
@@ -106,14 +117,16 @@ export function fillTemplate(
   vars: Readonly<Vars>,
   home: string,
 ): { path: string; trusted: boolean } | { missing: string } {
-  for (const name of varRefs(template)) {
+  const refs = varRefs(template)
+  for (const name of refs) {
     if (vars[name]?.value == null) return { missing: name }
   }
   const text = template.replace(VAR_REF, (_, name: string) => vars[name]!.value!)
-  const first = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}/.exec(template)?.[1]
+  const first = refs[0]
   return {
     path: folderOf(text, home),
-    trusted: first !== undefined && vars[first]?.trusted === true,
+    trusted:
+      first !== undefined && template.startsWith(`\${${first}}`) && vars[first]!.trusted,
   }
 }
 
@@ -123,7 +136,7 @@ export interface VarsAt {
   /** The environment `env` sources and the `XDG_*` built-ins read. */
   env: Readonly<Record<string, string | undefined>>
   /** The config's `plugins.<name>.vars`: each wins over every source, and is trusted. */
-  config?: Readonly<Record<string, string>> | undefined
+  config?: Readonly<Record<string, string | undefined>> | undefined
   /** Runs `command` sources: `onPath` decides whether one runs, `run` runs it. */
   kit: Pick<Kit, 'onPath' | 'run'>
   /** The hook's signal; a command still running when it aborts gives no value. */
@@ -207,9 +220,7 @@ export async function resolveVars(
   for (const name of Object.keys(declared)) await resolve(name)
   // Built-ins first, then the declared ones in the order declared.
   return Object.fromEntries(
-    [...Object.keys(BUILT_IN_VARS), ...Object.keys(declared)].flatMap((n) =>
-      done[n] === undefined ? [] : [[n, done[n]]],
-    ),
+    [...Object.keys(BUILT_IN_VARS), ...Object.keys(declared)].map((n) => [n, done[n]!]),
   )
 }
 
@@ -241,7 +252,6 @@ function builtIns(at: Pick<VarsAt, 'home' | 'env'>): Vars {
 
 /** The string at the dotted `key` in the TOML, JSON or YAML file at `file`, or why there is none. */
 function keyIn(file: string, key: string): string | { failed: string } {
-  const ext = extname(file).toLowerCase()
   let text: string
   try {
     text = readFileSync(file, 'utf-8')
@@ -249,28 +259,20 @@ function keyIn(file: string, key: string): string | { failed: string } {
     const code = (err as NodeJS.ErrnoException).code
     return { failed: code === 'ENOENT' ? `no file ${file}` : `cannot read ${file}: ${code}` }
   }
+  const ext = extname(file).toLowerCase()
+  if (!Object.hasOwn(PARSERS, ext)) return { failed: `${file} is not TOML, JSON or YAML` }
+  const parse: (text: string) => unknown = PARSERS[ext as VarFileExtension]
   let data: unknown
   try {
-    data =
-      ext === '.toml'
-        ? parseToml(text)
-        : ext === '.json'
-          ? JSON.parse(text)
-          : ext === '.yaml' || ext === '.yml'
-            ? parseYaml(text)
-            : undefined
+    data = parse(text)
   } catch (err) {
     return { failed: `${file} does not parse: ${(err as Error).message.split('\n')[0]}` }
   }
-  if (data === undefined) return { failed: `${file} is not TOML, JSON or YAML` }
-  let at: unknown = data
-  for (const part of key.split('.')) {
-    if (typeof at !== 'object' || at === null || Array.isArray(at) || !Object.hasOwn(at, part)) {
-      return { failed: `${file} has no ${key}` }
-    }
-    at = (at as Record<string, unknown>)[part]
-  }
-  return typeof at === 'string' && at !== '' ? at : { failed: `${key} in ${file} is not a string` }
+  const at = getIn(data, key.split('.'))
+  if (!at.found) return { failed: `${file} has no ${key}` }
+  return typeof at.value === 'string' && at.value !== ''
+    ? at.value
+    : { failed: `${key} in ${file} is not a string` }
 }
 
 /** The one line `argv` prints, run from home within `limit`, or why there is none. */

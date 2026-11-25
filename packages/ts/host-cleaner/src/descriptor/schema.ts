@@ -285,14 +285,17 @@ export const DescriptorSchema = z
   })
 
 type VarsField = Record<string, z.output<typeof varSource>[]>
+type FieldPath = (string | number)[]
+type Template = { text: string; path: FieldPath; of?: string }
+type VarIssue = { path: FieldPath; message: string }
 
 /** Each folder that may use a variable, with its field path. */
 function templatesOf(d: {
   paths: Record<string, Partial<Record<string, string>>>
   vars?: VarsField | undefined
   inUse?: { locks?: string[] | undefined } | undefined
-}): Array<{ text: string; path: (string | number)[]; of?: string }> {
-  const out: Array<{ text: string; path: (string | number)[]; of?: string }> = []
+}): Template[] {
+  const out: Template[] = []
   for (const [name, folders] of Object.entries(d.paths))
     for (const [os, text] of Object.entries(folders))
       if (text !== undefined) out.push({ text, path: ['paths', name, os] })
@@ -317,10 +320,8 @@ function templatesOf(d: {
  * `${NAME}`, a name neither declared nor built in, a declared name that is a
  * built-in's, or a variable whose sources refer back to it.
  */
-function varIssues(
-  d: Parameters<typeof templatesOf>[0],
-): { path: (string | number)[]; message: string }[] {
-  const out: { path: (string | number)[]; message: string }[] = []
+function varIssues(d: Parameters<typeof templatesOf>[0]): VarIssue[] {
+  const out: VarIssue[] = []
   const declared = new Set(Object.keys(d.vars ?? {}))
   for (const name of declared)
     if (Object.hasOwn(BUILT_IN_VARS, name))

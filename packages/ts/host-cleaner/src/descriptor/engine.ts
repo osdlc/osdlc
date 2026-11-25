@@ -58,7 +58,7 @@ import {
   type Os,
   type ProjectEntry,
 } from './schema.ts'
-import { VAR_COMMAND_LIMIT_MS, fillTemplate, resolveVars, type Vars } from './vars.ts'
+import { VAR_COMMAND_LIMIT_MS, fillTemplate, resolveVars } from './vars.ts'
 
 /** The protest on a prune whose program is not on PATH; `--allow no-prune-tool` removes the folder instead (D12). */
 export const NO_PRUNE_TOOL = 'no-prune-tool'
@@ -261,7 +261,7 @@ export function descriptorPlugin(
         runs: opts.runs,
         ownDirs: opts.ownDirs ?? ownDirsOf(env),
         env,
-        vars: settings.vars ?? {},
+        vars: settings.vars,
       }),
   })
 }
@@ -283,54 +283,53 @@ interface EngineAt {
   ownDirs: readonly string[]
   env: Readonly<Record<string, string | undefined>>
   /** The config's `vars`: trusted folders. */
-  vars: Readonly<Record<string, string | undefined>>
+  vars?: Readonly<Record<string, string | undefined>> | undefined
 }
 
+/** One of a descriptor's folders, resolved; trusted when a config value gave it. */
+type Folder = { path: string; trusted: boolean }
+
 function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
-  const config = Object.fromEntries(
-    Object.entries(at.vars).filter((e): e is [string, string] => e[1] !== undefined),
-  )
   // The folders that apply on this OS, by their name in `paths`, as the last
-  // survey resolved them; and those of them a config value gave.
-  let folders = new Map<string, string>()
-  let trusted = new Set<string>()
-  let vars: Vars | undefined
+  // survey resolved them, each trusted when a config value gave it; and the
+  // lock files. Undefined until a survey resolves them.
+  let folders = new Map<string, Folder>()
+  let locks: string[] | undefined
 
   const refresh = async (ctx: Ctx): Promise<void> => {
-    const now = await resolveVars(d.vars ?? {}, {
+    const vars = await resolveVars(d.vars ?? {}, {
       home: at.home,
       os: at.os,
       env: at.env,
-      config,
+      config: at.vars,
       kit,
       signal: ctx.signal,
     })
-    const nextFolders = new Map<string, string>()
-    const nextTrusted = new Set<string>()
+    // A folder or lock whose variable has no value is left out.
+    const next = new Map<string, Folder>()
     for (const [key, perOs] of Object.entries(d.paths)) {
       const template = perOs.all ?? perOs[at.os]
       if (template === undefined) continue
-      const filled = fillTemplate(template, now, at.home)
-      // A variable with no value leaves the folder out.
-      if ('missing' in filled) continue
-      nextFolders.set(key, filled.path)
-      if (filled.trusted) nextTrusted.add(key)
+      const filled = fillTemplate(template, vars, at.home)
+      if (!('missing' in filled)) next.set(key, filled)
     }
-    vars = now
-    folders = nextFolders
-    trusted = nextTrusted
+    folders = next
+    locks = (d.inUse?.locks ?? []).flatMap((lock) => {
+      const filled = fillTemplate(lock, vars, at.home)
+      return 'missing' in filled ? [] : [filled.path]
+    })
   }
 
   /** Resolves the variables if no survey has yet. */
   const ready = async (ctx: Ctx): Promise<void> => {
-    if (vars === undefined) await refresh(ctx)
+    if (locks === undefined) await refresh(ctx)
   }
 
   const problems = (ctx: Ctx) => {
     const where = { ...at, targets: ctx.targets, checkouts: checkoutsIn(ctx.targets) }
     const out = new Map<string, string | null>()
-    for (const [key, folder] of folders)
-      out.set(key, pathProblem(folder, { ...where, trusted: trusted.has(key) }))
+    for (const [key, { path, trusted }] of folders)
+      out.set(key, pathProblem(path, { ...where, trusted }))
     return out
   }
 
@@ -493,7 +492,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     const refused = problems(ctx)
     const rows: Row[] = []
     for (const [index, entry] of d.candidates.entries()) {
-      const folder = folders.get(entry.path)
+      const folder = folders.get(entry.path)?.path
       if (folder === undefined || !present(folder)) continue
       const problem = refused.get(entry.path) ?? null
       if (problem !== null) {
@@ -560,11 +559,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         break
       }
     }
-    for (const lock of d.inUse?.locks ?? []) {
-      const filled = fillTemplate(lock, vars ?? {}, at.home)
-      // A lock whose variable has no value can't be looked for.
-      if ('missing' in filled) continue
-      const file = filled.path
+    for (const file of locks ?? []) {
       if (present(file))
         out.push({ level: 'refuse', code: IN_USE, reason: `the lock ${file} exists` })
     }
@@ -600,7 +595,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   const rootPaths = (ctx: Ctx): string[] => {
     const refused = problems(ctx)
     const out = new Set<string>()
-    for (const [key, folder] of folders) if (refused.get(key) === null) out.add(folder)
+    for (const [key, { path }] of folders) if (refused.get(key) === null) out.add(path)
     return [...out]
   }
 
@@ -642,7 +637,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         return `it is not inside ${name}'s roots`
       }
       const entry = d.candidates[ev.candidate ?? -1]
-      const folder = entry === undefined ? undefined : folders.get(entry.path)
+      const folder = entry === undefined ? undefined : folders.get(entry.path)?.path
       if (entry === undefined || folder === undefined) return 'no candidate entry gives it now'
       const problem = problems(ctx).get(entry.path) ?? null
       if (problem !== null) return problem
@@ -677,12 +672,12 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       await refresh(ctx)
       const holds = (c: { onPath?: string | undefined; exists?: string | undefined }): boolean => {
         if (c.onPath !== undefined) return kit.onPath(c.onPath)
-        const folder = c.exists === undefined ? undefined : folders.get(c.exists)
+        const folder = c.exists === undefined ? undefined : folders.get(c.exists)?.path
         return folder !== undefined && present(folder)
       }
       if (d.detect?.all !== undefined) return d.detect.all.every(holds)
       if (d.detect?.any !== undefined) return d.detect.any.some(holds)
-      return [...folders.values()].some(present)
+      return [...folders.values()].some((f) => present(f.path))
     },
     async roots(ctx): Promise<Root[]> {
       await ready(ctx)

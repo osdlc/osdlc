@@ -7,7 +7,7 @@
  * prints the same schemas' fields and defaults through `configFields`.
  */
 
-import { configFields, validateStandard } from '@osdlc/config-layers'
+import { configFields, getIn, validateStandard } from '@osdlc/config-layers'
 import { z } from 'zod'
 
 import { DEFAULT_IDLE_HOURS } from './kit.ts'
@@ -104,10 +104,10 @@ export function effectiveSettings(
       const key = at.join('.')
       return {
         key,
-        value: valueAt(value, at),
+        value: getIn(value, at).value,
         default: key === 'idleHours' ? DEFAULT_IDLE_HOURS : f.default,
         source:
-          valueAt(raw, at) !== undefined
+          getIn(raw, at).found
             ? 'config'
             : key === 'idleHours' && shared.idleHours !== undefined
               ? 'shared'
@@ -117,14 +117,4 @@ export function effectiveSettings(
     })
   }
   return out
-}
-
-/** The value at `path` in nested `record`, such as a descriptor's `vars.GOPATH`. */
-function valueAt(record: Record<string, unknown>, path: readonly string[]): unknown {
-  let at: unknown = record
-  for (const part of path) {
-    if (typeof at !== 'object' || at === null || !Object.hasOwn(at, part)) return undefined
-    at = (at as Record<string, unknown>)[part]
-  }
-  return at
 }
