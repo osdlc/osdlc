@@ -176,6 +176,10 @@ Developed here, in this repository:
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/ref-lease` (`ref-lease` on crates.io, the Rust twin of
   `@osdlc/ref-lease`: the protocol's pure half, not the git push and fetch)
+- `packages/rust/signed-request` (`signed-request`, not on crates.io yet:
+  HMAC-SHA256 request signing and verification between two services, with a
+  clock-skew window, a bounded replay cache and key rotation; optional axum
+  middleware and reqwest client)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/system-model` (`system-model` on crates.io, the Rust twin of `@osdlc/system-model`)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
@@ -460,6 +464,8 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
      its own: it needs `CARGO_REGISTRY_TOKEN` (rules 3, 4 and 7).
    - `ref-lease`, for the same reason.
    - `system-model`, for the same reason.
+   - `signed-request`, until its owner publishes the first release (a
+     `CARGO_REGISTRY_TOKEN` step, as above).
 
 #### Versions and breaking changes
 

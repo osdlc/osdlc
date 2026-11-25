@@ -62,3 +62,10 @@ release = false
 name = "ref-lease"
 publish = false
 release = false
+
+# Not on crates.io yet: the first release is the owner's step; see the note in its
+# Cargo.toml. `release = false` also stops a tag being cut for a version that was not published.
+[[package]]
+name = "signed-request"
+publish = false
+release = false
