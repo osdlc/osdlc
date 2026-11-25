@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig, type PlaywrightTestConfig } from '@playwright/test'
 import { VIEWPORT } from '../runner/story.ts'
 
+/** What {@link defineStoryConfig} takes. */
 export interface StoryConfigOptions {
   /** The static server's port on `127.0.0.1`. */
   port: number
