@@ -113,5 +113,6 @@ export {
   cursorUserDir,
   vscodePlugin,
   vscodeUserDir,
+  type CursorOptions,
   type VscodeOptions,
 } from './vscode.ts'

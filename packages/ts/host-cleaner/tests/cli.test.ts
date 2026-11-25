@@ -55,9 +55,11 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
   return {
     home,
     cwd: tempDir(),
-    // VSCODE_APPDATA keeps the vscode and cursor plugins off this machine's storage.
+    // VSCODE_APPDATA keeps the vscode and cursor plugins off this machine's storage, and HOME keeps
+    // cursor off its agent worktrees.
     env: {
       ...(process.env as Record<string, string>),
+      HOME: home,
       HOST_CLEANER_ROOT: home,
       VSCODE_APPDATA: home,
     },
@@ -66,11 +68,9 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
 
 async function run(argv: string[], cwd: string, env: Record<string, string>, deps: MainDeps = {}) {
   const ctx = captureContext({ cwd, env })
-  // The shipped plugins would talk to this machine's Orca and sweep every repository it lists,
-  // and cursor would look for this machine's agent worktrees, which VSCODE_APPDATA does not move.
+  // The shipped plugins would talk to this machine's Orca and sweep every repository it lists.
   const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
-  const args =
-    phase && deps.plugins === undefined ? [...argv, '--skip-plugin', 'orca,cursor'] : argv
+  const args = phase && deps.plugins === undefined ? [...argv, '--skip-plugin', 'orca'] : argv
   const code = await main(args, ctx, { confirm: () => null, ...deps })
   return { code, out: ctx.io.out, err: ctx.io.err }
 }
@@ -144,6 +144,24 @@ describe('status', () => {
     expect(r.out).toMatch(/delete\s+-\s+branch:.*:merged-a/)
     expect(r.out).toMatch(/review\s+-\s+branch:.*:topic/)
     expect(r.out).toContain('protest abandon-unmerged (git)')
+  })
+
+  test("the shipped cursor plugin refuses git's worktree in Cursor's agent worktrees under HOME", async () => {
+    const { env, home } = setup()
+    const dir = repo()
+    const wt = join(home, '.cursor', 'worktrees', 'repo', 'wt')
+    sh(dir, ['worktree', 'add', '-q', wt, 'merged-a'])
+    const r = await run(['status', '--all-rows', '--format', 'json'], dir, env)
+    const doc = JSON.parse(r.out)
+    expect(doc.plugins).toContain('cursor')
+    expect(doc.candidates.map((c: Candidate) => c.id)).toContain(`worktree:${wt}`)
+    expect(doc.objections).toContainEqual(
+      expect.objectContaining({
+        by: 'cursor',
+        candidate: `worktree:${wt}`,
+        code: 'agent-worktree',
+      }),
+    )
   })
 
   test('json carries the candidates and objections', async () => {

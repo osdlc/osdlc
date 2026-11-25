@@ -87,6 +87,12 @@ interface Editor {
   keepsChat: boolean
   /** The folder under `HOME` where its agents make and track their own worktrees. */
   agentWorktrees?: string
+  /**
+   * True when its agent runs under another program's name (the `cursor-agent`
+   * CLI runs as `node`), so any busy process working in a worktree may be it,
+   * whether or not the editor itself runs.
+   */
+  agentUnnamed: boolean
 }
 
 const VSCODE: Editor = {
@@ -101,6 +107,7 @@ const VSCODE: Editor = {
     stateUnreadable: VSCODE_STATE_UNREADABLE,
   },
   keepsChat: false,
+  agentUnnamed: false,
 }
 
 const CURSOR: Editor = {
@@ -117,6 +124,7 @@ const CURSOR: Editor = {
   },
   keepsChat: true,
   agentWorktrees: join('.cursor', 'worktrees'),
+  agentUnnamed: true,
 }
 
 /** A file's text, without the byte order mark VS Code accepts and `JSON.parse` does not. */
@@ -645,9 +653,17 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
   const root = under('workspaceStorage')
   const stateFile = under('globalStorage', 'storage.json')
   const agentDir =
-    editor.agentWorktrees === undefined
-      ? undefined
-      : realOr(join(homeOf(env), editor.agentWorktrees))
+    editor.agentWorktrees === undefined ? undefined : join(homeOf(env), editor.agentWorktrees)
+  /**
+   * The agents' folder, resolved now, when the worktree at `path`, whose real
+   * path is `real`, is in it; both are compared as given and as resolved, so
+   * neither a link nor a worktree folder that is gone hides it.
+   */
+  const agentFolderOf = (path: string, real: string): string | undefined => {
+    if (agentDir === undefined) return undefined
+    const agents = realOr(agentDir)
+    return [path, real].some((p) => within(p, agentDir) || within(p, agents)) ? agents : undefined
+  }
   /** `root` when it exists. */
   const storage = (): string | undefined =>
     root !== undefined && lstatSync(root, { throwIfNoEntry: false }) !== undefined
@@ -699,17 +715,44 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
           ),
         ]
 
-  /** The objections to deleting git's worktree `c` while the editor is as `w` says. */
-  const worktreeCheck = (c: PathCandidate, w: Windows, ctx: Pick<Ctx, 'signal'>): Objection[] => {
-    // With no process of the editor's anywhere, none works in this worktree and no window has it open.
-    if (!w.running) return []
+  /** The objections to deleting git's worktree `c`, whose real path is `dir`, while the editor is as `w` says. */
+  const worktreeCheck = (
+    c: PathCandidate,
+    w: Windows,
+    ctx: Pick<Ctx, 'signal'>,
+    dir: string = realOr(c.path),
+  ): Objection[] => {
+    // With no process of the editor's anywhere, none works in this worktree and no window has it open,
+    // unless its agent runs under another name.
+    if (!w.running && !editor.agentUnnamed) return []
     const here = kit.running({ in: c.path }, ctx)
     const procs = processesOf(editor, here.processes)
     if (procs.length > 0) {
       const names = procs.map((p) => `${p.command} (pid ${p.pid})`).join(', ')
       return [own(c, 'refuse', editor.codes.inUse, `${editor.product} works in it: ${names}`)]
     }
-    const dir = realOr(c.path)
+    if (editor.agentUnnamed && here.processes.length > 0) {
+      return [
+        own(
+          c,
+          'refuse',
+          editor.codes.inUse,
+          `processes work in it (${here.names.join(', ')}), and ${editor.product}'s agent runs as \`node\`, so may be one of them`,
+        ),
+      ]
+    }
+    const unchecked = (): Objection[] =>
+      here.unknown === undefined
+        ? []
+        : [
+            own(
+              c,
+              'note',
+              `${editor.name}-unchecked`,
+              `the processes working in it could not be listed (${here.unknown}); ${editor.product} was not fully checked`,
+            ),
+          ]
+    if (!w.running) return unchecked()
     const holds = (named: Named): boolean => named.paths.some((p) => within(p, dir))
     if (holds(w.open)) {
       return [
@@ -723,15 +766,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
     }
     if (holds(w.used)) return [own(c, 'refuse', editor.codes.inUse, usedReason(w))]
     const refused = unreadable(c, [...w.open.problems, ...w.used.problems])
-    if (refused.length > 0 || here.unknown === undefined) return refused
-    return [
-      own(
-        c,
-        'note',
-        `${editor.name}-unchecked`,
-        `the processes working in it could not be listed (${here.unknown}); ${editor.product} was not fully checked`,
-      ),
-    ]
+    return refused.length > 0 ? refused : unchecked()
   }
 
   /** The objections to deleting `c`, storage for the gone folder `local`, while the editor is as `w` says. */
@@ -752,7 +787,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
     name: editor.name,
     limits: { discover: DISCOVER_LIMIT_MS },
     // Its agent worktrees are refused even where its storage is not, as on a host with only the CLI.
-    detect: () => storage() !== undefined || (agentDir !== undefined && isDir(agentDir)),
+    detect: () => storage() !== undefined || (agentDir !== undefined && isDir(realOr(agentDir))),
     roots: () => {
       const dir = storage()
       return dir === undefined ? [] : [dir]
@@ -793,20 +828,20 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
           out.push(own(c, 'refuse', editor.codes.unknownWorkspace, e.problem))
         if (e?.state === 'gone') gone.push({ c, local: e.local })
       }
-      const worktrees: PathCandidate[] = []
+      const worktrees: Array<{ c: PathCandidate; dir: string }> = []
       for (const c of all.filter(isGitWorktree)) {
-        if (agentDir !== undefined && within(realOr(c.path), agentDir)) {
-          out.push(
-            own(c, 'refuse', AGENT_WORKTREE, `${editor.product}'s agents keep it (${agentDir})`),
-          )
+        const dir = realOr(c.path)
+        const agents = agentFolderOf(c.path, dir)
+        if (agents !== undefined) {
+          out.push(own(c, 'refuse', AGENT_WORKTREE, `${editor.product}'s agents keep it (${agents})`))
         } else {
-          worktrees.push(c)
+          worktrees.push({ c, dir })
         }
       }
       if (worktrees.length === 0 && gone.length === 0) return out
 
       const windows = await look(ctx, worktrees.length > 0)
-      for (const c of worktrees) out.push(...worktreeCheck(c, windows, ctx))
+      for (const { c, dir } of worktrees) out.push(...worktreeCheck(c, windows, ctx, dir))
       for (const { c, local } of gone) out.push(...goneCheck(c, local, windows))
       return out
     },
@@ -855,12 +890,15 @@ function goneCandidate(
   // Storage that always holds chat is `lost` anyway, so its history folders are not read.
   const history = editor.keepsChat ? [] : historyIn(dir)
   const hasHistory = history.length > 0
+  const historyNote = editor.keepsChat
+    ? ', in the storage where it keeps chat history'
+    : hasHistory
+      ? `, with chat or agent history in ${history.join(', ')}`
+      : ''
   return kit.candidate({
     kind: KIND,
     path: dir,
-    why: editor.keepsChat
-      ? `${editor.product} kept state for ${e.local}, which no longer exists, in the storage where it keeps chat history`
-      : `${editor.product} kept state for ${e.local}, which no longer exists${hasHistory ? `, with chat or agent history in ${history.join(', ')}` : ''}`,
+    why: `${editor.product} kept state for ${e.local}, which no longer exists${historyNote}`,
     ...(bytes === null ? {} : { bytes }),
     // `lost` alone holds it; see Candidate.costDescription in types.ts.
     costDescription: hasHistory || editor.keepsChat ? 'lost' : 're-download',
@@ -896,8 +934,11 @@ const definitionOf = (editor: Editor) =>
 /** The `vscode` plugin on `kit`, or on a kit built from `opts`. */
 export const vscodePlugin = (opts?: VscodeOptions, kit?: Kit): Plugin => pluginOf(VSCODE, opts, kit)
 
+/** The `cursor` plugin's options, the same as the `vscode` plugin's. */
+export type CursorOptions = VscodeOptions
+
 /** The `cursor` plugin on `kit`, or on a kit built from `opts`. */
-export const cursorPlugin = (opts?: VscodeOptions, kit?: Kit): Plugin => pluginOf(CURSOR, opts, kit)
+export const cursorPlugin = (opts?: CursorOptions, kit?: Kit): Plugin => pluginOf(CURSOR, opts, kit)
 
 /** The `vscode` plugin as the command line builds it. No settings of its own. */
 export const vscodeDefinition = definitionOf(VSCODE)
