@@ -262,6 +262,78 @@ Every shipped plugin passes it:
 expect(await contractSuite(plugin, { cwd: root, targets: [root] })).toEqual([])
 ```
 
+### Descriptors
+
+A descriptor is a plugin written as a YAML (or JSON) file, `descriptor: 1`:
+named folders in `paths`, one value for `all` or one per OS, and the
+`candidates` under them. Where the command line finds descriptor files is under
+[Command line](#command-line).
+
+```yaml
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@0.3/schemas/descriptor-1.json
+descriptor: 1
+detect:
+  any: [{ onPath: uv }, { exists: cache }]
+paths:
+  cache: { all: ~/.cache/uv }
+candidates:
+  - path: cache
+    costDescription: re-download
+    command: [uv, cache, prune, --cache-dir, '{path}']
+    removes: unused
+inUse:
+  processes: [uv]
+```
+
+```ts
+import { DescriptorError, readDescriptor } from '@osdlc/host-cleaner'
+
+try {
+  const descriptor = readDescriptor('uv.yaml')
+} catch (err) {
+  // One line per problem, such as `line 5: candidates.0.path: no folder named "models" in paths`.
+  if (err instanceof DescriptorError) console.error(err.issues)
+}
+```
+
+`parseDescriptor(text, source)` reads text instead of a file;
+`descriptorIssues(value)` checks a parsed value and lists its problems without
+lines. A folder must start with `~/`, be absolute, and name something below
+the home folder or the root, not a home folder itself such as `/home/alice`. A
+glob stays inside its path, in every `{a,b}` alternative too. A tool's
+`command` must name the checked folder, as a `{path}` argument or in `env`.
+`vars` (tier 2) and any `${VAR}` elsewhere are refused until variables are
+built. `DescriptorSchema` is the zod schema, and `schemas/descriptor-1.json`,
+which the package ships (`@osdlc/host-cleaner/schemas/descriptor-1.json`), is
+the same schema as JSON Schema for editors.
+
+`descriptorPlugin(name, descriptor)` turns a checked descriptor into a
+`definePlugin` value built only on the kit, with an `idleHours` setting:
+
+```ts
+const d = readDescriptor('pip.yaml')
+const plugin = descriptorPlugin('pip', d)
+```
+
+- **detect:** its `detect` (`onPath`, `exists`), or any of its folders
+  existing. A `system: true` descriptor (`skipReason`) and one whose
+  `supersededBy` plugin runs answer `{ active: false, note }`.
+- **roots:** each of its `paths` for this OS that `pathProblem` passes, as a
+  self root. A path may not be a symlink (a trailing `/` is dropped first),
+  be or hold home, a personal folder, a target or a checkout, sit outside
+  home, or hold or sit inside host-cleaner's own folders.
+- **discover:** one candidate per folder, or per `glob` match inside it
+  (`globMatches`; a match may be a file). Matches past `maxEntries` are
+  combined into one candidate at the first of them, held while any of them
+  changed within the threshold; deleting it removes each.
+  `project` entries find build folders beside a marker in the targets'
+  checkouts, in one walk, and in a repository's primary checkout only inside
+  the targets.
+- **object:** a running `inUse` process or lock refuses its candidates
+  (`in-use`); a prune with no program on PATH gets a `no-prune-tool` protest.
+- **delete:** checks the candidate again, then runs the tool's command from
+  the home folder, pointed at the folder, or removes it with `kit.remove`.
+
 ### Loading plugins from code
 
 The command line builds its plugin list from these exports, and a program that
@@ -402,7 +474,11 @@ shipped one of the same name, and `--descriptor` replaces either for that run.
 Every plugin has one name, so any other clash, such as a descriptor named `git`
 or two files of one name in one folder, is refused (exit 2). Descriptors run
 after the built-ins, by name. To try one you are writing:
-`host-cleaner status --descriptor ./uv.yaml --plugin uv`.
+`host-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan made with
+`--descriptor` needs the same `--descriptor` on `clean --plan`, since the
+re-check loads plugins again and drops a candidate no plugin proposes as
+`gone`. A descriptor's `supersededBy` must name a built-in plugin, or a package
+the config names.
 
 A descriptor names its folders per OS under `paths`, then lists what may be
 deleted under `candidates`:
@@ -413,7 +489,7 @@ paths:
   hub: { all: ~/.cache/huggingface/hub }
 candidates:
   - path: hub
-    glob: 'models--*/' # one candidate per match, at most maxEntries (200) a run
+    glob: 'models--*/' # one candidate per match; past maxEntries (200) the rest are one
     costDescription: re-download
     idleHours: 720
 ```

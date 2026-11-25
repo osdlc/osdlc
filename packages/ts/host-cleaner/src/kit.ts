@@ -164,6 +164,12 @@ export function attachKit(plugin: Plugin, kit: Kit): void {
 /** The kit `plugin` was built on, as {@link attachKit} recorded it; undefined for none. */
 export const kitOf = (plugin: Plugin): Kit | undefined => kits.get(plugin)
 
+/** Ties `wrapper`, which stands in for `plugin` in a run, to the kit `plugin` was built on, so the core binds it through either. */
+export function shareKit(plugin: Plugin, wrapper: Plugin): void {
+  const kit = kits.get(plugin)
+  if (kit !== undefined) attachKit(wrapper, kit)
+}
+
 /** Binds the kit `plugin` was built on to `bounds` for {@link Kit.remove}, or unbinds it with none, so it removes nothing; a plugin built on no kit is left alone. */
 export function bindKit(plugin: Plugin, bounds: Bounds | undefined): void {
   const kit = kits.get(plugin)

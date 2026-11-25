@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json",
+  "$id": "https://unpkg.com/@osdlc/host-cleaner@0.3/schemas/descriptor-1.json",
   "title": "host-cleaner descriptor",
   "type": "object",
   "properties": {
@@ -133,7 +133,7 @@
             "minLength": 1
           },
           "maxEntries": {
-            "description": "Glob matches past this many are not listed this run; a note on the last one listed counts them. Default: 200.",
+            "description": "Glob matches past this many are combined into one candidate. Default: 200.",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991

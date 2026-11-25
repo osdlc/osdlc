@@ -174,7 +174,15 @@ function entryOf(dir: string, manifest: Manifest): string | undefined {
 }
 
 /** What Node tries after a legacy `main`, in its order: the file, with an extension, then the folder's index. */
-const LEGACY_MAIN_SUFFIXES = ['', '.js', '.json', '.node', '/index.js', '/index.json', '/index.node']
+const LEGACY_MAIN_SUFFIXES = [
+  '',
+  '.js',
+  '.json',
+  '.node',
+  '/index.js',
+  '/index.json',
+  '/index.node',
+]
 
 const isFile = (path: string): boolean =>
   statSync(path, { throwIfNoEntry: false })?.isFile() === true

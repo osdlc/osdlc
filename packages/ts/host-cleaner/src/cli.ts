@@ -310,7 +310,7 @@ const terminalChecklist: Checklist = (question, items) =>
 export interface MainDeps {
   /** The plugins that exist; default is the built-ins, the config's packages and the descriptors, built from the config. */
   plugins?: readonly Plugin[]
-  /** The folder of shipped descriptors. Defaults to the package's `descriptors/`. */
+  /** The folder of shipped descriptors. Defaults to `SHIPPED_DESCRIPTORS` in descriptor/load.ts. */
   shippedDescriptors?: string
   /** The `node_modules` folders a `plugins.<name>.package` is looked for in, in order. Defaults to `packageRoots`. */
   packageRoots?: readonly string[]
@@ -478,9 +478,9 @@ const unknownPlugins = (config: Config, known: (name: string) => boolean): strin
 
 /**
  * The config and the plugins this run uses: {@link loadAll}, then
- * {@link pluginsFor}. Descriptors test `supersededBy` against the plugins
- * chosen here (see `supersession` in registry.ts). `failed` are the packages that
- * did not load or build, which the run goes without.
+ * {@link pluginsFor}. `supersededBy` is answered as described at
+ * `supersession` in registry.ts. `failed` are the packages that did not load
+ * or build, which the run goes without.
  */
 async function setUp(
   v: SweepValues,
@@ -490,7 +490,8 @@ async function setUp(
   const superseded = supersession()
   const naming = { want: v.plugin, skip: v.skipPlugin }
   const setup = await loadAll(v, naming, ctx, deps, { runs: superseded.runs })
-  const plugins = superseded.watch(pluginsFor(v, setup, deps, ctx))
+  const chosen = pluginsFor(v, setup, deps, ctx)
+  const plugins = deps.plugins === undefined ? superseded.track(chosen) : chosen
   return { config: setup.config, plugins, failed: setup.failed }
 }
 

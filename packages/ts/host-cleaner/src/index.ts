@@ -8,7 +8,14 @@
 export { VERSION } from './version.generated.ts'
 export * from './plugin.ts'
 export { DROP_REASONS, type DropReason } from './types.ts'
-export { BUILT_IN_PLUGINS, loadPlugins, type Loaded, type Packages } from './registry.ts'
+export {
+  BUILT_IN_PLUGINS,
+  loadPlugins,
+  supersession,
+  type Loaded,
+  type Packages,
+  type Supersession,
+} from './registry.ts'
 export {
   PackageError,
   PackageLoadError,
