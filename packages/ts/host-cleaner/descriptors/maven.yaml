@@ -1,8 +1,11 @@
 # yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
 # Maven's local repository, on the default folder; a localRepository set in
 # settings.xml is not followed. No Maven command prunes the whole repository,
-# so it is removed as a folder once nothing in it changed for 30 days. What
-# `mvn install` put there comes back only by building those projects again.
+# so it is removed as a folder once nothing in it changed for 30 days. Its cost
+# is `rebuild`: what `mvn install` put there comes back only by building those
+# projects again. While `mvn` or Maven's launcher (a java process whose main
+# class is org.codehaus.plexus.classworlds.launcher.Launcher) runs, it is
+# refused in-use, at the survey and again before the delete.
 descriptor: 1
 store: maven
 detect:
@@ -11,5 +14,7 @@ paths:
   repository: { macos: ~/.m2/repository, linux: ~/.m2/repository }
 candidates:
   - path: repository
-    costDescription: re-download
+    costDescription: rebuild
     idleHours: 720
+inUse:
+  processes: [mvn, classworlds]

@@ -347,9 +347,16 @@ The package ships eight, for macOS and Linux: `pnpm` (the store, pruned with
 `pnpm store prune`, and the metadata cache), `uv` (the cache, pruned with
 `uv cache prune`), `huggingface-hub` (one candidate per model or dataset, after
 30 idle days), `gradle` (the caches after a week and each wrapper distribution
-after 30 days, none while a Gradle daemon runs), `npm` (the package cache),
-`pip` (the cache), `yarn` (Berry's and Classic's global caches) and `maven` (the
-local repository, after 30 idle days). Each looks only at the tool's default
+after 30 days), `npm` (the package cache), `pip` (the cache), `yarn` (Classic's
+global cache; Berry's is left out, since Plug'n'Play projects run from it) and
+`maven` (the local repository, after 30 idle days, at the cost `rebuild`). While
+the tool runs, every candidate of `pnpm`, `uv`, `gradle` (any Gradle build or
+daemon), `npm` (npm or npx), `yarn` and `maven` is refused as `in-use`, at the
+survey and again before each delete, so a long-running `pnpm dev` keeps the pnpm
+store from being pruned. Idle time is the newest modification time inside a
+folder, and reading a file doesn't change it: a Hugging Face model or a Gradle
+wrapper distribution in daily use counts as idle from its download. Each looks
+only at the tool's default
 folders: a store moved by an environment variable or a setting is not found, and
 the folder it left behind, if any, is what gets cleaned.
 
