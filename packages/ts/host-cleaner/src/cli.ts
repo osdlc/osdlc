@@ -382,7 +382,11 @@ const loadConfig = (v: { config?: string | undefined }, ctx: CliContext): Config
 const unknownPlugins = (config: Config, known: (name: string) => boolean): string[] =>
   Object.keys(config.plugins).filter((n) => !known(n))
 
-/** Every plugin, enabled or not: the shipped ones built from the config, or `deps.plugins`. */
+/**
+ * Every plugin, enabled or not: the shipped ones built from the config, or `deps.plugins`.
+ * @param only The kinds the shipped plugins propose; ignored for `deps.plugins`.
+ * @throws {BadInput} When the config names a plugin that is not among them.
+ */
 function allPlugins(
   config: Config,
   deps: MainDeps,

@@ -212,7 +212,7 @@ interface Detected {
   note?: string | undefined
   /** What `detect` threw or timed out with, or why its answer was left out; absent when it answered a boolean or a {@link Detection}. */
   error?: string | undefined
-  /** `detect` threw or timed out, rather than answering something that is neither. */
+  /** Set when `detect` threw or timed out, rather than giving an answer that was left out. */
   threw?: boolean
 }
 
@@ -316,7 +316,7 @@ async function askRoots(
 export interface PluginState {
   name: string
   detected: boolean
-  /** Why it was not detected: what `detect` threw or timed out with, or why its answer was left out. Absent when `detect` answered. */
+  /** Why it was not detected: what `detect` threw or timed out with, or why its answer was left out. Absent when `detect` answered a boolean or a {@link Detection}. */
   reason?: string | undefined
   /** The note `detect` gave with its answer, whether the plugin is detected or not. */
   note?: string | undefined
@@ -364,21 +364,19 @@ export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Insp
  * Scope, discover and object, one plugin at a time in the order of `all`,
  * each hook awaited under its time limit. A plugin that throws or times out
  * in `detect`, or answers neither a boolean nor a {@link Detection}, is left
- * out; a note it gives is kept in `notes`. One that throws or times out
- * in `scope` or `discover` proposes nothing,
- * with a warning; one that throws or times out in `object` refuses every
- * candidate, since what it would object to is unknown. A path candidate
- * outside its owner's roots and the targets is refused `outside-roots`, and a
- * root the core refuses (see `rootProblem` in `./roots.ts`) is left out with a
- * warning; one
- * with both a path and a ref, or neither, or a path and an `at`, or an
- * unknown `costDescription`, is dropped. A `lost` one is held and protested `discard-user-data`, and an
- * `unmeasured` one protested `unmeasured`. A
- * {@link FatalRun} from any phase goes to the caller. Two candidates with the
- * same id, or path candidates with the same real path, are one: the first
- * plugin's stands, with a warning naming both. A path candidate with others
- * inside it requires them, so they go first, and one of them that does not
- * run blocks it.
+ * out; a note it gives is kept in `notes`. One that throws or times out in
+ * `scope` or `discover` proposes nothing, with a warning; one that throws or
+ * times out in `object` refuses every candidate, since what it would object
+ * to is unknown. A path candidate outside its owner's roots and the targets
+ * is refused `outside-roots`, and a root the core refuses (see `rootProblem`
+ * in `./roots.ts`) is left out with a warning; one with both a path and a
+ * ref, or neither, or a path and an `at`, or an unknown `costDescription`, is
+ * dropped. A `lost` one is held and protested `discard-user-data`, and an
+ * `unmeasured` one protested `unmeasured`. A {@link FatalRun} from any phase
+ * goes to the caller. Two candidates with the same id, or path candidates
+ * with the same real path, are one: the first plugin's stands, with a warning
+ * naming both. A path candidate with others inside it requires them, so they
+ * go first, and one of them that does not run blocks it.
  */
 export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Survey> {
   const warnings: string[] = []
