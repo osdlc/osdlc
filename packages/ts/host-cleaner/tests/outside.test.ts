@@ -58,16 +58,15 @@ function outsidePackage(): string {
   }
   const hc = join(dir, 'node_modules', '@osdlc', 'host-cleaner')
   mkdirSync(hc, { recursive: true })
-  const entryOf = (name: string) => ({
-    types: `./dist/${name}.d.ts`,
-    default: `./dist/${name}.js`,
-  })
+  const { exports } = JSON.parse(readFileSync(join(pkg, 'package.json'), 'utf8')) as {
+    exports: Record<string, unknown>
+  }
   writeFileSync(
     join(hc, 'package.json'),
     JSON.stringify({
       name: '@osdlc/host-cleaner',
       type: 'module',
-      exports: { './plugin': entryOf('plugin'), './testing': entryOf('testing') },
+      exports: { './plugin': exports['./plugin'], './testing': exports['./testing'] },
     }),
   )
   symlinkSync(join(pkg, 'dist'), join(hc, 'dist'), 'dir')

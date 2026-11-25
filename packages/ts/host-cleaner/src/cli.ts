@@ -365,8 +365,8 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliCont
   const git = gitDefinitionWith({ sweep: { only } })
   const all =
     deps.plugins ??
-    BUILT_IN_PLUGINS.map((d) => (d.name === git.name ? git : d)).map((d) =>
-      d.create({
+    BUILT_IN_PLUGINS.map((d) =>
+      (d.name === git.name ? git : d).create({
         settings: settingsOf(d.name, config.plugins[d.name] ?? {}, config),
         env: ctx.env,
         kit: pluginKit(d.name, { env: ctx.env }),
