@@ -345,7 +345,7 @@ describe('a plugin with no roots is held to the targets', () => {
         settings: z.strictObject({}),
         create: () => ({ name: 'cache', detect: () => true }),
       })
-      await survey([def.create({ settings: {}, only: [], env: {}, kit })], run)
+      await survey([def.create({ settings: {}, env: {}, kit })], run)
       renameSync(linked, `${linked}-moved`)
       symlinkSync(thesis, linked)
       for (const path of [linked, join(linked, 'sub'), join(thesis, 'sub')]) {

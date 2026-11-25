@@ -333,7 +333,7 @@ describe('a plugin built on a kit of its own', () => {
       settings: z.strictObject({}),
       create: () => cargoPlugin({ now: () => NOW, probe, which: () => '/bin/cargo' }),
     })
-    const plugin = def.create({ settings: {}, only: [], env: {}, kit: pluginKit('cargo') })
+    const plugin = def.create({ settings: {}, env: {}, kit: pluginKit('cargo') })
     const ctx = { cwd: root, targets: [root], allow: [] }
     const receipt = await clean(plan(await survey([plugin], ctx)), [plugin], ctx)
     expect(receipt.steps).toEqual([expect.objectContaining({ result: 'ok' })])
