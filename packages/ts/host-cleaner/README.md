@@ -300,7 +300,19 @@ one with the history folders the `vscode` plugin looks for. It is held,
 protested `discard-user-data`, and runs only with
 `--pick <id> --allow discard-user-data`. And Cursor's agents make and track
 their own worktrees under `~/.cursor/worktrees`, so the plugin refuses
-(`agent-worktree`) any `git` worktree there, whether or not Cursor runs.
+(`agent-worktree`, exported as `AGENT_WORKTREE`) any `git` worktree there,
+whether or not Cursor runs. The plugin is detected when its storage or that
+folder exists, so a host with only the `cursor-agent` CLI is covered too. A
+window state it cannot read is a `cursor-state-unreadable` note.
+
+```ts
+import { CURSOR_PLUGIN, cursorPlugin, cursorUserDir, survey } from '@osdlc/host-cleaner'
+
+// Cursor's `User` folder here: undefined on a platform the plugin does not know.
+const userDir = cursorUserDir(process.env, process.platform)
+const s = await survey([cursorPlugin({ userDir })], { cwd: process.cwd(), targets: [], allow: [] })
+const ofCursor = s.candidates.filter((c) => c.owner === CURSOR_PLUGIN)
+```
 
 ## The `orca` plugin
 

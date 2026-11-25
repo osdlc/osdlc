@@ -77,8 +77,9 @@ const CURSOR: Editor = {
   name: CURSOR_PLUGIN,
   product: 'Cursor',
   appDir: 'Cursor',
-  // `Cursor` and its `Cursor Helper (…)` processes on macOS, `cursor` on Linux, and the `cursor-agent` CLI.
-  process: /^cursor(?:-agent)?(?:\s|\\x20|$)/i,
+  // `Cursor` and its `Cursor Helper (…)` processes on macOS, `cursor` on Linux, and the `cursor-agent` CLI,
+  // which lsof cuts to its first 9 characters, `cursor-ag`.
+  process: /^cursor(?:-ag(?:ent)?)?(?:\s|\\x20|$)/i,
   keepsChat: true,
   agentWorktrees: join('.cursor', 'worktrees'),
 }
@@ -219,7 +220,8 @@ export interface VscodeOptions extends KitOptions {
 
 type Env = Readonly<Record<string, string | undefined>>
 
-const homeOf = (env: Env): string => env.HOME ?? homedir()
+/** `HOME`, or the OS's home when it is unset or empty. */
+const homeOf = (env: Env): string => env.HOME || homedir()
 
 /** `editor`'s `User` folder under `home` on `platform`; undefined where the plugin does not know it. */
 function userDirOf(editor: Editor, home: string, platform: NodeJS.Platform): string | undefined {
@@ -393,6 +395,8 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
   const withHistory = !editor.keepsChat
   const present = (): boolean =>
     root !== undefined && lstatSync(root, { throwIfNoEntry: false }) !== undefined
+  // Its agent worktrees are refused even where its storage is not, as on a host with only the CLI.
+  const detect = (): boolean => present() || (agentDir !== undefined && isDir(agentDir))
 
   /** The last discovery's entries by candidate id, kept for `object`. */
   let entries = new Map<string, Entry>()
@@ -413,7 +417,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
   return {
     name: editor.name,
     limits: { discover: DISCOVER_LIMIT_MS },
-    detect: present,
+    detect,
     roots: () => (root !== undefined && present() ? [root] : []),
     discover() {
       if (root === undefined || !present()) return []
@@ -447,7 +451,16 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
         if (e?.state === 'unknown') out.push(own(c, 'refuse', UNKNOWN_WORKSPACE, e.problem))
         if (e?.state === 'gone') gone.push({ c, local: e.local })
       }
-      const worktrees = all.filter(isGitWorktree)
+      const worktrees: PathCandidate[] = []
+      for (const c of all.filter(isGitWorktree)) {
+        if (agentDir !== undefined && within(canon(c.path), agentDir)) {
+          out.push(
+            own(c, 'refuse', AGENT_WORKTREE, `${editor.product}'s agents keep it (${agentDir})`),
+          )
+        } else {
+          worktrees.push(c)
+        }
+      }
       if (worktrees.length === 0 && gone.length === 0) return out
 
       // The window state outlives a quit, so it counts only while the editor runs, or may.
@@ -457,12 +470,6 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
       const windows = running && stateFile !== undefined ? openWindows(stateFile) : { paths: [] }
       for (const c of worktrees) {
         const real = canon(c.path)
-        if (agentDir !== undefined && within(real, agentDir)) {
-          out.push(
-            own(c, 'refuse', AGENT_WORKTREE, `${editor.product}'s agents keep it (${agentDir})`),
-          )
-          continue
-        }
         const procs = processesOf(editor, kit.running({ in: c.path }, ctx).names)
         if (procs.length > 0) {
           out.push(own(c, 'refuse', IN_USE, `${editor.product} works in it: ${procs.join(', ')}`))
@@ -519,7 +526,7 @@ function goneCandidate(
     kind: KIND,
     path: dir,
     why: editor.keepsChat
-      ? `${editor.product} kept state and chat history for ${e.local}, which no longer exists`
+      ? `${editor.product} kept state for ${e.local}, which no longer exists, in the storage where it keeps chat history`
       : `${editor.product} kept state for ${e.local}, which no longer exists${hasHistory ? `, with chat or agent history in ${e.history.join(', ')}` : ''}`,
     ...(bytes === null ? {} : { bytes }),
     // A `lost` candidate is held, and runs only with `--allow discard-user-data`.

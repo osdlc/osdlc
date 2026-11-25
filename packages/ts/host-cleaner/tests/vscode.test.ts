@@ -582,7 +582,7 @@ describe('cursor', () => {
         id,
         owner: 'cursor',
         path: dead,
-        why: `Cursor kept state and chat history for ${join(h.projects, 'dead')}, which no longer exists`,
+        why: `Cursor kept state for ${join(h.projects, 'dead')}, which no longer exists, in the storage where it keeps chat history`,
         costDescription: 'lost',
         held: true,
       }),
@@ -697,7 +697,7 @@ describe('cursor', () => {
     const s = await survey([cursorPlugin(h.options())], ctxOf(h.home))
     expect(s.candidates).toEqual([
       expect.objectContaining({
-        why: `Cursor kept state and chat history for ${join(h.projects, 'dead')}, which no longer exists`,
+        why: `Cursor kept state for ${join(h.projects, 'dead')}, which no longer exists, in the storage where it keeps chat history`,
         costDescription: 'lost',
         evidence: {
           kind: 'workspace-storage',
@@ -738,6 +738,50 @@ describe('cursor', () => {
         reason: 'Cursor works in it: cursor-agent (pid 22)',
       }),
     ])
+  })
+
+  test('detects Cursor by its agent worktrees alone, where its storage is not', async () => {
+    const h = home('Code')
+    const plugin = (platform: NodeJS.Platform) => cursorPlugin(h.options({ platform }))
+    expect(await plugin('darwin').detect(fakeContext())).toBe(false)
+    const wt = join(h.home, '.cursor', 'worktrees', 'repo', 'k3x')
+    mkdirSync(wt, { recursive: true })
+    for (const platform of ['darwin', 'linux', 'win32'] as const) {
+      expect(await plugin(platform).detect(fakeContext())).toBe(true)
+      expect(await plugin(platform).object!([worktree(wt)], fakeContext())).toEqual([
+        expect.objectContaining({ code: AGENT_WORKTREE }),
+      ])
+    }
+  })
+
+  test("knows the cursor-agent CLI by lsof's 9-character name", async () => {
+    const h = home('Cursor')
+    const wt = join(h.projects, 'wt')
+    mkdirSync(wt)
+    const agent = { pid: 23, command: 'cursor-ag', cwd: wt }
+    const plugin = cursorPlugin(h.options({ probe: probeOf([agent]) }))
+    expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
+      expect.objectContaining({ code: IN_USE, reason: 'Cursor works in it: cursor-ag (pid 23)' }),
+    ])
+  })
+
+  test('reads no process table when every worktree is an agent worktree', async () => {
+    const h = home('Cursor')
+    const wt = join(h.home, '.cursor', 'worktrees', 'repo', 'k3x')
+    mkdirSync(wt, { recursive: true })
+    let reads = 0
+    const probe: ProcessProbe = {
+      alive: () => true,
+      holders: () => {
+        reads += 1
+        return []
+      },
+    }
+    const plugin = cursorPlugin(h.options({ probe }))
+    expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
+      expect.objectContaining({ code: AGENT_WORKTREE }),
+    ])
+    expect(reads).toBe(0)
   })
 
   test("refuses git's worktree a Cursor window has open while Cursor runs", async () => {
