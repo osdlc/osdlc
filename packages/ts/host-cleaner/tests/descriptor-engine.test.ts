@@ -112,22 +112,22 @@ function build(
   const h = tempHome()
   cleanups.push(h.cleanup)
   const d = parseDescriptor(text, `${name}.yaml`)
-  const folder = (key: string): string => {
+  const osFolder = (key: string): string | undefined => {
     const p = d.paths[key]!
-    const f = (p.all ?? p[OS])!
+    return p.all ?? p[OS]
+  }
+  const folder = (key: string): string => {
+    const f = osFolder(key)!
     return f.startsWith('~/') ? join(h.home, f.slice(2)) : f
   }
   if (o.fill !== false) {
     for (const key of Object.keys(d.paths)) {
-      const p = d.paths[key]!
-      if ((p.all ?? p[OS]) === undefined) continue
+      if (osFolder(key) === undefined) continue
       mkdirSync(folder(key), { recursive: true })
       writeFileSync(join(folder(key), 'blob'), 'x')
     }
     for (const c of d.candidates) {
-      if (c.glob === undefined || (d.paths[c.path]!.all ?? d.paths[c.path]![OS]) === undefined) {
-        continue
-      }
+      if (c.glob === undefined || osFolder(c.path) === undefined) continue
       for (const n of ['a', 'b']) {
         const rel = c.glob.replace(/\/$/, '').replaceAll('*', n).replaceAll('?', n)
         mkdirSync(join(folder(c.path), rel), { recursive: true })
@@ -169,7 +169,7 @@ function age(dir: string, hours: number): void {
     try {
       age(p, hours)
     } catch {
-      // a file
+      // `p` is a file, which readdirSync cannot read.
     }
     utimesSync(p, at, at)
   }
@@ -579,14 +579,15 @@ candidates:
     expect(r.selfRoots).toEqual([r.path])
   })
 
-  test('the filesystem root', async () => {
-    refused(await refusal('/'), 'it is the filesystem root')
-  })
-
-  test('the home folder itself', async () => {
-    const r = await refusal('~/')
-    expect(r.path).toBe(r.b.home)
-    refused(r, 'it is the home folder')
+  test('the filesystem root and the home folder itself, which the format refuses too', () => {
+    const { home, cleanup } = tempHome()
+    cleanups.push(cleanup)
+    const at = { home, targets: [], checkouts: [], ownDirs: [] }
+    expect(pathProblem('/', at)).toBe('it is the filesystem root')
+    expect(pathProblem(home, at)).toBe('it is the home folder')
+    for (const folder of ['/', '~/']) {
+      expect(() => parseDescriptor(one(folder), 'x.yaml')).toThrow(/must name a folder below/)
+    }
   })
 
   test('a folder holding home', async () => {
@@ -688,6 +689,30 @@ candidates:
       `${state}: it holds host-cleaner's own folder ${join(state, 'host-cleaner')}`,
     ])
   })
+
+  test('a symlink written with a trailing /', async () => {
+    const b = build('x', one('~/.npm/'), { fill: false })
+    const real = join(b.home, 'npm-real')
+    mkdirSync(real)
+    writeFileSync(join(real, 'keep'), 'x')
+    symlinkSync(real, join(b.home, '.npm'))
+    const { survey: s } = await surveyAndClean(b.plugin)
+    expect(s.objections.filter((o) => o.by === 'x').map((o) => o.reason)).toEqual([
+      `${join(b.home, '.npm')}: it is a symlink`,
+    ])
+    expect(s.roots.x).toEqual([])
+    expect(existsSync(join(real, 'keep'))).toBe(true)
+  })
+
+  test("a folder inside host-cleaner's own", () => {
+    const h = tempHome()
+    cleanups.push(h.cleanup)
+    const own = join(h.home, '.local', 'state', 'host-cleaner')
+    const receipts = join(own, 'receipts')
+    mkdirSync(receipts, { recursive: true })
+    const at = { home: h.home, targets: [], checkouts: [], ownDirs: [own] }
+    expect(pathProblem(receipts, at)).toBe(`it is inside host-cleaner's own folder ${own}`)
+  })
 })
 
 describe('paths per OS, detect, system and supersededBy', () => {
@@ -754,7 +779,7 @@ candidates:
       'skipped: it describes data that needs root (system: true), which host-cleaner does not clean',
     )
     expect(skipReason(parseDescriptor(PIP_PER_OS, 'pip.yaml'))).toBeUndefined()
-    expect(await b.plugin.detect(fakeContext())).toBe(false)
+    expect(await b.plugin.detect(fakeContext())).toEqual({ active: false, note: skipReason(b.d) })
   })
 
   test('supersededBy: not detected while that plugin runs', async () => {
@@ -768,7 +793,10 @@ candidates:
           },
         },
       }).plugin
-    expect(await of(true).detect(fakeContext())).toBe(false)
+    expect(await of(true).detect(fakeContext())).toEqual({
+      active: false,
+      note: 'skipped: the plugin pip-code runs instead',
+    })
     expect(await of(false).detect(fakeContext())).toBe(true)
     expect(asked).toEqual(['pip-code', 'pip-code'])
   })
@@ -800,7 +828,7 @@ describe('candidates', () => {
     expect(existsSync(join(hub, 'models--b'))).toBe(true)
   })
 
-  test('past maxEntries the rest are left for a later run, with a note', async () => {
+  test('past maxEntries the rest are combined into one candidate that removes each', async () => {
     const b = build(
       'pip',
       `descriptor: 1
@@ -810,21 +838,77 @@ candidates:
   - { path: http, glob: '*/', maxEntries: 2, costDescription: re-download }
 `,
     )
-    for (const n of ['c', 'd']) mkdirSync(join(b.folder('http'), n))
+    const http = b.folder('http')
+    for (const n of ['c', 'd']) mkdirSync(join(http, n))
     const s = await survey([b.plugin], ctxOf())
-    expect(s.candidates.map((c) => c.path)).toEqual([
-      join(b.folder('http'), 'a'),
-      join(b.folder('http'), 'b'),
+    const rest = `pip:${join(http, 'c')}`
+    expect(s.candidates.map((c) => c.id)).toEqual([
+      `pip:${join(http, 'a')}`,
+      `pip:${join(http, 'b')}`,
+      rest,
     ])
-    expect(s.objections).toEqual([
-      {
-        by: 'pip',
-        candidate: `pip:${join(b.folder('http'), 'b')}`,
-        level: 'note',
-        code: 'more-entries',
-        reason: `2 more entries match */ in ${b.folder('http')}; they are listed once these are gone`,
-      },
-    ])
+    expect(s.candidates[2]!.evidence.rest).toEqual([join(http, 'c'), join(http, 'd')])
+    expect(s.candidates[2]!.held).toBeUndefined()
+    const { receipt } = await surveyAndClean(b.plugin)
+    expect(receipt.steps.map((x) => x.id)).toContain(rest)
+    for (const n of ['a', 'b', 'c', 'd']) expect(existsSync(join(http, n))).toBe(false)
+  })
+
+  test('the combined rest is held while one of its matches changed recently', async () => {
+    const b = build(
+      'pip',
+      `descriptor: 1
+paths:
+  http: { all: ~/.cache/pip/http }
+candidates:
+  - { path: http, glob: '*/', maxEntries: 1, costDescription: re-download }
+`,
+      { idleHours: 24 },
+    )
+    const http = b.folder('http')
+    age(http, 48)
+    writeFileSync(join(http, 'b', 'fresh'), 'x')
+    const s = await survey([b.plugin], ctxOf())
+    const rest = s.candidates.find((c) => c.evidence.rest !== undefined)!
+    expect(rest.evidence.rest).toEqual([join(http, 'b')])
+    expect(rest.held).toBe(true)
+  })
+
+  test('the combined rest leaves out a match on the ignore list', async () => {
+    const b = build(
+      'pip',
+      `descriptor: 1
+paths:
+  http: { all: ~/.cache/pip/http }
+candidates:
+  - { path: http, glob: '*/', maxEntries: 1, costDescription: re-download }
+`,
+    )
+    const http = b.folder('http')
+    for (const n of ['c', 'd']) mkdirSync(join(http, n, 'in'), { recursive: true })
+    const s = await survey([b.plugin], ctxOf({ ignore: [join(http, 'c'), join(http, 'd', 'in')] }))
+    expect(s.candidates.map((c) => c.evidence.rest)).toEqual([undefined, [join(http, 'b')]])
+  })
+
+  test('a glob that matches files gives one candidate per file', async () => {
+    const b = build(
+      'logs',
+      `descriptor: 1
+paths:
+  logs: { all: ~/.app/logs }
+candidates:
+  - { path: logs, glob: '*.log', costDescription: rebuild }
+`,
+      { fill: false },
+    )
+    const logs = b.folder('logs')
+    mkdirSync(logs, { recursive: true })
+    writeFileSync(join(logs, 'a.log'), 'x')
+    writeFileSync(join(logs, 'keep.txt'), 'x')
+    const { survey: s } = await surveyAndClean(b.plugin)
+    expect(s.candidates.map((c) => c.path)).toEqual([join(logs, 'a.log')])
+    expect(existsSync(join(logs, 'a.log'))).toBe(false)
+    expect(existsSync(join(logs, 'keep.txt'))).toBe(true)
   })
 
   test('globMatches walks one level per part and takes folders only with a trailing /', () => {
@@ -945,6 +1029,18 @@ describe('project', () => {
     )
     expect(existsSync(join(repo, 'bin'))).toBe(false)
     expect(existsSync(join(repo, 'App.csproj'))).toBe(true)
+  })
+
+  test('a target inside a repository: only build folders inside the target', async () => {
+    const b = build('dotnet', DOTNET_PROJECT)
+    const repo = dotnetCheckout(b.home)
+    const lib = join(repo, 'lib')
+    mkdirSync(join(lib, 'bin'), { recursive: true })
+    writeFileSync(join(lib, 'Lib.csproj'), '<Project/>')
+    const s = await survey([b.plugin], ctxOf({ targets: [lib] }))
+    expect(s.candidates.map((c) => c.path).sort()).toEqual(
+      [b.folder('nuget'), join(lib, 'bin')].sort(),
+    )
   })
 })
 
@@ -1132,7 +1228,7 @@ describe('variables (tier 2)', () => {
     expect(s.candidates.map((c) => c.path)).toEqual([mod])
   })
 
-  test('a variable with no value leaves its folder out: no candidate, no root', async () => {
+  test('a variable with no value leaves its folder out: no candidate, no root, and a note saying why', async () => {
     const NONE = `descriptor: 1
 vars:
   DIR:
@@ -1149,6 +1245,24 @@ candidates:
     const s = await survey([b.plugin], ctxOf())
     expect(s.candidates.map((c) => c.path)).toEqual([other])
     expect(s.roots.tool).toEqual([other])
+    expect(s.notes.tool).toBe('data is left out: ${DIR} has no value (env TOOL_DIR: not set)')
+  })
+
+  test('a variable no folder on this OS uses is not resolved: its command does not run', async () => {
+    const WIN_ONLY = `descriptor: 1
+vars:
+  WIN:
+    - command: [tool, where]
+paths:
+  win: { windows: '\${WIN}' }
+  other: { all: ~/.cache/other }
+candidates:
+  - { path: other, costDescription: rebuild }
+`
+    const b = buildVars('tool', WIN_ONLY, { programs: { tool: { where: { stdout: '/w\n' } } } })
+    filled(b.home, '.cache/other')
+    await survey([b.plugin], ctxOf())
+    expect(b.calls).toEqual([])
   })
 
   test('each survey works the folder out again; a store moved after the plan is not deleted', async () => {

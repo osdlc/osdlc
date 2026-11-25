@@ -37,7 +37,8 @@ import { DescriptorLoadError, type DescriptorSources } from './descriptor/load.t
 import { DescriptorError } from './descriptor/schema.ts'
 import { pluginKit } from './kit.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
-import { UnknownPlugin, loadPlugins, runsAmong, selectPlugins } from './registry.ts'
+import { UnknownPlugin, loadPlugins, selectPlugins, supersession } from './registry.ts'
+import { realOr } from './roots.ts'
 import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
 import {
   SelectionError,
@@ -289,7 +290,7 @@ const terminalChecklist: Checklist = (question, items) =>
 export interface MainDeps {
   /** The plugins that exist; default is the built-ins and the descriptors, built from the config. */
   plugins?: readonly Plugin[]
-  /** The folder of shipped descriptors. Defaults to the package's `descriptors/`. */
+  /** The folder of shipped descriptors. Defaults to `SHIPPED_DESCRIPTORS` in descriptor/load.ts. */
   shippedDescriptors?: string
   confirm?: Confirm
   /** Answers `clean -i`. Defaults to a checklist on the terminal. */
@@ -399,22 +400,19 @@ const unknownPlugins = (config: Config, known: (name: string) => boolean): strin
 /**
  * The config and the plugins this run uses: the built-ins and the descriptors
  * loaded, the config checked against them, each built from its entry (or
- * `deps.plugins`), then chosen by flag. A descriptor's `supersededBy` plugin
- * runs when it is among those chosen and detects.
+ * `deps.plugins`), then chosen by flag. `supersededBy` is answered as
+ * described at `supersession` in registry.ts.
  */
 function setUp(
   v: SweepValues,
   ctx: CliContext,
   deps: MainDeps,
 ): { config: Config; plugins: Plugin[] } {
-  let chosen: readonly Plugin[] = []
-  const { definitions } = loadPlugins(sourcesFor(v, ctx, deps), {
-    runs: runsAmong(() => chosen),
-  })
+  const superseded = supersession()
+  const { definitions } = loadPlugins(sourcesFor(v, ctx, deps), { runs: superseded.runs })
   const config = loadConfig(v, ctx, definitions)
   const plugins = pluginsFor(v, config, definitions, deps, ctx)
-  chosen = plugins
-  return { config, plugins }
+  return { config, plugins: deps.plugins === undefined ? superseded.track(plugins) : plugins }
 }
 
 /** The plugins this run uses: `definitions` built from the config, or `deps.plugins`, then chosen by flag. */
@@ -446,7 +444,8 @@ function pluginsFor(
   return chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins))
 }
 
-const homeOf = (ctx: CliContext): string => ctx.env.HOME ?? homedir()
+/** The home folder, from `HOME` when set, with no trailing slash. */
+const homeOf = (ctx: CliContext): string => (ctx.env.HOME ?? homedir()).replace(/(.)\/+$/, '$1')
 
 /** `id` with the home folder after its `<kind>:` written `~`, as the text output shows it. */
 export function tildeId(id: string, home: string): string {
@@ -466,6 +465,17 @@ export function untildeId(entry: string, home: string): string {
   return tilde && (at === 0 || colon > 0) ? `${entry.slice(0, at)}${home}${rest.slice(1)}` : entry
 }
 
+/**
+ * `entry`, as typed to `--spare`, with `~` taken as the home folder both as
+ * `home` spells it and by its real path, when the two differ: a candidate's
+ * path may be either, and a spare that matches neither would let it be deleted.
+ */
+export function untildeSpare(entry: string, home: string): string[] {
+  const given = untildeId(entry, home)
+  const real = untildeId(entry, realOr(home))
+  return given === real ? [given] : [given, real]
+}
+
 function contextFor(
   targets: readonly string[],
   config: Config,
@@ -480,6 +490,7 @@ function contextFor(
     cwd: ctx.cwd,
     targets: chosen.map((t) => resolve(ctx.cwd, expandHome(t, home))),
     targetsGiven: targets.length > 0 || config.targets.length > 0,
+    home,
     allow,
     ignore: ignoreFor(config, ignore, ctx),
   }
@@ -636,7 +647,7 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
       targetsGiven: cctx.targetsGiven,
       ignore: cctx.ignore,
       pick: v.pick.map((e) => untildeId(e, homeOf(ctx))),
-      spare: v.spare.map((e) => untildeId(e, homeOf(ctx))),
+      spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
       allow: v.allow,
     })
   } catch (err) {
@@ -803,7 +814,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         targetsGiven: cctx.targetsGiven,
         ignore: cctx.ignore,
         pick: v.pick.map((e) => untildeId(e, homeOf(ctx))),
-        spare: v.spare.map((e) => untildeId(e, homeOf(ctx))),
+        spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
         allow: v.allow,
         now,
       })
@@ -822,6 +833,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         cwd: ctx.cwd,
         targets: plan.targets,
         targetsGiven: plan.targetsGiven,
+        home: homeOf(ctx),
         allow: plan.allow,
         ignore: ignoreFor(config, v.ignore, ctx),
       }

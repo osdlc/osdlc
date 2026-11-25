@@ -13,7 +13,7 @@
  * user file can stand in for a shipped one that no longer parses.
  */
 
-import { readdirSync, type Dirent } from 'node:fs'
+import { readdirSync, statSync, type Dirent } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -25,7 +25,7 @@ export const SHIPPED_DESCRIPTORS = fileURLToPath(new URL('../../descriptors/', i
 /** The extensions read in a descriptor folder; the reader takes YAML and JSON. */
 const DESCRIPTOR_EXTENSIONS = ['.yaml', '.yml', '.json'] as const
 
-/** What a descriptor's name, its file name less the extension, must look like: as `supersededBy` names a plugin. */
+/** A plugin name, the pattern `supersededBy` is checked against in schema.ts. */
 const NAME = /^[a-z][a-z0-9-]*$/
 
 export type DescriptorSource = 'shipped' | 'user' | 'flag'
@@ -54,17 +54,42 @@ export class DescriptorLoadError extends Error {
   override name = 'DescriptorLoadError'
 }
 
-interface Found {
-  name: string
-  source: DescriptorSource
-  path: string
-}
+type Found = Pick<LoadedDescriptor, 'name' | 'source' | 'path'>
 
 const nameOf = (path: string): string => basename(path, extname(path))
 
+const hasDescriptorExtension = (path: string): boolean =>
+  (DESCRIPTOR_EXTENSIONS as readonly string[]).includes(extname(path).toLowerCase())
+
 /**
- * The descriptor files in `dir`, by name: entries with one of
- * {@link DESCRIPTOR_EXTENSIONS}, not hidden, not folders. A missing folder has none.
+ * The `--descriptor` files, each named once.
+ *
+ * @throws DescriptorLoadError for a file without one of {@link DESCRIPTOR_EXTENSIONS}
+ */
+function flagFiles(paths: readonly string[]): string[] {
+  const unique = [...new Set(paths)]
+  const other = unique.find((p) => !hasDescriptorExtension(p))
+  if (other !== undefined) {
+    throw new DescriptorLoadError(
+      `descriptor ${other}: not a descriptor file; use ${DESCRIPTOR_EXTENSIONS.join(', ')}`,
+    )
+  }
+  return unique
+}
+
+/** Whether `e` is a file, or a link to one; a dangling link is none. */
+function isFile(path: string, e: Dirent): boolean {
+  if (!e.isSymbolicLink()) return e.isFile()
+  try {
+    return statSync(path).isFile()
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The descriptor files in `dir`, by name: files, or links to files, with one
+ * of {@link DESCRIPTOR_EXTENSIONS} in any case, not hidden. A missing folder has none.
  *
  * @throws DescriptorLoadError for two files of one name, or a name that is no plugin name
  */
@@ -81,71 +106,71 @@ function filesIn(dir: string, source: DescriptorSource): Found[] {
   const files = entries
     .filter(
       (e) =>
-        !e.isDirectory() &&
-        !e.name.startsWith('.') &&
-        (DESCRIPTOR_EXTENSIONS as readonly string[]).includes(extname(e.name)),
+        !e.name.startsWith('.') && hasDescriptorExtension(e.name) && isFile(join(dir, e.name), e),
     )
     .map((e) => join(dir, e.name))
     .sort()
-  return files.map((path) => found(path, source, files))
+  return foundIn(files, source)
 }
 
-function found(path: string, source: DescriptorSource, all: readonly string[]): Found {
-  const name = nameOf(path)
-  if (!NAME.test(name)) {
-    throw new DescriptorLoadError(
-      `descriptor ${path}: "${name}" is not a plugin name: lowercase letters, digits and -, starting with a letter`,
-    )
+/**
+ * `paths` as descriptors of `source`, in order.
+ *
+ * @throws DescriptorLoadError for two paths of one name, or a name that is no plugin name
+ */
+function foundIn(paths: readonly string[], source: DescriptorSource): Found[] {
+  const byName = new Map<string, string>()
+  for (const path of paths) {
+    const name = nameOf(path)
+    if (!NAME.test(name)) {
+      throw new DescriptorLoadError(
+        `descriptor ${path}: "${name}" is not a plugin name: lowercase letters, digits and -, starting with a letter`,
+      )
+    }
+    const twin = byName.get(name)
+    if (twin !== undefined) {
+      throw new DescriptorLoadError(`${twin} and ${path} are both the descriptor ${name}; keep one`)
+    }
+    byName.set(name, path)
   }
-  const twins = all.filter((p) => nameOf(p) === name)
-  if (twins.length > 1) {
-    throw new DescriptorLoadError(
-      `${twins.join(' and ')} are both the descriptor ${name}; keep one`,
-    )
-  }
-  return { name, source, path }
+  return [...byName].map(([name, path]) => ({ name, source, path }))
 }
 
 /**
  * The descriptors a run uses, sorted by name: the shipped ones, each replaced
  * by a user file of the same name, then each replaced by a `--descriptor` file
- * of the same name. `reserved` are the built-in plugins' names.
+ * of the same name.
  *
  * @throws DescriptorLoadError for a descriptor named as a built-in plugin, two
- *   files of one name in one source, or a file name that is no plugin name
+ *   files of one name in one source, a file name that is no plugin name, or a
+ *   `--descriptor` file that is not YAML or JSON by its extension
  * @throws DescriptorError for a file the run uses that can't be read or is not a descriptor
  */
 export function loadDescriptors(
   sources: DescriptorSources,
-  reserved: readonly string[],
+  builtIns: readonly string[],
 ): LoadedDescriptor[] {
-  const flag = sources.flag ?? []
   const layers = [
     filesIn(sources.shipped ?? SHIPPED_DESCRIPTORS, 'shipped'),
     sources.user === undefined ? [] : filesIn(sources.user, 'user'),
-    flag.map((path) => found(path, 'flag', flag)),
+    foundIn(flagFiles(sources.flag ?? []), 'flag'),
   ]
-  const chosen = new Map<string, Found & { replaces?: Found }>()
+  const chosen = new Map<string, Omit<LoadedDescriptor, 'descriptor'>>()
   for (const layer of layers) {
     for (const f of layer) {
-      if (reserved.includes(f.name)) {
+      if (builtIns.includes(f.name)) {
         throw new DescriptorLoadError(
           `descriptor ${f.path} is named ${f.name}, as the built-in plugin; every plugin has its own name, so rename the file`,
         )
       }
       const before = chosen.get(f.name)
-      chosen.set(f.name, before === undefined ? f : { ...f, replaces: before })
+      chosen.set(
+        f.name,
+        before === undefined ? f : { ...f, replaces: { source: before.source, path: before.path } },
+      )
     }
   }
   return [...chosen.values()]
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-    .map((f) => ({
-      name: f.name,
-      source: f.source,
-      path: f.path,
-      ...(f.replaces === undefined
-        ? {}
-        : { replaces: { source: f.replaces.source, path: f.replaces.path } }),
-      descriptor: readDescriptor(f.path),
-    }))
+    .map((f) => ({ ...f, descriptor: readDescriptor(f.path) }))
 }

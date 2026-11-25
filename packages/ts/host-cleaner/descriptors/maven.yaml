@@ -5,8 +5,10 @@
 # may, and can download into the repository it would then measure. Set
 # plugins.maven.vars.LOCAL_REPOSITORY in the config for a moved one. No Maven
 # command prunes the whole repository, so it is removed as a folder once
-# nothing in it changed for 30 days. What `mvn install` put there comes back
-# only by building those projects again.
+# nothing in it changed for 30 days. Its cost is `rebuild`: what `mvn install`
+# put there comes back only by building those projects again. While `mvn` or
+# Maven's launcher (a java process whose main class is
+# org.codehaus.plexus.classworlds.launcher.Launcher) runs, it is refused in-use.
 descriptor: 1
 store: maven
 detect:
@@ -18,5 +20,7 @@ paths:
   repository: { macos: '${LOCAL_REPOSITORY}', linux: '${LOCAL_REPOSITORY}' }
 candidates:
   - path: repository
-    costDescription: re-download
+    costDescription: rebuild
     idleHours: 720
+inUse:
+  processes: [mvn, classworlds]

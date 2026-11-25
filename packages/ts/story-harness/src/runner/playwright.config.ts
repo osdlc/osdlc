@@ -1,16 +1,26 @@
 /**
- * Playwright config for the story baseline check. Read inside the Linux
- * container by the `story-shots` command (`story-shots.sh`), from the built
- * runner folder, which holds JavaScript. It reads these variables, which
- * `story-shots.sh` sets with the others the spec reads:
+ * Playwright config for the story baseline check, the accessibility check and
+ * the keyboard walk. Read inside the Linux container by the `story-shots`
+ * command (`story-shots.sh`), from the built runner folder, which holds
+ * JavaScript. It reads these variables, which `story-shots.sh` sets with the
+ * others the specs read:
  *
+ * - `MODE`: `check` or `update` (screenshots), `a11y` (axe-core) or `walk`
+ *   (keyboard walk);
  * - `STORYBOOK_DIR`: the mounted `storybook-static`;
  * - `BASELINE_DIR`: where the baseline PNGs are read and written;
- * - `ARTIFACTS_DIR`: where expected/actual/diff images of a failure go;
+ * - `ARTIFACTS_DIR`: where expected/actual/diff images of a failure, and the
+ *   a11y and walk records, go;
  * - `SHOT_WORKERS`: Playwright workers.
  */
 import { defineConfig } from '@playwright/test'
 import { VIEWPORT } from './story.ts'
+
+// The spec each mode runs; any other mode is the screenshot check.
+const TEST_FILES: Record<string, string> = {
+  a11y: 'story-a11y.e2e.js',
+  walk: 'story-walk.e2e.js',
+}
 
 // Inside the container only, so it cannot clash with a port on the host.
 const PORT = 14759
@@ -19,7 +29,7 @@ const baselineDir = process.env.BASELINE_DIR ?? './baselines'
 
 export default defineConfig({
   testDir: '.',
-  testMatch: 'story-shots.e2e.js',
+  testMatch: TEST_FILES[process.env.MODE ?? ''] ?? 'story-shots.e2e.js',
   outputDir: process.env.ARTIFACTS_DIR ?? './test-results',
   snapshotPathTemplate: `${baselineDir}/{arg}{ext}`,
   fullyParallel: true,

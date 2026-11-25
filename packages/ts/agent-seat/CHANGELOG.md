@@ -1,5 +1,12 @@
 # @osdlc/agent-seat
 
+## 0.10.3
+
+### Patch Changes
+
+- Updated dependencies [ebdb5ad]
+  - @osdlc/typed-git@0.22.0
+
 ## 0.10.2
 
 ### Patch Changes

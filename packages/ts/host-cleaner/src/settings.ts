@@ -7,11 +7,11 @@
  * prints the same schemas' fields and defaults through `configFields`.
  */
 
-import { configFields, validateStandard } from '@osdlc/config-layers'
+import { configFields, getIn, validateStandard } from '@osdlc/config-layers'
 import { z } from 'zod'
 
 import { DEFAULT_IDLE_HOURS } from './kit.ts'
-import { BUILT_IN_PLUGINS } from './registry.ts'
+import { BUILT_IN_PLUGINS } from './builtins.ts'
 import type { PluginDefinition } from './types.ts'
 
 const enabled = z
@@ -97,34 +97,23 @@ export function effectiveSettings(
     const raw = plugins[name] ?? {}
     const value = settingsOf(name, raw, shared, defs)
     const fields = configFields({ [name]: schemaOf(name, defs)! })
-    // The core's `enabled` first, as `config` has always listed it.
+    // The core's `enabled` first, ahead of the plugin's own settings.
     fields.sort((a, b) => Number(b.path[1] === 'enabled') - Number(a.path[1] === 'enabled'))
     out[name] = fields.map((f) => {
       const at = f.path.slice(1)
       const key = at.join('.')
       return {
         key,
-        value: valueAt(value, at),
+        value: getIn(value, at).value,
         default: key === 'idleHours' ? DEFAULT_IDLE_HOURS : f.default,
-        source:
-          valueAt(raw, at) !== undefined
-            ? 'config'
-            : key === 'idleHours' && shared.idleHours !== undefined
-              ? 'shared'
-              : 'default',
+        source: getIn(raw, at).found
+          ? 'config'
+          : key === 'idleHours' && shared.idleHours !== undefined
+            ? 'shared'
+            : 'default',
         description: f.description,
       }
     })
   }
   return out
-}
-
-/** The value at `path` in nested `record`, such as a descriptor's `vars.GOPATH`. */
-function valueAt(record: Record<string, unknown>, path: readonly string[]): unknown {
-  let at: unknown = record
-  for (const part of path) {
-    if (typeof at !== 'object' || at === null || !Object.hasOwn(at, part)) return undefined
-    at = (at as Record<string, unknown>)[part]
-  }
-  return at
 }

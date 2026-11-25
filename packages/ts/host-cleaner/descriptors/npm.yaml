@@ -4,7 +4,9 @@
 # .npmrc), or else ~/.npm. It is removed as a folder once idle, which is what
 # `npm cache clean --force` does; npm can't be pointed at this folder, since
 # its `cache` setting names the folder above it. The npx cache and the logs
-# are left out.
+# are left out. npm and npx both use the cache, and either may show in `ps` as
+# `node .../npm-cli.js` or `node .../npx-cli.js`, so each of those names
+# refuses it in-use.
 descriptor: 1
 store: npm
 detect:
@@ -21,4 +23,4 @@ candidates:
   - path: cache
     costDescription: re-download
 inUse:
-  processes: [npm]
+  processes: [npm, npx, npm-cli, npx-cli]

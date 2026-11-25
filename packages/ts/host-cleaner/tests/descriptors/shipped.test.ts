@@ -86,10 +86,7 @@ const DEFAULTS: Record<Store, Record<string, Record<TestedOs, string>>> = {
     cache: { macos: 'Library/Caches/pnpm', linux: '.cache/pnpm' },
   },
   uv: { cache: both('.cache/uv') },
-  yarn: {
-    berry: both('.yarn/berry/cache'),
-    classic: { macos: 'Library/Caches/Yarn', linux: '.cache/yarn' },
-  },
+  yarn: { classic: { macos: 'Library/Caches/Yarn', linux: '.cache/yarn' } },
 }
 
 /**
@@ -104,11 +101,22 @@ const RUNNING: Partial<Record<Store, { command: string; shown: string }>> = {
       '/usr/bin/java -Xmx512m -cp /home/me/.gradle/wrapper/dists/gradle-8.10-bin/6o1bb8kk/gradle-8.10/lib/gradle-launcher-8.10.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.10',
     shown: 'java',
   },
+  maven: {
+    command:
+      '/usr/bin/java -classpath /opt/maven/boot/plexus-classworlds-2.8.0.jar -Dclassworlds.conf=/opt/maven/bin/m2.conf -Dmaven.home=/opt/maven org.codehaus.plexus.classworlds.launcher.Launcher package',
+    shown: 'java',
+  },
   npm: { command: 'node /usr/local/bin/npm install', shown: 'node' },
   pnpm: { command: 'node /opt/homebrew/bin/pnpm dev', shown: 'node' },
   uv: { command: '/home/me/.local/bin/uv sync', shown: 'uv' },
   yarn: { command: 'node /usr/local/bin/yarn install', shown: 'node' },
 }
+
+/**
+ * The first fake process id, above any real one (Linux's pid_max is at most
+ * 2^22), so the kit never leaves a fake row out as this process or an ancestor.
+ */
+const PID = 5_000_000
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -122,16 +130,15 @@ interface Processes {
 }
 
 /**
- * A process table: `cwd` maps a folder to the processes working in it, for
- * the probe; `/` lists every process, read by `ps` as a child of init with
- * `command` as its command line.
+ * A process table where no process works in any folder, and `ps` lists
+ * `running`, each a child of init with `command` as its command line.
  */
-const processes = (table: Record<string, ProcessHolder[]> = {}): Processes => ({
-  probe: { alive: () => false, holders: (path) => table[path] ?? [] },
+const processes = (running: ProcessHolder[] = []): Processes => ({
+  probe: { alive: () => false, holders: () => [] },
   ps: {
     run: () => ({
       exitCode: 0,
-      stdout: [{ pid: 1, command: '/sbin/init' }, ...(table['/'] ?? [])]
+      stdout: [{ pid: 1, command: '/sbin/init' }, ...running]
         .map((h) => `${h.pid} ${h.pid === 1 ? 0 : 1} ${h.command}\n`)
         .join(''),
       stderr: '',
@@ -250,17 +257,11 @@ const actions = (b: Built): string[][] => b.deleting.map((c) => c.argv)
 const storeEntries = <V>(r: Partial<Record<Store, V>>): Array<[Store, V]> =>
   Object.entries(r) as Array<[Store, V]>
 
-const ctxOf = (over: Partial<RunCtx> = {}): RunCtx => ({
-  cwd: '/',
-  targets: [],
-  allow: [],
-  ...over,
-})
+const CTX: RunCtx = { cwd: '/', targets: [], allow: [] }
 
-async function surveyAndClean(plugin: Plugin, allow: string[] = []) {
-  const ctx = ctxOf({ allow })
-  const s = await survey([plugin], ctx)
-  return { survey: s, receipt: await clean(plan(s, { allow }), [plugin], ctx) }
+async function surveyAndClean(plugin: Plugin) {
+  const s = await survey([plugin], CTX)
+  return { survey: s, receipt: await clean(plan(s, { allow: [] }), [plugin], CTX) }
 }
 
 /** Sets every modification time under `dir`, and its own, to `hours` ago. */
@@ -345,7 +346,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
           os,
           program === undefined ? {} : { programs: { [program]: () => ({}) } },
         )
-        const s = await survey([b.plugin], ctxOf())
+        const s = await survey([b.plugin], CTX)
         const c = s.candidates[0] as PathCandidate
         const outside = tempHome()
         cleanups.push(outside.cleanup)
@@ -360,7 +361,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
 
     test.each(STORES)('%s: delete throws for a folder outside its roots', async (name) => {
       const b = build(name, os)
-      const s = await survey([b.plugin], ctxOf())
+      const s = await survey([b.plugin], CTX)
       const outside = tempHome()
       cleanups.push(outside.cleanup)
       writeFileSync(join(outside.home, 'blob'), 'x')
@@ -376,12 +377,12 @@ describe.each(OSES_TESTED)('on %s', (os) => {
     test.each(storeEntries(RUNNING))(
       '%s: its program running refuses every candidate',
       async (name, { command, shown }) => {
-        const b = build(name, os, { processes: processes({ '/': [{ pid: 7, command }] }) })
-        const s = await survey([b.plugin], ctxOf())
+        const b = build(name, os, { processes: processes([{ pid: PID, command }]) })
+        const s = await survey([b.plugin], CTX)
         const inUse = s.objections.filter((o) => o.code === IN_USE)
         expect(s.candidates.length).toBeGreaterThan(0)
         expect(inUse.map((o) => o.candidate).sort()).toEqual(ids(s.candidates))
-        expect(inUse.map((o) => o.reason)).toContain(`running: ${shown} (pid 7)`)
+        expect(inUse.map((o) => o.reason)).toContain(`running: ${shown} (pid ${PID})`)
       },
     )
 
@@ -390,9 +391,9 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       async (name) => {
         const others = Object.entries(RUNNING)
           .filter(([store]) => store !== name)
-          .map(([, r], i) => ({ pid: 10 + i, command: r.command }))
-        const b = build(name, os, { processes: processes({ '/': others }) })
-        const s = await survey([b.plugin], ctxOf())
+          .map(([, r], i) => ({ pid: PID + 1 + i, command: r.command }))
+        const b = build(name, os, { processes: processes(others) })
+        const s = await survey([b.plugin], CTX)
         expect(s.objections.filter((o) => o.code === IN_USE)).toEqual([])
       },
     )
@@ -404,7 +405,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       age(b.folder('cache'), 48)
       const { survey: s, receipt } = await surveyAndClean(b.plugin)
       expect(ids(s.candidates)).toEqual(
-        ids([{ id: `pnpm:${b.folder('cache')}` }, { id: `pnpm:${b.folder('store')}` }]),
+        [`pnpm:${b.folder('cache')}`, `pnpm:${b.folder('store')}`].sort(),
       )
       // pnpm store path prints nothing here, so the default folder is used.
       expect(b.deleting.map((c) => [c.argv, c.opts.cwd])).toEqual([
@@ -476,9 +477,18 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       expect(existsSync(join(b.folder('wrapper'), 'b'))).toBe(true)
     })
 
-    test('a running Gradle daemon refuses every candidate', async () => {
-      const table = { '/': [{ pid: 9, command: RUNNING.gradle!.command }] }
-      const b = build('gradle', os, { processes: processes(table) })
+    test.each([
+      ['a Gradle daemon', RUNNING.gradle!.command],
+      [
+        'a --no-daemon build through the wrapper',
+        '/usr/bin/java -classpath /home/me/app/gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain --no-daemon build',
+      ],
+      [
+        'a --no-daemon build in its own JVM',
+        '/usr/bin/java -cp /home/me/.gradle/wrapper/dists/gradle-8.10-bin/6o1bb8kk/gradle-8.10/lib/gradle-launcher-8.10.jar org.gradle.launcher.GradleMain --no-daemon build',
+      ],
+    ])('%s running refuses every candidate', async (_, command) => {
+      const b = build('gradle', os, { processes: processes([{ pid: PID, command }]) })
       age(b.folder('caches'), 169)
       const { survey: s, receipt } = await surveyAndClean(b.plugin)
       expect(s.candidates).toHaveLength(3)
@@ -500,6 +510,17 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       expect(receipt.steps.map((st) => st.result)).toEqual(['ok'])
       expect(readdirSync(npm).sort()).toEqual(['_logs', '_npx'])
     })
+
+    test.each([
+      'node /opt/homebrew/bin/npx -y some-tool',
+      'node /home/me/.volta/tools/image/node/20.0.0/lib/node_modules/npm/bin/npm-cli.js install',
+      'node /usr/lib/node_modules/npm/bin/npx-cli.js -y some-tool',
+    ])('`%s` running refuses the cache', async (command) => {
+      const b = build('npm', os, { processes: processes([{ pid: PID, command }]) })
+      const s = await survey([b.plugin], CTX)
+      const inUse = s.objections.filter((o) => o.code === IN_USE)
+      expect(inUse.map((o) => o.candidate)).toEqual([`npm:${b.folder('cache')}`])
+    })
   })
 
   describe('pip', () => {
@@ -515,13 +536,17 @@ describe.each(OSES_TESTED)('on %s', (os) => {
   })
 
   describe('yarn', () => {
-    test("removes Berry's and Classic's caches once idle, each on its own", async () => {
+    test("removes Classic's idle cache, and leaves Berry's, which Plug'n'Play projects run from", async () => {
       const b = build('yarn', os)
+      const berry = join(b.home, '.yarn', 'berry', 'cache')
+      mkdirSync(berry, { recursive: true })
+      writeFileSync(join(berry, 'pkg.zip'), 'x')
+      age(berry, 721)
       age(b.folder('classic'), 25)
       const { survey: s, receipt } = await surveyAndClean(b.plugin)
-      expect(s.candidates.find((c) => c.path === b.folder('berry'))!.held).toBe(true)
+      expect(ids(s.candidates)).toEqual([`yarn:${b.folder('classic')}`])
       expect(receipt.steps.map((st) => st.id)).toEqual([`yarn:${b.folder('classic')}`])
-      expect(existsSync(b.folder('berry'))).toBe(true)
+      expect(existsSync(join(berry, 'pkg.zip'))).toBe(true)
       expect(existsSync(b.folder('classic'))).toBe(false)
     })
   })
@@ -533,6 +558,8 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       const held = await surveyAndClean(fresh.plugin)
       expect(held.survey.candidates[0]!.held).toBe(true)
       expect(held.receipt.steps).toEqual([])
+
+      expect(held.survey.candidates[0]!.costDescription).toBe('rebuild')
 
       const idle = build('maven', os)
       age(idle.folder('repository'), 721)
@@ -589,7 +616,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
     test('holds the module cache until it sat 30 days unchanged', async () => {
       const b = build('go', os)
       age(b.folder('modcache'), 719)
-      const s = await survey([b.plugin], ctxOf())
+      const s = await survey([b.plugin], CTX)
       expect(s.candidates.find((c) => c.path === b.folder('modcache'))!.held).toBe(true)
     })
 
@@ -733,16 +760,6 @@ describe.each(OSES_TESTED)('on %s', (os) => {
         }),
       ],
       byEnv('uv', 'XDG_CACHE_HOME', 'xdg', 'cache', 'xdg/uv'),
-      byEnv('yarn', 'YARN_GLOBAL_FOLDER', 'berry', 'berry', 'berry/cache'),
-      [
-        'yarn',
-        'globalFolder in ~/.yarnrc.yml',
-        (h) => ({
-          files: { '.yarnrc.yml': `globalFolder: ${at(h, 'berry')}\n` },
-          moved: { berry: at(h, 'berry/cache') },
-        }),
-      ],
-      byEnv('yarn', 'XDG_DATA_HOME', 'data', 'berry', 'data/yarn/berry/cache'),
       byEnv('yarn', 'YARN_CACHE_FOLDER', 'classic', 'classic'),
       byEnv('yarn', 'XDG_CACHE_HOME', 'xdg', 'classic', 'xdg/yarn'),
     ]
@@ -756,7 +773,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       '%s follows %s, and leaves the default folder alone',
       async (name, _how, moves) => {
         const b = build(name, os, { moves })
-        const s = await survey([b.plugin], ctxOf())
+        const s = await survey([b.plugin], CTX)
         expect(s.warnings).toEqual([])
         expect(s.objections.filter((o) => o.code === OUTSIDE_ROOTS)).toEqual([])
         expect(s.candidates.map((c) => c.path).sort()).toEqual(expectedPaths(b))
@@ -768,7 +785,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       async () => {
         for (const name of ['go', 'pip'] as const) {
           const b = build(name, os, { moves: (h) => ({ env: { XDG_CACHE_HOME: at(h, 'xdg') } }) })
-          const s = await survey([b.plugin], ctxOf())
+          const s = await survey([b.plugin], CTX)
           expect(s.candidates.map((c) => c.path).sort(), name).toEqual(expectedPaths(b))
         }
       },
