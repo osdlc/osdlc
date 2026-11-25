@@ -654,10 +654,12 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       const refused = problems(ctx)
       const now = rootPaths(refused)
       const paths = ev.rest ?? [path]
+      // Of a combined candidate, the reason names the match at fault.
+      const named = (p: string): string => (ev.rest === undefined ? 'it' : p)
       const realNow = new Set(now.map(realOr))
       for (const p of paths) {
         if (!realNow.has(realOr(p)) && containedIn(now, p) === null) {
-          return `${p} is not inside ${name}'s roots`
+          return `${named(p)} is not inside ${name}'s roots`
         }
       }
       const entry = d.candidates[ev.candidate ?? -1]
@@ -668,7 +670,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       const glob = entry.glob === undefined ? undefined : globParts(entry.glob)
       for (const p of paths) {
         if (glob === undefined ? p !== folder : !isGlobMatch(folder, glob, p)) {
-          return `${p} is no longer ${entry.glob === undefined ? folder : `a match of ${entry.glob} in ${folder}`}`
+          return `${named(p)} is no longer ${entry.glob === undefined ? folder : `a match of ${entry.glob} in ${folder}`}`
         }
       }
       if (actionOf(entry) !== ev.action) return 'how it would be deleted changed since the plan'
