@@ -112,6 +112,8 @@ const psOf = (rows: Array<{ pid: number; args: string }> | Error = []): CommandR
 interface Make {
   ps?: CommandRunner
   options?: JetbrainsOptions
+  /** The kit's budget clock. */
+  clock?: () => number
 }
 
 /** The plugin on `h`, built through `definePlugin` as a plugin author's would be, so the core binds its kit. */
@@ -135,7 +137,11 @@ function make(h: TempHome, over: Make = {}): Plugin {
     settings: {},
     only: [],
     env: h.env,
-    kit: pluginKit(JETBRAINS_PLUGIN, { now: () => NOW, ps: over.ps ?? psOf() }),
+    kit: pluginKit(JETBRAINS_PLUGIN, {
+      now: () => NOW,
+      clock: over.clock,
+      ps: over.ps ?? psOf(),
+    }),
   })
 }
 
@@ -350,13 +356,47 @@ describe('version folders', () => {
     const s = await survey([plugin], ctx())
     const c = s.candidates.find((x) => x.path === join(caches(h), 'RustRover2025.1'))!
     put(join(c.path!, 'caches', 'fresh.dat'), 1)
-    await expect((async () => plugin.delete!(c, ctx()))()).rejects.toThrow('was used within')
+    await expect((async () => plugin.delete!(c, ctx()))()).rejects.toThrow('is no longer idle')
     expect(existsSync(c.path!)).toBe(true)
     const receipt = await clean(plan(s), [plugin], ctx())
     expect(receipt.dropped).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: c.id, reason: 'changed' })]),
     )
     expect(existsSync(c.path!)).toBe(true)
+  })
+
+  test('delete refuses a version folder whose idle time it cannot measure now', async () => {
+    const h = twoVersions()
+    let t = 0
+    let slow = false
+    const plugin = make(h, { clock: () => (slow ? (t += 60_000) : t) })
+    const s = await survey([plugin], ctx())
+    const c = s.candidates.find((x) => x.path === join(caches(h), 'RustRover2025.1'))!
+    expect(c.unmeasured).toBeUndefined()
+    slow = true
+    await expect((async () => plugin.delete!(c, ctx()))()).rejects.toThrow(
+      'could not be measured idle',
+    )
+    expect(existsSync(c.path!)).toBe(true)
+  })
+
+  test('a running JetBrains Client refuses its folders', async () => {
+    const h = home()
+    version(h, 'JetBrainsClient2024.3')
+    const s = await survey(
+      [
+        make(h, {
+          ps: psOf([
+            {
+              pid: 7,
+              args: '/home/u/.cache/JetBrains/JetBrainsClient2024.3/bin/jetbrains_client --remote',
+            },
+          ]),
+        }),
+      ],
+      ctx(),
+    )
+    expect(s.objections.map((o) => o.code)).toEqual(['live-process', 'live-process'])
   })
 
   test('built directly with jetbrainsPlugin, its kit is still bound by the core', async () => {
@@ -427,6 +467,28 @@ describe('project caches', () => {
     expect(receipt.steps.map((x) => x.result)).toEqual(['ok'])
     expect(existsSync(path)).toBe(false)
     expect(existsSync(join(projects, 'unknown.12345678'))).toBe(true)
+  })
+
+  test('$USER_HOME$ stands for HOME as typed: a trailing slash and a `$` in it change nothing', async () => {
+    const h = tempHome("host-cleaner-jb-$&$'-")
+    cleanups.push(h.cleanup)
+    install(h, 'RustRover', 'RustRover2026.1')
+    version(h, 'RustRover2026.1')
+    const gone = join(h.home, 'dev', 'gone')
+    put(
+      join(config(h), 'RustRover2026.1', 'options', 'recentProjects.xml'),
+      48,
+      '<map><entry key="$USER_HOME$/dev/gone" /></map>',
+    )
+    const path = join(caches(h), 'RustRover2026.1', 'projects', `gone.${javaHashHex(gone)}`)
+    put(join(path, 'x'))
+    const s = await survey([make({ ...h, env: { HOME: `${h.home}/` } })], ctx())
+    expect(s.candidates).toEqual([
+      expect.objectContaining({
+        id: `project-cache:${path}`,
+        evidence: expect.objectContaining({ project: gone }),
+      }),
+    ])
   })
 
   test('a project on a volume that is not mounted is not known to be gone', async () => {
@@ -552,7 +614,11 @@ describe('the contract suite', () => {
     const imports = [
       ...readFileSync(src, 'utf8').matchAll(/^(?:import|\}) .*from '([^']+)'$/gm),
     ].map((m) => m[1]!)
-    expect(imports.filter((i) => i.startsWith('.')).sort()).toEqual(['./kit.ts', './types.ts'])
+    expect(imports.filter((i) => i.startsWith('.')).sort()).toEqual([
+      './helpers.ts',
+      './kit.ts',
+      './types.ts',
+    ])
     expect(imports.filter((i) => i.startsWith('@osdlc/'))).toEqual([])
   })
 })

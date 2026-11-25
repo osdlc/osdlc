@@ -28,15 +28,16 @@ import { basename, dirname, isAbsolute, join, sep } from 'node:path'
 
 import { z } from 'zod'
 
-import { DEFAULT_IDLE_HOURS, attachKit, idleHoursSetting, type Kit } from './kit.ts'
 import {
-  PLUGIN_API,
-  definePlugin,
-  type Candidate,
-  type Ctx,
-  type Objection,
-  type Plugin,
-} from './types.ts'
+  DISCOVER_LIMIT_MS,
+  checkAgain,
+  hoursText,
+  isObject,
+  objectionsTo,
+  type Row,
+} from './helpers.ts'
+import { attachKit, idleHoursOr, idleHoursSetting, type Kit } from './kit.ts'
+import { PLUGIN_API, definePlugin, type Ctx, type Plugin } from './types.ts'
 
 export const JETBRAINS_PLUGIN = 'jetbrains'
 
@@ -56,6 +57,8 @@ const LAUNCHERS: Readonly<Record<string, string>> = {
   GoLand: 'goland',
   IdeaIC: 'idea',
   IntelliJIdea: 'idea',
+  // The Gateway's client, whose distribution sits under the caches, so no install names it.
+  JetBrainsClient: 'jetbrains_client',
   JetBrainsGateway: 'gateway',
   PhpStorm: 'phpstorm',
   PyCharm: 'pycharm',
@@ -69,8 +72,6 @@ const LAUNCHERS: Readonly<Record<string, string>> = {
 
 /** The folders volumes are mounted under, which {@link gone} treats apart. */
 const MOUNT_PARENTS = ['/Volumes', '/mnt', '/media', '/run/media']
-
-const DISCOVER_LIMIT_MS = 10 * 60_000
 
 export interface JetbrainsOptions {
   /** Idle hours before a version folder is a candidate (default {@link DEFAULT_IDLE_HOURS}). */
@@ -98,7 +99,8 @@ interface Layout {
 
 function layoutOf(opts: JetbrainsOptions): Layout {
   const env = opts.env ?? process.env
-  const home = env.HOME ?? homedir()
+  // Without a trailing slash, as the command line takes it, so `$USER_HOME$/x` is the path the IDE hashed.
+  const home = (env.HOME ?? homedir()).replace(/(.)\/+$/, '$1')
   const platform = opts.platform ?? process.platform
   if (platform === 'darwin') {
     const lib = join(home, 'Library')
@@ -179,9 +181,6 @@ function folders(dir: string): string[] {
     return []
   }
 }
-
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /** Java's `String.hashCode` of `s`, in unpadded hex, as JetBrains names a project's cache. */
 export function javaHashHex(s: string): string {
@@ -304,7 +303,7 @@ function recentProjects(file: string, home: string): string[] {
   const out = new Set<string>()
   for (const m of text.matchAll(/\b(?:key|value)="([^"]*)"/g)) {
     const path = unescapeXml(m[1]!)
-      .replace(/^\$USER_HOME\$/, home)
+      .replace(/^\$USER_HOME\$/, () => home)
       .replace(/\/+$/, '')
     if (isAbsolute(path)) out.add(path)
   }
@@ -393,12 +392,6 @@ function scan(layout: Layout, installs: Installs, only?: string): Found[] {
   return out
 }
 
-/** A candidate and the refusals its owner adds to it. */
-interface Row {
-  candidate: Candidate
-  blockers: Array<{ code: string; reason: string }>
-}
-
 /** What one hook call works with. */
 interface Env {
   kit: Kit
@@ -408,9 +401,6 @@ interface Env {
   /** What {@link runningOf} found for each product this hook call. */
   running: Map<string, Row['blockers']>
 }
-
-/** `hours` in tenths rounded down, so a sentence never says more than was measured. */
-const hoursText = (hours: number): string => String(Math.floor(hours * 10) / 10)
 
 /** The refusals `product`'s running processes add, looked up once per hook call. */
 function runningOf(env: Env, product: string): Row['blockers'] {
@@ -501,9 +491,7 @@ function rowOf(env: Env, f: Found, sized = true): Row | null {
 /** The `jetbrains` plugin on `kit`: caches of uninstalled IDE versions and of gone projects. */
 export function jetbrainsPlugin(opts: JetbrainsOptions, kit: Kit): Plugin {
   const layout = layoutOf(opts)
-  const idle = opts.idleHours
-  const idleHours =
-    idle !== undefined && Number.isFinite(idle) && idle >= 0 ? idle : DEFAULT_IDLE_HOURS
+  const idleHours = idleHoursOr(opts.idleHours)
   const envOf = (ctx: Ctx): Env => ({
     kit,
     ctx,
@@ -524,16 +512,11 @@ export function jetbrainsPlugin(opts: JetbrainsOptions, kit: Kit): Plugin {
       return found.map((r) => r.candidate)
     },
     object: (all) =>
-      all.flatMap((c): Objection[] => {
+      all.flatMap((c) => {
         const row = rows.get(c.id)
-        if (c.owner !== JETBRAINS_PLUGIN || row === undefined) return []
-        return row.blockers.map((b) => ({
-          by: JETBRAINS_PLUGIN,
-          candidate: c.id,
-          level: 'refuse',
-          code: b.code,
-          reason: b.reason,
-        }))
+        return c.owner === JETBRAINS_PLUGIN && row !== undefined
+          ? objectionsTo(JETBRAINS_PLUGIN, row)
+          : []
       }),
     delete(c, ctx) {
       if (c.path === undefined) throw new Error(`${c.id} is not a folder`)
@@ -543,15 +526,7 @@ export function jetbrainsPlugin(opts: JetbrainsOptions, kit: Kit): Plugin {
       const f = scan(layout, env.installs, c.path).find(
         (x) => x.path === c.path && x.kind === c.kind,
       )
-      const now = f === undefined ? null : rowOf(env, f, false)
-      if (now === null) throw new Error(`${c.path} is no longer a candidate`)
-      if (now.blockers.length > 0) {
-        throw new Error(`${c.path} is refused: ${now.blockers.map((b) => b.reason).join(', ')}`)
-      }
-      // `c` is the candidate the re-check just made; its `held` is set only when it was held then.
-      if (now.candidate.held === true && c.held !== true) {
-        throw new Error(`${c.path} was used within the last ${idleHours} hours`)
-      }
+      checkAgain(c, f === undefined ? undefined : (rowOf(env, f, false) ?? undefined))
       return kit.remove(c.path, ctx)
     },
   }
