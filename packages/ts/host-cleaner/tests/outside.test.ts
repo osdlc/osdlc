@@ -11,20 +11,18 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   readdirSync,
-  rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import * as entry from '../src/plugin.ts'
+import { tempHome, type TempHome } from '../src/testing.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const pkg = join(here, '..')
@@ -51,9 +49,10 @@ function assertBuilt(): void {
 }
 
 /** A package holding the fixture plugin, with host-cleaner limited to the two entries. */
-function outsidePackage(): string {
+function outsidePackage(): TempHome {
   assertBuilt()
-  const dir = mkdtempSync(join(tmpdir(), 'host-cleaner-outside-'))
+  const outside = tempHome('host-cleaner-outside-')
+  const dir = outside.home
   const json = (path: string, value: unknown) =>
     writeFileSync(join(dir, path), `${JSON.stringify(value, null, 2)}\n`)
   json('package.json', { name: 'outside-plugin', private: true, type: 'module' })
@@ -90,17 +89,16 @@ function outsidePackage(): string {
   mkdirSync(join(dir, 'node_modules', '@types'))
   const types = dirname(require.resolve('@types/node/package.json'))
   symlinkSync(types, join(dir, 'node_modules', '@types', 'node'), 'dir')
-  return dir
+  return outside
 }
 
 // One package, shared by the tests that use it.
 let dir = ''
+let cleanup = (): void => {}
 beforeAll(() => {
-  dir = outsidePackage()
+  ;({ home: dir, cleanup } = outsidePackage())
 }, 60_000)
-afterAll(() => {
-  if (dir !== '') rmSync(dir, { recursive: true, force: true })
-})
+afterAll(() => cleanup())
 
 test('an outside package builds against ./plugin and ./testing, and its plugin keeps the contract', () => {
   const built = spawnSync(process.execPath, [tsc, '-p', dir], { cwd: dir, encoding: 'utf8' })
@@ -124,13 +122,9 @@ test('the same package reaches ./plugin and ./testing, and not the main entry', 
   const from = createRequire(join(dir, 'src', 'check.ts'))
   expect(from.resolve('@osdlc/host-cleaner/plugin')).toMatch(/dist[/\\]plugin\.js$/)
   expect(from.resolve('@osdlc/host-cleaner/testing')).toMatch(/dist[/\\]testing\.js$/)
-  let code: unknown
-  try {
-    from.resolve('@osdlc/host-cleaner')
-  } catch (e) {
-    code = (e as { code?: unknown }).code
-  }
-  expect(code).toBe('ERR_PACKAGE_PATH_NOT_EXPORTED')
+  expect(() => from.resolve('@osdlc/host-cleaner')).toThrow(
+    expect.objectContaining({ code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' }),
+  )
 })
 
 test('./plugin re-exports zod as z, the one the core validates settings with', async () => {
