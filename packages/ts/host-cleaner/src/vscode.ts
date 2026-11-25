@@ -10,8 +10,8 @@
  * (see {@link historyIn}), that history (`lost`). A remote URI cannot be checked from
  * here and a folder with no `workspace.json` is an empty window's, so both are
  * left alone. A `workspace.json` of any other shape is never guessed at: the
- * folder is proposed and refused (`unknown-workspace`), which is how it shows
- * as a note. A path on a volume that is not mounted is not gone either.
+ * folder is proposed held and refused (`unknown-workspace`), so it shows under
+ * `--all-rows`. A path on a volume that is not mounted is not gone either.
  *
  * Built on the plugin kit alone, as a code plugin would be.
  */
@@ -219,7 +219,7 @@ function holdsHistory(name: (typeof HISTORY_FOLDERS)[number], path: string): boo
   return filled(path)
 }
 
-/** A mount point and the folder a volume is mounted on; a path under one that is missing or empty is on a volume that is not mounted. */
+/** Group 1 is the folder a removable volume is mounted on, under the mount roots macOS and Linux use. */
 const VOLUME =
   /^(\/Volumes\/[^/]+|\/run\/media\/[^/]+\/[^/]+|\/media\/[^/]+\/[^/]+|\/mnt\/[^/]+)(?:\/|$)/
 
@@ -607,7 +607,7 @@ function goneCandidate(kit: Kit, dir: string, e: Extract<Entry, { state: 'gone' 
     path: dir,
     why: `VS Code kept state for ${e.local}, which no longer exists${hasHistory ? `, with chat or agent history in ${history.join(', ')}` : ''}`,
     ...(bytes === null ? {} : { bytes }),
-    // A `lost` candidate is held, and runs only with `--allow discard-user-data`.
+    // `lost` alone holds it; see Candidate.costDescription in types.ts.
     costDescription: hasHistory ? 'lost' : 're-download',
     evidence: {
       kind: KIND,
