@@ -1,5 +1,11 @@
 # @osdlc/system-model
 
+## 0.10.0
+
+### Minor Changes
+
+- 02afb49: `./build` exports `MANIFEST_FILES`, the manifest file names `walkManifests` reads (`package.json`, `Cargo.toml`), for a caller that picks manifests out of a file list itself.
+
 ## 0.9.0
 
 ### Minor Changes
