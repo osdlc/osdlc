@@ -8,6 +8,7 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -18,7 +19,7 @@ import { fakeRunner } from '@osdlc/command-seam/testing'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { main, tildeId, untildeId, type MainDeps } from '../src/cli.ts'
+import { main, tildeId, untildeId, untildeSpare, type MainDeps } from '../src/cli.ts'
 import { hostDirs } from '../src/config.ts'
 import { PLAN_VERSION, parsePlan } from '../src/plan.ts'
 import {
@@ -311,7 +312,7 @@ describe('plugins', () => {
     orcaDown(),
   ]
 
-  test('Orca not running shows as detected with its note, beside each plugin’s source, detection and roots', async () => {
+  test('Orca not running shows as detected with its note, beside each plugin’s source (given, as main was handed them), detection and roots', async () => {
     const { env, cwd } = setup()
     const r = await run(['plugins'], cwd, env, { plugins: plugins() })
     expect(r.code).toBe(0)
@@ -319,10 +320,10 @@ describe('plugins', () => {
     expect(r.out).toBe(
       [
         `targets: ${cwd}`,
-        '  git    built-in  detected; roots: /cache/git',
-        '  cargo  built-in  detected; roots: none, the targets alone',
-        '  node   built-in  not detected',
-        '  orca   built-in  detected; roots: none, the targets alone; note: Orca is installed but not running',
+        '  git    given  detected; roots: /cache/git',
+        '  cargo  given  detected; roots: none, the targets alone',
+        '  node   given  not detected',
+        '  orca   given  detected; roots: none, the targets alone; note: Orca is installed but not running',
         '',
       ].join('\n'),
     )
@@ -346,7 +347,7 @@ describe('plugins', () => {
       plugins: [
         {
           name: 'git',
-          source: 'built-in',
+          source: 'given',
           enabled: true,
           detected: true,
           reason: null,
@@ -356,7 +357,7 @@ describe('plugins', () => {
         },
         {
           name: 'cargo',
-          source: 'built-in',
+          source: 'given',
           enabled: false,
           detected: false,
           reason: 'plugins.cargo.enabled is false; --plugin cargo runs it anyway',
@@ -366,7 +367,7 @@ describe('plugins', () => {
         },
         {
           name: 'node',
-          source: 'built-in',
+          source: 'given',
           enabled: true,
           detected: false,
           reason: null,
@@ -376,7 +377,7 @@ describe('plugins', () => {
         },
         {
           name: 'orca',
-          source: 'built-in',
+          source: 'given',
           enabled: true,
           detected: true,
           reason: null,
@@ -417,8 +418,8 @@ describe('plugins', () => {
     expect(r.out).toBe(
       [
         `targets: ${cwd}`,
-        `  git    built-in  detected; roots: ${cache} (itself too); note: one note`,
-        '  cargo  built-in  not detected; note: no cargo',
+        `  git    given  detected; roots: ${cache} (itself too); note: one note`,
+        '  cargo  given  not detected; note: no cargo',
         '',
       ].join('\n'),
     )
@@ -427,7 +428,7 @@ describe('plugins', () => {
     expect(JSON.parse(json.out).plugins).toEqual([
       {
         name: 'git',
-        source: 'built-in',
+        source: 'given',
         enabled: true,
         detected: true,
         reason: null,
@@ -437,7 +438,7 @@ describe('plugins', () => {
       },
       {
         name: 'cargo',
-        source: 'built-in',
+        source: 'given',
         enabled: true,
         detected: false,
         reason: null,
@@ -446,6 +447,28 @@ describe('plugins', () => {
         note: 'no cargo',
       },
     ])
+  })
+
+  test('a second plugin of a name is one row with a warning, and a multi-line detect error stays on its row', async () => {
+    const { env, cwd } = setup()
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [
+        {
+          ...fake('a'),
+          detect: () => {
+            throw new Error('stderr line one\nstderr line two')
+          },
+        },
+        { ...fake('a'), detect: () => true },
+      ],
+    })
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('a: a second plugin of that name was left out')
+    expect(r.out).toBe(
+      [`targets: ${cwd}`, '  a  given  not detected: stderr line one stderr line two', ''].join(
+        '\n',
+      ),
+    )
   })
 })
 
@@ -789,6 +812,27 @@ describe('plan and clean', () => {
     expect(untildeId('branch:~/repo:main', '/h/me')).toBe('branch:/h/me/repo:main')
     expect(untildeId('~/x', '/h/me')).toBe('/h/me/x')
     expect(untildeId('feat/~x', '/h/me')).toBe('feat/~x')
+  })
+
+  test('a --spare with ~ matches whether HOME ends in a slash or is a symlink', async () => {
+    const { env: base, cwd } = setup()
+    const real = tempDir()
+    const link = join(tempDir(), 'home')
+    symlinkSync(real, link)
+    expect(untildeSpare('worktree:~/wt', link)).toEqual([
+      `worktree:${link}/wt`,
+      `worktree:${real}/wt`,
+    ])
+    expect(untildeSpare('worktree:~/wt', real)).toEqual([`worktree:${real}/wt`])
+    const dir = join(real, 'dev', 'cache')
+    const plugins = [fake('cache', { candidate: { id: `artifact:${dir}` } })]
+    const ran = async (HOME: string, spare: string[] = ['--spare', 'artifact:~/dev/cache']) => {
+      const argv = ['clean', '--dry-run', '--format', 'json', ...spare]
+      return JSON.parse((await run(argv, cwd, { ...base, HOME }, { plugins })).out).run
+    }
+    expect(await ran(`${real}/`, [])).toEqual([`artifact:${dir}`])
+    expect(await ran(`${real}/`)).toEqual([])
+    expect(await ran(link)).toEqual([])
   })
 
   test('a plan of another version is refused: sweep again', async () => {

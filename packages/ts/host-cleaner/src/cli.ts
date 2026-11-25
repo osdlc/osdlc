@@ -29,6 +29,7 @@ import { ConfigError, configFile, hostDirs, readConfig, type Config } from './co
 import { pluginKit } from './kit.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { BUILT_IN_PLUGINS, UnknownPlugin, selectPlugins } from './registry.ts'
+import { realOr } from './roots.ts'
 import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
 import {
   SelectionError,
@@ -382,7 +383,11 @@ const loadConfig = (v: { config?: string | undefined }, ctx: CliContext): Config
 const unknownPlugins = (config: Config, known: (name: string) => boolean): string[] =>
   Object.keys(config.plugins).filter((n) => !known(n))
 
-/** Every plugin, enabled or not: the shipped ones built from the config, or `deps.plugins`. */
+/**
+ * Every plugin, enabled or not: the shipped ones built from the config, or `deps.plugins`.
+ * @param only The kinds the shipped plugins propose; ignored for `deps.plugins`.
+ * @throws {BadInput} When the config names a plugin that is not among them.
+ */
 function allPlugins(
   config: Config,
   deps: MainDeps,
@@ -410,13 +415,16 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliCont
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
   const all = allPlugins(config, deps, ctx, only)
-  // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
-  const named = v.plugin ?? []
   const chosen = selectPlugins(all, v.plugin, v.skipPlugin)
-  return chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins))
+  return chosen.filter((p) => enabled(p.name, config, v.plugin))
 }
 
-const homeOf = (ctx: CliContext): string => ctx.env.HOME ?? homedir()
+/** `enabled: false` in the config leaves a plugin out; naming it in `named` (`--plugin`) runs it anyway. */
+const enabled = (name: string, config: Config, named: readonly string[] = []): boolean =>
+  named.includes(name) || !disabledByConfig(name, config.plugins)
+
+/** The home folder, from `HOME` when set, with no trailing slash. */
+const homeOf = (ctx: CliContext): string => (ctx.env.HOME ?? homedir()).replace(/(.)\/+$/, '$1')
 
 /** `id` with the home folder after its `<kind>:` written `~`, as the text output shows it. */
 export function tildeId(id: string, home: string): string {
@@ -436,6 +444,17 @@ export function untildeId(entry: string, home: string): string {
   return tilde && (at === 0 || colon > 0) ? `${entry.slice(0, at)}${home}${rest.slice(1)}` : entry
 }
 
+/**
+ * `entry`, as typed to `--spare`, with `~` taken as the home folder both as
+ * `home` spells it and by its real path, when the two differ: a candidate's
+ * path may be either, and a spare that matches neither would let it be deleted.
+ */
+export function untildeSpare(entry: string, home: string): string[] {
+  const given = untildeId(entry, home)
+  const real = untildeId(entry, realOr(home))
+  return given === real ? [given] : [given, real]
+}
+
 function contextFor(
   targets: readonly string[],
   config: Config,
@@ -450,6 +469,7 @@ function contextFor(
     cwd: ctx.cwd,
     targets: chosen.map((t) => resolve(ctx.cwd, expandHome(t, home))),
     targetsGiven: targets.length > 0 || config.targets.length > 0,
+    home,
     allow,
     ignore: ignoreFor(config, ignore, ctx),
   }
@@ -594,11 +614,11 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
 /** One row of `host-cleaner plugins`. */
 interface PluginRow {
   name: string
-  /** Where the plugin came from; every plugin ships with host-cleaner for now. */
-  source: 'built-in'
+  /** Where the plugin came from: shipped with host-cleaner, or given by the program that calls `main`. */
+  source: 'built-in' | 'given'
   enabled: boolean
   detected: boolean
-  /** Why it does not run: disabled in the config, or what its `detect` threw. Null when it is detected, or `detect` answered no. */
+  /** Why it does not run: disabled in the config, or the `reason` `inspect` gave. Null when it is detected, or `detect` answered no. */
   reason: string | null
   /** Where it may delete besides the targets; empty, the targets alone. */
   roots: readonly string[]
@@ -617,8 +637,9 @@ function renderPlugins(rows: readonly PluginRow[], targets: readonly string[]): 
       : r.detected
         ? `detected; roots: ${r.roots.map((root) => (r.selfRoots.includes(root) ? `${root} (itself too)` : root)).join(', ') || 'none, the targets alone'}`
         : 'not detected'
+    const reason = r.reason?.replace(/\s+/g, ' ').trim() ?? null
     lines.push(
-      `  ${r.name.padEnd(width)}  ${r.source}  ${state}${r.reason === null ? '' : `: ${r.reason}`}${r.note === null ? '' : `; note: ${r.note}`}`,
+      `  ${r.name.padEnd(width)}  ${r.source}  ${state}${reason === null ? '' : `: ${reason}`}${r.note === null ? '' : `; note: ${r.note}`}`,
     )
   }
   return block(lines)
@@ -639,20 +660,22 @@ async function runPlugins(
   try {
     const config = loadConfig(v, ctx)
     const all = allPlugins(config, deps, ctx)
-    const enabled = all.filter((p) => !disabledByConfig(p.name, config.plugins))
-    const found = await inspect(enabled, contextFor(parsed.positionals, config, ctx, [], v.ignore))
+    const on = all.filter((p) => enabled(p.name, config))
+    const found = await inspect(on, contextFor(parsed.positionals, config, ctx, [], v.ignore))
     const state = new Map(found.plugins.map((s) => [s.name, s]))
-    rows = all.map((p): PluginRow => {
-      const off = disabledByConfig(p.name, config.plugins)
-      const s = state.get(p.name)
+    const source = deps.plugins === undefined ? 'built-in' : 'given'
+    // A second plugin of a name is left out, with inspect's warning.
+    rows = [...new Set(all.map((p) => p.name))].map((pluginName): PluginRow => {
+      const isEnabled = enabled(pluginName, config)
+      const s = state.get(pluginName)
       return {
-        name: p.name,
-        source: 'built-in',
-        enabled: !off,
+        name: pluginName,
+        source,
+        enabled: isEnabled,
         detected: s?.detected ?? false,
-        reason: off
-          ? `plugins.${p.name}.enabled is false; --plugin ${p.name} runs it anyway`
-          : (s?.reason ?? null),
+        reason: isEnabled
+          ? (s?.reason ?? null)
+          : `plugins.${pluginName}.enabled is false; --plugin ${pluginName} runs it anyway`,
         roots: s?.roots ?? [],
         selfRoots: s?.selfRoots ?? [],
         note: s?.note ?? null,
@@ -689,7 +712,7 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
       targetsGiven: cctx.targetsGiven,
       ignore: cctx.ignore,
       pick: v.pick.map((e) => untildeId(e, homeOf(ctx))),
-      spare: v.spare.map((e) => untildeId(e, homeOf(ctx))),
+      spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
       allow: v.allow,
     })
   } catch (err) {
@@ -855,7 +878,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         targetsGiven: cctx.targetsGiven,
         ignore: cctx.ignore,
         pick: v.pick.map((e) => untildeId(e, homeOf(ctx))),
-        spare: v.spare.map((e) => untildeId(e, homeOf(ctx))),
+        spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
         allow: v.allow,
         now,
       })
@@ -874,6 +897,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         cwd: ctx.cwd,
         targets: plan.targets,
         targetsGiven: plan.targetsGiven,
+        home: homeOf(ctx),
         allow: plan.allow,
         ignore: ignoreFor(config, v.ignore, ctx),
       }

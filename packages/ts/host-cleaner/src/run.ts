@@ -12,6 +12,7 @@ import { coveredBy, containsIgnored } from './ignore.ts'
 import { bindKit } from './kit.ts'
 import { acceptRoots, boundBy, linkedCheckouts, realOr, type Bounds } from './roots.ts'
 import {
+  CandidateSchema,
   writeReceipt,
   PLAN_VERSION,
   RECEIPT_VERSION,
@@ -21,7 +22,6 @@ import {
   type Step,
 } from './plan.ts'
 import {
-  COST_DESCRIPTIONS,
   FatalRun,
   type Candidate,
   type Ctx,
@@ -43,7 +43,8 @@ export const DISCARD_USER_DATA = 'discard-user-data'
 /** The protest on a candidate whose idle time could not be measured in the time budget (D11). */
 export const UNMEASURED = 'unmeasured'
 
-const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
+export const errorText = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err)
 
 /** The time limit, in milliseconds, of every hook but `delete`, unless the plugin asks for another. */
 export const HOOK_LIMIT_MS = 30_000
@@ -59,18 +60,38 @@ export class HookTimeout extends Error {
 /** The longest delay `setTimeout` keeps; a longer one fires at once. */
 const MAX_DELAY_MS = 2 ** 31 - 1
 
+/** Whether `ms` is a time limit the core takes: a positive number of milliseconds. */
+const validLimit = (ms: unknown): ms is number =>
+  typeof ms === 'number' && Number.isFinite(ms) && ms > 0
+
+/** The time limit of `hook` on `p`: its own when valid, else the default. */
+const limitOf = (p: Plugin, hook: Hook): number => {
+  const own = p.limits?.[hook]
+  return validLimit(own) ? own : hook === 'delete' ? DELETE_LIMIT_MS : HOOK_LIMIT_MS
+}
+
 /**
  * Calls one hook of `p` with a signal of its own and awaits its answer. Past
  * the hook's limit the signal is aborted and {@link HookTimeout} thrown; a
  * hook that answers straight away is never timed out.
  */
-async function callHook<T>(
+const callHook = <T>(
   p: Plugin,
   hook: Hook,
   ctx: RunCtx,
   f: (ctx: Ctx) => MaybePromise<T>,
+): Promise<T> => callWithin(limitOf(p, hook), ctx, f)
+
+/**
+ * Calls `f` with `ctx`, `targetsGiven` defaulted and a signal of its own, and
+ * awaits its answer. Past `ms` the signal is aborted and {@link HookTimeout}
+ * thrown. How the core calls every hook; the contract suite calls `delete` so too.
+ */
+export async function callWithin<T>(
+  ms: number,
+  ctx: RunCtx,
+  f: (ctx: Ctx) => MaybePromise<T>,
 ): Promise<T> {
-  const ms = p.limits?.[hook] ?? (hook === 'delete' ? DELETE_LIMIT_MS : HOOK_LIMIT_MS)
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
   const late = new Promise<never>((_, reject) => {
@@ -153,6 +174,19 @@ function misshapen(c: Candidate): string | null {
   return null
 }
 
+/**
+ * Why a plan would refuse `c`, one of a path and a ref, by the plan's own
+ * {@link CandidateSchema}, so survey never keeps a candidate `clean --plan`
+ * then refuses; null when the plan takes it.
+ */
+function unplannable(c: Candidate): string | null {
+  const [pathShape, refShape] = CandidateSchema.options
+  const read = (c.path === undefined ? refShape : pathShape).safeParse(c)
+  if (read.success) return null
+  const issue = read.error.issues[0]!
+  return `whose ${issue.path.join('.') || 'shape'} a plan refuses: ${issue.message}`
+}
+
 /** Why `bounds` does not hold path candidate `c`, or null when it does. */
 function outside(c: PathCandidate, bounds: Bounds): string | null {
   if (boundBy(bounds, c.path) !== null) return null
@@ -204,6 +238,15 @@ const guard =
     }
   }
 
+/** `answer` when it is a list; otherwise none, with a warning. */
+const listFrom = (p: Plugin, hook: Hook, answer: unknown, warnings: string[]): unknown[] => {
+  if (Array.isArray(answer)) return answer
+  warnings.push(
+    `${p.name}: ${hook} answered ${JSON.stringify(answer) ?? String(answer)}, which is not a list; it proposed nothing`,
+  )
+  return []
+}
+
 /** What `detect` said of one plugin. */
 interface Detected {
   plugin: Plugin
@@ -212,73 +255,133 @@ interface Detected {
   note?: string | undefined
   /** What `detect` threw or timed out with, or why its answer was left out; absent when it answered a boolean or a {@link Detection}. */
   error?: string | undefined
+  /** The warning `survey` gives for `error`; set exactly when `error` is. */
+  warning?: string | undefined
 }
 
 /**
- * Detect, then scope, as `survey` starts: each plugin's detection (a second
- * plugin of a name is left out), the detected plugins, the notes `detect`
- * gave by plugin name, and the targets once scope added to them, less those
- * `ignore` covers. A failed `detect` is a warning only when `warnDetect`.
+ * Each plugin's detection, in the order of `all`; a second plugin of a name is
+ * left out, and a `limits` entry the core does not take is ignored, each with
+ * a warning.
  */
-async function detectAndScope(
+async function detectAll(
   all: readonly Plugin[],
   ctx: RunCtx,
   warnings: string[],
-  warnDetect: boolean,
-): Promise<{
-  detections: Detected[]
-  plugins: Plugin[]
-  notes: Record<string, string>
-  targets: string[]
-  scoped: RunCtx
-}> {
-  const guarded = guard(warnings)
+): Promise<Detected[]> {
+  // No kit keeps an earlier run's bounds while this one's hooks run.
+  for (const p of all) bindKit(p, undefined)
   const names = new Set<string>()
   const detections: Detected[] = []
-  const notes: Record<string, string> = {}
   for (const p of all) {
     if (names.has(p.name)) {
       warnings.push(`${p.name}: a second plugin of that name was left out`)
       continue
     }
     names.add(p.name)
+    for (const [hook, ms] of Object.entries(p.limits ?? {})) {
+      if (ms !== undefined && !validLimit(ms)) {
+        warnings.push(
+          `${p.name}: limits.${hook} is ${String(ms)}, not a positive number of milliseconds; the default was used`,
+        )
+      }
+    }
     let answer: unknown
     try {
       answer = await callHook<unknown>(p, 'detect', ctx, (x) => p.detect(x))
     } catch (err) {
       if (err instanceof FatalRun) throw err
-      if (warnDetect) warnings.push(`${p.name}: detect failed: ${errorText(err)}`)
-      detections.push({ plugin: p, detected: false, error: errorText(err) })
+      const error = errorText(err)
+      detections.push({
+        plugin: p,
+        detected: false,
+        error,
+        warning: `${p.name}: detect failed: ${error}`,
+      })
       continue
     }
     const found = detection(answer)
     if (found === null) {
-      const why = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note? }`
-      if (warnDetect) warnings.push(`${p.name}: ${why}; it was left out`)
-      detections.push({ plugin: p, detected: false, error: why })
+      const error = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note? }`
+      detections.push({
+        plugin: p,
+        detected: false,
+        error,
+        warning: `${p.name}: ${error}; it was left out`,
+      })
       continue
     }
-    if (found.note !== undefined) notes[p.name] = found.note
     detections.push({ plugin: p, detected: found.active, note: found.note })
   }
-  const plugins = detections.filter((d) => d.detected).map((d) => d.plugin)
+  return detections
+}
 
+/**
+ * The context whose targets the detected `plugins`' `scope` added to, less
+ * those `ignore` covers; a failed `scope`, or an answer or entry the core does
+ * not take, is a warning.
+ */
+async function scopeOf(
+  plugins: readonly Plugin[],
+  ctx: RunCtx,
+  warnings: string[],
+): Promise<RunCtx> {
+  const guarded = guard(warnings)
   const ignore = ctx.ignore ?? []
   const targets = ctx.targets.filter((t) => coveredBy(t, ignore) === undefined)
   for (const p of plugins) {
     if (p.scope === undefined) continue
-    for (const root of await guarded(p, 'scope', [], ctx, (x) => p.scope!(x))) {
+    const answer = await guarded<unknown>(p, 'scope', [], ctx, (x) => p.scope!(x))
+    for (const root of listFrom(p, 'scope', answer, warnings)) {
+      if (typeof root !== 'string') {
+        warnings.push(`${p.name}: scope: left out ${JSON.stringify(root)}, which is not a path`)
+        continue
+      }
       if (!targets.includes(root) && coveredBy(root, ignore) === undefined) targets.push(root)
     }
   }
-  return { detections, plugins, notes, targets, scoped: { ...ctx, targets } }
+  return { ...ctx, targets }
+}
+
+const detectedOf = (detections: readonly Detected[]): Plugin[] =>
+  detections.filter((d) => d.detected).map((d) => d.plugin)
+
+/**
+ * Each of `plugins`' roots, asked once per plugin so a throwing `roots` warns
+ * once, less those the core refuses (see `rootProblem` in `./roots.ts`), each
+ * with a warning; and the linked checkouts and home they were checked against.
+ * The linked checkouts run `git` once per target, so they are found only when
+ * a plugin has `roots` or the caller asks for them.
+ */
+async function askRoots(
+  plugins: readonly Plugin[],
+  scoped: RunCtx,
+  warnings: string[],
+): Promise<{
+  rootsOf: Map<string, { roots: readonly string[]; self: readonly string[] }>
+  linked: () => string[]
+  home: string
+}> {
+  const guarded = guard(warnings)
+  let found: string[] | undefined
+  const linked = (): string[] => (found ??= linkedCheckouts(scoped.targets))
+  const home = scoped.home ?? homedir()
+  const rootsOf = new Map<string, { roots: readonly string[]; self: readonly string[] }>()
+  for (const p of plugins) {
+    if (p.roots === undefined) continue
+    const answer = await guarded<unknown>(p, 'roots', [], scoped, (x) => p.roots!(x))
+    const accepted = acceptRoots(answer, { targets: scoped.targets, linked: linked(), home })
+    for (const problem of accepted.problems) warnings.push(`${p.name}: roots: ${problem}`)
+    rootsOf.set(p.name, accepted)
+  }
+  return { rootsOf, linked, home }
 }
 
 /** One plugin as `inspect` found it. */
 export interface PluginState {
   name: string
   detected: boolean
-  /** Why it was not detected: what `detect` threw or timed out with, or why its answer was left out. Absent when `detect` answered. */
+  /** Why it was not detected: what `detect` threw or timed out with, or why its answer was left out. Absent when `detect` answered a boolean or a {@link Detection}. */
   reason?: string | undefined
   /** The note `detect` gave with its answer, whether the plugin is detected or not. */
   note?: string | undefined
@@ -292,7 +395,7 @@ export interface Inspection {
   plugins: PluginState[]
   /** The run's context after `scope`. */
   ctx: RunCtx
-  /** A failed `scope` or `roots`, a root the core refused, and a second plugin of one name. A failed `detect` is its plugin's `reason` instead. */
+  /** A failed `scope` or `roots`, a `scope` answer, a root or a `limits` entry the core does not take, and a second plugin of one name. A failed `detect` is its plugin's `reason` instead. */
   warnings: string[]
 }
 
@@ -305,28 +408,21 @@ export interface Inspection {
  */
 export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Inspection> {
   const warnings: string[] = []
-  const { detections, targets, scoped } = await detectAndScope(all, ctx, warnings, false)
-  const guarded = guard(warnings)
-  const at = { targets, linked: linkedCheckouts(targets), home: homedir() }
-  const plugins: PluginState[] = []
-  for (const d of detections) {
-    const p = d.plugin
-    let accepted = { roots: [] as string[], self: [] as string[] }
-    if (d.detected && p.roots !== undefined) {
-      const answer = await guarded<unknown>(p, 'roots', [], scoped, (x) => p.roots!(x))
-      const checked = acceptRoots(answer, at)
-      for (const problem of checked.problems) warnings.push(`${p.name}: roots: ${problem}`)
-      accepted = checked
-    }
-    plugins.push({
-      name: p.name,
+  const detections = await detectAll(all, ctx, warnings)
+  const detected = detectedOf(detections)
+  const scoped = await scopeOf(detected, ctx, warnings)
+  const { rootsOf } = await askRoots(detected, scoped, warnings)
+  const plugins = detections.map((d): PluginState => {
+    const r = rootsOf.get(d.plugin.name)
+    return {
+      name: d.plugin.name,
       detected: d.detected,
       ...(d.error === undefined ? {} : { reason: d.error }),
       ...(d.note === undefined ? {} : { note: d.note }),
-      roots: accepted.roots,
-      selfRoots: accepted.self,
-    })
-  }
+      roots: r?.roots ?? [],
+      selfRoots: r?.self ?? [],
+    }
+  })
   return { plugins, ctx: scoped, warnings }
 }
 
@@ -334,17 +430,20 @@ export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Insp
  * Scope, discover and object, one plugin at a time in the order of `all`,
  * each hook awaited under its time limit. A plugin that throws or times out
  * in `detect`, or answers neither a boolean nor a {@link Detection}, is left
- * out; a note it gives is kept in `notes`. One that throws or times out
- * in `scope` or `discover` proposes nothing,
- * with a warning; one that throws or times out in `object` refuses every
- * candidate, since what it would object to is unknown. A path candidate
- * outside its owner's roots and the targets is refused `outside-roots`, and a
- * root the core refuses (see `rootProblem` in `./roots.ts`) is left out with a
- * warning; one
- * with both a path and a ref, or neither, or a path and an `at`, or an
- * unknown `costDescription`, is dropped. A `lost` one is held and protested `discard-user-data`, and an
- * `unmeasured` one protested `unmeasured`. A
- * {@link FatalRun} from any phase goes to the caller. Two candidates with the
+ * out; a note it gives is kept in `notes`. One that throws or times out in
+ * `scope` or `discover`, or answers anything but a list, proposes nothing,
+ * with a warning; an entry of that list that is not a path or a candidate is
+ * left out with a warning. One that throws or times out in `object` refuses
+ * every candidate, since what it would object to is unknown. A path
+ * candidate outside its owner's roots and the targets is refused
+ * `outside-roots`, and a root the core refuses (see `rootProblem`
+ * in `./roots.ts`) is left out with a warning. A candidate with both a path
+ * and a ref, or neither, or a path and an `at`, or any field a plan would
+ * refuse (such as an unknown `costDescription`), is dropped. A `limits` entry
+ * that is not a positive number is warned of and the default used. A `lost`
+ * candidate is held and protested `discard-user-data`, and an `unmeasured`
+ * one protested `unmeasured`. A {@link FatalRun} from any phase goes to the
+ * caller. Two candidates with the
  * same id, or path candidates with the same real path, are one: the first
  * plugin's stands, with a warning naming both. A path candidate with others
  * inside it requires them, so they go first, and one of them that does not
@@ -353,24 +452,34 @@ export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Insp
 export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Survey> {
   const warnings: string[] = []
   const guarded = guard(warnings)
-  const { plugins, targets, scoped, notes } = await detectAndScope(all, ctx, warnings, true)
+  const detections = await detectAll(all, ctx, warnings)
+  const notes: Record<string, string> = {}
+  for (const d of detections) {
+    if (d.warning !== undefined) warnings.push(d.warning)
+    if (d.note !== undefined) notes[d.plugin.name] = d.note
+  }
+  const plugins = detectedOf(detections)
+  const scoped = await scopeOf(plugins, ctx, warnings)
+  const targets = scoped.targets
   const ignore = ctx.ignore ?? []
 
   const discovered: Candidate[] = []
   const first = new Map<string, string>()
   const atReal = new Map<string, Candidate>()
-  const costs = new Set<string>(COST_DESCRIPTIONS)
   for (const p of plugins) {
     if (p.discover === undefined) continue
-    for (const c of await guarded(p, 'discover', [], scoped, (x) => p.discover!(x))) {
+    const answer = await guarded<unknown>(p, 'discover', [], scoped, (x) => p.discover!(x))
+    for (const entry of listFrom(p, 'discover', answer, warnings)) {
+      if (typeof entry !== 'object' || entry === null) {
+        warnings.push(`${p.name}: dropped ${JSON.stringify(entry)}, which is not a candidate`)
+        continue
+      }
+      const c = entry as Candidate
+      const bad = c.owner === p.name ? (misshapen(c) ?? unplannable(c)) : null
       if (c.owner !== p.name) {
         warnings.push(`${p.name}: dropped ${c.id}, which names ${c.owner} as its owner`)
-      } else if (misshapen(c) !== null) {
-        warnings.push(`${p.name}: dropped ${c.id}, ${misshapen(c)}`)
-      } else if (c.costDescription !== undefined && !costs.has(c.costDescription)) {
-        warnings.push(
-          `${p.name}: dropped ${c.id}, whose costDescription is not one of ${COST_DESCRIPTIONS.join(', ')}`,
-        )
+      } else if (bad !== null) {
+        warnings.push(`${p.name}: dropped ${c.id}, ${bad}`)
       } else if (first.has(c.id)) {
         warnings.push(`duplicate ${c.id}: kept ${first.get(c.id)}'s, dropped ${p.name}'s`)
       } else {
@@ -400,17 +509,9 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
 
   const known = new Set(candidates.map((c) => c.id))
   const objections: Objection[] = []
-  const linked = linkedCheckouts(targets)
-  const home = homedir()
-  // Asked once per plugin, so a throwing `roots` warns once.
-  const rootsOf = new Map<string, { roots: readonly string[]; self: readonly string[] }>()
-  for (const p of plugins) {
-    if (p.roots === undefined) continue
-    const answer = await guarded<unknown>(p, 'roots', [], scoped, (x) => p.roots!(x))
-    const accepted = acceptRoots(answer, { targets, linked, home })
-    for (const problem of accepted.problems) warnings.push(`${p.name}: roots: ${problem}`)
-    rootsOf.set(p.name, accepted)
-  }
+  const asked = await askRoots(plugins, scoped, warnings)
+  const { rootsOf, home } = asked
+  const linked = asked.linked()
   const boundsOf = (name: string): Bounds => ({
     roots: rootsOf.get(name)?.roots ?? [],
     self: rootsOf.get(name)?.self ?? [],
@@ -495,7 +596,8 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
  *            chose.
  *   `pick`   also run these: a candidate held for review
  *            (`held: true`) runs only when picked or selected.
- *   `spare`  leave these alone: an id, a path, a name (every candidate of
+ *   `spare`  leave these alone: an id, a path (a ref candidate's ref or
+ *            `at`), a name (every candidate of
  *            that name, as a branch and the worktree that has it), or a
  *            glob (`*`, `**`, `?`) over ids, paths and names.
  *
@@ -512,7 +614,12 @@ export const DEFAULT_SELECTION: Selection = { select: null, pick: [], spare: [] 
 
 /** Whether `entry`, one `spare`, names `c`. */
 export function spares(entry: string, c: Candidate): boolean {
-  const names = [c.id, c.path ?? c.ref, ...(c.name === undefined ? [] : [c.name])]
+  const names = [
+    c.id,
+    c.path ?? c.ref,
+    ...(c.at === undefined ? [] : [c.at]),
+    ...(c.name === undefined ? [] : [c.name]),
+  ]
   if (isGlob(entry)) {
     const re = globRegExp(entry)
     return names.some((n) => re.test(n))
@@ -818,6 +925,7 @@ export async function clean(
   opts: CleanOptions = {},
 ): Promise<Receipt> {
   const now = opts.now ?? (() => new Date())
+  const head = { version: RECEIPT_VERSION, plan: opts.source ?? '(swept)' } as const
   let checked: Awaited<ReturnType<typeof recheck>>
   try {
     checked = await recheck(p, plugins, ctx)
@@ -827,8 +935,7 @@ export async function clean(
       const at = now().toISOString()
       try {
         writeReceipt(opts.receiptPath, {
-          version: RECEIPT_VERSION,
-          plan: opts.source ?? '(swept)',
+          ...head,
           status: 'failed',
           startedAt: at,
           finishedAt: at,
@@ -844,8 +951,7 @@ export async function clean(
   }
   const { decision, survey: s } = checked
   const receipt: Receipt = {
-    version: RECEIPT_VERSION,
-    plan: opts.source ?? '(swept)',
+    ...head,
     status: opts.dryRun === true ? 'dry-run' : 'running',
     startedAt: now().toISOString(),
     finishedAt: null,
@@ -948,13 +1054,18 @@ async function runOne(
     } catch (err) {
       return fail(err, `${c.owner}: roots failed: `)
     }
-    const at = { targets: s.ctx.targets, linked: s.linked, home: homedir() }
-    const { roots, self } = acceptRoots(answer, at)
+    const at = { targets: s.ctx.targets, linked: s.linked, home: s.ctx.home ?? homedir() }
+    const { roots, self, problems } = acceptRoots(answer, at)
     const bounds: Bounds = { roots, self, ...at }
     const why = outside(c, bounds)
-    if (why !== null) return fail(why)
+    if (why !== null) {
+      return fail(problems.length === 0 ? why : `${why}; roots refused: ${problems.join('; ')}`)
+    }
     // The owner's kit removes within what was just checked.
     bindKit(owner, bounds)
+  } else {
+    // A ref delete removes no folder.
+    bindKit(owner, undefined)
   }
   try {
     step.delete = await callHook(owner, 'delete', s.ctx, (x) => owner.delete!(c, x))
