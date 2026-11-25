@@ -1,8 +1,8 @@
 /**
  * Checks on the public surface as a whole: every value export of each entry
  * is used in examples/, which imports the package by name only; the README
- * names every export; and the README's experimental list matches the
- * `@experimental` tags.
+ * names every export; every export has a TSDoc comment; and the README's
+ * experimental list matches the `@experimental` tags.
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -26,6 +26,17 @@ interface Exported {
   name: string
   experimental: boolean
   value: boolean
+  documented: boolean
+}
+
+/**
+ * A TSDoc comment on the line above the declaration. A file's header comment,
+ * which a blank line separates from the first declaration, does not count.
+ */
+function hasOwnDoc(declaration: ts.Declaration): boolean {
+  const node = ts.isVariableDeclaration(declaration) ? declaration.parent.parent : declaration
+  const lead = node.getSourceFile().text.slice(node.pos, node.getStart())
+  return /\/\*\*[\s\S]*\*\/[ \t]*\r?\n[ \t]*$/.test(lead)
 }
 
 function exportsOf(): Exported[] {
@@ -50,6 +61,7 @@ function exportsOf(): Exported[] {
           ts.getJSDocTags(d).some((t) => t.tagName.text === 'experimental'),
         ),
         value: (symbol.flags & ts.SymbolFlags.Value) !== 0,
+        documented: (symbol.declarations ?? []).some(hasOwnDoc),
       })
     }
   }
@@ -92,6 +104,10 @@ test('every value export is used by examples/, which imports the package by name
   }
   const missing = EXPORTS.filter((e) => e.value && !imported.has(`${e.entry}:${e.name}`))
   expect(missing.map((e) => `${e.entry}:${e.name}`)).toEqual([])
+})
+
+test('every export has a TSDoc comment', () => {
+  expect(EXPORTS.filter((e) => !e.documented).map((e) => `${e.entry}:${e.name}`)).toEqual([])
 })
 
 test('the README names every export', () => {

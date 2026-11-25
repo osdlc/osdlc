@@ -4,15 +4,21 @@
  * seen, whether it shows a focus indicator), then Shift+Tab back to check the
  * order reverses, and check a modal dialog keeps focus. It records what
  * happened and judges nothing: a caller turns the record into findings, for
- * example with `./parley-capture.ts`. Imports Playwright types and node
- * built-ins only, like `story.ts`, so it runs in the container.
+ * example with `@osdlc/story-harness/parley-capture`. Imports Playwright types
+ * and node built-ins only, so it runs in the container.
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 
+/** Stops per story before the walk gives up. */
 export const DEFAULT_WALK_MAX = 40
 
+/**
+ * A box in CSS pixels from the viewport's top-left corner.
+ *
+ * @experimental
+ */
 export interface WalkBox {
   x: number
   y: number
@@ -20,6 +26,11 @@ export interface WalkBox {
   h: number
 }
 
+/**
+ * One element that took focus during the walk.
+ *
+ * @experimental
+ */
 export interface WalkStop {
   /** 1-based position in the tab order. */
   index: number
@@ -63,6 +74,11 @@ export interface WalkStop {
   shot: string
 }
 
+/**
+ * Why the walk stopped.
+ *
+ * @experimental
+ */
 export type WalkEnd =
   /** Focus returned to a stop already visited. */
   | 'cycled'
@@ -77,6 +93,11 @@ export type WalkEnd =
   /** The stop limit came first. */
   | 'max'
 
+/**
+ * The result of the Shift+Tab pass back through the stops.
+ *
+ * @experimental
+ */
 export interface WalkReverse {
   /** At least two stops, so there was an order to reverse. */
   checked: boolean
@@ -86,6 +107,11 @@ export interface WalkReverse {
   mismatch: { expected: number; got: number } | null
 }
 
+/**
+ * What the walk found about a dialog on the page.
+ *
+ * @experimental
+ */
 export interface WalkDialog {
   /** A stop is inside a `[role=dialog]`, `[role=alertdialog]` or `dialog[open]`, or a modal one was open at the start. */
   present: boolean
@@ -106,6 +132,11 @@ export interface WalkDialog {
   focusRestored: boolean | null
 }
 
+/**
+ * Everything the walk recorded for one story; written as `walk.json`.
+ *
+ * @experimental
+ */
 export interface WalkRecord {
   id: string
   theme: 'light'
@@ -121,7 +152,11 @@ export interface WalkRecord {
   dialog: WalkDialog
 }
 
-/** What `parameters.walk` can set on a story or its meta. */
+/**
+ * What `parameters.walk` can set on a story or its meta.
+ *
+ * @experimental
+ */
 export interface WalkParameters {
   /** Leave the story out of the walk; the string says why. */
   skip?: string
@@ -517,6 +552,11 @@ const describeFocus = (page: Page, idx: number): Promise<FocusDescription> =>
 const focusGeometry = (page: Page, idx: number): Promise<FocusGeometry> =>
   page.evaluate((i) => (window as any).__walk.geometry(i), idx)
 
+/**
+ * What {@link walkPage} needs.
+ *
+ * @experimental
+ */
 export interface WalkOptions {
   id: string
   /** Folder for the screenshots and `walk.json`; created. */
@@ -525,6 +565,14 @@ export interface WalkOptions {
   max?: number
 }
 
+/**
+ * Tab through the open page from the start of the document, then Shift+Tab
+ * back, writing a screenshot per stop and `walk.json` to `outDir`. Records
+ * what happened and judges nothing. The page must be a story that has been
+ * opened and settled.
+ *
+ * @experimental
+ */
 export async function walkPage(page: Page, options: WalkOptions): Promise<WalkRecord> {
   const max = options.max ?? DEFAULT_WALK_MAX
   mkdirSync(options.outDir, { recursive: true })
