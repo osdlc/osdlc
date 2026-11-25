@@ -107,4 +107,18 @@ describe('the git plugin', () => {
     const allow = { ...fx.ctx, allow: ['abandon-unmerged', 'discard-archived'] }
     expect(() => plugin.delete!(target, allow)).toThrow(FatalRun)
   })
+
+  test('with archive, unlanded work in a repository with no remote is refused, merged work is not', () => {
+    const fx = fixture()
+    sh(fx.root, ['remote', 'remove', 'origin'])
+    const plugin = gitPlugin({
+      probe: idle,
+      archive: {},
+      sweep: { remotes: [''], offline: true, provider: 'none' },
+    })
+    const s = survey([plugin], fx.ctx)
+    const unmerged = s.candidates.find((c) => c.path.endsWith(':unmerged'))!
+    const noRemote = s.objections.filter((o) => o.code === 'no-remote')
+    expect(noRemote.map((o) => [o.candidate, o.level])).toEqual([[unmerged.id, 'refuse']])
+  })
 })

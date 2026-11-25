@@ -390,14 +390,32 @@ describe('plan and clean', () => {
     expect(git(dir, ['branch', '--format=%(refname:short)'])).toContain('topic')
   })
 
-  test('--archive fails the step with exit 11 in a repository with no remote, and keeps the branch', () => {
+  test('a failed archive push leaves every later candidate, in every repository', () => {
+    const { env } = setup()
+    const { dir } = pushedRepo()
+    sh(dir, ['remote', 'set-url', 'origin', join(dirname(dir), 'gone.git')])
+    // Its remote works, so only a run that went on after the failure would archive and delete its topic.
+    const { dir: other, bare: otherBare } = pushedRepo()
+    // Picks run in the order given: the failing one first.
+    const picks = [`branch:${dir}:topic`, `branch:${other}:topic`]
+    const argv = ['clean', '--archive', ...picks.flatMap((p) => ['--pick', p])]
+    const r = run([...argv, '--allow', 'abandon-unmerged', '--yes', dir, other], dir, env)
+    expect(r.code).toBe(11)
+    expect(r.out).toContain('archive failed')
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).toContain('topic')
+    expect(git(other, ['branch', '--format=%(refname:short)'])).toContain('topic')
+    expect(archives(otherBare)).toEqual([])
+  })
+
+  test('--archive refuses unlanded work in a repository with no remote, in the preview', () => {
     const { env } = setup()
     const dir = repo()
-    const r = cleanTopic(dir, env, '--archive')
-    expect(r.code).toBe(11)
-    expect(r.out).toContain('has no remote')
-    expect(r.out).not.toContain('archive failed')
-    expect(git(dir, ['branch', '--format=%(refname:short)'])).toContain('topic')
+    const flags = ['--archive', '--pick', `branch:${dir}:topic`, '--allow', 'abandon-unmerged']
+    const r = run(['clean', ...flags, '--dry-run'], dir, env)
+    expect(r.code).toBe(0)
+    expect(r.out).toContain(`skip    branch:${dir}:topic`)
+    expect(r.out).toContain('has no remote to push the archive to')
+    expect(r.out).not.toContain('unlanded work of')
   })
 
   test('--archive --dry-run says unlanded work would be pushed; without --archive it does not', () => {
@@ -407,9 +425,26 @@ describe('plan and clean', () => {
     const r = run(['clean', '--archive', ...flags], dir, env)
     expect(r.code).toBe(0)
     expect(r.out).toContain(`delete  branch:${dir}:topic`)
-    expect(r.out).toContain("archive: unlanded work is pushed to its repository's remote")
+    expect(r.out).toContain(
+      "archive: unlanded work of 1 item(s) is pushed to its repository's remote",
+    )
     expect(run(['clean', ...flags], dir, env).out).not.toContain('archive:')
+    const json = run(['clean', '--archive', '--format', 'json', ...flags], dir, env)
+    expect(JSON.parse(json.out).archive).toEqual([`branch:${dir}:topic`])
     expect(archives(bare)).toEqual([])
+  })
+
+  test('--archive --dry-run with only merged work says nothing is pushed', () => {
+    const { env } = setup()
+    const { dir } = pushedRepo()
+    sh(dir, ['branch', 'merged-a', 'main'])
+    const flags = ['--archive', '--pick', `branch:${dir}:merged-a`, '--dry-run']
+    const r = run(['clean', ...flags], dir, env)
+    expect(r.code).toBe(0)
+    expect(r.out).toContain(`delete  branch:${dir}:merged-a`)
+    expect(r.out).not.toContain('archive:')
+    const json = run(['clean', '--format', 'json', ...flags], dir, env)
+    expect(JSON.parse(json.out).archive).toEqual([])
   })
 
   test('--archive gives a second branch in the same repository and day the -2 suffix', () => {
@@ -567,6 +602,13 @@ describe('plan and clean', () => {
     })
     expect(injected.code).toBe(2)
     expect(injected.err).toContain('the given plugins cannot archive')
+    // Refused before the plugins are built, so a config naming an unknown one does not hide it.
+    writeFileSync(f, JSON.stringify({ plugins: { nope: {} } }))
+    const beforeConfig = run(['clean', '--archive', '--config', f, '--dry-run'], cwd, env, {
+      plugins: [fake('git')],
+    })
+    expect(beforeConfig.code).toBe(2)
+    expect(beforeConfig.err).toContain('the given plugins cannot archive')
     const both = run(['clean', '--pick', 'a:x', '--spare', 'a:x', '--dry-run'], cwd, env, {
       plugins: [fake()],
     })

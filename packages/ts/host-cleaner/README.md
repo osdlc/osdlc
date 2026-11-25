@@ -89,7 +89,8 @@ blockers are `refuse` objections and its risks `protest`s, so
 `--allow abandon-unmerged` and the others work as in repo-cleaner. A branch
 freed by a worktree requires it. With `archive` (`clean --archive` on the
 command line), unlanded work is pushed to the remote first; a failed push
-throws `FatalRun`. Grant the named risks; the `discard-archived` cover is not
+throws `FatalRun`, and a candidate with unlanded work in a repository with no
+remote is refused (`no-remote`). Grant the named risks; the `discard-archived` cover is not
 yet offered here.
 
 ## The `cargo` and `node` plugins
@@ -174,11 +175,12 @@ same repository on the same day goes to `archive/<repo>-local-<date>-2`, and
 so on. `--archive` with a run that does not use the git plugin, and
 `--archive-exclude` with `--branches` alone, are refused with exit 2; an
 exclude that matches no worktree in the run does nothing. The preview says
-when unlanded work will be pushed. Any failed archive step (the push, or
-reading the remote's default branch) stops the whole run, across every
-repository: that candidate and every one after it are left, and the run exits
-11. A repository with no remote cannot be archived, so its
-candidates that hold unlanded work fail their step, and the run exits 11.
+how many candidates have unlanded work pushed, and `--format json --dry-run`
+lists them under `archive`. Any failed archive step (the push, or reading the
+remote's default branch) stops the whole run, across every repository: that
+candidate and every one after it are left, and the run exits 11. A repository
+with no remote cannot be archived, so the git plugin refuses (`no-remote`) its
+candidates that hold unlanded work, and the preview shows them skipped.
 
 ```sh
 host-cleaner clean --archive --pick branch:/path/to/repo:topic --allow abandon-unmerged

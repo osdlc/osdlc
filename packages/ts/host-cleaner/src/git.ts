@@ -42,6 +42,11 @@ function nameOf(row: CleanCandidate): string | null {
   return row.kind === 'worktree' ? ((row.evidence as WorktreeEvidence).branch ?? null) : null
 }
 
+/** True when the row has work an archive would hold, as repo-cleaner's `mayContribute`. */
+function holdsUnlanded(row: CleanCandidate): boolean {
+  return row.risks.includes('abandon-unmerged') || row.risks.includes('discard-changes')
+}
+
 export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
   /** The last discovery's rows, kept for `object` and `delete`; `discover` makes them afresh. */
   let rows = new Map<string, CleanCandidate>()
@@ -82,8 +87,14 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
           code,
           reason,
         })
+        const noRemote = `archive: ${row.repo} has no remote to push the archive to`
+        const unarchivable =
+          opts.archive !== undefined && row.remote === null && holdsUnlanded(row)
+            ? [own('refuse', 'no-remote', noRemote)]
+            : []
         return [
           ...row.blockers.map((b) => own('refuse', b, `${row.why} (${b})`)),
+          ...unarchivable,
           ...row.risks.map((r) => own('protest', r, `deleting it risks ${r}`)),
         ]
       })

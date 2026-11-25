@@ -652,16 +652,34 @@ function chooseCandidates(plan: Plan, preview: Decision, deps: MainDeps): Plan |
 }
 
 /**
- * What a clean would do, as text: each candidate to run in order, then each one
- * dropped and why, and with `archive` that unlanded work is pushed first.
+ * The ids in `d.run` whose unlanded work `clean --archive` pushes first: the
+ * git plugin's candidates it protests as `abandon-unmerged` or `discard-changes`.
  */
-function renderPreview(d: Decision, archive: boolean): string {
+function archivedIds(d: Decision, objections: readonly Objection[]): string[] {
+  const holds = new Set(
+    objections
+      .filter(
+        (o) =>
+          o.by === 'git' &&
+          o.level === 'protest' &&
+          (o.code === 'abandon-unmerged' || o.code === 'discard-changes'),
+      )
+      .map((o) => o.candidate),
+  )
+  return d.run.filter((c) => c.owner === 'git' && holds.has(c.id)).map((c) => c.id)
+}
+
+/**
+ * What a clean would do, as text: each candidate to run in order, then each one
+ * dropped and why, and which of them have their unlanded work archived first.
+ */
+function renderPreview(d: Decision, archived: readonly string[]): string {
   const lines: string[] = []
   for (const c of d.run) lines.push(`  delete  ${c.id}`, `          ${c.why}`)
   for (const x of d.dropped) lines.push(`  skip    ${x.id}`, `          ${x.reason}: ${x.detail}`)
   const push =
-    archive && d.run.length > 0
-      ? "archive: unlanded work is pushed to its repository's remote before it is deleted\n"
+    archived.length > 0
+      ? `archive: unlanded work of ${archived.length} item(s) is pushed to its repository's remote before it is deleted\n`
       : ''
   return block(lines) + push + `would delete: ${d.run.length} item(s)\n`
 }
@@ -709,13 +727,14 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let plugins: Plugin[]
   let cctx: Ctx
   let preview: Decision
+  let objections: readonly Objection[]
   try {
-    const config = loadConfig(v, ctx)
     const archive = v.archive ? { exclude: v.archiveExclude } : undefined
-    plugins = pluginsFor(v, config, deps, ctx, archive)
     if (archive !== undefined && deps.plugins !== undefined) {
       throw new BadInput('--archive needs the shipped git plugin; the given plugins cannot archive')
     }
+    const config = loadConfig(v, ctx)
+    plugins = pluginsFor(v, config, deps, ctx, archive)
     if (archive !== undefined && !plugins.some((p) => p.name === 'git')) {
       throw new BadInput('--archive has no effect: this run does not use the git plugin')
     }
@@ -735,6 +754,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
       source = '(swept)'
       // Swept a moment ago: `clean` checks again before it deletes.
       preview = decidePlan(plan)
+      objections = plan.objections
     } else {
       if (v.plan === '-') {
         plan = parsePlan((deps.readStdin ?? readAllStdin)(), 'stdin')
@@ -752,6 +772,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
       const checked = recheck(plan, plugins, cctx)
       writeWarnings(ctx, name, checked.survey.warnings)
       preview = checked.decision
+      objections = checked.survey.objections
     }
   } catch (err) {
     return refusal(ctx, name, err)
@@ -766,16 +787,19 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
 
   const count = preview.run.length
   const json = v.format === 'json'
+  const archived = v.archive ? archivedIds(preview, objections) : []
   if (v.dryRun || count === 0) {
-    ctx.io.stdout(
-      json
-        ? `${JSON.stringify({ dryRun: v.dryRun, run: preview.run.map((c) => c.id), dropped: preview.dropped }, null, 2)}\n`
-        : renderPreview(preview, v.archive),
-    )
+    const shown = {
+      dryRun: v.dryRun,
+      run: preview.run.map((c) => c.id),
+      ...(v.archive ? { archive: archived } : {}),
+      dropped: preview.dropped,
+    }
+    ctx.io.stdout(json ? `${JSON.stringify(shown, null, 2)}\n` : renderPreview(preview, archived))
     return EXIT.ok
   }
   if (!v.yes) {
-    ;(json ? ctx.io.stderr : ctx.io.stdout)(renderPreview(preview, v.archive))
+    ;(json ? ctx.io.stderr : ctx.io.stdout)(renderPreview(preview, archived))
     const answer = (deps.confirm ?? terminalConfirm)(
       `Delete ${count} item${count === 1 ? '' : 's'}?`,
     )
