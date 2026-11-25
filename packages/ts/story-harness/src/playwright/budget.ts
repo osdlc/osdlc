@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path'
 import { LockTimeoutError, withLock } from '@osdlc/file-lock'
 import { expect } from '@playwright/test'
 
+/** One budget's outcome: the value, its limit, the slack applied and whether it passed. */
 export interface Verdict {
   value: number
   limit: number
@@ -21,6 +22,7 @@ export interface Verdict {
   pass: boolean
 }
 
+/** The perf report every worker merges into: the run's environment, values and verdicts. */
 export interface PerfReport {
   /**
    * The run's id: `STORY_PERF_RUN`, which `defineStoryConfig` sets once per run,
