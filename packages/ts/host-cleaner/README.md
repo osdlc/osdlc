@@ -353,6 +353,35 @@ local repository, after 30 idle days). Each looks only at the tool's default
 folders: a store moved by an environment variable or a setting is not found, and
 the folder it left behind, if any, is what gets cleaned.
 
+A descriptor finds a moved folder with variables: `${NAME}` in a `paths` entry,
+a lock, or another variable's `file` or `value`. Each variable lists sources,
+tried in order on every survey; the first that gives an absolute folder wins:
+
+```yaml
+vars:
+  GOMODCACHE:
+    - env: GOMODCACHE # an environment variable
+    - command: [go, env, GOMODCACHE] # one line of output; argv only, run from home, 5 s limit
+    - { file: ~/.config/go/env.toml, key: cache.mod } # a dotted key in a TOML, JSON or YAML file
+    - value: '${GOPATH}/pkg/mod' # a fixed folder, per OS or `all`
+paths:
+  modcache: { all: '${GOMODCACHE}' }
+```
+
+`HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and
+`XDG_STATE_HOME` are built in; each `XDG_*` folder falls back to its XDG default
+under home on every OS. A variable is resolved only when a folder or lock on
+this OS uses it. A folder whose variable has no value is left out, and `status`
+notes which variable and why each source gave none. `${` is refused in a
+candidate's `command`, `env` and `glob`: a command is pointed at its folder with
+`{path}`. A resolved folder must sit inside home, except one under a variable
+set in the config's `plugins.<name>.vars`, which is trusted, so a cache moved to
+another disk can be cleaned:
+
+```json
+{ "plugins": { "go": { "vars": { "GOMODCACHE": "/Volumes/build/go/mod" } } } }
+```
+
 The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
 all three directories):
 
@@ -369,6 +398,7 @@ the key.
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
 | `idleHours` | `cargo`, `node`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
+| `vars.<NAME>` | descriptors that declare `vars` | none | A folder (`~/…` or absolute) for one of the descriptor's variables. It wins over every source and may sit outside home. A name the descriptor does not declare is an error. |
 
 Two settings sit at the top of the config and apply to every plugin:
 

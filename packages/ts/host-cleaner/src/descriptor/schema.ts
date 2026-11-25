@@ -180,6 +180,11 @@ export const DescriptorCandidateSchema = z
       if (c.env !== undefined) at('env', 'only with command')
     }
     if (c.maxEntries !== undefined && c.glob === undefined) at('maxEntries', 'only with glob')
+    // Variables are filled only in folders; a command is pointed at its folder with {path}.
+    const unfilled = 'is not filled here: variables are filled only in paths, vars and locks'
+    if (c.command?.some((a) => a.includes('${')) === true) at('command', `\${ ${unfilled}`)
+    if (Object.values(c.env ?? {}).some((v) => v.includes('${'))) at('env', `\${ ${unfilled}`)
+    if (c.glob?.includes('${') === true) at('glob', `\${ ${unfilled}`)
   })
 
 /** A file or glob name, with no folder in it. */

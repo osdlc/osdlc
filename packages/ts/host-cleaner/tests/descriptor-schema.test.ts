@@ -430,6 +430,16 @@ describe('a bad descriptor names the field path', () => {
       'line 5: vars.STORE.0.command: the program must be a name on PATH, not a path',
     ],
     [
+      "a variable in a candidate's command",
+      PNPM.replace("'{path}']", "'{path}', '${STORE}']"),
+      'line 12: candidates.0.command: ${ is not filled here: variables are filled only in paths, vars and locks',
+    ],
+    [
+      "a variable in a candidate's env",
+      PNPM.replace("'{path}']", "'{path}']\n    env: { CACHE: '${XDG_CACHE_HOME}/x' }"),
+      'line 13: candidates.0.env: ${ is not filled here: variables are filled only in paths, vars and locks',
+    ],
+    [
       'a variable name that is no environment variable name',
       PNPM.replace('  STORE:', '  pnpm-store:'),
       'line 4: vars.pnpm-store: Invalid key in record',

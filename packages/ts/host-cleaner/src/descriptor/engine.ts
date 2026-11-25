@@ -5,10 +5,10 @@
  *
  * - detect: `detect`'s `onPath` and `exists`, or any of its folders existing.
  *   A `system: true` descriptor never applies ({@link skipReason}), nor one
- *   whose `supersededBy` plugin runs. Otherwise it first works out its `vars`
- *   (tier 2, {@link resolveVars}), so once per survey, and its folders with
- *   them. A folder whose variable has no value is left out, with its
- *   candidates.
+ *   whose `supersededBy` plugin runs. Otherwise it first works out the `vars`
+ *   its folders and locks on this OS use (tier 2, {@link resolveVars}), so
+ *   once per survey, and its folders with them. A folder whose variable has
+ *   no value is left out, with its candidates, and detect's note says why.
  * - roots: each of its `paths` for this OS that passes {@link pathProblem},
  *   as a self root (`{ path, self: true }`): a candidate may be the whole
  *   folder, so `~/.npm`'s root is `~/.npm` itself, and `delete` checks the
@@ -58,7 +58,7 @@ import {
   type Os,
   type ProjectEntry,
 } from './schema.ts'
-import { VAR_COMMAND_LIMIT_MS, fillTemplate, resolveVars } from './vars.ts'
+import { VAR_COMMAND_LIMIT_MS, fillTemplate, resolveVars, varRefs, type Vars } from './vars.ts'
 
 /** The protest on a prune whose program is not on PATH; `--allow no-prune-tool` removes the folder instead (D12). */
 export const NO_PRUNE_TOOL = 'no-prune-tool'
@@ -289,12 +289,53 @@ interface EngineAt {
 /** One of a descriptor's folders, resolved; trusted when a config value gave it. */
 type Folder = { path: string; trusted: boolean }
 
+/**
+ * The declared variables that `templates` use on `os`, with the ones their
+ * sources use in turn: only these are resolved on a survey.
+ */
+function varsUsed(d: Descriptor, os: Os, templates: readonly string[]): Set<string> {
+  const used = new Set<string>()
+  const add = (text: string): void => {
+    for (const ref of varRefs(text)) {
+      const sources = d.vars !== undefined && Object.hasOwn(d.vars, ref) ? d.vars[ref]! : undefined
+      if (sources === undefined || used.has(ref)) continue
+      used.add(ref)
+      for (const s of sources) {
+        if ('file' in s) add(s.file)
+        if ('value' in s) {
+          const v = typeof s.value === 'string' ? s.value : (s.value.all ?? s.value[os])
+          if (v !== undefined) add(v)
+        }
+      }
+    }
+  }
+  templates.forEach(add)
+  return used
+}
+
+/** Why the variable `missing` has no value, for a note: each source tried and why it gave none. */
+function missingText(key: string, missing: string, vars: Readonly<Vars>): string {
+  const tried = Object.hasOwn(vars, missing) ? vars[missing]!.tried : []
+  const why = tried.map((t) => `${t.source}: ${t.failed}`).join('; ')
+  return `${key} is left out: \${${missing}} has no value${why === '' ? '' : ` (${why})`}`
+}
+
 function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
+  // The folder and lock templates that apply on this OS, and the variables they use.
+  const pathTemplates = Object.entries(d.paths).flatMap(([key, perOs]) => {
+    const template = perOs.all ?? perOs[at.os]
+    return template === undefined ? [] : [[key, template] as const]
+  })
+  const lockTemplates = d.inUse?.locks ?? []
+  const used = varsUsed(d, at.os, [...pathTemplates.map(([, t]) => t), ...lockTemplates])
+
   // The folders that apply on this OS, by their name in `paths`, as the last
   // survey resolved them, each trusted when a config value gave it; and the
   // lock files. Undefined until a survey resolves them.
   let folders = new Map<string, Folder>()
   let locks: string[] | undefined
+  // Why the last survey left folders or locks out; undefined when it left none out.
+  let leftOut: string | undefined
 
   const refresh = async (ctx: Ctx): Promise<void> => {
     const vars = await resolveVars(d.vars ?? {}, {
@@ -304,20 +345,24 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       config: at.vars,
       kit,
       signal: ctx.signal,
+      only: used,
     })
-    // A folder or lock whose variable has no value is left out.
+    // A folder or lock whose variable has no value is left out, with a note.
+    const why: string[] = []
     const next = new Map<string, Folder>()
-    for (const [key, perOs] of Object.entries(d.paths)) {
-      const template = perOs.all ?? perOs[at.os]
-      if (template === undefined) continue
+    for (const [key, template] of pathTemplates) {
       const filled = fillTemplate(template, vars, at.home)
-      if (!('missing' in filled)) next.set(key, filled)
+      if ('missing' in filled) why.push(missingText(key, filled.missing, vars))
+      else next.set(key, filled)
     }
     folders = next
-    locks = (d.inUse?.locks ?? []).flatMap((lock) => {
+    locks = lockTemplates.flatMap((lock) => {
       const filled = fillTemplate(lock, vars, at.home)
-      return 'missing' in filled ? [] : [filled.path]
+      if (!('missing' in filled)) return [filled.path]
+      why.push(missingText(`the lock ${lock}`, filled.missing, vars))
+      return []
     })
+    leftOut = why.length === 0 ? undefined : why.join('; ')
   }
 
   /** Resolves the variables if no survey has yet. */
@@ -653,10 +698,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
 
   let rows = new Map<string, Row>()
 
-  // Commands run one at a time, each within its own limit.
-  const commands = Object.values(d.vars ?? {})
-    .flat()
-    .filter((s) => 'command' in s).length
+  // Commands run one at a time, each within its own limit; only the used variables' run.
+  const commands = [...used].flatMap((v) => d.vars![v]!).filter((s) => 'command' in s).length
 
   return {
     name,
@@ -675,9 +718,13 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         const folder = c.exists === undefined ? undefined : folders.get(c.exists)?.path
         return folder !== undefined && present(folder)
       }
-      if (d.detect?.all !== undefined) return d.detect.all.every(holds)
-      if (d.detect?.any !== undefined) return d.detect.any.some(holds)
-      return [...folders.values()].some((f) => present(f.path))
+      const active =
+        d.detect?.all !== undefined
+          ? d.detect.all.every(holds)
+          : d.detect?.any !== undefined
+            ? d.detect.any.some(holds)
+            : [...folders.values()].some((f) => present(f.path))
+      return leftOut === undefined ? active : { active, note: leftOut }
     },
     async roots(ctx): Promise<Root[]> {
       await ready(ctx)

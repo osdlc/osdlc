@@ -1132,7 +1132,7 @@ describe('variables (tier 2)', () => {
     expect(s.candidates.map((c) => c.path)).toEqual([mod])
   })
 
-  test('a variable with no value leaves its folder out: no candidate, no root', async () => {
+  test('a variable with no value leaves its folder out: no candidate, no root, and a note saying why', async () => {
     const NONE = `descriptor: 1
 vars:
   DIR:
@@ -1149,6 +1149,24 @@ candidates:
     const s = await survey([b.plugin], ctxOf())
     expect(s.candidates.map((c) => c.path)).toEqual([other])
     expect(s.roots.tool).toEqual([other])
+    expect(s.notes.tool).toBe('data is left out: ${DIR} has no value (env TOOL_DIR: not set)')
+  })
+
+  test('a variable no folder on this OS uses is not resolved: its command does not run', async () => {
+    const WIN_ONLY = `descriptor: 1
+vars:
+  WIN:
+    - command: [tool, where]
+paths:
+  win: { windows: '\${WIN}' }
+  other: { all: ~/.cache/other }
+candidates:
+  - { path: other, costDescription: rebuild }
+`
+    const b = buildVars('tool', WIN_ONLY, { programs: { tool: { where: { stdout: '/w\n' } } } })
+    filled(b.home, '.cache/other')
+    await survey([b.plugin], ctxOf())
+    expect(b.calls).toEqual([])
   })
 
   test('each survey works the folder out again; a store moved after the plan is not deleted', async () => {
