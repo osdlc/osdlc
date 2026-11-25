@@ -309,7 +309,10 @@ describe('credentialHelper (final review)', () => {
     const name = process.platform === 'win32' ? 'gh.exe' : 'gh'
     writeFileSync(join(bin, name), '#!/bin/sh\n')
     chmodSync(join(bin, name), 0o755)
-    const path = join(bin, name).replaceAll('\\', '/')
+    // On Windows the lookup appends each `PATHEXT` extension as `PATHEXT` spells it (`.EXE` when
+    // unset), and finds `gh.exe` by it, since Windows file names compare in any case.
+    const found = process.platform === 'win32' ? join(bin, 'gh.EXE') : join(bin, name)
+    const path = found.replaceAll('\\', '/')
     expect(credentialHelper({ binary: 'gh' }, { PATH: bin })).toBe(`!'${path}' auth git-credential`)
     // A relative entry is never searched: the one a push runs in could hold a `gh` a PR commits.
     const planted = join(scratch, 'planted')
