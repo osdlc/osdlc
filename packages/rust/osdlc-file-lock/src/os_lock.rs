@@ -633,6 +633,14 @@ mod tests {
         std::fs::read_to_string(path).unwrap()
     }
 
+    /// The text of a held lock's file, read through the holder's own open
+    /// file: on Windows no other open of it can be read.
+    fn read_as_holder(file: &File) -> String {
+        let mut buf = [0u8; MAX_RECORD_LEN];
+        let len = read_at_start(file, &mut buf).unwrap();
+        String::from_utf8(buf[..len].to_vec()).unwrap()
+    }
+
     fn lock_and_guard(dir: &tempfile::TempDir) -> (PathBuf, PathBuf) {
         let path = dir.path().join("x.lock");
         let guard = guard_path(&path);
@@ -831,9 +839,9 @@ mod tests {
         let new = record_line(&json!({ "boot": "b2" })).unwrap();
 
         // The file, and whether the guard was held, as `record` let it go.
-        let at = path.clone();
+        let own = lock.held.file.try_clone().unwrap();
         let (recorded, seen) = as_the_guard_goes(
-            move || (is_held(&guard), read(&at)),
+            move || (is_held(&guard), read_as_holder(&own)),
             || lock.record(&json!({ "boot": "b2" })),
         );
 
@@ -852,7 +860,10 @@ mod tests {
         lock.record_within(&json!({ "boot": "b2" }), Duration::from_millis(50))
             .unwrap();
 
-        assert_eq!(read(&path), record_line(&json!({ "boot": "b2" })).unwrap());
+        assert_eq!(
+            read_as_holder(&lock.held.file),
+            record_line(&json!({ "boot": "b2" })).unwrap()
+        );
         assert!(is_held(&path));
     }
 
