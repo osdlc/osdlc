@@ -38,43 +38,48 @@ export interface HostDirs {
   logs: string
 }
 
-/** `platform` and `home` stand in for this machine's, for tests. */
-export type MachineOpts = Pick<ResolveOptions, 'platform' | 'home'>
-
 /**
  * The directories, under the `xdg` convention. Windows has no `xdg` folders
  * and keeps its own; `HOST_CLEANER_CONVENTION=native` switches back to the
- * native ones.
+ * native ones. `opts` stands in for this machine's platform and home, for tests.
  *
- * @throws `TieredDirsError` from `@osdlc/tiered-dirs` when
- *   `HOST_CLEANER_CONVENTION` is neither `native` nor `xdg`.
+ * @throws ConfigError when the environment cannot place them, such as a
+ *   `HOST_CLEANER_CONVENTION` that is neither `native` nor `xdg`.
  */
 export function hostDirs(
   env: Record<string, string | undefined> = process.env,
-  opts: MachineOpts = {},
+  opts: Pick<ResolveOptions, 'platform' | 'home'> = {},
 ): HostDirs {
-  const dirs = systemDirs(VENDOR_DIRS, { env, convention: 'xdg', ...opts })
-  const tier = dirs.standalone('host-cleaner')
-  return { config: tier.config().path, state: tier.state().path, logs: tier.logs().path }
+  try {
+    const dirs = systemDirs(VENDOR_DIRS, { env, convention: 'xdg', ...opts })
+    const tier = dirs.standalone('host-cleaner')
+    return { config: tier.config().path, state: tier.state().path, logs: tier.logs().path }
+  } catch (err) {
+    if (err instanceof Error && err.name === 'TieredDirsError') throw new ConfigError(err.message)
+    throw err
+  }
 }
 
 export const configFile = (dirs: HostDirs): string => join(dirs.config, 'config.json')
 
-/** A config file that cannot be used; the CLI exits 2 for it. */
+/** A config file, or a folder variable, that cannot be used; the CLI exits 2 for it. */
 export class ConfigError extends Error {
   override name = 'ConfigError'
 }
 
 /**
- * The config at `path`; empty when the file does not exist, unless `required`
- * (a file the person named).
+ * The config at `path`, and whether the file was `found`; empty when the file
+ * does not exist, unless `required` (a file the person named).
  *
  * @throws ConfigError for a file that is not valid, or whose plugin entry has an unknown key or a wrong type
  */
-export function readConfig(path: string, opts: { required?: boolean } = {}): Config {
+export function readConfig(
+  path: string,
+  opts: { required?: boolean } = {},
+): { found: boolean; config: Config } {
   if (!existsSync(path)) {
     if (opts.required) throw new ConfigError(`config ${path} does not exist`)
-    return ConfigSchema.parse({})
+    return { found: false, config: ConfigSchema.parse({}) }
   }
   let raw: unknown
   try {
@@ -86,5 +91,5 @@ export function readConfig(path: string, opts: { required?: boolean } = {}): Con
   if (!parsed.success) throw new ConfigError(`bad config ${path}: ${parsed.error.message}`)
   const issues = settingsIssues(parsed.data.plugins)
   if (issues.length > 0) throw new ConfigError(`bad config ${path}: ${issues.join('; ')}`)
-  return parsed.data
+  return { found: true, config: parsed.data }
 }

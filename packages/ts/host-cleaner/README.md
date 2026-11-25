@@ -176,14 +176,19 @@ same folders as Linux:
 | Receipts | `~/.local/state/host-cleaner/receipts/` | `HOST_CLEANER_STATE_DIR`, or `XDG_STATE_HOME` |
 | Log | `~/.local/state/host-cleaner/host-cleaner.log` | `HOST_CLEANER_LOGS_DIR`, or `XDG_STATE_HOME` |
 
-`HOST_CLEANER_ROOT` moves all three folders, which is useful for tests.
+Each variable names the base folder, and host-cleaner adds `host-cleaner/` to
+it: with `HOST_CLEANER_CONFIG_DIR=~/cfg` the config is
+`~/cfg/host-cleaner/config.json`. `HOST_CLEANER_ROOT` moves all three folders,
+which is useful for tests.
 `HOST_CLEANER_CONVENTION=native` puts them back in macOS's own folders under
-`~/Library`. Windows has no `xdg` folders and keeps its own: the config is
+`~/Library`; any value other than `native` or `xdg` is refused with exit 2.
+Windows has no `xdg` folders and keeps its own: the config is
 `%APPDATA%\host-cleaner\config.json`.
 
-0.2 kept the macOS config in `~/Library/Application Support/host-cleaner/`;
-it now lives in `~/.config/host-cleaner/`, and host-cleaner does not read the
-old file. 0.2's receipts and log stay where it wrote them, in
+Versions up to 0.3 kept the macOS config in
+`~/Library/Application Support/host-cleaner/`; it now lives in
+`~/.config/host-cleaner/`, and host-cleaner does not read the old file. Their
+receipts and log stay where they were written, in
 `~/Library/Application Support/host-cleaner/receipts/` and
 `~/Library/Logs/host-cleaner/`; new ones go to `~/.local/state/host-cleaner/`.
 

@@ -318,11 +318,42 @@ describe('folders', () => {
     expect(json).toMatchObject({ file, fileExists: false })
   })
 
-  test('a bad HOST_CLEANER_CONVENTION is refused by clean, not thrown', () => {
-    const { env, cwd } = setup()
-    const r = run(['clean', '--yes', cwd], cwd, { ...env, HOST_CLEANER_CONVENTION: 'Native' })
-    expect(r.code).toBe(1)
-    expect(r.err).toContain('HOST_CLEANER_CONVENTION must be')
+  test('HOST_CLEANER_CONVENTION=native gives back the macOS folders', () => {
+    const dirs = posixDirs(
+      { HOST_CLEANER_CONVENTION: 'native' },
+      { platform: 'darwin', home: '/Users/me' },
+    )
+    expect(dirs).toEqual({
+      config: '/Users/me/Library/Application Support/host-cleaner',
+      state: '/Users/me/Library/Application Support/host-cleaner',
+      logs: '/Users/me/Library/Logs/host-cleaner',
+    })
+  })
+
+  test('Windows keeps its own folders under xdg', () => {
+    const env = { APPDATA: 'C:\\Users\\me\\AppData\\Roaming' }
+    const opts = { platform: 'win32', home: 'C:\\Users\\me' }
+    expect(hostDirs(env, opts).config).toBe(
+      hostDirs({ ...env, HOST_CLEANER_CONVENTION: 'native' }, opts).config,
+    )
+    expect(posixDirs(env, opts).config).toBe('C:/Users/me/AppData/Roaming/host-cleaner')
+  })
+
+  test('a bad HOST_CLEANER_CONVENTION is a usage error for every command', () => {
+    const { env, cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, '{}')
+    const bad = { ...env, HOST_CLEANER_CONVENTION: 'Native' }
+    for (const args of [
+      ['clean', '--yes', cwd],
+      ['plan', '--config', file, cwd],
+      ['config', '--config', file],
+      ['status', '--config', file, cwd],
+    ]) {
+      const r = run(args, cwd, bad)
+      expect(r.code, args.join(' ')).toBe(2)
+      expect(r.err).toContain('HOST_CLEANER_CONVENTION must be')
+    }
   })
 })
 

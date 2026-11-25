@@ -4,7 +4,7 @@
  * exits 2. Exit codes are in README.md, directories in `config.ts`.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
@@ -350,21 +350,17 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
 /**
- * Reads `--config`, which must exist; else `config.json` in `dirs.config`
- * (resolved from the environment when not given), if any. `found` says
- * whether a file was read.
+ * The folders, which every command resolves so a bad folder variable is
+ * refused alike; then `--config`, which must exist, else `config.json` in
+ * `dirs.config`, if any. `found` says whether a file was read.
  */
 function loadConfig(
   v: { config?: string | undefined },
   ctx: CliContext,
-  dirs?: HostDirs,
-): { file: string; found: boolean; config: Config } {
-  if (v.config !== undefined) {
-    const file = resolve(ctx.cwd, v.config)
-    return { file, found: true, config: readConfig(file, { required: true }) }
-  }
-  const file = configFile(dirs ?? hostDirs(ctx.env))
-  return { file, found: existsSync(file), config: readConfig(file) }
+): { dirs: HostDirs; file: string; found: boolean; config: Config } {
+  const dirs = hostDirs(ctx.env)
+  const file = v.config === undefined ? configFile(dirs) : resolve(ctx.cwd, v.config)
+  return { dirs, file, ...readConfig(file, { required: v.config !== undefined }) }
 }
 
 /** `--plugin` and its alias `--adapter`, as one list; undefined when neither is given. */
@@ -692,8 +688,9 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let cctx: Ctx
   let preview: Decision
   try {
-    dirs = hostDirs(ctx.env)
-    const { config } = loadConfig(v, ctx, dirs)
+    const loaded = loadConfig(v, ctx)
+    dirs = loaded.dirs
+    const config = loaded.config
     plugins = pluginsFor(v, config, deps, ctx)
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
