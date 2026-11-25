@@ -1,5 +1,24 @@
 # @osdlc/host-cleaner
 
+## 0.3.0
+
+### Minor Changes
+
+- f05fc4e: While Orca is installed but not running, or `orca status` fails or prints no JSON, the `orca` plugin refuses every worktree under its workspaces folder instead of leaving them to `git`.
+- b4ab232: Remove profiles (`--profile` and the `profiles` config key) and the `claude-code` plugin for the first version.
+- ca89b6e: Remove `schedule` and `clean --auto` for the first version. The `schedule`
+  command (the launchd agent), `clean --auto` with its lock and reports, and the
+  `unattended` candidate mark are gone; plain `clean` and its receipts stay. A
+  candidate a plugin holds for review is now marked `held: true` (it was
+  `unattended: false`). The design is kept in
+  `docs/planning/backlog/B-0001-unattended-cleaning.md` so it can come back.
+
+### Patch Changes
+
+- Updated dependencies [ebdb5ad]
+  - @osdlc/typed-git@0.22.0
+  - @osdlc/repo-cleaner@0.24.1
+
 ## 0.2.0
 
 ### Minor Changes

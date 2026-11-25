@@ -4,8 +4,8 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   resolve: {
-    // The examples import the package by name; run them on the source. Every
-    // entry goes to the source, so a test never mixes it with dist/.
+    // The examples import the package by name. Every entry resolves to src/,
+    // so a test never mixes src/ and dist/ copies of the core.
     alias: [
       {
         find: /^@osdlc\/host-cleaner$/,

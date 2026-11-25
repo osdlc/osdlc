@@ -2,37 +2,51 @@
  * A plugin package outside this one builds and passes the contract suite
  * with `@osdlc/host-cleaner/plugin` and `@osdlc/host-cleaner/testing` alone.
  * The package is made in a temporary folder, where `@osdlc/host-cleaner`
- * exports only those two entries of the built dist/, so run `pnpm build`
+ * exports only those entries of the built dist/, so run `pnpm build`
  * first, as for the typecheck.
  */
-import { afterEach, expect, test } from 'vitest'
+import { afterAll, beforeAll, describe, expect, onTestFinished, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  rmSync,
+  readdirSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import * as entry from '../src/plugin.ts'
+import { tempHome, type TempHome } from '../src/testing.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const pkg = join(here, '..')
 const require = createRequire(import.meta.url)
 const tsc = require.resolve('typescript/bin/tsc')
 
-const cleanups: Array<() => void> = []
-afterEach(() => {
-  while (cleanups.length > 0) cleanups.pop()!()
-})
+const newestMs = (folder: string): number =>
+  Math.max(
+    0,
+    ...readdirSync(folder, { recursive: true, encoding: 'utf8' }).map(
+      (f) => statSync(join(folder, f)).mtimeMs,
+    ),
+  )
+
+/** Throws unless dist/ was built after the last change to src/, so the package checks this code. */
+function assertBuilt(): void {
+  const dist = join(pkg, 'dist')
+  if (!existsSync(join(dist, 'plugin.d.ts'))) {
+    throw new Error('dist/ has no plugin entry: run `pnpm build` before these tests')
+  }
+  if (newestMs(join(pkg, 'src')) > newestMs(dist)) {
+    throw new Error('src/ changed after the last build: run `pnpm build` before these tests')
+  }
+}
 
 const fixtures = Object.fromEntries(
   ['plugin.ts', 'check.ts'].map((f) => [f, join(here, 'fixtures', 'outside-plugin', f)]),
@@ -52,9 +66,10 @@ function outsidePackage({
   files = fixtures,
   entries = ['plugin', 'testing'],
   root,
-}: Outside = {}): string {
-  const dir = mkdtempSync(join(tmpdir(), 'host-cleaner-outside-'))
-  cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
+}: Outside = {}): TempHome {
+  assertBuilt()
+  const outside = tempHome('host-cleaner-outside-')
+  const dir = outside.home
   const json = (path: string, value: unknown) =>
     writeFileSync(join(dir, path), `${JSON.stringify(value, null, 2)}\n`)
   if (root === undefined) {
@@ -78,48 +93,72 @@ function outsidePackage({
   for (const [f, from] of Object.entries(files)) copyFileSync(from, join(dir, 'src', f))
   const hc = join(dir, 'node_modules', '@osdlc', 'host-cleaner')
   mkdirSync(hc, { recursive: true })
-  const entryOf = (name: string) => ({
-    types: `./dist/${name}.d.ts`,
-    default: `./dist/${name}.js`,
-  })
+  const { exports } = JSON.parse(readFileSync(join(pkg, 'package.json'), 'utf8')) as {
+    exports: Record<string, unknown>
+  }
   writeFileSync(
     join(hc, 'package.json'),
     JSON.stringify({
       name: '@osdlc/host-cleaner',
       type: 'module',
-      exports: Object.fromEntries(entries.map((e) => [`./${e}`, entryOf(e)])),
+      exports: Object.fromEntries(entries.map((e) => [`./${e}`, exports[`./${e}`]])),
     }),
   )
   symlinkSync(join(pkg, 'dist'), join(hc, 'dist'), 'dir')
   mkdirSync(join(dir, 'node_modules', '@types'))
   const types = dirname(require.resolve('@types/node/package.json'))
   symlinkSync(types, join(dir, 'node_modules', '@types', 'node'), 'dir')
-  return dir
+  return outside
 }
 
 const build = (dir: string) =>
   spawnSync(process.execPath, [tsc, '-p', dir], { cwd: dir, encoding: 'utf8' })
 
-test('an outside package builds against ./plugin and ./testing, and its plugin keeps the contract', () => {
-  const dir = outsidePackage()
-  const built = build(dir)
-  expect(built.stdout + built.stderr).toBe('')
-  expect(built.status).toBe(0)
+// One package, shared by the tests that use it; only they need a fresh dist/.
+describe('a package outside this one', () => {
+  let dir = ''
+  let cleanup = (): void => {}
+  beforeAll(() => {
+    ;({ home: dir, cleanup } = outsidePackage())
+  }, 60_000)
+  afterAll(() => cleanup())
 
-  const ran = spawnSync(process.execPath, [join(dir, 'dist', 'check.js')], { encoding: 'utf8' })
-  expect(ran.stderr).toBe('')
-  const out = JSON.parse(ran.stdout) as { ids: string[]; problems: string[] }
-  expect(out.ids).toEqual([expect.stringMatching(/^scratch:.*\/\.scratch\/build-1$/)])
-  expect(out.problems).toEqual([])
-}, 60_000)
+  test('builds against ./plugin and ./testing, and its plugin keeps the contract', () => {
+    const built = build(dir)
+    expect(built.stdout + built.stderr).toBe('')
+    expect(built.status).toBe(0)
+
+    const ran = spawnSync(process.execPath, [join(dir, 'dist', 'check.js')], { encoding: 'utf8' })
+    expect(ran.stderr).toBe('')
+    const out = JSON.parse(ran.stdout) as {
+      ids: string[]
+      problems: string[]
+      relative: { active: boolean; note: string }
+    }
+    // build-2 holds no files yet, so it is not idle.
+    expect(out.ids).toEqual([expect.stringMatching(/^scratch:.*\/\.scratch\/build-1$/)])
+    expect(out.problems).toEqual([])
+    expect(out.relative).toEqual({ active: false, note: '~/.scratch is not absolute' })
+  }, 60_000)
+
+  test('reaches ./plugin and ./testing, and not the main entry', () => {
+    const from = createRequire(join(dir, 'src', 'check.ts'))
+    expect(from.resolve('@osdlc/host-cleaner/plugin')).toMatch(/dist[/\\]plugin\.js$/)
+    expect(from.resolve('@osdlc/host-cleaner/testing')).toMatch(/dist[/\\]testing\.js$/)
+    expect(() => from.resolve('@osdlc/host-cleaner')).toThrow(
+      expect.objectContaining({ code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' }),
+    )
+  })
+})
 
 test('the podman example builds against ./plugin alone, and the loader takes it as a package', () => {
   const example = join(pkg, 'examples', 'podman-plugin')
-  const dir = outsidePackage({
+  const { home: dir, cleanup } = outsidePackage({
     files: { 'index.ts': join(example, 'src', 'index.ts') },
     entries: ['plugin'],
     root: example,
   })
+  onTestFinished(cleanup)
   const built = build(dir)
   expect(built.stdout + built.stderr).toBe('')
   expect(built.status).toBe(0)
@@ -148,14 +187,6 @@ process.stdout.write(JSON.stringify({ failed, version: loaded[0]?.version, name:
   expect(JSON.parse(ran.stdout)).toEqual({ failed: [], version: '0.0.0', name: 'podman' })
 }, 60_000)
 
-test('the same package cannot reach the main entry', () => {
-  const dir = outsidePackage()
-  writeFileSync(join(dir, 'src', 'main.ts'), "export { survey } from '@osdlc/host-cleaner'\n")
-  const built = build(dir)
-  expect(built.status).not.toBe(0)
-  expect(built.stdout).toContain("Cannot find module '@osdlc/host-cleaner'")
-}, 60_000)
-
 test('./plugin re-exports zod as z, the one the core validates settings with', async () => {
   const { z } = await import('zod')
   expect(entry.z).toBe(z)
@@ -165,6 +196,7 @@ test('./plugin re-exports zod as z, the one the core validates settings with', a
 test('./plugin exports what a plugin is written with, and nothing of the run', () => {
   expect(Object.keys(entry).sort()).toEqual([
     'COST_DESCRIPTIONS',
+    'CommandFailed',
     'DEFAULT_IDLE_HOURS',
     'FatalRun',
     'HOOKS',
@@ -172,6 +204,7 @@ test('./plugin exports what a plugin is written with, and nothing of the run', (
     'MEASURE_BUDGET_MS',
     'PLUGIN_API',
     'RUN_LIMIT_MS',
+    'commandHasName',
     'containedIn',
     'definePlugin',
     'idleHoursSetting',

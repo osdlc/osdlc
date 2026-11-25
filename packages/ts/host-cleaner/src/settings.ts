@@ -1,8 +1,9 @@
 /**
  * What each plugin's entry in the config's `plugins` may hold: the settings
  * schema of its definition, a built-in's, a package's or a descriptor's, made
- * strict, with the core's `enabled` (and, for a package, `package`) added and
- * its own refinements kept. It is validated when the config loads with
+ * strict, with the core's `enabled` added and its own refinements kept (a
+ * package's definition already holds `package`; see `checked` in ./load.ts).
+ * It is validated when the config loads with
  * `@osdlc/config-layers`' `validateStandard`, so a misspelt key or a wrong type
  * is a config error that names the plugin and the key. `host-cleaner config`
  * prints the same schemas' fields and defaults through `configFields`.
@@ -12,8 +13,7 @@ import { configFields, validateStandard } from '@osdlc/config-layers'
 import { z } from 'zod'
 
 import { DEFAULT_IDLE_HOURS } from './kit.ts'
-import { isPackaged } from './load.ts'
-import { BUILT_IN_PLUGINS } from './registry.ts'
+import { BUILT_IN_PLUGINS } from './builtins.ts'
 import type { PluginDefinition } from './types.ts'
 
 const enabled = z
@@ -21,26 +21,20 @@ const enabled = z
   .default(true)
   .describe('Run this plugin. `--plugin <name>` runs it even when this is false.')
 
-const packageKey = z.string().describe('The npm package this plugin is loaded from.')
-
 type Entries = Readonly<Record<string, Record<string, unknown>>>
 
 type Definitions = readonly PluginDefinition[]
 
 /**
  * The settings schema of the plugin `name` in `defs`, with the core's
- * `enabled` (and `package` for a package's plugin) and made strict, its
- * refinements kept; undefined for a name no definition has.
+ * `enabled` added, made strict, its refinements kept; undefined for a name no
+ * definition has.
  */
-function schemaOf(name: string, defs: Definitions = BUILT_IN_PLUGINS): z.ZodObject | undefined {
-  const def = defs.find((d) => d.name === name)
-  if (def === undefined) return undefined
-  return (
-    isPackaged(def)
-      ? def.settings.safeExtend({ enabled, package: packageKey })
-      : def.settings.safeExtend({ enabled })
-  ).strict()
-}
+const schemaOf = (name: string, defs: Definitions = BUILT_IN_PLUGINS): z.ZodObject | undefined =>
+  defs
+    .find((d) => d.name === name)
+    ?.settings.safeExtend({ enabled })
+    .strict()
 
 /** One line per problem in `plugins`, each starting `<prefix>.<name>[.<key>]`; `defs` are the plugins it knows. */
 export function settingsIssues(
@@ -94,7 +88,7 @@ export interface SettingRow {
   description: string
 }
 
-/** Every setting of every plugin in `defs`: its effective value, its default and whether the config set it. */
+/** Every setting of every plugin in `defs`: its effective value, its default and where the value came from. */
 export function effectiveSettings(
   plugins: Entries,
   shared: Shared = {},
@@ -105,7 +99,7 @@ export function effectiveSettings(
     const raw = plugins[name] ?? {}
     const value = settingsOf(name, raw, shared, defs)
     const fields = configFields({ [name]: schemaOf(name, defs)! })
-    // The core's `enabled` first, as `config` has always listed it.
+    // The core's `enabled` first, ahead of the plugin's own settings.
     fields.sort((a, b) => Number(b.path[1] === 'enabled') - Number(a.path[1] === 'enabled'))
     out[name] = fields.map((f) => {
       const key = f.path.slice(1).join('.')

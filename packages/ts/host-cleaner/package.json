@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/host-cleaner",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Machine cleanup as plugins: each plugin proposes candidates and objects to others, and one plan, one re-check and one receipt cover them all.",
   "license": "MIT OR Apache-2.0",
@@ -35,7 +35,8 @@
     "./testing": {
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
-    }
+    },
+    "./schemas/descriptor-1.json": "./schemas/descriptor-1.json"
   },
   "files": [
     "dist/",

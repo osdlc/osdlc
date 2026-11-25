@@ -13,6 +13,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -72,6 +73,10 @@ assert.deepEqual(
   ).paths,
   { hub: { all: '~/.cache/hub' } },
 )
+const schemaFile = fileURLToPath(
+  import.meta.resolve('@osdlc/host-cleaner/schemas/descriptor-1.json'),
+)
+assert.equal(JSON.parse(readFileSync(schemaFile, 'utf8')).title, 'host-cleaner descriptor')
 
 // A plugin written with the plugin entry alone, through the core.
 const scratch = definePlugin({

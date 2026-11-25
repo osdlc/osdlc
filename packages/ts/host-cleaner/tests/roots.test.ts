@@ -123,6 +123,34 @@ describe('a machine-scope plugin through plan, check, run and receipt', () => {
     expect(JSON.parse(readFileSync(receiptPath, 'utf8')).status).toBe('complete')
   })
 
+  test('a root refused after the re-check fails its step and says why the root was refused', async () => {
+    const base = temp()
+    const root = join(base, 'cache')
+    mkdirSync(root)
+    writeFileSync(join(root, 'old'), 'x')
+    let calls = 0
+    // The survey and the re-check see the cache; the delete sees the home folder itself.
+    const p = cachePlugin(() => (++calls <= 2 ? [root] : [base]), [join(root, 'old')])
+    const at: RunCtx = { ...ctx, home: base }
+    const receipt = await clean(plan(await survey([p], at)), [p], at)
+    expect(receipt.steps).toEqual([
+      expect.objectContaining({
+        result: 'failed',
+        error: expect.stringMatching(
+          /not inside cache's roots \(none\).*; roots refused: .*home folder/,
+        ),
+      }),
+    ])
+    expect(existsSync(join(root, 'old'))).toBe(true)
+  })
+
+  test('the home folder the run names is the one no root may be', async () => {
+    const base = temp()
+    const s = await survey([cachePlugin([base], [])], { ...ctx, home: base })
+    expect(s.roots['cache']).toEqual([])
+    expect(s.warnings).toEqual([expect.stringMatching(/^cache: roots: .*home folder/)])
+  })
+
   test('a path swapped for a link after the re-check fails its step instead of deleting outside', async () => {
     const base = temp()
     const root = join(base, 'cache')

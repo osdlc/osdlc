@@ -2,22 +2,20 @@
  * Code plugins loaded from packages (tier 3). Only a package the config names
  * in `plugins.<name>.package` is loaded, and only by its npm name: never a
  * path, and never from a checkout. It is looked for in each folder of
- * {@link packageRoots}, in order: the `node_modules` folders host-cleaner
- * itself resolves from, then the global npm prefix's.
+ * {@link packageRoots}, in order.
  *
- * A package is checked as it loads: its default export must be a
- * `definePlugin` definition named as its config key, written for
- * {@link PLUGIN_API}. The plugin its `create` returns must have that name too,
- * a `detect` hook, only functions for its other hooks, and be tied to the kit
- * it was given, which only this host-cleaner's
- * `definePlugin` does. Any of these failing is a {@link PackageFailure}: the
- * CLI warns for it in `status`, and refuses `clean` unless the plugin is
+ * A package is checked as it loads ({@link loadPackage}) and when it creates
+ * its plugin ({@link checked}). Only this host-cleaner's `definePlugin` ties a
+ * plugin to the kit it was given. A failed check is a {@link PackageFailure}:
+ * the CLI warns for it in `status`, and refuses `clean` unless the plugin is
  * skipped.
  */
 
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+
+import { z } from 'zod'
 
 import { kitOf } from './kit.ts'
 import { HOOKS, PLUGIN_API, type Plugin, type PluginDefinition } from './types.ts'
@@ -76,7 +74,8 @@ export const isPackaged = (def: PluginDefinition): boolean => fromPackage.has(de
  * The `node_modules` folders a package is looked for in, in order: those
  * above host-cleaner's own folder (`from`), as Node resolves host-cleaner's
  * own imports, then the global prefix's. The prefix is `npm_config_prefix`
- * when set, else the one Node's own install uses.
+ * when set, else npm's default: `%APPDATA%\npm` on Windows, and the one Node
+ * is installed under elsewhere or without `APPDATA`.
  */
 export function packageRoots(
   env: Readonly<Record<string, string | undefined>>,
@@ -90,7 +89,11 @@ export function packageRoots(
   const windows = process.platform === 'win32'
   const prefix =
     env.npm_config_prefix ??
-    (windows ? dirname(process.execPath) : dirname(dirname(process.execPath)))
+    (!windows
+      ? dirname(dirname(process.execPath))
+      : env.APPDATA !== undefined
+        ? join(env.APPDATA, 'npm')
+        : dirname(process.execPath))
   const global = windows ? join(prefix, 'node_modules') : join(prefix, 'lib', 'node_modules')
   return roots.includes(global) ? roots : [...roots, global]
 }
@@ -122,8 +125,12 @@ export function packageEntries(
     }
     entries.push({ name, package: pkg })
   }
-  return entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  return entries.sort(byName)
 }
+
+/** Orders by `name`, by code unit. */
+export const byName = (a: { name: string }, b: { name: string }): number =>
+  a.name < b.name ? -1 : a.name > b.name ? 1 : 0
 
 /** The `exports` conditions Node matches for an `import`. */
 const IMPORT_CONDITIONS = ['node', 'import', 'module-sync', 'default']
@@ -158,8 +165,27 @@ function entryOf(dir: string, manifest: Manifest): string | undefined {
     const file = exported(manifest.exports)
     return file === undefined ? undefined : join(dir, file)
   }
-  return join(dir, typeof manifest.main === 'string' ? manifest.main : 'index.js')
+  if (typeof manifest.main === 'string') {
+    const main = join(dir, manifest.main)
+    const file = LEGACY_MAIN_SUFFIXES.map((s) => main + s).find(isFile)
+    if (file !== undefined) return file
+  }
+  return join(dir, 'index.js')
 }
+
+/** What Node tries after a legacy `main`, in its order: the file, with an extension, then the folder's index. */
+const LEGACY_MAIN_SUFFIXES = [
+  '',
+  '.js',
+  '.json',
+  '.node',
+  '/index.js',
+  '/index.json',
+  '/index.node',
+]
+
+const isFile = (path: string): boolean =>
+  statSync(path, { throwIfNoEntry: false })?.isFile() === true
 
 const isObject = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null
 
@@ -177,11 +203,9 @@ function notADefinition(x: unknown): string | undefined {
 }
 
 /**
- * What is wrong with the hooks of `plugin`, or undefined when nothing is:
- * `detect` must be a function, every other hook a function or absent, and
- * `limits` positive milliseconds for hooks. A plugin with a broken hook would
- * otherwise fail only when the core calls it, and `clean` would go on without
- * its objections.
+ * What is wrong with the hooks or `limits` of `plugin`, or undefined when
+ * nothing is. Checked up front because a broken hook would otherwise fail only
+ * when the core calls it, and `clean` would go on without its objections.
  */
 function misshapenHooks(plugin: Record<string, unknown>): string | undefined {
   for (const hook of HOOKS) {
@@ -202,15 +226,20 @@ function misshapenHooks(plugin: Record<string, unknown>): string | undefined {
   return undefined
 }
 
+/** The `package` key a package plugin's entry holds besides its own settings. */
+const packageKey = z.string().describe('The npm package this plugin is loaded from.')
+
 /**
- * `def` with its `create` checked: the plugin it returns must be named as
- * `def`, have the hooks the core calls, and be tied to the kit it was given.
+ * `def` with `package` added to its settings and its `create` checked: the
+ * plugin it returns must be named as `def`, have the hooks the core calls, and
+ * be tied to the kit it was given. The result is recorded for {@link isPackaged}.
  */
 function checked(def: PluginDefinition, entry: PackageEntry, label: string): PluginDefinition {
   const fail = (why: string): PackageLoadError =>
     new PackageLoadError({ ...entry, reason: `plugins.${entry.name}.package: ${label} ${why}` })
   const out: PluginDefinition = {
     ...def,
+    settings: def.settings.safeExtend({ package: packageKey }),
     create(init) {
       let plugin: Plugin
       try {
@@ -240,7 +269,7 @@ function checked(def: PluginDefinition, entry: PackageEntry, label: string): Plu
 /**
  * The package `entry` names, from the first of `roots` that has it.
  *
- * @throws PackageLoadError when it is not there, its import throws, or its default export is not a plugin definition for this host-cleaner of that name
+ * @throws PackageLoadError when it is not there, its `package.json` can't be read, it exports no entry for `import`, its import throws, or its default export is not a plugin definition of that name for this host-cleaner's {@link PLUGIN_API}
  */
 async function loadPackage(entry: PackageEntry, roots: readonly string[]): Promise<LoadedPackage> {
   const fail = (why: string): PackageLoadError =>
@@ -296,15 +325,13 @@ export async function loadPackages(
   entries: readonly PackageEntry[],
   roots: readonly string[],
 ): Promise<{ loaded: LoadedPackage[]; failed: PackageFailure[] }> {
+  const results = await Promise.allSettled(entries.map((e) => loadPackage(e, roots)))
   const loaded: LoadedPackage[] = []
   const failed: PackageFailure[] = []
-  for (const entry of entries) {
-    try {
-      loaded.push(await loadPackage(entry, roots))
-    } catch (err) {
-      if (!(err instanceof PackageLoadError)) throw err
-      failed.push(err.failure)
-    }
+  for (const r of results) {
+    if (r.status === 'fulfilled') loaded.push(r.value)
+    else if (r.reason instanceof PackageLoadError) failed.push(r.reason.failure)
+    else throw r.reason
   }
   return { loaded, failed }
 }

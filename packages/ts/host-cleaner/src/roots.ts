@@ -76,7 +76,7 @@ export interface Bounds {
   roots: readonly string[]
   /** The roots declared `{ path, self: true }`, each of which may be a candidate itself. */
   self: readonly string[]
-  /** The targets, and with them any linked worktree whose main checkout is or sits inside one. */
+  /** The targets. A linked worktree whose main checkout is or sits inside one is found per path ({@link linkedWorktreeOf}). */
   targets: readonly string[]
   /** The linked worktrees of the repositories among the targets. */
   linked: readonly string[]
@@ -93,11 +93,11 @@ export const realOr = (path: string): string => {
   }
 }
 
-const isLink = (path: string): boolean =>
+export const isLink = (path: string): boolean =>
   lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true
 
 /** Whether `inner` is `outer` or sits below it, by real paths. */
-const within = (outer: string, inner: string): boolean => {
+export const within = (outer: string, inner: string): boolean => {
   const rel = relative(realOr(outer), realOr(inner))
   return rel === '' || (rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel))
 }

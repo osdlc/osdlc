@@ -1,9 +1,7 @@
 /**
  * `@osdlc/host-cleaner/plugin`: what a code plugin is written with, and
- * nothing more. `definePlugin`, the API version, the contract's types, the
- * kit, and `z`, so a plugin's settings schema uses the same zod as the core.
- * The guide is `docs/guide/writing-a-plugin.md`. A plugin's tests use
- * `@osdlc/host-cleaner/testing` beside it.
+ * nothing of the run. `z` is re-exported so a plugin's settings schema uses
+ * the same zod as the core. See `docs/guide/writing-a-plugin.md`.
  */
 
 export { z } from 'zod'
@@ -34,6 +32,7 @@ export {
   DEFAULT_IDLE_HOURS,
   MEASURE_BUDGET_MS,
   RUN_LIMIT_MS,
+  commandHasName,
   idleHoursSetting,
   pluginKit,
   type CandidateFields,
@@ -45,3 +44,5 @@ export {
   type Running,
 } from './kit.ts'
 export { containedIn } from './roots.ts'
+/** What `kit.run` throws, with `check: true`, when the program does not exit 0. */
+export { CommandFailed } from '@osdlc/command-seam'

@@ -4,12 +4,7 @@
  * removes a folder the same way instead of writing its own. The core builds
  * one kit per plugin, bound to its name, and hands it to `create`. Each run,
  * once the plugin's `roots` hook has answered, the core binds that kit to the
- * plugin's roots, the run's targets and their linked worktrees (including
- * one anywhere whose main checkout is in a target), which `remove` checks
- * against.
- *
- * It reuses repo-cleaner's process probe, `busyHolders` and `sizeOf`, and
- * `@osdlc/path-guard` for containment (through `./roots.ts`).
+ * bounds `remove` checks against (see `boundBy` in `./roots.ts`).
  */
 
 import { chmodSync, lstatSync, readdirSync, rmSync } from 'node:fs'
@@ -30,6 +25,9 @@ import { z } from 'zod'
 
 import { boundBy, type Bounds } from './roots.ts'
 import type { Candidate, Ctx, PathCandidate, Plugin, RefCandidate } from './types.ts'
+
+/** The run's ignore check, for a plugin that walks checkouts itself. */
+export { coveredBy } from './ignore.ts'
 
 export const DEFAULT_IDLE_HOURS = 24
 
@@ -56,10 +54,10 @@ const HOUR_MS = 3_600_000
 
 /**
  * How long a folder has sat unchanged: the newest modification time under it
- * and the hours since, fractions included, both null when it holds no file. `unmeasured`
- * when the walk ran out of its time budget; the core then protests the
- * candidate (`unmeasured`), and the plugin leaves the outcome out of its
- * evidence, since the next walk may finish.
+ * and the hours since, fractions included, both null when it holds no file.
+ * `unmeasured` when the walk ran out of its time budget; the plugin then marks
+ * the candidate `unmeasured: true`, which the core protests, and leaves the
+ * outcome out of its evidence, since the next walk may finish.
  */
 export type Idle =
   { unmeasured: false; newestMs: number | null; hours: number | null } | { unmeasured: true }
@@ -111,13 +109,12 @@ export interface Kit {
   /**
    * The processes of a program, named as a string or as `{ name }`, or the
    * busy processes working in `in` (an idle shell is not busy). A name
-   * matches a process when it is a word of its command line (`ps -axo
-   * pid=,ppid=,args=`) by {@link commandHasName}, so `pnpm` finds `node
-   * /opt/homebrew/bin/pnpm dev` and `GradleDaemon` and `gradle` find `java
-   * ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. This process and
-   * every ancestor of it are left out, so the `npm exec` or `pnpm dlx` that
-   * started host-cleaner does not count. The process table is read once per
-   * hook call, so a `delete` sees it fresh.
+   * matches a process when {@link commandHasName} finds it in its command
+   * line (`ps -axo pid=,ppid=,args=`). This process and the unbroken line
+   * of ancestors above it whose command lines name host-cleaner are left
+   * out, so the `npm exec` or `pnpm dlx` that started it does not count, but
+   * an editor, terminal or `tmux` it runs inside does. The process table is
+   * read once per hook call, so a `delete` sees it fresh.
    */
   running(where: string | { in: string } | { name: string }, ctx: Pick<Ctx, 'signal'>): Running
   /** Whether `program` is on PATH. */
@@ -127,11 +124,9 @@ export interface Kit {
   /** Runs `argv` through `@osdlc/command-seam` with a time limit, stopped when `signal` aborts. */
   run(argv: readonly string[], opts: KitRunOptions): Promise<KitRunResult>
   /**
-   * Removes the folder `path`: only if it is still inside the plugin's roots,
-   * a target or a linked worktree of one (a worktree of a repository a
-   * target is in, or whose main checkout is in a target) by its real path, as the core
-   * resolved them this run, after making read-only folders and files in it
-   * writable. Returns the receipt sentence; a folder already gone is not a
+   * Removes the folder `path`: only if it is still where a {@link PathCandidate}
+   * of this plugin may sit, by its real path, as the core resolved the bounds
+   * this run, after making read-only folders and files in it writable. Returns the receipt sentence; a folder already gone is not a
    * failure. Throws when it is outside, when the kit is not bound to a run,
    * when `ctx.signal` has aborted, or when the folder is still there after.
    */
@@ -156,7 +151,7 @@ export interface KitOptions {
 }
 
 /** Each kit's setter for its bounds, kept off {@link Kit} so a plugin cannot widen its own. */
-const binders = new WeakMap<Kit, (bounds: Bounds) => void>()
+const binders = new WeakMap<Kit, (bounds: Bounds | undefined) => void>()
 
 /** The kit each plugin was created with. */
 const kits = new WeakMap<Plugin, Kit>()
@@ -169,8 +164,14 @@ export function attachKit(plugin: Plugin, kit: Kit): void {
 /** The kit `plugin` was built on, as {@link attachKit} recorded it; undefined for none. */
 export const kitOf = (plugin: Plugin): Kit | undefined => kits.get(plugin)
 
-/** Binds the kit `plugin` was built on to `bounds` for {@link Kit.remove}; a plugin built on no kit is left alone. */
-export function bindKit(plugin: Plugin, bounds: Bounds): void {
+/** Ties `wrapper`, which stands in for `plugin` in a run, to the kit `plugin` was built on, so the core binds it through either. */
+export function shareKit(plugin: Plugin, wrapper: Plugin): void {
+  const kit = kits.get(plugin)
+  if (kit !== undefined) attachKit(wrapper, kit)
+}
+
+/** Binds the kit `plugin` was built on to `bounds` for {@link Kit.remove}, or unbinds it with none, so it removes nothing; a plugin built on no kit is left alone. */
+export function bindKit(plugin: Plugin, bounds: Bounds | undefined): void {
   const kit = kits.get(plugin)
   if (kit !== undefined) binders.get(kit)?.(bounds)
 }
@@ -179,7 +180,8 @@ export function bindKit(plugin: Plugin, bounds: Bounds): void {
 class OutOfTime extends Error {}
 
 /** True when `path` exists as itself, a link counted as present. */
-const present = (path: string): boolean => lstatSync(path, { throwIfNoEntry: false }) !== undefined
+export const present = (path: string): boolean =>
+  lstatSync(path, { throwIfNoEntry: false }) !== undefined
 
 /** Gives the owner write (and, for a folder, search) permission on everything under `path`, links not followed. Best effort. */
 function makeWritable(path: string): void {
@@ -189,7 +191,7 @@ function makeWritable(path: string): void {
   try {
     if (want !== stat.mode) chmodSync(path, want & 0o7777)
   } catch {
-    // the removal reports what is left
+    // Best effort: whatever this leaves unremovable, the removal reports.
   }
   if (!stat.isDirectory()) return
   let names: string[]
@@ -220,10 +222,12 @@ export function commandHasName(args: string, name: string): boolean {
 /** `ps` reads its own locale; `LC_ALL=C` keeps its output plain. */
 const PS_ENV = { LC_ALL: 'C' } as const
 
+/** What the command line of a launcher that started host-cleaner holds. */
+const SELF = 'host-cleaner'
+
 /**
- * Each process with its command line, this one and its ancestors left out:
- * the `npm exec` or `pnpm dlx` that started it is not a use of the store.
- * Throws when `ps` gives no table.
+ * Each process with its command line, this one and the launchers that
+ * started it left out (see {@link Kit.running}). Throws when `ps` gives no table.
  */
 function commandLines(ps: CommandRunner): Array<{ pid: number; args: string }> {
   const r = ps.run(['-axo', 'pid=,ppid=,args='], { cwd: '/', env: PS_ENV, timeoutMs: 60_000 })
@@ -233,17 +237,21 @@ function commandLines(ps: CommandRunner): Array<{ pid: number; args: string }> {
   }
   const rows: Array<{ pid: number; args: string }> = []
   const parents = new Map<number, number>()
+  const argsOf = new Map<number, string>()
   for (const line of r.stdout.split('\n')) {
     const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line)
     if (m === null) continue
     const pid = Number(m[1])
+    const args = m[3]!.trim()
     parents.set(pid, Number(m[2]))
-    rows.push({ pid, args: m[3]!.trim() })
+    argsOf.set(pid, args)
+    rows.push({ pid, args })
   }
-  // Up from this process to pid 1; `own` is also the guard against a loop.
-  const own = new Set<number>()
-  let up: number | undefined = process.pid
-  while (up !== undefined && up > 0 && !own.has(up)) {
+  // Up from this process while each parent's command line names host-cleaner;
+  // `own` is also the guard against a loop.
+  const own = new Set<number>([process.pid])
+  let up = parents.get(process.pid)
+  while (up !== undefined && up > 0 && !own.has(up) && argsOf.get(up)?.includes(SELF) === true) {
     own.add(up)
     up = parents.get(up)
   }
@@ -284,8 +292,11 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
     idle(path, { skip = () => false } = {}) {
       const start = now().getTime()
       let newest: number | null = null
-      const visit = (dir: string): void => {
+      const check = (): void => {
         if (now().getTime() - start > budget) throw new OutOfTime()
+      }
+      const visit = (dir: string): void => {
+        check()
         let entries
         try {
           entries = readdirSync(dir, { withFileTypes: true })
@@ -294,6 +305,7 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
           throw err
         }
         for (const entry of entries) {
+          check()
           if (skip(entry.name)) continue
           const full = join(dir, entry.name)
           if (entry.isDirectory()) {

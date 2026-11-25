@@ -1,9 +1,8 @@
 /**
  * Plugin packages installed in a temporary `node_modules` for the loader's
  * tests. `@osdlc/host-cleaner` there links to this package. Every fixture
- * package's name holds `host-cleaner-fixture`, which `vitest.config.ts` runs
- * through Vite, so its import of `@osdlc/host-cleaner/plugin` reaches the same
- * source the test runs and not `dist/`.
+ * package's name must hold `host-cleaner-fixture`, so `vitest.config.ts`
+ * inlines it and it imports the source, not `dist/`.
  */
 import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'

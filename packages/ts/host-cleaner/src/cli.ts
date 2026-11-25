@@ -54,10 +54,11 @@ import {
   BUILT_IN_PLUGINS,
   UnknownPlugin,
   loadPlugins,
-  runsAmong,
   selectPlugins,
+  supersession,
   type Loaded,
 } from './registry.ts'
+import { realOr } from './roots.ts'
 import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
 import {
   SelectionError,
@@ -307,9 +308,9 @@ const terminalChecklist: Checklist = (question, items) =>
   canPrompt() ? askChecklist(question, items) : null
 
 export interface MainDeps {
-  /** The plugins that exist; default is the built-ins and the descriptors, built from the config. */
+  /** The plugins that exist; default is the built-ins, the config's packages and the descriptors, built from the config. */
   plugins?: readonly Plugin[]
-  /** The folder of shipped descriptors. Defaults to the package's `descriptors/`. */
+  /** The folder of shipped descriptors. Defaults to `SHIPPED_DESCRIPTORS` in descriptor/load.ts. */
   shippedDescriptors?: string
   /** The `node_modules` folders a `plugins.<name>.package` is looked for in, in order. Defaults to `packageRoots`. */
   packageRoots?: readonly string[]
@@ -411,8 +412,9 @@ interface Setup {
 /**
  * The config and every plugin definition: the config read, the packages it
  * names loaded, then the descriptors, then each `plugins` entry checked
- * against them all. A package `--skip-plugin` names is not loaded, nor one
- * the config disables unless `--plugin` names it.
+ * against them all. With `--plugin`, only the packages it names are loaded;
+ * without it, those the config enables. A package `--skip-plugin` names is
+ * never loaded.
  */
 async function loadAll(
   v: { config?: string | undefined; descriptor: readonly string[] },
@@ -429,7 +431,9 @@ async function loadAll(
   const used = entries.filter(
     (e) =>
       !(naming.skip ?? []).includes(e.name) &&
-      (config.plugins[e.name]?.enabled !== false || (naming.want ?? []).includes(e.name)),
+      (naming.want === undefined
+        ? config.plugins[e.name]?.enabled !== false
+        : naming.want.includes(e.name)),
   )
   const packages = await loadPackages(used, deps.packageRoots ?? packageRoots(ctx.env))
   const loaded = loadPlugins(sourcesFor(v, ctx, deps), opts, {
@@ -440,7 +444,7 @@ async function loadAll(
   return { config, loaded, entries, failed: packages.failed }
 }
 
-/** A package that did not load, as `status` and `plan` warn for it. */
+/** The warning for a package that did not load, as `status`, `plan` and `config` write it. */
 const notLoaded = (f: PackageFailure): string => `${f.reason}; going on without ${f.name}`
 
 /**
@@ -473,22 +477,21 @@ const unknownPlugins = (config: Config, known: (name: string) => boolean): strin
   Object.keys(config.plugins).filter((n) => !known(n))
 
 /**
- * The config and the plugins this run uses: the built-ins, the packages and
- * the descriptors loaded, the config checked against them, each built from
- * its entry (or `deps.plugins`), then chosen by flag. A descriptor's
- * `supersededBy` plugin runs when it is among those chosen and detects.
- * `failed` are the packages that did not load or build, which the run goes without.
+ * The config and the plugins this run uses: {@link loadAll}, then
+ * {@link pluginsFor}. `supersededBy` is answered as described at
+ * `supersession` in registry.ts. `failed` are the packages that did not load
+ * or build, which the run goes without.
  */
 async function setUp(
   v: SweepValues,
   ctx: CliContext,
   deps: MainDeps,
 ): Promise<{ config: Config; plugins: Plugin[]; failed: PackageFailure[] }> {
-  let chosen: readonly Plugin[] = []
+  const superseded = supersession()
   const naming = { want: v.plugin, skip: v.skipPlugin }
-  const setup = await loadAll(v, naming, ctx, deps, { runs: runsAmong(() => chosen) })
-  const plugins = pluginsFor(v, setup, deps, ctx)
-  chosen = plugins
+  const setup = await loadAll(v, naming, ctx, deps, { runs: superseded.runs })
+  const chosen = pluginsFor(v, setup, deps, ctx)
+  const plugins = deps.plugins === undefined ? superseded.track(chosen) : chosen
   return { config: setup.config, plugins, failed: setup.failed }
 }
 
@@ -538,7 +541,8 @@ function pluginsFor(v: SweepValues, setup: Setup, deps: MainDeps, ctx: CliContex
   return chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins))
 }
 
-const homeOf = (ctx: CliContext): string => ctx.env.HOME ?? homedir()
+/** The home folder, from `HOME` when set, with no trailing slash. */
+const homeOf = (ctx: CliContext): string => (ctx.env.HOME ?? homedir()).replace(/(.)\/+$/, '$1')
 
 /** `id` with the home folder after its `<kind>:` written `~`, as the text output shows it. */
 export function tildeId(id: string, home: string): string {
@@ -558,6 +562,17 @@ export function untildeId(entry: string, home: string): string {
   return tilde && (at === 0 || colon > 0) ? `${entry.slice(0, at)}${home}${rest.slice(1)}` : entry
 }
 
+/**
+ * `entry`, as typed to `--spare`, with `~` taken as the home folder both as
+ * `home` spells it and by its real path, when the two differ: a candidate's
+ * path may be either, and a spare that matches neither would let it be deleted.
+ */
+export function untildeSpare(entry: string, home: string): string[] {
+  const given = untildeId(entry, home)
+  const real = untildeId(entry, realOr(home))
+  return given === real ? [given] : [given, real]
+}
+
 function contextFor(
   targets: readonly string[],
   config: Config,
@@ -572,6 +587,7 @@ function contextFor(
     cwd: ctx.cwd,
     targets: chosen.map((t) => resolve(ctx.cwd, expandHome(t, home))),
     targetsGiven: targets.length > 0 || config.targets.length > 0,
+    home,
     allow,
     ignore: ignoreFor(config, ignore, ctx),
   }
@@ -750,7 +766,7 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
       targetsGiven: cctx.targetsGiven,
       ignore: cctx.ignore,
       pick: v.pick.map((e) => untildeId(e, homeOf(ctx))),
-      spare: v.spare.map((e) => untildeId(e, homeOf(ctx))),
+      spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
       allow: v.allow,
     })
   } catch (err) {
@@ -918,7 +934,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         targetsGiven: cctx.targetsGiven,
         ignore: cctx.ignore,
         pick: v.pick.map((e) => untildeId(e, homeOf(ctx))),
-        spare: v.spare.map((e) => untildeId(e, homeOf(ctx))),
+        spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
         allow: v.allow,
         now,
       })
@@ -937,6 +953,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         cwd: ctx.cwd,
         targets: plan.targets,
         targetsGiven: plan.targetsGiven,
+        home: homeOf(ctx),
         allow: plan.allow,
         ignore: ignoreFor(config, v.ignore, ctx),
       }

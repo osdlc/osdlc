@@ -1,8 +1,6 @@
 /**
  * A plugin package as the loader finds it installed: built JavaScript that
- * imports `@osdlc/host-cleaner/plugin` alone. It proposes each folder under
- * `~/.fixture` but those `keep` names, and deletes them with `kit.remove`.
- * `tests/fixtures/packages.ts` installs it in a temporary `node_modules`.
+ * imports `@osdlc/host-cleaner/plugin` alone. `tests/fixtures/packages.ts` installs it in a temporary `node_modules`.
  */
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'

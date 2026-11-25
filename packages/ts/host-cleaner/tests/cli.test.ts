@@ -9,6 +9,7 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -18,7 +19,7 @@ import { captureContext } from '@osdlc/cli-tool'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { main, tildeId, untildeId, type MainDeps } from '../src/cli.ts'
+import { main, tildeId, untildeId, untildeSpare, type MainDeps } from '../src/cli.ts'
 import { hostDirs } from '../src/config.ts'
 import { PLAN_VERSION, parsePlan } from '../src/plan.ts'
 import type { Candidate, Objection, Plugin, RefCandidate } from '../src/index.ts'
@@ -596,6 +597,10 @@ describe('packages', () => {
     const skipped = await h.go(['clean', '--yes', '--skip-plugin', 'fixture'])
     expect(skipped.code).toBe(10)
     expect(skipped.err).toBe('')
+    // --plugin leaving the package out does not load it, so nothing is refused or warned.
+    const other = await h.go(['clean', '--yes', '--plugin', 'git'])
+    expect(other.code).toBe(10)
+    expect(other.err).toBe('')
 
     const named = await h.go(['status', '--plugin', 'fixture'])
     expect(named.code).toBe(2)
@@ -925,6 +930,27 @@ describe('plan and clean', () => {
     expect(untildeId('branch:~/repo:main', '/h/me')).toBe('branch:/h/me/repo:main')
     expect(untildeId('~/x', '/h/me')).toBe('/h/me/x')
     expect(untildeId('feat/~x', '/h/me')).toBe('feat/~x')
+  })
+
+  test('a --spare with ~ matches whether HOME ends in a slash or is a symlink', async () => {
+    const { env: base, cwd } = setup()
+    const real = tempDir()
+    const link = join(tempDir(), 'home')
+    symlinkSync(real, link)
+    expect(untildeSpare('worktree:~/wt', link)).toEqual([
+      `worktree:${link}/wt`,
+      `worktree:${real}/wt`,
+    ])
+    expect(untildeSpare('worktree:~/wt', real)).toEqual([`worktree:${real}/wt`])
+    const dir = join(real, 'dev', 'cache')
+    const plugins = [fake('cache', { candidate: { id: `artifact:${dir}` } })]
+    const ran = async (HOME: string, spare: string[] = ['--spare', 'artifact:~/dev/cache']) => {
+      const argv = ['clean', '--dry-run', '--format', 'json', ...spare]
+      return JSON.parse((await run(argv, cwd, { ...base, HOME }, { plugins })).out).run
+    }
+    expect(await ran(`${real}/`, [])).toEqual([`artifact:${dir}`])
+    expect(await ran(`${real}/`)).toEqual([])
+    expect(await ran(link)).toEqual([])
   })
 
   test('a plan of another version is refused: sweep again', async () => {

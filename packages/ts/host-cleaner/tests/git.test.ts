@@ -15,15 +15,21 @@ import { join } from 'node:path'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
 
+import type { Kind } from '@osdlc/repo-cleaner'
+
 import {
+  BUILT_IN_PLUGINS,
   DEFAULT_SELECTION,
   FatalRun,
+  PLUGIN_API,
   ReceiptSchema,
   cargoPlugin,
   clean,
   decide,
+  gitDefinitionWith,
   gitPlugin,
   plan,
+  pluginKit,
   survey,
   type Ctx,
 } from '../src/index.ts'
@@ -69,6 +75,18 @@ describe('the git plugin', () => {
     const fx = fixture()
     expect(await contractSuite(fx.plugin, fx.ctx)).toEqual([])
     expect(existsSync(fx.worktree)).toBe(true)
+  })
+
+  test('gitDefinitionWith builds the plugin with its options, copied when the definition is made', async () => {
+    const fx = fixture()
+    const sweep = { only: ['worktree' as Kind] }
+    const git = gitDefinitionWith({ probe: idle, sweep })
+    expect(git.name).toBe(BUILT_IN_PLUGINS[0]!.name)
+    expect(git.api).toBe(PLUGIN_API)
+    sweep.only = ['branch']
+    const plugin = git.create({ settings: {}, env: {}, kit: pluginKit(git.name) })
+    const s = await survey([plugin], fx.ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual([`worktree:${fx.worktree}`])
   })
 
   test('proposes worktrees and branches, objects with their risks, and a freed branch requires its worktree', async () => {

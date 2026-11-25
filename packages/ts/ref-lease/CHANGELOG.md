@@ -1,5 +1,12 @@
 # @osdlc/ref-lease
 
+## 0.3.8
+
+### Patch Changes
+
+- Updated dependencies [ebdb5ad]
+  - @osdlc/typed-git@0.22.0
+
 ## 0.3.7
 
 ### Patch Changes

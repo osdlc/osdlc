@@ -21,10 +21,28 @@ config's `plugins` (the core adds `enabled` and makes it strict), and `create`
 builds the plugin from those settings, validated with defaults filled in, and
 the plugin kit (see [The plugin kit](#the-plugin-kit)). A plugin of your own is
 written the same way, from `@osdlc/host-cleaner/plugin`, which holds
-`definePlugin`, `PLUGIN_API`, the contract's types, the kit and `z` (the zod the
-core validates settings with), and nothing of the run. [Writing a
+`definePlugin`, `PLUGIN_API`, the contract's types, the kit, `CommandFailed`
+and `z` (the zod the core validates settings with), and nothing of the run; the
+main entry exports all of it too. [Writing a
 plugin](./docs/guide/writing-a-plugin.md) is the guide: writing, testing and
 publishing one.
+
+```ts
+import { PLUGIN_API, definePlugin, z } from '@osdlc/host-cleaner/plugin'
+
+export default definePlugin({
+  name: 'scratch',
+  api: PLUGIN_API,
+  settings: z.object({ dir: z.string() }),
+  create: ({ settings, kit }) => ({
+    name: 'scratch',
+    detect: () => true,
+    roots: () => [settings.dir],
+    discover: () => [kit.candidate({ kind: 'scratch', path: `${settings.dir}/out`, why: 'built' })],
+    delete: (c, ctx) => kit.remove(c.path!, ctx),
+  }),
+})
+```
 
 | Phase | Who | What |
 | --- | --- | --- |
@@ -41,7 +59,8 @@ Any hook may answer straight away or return a promise. The core awaits each
 one in turn, one plugin at a time, so `survey`, `recheck` and `clean` return
 promises. Each call has a time limit: 30 seconds (`HOOK_LIMIT_MS`), or 10
 minutes for `delete` (`DELETE_LIMIT_MS`); a plugin may set its own per hook in
-`limits`. Past the limit the core aborts `ctx.signal`, the call's own signal,
+`limits` (a positive number of milliseconds; any other value is warned of and
+the default used). Past the limit the core aborts `ctx.signal`, the call's own signal,
 and counts the call as a throw: a timed-out `detect` leaves the plugin out, a
 timed-out `object` refuses every candidate, and a timed-out `delete` fails
 that step.
@@ -61,6 +80,10 @@ targets, in the config or on the command line, and false when the command line
 fell back to the directory it runs in (and when a `RunCtx` leaves it unset). A
 plan keeps it, so `clean --plan` tells the plugins the same; a plan without it
 is refused: sweep again.
+
+A `RunCtx` may name `home`, the home folder no root may be or hold (see the
+roots rules); unset, it is the process's. The CLI sets it from `HOME`, the
+same home it expands `~` with.
 
 A candidate's `requires` lists the candidates that must go first. If one is
 refused, dropped or fails, the candidate is too; requirements are deleted
@@ -111,9 +134,10 @@ What a plan runs uses repo-cleaner's words, with their meaning:
 - **`select`:** exactly these candidate ids instead of the default.
 - **`pick`:** these as well; a candidate held for review runs only when picked
   or selected.
-- **`spare`:** leave these alone: an id, a path, a name (every candidate of
-  that name, as a branch and the worktree that has it checked out), or a glob
-  over ids, paths and names. A spared candidate that would have run is
+- **`spare`:** leave these alone: an id, a path (a ref candidate's `ref` or
+  the folder it is `at`), a name (every candidate of that name, as a branch
+  and the worktree that has it checked out), or a glob over ids, paths and
+  names. A spared candidate that would have run is
   dropped as `spared`.
 
 Each candidate that runs is still judged by the rules above.
@@ -191,11 +215,11 @@ needs no more than the path. The plugin `create` returns through
 | --- | --- |
 | `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the hours since, fractions included, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Out of time, it is `{ unmeasured: true }`. |
 | `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
-| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and every ancestor of it are left out, so the `npm exec` or `pnpm dlx` that started it does not count. The table is read fresh once per hook call. |
+| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and the unbroken line of ancestors above it whose command lines name host-cleaner are left out, so the `npm exec` or `pnpm dlx` that started it does not count, but an editor, terminal or `tmux` it runs inside does. The table is read fresh once per hook call. |
 | `kit.onPath(program)` | Whether a program is on PATH. |
 | `kit.candidate({ kind, path \| ref, ... })` | A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and the plugin as owner. |
 | `kit.run(argv, { signal, check })` | Runs a program through `@osdlc/command-seam`, with a time limit (`RUN_LIMIT_MS`, 30 seconds) and stopped when `ctx.signal` aborts; `ok` when it exited 0, a `CommandFailed` throw with `check`. |
-| `kit.remove(path, ctx?)` | Removes a folder only if it is still inside the plugin's roots, is one of its self roots, or is inside a target or a linked worktree of one (as in [containment](#paths-refs-and-containment)) by its real path, as the core bound them this run, after making read-only folders and files in it writable; checks it is gone and returns the receipt sentence. With `ctx`, it removes nothing once `ctx.signal` has aborted. |
+| `kit.remove(path, ctx?)` | Removes a folder only if it is still inside the plugin's roots, is one of its self roots, or is inside a target or a linked worktree of one (as in [containment](#paths-refs-and-containment)) by its real path, as the core bound them this run, after making read-only folders and files in it writable; checks it is gone and returns the receipt sentence. It removes nothing in a survey's hooks before that survey binds it, or in a ref candidate's `delete`. With `ctx`, it removes nothing once `ctx.signal` has aborted. |
 
 `idleHoursSetting` is the `idleHours` setting: a plugin that declares it
 inherits the config's top-level `idleHours` when its own entry sets none.
@@ -218,7 +242,7 @@ runner:
 | `contractSuite(plugin, ctx, { deleteLimitMs })` | Surveys the plugin twice and returns one line per broken rule. |
 
 The suite checks that `limits` name hooks; that the survey warns of nothing
-(no hook throws or runs past its limit, `detect`'s answer and each root has a
+(every limit is a positive number, no hook throws or runs past its limit, `detect`'s answer and each root has a
 shape the core takes, ids are unique, each candidate is the plugin's and has
 one of a path and a ref; a `detect` note is not a problem); that every path
 candidate is inside the plugin's roots or the targets, or is one of its self
@@ -238,6 +262,105 @@ Every shipped plugin passes it:
 expect(await contractSuite(plugin, { cwd: root, targets: [root] })).toEqual([])
 ```
 
+### Descriptors
+
+A descriptor is a plugin written as a YAML (or JSON) file, `descriptor: 1`:
+named folders in `paths`, one value for `all` or one per OS, and the
+`candidates` under them. Where the command line finds descriptor files is under
+[Command line](#command-line).
+
+```yaml
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@0.3/schemas/descriptor-1.json
+descriptor: 1
+detect:
+  any: [{ onPath: uv }, { exists: cache }]
+paths:
+  cache: { all: ~/.cache/uv }
+candidates:
+  - path: cache
+    costDescription: re-download
+    command: [uv, cache, prune, --cache-dir, '{path}']
+    removes: unused
+inUse:
+  processes: [uv]
+```
+
+```ts
+import { DescriptorError, readDescriptor } from '@osdlc/host-cleaner'
+
+try {
+  const descriptor = readDescriptor('uv.yaml')
+} catch (err) {
+  // One line per problem, such as `line 5: candidates.0.path: no folder named "models" in paths`.
+  if (err instanceof DescriptorError) console.error(err.issues)
+}
+```
+
+`parseDescriptor(text, source)` reads text instead of a file;
+`descriptorIssues(value)` checks a parsed value and lists its problems without
+lines. A folder must start with `~/`, be absolute, and name something below
+the home folder or the root, not a home folder itself such as `/home/alice`. A
+glob stays inside its path, in every `{a,b}` alternative too. A tool's
+`command` must name the checked folder, as a `{path}` argument or in `env`.
+`vars` (tier 2) and any `${VAR}` elsewhere are refused until variables are
+built. `DescriptorSchema` is the zod schema, and `schemas/descriptor-1.json`,
+which the package ships (`@osdlc/host-cleaner/schemas/descriptor-1.json`), is
+the same schema as JSON Schema for editors.
+
+`descriptorPlugin(name, descriptor)` turns a checked descriptor into a
+`definePlugin` value built only on the kit, with an `idleHours` setting:
+
+```ts
+const d = readDescriptor('pip.yaml')
+const plugin = descriptorPlugin('pip', d)
+```
+
+- **detect:** its `detect` (`onPath`, `exists`), or any of its folders
+  existing. A `system: true` descriptor (`skipReason`) and one whose
+  `supersededBy` plugin runs answer `{ active: false, note }`.
+- **roots:** each of its `paths` for this OS that `pathProblem` passes, as a
+  self root. A path may not be a symlink (a trailing `/` is dropped first),
+  be or hold home, a personal folder, a target or a checkout, sit outside
+  home, or hold or sit inside host-cleaner's own folders.
+- **discover:** one candidate per folder, or per `glob` match inside it
+  (`globMatches`; a match may be a file). Matches past `maxEntries` are
+  combined into one candidate at the first of them, held while any of them
+  changed within the threshold; deleting it removes each.
+  `project` entries find build folders beside a marker in the targets'
+  checkouts, in one walk, and in a repository's primary checkout only inside
+  the targets.
+- **object:** a running `inUse` process or lock refuses its candidates
+  (`in-use`); a prune with no program on PATH gets a `no-prune-tool` protest.
+- **delete:** checks the candidate again, then runs the tool's command from
+  the home folder, pointed at the folder, or removes it with `kit.remove`.
+
+### Loading plugins from code
+
+The command line builds its plugin list from these exports, and a program that
+runs `survey` and `clean` itself can do the same:
+
+| Export | What it does |
+| --- | --- |
+| `packageEntries(config.plugins, taken)` | The `plugins` entries with a `package`, by name; `taken(name)` names the plugin that already has a name. Throws `PackageError`. |
+| `packageRoots(env)` | The `node_modules` folders a package is looked for in, in order. |
+| `loadPackages(entries, roots)` | Imports each entry's package: `{ loaded, failed }`. A failure is a `PackageFailure`, not a throw. |
+| `loadDescriptors({ shipped, user, flag }, reserved)` | The descriptors a run uses, each with its `source` and the file it `replaces`. Throws `DescriptorLoadError` for a name clash, `DescriptorError` for a bad file. |
+| `loadPlugins(sources, opts, { loaded, entries })` | The built-ins, then the packages, then one `descriptorPlugin` per descriptor: `{ definitions, packages, descriptors }`. |
+| `parseDescriptor(text, source)`, `readDescriptor(path)` | One descriptor, checked; `DescriptorError` lists each issue with its field and line. `descriptorIssues(value)` returns them instead. |
+| `descriptorPlugin(name, descriptor, opts)` | The `PluginDefinition` for one descriptor. |
+| `DescriptorSchema`, `descriptorJsonSchema()` | The format as a zod schema and as the JSON Schema in `schemas/descriptor-1.json`. |
+
+```ts
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { loadPackages, loadPlugins, packageEntries, packageRoots } from '@osdlc/host-cleaner'
+
+const entries = packageEntries(config.plugins, () => undefined)
+const { loaded, failed } = await loadPackages(entries, packageRoots(process.env))
+const user = join(homedir(), '.config', 'host-cleaner', 'descriptors')
+const { definitions } = loadPlugins({ user }, {}, { loaded, entries })
+```
+
 ## The `git` plugin
 
 `gitPlugin(options)` proposes repo-cleaner's worktrees, as paths, and branches,
@@ -249,6 +372,11 @@ remote first; a failed push throws `FatalRun`. Grant the named risks; the
 `discard-archived` cover is not yet offered here. Its `delete` refuses a
 worktree whose folder has become a symlink, since `git worktree remove` would
 follow it and empty the folder it leads to.
+
+`BUILT_IN_PLUGINS` holds git as `gitDefinitionWith()`, sweeping worktrees and
+local branches. A program that wants other kinds, as `--worktrees` and
+`--branches` give the command line, puts `gitDefinitionWith({ sweep: { only:
+['worktree'] } })` in its place.
 
 ## The `cargo` and `node` plugins
 
@@ -346,13 +474,42 @@ shipped one of the same name, and `--descriptor` replaces either for that run.
 Every plugin has one name, so any other clash, such as a descriptor named `git`
 or two files of one name in one folder, is refused (exit 2). Descriptors run
 after the built-ins, by name. To try one you are writing:
-`host-cleaner status --descriptor ./uv.yaml --plugin uv`.
+`host-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan made with
+`--descriptor` needs the same `--descriptor` on `clean --plan`, since the
+re-check loads plugins again and drops a candidate no plugin proposes as
+`gone`. A descriptor's `supersededBy` must name a built-in plugin, or a package
+the config names.
+
+A descriptor names its folders per OS under `paths`, then lists what may be
+deleted under `candidates`:
+
+```yaml
+descriptor: 1
+paths:
+  hub: { all: ~/.cache/huggingface/hub }
+candidates:
+  - path: hub
+    glob: 'models--*/' # one candidate per match; past maxEntries (200) the rest are one
+    costDescription: re-download
+    idleHours: 720
+```
+
+A candidate deletes its folder, or with `command` runs the tool's own command
+(naming the folder as `{path}`), with `removes: unused` for a prune or
+`removes: all` for a wipe. `inUse` lists `processes` and `locks` that make every
+candidate wait, `project` adds folders inside each checkout of the targets, and
+`detect` (`all` or `any` of `onPath` and `exists`) decides when it runs. A
+descriptor with `system: true` never runs, nor one whose `supersededBy` names a
+built-in or package plugin that runs this time; `status` gives a note for
+each. Every folder must sit inside home and pass the same checks as a plugin's
+root. The full format is the JSON Schema in `schemas/descriptor-1.json`.
 
 A code plugin published as a package runs when the config names it:
 `"plugins": { "podman": { "package": "@acme/host-cleaner-podman" } }`. Only a
 package the config names is loaded, by its npm name and never from a path: from
 the `node_modules` folders host-cleaner itself is installed in, then the global
-npm prefix (`npm_config_prefix`, else Node's own). Its default export must be a
+npm prefix (`npm_config_prefix`, else npm's default: `%APPDATA%\npm` on Windows,
+Node's own elsewhere). Its default export must be a
 `definePlugin` value whose `name` is the config key and whose `api` is this
 host-cleaner's `PLUGIN_API`. A name a built-in or a descriptor has is refused
 (exit 2). Packages run after the built-ins and before the descriptors, by name.
