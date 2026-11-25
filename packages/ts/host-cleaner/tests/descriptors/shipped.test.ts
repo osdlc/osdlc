@@ -23,6 +23,7 @@ import type { CommandRunner } from '@osdlc/command-seam'
 import type { ProcessHolder, ProcessProbe } from '@osdlc/repo-cleaner'
 
 import { main } from '../../src/cli.ts'
+import { expandHome } from '../../src/ignore.ts'
 import {
   BUILT_IN_PLUGINS,
   DEFAULT_IDLE_HOURS,
@@ -93,16 +94,15 @@ interface Processes {
 }
 
 /**
- * A process table: `cwd` maps a folder to the processes working in it, for
- * the probe; `/` lists every process, read by `ps` as a child of init with
- * `command` as its command line.
+ * A process table where no process works in any folder, and `ps` lists
+ * `running`, each a child of init with `command` as its command line.
  */
-const processes = (table: Record<string, ProcessHolder[]> = {}): Processes => ({
-  probe: { alive: () => false, holders: (path) => table[path] ?? [] },
+const processes = (running: ProcessHolder[] = []): Processes => ({
+  probe: { alive: () => false, holders: () => [] },
   ps: {
     run: () => ({
       exitCode: 0,
-      stdout: [{ pid: 1, command: '/sbin/init' }, ...(table['/'] ?? [])]
+      stdout: [{ pid: 1, command: '/sbin/init' }, ...running]
         .map((h) => `${h.pid} ${h.pid === 1 ? 0 : 1} ${h.command}\n`)
         .join(''),
       stderr: '',
@@ -112,6 +112,13 @@ const processes = (table: Record<string, ProcessHolder[]> = {}): Processes => ({
 
 const shipped = (name: string): Descriptor =>
   readDescriptor(join(SHIPPED_DESCRIPTORS, `${name}.yaml`))
+
+/** The folder of `paths.<key>` in `d` on `os` under `home`; undefined when `os` has none. */
+const folderOf = (d: Descriptor, key: string, os: Os, home: string): string | undefined => {
+  const p = d.paths[key]!
+  const f = p.all ?? p[os]
+  return f === undefined ? undefined : expandHome(f, home)
+}
 
 interface Built {
   home: string
@@ -134,11 +141,7 @@ function build(
   const h = tempHome()
   cleanups.push(h.cleanup)
   const d = shipped(name)
-  const folder = (key: string): string => {
-    const p = d.paths[key]!
-    const f = (p.all ?? p[os])!
-    return join(h.home, f.slice(2))
-  }
+  const folder = (key: string): string => folderOf(d, key, os, h.home)!
   for (const key of Object.keys(d.paths)) {
     mkdirSync(folder(key), { recursive: true })
     writeFileSync(join(folder(key), 'blob'), 'x')
@@ -208,9 +211,10 @@ describe('the shipped folder', () => {
     cleanups.push(h.cleanup)
     const os = osOf(process.platform)
     for (const name of STORES) {
-      for (const p of Object.values(shipped(name).paths)) {
-        const f = p.all ?? p[os]
-        if (f !== undefined) mkdirSync(join(h.home, f.slice(2)), { recursive: true })
+      const d = shipped(name)
+      for (const key of Object.keys(d.paths)) {
+        const f = folderOf(d, key, os, h.home)
+        if (f !== undefined) mkdirSync(f, { recursive: true })
       }
     }
     const cwd = join(h.home, 'work')
@@ -286,7 +290,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
     test.each(Object.entries(RUNNING))(
       '%s: its program running refuses every candidate',
       async (name, { command, shown }) => {
-        const b = build(name, os, { processes: processes({ '/': [{ pid: PID, command }] }) })
+        const b = build(name, os, { processes: processes([{ pid: PID, command }]) })
         const s = await survey([b.plugin], CTX)
         const inUse = s.objections.filter((o) => o.code === IN_USE)
         expect(s.candidates.length).toBeGreaterThan(0)
@@ -301,7 +305,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
         const others = Object.entries(RUNNING)
           .filter(([store]) => store !== name)
           .map(([, r], i) => ({ pid: PID + 1 + i, command: r.command }))
-        const b = build(name, os, { processes: processes({ '/': others }) })
+        const b = build(name, os, { processes: processes(others) })
         const s = await survey([b.plugin], CTX)
         expect(s.objections.filter((o) => o.code === IN_USE)).toEqual([])
       },
@@ -396,8 +400,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
         '/usr/bin/java -cp /home/me/.gradle/wrapper/dists/gradle-8.10-bin/6o1bb8kk/gradle-8.10/lib/gradle-launcher-8.10.jar org.gradle.launcher.GradleMain --no-daemon build',
       ],
     ])('%s running refuses every candidate', async (_, command) => {
-      const table = { '/': [{ pid: PID, command }] }
-      const b = build('gradle', os, { processes: processes(table) })
+      const b = build('gradle', os, { processes: processes([{ pid: PID, command }]) })
       age(b.folder('caches'), 169)
       const { survey: s, receipt } = await surveyAndClean(b.plugin)
       expect(s.candidates).toHaveLength(3)
@@ -425,7 +428,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       'node /home/me/.volta/tools/image/node/20.0.0/lib/node_modules/npm/bin/npm-cli.js install',
       'node /usr/lib/node_modules/npm/bin/npx-cli.js -y some-tool',
     ])('`%s` running refuses the cache', async (command) => {
-      const b = build('npm', os, { processes: processes({ '/': [{ pid: PID, command }] }) })
+      const b = build('npm', os, { processes: processes([{ pid: PID, command }]) })
       const s = await survey([b.plugin], CTX)
       const inUse = s.objections.filter((o) => o.code === IN_USE)
       expect(inUse.map((o) => o.candidate)).toEqual([`npm:${b.folder('cache')}`])
