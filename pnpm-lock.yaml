@@ -1783,7 +1783,7 @@ importers:
         specifier: workspace:^
         version: link:../command-seam
       '@osdlc/typed-git':
-        specifier: workspace:^0.21.0
+        specifier: workspace:^0.22.0
         version: link:../typed-git
     devDependencies:
       '@osdlc/prettier-config':
@@ -1963,6 +1963,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
+      axe-core:
+        specifier: 4.14.1
+        version: 4.14.1
       jsdom:
         specifier: ^26.1.0
         version: 26.1.0
@@ -4080,6 +4083,10 @@ packages:
       '@astrojs/markdown-remark':
         optional: true
 
+  axe-core@4.14.1:
+    resolution: {integrity: sha512-FHfa+lmNjQZfJz1q8wKqIDwC6DExcHt/pkjNQb09a3NPjCKg2rhu5qb2S4r76ASyFNNtuFooJpZe37OgudVGtQ==}
+    engines: {node: '>=4'}
+
   axobject-query@4.1.0:
     resolution: {integrity: sha512-qIj0G9wZbMGNLjLmg1PT6v2mE9AH2zlnADJD/2tC6E00hgmhUOfEB6greHPAfLRSufHqROIUTkw6E+M3lH0PTQ==}
     engines: {node: '>= 0.4'}
@@ -4115,8 +4122,8 @@ packages:
   boundary@2.0.0:
     resolution: {integrity: sha512-rJKn5ooC9u8q13IMCrW0RSp31pxBCHE3y9V/tp3TdWSLf8Em3p6Di4NBpfzbJge9YjjFEsD0RtFEjtvHL5VyEA==}
 
-  brace-expansion@5.0.13:
-    resolution: {integrity: sha512-Vh3dmFbc4wZeox7M9I/0L9GfFd83Su4+yCck/OF9Gi/P/dAHn0RT7X4K9R7gMNMhDck3DvhR6QXsnQdjjgwNvQ==}
+  brace-expansion@5.1.0:
+    resolution: {integrity: sha512-aa11Dv491GKnYqxaul3aRJ0szew7yMJMfZPnqD44NjGrZXoj62l41OEDDpdpC4eE2P88vBFfLuSyRhpG91NUvg==}
     engines: {node: 20 || >=22}
 
   browserslist@4.29.5:
@@ -8264,6 +8271,8 @@ snapshots:
       - uploadthing
       - yaml
 
+  axe-core@4.14.1: {}
+
   axobject-query@4.1.0: {}
 
   bail@2.0.2: {}
@@ -8299,7 +8308,7 @@ snapshots:
 
   boundary@2.0.0: {}
 
-  brace-expansion@5.0.13:
+  brace-expansion@5.1.0:
     dependencies:
       balanced-match: 4.0.4
 
@@ -9786,7 +9795,7 @@ snapshots:
 
   minimatch@10.2.6:
     dependencies:
-      brace-expansion: 5.0.13
+      brace-expansion: 5.1.0
 
   minipass@7.1.3: {}
 

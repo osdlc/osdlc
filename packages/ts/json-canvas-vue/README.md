@@ -34,7 +34,7 @@ npm install @osdlc/json-canvas-vue
 ```
 
 `pnpm add @osdlc/json-canvas-vue` and `yarn add @osdlc/json-canvas-vue` work
-too. Vue `^3.5` is a peer dependency. The package depends on
+too. Vue `^3.5.2` is a peer dependency. The package depends on
 `@osdlc/json-canvas-core` and [DOMPurify](https://github.com/cure53/DOMPurify).
 
 ESM only. Node.js 22 or later. The package ships compiled JavaScript and

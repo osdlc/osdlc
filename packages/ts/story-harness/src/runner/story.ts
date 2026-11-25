@@ -1,14 +1,21 @@
 /**
- * Story selection and page settling, shared by the baseline check and the
- * host-side helpers. Imports nothing but Playwright types: the container that
- * runs the baseline check installs only Playwright.
+ * Story selection and page settling, shared by the container checks (the
+ * baseline check, the accessibility check and the keyboard walk) and the
+ * host-side helpers. Imports nothing but Playwright types and node built-ins:
+ * the container installs only Playwright.
  */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 
+/** A Storybook theme the harness shoots. */
 export type Theme = 'light' | 'dark'
+/** The themes every story is shot in. */
 export const THEMES: readonly Theme[] = ['light', 'dark']
 
+/** The viewport of a shot, in pixels. */
 export const VIEWPORT = { width: 1440, height: 900 }
+/** The viewport of a narrow shot, in pixels. */
 export const NARROW_VIEWPORT = { width: 1024, height: 720 }
 
 /** Default wait after the story's `play` finishes, for fixture reads with simulated latency. */
@@ -29,6 +36,7 @@ export interface StoryIndex {
   entries: Record<string, { type: string }>
 }
 
+/** Which stories {@link selectStories} keeps. */
 export interface StoryFilter {
   /** Id prefixes to keep; empty keeps every story. */
   include?: readonly string[]
@@ -53,6 +61,30 @@ export function selectStories(index: StoryIndex, filter: StoryFilter = {}): stri
     .filter((id) => !filter.contains || id.includes(filter.contains))
 }
 
+/**
+ * What the container's e2e files read from the environment the `story-shots`
+ * command sets: the Storybook build, the settle wait, and the story ids the
+ * include and exclude prefixes leave. `flag` names the mode in the error for a
+ * missing `STORYBOOK_DIR`.
+ */
+export function storyRunEnv(flag = ''): { storybookDir: string; settleMs: number; ids: string[] } {
+  const storybookDir = process.env.STORYBOOK_DIR
+  if (!storybookDir)
+    throw new Error(
+      `STORYBOOK_DIR is not set; run through the story-shots command${flag ? ` with ${flag}` : ''}`,
+    )
+  const index: StoryIndex = JSON.parse(readFileSync(join(storybookDir, 'index.json'), 'utf8'))
+  return {
+    storybookDir,
+    // The command passes SETTLE_MS empty when --settle-ms is not given.
+    settleMs: process.env.SETTLE_MS ? Number(process.env.SETTLE_MS) : DEFAULT_SETTLE_MS,
+    ids: selectStories(index, {
+      include: splitList(process.env.STORY_INCLUDE),
+      exclude: splitList(process.env.STORY_EXCLUDE),
+    }),
+  }
+}
+
 /** Splits a comma-separated list, dropping empty items. */
 export function splitList(value: string | undefined): string[] {
   return (value ?? '')
@@ -69,6 +101,7 @@ export function isNarrowOnly(id: string): boolean {
   return id.endsWith('-narrow')
 }
 
+/** The URL of a story's iframe page on the static server, with the theme set as a Storybook global. */
 export function storyUrl(baseURL: string, id: string, theme: Theme): string {
   return `${baseURL}/iframe.html?id=${id}&viewMode=story&globals=theme:${theme}`
 }
@@ -76,6 +109,7 @@ export function storyUrl(baseURL: string, id: string, theme: Theme): string {
 /** The clock's start for every story, so relative dates render the same on every run. */
 export const START_TIME = new Date('2026-09-28T12:00:00Z')
 
+/** What {@link preparePage} takes. */
 export interface PreparePageOptions {
   /**
    * Install Playwright's clock at {@link START_TIME}. Default `true`. Perf
@@ -172,6 +206,19 @@ export function storyErrors(page: Page): Promise<string[]> {
   return page.evaluate(() => ((window as any).__STORY_SHOTS_ERRORS__ ?? []) as string[])
 }
 
+/**
+ * One key of the rendered story's `parameters` (story, meta and preview merged
+ * by Storybook), or `{}`. Only that key crosses back from the page: the whole
+ * object can hold components and functions that do not serialise.
+ */
+export async function storyParameters<T extends object>(page: Page, key: string): Promise<T> {
+  return page.evaluate(
+    (key) => (window as any).__STORYBOOK_PREVIEW__.currentRender.story?.parameters?.[key] ?? {},
+    key,
+  )
+}
+
+/** What {@link openStory} takes besides the story. */
 export interface OpenStoryOptions {
   /** Wait after `play` when the story sets no `settleMs`. */
   settleMs?: number
@@ -206,11 +253,7 @@ export async function openStory(
       { timeout: 60_000 },
     )
     .then((handle) => handle.jsonValue() as Promise<StoryFinished>)
-  const params = await page.evaluate(
-    () =>
-      ((window as any).__STORYBOOK_PREVIEW__.currentRender.story?.parameters?.screenshot ??
-        {}) as ShotParameters,
-  )
+  const params = await storyParameters<ShotParameters>(page, 'screenshot')
   if (params.skip) return params
   const errors = await storyErrors(page)
   if (finished.status !== 'success' || errors.length > 0) {

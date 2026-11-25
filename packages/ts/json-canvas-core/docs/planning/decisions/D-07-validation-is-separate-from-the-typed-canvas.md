@@ -24,6 +24,9 @@ created: 2026-11-22
   every handler skip a check.
 - Making the arrays optional in `ICanvasContent` would put a check in every handler and every
   caller. One function at the boundary costs less.
+- The colour check (`isValidColor`, `isValidHexColor`) is a few lines here, and `@osdlc/color`'s
+  `parseColor` is not used for it: that would add a second runtime dependency, and
+  [D-04](D-04-operations-return-a-result.md) keeps the runtime dependencies to one, `immer`.
 
 ## Consequences
 

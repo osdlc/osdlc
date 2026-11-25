@@ -1,5 +1,17 @@
 # @osdlc/pr-update
 
+## 0.17.1
+
+### Patch Changes
+
+- Updated dependencies [93bba46]
+- Updated dependencies [ebdb5ad]
+  - @osdlc/code-host@0.8.6
+  - @osdlc/typed-git@0.22.0
+  - @osdlc/agent-seat@0.10.3
+  - @osdlc/ref-lease@0.3.8
+  - @osdlc/trust-repo@0.5.14
+
 ## 0.17.0
 
 ### Minor Changes
