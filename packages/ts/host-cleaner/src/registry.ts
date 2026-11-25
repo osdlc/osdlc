@@ -13,7 +13,7 @@ import {
   type LoadedDescriptor,
 } from './descriptor/load.ts'
 import { gitDefinition } from './git.ts'
-import type { LoadedPackage, PackageEntry } from './load.ts'
+import { byName, type LoadedPackage, type PackageEntry } from './load.ts'
 import { nodeDefinition } from './node.ts'
 import { orcaDefinition } from './orca.ts'
 import { detection } from './run.ts'
@@ -76,9 +76,7 @@ export function loadPlugins(
       )
     }
   }
-  const loaded = [...packages.loaded].sort((a, b) =>
-    a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
-  )
+  const loaded = [...packages.loaded].sort(byName)
   return {
     definitions: [
       ...BUILT_IN_PLUGINS,

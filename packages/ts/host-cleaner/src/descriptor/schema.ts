@@ -37,6 +37,9 @@ const CLIMBS = /(^|[/\\])\.\.([/\\]|$)/
 
 const NAME = /^[A-Za-z][A-Za-z0-9_-]*$/
 
+/** A plugin's name, which is also a descriptor's file name less its extension. */
+export const PLUGIN_NAME = /^[a-z][a-z0-9-]*$/
+
 /**
  * A folder: under the home folder (`~/…`), absolute, or starting with a
  * variable (`${VAR}…`, tier 2), with no `..` segment. `~/` alone passes here;
@@ -241,7 +244,7 @@ export const DescriptorSchema = z
     project: z.array(ProjectEntrySchema).min(1).optional(),
     supersededBy: z
       .string()
-      .regex(/^[a-z][a-z0-9-]*$/, 'must be a plugin name')
+      .regex(PLUGIN_NAME, 'must be a plugin name')
       .optional()
       .describe("A code plugin's name. While that plugin runs, this descriptor doesn't."),
     system: z

@@ -15,6 +15,8 @@ import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { z } from 'zod'
+
 import { kitOf } from './kit.ts'
 import { HOOKS, PLUGIN_API, type Plugin, type PluginDefinition } from './types.ts'
 
@@ -118,8 +120,12 @@ export function packageEntries(
     }
     entries.push({ name, package: pkg })
   }
-  return entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  return entries.sort(byName)
 }
+
+/** Orders by `name`, by code unit. */
+export const byName = (a: { name: string }, b: { name: string }): number =>
+  a.name < b.name ? -1 : a.name > b.name ? 1 : 0
 
 /** The `exports` conditions Node matches for an `import`. */
 const IMPORT_CONDITIONS = ['node', 'import', 'module-sync', 'default']
@@ -207,16 +213,20 @@ function misshapenHooks(plugin: Record<string, unknown>): string | undefined {
   return undefined
 }
 
+/** The `package` key a package plugin's entry holds besides its own settings. */
+const packageKey = z.string().describe('The npm package this plugin is loaded from.')
+
 /**
- * `def` with its `create` checked: the plugin it returns must be named as
- * `def`, have the hooks the core calls, and be tied to the kit it was given.
- * The result is recorded for {@link isPackaged}.
+ * `def` with `package` added to its settings and its `create` checked: the
+ * plugin it returns must be named as `def`, have the hooks the core calls, and
+ * be tied to the kit it was given. The result is recorded for {@link isPackaged}.
  */
 function checked(def: PluginDefinition, entry: PackageEntry, label: string): PluginDefinition {
   const fail = (why: string): PackageLoadError =>
     new PackageLoadError({ ...entry, reason: `plugins.${entry.name}.package: ${label} ${why}` })
   const out: PluginDefinition = {
     ...def,
+    settings: def.settings.safeExtend({ package: packageKey }),
     create(init) {
       let plugin: Plugin
       try {

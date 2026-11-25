@@ -15,16 +15,14 @@ import { readdirSync, type Dirent } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { readDescriptor, type Descriptor } from './schema.ts'
+import { byName } from '../load.ts'
+import { PLUGIN_NAME, readDescriptor, type Descriptor } from './schema.ts'
 
 /** The package's own descriptors: `descriptors/` beside `src/` and `dist/`. */
 export const SHIPPED_DESCRIPTORS = fileURLToPath(new URL('../../descriptors/', import.meta.url))
 
 /** The extensions read in a descriptor folder; the reader takes YAML and JSON. */
 const DESCRIPTOR_EXTENSIONS = ['.yaml', '.yml', '.json'] as const
-
-/** What a descriptor's name, its file name less the extension, must look like: the plugin-name pattern of `supersededBy` in ./schema.ts. */
-const NAME = /^[a-z][a-z0-9-]*$/
 
 export type DescriptorSource = 'shipped' | 'user' | 'flag'
 
@@ -90,7 +88,7 @@ function filesIn(dir: string, source: DescriptorSource): Found[] {
 
 function found(path: string, source: DescriptorSource, all: readonly string[]): Found {
   const name = nameOf(path)
-  if (!NAME.test(name)) {
+  if (!PLUGIN_NAME.test(name)) {
     throw new DescriptorLoadError(
       `descriptor ${path}: "${name}" is not a plugin name: lowercase letters, digits and -, starting with a letter`,
     )
@@ -137,7 +135,7 @@ export function loadDescriptors(
     }
   }
   return [...chosen.values()]
-    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .sort(byName)
     .map((f) => ({
       name: f.name,
       source: f.source,

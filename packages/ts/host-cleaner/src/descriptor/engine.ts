@@ -339,11 +339,11 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       } catch {
         return
       }
-      const marked = entries.some((e) => !e.isDirectory() && marker.test(e.name))
+      const beside = marks(entries, marker)
       for (const e of entries) {
         if (!e.isDirectory() || e.isSymbolicLink()) continue
         const path = join(dir, e.name)
-        if (marked && e.name === entry.dir) {
+        if (beside && e.name === entry.dir) {
           const row = projectRow(entry, index, checkout, path)
           if (row !== null) rows.push(row)
         } else if (!NOT_WALKED.has(e.name) && !e.name.startsWith('.')) visit(path)
@@ -475,11 +475,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         out.push({ level: 'refuse', code: IN_USE, reason: `running: ${found.names.join(', ')}` })
       }
       if (found.unknown !== undefined) {
-        out.push({
-          level: 'refuse',
-          code: 'process-table-unreadable',
-          reason: `process table unreadable: ${found.unknown}`,
-        })
+        out.push(unreadable(found.unknown))
         break
       }
     }
@@ -494,31 +490,20 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   /** What blocks deleting a `project` row now: a busy process in its checkout. */
   const liveIn = (checkout: string, ctx: Ctx): Row['objections'] => {
     const held = kit.running({ in: checkout }, ctx)
-    return [
-      ...(held.names.length > 0
-        ? [
-            {
-              level: 'refuse' as const,
-              code: 'live-process',
-              reason: `running in the checkout: ${held.names.join(', ')}`,
-            },
-          ]
-        : []),
-      ...(held.unknown === undefined
-        ? []
-        : [
-            {
-              level: 'refuse' as const,
-              code: 'process-table-unreadable',
-              reason: `process table unreadable: ${held.unknown}`,
-            },
-          ]),
-    ]
+    const out: Row['objections'] = []
+    if (held.names.length > 0) {
+      out.push({
+        level: 'refuse',
+        code: 'live-process',
+        reason: `running in the checkout: ${held.names.join(', ')}`,
+      })
+    }
+    if (held.unknown !== undefined) out.push(unreadable(held.unknown))
+    return out
   }
 
-  /** Each folder that passes the checks: the plugin's roots, each a self root. */
-  const rootPaths = (ctx: Ctx): string[] => {
-    const refused = problems(ctx)
+  /** Each folder that passes the checks in `refused` ({@link problems}): the plugin's roots. */
+  const rootPaths = (refused: ReadonlyMap<string, string | null>): string[] => {
     const out = new Set<string>()
     for (const [key, folder] of folders) if (refused.get(key) === null) out.add(folder)
     return [...out]
@@ -526,11 +511,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
 
   /** Whether `dir` holds an entry, not a folder, that `marker` matches. */
   const marked = (dir: string, marker: string): boolean => {
-    const re = globRegExp(marker)
     try {
-      return readdirSync(dir, { withFileTypes: true }).some(
-        (e) => !e.isDirectory() && re.test(e.name),
-      )
+      return marks(readdirSync(dir, { withFileTypes: true }), globRegExp(marker))
     } catch {
       return false
     }
@@ -543,7 +525,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
    * in its checkout, may be running.
    */
   const refusal = (ev: Evidence, path: string, ctx: Ctx): string | null => {
-    const busy = inUseNow(ctx)
+    const busy: Row['objections'] = []
     if (ev.project !== undefined) {
       const entry = d.project?.[ev.project]
       const checkout = ev.checkout
@@ -557,14 +539,15 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       }
       busy.push(...liveIn(checkout, ctx))
     } else {
-      const now = rootPaths(ctx)
+      const refused = problems(ctx)
+      const now = rootPaths(refused)
       if (!now.some((r) => realOr(r) === realOr(path)) && containedIn(now, path) === null) {
         return `it is not inside ${name}'s roots`
       }
       const entry = d.candidates[ev.candidate ?? -1]
       const folder = entry === undefined ? undefined : folders.get(entry.path)
       if (entry === undefined || folder === undefined) return 'no candidate entry gives it now'
-      const problem = problems(ctx).get(entry.path) ?? null
+      const problem = refused.get(entry.path) ?? null
       if (problem !== null) return problem
       if (
         entry.glob === undefined ? path !== folder : !globMatches(folder, entry.glob).includes(path)
@@ -573,6 +556,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       }
       if (actionOf(entry) !== ev.action) return 'how it would be deleted changed since the plan'
     }
+    busy.unshift(...inUseNow(ctx))
     return busy.length === 0 ? null : busy.map((b) => b.reason).join('; ')
   }
 
@@ -596,7 +580,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       if (d.detect?.any !== undefined) return d.detect.any.some(holds)
       return [...folders.values()].some(present)
     },
-    roots: (ctx): Root[] => rootPaths(ctx).map((path) => ({ path, self: true })),
+    roots: (ctx): Root[] => rootPaths(problems(ctx)).map((path) => ({ path, self: true })),
     discover(ctx) {
       rows = new Map(rowsNow(ctx).map((r) => [r.candidate.id, r]))
       return [...rows.values()].map((r) => r.candidate)
@@ -621,9 +605,9 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       if (path === undefined) throw new Error(`${c.id} is not a folder`)
       if (isLink(path)) throw new Error(`${path} is now a symlink; it is not followed`)
       if (!present(path)) return `already gone: ${path}`
-      const why = refusal(c.evidence as Evidence, path, ctx)
-      if (why !== null) throw new Error(`${path} was not deleted: ${why}`)
       const ev = c.evidence as Evidence
+      const why = refusal(ev, path, ctx)
+      if (why !== null) throw new Error(`${path} was not deleted: ${why}`)
       if (ev.action === 'command') {
         return runCommand(kit, d.candidates[ev.candidate!]!, path, at.home, ctx)
       }
@@ -631,6 +615,17 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     },
   }
 }
+
+/** Whether `entries` hold an entry, not a folder, that `marker` matches. */
+const marks = (entries: readonly Dirent[], marker: RegExp): boolean =>
+  entries.some((e) => !e.isDirectory() && marker.test(e.name))
+
+/** The objection for a process table that could not be read. */
+const unreadable = (why: string): Row['objections'][number] => ({
+  level: 'refuse',
+  code: 'process-table-unreadable',
+  reason: `process table unreadable: ${why}`,
+})
 
 const bytesText = (n: number | null): string => (n === null ? 'an unknown size' : `${n} bytes`)
 
