@@ -26,6 +26,9 @@ import { z } from 'zod'
 import { boundBy, type Bounds } from './roots.ts'
 import type { Candidate, Ctx, PathCandidate, Plugin, RefCandidate } from './types.ts'
 
+/** The run's ignore check, for a plugin that walks checkouts itself. */
+export { coveredBy } from './ignore.ts'
+
 export const DEFAULT_IDLE_HOURS = 24
 
 /**
