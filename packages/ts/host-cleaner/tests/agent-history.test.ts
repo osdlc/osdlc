@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 import type { ProcessProbe } from '@osdlc/repo-cleaner'
@@ -23,7 +24,10 @@ import {
   agentHistoryDefinition,
   claudeConfigDir,
   decodeFolder,
+  fstabMounts,
+  isFolderOf,
   projectFolderName,
+  unmounted,
 } from '../src/agent-history.ts'
 import { contractSuite, fakeContext, tempHome } from '../src/testing.ts'
 
@@ -112,6 +116,40 @@ describe('the project folder name', () => {
     expect(claudeConfigDir({ HOME: '/h' })).toBe('/h/.claude')
     expect(claudeConfigDir({ HOME: '/h', CLAUDE_CONFIG_DIR: '/c' })).toBe('/c')
     expect(claudeConfigDir({ HOME: '/h', CLAUDE_CONFIG_DIR: '' })).toBe('/h/.claude')
+    expect(claudeConfigDir({ HOME: '' })).toBe(join(homedir(), '.claude'))
+  })
+
+  test('a name past 200 characters is its first 200 and a hash', () => {
+    const path = `/${'d'.repeat(250)}`
+    const name = `${projectFolderName(path).slice(0, 200)}-1a2b3c`
+    expect(isFolderOf(path, name)).toBe(true)
+    expect(isFolderOf(path, projectFolderName(path).slice(0, 200))).toBe(false)
+    expect(isFolderOf(`/${'e'.repeat(250)}`, name)).toBe(false)
+    expect(isFolderOf('/a/b', '-a-b')).toBe(true)
+  })
+})
+
+describe('mount points', () => {
+  test('fstab names its mount points, but the root, swap and comments', () => {
+    const text = [
+      '# /etc/fstab',
+      'UUID=1 / ext4 defaults 0 1',
+      'UUID=2 /mnt/data ext4 defaults 0 2',
+      'srv:/home /home/shared\\040disk nfs defaults 0 0',
+      'UUID=3 none swap sw 0 0',
+      '',
+    ].join('\n')
+    expect(fstabMounts(text)).toEqual(['/mnt/data', '/home/shared disk'])
+  })
+
+  test('a gone path whose nearest folder is a listed mount point may be unmounted', () => {
+    const t = tempHome()
+    cleanups.push(t.cleanup)
+    const data = join(t.home, 'data')
+    mkdirSync(data)
+    const path = join(data, 'dev', 'app')
+    expect(unmounted(path, new Set())).toBe(false)
+    expect(unmounted(path, new Set([data]))).toBe(true)
   })
 })
 
@@ -222,6 +260,38 @@ describe('discover', () => {
     expect((await survey([fx.plugin()], fx.ctx)).candidates).toEqual([])
   })
 
+  test('a gone path whose folder name Claude Code shortened is proposed', async () => {
+    const fx = fixture()
+    const gone = join(fx.home, 'dev', 'x'.repeat(240))
+    const dir = join(fx.projects, `${projectFolderName(gone).slice(0, 200)}-k3j9x2`)
+    mkdirSync(dir)
+    writeFileSync(join(dir, 's.jsonl'), JSON.stringify({ cwd: gone }))
+    expect((await survey([fx.plugin()], fx.ctx)).candidates.map((c) => c.path)).toEqual([dir])
+  })
+
+  test('stops when its signal has aborted', async () => {
+    const fx = fixture()
+    fx.history(fx.gone)
+    const ctx = { ...fx.ctx, signal: AbortSignal.abort() }
+    await expect(Promise.resolve(fx.plugin().discover(ctx))).rejects.toThrow(/stopped/)
+  })
+
+  test('a projects folder that is a link is read', async () => {
+    const fx = fixture()
+    const config = join(fx.home, 'linked-config')
+    const synced = join(fx.home, 'synced-projects')
+    mkdirSync(join(synced, projectFolderName(fx.gone)), { recursive: true })
+    writeFileSync(
+      join(synced, projectFolderName(fx.gone), 's.jsonl'),
+      JSON.stringify({ cwd: fx.gone }),
+    )
+    mkdirSync(config)
+    symlinkSync(synced, join(config, 'projects'))
+    const plugin = fx.plugin(idle, { HOME: fx.home, CLAUDE_CONFIG_DIR: config })
+    expect(await plugin.detect(fx.ctx)).toBe(true)
+    expect((await survey([plugin], fx.ctx)).candidates).toHaveLength(1)
+  })
+
   test('a path with no folder above it but the root is not taken for gone', async () => {
     const fx = fixture()
     fx.history('/host-cleaner-no-such-root/dev/app')
@@ -313,6 +383,25 @@ describe('a running session refuses its folder', () => {
     expect(refusals(await survey([fx.plugin(broken)], fx.ctx), id)).toEqual([
       'process-table-unreadable',
     ])
+    // A second recorded path still gives one refusal for the table.
+    fx.history(fx.gone.replace('gone_one', 'gone.one'), {
+      session: '0a1b2c3d-0000-4000-8000-000000000002',
+    })
+    expect(refusals(await survey([fx.plugin(broken)], fx.ctx), id)).toEqual([
+      'process-table-unreadable',
+    ])
+  })
+
+  test('a process whose working folder Linux reports as deleted', async () => {
+    const fx = fixture()
+    const dir = fx.history(fx.gone)
+    const holding: ProcessProbe = {
+      alive: () => true,
+      holders: (path) =>
+        path === `${fx.gone} (deleted)` ? [{ pid: 42, command: 'node', hasChildren: false }] : [],
+    }
+    const s = await survey([fx.plugin(holding)], fx.ctx)
+    expect(refusals(s, `claude-history:${dir}`)).toEqual(['live-process'])
   })
 })
 

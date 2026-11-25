@@ -307,15 +307,17 @@ its history stays. This plugin proposes the history of a project whose folder
 no longer exists, as `claude-history:<folder>`, with its size.
 
 `<name>` is the project's path with every character but a letter or a digit
-turned into `-`, which cannot be turned back. So the path is read from what
+turned into `-` (past 200 characters, its first 200 and a hash), which cannot
+be turned back. So the path is read from what
 the folder records: the first `cwd` of each transcript (`<session>.jsonl`) and
 each `projectPath` in `sessions-index.json`. A folder that records no path, or
 a path that does not give its name (it was moved, or its records disagree), is
 skipped, never guessed. A folder is proposed only when every path it records
 is gone, and not when that path would be on a volume that is not mounted
-(under `/Volumes`, `/mnt`, `/media` or `/run/media`), or when no folder above
-it exists but the root (a path from another machine, or a drive that is away).
-A folder that is a link is skipped.
+(under `/Volumes`, `/mnt`, `/media`, `/run/media` or a mount point in
+`/etc/fstab`), or when no folder above it exists but the root (a path from
+another machine, or a drive that is away). A folder that is a link is skipped;
+the `projects` folder itself may be one.
 
 History cannot be fetched or built again, so its `costDescription` is `lost`:
 it is held, and runs only when picked and allowed:
@@ -327,7 +329,9 @@ host-cleaner clean --pick claude-history:~/.claude/projects/-Users-me-dev-app-wt
 It is a `refuse` while a Claude Code session in it is running (`live-session`:
 a `~/.claude/sessions/<pid>.json` whose process is alive and whose `cwd` or
 session is the folder's), while a process still works in the gone folder
-(`live-process`), or when either cannot be read (`session-state-unreadable`,
+(`live-process`; Linux reports it as `<path> (deleted)`, macOS gives no name
+for a removed folder, so there such a process is not seen),
+or when either cannot be read (`session-state-unreadable`,
 `process-table-unreadable`). `delete` reads the folder and the sessions again,
 then removes it with `kit.remove`. No settings.
 

@@ -21,7 +21,15 @@
  * No settings.
  */
 
-import { closeSync, lstatSync, openSync, readFileSync, readSync, readdirSync } from 'node:fs'
+import {
+  closeSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  readdirSync,
+  statSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 
@@ -40,17 +48,55 @@ const HEAD_BYTES = 256 * 1024
 const DISCOVER_LIMIT_MS = 10 * 60_000
 
 /** Where removable volumes are mounted; the folder above a gone path being one of these means its volume may be away. */
-const MOUNTS: ReadonlySet<string> = new Set(['/Volumes', '/mnt', '/media', '/run/media'])
+const MOUNTS: readonly string[] = ['/Volumes', '/mnt', '/media', '/run/media']
 /** Mount folders that hold one folder per user. */
 const USER_MOUNTS: ReadonlySet<string> = new Set(['/media', '/run/media'])
 
-/** The name Claude Code gives the project folder of `path`. */
+/** The name Claude Code gives the project folder of `path`, before it shortens a long one. */
 export const projectFolderName = (path: string): string => path.replace(/[^A-Za-z0-9]/g, '-')
+
+/** The longest name Claude Code keeps whole; a longer one is cut to this and a hash added. */
+const NAME_LIMIT = 200
+
+/**
+ * Whether `name` is the project folder of `path`: its name, or, past
+ * {@link NAME_LIMIT} characters, its first {@link NAME_LIMIT} and a hash.
+ */
+export function isFolderOf(path: string, name: string): boolean {
+  const full = projectFolderName(path)
+  if (full.length <= NAME_LIMIT) return full === name
+  const cut = `${full.slice(0, NAME_LIMIT)}-`
+  return name.startsWith(cut) && /^-?[0-9a-z]+$/i.test(name.slice(cut.length))
+}
+
+/** The mount points `/etc/fstab` text names, but the root and swap. */
+export function fstabMounts(text: string): string[] {
+  return text.split('\n').flatMap((line) => {
+    const [source, at] = line.trim().split(/\s+/)
+    if (source === undefined || source.startsWith('#') || at === undefined) return []
+    // fstab writes a space in a path as `\040`.
+    const point = at.replace(/\\([0-7]{3})/g, (_, o: string) =>
+      String.fromCharCode(parseInt(o, 8)),
+    )
+    return point.startsWith('/') && point !== '/' ? [point] : []
+  })
+}
+
+/** Where volumes are mounted on this host: {@link MOUNTS} and the mount points in `/etc/fstab`. */
+function mountPoints(): ReadonlySet<string> {
+  let listed: string[] = []
+  try {
+    listed = fstabMounts(readFileSync('/etc/fstab', 'utf8'))
+  } catch {
+    // No fstab: only the usual places.
+  }
+  return new Set([...MOUNTS, ...listed])
+}
 
 /** Claude Code's config folder: `CLAUDE_CONFIG_DIR`, else `.claude` in the home folder. */
 export function claudeConfigDir(env: Readonly<Record<string, string | undefined>>): string {
   const set = env.CLAUDE_CONFIG_DIR
-  return set !== undefined && set !== '' ? resolve(set) : join(env.HOME ?? homedir(), '.claude')
+  return set !== undefined && set !== '' ? resolve(set) : join(env.HOME || homedir(), '.claude')
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -74,14 +120,14 @@ function gone(path: string): boolean {
 
 /**
  * Whether `path` may be on a volume that is not mounted: the nearest folder
- * above it that exists is where volumes are mounted, or no folder above it
- * exists but the root, such as `/Volumes/x` recorded on a Mac and read on
- * Linux, or a Windows drive that is away.
+ * above it that exists is one of `mounts` or a user's folder in one of
+ * {@link USER_MOUNTS}, or no folder above it exists but the root, such as
+ * `/Volumes/x` recorded on a Mac and read on Linux, or a Windows drive that is away.
  */
-function unmounted(path: string): boolean {
+export function unmounted(path: string, mounts: ReadonlySet<string> = new Set(MOUNTS)): boolean {
   let dir = dirname(path)
   while (dirname(dir) !== dir && gone(dir)) dir = dirname(dir)
-  return dirname(dir) === dir || MOUNTS.has(dir) || USER_MOUNTS.has(dirname(dir))
+  return dirname(dir) === dir || mounts.has(dir) || USER_MOUNTS.has(dirname(dir))
 }
 
 /** Reused by every `head` read, which is synchronous. */
@@ -153,7 +199,7 @@ export function decodeFolder(
   const ok = (p: string): boolean => {
     if (paths.has(p)) return true
     paths.add(p)
-    return isAbsolute(p) && projectFolderName(p) === name && keep(p)
+    return isAbsolute(p) && isFolderOf(p, name) && keep(p)
   }
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (!entry.isFile()) continue
@@ -233,16 +279,17 @@ function liveSessions(config: string): Sessions {
 /** What a scan reads once for every folder. */
 interface Seen {
   sessions: Sessions
+  mounts: ReadonlySet<string>
   ctx: Ctx
 }
 
-/** The row for the project folder `dir`, or null when it is not a candidate. */
-function rowFor(kit: Kit, dir: string, seen: Seen): Row | null {
+/** The row for the project folder `dir`, or null when it is not a candidate; `sized: false` leaves out its bytes. */
+function rowFor(kit: Kit, dir: string, seen: Seen, sized = true): Row | null {
   const name = basename(dir)
   if (!isDir(dir)) return null
   let record: ProjectRecord | null
   try {
-    record = decodeFolder(dir, (p) => gone(p) && !unmounted(p))
+    record = decodeFolder(dir, (p) => gone(p) && !unmounted(p, seen.mounts))
   } catch {
     return null
   }
@@ -252,7 +299,7 @@ function rowFor(kit: Kit, dir: string, seen: Seen): Row | null {
   const { live, unknown } = seen.sessions
   const sessions = live.filter(
     (s) =>
-      (s.cwd !== '' && projectFolderName(s.cwd) === name) ||
+      (s.cwd !== '' && isFolderOf(s.cwd, name)) ||
       record.sessions.includes(`${s.sessionId}.jsonl`),
   )
   if (sessions.length > 0) {
@@ -262,22 +309,29 @@ function rowFor(kit: Kit, dir: string, seen: Seen): Row | null {
     })
   }
   if (unknown !== undefined) blockers.push({ code: 'session-state-unreadable', reason: unknown })
+  let unreadable: string | undefined
   for (const p of record.paths) {
-    const held = kit.running({ in: p }, seen.ctx)
-    if (held.names.length > 0) {
+    // Linux names the working folder of a process whose folder was removed `<path> (deleted)`.
+    const names: string[] = []
+    for (const where of [p, `${p} (deleted)`]) {
+      const held = kit.running({ in: where }, seen.ctx)
+      names.push(...held.names)
+      unreadable ??= held.unknown
+    }
+    if (names.length > 0) {
       blockers.push({
         code: 'live-process',
-        reason: `running in ${p}: ${held.names.join(', ')}`,
-      })
-    }
-    if (held.unknown !== undefined) {
-      blockers.push({
-        code: 'process-table-unreadable',
-        reason: `process table unreadable: ${held.unknown}`,
+        reason: `running in ${p}: ${[...new Set(names)].join(', ')}`,
       })
     }
   }
-  const bytes = kit.size(dir)
+  if (unreadable !== undefined) {
+    blockers.push({
+      code: 'process-table-unreadable',
+      reason: `process table unreadable: ${unreadable}`,
+    })
+  }
+  const bytes = sized ? kit.size(dir) : null
   return {
     blockers,
     candidate: kit.candidate({
@@ -305,15 +359,23 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
   return {
     name: AGENT_HISTORY_PLUGIN,
     limits: { discover: DISCOVER_LIMIT_MS },
-    detect: () => isDir(projects),
+    // `projects` may be a link, such as to a synced folder; the folders in it may not.
+    detect: () => statSync(projects, { throwIfNoEntry: false })?.isDirectory() === true,
     roots: () => [projects],
-    discover(ctx) {
-      const seen: Seen = { sessions: liveSessions(config), ctx }
-      const found = readdirSync(projects, { withFileTypes: true })
+    async discover(ctx) {
+      const seen: Seen = { sessions: liveSessions(config), mounts: mountPoints(), ctx }
+      const names = readdirSync(projects, { withFileTypes: true })
         .filter((e) => e.isDirectory())
         .map((e) => e.name)
         .sort()
-        .flatMap((name) => rowFor(kit, join(projects, name), seen) ?? [])
+      const found: Row[] = []
+      for (const name of names) {
+        // Lets the hook's time limit fire, and stops once it has.
+        await new Promise((done) => setImmediate(done))
+        if (ctx.signal.aborted) throw new Error(`stopped after ${found.length} candidates`)
+        const row = rowFor(kit, join(projects, name), seen)
+        if (row !== null) found.push(row)
+      }
       rows = new Map(found.map((r) => [r.candidate.id, r]))
       return found.map((r) => r.candidate)
     },
@@ -330,7 +392,9 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
         throw new Error(`${c.id} is not a Claude Code project folder in ${projects}`)
       }
       if (!present(c.path)) return `already gone: ${c.path}`
-      const now = rowFor(kit, c.path, { sessions: liveSessions(config), ctx })
+      // Not sized again: `kit.remove` sizes it.
+      const seen: Seen = { sessions: liveSessions(config), mounts: mountPoints(), ctx }
+      const now = rowFor(kit, c.path, seen, false)
       if (now === null || now.candidate.id !== c.id) {
         throw new Error(`${c.path} is no longer a candidate`)
       }
