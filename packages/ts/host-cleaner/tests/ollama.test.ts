@@ -1,13 +1,14 @@
 /** The `ollama` plugin over a fake `ollama` CLI shaped like the tables it prints. */
 
-import { describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
   BUILT_IN_PLUGINS,
-  IN_USE,
+  OLLAMA_IN_USE,
+  OLLAMA_USE_UNKNOWN,
   clean,
   decidePlan,
   ollamaPlugin,
@@ -16,7 +17,7 @@ import {
   survey,
   type Survey,
 } from '../src/index.ts'
-import { leastHours, parseBytes, parseList, parsePs } from '../src/ollama.ts'
+import { isLocal, leastHours, parseBytes, parseList, parsePs, serverUrl } from '../src/ollama.ts'
 import { contractSuite, fakeContext, fakeRunner } from '../src/testing.ts'
 
 interface Model {
@@ -95,6 +96,24 @@ function fakeOllama(
 
 const ctx = fakeContext()
 
+/** The server's answer to `/api/version`; every test starts with it up. */
+const server = vi.fn(async (_url: string, _init?: unknown) => ({ ok: true }))
+
+beforeEach(() => {
+  server.mockClear()
+  server.mockImplementation(async () => ({ ok: true }))
+  vi.stubGlobal('fetch', server)
+  vi.stubEnv('OLLAMA_HOST', '')
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
+})
+
+/** A plan that grants the protest every ollama model carries. */
+const allowed = (s: Survey) => plan(s, { allow: [OLLAMA_USE_UNKNOWN] })
+
 const refusals = (s: Survey) =>
   s.objections.filter((o) => o.level === 'refuse').map((o) => [o.candidate, o.code])
 
@@ -107,8 +126,20 @@ describe('parsing', () => {
       '',
     ].join('\n')
     expect(parseList(text)).toEqual([
-      { name: 'd1:2b', id: 'a3b89e90e6a3', bytes: 3_900_000_000, modified: '4 days ago' },
-      { name: 'gpt-oss:120b-cloud', id: '569662207105', bytes: null, modified: '2 weeks ago' },
+      {
+        name: 'd1:2b',
+        id: 'a3b89e90e6a3',
+        size: '3.9 GB',
+        bytes: 3_900_000_000,
+        modified: '4 days ago',
+      },
+      {
+        name: 'gpt-oss:120b-cloud',
+        id: '569662207105',
+        size: '-',
+        bytes: null,
+        modified: '2 weeks ago',
+      },
     ])
     expect(parseList('NAME    ID    SIZE    MODIFIED \n')).toEqual([])
     expect(() => parseList('Error: something\n')).toThrow(/without NAME, ID, SIZE, MODIFIED/)
@@ -123,6 +154,22 @@ describe('parsing', () => {
     expect(parseBytes('849 MB')).toBe(849_000_000)
     expect(parseBytes('512 B')).toBe(512)
     expect(parseBytes('-')).toBeNull()
+    expect(parseBytes('3.9GiB')).toBeNull()
+  })
+
+  test('OLLAMA_HOST read as ollama reads it, and whether it is this machine', () => {
+    expect(serverUrl(undefined).href).toBe('http://127.0.0.1:11434/')
+    expect(serverUrl('').href).toBe('http://127.0.0.1:11434/')
+    expect(serverUrl('0.0.0.0').href).toBe('http://0.0.0.0:11434/')
+    expect(serverUrl(':8080').href).toBe('http://127.0.0.1:8080/')
+    expect(serverUrl('localhost:9000').href).toBe('http://localhost:9000/')
+    expect(serverUrl('https://ollama.example.com').href).toBe('https://ollama.example.com/')
+    for (const host of ['', '0.0.0.0', 'localhost', '127.0.0.2:1', '[::1]:11434']) {
+      expect(isLocal(serverUrl(host))).toBe(true)
+    }
+    for (const host of ['gpu-box:11434', '10.0.0.5', 'https://ollama.example.com']) {
+      expect(isLocal(serverUrl(host))).toBe(false)
+    }
   })
 
   test('the MODIFIED text read as the fewest hours it can mean', () => {
@@ -163,7 +210,14 @@ describe('survey', () => {
       ['ollama-model:fresh:1b', true],
       ['ollama-model:odd:1b', true],
     ])
-    expect(refusals(s)).toEqual([['ollama-model:loaded:7b', IN_USE]])
+    expect(refusals(s)).toEqual([['ollama-model:loaded:7b', OLLAMA_IN_USE]])
+    expect(
+      s.objections.filter((o) => o.level === 'protest').map((o) => [o.candidate, o.code]),
+    ).toEqual([
+      ['ollama-model:old:7b', OLLAMA_USE_UNKNOWN],
+      ['ollama-model:fresh:1b', OLLAMA_USE_UNKNOWN],
+      ['ollama-model:odd:1b', OLLAMA_USE_UNKNOWN],
+    ])
     const old = s.candidates[0]!
     expect(old).toMatchObject({
       kind: 'ollama-model',
@@ -177,7 +231,54 @@ describe('survey', () => {
     expect(old.why).toBe(
       'not pulled or changed for at least 503.5 hours, by ollama list (threshold 24)',
     )
-    expect(decidePlan(plan(s)).run.map((c) => c.id)).toEqual(['ollama-model:old:7b'])
+    // Pull age is not use, so nothing runs until the protest is granted.
+    expect(decidePlan(plan(s)).run).toEqual([])
+    expect(decidePlan(allowed(s)).run.map((c) => c.id)).toEqual(['ollama-model:old:7b'])
+  })
+
+  test('tags that share an ID count their files once', async () => {
+    const id = idOf('base:7b')
+    const { plugin } = fakeOllama([
+      { name: 'base:7b', id, modified: '3 weeks ago' },
+      { name: 'mine:latest', id, modified: '3 weeks ago' },
+    ])
+    const s = await survey([plugin], ctx)
+    expect(s.candidates.map((c) => [c.name, c.bytes])).toEqual([
+      ['base:7b', 3_900_000_000],
+      ['mine:latest', 0],
+    ])
+    expect(s.candidates[1]!.why).toContain('it shares its files with base:7b')
+  })
+
+  test('a size it cannot read is held with a reason, not dropped as a cloud model', async () => {
+    const { plugin } = fakeOllama([{ name: 'new:7b', size: '3.9GiB', modified: '3 weeks ago' }])
+    const s = await survey([plugin], ctx)
+    expect(s.candidates).toHaveLength(1)
+    expect(s.candidates[0]!.held).toBe(true)
+    expect(s.candidates[0]!.bytes).toBeUndefined()
+    expect(s.candidates[0]!.why).toContain('its size "3.9GiB" cannot be read')
+  })
+
+  test('a server that is down is not started: no ollama command runs', async () => {
+    server.mockImplementation(async () => {
+      throw new TypeError('fetch failed')
+    })
+    const { plugin, calls } = fakeOllama(models)
+    const s = await survey([plugin], ctx)
+    expect(s.candidates).toEqual([])
+    expect(s.warnings.join('\n')).toContain("ollama's server at 127.0.0.1:11434 does not answer")
+    expect(calls()).toEqual([])
+    expect(server.mock.calls[0]![0]).toBe('http://127.0.0.1:11434/api/version')
+  })
+
+  test('an OLLAMA_HOST on another machine warns and proposes nothing', async () => {
+    vi.stubEnv('OLLAMA_HOST', 'gpu-box:11434')
+    const { plugin, calls } = fakeOllama(models)
+    const s = await survey([plugin], ctx)
+    expect(s.candidates).toEqual([])
+    expect(s.warnings.join('\n')).toContain('OLLAMA_HOST points at gpu-box:11434')
+    expect(calls()).toEqual([])
+    expect(server).not.toHaveBeenCalled()
   })
 
   test('a loaded model is refused by its ID too, under another name', async () => {
@@ -187,7 +288,9 @@ describe('survey', () => {
         loaded: ['loaded:7b'],
       },
     )
-    expect(refusals(await survey([plugin], ctx))).toEqual([['ollama-model:copy:7b', IN_USE]])
+    expect(refusals(await survey([plugin], ctx))).toEqual([
+      ['ollama-model:copy:7b', OLLAMA_IN_USE],
+    ])
   })
 
   test('idleHours 0 proposes a model pulled a minute ago', async () => {
@@ -225,7 +328,7 @@ describe('survey', () => {
 describe('clean', () => {
   test('an old model is removed with ollama rm, after ps and list are read again', async () => {
     const { plugin, calls, live } = fakeOllama([{ name: 'old:7b', modified: '3 weeks ago' }])
-    const receipt = await clean(plan(await survey([plugin], ctx)), [plugin], ctx)
+    const receipt = await clean(allowed(await survey([plugin], ctx)), [plugin], ctx)
     expect(receipt.status).toBe('complete')
     expect(receipt.steps.map((s) => s.delete)).toEqual(['ollama rm removed old:7b'])
     expect(live).toEqual([])
@@ -249,7 +352,7 @@ describe('clean', () => {
       },
     })
     const plugin = ollamaPlugin({}, pluginKit('ollama', fake))
-    const receipt = await clean(plan(await survey([plugin], ctx)), [plugin], ctx)
+    const receipt = await clean(allowed(await survey([plugin], ctx)), [plugin], ctx)
     expect(receipt.steps[0]).toMatchObject({
       result: 'failed',
       error: expect.stringContaining('ollama ps now shows old:7b loaded'),
@@ -270,8 +373,47 @@ describe('clean', () => {
       },
     })
     const plugin = ollamaPlugin({}, pluginKit('ollama', fake))
-    const receipt = await clean(plan(await survey([plugin], ctx)), [plugin], ctx)
+    const receipt = await clean(allowed(await survey([plugin], ctx)), [plugin], ctx)
     expect(receipt.steps[0]).toMatchObject({ result: 'ok', delete: 'already gone: old:7b' })
+  })
+
+  test('a list that fails after a successful rm is noted, not a failure', async () => {
+    let lists = 0
+    const fake = fakeRunner({
+      ollama: (argv) => {
+        if (argv[0] === 'list') {
+          if (++lists > 3) return { exitCode: 1, stderr: 'Error: connection refused' }
+          return { stdout: listText([{ name: 'old:7b', modified: '3 weeks ago' }]) }
+        }
+        if (argv[0] === 'rm') return { stdout: "deleted 'old:7b'\n" }
+        return argv[0] === 'ps' ? { stdout: psText([]) } : undefined
+      },
+    })
+    const plugin = ollamaPlugin({}, pluginKit('ollama', fake))
+    const receipt = await clean(allowed(await survey([plugin], ctx)), [plugin], ctx)
+    expect(receipt.steps[0]).toMatchObject({
+      result: 'ok',
+      delete: expect.stringMatching(
+        /^ollama rm removed old:7b; could not list again to check: ollama list failed: .*connection refused/,
+      ),
+    })
+  })
+
+  test("a failing rm reports ollama's own message", async () => {
+    const fake = fakeRunner({
+      ollama: (argv) => {
+        if (argv[0] === 'list')
+          return { stdout: listText([{ name: 'old:7b', modified: '3 weeks ago' }]) }
+        if (argv[0] === 'rm') return { exitCode: 1, stderr: 'Error: permission denied' }
+        return argv[0] === 'ps' ? { stdout: psText([]) } : undefined
+      },
+    })
+    const plugin = ollamaPlugin({}, pluginKit('ollama', fake))
+    const receipt = await clean(allowed(await survey([plugin], ctx)), [plugin], ctx)
+    expect(receipt.steps[0]).toMatchObject({
+      result: 'failed',
+      error: expect.stringContaining('ollama rm old:7b failed: Error: permission denied'),
+    })
   })
 
   test('delete refuses a candidate that is not one of its models', async () => {

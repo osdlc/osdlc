@@ -97,9 +97,10 @@ export {
   type OrcaRecord,
 } from './orca.ts'
 export {
-  IN_USE,
+  OLLAMA_IN_USE,
   OLLAMA_MODEL,
   OLLAMA_PLUGIN,
+  OLLAMA_USE_UNKNOWN,
   ollamaPlugin,
   type LoadedModel,
   type OllamaModel,
