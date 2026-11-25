@@ -251,9 +251,10 @@ alone and shows its candidates and objections. Neither deletes anything.
 as refs (`ref` the branch's name, `at` its repository). Its
 blockers are `refuse` objections and its risks `protest`s, so
 `--allow abandon-unmerged` and the others work as in repo-cleaner. A branch
-freed by a worktree requires it. With `archive` (`clean --archive` on the
-command line), unlanded work is pushed to the remote first; a failed push
-throws `FatalRun`. Grant the named risks; the
+freed by a worktree requires it. With `archive`, unlanded work is pushed to the
+remote first; a failed push throws `FatalRun`. The command line does not offer
+`archive` yet; it is set only when building the plugin in code. Grant the named
+risks; the
 `discard-archived` cover is not yet offered here. Its `delete` refuses a
 worktree whose folder has become a symlink, since `git worktree remove` would
 follow it and empty the folder it leads to.
@@ -321,7 +322,7 @@ a phase is named; the bare command explains them and exits 2.
 ```sh
 host-cleaner status [target...]   # every candidate, what deleting it costs, and what objects to it; deletes nothing
 host-cleaner plan -o plan.json
-host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [--archive] [-i] [--yes | --dry-run]
+host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [-i] [--yes | --dry-run]
 host-cleaner config [--format json]   # every plugin's effective settings
 host-cleaner plugins [target...] [--format json]   # every plugin: where it came from, detected or why not, its roots
 ```
@@ -332,8 +333,6 @@ host-cleaner plugins [target...] [--format json]   # every plugin: where it came
 | `--spare <id\|name\|glob>` | Leave these alone: an id, a path, a branch name (its worktree too) or a glob. |
 | `-i` | Choose from a checklist, the default candidates ticked; each ticked protest is asked for by code. Needs a terminal. |
 | `--allow <code>` | Accept a protest by its code. |
-| `--archive` | `clean`: before deleting unlanded work, push it to `archive/<repo>-local-<date>` on the repository's remote, as repo-cleaner does. `abandon-unmerged` and `discard-changes` still need `--allow` by name. |
-| `--archive-exclude <glob>` | With `--archive`, leave files matching this glob out of a worktree's snapshot. Repeatable; without `--archive` it is an error (exit 2). |
 | `--worktrees`, `--branches` | Only the git plugin's worktrees, or only its local branches. Remote branches are repo-cleaner's. |
 | `--all-rows` | `status`: also show candidates a plugin refuses. |
 
@@ -349,30 +348,23 @@ Targets default to the config file's `targets`, then the directory you are in.
 `clean` re-checks, shows the steps, asks (`--yes` skips the question; with no
 terminal and no `--yes` it exits 2), deletes, and writes one receipt to
 `--receipt` or the state directory's `receipts/`, plus a line in the log.
-`clean --plan` refuses a plan whose candidates belong to a plugin this install
-does not have (exit 2): sweep again with `plan`.
-
-With `--archive`, a failed archive push stops the run: that candidate and
-every one after it are left, and the run exits 11. A repository with no remote
-cannot be archived, so its candidates that hold unlanded work fail their step,
-and the run exits 11.
-
-```sh
-host-cleaner clean --archive --pick branch:/path/to/repo:topic --allow abandon-unmerged
-```
+`clean --plan` drops, as `gone`, a planned candidate no plugin proposes now,
+which includes one from a plugin this install does not have.
 
 ### Files and config
 
 host-cleaner keeps its files in three folders, from `@osdlc/tiered-dirs`'
-`standalone('host-cleaner')` tier under the `xdg` convention, so macOS uses the
-same folders as Linux:
+`standalone('host-cleaner')` tier under its default `native` convention, so
+macOS and Linux differ:
 
-| What | Path, macOS and Linux | Moved by |
-| --- | --- | --- |
-| Config | `~/.config/host-cleaner/config.json` | `HOST_CLEANER_CONFIG_DIR`, or `XDG_CONFIG_HOME` |
-| Receipts | `~/.local/state/host-cleaner/receipts/` | `HOST_CLEANER_STATE_DIR`, or `XDG_STATE_HOME` |
-| Log | `~/.local/state/host-cleaner/host-cleaner.log` | `HOST_CLEANER_LOGS_DIR`, or `XDG_STATE_HOME` |
+| What | Linux | macOS | Moved by |
+| --- | --- | --- | --- |
+| Config | `~/.config/host-cleaner/config.json` | `~/Library/Application Support/host-cleaner/config.json` | `HOST_CLEANER_CONFIG_DIR` |
+| Receipts | `~/.local/state/host-cleaner/receipts/` | `~/Library/Application Support/host-cleaner/receipts/` | `HOST_CLEANER_STATE_DIR` |
+| Log | `~/.local/state/host-cleaner/host-cleaner.log` | `~/Library/Logs/host-cleaner/host-cleaner.log` | `HOST_CLEANER_LOGS_DIR` |
 
+On Linux `XDG_CONFIG_HOME` and `XDG_STATE_HOME` move them too.
+`HOST_CLEANER_CONVENTION=xdg` gives macOS the Linux folders.
 `HOST_CLEANER_ROOT` moves all three folders, which is useful for tests.
 
 The config file holds the targets and each plugin's settings:
@@ -381,8 +373,8 @@ The config file holds the targets and each plugin's settings:
 { "targets": ["~/dev"], "plugins": { "cargo": { "idleHours": 48 }, "node": { "enabled": false } } }
 ```
 
-`plugins.<name>` holds that plugin's settings; a name that no plugin has gets
-a warning and is otherwise ignored. Each plugin's settings are a strict
+`plugins.<name>` holds that plugin's settings; a name that no plugin has is an
+error (exit 2). Each plugin's settings are a strict
 schema, checked when the config loads: a misspelt key or a wrong type is
 refused (exit 2), naming the plugin and the key.
 
@@ -405,9 +397,9 @@ Two settings sit at the top of the config and apply to every plugin:
 - `idleHours` is the default for every plugin that has the setting and does not
   set its own. `0` is allowed and makes every idle-checked artifact a candidate.
 
-`host-cleaner config` prints the config file it read, then every plugin's
-effective settings: the value, and whether the file set it or it is the
-default. `--format json` prints the values.
+`host-cleaner config` prints every plugin's effective settings: the value, and
+whether the file set it or it is the default. `--format json` prints the
+values.
 
 ### Which plugins run here
 
