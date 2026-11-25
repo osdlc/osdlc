@@ -379,8 +379,8 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliCont
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
   const all =
     deps.plugins ??
-    Object.entries(FACTORIES).map(([n, make]) =>
-      make({ settings: settingsOf(n, config.plugins[n] ?? {}, config), only, env: ctx.env }),
+    Object.entries(FACTORIES).map(([name, make]) =>
+      make({ settings: settingsOf(name, config.plugins[name] ?? {}, config), only, env: ctx.env }),
     )
   // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
   const named = wanted(v) ?? []
@@ -685,7 +685,8 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let preview: Decision
   try {
     const config = loadConfig(v, ctx)
-    writeWarnings(ctx, name, configWarnings(config, registered(deps)))
+    const known = registered(deps)
+    writeWarnings(ctx, name, configWarnings(config, known))
     plugins = pluginsFor(v, config, deps, ctx)
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
@@ -712,7 +713,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
         plan = readPlan(source)
       }
       // A plugin this install lacks would drop its candidates as gone; the plan is stale.
-      const strangers = unknownOwners(plan, registered(deps))
+      const strangers = unknownOwners(plan, known)
       if (strangers.length > 0) {
         throw new BadInput(
           `${source}: no plugin named ${strangers.join(', ')}, which the plan's candidates belong to; sweep again`,
