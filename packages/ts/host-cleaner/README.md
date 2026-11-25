@@ -36,7 +36,8 @@ Any hook may answer straight away or return a promise. The core awaits each
 one in turn, one plugin at a time, so `survey`, `recheck` and `clean` return
 promises. Each call has a time limit: 30 seconds (`HOOK_LIMIT_MS`), or 10
 minutes for `delete` (`DELETE_LIMIT_MS`); a plugin may set its own per hook in
-`limits`. Past the limit the core aborts `ctx.signal`, the call's own signal,
+`limits` (a positive number of milliseconds; any other value is warned of and
+the default used). Past the limit the core aborts `ctx.signal`, the call's own signal,
 and counts the call as a throw: a timed-out `detect` leaves the plugin out, a
 timed-out `object` refuses every candidate, and a timed-out `delete` fails
 that step.
@@ -56,6 +57,10 @@ targets, in the config or on the command line, and false when the command line
 fell back to the directory it runs in (and when a `RunCtx` leaves it unset). A
 plan keeps it, so `clean --plan` tells the plugins the same; a plan without it
 is refused: sweep again.
+
+A `RunCtx` may name `home`, the home folder no root may be or hold (see the
+roots rules); unset, it is the process's. The CLI sets it from `HOME`, the
+same home it expands `~` with.
 
 A candidate's `requires` lists the candidates that must go first. If one is
 refused, dropped or fails, the candidate is too; requirements are deleted
@@ -99,6 +104,17 @@ const found = await survey([cache], ctx) // scope, discover, object
 const receipt = await clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
 ```
 
+`inspect` runs `detect`, `scope` and `roots` only, as `host-cleaner plugins`
+does: whether each plugin applies here, why not, its note and its roots. It
+proposes and deletes nothing.
+
+```ts
+import { inspect } from '@osdlc/host-cleaner'
+
+const { plugins, warnings } = await inspect([cache], ctx)
+for (const p of plugins) console.log(p.name, p.detected, p.reason ?? '', p.roots)
+```
+
 What a plan runs uses repo-cleaner's words, with their meaning:
 
 - **The default:** every candidate nothing refuses or protests and no owner
@@ -106,9 +122,10 @@ What a plan runs uses repo-cleaner's words, with their meaning:
 - **`select`:** exactly these candidate ids instead of the default.
 - **`pick`:** these as well; a candidate held for review runs only when picked
   or selected.
-- **`spare`:** leave these alone: an id, a path, a name (every candidate of
-  that name, as a branch and the worktree that has it checked out), or a glob
-  over ids, paths and names. A spared candidate that would have run is
+- **`spare`:** leave these alone: an id, a path (a ref candidate's `ref` or
+  the folder it is `at`), a name (every candidate of that name, as a branch
+  and the worktree that has it checked out), or a glob over ids, paths and
+  names. A spared candidate that would have run is
   dropped as `spared`.
 
 Each candidate that runs is still judged by the rules above.
@@ -200,11 +217,11 @@ needs no more than the path. The plugin `create` returns through
 | --- | --- |
 | `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the hours since, fractions included, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Out of time, it is `{ unmeasured: true }`. |
 | `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
-| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and every ancestor of it are left out, so the `npm exec` or `pnpm dlx` that started it does not count. The table is read fresh once per hook call. |
+| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and the unbroken line of ancestors above it whose command lines name host-cleaner are left out, so the `npm exec` or `pnpm dlx` that started it does not count, but an editor, terminal or `tmux` it runs inside does. The table is read fresh once per hook call. |
 | `kit.onPath(program)` | Whether a program is on PATH. |
 | `kit.candidate({ kind, path \| ref, ... })` | A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and the plugin as owner. |
 | `kit.run(argv, { signal, check })` | Runs a program through `@osdlc/command-seam`, with a time limit (`RUN_LIMIT_MS`, 30 seconds) and stopped when `ctx.signal` aborts; `ok` when it exited 0, a `CommandFailed` throw with `check`. |
-| `kit.remove(path, ctx?)` | Removes a folder only if it is still inside the plugin's roots, is one of its self roots, or is inside a target or a linked worktree of one (as in [containment](#paths-refs-and-containment)) by its real path, as the core bound them this run, after making read-only folders and files in it writable; checks it is gone and returns the receipt sentence. With `ctx`, it removes nothing once `ctx.signal` has aborted. |
+| `kit.remove(path, ctx?)` | Removes a folder only if it is still inside the plugin's roots, is one of its self roots, or is inside a target or a linked worktree of one (as in [containment](#paths-refs-and-containment)) by its real path, as the core bound them this run, after making read-only folders and files in it writable; checks it is gone and returns the receipt sentence. It removes nothing in a survey's hooks before that survey binds it, or in a ref candidate's `delete`. With `ctx`, it removes nothing once `ctx.signal` has aborted. |
 
 `idleHoursSetting` is the `idleHours` setting: a plugin that declares it
 inherits the config's top-level `idleHours` when its own entry sets none.
@@ -227,7 +244,7 @@ runner:
 | `contractSuite(plugin, ctx, { deleteLimitMs })` | Surveys the plugin twice and returns one line per broken rule. |
 
 The suite checks that `limits` name hooks; that the survey warns of nothing
-(no hook throws or runs past its limit, `detect`'s answer and each root has a
+(every limit is a positive number, no hook throws or runs past its limit, `detect`'s answer and each root has a
 shape the core takes, ids are unique, each candidate is the plugin's and has
 one of a path and a ref; a `detect` note is not a problem); that every path
 candidate is inside the plugin's roots or the targets, or is one of its self
@@ -406,20 +423,20 @@ Two settings sit at the top of the config and apply to every plugin:
 `host-cleaner config` prints every plugin's effective settings: the value, and
 whether the file set it or it is the default. `--format json` prints the values.
 
-`host-cleaner plugins` lists every plugin: where it came from (`built-in`, or
-for a descriptor `shipped`, `user` for the config directory or `flag` for
-`--descriptor`), whether it applies here, and its roots, the folders it may
-delete in besides the targets. When it does not apply, a reason follows if one
-is known: disabled, what `detect` threw, or for a descriptor that it is
-`system: true` or superseded (`superseded: node runs`). A `detect` that just
-answers no, as most built-ins do, gives no reason: it shows `not detected`. A descriptor that
-stands in for one of the same name ends its line with the file it replaces
-(`replaces` in JSON). It runs `detect`,
-`scope` and `roots` and nothing else, so it proposes and deletes nothing. A
-plugin whose `detect` throws shows the error as the reason. A note its `detect`
-gives follows the plugin's state (`; note: ...`), whether it is detected or not,
-so a degraded plugin (`{ active: true, note }`) shows as detected with its note,
-as Orca installed but not running does; the JSON row has it as `note`. A root the core refuses is left out with a warning, as `status`
+`host-cleaner plugins` lists every plugin: where it came from (`built-in`, for
+a descriptor `shipped`, `user` for the config directory or `flag` for
+`--descriptor`, or `given` when a program hands its own to `main`), whether it
+applies here, and its roots, the folders it may delete in besides the targets.
+When it does not apply, a reason follows if one is known: disabled, or what
+`detect` threw. A `detect` that just answers no, as most built-ins do, gives no
+reason: it shows `not detected`. A descriptor that stands in for one of the
+same name ends its line with the file it replaces (`replaces` in JSON). It runs
+`detect`, `scope` and `roots` and nothing else, so it proposes and deletes
+nothing. A note its `detect` gives follows the plugin's state (`; note: ...`),
+whether it is detected or not, so a degraded plugin (`{ active: true, note }`)
+shows as detected with its note, as Orca installed but not running does, and a
+descriptor that is `system: true` or superseded says so there; the JSON row has
+it as `note`. A root the core refuses is left out with a warning, as `status`
 does, and a self root is marked `(itself too)`. A plugin the config disables is
 listed as `disabled`, and its `detect` is not run.
 
