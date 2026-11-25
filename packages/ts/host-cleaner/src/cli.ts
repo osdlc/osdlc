@@ -44,6 +44,7 @@ import {
 } from './run.ts'
 import {
   COST_DESCRIPTIONS,
+  isBuiltIn,
   type Candidate,
   type Objection,
   type Plugin,
@@ -640,18 +641,30 @@ interface PluginRow {
   note: string | null
 }
 
-function renderPlugins(rows: readonly PluginRow[], targets: readonly string[]): string {
+/** `text` on one line, so a plugin's own words cannot split a row: each run of whitespace is one space. */
+const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
+
+function renderPlugins(
+  rows: readonly PluginRow[],
+  targets: readonly string[],
+  ignored: readonly string[],
+): string {
   const width = Math.max(...rows.map((r) => r.name.length))
+  const sourceWidth = Math.max(...rows.map((r) => r.source.length))
   const lines = [`targets: ${targets.join(', ') || '(none)'}`]
+  if (ignored.length > 0) lines.push(`ignoring: ${ignored.join(', ')}`)
   for (const r of rows) {
+    // A path keeps its spaces; only a line break would split the row.
+    const shown = (root: string): string => root.replace(/[\r\n]+/g, ' ')
     const state = !r.enabled
       ? 'disabled'
       : r.detected
-        ? `detected; roots: ${r.roots.map((root) => (r.selfRoots.includes(root) ? `${root} (itself too)` : root)).join(', ') || 'none, the targets alone'}`
+        ? `detected; roots: ${r.roots.map((root) => (r.selfRoots.includes(root) ? `${shown(root)} (itself too)` : shown(root))).join(', ') || 'none, the targets alone'}`
         : 'not detected'
-    const reason = r.reason?.replace(/\s+/g, ' ').trim() ?? null
+    const reason = r.reason === null ? null : oneLine(r.reason)
+    const note = r.note === null ? null : oneLine(r.note)
     lines.push(
-      `  ${r.name.padEnd(width)}  ${r.source}  ${state}${reason === null ? '' : `: ${reason}`}${r.note === null ? '' : `; note: ${r.note}`}`,
+      `  ${r.name.padEnd(width)}  ${r.source.padEnd(sourceWidth)}  ${state}${reason === null ? '' : `: ${reason}`}${note === null ? '' : `; note: ${note}`}`,
     )
   }
   return block(lines)
@@ -668,41 +681,41 @@ async function runPlugins(
   const v = parsed.values
   let rows: PluginRow[]
   let targets: readonly string[]
+  let ignored: readonly string[]
   let warnings: readonly string[]
   try {
     const config = loadConfig(v, ctx)
     const all = allPlugins(config, deps, ctx)
-    const on = all.filter((p) => enabled(p.name, config))
-    const found = await inspect(on, contextFor(parsed.positionals, config, ctx, [], v.ignore))
-    const state = new Map(found.plugins.map((s) => [s.name, s]))
-    const source = deps.plugins === undefined ? 'built-in' : 'given'
-    // A second plugin of a name is left out, with inspect's warning.
-    rows = [...new Set(all.map((p) => p.name))].map((pluginName): PluginRow => {
-      const isEnabled = enabled(pluginName, config)
-      const s = state.get(pluginName)
-      return {
-        name: pluginName,
-        source,
-        enabled: isEnabled,
-        detected: s?.detected ?? false,
-        reason: isEnabled
-          ? (s?.reason ?? null)
-          : `plugins.${pluginName}.enabled is false; --plugin ${pluginName} runs it anyway`,
-        roots: s?.roots ?? [],
-        selfRoots: s?.selfRoots ?? [],
-        note: s?.note ?? null,
-      }
-    })
+    const at = contextFor(parsed.positionals, config, ctx, [], v.ignore)
+    const found = await inspect(all, at, { skip: (p) => !enabled(p.name, config) })
+    // One row per plugin inspect kept, the first of its name; a second is left out with a warning.
+    const kept = (pluginName: string): Plugin => all.find((p) => p.name === pluginName)!
+    rows = found.plugins.map((s): PluginRow => ({
+      name: s.name,
+      source: isBuiltIn(kept(s.name)) ? 'built-in' : 'given',
+      enabled: s.skipped !== true,
+      detected: s.detected,
+      reason:
+        s.skipped === true
+          ? `plugins.${s.name}.enabled is false; --plugin ${s.name} runs it anyway`
+          : (s.reason ?? null),
+      roots: s.roots,
+      selfRoots: s.selfRoots,
+      note: s.note ?? null,
+    }))
     targets = found.ctx.targets
+    ignored = found.ctx.ignore ?? []
     warnings = found.warnings
   } catch (err) {
     return refusal(ctx, name, err)
   }
   if (v.format === 'json') {
-    ctx.io.stdout(`${JSON.stringify({ targets, warnings, plugins: rows }, null, 2)}\n`)
+    ctx.io.stdout(
+      `${JSON.stringify({ targets, ignore: ignored, warnings, plugins: rows }, null, 2)}\n`,
+    )
   } else {
     writeWarnings(ctx, name, warnings)
-    ctx.io.stdout(renderPlugins(rows, targets))
+    ctx.io.stdout(renderPlugins(rows, targets, ignored))
   }
   return EXIT.ok
 }

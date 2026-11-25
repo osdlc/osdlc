@@ -114,7 +114,9 @@ const receipt = await clean(plan(found), [cache], ctx) // re-check, prepare, del
 
 `inspect` runs `detect`, `scope` and `roots` only, as `host-cleaner plugins`
 does: whether each plugin applies here, why not, its note and its roots. It
-proposes and deletes nothing.
+proposes and deletes nothing. A plugin its `skip` option picks is listed as
+`skipped` and none of its hooks run, as `host-cleaner plugins` lists a plugin
+the config disables.
 
 ```ts
 import { inspect } from '@osdlc/host-cleaner'
@@ -406,9 +408,12 @@ Two settings sit at the top of the config and apply to every plugin:
 `host-cleaner config` prints every plugin's effective settings: the value, and
 whether the file set it or it is the default. `--format json` prints the values.
 
-`host-cleaner plugins` lists every plugin: where it came from (`built-in` when it
-ships with host-cleaner, `given` when a program hands its own to `main`), whether it applies here and, when it does not, why, and its roots, the
-folders it may delete in besides the targets. It runs `detect`, `scope` and
+`host-cleaner plugins` lists every plugin: where it came from, each plugin by its
+own origin (`built-in` when host-cleaner ships it, even when a program passes it
+to `main`, and `given` for a plugin the program wrote), whether it applies here
+and, when it does not, why, and its roots, the folders it may delete in besides
+the targets. Targets `--ignore` or `ignore` drop show under `ignoring:`, as in
+`status`; the JSON has them as `ignore`. It runs `detect`, `scope` and
 `roots` and nothing else, so it proposes and deletes nothing. A plugin whose
 `detect` throws shows the error as the reason. A note its `detect` gives
 follows the plugin's state (`; note: ...`), whether it is detected or not, so a

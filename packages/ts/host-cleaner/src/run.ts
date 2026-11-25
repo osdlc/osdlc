@@ -263,19 +263,22 @@ interface Detected {
   note?: string | undefined
   /** What `detect` threw or timed out with, or why its answer was left out; absent when it answered a boolean or a {@link Detection}. */
   error?: string | undefined
-  /** The warning `survey` gives for `error`; set exactly when `error` is. */
-  warning?: string | undefined
+  /** Whether `skip` left it out, so its `detect` did not run. */
+  skipped?: true | undefined
 }
 
 /**
  * Each plugin's detection, in the order of `all`; a second plugin of a name is
  * left out, and a `limits` entry the core does not take is ignored, each with
- * a warning.
+ * a warning. A plugin `skip` picks is listed as skipped and its `detect` not
+ * run. A failed `detect` is its plugin's `error`, and a warning too when
+ * `warnFailures` is set, in its place among the others.
  */
 async function detectAll(
   all: readonly Plugin[],
   ctx: RunCtx,
   warnings: string[],
+  { warnFailures, skip }: { warnFailures: boolean; skip?: ((p: Plugin) => boolean) | undefined },
 ): Promise<Detected[]> {
   // No kit keeps an earlier run's bounds while this one's hooks run.
   for (const p of all) bindKit(p, undefined)
@@ -287,6 +290,10 @@ async function detectAll(
       continue
     }
     names.add(p.name)
+    if (skip?.(p) === true) {
+      detections.push({ plugin: p, detected: false, skipped: true })
+      continue
+    }
     for (const [hook, ms] of Object.entries(p.limits ?? {})) {
       if (ms !== undefined && !validLimit(ms)) {
         warnings.push(
@@ -300,23 +307,15 @@ async function detectAll(
     } catch (err) {
       if (err instanceof FatalRun) throw err
       const error = errorText(err)
-      detections.push({
-        plugin: p,
-        detected: false,
-        error,
-        warning: `${p.name}: detect failed: ${error}`,
-      })
+      if (warnFailures) warnings.push(`${p.name}: detect failed: ${error}`)
+      detections.push({ plugin: p, detected: false, error })
       continue
     }
     const found = detection(answer)
     if (found === null) {
       const error = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note? }`
-      detections.push({
-        plugin: p,
-        detected: false,
-        error,
-        warning: `${p.name}: ${error}; it was left out`,
-      })
+      if (warnFailures) warnings.push(`${p.name}: ${error}; it was left out`)
+      detections.push({ plugin: p, detected: false, error })
       continue
     }
     detections.push({ plugin: p, detected: found.active, note: found.note })
@@ -389,6 +388,8 @@ async function askRoots(
 export interface PluginState {
   name: string
   detected: boolean
+  /** Set when `skip` picked it: its `detect` did not run, so it is not detected. */
+  skipped?: true | undefined
   /** Why it was not detected: what `detect` threw or timed out with, or why its answer was left out. Absent when `detect` answered a boolean or a {@link Detection}. */
   reason?: string | undefined
   /** The note `detect` gave with its answer, whether the plugin is detected or not. */
@@ -412,11 +413,17 @@ export interface Inspection {
  * each plugin applies here, why not, and where it may delete. A root the core
  * refuses (see `rootProblem` in `./roots.ts`) is left out with a warning, as
  * in `survey`. It proposes and deletes nothing, so it is quick where
- * `discover` walks every checkout.
+ * `discover` walks every checkout. A plugin `skip` picks is listed as
+ * `skipped`, after the check for a second plugin of its name, and none of its
+ * hooks run.
  */
-export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Inspection> {
+export async function inspect(
+  all: readonly Plugin[],
+  ctx: RunCtx,
+  { skip }: { skip?: ((p: Plugin) => boolean) | undefined } = {},
+): Promise<Inspection> {
   const warnings: string[] = []
-  const detections = await detectAll(all, ctx, warnings)
+  const detections = await detectAll(all, ctx, warnings, { warnFailures: false, skip })
   const detected = detectedOf(detections)
   const scoped = await scopeOf(detected, ctx, warnings)
   const { rootsOf } = await askRoots(detected, scoped, warnings)
@@ -425,6 +432,7 @@ export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Insp
     return {
       name: d.plugin.name,
       detected: d.detected,
+      ...(d.skipped === undefined ? {} : { skipped: d.skipped }),
       ...(d.error === undefined ? {} : { reason: d.error }),
       ...(d.note === undefined ? {} : { note: d.note }),
       roots: r?.roots ?? [],
@@ -460,10 +468,9 @@ export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Insp
 export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Survey> {
   const warnings: string[] = []
   const guarded = guard(warnings)
-  const detections = await detectAll(all, ctx, warnings)
+  const detections = await detectAll(all, ctx, warnings, { warnFailures: true })
   const notes: Record<string, string> = {}
   for (const d of detections) {
-    if (d.warning !== undefined) warnings.push(d.warning)
     if (d.note !== undefined) notes[d.plugin.name] = d.note
   }
   const plugins = detectedOf(detections)

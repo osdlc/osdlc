@@ -312,7 +312,7 @@ describe('plugins', () => {
     orcaDown(),
   ]
 
-  test('Orca not running shows as detected with its note, beside each plugin’s source (given, as main was handed them), detection and roots', async () => {
+  test('Orca not running shows as detected with its note, beside each plugin’s own source (orca built in, though main was handed it), detection and roots', async () => {
     const { env, cwd } = setup()
     const r = await run(['plugins'], cwd, env, { plugins: plugins() })
     expect(r.code).toBe(0)
@@ -320,10 +320,10 @@ describe('plugins', () => {
     expect(r.out).toBe(
       [
         `targets: ${cwd}`,
-        '  git    given  detected; roots: /cache/git',
-        '  cargo  given  detected; roots: none, the targets alone',
-        '  node   given  not detected',
-        '  orca   given  detected; roots: none, the targets alone; note: Orca is installed but not running',
+        '  git    given     detected; roots: /cache/git',
+        '  cargo  given     detected; roots: none, the targets alone',
+        '  node   given     not detected',
+        '  orca   built-in  detected; roots: none, the targets alone; note: Orca is installed but not running',
         '',
       ].join('\n'),
     )
@@ -343,6 +343,7 @@ describe('plugins', () => {
     expect(asked).toBe(false)
     expect(JSON.parse(r.out)).toEqual({
       targets: [cwd],
+      ignore: [],
       warnings: [],
       plugins: [
         {
@@ -377,7 +378,7 @@ describe('plugins', () => {
         },
         {
           name: 'orca',
-          source: 'given',
+          source: 'built-in',
           enabled: true,
           detected: true,
           reason: null,
@@ -469,6 +470,50 @@ describe('plugins', () => {
         '\n',
       ),
     )
+  })
+
+  test('a multi-line note stays on its row', async () => {
+    const { env, cwd } = setup()
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [
+        { ...fake('a'), detect: () => ({ active: false, note: 'installed\nbut not running' }) },
+      ],
+    })
+    expect(r.out).toBe(
+      [`targets: ${cwd}`, '  a  given  not detected; note: installed but not running', ''].join(
+        '\n',
+      ),
+    )
+  })
+
+  test('a second plugin of a name is warned of whether the config disables it or not', async () => {
+    const { env, cwd, home } = setup()
+    const file = join(home, 'c.json')
+    writeFileSync(file, JSON.stringify({ plugins: { x: { enabled: false } } }))
+    const r = await run(['plugins', '--config', file], cwd, env, {
+      plugins: [fake('x'), fake('x')],
+    })
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('x: a second plugin of that name was left out')
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  x  given  disabled: plugins.x.enabled is false; --plugin x runs it anyway',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  test('an ignored target is shown as ignored, in text and json', async () => {
+    const { env, cwd } = setup()
+    const plugins = [fake('a')]
+    const args = ['plugins', cwd, '--ignore', cwd]
+    const r = await run(args, cwd, env, { plugins })
+    expect(r.code).toBe(0)
+    expect(r.out).toMatch(/^targets: \(none\)\nignoring: \S/)
+    const json = JSON.parse((await run([...args, '--format', 'json'], cwd, env, { plugins })).out)
+    expect(json.targets).toEqual([])
+    expect(json.ignore).toHaveLength(1)
   })
 })
 
