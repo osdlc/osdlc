@@ -271,9 +271,15 @@ describe('plugin settings', () => {
 })
 
 describe('folders', () => {
+  /** `hostDirs` with `/` separators, so the expectations hold on any host. */
+  const posixDirs = (...args: Parameters<typeof hostDirs>): Record<string, string> =>
+    Object.fromEntries(
+      Object.entries(hostDirs(...args)).map(([k, p]) => [k, p.replaceAll('\\', '/')]),
+    )
+
   test('macOS uses the xdg folders, as Linux does', () => {
     for (const platform of ['darwin', 'linux']) {
-      expect(hostDirs({}, { platform, home: '/home/me' })).toEqual({
+      expect(posixDirs({}, { platform, home: '/home/me' })).toEqual({
         config: '/home/me/.config/host-cleaner',
         state: '/home/me/.local/state/host-cleaner',
         logs: '/home/me/.local/state/host-cleaner',
@@ -283,13 +289,23 @@ describe('folders', () => {
 
   test('the XDG and HOST_CLEANER variables move them on macOS too', () => {
     const opts = { platform: 'darwin', home: '/home/me' }
-    expect(hostDirs({ XDG_CONFIG_HOME: '/x/cfg', XDG_STATE_HOME: '/x/st' }, opts)).toEqual({
+    expect(posixDirs({ XDG_CONFIG_HOME: '/x/cfg', XDG_STATE_HOME: '/x/st' }, opts)).toEqual({
       config: '/x/cfg/host-cleaner',
       state: '/x/st/host-cleaner',
       logs: '/x/st/host-cleaner',
     })
-    expect(hostDirs({ HOST_CLEANER_ROOT: '/r' }, opts).config).toBe('/r/config/host-cleaner')
-    expect(hostDirs({ HOST_CLEANER_CONFIG_DIR: '/c' }, opts).config).toBe('/c/host-cleaner')
+    expect(posixDirs({ HOST_CLEANER_ROOT: '/r' }, opts).config).toBe('/r/config/host-cleaner')
+    expect(posixDirs({ HOST_CLEANER_CONFIG_DIR: '/c' }, opts).config).toBe('/c/host-cleaner')
+  })
+
+  test('config strips control characters from the file path it prints', () => {
+    const { env, cwd } = setup()
+    const dir = join(cwd, 'a\u001b]0;x\u0007b')
+    const r = run(['config'], cwd, { ...env, HOST_CLEANER_CONFIG_DIR: dir })
+    expect(r.code).toBe(0)
+    expect(r.out).toMatch(/^file: .*host-cleaner/m)
+    expect(r.out).not.toContain('\u001b')
+    expect(r.out).not.toContain('\u0007')
   })
 
   test('config names the default config file and says it is missing', () => {

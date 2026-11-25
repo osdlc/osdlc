@@ -349,17 +349,23 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
-/** Reads `--config`, which must exist; else `config.json` in the config directory, if any. */
+/**
+ * Reads `--config`, which must exist; else `config.json` in `dirs.config`
+ * (resolved from the environment when not given), if any. `found` says
+ * whether a file was read.
+ */
 function loadConfig(
   v: { config?: string | undefined },
   ctx: CliContext,
-): { file: string; config: Config } {
+  dirs?: HostDirs,
+): { file: string; found: boolean; config: Config } {
   if (v.config !== undefined) {
     const file = resolve(ctx.cwd, v.config)
-    return { file, config: readConfig(file, { required: true }) }
+    return { file, found: true, config: readConfig(file, { required: true }) }
   }
-  const file = configFile(hostDirs(ctx.env))
-  return { file, config: readConfig(file) }
+  const file = configFile(dirs ?? hostDirs(ctx.env))
+  const found = existsSync(file)
+  return { file, found, config: readConfig(file, { required: found }) }
 }
 
 /** `--plugin` and its alias `--adapter`, as one list; undefined when neither is given. */
@@ -486,8 +492,7 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
-    const { file, config } = loadConfig(v, ctx)
-    const fileExists = existsSync(file)
+    const { file, found: fileExists, config } = loadConfig(v, ctx)
     const unused = unknownPlugins(config, (n) => Object.hasOwn(PLUGIN_SETTINGS, n))
     if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
     const settings = effectiveSettings(config.plugins, config)
@@ -516,7 +521,7 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
     }
     const list = (xs: readonly string[]): string => (xs.length > 0 ? xs.join(', ') : '(none)')
     const lines = [
-      `file: ${file}${fileExists ? '' : '  (not found: defaults)'}`,
+      `file: ${stripControls(file)}${fileExists ? '' : '  (not found: defaults)'}`,
       `targets: ${list(config.targets)}`,
       `ignore: ${list(config.ignore)}`,
       `idleHours: ${config.idleHours ?? '(not set)'}`,
@@ -689,7 +694,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let preview: Decision
   try {
     dirs = hostDirs(ctx.env)
-    const { config } = loadConfig(v, ctx)
+    const { config } = loadConfig(v, ctx, dirs)
     plugins = pluginsFor(v, config, deps, ctx)
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
