@@ -155,7 +155,6 @@ function notJson(value: unknown, at: string): string | null {
   return null
 }
 
-
 /**
  * Checks `plugin` against the contract, surveying it twice over `ctx`, and
  * returns one line per problem, each starting with the plugin's name. Give it

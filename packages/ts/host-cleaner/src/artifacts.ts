@@ -222,8 +222,8 @@ const DISCOVER_LIMIT_MS = 10 * 60_000
 
 /**
  * The plugin both artifact plugins are: `rowsOrThrow` lists one checkout's
- * rows, `detect` says whether the plugin applies. Without a kit, one is built
- * from `opts`.
+ * rows, and a checkout it throws on gives none; `detect` says whether the
+ * plugin applies. Without a kit, one is built from `opts`.
  */
 export function artifactPlugin(
   name: string,

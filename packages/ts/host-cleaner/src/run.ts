@@ -43,7 +43,8 @@ export const DISCARD_USER_DATA = 'discard-user-data'
 /** The protest on a candidate whose idle time could not be measured in the time budget (D11). */
 export const UNMEASURED = 'unmeasured'
 
-export const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
+export const errorText = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err)
 
 /** The time limit, in milliseconds, of every hook but `delete`, unless the plugin asks for another. */
 export const HOOK_LIMIT_MS = 30_000
@@ -224,11 +225,11 @@ function nest(cs: readonly Candidate[]): Candidate[] {
  * in `detect`, or answers neither a boolean nor a {@link Detection}, is left
  * out; a note it gives is kept in `notes`. One that throws or times out in
  * `scope` or `discover`, or answers anything but a list, proposes nothing,
- * with a warning, and an entry that is not a path or a candidate is left out
- * with one; one that throws or
- * times out in `object` refuses every candidate, since what it would object
- * to is unknown. A path candidate outside its owner's roots and the targets
- * is refused `outside-roots`, and a root the core refuses (see `rootProblem`
+ * with a warning; an entry of that list that is not a path or a candidate is
+ * left out with a warning. One that throws or times out in `object` refuses
+ * every candidate, since what it would object to is unknown. A path
+ * candidate outside its owner's roots and the targets is refused
+ * `outside-roots`, and a root the core refuses (see `rootProblem`
  * in `./roots.ts`) is left out with a warning. A candidate with both a path
  * and a ref, or neither, or a path and an `at`, or any field a plan would
  * refuse (such as an unknown `costDescription`), is dropped. A `limits` entry

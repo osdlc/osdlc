@@ -179,7 +179,7 @@ function makeWritable(path: string): void {
   try {
     if (want !== stat.mode) chmodSync(path, want & 0o7777)
   } catch {
-    // the removal reports what is left
+    // Best effort: whatever this leaves unremovable, the removal reports.
   }
   if (!stat.isDirectory()) return
   let names: string[]
