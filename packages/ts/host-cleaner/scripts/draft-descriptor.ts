@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
-import { Document, isMap, isSeq, parse, type Node, type YAMLMap } from 'yaml'
+import { Document, isMap, isNode, isSeq, parse } from 'yaml'
 
 import {
   DESCRIPTOR_SCHEMA_URL,
@@ -115,17 +115,18 @@ export function readStore(corpus: string, slug: string): CorpusStore {
     const title = basename(file, '.md')
     const statements = new Map<string, Statement>()
     const dir = join(corpus, 'statements', title)
-    for (const f of existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')) : []) {
-      const s = frontMatter(join(dir, f))
+    for (const name of existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')) : []) {
+      const f = join(dir, name)
+      const s = frontMatter(f)
       if (s['status'] !== 'current') continue
       const prop = s['proposition']
       if (!isRecord(prop) || typeof prop['predicate'] !== 'string' || !isRecord(prop['object']))
         throw new DraftError(
-          `${join(dir, f)}: a current statement needs a proposition with a predicate and an object`,
+          `${f}: a current statement needs a proposition with a predicate and an object`,
         )
       const open = s['open'] ?? []
       if (!Array.isArray(open) || !open.every((o) => typeof o === 'string'))
-        throw new DraftError(`${join(dir, f)}: open is not a list of strings`)
+        throw new DraftError(`${f}: open is not a list of strings`)
       statements.set(prop['predicate'], { object: prop['object'], open })
     }
     return {
@@ -251,30 +252,34 @@ export function draftDescriptor(store: CorpusStore): Draft {
   const left: string[] = []
 
   /** `key` of `subject`'s object as a list of `T`; empty when unset. */
-  const listIn = <T>(subject: string, key: string, ok: (item: unknown) => boolean): T[] => {
+  const listIn = <T>(subject: string, key: string, ok: (item: unknown) => item is T): T[] => {
     const v = st(subject)?.object[key]
     if (v === undefined || v === null) return []
     if (!Array.isArray(v)) throw new DraftError(`${store.slug}: ${subject}: ${key} is not a list`)
-    v.forEach((item, i) => {
-      if (!ok(item))
-        throw new DraftError(
-          `${store.slug}: ${subject}: ${key}.${i} is not what the corpus records`,
-        )
-    })
-    return v as T[]
+    const i = v.findIndex((item) => !ok(item))
+    if (i >= 0)
+      throw new DraftError(`${store.slug}: ${subject}: ${key}.${i} is not what the corpus records`)
+    return v
   }
-  const text = (v: unknown): boolean => typeof v === 'string' && v !== ''
-  const dirEntry = (d: unknown): boolean =>
+  /** The items `fits` accepts; each other one goes to `left` as `why` says. */
+  const keep = <T>(items: T[], fits: (item: T) => boolean, why: (item: T) => string): T[] =>
+    items.filter((item) => {
+      if (fits(item)) return true
+      left.push(why(item))
+      return false
+    })
+  const text = (v: unknown): v is string => typeof v === 'string' && v !== ''
+  const dirEntry = (d: unknown): d is DataDir =>
     isRecord(d) &&
     text(d['path']) &&
     text(d['holds']) &&
     (d['platform'] === 'all' || (OSES as readonly unknown[]).includes(d['platform']))
 
-  const dirs = listIn<DataDir>('location/data-dirs', 'dirs', dirEntry).filter((d) => {
-    if (fixedFolder(d.path)) return true
-    left.push(`${d.platform} ${d.path} (${d.holds}): not a fixed folder`)
-    return false
-  })
+  const dirs = keep(
+    listIn('location/data-dirs', 'dirs', dirEntry),
+    (d) => fixedFolder(d.path),
+    (d) => `${d.platform} ${d.path} (${d.holds}): not a fixed folder`,
+  )
   const groups = groupDirs(dirs)
   if (groups.length === 0)
     throw new DraftError(`${store.slug}: the corpus gives no data folder as a fixed path`)
@@ -288,21 +293,23 @@ export function draftDescriptor(store: CorpusStore): Draft {
     ],
   }
 
-  const processes = listIn<string>('liveness/in-use', 'processes', text)
-  const locks = listIn<string>('liveness/in-use', 'locks', text).filter((l) => {
-    if (fixedFolder(l) && !/[/\\]$/.test(l)) return true
-    left.push(`lock ${l}: not a fixed file path`)
-    return false
-  })
-  const inUse = Object.fromEntries(
-    Object.entries({ processes, locks }).filter(([, v]) => v.length > 0),
+  const processes = listIn('liveness/in-use', 'processes', text)
+  const locks = keep(
+    listIn('liveness/in-use', 'locks', text),
+    (l) => fixedFolder(l) && !/[/\\]$/.test(l),
+    (l) => `lock ${l}: not a fixed file path`,
   )
+  const inUse = {
+    ...(processes.length > 0 ? { processes } : {}),
+    ...(locks.length > 0 ? { locks } : {}),
+  }
 
   const project: Record<string, unknown>[] = []
-  const buildDirs = listIn<BuildDir>(
+  const buildDirs = listIn(
     'project/build-dirs',
     'dirs',
-    (b) => isRecord(b) && text(b['path']) && (b['marker'] === undefined || text(b['marker'])),
+    (b): b is BuildDir =>
+      isRecord(b) && text(b['path']) && (b['marker'] === undefined || text(b['marker'])),
   )
   for (const b of buildDirs) {
     const covered = COVERED.find(
@@ -327,24 +334,20 @@ export function draftDescriptor(store: CorpusStore): Draft {
   }
 
   const doc = new Document(descriptor)
-  const top = doc.contents
-  if (!isMap(top)) throw new Error('a descriptor is a map')
-  const at = (key: string) => top.get(key, true) as Node | undefined
   // Small maps on one line, as the system description writes them.
-  const flow = (node: unknown) => {
+  const paths = doc.get('paths', true)
+  const any = doc.getIn(['detect', 'any'], true)
+  const proj = doc.get('project', true)
+  for (const node of [
+    ...(isMap(paths) ? paths.items.map((pair) => pair.value) : []),
+    ...(isSeq(any) ? any.items : []),
+    ...(isSeq(proj) ? proj.items : []),
+  ])
     if (isMap(node)) node.flow = true
-  }
-  const paths = at('paths')
-  if (isMap(paths)) for (const pair of paths.items) flow(pair.value)
-  const any = (at('detect') as YAMLMap | undefined)?.get('any', true)
-  if (isSeq(any)) for (const item of any.items) flow(item)
-  const proj = at('project')
-  if (isSeq(proj)) for (const item of proj.items) flow(item)
-  const cands = at('candidates')
+  const cands = doc.get('candidates', true)
   if (isSeq(cands))
     cands.items.forEach((item, i) => {
-      const g = groups[i]
-      if (g !== undefined) (item as Node).commentBefore = ` holds ${g.holds}`
+      if (isNode(item)) item.commentBefore = ` holds ${groups[i]?.holds}`
     })
 
   // What the reviewer needs: what to decide, and what the corpus says that
@@ -360,19 +363,23 @@ export function draftDescriptor(store: CorpusStore): Draft {
   ]
   const clean = st('clean/command')?.object
   if (clean !== undefined) {
-    const commands = listIn<{ command: string; removes: string }>(
+    const commands = listIn(
       'clean/command',
       'commands',
-      (c) => isRecord(c) && text(c['command']) && text(c['removes']),
+      (c): c is { command: string; removes: string } =>
+        isRecord(c) && text(c['command']) && text(c['removes']),
     )
-    header.push('', ' Clean commands in the corpus. A command must name the folder with a')
-    header.push(' {path} argument or an env entry, and set removes (unused or all):')
+    header.push(
+      '',
+      ' Clean commands in the corpus. A command must name the folder with a',
+      ' {path} argument or an env entry, and set removes (unused or all):',
+    )
     if (clean['supported'] !== true || commands.length === 0) header.push(...bullet('none'))
     for (const c of commands) header.push(...bullet(`${c.command}: ${c.removes}`))
   }
   const movedBy = [
-    ...listIn<string>('location/override', 'vars', text).map((v) => `$${v}`),
-    ...listIn<string>('location/override', 'settings', text).map((s) => `setting ${s}`),
+    ...listIn('location/override', 'vars', text).map((v) => `$${v}`),
+    ...listIn('location/override', 'settings', text).map((s) => `setting ${s}`),
   ]
   if (movedBy.length > 0)
     header.push(
