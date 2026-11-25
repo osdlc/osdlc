@@ -718,6 +718,25 @@ describe('re-check', () => {
     expect(moved.decision.dropped.map((d) => d.reason)).toEqual(['changed'])
   })
 
+  test('changed: a capped candidate grew; one that shrank, or is not capped, is not', async () => {
+    const sized = (bytes: number | undefined, capped?: boolean) =>
+      mutable([cand('a:1', 'git', { bytes, capped })])
+    const outcome = async (before: number | undefined, after: number | undefined, capped = true) =>
+      (await recheck(await planWith(sized(before, capped)), [sized(after, capped)], ctx)).decision
+    expect((await outcome(10, 11)).dropped).toEqual([
+      { id: 'a:1', reason: 'changed', detail: 'the plan showed 10 bytes, now 11 bytes' },
+    ])
+    expect((await outcome(10, 11)).run).toEqual([])
+    expect((await outcome(undefined, 11)).dropped.map((d) => d.reason)).toEqual(['changed'])
+    expect((await outcome(10, undefined)).dropped.map((d) => d.reason)).toEqual(['changed'])
+    expect((await outcome(10, 10)).run.map((c) => c.id)).toEqual(['a:1'])
+    expect((await outcome(10, 9)).run.map((c) => c.id)).toEqual(['a:1'])
+    expect((await outcome(10, 11, false)).run.map((c) => c.id)).toEqual(['a:1'])
+    // The plan file keeps it.
+    const p = await planWith(sized(10, true))
+    expect(parsePlan(JSON.stringify(p), 'p').candidates).toEqual(p.candidates)
+  })
+
   test('a candidate that changed drops its dependents', async () => {
     const items = (sha: string) => [
       cand('worktree:/w', 'git', { evidence: { sha } }),

@@ -18,11 +18,6 @@ interface CandidateBase {
   /** The plugin that deletes it, and the only one that may. */
   owner: string
   why: string
-  /**
-   * The bytes deleting it frees. From the re-check on, `prepare`, `delete` and
-   * `deleted` see the bytes the plan showed, so an owner can refuse a delete
-   * that would now free more than was approved.
-   */
   bytes?: number | undefined
   /** What the objections rest on; the re-check compares it with repo-cleaner's `sameFingerprint`. */
   evidence: Record<string, unknown>
@@ -44,6 +39,12 @@ interface CandidateBase {
    * read as changed.
    */
   unmeasured?: boolean | undefined
+  /**
+   * True: deleting it takes whatever is there by then, as a prune does. One
+   * whose `bytes` are more at the re-check than in the plan counts as
+   * changed; fewer do not, which `evidence` could not say.
+   */
+  capped?: boolean | undefined
 }
 
 /** What deleting a candidate costs: fetched again, built again, or gone for good. */

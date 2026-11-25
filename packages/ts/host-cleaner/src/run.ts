@@ -724,11 +724,16 @@ export function decidePlan(p: Plan): Decision {
   )
 }
 
+/** Whether `c`, `capped` now or in the plan, may free more than `before`, its row in the plan; one without a size may. */
+const outgrew = (before: Candidate, c: Candidate): boolean =>
+  (before.capped === true || c.capped === true) &&
+  (before.bytes === undefined || c.bytes === undefined || c.bytes > before.bytes)
+
 /**
  * Judge a plan against the world now. Surveys again and decides over exactly
  * what the plan would run, so a refusal that appeared since is `blocked`, a
  * protest nobody granted `not-allowed`, a vanished candidate `gone`, and one whose evidence
- * moved (repo-cleaner's `sameFingerprint`) `changed`.
+ * moved (repo-cleaner's `sameFingerprint`), or a `capped` one that grew, `changed`.
  */
 export async function recheck(
   p: Plan,
@@ -757,8 +762,14 @@ export async function recheck(
     const before = plannedById.get(c.id)
     if (before !== undefined && !sameFingerprint(before.evidence, c.evidence)) {
       dropped.push({ id: c.id, reason: 'changed', detail: 'its evidence moved since the plan' })
-    } else if (before !== undefined) kept.set(c.id, { ...c, bytes: before.bytes })
-    else kept.set(c.id, c)
+    } else if (before !== undefined && outgrew(before, c)) {
+      const size = (b: number | undefined): string => (b === undefined ? 'no size' : `${b} bytes`)
+      dropped.push({
+        id: c.id,
+        reason: 'changed',
+        detail: `the plan showed ${size(before.bytes)}, now ${size(c.bytes)}`,
+      })
+    } else kept.set(c.id, c)
   }
   const explain: Explain = (id) => {
     const entry = dropped.find((d) => d.id === id)

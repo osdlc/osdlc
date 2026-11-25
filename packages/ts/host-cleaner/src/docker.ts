@@ -16,7 +16,7 @@
 import { failureText, firstLine } from '@osdlc/command-seam'
 import { z } from 'zod'
 
-import { errorText, isObject, str } from './helpers.ts'
+import { errorText, failureReason, isObject, objector, str } from './helpers.ts'
 import { pluginKit, type Kit, type KitOptions, type KitRunResult } from './kit.ts'
 import { DELETE_LIMIT_MS } from './run.ts'
 import { PLUGIN_API, definePlugin, type Candidate, type Ctx, type Plugin } from './types.ts'
@@ -27,11 +27,17 @@ export const DOCKER_VOLUME = 'docker-volume'
 export const DOCKER_IMAGE = 'docker-image'
 export const DOCKER_BUILD_CACHE = 'docker-build-cache'
 
+/** The note that one of Docker's listings failed, so what it would have listed is not proposed. */
+const NOT_LISTED = 'not-listed'
+
 /** `discover` runs several Docker commands, and `docker builder du` may wait on its builder. */
 const DISCOVER_LIMIT_MS = 2 * 60_000
 
 /** `docker builder du` waits on its builder, which may be remote or stopped; well inside {@link DISCOVER_LIMIT_MS}. */
 const DU_LIMIT_MS = 60_000
+
+/** `docker system df -v` sizes every container and volume to print an image's own layers; well inside {@link DISCOVER_LIMIT_MS}. */
+const DF_LIMIT_MS = 30_000
 
 /** A running daemon answers `docker info` at once; well inside detect's 30s hook limit. */
 const INFO_LIMIT_MS = 10_000
@@ -65,17 +71,27 @@ export function dockerBytes(text: string): number | undefined {
   return Math.round(Number(m[1]) * (m[3] === '' ? 1000 : 1024) ** power)
 }
 
+/** The hex part of an image id, as short as Docker prints one. */
+const shortId = (id: string): string => id.replace(/^sha256:/, '').slice(0, 12)
+
 /**
- * The bytes deleting an image frees, from its `docker image ls` row: those of
- * its layers no other image shares. Undefined when Docker did not report what
- * is shared (`N/A`), rather than the whole size, which counts shared layers.
+ * Each image's bytes in layers no other image shares, which is what deleting it
+ * frees, by {@link shortId}, from the `Images` of `docker system df -v`. One
+ * Docker did not work out (`N/A`) is left out.
  */
-export function imageBytes(row: Record<string, unknown>): number | undefined {
-  const unique = dockerBytes(str(row.UniqueSize))
-  if (unique !== undefined) return unique
-  const size = dockerBytes(str(row.Size))
-  const shared = dockerBytes(str(row.SharedSize))
-  return size === undefined || shared === undefined ? undefined : Math.max(0, size - shared)
+export function uniqueSizes(stdout: string): Map<string, number> {
+  let rows: unknown
+  try {
+    rows = JSON.parse(stdout)
+  } catch {
+    rows = undefined
+  }
+  const sizes = new Map<string, number>()
+  for (const row of Array.isArray(rows) ? rows.filter(isObject) : []) {
+    const bytes = dockerBytes(str(row.UniqueSize))
+    if (bytes !== undefined) sizes.set(shortId(str(row.ID)), bytes)
+  }
+  return sizes
 }
 
 /** The objects in `--format '{{json .}}'` output, one per line; a line that is not one is skipped. */
@@ -144,17 +160,17 @@ export function dockerPlugin(
   ): Promise<KitRunResult> => {
     const r = await kit.run(['docker', ...args], { signal: ctx.signal, timeoutMs: o.timeoutMs })
     if (!r.ok && o.tolerate?.(r) !== true) {
-      throw new Error(`docker ${args.join(' ')} failed: ${firstLine(failureText(r))}`)
+      throw new Error(`docker ${args.join(' ')} failed: ${firstLine(failureReason(r))}`)
     }
     return r
   }
 
-  /** The stdout of `docker <args> <names>`, in batches; a name gone since its listing is not a failure. */
+  /** The stdout of `docker <args> -- <names>`, in batches; a name gone since its listing is not a failure. */
   const inspect = async (args: readonly string[], names: readonly string[], ctx: Ctx) => {
     let out = ''
     for (let i = 0; i < names.length; i += INSPECT_BATCH) {
       const batch = names.slice(i, i + INSPECT_BATCH)
-      out += (await docker([...args, ...batch], ctx, { tolerate: onlyGone })).stdout
+      out += (await docker([...args, '--', ...batch], ctx, { tolerate: onlyGone })).stdout
     }
     return out
   }
@@ -189,7 +205,10 @@ export function dockerPlugin(
       (row) => str(row.Name) !== '' && !keep.has(str(row.Name)),
     )
     if (rows.length === 0) return []
-    const created = await volumesCreated(rows.map((row) => str(row.Name)), ctx)
+    const created = await volumesCreated(
+      rows.map((row) => str(row.Name)),
+      ctx,
+    )
     return rows.flatMap((row): Candidate[] => {
       const name = str(row.Name)
       const at = created.get(name) ?? ''
@@ -220,21 +239,25 @@ export function dockerPlugin(
     const rows = jsonLines(out.stdout).filter((row) => str(row.ID) !== '')
     if (rows.length === 0) return []
     const used = await imagesInUse(ctx)
-    return rows.flatMap((row): Candidate[] => {
-      const id = str(row.ID)
-      if (used.has(id)) return []
-      const bytes = imageBytes(row)
-      return [
-        kit.candidate({
-          kind: DOCKER_IMAGE,
-          ref: id,
-          why: 'a dangling image: it has no tag and no container uses it',
-          ...(bytes === undefined ? {} : { bytes }),
-          costDescription: 're-download',
-          // The id is the image's content; `CreatedAt` is printed in the local time zone, so it stays out.
-          evidence: { kind: DOCKER_IMAGE, id },
-        }),
-      ]
+    const unused = rows.map((row) => str(row.ID)).filter((id) => !used.has(id))
+    if (unused.length === 0) return []
+    // `image ls` only prints a size that counts shared layers; without df's, an image has none.
+    const df = await docker(['system', 'df', '-v', '--format', '{{json .Images}}'], ctx, {
+      timeoutMs: DF_LIMIT_MS,
+      tolerate: () => true,
+    })
+    const sizes = uniqueSizes(df.ok ? df.stdout : '')
+    return unused.map((id): Candidate => {
+      const bytes = sizes.get(shortId(id))
+      return kit.candidate({
+        kind: DOCKER_IMAGE,
+        ref: id,
+        why: 'a dangling image: it has no tag and no container uses it',
+        ...(bytes === undefined ? {} : { bytes }),
+        costDescription: 're-download',
+        // The id is the image's content; `CreatedAt` is printed in the local time zone, so it stays out.
+        evidence: { kind: DOCKER_IMAGE, id },
+      })
     })
   }
 
@@ -254,11 +277,15 @@ export function dockerPlugin(
         why: 'build cache no build is using',
         bytes,
         costDescription: 're-download',
-        // The size moves with every build, so it stays out of the evidence; `delete` holds it to the plan's.
+        // The size moves with every build, so it stays out of the evidence; `capped` holds it to the plan's.
+        capped: true,
         evidence: { kind: DOCKER_BUILD_CACHE },
       }),
     ]
   }
+
+  /** Why each listing of the last `discover` failed. */
+  let unlisted: string[] = []
 
   return {
     name: DOCKER_PLUGIN,
@@ -277,18 +304,41 @@ export function dockerPlugin(
     },
     /**
      * Volumes, images and the build cache, each on its own: one that fails
-     * leaves out only its own candidates. Throws when all three fail.
+     * leaves out only its own candidates, and `object` says so in a note on the
+     * first of the others. With no other to note it on, this throws.
      */
     async discover(ctx) {
       const found = await Promise.allSettled([volumes(ctx), images(ctx), buildCache(ctx)])
-      const failed = found.flatMap((f) => (f.status === 'rejected' ? [errorText(f.reason)] : []))
-      if (failed.length === found.length) throw new Error(failed.join('; '))
-      return found.flatMap((f) => (f.status === 'fulfilled' ? f.value : []))
+      unlisted = found.flatMap((f) => (f.status === 'rejected' ? [errorText(f.reason)] : []))
+      const candidates = found.flatMap((f) => (f.status === 'fulfilled' ? f.value : []))
+      if (unlisted.length > 0 && candidates.length === 0) throw new Error(unlisted.join('; '))
+      return candidates
+    },
+    object(all) {
+      const first = all.find((c) => c.owner === DOCKER_PLUGIN)
+      if (first === undefined) return []
+      return unlisted.map((why) =>
+        objector(DOCKER_PLUGIN)(
+          first,
+          'note',
+          NOT_LISTED,
+          `Docker could not list everything: ${why}`,
+        ),
+      )
     },
     async delete(c, ctx) {
       if (c.ref === undefined)
         throw new Error(`docker: ${c.id} is not a Docker volume, image or build cache`)
       if (c.kind === DOCKER_VOLUME) {
+        const was = await docker(
+          ['volume', 'inspect', '--format', '{{json .}}', '--', c.ref],
+          ctx,
+          { tolerate: onlyGone },
+        )
+        if (!was.ok) return `already gone: volume ${c.ref}`
+        if (str(jsonLines(was.stdout)[0]?.CreatedAt) !== c.evidence.created) {
+          throw new Error(`changed: volume ${c.ref} is not the one the plan showed`)
+        }
         const r = await docker(['volume', 'rm', '--', c.ref], ctx, { tolerate: onlyGone })
         return r.ok ? `docker volume rm removed volume ${c.ref}` : `already gone: volume ${c.ref}`
       }
@@ -297,16 +347,15 @@ export function dockerPlugin(
         return r.ok ? `docker image rm removed image ${c.ref}` : `already gone: image ${c.ref}`
       }
       if (c.kind === DOCKER_BUILD_CACHE && c.ref === BUILD_CACHE_REF) {
-        // The prune takes every unused record, so it runs only while they come to no more than the plan showed.
-        if (c.bytes === undefined) {
-          throw new Error('changed: the plan has no size for the build cache')
-        }
+        // The prune takes every unused record, so it runs only while they come to no more than
+        // the re-check read, which `capped` held to what the plan showed.
+        if (c.bytes === undefined) throw new Error('the build cache has no size to hold it to')
         const du = await docker(['builder', 'du'], ctx, { timeoutMs: DU_LIMIT_MS })
         const now = reclaimable(du.stdout)
         if (now === undefined) throw new Error('docker builder du printed no Reclaimable: total')
         if (now > c.bytes) {
           throw new Error(
-            `changed: the build cache grew from ${c.bytes} to ${now} bytes reclaimable since the plan`,
+            `changed: the build cache grew from ${c.bytes} to ${now} bytes reclaimable since the re-check`,
           )
         }
         // `--all`: every unused record, as du's `Reclaimable:` counts, not only dangling ones.

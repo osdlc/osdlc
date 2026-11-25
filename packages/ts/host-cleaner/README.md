@@ -27,7 +27,7 @@ the plugin kit (see [The plugin kit](#the-plugin-kit)).
 | discover | each plugin | proposes candidates; two with the same id, or path candidates with the same real path, are one: the first plugin's stands, with a warning naming both |
 | object | each plugin | objects to any candidate; sees no other plugin's objections |
 | decide | core | `refuse` blocks, `protest` needs `--allow <code>`, `note` does not gate |
-| re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved `changed` |
+| re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved, or a `capped` one that grew, `changed` |
 | prepare | every plugin | before the delete; a throw stops only that candidate, a `FatalRun` stops the run |
 | delete | the owner | returns the receipt sentence |
 | deleted | every other plugin | after the delete; best effort, failures are in the receipt |
@@ -221,6 +221,10 @@ is not held; the core gives it an `unmeasured` protest (by `host-cleaner`), so
 it runs only with `--allow unmeasured`. The flag stays out of `evidence`, so a
 walk that finishes at the re-check does not read as `changed`.
 
+A candidate whose delete takes whatever is there by then, as a prune does, sets
+`capped: true`. The re-check drops one whose `bytes` are more than the plan
+showed as `changed`; fewer are fine.
+
 ### Testing a plugin
 
 `@osdlc/host-cleaner/testing` holds what a plugin's own tests need, and no test
@@ -341,12 +345,17 @@ plugin stays out of the run.
 Docker refuses to remove a volume or image a container took up after the
 plan, so that candidate fails instead of being deleted. A volume removed and
 made again under its name since the plan has another creation time, so the
-re-check drops it as changed. The build cache is pruned only while its
-`Reclaimable:` total, read again right before the prune, is no more than the
-plan showed; past that the step fails as changed. An image's size counts only
-the layers no other image shares, and is left out when Docker does not report
-them. A volume or image already removed by someone else is `already gone`, not a
-failure. When one of the three listings fails, the other two are still proposed.
+re-check drops it as `changed`, and the delete looks once more before it removes
+anything. A volume Docker gives no creation time for is not proposed. The build
+cache is `capped`: it is pruned only while its `Reclaimable:` total, read again
+right before the prune, is no more than was shown. An image's size counts only
+the layers no other image shares, from `docker system df -v`, and is left out
+when Docker does not say. A volume or image already removed by someone else is
+`already gone`, not a failure.
+
+When one of the three listings fails, the other two are still proposed, with a
+`not-listed` note on the first candidate saying what failed; with nothing to
+propose, it is a warning.
 
 ```sh
 host-cleaner clean --pick docker-volume:pgdata --allow discard-user-data
