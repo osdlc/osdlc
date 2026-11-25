@@ -159,6 +159,9 @@ The rules every plugin keeps:
   `kit.size` measured: it can be unmeasured in one survey and measured in the
   next. The re-check discovers again, so a folder of the example that is no
   longer idle is dropped as `gone`.
+- **Ignored paths.** The core leaves out a candidate in an ignored path. A plugin
+  that walks folders itself skips those `coveredBy(path, ctx.ignore ?? [])`
+  finds, so it does not measure what is left out.
 - **What deleting costs.** `costDescription` is `re-download`, `rebuild` or
   `lost`. A `lost` candidate is held for review and needs
   `--allow discard-user-data`.

@@ -2,50 +2,45 @@
  * A plugin package outside this one builds and passes the contract suite
  * with `@osdlc/host-cleaner/plugin` and `@osdlc/host-cleaner/testing` alone.
  * The package is made in a temporary folder, where `@osdlc/host-cleaner`
- * exports only those two entries of src/ as built here, into a folder of
- * this test's own. The workspace siblings resolve to their built dist/, so
- * run `pnpm build` first, as for the typecheck.
+ * exports only those two entries of src/, built there as dist/ is. The
+ * workspace siblings resolve to their own dist/, so run `pnpm build` first, as
+ * for the typecheck.
  */
-import { afterAll, beforeAll, describe, expect, test } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   readFileSync,
-  rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { clean, plan, survey, type RunCtx } from '../src/index.ts'
 import * as entry from '../src/plugin.ts'
-import { tempHome, type TempHome } from '../src/testing.ts'
+import { tempHome } from '../src/testing.ts'
+import scratch from './fixtures/outside-plugin/plugin.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const pkg = join(here, '..')
 const require = createRequire(import.meta.url)
 const tsc = require.resolve('typescript/bin/tsc')
+const guide = readFileSync(join(pkg, 'docs', 'guide', 'writing-a-plugin.md'), 'utf8')
 
-/** Builds src/ as the published dist/ is built, into `out`, so the package checks this code. */
+/** Builds src/ into `out` with the package's build config, so the outside package checks this code. */
 function build(out: string): void {
-  const built = spawnSync(
-    process.execPath,
-    [tsc, '-p', join(pkg, 'tsconfig.build.json'), '--outDir', out],
-    { cwd: pkg, encoding: 'utf8' },
-  )
+  const args = [tsc, '-p', join(pkg, 'tsconfig.build.json'), '--outDir', out]
+  const built = spawnSync(process.execPath, args, { cwd: pkg, encoding: 'utf8' })
   if (built.status !== 0) throw new Error(`building src/ failed:\n${built.stdout}${built.stderr}`)
 }
 
-/** A package holding the fixture plugin, with host-cleaner limited to the two entries. */
-function outsidePackage(): TempHome {
-  // Inside this package's node_modules, so the built files find its dependencies.
-  const dist = join(pkg, 'node_modules', '.outside-dist')
-  rmSync(dist, { recursive: true, force: true })
-  build(dist)
-  const outside = tempHome('host-cleaner-outside-')
-  const dir = outside.home
+/** Makes `dir` a package holding the fixture plugin, with host-cleaner limited to the two entries. */
+function outsidePackage(dir: string): void {
   const json = (path: string, value: unknown) =>
     writeFileSync(join(dir, path), `${JSON.stringify(value, null, 2)}\n`)
   json('package.json', { name: 'outside-plugin', private: true, type: 'module' })
@@ -55,8 +50,8 @@ function outsidePackage(): TempHome {
       module: 'NodeNext',
       moduleResolution: 'NodeNext',
       strict: true,
-      // The libraries' declarations are checked where they are built.
-      skipLibCheck: true,
+      // No skipLibCheck: nothing else checks the emitted declarations, and a
+      // type one of them cannot find would be `any` here.
       types: ['node'],
       rootDir: 'src',
       outDir: 'dist',
@@ -80,21 +75,19 @@ function outsidePackage(): TempHome {
       exports: { './plugin': exports['./plugin'], './testing': exports['./testing'] },
     }),
   )
-  symlinkSync(dist, join(hc, 'dist'), 'dir')
+  build(join(hc, 'dist'))
+  // The built files find host-cleaner's dependencies here.
+  symlinkSync(join(pkg, 'node_modules'), join(hc, 'node_modules'), 'dir')
   mkdirSync(join(dir, 'node_modules', '@types'))
   const types = dirname(require.resolve('@types/node/package.json'))
   symlinkSync(types, join(dir, 'node_modules', '@types', 'node'), 'dir')
-  return outside
 }
 
 // One package, shared by the tests that use it.
 describe('a package outside this one', () => {
-  let dir = ''
-  let cleanup = (): void => {}
-  beforeAll(() => {
-    ;({ home: dir, cleanup } = outsidePackage())
-  }, 120_000)
-  afterAll(() => cleanup())
+  const { home: dir, cleanup } = tempHome('host-cleaner-outside-')
+  beforeAll(() => outsidePackage(dir), 120_000)
+  afterAll(cleanup)
 
   test('builds against ./plugin and ./testing, and its plugin keeps the contract', () => {
     const built = spawnSync(process.execPath, [tsc, '-p', dir], { cwd: dir, encoding: 'utf8' })
@@ -153,8 +146,67 @@ test('./plugin exports what a plugin is written with, and nothing of the run', (
   ])
 })
 
+describe("the guide's plugin, its walk out of time in one survey and not the other", () => {
+  const DAY_MS = 86_400_000
+  const { home, env, cleanup } = tempHome('host-cleaner-scratch-')
+  afterAll(cleanup)
+  const path = join(home, '.scratch', 'build-1')
+  beforeEach(() => {
+    mkdirSync(path, { recursive: true })
+    writeFileSync(join(path, 'out.bin'), 'x')
+    const old = new Date(Date.now() - 2 * DAY_MS)
+    utimesSync(join(path, 'out.bin'), old, old)
+  })
+
+  /** The plugin, whose folder walks all run out of time when `slow`. */
+  const make = (slow: boolean) => {
+    let ms = 0
+    return scratch.create({
+      settings: scratch.settings.parse({}),
+      env,
+      kit: entry.pluginKit(scratch.name, { env, ...(slow ? { clock: () => (ms += DAY_MS) } : {}) }),
+    })
+  }
+  const ctx: RunCtx = { cwd: home, targets: [home], allow: [] }
+  const allow = ['unmeasured']
+
+  test.each([
+    { planned: 'unmeasured', slow: true },
+    { planned: 'measured', slow: false },
+  ])('is not dropped as changed: $planned when planned', async ({ slow }) => {
+    const planned = plan(await survey([make(slow)], ctx), { allow })
+    expect(planned.candidates.map((c) => c.unmeasured)).toEqual([slow ? true : undefined])
+    const receipt = await clean(planned, [make(!slow)], ctx)
+    expect(receipt.dropped).toEqual([])
+    expect(receipt.steps).toEqual([
+      expect.objectContaining({ id: `scratch:${path}`, result: 'ok' }),
+    ])
+    expect(existsSync(path)).toBe(false)
+  })
+
+  test('is kept when the re-check cannot measure it and that is not allowed', async () => {
+    const planned = plan(await survey([make(false)], ctx))
+    const receipt = await clean(planned, [make(true)], ctx)
+    expect(receipt.dropped).toEqual([expect.objectContaining({ reason: 'not-allowed' })])
+    expect(existsSync(path)).toBe(true)
+  })
+
+  test('is gone at the re-check once it is no longer idle', async () => {
+    const planned = plan(await survey([make(true)], ctx), { allow })
+    writeFileSync(join(path, 'out.bin'), 'y')
+    const receipt = await clean(planned, [make(false)], ctx)
+    expect(receipt.dropped).toEqual([expect.objectContaining({ reason: 'gone' })])
+    expect(existsSync(path)).toBe(true)
+  })
+})
+
+test("the guide's table names every export of ./plugin", () => {
+  const row = guide.split('\n').find((l) => l.startsWith('| `@osdlc/host-cleaner/plugin`'))
+  const named = new Set(row?.match(/`\w+`/g))
+  expect(Object.keys(entry).filter((name) => !named.has(`\`${name}\``))).toEqual([])
+})
+
 test("the guide's plugin is the one built above", () => {
-  const guide = readFileSync(join(pkg, 'docs', 'guide', 'writing-a-plugin.md'), 'utf8')
   const shown = /```ts\n([\s\S]*?)```/.exec(guide)?.[1]
   const fixture = readFileSync(join(here, 'fixtures', 'outside-plugin', 'plugin.ts'), 'utf8')
   expect(fixture.endsWith(shown ?? '-')).toBe(true)
