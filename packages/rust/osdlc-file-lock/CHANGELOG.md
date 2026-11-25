@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/osdlc/osdlc/compare/osdlc-file-lock/v0.4.0...osdlc-file-lock/v0.4.1) - 2026-11-25
+
+### Other
+
+- two unit tests read a held lock's file as its holder
+- `record` takes the guard, so no read through the crate meets it
+- a smaller OS lock, and the fixes from its first review
+- test a record replaced while others ask, and the error text
+- an OS lock that names its holder (os_lock)
+
 ## [0.4.0] - 2026-11-19
 
 A change to the on-disk protocol: `osdlc-file-lock` and `@osdlc/file-lock` 0.4
