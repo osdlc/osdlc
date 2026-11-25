@@ -79,7 +79,10 @@ Fixed: `mirror prune --discard-kept` removed a clone's kept worktree that had
 no record, or a refused one, whatever branch it was on. It now removes such a
 tree only while it is on its `pr-update/failed-*` branch. One a person
 switched to a branch of their own, or detached, is left and reported, and its
-clone stays.
+clone stays. A kept tree with a record that a person switched to another
+branch is now skipped the same way, with the reason, in `--dry-run` too:
+`--dry-run` listed it and its clone as removed, and the real run reported it
+under `failed` and exited with an error.
 
 Pruning no longer takes a path it cannot read for one that is not there: an
 `lstat` that fails with anything but "no such file" (such as `EACCES`) is now

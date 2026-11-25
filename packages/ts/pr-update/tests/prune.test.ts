@@ -502,6 +502,32 @@ describe('managed clones', () => {
     },
   )
 
+  test('a kept worktree with a record, switched to a branch of its own, survives --discard-kept, and so does its clone, in a dry run too (review round 1)', () => {
+    const clone = makeClone('acme/api', 400)
+    const path = keptWorktree(clone, 'acme/api', 7)
+    // A person takes the tree over and works in it.
+    git(path, 'switch', '-q', '-c', 'my-work')
+    writeFileSync(join(path, 'mine.txt'), 'mine\n')
+
+    for (const dryRun of [true, false]) {
+      const r = prune({ allClones: true, discardKept: true, dryRun })
+      expect(r.removed).toEqual([])
+      expect(r.failed).toEqual([])
+      expect(r.skipped).toEqual([
+        expect.objectContaining({
+          kind: 'clone',
+          path: clone,
+          skip: 'kept',
+          reason: expect.stringContaining(
+            `its kept worktree ${path} is on my-work, not pr-update/failed-acme-api-7`,
+          ),
+        }),
+      ])
+    }
+    expect(readFileSync(join(path, 'mine.txt'), 'utf8')).toBe('mine\n')
+    expect(existsSync(clone)).toBe(true)
+  })
+
   test('one with a live run’s worktree in it stays', () => {
     const clone = makeClone('acme/api', 400)
     const live = runWorktree(clone, 'acme/api', liveRun())

@@ -68,7 +68,7 @@ import {
 } from './mirror.ts'
 import { realOr } from './real-path.ts'
 import { scratchBranch, targetGitOptions } from './update/execute.ts'
-import { discardKept, listKept, type KeptPlace } from './update/kept.ts'
+import { discardKept, keptTreeCheck, listKept, type KeptPlace } from './update/kept.ts'
 import { ownedUnder, removeWorktree } from './update/registrations.ts'
 
 /** A leftover `.tmp-*` clone folder or `.pr-update-probe-*` probe younger than this is left alone. */
@@ -834,6 +834,24 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
         bytes,
         skip: 'kept',
         reason: `its kept worktree ${unrecorded.map((k) => k.path).join(', ')} has no record and is not on a pr-update/failed-* branch, so a person may have taken it over; it stays, and so does the clone`,
+      })
+      return
+    }
+    // A kept tree with a record is removed only while its checkout lists it on the record's branch
+    // (`keptTreeCheck`, which `discardKept` checks again). Checked here so a dry run says the same.
+    for (const k of kept) {
+      const record = recordsOf.get(realOr(k.path))
+      if (record === undefined) continue
+      const tree = keptTreeCheck(git, place, record)
+      if (tree.kind === 'kept') continue
+      report.skipped.push({
+        ...entry,
+        bytes,
+        skip: 'kept',
+        reason:
+          tree.kind === 'moved'
+            ? `its kept worktree ${tree.why}, so a person may have taken it over; it stays, and so does the clone`
+            : `the record of its kept worktree ${k.path} is refused: ${tree.why}; the tree stays, and so does the clone`,
       })
       return
     }
