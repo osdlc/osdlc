@@ -442,7 +442,8 @@ function offsetOf(doc: Document, path: Path): number | undefined {
     const parent = n === 1 ? doc.contents : doc.getIn(path.slice(0, n - 1), true)
     const last = path[n - 1]
     const node = isMap(parent)
-      ? parent.items.find((pair) => isScalar(pair.key) && String(pair.key.value) === String(last))?.key
+      ? parent.items.find((pair) => isScalar(pair.key) && String(pair.key.value) === String(last))
+          ?.key
       : isSeq(parent) && typeof last === 'number'
         ? parent.items[last]
         : undefined
