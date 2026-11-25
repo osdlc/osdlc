@@ -1,11 +1,9 @@
 // Drafts a tier 1 descriptor from one store of the system-cleanup research
 // corpus (packages/corpora/system-cleanup-reference), for a person to review.
 // Runs on the source, so it needs no build.
+// Flags: see USAGE below.
 //
-//   node scripts/draft-descriptor.ts [--corpus <dir>] [--out <dir>] [--force] <slug>...
-//   node scripts/draft-descriptor.ts --out <dir> --first-set
-//
-// Without --out it prints one draft. A draft never sets idleHours or removes.
+// A draft never sets idleHours or removes.
 // What it can't put in a valid tier 1 file (the clean commands, the location
 // overrides, folders that need a variable) goes into comments for the reviewer.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
@@ -23,8 +21,8 @@ import {
 } from '../src/descriptor/schema.ts'
 import { COST_DESCRIPTIONS, type CostDescription } from '../src/types.ts'
 
-/** The schema's `paths` name; a data folder's `holds` becomes one. */
-const NAME = /^[A-Za-z][A-Za-z0-9_-]*$/
+/** A data folder's `holds` becomes a `paths` name; matches `NAME` in src/descriptor/schema.ts. */
+const PATHS_NAME = /^[A-Za-z][A-Za-z0-9_-]*$/
 
 /** The reviewed first set the package ships, by corpus slug. */
 export const FIRST_SET = [
@@ -135,7 +133,11 @@ export function indexStores(corpus: string): StoreIndex {
   return { stores, bySlug, unreadable }
 }
 
-/** `key` of the front matter in `file`, when it is unset or a `type`. */
+/**
+ * `key` of the front matter in `file`, or undefined when unset.
+ *
+ * @throws DraftError when it is set but not a `type`
+ */
 function field<T>(
   file: string,
   fm: Record<string, unknown>,
@@ -151,7 +153,8 @@ function field<T>(
 /**
  * The store whose `slug` is `slug`, with its current statements.
  *
- * @throws DraftError when the corpus has no such store, or more than one
+ * @throws DraftError when the corpus has no such store or more than one, or a
+ *   current statement is malformed or shares its subject with another
  */
 export function readStore(
   corpus: string,
@@ -204,8 +207,8 @@ export function readStore(
 }
 
 /**
- * A folder a tier 1 file can name: under home or absolute, with no variable or
- * placeholder in it, and never the home folder or a root alone.
+ * A folder a tier 1 file can name: under home or absolute, with no variable,
+ * placeholder or `..` in it, and never the home folder or a root alone.
  */
 const fixedFolder = (p: string): boolean =>
   /^(~[/\\]|\/|[A-Za-z]:[/\\])[/\\]*[^/\\]/.test(p) &&
@@ -371,7 +374,7 @@ export function draftDescriptor(store: CorpusStore): Draft {
     isRecord(d) &&
     text(d['path']) &&
     typeof d['holds'] === 'string' &&
-    NAME.test(d['holds']) &&
+    PATHS_NAME.test(d['holds']) &&
     cost(d['rebuild']) &&
     (d['platform'] === 'all' || (OSES as readonly unknown[]).includes(d['platform']))
 

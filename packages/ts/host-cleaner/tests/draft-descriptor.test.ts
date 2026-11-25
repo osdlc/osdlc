@@ -133,7 +133,7 @@ describe('a small corpus', () => {
 
   const markdown = (fm: Record<string, unknown>) => `---\n${stringify(fm)}---\n\nBody.\n`
 
-  /** A store file and one statement per subject, `current` unless the object says otherwise. */
+  /** A store file and one statement per subject, `current` unless `status` says otherwise. */
   function store(
     title: string,
     fm: Record<string, unknown>,
