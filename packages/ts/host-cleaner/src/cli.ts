@@ -368,8 +368,12 @@ const unknownPlugins = (config: Config, known: (name: string) => boolean): strin
   Object.keys(config.plugins).filter((n) => !known(n))
 
 /**
- * The plugins this run uses: the shipped ones built from the config (the `git`
- * one with `archive`), or `deps.plugins`, then chosen by flag.
+ * The plugins this run uses: the shipped ones built from the config, or
+ * `deps.plugins`, then chosen by flag.
+ *
+ * @param archive - `clean --archive`'s options, passed to the shipped git plugin.
+ * @throws BadInput when the config names an unknown plugin, or when `archive` is
+ *   set and the chosen plugins leave out git.
  */
 function pluginsFor(
   v: SweepValues,
