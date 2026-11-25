@@ -93,7 +93,7 @@ interface Layout {
   config: string
   /** The Toolbox's `state.json`. */
   toolbox: string
-  apps: string[]
+  apps: readonly string[]
 }
 
 function layoutOf(opts: JetbrainsOptions): Layout {
@@ -108,7 +108,7 @@ function layoutOf(opts: JetbrainsOptions): Layout {
       roots: [join(lib, 'Caches', 'JetBrains'), join(lib, 'Logs', 'JetBrains')],
       config,
       toolbox: join(config, 'Toolbox', 'state.json'),
-      apps: [...(opts.apps ?? ['/Applications', join(home, 'Applications')])],
+      apps: opts.apps ?? ['/Applications', join(home, 'Applications')],
     }
   }
   if (platform === 'linux') {
@@ -122,17 +122,15 @@ function layoutOf(opts: JetbrainsOptions): Layout {
       roots: [join(xdg('XDG_CACHE_HOME', '.cache'), 'JetBrains')],
       config: join(xdg('XDG_CONFIG_HOME', '.config'), 'JetBrains'),
       toolbox: join(data, 'state.json'),
-      apps: [
-        ...(opts.apps ?? [
-          join(data, 'apps'),
-          '/opt',
-          '/usr/local',
-          '/usr/share',
-          '/snap',
-          join(home, 'opt'),
-          join(home, '.local', 'share'),
-          join(home, 'Applications'),
-        ]),
+      apps: opts.apps ?? [
+        join(data, 'apps'),
+        '/opt',
+        '/usr/local',
+        '/usr/share',
+        '/snap',
+        join(home, 'opt'),
+        join(home, '.local', 'share'),
+        join(home, 'Applications'),
       ],
     }
   }
@@ -374,7 +372,9 @@ function scan(layout: Layout, installs: Installs, only?: string): Found[] {
       const byHash = new Map<string, string[]>()
       for (const p of known) {
         const hash = javaHashHex(p)
-        byHash.set(hash, [...(byHash.get(hash) ?? []), p])
+        const paths = byHash.get(hash)
+        if (paths === undefined) byHash.set(hash, [p])
+        else paths.push(p)
       }
       for (const name of folders(projects)) {
         const hash = PROJECT_DIR.exec(name)?.[2]
@@ -421,12 +421,11 @@ function runningOf(env: Env, product: string): Row['blockers'] {
   const fixed = LAUNCHERS[product]
   if (fixed !== undefined) names.add(fixed)
   if (names.size === 0) names.add(product.toLowerCase())
-  const running: string[] = []
+  const running = new Set<string>()
   // A Linux `.sh` launcher runs `java -Djb.vmOptionsFile=.../bin/<name>64.vmoptions ...`.
-  for (const name of [...names]) names.add(`${name}64`)
-  for (const name of [...names].sort()) {
+  for (const name of [...names].flatMap((n) => [n, `${n}64`]).sort()) {
     const r = env.kit.running({ name }, env.ctx)
-    running.push(...r.names.filter((n) => !running.includes(n)))
+    for (const n of r.names) running.add(n)
     if (r.unknown !== undefined) {
       blockers.push({
         code: 'process-table-unreadable',
@@ -435,10 +434,10 @@ function runningOf(env: Env, product: string): Row['blockers'] {
       break
     }
   }
-  if (running.length > 0) {
+  if (running.size > 0) {
     blockers.push({
       code: 'live-process',
-      reason: `${product} is running: ${running.join(', ')}`,
+      reason: `${product} is running: ${[...running].join(', ')}`,
     })
   }
   env.running.set(product, blockers)
