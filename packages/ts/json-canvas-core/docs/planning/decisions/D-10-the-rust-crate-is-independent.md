@@ -9,8 +9,7 @@ created: 2026-11-22
 
 ## Decision
 
-The author also has a Rust crate for JSON Canvas, in the private repository this package began in (sksizer/dev). It is not
-a twin of this package. The two share no conformance suite, and their versions are not aligned.
+The author also has an unpublished Rust crate for JSON Canvas. It is not a twin of this package. The two share no conformance suite, and their versions are not aligned.
 
 ## Why
 
