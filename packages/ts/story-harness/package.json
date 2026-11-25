@@ -1,8 +1,7 @@
 {
   "name": "@osdlc/story-harness",
-  "version": "0.4.0",
-  "private": true,
-  "description": "A static Storybook build as a component test harness: exact Linux screenshot baselines shot in a pinned Playwright container, Playwright helpers for interaction and perf specs against the build, an in-page metrics hook and a seeded PRNG for stories, and a perf report that parallel workers merge.",
+  "version": "0.5.0",
+  "description": "A static Storybook build as a component test harness: exact Linux screenshot baselines shot in a pinned Playwright container, an axe-core accessibility check and a keyboard walk over every story, Playwright helpers for interaction and perf specs against the build, an in-page metrics hook and a seeded PRNG for stories, and a perf report that parallel workers merge.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
   "repository": {
@@ -20,6 +19,9 @@
     "performance",
     "long-tasks",
     "e2e",
+    "accessibility",
+    "axe-core",
+    "keyboard-navigation",
     "docker"
   ],
   "publishConfig": {
@@ -33,9 +35,17 @@
     "node": ">=22"
   },
   "exports": {
+    "./a11y": {
+      "types": "./dist/runner/a11y.d.ts",
+      "default": "./dist/runner/a11y.js"
+    },
     "./browser": {
       "types": "./dist/browser/index.d.ts",
       "default": "./dist/browser/index.js"
+    },
+    "./parley-capture": {
+      "types": "./dist/runner/parley-capture.d.ts",
+      "default": "./dist/runner/parley-capture.js"
     },
     "./playwright": {
       "types": "./dist/playwright/index.d.ts",
