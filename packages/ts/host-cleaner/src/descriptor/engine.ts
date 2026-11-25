@@ -33,6 +33,7 @@ import { globRegExp } from '@osdlc/repo-cleaner'
 import { Git } from '@osdlc/typed-git'
 import { z } from 'zod'
 
+import { hoursText, present } from '../artifacts.ts'
 import { hostDirs } from '../config.ts'
 import { DEFAULT_IDLE_HOURS, idleHoursSetting, type Kit } from '../kit.ts'
 import { containedIn, realOr, rootProblem } from '../roots.ts'
@@ -91,9 +92,6 @@ export function skipReason(d: Descriptor): string | undefined {
     ? 'skipped: it describes data that needs root (system: true), which host-cleaner does not clean'
     : undefined
 }
-
-/** True when `path` exists as itself, a link counted as present. */
-const present = (path: string): boolean => lstatSync(path, { throwIfNoEntry: false }) !== undefined
 
 const isLink = (path: string): boolean =>
   lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true
@@ -180,9 +178,6 @@ export function globMatches(folder: string, glob: string): string[] {
   return level.sort()
 }
 
-/** `hours` for a sentence, in tenths rounded down, so it never says more than was measured. */
-const hoursText = (hours: number): string => String(Math.floor(hours * 10) / 10)
-
 /** How a candidate is deleted: by the tool's command, or by removing the folder. */
 type Action = 'command' | 'remove'
 
@@ -252,8 +247,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     if (folder !== undefined) folders.set(key, expand(folder, at.home))
   }
 
-  const problems = (ctx: Ctx) => {
-    const where = { ...at, targets: ctx.targets, checkouts: checkoutsIn(ctx.targets) }
+  const problems = (ctx: Ctx, checkouts = checkoutsIn(ctx.targets)) => {
+    const where = { ...at, targets: ctx.targets, checkouts }
     const out = new Map<string, string | null>()
     for (const [key, folder] of folders) out.set(key, pathProblem(folder, where))
     return out
@@ -266,8 +261,12 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     entry.command !== undefined && kit.onPath(entry.command[0]!) ? 'command' : 'remove'
 
   /** One folder's row: a whole folder, or one glob match. */
-  const folderRow = (entry: DescriptorCandidate, index: number, path: string): Row | null => {
-    const action = actionOf(entry)
+  const folderRow = (
+    entry: DescriptorCandidate,
+    index: number,
+    path: string,
+    action: Action,
+  ): Row | null => {
     const prune = entry.command !== undefined && entry.removes === 'unused'
     const program = entry.command?.[0]
     const objections: Row['objections'] = []
@@ -279,19 +278,17 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       })
     }
     const evidence: Evidence = { path, candidate: index, action }
+    const base = { kind: name, path, costDescription: entry.costDescription, evidence }
     if (prune && action === 'command') {
       // A prune removes only what nothing uses: no idle check.
       const bytes = kit.size(path)
       return {
         objections,
         candidate: kit.candidate({
-          kind: name,
-          path,
+          ...base,
           why: `${entry.command!.join(' ')} removes only what nothing uses`,
-          costDescription: entry.costDescription,
           ...(bytes === null ? {} : { bytes }),
           ...(entry.held === true ? { held: true } : {}),
-          evidence,
         }),
       }
     }
@@ -309,13 +306,10 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       return {
         objections,
         candidate: kit.candidate({
-          kind: name,
-          path,
+          ...base,
           why: `when it last changed could not be measured in the time budget; ${how}`,
-          costDescription: entry.costDescription,
           unmeasured: true,
           ...(entry.held === true ? { held: true } : {}),
-          evidence,
         }),
       }
     }
@@ -328,13 +322,10 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     return {
       objections,
       candidate: kit.candidate({
-        kind: name,
-        path,
+        ...base,
         why: `${since}; ${how}`,
-        costDescription: entry.costDescription,
         ...(bytes === null ? {} : { bytes }),
         ...(entry.held === true || !idleNow ? { held: true } : {}),
-        evidence,
       }),
     }
   }
@@ -415,11 +406,13 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
 
   /** Every row now, and a note for each glob that matched more than its `maxEntries`. */
   const rowsNow = (ctx: Ctx): Row[] => {
-    const refused = problems(ctx)
+    const checkouts = checkoutsIn(ctx.targets)
+    const refused = problems(ctx, checkouts)
     const rows: Row[] = []
     for (const [index, entry] of d.candidates.entries()) {
       const folder = folders.get(entry.path)
       if (folder === undefined || !present(folder)) continue
+      const action = actionOf(entry)
       const problem = refused.get(entry.path) ?? null
       if (problem !== null) {
         // Listed so `status` says why, but nothing under it is measured.
@@ -431,13 +424,13 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
             why: `refused: ${problem}`,
             costDescription: entry.costDescription,
             held: true,
-            evidence: { path: folder, candidate: index, action: actionOf(entry) },
+            evidence: { path: folder, candidate: index, action },
           }),
         })
         continue
       }
       if (entry.glob === undefined) {
-        const row = folderRow(entry, index, folder)
+        const row = folderRow(entry, index, folder, action)
         if (row !== null) rows.push(row)
         continue
       }
@@ -446,7 +439,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       const listed: Row[] = []
       for (const match of matches.slice(0, max)) {
         if (containedIn([folder], match) === null) continue
-        const row = folderRow(entry, index, match)
+        const row = folderRow(entry, index, match, action)
         if (row !== null) listed.push(row)
       }
       const last = listed.at(-1)
@@ -460,13 +453,19 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       rows.push(...listed)
     }
     for (const [index, entry] of (d.project ?? []).entries()) {
-      for (const checkout of checkoutsIn(ctx.targets)) {
+      for (const checkout of checkouts) {
         if (ctx.ignore?.some((i) => within(i, checkout)) === true) continue
         rows.push(...projectRows(entry, index, checkout))
       }
     }
     return rows
   }
+
+  const unreadable = (why: string): Row['objections'][number] => ({
+    level: 'refuse',
+    code: 'process-table-unreadable',
+    reason: `process table unreadable: ${why}`,
+  })
 
   /** The `inUse` objections now: a running process or a lock file refuses every candidate. */
   const inUseNow = (ctx: Ctx): Row['objections'] => {
@@ -477,11 +476,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         out.push({ level: 'refuse', code: IN_USE, reason: `running: ${found.names.join(', ')}` })
       }
       if (found.unknown !== undefined) {
-        out.push({
-          level: 'refuse',
-          code: 'process-table-unreadable',
-          reason: `process table unreadable: ${found.unknown}`,
-        })
+        out.push(unreadable(found.unknown))
         break
       }
     }
@@ -496,31 +491,20 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   /** What blocks deleting a `project` row now: a busy process in its checkout. */
   const liveIn = (checkout: string, ctx: Ctx): Row['objections'] => {
     const held = kit.running({ in: checkout }, ctx)
-    return [
-      ...(held.names.length > 0
-        ? [
-            {
-              level: 'refuse' as const,
-              code: 'live-process',
-              reason: `running in the checkout: ${held.names.join(', ')}`,
-            },
-          ]
-        : []),
-      ...(held.unknown === undefined
-        ? []
-        : [
-            {
-              level: 'refuse' as const,
-              code: 'process-table-unreadable',
-              reason: `process table unreadable: ${held.unknown}`,
-            },
-          ]),
-    ]
+    const out: Row['objections'] = []
+    if (held.names.length > 0) {
+      out.push({
+        level: 'refuse',
+        code: 'live-process',
+        reason: `running in the checkout: ${held.names.join(', ')}`,
+      })
+    }
+    if (held.unknown !== undefined) out.push(unreadable(held.unknown))
+    return out
   }
 
   /** Each folder that passes the checks: the plugin's roots, each a self root. */
-  const rootPaths = (ctx: Ctx): string[] => {
-    const refused = problems(ctx)
+  const rootPaths = (refused: Map<string, string | null>): string[] => {
     const out = new Set<string>()
     for (const [key, folder] of folders) if (refused.get(key) === null) out.add(folder)
     return [...out]
@@ -559,14 +543,15 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       }
       busy.push(...liveIn(checkout, ctx))
     } else {
-      const now = rootPaths(ctx)
+      const refused = problems(ctx)
+      const now = rootPaths(refused)
       if (!now.some((r) => realOr(r) === realOr(path)) && containedIn(now, path) === null) {
         return `it is not inside ${name}'s roots`
       }
       const entry = d.candidates[ev.candidate ?? -1]
       const folder = entry === undefined ? undefined : folders.get(entry.path)
       if (entry === undefined || folder === undefined) return 'no candidate entry gives it now'
-      const problem = problems(ctx).get(entry.path) ?? null
+      const problem = refused.get(entry.path) ?? null
       if (problem !== null) return problem
       if (
         entry.glob === undefined ? path !== folder : !globMatches(folder, entry.glob).includes(path)
@@ -597,7 +582,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       if (d.detect?.any !== undefined) return d.detect.any.some(holds)
       return [...folders.values()].some(present)
     },
-    roots: (ctx): Root[] => rootPaths(ctx).map((path) => ({ path, self: true })),
+    roots: (ctx): Root[] => rootPaths(problems(ctx)).map((path) => ({ path, self: true })),
     discover(ctx) {
       rows = new Map(rowsNow(ctx).map((r) => [r.candidate.id, r]))
       return [...rows.values()].map((r) => r.candidate)
@@ -622,9 +607,9 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       if (path === undefined) throw new Error(`${c.id} is not a folder`)
       if (isLink(path)) throw new Error(`${path} is now a symlink; it is not followed`)
       if (!present(path)) return `already gone: ${path}`
-      const why = refusal(c.evidence as Evidence, path, ctx)
-      if (why !== null) throw new Error(`${path} was not deleted: ${why}`)
       const ev = c.evidence as Evidence
+      const why = refusal(ev, path, ctx)
+      if (why !== null) throw new Error(`${path} was not deleted: ${why}`)
       if (ev.action === 'command') {
         return runCommand(kit, d.candidates[ev.candidate!]!, path, at.home, ctx)
       }
