@@ -19,14 +19,13 @@ import {
   checkoutsOf,
   hoursText,
   inside,
-  present,
   refusedRow,
   type ArtifactOptions,
   type Checkout,
   type Env,
   type Row,
 } from './artifacts.ts'
-import { idleHoursSetting, type Kit } from './kit.ts'
+import { idleHoursSetting, present, type Kit } from './kit.ts'
 import { PLUGIN_API, definePlugin, type Plugin } from './types.ts'
 
 export const NODE_PLUGIN = 'node'
@@ -35,15 +34,6 @@ const PNPM_NOTE =
   'node_modules/.pnpm is mostly hard links into the pnpm store; deleting it frees less than the size shown'
 
 const SKIPPED = new Set(['node_modules', '.git', 'target'])
-
-async function rowFor(env: Env, checkout: Checkout): Promise<Row[]> {
-  try {
-    return rowOrThrow(env, checkout)
-  } catch {
-    // A directory that cannot be read may hide recent changes: no row.
-    return []
-  }
-}
 
 function rowOrThrow(env: Env, checkout: Checkout): Row[] {
   const { kit, idleHours: threshold } = env
@@ -78,7 +68,7 @@ export function nodePlugin(opts: ArtifactOptions = {}, kit?: Kit): Plugin {
     NODE_PLUGIN,
     opts,
     (env) => checkoutsOf(env).some((c) => existsSync(join(c.path, 'package.json'))),
-    rowFor,
+    rowOrThrow,
     kit,
   )
 }

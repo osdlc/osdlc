@@ -12,24 +12,33 @@
  * (see {@link historyIn}), that history (`lost`). A remote URI cannot be checked from
  * here and a folder with no `workspace.json` is an empty window's, so both are
  * left alone. A `workspace.json` of any other shape is never guessed at: the
- * folder is proposed and refused (`unknown-workspace`), which is how it shows
- * as a note. A path on a volume that is not mounted is not gone either.
+ * folder is proposed held and refused (`unknown-workspace`), so it shows under
+ * `--all-rows`. A path on a volume that is not mounted is not gone either.
  *
  * Built on the plugin kit alone, as a code plugin would be.
  */
 
-import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
+import {
+  closeSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  readdirSync,
+  realpathSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, sep } from 'node:path'
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { z } from 'zod'
 
-import { pluginKit, type Kit, type KitOptions } from './kit.ts'
+import { attachKit, pluginKit, type Kit, type KitOptions, type Running } from './kit.ts'
 import {
   PLUGIN_API,
   definePlugin,
   type Candidate,
+  type Ctx,
   type Objection,
   type PathCandidate,
   type Plugin,
@@ -56,7 +65,11 @@ interface Editor {
   product: string
   /** Its folder in `Application Support` on macOS and in `.config` on Linux. */
   appDir: string
-  /** Its process names, as `kit.running` gives them without the pid. */
+  /**
+   * Its process names. `\x20` is the space as `lsof` writes it in a command
+   * name; the `\s` also accepts the ` (pid <n>)` that `kit.running` appends
+   * to a bare name.
+   */
   process: RegExp
   /** True when its workspace storage always holds chat history, so deleting it is `lost`. */
   keepsChat: boolean
@@ -144,6 +157,12 @@ function chatRequests(text: string, log: boolean): number {
     }
     if (count === undefined) throw new Error('the log does not start with the whole chat')
     const [key, index] = entry.k
+    if (key === undefined) {
+      // The whole chat replaced.
+      if (entry.kind !== 1) throw new Error('the whole chat changed other than by replacing it')
+      count = requestsOf(entry.v)
+      continue
+    }
     if (key !== 'requests') continue
     if (entry.k.length > 1) {
       // A change inside one request: that request is there.
@@ -162,6 +181,44 @@ function chatRequests(text: string, log: boolean): number {
   return count
 }
 
+/**
+ * The key under which VS Code kept a workspace's chats in its `state.vscdb`
+ * before it moved them to `chatSessions/` (`chatServiceImpl.ts`); a storage
+ * folder last used before then may hold its chats there alone.
+ */
+const LEGACY_CHAT_KEY = Buffer.from('interactive.sessions')
+
+/** How much of a `state.vscdb` is read at a time while looking for {@link LEGACY_CHAT_KEY}. */
+const SCAN_CHUNK = 1 << 20
+
+/** True when the `state.vscdb` at `path` names the old chat key; one that cannot be read does. */
+function legacyChats(path: string): boolean {
+  let fd: number | undefined
+  try {
+    const st = lstatSync(path, { throwIfNoEntry: false })
+    if (st?.isFile() !== true) return false
+    // Read in chunks that overlap by the key's length less one, so the key is found across a seam.
+    fd = openSync(path, 'r')
+    const keep = LEGACY_CHAT_KEY.length - 1
+    const chunk = Math.min(st.size, SCAN_CHUNK)
+    // Only the bytes read are searched, so the buffer need not be zeroed.
+    const buf = Buffer.allocUnsafe(chunk + keep)
+    let held = 0
+    for (;;) {
+      const read = readSync(fd, buf, held, chunk, null)
+      if (read === 0) return false
+      const end = held + read
+      if (buf.subarray(0, end).includes(LEGACY_CHAT_KEY)) return true
+      held = Math.min(keep, end)
+      buf.copy(buf, 0, end - held, end)
+    }
+  } catch {
+    return true
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
+}
+
 /** True when the folder `path` holds something; one that cannot be read does. */
 function filled(path: string): boolean {
   try {
@@ -177,9 +234,10 @@ const isDir = (dir: string): boolean =>
 
 /**
  * True when the history folder `name`, at `path`, holds history that cannot be
- * had again: a chat with at least one request (one that cannot be read counts,
- * an empty file is a chat with none), an editing session whose `contents/`
- * has the files it changed, or anything at all in Copilot's folders.
+ * had again: a chat with at least one request (an empty file is a chat with
+ * none), an editing session whose `contents/` has the files it changed, or
+ * anything at all in Copilot's folders. Throws on a chat or session it cannot
+ * read, which {@link historyIn} counts as history.
  */
 function holdsHistory(name: (typeof HISTORY_FOLDERS)[number], path: string): boolean {
   if (name === 'chatSessions') {
@@ -187,27 +245,19 @@ function holdsHistory(name: (typeof HISTORY_FOLDERS)[number], path: string): boo
       const log = file.endsWith('.jsonl')
       // VS Code reads no other files there.
       if (!log && !file.endsWith('.json')) return false
-      try {
-        return chatRequests(readFileSync(join(path, file), 'utf8'), log) > 0
-      } catch {
-        return true
-      }
+      return chatRequests(readFileSync(join(path, file), 'utf8'), log) > 0
     })
   }
   if (name === 'chatEditingSessions') {
     return readdirSync(path).some((session) => {
       const contents = join(path, session, 'contents')
-      try {
-        return isDir(join(path, session)) && isDir(contents) && filled(contents)
-      } catch {
-        return true
-      }
+      return isDir(join(path, session)) && isDir(contents) && filled(contents)
     })
   }
   return filled(path)
 }
 
-/** A mount point and the folder a volume is mounted on; a path under one that is missing or empty is on a volume that is not mounted. */
+/** Group 1 is the folder a removable volume is mounted on, under the mount roots macOS and Linux use. */
 const VOLUME =
   /^(\/Volumes\/[^/]+|\/run\/media\/[^/]+\/[^/]+|\/media\/[^/]+\/[^/]+|\/mnt\/[^/]+)(?:\/|$)/
 
@@ -223,26 +273,32 @@ type Env = Readonly<Record<string, string | undefined>>
 /** `HOME`, or the OS's home when it is unset or empty. */
 const homeOf = (env: Env): string => env.HOME || homedir()
 
-/** `editor`'s `User` folder under `home` on `platform`; undefined where the plugin does not know it. */
-function userDirOf(editor: Editor, home: string, platform: NodeJS.Platform): string | undefined {
-  if (platform === 'darwin') {
-    return join(home, 'Library', 'Application Support', editor.appDir, 'User')
-  }
-  if (platform === 'linux') return join(home, '.config', editor.appDir, 'User')
-  return undefined
+/**
+ * `editor`'s `User` folder on `platform`, found as VS Code and its forks find
+ * it: under `VSCODE_APPDATA` when set, else `~/Library/Application Support` on
+ * macOS and `XDG_CONFIG_HOME` or `~/.config` on Linux; undefined where the
+ * plugin does not know it.
+ */
+function userDirOf(editor: Editor, env: Env, platform: NodeJS.Platform): string | undefined {
+  const home = homeOf(env)
+  let appData: string
+  if (platform === 'darwin') appData = join(home, 'Library', 'Application Support')
+  else if (platform === 'linux') appData = env.XDG_CONFIG_HOME || join(home, '.config')
+  else return undefined
+  return join(env.VSCODE_APPDATA || appData, editor.appDir, 'User')
 }
 
 /** VS Code's `User` folder on `platform`; undefined where the plugin does not know it. */
 export const vscodeUserDir = (env: Env, platform: NodeJS.Platform): string | undefined =>
-  userDirOf(VSCODE, homeOf(env), platform)
+  userDirOf(VSCODE, env, platform)
 
 /** Cursor's `User` folder on `platform`; undefined where the plugin does not know it. */
 export const cursorUserDir = (env: Env, platform: NodeJS.Platform): string | undefined =>
-  userDirOf(CURSOR, homeOf(env), platform)
+  userDirOf(CURSOR, env, platform)
 
 /** What one storage folder says about its workspace. */
 type Entry =
-  | { state: 'gone'; workspace: string; local: string; history: string[] }
+  | { state: 'gone'; workspace: string; local: string }
   | { state: 'unknown'; problem: string }
   /** Live, remote, an empty window's, on a volume not mounted, or not a folder of the editor's. */
   | { state: 'skip' }
@@ -253,7 +309,7 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 /** A path with symlinks resolved, so two spellings of one place compare equal. */
 function canon(path: string): string {
   try {
-    return realpathSync(path)
+    return realpathSync.native(path)
   } catch {
     return path
   }
@@ -273,9 +329,13 @@ function unmounted(path: string): boolean {
   }
 }
 
-/** The {@link HISTORY_FOLDERS} in `dir` that are folders holding history (see {@link holdsHistory}); one that cannot be read counts. */
+/**
+ * The {@link HISTORY_FOLDERS} in `dir` that are folders holding history (see
+ * {@link holdsHistory}), one that cannot be read counting, and `state.vscdb`
+ * when it holds chats from before `chatSessions/` (see {@link legacyChats}).
+ */
 function historyIn(dir: string): string[] {
-  return HISTORY_FOLDERS.filter((name) => {
+  const found: string[] = HISTORY_FOLDERS.filter((name) => {
     const path = join(dir, name)
     try {
       return isDir(path) && holdsHistory(name, path)
@@ -283,6 +343,8 @@ function historyIn(dir: string): string[] {
       return true
     }
   })
+  if (legacyChats(join(dir, 'state.vscdb'))) found.push('state.vscdb')
+  return found
 }
 
 /** The local path a `file:` URI names; null for another scheme; throws when it is not a URI. */
@@ -292,9 +354,9 @@ function localPath(uri: string): string | null {
 }
 
 /** What the storage folder `dir` says, read from its `workspace.json`. */
-function entryOf(dir: string, withHistory: boolean): Entry {
+function entryOf(dir: string): Entry {
   // The editor makes each one a folder; a link or a file is not one of its own and is never followed.
-  if (lstatSync(dir, { throwIfNoEntry: false })?.isDirectory() !== true) return { state: 'skip' }
+  if (!isDir(dir)) return { state: 'skip' }
   let text: string
   try {
     text = readFileSync(join(dir, 'workspace.json'), 'utf8')
@@ -310,12 +372,11 @@ function entryOf(dir: string, withHistory: boolean): Entry {
     return { state: 'unknown', problem: 'workspace.json is not JSON' }
   }
   if (!isObject(body)) return { state: 'unknown', problem: 'workspace.json is not an object' }
-  const named = (['folder', 'workspace'] as const).filter((k) => body[k] !== undefined)
-  const key = named[0]
-  if (named.length !== 1 || key === undefined) {
+  const [key, extra] = (['folder', 'workspace'] as const).filter((k) => body[k] !== undefined)
+  if (key === undefined || extra !== undefined) {
     return {
       state: 'unknown',
-      problem: `workspace.json names ${named.length === 0 ? 'neither a folder nor a workspace' : 'both a folder and a workspace'}`,
+      problem: `workspace.json names ${key === undefined ? 'neither a folder nor a workspace' : 'both a folder and a workspace'}`,
     }
   }
   const workspace = body[key]
@@ -336,10 +397,43 @@ function entryOf(dir: string, withHistory: boolean): Entry {
     return { state: 'skip' }
   }
   if (unmounted(local)) return { state: 'skip' }
-  return { state: 'gone', workspace, local, history: withHistory ? historyIn(dir) : [] }
+  return { state: 'gone', workspace, local }
 }
 
-/** The local folders and workspace files the window state names; `problem` when it is not a shape this plugin knows. */
+/** JSON's strings, and JSONC's comments and trailing commas. */
+const JSONC_TOKEN =
+  /("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)|,(?=(?:\s|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*[\]}])/g
+
+/** `text` with JSONC's comments and trailing commas taken out; strings are left as they are. */
+const stripJsonc = (text: string): string =>
+  text.replace(
+    JSONC_TOKEN,
+    (token, quoted: string | undefined) => quoted ?? (token.startsWith(',') ? '' : ' '),
+  )
+
+/** The local folders the `.code-workspace` file `file` lists as its roots; throws when it cannot be read as one. */
+function workspaceRoots(file: string): string[] {
+  const body: unknown = JSON.parse(stripJsonc(readFileSync(file, 'utf8')))
+  if (!isObject(body) || !Array.isArray(body.folders)) throw new Error('no folders list')
+  const roots: string[] = []
+  for (const f of body.folders) {
+    if (!isObject(f)) continue
+    if (typeof f.path === 'string') {
+      roots.push(isAbsolute(f.path) ? f.path : resolve(dirname(file), f.path))
+      continue
+    }
+    if (typeof f.uri !== 'string') continue
+    try {
+      const local = localPath(f.uri)
+      if (local !== null) roots.push(local)
+    } catch {
+      // Not a URI: names nothing that could be open here.
+    }
+  }
+  return roots
+}
+
+/** The local folders, workspace files and those files' roots the window state names; `problem` when one is not a shape this plugin knows. */
 function openWindows(stateFile: string): { paths: string[]; problem?: string } {
   let body: unknown
   try {
@@ -359,44 +453,65 @@ function openWindows(stateFile: string): { paths: string[]; problem?: string } {
     ...(Array.isArray(state.openedWindows) ? state.openedWindows : []),
   ]
   const paths: string[] = []
+  const problems: string[] = []
+  // The last active window is usually among the opened ones too.
+  const seen = new Set<string>()
   for (const w of windows) {
     if (!isObject(w)) continue
     const id = isObject(w.workspaceIdentifier) ? w.workspaceIdentifier.configURIPath : undefined
     for (const uri of [w.folder, id]) {
-      if (typeof uri !== 'string') continue
+      if (typeof uri !== 'string' || seen.has(uri)) continue
+      seen.add(uri)
+      let local: string | null
       try {
-        const local = localPath(uri)
-        if (local !== null) paths.push(canon(local))
+        local = localPath(uri)
       } catch {
         // Not a URI: names nothing that could be open here.
+        continue
+      }
+      if (local === null) continue
+      paths.push(canon(local))
+      if (uri !== id) continue
+      // A multi-root workspace: every folder it lists is open too.
+      try {
+        for (const r of workspaceRoots(local)) paths.push(canon(r))
+      } catch (err) {
+        // A workspace file that is gone has no window with its roots open.
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT')
+          problems.push(`the workspace file ${local} could not be read`)
       }
     }
   }
-  return { paths }
+  return problems.length === 0 ? { paths } : { paths, problem: problems.join('; ') }
 }
+
+/** What the editor's windows have open, and whether it runs, or may. */
+type Windows = { paths: string[]; problem?: string; running: boolean }
 
 /** A git plugin's worktree row. */
 const isGitWorktree = (c: Candidate): c is PathCandidate =>
   c.kind === 'worktree' && c.owner === 'git' && c.path !== undefined
 
-/** `editor`'s processes among `kit.running`'s names. */
+/** `editor`'s processes among `kit.running`'s names; see {@link Editor.process}. */
 const processesOf = (editor: Editor, names: readonly string[]): string[] =>
-  names.filter((n) => editor.process.test(n.replace(/ \(pid \d+\)$/, '')))
+  names.filter((n) => editor.process.test(n))
 
 function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
-  const home = homeOf(opts.env ?? process.env)
-  const userDir = opts.userDir ?? userDirOf(editor, home, opts.platform ?? process.platform)
-  const root = userDir === undefined ? undefined : join(userDir, 'workspaceStorage')
-  const stateFile =
-    userDir === undefined ? undefined : join(userDir, 'globalStorage', 'storage.json')
+  const env = opts.env ?? process.env
+  const userDir = opts.userDir ?? userDirOf(editor, env, opts.platform ?? process.platform)
+  const under = (...parts: string[]): string | undefined =>
+    userDir === undefined ? undefined : join(userDir, ...parts)
+  const root = under('workspaceStorage')
+  const stateFile = under('globalStorage', 'storage.json')
   const agentDir =
-    editor.agentWorktrees === undefined ? undefined : canon(join(home, editor.agentWorktrees))
-  // Storage that always holds chat is `lost` anyway, so its history folders are not read.
-  const withHistory = !editor.keepsChat
-  const present = (): boolean =>
+    editor.agentWorktrees === undefined
+      ? undefined
+      : canon(join(homeOf(env), editor.agentWorktrees))
+  /** `root` when it exists. */
+  const storage = (): string | undefined =>
     root !== undefined && lstatSync(root, { throwIfNoEntry: false }) !== undefined
-  // Its agent worktrees are refused even where its storage is not, as on a host with only the CLI.
-  const detect = (): boolean => present() || (agentDir !== undefined && isDir(agentDir))
+      ? root
+      : undefined
 
   /** The last discovery's entries by candidate id, kept for `object`. */
   let entries = new Map<string, Entry>()
@@ -414,18 +529,59 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
     reason,
   })
 
+  /** Whether the editor runs, or may, and while it does, what its windows have open. */
+  const look = (ctx: Pick<Ctx, 'signal'>): Windows => {
+    // The window state outlives a quit, so it counts only while the editor runs, or may.
+    const anywhere = kit.running({ in: '/' }, ctx)
+    const running = processesOf(editor, anywhere.names).length > 0 || anywhere.unknown !== undefined
+    const windows = running && stateFile !== undefined ? openWindows(stateFile) : { paths: [] }
+    return { ...windows, running }
+  }
+
+  /** The objections to deleting git's worktree `c` while the editor is as `w` says. */
+  const worktreeCheck = (c: PathCandidate, w: Windows, ctx: Pick<Ctx, 'signal'>): Objection[] => {
+    // With no process of the editor's anywhere, none works in this worktree.
+    const here: Running = w.running ? kit.running({ in: c.path }, ctx) : { names: [] }
+    const procs = processesOf(editor, here.names)
+    if (procs.length > 0) {
+      return [own(c, 'refuse', IN_USE, `${editor.product} works in it: ${procs.join(', ')}`)]
+    }
+    const dir = w.paths.length === 0 ? undefined : canon(c.path)
+    if (dir !== undefined && w.paths.some((p) => within(p, dir))) {
+      return [own(c, 'refuse', IN_USE, `a ${editor.product} window has it open (${stateFile})`)]
+    }
+    const unchecked = [
+      here.unknown === undefined
+        ? undefined
+        : `the processes working in it could not be listed (${here.unknown})`,
+      w.problem,
+    ].filter((s) => s !== undefined)
+    if (unchecked.length === 0) return []
+    const kind = here.unknown === undefined ? 'state-unreadable' : 'unchecked'
+    const reason = `${unchecked.join('; ')}; ${editor.product} was not fully checked`
+    return [own(c, 'note', `${editor.name}-${kind}`, reason)]
+  }
+
   return {
     name: editor.name,
     limits: { discover: DISCOVER_LIMIT_MS },
-    detect,
-    roots: () => (root !== undefined && present() ? [root] : []),
-    discover() {
-      if (root === undefined || !present()) return []
+    // Its agent worktrees are refused even where its storage is not, as on a host with only the CLI.
+    detect: () => storage() !== undefined || (agentDir !== undefined && isDir(agentDir)),
+    roots: () => {
+      const dir = storage()
+      return dir === undefined ? [] : [dir]
+    },
+    async discover(ctx) {
+      const top = storage()
+      if (top === undefined) return []
       const found = new Map<string, Entry>()
       const out: Candidate[] = []
-      for (const name of readdirSync(root).sort()) {
-        const dir = join(root, name)
-        const entry = entryOf(dir, withHistory)
+      for (const name of readdirSync(top).sort()) {
+        // Each folder is sized; give the time limit a turn to stop the hook between them.
+        await new Promise((done) => setImmediate(done))
+        if (ctx.signal.aborted) throw new Error('discover was stopped')
+        const dir = join(top, name)
+        const entry = entryOf(dir)
         if (entry.state === 'skip') continue
         const c =
           entry.state === 'gone'
@@ -463,35 +619,22 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
       }
       if (worktrees.length === 0 && gone.length === 0) return out
 
-      // The window state outlives a quit, so it counts only while the editor runs, or may.
-      const anywhere = kit.running({ in: '/' }, ctx)
-      const running =
-        processesOf(editor, anywhere.names).length > 0 || anywhere.unknown !== undefined
-      const windows = running && stateFile !== undefined ? openWindows(stateFile) : { paths: [] }
-      for (const c of worktrees) {
-        const real = canon(c.path)
-        const procs = processesOf(editor, kit.running({ in: c.path }, ctx).names)
-        if (procs.length > 0) {
-          out.push(own(c, 'refuse', IN_USE, `${editor.product} works in it: ${procs.join(', ')}`))
-        } else if (windows.paths.some((p) => within(p, real))) {
-          out.push(own(c, 'refuse', IN_USE, `a ${editor.product} window has it open (${stateFile})`))
-        } else if (windows.problem !== undefined) {
-          out.push(
-            own(
-              c,
-              'note',
-              `${editor.name}-state-unreadable`,
-              `${windows.problem}; only processes were checked`,
-            ),
-          )
-        }
-      }
-      for (const { c, local } of gone) {
-        if (windows.paths.includes(canon(local))) {
+      const windows = look(ctx)
+      for (const c of worktrees) out.push(...worktreeCheck(c, windows, ctx))
+      const open = new Set(windows.paths)
+      // A gone folder's path never resolves, so it is not even tried while no window is open.
+      for (const { c, local } of open.size === 0 ? [] : gone) {
+        if (open.has(canon(local))) {
           out.push(own(c, 'refuse', IN_USE, `a ${editor.product} window still has ${local} open`))
         }
       }
       return out
+    },
+    prepare(c, ctx) {
+      if (!isGitWorktree(c)) return
+      // A window may have opened it since `object`.
+      const refusal = worktreeCheck(c, look(ctx), ctx).find((o) => o.level === 'refuse')
+      if (refusal !== undefined) throw new Error(refusal.reason)
     },
     delete(c, ctx) {
       if (c.path === undefined) throw new Error(`${c.id} is not a storage folder`)
@@ -502,12 +645,13 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
         return `already gone: ${c.path}`
       }
       // Read again: its workspace may be back, or the folder no longer the editor's.
-      const now = entryOf(c.path, withHistory)
+      const now = entryOf(c.path)
       if (now.state !== 'gone' || now.workspace !== c.evidence.workspace) {
         throw new Error(`${c.path} is no longer storage for a workspace that is gone`)
       }
-      if (now.history.length > 0 && c.costDescription !== 'lost') {
-        throw new Error(`${c.path} now holds chat or agent history (${now.history.join(', ')})`)
+      const history = c.costDescription === 'lost' ? [] : historyIn(c.path)
+      if (history.length > 0) {
+        throw new Error(`${c.path} now holds chat or agent history (${history.join(', ')})`)
       }
       return kit.remove(c.path, ctx)
     },
@@ -518,55 +662,58 @@ function goneCandidate(
   editor: Editor,
   kit: Kit,
   dir: string,
-  e: { workspace: string; local: string; history: string[] },
+  e: Extract<Entry, { state: 'gone' }>,
 ): Candidate {
   const bytes = kit.size(dir)
-  const hasHistory = e.history.length > 0
+  // Storage that always holds chat is `lost` anyway, so its history folders are not read.
+  const history = editor.keepsChat ? [] : historyIn(dir)
+  const hasHistory = history.length > 0
   return kit.candidate({
     kind: KIND,
     path: dir,
     why: editor.keepsChat
       ? `${editor.product} kept state for ${e.local}, which no longer exists, in the storage where it keeps chat history`
-      : `${editor.product} kept state for ${e.local}, which no longer exists${hasHistory ? `, with chat or agent history in ${e.history.join(', ')}` : ''}`,
+      : `${editor.product} kept state for ${e.local}, which no longer exists${hasHistory ? `, with chat or agent history in ${history.join(', ')}` : ''}`,
     ...(bytes === null ? {} : { bytes }),
-    // A `lost` candidate is held, and runs only with `--allow discard-user-data`.
+    // `lost` alone holds it; see Candidate.costDescription in types.ts.
     costDescription: hasHistory || editor.keepsChat ? 'lost' : 're-download',
     evidence: {
       kind: KIND,
       path: dir,
       workspace: e.workspace,
-      ...(hasHistory ? { history: e.history } : {}),
+      ...(hasHistory ? { history } : {}),
     },
   })
 }
 
-/** `editor`'s plugin definition, built over `opts` and the `env` it is created with. No settings of its own. */
-const definitionOf = (editor: Editor, opts?: VscodeOptions) =>
+/** `editor`'s plugin on `kit`, or on a kit built from `opts`; the kit is attached so the core binds it each run. */
+function pluginOf(
+  editor: Editor,
+  opts: VscodeOptions = {},
+  kit: Kit = pluginKit(editor.name, opts),
+): Plugin {
+  const plugin = build(editor, kit, opts)
+  attachKit(plugin, kit)
+  return plugin
+}
+
+/** `editor`'s plugin as the command line builds it. No settings of its own. */
+const definitionOf = (editor: Editor) =>
   definePlugin({
     name: editor.name,
     api: PLUGIN_API,
     settings: z.strictObject({}),
-    create: ({ kit, env }) => build(editor, kit, { ...opts, env }),
+    create: ({ kit, env }) => pluginOf(editor, { env }, kit),
   })
 
-/** `editor`'s plugin on a kit built from `opts`, made through `definePlugin` so the core binds that kit each run. */
-function pluginOf(editor: Editor, opts: VscodeOptions): Plugin {
-  return definitionOf(editor, opts).create({
-    settings: {},
-    only: [],
-    env: opts.env ?? process.env,
-    kit: pluginKit(editor.name, opts),
-  })
-}
+/** The `vscode` plugin on `kit`, or on a kit built from `opts`. */
+export const vscodePlugin = (opts?: VscodeOptions, kit?: Kit): Plugin => pluginOf(VSCODE, opts, kit)
+
+/** The `cursor` plugin on `kit`, or on a kit built from `opts`. */
+export const cursorPlugin = (opts?: VscodeOptions, kit?: Kit): Plugin => pluginOf(CURSOR, opts, kit)
 
 /** The `vscode` plugin as the command line builds it. No settings of its own. */
 export const vscodeDefinition = definitionOf(VSCODE)
 
 /** The `cursor` plugin as the command line builds it. No settings of its own. */
 export const cursorDefinition = definitionOf(CURSOR)
-
-/** The `vscode` plugin on a kit built from `opts`. */
-export const vscodePlugin = (opts: VscodeOptions = {}): Plugin => pluginOf(VSCODE, opts)
-
-/** The `cursor` plugin on a kit built from `opts`. */
-export const cursorPlugin = (opts: VscodeOptions = {}): Plugin => pluginOf(CURSOR, opts)

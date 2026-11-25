@@ -8,6 +8,7 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -17,7 +18,7 @@ import { captureContext } from '@osdlc/cli-tool'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { main, tildeId, untildeId, type MainDeps } from '../src/cli.ts'
+import { main, tildeId, untildeId, untildeSpare, type MainDeps } from '../src/cli.ts'
 import { hostDirs } from '../src/config.ts'
 import { PLAN_VERSION, parsePlan } from '../src/plan.ts'
 import type { Candidate, Objection, Plugin, RefCandidate } from '../src/index.ts'
@@ -54,17 +55,22 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
   return {
     home,
     cwd: tempDir(),
-    env: { ...(process.env as Record<string, string>), HOST_CLEANER_ROOT: home },
+    // VSCODE_APPDATA keeps the vscode and cursor plugins off this machine's storage.
+    env: {
+      ...(process.env as Record<string, string>),
+      HOST_CLEANER_ROOT: home,
+      VSCODE_APPDATA: home,
+    },
   }
 }
 
 async function run(argv: string[], cwd: string, env: Record<string, string>, deps: MainDeps = {}) {
   const ctx = captureContext({ cwd, env })
   // The shipped plugins would talk to this machine's Orca and sweep every repository it lists,
-  // and read this machine's VS Code and Cursor storage.
+  // and cursor would look for this machine's agent worktrees, which VSCODE_APPDATA does not move.
   const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
   const args =
-    phase && deps.plugins === undefined ? [...argv, '--skip-plugin', 'orca,vscode,cursor'] : argv
+    phase && deps.plugins === undefined ? [...argv, '--skip-plugin', 'orca,cursor'] : argv
   const code = await main(args, ctx, { confirm: () => null, ...deps })
   return { code, out: ctx.io.out, err: ctx.io.err }
 }
@@ -629,6 +635,27 @@ describe('plan and clean', () => {
     expect(untildeId('branch:~/repo:main', '/h/me')).toBe('branch:/h/me/repo:main')
     expect(untildeId('~/x', '/h/me')).toBe('/h/me/x')
     expect(untildeId('feat/~x', '/h/me')).toBe('feat/~x')
+  })
+
+  test('a --spare with ~ matches whether HOME ends in a slash or is a symlink', async () => {
+    const { env: base, cwd } = setup()
+    const real = tempDir()
+    const link = join(tempDir(), 'home')
+    symlinkSync(real, link)
+    expect(untildeSpare('worktree:~/wt', link)).toEqual([
+      `worktree:${link}/wt`,
+      `worktree:${real}/wt`,
+    ])
+    expect(untildeSpare('worktree:~/wt', real)).toEqual([`worktree:${real}/wt`])
+    const dir = join(real, 'dev', 'cache')
+    const plugins = [fake('cache', { candidate: { id: `artifact:${dir}` } })]
+    const ran = async (HOME: string, spare: string[] = ['--spare', 'artifact:~/dev/cache']) => {
+      const argv = ['clean', '--dry-run', '--format', 'json', ...spare]
+      return JSON.parse((await run(argv, cwd, { ...base, HOME }, { plugins })).out).run
+    }
+    expect(await ran(`${real}/`, [])).toEqual([`artifact:${dir}`])
+    expect(await ran(`${real}/`)).toEqual([])
+    expect(await ran(link)).toEqual([])
   })
 
   test('a plan of another version is refused: sweep again', async () => {

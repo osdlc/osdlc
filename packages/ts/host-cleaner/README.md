@@ -36,7 +36,8 @@ Any hook may answer straight away or return a promise. The core awaits each
 one in turn, one plugin at a time, so `survey`, `recheck` and `clean` return
 promises. Each call has a time limit: 30 seconds (`HOOK_LIMIT_MS`), or 10
 minutes for `delete` (`DELETE_LIMIT_MS`); a plugin may set its own per hook in
-`limits`. Past the limit the core aborts `ctx.signal`, the call's own signal,
+`limits` (a positive number of milliseconds; any other value is warned of and
+the default used). Past the limit the core aborts `ctx.signal`, the call's own signal,
 and counts the call as a throw: a timed-out `detect` leaves the plugin out, a
 timed-out `object` refuses every candidate, and a timed-out `delete` fails
 that step.
@@ -56,6 +57,10 @@ targets, in the config or on the command line, and false when the command line
 fell back to the directory it runs in (and when a `RunCtx` leaves it unset). A
 plan keeps it, so `clean --plan` tells the plugins the same; a plan without it
 is refused: sweep again.
+
+A `RunCtx` may name `home`, the home folder no root may be or hold (see the
+roots rules); unset, it is the process's. The CLI sets it from `HOME`, the
+same home it expands `~` with.
 
 A candidate's `requires` lists the candidates that must go first. If one is
 refused, dropped or fails, the candidate is too; requirements are deleted
@@ -106,9 +111,10 @@ What a plan runs uses repo-cleaner's words, with their meaning:
 - **`select`:** exactly these candidate ids instead of the default.
 - **`pick`:** these as well; a candidate held for review runs only when picked
   or selected.
-- **`spare`:** leave these alone: an id, a path, a name (every candidate of
-  that name, as a branch and the worktree that has it checked out), or a glob
-  over ids, paths and names. A spared candidate that would have run is
+- **`spare`:** leave these alone: an id, a path (a ref candidate's `ref` or
+  the folder it is `at`), a name (every candidate of that name, as a branch
+  and the worktree that has it checked out), or a glob over ids, paths and
+  names. A spared candidate that would have run is
   dropped as `spared`.
 
 Each candidate that runs is still judged by the rules above.
@@ -186,11 +192,11 @@ needs no more than the path. The plugin `create` returns through
 | --- | --- |
 | `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the hours since, fractions included, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Out of time, it is `{ unmeasured: true }`. |
 | `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
-| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and every ancestor of it are left out, so the `npm exec` or `pnpm dlx` that started it does not count. The table is read fresh once per hook call. |
+| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and the unbroken line of ancestors above it whose command lines name host-cleaner are left out, so the `npm exec` or `pnpm dlx` that started it does not count, but an editor, terminal or `tmux` it runs inside does. The table is read fresh once per hook call. |
 | `kit.onPath(program)` | Whether a program is on PATH. |
 | `kit.candidate({ kind, path \| ref, ... })` | A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and the plugin as owner. |
 | `kit.run(argv, { signal, check })` | Runs a program through `@osdlc/command-seam`, with a time limit (`RUN_LIMIT_MS`, 30 seconds) and stopped when `ctx.signal` aborts; `ok` when it exited 0, a `CommandFailed` throw with `check`. |
-| `kit.remove(path, ctx?)` | Removes a folder only if it is still inside the plugin's roots, is one of its self roots, or is inside a target or a linked worktree of one (as in [containment](#paths-refs-and-containment)) by its real path, as the core bound them this run, after making read-only folders and files in it writable; checks it is gone and returns the receipt sentence. With `ctx`, it removes nothing once `ctx.signal` has aborted. |
+| `kit.remove(path, ctx?)` | Removes a folder only if it is still inside the plugin's roots, is one of its self roots, or is inside a target or a linked worktree of one (as in [containment](#paths-refs-and-containment)) by its real path, as the core bound them this run, after making read-only folders and files in it writable; checks it is gone and returns the receipt sentence. It removes nothing in a survey's hooks before that survey binds it, or in a ref candidate's `delete`. With `ctx`, it removes nothing once `ctx.signal` has aborted. |
 
 `idleHoursSetting` is the `idleHours` setting: a plugin that declares it
 inherits the config's top-level `idleHours` when its own entry sets none.
@@ -213,7 +219,7 @@ runner:
 | `contractSuite(plugin, ctx, { deleteLimitMs })` | Surveys the plugin twice and returns one line per broken rule. |
 
 The suite checks that `limits` name hooks; that the survey warns of nothing
-(no hook throws or runs past its limit, `detect`'s answer and each root has a
+(every limit is a positive number, no hook throws or runs past its limit, `detect`'s answer and each root has a
 shape the core takes, ids are unique, each candidate is the plugin's and has
 one of a path and a ref; a `detect` note is not a problem); that every path
 candidate is inside the plugin's roots or the targets, or is one of its self
@@ -278,13 +284,16 @@ gone (its worktree went first) is not a failure.
 VS Code keeps state for every folder it opened in `workspaceStorage/<hash>/`
 and never removes it when the folder goes. Its root is
 `~/Library/Application Support/Code/User/workspaceStorage` on macOS and
-`~/.config/Code/User/workspaceStorage` on Linux; the plugin is detected when
-that folder exists, and has no settings.
+`~/.config/Code/User/workspaceStorage` on Linux (`$XDG_CONFIG_HOME/Code/...`
+when `XDG_CONFIG_HOME` is set), or `$VSCODE_APPDATA/Code/...` on either when
+that is set, as VS Code itself finds it; the plugin is detected when that
+folder exists, and has no settings.
 
 | Phase | What it does |
 | --- | --- |
-| discover | Reads each folder's `workspace.json`. One whose `folder` or `workspace` (a `.code-workspace` file) is a `file:` URI naming nothing on disk is `workspace-storage:<path>`, with its size and `costDescription: re-download`. One that holds chat or agent history is `costDescription: lost` instead, so it is held and runs only when picked with `--allow discard-user-data`: history is a `chatSessions/` chat (VS Code's chats, a `.json` file or a `.jsonl` log) with at least one request, a `chatEditingSessions/<session>/` whose `contents/` has something in it (the file contents an agent's edits changed), or anything in the Copilot extension's `GitHub.copilot-chat/transcripts` or `GitHub.copilot-chat/memory-tool/memories`. An empty chat file, a chat with no requests, an editing session with an empty or missing `contents/`, and other files in `chatSessions/` do not count; a chat file it cannot parse, and a folder it cannot read, do. The `why` and `evidence.history` name the folders found. A remote URI, a folder with no `workspace.json` (an empty window's), a link, and a path on a volume that is not mounted are left alone. A `workspace.json` of any other shape is never guessed at: the folder is proposed held and refused `unknown-workspace`, naming what was found, so it shows under `--all-rows`. |
-| object | Refuses (`in-use`) a `git` worktree a VS Code process works in (by its working directory, such as a `Code Helper (Plugin)` process an extension started there), or one the window state (`User/globalStorage/storage.json`, `windowsState`) names as open while VS Code runs or the process table cannot be read. Its own candidate for a folder a window still names is refused the same way. A window state it cannot read is a `note` on each worktree. |
+| discover | Reads each folder's `workspace.json`. One whose `folder` or `workspace` (a `.code-workspace` file) is a `file:` URI naming nothing on disk is `workspace-storage:<path>`, with its size and `costDescription: re-download`. One that holds chat or agent history is `costDescription: lost` instead, so it is held and runs only when picked with `--allow discard-user-data`: history is a `chatSessions/` chat (VS Code's chats, a `.json` file or a `.jsonl` log) with at least one request, a `chatEditingSessions/<session>/` whose `contents/` has something in it (the file contents an agent's edits changed), anything in the Copilot extension's `GitHub.copilot-chat/transcripts` or `GitHub.copilot-chat/memory-tool/memories`, or a `state.vscdb` that names the `interactive.sessions` key, where VS Code kept chats before `chatSessions/`. An empty chat file, a chat with no requests, an editing session with an empty or missing `contents/`, and other files in `chatSessions/` do not count; a chat file it cannot parse, and a folder it cannot read, do. The `why` and `evidence.history` name the folders found. A remote URI, a folder with no `workspace.json` (an empty window's), a link, and a path on a volume that is not mounted are left alone. A `workspace.json` of any other shape is never guessed at: the folder is proposed held and refused `unknown-workspace`, naming what was found, so it shows under `--all-rows`. |
+| object | Refuses (`in-use`) a `git` worktree a VS Code process works in (by its working directory, such as a `Code Helper (Plugin)` process an extension started there), or one the window state (`User/globalStorage/storage.json`, `windowsState`) names as open, directly or as a root of an open `.code-workspace` file, while VS Code runs or the process table cannot be read. Its own candidate for a folder a window still names is refused the same way. A window state or workspace file it cannot read is a `note` (`vscode-state-unreadable`) on each worktree it does not refuse, and so is a worktree whose processes could not be listed (`vscode-unchecked`). |
+| prepare | Checks each `git` worktree again as `object` did, right before it is deleted, and fails it when VS Code now has it open or works in it. |
 | delete | Reads the folder's `workspace.json` again, checks it is a folder directly in `workspaceStorage`, its workspace is still gone, and it holds no chat or agent history unless it was planned as `lost`, then removes it with `kit.remove`. |
 
 ## The `cursor` plugin
@@ -292,7 +301,8 @@ that folder exists, and has no settings.
 Cursor is a fork of VS Code and keeps the same `workspaceStorage`. The `cursor`
 plugin is the `vscode` plugin's code over Cursor's folders,
 `~/Library/Application Support/Cursor/User/workspaceStorage` on macOS and
-`~/.config/Cursor/User/workspaceStorage` on Linux, and over Cursor's processes
+`~/.config/Cursor/User/workspaceStorage` on Linux (moved by `XDG_CONFIG_HOME`
+and `VSCODE_APPDATA` as VS Code's is), and over Cursor's processes
 (`Cursor`, `Cursor Helper (…)`, `cursor`, `cursor-agent`). It finds, refuses and deletes what
 the `vscode` plugin does. Two differences. Cursor keeps its chat history in that
 storage, so every dead workspace's folder is `costDescription: lost`, not only
@@ -303,7 +313,8 @@ their own worktrees under `~/.cursor/worktrees`, so the plugin refuses
 (`agent-worktree`, exported as `AGENT_WORKTREE`) any `git` worktree there,
 whether or not Cursor runs. The plugin is detected when its storage or that
 folder exists, so a host with only the `cursor-agent` CLI is covered too. A
-window state it cannot read is a `cursor-state-unreadable` note.
+window state it cannot read is a `cursor-state-unreadable` note, and a worktree
+whose processes could not be listed a `cursor-unchecked` one.
 
 ```ts
 import { CURSOR_PLUGIN, cursorPlugin, cursorUserDir, survey } from '@osdlc/host-cleaner'
