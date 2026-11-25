@@ -1,4 +1,8 @@
-/** The shipped code plugins, apart from the registry so settings can read them without its descriptor imports. */
+/**
+ * The shipped code plugins. Kept out of registry.ts so settings.ts can import
+ * them: registry.ts imports descriptor/engine.ts, which imports config.ts, which
+ * imports settings.ts.
+ */
 
 import { cargoDefinition } from './cargo.ts'
 import { gitDefinition } from './git.ts'

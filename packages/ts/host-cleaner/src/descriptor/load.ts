@@ -25,7 +25,7 @@ export const SHIPPED_DESCRIPTORS = fileURLToPath(new URL('../../descriptors/', i
 /** The extensions read in a descriptor folder; the reader takes YAML and JSON. */
 const DESCRIPTOR_EXTENSIONS = ['.yaml', '.yml', '.json'] as const
 
-/** What a descriptor's name, its file name less the extension, must look like: as `supersededBy` names a plugin. */
+/** A plugin name, the pattern `supersededBy` is checked against in schema.ts. */
 const NAME = /^[a-z][a-z0-9-]*$/
 
 export type DescriptorSource = 'shipped' | 'user' | 'flag'

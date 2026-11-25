@@ -289,7 +289,7 @@ const terminalChecklist: Checklist = (question, items) =>
 export interface MainDeps {
   /** The plugins that exist; default is the built-ins and the descriptors, built from the config. */
   plugins?: readonly Plugin[]
-  /** The folder of shipped descriptors. Defaults to the package's `descriptors/`. */
+  /** The folder of shipped descriptors. Defaults to `SHIPPED_DESCRIPTORS` in descriptor/load.ts. */
   shippedDescriptors?: string
   confirm?: Confirm
   /** Answers `clean -i`. Defaults to a checklist on the terminal. */
@@ -399,8 +399,8 @@ const unknownPlugins = (config: Config, known: (name: string) => boolean): strin
 /**
  * The config and the plugins this run uses: the built-ins and the descriptors
  * loaded, the config checked against them, each built from its entry (or
- * `deps.plugins`), then chosen by flag. A descriptor's `supersededBy` plugin
- * runs when it is among those chosen and survey found it detected.
+ * `deps.plugins`), then chosen by flag. `supersededBy` is answered as
+ * described at `supersession` in registry.ts.
  */
 function setUp(
   v: SweepValues,
