@@ -26,3 +26,5 @@ decision names the one that replaces it.
 - [D-04](decisions/D-04-entries-and-command.md): Entries, the command and the peer dependency
 - [D-05](decisions/D-05-platforms-and-runtimes.md): Platforms and runtimes
 - [D-06](decisions/D-06-licence.md): Licence
+- [D-07](decisions/D-07-accessibility-and-walk-modes.md): Accessibility and walk modes
+- [D-08](decisions/D-08-parley-capture-placement.md): Placement of `./parley-capture`

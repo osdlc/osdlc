@@ -20,7 +20,8 @@
  *   - `author` is `sksizer`.
  *   - `engines.node` is a subset of `>=22` and of every workspace dependency's
  *     range, so a package never claims a runtime its dependency refuses.
- *   - `typecheck` checks the source and the build config. `smoke` runs
+ *   - `typecheck` checks the source and the build config, with `vue-tsc` in
+ *     place of `tsc` when `src/` holds a `.vue` file. `smoke` runs
  *     `tests/smoke.mjs`, which exists.
  *   - Source lives in `src/` (no TypeScript at the package root but
  *     vitest.config.ts), tests in `tests/` (no `*.test.ts` under `src/`), and
@@ -237,6 +238,13 @@ export function shapeProblems({
 /** The `typecheck` script: the source and tests, then the emit config. */
 export const TYPECHECK = 'tsc --noEmit && tsc -p tsconfig.build.json --noEmit'
 
+/**
+ * The `typecheck` script of a package with a Vue single-file component under
+ * `src/`: the same two checks with `vue-tsc`, because `tsc` cannot read a
+ * `.vue` file.
+ */
+export const TYPECHECK_VUE = 'vue-tsc --noEmit && vue-tsc -p tsconfig.build.json --noEmit'
+
 const GITIGNORE_ENTRIES = ['node_modules/', 'dist/', 'coverage/']
 
 /** The `catalog:` entries of a pnpm-workspace.yaml, as `{ name: version }`. */
@@ -301,9 +309,11 @@ export function enginesProblems(
 /** What is wrong with the `typecheck` and `smoke` scripts. */
 export function scriptProblems(pkg: PackageJson, files: string[]): string[] {
   const problems: string[] = []
-  if (pkg.scripts?.typecheck !== TYPECHECK) {
+  const hasVue = files.some((f) => f.startsWith('src/') && f.endsWith('.vue'))
+  const typecheck = hasVue ? TYPECHECK_VUE : TYPECHECK
+  if (pkg.scripts?.typecheck !== typecheck) {
     problems.push(
-      `scripts.typecheck is ${JSON.stringify(pkg.scripts?.typecheck)}; set it to "${TYPECHECK}"`,
+      `scripts.typecheck is ${JSON.stringify(pkg.scripts?.typecheck)}; set it to "${typecheck}"`,
     )
   }
   if (pkg.scripts?.smoke !== 'node tests/smoke.mjs') {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   figure,
   finding,
+  heading,
   idAllocator,
   parleyDocument,
   regionFromBox,
@@ -119,5 +120,87 @@ describe('blocks', () => {
     expect(doc.created).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     expect(() => parleyDocument({ id: 'd', title: 't', blocks: [] })).toThrow()
     expect(() => parleyDocument({ id: 'd', title: 't', blocks: [f, f] })).toThrow(/duplicate/)
+  })
+})
+
+// parley's own schema is not published where a test can read it, so this checks
+// the constraints this module documents for it: ids that match the id pattern,
+// unique across the document, at least two frames in a slide show, regions
+// inside the image, and the enumerated words. The result also has to survive
+// `JSON.stringify`, which is how a caller writes it.
+describe('parleyDocument output shape', () => {
+  const frame = (id: string) => ({
+    id,
+    src: `x/${id}.png`,
+    alt: id,
+    regions: [regionFromBox({ x: 10, y: 10, w: 100, h: 50 }, VIEWPORT, { id: 'r', title: 'R' })],
+  })
+  const doc = parleyDocument({
+    id: 'Review 1',
+    title: 'Review',
+    summary: 's',
+    keep: true,
+    created: '2026-11-24',
+    blocks: [
+      heading({ id: 'Top', title: 'Top', level: 2 }),
+      figure({ id: 'Map', src: 'x/map.png', alt: 'map', regions: [frame('a').regions[0]!, null] }),
+      steps({ id: 'Walk', frames: [frame('a'), frame('b')] }),
+      finding({
+        id: 'F 1',
+        ref: 'R-1',
+        summary: 's',
+        severity: 'blocker',
+        evidence: [
+          { id: 'one', src: 'x/a.png', alt: 'a', regions: [null] },
+          { id: 'many', frames: [frame('a'), frame('b')] },
+        ],
+      }),
+    ],
+  })
+  const ID = /^[a-z0-9][a-z0-9-]*$/
+
+  const regionsOf = (item: { regions?: Array<{ id: string; box: object }> }) => item.regions ?? []
+
+  it('uses ids parley accepts, unique among blocks', () => {
+    expect(doc.id).toMatch(ID)
+    const ids = doc.blocks.map((b) => b.id)
+    for (const id of ids) expect(id).toMatch(ID)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('carries the required fields of each block type', () => {
+    expect(doc.created).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    for (const block of doc.blocks) {
+      if (block.type === 'heading') expect([1, 2, 3]).toContain(block.level)
+      if (block.type === 'figure') expect(block.src && block.alt).toBeTruthy()
+      if (block.type === 'steps') expect(block.frames.length).toBeGreaterThanOrEqual(2)
+      if (block.type === 'finding') {
+        expect(['blocker', 'should', 'nice']).toContain(block.severity)
+        expect(['open', 'fixed', 'wontfix']).toContain(block.status)
+        expect(block.ref && block.summary).toBeTruthy()
+        for (const e of block.evidence ?? [])
+          expect('frames' in e ? e.frames.length : e.src).toBeTruthy()
+      }
+    }
+  })
+
+  it('keeps every region inside the image and leaves no null in the output', () => {
+    const regions = doc.blocks.flatMap((b) => {
+      if (b.type === 'figure') return regionsOf(b)
+      if (b.type === 'steps') return b.frames.flatMap(regionsOf)
+      if (b.type === 'finding')
+        return (b.evidence ?? []).flatMap((e) =>
+          'frames' in e ? e.frames.flatMap(regionsOf) : regionsOf(e),
+        )
+      return []
+    }) as Array<{ id: string; box: { x: number; y: number; w: number; h: number } }>
+    expect(regions.length).toBeGreaterThan(0)
+    for (const r of regions) {
+      expect(r.id).toMatch(ID)
+      expect(r.box.x).toBeGreaterThanOrEqual(0)
+      expect(r.box.x + r.box.w).toBeLessThanOrEqual(1)
+      expect(r.box.y + r.box.h).toBeLessThanOrEqual(1)
+    }
+    expect(JSON.parse(JSON.stringify(doc))).toEqual(doc)
   })
 })
