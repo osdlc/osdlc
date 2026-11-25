@@ -353,7 +353,7 @@ const wanted = (v: SweepValues): string[] | undefined =>
     ? undefined
     : [...(v.plugin ?? []), ...(v.adapter ?? [])]
 
-/** Every plugin name this run could use, before the config and the flags choose: the registry. */
+/** Every plugin name this run could use, before config and flags narrow it: `deps.plugins`, else the registry. */
 const registered = (deps: MainDeps): string[] =>
   deps.plugins?.map((p) => p.name) ?? Object.keys(FACTORIES)
 
