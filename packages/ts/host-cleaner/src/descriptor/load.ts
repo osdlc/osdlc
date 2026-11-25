@@ -13,7 +13,7 @@
  * user file can stand in for a shipped one that no longer parses.
  */
 
-import { readdirSync, type Dirent } from 'node:fs'
+import { readdirSync, statSync, type Dirent } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -58,9 +58,19 @@ type Found = Pick<LoadedDescriptor, 'name' | 'source' | 'path'>
 
 const nameOf = (path: string): string => basename(path, extname(path))
 
+/** Whether `e` is a file, or a link to one; a dangling link is none. */
+function isFile(path: string, e: Dirent): boolean {
+  if (!e.isSymbolicLink()) return e.isFile()
+  try {
+    return statSync(path).isFile()
+  } catch {
+    return false
+  }
+}
+
 /**
- * The descriptor files in `dir`, by name: entries with one of
- * {@link DESCRIPTOR_EXTENSIONS}, not hidden, not folders. A missing folder has none.
+ * The descriptor files in `dir`, by name: files, or links to files, with one
+ * of {@link DESCRIPTOR_EXTENSIONS} in any case, not hidden. A missing folder has none.
  *
  * @throws DescriptorLoadError for two files of one name, or a name that is no plugin name
  */
@@ -77,9 +87,9 @@ function filesIn(dir: string, source: DescriptorSource): Found[] {
   const files = entries
     .filter(
       (e) =>
-        !e.isDirectory() &&
         !e.name.startsWith('.') &&
-        (DESCRIPTOR_EXTENSIONS as readonly string[]).includes(extname(e.name)),
+        (DESCRIPTOR_EXTENSIONS as readonly string[]).includes(extname(e.name).toLowerCase()) &&
+        isFile(join(dir, e.name), e),
     )
     .map((e) => join(dir, e.name))
     .sort()

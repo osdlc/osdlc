@@ -31,7 +31,7 @@ export {
   type Root,
   type RunCtx,
 } from './types.ts'
-export { BUILT_IN_PLUGINS, loadPlugins, type Loaded } from './registry.ts'
+export { BUILT_IN_PLUGINS, loadPlugins, runsAmong, type Loaded } from './registry.ts'
 export {
   PLAN_VERSION,
   PlanSchema,

@@ -6,6 +6,7 @@
 import { cargoDefinition } from './cargo.ts'
 import { descriptorPlugin, type DescriptorOptions } from './descriptor/engine.ts'
 import {
+  DescriptorLoadError,
   loadDescriptors,
   type DescriptorSources,
   type LoadedDescriptor,
@@ -39,14 +40,21 @@ export interface Loaded {
  * The built-ins, then the descriptors from `sources` by name; `opts` is passed
  * to each descriptor's plugin.
  *
- * @throws DescriptorLoadError for a descriptor named as a built-in plugin, or as loadDescriptors
+ * @throws DescriptorLoadError for a descriptor named as a built-in plugin, a
+ *   `supersededBy` that names no built-in plugin, or as loadDescriptors
  * @throws DescriptorError for a descriptor file that can't be used
  */
 export function loadPlugins(sources: DescriptorSources, opts: DescriptorOptions = {}): Loaded {
-  const descriptors = loadDescriptors(
-    sources,
-    BUILT_IN_PLUGINS.map((d) => d.name),
-  )
+  const builtIns = BUILT_IN_PLUGINS.map((d) => d.name)
+  const descriptors = loadDescriptors(sources, builtIns)
+  for (const d of descriptors) {
+    const by = d.descriptor.supersededBy
+    if (by !== undefined && !builtIns.includes(by)) {
+      throw new DescriptorLoadError(
+        `descriptor ${d.path}: supersededBy ${by} is no built-in plugin; have ${builtIns.join(', ')}`,
+      )
+    }
+  }
   return {
     definitions: [
       ...BUILT_IN_PLUGINS,

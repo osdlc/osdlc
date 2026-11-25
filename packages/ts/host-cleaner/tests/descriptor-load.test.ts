@@ -4,7 +4,14 @@
  * and the run's plugin list built from them.
  */
 
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,11 +25,11 @@ import {
   loadDescriptors,
   loadPlugins,
   pluginKit,
+  runsAmong,
   type Detection,
   type LoadedDescriptor,
   type Plugin,
 } from '../src/index.ts'
-import { runsAmong } from '../src/registry.ts'
 import { contractSuite, fakeContext, tempHome } from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
@@ -100,6 +107,22 @@ describe('sources', () => {
     })
     mkdirSync(join(s.shipped, 'go.yaml'))
     expect(loadDescriptors(s, RESERVED).map((d) => d.name)).toEqual(['uv'])
+  })
+
+  test('a link to a file is a descriptor; a link to a folder or nothing is not', () => {
+    const s = sources({})
+    const real = folder(join(tempDir(), 'real'), { 'npm.yaml': store('.npm') })
+    symlinkSync(join(real, 'npm.yaml'), join(s.user, 'npm.yaml'))
+    symlinkSync(real, join(s.user, 'shared.yaml'))
+    symlinkSync(join(real, 'gone.yaml'), join(s.user, 'gone.yaml'))
+    expect(loadDescriptors(s, RESERVED).map((d) => d.name)).toEqual(['npm'])
+  })
+
+  test('extensions are matched in any case', () => {
+    const s = sources({ 'uv.YAML': store('.cache/uv'), 'npm.Json': '{}' })
+    expect(() => loadDescriptors(s, RESERVED)).toThrow(DescriptorError)
+    const ok = sources({ 'uv.YAML': store('.cache/uv') })
+    expect(loadDescriptors(ok, RESERVED).map((d) => d.name)).toEqual(['uv'])
   })
 
   test('the shipped folder is the package’s descriptors/', () => {
@@ -205,6 +228,18 @@ describe('the run’s plugins', () => {
     const { definitions, descriptors } = loadPlugins(s)
     expect(definitions.map((d) => d.name)).toEqual(['git', 'cargo', 'node', 'orca', 'npm', 'uv'])
     expect(descriptors.map((d) => d.name)).toEqual(['npm', 'uv'])
+  })
+
+  test('supersededBy must name a built-in plugin: not itself, another descriptor or a typo', () => {
+    const by = (name: string): string => `${store('.cache/x')}supersededBy: ${name}\n`
+    expect(loadPlugins(sources({ 'uv.yaml': by('cargo') })).definitions.at(-1)!.name).toBe('uv')
+    expect(() => loadPlugins(sources({ 'uv.yaml': by('uv') }))).toThrow(
+      /supersededBy uv is no built-in plugin; have git, cargo, node, orca/,
+    )
+    expect(() => loadPlugins(sources({ 'a.yaml': by('b'), 'b.yaml': by('a') }))).toThrow(
+      DescriptorLoadError,
+    )
+    expect(() => loadPlugins(sources({ 'uv.yaml': by('cargoo') }))).toThrow(/cargoo/)
   })
 
   test('a loaded descriptor passes the contract suite, and its delete refuses a folder outside', async () => {
