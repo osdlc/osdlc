@@ -151,7 +151,9 @@ export function indexStores(corpus: string): StoreIndex {
     throw new DraftError(`${corpus} is not a corpus: it has no stores folder`)
   const bySlug = new Map<string, { file: string; fm: Record<string, unknown> }[]>()
   const unreadable: string[] = []
-  for (const file of readdirSync(stores).filter((f) => f.endsWith('.md')).sort()) {
+  for (const file of readdirSync(stores)
+    .filter((f) => f.endsWith('.md'))
+    .sort()) {
     let fm: Record<string, unknown>
     try {
       fm = frontMatter(join(stores, file))
