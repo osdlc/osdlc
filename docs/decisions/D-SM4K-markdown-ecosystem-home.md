@@ -145,5 +145,5 @@ of sksizer/dev yet".
 - The plan's records say where the two packages are now: their component
   records, tasks 12 and 15, and the note on sksizer/dev.
 - Four other libraries came from sksizer/dev at the same time, also at the
-  owner's request: `code-stats`, `diffkit`, `json-canvas-core` and
+  owner's request: `code-stats`, `diffkit` (since folded into `code-stats`), `json-canvas-core` and
   `json-canvas-vue`. The markdown plan does not own them.
