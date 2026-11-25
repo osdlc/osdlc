@@ -10,8 +10,11 @@
 use std::fs::{self, File};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
-use osdlc_file_lock::os_lock::{MAX_RECORD_LEN, OsLock, OsLockError, OsLockState, guard_path};
+use osdlc_file_lock::os_lock::{
+    GUARD_WAIT, MAX_RECORD_LEN, OsLock, OsLockError, OsLockState, guard_path,
+};
 use serde_json::{Value, json};
 
 /// A record a holder that died left in the lock file.
@@ -276,6 +279,19 @@ fn a_missing_directory_is_an_io_error() {
 }
 
 #[test]
+fn acquire_on_a_folder_is_an_io_error_and_creates_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("x.lock");
+    fs::create_dir(&folder).unwrap();
+
+    match OsLock::acquire(&folder) {
+        Err(OsLockError::Io { path: at, .. }) => assert_eq!(at, folder),
+        other => panic!("expected Io, got {other:?}"),
+    }
+    assert_eq!(names(dir.path()), ["x.lock"]);
+}
+
+#[test]
 fn holder_on_a_folder_is_an_io_error_and_creates_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let folder = dir.path().join("x.lock");
@@ -357,13 +373,15 @@ fn an_error_says_which_lock_and_who_holds_it() {
 }
 
 /// A holder replaces its record, a long one and a short one in turn, while
-/// others ask and, on Unix, read the file. Whatever the timing, nobody is
-/// told the lock is free or given another pid, and the file is never empty
-/// and always starts with the holder's pid.
+/// threads of the same process ask and, on Unix, read the file. Nobody is told
+/// the lock is free or given another pid, and the file is never empty and
+/// always starts with the holder's pid.
 ///
-/// Where a file system never lets one read see half of one write, every
-/// answer is also one of the two records, whole. No system promises that to
-/// this test, so it is counted, not asserted: `--nocapture` shows the counts.
+/// On Unix every answer is also one of the two records, whole: `record` and
+/// `holder` both hold the guard, so no read meets a write. `record` writes
+/// without the guard only after it has waited `GUARD_WAIT` for it, so that is
+/// asserted when no call took that long, and only counted when one did.
+/// `--nocapture` shows the counts.
 #[test]
 fn a_holder_is_named_by_its_pid_while_it_replaces_its_record() {
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -383,6 +401,7 @@ fn a_holder_is_named_by_its_pid_while_it_replaces_its_record() {
     let pid_first = format!("{{\"pid\":{pid}");
     let mut lock = OsLock::acquire(&path).unwrap();
     let done = AtomicBool::new(false);
+    let mut unguarded = 0;
     let (asked, in_whole, mixed, unnamed) = (
         AtomicU64::new(0),
         AtomicU64::new(0),
@@ -423,17 +442,29 @@ fn a_holder_is_named_by_its_pid_while_it_replaces_its_record() {
         }
         for write in 0..WRITES {
             let record = if write % 2 == 0 { &long } else { &short };
+            let began = Instant::now();
             if let Err(failed) = lock.record(record) {
                 done.store(true, Ordering::SeqCst);
                 panic!("{failed}");
+            }
+            if began.elapsed() >= GUARD_WAIT {
+                unguarded += 1;
             }
         }
         done.store(true, Ordering::SeqCst);
     });
     eprintln!(
-        "{WRITES} records replaced, {asked:?} asks: {in_whole:?} a whole record, \
-         {mixed:?} a mixed one, {unnamed:?} no name"
+        "{WRITES} records replaced, {unguarded} perhaps without the guard, {asked:?} asks: \
+         {in_whole:?} a whole record, {mixed:?} a mixed one, {unnamed:?} no name"
     );
+    // On Windows no holder is named.
+    if cfg!(unix) && unguarded == 0 {
+        assert_eq!(
+            (mixed.into_inner(), unnamed.into_inner()),
+            (0, 0),
+            "answers with a mixed record, and with no name"
+        );
+    }
 }
 
 /// The README says the two protocols do not exclude each other on one path.

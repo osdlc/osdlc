@@ -178,7 +178,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   is anything that serialises to a JSON object. Its `pid` is set to this
   process's and written first. A record is at most `MAX_RECORD_LEN` (4096)
   bytes.
-- `lock.record(&record)` replaces the record while the lock is held.
+- `lock.record(&record)` replaces the record while the lock is held. A
+  process that asks meanwhile gets the old record or the new one, whole.
 - `OsLock::holder(path)` asks who holds the lock. It keeps no lock and writes
   nothing into the lock's file, so a process that asks is never named as the
   holder and never makes a real taker lose. It creates the guard's file when
@@ -210,6 +211,8 @@ What to know:
   `acquire` or `holder` makes every other call wait `GUARD_WAIT` (1 s) and
   report `GuardBusy`, until it goes on or dies. The lock is not tried then,
   so it may be free. `acquire` and `holder` block the thread for that long.
+  So does `record`, which then writes all the same: a holder can always
+  replace its record.
 - **`pid` is checked, the rest is not.** A holder is named when the first line
   of the file is a JSON object with a `pid` from 1 that fits a `u32`. The
   other fields are read back unchecked.
@@ -225,15 +228,16 @@ What to know:
   processes. Take the lock after any `fork`, not before. A forked child that
   drops its copy of the `OsLock` leaves its parent's lock held; a parent
   that drops its own frees the lock for both.
-- **While a holder replaces its record** a reader is never given another pid.
-  On macOS every answer we measured named the holder. On Linux 128 of
-  457,418 had no name for that one answer: ask again.
 - **Other programs on the same two files.** A program that follows this
   protocol with its own code and this crate exclude each other and name each
-  other. Two things to know then. This crate reads the first line of the
-  file: a program that parses the whole file gets no pid for a moment each
-  time a holder here replaces a longer record with a shorter one. And a
-  record such a program writes on several lines gets no name here.
+  other. A record such a program writes on several lines gets no name here:
+  this crate reads the first line of the file.
+- **A read that can meet a write.** `record` and every read through this
+  crate hold the guard, so they never meet. Two reads can still meet a
+  holder's `record`: one that does not take the guard, such as a plain read
+  of the file, and any read when the `record` was written while the guard
+  stayed busy. Such a read can get half of the new record, and so no name.
+  It never gets another pid, and never an empty file.
 - **Windows.** The lock also stops every other open of the file from reading
   it, so the record cannot be read while the lock is held. A holder is always
   reported as `HeldUnnamed`. The rest is the same.

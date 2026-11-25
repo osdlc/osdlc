@@ -45,13 +45,14 @@
 //!   own fields. It is written with one write and read with one read of at
 //!   most [`MAX_RECORD_LEN`] bytes. A reader takes the first line.
 //! - **The guard** is a second lock, on the empty file `x.lock.guard`
-//!   ([`guard_path`]), also never deleted. It only orders the first write of
-//!   the record. [`OsLock::acquire`] and [`OsLock::holder`] hold the guard
-//!   while they try the lock and write the record, or read the holder's, and
-//!   let it go before they return. Nothing tries the lock outside the guard.
-//!   So while the lock is held and the guard is free, the file holds the
-//!   record of the lock's holder, never an earlier holder's. The guard's file
-//!   is opened before the lock's.
+//!   ([`guard_path`]), also never deleted. It orders the writes and the
+//!   reads of the record. [`OsLock::acquire`] and [`OsLock::holder`] hold the
+//!   guard while they try the lock and write the record, or read the
+//!   holder's, and let it go before they return. Nothing tries the lock
+//!   outside the guard. So while the lock is held and the guard is free, the
+//!   file holds the record of the lock's holder, never an earlier holder's.
+//!   [`OsLock::record`] holds the guard for its write too, so no read through
+//!   this module meets it. The guard's file is opened before the lock's.
 //! - **A process that only asks** calls [`OsLock::holder`]. It takes the lock
 //!   for a moment, under the guard, and lets it go there, so no other taker or
 //!   asker ever finds the lock held by an asker.
@@ -63,9 +64,11 @@
 //!   [`GUARD_WAIT`] and gets [`OsLockError::GuardBusy`], or
 //!   [`OsLockState::GuardBusy`], until that process goes on or dies. The lock
 //!   is not tried then, so it may be free. Trying it outside the guard would
-//!   let the guard's holder name the wrong process.
-//! - **`acquire` and `holder` can block the thread** for up to [`GUARD_WAIT`].
-//!   On an async runtime, call them where blocking is allowed.
+//!   let the guard's holder name the wrong process. A holder still replaces
+//!   its record: `record` writes without the guard after the wait.
+//! - **`acquire`, `holder` and `record` can block the thread** for up to
+//!   [`GUARD_WAIT`]. On an async runtime, call them where blocking is
+//!   allowed.
 //! - **Two opens of the file conflict within one process.** A process that
 //!   calls `acquire` twice on one path is refused the second time. It is
 //!   given its own pid where the record can be read, so not on Windows.
@@ -93,19 +96,17 @@
 //!   system documents the order. Measured with two open files and 150 deaths
 //!   each way, on macOS (APFS) and on Linux 6.12 (overlayfs): with the
 //!   guard's file opened first, as here, the guard was never free while the
-//!   lock was held; with the lock's file opened first it was, in 23 to 111 of
-//!   150 deaths, for a few microseconds.
+//!   lock was held; with the lock's file opened first it was, in 23 to 139 of
+//!   150 deaths from one run to the next, for a few microseconds.
 //! - **Never delete the lock's file or the guard's** while a process may use
 //!   them. A new file at the same path is a second lock, and both can be held.
-//! - **The record's read relies on one read never seeing half of one write**
-//!   to the same file, and no system promises that. [`OsLock::record`] is not
-//!   under the guard, so a reader can meet its write. The answer is then a
-//!   holder with no name, or with this holder's pid: never another pid, since
-//!   the `pid` is at the same place in every record a holder writes, and the
-//!   file is never emptied. Measured while a holder replaced a long and a
-//!   short record in turn: on macOS (APFS) 48,106 of 48,106 answers named
-//!   the holder; on Linux 6.12 (overlayfs) 457,290 of 457,418 did, and 128
-//!   had no name. Ask again after an answer with no name.
+//! - **A read can meet a write in two cases only.** A reader that does not
+//!   take the guard, such as another program or a plain read of the file. And
+//!   a record written while the guard stayed busy for [`GUARD_WAIT`]. One
+//!   read can then see half of one write: on Linux the new bytes are there
+//!   before the file's new length. Such a reader gets no name for that one
+//!   answer, never another pid: the `pid` is at the same place in every
+//!   record a holder writes, and the file is never emptied.
 //! - **Local file systems only**, as for the rest of this crate.
 //! - **Windows.** This module is built for Unix and Windows. On Windows the
 //!   lock also blocks every other open of the file from reading it, so the
@@ -263,6 +264,11 @@ impl OsLock {
         guard_wait: Duration,
         write: impl FnOnce(&OsLock) -> io::Result<()>,
     ) -> Result<Self, OsLockError> {
+        // Before the guard's file is opened, so that none is made beside a
+        // folder.
+        if path.is_dir() {
+            return Err(io_at(path)(ErrorKind::IsADirectory.into()));
+        }
         let Some(guard) = Guard::take(&guard_path(path), guard_wait)? else {
             return Err(OsLockError::GuardBusy {
                 path: path.to_path_buf(),
@@ -365,14 +371,34 @@ impl OsLock {
     /// Replaces the record in the file. `record` must serialise to a JSON
     /// object. Its `pid` is set to this process's, and written first.
     ///
-    /// Not under the guard. The file is never empty meanwhile and its `pid`
-    /// does not change, so a reader is never given another pid. Where one
-    /// read never sees half of one write, it gets the old record or the new
-    /// one, whole; where it can, it may get no name for that one answer. See
-    /// the module's limits. A failed write leaves the lock held.
+    /// Written under the guard, so a process that asks gets the old record or
+    /// the new one, whole. This waits for the guard, blocking, for up to
+    /// [`GUARD_WAIT`]. When the guard cannot be had by then, the record is
+    /// written all the same: a process frozen with the guard must not stop a
+    /// holder from recording. The file is never empty meanwhile and its `pid`
+    /// does not change, so even then a reader is never given another pid.
+    ///
+    /// A failed write leaves the lock held.
     pub fn record(&mut self, record: &impl Serialize) -> Result<(), OsLockError> {
+        self.record_within(record, GUARD_WAIT)
+    }
+
+    /// `record`, waiting `guard_wait` for the guard.
+    fn record_within(
+        &mut self,
+        record: &impl Serialize,
+        guard_wait: Duration,
+    ) -> Result<(), OsLockError> {
         let line = record_line(record).map_err(io_at(&self.path))?;
-        self.write(&line).map_err(io_at(&self.path))
+        // No guard, busy or not to be opened, is no reason not to write.
+        let guard = Guard::take(&guard_path(&self.path), guard_wait)
+            .ok()
+            .flatten();
+        let written = self.write(&line).map_err(io_at(&self.path));
+        if let Some(guard) = guard {
+            guard.let_go();
+        }
+        written
     }
 
     /// The lock's file.
@@ -627,17 +653,26 @@ mod tests {
         });
     }
 
-    /// Runs `run`, and says whether the lock at `path` was held each time
-    /// `run` let a guard go.
-    fn lock_held_as_the_guard_goes<T>(path: &Path, run: impl FnOnce() -> T) -> (T, Vec<bool>) {
+    /// Runs `run`, and gives what `look` saw each time `run` let a guard go.
+    fn as_the_guard_goes<T, S: 'static>(
+        look: impl Fn() -> S + 'static,
+        run: impl FnOnce() -> T,
+    ) -> (T, Vec<S>) {
         let seen = Rc::new(RefCell::new(Vec::new()));
-        let (at, into) = (path.to_path_buf(), Rc::clone(&seen));
+        let into = Rc::clone(&seen);
         BEFORE_THE_GUARD_GOES.set(Some(Box::new(move || {
-            into.borrow_mut().push(is_held(&at));
+            into.borrow_mut().push(look());
         })));
         let result = run();
         BEFORE_THE_GUARD_GOES.set(None);
         (result, seen.take())
+    }
+
+    /// Runs `run`, and says whether the lock at `path` was held each time
+    /// `run` let a guard go.
+    fn lock_held_as_the_guard_goes<T>(path: &Path, run: impl FnOnce() -> T) -> (T, Vec<bool>) {
+        let at = path.to_path_buf();
+        as_the_guard_goes(move || is_held(&at), run)
     }
 
     #[test]
@@ -786,6 +821,39 @@ mod tests {
 
         assert_eq!(found.unwrap(), OsLockState::Free);
         assert_eq!(held, [false]);
+    }
+
+    #[test]
+    fn a_record_is_replaced_under_the_guard() {
+        let dir = tempfile::tempdir().unwrap();
+        let (path, guard) = lock_and_guard(&dir);
+        let mut lock = OsLock::acquire(&path).unwrap();
+        let new = record_line(&json!({ "boot": "b2" })).unwrap();
+
+        // The file, and whether the guard was held, as `record` let it go.
+        let at = path.clone();
+        let (recorded, seen) = as_the_guard_goes(
+            move || (is_held(&guard), read(&at)),
+            || lock.record(&json!({ "boot": "b2" })),
+        );
+
+        recorded.unwrap();
+        assert_eq!(seen, [(true, new)]);
+    }
+
+    /// A process frozen with the guard does not stop a holder from recording.
+    #[test]
+    fn a_busy_guard_is_waited_out_and_the_record_is_written_all_the_same() {
+        let dir = tempfile::tempdir().unwrap();
+        let (path, guard) = lock_and_guard(&dir);
+        let mut lock = OsLock::acquire(&path).unwrap();
+        let _guard = hold(&guard);
+
+        lock.record_within(&json!({ "boot": "b2" }), Duration::from_millis(50))
+            .unwrap();
+
+        assert_eq!(read(&path), record_line(&json!({ "boot": "b2" })).unwrap());
+        assert!(is_held(&path));
     }
 
     /// The guard's file is opened before the lock's, and a taker that finds
