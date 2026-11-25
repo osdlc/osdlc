@@ -23,11 +23,15 @@ A plugin uses two entries of `@osdlc/host-cleaner`, and no other:
   "name": "host-cleaner-scratch",
   "type": "module",
   "exports": "./dist/index.js",
-  "peerDependencies": { "@osdlc/host-cleaner": "^0.2.0" },
-  "devDependencies": { "@osdlc/host-cleaner": "^0.2.0" }
+  "peerDependencies": { "@osdlc/host-cleaner": "^0.3.0" },
+  "devDependencies": { "@osdlc/host-cleaner": "^0.3.0" }
 }
 ```
 
+- The plugin entry first ships in 0.3.0; an earlier host-cleaner has no
+  `@osdlc/host-cleaner/plugin`. host-cleaner is not on npm yet, so until it
+  is, a plugin builds against a local checkout (a `link:` or `file:`
+  dependency).
 - ESM only, like host-cleaner.
 - `@osdlc/host-cleaner` is a peer dependency, so the plugin runs on the copy
   the command line has, with the same kit and the same checks.
@@ -40,7 +44,7 @@ This plugin cleans the folders under `~/.scratch` that have sat idle:
 
 ```ts
 import { existsSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 
 import {
   DEFAULT_IDLE_HOURS,
@@ -60,7 +64,9 @@ export default definePlugin({
     const idleHours = settings.idleHours ?? DEFAULT_IDLE_HOURS
     return {
       name: 'scratch',
-      detect: () => existsSync(root),
+      // The core refuses a relative root, so say why the plugin does not run.
+      detect: () =>
+        isAbsolute(root) ? existsSync(root) : { active: false, note: `${root} is not absolute` },
       roots: () => [root],
       discover() {
         return readdirSync(root, { withFileTypes: true })
@@ -78,12 +84,13 @@ export default definePlugin({
                 }),
               ]
             }
-            if (idle.hours !== null && idle.hours < idleHours) return []
+            // No files yet: just made, or still being written, so not idle.
+            if (idle.hours === null || idle.hours < idleHours) return []
             return [
               kit.candidate({
                 kind: 'scratch',
                 path,
-                why: `idle ${Math.floor(idle.hours ?? 0)} hours`,
+                why: `idle ${Math.floor(idle.hours)} hours`,
                 costDescription: 'rebuild',
                 evidence: { newestMs: idle.newestMs },
               }),
@@ -117,8 +124,11 @@ What it relies on:
 - **`kit.candidate`** fills in the id (`<kind>:<path>` or `<kind>:<ref>`) and
   the owner.
 - **`detect`** answers `true`, `false`, or `{ active, note }` (`Detection`).
-  `status` prints the note as a warning naming the plugin, whether it runs or
-  not. `ctx.targetsGiven` says whether the person gave targets or the run fell
+  `status`, `plan` and `clean` print the note as a warning naming the plugin,
+  whether it runs or not, so write it for the person reading every run. The
+  core refuses a root that is not an absolute path, so this plugin does not
+  run, and says why, when `dir` is relative (`~` is not expanded) or `HOME` is
+  unset. `ctx.targetsGiven` says whether the person gave targets or the run fell
   back to the current folder.
 
 The rules every plugin keeps:
@@ -202,7 +212,8 @@ test('scratch keeps the contract', async () => {
 - Give it a `name` no shipped plugin has (`git`, `cargo`, `node` and `orca`
   are taken).
 - Build it to JavaScript with its type declarations, and publish it as an
-  ESM package with `@osdlc/host-cleaner` as a peer dependency.
+  ESM package with `@osdlc/host-cleaner` as a peer dependency, once
+  host-cleaner itself is published.
 - Loading a plugin package named in the config is planned and not in this
   release yet. Until then, a program uses a plugin by building it and passing
   it to `survey` and `clean` from the main entry.

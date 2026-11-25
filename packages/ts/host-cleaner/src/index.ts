@@ -69,7 +69,7 @@ export {
   type Survey,
 } from './run.ts'
 export { PERSONAL_FOLDERS, containedIn } from './roots.ts'
-export { gitPlugin, type GitPluginOptions } from './git.ts'
+export { gitDefinitionWith, gitPlugin, type GitPluginOptions } from './git.ts'
 export { cargoPlugin, CARGO_PLUGIN } from './cargo.ts'
 export { nodePlugin, NODE_PLUGIN } from './node.ts'
 export { type ArtifactOptions } from './artifacts.ts'

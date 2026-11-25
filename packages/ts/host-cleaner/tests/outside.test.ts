@@ -5,14 +5,17 @@
  * exports only those two entries of the built dist/, so run `pnpm build`
  * first, as for the typecheck.
  */
-import { afterEach, expect, test } from 'vitest'
+import { afterAll, beforeAll, expect, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -28,15 +31,29 @@ const pkg = join(here, '..')
 const require = createRequire(import.meta.url)
 const tsc = require.resolve('typescript/bin/tsc')
 
-const cleanups: Array<() => void> = []
-afterEach(() => {
-  while (cleanups.length > 0) cleanups.pop()!()
-})
+const newestMs = (folder: string): number =>
+  Math.max(
+    0,
+    ...readdirSync(folder, { recursive: true, encoding: 'utf8' }).map(
+      (f) => statSync(join(folder, f)).mtimeMs,
+    ),
+  )
+
+/** Throws unless dist/ was built after the last change to src/, so the package checks this code. */
+function assertBuilt(): void {
+  const dist = join(pkg, 'dist')
+  if (!existsSync(join(dist, 'plugin.d.ts'))) {
+    throw new Error('dist/ has no plugin entry: run `pnpm build` before these tests')
+  }
+  if (newestMs(join(pkg, 'src')) > newestMs(dist)) {
+    throw new Error('src/ changed after the last build: run `pnpm build` before these tests')
+  }
+}
 
 /** A package holding the fixture plugin, with host-cleaner limited to the two entries. */
 function outsidePackage(): string {
+  assertBuilt()
   const dir = mkdtempSync(join(tmpdir(), 'host-cleaner-outside-'))
-  cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
   const json = (path: string, value: unknown) =>
     writeFileSync(join(dir, path), `${JSON.stringify(value, null, 2)}\n`)
   json('package.json', { name: 'outside-plugin', private: true, type: 'module' })
@@ -76,29 +93,45 @@ function outsidePackage(): string {
   return dir
 }
 
-const build = (dir: string) =>
-  spawnSync(process.execPath, [tsc, '-p', dir], { cwd: dir, encoding: 'utf8' })
+// One package and one compile, shared by the tests that use them.
+let dir = ''
+beforeAll(() => {
+  dir = outsidePackage()
+}, 60_000)
+afterAll(() => {
+  if (dir !== '') rmSync(dir, { recursive: true, force: true })
+})
 
 test('an outside package builds against ./plugin and ./testing, and its plugin keeps the contract', () => {
-  const dir = outsidePackage()
-  const built = build(dir)
+  const built = spawnSync(process.execPath, [tsc, '-p', dir], { cwd: dir, encoding: 'utf8' })
   expect(built.stdout + built.stderr).toBe('')
   expect(built.status).toBe(0)
 
   const ran = spawnSync(process.execPath, [join(dir, 'dist', 'check.js')], { encoding: 'utf8' })
   expect(ran.stderr).toBe('')
-  const out = JSON.parse(ran.stdout) as { ids: string[]; problems: string[] }
+  const out = JSON.parse(ran.stdout) as {
+    ids: string[]
+    problems: string[]
+    relative: { active: boolean; note: string }
+  }
+  // build-2 holds no files yet, so it is not idle.
   expect(out.ids).toEqual([expect.stringMatching(/^scratch:.*\/\.scratch\/build-1$/)])
   expect(out.problems).toEqual([])
+  expect(out.relative).toEqual({ active: false, note: '~/.scratch is not absolute' })
 }, 60_000)
 
-test('the same package cannot reach the main entry', () => {
-  const dir = outsidePackage()
-  writeFileSync(join(dir, 'src', 'main.ts'), "export { survey } from '@osdlc/host-cleaner'\n")
-  const built = build(dir)
-  expect(built.status).not.toBe(0)
-  expect(built.stdout).toContain("Cannot find module '@osdlc/host-cleaner'")
-}, 60_000)
+test('the same package reaches ./plugin and ./testing, and not the main entry', () => {
+  const from = createRequire(join(dir, 'src', 'check.ts'))
+  expect(from.resolve('@osdlc/host-cleaner/plugin')).toMatch(/dist[/\\]plugin\.js$/)
+  expect(from.resolve('@osdlc/host-cleaner/testing')).toMatch(/dist[/\\]testing\.js$/)
+  let code: unknown
+  try {
+    from.resolve('@osdlc/host-cleaner')
+  } catch (e) {
+    code = (e as { code?: unknown }).code
+  }
+  expect(code).toBe('ERR_PACKAGE_PATH_NOT_EXPORTED')
+})
 
 test('./plugin re-exports zod as z, the one the core validates settings with', async () => {
   const { z } = await import('zod')

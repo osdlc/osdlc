@@ -4,7 +4,7 @@
  * `tests/outside.test.ts` builds it in a package of its own.
  */
 import { existsSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 
 import {
   DEFAULT_IDLE_HOURS,
@@ -24,7 +24,9 @@ export default definePlugin({
     const idleHours = settings.idleHours ?? DEFAULT_IDLE_HOURS
     return {
       name: 'scratch',
-      detect: () => existsSync(root),
+      // The core refuses a relative root, so say why the plugin does not run.
+      detect: () =>
+        isAbsolute(root) ? existsSync(root) : { active: false, note: `${root} is not absolute` },
       roots: () => [root],
       discover() {
         return readdirSync(root, { withFileTypes: true })
@@ -42,12 +44,13 @@ export default definePlugin({
                 }),
               ]
             }
-            if (idle.hours !== null && idle.hours < idleHours) return []
+            // No files yet: just made, or still being written, so not idle.
+            if (idle.hours === null || idle.hours < idleHours) return []
             return [
               kit.candidate({
                 kind: 'scratch',
                 path,
-                why: `idle ${Math.floor(idle.hours ?? 0)} hours`,
+                why: `idle ${Math.floor(idle.hours)} hours`,
                 costDescription: 'rebuild',
                 evidence: { newestMs: idle.newestMs },
               }),

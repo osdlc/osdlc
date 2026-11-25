@@ -26,6 +26,23 @@ core validates settings with), and nothing of the run. [Writing a
 plugin](./docs/guide/writing-a-plugin.md) is the guide: writing, testing and
 publishing one.
 
+```ts
+import { PLUGIN_API, definePlugin, z } from '@osdlc/host-cleaner/plugin'
+
+export default definePlugin({
+  name: 'scratch',
+  api: PLUGIN_API,
+  settings: z.object({ dir: z.string() }),
+  create: ({ settings, kit }) => ({
+    name: 'scratch',
+    detect: () => true,
+    roots: () => [settings.dir],
+    discover: () => [kit.candidate({ kind: 'scratch', path: `${settings.dir}/out`, why: 'built' })],
+    delete: (c, ctx) => kit.remove(c.path!, ctx),
+  }),
+})
+```
+
 | Phase | Who | What |
 | --- | --- | --- |
 | scope | each plugin | adds roots to look in; the only way a plugin adds a repository |
@@ -249,6 +266,11 @@ remote first; a failed push throws `FatalRun`. Grant the named risks; the
 `discard-archived` cover is not yet offered here. Its `delete` refuses a
 worktree whose folder has become a symlink, since `git worktree remove` would
 follow it and empty the folder it leads to.
+
+`BUILT_IN_PLUGINS` holds git as `gitDefinitionWith()`, sweeping worktrees and
+local branches. A program that wants other kinds, as `--worktrees` and
+`--branches` give the command line, puts `gitDefinitionWith({ sweep: { only:
+['worktree'] } })` in its place.
 
 ## The `cargo` and `node` plugins
 
