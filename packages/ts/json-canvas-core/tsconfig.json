@@ -1,0 +1,11 @@
+{
+  // Typechecks the source, tests and examples. The build has its own include.
+  // The package's own name resolves through `exports` to the built `dist/`, so
+  // run the build before the typecheck.
+  "extends": "@osdlc/tsconfig/node-lib",
+  "compilerOptions": {
+    // Stricter than the preset: an unused parameter is an error here.
+    "noUnusedParameters": true
+  },
+  "include": ["src", "tests", "examples", "vitest.config.ts"]
+}

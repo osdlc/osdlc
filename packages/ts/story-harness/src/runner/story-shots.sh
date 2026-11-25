@@ -46,7 +46,7 @@ PLAYWRIGHT_VERSION="1.62.1"
 IMAGE="mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}-noble"
 # The axe-core installed for --a11y. Keep it on the version your
 # @storybook/addon-a11y resolves to, so the panel and this check agree.
-AXE_VERSION="4.14.0"
+AXE_VERSION="4.14.1"
 PLATFORM="${STORY_SHOTS_PLATFORM:-linux/amd64}"
 
 usage() {

@@ -29,8 +29,9 @@ a broken story without noticing.
   one JSON report that every worker merges into.
 
 **Who it is for.** Teams that keep a Storybook per UI component package, and
-want baselines, interaction specs and perf scenes for each package without
-Chromatic or another hosted service.
+want baselines, interaction specs, perf scenes and an accessibility check
+(axe-core, plus a keyboard-order survey) for each package without Chromatic or
+another hosted service.
 
 **When not to use it.**
 
@@ -142,7 +143,7 @@ fail. Four whole-page rules are off, since a story is not a page:
 `html-has-lang`, `landmark-one-main`, `page-has-heading-one` and `region`.
 `@osdlc/story-harness/a11y` exports the rules (`WCAG_TAGS`, `PAGE_RULES` and
 `A11Y_OPTIONS`) with no Node imports, so a preview can pass `A11Y_OPTIONS` as
-the addon's `options` and the panel runs the same rules. axe-core 4.14.0 is
+the addon's `options` and the panel runs the same rules. axe-core 4.14.1 is
 pinned in `story-shots.sh`; keep it on the version your addon resolves to.
 
 ## Keyboard walk: `story-shots --walk`
@@ -193,8 +194,7 @@ no opener, so where focus goes after Escape is not judged.
 `walkPage(page, WalkOptions)` is the walk of one open page, from a spec or a
 script, and returns its `WalkRecord` (`WalkStop`, `WalkBox`, `WalkEnd`,
 `WalkReverse`, `WalkDialog` and `WalkParameters` are its types).
-`parseAriaLine` reads a role and a name from an ARIA snapshot line, and
-`DEFAULT_WALK_MAX` is the default stop limit. They are exported from
+`DEFAULT_WALK_MAX` is the default stop limit. Both are exported from
 `@osdlc/story-harness/runner`.
 
 ### Review pages: `@osdlc/story-harness/parley-capture`
@@ -213,7 +213,7 @@ stories or Playwright and returns plain objects, so a caller writes them with
 | `figure(FigureInput)` | An image and its `Region`s | A `FigureBlock` |
 | `steps(StepsInput)` | At least two `FrameInput`s | A `StepsBlock` of `Frame`s, a slide show |
 | `finding(FindingInput)` | A `Severity`, a summary and `EvidenceInput`s | A `FindingBlock` with its `Evidence` |
-| `heading({ id, title, level? })` | A title | A `HeadingBlock` |
+| `heading(HeadingInput)` | A title and an optional level | A `HeadingBlock` |
 | `parleyDocument(DocumentInput)` | Blocks | A `ParleyDocument`; throws on no blocks or a repeated id |
 
 A `Block` is any of the four block types.
@@ -332,7 +332,15 @@ what to change.
 
 The experimental exports:
 
-`openPerfStory`, `noLongTasks`, `paintedAt` and `responseEnd`
+`openPerfStory`, `noLongTasks`, `paintedAt` and `responseEnd`, `walkPage` with
+its types (`WalkBox`, `WalkStop`, `WalkEnd`, `WalkReverse`, `WalkDialog`,
+`WalkRecord`, `WalkParameters` and `WalkOptions`), and every export of
+`@osdlc/story-harness/parley-capture`: `regionFromBox`, `slug`, `idAllocator`,
+`figure`, `steps`, `finding`, `heading`, `parleyDocument`, `Viewport`,
+`PixelBox`, `FractionBox`, `Region`, `Frame`, `FigureBlock`, `StepsBlock`,
+`HeadingBlock`, `Severity`, `Evidence`, `FindingBlock`, `Block`,
+`ParleyDocument`, `FrameInput`, `FigureInput`, `StepsInput`, `HeadingInput`,
+`EvidenceInput`, `FindingInput` and `DocumentInput`
 
 They are the newest helpers, and may change in a patch release. Every other export is stable within a
 minor version.
@@ -341,7 +349,7 @@ minor version.
 
 - Node 22 or later, ESM only. `@playwright/test` 1.62 or later as a peer.
 - The Playwright helpers and the perf report run wherever Playwright runs.
-- `story-shots`, in all three modes, needs bash and Docker, and runs on Linux and macOS. On macOS
+- `story-shots`, in every mode, needs bash and Docker, and runs on Linux and macOS. On macOS
   with Colima, start the VM with Rosetta (`colima start --vm-type vz
   --vz-rosetta`) so the amd64 image runs fast, and give it about 6 GB for six
   workers.
@@ -354,6 +362,9 @@ minor version.
 | `@storybook/test-runner` | Runs stories and `play` functions in Playwright, with hooks to add screenshots | No pinned Linux image, no baseline pruning and no perf report. |
 | `@storybook/addon-vitest` | Stories as Vitest browser tests | Runs inside Vitest, not against a static build; no perf helpers. |
 | BackstopJS | Screenshot regression of URLs, with a Docker mode | Not Storybook-aware: no story index, no `play` errors, no skip parameter. |
+| `@storybook/addon-a11y` with the test runner or `@storybook/addon-vitest` | axe-core in Storybook's panel, and as a test in those runners | This package reads the same `parameters.a11y`, so the panel and `--a11y` agree, but runs the check over a static build in the pinned container, for both themes, with no runner to set up. |
+| `@axe-core/playwright`, `axe-playwright`, `@chanzuckerberg/axe-storybook-testing` | axe-core from Playwright specs or over Storybook stories | Libraries to call from your own specs; they do not enrol every story or write a report. `story-shots --a11y` does both. |
+| `@a11y-oracle/focus-analyzer`, `@guidepup/playwright` | Focus-order analysis, and screen-reader and keyboard driving from Playwright | They cover one part of `--walk` each, and neither walks every story of a build and records the focus indicator, order reversal and dialog focus. |
 | Lost Pixel, Loki, storycap with reg-suit | Storybook screenshot regression | None had a release in the 12 months before 2026-11-07, and none measures perf. |
 
 ## Licence
