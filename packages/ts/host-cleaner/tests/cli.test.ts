@@ -400,6 +400,52 @@ describe('plan and clean', () => {
     expect(git(dir, ['branch', '--format=%(refname:short)'])).toContain('topic')
   })
 
+  test('--archive --dry-run says unlanded work would be pushed; without --archive it does not', () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    const flags = ['--pick', `branch:${dir}:topic`, '--allow', 'abandon-unmerged', '--dry-run']
+    const r = run(['clean', '--archive', ...flags], dir, env)
+    expect(r.code).toBe(0)
+    expect(r.out).toContain(`delete  branch:${dir}:topic`)
+    expect(r.out).toContain("archive: unlanded work is pushed to its repository's remote")
+    expect(run(['clean', ...flags], dir, env).out).not.toContain('archive:')
+    expect(archives(bare)).toEqual([])
+  })
+
+  test('--archive gives a second branch in the same repository and day the -2 suffix', () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    sh(dir, ['checkout', '-q', '-b', 'other'])
+    sh(dir, ['commit', '--allow-empty', '-m', 'more wip'])
+    sh(dir, ['checkout', '-q', 'main'])
+    const picks = ['--pick', `branch:${dir}:topic`, '--pick', `branch:${dir}:other`]
+    const argv = ['clean', '--archive', ...picks, '--allow', 'abandon-unmerged', '--yes']
+    const r = run(argv, dir, env)
+    expect(r.code).toBe(0)
+    const found = archives(bare).sort()
+    expect(found).toHaveLength(2)
+    expect(found[0]).toMatch(/^refs\/heads\/archive\/worker-local-\d{4}-\d{2}-\d{2}$/)
+    expect(found[1]).toBe(`${found[0]}-2`)
+    const left = git(dir, ['branch', '--format=%(refname:short)'])
+    expect(left).not.toContain('topic')
+    expect(left).not.toContain('other')
+  })
+
+  test('--archive applies to a clean from a saved plan', () => {
+    const { env, home } = setup()
+    const { dir, bare } = pushedRepo()
+    const wip = git(dir, ['rev-parse', 'topic'])
+    const planFile = join(home, 'plan.json')
+    const planned = ['plan', '--pick', `branch:${dir}:topic`, '--allow', 'abandon-unmerged']
+    expect(run([...planned, '-o', planFile], dir, env).code).toBe(0)
+    const r = run(['clean', '--plan', planFile, '--archive', '--yes'], dir, env)
+    expect(r.code).toBe(0)
+    const [archive, ...more] = archives(bare)
+    expect(more).toEqual([])
+    expect(git(bare, ['rev-parse', `${archive}^2`])).toBe(wip)
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).not.toContain('topic')
+  })
+
   test('--archive-exclude leaves matching files out of a worktree’s snapshot', () => {
     const { env } = setup()
     const { dir, bare } = pushedRepo()
@@ -516,6 +562,11 @@ describe('plan and clean', () => {
     const noGit = run(['clean', '--plugin', 'node', '--archive', '--dry-run'], cwd, env)
     expect(noGit.code).toBe(2)
     expect(noGit.err).toContain('this run does not use the git plugin')
+    const injected = run(['clean', '--archive', '--dry-run'], cwd, env, {
+      plugins: [fake('git')],
+    })
+    expect(injected.code).toBe(2)
+    expect(injected.err).toContain('the given plugins cannot archive')
     const both = run(['clean', '--pick', 'a:x', '--spare', 'a:x', '--dry-run'], cwd, env, {
       plugins: [fake()],
     })

@@ -157,7 +157,7 @@ host-cleaner config [--format json]   # every plugin's effective settings
 | `--spare <id\|name\|glob>` | Leave these alone: an id, a path, a branch name (its worktree too) or a glob. |
 | `-i` | Choose from a checklist, the default candidates ticked; each ticked protest is asked for by code. Needs a terminal. |
 | `--allow <code>` | Accept a protest by its code. |
-| `--archive` | `clean`: before deleting unlanded work, push it to `archive/<repo>-local-<date>` on the repository's remote, as repo-cleaner does. `abandon-unmerged` and `discard-changes` still need `--allow` by name. |
+| `--archive` | `clean`: before deleting unlanded work, push it to `archive/<repo>-local-<date>` (`<date>` is the UTC date) on the repository's remote, as repo-cleaner does. `abandon-unmerged` and `discard-changes` still need `--allow` by name. |
 | `--archive-exclude <glob>` | With `--archive`, leave files matching this glob out of a worktree's snapshot. Repeatable. |
 | `--worktrees`, `--branches` | Only the git plugin's worktrees, or only its local branches. Remote branches are repo-cleaner's. |
 | `--all-rows` | `status`: also show candidates a plugin refuses. |
@@ -171,10 +171,13 @@ deletes, and writes one receipt to `--receipt` or the state directory's
 
 With `--archive`, each candidate is archived on its own: a second one in the
 same repository on the same day goes to `archive/<repo>-local-<date>-2`, and
-so on. It needs the git plugin, and `--archive-exclude` needs worktrees, so
-either one with a run that has none is refused with exit 2. A failed archive
-push stops the run: that candidate and every one after it are left, and the
-run exits 11. A repository with no remote cannot be archived, so its
+so on. `--archive` with a run that does not use the git plugin, and
+`--archive-exclude` with `--branches` alone, are refused with exit 2; an
+exclude that matches no worktree in the run does nothing. The preview says
+when unlanded work will be pushed. Any failed archive step (the push, or
+reading the remote's default branch) stops the whole run, across every
+repository: that candidate and every one after it are left, and the run exits
+11. A repository with no remote cannot be archived, so its
 candidates that hold unlanded work fail their step, and the run exits 11.
 
 ```sh
