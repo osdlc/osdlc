@@ -54,11 +54,7 @@ export class DescriptorLoadError extends Error {
   override name = 'DescriptorLoadError'
 }
 
-interface Found {
-  name: string
-  source: DescriptorSource
-  path: string
-}
+type Found = Pick<LoadedDescriptor, 'name' | 'source' | 'path'>
 
 const nameOf = (path: string): string => basename(path, extname(path))
 
@@ -96,7 +92,7 @@ function filesIn(dir: string, source: DescriptorSource): Found[] {
  * @throws DescriptorLoadError for two paths of one name, or a name that is no plugin name
  */
 function foundIn(paths: readonly string[], source: DescriptorSource): Found[] {
-  const byName = new Map<string, string[]>()
+  const byName = new Map<string, string>()
   for (const path of paths) {
     const name = nameOf(path)
     if (!NAME.test(name)) {
@@ -104,18 +100,13 @@ function foundIn(paths: readonly string[], source: DescriptorSource): Found[] {
         `descriptor ${path}: "${name}" is not a plugin name: lowercase letters, digits and -, starting with a letter`,
       )
     }
-    const twins = byName.get(name)
-    if (twins === undefined) byName.set(name, [path])
-    else twins.push(path)
-  }
-  for (const [name, twins] of byName) {
-    if (twins.length > 1) {
-      throw new DescriptorLoadError(
-        `${twins.join(' and ')} are both the descriptor ${name}; keep one`,
-      )
+    const twin = byName.get(name)
+    if (twin !== undefined) {
+      throw new DescriptorLoadError(`${twin} and ${path} are both the descriptor ${name}; keep one`)
     }
+    byName.set(name, path)
   }
-  return [...byName].map(([name, [path]]) => ({ name, source, path: path! }))
+  return [...byName].map(([name, path]) => ({ name, source, path }))
 }
 
 /**
