@@ -177,7 +177,7 @@ test('the podman example builds against ./plugin alone, and the loader takes it 
 import { loadPackages, pluginKit } from ${JSON.stringify(pathToFileURL(join(pkg, 'dist', 'index.js')).href)}
 const { loaded, failed } = await loadPackages([{ name: 'podman', package: 'host-cleaner-podman' }], [${JSON.stringify(root)}])
 const def = loaded[0]?.definition
-const plugin = def?.create({ settings: def.settings.parse({}), env: {}, kit: pluginKit('podman') })
+const plugin = def?.create({ settings: def.settings.parse({ package: 'host-cleaner-podman' }), env: {}, kit: pluginKit('podman') })
 process.stdout.write(JSON.stringify({ failed, version: loaded[0]?.version, name: plugin?.name }))
 `
   const ran = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
