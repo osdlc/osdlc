@@ -1,28 +1,15 @@
 /**
  * Descriptor to plugin (tier 1): {@link descriptorPlugin} turns a parsed
  * descriptor into a `definePlugin` value built only on the plugin kit, with
- * the same hooks a code plugin has.
+ * the same hooks a code plugin has. What each hook does: the "Descriptors"
+ * section of the package README.
  *
- * - detect: `detect`'s `onPath` and `exists`, or any of its folders existing.
- *   A `system: true` descriptor never applies ({@link skipReason}), nor one
- *   whose `supersededBy` plugin runs. Otherwise it first works out its `vars`
- *   (tier 2, {@link resolveVars}), so once per survey, and its folders with
- *   them. A folder whose variable has no value is left out, with its
- *   candidates.
- * - roots: each of its `paths` for this OS that passes {@link pathProblem},
- *   as a self root (`{ path, self: true }`): a candidate may be the whole
- *   folder, so `~/.npm`'s root is `~/.npm` itself, and `delete` checks the
- *   folder again.
- * - discover: one candidate per folder, or per `glob` match inside it, and
- *   `project` build folders in the targets' checkouts. Each is
- *   `<name>:<path>`. A folder the checks refuse is listed, unmeasured, and
- *   refused `outside-roots`.
- * - object: only its own candidates: `inUse` refuses them `in-use`, a prune
- *   with no tool on PATH gets a `no-prune-tool` protest (D12), and a live
- *   process in a checkout refuses its build folders.
- * - delete: checks the candidate again, then runs the tool's command from the
- *   home folder, pointed at the checked folder (D13), or removes the folder
- *   with `kit.remove`.
+ * Roots are self roots because a candidate may be the whole folder: `~/.npm`'s
+ * root is `~/.npm` itself, so `delete` checks the folder again. A folder the
+ * checks refuse is still listed, unmeasured and refused `outside-roots`. The
+ * prune protest is D12; pointing the command at the checked folder is D13.
+ * The variables a folder or lock uses on this OS (tier 2, {@link resolveVars})
+ * are resolved once per survey, in detect.
  *
  * Idle time and size stay out of the evidence, as for `cargo` and `node`:
  * either may be unmeasured in one survey and measured in the next.
@@ -32,13 +19,15 @@ import { lstatSync, readdirSync, realpathSync, type Dirent } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
 
+import { failureText, firstLine } from '@osdlc/command-seam'
 import { globRegExp } from '@osdlc/repo-cleaner'
-import { Git } from '@osdlc/typed-git'
 import { z } from 'zod'
 
+import { checkoutsOf, hoursText, type Checkout } from '../artifacts.ts'
 import { hostDirs } from '../config.ts'
-import { DEFAULT_IDLE_HOURS, idleHoursSetting, type Kit } from '../kit.ts'
-import { containedIn, realOr, rootProblem } from '../roots.ts'
+import { containsIgnored, coveredBy } from '../ignore.ts'
+import { DEFAULT_IDLE_HOURS, idleHoursSetting, present, type Idle, type Kit } from '../kit.ts'
+import { containedIn, linkedCheckouts, realOr, rootProblem } from '../roots.ts'
 import { DELETE_LIMIT_MS, HOOK_LIMIT_MS, OUTSIDE_ROOTS } from '../run.ts'
 import {
   PLUGIN_API,
@@ -59,9 +48,9 @@ import {
   type ProjectEntry,
 } from './schema.ts'
 import {
-  BUILT_IN_VARS,
   VAR_COMMAND_LIMIT_MS,
   fillTemplate,
+  forOs,
   resolveVars,
   varRefs,
   type Vars,
@@ -92,7 +81,7 @@ export interface DescriptorOptions {
   ownDirs?: readonly string[] | undefined
 }
 
-/** The OS `platform` (as `process.platform` names it) is, for `paths`. */
+/** The descriptor `paths` OS for a `process.platform` value. */
 export const osOf = (platform: string): Os =>
   platform === 'darwin' ? 'macos' : platform === 'win32' ? 'windows' : 'linux'
 
@@ -102,9 +91,6 @@ export function skipReason(d: Descriptor): string | undefined {
     ? 'skipped: it describes data that needs root (system: true), which host-cleaner does not clean'
     : undefined
 }
-
-/** True when `path` exists as itself, a link counted as present. */
-const present = (path: string): boolean => lstatSync(path, { throwIfNoEntry: false }) !== undefined
 
 const isLink = (path: string): boolean =>
   lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true
@@ -117,12 +103,11 @@ const within = (outer: string, inner: string): boolean => {
 
 /**
  * Why `path`, one of a descriptor's folders, may not be cleaned, or null when
- * it may. It must pass the core's check of a self root ({@link rootProblem}):
- * not `/`, not a symlink, not be or hold home, not be a personal folder, not
- * be or hold a target or a checkout. It must also sit strictly inside `home`,
- * unless it is `trusted` (from a variable set in the config), and not hold
- * host-cleaner's own folders. Judged on the path as given and on its real
- * path, as the filesystem spells it.
+ * it may. It must pass the core's check of a self root ({@link rootProblem}),
+ * sit strictly inside `home` unless it is `trusted` (from a variable set in
+ * the config), and neither hold nor sit inside host-cleaner's own folders.
+ * Judged on the path as given and on its real path, as the filesystem spells
+ * it.
  */
 export function pathProblem(
   path: string,
@@ -141,23 +126,53 @@ export function pathProblem(
   }
   for (const own of at.ownDirs) {
     if (within(path, own)) return `it holds host-cleaner's own folder ${own}`
+    if (within(own, path)) return `it is inside host-cleaner's own folder ${own}`
   }
   return null
 }
 
-/** The checkouts of the repositories among `targets`, as `git worktree list` gives them; bare and missing ones left out. */
-function checkoutsIn(targets: readonly string[]): string[] {
-  const out = new Set<string>()
-  for (const target of targets) {
-    try {
-      for (const tree of new Git(target).worktrees()) {
-        if (!tree.bare && present(tree.path)) out.add(tree.path)
-      }
-    } catch {
-      // not a repository
-    }
+/**
+ * The folders of `checkout` that a `project` walk covers: all of a linked
+ * worktree, but of a primary checkout only the targets inside it, since a
+ * target inside a repository holds only what is inside the target.
+ */
+function walkedIn(checkout: Checkout, targets: readonly string[]): string[] {
+  if (!checkout.primary || targets.some((t) => within(t, checkout.path))) return [checkout.path]
+  return targets.filter((t) => within(checkout.path, t))
+}
+
+/** A glob's parts, one per level, and whether a trailing `/` takes folders only. */
+interface GlobParts {
+  parts: RegExp[]
+  foldersOnly: boolean
+}
+
+const globParts = (glob: string): GlobParts => ({
+  parts: glob
+    .split(/[/\\]/)
+    .filter((p) => p !== '' && p !== '.')
+    .map((p) => globRegExp(p)),
+  foldersOnly: /[/\\]$/.test(glob),
+})
+
+/**
+ * Whether `path`, below `folder`, is a match of `glob` there by the rules of
+ * {@link globMatches}, reading only the entries on its way.
+ */
+function isGlobMatch(folder: string, { parts, foldersOnly }: GlobParts, path: string): boolean {
+  const rel = relative(folder, path)
+  if (rel === '' || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) return false
+  const names = rel.split(sep)
+  if (names.length !== parts.length) return false
+  let at = folder
+  for (const [i, n] of names.entries()) {
+    if (!parts[i]!.test(n)) return false
+    at = join(at, n)
+    const stat = lstatSync(at, { throwIfNoEntry: false })
+    if (stat === undefined || stat.isSymbolicLink()) return false
+    if ((i < names.length - 1 || foldersOnly) && !stat.isDirectory()) return false
   }
-  return [...out]
+  return true
 }
 
 /**
@@ -166,11 +181,9 @@ function checkoutsIn(targets: readonly string[]): string[] {
  * neither matched nor walked through.
  */
 export function globMatches(folder: string, glob: string): string[] {
-  const foldersOnly = /[/\\]$/.test(glob)
-  const parts = glob.split(/[/\\]/).filter((p) => p !== '' && p !== '.')
+  const { parts, foldersOnly } = globParts(glob)
   let level = [folder]
-  for (const [i, part] of parts.entries()) {
-    const re = globRegExp(part)
+  for (const [i, re] of parts.entries()) {
     const last = i === parts.length - 1
     const next: string[] = []
     for (const dir of level) {
@@ -191,9 +204,6 @@ export function globMatches(folder: string, glob: string): string[] {
   return level.sort()
 }
 
-/** `hours` for a sentence, in tenths rounded down, so it never says more than was measured. */
-const hoursText = (hours: number): string => String(Math.floor(hours * 10) / 10)
-
 /** How a candidate is deleted: by the tool's command, or by removing the folder. */
 type Action = 'command' | 'remove'
 
@@ -203,6 +213,8 @@ type Action = 'command' | 'remove'
  */
 type Evidence = {
   path: string
+  /** For the candidate of the glob matches past `maxEntries`: each of them. */
+  rest?: string[]
   candidate?: number
   action?: Action
   project?: number
@@ -268,17 +280,18 @@ export function descriptorPlugin(
         runs: opts.runs,
         ownDirs: opts.ownDirs ?? ownDirsOf(env),
         env,
-        vars: settings.vars ?? {},
+        vars: settings.vars,
       }),
   })
 }
 
-const ownDirsOf = (env: Readonly<Record<string, string | undefined>>): string[] => {
+/** host-cleaner's own folders for `env`, or why they could not be found: then no path passes. */
+const ownDirsOf = (env: Readonly<Record<string, string | undefined>>): string[] | Error => {
   try {
     const dirs = hostDirs({ ...env })
     return [dirs.config, dirs.state, dirs.logs]
-  } catch {
-    return []
+  } catch (err) {
+    return err instanceof Error ? err : new Error(String(err))
   }
 }
 
@@ -287,25 +300,60 @@ interface EngineAt {
   os: Os
   idleHours: number
   runs: DescriptorOptions['runs']
-  ownDirs: readonly string[]
+  ownDirs: readonly string[] | Error
   env: Readonly<Record<string, string | undefined>>
   /** The config's `vars`: trusted folders. */
-  vars: Readonly<Record<string, string | undefined>>
+  vars?: Readonly<Record<string, string | undefined>> | undefined
+}
+
+/** One of a descriptor's folders, resolved; trusted when a config value gave it. */
+type Folder = { path: string; trusted: boolean }
+
+/**
+ * The variables that `templates` use on `os`, declared or built in, with the
+ * ones their sources use in turn: only these are resolved on a survey.
+ */
+function varsUsed(d: Descriptor, os: Os, templates: readonly string[]): Set<string> {
+  const used = new Set<string>()
+  const add = (text: string): void => {
+    for (const ref of varRefs(text)) {
+      if (used.has(ref)) continue
+      used.add(ref)
+      for (const s of sourcesOf(d, ref)) {
+        if ('file' in s) add(s.file)
+        if ('value' in s) {
+          const v = forOs(s.value, os)
+          if (v !== undefined) add(v)
+        }
+      }
+    }
+  }
+  templates.forEach(add)
+  return used
+}
+
+/** The sources `d` declares for the variable `name`; none for a built-in. */
+const sourcesOf = (d: Descriptor, name: string) =>
+  d.vars !== undefined && Object.hasOwn(d.vars, name) ? d.vars[name]! : []
+
+/** Why the variable `missing` has no value, for a note: each source tried and why it gave none. */
+function missingText(key: string, missing: string, vars: Readonly<Vars>): string {
+  const tried = Object.hasOwn(vars, missing) ? vars[missing]!.tried : []
+  const why = tried.map((t) => `${t.source}: ${t.failed}`).join('; ')
+  return `${key} is left out: \${${missing}} has no value${why === '' ? '' : ` (${why})`}`
 }
 
 /** What a descriptor's last `detect` found, for `host-cleaner plugins`. */
 export interface DescriptorDetection {
-  /** Why it did not apply before looking: `system: true`, or its `supersededBy` plugin runs. */
-  skipped?: string
-  /** Its variables: those it declares, and the built-ins it uses. Absent when that `detect` did not finish working them out. */
+  /** The variables its folders and locks use on this OS, declared or built in. Absent when that `detect` did not work them out. */
   vars?: Vars
 }
 
 const lastDetection = new WeakMap<Plugin, () => DescriptorDetection>()
 
 /**
- * What the last `detect` of `plugin`, a descriptor's, found: why it skipped,
- * or the variables it worked out. A `detect` that was cancelled, such as by
+ * What the last `detect` of `plugin`, a descriptor's, found: the variables it
+ * worked out, none when it skipped. A `detect` that was cancelled, such as by
  * its time limit, or that threw records nothing, so what an earlier one found
  * stays. Undefined for any other plugin, including a wrapper around a
  * descriptor's.
@@ -314,51 +362,92 @@ export const descriptorDetection = (plugin: Plugin): DescriptorDetection | undef
   lastDetection.get(plugin)?.()
 
 function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
-  const config = Object.fromEntries(
-    Object.entries(at.vars).filter((e): e is [string, string] => e[1] !== undefined),
-  )
-  // The folders that apply on this OS, by their name in `paths`, as the last
-  // survey resolved them; and those of them a config value gave.
-  let folders = new Map<string, string>()
-  let trusted = new Set<string>()
-  let vars: Vars | undefined
+  const pathTemplates = Object.entries(d.paths).flatMap(([key, perOs]) => {
+    const template = forOs(perOs, at.os)
+    return template === undefined ? [] : [[key, template] as const]
+  })
+  const lockTemplates = d.inUse?.locks ?? []
+  const used = varsUsed(d, at.os, [...pathTemplates.map(([, t]) => t), ...lockTemplates])
 
-  const refresh = async (ctx: Ctx): Promise<void> => {
-    const now = await resolveVars(d.vars ?? {}, {
+  // The folders by their name in `paths`, and the lock files, as the last
+  // survey filled them. `locks` stays undefined until a survey runs; `ready` tests it.
+  let folders = new Map<string, Folder>()
+  let locks: string[] | undefined
+  // Why the last survey left folders or locks out; undefined when it left none out.
+  let leftOut: string | undefined
+
+  /** Resolves the variables and fills the folders and locks with them; returns every variable's outcome. */
+  const refresh = async (ctx: Ctx): Promise<Vars> => {
+    const vars = await resolveVars(d.vars ?? {}, {
       home: at.home,
       os: at.os,
       env: at.env,
-      config,
+      config: at.vars,
       kit,
       signal: ctx.signal,
+      only: used,
     })
-    const nextFolders = new Map<string, string>()
-    const nextTrusted = new Set<string>()
-    for (const [key, perOs] of Object.entries(d.paths)) {
-      const template = perOs.all ?? perOs[at.os]
-      if (template === undefined) continue
-      const filled = fillTemplate(template, now, at.home)
-      // A variable with no value leaves the folder out.
-      if ('missing' in filled) continue
-      nextFolders.set(key, filled.path)
-      if (filled.trusted) nextTrusted.add(key)
+    const why: string[] = []
+    const next = new Map<string, Folder>()
+    for (const [key, template] of pathTemplates) {
+      const filled = fillTemplate(template, vars, at.home)
+      if ('missing' in filled) why.push(missingText(key, filled.missing, vars))
+      else next.set(key, filled)
     }
-    vars = now
-    folders = nextFolders
-    trusted = nextTrusted
+    folders = next
+    locks = lockTemplates.flatMap((lock) => {
+      const filled = fillTemplate(lock, vars, at.home)
+      if (!('missing' in filled)) return [filled.path]
+      why.push(missingText(`the lock ${lock}`, filled.missing, vars))
+      return []
+    })
+    leftOut = why.length === 0 ? undefined : why.join('; ')
+    return vars
   }
 
   /** Resolves the variables if no survey has yet. */
   const ready = async (ctx: Ctx): Promise<void> => {
-    if (vars === undefined) await refresh(ctx)
+    if (locks === undefined) await refresh(ctx)
   }
 
+  // The `project` entries, each with its marker compiled once.
+  const projects = (d.project ?? []).map((entry, index) => ({
+    entry,
+    index,
+    marker: globRegExp(entry.marker),
+  }))
+
   const problems = (ctx: Ctx) => {
-    const where = { ...at, targets: ctx.targets, checkouts: checkoutsIn(ctx.targets) }
     const out = new Map<string, string | null>()
-    for (const [key, folder] of folders)
-      out.set(key, pathProblem(folder, { ...where, trusted: trusted.has(key) }))
+    const own = at.ownDirs
+    if (own instanceof Error) {
+      for (const key of folders.keys()) {
+        out.set(key, `host-cleaner's own folders could not be found: ${own.message}`)
+      }
+      return out
+    }
+    const where = {
+      home: at.home,
+      targets: ctx.targets,
+      checkouts: linkedCheckouts(ctx.targets),
+      ownDirs: own,
+    }
+    for (const [key, { path, trusted }] of folders) {
+      out.set(key, pathProblem(path, { ...where, trusted }))
+    }
     return out
+  }
+
+  /** The checkouts of the targets' repositories, primary first, ignored ones left out. */
+  const checkoutsNow = (ctx: Ctx): Checkout[] =>
+    checkoutsOf({ kit, git: undefined, idleHours: at.idleHours, ctx })
+
+  /** How long `path` has sat unchanged: a folder by everything in it, a file (a glob may match one) by itself. */
+  const idleOf = (path: string): Idle => {
+    const stat = lstatSync(path, { throwIfNoEntry: false })
+    if (stat === undefined || stat.isDirectory()) return kit.idle(path)
+    const own = basename(path)
+    return kit.idle(dirname(path), { skip: (n) => n !== own })
   }
 
   const thresholdOf = (entry: { idleHours?: number | undefined }): number =>
@@ -368,38 +457,44 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     entry.command !== undefined && kit.onPath(entry.command[0]!) ? 'command' : 'remove'
 
   /** One folder's row: a whole folder, or one glob match. */
-  const folderRow = (entry: DescriptorCandidate, index: number, path: string): Row | null => {
-    const action = actionOf(entry)
+  const folderRow = (
+    entry: DescriptorCandidate,
+    index: number,
+    path: string,
+    action: Action,
+  ): Row | null => {
     const prune = entry.command !== undefined && entry.removes === 'unused'
-    const program = entry.command?.[0]
     const objections: Row['objections'] = []
     if (prune && action === 'remove') {
       objections.push({
         level: 'protest',
         code: NO_PRUNE_TOOL,
-        reason: `${program} is not on PATH to prune it; --allow ${NO_PRUNE_TOOL} removes the whole folder instead`,
+        reason: `${entry.command![0]} is not on PATH to prune it; --allow ${NO_PRUNE_TOOL} removes the whole folder instead`,
       })
     }
     const evidence: Evidence = { path, candidate: index, action }
+    const base = {
+      kind: name,
+      path,
+      costDescription: entry.costDescription,
+      evidence,
+      ...(entry.held === true ? { held: true } : {}),
+    }
     if (prune && action === 'command') {
       // A prune removes only what nothing uses: no idle check.
       const bytes = kit.size(path)
       return {
         objections,
         candidate: kit.candidate({
-          kind: name,
-          path,
+          ...base,
           why: `${entry.command!.join(' ')} removes only what nothing uses`,
-          costDescription: entry.costDescription,
           ...(bytes === null ? {} : { bytes }),
-          ...(entry.held === true ? { held: true } : {}),
-          evidence,
         }),
       }
     }
     let idle
     try {
-      idle = kit.idle(path)
+      idle = idleOf(path)
     } catch {
       // A folder that cannot be read may hide recent changes: no row.
       return null
@@ -411,13 +506,9 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       return {
         objections,
         candidate: kit.candidate({
-          kind: name,
-          path,
+          ...base,
           why: `when it last changed could not be measured in the time budget; ${how}`,
-          costDescription: entry.costDescription,
           unmeasured: true,
-          ...(entry.held === true ? { held: true } : {}),
-          evidence,
         }),
       }
     }
@@ -430,40 +521,41 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     return {
       objections,
       candidate: kit.candidate({
-        kind: name,
-        path,
+        ...base,
         why: `${since}; ${how}`,
-        costDescription: entry.costDescription,
         ...(bytes === null ? {} : { bytes }),
-        ...(entry.held === true || !idleNow ? { held: true } : {}),
-        evidence,
+        ...(idleNow ? {} : { held: true }),
       }),
     }
   }
 
-  /** Build folders beside a marker in `checkout`, for `project` entry `entry`. */
-  const projectRows = (entry: ProjectEntry, index: number, checkout: string): Row[] => {
-    const marker = globRegExp(entry.marker)
+  /** Build folders beside a marker under `walk`, in `checkout`, for every `project` entry in one walk. */
+  const projectRows = (checkout: string, walk: string): Row[] => {
     const rows: Row[] = []
     const visit = (dir: string): void => {
-      let entries: Dirent[]
+      let found: Dirent[]
       try {
-        entries = readdirSync(dir, { withFileTypes: true })
+        found = readdirSync(dir, { withFileTypes: true })
       } catch {
         return
       }
-      const marked = entries.some((e) => !e.isDirectory() && marker.test(e.name))
-      for (const e of entries) {
+      const files = found.filter((e) => !e.isDirectory()).map((e) => e.name)
+      const here = projects.filter((p) => files.some((f) => p.marker.test(f)))
+      for (const e of found) {
         if (!e.isDirectory() || e.isSymbolicLink()) continue
         const path = join(dir, e.name)
-        if (marked && e.name === entry.dir) {
-          const row = projectRow(entry, index, checkout, path)
+        const builds = here.filter((p) => p.entry.dir === e.name)
+        for (const p of builds) {
+          const row = projectRow(p.entry, p.index, checkout, path)
           if (row !== null) rows.push(row)
-        } else if (!NOT_WALKED.has(e.name) && !e.name.startsWith('.')) visit(path)
+        }
+        if (builds.length === 0 && !NOT_WALKED.has(e.name) && !e.name.startsWith('.')) visit(path)
       }
     }
-    visit(checkout)
-    return rows
+    visit(walk)
+    // In `project` order, as one walk per entry listed them.
+    const order = (r: Row): number => (r.candidate.evidence as Evidence).project ?? 0
+    return rows.sort((x, y) => order(x) - order(y))
   }
 
   const projectRow = (
@@ -515,13 +607,15 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     }
   }
 
-  /** Every row now, and a note for each glob that matched more than its `maxEntries`. */
+  /** Every row now: past a glob's `maxEntries`, the rest as one row. */
   const rowsNow = (ctx: Ctx): Row[] => {
-    const refused = problems(ctx)
+    let refused: Map<string, string | null> | undefined
     const rows: Row[] = []
     for (const [index, entry] of d.candidates.entries()) {
-      const folder = folders.get(entry.path)
+      const folder = folders.get(entry.path)?.path
       if (folder === undefined || !present(folder)) continue
+      const action = actionOf(entry)
+      refused ??= problems(ctx)
       const problem = refused.get(entry.path) ?? null
       if (problem !== null) {
         // Listed so `status` says why, but nothing under it is measured.
@@ -533,41 +627,99 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
             why: `refused: ${problem}`,
             costDescription: entry.costDescription,
             held: true,
-            evidence: { path: folder, candidate: index, action: actionOf(entry) },
+            evidence: { path: folder, candidate: index, action },
           }),
         })
         continue
       }
       if (entry.glob === undefined) {
-        const row = folderRow(entry, index, folder)
+        const row = folderRow(entry, index, folder, action)
         if (row !== null) rows.push(row)
         continue
       }
-      const matches = globMatches(folder, entry.glob)
+      const matches = globMatches(folder, entry.glob).filter(
+        (match) => containedIn([folder], match) !== null,
+      )
       const max = entry.maxEntries ?? DEFAULT_MAX_ENTRIES
-      const listed: Row[] = []
       for (const match of matches.slice(0, max)) {
-        if (containedIn([folder], match) === null) continue
-        const row = folderRow(entry, index, match)
-        if (row !== null) listed.push(row)
+        const row = folderRow(entry, index, match, action)
+        if (row !== null) rows.push(row)
       }
-      const last = listed.at(-1)
-      if (last !== undefined && matches.length > max) {
-        last.objections.push({
-          level: 'note',
-          code: 'more-entries',
-          reason: `${matches.length - max} more entries match ${entry.glob} in ${folder}; they are listed once these are gone`,
-        })
+      if (matches.length > max) {
+        // The core checks only the candidate's own path against the ignore list.
+        const ignore = ctx.ignore ?? []
+        const left = matches
+          .slice(max)
+          .filter(
+            (m) => coveredBy(m, ignore) === undefined && containsIgnored(m, ignore) === undefined,
+          )
+        const row = restRow(entry, index, folder, left, max, action)
+        if (row !== null) rows.push(row)
       }
-      rows.push(...listed)
     }
-    for (const [index, entry] of (d.project ?? []).entries()) {
-      for (const checkout of checkoutsIn(ctx.targets)) {
-        if (ctx.ignore?.some((i) => within(i, checkout)) === true) continue
-        rows.push(...projectRows(entry, index, checkout))
+    if (projects.length > 0) {
+      for (const checkout of checkoutsNow(ctx)) {
+        for (const walk of walkedIn(checkout, ctx.targets)) {
+          rows.push(...projectRows(checkout.path, walk))
+        }
       }
     }
     return rows
+  }
+
+  /**
+   * The glob matches past `maxEntries`, combined into one candidate at the
+   * first of them that removes each, since the core lets only a path
+   * candidate remove folders. Held when any of them changed within the
+   * threshold; one that cannot be read is left out, as its own row would be.
+   */
+  const restRow = (
+    entry: DescriptorCandidate,
+    index: number,
+    folder: string,
+    matches: readonly string[],
+    max: number,
+    action: Action,
+  ): Row | null => {
+    const threshold = thresholdOf(entry)
+    const rest: string[] = []
+    let changed = 0
+    let unmeasured = false
+    let bytes: number | null = 0
+    for (const match of matches) {
+      let idle
+      try {
+        idle = idleOf(match)
+      } catch {
+        continue
+      }
+      rest.push(match)
+      if (idle.unmeasured) unmeasured = true
+      else if (idle.hours !== null && idle.hours < threshold) changed++
+      const size = kit.size(match)
+      bytes = bytes === null || size === null ? null : bytes + size
+    }
+    const [path] = rest
+    if (path === undefined) return null
+    const since = unmeasured
+      ? 'when some last changed could not be measured in the time budget'
+      : changed === 0
+        ? `none changed in ${threshold} hours`
+        : `${changed} changed in the last ${threshold} hours`
+    const evidence: Evidence = { path: folder, rest, candidate: index, action }
+    return {
+      objections: [],
+      candidate: kit.candidate({
+        kind: name,
+        path,
+        why: `${rest.length} matches of ${entry.glob} past the first ${max}, from this one on, as one; ${since}; each removed as a folder`,
+        costDescription: entry.costDescription,
+        evidence,
+        ...(bytes === null ? {} : { bytes }),
+        ...(unmeasured ? { unmeasured: true } : {}),
+        ...(entry.held === true || changed > 0 ? { held: true } : {}),
+      }),
+    }
   }
 
   /** The `inUse` objections now: a running process or a lock file refuses every candidate. */
@@ -579,19 +731,11 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         out.push({ level: 'refuse', code: IN_USE, reason: `running: ${found.names.join(', ')}` })
       }
       if (found.unknown !== undefined) {
-        out.push({
-          level: 'refuse',
-          code: 'process-table-unreadable',
-          reason: `process table unreadable: ${found.unknown}`,
-        })
+        out.push(unreadable(found.unknown))
         break
       }
     }
-    for (const lock of d.inUse?.locks ?? []) {
-      const filled = fillTemplate(lock, vars ?? {}, at.home)
-      // A lock whose variable has no value can't be looked for.
-      if ('missing' in filled) continue
-      const file = filled.path
+    for (const file of locks ?? []) {
       if (present(file))
         out.push({ level: 'refuse', code: IN_USE, reason: `the lock ${file} exists` })
     }
@@ -601,42 +745,30 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   /** What blocks deleting a `project` row now: a busy process in its checkout. */
   const liveIn = (checkout: string, ctx: Ctx): Row['objections'] => {
     const held = kit.running({ in: checkout }, ctx)
-    return [
-      ...(held.names.length > 0
-        ? [
-            {
-              level: 'refuse' as const,
-              code: 'live-process',
-              reason: `running in the checkout: ${held.names.join(', ')}`,
-            },
-          ]
-        : []),
-      ...(held.unknown === undefined
-        ? []
-        : [
-            {
-              level: 'refuse' as const,
-              code: 'process-table-unreadable',
-              reason: `process table unreadable: ${held.unknown}`,
-            },
-          ]),
-    ]
+    const out: Row['objections'] = []
+    if (held.names.length > 0) {
+      out.push({
+        level: 'refuse',
+        code: 'live-process',
+        reason: `running in the checkout: ${held.names.join(', ')}`,
+      })
+    }
+    if (held.unknown !== undefined) out.push(unreadable(held.unknown))
+    return out
   }
 
   /** Each folder that passes the checks: the plugin's roots, each a self root. */
-  const rootPaths = (ctx: Ctx): string[] => {
-    const refused = problems(ctx)
+  const rootPaths = (refused: Map<string, string | null>): string[] => {
     const out = new Set<string>()
-    for (const [key, folder] of folders) if (refused.get(key) === null) out.add(folder)
+    for (const [key, { path }] of folders) if (refused.get(key) === null) out.add(path)
     return [...out]
   }
 
   /** Whether `dir` holds an entry, not a folder, that `marker` matches. */
-  const marked = (dir: string, marker: string): boolean => {
-    const re = globRegExp(marker)
+  const marked = (dir: string, marker: RegExp): boolean => {
     try {
       return readdirSync(dir, { withFileTypes: true }).some(
-        (e) => !e.isDirectory() && re.test(e.name),
+        (e) => !e.isDirectory() && marker.test(e.name),
       )
     } catch {
       return false
@@ -650,70 +782,57 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
    * in its checkout, may be running.
    */
   const refusal = (ev: Evidence, path: string, ctx: Ctx): string | null => {
-    const busy = inUseNow(ctx)
+    const live: Row['objections'] = []
     if (ev.project !== undefined) {
-      const entry = d.project?.[ev.project]
+      const project = projects[ev.project]
       const checkout = ev.checkout
-      if (entry === undefined || checkout === undefined) return 'no project entry gives it now'
-      if (!checkoutsIn(ctx.targets).includes(checkout)) {
-        return `${checkout} is not a checkout of the targets`
+      if (project === undefined || checkout === undefined) return 'no project entry gives it now'
+      const { entry, marker } = project
+      const now = checkoutsNow(ctx).find((c) => c.path === checkout)
+      if (now === undefined) return `${checkout} is not a checkout of the targets`
+      if (containedIn(walkedIn(now, ctx.targets), path) === null) {
+        return `it is not inside ${checkout} and the targets`
       }
-      if (containedIn([checkout], path) === null) return `it is not inside ${checkout}`
-      if (basename(path) !== entry.dir || !marked(dirname(path), entry.marker)) {
+      if (basename(path) !== entry.dir || !marked(dirname(path), marker)) {
         return `it is no longer a ${entry.dir} folder beside ${entry.marker}`
       }
-      busy.push(...liveIn(checkout, ctx))
+      live.push(...liveIn(checkout, ctx))
     } else {
-      const now = rootPaths(ctx)
-      if (!now.some((r) => realOr(r) === realOr(path)) && containedIn(now, path) === null) {
-        return `it is not inside ${name}'s roots`
+      const refused = problems(ctx)
+      const now = rootPaths(refused)
+      const paths = ev.rest ?? [path]
+      // Of a combined candidate, the reason names the match at fault.
+      const named = (p: string): string => (ev.rest === undefined ? 'it' : p)
+      const realNow = new Set(now.map(realOr))
+      for (const p of paths) {
+        if (!realNow.has(realOr(p)) && containedIn(now, p) === null) {
+          return `${named(p)} is not inside ${name}'s roots`
+        }
       }
       const entry = d.candidates[ev.candidate ?? -1]
-      const folder = entry === undefined ? undefined : folders.get(entry.path)
+      const folder = entry === undefined ? undefined : folders.get(entry.path)?.path
       if (entry === undefined || folder === undefined) return 'no candidate entry gives it now'
-      const problem = problems(ctx).get(entry.path) ?? null
+      const problem = refused.get(entry.path) ?? null
       if (problem !== null) return problem
-      if (
-        entry.glob === undefined ? path !== folder : !globMatches(folder, entry.glob).includes(path)
-      ) {
-        return `it is no longer ${entry.glob === undefined ? folder : `a match of ${entry.glob} in ${folder}`}`
+      const glob = entry.glob === undefined ? undefined : globParts(entry.glob)
+      for (const p of paths) {
+        if (glob === undefined ? p !== folder : !isGlobMatch(folder, glob, p)) {
+          return `${named(p)} is no longer ${entry.glob === undefined ? folder : `a match of ${entry.glob} in ${folder}`}`
+        }
       }
       if (actionOf(entry) !== ev.action) return 'how it would be deleted changed since the plan'
     }
+    const busy = [...inUseNow(ctx), ...live]
     return busy.length === 0 ? null : busy.map((b) => b.reason).join('; ')
   }
 
   let rows = new Map<string, Row>()
 
-  // Commands run one at a time, each within its own limit.
-  const commands = Object.values(d.vars ?? {})
-    .flat()
-    .filter((s) => 'command' in s).length
+  // detect's limit covers the used variables' commands, which run one at a time.
+  const commands = [...used].flatMap((v) => sourcesOf(d, v)).filter((s) => 'command' in s).length
 
-  // The names in the fields that are templates, as `templatesOf` in schema.ts lists them; a
-  // command's args are not. Worked out on the first `descriptorDetection`; a sweep never asks.
-  let used: Set<string> | undefined
-  const shown = (found: DescriptorDetection): DescriptorDetection => {
-    if (found.vars === undefined) return found
-    used ??= new Set(
-      varRefs(
-        JSON.stringify([
-          d.paths,
-          Object.values(d.vars ?? {}).map((ss) =>
-            ss.map((s) => ('file' in s ? s.file : 'value' in s ? s.value : null)),
-          ),
-          d.inUse?.locks,
-        ]),
-      ),
-    )
-    const vars = Object.fromEntries(
-      Object.entries(found.vars).filter(([n]) => !Object.hasOwn(BUILT_IN_VARS, n) || used!.has(n)),
-    )
-    return { ...found, vars }
-  }
   let detected: DescriptorDetection = {}
-  // Skipping a cancelled call (see `descriptorDetection`) also covers a nested one: another
-  // descriptor's `supersededBy` calls this `detect` under its own ctx and time limit.
+  // A cancelled call records nothing: see `descriptorDetection`.
   const record = (ctx: Ctx, now: DescriptorDetection): void => {
     if (!ctx.signal.aborted) detected = now
   }
@@ -725,29 +844,34 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       detect: Math.max(HOOK_LIMIT_MS, (commands + 1) * VAR_COMMAND_LIMIT_MS),
     },
     async detect(ctx) {
-      const skipped = skipReason(d)
-      if (skipped !== undefined) {
-        record(ctx, { skipped })
-        return false
+      const skip = skipReason(d)
+      if (skip !== undefined) {
+        record(ctx, {})
+        return { active: false, note: skip }
       }
       if (d.supersededBy !== undefined && (await at.runs?.(d.supersededBy, ctx)) === true) {
-        record(ctx, { skipped: `superseded: ${d.supersededBy} runs` })
-        return false
+        record(ctx, {})
+        return { active: false, note: `skipped: the plugin ${d.supersededBy} runs instead` }
       }
-      await refresh(ctx)
-      record(ctx, { vars: vars! })
+      const vars = await refresh(ctx)
+      record(ctx, {
+        vars: Object.fromEntries(Object.entries(vars).filter(([n]) => used.has(n))),
+      })
       const holds = (c: { onPath?: string | undefined; exists?: string | undefined }): boolean => {
         if (c.onPath !== undefined) return kit.onPath(c.onPath)
-        const folder = c.exists === undefined ? undefined : folders.get(c.exists)
+        const folder = c.exists === undefined ? undefined : folders.get(c.exists)?.path
         return folder !== undefined && present(folder)
       }
-      if (d.detect?.all !== undefined) return d.detect.all.every(holds)
-      if (d.detect?.any !== undefined) return d.detect.any.some(holds)
-      return [...folders.values()].some(present)
+      const active = (): boolean => {
+        if (d.detect?.all !== undefined) return d.detect.all.every(holds)
+        if (d.detect?.any !== undefined) return d.detect.any.some(holds)
+        return [...folders.values()].some((f) => present(f.path))
+      }
+      return leftOut === undefined ? active() : { active: active(), note: leftOut }
     },
     async roots(ctx): Promise<Root[]> {
       await ready(ctx)
-      return rootPaths(ctx).map((path) => ({ path, self: true }))
+      return rootPaths(problems(ctx)).map((path) => ({ path, self: true }))
     },
     async discover(ctx) {
       await ready(ctx)
@@ -770,23 +894,38 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       })
     },
     async delete(c, ctx) {
+      await ready(ctx)
+      const ev = c.evidence as Evidence
+      if (Array.isArray(ev.rest)) {
+        const left = ev.rest.filter(present)
+        if (left.length === 0) return `already gone: every match of ${c.id}`
+        const link = left.find(isLink)
+        if (link !== undefined) throw new Error(`${link} is now a symlink; it is not followed`)
+        const why = refusal({ ...ev, rest: left }, ev.path, ctx)
+        if (why !== null) throw new Error(`${c.id} was not deleted: ${why}`)
+        return left.map((p) => kit.remove(p, ctx)).join('; ')
+      }
       const path = c.path
       if (path === undefined) throw new Error(`${c.id} is not a folder`)
       if (isLink(path)) throw new Error(`${path} is now a symlink; it is not followed`)
       if (!present(path)) return `already gone: ${path}`
-      await ready(ctx)
-      const why = refusal(c.evidence as Evidence, path, ctx)
+      const why = refusal(ev, path, ctx)
       if (why !== null) throw new Error(`${path} was not deleted: ${why}`)
-      const ev = c.evidence as Evidence
       if (ev.action === 'command') {
         return runCommand(kit, d.candidates[ev.candidate!]!, path, at.home, ctx)
       }
       return kit.remove(path, ctx)
     },
   }
-  lastDetection.set(plugin, () => shown(detected))
+  lastDetection.set(plugin, () => detected)
   return plugin
 }
+
+const unreadable = (why: string): Row['objections'][number] => ({
+  level: 'refuse',
+  code: 'process-table-unreadable',
+  reason: `process table unreadable: ${why}`,
+})
 
 const bytesText = (n: number | null): string => (n === null ? 'an unknown size' : `${n} bytes`)
 
@@ -805,7 +944,7 @@ async function runCommand(
   const before = kit.size(real)
   const r = await kit.run(argv, { signal: ctx.signal, cwd: home, env, timeoutMs: DELETE_LIMIT_MS })
   if (!r.ok) {
-    const said = (r.stderr || r.stdout).trim().split('\n')[0] ?? ''
+    const said = firstLine(failureText(r, { both: true }))
     throw new Error(
       `${argv.join(' ')} failed (${r.neverExited === true ? 'did not run' : `exit ${r.exitCode}`})${said === '' ? '' : `: ${said}`}`,
     )

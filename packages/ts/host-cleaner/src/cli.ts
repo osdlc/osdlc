@@ -43,13 +43,7 @@ import { DescriptorError } from './descriptor/schema.ts'
 import type { VarValue, Vars } from './descriptor/vars.ts'
 import { pluginKit } from './kit.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
-import {
-  UnknownPlugin,
-  loadPlugins,
-  runsAmong,
-  selectPlugins,
-  type Loaded,
-} from './registry.ts'
+import { UnknownPlugin, loadPlugins, selectPlugins, supersession, type Loaded } from './registry.ts'
 import { realOr } from './roots.ts'
 import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
 import {
@@ -327,7 +321,7 @@ const terminalChecklist: Checklist = (question, items) =>
 export interface MainDeps {
   /** The plugins that exist; default is the built-ins and the descriptors, built from the config. */
   plugins?: readonly Plugin[]
-  /** The folder of shipped descriptors. Defaults to the package's `descriptors/`. */
+  /** The folder of shipped descriptors. Defaults to `SHIPPED_DESCRIPTORS` in descriptor/load.ts. */
   shippedDescriptors?: string
   confirm?: Confirm
   /** Answers `clean -i`. Defaults to a checklist on the terminal. */
@@ -437,8 +431,8 @@ const unknownPlugins = (config: Config, known: (name: string) => boolean): strin
 /**
  * The config and the plugins this run uses: the built-ins and the descriptors
  * loaded, the config checked against them, each built from its entry (or
- * `deps.plugins`) into `all`, then chosen by `choose`. A descriptor's
- * `supersededBy` plugin runs when it is among those chosen and detects.
+ * `deps.plugins`) into `all`, then chosen by `choose`. `supersededBy` is
+ * answered as described at `supersession` in registry.ts.
  */
 function setUp(
   v: { config?: string | undefined; descriptor: readonly string[] },
@@ -448,18 +442,20 @@ function setUp(
   choose: (all: readonly Plugin[], config: Config) => Plugin[],
 ): {
   config: Config
+  /** Every plugin, as built. */
   all: readonly Plugin[]
+  /** Those chosen, each wrapped when its `detect` is tracked. */
   plugins: Plugin[]
   descriptors: Loaded['descriptors']
 } {
-  let chosen: readonly Plugin[] = []
+  const superseded = supersession()
   const { definitions, descriptors } = loadPlugins(sourcesFor(v, ctx, deps), {
-    runs: runsAmong(() => chosen),
+    runs: superseded.runs,
   })
   const config = loadConfig(v, ctx, definitions)
   const all = allPlugins(config, definitions, deps, ctx, only)
-  const plugins = choose(all, config)
-  chosen = plugins
+  const chosen = choose(all, config)
+  const plugins = deps.plugins === undefined ? superseded.track(chosen) : chosen
   return { config, all, plugins, descriptors }
 }
 
@@ -471,7 +467,11 @@ function setUpSweep(v: SweepValues, ctx: CliContext, deps: MainDeps) {
   return setUp(v, ctx, deps, only, (all, config) => chosenByFlag(v, all, config))
 }
 
-/** Every plugin, enabled or not: `definitions` built from the config, or `deps.plugins`. */
+/**
+ * Every plugin, enabled or not: `definitions` built from the config, or `deps.plugins`.
+ * @param only The kinds the `git` plugin proposes; ignored for `deps.plugins`.
+ * @throws {BadInput} When the config names a plugin that is not among them.
+ */
 function allPlugins(
   config: Config,
   definitions: readonly PluginDefinition[],
@@ -706,7 +706,7 @@ interface PluginRow {
   replaces?: { source: DescriptorSource; path: string }
   enabled: boolean
   detected: boolean
-  /** Why it does not run: disabled in the config, the `reason` `inspect` gave, or why a descriptor skipped (`system: true`, superseded). Null when it is detected, or `detect` answered no. */
+  /** Why it does not run: disabled in the config, or the `reason` `inspect` gave. Null when it is detected, or `detect` answered no. */
   reason: string | null
   /** Where it may delete besides the targets; empty, the targets alone. */
   roots: readonly string[]
@@ -794,7 +794,7 @@ async function runPlugins(
         enabled: isEnabled,
         detected: s?.detected ?? false,
         reason: isEnabled
-          ? (s?.reason ?? seen?.skipped ?? null)
+          ? (s?.reason ?? null)
           : `plugins.${p.name}.enabled is false; a sweep's --plugin ${p.name} runs it anyway`,
         roots: s?.roots ?? [],
         selfRoots: s?.selfRoots ?? [],

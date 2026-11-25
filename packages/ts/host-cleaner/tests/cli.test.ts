@@ -76,7 +76,7 @@ async function run(argv: string[], cwd: string, env: Record<string, string>, dep
   // The shipped plugins would talk to this machine's Orca and sweep every repository it lists.
   const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
   const args = phase && deps.plugins === undefined ? [...argv, '--skip-plugin', 'orca'] : argv
-  // So would the shipped descriptors, on this machine's caches, since HOME is the real one.
+  // The shipped descriptors would sweep this machine's caches, since HOME is the real one.
   const shippedDescriptors = deps.shippedDescriptors ?? tempDir()
   const code = await main(args, ctx, { confirm: () => null, ...deps, shippedDescriptors })
   return { code, out: ctx.io.out, err: ctx.io.err }
@@ -368,7 +368,7 @@ describe('plugins', () => {
           source: 'given',
           enabled: false,
           detected: false,
-          reason: 'plugins.cargo.enabled is false; a sweep's --plugin cargo runs it anyway',
+          reason: "plugins.cargo.enabled is false; a sweep's --plugin cargo runs it anyway",
           roots: [],
           selfRoots: [],
           note: null,
@@ -452,8 +452,8 @@ candidates:
     expect(r.out).toBe(
       [
         `targets: ${cwd}`,
-        '  git  built-in  detected; roots: none, the targets alone',
-        `  go   shipped   detected; roots: ${join(home, 'go/pkg/mod')} (itself too), ${join(home, '.cache/go-build')} (itself too)`,
+        '  git  given    detected; roots: none, the targets alone',
+        `  go   shipped  detected; roots: ${join(home, 'go/pkg/mod')} (itself too), ${join(home, '.cache/go-build')} (itself too); note: tools is left out: \${TOOLDIR} has no value (env GO_TOOL_DIR: not set)`,
         `    \${XDG_CACHE_HOME}  = ${join(home, '.cache')}  from default (tried env XDG_CACHE_HOME: not set)`,
         `    \${GOPATH}          = ${join(home, 'go')}  from value (tried env GOPATH: not set)`,
         `    \${GOMODCACHE}      = ${join(home, 'go/pkg/mod')}  from value (tried env GOMODCACHE: not set; command go env GOMODCACHE: timed out after 5 s)`,
@@ -531,7 +531,7 @@ candidates:
     const r = await run(['plugins'], cwd, env, { plugins: twice })
     expect(r.code).toBe(0)
     expect(r.out).toBe(
-      [`targets: ${cwd}`, '  x  built-in  detected; roots: /cache/first', ''].join('\n'),
+      [`targets: ${cwd}`, '  x  given  detected; roots: /cache/first', ''].join('\n'),
     )
     expect(r.err).toContain('x: a second plugin of that name was left out')
   })
@@ -892,13 +892,16 @@ candidates:
     )
     expect(rows.mine).toMatchObject({
       detected: false,
-      reason: 'superseded: git runs',
+      reason: null,
+      note: 'skipped: the plugin git runs instead',
       vars: [],
     })
-    expect(rows.root).toMatchObject({ detected: false, vars: [] })
-    expect(rows.root.reason).toMatch(/^skipped: .*system: true/)
+    expect(rows.root).toMatchObject({ detected: false, reason: null, vars: [] })
+    expect(rows.root.note).toMatch(/^skipped: .*system: true/)
     const text = (await run(['plugins'], h.cwd, h.env, { shippedDescriptors: h.shipped })).out
-    expect(text).toMatch(/ {2}mine +user +not detected: superseded: git runs\n/)
+    expect(text).toMatch(
+      / {2}mine +user +not detected; note: skipped: the plugin git runs instead\n/,
+    )
   })
 
   test('clean deletes a descriptor’s folder through the kit', async () => {

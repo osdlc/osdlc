@@ -1,19 +1,18 @@
 # yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
-# Yarn's global caches on the default folders: Berry's (Yarn 2 and later) and
-# Classic's (Yarn 1). Each is removed as a folder once idle. `yarn cache clean`
-# acts on whichever Yarn the folder it runs in selects, and can't be pointed at
-# one of these folders, so it isn't used. Projects' own .yarn folders are left
-# out.
+# Yarn Classic's (Yarn 1) global cache, on the default folder, removed as a
+# folder once idle. `yarn cache clean` acts on whichever Yarn the folder it runs
+# in selects, and can't be pointed at this folder, so it isn't used. Berry's
+# global cache (~/.yarn/berry/cache) is left out: a Plug'n'Play project loads
+# its packages from the zips there at run time, and reading them changes no
+# modification time, so a cache in daily use would look idle. Projects' own
+# .yarn folders are left out too.
 descriptor: 1
 store: yarn
 detect:
-  any: [{ onPath: yarn }, { exists: berry }, { exists: classic }]
+  any: [{ onPath: yarn }, { exists: classic }]
 paths:
-  berry: { macos: ~/.yarn/berry/cache, linux: ~/.yarn/berry/cache }
   classic: { macos: ~/Library/Caches/Yarn, linux: ~/.cache/yarn }
 candidates:
-  - path: berry
-    costDescription: re-download
   - path: classic
     costDescription: re-download
 inUse:

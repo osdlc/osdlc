@@ -359,4 +359,54 @@ describe('fillTemplate', () => {
     expect(fillTemplate('~/${A}', v, home)).toEqual({ path: join(home, 'a'), trusted: false })
     expect(fillTemplate('${A}/${NONE}', v, home)).toEqual({ missing: 'NONE' })
   })
+
+  test('is trusted only when a trusted variable is the leading folder and the path stays inside it', async () => {
+    const { home, resolve } = setup({ env: { OTHER: '/x' } })
+    const v = await resolve(
+      { CACHE: [{ env: 'CACHE' }], OTHER: [{ env: 'OTHER' }], UP: [{ value: '/a' }] },
+      { config: { CACHE: '/mnt/cache' } },
+    )
+    const up = { ...v, UP: { ...v.UP!, value: '../../etc' } }
+    expect(fillTemplate('${CACHE}', v, home)).toEqual({ path: '/mnt/cache', trusted: true })
+    expect(fillTemplate('${CACHE}/pip', v, home)).toEqual({ path: '/mnt/cache/pip', trusted: true })
+    expect(fillTemplate('${CACHE}-old', v, home)).toEqual({
+      path: '/mnt/cache-old',
+      trusted: false,
+    })
+    expect(fillTemplate('${CACHE}${OTHER}', v, home)).toEqual({
+      path: '/mnt/cache/x',
+      trusted: false,
+    })
+    expect(fillTemplate('${CACHE}/${UP}', up, home)).toEqual({ path: '/etc', trusted: false })
+  })
+})
+
+describe('variable names', () => {
+  test('a name an object inherits, such as constructor, resolves like any other', async () => {
+    const { resolve } = setup({ env: { FOO: '/foo' } })
+    const got = await resolve({ constructor: [{ env: 'FOO' }], toString: [{ value: '/t' }] })
+    const v = new Map(Object.entries(got))
+    expect(v.get('constructor')).toMatchObject({ value: '/foo', from: 'env FOO' })
+    expect(v.get('toString')).toMatchObject({ value: '/t', from: 'value' })
+  })
+})
+
+describe('only', () => {
+  test('resolves only the named variables and those they use; the others run no command', async () => {
+    const { calls, resolve } = setup({
+      programs: { go: { 'env GOCACHE': { stdout: '/go/said\n' } } },
+    })
+    const v = await resolve(
+      {
+        BASE: [{ value: '/base' }],
+        USED: [{ value: '${BASE}/used' }],
+        UNUSED: [{ command: ['go', 'env', 'GOCACHE'] }],
+      },
+      { only: ['USED'] },
+    )
+    expect(v.USED?.value).toBe('/base/used')
+    expect(v.BASE?.value).toBe('/base')
+    expect(Object.hasOwn(v, 'UNUSED')).toBe(false)
+    expect(calls).toEqual([])
+  })
 })

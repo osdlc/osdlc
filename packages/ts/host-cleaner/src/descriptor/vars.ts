@@ -17,9 +17,10 @@
  * ones with their XDG defaults on every OS.
  */
 
-import { readFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { extname, isAbsolute, join, normalize, sep } from 'node:path'
 
+import { getIn } from '@osdlc/config-layers'
 import { parse as parseToml } from 'smol-toml'
 import { parse as parseYaml } from 'yaml'
 
@@ -42,20 +43,35 @@ export const BUILT_IN_VARS = {
   XDG_STATE_HOME: '.local/state',
 } as const satisfies Record<string, string | undefined>
 
-export type BuiltInVar = keyof typeof BUILT_IN_VARS
-
 /** A `${VAR}` reference; the name is an environment variable's name. */
-export const VAR_REF = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g
+const VAR_REF = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g
+
+/** The parser for each extension a `file` source may have. */
+const PARSERS = {
+  '.toml': parseToml,
+  '.json': JSON.parse,
+  '.yaml': parseYaml,
+  '.yml': parseYaml,
+} satisfies Record<string, (text: string) => unknown>
+
+type VarFileExtension = keyof typeof PARSERS
 
 /** The extensions a `file` source may have, by the format read. */
-export const VAR_FILE_EXTENSIONS = ['.toml', '.json', '.yaml', '.yml'] as const
+export const VAR_FILE_EXTENSIONS = Object.keys(PARSERS) as VarFileExtension[]
+
+/** A folder per OS; `all` covers every OS. */
+type PerOs = { [K in Os | 'all']?: string | undefined }
 
 /** Where one variable's value may come from, as a descriptor's `vars` lists it. */
 export type VarSource =
   | { env: string }
   | { file: string; key: string }
   | { command: string[] }
-  | { value: string | { [K in Os | 'all']?: string | undefined } }
+  | { value: string | PerOs }
+
+/** The text of `v` on `os`: `v` itself, its `all`, or its `os` entry. */
+export const forOs = (v: string | PerOs, os: Os): string | undefined =>
+  typeof v === 'string' ? v : (v.all ?? v[os])
 
 /** One variable's outcome. */
 export interface VarValue {
@@ -66,7 +82,10 @@ export interface VarValue {
    * `home` for `HOME`; or `default` for an `XDG_*` folder's default.
    */
   from?: string
-  /** Set in the config, or a `value` that starts with a trusted variable: its folders may sit outside home. */
+  /**
+   * Set in the config, or a `value` inside a trusted variable's folder
+   * ({@link fillTemplate}): its folders may sit outside home.
+   */
   trusted: boolean
   /** The sources before it that gave nothing, in order, and why. */
   tried: Array<{ source: string; failed: string }>
@@ -82,7 +101,7 @@ export const varRefs = (text: string): string[] => [...text.matchAll(VAR_REF)].m
 export const badVarRef = (text: string): boolean => text.replace(VAR_REF, '').includes('${')
 
 /** How `source` is named in an outcome. */
-export function describeSource(source: VarSource): string {
+function describeSource(source: VarSource): string {
   if ('env' in source) return `env ${source.env}`
   if ('file' in source) return `file ${source.file} key ${source.key}`
   if ('command' in source) return `command ${source.command.join(' ')}`
@@ -96,25 +115,36 @@ function folderOf(path: string, home: string): string {
   return n.length > 1 && n.endsWith(sep) ? n.slice(0, -1) : n
 }
 
+/** Whether `path` is `folder` or inside it. */
+const within = (folder: string, path: string): boolean =>
+  path === folder || path.startsWith(folder.endsWith(sep) ? folder : folder + sep)
+
 /**
  * `template` with each `${NAME}` replaced by its value in `vars`, `~` read as
- * `home`. Trusted when it starts with a trusted variable. `missing` names the
- * first variable with no value.
+ * `home`. Trusted when it starts with a trusted variable as a whole folder
+ * name (`${VAR}` alone or followed by a separator) and stays inside that
+ * variable's folder. `missing` names the first variable with no value.
  */
 export function fillTemplate(
   template: string,
   vars: Readonly<Vars>,
   home: string,
 ): { path: string; trusted: boolean } | { missing: string } {
-  for (const name of varRefs(template)) {
-    if (vars[name]?.value == null) return { missing: name }
+  const refs = varRefs(template)
+  for (const name of refs) {
+    if (!Object.hasOwn(vars, name) || vars[name]!.value === null) return { missing: name }
   }
   const text = template.replace(VAR_REF, (_, name: string) => vars[name]!.value!)
-  const first = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}/.exec(template)?.[1]
-  return {
-    path: folderOf(text, home),
-    trusted: first !== undefined && vars[first]?.trusted === true,
-  }
+  const path = folderOf(text, home)
+  const first = refs[0]
+  const lead = first === undefined ? '' : `\${${first}}`
+  const trusted =
+    first !== undefined &&
+    vars[first]!.trusted &&
+    template.startsWith(lead) &&
+    /^([/\\]|$)/.test(template.slice(lead.length)) &&
+    within(vars[first]!.value!, path)
+  return { path, trusted }
 }
 
 export interface VarsAt {
@@ -123,21 +153,26 @@ export interface VarsAt {
   /** The environment `env` sources and the `XDG_*` built-ins read. */
   env: Readonly<Record<string, string | undefined>>
   /** The config's `plugins.<name>.vars`: each wins over every source, and is trusted. */
-  config?: Readonly<Record<string, string>> | undefined
+  config?: Readonly<Record<string, string | undefined>> | undefined
   /** Runs `command` sources: `onPath` decides whether one runs, `run` runs it. */
   kit: Pick<Kit, 'onPath' | 'run'>
   /** The hook's signal; a command still running when it aborts gives no value. */
   signal: AbortSignal
   /** Each command's time limit. Default {@link VAR_COMMAND_LIMIT_MS}. */
   timeoutMs?: number | undefined
+  /**
+   * The declared variables to resolve, with the ones they use; default all.
+   * The rest are left out of the outcome, and their commands never run.
+   */
+  only?: Iterable<string> | undefined
 }
 
 type Given = { value: string; trusted: boolean } | { failed: string }
 
 /**
- * Every variable in `declared`, and the built-ins, resolved now. Commands run
- * one at a time, so a descriptor with `n` command sources can take `n` times
- * the time limit.
+ * Every variable in `declared`, or in `at.only`, and the built-ins, resolved
+ * now. Commands run one at a time, so a descriptor with `n` command sources
+ * can take `n` times the time limit.
  */
 export async function resolveVars(
   declared: Readonly<Record<string, readonly VarSource[]>>,
@@ -148,10 +183,9 @@ export async function resolveVars(
   const limit = at.timeoutMs ?? VAR_COMMAND_LIMIT_MS
 
   const resolve = async (name: string): Promise<void> => {
-    const sources = declared[name]
-    if (done[name] !== undefined || sources === undefined || visiting.has(name)) return
+    if (Object.hasOwn(done, name) || !Object.hasOwn(declared, name) || visiting.has(name)) return
     visiting.add(name)
-    done[name] = await resolveOne(name, sources)
+    done[name] = await resolveOne(name, declared[name]!)
     visiting.delete(name)
   }
 
@@ -166,23 +200,22 @@ export async function resolveVars(
 
   const fromSource = async (source: VarSource): Promise<Given> => {
     if ('env' in source) {
-      const v = at.env[source.env]
+      const v = ownValue(at.env, source.env)
       return v === undefined || v === '' ? { failed: 'not set' } : { value: v, trusted: false }
     }
     if ('file' in source) {
       const file = await fill(source.file)
       if ('failed' in file) return file
-      const v = keyIn(file.value, source.key)
+      const v = await keyIn(file.value, source.key)
       return typeof v === 'string' ? { value: v, trusted: false } : { failed: v.failed }
     }
     if ('command' in source) return commandValue(source.command, at, limit)
-    const template =
-      typeof source.value === 'string' ? source.value : (source.value.all ?? source.value[at.os])
+    const template = forOs(source.value, at.os)
     return template === undefined ? { failed: `none for ${at.os}` } : fill(template)
   }
 
   const resolveOne = async (name: string, sources: readonly VarSource[]): Promise<VarValue> => {
-    const set = at.config?.[name]
+    const set = ownValue(at.config, name)
     if (set !== undefined) {
       return { value: folderOf(set, at.home), from: 'config', trusted: true, tried: [] }
     }
@@ -204,19 +237,23 @@ export async function resolveVars(
     return { value: null, trusted: false, tried }
   }
 
-  for (const name of Object.keys(declared)) await resolve(name)
-  // Built-ins first, then the declared ones in the order declared.
+  for (const name of at.only ?? Object.keys(declared)) await resolve(name)
   return Object.fromEntries(
-    [...Object.keys(BUILT_IN_VARS), ...Object.keys(declared)].flatMap((n) =>
-      done[n] === undefined ? [] : [[n, done[n]]],
-    ),
+    [...Object.keys(BUILT_IN_VARS), ...Object.keys(declared)]
+      .filter((n) => Object.hasOwn(done, n))
+      .map((n) => [n, done[n]!]),
   )
 }
 
+/** `record[name]` when `record` has it as its own key, so `constructor` is not read from the prototype. */
+function ownValue<T>(record: Readonly<Record<string, T>> | undefined, name: string): T | undefined {
+  return record !== undefined && Object.hasOwn(record, name) ? record[name] : undefined
+}
+
+/** The built-ins, in an object with no prototype, so a declared `constructor` or `__proto__` is an ordinary key. */
 function builtIns(at: Pick<VarsAt, 'home' | 'env'>): Vars {
-  const out: Vars = {
-    HOME: { value: folderOf(at.home, at.home), from: 'home', trusted: false, tried: [] },
-  }
+  const out = Object.create(null) as Vars
+  out.HOME = { value: folderOf(at.home, at.home), from: 'home', trusted: false, tried: [] }
   for (const [name, under] of Object.entries(BUILT_IN_VARS)) {
     if (under === undefined) continue
     const set = at.env[name]
@@ -240,37 +277,27 @@ function builtIns(at: Pick<VarsAt, 'home' | 'env'>): Vars {
 }
 
 /** The string at the dotted `key` in the TOML, JSON or YAML file at `file`, or why there is none. */
-function keyIn(file: string, key: string): string | { failed: string } {
-  const ext = extname(file).toLowerCase()
+async function keyIn(file: string, key: string): Promise<string | { failed: string }> {
   let text: string
   try {
-    text = readFileSync(file, 'utf-8')
+    text = await readFile(file, 'utf-8')
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code
     return { failed: code === 'ENOENT' ? `no file ${file}` : `cannot read ${file}: ${code}` }
   }
+  // The schema allows only these extensions, and a filled template keeps its end.
+  const parse: (text: string) => unknown = PARSERS[extname(file) as VarFileExtension]
   let data: unknown
   try {
-    data =
-      ext === '.toml'
-        ? parseToml(text)
-        : ext === '.json'
-          ? JSON.parse(text)
-          : ext === '.yaml' || ext === '.yml'
-            ? parseYaml(text)
-            : undefined
+    data = parse(text)
   } catch (err) {
     return { failed: `${file} does not parse: ${(err as Error).message.split('\n')[0]}` }
   }
-  if (data === undefined) return { failed: `${file} is not TOML, JSON or YAML` }
-  let at: unknown = data
-  for (const part of key.split('.')) {
-    if (typeof at !== 'object' || at === null || Array.isArray(at) || !Object.hasOwn(at, part)) {
-      return { failed: `${file} has no ${key}` }
-    }
-    at = (at as Record<string, unknown>)[part]
-  }
-  return typeof at === 'string' && at !== '' ? at : { failed: `${key} in ${file} is not a string` }
+  const at = getIn(data, key.split('.'))
+  if (!at.found) return { failed: `${file} has no ${key}` }
+  return typeof at.value === 'string' && at.value !== ''
+    ? at.value
+    : { failed: `${key} in ${file} is not a string` }
 }
 
 /** The one line `argv` prints, run from home within `limit`, or why there is none. */

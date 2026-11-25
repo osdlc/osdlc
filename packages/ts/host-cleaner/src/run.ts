@@ -137,7 +137,7 @@ export interface Survey {
  * neither a boolean nor a {@link Detection} with a boolean `active` and a
  * string or no `note`.
  */
-function detection(answer: unknown): { active: boolean; note?: string } | null {
+export function detection(answer: unknown): { active: boolean; note?: string } | null {
   if (typeof answer === 'boolean') return { active: answer }
   if (typeof answer !== 'object' || answer === null) return null
   const { active, note } = answer as Partial<Record<keyof Detection, unknown>>
