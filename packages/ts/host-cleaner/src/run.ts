@@ -217,8 +217,8 @@ interface Detected {
 /**
  * Detect, then scope, as `survey` starts: each plugin's detection (a second
  * plugin of a name is left out), the detected plugins, the notes `detect`
- * gave by plugin name, and the targets once scope added to them, less those
- * `ignore` covers. A failed `detect` is a warning only when `warnDetect`.
+ * gave by plugin name, and the context whose targets scope added to, less
+ * those `ignore` covers. A failed `detect` is a warning only when `warnDetect`.
  */
 async function detectAndScope(
   all: readonly Plugin[],
@@ -229,7 +229,6 @@ async function detectAndScope(
   detections: Detected[]
   plugins: Plugin[]
   notes: Record<string, string>
-  targets: string[]
   scoped: RunCtx
 }> {
   const guarded = guard(warnings)
@@ -271,7 +270,35 @@ async function detectAndScope(
       if (!targets.includes(root) && coveredBy(root, ignore) === undefined) targets.push(root)
     }
   }
-  return { detections, plugins, notes, targets, scoped: { ...ctx, targets } }
+  return { detections, plugins, notes, scoped: { ...ctx, targets } }
+}
+
+/**
+ * Each of `plugins`' roots, asked once per plugin so a throwing `roots` warns
+ * once, less those the core refuses (see `rootProblem` in `./roots.ts`), each
+ * with a warning; and the linked checkouts and home they were checked against.
+ */
+async function askRoots(
+  plugins: readonly Plugin[],
+  scoped: RunCtx,
+  warnings: string[],
+): Promise<{
+  rootsOf: Map<string, { roots: readonly string[]; self: readonly string[] }>
+  linked: string[]
+  home: string
+}> {
+  const guarded = guard(warnings)
+  const linked = linkedCheckouts(scoped.targets)
+  const home = homedir()
+  const rootsOf = new Map<string, { roots: readonly string[]; self: readonly string[] }>()
+  for (const p of plugins) {
+    if (p.roots === undefined) continue
+    const answer = await guarded<unknown>(p, 'roots', [], scoped, (x) => p.roots!(x))
+    const accepted = acceptRoots(answer, { targets: scoped.targets, linked, home })
+    for (const problem of accepted.problems) warnings.push(`${p.name}: roots: ${problem}`)
+    rootsOf.set(p.name, accepted)
+  }
+  return { rootsOf, linked, home }
 }
 
 /** One plugin as `inspect` found it. */
@@ -305,28 +332,18 @@ export interface Inspection {
  */
 export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Inspection> {
   const warnings: string[] = []
-  const { detections, targets, scoped } = await detectAndScope(all, ctx, warnings, false)
-  const guarded = guard(warnings)
-  const at = { targets, linked: linkedCheckouts(targets), home: homedir() }
-  const plugins: PluginState[] = []
-  for (const d of detections) {
-    const p = d.plugin
-    let accepted = { roots: [] as string[], self: [] as string[] }
-    if (d.detected && p.roots !== undefined) {
-      const answer = await guarded<unknown>(p, 'roots', [], scoped, (x) => p.roots!(x))
-      const checked = acceptRoots(answer, at)
-      for (const problem of checked.problems) warnings.push(`${p.name}: roots: ${problem}`)
-      accepted = checked
-    }
-    plugins.push({
-      name: p.name,
+  const { detections, plugins: detected, scoped } = await detectAndScope(all, ctx, warnings, false)
+  const { rootsOf } = await askRoots(detected, scoped, warnings)
+  const plugins = detections.map(
+    (d): PluginState => ({
+      name: d.plugin.name,
       detected: d.detected,
       ...(d.error === undefined ? {} : { reason: d.error }),
       ...(d.note === undefined ? {} : { note: d.note }),
-      roots: accepted.roots,
-      selfRoots: accepted.self,
-    })
-  }
+      roots: rootsOf.get(d.plugin.name)?.roots ?? [],
+      selfRoots: rootsOf.get(d.plugin.name)?.self ?? [],
+    }),
+  )
   return { plugins, ctx: scoped, warnings }
 }
 
@@ -353,7 +370,8 @@ export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Insp
 export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Survey> {
   const warnings: string[] = []
   const guarded = guard(warnings)
-  const { plugins, targets, scoped, notes } = await detectAndScope(all, ctx, warnings, true)
+  const { plugins, scoped, notes } = await detectAndScope(all, ctx, warnings, true)
+  const targets = scoped.targets
   const ignore = ctx.ignore ?? []
 
   const discovered: Candidate[] = []
@@ -400,17 +418,7 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
 
   const known = new Set(candidates.map((c) => c.id))
   const objections: Objection[] = []
-  const linked = linkedCheckouts(targets)
-  const home = homedir()
-  // Asked once per plugin, so a throwing `roots` warns once.
-  const rootsOf = new Map<string, { roots: readonly string[]; self: readonly string[] }>()
-  for (const p of plugins) {
-    if (p.roots === undefined) continue
-    const answer = await guarded<unknown>(p, 'roots', [], scoped, (x) => p.roots!(x))
-    const accepted = acceptRoots(answer, { targets, linked, home })
-    for (const problem of accepted.problems) warnings.push(`${p.name}: roots: ${problem}`)
-    rootsOf.set(p.name, accepted)
-  }
+  const { rootsOf, linked, home } = await askRoots(plugins, scoped, warnings)
   const boundsOf = (name: string): Bounds => ({
     roots: rootsOf.get(name)?.roots ?? [],
     self: rootsOf.get(name)?.self ?? [],

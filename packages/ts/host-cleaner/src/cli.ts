@@ -639,18 +639,21 @@ async function runPlugins(
   try {
     const config = loadConfig(v, ctx)
     const all = allPlugins(config, deps, ctx)
-    const enabled = all.filter((p) => !disabledByConfig(p.name, config.plugins))
+    const off = new Set(
+      all.filter((p) => disabledByConfig(p.name, config.plugins)).map((p) => p.name),
+    )
+    const enabled = all.filter((p) => !off.has(p.name))
     const found = await inspect(enabled, contextFor(parsed.positionals, config, ctx, [], v.ignore))
     const state = new Map(found.plugins.map((s) => [s.name, s]))
     rows = all.map((p): PluginRow => {
-      const off = disabledByConfig(p.name, config.plugins)
+      const disabled = off.has(p.name)
       const s = state.get(p.name)
       return {
         name: p.name,
         source: 'built-in',
-        enabled: !off,
+        enabled: !disabled,
         detected: s?.detected ?? false,
-        reason: off
+        reason: disabled
           ? `plugins.${p.name}.enabled is false; --plugin ${p.name} runs it anyway`
           : (s?.reason ?? null),
         roots: s?.roots ?? [],
