@@ -5,11 +5,11 @@ model became a plugin model. Accepted 2026-10-07 in sksizer/dev. Moved here on 2
 repo-cleaner 0.18. Builds on
 [D-RSWP](../../packages/ts/repo-cleaner/docs/planning/decisions/D-RSWP-standalone.md).
 
-> **Status, 2026-11-23.** Kept as history; it no longer describes the package.
-> The adapters and their contract below became D-H3QW's plugins, `--no-adapter`
-> became `--skip-plugin`, and there is no `removeWorktree` hook. The first
-> version also leaves out what this record calls the unattended subset
-> (`--auto`), launchd scheduling, the `claude-code`
+> **Status, 2026-11-23.** Kept as history; the text below is not edited. Where
+> D-H3QW supersedes it, the adapters and their contract became plugins,
+> `--no-adapter` became `--skip-plugin`, and there is no `removeWorktree` hook.
+> The first version does not build what this record calls the unattended
+> subset (`--auto`), launchd scheduling, the `claude-code`
 > adapter and its `close-session` risk
 > ([#665](https://github.com/osdlc/osdlc/issues/665),
 > [#666](https://github.com/osdlc/osdlc/issues/666)). They are recorded in

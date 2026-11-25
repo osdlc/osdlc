@@ -1,4 +1,9 @@
-# host-cleaner architecture
+---
+title: How it works
+sidebar:
+  order: 1
+description: The modules, one run from survey to receipt, the rules every plugin is held to, and where the code differs from the design.
+---
 
 How `@osdlc/host-cleaner` is built today: the modules, one run from survey to
 receipt, the rules the core applies to every plugin, and where the code still
@@ -45,7 +50,7 @@ owner delete it. The first version ships four plugins: `git` (repo-cleaner),
 | `src/config.ts` | The config file and the three folders (see [Files](#files)). |
 | `src/ignore.ts` | The machine-wide `ignore` list. |
 | `src/git.ts` | The `git` plugin over repo-cleaner's `candidatesOf` and `removeCandidate`. |
-| `src/artifacts.ts`, `src/cargo.ts`, `src/node.ts` | Build caches, built on the kit alone. |
+| `src/artifacts.ts`, `src/cargo.ts`, `src/node.ts` | Build caches: `cargo` and `node` over the shared walk in `artifacts.ts`. |
 | `src/orca.ts` | The `orca` plugin. |
 | `src/cli.ts`, `src/bin.ts` | The `host-cleaner` command: `status`, `plan`, `clean`, `config`, `plugins`. |
 | `src/testing.ts` | `@osdlc/host-cleaner/testing`: fakes and the contract suite. |
@@ -206,9 +211,11 @@ setter is not on `Kit`, so a plugin cannot widen its own bounds. A kit no run
 has bound removes nothing, so a plugin's `delete` is tested through `survey`
 and `clean`, or `contractSuite`.
 
-`cargo` and `node` import nothing from host-cleaner but the kit, the types and
-their shared `artifacts.ts`, and no other `@osdlc` package: they are built as
-an outside plugin would be.
+`cargo.ts` and `node.ts` import nothing from host-cleaner but the kit, the
+types and their shared `artifacts.ts`. `artifacts.ts` is not built as an
+outside plugin would be: it imports `@osdlc/path-guard`, `@osdlc/typed-git`
+and `@osdlc/command-seam`, and calls the core's own `attachKit`, none of which
+the public plugin entry (k-public-api) will offer.
 
 ## The plugins
 
@@ -253,9 +260,8 @@ prints `targets: <targets>`, then one line per plugin:
   `detected; roots: …; note: <note>`.
 
 A refused root is left out with the warning `<plugin>: roots: left out the
-root <path>: <why>` on stderr. `--format json` prints `{ targets, warnings,
-plugins }`, each plugin as `{ name, source, enabled, detected, reason, roots,
-selfRoots, note }`, with `reason` and `note` null when there is none.
+root <path>: <why>` on stderr. The JSON form is in the README's
+[which plugins run here](../../README.md#which-plugins-run-here).
 
 ### Files
 
@@ -270,42 +276,30 @@ variables that move it.
 Decided since the system description was written, and built. Each is
 described above where it applies.
 
-| Decision | What the code does |
+| Decision | Where |
 | --- | --- |
-| Linked worktrees | A linked worktree counts when its main checkout is or sits inside a target, wherever the worktree is kept ([containment](#containment), rule 3). |
-| Nesting | An outer candidate is blocked when any candidate inside it does not run, and its `blocked` detail names each one and what would let it run ([nesting](#nesting)). |
-| Detect notes | `detect` may answer `{ active, note }`, and the note is kept and shown for every plugin, whether it runs or not ([one run](#one-run), step 1). |
-| `targetsGiven` | Every hook's `ctx.targetsGiven` says whether the targets were given ([one run](#one-run), step 1). The plan keeps it, so `clean --plan` passes it on; a plan without it is refused ([modules](#modules), `src/plan.ts`). |
-| Self roots | `roots` may name `{ path, self: true }`, so a store removed whole, such as `~/.npm`, may be a candidate itself. The core's root checks apply to it as to a plain root, and it must not be a symlink. |
-| `kit.running({ name })` | Matches a word of each command line from `ps -axo pid=,ppid=,args=` (`commandHasName`): a word whose last path segment is the name, or has it as one of its `.`-separated parts. It errs toward a match, since a false match only stops a delete: `pnpm` finds `node /opt/homebrew/bin/pnpm dev`, and `gradle` finds the Gradle daemon's `java` command line. `npm` does not match `pnpm`, and case counts. host-cleaner's own process and every ancestor of it are left out, so the `npm exec` or `pnpm dlx` that started it does not count. |
+| Linked worktrees count by their main checkout | [containment](#containment), rule 3 |
+| An outer candidate says which inner one blocks it | [nesting](#nesting) |
+| Detect notes, kept for every plugin | [one run](#one-run), step 1; `orca` uses one while Orca cannot be asked |
+| `ctx.targetsGiven`, kept in the plan | [one run](#one-run), step 1; [modules](#modules), `src/plan.ts` |
+| Self roots, `{ path, self: true }` | [one run](#one-run), step 4 |
+| `kit.running({ name })` matches a word of each command line | the README's [plugin kit](../../README.md#the-plugin-kit) table |
 
-The first two and the contract for the rest are on #1065; `plugins` and its
-note are on #1066. Where a decision changes a plugin, the change lands with
-that plugin:
-
-- **`vscode` chats (#1073).** VS Code's `workspaceStorage/<hash>/` also holds
-  Copilot chat sessions (`chatSessions/`). What the `vscode` plugin does with
-  a storage folder that holds them lands with the plugin, on #1073.
-- **`toolchains` (#1074).** Which toolchains it proposes depends on the
-  checkouts it reads, so it is the plugin `targetsGiven` was added for. Its
-  use of it lands on #1074.
-- **Descriptor engine roots (#1078).** The engine gives each store's parent
-  folder as its root today, so for `~/.npm` the root is home. Declaring
-  whole-folder stores as self roots lands on #1078. Its `inUse.processes`
-  already uses `kit.running({ name })` there.
-- **`orca`'s note (#1089).** `orca`'s `detect` answers `{ active: true, note }`
-  when Orca is installed but cannot be asked, so `plugins` shows it detected
-  with its note. It came with main's #1060, merged into #1065.
+Plugins not built yet will use them: `vscode` decides what to do with a
+`workspaceStorage/<hash>/` folder that holds Copilot chat sessions,
+`toolchains` reads `targetsGiven` to choose which toolchains to propose, and
+the descriptor engine declares whole-folder stores such as `~/.npm` as self
+roots and checks `inUse.processes` with `kit.running({ name })`.
 
 ## Where the code differs from the system description
 
 | Topic | The design | The code |
 | --- | --- | --- |
 | Public entry | `@osdlc/host-cleaner/plugin`, with `z` re-exported | the main entry and `/testing`; plugins import zod themselves. `/plugin` is k-public-api (#1051). |
-| `detect` | does this plugin apply? | `true`, `false`, or `{ active, note }`; the note is kept and shown for every plugin (owner's decision) |
-| `ctx` | `ctx.signal` | also `targetsGiven`: whether the targets were given or the command line fell back to the current folder (owner's decision) |
+| `detect` | does this plugin apply? | may also answer `{ active, note }` (owner's decision) |
+| `ctx` | `ctx.signal` | also `targetsGiven` (owner's decision) |
 | `roots` | folders the plugin may delete inside | also `{ path, self: true }`, where the folder itself may be a candidate. The core refuses `/`, home, a personal folder, a target, a linked worktree or a checkout as any plugin's root, where the design checks only descriptor paths (owner's decision) |
-| `kit.run`, `kit.running` | `kit.run(argv)`, `kit.running(name)` | `kit.run` requires `opts.signal`; `kit.running` requires `ctx` and takes `{ name }`, matched against a word of each `ps` command line (`commandHasName`, owner's decision), or `{ in: folder }` |
+| `kit.run`, `kit.running` | `kit.run(argv)`, `kit.running(name)` | `kit.run` requires `opts.signal`; `kit.running` requires `ctx` and takes `{ name }` (owner's decision) or `{ in: folder }` |
 | `kit.idle` | how long since anything changed | returns `{ unmeasured: false, newestMs, hours }` or `{ unmeasured: true }` |
 | Kit helpers | the design's list | adds `kit.size` and `kit.owner`; `kit.remove` takes an optional `ctx` |
 | Binding | a per-call argument | per-kit state the core sets each run |
