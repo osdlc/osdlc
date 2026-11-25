@@ -320,10 +320,10 @@ describe('plugins', () => {
     expect(r.out).toBe(
       [
         `targets: ${cwd}`,
-        '  git    givendetected; roots: /cache/git',
-        '  cargo  givendetected; roots: none, the targets alone',
-        '  node   givennot detected',
-        '  orca   givendetected; roots: none, the targets alone; note: Orca is installed but not running',
+        '  git    given  detected; roots: /cache/git',
+        '  cargo  given  detected; roots: none, the targets alone',
+        '  node   given  not detected',
+        '  orca   given  detected; roots: none, the targets alone; note: Orca is installed but not running',
         '',
       ].join('\n'),
     )
@@ -418,8 +418,8 @@ describe('plugins', () => {
     expect(r.out).toBe(
       [
         `targets: ${cwd}`,
-        `  git    givendetected; roots: ${cache} (itself too); note: one note`,
-        '  cargo  givennot detected; note: no cargo',
+        `  git    given  detected; roots: ${cache} (itself too); note: one note`,
+        '  cargo  given  not detected; note: no cargo',
         '',
       ].join('\n'),
     )
