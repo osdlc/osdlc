@@ -45,7 +45,7 @@ import {
 } from '../../src/index.ts'
 import { contractSuite, fakeContext, fakeRunner, tempHome } from '../../src/testing.ts'
 
-/** The eight first stores, by plugin name. */
+/** The shipped stores, by plugin name. */
 const STORES = ['gradle', 'huggingface-hub', 'maven', 'npm', 'pip', 'pnpm', 'uv', 'yarn'] as const
 
 /** The stores whose candidate is a prune, and the program it runs. */
@@ -164,7 +164,6 @@ function build(
 
 const CTX: RunCtx = { cwd: '/', targets: [], allow: [] }
 
-/** Surveys `plugin`, plans it, and cleans the plan. */
 async function surveyAndClean(plugin: Plugin) {
   const s = await survey([plugin], CTX)
   return { survey: s, receipt: await clean(plan(s, { allow: [] }), [plugin], CTX) }

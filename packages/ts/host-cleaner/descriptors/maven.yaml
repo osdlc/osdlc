@@ -5,7 +5,7 @@
 # is `rebuild`: what `mvn install` put there comes back only by building those
 # projects again. While `mvn` or Maven's launcher (a java process whose main
 # class is org.codehaus.plexus.classworlds.launcher.Launcher) runs, it is
-# refused in-use, at the survey and again before the delete.
+# refused in-use.
 descriptor: 1
 store: maven
 detect:

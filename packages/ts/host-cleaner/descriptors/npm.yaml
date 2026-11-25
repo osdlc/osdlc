@@ -3,8 +3,8 @@
 # idle, which is what `npm cache clean --force` does; npm can't be pointed at
 # this folder, since its `cache` setting names the folder above it. The npx
 # cache and the logs are left out. npm and npx both use the cache, and either
-# may show in `ps` as `node .../npm-cli.js` or `node .../npx-cli.js`, so all
-# four names refuse it in-use.
+# may show in `ps` as `node .../npm-cli.js` or `node .../npx-cli.js`, so each
+# of those names refuses it in-use.
 descriptor: 1
 store: npm
 detect:
