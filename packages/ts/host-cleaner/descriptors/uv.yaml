@@ -1,11 +1,11 @@
 # yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
 # uv's cache: UV_CACHE_DIR, else where `uv cache dir` says, which follows
 # every setting uv reads; without uv on PATH, cache-dir in uv's user uv.toml,
-# else uv under XDG_CACHE_HOME, which uv uses on macOS too. It is pruned: `uv cache prune`
-# removes only unused entries, so it runs with no idle check. Without uv on
-# PATH it is listed with a no-prune-tool protest and left alone (D12). Managed
-# Pythons and installed tools are left out: deleting them breaks environments
-# and commands.
+# else uv under XDG_CACHE_HOME, which uv uses on macOS too. It is pruned:
+# `uv cache prune` removes only unused entries, so it runs with no idle check.
+# Without uv on PATH it is listed with a no-prune-tool protest and left alone
+# (D12). Managed Pythons and installed tools are left out: deleting them
+# breaks environments and commands.
 descriptor: 1
 store: uv
 detect:

@@ -343,7 +343,7 @@ or two files of one name in one folder, is refused (exit 2). Descriptors run
 after the built-ins, by name. To try one you are writing:
 `host-cleaner status --descriptor ./uv.yaml --plugin uv`.
 
-The package ships nine, for macOS and Linux: `pnpm` (the store, pruned with
+The package ships these, for macOS and Linux: `pnpm` (the store, pruned with
 `pnpm store prune`, and the metadata cache), `uv` (the cache, pruned with
 `uv cache prune`), `huggingface-hub` (one candidate per model or dataset, after
 30 idle days), `gradle` (the caches after a week and each wrapper distribution

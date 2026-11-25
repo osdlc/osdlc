@@ -70,10 +70,7 @@ type TestedOs = (typeof OSES_TESTED)[number]
 
 const both = (path: string): Record<TestedOs, string> => ({ macos: path, linux: path })
 
-/**
- * Each store's folders by `paths` key, under the home folder, when nothing
- * moves them: the folders the tier 1 files named.
- */
+/** Each store's folders by `paths` key, under the home folder, when nothing moves them. */
 const DEFAULTS: Record<Store, Record<string, Record<TestedOs, string>>> = {
   go: {
     modcache: both('go/pkg/mod'),
