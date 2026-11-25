@@ -312,23 +312,28 @@ Settings: `plugins.toolchains.idleHours`, which inherits the top-level
   the plugin proposes nothing and `status` warns
   `toolchains: no targets were given (the folder it runs from is not enough), so it proposes nothing`.
 
-- Every checkout under the targets (a checkout, or a folder of them, with each
-  repository's linked worktrees) is read for `rust-toolchain`,
+- Every checkout under the targets is read for `rust-toolchain`,
   `rust-toolchain.toml`, `.nvmrc`, `.node-version` and `package.json`'s
-  `volta.node`, at its root and wherever git lists one below it.
+  `volta.node`, at its root and wherever git lists one below it. That is the
+  whole repository a target sits in, every checkout up to 8 folders below a
+  target, each repository's worktrees (a bare one's too), and the submodules
+  and untracked repositories inside a checkout. A target with folders deeper
+  than that refuses every candidate, since a checkout may sit there.
 - Kept: what they name, by prefix (`1.80` keeps `1.80-<host>` and
   `1.80.1-<host>`; `18` keeps every `18.x.y`), rustup's default, its directory
   overrides, `RUSTUP_TOOLCHAIN` and the toolchain files in the folder you run
   from and above it, nvm's `default` alias, Volta's default, and the `node` on
   `PATH`. nvm aliases such
-  as `lts/*` are followed through nvm's `alias` folder.
+  as `lts/*` are followed through nvm's `alias` folder, and `node` or
+  `latest` keep the newest version nvm has.
 - Also kept: any version used in the last `idleHours`, so `cargo +nightly`
   with no pin file keeps nightly while you use it. Used means the newest
   access or modification time of the files in the version's `bin` folder,
   links followed. Every use runs one of them (rustup's proxies, nvm's `PATH`,
   Volta's shims), and running a file updates its access time. Linux's
-  default `relatime` updates the access time at most once a day, so there a
-  use can read up to a day older than it was. A backup or indexer that reads those files only
+  default `relatime` updates the access time at most once a day, so on a
+  volume mounted `relatime` a version is kept for 24 hours past `idleHours`.
+  A backup or indexer that reads those files only
   makes a version look used, and keeps it.
 - On a volume mounted `noatime` a run leaves no trace, so a versions folder
   there proposes nothing, and `status` warns
@@ -339,7 +344,8 @@ Settings: `plugins.toolchains.idleHours`, which inherits the top-level
   trusted.
 - When any of that cannot be read (an alias nvm does not have, a checkout git
   cannot list, rustup not answering), every candidate of that tool is refused
-  with `unused-unknown`; a version whose `bin` folder cannot be read is
+  with `unused-unknown` (nvm's default refuses only nvm's versions, Volta's
+  only Volta's, and a pin or the `node` on `PATH` both); a version whose `bin` folder cannot be read is
   refused on its own. A linked toolchain or one that is not a release is
   never proposed.
 - `delete` reads everything again, then runs `rustup toolchain uninstall

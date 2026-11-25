@@ -292,6 +292,38 @@ describe('rustup toolchains', () => {
     expect(refused[0]!.reason).toContain('no default toolchain is configured')
   })
 
+  test('the worktrees of a bare repository each keep their pin', async () => {
+    const fx = fixture({ rust: [`1.75.0-${HOST}`, `1.79.0-${HOST}`, `stable-${HOST}`] })
+    const src = repo(join(fx.home, 'src'), { 'rust-toolchain': '1.79\n' })
+    sh(fx.dev, ['clone', '-q', '--bare', src, 'proj.git'])
+    sh(join(fx.dev, 'proj.git'), ['worktree', 'add', '-q', join(fx.dev, 'proj', 'main'), 'main'])
+    expect((await proposed(fx)).names).toEqual([`1.75.0-${HOST}`])
+  })
+
+  test('a target inside a checkout reads the pins of the whole repository', async () => {
+    const fx = fixture({
+      rust: [`1.75.0-${HOST}`, `1.79.0-${HOST}`, `stable-${HOST}`],
+      targets: (dev) => [join(dev, 'mono', 'apps', 'web')],
+    })
+    repo(join(fx.dev, 'mono'), { 'rust-toolchain': '1.79\n', 'apps/web/README.md': '' })
+    expect((await proposed(fx)).names).toEqual([`1.75.0-${HOST}`])
+  })
+
+  test('a repository nested in a checkout, untracked, keeps its pin', async () => {
+    const fx = fixture({ rust: [`1.75.0-${HOST}`, `1.79.0-${HOST}`, `stable-${HOST}`] })
+    const app = repo(join(fx.dev, 'app'))
+    repo(join(app, 'vendor', 'engine'), { 'rust-toolchain': '1.79\n' })
+    expect((await proposed(fx)).names).toEqual([`1.75.0-${HOST}`])
+  })
+
+  test('folders too deep to search for checkouts refuse every toolchain', async () => {
+    const fx = fixture({ rust: [`1.75.0-${HOST}`, `stable-${HOST}`] })
+    repo(join(fx.dev, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'deep'), { 'rust-toolchain': '1.75\n' })
+    const { names, refused } = await proposed(fx)
+    expect(names).toEqual([`1.75.0-${HOST}`])
+    expect(refused.map((o) => o.reason)).toEqual([expect.stringContaining('levels down')])
+  })
+
   test('with the targets not given, only the run folder in their place, nothing is proposed, rustup is not asked, and detect says why', async () => {
     const fx = fixture({ rust: [`1.75.0-${HOST}`, `stable-${HOST}`], targetsGiven: false })
     repo(join(fx.dev, 'a'))
@@ -442,6 +474,23 @@ describe('nvm and Volta Node versions', () => {
     expect(known.refused).toEqual([])
   })
 
+  test("nvm's `node` names the newest version nvm has, not Volta's", async () => {
+    const fx = fixture({ nvm: ['v18.0.0', 'v20.1.0'], volta: ['22.0.0'] })
+    repo(join(fx.dev, 'a'), { '.nvmrc': 'node\n' })
+    expect((await proposed(fx)).names).toEqual(['22.0.0', 'v18.0.0'])
+  })
+
+  test("nvm's default naming no version refuses nvm's versions, not Volta's", async () => {
+    const fx = fixture({ nvm: ['v18.17.0'], volta: ['16.0.0'] })
+    write(join(fx.home, '.nvm', 'alias', 'default'), 'lts/hydrogen\n')
+    repo(join(fx.dev, 'a'))
+    const { names, refused } = await proposed(fx)
+    expect(names).toEqual(['16.0.0', 'v18.17.0'])
+    expect(refused.map((o) => o.reason)).toEqual([
+      expect.stringContaining("nvm's default alias names no version"),
+    ])
+  })
+
   test('a package.json that is not JSON refuses every Node version', async () => {
     const fx = fixture({ nvm: ['v18.17.0'] })
     repo(join(fx.dev, 'a'), { 'package.json': '{ not json' })
@@ -493,6 +542,20 @@ describe('a versions folder on a noatime volume', () => {
     const { s, names } = await proposed(fx)
     expect(names).toEqual([`1.75.0-${HOST}`, 'v14.21.3'])
     expect(s.notes).toEqual({})
+  })
+
+  test('relatime: a version is kept for a day past the threshold, since its access time may lag that much', async () => {
+    const fx = fixture({
+      rust: [`1.75.0-${HOST}`, `stable-${HOST}`],
+      mounts: mounts({ rustup: ['rw', 'relatime'] }),
+    })
+    repo(join(fx.dev, 'a'))
+    use(fx.rustup, `1.75.0-${HOST}`, 25)
+    expect((await proposed(fx)).names).toEqual([])
+    use(fx.rustup, `1.75.0-${HOST}`, 49)
+    const { s, names } = await proposed(fx)
+    expect(names).toEqual([`1.75.0-${HOST}`])
+    expect(s.candidates[0]!.why).toContain('(threshold 24, plus 24 for a relatime mount)')
   })
 
   test('options that cannot be read, or a lookup that throws: access times are trusted, and there is no note', async () => {

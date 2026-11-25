@@ -2,10 +2,12 @@
  * The `toolchains` plugin: rustup toolchains, and Node versions installed
  * by nvm or Volta, that no checkout in the targets asks for.
  *
- * Every checkout under the targets (a checkout, or a directory of them, with
- * each repository's linked worktrees) is read for `rust-toolchain`,
- * `rust-toolchain.toml`, `.nvmrc`, `.node-version` and `package.json`'s
- * `volta.node`, at its root and wherever git lists one below it. What they
+ * Every checkout under the targets (the repository a target is in, those up
+ * to {@link SEARCH_DEPTH} folders below a target, each one's worktrees, and
+ * the submodules and untracked repositories inside them) is read for
+ * `rust-toolchain`, `rust-toolchain.toml`, `.nvmrc`, `.node-version` and
+ * `package.json`'s `volta.node`, at its root and wherever git lists one below
+ * it; a target with deeper folders refuses every candidate. What they
  * name is kept, and so are the default and the one in use: rustup's
  * default, its directory overrides, `RUSTUP_TOOLCHAIN` and the toolchain
  * files in the run's folder and above it; nvm's `default` alias, Volta's
@@ -18,7 +20,9 @@
  * with no pin file keeps nightly while it is in use. Used means the newest
  * access or modification time of the files in the version's `bin` folder,
  * links followed: every use runs one of them, and running a file updates its
- * access time. On a volume mounted `noatime` running a file leaves no trace,
+ * access time; on a volume mounted `relatime` that is at most once a day, so
+ * there a version is kept {@link RELATIME_LAG_HOURS} hours longer.
+ * On a volume mounted `noatime` running a file leaves no trace,
  * so a versions folder on one proposes nothing, and `detect` says so in its
  * note. Its mount is the one `df` names for it, and its options come from
  * `mount` on macOS and `/proc/self/mounts` on Linux; when they cannot be read,
@@ -73,6 +77,12 @@ const DISCOVER_LIMIT_MS = 10 * 60_000
 const UNINSTALL_LIMIT_MS = 5 * 60_000
 
 const HOUR_MS = 3_600_000
+
+/** How late a `relatime` mount may record a use: it updates an access time at most once a day. */
+const RELATIME_LAG_HOURS = 24
+
+/** How far a versions folder's access times can be trusted, by its mount's options. */
+type AtimeMode = 'noatime' | 'relatime' | 'exact'
 
 /** What {@link Detection.note} says when the targets are the run's folder, taken because none were given. */
 export const NO_TARGETS_NOTE =
@@ -149,27 +159,64 @@ const voltaPin = (text: string): string | null => {
   return typeof node === 'string' ? node.trim() : null
 }
 
-/** Every checkout under `targets`: each repository found, at a target or below one, with its linked worktrees. */
-function checkoutsUnder(targets: readonly string[]): string[] {
-  const mains = new Set<string>()
+/**
+ * How many levels below a target are searched for checkouts: deep enough for
+ * a bare repository's own folders, bounded against a symlink loop.
+ */
+const SEARCH_DEPTH = 8
+
+/** The checkouts under the target `dir`, and why the walk may have missed one. */
+function scanUnder(dir: string, unknown: string[]): string[] {
+  const scan = scanForCheckouts(dir, { maxDepth: SEARCH_DEPTH, onWarn: () => {} })
+  if (scan.depthLimited > 0) {
+    unknown.push(
+      `${dir} has folders more than ${SEARCH_DEPTH} levels down, which were not searched for checkouts`,
+    )
+  }
+  return scan.checkouts
+}
+
+/**
+ * Every checkout under `targets`, with each repository's worktrees: the
+ * repository a target is in (the whole of it, as the cargo and node plugins
+ * read it) and those found below a target; plus why one may have been missed.
+ */
+function checkoutsUnder(targets: readonly string[]): { checkouts: string[]; unknown: string[] } {
+  const found = new Set<string>()
+  const unknown: string[] = []
   for (const target of targets) {
     if (!isDir(target)) continue
-    const found =
-      checkoutRoot(target) === resolve(target)
-        ? [target]
-        : scanForCheckouts(target, { onWarn: () => {} }).checkouts
-    for (const checkout of found) {
-      const main = new Git(checkout).mainCheckout()
-      if (main !== null) mains.add(main)
-    }
+    const root = checkoutRoot(target)
+    if (root !== null) found.add(root)
+    for (const checkout of scanUnder(target, unknown)) found.add(checkout)
   }
+  // A worktree lists every worktree of its repository, a bare one's too.
   const out = new Set<string>()
-  for (const main of mains) {
-    for (const tree of new Git(main).worktrees()) {
+  for (const checkout of found) {
+    if (out.has(checkout)) continue
+    for (const tree of new Git(checkout).worktrees()) {
       if (!tree.bare && isDir(tree.path)) out.add(tree.path)
     }
   }
-  return [...out].sort()
+  return { checkouts: [...out].sort(), unknown }
+}
+
+/**
+ * The repositories inside `checkout` that git does not list the files of:
+ * its submodules, and the repositories in folders it does not track.
+ */
+function nestedCheckouts(checkout: string): string[] {
+  const git = new Git(checkout)
+  const out = git
+    .submodules()
+    .map((s) => join(checkout, s.path))
+    .filter((dir) => present(join(dir, '.git')))
+  const untracked = git.lsFiles({ others: true, excludeStandard: true, directory: true })
+  // The walk's depth limit is not a reason to refuse here: an untracked folder is more often data than repositories.
+  for (const rel of untracked.filter((r) => r.endsWith('/'))) {
+    out.push(...scanForCheckouts(join(checkout, rel), { onWarn: () => {} }).checkouts)
+  }
+  return out
 }
 
 /** The pin files in `checkout`: at its root, and wherever git lists one below it, ignored ones aside. */
@@ -216,25 +263,36 @@ function readPins(targets: readonly string[], cwd: string): Pins {
     }
   }
 
-  let checkouts: string[]
+  const unknown = (why: string): void => {
+    pins.rustUnknown.push(why)
+    pins.nodeUnknown.push(why)
+  }
+  let found: ReturnType<typeof checkoutsUnder>
   try {
-    checkouts = checkoutsUnder(targets)
+    found = checkoutsUnder(targets)
   } catch (err) {
     const why = `the checkouts under the targets could not be listed: ${message(err)}`
     return { ...pins, rustUnknown: [why], nodeUnknown: [why] }
   }
-  for (const checkout of checkouts) {
+  const queue = [...found.checkouts]
+  const seen = new Set(queue)
+  for (let checkout = queue.shift(); checkout !== undefined; checkout = queue.shift()) {
     let files: string[]
     try {
       files = pinFiles(checkout)
+      for (const nested of nestedCheckouts(checkout)) {
+        if (!seen.has(nested)) {
+          seen.add(nested)
+          queue.push(nested)
+        }
+      }
     } catch (err) {
-      const why = `${checkout} could not be listed: ${message(err)}`
-      pins.rustUnknown.push(why)
-      pins.nodeUnknown.push(why)
+      unknown(`${checkout} could not be listed: ${message(err)}`)
       continue
     }
     for (const file of files) read(file)
   }
+  for (const why of found.unknown) unknown(why)
   // The run's folder and those above it decide what is in use there, as rustup and nvm look up.
   for (let dir = resolve(cwd); ; dir = dirname(dir)) {
     for (const f of DIR_PIN_FILES) read(join(dir, f))
@@ -420,14 +478,17 @@ export function toolchainsPlugin(
     return next === '' ? null : nodeSpec(next, newest, hops + 1)
   }
 
-  /** The Node versions to keep beyond the pins: nvm's default, Volta's and the `node` on `PATH`, plus why any could not be read. */
+  /**
+   * The Node versions to keep beyond the pins: nvm's default, Volta's and the
+   * `node` on `PATH`, plus why any could not be read, by the tool it refuses.
+   */
   const nodeInUse = async (ctx: Ctx, newest: string | undefined) => {
     const keep: string[] = []
-    const unknown: string[] = []
+    const unknown: Record<'nvm' | 'volta', string[]> = { nvm: [], volta: [] }
     const nvmDefault = join(homes.nvm, 'alias', 'default')
     if (present(nvmDefault)) {
       const found = nodeSpec('default', newest)
-      if (found === null) unknown.push(`nvm's default alias names no version it has`)
+      if (found === null) unknown.nvm.push(`nvm's default alias names no version it has`)
       else keep.push(...found)
     }
     const platform = join(homes.volta, 'tools', 'user', 'platform.json')
@@ -437,32 +498,39 @@ export function toolchainsPlugin(
         const runtime = json?.node?.runtime
         if (typeof runtime === 'string') keep.push(plain(runtime))
       } catch (err) {
-        unknown.push(`Volta's default could not be read from ${platform}: ${message(err)}`)
+        unknown.volta.push(`Volta's default could not be read from ${platform}: ${message(err)}`)
       }
     }
     if (kit.onPath('node')) {
       const r = await kit.run(['node', '--version'], { cwd: ctx.cwd, signal: ctx.signal })
       const version = r.stdout.trim()
       if (r.ok && NODE_VERSION.test(version)) keep.push(plain(version))
-      else unknown.push(`the node on PATH did not say its version`)
+      else {
+        const why = `the node on PATH did not say its version`
+        unknown.nvm.push(why)
+        unknown.volta.push(why)
+      }
     }
     return { keep, unknown }
   }
 
   /**
    * The row for a version no pin or default keeps; null when it was used in the
-   * last {@link threshold} hours. Sized only when `measure` is set.
+   * last {@link threshold} hours, {@link RELATIME_LAG_HOURS} more when its
+   * folder is mounted `relatime`. Sized only when `measure` is set.
    */
   const row = (
     tool: Tool,
     name: string,
     unknown: readonly string[],
+    relatime: boolean,
     measure: boolean,
   ): Row | null => {
     const path = join(versions[tool], name)
     const used = lastUsedMs(path)
     const hours = used === null ? null : Math.max(0, (Date.now() - used) / HOUR_MS)
-    if (hours !== null && hours < threshold) return null
+    const limit = threshold + (relatime ? RELATIME_LAG_HOURS : 0)
+    if (hours !== null && hours < limit) return null
     const bytes = measure ? kit.size(path) : null
     const what = tool === 'rustup' ? 'this toolchain' : 'this Node version'
     const blockers = unknown.map((reason) => ({ code: 'unused-unknown', reason }))
@@ -481,7 +549,8 @@ export function toolchainsPlugin(
           `no checkout in the targets asks for ${what}, and it is not the default or in use` +
           (hours === null
             ? ''
-            : `; last used ${hoursText(hours)} hours ago (threshold ${threshold})`),
+            : `; last used ${hoursText(hours)} hours ago (threshold ${threshold}` +
+              (relatime ? `, plus ${RELATIME_LAG_HOURS} for a relatime mount)` : ')')),
         costDescription: 're-download',
         ...(bytes === null ? {} : { bytes }),
         evidence: { kind: 'toolchain', tool, name, path },
@@ -494,18 +563,26 @@ export function toolchainsPlugin(
   const presentTools = (): Tool[] =>
     TOOLS.filter((t) => (t !== 'rustup' || kit.onPath('rustup')) && isDir(versions[t]))
 
-  /** The tools among `tools` whose versions folder is on a volume mounted `noatime`; one whose options cannot be read is not. */
-  const noatime = async (tools: readonly Tool[], ctx: Ctx): Promise<Set<Tool>> => {
-    const flags = await Promise.all(
-      tools.map(async (tool) => {
+  /**
+   * How far each tool's versions folder can be trusted for last use, by its
+   * mount: `noatime` not at all, `relatime` up to {@link RELATIME_LAG_HOURS}
+   * late, else exactly; a mount whose options cannot be read is trusted.
+   */
+  const atimeModes = async (tools: readonly Tool[], ctx: Ctx): Promise<Map<Tool, AtimeMode>> => {
+    const modes = await Promise.all(
+      tools.map(async (tool): Promise<AtimeMode> => {
+        let options: readonly string[] | null
         try {
-          return (await mountOptions(versions[tool], ctx))?.includes('noatime') === true
+          options = await mountOptions(versions[tool], ctx)
         } catch {
-          return false
+          options = null
         }
+        if (options?.includes('noatime')) return 'noatime'
+        if (options?.includes('relatime') && !options.includes('strictatime')) return 'relatime'
+        return 'exact'
       }),
     )
-    return new Set(tools.filter((_, i) => flags[i]))
+    return new Map(tools.map((t, i) => [t, modes[i]!]))
   }
 
   /**
@@ -516,12 +593,13 @@ export function toolchainsPlugin(
     if (!ctx.targetsGiven || ctx.targets.length === 0) return []
     // A version run daily on a noatime volume would read as unused, so none there is proposed.
     const tools = presentTools()
-    const skip = await noatime(tools, ctx)
+    const modes = await atimeModes(tools, ctx)
+    const skip = new Set(tools.filter((t) => modes.get(t) === 'noatime'))
     if (tools.every((t) => skip.has(t))) return []
     const pins = readPins(ctx.targets, ctx.cwd)
     const rows: Row[] = []
     const add = (tool: Tool, name: string, unknown: readonly string[]): void => {
-      const r = row(tool, name, unknown, measure)
+      const r = row(tool, name, unknown, modes.get(tool) === 'relatime', measure)
       if (r !== null) rows.push(r)
     }
 
@@ -547,9 +625,10 @@ export function toolchainsPlugin(
       volta: installed(versions.volta, NODE_VERSION),
     }
     if (node.nvm.length + node.volta.length > 0) {
-      const newest = [...node.nvm, ...node.volta].map(plain).sort(byVersion).at(-1)
+      // nvm's `node` and `latest` name the newest version nvm has, not Volta's.
+      const newest = node.nvm.map(plain).sort(byVersion).at(-1)
       const inUse = await nodeInUse(ctx, newest)
-      const unknown = [...pins.nodeUnknown, ...inUse.unknown]
+      const unknown = [...pins.nodeUnknown]
       const keep = [...inUse.keep]
       for (const pin of pins.node) {
         const found = nodeSpec(pin, newest)
@@ -559,8 +638,9 @@ export function toolchainsPlugin(
       }
       for (const tool of ['nvm', 'volta'] as const) {
         if (skip.has(tool)) continue
+        const refused = [...unknown, ...inUse.unknown[tool]]
         for (const name of node[tool]) {
-          if (!keep.some((pin) => keeps(pin, plain(name)))) add(tool, name, unknown)
+          if (!keep.some((pin) => keeps(pin, plain(name)))) add(tool, name, refused)
         }
       }
     }
@@ -575,14 +655,16 @@ export function toolchainsPlugin(
 
   return {
     name: TOOLCHAINS_PLUGIN,
-    limits: { discover: DISCOVER_LIMIT_MS },
+    // A delete surveys again before it removes, so it may take a survey and an uninstall.
+    limits: { discover: DISCOVER_LIMIT_MS, delete: DISCOVER_LIMIT_MS + UNINSTALL_LIMIT_MS },
     async detect(ctx) {
       const tools = presentTools()
       if (tools.length === 0) return false
       if (!ctx.targetsGiven) return { active: true, note: NO_TARGETS_NOTE }
-      const skip = await noatime(tools, ctx)
-      if (skip.size === 0) return true
-      const note = tools.filter((t) => skip.has(t)).map((t) => noatimeNote(versions[t]))
+      const modes = await atimeModes(tools, ctx)
+      const skip = tools.filter((t) => modes.get(t) === 'noatime')
+      if (skip.length === 0) return true
+      const note = skip.map((t) => noatimeNote(versions[t]))
       return { active: true, note: note.join('; ') }
     },
     roots: () => TOOLS.map((t) => versions[t]),
