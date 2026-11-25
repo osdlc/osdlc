@@ -12,8 +12,8 @@
  *   folder again.
  * - discover: one candidate per folder, or per `glob` match inside it, and
  *   `project` build folders in the targets' checkouts. Each is
- *   `<name>:<path>`. A folder the checks refuse is listed, unmeasured, and
- *   refused `outside-roots`.
+ *   `<name>:<path>`. A folder the checks refuse is listed, held, and refused
+ *   `outside-roots`, with nothing under it measured.
  * - object: only its own candidates: `inUse` refuses them `in-use`, a prune
  *   with no tool on PATH gets a `no-prune-tool` protest (D12), and a live
  *   process in a checkout refuses its build folders.
@@ -99,11 +99,10 @@ const expand = (folder: string, home: string): string =>
 
 /**
  * Why `path`, one of a descriptor's folders, may not be cleaned, or null when
- * it may. It must pass the core's check of a self root ({@link rootProblem}):
- * not `/`, not a symlink, not be or hold home, not be a personal folder, not
- * be or hold a target or a checkout. It must also sit strictly inside `home`
- * and neither hold nor sit in host-cleaner's own folders. Judged on the path as given and on
- * its real path, as the filesystem spells it.
+ * it may. It must pass {@link rootProblem} as a self root, with the targets'
+ * checkouts as linked worktrees, sit strictly inside `home`, and neither hold
+ * nor sit in host-cleaner's own folders. Judged on the path as given and on
+ * its real path.
  */
 export function pathProblem(
   path: string,
@@ -271,7 +270,6 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     }
     const evidence: Evidence = { path, candidate: index, action }
     if (prune && action === 'command') {
-      // A prune removes only what nothing uses: no idle check.
       const bytes = kit.size(path)
       return {
         objections,
@@ -404,7 +402,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     }
   }
 
-  /** Every row now, and a note for each glob that matched more than its `maxEntries`. */
+  /** Every row now; a glob that matched more than its `maxEntries` puts a note on its last listed row. */
   const rowsNow = (ctx: Ctx): Row[] => {
     const refused = problems(ctx)
     const rows: Row[] = []
@@ -436,7 +434,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       const matches = globMatches(folder, entry.glob)
       const max = entry.maxEntries ?? DEFAULT_MAX_ENTRIES
       const listed: Row[] = []
-      // Matches that make no row (escape the folder, not a folder) don't count toward `max`.
+      // Matches that make no row (outside the folder by real path, or unreadable) don't count toward `max`.
       let more = 0
       for (const [i, match] of matches.entries()) {
         if (listed.length === max) {

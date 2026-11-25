@@ -2,16 +2,12 @@
  * Code plugins loaded from packages (tier 3). Only a package the config names
  * in `plugins.<name>.package` is loaded, and only by its npm name: never a
  * path, and never from a checkout. It is looked for in each folder of
- * {@link packageRoots}, in order: the `node_modules` folders host-cleaner
- * itself resolves from, then the global npm prefix's.
+ * {@link packageRoots}, in order.
  *
- * A package is checked as it loads: its default export must be a
- * `definePlugin` definition named as its config key, written for
- * {@link PLUGIN_API}. The plugin its `create` returns must have that name too,
- * a `detect` hook, only functions for its other hooks, and be tied to the kit
- * it was given, which only this host-cleaner's
- * `definePlugin` does. Any of these failing is a {@link PackageFailure}: the
- * CLI warns for it in `status`, and refuses `clean` unless the plugin is
+ * A package is checked as it loads ({@link loadPackage}) and when it creates
+ * its plugin ({@link checked}). Only this host-cleaner's `definePlugin` ties a
+ * plugin to the kit it was given. A failed check is a {@link PackageFailure}:
+ * the CLI warns for it in `status`, and refuses `clean` unless the plugin is
  * skipped.
  */
 
@@ -188,11 +184,9 @@ function notADefinition(x: unknown): string | undefined {
 }
 
 /**
- * What is wrong with the hooks of `plugin`, or undefined when nothing is:
- * `detect` must be a function, every other hook a function or absent, and
- * `limits` positive milliseconds for hooks. A plugin with a broken hook would
- * otherwise fail only when the core calls it, and `clean` would go on without
- * its objections.
+ * What is wrong with the hooks or `limits` of `plugin`, or undefined when
+ * nothing is. Checked up front because a broken hook would otherwise fail only
+ * when the core calls it, and `clean` would go on without its objections.
  */
 function misshapenHooks(plugin: Record<string, unknown>): string | undefined {
   for (const hook of HOOKS) {
@@ -216,6 +210,7 @@ function misshapenHooks(plugin: Record<string, unknown>): string | undefined {
 /**
  * `def` with its `create` checked: the plugin it returns must be named as
  * `def`, have the hooks the core calls, and be tied to the kit it was given.
+ * The result is recorded for {@link isPackaged}.
  */
 function checked(def: PluginDefinition, entry: PackageEntry, label: string): PluginDefinition {
   const fail = (why: string): PackageLoadError =>
@@ -251,7 +246,7 @@ function checked(def: PluginDefinition, entry: PackageEntry, label: string): Plu
 /**
  * The package `entry` names, from the first of `roots` that has it.
  *
- * @throws PackageLoadError when it is not there, its import throws, or its default export is not a plugin definition for this host-cleaner of that name
+ * @throws PackageLoadError when it is not there, its `package.json` can't be read, it exports no entry for `import`, its import throws, or its default export is not a plugin definition of that name for this host-cleaner's {@link PLUGIN_API}
  */
 async function loadPackage(entry: PackageEntry, roots: readonly string[]): Promise<LoadedPackage> {
   const fail = (why: string): PackageLoadError =>

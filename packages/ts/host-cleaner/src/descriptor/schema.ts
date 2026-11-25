@@ -7,8 +7,8 @@
  * reader runs.
  *
  * `vars` (tier 2) is in the schema, so a tier 2 file has its shape checked,
- * but `parseDescriptor` and `readDescriptor` refuse it, and any `${VAR}` in a
- * path, until variables are built.
+ * but `descriptorIssues`, `parseDescriptor` and `readDescriptor` refuse it, and
+ * any `${VAR}` in a path, until variables are built.
  */
 
 import { readFileSync } from 'node:fs'
@@ -39,8 +39,8 @@ const NAME = /^[A-Za-z][A-Za-z0-9_-]*$/
 
 /**
  * A folder: under the home folder (`~/…`), absolute, or starting with a
- * variable (`${VAR}…`, tier 2). Never relative, never the home folder alone,
- * and never with a `..` segment.
+ * variable (`${VAR}…`, tier 2), with no `..` segment. `~/` alone passes here;
+ * the engine's `pathProblem` refuses the home folder.
  */
 const folder = z
   .string()
@@ -316,7 +316,6 @@ function issuesOf(value: unknown): {
     }
     return { data: undefined, issues: out }
   }
-  // Tier 2 is described but not read yet.
   const d = parsed.data
   if (d.vars !== undefined)
     out.push({ path: ['vars'], message: 'variables (tier 2) are not supported yet' })
@@ -333,7 +332,8 @@ const fieldPath = (path: Path): string => (path.length === 0 ? '(top)' : path.ma
  * The descriptor in `text`, YAML or JSON; `source` names it in errors.
  *
  * @throws DescriptorError for text that is not YAML, a value that is not a
- *   descriptor, or one that uses `vars`; each issue names the field path and,
+ *   descriptor, or one that uses tier 2 variables (`vars`, or `${VAR}` in a
+ *   path); each issue names the field path and,
  *   when the YAML has it, the line
  */
 export function parseDescriptor(text: string, source: string): Descriptor {

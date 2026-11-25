@@ -34,9 +34,9 @@ export const BUILT_IN_PLUGINS: readonly PluginDefinition[] = [
 export interface Loaded {
   /** The built-ins in run order, then the packages, then one plugin per descriptor, each by name. */
   definitions: readonly PluginDefinition[]
-  /** Each package loaded: its name, package, version and folder. */
+  /** Each package loaded, by name. */
   packages: readonly LoadedPackage[]
-  /** Each descriptor used: its name, where it came from and what it replaced. */
+  /** Each descriptor used, by name. */
   descriptors: readonly LoadedDescriptor[]
 }
 
@@ -50,7 +50,7 @@ export interface Packages {
  * The built-ins, then the `packages` loaded, then the descriptors from
  * `sources`, each by name; `opts` is passed to each descriptor's plugin.
  *
- * @throws DescriptorLoadError for a descriptor named as a built-in plugin or as a package in the config, one whose `supersededBy` names a descriptor, or as loadDescriptors
+ * @throws DescriptorLoadError for a descriptor named as a package in the config, one whose `supersededBy` names a descriptor, or any clash {@link loadDescriptors} refuses
  * @throws DescriptorError for a descriptor file that can't be used
  */
 export function loadPlugins(
@@ -93,8 +93,8 @@ export function loadPlugins(
 /**
  * A descriptor's `runs`, for `supersededBy`: whether the plugin of that name is
  * among those `chosen` gives (enabled and not skipped) and detects: its
- * `detect` answers `true` or `{ active: true }`. A `detect` that throws does
- * not run, so the descriptor applies.
+ * `detect` answers `true` or `{ active: true }`. A plugin whose `detect` throws
+ * counts as not running, so the descriptor applies.
  */
 export const runsAmong =
   (chosen: () => readonly Plugin[]) =>

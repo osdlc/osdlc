@@ -1,11 +1,9 @@
 // Drafts a tier 1 descriptor from one store of the system-cleanup research
 // corpus (packages/corpora/system-cleanup-reference), for a person to review.
-// Runs on the source, so it needs no build.
+// Runs on the source, so it needs no build: `node scripts/draft-descriptor.ts`,
+// with the flags in USAGE below.
 //
-//   node scripts/draft-descriptor.ts [--corpus <dir>] [--out <dir>] [--force] <slug>...
-//   node scripts/draft-descriptor.ts --out <dir> --first-set
-//
-// Without --out it prints one draft. A draft never sets idleHours or removes.
+// A draft never sets idleHours or removes.
 // What it can't put in a valid tier 1 file (the clean commands, the location
 // overrides, folders that need a variable) goes into comments for the reviewer.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
@@ -140,7 +138,7 @@ export function readStore(corpus: string, slug: string): CorpusStore {
   throw new DraftError(`no store with slug ${slug} in ${stores}`)
 }
 
-/** A folder a tier 1 file can name: under home or absolute, with no variable or placeholder in it. */
+/** A folder a tier 1 file can name: under home or absolute, with no variable, placeholder, glob or `..` segment. */
 const fixedFolder = (p: string): boolean =>
   /^(~[/\\]|\/|[A-Za-z]:[/\\])/.test(p) &&
   !/[$%<>{}*?]/.test(p) &&
@@ -347,8 +345,6 @@ export function draftDescriptor(store: CorpusStore): Draft {
       if (g !== undefined) (item as Node).commentBefore = ` holds ${g.holds}`
     })
 
-  // What the reviewer needs: what to decide, and what the corpus says that
-  // the draft couldn't carry.
   const header: string[] = [
     ` yaml-language-server: $schema=${DESCRIPTOR_SCHEMA_URL}`,
     ...wrap(

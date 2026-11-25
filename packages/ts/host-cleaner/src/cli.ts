@@ -307,7 +307,7 @@ const terminalChecklist: Checklist = (question, items) =>
   canPrompt() ? askChecklist(question, items) : null
 
 export interface MainDeps {
-  /** The plugins that exist; default is the built-ins and the descriptors, built from the config. */
+  /** The plugins that exist; default is the built-ins, the config's packages and the descriptors, built from the config. */
   plugins?: readonly Plugin[]
   /** The folder of shipped descriptors. Defaults to the package's `descriptors/`. */
   shippedDescriptors?: string
@@ -412,7 +412,8 @@ interface Setup {
  * The config and every plugin definition: the config read, the packages it
  * names loaded, then the descriptors, then each `plugins` entry checked
  * against them all. With `--plugin`, only the packages it names are loaded;
- * without it, those the config enables. None `--skip-plugin` names is loaded.
+ * without it, those the config enables. A package `--skip-plugin` names is
+ * never loaded.
  */
 async function loadAll(
   v: { config?: string | undefined; descriptor: readonly string[] },
@@ -442,7 +443,7 @@ async function loadAll(
   return { config, loaded, entries, failed: packages.failed }
 }
 
-/** A package that did not load, as `status` and `plan` warn for it. */
+/** The warning for a package that did not load, as `status`, `plan` and `config` write it. */
 const notLoaded = (f: PackageFailure): string => `${f.reason}; going on without ${f.name}`
 
 /**
@@ -475,11 +476,10 @@ const unknownPlugins = (config: Config, known: (name: string) => boolean): strin
   Object.keys(config.plugins).filter((n) => !known(n))
 
 /**
- * The config and the plugins this run uses: the built-ins, the packages and
- * the descriptors loaded, the config checked against them, each built from
- * its entry (or `deps.plugins`), then chosen by flag. A descriptor's
- * `supersededBy` plugin runs when it is among those chosen and detects.
- * `failed` are the packages that did not load or build, which the run goes without.
+ * The config and the plugins this run uses: {@link loadAll}, then
+ * {@link pluginsFor}. Descriptors test `supersededBy` against the plugins
+ * chosen here (see `runsAmong` in registry.ts). `failed` are the packages that
+ * did not load or build, which the run goes without.
  */
 async function setUp(
   v: SweepValues,

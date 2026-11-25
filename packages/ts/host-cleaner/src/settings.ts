@@ -29,7 +29,7 @@ type Definitions = readonly PluginDefinition[]
 
 /**
  * The settings schema of the plugin `name` in `defs`, with the core's
- * `enabled` (and `package` for a package's plugin) and made strict, its
+ * `enabled` (and `package` for a package's plugin) added, made strict, its
  * refinements kept; undefined for a name no definition has.
  */
 function schemaOf(name: string, defs: Definitions = BUILT_IN_PLUGINS): z.ZodObject | undefined {
@@ -94,7 +94,7 @@ export interface SettingRow {
   description: string
 }
 
-/** Every setting of every plugin in `defs`: its effective value, its default and whether the config set it. */
+/** Every setting of every plugin in `defs`: its effective value, its default and where the value came from. */
 export function effectiveSettings(
   plugins: Entries,
   shared: Shared = {},

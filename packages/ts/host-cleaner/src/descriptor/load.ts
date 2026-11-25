@@ -6,11 +6,9 @@
  *   user     `descriptors/` in the config folder ({@link descriptorsDir})
  *   flag     each `--descriptor <file>`, for this run only
  *
- * A user file replaces a shipped one of the same name, and a `--descriptor`
- * replaces either. Any other clash is an error: two files of one name in one
- * source, or a descriptor named as a built-in plugin, since every plugin has
- * one name in one namespace. Only the file a name ends up with is read, so a
- * user file can stand in for a shipped one that no longer parses.
+ * Which file wins, and which clashes are errors: {@link loadDescriptors}. Only
+ * the file a name ends up with is read, so a user file can stand in for a
+ * shipped one that no longer parses.
  */
 
 import { readdirSync, type Dirent } from 'node:fs'
@@ -25,7 +23,7 @@ export const SHIPPED_DESCRIPTORS = fileURLToPath(new URL('../../descriptors/', i
 /** The extensions read in a descriptor folder; the reader takes YAML and JSON. */
 const DESCRIPTOR_EXTENSIONS = ['.yaml', '.yml', '.json'] as const
 
-/** What a descriptor's name, its file name less the extension, must look like: as `supersededBy` names a plugin. */
+/** What a descriptor's name, its file name less the extension, must look like: the plugin-name pattern of `supersededBy` in ./schema.ts. */
 const NAME = /^[a-z][a-z0-9-]*$/
 
 export type DescriptorSource = 'shipped' | 'user' | 'flag'
@@ -66,7 +64,7 @@ const nameOf = (path: string): string => basename(path, extname(path))
  * The descriptor files in `dir`, by name: entries with one of
  * {@link DESCRIPTOR_EXTENSIONS}, not hidden, not folders. A missing folder has none.
  *
- * @throws DescriptorLoadError for two files of one name, or a name that is no plugin name
+ * @throws DescriptorLoadError for a folder that can't be read, two files of one name, or a name that is no plugin name
  */
 function filesIn(dir: string, source: DescriptorSource): Found[] {
   let entries: Dirent[]
@@ -112,7 +110,8 @@ function found(path: string, source: DescriptorSource, all: readonly string[]): 
  * of the same name. `reserved` are the built-in plugins' names.
  *
  * @throws DescriptorLoadError for a descriptor named as a built-in plugin, two
- *   files of one name in one source, or a file name that is no plugin name
+ *   files of one name in one source, a file name that is no plugin name, or a
+ *   folder that can't be read
  * @throws DescriptorError for a file the run uses that can't be read or is not a descriptor
  */
 export function loadDescriptors(
