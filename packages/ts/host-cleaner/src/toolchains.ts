@@ -46,27 +46,18 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { Git, checkoutRoot, scanForCheckouts } from '@osdlc/typed-git'
 import { z } from 'zod'
 
+import { hoursText, objectionsTo, present, type Row } from './artifacts.ts'
 import { DEFAULT_IDLE_HOURS, idleHoursSetting, type Kit } from './kit.ts'
 import { containedIn } from './roots.ts'
-import {
-  PLUGIN_API,
-  definePlugin,
-  type Candidate,
-  type Ctx,
-  type Objection,
-  type Plugin,
-} from './types.ts'
+import { PLUGIN_API, definePlugin, type Ctx, type Plugin } from './types.ts'
 
 export const TOOLCHAINS_PLUGIN = 'toolchains'
 
+const RUST_PIN_FILES = ['rust-toolchain', 'rust-toolchain.toml']
+/** The pin files rustup and nvm look for in the folder they run in and above it. */
+const DIR_PIN_FILES = [...RUST_PIN_FILES, '.nvmrc', '.node-version']
 /** The files a checkout names its toolchain in, wherever they sit in it. */
-const PIN_FILES = [
-  'rust-toolchain',
-  'rust-toolchain.toml',
-  '.nvmrc',
-  '.node-version',
-  'package.json',
-]
+const PIN_FILES = [...DIR_PIN_FILES, 'package.json']
 
 /** nvm's names for the newest version it has installed. */
 const NEWEST = new Set(['node', 'stable', 'latest', 'current'])
@@ -91,14 +82,11 @@ export const NO_TARGETS_NOTE =
 export const noatimeNote = (dir: string): string =>
   `${dir} is on a volume mounted noatime, so last use can't be measured and every version in it is kept`
 
-type Tool = 'rustup' | 'nvm' | 'volta'
+const TOOLS = ['rustup', 'nvm', 'volta'] as const
+type Tool = (typeof TOOLS)[number]
 
 /** Where each tool keeps its versions. */
-interface Homes {
-  rustup: string
-  nvm: string
-  volta: string
-}
+type Homes = Record<Tool, string>
 
 const homesOf = (env: Readonly<Record<string, string | undefined>>): Homes => {
   const home = env.HOME ?? homedir()
@@ -110,12 +98,14 @@ const homesOf = (env: Readonly<Record<string, string | undefined>>): Homes => {
 }
 
 /** The folder each tool's versions sit in, one per version. */
-const versionsDir = (tool: Tool, homes: Homes): string =>
-  tool === 'rustup'
-    ? join(homes.rustup, 'toolchains')
-    : tool === 'nvm'
-      ? join(homes.nvm, 'versions', 'node')
-      : join(homes.volta, 'tools', 'image', 'node')
+const versionsDirs = (homes: Homes): Record<Tool, string> => ({
+  rustup: join(homes.rustup, 'toolchains'),
+  nvm: join(homes.nvm, 'versions', 'node'),
+  volta: join(homes.volta, 'tools', 'image', 'node'),
+})
+
+/** A Node version or pin without its leading `v`. */
+const plain = (v: string): string => v.replace(/^v/, '')
 
 const isDir = (path: string): boolean =>
   lstatSync(path, { throwIfNoEntry: false })?.isDirectory() === true
@@ -200,13 +190,13 @@ function readPins(targets: readonly string[], cwd: string): Pins {
   const pins: Pins = { rust: new Set(), node: new Set(), rustUnknown: [], nodeUnknown: [] }
   const add = (file: string, text: string): void => {
     const name = basename(file)
-    if (name === 'rust-toolchain' || name === 'rust-toolchain.toml') {
+    if (RUST_PIN_FILES.includes(name)) {
       const pin = rustPin(text)
       if (pin !== null) pins.rust.add(pin)
       return
     }
     const pin = name === 'package.json' ? voltaPin(text) : firstLine(text) || null
-    if (pin !== null) pins.node.add(pin.replace(/^v/, ''))
+    if (pin !== null) pins.node.add(plain(pin))
   }
   const read = (file: string): void => {
     let text: string
@@ -215,7 +205,7 @@ function readPins(targets: readonly string[], cwd: string): Pins {
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return
       const why = `${file} could not be read`
-      ;(basename(file).startsWith('rust-') ? pins.rustUnknown : pins.nodeUnknown).push(why)
+      ;(RUST_PIN_FILES.includes(basename(file)) ? pins.rustUnknown : pins.nodeUnknown).push(why)
       return
     }
     try {
@@ -247,9 +237,7 @@ function readPins(targets: readonly string[], cwd: string): Pins {
   }
   // The run's folder and those above it decide what is in use there, as rustup and nvm look up.
   for (let dir = resolve(cwd); ; dir = dirname(dir)) {
-    for (const f of ['rust-toolchain', 'rust-toolchain.toml', '.nvmrc', '.node-version']) {
-      read(join(dir, f))
-    }
+    for (const f of DIR_PIN_FILES) read(join(dir, f))
     if (dirname(dir) === dir) break
   }
   return pins
@@ -279,9 +267,6 @@ export function lastUsedMs(dir: string): number | null {
   }
   return newest
 }
-
-/** `hours` to one decimal, rounded down. */
-const hoursText = (hours: number): string => String(Math.floor(hours * 10) / 10)
 
 /** Whether the pin `pin` keeps the version `name`: the same, or `name` is `pin` with more after a `-` or a `.`. */
 export const keeps = (pin: string, name: string): boolean =>
@@ -360,12 +345,6 @@ export function mountOptionsBy(
   }
 }
 
-/** A candidate and the refusals it rests on. */
-interface Row {
-  candidate: Candidate
-  blockers: Array<{ code: string; reason: string }>
-}
-
 export interface ToolchainsOptions {
   /** Not a finite number of zero or more: {@link DEFAULT_IDLE_HOURS}. */
   idleHours?: number | undefined
@@ -385,6 +364,7 @@ export function toolchainsPlugin(
   const { idleHours } = opts
   const mountOptions = opts.mountOptions ?? mountOptionsBy(kit)
   const homes = homesOf(env)
+  const versions = versionsDirs(homes)
   const threshold =
     idleHours !== undefined && Number.isFinite(idleHours) && idleHours >= 0
       ? idleHours
@@ -411,18 +391,21 @@ export function toolchainsPlugin(
   /** The rustup toolchains to keep beyond the pins: the default, the directory overrides and `RUSTUP_TOOLCHAIN`. */
   const rustInUse = async (ctx: Ctx): Promise<string[]> => {
     const lastWord = (l: string): string => l.split(/\s+/).at(-1)!
-    const overrides = (await rustup(['override', 'list'], ctx)).filter((l) => l !== 'no overrides')
+    const [defaults, overrides] = await Promise.all([
+      rustup(['default'], ctx),
+      rustup(['override', 'list'], ctx),
+    ])
     const fromEnv = env.RUSTUP_TOOLCHAIN?.trim()
     return [
-      ...(await rustup(['default'], ctx)).slice(0, 1).map((l) => l.split(/\s+/)[0]!),
-      ...overrides.map(lastWord),
+      ...defaults.slice(0, 1).map((l) => l.split(/\s+/)[0]!),
+      ...overrides.filter((l) => l !== 'no overrides').map(lastWord),
       ...(fromEnv ? [fromEnv] : []),
     ]
   }
 
   /** `spec` as the versions it keeps, through nvm's aliases; null when it cannot be told. */
   const nodeSpec = (spec: string, newest: string | undefined, hops = 0): string[] | null => {
-    const s = spec.replace(/^v/, '')
+    const s = plain(spec)
     if (/^\d+(\.\d+){0,2}$/.test(s)) return [s]
     if (s === 'system') return []
     if (NEWEST.has(s)) return newest === undefined ? [] : [newest]
@@ -442,17 +425,17 @@ export function toolchainsPlugin(
     const keep: string[] = []
     const unknown: string[] = []
     const nvmDefault = join(homes.nvm, 'alias', 'default')
-    if (lstatSync(nvmDefault, { throwIfNoEntry: false }) !== undefined) {
+    if (present(nvmDefault)) {
       const found = nodeSpec('default', newest)
       if (found === null) unknown.push(`nvm's default alias names no version it has`)
       else keep.push(...found)
     }
     const platform = join(homes.volta, 'tools', 'user', 'platform.json')
-    if (lstatSync(platform, { throwIfNoEntry: false }) !== undefined) {
+    if (present(platform)) {
       try {
         const json = JSON.parse(readFileSync(platform, 'utf8')) as { node?: { runtime?: unknown } }
         const runtime = json?.node?.runtime
-        if (typeof runtime === 'string') keep.push(runtime.replace(/^v/, ''))
+        if (typeof runtime === 'string') keep.push(plain(runtime))
       } catch (err) {
         unknown.push(`Volta's default could not be read from ${platform}: ${message(err)}`)
       }
@@ -460,19 +443,27 @@ export function toolchainsPlugin(
     if (kit.onPath('node')) {
       const r = await kit.run(['node', '--version'], { cwd: ctx.cwd, signal: ctx.signal })
       const version = r.stdout.trim()
-      if (r.ok && NODE_VERSION.test(version)) keep.push(version.replace(/^v/, ''))
+      if (r.ok && NODE_VERSION.test(version)) keep.push(plain(version))
       else unknown.push(`the node on PATH did not say its version`)
     }
     return { keep, unknown }
   }
 
-  /** The row for a version no pin or default keeps; none when it was used in the last {@link threshold} hours. */
-  const row = (tool: Tool, name: string, unknown: readonly string[]): Row[] => {
-    const path = join(versionsDir(tool, homes), name)
+  /**
+   * The row for a version no pin or default keeps; null when it was used in the
+   * last {@link threshold} hours. Sized only when `measure` is set.
+   */
+  const row = (
+    tool: Tool,
+    name: string,
+    unknown: readonly string[],
+    measure: boolean,
+  ): Row | null => {
+    const path = join(versions[tool], name)
     const used = lastUsedMs(path)
     const hours = used === null ? null : Math.max(0, (Date.now() - used) / HOUR_MS)
-    if (hours !== null && hours < threshold) return []
-    const bytes = kit.size(path)
+    if (hours !== null && hours < threshold) return null
+    const bytes = measure ? kit.size(path) : null
     const what = tool === 'rustup' ? 'this toolchain' : 'this Node version'
     const blockers = unknown.map((reason) => ({ code: 'unused-unknown', reason }))
     if (hours === null) {
@@ -481,60 +472,62 @@ export function toolchainsPlugin(
         reason: `when ${path} was last used could not be told: its bin folder could not be read or holds no file`,
       })
     }
-    return [
-      {
-        candidate: kit.candidate({
-          kind: tool === 'rustup' ? 'rust-toolchain' : 'node-version',
-          path,
-          name,
-          why:
-            `no checkout in the targets asks for ${what}, and it is not the default or in use` +
-            (hours === null
-              ? ''
-              : `; last used ${hoursText(hours)} hours ago (threshold ${threshold})`),
-          costDescription: 're-download',
-          ...(bytes === null ? {} : { bytes }),
-          evidence: { kind: 'toolchain', tool, name, path },
-        }),
-        blockers,
-      },
-    ]
+    return {
+      candidate: kit.candidate({
+        kind: tool === 'rustup' ? 'rust-toolchain' : 'node-version',
+        path,
+        name,
+        why:
+          `no checkout in the targets asks for ${what}, and it is not the default or in use` +
+          (hours === null
+            ? ''
+            : `; last used ${hoursText(hours)} hours ago (threshold ${threshold})`),
+        costDescription: 're-download',
+        ...(bytes === null ? {} : { bytes }),
+        evidence: { kind: 'toolchain', tool, name, path },
+      }),
+      blockers,
+    }
   }
 
   /** The tools whose versions folder is there: rustup's only when rustup is on PATH. */
-  const present = (): Tool[] =>
-    (['rustup', 'nvm', 'volta'] as const).filter(
-      (t) => (t !== 'rustup' || kit.onPath('rustup')) && isDir(versionsDir(t, homes)),
-    )
+  const presentTools = (): Tool[] =>
+    TOOLS.filter((t) => (t !== 'rustup' || kit.onPath('rustup')) && isDir(versions[t]))
 
   /** The tools among `tools` whose versions folder is on a volume mounted `noatime`; one whose options cannot be read is not. */
   const noatime = async (tools: readonly Tool[], ctx: Ctx): Promise<Set<Tool>> => {
-    const out = new Set<Tool>()
-    for (const tool of tools) {
-      let options: readonly string[] | null
-      try {
-        options = await mountOptions(versionsDir(tool, homes), ctx)
-      } catch {
-        options = null
-      }
-      if (options?.includes('noatime') === true) out.add(tool)
-    }
-    return out
+    const flags = await Promise.all(
+      tools.map(async (tool) => {
+        try {
+          return (await mountOptions(versions[tool], ctx))?.includes('noatime') === true
+        } catch {
+          return false
+        }
+      }),
+    )
+    return new Set(tools.filter((_, i) => flags[i]))
   }
 
-  /** Every toolchain no checkout asks for and nobody used lately, refused when what is asked for could not be read. */
-  const scan = async (ctx: Ctx): Promise<Row[]> => {
+  /**
+   * Every toolchain no checkout asks for and nobody used lately, refused when
+   * what is asked for could not be read; sized only when `measure` is set.
+   */
+  const scan = async (ctx: Ctx, measure: boolean): Promise<Row[]> => {
     if (!ctx.targetsGiven || ctx.targets.length === 0) return []
     // A version run daily on a noatime volume would read as unused, so none there is proposed.
-    const tools = present()
+    const tools = presentTools()
     const skip = await noatime(tools, ctx)
     if (tools.every((t) => skip.has(t))) return []
     const pins = readPins(ctx.targets, ctx.cwd)
     const rows: Row[] = []
+    const add = (tool: Tool, name: string, unknown: readonly string[]): void => {
+      const r = row(tool, name, unknown, measure)
+      if (r !== null) rows.push(r)
+    }
 
     const rust =
       tools.includes('rustup') && !skip.has('rustup')
-        ? installed(versionsDir('rustup', homes), RUST_RELEASE)
+        ? installed(versions.rustup, RUST_RELEASE)
         : []
     if (rust.length > 0) {
       const unknown = [...pins.rustUnknown]
@@ -545,16 +538,15 @@ export function toolchainsPlugin(
         unknown.push(`what rustup has in use could not be read: ${message(err)}`)
       }
       for (const name of rust) {
-        if (!keep.some((pin) => keeps(pin, name))) rows.push(...row('rustup', name, unknown))
+        if (!keep.some((pin) => keeps(pin, name))) add('rustup', name, unknown)
       }
     }
 
     const node = {
-      nvm: installed(versionsDir('nvm', homes), NODE_VERSION),
-      volta: installed(versionsDir('volta', homes), NODE_VERSION),
+      nvm: installed(versions.nvm, NODE_VERSION),
+      volta: installed(versions.volta, NODE_VERSION),
     }
     if (node.nvm.length + node.volta.length > 0) {
-      const plain = (v: string): string => v.replace(/^v/, '')
       const newest = [...node.nvm, ...node.volta].map(plain).sort(byVersion).at(-1)
       const inUse = await nodeInUse(ctx, newest)
       const unknown = [...pins.nodeUnknown, ...inUse.unknown]
@@ -568,7 +560,7 @@ export function toolchainsPlugin(
       for (const tool of ['nvm', 'volta'] as const) {
         if (skip.has(tool)) continue
         for (const name of node[tool]) {
-          if (!keep.some((pin) => keeps(pin, plain(name)))) rows.push(...row(tool, name, unknown))
+          if (!keep.some((pin) => keeps(pin, plain(name)))) add(tool, name, unknown)
         }
       }
     }
@@ -577,8 +569,7 @@ export function toolchainsPlugin(
 
   /** The tool a candidate's folder belongs to, from where it sits; null when it sits in none of them. */
   const toolOf = (path: string): Tool | null =>
-    (['rustup', 'nvm', 'volta'] as const).find((t) => dirname(path) === versionsDir(t, homes)) ??
-    null
+    TOOLS.find((t) => dirname(path) === versions[t]) ?? null
 
   let rows = new Map<string, Row>()
 
@@ -586,36 +577,30 @@ export function toolchainsPlugin(
     name: TOOLCHAINS_PLUGIN,
     limits: { discover: DISCOVER_LIMIT_MS },
     async detect(ctx) {
-      const tools = present()
+      const tools = presentTools()
       if (tools.length === 0) return false
       if (!ctx.targetsGiven) return { active: true, note: NO_TARGETS_NOTE }
       const skip = await noatime(tools, ctx)
       if (skip.size === 0) return true
-      const note = tools.filter((t) => skip.has(t)).map((t) => noatimeNote(versionsDir(t, homes)))
+      const note = tools.filter((t) => skip.has(t)).map((t) => noatimeNote(versions[t]))
       return { active: true, note: note.join('; ') }
     },
-    roots: () => (['rustup', 'nvm', 'volta'] as const).map((t) => versionsDir(t, homes)),
+    roots: () => TOOLS.map((t) => versions[t]),
     async discover(ctx) {
-      const found = await scan(ctx)
+      const found = await scan(ctx, true)
       rows = new Map(found.map((r) => [r.candidate.id, r]))
       return found.map((r) => r.candidate)
     },
     object: (all) =>
-      all.flatMap((c): Objection[] => {
+      all.flatMap((c) => {
         const r = c.owner === TOOLCHAINS_PLUGIN ? rows.get(c.id) : undefined
-        return (r?.blockers ?? []).map((b) => ({
-          by: TOOLCHAINS_PLUGIN,
-          candidate: c.id,
-          level: 'refuse',
-          code: b.code,
-          reason: b.reason,
-        }))
+        return r === undefined ? [] : objectionsTo(TOOLCHAINS_PLUGIN, r)
       }),
     async delete(c, ctx) {
       const path = c.path
       if (path === undefined) throw new Error(`${c.id} is not a toolchain folder`)
       const tool = toolOf(path)
-      if (tool === null || containedIn([versionsDir(tool, homes)], path) === null) {
+      if (tool === null || containedIn([versions[tool]], path) === null) {
         throw new Error(`${path} is not a version folder of rustup, nvm or Volta`)
       }
       const stat = lstatSync(path, { throwIfNoEntry: false })
@@ -623,7 +608,7 @@ export function toolchainsPlugin(
       // `rustup toolchain uninstall` would remove what a link leads to.
       if (!stat.isDirectory()) throw new Error(`${path} is no longer a folder`)
       // A checkout may have pinned it, or it may have become the default, since the survey.
-      const now = (await scan(ctx)).find((r) => r.candidate.id === c.id)
+      const now = (await scan(ctx, false)).find((r) => r.candidate.id === c.id)
       if (now === undefined) throw new Error(`${path} is no longer a candidate`)
       if (now.blockers.length > 0) {
         throw new Error(`${path} is refused: ${now.blockers.map((b) => b.reason).join(', ')}`)
@@ -636,7 +621,7 @@ export function toolchainsPlugin(
         timeoutMs: UNINSTALL_LIMIT_MS,
         check: true,
       })
-      if (lstatSync(path, { throwIfNoEntry: false }) !== undefined) {
+      if (present(path)) {
         throw new Error(`${path} is still there after rustup toolchain uninstall ${name}`)
       }
       return `rustup toolchain uninstall ${name} removed ${path}`

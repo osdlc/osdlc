@@ -100,7 +100,7 @@ const run = async (plugins: Plugin[], opts: { select?: string[]; allow?: string[
 }
 
 describe('plugin order and duplicates', () => {
-  test('the shipped plugins are one definition each, in run order: git, cargo, node, orca', () => {
+  test('the shipped plugins are one definition each, in run order: git, cargo, node, orca, toolchains', () => {
     expect(BUILT_IN_PLUGINS.map((d) => d.name)).toEqual([
       'git',
       'cargo',
