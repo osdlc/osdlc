@@ -77,7 +77,11 @@ export function settingsOf(
 export const disabledByConfig = (name: string, plugins: Entries): boolean =>
   plugins[name]?.enabled === false
 
-/** Where each of `name`'s settings came from, by key: `config` for a key its entry `raw` sets, `shared` for an `idleHours` the top-level setting gave. Keys from the default are left out. */
+/**
+ * Where each of `name`'s settings came from, by key, as {@link settingsOf}
+ * resolves them: `config` for a key its entry `raw` sets, `shared` for an
+ * `idleHours` the top-level setting gave. A key from the default is left out.
+ */
 export function sourcesOf(
   name: string,
   raw: Record<string, unknown>,
@@ -85,15 +89,11 @@ export function sourcesOf(
   defs: Definitions = BUILT_IN_PLUGINS,
 ): Record<string, SettingSource> {
   const out: Record<string, SettingSource> = {}
-  for (const key of Object.keys(raw)) out[key] = 'config'
+  for (const [key, value] of Object.entries(raw)) if (value !== undefined) out[key] = 'config'
   const schema = schemaOf(name, defs)
-  if (
-    schema !== undefined &&
-    'idleHours' in schema.shape &&
-    !Object.hasOwn(raw, 'idleHours') &&
-    shared.idleHours !== undefined
-  )
-    out.idleHours = 'shared'
+  if (schema !== undefined && 'idleHours' in schema.shape && shared.idleHours !== undefined) {
+    out.idleHours ??= 'shared'
+  }
   return out
 }
 

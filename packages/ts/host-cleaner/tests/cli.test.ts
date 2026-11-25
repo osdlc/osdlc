@@ -468,6 +468,48 @@ ${extra}`
     expect(bad.err).toContain('nope')
   })
 
+  test("an entry's own idleHours: plugins.<name>.idleHours wins, the top-level one raises it, and config says what the run uses", async () => {
+    const h = withHome(['mine'])
+    writeFileSync(
+      join(h.shipped, 'mine.yaml'),
+      store('.cache/mine').replace('re-download }', 're-download, idleHours: 720 }') +
+        "project:\n  - { dir: out, marker: '*.x', costDescription: rebuild, idleHours: 168 }\n",
+    )
+    const file = join(h.home, 'config.json')
+    const deps = { shippedDescriptors: h.shipped }
+    for (const [config, setting, own, project] of [
+      [{}, 24, 720, 168],
+      [{ idleHours: 0 }, 0, 720, 168],
+      [{ idleHours: 200 }, 200, 720, 200],
+      [{ idleHours: 4000 }, 4000, 4000, 4000],
+      [{ plugins: { mine: { idleHours: 4000 } } }, 4000, 4000, 4000],
+      [{ plugins: { mine: { idleHours: 1 } } }, 1, 1, 1],
+      [{ idleHours: 4000, plugins: { mine: { idleHours: 1 } } }, 1, 1, 1],
+    ] as const) {
+      writeFileSync(file, JSON.stringify(config))
+      const what = JSON.stringify(config)
+      const common = ['--config', file]
+      const status = await run(['status', '--plugin', 'mine', ...common], h.cwd, h.env, deps)
+      expect(status.out, what).toContain(`(threshold ${own})`)
+      const text = await run(['config', ...common], h.cwd, h.env, deps)
+      expect(text.out, what).toMatch(
+        new RegExp(
+          `plugins\\.mine\\n.*\\n {2}idleHours = ${setting} .*\\n {4}store: idleHours = ${own}\\n {4}out beside \\*\\.x: idleHours = ${project}\\n`,
+        ),
+      )
+      const json = await run(['config', '--format', 'json', ...common], h.cwd, h.env, deps)
+      expect(JSON.parse(json.out), what).toMatchObject({
+        plugins: { mine: { idleHours: setting } },
+        partIdleHours: {
+          mine: [
+            { part: 'store', idleHours: own },
+            { part: 'out beside *.x', idleHours: project },
+          ],
+        },
+      })
+    }
+  })
+
   test('config prints a descriptor’s settings; --descriptor adds one for that run', async () => {
     const h = withHome()
     writeFileSync(join(h.user, 'mine.yaml'), store('.cache/mine'))

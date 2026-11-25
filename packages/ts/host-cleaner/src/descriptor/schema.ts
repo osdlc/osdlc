@@ -164,7 +164,7 @@ const idleHours = z
   .nonnegative()
   .optional()
   .describe(
-    "Hours it must sit unchanged before it's selected by default; fractions count. Unset: the plugin's idleHours setting.",
+    "Hours it must sit unchanged before it's selected by default; fractions count. The config's plugins.<name>.idleHours wins over it, and its top-level idleHours can only raise it. Unset: the plugin's idleHours setting.",
   )
 
 const costDescription = z

@@ -916,7 +916,7 @@ candidates:
     expect(globMatches(h.home, '*/')).toEqual(['a', 'b'].map((n) => join(h.home, n)))
   })
 
-  test('held and costDescription: lost are held; idleHours on the candidate beats the setting', async () => {
+  test("held and costDescription: lost are held; the setting does not lower a candidate's idleHours", async () => {
     const b = build(
       'x',
       `descriptor: 1
@@ -934,6 +934,17 @@ candidates:
     const s = await survey([b.plugin], ctxOf())
     expect(s.candidates.map((c) => c.held)).toEqual([true, true, true])
     expect(s.candidates[2]!.why).toMatch(/\(threshold 1000\)/)
+  })
+
+  test("without the settings' sources, the setting can only raise a candidate's idleHours", async () => {
+    for (const [idleHours, threshold] of [
+      [24, 720],
+      [1000, 1000],
+    ] as const) {
+      const b = build('hf', HUGGING_FACE, { idleHours })
+      const s = await survey([b.plugin], ctxOf())
+      expect(s.candidates[0]!.why).toContain(`(threshold ${threshold})`)
+    }
   })
 
   test("idleHours comes from the plugin's setting, which inherits the config's", () => {
@@ -967,6 +978,21 @@ describe('inUse', () => {
     const l = await survey([locked.plugin], ctxOf())
     expect(l.objections.map((o) => [o.code, o.reason])).toEqual([
       [IN_USE, `the lock ${join(locked.home, '.cache', 'pip.lock')} exists`],
+    ])
+  })
+
+  test('a process that several of the names match is named once, in one objection', async () => {
+    const b = build('pip', `${PIP_PER_OS}inUse: { processes: [pip, python, nothing] }\n`, {
+      processes: processes({
+        '/': [
+          { pid: 7, command: 'python -m pip' },
+          { pid: 8, command: 'python x.py' },
+        ],
+      }),
+    })
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.objections.map((o) => [o.code, o.reason])).toEqual([
+      [IN_USE, 'running: python (pid 7), python (pid 8)'],
     ])
   })
 

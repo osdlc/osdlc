@@ -692,13 +692,12 @@ function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
           Object.fromEntries(rows.map((r) => [r.key, r.value])),
         ]),
       )
-      const parts: Record<string, Record<string, number>> = {}
-      for (const [n, rows] of Object.entries(settings)) {
-        for (const r of rows) {
-          if (r.parts === undefined) continue
-          parts[n] = Object.fromEntries(r.parts.map((p) => [p.part, p.idleHours]))
-        }
-      }
+      // Each a list, since two parts may have one name.
+      const parts = Object.fromEntries(
+        Object.entries(settings).flatMap(([n, rows]) =>
+          rows.flatMap((r) => (r.parts === undefined ? [] : [[n, r.parts]])),
+        ),
+      )
       ctx.io.stdout(
         JSON.stringify(
           {

@@ -148,7 +148,7 @@
             "description": "What deleting it costs. `lost` is always held, with a `discard-user-data` protest that only --allow grants."
           },
           "idleHours": {
-            "description": "Hours it must sit unchanged before it's selected by default; fractions count. Unset: the plugin's idleHours setting.",
+            "description": "Hours it must sit unchanged before it's selected by default; fractions count. The config's plugins.<name>.idleHours wins over it, and its top-level idleHours can only raise it. Unset: the plugin's idleHours setting.",
             "type": "number",
             "minimum": 0
           },
@@ -261,7 +261,7 @@
             "description": "What deleting it costs. `lost` is always held, with a `discard-user-data` protest that only --allow grants."
           },
           "idleHours": {
-            "description": "Hours it must sit unchanged before it's selected by default; fractions count. Unset: the plugin's idleHours setting.",
+            "description": "Hours it must sit unchanged before it's selected by default; fractions count. The config's plugins.<name>.idleHours wins over it, and its top-level idleHours can only raise it. Unset: the plugin's idleHours setting.",
             "type": "number",
             "minimum": 0
           }

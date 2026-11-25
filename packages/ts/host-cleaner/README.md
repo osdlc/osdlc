@@ -235,6 +235,8 @@ runner:
 | `fakeContext(over)` | A hook's context: no targets, `targetsGiven: false`, nothing allowed, a signal never aborted. |
 | `fakeRunner({ program: answers })` | Fake programs for the kit: spread it into `pluginKit`'s options. A program in the table is on PATH and answers as command-seam's `fakeRunner` does; `calls` records each run. |
 | `tempHome()` | A new empty folder, by its real path, with `cleanup()`. |
+| `fakeProcesses({ folder: processes })` | A process table for the kit: spread it into `pluginKit`'s options. `/` lists every process, by command line; any other folder, those working in it. |
+| `ageTree(dir, hours)` | Sets the modification time of a folder and all in it to `hours` ago; links are not followed. |
 | `contractSuite(plugin, ctx, { deleteLimitMs })` | Surveys the plugin twice and returns one line per broken rule. |
 
 The suite checks that `limits` name hooks; that the survey warns of nothing
@@ -327,7 +329,8 @@ const plugin = descriptorPlugin('pip', d)
   checkouts, in one walk, and in a repository's primary checkout only inside
   the targets. A build folder that several `project` entries give is one
   candidate, by the longest of their `idleHours` and the highest of their
-  costs. Any other folder that two entries give is refused
+  costs. An entry's own `idleHours` gives way to the config's
+  ([below](#command-line)). Any other folder that two entries give is refused
   (`duplicate-entry`). Home is the run's (`ctx.home`), else `HOME`.
 - **object:** a running `inUse` process or lock refuses its candidates
   (`in-use`); a prune with no program on PATH gets a `no-prune-tool` protest.
@@ -467,20 +470,19 @@ The package ships eight, for macOS and Linux: `pnpm` (the store, pruned with
 after 30 idle days), `gradle` (the caches after a week and each wrapper distribution
 after 30 days), `npm` (the package cache), `pip` (the cache), `yarn` (Classic's
 global cache; Berry's is left out, since Plug'n'Play projects run from it) and
-`maven` (the local repository, after 30 idle days, at the cost `rebuild`). While
-the tool runs, every candidate of `pnpm`, `uv`, `gradle` (any Gradle build or
-daemon), `npm` (npm or npx), `pip` (pip, pip3 or `python -m pip`), `yarn` and
-`maven` (mvn, `./mvnw`, mvnd or any process naming `maven`, such as IntelliJ's
-Maven server) is refused as `in-use`, at the
-survey and again before each delete, so a long-running `pnpm dev` keeps the pnpm
-store from being pruned. Idle time is the newest modification time inside a
-folder, and reading a file doesn't change it: a Hugging Face model, a Gradle
-wrapper distribution or a Maven repository in daily use counts as idle from its
-last download, and a Maven repository used only offline (`-o`) from its last
-online build. Raise `plugins.maven.idleHours` to keep it longer. Each looks
-only at the tool's default
-folders: a store moved by an environment variable or a setting is not found, and
-the folder it left behind, if any, is what gets cleaned.
+`maven` (the local repository, at the cost `rebuild`; always held, so it goes
+only when picked). While the tool runs, every candidate of `pnpm`, `uv`,
+`gradle` (any Gradle build or daemon), `npm` (npm or npx), `pip` (pip, pip3 or
+`python -m pip`), `yarn` and `maven` (mvn, `./mvnw`, mvnd or any process naming
+`maven`, such as IntelliJ's Maven server) is refused as `in-use`, at the survey
+and again before each delete, so a long-running `pnpm dev` keeps the pnpm store
+from being pruned. Idle time is the newest modification time inside a
+folder, and reading a file doesn't change it: a Hugging Face model or a Gradle
+wrapper distribution in daily use counts as idle from its download. So does a
+Maven repository whose artifacts are all downloaded, and it may hold what only a
+local `mvn install` gives back, which is why it is held. Each looks only at the
+tool's default folders: a store moved by an environment variable or a setting is
+not found, and the folder it left behind, if any, is what gets cleaned.
 
 The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
 all three directories):
@@ -514,11 +516,11 @@ Two settings sit at the top of the config and apply to every plugin:
 - `idleHours` is the default for every plugin that has the setting and does not
   set its own. `0` is allowed and makes every idle-checked artifact a candidate.
 
-A descriptor entry may carry its own `idleHours`, such as Maven's 720. A
-`plugins.<name>.idleHours` you set wins over it. A top-level `idleHours` you set
-can only raise it, never lower it: `"idleHours": 0` leaves Maven's repository at
-720 hours, `"idleHours": 1000` takes it to 1000. With neither set, the entry's
-own value applies.
+A descriptor entry may carry its own `idleHours`, such as the 168 of Gradle's
+caches. A `plugins.<name>.idleHours` you set wins over it, higher or lower. A
+top-level `idleHours` you set can only raise it: `"idleHours": 0` leaves Gradle's
+caches at 168 hours, `"idleHours": 1000` takes them to 1000. With neither set,
+the entry's own value applies.
 
 `host-cleaner config` prints every plugin's effective settings: the value, and
 whether the file set it or it is the default. Under a descriptor's `idleHours`

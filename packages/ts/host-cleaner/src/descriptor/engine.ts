@@ -292,7 +292,13 @@ export function descriptorPlugin(
         home: env.HOME ?? homedir(),
         os: opts.os ?? osOf(process.platform),
         idleHours: settings.idleHours ?? DEFAULT_IDLE_HOURS,
-        idleHoursFrom: sources?.idleHours ?? 'default',
+        // A setting given with no source raises an entry's value, as the one that deletes less.
+        idleHoursFrom:
+          sources !== undefined
+            ? (sources.idleHours ?? 'default')
+            : settings.idleHours === undefined
+              ? 'default'
+              : 'shared',
         runs: opts.runs ?? ((plugin, ctx) => ctx.running?.includes(plugin) === true),
         ownDirs: opts.ownDirs ?? ownDirsOf(env),
       }),
@@ -315,11 +321,7 @@ const ownDirsOf = (env: Readonly<Record<string, string | undefined>>): string[] 
  * in the config wins; the top-level setting can only raise the entry's value;
  * the default leaves it. An entry with none takes the setting.
  */
-export const entryIdleHours = (
-  own: number | undefined,
-  setting: number,
-  from: SettingSource,
-): number =>
+const entryIdleHours = (own: number | undefined, setting: number, from: SettingSource): number =>
   own === undefined || from === 'config'
     ? setting
     : from === 'shared'
@@ -747,16 +749,19 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   const inUseNow = (ctx: Ctx): Row['objections'] => {
     const home = homeOf(ctx)
     const out: Row['objections'] = []
+    // One process may match several of the names.
+    const names = new Set<string>()
+    let unknown: string | undefined
     for (const program of d.inUse?.processes ?? []) {
       const found = kit.running(program, ctx)
-      if (found.names.length > 0) {
-        out.push({ level: 'refuse', code: IN_USE, reason: `running: ${found.names.join(', ')}` })
-      }
-      if (found.unknown !== undefined) {
-        out.push(unreadable(found.unknown))
-        break
-      }
+      for (const n of found.names) names.add(n)
+      unknown = found.unknown
+      if (unknown !== undefined) break
     }
+    if (names.size > 0) {
+      out.push({ level: 'refuse', code: IN_USE, reason: `running: ${[...names].join(', ')}` })
+    }
+    if (unknown !== undefined) out.push(unreadable(unknown))
     for (const lock of d.inUse?.locks ?? []) {
       const file = expand(lock, home)
       if (present(file))

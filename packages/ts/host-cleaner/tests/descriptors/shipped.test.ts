@@ -6,14 +6,7 @@
  * descriptor-engine.test.ts; these test the files.
  */
 
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  renameSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 
@@ -168,9 +161,9 @@ function build(
 
 const CTX: RunCtx = { cwd: '/', targets: [], allow: [] }
 
-async function surveyAndClean(plugin: Plugin) {
+async function surveyAndClean(plugin: Plugin, pick: string[] = []) {
   const s = await survey([plugin], CTX)
-  return { survey: s, receipt: await clean(plan(s, { allow: [] }), [plugin], CTX) }
+  return { survey: s, receipt: await clean(plan(s, { pick }), [plugin], CTX) }
 }
 
 const ids = (cs: readonly { id: string }[]): string[] => cs.map((c) => c.id).sort()
@@ -426,6 +419,21 @@ describe.each(OSES_TESTED)('on %s', (os) => {
   })
 
   describe('pip', () => {
+    test.each([
+      '/usr/bin/pip install -r requirements.txt',
+      '/usr/bin/python3 /usr/local/bin/pip3 install requests',
+      '/usr/bin/python3.12 /usr/local/bin/pip3.12 install requests',
+      'python -m pip install requests',
+    ])('`%s` running refuses the idle cache', async (command) => {
+      const b = build('pip', os, { processes: processes([{ pid: PID, command }]) })
+      age(b.folder('cache'), 25)
+      const { survey: s, receipt } = await surveyAndClean(b.plugin)
+      const inUse = s.objections.filter((o) => o.code === IN_USE)
+      expect(inUse.map((o) => o.candidate)).toEqual([`pip:${b.folder('cache')}`])
+      expect(receipt.steps).toEqual([])
+      expect(existsSync(b.folder('cache'))).toBe(true)
+    })
+
     test(`removes the idle cache in ${os}'s folder`, async () => {
       const b = build('pip', os)
       const cache = join(b.home, os === 'macos' ? 'Library/Caches/pip' : '.cache/pip')
@@ -454,21 +462,18 @@ describe.each(OSES_TESTED)('on %s', (os) => {
   })
 
   describe('maven', () => {
-    test('holds the local repository until it sat 30 days unchanged', async () => {
-      const fresh = build('maven', os)
-      age(fresh.folder('repository'), 719)
-      const held = await surveyAndClean(fresh.plugin)
-      expect(held.survey.candidates[0]!.held).toBe(true)
+    test('holds the local repository however long it sat unchanged, and removes it when picked', async () => {
+      const b = build('maven', os)
+      age(b.folder('repository'), 10_000)
+      const held = await surveyAndClean(b.plugin)
+      expect(held.survey.candidates).toMatchObject([{ held: true, costDescription: 'rebuild' }])
       expect(held.receipt.steps).toEqual([])
+      expect(existsSync(b.folder('repository'))).toBe(true)
 
-      expect(held.survey.candidates[0]!.costDescription).toBe('rebuild')
-
-      const idle = build('maven', os)
-      age(idle.folder('repository'), 721)
-      const { receipt } = await surveyAndClean(idle.plugin)
-      expect(receipt.steps.map((st) => st.result)).toEqual(['ok'])
-      expect(existsSync(idle.folder('repository'))).toBe(false)
-      expect(existsSync(join(idle.home, '.m2'))).toBe(true)
+      const picked = await surveyAndClean(b.plugin, ids(held.survey.candidates))
+      expect(picked.receipt.steps.map((st) => st.result)).toEqual(['ok'])
+      expect(existsSync(b.folder('repository'))).toBe(false)
+      expect(existsSync(join(b.home, '.m2'))).toBe(true)
     })
 
     test.each([
@@ -487,11 +492,9 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       ],
     ])('%s running refuses the repository', async (_, command) => {
       const b = build('maven', os, { processes: processes([{ pid: PID, command }]) })
-      age(b.folder('repository'), 721)
-      const { survey: s, receipt } = await surveyAndClean(b.plugin)
-      expect(s.objections.filter((o) => o.code === IN_USE).map((o) => o.candidate)).toEqual([
-        `maven:${b.folder('repository')}`,
-      ])
+      const id = `maven:${b.folder('repository')}`
+      const { survey: s, receipt } = await surveyAndClean(b.plugin, [id])
+      expect(s.objections.filter((o) => o.code === IN_USE).map((o) => o.candidate)).toEqual([id])
       expect(receipt.steps).toEqual([])
       expect(existsSync(b.folder('repository'))).toBe(true)
     })
@@ -500,45 +503,45 @@ describe.each(OSES_TESTED)('on %s', (os) => {
   describe("an entry's own idleHours", () => {
     type Config = { entry: Record<string, unknown>; shared: { idleHours?: number } }
 
-    /** Whether Maven's repository, `hours` idle, is still there after a clean under `config`. */
-    const run = async (config: Config, hours: number): Promise<boolean> => {
-      const b = build('maven', os, { config })
-      age(b.folder('repository'), hours)
+    /** Whether Gradle's caches (168 hours), `hours` idle, are still there after a clean under `config`. */
+    const kept = async (config: Config, hours: number): Promise<boolean> => {
+      const b = build('gradle', os, { config })
+      age(b.folder('caches'), hours)
       await surveyAndClean(b.plugin)
-      return existsSync(b.folder('repository'))
+      return existsSync(b.folder('caches'))
     }
 
     test("the plugin's idleHours the user set wins over it, both ways", async () => {
-      expect(await run({ entry: { idleHours: 4000 }, shared: {} }, 721)).toBe(true)
-      expect(await run({ entry: { idleHours: 48 }, shared: { idleHours: 4000 } }, 49)).toBe(false)
+      expect(await kept({ entry: { idleHours: 4000 }, shared: {} }, 169)).toBe(true)
+      expect(await kept({ entry: { idleHours: 48 }, shared: { idleHours: 4000 } }, 49)).toBe(false)
     })
 
     test('the top-level idleHours raises it, and never lowers it', async () => {
-      expect(await run({ entry: {}, shared: { idleHours: 4000 } }, 721)).toBe(true)
-      expect(await run({ entry: {}, shared: { idleHours: 0 } }, 49)).toBe(true)
-      expect(await run({ entry: {}, shared: { idleHours: 0 } }, 721)).toBe(false)
+      expect(await kept({ entry: {}, shared: { idleHours: 4000 } }, 169)).toBe(true)
+      expect(await kept({ entry: {}, shared: { idleHours: 0 } }, 49)).toBe(true)
+      expect(await kept({ entry: {}, shared: { idleHours: 0 } }, 169)).toBe(false)
     })
 
     test('config shows the threshold the run applies to each entry', () => {
       const { definitions } = loadPlugins({})
-      const row = (entry: Config['entry'], shared: Config['shared']) =>
-        effectiveSettings({ maven: entry, 'huggingface-hub': entry }, shared, definitions)
       const parts = (name: string, entry: Config['entry'], shared: Config['shared']) =>
-        row(entry, shared)[name]!.find((r) => r.key === 'idleHours')!.parts
-      expect(parts('maven', {}, {})).toEqual([{ part: 'repository', idleHours: 720 }])
-      expect(parts('maven', {}, { idleHours: 0 })).toEqual([{ part: 'repository', idleHours: 720 }])
-      expect(parts('maven', {}, { idleHours: 4000 })).toEqual([
-        { part: 'repository', idleHours: 4000 },
-      ])
-      expect(parts('maven', { idleHours: 10 }, { idleHours: 4000 })).toEqual([
-        { part: 'repository', idleHours: 10 },
-      ])
+        effectiveSettings({ [name]: entry }, shared, definitions)[name]!.find(
+          (r) => r.key === 'idleHours',
+        )!.parts
+      const gradle = (caches: number, wrapper: number) => [
+        { part: 'caches', idleHours: caches },
+        { part: 'wrapper/*/', idleHours: wrapper },
+      ]
+      expect(parts('gradle', {}, {})).toEqual(gradle(168, 720))
+      expect(parts('gradle', {}, { idleHours: 0 })).toEqual(gradle(168, 720))
+      expect(parts('gradle', {}, { idleHours: 200 })).toEqual(gradle(200, 720))
+      expect(parts('gradle', { idleHours: 10 }, { idleHours: 4000 })).toEqual(gradle(10, 10))
       expect(parts('huggingface-hub', {}, {})!.map((p) => p.part)).toEqual([
         'hub/models--*/',
         'hub/datasets--*/',
         'hub/spaces--*/',
       ])
-      expect(row({}, {}).npm!.find((r) => r.key === 'idleHours')!.parts).toBeUndefined()
+      expect(parts('npm', {}, {})).toBeUndefined()
     })
   })
 })

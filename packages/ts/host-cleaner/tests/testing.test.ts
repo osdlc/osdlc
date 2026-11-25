@@ -1,14 +1,29 @@
 /** `@osdlc/host-cleaner/testing`: the fakes, and the contract suite against a plugin that keeps it and plugins that each break one rule. */
 
 import { afterEach, describe, expect, test } from 'vitest'
-import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { z } from 'zod'
 
 import { PLUGIN_API, definePlugin, pluginKit, type Plugin } from '../src/index.ts'
-import { contractSuite, fakeContext, fakeRunner, tempHome } from '../src/testing.ts'
+import {
+  ageTree,
+  contractSuite,
+  fakeContext,
+  fakeProcesses,
+  fakeRunner,
+  tempHome,
+} from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -273,5 +288,37 @@ describe('the fakes', () => {
     expect(h.env).toEqual({ HOME: h.home })
     h.cleanup()
     expect(existsSync(h.home)).toBe(false)
+  })
+})
+
+describe('fakeProcesses and ageTree', () => {
+  test("the kit's running reads the table, by name and by folder, as it is when asked", () => {
+    const table: Parameters<typeof fakeProcesses>[0] = {}
+    const kit = pluginKit('x', fakeProcesses(table))
+    expect(kit.running('pip', fakeContext())).toEqual({ names: [] })
+    table['/'] = [{ pid: 5_000_000, command: 'python3 -m pip install' }]
+    table['/work'] = [{ pid: 5_000_001, command: 'vim' }]
+    expect(kit.running('pip', fakeContext()).names).toEqual(['python3 (pid 5000000)'])
+    expect(kit.running({ in: '/work' }, fakeContext()).names).toEqual(['vim (pid 5000001)'])
+  })
+
+  test('ageTree backdates a folder and all in it, and follows no link', () => {
+    const dir = join(home(), 'dir')
+    const elsewhere = home()
+    mkdirSync(join(dir, 'sub'), { recursive: true })
+    writeFileSync(join(dir, 'sub', 'file'), 'x')
+    writeFileSync(join(elsewhere, 'file'), 'x')
+    symlinkSync(join(elsewhere, 'file'), join(dir, 'to-file'))
+    symlinkSync(elsewhere, join(dir, 'to-folder'))
+    symlinkSync(join(elsewhere, 'gone'), join(dir, 'dangling'))
+    ageTree(dir, 48)
+    const hours = (path: string): number =>
+      Math.round((Date.now() - lstatSync(path).mtimeMs) / 3_600_000)
+    for (const p of ['', 'sub', 'sub/file', 'to-file', 'to-folder', 'dangling']) {
+      expect(hours(join(dir, p)), p).toBe(48)
+    }
+    expect(hours(join(elsewhere, 'file'))).toBe(0)
+    expect(hours(elsewhere)).toBe(0)
+    expect(pluginKit('x').idle(dir)).toMatchObject({ hours: expect.closeTo(48, 1) })
   })
 })

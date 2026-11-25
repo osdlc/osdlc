@@ -15,6 +15,7 @@
 import {
   existsSync,
   lstatSync,
+  lutimesSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -29,11 +30,7 @@ import {
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type {
-  AsyncCommandRunner,
-  AsyncCommandRunOptions,
-  CommandRunner,
-} from '@osdlc/command-seam'
+import type { AsyncCommandRunner, AsyncCommandRunOptions, CommandRunner } from '@osdlc/command-seam'
 import { fakeRunner as seamRunner } from '@osdlc/command-seam/testing'
 import { sameFingerprint, type ProcessHolder, type ProcessProbe } from '@osdlc/repo-cleaner'
 
@@ -163,13 +160,13 @@ export const fakeProcesses = (table: Record<string, ProcessHolder[]> = {}): Fake
   },
 })
 
-/** Sets the modification time of `dir` and of everything under it to `hours` ago. */
+/** Sets the modification time of `dir` and of everything under it to `hours` ago; links are not followed. */
 export function ageTree(dir: string, hours: number): void {
   const at = new Date(Date.now() - hours * 3_600_000)
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, entry.name)
     if (entry.isDirectory()) ageTree(p, hours)
-    else utimesSync(p, at, at)
+    else lutimesSync(p, at, at)
   }
   utimesSync(dir, at, at)
 }
