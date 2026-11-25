@@ -343,6 +343,7 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
   const config = claudeConfigDir(env)
   const projects = join(config, 'projects')
   let rows = new Map<string, Row>()
+  const look = (ctx: Ctx): Seen => ({ sessions: liveSessions(config), mounts: mountPoints(), ctx })
 
   return {
     name: AGENT_HISTORY_PLUGIN,
@@ -351,7 +352,7 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
     detect: () => statSync(projects, { throwIfNoEntry: false })?.isDirectory() === true,
     roots: () => [projects],
     async discover(ctx) {
-      const seen: Seen = { sessions: liveSessions(config), mounts: mountPoints(), ctx }
+      const seen = look(ctx)
       const names = readdirSync(projects, { withFileTypes: true })
         .filter((e) => e.isDirectory())
         .map((e) => e.name)
@@ -380,8 +381,7 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
       }
       if (!present(c.path)) return `already gone: ${c.path}`
       // Not sized again: `kit.remove` sizes it.
-      const seen: Seen = { sessions: liveSessions(config), mounts: mountPoints(), ctx }
-      const now = rowFor(kit, c.path, seen, false)
+      const now = rowFor(kit, c.path, look(ctx), false)
       if (now === null || now.candidate.id !== c.id) {
         throw new Error(`${c.path} is no longer a candidate`)
       }
