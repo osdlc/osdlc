@@ -67,7 +67,7 @@ const LAUNCHERS: Readonly<Record<string, string>> = {
   Writerside: 'writerside',
 }
 
-/** The folders volumes are mounted under. A missing project under one is gone only when the volume it was on is mounted. */
+/** The folders volumes are mounted under, which {@link gone} treats apart. */
 const MOUNT_PARENTS = ['/Volumes', '/mnt', '/media', '/run/media']
 
 const DISCOVER_LIMIT_MS = 10 * 60_000
@@ -323,7 +323,7 @@ const DISK: DiskProbe = { present, device: deviceOf }
 
 /**
  * Whether `path` is gone from a volume that is there. A missing one under a
- * mount folder (`/Volumes`, `/mnt`, `/media`, `/run/media`) is gone only when
+ * mount folder ({@link MOUNT_PARENTS}) is gone only when
  * its nearest existing folder there is on a device of its own, a volume that
  * is mounted: an unmounted volume may leave its empty mount point behind.
  */
@@ -499,7 +499,7 @@ function rowOf(env: Env, f: Found, sized = true): Row | null {
   }
 }
 
-/** The `jetbrains` plugin on `kit`: caches of uninstalled IDE versions and of gone projects. Settings: `idleHours`. */
+/** The `jetbrains` plugin on `kit`: caches of uninstalled IDE versions and of gone projects. */
 export function jetbrainsPlugin(opts: JetbrainsOptions, kit: Kit): Plugin {
   const layout = layoutOf(opts)
   const idle = opts.idleHours
