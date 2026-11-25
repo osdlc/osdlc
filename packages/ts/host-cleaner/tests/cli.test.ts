@@ -23,6 +23,7 @@ import { main, tildeId, untildeId, untildeSpare, type MainDeps } from '../src/cl
 import { hostDirs } from '../src/config.ts'
 import { PLAN_VERSION, parsePlan } from '../src/plan.ts'
 import {
+  BUILT_IN_PLUGINS,
   orcaPlugin,
   type Candidate,
   type Objection,
@@ -312,7 +313,7 @@ describe('plugins', () => {
     orcaDown(),
   ]
 
-  test('Orca not running shows as detected with its note, beside each plugin’s source (given, as main was handed them), detection and roots', async () => {
+  test('Orca not running shows as detected with its note, beside each plugin’s own source (orca built in, though main was handed it), detection and roots', async () => {
     const { env, cwd } = setup()
     const r = await run(['plugins'], cwd, env, { plugins: plugins() })
     expect(r.code).toBe(0)
@@ -320,10 +321,10 @@ describe('plugins', () => {
     expect(r.out).toBe(
       [
         `targets: ${cwd}`,
-        '  git    given  detected; roots: /cache/git',
-        '  cargo  given  detected; roots: none, the targets alone',
-        '  node   given  not detected',
-        '  orca   given  detected; roots: none, the targets alone; note: Orca is installed but not running',
+        '  git    given     detected; roots: /cache/git',
+        '  cargo  given     detected; roots: none, the targets alone',
+        '  node   given     not detected',
+        '  orca   built-in  detected; roots: none, the targets alone; note: Orca is installed but not running',
         '',
       ].join('\n'),
     )
@@ -343,6 +344,7 @@ describe('plugins', () => {
     expect(asked).toBe(false)
     expect(JSON.parse(r.out)).toEqual({
       targets: [cwd],
+      ignore: [],
       warnings: [],
       plugins: [
         {
@@ -377,7 +379,7 @@ describe('plugins', () => {
         },
         {
           name: 'orca',
-          source: 'given',
+          source: 'built-in',
           enabled: true,
           detected: true,
           reason: null,
@@ -469,6 +471,73 @@ describe('plugins', () => {
         '\n',
       ),
     )
+  })
+
+  test('the shipped plugins are built in, a disabled one too', async () => {
+    const { env, cwd, home } = setup()
+    const file = join(home, 'c.json')
+    // Orca's detect would talk to this machine's Orca.
+    writeFileSync(file, JSON.stringify({ plugins: { orca: { enabled: false } } }))
+    const r = await run(['plugins', '--config', file, '--format', 'json'], cwd, env)
+    expect(r.code).toBe(0)
+    const rows = JSON.parse(r.out).plugins as Array<{ name: string; source: string }>
+    expect(rows.map((p) => [p.name, p.source])).toEqual(
+      BUILT_IN_PLUGINS.map((d) => [d.name, 'built-in']),
+    )
+  })
+
+  test('a line break in a root, or in a target a plugin adds, does not split its line', async () => {
+    const { env, cwd } = setup()
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [{ ...fake('a'), scope: () => ['/s\nt'], roots: () => ['/cache\none  two'] }],
+    })
+    expect(r.out).toBe(
+      [`targets: ${cwd}, /s t`, '  a  given  detected; roots: /cache one  two', ''].join('\n'),
+    )
+  })
+
+  test('a multi-line note stays on its row', async () => {
+    const { env, cwd } = setup()
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [
+        { ...fake('a'), detect: () => ({ active: false, note: 'installed\nbut not running' }) },
+      ],
+    })
+    expect(r.out).toBe(
+      [`targets: ${cwd}`, '  a  given  not detected; note: installed but not running', ''].join(
+        '\n',
+      ),
+    )
+  })
+
+  test('a second plugin of a name is warned of whether the config disables it or not', async () => {
+    const { env, cwd, home } = setup()
+    const file = join(home, 'c.json')
+    writeFileSync(file, JSON.stringify({ plugins: { x: { enabled: false } } }))
+    const r = await run(['plugins', '--config', file], cwd, env, {
+      plugins: [fake('x'), fake('x')],
+    })
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('x: a second plugin of that name was left out')
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  x  given  disabled: plugins.x.enabled is false; --plugin x runs it anyway',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  test('an ignored target is shown as ignored, in text and json', async () => {
+    const { env, cwd } = setup()
+    const plugins = [fake('a')]
+    const args = ['plugins', cwd, '--ignore', cwd]
+    const r = await run(args, cwd, env, { plugins })
+    expect(r.code).toBe(0)
+    expect(r.out).toMatch(/^targets: \(none\)\nignoring: \S/)
+    const json = JSON.parse((await run([...args, '--format', 'json'], cwd, env, { plugins })).out)
+    expect(json.targets).toEqual([])
+    expect(json.ignore).toHaveLength(1)
   })
 })
 
@@ -812,6 +881,34 @@ describe('plan and clean', () => {
     expect(untildeId('branch:~/repo:main', '/h/me')).toBe('branch:/h/me/repo:main')
     expect(untildeId('~/x', '/h/me')).toBe('/h/me/x')
     expect(untildeId('feat/~x', '/h/me')).toBe('feat/~x')
+  })
+
+  test('a --pick with ~ matches when HOME goes through a symlink, whichever spelling the id has, and status shows ~', async () => {
+    const { env: base, cwd } = setup()
+    const real = tempDir()
+    const link = join(tempDir(), 'home')
+    symlinkSync(real, link)
+    const env = { ...base, HOME: link }
+    expect(tildeId(`worktree:${real}/wt`, link)).toBe('worktree:~/wt')
+    expect(tildeId(`worktree:${link}/wt`, link)).toBe('worktree:~/wt')
+    for (const home of [real, link]) {
+      const id = `artifact:${join(home, 'dev', 'cache')}`
+      const plugins = [fake('cache', { candidate: { id, held: true } })]
+      expect((await run(['status'], cwd, env, { plugins })).out).toContain('artifact:~/dev/cache')
+      const clean = ['clean', '--dry-run', '--format', 'json', '--pick', 'artifact:~/dev/cache']
+      const picked = JSON.parse((await run(clean, cwd, env, { plugins })).out)
+      expect(picked).toMatchObject({ run: [id], dropped: [] })
+      const planned = await run(['plan', '-o', '-', '--pick', 'artifact:~/dev/cache'], cwd, env, {
+        plugins,
+      })
+      expect(JSON.parse(planned.out).pick).toEqual([id])
+    }
+    // One that names nothing is dropped once, under HOME as given.
+    const plugins = [fake('cache')]
+    const none = ['clean', '--dry-run', '--format', 'json', '--pick', 'artifact:~/none']
+    expect(JSON.parse((await run(none, cwd, env, { plugins })).out).dropped).toEqual([
+      expect.objectContaining({ id: `artifact:${link}/none`, reason: 'gone' }),
+    ])
   })
 
   test('a --spare with ~ matches whether HOME ends in a slash or is a symlink', async () => {

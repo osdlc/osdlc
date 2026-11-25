@@ -24,12 +24,12 @@ import {
 import type { Kind } from '@osdlc/repo-cleaner'
 import { stripControls } from '@osdlc/ux'
 
+import { errorText, realOr } from './helpers.ts'
 import { expandHome, ignorePaths } from './ignore.ts'
 import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
 import { pluginKit } from './kit.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { BUILT_IN_PLUGINS, UnknownPlugin, selectPlugins } from './registry.ts'
-import { realOr } from './roots.ts'
 import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
 import {
   SelectionError,
@@ -341,7 +341,7 @@ function refusal(ctx: CliContext, name: string, err: unknown): number {
   ) {
     return usageError(ctx, name, err.message)
   }
-  ctx.io.stderr(renderError(err instanceof Error ? err.message : String(err), name))
+  ctx.io.stderr(renderError(errorText(err), name))
   return EXIT.error
 }
 
@@ -426,13 +426,15 @@ const enabled = (name: string, config: Config, named: readonly string[] = []): b
 /** The home folder, from `HOME` when set, with no trailing slash. */
 const homeOf = (ctx: CliContext): string => (ctx.env.HOME ?? homedir()).replace(/(.)\/+$/, '$1')
 
-/** `id` with the home folder after its `<kind>:` written `~`, as the text output shows it. */
+/** `id` with the home folder after its `<kind>:`, as `home` spells it or by its real path, written `~`, as the text output shows it. */
 export function tildeId(id: string, home: string): string {
   const colon = id.indexOf(':')
   const rest = id.slice(colon + 1)
   if (colon < 0 || home === '' || home === '/') return id
-  const under = rest === home || rest.startsWith(`${home}/`) || rest.startsWith(`${home}:`)
-  return under ? `${id.slice(0, colon + 1)}~${rest.slice(home.length)}` : id
+  const under = [home, realOr(home)].find(
+    (h) => h !== '/' && (rest === h || rest.startsWith(`${h}/`) || rest.startsWith(`${h}:`)),
+  )
+  return under === undefined ? id : `${id.slice(0, colon + 1)}~${rest.slice(under.length)}`
 }
 
 /** `entry`, as typed to `--pick` or `--spare`, with a `~` at its start or right after `<kind>:` taken as the home folder. */
@@ -453,6 +455,16 @@ export function untildeSpare(entry: string, home: string): string[] {
   const given = untildeId(entry, home)
   const real = untildeId(entry, realOr(home))
   return given === real ? [given] : [given, real]
+}
+
+/**
+ * `entry`, as typed to `--pick`, with `~` taken as the home folder in the
+ * spelling (as {@link untildeSpare} gives them) that names one of `cs`: a
+ * pick that names none is dropped, so only one is kept.
+ */
+export function untildePick(entry: string, home: string, cs: readonly Candidate[]): string {
+  const forms = untildeSpare(entry, home)
+  return forms.find((id) => cs.some((c) => c.id === id)) ?? forms[0]!
 }
 
 function contextFor(
@@ -628,18 +640,31 @@ interface PluginRow {
   note: string | null
 }
 
-function renderPlugins(rows: readonly PluginRow[], targets: readonly string[]): string {
+/** `text` on one line, so a plugin's own words cannot split a row: each run of whitespace is one space. */
+const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
+
+/** `path` on one line; it keeps its spaces, as only a line break would split a row. */
+const pathLine = (path: string): string => path.replace(/[\r\n]+/g, ' ')
+
+function renderPlugins(
+  rows: readonly PluginRow[],
+  targets: readonly string[],
+  ignored: readonly string[],
+): string {
   const width = Math.max(...rows.map((r) => r.name.length))
-  const lines = [`targets: ${targets.join(', ') || '(none)'}`]
+  const sourceWidth = Math.max(...rows.map((r) => r.source.length))
+  const lines = [`targets: ${targets.map(pathLine).join(', ') || '(none)'}`]
+  if (ignored.length > 0) lines.push(`ignoring: ${ignored.map(pathLine).join(', ')}`)
   for (const r of rows) {
     const state = !r.enabled
       ? 'disabled'
       : r.detected
-        ? `detected; roots: ${r.roots.map((root) => (r.selfRoots.includes(root) ? `${root} (itself too)` : root)).join(', ') || 'none, the targets alone'}`
+        ? `detected; roots: ${r.roots.map((root) => pathLine(root) + (r.selfRoots.includes(root) ? ' (itself too)' : '')).join(', ') || 'none, the targets alone'}`
         : 'not detected'
-    const reason = r.reason?.replace(/\s+/g, ' ').trim() ?? null
+    const reason = r.reason === null ? null : oneLine(r.reason)
+    const note = r.note === null ? null : oneLine(r.note)
     lines.push(
-      `  ${r.name.padEnd(width)}  ${r.source}  ${state}${reason === null ? '' : `: ${reason}`}${r.note === null ? '' : `; note: ${r.note}`}`,
+      `  ${r.name.padEnd(width)}  ${r.source.padEnd(sourceWidth)}  ${state}${reason === null ? '' : `: ${reason}`}${note === null ? '' : `; note: ${note}`}`,
     )
   }
   return block(lines)
@@ -656,41 +681,39 @@ async function runPlugins(
   const v = parsed.values
   let rows: PluginRow[]
   let targets: readonly string[]
+  let ignored: readonly string[]
   let warnings: readonly string[]
   try {
     const config = loadConfig(v, ctx)
     const all = allPlugins(config, deps, ctx)
-    const on = all.filter((p) => enabled(p.name, config))
-    const found = await inspect(on, contextFor(parsed.positionals, config, ctx, [], v.ignore))
-    const state = new Map(found.plugins.map((s) => [s.name, s]))
-    const source = deps.plugins === undefined ? 'built-in' : 'given'
-    // A second plugin of a name is left out, with inspect's warning.
-    rows = [...new Set(all.map((p) => p.name))].map((pluginName): PluginRow => {
-      const isEnabled = enabled(pluginName, config)
-      const s = state.get(pluginName)
-      return {
-        name: pluginName,
-        source,
-        enabled: isEnabled,
-        detected: s?.detected ?? false,
-        reason: isEnabled
-          ? (s?.reason ?? null)
-          : `plugins.${pluginName}.enabled is false; --plugin ${pluginName} runs it anyway`,
-        roots: s?.roots ?? [],
-        selfRoots: s?.selfRoots ?? [],
-        note: s?.note ?? null,
-      }
-    })
+    const at = contextFor(parsed.positionals, config, ctx, [], v.ignore)
+    const found = await inspect(all, at, { skip: (p) => !enabled(p.name, config) })
+    rows = found.plugins.map((s): PluginRow => ({
+      name: s.name,
+      source: s.builtIn === true ? 'built-in' : 'given',
+      enabled: s.skipped !== true,
+      detected: s.detected,
+      reason:
+        s.skipped === true
+          ? `plugins.${s.name}.enabled is false; --plugin ${s.name} runs it anyway`
+          : (s.reason ?? null),
+      roots: s.roots,
+      selfRoots: s.selfRoots,
+      note: s.note ?? null,
+    }))
     targets = found.ctx.targets
+    ignored = found.ctx.ignore ?? []
     warnings = found.warnings
   } catch (err) {
     return refusal(ctx, name, err)
   }
   if (v.format === 'json') {
-    ctx.io.stdout(`${JSON.stringify({ targets, warnings, plugins: rows }, null, 2)}\n`)
+    ctx.io.stdout(
+      `${JSON.stringify({ targets, ignore: ignored, warnings, plugins: rows }, null, 2)}\n`,
+    )
   } else {
     writeWarnings(ctx, name, warnings)
-    ctx.io.stdout(renderPlugins(rows, targets))
+    ctx.io.stdout(renderPlugins(rows, targets, ignored))
   }
   return EXIT.ok
 }
@@ -711,7 +734,7 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
       targets: cctx.targets,
       targetsGiven: cctx.targetsGiven,
       ignore: cctx.ignore,
-      pick: v.pick.map((e) => untildeId(e, homeOf(ctx))),
+      pick: v.pick.map((e) => untildePick(e, homeOf(ctx), s.candidates)),
       spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
       allow: v.allow,
     })
@@ -877,7 +900,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         targets: cctx.targets,
         targetsGiven: cctx.targetsGiven,
         ignore: cctx.ignore,
-        pick: v.pick.map((e) => untildeId(e, homeOf(ctx))),
+        pick: v.pick.map((e) => untildePick(e, homeOf(ctx), s.candidates)),
         spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
         allow: v.allow,
         now,

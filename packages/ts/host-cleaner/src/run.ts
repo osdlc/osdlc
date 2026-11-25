@@ -8,9 +8,10 @@ import { dirname } from 'node:path'
 
 import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 
+import { errorText, realOr } from './helpers.ts'
 import { coveredBy, containsIgnored } from './ignore.ts'
 import { bindKit } from './kit.ts'
-import { acceptRoots, boundBy, linkedCheckouts, realOr, type Bounds } from './roots.ts'
+import { acceptRoots, boundBy, linkedCheckouts, type Bounds } from './roots.ts'
 import {
   CandidateSchema,
   writeReceipt,
@@ -23,6 +24,7 @@ import {
 } from './plan.ts'
 import {
   FatalRun,
+  isBuiltIn,
   type Candidate,
   type Ctx,
   type Detection,
@@ -43,8 +45,7 @@ export const DISCARD_USER_DATA = 'discard-user-data'
 /** The protest on a candidate whose idle time could not be measured in the time budget (D11). */
 export const UNMEASURED = 'unmeasured'
 
-export const errorText = (err: unknown): string =>
-  err instanceof Error ? err.message : String(err)
+export { errorText } from './helpers.ts'
 
 /** The time limit, in milliseconds, of every hook but `delete`, unless the plugin asks for another. */
 export const HOOK_LIMIT_MS = 30_000
@@ -52,7 +53,7 @@ export const HOOK_LIMIT_MS = 30_000
 /** The time limit, in milliseconds, of `delete`, unless the plugin asks for another. */
 export const DELETE_LIMIT_MS = 10 * 60_000
 
-/** A hook that ran past its time limit. The core reports it as it would a throw. */
+/** A hook that ran past its time limit, stopped there or late with its answer. The core reports it as it would a throw. */
 export class HookTimeout extends Error {
   override name = 'HookTimeout'
 }
@@ -70,11 +71,7 @@ const limitOf = (p: Plugin, hook: Hook): number => {
   return validLimit(own) ? own : hook === 'delete' ? DELETE_LIMIT_MS : HOOK_LIMIT_MS
 }
 
-/**
- * Calls one hook of `p` with a signal of its own and awaits its answer. Past
- * the hook's limit the signal is aborted and {@link HookTimeout} thrown; a
- * hook that answers straight away is never timed out.
- */
+/** Calls one hook of `p` under its time limit, as {@link callWithin} does. */
 const callHook = <T>(
   p: Plugin,
   hook: Hook,
@@ -86,6 +83,12 @@ const callHook = <T>(
  * Calls `f` with `ctx`, `targetsGiven` defaulted and a signal of its own, and
  * awaits its answer. Past `ms` the signal is aborted and {@link HookTimeout}
  * thrown. How the core calls every hook; the contract suite calls `delete` so too.
+ *
+ * Nothing can stop `f` while it works synchronously: the timer fires only when
+ * `f` waits on something. One that then answers past `ms` is late like any
+ * other: its answer is dropped, the signal aborted and {@link HookTimeout}
+ * thrown. One that throws late keeps its own error, so a {@link FatalRun}
+ * still stops the run.
  */
 export async function callWithin<T>(
   ms: number,
@@ -93,22 +96,28 @@ export async function callWithin<T>(
   f: (ctx: Ctx) => MaybePromise<T>,
 ): Promise<T> {
   const controller = new AbortController()
+  const limit = Math.min(ms, MAX_DELAY_MS)
+  const started = performance.now()
+  const isLate = (): boolean => performance.now() - started > limit
+  const timeOut = (): HookTimeout => {
+    const err = new HookTimeout(`timed out after ${ms} ms`)
+    controller.abort(err)
+    return err
+  }
   let timer: ReturnType<typeof setTimeout> | undefined
   const late = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => {
-        const err = new HookTimeout(`timed out after ${ms} ms`)
-        controller.abort(err)
-        reject(err)
-      },
-      Math.min(ms, MAX_DELAY_MS),
-    )
+    timer = setTimeout(() => reject(timeOut()), limit)
   })
   try {
     // An async wrapper, so a synchronous throw arrives as a rejection.
     const answer = (async () =>
       f({ ...ctx, targetsGiven: ctx.targetsGiven ?? false, signal: controller.signal }))()
-    return await Promise.race([answer, late])
+    const answered = await Promise.race([answer, late])
+    if (isLate()) throw timeOut()
+    return answered
+  } catch (err) {
+    if (isLate()) timeOut()
+    throw err
   } finally {
     clearTimeout(timer)
   }
@@ -255,19 +264,22 @@ interface Detected {
   note?: string | undefined
   /** What `detect` threw or timed out with, or why its answer was left out; absent when it answered a boolean or a {@link Detection}. */
   error?: string | undefined
-  /** The warning `survey` gives for `error`; set exactly when `error` is. */
-  warning?: string | undefined
+  /** Whether `skip` left it out, so its `detect` did not run. */
+  skipped?: true | undefined
 }
 
 /**
  * Each plugin's detection, in the order of `all`; a second plugin of a name is
  * left out, and a `limits` entry the core does not take is ignored, each with
- * a warning.
+ * a warning. A plugin `skip` picks is listed as skipped and its `detect` not
+ * run. A failed `detect` is its plugin's `error`, and a warning too when
+ * `warnFailures` is set, in its place among the others.
  */
 async function detectAll(
   all: readonly Plugin[],
   ctx: RunCtx,
   warnings: string[],
+  { warnFailures, skip }: { warnFailures: boolean; skip?: ((p: Plugin) => boolean) | undefined },
 ): Promise<Detected[]> {
   // No kit keeps an earlier run's bounds while this one's hooks run.
   for (const p of all) bindKit(p, undefined)
@@ -279,6 +291,10 @@ async function detectAll(
       continue
     }
     names.add(p.name)
+    if (skip?.(p) === true) {
+      detections.push({ plugin: p, detected: false, skipped: true })
+      continue
+    }
     for (const [hook, ms] of Object.entries(p.limits ?? {})) {
       if (ms !== undefined && !validLimit(ms)) {
         warnings.push(
@@ -292,23 +308,15 @@ async function detectAll(
     } catch (err) {
       if (err instanceof FatalRun) throw err
       const error = errorText(err)
-      detections.push({
-        plugin: p,
-        detected: false,
-        error,
-        warning: `${p.name}: detect failed: ${error}`,
-      })
+      if (warnFailures) warnings.push(`${p.name}: detect failed: ${error}`)
+      detections.push({ plugin: p, detected: false, error })
       continue
     }
     const found = detection(answer)
     if (found === null) {
       const error = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note? }`
-      detections.push({
-        plugin: p,
-        detected: false,
-        error,
-        warning: `${p.name}: ${error}; it was left out`,
-      })
+      if (warnFailures) warnings.push(`${p.name}: ${error}; it was left out`)
+      detections.push({ plugin: p, detected: false, error })
       continue
     }
     detections.push({ plugin: p, detected: found.active, note: found.note })
@@ -381,6 +389,10 @@ async function askRoots(
 export interface PluginState {
   name: string
   detected: boolean
+  /** Set when a factory host-cleaner ships built it. */
+  builtIn?: true | undefined
+  /** Set when `skip` picked it: its `detect` did not run, so it is not detected. */
+  skipped?: true | undefined
   /** Why it was not detected: what `detect` threw or timed out with, or why its answer was left out. Absent when `detect` answered a boolean or a {@link Detection}. */
   reason?: string | undefined
   /** The note `detect` gave with its answer, whether the plugin is detected or not. */
@@ -404,11 +416,18 @@ export interface Inspection {
  * each plugin applies here, why not, and where it may delete. A root the core
  * refuses (see `rootProblem` in `./roots.ts`) is left out with a warning, as
  * in `survey`. It proposes and deletes nothing, so it is quick where
- * `discover` walks every checkout.
+ * `discover` walks every checkout; plugins are asked one after another (D2),
+ * so each hook that hangs adds its time limit. A plugin `skip` picks is listed as
+ * `skipped`, after the check for a second plugin of its name, and none of its
+ * hooks run.
  */
-export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Inspection> {
+export async function inspect(
+  all: readonly Plugin[],
+  ctx: RunCtx,
+  { skip }: { skip?: ((p: Plugin) => boolean) | undefined } = {},
+): Promise<Inspection> {
   const warnings: string[] = []
-  const detections = await detectAll(all, ctx, warnings)
+  const detections = await detectAll(all, ctx, warnings, { warnFailures: false, skip })
   const detected = detectedOf(detections)
   const scoped = await scopeOf(detected, ctx, warnings)
   const { rootsOf } = await askRoots(detected, scoped, warnings)
@@ -417,6 +436,8 @@ export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Insp
     return {
       name: d.plugin.name,
       detected: d.detected,
+      ...(isBuiltIn(d.plugin) ? { builtIn: true as const } : {}),
+      ...(d.skipped === undefined ? {} : { skipped: d.skipped }),
       ...(d.error === undefined ? {} : { reason: d.error }),
       ...(d.note === undefined ? {} : { note: d.note }),
       roots: r?.roots ?? [],
@@ -452,10 +473,9 @@ export async function inspect(all: readonly Plugin[], ctx: RunCtx): Promise<Insp
 export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Survey> {
   const warnings: string[] = []
   const guarded = guard(warnings)
-  const detections = await detectAll(all, ctx, warnings)
+  const detections = await detectAll(all, ctx, warnings, { warnFailures: true })
   const notes: Record<string, string> = {}
   for (const d of detections) {
-    if (d.warning !== undefined) warnings.push(d.warning)
     if (d.note !== undefined) notes[d.plugin.name] = d.note
   }
   const plugins = detectedOf(detections)

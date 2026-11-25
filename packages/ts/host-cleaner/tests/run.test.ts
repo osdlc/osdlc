@@ -16,6 +16,7 @@ import {
   SelectionError,
   clean,
   decide,
+  gitPlugin,
   inspect,
   parsePlan,
   plan,
@@ -299,6 +300,41 @@ describe('inspect', () => {
       },
     })
     await expect(inspect([fatal], ctx)).rejects.toThrow('stop')
+  })
+
+  test('a plugin a shipped factory built is marked, and a copy of one is not', async () => {
+    const git = gitPlugin()
+    const found = await inspect([git, { ...git, name: 'mine' }], ctx)
+    expect(found.plugins).toEqual([
+      { name: 'git', detected: true, builtIn: true, roots: [], selfRoots: [] },
+      { name: 'mine', detected: true, roots: [], selfRoots: [] },
+    ])
+  })
+
+  test('a plugin skip picks is listed as skipped with no hook run, after the check for a second of its name', async () => {
+    const log: string[] = []
+    const off = fake('off', [], log, { detect: () => (log.push('detect:off'), true) })
+    const found = await inspect([off, fake('off', [], log)], ctx, {
+      skip: (p) => p.name === 'off',
+    })
+    expect(found.plugins).toEqual([
+      { name: 'off', detected: false, skipped: true, roots: [], selfRoots: [] },
+    ])
+    expect(found.warnings).toEqual(['off: a second plugin of that name was left out'])
+    expect(log).toEqual([])
+  })
+
+  test('survey warns of a failed detect in plugin order, beside a second plugin of a name', async () => {
+    const throwing = fake('a', [], [], {
+      detect: () => {
+        throw new Error('x')
+      },
+    })
+    const s = await survey([throwing, fake('b', [], []), fake('b', [], [])], ctx)
+    expect(s.warnings.slice(0, 2)).toEqual([
+      'a: detect failed: x',
+      'b: a second plugin of that name was left out',
+    ])
   })
 
   test('a note is kept whether detected or not, an answer that is neither is the reason, and roots are checked as survey checks them', async () => {
@@ -1033,6 +1069,47 @@ describe('async hooks and time limits', () => {
     expect(log).toEqual(['git:start', 'git:end', 'node:start', 'node:end'])
     const receipt = await clean(plan(s), plugins, ctx)
     expect(receipt.steps.map((x) => x.delete)).toEqual(['removed a:git', 'removed a:node'])
+  })
+
+  /** Works synchronously for `ms`, so no timer can fire meanwhile. */
+  const block = (ms: number): void => {
+    const end = performance.now() + ms
+    while (performance.now() < end);
+  }
+
+  test('a synchronous hook that answers past its limit is timed out then, and its signal aborted', async () => {
+    let signal: AbortSignal | undefined
+    const slow = fake('node', [], [], {
+      limits: { discover: 20 },
+      discover: (x) => {
+        signal = x.signal
+        block(40)
+        return [cand('a:2', 'node')]
+      },
+    })
+    const s = await survey([fake('git', [cand('a:1', 'git')], []), slow], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:1'])
+    expect(s.warnings).toEqual(['node: discover failed: timed out after 20 ms'])
+    expect(signal?.aborted).toBe(true)
+    expect(signal?.reason).toBeInstanceOf(HookTimeout)
+  })
+
+  test('a synchronous hook that throws past its limit keeps its own error, so a FatalRun still stops the run', async () => {
+    let signal: AbortSignal | undefined
+    const git = fake('git', [cand('a:1', 'git'), cand('a:2', 'git')], [], {
+      limits: { delete: 20 },
+      delete: (_c, x) => {
+        signal = x.signal
+        block(40)
+        throw new FatalRun('archive failed')
+      },
+    })
+    const receipt = await run([git])
+    expect(receipt.steps.map((x) => [x.result, x.error])).toEqual([
+      ['failed', 'archive failed'],
+      ['skipped', 'the run stopped: archive failed'],
+    ])
+    expect(signal?.aborted).toBe(true)
   })
 
   test('a synchronous hook works unchanged, and one that answers at once is never timed out', async () => {

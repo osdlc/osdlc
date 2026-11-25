@@ -18,7 +18,6 @@ import {
   artifactPlugin,
   artifactRow,
   checkoutsOf,
-  hoursText,
   inside,
   refusedRow,
   type ArtifactOptions,
@@ -26,8 +25,9 @@ import {
   type Env,
   type Row,
 } from './artifacts.ts'
-import { idleHoursSetting, present, type Idle, type Kit } from './kit.ts'
-import { PLUGIN_API, definePlugin, type Plugin } from './types.ts'
+import { hoursText } from './helpers.ts'
+import { idleHoursSetting, present, type Kit } from './kit.ts'
+import { PLUGIN_API, builtIn, definePlugin, type Plugin } from './types.ts'
 
 export const CARGO_PLUGIN = 'cargo'
 
@@ -67,23 +67,6 @@ const profileDirs = (target: string): string[] =>
       : subdirs(d).filter((p) => existsSync(join(p, '.fingerprint'))),
   )
 
-/** The idle time of the newest of `dirs`; unmeasured when any one is. */
-function newestOf(env: Env, dirs: readonly string[]): Idle {
-  let newest: Extract<Idle, { unmeasured: false }> = {
-    unmeasured: false,
-    newestMs: null,
-    hours: null,
-  }
-  for (const dir of dirs) {
-    const one = env.kit.idle(dir)
-    if (one.unmeasured) return one
-    if (one.newestMs !== null && (newest.newestMs === null || one.newestMs > newest.newestMs)) {
-      newest = one
-    }
-  }
-  return newest
-}
-
 async function rowsOrThrow(env: Env, checkout: Checkout): Promise<Row[]> {
   const { kit, idleHours: threshold } = env
   const target = join(checkout.path, 'target')
@@ -94,14 +77,11 @@ async function rowsOrThrow(env: Env, checkout: Checkout): Promise<Row[]> {
 
   const held = kit.running({ in: checkout.path }, env.ctx)
   const profiles = profileDirs(safeTarget)
-  const last = newestOf(
-    env,
-    profiles.map((p) => join(p, '.fingerprint')),
-  )
+  const last = kit.idle(profiles.map((p) => join(p, '.fingerprint')))
   const facts = { kind: 'cargo-target' as const, path: safeTarget, checkout: checkout.path, held }
   if (last.unmeasured) {
     return [
-      artifactRow(kit, {
+      artifactRow(env, {
         ...facts,
         idle: false,
         unmeasured: true,
@@ -112,7 +92,7 @@ async function rowsOrThrow(env: Env, checkout: Checkout): Promise<Row[]> {
   if (last.hours !== null && last.hours >= threshold) {
     // An idle target/ takes its incremental directories with it.
     return [
-      artifactRow(kit, {
+      artifactRow(env, {
         ...facts,
         idle: true,
         why: `no build for ${hoursText(last.hours)} hours (threshold ${threshold})`,
@@ -130,7 +110,7 @@ async function rowsOrThrow(env: Env, checkout: Checkout): Promise<Row[]> {
     if (!present(dir)) continue
     const since = kit.idle(dir)
     rows.push(
-      artifactRow(kit, {
+      artifactRow(env, {
         kind: 'cargo-incremental',
         path: dir,
         checkout: checkout.path,
@@ -146,14 +126,16 @@ async function rowsOrThrow(env: Env, checkout: Checkout): Promise<Row[]> {
 
 /** The `cargo` plugin on `kit`, or on a kit built from `opts`. Idle `target/` directories, and `incremental` directories where incremental builds are off. Settings: `idleHours`. */
 export function cargoPlugin(opts: ArtifactOptions = {}, kit?: Kit): Plugin {
-  return artifactPlugin(
-    CARGO_PLUGIN,
-    opts,
-    (env) =>
-      env.kit.onPath('cargo') ||
-      checkoutsOf(env).some((c) => existsSync(join(c.path, 'Cargo.toml'))),
-    rowsOrThrow,
-    kit,
+  return builtIn(
+    artifactPlugin(
+      CARGO_PLUGIN,
+      opts,
+      (env) =>
+        env.kit.onPath('cargo') ||
+        checkoutsOf(env).some((c) => existsSync(join(c.path, 'Cargo.toml'))),
+      rowsOrThrow,
+      kit,
+    ),
   )
 }
 

@@ -17,7 +17,6 @@ import {
   artifactPlugin,
   artifactRow,
   checkoutsOf,
-  hoursText,
   inside,
   refusedRow,
   type ArtifactOptions,
@@ -25,8 +24,9 @@ import {
   type Env,
   type Row,
 } from './artifacts.ts'
+import { hoursText } from './helpers.ts'
 import { idleHoursSetting, present, type Kit } from './kit.ts'
-import { PLUGIN_API, definePlugin, type Plugin } from './types.ts'
+import { PLUGIN_API, builtIn, definePlugin, type Plugin } from './types.ts'
 
 export const NODE_PLUGIN = 'node'
 
@@ -47,7 +47,7 @@ function rowOrThrow(env: Env, checkout: Checkout): Row[] {
   if (!since.unmeasured && (since.hours === null || since.hours < threshold)) return []
 
   return [
-    artifactRow(kit, {
+    artifactRow(env, {
       kind: 'node-modules',
       path: safe,
       checkout: checkout.path,
@@ -64,12 +64,14 @@ function rowOrThrow(env: Env, checkout: Checkout): Row[] {
 
 /** The `node` plugin on `kit`, or on a kit built from `opts`: `node_modules` of idle linked worktrees. Settings: `idleHours`. */
 export function nodePlugin(opts: ArtifactOptions = {}, kit?: Kit): Plugin {
-  return artifactPlugin(
-    NODE_PLUGIN,
-    opts,
-    (env) => checkoutsOf(env).some((c) => existsSync(join(c.path, 'package.json'))),
-    rowOrThrow,
-    kit,
+  return builtIn(
+    artifactPlugin(
+      NODE_PLUGIN,
+      opts,
+      (env) => checkoutsOf(env).some((c) => existsSync(join(c.path, 'package.json'))),
+      rowOrThrow,
+      kit,
+    ),
   )
 }
 
