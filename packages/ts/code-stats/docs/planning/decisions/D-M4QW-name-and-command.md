@@ -21,7 +21,7 @@ The owner has not yet confirmed this name. This note proposes it.
 | --- | --- |
 | `code-stats` (unscoped) | Taken on npm by an unrelated tool, version 0.3.1, which also installs a `code-stats` command. |
 | `codestats`, `code-stat`, `sloc-stats` | Free on npm, but `codestats` is the crates.io name of a code counter and the Code::Stats web service is `codestats.net`, so the name suggests a service this package is not. |
-| Keep it as `stats` inside `@osdlc/diffkit` | The package began there. It also counts trees and compares changes, and a caller that only counts should not install a review-planning tool. |
+| Keep it as `stats` inside a review-prep package | The code began there. It also counts trees and compares changes, and a caller that only counts should not have to install a tool named for review planning. The review-prep command later moved the other way, into this package ([D-F5NA](D-F5NA-fold-review-prep-into-code-stats.md)). |
 
 ## Why
 

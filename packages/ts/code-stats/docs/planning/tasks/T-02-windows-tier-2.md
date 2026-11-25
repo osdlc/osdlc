@@ -20,7 +20,7 @@ run on Windows, and the package is not in the home's Windows tier-2 workflow.
 ## Approach
 
 1. Add the package to the Windows tier-2 workflow.
-2. Fix what the first run shows. Likely places are the path helper, the tests that make
+2. Fix what the first run shows. Likely places are the path helper, the paths `prep` prints in its manifest (they must stay `/` on every platform), the tests that make
    repositories in a temporary folder, and the ones that compare paths as strings.
 3. Change the README's platform line and [D-P6HZ](../decisions/D-P6HZ-node-only-and-platforms.md).
 
@@ -28,3 +28,4 @@ run on Windows, and the package is not in the home's Windows tier-2 workflow.
 
 - [ ] The workflow runs the package's tests on Windows and they pass.
 - [ ] The README names Windows as tested.
+- [ ] A `prep` manifest made on Windows has the same paths as one made on Linux.

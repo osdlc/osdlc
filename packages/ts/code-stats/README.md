@@ -66,6 +66,7 @@ code-stats count                 # every file in this folder, by kind and langua
 code-stats diff 123              # what pull request 123 did, line by line
 code-stats compare 123 456       # two pull requests side by side
 code-stats describe 123 --write  # a PR description with the stats, a package map and risk signals
+code-stats prep 123              # a JSON manifest for a reviewer: files to read, files to drop, groups
 ```
 
 `code-stats count` on a small project:
@@ -93,6 +94,34 @@ report.kindOperations.comment.added // 1
 renderDiff(report) // the Markdown table the command prints, a row per kind
 ```
 
+## Review prep
+
+`code-stats prep` prints one JSON manifest of a change for a reviewer: the files worth reading, the
+files to drop and why (generated, vendored, formatting-only), the kept files grouped by package root
+for separate reviewers, and reading-order flags such as a long mostly-added function. It adds no
+classification of its own; every file fact is what `code-stats diff` measures.
+
+```sh
+code-stats prep --base origin/main     # the current branch against origin/main
+code-stats prep 123                    # a PR
+```
+
+```ts
+import { spawnRunner } from '@osdlc/command-seam'
+import { runPrep } from '@osdlc/code-stats/prep'
+
+const manifest = runPrep(
+  { cwd: root, pr: null, base: 'HEAD~1' },
+  { git: spawnRunner('git'), gh: spawnRunner('gh') },
+)
+manifest.files.kept.map((f) => f.path) // ['pkg/a.ts']
+manifest.groups // [{ id: 'g1', roots: ['pkg'], files: ['pkg/a.ts'], lines: 2 }]
+```
+
+A flag says where to look, not that something is wrong. The manifest carries `schema: 2`; the
+[guide](./docs/guide/review-prep.md) has every field. A file that is a symlink is never followed
+when the flags read the checkout, and the TypeScript checks need the `typescript` compiler API.
+
 ## Do I need git?
 
 Only for history.
@@ -105,6 +134,7 @@ Only for history.
 | A change: a PR, `a..b`, `a...b`, uncommitted work | `code-stats diff` | `diffChange` | Yes |
 | Two changes side by side | `code-stats compare` | `compareChanges` | Yes |
 | A PR description | `code-stats describe` | `describeChange` | Yes |
+| A review plan for a change | `code-stats prep` | `runPrep` (`@osdlc/code-stats/prep`) | Yes |
 
 `count` reads the files on disk, with the same result whether or not git is installed. It still
 honours your `.gitignore` and `.gitattributes`, which it reads as files, from the repository's
@@ -140,6 +170,8 @@ are the codes shared by the `@osdlc` command-line tools.
   change categories, API and complexity, a worked example.
 - [PR descriptions](./docs/guide/pr-descriptions.md): `describe`, the package map, the risk
   list, and how `--write` keeps your text.
+- [Review prep](./docs/guide/review-prep.md): `prep`, the JSON manifest of a change for a
+  reviewer: kept and dropped files, groups by package, reading-order flags.
 - [Library](./docs/guide/library.md): the API, with examples for each job.
 - [How it works](./docs/guide/how-it-works.md): the layers, where git comes in, and accuracy.
 - [Tool comparison](./docs/guide/tool-comparison.md): scc, tokei, cloc, GitClear and others,
@@ -171,8 +203,8 @@ The [tool comparison](./docs/guide/tool-comparison.md) has the detail and says w
 
 Optional extras:
 
-- `typescript`: exact complexity and class members for TypeScript and JavaScript in a diff. The
-  measured repository's own copy is used when it has one.
+- `typescript`: exact complexity and class members for TypeScript and JavaScript in a diff, and
+  the flags of `prep`. The measured repository's own copy is used when it has one.
 - `web-tree-sitter` plus the grammar packages for the languages you want
   (`tree-sitter-typescript`, `-javascript`, `-python`, `-rust`, `-scala`, `-go`, `-java`, `-c`,
   `-cpp`, `-c-sharp`, `-ruby`, `-php`, `-bash`): syntax-tree scanners
@@ -205,6 +237,10 @@ The experimental exports of `@osdlc/code-stats/scan`:
 
 `addKindCounts`, `classifyLines`, `emptyKindCounts`, `knownLanguages`, `languageNamed`, `stripBom`
 
+The experimental exports of `@osdlc/code-stats/prep`:
+
+`PACKAGE_MARKERS`, `buildGroups`, `nearestRoot`, `packageRoots`
+
 The experimental exports of `@osdlc/code-stats/tree-sitter`:
 
 `BUILTIN_GRAMMARS`, `treeSitterScanner`
@@ -213,7 +249,8 @@ Every other export is stable. A test compares these lists with the `@experimenta
 source, and requires TSDoc on every export and an example in `examples/` for every value export.
 
 The report shapes (`countReportSchema`, `diffReportSchema`, `compareReportSchema`) carry
-`schema: 1`, which changes only when a shape does.
+`schema: 1`, which changes only when a shape does. The review-prep manifest
+(`prepManifestSchema`) carries `schema: 2` on the same terms.
 
 ## Licence
 

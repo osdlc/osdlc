@@ -1,7 +1,7 @@
 ---
 title: Using the library
 sidebar:
-  order: 4
+  order: 5
 description: The entry points, with an example for each job the command does.
 ---
 
@@ -12,6 +12,7 @@ The library does everything the command does, and every report it returns is pla
 | --- | --- | --- |
 | `@osdlc/code-stats/scan` | The line scanner: text in, one kind per line out. | No, and no file system either. |
 | `@osdlc/code-stats` | Counting a folder or a commit, measuring changes, PR descriptions, rendering. | Only the history functions. |
+| `@osdlc/code-stats/prep` | `runPrep`: the review-prep manifest of a change. See [Review prep](./review-prep.md). | Yes |
 | `@osdlc/code-stats/tree-sitter` | Optional syntax-tree scanners. | No |
 
 ## Label the lines of a string
@@ -111,6 +112,25 @@ writeDescription(123, description, { cwd }) // false when the PR already held it
 any one block (`STATS_SECTION`, `PACKAGES_SECTION`, `RISK_SECTION`) into a string. See
 [PR descriptions](./pr-descriptions.md).
 
+## Plan a review
+
+```ts
+import { spawnRunner } from '@osdlc/command-seam'
+import { runPrep } from '@osdlc/code-stats/prep'
+
+const manifest = runPrep(
+  { cwd: process.cwd(), pr: null, base: 'origin/main' },
+  { git: spawnRunner('git'), gh: spawnRunner('gh') },
+)
+manifest.files.dropped // generated, vendored and formatting-only files, with the reason
+manifest.groups // the kept files grouped by package root, for separate reviewers
+manifest.flags // where to look first
+```
+
+`prepManifestSchema` validates a manifest and `DEFAULT_THRESHOLDS` holds the numbers a run
+uses. The grouping pieces (`packageRoots`, `nearestRoot`, `buildGroups`, `PACKAGE_MARKERS`) are
+experimental. See [Review prep](./review-prep.md).
+
 ## Add a language
 
 A `LanguageScanner` reads files the built-in table reads poorly, or not at all:
@@ -172,7 +192,7 @@ both sides' files (or `null` for none).
 
 To read a change's diff yourself, `openRepo(cwd)` opens the repository and `readDiff(repo,
 change)` returns its unified diff, read with the same pinned flags `diffChange` uses.
-`@osdlc/diffkit` builds on these. To run `git diff` yourself for `parseDiff`, pass it `DIFF_FLAGS`,
+`runPrep`, in `@osdlc/code-stats/prep`, builds on these. To run `git diff` yourself for `parseDiff`, pass it `DIFF_FLAGS`,
 those flags, so the user's git config cannot change the diff it reads.
 
 ## Building blocks
@@ -207,7 +227,7 @@ dependencyChange(files[0]!) // dependencies a manifest diff adds, removes and bu
 reports. Each report carries `schema: 1`, which changes only when the shape does.
 
 The command's `--json` output is the report with two fields in front: `schemaVersion` (1) and
-`kind` (`count`, `diff`, `compare` or `describe`). The schemas ignore those two, so they parse the
+`kind` (`count`, `diff`, `compare`, `describe` or `prep`). The schemas ignore those two, so they parse the
 command's output too. `code-stats schema` prints the JSON Schema of each command's output.
 
 ```ts

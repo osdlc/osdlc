@@ -1,7 +1,7 @@
 ---
 title: How it works
 sidebar:
-  order: 5
+  order: 6
 description: The layers, where git comes in, and why the numbers can be trusted.
 ---
 

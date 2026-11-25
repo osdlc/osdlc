@@ -22,7 +22,7 @@ created: 2026-11-07
 
 ## Context
 
-`@osdlc/diffkit`'s `stats` counted code, comment, blank and prose lines with a one-line prefix
+The `stats` command of an earlier review-prep tool counted code, comment, blank and prose lines with a one-line prefix
 check. It could not tell doc comments or boilerplate from logic, nor a changed line from an added
 one, and it read no whole tree. Reviewing a pull request needs those splits.
 
@@ -103,7 +103,7 @@ moved to osdlc/osdlc for its first public release. It has three commands, `count
 
 - The kinds are heuristics with documented limits (the [counting guide](../../guide/counting.md)). A language the table
   reads poorly can be fixed with a `LanguageScanner` from the caller, or a row in the overlay.
-- `diffkit stats` is superseded by `code-stats`.
+- That earlier `stats` command is superseded by `code-stats`.
 - A repository's generated paths must be marked in `.gitattributes` or passed as globs.
 
 ## The tree-sitter tier and PR descriptions

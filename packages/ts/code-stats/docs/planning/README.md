@@ -21,6 +21,8 @@ decision names the one that replaces it. A task is `open` or `done`.
 
 ## Decisions
 
+- [D-F5NA](decisions/D-F5NA-fold-review-prep-into-code-stats.md): Review prep is a command of
+  code-stats (proposed)
 - [D-K7CS](decisions/D-K7CS-line-kinds-operations-and-file-groups.md): Lines have a kind and an
   operation, from scc's table and git's own facts
 - [D-M4QW](decisions/D-M4QW-name-and-command.md): Name and command (proposed)
@@ -37,3 +39,4 @@ decision names the one that replaces it. A task is `open` or `done`.
 - [T-02](tasks/T-02-windows-tier-2.md): Run the tests on Windows
 - [T-03](tasks/T-03-import-the-library-without-the-command-framework.md): Import the library
   without the command framework
+- [T-04](tasks/T-04-share-the-even-split-rule.md): One copy of the even-split rule

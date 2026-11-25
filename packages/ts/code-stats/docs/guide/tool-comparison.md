@@ -1,7 +1,7 @@
 ---
 title: Tool comparison
 sidebar:
-  order: 6
+  order: 7
 description: Where scc, tokei, cloc, GitClear and other tools stop, and when to use one of them instead.
 ---
 

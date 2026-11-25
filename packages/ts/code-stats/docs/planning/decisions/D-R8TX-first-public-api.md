@@ -11,9 +11,11 @@ The owner has not yet signed off the API. This note proposes it.
 
 ## Decision
 
-- The package has three entry points: `@osdlc/code-stats` (counting, measuring changes, PR
-  descriptions, rendering, report schemas), `@osdlc/code-stats/scan` (the line scanner) and
-  `@osdlc/code-stats/tree-sitter` (optional syntax-tree scanners), and the `code-stats` command.
+- The package has four entry points: `@osdlc/code-stats` (counting, measuring changes, PR
+  descriptions, rendering, report schemas), `@osdlc/code-stats/scan` (the line scanner),
+  `@osdlc/code-stats/prep` (the review-prep manifest, see
+  [D-F5NA](D-F5NA-fold-review-prep-into-code-stats.md)) and `@osdlc/code-stats/tree-sitter`
+  (optional syntax-tree scanners), and the `code-stats` command.
 - 24 exports are building blocks the commands are made from and that no guide teaches as a first
   step: the description renderers and their section markers, the pipeline stages (operation
   assignment, change categorisation, dependency changes, the complexity analyzers), three constant
@@ -35,8 +37,10 @@ The owner has not yet signed off the API. This note proposes it.
 
 ## Why
 
-- `@osdlc/diffkit` already uses a number of these exports (the change categories, file groups,
-  the report schema, the TypeScript loader). They stay stable, with the same names and types.
+- The TypeScript loader and parse helpers (`loadTypeScript`, `parseSource`, `isTsSource`,
+  `withParseMemo`) are not exported. Only the review-prep code used them, and it is inside the
+  package now. The `TypeScript` and `TypeScriptSource` types stay, because the analyzers take
+  them.
 - `@experimental` follows the rule the other `@osdlc` packages use: the shape may change in any
   release, and such a change is not a breaking one.
 
