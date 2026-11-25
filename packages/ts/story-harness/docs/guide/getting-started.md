@@ -2,7 +2,7 @@
 title: Getting started
 sidebar:
   order: 1
-description: What the harness is for, its three parts, and setting up one component package.
+description: What the harness is for, its parts, and setting up one component package.
 ---
 
 You have a UI component package with a Storybook. Its stories already show every state the
@@ -11,6 +11,8 @@ test harness for that component:
 
 - **Screenshot baselines.** Every story is shot in light and dark and compared with a PNG
   committed next to the code. A change that moves a pixel fails the check.
+- **Accessibility and keyboard checks.** `story-shots --a11y` runs axe-core over every story,
+  and `story-shots --walk` tabs through each one and records what took focus.
 - **Interaction specs.** Plain Playwright tests open a story and drive it: click, type,
   press keys, and check the result.
 - **Perf scenes.** A story renders a big case (10,000 rows, say), and a Playwright spec
@@ -29,14 +31,16 @@ otherwise meet one at a time:
 | Dates, random data and animations differ per run | Shots flicker between runs | Starts the clock at a fixed time, seeds `Math.random`, waits for fonts and the network, then settles |
 | Parallel Playwright workers each write perf numbers | Workers overwrite each other's results | Every write merges into one report under a lock |
 
-## The three parts
+## The parts
 
 | Import or command | Runs in | Use it for |
 |---|---|---|
-| `story-shots` (a command) | A Docker container | Screenshot baselines: check and update |
+| `story-shots` (a command) | A Docker container | Screenshot baselines: check and update; the accessibility check (`--a11y`); the keyboard walk (`--walk`) |
 | `@osdlc/story-harness/browser` | The story's page | The perf metrics hook, and a seeded PRNG for fixture data |
 | `@osdlc/story-harness/playwright` | Your Playwright specs | A config for specs against the static build, page setup, perf helpers and budgets |
-| `@osdlc/story-harness/runner` | A Node script | PNGs for documentation, and a small static server |
+| `@osdlc/story-harness/runner` | A Node script | PNGs for documentation, a small static server, and the keyboard walk of one page |
+| `@osdlc/story-harness/a11y` | A Storybook preview | The axe rules `--a11y` uses, so the addon's panel matches |
+| `@osdlc/story-harness/parley-capture` | A Node script | Review-page blocks built from screenshots |
 
 ## Set up a package
 
