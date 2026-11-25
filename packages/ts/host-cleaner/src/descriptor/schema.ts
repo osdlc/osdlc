@@ -56,9 +56,6 @@ const HOME_FOLDER =
 
 const NAME = /^[A-Za-z][A-Za-z0-9_-]*$/
 
-/** A plugin's name, which is also a descriptor's file name less its extension. */
-export const PLUGIN_NAME = /^[a-z][a-z0-9-]*$/
-
 /** Whether a path names something below where it starts: a segment other than empty or `.`. */
 const namesEntry = (p: string): boolean =>
   p.split(/[/\\]/).some((part) => part !== '' && part !== '.')
