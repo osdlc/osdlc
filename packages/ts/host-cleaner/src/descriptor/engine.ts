@@ -13,18 +13,28 @@
  * either may be unmeasured in one survey and measured in the next.
  */
 
+import { createHash } from 'node:crypto'
 import { lstatSync, readdirSync, realpathSync, type Dirent } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, normalize, relative, sep } from 'node:path'
 
-import { failureText, firstLine } from '@osdlc/command-seam'
+import { failureText, firstLine, type NeverExitedReason } from '@osdlc/command-seam'
 import { globRegExp } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
 import { checkoutsOf, hoursText, type Checkout } from '../artifacts.ts'
 import { hostDirs } from '../config.ts'
+import { COST_DESCRIPTIONS, type CostDescription } from '../cost.ts'
+import { DISCOVER_LIMIT_MS, errorText, yieldToLimit } from '../helpers.ts'
 import { containsIgnored, coveredBy } from '../ignore.ts'
-import { DEFAULT_IDLE_HOURS, idleHoursSetting, present, type Idle, type Kit } from '../kit.ts'
+import {
+  DEFAULT_IDLE_HOURS,
+  MEASURE_BUDGET_MS,
+  idleHoursSetting,
+  present,
+  type Idle,
+  type Kit,
+} from '../kit.ts'
 import { containedIn, linkedCheckouts, realOr, rootProblem } from '../roots.ts'
 import { DELETE_LIMIT_MS, OUTSIDE_ROOTS } from '../run.ts'
 import {
@@ -52,11 +62,8 @@ export const NO_PRUNE_TOOL = 'no-prune-tool'
 /** The refusal while an `inUse` process runs or lock exists. */
 export const IN_USE = 'in-use'
 
-/** The refusal of a folder two entries give, unless both are `project` entries. */
+/** The refusal of a folder that two entries give, since which of them would delete it is not clear. */
 export const DUPLICATE_ENTRY = 'duplicate-entry'
-
-/** How long a descriptor's `discover` may take: it measures every folder, and walks the checkouts for `project`. */
-const DISCOVER_LIMIT_MS = 10 * 60_000
 
 /** Folders never walked into when looking for `project` build folders. */
 const NOT_WALKED = new Set(['.git', 'node_modules', 'target'])
@@ -138,11 +145,7 @@ export function pathProblem(
  */
 function walkedIn(checkout: Checkout, targets: readonly string[]): string[] {
   if (!checkout.primary || targets.some((t) => within(t, checkout.path))) return [checkout.path]
-  const inside = [
-    ...new Map(targets.filter((t) => within(checkout.path, t)).map((t) => [realOr(t), t])).values(),
-  ]
-  // A target inside another one is walked with it.
-  return inside.filter((t) => !inside.some((o) => o !== t && within(o, t)))
+  return targets.filter((t) => within(checkout.path, t))
 }
 
 /** A glob's parts, one per level, and whether a trailing `/` takes folders only. */
@@ -217,14 +220,12 @@ type Action = 'command' | 'remove'
  */
 type Evidence = {
   path: string
-  /** For the candidate of the glob matches past `maxEntries`: each of them. */
-  rest?: string[]
+  /** For the candidate of the glob matches past `maxEntries`: how many, and a digest of their paths. */
+  rest?: { matches: number; digest: string }
   candidate?: number
   action?: Action
   project?: number
   checkout?: string
-  /** For a folder several entries give: the highest of their idle thresholds. */
-  idleHours?: number
 }
 
 /** One candidate and what its owner objects to. */
@@ -233,7 +234,34 @@ interface Row {
   objections: Array<Pick<Objection, 'level' | 'code' | 'reason'>>
   /** For `project` rows: the checkout whose processes refuse it. */
   checkout?: string
+  /** For the candidate of the glob matches past `maxEntries`: each of them. Kept out of the evidence, which a huge cache would flood. */
+  rest?: string[]
 }
+
+/** The `project` entry at `index`, with its marker compiled. */
+interface Project {
+  entry: ProjectEntry
+  index: number
+  marker: RegExp
+}
+
+const digestOf = (paths: readonly string[]): string =>
+  createHash('sha256').update(paths.join('\0')).digest('hex')
+
+/** The costliest of `costs`. */
+const costliest = (costs: readonly CostDescription[]): CostDescription =>
+  COST_DESCRIPTIONS[Math.max(...costs.map((c) => COST_DESCRIPTIONS.indexOf(c)))]!
+
+const HOUR_MS = 3_600_000
+
+/** Whether one measurement's time has passed since this call. */
+const afterBudget = (): (() => boolean) => {
+  const start = performance.now()
+  return () => performance.now() - start > MEASURE_BUDGET_MS
+}
+
+/** Why a folder whose idle time cannot be read is left alone. */
+const UNREADABLE = 'it cannot be read now'
 
 /** The plugin for the descriptor `d`, named `name` (its file name). Settings: `idleHours`. */
 export function descriptorPlugin(
@@ -297,7 +325,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   const checkoutsOfRun = new WeakMap<readonly string[], Checkout[]>()
 
   // The `project` entries, each with its marker compiled once.
-  const projects = (d.project ?? []).map((entry, index) => ({
+  const projects: Project[] = (d.project ?? []).map((entry, index) => ({
     entry,
     index,
     marker: globRegExp(entry.marker),
@@ -313,11 +341,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       }
       return out
     }
-    let checkouts = linkedOf.get(ctx.targets)
-    if (checkouts === undefined) {
-      checkouts = linkedCheckouts(ctx.targets)
-      linkedOf.set(ctx.targets, checkouts)
-    }
+    const checkouts = linkedOf.get(ctx.targets) ?? linkedCheckouts(ctx.targets)
+    linkedOf.set(ctx.targets, checkouts)
     const where = { home: homeOf(ctx), targets: ctx.targets, checkouts, ownDirs: own }
     for (const [key, folder] of folders) out.set(key, pathProblem(folder, where))
     return out
@@ -325,28 +350,35 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
 
   /** The checkouts of the targets' repositories, primary first, ignored ones left out. */
   const checkoutsNow = (ctx: Ctx): Checkout[] => {
-    let out = checkoutsOfRun.get(ctx.targets)
-    if (out === undefined) {
-      out = checkoutsOf({ kit, git: undefined, idleHours: at.idleHours, ctx })
-      checkoutsOfRun.set(ctx.targets, out)
-    }
-    return out
+    const all =
+      checkoutsOfRun.get(ctx.targets) ??
+      checkoutsOf({ kit, git: undefined, idleHours: at.idleHours, ctx })
+    checkoutsOfRun.set(ctx.targets, all)
+    return all.filter((c) => present(c.path))
   }
 
   /**
    * How long `path` has sat unchanged: a folder by everything in it, a file (a
-   * glob may match one) by itself. Throws when it is gone, so it gives no row.
+   * glob may match one) by itself. Throws when it is gone, before or while it is
+   * measured, so it gives no row: the kit reads a gone folder as an empty one.
    */
   const idleOf = (path: string): Idle => {
     const stat = lstatSync(path, { throwIfNoEntry: false })
     if (stat === undefined) throw new Error(`${path} is gone`)
-    if (stat.isDirectory()) return kit.idle(path)
-    const own = basename(path)
-    return kit.idle(dirname(path), { skip: (n) => n !== own })
+    if (!stat.isDirectory()) {
+      const hours = Math.max(0, (Date.now() - stat.mtimeMs) / HOUR_MS)
+      return { unmeasured: false, newestMs: stat.mtimeMs, hours }
+    }
+    const idle = kit.idle(path)
+    if (!present(path)) throw new Error(`${path} is gone`)
+    return idle
   }
 
   const thresholdOf = (entry: { idleHours?: number | undefined }): number =>
     entry.idleHours ?? at.idleHours
+
+  const projectThreshold = (builds: readonly Project[]): number =>
+    Math.max(...builds.map((p) => thresholdOf(p.entry)))
 
   const actionOf = (entry: DescriptorCandidate): Action =>
     entry.command !== undefined && kit.onPath(entry.command[0]!) ? 'command' : 'remove'
@@ -424,8 +456,15 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     }
   }
 
-  /** Build folders beside a marker under `walk`, in `checkout`, for every `project` entry in one walk. */
-  const projectRows = (checkout: string, walk: string): Row[] => {
+  /**
+   * Build folders beside a marker under `walk`, in `checkout`, for every
+   * `project` entry in one walk. A folder that `isWalk` has a walk of its own.
+   */
+  const projectRows = (
+    checkout: string,
+    walk: string,
+    isWalk: (path: string) => boolean,
+  ): Row[] => {
     const rows: Row[] = []
     const visit = (dir: string): void => {
       let found: Dirent[]
@@ -439,12 +478,12 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       for (const e of found) {
         if (!e.isDirectory() || e.isSymbolicLink()) continue
         const path = join(dir, e.name)
+        if (isWalk(path)) continue
         const builds = here.filter((p) => p.entry.dir === e.name)
-        for (const p of builds) {
-          const row = projectRow(p.entry, p.index, checkout, path)
+        if (builds.length > 0) {
+          const row = projectRow(builds, checkout, path)
           if (row !== null) rows.push(row)
-        }
-        if (builds.length === 0 && !NOT_WALKED.has(e.name) && !e.name.startsWith('.')) visit(path)
+        } else if (!NOT_WALKED.has(e.name) && !e.name.startsWith('.')) visit(path)
       }
     }
     visit(walk)
@@ -453,21 +492,19 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     return rows.sort((x, y) => order(x) - order(y))
   }
 
-  const projectRow = (
-    entry: ProjectEntry,
-    index: number,
-    checkout: string,
-    path: string,
-  ): Row | null => {
+  /** The row for the build folder at `path` that each of `builds` gives: by the highest of their thresholds, at the highest of their costs. */
+  const projectRow = (builds: readonly Project[], checkout: string, path: string): Row | null => {
     if (containedIn([checkout], path) === null) return null
     let idle
     try {
-      idle = kit.idle(path)
+      idle = idleOf(path)
     } catch {
       return null
     }
-    const threshold = thresholdOf(entry)
-    const evidence: Evidence = { path, project: index, checkout }
+    const threshold = projectThreshold(builds)
+    const marker = builds.map((p) => p.entry.marker).join(' and ')
+    const costDescription = costliest(builds.map((p) => p.entry.costDescription))
+    const evidence: Evidence = { path, project: builds[0]!.index, checkout }
     if (idle.unmeasured) {
       return {
         checkout,
@@ -475,8 +512,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         candidate: kit.candidate({
           kind: name,
           path,
-          why: `a ${entry.marker} build folder whose last change could not be measured in the time budget`,
-          costDescription: entry.costDescription,
+          why: `a ${marker} build folder whose last change could not be measured in the time budget`,
+          costDescription,
           unmeasured: true,
           evidence,
         }),
@@ -492,9 +529,9 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         path,
         why:
           idle.hours === null
-            ? `a ${entry.marker} build folder that holds no file`
-            : `a ${entry.marker} build folder ${idleNow ? 'unchanged for' : 'changed'} ${hoursText(idle.hours)} hours${idleNow ? '' : ' ago'} (threshold ${threshold})`,
-        costDescription: entry.costDescription,
+            ? `a ${marker} build folder that holds no file`
+            : `a ${marker} build folder ${idleNow ? 'unchanged for' : 'changed'} ${hoursText(idle.hours)} hours${idleNow ? '' : ' ago'} (threshold ${threshold})`,
+        costDescription,
         ...(bytes === null ? {} : { bytes }),
         ...(idleNow ? {} : { held: true }),
         evidence,
@@ -506,6 +543,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   const rowsNow = (ctx: Ctx): Row[] => {
     let refused: Map<string, string | null> | undefined
     const rows: Row[] = []
+    const reported = new Set<string>()
     const folders = foldersOf(ctx)
     for (const [index, entry] of d.candidates.entries()) {
       const folder = folders.get(entry.path)
@@ -514,7 +552,9 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       refused ??= problems(ctx)
       const problem = refused.get(entry.path) ?? null
       if (problem !== null) {
-        // Listed so `status` says why, but nothing under it is measured.
+        // Listed once, so `status` says why, but nothing under it is measured.
+        if (reported.has(folder)) continue
+        reported.add(folder)
         rows.push({
           objections: [{ level: 'refuse', code: OUTSIDE_ROOTS, reason: `${folder}: ${problem}` }],
           candidate: kit.candidate({
@@ -554,10 +594,18 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       }
     }
     if (projects.length > 0) {
+      // By real path, each with its own walk: one inside another is walked once.
+      const walks = new Map<string, { checkout: string; walk: string }>()
       for (const checkout of checkoutsNow(ctx)) {
         for (const walk of walkedIn(checkout, ctx.targets)) {
-          rows.push(...projectRows(checkout.path, walk))
+          const real = realOr(walk)
+          if (!walks.has(real)) walks.set(real, { checkout: checkout.path, walk })
         }
+      }
+      const names = new Set([...walks.keys()].map((real) => basename(real)))
+      const isWalk = (path: string): boolean => names.has(basename(path)) && walks.has(realOr(path))
+      for (const { checkout, walk } of walks.values()) {
+        rows.push(...projectRows(checkout, walk, isWalk))
       }
     }
     return rows
@@ -567,7 +615,9 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
    * The glob matches past `maxEntries`, combined into one candidate at the
    * first of them that removes each, since the core lets only a path
    * candidate remove folders. Held when any of them changed within the
-   * threshold; one that cannot be read is left out, as its own row would be.
+   * threshold. All of them together get the time of one measurement, for idle
+   * and then for size: past it they are unmeasured, or of unknown size. One
+   * that cannot be read is not deleted.
    */
   const restRow = (
     entry: DescriptorCandidate,
@@ -578,44 +628,51 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     action: Action,
   ): Row | null => {
     const threshold = thresholdOf(entry)
-    const rest: string[] = []
+    const read: string[] = []
     let changed = 0
     let unmeasured = false
-    let bytes: number | null = 0
-    for (const [i, match] of matches.entries()) {
+    let late = afterBudget()
+    for (const match of matches) {
+      unmeasured = late()
+      if (unmeasured) break
       let idle
       try {
         idle = idleOf(match)
       } catch {
         continue
       }
-      rest.push(match)
-      if (idle.unmeasured) unmeasured = true
-      else if (idle.hours !== null && idle.hours < threshold) changed++
-      if (changed > 0) {
-        // Held now, whatever the others are: they stay unchecked and unsized
-        // here, and `delete` checks each of them again.
-        rest.push(...matches.slice(i + 1))
-        bytes = null
-        break
-      }
-      const size = kit.size(match)
-      bytes = bytes === null || size === null ? null : bytes + size
+      read.push(match)
+      unmeasured = idle.unmeasured
+      if (idle.unmeasured) break
+      if (idle.hours !== null && idle.hours < threshold) changed++
     }
-    const [path] = rest
-    if (path === undefined) return null
+    const [path] = matches
+    if (path === undefined || (read.length === 0 && !unmeasured)) return null
+    let bytes: number | null = unmeasured ? null : 0
+    late = afterBudget()
+    for (const match of read) {
+      if (bytes === null) break
+      const size = late() ? null : kit.size(match)
+      bytes = size === null ? null : bytes + size
+    }
     const since = unmeasured
-      ? 'when some last changed could not be measured in the time budget'
+      ? 'when they last changed could not be measured in the time budget'
       : changed === 0
         ? `none changed in ${threshold} hours`
-        : `one changed in the last ${threshold} hours, so the others were not measured`
-    const evidence: Evidence = { path: folder, rest, candidate: index, action }
+        : `${changed} changed in the last ${threshold} hours`
+    const evidence: Evidence = {
+      path: folder,
+      rest: { matches: matches.length, digest: digestOf(matches) },
+      candidate: index,
+      action,
+    }
     return {
       objections: [],
+      rest: [...matches],
       candidate: kit.candidate({
         kind: name,
         path,
-        why: `${rest.length} matches of ${entry.glob} past the first ${max}, from this one on, as one; ${since}; each removed as a folder`,
+        why: `${matches.length} matches of ${entry.glob} past the first ${max}, from this one on, as one; ${since}; each removed as a folder`,
         costDescription: entry.costDescription,
         evidence,
         ...(bytes === null ? {} : { bytes }),
@@ -623,6 +680,34 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         ...(entry.held === true || changed > 0 ? { held: true } : {}),
       }),
     }
+  }
+
+  /**
+   * `found` by id, each folder that two of them give refused in both, since
+   * which of their entries would delete it is not clear; of two with one id,
+   * the first.
+   */
+  const byId = (found: readonly Row[]): Map<string, Row> => {
+    const out = new Map<string, Row>()
+    const giver = new Map<string, Row>()
+    for (const row of found) {
+      for (const path of row.rest ?? [row.candidate.path!]) {
+        const real = realOr(path)
+        const had = giver.get(real)
+        giver.set(real, had ?? row)
+        if (had === undefined) continue
+        for (const r of [had, row]) {
+          if (r.objections.some((o) => o.code === DUPLICATE_ENTRY)) continue
+          r.objections.push({
+            level: 'refuse',
+            code: DUPLICATE_ENTRY,
+            reason: `two entries of ${name} give ${path}; which one deletes it is not clear`,
+          })
+        }
+      }
+      if (!out.has(row.candidate.id)) out.set(row.candidate.id, row)
+    }
+    return out
   }
 
   /** The `inUse` objections now: a running process or a lock file refuses every candidate. */
@@ -681,87 +766,38 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   }
 
   /**
-   * Why `paths` of `c` are no longer as idle as the plan had them, or null: one
+   * Why `path`, of `c`, is no longer as idle as the plan had it, or null: one
    * the plan ran as idle may not have changed within `threshold` hours since,
-   * nor be unmeasured now, as for the artifact plugins.
+   * nor be unmeasured now, by the rules of `checkAgain` (`../helpers.ts`).
    */
-  const stillIdle = (
-    c: Candidate,
-    paths: readonly string[],
-    threshold: number,
-    named: (p: string) => string,
-  ): string | null => {
-    for (const p of paths) {
-      let idle
-      try {
-        idle = idleOf(p)
-      } catch {
-        return `${named(p)} cannot be read now`
-      }
-      if (idle.unmeasured) {
-        if (c.unmeasured !== true) return `${named(p)} could not be measured idle in the time budget now`
-      } else if (idle.hours !== null && idle.hours < threshold && c.held !== true) {
-        return `${named(p)} is no longer idle: it changed ${hoursText(idle.hours)} hours ago (threshold ${threshold})`
-      }
+  const notIdle = (c: Candidate, path: string, threshold: number): string | null => {
+    let idle
+    try {
+      idle = idleOf(path)
+    } catch {
+      return UNREADABLE
     }
-    return null
-  }
-
-  /** A row's idle threshold: the merged one, else its entry's. */
-  const thresholdOfRow = (ev: Evidence): number => {
-    if (ev.idleHours !== undefined) return ev.idleHours
-    const entry =
-      ev.project !== undefined ? projects[ev.project]?.entry : d.candidates[ev.candidate ?? -1]
-    return entry === undefined ? at.idleHours : thresholdOf(entry)
+    if (idle.unmeasured) {
+      return c.unmeasured === true ? null : 'it could not be measured idle in the time budget now'
+    }
+    return c.held !== true && idle.hours !== null && idle.hours < threshold
+      ? `it is no longer idle: it changed ${hoursText(idle.hours)} hours ago (threshold ${threshold})`
+      : null
   }
 
   /**
-   * One row for two that give the same folder, so neither is dropped: held or
-   * unmeasured when either is, the higher threshold, and both rows' objections.
-   * Two `project` entries remove it the same way; any other pair is refused,
-   * since which entry would delete it is not clear.
-   */
-  const both = (a: Row, b: Row): Row => {
-    const ea = a.candidate.evidence as Evidence
-    const eb = b.candidate.evidence as Evidence
-    const objections = [...a.objections, ...b.objections]
-    if (ea.project === undefined || eb.project === undefined) {
-      objections.push({
-        level: 'refuse',
-        code: DUPLICATE_ENTRY,
-        reason: `two entries of ${name} give ${a.candidate.path ?? a.candidate.id}; which one deletes it is not clear`,
-      })
-    }
-    const held = a.candidate.held === true || b.candidate.held === true
-    const unmeasured = a.candidate.unmeasured === true || b.candidate.unmeasured === true
-    const evidence: Evidence = {
-      ...ea,
-      idleHours: Math.max(thresholdOfRow(ea), thresholdOfRow(eb)),
-    }
-    return {
-      ...a,
-      objections,
-      candidate: {
-        ...a.candidate,
-        ...(held ? { held: true } : {}),
-        ...(unmeasured ? { unmeasured: true } : {}),
-        evidence,
-      } as Candidate,
-    }
-  }
-
-  /**
-   * Why the candidate at `path` with evidence `ev` may not be deleted now, or
+   * Why the candidate `c`, which deletes `paths`, may not be deleted now, or
    * null: the entry that gave it must still give it, under the same checks
-   * and deleted the same way, and nothing in `inUse`, or for a build folder
-   * in its checkout, may be running.
+   * and deleted the same way, as idle as the plan had it, and nothing in
+   * `inUse`, or for a build folder in its checkout, may be running. The idle
+   * check of a combined candidate is {@link removeRest}'s.
    */
-  const refusal = (c: Candidate, ev: Evidence, path: string, ctx: Ctx): string | null => {
+  const refusal = (c: Candidate, paths: readonly string[], ctx: Ctx): string | null => {
+    const ev = c.evidence as Evidence
     const live: Row['objections'] = []
-    const paths = ev.rest ?? [path]
-    // Of a combined candidate, the reason names the match at fault.
-    const named = (p: string): string => (ev.rest === undefined ? 'it' : p)
+    let idle: string | null = null
     if (ev.project !== undefined) {
+      const path = paths[0]!
       const project = projects[ev.project]
       const checkout = ev.checkout
       if (project === undefined || checkout === undefined) return 'no project entry gives it now'
@@ -774,12 +810,16 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       if (basename(path) !== entry.dir || !marked(dirname(path), marker)) {
         return `it is no longer a ${entry.dir} folder beside ${entry.marker}`
       }
-      const idle = stillIdle(c, paths, ev.idleHours ?? thresholdOf(entry), named)
-      if (idle !== null) return idle
+      const builds = projects.filter(
+        (p) => p.entry.dir === entry.dir && marked(dirname(path), p.marker),
+      )
+      idle = notIdle(c, path, projectThreshold([project, ...builds]))
       live.push(...liveIn(checkout, ctx))
     } else {
       const refused = problems(ctx)
       const now = rootPaths(refused, ctx)
+      // Of a combined candidate, the reason names the match at fault.
+      const named = (p: string): string => (ev.rest === undefined ? 'it' : p)
       const realNow = new Set(now.map(realOr))
       for (const p of paths) {
         if (!realNow.has(realOr(p)) && containedIn(now, p) === null) {
@@ -798,17 +838,80 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         }
       }
       if (actionOf(entry) !== ev.action) return 'how it would be deleted changed since the plan'
-      // A prune removes only what nothing uses: it has no idle check.
-      if (!(entry.command !== undefined && entry.removes === 'unused' && ev.action === 'command')) {
-        const idle = stillIdle(c, paths, ev.idleHours ?? thresholdOf(entry), named)
-        if (idle !== null) return idle
-      }
+      // A prune removes only what nothing uses: no idle check.
+      const prune = entry.removes === 'unused' && ev.action === 'command'
+      if (!prune && ev.rest === undefined) idle = notIdle(c, paths[0]!, thresholdOf(entry))
     }
+    if (idle !== null) return idle
     const busy = [...inUseNow(ctx), ...live]
     return busy.length === 0 ? null : busy.map((b) => b.reason).join('; ')
   }
 
   let rows = new Map<string, Row>()
+
+  /**
+   * Removes the matches of the combined candidate `c` that the last survey
+   * listed: none of them when one is no longer idle, and each checked once
+   * more right before it goes. One that cannot be read or removed does not stop
+   * the others; one that changed meanwhile does. Throws, with what was removed,
+   * when not all of them were.
+   */
+  const removeRest = async (c: Candidate, ctx: Ctx): Promise<string> => {
+    const ev = c.evidence as Evidence
+    const matches = rows.get(c.id)?.rest
+    if (matches === undefined || digestOf(matches) !== ev.rest?.digest) {
+      throw new Error(`${c.id} was not deleted: the last survey did not list its matches`)
+    }
+    const left = matches.filter(present)
+    if (left.length === 0) return `already gone: every match of ${c.id}`
+    const link = left.find(isLink)
+    if (link !== undefined) throw new Error(`${link} is now a symlink; it is not followed`)
+    const why = refusal(c, left, ctx)
+    if (why !== null) throw new Error(`${c.id} was not deleted: ${why}`)
+    const threshold = thresholdOf(d.candidates[ev.candidate!]!)
+    const kept: string[] = []
+    const idle: string[] = []
+    for (const p of left) {
+      await yieldToLimit(ctx)
+      if (!present(p)) continue
+      const changed = notIdle(c, p, threshold)
+      if (changed === null) idle.push(p)
+      else if (changed === UNREADABLE) kept.push(`${p}: ${changed}`)
+      else throw new Error(`${c.id} was not deleted: ${p}: ${changed}`)
+    }
+    const done: string[] = []
+    const fails: string[] = []
+    let untried = idle.length
+    for (const p of idle) {
+      try {
+        await yieldToLimit(ctx)
+      } catch (err) {
+        fails.push(errorText(err))
+        break
+      }
+      untried--
+      const changed = present(p) ? notIdle(c, p, threshold) : null
+      if (changed !== null) fails.push(`${p}: ${changed}`)
+      if (changed !== null && changed !== UNREADABLE) break
+      if (changed !== null) continue
+      try {
+        done.push(kit.remove(p, ctx))
+      } catch (err) {
+        fails.push(`${p}: ${errorText(err)}`)
+      }
+    }
+    if (fails.length === 0 && done.length > 0) {
+      return [...done, ...kept.map((k) => `left ${k}`)].join('; ')
+    }
+    throw new Error(
+      [
+        `removed ${done.length} of ${left.length} matches`,
+        ...done,
+        ...[...fails, ...kept].map((f) => `not removed: ${f}`),
+        ...(untried === 0 ? [] : [`${untried} not tried`]),
+      ].join('; '),
+    )
+  }
 
   return {
     name,
@@ -830,11 +933,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     },
     roots: (ctx): Root[] => rootPaths(problems(ctx), ctx).map((path) => ({ path, self: true })),
     discover(ctx) {
-      rows = new Map()
-      for (const r of rowsNow(ctx)) {
-        const had = rows.get(r.candidate.id)
-        rows.set(r.candidate.id, had === undefined ? r : both(had, r))
-      }
+      rows = byId(rowsNow(ctx))
       return [...rows.values()].map((r) => r.candidate)
     },
     object(all, ctx) {
@@ -854,33 +953,12 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     },
     async delete(c, ctx) {
       const ev = c.evidence as Evidence
-      if (Array.isArray(ev.rest)) {
-        const left = ev.rest.filter(present)
-        if (left.length === 0) return `already gone: every match of ${c.id}`
-        const link = left.find(isLink)
-        if (link !== undefined) throw new Error(`${link} is now a symlink; it is not followed`)
-        const why = refusal(c, { ...ev, rest: left }, ev.path, ctx)
-        if (why !== null) throw new Error(`${c.id} was not deleted: ${why}`)
-        const done: string[] = []
-        for (const [i, p] of left.entries()) {
-          try {
-            done.push(kit.remove(p, ctx))
-          } catch (err) {
-            // The receipt keeps what was removed before the failure; the rest is not tried.
-            const said = err instanceof Error ? err.message : String(err)
-            const untried = left.length - i - 1
-            throw new Error(
-              `${done.length === 0 ? '' : `${done.join('; ')}; then `}${p}: ${said}${untried === 0 ? '' : `; ${untried} more not tried`}`,
-            )
-          }
-        }
-        return done.join('; ')
-      }
+      if (ev.rest !== undefined) return removeRest(c, ctx)
       const path = c.path
       if (path === undefined) throw new Error(`${c.id} is not a folder`)
       if (isLink(path)) throw new Error(`${path} is now a symlink; it is not followed`)
       if (!present(path)) return `already gone: ${path}`
-      const why = refusal(c, ev, path, ctx)
+      const why = refusal(c, [path], ctx)
       if (why !== null) throw new Error(`${path} was not deleted: ${why}`)
       if (ev.action === 'command') {
         return runCommand(kit, d.candidates[ev.candidate!]!, path, homeOf(ctx), ctx)
@@ -896,13 +974,13 @@ const unreadable = (why: string): Row['objections'][number] => ({
   reason: `process table unreadable: ${why}`,
 })
 
-/** Why a command never exited: only a failed spawn means it did not run, so the folder may be part pruned otherwise. */
-const stopped = (reason: string | undefined): string =>
+/** How a command that never exited ended: only one that did not start is sure to have removed nothing. */
+const ended = (reason: NeverExitedReason | undefined): string =>
   reason === 'spawn'
     ? 'did not run'
-    : `stopped before it exited (${reason ?? 'unknown'}); the folder may be partly pruned`
+    : `stopped before it exited (${reason ?? 'unknown'}); it may have removed part of the folder`
 
-const bytesText =(n: number | null): string => (n === null ? 'an unknown size' : `${n} bytes`)
+const bytesText = (n: number | null): string => (n === null ? 'an unknown size' : `${n} bytes`)
 
 /** Runs `entry`'s command from `home`, `{path}` read as `path`'s real path in every argument and `env` value. */
 async function runCommand(
@@ -921,7 +999,7 @@ async function runCommand(
   if (!r.ok) {
     const said = firstLine(failureText(r, { both: true }))
     throw new Error(
-      `${argv.join(' ')} failed (${r.neverExited === true ? stopped(r.reason) : `exit ${r.exitCode}`})${said === '' ? '' : `: ${said}`}`,
+      `${argv.join(' ')} failed (${r.neverExited === true ? ended(r.reason) : `exit ${r.exitCode}`})${said === '' ? '' : `: ${said}`}`,
     )
   }
   return `ran ${argv.join(' ')}; ${bytesText(before)} before, ${bytesText(kit.size(real))} after`
