@@ -362,14 +362,13 @@ const registered = (deps: MainDeps): string[] =>
  * An unknown entry with `package` is refused: it asks for a plugin to be loaded, and none was.
  */
 function configWarnings(config: Config, known: readonly string[]): string[] {
-  const unused = Object.keys(config.plugins).filter((n) => !known.includes(n))
-  const loaded = unused.filter((n) => Object.hasOwn(config.plugins[n] ?? {}, 'package'))
+  const unused = Object.entries(config.plugins).filter(([n]) => !known.includes(n))
+  const loaded = unused.filter(([, entry]) => Object.hasOwn(entry, 'package'))
   if (loaded.length > 0) {
-    throw new BadInput(
-      loaded.map((n) => `config plugins.${n}.package: no plugin of this name is loaded`).join('; '),
-    )
+    const keys = loaded.map(([n]) => `plugins.${n}.package`).join(', ')
+    throw new BadInput(`config ${keys}: no plugin of this name is loaded`)
   }
-  return unused.map((n) => `config plugins.${n}: no plugin has this name, so it is ignored`)
+  return unused.map(([n]) => `config plugins.${n}: no plugin has this name, so it is ignored`)
 }
 
 /** The plugins this run uses: the shipped ones built from the config, or `deps.plugins`, then chosen by flag. */
@@ -480,14 +479,14 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   return nothingFound(s) ? EXIT_NOTHING_TO_SWEEP : EXIT.ok
 }
 
-function runConfig(argv: readonly string[], ctx: CliContext): number {
+function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
   const name = `${NAME} config`
   const parsed = parseWith(configCli(), name, argv, ctx)
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
     const config = loadConfig(v, ctx)
-    writeWarnings(ctx, name, configWarnings(config, registered({})))
+    writeWarnings(ctx, name, configWarnings(config, registered(deps)))
     const settings = effectiveSettings(config.plugins, config)
     if (v.format === 'json') {
       const values = Object.fromEntries(
@@ -540,8 +539,9 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   try {
     const config = loadConfig(v, ctx)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
-    writeWarnings(ctx, name, configWarnings(config, registered(deps)))
-    const s = survey(pluginsFor(v, config, deps, ctx), cctx)
+    const unknown = configWarnings(config, registered(deps))
+    const surveyed = survey(pluginsFor(v, config, deps, ctx), cctx)
+    const s = { ...surveyed, warnings: [...unknown, ...surveyed.warnings] }
     writeWarnings(ctx, name, s.warnings)
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
     plan = makePlan(s, {
@@ -792,7 +792,7 @@ export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = 
   if (sub === 'status') return runStatus(rest, ctx, deps)
   if (sub === 'plan') return runPlan(rest, ctx, deps)
   if (sub === 'clean') return runClean(rest, ctx, deps)
-  if (sub === 'config') return runConfig(rest, ctx)
+  if (sub === 'config') return runConfig(rest, ctx, deps)
   if (sub === '-h' || sub === '--help') {
     ctx.io.stdout(OVERVIEW)
     return EXIT.ok

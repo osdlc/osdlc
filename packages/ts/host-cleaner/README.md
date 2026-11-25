@@ -176,7 +176,8 @@ all three directories):
 ```
 
 `plugins.<name>` holds that plugin's settings; a name that no plugin has gets
-a warning and is otherwise ignored, unless the entry sets `package`: that asks
+a warning (kept in `status --format json` and in a plan) and is otherwise
+ignored, unless the entry sets `package`: that asks
 for a plugin this install has not loaded, so it is refused (exit 2). Each
 plugin's settings are a strict schema, checked when the config loads: a
 misspelt key or a wrong type is refused (exit 2), naming the plugin and the key.

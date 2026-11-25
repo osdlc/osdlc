@@ -205,12 +205,28 @@ describe('status', () => {
     expect(r.out).toContain('artifact:fake')
   })
 
+  test('a plan records the config warning; config knows injected plugins', () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { gti: {}, fake: {} } }))
+    const planFile = join(home, 'plan.json')
+    const plugins = [fake()]
+    const planned = run(['plan', '--config', config, '-o', planFile], cwd, env, { plugins })
+    expect(planned.code).toBe(0)
+    const warnings: string[] = JSON.parse(readFileSync(planFile, 'utf8')).warnings
+    expect(warnings).toEqual(['config plugins.gti: no plugin has this name, so it is ignored'])
+    const r = run(['config', '--config', config], cwd, env, { plugins })
+    expect(r.err).toContain('plugins.gti')
+    expect(r.err).not.toContain('plugins.fake')
+  })
+
   test('with the shipped plugins, only an unknown name warns, and --format json carries it', () => {
     const { env, home, cwd } = setup()
     const config = join(home, 'c.json')
     writeFileSync(config, JSON.stringify({ plugins: { node: { enabled: false }, gti: {} } }))
     const r = run(['status', '--config', config, '--format', 'json'], cwd, env)
-    expect(r.code).not.toBe(2)
+    // 10: the shipped plugins may find nothing in a fresh directory.
+    expect([0, 10]).toContain(r.code)
     const warnings: string[] = JSON.parse(r.out).warnings
     expect(warnings).toContain('config plugins.gti: no plugin has this name, so it is ignored')
     expect(warnings.some((w) => w.includes('plugins.node'))).toBe(false)
