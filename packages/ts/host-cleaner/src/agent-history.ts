@@ -2,23 +2,11 @@
  * The `agent-history` plugin: Claude Code's history of projects whose folder
  * no longer exists, such as a removed worktree.
  *
- * Claude Code keeps each project's sessions in `<config>/projects/<name>/`,
- * where `<config>` is `CLAUDE_CONFIG_DIR`, else `~/.claude`, and `<name>` is
- * the project's path with every character but a letter or a digit turned into
- * `-` ({@link projectFolderName}). That cannot be reversed, so the path is read
- * from what the folder records: the first `cwd` of each transcript
- * (`<session>.jsonl`) and each `projectPath` in `sessions-index.json`. A
- * folder that records no path, or one that does not turn into its name, is
- * skipped, never guessed. A folder is a candidate when every path it records
- * is gone, unless one would be on a volume that is not mounted, or nothing
- * above it but the root exists. It is `lost`:
- * held, and deleted only when picked and allowed `discard-user-data`.
- *
- * A folder is refused while a Claude Code session in it runs
- * (`<config>/sessions/<pid>.json` with a live pid), or a process still works
- * in the gone folder. Codex keeps its sessions by date
- * (`~/.codex/sessions/<yyyy>/<mm>/<dd>/`), not by project, so it is left out.
- * No settings.
+ * A project folder's name ({@link projectFolderName}) cannot be reversed, so
+ * the path is read from what the folder records ({@link decodeFolder}); a
+ * folder whose records do not match its name is skipped, never guessed. The
+ * candidates, refusals and why Codex is left out: "The `agent-history` plugin"
+ * in the package README.
  */
 
 import {
@@ -44,7 +32,7 @@ export const AGENT_HISTORY_PLUGIN = 'agent-history'
 /** How much of a transcript is read for its first `cwd`. */
 const HEAD_BYTES = 256 * 1024
 
-/** It reads every project folder and sizes each candidate. */
+/** Long, since `discover` reads every project folder and sizes each candidate. */
 const DISCOVER_LIMIT_MS = 10 * 60_000
 
 /** Where removable volumes are mounted; the folder above a gone path being one of these means its volume may be away. */
@@ -387,7 +375,6 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
           : []
       }),
     delete(c, ctx) {
-      // Only a folder right inside `projects`, read again now: still gone, unchanged, and not in use.
       if (c.path === undefined || dirname(c.path) !== projects) {
         throw new Error(`${c.id} is not a Claude Code project folder in ${projects}`)
       }
