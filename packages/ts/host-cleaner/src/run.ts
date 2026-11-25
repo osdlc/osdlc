@@ -292,7 +292,7 @@ async function askRoots(
 export interface PluginState {
   name: string
   detected: boolean
-  /** Why it was not detected: what `detect` threw or timed out with, or why its answer was left out. Absent when `detect` answered. */
+  /** Why it was not detected: what `detect` threw or timed out with, or why its answer was left out. Absent when it answered a boolean or a {@link Detection}. */
   reason?: string | undefined
   /** The note `detect` gave with its answer, whether the plugin is detected or not. */
   note?: string | undefined

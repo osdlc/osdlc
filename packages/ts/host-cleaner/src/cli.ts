@@ -438,9 +438,8 @@ const unknownPlugins = (config: Config, known: (name: string) => boolean): strin
 /**
  * The config and the plugins this run uses: the built-ins and the descriptors
  * loaded, the config checked against them, each built from its entry (or
- * `deps.plugins`), then chosen by `choose` (by flag unless given). A
- * descriptor's `supersededBy` plugin runs when it is among those chosen and
- * detects.
+ * `deps.plugins`), then chosen by `choose`. A descriptor's `supersededBy`
+ * plugin runs when it is among those chosen and detects.
  */
 function setUp<V extends { config?: string | undefined; descriptor: readonly string[] }>(
   v: V,
@@ -686,13 +685,13 @@ type VarRow = Omit<VarValue, 'from'> & {
 /** One row of `host-cleaner plugins`. */
 interface PluginRow {
   name: string
-  /** `built-in`, or for a descriptor the folder it was read from: `shipped`, `user` or `flag` (`--descriptor`). */
+  /** `built-in`, or for a descriptor the folder it was read from (`flag` is `--descriptor`). */
   source: 'built-in' | DescriptorSource
-  /** For a descriptor, the file of the same name it stands in for: a shipped one, or for `flag` the one the name had. */
+  /** See `LoadedDescriptor.replaces` in `./descriptor/load.ts`. */
   replaces?: { source: DescriptorSource; path: string }
   enabled: boolean
   detected: boolean
-  /** Why it does not run: disabled in the config, what its `detect` threw, or why a descriptor skipped (`system: true`, superseded). Null when it is detected, or any other `detect` answered no. */
+  /** Why it does not run: disabled in the config, a failed `detect`, or why a descriptor skipped (`system: true`, superseded). Null otherwise. */
   reason: string | null
   /** Where it may delete besides the targets; empty, the targets alone. */
   roots: readonly string[]

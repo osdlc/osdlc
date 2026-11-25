@@ -689,7 +689,6 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     .flat()
     .filter((s) => 'command' in s).length
 
-  // The variables `plugins` shows: the declared ones, and the built-ins the descriptor uses.
   const used = new Set(varRefs(JSON.stringify([d.paths, d.vars, d.inUse?.locks])))
   const shown = (all: Vars): Vars =>
     Object.fromEntries(
