@@ -56,9 +56,12 @@ export interface CountTreeOptions extends RepoOptions, CountOptions {
 /** `paths` relative to `cwd`, made relative to the repository root, which git and reports use. */
 function fromRoot(root: string, cwd: string, paths: readonly string[]): string[] {
   if (paths.length === 0) return []
-  const from = realpathSync(cwd)
+  // `.native` expands what the JS walk leaves: on Windows an 8.3 short name such as `RUNNER~1`
+  // and the drive-letter case, which git's root has in its long, canonical form.
+  const from = realpathSync.native(cwd)
+  const top = realpathSync.native(root)
   return paths.map((p) => {
-    const rel = relativeWithin(root, p, from)
+    const rel = relativeWithin(top, p, from)
     if (rel === null) {
       throw new CodeStatsError(`${p} is outside the repository`, { kind: 'bad-input' })
     }

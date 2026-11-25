@@ -228,6 +228,7 @@ describe('the installed command', () => {
     const root = fileURLToPath(new URL('..', import.meta.url))
     expect(isCheckout(DEVLINK_SPEC, root)).toBe(true)
     expect(isCheckout(DEVLINK_SPEC, fileURLToPath(new URL('../..', import.meta.url)))).toBe(false)
-    expect(statSync(bin).mode & 0o111).not.toBe(0)
+    // Windows has no executable bit.
+    if (process.platform !== 'win32') expect(statSync(bin).mode & 0o111).not.toBe(0)
   })
 })

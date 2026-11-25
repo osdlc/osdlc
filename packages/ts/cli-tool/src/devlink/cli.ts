@@ -43,7 +43,8 @@ usage: ${n} dev <verb> [options]
 
   install [PATH] [--bin-dir DIR]
                             put a shim for this checkout's launcher onto PATH
-                            (default DIR: \${XDG_BIN_HOME:-$HOME/.local/bin})
+                            (default DIR: $XDG_BIN_HOME when absolute,
+                            else ~/.local/bin)
   link [PATH] [--label L]   make a checkout the one every '${n}' runs
                             (default: the checkout above the cwd, else this one)
   use <#N|PATH|canonical>   switch to history entry N, a path, or back to

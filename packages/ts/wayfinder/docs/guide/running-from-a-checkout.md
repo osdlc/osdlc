@@ -47,8 +47,8 @@ way dev status             # which checkout runs now, and why
 way dev off                # same as use canonical
 ```
 
-`install` writes to `${XDG_BIN_HOME:-$HOME/.local/bin}` unless you pass
-`--bin-dir DIR`. Every verb takes `--json` and `--dry-run`. `history` marks
+`install` writes to `$XDG_BIN_HOME` when it is an absolute path, else
+`~/.local/bin`, unless you pass `--bin-dir DIR`. Every verb takes `--json` and `--dry-run`. `history` marks
 the active checkout with `*` and a deleted one as `missing`.
 
 ## Where the state lives

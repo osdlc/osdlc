@@ -285,7 +285,7 @@ Mount them with `runDevCli(spec, argv, { self })`, which gives a
 
 | Verb | Effect |
 |---|---|
-| `install [--bin-dir DIR]` | write a shim for the launcher into `DIR` (default `${XDG_BIN_HOME:-$HOME/.local/bin}`) as the name and each alias. The shim is a small `sh` file, not a symlink: when its checkout is deleted it says so and exits 1. Idempotent; replaces a symlink or an older shim; refuses any other file; warns when `DIR` is not on PATH |
+| `install [--bin-dir DIR]` | write a shim for the launcher into `DIR` (default `$XDG_BIN_HOME` when it is an absolute path, else `~/.local/bin`) as the name and each alias. The shim is a small `sh` file, not a symlink: when its checkout is deleted it says so and exits 1. Idempotent; replaces a symlink or an older shim; refuses any other file; warns when `DIR` is not on PATH |
 | `link [PATH] [--label L]` | write `PATH` (default: the checkout above the cwd, else `self`) as the link, and record it |
 | `use <#N \| PATH \| canonical>` | switch to history entry `N` (1 = most recent), a path, or clear the link; recorded |
 | `off` | clear the link; recorded when one was set |

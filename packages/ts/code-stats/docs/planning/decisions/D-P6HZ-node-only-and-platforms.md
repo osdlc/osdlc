@@ -15,9 +15,10 @@ The owner has not yet confirmed the platform statement. This note proposes it.
   which it reads git through. It is ESM only, and ships compiled `dist/` with `.d.ts` files.
 - It does not claim Bun. Bun can load the compiled `dist/`, but no test runs there. The devlink
   spec still runs a selected checkout under Bun, as the other `@osdlc` command-line tools do.
-- The README says Linux and macOS are tested and Windows is not.
-- The package is not in the Windows tier-2 workflow yet. [T-02](../tasks/T-02-windows-tier-2.md)
-  is the work to add it.
+- The README says the tests run and pass on Linux, macOS and, in tier-2 CI, Windows, except the
+  file names Windows forbids and the executable-bit check.
+- The package is in the Windows tier-2 workflow, and its tests pass there on Node 22 and 24.
+  [T-02](../tasks/T-02-windows-tier-2.md) records the run.
 
 ## Why
 
@@ -25,7 +26,7 @@ The owner has not yet confirmed the platform statement. This note proposes it.
   used to export its TypeScript source under a `bun` condition, which the shape refuses.
 - The package has no `process.platform` branch and keeps paths in one helper, but it starts `git`,
   `gh` and `lizard` and reads `.gitignore` files. Those are the places a Windows run would show a
-  difference, and nothing has checked them.
+  difference, and the Windows tier-2 run checks them.
 
 ## Consequences
 

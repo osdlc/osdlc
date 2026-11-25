@@ -187,14 +187,21 @@ describe('resolveChange and readDiff', () => {
   })
 })
 
+const WINDOWS = process.platform === 'win32'
+
 describe('untracked files in the working-tree diff', () => {
+  // Windows forbids `"`, `\` and tabs in a file name, so those names are left out there.
+  const ODD_NAMES: Record<string, string> = {
+    'é "quoted"\\name.md': '# hi\n',
+    'tab\there.txt': 'x\n',
+  }
   const FILES: Record<string, string | Buffer> = {
     'text.ts': 'export const a = 1\nexport const b = 2\n',
     'one line.txt': 'one',
     'crlf.txt': 'a\r\nb\r\n',
     'empty.txt': '',
-    'é "quoted"\\name.md': '# hi\n',
-    'tab\there.txt': 'x\n',
+    'é.md': '# hi\n',
+    ...(WINDOWS ? {} : ODD_NAMES),
     'bin.dat': Buffer.from([1, 0, 2, 0x0a, 3]),
     'forced.lock': 'text but -diff\n',
     'forced.bin': Buffer.from('a\0b\n'),

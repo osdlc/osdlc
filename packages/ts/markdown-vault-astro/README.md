@@ -278,7 +278,7 @@ markdown-vault-astro dev off                       # back to the installed copy
 `src/cli.ts` from source, with its own installed dependencies. The installed copy says which
 checkout it hands off to on stderr; `MARKDOWN_VAULT_ASTRO_QUIET=1` silences that line. `dev` is a command
 word, so `markdown-vault-astro dev …` never reaches `transform`, `export-vault` or `check`. See
-[`@osdlc/cli-tool`'s devlink](https://github.com/osdlc/osdlc/tree/main/packages/ts/cli-tool#running-from-a-checkout).
+[`@osdlc/cli-tool`'s devlink](https://github.com/osdlc/osdlc/tree/main/packages/ts/cli-tool#running-from-a-checkout-or-a-projects-pinned-copy).
 
 ## Licence
 
