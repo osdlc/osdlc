@@ -64,7 +64,7 @@ async function run(argv: string[], cwd: string, env: Record<string, string>, dep
   // The shipped plugins would talk to this machine's Orca and sweep every repository it lists.
   const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
   const args = phase && deps.plugins === undefined ? [...argv, '--skip-plugin', 'orca'] : argv
-  // So would the shipped descriptors, on this machine's caches, since HOME is the real one.
+  // The shipped descriptors would sweep this machine's caches, since HOME is the real one.
   const shippedDescriptors = deps.shippedDescriptors ?? tempDir()
   const code = await main(args, ctx, { confirm: () => null, ...deps, shippedDescriptors })
   return { code, out: ctx.io.out, err: ctx.io.err }
