@@ -318,7 +318,9 @@ describe('rustup toolchains', () => {
 
   test('folders too deep to search for checkouts refuse every toolchain', async () => {
     const fx = fixture({ rust: [`1.75.0-${HOST}`, `stable-${HOST}`] })
-    repo(join(fx.dev, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'deep'), { 'rust-toolchain': '1.75\n' })
+    repo(join(fx.dev, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'deep'), {
+      'rust-toolchain': '1.75\n',
+    })
     const { names, refused } = await proposed(fx)
     expect(names).toEqual([`1.75.0-${HOST}`])
     expect(refused.map((o) => o.reason)).toEqual([expect.stringContaining('levels down')])
