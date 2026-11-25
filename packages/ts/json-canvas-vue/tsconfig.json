@@ -1,0 +1,13 @@
+{
+  // Typechecks the source, tests and examples with vue-tsc, which reads the
+  // single-file components. The build has its own include. The core's name
+  // resolves through `exports` to its built `dist/`, so build before the typecheck.
+  "extends": "@osdlc/tsconfig/vue",
+  "compilerOptions": {
+    // The tests and the config file run under Node. The build config drops this.
+    "types": ["node"],
+    // Stricter than the preset: an unused parameter is an error here.
+    "noUnusedParameters": true
+  },
+  "include": ["src", "tests", "examples", "vitest.config.ts"]
+}

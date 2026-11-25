@@ -1,0 +1,86 @@
+{
+  "name": "@osdlc/json-canvas-vue",
+  "version": "0.6.0",
+  "description": "Vue 3 component for rendering and editing JSON Canvas files",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/json-canvas-vue"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/json-canvas-vue#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "vue",
+    "vue3",
+    "json-canvas",
+    "canvas",
+    "diagram",
+    "nodes",
+    "edges",
+    "visualization"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "THIRD-PARTY-NOTICES"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "vite build --config vitest.config.ts && vue-tsc -p tsconfig.build.json --emitDeclarationOnly && node scripts/declarations.mjs",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "smoke": "node tests/smoke.mjs",
+    "coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "vue-tsc --noEmit && vue-tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/json-canvas-core": "workspace:^",
+    "dompurify": "^3.3.1"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.2"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "@vitest/coverage-v8": "catalog:",
+    "@vue/test-utils": "^2.6.0",
+    "jsdom": "^26.1.0",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vite": "^8.3.7",
+    "vitest": "catalog:",
+    "vue": "^3.5.25",
+    "vue-tsc": "^3.3.14"
+  }
+}
