@@ -692,8 +692,10 @@ not here. A plugin the config disables is listed as `disabled`, and its
 and the text adds that status, plan or clean with `--plugin <name>` runs it
 anyway. A descriptor that can't be used has a row of its own, from where the
 file was found, not detected, with why as the reason; for one the config
-disables, why is a warning. One named as a built-in plugin is a warning alone,
-as a config entry that names no plugin is, as in `config`.
+disables, why is a warning, and the text says that status, plan or clean with
+`--plugin <name>` stops on that error, as it does for a disabled built-in
+plugin whose name such a descriptor has. One named as a built-in plugin is a
+warning alone, as a config entry that names no plugin is, as in `config`.
 
 Under a descriptor with variables, one line per variable its folders and locks
 use on this OS, built in or declared: its value and the source that gave it,

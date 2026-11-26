@@ -869,10 +869,16 @@ const pathLine = (path: string): string => path.replace(/[\r\n]+/g, ' ')
 const runsAnyway = (name: string): string =>
   `; status, plan or clean with --plugin ${oneLine(name)} runs it anyway`
 
+/** What `--plugin` does when a descriptor that can't be used has the name: `setUp` throws its error. */
+const stopsOnError = (name: string): string =>
+  `; status, plan or clean with --plugin ${oneLine(name)} stops on its descriptor's error`
+
+/** @param unusable The names of the descriptors that can't be used, a built-in's among them. */
 function renderPlugins(
   rows: readonly PluginRow[],
   targets: readonly string[],
   ignored: readonly string[],
+  unusable: ReadonlySet<string>,
 ): string {
   const names = rows.map((r) => oneLine(r.name))
   const width = Math.max(...names.map((n) => n.length))
@@ -885,8 +891,8 @@ function renderPlugins(
       : r.detected
         ? `detected; ${rootsText(r)}`
         : 'not detected'
-    const reason =
-      r.reason === null ? null : oneLine(r.reason) + (r.enabled ? '' : runsAnyway(r.name))
+    const hint = r.enabled ? '' : unusable.has(r.name) ? stopsOnError(r.name) : runsAnyway(r.name)
+    const reason = r.reason === null ? null : oneLine(r.reason) + hint
     const note = r.note === null ? null : oneLine(r.note)
     const replaces =
       r.replaces === undefined
@@ -914,6 +920,7 @@ async function runPlugins(
   let targets: readonly string[]
   let ignored: readonly string[]
   let warnings: readonly string[]
+  let unusable: ReadonlySet<string>
   try {
     const { config, definitions, descriptors, problems, unknown, ...loading } = loadRun(
       v,
@@ -946,6 +953,7 @@ async function runPlugins(
     const named = new Set(rows.map((r) => r.name))
     const rowed = problems.filter((p) => !named.has(p.name))
     rows.push(...rowed.map((p) => problemRow(p, enabled(p.name, config))))
+    unusable = new Set(problems.map((p) => p.name))
     targets = found.ctx.targets
     ignored = found.ctx.ignore ?? []
     warnings = [
@@ -965,7 +973,7 @@ async function runPlugins(
     )
   } else {
     writeWarnings(ctx, name, warnings)
-    ctx.io.stdout(renderPlugins(rows, targets, ignored))
+    ctx.io.stdout(renderPlugins(rows, targets, ignored, unusable))
   }
   return EXIT.ok
 }

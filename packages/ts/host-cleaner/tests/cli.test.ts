@@ -1200,7 +1200,7 @@ candidates:
     expect(config.err).toContain('"My_tool" is not a plugin name')
   })
 
-  test("plugins lists a descriptor that can't be used as a row with its error; a disabled one, or one named as a built-in, is a warning", async () => {
+  test("plugins lists a descriptor that can't be used as a row with its error; a disabled one, or one named as a built-in, is a warning, and --plugin of its name stops on it", async () => {
     const h = withHome()
     const bad = (name: string) => `bad descriptor ${join(h.user, `${name}.yaml`)}`
     for (const name of ['mine', 'off']) {
@@ -1230,6 +1230,20 @@ candidates:
     expect(out.warnings.some((w) => w.includes(join(h.user, 'git.yaml')))).toBe(true)
     const text = await run(['plugins', '--config', file], h.cwd, h.env, deps)
     expect(text.out).toMatch(/^ {2}mine +user +not detected: bad descriptor /m)
+    expect(text.out).toMatch(
+      /^ {2}off +user +disabled: plugins\.off\.enabled is false; status, plan or clean with --plugin off stops on its descriptor's error$/m,
+    )
+    const named = await run(['status', '--config', file, '--plugin', 'off'], h.cwd, h.env, deps)
+    expect(named.code).toBe(2)
+    expect(named.err).toContain(bad('off'))
+    writeFileSync(file, JSON.stringify({ plugins: { git: { enabled: false } } }))
+    const git = await run(['plugins', '--config', file], h.cwd, h.env, deps)
+    expect(git.out).toMatch(
+      /^ {2}git +built-in +disabled: plugins\.git\.enabled is false; status, plan or clean with --plugin git stops on its descriptor's error$/m,
+    )
+    const gitNamed = await run(['status', '--config', file, '--plugin', 'git'], h.cwd, h.env, deps)
+    expect(gitNamed.code).toBe(2)
+    expect(gitNamed.err).toContain(join(h.user, 'git.yaml'))
   })
 
   test('--skip-plugin of a built-in leaves it out although a descriptor has its name', async () => {
