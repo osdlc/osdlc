@@ -156,10 +156,11 @@ describe('parsing', () => {
   })
 
   test('sizes in powers of 1000, read as the most the text can mean', () => {
-    // HumanBytes cuts 10 and more to a whole number, and rounds less to a tenth.
+    // HumanBytes cuts 10 and more to a whole number, and rounds less to a tenth unless it is whole.
     expect(parseBytes('849 MB')).toBe(850_000_000)
     expect(sizeBound('19 GB')).toEqual({ bytes: 20_000_000_000, text: '20 GB' })
     expect(sizeBound('3.9 GB')).toEqual({ bytes: 3_950_000_000, text: '3.95 GB' })
+    expect(sizeBound('4 GB')).toEqual({ bytes: 4_000_000_000, text: '4 GB' })
     expect(parseBytes('512 B')).toBe(512)
     expect(parseBytes('-')).toBeNull()
     expect(parseBytes('3.9GiB')).toBeNull()
@@ -187,9 +188,9 @@ describe('parsing', () => {
     expect(serverUrl('localhost:')?.href).toBe('http://localhost:11434/')
     expect(serverUrl('HTTP://localhost')?.href).toBe('http://localhost:11434/')
     expect(serverUrl('[::1]')?.href).toBe('http://[::1]:11434/')
-    // Go reads a signed port as a number; a URL takes only its digits.
-    expect(serverUrl('localhost:+11434')?.href).toBe('http://localhost:11434/')
-    expect(serverUrl('localhost:-0')?.href).toBe('http://localhost:0/')
+    // Go's ParseInt takes a signed port, but the request URL ollama's client builds from it does not parse.
+    expect(serverUrl('localhost:+11434')).toBeNull()
+    expect(serverUrl('localhost:-0')).toBeNull()
     // A bad port does not make text that names no host, or another one, this machine.
     for (const host of [
       'localhost:1:2',

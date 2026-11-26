@@ -110,14 +110,14 @@ const UNITS: Record<string, number> = { B: 1, KB: 1e3, MB: 1e6, GB: 1e9, TB: 1e1
  * The most SIZE text such as `3.9 GB` can mean (ollama's units are powers of
  * 1000), as bytes and as text; null for anything else. ollama's `HumanBytes`
  * cuts a value of 10 or more to a whole number and rounds a smaller one to a
- * tenth, so `19 GB` can be up to 20 GB and `3.9 GB` up to 3.95 GB. Bytes are
- * exact.
+ * tenth unless it is whole, so `19 GB` can be up to 20 GB, `3.9 GB` up to
+ * 3.95 GB, and `4 GB` and bytes are exact.
  */
 export function sizeBound(text: string): { bytes: number; text: string } | null {
   const m = /^(\d+)(\.\d+)? ([KMGT]?B)$/.exec(text.trim())
   if (m === null) return null
   const unit = m[3]!
-  const step = unit === 'B' ? 0 : m[2] === undefined ? 1 : 0.05
+  const step = m[2] !== undefined ? 0.05 : unit !== 'B' && Number(m[1]) >= 10 ? 1 : 0
   const most = Number(m[1]! + (m[2] ?? '')) + step
   // Rounded to hundredths so float error does not print as 3.9499999.
   const shown = Math.round(most * 100) / 100
@@ -203,11 +203,9 @@ export function serverUrl(host: string | undefined): URL | null {
   const port = m?.[3] ?? ''
   const given = /^[+-]?\d+$/.test(port) && Number(port) >= 0 && Number(port) <= 65_535
   const fallback = scheme === 'http' ? '80' : scheme === 'https' ? '443' : '11434'
-  // Go reads `+11434` and `-0` as numbers; a URL takes only digits.
-  const portText = given ? String(Number(port)) : fallback
   try {
     return new URL(
-      `${scheme ?? 'http'}://${name.includes(':') ? `[${name}]` : name}:${portText}${path}`,
+      `${scheme ?? 'http'}://${name.includes(':') ? `[${name}]` : name}:${given ? port : fallback}${path}`,
     )
   } catch {
     return null
