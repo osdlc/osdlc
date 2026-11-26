@@ -41,8 +41,9 @@ import {
   type PathCandidate,
   type Plugin,
   type RunCtx,
+  type SettingSource,
 } from '../../src/index.ts'
-import { effectiveSettings, sourcesOf, settingsOf } from '../../src/settings.ts'
+import { effectiveSettings, resolveSettings } from '../../src/settings.ts'
 import {
   ageTree as age,
   contractSuite,
@@ -218,12 +219,10 @@ function build(
   const plugin = def.create({
     ...(o.config === undefined
       ? { settings: { idleHours: DEFAULT_IDLE_HOURS, vars: m.vars } }
-      : {
-          settings: settingsOf(name, o.config.entry, o.config.shared, [def]) as {
-            idleHours?: number
-          },
-          sources: sourcesOf(name, o.config.entry, o.config.shared, [def]),
-        }),
+      : (resolveSettings(name, o.config.entry, o.config.shared, [def]) as {
+          settings: { idleHours?: number }
+          sources: Record<string, SettingSource>
+        })),
     only: [],
     env,
     kit,
@@ -434,39 +433,61 @@ describe.each(OSES_TESTED)('on %s', (os) => {
   })
 
   describe('huggingface-hub', () => {
-    test('one candidate per model, dataset and space, removed after 30 idle days', async () => {
+    test('one candidate per model, dataset and space; a dataset removed after 30 idle days', async () => {
       const b = build('huggingface-hub', os)
       const hub = b.folder('hub')
-      mkdirSync(join(hub, '.locks', 'models--a'), { recursive: true })
-      age(join(hub, 'models--a'), 721)
-      age(join(hub, 'models--b'), 719)
+      mkdirSync(join(hub, '.locks', 'datasets--a'), { recursive: true })
+      age(join(hub, 'datasets--a'), 721)
+      age(join(hub, 'datasets--b'), 719)
       const { survey: s, receipt } = await surveyAndClean(b.plugin)
       expect(ids(s.candidates)).toEqual(
         ['datasets--a', 'datasets--b', 'models--a', 'models--b', 'spaces--a', 'spaces--b'].map(
           (n) => `huggingface-hub:${join(hub, n)}`,
         ),
       )
-      expect(s.candidates.find((c) => c.path === join(hub, 'models--b'))!.held).toBe(true)
+      expect(s.candidates.find((c) => c.path === join(hub, 'datasets--b'))!.held).toBe(true)
       expect(receipt.steps.map((st) => st.id)).toEqual([
-        `huggingface-hub:${join(hub, 'models--a')}`,
+        `huggingface-hub:${join(hub, 'datasets--a')}`,
       ])
+      expect(existsSync(join(hub, 'datasets--a'))).toBe(false)
+      expect(existsSync(join(hub, 'datasets--b'))).toBe(true)
+      expect(existsSync(join(hub, '.locks'))).toBe(true)
+    })
+
+    test('holds a model however long it sat unchanged, and removes an idle one when picked', async () => {
+      const b = build('huggingface-hub', os)
+      const hub = b.folder('hub')
+      age(join(hub, 'models--a'), 721)
+      const a = `huggingface-hub:${join(hub, 'models--a')}`
+      const held = await surveyAndClean(b.plugin)
+      expect(held.survey.candidates.find((c) => c.id === a)).toMatchObject({ held: true })
+      expect(held.receipt.steps).toEqual([])
+      expect(existsSync(join(hub, 'models--a'))).toBe(true)
+
+      const picked = await surveyAndClean(b.plugin, [a])
+      expect(picked.receipt.steps.map((st) => [st.id, st.result])).toEqual([[a, 'ok']])
       expect(existsSync(join(hub, 'models--a'))).toBe(false)
       expect(existsSync(join(hub, 'models--b'))).toBe(true)
-      expect(existsSync(join(hub, '.locks'))).toBe(true)
     })
   })
 
   describe('gradle', () => {
-    test('the caches after a week, and each wrapper distribution after 30 days', async () => {
+    test('the caches after a week; each wrapper distribution held, and removed when picked after 30 days', async () => {
       const b = build('gradle', os)
       age(b.folder('caches'), 169)
       age(join(b.folder('wrapper'), 'a'), 721)
       age(join(b.folder('wrapper'), 'b'), 200)
-      const { receipt } = await surveyAndClean(b.plugin)
-      expect(receipt.steps.map((st) => st.id).sort()).toEqual(
-        [`gradle:${b.folder('caches')}`, `gradle:${join(b.folder('wrapper'), 'a')}`].sort(),
-      )
+      const wrapper = (n: string) => `gradle:${join(b.folder('wrapper'), n)}`
+      const { survey: s, receipt } = await surveyAndClean(b.plugin)
+      const held = s.candidates.filter((c) => c.held === true)
+      expect(ids(held)).toEqual([wrapper('a'), wrapper('b')])
+      expect(receipt.steps.map((st) => st.id)).toEqual([`gradle:${b.folder('caches')}`])
       expect(existsSync(b.folder('caches'))).toBe(false)
+      expect(existsSync(join(b.folder('wrapper'), 'a'))).toBe(true)
+
+      const picked = await surveyAndClean(b.plugin, [wrapper('a')])
+      expect(picked.receipt.steps.map((st) => [st.id, st.result])).toEqual([[wrapper('a'), 'ok']])
+      expect(existsSync(join(b.folder('wrapper'), 'a'))).toBe(false)
       expect(existsSync(join(b.folder('wrapper'), 'b'))).toBe(true)
     })
 

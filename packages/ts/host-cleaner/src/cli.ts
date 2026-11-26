@@ -50,7 +50,7 @@ import {
   selectPlugins,
   type Loaded,
 } from './registry.ts'
-import { disabledByConfig, effectiveSettings, settingsOf, sourcesOf } from './settings.ts'
+import { disabledByConfig, effectiveSettings, resolveSettings } from './settings.ts'
 import {
   SelectionError,
   clean,
@@ -420,6 +420,8 @@ function sourcesFor(
 interface Loading {
   config: Config
   definitions: readonly PluginDefinition[]
+  /** The descriptors among `definitions`, and where each came from. */
+  descriptors: Loaded['descriptors']
   /** The descriptors that can't be used. */
   problems: readonly DescriptorProblem[]
   /** The config's `plugins` entries that name no plugin this run has. */
@@ -439,8 +441,10 @@ function loadRun(
   deps: MainDeps,
 ): Loading {
   const from = deps.plugins === undefined ? sourcesFor(v, ctx, deps) : undefined
-  const loaded: Pick<Loaded, 'definitions' | 'problems'> =
-    from === undefined ? { definitions: BUILT_IN_PLUGINS, problems: [] } : findPlugins(from.sources)
+  const loaded: Loaded =
+    from === undefined
+      ? { definitions: BUILT_IN_PLUGINS, descriptors: [], problems: [] }
+      : findPlugins(from.sources)
   const config = loadConfig(v, ctx, loaded.definitions)
   const known = new Set([
     ...(deps.plugins?.map((p) => p.name) ?? loaded.definitions.map((d) => d.name)),
@@ -449,6 +453,7 @@ function loadRun(
   return {
     config,
     definitions: loaded.definitions,
+    descriptors: loaded.descriptors,
     problems: loaded.problems,
     unknown: Object.keys(config.plugins).filter((n) => !known.has(n)),
     warnings: from?.warnings ?? [],
@@ -460,51 +465,59 @@ const unknownMessage = (unknown: readonly string[]): string =>
 
 /**
  * The config and the plugins this run uses: {@link loadRun}, each built from
- * its entry (or `deps.plugins`), then chosen by flag, and what to warn of. A
- * descriptor that can't be used stops the run unless the run leaves its name
- * out. A config entry that names no plugin stops the run when `strict`.
+ * its entry (or `deps.plugins`), then chosen by flag, the `--descriptor` files
+ * behind those plugins, and what to warn of. A descriptor that can't be used
+ * stops the run unless the run leaves its name out, by the same choice. A
+ * config entry that names no plugin stops the run when `strict`.
  */
 function setUp(
   v: SweepValues,
   ctx: CliContext,
   deps: MainDeps,
   strict: boolean,
-): { config: Config; plugins: Plugin[]; warnings: string[] } {
-  const { config, definitions, problems, unknown, ...loading } = loadRun(v, ctx, deps)
+): { config: Config; plugins: Plugin[]; descriptors: string[]; warnings: string[] } {
+  const { config, definitions, descriptors, problems, unknown, ...loading } = loadRun(v, ctx, deps)
   const warnings = [...loading.warnings]
   if (unknown.length > 0) {
     if (strict) {
+      const have = (deps.plugins ?? definitions).map((d) => d.name).join(', ')
       throw new BadInput(
-        `${unknownMessage(unknown)}; give its --descriptor, or remove the entry from the config`,
+        `${unknownMessage(unknown)}; correct the name (have ${have}), give the descriptor of that name with --descriptor, or remove the entry from the config`,
       )
     }
     warnings.push(unknownMessage(unknown))
   }
-  const want = v.plugin ?? []
-  const leftOut = (n: string): boolean =>
-    v.skipPlugin?.includes(n) === true ||
-    (want.length > 0 ? !want.includes(n) : disabledByConfig(n, config.plugins))
+  const chosen = pluginsFor(v, config, definitions, problems, deps, ctx)
   for (const p of problems) {
-    if (!leftOut(p.name)) throw p.error
+    if (chosen.includes(p)) throw p.error
     warnings.push(`${p.error.message}; this run leaves ${p.name} out`)
   }
-  const absent = problems.map((p) => p.name)
-  return { config, plugins: pluginsFor(v, config, definitions, deps, ctx, absent), warnings }
+  const plugins = chosen.filter((p): p is Plugin => !problems.includes(p as DescriptorProblem))
+  const names = new Set(plugins.map((p) => p.name))
+  return {
+    config,
+    plugins,
+    // The `--descriptor` files behind the plugins this run uses, which a plan records.
+    descriptors: descriptors
+      .filter((d) => d.source === 'flag' && names.has(d.name))
+      .map((d) => d.path),
+    warnings,
+  }
 }
 
 /**
- * The plugins this run uses: `definitions` built from the config, or
- * `deps.plugins`, then chosen by flag. `absent` are names `--skip-plugin` may
- * give that have no plugin: descriptors that can't be used.
+ * What this run chooses: `definitions` built from the config, or
+ * `deps.plugins`, and the descriptors that can't be used, by name, chosen by
+ * flag and the config. A chosen problem is one the run would use.
  */
 function pluginsFor(
   v: SweepValues,
   config: Config,
   definitions: readonly PluginDefinition[],
+  problems: readonly DescriptorProblem[],
   deps: MainDeps,
   ctx: CliContext,
-  absent: readonly string[],
-): Plugin[] {
+): Array<Plugin | DescriptorProblem> {
   // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
@@ -512,8 +525,7 @@ function pluginsFor(
     deps.plugins ??
     definitions.map((d) =>
       d.create({
-        settings: settingsOf(d.name, config.plugins[d.name] ?? {}, config, definitions),
-        sources: sourcesOf(d.name, config.plugins[d.name] ?? {}, config, definitions),
+        ...resolveSettings(d.name, config.plugins[d.name] ?? {}, config, definitions),
         only,
         env: ctx.env,
         kit: pluginKit(d.name, { env: ctx.env }),
@@ -521,7 +533,11 @@ function pluginsFor(
     )
   // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
   const named = v.plugin ?? []
-  const chosen = selectPlugins(all, v.plugin, v.skipPlugin, absent)
+  const chosen = selectPlugins<Plugin | DescriptorProblem>(
+    [...all, ...problems],
+    v.plugin,
+    v.skipPlugin,
+  )
   return chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins))
 }
 
@@ -742,7 +758,7 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
   const v = parsed.values
   let plan: Plan
   try {
-    const { config, plugins, warnings } = setUp(v, ctx, deps, false)
+    const { config, plugins, descriptors, warnings } = setUp(v, ctx, deps, false)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = await survey(plugins, cctx)
     writeWarnings(ctx, name, [...warnings, ...surveyWarnings(s)])
@@ -751,7 +767,7 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
       targets: cctx.targets,
       targetsGiven: cctx.targetsGiven,
       ignore: cctx.ignore,
-      descriptors: flagDescriptors(v, ctx),
+      descriptors,
       pick: v.pick.map((e) => untildePick(e, homeOf(ctx), s.candidates)),
       spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
       allow: v.allow,
@@ -945,6 +961,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         targets: cctx.targets,
         targetsGiven: cctx.targetsGiven,
         ignore: cctx.ignore,
+        descriptors: run.descriptors,
         pick: v.pick.map((e) => untildePick(e, homeOf(ctx), s.candidates)),
         spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
         allow: v.allow,
@@ -1033,8 +1050,9 @@ export async function main(
   deps: MainDeps = {},
 ): Promise<number> {
   const [sub, ...rest] = argv
-  const phase = sub === 'status' || sub === 'plan' || sub === 'clean' || sub === 'config'
+  const phase = sub === 'status' || sub === 'plan' || sub === 'clean'
   // It cleans one person's files; as root, a target or a root could reach everyone's.
+  // `config` only reads the settings, so it still answers.
   if (phase && (deps.uid ?? process.getuid?.()) === 0) {
     ctx.io.stderr(
       renderError('refusing to run as root; run it as the user whose files it cleans', NAME),

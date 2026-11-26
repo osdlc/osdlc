@@ -30,6 +30,7 @@ import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { CORPUS_DIR, FIRST_SET, draftStore } from '../scripts/draft-descriptor.ts'
 import {
+  DISCARD_USER_DATA,
   DUPLICATE_ENTRY,
   IN_USE,
   NO_PRUNE_TOOL,
@@ -689,6 +690,20 @@ candidates:
     const at = { home: h.home, targets: [], checkouts: [], ownDirs: [own] }
     expect(pathProblem(receipts, at)).toBe(`it is inside host-cleaner's own folder ${own}`)
   })
+
+  test("a folder that will hold host-cleaner's own, not made yet, behind a linked home", () => {
+    const h = tempHome()
+    cleanups.push(h.cleanup)
+    const real = realpathSync(h.home)
+    const linked = `${real}-linked`
+    symlinkSync(real, linked)
+    cleanups.push(() => rmSync(linked))
+    const state = join(real, '.local', 'state')
+    mkdirSync(state, { recursive: true })
+    const own = join(linked, '.local', 'state', 'host-cleaner')
+    const at = { home: linked, targets: [], checkouts: [], ownDirs: [own] }
+    expect(pathProblem(state, at)).toBe(`it holds host-cleaner's own folder ${own}`)
+  })
 })
 
 describe('paths per OS, detect, system and supersededBy', () => {
@@ -919,6 +934,39 @@ candidates:
     expect(globMatches(h.home, '*/')).toEqual(['a', 'b'].map((n) => join(h.home, n)))
   })
 
+  test('a {a,b} glob takes each alternative, one with a / in it too', () => {
+    const h = tempHome()
+    cleanups.push(h.cleanup)
+    for (const d of ['models--x', 'datasets--y', 'spaces--z', 'a/b']) {
+      mkdirSync(join(h.home, d), { recursive: true })
+    }
+    expect(globMatches(h.home, '{models,datasets}--*/')).toEqual(
+      ['datasets--y', 'models--x'].map((n) => join(h.home, n)),
+    )
+    expect(globMatches(h.home, 'a/{,b}')).toEqual([join(h.home, 'a'), join(h.home, 'a', 'b')])
+  })
+
+  test('a {a,b} marker marks a project by any alternative', async () => {
+    const b = build(
+      'dotnet',
+      `descriptor: 1
+paths:
+  nuget: { all: ~/.nuget/packages }
+candidates:
+  - { path: nuget, costDescription: re-download }
+project:
+  - { dir: obj, marker: '*.{csproj,fsproj}', costDescription: rebuild }
+`,
+    )
+    const repo = dotnetCheckout(b.home)
+    const fs = join(repo, 'lib')
+    mkdirSync(join(fs, 'obj'), { recursive: true })
+    writeFileSync(join(fs, 'Lib.fsproj'), '<Project/>')
+    const s = await survey([b.plugin], ctxOf({ targets: [repo] }))
+    const objs = s.candidates.map((c) => c.path).filter((p) => p?.endsWith('obj'))
+    expect(objs.sort()).toEqual([join(repo, 'lib', 'obj'), join(repo, 'obj')])
+  })
+
   test("held and costDescription: lost are held; the setting does not lower a candidate's idleHours", async () => {
     const b = build(
       'x',
@@ -963,7 +1011,7 @@ candidates:
 describe('inUse', () => {
   test('a running process or a lock file refuses every candidate', async () => {
     const running = build('uv', UV, {
-      processes: processes({ '/': [{ pid: 7, command: 'uv' }] }),
+      processes: processes({ '/': [{ pid: 5_000_007, command: 'uv' }] }),
     })
     const s = await survey([running.plugin], ctxOf())
     expect(s.objections.filter((o) => o.level === 'refuse')).toEqual([
@@ -972,7 +1020,7 @@ describe('inUse', () => {
         candidate: `uv:${running.folder('cache')}`,
         level: 'refuse',
         code: IN_USE,
-        reason: 'running: uv (pid 7)',
+        reason: 'running: uv (pid 5000007)',
       },
     ])
 
@@ -988,14 +1036,14 @@ describe('inUse', () => {
     const b = build('pip', `${PIP_PER_OS}inUse: { processes: [pip, python, nothing] }\n`, {
       processes: processes({
         '/': [
-          { pid: 7, command: 'python -m pip' },
-          { pid: 8, command: 'python x.py' },
+          { pid: 5_000_007, command: 'python -m pip' },
+          { pid: 5_000_008, command: 'python x.py' },
         ],
       }),
     })
     const s = await survey([b.plugin], ctxOf())
     expect(s.objections.map((o) => [o.code, o.reason])).toEqual([
-      [IN_USE, 'running: python (pid 7), python (pid 8)'],
+      [IN_USE, 'running: python (pid 5000007), python (pid 5000008)'],
     ])
   })
 
@@ -1009,12 +1057,15 @@ describe('inUse', () => {
     // The re-check's survey sees no process; delete, after it, does.
     const deleting = b.plugin.delete!.bind(b.plugin)
     b.plugin.delete = (c, x) => {
-      table['/'] = [{ pid: 9, command: 'pip' }]
+      table['/'] = [{ pid: 5_000_009, command: 'pip' }]
       return deleting(c, x)
     }
     const receipt = await clean(p, [b.plugin], ctx)
     expect(receipt.steps).toMatchObject([
-      { result: 'failed', error: `${b.folder('cache')} was not deleted: running: pip (pid 9)` },
+      {
+        result: 'failed',
+        error: `${b.folder('cache')} was not deleted: running: pip (pid 5000009)`,
+      },
     ])
     expect(existsSync(b.folder('cache'))).toBe(true)
   })
@@ -1035,7 +1086,7 @@ describe('project', () => {
     })
 
     const busy = build('dotnet', DOTNET_PROJECT, {
-      processes: processes({ [repo]: [{ pid: 3, command: 'dotnet' }] }),
+      processes: processes({ [repo]: [{ pid: 5_000_003, command: 'dotnet' }] }),
     })
     const live = await survey([busy.plugin], ctxOf({ targets: [repo] }))
     expect(live.objections.map((o) => [o.candidate, o.code])).toEqual([
@@ -1184,6 +1235,22 @@ describe('variables (tier 2)', () => {
       filled(tooled.home, name === 'pnpm' ? '.local/share/pnpm/store' : 'go/pkg/mod')
       expect(await contractSuite(tooled.plugin), name).toEqual([])
     }
+  })
+
+  test('a detect whose onPath conditions already fail resolves no variable', async () => {
+    const text = PNPM_VARS.replace('vars:', 'detect: { all: [{ onPath: corepack }] }\nvars:')
+    const b = buildVars('pnpm', text, {
+      programs: { pnpm: { 'store path': { stdout: '/data/pnpm/store\n' } } },
+    })
+    expect(await b.plugin.detect(fakeContext())).toBe(false)
+    expect(b.calls).toEqual([])
+
+    const any = PNPM_VARS.replace('vars:', 'detect: { any: [{ onPath: corepack }] }\nvars:')
+    const c = buildVars('pnpm', any, {
+      programs: { pnpm: { 'store path': { stdout: '/data/pnpm/store\n' } } },
+    })
+    expect(await c.plugin.detect(fakeContext())).toBe(false)
+    expect(c.calls).toEqual([])
   })
 
   test("pnpm's store is found where pnpm says it is, and the prune is pointed there", async () => {
@@ -1553,6 +1620,33 @@ describe('idle is checked again at delete', () => {
     expect(existsSync(cache)).toBe(false)
   })
 
+  test('one held by its entry or as lost, picked idle, is not deleted once it changed', async () => {
+    for (const held of ['costDescription: re-download, held: true', 'costDescription: lost']) {
+      const b = build(
+        'x',
+        `descriptor: 1
+paths:
+  a: { all: ~/.x/a }
+candidates:
+  - { path: a, ${held} }
+`,
+        { idleHours: 24 },
+      )
+      const folder = b.folder('a')
+      age(folder, 48)
+      beforeDelete(b.plugin, () => writeFileSync(join(folder, 'fresh'), 'x'))
+      const ctx = ctxOf({ allow: [DISCARD_USER_DATA] })
+      const p = plan(await survey([b.plugin], ctx), {
+        pick: [`x:${folder}`],
+        allow: [DISCARD_USER_DATA],
+      })
+      expect((await clean(p, [b.plugin], ctx)).steps).toMatchObject([
+        { result: 'failed', error: expect.stringMatching(/it is no longer idle/) },
+      ])
+      expect(existsSync(join(folder, 'fresh'))).toBe(true)
+    }
+  })
+
   test('a wipe that changed after the re-check runs no command; a prune has no idle check', async () => {
     const WIPE = UV.replace('removes: unused', 'removes: all')
     for (const [text, calls] of [
@@ -1717,6 +1811,28 @@ describe('the combined rest', () => {
     const b = buildRest()
     const text = JSON.stringify((await survey([b.plugin], ctxOf())).candidates)
     expect(text).not.toContain(join(b.http, 'd'))
+  })
+})
+
+describe('the time limit of discover', () => {
+  test('stops discover between two folders once it has passed', async () => {
+    const walked: string[] = []
+    const b = build('hf', HUGGING_FACE, {
+      kit: (kit) => {
+        kit.idle = (path) => {
+          walked.push(String(path))
+          const end = performance.now() + 400
+          while (performance.now() < end);
+          return { unmeasured: true }
+        }
+      },
+    })
+    const s = await survey([{ ...b.plugin, limits: { discover: 300 } }], ctxOf())
+    expect(s.candidates).toEqual([])
+    expect(s.warnings).toEqual(['hf: discover failed: timed out after 300 ms'])
+    // Nothing goes on after the survey has moved on.
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    expect(walked.length).toBeLessThanOrEqual(1)
   })
 })
 
@@ -1915,18 +2031,32 @@ describe('what is walked and asked once', () => {
     expect(s.candidates.find((c) => c.path === join(tree, 'obj'))!.evidence.checkout).toBe(tree)
   })
 
+  /** A `git` first on PATH that logs each call; `lists` counts the `worktree list` calls since the last `reset`. */
+  const gitLog = () => {
+    const real = execFileSync('which', ['git'], { encoding: 'utf-8' }).trim()
+    const shim = tempHome()
+    cleanups.push(shim.cleanup)
+    const log = join(shim.home, 'log')
+    writeFileSync(join(shim.home, 'git'), `#!/bin/sh\necho "$*" >> '${log}'\nexec '${real}' "$@"\n`)
+    chmodSync(join(shim.home, 'git'), 0o755)
+    return {
+      reset: () => {
+        writeFileSync(log, '')
+        vi.stubEnv('PATH', `${shim.home}${delimiter}${process.env.PATH}`)
+      },
+      lists: (): number => {
+        vi.unstubAllEnvs()
+        return readFileSync(log, 'utf-8')
+          .split('\n')
+          .filter((line) => line.includes('worktree list')).length
+      },
+    }
+  }
+
   test.skipIf(process.platform === 'win32')(
     "git is asked for a run's checkouts the same number of times whatever it deletes",
     async () => {
-      const real = execFileSync('which', ['git'], { encoding: 'utf-8' }).trim()
-      const shim = tempHome()
-      cleanups.push(shim.cleanup)
-      const log = join(shim.home, 'log')
-      writeFileSync(
-        join(shim.home, 'git'),
-        `#!/bin/sh\necho "$*" >> '${log}'\nexec '${real}' "$@"\n`,
-      )
-      chmodSync(join(shim.home, 'git'), 0o755)
+      const git = gitLog()
       const lists = async (folders: number): Promise<number> => {
         const b = build(
           'dotnet',
@@ -1941,18 +2071,37 @@ describe('what is walked and asked once', () => {
           mkdirSync(join(repo, `p${i}`, 'obj'), { recursive: true })
           writeFileSync(join(repo, `p${i}`, 'P.csproj'), '<Project/>')
         }
-        writeFileSync(log, '')
-        vi.stubEnv('PATH', `${shim.home}${delimiter}${process.env.PATH}`)
+        git.reset()
         const { receipt } = await surveyAndClean(b.plugin, [], { targets: [repo] })
-        vi.unstubAllEnvs()
+        const n = git.lists()
         expect(receipt.steps.map((x) => x.result)).toEqual(Array(2 * folders + 2).fill('ok'))
-        return readFileSync(log, 'utf-8')
-          .split('\n')
-          .filter((line) => line.includes('worktree list')).length
+        return n
       }
       const few = await lists(1)
       expect(few).toBeGreaterThan(0)
       expect(await lists(5)).toBe(few)
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'descriptors in one survey ask git for its checkouts no more often than one does',
+    async () => {
+      const git = gitLog()
+      const repo = dotnetCheckout(build('dotnet', DOTNET_PROJECT).home)
+      const lists = async (descriptors: number): Promise<number> => {
+        const plugins = Array.from(
+          { length: descriptors },
+          (_, i) => build(`dotnet${i}`, DOTNET_PROJECT).plugin,
+        )
+        git.reset()
+        const s = await survey(plugins, ctxOf({ targets: [repo] }))
+        const n = git.lists()
+        expect(s.candidates.filter((c) => c.path?.startsWith(repo))).toHaveLength(2)
+        return n
+      }
+      const one = await lists(1)
+      expect(one).toBeGreaterThan(0)
+      expect(await lists(3)).toBe(one)
     },
   )
 })

@@ -20,36 +20,29 @@
  * the `XDG_*` ones with their XDG defaults on every OS.
  */
 
-import { readFile } from 'node:fs/promises'
-import { extname, isAbsolute, join, normalize, sep } from 'node:path'
+import { readFile, stat } from 'node:fs/promises'
+import { isAbsolute, join, normalize, sep } from 'node:path'
 
-import { failureText, firstLine } from '@osdlc/command-seam'
 import { getIn } from '@osdlc/config-layers'
 import { parse as parseToml } from 'smol-toml'
 import { parse as parseYaml } from 'yaml'
 
+import { runFailure } from '../helpers.ts'
 import type { Kit } from '../kit.ts'
 import { within } from '../roots.ts'
 import type { Os } from './schema.ts'
+import {
+  BUILT_IN_VARS,
+  VAR_FILE_EXTENSIONS,
+  VAR_REF,
+  varRefs,
+  type VarFileExtension,
+} from './var-names.ts'
 
-/** How long a `command` source may run before the next source is tried. */
+export { BUILT_IN_VARS, VAR_FILE_EXTENSIONS, badVarRef, varRefs } from './var-names.ts'
+
+/** How long a `command` source may run, or a `file` source be read, before the next source is tried. */
 export const VAR_COMMAND_LIMIT_MS = 5_000
-
-/**
- * The variables every descriptor has: each `XDG_*` folder with its default
- * under the home folder, used when the environment does not set it to an
- * absolute path, as the tools that read them do.
- */
-export const BUILT_IN_VARS = {
-  HOME: undefined,
-  XDG_CACHE_HOME: '.cache',
-  XDG_DATA_HOME: '.local/share',
-  XDG_CONFIG_HOME: '.config',
-  XDG_STATE_HOME: '.local/state',
-} as const satisfies Record<string, string | undefined>
-
-/** A `${VAR}` reference; the name is an environment variable's name. */
-const VAR_REF = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g
 
 /** The parser for each extension a `file` source may have. */
 const PARSERS = {
@@ -57,12 +50,7 @@ const PARSERS = {
   '.json': JSON.parse,
   '.yaml': parseYaml,
   '.yml': parseYaml,
-} satisfies Record<string, (text: string) => unknown>
-
-type VarFileExtension = keyof typeof PARSERS
-
-/** The extensions a `file` source may have, by the format read. */
-export const VAR_FILE_EXTENSIONS = Object.keys(PARSERS) as VarFileExtension[]
+} satisfies Record<VarFileExtension, (text: string) => unknown>
 
 /** A folder per OS; `all` covers every OS. */
 type PerOs = { [K in Os | 'all']?: string | undefined }
@@ -99,12 +87,6 @@ export interface VarValue {
 
 /** Every variable's outcome: the built-ins, then the declared ones in the order declared. */
 export type Vars = Record<string, VarValue>
-
-/** The names `text` refers to as `${NAME}`, in order, repeats kept. */
-export const varRefs = (text: string): string[] => [...text.matchAll(VAR_REF)].map((m) => m[1]!)
-
-/** Whether `text` has a `${` that is not a well-formed `${NAME}`. */
-export const badVarRef = (text: string): boolean => text.replace(VAR_REF, '').includes('${')
 
 /** How `source` is named in an outcome. A `command` source may have `env` too, so it is told apart first. */
 function describeSource(source: VarSource): string {
@@ -171,7 +153,7 @@ export interface VarsAt {
   kit: Pick<Kit, 'onPath' | 'run'>
   /** The hook's signal; a command still running when it aborts gives no value. */
   signal: AbortSignal
-  /** Each command's time limit. Default {@link VAR_COMMAND_LIMIT_MS}. */
+  /** Each command's, and each file read's, time limit. Default {@link VAR_COMMAND_LIMIT_MS}. */
   timeoutMs?: number | undefined
   /**
    * The declared variables to resolve; default all. The ones their sources use
@@ -253,7 +235,7 @@ export async function resolveVars(
     if ('file' in source) {
       const file = await fill(source.file, by)
       if ('failed' in file) return file
-      const v = await keyIn(file.value, source.key)
+      const v = await keyIn(file.value, source.key, at.signal, limit)
       return typeof v === 'string' ? { value: v, trusted: false } : { failed: v.failed }
     }
     const template = forOs(source.value, at.os)
@@ -359,17 +341,50 @@ function builtIns(at: Pick<VarsAt, 'home' | 'env' | 'trustsXdg'>): Vars {
   return out
 }
 
-/** The string at the dotted `key` in the TOML, JSON or YAML file at `file`, or why there is none. */
-async function keyIn(file: string, key: string): Promise<string | { failed: string }> {
-  let text: string
+/**
+ * The text of the regular file `file`, or why there is none: a FIFO or other
+ * special file is not read, and a read still waiting after `limit`, as on a
+ * stalled network mount, gives up.
+ */
+async function textOf(
+  file: string,
+  signal: AbortSignal,
+  limit: number,
+): Promise<string | { failed: string }> {
+  const read = (async () => {
+    if (!(await stat(file)).isFile()) return { failed: `${file} is not a file` }
+    return readFile(file, { encoding: 'utf-8', signal })
+  })()
+  // The read may end after the limit; its outcome is then dropped.
+  read.catch(() => undefined)
+  let timer: NodeJS.Timeout | undefined
+  const late = new Promise<{ failed: string }>((done) => {
+    timer = setTimeout(() => done({ failed: `${file} not read within ${limit / 1000} s` }), limit)
+  })
   try {
-    text = await readFile(file, 'utf-8')
+    return await Promise.race([read, late])
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code
     return { failed: code === 'ENOENT' ? `no file ${file}` : `cannot read ${file}: ${code}` }
+  } finally {
+    clearTimeout(timer)
   }
-  // The schema allows only these extensions, and a filled template keeps its end.
-  const parse: (text: string) => unknown = PARSERS[extname(file) as VarFileExtension]
+}
+
+/** The string at the dotted `key` in the TOML, JSON or YAML file at `file`, or why there is none. */
+async function keyIn(
+  file: string,
+  key: string,
+  signal: AbortSignal,
+  limit: number,
+): Promise<string | { failed: string }> {
+  const text = await textOf(file, signal, limit)
+  if (typeof text !== 'string') return text
+  // The schema allows only these extensions, and a filled template keeps its
+  // end. Matched on the end, as the schema does, so `.yaml` alone is YAML.
+  const ext = VAR_FILE_EXTENSIONS.find((e) => file.endsWith(e))
+  if (ext === undefined) return { failed: `${file} is not a TOML, JSON or YAML file` }
+  const parse: (text: string) => unknown = PARSERS[ext]
   let data: unknown
   try {
     data = parse(text)
@@ -405,9 +420,7 @@ async function commandValue(
   }
   if (r.reason === 'timeout') return { failed: `timed out after ${limit / 1000} s` }
   if (!r.ok) {
-    const said = firstLine(failureText(r, { both: true }))
-    const how =
-      r.neverExited === true ? `did not run (${r.reason ?? 'unknown'})` : `exit ${r.exitCode}`
+    const { how, said } = runFailure(r)
     return { failed: said === '' ? how : `${how}: ${said}` }
   }
   const out = r.stdout.trim()
