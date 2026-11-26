@@ -21,7 +21,7 @@ any other in the order given. The order decides which plugin keeps a duplicate i
 | object | each plugin | objects to any candidate; sees no other plugin's objections |
 | decide | core | `refuse` blocks, `protest` needs `--allow <code>`, `note` does not gate |
 | re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved `changed` |
-| prepare | every plugin | before the delete; a throw stops only that candidate, a `FatalRun` stops the run. `ctx.run` holds the candidates the run deletes |
+| prepare | every plugin | before the delete; a throw stops only that candidate, a `FatalRun` stops the run. `ctx.run` holds the candidates the run deletes. A returned sentence is kept in the step's `prepared`, even if the candidate then fails |
 | delete | the owner | returns the receipt sentence |
 | deleted | every other plugin | after the delete; best effort, failures are in the receipt |
 
@@ -90,8 +90,11 @@ blockers are `refuse` objections and its risks `protest`s, so
 freed by a worktree requires it. With `archive` (`clean --archive` on the
 command line), unlanded work is pushed to the remote first: `prepare` pushes one
 archive of everything the run deletes in a repository (`ctx.run`) before its
-first candidate there. A failed push throws `FatalRun`, and a candidate with
-unlanded work in a repository with no remote is refused (`no-remote`). Work
+first candidate there, or before another plugin's candidate inside one of the
+run's worktrees. Without `ctx.run`, it archives each candidate it was not given
+before. The step that pushed it records the archive in `prepared`. A failed push
+throws `FatalRun`, and a candidate with unlanded work in a repository with no
+remote is refused (`no-remote`). Work
 that changed since the archive fails that candidate, and stays. Grant the named
 risks; the `discard-archived` cover is not yet offered here.
 

@@ -46,6 +46,7 @@ export {
   archiveCandidates,
   archiveProblem,
   check,
+  noRemote,
   removeCandidate,
   run,
   type CandidateArchive,

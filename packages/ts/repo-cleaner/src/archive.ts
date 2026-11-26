@@ -123,8 +123,19 @@ export function coverageOf(row: Row, opts: ArchiveOptions, git: (path: string) =
   return { covers, leftOut }
 }
 
-/** True when a row, or the candidate of one, could put something in an archive. */
-export function mayContribute(row: Pick<Row, 'risks'>): boolean {
+/**
+ * True when a row, or the candidate of one, could put something in an archive:
+ * it risks `abandon-unmerged` or `discard-changes`, and is not a worktree whose
+ * directory is gone, of which {@link pushArchive} holds nothing.
+ */
+export function mayContribute(row: {
+  kind: string
+  risks: readonly string[]
+  evidence: object
+}): boolean {
+  if (row.kind === 'worktree' && (row.evidence as { onDisk?: unknown }).onDisk === false) {
+    return false
+  }
   return row.risks.includes('abandon-unmerged') || row.risks.includes('discard-changes')
 }
 

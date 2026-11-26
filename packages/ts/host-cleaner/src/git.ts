@@ -4,12 +4,15 @@
  * as the delete.
  */
 
+import { sep } from 'node:path'
+
 import {
   RISKS,
   archiveCandidates,
   archiveProblem,
   candidatesOf,
   mayContribute,
+  noRemote,
   removeCandidate,
   sweep,
   type ArchiveOptions,
@@ -64,10 +67,20 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
     return row
   }
 
-  /** Archive the unlanded work of what this run deletes in `row`'s repository, once a run. */
-  const archiveRepo = (row: CleanCandidate, ctx: Ctx): CandidateArchive => {
+  /**
+   * Archive the unlanded work of what this run deletes in `row`'s repository,
+   * once a run when `ctx.run` names it all; else again for each row the last
+   * archive does not hold. `pushed` is set when this call pushed one.
+   */
+  const archiveRepo = (
+    row: CleanCandidate,
+    ctx: Ctx,
+  ): { made: CandidateArchive; pushed: boolean } => {
     const done = archives.get(row.repo)
-    if (done !== undefined) return done
+    const holds = (a: CandidateArchive) => a.stamps.has(row.id) || a.refused.has(row.id)
+    if (done !== undefined && (!mayContribute(row) || holds(done))) {
+      return { made: done, pushed: false }
+    }
     const running = (ctx.run ?? []).flatMap((c) => {
       const r = c.owner === 'git' ? rows.get(c.id) : undefined
       return r?.repo === row.repo ? [r] : []
@@ -84,8 +97,20 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
       throw new FatalRun(`archive failed: ${err instanceof Error ? err.message : String(err)}`)
     }
     archives.set(row.repo, made)
-    return made
+    return { made, pushed: made.record !== null }
   }
+
+  /**
+   * The git worktree rows this run deletes that hold `c`, a candidate of
+   * another plugin: their archive is made before `c` is touched.
+   */
+  const worktreesHolding = (c: Candidate, ctx: Ctx): CleanCandidate[] =>
+    (ctx.run ?? []).flatMap((q) => {
+      const r = q.owner === 'git' ? rows.get(q.id) : undefined
+      return r?.kind === 'worktree' && mayContribute(r) && c.path.startsWith(`${r.path}${sep}`)
+        ? [r]
+        : []
+    })
 
   return {
     name: 'git',
@@ -122,10 +147,9 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
           code,
           reason,
         })
-        const noRemote = `archive: ${row.repo} has no remote to push the archive to`
         const unarchivable =
           opts.archive !== undefined && row.remote === null && mayContribute(row)
-            ? [own('refuse', 'no-remote', noRemote)]
+            ? [own('refuse', 'no-remote', noRemote(row.repo))]
             : []
         return [
           ...row.blockers.map((b) => own('refuse', b, `${row.why} (${b})`)),
@@ -135,11 +159,22 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
       })
     },
     prepare(c, ctx) {
-      if (opts.archive === undefined || c.owner !== 'git') return
+      if (opts.archive === undefined) return
+      const sentence = (a: { made: CandidateArchive; pushed: boolean }): string[] =>
+        a.pushed ? [`${a.made.record!.ref} lists ${a.made.record!.sha}`] : []
+      if (c.owner !== 'git') {
+        // What another plugin deletes inside a worktree is archived with it first.
+        const made = worktreesHolding(c, ctx).flatMap((r) => sentence(archiveRepo(r, ctx)))
+        return made.length > 0 ? made.join('; ') : undefined
+      }
       const row = rowOf(c)
       // Not in `delete`: what cannot be archived must stop before another plugin acts on it.
-      const problem = archiveProblem(row, archiveRepo(row, ctx), runners)
-      if (problem !== null) throw new Error(problem)
+      const archived = archiveRepo(row, ctx)
+      const problem = archiveProblem(row, archived.made, runners)
+      if (problem !== null) {
+        throw new Error([problem, ...sentence(archived)].join('; '))
+      }
+      return archived.pushed ? sentence(archived)[0] : undefined
     },
     delete(c, ctx) {
       const row = rowOf(c)

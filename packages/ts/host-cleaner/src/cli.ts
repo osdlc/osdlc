@@ -21,7 +21,7 @@ import {
   type FlagSpec,
   type FlagValues,
 } from '@osdlc/cli-tool'
-import type { ArchiveOptions, Kind } from '@osdlc/repo-cleaner'
+import { mayContribute, type ArchiveOptions, type Kind } from '@osdlc/repo-cleaner'
 import { stripControls } from '@osdlc/ux'
 
 import { expandHome, ignorePaths } from './ignore.ts'
@@ -653,23 +653,19 @@ function chooseCandidates(plan: Plan, preview: Decision, deps: MainDeps): Plan |
 
 /**
  * The ids in `d.run` whose unlanded work `clean --archive` pushes first: the
- * git plugin's candidates it protests as `abandon-unmerged` or
- * `discard-changes`, less a worktree whose directory is gone, which has
- * nothing left an archive can hold.
+ * git plugin's candidates that `mayContribute`, judged by the risks it protests.
  */
 function archivedIds(d: Decision, objections: readonly Objection[]): string[] {
-  const holds = new Set(
+  const risksOf = (id: string): string[] =>
     objections
-      .filter(
-        (o) =>
-          o.by === 'git' &&
-          o.level === 'protest' &&
-          (o.code === 'abandon-unmerged' || o.code === 'discard-changes'),
-      )
-      .map((o) => o.candidate),
-  )
+      .filter((o) => o.by === 'git' && o.level === 'protest' && o.candidate === id)
+      .map((o) => o.code)
   return d.run
-    .filter((c) => c.owner === 'git' && holds.has(c.id) && c.evidence.onDisk !== false)
+    .filter(
+      (c) =>
+        c.owner === 'git' &&
+        mayContribute({ kind: c.kind, risks: risksOf(c.id), evidence: c.evidence }),
+    )
     .map((c) => c.id)
 }
 
@@ -695,6 +691,7 @@ function renderReceipt(r: Receipt, path: string): string {
       `  ${s.result === 'ok' ? 'done' : s.result.toUpperCase().padEnd(7)} ${s.id}`,
       `          ${s.delete ?? s.error ?? ''}`,
     )
+    for (const p of s.prepared ?? []) lines.push(`          ${p}`)
     for (const n of s.notified)
       if (n.error !== null) lines.push(`          ${n.plugin}: ${n.error}`)
   }

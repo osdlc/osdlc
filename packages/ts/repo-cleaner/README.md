@@ -1242,7 +1242,8 @@ const receipt = run(preview)
 | `removeCandidate(candidate, opts?)` | Delete one candidate as `run` takes one row: archive first with `archive`, the live-process and unsafe-force checks, the removal, its verification. Returns a `CandidateRemoval` (`ok`, `steps`, `error`, and `archiveFailed` for a failed archive push, which a host should treat as fatal). With `archived`, an `archiveCandidates` answer, nothing is pushed, and a candidate whose unlanded work it does not hold as it is now is refused. Never throws for a refused or failed delete |
 | `archiveCandidates(candidates, opts)` | Push one archive of the unlanded work of one repository's candidates, as `run` does, and check the remote has it. Returns a `CandidateArchive`; throws when it cannot be made. Deletes nothing |
 | `archiveProblem(candidate, archived)` | Why a candidate may not be deleted on that archive, or null when it may |
-| `mayContribute(candidate)` | True when a candidate holds work an archive could hold |
+| `mayContribute(candidate)` | True when a candidate holds work an archive could hold; never a worktree whose directory is gone |
+| `noRemote(repo)` | The refusal of an archive for a repository with no remote |
 | `readPlan`, `writePlan`, `PlanSchema` | Plans on disk |
 | `fingerprint`, `sameFingerprint` | The evidence a row rests on and the rule that compares two of them |
 | `writeJsonAtomic`, `busyHolders` | The atomic JSON write the receipt uses; the holders of a worktree that are not idle shells |

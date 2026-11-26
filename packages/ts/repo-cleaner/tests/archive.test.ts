@@ -15,7 +15,7 @@ import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 import { sh } from './helpers.ts'
 import type { Approval } from '../src/approval.ts'
 import { check, run, type RunOptions } from '../src/clean.ts'
-import { coverageOf, leftOutReason } from '../src/archive.ts'
+import { coverageOf, leftOutReason, mayContribute } from '../src/archive.ts'
 import { plan, type Plan } from '../src/plan.ts'
 import type { Receipt } from '../src/receipt.ts'
 import { sweep } from '../src/sweep.ts'
@@ -289,6 +289,16 @@ describe('archive before delete', () => {
     })
     expect(steps).toEqual(['archive', 'delete-branch'])
     expect(receipt.status).toBe('complete')
+  })
+})
+
+describe('mayContribute', () => {
+  test('a worktree whose directory is gone holds nothing an archive can push', () => {
+    const risks = ['abandon-unmerged', 'discard-changes']
+    expect(mayContribute({ kind: 'worktree', risks, evidence: { onDisk: false } })).toBe(false)
+    expect(mayContribute({ kind: 'worktree', risks, evidence: { onDisk: true } })).toBe(true)
+    expect(mayContribute({ kind: 'branch', risks: ['abandon-unmerged'], evidence: {} })).toBe(true)
+    expect(mayContribute({ kind: 'branch', risks: [], evidence: {} })).toBe(false)
   })
 })
 

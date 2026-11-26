@@ -669,10 +669,7 @@ function planSteps(plan: Plan, approval: ResolvedApproval, opts: CheckOptions): 
       if (members.length === 0) continue
       const info = rechecked.infos.get(root)!
       if (info.remote === null) {
-        throw new RepoCleanerError(
-          'conflict',
-          `archive: ${root} has no remote to push the archive to`,
-        )
+        throw new RepoCleanerError('conflict', noRemote(root))
       }
       const step = pending(
         root,
@@ -1250,7 +1247,10 @@ function acceptCandidate(
   }
 }
 
-const noRemote = (repo: string): string => `archive: ${repo} has no remote to push the archive to`
+/** The refusal of an archive for `repo`, which has no remote to push it to. */
+export function noRemote(repo: string): string {
+  return `archive: ${repo} has no remote to push the archive to`
+}
 
 /** The archive of one repository's candidates, as {@link archiveCandidates} pushed it. */
 export interface CandidateArchive {
@@ -1305,7 +1305,7 @@ export function archiveCandidates(
     opts.archive,
     (opts.now ?? (() => new Date()))(),
   )
-  // Of a worktree whose directory is gone there are no files to hold, and nothing to compare.
+  // A branch's stamp is the commit it stood at when the archive was made.
   const stamps = new Map(jobs.map(({ id, row }) => [id, pushed.stamps.get(id) ?? tipOf(row)]))
   return { ...made, record: pushed.record, stamps }
 }
@@ -1314,30 +1314,45 @@ export function archiveCandidates(
 const tipOf = (row: Row): string => (row.kind === 'worktree' ? '' : row.evidence.sha)
 
 /**
+ * Why `candidate` is not held by `archived` at all, or null when it is or
+ * holds nothing unlanded.
+ */
+function notArchived(candidate: CleanCandidate, archived: CandidateArchive): string | null {
+  if (!mayContribute(candidate)) return null
+  const left = archived.refused.get(candidate.id)
+  if (left !== undefined) return left
+  const held = archived.repo === candidate.repo && archived.stamps.has(candidate.id)
+  return held ? null : `refused: ${candidate.id} was not archived`
+}
+
+/**
  * Why `candidate` may not be deleted on the strength of `archived`, or null
- * when it may: it holds nothing unlanded, or the archive holds it as it is now.
+ * when it may: it holds nothing unlanded, or the archive holds it. A worktree
+ * is compared with the archive as it is now; a branch is not read again here,
+ * since `delete-branch` deletes it only at the commit the archive holds.
  */
 export function archiveProblem(
   candidate: CleanCandidate,
   archived: CandidateArchive,
   opts: Pick<Runners, 'git'> = {},
 ): string | null {
-  if (!mayContribute(candidate)) return null
-  const left = archived.refused.get(candidate.id)
-  if (left !== undefined) return left
-  const stamp = archived.repo === candidate.repo ? archived.stamps.get(candidate.id) : undefined
-  if (stamp === undefined) return `refused: ${candidate.id} was not archived`
+  const missing = notArchived(candidate, archived)
+  if (missing !== null || !mayContribute(candidate)) return missing
   const row = rowOfCandidate(candidate)
-  let now = tipOf(row)
-  if (row.kind === 'worktree' && row.evidence.onDisk !== false) {
-    const at = new Git(row.name, { runner: opts.git })
-    try {
-      now = worktreeStamp(at, archived.options, row.risks.includes('discard-changes'))
-    } catch (err) {
-      return `refused: ${candidate.id}: ${errorText(err)}`
-    }
+  if (row.kind !== 'worktree') return null
+  let now: string
+  try {
+    now = worktreeStamp(
+      new Git(row.name, { runner: opts.git }),
+      archived.options,
+      row.risks.includes('discard-changes'),
+    )
+  } catch (err) {
+    return `refused: ${candidate.id}: ${errorText(err)}`
   }
-  return stamp === now ? null : `refused: ${candidate.path} changed since it was archived`
+  return archived.stamps.get(candidate.id) === now
+    ? null
+    : `refused: ${candidate.path} changed since it was archived`
 }
 
 /**
@@ -1372,7 +1387,8 @@ export function removeCandidate(
   const stamps = new Map<string, string>()
   let job: ArchiveJob | undefined
   if (opts.archived !== undefined) {
-    const problem = archiveProblem(candidate, opts.archived, opts)
+    // A worktree is compared with the archive by its `remove-worktree` step.
+    const problem = notArchived(candidate, opts.archived)
     if (problem !== null) return refused(problem)
     const stamp = opts.archived.stamps.get(row.id)
     if (stamp !== undefined) stamps.set(`${a.repo}\0${row.id}`, stamp)

@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, test } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -223,6 +230,86 @@ describe('the git plugin', () => {
     expect(receipt.steps[0]).toMatchObject({ result: 'failed' })
     expect(receipt.steps[0]!.error).toContain('changed since it was archived')
     expect(existsSync(join(fx.worktree, 'late.txt'))).toBe(true)
+  })
+
+  test('without ctx.run, each prepare archives what the last archive does not hold', () => {
+    const fx = fixture()
+    sh(fx.root, ['branch', 'other', 'unmerged'])
+    sh(fx.root, ['checkout', '-q', 'other'])
+    sh(fx.root, ['commit', '--allow-empty', '-m', 'other wip'])
+    sh(fx.root, ['checkout', '-q', 'main'])
+    const plugin = archiving()
+    const ctx = { ...fx.ctx, allow: ['abandon-unmerged'] }
+    const found = survey([plugin], ctx).candidates
+    for (const name of ['unmerged', 'other']) {
+      const c = found.find((x) => x.id === `branch:${realpathSync(fx.root)}:${name}`)!
+      expect(plugin.prepare!(c, ctx)).toContain('refs/heads/archive/')
+      expect(plugin.delete!(c, ctx)).toContain('refs/heads/archive/')
+    }
+    expect(branches(fx.root)).not.toContain('other')
+    expect(archives(fx.bare)).toHaveLength(2)
+  })
+
+  test('the receipt names the archive a prepare pushed, though the delete then fails', () => {
+    const fx = fixture()
+    const plugin = archiving()
+    const id = `branch:${realpathSync(fx.root)}:unmerged`
+    const failing: Plugin = {
+      name: 'failing',
+      detect: () => true,
+      prepare: (c) => {
+        if (c.id === id) throw new Error('will not')
+      },
+    }
+    const allow = ['abandon-unmerged']
+    const p = plan(survey([plugin, failing], fx.ctx), { select: [id], allow })
+    const receipt = clean(p, [plugin, failing], { ...fx.ctx, allow })
+    expect(receipt.steps[0]).toMatchObject({ result: 'failed', preparedBy: ['git'] })
+    expect(receipt.steps[0]!.prepared).toEqual([
+      expect.stringMatching(/^git: refs\/heads\/archive\/\S+ lists [0-9a-f]+$/),
+    ])
+    expect(branches(fx.root)).toContain('unmerged')
+  })
+
+  test("another plugin's candidate inside a worktree is prepared only after the worktree is archived", () => {
+    const fx = fixture()
+    writeFileSync(join(fx.worktree, 'wip.txt'), 'wip\n')
+    const plugin = archiving()
+    const inside: Plugin = {
+      name: 'inside',
+      detect: () => true,
+      discover: () => [
+        {
+          id: 'inside:wip',
+          kind: 'cache',
+          path: join(fx.worktree, 'wip.txt'),
+          owner: 'inside',
+          why: 'a file in the worktree',
+          evidence: {},
+        },
+      ],
+      delete: (c) => {
+        // The archive already holds the file this deletes.
+        expect(archives(fx.bare)).toHaveLength(1)
+        return `removed ${c.id}`
+      },
+    }
+    const allow = ['discard-changes']
+    const s = survey([plugin, inside], fx.ctx)
+    const p = plan(s, { select: ['inside:wip', `worktree:${fx.worktree}`], allow })
+    const receipt = clean(p, [plugin, inside], { ...fx.ctx, allow })
+    expect(receipt.steps[0]).toMatchObject({ id: 'inside:wip', result: 'ok' })
+    expect(receipt.steps[0]!.prepared?.[0]).toMatch(/^git: refs\/heads\/archive\//)
+  })
+
+  test('with archive, a gone worktree in a repository with no remote is not refused for it', () => {
+    const fx = fixture()
+    sh(fx.worktree, ['commit', '--allow-empty', '-m', 'more'])
+    rmSync(fx.worktree, { recursive: true, force: true })
+    sh(fx.root, ['remote', 'remove', 'origin'])
+    const s = survey([archiving()], fx.ctx)
+    const id = `worktree:${fx.worktree}`
+    expect(s.objections.filter((o) => o.candidate === id && o.code === 'no-remote')).toEqual([])
   })
 
   test('with archive, unlanded work in a repository with no remote is refused, merged work is not', () => {
