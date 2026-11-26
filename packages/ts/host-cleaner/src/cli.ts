@@ -35,6 +35,7 @@ import {
   SelectionError,
   clean,
   decidePlan,
+  inspect,
   plan as makePlan,
   recheck,
   survey,
@@ -106,7 +107,8 @@ const PHASES = `phases:
   ${NAME} plan     save what status found, to clean later or hand over
   ${NAME} clean    check again, show the steps, ask, delete
 
-  ${NAME} config   print the effective settings of every plugin`
+  ${NAME} config   print the effective settings of every plugin
+  ${NAME} plugins  list every plugin: where it came from, detected or why not, its roots`
 
 /** What the bare command prints: the phases, and that nothing ran. */
 const OVERVIEW = `${NAME} finds what on this machine can go (worktrees and branches whose
@@ -124,6 +126,7 @@ It works in phases, as repo-cleaner does. Nothing is deleted until clean.
                 $ ${NAME} clean --plan plan.json
 
 \`${NAME} config\` prints each plugin's settings and where each value came from.
+\`${NAME} plugins\` lists each plugin, whether it applies here and why not, and its roots.
 
 Nothing ran. Name a phase; \`${NAME} <phase> --help\` shows its options.
 `
@@ -171,6 +174,29 @@ const configCli = () =>
       },
       ...HELP_FLAGS,
     },
+  })
+
+const pluginsCli = () =>
+  defineCli({
+    name: `${NAME} plugins`,
+    summary:
+      'List every plugin: where it came from, whether it applies here and why not, and the ' +
+      'folders it may delete in. Runs detect, scope and roots only; proposes and deletes nothing.',
+    autoHelp: false,
+    positionals: TARGETS,
+    flags: {
+      config: SWEEP_FLAGS.config,
+      ignore: SWEEP_FLAGS.ignore,
+      format: {
+        kind: 'enum',
+        choices: ['text', 'json'] as const,
+        valueName: 'form',
+        default: 'text',
+        help: 'text (the report) or json (everything)',
+      },
+      ...HELP_FLAGS,
+    },
+    shortEpilogue: `To try one plugin's candidates: ${NAME} status --plugin <name>`,
   })
 
 const planCli = () =>
@@ -357,11 +383,17 @@ const loadConfig = (v: { config?: string | undefined }, ctx: CliContext): Config
 const unknownPlugins = (config: Config, known: (name: string) => boolean): string[] =>
   Object.keys(config.plugins).filter((n) => !known(n))
 
-/** The plugins this run uses: the shipped ones built from the config, or `deps.plugins`, then chosen by flag. */
-function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliContext): Plugin[] {
-  // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
-  const only: Kind[] =
-    v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
+/**
+ * Every plugin, enabled or not: the shipped ones built from the config, or `deps.plugins`.
+ * @param only The kinds the shipped plugins propose; ignored for `deps.plugins`.
+ * @throws {BadInput} When the config names a plugin that is not among them.
+ */
+function allPlugins(
+  config: Config,
+  deps: MainDeps,
+  ctx: CliContext,
+  only: readonly Kind[] = ['worktree', 'branch'],
+): readonly Plugin[] {
   const all =
     deps.plugins ??
     BUILT_IN_PLUGINS.map((d) =>
@@ -374,11 +406,22 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliCont
     )
   const unused = unknownPlugins(config, (n) => all.some((p) => p.name === n))
   if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
-  // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
-  const named = v.plugin ?? []
-  const chosen = selectPlugins(all, v.plugin, v.skipPlugin)
-  return chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins))
+  return all
 }
+
+/** The plugins this run uses: {@link allPlugins}, then chosen by flag. */
+function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliContext): Plugin[] {
+  // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
+  const only: Kind[] =
+    v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
+  const all = allPlugins(config, deps, ctx, only)
+  const chosen = selectPlugins(all, v.plugin, v.skipPlugin)
+  return chosen.filter((p) => enabled(p.name, config, v.plugin))
+}
+
+/** `enabled: false` in the config leaves a plugin out; naming it in `named` (`--plugin`) runs it anyway. */
+const enabled = (name: string, config: Config, named: readonly string[] = []): boolean =>
+  named.includes(name) || !disabledByConfig(name, config.plugins)
 
 /** The home folder, from `HOME` when set, with no trailing slash. */
 const homeOf = (ctx: CliContext): string => (ctx.env.HOME ?? homedir()).replace(/(.)\/+$/, '$1')
@@ -576,6 +619,107 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
     ctx.io.stdout(block(lines))
   } catch (err) {
     return refusal(ctx, name, err)
+  }
+  return EXIT.ok
+}
+
+/** One row of `host-cleaner plugins`. */
+interface PluginRow {
+  name: string
+  /** Where the plugin came from: shipped with host-cleaner, or given by the program that calls `main`. */
+  source: 'built-in' | 'given'
+  enabled: boolean
+  detected: boolean
+  /** Why it does not run: `plugins.<name>.enabled is false`, or the `reason` `inspect` gave. Null when it is detected, or `detect` answered no. */
+  reason: string | null
+  /** Where it may delete besides the targets; empty, the targets alone. */
+  roots: readonly string[]
+  /** Why `roots` is empty though the plugin has a `roots` hook: `rootsFailed` from `inspect`; null otherwise. */
+  rootsFailed: string | null
+  /** The roots among `roots` that may be deleted themselves (`{ path, self: true }`). */
+  selfRoots: readonly string[]
+  /** The note its `detect` gave, whether it is detected or not; null when it gave none. */
+  note: string | null
+}
+
+/** `text` on one line, so a plugin's own words cannot split a row: each run of whitespace is one space. */
+const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
+
+/** `path` on one line; it keeps its spaces, as only a line break would split a row. */
+const pathLine = (path: string): string => path.replace(/[\r\n]+/g, ' ')
+
+/** How to run a disabled plugin; `plugins` itself takes no `--plugin`. */
+const runsAnyway = (name: string): string =>
+  `; status, plan or clean with --plugin ${oneLine(name)} runs it anyway`
+
+function renderPlugins(
+  rows: readonly PluginRow[],
+  targets: readonly string[],
+  ignored: readonly string[],
+): string {
+  const names = rows.map((r) => oneLine(r.name))
+  const width = Math.max(...names.map((n) => n.length))
+  const sourceWidth = Math.max(...rows.map((r) => r.source.length))
+  const lines = [`targets: ${targets.map(pathLine).join(', ') || '(none)'}`]
+  if (ignored.length > 0) lines.push(`ignoring: ${ignored.map(pathLine).join(', ')}`)
+  for (const [i, r] of rows.entries()) {
+    const state = !r.enabled
+      ? 'disabled'
+      : r.detected
+        ? `detected; roots: ${r.roots.map((root) => pathLine(root) + (r.selfRoots.includes(root) ? ' (itself too)' : '')).join(', ') || `none, the targets alone${r.rootsFailed === null ? '' : ` (${oneLine(r.rootsFailed)})`}`}`
+        : 'not detected'
+    const reason =
+      r.reason === null ? null : oneLine(r.reason) + (r.enabled ? '' : runsAnyway(r.name))
+    const note = r.note === null ? null : oneLine(r.note)
+    lines.push(
+      `  ${names[i]!.padEnd(width)}  ${r.source.padEnd(sourceWidth)}  ${state}${reason === null ? '' : `: ${reason}`}${note === null ? '' : `; note: ${note}`}`,
+    )
+  }
+  return block(lines)
+}
+
+async function runPlugins(
+  argv: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+): Promise<number> {
+  const name = `${NAME} plugins`
+  const parsed = parseWith(pluginsCli(), name, argv, ctx)
+  if (parsed.status === 'done') return parsed.code
+  const v = parsed.values
+  let rows: PluginRow[]
+  let targets: readonly string[]
+  let ignored: readonly string[]
+  let warnings: readonly string[]
+  try {
+    const config = loadConfig(v, ctx)
+    const all = allPlugins(config, deps, ctx)
+    const at = contextFor(parsed.positionals, config, ctx, [], v.ignore)
+    const found = await inspect(all, at, { skip: (p) => !enabled(p.name, config) })
+    rows = found.plugins.map((s): PluginRow => ({
+      name: s.name,
+      source: s.builtIn === true ? 'built-in' : 'given',
+      enabled: s.skipped !== true,
+      detected: s.detected,
+      reason: s.skipped === true ? `plugins.${s.name}.enabled is false` : (s.reason ?? null),
+      roots: s.roots,
+      rootsFailed: s.rootsFailed ?? null,
+      selfRoots: s.selfRoots,
+      note: s.note ?? null,
+    }))
+    targets = found.ctx.targets
+    ignored = found.ctx.ignore ?? []
+    warnings = found.warnings
+  } catch (err) {
+    return refusal(ctx, name, err)
+  }
+  if (v.format === 'json') {
+    ctx.io.stdout(
+      `${JSON.stringify({ targets, ignore: ignored, warnings, plugins: rows }, null, 2)}\n`,
+    )
+  } else {
+    writeWarnings(ctx, name, warnings)
+    ctx.io.stdout(renderPlugins(rows, targets, ignored))
   }
   return EXIT.ok
 }
@@ -855,7 +999,7 @@ export async function main(
   deps: MainDeps = {},
 ): Promise<number> {
   const [sub, ...rest] = argv
-  const phase = sub === 'status' || sub === 'plan' || sub === 'clean'
+  const phase = sub === 'status' || sub === 'plan' || sub === 'clean' || sub === 'plugins'
   // It cleans one person's files; as root, a target or a root could reach everyone's.
   // `config` only reads the settings, so it still answers.
   if (phase && (deps.uid ?? process.getuid?.()) === 0) {
@@ -868,6 +1012,7 @@ export async function main(
   if (sub === 'plan') return runPlan(rest, ctx, deps)
   if (sub === 'clean') return runClean(rest, ctx, deps)
   if (sub === 'config') return runConfig(rest, ctx)
+  if (sub === 'plugins') return runPlugins(rest, ctx, deps)
   if (sub === '-h' || sub === '--help') {
     ctx.io.stdout(OVERVIEW)
     return EXIT.ok
@@ -880,6 +1025,6 @@ export async function main(
   return usageError(
     ctx,
     NAME,
-    `${JSON.stringify(sub)} is not a phase: name one of status, plan, clean or config, then the targets`,
+    `${JSON.stringify(sub)} is not a phase: name one of status, plan, clean, config or plugins, then the targets`,
   )
 }

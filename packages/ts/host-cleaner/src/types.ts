@@ -248,6 +248,34 @@ export const definePlugin = <S extends z.ZodObject>(
   },
 })
 
+/**
+ * The hooks a factory host-cleaner ships gave the plugin it built. An
+ * enumerable own property, so a copy such as `{ ...gitPlugin(), limits }`
+ * keeps it.
+ */
+const SHIPPED_HOOKS = Symbol('host-cleaner shipped hooks')
+
+type Branded = Plugin & { [SHIPPED_HOOKS]?: Partial<Record<Hook, unknown>> }
+
+const hooksOf = (plugin: Plugin): Partial<Record<Hook, unknown>> =>
+  Object.fromEntries(HOOKS.map((h) => [h, plugin[h]]))
+
+/** `plugin`, recorded as one host-cleaner ships; each built-in plugin's factory returns through it. */
+export const builtIn = (plugin: Plugin): Plugin => {
+  ;(plugin as Branded)[SHIPPED_HOOKS] = hooksOf(plugin)
+  return plugin
+}
+
+/**
+ * Whether a factory host-cleaner ships built `plugin`, however it reached the
+ * caller, copied or not: every hook is still the one that factory gave it. A
+ * program that replaces a hook wrote that plugin.
+ */
+export const isBuiltIn = (plugin: Plugin): boolean => {
+  const shipped = (plugin as Branded)[SHIPPED_HOOKS]
+  return shipped !== undefined && HOOKS.every((h) => plugin[h] === shipped[h])
+}
+
 /** Thrown from a plugin to stop the whole run, not only the candidate it was working on. */
 export class FatalRun extends Error {
   override name = 'FatalRun'
