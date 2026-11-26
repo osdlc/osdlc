@@ -428,7 +428,10 @@ candidates:
   - { path: tools, costDescription: rebuild }
 `
 
-  /** The go descriptor, shipped, as a plugin over a fixture home whose `go env GOMODCACHE` never answers. */
+  /**
+   * The go descriptor, shipped, and a plugin built from it over a fixture home
+   * whose `go env GOMODCACHE` never answers, for a program to pass to `main`.
+   */
   function goHungEnv() {
     const h = tempHome()
     cleanups.push(h.cleanup)
@@ -447,7 +450,8 @@ candidates:
   test('a timed-out command shows as such, with the source used after it: one line per variable', async () => {
     const { env, cwd } = setup()
     const { home, shipped, go } = goHungEnv()
-    const r = await run(['plugins'], cwd, env, {
+    // A given plugin is `given`, though a shipped descriptor has its name.
+    const r = await run(['plugins'], cwd, { ...env, HOME: home }, {
       plugins: [fake('git'), go],
       shippedDescriptors: shipped,
     })
@@ -456,8 +460,8 @@ candidates:
     expect(r.out).toBe(
       [
         `targets: ${cwd}`,
-        '  git  given    detected; roots: none, the targets alone',
-        `  go   shipped  detected; roots: ${join(home, 'go/pkg/mod')} (itself too), ${join(home, '.cache/go-build')} (itself too); note: tools is left out: \${TOOLDIR} has no value (env GO_TOOL_DIR: not set)`,
+        '  git  given  detected; roots: none, the targets alone',
+        `  go   given  detected; roots: ${join(home, 'go/pkg/mod')} (itself too), ${join(home, '.cache/go-build')} (itself too); note: tools is left out: \${TOOLDIR} has no value (env GO_TOOL_DIR: not set)`,
         `    \${XDG_CACHE_HOME}  = ${join(home, '.cache')}  from default (tried env XDG_CACHE_HOME: not set)`,
         `    \${GOPATH}          = ${join(home, 'go')}  from value (tried env GOPATH: not set)`,
         `    \${GOMODCACHE}      = ${join(home, 'go/pkg/mod')}  from value (tried env GOMODCACHE: not set; command go env GOMODCACHE: timed out after 5 s)`,
@@ -470,13 +474,14 @@ candidates:
   test('json gives each variable its value, the source that gave it and every source that failed', async () => {
     const { env, cwd } = setup()
     const { home, shipped, go } = goHungEnv()
-    const r = await run(['plugins', '--format', 'json'], cwd, env, {
+    const r = await run(['plugins', '--format', 'json'], cwd, { ...env, HOME: home }, {
       plugins: [go],
       shippedDescriptors: shipped,
     })
     expect(r.code).toBe(0)
     const [row] = JSON.parse(r.out).plugins
-    expect(row.source).toBe('shipped')
+    expect(row.source).toBe('given')
+    expect(row.replaces).toBeUndefined()
     expect(row.vars).toEqual([
       {
         name: 'XDG_CACHE_HOME',
@@ -512,7 +517,7 @@ candidates:
     ])
   })
 
-  test('it proposes and deletes nothing, and a config naming no plugin is refused with exit 2', async () => {
+  test('it proposes and deletes nothing, and a config naming no plugin is a warning', async () => {
     const { env, cwd, home } = setup()
     let discovered = false
     const plugin = { ...fake(), discover: () => ((discovered = true), []) }
@@ -522,8 +527,8 @@ candidates:
     const file = join(home, 'c.json')
     writeFileSync(file, JSON.stringify({ plugins: { ghost: {} } }))
     const r = await run(['plugins', '--config', file], cwd, env, { plugins: [plugin] })
-    expect(r.code).toBe(2)
-    expect(r.err).toContain('ghost')
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('config names no plugin ghost')
   })
 
   test('a second plugin of one name gets no row of its own, and the warning says it was left out', async () => {
