@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.4](https://github.com/osdlc/osdlc/compare/markdown-relink/v0.4.3...markdown-relink/v0.4.4) - 2026-11-26
+
+### Added
+
+- *(markdown-relink)* plan_redirect points an attachment's links at the kept copy
+
 ## [0.4.3](https://github.com/osdlc/osdlc/compare/markdown-relink/v0.4.2...markdown-relink/v0.4.3) - 2026-11-22
 
 ### Other
