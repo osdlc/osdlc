@@ -693,6 +693,22 @@ describe('object', () => {
     expect(await quit.object!(all, fakeContext())).toEqual([])
   })
 
+  test("refuses git's worktree a window has open when git spells it in another case than the disk does", async ({
+    skip,
+  }) => {
+    const h = home()
+    const wt = join(h.projects, 'wt')
+    mkdirSync(wt)
+    const spelled = join(h.projects, 'WT')
+    // Only where the filesystem ignores case, as macOS's and Windows' do by default.
+    if (!existsSync(spelled)) skip()
+    windows(h.user, [wt])
+    const plugin = vscodePlugin(h.options({ probe: probeOf([CODE]) }))
+    expect(await plugin.object!([worktree(spelled)], fakeContext())).toEqual([
+      expect.objectContaining({ candidate: `worktree:${spelled}`, code: VSCODE_IN_USE }),
+    ])
+  })
+
   test('a window state it cannot read refuses while VS Code runs, and not after', async () => {
     const h = home()
     const wt = join(h.projects, 'wt')

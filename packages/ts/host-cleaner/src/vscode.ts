@@ -31,7 +31,6 @@ import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { nodeGuard } from '@osdlc/path-guard/node'
 import { PS_LSTART_ENV, startMs } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
@@ -40,6 +39,7 @@ import {
   isGitWorktree,
   isObject,
   objector,
+  realAbove,
   realOr,
   yieldToLimit,
 } from './helpers.ts'
@@ -357,13 +357,6 @@ type Env = Readonly<Record<string, string | undefined>>
 
 /** `HOME`, or the OS's home when it is unset or empty: a folder kept from deletion is looked for even then. */
 const homeOf = (env: Env): string => env.HOME || homedir()
-
-/**
- * The real path of as much of `path` as exists, with the rest after it (see
- * `PathGuard.realPath`): what is gone still compares through the links above
- * it. `path` itself when it is not absolute.
- */
-const realAbove = (path: string): string => (isAbsolute(path) ? nodeGuard.realPath(path) : path)
 
 /**
  * `editor`'s `User` folder on `platform`, found as VS Code and its forks find
@@ -704,7 +697,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
    * Nothing can be told of a worktree but where it is: the editor's folders on
    * this platform are not known, and Windows has no `lsof` to list processes with.
    * With a `userDir` given, its window state can still tell, so it is read, and
-   * each worktree is noted as not fully checked.
+   * a worktree it does not refuse is noted as not fully checked.
    */
   const placeOnly = userDir === undefined && platform === 'win32'
   /** `root` when it exists. */
@@ -786,7 +779,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
         ),
       ]
     }
-    // Not running means this hook call read the process table, which the read for `c` uses too.
+    // Not running means this hook call read the process table, and the read for `c` came from it: no note is due.
     if (!w.running) return []
     const unchecked = (): Objection[] =>
       here.unknown === undefined
