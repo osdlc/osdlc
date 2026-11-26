@@ -2,8 +2,8 @@
  * A tool that imports verb functions and `runVerb`, and constructs no `Gh`,
  * bundles only the verbs it calls. A bundler drops an unused function but
  * not an unused method, so a `Gh` keeps every verb and parser. This test
- * bundles both shapes of diffkit's two calls (`prDiff`, then a raw checked
- * call) with tree-shaking on. It fails as soon as the verb path carries any
+ * bundles both shapes of a review tool's two calls (`prDiff`, then a raw
+ * checked call) with tree-shaking on. It fails as soon as the verb path carries any
  * value the package exports, other than the few that path calls, or one of the
  * client's internal helpers. The list comes from the exports, so a verb added
  * later is checked too. See docs/planning/decisions/bundle-size.md.
