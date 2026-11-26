@@ -119,8 +119,8 @@ What a plan runs uses repo-cleaner's words, with their meaning:
 - **`select`:** exactly these candidate ids instead of the default.
 - **`pick`:** these as well; a candidate held for review runs only when picked
   or selected.
-- **`spare`:** leave these alone: an id, a path (a ref candidate's `ref` or
-  the folder it is `at`), a name (every candidate of that name, as a branch
+- **`spare`:** leave these alone: an id, a path (a ref candidate's `ref`,
+  the folder it is `at`, or `<at>:<ref>`, as in `~/dev/app:release-1.2`), a name (every candidate of that name, as a branch
   and the worktree that has it checked out), or a glob over ids, paths and
   names. A spared candidate that would have run is
   dropped as `spared`.

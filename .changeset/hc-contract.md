@@ -9,7 +9,7 @@ Removed or changed, and what replaces each:
 - `survey`, `recheck`, `clean` and the command line's `main` return promises: `await` them. They take a `RunCtx`; `Ctx`, what a hook gets, adds `signal` and `targetsGiven`.
 - `PLUGIN_ORDER` and `orderPlugins` are gone: plugins run in the order given, and the shipped ones are `BUILT_IN_PLUGINS`, in run order.
 - `--adapter` is gone: use `--plugin`.
-- `Candidate` is `PathCandidate` (`path`) or `RefCandidate` (`ref`, optional `at`), so `path` may be unset. A git branch is a ref named by its branch with its repository as `at` (its path was `<repo>:<name>`), and an Orca record a ref to Orca's id with the gone directory as `at`.
+- `Candidate` is `PathCandidate` (`path`) or `RefCandidate` (`ref`, optional `at`), so `path` may be unset. A git branch is a ref named by its branch with its repository as `at` (its path was `<repo>:<name>`, which `--spare` still takes), and an Orca record a ref to Orca's id with the gone directory as `at`.
 - A plugin without `roots` is held to the targets (it was not checked), so a path candidate outside them is refused `outside-roots`: declare `roots`.
 - Plans are at version 2. A plan of another version, or without a field this version needs (`targetsGiven`), is refused: sweep again.
 - `ArtifactOptions.command` is gone: `cargoPlugin` and `nodePlugin` take the kit's options (`runner`, `which`) instead. Artifact evidence no longer holds the newest modification time or the size.

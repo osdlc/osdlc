@@ -461,10 +461,11 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
  *            chose.
  *   `pick`   also run these: a candidate held for review
  *            (`held: true`) runs only when picked or selected.
- *   `spare`  leave these alone: an id, a path (a ref candidate's ref or
- *            `at`), a name (every candidate of
- *            that name, as a branch and the worktree that has it), or a
- *            glob (`*`, `**`, `?`) over ids, paths and names.
+ *   `spare`  leave these alone: an id, a path (a ref candidate's ref,
+ *            `at`, or `<at>:<ref>`, as a git branch's path was), a name
+ *            (every candidate of that name, as a branch and the worktree
+ *            that has it), or a glob (`*`, `**`, `?`) over ids, paths and
+ *            names.
  *
  * The same words repo-cleaner's approval uses, with the same meaning.
  */
@@ -483,6 +484,8 @@ export function spares(entry: string, c: Candidate): boolean {
     c.id,
     c.path ?? c.ref,
     ...(c.at === undefined ? [] : [c.at]),
+    // A git branch's path was `<repo>:<branch>`, and a spare may still name it so.
+    ...(c.at === undefined || c.ref === undefined ? [] : [`${c.at}:${c.ref}`]),
     ...(c.name === undefined ? [] : [c.name]),
   ]
   if (isGlob(entry)) {

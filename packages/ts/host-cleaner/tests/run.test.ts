@@ -476,6 +476,16 @@ describe('pick, select and spare', () => {
     expect(ran({ spare: ['nothing-*'] }).dropped).toEqual([])
   })
 
+  test('a branch is spared by its old path, `<repo>:<branch>`, and a glob over it', () => {
+    expect(ran({ spare: ['/r:feat/x'] }).dropped).toEqual([
+      { id: 'branch:/r:feat/x', reason: 'spared', detail: '--spare /r:feat/x' },
+    ])
+    expect(ran({ spare: ['/r:feat/*'] }).run.map((c) => c.id)).toEqual([
+      'worktree:/w/x',
+      'artifact:/r/target',
+    ])
+  })
+
   test('a spare wins over a pick of something it matches', () => {
     const d = ran({ pick: ['worktree:/w/x'], spare: ['feat/*'] })
     expect(d.run.map((c) => c.id)).toEqual(['artifact:/r/target'])
