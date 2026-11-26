@@ -2144,6 +2144,88 @@ describe('every removal passes one check, the same in a dry run (final review ro
       expect(existsSync(clone)).toBe(true)
     })
 
+    unreadableTest(
+      'a clone holding a folder that cannot be listed stays at its own path, in a dry run too',
+      () => {
+        const clone = makeClone('acme/api', 400)
+        const shut = join(clone, 'shut')
+        mkdirSync(shut)
+        writeFileSync(join(shut, 'inside'), 'x')
+        withMode(shut, 0o000, () => {
+          const r = bothModes({ allClones: true })
+          expect(r.removed).toEqual([])
+          expect(r.failed.map((e) => [e.kind, e.path])).toEqual([['clone', clone]])
+        })
+        expect(existsSync(join(clone, CLONE_MARKER))).toBe(true)
+        expect(readdirSync(dirname(clone))).toEqual(['api.git'])
+      },
+    )
+
+    test('a clone’s dead run worktree whose folder is gone, with the folders above it, goes with the clone', () => {
+      const clone = makeClone('acme/api', 400)
+      runWorktree(clone, 'acme/api')
+      rmSync(join(paths.worktrees, 'github.com'), { recursive: true, force: true })
+
+      const r = bothModes({ allClones: true })
+
+      expect(r.removed.map((e) => e.kind)).toEqual(['worktree', 'clone'])
+      expect(existsSync(clone)).toBe(false)
+    })
+
+    unreadableTest(
+      'a dead run worktree goes when only a folder above the one it is in cannot be written to',
+      () => {
+        const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
+        checkout.commit('init', { 'w.txt': 'w' })
+        const dead = runWorktree(checkout.dir, 'acme/web')
+        withMode(join(paths.worktrees, 'github.com', 'acme'), 0o500, () => {
+          expect(bothModes({}).removed.map((e) => e.path)).toEqual([dead])
+        })
+        expect(existsSync(dead)).toBe(false)
+      },
+    )
+
+    unreadableTest(
+      'a dead run worktree holding an empty folder that cannot be written to goes',
+      () => {
+        const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
+        checkout.commit('init', { 'w.txt': 'w' })
+        const dead = runWorktree(checkout.dir, 'acme/web')
+        const empty = join(dead, 'empty')
+        mkdirSync(empty)
+        chmodSync(empty, 0o500)
+
+        expect(bothModes({}).removed.map((e) => e.path)).toEqual([dead])
+        expect(existsSync(dead)).toBe(false)
+      },
+    )
+
+    test('a kept tree whose folder is gone goes with its clone under --discard-kept', () => {
+      const clone = makeClone('acme/api', 400)
+      const path = keptWorktree(clone, 'acme/api', 7)
+      rmSync(path, { recursive: true, force: true })
+
+      const r = bothModes(everything)
+
+      expect(r.removed.map((e) => [e.kind, e.path])).toEqual([
+        ['kept', path],
+        ['clone', clone],
+      ])
+      expect(existsSync(clone)).toBe(false)
+    })
+
+    unreadableTest(
+      'a machine file that cannot be read fails nothing when there is no clone directory',
+      () => {
+        const file = machineFile({ env }).path()
+        mkdirSync(dirname(file), { recursive: true })
+        writeFileSync(file, 'mirror_max_age_days: 0\n')
+        withMode(file, 0o000, () => {
+          expect(bothModes({ machine: machineFile({ env }) }).failed).toEqual([])
+        })
+      },
+    )
+
     test.each([
       ['a YAML error', 'mirror_max_age_days: [\n'],
       ['a value the schema refuses', 'mirror_max_age_days: -5\n'],
