@@ -39,6 +39,7 @@ import {
   clean,
   descriptorPlugin,
   globMatches,
+  inspect,
   parseDescriptor,
   pathProblem,
   plan,
@@ -47,6 +48,7 @@ import {
   survey,
   type Descriptor,
   type DescriptorOptions,
+  type Detection,
   type Kit,
   type Os,
   type PathCandidate,
@@ -1217,6 +1219,77 @@ function outsideHome(): string {
 }
 
 describe('variables (tier 2)', () => {
+  test('detect gives the variables its folders use; one that throws after working them out gives none', async () => {
+    // An `exists` condition, so a missing program alone does not leave the variables unresolved.
+    const text = `descriptor: 1
+detect:
+  any: [{ onPath: mine }, { exists: store }]
+vars:
+  DIR:
+    - env: MINE_DIR
+    - value: ~/.cache/mine
+paths:
+  store: { all: '\${DIR}' }
+candidates:
+  - { path: store, costDescription: re-download }
+`
+    const b = buildVars('mine', text)
+    const answer = (await b.plugin.detect(fakeContext())) as Detection
+    expect(answer).toMatchObject({
+      active: false,
+      vars: { DIR: { value: join(b.home, '.cache/mine'), from: 'value' } },
+    })
+    expect(answer.vars?.HOME).toBeUndefined()
+    // They come with the answer, so a wrapper around the plugin keeps them.
+    const [wrapped] = (await inspect([{ ...b.plugin }], fakeContext())).plugins
+    expect(wrapped!.vars?.DIR?.value).toBe(join(b.home, '.cache/mine'))
+
+    // `onPath` throws once the variables are worked out, as a stat that fails would.
+    const h = tempHome()
+    let looks = 0
+    cleanups.push(h.cleanup)
+    const throwing = descriptorPlugin('mine', parseDescriptor(text, 'mine.yaml'), {
+      os: OS,
+      ownDirs: [],
+    }).create({
+      settings: { idleHours: 0 },
+      only: [],
+      env: h.env,
+      kit: pluginKit('mine', {
+        env: h.env,
+        which: () => {
+          // The look before the variables finds it; the one after throws.
+          if (looks++ === 0) return '/bin/mine'
+          throw new Error('EACCES')
+        },
+      }),
+    })
+    const [state] = (await inspect([throwing], fakeContext())).plugins
+    expect(state).toMatchObject({ detected: false, reason: 'EACCES' })
+    expect(state!.vars).toBeUndefined()
+  })
+
+  test('detect shows the variables the folders use and the built-ins their sources name, and no others', async () => {
+    const text = `descriptor: 1
+detect:
+  any: [{ exists: store }]
+vars:
+  ROOT:
+    - value: \${XDG_CACHE_HOME}/mine
+  DIR:
+    - value: \${ROOT}/store
+  UNUSED:
+    - value: \${XDG_DATA_HOME}/other
+paths:
+  store: { all: '\${DIR}' }
+candidates:
+  - { path: store, costDescription: re-download }
+`
+    const b = buildVars('mine', text)
+    const answer = (await b.plugin.detect(fakeContext())) as Detection
+    expect(Object.keys(answer.vars ?? {}).sort()).toEqual(['DIR', 'ROOT', 'XDG_CACHE_HOME'])
+  })
+
   test('the contract suite passes for pnpm and go, with and without their tools', async () => {
     for (const [name, text] of [
       ['pnpm', PNPM_VARS],

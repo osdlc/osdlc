@@ -30,6 +30,7 @@ import { parse as parseYaml } from 'yaml'
 import { runFailure } from '../helpers.ts'
 import type { Kit } from '../kit.ts'
 import { within } from '../roots.ts'
+import type { VarValue, Vars } from '../types.ts'
 import type { Os } from './schema.ts'
 import {
   BUILT_IN_VARS,
@@ -41,6 +42,7 @@ import {
 } from './var-names.ts'
 
 export { BUILT_IN_VARS, VAR_FILE_EXTENSIONS, badVarRef, varRefs } from './var-names.ts'
+export type { VarValue, Vars } from '../types.ts'
 
 /** How long a `command` source may run, or a `file` source be read, before the next source is tried. */
 export const VAR_COMMAND_LIMIT_MS = 5_000
@@ -66,29 +68,6 @@ export type VarSource =
 /** The text of `v` on `os`: `v` itself, its `all`, or its `os` entry. */
 export const forOs = (v: string | PerOs, os: Os): string | undefined =>
   typeof v === 'string' ? v : (v.all ?? v[os])
-
-/** One variable's outcome. */
-export interface VarValue {
-  /** The folder, absolute and normalized; null when no source gave one. */
-  value: string | null
-  /**
-   * The source that gave it, as {@link describeSource} names it; `config`;
-   * `home` for `HOME`; or `default` for an `XDG_*` folder's default.
-   */
-  from?: string
-  /**
-   * Set in the config, an `XDG_*` folder the environment sets that
-   * {@link VarsAt.trustsXdg} passes (as a built-in or read by an `env`
-   * source), or a `value` inside a trusted variable's
-   * folder ({@link fillTemplate}): its folders may sit outside home.
-   */
-  trusted: boolean
-  /** The sources before it that gave nothing, in order, and why. */
-  tried: Array<{ source: string; failed: string }>
-}
-
-/** Every variable's outcome: the built-ins, then the declared ones in the order declared. */
-export type Vars = Record<string, VarValue>
 
 /** How `source` is named in an outcome. A `command` source may have `env` too, so it is told apart first. */
 function describeSource(source: VarSource): string {
@@ -159,8 +138,8 @@ export interface VarsAt {
   timeoutMs?: number | undefined
   /**
    * The declared variables to resolve; default all. The ones their sources use
-   * are resolved as those sources need them. The rest are left out of the
-   * outcome, and their commands never run.
+   * are resolved as those sources need them. The rest, and the built-ins none
+   * of these use, are left out of the outcome, and their commands never run.
    */
   only?: Iterable<string> | undefined
 }
@@ -168,8 +147,8 @@ export interface VarsAt {
 type Given = { value: string; trusted: boolean } | { failed: string }
 
 /**
- * Every variable in `declared`, or in `at.only`, and the built-ins, resolved
- * now. Variables that don't use each other resolve at the same time; one
+ * Every variable in `declared` and the built-ins, or those `at.only` uses,
+ * resolved now. Variables that don't use each other resolve at the same time; one
  * variable's sources are tried one at a time. So a descriptor whose longest
  * chain of variables has `n` command sources can take `n` times the time
  * limit.
@@ -198,8 +177,12 @@ export async function resolveVars(
     return false
   }
 
+  // Every name asked for or used by a source on the way, built in or declared.
+  const asked = new Set<string>()
+
   /** Resolves `name`, a variable `by`'s sources use, or one asked for when `by` is undefined. */
   const resolve = async (name: string, by?: string): Promise<void> => {
+    asked.add(name)
     if (!started.has(name) && (Object.hasOwn(done, name) || !Object.hasOwn(declared, name))) return
     if (by !== undefined && waitsFor(name, by)) return
     let running = started.get(name)
@@ -283,7 +266,7 @@ export async function resolveVars(
   await Promise.all([...new Set(at.only ?? Object.keys(declared))].map((name) => resolve(name)))
   return Object.fromEntries(
     [...Object.keys(BUILT_IN_VARS), ...Object.keys(declared)]
-      .filter((n) => Object.hasOwn(done, n))
+      .filter((n) => Object.hasOwn(done, n) && (at.only === undefined || asked.has(n)))
       .map((n) => [n, done[n]!]),
   )
 }

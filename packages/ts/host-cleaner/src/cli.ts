@@ -38,9 +38,11 @@ import {
   DescriptorLoadError,
   sameDescriptor,
   type DescriptorProblem,
+  type DescriptorSource,
   type DescriptorSources,
 } from './descriptor/load.ts'
 import { DescriptorError } from './descriptor/schema.ts'
+import type { VarValue, Vars } from './descriptor/vars.ts'
 import { pluginKit } from './kit.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import {
@@ -55,6 +57,7 @@ import {
   SelectionError,
   clean,
   decidePlan,
+  inspect,
   plan as makePlan,
   recheck,
   survey,
@@ -134,7 +137,8 @@ const PHASES = `phases:
   ${NAME} plan     save what status found, to clean later or hand over
   ${NAME} clean    check again, show the steps, ask, delete
 
-  ${NAME} config   print the effective settings of every plugin`
+  ${NAME} config   print the effective settings of every plugin
+  ${NAME} plugins  list every plugin: where it came from, detected or why not, its roots`
 
 /** What the bare command prints: the phases, and that nothing ran. */
 const OVERVIEW = `${NAME} finds what on this machine can go (worktrees and branches whose
@@ -152,9 +156,19 @@ It works in phases, as repo-cleaner does. Nothing is deleted until clean.
                 $ ${NAME} clean --plan plan.json
 
 \`${NAME} config\` prints each plugin's settings and where each value came from.
+\`${NAME} plugins\` lists each plugin, whether it applies here and why not, and its roots.
 
 Nothing ran. Name a phase; \`${NAME} <phase> --help\` shows its options.
 `
+
+/** `--format` of `status` and `plugins`. */
+const REPORT_FORMAT = {
+  kind: 'enum',
+  choices: ['text', 'json'] as const,
+  valueName: 'form',
+  default: 'text',
+  help: 'text (the report) or json (everything)',
+} as const
 
 const statusCli = () =>
   defineCli({
@@ -170,13 +184,7 @@ const statusCli = () =>
         kind: 'boolean',
         help: 'also show candidates a plugin refuses (with --format text)',
       },
-      format: {
-        kind: 'enum',
-        choices: ['text', 'json'] as const,
-        valueName: 'form',
-        default: 'text',
-        help: 'text (the report) or json (everything)',
-      },
+      format: REPORT_FORMAT,
       ...HELP_FLAGS,
     },
     shortEpilogue: `${PHASES}
@@ -202,6 +210,24 @@ const configCli = () =>
       },
       ...HELP_FLAGS,
     },
+  })
+
+const pluginsCli = () =>
+  defineCli({
+    name: `${NAME} plugins`,
+    summary:
+      'List every plugin: where it came from, whether it applies here and why not, and the ' +
+      'folders it may delete in. Runs detect, scope and roots only; proposes and deletes nothing.',
+    autoHelp: false,
+    positionals: TARGETS,
+    flags: {
+      config: SWEEP_FLAGS.config,
+      ignore: SWEEP_FLAGS.ignore,
+      descriptor: SWEEP_FLAGS.descriptor,
+      format: REPORT_FORMAT,
+      ...HELP_FLAGS,
+    },
+    shortEpilogue: `To try one plugin's candidates: ${NAME} status --plugin <name>`,
   })
 
 const planCli = () =>
@@ -487,7 +513,11 @@ function setUp(
     }
     warnings.push(unknownMessage(unknown))
   }
-  const chosen = pluginsFor(v, config, definitions, problems, deps, ctx)
+  // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
+  const only: Kind[] =
+    v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
+  const all = allPlugins(config, definitions, deps, ctx, only)
+  const chosen = chosenByFlag<Plugin | DescriptorProblem>(v, [...all, ...problems], config)
   for (const p of problems) {
     if (chosen.includes(p)) throw p.error
     warnings.push(`${p.error.message}; this run leaves ${p.name} out`)
@@ -506,22 +536,17 @@ function setUp(
 }
 
 /**
- * What this run chooses: `definitions` built from the config, or
- * `deps.plugins`, and the descriptors that can't be used, by name, chosen by
- * flag and the config. A chosen problem is one the run would use.
+ * Every plugin, enabled or not: `definitions` built from the config, or `deps.plugins`.
+ * @param only The kinds the `git` plugin proposes; ignored for `deps.plugins`.
  */
-function pluginsFor(
-  v: SweepValues,
+function allPlugins(
   config: Config,
   definitions: readonly PluginDefinition[],
-  problems: readonly DescriptorProblem[],
   deps: MainDeps,
   ctx: CliContext,
-): Array<Plugin | DescriptorProblem> {
-  // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
-  const only: Kind[] =
-    v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
-  const all =
+  only: readonly Kind[],
+): readonly Plugin[] {
+  return (
     deps.plugins ??
     definitions.map((d) =>
       d.create({
@@ -531,15 +556,26 @@ function pluginsFor(
         kit: pluginKit(d.name, { env: ctx.env }),
       }),
     )
-  // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
-  const named = v.plugin ?? []
-  const chosen = selectPlugins<Plugin | DescriptorProblem>(
-    [...all, ...problems],
-    v.plugin,
-    v.skipPlugin,
   )
-  return chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins))
 }
+
+/**
+ * The entries of `all` this run uses, chosen by flag and the config. With the
+ * descriptors that can't be used among them, by name, a chosen one is one the
+ * run would use.
+ */
+function chosenByFlag<P extends Pick<Plugin, 'name'>>(
+  v: SweepValues,
+  all: readonly P[],
+  config: Config,
+): P[] {
+  const chosen = selectPlugins(all, v.plugin, v.skipPlugin)
+  return chosen.filter((p) => enabled(p.name, config, v.plugin))
+}
+
+/** `enabled: false` in the config leaves a plugin out; naming it in `named` (`--plugin`) runs it anyway. */
+const enabled = (name: string, config: Config, named: readonly string[] = []): boolean =>
+  named.includes(name) || !disabledByConfig(name, config.plugins)
 
 /** The home folder, from `HOME` when set, with no trailing slash. */
 const homeOf = (ctx: CliContext): string => (ctx.env.HOME ?? homedir()).replace(/(.)\/+$/, '$1')
@@ -747,6 +783,197 @@ function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
     ctx.io.stdout(block(lines))
   } catch (err) {
     return refusal(ctx, name, err)
+  }
+  return EXIT.ok
+}
+
+/** One of a descriptor's variables, as `host-cleaner plugins` shows it. */
+type VarRow = Omit<VarValue, 'from'> & {
+  name: string
+  /** The source that gave it, such as `config`, `env GOPATH` or `value`; null when none did. */
+  from: string | null
+}
+
+/** One row of `host-cleaner plugins`. */
+interface PluginRow {
+  name: string
+  /** Where the plugin came from: `built-in`, the folder a descriptor was read from (`flag` is `--descriptor`), or `given` by the program that calls `main`. */
+  source: 'built-in' | 'given' | DescriptorSource
+  /** See `LoadedDescriptor.replaces` in `./descriptor/load.ts`. */
+  replaces?: { source: DescriptorSource; path: string }
+  enabled: boolean
+  detected: boolean
+  /** Why it does not run: `plugins.<name>.enabled is false`, the `reason` `inspect` gave, or why its descriptor can't be used. Null when it is detected, or `detect` answered no. */
+  reason: string | null
+  /** Where it may delete besides the targets; empty, the targets alone. */
+  roots: readonly string[]
+  /** Why `roots` is empty though the plugin has a `roots` hook: `rootsFailed` from `inspect`; null otherwise. */
+  rootsFailed: string | null
+  /** The roots among `roots` that may be deleted themselves (`{ path, self: true }`). */
+  selfRoots: readonly string[]
+  /** The note its `detect` gave, whether it is detected or not; null when it gave none. */
+  note: string | null
+  /** A descriptor's variables as its `detect` gave them; empty for a plugin that has none, or when `detect` did not finish. */
+  vars: readonly VarRow[]
+}
+
+/** The row of a descriptor that can't be used: not detected, with its error as the reason, or disabled as any plugin is. */
+const problemRow = (p: DescriptorProblem, on: boolean): PluginRow => ({
+  name: p.name,
+  source: p.source,
+  enabled: on,
+  detected: false,
+  reason: on ? p.error.message : `plugins.${p.name}.enabled is false`,
+  roots: [],
+  rootsFailed: null,
+  selfRoots: [],
+  note: null,
+  vars: [],
+})
+
+const varRows = (vars: Vars | undefined): VarRow[] =>
+  Object.entries(vars ?? {}).map(([name, x]) => ({ name, ...x, from: x.from ?? null }))
+
+/**
+ * `${NAME} = <folder>  from <source> (tried <source>: <why it gave none>; …)`,
+ * without `from` when the plugin named no source, or `has no value (tried …)`
+ * when no source gave one.
+ */
+function varLine(x: VarRow, width: number): string {
+  const tried =
+    x.tried.length === 0
+      ? ''
+      : ` (tried ${x.tried.map((t) => `${oneLine(t.source)}: ${oneLine(t.failed)}`).join('; ')})`
+  const from = x.from === null ? '' : `  from ${oneLine(x.from)}`
+  const said = x.value === null ? `has no value${tried}` : `= ${pathLine(x.value)}${from}${tried}`
+  return `    ${`\${${oneLine(x.name)}}`.padEnd(width + 3)}  ${said}`
+}
+
+/** `roots: <root> (itself too), …`, or `none, the targets alone (<why>)` when it has none. */
+function rootsText(r: PluginRow): string {
+  const roots = r.roots.map(
+    (root) => pathLine(root) + (r.selfRoots.includes(root) ? ' (itself too)' : ''),
+  )
+  if (roots.length > 0) return `roots: ${roots.join(', ')}`
+  const why = r.rootsFailed === null ? '' : ` (${oneLine(r.rootsFailed)})`
+  return `roots: none, the targets alone${why}`
+}
+
+/** `text` on one line, so a plugin's own words cannot split a row: each run of whitespace is one space. */
+const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
+
+/** `path` on one line; it keeps its spaces, as only a line break would split a row. */
+const pathLine = (path: string): string => path.replace(/[\r\n]+/g, ' ')
+
+/** How to run a disabled plugin; `plugins` itself takes no `--plugin`. */
+const runsAnyway = (name: string): string =>
+  `; status, plan or clean with --plugin ${oneLine(name)} runs it anyway`
+
+/** What `--plugin` does when a descriptor that can't be used has the name: `setUp` throws its error. */
+const stopsOnError = (name: string): string =>
+  `; status, plan or clean with --plugin ${oneLine(name)} stops on its descriptor's error`
+
+/** @param unusable The names of the descriptors that can't be used, a built-in's among them. */
+function renderPlugins(
+  rows: readonly PluginRow[],
+  targets: readonly string[],
+  ignored: readonly string[],
+  unusable: ReadonlySet<string>,
+): string {
+  const names = rows.map((r) => oneLine(r.name))
+  const width = Math.max(...names.map((n) => n.length))
+  const sourceWidth = Math.max(...rows.map((r) => r.source.length))
+  const lines = [`targets: ${targets.map(pathLine).join(', ') || '(none)'}`]
+  if (ignored.length > 0) lines.push(`ignoring: ${ignored.map(pathLine).join(', ')}`)
+  for (const [i, r] of rows.entries()) {
+    const state = !r.enabled
+      ? 'disabled'
+      : r.detected
+        ? `detected; ${rootsText(r)}`
+        : 'not detected'
+    const hint = r.enabled ? '' : unusable.has(r.name) ? stopsOnError(r.name) : runsAnyway(r.name)
+    const reason = r.reason === null ? null : oneLine(r.reason) + hint
+    const note = r.note === null ? null : oneLine(r.note)
+    const replaces =
+      r.replaces === undefined
+        ? ''
+        : `; replaces the ${r.replaces.source} ${pathLine(r.replaces.path)}`
+    lines.push(
+      `  ${names[i]!.padEnd(width)}  ${r.source.padEnd(sourceWidth)}  ${state}${reason === null ? '' : `: ${reason}`}${note === null ? '' : `; note: ${note}`}${replaces}`,
+    )
+    const varWidth = Math.max(...r.vars.map((x) => oneLine(x.name).length))
+    for (const x of r.vars) lines.push(varLine(x, varWidth))
+  }
+  return block(lines)
+}
+
+async function runPlugins(
+  argv: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+): Promise<number> {
+  const name = `${NAME} plugins`
+  const parsed = parseWith(pluginsCli(), name, argv, ctx)
+  if (parsed.status === 'done') return parsed.code
+  const v = parsed.values
+  let rows: PluginRow[]
+  let targets: readonly string[]
+  let ignored: readonly string[]
+  let warnings: readonly string[]
+  let unusable: ReadonlySet<string>
+  try {
+    const { config, definitions, descriptors, problems, unknown, ...loading } = loadRun(
+      v,
+      ctx,
+      deps,
+    )
+    const all = allPlugins(config, definitions, deps, ctx, ['worktree', 'branch'])
+    const loaded = new Map(descriptors.map((d) => [d.name, d]))
+    const at = contextFor(parsed.positionals, config, ctx, [], v.ignore)
+    const found = await inspect(all, at, { skip: (p) => !enabled(p.name, config) })
+    rows = found.plugins.map((s): PluginRow => {
+      // Without `deps.plugins`, each plugin that is not built in is a descriptor's.
+      const d = s.builtIn === true ? undefined : loaded.get(s.name)
+      return {
+        name: s.name,
+        source: s.builtIn === true ? 'built-in' : (d?.source ?? 'given'),
+        ...(d?.replaces === undefined ? {} : { replaces: d.replaces }),
+        enabled: s.skipped !== true,
+        detected: s.detected,
+        reason: s.skipped === true ? `plugins.${s.name}.enabled is false` : (s.reason ?? null),
+        roots: s.roots,
+        rootsFailed: s.rootsFailed ?? null,
+        selfRoots: s.selfRoots,
+        note: s.note ?? null,
+        vars: varRows(s.vars),
+      }
+    })
+    // A descriptor that can't be used has a row, its error the reason, unless
+    // a plugin has its name; then, or when it is disabled, the error is a warning.
+    const named = new Set(rows.map((r) => r.name))
+    const rowed = problems.filter((p) => !named.has(p.name))
+    rows.push(...rowed.map((p) => problemRow(p, enabled(p.name, config))))
+    unusable = new Set(problems.map((p) => p.name))
+    targets = found.ctx.targets
+    ignored = found.ctx.ignore ?? []
+    warnings = [
+      ...loading.warnings,
+      ...problems
+        .filter((p) => !rowed.includes(p) || !enabled(p.name, config))
+        .map((p) => p.error.message),
+      ...(unknown.length > 0 ? [unknownMessage(unknown)] : []),
+      ...found.warnings,
+    ]
+  } catch (err) {
+    return refusal(ctx, name, err)
+  }
+  if (v.format === 'json') {
+    ctx.io.stdout(
+      `${JSON.stringify({ targets, ignore: ignored, warnings, plugins: rows }, null, 2)}\n`,
+    )
+  } else {
+    writeWarnings(ctx, name, warnings)
+    ctx.io.stdout(renderPlugins(rows, targets, ignored, unusable))
   }
   return EXIT.ok
 }
@@ -1043,6 +1270,23 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   return receipt.status === 'failed' ? EXIT_STEP_FAILED : EXIT.ok
 }
 
+type PhaseRun = (
+  argv: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+) => number | Promise<number>
+
+/** Each phase's runner, in the order the usage error names them. */
+const RUNS = {
+  status: runStatus,
+  plan: runPlan,
+  clean: runClean,
+  config: runConfig,
+  plugins: runPlugins,
+} satisfies Record<string, PhaseRun>
+type Phase = keyof typeof RUNS
+const PHASE_NAMES = Object.keys(RUNS) as Phase[]
+
 /** Resolves to an exit code; never exits the process. */
 export async function main(
   argv: readonly string[],
@@ -1050,19 +1294,19 @@ export async function main(
   deps: MainDeps = {},
 ): Promise<number> {
   const [sub, ...rest] = argv
-  const phase = sub === 'status' || sub === 'plan' || sub === 'clean'
-  // It cleans one person's files; as root, a target or a root could reach everyone's.
-  // `config` only reads the settings, so it still answers.
-  if (phase && (deps.uid ?? process.getuid?.()) === 0) {
-    ctx.io.stderr(
-      renderError('refusing to run as root; run it as the user whose files it cleans', NAME),
-    )
-    return EXIT.error
+  const run: PhaseRun | undefined =
+    sub !== undefined && Object.hasOwn(RUNS, sub) ? RUNS[sub as Phase] : undefined
+  if (run !== undefined) {
+    // It cleans one person's files; as root, a target or a root could reach everyone's.
+    // `config` only reads the settings, so it still answers.
+    if (sub !== 'config' && (deps.uid ?? process.getuid?.()) === 0) {
+      ctx.io.stderr(
+        renderError('refusing to run as root; run it as the user whose files it cleans', NAME),
+      )
+      return EXIT.error
+    }
+    return run(rest, ctx, deps)
   }
-  if (sub === 'status') return runStatus(rest, ctx, deps)
-  if (sub === 'plan') return runPlan(rest, ctx, deps)
-  if (sub === 'clean') return runClean(rest, ctx, deps)
-  if (sub === 'config') return runConfig(rest, ctx, deps)
   if (sub === '-h' || sub === '--help') {
     ctx.io.stdout(OVERVIEW)
     return EXIT.ok
@@ -1075,6 +1319,6 @@ export async function main(
   return usageError(
     ctx,
     NAME,
-    `${JSON.stringify(sub)} is not a phase: name one of status, plan, clean or config, then the targets`,
+    `${JSON.stringify(sub)} is not a phase: name one of ${PHASE_NAMES.slice(0, -1).join(', ')} or ${PHASE_NAMES.at(-1)}, then the targets`,
   )
 }

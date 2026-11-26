@@ -448,7 +448,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     return template === undefined ? [] : [[key, template] as const]
   })
   const lockTemplates = d.inUse?.locks ?? []
-  // resolveVars resolves the variables these use in turn as their sources need them.
+  // resolveVars resolves the variables these use in turn as their sources
+  // need them, and gives those alone: the ones `detect` shows.
   const used = [...pathTemplates.map(([, t]) => t), ...lockTemplates].flatMap(varRefs)
 
   // The folders by their name in `paths`, and the lock files, as the last
@@ -462,7 +463,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   // Why the last survey left folders or locks out; undefined when it left none out.
   let leftOut: string | undefined
 
-  const refresh = async (ctx: Ctx): Promise<void> => {
+  /** Resolves the variables and fills the folders and locks with them; returns every variable's outcome. */
+  const refresh = async (ctx: Ctx): Promise<Vars> => {
     const home = homeOf(ctx)
     const vars = await resolveVars(d.vars ?? {}, {
       home,
@@ -493,6 +495,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     unknownLocks = unknown
     leftOut = why.length === 0 ? undefined : why.join('; ')
     filledFor = home
+    return vars
   }
 
   /** Resolves the variables if no survey has yet for the run's home. */
@@ -1096,7 +1099,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       ) {
         return false
       }
-      await refresh(ctx)
+      const vars = await refresh(ctx)
       const holds = (c: { onPath?: string | undefined; exists?: string | undefined }): boolean => {
         if (c.onPath !== undefined) return kit.onPath(c.onPath)
         const folder = c.exists === undefined ? undefined : folders.get(c.exists)?.path
@@ -1107,7 +1110,13 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         if (d.detect?.any !== undefined) return d.detect.any.some(holds)
         return [...folders.values()].some((f) => present(f.path))
       }
-      return leftOut === undefined ? active() : { active: active(), note: leftOut }
+      const none = Object.keys(vars).length === 0
+      if (leftOut === undefined && none) return active()
+      return {
+        active: active(),
+        ...(leftOut === undefined ? {} : { note: leftOut }),
+        ...(none ? {} : { vars }),
+      }
     },
     async roots(ctx): Promise<Root[]> {
       await ready(ctx)

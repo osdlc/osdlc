@@ -35,6 +35,7 @@ import {
 } from './helpers.ts'
 import {
   PLUGIN_API,
+  builtIn,
   definePlugin,
   type Candidate,
   type Ctx,
@@ -191,7 +192,7 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
 
   const own = objector(ORCA_PLUGIN)
 
-  return {
+  return builtIn({
     name: ORCA_PLUGIN,
     detect(ctx) {
       down = undefined
@@ -317,7 +318,7 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
       prepared.delete(c.id)
       if (r !== undefined) forget(r, ctx)
     },
-  }
+  })
 }
 
 /** The `orca` plugin as the command line builds it. Settings: `repos`. */

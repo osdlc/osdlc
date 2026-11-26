@@ -58,7 +58,11 @@ must still be refused, so it stays active). The core keeps each plugin's note,
 whether it runs or not, in the survey's `notes` (plugin name to note, plain
 JSON). `status`, `plan` and `clean` print each as a warning line naming the
 plugin, so a degraded plugin shows on the commands that act too, and
-`status --format json` and `clean --format json` carry them under `notes`. An
+`status --format json` and `clean --format json` carry them under `notes`. The
+answer may also give `vars`, the variables the plugin's folders use and the
+source of each, as a descriptor's plugin does; `inspect` returns them and
+`host-cleaner plugins` shows them. A sweep does not read them, and `inspect`
+drops `vars` that are not that shape with a warning and keeps the plugin. An
 answer of any other shape leaves the plugin out with a warning.
 
 Every hook's `ctx` carries `targetsGiven`: true when a person named the
@@ -113,6 +117,24 @@ const cache: Plugin = {
 const ctx: RunCtx = { cwd: process.cwd(), targets: [process.cwd()], targetsGiven: true, allow: [] }
 const found = await survey([cache], ctx) // scope, discover, object
 const receipt = await clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
+```
+
+`inspect` asks the plugins where they stand without proposing anything: it
+calls `detect`, `scope` and `roots` as `survey` does, and nothing else, as
+`host-cleaner plugins` does. Each `PluginState` says whether its plugin is
+detected, why not (what `detect` threw, or why its answer was left out), the
+note and the variables (`vars`) `detect` gave, and its roots, less those the
+core refuses. When a detected plugin's `roots` threw, timed out or had every
+root refused, `rootsFailed` says so, since its candidates outside the targets
+are then refused. A failed `scope` or `roots` is a warning. A plugin its `skip`
+option picks is listed as `skipped` and none of its hooks run, as
+`host-cleaner plugins` lists a plugin the config disables.
+
+```ts
+import { inspect } from '@osdlc/host-cleaner'
+
+const seen = await inspect([cache], ctx) // detect, scope, roots; seen.ctx has the scoped targets
+for (const p of seen.plugins) console.log(p.name, p.detected ? p.roots : (p.reason ?? 'not detected'))
 ```
 
 What a plan runs uses repo-cleaner's words, with their meaning:
@@ -265,6 +287,10 @@ Every shipped plugin passes it:
 ```ts
 expect(await contractSuite(plugin, { cwd: root, targets: [root] })).toEqual([])
 ```
+
+On a real machine, `host-cleaner plugins` says whether a plugin is detected and
+where it may delete, and `host-cleaner status --plugin <name>` runs that plugin
+alone and shows its candidates and objections. Neither deletes anything.
 
 ### Descriptors
 
@@ -468,6 +494,7 @@ host-cleaner status [target...]   # every candidate, what deleting it costs, and
 host-cleaner plan -o plan.json
 host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [-i] [--yes | --dry-run]
 host-cleaner config [--format json]   # every plugin's effective settings
+host-cleaner plugins [target...] [--format json]   # every plugin: where it came from, detected or why not, its roots
 ```
 
 | Flag | Meaning, as in repo-cleaner |
@@ -481,7 +508,7 @@ host-cleaner config [--format json]   # every plugin's effective settings
 
 The text output writes the home folder in an id as `~`
 (`worktree:~/dev/wt`, `branch:~/dev/repo:main`), and `--pick` and `--spare`
-take that form, also when `HOME` goes through a symlink. `status`, `plan` and `clean` refuse to run as root (exit 1); `config` still answers. `status`,
+take that form, also when `HOME` goes through a symlink. `status`, `plan`, `clean` and `plugins` refuse to run as root (exit 1); `config` still answers. `status`,
 `plan` and `clean` print each plugin's `detect` note as a warning line naming
 the plugin, with the survey's warnings.
 
@@ -650,6 +677,65 @@ it prints each entry with its own value and the threshold the run applies to it
 (to a prune entry only when its program is not on PATH and the folder is
 removed whole).
 `--format json` prints the values, and those thresholds under `partIdleHours`.
+
+`host-cleaner plugins` lists every plugin: where it came from, each plugin by its
+own origin (`built-in` when host-cleaner ships it, even when a program passes it
+to `main` or a copy of it; for a descriptor `shipped`, `user` for the config
+directory or `flag` for `--descriptor`; and `given` for a plugin the program
+wrote, or one of host-cleaner's whose hooks it replaced), whether it applies
+here and, when it does not, why, and its roots, the folders it may delete in
+besides the targets. When it does not apply, a reason follows if one is known:
+disabled, or what `detect` threw. A `detect` that just answers no, as most
+built-ins do, gives no reason: it shows `not detected`. A descriptor that
+stands in for one of the same name ends its line with the file it replaces
+(`replaces` in JSON). The ignored directories (`--ignore` and the config's
+`ignore`), which may leave out a target, show after `ignoring:`, as in `status`;
+the JSON has them as `ignore`. It runs `detect`, `scope` and `roots` and nothing
+else, so it proposes and deletes nothing. It asks the plugins one after
+another, so each hook that hangs adds its time limit (30 seconds unless the
+plugin asks for another). A note its `detect` gives follows the plugin's state
+(`; note: ...`), whether it is detected or not, so a degraded plugin
+(`{ active: true, note }`) shows as detected with its note, as Orca installed
+but not running does, and a descriptor that is `system: true` or superseded says
+so there; the JSON row has it as `note`. A root the core refuses is left out
+with a warning, as `status` does, and a self root is marked `(itself too)`. A
+detected plugin with no roots shows `none, the targets alone`, followed in
+parentheses by why when its `roots` threw, timed out or had every root refused
+(`rootsFailed` in JSON): its candidates outside the targets are then refused.
+Git is asked once per target only when a plugin gives a root to check.
+`plugins` runs no `discover`, where a sweep asks `roots` after it, so a root a
+plugin takes from what it found (git's gone worktrees) shows in `status` and
+not here. A plugin the config disables is listed as `disabled`, and its
+`detect` is not run; its JSON `reason` is `plugins.<name>.enabled is false`,
+and the text adds that status, plan or clean with `--plugin <name>` runs it
+anyway. A descriptor that can't be used has a row of its own, from where the
+file was found, not detected, with why as the reason; for one the config
+disables, why is a warning, and the text says that status, plan or clean with
+`--plugin <name>` stops on that error, as it does for a disabled built-in
+plugin whose name such a descriptor has. One named as a built-in plugin is a
+warning alone, as a config entry that names no plugin is, as in `config`.
+
+Under a descriptor with variables, one line per variable its folders and locks
+use on this OS, built in or declared: its value and the source that gave it,
+then each source tried before it and why it gave none. A command that timed out
+says so, and the source after it that gave the value is the one named. A
+variable no source gave a value has no value; its folders are left out, and the
+note says so. The variables come with `detect`'s answer, so a descriptor whose
+`detect` threw, timed out, was skipped or was superseded shows none, as does
+one whose `onPath` conditions alone leave it undetected. Each line
+keeps to itself: a line break in a value is printed as a space. `--format json`
+prints the same, one object per plugin, each with its `vars`.
+
+```text
+targets: /Users/me/dev
+  git    built-in  detected; roots: none, the targets alone
+  cargo  built-in  detected; roots: none, the targets alone
+  node   built-in  disabled: plugins.node.enabled is false; status, plan or clean with --plugin node runs it anyway
+  orca   built-in  detected; roots: none, the targets alone; note: Orca is installed but not running
+  go     user      detected; roots: /Users/me/go/pkg/mod (itself too)
+    ${GOPATH}      = /Users/me/go  from value (tried env GOPATH: not set)
+    ${GOMODCACHE}  = /Users/me/go/pkg/mod  from value (tried env GOMODCACHE: not set; command go env GOMODCACHE: timed out after 5 s)
+```
 
 ### Exit codes
 
