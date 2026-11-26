@@ -154,7 +154,10 @@ is inside, while a worktree of a repository outside `~/dev`, and any other
 folder outside it, is not. The worktree must be one its repository lists, so a
 copied `.git` file or a worktree moved from where it was added does not count,
 nor does one whose folder has since become a link: nothing at or below it, or
-where the link points, is inside.
+where the link points, is inside. A worktree whose folder is gone, or left
+without its `.git`, has no checkout to find its repository from, so `git`
+declares it as a root `{ path, self: true }` of its own, and its record can
+still be pruned.
 A repository's main checkout counts only as far as a target covers it. A
 plugin that cleans outside any checkout (a
 cache directory, a toolchain folder) declares `roots(ctx)`: the directories it
