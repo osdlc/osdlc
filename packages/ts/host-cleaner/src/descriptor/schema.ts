@@ -476,11 +476,12 @@ function pathNameIssues(d: Record<string, unknown>): Issue[] {
 
 /**
  * The cross-field problems in the raw `value`: those of `paths` entries, of
- * candidates and of the names they use. The reader adds the ones zod skipped.
+ * candidates, of the names they use and of the variables. The reader adds the
+ * ones zod skipped.
  */
 function crossFieldIssues(value: unknown): Issue[] {
   if (!isObject(value)) return []
-  const issues = pathNameIssues(value)
+  const issues = [...pathNameIssues(value), ...varIssues(value)]
   const below = (prefix: PropertyKey[], found: Issue[]) =>
     issues.push(...found.map(({ path, message }) => ({ path: [...prefix, ...path], message })))
   if (isObject(value['paths']))
@@ -528,38 +529,41 @@ function unfilledIssues(value: unknown): Issue[] {
   return issues
 }
 
-type VarsField = Record<string, z.output<typeof varSource>[]>
 type FieldPath = (string | number)[]
-type Template = { text: string; path: FieldPath; inVar?: string }
-type VarIssue = { path: FieldPath; message: string }
+type Template = { text: string; path: FieldPath; inVar?: string | undefined }
 
-/** Each folder that may use a variable, with its field path. */
-function templatesOf(d: {
-  paths: Record<string, Partial<Record<string, string>>>
-  vars?: VarsField | undefined
-  inUse?: { locks?: string[] | undefined } | undefined
-}): Template[] {
+/** Each folder that may use a variable, with its field path; any value, as {@link perOsIssues}. */
+function templatesOf(d: Record<string, unknown>): Template[] {
   const out: Template[] = []
-  for (const [name, folders] of Object.entries(d.paths))
-    for (const [os, text] of Object.entries(folders))
-      if (text !== undefined) out.push({ text, path: ['paths', name, os] })
-  for (const [name, sources] of Object.entries(d.vars ?? {}))
-    sources.forEach((s, i) => {
-      for (const t of sourceTemplates(s))
-        out.push({ text: t.text, path: ['vars', name, i, ...t.field], inVar: name })
-    })
-  d.inUse?.locks?.forEach((text, i) => out.push({ text, path: ['inUse', 'locks', i] }))
+  const add = (text: unknown, path: FieldPath, inVar?: string) => {
+    if (typeof text === 'string') out.push({ text, path, inVar })
+  }
+  if (isObject(d['paths']))
+    for (const [name, folders] of Object.entries(d['paths']))
+      if (isObject(folders))
+        for (const [os, text] of Object.entries(folders)) add(text, ['paths', name, os])
+  if (isObject(d['vars']))
+    for (const [name, sources] of Object.entries(d['vars']))
+      if (Array.isArray(sources))
+        sources.forEach((s, i) => {
+          if (!isObject(s)) return
+          for (const t of sourceTemplates(s)) add(t.text, ['vars', name, i, ...t.field], name)
+        })
+  const inUse = d['inUse']
+  if (isObject(inUse) && Array.isArray(inUse['locks']))
+    inUse['locks'].forEach((text, i) => add(text, ['inUse', 'locks', i]))
   return out
 }
 
 /**
  * What is wrong with the descriptor's variables: a `${` that is not a
  * `${NAME}`, a name neither declared nor built in, a declared name that is a
- * built-in's, or a variable whose sources refer back to it.
+ * built-in's, or a variable whose sources refer back to it. Any value, as
+ * {@link perOsIssues}.
  */
-function varIssues(d: Parameters<typeof templatesOf>[0]): VarIssue[] {
-  const out: VarIssue[] = []
-  const declared = new Set(Object.keys(d.vars ?? {}))
+function varIssues(d: Record<string, unknown>): Issue[] {
+  const out: Issue[] = []
+  const declared = new Set(isObject(d['vars']) ? Object.keys(d['vars']) : [])
   for (const name of declared)
     if (Object.hasOwn(BUILT_IN_VARS, name))
       out.push({
