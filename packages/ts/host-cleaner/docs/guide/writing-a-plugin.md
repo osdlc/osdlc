@@ -21,8 +21,7 @@ A plugin's code uses two entries of `@osdlc/host-cleaner`, and no other:
 
 Its tests may also import `survey`, `plan` and `clean`, with their types
 `RunCtx` and `Survey`, from the main entry, `@osdlc/host-cleaner`, to run it
-through the core, as the example's do. The
-plugin's own code never does.
+through the core, as the example's do. The plugin's own code never does.
 
 ## The package
 
