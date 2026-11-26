@@ -45,8 +45,9 @@ that step.
 A limit stops a hook that waits: on a promise, a timer or a program. It cannot
 stop synchronous work, such as a folder walk or a program run to its end: the
 core times such a hook out when it answers past its limit, and drops the
-answer. What it did by then stands, so a `delete` timed out so may have
-removed its folder. A hook that works for long should await between two pieces
+answer. A `delete` that answers late is the exception: it has deleted by
+then, so its answer counts, the other plugins' `deleted` run and what
+requires it goes ahead. A hook that works for long should await between two pieces
 of work and stop once `ctx.signal` has aborted, as `cargo` and `node` do
 between checkouts.
 

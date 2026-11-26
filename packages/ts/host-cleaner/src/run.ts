@@ -71,18 +71,23 @@ const limitOf = (p: Plugin, hook: Hook): number => {
   return validLimit(own) ? own : hook === 'delete' ? DELETE_LIMIT_MS : HOOK_LIMIT_MS
 }
 
-/** Calls one hook of `p` under its time limit, as {@link callWithin} does. */
+/**
+ * Calls one hook of `p` under its time limit, as {@link callWithin} does,
+ * except that `delete`'s answer counts however late it comes: by then it has
+ * deleted, and the receipt and the `deleted` hooks must hear so.
+ */
 const callHook = <T>(
   p: Plugin,
   hook: Hook,
   ctx: RunCtx,
   f: (ctx: Ctx) => MaybePromise<T>,
-): Promise<T> => callWithin(limitOf(p, hook), ctx, f)
+): Promise<T> => answerWithin(limitOf(p, hook), ctx, f, hook === 'delete')
 
 /**
  * Calls `f` with `ctx`, `targetsGiven` defaulted and a signal of its own, and
  * awaits its answer. Past `ms` the signal is aborted and {@link HookTimeout}
- * thrown. How the core calls every hook; the contract suite calls `delete` so too.
+ * thrown. How the core calls every hook (but a late `delete`, whose answer it
+ * keeps); the contract suite calls `delete` so.
  *
  * Nothing can stop `f` while it works synchronously: the timer fires only when
  * `f` waits on something. One that then answers past `ms` is late like any
@@ -90,10 +95,20 @@ const callHook = <T>(
  * thrown. One that throws late keeps its own error, so a {@link FatalRun}
  * still stops the run.
  */
-export async function callWithin<T>(
+export function callWithin<T>(
   ms: number,
   ctx: RunCtx,
   f: (ctx: Ctx) => MaybePromise<T>,
+): Promise<T> {
+  return answerWithin(ms, ctx, f, false)
+}
+
+/** {@link callWithin}; with `keepLate`, an answer that comes past `ms` is returned, not dropped. */
+async function answerWithin<T>(
+  ms: number,
+  ctx: RunCtx,
+  f: (ctx: Ctx) => MaybePromise<T>,
+  keepLate: boolean,
 ): Promise<T> {
   const controller = new AbortController()
   const limit = Math.min(ms, MAX_DELAY_MS)
@@ -113,7 +128,7 @@ export async function callWithin<T>(
     const answer = (async () =>
       f({ ...ctx, targetsGiven: ctx.targetsGiven ?? false, signal: controller.signal }))()
     const answered = await Promise.race([answer, late])
-    if (isLate()) throw timeOut()
+    if (isLate() && !keepLate) throw timeOut()
     return answered
   } catch (err) {
     if (isLate()) timeOut()

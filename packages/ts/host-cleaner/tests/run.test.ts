@@ -439,8 +439,12 @@ describe('objection levels', () => {
       { by: 'node', candidate: 'a:3', level: 'note', code: 'fine' },
     ])
     expect(s.warnings).toEqual([
-      expect.stringMatching(/^node: object answered an objection to a:1 whose level a plan refuses/),
-      expect.stringMatching(/^node: object answered an objection to a:2 whose reason a plan refuses/),
+      expect.stringMatching(
+        /^node: object answered an objection to a:1 whose level a plan refuses/,
+      ),
+      expect.stringMatching(
+        /^node: object answered an objection to a:2 whose reason a plan refuses/,
+      ),
     ])
     const back = parsePlan(JSON.stringify(plan(s)), 'plan.json')
     expect(decidePlan(back).run.map((c) => c.id)).toEqual(['a:3'])
@@ -1016,6 +1020,30 @@ describe('async hooks and time limits', () => {
       ['skipped', 'the run stopped: archive failed'],
     ])
     expect(signal?.aborted).toBe(true)
+  })
+
+  test('a delete that answers past its limit has deleted: its step is ok, the others are told, and what requires it runs', async () => {
+    const log: string[] = []
+    let signal: AbortSignal | undefined
+    const git = fake('git', [cand('a:1', 'git'), cand('a:2', 'git', { requires: ['a:1'] })], log, {
+      limits: { delete: 20 },
+      delete: (c, x) => {
+        log.push(`git:delete:${c.id}`)
+        if (c.id === 'a:1') {
+          signal = x.signal
+          block(40)
+        }
+        return `removed ${c.id}`
+      },
+    })
+    const receipt = await run([git, fake('node', [], log)])
+    expect(receipt.steps.map((x) => [x.id, x.result, x.delete, x.error])).toEqual([
+      ['a:1', 'ok', 'removed a:1', null],
+      ['a:2', 'ok', 'removed a:2', null],
+    ])
+    expect(log).toContain('node:deleted:a:1')
+    expect(receipt.status).toBe('complete')
+    expect(signal?.aborted).toBe(false)
   })
 
   test('a synchronous hook works unchanged, and one that answers at once is never timed out', async () => {
