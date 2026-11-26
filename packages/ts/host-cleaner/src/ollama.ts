@@ -21,6 +21,8 @@
  * private of the core.
  */
 
+import { hostname, networkInterfaces } from 'node:os'
+
 import { z } from 'zod'
 
 import { errorText, failureReason, hoursText, objector } from './helpers.ts'
@@ -66,7 +68,7 @@ export interface OllamaModel {
   id: string
   /** The SIZE column as printed: `-` for a cloud model, which has nothing on disk. */
   size: string
-  /** Bytes, from the SIZE column; null when it cannot be read. */
+  /** The most bytes the SIZE column can mean ({@link sizeBound}); null when it cannot be read. */
   bytes: number | null
   /** The MODIFIED column as printed, such as `4 days ago`. */
   modified: string
@@ -104,10 +106,27 @@ function table(
 
 const UNITS: Record<string, number> = { B: 1, KB: 1e3, MB: 1e6, GB: 1e9, TB: 1e12 }
 
-/** Bytes for SIZE text such as `3.9 GB` (ollama's units are powers of 1000); null for anything else. */
+/**
+ * The most SIZE text such as `3.9 GB` can mean (ollama's units are powers of
+ * 1000), as bytes and as text; null for anything else. ollama's `HumanBytes`
+ * cuts a value of 10 or more to a whole number and rounds a smaller one to a
+ * tenth, so `19 GB` can be up to 20 GB and `3.9 GB` up to 3.95 GB. Bytes are
+ * exact.
+ */
+export function sizeBound(text: string): { bytes: number; text: string } | null {
+  const m = /^(\d+)(\.\d+)? ([KMGT]?B)$/.exec(text.trim())
+  if (m === null) return null
+  const unit = m[3]!
+  const step = unit === 'B' ? 0 : m[2] === undefined ? 1 : 0.05
+  const most = Number(m[1]! + (m[2] ?? '')) + step
+  // Rounded to hundredths so float error does not print as 3.9499999.
+  const shown = Math.round(most * 100) / 100
+  return { bytes: Math.round(shown * UNITS[unit]!), text: `${shown} ${unit}` }
+}
+
+/** The most bytes SIZE text can mean; null for anything else. See {@link sizeBound}. */
 export function parseBytes(text: string): number | null {
-  const m = /^(\d+(?:\.\d+)?) ([KMGT]?B)$/.exec(text.trim())
-  return m === null ? null : Math.round(Number(m[1]) * UNITS[m[2]!]!)
+  return sizeBound(text)?.bytes ?? null
 }
 
 /** The models in `ollama list`'s output. Throws when it is not the table ollama prints. */
@@ -184,19 +203,39 @@ export function serverUrl(host: string | undefined): URL | null {
   const port = m?.[3] ?? ''
   const given = /^[+-]?\d+$/.test(port) && Number(port) >= 0 && Number(port) <= 65_535
   const fallback = scheme === 'http' ? '80' : scheme === 'https' ? '443' : '11434'
+  // Go reads `+11434` and `-0` as numbers; a URL takes only digits.
+  const portText = given ? String(Number(port)) : fallback
   try {
     return new URL(
-      `${scheme ?? 'http'}://${name.includes(':') ? `[${name}]` : name}:${given ? port : fallback}${path}`,
+      `${scheme ?? 'http'}://${name.includes(':') ? `[${name}]` : name}:${portText}${path}`,
     )
   } catch {
     return null
   }
 }
 
-/** Whether `server` is this machine, so the models it lists are on this disk. */
-export function isLocal(server: URL): boolean {
-  const h = server.hostname
-  return ['localhost', '0.0.0.0', '[::]', '[::1]'].includes(h) || /^127(\.\d+){3}$/.test(h)
+/** This machine's host name and the addresses of its network interfaces, lower case and without brackets or a zone. */
+export function thisMachine(): string[] {
+  const addresses = Object.values(networkInterfaces()).flatMap((list) =>
+    (list ?? []).map((a) => a.address.replace(/%.*$/, '').toLowerCase()),
+  )
+  return [hostname().toLowerCase(), ...addresses]
+}
+
+/**
+ * Whether `server` is this machine, so the models it lists are on this disk:
+ * a loopback or unspecified address, an IPv4-mapped loopback one, or a name or
+ * address in `names` ({@link thisMachine} by default).
+ */
+export function isLocal(server: URL, names: readonly string[] = thisMachine()): boolean {
+  const h = server.hostname.toLowerCase()
+  return (
+    ['localhost', '0.0.0.0', '[::]', '[::1]'].includes(h) ||
+    /^127(\.\d+){3}$/.test(h) ||
+    // Node writes `[::ffff:127.0.0.1]` as `[::ffff:7f00:1]`.
+    /^\[::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}\]$/.test(h) ||
+    names.includes(h.replace(/^\[(.*)\]$/, '$1'))
+  )
 }
 
 /**
@@ -238,7 +277,11 @@ export function ollamaPlugin(
         r.body?.cancel().catch(() => {})
         return r.ok
       },
-      () => false,
+      (err: unknown) => {
+        // The hook was stopped, so the server's silence says nothing: keep why it was stopped.
+        if (ctx.signal.aborted) throw ctx.signal.reason ?? err
+        return false
+      },
     )
     if (!up) throw new Error(`ollama's server at ${server.host} does not answer`)
   }
@@ -263,12 +306,6 @@ export function ollamaPlugin(
 
   const objection = objector(OLLAMA_PLUGIN)
 
-  /** Whether the model may run by default: its age and size can be read, and it is at least as old as the threshold. */
-  const isOld = (m: OllamaModel): boolean => {
-    const hours = leastHours(m.modified)
-    return hours !== null && hours >= threshold && m.bytes !== null
-  }
-
   return {
     name: OLLAMA_PLUGIN,
     async detect(ctx) {
@@ -283,13 +320,26 @@ export function ollamaPlugin(
     async discover(ctx) {
       await reach(ctx)
       // A cloud model has no files here: deleting it frees nothing.
-      const models = (await listed(ctx)).filter((m) => m.size !== '-')
+      const models = (await listed(ctx))
+        .filter((m) => m.size !== '-')
+        .map((m) => {
+          const hours = leastHours(m.modified)
+          // It may run by default: its age and size can be read, and it is at least as old as the threshold.
+          const old = hours !== null && hours >= threshold && m.bytes !== null
+          return { ...m, hours, old }
+        })
+      const byId = new Map<string, typeof models>()
+      for (const m of models) {
+        const tags = byId.get(m.id)
+        if (tags === undefined) byId.set(m.id, [m])
+        else tags.push(m)
+      }
       return models.map((m) => {
-        const hours = leastHours(m.modified)
+        const { hours, old } = m
         // Tags with one ID share their files, freed only when all are removed:
         // counted once, on the first, when all may run by default, else not at all.
-        const tags = models.filter((o) => o.id === m.id)
-        const counted = tags.every(isOld) ? tags[0] : undefined
+        const tags = byId.get(m.id)!
+        const counted = tags.every((t) => t.old) ? tags[0] : undefined
         const others = tags.filter((o) => o !== m).map((o) => o.name)
         const why = [
           hours === null
@@ -312,7 +362,7 @@ export function ollamaPlugin(
           ...(m.bytes === null ? {} : { bytes: others.length > 0 && m !== counted ? 0 : m.bytes }),
           why: why.join('; '),
           costDescription: 're-download',
-          ...(isOld(m) ? {} : { held: true }),
+          ...(old ? {} : { held: true }),
           // The MODIFIED text moves with the clock, so it stays out.
           evidence: { kind: OLLAMA_MODEL, name: m.name, id: m.id },
         })
@@ -361,7 +411,7 @@ export function ollamaPlugin(
       const freed =
         sharers.length > 0
           ? `freed nothing, its files stay for ${sharers.join(', ')}`
-          : `freed at most ${now.size}`
+          : `freed at most ${sizeBound(now.size)?.text ?? now.size}`
       return `ollama rm removed ${c.ref}; ${freed}`
     },
   }

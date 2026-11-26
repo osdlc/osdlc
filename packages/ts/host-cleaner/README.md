@@ -335,11 +335,13 @@ and its server answers. Each hook first asks the server over HTTP
 (`$OLLAMA_HOST/api/version`), because the `ollama` CLI starts the app on macOS
 and Windows when the server is down. If the server does not answer, or
 `OLLAMA_HOST` names another machine or cannot be read, `detect` leaves the
-plugin out and says why in its note.
+plugin out and says why in its note. This machine is a loopback or unspecified
+address (IPv4-mapped too), its host name, or an address of one of its network
+interfaces.
 
 | Phase | What it does |
 | --- | --- |
-| discover | Each model in `ollama list` is `ollama-model:<name>`, a ref with `costDescription: re-download` and its size as shown. Tags that share an ID share their files, so removing one alone frees nothing: each names the size and the other tags in its reason, the first carries the size when none of them is held, and the rest carry 0 bytes. Models with different IDs may share layers, which `ollama list` does not show, so a size is the most that removing one frees. Its age is the least time the MODIFIED text can mean (`4 days ago` is at least 95.5 hours); a model younger than the threshold, or with an age or size it cannot read, is held for a pick. Cloud models (SIZE `-`), with nothing on disk, are left out. Evidence is the name and the ID. |
+| discover | Each model in `ollama list` is `ollama-model:<name>`, a ref with `costDescription: re-download` and the most its SIZE text can mean (ollama cuts 10 and more to a whole number and rounds less to a tenth, so `19 GB` is up to 20 GB and `3.9 GB` up to 3.95 GB). Tags that share an ID share their files, so removing one alone frees nothing: each names the size and the other tags in its reason, the first carries the size when none of them is held, and the rest carry 0 bytes. Models with different IDs may share layers, which `ollama list` does not show, so a size is the most that removing one frees. Its age is the least time the MODIFIED text can mean (`4 days ago` is at least 95.5 hours); a model younger than the threshold, or with an age or size it cannot read, is held for a pick. Cloud models (SIZE `-`), with nothing on disk, are left out. Evidence is the name and the ID. |
 | object | A model `ollama ps` shows loaded, by name or ID, is refused `ollama-in-use`. Every other model gets an `ollama-use-unknown` protest. If `ollama ps` fails, or has not answered in 20 s, every model is refused `ollama-ps-failed`. |
 | delete | Reads `ollama list` and then `ollama ps` again, the loaded check last because `ollama rm` unloads a loaded model: a model now loaded or with another ID is not removed, one already gone is not a failure. Then `ollama rm <name>`, and checks the list no longer shows it; a list that fails after a successful `rm` is noted in the receipt, not a failure. The receipt says the most it freed, or which tags keep its files. |
 

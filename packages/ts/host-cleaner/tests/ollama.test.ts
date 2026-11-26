@@ -28,6 +28,7 @@ import {
   parsePs,
   pingUrl,
   serverUrl,
+  sizeBound,
 } from '../src/ollama.ts'
 import { contractSuite, fakeContext, fakeRunner } from '../src/testing.ts'
 
@@ -134,7 +135,7 @@ describe('parsing', () => {
         name: 'd1:2b',
         id: 'a3b89e90e6a3',
         size: '3.9 GB',
-        bytes: 3_900_000_000,
+        bytes: 3_950_000_000,
         modified: '4 days ago',
       },
       {
@@ -154,8 +155,11 @@ describe('parsing', () => {
     expect(parsePs('NAME    ID    SIZE    PROCESSOR    CONTEXT    RUNNER    UNTIL \n')).toEqual([])
   })
 
-  test('sizes in powers of 1000', () => {
-    expect(parseBytes('849 MB')).toBe(849_000_000)
+  test('sizes in powers of 1000, read as the most the text can mean', () => {
+    // HumanBytes cuts 10 and more to a whole number, and rounds less to a tenth.
+    expect(parseBytes('849 MB')).toBe(850_000_000)
+    expect(sizeBound('19 GB')).toEqual({ bytes: 20_000_000_000, text: '20 GB' })
+    expect(sizeBound('3.9 GB')).toEqual({ bytes: 3_950_000_000, text: '3.95 GB' })
     expect(parseBytes('512 B')).toBe(512)
     expect(parseBytes('-')).toBeNull()
     expect(parseBytes('3.9GiB')).toBeNull()
@@ -183,6 +187,9 @@ describe('parsing', () => {
     expect(serverUrl('localhost:')?.href).toBe('http://localhost:11434/')
     expect(serverUrl('HTTP://localhost')?.href).toBe('http://localhost:11434/')
     expect(serverUrl('[::1]')?.href).toBe('http://[::1]:11434/')
+    // Go reads a signed port as a number; a URL takes only its digits.
+    expect(serverUrl('localhost:+11434')?.href).toBe('http://localhost:11434/')
+    expect(serverUrl('localhost:-0')?.href).toBe('http://localhost:0/')
     // A bad port does not make text that names no host, or another one, this machine.
     for (const host of [
       'localhost:1:2',
@@ -202,8 +209,15 @@ describe('parsing', () => {
       expect(isLocal(serverUrl(host)!)).toBe(true)
     }
     for (const host of ['gpu-box:11434', '10.0.0.5', 'https://ollama.example.com', '2001:db8::5']) {
-      expect(isLocal(serverUrl(host)!)).toBe(false)
+      expect(isLocal(serverUrl(host)!, [])).toBe(false)
     }
+    // An IPv4-mapped loopback address, and this machine's own name or addresses.
+    expect(isLocal(serverUrl('[::ffff:127.0.0.1]')!, [])).toBe(true)
+    const here = ['my-mac.local', '192.168.1.20', 'fe80::1']
+    for (const host of ['http://My-Mac.local:11434', '192.168.1.20', '[fe80::1]:11434']) {
+      expect(isLocal(serverUrl(host)!, here)).toBe(true)
+    }
+    expect(isLocal(serverUrl('192.168.1.21')!, here)).toBe(false)
   })
 
   test('the MODIFIED text read as the fewest hours it can mean', () => {
@@ -258,7 +272,7 @@ describe('survey', () => {
       ref: 'old:7b',
       name: 'old:7b',
       owner: 'ollama',
-      bytes: 3_900_000_000,
+      bytes: 3_950_000_000,
       costDescription: 're-download',
       evidence: { kind: 'ollama-model', name: 'old:7b', id: idOf('old:7b') },
     })
@@ -279,9 +293,9 @@ describe('survey', () => {
     ])
     const s = await survey([plugin], ctx)
     expect(s.candidates.map((c) => [c.name, c.bytes])).toEqual([
-      ['base:7b', 3_900_000_000],
+      ['base:7b', 3_950_000_000],
       ['mine:latest', 0],
-      ['other:1b', 3_900_000_000],
+      ['other:1b', 3_950_000_000],
     ])
     expect(s.candidates[0]!.why).toContain(
       'it shares its files (3.9 GB) with mine:latest, so removing it alone frees nothing; removing them all frees what base:7b counts',
@@ -324,6 +338,26 @@ describe('survey', () => {
     expect(s.notes['ollama']).toBe("ollama's server at 127.0.0.1:11434 does not answer")
     expect(calls()).toEqual([])
     expect(server.mock.calls[0]![0]).toBe('http://127.0.0.1:11434/api/version')
+  })
+
+  test('a hook stopped during the ping gives why it was stopped, not a server that does not answer', async () => {
+    const stop = new AbortController()
+    server.mockImplementation(async () => {
+      stop.abort(new Error('hook took too long'))
+      throw new DOMException('This operation was aborted', 'AbortError')
+    })
+    const { plugin, calls } = fakeOllama(models)
+    const c = {
+      id: 'ollama-model:old:7b',
+      kind: 'ollama-model',
+      ref: 'old:7b',
+      owner: 'ollama',
+      why: 'x',
+      evidence: { kind: 'ollama-model', name: 'old:7b', id: idOf('old:7b') },
+    }
+    const [o] = await plugin.object!([c], fakeContext({ signal: stop.signal }))
+    expect(o).toMatchObject({ code: OLLAMA_PS_FAILED, reason: 'hook took too long' })
+    expect(calls()).toEqual([])
   })
 
   test('OLLAMA_HOST 0.0.0.0 is pinged at the loopback address', async () => {
@@ -483,7 +517,7 @@ describe('clean', () => {
     const receipt = await clean(allowed(await survey([plugin], ctx)), [plugin], ctx)
     expect(receipt.status).toBe('complete')
     expect(receipt.steps.map((s) => s.delete)).toEqual([
-      'ollama rm removed old:7b; freed at most 3.9 GB',
+      'ollama rm removed old:7b; freed at most 3.95 GB',
     ])
     expect(live).toEqual([])
     expect(calls().slice(-4)).toEqual([
@@ -503,7 +537,7 @@ describe('clean', () => {
     const receipt = await clean(allowed(await survey([plugin], ctx)), [plugin], ctx)
     expect(receipt.steps.map((s) => s.delete)).toEqual([
       'ollama rm removed base:7b; freed nothing, its files stay for mine:latest',
-      'ollama rm removed mine:latest; freed at most 3.9 GB',
+      'ollama rm removed mine:latest; freed at most 3.95 GB',
     ])
   })
 
@@ -640,7 +674,7 @@ describe('the contract', () => {
       'utf8',
     )
     const imports = [...src.matchAll(/^(?:import|\}) .*from '([^']+)'$/gm)].map((m) => m[1]!)
-    expect(imports.filter((i) => i !== 'zod').sort()).toEqual([
+    expect(imports.filter((i) => i !== 'zod' && !i.startsWith('node:')).sort()).toEqual([
       './helpers.ts',
       './kit.ts',
       './types.ts',
