@@ -485,6 +485,9 @@ async function updateOneUnscoped(
   let rebased: PathPlan[] | null = null
   let strategyFallback: string | undefined
   let rebaseRepaired: Repaired[] = []
+  // The conflicts rerere tracked in the rebase and the merge. A PR that is not updated keeps
+  // none of the resolutions they recorded: a resolution is accepted only with the update.
+  const conflicts: RerereTracked[] = []
   if (strategy === 'rebase') {
     const repairing = settings.onRebaseConflict === 'repair'
     const attempt = await rebaseThroughRungs(git, base, settings, runVerb, opts.worktree, {
@@ -505,6 +508,7 @@ async function updateOneUnscoped(
     if (attempt.kind === 'done') {
       rebased = attempt.resolved
       rebaseRepaired = attempt.repaired
+      conflicts.push(...attempt.tracked)
     } else if ((settings.onRebaseConflict ?? 'merge') !== 'merge') {
       return { status: 'conflict', needsHuman: attempt.needsHuman }
     } else {
@@ -523,14 +527,16 @@ async function updateOneUnscoped(
     rebased,
     submodulesBefore,
     rebaseRepaired,
+    conflicts,
   )
+  if (outcome.status === 'failed' || outcome.status === 'conflict') dropNewResolutions(conflicts)
   return strategyFallback === undefined || outcome.status === 'up-to-date'
     ? outcome
     : { ...outcome, strategyFallback }
 }
 
 type RebaseAttempt =
-  | { kind: 'done'; resolved: PathPlan[]; repaired: Repaired[] }
+  | { kind: 'done'; resolved: PathPlan[]; repaired: Repaired[]; tracked: RerereTracked[] }
   | { kind: 'stuck'; needsHuman: { path: string; why: string }[] }
   | { kind: 'failed'; reason: string; unrecorded?: true }
 
@@ -581,7 +587,8 @@ async function rebaseThroughRungs(
   },
 ): Promise<RebaseAttempt> {
   // The conflicts rerere tracked at each stop. A rebase that does not finish keeps none of the
-  // resolutions it recorded at `--continue`.
+  // resolutions it recorded at `--continue`; one that does hands them to the caller, which drops
+  // them if the PR then fails.
   const tracked: RerereTracked[] = []
   // However this ends, leave a clean tree on the branch, because the fallback
   // merge runs in this same worktree.
@@ -662,7 +669,7 @@ async function rebaseThroughRungs(
     }
     resolved.push(...plans)
   }
-  return { kind: 'done', resolved, repaired }
+  return { kind: 'done', resolved, repaired, tracked }
 }
 
 /** The repair for `kind`, or null: a rehearsal, no repair, or `kind` not in `repairOn`. */
@@ -690,6 +697,8 @@ async function integrateAndPush(
   rebased: PathPlan[] | null,
   submodulesBefore: string | null,
   rebaseRepaired: Repaired[] = [],
+  /** Gets the conflicts rerere tracks in the merge, for the caller to drop on a failure. */
+  tracked: RerereTracked[] = [],
 ): Promise<UpdateOutcome> {
   const base = baseRef(target, settings.remote)
   const head = `${settings.remote}/${target.head}`
@@ -740,6 +749,7 @@ async function integrateAndPush(
 
   const resolved: PathPlan[] = rebased ?? []
   if (outcome?.status === 'conflict') {
+    tracked.push(...rerereTracked(git))
     const paths = conflictedPaths(git)
     // See `rebaseThroughRungs` for an empty list.
     const plans =
@@ -1024,7 +1034,8 @@ export function targetGitEnv(
  * in an `--apply` run and off otherwise, whatever the person's own config says.
  *
  * - `rerere.enabled=true`: at a conflict git replays a resolution recorded earlier for the same
- *   conflict, and at the commit it records the one pr-update made. So a stack of sibling PRs that
+ *   conflict, and at the commit it records the one pr-update made. It is kept only if the PR is
+ *   updated (`dropNewResolutions`). So a stack of sibling PRs that
  *   meet one conflict needs it resolved once, by a resolver or a repair, not once per PR.
  * - `rerere.autoUpdate=true`: a replayed path is staged, so it is not listed as conflicted and
  *   no resolver or repair is asked about it. The replayed content still goes through verify.
@@ -1095,11 +1106,13 @@ function rerereTracked(git: Git): RerereTracked[] {
 
 /**
  * Remove each resolution recorded for `tracked` since it was read: one pr-update did not accept.
- * A repair that commits, or runs `rebase --continue`, is rejected for moving HEAD, but git has
- * already recorded its resolution, since rerere is on for any git in a repository with an
- * `rr-cache/`. So is a stop a rebase continued past before it was abandoned. `git rerere forget`
- * cannot clear either: it needs the conflict still in the index. A resolution another run
- * recorded for the same conflict meanwhile goes too, and is recorded again the next time.
+ * A resolution is accepted only when its PR is updated, so this runs for a repair pr-update
+ * rejected, a rebase it abandoned, and a PR that failed or conflicted after its resolutions were
+ * committed (verify rejected them, say). A repair that commits, or runs `rebase --continue`, is
+ * rejected for moving HEAD, but git has already recorded its resolution, since rerere is on for
+ * any git in a repository with an `rr-cache/`. `git rerere forget` cannot clear any of these: it
+ * needs the conflict still in the index. A resolution another run recorded for the same conflict
+ * meanwhile goes too, and is recorded again the next time.
  */
 function dropNewResolutions(tracked: readonly RerereTracked[]): void {
   for (const { dir, had } of tracked) {

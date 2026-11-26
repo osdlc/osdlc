@@ -19,6 +19,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -1501,6 +1502,38 @@ describe('the executor against real git', () => {
         const [second] = await runAll([target({ number: 2, head: 'rej2' })], {})
         expect(second!.outcome.status).toBe('conflict')
       })
+
+      test.each(['merge', 'rebase'] as const)(
+        'a resolution verify rejected is not replayed in a later run (%s)',
+        async (strategy) => {
+          const [o1, o2] = makeSiblings('v1', 'v2')
+          // Fails while `shared.ts` holds the bad resolution.
+          const verify: RunVerb = (_verb, wt) =>
+            readFileSync(join(wt, 'shared.ts'), 'utf8') === 'bad\n' ? nope : ok
+          const run = (number: number, head: string, headOid: string, repair: Repair) =>
+            updateAll(
+              fx.worker.git,
+              [target({ number, head, headOid, strategy })],
+              settings({
+                repair,
+                repairOn: ['conflict'],
+                onRebaseConflict: 'repair',
+                verifyVerbs: ['check'],
+              }),
+              verify,
+              { apply: true, worktreeRoot: wtRoot },
+            )
+          const [first] = await run(1, 'v1', o1!, fakeRepair(writeShared('bad\n')))
+          expect(first!.outcome.status).toBe('failed')
+          expect(postimages()).toEqual([])
+          const good = fakeRepair(writeShared('good\n'))
+          const [second] = await run(2, 'v2', o2!, good)
+          expect(good.calls).toHaveLength(1)
+          expect(second!.outcome).toMatchObject({ status: 'updated', pushed: true })
+          fx.worker.git.fetch('origin')
+          expect(fx.worker.git.showAtRev('origin/v2', 'shared.ts')).toBe('good\n')
+        },
+      )
 
       test('a rebase aborted after a repaired stop leaves nothing a later PR replays', async () => {
         const { git } = fx.worker

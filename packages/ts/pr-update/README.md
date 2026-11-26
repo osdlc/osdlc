@@ -627,10 +627,11 @@ not once per PR.
 - A replayed resolution still goes through `verify`. A replay can be wrong
   where the same conflict needs a different answer, such as a lockfile whose
   manifests differ outside the conflict, and `verify` is what catches it.
-- Only a resolution pr-update accepted is kept. When a repair is rejected, or
-  a rebase is abandoned after it continued past a resolved stop, the
-  resolutions git recorded for it are removed. A resolution recorded by a
-  merge whose `verify` then failed is kept.
+- A resolution is kept only when its PR is updated. When a repair is
+  rejected, a rebase is abandoned after it continued past a resolved stop, or
+  the PR then fails or conflicts (its `verify` rejected the resolution, say),
+  the resolutions git recorded for that PR are removed, so the next PR with
+  the same conflict is resolved again, by the resolvers or the repair.
 - The resolutions live in the repository's `rr-cache/` folder: your own
   checkout's git directory for the project root and a checkout found on this
   machine, the clone for a cloned target. `git gc` removes old ones.
