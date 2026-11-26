@@ -2,11 +2,11 @@
  * A plugin package outside this one builds and passes the contract suite
  * with `@osdlc/host-cleaner/plugin` and `@osdlc/host-cleaner/testing` alone.
  * The package is made in a temporary folder, where `@osdlc/host-cleaner`
- * exports only those two entries of src/, built there as dist/ is. The
+ * exports only those entries of src/, built there as dist/ is. The
  * workspace siblings resolve to their own dist/, so run `pnpm build` first, as
  * for the typecheck.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, onTestFinished, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import {
   chmodSync,
@@ -14,6 +14,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -21,7 +22,10 @@ import {
 } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { parse as parseYaml } from 'yaml'
+
+import { bumpVersion, configProblems, pendingBumps } from '@osdlc/conformance-suites'
 
 import { clean, plan, survey, type RunCtx } from '../src/index.ts'
 import * as entry from '../src/plugin.ts'
@@ -41,42 +45,66 @@ function build(out: string): void {
   if (built.status !== 0) throw new Error(`building src/ failed:\n${built.stdout}${built.stderr}`)
 }
 
-/** Makes `dir` a package holding the fixture plugin, with host-cleaner limited to the two entries. */
-function outsidePackage(dir: string): void {
-  const json = (path: string, value: unknown) =>
-    writeFileSync(join(dir, path), `${JSON.stringify(value, null, 2)}\n`)
-  json('package.json', { name: 'outside-plugin', private: true, type: 'module' })
-  json('tsconfig.json', {
-    compilerOptions: {
-      target: 'ES2022',
-      module: 'NodeNext',
-      moduleResolution: 'NodeNext',
-      strict: true,
-      // No skipLibCheck: nothing else checks the emitted declarations, and a
-      // type one of them cannot find would be `any` here.
-      types: ['node'],
-      rootDir: 'src',
-      outDir: 'dist',
-    },
-    include: ['src'],
-  })
-  mkdirSync(join(dir, 'src'))
-  for (const f of ['plugin.ts', 'check.ts']) {
-    copyFileSync(join(here, 'fixtures', 'outside-plugin', f), join(dir, 'src', f))
-  }
-  const hc = join(dir, 'node_modules', '@osdlc', 'host-cleaner')
-  mkdirSync(hc, { recursive: true })
+const fixtures = Object.fromEntries(
+  ['plugin.ts', 'check.ts'].map((f) => [f, join(here, 'fixtures', 'outside-plugin', f)]),
+)
+
+interface Outside {
+  /** Copied into `src/`, by name there. */
+  files?: Record<string, string>
+  /** The entries of host-cleaner the package sees. */
+  entries?: string[]
+  /** A folder whose package.json and tsconfig.json the package takes, in place of its own. */
+  root?: string
+}
+
+/** Limits the host-cleaner installed in the package at `dir` to `entries`, where `.` is the main entry. */
+function hostCleanerEntries(dir: string, entries: string[]): void {
   const { exports } = JSON.parse(readFileSync(join(pkg, 'package.json'), 'utf8')) as {
     exports: Record<string, unknown>
   }
+  const key = (e: string) => (e === '.' ? '.' : `./${e}`)
   writeFileSync(
-    join(hc, 'package.json'),
+    join(dir, 'node_modules', '@osdlc', 'host-cleaner', 'package.json'),
     JSON.stringify({
       name: '@osdlc/host-cleaner',
       type: 'module',
-      exports: { './plugin': exports['./plugin'], './testing': exports['./testing'] },
+      exports: Object.fromEntries(entries.map((e) => [key(e), exports[key(e)]])),
     }),
   )
+}
+
+/** Makes `dir` a package holding `files` in its `src/`, with host-cleaner limited to `entries`. */
+function outsidePackage(
+  dir: string,
+  { files = fixtures, entries = ['plugin', 'testing'], root }: Outside = {},
+): void {
+  const json = (path: string, value: unknown) =>
+    writeFileSync(join(dir, path), `${JSON.stringify(value, null, 2)}\n`)
+  if (root === undefined) {
+    json('package.json', { name: 'outside-plugin', private: true, type: 'module' })
+    json('tsconfig.json', {
+      compilerOptions: {
+        target: 'ES2022',
+        module: 'NodeNext',
+        moduleResolution: 'NodeNext',
+        strict: true,
+        // No skipLibCheck: nothing else checks the emitted declarations, and a
+        // type one of them cannot find would be `any` here.
+        types: ['node'],
+        rootDir: 'src',
+        outDir: 'dist',
+      },
+      include: ['src'],
+    })
+  } else {
+    for (const f of ['package.json', 'tsconfig.json']) copyFileSync(join(root, f), join(dir, f))
+  }
+  mkdirSync(join(dir, 'src'))
+  for (const [f, from] of Object.entries(files)) copyFileSync(from, join(dir, 'src', f))
+  const hc = join(dir, 'node_modules', '@osdlc', 'host-cleaner')
+  mkdirSync(hc, { recursive: true })
+  hostCleanerEntries(dir, entries)
   build(join(hc, 'dist'))
   // The built files find host-cleaner's dependencies here.
   symlinkSync(join(pkg, 'node_modules'), join(hc, 'node_modules'), 'dir')
@@ -84,6 +112,10 @@ function outsidePackage(dir: string): void {
   const types = dirname(require.resolve('@types/node/package.json'))
   symlinkSync(types, join(dir, 'node_modules', '@types', 'node'), 'dir')
 }
+
+/** Builds the package in `dir` with its own tsconfig. */
+const compile = (dir: string) =>
+  spawnSync(process.execPath, [tsc, '-p', dir], { cwd: dir, encoding: 'utf8' })
 
 // One package, shared by the tests that use it.
 describe('a package outside this one', () => {
@@ -97,7 +129,7 @@ describe('a package outside this one', () => {
   afterAll(() => cleanup())
 
   test('builds against ./plugin and ./testing, and its plugin keeps the contract', () => {
-    const built = spawnSync(process.execPath, [tsc, '-p', dir], { cwd: dir, encoding: 'utf8' })
+    const built = compile(dir)
     expect(built.stdout + built.stderr).toBe('')
     expect(built.status).toBe(0)
 
@@ -122,6 +154,119 @@ describe('a package outside this one', () => {
       expect.objectContaining({ code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' }),
     )
   })
+})
+
+const example = join(pkg, 'examples', 'podman-plugin')
+
+test('the podman example builds against ./plugin alone, and the loader takes it as a package', () => {
+  const { home: dir, cleanup } = tempHome('host-cleaner-outside-')
+  onTestFinished(cleanup)
+  outsidePackage(dir, {
+    files: { 'index.ts': join(example, 'src', 'index.ts') },
+    entries: ['plugin'],
+    root: example,
+  })
+  const built = compile(dir)
+  expect(built.stdout + built.stderr).toBe('')
+  expect(built.status).toBe(0)
+  const exported = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
+    exports: Record<string, Record<string, string>>
+  }
+  for (const target of Object.values(exported.exports['.']!)) {
+    expect(existsSync(join(dir, target)), target).toBe(true)
+  }
+
+  // Installed under its own name, in a folder outside the package so that
+  // nothing walking the package meets a cycle, then loaded by the built
+  // host-cleaner and run through the contract suite on a fake podman.
+  const { home: root, cleanup: uninstall } = tempHome('host-cleaner-installed-')
+  onTestFinished(uninstall)
+  symlinkSync(dir, join(root, 'host-cleaner-podman'), 'dir')
+  const hc = join(dir, 'node_modules', '@osdlc', 'host-cleaner')
+  const dist = (f: string) => JSON.stringify(pathToFileURL(join(hc, 'dist', f)).href)
+  const listed = [{ Name: 'cache', Driver: 'local', CreatedAt: '2026-05-01T09:00:00Z' }]
+  const script = `
+import { loadPackages, pluginKit } from ${dist('index.js')}
+import { contractSuite, fakeRunner } from ${dist('testing.js')}
+const { loaded, failed } = await loadPackages([{ name: 'podman', package: 'host-cleaner-podman' }], [${JSON.stringify(root)}])
+const def = loaded[0]?.definition
+const fake = fakeRunner({ podman: (argv) => argv[0] === 'info' ? {} : argv[0] === 'volume' && argv[1] === 'ls' ? { stdout: ${JSON.stringify(JSON.stringify(listed))} } : undefined })
+const plugin = def?.create({ settings: def.settings.parse({ package: 'host-cleaner-podman' }), env: {}, kit: pluginKit('podman', { ...fake }) })
+const problems = plugin === undefined ? [] : await contractSuite(plugin)
+const ran = fake.calls.map((c) => c.argv.join(' '))
+process.stdout.write(JSON.stringify({ failed, version: loaded[0]?.version, name: plugin?.name, problems, ran }))
+`
+  const ran = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    encoding: 'utf8',
+  })
+  expect(ran.stderr).toBe('')
+  const out = JSON.parse(ran.stdout) as { ran: string[] }
+  expect(out).toEqual({
+    failed: [],
+    version: '0.0.0',
+    name: 'podman',
+    problems: [],
+    ran: expect.arrayContaining(['podman info', expect.stringMatching(/^podman volume ls /)]),
+  })
+  expect(out.ran.filter((c) => c.startsWith('podman volume rm'))).toEqual([])
+
+  // The example's tests, typechecked as the package would: they also reach
+  // the main entry and ./testing, which its plugin code does not.
+  // host-cleaner's own typecheck checks both to this repo's bar.
+  hostCleanerEntries(dir, ['.', 'plugin', 'testing'])
+  mkdirSync(join(dir, 'test'))
+  copyFileSync(join(example, 'test', 'podman.test.ts'), join(dir, 'test', 'podman.test.ts'))
+  const vitest = dirname(require.resolve('vitest/package.json'))
+  symlinkSync(vitest, join(dir, 'node_modules', 'vitest'), 'dir')
+  writeFileSync(
+    join(dir, 'tsconfig.test.json'),
+    JSON.stringify({
+      extends: './tsconfig.json',
+      compilerOptions: { noEmit: true, allowImportingTsExtensions: true, rootDir: '.' },
+      include: ['src', 'test'],
+    }),
+  )
+  const checked = spawnSync(process.execPath, [tsc, '-p', join(dir, 'tsconfig.test.json')], {
+    cwd: dir,
+    encoding: 'utf8',
+  })
+  expect(checked.stdout + checked.stderr).toBe('')
+  expect(checked.status).toBe(0)
+}, 120_000)
+
+test("the podman example's and the guide's version ranges are host-cleaner's next release, and the rest the workspace catalog's", () => {
+  const manifest = JSON.parse(readFileSync(join(example, 'package.json'), 'utf8')) as {
+    peerDependencies: Record<string, string>
+    devDependencies: Record<string, string>
+  }
+  const { version } = JSON.parse(readFileSync(join(pkg, 'package.json'), 'utf8')) as {
+    version: string
+  }
+  // The release the pending changesets make, which a copy of the example installs.
+  const changesets = join(pkg, '..', '..', '..', '.changeset')
+  const config: unknown = JSON.parse(readFileSync(join(changesets, 'config.json'), 'utf8'))
+  expect(configProblems(config, existsSync(join(changesets, 'pre.json')))).toEqual([])
+  const bumps = pendingBumps(
+    readdirSync(changesets)
+      .filter((f) => f.endsWith('.md') && f !== 'README.md')
+      .map((f): [string, string] => [f, readFileSync(join(changesets, f), 'utf8')]),
+  )
+  const next = bumpVersion(version, bumps.get('@osdlc/host-cleaner') ?? 'none')
+  // The minor is kept from 1.0 on too: the example may use what that minor added.
+  const range = `^${next.split('.').slice(0, 2).join('.')}.0`
+  expect(manifest.peerDependencies['@osdlc/host-cleaner']).toBe(range)
+  expect(manifest.devDependencies['@osdlc/host-cleaner']).toBe(range)
+  const readme = readFileSync(join(example, 'README.md'), 'utf8')
+  expect(readme).toContain(`\`@osdlc/host-cleaner\` \`${range}\``)
+  // The guide's package.json, which the example follows.
+  expect(guide).toContain(`"peerDependencies": { "@osdlc/host-cleaner": "${range}" }`)
+  expect(guide).toContain(`"devDependencies": { "@osdlc/host-cleaner": "${range}" }`)
+
+  const yaml = readFileSync(join(pkg, '..', '..', '..', 'pnpm-workspace.yaml'), 'utf8')
+  const workspace = parseYaml(yaml) as { catalog: Record<string, string> }
+  for (const [name, wanted] of Object.entries(manifest.devDependencies)) {
+    if (name !== '@osdlc/host-cleaner') expect(wanted, name).toBe(workspace.catalog[name])
+  }
 })
 
 test('./plugin re-exports zod as z, the one the core validates settings with', async () => {
