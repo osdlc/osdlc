@@ -312,8 +312,9 @@ describe('fakeProcesses and ageTree', () => {
     symlinkSync(elsewhere, join(dir, 'to-folder'))
     symlinkSync(join(elsewhere, 'gone'), join(dir, 'dangling'))
     ageTree(dir, 48)
+    // A file just written can be stamped a hair after Date.now(), which rounds to -0; `+ 0` makes that 0.
     const hours = (path: string): number =>
-      Math.round((Date.now() - lstatSync(path).mtimeMs) / 3_600_000)
+      Math.round((Date.now() - lstatSync(path).mtimeMs) / 3_600_000) + 0
     for (const p of ['', 'sub', 'sub/file', 'to-file', 'to-folder', 'dangling']) {
       expect(hours(join(dir, p)), p).toBe(48)
     }
