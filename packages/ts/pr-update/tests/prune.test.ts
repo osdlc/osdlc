@@ -2200,6 +2200,25 @@ describe('every removal passes one check, the same in a dry run (final review ro
       },
     )
 
+    unreadableTest(
+      'a dead run worktree holding a folder that cannot be listed names the fix',
+      () => {
+        const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
+        checkout.commit('init', { 'w.txt': 'w' })
+        const dead = runWorktree(checkout.dir, 'acme/web')
+        const shut = join(dead, 'shut')
+        mkdirSync(shut)
+        withMode(shut, 0o000, () => {
+          expect(bothModes({}).failed).toEqual([
+            expect.objectContaining({
+              path: dead,
+              reason: expect.stringContaining(`chmod -R u+rwX ${dead}`),
+            }),
+          ])
+        })
+      },
+    )
+
     test('a kept tree whose folder is gone goes with its clone under --discard-kept', () => {
       const clone = makeClone('acme/api', 400)
       const path = keptWorktree(clone, 'acme/api', 7)

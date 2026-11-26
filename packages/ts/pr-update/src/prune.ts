@@ -795,8 +795,11 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       need = constants.R_OK | constants.X_OK
       if (dir === root || realOr(dir) === top || dir === dirname(dir)) break
     }
-    if (m.stuck !== undefined) throw m.stuck
-    return null
+    if (m.stuck === undefined) return null
+    const code = (m.stuck as NodeJS.ErrnoException).code
+    if (code !== 'EACCES' && code !== 'EPERM') throw m.stuck
+    const why = (m.stuck as Error).message.split('\n')[0]
+    throw new Error(`${why}; run \`chmod -R u+rwX ${m.path}\``, { cause: m.stuck })
   }
 
   /**
