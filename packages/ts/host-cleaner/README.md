@@ -505,8 +505,9 @@ descriptors, with a warning.
 The package ships eight, for macOS and Linux: `pnpm` (the store, pruned with
 `pnpm store prune`, and the metadata cache), `uv` (the cache, pruned with
 `uv cache prune`), `huggingface-hub` (one candidate per model, dataset or space,
-after 30 idle days), `gradle` (the caches after a week and each wrapper distribution
-after 30 days), `npm` (the package cache), `pip` (the cache), `yarn` (Classic's
+after 30 idle days; models are held, so one goes only when picked), `gradle` (the
+caches after a week and each wrapper distribution after 30 days; wrapper
+distributions are held, so one goes only when picked), `npm` (the package cache), `pip` (the cache), `yarn` (Classic's
 global cache; Berry's is left out, since Plug'n'Play projects run from it) and
 `maven` (the local repository, at the cost `rebuild`; always held, so it goes
 only when picked). While the tool runs, every candidate of `pnpm`, `uv`,
@@ -516,9 +517,10 @@ only when picked). While the tool runs, every candidate of `pnpm`, `uv`,
 and again before each delete, so a long-running `pnpm dev` keeps the pnpm store
 from being pruned. Idle time is the newest modification time inside a
 folder, and reading a file doesn't change it: a Hugging Face model or a Gradle
-wrapper distribution in daily use counts as idle from its download. So does a
-Maven repository whose artifacts are all downloaded, and it may hold what only a
-local `mvn install` gives back, which is why it is held. Each looks only at the
+wrapper distribution in daily use counts as idle from its download, which is why
+they are held. So does a Maven repository whose artifacts are all downloaded, and
+it may hold what only a local `mvn install` gives back, which is why it is held
+too. Each looks only at the
 tool's default folders: a store moved by an environment variable or a setting is
 not found, and the folder it left behind, if any, is what gets cleaned.
 
@@ -552,7 +554,8 @@ Two settings sit at the top of the config and apply to every plugin:
   the active list, a plan records it, and `clean --plan` honours the plan's list
   and the current one, dropping a planned candidate as `ignored`.
 - `idleHours` is the default for every plugin that has the setting and does not
-  set its own. `0` is allowed and makes every idle-checked artifact a candidate.
+  set its own. `0` is allowed and makes every idle-checked artifact a candidate,
+  except where a descriptor entry's own `idleHours` is higher (below).
 
 A descriptor entry may carry its own `idleHours`, such as the 168 of Gradle's
 caches. A `plugins.<name>.idleHours` you set wins over it, higher or lower. A
@@ -562,7 +565,9 @@ the entry's own value applies.
 
 `host-cleaner config` prints every plugin's effective settings: the value, and
 whether the file set it or it is the default. Under a descriptor's `idleHours`
-it prints each entry with its own value and the threshold the run applies to it.
+it prints each entry with its own value and the threshold the run applies to it
+(to a prune entry only when its program is not on PATH and the folder is
+removed whole).
 `--format json` prints the values, and those thresholds under `partIdleHours`.
 
 ### Exit codes

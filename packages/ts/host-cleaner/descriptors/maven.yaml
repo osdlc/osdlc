@@ -8,10 +8,11 @@
 # removed only when picked.
 # While Maven runs it is refused in-use: `mvn`, Maven's launcher (a java process
 # whose main class is org.codehaus.plexus.classworlds.launcher.Launcher), the
-# jar-based `./mvnw` (org.apache.maven.wrapper.MavenWrapperMain), the mvnd
-# daemon and client (`mvnd`, org.mvndaemon.mvnd.common.MavenDaemon), and any
-# process with the dot part `maven` in a word, such as IntelliJ's embedded
-# server (org.jetbrains.idea.maven.server...).
+# mvnd client and daemon (`mvnd`, and the dot part mvnd of
+# org.mvndaemon.mvnd.common.MavenDaemon), and any process with the dot part
+# `maven` in a word, such as the jar-based `./mvnw`
+# (org.apache.maven.wrapper.MavenWrapperMain) or IntelliJ's embedded server
+# (org.jetbrains.idea.maven.server...).
 descriptor: 1
 store: maven
 detect:
@@ -24,4 +25,4 @@ candidates:
     idleHours: 720
     held: true
 inUse:
-  processes: [mvn, classworlds, MavenWrapperMain, mvnd, MavenDaemon, maven]
+  processes: [mvn, classworlds, mvnd, maven]

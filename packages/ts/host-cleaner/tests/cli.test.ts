@@ -94,7 +94,8 @@ async function run(argv: string[], cwd: string, env: Record<string, string>, dep
   const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
   const skip = ['--skip-plugin', 'orca', '--skip-plugin', 'cargo']
   const args = phase && deps.plugins === undefined ? [...argv, ...skip] : argv
-  // The shipped descriptors would sweep this machine's caches, since HOME is the real one.
+  // The shipped descriptors would make each run depend on this machine: their detection looks for
+  // tools on its PATH, and their in-use checks read its process table.
   const shippedDescriptors = deps.shippedDescriptors ?? tempDir()
   const code = await main(args, ctx, { confirm: () => null, ...deps, shippedDescriptors })
   return { code, out: ctx.io.out, err: ctx.io.err }

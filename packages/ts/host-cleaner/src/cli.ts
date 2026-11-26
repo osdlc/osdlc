@@ -50,7 +50,7 @@ import {
   selectPlugins,
   type Loaded,
 } from './registry.ts'
-import { disabledByConfig, effectiveSettings, settingsOf, sourcesOf } from './settings.ts'
+import { disabledByConfig, effectiveSettings, resolveSettings } from './settings.ts'
 import {
   SelectionError,
   clean,
@@ -525,8 +525,7 @@ function pluginsFor(
     deps.plugins ??
     definitions.map((d) =>
       d.create({
-        settings: settingsOf(d.name, config.plugins[d.name] ?? {}, config, definitions),
-        sources: sourcesOf(d.name, config.plugins[d.name] ?? {}, config, definitions),
+        ...resolveSettings(d.name, config.plugins[d.name] ?? {}, config, definitions),
         only,
         env: ctx.env,
         kit: pluginKit(d.name, { env: ctx.env }),

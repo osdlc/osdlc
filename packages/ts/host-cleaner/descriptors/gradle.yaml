@@ -1,13 +1,14 @@
 # yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
 # Gradle's caches and wrapper distributions, on the default folders. No Gradle
 # command clears them on demand, so each is removed as a folder: the caches
-# once nothing in them changed for a week, and each wrapper distribution once
-# unused for 30 days. While a process with the word gradle in its command line
+# once nothing in them changed for a week, and each wrapper distribution, when
+# picked, once unchanged for 30 days. While a process with the word gradle in its command line
 # runs, every candidate is refused in-use. The word matches the daemon
 # (org.gradle...GradleDaemon), a `--no-daemon` build
 # (org.gradle.wrapper.GradleWrapperMain or org.gradle.launcher.GradleMain) and
 # the `gradle` program. A wrapper distribution's idle time is when it was
-# unpacked: `./gradlew` writes nothing in it.
+# unpacked: `./gradlew` writes nothing in it, so one in daily use can go 30
+# days unchanged. Wrapper distributions are held and removed only when picked.
 descriptor: 1
 store: gradle
 detect:
@@ -23,5 +24,6 @@ candidates:
     glob: '*/'
     costDescription: re-download
     idleHours: 720
+    held: true
 inUse:
   processes: [gradle]

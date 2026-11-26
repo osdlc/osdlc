@@ -1008,7 +1008,7 @@ candidates:
 describe('inUse', () => {
   test('a running process or a lock file refuses every candidate', async () => {
     const running = build('uv', UV, {
-      processes: processes({ '/': [{ pid: 7, command: 'uv' }] }),
+      processes: processes({ '/': [{ pid: 5_000_007, command: 'uv' }] }),
     })
     const s = await survey([running.plugin], ctxOf())
     expect(s.objections.filter((o) => o.level === 'refuse')).toEqual([
@@ -1017,7 +1017,7 @@ describe('inUse', () => {
         candidate: `uv:${running.folder('cache')}`,
         level: 'refuse',
         code: IN_USE,
-        reason: 'running: uv (pid 7)',
+        reason: 'running: uv (pid 5000007)',
       },
     ])
 
@@ -1033,14 +1033,14 @@ describe('inUse', () => {
     const b = build('pip', `${PIP_PER_OS}inUse: { processes: [pip, python, nothing] }\n`, {
       processes: processes({
         '/': [
-          { pid: 7, command: 'python -m pip' },
-          { pid: 8, command: 'python x.py' },
+          { pid: 5_000_007, command: 'python -m pip' },
+          { pid: 5_000_008, command: 'python x.py' },
         ],
       }),
     })
     const s = await survey([b.plugin], ctxOf())
     expect(s.objections.map((o) => [o.code, o.reason])).toEqual([
-      [IN_USE, 'running: python (pid 7), python (pid 8)'],
+      [IN_USE, 'running: python (pid 5000007), python (pid 5000008)'],
     ])
   })
 
@@ -1054,12 +1054,12 @@ describe('inUse', () => {
     // The re-check's survey sees no process; delete, after it, does.
     const deleting = b.plugin.delete!.bind(b.plugin)
     b.plugin.delete = (c, x) => {
-      table['/'] = [{ pid: 9, command: 'pip' }]
+      table['/'] = [{ pid: 5_000_009, command: 'pip' }]
       return deleting(c, x)
     }
     const receipt = await clean(p, [b.plugin], ctx)
     expect(receipt.steps).toMatchObject([
-      { result: 'failed', error: `${b.folder('cache')} was not deleted: running: pip (pid 9)` },
+      { result: 'failed', error: `${b.folder('cache')} was not deleted: running: pip (pid 5000009)` },
     ])
     expect(existsSync(b.folder('cache'))).toBe(true)
   })
@@ -1080,7 +1080,7 @@ describe('project', () => {
     })
 
     const busy = build('dotnet', DOTNET_PROJECT, {
-      processes: processes({ [repo]: [{ pid: 3, command: 'dotnet' }] }),
+      processes: processes({ [repo]: [{ pid: 5_000_003, command: 'dotnet' }] }),
     })
     const live = await survey([busy.plugin], ctxOf({ targets: [repo] }))
     expect(live.objections.map((o) => [o.candidate, o.code])).toEqual([
