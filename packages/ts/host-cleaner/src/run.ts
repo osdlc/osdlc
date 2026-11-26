@@ -8,9 +8,10 @@ import { dirname } from 'node:path'
 
 import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 
+import { errorText, realOr } from './helpers.ts'
 import { coveredBy, containsIgnored } from './ignore.ts'
 import { bindKit } from './kit.ts'
-import { acceptRoots, boundBy, linkedCheckouts, realOr, type Bounds } from './roots.ts'
+import { acceptRoots, boundBy, linkedCheckouts, type Bounds } from './roots.ts'
 import {
   CandidateSchema,
   writeReceipt,
@@ -43,8 +44,7 @@ export const DISCARD_USER_DATA = 'discard-user-data'
 /** The protest on a candidate whose idle time could not be measured in the time budget (D11). */
 export const UNMEASURED = 'unmeasured'
 
-export const errorText = (err: unknown): string =>
-  err instanceof Error ? err.message : String(err)
+export { errorText } from './helpers.ts'
 
 /** The time limit, in milliseconds, of every hook but `delete`, unless the plugin asks for another. */
 export const HOOK_LIMIT_MS = 30_000
@@ -52,7 +52,7 @@ export const HOOK_LIMIT_MS = 30_000
 /** The time limit, in milliseconds, of `delete`, unless the plugin asks for another. */
 export const DELETE_LIMIT_MS = 10 * 60_000
 
-/** A hook that ran past its time limit. The core reports it as it would a throw. */
+/** A hook that ran past its time limit, stopped there or late with its answer. The core reports it as it would a throw. */
 export class HookTimeout extends Error {
   override name = 'HookTimeout'
 }
@@ -70,11 +70,7 @@ const limitOf = (p: Plugin, hook: Hook): number => {
   return validLimit(own) ? own : hook === 'delete' ? DELETE_LIMIT_MS : HOOK_LIMIT_MS
 }
 
-/**
- * Calls one hook of `p` with a signal of its own and awaits its answer. Past
- * the hook's limit the signal is aborted and {@link HookTimeout} thrown; a
- * hook that answers straight away is never timed out.
- */
+/** Calls one hook of `p` under its time limit, as {@link callWithin} does. */
 const callHook = <T>(
   p: Plugin,
   hook: Hook,
@@ -86,6 +82,12 @@ const callHook = <T>(
  * Calls `f` with `ctx`, `targetsGiven` defaulted and a signal of its own, and
  * awaits its answer. Past `ms` the signal is aborted and {@link HookTimeout}
  * thrown. How the core calls every hook; the contract suite calls `delete` so too.
+ *
+ * Nothing can stop `f` while it works synchronously: the timer fires only when
+ * `f` waits on something. One that then answers past `ms` is late like any
+ * other: its answer is dropped, the signal aborted and {@link HookTimeout}
+ * thrown. One that throws late keeps its own error, so a {@link FatalRun}
+ * still stops the run.
  */
 export async function callWithin<T>(
   ms: number,
@@ -93,22 +95,28 @@ export async function callWithin<T>(
   f: (ctx: Ctx) => MaybePromise<T>,
 ): Promise<T> {
   const controller = new AbortController()
+  const limit = Math.min(ms, MAX_DELAY_MS)
+  const started = performance.now()
+  const isLate = (): boolean => performance.now() - started > limit
+  const timeOut = (): HookTimeout => {
+    const err = new HookTimeout(`timed out after ${ms} ms`)
+    controller.abort(err)
+    return err
+  }
   let timer: ReturnType<typeof setTimeout> | undefined
   const late = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => {
-        const err = new HookTimeout(`timed out after ${ms} ms`)
-        controller.abort(err)
-        reject(err)
-      },
-      Math.min(ms, MAX_DELAY_MS),
-    )
+    timer = setTimeout(() => reject(timeOut()), limit)
   })
   try {
     // An async wrapper, so a synchronous throw arrives as a rejection.
     const answer = (async () =>
       f({ ...ctx, targetsGiven: ctx.targetsGiven ?? false, signal: controller.signal }))()
-    return await Promise.race([answer, late])
+    const answered = await Promise.race([answer, late])
+    if (isLate()) throw timeOut()
+    return answered
+  } catch (err) {
+    if (isLate()) timeOut()
+    throw err
   } finally {
     clearTimeout(timer)
   }
@@ -137,7 +145,7 @@ export interface Survey {
  * neither a boolean nor a {@link Detection} with a boolean `active` and a
  * string or no `note`.
  */
-export function detection(answer: unknown): { active: boolean; note?: string } | null {
+function detection(answer: unknown): { active: boolean; note?: string } | null {
   if (typeof answer === 'boolean') return { active: answer }
   if (typeof answer !== 'object' || answer === null) return null
   const { active, note } = answer as Partial<Record<keyof Detection, unknown>>
@@ -306,7 +314,8 @@ async function detectAll(
         )
       }
     }
-    const r = await tryHook<unknown>(p, 'detect', ctx, (x) => p.detect(x))
+    const running = detections.filter((d) => d.detected).map((d) => d.plugin.name)
+    const r = await tryHook<unknown>(p, 'detect', { ...ctx, running }, (x) => p.detect(x))
     if ('failed' in r) {
       detections.push({
         plugin: p,
@@ -666,6 +675,7 @@ export function plan(
     targets?: readonly string[] | undefined
     targetsGiven?: boolean | undefined
     ignore?: readonly string[] | undefined
+    descriptors?: readonly string[] | undefined
     select?: readonly string[] | null | undefined
     pick?: readonly string[] | undefined
     spare?: readonly string[] | undefined
@@ -689,6 +699,9 @@ export function plan(
     spare: [...selection.spare],
     allow: [...(opts.allow ?? [])],
     ignore: [...(opts.ignore ?? [])],
+    ...(opts.descriptors === undefined || opts.descriptors.length === 0
+      ? {}
+      : { descriptors: [...opts.descriptors] }),
     warnings: s.warnings,
     // A copy, so a plugin that mutates and returns the same objects on re-discovery cannot change the plan.
     candidates: structuredClone(s.candidates),
@@ -880,7 +893,8 @@ export function decidePlan(p: Plan): Decision {
  * Judge a plan against the world now. Surveys again and decides over exactly
  * what the plan would run, so a refusal that appeared since is `blocked`, a
  * protest nobody granted `not-allowed`, a vanished candidate `gone`, and one whose evidence
- * moved (repo-cleaner's `sameFingerprint`) `changed`.
+ * moved (repo-cleaner's `sameFingerprint`), or that its owner holds now and did not
+ * then, `changed`. One held then that is held no longer still runs.
  */
 export async function recheck(
   p: Plan,
@@ -909,6 +923,13 @@ export async function recheck(
     const before = plannedById.get(c.id)
     if (before !== undefined && !sameFingerprint(before.evidence, c.evidence)) {
       dropped.push({ id: c.id, reason: 'changed', detail: 'its evidence moved since the plan' })
+    } else if (before !== undefined && before.held !== true && c.held === true) {
+      // Nobody chose it held, not even by a pick.
+      dropped.push({
+        id: c.id,
+        reason: 'changed',
+        detail: 'it is held for review now, and was not in the plan',
+      })
     } else kept.set(c.id, c)
   }
   const explain: Explain = (id) => {

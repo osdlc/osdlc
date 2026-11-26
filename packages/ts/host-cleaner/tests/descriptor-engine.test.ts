@@ -9,27 +9,28 @@
 
 import { execFileSync } from 'node:child_process'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
   realpathSync,
   renameSync,
   rmSync,
   symlinkSync,
-  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { afterEach, describe, expect, test } from 'vitest'
+import { delimiter, dirname, join } from 'node:path'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import type { CommandRunner } from '@osdlc/command-seam'
-import type { ProcessHolder, ProcessProbe } from '@osdlc/repo-cleaner'
+import type { ProcessHolder } from '@osdlc/repo-cleaner'
 import { fakeNeverExited } from '@osdlc/command-seam/testing'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { CORPUS_DIR, FIRST_SET, draftStore } from '../scripts/draft-descriptor.ts'
 import {
+  DUPLICATE_ENTRY,
   IN_USE,
   NO_PRUNE_TOOL,
   OUTSIDE_ROOTS,
@@ -45,6 +46,7 @@ import {
   survey,
   type Descriptor,
   type DescriptorOptions,
+  type Kit,
   type Os,
   type PathCandidate,
   type Plugin,
@@ -52,36 +54,21 @@ import {
 } from '../src/index.ts'
 import { descriptorDetection } from '../src/descriptor/engine.ts'
 import { effectiveSettings, settingsIssues, settingsOf } from '../src/settings.ts'
-import { contractSuite, fakeContext, fakeRunner, tempHome } from '../src/testing.ts'
+import {
+  ageTree as age,
+  contractSuite,
+  fakeContext,
+  fakeProcesses as processes,
+  fakeRunner,
+  tempHome,
+  type FakeProcesses as Processes,
+} from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllEnvs()
   while (cleanups.length > 0) cleanups.pop()!()
-})
-
-/** The kit's process table, as its `probe` and `ps` options. */
-interface Processes {
-  probe: ProcessProbe
-  ps: CommandRunner
-}
-
-/**
- * A process table: `cwd` maps a folder to the processes working in it, for
- * the probe; `/` lists every process, read by `ps` as a child of init with
- * `command` as its command line. Both read `table` when asked, so it may
- * change.
- */
-const processes = (table: Record<string, ProcessHolder[]> = {}): Processes => ({
-  probe: { alive: () => false, holders: (path) => table[path] ?? [] },
-  ps: {
-    run: () => ({
-      exitCode: 0,
-      stdout: [{ pid: 1, command: '/sbin/init' }, ...(table['/'] ?? [])]
-        .map((h) => `${h.pid} ${h.pid === 1 ? 0 : 1} ${h.command}\n`)
-        .join(''),
-      stderr: '',
-    }),
-  },
 })
 
 const OS: Os = 'linux'
@@ -108,6 +95,8 @@ function build(
     processes?: Processes
     fill?: boolean
     opts?: DescriptorOptions
+    /** Changes the plugin's kit in place before the plugin is built on it. */
+    kit?: (kit: Kit) => void
   } = {},
 ): Built {
   const h = tempHome()
@@ -138,6 +127,7 @@ function build(
   }
   const fake = fakeRunner(o.programs ?? {})
   const kit = pluginKit(name, { env: h.env, ...(o.processes ?? processes()), ...fake })
+  o.kit?.(kit)
   const plugin = descriptorPlugin(name, d, { os: OS, ownDirs: [], ...o.opts }).create({
     settings: { idleHours: o.idleHours ?? 0 },
     only: [],
@@ -160,20 +150,6 @@ async function surveyAndClean(plugin: Plugin, allow: string[] = [], over: Partia
   const s = await survey([plugin], ctx)
   const p = plan(s, { allow, targets: ctx.targets })
   return { survey: s, receipt: await clean(p, [plugin], ctx) }
-}
-
-/** Sets every modification time under `dir` to `hours` ago. */
-function age(dir: string, hours: number): void {
-  const at = new Date(Date.now() - hours * 3_600_000)
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name)
-    try {
-      age(p, hours)
-    } catch {
-      // `p` is a file, which readdirSync cannot read.
-    }
-    utimesSync(p, at, at)
-  }
 }
 
 // The system description's tier 1 examples (as in descriptor-schema.test.ts).
@@ -801,6 +777,18 @@ candidates:
     expect(await of(false).detect(fakeContext())).toBe(true)
     expect(asked).toEqual(['pip-code', 'pip-code'])
   })
+
+  test('supersededBy: without runs, a plugin survey found active (ctx.running) runs', async () => {
+    const { plugin } = build('pip', `${PIP_PER_OS}supersededBy: pip-code\n`, {
+      opts: { runs: undefined },
+    })
+    expect(await plugin.detect(fakeContext({ running: ['git', 'pip-code'] }))).toEqual({
+      active: false,
+      note: 'skipped: the plugin pip-code runs instead',
+    })
+    expect(await plugin.detect(fakeContext({ running: ['git'] }))).toBe(true)
+    expect(await plugin.detect(fakeContext())).toBe(true)
+  })
 })
 
 describe('candidates', () => {
@@ -848,7 +836,11 @@ candidates:
       `pip:${join(http, 'b')}`,
       rest,
     ])
-    expect(s.candidates[2]!.evidence.rest).toEqual([join(http, 'c'), join(http, 'd')])
+    // The evidence counts them, so that a huge cache does not flood the plan.
+    expect(s.candidates[2]!.evidence.rest).toEqual({
+      matches: 2,
+      digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+    })
     expect(s.candidates[2]!.held).toBeUndefined()
     const { receipt } = await surveyAndClean(b.plugin)
     expect(receipt.steps.map((x) => x.id)).toContain(rest)
@@ -871,7 +863,7 @@ candidates:
     writeFileSync(join(http, 'b', 'fresh'), 'x')
     const s = await survey([b.plugin], ctxOf())
     const rest = s.candidates.find((c) => c.evidence.rest !== undefined)!
-    expect(rest.evidence.rest).toEqual([join(http, 'b')])
+    expect(rest.path).toBe(join(http, 'b'))
     expect(rest.held).toBe(true)
   })
 
@@ -887,8 +879,13 @@ candidates:
     )
     const http = b.folder('http')
     for (const n of ['c', 'd']) mkdirSync(join(http, n, 'in'), { recursive: true })
-    const s = await survey([b.plugin], ctxOf({ ignore: [join(http, 'c'), join(http, 'd', 'in')] }))
-    expect(s.candidates.map((c) => c.evidence.rest)).toEqual([undefined, [join(http, 'b')]])
+    const ignore = [join(http, 'c'), join(http, 'd', 'in')]
+    const { survey: s } = await surveyAndClean(b.plugin, [], { ignore })
+    expect(s.candidates.map((c) => [c.path, c.evidence.rest])).toEqual([
+      [join(http, 'a'), undefined],
+      [join(http, 'b'), expect.objectContaining({ matches: 1 })],
+    ])
+    expect(readdirSync(http).sort()).toEqual(['blob', 'c', 'd'])
   })
 
   test('a glob that matches files gives one candidate per file', async () => {
@@ -923,7 +920,7 @@ candidates:
     expect(globMatches(h.home, '*/')).toEqual(['a', 'b'].map((n) => join(h.home, n)))
   })
 
-  test('held and costDescription: lost are held; idleHours on the candidate beats the setting', async () => {
+  test("held and costDescription: lost are held; the setting does not lower a candidate's idleHours", async () => {
     const b = build(
       'x',
       `descriptor: 1
@@ -941,6 +938,17 @@ candidates:
     const s = await survey([b.plugin], ctxOf())
     expect(s.candidates.map((c) => c.held)).toEqual([true, true, true])
     expect(s.candidates[2]!.why).toMatch(/\(threshold 1000\)/)
+  })
+
+  test("without the settings' sources, the setting can only raise a candidate's idleHours", async () => {
+    for (const [idleHours, threshold] of [
+      [24, 720],
+      [1000, 1000],
+    ] as const) {
+      const b = build('hf', HUGGING_FACE, { idleHours })
+      const s = await survey([b.plugin], ctxOf())
+      expect(s.candidates[0]!.why).toContain(`(threshold ${threshold})`)
+    }
   })
 
   test("idleHours comes from the plugin's setting, which inherits the config's", () => {
@@ -974,6 +982,21 @@ describe('inUse', () => {
     const l = await survey([locked.plugin], ctxOf())
     expect(l.objections.map((o) => [o.code, o.reason])).toEqual([
       [IN_USE, `the lock ${join(locked.home, '.cache', 'pip.lock')} exists`],
+    ])
+  })
+
+  test('a process that several of the names match is named once, in one objection', async () => {
+    const b = build('pip', `${PIP_PER_OS}inUse: { processes: [pip, python, nothing] }\n`, {
+      processes: processes({
+        '/': [
+          { pid: 7, command: 'python -m pip' },
+          { pid: 8, command: 'python x.py' },
+        ],
+      }),
+    })
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.objections.map((o) => [o.code, o.reason])).toEqual([
+      [IN_USE, 'running: python (pid 7), python (pid 8)'],
     ])
   })
 
@@ -1343,6 +1366,18 @@ candidates:
     expect(existsSync(mod)).toBe(false)
   })
 
+  test('a folder under an XDG folder the environment sets outside home is trusted', async () => {
+    const cache = join(outsideHome(), 'cache')
+    const build = filled(cache, 'go-build')
+    const b = buildVars('go', GO_VARS, { env: () => ({ XDG_CACHE_HOME: cache }) })
+    // detect needs go on PATH or its module cache.
+    filled(b.home, 'go', 'pkg', 'mod')
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.objections.filter((o) => o.code === OUTSIDE_ROOTS)).toEqual([])
+    expect(s.roots.go).toContain(build)
+    expect(s.candidates.map((c) => c.path)).toContain(build)
+  })
+
   test('a trusted folder is still refused when it holds home, or is a target', async () => {
     const holdsHome = buildVars('go', GO_VARS)
     const parent = join(holdsHome.home, '..')
@@ -1372,6 +1407,31 @@ candidates:
     )
   })
 
+  test('a lock whose variable has no value refuses every candidate', async () => {
+    const UNKNOWN = PNPM_VARS.replace('processes: [pnpm]', "locks: ['${LOCKS}/lock']").replace(
+      'vars:\n',
+      'vars:\n  LOCKS:\n    - env: PNPM_LOCKS\n',
+    )
+    const b = buildVars('pnpm', UNKNOWN)
+    const store = filled(b.home, '.local/share/pnpm/store')
+    const s = await survey([b.plugin], ctxOf())
+    const c = s.candidates[0]!
+    expect(s.objections).toContainEqual(
+      expect.objectContaining({
+        by: 'pnpm',
+        candidate: c.id,
+        code: IN_USE,
+        level: 'refuse',
+        reason: 'the lock ${LOCKS}/lock cannot be checked: ${LOCKS} has no value',
+      }),
+    )
+    // The check before the delete refuses it too.
+    await expect(b.plugin.delete!(c, fakeContext())).rejects.toThrow(
+      'cannot be checked: ${LOCKS} has no value',
+    )
+    expect(existsSync(store)).toBe(true)
+  })
+
   test("the config's vars name only the descriptor's variables, each a folder", () => {
     const { def } = buildVars('go', GO_VARS)
     expect(
@@ -1385,6 +1445,18 @@ candidates:
       'plugins.go.vars: Unrecognized key: "GOROOT"',
     ])
     expect(settingsIssues({ go: { vars: { GOPATH: '~/go' } } }, 'plugins', [def])).toEqual([])
+    // A config value is trusted, so it passes the checks a descriptor's folder does.
+    expect(
+      settingsIssues(
+        { go: { vars: { GOMODCACHE: '/home/bob', GOPATH: '~/../bob', GOCACHE: '/' } } },
+        'plugins',
+        [def],
+      ),
+    ).toEqual([
+      'plugins.go.vars.GOPATH: must not have a .. segment',
+      'plugins.go.vars.GOMODCACHE: must name a folder below a home folder, not a home folder itself',
+      'plugins.go.vars.GOCACHE: must name a folder below the home folder or a root, not the home folder or a root itself',
+    ])
     const tier1 = descriptorPlugin('pip', parseDescriptor(PIP_PER_OS, 'pip.yaml'))
     expect(settingsIssues({ pip: { vars: {} } }, 'plugins', [tier1])).toEqual([
       'plugins.pip: Unrecognized key: "vars"',
@@ -1401,5 +1473,547 @@ candidates:
       ['vars.GOMODCACHE', undefined, 'default'],
       ['vars.GOCACHE', undefined, 'default'],
     ])
+  })
+})
+
+/** pip's HTTP cache: one candidate per folder, past the first as one. */
+const REST = `descriptor: 1
+paths:
+  http: { all: ~/.cache/pip/http }
+candidates:
+  - { path: http, glob: '*/', maxEntries: 1, costDescription: re-download }
+`
+
+/** {@link REST} over folders `a` to `d`, unchanged for 48 hours, with a 24 hour threshold. */
+function buildRest(kit?: (kit: Kit) => void) {
+  const b = build('pip', REST, { idleHours: 24, ...(kit === undefined ? {} : { kit }) })
+  const http = b.folder('http')
+  for (const n of ['c', 'd']) {
+    mkdirSync(join(http, n))
+    writeFileSync(join(http, n, 'blob'), n)
+  }
+  age(http, 48)
+  return { ...b, http, id: `pip:${join(http, 'b')}` }
+}
+
+/** Runs `before` right before the plugin's `delete`, once, as something that happens after the re-check. */
+function beforeDelete(plugin: Plugin, before: () => void): void {
+  const deleting = plugin.delete!.bind(plugin)
+  let done = false
+  plugin.delete = (c, x) => {
+    if (!done) before()
+    done = true
+    return deleting(c, x)
+  }
+}
+
+describe('idle is checked again at delete', () => {
+  test('a folder that changed after the re-check is not deleted', async () => {
+    const b = build('pip', PIP_PER_OS, { idleHours: 24 })
+    const cache = b.folder('cache')
+    age(cache, 48)
+    beforeDelete(b.plugin, () => writeFileSync(join(cache, 'fresh'), 'x'))
+    const { receipt } = await surveyAndClean(b.plugin)
+    expect(receipt.steps).toMatchObject([
+      {
+        result: 'failed',
+        error: `${cache} was not deleted: it is no longer idle: it changed 0 hours ago (threshold 24)`,
+      },
+    ])
+    expect(existsSync(join(cache, 'fresh'))).toBe(true)
+  })
+
+  test('nor is one that can no longer be measured, or read', async () => {
+    let measured = true
+    const b = build('pip', PIP_PER_OS, {
+      idleHours: 24,
+      kit: (kit) => {
+        const idle = kit.idle
+        kit.idle = (...args) => (measured ? idle(...args) : { unmeasured: true })
+      },
+    })
+    const cache = b.folder('cache')
+    age(cache, 48)
+    beforeDelete(b.plugin, () => {
+      measured = false
+    })
+    const { receipt } = await surveyAndClean(b.plugin)
+    expect(receipt.steps[0]!.error).toMatch(/could not be measured idle in the time budget now$/)
+    measured = true
+    const inner = join(cache, 'inner')
+    mkdirSync(inner)
+    const locked = build('pip', PIP_PER_OS, {
+      idleHours: 24,
+      kit: (kit) => {
+        const idle = kit.idle
+        kit.idle = (...args) => {
+          if (!measured) throw new Error('EACCES')
+          return idle(...args)
+        }
+      },
+    })
+    age(locked.folder('cache'), 48)
+    beforeDelete(locked.plugin, () => {
+      measured = false
+    })
+    const unread = await surveyAndClean(locked.plugin)
+    expect(unread.receipt.steps[0]!.error).toMatch(/it cannot be read now$/)
+    expect(existsSync(cache) && existsSync(locked.folder('cache'))).toBe(true)
+  })
+
+  test('nor is one that changed between the plan and the re-check, which drops it', async () => {
+    const b = build('pip', PIP_PER_OS, { idleHours: 24 })
+    const cache = b.folder('cache')
+    age(cache, 48)
+    const ctx = ctxOf()
+    const p = plan(await survey([b.plugin], ctx))
+    writeFileSync(join(cache, 'fresh'), 'x')
+    const receipt = await clean(p, [b.plugin], ctx)
+    expect(receipt.steps).toEqual([])
+    expect(receipt.dropped).toMatchObject([{ id: `pip:${cache}`, reason: 'changed' }])
+    expect(existsSync(join(cache, 'fresh'))).toBe(true)
+  })
+
+  test('a held folder a person picked is deleted as it is', async () => {
+    const b = build('pip', PIP_PER_OS, { idleHours: 24 })
+    const cache = b.folder('cache')
+    const ctx = ctxOf()
+    const p = plan(await survey([b.plugin], ctx), { pick: [`pip:${cache}`] })
+    expect((await clean(p, [b.plugin], ctx)).steps).toMatchObject([{ result: 'ok' }])
+    expect(existsSync(cache)).toBe(false)
+  })
+
+  test('a wipe that changed after the re-check runs no command; a prune has no idle check', async () => {
+    const WIPE = UV.replace('removes: unused', 'removes: all')
+    for (const [text, calls] of [
+      [WIPE, 0],
+      [UV, 1],
+    ] as const) {
+      const b = build('uv', text, { idleHours: 24, programs: { uv: () => ({}) } })
+      age(b.folder('cache'), 48)
+      beforeDelete(b.plugin, () => writeFileSync(join(b.folder('cache'), 'fresh'), 'x'))
+      await surveyAndClean(b.plugin)
+      expect(b.calls).toHaveLength(calls)
+    }
+  })
+
+  test('a glob match, a file and a build folder are checked too', async () => {
+    const b = build(
+      'x',
+      `descriptor: 1
+paths:
+  dirs: { all: ~/.x/dirs }
+  files: { all: ~/.x/files }
+candidates:
+  - { path: dirs, glob: '*/', costDescription: rebuild }
+  - { path: files, glob: '*.log', costDescription: rebuild }
+project:
+  - { dir: obj, marker: '*.csproj', costDescription: rebuild }
+`,
+      { fill: false, idleHours: 24 },
+    )
+    const repo = dotnetCheckout(b.home)
+    const dir = join(b.folder('dirs'), 'a')
+    const file = join(b.folder('files'), 'a.log')
+    mkdirSync(dir, { recursive: true })
+    mkdirSync(b.folder('files'), { recursive: true })
+    writeFileSync(join(dir, 'blob'), 'x')
+    writeFileSync(file, 'x')
+    for (const at of [b.folder('dirs'), b.folder('files'), join(repo, 'obj')]) age(at, 48)
+    beforeDelete(b.plugin, () => {
+      for (const f of [join(dir, 'blob'), file, join(repo, 'obj', 'App.dll')]) {
+        writeFileSync(f, 'fresh')
+      }
+    })
+    const { receipt } = await surveyAndClean(b.plugin, [], { targets: [repo] })
+    expect(receipt.steps.map((x) => [x.id, x.error?.includes('is no longer idle')])).toEqual(
+      [dir, file, join(repo, 'obj')].map((path) => [`x:${path}`, true]),
+    )
+    for (const path of [dir, file, join(repo, 'obj')]) expect(existsSync(path)).toBe(true)
+  })
+
+  test('of the combined rest, none goes when one changed after the re-check', async () => {
+    const b = buildRest()
+    beforeDelete(b.plugin, () => writeFileSync(join(b.http, 'c', 'fresh'), 'x'))
+    const { receipt } = await surveyAndClean(b.plugin)
+    expect(receipt.steps[1]).toMatchObject({
+      id: b.id,
+      result: 'failed',
+      error: expect.stringMatching(/was not deleted: .*\/c: it is no longer idle/),
+    })
+    expect(readdirSync(b.http).sort()).toEqual(['b', 'blob', 'c', 'd'])
+  })
+
+  test('of the combined rest, one that changes while the others go is kept, and those after it', async () => {
+    const b = buildRest((kit) => {
+      const remove = kit.remove
+      kit.remove = (path, ctx) => {
+        const said = remove(path, ctx)
+        if (path.endsWith('/b')) writeFileSync(join(dirname(path), 'c', 'fresh'), 'x')
+        return said
+      }
+    })
+    const { receipt } = await surveyAndClean(b.plugin)
+    expect(receipt.steps[1]!.error).toMatch(
+      /^removed 1 of 3 matches; removed .*\/b; .*not removed: .*\/c: it is no longer idle.*; 1 not tried$/,
+    )
+    expect(readdirSync(b.http).sort()).toEqual(['blob', 'c', 'd'])
+  })
+
+  test('the combined rest is not deleted by a plugin whose last survey did not list it', async () => {
+    const b = buildRest()
+    const s = await survey([b.plugin], ctxOf())
+    const rest = s.candidates.find((c) => c.id === b.id)!
+    mkdirSync(join(b.http, 'e'))
+    await survey([b.plugin], ctxOf())
+    await expect(b.plugin.delete!(rest, fakeContext())).rejects.toThrow(
+      `${b.id} was not deleted: the last survey did not list its matches`,
+    )
+    expect(readdirSync(b.http).sort()).toEqual(['a', 'b', 'blob', 'c', 'd', 'e'])
+  })
+})
+
+describe('the combined rest', () => {
+  test('one that cannot be removed does not stop the others, and the error names what went', async () => {
+    const b = buildRest((kit) => {
+      const remove = kit.remove
+      kit.remove = (path, ctx) => {
+        if (path.endsWith('/c')) throw new Error('EACCES')
+        return remove(path, ctx)
+      }
+    })
+    const { receipt } = await surveyAndClean(b.plugin)
+    const [, rest] = receipt.steps
+    expect(rest).toMatchObject({ id: b.id, result: 'failed' })
+    expect(rest!.error).toMatch(
+      /^removed 2 of 3 matches; removed .*\/b; .*removed .*\/d; .*not removed: .*\/c: EACCES$/,
+    )
+    expect(readdirSync(b.http).sort()).toEqual(['blob', 'c'])
+  })
+
+  test('one that cannot be read is left, and the others go', async () => {
+    const b = buildRest((kit) => {
+      const idle = kit.idle
+      kit.idle = (path, o) => {
+        if (String(path).endsWith('/c')) throw new Error('EACCES')
+        return idle(path, o)
+      }
+    })
+    const { receipt } = await surveyAndClean(b.plugin)
+    expect(receipt.steps[1]).toMatchObject({
+      result: 'ok',
+      delete: expect.stringMatching(/; left .*\/c: it cannot be read now$/),
+    })
+    expect(readdirSync(b.http).sort()).toEqual(['blob', 'c'])
+  })
+
+  test('its matches share the time of one measurement, for idle and for size', async () => {
+    // Each measurement takes 6 seconds of a clock the test moves.
+    let now = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    const took: string[] = []
+    const slow = (what: 'idle' | 'size') => (kit: Kit) => {
+      const real = { idle: kit.idle, size: kit.size }
+      kit.idle = (path, o) => {
+        if (what === 'idle') now += 6_000
+        took.push(`idle ${String(path)}`)
+        return real.idle(path, o)
+      }
+      kit.size = (path) => {
+        if (what === 'size') now += 6_000
+        took.push(`size ${path}`)
+        return real.size(path)
+      }
+    }
+    const of = async (what: 'idle' | 'size') => {
+      took.length = 0
+      const b = buildRest(slow(what))
+      // `performance.now` also times the hook, so it stays put until discover.
+      const found = await b.plugin.discover!(fakeContext())
+      const past = took.filter((x) => !x.endsWith('/a')).map((x) => x.replace(/ .*\//, ' '))
+      return { rest: found.find((c) => c.id === b.id)!, past }
+    }
+    const idle = await of('idle')
+    expect(idle.past).toEqual(['idle b', 'idle c'])
+    expect(idle.rest).toMatchObject({ unmeasured: true })
+    expect(idle.rest.bytes).toBeUndefined()
+    const size = await of('size')
+    expect(size.past).toEqual(['idle b', 'idle c', 'idle d', 'size b', 'size c'])
+    expect(size.rest.unmeasured).toBeUndefined()
+    expect(size.rest.bytes).toBeUndefined()
+  })
+
+  test('its evidence does not hold its matches', async () => {
+    const b = buildRest()
+    const text = JSON.stringify((await survey([b.plugin], ctxOf())).candidates)
+    expect(text).not.toContain(join(b.http, 'd'))
+  })
+})
+
+describe('a command that does not exit', () => {
+  test.each([
+    ['spawn', 'did not run'],
+    ['timeout', 'stopped before it exited (timeout); it may have removed part of the folder'],
+    ['signal', 'stopped before it exited (signal); it may have removed part of the folder'],
+  ] as const)('%s: %s', async (reason, said) => {
+    const b = build('uv', UV, {
+      programs: { uv: () => ({ exitCode: 1, neverExited: true, reason }) },
+    })
+    const { receipt } = await surveyAndClean(b.plugin)
+    expect(receipt.steps).toMatchObject([
+      {
+        result: 'failed',
+        error: expect.stringContaining(
+          `uv cache prune --cache-dir ${b.folder('cache')} failed (${said})`,
+        ),
+      },
+    ])
+  })
+})
+
+describe('one folder, two entries', () => {
+  const PRUNE = `  - path: cache
+    costDescription: re-download
+    command: [uv, cache, prune, --cache-dir, '{path}']
+    removes: unused
+`
+  const REMOVE = '  - { path: cache, costDescription: re-download }\n'
+  const SAME = `  - { path: again, costDescription: re-download }
+`
+  const two = (first: string, second: string) => `descriptor: 1
+paths:
+  cache: { all: ~/.cache/uv }
+  again: { all: ~/.cache/uv/ }
+candidates:
+${first}${second}`
+
+  test.each([
+    ['a prune and a removal', PRUNE, REMOVE],
+    ['a removal and a prune', REMOVE, PRUNE],
+    ['two names for one folder', REMOVE, SAME],
+    ['a prune and another name', SAME, PRUNE],
+  ])('%s are one refused candidate', async (_, first, second) => {
+    for (const programs of [{}, { uv: () => ({}) }]) {
+      const b = build('uv', two(first, second), { programs })
+      const { survey: s, receipt } = await surveyAndClean(b.plugin, [NO_PRUNE_TOOL])
+      expect(s.candidates.map((c) => c.id)).toEqual([`uv:${b.folder('cache')}`])
+      expect(s.objections.filter((o) => o.level === 'refuse')).toMatchObject([
+        {
+          code: DUPLICATE_ENTRY,
+          reason: `two entries of uv give ${b.folder('cache')}; which one deletes it is not clear`,
+        },
+      ])
+      expect(receipt.steps).toEqual([])
+      expect(b.calls).toEqual([])
+      expect(existsSync(b.folder('cache'))).toBe(true)
+    }
+  })
+
+  test('overlapping globs are refused where they meet, the combined rest included', async () => {
+    const b = build(
+      'x',
+      `descriptor: 1
+paths:
+  data: { all: ~/.x/data }
+candidates:
+  - { path: data, glob: '*/', maxEntries: 1, costDescription: re-download }
+  - { path: data, glob: 'd*/', costDescription: lost }
+`,
+      { fill: false },
+    )
+    const data = b.folder('data')
+    for (const n of ['a', 'b', 'c', 'd']) mkdirSync(join(data, n), { recursive: true })
+    const { survey: s } = await surveyAndClean(b.plugin)
+    expect(s.objections.filter((o) => o.code === DUPLICATE_ENTRY).map((o) => o.candidate)).toEqual([
+      `x:${join(data, 'b')}`,
+      `x:${join(data, 'd')}`,
+    ])
+    expect(readdirSync(data).sort()).toEqual(['b', 'c', 'd'])
+  })
+
+  test('entries for a folder the checks refuse are listed once, with that reason alone', async () => {
+    const b = build(
+      'x',
+      `descriptor: 1
+paths:
+  docs: { all: ~/Documents }
+candidates:
+  - { path: docs, glob: 'a*/', costDescription: re-download }
+  - { path: docs, glob: 'b*/', costDescription: re-download }
+`,
+    )
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.objections.filter((o) => o.by === 'x').map((o) => o.code)).toEqual([OUTSIDE_ROOTS])
+  })
+
+  test('two project entries whose markers are both there are one build folder, by the stricter of each', async () => {
+    const CS = "  - { dir: bin, marker: '*.csproj', costDescription: rebuild }\n"
+    const FS = "  - { dir: bin, marker: '*.fsproj', costDescription: lost, idleHours: 1000 }\n"
+    for (const entries of [CS + FS, FS + CS]) {
+      const text = `${DOTNET_PROJECT.slice(0, DOTNET_PROJECT.indexOf('  - { dir: bin'))}${entries}`
+      const b = build('dotnet', text)
+      const repo = dotnetCheckout(b.home)
+      writeFileSync(join(repo, 'App.fsproj'), '<Project/>')
+      age(join(repo, 'bin'), 48)
+      const ctx = { targets: [repo] }
+      const { survey: s } = await surveyAndClean(b.plugin, [], ctx)
+      const bin = s.candidates.filter((c) => c.path === join(repo, 'bin'))
+      expect(bin).toMatchObject([
+        {
+          held: true,
+          costDescription: 'lost',
+          why: expect.stringContaining('(threshold 1000)'),
+          evidence: { project: 0 },
+        },
+      ])
+      expect(s.objections.filter((o) => o.code === DUPLICATE_ENTRY)).toEqual([])
+      expect(existsSync(join(repo, 'bin'))).toBe(true)
+      // With the stricter marker gone, the other entry's rules are the folder's.
+      rmSync(join(repo, 'App.fsproj'))
+      mkdirSync(b.folder('nuget'))
+      await surveyAndClean(b.plugin, [], ctx)
+      expect(existsSync(join(repo, 'bin'))).toBe(false)
+    }
+  })
+})
+
+describe('home', () => {
+  test("is the run's, over the one the plugin was created with", async () => {
+    const other = tempHome()
+    cleanups.push(other.cleanup)
+    const cache = join(other.home, '.cache', 'uv')
+    const b = build('uv', `${UV.replace('processes: [uv]', 'locks: [~/uv.lock]')}`, {
+      programs: { uv: () => ({}) },
+    })
+    mkdirSync(cache, { recursive: true })
+    const { survey: s } = await surveyAndClean(b.plugin, [], { home: other.home })
+    expect(s.candidates.map((c) => c.path)).toEqual([cache])
+    expect(s.selfRoots.uv).toEqual([cache])
+    expect(b.calls.map((c) => [c.argv.at(-1), c.opts.cwd])).toEqual([[cache, other.home]])
+    writeFileSync(join(other.home, 'uv.lock'), '')
+    const locked = await survey([b.plugin], ctxOf({ home: other.home }))
+    expect(locked.objections.map((o) => o.reason)).toEqual([
+      `the lock ${join(other.home, 'uv.lock')} exists`,
+    ])
+  })
+})
+
+describe('what is walked and asked once', () => {
+  /** Every folder `kit.idle` and `kit.size` were asked of. */
+  const counting = (seen: string[]) => (kit: Kit) => {
+    const { idle, size } = kit
+    kit.idle = (path, o) => {
+      seen.push(`idle ${String(path)}`)
+      return idle(path, o)
+    }
+    kit.size = (path) => {
+      seen.push(`size ${path}`)
+      return size(path)
+    }
+  }
+
+  test('a target inside another, or given twice, is not walked again', async () => {
+    const seen: string[] = []
+    const b = build('dotnet', DOTNET_PROJECT, { kit: counting(seen) })
+    const repo = dotnetCheckout(b.home)
+    const lib = join(repo, 'lib')
+    const objs = [join(lib, 'web', 'obj'), join(lib, 'obj')]
+    for (const obj of objs) {
+      mkdirSync(obj, { recursive: true })
+      writeFileSync(join(dirname(obj), 'App.csproj'), '<Project/>')
+    }
+    const targets = [join(lib, 'web'), lib, lib]
+    const s = await survey([b.plugin], ctxOf({ targets }))
+    expect(s.candidates.map((c) => c.path)).toEqual([b.folder('nuget'), ...objs])
+    expect(s.objections).toEqual([])
+    expect(seen.filter((x) => x.endsWith('obj'))).toEqual(
+      objs.flatMap((obj) => [`idle ${obj}`, `size ${obj}`]),
+    )
+  })
+
+  test('a worktree inside a checkout is walked once, as its own checkout', async () => {
+    const seen: string[] = []
+    const b = build('dotnet', DOTNET_PROJECT, { kit: counting(seen) })
+    const repo = dotnetCheckout(b.home)
+    const tree = join(repo, 'trees', 'b')
+    mkdirSync(dirname(tree))
+    execFileSync('git', ['-C', repo, 'worktree', 'add', '-q', '-b', 'b', tree])
+    writeFileSync(join(tree, 'App.csproj'), '<Project/>')
+    mkdirSync(join(tree, 'obj'))
+    const s = await survey([b.plugin], ctxOf({ targets: [repo] }))
+    expect(seen.filter((x) => x.endsWith(join(tree, 'obj')))).toHaveLength(2)
+    expect(s.candidates.find((c) => c.path === join(tree, 'obj'))!.evidence.checkout).toBe(tree)
+  })
+
+  test.skipIf(process.platform === 'win32')(
+    "git is asked for a run's checkouts the same number of times whatever it deletes",
+    async () => {
+      const real = execFileSync('which', ['git'], { encoding: 'utf-8' }).trim()
+      const shim = tempHome()
+      cleanups.push(shim.cleanup)
+      const log = join(shim.home, 'log')
+      writeFileSync(
+        join(shim.home, 'git'),
+        `#!/bin/sh\necho "$*" >> '${log}'\nexec '${real}' "$@"\n`,
+      )
+      chmodSync(join(shim.home, 'git'), 0o755)
+      const lists = async (folders: number): Promise<number> => {
+        const b = build(
+          'dotnet',
+          DOTNET_PROJECT.replace('path: nuget,', "path: nuget, glob: '*/',"),
+          {
+            fill: false,
+          },
+        )
+        const repo = dotnetCheckout(b.home)
+        for (let i = 0; i < folders; i++) {
+          mkdirSync(join(b.folder('nuget'), `p${i}`), { recursive: true })
+          mkdirSync(join(repo, `p${i}`, 'obj'), { recursive: true })
+          writeFileSync(join(repo, `p${i}`, 'P.csproj'), '<Project/>')
+        }
+        writeFileSync(log, '')
+        vi.stubEnv('PATH', `${shim.home}${delimiter}${process.env.PATH}`)
+        const { receipt } = await surveyAndClean(b.plugin, [], { targets: [repo] })
+        vi.unstubAllEnvs()
+        expect(receipt.steps.map((x) => x.result)).toEqual(Array(2 * folders + 2).fill('ok'))
+        return readFileSync(log, 'utf-8')
+          .split('\n')
+          .filter((line) => line.includes('worktree list')).length
+      }
+      const few = await lists(1)
+      expect(few).toBeGreaterThan(0)
+      expect(await lists(5)).toBe(few)
+    },
+  )
+})
+
+describe('a folder that goes while it is surveyed', () => {
+  test.each(['before', 'while'])('%s it is measured gives no row', async (when) => {
+    const b = build('hf', HUGGING_FACE, {
+      kit: (kit) => {
+        const { idle } = kit
+        kit.idle = (path, o) => {
+          // Gone right before its own walk, or, as the next match, before its turn.
+          const gone = when === 'while' ? String(path) : String(path).replace(/--a$/, '--b')
+          rmSync(gone, { recursive: true, force: true })
+          return idle(path, o)
+        }
+      },
+    })
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.candidates.map((c) => c.path)).toEqual(
+      when === 'while' ? [] : [join(b.folder('hub'), 'models--a')],
+    )
+    const repo = dotnetCheckout(b.home)
+    const net = build('dotnet', DOTNET_PROJECT, {
+      kit: (kit) => {
+        const { idle } = kit
+        kit.idle = (path, o) => {
+          rmSync(String(path), { recursive: true })
+          return idle(path, o)
+        }
+      },
+    })
+    expect((await survey([net.plugin], ctxOf({ targets: [repo] }))).candidates).toEqual([])
   })
 })

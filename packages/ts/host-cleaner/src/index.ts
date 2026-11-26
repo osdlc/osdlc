@@ -23,6 +23,7 @@ export {
   type Level,
   type MaybePromise,
   type Objection,
+  type PartIdleHours,
   type PathCandidate,
   type Plugin,
   type PluginDefinition,
@@ -30,14 +31,9 @@ export {
   type RefCandidate,
   type Root,
   type RunCtx,
+  type SettingSource,
 } from './types.ts'
-export {
-  BUILT_IN_PLUGINS,
-  loadPlugins,
-  supersession,
-  type Loaded,
-  type Supersession,
-} from './registry.ts'
+export { BUILT_IN_PLUGINS, findPlugins, loadPlugins, type Loaded } from './registry.ts'
 export {
   PLAN_VERSION,
   PlanSchema,
@@ -87,8 +83,11 @@ export {
   MEASURE_BUDGET_MS,
   RUN_LIMIT_MS,
   commandHasName,
+  coveredBy,
+  idleHoursOr,
   idleHoursSetting,
   pluginKit,
+  present,
   type CandidateFields,
   type Idle,
   type Kit,
@@ -116,6 +115,7 @@ export {
   type ProjectEntry,
 } from './descriptor/schema.ts'
 export {
+  DUPLICATE_ENTRY,
   IN_USE,
   NO_PRUNE_TOOL,
   descriptorPlugin,
@@ -138,9 +138,12 @@ export {
 export {
   DescriptorLoadError,
   SHIPPED_DESCRIPTORS,
+  findDescriptors,
   loadDescriptors,
+  type DescriptorProblem,
   type DescriptorSource,
   type DescriptorSources,
+  type FoundDescriptors,
   type LoadedDescriptor,
 } from './descriptor/load.ts'
 export {

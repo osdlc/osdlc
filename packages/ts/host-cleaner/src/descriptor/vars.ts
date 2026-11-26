@@ -20,11 +20,13 @@
 import { readFile } from 'node:fs/promises'
 import { extname, isAbsolute, join, normalize, sep } from 'node:path'
 
+import { failureText, firstLine } from '@osdlc/command-seam'
 import { getIn } from '@osdlc/config-layers'
 import { parse as parseToml } from 'smol-toml'
 import { parse as parseYaml } from 'yaml'
 
 import type { Kit } from '../kit.ts'
+import { within } from '../roots.ts'
 import type { Os } from './schema.ts'
 
 /** How long a `command` source may run before the next source is tried. */
@@ -83,8 +85,9 @@ export interface VarValue {
    */
   from?: string
   /**
-   * Set in the config, or a `value` inside a trusted variable's folder
-   * ({@link fillTemplate}): its folders may sit outside home.
+   * Set in the config, an `XDG_*` folder the environment sets that
+   * {@link VarsAt.trustsXdg} passes, or a `value` inside a trusted variable's
+   * folder ({@link fillTemplate}): its folders may sit outside home.
    */
   trusted: boolean
   /** The sources before it that gave nothing, in order, and why. */
@@ -108,22 +111,24 @@ function describeSource(source: VarSource): string {
   return 'value'
 }
 
-/** `path` with a leading `~` read as `home`, normalized and without a trailing separator. */
+/**
+ * `path` with a leading `~` read as `home`, normalized and without a trailing
+ * separator, except on a root such as `/` or `C:\`, which would then be
+ * relative.
+ */
 function folderOf(path: string, home: string): string {
   const full = path === '~' ? home : /^~[/\\]/.test(path) ? join(home, path.slice(2)) : path
   const n = normalize(full)
-  return n.length > 1 && n.endsWith(sep) ? n.slice(0, -1) : n
+  const bare = n.endsWith(sep) ? n.slice(0, -1) : n
+  return bare === '' || /^[A-Za-z]:$/.test(bare) ? n : bare
 }
-
-/** Whether `path` is `folder` or inside it. */
-const within = (folder: string, path: string): boolean =>
-  path === folder || path.startsWith(folder.endsWith(sep) ? folder : folder + sep)
 
 /**
  * `template` with each `${NAME}` replaced by its value in `vars`, `~` read as
  * `home`. Trusted when it starts with a trusted variable as a whole folder
  * name (`${VAR}` alone or followed by a separator) and stays inside that
- * variable's folder. `missing` names the first variable with no value.
+ * variable's folder, by real paths. `missing` names the first variable with no
+ * value.
  */
 export function fillTemplate(
   template: string,
@@ -154,6 +159,11 @@ export interface VarsAt {
   env: Readonly<Record<string, string | undefined>>
   /** The config's `plugins.<name>.vars`: each wins over every source, and is trusted. */
   config?: Readonly<Record<string, string | undefined>> | undefined
+  /**
+   * Whether an `XDG_*` folder the environment sets is trusted, as the person's
+   * own setting: given the folder, absolute and normalized. Default: never.
+   */
+  trustsXdg?: ((folder: string) => boolean) | undefined
   /** Runs `command` sources: `onPath` decides whether one runs, `run` runs it. */
   kit: Pick<Kit, 'onPath' | 'run'>
   /** The hook's signal; a command still running when it aborts gives no value. */
@@ -161,8 +171,9 @@ export interface VarsAt {
   /** Each command's time limit. Default {@link VAR_COMMAND_LIMIT_MS}. */
   timeoutMs?: number | undefined
   /**
-   * The declared variables to resolve, with the ones they use; default all.
-   * The rest are left out of the outcome, and their commands never run.
+   * The declared variables to resolve; default all. The ones their sources use
+   * are resolved as those sources need them. The rest are left out of the
+   * outcome, and their commands never run.
    */
   only?: Iterable<string> | undefined
 }
@@ -171,47 +182,78 @@ type Given = { value: string; trusted: boolean } | { failed: string }
 
 /**
  * Every variable in `declared`, or in `at.only`, and the built-ins, resolved
- * now. Commands run one at a time, so a descriptor with `n` command sources
- * can take `n` times the time limit.
+ * now. Variables that don't use each other resolve at the same time; one
+ * variable's sources are tried one at a time. So a descriptor whose longest
+ * chain of variables has `n` command sources can take `n` times the time
+ * limit.
  */
 export async function resolveVars(
   declared: Readonly<Record<string, readonly VarSource[]>>,
   at: VarsAt,
 ): Promise<Vars> {
   const done: Vars = builtIns(at)
-  const visiting = new Set<string>()
   const limit = at.timeoutMs ?? VAR_COMMAND_LIMIT_MS
-
-  const resolve = async (name: string): Promise<void> => {
-    if (Object.hasOwn(done, name) || !Object.hasOwn(declared, name) || visiting.has(name)) return
-    visiting.add(name)
-    done[name] = await resolveOne(name, declared[name]!)
-    visiting.delete(name)
+  const started = new Map<string, Promise<void>>()
+  // Which variables each one is waiting for. A wait that would close a cycle
+  // is not made, so a variable on a cycle gives no value instead of hanging.
+  const waits = new Map<string, Set<string>>()
+  const waitsFor = (from: string, to: string): boolean => {
+    const seen = new Set<string>()
+    const todo = [from]
+    for (let n = todo.pop(); n !== undefined; n = todo.pop()) {
+      if (n === to) return true
+      if (seen.has(n)) continue
+      seen.add(n)
+      todo.push(...(waits.get(n) ?? []))
+    }
+    return false
   }
 
-  /** `template` filled, once every variable it uses is resolved. */
-  const fill = async (template: string): Promise<Given> => {
-    for (const ref of varRefs(template)) await resolve(ref)
+  /** Resolves `name`, a variable `by`'s sources use, or one asked for when `by` is undefined. */
+  const resolve = async (name: string, by?: string): Promise<void> => {
+    if (!started.has(name) && (Object.hasOwn(done, name) || !Object.hasOwn(declared, name))) return
+    if (by !== undefined && waitsFor(name, by)) return
+    let running = started.get(name)
+    if (running === undefined) {
+      // Started on a later tick, so `started` and the wait below are in place first.
+      running = Promise.resolve().then(async () => {
+        done[name] = await resolveOne(name, declared[name]!)
+      })
+      started.set(name, running)
+    }
+    if (by === undefined) return running
+    if (!waits.has(by)) waits.set(by, new Set())
+    waits.get(by)!.add(name)
+    try {
+      await running
+    } finally {
+      waits.get(by)!.delete(name)
+    }
+  }
+
+  /** `template`, which a source of `by` holds, filled once every variable it uses is resolved. */
+  const fill = async (template: string, by: string): Promise<Given> => {
+    await Promise.all([...new Set(varRefs(template))].map((ref) => resolve(ref, by)))
     const filled = fillTemplate(template, done, at.home)
     return 'missing' in filled
       ? { failed: `\${${filled.missing}} has no value` }
       : { value: filled.path, trusted: filled.trusted }
   }
 
-  const fromSource = async (source: VarSource): Promise<Given> => {
+  const fromSource = async (source: VarSource, by: string): Promise<Given> => {
     if ('env' in source) {
       const v = ownValue(at.env, source.env)
       return v === undefined || v === '' ? { failed: 'not set' } : { value: v, trusted: false }
     }
     if ('file' in source) {
-      const file = await fill(source.file)
+      const file = await fill(source.file, by)
       if ('failed' in file) return file
       const v = await keyIn(file.value, source.key)
       return typeof v === 'string' ? { value: v, trusted: false } : { failed: v.failed }
     }
     if ('command' in source) return commandValue(source.command, at, limit)
     const template = forOs(source.value, at.os)
-    return template === undefined ? { failed: `none for ${at.os}` } : fill(template)
+    return template === undefined ? { failed: `none for ${at.os}` } : fill(template, by)
   }
 
   const resolveOne = async (name: string, sources: readonly VarSource[]): Promise<VarValue> => {
@@ -221,7 +263,7 @@ export async function resolveVars(
     }
     const tried: VarValue['tried'] = []
     for (const source of sources) {
-      const given = await fromSource(source)
+      const given = await fromSource(source, name)
       const said = describeSource(source)
       if ('failed' in given) {
         tried.push({ source: said, failed: given.failed })
@@ -237,7 +279,7 @@ export async function resolveVars(
     return { value: null, trusted: false, tried }
   }
 
-  for (const name of at.only ?? Object.keys(declared)) await resolve(name)
+  await Promise.all([...new Set(at.only ?? Object.keys(declared))].map((name) => resolve(name)))
   return Object.fromEntries(
     [...Object.keys(BUILT_IN_VARS), ...Object.keys(declared)]
       .filter((n) => Object.hasOwn(done, n))
@@ -251,14 +293,16 @@ function ownValue<T>(record: Readonly<Record<string, T>> | undefined, name: stri
 }
 
 /** The built-ins, in an object with no prototype, so a declared `constructor` or `__proto__` is an ordinary key. */
-function builtIns(at: Pick<VarsAt, 'home' | 'env'>): Vars {
+function builtIns(at: Pick<VarsAt, 'home' | 'env' | 'trustsXdg'>): Vars {
   const out = Object.create(null) as Vars
   out.HOME = { value: folderOf(at.home, at.home), from: 'home', trusted: false, tried: [] }
   for (const [name, under] of Object.entries(BUILT_IN_VARS)) {
     if (under === undefined) continue
     const set = at.env[name]
     if (set !== undefined && set !== '' && isAbsolute(set)) {
-      out[name] = { value: folderOf(set, at.home), from: `env ${name}`, trusted: false, tried: [] }
+      const value = folderOf(set, at.home)
+      const trusted = at.trustsXdg?.(value) === true
+      out[name] = { value, from: `env ${name}`, trusted, tried: [] }
       continue
     }
     out[name] = {
@@ -316,7 +360,7 @@ async function commandValue(
   }
   if (r.reason === 'timeout') return { failed: `timed out after ${limit / 1000} s` }
   if (!r.ok) {
-    const said = (r.stderr || r.error || '').trim().split('\n')[0] ?? ''
+    const said = firstLine(failureText(r, { both: true }))
     const how =
       r.neverExited === true ? `did not run (${r.reason ?? 'unknown'})` : `exit ${r.exitCode}`
     return { failed: said === '' ? how : `${how}: ${said}` }

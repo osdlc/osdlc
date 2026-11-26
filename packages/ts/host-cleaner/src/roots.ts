@@ -7,7 +7,9 @@
  * a candidate itself. The linked worktrees of the repositories among
  * the targets count as targets too, and so does a linked worktree whose
  * repository's main checkout is or sits inside a target, wherever the
- * worktree is; one may itself be a candidate.
+ * worktree is; one may itself be a candidate. A registered worktree whose
+ * folder has become a link is no longer one, so nothing at or below it, or
+ * where it points, counts for it.
  *
  * Real paths are read with `realpathSync.native`, which spells a path as the
  * filesystem does: where it ignores case, as macOS's does, `~/documents` and
@@ -19,6 +21,10 @@ import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
 
 import { nodeGuard } from '@osdlc/path-guard/node'
 import { Git } from '@osdlc/typed-git'
+
+import { realOr } from './helpers.ts'
+
+export { realOr } from './helpers.ts'
 
 /** `path` with only its parent resolved, so a leaf that does not exist yet still compares against a real root; `path` as given when the parent does not resolve. The guard then follows a leaf that is a link. */
 const realLeaf = (path: string): string => {
@@ -84,20 +90,11 @@ export interface Bounds {
   home: string
 }
 
-/** `path`'s real path as the filesystem spells it, or `path` as given when it does not resolve. */
-export const realOr = (path: string): string => {
-  try {
-    return realpathSync.native(path)
-  } catch {
-    return path
-  }
-}
-
 const isLink = (path: string): boolean =>
   lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true
 
 /** Whether `inner` is `outer` or sits below it, by real paths. */
-const within = (outer: string, inner: string): boolean => {
+export const within = (outer: string, inner: string): boolean => {
   const rel = relative(realOr(outer), realOr(inner))
   return rel === '' || (rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel))
 }
@@ -232,6 +229,22 @@ export function linkedWorktreeOf(targets: readonly string[], path: string): stri
 }
 
 /**
+ * Whether the linked worktree git registered at `path` may still be what is
+ * there: nothing, or a folder that is not a link. Where a link above it (or
+ * other letter case) makes its real path another one, the folder must also
+ * hold the `.git` file of a worktree.
+ */
+const stillLinked = (path: string): boolean => {
+  const stat = lstatSync(path, { throwIfNoEntry: false })
+  if (stat === undefined) return true
+  if (stat.isSymbolicLink()) return false
+  return (
+    realOr(path) === path ||
+    lstatSync(join(path, '.git'), { throwIfNoEntry: false })?.isFile() === true
+  )
+}
+
+/**
  * What in `bounds` holds `path`, or null: a root, a target or a linked
  * worktree it is strictly inside, the self root it is, or the linked worktree
  * it is, unless that is a target; failing those, a linked worktree whose main
@@ -239,10 +252,13 @@ export function linkedWorktreeOf(targets: readonly string[], path: string): stri
  * real paths, as {@link containedIn} does. A self root counts only while
  * {@link rootProblem} still accepts it, so one that has become a symlink, a
  * checkout or a target since the survey holds nothing, and `path` must not
- * be a link, so a link left in the root's place is not the root.
+ * be a link, so a link left in the root's place is not the root. A linked
+ * worktree counts only while it is still there ({@link stillLinked}), so a
+ * link left in its place is not the worktree.
  */
 export function boundBy(bounds: Bounds, path: string): string | null {
-  const inside = containedIn([...bounds.roots, ...bounds.targets, ...bounds.linked], path)
+  const linked = bounds.linked.filter(stillLinked)
+  const inside = containedIn([...bounds.roots, ...bounds.targets, ...linked], path)
   if (inside !== null || !isAbsolute(path) || hasDotDot(path)) return inside
   const leaf = realLeaf(path)
   if (!isLink(path)) {
@@ -254,7 +270,6 @@ export function boundBy(bounds: Bounds, path: string): string | null {
   }
   if (bounds.targets.some((t) => t === path || realOr(t) === leaf)) return null
   return (
-    bounds.linked.find((c) => c === path || realOr(c) === leaf) ??
-    linkedWorktreeOf(bounds.targets, path)
+    linked.find((c) => c === path || realOr(c) === leaf) ?? linkedWorktreeOf(bounds.targets, path)
   )
 }
