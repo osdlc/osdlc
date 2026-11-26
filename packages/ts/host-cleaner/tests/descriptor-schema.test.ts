@@ -538,9 +538,7 @@ describe('a bad descriptor names the field path', () => {
     )
     // The candidate's and the paths entry's own cross-field checks, beside a type error.
     expect(
-      issues(
-        hfWith('{ path: hub, costDescription: rebuild, command: [uv, prune], idleHours: x }'),
-      ),
+      issues(hfWith('{ path: hub, costDescription: rebuild, command: [uv, prune], idleHours: x }')),
     ).toEqual([
       'line 5: candidates.0.idleHours: Invalid input: expected number, received string',
       'line 5: candidates.0.removes: required with command: unused or all',
