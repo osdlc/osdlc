@@ -43,8 +43,9 @@ flowchart TD
 ```
 
 Without `--apply` the run goes through the same steps but pushes nothing,
-keeps nothing and records nothing. It still makes worktrees, rebases or merges,
-and runs resolvers and verify.
+keeps nothing and records nothing. It still fetches, takes clone locks, makes
+worktrees, scratch branches and commits, and runs resolvers and verify. It
+calls no repair and does not use rerere.
 
 | Step | Where |
 | --- | --- |
@@ -74,7 +75,7 @@ flowchart TD
   co --> bh{"Behind its base?"}
   bh -->|no| up(["up to date"])
   bh -->|yes| st{"Strategy"}
-  st -->|rebase| rb["Rebase, one stop at a time<br/>rerere · lockfile · resolvers · generators · repair agent"]
+  st -->|rebase| rb["Rebase, one stop at a time<br/>rerere (--apply) · lockfile · resolvers · generators · repair agent"]
   rb -->|stuck, fallback set| mg
   rb -->|stuck| cf(["conflict"])
   st -->|merge| mg["Merge the base in<br/>same resolvers · commit"]
@@ -171,7 +172,7 @@ are no import cycles.
 ## Known problems
 
 Found while mapping the flow at `f5456df2`. Each was checked against the lines
-given.
+given. Those marked fixed were fixed in S12, in the commit named.
 
 ### Behaviour
 
@@ -222,15 +223,17 @@ given.
 
 ### Docs that disagree with the code
 
-15. The `--apply` help says "Without it, nothing is written"
-    (`commands.ts:579`). A rehearsal makes worktrees, scratch branches and
-    commits, runs resolvers and verify, fetches, and takes clone locks.
-16. Rerere is described as the first resolver, but nothing turned it on.
-17. D-0005's trust bullet names fewer guarded settings than `trust.ts:151-159`
-    checks, and its directory table shows a flat `attempts/` where the code
-    nests by repository.
-18. The README says `survey` always exits 0. A failed PR listing gives a
-    non-zero exit.
-19. `Ports.resolveVerifyVerbs` says every surveyed repository is asked; the code
-    skips those the trust gate refused and those whose listing failed
-    (`update.ts:742-747`).
+15. Fixed (`2d1482d8`). The `--apply` help said "Without it, nothing is
+    written" (`commands.ts:579`). A rehearsal makes worktrees, scratch branches
+    and commits, runs resolvers and verify, fetches, and takes clone locks.
+16. Fixed (`92d63727`). Rerere was described as the first resolver, but
+    nothing turned it on. `update --apply` now runs its merges and rebases with
+    rerere on (`integrationEnv` in `update/execute.ts`).
+17. Fixed (`2d1482d8`). D-0005's trust bullet named fewer guarded settings
+    than `trust.ts:151-159` checks, and its directory table showed a flat
+    `attempts/` where the code nests by repository.
+18. Fixed (`2d1482d8`). The README said `survey` always exits 0. A failed PR
+    listing gives a non-zero exit.
+19. Fixed (`2d1482d8`). `Ports.resolveVerifyVerbs` said every surveyed
+    repository is asked; the code skips those the trust gate refused and
+    those whose listing failed (`update.ts:742-747`).
