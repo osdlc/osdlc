@@ -8,6 +8,12 @@ its sweep supplies worktrees and branches, and its `removeCandidate` deletes the
 under repo-cleaner's safety model.
 
 This release is the library, the `git`, `cargo`, `node` and `orca` plugins, and the `host-cleaner` command.
+It runs only when a person runs it: there is no scheduled or unattended run
+([B-0001](docs/planning/backlog/B-0001-unattended-cleaning.md)).
+
+[docs/guide/how-it-works.md](docs/guide/how-it-works.md) says how the package is built.
+The design it is heading to, descriptors and loadable plugins included, is the
+[system description](../../../docs/architecture/host-cleaner-system.md).
 
 ## Phases
 
@@ -79,12 +85,9 @@ real path, since deleting it would delete them. So `cargo`'s `target/` goes
 before the git worktree that holds it, and a `target/` that does not run
 (refused, spared, held, or carrying a protest not allowed) keeps the worktree
 too. The worktree is then `blocked`, and its reason names each candidate
-inside it that does not run and what would let it run: `requires
-artifact:…/target, which needs --allow unmeasured`, `which needs --pick <id>
-when the plan is made` (held or not selected; a saved plan takes no `--pick`
-at `clean --plan`, so it goes to `plan`, or to `clean` without `--plan`),
-`which is refused (<plugin>: <reason>)` or `which is spared (--spare <entry>)`. The clean preview, the `clean -i` checklist and the
-receipt show it.
+inside it that does not run and what would let it run. Its wording, and where
+it shows, are under [nesting](docs/guide/how-it-works.md#nesting) in
+how-it-works.
 
 ```ts
 import { join } from 'node:path'
@@ -183,15 +186,16 @@ plain root or a target itself is never a candidate. A store that is removed
 whole, such as `~/.npm`, is declared `{ path, self: true }` among the roots:
 that folder may then be a candidate itself, as well as anything inside it.
 
-The core refuses a root, plain or self, that is the filesystem root (`/`), is
-or holds the home folder, is a personal folder (`PERSONAL_FOLDERS`:
-`~/Documents`, `~/Desktop`, `~/Downloads`, `~/Pictures`, `~/Music`,
-`~/Movies`, `~/Library`, `~/.ssh`, `~/.config`), is or holds a target or a
-linked worktree, or is a checkout (holds `.git`), and a self root that is a
-symlink. It leaves such a root out with a warning (`<plugin>: roots: left out
-the root <path>: <why>`), so its candidates are refused `outside-roots`. The
-same check runs again right before `delete` and in `kit.remove`, so a self
-root that has become a checkout or a symlink since the survey is not removed.
+The core refuses a root, plain or self, that is not an absolute path or has a
+`..` in it, is the filesystem root (`/`), is or holds the home folder, is a
+personal folder (`PERSONAL_FOLDERS`: `~/Documents`, `~/Desktop`,
+`~/Downloads`, `~/Pictures`, `~/Music`, `~/Movies`, `~/Library`, `~/.ssh`,
+`~/.config`), is or holds a target or a linked worktree, or is a checkout
+(holds `.git`), and a self root that is a symlink. It leaves such a root out
+with a warning (`<plugin>: roots: left out the root <path>: <why>`), so its
+candidates are refused `outside-roots`. The same check runs again right before
+`delete` and in `kit.remove`, so a self root that has become a checkout or a
+symlink since the survey is not removed.
 
 Real paths are read with `realpathSync.native`, which spells a path as the
 filesystem does: where it ignores case, as macOS's does, `~/documents` is
@@ -283,8 +287,9 @@ as refs (`ref` the branch's name, `at` its repository). Its
 blockers are `refuse` objections and its risks `protest`s, so
 `--allow abandon-unmerged` and the others work as in repo-cleaner. A branch
 freed by a worktree requires it. With `archive`, unlanded work is pushed to the
-remote first; a failed push throws `FatalRun`. Grant the named risks; the
-`discard-archived` cover is not yet offered here. Its `delete` refuses a
+remote first; a failed push throws `FatalRun`. The command line does not offer
+`archive` yet; it is set only when building the plugin in code. Grant the named
+risks; the `discard-archived` cover is not yet offered here. Its `delete` refuses a
 worktree whose folder has become a symlink, since `git worktree remove` would
 follow it and empty the folder it leads to. Its `discover` sweeps every
 repository in one synchronous call, so it has a 10 minute limit.
@@ -327,16 +332,18 @@ so this plugin works beside `git`, which still removes the directory.
 Detected when the `orca` CLI is on `PATH` (or at
 `/Applications/Orca.app/Contents/Resources/bin/orca`). Orca missing is silent.
 When it is installed but not running, or `orca status` fails, prints no JSON or
-takes over 20 seconds, there is no fallback to git: every `git` worktree whose path is under
-`/orca/workspaces/` is refused with `orca-unreachable`, and the rest are left to
-`git`; `detect` gives the reason as its note. It never fails the run. Every
-call goes through `@osdlc/command-seam` with `--json`.
+takes over 20 seconds, Orca cannot be asked, and there is no fallback to git:
+every `git` worktree whose real path is under `/orca/workspaces/` is refused
+with `orca-unreachable`, and the other worktrees are left to `git`. Orca then
+adds no repositories and proposes no records, and `detect` gives the reason as
+its note. It never fails the run. Every call goes through
+`@osdlc/command-seam` with `--json`.
 
 | Phase | What it does |
 | --- | --- |
 | scope | Adds each repository `orca repo list` names (`plugins.orca.repos: false` turns this off). |
 | discover | A record in `orca worktree ps` whose directory is gone is `orca-record:<path>`, a ref to Orca's record (`at` is the gone directory), held for a pick. |
-| object | On a `git` worktree that Orca manages: a `note` with its Orca id; a `refuse` `orca-agent-active` when an agent is at work (any state not `idle` or `done`); a `refuse` `orca-terminal-unverifiable`; a `protest` `close-terminals` when terminals are open. If Orca is running but cannot be read, every `git` worktree is refused with `orca-unreachable`; while it is not running or its status cannot be read, only those under `/orca/workspaces/` are. |
+| object | On a `git` worktree that Orca manages: a `note` with its Orca id; a `refuse` `orca-agent-active` when an agent is at work (any state not `idle` or `done`); a `refuse` `orca-terminal-unverifiable`; a `protest` `close-terminals` when terminals are open. If Orca is running but its worktrees cannot be read, every `git` worktree is refused with `orca-unreachable`; while it cannot be asked at all (above), only those under `/orca/workspaces/` are. |
 | prepare | Sees again that no agent is at work, then `orca terminal close --worktree id:<id> --all`. |
 | deleted | After `git` removed the directory, `orca worktree rm --worktree id:<id> --force` so Orca forgets the record. It is never asked while the directory exists, since it would delete it. The branch is kept. |
 
@@ -372,29 +379,46 @@ take that form, also when `HOME` goes through a symlink. `status`, `plan`, `clea
 `plan` and `clean` print each plugin's `detect` note as a warning line naming
 the plugin, with the survey's warnings.
 
-`--plugin <name>` runs only those plugins and
-`--skip-plugin <name>` never runs these. Targets default to the config file's
-`targets`, then the directory you are in. `clean` re-checks, shows the steps,
-asks (`--yes` skips the question; with no terminal and no `--yes` it exits 2),
-deletes, and writes one receipt to `--receipt` or the state directory's
-`receipts/`, plus a line in `logs/host-cleaner.log`.
+`--plugin <name>` runs only those plugins and `--skip-plugin <name>` never
+runs these.
+Targets default to the config file's `targets`, then the directory you are in.
+`clean` re-checks, shows the steps, asks (`--yes` skips the question; with no
+terminal and no `--yes` it exits 2), deletes, and writes one receipt to
+`--receipt` or the state directory's `receipts/`, plus a line in the log.
+`clean --plan` drops, as `gone`, a planned candidate no plugin proposes now,
+which includes one from a plugin this install does not have.
 
-The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
-all three directories):
+### Files and config
+
+host-cleaner keeps its files in three folders, from `@osdlc/tiered-dirs`'
+`standalone('host-cleaner')` tier under its default `native` convention, so
+macOS and Linux differ:
+
+| What | Linux | macOS | Moved by |
+| --- | --- | --- | --- |
+| Config | `~/.config/host-cleaner/config.json` | `~/Library/Application Support/host-cleaner/config.json` | `HOST_CLEANER_CONFIG_DIR` |
+| Receipts | `~/.local/state/host-cleaner/receipts/` | `~/Library/Application Support/host-cleaner/receipts/` | `HOST_CLEANER_STATE_DIR` |
+| Log | `~/.local/state/host-cleaner/host-cleaner.log` | `~/Library/Logs/host-cleaner/host-cleaner.log` | `HOST_CLEANER_LOGS_DIR` |
+
+On Linux `XDG_CONFIG_HOME` and `XDG_STATE_HOME` move them too.
+`HOST_CLEANER_CONVENTION=xdg` gives macOS the Linux folders.
+`HOST_CLEANER_ROOT` moves all three folders, which is useful for tests.
+
+The config file holds the targets and each plugin's settings:
 
 ```json
 { "targets": ["~/dev"], "plugins": { "cargo": { "idleHours": 48 }, "node": { "enabled": false } } }
 ```
 
 `plugins.<name>` holds that plugin's settings; a name that no plugin has is an
-error. Each plugin's settings are a strict schema, checked when the config
-loads: a misspelt key or a wrong type is refused (exit 2), naming the plugin and
-the key.
+error (exit 2). Each plugin's settings are a strict
+schema, checked when the config loads: a misspelt key or a wrong type is
+refused (exit 2), naming the plugin and the key.
 
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
-| `idleHours` | `cargo`, `node` | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
+| `idleHours` | `cargo`, `node` | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, fractions included (`0.5` is half an hour), and `0` takes every artifact. |
 
 Two settings sit at the top of the config and apply to every plugin:
 
@@ -411,7 +435,10 @@ Two settings sit at the top of the config and apply to every plugin:
   set its own. `0` is allowed and makes every idle-checked artifact a candidate.
 
 `host-cleaner config` prints every plugin's effective settings: the value, and
-whether the file set it or it is the default. `--format json` prints the values.
+whether the file set it or it is the default. `--format json` prints the
+values.
+
+### Which plugins run here
 
 `host-cleaner plugins` lists every plugin: where it came from, each plugin by its
 own origin (`built-in` when host-cleaner ships it, even when a program passes it
@@ -435,8 +462,10 @@ by why in brackets; the JSON row has it as `rootsFailed`. Git is asked once per
 target only when a plugin gives a root to check. `plugins` runs no
 `discover`, where a sweep asks `roots` after it, so a root a plugin takes from
 what it found (git's gone worktrees) shows in `status` and not here. A plugin
-the config disables is listed as `disabled`, and its `detect` is not run. `--format json` prints the same, one
-object per plugin.
+the config disables is listed as `disabled`, and its `detect` is not run.
+`--format json` prints the same, one object per plugin: `{ name, source,
+enabled, detected, reason, roots, rootsFailed, selfRoots, note }`, under
+`plugins` beside `targets`, `ignore` and `warnings`.
 
 ```text
 targets: /Users/me/dev

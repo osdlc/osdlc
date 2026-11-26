@@ -949,6 +949,27 @@ describe('re-check', () => {
     })
   })
 
+  test('a dependent says why its requirement no longer runs in the words the survey uses', async () => {
+    const tree = cand('worktree:/w', 'git', { at: '/w' })
+    const branch = cand('branch:b', 'git', { requires: [tree.id] })
+    const p = await planWith(mutable([tree, branch]))
+    const why = async (plugin: Plugin, at: RunCtx = ctx) =>
+      (await recheck(p, [plugin], at)).decision.dropped.find((d) => d.id === branch.id)?.detail
+    const now = (level: Objection['level'], code: string) =>
+      mutable([tree, branch], () => [objection(tree.id, level, code)])
+    expect(await why(now('refuse', 'live'))).toBe(
+      'requires worktree:/w, which is refused (git: live reason)',
+    )
+    expect(await why(now('protest', 'lossy'))).toBe(
+      'requires worktree:/w, which needs --allow lossy',
+    )
+    const same = mutable([tree, branch])
+    expect(await why(same, { ...ctx, ignore: ['/w'] })).toBe('requires worktree:/w, which is gone')
+    expect(await why(mutable([{ ...tree, requires: [branch.id] }, branch]))).toBe(
+      'requires worktree:/w, which is blocked: its requirements form a cycle',
+    )
+  })
+
   test('clean deletes nothing it dropped', async () => {
     const log: string[] = []
     const p = await planWith(fake('git', [cand('a:1', 'git')], []))
