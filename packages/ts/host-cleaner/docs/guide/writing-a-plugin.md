@@ -146,10 +146,11 @@ What it relies on:
   for the person reading every run. The
   core refuses a root that is not an absolute path, so this plugin does not
   run, and says why, when `dir` is relative (`~` is not expanded) or `HOME` is
-  unset. It does not run either when the root is not a folder.
-- **`discover`** skips the folders `ctx.ignore` covers, and leaves out a
-  folder `kit.idle` cannot read rather than failing the whole survey. `ctx.targetsGiven` says whether the person gave targets or the run fell
-  back to the current folder.
+  unset, and when the root is not a folder. `ctx.targetsGiven` says whether
+  the person gave targets or the run fell back to the current folder.
+- **`discover`** skips the folders `ctx.ignore` covers. `kit.idle` throws on
+  a folder it cannot read, since what it hides may be recent, so the plugin
+  leaves that folder out and still proposes the others.
 
 The rules every plugin keeps:
 
