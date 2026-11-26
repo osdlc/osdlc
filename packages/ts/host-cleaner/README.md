@@ -189,8 +189,9 @@ all three directories):
 `plugins.<name>` holds that plugin's settings. A name that no plugin has stops
 `clean` (with `--plan` and `--dry-run` too) with exit 2 before anything is deleted, since a
 misspelt name would leave that plugin on its defaults; `status`, `plan` and
-`config` warn (the warning is kept in `status --format json` and in a plan) and
-go on. Each plugin's settings are a strict schema, checked when the config
+`config` warn (the warning is kept in `status --format json`) and go on. A plan
+records that no plugin had the name when it was made, and the receipt of a run
+from it keeps that. Each plugin's settings are a strict schema, checked when the config
 loads: a misspelt key or a wrong type is refused (exit 2), naming the plugin and
 the key.
 

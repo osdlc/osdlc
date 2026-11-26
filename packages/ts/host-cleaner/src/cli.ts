@@ -551,12 +551,16 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   const v = parsed.values
   let plan: Plan
   try {
-    const { config, warnings } = checkedConfig(v, ctx, deps)
+    const { config, unused, warnings } = checkedConfig(v, ctx, deps)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
-    const s = withWarnings(survey(pluginsFor(v, config, deps, ctx), cctx), warnings)
-    writeWarnings(ctx, name, s.warnings)
+    const s = survey(pluginsFor(v, config, deps, ctx), cctx)
+    writeWarnings(ctx, name, [...warnings, ...s.warnings])
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
-    plan = makePlan(s, {
+    // A receipt copies the plan's warnings: it keeps what was true of this sweep, not what clean will do.
+    const swept = unused.map(
+      (n) => `config plugins.${n}: no plugin had this name when this plan was made`,
+    )
+    plan = makePlan(withWarnings(s, swept), {
       targets: cctx.targets,
       ignore: cctx.ignore,
       pick: v.pick,

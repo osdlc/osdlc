@@ -222,16 +222,25 @@ describe('status', () => {
     const config = join(home, 'c.json')
     writeFileSync(config, JSON.stringify({ plugins: { gti: {}, fake: {} } }))
     const planFile = join(home, 'plan.json')
-    const plugins = [fake()]
+    const plugin = fake()
+    const plugins = [plugin]
     const planned = run(['plan', '--config', config, '-o', planFile], cwd, env, { plugins })
     expect(planned.code).toBe(0)
-    const warnings: string[] = JSON.parse(readFileSync(planFile, 'utf8')).warnings
-    expect(warnings).toEqual([
+    expect(planned.err).toContain(
       'config plugins.gti: no plugin has this name; clean refuses to run until it is fixed',
-    ])
+    )
+    const said = 'config plugins.gti: no plugin had this name when this plan was made'
+    expect(JSON.parse(readFileSync(planFile, 'utf8')).warnings).toEqual([said])
     const r = run(['config', '--config', config], cwd, env, { plugins })
     expect(r.err).toContain('plugins.gti')
     expect(r.err).not.toContain('plugins.fake')
+    // Fixed as told, the plan runs, and its receipt does not say clean refused.
+    writeFileSync(config, JSON.stringify({ plugins: { fake: {} } }))
+    const receipt = join(home, 'receipt.json')
+    const argv = ['clean', '--config', config, '--plan', planFile, '--yes', '--receipt', receipt]
+    expect(run(argv, cwd, env, { plugins }).code).toBe(0)
+    expect(plugin.removed).toEqual(['artifact:fake'])
+    expect(JSON.parse(readFileSync(receipt, 'utf8')).warnings).toEqual([said])
   })
 
   test('with the shipped plugins, only an unknown name warns, and --format json carries it', () => {
