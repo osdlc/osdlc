@@ -511,7 +511,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   When the owner still exists, pruning runs `git worktree remove --force`
   there and deletes the dead run's scratch branch, holding the clone's lock
   when the owner is a managed clone. An owner whose `git worktree list` cannot
-  be read, or does not show the directory, keeps it. If the removal fails, only the
+  be read, or does not show the directory, keeps it, and so does one that
+  shows it locked (`git worktree lock`), unless the lock is git's own
+  `initializing`, which a killed `git worktree add` leaves. If the removal fails, only the
   directory and that one `worktrees/<id>/` record are deleted, never a bare
   `git worktree prune`, which would drop the person's own worktrees whose
   folders are missing. With the owner gone, or records that do not name the
@@ -538,7 +540,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   - *Never removed:* a clone whose lock another process holds, one with a
     kept worktree, or one with a live run's worktree, even with
     `--all-clones`. `mirror prune --discard-kept` removes the kept worktrees
-    of a clone it is removing first. (changed during the build: Build note 1)
+    of a clone it is removing first. Prune honours `git worktree lock`: a
+    worktree git shows as locked, a dead run's or a kept one, is never
+    removed, `--discard-kept` included, and its clone stays with it.
+    (changed during the build: Build note 1)
   - Removing a clone leaves its repository's attempt records in the state
     home. They are history, not cache, and later runs that reach the
     repository from outside it, located or cloned, read them.
@@ -766,7 +771,13 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   whose record another repository does not bear out, is a skip (exit 0) in both
   modes: it is theirs, and `prune` would otherwise exit 1 for as long as they
   work in it. A record's owner whose worktrees cannot be listed is a failure
-  (exit 1); `update` refuses such a record, as before.
+  (exit 1); `update` refuses such a record, as before. The extra round after
+  the review cap found that the git directory a record names was asked
+  whether it listed the tree, but not whether it was the clone being pruned.
+  With a copy of a clone repaired to own the tree, `--discard-kept` removed
+  the tree, its record and its branch through the original, whose lock the
+  prune did not hold. A tree whose record names another git directory that
+  still exists now stays, with its clone, in both modes.
 - **Names starting with `.`.** A hard kill can leave the probe in
   `worktrees/<host>/<owner>/<name>/` or `kept/<host>/<owner>/<name>/`. Every
   walk pr-update makes of its own folders skips names starting with `.`:
@@ -1092,16 +1103,29 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   renamed to) now passes the same check, before a dry run and a real run part:
   - the folder rule, from the root down;
   - what is to be removed, and every folder on the way to it, can be read, and
-    what a removal has to empty can be written to. A link is never removed
-    through;
+    what a removal has to empty can be written to; the message names
+    `chmod -R u+rwX <path>`. A link is never removed through;
   - `git worktree list` in the owner (the clone, or a dead run worktree's
     checkout) allows it. An owner that cannot be listed keeps its worktrees.
     The clone's list must be the clone's own, and its records
     (`worktrees/<id>/`) must be readable, since git leaves out one it cannot
     read, with no error: a clone with an unreadable record looked unused and
-    was removed;
-  - the clone's lock can be taken. A dry run takes none: it reads whether a
-    live run holds it, and whether it could be written.
+    was removed. After the review cap, an extra round found that git also
+    leaves out a record whose `gitdir` file is missing or empty, so now every
+    record must be in the list. A kept tree still on disk whose record names
+    the clone keeps the clone too when the list does not show it (its record
+    folder in the clone is gone, as `git worktree prune` leaves it when it ran
+    while `kept/` was not mounted);
+  - a worktree that list shows as locked stays, a dead run's or a kept one,
+    and so does its clone. The lock git takes while `git worktree add` runs,
+    `initializing`, does not count: a killed add leaves it. git writes that
+    word in the language the add ran in, and pr-update's own adds do not fix
+    the language, so a translated one counts as a person's lock and keeps the
+    tree until `git worktree unlock`;
+  - the clone's lock can be taken. A dry run takes none: it reads the lock as
+    a claim reads it (file-lock's `readHeldLock`, the claim's own parser), so
+    it says busy exactly where a claim would, and whether it could be
+    written.
 
   Only `ENOENT` and `ENOTDIR` mean gone. Anything else stays and is reported
   under `failed`, on its own, and its siblings are still pruned. No removal is
@@ -1111,8 +1135,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   last-used stamp that cannot be read fails the clone (its marker's time, which
   stood in for it, is when the clone was made), and a machine file that cannot
   be read means no clone is removed for its age, since `mirror_max_age_days` in
-  it may be `0`. One that is read but not valid still gives the default, with
-  its note.
+  it may be `0`. So does one that is read but not valid (a YAML error, no
+  mapping, or a value the schema refuses); before the extra round it gave the
+  default, 30. A key the schema does not know, or a newer version read as it
+  is, still gives the age as read.
 - **Leftovers.** A `.tmp-<name>.git-<pid>[-<random>]` folder (a clone's
   staging folder, or a clone a prune could not finish removing) or a `.pr-update-probe-*`
   folder is removed once it is an hour old, so a clone in progress is never

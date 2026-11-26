@@ -104,8 +104,10 @@ are in scope.
   branch, or detached, is a person's, and is never removed. `mirror prune
   --discard-kept` removes a kept tree only while the clone being pruned lists
   it on its record's branch, or on a `pr-update/failed-*` branch with no
-  record, and the tree's own `.git` file names that clone, so neither a record
-  nor a moved or copied clone decides it alone. A tree is removed
+  record, the tree's own `.git` file names that clone, and its record names no
+  other git directory that still exists, so neither a record nor a moved or
+  copied clone decides it alone, and nothing is changed through a clone whose
+  lock the prune does not hold. A tree is removed
   through the checkout's own git directory, never one a checkout's record
   names. Any other record is left alone and reported. A git directory that
   cannot be read is not taken for one that is gone.
@@ -126,5 +128,10 @@ are in scope.
   they remove nothing from a folder another user owns or others can write
   to. Windows gets no such check. Before anything is removed, that folder
   rule, the owner's `git worktree list` and the clone's lock must allow it.
-  What cannot be read stays and is reported, and `--dry-run` decides the same
-  way.
+  A worktree that list shows as locked (`git worktree lock`) stays, and so
+  does its clone; only git's own `initializing` lock, which a killed
+  `git worktree add` leaves, is not counted. A clone also stays while its
+  `worktrees/` folder holds a record that list does not show, since git leaves
+  out a record it cannot read without a word. What cannot be read stays and
+  is reported, and `--dry-run` decides the same way, reading a clone's lock
+  as a claim would.

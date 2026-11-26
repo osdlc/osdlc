@@ -15,9 +15,11 @@
  *   under its lock, after its dead run worktrees. One with a kept worktree stays, unless
  *   `discardKept`, and even then when the clone does not list the tree on its record's branch (on
  *   a `pr-update/failed-*` branch, with no record); one with any other worktree, one whose lock
- *   another run holds, and a folder without the clone marker are never removed. A clone is first
- *   renamed to a `.tmp-*` name beside it, so a removal that fails part-way leaves a leftover the
- *   next prune recognises, not a broken clone in the way.
+ *   another run holds, and a folder without the clone marker are never removed. Nor is one that
+ *   holds a worktree record its `git worktree list` leaves out. A worktree that list shows as
+ *   locked (`git worktree lock`) stays, a dead run's or a kept one, and so does its clone. A
+ *   clone is first renamed to a `.tmp-*` name beside it, so a removal that fails part-way leaves
+ *   a leftover the next prune recognises, not a broken clone in the way.
  *
  * Every removal passes one check first (`mayRemove` in {@link pruneMirror}, with the owner's
  * `git worktree list` and lock), and a dry run passes it too, so both decide the same way. What

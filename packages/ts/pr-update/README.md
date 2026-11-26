@@ -481,27 +481,41 @@ go. It takes no lock, only reads whether another run holds it. `list` and
 
 With `--discard-kept`, a kept worktree goes only while the clone being pruned
 lists it on its record's branch (on a `pr-update/failed-*` branch, with no
-record), its own `.git` file names that clone, and the checkout its record
-names, if that still exists, lists it on that branch too. One a person
-switched to another branch or detached keeps itself and its clone. So does one
-whose clone was moved, until you run `git worktree repair` in the clone.
+record), its own `.git` file names that clone, and its record names that clone
+too, or a git directory that is gone. One a person switched to another branch
+or detached keeps itself and its clone. So does one whose clone was moved,
+until you run `git worktree repair` in the clone, and one whose record names
+another clone or checkout that still exists, a copy of the clone say: a prune
+holds only the lock of the clone it prunes.
+
+Prune honours `git worktree lock`. A dead run's worktree or a kept worktree
+that `git worktree list` shows as locked stays, with `--discard-kept` too, and
+so does its clone; the message names `git worktree unlock <path>`. The one
+lock it does not count is git's own `initializing`, which a `git worktree add`
+that was killed leaves behind. git writes that word in the language the add
+ran in, so a translated one counts as your lock.
 
 Everything a prune removes passes the same checks first, in `--dry-run` too:
 the folder rule, the clone's or checkout's `git worktree list`, and the
 clone's lock. What cannot be read stays; only a path that is not there counts
 as gone. So a worktree, a leftover or a clone stays whole when a folder on its
-way or in it cannot be read, or cannot have its entries removed. A clone also
-stays when its lock, its last-used stamp or a record of one of its worktrees
-cannot be read, and with any worktree of it that stays. When the machine file
-cannot be read, no clone is removed for its age, unless you pass
-`--older-than` (or `--all-clones`).
+way or in it cannot be read, or cannot have its entries removed; the message
+names `chmod -R u+rwX <path>`. A clone also stays when its lock, its last-used
+stamp or a record of one of its worktrees cannot be read, while its
+`worktrees/` folder holds a record its `git worktree list` does not show (one
+whose `gitdir` file is missing or empty, say), while a kept worktree's record
+names it though its list does not show the tree, and with any worktree of it
+that stays. When the machine file cannot be read, or is not valid (a YAML
+error, or a value the schema refuses), no clone is removed for its age, unless
+you pass `--older-than` (or `--all-clones`). A key the schema does not know
+leaves the age as read.
 
 `prune` exits `1` when something could not be removed or read. Each such thing
 is reported on its own, and the rest are still pruned; `list` notes what it
 cannot read. What it skips is not a failure: a clone or worktree that is busy,
-in use or kept (a kept worktree a person switched, or whose record another
-checkout does not bear out), is not its own, or is in a folder that fails the
-folder rule. A clone whose removal stops part-way is left as a `.tmp-*` folder,
+in use or kept (a kept worktree a person switched or locked, whose record
+another checkout does not bear out or names another clone, or that its clone
+does not list), is not its own, or is in a folder that fails the folder rule. A clone whose removal stops part-way is left as a `.tmp-*` folder,
 which a later prune removes.
 
 At the end of an `update --apply` that used a clone or made a run worktree in
@@ -1055,7 +1069,9 @@ for the managed clones of targets with no checkout on the machine (see
 | `mirror_max_age_days: <n>` | A clone unused this long is removed by `mirror prune` and at the end of an `update --apply` that used the cache. Default 30; `0` turns that off (dead runs' worktrees are still removed) |
 
 An unknown key, a bad value or a YAML error there is reported, when a run
-reads the file, with the file's path, and skipped. A file pr-update cannot
+reads the file, with the file's path, and skipped. While the file holds a bad
+value or a YAML error, a prune removes no clone for its age, since the age in
+it is not known ([Cleaning up](#cleaning-up-mirror-list-and-mirror-prune)). A file pr-update cannot
 write an answer into, because it is not valid YAML or its top level is not a
 map of keys, makes `update --apply` exit `14` before it asks the clone
 question, and `mirror enable` and `mirror disable` exit `14` too; the file is

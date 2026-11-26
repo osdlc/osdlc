@@ -127,6 +127,46 @@ longer lists what the real run would leave. A clone's dead run worktree in a
 folder that cannot be read keeps the clone, where the two were removed. `survey --help` now
 says it also writes a managed clone's last-used stamp and its lock file.
 
+Fixed: `mirror prune`, and the prune after `update --apply`, removed a clone
+whose `worktrees/` folder held a record with an empty or missing `gitdir`
+file: `git worktree list` leaves it out with no error, so the clone looked
+unused, and a kept tree's commits made there went with it. The clone now
+stays, under `failed`, while any record there is not in that list. A kept tree
+still on disk whose record names the clone keeps the clone too when the
+clone's list does not show it (its record folder in the clone was dropped by a
+`git worktree prune` that ran while `kept/` was not mounted, say). This holds
+for a plain prune, with no flags. A clone whose `kept/` folder cannot be read
+now stays under `failed` without `--discard-kept` too, since its records cannot be checked.
+
+Fixed: `mirror prune --discard-kept` removed a kept worktree, its record and
+its branch through another git directory, without that directory's lock, when
+the tree's record named it and it still listed the tree (a copy of the clone,
+repaired with `git worktree repair` as the prune's message suggests). Such a
+tree now stays, with its clone and the reason, in `--dry-run` too.
+
+Fixed: `mirror prune` removed a worktree a person had locked with
+`git worktree lock`: git refused, and pr-update then deleted the folder and
+git's record of it, uncommitted files and all. Prune now honours the lock. A
+dead run's worktree or a kept worktree that `git worktree list` shows as
+locked stays, with `--discard-kept` too, and so does its clone; the message
+names `git worktree unlock <path>`. git's own `initializing` lock, which a
+killed `git worktree add` leaves, is still not counted.
+
+Fixed: `mirror prune --dry-run` read a clone's lock with rules of its own, so
+a lock whose `token` is not a string read as a dead holder's and the clone as
+removable, where the real run found the lock held and left the clone busy. It
+now reads the lock with file-lock's `readHeldLock`, as a claim does.
+
+Fixed: a machine file that is read but not valid (a YAML error, no mapping, or
+a value the schema refuses) gave `mirror_max_age_days` its default of 30 days,
+though the file may say `0` or a longer age. It is now treated like one that
+cannot be read: no clone is removed for its age unless you pass
+`--older-than` or `--all-clones`, and the clone directory is reported once
+under `failed`. A key the schema does not know still leaves the age as read.
+
+A worktree, kept tree or clone that a prune leaves whole because it cannot
+list or empty a folder in it now names the fix, `chmod -R u+rwX <path>`.
+
 The note for a `--repo` target with no checkout and no clone now follows the
 machine file. With consent to clone, it says `update --apply` will clone it.
 With `checkout: local`, it names the file that says so and
