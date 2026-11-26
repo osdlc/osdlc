@@ -24,6 +24,7 @@ export {
 export type { PerfReport, Verdict } from './budget.ts'
 export { defineStoryConfig, type StoryConfigOptions } from './config.ts'
 
+/** A task that kept the main thread busy for more than 50 ms. */
 export interface LongTask {
   startTime: number
   duration: number
