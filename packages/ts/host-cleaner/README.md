@@ -288,7 +288,7 @@ import { DescriptorError, readDescriptor } from '@osdlc/host-cleaner'
 try {
   const descriptor = readDescriptor('uv.yaml')
 } catch (err) {
-  // One line per problem, such as `line 5: candidates.0.path: no folder named "models" in paths`.
+  // One line per problem, such as `line 8: candidates.0.path: no folder named "models" in paths`.
   if (err instanceof DescriptorError) console.error(err.issues)
 }
 ```
@@ -299,7 +299,8 @@ lines. A folder must start with `~/`, be absolute, and name something below
 the home folder or the root, not a home folder itself such as `/home/alice`. A
 glob names entries inside its path, in every `{a,b}` alternative too, and a
 project `marker` names a file in every alternative. A tool's
-`command` must name the checked folder, as a `{path}` argument or in `env`.
+`command` must name the checked folder, as a `{path}` argument or in `env`, and
+`env` may not set `PATH`, `LD_*`, `DYLD_*`, `NODE_OPTIONS` or `BASH_ENV`.
 `vars` (tier 2) and any `${VAR}` elsewhere are refused until variables are
 built. `DescriptorSchema` is the zod schema, and `schemas/descriptor-1.json`,
 which the package ships (`@osdlc/host-cleaner/schemas/descriptor-1.json`), is

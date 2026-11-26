@@ -48,11 +48,12 @@ const GLOB_ESCAPES = /(^|[/\\{,])\.\.([/\\},]|$)|(^|[{,])([/\\]|~([/\\,}]|$)|[A-
 
 /**
  * A home folder, or the folder that holds them, written out: `/root`,
- * `/var/root`, `/home/<user>`, `/Users/<user>`, `C:\Users\<user>`, `${HOME}`
- * or `${USERPROFILE}`. Test it on {@link withoutDots}' result.
+ * `/var/root`, `/home/<user>` (also under `/var`, `/usr` or `/export`),
+ * `/Users/<user>`, `C:\Users\<user>` (also as WSL's `/mnt/c/Users/<user>`),
+ * `${HOME}` or `${USERPROFILE}`. Test it on {@link withoutDots}' result.
  */
 const HOME_FOLDER =
-  /^(\/root|\/(private[/\\])?var[/\\]root|\/(home|Users)([/\\][^/]*)?|[A-Za-z]:[/\\]Users([/\\][^/\\]*)?|\$\{(HOME|USERPROFILE)\})[/\\]*$/i
+  /^(\/root|\/(private[/\\])?var[/\\]root|\/(((var|usr|export)[/\\])?home|Users)([/\\][^/]*)?|(\/mnt[/\\][A-Za-z]|[A-Za-z]:)[/\\]Users([/\\][^/\\]*)?|\$\{(HOME|USERPROFILE)\})[/\\]*$/i
 
 const NAME = /^[A-Za-z][A-Za-z0-9_-]*$/
 
@@ -73,12 +74,22 @@ const MAX_ALTERNATIVES = 1024
  * {@link MAX_ALTERNATIVES}.
  */
 function braceExpansions(glob: string): string[] | undefined {
+  if (lastExpanded?.glob !== glob) lastExpanded = { glob, expansions: expand(glob) }
+  return lastExpanded.expansions
+}
+
+/** The last glob {@link braceExpansions} expanded, since each glob's checks ask for it in turn. */
+let lastExpanded: { glob: string; expansions: string[] | undefined } | undefined
+
+function expand(glob: string): string[] | undefined {
   const out: string[] = []
   const todo = [glob]
   for (let g = todo.pop(); g !== undefined; g = todo.pop()) {
     const bounds = outermostBraces(g)
     if (bounds === undefined) out.push(g)
     else {
+      // Counted before they are built, so one wide brace never builds them all.
+      if (out.length + todo.length + bounds.length - 1 > MAX_ALTERNATIVES) return undefined
       const [open, close] = [bounds[0]!, bounds.at(-1)!]
       for (let k = 0; k + 1 < bounds.length; k++)
         todo.push(g.slice(0, open) + g.slice(bounds[k]! + 1, bounds[k + 1]) + g.slice(close + 1))
@@ -137,6 +148,19 @@ const folder = z
     'must name a folder below a home folder, not a home folder itself',
   )
 
+/** A problem a refinement finds, at `path` below the value it checks. */
+type Issue = { path: PropertyKey[]; message: string }
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
+const addIssues = (
+  ctx: { addIssue: (issue: { code: 'custom'; message: string; path: PropertyKey[] }) => void },
+  issues: readonly Issue[],
+): void => {
+  for (const { path, message } of issues) ctx.addIssue({ code: 'custom', message, path })
+}
+
 /** One value for every OS (`all`), or one per OS; an OS with none doesn't have the path. */
 const perOs = z
   .strictObject({
@@ -151,13 +175,22 @@ const perOs = z
       { not: { required: ['all'] }, minProperties: 1 },
     ],
   })
-  .superRefine((v, ctx) => {
-    const oses = OSES.filter((os) => v[os] !== undefined)
-    if (v.all !== undefined && oses.length > 0)
-      ctx.addIssue({ code: 'custom', message: 'set all or per-OS folders, not both', path: [] })
-    if (v.all === undefined && oses.length === 0)
-      ctx.addIssue({ code: 'custom', message: `set all, or one of ${OSES.join(', ')}`, path: [] })
-  })
+  .superRefine((v, ctx) => addIssues(ctx, perOsIssues(v)))
+
+/**
+ * The cross-field problems of a `paths` entry. These checks and the others
+ * that read the raw value below take any value, because zod skips a
+ * refinement when a field of the same object has a type or required-field
+ * error, and the reader runs them itself then (see `crossFieldIssues`).
+ */
+function perOsIssues(v: Record<string, unknown>): Issue[] {
+  const oses = OSES.filter((os) => v[os] !== undefined)
+  if (v['all'] !== undefined && oses.length > 0)
+    return [{ path: [], message: 'set all or per-OS folders, not both' }]
+  if (v['all'] === undefined && oses.length === 0)
+    return [{ path: [], message: `set all, or one of ${OSES.join(', ')}` }]
+  return []
+}
 
 const idleHours = z
   .number()
@@ -185,6 +218,16 @@ const argv = z
   .refine(([program]) => program === undefined || isProgramName(program), NOT_A_NAME)
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+/**
+ * An environment entry that changes which program runs or what it loads:
+ * `PATH`, the dynamic loader's `LD_*` and `DYLD_*`, `NODE_OPTIONS` and
+ * `BASH_ENV`. Set in `env`, it would get around the program being a name on
+ * PATH. Windows reads names in any case.
+ */
+const REDIRECTS_PROGRAM = /^(PATH|LD_\w+|DYLD_\w+|NODE_OPTIONS|BASH_ENV)$/i
+
+const NOT_A_REDIRECT = 'must not change which program runs or what it loads'
 
 const condition = z
   .strictObject({
@@ -238,6 +281,11 @@ export const DescriptorCandidateSchema = z
       ),
     env: z
       .record(z.string().regex(ENV_NAME), z.string())
+      .superRefine((env, ctx) => {
+        for (const name of Object.keys(env))
+          if (REDIRECTS_PROGRAM.test(name))
+            ctx.addIssue({ code: 'custom', message: NOT_A_REDIRECT, path: [name] })
+      })
       .optional()
       .describe("Environment entries for `command`, such as `{ GOMODCACHE: '{path}' }`."),
     removes: z
@@ -257,23 +305,28 @@ export const DescriptorCandidateSchema = z
     },
     not: { required: ['command', 'glob'] },
   })
-  .superRefine((c, ctx) => {
-    const at = (field: string, message: string) =>
-      ctx.addIssue({ code: 'custom', message, path: [field] })
-    if (c.command !== undefined) {
-      if (c.glob !== undefined) at('glob', "can't be combined with command")
-      if (c.removes === undefined) at('removes', 'required with command: unused or all')
-      const named =
-        c.command.some((a) => a.includes('{path}')) ||
-        Object.values(c.env ?? {}).some((v) => v.includes('{path}'))
-      if (!named)
-        at('command', 'must name the checked folder, as a {path} argument or in env (D13)')
-    } else {
-      if (c.removes !== undefined) at('removes', 'only with command')
-      if (c.env !== undefined) at('env', 'only with command')
-    }
-    if (c.maxEntries !== undefined && c.glob === undefined) at('maxEntries', 'only with glob')
-  })
+  .superRefine((c, ctx) => addIssues(ctx, candidateIssues(c)))
+
+/** The cross-field problems of a candidate; any value, as {@link perOsIssues}. */
+function candidateIssues(c: Record<string, unknown>): Issue[] {
+  const issues: Issue[] = []
+  const at = (field: string, message: string) => issues.push({ path: [field], message })
+  const hasPath = (v: unknown) => typeof v === 'string' && v.includes('{path}')
+  if (c['command'] !== undefined) {
+    if (c['glob'] !== undefined) at('glob', "can't be combined with command")
+    if (c['removes'] === undefined) at('removes', 'required with command: unused or all')
+    const named =
+      !Array.isArray(c['command']) ||
+      c['command'].some(hasPath) ||
+      (isObject(c['env']) && Object.values(c['env']).some(hasPath))
+    if (!named) at('command', 'must name the checked folder, as a {path} argument or in env (D13)')
+  } else {
+    if (c['removes'] !== undefined) at('removes', 'only with command')
+    if (c['env'] !== undefined) at('env', 'only with command')
+  }
+  if (c['maxEntries'] !== undefined && c['glob'] === undefined) at('maxEntries', 'only with glob')
+  return issues
+}
 
 /** Whether `n` names one entry: not empty, `.` or `..`, and with no folder in it. */
 const isEntryName = (n: string): boolean => !/[/\\]/.test(n) && n !== '' && n !== '.' && n !== '..'
@@ -291,7 +344,8 @@ export const ProjectEntrySchema = z.strictObject({
   idleHours,
 })
 
-const lock = folder.refine((p) => !/[/\\]$/.test(p), 'must be a file, not a folder')
+/** A trailing separator, or a last `.` segment: both name a folder. */
+const lock = folder.refine((p) => !/[/\\]\.?$/.test(p), 'must be a file, not a folder')
 
 const inUse = z
   .strictObject({
@@ -345,18 +399,52 @@ export const DescriptorSchema = z
       .optional()
       .describe('Tier 2 variables. Not read yet: a descriptor that sets them is refused.'),
   })
-  .superRefine((d, ctx) => {
-    const named = new Set(Object.keys(d.paths))
-    const known = (name: string, path: (string | number)[]) => {
-      if (!named.has(name))
-        ctx.addIssue({ code: 'custom', message: `no folder named "${name}" in paths`, path })
-    }
-    d.candidates.forEach((c, i) => known(c.path, ['candidates', i, 'path']))
-    for (const mode of ['any', 'all'] as const)
-      d.detect?.[mode]?.forEach((c, i) => {
-        if (c.exists !== undefined) known(c.exists, ['detect', mode, i, 'exists'])
+  .superRefine((d, ctx) => addIssues(ctx, pathNameIssues(d)))
+
+/**
+ * Each candidate `path` and detect `exists` that names no entry of `paths`;
+ * any value, as {@link perOsIssues}. None while `paths` is not a map.
+ */
+function pathNameIssues(d: Record<string, unknown>): Issue[] {
+  if (!isObject(d['paths'])) return []
+  const named = new Set(Object.keys(d['paths']))
+  const issues: Issue[] = []
+  const known = (name: unknown, path: PropertyKey[]) => {
+    if (typeof name === 'string' && !named.has(name))
+      issues.push({ message: `no folder named "${name}" in paths`, path })
+  }
+  const each = (list: unknown, f: (item: Record<string, unknown>, i: number) => void) => {
+    if (Array.isArray(list))
+      list.forEach((item, i) => {
+        if (isObject(item)) f(item, i)
       })
-  })
+  }
+  each(d['candidates'], (c, i) => known(c['path'], ['candidates', i, 'path']))
+  const detect = d['detect']
+  if (isObject(detect))
+    for (const mode of ['any', 'all'])
+      each(detect[mode], (c, i) => known(c['exists'], ['detect', mode, i, 'exists']))
+  return issues
+}
+
+/**
+ * The cross-field problems in the raw `value`: those of `paths` entries, of
+ * candidates and of the names they use. The reader adds the ones zod skipped.
+ */
+function crossFieldIssues(value: unknown): Issue[] {
+  if (!isObject(value)) return []
+  const issues = pathNameIssues(value)
+  const below = (prefix: PropertyKey[], found: Issue[]) =>
+    issues.push(...found.map(({ path, message }) => ({ path: [...prefix, ...path], message })))
+  if (isObject(value['paths']))
+    for (const [name, v] of Object.entries(value['paths']))
+      if (isObject(v)) below(['paths', name], perOsIssues(v))
+  if (Array.isArray(value['candidates']))
+    value['candidates'].forEach((c, i) => {
+      if (isObject(c)) below(['candidates', i], candidateIssues(c))
+    })
+  return issues
+}
 
 export type Descriptor = z.output<typeof DescriptorSchema>
 export type DescriptorCandidate = z.output<typeof DescriptorCandidateSchema>
@@ -409,6 +497,13 @@ function check(value: unknown): { data?: Descriptor; issues: { path: Path; messa
         for (const key of i.keys) issues.push({ path: [...i.path, key], message: 'unknown field' })
       else issues.push({ path: i.path, message: i.message })
     }
+  // Zod skips a refinement when the object it checks has a type or required-field error.
+  if (!parsed.success) {
+    const key = ({ path, message }: { path: Path; message: string }) =>
+      JSON.stringify([path.map(String), message])
+    const seen = new Set(issues.map(key))
+    issues.push(...crossFieldIssues(value).filter((i) => !seen.has(key(i))))
+  }
   issues.push(...tier2Issues(value))
   return parsed.success && issues.length === 0 ? { data: parsed.data, issues } : { issues }
 }
