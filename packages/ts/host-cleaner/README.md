@@ -353,7 +353,7 @@ after the plugin it names.
 To load descriptors from folders and files, as the command line does:
 
 ```ts
-import { findPlugins, loadPlugins, survey } from '@osdlc/host-cleaner'
+import { findPlugins, loadPlugins } from '@osdlc/host-cleaner'
 
 const sources = { user: '/home/me/.config/host-cleaner/descriptors', flag: ['/tmp/uv.yaml'] }
 // The built-ins, then one definition per descriptor by name; a name whose file
@@ -485,9 +485,8 @@ or two files of one name in one folder, is a file that can't be used. Descriptor
 run after the built-ins, by name. To try one you are writing:
 `host-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan records the
 `--descriptor` files behind the plugins it ran, not those the run left out.
-`clean --plan` does not load them by
-itself: when one is not given it stops (exit 2) and names each `--descriptor`
-flag to add. A descriptor's `supersededBy` must name a built-in plugin.
+`clean --plan` does not load them by itself: when one is not given it stops
+(exit 2) and names each `--descriptor` flag to add. A descriptor's `supersededBy` must name a built-in plugin.
 
 `config` reports a descriptor file that can't be used (not a descriptor, a name
 that is no plugin name, or a name clash) and goes on. `status`, `plan` and
