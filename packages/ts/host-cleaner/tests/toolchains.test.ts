@@ -390,9 +390,11 @@ describe('rustup toolchains', () => {
   })
 
   test('in a home folder that is a repository, what it does not track is searched only in the targets', async () => {
+    // Committing the home reads every version's files, which on Linux counts as running them.
     const fx = fixture({
       rust: ['1.70', '1.71', '1.72', '1.73', '1.74', '1.75'].map((v) => `${v}.0-${HOST}`),
       nvm: ['v14.21.3'],
+      idleHours: 0,
     })
     repo(fx.home, { 'rust-toolchain': '1.70\n', 'notes/x/rust-toolchain': '1.71\n' })
     repo(join(fx.dev, 'a'), { 'rust-toolchain': '1.72\n' })
