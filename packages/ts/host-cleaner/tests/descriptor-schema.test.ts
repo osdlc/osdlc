@@ -240,7 +240,7 @@ describe("the system description's examples", () => {
           "- { command: [go, env, GOMODCACHE], env: { GOPATH: '${HOME}/go' } }",
         ),
       ),
-    ).toEqual([unfilled('vars.GOMODCACHE.1.env')])
+    ).toEqual([unfilled('vars.GOMODCACHE.1.env.GOPATH')])
     expect(
       issues(GO.replace('- command: [go, env, GOMODCACHE]', "- { file: ~/go.toml, key: '${X}' }")),
     ).toEqual([unfilled('vars.GOMODCACHE.1.key')])
