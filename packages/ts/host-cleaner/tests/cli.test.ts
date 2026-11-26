@@ -89,9 +89,11 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
 
 async function run(argv: string[], cwd: string, env: Record<string, string>, deps: MainDeps = {}) {
   const ctx = captureContext({ cwd, env })
-  // The shipped plugins would talk to this machine's Orca and sweep every repository it lists.
+  // The shipped plugins would talk to this machine's Orca and sweep every repository it lists,
+  // and run its rustup, which on a macOS runner took half a minute a run, filling the decoy home.
   const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
-  const args = phase && deps.plugins === undefined ? [...argv, '--skip-plugin', 'orca'] : argv
+  const skip = ['--skip-plugin', 'orca', '--skip-plugin', 'cargo']
+  const args = phase && deps.plugins === undefined ? [...argv, ...skip] : argv
   // The shipped descriptors would sweep this machine's caches, since HOME is the real one.
   const shippedDescriptors = deps.shippedDescriptors ?? tempDir()
   const code = await main(args, ctx, { confirm: () => null, ...deps, shippedDescriptors })
