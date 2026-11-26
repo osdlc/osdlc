@@ -666,7 +666,8 @@ function because(d: Dropped): string {
 /**
  * Explains, from the candidates and the selection, why one does not run:
  * gone, spared, refused (and by whom), or what it needs (`--pick <id>` for
- * one held or not selected, `--allow <code>` for a protest not granted);
+ * one held or not selected, when the plan is made, `--allow <code>` for a
+ * protest not granted);
  * failing those, its entry in `dropped`, as for one blocked by its own
  * requirement.
  */
@@ -694,7 +695,8 @@ function explainer(
       ...(chosen ? [] : [`--pick ${id}`]),
       ...(codes.length > 0 ? [`--allow ${codes.join(', ')}`] : []),
     ]
-    if (needs.length > 0) return `needs ${needs.join(' ')}`
+    // A saved plan takes no --pick or --allow at `clean --plan`: they go where it is made.
+    if (needs.length > 0) return `needs ${needs.join(' ')}${chosen ? '' : ' when the plan is made'}`
     const entry = dropped.find((d) => d.id === id)
     return entry === undefined ? 'does not run' : because(entry)
   }

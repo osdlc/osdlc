@@ -570,7 +570,7 @@ describe('requires', () => {
       {
         id: 'branch:b',
         reason: 'blocked',
-        detail: 'requires worktree:/w, which needs --pick worktree:/w',
+        detail: 'requires worktree:/w, which needs --pick worktree:/w when the plan is made',
       },
     ])
   })
@@ -596,8 +596,8 @@ describe('requires', () => {
       [],
     )
     const why = [
-      'requires a:held, which needs --pick a:held',
-      'requires a:lost, which needs --pick a:lost --allow discard-user-data',
+      'requires a:held, which needs --pick a:held when the plan is made',
+      'requires a:lost, which needs --pick a:lost --allow discard-user-data when the plan is made',
       'requires a:protested, which needs --allow unmeasured',
       'requires a:refused, which is refused (x: live-process reason)',
       'requires a:spared, which is spared (--spare a:spared)',
@@ -695,7 +695,7 @@ describe('nested candidates', () => {
         reason: 'blocked',
         detail:
           `requires ${target.id}, which is refused (live: live-process reason); ` +
-          `requires ${deps.id}, which needs --pick ${deps.id}`,
+          `requires ${deps.id}, which needs --pick ${deps.id} when the plan is made`,
       },
     ])
   })

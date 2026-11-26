@@ -80,9 +80,10 @@ before the git worktree that holds it, and a `target/` that does not run
 (refused, spared, held, or carrying a protest not allowed) keeps the worktree
 too. The worktree is then `blocked`, and its reason names each candidate
 inside it that does not run and what would let it run: `requires
-artifact:…/target, which needs --allow unmeasured`, `which needs --pick <id>`
-(held or not selected), `which is refused (<plugin>: <reason>)` or `which is
-spared (--spare <entry>)`. The clean preview, the `clean -i` checklist and the
+artifact:…/target, which needs --allow unmeasured`, `which needs --pick <id>
+when the plan is made` (held or not selected; a saved plan takes no `--pick`
+at `clean --plan`, so it goes to `plan`, or to `clean` without `--plan`),
+`which is refused (<plugin>: <reason>)` or `which is spared (--spare <entry>)`. The clean preview, the `clean -i` checklist and the
 receipt show it.
 
 ```ts
