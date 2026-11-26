@@ -51,8 +51,9 @@ that step.
 A limit stops a hook that waits: on a promise, a timer or a program. It cannot
 stop synchronous work, such as a folder walk or a program run to its end: the
 core times such a hook out when it answers past its limit, and drops the
-answer. What it did by then stands, so a `delete` timed out so may have
-removed its folder. A hook that works for long should await between two pieces
+answer. A `delete` that answers late is the exception: it has deleted by
+then, so its answer counts, the other plugins' `deleted` run and what
+requires it goes ahead. A hook that works for long should await between two pieces
 of work and stop once `ctx.signal` has aborted, as `cargo` and `node` do
 between checkouts.
 
@@ -136,8 +137,8 @@ What a plan runs uses repo-cleaner's words, with their meaning:
 - **`select`:** exactly these candidate ids instead of the default.
 - **`pick`:** these as well; a candidate held for review runs only when picked
   or selected.
-- **`spare`:** leave these alone: an id, a path (a ref candidate's `ref` or
-  the folder it is `at`), a name (every candidate of that name, as a branch
+- **`spare`:** leave these alone: an id, a path (a ref candidate's `ref`,
+  the folder it is `at`, or `<at>:<ref>`, as in `~/dev/app:release-1.2`), a name (every candidate of that name, as a branch
   and the worktree that has it checked out), or a glob over ids, paths and
   names. A spared candidate that would have run is
   dropped as `spared`.
@@ -171,7 +172,10 @@ is inside, while a worktree of a repository outside `~/dev`, and any other
 folder outside it, is not. The worktree must be one its repository lists, so a
 copied `.git` file or a worktree moved from where it was added does not count,
 nor does one whose folder has since become a link: nothing at or below it, or
-where the link points, is inside.
+where the link points, is inside. A worktree whose folder is gone, or left
+without its `.git`, has no checkout to find its repository from, so `git`
+declares it as a root `{ path, self: true }` of its own, and its record can
+still be pruned.
 A repository's main checkout counts only as far as a target covers it. A
 plugin that cleans outside any checkout (a
 cache directory, a toolchain folder) declares `roots(ctx)`: the directories it
@@ -225,7 +229,7 @@ without it to the kit it builds; a kit no run has bound removes nothing.
 | `kit.onPath(program)` | Whether a program is on PATH. |
 | `kit.candidate({ kind, path \| ref, ... })` | A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and the plugin as owner. |
 | `kit.run(argv, { signal, check })` | Runs a program through `@osdlc/command-seam`, with a time limit (`RUN_LIMIT_MS`, 30 seconds) and stopped when `ctx.signal` aborts; `ok` when it exited 0, a `CommandFailed` throw with `check`. |
-| `kit.remove(path, ctx?)` | Removes a folder only if it is still inside the plugin's roots, is one of its self roots, or is inside a target or a linked worktree of one (as in [containment](#paths-refs-and-containment)) by its real path, as the core bound them this run; checks it is gone and returns the receipt sentence. Where something in it may not be removed, its read-only folders and files are made writable and the removal tried once more. It removes nothing in a survey's hooks before that survey binds it, or in a ref candidate's `delete`. With `ctx`, it removes nothing once `ctx.signal` has aborted. |
+| `kit.remove(path, ctx?)` | Removes a folder only if it is still inside the plugin's roots, is one of its self roots, or is inside a target or a linked worktree of one (as in [containment](#paths-refs-and-containment)) by its real path, as the core bound them this run; checks it is gone and returns the receipt sentence. Where something in it may not be removed, its read-only folders and files are made writable and the removal tried once more. It removes nothing in a survey's hooks before that survey binds it, in a ref candidate's `delete`, or once `clean` is over. With `ctx`, it removes nothing once `ctx.signal` has aborted, and given `delete`'s `ctx` it holds to that call's bounds even while another run binds the same plugin. |
 
 `idleHoursSetting` is the `idleHours` setting: a plugin that declares it
 inherits the config's top-level `idleHours` when its own entry sets none, and
@@ -371,7 +375,7 @@ host-cleaner plugins [target...] [--format json]   # every plugin: where it came
 
 The text output writes the home folder in an id as `~`
 (`worktree:~/dev/wt`, `branch:~/dev/repo:main`), and `--pick` and `--spare`
-take that form, also when `HOME` goes through a symlink. host-cleaner refuses to run as root (exit 1). `status`,
+take that form, also when `HOME` goes through a symlink. `status`, `plan`, `clean` and `plugins` refuse to run as root (exit 1); `config` still answers. `status`,
 `plan` and `clean` print each plugin's `detect` note as a warning line naming
 the plugin, with the survey's warnings.
 
@@ -438,7 +442,8 @@ values.
 
 `host-cleaner plugins` lists every plugin: where it came from, each plugin by its
 own origin (`built-in` when host-cleaner ships it, even when a program passes it
-to `main`, and `given` for a plugin the program wrote), whether it applies here
+to `main` or a copy of it, and `given` for a plugin the program wrote, or one
+of host-cleaner's whose hooks it replaced), whether it applies here
 and, when it does not, why, and its roots, the folders it may delete in besides
 the targets. The ignored directories (`--ignore` and the config's `ignore`),
 which may leave out a target, show after `ignoring:`, as in `status`; the JSON
@@ -451,16 +456,22 @@ follows the plugin's state (`; note: ...`), whether it is detected or not, so a
 degraded plugin (`{ active: true, note }`) shows as detected with its note, as
 Orca installed but not running does; the JSON row has it as `note`.
 A root the core refuses is left out with a warning, as `status` does, and a
-self root is marked `(itself too)`. A plugin the config disables is listed as
-`disabled`, and its `detect` is not run. `--format json` prints the same, one
-object per plugin: `{ name, source, enabled, detected, reason, roots,
-selfRoots, note }`, under `plugins` beside `targets`, `ignore` and `warnings`.
+self root is marked `(itself too)`. A plugin whose `roots` throws or times out,
+or whose every root is refused, shows `roots: none, the targets alone` followed
+by why in brackets; the JSON row has it as `rootsFailed`. Git is asked once per
+target only when a plugin gives a root to check. `plugins` runs no
+`discover`, where a sweep asks `roots` after it, so a root a plugin takes from
+what it found (git's gone worktrees) shows in `status` and not here. A plugin
+the config disables is listed as `disabled`, and its `detect` is not run.
+`--format json` prints the same, one object per plugin: `{ name, source,
+enabled, detected, reason, roots, rootsFailed, selfRoots, note }`, under
+`plugins` beside `targets`, `ignore` and `warnings`.
 
 ```text
 targets: /Users/me/dev
   git    built-in  detected; roots: none, the targets alone
   cargo  built-in  detected; roots: none, the targets alone
-  node   built-in  disabled: plugins.node.enabled is false; --plugin node runs it anyway
+  node   built-in  disabled: plugins.node.enabled is false; status, plan or clean with --plugin node runs it anyway
   orca   built-in  detected; roots: none, the targets alone; note: Orca is installed but not running
 ```
 
