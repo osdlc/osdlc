@@ -14,7 +14,7 @@ Removed or changed, and what replaces each:
 - Plans are at version 2. A plan of another version, or without a field this version needs (`targetsGiven`), is refused: sweep again.
 - `ArtifactOptions.command` is gone: `cargoPlugin` and `nodePlugin` take the kit's options (`runner`, `which`) instead. Artifact evidence no longer holds the newest modification time or the size.
 - `detect` may answer `{ active, note }` as well as a boolean.
-- `host-cleaner` refuses to run as root.
+- `host-cleaner status`, `plan` and `clean` refuse to run as root; `config`, which only reads the settings, still answers.
 
 New:
 
