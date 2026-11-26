@@ -23,6 +23,7 @@ export {
   type Level,
   type MaybePromise,
   type Objection,
+  type PartIdleHours,
   type PathCandidate,
   type Plugin,
   type PluginDefinition,
@@ -30,8 +31,9 @@ export {
   type RefCandidate,
   type Root,
   type RunCtx,
+  type SettingSource,
 } from './types.ts'
-export { BUILT_IN_PLUGINS } from './registry.ts'
+export { BUILT_IN_PLUGINS, findPlugins, loadPlugins, type Loaded } from './registry.ts'
 export {
   PLAN_VERSION,
   PlanSchema,
@@ -59,12 +61,15 @@ export {
   clean,
   decide,
   decidePlan,
+  inspect,
   plan,
   recheck,
   spares,
   survey,
   type CleanOptions,
   type Decision,
+  type Inspection,
+  type PluginState,
   type Selection,
   type Survey,
 } from './run.ts'
@@ -109,6 +114,38 @@ export {
   type Os,
   type ProjectEntry,
 } from './descriptor/schema.ts'
+export {
+  DUPLICATE_ENTRY,
+  IN_USE,
+  NO_PRUNE_TOOL,
+  descriptorPlugin,
+  globMatches,
+  osOf,
+  pathProblem,
+  skipReason,
+  type DescriptorOptions,
+} from './descriptor/engine.ts'
+export {
+  BUILT_IN_VARS,
+  VAR_COMMAND_LIMIT_MS,
+  fillTemplate,
+  resolveVars,
+  type VarSource,
+  type VarValue,
+  type Vars,
+  type VarsAt,
+} from './descriptor/vars.ts'
+export {
+  DescriptorLoadError,
+  SHIPPED_DESCRIPTORS,
+  findDescriptors,
+  loadDescriptors,
+  type DescriptorProblem,
+  type DescriptorSource,
+  type DescriptorSources,
+  type FoundDescriptors,
+  type LoadedDescriptor,
+} from './descriptor/load.ts'
 export {
   CLOSE_TERMINALS,
   ORCA_BUNDLE_CLI,

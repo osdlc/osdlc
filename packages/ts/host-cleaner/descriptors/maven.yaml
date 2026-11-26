@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
+# Maven's local repository, on the default folder. A localRepository set in
+# settings.xml is not followed: XML is not a file source, and asking Maven
+# (`mvn help:evaluate`) starts a JVM, takes longer than a variable's command
+# may, and can download into the repository it would then measure. Set
+# plugins.maven.vars.LOCAL_REPOSITORY in the config for a moved one. No Maven
+# command prunes the whole repository, so it is removed as a folder. Its cost
+# is `rebuild`: what `mvn install` put there comes back only by building those
+# projects again. Maven only reads an artifact it already has, so a repository
+# used every day, or only offline, can go 30 days unchanged; idle time does not
+# say it is unused, so it is held and removed only when picked.
+# While Maven runs it is refused in-use: `mvn`, Maven's launcher (a java process
+# whose main class is org.codehaus.plexus.classworlds.launcher.Launcher), the
+# mvnd client and daemon (`mvnd`, and the dot part mvnd of
+# org.mvndaemon.mvnd.common.MavenDaemon), and any process with the dot part
+# `maven` in a word, such as the jar-based `./mvnw`
+# (org.apache.maven.wrapper.MavenWrapperMain) or IntelliJ's embedded server
+# (org.jetbrains.idea.maven.server...).
+descriptor: 1
+store: maven
+detect:
+  any: [{ onPath: mvn }, { exists: repository }]
+vars:
+  LOCAL_REPOSITORY:
+    - value: ~/.m2/repository
+paths:
+  repository: { macos: '${LOCAL_REPOSITORY}', linux: '${LOCAL_REPOSITORY}' }
+candidates:
+  - path: repository
+    costDescription: rebuild
+    idleHours: 720
+    held: true
+inUse:
+  processes: [mvn, classworlds, mvnd, maven]

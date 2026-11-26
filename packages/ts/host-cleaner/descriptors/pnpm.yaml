@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
+# pnpm's content-addressable store, where `pnpm store path` says it is, and
+# its metadata cache. The store is pruned: `pnpm store prune` removes only the
+# packages no project references, so it runs with no idle check. pnpm prints
+# the versioned folder inside the store (such as store/v10), and --store-dir
+# takes that folder as it is. Without pnpm on PATH the store is
+# npm_config_store_dir, else store under PNPM_HOME or pnpm's default home,
+# listed with a no-prune-tool protest and left alone (D12). The metadata cache
+# is where `pnpm config get cache-dir` says, else npm_config_cache_dir, else
+# pnpm's default, and is removed as a folder once idle.
+descriptor: 1
+store: pnpm
+detect:
+  any: [{ onPath: pnpm }, { exists: store }, { exists: cache }]
+vars:
+  STORE:
+    - command: [pnpm, store, path]
+    - env: npm_config_store_dir
+    - value: '${PNPM_HOME}/store'
+  PNPM_HOME:
+    - env: PNPM_HOME
+    - value: '${XDG_DATA_HOME_SET}/pnpm'
+    - value: { macos: ~/Library/pnpm, linux: '${XDG_DATA_HOME}/pnpm' }
+  CACHE:
+    - command: [pnpm, config, get, cache-dir]
+    - env: npm_config_cache_dir
+    - value: '${XDG_CACHE_HOME_SET}/pnpm'
+    - value: { macos: ~/Library/Caches/pnpm, linux: '${XDG_CACHE_HOME}/pnpm' }
+  # The XDG folders only when the environment sets them: on macOS pnpm uses
+  # ~/Library, not their defaults.
+  XDG_DATA_HOME_SET:
+    - env: XDG_DATA_HOME
+  XDG_CACHE_HOME_SET:
+    - env: XDG_CACHE_HOME
+paths:
+  store: { macos: '${STORE}', linux: '${STORE}' }
+  cache: { macos: '${CACHE}', linux: '${CACHE}' }
+candidates:
+  - path: store
+    costDescription: re-download
+    command: [pnpm, store, prune, --store-dir, '{path}']
+    removes: unused
+  - path: cache
+    costDescription: re-download
+inUse:
+  processes: [pnpm]
