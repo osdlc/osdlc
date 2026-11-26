@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import type { AttemptKey } from '../../src/ports.ts'
 import {
@@ -103,9 +104,7 @@ describe('fileAttemptStore', () => {
 
   test('the write leaves no temp file and the file parses', () => {
     fileAttemptStore(file).recordFailure(KEY, 'boom')
-    expect(readdirSync(file)).toEqual([
-      attemptFile(file, KEY.repo, KEY.head, KEY.base).split('/').pop()!,
-    ])
+    expect(readdirSync(file)).toEqual([basename(attemptFile(file, KEY.repo, KEY.head, KEY.base))])
     expect(listAttempts(file)).toHaveLength(1)
   })
 
@@ -145,7 +144,8 @@ describe('fileAttemptStore: one file per branch', () => {
   test('processes recording different PRs at once lose nothing', async () => {
     const dir = attemptsDir(root)
     const src = join(import.meta.dirname, '../../src/update/attempts.ts')
-    const script = `import { fileAttemptStore } from ${JSON.stringify(src)}
+    // A URL, since on Windows the loader takes `D:\x` for a URL with scheme `d:`.
+    const script = `import { fileAttemptStore } from ${JSON.stringify(pathToFileURL(src).href)}
 const [dir, head] = process.argv.slice(2)
 const store = fileAttemptStore(dir)
 for (let i = 0; i < 5; i++) {

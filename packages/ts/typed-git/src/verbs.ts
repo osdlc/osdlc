@@ -13,6 +13,8 @@
  * `GitVerb` and `gate` are internal: the package entries do not export them.
  */
 
+import { normalize } from 'node:path'
+
 import { CommandFailed, notAnOption, runFailed, type CommandResult } from '@osdlc/command-seam'
 
 import { gitFailureError } from './failure.ts'
@@ -176,7 +178,7 @@ export function repoPrefix(gitDir: string | undefined, workTree: string | undefi
 
 /** One row of `git worktree list --porcelain`. */
 export interface Worktree {
-  /** Absolute path of the worktree. */
+  /** Absolute path of the worktree, in Node's form (`C:\x` on Windows, not git's `C:/x`). */
   path: string
   /** HEAD sha, or null for an entry that reports none (a bare store). */
   head: string | null
@@ -242,6 +244,21 @@ function trimmedOrNull(r: CommandResult): string | null {
   if (r.exitCode !== 0) return null
   const out = r.stdout.trim()
   return out === '' ? null : out
+}
+
+/**
+ * A path git printed, in the form Node's own paths take. Git for Windows
+ * prints `C:/x/y`, where `node:path` gives `C:\x\y`, so a caller comparing
+ * the two would see two paths. Elsewhere git's path is already that form.
+ */
+function nativePath(path: string): string {
+  return process.platform === 'win32' ? normalize(path) : path
+}
+
+/** {@link trimmedOrNull}, as a {@link nativePath}. */
+function pathOrNull(r: CommandResult): string | null {
+  const out = trimmedOrNull(r)
+  return out === null ? null : nativePath(out)
 }
 
 /** Non-blank lines of a command's stdout, verbatim. */
@@ -521,14 +538,16 @@ export function headRef(): GitVerb<string | null> {
 }
 
 /**
- * Absolute repo top-level directory, or null outside a repo.
+ * Absolute repo top-level directory, or null outside a repo. It is in Node's
+ * form, as are {@link gitCommonDir}, {@link gitDir} and {@link worktrees}
+ * paths: `C:\x` on Windows, where git prints `C:/x`.
  *
  * `absent: [128]`: for this question "not a repository" is a real answer,
  * so `if (!git.topLevel())` is the usual "am I in a repo?" check. Most
  * other verbs throw there — see {@link lsFiles}.
  */
 export function topLevel(): GitVerb<string | null> {
-  return { argv: ['rev-parse', '--show-toplevel'], absent: [128], parse: trimmedOrNull }
+  return { argv: ['rev-parse', '--show-toplevel'], absent: [128], parse: pathOrNull }
 }
 
 /**
@@ -546,7 +565,7 @@ export function gitCommonDir(): GitVerb<string | null> {
   return {
     argv: ['rev-parse', '--path-format=absolute', '--git-common-dir'],
     absent: [128],
-    parse: trimmedOrNull,
+    parse: pathOrNull,
   }
 }
 
@@ -561,7 +580,7 @@ export function gitCommonDir(): GitVerb<string | null> {
  * `absent: [128]`, as for {@link gitCommonDir}: "not a repository" is an answer.
  */
 export function gitDir(): GitVerb<string | null> {
-  return { argv: ['rev-parse', '--absolute-git-dir'], absent: [128], parse: trimmedOrNull }
+  return { argv: ['rev-parse', '--absolute-git-dir'], absent: [128], parse: pathOrNull }
 }
 
 /**
@@ -729,7 +748,7 @@ function worktreeRecords(lines: readonly string[]): Worktree[] {
   for (const line of lines) {
     if (line.startsWith('worktree ')) {
       flush()
-      cur = { path: line.slice('worktree '.length) }
+      cur = { path: nativePath(line.slice('worktree '.length)) }
     } else if (cur !== null && line.startsWith('HEAD ')) {
       cur.head = line.slice('HEAD '.length)
     } else if (cur !== null && line.startsWith('branch ')) {
@@ -1891,11 +1910,20 @@ function ntfsTailIsEmpty(rest: string): boolean {
 }
 
 /**
+ * The part of `name` git's HFS+ check reads (`is_hfs_dot_generic`), which
+ * ends a name at a directory separator. On Windows a backslash is one, so
+ * there it is the part before the first backslash; elsewhere all of it.
+ */
+function hfsPart(name: string): string {
+  return process.platform === 'win32' ? name.split('\\')[0]! : name
+}
+
+/**
  * A name git's fsck reports as `hasDotgit` (git's `is_hfs_dotgit` and
  * `is_ntfs_dotgit`, which checks each part between backslashes), and checkout refuses on every platform.
  */
 function readsAsDotGit(name: string): boolean {
-  if (hfsReadsAs(name, 'git')) return true
+  if (hfsReadsAs(hfsPart(name), 'git')) return true
   for (const part of name.split('\\')) {
     const lower = asciiLower(part)
     if (lower.startsWith('.git') && ntfsTailIsEmpty(part.slice(4))) return true
@@ -1906,13 +1934,28 @@ function readsAsDotGit(name: string): boolean {
 }
 
 /**
- * A name git's fsck treats as `.gitmodules` (git's `is_hfs_dotgitmodules`
- * and `is_ntfs_dotgitmodules`): the HFS+ and NTFS spellings, the short names
- * `gitmod~1` to `~4`, and the 8.3 fallback short name, whose prefix
- * `gi7eba` git took from a hash of the long name.
+ * A name git's fsck treats as `.gitmodules`: its HFS+ spelling
+ * (`is_hfs_dotgitmodules`, on {@link hfsPart}), or an NTFS spelling
+ * (`is_ntfs_dotgitmodules`) of the whole name or of what follows any
+ * backslash in it, as fsck's `fsck_tree` tests them. So `x\.gitmodules` is
+ * `.gitmodules` on every platform, and `.gitmodules\x` only on Windows.
  */
 function readsAsDotGitmodules(name: string): boolean {
-  if (hfsReadsAs(name, 'gitmodules')) return true
+  if (hfsReadsAs(hfsPart(name), 'gitmodules')) return true
+  if (ntfsReadsAsDotGitmodules(name)) return true
+  for (let i = name.indexOf('\\'); i !== -1; i = name.indexOf('\\', i + 1)) {
+    if (ntfsReadsAsDotGitmodules(name.slice(i + 1))) return true
+  }
+  return false
+}
+
+/**
+ * NTFS reads `name` as `.gitmodules` (git's `is_ntfs_dotgitmodules`): any
+ * letter case with its NTFS tail, the short names `gitmod~1` to `~4`, and
+ * the 8.3 fallback short name, whose prefix `gi7eba` git took from a hash of
+ * the long name. A backslash does not end the name here.
+ */
+function ntfsReadsAsDotGitmodules(name: string): boolean {
   const lower = asciiLower(name)
   if (lower.startsWith('.gitmodules')) return ntfsTailIsEmpty(name.slice(11))
   if (/^gitmod~[1-4]/.test(lower)) return ntfsTailIsEmpty(name.slice(8))
@@ -2100,8 +2143,23 @@ export function remoteHead(remote: string): GitVerb<string | null> {
 
 /** Options for {@link fetch}. */
 export interface FetchOptions {
-  /** `--prune` — drop remote-tracking refs the remote no longer has. */
+  /**
+   * `true`: `--prune`, drop remote-tracking refs the remote no longer has.
+   * `false`: `--no-prune`, which beats `fetch.prune` and `remote.<name>.prune`
+   * in the repository's config. Absent: neither flag, so that config decides.
+   */
   prune?: boolean | undefined
+  /**
+   * `--refmap=<refspec>` — the refspec that maps the refs named on the command
+   * line to the refs they update, in place of the remote's configured
+   * `remote.<name>.fetch` lines. `''` gives `--refmap=`, an empty map: only the
+   * refspecs given are written. Without it, git also updates every ref a
+   * configured fetch line maps a fetched ref to, forced when the line starts
+   * with `+`, even when refspecs are given; a line such as
+   * `+refs/heads/x:refs/heads/x` then overwrites a local branch. Not on
+   * {@link fetchMany}: git ignores `--refmap` with `--multiple`.
+   */
+  refmap?: string | undefined
   /** `--quiet` — suppress the progress report on stderr. */
   quiet?: boolean | undefined
   /**
@@ -2136,8 +2194,7 @@ export function fetch(
 ): GitVerb<void> {
   const argv = ['fetch']
   if (opts.quiet) argv.push('--quiet')
-  if (opts.prune) argv.push('--prune')
-  if (opts.noWriteFetchHead) argv.push('--no-write-fetch-head')
+  pushFetchFlags(argv, opts)
   if (opts.depth !== undefined) argv.push(depthArg('fetch', opts.depth))
   if (opts.noTags) argv.push('--no-tags')
   argv.push(positional('fetch', 'remote', remote))
@@ -2149,8 +2206,19 @@ export function fetch(
   return { argv, absent: NONE, parse: nothing }
 }
 
-/** Options for {@link fetchMany}. */
-export interface FetchManyOptions extends Omit<FetchOptions, 'depth'> {
+/** The flags {@link fetch} and {@link fetchMany} share, after `--quiet`. */
+function pushFetchFlags(argv: string[], opts: Omit<FetchOptions, 'depth'>): void {
+  if (opts.prune === true) argv.push('--prune')
+  else if (opts.prune === false) argv.push('--no-prune')
+  if (opts.refmap !== undefined) argv.push(`--refmap=${opts.refmap}`)
+  if (opts.noWriteFetchHead) argv.push('--no-write-fetch-head')
+}
+
+/**
+ * Options for {@link fetchMany}. No `refmap`: with `--multiple`, git fetches
+ * each remote by its configured fetch lines and ignores `--refmap`.
+ */
+export interface FetchManyOptions extends Omit<FetchOptions, 'depth' | 'refmap'> {
   /**
    * `--jobs=<n>` — fetch up to `n` remotes at once. Default: git's own
    * (`fetch.parallel`, 1 unless set). Anything but a positive integer throws a
@@ -2169,8 +2237,8 @@ export function fetchMany(remotes: readonly string[], opts: FetchManyOptions = {
   if (remotes.length === 0) throw new TypeError('typed-git: fetchMany: no remote given')
   const argv = ['fetch', '--multiple']
   if (opts.quiet) argv.push('--quiet')
-  if (opts.prune) argv.push('--prune')
-  if (opts.noWriteFetchHead) argv.push('--no-write-fetch-head')
+  // A `refmap` from an untyped caller is dropped, not passed for git to ignore.
+  pushFetchFlags(argv, { ...opts, refmap: undefined })
   if (opts.noTags) argv.push('--no-tags')
   if (opts.jobs !== undefined) {
     if (!Number.isSafeInteger(opts.jobs) || opts.jobs < 1) {

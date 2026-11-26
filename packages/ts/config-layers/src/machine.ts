@@ -4,8 +4,10 @@
  *
  * The project file is committed, so it is the wrong place for a path like
  * `~/Developer` that only means something on one laptop. The machine file
- * lives in the tool's standalone config home (`<config>/<tool>/config.yaml`).
- * It is never committed and holds only machine-specific keys.
+ * lives in the tool's standalone config home (`<config>/<tool>/config.yaml`),
+ * or in an app's directory under it (`<config>/<tool>/<app>/config.yaml`) for a
+ * tool that shares a family root. It is never committed and holds only
+ * machine-specific keys.
  *
  * A Standard Schema validator defines the file, and every key has a default.
  * The loader never throws. `loadWithIssues()` reports what it dropped. The result is
@@ -43,15 +45,29 @@ export interface MachineConfigFileOptions<S extends StandardSchemaV1> {
   /** The tool's standalone name: the directory segment under the config home. */
   tool: string
   /**
+   * One app's directory under {@link tool}'s: the file is then
+   * `<config>/<tool>/<app>/<fileName>`. For a tool that keeps its files under
+   * a family root, such as `tool: 'osdlc', app: 'pr-update'`. It changes only
+   * the directory, not the default {@link env}. A value that is not a single
+   * path segment throws `TieredDirsError` (`INVALID_KEY`) from
+   * {@link MachineConfigFile.path}, as a bad `tool` does. Default none.
+   */
+  app?: string
+  /**
    * Every key with a default; the loader parses `{}` to get the defaults.
    * Unknown keys are reported only for a zod schema whose objects are all
    * `.strict()`; another validator drops the whole top-level section an
    * unknown key sits in, as `invalid`.
    */
   schema: S
-  /** Env var that relocates the file. Default `<STEM>_MACHINE_CONFIG`. */
+  /**
+   * Env var that relocates the file. Default `<STEM>_MACHINE_CONFIG`, with
+   * the stem from {@link tool}. A tool under a family root passes its own,
+   * such as `PR_UPDATE_MACHINE_CONFIG`, because the default would be shared
+   * by every tool in the family.
+   */
   env?: string
-  /** The file's name inside the tool's config dir. Default `config.yaml`. */
+  /** The file's name inside the tool's config dir, or the app's. Default `config.yaml`. */
   fileName?: string
   /** Whose config home the file lives in: the vendor and its override variables. */
   vendorDirs: VendorDirs
@@ -147,7 +163,11 @@ export interface MachineConfigFile<S extends StandardSchemaV1> {
   readonly schema: S
   /** The env var that relocates the file (tests, one-off runs). */
   readonly env: string
-  /** `<config-home>/<tool>/<fileName>` (default `config.yaml`), unless {@link env} says otherwise. */
+  /**
+   * `<config-home>/<tool>/<fileName>` (default `config.yaml`), or
+   * `<config-home>/<tool>/<app>/<fileName>` given an `app`, unless {@link env}
+   * says otherwise.
+   */
   path(): string
   /**
    * The file, all defaults filled. An unknown key is dropped; an invalid
@@ -204,7 +224,7 @@ export interface MachineConfigFile<S extends StandardSchemaV1> {
 export function machineConfigFile<S extends StandardSchemaV1>(
   opts: MachineConfigFileOptions<S>,
 ): MachineConfigFile<S> {
-  const { tool, schema } = opts
+  const { tool, app, schema } = opts
   const env = opts.env ?? `${envStem(tool)}_MACHINE_CONFIG`
   const fileName = opts.fileName ?? 'config.yaml'
   const dirs = opts.dirs ?? (() => systemDirs(opts.vendorDirs))
@@ -216,7 +236,8 @@ export function machineConfigFile<S extends StandardSchemaV1>(
   const path = (): string => {
     const override = process.env[env]
     if (override !== undefined && override.trim() !== '') return override
-    return join(dirs().standalone(tool).config().path, fileName)
+    const config = dirs().standalone(tool).config()
+    return join((app === undefined ? config : config.app(app)).path, fileName)
   }
 
   const loadUncached = (file: string): MachineConfigLoad<StandardSchemaV1.InferOutput<S>> => {

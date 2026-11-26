@@ -110,9 +110,16 @@ unmet need.
 `vendorDirs` is `{ vendor, envVars }`: the vendor and the override variables (`<PREFIX>_ROOT`,
 `<PREFIX>_CONFIG_DIR`) that move the config home. Whoever ships the tool supplies them.
 
+A tool that keeps its files under a family root passes `app` as well. `tool: 'osdlc', app:
+'pr-update'` gives `<config>/osdlc/pr-update/config.yaml`. `app` must be a single path segment,
+like `tool`; `path()` throws `TieredDirsError` (`INVALID_KEY`) from `@osdlc/tiered-dirs` when it
+is not. It changes only the directory. The default variable is still built from `tool`
+(`OSDLC_MACHINE_CONFIG`), and every tool in the family would share it, so such a tool passes its
+own `env`, such as `PR_UPDATE_MACHINE_CONFIG`.
+
 | Member | Does |
 |---|---|
-| `path()` | the file's path. `<STEM>_MACHINE_CONFIG` (`TOOLY_MACHINE_CONFIG`) overrides it |
+| `path()` | the file's path. `<STEM>_MACHINE_CONFIG` (`TOOLY_MACHINE_CONFIG`), or the `env` option, overrides it |
 | `load()` | the file parsed through `schema`, all defaults filled. Never throws |
 | `loadWithIssues()` | `{ value, issues }`: `load()`'s value plus one issue per thing it dropped |
 | `clearCache()` | drop the memoised value (tests) |
@@ -130,8 +137,8 @@ still invalid its default, and keeps the rest. Every drop is a `MachineConfigIss
 a `code` and a `message`. The code is `unknown_key`, `invalid`, `unreadable`, `yaml`,
 `not_mapping` or `newer_version`. An unknown key is found only when every object in the schema is
 `.strict()`; a plain `z.object` drops it silently, with no issue. The loader never prints issues. The tool decides how to show
-them. Options `env`, `fileName` and `dirs` change the variable, the file name and how the
-directories are resolved (a test passes a rooted one).
+them. Options `app`, `env`, `fileName` and `dirs` change the directory under the tool's, the
+variable, the file name and how the directories are resolved (a test passes a rooted one).
 
 Option `migrations` is an ordered `ConfigMigration[]` (`{ from, to, run(raw, warn) }`), usually
 built by `defineMigrations` (see [Migrations](#migrations)). The schema should declare an optional
@@ -553,6 +560,7 @@ is left out of the suite and listed in this table.
 |---|---|---|
 | Shape of the config | zod schemas, in sections | `serde` types and a `KeySpec` table |
 | Machine file `load()` | keeps the valid sections and reports what it dropped | gives `T::default()` for any problem; `read_strict` reports it |
+| Machine file under an app directory | `app` option: `<config>/<tool>/<app>/<fileName>` | not provided |
 | Project file | `assembleConfig` loads, validates and memoizes it, with a `.local` overlay deep-merged first | `read_mapping` reads it; `overlay_top_level` fills a missing or unset top-level key from the machine file, one level deep |
 | Finding the project file | the caller passes the project root (`resolveConfigFile(projectRoot, ...)`); there is no `findUp` | `find_up(cwd, file_name)` |
 | `substitutePathNames` | `substitutePathNames(value, names, where, { defineHint })`: one function, with the hint in an options object | `substitute_path_names(value, names, setting)` and `substitute_path_names_with_hint(value, names, setting, define_hint)` |

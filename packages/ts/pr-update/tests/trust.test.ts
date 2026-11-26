@@ -4,18 +4,28 @@
  */
 
 import { afterAll, describe, expect, test } from 'vitest'
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { EXIT, captureContext } from '@osdlc/cli-tool'
+import { trustStore } from '@osdlc/trust-repo'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
+import { main } from '../src/cli.ts'
+
+import { prUpdateConfigSchema, type PrUpdateConfig } from '../src/config.ts'
+import type { TargetCheckout } from '../src/ports.ts'
 import {
   prUpdateTrustStore,
   projectSourcedCommands,
+  targetTrustGate,
+  targetTrustKey,
   untrustedMessage,
   withoutRepairChoice,
+  worktreeCommands,
 } from '../src/trust.ts'
+import { allToolsInstalled, isolatedEnv } from './support.ts'
 
 const scratch = mkdtempSync(join(tmpdir(), 'pr-update-trust-'))
 afterAll(() => rmSync(scratch, { recursive: true, force: true }))
@@ -25,9 +35,31 @@ let n = 0
 function repo(): { root: string; env: Record<string, string> } {
   const fx = makeGitFixture({ dir: mkdtempSync(join(scratch, `r${n}-`)) })
   fx.commit('init', { 'a.txt': 'a' })
-  const env = { PATH: process.env.PATH ?? '', XDG_STATE_HOME: join(scratch, `state${n++}`) }
-  return { root: realpathSync(fx.dir), env }
+  const env = isolatedEnv(join(scratch, `env${n++}`))
+  return { root: realpathSync.native(fx.dir), env }
 }
+
+describe('the trust store', () => {
+  test("is pr-update's own directory in the osdlc state home", async () => {
+    const { root, env } = repo()
+    await prUpdateTrustStore(env).trust(root)
+    const dir = join(env.OSDLC_ROOT!, 'state', 'osdlc', 'pr-update', 'trusted')
+    expect(prUpdateTrustStore(env).dir()).toBe(dir)
+    expect(existsSync(dir)).toBe(true)
+  })
+
+  test('a grant in the old place, $XDG_STATE_HOME/pr-update/trusted/, no longer counts', async () => {
+    const { root, env } = repo()
+    const old = trustStore({ tool: 'pr-update', env })
+    await old.trust(root)
+    expect(old.dir()).toBe(join(env.XDG_STATE_HOME!, 'pr-update', 'trusted'))
+    expect(await prUpdateTrustStore(env).isTrusted(root)).toBe(false)
+    const project = { pr_update: { test_command: 'make test' } }
+    expect(await untrustedMessage({ root, project, local: null, trust: false, env })).toContain(
+      'pr-update trust',
+    )
+  })
+})
 
 describe('repair.mode', () => {
   test('a non-headless mode in the project file is gated, headless is not', () => {
@@ -135,5 +167,106 @@ describe('untrustedMessage', () => {
   test('the overlay setting the same command lifts it without consent', async () => {
     const { root, env } = repo()
     expect(await untrustedMessage({ root, project, local: project, trust: false, env })).toBeNull()
+  })
+})
+
+describe('a target other than the project root', () => {
+  const none = prUpdateConfigSchema.parse({})
+  const cfg = (patch: Record<string, unknown>): PrUpdateConfig =>
+    prUpdateConfigSchema.parse({ ...patch })
+
+  function target(path: string, source: TargetCheckout['source'] = 'located'): TargetCheckout {
+    return { host: 'forgejo.local', owner: 'x', name: 'y', path, source, remote: 'origin' }
+  }
+
+  test('every setting that starts a command in its worktree is one, whichever layer set it', () => {
+    expect(worktreeCommands(none)).toEqual([])
+    expect(
+      worktreeCommands(
+        cfg({
+          lockfile_install: 'bun install',
+          resolvers: [{ paths: ['docs/**'], run: 'make docs' }],
+          verify: 'test',
+          repair: { command: 'fix-it' },
+        }),
+      ),
+    ).toEqual(['lockfile_install', 'resolvers', 'verify: test', 'repair.command'])
+    expect(worktreeCommands(cfg({ verify: 'detect', repair: { agent: 'claude' } }))).toEqual([
+      'verify: detect',
+      'repair.agent',
+    ])
+  })
+
+  test('a located checkout is trusted by its path, a clone by host/owner/name', () => {
+    expect(targetTrustKey(target('/srv/y'))).toBe('/srv/y')
+    expect(targetTrustKey(target('/cache/y.git', 'clone'))).toEqual({ repo: 'forgejo.local/x/y' })
+  })
+
+  test('needs no trust when the run starts no command in it', async () => {
+    const { root, env } = repo()
+    expect(await targetTrustGate({ cfg: none, trust: false, env })(target(root))).toBeNull()
+  })
+
+  test('is refused untrusted, naming what would run and the way out', async () => {
+    const { root, env } = repo()
+    const why = await targetTrustGate({ cfg: cfg({ verify: 'detect' }), trust: false, env })(
+      target(root),
+    )
+    expect(why).toMatch(/^untrusted: /)
+    expect(why).toContain(root)
+    expect(why).toContain('verify: detect')
+    expect(why).toContain('pr-update trust')
+    expect(why).toContain('--trust')
+  })
+
+  test('--trust and a grant on its path each let it run', async () => {
+    const { root, env } = repo()
+    const gated = cfg({ lockfile_install: 'bun install' })
+    expect(await targetTrustGate({ cfg: gated, trust: true, env })(target(root))).toBeNull()
+    expect(await prUpdateTrustStore(env).list()).toEqual([])
+    await prUpdateTrustStore(env).trust(root)
+    expect(await targetTrustGate({ cfg: gated, trust: false, env })(target(root))).toBeNull()
+  })
+
+  test('a grant on its repository does not cover a located checkout of it', async () => {
+    const { root, env } = repo()
+    await prUpdateTrustStore(env).trust({ repo: 'forgejo.local/x/y' })
+    const gate = targetTrustGate({ cfg: cfg({ verify: 'detect' }), trust: false, env })
+    expect(await gate(target(root))).toMatch(/^untrusted: /)
+    expect(await gate(target(root, 'clone'))).toBeNull()
+  })
+})
+
+describe('pr-update trust with a repository', () => {
+  async function trust(env: Record<string, string>, cwd: string, ...argv: string[]) {
+    const ctx = captureContext({ cwd, env })
+    const code = await main(['trust', ...argv, '--json'], ctx, { which: allToolsInstalled })
+    return { code, out: ctx.io.out, err: ctx.io.err }
+  }
+
+  test('grants, shows, lists and removes host/owner/name, not the working directory', async () => {
+    const { root, env } = repo()
+    const granted = await trust(env, root, 'GitHub.com/Acme/API')
+    expect(granted.code).toBe(EXIT.ok)
+    const entry = { root: 'github.com/acme/api', kind: 'repo', trusted: true, by: 'marker' }
+    expect(JSON.parse(granted.out)).toMatchObject({ action: 'trust', roots: [entry] })
+    expect(await prUpdateTrustStore(env).isTrusted({ repo: 'github.com/acme/api' })).toBe(true)
+    expect(await prUpdateTrustStore(env).isTrusted(root)).toBe(false)
+
+    const shown = await trust(env, root, '--show', 'github.com/acme/api')
+    expect(JSON.parse(shown.out)).toMatchObject({ action: 'show', roots: [entry] })
+    const listed = await trust(env, root, '--list')
+    expect(JSON.parse(listed.out)).toMatchObject({ action: 'list', roots: [entry] })
+
+    expect((await trust(env, root, '--untrust', 'github.com/acme/api')).code).toBe(EXIT.ok)
+    expect(await prUpdateTrustStore(env).list()).toEqual([])
+  })
+
+  test('a repository that cannot be a key is a usage error, and nothing is granted', async () => {
+    const { root, env } = repo()
+    for (const bad of ['github.com:443/acme/api', 'acme/api', 'github.com/acme/api.git']) {
+      expect((await trust(env, root, bad)).code).toBe(EXIT.usage)
+    }
+    expect(await prUpdateTrustStore(env).list()).toEqual([])
   })
 })

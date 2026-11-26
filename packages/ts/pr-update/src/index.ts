@@ -24,7 +24,7 @@ export {
   type LoadEnv,
   type StandaloneConfig,
 } from './config-file.ts'
-export { selectedCodeHostFor } from './code-host.ts'
+export { selectedCodeHostFor, type CodeHostTarget } from './code-host.ts'
 export { EXIT_UNTRUSTED, projectSourcedCommands, untrustedMessage } from './trust.ts'
 export { repairPrompt } from './repair/prompt.ts'
 export {
@@ -37,7 +37,8 @@ export {
   type CallAgent,
   type RepairAgent,
 } from './repair/agents.ts'
-export { commandRepair, standalonePorts } from './defaults.ts'
+export { commandRepair, standalonePorts, type StandalonePortsOptions } from './defaults.ts'
+export type { CloneLookup, MissedCheckout } from './locate.ts'
 export { detectVerifyCommand, NothingDetectedError, type DetectedVerify } from './detect.ts'
 export { attemptFile, attemptsDir, fileAttemptStore, listAttempts } from './update/attempts.ts'
 export { refAttemptStore, type RefAttemptStore } from './update/ref-attempts.ts'
@@ -50,8 +51,11 @@ export type {
   AttemptRecord,
   AttemptStore,
   BranchLease,
+  CheckoutSource,
   ConfirmPush,
+  FoundCheckout,
   Generator,
+  LocateTarget,
   Ports,
   PushPreview,
   Repair,
@@ -59,6 +63,8 @@ export type {
   RepairRequest,
   RepairResult,
   RunVerb,
+  TargetCheckout,
+  TargetHome,
   VerifyVerbsRequest,
   VerifyWhich,
 } from './ports.ts'
@@ -94,9 +100,12 @@ export {
   row as surveyRowSchema,
   output as surveyOutputSchema,
   repoEntry as surveyRepoSchema,
+  type ManagedClones,
+  type RemovedTree,
   type MergePrediction,
   type PrSelector,
   type RepoTarget,
+  type ResolveTargetsOptions,
   type SurveyArgs,
   type SurveyEnv,
   type SurveyReport,

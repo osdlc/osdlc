@@ -3,15 +3,16 @@
  * types, without the git-reference parsers and the checkout walks.
  *
  * The package entry minus two groups. The first is `parseGitUrl`,
- * `gitSshUrl`, `parseRepoRef` and their types, which pull in
- * `hosted-git-info`. The second is the checkout walks: `checkoutRoot`,
- * `discoverCheckouts`, `scanForCheckouts`, their types and their defaults. A
- * consumer that only runs git, such as a runner discovery pass or a check script,
- * imports from here and keeps `hosted-git-info` off its module graph. It stays
- * in `dependencies` either way, so this is a bundle saving, not an install
- * one.
+ * `gitSshUrl`, `parseRemoteRepo`, `parseRepoRef`, the remote matching built
+ * on them (`readRemote`, `sshAliasResolver`, `isSshRemote`, `sameRepo`) and
+ * their types, which pull in `hosted-git-info`. The second is the checkout
+ * walks: `checkoutRoot`, `discoverCheckouts`, `scanForCheckouts`, their types
+ * and their defaults. A consumer that only runs git, such as a runner
+ * discovery pass or a check script, imports from here and keeps
+ * `hosted-git-info` off its module graph. It stays in `dependencies` either
+ * way, so this is a bundle saving, not an install one.
  *
- * The package entry is defined as this module plus the URL exports, so there
+ * The package entry is defined as this module plus those two groups, so there
  * is one list of exports rather than two to keep in step.
  */
 
@@ -140,5 +141,7 @@ export {
   type CommandRunner,
   type CommandRunOptions,
 } from '@osdlc/command-seam'
+
+export { REPOSITORY_VARS, withoutRepositoryVars } from './repository-vars.ts'
 
 export type { CatFileBatchOptions, CatFileEntry } from './cat-file.ts'

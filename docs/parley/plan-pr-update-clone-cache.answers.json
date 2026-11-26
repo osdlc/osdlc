@@ -1,0 +1,252 @@
+{
+  "doc": "plan-pr-update-clone-cache",
+  "updated": "2026-11-23T04:23:35.877Z",
+  "verdict": "approved",
+  "comments": [],
+  "choices": {
+    "q-omnibus": {
+      "selected": [
+        "slice-prs"
+      ],
+      "at": "2026-11-23T04:20:52.843Z",
+      "hash": "3d3fcab72de3",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    },
+    "q-merge-authority": {
+      "selected": [
+        "yes"
+      ],
+      "at": "2026-11-23T04:20:57.111Z",
+      "hash": "84cb658a9eab",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    },
+    "q-reviewers": {
+      "selected": [
+        "local-both"
+      ],
+      "at": "2026-11-23T04:21:01.361Z",
+      "hash": "958d39ae7a78",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    },
+    "q-1010": {
+      "selected": [
+        "in"
+      ],
+      "at": "2026-11-23T04:21:17.865Z",
+      "hash": "13312c2862da",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    },
+    "q-trust-clone": {
+      "selected": [
+        "yes"
+      ],
+      "at": "2026-11-23T04:21:23.804Z",
+      "hash": "7f5a7855dc2b",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    },
+    "q-release": {
+      "selected": [
+        "me"
+      ],
+      "at": "2026-11-23T04:21:31.510Z",
+      "hash": "e7684d6190c7",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    },
+    "q-findings": {
+      "selected": [
+        "collect"
+      ],
+      "at": "2026-11-23T04:21:38.096Z",
+      "hash": "b566b76f39a2",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    },
+    "q-gaps": {
+      "selected": [
+        "decide"
+      ],
+      "at": "2026-11-23T04:21:44.179Z",
+      "hash": "82f38626a473",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    },
+    "q-d-abs": {
+      "selected": [
+        "keep"
+      ],
+      "at": "2026-11-23T04:21:58.090Z",
+      "hash": "ab7197fc0c54",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    },
+    "q-d-home": {
+      "selected": [
+        "keep"
+      ],
+      "at": "2026-11-23T04:22:05.715Z",
+      "hash": "7821fa8f7881",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    },
+    "q-d-stamp": {
+      "selected": [
+        "keep"
+      ],
+      "at": "2026-11-23T04:22:26.845Z",
+      "hash": "a8e3a713f97c",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    },
+    "q-d-xfs": {
+      "selected": [
+        "keep"
+      ],
+      "at": "2026-11-23T04:22:36.408Z",
+      "hash": "eb6e6ba6fe71",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    },
+    "q-d-lock": {
+      "selected": [
+        "keep"
+      ],
+      "at": "2026-11-23T04:22:47.059Z",
+      "hash": "c6f4a109f891",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    },
+    "q-d-age0": {
+      "selected": [
+        "keep"
+      ],
+      "at": "2026-11-23T04:22:54.805Z",
+      "hash": "c280154c2e6e",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    },
+    "q-d-json": {
+      "selected": [
+        "keep"
+      ],
+      "at": "2026-11-23T04:23:08.411Z",
+      "hash": "56df397f8494",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    },
+    "q-sdlc": {
+      "selected": [
+        "part"
+      ],
+      "at": "2026-11-23T04:23:32.219Z",
+      "hash": "7ecdfa1cd5b7",
+      "revision": 1,
+      "tab": "ee3e706abbd28a793d0c4ea5",
+      "who": {
+        "id": "u-bPQvjVPjzsqF",
+        "name": "sksizer"
+      },
+      "sent": "2026-11-23T04:23:35.877Z"
+    }
+  },
+  "seen": {
+    "q-omnibus": "3d3fcab72de3",
+    "q-merge-authority": "84cb658a9eab",
+    "q-reviewers": "958d39ae7a78",
+    "q-1010": "13312c2862da",
+    "q-trust-clone": "7f5a7855dc2b",
+    "q-release": "e7684d6190c7",
+    "q-findings": "b566b76f39a2",
+    "q-gaps": "82f38626a473",
+    "q-d-abs": "ab7197fc0c54",
+    "q-d-home": "7821fa8f7881",
+    "q-d-stamp": "a8e3a713f97c",
+    "q-d-xfs": "eb6e6ba6fe71",
+    "q-d-lock": "c6f4a109f891",
+    "q-d-age0": "c280154c2e6e",
+    "q-d-json": "56df397f8494",
+    "q-sdlc": "7ecdfa1cd5b7"
+  },
+  "finished": "2026-11-23T04:23:35.877Z",
+  "agentReadAt": "2026-11-23T04:23:44.652Z"
+}

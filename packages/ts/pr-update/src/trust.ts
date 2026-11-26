@@ -12,13 +12,15 @@
  */
 
 import { getIn } from '@osdlc/config-layers'
-import { resolveExecGate, trustStore, type TrustStore } from '@osdlc/trust-repo'
+import { OSDLC_VENDOR_DIRS, osdlcDirs } from '@osdlc/ecosystem'
+import { resolveExecGate, trustStore, type TrustKey, type TrustStore } from '@osdlc/trust-repo'
+
+import type { PrUpdateConfig } from './config.ts'
+import { PR_UPDATE_APP } from './machine.ts'
+import type { TargetCheckout } from './ports.ts'
 
 /** The exit code of a run refused for want of repository trust. */
 export const EXIT_UNTRUSTED = 21
-
-/** The tool name the trust store is keyed under: `$XDG_STATE_HOME/pr-update/trusted/`. */
-export const TRUST_TOOL = 'pr-update'
 
 /** Every key whose value is a command to run, as a path under the config root. */
 const COMMAND_KEYS: readonly (readonly string[])[] = [
@@ -96,9 +98,22 @@ export function withoutRepairChoice(
   return { ...project, pr_update: { ...section, repair: rest } }
 }
 
-/** The trust store for a run's environment. */
+/**
+ * The trust store for a run's environment: `<state home>/osdlc/pr-update/trusted/`, in the osdlc
+ * family's directories pinned to Xdg (`~/.local/state/osdlc/pr-update/trusted/` on Linux and
+ * macOS, moved by `OSDLC_ROOT`). The grants are pr-update's own: the `pr-update` app directory
+ * keeps them from every other osdlc tool.
+ *
+ * Grants made before this store moved here, under `$XDG_STATE_HOME/pr-update/trusted/`, are not
+ * read: trust-repo carries none over, so the person runs `pr-update trust` again.
+ */
 export function prUpdateTrustStore(env: Record<string, string | undefined>): TrustStore {
-  return trustStore({ tool: TRUST_TOOL, env })
+  return trustStore({
+    tool: 'osdlc',
+    app: PR_UPDATE_APP,
+    vendorDirs: { vendor: OSDLC_VENDOR_DIRS.vendor, envVars: OSDLC_VENDOR_DIRS.envVars },
+    dirs: () => osdlcDirs({ env }),
+  })
 }
 
 /**
@@ -124,4 +139,61 @@ export async function untrustedMessage(args: {
     `refusing to run commands read from this repository's config (${keys.join(', ')}): ` +
     `${gate.root} is not trusted. Run \`pr-update trust\` to trust it, or pass --trust for this run only`
   )
+}
+
+/**
+ * The settings of `cfg` that start a command or an agent in an update worktree: `lockfile_install`,
+ * `resolvers`, `verify` other than `none`, and a repair. In a target other than the project root,
+ * every one of them runs code that target's own files decide (an install's scripts, a test
+ * script, a build, files an agent reads), so each needs that target trusted, whichever config
+ * layer or flag set it.
+ */
+export function worktreeCommands(cfg: PrUpdateConfig): string[] {
+  const keys: string[] = []
+  if (cfg.lockfile_install !== null) keys.push('lockfile_install')
+  if (cfg.resolvers.length > 0) keys.push('resolvers')
+  if (cfg.verify !== 'none') keys.push(`verify: ${cfg.verify}`)
+  if (cfg.repair.command !== null) keys.push('repair.command')
+  if (cfg.repair.agent !== null) keys.push('repair.agent')
+  return keys
+}
+
+/**
+ * What a target other than the project root is trusted as: a checkout found on this machine by
+ * its path, as the project root is, and a managed clone, whose folder is made again in other
+ * places, by its repository, `host/owner/name` with the host's port left out.
+ */
+export function targetTrustKey(target: TargetCheckout): TrustKey {
+  return target.source === 'clone'
+    ? { repo: `${target.host}/${target.owner}/${target.name}` }
+    : target.path
+}
+
+/**
+ * The trust gate of a standalone run for its targets other than the project root, as
+ * `UpdateEnv.targetTrust` takes it: null when the run may start its commands in `target` (none is
+ * configured, `trust` is set, or a grant covers {@link targetTrustKey}), else the reason the
+ * target's PRs are skipped, which starts with `untrusted`.
+ */
+export function targetTrustGate(args: {
+  cfg: PrUpdateConfig
+  trust: boolean
+  env: Record<string, string | undefined>
+}): (target: TargetCheckout) => Promise<string | null> {
+  return async (target) => {
+    const keys = worktreeCommands(args.cfg)
+    if (keys.length === 0) return null
+    const key = targetTrustKey(target)
+    const gate = await resolveExecGate(prUpdateTrustStore(args.env), {
+      root: key,
+      configured: true,
+      ...(args.trust ? { flag: true } : {}),
+    })
+    if (gate.allowExec) return null
+    const how =
+      typeof key === 'string'
+        ? `run \`pr-update trust\` in ${key}`
+        : `run \`pr-update trust ${key.repo}\``
+    return `untrusted: ${gate.root} is not trusted to run ${keys.join(', ')}; ${how}, or pass --trust`
+  }
 }

@@ -25,7 +25,7 @@ vi.mock('@osdlc/config-layers', async (importOriginal) => {
 
 const { EXIT, captureContext } = await import('@osdlc/cli-tool')
 const { PR_UPDATE_CONFIG_FILE, main } = await import('../src/cli.ts')
-const { fakeTools } = await import('./support.ts')
+const { fakeTools, isolatedEnv } = await import('./support.ts')
 
 const scratch = mkdtempSync(join(tmpdir(), 'pr-update-config-cas-'))
 afterAll(() => rmSync(scratch, { recursive: true, force: true }))
@@ -39,7 +39,7 @@ function project(text: string | null): { dir: string; file: string } {
 }
 
 async function run(dir: string, ...argv: string[]) {
-  const ctx = captureContext({ cwd: dir, env: { PATH: process.env.PATH ?? '' } })
+  const ctx = captureContext({ cwd: dir, env: isolatedEnv(dir) })
   const code = await main(argv, ctx, fakeTools)
   return { code, err: ctx.io.err }
 }

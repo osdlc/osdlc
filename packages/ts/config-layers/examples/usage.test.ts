@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { z } from 'zod'
@@ -306,7 +306,7 @@ const MachineSchema = z
 let root: string
 let home: string
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'config-layers-example-')))
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'config-layers-example-')))
   home = join(root, 'home')
   mkdirSync(home, { recursive: true })
 })
@@ -438,7 +438,7 @@ test('layer the local overlay over the project file', () => {
 // ---------------------------------------------------------------------------
 
 test('find the project file and its overlay, or the file a variable names', () => {
-  expect(overlayPath('/work/tools/tooly.yaml')).toBe('/work/tools/tooly.local.yaml')
+  expect(overlayPath('/work/tools/tooly.yaml')).toBe(join('/work/tools', 'tooly.local.yaml'))
   expect(overlayPath('cfg.yml')).toBe('cfg.local.yml')
 
   const dir = project()
@@ -839,9 +839,11 @@ test('name directories once and refer to them as {name}', () => {
     { dev: '/machine/dev' },
     { dev: './dev', docs: './docs' },
   )
-  expect(names).toEqual({ dev: '/machine/dev', docs: join(baseDir, 'docs') })
+  // Every value is made absolute against baseDir: on Windows `/machine/dev` gains its drive.
+  const machineDev = resolve(baseDir, '/machine/dev')
+  expect(names).toEqual({ dev: machineDev, docs: join(baseDir, 'docs') })
 
-  expect(substitutePathNames('{dev}/tooly', names, 'repos:')).toBe('/machine/dev/tooly')
+  expect(substitutePathNames('{dev}/tooly', names, 'repos:')).toBe(`${machineDev}/tooly`)
   const options: SubstituteOptions = { defineHint: 'define it in tooly.yaml or the machine config' }
   let caught: unknown
   try {

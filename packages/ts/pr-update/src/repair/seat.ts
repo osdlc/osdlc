@@ -13,6 +13,7 @@ import { harnessArgv, makeTmuxHost, tmuxRunSessionName, type Host } from '@osdlc
 import { forwardedSignal, streamRunner } from '@osdlc/command-seam'
 
 import type { Repair } from '../ports.ts'
+import { UNSET_REPOSITORY_VARS } from '../update/execute.ts'
 import { SCRUBBED_ENV, repairBinary, type AgentRepairOptions } from './agents.ts'
 import type { RepairAgent, RepairMode } from './names.ts'
 import { repairPrompt } from './prompt.ts'
@@ -24,8 +25,15 @@ export type RunInherited = (
   opts: { cwd: string; timeoutMs?: number },
 ) => number
 
+/**
+ * A seat's environment: no host tokens, and none of the variables that pick a repository, so the
+ * agent's git works in the update worktree and not in the repository an inherited `GIT_DIR`
+ * names.
+ */
+const SEAT_ENV = { ...SCRUBBED_ENV, ...UNSET_REPOSITORY_VARS }
+
 const runInherited: RunInherited = (binary, argv, opts) =>
-  streamRunner(binary).run(argv, { ...opts, env: SCRUBBED_ENV }).exitCode
+  streamRunner(binary).run(argv, { ...opts, env: SEAT_ENV }).exitCode
 
 /** What the attended modes reach outside the process; tests replace them. */
 export interface SeatDeps {
@@ -72,7 +80,7 @@ export function seatRepair(
           binary,
           prompt,
           title: `pr-update #${req.pr}`,
-          env: SCRUBBED_ENV,
+          env: SEAT_ENV,
           ...(opts.model ? { model: opts.model } : {}),
           focus: false,
           wait: { runId, ...(timeoutMs === undefined ? {} : { timeoutMs }) },

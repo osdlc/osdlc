@@ -54,10 +54,33 @@ exit code (see Exit codes), never "no open PRs". The message is the one every
 tool built on `@osdlc/cli-tool` prints for that failure, for example
 `pr-update: gh is not signed in to GitHub. Run \`gh auth login\`.`
 
+## Upgrading from 0.17 or earlier
+
+- **Run `pr-update trust` again.** The trust store has moved to
+  `~/.local/state/osdlc/pr-update/trusted/` on Linux and macOS. Trust
+  recorded by an earlier release, under `$XDG_STATE_HOME/pr-update/trusted/`,
+  was not copied and no longer counts. In a repository you had trusted
+  whose `pr-update.yaml` sets one of the gated keys (`lockfile_install`,
+  `resolvers[].run`, `repair.command`, `repair.agent`, `test_command`, a
+  `repair.mode` other than `headless`, or `verify: detect`), unless
+  `pr-update.local.yaml` overrides it, `update` exits `21` until you run
+  `pr-update trust` there again, once per machine. An older release keeps reading the
+  old place.
+- **An unattended `update --apply` whose GitHub `--repo` target has no
+  checkout now exits `2`**, where it used to skip that target. A target on
+  another code host is still skipped. `pr-update mirror disable` keeps
+  the skip; `pr-update mirror enable` lets the run clone it (see
+  [Where a target is served from](#where-a-target-is-served-from)).
+- **`--retry-failed` no longer discards a kept worktree someone has changed**,
+  or one git cannot read. Only `--discard-kept` removes it.
+- **`--repo` is checked more strictly.** A form that is not `owner/name` or
+  `host/owner/name` (a URL, say), a name ending in `.git`, a host that is not
+  a host name, or a part Windows cannot use as a folder name, exits `2`.
+
 ## The command line
 
-`survey`, `update`, `config` and `trust` are one `@osdlc/cli-tool` command
-tree, so every command answers the same way:
+`survey`, `update`, `config`, `mirror` and `trust` are one `@osdlc/cli-tool`
+command tree, so every command answers the same way:
 
 - `--json` (or `--output json`) prints one JSON document on stdout: the
   command's output with `schemaVersion` and `kind` in front (`"kind":
@@ -122,6 +145,335 @@ It was clean and at the old remote head, so every commit it held is on the
 pushed branch. Otherwise the checkout is left alone, and the result's
 `localCheckout` says why:
 `{ updated: false, detail: "the working tree has uncommitted changes" }`.
+
+`--branch` names a branch of the project root, so a `--repo` target served
+from another checkout is not updated in branch mode. Its PRs are listed under
+`skipped` with the reason `--branch names a branch of the project root; not
+updated in <path>`.
+
+## Other repositories: `--repo`
+
+`--repo owner/name` (repeatable) puts another repository in the run, and
+`--repo host/owner/name` names its host too. A bare `owner/name` means the
+host of the project root's `origin` when that is GitHub (github.com, or any
+host with `code_host.override: github`), and github.com otherwise. Each target is
+lower-cased once, so `Acme/API` and `acme/api` are one target, and a
+`--pr owner/name#N` matches it in any letter case. A `--repo` that names the
+repository of the project root's `--remote`, in any case, is the project root.
+Hosts are compared without a port, and an SSH config alias in a remote
+(`git@github-work:o/r.git`) counts as the host `ssh -G` resolves it to; when
+ssh cannot resolve it, a note says so and the alias is used as written. Reports and
+`--pr` name a repository by `owner/name` alone, so one `owner/name` on two
+hosts in one run is a usage error (exit `2`).
+
+A target's PRs are listed on its own host. A target on the host of the
+project root's `origin`, the remote the project root's code host is picked
+from, is listed through that code host; one on any other host
+through GitHub over `gh`, with `GH_HOST` set to that host (github.com
+included, so a `GH_HOST` in your environment does not move it). A Forgejo
+repository on a host other than the project root's is not supported.
+
+### Where a target is served from
+
+Drift is measured, and an update made, in a git repository on this machine.
+For each target the run uses the first of these it finds:
+
+1. **The project root**, for its own repository.
+2. **A checkout already on this machine**, matched by its `origin`, under the
+   roots listed in `repositories.yaml`, the file every osdlc tool shares
+   (`~/.config/osdlc/repositories.yaml` on Linux and macOS). With no such
+   file, or one with no `roots` key, the run looks beside the project root:
+   in the directory that holds it, or the one above when that directory is
+   named after the project root's owner (an `<owner>/<name>` layout).
+   `roots: []` searches nothing.
+3. **A managed bare clone** pr-update keeps for the target. Only a GitHub
+   repository gets one, and only with your consent.
+
+```yaml
+# ~/.config/osdlc/repositories.yaml
+roots:
+  - ~/dev/repos
+```
+
+Step 3 is set by `checkout` in pr-update's machine file
+([The machine file](#the-machine-file)). Both values use steps 1 and 2 first.
+
+| `checkout` | A GitHub target with no checkout |
+|---|---|
+| `mirror` | is served from a managed clone, which the first `update --apply` that needs it makes |
+| `local` | is skipped, and a clone that exists is not used |
+| not set | is served from a clone that exists. With none, `update --apply` asks once and saves the answer, or with no terminal exits `2`; `survey` and a rehearsal report the target not measured |
+
+Consent to clone is the first of these that is set: `--mirror-dir <dir>` on
+the run, `PR_UPDATE_MIRROR_DIR=<dir>` in the environment, then `checkout:
+mirror` in the machine file. The flag and the variable are consent for that
+run even over `checkout: local`. `OSDLC_ROOT` and the home variables are not.
+`pr-update mirror enable` and `pr-update mirror disable` write `checkout`
+ahead of time.
+
+**Known limit: unpushed work in a checkout pr-update cannot see.** A
+repository checked out outside every root is not found, so the run serves it
+from the clone. The `unpushed_local` guard reads only the checkouts the run
+found, and `--force-with-lease` guards only against changes on the remote. So
+a run can force-push over a branch whose local checkout holds commits that
+were never pushed. List every directory that holds your checkouts in
+`repositories.yaml`. A run served from a clone says so every time, naming the
+roots it searched (`<repo>: no checkout under <roots> (…); using the clone
+<path>`), so a root you meant to list shows up as missed.
+
+### A checkout found on this machine
+
+The search goes three levels below each root. A default root, found beside
+the project root, is never above your home directory: a project root directly
+in your home directory (`~/widgets`) uses home, and one that is your home
+directory itself gets no default root. A root you list in `repositories.yaml`
+is searched wherever it is. A linked worktree counts as its main checkout. A shallow
+checkout is skipped, since it cannot measure drift. With more than one
+checkout of a repository, the first by path is used and a note names the
+others. The `unpushed_local` guard still reads all of them, shallow ones
+included, each against its own `origin`, since any of them can hold a
+branch's unpushed commits. A checkout found this way is fetched and measured through its
+`origin`, whatever `--remote` says: `--remote` names a remote of the project
+root. That fetch writes only the remote's branches into `origin/*`, with no
+tags and no `FETCH_HEAD`. It never writes a local branch, even one the
+checkout's own fetch lines map a remote branch into (`--refmap=`). It prunes
+nothing, even with `fetch.prune` or `remote.origin.prune` set (`--no-prune`),
+so refs the checkout's own fetch lines keep under `origin/` (such as
+`origin/pr/*`) stay. A checkout a library host's `locate` returns is fetched
+the same way.
+
+A target with no checkout is still listed, reported `no local checkout —
+drift not measured`, and a note on stderr names the roots that were searched
+and the file that sets them, and says when the depth limit left directories
+unopened. A shallow checkout gets its own note (`<path> is shallow, so it is
+not used`). In JSON, each repository carries `checkout: { path, source }`, with
+`source` `root`, `located` or `clone`, or `checkout: null` when there is none.
+
+`update` updates a checkout found this way without touching its working
+tree, index or HEAD. The run worktrees are made from its git directory but live in
+pr-update's cache directory, under the target's host (without its port),
+owner and name:
+
+| What | Where (Linux and macOS, no variable set) |
+|---|---|
+| Run worktrees | `~/.cache/osdlc/pr-update/worktrees/<host>/<owner>/<name>/<run>/` |
+| Kept worktrees (`--keep-failed`) | `~/.local/state/osdlc/pr-update/kept/<host>/<owner>/<name>/<number>/` |
+| Failed attempts (`attempts.store: file`) | `~/.local/state/osdlc/pr-update/attempts/<host>/<owner>/<name>/` |
+
+`OSDLC_ROOT` moves all three, as it moves the machine file. In the checkout's
+git directory the run writes only git records: a `worktrees/` entry for each
+run or kept worktree, the run's scratch branch (deleted at the end) and a kept
+tree's branch, the objects the update builds, the `origin/*` refs its fetch
+and push write, and, with `attempts.store: git-ref`, local `refs/pr-update/*`
+copies of the remote's record and lease. A kept tree with a verify log adds
+`/.pr-update-verify.log` to `info/exclude` once, and with submodules the
+`submodule.*` URLs are set for the update and put back after it. A run that is
+killed can leave its worktree's entry and scratch branch, which the next run
+on that checkout removes, and `submodule.*` keys that were not put back.
+[D-0005's Build notes](docs/planning/decisions/D-0005-managed-bare-mirror-checkout.md#build-notes)
+list all of it.
+
+Every git command in that checkout and its run worktrees runs with hooks off
+(`core.hooksPath=/dev/null`): the worktree holds the PR's own files, and a
+relative `core.hooksPath` such as `.husky` would run hooks the PR's author
+wrote. They also run without an inherited `GIT_DIR` or git's other
+repository variables, as does every git call and command in any run
+worktree, the project root's included, so a run started from a git hook acts
+on the right repository (see [SECURITY.md](SECURITY.md)). `survey` and
+`update` refuse, with exit 2, a `GIT_DIR` or `GIT_WORK_TREE` that names
+another repository than the directory's own, such as a dotfiles setup's. The run never runs a bare `git worktree prune` there, so your own
+worktrees whose folders are missing stay listed. With `attempts.store:
+git-ref`, the record and the lease are refs on the checkout's own `origin`,
+taken per target. When a target's own record or lease fails (its remote
+refuses `refs/pr-update/*`, say), that target's PRs are skipped with the error
+and the run goes on with the others. An error while saving the record of a PR
+that already ran is shown on that PR: `recordError` in JSON, `record not saved:`
+in the text; anything not shown on a PR or a skip is listed in `recordErrors`. The project root keeps `.pr-update/` in
+its own checkout, and its hooks and store errors behave as before.
+
+Commands the config names run in that worktree, so each target passes the
+trust gate on its own (see Config): a checkout found this way is trusted by
+its path, so run `pr-update trust` inside it. An untrusted target's PRs are
+listed under `skipped` with a reason that starts `untrusted:` and names the
+command to run; the other targets go on. `--trust` covers every target of the
+run.
+
+### A target with no checkout: the managed clone
+
+A GitHub target with no checkout on this machine can be served from a bare
+clone pr-update keeps for it. A target counts as GitHub when it is on
+github.com, or on the project root's host when that host is GitHub (an
+Enterprise host with `code_host.override: github`). Any other host gets a note,
+`there is no managed clone for <host>`, and no clone.
+
+Only `update --apply` makes a clone, and only with your consent
+([above](#where-a-target-is-served-from)). `--mirror-dir` and
+`PR_UPDATE_MIRROR_DIR` take an absolute path, or one starting `~/`. With no
+consent and no `checkout: local`, the first `update --apply` that needs a
+clone asks, naming the repositories, their size, the roots it searched, any
+shallow checkout of them, and the clone directory. Enter clones into that
+directory and writes `checkout: mirror`; a typed directory is written as
+`mirror_dir` too; no writes `checkout: local`, and such targets are skipped
+from then on. The run prints the machine file it wrote. When another run
+answered first, its answer is used. With no terminal to ask on, the run exits
+`2` and names `--mirror-dir`, `PR_UPDATE_MIRROR_DIR`, `pr-update mirror
+enable`, and `pr-update mirror disable`, which skips such targets instead.
+
+Clones go to the first of `--mirror-dir`, `PR_UPDATE_MIRROR_DIR`, `mirror_dir`,
+or `~/.cache/osdlc/pr-update/repos/`, one `<host>/<owner>/<name>.git` each,
+lower-cased, with the host's port left out. The directory must be outside
+every git checkout and new, empty or already pr-update's, and yours, and on
+Linux and macOS no one else may write to it. A folder anyone can write to is
+refused, sticky bit or not. One its group can write to is refused unless the
+group is a user private group of yours: not on macOS (where every user's
+primary group is the shared `staff`), and the folder's group, your primary
+group and your uid are one number, as on Ubuntu, Debian and Fedora, whose
+umask `002` makes every folder group-writable. `chmod go-w <dir>` fixes a
+refusal; on a filesystem with no Unix permissions, such as exFAT or an SMB
+share, choose another clone directory. Otherwise the run exits `2`, naming
+it, and writes nothing. On Windows no ownership or mode check is made, since
+NTFS ACLs are not read: put the clone directory under your user profile, as
+the default is. pr-update makes the folders it creates itself (the
+clone directory and its `<host>` and `<owner>` folders, the folders that hold
+run and kept worktrees, its records) with mode `755` at most, whatever the
+umask. The `pr-update` command also takes write for group and others out of
+its umask when it starts, keeping the rest, and every command it runs (git,
+`gh`, verify) inherits that: pr-update and the commands it runs never create
+a file or folder others can write to, so later fetches, run and kept
+worktrees and `FETCH_HEAD` are covered. It also covers what pr-update and
+its commands write in your own checkout, so a checkout shared by a group
+should set `core.sharedRepository=group`. A host that calls `runUpdate` from
+the library does not get this; it sets its own umask.
+`gh` clones into a staging folder beside the clone's place,
+`.tmp-<name>.git-<pid>-<random>`, which only you can open (`700`), so no one
+else can reach the clone while it is made. Before the clone is moved into
+place, pr-update takes write for group and others off everything in it
+(`chmod -R go-w`) and turns off git's background maintenance in it
+(`maintenance.auto=false`, `gc.auto=0`), so no git process writes in it
+after the command that started it. Instead, after each fetch of a clone and
+while it still holds the clone's lock, pr-update runs
+`git maintenance run --auto` in the foreground, so a clone used every day is
+still repacked. The clone folder and its `config` must then pass the rule
+too, since whoever can write that file chooses what git
+runs there. Each run worktree's folder is made by `git`; for it only the
+owner is checked, and the folders above it must pass the rule. A clone is used only
+when pr-update made it: a folder without its marker, a symbolic link in its
+place, in place of its `config` or of the `<host>` or `<owner>` folder above
+it, a clone or marker another user owns, or a clone, its `config` or a
+folder above it someone else can write to, is left alone, and the target is
+skipped saying why. A clone is made with `gh repo clone
+<owner>/<name> -- --bare` (`GH_HOST` set to the target's host), with no
+`upstream` remote. Its own config gets the credential helper `gh auth
+setup-git` would write, so later fetches and pushes sign in through `gh`; your
+global git config is not changed. It keeps the `origin/<branch>` layout, has no
+branches of its own, sets `core.longpaths`, and is fetched with `--prune`.
+A step that fails removes the half-made clone, and the target's PRs are
+skipped with the error.
+
+Each clone has a lock, `<name>.git.lock`, beside it. An `update` run, with or
+without `--apply`, holds a clone's lock:
+
+- from before its survey, when it takes the locks of every clone it will use,
+  in sorted path order; this is also when it clones;
+- until it knows the clone has no PR to update, after picking the PRs, or else
+  until that clone's run worktree is made. With several targets, a clone
+  whose turn comes later stays held while the targets before it are updated;
+- and again while it removes the run worktree, or discards a kept worktree
+  of the clone (`--discard-kept`, or a PR that moved).
+
+`update --apply` waits up to 60 seconds for each lock, then skips the
+target's PRs as `mirror busy`. Taking a lock back to remove a worktree, it
+waits only when it holds no other clone's lock, and otherwise does not wait.
+So a run that waits only ever waits for a lock later than every lock it holds,
+and no two runs wait on each other in a cycle. A worktree whose clone's lock
+it cannot get back is left in the clone, with a note naming it: a run
+worktree is removed by the next run in that clone, or by `pr-update mirror
+prune`; a kept worktree by running with `--discard-kept` again. A rehearsal (`update` without `--apply`) does
+not wait: a clone another run holds is skipped as `mirror busy`, with a note.
+`survey` and a rehearsal never clone: they use a clone that exists, fetch it
+and stamp it as used, and otherwise report the target not measured with a
+note naming `pr-update mirror enable`. `survey` holds the lock while it
+fetches and reads the clone, and reads a clone another run holds as it is,
+with a note, without waiting; if the clone is gone after that read (a prune
+held the lock), what was read is dropped and the target is reported not
+measured, with a note. Each use writes the clone's last-used stamp. A clone a prune removed
+before a run took its lock is made again, under that lock, by `update
+--apply` with consent; otherwise its target is skipped with a note saying so.
+
+A clone is updated, kept and trusted as a found checkout is (above), except
+that its trust is keyed by repository: run `pr-update trust
+github.com/<owner>/<name>`.
+
+### The `mirror` commands
+
+| Command | What it does |
+|---|---|
+| `pr-update mirror enable [--mirror-dir <dir>]` | Writes `checkout: mirror`, and `mirror_dir` after checking the directory as a clone run does. It does not make the directory; the first clone does |
+| `pr-update mirror disable` | Writes `checkout: local` |
+| `pr-update mirror list [--mirror-dir <dir>]` | Shows the clones and the run worktrees in the cache, and changes nothing |
+| `pr-update mirror prune [--older-than <days> \| --all-clones] [--dry-run] [--discard-kept] [--mirror-dir <dir>]` | Removes dead runs' worktrees, leftovers and old clones (below) |
+
+`enable` and `disable` keep the machine file's other keys and its comments,
+print the file they wrote, and exit `14`, leaving the file as it is, when it
+is not valid YAML or its top level is not a map. When another run writes the
+file at the same moment, `enable` and `disable` write again over it, while the
+first-run question's answer gives way to the one already there. All four take
+`--json`.
+
+### Cleaning up: `mirror list` and `mirror prune`
+
+`pr-update mirror list` (or `--json`) shows each managed clone with its
+repository, size, last use (its stamp) and kept worktrees, and then every run
+worktree under `~/.cache/osdlc/pr-update/worktrees/`, saying whether the run
+that made it is still going and which git directory owns it. It takes no lock
+and changes nothing.
+
+`pr-update mirror prune` removes:
+
+- the worktree of every run that is gone, at any age, whatever repository it
+  belongs to. It reads the worktree's `.git` file and its record's
+  `commondir` to find the checkout or clone that owns it, and removes it
+  through that one with `git worktree remove`, deleting the run's scratch
+  branch. In a clone it does this only while holding the clone's lock. It
+  never runs a bare `git worktree prune`, so your own worktrees whose folders
+  are missing stay listed. With the owner gone, only the folder goes;
+- leftover `.tmp-*` clone folders and `.pr-update-probe-*` folders more than
+  an hour old;
+- each clone not used for `mirror_max_age_days` (default 30), going by its
+  last-used stamp, or by when its marker was written if it has no stamp. At `0` it
+  removes no clone, unless you pass `--older-than <days>` or `--all-clones`
+  (not `--all`, which goes with `--help`).
+
+A run is gone when no process has the pid its worktree's folder,
+`<pid>.<time>`, is named for, or the process with that pid started more than
+10 minutes after that time, so a pid a later process reused does not keep a
+dead run's worktree. The margin is wide because start times are read
+against the clock, which a clock step can move; a start time that cannot be
+read counts as running. Pids belong to one machine: pr-update's cache and state
+directories must not be shared between machines (a network home, a synced
+folder), or one machine's prune can remove a worktree another machine's run
+is using.
+
+It never removes a clone another run holds, one with a kept worktree (unless
+`--discard-kept`, which removes those first), one a live run has a worktree
+in, or a folder without pr-update's marker, and it never follows a symbolic
+link or removes anything from a folder another user owns or others can write
+to (the clone directory's rule above). Such a folder under the cache's
+`worktrees/` or the state's `kept/` is fixed with `chmod -R go-w` on that
+directory, which the message names. It never waits for a lock: a clone
+another run holds is left as `mirror busy`. `--dry-run` only says what would go, and takes no lock. `list` and
+`prune` take `--mirror-dir`, so a clone directory left behind by a moved
+`mirror_dir` can be cleaned. `prune` exits `1` when something could not be
+removed; a clone whose removal stops part-way is left as a `.tmp-*` folder,
+which a later prune removes.
+
+At the end of an `update --apply` that used a clone or made a run worktree in
+the cache, the run prunes the same way, as a bare `mirror prune` would, and
+notes each thing removed, each thing it left for a folder someone else could
+write to or a clone pr-update may not change, each thing it could not remove,
+and the space freed. A pruning that fails does not change the run's exit. A
+run that never touched the cache, a run a signal stopped, and a rehearsal
+remove nothing.
 
 ## Three things it knows that a per-PR check cannot
 
@@ -405,7 +757,7 @@ value resolves once per repository.
 
 An update that ends `conflict` or `failed` will fail the same way next time, unless the head or the
 base has moved. So `update --apply` records each failure in `.pr-update/attempts/` (one file per
-repo, head and base branch), keyed by repo, head branch, head sha, base branch and base sha. Once a
+repo, head and base branch; a `--repo` target's go in pr-update's state directory, see `--repo`), keyed by repo, head branch, head sha, base branch and base sha. Once a
 PR has failed `max_failed_attempts` times (default `1`) at its current key, later runs list it under
 `skipped` with the reason `failed N time(s) at this head and base; waiting for either to move`, and
 do not check it out. A new commit on either branch changes the key, so the next run attempts it
@@ -481,7 +833,9 @@ A run that ends `conflict` or `failed` normally throws its worktree away, and a 
 PR up has to fetch, rebase, re-run the resolvers and re-run verify to get back where it stopped.
 `update --apply --keep-failed` (or `pr_update.keep_failed: true`; `--no-keep-failed` overrides it)
 moves that PR's worktree to `.pr-update/failed/<owner>-<name>-<number>/`, on a branch named
-`pr-update/failed-<owner>-<name>-<number>`, and the run goes on in a fresh one. The result carries
+`pr-update/failed-<owner>-<name>-<number>`, and the run goes on in a fresh one. A `--repo`
+target's tree goes to `kept/<host>/<owner>/<name>/<number>/` in pr-update's state directory
+instead (see `--repo`), on the same branch name. The result carries
 `keptWorktree: <path>` and the text output says `kept: <path>`.
 
 ```sh
@@ -498,11 +852,43 @@ cd .pr-update/failed/acme-widgets-12  # finish the fix, then push it yourself
 - Only `--apply` runs keep anything. A failure that says nothing about the PR (see
   `unrecorded`) is not kept, and neither is a PR whose worktree git cannot move (one holding
   submodules); the result's `keepError` says why.
+- When the kept directory is on another filesystem than the run worktree, git cannot move it.
+  The kept tree is then made fresh with `git worktree add` at the same commit, with the verify
+  log written into it. Uncommitted changes and untracked files in the run worktree, such as
+  build output, are not carried over. The run tells the two cases apart by renaming an empty
+  probe folder into the kept directory first.
+- A kept tree's record names the git directory that owns it. A target can be served from
+  different checkouts on different runs, so a run served from another one leaves the tree alone
+  and lists the PR under `skipped`, reason `kept elsewhere: <path> is a worktree of <git dir>`,
+  while the PR is unchanged or under `--retry-failed`. A PR that has moved has its old tree
+  removed through the git directory that owns it, as does `--discard-kept`.
 - A later run lists a PR with a kept worktree under `skipped`, reason
   `failed worktree kept at <path>`, while its head and base sha are unchanged. A PR that has moved
-  is attempted again and its old tree is discarded, as is a PR named by `--retry-failed`.
+  is attempted again and its old tree is discarded, as is a PR named by `--retry-failed`. A tree
+  someone has changed or committed to, or one git cannot read, is not discarded either way: the
+  PR is skipped with `kept worktree <path> has local changes; push them or pass --discard-kept`,
+  and only `--discard-kept` removes it. A record is used only when its path names the kept
+  tree's own folder, and names starting with `.` in these folders are skipped.
+- A restack child (`--restack`) is held back the same way when a person changed its kept tree,
+  its owner is gone, or another checkout owns it. Whether its tree is current is not judged,
+  since its base is its parent's new head: an untouched tree is left, and a new keep replaces it.
+- `.pr-update/failed/` is inside the working tree, so a repository's own files can put a record
+  there. A record is refused when its branch is not `pr-update/failed-<owner>-<name>-<number>`,
+  its path is not that PR's kept folder, it names a git directory (a checkout's own records never
+  do), its folder is a symbolic link, or `git worktree list` in the checkout does not show a
+  worktree at its folder. A refused record and its folder are left as they are, the output's
+  `keptRefused` lists the record with why, the text says `kept record <file> left alone: <why>`,
+  and the PR is updated as if nothing were kept.
+- A kept tree that `git worktree list` shows at its folder, but on another branch or a detached
+  HEAD, is a person's: they switched it. It counts as changed, so its PR is skipped and the tree
+  stays, and `--discard-kept` leaves it too; the output's `keptLeft` names it and its branch, and
+  the text says `kept worktree <path> left: <why>`.
 - `update --apply --discard-kept` removes every kept worktree of the surveyed repositories, then
-  runs as usual. The output's `discarded` lists what was removed.
+  runs as usual. The output's `discarded` lists what was removed. A kept tree in pr-update's
+  state directory is removed only when the folders from `kept/` down to it pass the folder rule
+  (see the clone directory, above); otherwise it stays, and `keptRefused` says why, as does the
+  skip of a PR that moved. The same check holds whenever a kept tree is removed, including when
+  a new keep replaces the old tree of the same PR.
 
 ## Seeing a force-push before it happens
 
@@ -581,14 +967,62 @@ A standalone run also reads `attempts.store` (`file` or `git-ref`, default `file
 `attempts.ref_prefix` (default `refs/pr-update/`) and `lease.ttl_seconds` (default derived, see
 above). A host that embeds the package supplies `Ports.attempts` and `Ports.lease` instead.
 
-Five values name a command, or an agent that can run tools, that the tool will
-start: `lockfile_install`, `resolvers[].run`, `repair.command`, `repair.agent`
-and `test_command`, and a `repair.mode` other than `headless` is gated the same way. When one is set in the project file (and not overridden in
-`pr-update.local.yaml`), `update` exits `21` until you consent. Pass `--trust`
+These settings are gated: `lockfile_install`, `resolvers[].run`,
+`repair.command`, `repair.agent`, `test_command`, a `repair.mode` other than
+`headless`, and `verify: detect`. Each makes the tool start a command, or an
+agent that can run tools, that the repository chose, or run the agent without
+the headless call's isolation. When one is set in the project file, unless
+`pr-update.local.yaml` overrides it, `update` exits `21` until you consent. Pass `--trust`
 for one run, or run `pr-update trust` once to record the repository (kept under
-`$XDG_STATE_HOME/pr-update/trusted/`). `trust` is cli-tool's shared command:
+`~/.local/state/osdlc/pr-update/trusted/` on Linux and macOS, moved by `OSDLC_ROOT`
+or `XDG_STATE_HOME`). `trust` is cli-tool's shared command:
 `--show` reports the repository's trust, `--list` every trusted repository and
 `--untrust` removes the record.
+
+Trust recorded by an earlier release, before the store moved, no longer
+counts; see [Upgrading](#upgrading-from-017-or-earlier).
+
+`pr-update trust` keys on the working directory's repository root. Given
+`host/owner/name` (`pr-update trust github.com/acme/api`), it records that
+repository instead, for a run that reaches it through a clone rather than a
+checkout of yours. Name the host without a port and the repository without
+`.git`: a `--repo ghe.example:8443/acme/api` is trusted by
+`pr-update trust ghe.example/acme/api`. `--show`, `--untrust` and `--list` take the same
+form. A checkout found under your roots is trusted by its path, like the
+project root; a grant by name does not cover it.
+
+Every `--repo` target passes this gate before `update` runs a command in it
+(`lockfile_install`, `resolvers`, a `verify` other than `none`, `repair.command`
+or `repair.agent`, from any config layer or flag). An untrusted target is
+skipped, not refused: the run exits `21` only for the project root.
+
+### The machine file
+
+What a repository may not decide, because it is about this machine, lives in
+pr-update's machine file, not in `pr-update.yaml`:
+`~/.config/osdlc/pr-update/config.yaml` on Linux and macOS (`OSDLC_ROOT` or
+`XDG_CONFIG_HOME` moves it with the rest of the osdlc directories, and
+`PR_UPDATE_MACHINE_CONFIG`, an absolute path, names the file itself). It is
+for the managed clones of targets with no checkout on the machine (see
+[A target with no checkout](#a-target-with-no-checkout-the-managed-clone)).
+`pr-update mirror enable` and `pr-update mirror disable` write it
+([The `mirror` commands](#the-mirror-commands)).
+
+| Key | Meaning |
+|---|---|
+| `checkout: local \| mirror` | `local` never clones: a target with no checkout is skipped. `mirror` clones it. Unset until you answer |
+| `mirror_dir: <path>` | Where clones go: an absolute path, or one starting `~/`. Default `repos/` in pr-update's cache directory |
+| `mirror_max_age_days: <n>` | A clone unused this long is removed by `mirror prune` and at the end of an `update --apply` that used the cache. Default 30; `0` turns that off (dead runs' worktrees are still removed) |
+
+An unknown key, a bad value or a YAML error there is reported, when a run
+reads the file, with the file's path, and skipped. A file pr-update cannot
+write an answer into, because it is not valid YAML or its top level is not a
+map of keys, makes `update --apply` exit `14` before it asks the clone
+question, and `mirror enable` and `mirror disable` exit `14` too; the file is
+left as it is. None of these keys is accepted in `pr-update.yaml`, its `.local`
+overlay or a host's `pr_update:` block: there they are unknown keys (exit
+`14`), so a cloned repository cannot choose where the tool writes on your
+disk.
 
 Only one of `repair.command` and `repair.agent` may be set, checked on the
 merged config. A `pr-update.local.yaml` that wants an agent where the project
@@ -614,7 +1048,8 @@ confirmation:
 
 | Port | What it answers |
 |---|---|
-| `locate(repo)` | Where `owner/name` is checked out on this machine, or `null` |
+| `locate(repo, target?)` | Where `owner/name` (lower-cased; `target` adds the host) is checked out on this machine: a path, read through the run's `--remote`, or `{ path, source, remote, others? }`, read through `remote`; `null` for none. `source` is `located` for a checkout of the person's, fetched without pruning and trusted by its path, or `clone` for a clone the host keeps for the run, fetched with `--prune` and trusted by `host/owner/name`. A bare path counts as `located`. `others` lists the repository's other checkouts, which the `unpushed_local` guard also reads. Asked once per target per run |
+| `targetHome(target)` (optional) | Where a checkout `locate` returned as `{ path, source, remote }` keeps its run worktrees, kept worktrees, failed-update record and lease, and `keptRoot`, the folder of the host's own that holds the kept worktrees: one is removed only when the folders from there down pass the folder rule. Without it, such a checkout is used as the project root is, with `.pr-update/` inside it |
 | `runVerb(verb, cwd)` | Run one shell verb, for resolvers and verify |
 | `resolveVerifyVerbs({ which, trust, repo, checkout })` | The trust-gated verb list `verify: check` or `verify: test` runs before a push, asked once per repository |
 | `generators` (optional) | In-process rebuild steps, each with `claims(path)` and `run(worktree)` |
@@ -625,11 +1060,17 @@ confirmation:
 
 `standalonePorts(cfg, projectRoot)` gives a `pr-update` CLI run defaults for the three required ports
 (locate, runVerb, resolveVerifyVerbs) and for repair and attempts.
-It builds `repair` from `repair.agent` or `repair.command`, stores attempts in
+Its `locate` finds a checkout under the `repositories.yaml` roots as above, scanning them once for
+the ports object, so make one per run. It builds `repair` from `repair.agent` or `repair.command`, stores attempts in
 `<projectRoot>/.pr-update/attempts/` (`fileAttemptStore`), or, with `attempts.store: git-ref`, as
-refs on the `--remote` (`refAttemptStore`) with a per-branch `lease` (`refBranchLease`), answers `verify: test` with
+refs on the `--remote` (`refAttemptStore`) with a per-branch `lease` (`refBranchLease`). Its
+`targetHome` puts every other target in pr-update's directories, as under `--repo` above. It answers `verify: test` with
 `test_command`, and refuses `verify: check`. A standalone run has no host registry to look up
 `check` in, so set `verify: 'none'`, or embed this package as a library and supply real ports.
+`runUpdate` updates every target with a checkout, not only the project root. Before it runs a
+command in a target's worktree it asks `UpdateEnv.targetTrust(target)`, which gives null to go
+on or the reason to skip the target. Without `targetTrust` no target is checked: each may run
+its commands, and the host's own trust rules apply only through `Ports.resolveVerifyVerbs`.
 `commandRepair(command, timeoutSeconds)` and `agentRepair(agent, options)` are the command and
 agent repairs, for a host that does its own trust check. `planRepair` shows the call a preset would
 make without running it.
@@ -648,7 +1089,9 @@ variable name is not configurable here. It is always `FORGEJO_TOKEN`.
 `--remote` (default `origin`) names the remote whose URL gives the repository,
 the one fetched, the one whose remote-tracking refs (`<remote>/<branch>`) drift
 and conflicts are measured against, and, for `update`, the one pushed to. It
-does not change which code host is chosen: that always reads `origin`.
+does not change which code host is chosen: that always reads `origin`. A
+`--repo` target is listed by its host instead (see
+[Other repositories](#other-repositories---repo)).
 
 A host that embeds the engine as a library supplies `SurveyEnv.codeHost`, and
 none of this applies to it. When `SurveyEnv.codeHost` is absent, the library
@@ -676,14 +1119,15 @@ change it). With a single repository the failure is thrown.
 | Code | Meaning |
 |---|---|
 | `0` | Clean run (`survey` always; `update` when no PR ended `conflict` or `failed`) |
-| `1` | The run finished but a PR ended `conflict` or `failed`, or an unexpected error |
-| `2` | Malformed command line, or a `--branch` with no open PR |
-| `14` | The config file is invalid or unreadable |
-| `21` | `update` refused for want of repository trust |
+| `1` | Something went wrong that no other code names, for example: the run finished but a PR ended `conflict` or `failed`; `mirror prune` could not remove something; `config set` lost a race with another write; `PR_UPDATE_MACHINE_CONFIG` is not absolute; or an unexpected error |
+| `2` | The command cannot run as typed, for example: a malformed flag, `--repo` or `--pr`, a `--branch` with no open PR, a `--pr owner/name#N` for a repository outside the run, one `owner/name` on two hosts, an unusable clone directory, an `update --apply` that must ask whether to clone and has no terminal, or a `GIT_DIR` or `GIT_WORK_TREE` that names another repository than the directory's own |
+| `14` | A config file is invalid or unreadable, or the machine file cannot take an answer about cloning (not valid YAML, or not a map), in `update --apply`, `mirror enable` or `mirror disable` |
+| `21` | `update` refused for want of trust in the project root. An untrusted `--repo` target is skipped instead |
 | `22` | A tool the run needs is not installed: `git`, and `gh` (GitHub) or `curl` (Forgejo) |
 | `23` | The code host refused the caller or answered unusably: not signed in, no `FORGEJO_TOKEN` or a refused one, no such repository, an HTTP error |
 | `24` | There is no repository to work on: no readable git remote, one that names no repository, or not a git checkout (pass `--remote` or `--repo`) |
 | `25` | The code host could not be reached, timed out or rate-limited the caller; try again later |
+| `128+N` | `update` was stopped by signal N (`130` for Ctrl-C, `143` for `SIGTERM`). It runs no end-of-run prune |
 
 `22` to `25` are not pr-update's own. They are the failure codes every tool
 built on `@osdlc/cli-tool` shares (`EXIT_FAILURE`), so a script that handles one

@@ -17,17 +17,12 @@ import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { PR_UPDATE_CONFIG_FILE, createApp, expandBareBranch, main } from '../src/cli.ts'
 import { updateCommand } from '../src/commands.ts'
-import { FIXTURE_REMOTE, fakeTools } from './support.ts'
+import { FIXTURE_REMOTE, fakeTools, isolatedEnv } from './support.ts'
 
 const dirs: string[] = []
 afterAll(() => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true })
 })
-
-/** An explicit environment: no ambient PR_UPDATE_CONFIG, trust state in a temp dir. */
-function isolatedEnv(root: string): Record<string, string> {
-  return { PATH: process.env.PATH ?? '', XDG_STATE_HOME: join(root, 'state') }
-}
 
 /** A repository with a github origin and, when given, a `pr-update.local.yaml`. */
 function project(local?: string): { dir: string; env: Record<string, string> } {

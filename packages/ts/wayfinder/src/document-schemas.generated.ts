@@ -338,6 +338,13 @@ export const GENERATED_SCHEMAS: Readonly<Record<string, Readonly<Record<string, 
             "root": {
               "type": "string"
             },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "path",
+                "repo"
+              ]
+            },
             "trusted": {
               "type": "boolean"
             },

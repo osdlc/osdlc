@@ -121,6 +121,12 @@ describe('the presets, planned and not run', () => {
     expect(planRepair('codex', request()).argv).not.toContain('--setting-sources')
   })
 
+  test("the agent inherits none of git's repository variables, such as a hook's GIT_DIR", () => {
+    expect(repairCallSpec(request()).unsetEnv).toEqual(
+      expect.arrayContaining(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE']),
+    )
+  })
+
   test('no model and no timeout leave both unset', () => {
     const spec = repairCallSpec(request())
     expect(spec.model).toBeUndefined()

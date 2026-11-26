@@ -332,6 +332,10 @@ Developed here, in this repository:
   baselines from a pinned Playwright container, Playwright helpers for
   interaction and perf specs, an in-page metrics hook and a perf report that
   parallel workers merge)
+- `packages/ts/ecosystem` (`@osdlc/ecosystem` on npm once published, the
+  settings every osdlc tool shares, one module per concern: the family's
+  directories, and `repositories.yaml` with the roots to scan and finding a
+  person's checkouts of a repository by their `origin`)
 - `packages/ts/json-canvas-core` (`@osdlc/json-canvas-core` on npm once
   published, the model for JSON Canvas documents: types, validation, an
   immutable operation engine with undo and redo, geometry and a view model)

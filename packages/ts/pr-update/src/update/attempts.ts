@@ -21,6 +21,7 @@ import { join } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
 
+import { FOLDER_MODE } from '../folders.ts'
 import type { AttemptKey, AttemptRecord, AttemptStore } from '../ports.ts'
 
 export const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
@@ -107,7 +108,7 @@ export function fileAttemptStore(dir: string, opts: { now?: () => Date } = {}): 
         reason,
         at: now().toISOString(),
       })
-      mkdirSync(dir, { recursive: true })
+      mkdirSync(dir, { recursive: true, mode: FOLDER_MODE })
       write(file, rest)
     },
     clear(repo, head, base) {

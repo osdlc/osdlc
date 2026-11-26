@@ -13,15 +13,15 @@ import { join } from 'node:path'
 
 import { EXIT, captureContext } from '@osdlc/cli-tool'
 import { CONFIG_INVALID_EXIT, overlayPath } from '@osdlc/config-layers'
-import { trustStore } from '@osdlc/trust-repo'
 import type { CommandRunner } from '@osdlc/command-seam'
+import { normalizeTrustPath } from '@osdlc/trust-repo'
 import { IDENTITY, makeBareAndWorker, makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { FIXTURE_REMOTE, allToolsInstalled, fakeTools } from './support.ts'
+import { FIXTURE_REMOTE, allToolsInstalled, fakeTools, isolatedEnv } from './support.ts'
 import { PR_UPDATE_CONFIG_FILE, main } from '../src/cli.ts'
 
 const PR_UPDATE_CONFIG_FILE_NAME = PR_UPDATE_CONFIG_FILE.name
-import { EXIT_UNTRUSTED } from '../src/trust.ts'
+import { EXIT_UNTRUSTED, prUpdateTrustStore } from '../src/trust.ts'
 
 const LOCAL_FILE_NAME = overlayPath(PR_UPDATE_CONFIG_FILE_NAME)
 
@@ -34,7 +34,7 @@ function project(): { dir: string; env: Record<string, string> } {
   const repo = makeGitFixture({ dir: mkdtempSync(join(scratch, `p${n++}-`)) })
   repo.commit('init', { 'a.txt': 'a' })
   repo.git.remoteAdd('origin', FIXTURE_REMOTE)
-  const env = { PATH: process.env.PATH ?? '', XDG_STATE_HOME: join(scratch, `state${n}`) }
+  const env = isolatedEnv(join(scratch, `env${n}`))
   return { dir: repo.dir, env }
 }
 
@@ -200,7 +200,9 @@ describe('trust gate on update', () => {
     expect((await run(dir, env, 'update')).code).toBe(EXIT_UNTRUSTED)
     expect((await run(dir, env, 'trust')).code).toBe(EXIT.ok)
     expect((await run(dir, env, 'update')).code).toBe(EXIT.ok)
-    expect(await trustStore({ tool: 'pr-update', env }).list()).toEqual([realpathSync(dir)])
+    expect(await prUpdateTrustStore(env).list()).toEqual([
+      normalizeTrustPath(realpathSync.native(dir)),
+    ])
   })
 
   test('AC-6: a trusted run executes the project-sourced command; an untrusted one does not', async () => {
@@ -224,9 +226,10 @@ describe('trust gate on update', () => {
     worker.git.configSet('remote.origin.pushurl', fx.bare.dir)
 
     const marker = join(scratch, `ran-${n++}`)
+    // Quoted for sh, which would read a Windows path's backslashes as escapes.
     writeFileSync(
       join(worker.dir, PR_UPDATE_CONFIG_FILE_NAME),
-      `pr_update:\n  verify: test\n  test_command: touch ${marker}\n`,
+      `pr_update:\n  verify: test\n  test_command: touch '${marker}'\n`,
     )
     const gh: CommandRunner = {
       run: () => ({

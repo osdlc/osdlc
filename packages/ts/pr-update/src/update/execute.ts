@@ -37,20 +37,30 @@
  */
 
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 
-import { firstLine, forwardedSignal, isCommandFailed, stderrOrError } from '@osdlc/command-seam'
+import {
+  firstLine,
+  forwardedSignal,
+  isCommandFailed,
+  stderrOrError,
+  type CommandRunner,
+} from '@osdlc/command-seam'
 import {
   CommandFailed,
   Git,
+  REPOSITORY_VARS,
+  withoutRepositoryVars,
   type PushRefResult,
   type PushRejection,
   type PushReport,
 } from '@osdlc/typed-git'
 
 import { NothingDetectedError } from '../detect.ts'
-import { keepWorktree } from './kept.ts'
+import { FOLDER_MODE } from '../folders.ts'
+import { keepWorktree, type KeptPlace } from './kept.ts'
+import { PRUNE_ALL, removeWorktree, type WorktreeRecords } from './registrations.ts'
 import type {
   ConfirmPush,
   BranchLease,
@@ -212,6 +222,11 @@ export interface UpdateResult extends UpdateTarget {
   keptWorktree?: string
   /** Set when `keepFailed` could not keep it: why. The outcome is unchanged. */
   keepError?: string
+  /**
+   * Set when the target's own attempt record could not be read or written for this PR: the
+   * error. The outcome is unchanged, and the target's later PRs in the run are skipped.
+   */
+  recordError?: string
 }
 
 /**
@@ -263,7 +278,7 @@ function remoteLine(stderr: string): string | null {
 }
 
 /** One line naming why `e` failed: stderr (or the runner's `error`), else stdout. */
-function errorLine(e: unknown): string {
+export function errorLine(e: unknown): string {
   const failed = commandFailedOf(e)
   if (failed !== null) {
     return (
@@ -948,6 +963,30 @@ export function noHooksEnv(
   }
 }
 
+/**
+ * The git options for a checkout other than the project root, which is someone else's: hooks off
+ * (`noHooksEnv`), and `runner` with `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and the other
+ * variables that pick a repository unset in each child (typed-git's `withoutRepositoryVars`). A
+ * run started from a git hook, which exports `GIT_DIR`, then still acts on the target. Pass the
+ * `gh` runner to make the git that `gh repo clone` runs ignore them too.
+ */
+export function targetGitOptions(runner?: CommandRunner): {
+  runner: CommandRunner
+  env: Record<string, string>
+} {
+  return { runner: withoutRepositoryVars(runner), env: noHooksEnv() }
+}
+
+/**
+ * Each of typed-git's `REPOSITORY_VARS`, unset: the environment of every child a run starts in a
+ * worktree it made (verify, resolvers, `lockfile_install`, a repair command or agent). With
+ * `GIT_DIR` inherited from a git hook, a git the child runs in a linked worktree acts on the
+ * repository `GIT_DIR` names, and can move its checked-out branch.
+ */
+export const UNSET_REPOSITORY_VARS: Readonly<Record<string, undefined>> = Object.freeze(
+  Object.fromEntries(REPOSITORY_VARS.map((name) => [name, undefined])),
+)
+
 const CONFLICT_MARKER = /^(<{7}|>{7})( |$)/m
 
 function hasConflictMarkers(file: string): boolean {
@@ -1084,8 +1123,22 @@ export async function updateAll(
     apply: boolean
     worktreeRoot: string
     onResult?: (r: UpdateResult) => void
-    /** Receives each PR left alone because another run holds its branch's lease. */
+    /**
+     * Receives each PR left alone because another run holds its branch's lease, or, under
+     * `skipOnLeaseError`, because the lease could not be taken.
+     */
     onSkip?: (s: { repo: string; number: number; head: string; reason: string }) => void
+    /**
+     * When the lease cannot be taken (its remote refuses the ref, say), skip that PR with the
+     * error as the reason and go on, instead of ending the run. Set for a target other than the
+     * project root, whose record lives on its own remote.
+     */
+    skipOnLeaseError?: boolean | undefined
+    /**
+     * Which worktrees of `git`'s repository the run may clean up, and how it forgets one it
+     * removed. Defaults to {@link PRUNE_ALL}, the project root's way.
+     */
+    records?: WorktreeRecords | undefined
     /**
      * Called before each target, with the results so far: the target to
      * run, possibly adjusted, or null to leave it out. A restack run uses it
@@ -1094,18 +1147,33 @@ export async function updateAll(
      */
     prepare?: (target: UpdateTarget, done: readonly UpdateResult[]) => UpdateTarget | null
     /**
-     * Set to move the worktree of a PR that ended `conflict` or `failed` aside, under
-     * `checkout`, for a person to pick up (see `./kept.ts`). The run goes on in a fresh one.
+     * Set to move the worktree of a PR that ended `conflict` or `failed` aside, into `place`,
+     * for a person to pick up (see `./kept.ts`). The run goes on in a fresh one.
      */
-    keepFailed?: { checkout: string }
+    keepFailed?: { place: KeptPlace }
+    /**
+     * Set when `git`'s repository is a managed clone whose lock the run holds, taken before the
+     * survey (`ManagedClones.provide`). `added` lets the lock go once the run worktree is
+     * recorded in the clone, so the lock covers the survey's fetch, the removal of a killed
+     * run's worktree and `worktree add`. `removing` takes it back to remove the worktree and its
+     * scratch branch, waiting only in `update --apply` and only when the run holds no other
+     * clone's lock, and leaves both, with a note, when it cannot be had
+     * (`ManagedClones.removing`).
+     */
+    lock?: { added: () => void; removing: (remove: () => void) => void } | undefined
   },
 ): Promise<UpdateResult[]> {
   const results: UpdateResult[] = []
   if (targets.length === 0) return results
 
-  releaseStaleScratch(git)
+  const records = opts.records ?? PRUNE_ALL
+  releaseStaleScratch(git, records)
   const start = `${settings.remote}/${targets[0]!.base}`
+  // The folders above the worktree are made here, not by git, which would make them under the
+  // umask: a prune refuses a folder someone else can write to.
+  mkdirSync(dirname(opts.worktreeRoot), { recursive: true, mode: FOLDER_MODE })
   git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
+  opts.lock?.added()
   const wt = git.at(opts.worktreeRoot)
   try {
     for (const planned of targets) {
@@ -1114,9 +1182,21 @@ export async function updateAll(
       const target = opts.prepare === undefined ? planned : opts.prepare(planned, results)
       if (target === null) continue
       // A rehearsal never takes a lease: it pushes nothing.
-      const grant = opts.apply
-        ? settings.lease?.acquire({ head: target.head, pr: target.number })
-        : undefined
+      let grant
+      try {
+        grant = opts.apply
+          ? settings.lease?.acquire({ head: target.head, pr: target.number })
+          : undefined
+      } catch (e) {
+        if (opts.skipOnLeaseError !== true) throw e
+        opts.onSkip?.({
+          repo: target.repo,
+          number: target.number,
+          head: target.head,
+          reason: errorLine(e),
+        })
+        continue
+      }
       if (grant !== undefined && !grant.ok) {
         opts.onSkip?.({
           repo: target.repo,
@@ -1144,7 +1224,7 @@ export async function updateAll(
         try {
           result.keptWorktree = keepWorktree(
             git,
-            opts.keepFailed.checkout,
+            opts.keepFailed.place,
             opts.worktreeRoot,
             target,
             outcome.status === 'failed' ? outcome.verifyLog : undefined,
@@ -1153,7 +1233,8 @@ export async function updateAll(
           result.keepError = errorLine(e)
         }
         if (!existsSync(opts.worktreeRoot)) {
-          git.try.worktreePrune()
+          records.forget(git, opts.worktreeRoot, false)
+          mkdirSync(dirname(opts.worktreeRoot), { recursive: true, mode: FOLDER_MODE })
           git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
         }
       }
@@ -1168,9 +1249,12 @@ export async function updateAll(
     // releases it. Each step uses `try`, so a failure in one still lets the
     // others run. A stray worktree is worse than a stray branch, and both are
     // worse than an exception here hiding the real one.
-    git.try.worktreeRemove(opts.worktreeRoot, { force: true })
-    git.try.worktreePrune()
-    git.try.deleteBranch(scratchBranch(opts.worktreeRoot), { force: true })
+    const remove = (): void => {
+      removeWorktree(git, opts.worktreeRoot, records)
+      git.try.deleteBranch(scratchBranch(opts.worktreeRoot), { force: true })
+    }
+    if (opts.lock === undefined) remove()
+    else opts.lock.removing(remove)
   }
   return results
 }
@@ -1178,20 +1262,24 @@ export async function updateAll(
 /**
  * Remove a worktree that a killed run left holding a {@link WORK_BRANCH} branch, and the branch
  * itself. Without this, scratch branches and worktrees pile up. A worktree whose `<pid>.` name
- * prefix is a live process is left alone, since it belongs to a run still going.
+ * prefix is a live process is left alone, since it belongs to a run still going, and so is one
+ * `records` does not count as the run's.
  */
-function releaseStaleScratch(git: Git): void {
+function releaseStaleScratch(git: Git, records: WorktreeRecords): void {
   const stale = git
     .worktrees()
     .filter(
       (w) =>
         w.branch?.startsWith(WORK_BRANCH) === true &&
+        records.owns(w.path) &&
         !isAlive(Number(basename(w.path).split('.')[0])),
     )
-  for (const w of stale) {
-    git.try.worktreeRemove(w.path, { force: true })
+  if (records === PRUNE_ALL) {
+    for (const w of stale) git.try.worktreeRemove(w.path, { force: true })
+    if (stale.length > 0) git.try.worktreePrune()
+  } else {
+    for (const w of stale) removeWorktree(git, w.path, records)
   }
-  if (stale.length > 0) git.try.worktreePrune()
   for (const w of stale) if (w.branch) git.try.deleteBranch(w.branch, { force: true })
 }
 

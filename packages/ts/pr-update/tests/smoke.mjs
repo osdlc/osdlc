@@ -13,7 +13,8 @@
 
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -86,14 +87,31 @@ assert.deepEqual(
 // The binary sits beside dist/ in the package, installed or not.
 const dist = dirname(fileURLToPath(import.meta.resolve('@osdlc/pr-update')))
 const bin = join(dist, '..', 'bin', 'pr-update.js')
-const help = spawnSync(process.execPath, [bin, '--help'], { encoding: 'utf8' })
+// Its own environment, every home in a temp dir: an inherited PR_UPDATE_HOME
+// (or a devlink link) would hand the run to another checkout's code, and an
+// inherited home would point it at the person's files.
+const sandbox = mkdtempSync(join(tmpdir(), 'pr-update-smoke-'))
+const home = join(sandbox, 'home')
+mkdirSync(home)
+const env = {
+  PATH: process.env.PATH ?? '',
+  HOME: home,
+  USERPROFILE: home,
+  OSDLC_ROOT: join(sandbox, 'osdlc'),
+  PR_UPDATE_ROOT: join(sandbox, 'pr-update'),
+  XDG_STATE_HOME: join(sandbox, 'state'),
+  ...(process.env.SystemRoot === undefined ? {} : { SystemRoot: process.env.SystemRoot }),
+}
+const help = spawnSync(process.execPath, [bin, '--help'], { encoding: 'utf8', env })
 assert.equal(help.status, 0, `pr-update --help exited ${help.status}: ${help.stderr}`)
 assert.match(help.stdout, /pr-update/)
 
 // `--version` prints the version stamped from package.json.
 const pkg = JSON.parse(readFileSync(join(dist, '..', 'package.json'), 'utf8'))
-const version = spawnSync(process.execPath, [bin, '--version'], { encoding: 'utf8' })
+const version = spawnSync(process.execPath, [bin, '--version'], { encoding: 'utf8', env })
 assert.equal(version.status, 0, `pr-update --version exited ${version.status}: ${version.stderr}`)
 assert.equal(version.stdout, `pr-update ${pkg.version}\n`)
+
+rmSync(sandbox, { recursive: true, force: true })
 
 console.log('pr-update smoke: OK')

@@ -11,7 +11,15 @@ import { mkdirSync, rmSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
-import { EXIT, canPrompt, failWith, failureOf, type CliContext } from '@osdlc/cli-tool'
+import {
+  EXIT,
+  askChoice,
+  askText,
+  canPrompt,
+  failWith,
+  failureOf,
+  type CliContext,
+} from '@osdlc/cli-tool'
 import {
   CommandError,
   UsageError,
@@ -21,13 +29,16 @@ import {
 } from '@osdlc/cli-tool/command'
 import { forwardedExitCode, spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { describe, type Failure } from '@osdlc/result'
-import { Git } from '@osdlc/typed-git'
+import { Git, sshAliasResolver, type SshAliasResolver } from '@osdlc/typed-git'
 import { CONFIG_INVALID_EXIT, ConfigInvalidError, type ConfigFileSpec } from '@osdlc/config-layers'
+import { homeDir } from '@osdlc/tiered-dirs'
 
 import { selectedCodeHostFor } from './code-host.ts'
 import { loadConfigLayers } from './config-file.ts'
 import { standalonePorts } from './defaults.ts'
-import { gitMissingFailure, preflight, type WhichSeam } from './preflight.ts'
+import { MirrorDirError, managedClones, mirrorDirFrom, type MirrorAsker } from './mirror.ts'
+import { formatBytes, pruneMirror } from './prune.ts'
+import { gitMissingFailure, preflight, repositoryVarsRefusal, type WhichSeam } from './preflight.ts'
 import {
   REPAIR_AGENTS,
   REPAIR_AGENT_SUMMARIES,
@@ -44,7 +55,7 @@ import {
   runSurvey,
   type PrSelector,
 } from './survey.ts'
-import { EXIT_UNTRUSTED, untrustedMessage, withoutRepairChoice } from './trust.ts'
+import { EXIT_UNTRUSTED, targetTrustGate, untrustedMessage, withoutRepairChoice } from './trust.ts'
 import {
   output as updateOutputSchema,
   renderUpdateText,
@@ -65,10 +76,24 @@ export interface CliSeams {
   git?: CommandRunner
   /** Runs `curl` for a Forgejo code host. */
   curl?: CommandRunner
+  /** Runs `ssh -G`, to read the host behind an SSH config alias in a remote. */
+  ssh?: CommandRunner
   /** Finds a binary on PATH, for the check that the run's tools are installed. */
   which?: WhichSeam
   /** The config file to read instead of {@link PR_UPDATE_CONFIG_FILE}. */
   configFile?: ConfigFileSpec
+  /**
+   * Where the question about cloning is asked: whether someone can answer, and the descriptor
+   * answers are read from and where the question is written. Default the terminal.
+   */
+  terminal?: { canPrompt: () => boolean; fd?: number; write?: (text: string) => void }
+  /** How long `update --apply` waits for a managed clone another run holds, in ms. Default 60 s. */
+  mirrorWaitMs?: number
+  /**
+   * Takes a managed clone's lock, in place of `claimCloneLock` (`mirror.ts`): a test stands in
+   * for another run that takes a lock at a given moment.
+   */
+  mirrorClaim?: (path: string, waitMs: number) => string | null
 }
 
 /** The schema version of the `survey` and `update` documents. */
@@ -94,7 +119,7 @@ function scopeFlags(verb: 'survey' | 'update', remoteHelp: string) {
       kind: 'list',
       valueName: 'owner/name',
       default: [],
-      help: `Repository to ${verb}; repeatable.`,
+      help: `Repository to ${verb}, as owner/name or host/owner/name; repeatable. Its checkout is looked for under the roots in repositories.yaml, or beside this one.`,
     },
     fetch: {
       kind: 'boolean',
@@ -119,6 +144,14 @@ function scopeFlags(verb: 'survey' | 'update', remoteHelp: string) {
       help: remoteHelp,
     },
     branch: { kind: 'string', valueName: 'name', help: BRANCH_HELP },
+    mirrorDir: {
+      kind: 'string',
+      valueName: 'dir',
+      help:
+        verb === 'survey'
+          ? 'Where the managed clones are, an absolute path or one starting ~/; beats PR_UPDATE_MIRROR_DIR and mirror_dir. survey uses a clone that exists and never makes one.'
+          : 'Where managed clones go, an absolute path or one starting ~/; beats PR_UPDATE_MIRROR_DIR and mirror_dir. With --apply, consent to clone a --repo target that has no checkout on this machine, for this run.',
+    },
     currentBranch: {
       kind: 'boolean',
       hidden: true,
@@ -182,6 +215,65 @@ function loadLayers(ctx: CliContext, seams: CliSeams): ReturnType<typeof loadCon
   }
 }
 
+/**
+ * The run's one SSH alias resolver, for the project root's remotes and the
+ * checkout search alike, so each alias is asked once. When ssh cannot answer
+ * for an alias, a note says so, and the alias is read as written.
+ */
+function aliasResolver(seams: CliSeams, notice: (line: string) => void): SshAliasResolver {
+  const ssh = seams.ssh ?? spawnRunner('ssh', { absolutePathOnly: true })
+  return sshAliasResolver({
+    ...ssh,
+    run: (argv, opts) => {
+      const out = ssh.run(argv, opts)
+      if (out.exitCode !== 0) {
+        const alias = argv[argv.length - 1]
+        notice(`ssh -G ${alias} failed, so the host ${alias} is read as written`)
+      }
+      return out
+    },
+  })
+}
+
+/** The first-run question on the terminal, or where `seams.terminal` says. */
+function mirrorAsker(seams: CliSeams): MirrorAsker {
+  const at = seams.terminal
+  const where = {
+    ...(at?.fd === undefined ? {} : { fd: at.fd }),
+    ...(at?.write === undefined ? {} : { write: at.write }),
+  }
+  return {
+    canPrompt: at?.canPrompt ?? canPrompt,
+    choose: (question, choices) =>
+      choices.indexOf(
+        askChoice(question, choices, {
+          ...where,
+          ...(choices[0] === undefined ? {} : { default: choices[0] }),
+        }),
+      ),
+    text: (question) => askText(question, where),
+  }
+}
+
+/** `--mirror-dir`, made absolute; a relative one is a usage error. */
+function mirrorDirFlag(ctx: CliContext, raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined
+  try {
+    return mirrorDirFrom(raw, homeDir({ env: ctx.env }), '--mirror-dir')
+  } catch (e) {
+    if (e instanceof MirrorDirError) throw new UsageError(e.message)
+    throw e
+  }
+}
+
+/** How a run reaches its managed clones: where they are, and whether this run may make one. */
+interface MirrorRun {
+  /** `--mirror-dir`, absolute. */
+  dir?: string | undefined
+  /** `update --apply`: the run may clone, and waits for a clone another run holds. */
+  apply: boolean
+}
+
 function runEnv(
   ctx: CliContext,
   layers: ReturnType<typeof loadConfigLayers>,
@@ -193,10 +285,24 @@ function runEnv(
   } = { agent: null, command: null, mode: null },
   remote = 'origin',
   notice: (line: string) => void = () => {},
+  mirror: MirrorRun = { apply: false },
 ): UpdateEnv {
   const git = gitRunner(seams)
   const gh = seams.gh ?? spawnRunner('gh', { absolutePathOnly: true })
   const projectRoot = ctx.cwd
+  const resolveAlias = aliasResolver(seams, notice)
+  const clones = managedClones({
+    env: ctx.env,
+    flag: mirror.dir,
+    cwd: ctx.cwd,
+    apply: mirror.apply,
+    gh,
+    git,
+    notice,
+    ask: mirrorAsker(seams),
+    waitMs: seams.mirrorWaitMs,
+    claim: seams.mirrorClaim,
+  })
   const loaded = layers.merged.pr_update
   const cfg = {
     ...loaded,
@@ -214,13 +320,75 @@ function runEnv(
     git,
     gh,
     codeHost: selectedCodeHostFor({
+      projectRoot,
       git,
       gh,
       curl: seams.curl,
       override: layers.merged.code_host.override,
     }),
+    codeHostOverride: layers.merged.code_host.override,
+    resolveAlias,
     cfg,
-    ports: standalonePorts(cfg, projectRoot, remote, notice),
+    clones,
+    ports: standalonePorts(cfg, projectRoot, remote, notice, {
+      git,
+      env: ctx.env,
+      locator: { resolveAlias },
+      clones,
+    }),
+  }
+}
+
+/**
+ * Whether an `update` touched pr-update's cache: it served a target from a managed clone, or made
+ * a run worktree where `Ports.targetHome` puts a target's (`madeTargetWorktree`). The run's
+ * results are not enough: a target whose every lease was refused made its worktree but has none.
+ */
+export function touchedCache(out: UpdateOutput): boolean {
+  return out.repos.some((r) => r.checkout?.source === 'clone') || out.madeTargetWorktree === true
+}
+
+/**
+ * The pruning at the end of an `update --apply` that served a target from a clone or made a run
+ * worktree under the cache (D-0005, "Automatic"): as `mirror prune` with no flags, after the run
+ * has let go of its locks. A run that never touched the cache, or that a signal stopped, removes
+ * nothing. Each thing removed, each thing left for a folder someone else could write to or one
+ * pr-update did not make, and the space freed are noted; a failure is noted and does not change
+ * the run's exit.
+ */
+function pruneAfterRun(
+  ctx: CommandContext,
+  seams: CliSeams,
+  out: UpdateOutput,
+  dir: string | undefined,
+): void {
+  if (!touchedCache(out)) return
+  try {
+    const report = pruneMirror({
+      env: ctx.env,
+      dir,
+      git: gitRunner(seams),
+      claim: seams.mirrorClaim,
+    })
+    const what = {
+      clone: 'the clone',
+      worktree: 'the run worktree',
+      kept: 'the kept worktree',
+      leftover: 'the leftover',
+    }
+    for (const e of report.removed) {
+      ctx.note(`pruned ${what[e.kind]} ${e.path} (${formatBytes(e.bytes)})`)
+    }
+    for (const e of report.skipped) {
+      // A lock another run holds, a worktree in use or a kept one is the cache working as meant.
+      if (e.skip === 'folder' || e.skip === 'foreign') {
+        ctx.note(`did not prune ${what[e.kind]} ${e.path}: ${e.reason ?? ''}`)
+      }
+    }
+    for (const e of report.failed) ctx.note(`could not prune ${e.path}: ${e.reason ?? ''}`)
+    if (report.removed.length > 0) ctx.note(`pruning freed ${formatBytes(report.freedBytes)}`)
+  } catch (e) {
+    ctx.note(`pruning after the run failed: ${(e as Error).message.split('\n')[0]}`)
   }
 }
 
@@ -246,6 +414,16 @@ function checkStart(
 }
 
 /**
+ * Refuse, as a usage error, a run whose `GIT_DIR` or another repository variable names another
+ * repository than the checkout it runs in (`repositoryVarsRefusal`). It runs first, before git is
+ * asked anything. The variables are read from `process.env`, which the git runner inherits.
+ */
+function checkCheckout(ctx: CliContext, seams: CliSeams): void {
+  const refusal = repositoryVarsRefusal(ctx.cwd, gitRunner(seams))
+  if (refusal !== null) throw new UsageError(refusal)
+}
+
+/**
  * Print each repository of a several-repository run that could not be listed,
  * and return the exit code of the first, or null when none failed. The other
  * repositories were surveyed, and their rows do not hide the failure.
@@ -262,9 +440,16 @@ function reportRepoFailures(
   return code
 }
 
-/** Rethrows a {@link SurveyUsageError} as a {@link UsageError}; anything else, a classified failure included, is rethrown for the app to print. */
+/**
+ * Rethrows a {@link SurveyUsageError} as a {@link UsageError}, and a {@link ConfigInvalidError}
+ * (a machine file a clone answer cannot be saved into) as exit 14, as a config file that does
+ * not load is; anything else, a classified failure included, is rethrown for the app to print.
+ */
 function asUsage(e: unknown): never {
   if (e instanceof SurveyUsageError) throw new UsageError(e.message)
+  if (e instanceof ConfigInvalidError) {
+    throw new CommandError(e.message, { exit: CONFIG_INVALID_EXIT, code: 'config-invalid' })
+  }
   throw e
 }
 
@@ -278,7 +463,10 @@ export function surveyCommand(seams: CliSeams) {
       'date would conflict. Stacked PRs are listed parent first. Nothing is checked out, and ' +
       'nothing is written but the fetch.',
     flags: {
-      ...scopeFlags('survey', 'Remote to fetch from and measure against.'),
+      ...scopeFlags(
+        'survey',
+        'Remote of this checkout to fetch from and measure against. A checkout found for --repo uses its origin.',
+      ),
       pr: {
         kind: 'list',
         valueName: 'n|owner/name#n',
@@ -293,12 +481,16 @@ export function surveyCommand(seams: CliSeams) {
     schemaVersion: SCHEMA_VERSION,
     readOnly: true,
     run({ flags }, ctx) {
+      checkCheckout(ctx, seams)
       const branch = branchOf(flags, ctx.cwd, seams)
       const limit = parseIntFlag('limit', flags.limit)
       const pr = parsePrFlags(flags.pr)
       const layers = loadLayers(ctx, seams)
       checkStart(ctx, layers, seams, flags)
-      const env = runEnv(ctx, layers, seams)
+      const env = runEnv(ctx, layers, seams, undefined, flags.remote, (line) => ctx.note(line), {
+        dir: mirrorDirFlag(ctx, flags.mirrorDir),
+        apply: false,
+      })
       let report
       try {
         report = runSurvey(
@@ -379,7 +571,10 @@ export function updateCommand(seams: CliSeams) {
       'The agents --repair-agent runs:\n' +
       REPAIR_AGENT_LINES,
     flags: {
-      ...scopeFlags('update', 'Remote to fetch from, measure against and push to.'),
+      ...scopeFlags(
+        'update',
+        'Remote of this checkout to fetch from, measure against and push to. A checkout found for --repo uses its origin.',
+      ),
       apply: { kind: 'boolean', help: 'Push the updates. Without it, nothing is written.' },
       confirmPush: {
         kind: 'boolean',
@@ -393,7 +588,7 @@ export function updateCommand(seams: CliSeams) {
       },
       trust: {
         kind: 'boolean',
-        help: 'Treat this repo as trusted for this run (satisfies the trust gate on commands and agents the project file names).',
+        help: "Treat every repository of this run as trusted for this run (satisfies the trust gate on commands and agents the project file names, and on commands run in a --repo target's checkout).",
       },
       restack: {
         kind: 'tristate',
@@ -402,13 +597,13 @@ export function updateCommand(seams: CliSeams) {
       },
       retryFailed: {
         kind: 'boolean',
-        help: 'Attempt PRs whose update already failed at their current head and base. Discards a kept worktree of such a PR first.',
+        help: 'Attempt PRs whose update already failed at their current head and base. Discards a kept worktree of such a PR first, unless someone has changed it or git cannot read it; only --discard-kept removes that.',
       },
       keepFailed: {
         kind: 'tristate',
         offHelp:
           'Do not keep failed worktrees this run, overriding a configured pr_update.keep_failed: true.',
-        help: "Move the worktree of a PR that ended conflict or failed to .pr-update/failed/<owner>-<name>-<number>/, on a branch named for the PR, with a failed verify's log in it, for a person to finish and push. The run goes on in a fresh worktree. Needs --apply.",
+        help: "Move the worktree of a PR that ended conflict or failed to .pr-update/failed/<owner>-<name>-<number>/ (a --repo target's to kept/<host>/<owner>/<name>/<number>/ in pr-update's state directory), on a branch named for the PR, with a failed verify's log in it, for a person to finish and push. The run goes on in a fresh worktree. Needs --apply.",
       },
       discardKept: {
         kind: 'boolean',
@@ -445,7 +640,7 @@ export function updateCommand(seams: CliSeams) {
     },
     exits: {
       1: 'a PR ended conflict or failed',
-      14: 'the config file is invalid or unreadable',
+      14: 'the config file is invalid or unreadable, or the machine file cannot take the answer about cloning (not YAML, or not a map)',
       [EXIT_UNTRUSTED]: "refused: the repository's config names commands it is not trusted to run",
     },
     examples: [
@@ -472,6 +667,7 @@ export function updateCommand(seams: CliSeams) {
         ? 'cli-only'
         : 'all',
     async run({ flags }, ctx) {
+      checkCheckout(ctx, seams)
       const branch = branchOf(flags, ctx.cwd, seams)
       // A report left by an earlier run must not be mistaken for this run's.
       const reportFile = flags.report === undefined ? undefined : resolve(ctx.cwd, flags.report)
@@ -531,7 +727,7 @@ export function updateCommand(seams: CliSeams) {
       ) {
         throw new UsageError('repair mode interactive needs a terminal on stdin, stdout and stderr')
       }
-      const env: UpdateEnv = runEnv(
+      const base = runEnv(
         ctx,
         layers,
         seams,
@@ -542,7 +738,14 @@ export function updateCommand(seams: CliSeams) {
         },
         flags.remote,
         (line) => ctx.note(line),
+        { dir: mirrorDirFlag(ctx, flags.mirrorDir), apply: flags.apply },
       )
+      // A --repo target is gated by its own trust, whatever chose the command: the commands run
+      // in its files. --trust covers it too.
+      const env: UpdateEnv = {
+        ...base,
+        targetTrust: targetTrustGate({ cfg: base.cfg, trust: flags.trust, env: ctx.env }),
+      }
       let out: UpdateOutput
       try {
         out = await runUpdate(
@@ -576,6 +779,12 @@ export function updateCommand(seams: CliSeams) {
         }
         asUsage(e)
       }
+      // A forwarded signal stopped the run: exit 128 + its number, as forwarding itself would.
+      const interrupted = forwardedExitCode()
+      // A stopped run cleans up nothing more: the host wants it gone.
+      if (out.applied && interrupted === undefined) {
+        pruneAfterRun(ctx, seams, out, mirrorDirFlag(ctx, flags.mirrorDir))
+      }
       if (reportFile !== undefined) {
         try {
           writeReport(reportFile, out)
@@ -584,8 +793,6 @@ export function updateCommand(seams: CliSeams) {
         }
       }
       const listingFailure = reportRepoFailures(ctx, out)
-      // A forwarded signal stopped the run: exit 128 + its number, as forwarding itself would.
-      const interrupted = forwardedExitCode()
       // A conflict or failed push exits 1 though the run completed, so a script need not read `counts`.
       const exit =
         interrupted ??

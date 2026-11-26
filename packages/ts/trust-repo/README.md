@@ -44,20 +44,23 @@ Any CLI tool gets its own store by name.
 
 ## The store
 
-`trustStore({ tool, env?, home?, dir? })` returns:
+`trustStore({ tool, app?, vendorDirs?, dirs?, env?, home?, dir? })` returns:
 
 | Member | Does |
 |---|---|
-| `dir()` | the store's directory: `dir` verbatim when given, else `$XDG_STATE_HOME/<tool>/trusted/`, or `~/.local/state/<tool>/trusted/` when unset |
-| `resolveRoot(root)` | the absolute, symlink-resolved key a root's grant is stored under |
-| `markerPath(root, scope?)` | the marker file's path for a grant, without creating it (for a `--show` command) |
-| `isTrusted(root, scope?)` | whether the root has a whole-repository grant or a grant for `scope` |
-| `trust(root, scope?)` | records a grant and returns `{ root, scope, marker, alreadyTrusted }`. With no `scope` the grant covers the whole repository; an explicit `'*'` throws. Safe to repeat. `alreadyTrusted` says whether this exact grant already existed |
-| `untrust(root, scope?)` | removes exactly that grant; `false` when there was none |
-| `untrustAll(root)` | removes every grant for the root (its marker and its whole `.scopes/` folder) and returns the scopes removed |
-| `list()` | every root with a whole-repository grant, sorted; `[]` when the store has never been written to |
-| `listGrants()` | every grant as `{ root, scope, marker }`, sorted by root, then scope with `*` first |
+| `dir()` | the store's directory: `dir` verbatim when given, else `<state home>/<tool>[/<app>]/trusted/` when `vendorDirs` is given, else `$XDG_STATE_HOME/<tool>/trusted/`, or `~/.local/state/<tool>/trusted/` when unset ([Where the store lives](#where-the-store-lives)) |
+| `resolveRoot(key)` | the key a grant is stored under, in the kind it was given: the absolute, symlink-resolved root, or `{ repo }` with the lower-cased key. Either can be passed back to every other method |
+| `markerPath(key, scope?)` | the marker file's path for a grant, without creating it (for a `--show` command) |
+| `isTrusted(key, scope?)` | whether the key has a whole-repository grant or a grant for `scope` |
+| `trust(key, scope?)` | records a grant and returns `{ root, kind, scope, marker, alreadyTrusted }`. With no `scope` the grant covers the whole repository; an explicit `'*'` throws. Safe to repeat. `alreadyTrusted` says whether this exact grant already existed |
+| `untrust(key, scope?)` | removes exactly that grant; `false` when there was none |
+| `untrustAll(key)` | removes every grant for the key (its marker and its whole `.scopes/` folder) and returns the scopes removed |
+| `list()` | every key with a whole-repository grant, roots first, then repositories, each sorted; `[]` when the store has never been written to |
+| `listGrants()` | every grant as `{ root, kind, scope, marker }`, roots first, then repositories, each sorted by key, then scope with `*` first. `kind` is `path` or `repo` |
 | `tighten()` | sets the store directory to 0700 and each marker to 0600 where looser; returns the paths it changed |
+
+A key is a root (a path) or a repository, `{ repo: 'host/owner/name' }`. See
+[What a decision is keyed on](#what-a-decision-is-keyed-on).
 
 `scope` defaults to `WHOLE_REPO_SCOPE` (`'*'`), the whole repository. A scope
 is trimmed first, so `'just '` and `'just'` are one grant. A scope that is
@@ -78,25 +81,89 @@ folder the tool runs in.
 
 A test passes its own `env` and `home`, so it never reads or writes the
 developer's real trust store. `dir` sets the store's directory directly and
-skips the `tool` and XDG lookup. Use it when a tool has its own environment
+skips every other lookup. Use it when a tool has its own environment
 variable (for example `TOOLY_TRUST_STATE`) that names the marker directory
-itself, not an `XDG_STATE_HOME` to add `tool` and `trusted` to.
+itself, not a state home to add `tool` and `trusted` to.
+
+`trustStoreDir(options)` returns the directory a store built from the same
+options uses, without reading the disk.
+`trustStoreDir(tool, env?, home?)` returns the old place for `tool`.
 
 ### Where the store lives
 
-In the XDG state directory, not the config directory: `$XDG_STATE_HOME`, or
-`~/.local/state` when it is unset. A relative `XDG_STATE_HOME` is ignored, as
-the XDG spec says, so the store never lands inside the directory a tool runs
-in. This holds on every platform, macOS
-included, and matches the paths `@osdlc/config-layers` uses. Trust is state
-a program keeps, not configuration a person edits, so it is not stored next
-to a tool's `config.yaml`. People sync config files between machines, for
+In a state directory, not a config directory. Trust is state a program
+keeps, not configuration a person edits, so it is not stored next to a
+tool's `config.yaml`. People sync config files between machines, for
 example in a dotfiles repo. A consent record for one machine that is copied
 to another machine is no longer consent.
 
+A tool that passes `vendorDirs` gets its store from `@osdlc/tiered-dirs`,
+like its other machine-local files: `<state home>/<tool>/trusted/`, or
+`<state home>/<tool>/<app>/trusted/` with `app`. `vendorDirs` is the value
+`@osdlc/config-layers`' `machineConfigFile` takes, `{ vendor, envVars }`, and
+this package re-exports `envVars` to build it. So the store follows the same
+rules as the tool's machine file:
+
+| Case | Store |
+|---|---|
+| Linux, or macOS under the `xdg` convention | `$XDG_STATE_HOME/<tool>/trusted/`, else `~/.local/state/<tool>/trusted/` |
+| macOS under the `native` convention | `~/Library/Application Support/<tool>/trusted/` |
+| Windows | `%LOCALAPPDATA%\state\<tool>\trusted\` |
+| `<PREFIX>_ROOT=/r` | `/r/state/<tool>/trusted/` |
+| `<PREFIX>_STATE_DIR=/s` | `/s/<tool>/trusted/` |
+| a family root, `tool: 'osdlc', app: 'pr-update'` | `<state home>/osdlc/pr-update/trusted/` |
+
+The convention is tiered-dirs' default, `native`, unless `<PREFIX>_CONVENTION`
+names another. A tool that pins its convention, as the osdlc family pins
+`xdg`, passes the same `dirs` factory it gives `machineConfigFile`:
+
+```ts
+import { envVars, trustStore } from '@osdlc/trust-repo'
+import { systemDirs } from '@osdlc/config-layers'
+
+const vendorDirs = { vendor: 'osdlc', envVars: envVars('OSDLC') }
+// `env` is the tool's run environment.
+const dirs = () => systemDirs(vendorDirs, { env, convention: 'xdg', conventionFromEnv: false })
+const trust = trustStore({ tool: 'osdlc', app: 'pr-update', vendorDirs, dirs })
+```
+
+The factory alone places the store, so it closes over the environment and
+home it resolves from. Passing `env` or `home` to `trustStore` beside `dirs`
+throws a `TypeError`, since they would be ignored.
+
+A store with an `app` is that app's alone. A grant through app `a` is not
+seen through app `b`, nor through the family root with no app, because
+consent given to one tool must never cover another. Pass the tool itself as
+`app`, never only the family.
+
+A tool that passes neither `vendorDirs` nor `dir` keeps the place every
+release before this one used: `$XDG_STATE_HOME/<tool>/trusted/`, or
+`~/.local/state/<tool>/trusted/` when the variable is unset, on every
+platform. A relative `XDG_STATE_HOME` is ignored, as the XDG spec says, so
+the store never lands inside the directory a tool runs in. No tool changes
+place until it opts in.
+
+### Opting in reads only the new place
+
+A store opened with `vendorDirs` reads only its new place. Grants made
+before, in the old place, are not carried over, so the person runs the
+tool's `trust` command again, once per tool per machine. The old markers are
+never read or touched, so an older release of the tool keeps using the old
+place and still finds every grant it knew.
+
+The new place is the old folder only on Linux, or macOS under `xdg`, with no
+`app`, no `<PREFIX>_ROOT` or `<PREFIX>_STATE_DIR`, and an `XDG_STATE_HOME`
+that is unset or absolute. There the grants are already in place; anywhere
+else the store starts empty.
+
+Carrying grants over was tried and dropped. Each way of telling whether the
+copy had already been made, and whether the old and new places really
+differ, had a case that brought back a grant the person had revoked. Asking
+once more is the safe failure.
+
 ### What a decision is keyed on
 
-A root and a scope. The scope is `*` for the whole repository, or one tool:
+A key and a scope. The key is a root or a repository. The scope is `*` for the whole repository, or one tool:
 any string the tool chooses, such as a runner id. This package gives a scope
 no meaning. A whole-repository grant covers every scope.
 
@@ -114,11 +181,39 @@ hostile changes. `untrust` is the only way to remove the grant. A content
 hash would ask again after ordinary edits. People asked that often learn to
 approve without reading, which is less safe than a simple path rule.
 
+A repository is `{ repo: 'host/owner/name' }`. It is for a clone that a tool
+makes and may prune and make again in another folder: a grant on its path
+would be lost each time. Scopes work the same as for a root.
+
+```ts
+await trust.trust({ repo: 'github.com/acme/api' })
+await trust.isTrusted({ repo: 'GitHub.com/Acme/API' }) // true: keys are lower-cased
+await trust.isTrusted('/work/github.com/acme/api') // false: a path is never a repository
+```
+
+`parseTrustRepo(input)` reads a key as every method does, and throws a
+`TypeError` a CLI can report as a usage error. The key is trimmed and
+lower-cased, and must be three parts: a host name (letters, digits, `-` and
+`.`, so no `:` and no port), then an owner and a name of 1-200 characters
+each. No part may be empty, `.` or `..`, and no space, backslash or control
+character is allowed. A name ending in `.git` is refused, so a clone URL's
+name and the bare name never make two grants: pass the name without `.git`.
+
+A repository and a root never share a grant. A root starts with `/`, or with
+a drive letter and `:` on Windows. A repository starts with a host name,
+which is never empty and has no `:`. So a folder named `github.com/acme/api`,
+wherever it is, is a path with grants of its own. A plain string is always a
+path: `isTrusted('github.com/acme/api')` asks about that folder under the
+current directory.
+
 ### How it is stored
 
 A directory of marker files, one per trusted root, named
 `${basename(root)}-${sha256(root).slice(0, 16)}`, containing the resolved
-absolute path. Creating and deleting a file are atomic and independent, so
+absolute path. A repository's marker follows the same rule with its key in
+place of the root: `api-<hash>`, holding `github.com/acme/api`. An older
+release lists it as a root of that name and never reads it as a grant on a
+folder. Creating and deleting a file are atomic and independent, so
 two processes that trust two repositories at the same time cannot lose each
 other's write. Each marker is written to a temp file and then renamed, so a
 marker that exists is always complete.
@@ -133,8 +228,9 @@ trusted repositories is private. `trust()` tightens a store that an older
 release left at 0755 and 0644, and `tighten()` does it on demand. On Windows
 these modes do not apply and `tighten()` does nothing.
 
-Two stores for two different `tool` names never share a directory, so
-`tooly`'s grants and another tool's grants are independent even on one machine.
+Two stores for two different `tool` names, or two `app`s under one `tool`,
+never share a directory, so `tooly`'s grants and another tool's grants are
+independent even on one machine.
 
 ## The gate
 
@@ -154,6 +250,9 @@ boolean the tool acts on. Every caller that uses it gets the same answer:
 consent for one run. The result's `trusted` field still reports whether the
 root is trusted, but the flag is never saved. A one-time `--trust` does not
 become a lasting grant that nobody remembers giving.
+
+`root` is a root or a repository, `{ repo: 'host/owner/name' }`. The result's
+`root` is the resolved key either way.
 
 `scopes` lists what the run needs trusted, `['*']` by default. The root counts
 as trusted only when every scope is. The result's `scopes` echoes the list and
@@ -224,15 +323,22 @@ host and owner of the root's `origin` remote as `host/owner`. An entry is
 `host/owner` (`gitlab.com/my-org`) or a bare `owner`, which means
 `github.com/owner`. A bare owner from `ownerOf` is read the same way. So
 `my-org` does not match a clone from `gitlab.com/my-org`. Without an `ownerOf`
-the `owners` rule never matches.
+the `owners` rule never matches a root. A repository key gives its own host
+and owner, so it needs no `ownerOf`.
 
-Owner trust believes the repository about itself. A git-backed `ownerOf`
+The policy takes a repository key as well as a root. `paths` never matches a
+repository: it is not a path, and `**` would otherwise match every one.
+`owners` matches the host and owner the key names, without calling
+`ownerOf`, so `owners: ['acme']` trusts `{ repo: 'github.com/acme/api' }`.
+
+For a root, owner trust believes the repository about itself. A git-backed `ownerOf`
 reads the remote URL the repository's own git config reports, and that
 config arrives with the directory. A folder unpacked from an archive, copied
 from a shared drive, or cloned by someone else can name any owner. So
 `owners` fits clones you made yourself. `paths` is the stronger form: it
 names where the repository is on your disk, which the repository cannot
-choose.
+choose. A repository key does not have this weakness: its owner is the one
+named in the key, by the person or by the tool that made the clone.
 
 ### Expanding paths
 
@@ -294,7 +400,7 @@ argument. A tool with a nested verb (`tooly repo trust`) or a different flag nam
 ## Runtime
 
 Runs under Bun and Node. It uses `node:fs/promises`, `node:path`, `node:crypto`,
-`node:os`, `@osdlc/etag-write` and `@osdlc/path-guard`. It does not use `child_process`.
+`node:os`, `@osdlc/etag-write`, `@osdlc/path-guard` and `@osdlc/tiered-dirs`. It does not use `child_process`.
 `@osdlc/trust-repo/git` runs git through `@osdlc/command-seam` and `@osdlc/typed-git`.
 
 ## Stability
@@ -302,15 +408,17 @@ Runs under Bun and Node. It uses `node:fs/promises`, `node:path`, `node:crypto`,
 The package is 0.x, so any minor release may break the API. Every export is
 experimental. The package decides whether a repository's own scripts may run,
 and its policy layer is new. Its shape stays open until it has had a security
-review. Any release may change or remove an experimental export.
+review. Any release may change or remove an experimental export. The one
+exception is `envVars`, a re-export of `@osdlc/tiered-dirs`, where it is
+stable; this package re-exports it as it is.
 
 The experimental exports of `@osdlc/trust-repo`:
 
 `ExecGate`, `ExpandTrustPathOptions`, `PolicyBy`, `PolicyDecision`, `PolicyDecisionOptions`,
 `PolicyExecGate`, `ResolveExecGateArgs`, `TRUST_MARKER_DIR`, `TrustBy`, `TrustDecision`,
-`TrustGrant`, `TrustPlatform`, `TrustPolicy`, `TrustResult`, `TrustRules`, `TrustStore`,
-`TrustStoreOptions`, `WHOLE_REPO_SCOPE`, `expandTilde`, `expandTrustPath`, `homeDir`,
-`normalizeTrustPath`, `parseTrustScope`, `pathGlobToRegExp`, `policyDecision`, `policyExecGate`, `resolveExecGate`, `resolveTrustRoot`,
+`TrustGrant`, `TrustKey`, `TrustKeyKind`, `TrustPlatform`, `TrustPolicy`, `TrustRepoKey`, `TrustResult`,
+`TrustRules`, `TrustStore`, `TrustStoreOptions`, `TrustVendorDirs`, `WHOLE_REPO_SCOPE`, `expandTilde`,
+`expandTrustPath`, `homeDir`, `normalizeTrustPath`, `parseTrustRepo`, `parseTrustScope`, `pathGlobToRegExp`, `policyDecision`, `policyExecGate`, `resolveExecGate`, `resolveTrustRoot`,
 `trustDecision`, `trustStore`, `trustStoreDir`, `withheldHint`, `xdgHome`
 
 The experimental exports of `@osdlc/trust-repo/git`:
@@ -322,9 +430,10 @@ A test compares this list with the `@experimental` tags in the source.
 ## Platforms and runtimes
 
 Linux and macOS for the 0.x line. Trust paths match on Windows (see Windows
-paths), and those rules are tested on every platform. The store still uses XDG
-state paths on Windows, under `%USERPROFILE%\.local\state`, and file modes do
-not apply there. Full Windows support is planned before 1.0.
+paths), and those rules are tested on every platform. A store with
+`vendorDirs` lives in Windows' own state home, `%LOCALAPPDATA%\state`; one
+without keeps the old XDG place, under `%USERPROFILE%\.local\state`. File
+modes do not apply there. Full Windows support is planned before 1.0.
 
 Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, ESM only. Bun also runs it, through the compiled `dist/`. The tests run
 on Vitest under Node.
