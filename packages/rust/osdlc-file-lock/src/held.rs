@@ -98,7 +98,7 @@ pub const MARKER_STALE: Duration = Duration::from_secs(10);
 const CLAIM_ATTEMPTS: usize = 6;
 
 /// `path` with `suffix` appended to its last component.
-fn sibling(path: &Path, suffix: &str) -> PathBuf {
+pub(crate) fn sibling(path: &Path, suffix: &str) -> PathBuf {
     let mut name = OsString::from(path.as_os_str());
     name.push(suffix);
     PathBuf::from(name)

@@ -1,0 +1,12 @@
+{
+  // Emit config for the published dist/. The dev tsconfig.json stays noEmit.
+  // Sources only, and no Node types, so a runtime global in a source fails the build.
+  "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
+  "compilerOptions": {
+    "rootDir": "src",
+    // src/ is not published, so a declaration map would point at nothing.
+    "declarationMap": false,
+    "types": []
+  },
+  "include": ["src"]
+}
