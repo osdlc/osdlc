@@ -106,30 +106,25 @@ export interface ArtifactFacts {
   notes?: string[]
 }
 
+/** What refuses deleting in a checkout where `kit.running` found `held`: a busy process, or a process table it could not read. */
+export function liveBlockers(held: Running): Array<{ code: string; reason: string }> {
+  return [
+    ...(held.names.length > 0
+      ? [{ code: 'live-process', reason: `running in the checkout: ${held.names.join(', ')}` }]
+      : []),
+    ...(held.unknown === undefined
+      ? []
+      : [{ code: 'process-table-unreadable', reason: `process table unreadable: ${held.unknown}` }]),
+  ]
+}
+
 /**
  * The row for one artifact directory: a candidate, refused while a process
  * works in the checkout or the process table cannot be read. An unmeasured
  * one is not sized either: a folder too slow to walk is too slow for `du`.
  */
 export function artifactRow({ kit, unsized }: Pick<Env, 'kit' | 'unsized'>, f: ArtifactFacts): Row {
-  const blockers = [
-    ...(f.held.names.length > 0
-      ? [
-          {
-            code: 'live-process',
-            reason: `running in the checkout: ${f.held.names.join(', ')}`,
-          },
-        ]
-      : []),
-    ...(f.held.unknown === undefined
-      ? []
-      : [
-          {
-            code: 'process-table-unreadable',
-            reason: `process table unreadable: ${f.held.unknown}`,
-          },
-        ]),
-  ]
+  const blockers = liveBlockers(f.held)
   const bytes = f.unmeasured === true || unsized === true ? null : kit.size(f.path)
   return {
     blockers,

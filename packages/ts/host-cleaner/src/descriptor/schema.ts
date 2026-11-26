@@ -73,7 +73,7 @@ const MAX_ALTERNATIVES = 1024
  * brace with no comma of its own stays as written. Undefined past
  * {@link MAX_ALTERNATIVES}.
  */
-function braceExpansions(glob: string): string[] | undefined {
+export function braceExpansions(glob: string): string[] | undefined {
   if (lastExpanded?.glob !== glob) lastExpanded = { glob, expansions: expand(glob) }
   return lastExpanded.expansions
 }

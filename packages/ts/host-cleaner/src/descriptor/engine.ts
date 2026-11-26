@@ -22,20 +22,19 @@ import { failureText, firstLine, type NeverExitedReason } from '@osdlc/command-s
 import { globRegExp } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
-import { checkoutsOf, hoursText, type Checkout } from '../artifacts.ts'
+import { checkoutsOf, hoursText, liveBlockers, type Checkout } from '../artifacts.ts'
 import { hostDirs } from '../config.ts'
 import { COST_DESCRIPTIONS, type CostDescription } from '../cost.ts'
 import { DISCOVER_LIMIT_MS, errorText, yieldToLimit } from '../helpers.ts'
 import { containsIgnored, coveredBy } from '../ignore.ts'
 import {
   DEFAULT_IDLE_HOURS,
-  MEASURE_BUDGET_MS,
   idleHoursSetting,
   present,
   type Idle,
   type Kit,
 } from '../kit.ts'
-import { containedIn, linkedCheckouts, realOr, rootProblem } from '../roots.ts'
+import { containedIn, isLink, linkedCheckouts, realOr, rootProblem, within } from '../roots.ts'
 import { DELETE_LIMIT_MS, OUTSIDE_ROOTS } from '../run.ts'
 import {
   PLUGIN_API,
@@ -50,6 +49,7 @@ import {
 } from '../types.ts'
 import {
   DEFAULT_MAX_ENTRIES,
+  braceExpansions,
   type Descriptor,
   type DescriptorCandidate,
   type Os,
@@ -92,13 +92,21 @@ export function skipReason(d: Descriptor): string | undefined {
     : undefined
 }
 
-const isLink = (path: string): boolean =>
-  lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true
-
-/** Whether `inner` is `outer` or below it, by real paths. */
-const within = (outer: string, inner: string): boolean => {
-  const rel = relative(realOr(outer), realOr(inner))
-  return rel === '' || (rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel))
+/**
+ * `path`'s real path, read through the nearest folder above it that exists
+ * when it does not exist yet, so a folder still to be created behind a link
+ * is spelled as it will be.
+ */
+const realBelow = (path: string): string => {
+  const rest: string[] = []
+  for (let dir = path; ; dir = dirname(dir)) {
+    try {
+      return join(realpathSync.native(dir), ...rest)
+    } catch {
+      if (dirname(dir) === dir) return path
+      rest.unshift(basename(dir))
+    }
+  }
 }
 
 /**
@@ -132,8 +140,9 @@ export function pathProblem(
   if (root !== null) return root
   if (containedIn([at.home], path) === null) return 'it is not inside the home folder'
   for (const own of at.ownDirs) {
-    if (within(path, own)) return `it holds host-cleaner's own folder ${own}`
-    if (within(own, path)) return `it is inside host-cleaner's own folder ${own}`
+    const real = realBelow(own)
+    if (within(path, real)) return `it holds host-cleaner's own folder ${own}`
+    if (within(real, path)) return `it is inside host-cleaner's own folder ${own}`
   }
   return null
 }
@@ -154,41 +163,57 @@ interface GlobParts {
   foldersOnly: boolean
 }
 
-const globParts = (glob: string): GlobParts => ({
-  parts: glob
-    .split(/[/\\]/)
-    .filter((p) => p !== '' && p !== '.')
-    .map((p) => globRegExp(p)),
-  foldersOnly: /[/\\]$/.test(glob),
-})
+/** The `{a,b}` alternatives of `glob`, each as it is written when it has none. */
+const alternatives = (glob: string): string[] => braceExpansions(glob) ?? [glob]
+
+/** Each of `glob`'s `{a,b}` alternatives, by its parts. */
+const globParts = (glob: string): GlobParts[] =>
+  alternatives(glob).map((alt) => ({
+    parts: alt
+      .split(/[/\\]/)
+      .filter((p) => p !== '' && p !== '.')
+      .map((p) => globRegExp(p)),
+    foldersOnly: /[/\\]$/.test(alt),
+  }))
+
+/** A marker as one pattern: an entry name that any of its `{a,b}` alternatives matches. */
+const markerRegExp = (marker: string): RegExp =>
+  new RegExp(alternatives(marker).map((alt) => `(?:${globRegExp(alt).source})`).join('|'))
 
 /**
  * Whether `path`, below `folder`, is a match of `glob` there by the rules of
  * {@link globMatches}, reading only the entries on its way.
  */
-function isGlobMatch(folder: string, { parts, foldersOnly }: GlobParts, path: string): boolean {
+function isGlobMatch(folder: string, glob: readonly GlobParts[], path: string): boolean {
   const rel = relative(folder, path)
   if (rel === '' || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) return false
   const names = rel.split(sep)
-  if (names.length !== parts.length) return false
-  let at = folder
-  for (const [i, n] of names.entries()) {
-    if (!parts[i]!.test(n)) return false
-    at = join(at, n)
-    const stat = lstatSync(at, { throwIfNoEntry: false })
-    if (stat === undefined || stat.isSymbolicLink()) return false
-    if ((i < names.length - 1 || foldersOnly) && !stat.isDirectory()) return false
-  }
-  return true
+  return glob.some(({ parts, foldersOnly }) => {
+    if (names.length !== parts.length) return false
+    let at = folder
+    for (const [i, n] of names.entries()) {
+      if (!parts[i]!.test(n)) return false
+      at = join(at, n)
+      const stat = lstatSync(at, { throwIfNoEntry: false })
+      if (stat === undefined || stat.isSymbolicLink()) return false
+      if ((i < names.length - 1 || foldersOnly) && !stat.isDirectory()) return false
+    }
+    return true
+  })
 }
 
 /**
  * The entries under `folder` that `glob` matches, sorted. Each `/`-separated
- * part matches one level; a trailing `/` takes folders only. Links are
- * neither matched nor walked through.
+ * part matches one level; a trailing `/` takes folders only; `{a,b}` takes
+ * either. Links are neither matched nor walked through.
  */
 export function globMatches(folder: string, glob: string): string[] {
-  const { parts, foldersOnly } = globParts(glob)
+  const found = new Set<string>()
+  for (const alt of globParts(glob)) for (const m of altMatches(folder, alt)) found.add(m)
+  return [...found].sort()
+}
+
+function altMatches(folder: string, { parts, foldersOnly }: GlobParts): string[] {
   let level = [folder]
   for (const [i, re] of parts.entries()) {
     const last = i === parts.length - 1
@@ -208,7 +233,7 @@ export function globMatches(folder: string, glob: string): string[] {
     }
     level = next
   }
-  return level.sort()
+  return level
 }
 
 /** How a candidate is deleted: by the tool's command, or by removing the folder. */
@@ -252,13 +277,6 @@ const digestOf = (paths: readonly string[]): string =>
 const costliest = (costs: readonly CostDescription[]): CostDescription =>
   COST_DESCRIPTIONS[Math.max(...costs.map((c) => COST_DESCRIPTIONS.indexOf(c)))]!
 
-const HOUR_MS = 3_600_000
-
-/** Whether one measurement's time has passed since this call. */
-const afterBudget = (): (() => boolean) => {
-  const start = performance.now()
-  return () => performance.now() - start > MEASURE_BUDGET_MS
-}
 
 /** Why a folder whose idle time cannot be read is left alone. */
 const UNREADABLE = 'it cannot be read now'
@@ -328,7 +346,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   const projects: Project[] = (d.project ?? []).map((entry, index) => ({
     entry,
     index,
-    marker: globRegExp(entry.marker),
+    marker: markerRegExp(entry.marker),
   }))
 
   const problems = (ctx: Ctx) => {
@@ -363,12 +381,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
    * measured, so it gives no row: the kit reads a gone folder as an empty one.
    */
   const idleOf = (path: string): Idle => {
-    const stat = lstatSync(path, { throwIfNoEntry: false })
-    if (stat === undefined) throw new Error(`${path} is gone`)
-    if (!stat.isDirectory()) {
-      const hours = Math.max(0, (Date.now() - stat.mtimeMs) / HOUR_MS)
-      return { unmeasured: false, newestMs: stat.mtimeMs, hours }
-    }
+    if (!present(path)) throw new Error(`${path} is gone`)
     const idle = kit.idle(path)
     if (!present(path)) throw new Error(`${path} is gone`)
     return idle
@@ -460,13 +473,17 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
    * Build folders beside a marker under `walk`, in `checkout`, for every
    * `project` entry in one walk. A folder that `isWalk` has a walk of its own.
    */
-  const projectRows = (
+  const projectRows = async (
     checkout: string,
     walk: string,
     isWalk: (path: string) => boolean,
-  ): Row[] => {
+    ctx: Ctx,
+  ): Promise<Row[]> => {
     const rows: Row[] = []
-    const visit = (dir: string): void => {
+    let read = 0
+    const visit = async (dir: string): Promise<void> => {
+      // A yield costs a timer tick, so a long walk yields every so many folders.
+      if (++read % 256 === 0) await yieldToLimit(ctx)
       let found: Dirent[]
       try {
         found = readdirSync(dir, { withFileTypes: true })
@@ -481,12 +498,13 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         if (isWalk(path)) continue
         const builds = here.filter((p) => p.entry.dir === e.name)
         if (builds.length > 0) {
+          await yieldToLimit(ctx)
           const row = projectRow(builds, checkout, path)
           if (row !== null) rows.push(row)
-        } else if (!NOT_WALKED.has(e.name) && !e.name.startsWith('.')) visit(path)
+        } else if (!NOT_WALKED.has(e.name) && !e.name.startsWith('.')) await visit(path)
       }
     }
-    visit(walk)
+    await visit(walk)
     // In `project` order, as one walk per entry listed them.
     const order = (r: Row): number => (r.candidate.evidence as Evidence).project ?? 0
     return rows.sort((x, y) => order(x) - order(y))
@@ -540,7 +558,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   }
 
   /** Every row now: past a glob's `maxEntries`, the rest as one row. */
-  const rowsNow = (ctx: Ctx): Row[] => {
+  const rowsNow = async (ctx: Ctx): Promise<Row[]> => {
     let refused: Map<string, string | null> | undefined
     const rows: Row[] = []
     const reported = new Set<string>()
@@ -568,6 +586,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         })
         continue
       }
+      await yieldToLimit(ctx)
       if (entry.glob === undefined) {
         const row = folderRow(entry, index, folder, action)
         if (row !== null) rows.push(row)
@@ -578,6 +597,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       )
       const max = entry.maxEntries ?? DEFAULT_MAX_ENTRIES
       for (const match of matches.slice(0, max)) {
+        await yieldToLimit(ctx)
         const row = folderRow(entry, index, match, action)
         if (row !== null) rows.push(row)
       }
@@ -589,6 +609,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
           .filter(
             (m) => coveredBy(m, ignore) === undefined && containsIgnored(m, ignore) === undefined,
           )
+        await yieldToLimit(ctx)
         const row = restRow(entry, index, folder, left, max, action)
         if (row !== null) rows.push(row)
       }
@@ -605,7 +626,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       const names = new Set([...walks.keys()].map((real) => basename(real)))
       const isWalk = (path: string): boolean => names.has(basename(path)) && walks.has(realOr(path))
       for (const { checkout, walk } of walks.values()) {
-        rows.push(...projectRows(checkout, walk, isWalk))
+        rows.push(...(await projectRows(checkout, walk, isWalk, ctx)))
       }
     }
     return rows
@@ -631,7 +652,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     const read: string[] = []
     let changed = 0
     let unmeasured = false
-    let late = afterBudget()
+    let late = kit.overBudget()
     for (const match of matches) {
       unmeasured = late()
       if (unmeasured) break
@@ -649,7 +670,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     const [path] = matches
     if (path === undefined || (read.length === 0 && !unmeasured)) return null
     let bytes: number | null = unmeasured ? null : 0
-    late = afterBudget()
+    late = kit.overBudget()
     for (const match of read) {
       if (bytes === null) break
       const size = late() ? null : kit.size(match)
@@ -720,7 +741,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         out.push({ level: 'refuse', code: IN_USE, reason: `running: ${found.names.join(', ')}` })
       }
       if (found.unknown !== undefined) {
-        out.push(unreadable(found.unknown))
+        out.push(...refusing(liveBlockers({ names: [], unknown: found.unknown })))
         break
       }
     }
@@ -733,19 +754,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   }
 
   /** What blocks deleting a `project` row now: a busy process in its checkout. */
-  const liveIn = (checkout: string, ctx: Ctx): Row['objections'] => {
-    const held = kit.running({ in: checkout }, ctx)
-    const out: Row['objections'] = []
-    if (held.names.length > 0) {
-      out.push({
-        level: 'refuse',
-        code: 'live-process',
-        reason: `running in the checkout: ${held.names.join(', ')}`,
-      })
-    }
-    if (held.unknown !== undefined) out.push(unreadable(held.unknown))
-    return out
-  }
+  const liveIn = (checkout: string, ctx: Ctx): Row['objections'] =>
+    refusing(liveBlockers(kit.running({ in: checkout }, ctx)))
 
   /** Each folder that passes the checks: the plugin's roots, each a self root. */
   const rootPaths = (refused: Map<string, string | null>, ctx: Ctx): string[] => {
@@ -769,8 +779,15 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
    * Why `path`, of `c`, is no longer as idle as the plan had it, or null: one
    * the plan ran as idle may not have changed within `threshold` hours since,
    * nor be unmeasured now, by the rules of `checkAgain` (`../helpers.ts`).
+   * One held anyway, by its entry's `held` or as `lost`, was not picked for
+   * its idle time, so it is checked like one that was not held.
    */
-  const notIdle = (c: Candidate, path: string, threshold: number): string | null => {
+  const notIdle = (
+    c: Candidate,
+    path: string,
+    threshold: number,
+    entryHeld = false,
+  ): string | null => {
     let idle
     try {
       idle = idleOf(path)
@@ -780,7 +797,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     if (idle.unmeasured) {
       return c.unmeasured === true ? null : 'it could not be measured idle in the time budget now'
     }
-    return c.held !== true && idle.hours !== null && idle.hours < threshold
+    const pickedHeld = c.held === true && !entryHeld && c.costDescription !== 'lost'
+    return !pickedHeld && idle.hours !== null && idle.hours < threshold
       ? `it is no longer idle: it changed ${hoursText(idle.hours)} hours ago (threshold ${threshold})`
       : null
   }
@@ -840,7 +858,9 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       if (actionOf(entry) !== ev.action) return 'how it would be deleted changed since the plan'
       // A prune removes only what nothing uses: no idle check.
       const prune = entry.removes === 'unused' && ev.action === 'command'
-      if (!prune && ev.rest === undefined) idle = notIdle(c, paths[0]!, thresholdOf(entry))
+      if (!prune && ev.rest === undefined) {
+        idle = notIdle(c, paths[0]!, thresholdOf(entry), entry.held === true)
+      }
     }
     if (idle !== null) return idle
     const busy = [...inUseNow(ctx), ...live]
@@ -868,13 +888,14 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     if (link !== undefined) throw new Error(`${link} is now a symlink; it is not followed`)
     const why = refusal(c, left, ctx)
     if (why !== null) throw new Error(`${c.id} was not deleted: ${why}`)
-    const threshold = thresholdOf(d.candidates[ev.candidate!]!)
+    const entry = d.candidates[ev.candidate!]!
+    const threshold = thresholdOf(entry)
     const kept: string[] = []
     const idle: string[] = []
     for (const p of left) {
       await yieldToLimit(ctx)
       if (!present(p)) continue
-      const changed = notIdle(c, p, threshold)
+      const changed = notIdle(c, p, threshold, entry.held === true)
       if (changed === null) idle.push(p)
       else if (changed === UNREADABLE) kept.push(`${p}: ${changed}`)
       else throw new Error(`${c.id} was not deleted: ${p}: ${changed}`)
@@ -890,7 +911,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         break
       }
       untried--
-      const changed = present(p) ? notIdle(c, p, threshold) : null
+      const changed = present(p) ? notIdle(c, p, threshold, entry.held === true) : null
       if (changed !== null) fails.push(`${p}: ${changed}`)
       if (changed !== null && changed !== UNREADABLE) break
       if (changed !== null) continue
@@ -932,8 +953,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       return [...foldersOf(ctx).values()].some(present)
     },
     roots: (ctx): Root[] => rootPaths(problems(ctx), ctx).map((path) => ({ path, self: true })),
-    discover(ctx) {
-      rows = byId(rowsNow(ctx))
+    async discover(ctx) {
+      rows = byId(await rowsNow(ctx))
       return [...rows.values()].map((r) => r.candidate)
     },
     object(all, ctx) {
@@ -961,18 +982,15 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       const why = refusal(c, [path], ctx)
       if (why !== null) throw new Error(`${path} was not deleted: ${why}`)
       if (ev.action === 'command') {
-        return runCommand(kit, d.candidates[ev.candidate!]!, path, homeOf(ctx), ctx)
+        return runCommand(kit, d.candidates[ev.candidate!]!, path, c.bytes ?? null, homeOf(ctx), ctx)
       }
       return kit.remove(path, ctx)
     },
   }
 }
 
-const unreadable = (why: string): Row['objections'][number] => ({
-  level: 'refuse',
-  code: 'process-table-unreadable',
-  reason: `process table unreadable: ${why}`,
-})
+const refusing = (blockers: ReturnType<typeof liveBlockers>): Row['objections'] =>
+  blockers.map((b) => ({ level: 'refuse' as const, ...b }))
 
 /** How a command that never exited ended: only one that did not start is sure to have removed nothing. */
 const ended = (reason: NeverExitedReason | undefined): string =>
@@ -982,19 +1000,28 @@ const ended = (reason: NeverExitedReason | undefined): string =>
 
 const bytesText = (n: number | null): string => (n === null ? 'an unknown size' : `${n} bytes`)
 
-/** Runs `entry`'s command from `home`, `{path}` read as `path`'s real path in every argument and `env` value. */
+/**
+ * Runs `entry`'s command from `home`, `{path}` read as `path`'s real path in
+ * every argument and `env` value. `before` is the size the survey measured.
+ */
 async function runCommand(
   kit: Kit,
   entry: DescriptorCandidate,
   path: string,
+  before: number | null,
   home: string,
   ctx: Ctx,
 ): Promise<string> {
-  const real = realpathSync(path)
+  let real: string
+  try {
+    real = realpathSync(path)
+  } catch (err) {
+    if (!present(path)) return `already gone: ${path}`
+    throw err
+  }
   const fill = (text: string): string => text.replaceAll('{path}', real)
   const argv = entry.command!.map(fill)
   const env = Object.fromEntries(Object.entries(entry.env ?? {}).map(([k, v]) => [k, fill(v)]))
-  const before = kit.size(real)
   const r = await kit.run(argv, { signal: ctx.signal, cwd: home, env, timeoutMs: DELETE_LIMIT_MS })
   if (!r.ok) {
     const said = firstLine(failureText(r, { both: true }))

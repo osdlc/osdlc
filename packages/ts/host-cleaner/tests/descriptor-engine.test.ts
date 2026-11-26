@@ -719,6 +719,20 @@ candidates:
     const at = { home: h.home, targets: [], checkouts: [], ownDirs: [own] }
     expect(pathProblem(receipts, at)).toBe(`it is inside host-cleaner's own folder ${own}`)
   })
+
+  test("a folder that will hold host-cleaner's own, not made yet, behind a linked home", () => {
+    const h = tempHome()
+    cleanups.push(h.cleanup)
+    const real = realpathSync(h.home)
+    const linked = `${real}-linked`
+    symlinkSync(real, linked)
+    cleanups.push(() => rmSync(linked))
+    const state = join(real, '.local', 'state')
+    mkdirSync(state, { recursive: true })
+    const own = join(linked, '.local', 'state', 'host-cleaner')
+    const at = { home: linked, targets: [], checkouts: [], ownDirs: [own] }
+    expect(pathProblem(state, at)).toBe(`it holds host-cleaner's own folder ${own}`)
+  })
 })
 
 describe('paths per OS, detect, system and supersededBy', () => {
@@ -935,6 +949,39 @@ candidates:
     expect(globMatches(h.home, '*/cache/')).toEqual([join(h.home, 'a', 'cache')])
     expect(globMatches(h.home, '*')).toEqual(['a', 'b', 'c'].map((n) => join(h.home, n)))
     expect(globMatches(h.home, '*/')).toEqual(['a', 'b'].map((n) => join(h.home, n)))
+  })
+
+  test('a {a,b} glob takes each alternative, one with a / in it too', () => {
+    const h = tempHome()
+    cleanups.push(h.cleanup)
+    for (const d of ['models--x', 'datasets--y', 'spaces--z', 'a/b']) {
+      mkdirSync(join(h.home, d), { recursive: true })
+    }
+    expect(globMatches(h.home, '{models,datasets}--*/')).toEqual(
+      ['datasets--y', 'models--x'].map((n) => join(h.home, n)),
+    )
+    expect(globMatches(h.home, 'a/{,b}')).toEqual([join(h.home, 'a'), join(h.home, 'a', 'b')])
+  })
+
+  test('a {a,b} marker marks a project by any alternative', async () => {
+    const b = build(
+      'dotnet',
+      `descriptor: 1
+paths:
+  nuget: { all: ~/.nuget/packages }
+candidates:
+  - { path: nuget, costDescription: re-download }
+project:
+  - { dir: obj, marker: '*.{csproj,fsproj}', costDescription: rebuild }
+`,
+    )
+    const repo = dotnetCheckout(b.home)
+    const fs = join(repo, 'lib')
+    mkdirSync(join(fs, 'obj'), { recursive: true })
+    writeFileSync(join(fs, 'Lib.fsproj'), '<Project/>')
+    const s = await survey([b.plugin], ctxOf({ targets: [repo] }))
+    const objs = s.candidates.map((c) => c.path).filter((p) => p?.endsWith('obj'))
+    expect(objs.sort()).toEqual([join(repo, 'lib', 'obj'), join(repo, 'obj')])
   })
 
   test('held and costDescription: lost are held; idleHours on the candidate beats the setting', async () => {
@@ -1164,6 +1211,28 @@ describe('idle is checked again at delete', () => {
     const p = plan(await survey([b.plugin], ctx), { pick: [`pip:${cache}`] })
     expect((await clean(p, [b.plugin], ctx)).steps).toMatchObject([{ result: 'ok' }])
     expect(existsSync(cache)).toBe(false)
+  })
+
+  test('one its entry holds was picked idle, so one that changed since is not deleted', async () => {
+    const b = build(
+      'x',
+      `descriptor: 1
+paths:
+  a: { all: ~/.x/a }
+candidates:
+  - { path: a, costDescription: re-download, held: true }
+`,
+      { idleHours: 24 },
+    )
+    const folder = b.folder('a')
+    age(folder, 48)
+    beforeDelete(b.plugin, () => writeFileSync(join(folder, 'fresh'), 'x'))
+    const ctx = ctxOf()
+    const p = plan(await survey([b.plugin], ctx), { pick: [`x:${folder}`] })
+    expect((await clean(p, [b.plugin], ctx)).steps).toMatchObject([
+      { result: 'failed', error: expect.stringMatching(/it is no longer idle/) },
+    ])
+    expect(existsSync(join(folder, 'fresh'))).toBe(true)
   })
 
   test('a wipe that changed after the re-check runs no command; a prune has no idle check', async () => {

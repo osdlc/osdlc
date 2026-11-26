@@ -58,7 +58,7 @@ const CLOCK_EVERY = 64
 /** The time limit of {@link Kit.run}, in milliseconds, unless the call gives another. */
 export const RUN_LIMIT_MS = 30_000
 
-const HOUR_MS = 3_600_000
+export const HOUR_MS = 3_600_000
 
 /**
  * How long a folder has sat unchanged: the newest modification time under it
@@ -106,7 +106,8 @@ export interface Kit {
   readonly owner: string
   /**
    * How long `path` has sat unchanged, by the newest modification time of any
-   * file under it, links not followed, within the time budget. Several paths
+   * file under it, links not followed, within the time budget; a path that
+   * is a file by its own modification time. Several paths
    * are one answer, by the newest file under any of them, within one budget.
    * `skip` names entries to pass over, files and directories alike. Throws
    * when a directory cannot be read, since what it hides may be recent; one
@@ -116,6 +117,8 @@ export interface Kit {
     path: string | readonly string[],
     opts?: { skip?: ((name: string) => boolean) | undefined },
   ): Idle
+  /** A check that turns true once one measurement's time budget has passed since this call, by the kit's clock. */
+  overBudget(): () => boolean
   /** Bytes `path` takes on disk, by repo-cleaner's `sizeOf` (`du`) within the time budget; null when it could not be read. */
   size(path: string): number | null
   /**
@@ -362,13 +365,21 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
         }
       }
       try {
-        for (const each of typeof path === 'string' ? [path] : path) visit(each)
+        for (const each of typeof path === 'string' ? [path] : path) {
+          const stat = lstatSync(each, { throwIfNoEntry: false })
+          if (stat === undefined || stat.isDirectory() || stat.isSymbolicLink()) visit(each)
+          else if (newest === null || stat.mtimeMs > newest) newest = stat.mtimeMs
+        }
       } catch (err) {
         if (err instanceof OutOfTime) return { unmeasured: true }
         throw err
       }
       const hours: number | null = newest === null ? null : Math.max(0, (at - newest) / HOUR_MS)
       return { unmeasured: false, newestMs: newest, hours }
+    },
+    overBudget() {
+      const start = clock()
+      return () => clock() - start > budget
     },
     size: (path) => sizeOf(path, { timeoutMs: budget }),
     running(where, ctx) {
