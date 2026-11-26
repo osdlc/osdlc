@@ -34,6 +34,7 @@ import {
 } from '../src/index.ts'
 import { attachKit, bindKit } from '../src/kit.ts'
 import type { Bounds } from '../src/roots.ts'
+import type { Plugin } from '../src/types.ts'
 
 const NOW = new Date('2026-11-19T12:00:00Z')
 const HOUR = 3_600_000
@@ -290,6 +291,69 @@ describe('remove', () => {
     const kit = boundKit('cache', { targets: [root] })
     expect(() => kit.remove(join(root, 'a'), { signal: stopped.signal })).toThrow(/was stopped/)
     expect(existsSync(join(root, 'a', 'keep'))).toBe(true)
+  })
+
+  /** A plugin on `kit` that proposes `<target>/cache` and removes it through the kit. */
+  const cachePlugin = (kit: ReturnType<typeof pluginKit>, extra: Partial<Plugin> = {}): Plugin => {
+    const plugin: Plugin = {
+      name: 'cache',
+      detect: () => true,
+      discover: (x) =>
+        x.targets.map((t) => kit.candidate({ kind: 'cache', path: join(t, 'cache'), why: 'idle' })),
+      delete: (c, x) => kit.remove(c.path!, x),
+      ...extra,
+    }
+    attachKit(plugin, kit)
+    return plugin
+  }
+
+  test('the kit is unbound once clean is over', async () => {
+    const root = temp()
+    put(join(root, 'cache', 'blob'), 1)
+    put(join(root, 'keep', 'blob'), 1)
+    const kit = pluginKit('cache')
+    const plugin = cachePlugin(kit)
+    const ctx = { cwd: root, targets: [root], allow: [] }
+    const receipt = await clean(plan(await survey([plugin], ctx)), [plugin], ctx)
+    expect(receipt.status).toBe('complete')
+    expect(() => kit.remove(join(root, 'keep'))).toThrow(/cache's kit is not bound/)
+    expect(existsSync(join(root, 'keep', 'blob'))).toBe(true)
+  })
+
+  test("a delete's kit.remove keeps its own run's bounds while another run binds the same plugin", async () => {
+    const mine = temp()
+    const theirs = temp()
+    put(join(mine, 'cache', 'blob'), 1)
+    put(join(theirs, 'cache', 'blob'), 1)
+    const kit = pluginKit('cache')
+    let entered!: () => void
+    const inDelete = new Promise<void>((resolve) => (entered = resolve))
+    let go!: () => void
+    const gate = new Promise<void>((resolve) => (go = resolve))
+    let refused: unknown
+    const plugin = cachePlugin(kit, {
+      delete: async (c, x) => {
+        entered()
+        await gate
+        try {
+          kit.remove(join(theirs, 'cache'), x)
+        } catch (err) {
+          refused = err
+        }
+        return kit.remove(c.path!, x)
+      },
+    })
+    const ctx = { cwd: mine, targets: [mine], allow: [] }
+    const cleaning = clean(plan(await survey([plugin], ctx)), [plugin], ctx)
+    await inDelete
+    // Another run on the same plugin binds its kit to its own targets meanwhile.
+    await survey([plugin], { cwd: theirs, targets: [theirs], allow: [] })
+    go()
+    const receipt = await cleaning
+    expect(receipt.steps.map((x) => x.result)).toEqual(['ok'])
+    expect(String(refused)).toMatch(/not inside cache's roots/)
+    expect(existsSync(join(theirs, 'cache', 'blob'))).toBe(true)
+    expect(existsSync(join(mine, 'cache'))).toBe(false)
   })
 
   test("the core binds a definition's kit to the roots its roots hook gives, and clean removes there", async () => {
