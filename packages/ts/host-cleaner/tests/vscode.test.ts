@@ -687,6 +687,37 @@ describe('object', () => {
     expect(await quit.object!(all, fakeContext())).toEqual([])
   })
 
+  test('refuses a worktree inside a folder a window has open, or storage written since names', async () => {
+    const h = home()
+    const repo = join(h.projects, 'repo')
+    const feat = join(repo, '.worktrees', 'feat')
+    const built = join(h.projects, 'built')
+    const fix = join(built, '.worktrees', 'fix')
+    const beside = join(h.projects, 'repo2', '.worktrees', 'feat')
+    for (const d of [feat, fix, beside]) mkdirSync(d, { recursive: true })
+    windows(h.user, [repo])
+    store(h.storage, 'b', folder(built))
+    const plugin = vscodePlugin(
+      h.options({ probe: probeOf([{ ...CODE, cwd: repo }]), runner: psAt([minutesAgo(10)]) }),
+    )
+    expect(
+      await plugin.object!([worktree(feat), worktree(fix), worktree(beside)], fakeContext()),
+    ).toEqual([
+      expect.objectContaining({
+        candidate: `worktree:${feat}`,
+        level: 'refuse',
+        code: VSCODE_IN_USE,
+        reason: expect.stringMatching(/a VS Code window has it open/),
+      }),
+      expect.objectContaining({
+        candidate: `worktree:${fix}`,
+        level: 'refuse',
+        code: VSCODE_IN_USE,
+        reason: expect.stringMatching(/written since VS Code started/),
+      }),
+    ])
+  })
+
   test('a window state it cannot read refuses while VS Code runs, and not after', async () => {
     const h = home()
     const wt = join(h.projects, 'wt')

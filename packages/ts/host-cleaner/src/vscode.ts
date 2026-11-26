@@ -683,7 +683,9 @@ function build(kit: Kit, opts: VscodeOptions): Plugin {
       return [own(c, 'refuse', VSCODE_IN_USE, `VS Code works in it: ${names.join(', ')}`)]
     }
     const dir = realOr(c.path)
-    const holds = (named: Named): boolean => named.paths.some((p) => within(p, dir))
+    // A window on a folder the worktree is in has its files open too.
+    const holds = (named: Named): boolean =>
+      named.paths.some((p) => within(p, dir) || within(dir, p))
     if (holds(w.open)) {
       return [own(c, 'refuse', VSCODE_IN_USE, `a VS Code window has it open (${stateFile})`)]
     }
