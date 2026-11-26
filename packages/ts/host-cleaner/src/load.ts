@@ -12,7 +12,7 @@
  */
 
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
-import { basename, dirname, isAbsolute, join } from 'node:path'
+import { basename, delimiter, dirname, isAbsolute, join, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { z } from 'zod'
@@ -76,11 +76,7 @@ export const isPackaged = (def: PluginDefinition): boolean => fromPackage.has(de
 /**
  * The `node_modules` folders a package is looked for in, in order: those
  * above host-cleaner's own folder (`from`), as Node resolves host-cleaner's
- * own imports, then the global prefix's. The prefix is `npm_config_prefix`
- * when set and not empty, as npm reads it, else npm's default:
- * `%APPDATA%\npm` on Windows, and the one Node is installed under elsewhere or
- * without `APPDATA`. A relative prefix gives no folder: it would be one in
- * whatever checkout host-cleaner runs in.
+ * own imports, then the global prefix's ({@link npmPrefix}).
  */
 export function packageRoots(
   env: Readonly<Record<string, string | undefined>>,
@@ -91,16 +87,131 @@ export function packageRoots(
     if (basename(dir) !== 'node_modules') roots.push(join(dir, 'node_modules'))
     if (dirname(dir) === dir) break
   }
-  const windows = process.platform === 'win32'
-  const prefix =
-    env.npm_config_prefix ||
-    (!windows
-      ? dirname(dirname(process.execPath))
-      : env.APPDATA
-        ? join(env.APPDATA, 'npm')
-        : dirname(process.execPath))
-  const global = windows ? join(prefix, 'node_modules') : join(prefix, 'lib', 'node_modules')
+  const prefix = npmPrefix(env)
+  const global =
+    process.platform === 'win32'
+      ? join(prefix, 'node_modules')
+      : join(prefix, 'lib', 'node_modules')
   return !isAbsolute(global) || roots.includes(global) ? roots : [...roots, global]
+}
+
+/**
+ * The prefix `npm i -g` installs under, as npm finds it: `npm_config_prefix`
+ * in any case and not empty, else `prefix` in the user's npmrc
+ * (`npm_config_userconfig`, else `~/.npmrc`), the global one
+ * (`npm_config_globalconfig`, else `<prefix>/etc/npmrc`), then the one the
+ * first `npm` on PATH ships with (Homebrew's sets it), else npm's default:
+ * `%APPDATA%\npm` on Windows, where that npmrc is not looked for, else
+ * `PREFIX`, else the one Node is installed under. npm reads no
+ * project npmrc for a global install, and this reads no file named by a
+ * relative path, nor an npm from a `node_modules` folder or a relative entry
+ * on PATH: those would be the checkout host-cleaner runs in. A relative
+ * prefix is returned as it is, for the caller to refuse.
+ */
+function npmPrefix(env: Readonly<Record<string, string | undefined>>): string {
+  const windows = process.platform === 'win32'
+  const home = env.HOME || env.USERPROFILE
+  // As npm's `loadEnv`: `npm_config_<key>` in any case, an empty value unset.
+  const fromEnv: Record<string, string> = {}
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined || value === '' || !/^npm_config_/i.test(key)) continue
+    const name = key.slice('npm_config_'.length).replace(/(?!^)_/g, '-')
+    fromEnv[name.toLowerCase()] = value
+  }
+  // As npm parses a path setting: trimmed, `${VAR}` replaced, a leading `~/` against home.
+  const path = (value: string | undefined): string | undefined => {
+    if (value === undefined) return undefined
+    const v = envReplaced(value.trim(), env)
+    return home && (windows ? /^~[/\\]/ : /^~\//).test(v) ? join(home, v.slice(2)) : v
+  }
+  const npm = windows ? undefined : npmOnPath(env.PATH)
+  const builtin = npm === undefined ? {} : npmrc(join(npm, 'npmrc'))
+  const user = npmrc(path(fromEnv.userconfig ?? builtin.userconfig ?? '~/.npmrc'))
+  const fallback =
+    windows && env.APPDATA
+      ? join(env.APPDATA, 'npm')
+      : env.PREFIX ||
+        (windows
+          ? dirname(process.execPath)
+          : join(env.DESTDIR ?? '', dirname(dirname(process.execPath))))
+  const sofar = path(fromEnv.prefix ?? user.prefix ?? builtin.prefix) ?? fallback
+  const global = npmrc(
+    path(fromEnv.globalconfig ?? user.globalconfig ?? builtin.globalconfig) ??
+      join(sofar, 'etc', 'npmrc'),
+  )
+  return path(fromEnv.prefix ?? user.prefix ?? global.prefix ?? builtin.prefix) ?? fallback
+}
+
+/** `value` with each `${VAR}` replaced from `env`, as npm's `env-replace` does. */
+const envReplaced = (value: string, env: Readonly<Record<string, string | undefined>>): string =>
+  value.replace(/(?<!\\)(\\*)\$\{([^${}?]+)(\?)?\}/g, (all, esc: string, name: string, opt) =>
+    esc.length % 2
+      ? all.slice((esc.length + 1) / 2)
+      : esc.slice(esc.length / 2) + (env[name] ?? (opt ? '' : `\${${name}}`)),
+  )
+
+/**
+ * The folder of the npm the first `npm` on `PATH` runs, when it links to npm's
+ * `bin/npm-cli.js`; a PATH entry that is relative or in a `node_modules`
+ * folder is passed over.
+ */
+function npmOnPath(PATH: string | undefined): string | undefined {
+  for (const dir of (PATH ?? '').split(delimiter)) {
+    if (!isAbsolute(dir) || dir.split(sep).includes('node_modules')) continue
+    const bin = join(dir, 'npm')
+    if (!existsSync(bin)) continue
+    const cli = realpathSync(bin)
+    return basename(cli) === 'npm-cli.js' && basename(dirname(cli)) === 'bin'
+      ? dirname(dirname(cli))
+      : undefined
+  }
+  return undefined
+}
+
+/**
+ * The top-level settings of the npmrc at `file`, as npm's `ini` reads them;
+ * none when `file` is relative or can't be read.
+ */
+function npmrc(file: string | undefined): Record<string, string> {
+  const settings: Record<string, string> = {}
+  if (file === undefined || !isAbsolute(file)) return settings
+  let text: string
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch {
+    return settings
+  }
+  for (const line of text.split(/[\r\n]+/)) {
+    if (/^\s*[;#]/.test(line)) continue
+    if (/^\[[^\]]*\]\s*$/.test(line)) break
+    const eq = line.indexOf('=')
+    if (eq < 0) continue
+    settings[line.slice(0, eq).trim()] = iniValue(line.slice(eq + 1))
+  }
+  return settings
+}
+
+/** An ini value as npm's `ini` reads it: unquoted, or cut at the first `;` or `#` not escaped. */
+function iniValue(raw: string): string {
+  const v = raw.trim()
+  if (v.length > 1 && ((v[0] === '"' && v.endsWith('"')) || (v[0] === "'" && v.endsWith("'")))) {
+    const inner = v[0] === "'" ? v.slice(1, -1) : v
+    try {
+      return String(JSON.parse(inner))
+    } catch {
+      return inner
+    }
+  }
+  let out = ''
+  for (let i = 0; i < v.length; i++) {
+    const c = v[i]!
+    if (c === '\\' && i + 1 < v.length) {
+      const next = v[++i]!
+      out += '\\;#'.includes(next) ? next : c + next
+    } else if (c === ';' || c === '#') break
+    else out += c
+  }
+  return out.trim()
 }
 
 /**
