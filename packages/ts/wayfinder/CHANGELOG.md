@@ -1,5 +1,12 @@
 # @osdlc/wayfinder
 
+## 0.13.6
+
+### Patch Changes
+
+- Updated dependencies [02afb49]
+  - @osdlc/system-model@0.10.0
+
 ## 0.13.5
 
 ### Patch Changes
