@@ -74,8 +74,10 @@ export function fstabMounts(text: string): string[] {
     const [source, at] = line.trim().split(/\s+/)
     if (source === undefined || source.startsWith('#') || at === undefined) return []
     // fstab writes a space in a path as `\040`.
-    const point = at.replace(/\\([0-7]{3})/g, (_, o: string) => String.fromCharCode(parseInt(o, 8)))
-    return point.startsWith('/') && point !== '/' ? [point] : []
+    const point = at
+      .replace(/\\([0-7]{3})/g, (_, o: string) => String.fromCharCode(parseInt(o, 8)))
+      .replace(/\/+$/, '')
+    return point.startsWith('/') ? [point] : []
   })
 }
 
@@ -89,15 +91,14 @@ function mountPoints(): ReadonlySet<string> {
   }
 }
 
-/** Claude Code's config folder: `CLAUDE_CONFIG_DIR`, a relative one under `cwd`, else `.claude` in the home folder. */
+/** Claude Code's config folder: `CLAUDE_CONFIG_DIR`, a relative one under `cwd`, else `.claude` in `home`, the process's when unset. */
 export function claudeConfigDir(
   env: Readonly<Record<string, string | undefined>>,
   cwd: string,
+  home: string = homedir(),
 ): string {
   const set = env.CLAUDE_CONFIG_DIR
-  return set !== undefined && set !== ''
-    ? resolve(cwd, set)
-    : join(env.HOME || homedir(), '.claude')
+  return set !== undefined && set !== '' ? resolve(cwd, set) : join(home, '.claude')
 }
 
 const isDir = (path: string): boolean =>
@@ -112,12 +113,23 @@ function gone(path: string): boolean {
   }
 }
 
+/** The device `path` is on, or undefined when it cannot be read. */
+const deviceOf = (path: string): number | undefined => {
+  try {
+    return statSync(path).dev
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Whether `path` may be on a volume that is not mounted, by the nearest folder
  * above it that exists, as spelled and with links followed: it is one of
- * `mounts`, or one of `roots` or below one (such as an empty `/mnt/usb`), or
- * it is a link that leads nowhere, or it is the root, as for `/Volumes/x` recorded on a Mac and
- * read on Linux, or a Windows drive that is away.
+ * `mounts` and on its parent's device (nothing is mounted there), or one of
+ * `roots` or below one (such as an empty `/mnt/usb`) and on that root's device
+ * (no volume is mounted under it), or it is a link that leads nowhere, or it
+ * is the root, as for `/Volumes/x` recorded on a Mac and read on Linux, or a
+ * Windows drive that is away.
  */
 export function unmounted(
   path: string,
@@ -133,10 +145,13 @@ export function unmounted(
   } catch {
     return true
   }
+  const device = deviceOf(real)
+  // A device that differs from the one above shows a volume is mounted there.
+  const onDeviceOf = (other: string): boolean =>
+    device === undefined || deviceOf(other) === undefined || deviceOf(other) === device
   return (
-    mounts.has(dir) ||
-    mounts.has(real) ||
-    roots.some((r) => dir.startsWith(`${r}/`) || nodeGuard.contains(r, real))
+    ((mounts.has(dir) || mounts.has(real)) && onDeviceOf(dirname(real))) ||
+    roots.some((r) => (dir.startsWith(`${r}/`) || nodeGuard.contains(r, real)) && onDeviceOf(r))
   )
 }
 
@@ -178,7 +193,8 @@ function firstCwd(file: string): string | undefined | typeof CUT {
       }
       n += got
       if (n < buf.length) continue
-      if (n >= MAX_HEAD_BYTES) return CUT
+      // The line the read stopped in may be whole yet have no line end.
+      if (n >= MAX_HEAD_BYTES) return cwdOf(buf.toString('utf8', from, n)) ?? CUT
       buf = Buffer.concat([buf], n * 2)
     }
   } finally {
@@ -209,7 +225,7 @@ export interface ProjectRecord {
 /**
  * The paths the project folder `dir` records, or null when it records none,
  * or one that is not absolute, does not turn into the folder's name, or fails
- * `keep`, or a transcript too long to read to its first `cwd`. It stops
+ * `keep`, or a transcript gives no `cwd` in what is read of it. It stops
  * reading at the first such path or transcript. Links inside it are not
  * followed. Throws when it cannot be read.
  */
@@ -231,8 +247,8 @@ export function decodeFolder(
     if (entry.name.endsWith('.jsonl')) {
       sessions.push(entry.name)
       const cwd = firstCwd(file)
-      // The `cwd` past what was read could be another path.
-      if (cwd === CUT || (cwd !== undefined && !ok(cwd))) return null
+      // The `cwd` past what was read could be another path, and a transcript with none is no project's.
+      if (cwd === CUT || cwd === undefined || !ok(cwd)) return null
     } else if (entry.name === 'sessions-index.json') {
       if (!indexPaths(file).every(ok)) return null
     }
@@ -260,9 +276,14 @@ interface Sessions {
  * the record was last written, so a process that started after both reused
  * the pid, and the record is not live. `unknown` is set when the folder
  * cannot be read, or the file of a live pid cannot, since that session could
- * be in any project. No folder means no session is recorded.
+ * be in any project. No folder means no session is recorded. A readable
+ * record that fails `wanted` is left out before its pid is checked.
  */
-function liveSessions(kit: Kit, config: string): Sessions {
+function liveSessions(
+  kit: Kit,
+  config: string,
+  wanted: (s: Session) => boolean = () => true,
+): Sessions {
   const dir = join(config, 'sessions')
   let names: string[]
   try {
@@ -292,17 +313,23 @@ function liveSessions(kit: Kit, config: string): Sessions {
       unread = `${file} cannot be read: ${errorText(err)}`
     }
     const record = isObject(body) ? body : {}
+    const session = { pid, sessionId: str(record.sessionId), cwd: str(record.cwd) }
+    if (unread === undefined && !wanted(session)) continue
     const last = Math.ceil(Math.max(written, num(record.startedAt)))
     if (!kit.alive(pid, last > 0 ? String(last) : undefined)) continue
     if (unread !== undefined) unknown ??= unread
-    else live.push({ pid, sessionId: str(record.sessionId), cwd: str(record.cwd) })
+    else live.push(session)
   }
   return { live, unknown }
 }
 
-/** What a scan reads once for every folder. */
+/** Whether `s` is a session of the project folder `name`, which records `record`. */
+const sessionOf = (s: Session, name: string, record: ProjectRecord): boolean =>
+  (s.cwd !== '' && isFolderOf(s.cwd, name)) || record.sessions.includes(`${s.sessionId}.jsonl`)
+
+/** What a scan reads once for every folder; `sessions` gives the live sessions that may be a folder's. */
 interface Seen {
-  sessions: Sessions
+  sessions: (name: string, record: ProjectRecord) => Sessions
   mounts: ReadonlySet<string>
   ctx: Ctx
 }
@@ -320,11 +347,8 @@ function rowFor(kit: Kit, dir: string, seen: Seen, { sized = true } = {}): Row |
   if (record === null) return undefined
 
   const blockers: Row['blockers'] = []
-  const { live, unknown } = seen.sessions
-  const sessions = live.filter(
-    (s) =>
-      (s.cwd !== '' && isFolderOf(s.cwd, name)) || record.sessions.includes(`${s.sessionId}.jsonl`),
-  )
+  const { live, unknown } = seen.sessions(name, record)
+  const sessions = live.filter((s) => sessionOf(s, name, record))
   if (sessions.length > 0) {
     blockers.push({
       code: 'live-session',
@@ -367,14 +391,21 @@ function rowFor(kit: Kit, dir: string, seen: Seen, { sized = true } = {}): Row |
 
 /** The plugin on `kit`, reading Claude Code's folders under `env`. */
 function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | undefined>>): Plugin {
-  const configOf = (ctx: Ctx): string => claudeConfigDir(env, ctx.cwd)
+  const configOf = (ctx: Ctx): string => claudeConfigDir(env, ctx.cwd, ctx.home ?? homedir())
   const projectsOf = (ctx: Ctx): string => join(configOf(ctx), 'projects')
   let rows = new Map<string, Row>()
-  const look = (ctx: Ctx): Seen => ({
-    sessions: liveSessions(kit, configOf(ctx)),
-    mounts: mountPoints(),
-    ctx,
-  })
+  /** For a scan of every folder: the sessions read once. */
+  const look = (ctx: Ctx): Seen => {
+    const sessions = liveSessions(kit, configOf(ctx))
+    return { sessions: () => sessions, mounts: mountPoints(), ctx }
+  }
+  /** For one folder: only the sessions that may be its are checked for a live pid. */
+  const lookAt = (ctx: Ctx): Seen => {
+    const config = configOf(ctx)
+    const sessions = (name: string, record: ProjectRecord): Sessions =>
+      liveSessions(kit, config, (s) => sessionOf(s, name, record))
+    return { sessions, mounts: mountPoints(), ctx }
+  }
 
   return {
     name: AGENT_HISTORY_PLUGIN,
@@ -412,7 +443,7 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
       }
       if (!present(c.path)) return `already gone: ${c.path}`
       // Not sized again: `kit.remove` sizes it.
-      const now = rowFor(kit, c.path, look(ctx), { sized: false })
+      const now = rowFor(kit, c.path, lookAt(ctx), { sized: false })
       checkAgain(c, now)
       if (JSON.stringify(now.candidate.evidence) !== JSON.stringify(c.evidence)) {
         throw new Error(`${c.path} changed since it was proposed`)

@@ -332,7 +332,7 @@ host-cleaner clean --pick worktree:/path/to/wt --allow close-terminals
 
 Claude Code keeps each project's sessions in `~/.claude/projects/<name>/`
 (`CLAUDE_CONFIG_DIR/projects` when that is set, a relative one under the folder
-the command runs in). When a worktree is removed, its history stays. This
+the command runs in; `~` is the run's home folder). When a worktree is removed, its history stays. This
 plugin proposes the history of a project whose folder no longer exists, as
 `claude-history:<folder>`, with its size.
 
@@ -346,8 +346,8 @@ skipped, never guessed, and so is one with a transcript that gives no `cwd` in
 its first 4 MiB. A folder is proposed only when every path it records is gone,
 and not when that path could be on a volume that is not mounted: the nearest
 folder above it that exists is `/Volumes`, `/mnt`, `/media`, `/run/media` or
-below one (so the history of a project on a volume mounted there is never
-proposed), is a mount point in `/etc/fstab`, or is the root (a path from
+below one and no volume is mounted between (its device is that folder's), is
+a mount point in `/etc/fstab` with nothing mounted on it, or is the root (a path from
 another machine, or a drive that is away). A link there is followed, and one
 that leads nowhere counts as a volume that is away. A project folder in
 `projects` that is a link is skipped; `projects` itself may be one.

@@ -106,7 +106,7 @@ function fixture(): Fixture {
         env,
         kit: pluginKit(AGENT_HISTORY_PLUGIN, { probe, env }),
       }),
-    ctx: fakeContext({ cwd: home, targets: [] }),
+    ctx: fakeContext({ cwd: home, home, targets: [] }),
   }
 }
 
@@ -125,11 +125,13 @@ describe('the project folder name', () => {
   })
 
   test('the config folder is CLAUDE_CONFIG_DIR, else .claude in the home folder', () => {
-    expect(claudeConfigDir({ HOME: '/h' }, '/w')).toBe('/h/.claude')
-    expect(claudeConfigDir({ HOME: '/h', CLAUDE_CONFIG_DIR: '/c' }, '/w')).toBe('/c')
-    expect(claudeConfigDir({ HOME: '/h', CLAUDE_CONFIG_DIR: '' }, '/w')).toBe('/h/.claude')
-    expect(claudeConfigDir({ HOME: '' }, '/w')).toBe(join(homedir(), '.claude'))
-    expect(claudeConfigDir({ HOME: '/h', CLAUDE_CONFIG_DIR: 'c' }, '/w')).toBe('/w/c')
+    expect(claudeConfigDir({}, '/w', '/h')).toBe('/h/.claude')
+    expect(claudeConfigDir({ CLAUDE_CONFIG_DIR: '/c' }, '/w', '/h')).toBe('/c')
+    expect(claudeConfigDir({ CLAUDE_CONFIG_DIR: '' }, '/w', '/h')).toBe('/h/.claude')
+    expect(claudeConfigDir({ CLAUDE_CONFIG_DIR: 'c' }, '/w', '/h')).toBe('/w/c')
+    // The home folder is the one given, not HOME.
+    expect(claudeConfigDir({ HOME: '/other' }, '/w', '/h')).toBe('/h/.claude')
+    expect(claudeConfigDir({ HOME: '/other' }, '/w')).toBe(join(homedir(), '.claude'))
   })
 
   test('a name past 200 characters is its first 200 and a hash', () => {
@@ -159,6 +161,22 @@ describe('mount points', () => {
     ].join('\n')
     expect(fstabMounts(text)).toEqual(['/mnt/data', '/home/shared disk'])
   })
+
+  test('a mount point written with a trailing slash is the folder', () => {
+    const text = 'UUID=4 /mnt/data/ ext4 defaults 0 2\nUUID=5 // ext4 defaults 0 1'
+    expect(fstabMounts(text)).toEqual(['/mnt/data'])
+  })
+
+  test.skipIf(process.platform !== 'linux')(
+    'a gone path on a volume that is mounted is not taken for one that is away',
+    () => {
+      // /proc is a volume mounted on the root's.
+      expect(unmounted('/proc/host-cleaner-no-such/app', new Set(), ['/'])).toBe(false)
+      expect(unmounted('/proc/host-cleaner-no-such/app', new Set(['/proc']), [])).toBe(false)
+      // The mount folder itself is on the root's volume.
+      expect(unmounted('/proc/host-cleaner-no-such/app', new Set(), ['/proc'])).toBe(true)
+    },
+  )
 
   test('a gone path whose nearest folder is a listed mount point may be unmounted', () => {
     const t = tempHome()
@@ -324,6 +342,22 @@ describe('discover', () => {
     expect(decodeFolder(dir)).toBeNull()
   })
 
+  test('a cwd line that ends with no line end right at the read limit is read', () => {
+    const fx = fixture()
+    const dir = fx.history(fx.gone)
+    const last = JSON.stringify({ cwd: fx.gone })
+    const pad = 4 * 1024 * 1024 - last.length - 1 - JSON.stringify({ text: '' }).length
+    writeFileSync(join(dir, 'a.jsonl'), `${JSON.stringify({ text: 'x'.repeat(pad) })}\n${last}`)
+    expect(decodeFolder(dir)?.paths).toEqual([fx.gone])
+  })
+
+  test('a transcript that gives no cwd beside one that does skips the folder', () => {
+    const fx = fixture()
+    const dir = fx.history(fx.gone)
+    writeFileSync(join(dir, 'b.jsonl'), JSON.stringify({ type: 'summary', summary: 'x' }))
+    expect(decodeFolder(dir)).toBeNull()
+  })
+
   test('a transcript is read no further than the part that gives its cwd', () => {
     const fx = fixture()
     const dir = fx.history(fx.gone)
@@ -444,7 +478,7 @@ describe('discover', () => {
       env: t.env,
       kit: pluginKit(AGENT_HISTORY_PLUGIN, { probe: idle }),
     })
-    expect(await plugin.detect(fakeContext())).toBe(false)
+    expect(await plugin.detect(fakeContext({ home: t.home }))).toBe(false)
   })
 })
 
@@ -559,6 +593,31 @@ describe('delete', () => {
       /is refused: a Claude Code session is running in it/,
     )
     expect(existsSync(dir)).toBe(true)
+  })
+
+  test('checks only the pids of sessions that may be the folder', async () => {
+    const fx = fixture()
+    const dir = fx.history(fx.gone)
+    const other = deadPid()
+    fx.session(other, { sessionId: 'y', cwd: fx.live })
+    const asked: number[] = []
+    const probe: ProcessProbe = {
+      alive: (pid) => {
+        asked.push(pid)
+        return false
+      },
+      holders: () => [],
+    }
+    const plugin = fx.plugin(probe)
+    const s = await survey([plugin], fx.ctx)
+    expect(asked).toEqual([other])
+    asked.length = 0
+    const id = `claude-history:${dir}`
+    const ctx = { ...fx.ctx, allow: [DISCARD_USER_DATA] }
+    const receipt = await clean(plan(s, { pick: [id], allow: [DISCARD_USER_DATA] }), [plugin], ctx)
+    expect(receipt.steps.map((st) => [st.id, st.result])).toEqual([[id, 'ok']])
+    // Once by the re-check's survey of every folder, and not by `delete`.
+    expect(asked).toEqual([other])
   })
 
   test('a transcript added since the plan stops it', async () => {

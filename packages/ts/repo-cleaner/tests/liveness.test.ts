@@ -8,7 +8,17 @@
  */
 
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { existsSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -832,6 +842,26 @@ describe('default probe: lsof', () => {
     expect(probe.holders('/gone/wt').map((h) => h.pid)).toEqual([3003, 3004])
     expect(probe.holders('/gone/wt/src').map((h) => h.pid)).toEqual([3004])
     expect(probe.holders('/gone/w')).toEqual([])
+  })
+
+  test('a removed directory reached through a link, and one made again at its path', () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-deleted-')))
+    try {
+      mkdirSync(join(base, 'data', 'dev', 'again'), { recursive: true })
+      symlinkSync(join(base, 'data', 'dev'), join(base, 'link'))
+      const stdout = [
+        ['p3003', 'cnode', `n${join(base, 'data', 'dev', 'wt')} (deleted)`],
+        ['p3004', 'cvim', `n${join(base, 'data', 'dev', 'again')} (deleted)`],
+      ]
+        .flat()
+        .join('\n')
+      const probe = defaultProcessProbe({ lsof: canned(() => ({ stdout })), ps: noChildren })
+      expect(probe.holders(join(base, 'link', 'wt')).map((h) => h.pid)).toEqual([3003])
+      // vim sits in the removed directory, not in the one made since.
+      expect(probe.holders(join(base, 'data', 'dev', 'again'))).toEqual([])
+    } finally {
+      rmSync(base, { recursive: true, force: true })
+    }
   })
 
   test('lsof exits 1 with partial output when it cannot read some processes; the rest count', () => {

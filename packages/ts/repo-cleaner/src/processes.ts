@@ -12,7 +12,8 @@
  * through the command seam.
  */
 
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
+import { basename, dirname, join, resolve } from 'node:path'
 
 import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
 import { sameProcess } from '@osdlc/file-lock'
@@ -186,11 +187,31 @@ const DELETED = ' (deleted)'
 
 /**
  * The directories a working directory as lsof lists it may be: itself, and,
- * when it ends in {@link DELETED}, the removed directory it names, since a
- * process may still sit in a directory that is gone.
+ * when it ends in {@link DELETED}, the removed directory it names while no
+ * directory is there again, since a process may still sit in a directory that
+ * is gone, but not in one made later at its path.
  */
-const cwdsOf = (cwd: string): string[] =>
-  cwd.endsWith(DELETED) ? [cwd, cwd.slice(0, -DELETED.length)] : [cwd]
+const cwdsOf = (cwd: string): string[] => {
+  if (!cwd.endsWith(DELETED)) return [cwd]
+  const removed = cwd.slice(0, -DELETED.length)
+  return existsSync(removed) ? [cwd] : [cwd, removed]
+}
+
+/**
+ * `path` with links followed: its nearest part that exists resolved, and the
+ * rest, which is gone, joined back on. Undefined when no part of it resolves.
+ */
+function resolvedOf(path: string): string | undefined {
+  let rest = ''
+  for (let at = resolve(path); ; at = dirname(at)) {
+    try {
+      return join(realpathSync(at), rest)
+    } catch {
+      if (dirname(at) === at) return undefined
+      rest = join(basename(at), rest)
+    }
+  }
+}
 
 /** True when the command ran and reported an exit status. */
 const answered = (r: CommandResult): boolean => r.neverExited !== true
@@ -257,11 +278,9 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
         table = rows.map((row) => ({ ...row, hasChildren: parents.has(row.pid) }))
       }
       const roots = new Set([path])
-      try {
-        roots.add(realpathSync(path))
-      } catch {
-        // A directory that is gone has only the path as given.
-      }
+      // A directory that is gone is where a link above it led.
+      const real = resolvedOf(path)
+      if (real !== undefined) roots.add(real)
       return table
         .filter((row) =>
           [...roots].some((root) => cwdsOf(row.cwd).some((cwd) => nodeGuard.contains(root, cwd))),
