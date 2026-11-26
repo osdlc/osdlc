@@ -881,7 +881,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     if (names.size > 0) {
       out.push({ level: 'refuse', code: IN_USE, reason: `running: ${[...names].join(', ')}` })
     }
-    if (unknown !== undefined) out.push(...refusing(liveBlockers({ names: [], unknown })))
+    if (unknown !== undefined)
+      out.push(...refusing(liveBlockers({ names: [], processes: [], unknown })))
     for (const file of locks) {
       if (present(file))
         out.push({ level: 'refuse', code: IN_USE, reason: `the lock ${file} exists` })

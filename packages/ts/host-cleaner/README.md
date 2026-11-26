@@ -7,12 +7,18 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node` and `orca` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `vscode`, `cursor` and `orca` plugins, and the `host-cleaner` command.
+It runs only when a person runs it: there is no scheduled or unattended run
+([B-0001](docs/planning/backlog/B-0001-unattended-cleaning.md)).
+
+[docs/guide/how-it-works.md](docs/guide/how-it-works.md) says how the package is built.
+The design it is heading to, descriptors and loadable plugins included, is the
+[system description](../../../docs/architecture/host-cleaner-system.md).
 
 ## Phases
 
 Plugins run in the order they are given. The command line runs the shipped
-ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `orca`.
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`.
 The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
@@ -84,12 +90,9 @@ real path, since deleting it would delete them. So `cargo`'s `target/` goes
 before the git worktree that holds it, and a `target/` that does not run
 (refused, spared, held, or carrying a protest not allowed) keeps the worktree
 too. The worktree is then `blocked`, and its reason names each candidate
-inside it that does not run and what would let it run: `requires
-artifact:…/target, which needs --allow unmeasured`, `which needs --pick <id>
-when the plan is made` (held or not selected; a saved plan takes no `--pick`
-at `clean --plan`, so it goes to `plan`, or to `clean` without `--plan`),
-`which is refused (<plugin>: <reason>)` or `which is spared (--spare <entry>)`. The clean preview, the `clean -i` checklist and the
-receipt show it.
+inside it that does not run and what would let it run. Its wording, and where
+it shows, are under [nesting](docs/guide/how-it-works.md#nesting) in
+how-it-works.
 
 ```ts
 import { join } from 'node:path'
@@ -193,15 +196,16 @@ plain root or a target itself is never a candidate. A store that is removed
 whole, such as `~/.npm`, is declared `{ path, self: true }` among the roots:
 that folder may then be a candidate itself, as well as anything inside it.
 
-The core refuses a root, plain or self, that is the filesystem root (`/`), is
-or holds the home folder, is a personal folder (`PERSONAL_FOLDERS`:
-`~/Documents`, `~/Desktop`, `~/Downloads`, `~/Pictures`, `~/Music`,
-`~/Movies`, `~/Library`, `~/.ssh`, `~/.config`), is or holds a target or a
-linked worktree, or is a checkout (holds `.git`), and a self root that is a
-symlink. It leaves such a root out with a warning (`<plugin>: roots: left out
-the root <path>: <why>`), so its candidates are refused `outside-roots`. The
-same check runs again right before `delete` and in `kit.remove`, so a self
-root that has become a checkout or a symlink since the survey is not removed.
+The core refuses a root, plain or self, that is not an absolute path or has a
+`..` in it, is the filesystem root (`/`), is or holds the home folder, is a
+personal folder (`PERSONAL_FOLDERS`: `~/Documents`, `~/Desktop`,
+`~/Downloads`, `~/Pictures`, `~/Music`, `~/Movies`, `~/Library`, `~/.ssh`,
+`~/.config`), is or holds a target or a linked worktree, or is a checkout
+(holds `.git`), and a self root that is a symlink. It leaves such a root out
+with a warning (`<plugin>: roots: left out the root <path>: <why>`), so its
+candidates are refused `outside-roots`. The same check runs again right before
+`delete` and in `kit.remove`, so a self root that has become a checkout or a
+symlink since the survey is not removed.
 
 Real paths are read with `realpathSync.native`, which spells a path as the
 filesystem does: where it ignores case, as macOS's does, `~/documents` is
@@ -232,7 +236,7 @@ without it to the kit it builds; a kit no run has bound removes nothing.
 | `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the hours since, fractions included, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Several folders, as a list, are one answer within one budget. A path that is a file is aged by itself. Out of time, it is `{ unmeasured: true }`. |
 | `kit.overBudget()` | A check that turns true once the same budget has passed since the call, by the kit's clock: for a plugin that measures several things as one. |
 | `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
-| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and the unbroken line of ancestors above it whose command lines name host-cleaner are left out, so the `npm exec` or `pnpm dlx` that started it does not count, but an editor, terminal or `tmux` it runs inside does. The table is read fresh once per hook call; one that could not be read stays `unknown` for the rest of it. |
+| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy), as `names` (`<command> (pid <n>)`, for a sentence) and `processes` (`{ pid, command }`, to match on); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and the unbroken line of ancestors above it whose command lines name host-cleaner are left out, so the `npm exec` or `pnpm dlx` that started it does not count, but an editor, terminal or `tmux` it runs inside does. The table is read fresh once per hook call; one that could not be read stays `unknown` for the rest of it. |
 | `kit.onPath(program)` | Whether a program is on PATH. |
 | `kit.candidate({ kind, path \| ref, ... })` | A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and the plugin as owner. |
 | `kit.run(argv, { signal, check })` | Runs a program through `@osdlc/command-seam`, with a time limit (`RUN_LIMIT_MS`, 30 seconds) and stopped when `ctx.signal` aborts; `ok` when it exited 0, a `CommandFailed` throw with `check`. |
@@ -423,8 +427,9 @@ as refs (`ref` the branch's name, `at` its repository). Its
 blockers are `refuse` objections and its risks `protest`s, so
 `--allow abandon-unmerged` and the others work as in repo-cleaner. A branch
 freed by a worktree requires it. With `archive`, unlanded work is pushed to the
-remote first; a failed push throws `FatalRun`. Grant the named risks; the
-`discard-archived` cover is not yet offered here. Its `delete` refuses a
+remote first; a failed push throws `FatalRun`. The command line does not offer
+`archive` yet; it is set only when building the plugin in code. Grant the named
+risks; the `discard-archived` cover is not yet offered here. Its `delete` refuses a
 worktree whose folder has become a symlink, since `git worktree remove` would
 follow it and empty the folder it leads to. Its `discover` sweeps every
 repository in one synchronous call, so it has a 10 minute limit.
@@ -458,6 +463,58 @@ measured. `delete` reads the checkout's candidates again over a fresh process
 table, then removes the directory with `kit.remove`; a directory that is already
 gone (its worktree went first) is not a failure.
 
+## The `vscode` plugin
+
+VS Code keeps state for every folder it opened in `workspaceStorage/<hash>/`
+and never removes it when the folder goes. Its root is
+`~/Library/Application Support/Code/User/workspaceStorage` on macOS and
+`~/.config/Code/User/workspaceStorage` on Linux (`$XDG_CONFIG_HOME/Code/...`
+when `XDG_CONFIG_HOME` is set), or `$VSCODE_APPDATA/Code/...` on either when
+that is set, as VS Code itself finds it; the plugin is detected when that
+folder exists (and is not when it is not an absolute path, as with an empty
+`HOME`), and has no settings.
+
+| Phase | What it does |
+| --- | --- |
+| discover | Reads each folder's `workspace.json`. One whose `folder` or `workspace` (a `.code-workspace` file) is a `file:` URI naming nothing on disk is `workspace-storage:<path>`, with its size and `costDescription: re-download`. One that holds chat or agent history is `costDescription: lost` instead, so it is held and runs only when picked with `--allow discard-user-data`: history is a `chatSessions/` chat (VS Code's chats, a `.json` file or a `.jsonl` log) with at least one request, a `chatEditingSessions/<session>/` whose `contents/` has something in it (the file contents an agent's edits changed), anything in the Copilot extension's `GitHub.copilot-chat/transcripts` or `GitHub.copilot-chat/memory-tool/memories`, or a `state.vscdb` with an `interactive.sessions` row holding a chat with at least one request, where VS Code kept chats before `chatSessions/` (one whose bytes name the key is read with `node:sqlite`, and counts unless it can tell that no such row does; then `evidence.history` says why, as `state.vscdb (<reason>)`). An empty chat file, a chat with no requests, an editing session with an empty or missing `contents/`, and other files in `chatSessions/` do not count; a chat file it cannot parse, and a folder it cannot read, do. The `why` and `evidence.history` name the folders found. A remote URI, a folder with no `workspace.json` (an empty window's), a link, and a path on a volume that is not mounted are left alone. A `workspace.json` of any other shape is never guessed at: the folder is proposed held and refused `vscode-unknown-workspace`, naming what was found, so it shows under `--all-rows`. |
+| object | While VS Code runs, or the process table cannot be read, refuses (`vscode-in-use`) a `git` worktree a VS Code process works in (by its working directory, such as a `Code Helper (Plugin)` process an extension started there), one the window state (`User/globalStorage/storage.json`, `windowsState`) names as open, and one a storage folder written since VS Code started names. Both name a worktree by a folder in it or a folder it is in (a window on `/repo` names `/repo/.worktrees/feat`), or by an open `.code-workspace` file's root in it or above it. The window state can miss a window opened since VS Code started; its storage does not. When VS Code's start cannot be read (`ps -o lstart=`), every worktree that storage names is refused; one that none names is not. Its own candidate is refused the same way: when a window still names the gone folder, or the candidate was written since VS Code started (or at any time, when that is not known). A window state, or an open workspace file it names, that cannot be read refuses every worktree and storage candidate not refused already (`vscode-state-unreadable`); a `workspace.json` or workspace file of storage written since that cannot be read refuses every such worktree. A worktree that is not refused and whose processes could not be listed carries a `note` (`vscode-unchecked`). |
+| prepare | Checks each `git` worktree and each of its own candidates again as `object` did, right before it is deleted, and fails it when VS Code may now have it open or works in it. Each check reads the process table afresh. |
+| delete | Reads the folder's `workspace.json` again, checks it is a folder directly in `workspaceStorage`, its workspace is still gone, and it holds no chat or agent history unless it was planned as `lost`, then removes it with `kit.remove`. |
+
+## The `cursor` plugin
+
+Cursor is a fork of VS Code and keeps the same `workspaceStorage`. The `cursor`
+plugin is the `vscode` plugin's code over Cursor's folders,
+`~/Library/Application Support/Cursor/User/workspaceStorage` on macOS and
+`~/.config/Cursor/User/workspaceStorage` on Linux (moved by `XDG_CONFIG_HOME`
+and `VSCODE_APPDATA` as VS Code's is), and over Cursor's processes
+(`Cursor`, `Cursor Helper (…)`, `cursor`). It finds, refuses and deletes what
+the `vscode` plugin does. Three differences. Cursor keeps its chat history in that
+storage, so every dead workspace's folder is `costDescription: lost`, not only
+one with the history folders the `vscode` plugin looks for. It is held,
+protested `discard-user-data`, and runs only with
+`--pick <id> --allow discard-user-data`. Cursor's agents make and track
+their own worktrees under `~/.cursor/worktrees`, so the plugin refuses
+(`agent-worktree`, exported as `AGENT_WORKTREE`) any `git` worktree there,
+whether or not Cursor runs. (For another tool's agent worktrees, list their
+folder in the config's `ignore`.) And the `cursor-agent` CLI runs as `node`, so
+the process table does not show which process is Cursor's agent: the plugin
+refuses (`cursor-in-use`) any `git` worktree that any process other than an idle
+shell works in, whether or not Cursor runs. The plugin is detected when its
+storage or the agents' folder exists; on a host with only the CLI, that is once
+it has made a worktree there. On Windows only the agents' folder is checked. Its
+codes are the `vscode` plugin's under its own name: `cursor-in-use`,
+`cursor-unknown-workspace`, `cursor-state-unreadable` and `cursor-unchecked`.
+
+```ts
+import { CURSOR_PLUGIN, cursorPlugin, cursorUserDir, survey } from '@osdlc/host-cleaner'
+
+// Cursor's `User` folder here: undefined on a platform the plugin does not know.
+const userDir = cursorUserDir(process.env, process.platform)
+const s = await survey([cursorPlugin({ userDir })], { cwd: process.cwd(), targets: [], allow: [] })
+const ofCursor = s.candidates.filter((c) => c.owner === CURSOR_PLUGIN)
+```
+
 ## The `orca` plugin
 
 Orca keeps its own record of some worktrees and holds terminals and agents open
@@ -467,16 +524,18 @@ so this plugin works beside `git`, which still removes the directory.
 Detected when the `orca` CLI is on `PATH` (or at
 `/Applications/Orca.app/Contents/Resources/bin/orca`). Orca missing is silent.
 When it is installed but not running, or `orca status` fails, prints no JSON or
-takes over 20 seconds, there is no fallback to git: every `git` worktree whose path is under
-`/orca/workspaces/` is refused with `orca-unreachable`, and the rest are left to
-`git`; `detect` gives the reason as its note. It never fails the run. Every
-call goes through `@osdlc/command-seam` with `--json`.
+takes over 20 seconds, Orca cannot be asked, and there is no fallback to git:
+every `git` worktree whose real path is under `/orca/workspaces/` is refused
+with `orca-unreachable`, and the other worktrees are left to `git`. Orca then
+adds no repositories and proposes no records, and `detect` gives the reason as
+its note. It never fails the run. Every call goes through
+`@osdlc/command-seam` with `--json`.
 
 | Phase | What it does |
 | --- | --- |
 | scope | Adds each repository `orca repo list` names (`plugins.orca.repos: false` turns this off). |
 | discover | A record in `orca worktree ps` whose directory is gone is `orca-record:<path>`, a ref to Orca's record (`at` is the gone directory), held for a pick. |
-| object | On a `git` worktree that Orca manages: a `note` with its Orca id; a `refuse` `orca-agent-active` when an agent is at work (any state not `idle` or `done`); a `refuse` `orca-terminal-unverifiable`; a `protest` `close-terminals` when terminals are open. If Orca is running but cannot be read, every `git` worktree is refused with `orca-unreachable`; while it is not running or its status cannot be read, only those under `/orca/workspaces/` are. |
+| object | On a `git` worktree that Orca manages: a `note` with its Orca id; a `refuse` `orca-agent-active` when an agent is at work (any state not `idle` or `done`); a `refuse` `orca-terminal-unverifiable`; a `protest` `close-terminals` when terminals are open. If Orca is running but its worktrees cannot be read, every `git` worktree is refused with `orca-unreachable`; while it cannot be asked at all (above), only those under `/orca/workspaces/` are. |
 | prepare | Sees again that no agent is at work, then `orca terminal close --worktree id:<id> --all`. |
 | deleted | After `git` removed the directory, `orca worktree rm --worktree id:<id> --force` so Orca forgets the record. It is never asked while the directory exists, since it would delete it. The branch is kept. |
 
@@ -512,12 +571,14 @@ take that form, also when `HOME` goes through a symlink. `status`, `plan`, `clea
 `plan` and `clean` print each plugin's `detect` note as a warning line naming
 the plugin, with the survey's warnings.
 
-`--plugin <name>` runs only those plugins and
-`--skip-plugin <name>` never runs these. Targets default to the config file's
-`targets`, then the directory you are in. `clean` re-checks, shows the steps,
-asks (`--yes` skips the question; with no terminal and no `--yes` it exits 2),
-deletes, and writes one receipt to `--receipt` or the state directory's
-`receipts/`, plus a line in `logs/host-cleaner.log`.
+`--plugin <name>` runs only those plugins and `--skip-plugin <name>` never
+runs these.
+Targets default to the config file's `targets`, then the directory you are in.
+`clean` re-checks, shows the steps, asks (`--yes` skips the question; with no
+terminal and no `--yes` it exits 2), deletes, and writes one receipt to
+`--receipt` or the state directory's `receipts/`, plus a line in the log.
+`clean --plan` drops, as `gone`, a planned candidate no plugin proposes now,
+which includes one from a plugin this install does not have.
 
 Descriptors (plugins written as YAML or JSON files) come from three places,
 and each file's name, less `.yaml`, `.yml` or `.json`, is its plugin name: the
@@ -631,8 +692,23 @@ const vars = await resolveVars(d.vars ?? {}, { home, os: 'linux', env: process.e
 const store = fillTemplate('${STORE}', vars, home) // { path, trusted }, or { missing }
 ```
 
-The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
-all three directories):
+### Files and config
+
+host-cleaner keeps its files in three folders, from `@osdlc/tiered-dirs`'
+`standalone('host-cleaner')` tier under its default `native` convention, so
+macOS and Linux differ:
+
+| What | Linux | macOS | Moved by |
+| --- | --- | --- | --- |
+| Config | `~/.config/host-cleaner/config.json` | `~/Library/Application Support/host-cleaner/config.json` | `HOST_CLEANER_CONFIG_DIR` |
+| Receipts | `~/.local/state/host-cleaner/receipts/` | `~/Library/Application Support/host-cleaner/receipts/` | `HOST_CLEANER_STATE_DIR` |
+| Log | `~/.local/state/host-cleaner/host-cleaner.log` | `~/Library/Logs/host-cleaner/host-cleaner.log` | `HOST_CLEANER_LOGS_DIR` |
+
+On Linux `XDG_CONFIG_HOME` and `XDG_STATE_HOME` move them too.
+`HOST_CLEANER_CONVENTION=xdg` gives macOS the Linux folders.
+`HOST_CLEANER_ROOT` moves all three folders, which is useful for tests.
+
+The config file holds the targets and each plugin's settings:
 
 ```json
 { "targets": ["~/dev"], "plugins": { "cargo": { "idleHours": 48 }, "node": { "enabled": false } } }
@@ -647,7 +723,7 @@ naming the plugin and the key.
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
-| `idleHours` | `cargo`, `node`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
+| `idleHours` | `cargo`, `node`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, fractions included (`0.5` is half an hour), and `0` takes every artifact. |
 | `vars.<NAME>` | descriptors that declare `vars` | none | A folder (`~/…` or absolute) for one of the descriptor's variables. It wins over every source and may sit outside home. A name the descriptor does not declare is an error. It wins over the sources of the variables built from it too: `GOPATH` (go) moves the module cache even with go on PATH. |
 
 Two settings sit at the top of the config and apply to every plugin:
@@ -677,6 +753,8 @@ it prints each entry with its own value and the threshold the run applies to it
 (to a prune entry only when its program is not on PATH and the folder is
 removed whole).
 `--format json` prints the values, and those thresholds under `partIdleHours`.
+
+### Which plugins run here
 
 `host-cleaner plugins` lists every plugin: where it came from, each plugin by its
 own origin (`built-in` when host-cleaner ships it, even when a program passes it
@@ -724,7 +802,9 @@ note says so. The variables come with `detect`'s answer, so a descriptor whose
 `detect` threw, timed out, was skipped or was superseded shows none, as does
 one whose `onPath` conditions alone leave it undetected. Each line
 keeps to itself: a line break in a value is printed as a space. `--format json`
-prints the same, one object per plugin, each with its `vars`.
+prints the same, one object per plugin: `{ name, source, replaces, enabled,
+detected, reason, roots, rootsFailed, selfRoots, note, vars }`, under `plugins`
+beside `targets`, `ignore` and `warnings`.
 
 ```text
 targets: /Users/me/dev

@@ -72,8 +72,10 @@ export type Idle =
 
 /** The processes found; `unknown` is set when the process table could not be read. */
 export interface Running {
-  /** Each as `<command> (pid <n>)`. */
+  /** Each as `<command> (pid <n>)`, for a sentence. */
   names: string[]
+  /** The same processes, for a plugin to match on: `command` is lsof's or the command line's program name. */
+  processes: Array<{ pid: number; command: string }>
   unknown?: string | undefined
 }
 
@@ -284,6 +286,12 @@ function commandLines(ps: CommandRunner): Array<{ pid: number; args: string }> {
   return rows.filter((row) => !own.has(row.pid))
 }
 
+/** A {@link Running} of `processes`. */
+const listed = (processes: Running['processes']): Running => ({
+  names: processes.map((p) => `${p.command} (pid ${p.pid})`),
+  processes,
+})
+
 /** The kit for the plugin `owner`. */
 export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
   const now = opts.now ?? (() => new Date())
@@ -387,14 +395,14 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
         const by = typeof where === 'string' ? { name: where } : where
         if ('in' in by) {
           const found = busyHolders(holders(by.in, ctx.signal))
-          return { names: found.map((h) => `${h.command} (pid ${h.pid})`) }
+          return listed(found.map(({ pid, command }) => ({ pid, command })))
         }
         const found = commands(ctx.signal).filter((row) => commandHasName(row.args, by.name))
-        return {
-          names: found.map((row) => `${basename(row.args.split(/\s+/)[0]!)} (pid ${row.pid})`),
-        }
+        return listed(
+          found.map((row) => ({ pid: row.pid, command: basename(row.args.split(/\s+/)[0]!) })),
+        )
       } catch (err) {
-        return { names: [], unknown: errorText(err) }
+        return { names: [], processes: [], unknown: errorText(err) }
       }
     },
     onPath: (program) => lookup(program) !== undefined,

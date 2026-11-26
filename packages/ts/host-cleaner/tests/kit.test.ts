@@ -448,10 +448,11 @@ describe('running', () => {
     const ps = fakePs('    4     1 -zsh\n    5     4 /Users/me/.cargo/bin/cargo build\n', calls)
     const kit = pluginKit('cargo', { probe, ps })
     const one = signal()
-    expect(kit.running({ in: '/w' }, { signal: one })).toEqual({ names: ['cargo (pid 5)'] })
-    expect(kit.running({ name: 'cargo' }, { signal: one })).toEqual({ names: ['cargo (pid 5)'] })
-    expect(kit.running('cargo', { signal: one })).toEqual({ names: ['cargo (pid 5)'] })
-    expect(kit.running('rustc', { signal: one })).toEqual({ names: [] })
+    const cargo = { names: ['cargo (pid 5)'], processes: [{ pid: 5, command: 'cargo' }] }
+    expect(kit.running({ in: '/w' }, { signal: one })).toEqual(cargo)
+    expect(kit.running({ name: 'cargo' }, { signal: one })).toEqual(cargo)
+    expect(kit.running('cargo', { signal: one })).toEqual(cargo)
+    expect(kit.running('rustc', { signal: one })).toEqual({ names: [], processes: [] })
     kit.running({ in: '/w' }, { signal: signal() })
     kit.running('cargo', { signal: signal() })
     // The first read in each hook call is fresh; `ps` is read once per hook call.
@@ -552,6 +553,7 @@ describe('running', () => {
     }
     expect(pluginKit('x', { probe }).running({ in: '/w' }, { signal: signal() })).toEqual({
       names: [],
+      processes: [],
       unknown: 'no lsof',
     })
     const noPs: CommandRunner = {
@@ -559,6 +561,7 @@ describe('running', () => {
     }
     expect(pluginKit('x', { ps: noPs }).running('pnpm', { signal: signal() })).toEqual({
       names: [],
+      processes: [],
       unknown: 'ps failed (exit 1): ps: not allowed',
     })
   })
@@ -588,10 +591,11 @@ describe('running, when the table cannot be read', () => {
       },
     }
     const kit = pluginKit('x', { probe, ps })
-    expect(kit.running({ in: '/a' }, { signal: signal() })).toEqual({ names: [] })
+    const none = { names: [], processes: [] }
+    expect(kit.running({ in: '/a' }, { signal: signal() })).toEqual(none)
     broken = true
     const one = signal()
-    const unread = { names: [], unknown: 'lsof did not run' }
+    const unread = { ...none, unknown: 'lsof did not run' }
     expect(kit.running({ in: '/a' }, { signal: one })).toEqual(unread)
     expect(kit.running({ in: '/b' }, { signal: one })).toEqual(unread)
     expect(kit.running('pnpm', { signal: one }).unknown).toMatch(/^ps failed/)
@@ -599,7 +603,7 @@ describe('running, when the table cannot be read', () => {
     expect(calls).toEqual({ lsof: 2, ps: 1 })
     // The next hook call reads afresh.
     broken = false
-    expect(kit.running({ in: '/a' }, { signal: signal() })).toEqual({ names: [] })
+    expect(kit.running({ in: '/a' }, { signal: signal() })).toEqual(none)
     expect(calls.lsof).toBe(3)
   })
 })

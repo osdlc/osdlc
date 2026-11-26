@@ -295,7 +295,7 @@ describe('fakeProcesses and ageTree', () => {
   test("the kit's running reads the table, by name and by folder, as it is when asked", () => {
     const table: Parameters<typeof fakeProcesses>[0] = {}
     const kit = pluginKit('x', fakeProcesses(table))
-    expect(kit.running('pip', fakeContext())).toEqual({ names: [] })
+    expect(kit.running('pip', fakeContext())).toEqual({ names: [], processes: [] })
     table['/'] = [{ pid: 5_000_000, command: 'python3 -m pip install' }]
     table['/work'] = [{ pid: 5_000_001, command: 'vim' }]
     expect(kit.running('pip', fakeContext()).names).toEqual(['python3 (pid 5000000)'])

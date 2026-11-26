@@ -63,6 +63,8 @@ export { formatBytes, sizeOf, type SizeOfOptions } from './size.ts'
 export {
   busyHolders,
   defaultProcessProbe,
+  PS_ENV as PS_LSTART_ENV,
+  startMs,
   type ProcessHolder,
   type ProcessProbe,
 } from './processes.ts'

@@ -5,6 +5,7 @@
  */
 
 import { realpathSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 import { failureText, firstLine, type CommandResult } from '@osdlc/command-seam'
@@ -42,6 +43,25 @@ export const realOr = (path: string): string => {
     return realpathSync.native(path)
   } catch {
     return path
+  }
+}
+
+/**
+ * `path`'s real path, or, where it does not resolve, that of the nearest folder
+ * above it that does with the rest of `path` after it: what is gone still
+ * compares through the links above it. By `realpathSync.native`, not
+ * `nodeGuard.realPath`, which keeps the case `path` is written in where the
+ * filesystem ignores case: the editors' paths are compared in the disk's (see {@link realOr}).
+ */
+export function realAbove(path: string): string {
+  let rest = ''
+  for (let at = path; ; at = dirname(at)) {
+    try {
+      return join(realpathSync.native(at), rest)
+    } catch {
+      if (dirname(at) === at) return path
+      rest = join(basename(at), rest)
+    }
   }
 }
 
