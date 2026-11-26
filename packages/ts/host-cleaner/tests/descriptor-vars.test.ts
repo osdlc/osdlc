@@ -4,6 +4,7 @@
  * a hung command that times out so the next source is tried.
  */
 
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
@@ -132,6 +133,29 @@ describe('the file source', () => {
       expect.stringMatching(new RegExp(`^${bad.replaceAll('/', '\\/')} does not parse: `)),
     ])
   })
+
+  test('a file named only by its extension is read by that extension', async () => {
+    const { home, resolve } = setup()
+    write(home, '.yaml', 'cache:\n  dir: /data/tool\n')
+    const v = await resolve({ DIR: [{ file: '~/.config/tool/.yaml', key: 'cache.dir' }] })
+    expect(v.DIR?.value).toBe('/data/tool')
+  })
+
+  test.skipIf(process.platform === 'win32')(
+    'a FIFO is not read, so the next source is tried instead of waiting on it',
+    async () => {
+      const { home, resolve } = setup()
+      const dir = join(home, '.config', 'tool')
+      mkdirSync(dir, { recursive: true })
+      const fifo = join(dir, 'tool.toml')
+      execFileSync('mkfifo', [fifo])
+      const v = await resolve({
+        DIR: [{ file: '~/.config/tool/tool.toml', key: 'cache.dir' }, { value: '/fallback' }],
+      })
+      expect(v.DIR?.value).toBe('/fallback')
+      expect(v.DIR?.tried.map((t) => t.failed)).toEqual([`${fifo} is not a file`])
+    },
+  )
 })
 
 describe('the command source', () => {

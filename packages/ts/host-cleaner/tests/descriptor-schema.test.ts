@@ -214,8 +214,8 @@ describe("the system description's examples", () => {
         ),
       ),
     ).toEqual([
-      'line 5: candidates.0.command: ${ is not filled here: variables are filled only in paths, vars and locks',
-      'line 5: candidates.0.env: ${ is not filled here: variables are filled only in paths, vars and locks',
+      'line 5: candidates.0.command.2: ${ is not filled here: variables are filled only in paths, vars and locks',
+      'line 5: candidates.0.env.A: ${ is not filled here: variables are filled only in paths, vars and locks',
     ])
     expect(issues(hfWith("{ path: hub, costDescription: rebuild, glob: '${X}/*' }"))).toEqual([
       'line 5: candidates.0.glob: ${ is not filled here: variables are filled only in paths, vars and locks',
@@ -231,7 +231,7 @@ describe("the system description's examples", () => {
       unfilled('inUse.processes.0'),
     ])
     expect(issues(GO.replace('[go, env, GOMODCACHE]', "[go, env, -C, '${HOME}']"))).toEqual([
-      unfilled('vars.GOMODCACHE.1.command'),
+      unfilled('vars.GOMODCACHE.1.command.3'),
     ])
     expect(
       issues(GO.replace('- command: [go, env, GOMODCACHE]', "- { file: ~/go.toml, key: '${X}' }")),
@@ -600,12 +600,12 @@ describe('a bad descriptor names the field path', () => {
     [
       "a variable in a candidate's command",
       PNPM.replace("'{path}']", "'{path}', '${STORE}']"),
-      'line 12: candidates.0.command: ${ is not filled here: variables are filled only in paths, vars and locks',
+      'line 12: candidates.0.command.5: ${ is not filled here: variables are filled only in paths, vars and locks',
     ],
     [
       "a variable in a candidate's env",
       PNPM.replace("'{path}']", "'{path}']\n    env: { CACHE: '${XDG_CACHE_HOME}/x' }"),
-      'line 13: candidates.0.env: ${ is not filled here: variables are filled only in paths, vars and locks',
+      'line 13: candidates.0.env.CACHE: ${ is not filled here: variables are filled only in paths, vars and locks',
     ],
     [
       'a variable name that is no environment variable name',

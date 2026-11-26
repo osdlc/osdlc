@@ -1237,6 +1237,22 @@ describe('variables (tier 2)', () => {
     }
   })
 
+  test('a detect whose onPath conditions already fail resolves no variable', async () => {
+    const text = PNPM_VARS.replace('vars:', 'detect: { all: [{ onPath: corepack }] }\nvars:')
+    const b = buildVars('pnpm', text, {
+      programs: { pnpm: { 'store path': { stdout: '/data/pnpm/store\n' } } },
+    })
+    expect(await b.plugin.detect(fakeContext())).toBe(false)
+    expect(b.calls).toEqual([])
+
+    const any = PNPM_VARS.replace('vars:', 'detect: { any: [{ onPath: corepack }] }\nvars:')
+    const c = buildVars('pnpm', any, {
+      programs: { pnpm: { 'store path': { stdout: '/data/pnpm/store\n' } } },
+    })
+    expect(await c.plugin.detect(fakeContext())).toBe(false)
+    expect(c.calls).toEqual([])
+  })
+
   test("pnpm's store is found where pnpm says it is, and the prune is pointed there", async () => {
     let moved = ''
     const b = buildVars('pnpm', PNPM_VARS, {

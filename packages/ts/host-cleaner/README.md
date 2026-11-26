@@ -335,7 +335,8 @@ const plugin = descriptorPlugin('pip', d)
 - **roots:** each of its `paths` for this OS that `pathProblem` passes, as a
   self root. A path may not be a symlink (a trailing `/` is dropped first),
   be or hold home, a personal folder, a target or a checkout, sit outside
-  home (unless a variable set in the config gives it), or hold or sit inside
+  home (unless a variable set in the config, or an `XDG_*` folder the
+  environment sets that passes the folder checks, gives it), or hold or sit inside
   host-cleaner's own folders.
 - **discover:** one candidate per folder, or per `glob` match inside it
   (`globMatches`; a match may be a file, and `{a,b}` takes either, as in a
@@ -555,17 +556,32 @@ paths:
 `XDG_STATE_HOME` are built in; each `XDG_*` folder falls back to its XDG default
 under home on every OS. A variable is resolved only when a folder or lock on
 this OS uses it, or another such variable uses it; variables that don't use each
-other are resolved at the same time. A folder whose variable has no value is left out, and `status`
+other are resolved at the same time. A `detect` that its `onPath` conditions
+already leave inactive resolves none, and a file is read only when it is a
+regular file and within the command limit. A folder whose variable has no value is left out, and `status`
 notes which variable and why each source gave none. `${` is refused in every
 other field, such as a candidate's `command`: a command is pointed at its folder
 with `{path}`. A resolved folder must sit inside home, except one under a variable
 set in the config's `plugins.<name>.vars`, which is trusted, so a cache moved to
 another disk can be cleaned. An `XDG_*` folder your environment sets is trusted
-too. Either must pass the checks on a descriptor's folders (no `..`, not a home
-folder or a root):
+too, as your own setting, with nothing in the config: a folder under
+`XDG_CACHE_HOME=/var/cache`, say, may be cleaned. Either must pass the checks on
+a descriptor's folders (no `..`, not a home folder or a root):
 
 ```json
 { "plugins": { "go": { "vars": { "GOMODCACHE": "/Volumes/build/go/mod" } } } }
+```
+
+`resolveVars(declared, at)` resolves a descriptor's `vars` outside the engine
+(`VarSource`, `VarsAt`): each variable's `value`, the source it came `from`,
+whether it is `trusted`, and each source `tried` before it (`VarValue`, in
+`Vars`). `fillTemplate(template, vars, home)` fills one folder from them.
+`BUILT_IN_VARS` lists the built-ins with their defaults under home, and
+`VAR_COMMAND_LIMIT_MS` (5 s) is how long a command may run, or a file be read:
+
+```ts
+const vars = await resolveVars(d.vars ?? {}, { home, os: 'linux', env: process.env, kit, signal })
+const store = fillTemplate('${STORE}', vars, home) // { path, trusted }, or { missing }
 ```
 
 The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves

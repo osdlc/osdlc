@@ -20,14 +20,13 @@ import { lstatSync, readdirSync, realpathSync, type Dirent } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
 
-import { failureText, firstLine, type NeverExitedReason } from '@osdlc/command-seam'
 import { globRegExp } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
 import { checkoutsOf, hoursText, liveBlockers, type Checkout } from '../artifacts.ts'
 import { hostDirs } from '../config.ts'
 import { COST_DESCRIPTIONS, type CostDescription } from '../cost.ts'
-import { DISCOVER_LIMIT_MS, errorText, yieldToLimit } from '../helpers.ts'
+import { DISCOVER_LIMIT_MS, errorText, runFailure, yieldToLimit } from '../helpers.ts'
 import { containsIgnored, coveredBy } from '../ignore.ts'
 import { DEFAULT_IDLE_HOURS, idleHoursSetting, present, type Idle, type Kit } from '../kit.ts'
 import { containedIn, isLink, linkedCheckouts, realOr, rootProblem, within } from '../roots.ts'
@@ -47,6 +46,7 @@ import {
 import {
   DEFAULT_MAX_ENTRIES,
   FolderSchema,
+  isFolder,
   braceExpansions,
   type Descriptor,
   type DescriptorCandidate,
@@ -121,7 +121,7 @@ const realBelow = (path: string): string => {
  * Why `path`, one of a descriptor's folders, may not be cleaned, or null when
  * it may. It must pass the core's check of a self root ({@link rootProblem}),
  * sit strictly inside `home` unless it is `trusted` (from a variable set in
- * the config), and neither hold nor sit inside host-cleaner's own folders.
+ * the config, or an `XDG_*` folder the environment sets), and neither hold nor sit inside host-cleaner's own folders.
  * Judged on the path as given and on its real path, as the filesystem spells
  * it.
  */
@@ -426,7 +426,10 @@ interface EngineAt {
   vars?: Readonly<Record<string, string | undefined>> | undefined
 }
 
-/** One of a descriptor's folders, resolved; trusted when a config value gave it. */
+/**
+ * One of a descriptor's folders, resolved; trusted when a config value, or an
+ * `XDG_*` folder the environment sets that passes the folder checks, gave it.
+ */
 type Folder = { path: string; trusted: boolean }
 
 /** Why the variable `missing` has no value, for a note: each source tried and why it gave none. */
@@ -466,7 +469,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       os: at.os,
       env: at.env,
       config: at.vars,
-      trustsXdg: (folder) => FolderSchema.safeParse(folder).success,
+      trustsXdg: isFolder,
       kit,
       signal: ctx.signal,
       only: used,
@@ -1066,10 +1069,11 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     )
   }
 
-  // detect's limit covers every variable's commands as if they ran one at a time.
+  // detect's limit covers every variable's commands and file reads as if they
+  // ran one at a time, each to its limit.
   const commands = Object.values(d.vars ?? {})
     .flat()
-    .filter((s) => 'command' in s).length
+    .filter((s) => 'command' in s || 'file' in s).length
 
   return {
     name,
@@ -1082,6 +1086,15 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       if (skip !== undefined) return { active: false, note: skip }
       if (d.supersededBy !== undefined && (await at.runs(d.supersededBy, ctx)) === true) {
         return { active: false, note: `skipped: the plugin ${d.supersededBy} runs instead` }
+      }
+      // When the onPath conditions alone leave it inactive, no variable is resolved.
+      const missingProgram = (c: { onPath?: string | undefined }): boolean =>
+        c.onPath !== undefined && !kit.onPath(c.onPath)
+      if (
+        d.detect?.all?.some(missingProgram) === true ||
+        d.detect?.any?.every(missingProgram) === true
+      ) {
+        return false
       }
       await refresh(ctx)
       const holds = (c: { onPath?: string | undefined; exists?: string | undefined }): boolean => {
@@ -1148,12 +1161,6 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
 const refusing = (blockers: ReturnType<typeof liveBlockers>): Row['objections'] =>
   blockers.map((b) => ({ level: 'refuse' as const, ...b }))
 
-/** How a command that never exited ended: only one that did not start is sure to have removed nothing. */
-const ended = (reason: NeverExitedReason | undefined): string =>
-  reason === 'spawn'
-    ? 'did not run'
-    : `stopped before it exited (${reason ?? 'unknown'}); it may have removed part of the folder`
-
 const bytesText = (n: number | null): string => (n === null ? 'an unknown size' : `${n} bytes`)
 
 /**
@@ -1180,10 +1187,11 @@ async function runCommand(
   const env = Object.fromEntries(Object.entries(entry.env ?? {}).map(([k, v]) => [k, fill(v)]))
   const r = await kit.run(argv, { signal: ctx.signal, cwd: home, env, timeoutMs: DELETE_LIMIT_MS })
   if (!r.ok) {
-    const said = firstLine(failureText(r, { both: true }))
-    throw new Error(
-      `${argv.join(' ')} failed (${r.neverExited === true ? ended(r.reason) : `exit ${r.exitCode}`})${said === '' ? '' : `: ${said}`}`,
-    )
+    const { how, said } = runFailure(r)
+    // Only a command that did not start is sure to have removed nothing.
+    const partial =
+      r.neverExited === true && r.reason !== 'spawn' ? '; it may have removed part of the folder' : ''
+    throw new Error(`${argv.join(' ')} failed (${how}${partial})${said === '' ? '' : `: ${said}`}`)
   }
   return `ran ${argv.join(' ')}; ${bytesText(before)} before, ${bytesText(kit.size(real))} after`
 }

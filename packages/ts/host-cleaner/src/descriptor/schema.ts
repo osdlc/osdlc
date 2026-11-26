@@ -12,7 +12,7 @@ import { z } from 'zod'
 import { LineCounter, isMap, isScalar, isSeq, parseDocument, type Document } from 'yaml'
 
 import { COST_DESCRIPTIONS } from '../cost.ts'
-import { BUILT_IN_VARS, VAR_FILE_EXTENSIONS, badVarRef, varRefs } from './vars.ts'
+import { BUILT_IN_VARS, VAR_FILE_EXTENSIONS, badVarRef, varRefs } from './var-names.ts'
 
 /** The format version this reader takes. */
 export const DESCRIPTOR_VERSION = 1
@@ -325,11 +325,6 @@ function candidateIssues(c: Record<string, unknown>): Issue[] {
     if (c['env'] !== undefined) at('env', 'only with command')
   }
   if (c['maxEntries'] !== undefined && c['glob'] === undefined) at('maxEntries', 'only with glob')
-  // A command reaches its folder through {path}, not a variable.
-  const unfilled = (v: unknown) => typeof v === 'string' && v.includes('${')
-  if (Array.isArray(c['command']) && c['command'].some(unfilled)) at('command', `\${ ${UNFILLED}`)
-  if (isObject(c['env']) && Object.values(c['env']).some(unfilled)) at('env', `\${ ${UNFILLED}`)
-  if (unfilled(c['glob'])) at('glob', `\${ ${UNFILLED}`)
   return issues
 }
 
@@ -441,10 +436,6 @@ export const DescriptorSchema = z
   .superRefine((d, ctx) => {
     addIssues(ctx, pathNameIssues(d))
     addIssues(ctx, varIssues(d))
-    addIssues(
-      ctx,
-      unfilledFields(d).map((path) => ({ path, message: `\${ ${UNFILLED}` })),
-    )
   })
 
 /**
@@ -493,39 +484,38 @@ function crossFieldIssues(value: unknown): Issue[] {
 }
 
 /**
- * The fields outside a candidate that hold a `${` but are never filled:
- * `inUse.processes`, `detect`'s `onPath`, a `project` entry's `dir` and
- * `marker`, and a variable's `command` and `key`.
+ * The fields a `${VAR}` is filled in, `*` for any key or index: a folder in
+ * `paths`, a variable's `file` and `value`, and a lock. Every other string is
+ * refused a `${` by {@link unfilledIssues}.
  */
-function unfilledFields(d: {
-  detect?:
-    | {
-        any?: { onPath?: string | undefined }[] | undefined
-        all?: { onPath?: string | undefined }[] | undefined
-      }
-    | undefined
-  inUse?: { processes?: string[] | undefined } | undefined
-  project?: { dir: string; marker: string }[] | undefined
-  vars?: VarsField | undefined
-}): FieldPath[] {
-  const out: FieldPath[] = []
-  const check = (text: string | undefined, path: FieldPath): void => {
-    if (text?.includes('${') === true) out.push(path)
+const FILLED: readonly (readonly string[])[] = [
+  ['paths', '*', '*'],
+  ['vars', '*', '*', 'file'],
+  ['vars', '*', '*', 'value'],
+  ['vars', '*', '*', 'value', '*'],
+  ['inUse', 'locks', '*'],
+]
+
+const isFilled = (path: readonly PropertyKey[]): boolean =>
+  FILLED.some(
+    (f) => f.length === path.length && f.every((k, i) => k === '*' || k === String(path[i])),
+  )
+
+/**
+ * Each string in the raw `value` that holds a `${` outside the fields that
+ * fill it. Read from the raw value, so they are reported beside the schema's
+ * problems.
+ */
+function unfilledIssues(value: unknown): Issue[] {
+  const issues: Issue[] = []
+  const walk = (v: unknown, path: PropertyKey[]): void => {
+    if (typeof v === 'string') {
+      if (v.includes('${') && !isFilled(path)) issues.push({ path, message: `\${ ${UNFILLED}` })
+    } else if (Array.isArray(v)) v.forEach((item, i) => walk(item, [...path, i]))
+    else if (isObject(v)) for (const [key, item] of Object.entries(v)) walk(item, [...path, key])
   }
-  d.inUse?.processes?.forEach((p, i) => check(p, ['inUse', 'processes', i]))
-  for (const mode of ['any', 'all'] as const)
-    d.detect?.[mode]?.forEach((c, i) => check(c.onPath, ['detect', mode, i, 'onPath']))
-  d.project?.forEach((p, i) => {
-    check(p.dir, ['project', i, 'dir'])
-    check(p.marker, ['project', i, 'marker'])
-  })
-  for (const [name, sources] of Object.entries(d.vars ?? {}))
-    sources.forEach((s, i) => {
-      if ('command' in s && s.command.some((a) => a.includes('${')))
-        out.push(['vars', name, i, 'command'])
-      if ('key' in s) check(s.key, ['vars', name, i, 'key'])
-    })
-  return out
+  walk(value, [])
+  return issues
 }
 
 type VarsField = Record<string, z.output<typeof varSource>[]>
@@ -677,7 +667,8 @@ function check(value: unknown): { data?: Descriptor; issues: { path: Path; messa
     const seen = new Set(issues.map(key))
     issues.push(...crossFieldIssues(value).filter((i) => !seen.has(key(i))))
   }
-  return parsed.success ? { data: parsed.data, issues } : { issues }
+  issues.push(...unfilledIssues(value))
+  return parsed.success && issues.length === 0 ? { data: parsed.data, issues } : { issues }
 }
 
 const fieldPath = (path: Path): string => (path.length === 0 ? '(top)' : path.map(String).join('.'))
