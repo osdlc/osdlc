@@ -41,12 +41,12 @@ import { WriteConflictError } from '@osdlc/etag-write'
 import {
   claimLock,
   holderGone,
-  NotALockError,
   processIdentity,
+  readHeldLock,
   releaseLock,
   untouchedFor,
   withLock,
-  type LockContent,
+  type HeldLock,
   type SectionHolder,
   type StaleRule,
 } from '@osdlc/file-lock'
@@ -451,20 +451,16 @@ export function claimCloneLock(path: string, waitMs: number): string | null {
  */
 export function cloneLockHeld(path: string): boolean {
   accessSync(dirname(path), constants.W_OK | constants.X_OK)
-  const st = lstatOrNull(path)
-  if (st === null) return false
-  if (!st.isFile()) throw new NotALockError(path, st.isDirectory() ? 'directory' : 'other')
-  const raw = readFileSync(path, 'utf8')
-  let content: LockContent<CloneLockContent> | null = null
+  let held: HeldLock<CloneLockContent>
   try {
-    const value: unknown = JSON.parse(raw)
-    if (typeof value === 'object' && !Array.isArray(value)) {
-      content = value as LockContent<CloneLockContent> | null
-    }
-  } catch {
-    // Not pr-update's lock: never stale, as for a claim.
+    // Read and parsed as a claim reads it: content that is not pr-update's is never stale.
+    held = readHeldLock<CloneLockContent>(path)
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return false
+    throw e
   }
-  return !holderIsGone({ content, mtimeMs: st.mtimeMs, raw })
+  return !holderIsGone(held)
 }
 
 /** The target a clone is asked for, with the host `gh` is pointed at. */

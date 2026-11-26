@@ -1967,4 +1967,18 @@ describe('every removal passes one check, the same in a dry run (final review ro
       )
     })
   })
+
+  describe('what git does not list, or a person locked, keeps the clone (final review round 4)', () => {
+    test('a clone whose lock holds a token that is not a string is busy, as a claim finds it, in a dry run too', () => {
+      const clone = makeClone('acme/api', 400)
+      const lock = { tool: 'pr-update', holder: { pid: 2147483646 }, token: 123 }
+      writeFileSync(cloneLockPath(clone), JSON.stringify(lock))
+
+      const r = bothModes({ allClones: true })
+
+      expect(r.removed).toEqual([])
+      expect(r.skipped.map((e) => [e.path, e.skip])).toEqual([[clone, 'busy']])
+      expect(existsSync(clone)).toBe(true)
+    })
+  })
 })
