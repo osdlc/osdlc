@@ -1290,7 +1290,7 @@ describe('pr-update mirror prune on the command line (review round 1)', () => {
     const help = await run('mirror', 'prune', '--help', '--all')
     expect(help.code).toBe(EXIT.ok)
     expect(help.out.match(/^\s+1\s/gm)).toHaveLength(1)
-    expect(help.out).toMatch(/It exits 1 when\s+something\s+could\s+not\s+be\s+removed\./)
+    expect(help.out).toMatch(/It\s+exits\s+1\s+when\s+something\s+could\s+not\s+be\s+removed\./)
   })
 
   test('the JSON names allClones', async () => {
