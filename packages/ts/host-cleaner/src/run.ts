@@ -351,14 +351,14 @@ async function detectAll(
 
 /**
  * The context whose targets the detected `plugins`' `scope` added to, less
- * those `ignore` covers; a failed `scope`, or an answer or entry the core does
- * not take, is a warning.
+ * those its `ignore` covers, and that `ignore` itself; a failed `scope`, or an
+ * answer or entry the core does not take, is a warning.
  */
 async function scopeOf(
   plugins: readonly Plugin[],
   ctx: RunCtx,
   warnings: string[],
-): Promise<RunCtx> {
+): Promise<RunCtx & { ignore: readonly string[] }> {
   const guarded = guard(warnings)
   const ignore = ctx.ignore ?? []
   const targets = ctx.targets.filter((t) => coveredBy(t, ignore) === undefined)
@@ -373,7 +373,7 @@ async function scopeOf(
       if (!targets.includes(root) && coveredBy(root, ignore) === undefined) targets.push(root)
     }
   }
-  return { ...ctx, targets }
+  return { ...ctx, targets, ignore }
 }
 
 const detectedOf = (detections: readonly Detected[]): Plugin[] =>
@@ -457,15 +457,17 @@ export interface Inspection {
 }
 
 /**
- * Detect, scope and roots, as `survey` calls them, and nothing else: whether
- * each plugin applies here, why not, and where it may delete. A root the core
- * refuses (see `rootProblem` in `./roots.ts`) is left out with a warning, as
- * in `survey`. It proposes and deletes nothing, so it is quick where
- * `discover` walks every checkout; git is asked once per target only when a
- * plugin gives a root to check; plugins are asked one after another (D2),
- * so each hook that hangs adds its time limit. A plugin `skip` picks is listed as
- * `skipped`, after the check for a second plugin of its name, and none of its
- * hooks run.
+ * Detect, scope and roots, and nothing else: whether each plugin applies
+ * here, why not, and where it may delete. A root the core refuses (see
+ * `rootProblem` in `./roots.ts`) is left out with a warning, as in `survey`.
+ * `roots` is asked after `scope` with no `discover`, where `survey` asks it
+ * after `discover`, so a root a plugin takes from what it discovered (git's
+ * gone worktrees) is not listed. It proposes and deletes nothing, so it is
+ * quick where `discover` walks every checkout; git is asked once per target
+ * only when a plugin gives a root to check; plugins are asked one after
+ * another (D2), so each hook that hangs adds its time limit. A plugin `skip`
+ * picks is listed as `skipped`, after the check for a second plugin of its
+ * name, and none of its hooks run.
  */
 export async function inspect(
   all: readonly Plugin[],
@@ -530,11 +532,7 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
   const plugins = detectedOf(detections)
   const scoped = await scopeOf(plugins, ctx, warnings)
   const targets = scoped.targets
-  const ignore = scoped.ignore ?? []
-  // Asked before `discover`, as `inspect` asks them, so `plugins` shows the roots a sweep holds candidates to.
-  const asked = await askRoots(plugins, scoped, warnings)
-  const { rootsOf, home } = asked
-  const linked = asked.linked ?? linkedCheckouts(targets)
+  const ignore = scoped.ignore
 
   const discovered: Candidate[] = []
   const first = new Map<string, string>()
@@ -582,6 +580,10 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
 
   const known = new Set(candidates.map((c) => c.id))
   const objections: Objection[] = []
+  // Asked after `discover`, so a plugin may root what it found (git's gone worktrees).
+  const asked = await askRoots(plugins, scoped, warnings)
+  const { rootsOf, home } = asked
+  const linked = asked.linked ?? linkedCheckouts(targets)
   const boundsOf = (name: string): Bounds => ({
     roots: rootsOf.get(name)?.roots ?? [],
     self: rootsOf.get(name)?.self ?? [],

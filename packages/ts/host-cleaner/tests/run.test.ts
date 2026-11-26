@@ -316,7 +316,11 @@ describe('inspect', () => {
     const changed = gitPlugin()
     changed.discover = () => []
     const found = await inspect(
-      [git, { ...gitPlugin(), name: 'copy', limits: { detect: 1000 } }, { ...changed, name: 'mine' }],
+      [
+        git,
+        { ...gitPlugin(), name: 'copy', limits: { detect: 1000 } },
+        { ...changed, name: 'mine' },
+      ],
       ctx,
     )
     expect(found.plugins).toEqual([
@@ -339,14 +343,14 @@ describe('inspect', () => {
     ])
   })
 
-  test('survey asks roots before discover, as inspect does', async () => {
+  test('survey asks roots after discover, so a plugin may root what it found', async () => {
     const log: string[] = []
     const p = fake('a', [], log, {
       roots: () => (log.push('roots'), []),
       discover: () => (log.push('discover'), []),
     })
     await survey([p], ctx)
-    expect(log).toEqual(['roots', 'discover'])
+    expect(log).toEqual(['discover', 'roots'])
   })
 
   test('a plugin skip picks is listed as skipped with no hook run, after the check for a second of its name', async () => {

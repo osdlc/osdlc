@@ -432,10 +432,10 @@ A root the core refuses is left out with a warning, as `status` does, and a
 self root is marked `(itself too)`. A plugin whose `roots` throws or times out,
 or whose every root is refused, shows `roots: none, the targets alone` followed
 by why in brackets; the JSON row has it as `rootsFailed`. Git is asked once per
-target only when a plugin gives a root to check. `roots` is asked before
-`discover` in a sweep too, so the roots shown are the ones `status` holds
-candidates to. A plugin the config disables is listed as
-`disabled`, and its `detect` is not run. `--format json` prints the same, one
+target only when a plugin gives a root to check. `plugins` runs no
+`discover`, where a sweep asks `roots` after it, so a root a plugin takes from
+what it found (git's gone worktrees) shows in `status` and not here. A plugin
+the config disables is listed as `disabled`, and its `detect` is not run. `--format json` prints the same, one
 object per plugin.
 
 ```text
