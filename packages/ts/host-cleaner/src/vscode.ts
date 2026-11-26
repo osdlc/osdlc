@@ -46,6 +46,7 @@ import {
 import { attachKit, pluginKit, present, type Kit, type KitOptions, type Running } from './kit.ts'
 import {
   PLUGIN_API,
+  builtIn,
   definePlugin,
   type Candidate,
   type Ctx,
@@ -968,7 +969,7 @@ function pluginOf(
   opts: VscodeOptions = {},
   kit: Kit = pluginKit(editor.name, opts),
 ): Plugin {
-  const plugin = build(editor, kit, opts)
+  const plugin = builtIn(build(editor, kit, opts))
   attachKit(plugin, kit)
   return plugin
 }
