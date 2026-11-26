@@ -12,7 +12,13 @@ import { z } from 'zod'
 import { LineCounter, isMap, isScalar, isSeq, parseDocument, type Document } from 'yaml'
 
 import { COST_DESCRIPTIONS } from '../cost.ts'
-import { BUILT_IN_VARS, VAR_FILE_EXTENSIONS, badVarRef, varRefs } from './var-names.ts'
+import {
+  BUILT_IN_VARS,
+  VAR_FILE_EXTENSIONS,
+  badVarRef,
+  sourceTemplates,
+  varRefs,
+} from './var-names.ts'
 
 /** The format version this reader takes. */
 export const DESCRIPTOR_VERSION = 1
@@ -539,15 +545,8 @@ function templatesOf(d: {
       if (text !== undefined) out.push({ text, path: ['paths', name, os] })
   for (const [name, sources] of Object.entries(d.vars ?? {}))
     sources.forEach((s, i) => {
-      const at = ['vars', name, i]
-      if ('file' in s) out.push({ text: s.file, path: [...at, 'file'], inVar: name })
-      if ('value' in s) {
-        if (typeof s.value === 'string')
-          out.push({ text: s.value, path: [...at, 'value'], inVar: name })
-        else
-          for (const [os, text] of Object.entries(s.value))
-            if (text !== undefined) out.push({ text, path: [...at, 'value', os], inVar: name })
-      }
+      for (const t of sourceTemplates(s))
+        out.push({ text: t.text, path: ['vars', name, i, ...t.field], inVar: name })
     })
   d.inUse?.locks?.forEach((text, i) => out.push({ text, path: ['inUse', 'locks', i] }))
   return out

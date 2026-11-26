@@ -439,6 +439,28 @@ describe('the built-in variables', () => {
       trusted: true,
     })
   })
+
+  test('an env source reading an XDG folder keeps the trust its built-in has', async () => {
+    const { resolve } = setup({
+      env: { XDG_CACHE_HOME: '/data/cache', XDG_DATA_HOME: '/home', OTHER: '/data/cache' },
+    })
+    const v = await resolve(
+      {
+        CACHE_SET: [{ env: 'XDG_CACHE_HOME' }],
+        DATA_SET: [{ env: 'XDG_DATA_HOME' }],
+        OTHER: [{ env: 'OTHER' }],
+        YARN: [{ value: '${CACHE_SET}/yarn' }],
+      },
+      { trustsXdg: (f) => f !== '/home' },
+    )
+    expect(v.CACHE_SET).toMatchObject({ value: '/data/cache', trusted: true })
+    expect(v.YARN).toMatchObject({ value: '/data/cache/yarn', trusted: true })
+    expect(v.DATA_SET!.trusted).toBe(false)
+    expect(v.OTHER!.trusted).toBe(false)
+    const untrusting = setup({ env: { XDG_CACHE_HOME: '/data/cache' } })
+    const none = await untrusting.resolve({ CACHE_SET: [{ env: 'XDG_CACHE_HOME' }] })
+    expect(none.CACHE_SET!.trusted).toBe(false)
+  })
 })
 
 describe('fillTemplate', () => {

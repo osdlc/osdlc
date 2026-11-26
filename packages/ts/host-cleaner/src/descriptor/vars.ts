@@ -35,6 +35,7 @@ import {
   BUILT_IN_VARS,
   VAR_FILE_EXTENSIONS,
   VAR_REF,
+  sourceTemplates,
   varRefs,
   type VarFileExtension,
 } from './var-names.ts'
@@ -77,7 +78,8 @@ export interface VarValue {
   from?: string
   /**
    * Set in the config, an `XDG_*` folder the environment sets that
-   * {@link VarsAt.trustsXdg} passes, or a `value` inside a trusted variable's
+   * {@link VarsAt.trustsXdg} passes (as a built-in or read by an `env`
+   * source), or a `value` inside a trusted variable's
    * folder ({@link fillTemplate}): its folders may sit outside home.
    */
   trusted: boolean
@@ -177,7 +179,8 @@ export async function resolveVars(
   at: VarsAt,
 ): Promise<Vars> {
   const done: Vars = builtIns(at)
-  const fromConfig = configSet(declared, at)
+  const refs = refsMemo(at.os)
+  const fromConfig = configSet(declared, at.config, refs)
   const limit = at.timeoutMs ?? VAR_COMMAND_LIMIT_MS
   const started = new Map<string, Promise<void>>()
   // Which variables each one is waiting for. A wait that would close a cycle
@@ -230,7 +233,11 @@ export async function resolveVars(
     if ('command' in source) return commandValue(source, at, limit)
     if ('env' in source) {
       const v = ownValue(at.env, source.env)
-      return v === undefined || v === '' ? { failed: 'not set' } : { value: v, trusted: false }
+      if (v === undefined || v === '') return { failed: 'not set' }
+      // An `XDG_*` folder read this way keeps the trust its built-in has.
+      const xdg = Object.hasOwn(BUILT_IN_VARS, source.env) ? done[source.env] : undefined
+      const trusted = xdg?.from === `env ${source.env}` && xdg.trusted
+      return { value: v, trusted }
     }
     if ('file' in source) {
       const file = await fill(source.file, by)
@@ -248,14 +255,15 @@ export async function resolveVars(
       return { value: folderOf(set, at.home), from: 'config', trusted: true, tried: [] }
     }
     const tried: VarValue['tried'] = []
-    const uses = (s: VarSource) => refsOf(s, at.os).find((r) => fromConfig.has(r))
+    const uses = (s: VarSource) => refs(s).find((r) => fromConfig.has(r))
     const first = sources.findIndex((s) => uses(s) !== undefined)
-    for (const [i, source] of sources.entries()) {
-      if (i < first) {
-        const failed = `skipped: \${${uses(sources[first]!)!}} is set in the config`
+    if (first > 0) {
+      const failed = `skipped: \${${uses(sources[first]!)}} is set in the config`
+      for (const source of sources.slice(0, first)) {
         tried.push({ source: describeSource(source), failed })
-        continue
       }
+    }
+    for (const source of sources.slice(Math.max(first, 0))) {
       const given = await fromSource(source, name)
       const said = describeSource(source)
       if ('failed' in given) {
@@ -280,12 +288,30 @@ export async function resolveVars(
   )
 }
 
-/** The names `source`'s folder template uses on `os`. */
+/**
+ * The names `source`'s folder templates use on `os`: those of
+ * {@link sourceTemplates} that apply there, a per-OS `value`'s `all` before
+ * its `os` entry, as {@link forOs} reads it.
+ */
 function refsOf(source: VarSource, os: Os): string[] {
-  if ('file' in source) return varRefs(source.file)
-  if (!('value' in source)) return []
-  const template = forOs(source.value, os)
-  return template === undefined ? [] : varRefs(template)
+  const templates = sourceTemplates(source)
+  const perOs = templates.filter((t) => t.os !== undefined)
+  const onOs = perOs.find((t) => t.os === 'all') ?? perOs.find((t) => t.os === os)
+  const apply = templates.filter((t) => t.os === undefined || t === onOs)
+  return apply.flatMap((t) => varRefs(t.text))
+}
+
+/** {@link refsOf} on `os`, worked out once per source. */
+function refsMemo(os: Os): (source: VarSource) => string[] {
+  const memo = new Map<VarSource, string[]>()
+  return (source) => {
+    let refs = memo.get(source)
+    if (refs === undefined) {
+      refs = refsOf(source, os)
+      memo.set(source, refs)
+    }
+    return refs
+  }
 }
 
 /**
@@ -294,13 +320,14 @@ function refsOf(source: VarSource, os: Os): string[] {
  */
 function configSet(
   declared: Readonly<Record<string, readonly VarSource[]>>,
-  at: Pick<VarsAt, 'config' | 'os'>,
+  config: VarsAt['config'],
+  refs: (source: VarSource) => string[],
 ): Set<string> {
-  const out = new Set(Object.keys(declared).filter((n) => ownValue(at.config, n) !== undefined))
+  const out = new Set(Object.keys(declared).filter((n) => ownValue(config, n) !== undefined))
   for (let grew = true; grew;) {
     grew = false
     for (const [name, sources] of Object.entries(declared)) {
-      if (out.has(name) || !sources.some((s) => refsOf(s, at.os).some((r) => out.has(r)))) continue
+      if (out.has(name) || !sources.some((s) => refs(s).some((r) => out.has(r)))) continue
       out.add(name)
       grew = true
     }

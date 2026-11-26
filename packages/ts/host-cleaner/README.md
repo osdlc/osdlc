@@ -583,7 +583,8 @@ candidate's `command`: a command is pointed at its folder with `{path}`. A
 resolved folder must sit inside home, except one under a variable set in the
 config's `plugins.<name>.vars`, which is trusted, so a cache moved to another
 disk can be cleaned. An `XDG_*` folder your environment sets is trusted too, as
-your own setting, with nothing in the config: a folder under
+your own setting, with nothing in the config, whether a folder uses the
+built-in or a variable with an `env: XDG_CACHE_HOME` source: a folder under
 `XDG_CACHE_HOME=/var/cache`, say, may be cleaned. Either must pass the checks on
 a descriptor's folders (no `..`, not a home folder or a root):
 
