@@ -574,8 +574,12 @@ A code plugin published as a package runs when the config names it:
 `"plugins": { "podman": { "package": "@acme/host-cleaner-podman" } }`. Only a
 package the config names is loaded, by its npm name and never from a path: from
 the `node_modules` folders host-cleaner itself is installed in, then the global
-npm prefix (`npm_config_prefix`, else npm's default: `%APPDATA%\npm` on
-Windows, Node's own elsewhere; a relative prefix is not used). Its default
+npm prefix, found as npm finds it for `npm i -g`: `npm_config_prefix`, else
+`prefix` in your `~/.npmrc` (or `npm_config_userconfig`), the global npmrc, or
+the npmrc shipped with the `npm` on your PATH (Homebrew's sets it), else npm's
+default (`%APPDATA%\npm` on Windows, else `PREFIX`, else the one Node is
+installed under). A project `.npmrc`, an `npm` in a `node_modules` folder and a
+relative prefix are not used. Its default
 export must be a `definePlugin` value whose `name` is the config key and whose
 `api` is this host-cleaner's `PLUGIN_API`. A name a built-in has is refused
 (exit 2). A package replaces a shipped descriptor of its name, and a

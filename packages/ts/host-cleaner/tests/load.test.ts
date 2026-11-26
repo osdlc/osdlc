@@ -4,7 +4,7 @@
  * with packages between the built-ins and the descriptors.
  */
 
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
@@ -113,6 +113,110 @@ describe('where a package is looked for', () => {
       expect(packageRoots(env).filter((r) => !isAbsolute(r))).toEqual([])
     }
   })
+
+  /** The global root under `prefix`. */
+  const globalRoot = (prefix: string): string =>
+    process.platform === 'win32'
+      ? join(prefix, 'node_modules')
+      : join(prefix, 'lib', 'node_modules')
+
+  /** `text` written to `file`, its folders made. */
+  const write = (file: string, text: string): void => {
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, text)
+  }
+
+  /** An npm installed under `<dir>/npm`, its `bin` on PATH, with `npmrc` beside it as a distributor ships it. */
+  function npmAt(dir: string, npmrc: string): string {
+    const cli = join(dir, 'npm', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')
+    write(cli, '')
+    write(join(dir, 'npm', 'lib', 'node_modules', 'npm', 'npmrc'), npmrc)
+    mkdirSync(join(dir, 'npm', 'bin'))
+    symlinkSync(cli, join(dir, 'npm', 'bin', 'npm'))
+    return join(dir, 'npm', 'bin')
+  }
+
+  test('the prefix is read from npmrc as npm reads it: the user’s, then the global one', () => {
+    const home = tempDir()
+    write(
+      join(home, '.npmrc'),
+      `; mine\n# also a comment\nregistry=https://example.test/\nprefix = '${home}/g' \n[section]\nprefix=/elsewhere\n`,
+    )
+    expect(packageRoots({ HOME: home }, '/a').at(-1)).toBe(globalRoot(join(home, 'g')))
+    write(join(home, '.npmrc'), 'prefix=~/tilde\n')
+    expect(packageRoots({ HOME: home }, '/a').at(-1)).toBe(globalRoot(join(home, 'tilde')))
+    write(join(home, 'other.npmrc'), 'prefix=${HOME}/other ; a comment\n')
+    expect(
+      packageRoots({ HOME: home, NPM_CONFIG_USERCONFIG: join(home, 'other.npmrc') }, '/a').at(-1),
+    ).toBe(globalRoot(join(home, 'other')))
+    // The global npmrc is `<prefix>/etc/npmrc`, the prefix as far as the files above it set it.
+    write(join(home, 'u.npmrc'), `globalconfig=${join(home, 'g.npmrc')}\n`)
+    write(join(home, 'g.npmrc'), `prefix=${join(home, 'system')}\n`)
+    expect(
+      packageRoots({ HOME: home, npm_config_userconfig: join(home, 'u.npmrc') }, '/a').at(-1),
+    ).toBe(globalRoot(join(home, 'system')))
+    write(join(home, 'p', 'etc', 'npmrc'), `prefix=${join(home, 'from-etc')}\n`)
+    expect(
+      packageRoots(
+        { HOME: home, npm_config_userconfig: '/none', PREFIX: join(home, 'p') },
+        '/a',
+      ).at(-1),
+    ).toBe(globalRoot(join(home, 'from-etc')))
+  })
+
+  test('the environment wins over npmrc, in any case, and PREFIX is npm’s default', () => {
+    const home = tempDir()
+    write(join(home, '.npmrc'), `prefix=${join(home, 'user')}\n`)
+    expect(packageRoots({ HOME: home, NPM_CONFIG_PREFIX: '/opt/up' }, '/a').at(-1)).toBe(
+      globalRoot('/opt/up'),
+    )
+    expect(packageRoots({ HOME: home, npm_config_prefix: '' }, '/a').at(-1)).toBe(
+      globalRoot(join(home, 'user')),
+    )
+    expect(packageRoots({ PREFIX: '/opt/termux' }, '/a').at(-1)).toBe(globalRoot('/opt/termux'))
+    expect(packageRoots({ HOME: home, PREFIX: '/opt/termux' }, '/a').at(-1)).toBe(
+      globalRoot(join(home, 'user')),
+    )
+  })
+
+  test.skipIf(process.platform === 'win32')(
+    'the npmrc the npm on PATH ships with sets the prefix, as Homebrew’s does',
+    () => {
+      const dir = tempDir()
+      const bin = npmAt(dir, `prefix=${join(dir, 'brew')}\n`)
+      expect(packageRoots({ PATH: `/nowhere:${bin}` }, '/a').at(-1)).toBe(
+        globalRoot(join(dir, 'brew')),
+      )
+      // Below the user's npmrc and the global one, which `<prefix>/etc/npmrc` names.
+      write(join(dir, 'brew', 'etc', 'npmrc'), `prefix=${join(dir, 'etc')}\n`)
+      expect(packageRoots({ PATH: bin }, '/a').at(-1)).toBe(globalRoot(join(dir, 'etc')))
+      write(join(dir, '.npmrc'), `prefix=${join(dir, 'user')}\n`)
+      expect(packageRoots({ PATH: bin, HOME: dir }, '/a').at(-1)).toBe(
+        globalRoot(join(dir, 'user')),
+      )
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'no npmrc is read from the folder host-cleaner runs in or from a node_modules/.bin on PATH',
+    () => {
+      const checkout = tempDir()
+      write(join(checkout, '.npmrc'), `prefix=${join(checkout, 'project')}\n`)
+      const bin = npmAt(join(checkout, 'node_modules', '.bin'), `prefix=${join(checkout, 'dep')}\n`)
+      const shim = join(tempDir(), 'npm')
+      write(shim, '#!/bin/sh\n')
+      const plain = packageRoots({}, checkout)
+      for (const env of [
+        { PATH: bin },
+        { PATH: `.:${bin}` },
+        { PATH: `${dirname(shim)}:${npmAt(tempDir(), 'prefix=/later\n')}` },
+        { HOME: checkout, npm_config_userconfig: '.npmrc' },
+      ]) {
+        expect(packageRoots(env, checkout)).toEqual(plain)
+      }
+      expect(packageRoots({ PREFIX: 'project' }, checkout)).toEqual(plain.slice(0, -1))
+    },
+  )
 
   test('the first root that has the package wins', async () => {
     const first = nodeModules(tempDir())
