@@ -360,8 +360,9 @@ host-cleaner clean --pick claude-history:~/.claude/projects/-Users-me-dev-app-wt
 ```
 
 It is a `refuse` while a Claude Code session in it is running (`live-session`:
-a `~/.claude/sessions/<pid>.json` whose process is alive and whose `cwd` or
-session is the folder's; a process that started after the file was last
+a `~/.claude/sessions/<pid>.json` whose process is alive and whose session is
+the folder's, or whose `cwd` gives the folder's name, or past 200 characters
+the name of a path the folder records; a process that started after the file was last
 written, and after its `startedAt`, reused the pid and does not count), while a
 process still works in the gone folder (`live-process`; macOS gives no name for
 a removed folder, so there such a process is not seen), or when either cannot

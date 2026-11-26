@@ -323,9 +323,19 @@ function liveSessions(
   return { live, unknown }
 }
 
-/** Whether `s` is a session of the project folder `name`, which records `record`. */
-const sessionOf = (s: Session, name: string, record: ProjectRecord): boolean =>
-  (s.cwd !== '' && isFolderOf(s.cwd, name)) || record.sessions.includes(`${s.sessionId}.jsonl`)
+/**
+ * Whether `s` is a session of the project folder `name`, which records
+ * `record`: its transcript is there, or its `cwd` gives the folder's whole name
+ * or that of a path the folder records. A shortened name's hash is of the whole
+ * path, so another path with the same first {@link NAME_LIMIT} characters has
+ * another folder.
+ */
+function sessionOf(s: Session, name: string, record: ProjectRecord): boolean {
+  if (record.sessions.includes(`${s.sessionId}.jsonl`)) return true
+  if (s.cwd === '') return false
+  const full = projectFolderName(s.cwd)
+  return full === name || record.paths.some((p) => projectFolderName(p) === full)
+}
 
 /** What a scan reads once for every folder; `sessions` gives the live sessions that may be a folder's. */
 interface Seen {
@@ -391,7 +401,8 @@ function rowFor(kit: Kit, dir: string, seen: Seen, { sized = true } = {}): Row |
 
 /** The plugin on `kit`, reading Claude Code's folders under `env`. */
 function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | undefined>>): Plugin {
-  const configOf = (ctx: Ctx): string => claudeConfigDir(env, ctx.cwd, ctx.home ?? homedir())
+  // An empty home, as from `HOME=`, would make the folder relative.
+  const configOf = (ctx: Ctx): string => claudeConfigDir(env, ctx.cwd, ctx.home || homedir())
   const projectsOf = (ctx: Ctx): string => join(configOf(ctx), 'projects')
   let rows = new Map<string, Row>()
   /** For a scan of every folder: the sessions read once. */

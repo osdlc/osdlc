@@ -167,14 +167,14 @@ describe('mount points', () => {
     expect(fstabMounts(text)).toEqual(['/mnt/data'])
   })
 
-  test.skipIf(process.platform !== 'linux')(
+  test.skipIf(process.platform === 'win32')(
     'a gone path on a volume that is mounted is not taken for one that is away',
     () => {
-      // /proc is a volume mounted on the root's.
-      expect(unmounted('/proc/host-cleaner-no-such/app', new Set(), ['/'])).toBe(false)
-      expect(unmounted('/proc/host-cleaner-no-such/app', new Set(['/proc']), [])).toBe(false)
+      // /dev is a volume mounted on the root's.
+      expect(unmounted('/dev/host-cleaner-no-such/app', new Set(), ['/'])).toBe(false)
+      expect(unmounted('/dev/host-cleaner-no-such/app', new Set(['/dev']), [])).toBe(false)
       // The mount folder itself is on the root's volume.
-      expect(unmounted('/proc/host-cleaner-no-such/app', new Set(), ['/proc'])).toBe(true)
+      expect(unmounted('/dev/host-cleaner-no-such/app', new Set(), ['/dev'])).toBe(true)
     },
   )
 
@@ -439,6 +439,13 @@ describe('discover', () => {
     expect((await survey([fx.plugin()], fx.ctx)).candidates).toEqual([])
   })
 
+  test("~/.claude is in the run's home folder, not HOME's", async () => {
+    const fx = fixture()
+    const dir = fx.history(fx.gone)
+    const plugin = fx.plugin(idle, { HOME: join(fx.home, 'decoy') })
+    expect((await survey([plugin], fx.ctx)).candidates.map((c) => c.path)).toEqual([dir])
+  })
+
   test('CLAUDE_CONFIG_DIR is read instead of ~/.claude', async () => {
     const fx = fixture()
     const config = join(fx.home, 'other-config')
@@ -500,6 +507,24 @@ describe('a running session refuses its folder', () => {
     fx.session(deadPid(), { sessionId: 'x', cwd: fx.gone })
     fx.session(process.pid, { sessionId: 'y', cwd: fx.live })
     expect(refusals(await survey([fx.plugin()], fx.ctx), `claude-history:${dir}`)).toEqual([])
+  })
+
+  test('past 200 characters, a live session in a path the folder records refuses it, and one in another path with the same start does not', async () => {
+    const fx = fixture()
+    const base = join(fx.home, 'dev', 'x'.repeat(240))
+    const gone = join(base, 'feature-a')
+    const dir = join(fx.projects, `${projectFolderName(gone).slice(0, 200)}-k3j9x2`)
+    mkdirSync(dir)
+    writeFileSync(join(dir, 's.jsonl'), JSON.stringify({ cwd: gone }))
+    const id = `claude-history:${dir}`
+    fx.session(process.pid, { sessionId: 'x', cwd: join(base, 'feature-b') })
+    expect(refusals(await survey([fx.plugin()], fx.ctx), id)).toEqual([])
+
+    // `feature_a` gives the same name as `feature-a`.
+    for (const cwd of [gone, join(base, 'feature_a')]) {
+      fx.session(process.pid, { sessionId: 'x', cwd })
+      expect(refusals(await survey([fx.plugin()], fx.ctx), id)).toEqual(['live-session'])
+    }
   })
 
   test('a live session record that cannot be read refuses every folder', async () => {

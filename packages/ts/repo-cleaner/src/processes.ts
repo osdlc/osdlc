@@ -13,7 +13,6 @@
  */
 
 import { existsSync, realpathSync } from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
 
 import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
 import { sameProcess } from '@osdlc/file-lock'
@@ -197,22 +196,6 @@ const cwdsOf = (cwd: string): string[] => {
   return existsSync(removed) ? [cwd] : [cwd, removed]
 }
 
-/**
- * `path` with links followed: its nearest part that exists resolved, and the
- * rest, which is gone, joined back on. Undefined when no part of it resolves.
- */
-function resolvedOf(path: string): string | undefined {
-  let rest = ''
-  for (let at = resolve(path); ; at = dirname(at)) {
-    try {
-      return join(realpathSync(at), rest)
-    } catch {
-      if (dirname(at) === at) return undefined
-      rest = join(basename(at), rest)
-    }
-  }
-}
-
 /** True when the command ran and reported an exit status. */
 const answered = (r: CommandResult): boolean => r.neverExited !== true
 
@@ -278,9 +261,11 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
         table = rows.map((row) => ({ ...row, hasChildren: parents.has(row.pid) }))
       }
       const roots = new Set([path])
-      // A directory that is gone is where a link above it led.
-      const real = resolvedOf(path)
-      if (real !== undefined) roots.add(real)
+      try {
+        roots.add(realpathSync(path))
+      } catch {
+        // A directory that is gone has only the path as given: `contains` follows the links above it.
+      }
       return table
         .filter((row) =>
           [...roots].some((root) => cwdsOf(row.cwd).some((cwd) => nodeGuard.contains(root, cwd))),
