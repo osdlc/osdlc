@@ -304,7 +304,7 @@ project `marker` names a file in every alternative. A tool's
 `paths`, `vars` and `inUse.locks` may use a `${VAR}` that `vars` declares or
 that is built in (`HOME` and the `XDG_*` folders); a `${` anywhere else (a
 candidate's `command`, `env` or `glob`, `inUse.processes`, `detect`'s
-`onPath`, a `project` entry, a variable's `command` or `key`) is refused. `DescriptorSchema` is the zod schema,
+`onPath`, a `project` entry, a variable's `command`, its `env` or `key`) is refused. `DescriptorSchema` is the zod schema,
 and `schemas/descriptor-1.json`, which the package ships
 (`@osdlc/host-cleaner/schemas/descriptor-1.json`), is the same schema as JSON
 Schema for editors.
@@ -485,7 +485,7 @@ build cache after a week, emptied with `go clean`). While the tool runs, every
 candidate of `pnpm`, `uv`, `gradle` (any Gradle build or daemon), `npm` (npm
 or npx), `pip` (pip, pip3 or `python -m pip`), `yarn`, `maven` (mvn, `./mvnw`,
 mvnd or any process naming `maven`, such as IntelliJ's Maven server) and `go`
-is refused as `in-use`, at the survey and again before each delete, so a
+(go or gopls) is refused as `in-use`, at the survey and again before each delete, so a
 long-running `pnpm dev` keeps the pnpm store from being pruned. Idle time is
 the newest modification time inside a folder, and reading a file doesn't change
 it: a Hugging Face model or a Gradle wrapper distribution in daily use counts as
@@ -493,11 +493,15 @@ idle from its download. So does a Maven repository whose artifacts are all
 downloaded, and it may hold what only a local `mvn install` gives back, which is
 why it is held.
 
-Each finds a store where the tool would: from the environment variables and
-setting files the tool reads, or by asking the tool (`npm config get cache`,
-`pnpm store path`, `uv cache dir`, `go env`) when it is on PATH, else at the
-default folder. A store none of these find can be named in the config with
-`plugins.<name>.vars`:
+Each finds a store from the environment variables its tool reads, from
+`uv.toml`, or by asking the tool (`npm config get cache`, `pnpm store path`,
+`pnpm config get cache-dir`, `uv cache dir`, `go env`) when it is on PATH, else
+at the default folder. Some settings the tools read are not followed: Maven's
+`localRepository` in `settings.xml`, pip's `cache-dir` in `pip.conf`, Yarn's
+`cache-folder` in `.yarnrc`, and `-Dgradle.user.home` in `GRADLE_OPTS`. A store
+moved by one of those, or by any setting not listed here, is not found, and the
+folder it left behind, if any, is what gets cleaned. Name such a store in the
+config with `plugins.<name>.vars`:
 
 ```json
 { "plugins": { "maven": { "vars": { "LOCAL_REPOSITORY": "/data/m2/repository" } } } }
@@ -515,6 +519,7 @@ vars:
   GOMODCACHE:
     - env: GOMODCACHE # an environment variable
     - command: [go, env, GOMODCACHE] # one line of output; argv only, run from home, 5 s limit
+      env: { GOTOOLCHAIN: local } # optional entries for the command's environment
     - { file: ~/.config/go/env.toml, key: cache.mod } # a dotted key in a TOML, JSON or YAML file
     - value: '${GOPATH}/pkg/mod' # a fixed folder, per OS or `all`
 paths:
@@ -555,7 +560,7 @@ naming the plugin and the key.
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
 | `idleHours` | `cargo`, `node`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
-| `vars.<NAME>` | descriptors that declare `vars` | none | A folder (`~/…` or absolute) for one of the descriptor's variables. It wins over every source and may sit outside home. A name the descriptor does not declare is an error. A variable that another one is built from counts only where that one falls back to it: with the tool on PATH, `GOPATH` (go) and `PNPM_HOME` (pnpm) are not read, so set `GOMODCACHE` or `STORE` instead. |
+| `vars.<NAME>` | descriptors that declare `vars` | none | A folder (`~/…` or absolute) for one of the descriptor's variables. It wins over every source and may sit outside home. A name the descriptor does not declare is an error. It wins over the sources of the variables built from it too: `GOPATH` (go) moves the module cache even with go on PATH. |
 
 Two settings sit at the top of the config and apply to every plugin:
 

@@ -292,10 +292,12 @@ describe('the shipped folder', () => {
   test('status lists all nine on a home that has each store', async () => {
     const h = tempHome()
     cleanups.push(h.cleanup)
-    const os = osOf(process.platform) as TestedOs
+    const os = osOf(process.platform)
     for (const name of STORES) {
       for (const p of Object.values(DEFAULTS[name])) {
-        mkdirSync(join(h.home, p[os]), { recursive: true })
+        // An OS no store has a folder on gets none.
+        const rel = (p as Partial<Record<string, string>>)[os]
+        if (rel !== undefined) mkdirSync(join(h.home, rel), { recursive: true })
       }
     }
     const cwd = join(h.home, 'work')
@@ -725,6 +727,34 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       ])
       // No toolchain switch, so go clean never downloads one into the cache.
       expect(b.deleting.map((c) => c.opts.env?.GOTOOLCHAIN)).toEqual(['local', 'local'])
+      // Nor does a go.mod or go.work above the home folder that asks for a newer go stop it.
+      expect(b.deleting.map((c) => c.opts.env?.GO111MODULE)).toEqual(['off', 'off'])
+    })
+
+    test('go env runs with no toolchain switch and outside module mode', async () => {
+      const calls: unknown[] = []
+      const b = build('go', os, {
+        programs: {
+          go: (argv, opts) => {
+            if (argv[0] === 'env') calls.push(opts.env)
+            return {}
+          },
+        },
+      })
+      await survey([b.plugin], CTX)
+      expect(calls.length).toBeGreaterThan(0)
+      for (const env of calls) {
+        expect(env).toMatchObject({ GOTOOLCHAIN: 'local', GO111MODULE: 'off' })
+      }
+    })
+
+    test('a running gopls refuses both caches', async () => {
+      const command = '/home/me/go/bin/gopls'
+      const b = build('go', os, { processes: processes([{ pid: PID, command }]) })
+      const s = await survey([b.plugin], CTX)
+      const inUse = s.objections.filter((o) => o.code === IN_USE)
+      expect(inUse.map((o) => o.candidate).sort()).toEqual(ids(s.candidates))
+      expect(s.candidates).toHaveLength(2)
     })
   })
 
@@ -771,6 +801,16 @@ describe.each(OSES_TESTED)('on %s', (os) => {
         }),
       ],
       [
+        'go',
+        'GOPATH in the config, over go env and GOMODCACHE',
+        (h) => ({
+          vars: { GOPATH: at(h, 'gopath') },
+          env: { GOMODCACHE: at(h, 'envmod') },
+          programs: { go: (argv) => (argv[0] === 'env' ? { stdout: `${at(h, 'env')}\n` } : {}) },
+          moved: { modcache: at(h, 'gopath/pkg/mod'), buildcache: at(h, 'env') },
+        }),
+      ],
+      [
         'gradle',
         'GRADLE_USER_HOME',
         (h) => ({
@@ -810,6 +850,26 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       ['pnpm', 'pnpm store path', pnpmStorePath],
       byEnv('pnpm', 'npm_config_store_dir', 'store', 'store'),
       byEnv('pnpm', 'PNPM_HOME', 'pnpm', 'store', 'pnpm/store'),
+      [
+        'pnpm',
+        'PNPM_HOME in the config, over pnpm store path',
+        (h) => ({
+          ...pnpmStorePath(h),
+          vars: { PNPM_HOME: at(h, 'pnpm') },
+          moved: { store: at(h, 'pnpm/store') },
+        }),
+      ],
+      byEnv('pnpm', 'npm_config_cache_dir', 'cache', 'cache'),
+      [
+        'pnpm',
+        'pnpm config get cache-dir',
+        (h) => ({
+          programs: {
+            pnpm: (argv) => (argv[0] === 'config' ? { stdout: `${at(h, 'cache')}\n` } : {}),
+          },
+          moved: { cache: at(h, 'cache') },
+        }),
+      ],
       // As pnpm and Yarn Classic do, a set XDG folder wins over ~/Library on macOS.
       byEnv('pnpm', 'XDG_CACHE_HOME', 'xdg', 'cache', 'xdg/pnpm'),
       byEnv('pnpm', 'XDG_DATA_HOME', 'data', 'store', 'data/pnpm/store'),

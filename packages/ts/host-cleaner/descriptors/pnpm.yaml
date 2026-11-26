@@ -6,9 +6,8 @@
 # takes that folder as it is. Without pnpm on PATH the store is
 # npm_config_store_dir, else store under PNPM_HOME or pnpm's default home,
 # listed with a no-prune-tool protest and left alone (D12). The metadata cache
-# is removed as a folder once idle. With pnpm on PATH, `pnpm store path`
-# answers before PNPM_HOME is read, so to move the store in the config, set
-# STORE there, not PNPM_HOME.
+# is where `pnpm config get cache-dir` says, else npm_config_cache_dir, else
+# pnpm's default, and is removed as a folder once idle.
 descriptor: 1
 store: pnpm
 detect:
@@ -23,6 +22,8 @@ vars:
     - value: '${XDG_DATA_HOME_SET}/pnpm'
     - value: { macos: ~/Library/pnpm, linux: '${XDG_DATA_HOME}/pnpm' }
   CACHE:
+    - command: [pnpm, config, get, cache-dir]
+    - env: npm_config_cache_dir
     - value: '${XDG_CACHE_HOME_SET}/pnpm'
     - value: { macos: ~/Library/Caches/pnpm, linux: '${XDG_CACHE_HOME}/pnpm' }
   # The XDG folders only when the environment sets them: on macOS pnpm uses

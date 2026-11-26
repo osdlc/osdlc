@@ -336,6 +336,10 @@ const varSource = z.union([
     command: argv.describe(
       'A command whose output, trimmed, is the value. It runs from the home folder, only when on PATH, with a short time limit.',
     ),
+    env: z
+      .record(z.string().regex(ENV_NAME), z.string())
+      .optional()
+      .describe("Environment entries for `command`, such as `{ GOTOOLCHAIN: 'local' }`."),
   }),
   z.strictObject({
     value: z
@@ -402,7 +406,7 @@ export const DescriptorSchema = z
 /**
  * The fields outside a candidate that hold a `${` but are never filled:
  * `inUse.processes`, `detect`'s `onPath`, a `project` entry's `dir` and
- * `marker`, and a variable's `command` and `key`.
+ * `marker`, and a variable's `command`, its `env`, and `key`.
  */
 function unfilledFields(d: {
   detect?:
@@ -430,6 +434,8 @@ function unfilledFields(d: {
     sources.forEach((s, i) => {
       if ('command' in s && s.command.some((a) => a.includes('${')))
         out.push(['vars', name, i, 'command'])
+      if ('command' in s && Object.values(s.env ?? {}).some((v) => v.includes('${')))
+        out.push(['vars', name, i, 'env'])
       if ('key' in s) check(s.key, ['vars', name, i, 'key'])
     })
   return out

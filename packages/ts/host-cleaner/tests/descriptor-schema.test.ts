@@ -234,6 +234,14 @@ describe("the system description's examples", () => {
       unfilled('vars.GOMODCACHE.1.command'),
     ])
     expect(
+      issues(
+        GO.replace(
+          '- command: [go, env, GOMODCACHE]',
+          "- { command: [go, env, GOMODCACHE], env: { GOPATH: '${HOME}/go' } }",
+        ),
+      ),
+    ).toEqual([unfilled('vars.GOMODCACHE.1.env')])
+    expect(
       issues(GO.replace('- command: [go, env, GOMODCACHE]', "- { file: ~/go.toml, key: '${X}' }")),
     ).toEqual([unfilled('vars.GOMODCACHE.1.key')])
     expect(issues(UV.replace('{ onPath: uv }', "{ onPath: '${UV}' }"))).toEqual([

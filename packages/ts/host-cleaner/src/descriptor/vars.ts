@@ -8,12 +8,15 @@
  *            sit outside the home folder
  *   env      an environment variable
  *   file     a key in a TOML, JSON or YAML file
- *   command  a command's output, trimmed: argv only, only when the program is
- *            on PATH, run from the home folder with a short time limit
+ *   command  a command's output, trimmed: argv only, with its own `env`
+ *            entries, only when the program is on PATH, run from the home
+ *            folder with a short time limit
  *   value    a fixed value, per OS or for all, which may use other variables
  *
  * A source that gives no value, or one that is not an absolute folder, moves
- * on to the next. `HOME` and the `XDG_*` folders are built in, the `XDG_*`
+ * on to the next. A variable set in the config also wins over the sources of
+ * the variables built from it: in each of those, the sources before the first
+ * one that uses it are skipped. `HOME` and the `XDG_*` folders are built in, the `XDG_*`
  * ones with their XDG defaults on every OS.
  */
 
@@ -68,7 +71,7 @@ type PerOs = { [K in Os | 'all']?: string | undefined }
 export type VarSource =
   | { env: string }
   | { file: string; key: string }
-  | { command: string[] }
+  | { command: string[]; env?: Record<string, string> | undefined }
   | { value: string | PerOs }
 
 /** The text of `v` on `os`: `v` itself, its `all`, or its `os` entry. */
@@ -192,6 +195,7 @@ export async function resolveVars(
   at: VarsAt,
 ): Promise<Vars> {
   const done: Vars = builtIns(at)
+  const fromConfig = configSet(declared, at)
   const limit = at.timeoutMs ?? VAR_COMMAND_LIMIT_MS
   const started = new Map<string, Promise<void>>()
   // Which variables each one is waiting for. A wait that would close a cycle
@@ -251,7 +255,7 @@ export async function resolveVars(
       const v = await keyIn(file.value, source.key)
       return typeof v === 'string' ? { value: v, trusted: false } : { failed: v.failed }
     }
-    if ('command' in source) return commandValue(source.command, at, limit)
+    if ('command' in source) return commandValue(source, at, limit)
     const template = forOs(source.value, at.os)
     return template === undefined ? { failed: `none for ${at.os}` } : fill(template, by)
   }
@@ -262,7 +266,14 @@ export async function resolveVars(
       return { value: folderOf(set, at.home), from: 'config', trusted: true, tried: [] }
     }
     const tried: VarValue['tried'] = []
-    for (const source of sources) {
+    const uses = (s: VarSource) => refsOf(s, at.os).find((r) => fromConfig.has(r))
+    const first = sources.findIndex((s) => uses(s) !== undefined)
+    for (const [i, source] of sources.entries()) {
+      if (i < first) {
+        const failed = `skipped: \${${uses(sources[first]!)!}} is set in the config`
+        tried.push({ source: describeSource(source), failed })
+        continue
+      }
       const given = await fromSource(source, name)
       const said = describeSource(source)
       if ('failed' in given) {
@@ -285,6 +296,35 @@ export async function resolveVars(
       .filter((n) => Object.hasOwn(done, n))
       .map((n) => [n, done[n]!]),
   )
+}
+
+/** The names `source`'s folder template uses on `os`. */
+function refsOf(source: VarSource, os: Os): string[] {
+  if ('file' in source) return varRefs(source.file)
+  if (!('value' in source)) return []
+  const template = forOs(source.value, os)
+  return template === undefined ? [] : varRefs(template)
+}
+
+/**
+ * The declared variables the config sets, and those with a source on `at.os`
+ * that uses one of them, at any depth.
+ */
+function configSet(
+  declared: Readonly<Record<string, readonly VarSource[]>>,
+  at: Pick<VarsAt, 'config' | 'os'>,
+): Set<string> {
+  const out = new Set(Object.keys(declared).filter((n) => ownValue(at.config, n) !== undefined))
+  for (let grew = true; grew; ) {
+    grew = false
+    for (const [name, sources] of Object.entries(declared)) {
+      if (out.has(name) || !sources.some((s) => refsOf(s, at.os).some((r) => out.has(r))))
+        continue
+      out.add(name)
+      grew = true
+    }
+  }
+  return out
 }
 
 /** `record[name]` when `record` has it as its own key, so `constructor` is not read from the prototype. */
@@ -344,17 +384,23 @@ async function keyIn(file: string, key: string): Promise<string | { failed: stri
     : { failed: `${key} in ${file} is not a string` }
 }
 
-/** The one line `argv` prints, run from home within `limit`, or why there is none. */
+/** The one line `source.command` prints, run from home within `limit`, or why there is none. */
 async function commandValue(
-  argv: readonly string[],
+  source: { command: readonly string[]; env?: Readonly<Record<string, string>> | undefined },
   at: Pick<VarsAt, 'home' | 'kit' | 'signal'>,
   limit: number,
 ): Promise<Given> {
+  const argv = source.command
   const program = argv[0]!
   if (!at.kit.onPath(program)) return { failed: `${program} is not on PATH` }
   let r
   try {
-    r = await at.kit.run(argv, { signal: at.signal, cwd: at.home, timeoutMs: limit })
+    r = await at.kit.run(argv, {
+      signal: at.signal,
+      cwd: at.home,
+      env: source.env,
+      timeoutMs: limit,
+    })
   } catch (err) {
     return { failed: `did not run: ${(err as Error).message}` }
   }
