@@ -439,9 +439,10 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
     try {
       for (const o of await callHook(p, 'object', scoped, (x) => p.object!(candidates, x))) {
         if (!known.has(o.candidate)) continue
-        const read = ObjectionSchema.safeParse({ ...o, by: p.name })
+        const own = { ...o, by: p.name }
+        const read = ObjectionSchema.safeParse(own)
         if (read.success) {
-          objections.push(read.data)
+          objections.push(own)
           continue
         }
         // What it meant to stop is unknown, so it refuses, as an `object` that throws does.
