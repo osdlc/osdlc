@@ -26,6 +26,7 @@ import {
   reclaimable,
   uniqueSizes,
 } from '../src/docker.ts'
+import { DELETE_LIMIT_MS } from '../src/run.ts'
 import { contractSuite, fakeContext, fakeRunner, tempHome } from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
@@ -232,6 +233,73 @@ describe('discover', () => {
       expect(s.warnings).toEqual([])
       expect(ids(s.candidates)).toEqual([`${DOCKER_VOLUME}:pgdata`, `${DOCKER_IMAGE}:${OLD}`])
     }
+  })
+
+  test('buildx missing behind the old builder group, which answers with its usage, is not a failure', async () => {
+    const usage =
+      '\nUsage:  docker builder COMMAND\n\nManage builds\n\nCommands:\n  build       Build an image from a Dockerfile\n  prune       Remove build cache'
+    const { plugin } = fakeDocker({ volumes: [], images: [], du: { fails: usage } })
+    const s = await survey([plugin], ctx)
+    expect(s.warnings).toEqual([])
+    expect(s.candidates).toEqual([])
+  })
+
+  test('a container inspect batch whose output lacks its last newline still keeps both batches apart', async () => {
+    const OTHER = 'sha256:' + 'e'.repeat(64)
+    const ids501 = Array.from({ length: 501 }, (_, i) => String(i).padStart(64, '0'))
+    const fake = fakeRunner({
+      docker: (argv) => {
+        const cmd = argv.join(' ')
+        if (cmd.startsWith('info')) return { stdout: '29.0.0\n' }
+        if (cmd.startsWith('image ls')) return { stdout: `{"ID":"${USED}"}\n{"ID":"${OTHER}"}\n` }
+        if (cmd.startsWith('container ls')) return { stdout: ids501.join('\n') }
+        if (cmd.startsWith('container inspect')) {
+          const asked = argv.slice(5)
+          return { stdout: asked.map((id) => (id === ids501[500] ? OTHER : USED)).join('\n') }
+        }
+        return { stdout: '' }
+      },
+    })
+    const s = await survey([dockerPlugin({}, pluginKit('docker', { ...fake }))], ctx)
+    expect(s.warnings).toEqual([])
+    expect(s.candidates).toEqual([])
+  })
+
+  test('a failed inspect batch counts its names in the reason instead of listing them', async () => {
+    const fake = fakeRunner({
+      docker: (argv) => {
+        const cmd = argv.join(' ')
+        if (cmd.startsWith('info')) return { stdout: '29.0.0\n' }
+        if (cmd.startsWith('image ls')) return { stdout: `{"ID":"${OLD}"}\n` }
+        if (cmd.startsWith('container ls')) return { stdout: `${CONTAINER}\n${'d'.repeat(64)}\n` }
+        if (cmd.startsWith('container inspect'))
+          return { exitCode: 1, stderr: 'Error response from daemon: busy\n' }
+        return { stdout: '' }
+      },
+    })
+    const s = await survey([dockerPlugin({}, pluginKit('docker', { ...fake }))], ctx)
+    expect(s.warnings).toEqual([
+      'docker: discover failed: docker container inspect --format {{.Image}} -- <2 names> failed: Error response from daemon: busy',
+    ])
+  })
+
+  test('a volume made in the last ten minutes, or with a creation time that does not parse, is not proposed', async () => {
+    const lately = new Date(Date.now() - 60_000).toISOString().replace(/\.\d+Z$/, 'Z')
+    const { plugin } = fakeDocker({
+      volumes: [
+        { Name: 'pgdata', CreatedAt: CREATED },
+        { Name: 'fresh', CreatedAt: lately },
+        { Name: 'odd', CreatedAt: 'yesterday' },
+      ],
+    })
+    const s = await survey([plugin], ctx)
+    expect(ids(s.candidates).filter((id) => id.startsWith(DOCKER_VOLUME))).toEqual([
+      `${DOCKER_VOLUME}:pgdata`,
+    ])
+  })
+
+  test('the delete limit leaves the prune its own after builder du', () => {
+    expect(fakeDocker().plugin.limits?.delete).toBe(DELETE_LIMIT_MS + 60_000)
   })
 
   test('a container removed between the listing and the inspect is skipped; the rest still count', async () => {

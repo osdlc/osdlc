@@ -42,6 +42,14 @@ const DF_LIMIT_MS = 30_000
 /** A running daemon answers `docker info` at once; well inside detect's 30s hook limit. */
 const INFO_LIMIT_MS = 10_000
 
+/**
+ * How long ago a volume must have been made to be proposed. Docker prints
+ * `CreatedAt` to whole seconds, so one made again in the second the plan saw
+ * would look the same; this keeps that second well behind the plan, and
+ * absorbs a daemon clock some minutes off this one's.
+ */
+const FRESH_VOLUME_MS = 10 * 60_000
+
 /** The ref of the one build cache candidate: what `docker builder prune` reclaims. */
 const BUILD_CACHE_REF = 'reclaimable'
 
@@ -123,9 +131,21 @@ const onlyGone = (r: KitRunResult): boolean => {
   )
 }
 
-/** Whether `docker builder du` failed only because this Docker has no `builder du` (no buildx). */
+/**
+ * Whether `docker builder du` failed only because this Docker has no `builder du`
+ * (no buildx): the old `builder` group answers it with its own usage.
+ */
 const noBuilderDu = (r: KitRunResult): boolean =>
-  /is not a docker command|unknown command|unknown flag/i.test(failureText(r))
+  /is not a docker command|unknown command|unknown flag|Usage:\s+docker builder COMMAND/i.test(
+    failureText(r),
+  )
+
+/** `args` as an error shows them: more than one name after `--` is counted, not listed. */
+const shownArgs = (args: readonly string[]): string => {
+  const at = args.indexOf('--')
+  const names = at < 0 ? 0 : args.length - at - 1
+  return names > 1 ? [...args.slice(0, at + 1), `<${names} names>`].join(' ') : args.join(' ')
+}
 
 /** The label every Compose volume carries with its project's name. */
 const COMPOSE_PROJECT = 'com.docker.compose.project'
@@ -148,6 +168,7 @@ export function dockerPlugin(
   kit: Kit = pluginKit(DOCKER_PLUGIN, opts),
 ): Plugin {
   const keep = new Set(opts.keepVolumes ?? [])
+  const now = opts.now ?? (() => new Date())
 
   /**
    * `docker <args>` once it exited 0, or failed in a way `tolerate` accepts;
@@ -160,19 +181,20 @@ export function dockerPlugin(
   ): Promise<KitRunResult> => {
     const r = await kit.run(['docker', ...args], { signal: ctx.signal, timeoutMs: o.timeoutMs })
     if (!r.ok && o.tolerate?.(r) !== true) {
-      throw new Error(`docker ${args.join(' ')} failed: ${firstLine(failureReason(r))}`)
+      throw new Error(`docker ${shownArgs(args)} failed: ${firstLine(failureReason(r))}`)
     }
     return r
   }
 
   /** The stdout of `docker <args> -- <names>`, in batches; a name gone since its listing is not a failure. */
   const inspect = async (args: readonly string[], names: readonly string[], ctx: Ctx) => {
-    let out = ''
+    const out: string[] = []
     for (let i = 0; i < names.length; i += INSPECT_BATCH) {
       const batch = names.slice(i, i + INSPECT_BATCH)
-      out += (await docker([...args, '--', ...batch], ctx, { tolerate: onlyGone })).stdout
+      out.push((await docker([...args, '--', ...batch], ctx, { tolerate: onlyGone })).stdout)
     }
-    return out
+    // A batch's last line may lack its newline.
+    return out.join('\n')
   }
 
   /** The image ids of every container, running or stopped: any one of them keeps its image. */
@@ -212,8 +234,10 @@ export function dockerPlugin(
     return rows.flatMap((row): Candidate[] => {
       const name = str(row.Name)
       const at = created.get(name) ?? ''
-      // Without its creation time, a volume made again under this name could not be told apart.
-      if (at === '') return []
+      // Without its creation time, a volume made again under this name could not be told apart;
+      // one made too lately could have been made again in the second the plan saw.
+      const madeAt = Date.parse(at)
+      if (Number.isNaN(madeAt) || madeAt > now().getTime() - FRESH_VOLUME_MS) return []
       const project = composeProject(str(row.Labels))
       return [
         kit.candidate({
@@ -238,14 +262,16 @@ export function dockerPlugin(
     )
     const rows = jsonLines(out.stdout).filter((row) => str(row.ID) !== '')
     if (rows.length === 0) return []
-    const used = await imagesInUse(ctx)
+    // `image ls` only prints a size that counts shared layers; without df's, an image has none.
+    const [used, df] = await Promise.all([
+      imagesInUse(ctx),
+      docker(['system', 'df', '-v', '--format', '{{json .Images}}'], ctx, {
+        timeoutMs: DF_LIMIT_MS,
+        tolerate: () => true,
+      }),
+    ])
     const unused = rows.map((row) => str(row.ID)).filter((id) => !used.has(id))
     if (unused.length === 0) return []
-    // `image ls` only prints a size that counts shared layers; without df's, an image has none.
-    const df = await docker(['system', 'df', '-v', '--format', '{{json .Images}}'], ctx, {
-      timeoutMs: DF_LIMIT_MS,
-      tolerate: () => true,
-    })
     const sizes = uniqueSizes(df.ok ? df.stdout : '')
     return unused.map((id): Candidate => {
       const bytes = sizes.get(shortId(id))
@@ -286,10 +312,13 @@ export function dockerPlugin(
 
   /** Why each listing of the last `discover` failed. */
   let unlisted: string[] = []
+  /** Counts `discover` calls, so one the core abandoned cannot set `unlisted` after a later one. */
+  let discoveries = 0
 
   return {
     name: DOCKER_PLUGIN,
-    limits: { discover: DISCOVER_LIMIT_MS },
+    // `delete` reads `builder du` before the prune gets a full delete limit of its own.
+    limits: { discover: DISCOVER_LIMIT_MS, delete: DELETE_LIMIT_MS + DU_LIMIT_MS },
     async detect(ctx) {
       if (!kit.onPath('docker')) return false
       try {
@@ -308,10 +337,13 @@ export function dockerPlugin(
      * first of the others. With no other to note it on, this throws.
      */
     async discover(ctx) {
+      const call = ++discoveries
+      unlisted = []
       const found = await Promise.allSettled([volumes(ctx), images(ctx), buildCache(ctx)])
-      unlisted = found.flatMap((f) => (f.status === 'rejected' ? [errorText(f.reason)] : []))
+      const failed = found.flatMap((f) => (f.status === 'rejected' ? [errorText(f.reason)] : []))
+      if (call === discoveries) unlisted = failed
       const candidates = found.flatMap((f) => (f.status === 'fulfilled' ? f.value : []))
-      if (unlisted.length > 0 && candidates.length === 0) throw new Error(unlisted.join('; '))
+      if (failed.length > 0 && candidates.length === 0) throw new Error(failed.join('; '))
       return candidates
     },
     object(all) {
@@ -327,9 +359,7 @@ export function dockerPlugin(
       )
     },
     async delete(c, ctx) {
-      if (c.ref === undefined)
-        throw new Error(`docker: ${c.id} is not a Docker volume, image or build cache`)
-      if (c.kind === DOCKER_VOLUME) {
+      if (c.ref !== undefined && c.kind === DOCKER_VOLUME) {
         const was = await docker(
           ['volume', 'inspect', '--format', '{{json .}}', '--', c.ref],
           ctx,
@@ -342,7 +372,7 @@ export function dockerPlugin(
         const r = await docker(['volume', 'rm', '--', c.ref], ctx, { tolerate: onlyGone })
         return r.ok ? `docker volume rm removed volume ${c.ref}` : `already gone: volume ${c.ref}`
       }
-      if (c.kind === DOCKER_IMAGE) {
+      if (c.ref !== undefined && c.kind === DOCKER_IMAGE) {
         const r = await docker(['image', 'rm', '--', c.ref], ctx, { tolerate: onlyGone })
         return r.ok ? `docker image rm removed image ${c.ref}` : `already gone: image ${c.ref}`
       }
