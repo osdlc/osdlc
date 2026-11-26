@@ -453,10 +453,15 @@ candidates:
     const { env, cwd } = setup()
     const { home, shipped, go } = goHungEnv()
     // A given plugin is `given`, though a shipped descriptor has its name.
-    const r = await run(['plugins'], cwd, { ...env, HOME: home }, {
-      plugins: [fake('git'), go],
-      shippedDescriptors: shipped,
-    })
+    const r = await run(
+      ['plugins'],
+      cwd,
+      { ...env, HOME: home },
+      {
+        plugins: [fake('git'), go],
+        shippedDescriptors: shipped,
+      },
+    )
     expect(r.code).toBe(0)
     expect(r.err).toBe('')
     expect(r.out).toBe(
@@ -476,10 +481,15 @@ candidates:
   test('json gives each variable its value, the source that gave it and every source that failed', async () => {
     const { env, cwd } = setup()
     const { home, shipped, go } = goHungEnv()
-    const r = await run(['plugins', '--format', 'json'], cwd, { ...env, HOME: home }, {
-      plugins: [go],
-      shippedDescriptors: shipped,
-    })
+    const r = await run(
+      ['plugins', '--format', 'json'],
+      cwd,
+      { ...env, HOME: home },
+      {
+        plugins: [go],
+        shippedDescriptors: shipped,
+      },
+    )
     expect(r.code).toBe(0)
     const [row] = JSON.parse(r.out).plugins
     expect(row.source).toBe('given')
@@ -667,7 +677,7 @@ candidates:
     expect(r.out).toBe(
       [
         `targets: ${cwd}`,
-        '  x  given  disabled: plugins.x.enabled is false; --plugin x runs it anyway',
+        "  x  given  disabled: plugins.x.enabled is false; a sweep's --plugin x runs it anyway",
         '',
       ].join('\n'),
     )
