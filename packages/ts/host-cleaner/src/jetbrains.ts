@@ -1,14 +1,16 @@
 /**
  * The `jetbrains` plugin: the cache and log folders of IDE versions no longer
  * installed, and, inside an installed version, the caches of projects that
- * are gone. Both are rebuilt by the IDE when needed (`costDescription: rebuild`).
+ * are gone. Caches are rebuilt by the IDE when needed (`costDescription: rebuild`);
+ * the macOS log folders are not (`lost`), so they wait for a pick.
  *
  * Roots: `~/Library/Caches/JetBrains` and `~/Library/Logs/JetBrains` on macOS,
  * `~/.cache/JetBrains` on Linux. A version folder is `<Product><year>.<n>`,
  * such as `RustRover2026.1`; other folders there are never touched.
  *
  * An install is known by the `dataDirectoryName` in its `product-info.json`,
- * found through the Toolbox's `state.json` and in the application folders. A
+ * found through the Toolbox's `state.json`, in the application folders (on
+ * Linux the home too) and through `jetbrains-*.desktop` entries. A
  * version folder no install names is a candidate, held until it has sat
  * unchanged for `idleHours`, in case an install sits somewhere not looked in.
  * A record that is there but cannot be read refuses every version folder.
@@ -16,14 +18,14 @@
  * A project's cache is `projects/<name>.<hash>`, the hash being Java's
  * `String.hashCode` of the project's path in hex. Its path is found among the
  * version's recent projects (`options/recentProjects.xml` in its config
- * folder); a cache whose hash matches none is left alone.
+ * folder); a cache whose hash matches none is left alone. One whose project
+ * is gone is held the same way, as the project may be back soon.
  *
  * A running process of the product refuses its candidates (`live-process`).
  * Settings: `plugins.jetbrains.idleHours` (default {@link DEFAULT_IDLE_HOURS}).
  */
 
 import { lstatSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, sep } from 'node:path'
 
 import { z } from 'zod'
@@ -32,10 +34,12 @@ import {
   DISCOVER_LIMIT_MS,
   checkAgain,
   errorText,
+  homeFrom,
   hoursText,
   isObject,
   objectionsTo,
   type Row,
+  yieldToLimit,
 } from './helpers.ts'
 import { attachKit, idleHoursOr, idleHoursSetting, present, type Kit } from './kit.ts'
 import { PLUGIN_API, definePlugin, type Ctx, type Plugin } from './types.ts'
@@ -71,8 +75,8 @@ const LAUNCHERS: Readonly<Record<string, readonly string[]>> = {
   Writerside: ['writerside'],
 }
 
-/** The folders volumes are mounted under, which {@link gone} treats apart. */
-const MOUNT_PARENTS = ['/Volumes', '/mnt', '/media', '/run/media']
+/** The folders volumes are mounted under, which {@link gone} treats apart; `/net` is autofs's. */
+const MOUNT_PARENTS = ['/Volumes', '/mnt', '/media', '/run/media', '/net']
 
 export interface JetbrainsOptions {
   /** Idle hours before a version folder is a candidate (default {@link DEFAULT_IDLE_HOURS}). */
@@ -83,6 +87,8 @@ export interface JetbrainsOptions {
   platform?: NodeJS.Platform | undefined
   /** Folders whose entries are looked at as installs. Default: the platform's application folders. */
   apps?: readonly string[] | undefined
+  /** Folders whose `jetbrains-*.desktop` entries point at installs. Default: the Linux applications folders. */
+  desktop?: readonly string[] | undefined
 }
 
 /** Where the plugin looks, for one home and platform. */
@@ -91,27 +97,33 @@ interface Layout {
   home: string
   /** The roots: cache and log folders holding version folders. */
   roots: string[]
+  /** The root of log folders, which nothing rebuilds. */
+  logs?: string
   /** The folder holding each version's config, with its recent projects. */
   config: string
   /** The Toolbox's `state.json`. */
   toolbox: string
   apps: readonly string[]
+  desktop: readonly string[]
 }
 
-function layoutOf(opts: JetbrainsOptions): Layout {
+/** The layout for the home the core checks roots against: `ctx.home`, else `HOME`. */
+function layoutOf(opts: JetbrainsOptions, ctx: Pick<Ctx, 'home'>): Layout {
   const env = opts.env ?? process.env
-  // Without a trailing slash, as the command line takes it, so `$USER_HOME$/x` is the path the IDE hashed.
-  const home = (env.HOME ?? homedir()).replace(/(.)\/+$/, '$1')
+  const home = homeFrom(ctx.home ?? env.HOME)
   const platform = opts.platform ?? process.platform
   if (platform === 'darwin') {
     const lib = join(home, 'Library')
     const config = join(lib, 'Application Support', 'JetBrains')
+    const logs = join(lib, 'Logs', 'JetBrains')
     return {
       home,
-      roots: [join(lib, 'Caches', 'JetBrains'), join(lib, 'Logs', 'JetBrains')],
+      roots: [join(lib, 'Caches', 'JetBrains'), logs],
+      logs,
       config,
       toolbox: join(config, 'Toolbox', 'state.json'),
       apps: opts.apps ?? ['/Applications', join(home, 'Applications')],
+      desktop: opts.desktop ?? [],
     }
   }
   if (platform === 'linux') {
@@ -119,7 +131,8 @@ function layoutOf(opts: JetbrainsOptions): Layout {
       const v = env[name]
       return v !== undefined && isAbsolute(v) ? v : join(home, rel)
     }
-    const data = join(xdg('XDG_DATA_HOME', '.local/share'), 'JetBrains', 'Toolbox')
+    const share = xdg('XDG_DATA_HOME', '.local/share')
+    const data = join(share, 'JetBrains', 'Toolbox')
     return {
       home,
       roots: [join(xdg('XDG_CACHE_HOME', '.cache'), 'JetBrains')],
@@ -134,10 +147,18 @@ function layoutOf(opts: JetbrainsOptions): Layout {
         join(home, 'opt'),
         join(home, '.local', 'share'),
         join(home, 'Applications'),
+        // A tarball unpacked straight into the home, such as `~/idea-IU-251.23774.435`.
+        home,
+      ],
+      // An install unpacked anywhere else is found through the desktop entry made for it.
+      desktop: opts.desktop ?? [
+        join(share, 'applications'),
+        '/usr/local/share/applications',
+        '/usr/share/applications',
       ],
     }
   }
-  return { home, roots: [], config: '', toolbox: '', apps: [] }
+  return { home, roots: [], config: '', toolbox: '', apps: [], desktop: [] }
 }
 
 /** Whether `path` exists as itself or may: one that cannot be checked counts as present, so it is never taken as gone. */
@@ -200,7 +221,8 @@ interface Installs {
 /**
  * The installs in `layout`. A `product-info.json` that is missing means no
  * install; one that is there and cannot be read, or a Toolbox install whose
- * folder has none or names no version folder, is a problem, since an install
+ * folder names no version folder or has none beside an `idea.properties`
+ * (an IntelliJ-platform IDE), is a problem, since an install
  * may be missed. In the application folders, an entry that cannot be looked
  * into, or whose `product-info.json` names no version folder, is some other
  * app and is passed over.
@@ -226,7 +248,11 @@ function installsOf(layout: Layout): Installs {
       }
     }
     if (file === undefined) {
-      if (toolbox) {
+      // A tool with neither file is no IntelliJ-platform IDE, such as Fleet, and uses no version folder.
+      const platformIde = ['bin', join('Contents', 'bin')].some(
+        (b) => exists(join(dir, b, 'idea.properties')) !== false,
+      )
+      if (toolbox && platformIde) {
         found.problems.push(`the Toolbox installed ${dir}, which has no product-info.json`)
       }
       return
@@ -280,7 +306,35 @@ function installsOf(layout: Layout): Installs {
     }
     for (const name of names) read(join(apps, name), false)
   }
+  for (const dir of layout.desktop) {
+    let names: string[]
+    try {
+      names = readdirSync(dir)
+    } catch {
+      continue
+    }
+    for (const name of names) {
+      if (!name.startsWith('jetbrains-') || !name.endsWith('.desktop')) continue
+      const install = desktopInstall(join(dir, name))
+      if (install !== undefined) read(install, false)
+    }
+  }
   return found
+}
+
+/** The install folder a desktop entry's `Exec=<install>/bin/<launcher>` starts; undefined when it names none. */
+function desktopInstall(file: string): string | undefined {
+  let text: string
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch {
+    return undefined
+  }
+  const exec = /^Exec=\s*(?:"([^"]+)"|(\S+))/m.exec(text)
+  const program = exec?.[1] ?? exec?.[2]
+  if (program === undefined || !isAbsolute(program)) return undefined
+  const bin = dirname(program)
+  return basename(bin) === 'bin' ? dirname(bin) : undefined
 }
 
 const unescapeXml = (s: string): string =>
@@ -328,12 +382,14 @@ export function gone(path: string, disk: DiskProbe = DISK): boolean {
   let dir = dirname(path)
   while (!disk.present(dir)) dir = dirname(dir)
   if (dir === dirname(dir)) return false
-  const mounts = MOUNT_PARENTS.find((m) => dir === m || dir.startsWith(m + '/'))
+  const under = (p: string, m: string): boolean => p === m || p.startsWith(m + '/')
+  const mounts = MOUNT_PARENTS.find((m) => under(path, m))
   if (mounts === undefined) return true
-  if (dir === mounts) return false
+  // The mount folder missing, or there with nothing found in it: the volume may just be away.
+  if (dir === mounts || !under(dir, mounts)) return false
   const here = disk.device(dir)
-  const under = disk.device(mounts)
-  return here !== undefined && under !== undefined && here !== under
+  const parent = disk.device(mounts)
+  return here !== undefined && parent !== undefined && here !== parent
 }
 
 /** One folder that may be a candidate, before anything is measured. */
@@ -345,6 +401,8 @@ interface Found {
   product: string
   /** For a project cache: the gone project's path. */
   project?: string
+  /** Under the log root: nothing rebuilds it. */
+  log: boolean
 }
 
 /** The version folders no install uses, and the caches of gone projects inside the installed ones; with `only`, just the version folder holding it. */
@@ -358,7 +416,7 @@ function scan(layout: Layout, installs: Installs, only?: string): Found[] {
       const path = join(root, version)
       if (only !== undefined && only !== path && !only.startsWith(path + sep)) continue
       if (!installs.versions.has(version)) {
-        out.push({ kind: 'ide-version', path, version, product })
+        out.push({ kind: 'ide-version', path, version, product, log: root === layout.logs })
         continue
       }
       const projects = join(path, 'projects')
@@ -384,6 +442,7 @@ function scan(layout: Layout, installs: Installs, only?: string): Found[] {
           version,
           product,
           project: paths[0]!,
+          log: false,
         })
       }
     }
@@ -396,6 +455,7 @@ interface Env {
   kit: Kit
   idleHours: number
   ctx: Ctx
+  layout: Layout
   installs: Installs
   /** What {@link runningOf} found for each product this hook call. */
   running: Map<string, Row['blockers']>
@@ -437,30 +497,33 @@ function rowOf(env: Env, f: Found, sized = true): Row | null {
   const { kit, idleHours, installs } = env
   const blockers = [...runningOf(env, f.product)]
 
+  if (f.kind === 'ide-version') {
+    for (const p of installs.problems) blockers.push({ code: 'installs-unreadable', reason: p })
+  }
+  // Held while in use: a project missing for a moment, on a share that is down or while re-cloned, still uses its cache.
+  const what =
+    f.kind === 'ide-version'
+      ? `no installed IDE uses ${f.version}`
+      : `${f.version}'s cache for ${f.project}, which is gone`
   let why: string
   let held = false
   let unmeasured = false
-  if (f.kind === 'ide-version') {
-    for (const p of installs.problems) blockers.push({ code: 'installs-unreadable', reason: p })
-    let since
-    try {
-      since = kit.idle(f.path)
-    } catch {
-      // A folder that cannot be read may hide recent use.
-      return null
-    }
-    if (since.unmeasured) {
-      unmeasured = true
-      why = `no installed IDE uses ${f.version}; when it was last used could not be measured in the time budget`
-    } else {
-      held = since.hours !== null && since.hours < idleHours
-      why =
-        since.hours === null
-          ? `no installed IDE uses ${f.version}, and it holds no file`
-          : `no installed IDE uses ${f.version}; unchanged for ${hoursText(since.hours)} hours (threshold ${idleHours})`
-    }
+  let since
+  try {
+    since = kit.idle(f.path)
+  } catch {
+    // A folder that cannot be read may hide recent use.
+    return null
+  }
+  if (since.unmeasured) {
+    unmeasured = true
+    why = `${what}; when it was last used could not be measured in the time budget`
   } else {
-    why = `${f.version}'s cache for ${f.project}, which is gone`
+    held = since.hours !== null && since.hours < idleHours
+    why =
+      since.hours === null
+        ? `${what}, and it holds no file`
+        : `${what}; unchanged for ${hoursText(since.hours)} hours (threshold ${idleHours})`
   }
   const bytes = unmeasured || !sized ? null : kit.size(f.path)
   return {
@@ -470,7 +533,7 @@ function rowOf(env: Env, f: Found, sized = true): Row | null {
       path: f.path,
       name: basename(f.path),
       why,
-      costDescription: 'rebuild',
+      costDescription: f.log ? 'lost' : 'rebuild',
       ...(bytes === null ? {} : { bytes }),
       ...(held ? { held: true } : {}),
       ...(unmeasured ? { unmeasured: true } : {}),
@@ -486,24 +549,25 @@ function rowOf(env: Env, f: Found, sized = true): Row | null {
 
 /** The `jetbrains` plugin on `kit`: caches of uninstalled IDE versions and of gone projects. */
 export function jetbrainsPlugin(opts: JetbrainsOptions, kit: Kit): Plugin {
-  const layout = layoutOf(opts)
   const idleHours = idleHoursOr(opts.idleHours)
-  const envOf = (ctx: Ctx): Env => ({
-    kit,
-    ctx,
-    idleHours,
-    installs: installsOf(layout),
-    running: new Map(),
-  })
+  const envOf = (ctx: Ctx): Env => {
+    const layout = layoutOf(opts, ctx)
+    return { kit, ctx, idleHours, layout, installs: installsOf(layout), running: new Map() }
+  }
   let rows = new Map<string, Row>()
   const plugin: Plugin = {
     name: JETBRAINS_PLUGIN,
     limits: { discover: DISCOVER_LIMIT_MS },
-    detect: () => layout.roots.some(isDir),
-    roots: () => layout.roots,
-    discover(ctx) {
+    detect: (ctx) => layoutOf(opts, ctx).roots.some(isDir),
+    roots: (ctx) => layoutOf(opts, ctx).roots,
+    async discover(ctx) {
       const env = envOf(ctx)
-      const found = scan(layout, env.installs).flatMap((f) => rowOf(env, f) ?? [])
+      const found: Row[] = []
+      for (const f of scan(env.layout, env.installs)) {
+        await yieldToLimit(ctx)
+        const row = rowOf(env, f)
+        if (row !== null) found.push(row)
+      }
       rows = new Map(found.map((r) => [r.candidate.id, r]))
       return found.map((r) => r.candidate)
     },
@@ -514,15 +578,16 @@ export function jetbrainsPlugin(opts: JetbrainsOptions, kit: Kit): Plugin {
           ? objectionsTo(JETBRAINS_PLUGIN, row)
           : []
       }),
-    delete(c, ctx) {
+    async delete(c, ctx) {
       if (c.path === undefined) throw new Error(`${c.id} is not a folder`)
       if (!present(c.path)) return `already gone: ${c.path}`
       // Found and measured again, so an install, a project or a process that came back since the plan is seen.
       const env = envOf(ctx)
-      const f = scan(layout, env.installs, c.path).find(
+      const f = scan(env.layout, env.installs, c.path).find(
         (x) => x.path === c.path && x.kind === c.kind,
       )
       checkAgain(c, f === undefined ? undefined : (rowOf(env, f, false) ?? undefined))
+      await yieldToLimit(ctx)
       return kit.remove(c.path, ctx)
     },
   }

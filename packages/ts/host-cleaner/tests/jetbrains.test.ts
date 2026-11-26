@@ -27,6 +27,7 @@ import {
   pluginKit,
   survey,
   type Ctx,
+  type Objection,
   type Plugin,
 } from '../src/index.ts'
 import { gone, javaHashHex, jetbrainsPlugin, type JetbrainsOptions } from '../src/jetbrains.ts'
@@ -151,6 +152,10 @@ const ctx = (): Ctx => fakeContext({ cwd: '/' })
 
 const ids = (cs: ReadonlyArray<{ id: string }>): string[] => cs.map((c) => c.id).sort()
 
+/** The plugin's own objections, without the core's protest on log folders (`lost`). */
+const ours = (s: { objections: readonly Objection[] }): Objection[] =>
+  s.objections.filter((o) => o.by === JETBRAINS_PLUGIN)
+
 describe('version folders', () => {
   test('with two versions and one installed, the other is proposed in both roots', async () => {
     const h = twoVersions()
@@ -173,7 +178,17 @@ describe('version folders', () => {
     )
     expect(c.held).toBeUndefined()
     expect(c.bytes).toBeGreaterThan(0)
-    expect(s.objections).toEqual([])
+    expect(ours(s)).toEqual([])
+  })
+
+  test('a log folder is lost, not rebuilt, so it waits for a pick', async () => {
+    const h = twoVersions()
+    const s = await survey([make(h)], ctx())
+    const log = s.candidates.find((x) => x.path === join(logs(h), 'RustRover2025.1'))!
+    expect(log).toMatchObject({ costDescription: 'lost', held: true })
+    expect(s.objections).toEqual([
+      expect.objectContaining({ by: 'host-cleaner', candidate: log.id, code: 'discard-user-data' }),
+    ])
   })
 
   test('clean removes the uninstalled version and leaves the installed one and the rest', async () => {
@@ -181,9 +196,10 @@ describe('version folders', () => {
     const plugin = make(h)
     const receipt = await clean(plan(await survey([plugin], ctx())), [plugin], ctx())
     expect(receipt.status).toBe('complete')
-    expect(receipt.steps.map((s) => s.result)).toEqual(['ok', 'ok'])
+    expect(receipt.steps.map((s) => s.result)).toEqual(['ok'])
     expect(existsSync(join(caches(h), 'RustRover2025.1'))).toBe(false)
-    expect(existsSync(join(logs(h), 'RustRover2025.1'))).toBe(false)
+    // Its logs are lost, so held until picked.
+    expect(existsSync(join(logs(h), 'RustRover2025.1'))).toBe(true)
     for (const kept of ['RustRover2026.1', 'Toolbox', 'Daemon']) {
       expect(existsSync(join(caches(h), kept))).toBe(true)
     }
@@ -226,7 +242,7 @@ describe('version folders', () => {
       `ide-version:${join(caches(h), 'CLion2025.1')}`,
       `ide-version:${join(logs(h), 'CLion2025.1')}`,
     ])
-    expect(s.objections).toEqual([])
+    expect(ours(s)).toEqual([])
   })
 
   test('an app bundle reached through a link is an install', async () => {
@@ -245,7 +261,7 @@ describe('version folders', () => {
     put(join(config(h), 'Toolbox', 'state.json'), 48, '{ not json')
     const s = await survey([make(h)], ctx())
     expect(s.candidates).toHaveLength(2)
-    expect(s.objections).toEqual([
+    expect(ours(s)).toEqual([
       expect.objectContaining({ level: 'refuse', code: 'installs-unreadable' }),
       expect.objectContaining({ level: 'refuse', code: 'installs-unreadable' }),
     ])
@@ -253,11 +269,11 @@ describe('version folders', () => {
     const other = twoVersions()
     put(join(apps(other), 'Broken.app', 'Contents', 'Resources', 'product-info.json'), 48, '{')
     const again = await survey([make(other)], ctx())
-    expect(again.objections.map((o) => o.code)).toEqual([
+    expect(ours(again).map((o) => o.code)).toEqual([
       'installs-unreadable',
       'installs-unreadable',
     ])
-    expect(again.objections[0]!.reason).toContain('Broken.app')
+    expect(ours(again)[0]!.reason).toContain('Broken.app')
   })
 
   test('the product running refuses its folders; the process table unread refuses too', async () => {
@@ -270,7 +286,7 @@ describe('version folders', () => {
       ],
       ctx(),
     )
-    expect(busy.objections).toEqual([
+    expect(ours(busy)).toEqual([
       expect.objectContaining({
         code: 'live-process',
         reason: 'RustRover is running: rustrover (pid 7)',
@@ -285,9 +301,9 @@ describe('version folders', () => {
       ],
       ctx(),
     )
-    expect(other.objections).toEqual([])
+    expect(ours(other)).toEqual([])
     const unread = await survey([make(h, { ps: psOf(new Error('ps: not allowed')) })], ctx())
-    expect(unread.objections.map((o) => o.code)).toEqual([
+    expect(ours(unread).map((o) => o.code)).toEqual([
       'process-table-unreadable',
       'process-table-unreadable',
     ])
@@ -306,7 +322,7 @@ describe('version folders', () => {
     cleanups.push(() => chmodSync(locked, 0o755))
     const s = await survey([make(h)], ctx())
     expect(s.candidates).toHaveLength(2)
-    expect(s.objections).toEqual([])
+    expect(ours(s)).toEqual([])
   })
 
   test('a Toolbox install that names no version folder refuses every version folder', async () => {
@@ -319,7 +335,51 @@ describe('version folders', () => {
       JSON.stringify({ tools: [{ installLocation: odd }] }),
     )
     const s = await survey([make(h)], ctx())
-    expect(s.objections.map((o) => o.code)).toEqual(['installs-unreadable', 'installs-unreadable'])
+    expect(ours(s).map((o) => o.code)).toEqual(['installs-unreadable', 'installs-unreadable'])
+  })
+
+  test('a Toolbox tool that is no IntelliJ-platform IDE refuses nothing; an IDE missing its product-info.json does', async () => {
+    const h = twoVersions()
+    const fleet = join(h.home, 'tools', 'Fleet.app')
+    put(join(fleet, 'Contents', 'MacOS', 'Fleet'))
+    const state = join(config(h), 'Toolbox', 'state.json')
+    put(state, 48, JSON.stringify({ tools: [{ installLocation: fleet }] }))
+    expect(ours(await survey([make(h)], ctx()))).toEqual([])
+
+    const ide = join(h.home, 'tools', 'Half.app')
+    put(join(ide, 'Contents', 'bin', 'idea.properties'))
+    put(state, 48, JSON.stringify({ tools: [{ installLocation: fleet }, { installLocation: ide }] }))
+    expect(ours(await survey([make(h)], ctx())).map((o) => o.code)).toEqual([
+      'installs-unreadable',
+      'installs-unreadable',
+    ])
+  })
+
+  test('an IDE unpacked anywhere is an install when a desktop entry starts it', async () => {
+    const h = twoVersions()
+    const unpacked = join(h.home, 'tools', 'rustrover-251.1')
+    put(
+      join(unpacked, 'product-info.json'),
+      48,
+      JSON.stringify({ dataDirectoryName: 'RustRover2025.1' }),
+    )
+    const entries = join(h.home, 'applications')
+    put(
+      join(entries, 'jetbrains-rustrover.desktop'),
+      48,
+      `[Desktop Entry]\nName=RustRover\nExec="${unpacked}/bin/rustrover.sh" %u\n`,
+    )
+    put(join(entries, 'other.desktop'), 48, 'Exec=/elsewhere/bin/other\n')
+    const s = await survey([make(h, { options: { desktop: [entries] } })], ctx())
+    expect(s.candidates).toEqual([])
+  })
+
+  test("the home is the core's `ctx.home` when it is set", async () => {
+    const h = twoVersions()
+    const plugin = make(h, { options: { env: { HOME: join(h.home, 'not-it') } } })
+    const s = await survey([plugin], fakeContext({ cwd: '/', home: h.home }))
+    expect(s.roots).toEqual({ jetbrains: [caches(h), logs(h)] })
+    expect(s.candidates).toHaveLength(2)
   })
 
   test('a snap install, `<name>/current/product-info.json`, is an install', async () => {
@@ -349,7 +409,7 @@ describe('version folders', () => {
       ],
       ctx(),
     )
-    expect(s.objections.map((o) => o.code)).toEqual(['live-process', 'live-process'])
+    expect(ours(s).map((o) => o.code)).toEqual(['live-process', 'live-process'])
   })
 
   test('delete refuses a version folder used again since it was surveyed', async () => {
@@ -393,7 +453,7 @@ describe('version folders', () => {
       '/home/u/dist/bin/intellij_client64',
     ]) {
       const s = await survey([make(h, { ps: psOf([{ pid: 7, args }]) })], ctx())
-      expect(s.objections.map((o) => o.code)).toEqual(['live-process', 'live-process'])
+      expect(ours(s).map((o) => o.code)).toEqual(['live-process', 'live-process'])
     }
   })
 
@@ -447,14 +507,14 @@ describe('version folders', () => {
       pluginKit(JETBRAINS_PLUGIN, { now: () => NOW, ps: psOf() }),
     )
     const receipt = await clean(plan(await survey([plugin], ctx())), [plugin], ctx())
-    expect(receipt.steps.map((x) => x.result)).toEqual(['ok', 'ok'])
+    expect(receipt.steps.map((x) => x.result)).toEqual(['ok'])
   })
 
   test('with no install at all, a product the table does not know is watched by its lowercased name', async () => {
     const h = home()
     version(h, 'Fleetish2025.1')
     const s = await survey([make(h, { ps: psOf([{ pid: 9, args: 'fleetish --wait' }]) })], ctx())
-    expect(s.objections.map((o) => o.code)).toEqual(['live-process', 'live-process'])
+    expect(ours(s).map((o) => o.code)).toEqual(['live-process', 'live-process'])
   })
 })
 
@@ -478,7 +538,7 @@ function withProjects(): { h: TempHome; projects: string; live: string; gone: st
   )
   const projects = join(caches(h), 'RustRover2026.1', 'projects')
   put(join(projects, `live.${javaHashHex(live)}`, 'cache-state.xml'))
-  put(join(projects, `gone.${javaHashHex(gone)}`, 'cache-state.xml'), 1)
+  put(join(projects, `gone.${javaHashHex(gone)}`, 'cache-state.xml'))
   put(join(projects, 'light-edit.2de7021a', 'x'))
   put(join(projects, 'unknown.12345678', 'x'))
   return { h, projects, live, gone }
@@ -498,7 +558,7 @@ describe('project caches', () => {
         id: `project-cache:${path}`,
         kind: 'project-cache',
         costDescription: 'rebuild',
-        why: `RustRover2026.1's cache for ${gone}, which is gone`,
+        why: `RustRover2026.1's cache for ${gone}, which is gone; unchanged for 48 hours (threshold 24)`,
         evidence: { kind: 'project-cache', path, version: 'RustRover2026.1', project: gone },
       }),
     ])
@@ -508,6 +568,14 @@ describe('project caches', () => {
     expect(receipt.steps.map((x) => x.result)).toEqual(['ok'])
     expect(existsSync(path)).toBe(false)
     expect(existsSync(join(projects, 'unknown.12345678'))).toBe(true)
+  })
+
+  test("a gone project's cache used within idleHours is held, as the project may be back soon", async () => {
+    const { h, projects, gone } = withProjects()
+    const path = join(projects, `gone.${javaHashHex(gone)}`)
+    put(join(path, 'cache-state.xml'), 1)
+    const s = await survey([make(h)], ctx())
+    expect(s.candidates).toEqual([expect.objectContaining({ path, held: true })])
   })
 
   test('$USER_HOME$ stands for HOME as typed: a trailing slash and a `$` in it change nothing', async () => {
@@ -556,6 +624,10 @@ describe('project caches', () => {
     expect(gone('/mnt/nas/proj', disk({ '/': 1, '/mnt': 1, '/mnt/nas': 2 }))).toBe(true)
     expect(gone('/home/me/proj', disk({ '/': 1, '/home': 1, '/home/me': 1 }))).toBe(true)
     expect(gone('/nowhere/proj', disk({ '/': 1 }))).toBe(false)
+    // The mount folder itself missing, as `/run/media` before the first drive is plugged in.
+    expect(gone('/run/media/alice/USB/proj', disk({ '/': 1, '/run': 1 }))).toBe(false)
+    // An autofs share that is down.
+    expect(gone('/net/nas/proj', disk({ '/': 1, '/net': 2 }))).toBe(false)
   })
 })
 

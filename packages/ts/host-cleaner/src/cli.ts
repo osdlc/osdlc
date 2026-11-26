@@ -5,7 +5,6 @@
  */
 
 import { appendFileSync, mkdirSync, readSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 import {
@@ -24,7 +23,7 @@ import {
 import type { Kind } from '@osdlc/repo-cleaner'
 import { stripControls } from '@osdlc/ux'
 
-import { errorText, realOr } from './helpers.ts'
+import { errorText, homeFrom, realOr } from './helpers.ts'
 import { expandHome, ignorePaths } from './ignore.ts'
 import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
 import { pluginKit } from './kit.ts'
@@ -381,7 +380,7 @@ function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliCont
 }
 
 /** The home folder, from `HOME` when set, with no trailing slash. */
-const homeOf = (ctx: CliContext): string => (ctx.env.HOME ?? homedir()).replace(/(.)\/+$/, '$1')
+const homeOf = (ctx: CliContext): string => homeFrom(ctx.env.HOME)
 
 /** `id` with the home folder after its `<kind>:`, as `home` spells it or by its real path, written `~`, as the text output shows it. */
 export function tildeId(id: string, home: string): string {

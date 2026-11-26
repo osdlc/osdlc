@@ -332,10 +332,12 @@ host-cleaner clean --pick worktree:/path/to/wt --allow close-terminals
 ## The `jetbrains` plugin
 
 JetBrains IDEs keep a cache and a log folder per version, and caches per
-project inside it. The IDE rebuilds any of them when needed
-(`costDescription: rebuild`). Roots: `~/Library/Caches/JetBrains` and
+project inside it. The IDE rebuilds the caches when needed
+(`costDescription: rebuild`); nothing rebuilds the macOS log folders (`lost`),
+so they wait for a pick. Roots: `~/Library/Caches/JetBrains` and
 `~/Library/Logs/JetBrains` on macOS, `~/.cache/JetBrains` (or
-`$XDG_CACHE_HOME/JetBrains`) on Linux. Detected when one of them exists.
+`$XDG_CACHE_HOME/JetBrains`) on Linux, under the core's `home` when it is set,
+else `HOME`. Detected when one of them exists.
 Settings: `plugins.jetbrains.idleHours` (default 24).
 
 - `ide-version:<path>`: a version folder, such as `RustRover2025.1`, that no
@@ -343,21 +345,29 @@ Settings: `plugins.jetbrains.idleHours` (default 24).
   `product-info.json`, read from each tool the Toolbox's `state.json` lists and
   from the application folders (`/Applications` and `~/Applications` on macOS;
   the Toolbox's `apps` folder, `/opt`, `/usr/local`, `/usr/share`, snaps under
-  `/snap`, `~/opt`, `~/.local/share` and `~/Applications` on Linux). It is held
+  `/snap`, `~/opt`, `~/.local/share`, `~/Applications` and the home itself on
+  Linux), and from the install each `jetbrains-*.desktop` entry starts
+  (`Exec=<install>/bin/...`, in `~/.local/share/applications`,
+  `/usr/local/share/applications` and `/usr/share/applications`). It is held
   while it changed within `idleHours`, in case an install sits somewhere not
   looked in; one used again between plan and clean is dropped as changed. A
   Toolbox state or `product-info.json` that is there and cannot be read refuses
-  every version folder (`installs-unreadable`). In the application folders, an
+  every version folder (`installs-unreadable`), and so does a Toolbox install
+  of an IntelliJ-platform IDE (it has a `bin/idea.properties`) with no
+  `product-info.json`; a Toolbox tool with neither, such as Fleet, is passed
+  over. In the application folders, an
   entry that cannot be looked into, or whose `product-info.json` names no
   `<Product><year>.<n>` folder, is taken as some other app and passed over.
 - `project-cache:<path>`: inside an installed version, `projects/<name>.<hash>`
   whose project is gone. The hash is Java's `String.hashCode` of the project's
   path, matched against the version's recent projects
-  (`options/recentProjects.xml` in its config folder). A cache whose hash
-  matches no recent project is left alone, and so is a project on a volume that
-  is not mounted: under `/Volumes`, `/mnt`, `/media` or `/run/media`, a missing
-  project is gone only when its nearest existing folder is on a mounted volume
-  of its own.
+  (`options/recentProjects.xml` in its config folder). It is held while it
+  changed within `idleHours`, as a project missing for a moment (a share that
+  is down, a checkout being cloned again) still uses its cache. A cache whose
+  hash matches no recent project is left alone, and so is a project on a volume
+  that is not mounted: under `/Volumes`, `/mnt`, `/media`, `/run/media` or
+  `/net`, a missing project is gone only when its nearest existing folder is on
+  a mounted volume of its own, inside that mount folder.
 
 A running process of the product (`rustrover`, `idea`, and so on, or
 `rustrover64` as in the `.vmoptions` file a Linux `.sh` launcher passes to
@@ -365,7 +375,7 @@ A running process of the product (`rustrover`, `idea`, and so on, or
 `refuse`. Folders other than version folders, and links, are never looked into.
 `delete` finds the folder again and checks its idle time and processes, then
 removes it with `kit.remove`. `jetbrainsPlugin(options, kit)` builds the plugin
-directly, with `apps` or `platform` of your own.
+directly, with `apps`, `desktop` or `platform` of your own.
 
 ## Command line
 
