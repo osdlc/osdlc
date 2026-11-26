@@ -630,7 +630,7 @@ candidates:
     cleanups.push(h.cleanup)
     const text = `descriptor: 1
 detect:
-  any: [{ onPath: mine }]
+  any: [{ onPath: mine }, { exists: store }]
 vars:
   DIR:
     - env: MINE_DIR

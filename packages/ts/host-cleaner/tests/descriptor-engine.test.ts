@@ -1220,9 +1220,10 @@ function outsideHome(): string {
 
 describe('variables (tier 2)', () => {
   test('detect gives the variables its folders use; one that throws after working them out gives none', async () => {
+    // An `exists` condition, so a missing program alone does not leave the variables unresolved.
     const text = `descriptor: 1
 detect:
-  any: [{ onPath: mine }]
+  any: [{ onPath: mine }, { exists: store }]
 vars:
   DIR:
     - env: MINE_DIR
@@ -1245,6 +1246,7 @@ candidates:
 
     // `onPath` throws once the variables are worked out, as a stat that fails would.
     const h = tempHome()
+    let looks = 0
     cleanups.push(h.cleanup)
     const throwing = descriptorPlugin('mine', parseDescriptor(text, 'mine.yaml'), {
       os: OS,
@@ -1256,6 +1258,8 @@ candidates:
       kit: pluginKit('mine', {
         env: h.env,
         which: () => {
+          // The look before the variables finds it; the one after throws.
+          if (looks++ === 0) return '/bin/mine'
           throw new Error('EACCES')
         },
       }),
