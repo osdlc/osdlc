@@ -58,7 +58,6 @@ import {
   SelectionError,
   clean,
   decidePlan,
-  firstOfEachName,
   inspect,
   plan as makePlan,
   recheck,
@@ -826,21 +825,35 @@ function varLine(x: VarRow, width: number): string {
   return `    ${`\${${x.name}}`.padEnd(width + 3)}  ${said}`
 }
 
-function renderPlugins(rows: readonly PluginRow[], targets: readonly string[]): string {
+/** `text` on one line, so a plugin's own words cannot split a row: each run of whitespace is one space. */
+const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
+
+/** `path` on one line; it keeps its spaces, as only a line break would split a row. */
+const pathLine = (path: string): string => path.replace(/[\r\n]+/g, ' ')
+
+function renderPlugins(
+  rows: readonly PluginRow[],
+  targets: readonly string[],
+  ignored: readonly string[],
+): string {
   const width = Math.max(...rows.map((r) => r.name.length))
-  const from = Math.max(...rows.map((r) => r.source.length))
-  const lines = [`targets: ${targets.join(', ') || '(none)'}`]
+  const sourceWidth = Math.max(...rows.map((r) => r.source.length))
+  const lines = [`targets: ${targets.map(pathLine).join(', ') || '(none)'}`]
+  if (ignored.length > 0) lines.push(`ignoring: ${ignored.map(pathLine).join(', ')}`)
   for (const r of rows) {
     const state = !r.enabled
       ? 'disabled'
       : r.detected
-        ? `detected; roots: ${r.roots.map((root) => (r.selfRoots.includes(root) ? `${root} (itself too)` : root)).join(', ') || 'none, the targets alone'}`
+        ? `detected; roots: ${r.roots.map((root) => pathLine(root) + (r.selfRoots.includes(root) ? ' (itself too)' : '')).join(', ') || 'none, the targets alone'}`
         : 'not detected'
-    const reason = r.reason?.replace(/\s+/g, ' ').trim() ?? null
+    const reason = r.reason === null ? null : oneLine(r.reason)
+    const note = r.note === null ? null : oneLine(r.note)
     const replaces =
-      r.replaces === undefined ? '' : `; replaces the ${r.replaces.source} ${r.replaces.path}`
+      r.replaces === undefined
+        ? ''
+        : `; replaces the ${r.replaces.source} ${pathLine(r.replaces.path)}`
     lines.push(
-      `  ${r.name.padEnd(width)}  ${r.source.padEnd(from)}  ${state}${reason === null ? '' : `: ${reason}`}${r.note === null ? '' : `; note: ${r.note}`}${replaces}`,
+      `  ${r.name.padEnd(width)}  ${r.source.padEnd(sourceWidth)}  ${state}${reason === null ? '' : `: ${reason}`}${note === null ? '' : `; note: ${note}`}${replaces}`,
     )
     const names = Math.max(...r.vars.map((x) => x.name.length))
     for (const x of r.vars) lines.push(varLine(x, names))
@@ -859,6 +872,7 @@ async function runPlugins(
   const v = parsed.values
   let rows: PluginRow[]
   let targets: readonly string[]
+  let ignored: readonly string[]
   let warnings: readonly string[]
   try {
     const { config, definitions, descriptors, problems, unknown, ...loading } = loadRun(
@@ -867,33 +881,32 @@ async function runPlugins(
       deps,
     )
     const all = allPlugins(config, definitions, deps, ctx, ['worktree', 'branch'])
-    const on = all.filter((p) => enabled(p.name, config))
     const loaded = new Map(descriptors.map((d) => [d.name, d]))
-    const found = await inspect(on, contextFor(parsed.positionals, config, ctx, [], v.ignore))
-    const state = new Map(found.plugins.map((s) => [s.name, s]))
-    const source = deps.plugins === undefined ? 'built-in' : 'given'
-    // One row per name: `inspect` leaves out a second plugin of a name, with a warning.
-    rows = firstOfEachName(all).first.map((p): PluginRow => {
-      const isEnabled = enabled(p.name, config)
-      const s = state.get(p.name)
-      const d = loaded.get(p.name)
-      const seen = isEnabled ? descriptorDetection(p) : undefined
+    const at = contextFor(parsed.positionals, config, ctx, [], v.ignore)
+    const found = await inspect(all, at, { skip: (p) => !enabled(p.name, config) })
+    rows = found.plugins.map((s): PluginRow => {
+      // Without `deps.plugins`, each plugin that is not built in is a descriptor's.
+      const d = s.builtIn === true ? undefined : loaded.get(s.name)
+      const p = all.find((q) => q.name === s.name)
+      const seen = s.skipped === true || p === undefined ? undefined : descriptorDetection(p)
       return {
-        name: p.name,
-        source: d?.source ?? source,
+        name: s.name,
+        source: s.builtIn === true ? 'built-in' : (d?.source ?? 'given'),
         ...(d?.replaces === undefined ? {} : { replaces: d.replaces }),
-        enabled: isEnabled,
-        detected: s?.detected ?? false,
-        reason: isEnabled
-          ? (s?.reason ?? null)
-          : `plugins.${p.name}.enabled is false; a sweep's --plugin ${p.name} runs it anyway`,
-        roots: s?.roots ?? [],
-        selfRoots: s?.selfRoots ?? [],
-        note: s?.note ?? null,
+        enabled: s.skipped !== true,
+        detected: s.detected,
+        reason:
+          s.skipped === true
+            ? `plugins.${s.name}.enabled is false; a sweep's --plugin ${s.name} runs it anyway`
+            : (s.reason ?? null),
+        roots: s.roots,
+        selfRoots: s.selfRoots,
+        note: s.note ?? null,
         vars: varRows(seen?.vars),
       }
     })
     targets = found.ctx.targets
+    ignored = found.ctx.ignore ?? []
     // As `config`, it lists what it can: a descriptor that can't be used is a warning.
     warnings = [
       ...loading.warnings,
@@ -905,10 +918,12 @@ async function runPlugins(
     return refusal(ctx, name, err)
   }
   if (v.format === 'json') {
-    ctx.io.stdout(`${JSON.stringify({ targets, warnings, plugins: rows }, null, 2)}\n`)
+    ctx.io.stdout(
+      `${JSON.stringify({ targets, ignore: ignored, warnings, plugins: rows }, null, 2)}\n`,
+    )
   } else {
     writeWarnings(ctx, name, warnings)
-    ctx.io.stdout(renderPlugins(rows, targets))
+    ctx.io.stdout(renderPlugins(rows, targets, ignored))
   }
   return EXIT.ok
 }

@@ -115,7 +115,9 @@ const receipt = await clean(plan(found), [cache], ctx) // re-check, prepare, del
 
 `inspect` runs `detect`, `scope` and `roots` only, as `host-cleaner plugins`
 does: whether each plugin applies here, why not, its note and its roots. It
-proposes and deletes nothing.
+proposes and deletes nothing. A plugin its `skip` option picks is listed as
+`skipped` and none of its hooks run, as `host-cleaner plugins` lists a plugin
+the config disables.
 
 ```ts
 import { inspect } from '@osdlc/host-cleaner'
@@ -602,22 +604,29 @@ whether the file set it or it is the default. Under a descriptor's `idleHours`
 it prints each entry with its own value and the threshold the run applies to it.
 `--format json` prints the values, and those thresholds under `partIdleHours`.
 
-`host-cleaner plugins` lists every plugin: where it came from (`built-in`, for
-a descriptor `shipped`, `user` for the config directory or `flag` for
-`--descriptor`, or `given` when a program hands its own to `main`), whether it
-applies here, and its roots, the folders it may delete in besides the targets.
-When it does not apply, a reason follows if one is known: disabled, or what
-`detect` threw. A `detect` that just answers no, as most built-ins do, gives no
-reason: it shows `not detected`. A descriptor that stands in for one of the
-same name ends its line with the file it replaces (`replaces` in JSON). It runs
-`detect`, `scope` and `roots` and nothing else, so it proposes and deletes
-nothing. A note its `detect` gives follows the plugin's state (`; note: ...`),
-whether it is detected or not, so a degraded plugin (`{ active: true, note }`)
-shows as detected with its note, as Orca installed but not running does, and a
-descriptor that is `system: true` or superseded says so there; the JSON row has
-it as `note`. A root the core refuses is left out with a warning, as `status`
-does, and a self root is marked `(itself too)`. A plugin the config disables is
-listed as `disabled`, and its `detect` is not run.
+`host-cleaner plugins` lists every plugin: where it came from, each plugin by its
+own origin (`built-in` when host-cleaner ships it, even when a program passes it
+to `main`; for a descriptor `shipped`, `user` for the config directory or `flag`
+for `--descriptor`; and `given` for a plugin the program wrote), whether it
+applies here and, when it does not, why, and its roots, the folders it may
+delete in besides the targets. When it does not apply, a reason follows if one
+is known: disabled, or what `detect` threw. A `detect` that just answers no, as
+most built-ins do, gives no reason: it shows `not detected`. A descriptor that
+stands in for one of the same name ends its line with the file it replaces
+(`replaces` in JSON). The ignored directories (`--ignore` and the config's
+`ignore`), which may leave out a target, show after `ignoring:`, as in `status`;
+the JSON has them as `ignore`. It runs `detect`, `scope` and `roots` and nothing
+else, so it proposes and deletes nothing. It asks the plugins one after
+another, so each hook that hangs adds its time limit (30 seconds unless the
+plugin asks for another). A note its `detect` gives follows the plugin's state
+(`; note: ...`), whether it is detected or not, so a degraded plugin
+(`{ active: true, note }`) shows as detected with its note, as Orca installed
+but not running does, and a descriptor that is `system: true` or superseded says
+so there; the JSON row has it as `note`. A root the core refuses is left out
+with a warning, as `status` does, and a self root is marked `(itself too)`. A
+plugin the config disables is listed as `disabled`, and its `detect` is not run.
+A descriptor that can't be used, or a config entry that names no plugin, is a
+warning, as in `config`.
 
 Under a descriptor with variables, one line per variable its folders and locks
 use on this OS, built in or declared: its value and the source that gave it,

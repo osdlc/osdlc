@@ -268,6 +268,18 @@ export const definePlugin = <S extends z.ZodObject>(
   },
 })
 
+/** The plugins a factory host-cleaner ships built. */
+const shipped = new WeakSet<Plugin>()
+
+/** `plugin`, recorded as one host-cleaner ships; each built-in plugin's factory returns through it. */
+export const builtIn = (plugin: Plugin): Plugin => {
+  shipped.add(plugin)
+  return plugin
+}
+
+/** Whether a factory host-cleaner ships built `plugin`, however it reached the caller. */
+export const isBuiltIn = (plugin: Plugin): boolean => shipped.has(plugin)
+
 /** Thrown from a plugin to stop the whole run, not only the candidate it was working on. */
 export class FatalRun extends Error {
   override name = 'FatalRun'

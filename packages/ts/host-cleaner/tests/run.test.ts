@@ -16,6 +16,7 @@ import {
   SelectionError,
   clean,
   decide,
+  gitPlugin,
   inspect,
   parsePlan,
   plan,
@@ -299,6 +300,41 @@ describe('inspect', () => {
       },
     })
     await expect(inspect([fatal], ctx)).rejects.toThrow('stop')
+  })
+
+  test('a plugin a shipped factory built is marked, and a copy of one is not', async () => {
+    const git = gitPlugin()
+    const found = await inspect([git, { ...git, name: 'mine' }], ctx)
+    expect(found.plugins).toEqual([
+      { name: 'git', detected: true, builtIn: true, roots: [], selfRoots: [] },
+      { name: 'mine', detected: true, roots: [], selfRoots: [] },
+    ])
+  })
+
+  test('a plugin skip picks is listed as skipped with no hook run, after the check for a second of its name', async () => {
+    const log: string[] = []
+    const off = fake('off', [], log, { detect: () => (log.push('detect:off'), true) })
+    const found = await inspect([off, fake('off', [], log)], ctx, {
+      skip: (p) => p.name === 'off',
+    })
+    expect(found.plugins).toEqual([
+      { name: 'off', detected: false, skipped: true, roots: [], selfRoots: [] },
+    ])
+    expect(found.warnings).toEqual(['off: a second plugin of that name was left out'])
+    expect(log).toEqual([])
+  })
+
+  test('survey warns of a failed detect in plugin order, beside a second plugin of a name', async () => {
+    const throwing = fake('a', [], [], {
+      detect: () => {
+        throw new Error('x')
+      },
+    })
+    const s = await survey([throwing, fake('b', [], []), fake('b', [], [])], ctx)
+    expect(s.warnings.slice(0, 2)).toEqual([
+      'a: detect failed: x',
+      'b: a second plugin of that name was left out',
+    ])
   })
 
   test('a note is kept whether detected or not, an answer that is neither is the reason, and roots are checked as survey checks them', async () => {
