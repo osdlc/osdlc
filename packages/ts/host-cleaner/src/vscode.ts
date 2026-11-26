@@ -6,8 +6,8 @@
  * Each storage folder names its workspace in `workspace.json`, as a `folder`
  * or a `workspace` (a `.code-workspace` file) URI. One whose `file:` URI
  * names nothing on disk is a candidate; deleting it costs the window's
- * settings and state, which VS Code starts afresh (`rebuild`), or, when it
- * holds chat or agent history (see {@link historyIn}), that history (`lost`). A remote URI cannot be checked from
+ * settings and state (`re-download`), or, when it holds chat or agent history
+ * (see {@link historyIn}), that history (`lost`). A remote URI cannot be checked from
  * here and a folder with no `workspace.json` is an empty window's, so both are
  * left alone. A `workspace.json` of any other shape is never guessed at: the
  * folder is proposed held and refused (`vscode-unknown-workspace`), so it shows under
@@ -808,7 +808,7 @@ function goneCandidate(kit: Kit, dir: string, e: Extract<Entry, { state: 'gone' 
     why: `VS Code kept state for ${e.local}, which no longer exists${hasHistory ? `, with chat or agent history in ${history.join(', ')}` : ''}`,
     ...(bytes === null ? {} : { bytes }),
     // `lost` alone holds it; see Candidate.costDescription in types.ts.
-    costDescription: hasHistory ? 'lost' : 'rebuild',
+    costDescription: hasHistory ? 'lost' : 're-download',
     evidence: {
       kind: KIND,
       path: dir,

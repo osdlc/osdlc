@@ -230,7 +230,7 @@ describe('discover', () => {
         kind: 'workspace-storage',
         owner: 'vscode',
         path: dead,
-        costDescription: 'rebuild',
+        costDescription: 're-download',
         why: `VS Code kept state for ${join(h.projects, 'dead')}, which no longer exists`,
         evidence: {
           kind: 'workspace-storage',
@@ -421,8 +421,8 @@ describe('chat and agent history', () => {
       [join(h.storage, 'b'), 'lost', ['GitHub.copilot-chat/transcripts']],
       [join(h.storage, 'c'), 'lost', ['GitHub.copilot-chat/memory-tool/memories']],
       [join(h.storage, 'd'), 'lost', ['chatSessions', 'chatEditingSessions']],
-      [join(h.storage, 'e'), 'rebuild', undefined],
-      [join(h.storage, 'f'), 'rebuild', undefined],
+      [join(h.storage, 'e'), 're-download', undefined],
+      [join(h.storage, 'f'), 're-download', undefined],
     ])
   })
 
@@ -473,7 +473,7 @@ describe('chat and agent history', () => {
     const s = await survey([vscodePlugin(h.options())], ctxOf(h.home))
     expect(s.warnings).toEqual([])
     expect(s.candidates.map((c) => [c.path, c.costDescription])).toEqual(
-      shapes.map(([hash]) => [join(h.storage, hash), kept.has(hash) ? 'lost' : 'rebuild']),
+      shapes.map(([hash]) => [join(h.storage, hash), kept.has(hash) ? 'lost' : 're-download']),
     )
   })
 
@@ -489,10 +489,10 @@ describe('chat and agent history', () => {
 
     const s = await survey([vscodePlugin(h.options())], ctxOf(h.home))
     expect(s.candidates.map((c) => [c.path, c.costDescription])).toEqual([
-      [join(h.storage, 'a'), 'rebuild'],
-      [join(h.storage, 'b'), 'rebuild'],
+      [join(h.storage, 'a'), 're-download'],
+      [join(h.storage, 'b'), 're-download'],
       [join(h.storage, 'c'), 'lost'],
-      [join(h.storage, 'd'), 'rebuild'],
+      [join(h.storage, 'd'), 're-download'],
     ])
   })
 
@@ -531,25 +531,25 @@ describe('chat and agent history', () => {
     const unread = [expect.stringMatching(/^state\.vscdb \(it could not be read: .+\)$/)]
     expect(s.candidates.map((c) => [c.path, c.costDescription, c.evidence.history])).toEqual([
       [join(h.storage, 'a'), 'lost', unread],
-      [join(h.storage, 'b'), 'rebuild', undefined],
+      [join(h.storage, 'b'), 're-download', undefined],
       [join(h.storage, 'c'), 'lost', unread],
       // The row holds `[]`: no chat.
-      [join(h.storage, 'd'), 'rebuild', undefined],
-      [join(h.storage, 'e'), 'rebuild', undefined],
+      [join(h.storage, 'd'), 're-download', undefined],
+      [join(h.storage, 'e'), 're-download', undefined],
       [join(h.storage, 'f'), 'lost', ['state.vscdb (a log beside it is not read)']],
       [join(h.storage, 'g'), 'lost', ['state.vscdb']],
-      [join(h.storage, 'h'), 'rebuild', undefined],
+      [join(h.storage, 'h'), 're-download', undefined],
       [join(h.storage, 'i'), 'lost', unread],
     ])
     expect(readdirSync(join(h.storage, 'e')).sort()).toEqual(['state.vscdb', 'workspace.json'])
   })
 
-  test('delete refuses a storage folder planned as rebuild that now holds chats', async () => {
+  test('delete refuses a storage folder planned as re-download that now holds chats', async () => {
     const h = home()
     const dead = store(h.storage, 'bbb', folder(join(h.projects, 'dead')))
     const plugin = vscodePlugin(h.options())
     const c = (await survey([plugin], ctxOf(h.home))).candidates[0]!
-    expect(c.costDescription).toBe('rebuild')
+    expect(c.costDescription).toBe('re-download')
     chat(dead, [whole([REQUEST])])
     await expect(deleting(plugin, c, h.home)).rejects.toThrow(
       /now holds chat or agent history \(chatSessions\)/,
