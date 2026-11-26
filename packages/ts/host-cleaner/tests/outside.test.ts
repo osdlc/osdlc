@@ -210,9 +210,9 @@ process.stdout.write(JSON.stringify({ failed, version: loaded[0]?.version, name:
   })
   expect(out.ran.filter((c) => c.startsWith('podman volume rm'))).toEqual([])
 
-  // The example's source and tests, typechecked as the package would and to
-  // this repo's bar (@osdlc/tsconfig's base.json) on top of its own `strict`:
-  // the tests also reach the main entry and ./testing, which its code does not.
+  // The example's tests, typechecked as the package would: they also reach
+  // the main entry and ./testing, which its plugin code does not.
+  // host-cleaner's own typecheck checks both to this repo's bar.
   hostCleanerEntries(dir, ['.', 'plugin', 'testing'])
   mkdirSync(join(dir, 'test'))
   copyFileSync(join(example, 'test', 'podman.test.ts'), join(dir, 'test', 'podman.test.ts'))
@@ -222,18 +222,7 @@ process.stdout.write(JSON.stringify({ failed, version: loaded[0]?.version, name:
     join(dir, 'tsconfig.test.json'),
     JSON.stringify({
       extends: './tsconfig.json',
-      compilerOptions: {
-        noEmit: true,
-        allowImportingTsExtensions: true,
-        rootDir: '.',
-        noUncheckedIndexedAccess: true,
-        noImplicitOverride: true,
-        noFallthroughCasesInSwitch: true,
-        noUnusedLocals: true,
-        verbatimModuleSyntax: true,
-        isolatedModules: true,
-        exactOptionalPropertyTypes: true,
-      },
+      compilerOptions: { noEmit: true, allowImportingTsExtensions: true, rootDir: '.' },
       include: ['src', 'test'],
     }),
   )

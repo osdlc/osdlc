@@ -58,9 +58,12 @@ export default definePlugin({
           timeoutMs: INFO_LIMIT_MS,
         })
         if (r.ok) return true
-        // A run that never exited has no stderr; `error` or `reason` says why.
-        const never = r.neverExited === true ? `did not finish (${r.reason ?? 'unknown'})` : ''
-        const why = r.stderr.trim() || r.error || never || 'no output'
+        // A run that never exited, such as one past the limit, says why in
+        // `error`, not stderr.
+        const why =
+          r.neverExited === true
+            ? (r.error ?? `did not finish (${r.reason ?? 'unknown'})`)
+            : r.stderr.trim() || 'no output'
         return { active: false, note: `podman info failed: ${why}` }
       },
       async discover(ctx) {

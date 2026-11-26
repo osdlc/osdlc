@@ -59,5 +59,5 @@ instead. `tests/outside.test.ts` builds `src/index.ts` that way: with this
 folder's `package.json` and `tsconfig.json`, in a package that sees only
 `@osdlc/host-cleaner/plugin`, then loads it with the built host-cleaner's
 loader, runs the contract suite on it there, and typechecks `test/` in the
-same package. Run `pnpm build` first. That is the example's typecheck:
-host-cleaner's own `tsc --noEmit` leaves this folder out.
+same package. Run `pnpm build` first. host-cleaner's own `pnpm typecheck`
+also checks this folder, to the repo's stricter settings.

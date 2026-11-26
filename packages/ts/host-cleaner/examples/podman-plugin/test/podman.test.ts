@@ -5,8 +5,8 @@
  */
 import { describe, expect, test } from 'vitest'
 
-import { clean, plan, survey, type RunCtx, type Survey } from '@osdlc/host-cleaner'
-import { RUN_LIMIT_MS, pluginKit } from '@osdlc/host-cleaner/plugin'
+import { HOOK_LIMIT_MS, clean, plan, survey, type RunCtx, type Survey } from '@osdlc/host-cleaner'
+import { pluginKit } from '@osdlc/host-cleaner/plugin'
 import {
   contractSuite,
   fakeContext,
@@ -212,14 +212,27 @@ describe('the podman example', () => {
     const timedOut = await survey([hung.plugin], ctx)
     expect(timedOut.warnings).toEqual([])
     expect(timedOut.notes).toEqual({ podman: 'podman info failed: did not finish (timeout)' })
-    // The detect hook's limit is RUN_LIMIT_MS too; info must give up first.
-    expect(hung.calls[0]?.opts.timeoutMs).toBeLessThan(RUN_LIMIT_MS)
+    // info must give up before the detect hook does.
+    expect(hung.calls[0]?.opts.timeoutMs).toBeLessThan(HOOK_LIMIT_MS)
 
     const unstartable = build({
       info: { exitCode: 1, neverExited: true, reason: 'spawn', error: 'spawn podman EACCES' },
     })
     const refused = await survey([unstartable.plugin], ctx)
     expect(refused.notes).toEqual({ podman: 'podman info failed: spawn podman EACCES' })
+
+    // A warning printed before it hung is not the reason.
+    const warned = build({
+      info: {
+        exitCode: 1,
+        neverExited: true,
+        reason: 'timeout',
+        stderr: 'WARN[0000] "/run/user/501" is not writable\n',
+        error: 'timed out after 5000 ms',
+      },
+    })
+    const late = await survey([warned.plugin], ctx)
+    expect(late.notes).toEqual({ podman: 'podman info failed: timed out after 5000 ms' })
   })
 
   test('the same creation time printed another way is not a change', async () => {
