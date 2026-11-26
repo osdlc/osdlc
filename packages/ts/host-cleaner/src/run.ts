@@ -818,13 +818,28 @@ export interface CleanOptions {
  * plugin, `delete` on its owner, `deleted` on the others. A throw or time-out
  * in `prepare` or `delete` fails that candidate and skips those requiring it;
  * a {@link FatalRun} stops the run and skips the rest. `deleted` failures are
- * recorded and change nothing.
+ * recorded and change nothing. Every kit is unbound after.
  */
 export async function clean(
   p: Plan,
   plugins: readonly Plugin[],
   ctx: RunCtx,
   opts: CleanOptions = {},
+): Promise<Receipt> {
+  try {
+    return await cleanBound(p, plugins, ctx, opts)
+  } finally {
+    // No kit keeps this run's bounds once it is over.
+    for (const q of plugins) bindKit(q, undefined)
+  }
+}
+
+/** {@link clean}, leaving each kit bound as its last delete or the re-check bound it. */
+async function cleanBound(
+  p: Plan,
+  plugins: readonly Plugin[],
+  ctx: RunCtx,
+  opts: CleanOptions,
 ): Promise<Receipt> {
   const now = opts.now ?? (() => new Date())
   const head = { version: RECEIPT_VERSION, plan: opts.source ?? '(swept)' } as const
@@ -946,6 +961,7 @@ async function runOne(
     return fail(`${c.owner} cannot delete`)
   }
   // A ref has no folder to check; a path is checked again on its real path, which may have moved since the survey.
+  let bounds: Bounds | undefined
   if (c.path !== undefined) {
     let answer: unknown
     try {
@@ -958,19 +974,24 @@ async function runOne(
     }
     const at = { targets: s.ctx.targets, linked: s.linked, home: s.ctx.home ?? homedir() }
     const { roots, self, problems } = acceptRoots(answer, at)
-    const bounds: Bounds = { roots, self, ...at }
+    bounds = { roots, self, ...at }
     const why = outside(c, bounds)
     if (why !== null) {
       return fail(problems.length === 0 ? why : `${why}; roots refused: ${problems.join('; ')}`)
     }
-    // The owner's kit removes within what was just checked.
-    bindKit(owner, bounds)
-  } else {
-    // A ref delete removes no folder.
-    bindKit(owner, undefined)
   }
+  // The owner's kit removes within what was just checked; a ref delete removes no folder.
+  bindKit(owner, bounds)
   try {
-    step.delete = await callHook(owner, 'delete', s.ctx, (x) => owner.delete!(c, x))
+    step.delete = await callHook(owner, 'delete', s.ctx, async (x) => {
+      // Bound by this call's signal too, which no other run binds.
+      bindKit(owner, bounds, x.signal)
+      try {
+        return await owner.delete!(c, x)
+      } finally {
+        bindKit(owner, undefined, x.signal)
+      }
+    })
   } catch (err) {
     return fail(err)
   }
