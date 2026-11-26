@@ -31,6 +31,9 @@ pnpm test
 
 `pnpm test` runs the unit tests and the examples on
 [Vitest](https://vitest.dev) under Node 22 or later, with no browser.
+`pnpm run coverage:unit` reports coverage of that run only: the browser tests
+and the Playwright specs run Chromium or Playwright's own runner, and are not
+in the figure.
 
 The browser tests need Chromium (`pnpm exec playwright install chromium`):
 
