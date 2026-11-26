@@ -16,6 +16,7 @@ import {
 import { delimiter, dirname, join } from 'node:path'
 
 import { which } from '@osdlc/command-seam'
+import type { ProcessHolder, ProcessProbe } from '@osdlc/repo-cleaner'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
@@ -115,6 +116,7 @@ const use = (dir: string, name: string, hoursAgo = 0): void => {
  * answers `answers.rustup` over a default of `stable` with no overrides and
  * removes a toolchain it uninstalls; `node` is on PATH only when given.
  * `mounts` gives each versions folder's mount options, by default none.
+ * `probe` answers what works in a folder, by default nothing.
  */
 function fixture(
   opts: {
@@ -130,6 +132,7 @@ function fixture(
     mounts?: MountOptions
     platform?: NodeJS.Platform
     now?: () => Date
+    probe?: ProcessProbe
   } = {},
 ): Fixture {
   const h = tempHome('host-cleaner-toolchains-')
@@ -169,6 +172,7 @@ function fixture(
     runner: fake.runner,
     which: fake.which,
     now: opts.now,
+    probe: opts.probe ?? { alive: () => true, holders: () => [] },
   })
   const plugin = toolchainsPlugin(kit, env, {
     idleHours: opts.idleHours,
@@ -1148,6 +1152,104 @@ describe('a clean of several versions', () => {
     rmSync(join(fx.dev, 'b'), { recursive: true })
     repo(join(fx.dev, 'c'), { '.nvmrc': '14\n' })
     await expect(fx.plugin.delete!(c, fx.ctx)).rejects.toThrow(/is no longer a candidate/)
+  })
+})
+
+describe('a process working in a version folder', () => {
+  const server = { pid: 42, command: 'node' } as ProcessHolder
+
+  /** A fixture whose probe finds `holders` working in `busy.path`, or throws `busy.error`; nothing until either is set. */
+  function busyFixture(opts: Parameters<typeof fixture>[0]) {
+    const busy: { path?: string | undefined; holders?: ProcessHolder[]; error?: Error } = {}
+    const fx = fixture({
+      ...opts,
+      probe: {
+        alive: () => true,
+        holders: (p) => {
+          if (busy.error !== undefined) throw busy.error
+          return p === busy.path ? (busy.holders ?? [server]) : []
+        },
+      },
+    })
+    return { fx, busy }
+  }
+
+  test('refuses that version, rustup or nvm, and clean leaves it', async () => {
+    const { fx, busy } = busyFixture({
+      rust: [`1.75.0-${HOST}`, `1.76.0-${HOST}`, `stable-${HOST}`],
+      nvm: ['v14.21.3', 'v16.20.0'],
+    })
+    repo(join(fx.dev, 'a'), { '.nvmrc': '16\n', 'rust-toolchain': '1.76.0\n' })
+    const rust = join(fx.rustup, `1.75.0-${HOST}`)
+    const node = join(fx.nvm, 'v14.21.3')
+    for (const [path, id] of [
+      [rust, `rust-toolchain:${rust}`],
+      [node, `node-version:${node}`],
+    ] as const) {
+      busy.path = path
+      const { names, refused } = await proposed(fx)
+      expect(names).toEqual([`1.75.0-${HOST}`, 'v14.21.3'])
+      expect(refused).toEqual([
+        expect.objectContaining({
+          candidate: id,
+          code: 'live-process',
+          reason: `running in ${path}: node (pid 42)`,
+        }),
+      ])
+    }
+    busy.path = node
+    const receipt = await clean(plan(await survey([fx.plugin], fx.ctx)), [fx.plugin], fx.ctx)
+    expect(receipt.steps.map((x) => [x.id, x.result])).toEqual([[`rust-toolchain:${rust}`, 'ok']])
+    expect(readdirSync(fx.nvm).sort()).toEqual(['v14.21.3', 'v16.20.0'])
+  })
+
+  test('an idle shell in it refuses nothing; a process table that cannot be read refuses every version', async () => {
+    const { fx, busy } = busyFixture({
+      rust: [`1.75.0-${HOST}`, `stable-${HOST}`],
+      nvm: ['v14.21.3'],
+    })
+    repo(join(fx.dev, 'a'))
+    busy.path = join(fx.nvm, 'v14.21.3')
+    busy.holders = [{ pid: 7, command: 'zsh', hasChildren: false }]
+    expect((await proposed(fx)).refused).toEqual([])
+    busy.error = new Error('lsof did not run')
+    const { names, refused } = await proposed(fx)
+    expect(names).toEqual([`1.75.0-${HOST}`, 'v14.21.3'])
+    expect(refused.map((o) => [o.code, o.reason])).toEqual([
+      ['process-table-unreadable', 'process table unreadable: lsof did not run'],
+      ['process-table-unreadable', 'process table unreadable: lsof did not run'],
+    ])
+  })
+
+  test('one that starts after the plan, or right before the delete, keeps the version', async () => {
+    const { fx, busy } = busyFixture({
+      rust: [`1.75.0-${HOST}`, `stable-${HOST}`],
+      nvm: ['v14.21.3'],
+    })
+    repo(join(fx.dev, 'a'))
+    const rust = join(fx.rustup, `1.75.0-${HOST}`)
+    const node = join(fx.nvm, 'v14.21.3')
+    const p = plan(await survey([fx.plugin], fx.ctx))
+    expect(p.candidates.map((c) => c.path).sort()).toEqual([rust, node].sort())
+    busy.path = node
+    const late: Plugin = {
+      name: 'late',
+      detect: () => true,
+      prepare: (c) => void (busy.path = c.path),
+    }
+    const receipt = await clean(p, [fx.plugin, late], fx.ctx)
+    expect(receipt.dropped).toEqual([
+      {
+        id: `node-version:${node}`,
+        reason: 'blocked',
+        detail: `toolchains: running in ${node}: node (pid 42)`,
+      },
+    ])
+    expect(receipt.steps.map((x) => [x.id, x.result, x.error])).toEqual([
+      [`rust-toolchain:${rust}`, 'failed', `${rust} is refused: running in ${rust}: node (pid 42)`],
+    ])
+    expect(uninstalls(fx)).toEqual([])
+    expect(existsSync(rust) && existsSync(node)).toBe(true)
   })
 })
 

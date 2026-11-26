@@ -392,6 +392,11 @@ Settings: `plugins.toolchains.idleHours`, which inherits the top-level
   show a recent one: unless the volume is mounted `strictatime`, a versions
   folder on macOS proposes nothing either, and `status` warns
   `toolchains: <folder> is on a macOS volume, which stops updating a file's access time once it is newer than its modified time, so last use can't be measured and every version in it is kept`.
+- A version with a process working in its folder (one whose current
+  folder is in it, an idle shell aside) is refused `live-process`, and every
+  version is refused `process-table-unreadable` when that cannot be read, as
+  the `cargo` and `node` plugins refuse an artifact. A process started from a
+  version's `bin` that works in another folder is not seen this way.
 - Checkouts are listed only when some installed version is past
   `idleHours`; when none is, nothing is proposed and git is not asked.
 - As a library: `toolchainsPlugin(kit, env, { idleHours, mountOptions, platform })`

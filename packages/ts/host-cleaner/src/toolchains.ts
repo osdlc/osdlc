@@ -724,7 +724,8 @@ export function toolchainsPlugin(
   /**
    * The row for a version no pin or default keeps; null when it was used in the
    * last {@link threshold} hours, {@link RELATIME_LAG_HOURS} more when its
-   * folder is mounted `relatime`. Sized only when `measure` is set.
+   * folder is mounted `relatime`. Refused while a process works in its folder
+   * or the process table cannot be read. Sized only when `measure` is set.
    */
   const row = (
     tool: Tool,
@@ -732,10 +733,12 @@ export function toolchainsPlugin(
     unknown: readonly string[],
     relatime: boolean,
     measure: boolean,
+    ctx: Ctx,
   ): Row | null => {
     const path = join(versions[tool], name)
     const hours = hoursUnused(path)
     if (!idle(hours, relatime)) return null
+    const held = kit.running({ in: path }, ctx)
     const bytes = measure ? kit.size(path) : null
     const what = tool === 'rustup' ? 'this toolchain' : 'this Node version'
     // The global packages npm installed into a Node version go with it, and a re-download does not bring them back.
@@ -751,6 +754,18 @@ export function toolchainsPlugin(
       blockers.push({
         code: 'unused-unknown',
         reason: `when ${path} was last used could not be told: its bin folder could not be read or holds no file`,
+      })
+    }
+    if (held.names.length > 0) {
+      blockers.push({
+        code: 'live-process',
+        reason: `running in ${path}: ${held.names.join(', ')}`,
+      })
+    }
+    if (held.unknown !== undefined) {
+      blockers.push({
+        code: 'process-table-unreadable',
+        reason: `process table unreadable: ${held.unknown}`,
       })
     }
     return {
@@ -858,7 +873,7 @@ export function toolchainsPlugin(
     const pins = readPins(await listing(ctx, only !== undefined), ctx.cwd)
     const rows: Row[] = []
     const add = (tool: Tool, name: string, unknown: readonly string[]): void => {
-      const r = row(tool, name, unknown, relatime(tool), measure)
+      const r = row(tool, name, unknown, relatime(tool), measure, ctx)
       if (r !== null) rows.push(r)
     }
 
