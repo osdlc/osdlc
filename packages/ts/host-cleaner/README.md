@@ -351,8 +351,9 @@ Docker refuses to remove a volume or image a container took up after the
 plan, so that candidate fails instead of being deleted. A volume removed and
 made again under its name since the plan has another creation time, so the
 re-check drops it as `changed`, and the delete looks once more before it removes
-anything. Docker gives that time to the second, so a volume made in the last ten
-minutes is not proposed, and neither is one Docker gives no creation time for. The build
+anything. Docker gives that time to the second, so a volume made in the ten
+minutes before the daemon's clock (`docker info`) is not proposed, and neither
+is one Docker gives no creation time for. The build
 cache is `capped`: it is pruned only while its `Reclaimable:` total, read again
 right before the prune, is no more than was shown. An image's size counts only
 the layers no other image shares, from `docker system df -v`, and is left out

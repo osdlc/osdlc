@@ -43,12 +43,19 @@ const DF_LIMIT_MS = 30_000
 const INFO_LIMIT_MS = 10_000
 
 /**
- * How long ago a volume must have been made to be proposed. Docker prints
- * `CreatedAt` to whole seconds, so one made again in the second the plan saw
- * would look the same; this keeps that second well behind the plan, and
- * absorbs a daemon clock some minutes off this one's.
+ * How long before the daemon's clock a volume must have been made to be
+ * proposed. Docker prints `CreatedAt` to whole seconds, so one made again in
+ * the second the plan saw would look the same; this keeps that second well
+ * behind the plan, and absorbs the daemon's clock being set back some minutes.
  */
 const FRESH_VOLUME_MS = 10 * 60_000
+
+/** An RFC 3339 time, as Docker prints `CreatedAt` and `SystemTime`, in ms; undefined when `text` is not one. */
+export function rfc3339(text: string): number | undefined {
+  if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)$/.test(text)) return undefined
+  const ms = Date.parse(text)
+  return Number.isNaN(ms) ? undefined : ms
+}
 
 /** The ref of the one build cache candidate: what `docker builder prune` reclaims. */
 const BUILD_CACHE_REF = 'reclaimable'
@@ -133,10 +140,11 @@ const onlyGone = (r: KitRunResult): boolean => {
 
 /**
  * Whether `docker builder du` failed only because this Docker has no `builder du`
- * (no buildx): the old `builder` group answers it with its own usage.
+ * (no buildx): the old `builder` group answers it with its own usage, and with
+ * `DOCKER_BUILDKIT=1` Docker says buildx is missing.
  */
 const noBuilderDu = (r: KitRunResult): boolean =>
-  /is not a docker command|unknown command|unknown flag|Usage:\s+docker builder COMMAND/i.test(
+  /is not a docker command|unknown command|unknown flag|Usage:\s+docker builder COMMAND|buildx component is missing/i.test(
     failureText(r),
   )
 
@@ -168,7 +176,6 @@ export function dockerPlugin(
   kit: Kit = pluginKit(DOCKER_PLUGIN, opts),
 ): Plugin {
   const keep = new Set(opts.keepVolumes ?? [])
-  const now = opts.now ?? (() => new Date())
 
   /**
    * `docker <args>` once it exited 0, or failed in a way `tolerate` accepts;
@@ -218,6 +225,18 @@ export function dockerPlugin(
     return new Map(jsonLines(out).map((row) => [str(row.Name), str(row.CreatedAt)]))
   }
 
+  /** The daemon's clock, which stamps a volume's `CreatedAt`, in ms; throws when it gives none. */
+  const daemonNow = async (ctx: Ctx): Promise<number> => {
+    const r = await docker(['info', '--format', '{{.SystemTime}}'], ctx, {
+      timeoutMs: INFO_LIMIT_MS,
+    })
+    const at = rfc3339(r.stdout.trim())
+    if (at === undefined) {
+      throw new Error(`docker info gave no time: ${firstLine(r.stdout, '(nothing)')}`)
+    }
+    return at
+  }
+
   const volumes = async (ctx: Ctx): Promise<Candidate[]> => {
     const out = await docker(
       ['volume', 'ls', '--filter', 'dangling=true', '--format', '{{json .}}'],
@@ -227,6 +246,8 @@ export function dockerPlugin(
       (row) => str(row.Name) !== '' && !keep.has(str(row.Name)),
     )
     if (rows.length === 0) return []
+    // Read before the inspect, so a volume made again after it is stamped later than this.
+    const daemonAt = await daemonNow(ctx)
     const created = await volumesCreated(
       rows.map((row) => str(row.Name)),
       ctx,
@@ -235,9 +256,9 @@ export function dockerPlugin(
       const name = str(row.Name)
       const at = created.get(name) ?? ''
       // Without its creation time, a volume made again under this name could not be told apart;
-      // one made too lately could have been made again in the second the plan saw.
-      const madeAt = Date.parse(at)
-      if (Number.isNaN(madeAt) || madeAt > now().getTime() - FRESH_VOLUME_MS) return []
+      // one made too lately could be made again in the second the plan saw.
+      const madeAt = rfc3339(at)
+      if (madeAt === undefined || madeAt > daemonAt - FRESH_VOLUME_MS) return []
       const project = composeProject(str(row.Labels))
       return [
         kit.candidate({

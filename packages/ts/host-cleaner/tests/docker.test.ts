@@ -40,6 +40,8 @@ const CONTAINER = 'c'.repeat(64)
 
 interface Machine {
   running?: boolean
+  /** What `docker info --format {{.SystemTime}}` prints; default {@link NOW}. */
+  systemTime?: string
   volumes?: Array<{ Name: string; Driver?: string; Labels?: string; CreatedAt?: string }>
   /** `UniqueSize` is what `system df -v` prints; `image ls` prints `N/A` for it. */
   images?: Array<{ ID: string; Size?: string; UniqueSize?: string; CreatedAt?: string }>
@@ -64,6 +66,9 @@ interface Machine {
 }
 
 const CREATED = '2026-10-01T09:00:00Z'
+
+/** The daemon's clock, as `docker info` prints it, after every fixture's `CreatedAt`. */
+const NOW = '2026-11-26T06:34:09.678996805Z'
 
 const DU =
   'ID\tRECLAIMABLE\tSIZE\tLAST ACCESSED\nabc\ttrue\t1.5GB\t2 weeks ago\nShared:\t\t0B\nPrivate:\t1.5GB\nReclaimable:\t1.5GB\nTotal:\t\t1.5GB\n'
@@ -92,6 +97,7 @@ function fakeDocker(m: Machine = {}, keepVolumes: string[] = []) {
             }
           : { stdout: '29.0.0\n' }
       }
+      if (cmd === 'info --format {{.SystemTime}}') return { stdout: `${m.systemTime ?? NOW}\n` }
       if (cmd === 'volume ls --filter dangling=true --format {{json .}}') {
         // As Docker lists them: no `CreatedAt`, which only `volume inspect` gives.
         return json(volumes.map((v) => ({ Name: v.Name, Driver: v.Driver, Labels: v.Labels })))
@@ -235,13 +241,18 @@ describe('discover', () => {
     }
   })
 
-  test('buildx missing behind the old builder group, which answers with its usage, is not a failure', async () => {
+  test('buildx missing behind the old builder group, which answers with its usage, or with BuildKit asked for, is not a failure', async () => {
     const usage =
       '\nUsage:  docker builder COMMAND\n\nManage builds\n\nCommands:\n  build       Build an image from a Dockerfile\n  prune       Remove build cache'
-    const { plugin } = fakeDocker({ volumes: [], images: [], du: { fails: usage } })
-    const s = await survey([plugin], ctx)
-    expect(s.warnings).toEqual([])
-    expect(s.candidates).toEqual([])
+    // As Docker 29 answers with DOCKER_BUILDKIT=1 and no buildx.
+    const enforced =
+      'ERROR: BuildKit is enabled but the buildx component is missing or broken.\n       Install the buildx component to build images with BuildKit:\n       https://docs.docker.com/go/buildx/'
+    for (const fails of [usage, enforced]) {
+      const { plugin } = fakeDocker({ volumes: [], images: [], du: { fails } })
+      const s = await survey([plugin], ctx)
+      expect(s.warnings).toEqual([])
+      expect(s.candidates).toEqual([])
+    }
   })
 
   test('a container inspect batch whose output lacks its last newline still keeps both batches apart', async () => {
@@ -283,18 +294,47 @@ describe('discover', () => {
     ])
   })
 
-  test('a volume made in the last ten minutes, or with a creation time that does not parse, is not proposed', async () => {
-    const lately = new Date(Date.now() - 60_000).toISOString().replace(/\.\d+Z$/, 'Z')
-    const { plugin } = fakeDocker({
+  test("a volume made in the ten minutes before the daemon's clock, or with a creation time that does not parse, is not proposed", async () => {
+    const { plugin, ran } = fakeDocker({
       volumes: [
         { Name: 'pgdata', CreatedAt: CREATED },
-        { Name: 'fresh', CreatedAt: lately },
-        { Name: 'odd', CreatedAt: 'yesterday' },
+        { Name: 'fresh', CreatedAt: '2026-11-26T06:25:00Z' },
+        { Name: 'zoned', CreatedAt: '2026-11-26T08:25:00+02:00' },
+        { Name: 'odd', CreatedAt: '1' },
       ],
     })
     const s = await survey([plugin], ctx)
     expect(ids(s.candidates).filter((id) => id.startsWith(DOCKER_VOLUME))).toEqual([
       `${DOCKER_VOLUME}:pgdata`,
+    ])
+    // The daemon's clock is read before the volumes are inspected.
+    const at = ran().indexOf('info --format {{.SystemTime}}')
+    expect(at).toBeGreaterThan(-1)
+    expect(at).toBeLessThan(ran().findIndex((c) => c.startsWith('volume inspect')))
+  })
+
+  test("the daemon's clock, not this one's, decides how lately a volume was made", async () => {
+    // A daemon whose clock is a day behind: the volume was made a minute before its time.
+    const { plugin } = fakeDocker({
+      systemTime: '2026-10-01T09:01:00Z',
+      volumes: [{ Name: 'pgdata', CreatedAt: CREATED }],
+    })
+    const s = await survey([plugin], ctx)
+    expect(ids(s.candidates).filter((id) => id.startsWith(DOCKER_VOLUME))).toEqual([])
+  })
+
+  test('a daemon clock that cannot be read leaves the volumes out, and says so', async () => {
+    const { plugin } = fakeDocker({ systemTime: '29.0.0' })
+    const s = await survey([plugin], ctx)
+    expect(ids(s.candidates).filter((id) => id.startsWith(DOCKER_VOLUME))).toEqual([])
+    expect(s.objections.filter((o) => o.by === 'docker')).toEqual([
+      {
+        by: 'docker',
+        candidate: `${DOCKER_IMAGE}:${OLD}`,
+        level: 'note',
+        code: 'not-listed',
+        reason: 'Docker could not list everything: docker info gave no time: 29.0.0',
+      },
     ])
   })
 
@@ -368,7 +408,7 @@ describe('discover', () => {
     ])
   })
 
-  test('an image has no size when docker system df does not answer, and none to size means it is not asked', async () => {
+  test('an image has no size when docker system df does not answer, and no dangling image means it is not asked', async () => {
     const failing = fakeDocker({ dfFails: 'unknown flag' })
     const s = await survey([failing.plugin], ctx)
     const image = s.candidates.find((c) => c.kind === DOCKER_IMAGE)
@@ -376,9 +416,17 @@ describe('discover', () => {
     expect(image!.bytes).toBeUndefined()
     expect(s.warnings).toEqual([])
 
-    const { plugin, ran } = fakeDocker({ images: [{ ID: USED }] })
+    const { plugin, ran } = fakeDocker({ images: [] })
     await survey([plugin], ctx)
     expect(ran().some((c) => c.startsWith('system df'))).toBe(false)
+  })
+
+  test('docker system df is asked alongside the containers, not after them', async () => {
+    const { plugin, ran } = fakeDocker()
+    await survey([plugin], ctx)
+    const df = ran().findIndex((c) => c.startsWith('system df'))
+    expect(df).toBeGreaterThan(-1)
+    expect(df).toBeLessThan(ran().findIndex((c) => c.startsWith('container inspect')))
   })
 
   test('discover fails when every listing fails, with each reason', async () => {
@@ -412,7 +460,7 @@ describe('discover', () => {
     const fake = fakeRunner({
       docker: (argv) => {
         const cmd = argv.join(' ')
-        if (cmd.startsWith('info')) return { stdout: '29.0.0\n' }
+        if (cmd.startsWith('info')) return { stdout: `${NOW}\n` }
         if (cmd.startsWith('volume ls')) return { stdout: '{"Name":"remote","Driver":"nfs"}\n' }
         if (cmd.startsWith('volume inspect')) return { stdout: '{"Name":"remote"}\n' }
         return { stdout: '' }
