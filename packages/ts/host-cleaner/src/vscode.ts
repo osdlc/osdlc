@@ -31,6 +31,7 @@ import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { nodeGuard } from '@osdlc/path-guard/node'
 import { PS_LSTART_ENV, startMs } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
@@ -39,7 +40,6 @@ import {
   isGitWorktree,
   isObject,
   objector,
-  realAbove,
   realOr,
   yieldToLimit,
 } from './helpers.ts'
@@ -357,6 +357,13 @@ type Env = Readonly<Record<string, string | undefined>>
 
 /** `HOME`, or the OS's home when it is unset or empty: a folder kept from deletion is looked for even then. */
 const homeOf = (env: Env): string => env.HOME || homedir()
+
+/**
+ * The real path of as much of `path` as exists, with the rest after it (see
+ * `PathGuard.realPath`): what is gone still compares through the links above
+ * it. `path` itself when it is not absolute.
+ */
+const realAbove = (path: string): string => (isAbsolute(path) ? nodeGuard.realPath(path) : path)
 
 /**
  * `editor`'s `User` folder on `platform`, found as VS Code and its forks find
@@ -696,6 +703,8 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
   /**
    * Nothing can be told of a worktree but where it is: the editor's folders on
    * this platform are not known, and Windows has no `lsof` to list processes with.
+   * With a `userDir` given, its window state can still tell, so it is read, and
+   * each worktree is noted as not fully checked.
    */
   const placeOnly = userDir === undefined && platform === 'win32'
   /** `root` when it exists. */
@@ -749,12 +758,12 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
           ),
         ]
 
-  /** The objections to deleting git's worktree `c`, whose real path is `dir`, while the editor is as `w` says. */
+  /** The objections to deleting git's worktree `c`, whose real path is `dir` when known, while the editor is as `w` says. */
   const worktreeCheck = (
     c: PathCandidate,
     w: Windows,
     ctx: Pick<Ctx, 'signal'>,
-    dir: string = realAbove(c.path),
+    dir?: string,
   ): Objection[] => {
     // With no process of the editor's anywhere, none works in this worktree and no window has it open;
     // an agent under another program's name may.
@@ -777,6 +786,8 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
         ),
       ]
     }
+    // Not running means this hook call read the process table, which the read for `c` uses too.
+    if (!w.running) return []
     const unchecked = (): Objection[] =>
       here.unknown === undefined
         ? []
@@ -788,10 +799,10 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
               `the processes working in it could not be listed (${here.unknown}); ${editor.product} was not fully checked`,
             ),
           ]
-    if (!w.running) return unchecked()
     // What is gone is named as the editor spelled it, so the worktree's own spelling counts too.
+    const real = dir ?? realAbove(c.path)
     const holds = (named: Named): boolean =>
-      named.paths.some((p) => within(p, dir) || within(p, c.path))
+      named.paths.some((p) => within(p, real) || within(p, c.path))
     if (holds(w.open)) {
       return [
         own(
@@ -869,11 +880,12 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
       // Resolved here, as the folder may be newer than this plugin. A worktree is looked for in it by
       // both spellings of each, so that neither a link nor a folder that is gone hides it.
       const agents = agentDir === undefined ? undefined : realAbove(agentDir)
-      const worktrees: Array<{ c: PathCandidate; dir: string }> = []
+      const worktrees: Array<{ c: PathCandidate; dir: string | undefined }> = []
       for (const c of all.filter(isGitWorktree)) {
-        const dir = realAbove(c.path)
+        // Resolved only where there is an agents' folder; `worktreeCheck` resolves it when it needs it.
+        const dir = agentDir === undefined ? undefined : realAbove(c.path)
         const inside = (d: string | undefined): boolean =>
-          d !== undefined && (within(c.path, d) || within(dir, d))
+          d !== undefined && (within(c.path, d) || (dir !== undefined && within(dir, d)))
         if (inside(agentDir) || inside(agents)) {
           out.push(
             own(c, 'refuse', AGENT_WORKTREE, `${editor.product}'s agents keep it (${agents})`),
