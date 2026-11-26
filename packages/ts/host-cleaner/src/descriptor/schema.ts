@@ -405,7 +405,12 @@ export const DescriptorSchema = z
  * `marker`, and a variable's `command` and `key`.
  */
 function unfilledFields(d: {
-  detect?: { any?: { onPath?: string | undefined }[]; all?: { onPath?: string | undefined }[] }
+  detect?:
+    | {
+        any?: { onPath?: string | undefined }[] | undefined
+        all?: { onPath?: string | undefined }[] | undefined
+      }
+    | undefined
   inUse?: { processes?: string[] | undefined } | undefined
   project?: { dir: string; marker: string }[] | undefined
   vars?: VarsField | undefined
