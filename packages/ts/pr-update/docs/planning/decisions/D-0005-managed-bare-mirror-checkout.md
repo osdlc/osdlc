@@ -515,7 +515,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   when the owner is a managed clone. An owner whose `git worktree list` cannot
   be read, or does not show the directory, keeps it, and so does one that
   shows it locked (`git worktree lock`), unless the lock is git's own
-  `initializing`, which a killed `git worktree add` leaves. If the removal fails, only the
+  `initializing`, which a killed `git worktree add` leaves. A clone reads that
+  lock from its own list, so it holds when the directory is missing too.
+  (changed during the build: Build note 1) If the removal fails, only the
   directory and that one `worktrees/<id>/` record are deleted, never a bare
   `git worktree prune`, which would drop the person's own worktrees whose
   folders are missing. With the owner gone, or records that do not name the
@@ -544,7 +546,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     `--all-clones`. `mirror prune --discard-kept` removes the kept worktrees
     of a clone it is removing first. Prune honours `git worktree lock`: a
     worktree git shows as locked, a dead run's or a kept one, is never
-    removed, `--discard-kept` included, and its clone stays with it.
+    removed, `--discard-kept` included, even when its folder is missing, and
+    its clone stays with it.
     (changed during the build: Build note 1)
   - Removing a clone leaves its repository's attempt records in the state
     home. They are history, not cache, and later runs that reach the
@@ -703,7 +706,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     config, set for the update and put back as they were after each PR, and
     the submodule clones git makes for the run worktree;
   - unless `pr_update.rerere` is false, the conflict resolutions git's rerere
-    records in `rr-cache/` during `update --apply`. Once that folder exists,
+    records in `rr-cache/` during `update --apply`, kept only for a PR that is
+    updated. Once that folder exists,
     git uses rerere for the person's own merges there too, unless their
     config turns it off.
 
@@ -1128,7 +1132,14 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     `initializing`, does not count: a killed add leaves it. git writes that
     word in the language the add ran in, and pr-update's own adds do not fix
     the language, so a translated one counts as a person's lock and keeps the
-    tree until `git worktree unlock`;
+    tree until `git worktree unlock`. The final check found that a dead run's
+    worktree whose folder was missing (an unmounted drive, the case
+    `git worktree lock` is for) skipped the lock: its owner is found through
+    its folder, so the lock was never read, and the tree, its scratch branch
+    and the clone were removed. The clone's own list is now read for the lock
+    first. `ownedUnder`'s fallback after a failed `git worktree remove` leaves
+    a locked worktree's folder and record, and `update`'s removal of a killed
+    run's scratch worktree skips a locked one;
   - the clone's lock can be taken. A dry run takes none: it reads the lock as
     a claim reads it (file-lock's `readHeldLock`, the claim's own parser), so
     it says busy exactly where a claim would, and whether it could be
@@ -1194,10 +1205,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   grants stop counting and the person runs `pr-update trust` again, once per
   machine. It fails closed. The README says so where an upgrading user looks
   first.
-- **Size.** Against main, at the end of the omnibus, pr-update's `src/` has
-  6,046 lines added and 370 removed, against the estimate of 700, and its
-  `tests/` 9,086 added and 91 removed (`git diff --shortstat
-  origin/main...HEAD`).
+- **Size.** Against main, at the end of the omnibus (S12, rerere and the
+  final check's fixes included), pr-update's `src/` has 6,280 lines added and
+  401 removed, against the estimate of 700, and its `tests/` 9,427 added and
+  91 removed (`git diff --shortstat origin/main...HEAD`, main at
+  `88112cb4`).
 - **Nested groups.** `--repo` takes exactly `owner/name` or
   `host/owner/name`, so a GitLab repository in a nested group can be found
   by the locator but not named as a target. The clone is GitHub only.

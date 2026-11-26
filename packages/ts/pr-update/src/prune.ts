@@ -14,17 +14,19 @@
  * - the clone directory, which must carry pr-update's marker. A clone past the age is removed
  *   under its lock, after its dead run worktrees. One with a kept worktree stays, unless
  *   `discardKept`, and even then when the clone does not list the tree on its record's branch (on
- *   a `pr-update/failed-*` branch, with no record); one with any other worktree, one whose lock
- *   another run holds, and a folder without the clone marker are never removed. Nor is one that
- *   holds a worktree record its `git worktree list` leaves out. A worktree that list shows as
- *   locked (`git worktree lock`) stays, a dead run's or a kept one, and so does its clone. A
- *   clone is first renamed to a `.tmp-*` name beside it, so a removal that fails part-way leaves
- *   a leftover the next prune recognises, not a broken clone in the way.
+ *   a `pr-update/failed-*` branch, with no record), or the record names another git directory
+ *   that still exists; one with any other worktree, one whose lock another run holds, and a
+ *   folder without the clone marker are never removed. Nor is one that holds a worktree record
+ *   its `git worktree list` leaves out. A worktree that list shows as locked
+ *   (`git worktree lock`) stays, a dead run's or a kept one, with its folder missing too, and so
+ *   does its clone. A machine file that cannot be read or is not valid ages no clone, unless
+ *   `olderThanDays` or `allClones` is given. A clone is first renamed to a `.tmp-*` name beside it, so a removal that fails part-way leaves a
+ *   leftover the next prune recognises, not a broken clone in the way.
  *
  * Every removal passes one check first (`mayRemove` in {@link pruneMirror}, with the owner's
- * `git worktree list` and lock), and a dry run passes it too, so both decide the same way. What
- * cannot be read stays, and is reported under `failed`; only `ENOENT` and `ENOTDIR` say that
- * something is gone.
+ * `git worktree list` and lock), and a dry run passes it too, so both decide the same way: it
+ * takes no lock, and reads one as a claim does (`cloneLockHeld`). What cannot be read stays, and
+ * is reported under `failed`; only `ENOENT` and `ENOTDIR` say that something is gone.
  *
  * Every walk skips names that start with `.`, except the two kinds of leftover it removes once
  * they are an hour old: `.tmp-<name>.git-<pid>[-<random>]` folders (a clone's staging folder, or a clone a

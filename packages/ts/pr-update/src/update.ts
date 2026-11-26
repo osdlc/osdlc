@@ -9,10 +9,10 @@
  * Nothing is pushed, kept or recorded without `apply`. A bare run goes through
  * the whole path (fetch, clone locks, worktrees, scratch branches and commits,
  * resolvers, verify), so the report says which PRs would conflict before
- * anything reaches a remote. That is the default
- * because the worst failure of this command is a bad force-push, and a default
- * that could cause one would be wrong. `confirmPush` adds a second check: a
- * y/N before each rebase force-push.
+ * anything reaches a remote. That is the default because the worst failure of
+ * this command is a bad force-push, and a default that could cause one would
+ * be wrong. `confirmPush` adds a second check: a y/N before each rebase
+ * force-push.
  *
  * What is skipped, and why it is skipped rather than attempted:
  *

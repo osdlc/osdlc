@@ -39,6 +39,13 @@ are in scope.
 - **A repair agent can run tools.** It edits the update worktree. The engine
   rejects a repair that moves HEAD, creates a ref or leaves conflict markers,
   but it does not sandbox the agent.
+- **Recorded resolutions are replayed.** In `update --apply`, unless
+  `pr_update.rerere` is false, git's rerere replays a resolution recorded in
+  the repository's `rr-cache/` into a later PR with the same conflict and
+  stages it; no resolver or repair sees that path, and only `verify` checks
+  it. pr-update removes what a rejected repair, an abandoned rebase or a PR
+  that failed recorded, but an agent that writes into `rr-cache/` itself is
+  not stopped.
 - **GitHub credentials belong to `gh`.** The package reads no GitHub token.
 - **The remote picks the host.** `origin` decides which adapter and which
   repository the updates go to. A `--repo` target names its own host, or
@@ -128,9 +135,10 @@ are in scope.
   they remove nothing from a folder another user owns or others can write
   to. Windows gets no such check. Before anything is removed, that folder
   rule, the owner's `git worktree list` and the clone's lock must allow it.
-  A worktree that list shows as locked (`git worktree lock`) stays, and so
-  does its clone; only git's own `initializing` lock, which a killed
-  `git worktree add` leaves, is not counted. A clone also stays while its
+  A worktree that list shows as locked (`git worktree lock`) stays, even
+  when its folder is missing, and so does its clone; only git's own
+  `initializing` lock, which a killed `git worktree add` leaves, is not
+  counted. A clone also stays while its
   `worktrees/` folder holds a record that list does not show, since git leaves
   out a record it cannot read without a word. What cannot be read stays and
   is reported, and `--dry-run` decides the same way, reading a clone's lock

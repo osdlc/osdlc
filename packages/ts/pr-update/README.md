@@ -477,7 +477,8 @@ to (the clone directory's rule above). Such a folder under the cache's
 `worktrees/` or the state's `kept/` is fixed with `chmod -R go-w` on that
 directory, which the message names. It never waits for a lock: a clone
 another run holds is left as `mirror busy`. `--dry-run` only says what would
-go. It takes no lock, only reads whether another run holds it. `list` and
+go. It takes no lock, only reads whether another run holds it, the way a run
+that claims the lock reads it. `list` and
 `prune` take `--mirror-dir`, so a clone directory left behind by a moved
 `mirror_dir` can be cleaned.
 
@@ -491,8 +492,10 @@ another clone or checkout that still exists, a copy of the clone say: a prune
 holds only the lock of the clone it prunes.
 
 Prune honours `git worktree lock`. A dead run's worktree or a kept worktree
-that `git worktree list` shows as locked stays, with `--discard-kept` too, and
-so does its clone; the message names `git worktree unlock <path>`. The one
+that `git worktree list` shows as locked stays, with `--discard-kept` too, even
+when its folder is missing (on a drive that is not mounted, say), and so does
+its clone; the message names `git worktree unlock <path>`. `update` leaves a
+locked worktree of a killed run in place too, with its scratch branch. The one
 lock it does not count is git's own `initializing`, which a `git worktree add`
 that was killed leaves behind. git writes that word in the language the add
 ran in, so a translated one counts as your lock.

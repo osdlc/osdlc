@@ -20,11 +20,12 @@
  * Rebase, then merge, then repair. A rebase replays every commit, so it can
  * stop once per commit. The fixed resolvers (rerere, lockfile, resolvers,
  * generators) run at every stop; rerere only with `apply` (`integrationEnv`).
- * A stop they cannot clear aborts the rebase,
- * and the PR is retried as a merge, which meets the same conflict once. Only
- * then is `repair` called, so an agent is never asked to fix twenty versions
- * of one conflict. The outcome records the change of strategy, so a reader
- * does not mistake the push for a rebase.
+ * A stop they cannot clear aborts the rebase, and the PR is retried as a
+ * merge, which meets the same conflict once. Only then is `repair` called, so
+ * an agent is never asked to fix twenty versions of one conflict. The outcome
+ * records the change of strategy, so a reader does not mistake the push for a
+ * rebase. A resolution rerere recorded is kept only when the PR is updated
+ * (`dropNewResolutions`).
  *
  * With `on_rebase_conflict: repair`, a repository that refuses merges repairs
  * each stop instead, up to a cap, and never falls back to a merge.

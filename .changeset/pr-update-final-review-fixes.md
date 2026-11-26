@@ -125,7 +125,8 @@ removes now passes one check first (the folder rule, the owner's
 `git worktree list`, the clone's lock), and `--dry-run` passes it too, so it no
 longer lists what the real run would leave. A clone's dead run worktree in a
 folder that cannot be read keeps the clone, where the two were removed. `survey --help` now
-says it also writes a managed clone's last-used stamp and its lock file.
+says it also writes a managed clone's last-used stamp and its lock file, and
+what the `git maintenance run --auto` after the clone's fetch writes.
 
 Fixed: `mirror prune`, and the prune after `update --apply`, removed a clone
 whose `worktrees/` folder held a record with an empty or missing `gitdir`
