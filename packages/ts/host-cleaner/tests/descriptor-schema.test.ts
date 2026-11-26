@@ -222,6 +222,22 @@ describe("the system description's examples", () => {
     ])
   })
 
+  test('a ${VAR} in a field that is never filled is refused', () => {
+    const unfilled = (field: string) =>
+      expect.stringContaining(
+        `${field}: \${ is not filled here: variables are filled only in paths, vars and locks`,
+      )
+    expect(issues(UV.replace('processes: [uv]', "processes: ['${JAVA}']"))).toEqual([
+      unfilled('inUse.processes.0'),
+    ])
+    expect(issues(GO.replace('[go, env, GOMODCACHE]', "[go, env, -C, '${HOME}']"))).toEqual([
+      unfilled('vars.GOMODCACHE.1.command'),
+    ])
+    expect(
+      issues(GO.replace('- command: [go, env, GOMODCACHE]', "- { file: ~/go.toml, key: '${X}' }")),
+    ).toEqual([unfilled('vars.GOMODCACHE.1.key')])
+  })
+
   test('a glob or marker whose every {a,b} alternative names an entry is accepted', () => {
     expect(
       issues(hfWith("{ path: hub, costDescription: rebuild, glob: '{models,datasets}--*/' }")),

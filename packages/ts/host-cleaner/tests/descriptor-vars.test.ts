@@ -349,6 +349,18 @@ describe('the built-in variables', () => {
       tried: [{ source: 'env XDG_DATA_HOME', failed: 'data is not an absolute folder' }],
     })
   })
+
+  test('an XDG folder the environment sets is trusted only when trustsXdg passes it', async () => {
+    const { resolve } = setup({ env: { XDG_CACHE_HOME: '/fast/cache', XDG_STATE_HOME: '/home' } })
+    const v = await resolve({}, { trustsXdg: (f) => f !== '/home' })
+    expect(v.XDG_CACHE_HOME!.trusted).toBe(true)
+    expect(v.XDG_STATE_HOME!.trusted).toBe(false)
+    expect(v.XDG_CONFIG_HOME!.trusted).toBe(false)
+    expect(fillTemplate('${XDG_CACHE_HOME}/pip', v, '/h')).toEqual({
+      path: '/fast/cache/pip',
+      trusted: true,
+    })
+  })
 })
 
 describe('fillTemplate', () => {

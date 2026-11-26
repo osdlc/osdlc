@@ -20,11 +20,13 @@
 import { readFile } from 'node:fs/promises'
 import { extname, isAbsolute, join, normalize, sep } from 'node:path'
 
+import { failureText, firstLine } from '@osdlc/command-seam'
 import { getIn } from '@osdlc/config-layers'
 import { parse as parseToml } from 'smol-toml'
 import { parse as parseYaml } from 'yaml'
 
 import type { Kit } from '../kit.ts'
+import { within } from '../roots.ts'
 import type { Os } from './schema.ts'
 
 /** How long a `command` source may run before the next source is tried. */
@@ -83,8 +85,9 @@ export interface VarValue {
    */
   from?: string
   /**
-   * Set in the config, or a `value` inside a trusted variable's folder
-   * ({@link fillTemplate}): its folders may sit outside home.
+   * Set in the config, an `XDG_*` folder the environment sets that
+   * {@link VarsAt.trustsXdg} passes, or a `value` inside a trusted variable's
+   * folder ({@link fillTemplate}): its folders may sit outside home.
    */
   trusted: boolean
   /** The sources before it that gave nothing, in order, and why. */
@@ -108,22 +111,24 @@ function describeSource(source: VarSource): string {
   return 'value'
 }
 
-/** `path` with a leading `~` read as `home`, normalized and without a trailing separator. */
+/**
+ * `path` with a leading `~` read as `home`, normalized and without a trailing
+ * separator, except on a root such as `/` or `C:\`, which would then be
+ * relative.
+ */
 function folderOf(path: string, home: string): string {
   const full = path === '~' ? home : /^~[/\\]/.test(path) ? join(home, path.slice(2)) : path
   const n = normalize(full)
-  return n.length > 1 && n.endsWith(sep) ? n.slice(0, -1) : n
+  const bare = n.endsWith(sep) ? n.slice(0, -1) : n
+  return bare === '' || /^[A-Za-z]:$/.test(bare) ? n : bare
 }
-
-/** Whether `path` is `folder` or inside it. */
-const within = (folder: string, path: string): boolean =>
-  path === folder || path.startsWith(folder.endsWith(sep) ? folder : folder + sep)
 
 /**
  * `template` with each `${NAME}` replaced by its value in `vars`, `~` read as
  * `home`. Trusted when it starts with a trusted variable as a whole folder
  * name (`${VAR}` alone or followed by a separator) and stays inside that
- * variable's folder. `missing` names the first variable with no value.
+ * variable's folder, by real paths. `missing` names the first variable with no
+ * value.
  */
 export function fillTemplate(
   template: string,
@@ -154,6 +159,11 @@ export interface VarsAt {
   env: Readonly<Record<string, string | undefined>>
   /** The config's `plugins.<name>.vars`: each wins over every source, and is trusted. */
   config?: Readonly<Record<string, string | undefined>> | undefined
+  /**
+   * Whether an `XDG_*` folder the environment sets is trusted, as the person's
+   * own setting: given the folder, absolute and normalized. Default: never.
+   */
+  trustsXdg?: ((folder: string) => boolean) | undefined
   /** Runs `command` sources: `onPath` decides whether one runs, `run` runs it. */
   kit: Pick<Kit, 'onPath' | 'run'>
   /** The hook's signal; a command still running when it aborts gives no value. */
@@ -251,14 +261,16 @@ function ownValue<T>(record: Readonly<Record<string, T>> | undefined, name: stri
 }
 
 /** The built-ins, in an object with no prototype, so a declared `constructor` or `__proto__` is an ordinary key. */
-function builtIns(at: Pick<VarsAt, 'home' | 'env'>): Vars {
+function builtIns(at: Pick<VarsAt, 'home' | 'env' | 'trustsXdg'>): Vars {
   const out = Object.create(null) as Vars
   out.HOME = { value: folderOf(at.home, at.home), from: 'home', trusted: false, tried: [] }
   for (const [name, under] of Object.entries(BUILT_IN_VARS)) {
     if (under === undefined) continue
     const set = at.env[name]
     if (set !== undefined && set !== '' && isAbsolute(set)) {
-      out[name] = { value: folderOf(set, at.home), from: `env ${name}`, trusted: false, tried: [] }
+      const value = folderOf(set, at.home)
+      const trusted = at.trustsXdg?.(value) === true
+      out[name] = { value, from: `env ${name}`, trusted, tried: [] }
       continue
     }
     out[name] = {
@@ -316,7 +328,7 @@ async function commandValue(
   }
   if (r.reason === 'timeout') return { failed: `timed out after ${limit / 1000} s` }
   if (!r.ok) {
-    const said = (r.stderr || r.error || '').trim().split('\n')[0] ?? ''
+    const said = firstLine(failureText(r, { both: true }))
     const how =
       r.neverExited === true ? `did not run (${r.reason ?? 'unknown'})` : `exit ${r.exitCode}`
     return { failed: said === '' ? how : `${how}: ${said}` }

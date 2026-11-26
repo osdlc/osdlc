@@ -37,7 +37,7 @@ import {
   type Idle,
   type Kit,
 } from '../kit.ts'
-import { containedIn, linkedCheckouts, realOr, rootProblem } from '../roots.ts'
+import { containedIn, linkedCheckouts, realOr, rootProblem, within } from '../roots.ts'
 import { DELETE_LIMIT_MS, HOOK_LIMIT_MS, OUTSIDE_ROOTS } from '../run.ts'
 import {
   PLUGIN_API,
@@ -53,6 +53,7 @@ import {
 } from '../types.ts'
 import {
   DEFAULT_MAX_ENTRIES,
+  FolderSchema,
   type Descriptor,
   type DescriptorCandidate,
   type Os,
@@ -105,12 +106,6 @@ export function skipReason(d: Descriptor): string | undefined {
 
 const isLink = (path: string): boolean =>
   lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true
-
-/** Whether `inner` is `outer` or below it, by real paths. */
-const within = (outer: string, inner: string): boolean => {
-  const rel = relative(realOr(outer), realOr(inner))
-  return rel === '' || (rel !== '..' && !rel.startsWith('..' + sep) && !isAbsolute(rel))
-}
 
 /**
  * Why `path`, one of a descriptor's folders, may not be cleaned, or null when
@@ -242,10 +237,15 @@ interface Row {
   rest?: string[]
 }
 
-/** A folder set for a variable in the config: under home or absolute. */
+/**
+ * A folder set for a variable in the config: under home or absolute, and
+ * passing the checks on a descriptor's folders (no `..`, not a home folder or
+ * a root), since it is trusted.
+ */
 const varSetting = z
   .string()
   .regex(/^(~[/\\]|\/|[A-Za-z]:[/\\])/, 'must start with ~/ or be absolute')
+  .pipe(FolderSchema)
 
 /**
  * The descriptor plugin's settings: `idleHours`, and for a descriptor that
@@ -381,30 +381,6 @@ interface EngineAt {
 /** One of a descriptor's folders, resolved; trusted when a config value gave it. */
 type Folder = { path: string; trusted: boolean }
 
-/**
- * The declared variables that `templates` use on `os`, with the ones their
- * sources use in turn: only these are resolved on a survey.
- */
-function varsUsed(d: Descriptor, os: Os, templates: readonly string[]): Set<string> {
-  const used = new Set<string>()
-  const add = (text: string): void => {
-    for (const ref of varRefs(text)) {
-      const sources = d.vars !== undefined && Object.hasOwn(d.vars, ref) ? d.vars[ref]! : undefined
-      if (sources === undefined || used.has(ref)) continue
-      used.add(ref)
-      for (const s of sources) {
-        if ('file' in s) add(s.file)
-        if ('value' in s) {
-          const v = forOs(s.value, os)
-          if (v !== undefined) add(v)
-        }
-      }
-    }
-  }
-  templates.forEach(add)
-  return used
-}
-
 /** Why the variable `missing` has no value, for a note: each source tried and why it gave none. */
 function missingText(key: string, missing: string, vars: Readonly<Vars>): string {
   const tried = Object.hasOwn(vars, missing) ? vars[missing]!.tried : []
@@ -421,12 +397,16 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     return template === undefined ? [] : [[key, template] as const]
   })
   const lockTemplates = d.inUse?.locks ?? []
-  const used = varsUsed(d, at.os, [...pathTemplates.map(([, t]) => t), ...lockTemplates])
+  // resolveVars resolves the variables these use in turn as their sources need them.
+  const used = [...pathTemplates.map(([, t]) => t), ...lockTemplates].flatMap(varRefs)
 
   // The folders by their name in `paths`, and the lock files, as the last
   // survey filled them, for the home `filledFor`; undefined until a survey runs.
   let folders = new Map<string, Folder>()
   let locks: string[] = []
+  // Each lock whose variable has no value, and why: the in-use check cannot be
+  // made, so it refuses every candidate.
+  let unknownLocks: string[] = []
   let filledFor: string | undefined
   // Why the last survey left folders or locks out; undefined when it left none out.
   let leftOut: string | undefined
@@ -438,6 +418,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       os: at.os,
       env: at.env,
       config: at.vars,
+      trustsXdg: (folder) => FolderSchema.safeParse(folder).success,
       kit,
       signal: ctx.signal,
       only: used,
@@ -450,12 +431,15 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       else next.set(key, filled)
     }
     folders = next
+    const unknown: string[] = []
     locks = lockTemplates.flatMap((lock) => {
       const filled = fillTemplate(lock, vars, home)
       if (!('missing' in filled)) return [filled.path]
       why.push(missingText(`the lock ${lock}`, filled.missing, vars))
+      unknown.push(`the lock ${lock} cannot be checked: \${${filled.missing}} has no value`)
       return []
     })
+    unknownLocks = unknown
     leftOut = why.length === 0 ? undefined : why.join('; ')
     filledFor = home
   }
@@ -875,6 +859,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       if (present(file))
         out.push({ level: 'refuse', code: IN_USE, reason: `the lock ${file} exists` })
     }
+    for (const reason of unknownLocks) out.push({ level: 'refuse', code: IN_USE, reason })
     return out
   }
 
@@ -1059,8 +1044,10 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     )
   }
 
-  // detect's limit covers the used variables' commands, which run one at a time.
-  const commands = [...used].flatMap((v) => d.vars![v]!).filter((s) => 'command' in s).length
+  // detect's limit covers every variable's commands, which run one at a time.
+  const commands = Object.values(d.vars ?? {})
+    .flat()
+    .filter((s) => 'command' in s).length
 
   return {
     name,

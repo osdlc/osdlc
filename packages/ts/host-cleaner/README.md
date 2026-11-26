@@ -302,8 +302,9 @@ glob names entries inside its path, in every `{a,b}` alternative too, and a
 project `marker` names a file in every alternative. A tool's
 `command` must name the checked folder, as a `{path}` argument or in `env`.
 `paths`, `vars` and `inUse.locks` may use a `${VAR}` that `vars` declares or
-that is built in (`HOME` and the `XDG_*` folders); one in a candidate's
-`command`, `env` or `glob` is refused. `DescriptorSchema` is the zod schema,
+that is built in (`HOME` and the `XDG_*` folders); a `${` anywhere else (a
+candidate's `command`, `env` or `glob`, `inUse.processes`, `detect`'s
+`onPath`, a `project` entry, a variable's `command` or `key`) is refused. `DescriptorSchema` is the zod schema,
 and `schemas/descriptor-1.json`, which the package ships
 (`@osdlc/host-cleaner/schemas/descriptor-1.json`), is the same schema as JSON
 Schema for editors.
@@ -321,8 +322,9 @@ const plugin = descriptorPlugin('pip', d)
   existing. A `system: true` descriptor (`skipReason`) and one whose
   `supersededBy` plugin runs answer `{ active: false, note }`. Otherwise it
   first resolves the variables its folders and locks use, once per survey; a
-  folder or lock whose variable has no value is left out, and the note says
-  why.
+  folder whose variable has no value is left out, and the note says why. A
+  lock whose variable has no value can't be checked, so it refuses every
+  candidate (`in-use`).
 - **roots:** each of its `paths` for this OS that `pathProblem` passes, as a
   self root. A path may not be a symlink (a trailing `/` is dropped first),
   be or hold home, a personal folder, a target or a checkout, sit outside
@@ -497,6 +499,9 @@ tried in order on every survey; the first that gives an absolute folder wins:
 
 ```yaml
 vars:
+  GOPATH:
+    - env: GOPATH
+    - value: ~/go
   GOMODCACHE:
     - env: GOMODCACHE # an environment variable
     - command: [go, env, GOMODCACHE] # one line of output; argv only, run from home, 5 s limit
@@ -510,11 +515,13 @@ paths:
 `XDG_STATE_HOME` are built in; each `XDG_*` folder falls back to its XDG default
 under home on every OS. A variable is resolved only when a folder or lock on
 this OS uses it. A folder whose variable has no value is left out, and `status`
-notes which variable and why each source gave none. `${` is refused in a
-candidate's `command`, `env` and `glob`: a command is pointed at its folder with
-`{path}`. A resolved folder must sit inside home, except one under a variable
+notes which variable and why each source gave none. `${` is refused in every
+other field, such as a candidate's `command`: a command is pointed at its folder
+with `{path}`. A resolved folder must sit inside home, except one under a variable
 set in the config's `plugins.<name>.vars`, which is trusted, so a cache moved to
-another disk can be cleaned:
+another disk can be cleaned. An `XDG_*` folder your environment sets is trusted
+too. Either must pass the checks on a descriptor's folders (no `..`, not a home
+folder or a root):
 
 ```json
 { "plugins": { "go": { "vars": { "GOMODCACHE": "/Volumes/build/go/mod" } } } }

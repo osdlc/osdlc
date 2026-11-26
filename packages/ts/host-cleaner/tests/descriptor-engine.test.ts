@@ -1365,6 +1365,23 @@ candidates:
     )
   })
 
+  test('a lock whose variable has no value refuses every candidate', async () => {
+    const UNKNOWN = PNPM_VARS.replace('processes: [pnpm]', "locks: ['${LOCKS}/lock']").replace(
+      'vars:\n',
+      'vars:\n  LOCKS:\n    - env: PNPM_LOCKS\n',
+    )
+    const b = buildVars('pnpm', UNKNOWN)
+    filled(b.home, '.local/share/pnpm/store')
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.objections).toContainEqual(
+      expect.objectContaining({
+        code: IN_USE,
+        level: 'refuse',
+        reason: 'the lock ${LOCKS}/lock cannot be checked: ${LOCKS} has no value',
+      }),
+    )
+  })
+
   test("the config's vars name only the descriptor's variables, each a folder", () => {
     const { def } = buildVars('go', GO_VARS)
     expect(
@@ -1378,6 +1395,18 @@ candidates:
       'plugins.go.vars: Unrecognized key: "GOROOT"',
     ])
     expect(settingsIssues({ go: { vars: { GOPATH: '~/go' } } }, 'plugins', [def])).toEqual([])
+    // A config value is trusted, so it passes the checks a descriptor's folder does.
+    expect(
+      settingsIssues(
+        { go: { vars: { GOMODCACHE: '/home/bob', GOPATH: '~/../bob', GOCACHE: '/' } } },
+        'plugins',
+        [def],
+      ),
+    ).toEqual([
+      'plugins.go.vars.GOPATH: must not have a .. segment',
+      'plugins.go.vars.GOMODCACHE: must name a folder below a home folder, not a home folder itself',
+      'plugins.go.vars.GOCACHE: must name a folder below the home folder or a root, not the home folder or a root itself',
+    ])
     const tier1 = descriptorPlugin('pip', parseDescriptor(PIP_PER_OS, 'pip.yaml'))
     expect(settingsIssues({ pip: { vars: {} } }, 'plugins', [tier1])).toEqual([
       'plugins.pip: Unrecognized key: "vars"',

@@ -207,6 +207,9 @@ const detect = z
   .refine((d) => (d.any === undefined) !== (d.all === undefined), 'set one of any or all')
   .describe('When the plugin applies. Default: any of its paths exists.')
 
+/** Why a `${` is refused outside the fields that fill it. */
+const UNFILLED = 'is not filled here: variables are filled only in paths, vars and locks'
+
 export const DescriptorCandidateSchema = z
   .strictObject({
     path: z.string().min(1).describe('A name from `paths`.'),
@@ -271,10 +274,9 @@ export const DescriptorCandidateSchema = z
     }
     if (c.maxEntries !== undefined && c.glob === undefined) at('maxEntries', 'only with glob')
     // A command reaches its folder through {path}, not a variable.
-    const unfilled = 'is not filled here: variables are filled only in paths, vars and locks'
-    if (c.command?.some((a) => a.includes('${')) === true) at('command', `\${ ${unfilled}`)
-    if (Object.values(c.env ?? {}).some((v) => v.includes('${'))) at('env', `\${ ${unfilled}`)
-    if (c.glob?.includes('${') === true) at('glob', `\${ ${unfilled}`)
+    if (c.command?.some((a) => a.includes('${')) === true) at('command', `\${ ${UNFILLED}`)
+    if (Object.values(c.env ?? {}).some((v) => v.includes('${'))) at('env', `\${ ${UNFILLED}`)
+    if (c.glob?.includes('${') === true) at('glob', `\${ ${UNFILLED}`)
   })
 
 /** Whether `n` names one entry: not empty, `.` or `..`, and with no folder in it. */
@@ -301,6 +303,9 @@ export const isPathsName = (name: string): boolean => NAME.test(name)
 
 /** Whether `p` can be a folder in `paths`. */
 export const isFolder = (p: string): boolean => folder.safeParse(p).success
+
+/** The checks on a folder in `paths`, for a folder set elsewhere, such as a config `vars` value. */
+export const FolderSchema = folder
 
 /** Whether `p` can be an `inUse` lock. */
 export const isLock = (p: string): boolean => lock.safeParse(p).success
@@ -390,7 +395,40 @@ export const DescriptorSchema = z
         if (c.exists !== undefined) known(c.exists, ['detect', mode, i, 'exists'])
       })
     for (const { path, message } of varIssues(d)) ctx.addIssue({ code: 'custom', message, path })
+    for (const path of unfilledFields(d))
+      ctx.addIssue({ code: 'custom', message: `\${ ${UNFILLED}`, path })
   })
+
+/**
+ * The fields outside a candidate that hold a `${` but are never filled:
+ * `inUse.processes`, `detect`'s `onPath`, a `project` entry's `dir` and
+ * `marker`, and a variable's `command` and `key`.
+ */
+function unfilledFields(d: {
+  detect?: { any?: { onPath?: string | undefined }[]; all?: { onPath?: string | undefined }[] }
+  inUse?: { processes?: string[] | undefined } | undefined
+  project?: { dir: string; marker: string }[] | undefined
+  vars?: VarsField | undefined
+}): FieldPath[] {
+  const out: FieldPath[] = []
+  const check = (text: string | undefined, path: FieldPath): void => {
+    if (text?.includes('${') === true) out.push(path)
+  }
+  d.inUse?.processes?.forEach((p, i) => check(p, ['inUse', 'processes', i]))
+  for (const mode of ['any', 'all'] as const)
+    d.detect?.[mode]?.forEach((c, i) => check(c.onPath, ['detect', mode, i, 'onPath']))
+  d.project?.forEach((p, i) => {
+    check(p.dir, ['project', i, 'dir'])
+    check(p.marker, ['project', i, 'marker'])
+  })
+  for (const [name, sources] of Object.entries(d.vars ?? {}))
+    sources.forEach((s, i) => {
+      if ('command' in s && s.command.some((a) => a.includes('${')))
+        out.push(['vars', name, i, 'command'])
+      if ('key' in s) check(s.key, ['vars', name, i, 'key'])
+    })
+  return out
+}
 
 type VarsField = Record<string, z.output<typeof varSource>[]>
 type FieldPath = (string | number)[]
