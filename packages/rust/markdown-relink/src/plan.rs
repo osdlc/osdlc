@@ -355,7 +355,7 @@ pub fn plan(
         })
     };
 
-    if let Some(reason) = refusal(vfs, &from, &to, &from_abs) {
+    if let Some(reason) = refusal(vfs, &from, &to, &from_abs, false) {
         return refuse(reason);
     }
 
@@ -502,13 +502,16 @@ pub fn plan(
 }
 
 /// Compute the rewrite set that points every inbound link of `from` at `to`,
-/// a note that already exists, for when `from` is about to be deleted — a
+/// a file that already exists, for when `from` is about to be deleted — a
 /// duplicate removed in favour of the copy that is kept. Writes nothing and
 /// moves nothing; the caller splices the edits ([`crate::splice`]) and removes
 /// `from` itself.
 ///
-/// Refused on the same grounds as [`plan`], and when `to` does not exist.
-/// Links are resolved against the vault as it will be, with `from` gone.
+/// `from` and `to` are both notes or both attachments (an image and the image
+/// kept in its place); a note is never redirected to an attachment or back.
+/// Otherwise refused on the same grounds as [`plan`], and when `to` does not
+/// exist. Links are resolved against the vault as it will be, with `from`
+/// gone.
 ///
 /// # Errors
 ///
@@ -527,8 +530,9 @@ pub fn plan_redirect(
     let from_abs = markdown_vault_fs::path::guard(vfs).resolve(vault_dir, &from)?;
     let to_abs = markdown_vault_fs::path::guard(vfs).resolve(vault_dir, &to)?;
 
-    let refused = refusal(vfs, &from, &to, &from_abs).or_else(|| {
-        (!vfs.metadata(&to_abs).is_ok_and(|m| !m.is_dir)).then(|| format!("no note at {to}"))
+    let refused = refusal(vfs, &from, &to, &from_abs, true).or_else(|| {
+        (!vfs.metadata(&to_abs).is_ok_and(|m| !m.is_dir))
+            .then(|| format!("no {} at {to}", noun(&to)))
     });
     if let Some(reason) = refused {
         return Ok(RenamePlan {
@@ -717,7 +721,16 @@ fn inbound_rewrites(
 /// `_system/`, a hidden directory, not markdown, source missing — one
 /// predicate for both shapes rather than a second copy that could drift from
 /// this one.
-pub(crate) fn refusal(vfs: &dyn Vfs, from: &str, to: &str, from_abs: &Path) -> Option<String> {
+///
+/// `attachments` accepts a `from` and a `to` that are both attachments.
+pub(crate) fn refusal(
+    vfs: &dyn Vfs,
+    from: &str,
+    to: &str,
+    from_abs: &Path,
+    attachments: bool,
+) -> Option<String> {
+    let both_attachments = attachments && !is_note(from) && !is_note(to);
     if from == to {
         return Some("the source and the destination are the same path".to_string());
     }
@@ -739,14 +752,19 @@ pub(crate) fn refusal(vfs: &dyn Vfs, from: &str, to: &str, from_abs: &Path) -> O
         if path.split('/').any(|seg| seg.starts_with('.')) {
             return Some(format!("{label} is inside a hidden directory"));
         }
-        if !is_note(path) {
+        if !is_note(path) && !both_attachments {
             return Some(format!("{label} is not a markdown note"));
         }
     }
     if !vfs.exists(from_abs) {
-        return Some(format!("no note at {from}"));
+        return Some(format!("no {} at {from}", noun(from)));
     }
     None
+}
+
+/// What a refusal calls the file at `path`.
+fn noun(path: &str) -> &'static str {
+    if is_note(path) { "note" } else { "file" }
 }
 
 /// Whether the destination's basename exists in its directory **exactly** as
