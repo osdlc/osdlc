@@ -241,6 +241,10 @@ The experimental exports of `@osdlc/code-stats/prep`:
 
 `PACKAGE_MARKERS`, `buildGroups`, `nearestRoot`, `packageRoots`
 
+The experimental exports of `@osdlc/code-stats/analysis`:
+
+`ApiDelta`, `ApiMap`, `diffApi`, `loadTypeScript`, `parseSource`
+
 The experimental exports of `@osdlc/code-stats/tree-sitter`:
 
 `BUILTIN_GRAMMARS`, `treeSitterScanner`

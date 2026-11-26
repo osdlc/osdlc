@@ -36,6 +36,8 @@ export function withParseMemo<T>(run: () => T): T {
 /**
  * `text` parsed as the kind of source `path` names, with parent links;
  * inside {@link withParseMemo}, a recent parse of the same text is reused.
+ *
+ * @experimental
  */
 export function parseSource(ts: TypeScript, path: string, text: string): SourceFile {
   const hit = recent?.find((r) => r.ts === ts && r.path === path && r.text === text)
@@ -70,6 +72,8 @@ const cache = new Map<string, TypeScript | null>()
  * The `typescript` compiler API, an optional peer: the copy the project at
  * `root` resolves, else the one beside this package. Null when neither is
  * there or neither has the JS API. Loading it runs that project's copy.
+ *
+ * @experimental
  */
 export function loadTypeScript(root: string): TypeScript | null {
   const cached = cache.get(root)

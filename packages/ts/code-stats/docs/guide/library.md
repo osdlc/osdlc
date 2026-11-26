@@ -13,6 +13,7 @@ The library does everything the command does, and every report it returns is pla
 | `@osdlc/code-stats/scan` | The line scanner: text in, one kind per line out. | No, and no file system either. |
 | `@osdlc/code-stats` | Counting a folder or a commit, measuring changes, PR descriptions, rendering. | Only the history functions. |
 | `@osdlc/code-stats/prep` | `runPrep`: the review-prep manifest of a change. See [Review prep](./review-prep.md). | Yes |
+| `@osdlc/code-stats/analysis` | `diffApi`, `loadTypeScript`, `parseSource`: compare the public API of two versions of a file. Experimental. | No |
 | `@osdlc/code-stats/tree-sitter` | Optional syntax-tree scanners. | No |
 
 ## Label the lines of a string

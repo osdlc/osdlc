@@ -21,7 +21,11 @@ import { isTsSource, parseSource, type TypeScript } from './typescript.ts'
 export const API_LANGUAGES = ['ts', 'rust'] as const
 export type ApiLanguage = (typeof API_LANGUAGES)[number]
 
-/** name -> normalised signature */
+/**
+ * The public API of one file or package: each exported name with its normalised signature.
+ *
+ * @experimental
+ */
 export type ApiMap = Map<string, string>
 
 const TS_ENTRY = /^index\.(?:ts|tsx|mts|cts|js|mjs|cjs)$/
@@ -212,12 +216,23 @@ export function extractApi(
   return out
 }
 
+/**
+ * What changed between two {@link ApiMap}s, as lists of names.
+ *
+ * @experimental
+ */
 export interface ApiDelta {
   added: string[]
   removed: string[]
   changed: string[]
 }
 
+/**
+ * Compares two {@link ApiMap}s: names only in `after` are added, names only in `before` are
+ * removed, and names in both with a different signature are changed.
+ *
+ * @experimental
+ */
 export function diffApi(before: ApiMap, after: ApiMap): ApiDelta {
   const delta: ApiDelta = { added: [], removed: [], changed: [] }
   for (const [name, sig] of after) {

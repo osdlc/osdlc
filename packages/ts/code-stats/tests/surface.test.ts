@@ -1,5 +1,5 @@
 /**
- * Checks on the public surface as a whole. The four entry points are the
+ * Checks on the public surface as a whole. The five entry points are the
  * `exports` of package.json, and for each one:
  * - every export has a documentation comment,
  * - every value export is used by a file in examples/,
@@ -17,6 +17,7 @@ import ts from 'typescript'
 import { describe, expect, test } from 'vitest'
 
 import * as pkg from '@osdlc/code-stats'
+import * as analysis from '@osdlc/code-stats/analysis'
 import * as prep from '@osdlc/code-stats/prep'
 import * as scan from '@osdlc/code-stats/scan'
 import * as treeSitter from '@osdlc/code-stats/tree-sitter'
@@ -31,6 +32,7 @@ const ENTRIES = [
   { specifier: PACKAGE_NAME, entry: 'src/index.ts' },
   { specifier: `${PACKAGE_NAME}/scan`, entry: 'src/scan/index.ts' },
   { specifier: `${PACKAGE_NAME}/prep`, entry: 'src/prep/index.ts' },
+  { specifier: `${PACKAGE_NAME}/analysis`, entry: 'src/analysis/index.ts' },
   { specifier: `${PACKAGE_NAME}/tree-sitter`, entry: 'src/tree-sitter/index.ts' },
 ]
 
@@ -266,6 +268,16 @@ test('the prep entry exports exactly this surface', () => {
       "packageRoots",
       "prepManifestSchema",
       "runPrep",
+    ]
+  `)
+})
+
+test('the analysis entry exports exactly this surface', () => {
+  expect(Object.keys(analysis).sort()).toMatchInlineSnapshot(`
+    [
+      "diffApi",
+      "loadTypeScript",
+      "parseSource",
     ]
   `)
 })

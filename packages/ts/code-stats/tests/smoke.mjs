@@ -18,11 +18,13 @@ import { fileURLToPath } from 'node:url'
 const pkg = await import('@osdlc/code-stats')
 const scan = await import('@osdlc/code-stats/scan')
 const prep = await import('@osdlc/code-stats/prep')
+const analysis = await import('@osdlc/code-stats/analysis')
 const treeSitter = await import('@osdlc/code-stats/tree-sitter')
 
 assert.equal(typeof pkg.countDirectory, 'function')
 assert.equal(typeof treeSitter.createTreeSitterScanners, 'function')
 assert.equal(typeof prep.runPrep, 'function')
+assert.equal(typeof analysis.diffApi, 'function')
 const scanned = scan.createScannerRegistry().scan('// a\nexport const a = 1\n', 'a.ts')
 assert.deepEqual(scanned.kinds, ['comment', 'logic'])
 

@@ -40,6 +40,10 @@
       "types": "./dist/prep/index.d.ts",
       "default": "./dist/prep/index.js"
     },
+    "./analysis": {
+      "types": "./dist/analysis/index.d.ts",
+      "default": "./dist/analysis/index.js"
+    },
     "./tree-sitter": {
       "types": "./dist/tree-sitter/index.d.ts",
       "default": "./dist/tree-sitter/index.js"

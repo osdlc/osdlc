@@ -25,8 +25,10 @@ The owner has not yet confirmed this. This note proposes it.
   arguments contradict each other or name something that does not exist, so the command exits
   with the usage code, as the other commands do for a bad revision.
 - The four TypeScript helpers that the root entry exported only for `prep` (`isTsSource`,
-  `loadTypeScript`, `parseSource`, `withParseMemo`) are no longer exported. `prep` imports them
-  from inside the package. The `TypeScript` and `TypeScriptSource` types stay, because the
+  `loadTypeScript`, `parseSource`, `withParseMemo`) are no longer exported from it. `prep`
+  imports them from inside the package. `loadTypeScript` and `parseSource` are public again from
+  `@osdlc/code-stats/analysis` (`@experimental`, with `diffApi`), because an API-surface check
+  needs them; `isTsSource` and `withParseMemo` stay internal. The `TypeScript` and `TypeScriptSource` types stay, because the
   complexity analyzers take them.
 - `prep` keeps its own copy of the even-split rule (`src/prep/split.ts`); see
   [T-04](../tasks/T-04-share-the-even-split-rule.md).
