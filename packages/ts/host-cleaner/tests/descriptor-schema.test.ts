@@ -244,6 +244,8 @@ describe("the system description's examples", () => {
         `${HUGGING_FACE}project:\n  - { dir: '\${OUT}', marker: '\${M}.csproj', costDescription: rebuild }\n`,
       ),
     ).toEqual([unfilled('project.0.dir'), unfilled('project.0.marker')])
+    // A string field no check names is refused too.
+    expect(issues(`$schema: '\${S}'\n${HUGGING_FACE}`)).toEqual([unfilled('$schema')])
   })
 
   test('a glob or marker whose every {a,b} alternative names an entry is accepted', () => {

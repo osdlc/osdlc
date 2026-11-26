@@ -120,10 +120,10 @@ const realBelow = (path: string): string => {
 /**
  * Why `path`, one of a descriptor's folders, may not be cleaned, or null when
  * it may. It must pass the core's check of a self root ({@link rootProblem}),
- * sit strictly inside `home` unless it is `trusted` (from a variable set in
- * the config, or an `XDG_*` folder the environment sets), and neither hold nor sit inside host-cleaner's own folders.
- * Judged on the path as given and on its real path, as the filesystem spells
- * it.
+ * sit strictly inside `home` unless it is `trusted` (from a variable set in the
+ * config, or an `XDG_*` folder the environment sets), and neither hold nor sit
+ * inside host-cleaner's own folders. Judged on the path as given and on its
+ * real path, as the filesystem spells it.
  */
 export function pathProblem(
   path: string,
@@ -1190,7 +1190,9 @@ async function runCommand(
     const { how, said } = runFailure(r)
     // Only a command that did not start is sure to have removed nothing.
     const partial =
-      r.neverExited === true && r.reason !== 'spawn' ? '; it may have removed part of the folder' : ''
+      r.neverExited === true && r.reason !== 'spawn'
+        ? '; it may have removed part of the folder'
+        : ''
     throw new Error(`${argv.join(' ')} failed (${how}${partial})${said === '' ? '' : `: ${said}`}`)
   }
   return `ran ${argv.join(' ')}; ${bytesText(before)} before, ${bytesText(kit.size(real))} after`

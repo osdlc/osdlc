@@ -309,9 +309,10 @@ project `marker` names a file in every alternative. A tool's
 `command` must name the checked folder, as a `{path}` argument or in `env`, and
 `env` may not set `PATH`, `LD_*`, `DYLD_*`, `NODE_OPTIONS` or `BASH_ENV`.
 `paths`, `vars` and `inUse.locks` may use a `${VAR}` that `vars` declares or
-that is built in (`HOME` and the `XDG_*` folders); a `${` anywhere else (a
-candidate's `command`, `env` or `glob`, `inUse.processes`, `detect`'s
-`onPath`, a `project` entry, a variable's `command` or `key`) is refused.
+that is built in (`HOME` and the `XDG_*` folders); a `${` in any other string
+(such as a candidate's `command`, `env` or `glob`, `inUse.processes`,
+`detect`'s `onPath`, a `project` entry, or a variable's `command` or `key`) is
+refused.
 `DescriptorSchema` is the zod schema, and `schemas/descriptor-1.json`, which
 the package ships (`@osdlc/host-cleaner/schemas/descriptor-1.json`), is the
 same schema as JSON Schema for editors.
@@ -336,8 +337,8 @@ const plugin = descriptorPlugin('pip', d)
   self root. A path may not be a symlink (a trailing `/` is dropped first),
   be or hold home, a personal folder, a target or a checkout, sit outside
   home (unless a variable set in the config, or an `XDG_*` folder the
-  environment sets that passes the folder checks, gives it), or hold or sit inside
-  host-cleaner's own folders.
+  environment sets that passes the folder checks, gives it), or hold or sit
+  inside host-cleaner's own folders.
 - **discover:** one candidate per folder, or per `glob` match inside it
   (`globMatches`; a match may be a file, and `{a,b}` takes either, as in a
   `marker`). Matches past `maxEntries` are
@@ -557,14 +558,15 @@ paths:
 under home on every OS. A variable is resolved only when a folder or lock on
 this OS uses it, or another such variable uses it; variables that don't use each
 other are resolved at the same time. A `detect` that its `onPath` conditions
-already leave inactive resolves none, and a file is read only when it is a
-regular file and within the command limit. A folder whose variable has no value is left out, and `status`
-notes which variable and why each source gave none. `${` is refused in every
-other field, such as a candidate's `command`: a command is pointed at its folder
-with `{path}`. A resolved folder must sit inside home, except one under a variable
-set in the config's `plugins.<name>.vars`, which is trusted, so a cache moved to
-another disk can be cleaned. An `XDG_*` folder your environment sets is trusted
-too, as your own setting, with nothing in the config: a folder under
+already leave inactive resolves none, and a `file` source is read only when it
+is a regular file, and given up on after the command limit. A folder whose
+variable has no value is left out, and `status` notes which variable and why
+each source gave none. `${` is refused in every other field, such as a
+candidate's `command`: a command is pointed at its folder with `{path}`. A
+resolved folder must sit inside home, except one under a variable set in the
+config's `plugins.<name>.vars`, which is trusted, so a cache moved to another
+disk can be cleaned. An `XDG_*` folder your environment sets is trusted too, as
+your own setting, with nothing in the config: a folder under
 `XDG_CACHE_HOME=/var/cache`, say, may be cleaned. Either must pass the checks on
 a descriptor's folders (no `..`, not a home folder or a root):
 
