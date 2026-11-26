@@ -355,7 +355,7 @@ export interface VscodeOptions extends KitOptions {
 
 type Env = Readonly<Record<string, string | undefined>>
 
-/** `HOME`, or the OS's home when it is unset or empty. */
+/** `HOME`, or the OS's home when it is unset or empty: a folder kept from deletion is looked for even then. */
 const homeOf = (env: Env): string => env.HOME || homedir()
 
 /**
@@ -365,7 +365,8 @@ const homeOf = (env: Env): string => env.HOME || homedir()
  * plugin does not know it, and when that is not an absolute path.
  */
 function userDirOf(editor: Editor, env: Env, platform: NodeJS.Platform): string | undefined {
-  const home = homeOf(env)
+  // An empty HOME is kept, so that it names no folder (below); see homeOf for the agents' folder.
+  const home = env.HOME ?? homedir()
   let appData: string
   if (platform === 'darwin') appData = join(home, 'Library', 'Application Support')
   else if (platform === 'linux') appData = env.XDG_CONFIG_HOME || join(home, '.config')
