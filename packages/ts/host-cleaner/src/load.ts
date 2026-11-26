@@ -160,7 +160,12 @@ function npmOnPath(PATH: string | undefined): string | undefined {
     if (!isAbsolute(dir) || dir.split(sep).includes('node_modules')) continue
     const bin = join(dir, 'npm')
     if (!existsSync(bin)) continue
-    const cli = realpathSync(bin)
+    let cli: string
+    try {
+      cli = realpathSync(bin)
+    } catch {
+      return undefined
+    }
     return basename(cli) === 'npm-cli.js' && basename(dirname(cli)) === 'bin'
       ? dirname(dirname(cli))
       : undefined

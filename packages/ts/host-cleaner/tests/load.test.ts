@@ -140,7 +140,7 @@ describe('where a package is looked for', () => {
     const home = tempDir()
     write(
       join(home, '.npmrc'),
-      `; mine\n# also a comment\nregistry=https://example.test/\nprefix = "${home}/g" \n[section]\nprefix=/elsewhere\n`,
+      `; mine\n# also a comment\nregistry=https://example.test/\nprefix = '${home}/g' \n[section]\nprefix=/elsewhere\n`,
     )
     expect(packageRoots({ HOME: home }, '/a').at(-1)).toBe(globalRoot(join(home, 'g')))
     write(join(home, '.npmrc'), 'prefix=~/tilde\n')
