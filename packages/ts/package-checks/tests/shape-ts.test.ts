@@ -236,6 +236,18 @@ test('P3 and P4: the typecheck and smoke scripts, and the smoke file', () => {
   assert.match(scriptProblems(code.pkg, ['src/index.ts'])[0]!, /tests\/smoke\.mjs is missing/)
 })
 
+test('P3: a package with a .vue file under src/ typechecks with vue-tsc', () => {
+  const files = [...FILES, 'src/Button.vue']
+  const vueTsc = 'vue-tsc --noEmit && vue-tsc -p tsconfig.build.json --noEmit'
+  const withVueTsc = { ...code.pkg, scripts: { ...code.pkg.scripts, typecheck: vueTsc } }
+  assert.deepEqual(scriptProblems(withVueTsc, files), [])
+  // tsc skips a .vue file, so it would pass without checking the components.
+  assert.match(scriptProblems(code.pkg, files)[0]!, /set it to "vue-tsc --noEmit && vue-tsc/)
+  // A .vue file outside src/ is not source, so tsc stays the rule.
+  assert.deepEqual(scriptProblems(code.pkg, [...FILES, 'examples/Demo.vue']), [])
+  assert.match(scriptProblems(withVueTsc, FILES)[0]!, /set it to "tsc --noEmit && tsc/)
+})
+
 test('P5: TypeScript at the package root, and a build that does not root at src, fail', () => {
   assert.deepEqual(layoutProblems(FILES, code.tsconfigs), [])
   assert.deepEqual(layoutProblems([...FILES, 'vitest.config.ts'], code.tsconfigs), [])
