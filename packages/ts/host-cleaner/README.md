@@ -45,8 +45,9 @@ that step.
 A limit stops a hook that waits: on a promise, a timer or a program. It cannot
 stop synchronous work, such as a folder walk or a program run to its end: the
 core times such a hook out when it answers past its limit, and drops the
-answer. What it did by then stands, so a `delete` timed out so may have
-removed its folder. A hook that works for long should await between two pieces
+answer. A `delete` that answers late is the exception: it has deleted by
+then, so its answer counts, the other plugins' `deleted` run and what
+requires it goes ahead. A hook that works for long should await between two pieces
 of work and stop once `ctx.signal` has aborted, as `cargo` and `node` do
 between checkouts.
 
@@ -79,9 +80,10 @@ before the git worktree that holds it, and a `target/` that does not run
 (refused, spared, held, or carrying a protest not allowed) keeps the worktree
 too. The worktree is then `blocked`, and its reason names each candidate
 inside it that does not run and what would let it run: `requires
-artifact:…/target, which needs --allow unmeasured`, `which needs --pick <id>`
-(held or not selected), `which is refused (<plugin>: <reason>)` or `which is
-spared (--spare <entry>)`. The clean preview, the `clean -i` checklist and the
+artifact:…/target, which needs --allow unmeasured`, `which needs --pick <id>
+when the plan is made` (held or not selected; a saved plan takes no `--pick`
+at `clean --plan`, so it goes to `plan`, or to `clean` without `--plan`),
+`which is refused (<plugin>: <reason>)` or `which is spared (--spare <entry>)`. The clean preview, the `clean -i` checklist and the
 receipt show it.
 
 ```ts
@@ -119,8 +121,8 @@ What a plan runs uses repo-cleaner's words, with their meaning:
 - **`select`:** exactly these candidate ids instead of the default.
 - **`pick`:** these as well; a candidate held for review runs only when picked
   or selected.
-- **`spare`:** leave these alone: an id, a path (a ref candidate's `ref` or
-  the folder it is `at`), a name (every candidate of that name, as a branch
+- **`spare`:** leave these alone: an id, a path (a ref candidate's `ref`,
+  the folder it is `at`, or `<at>:<ref>`, as in `~/dev/app:release-1.2`), a name (every candidate of that name, as a branch
   and the worktree that has it checked out), or a glob over ids, paths and
   names. A spared candidate that would have run is
   dropped as `spared`.
@@ -154,7 +156,10 @@ is inside, while a worktree of a repository outside `~/dev`, and any other
 folder outside it, is not. The worktree must be one its repository lists, so a
 copied `.git` file or a worktree moved from where it was added does not count,
 nor does one whose folder has since become a link: nothing at or below it, or
-where the link points, is inside.
+where the link points, is inside. A worktree whose folder is gone, or left
+without its `.git`, has no checkout to find its repository from, so `git`
+declares it as a root `{ path, self: true }` of its own, and its record can
+still be pruned.
 A repository's main checkout counts only as far as a target covers it. A
 plugin that cleans outside any checkout (a
 cache directory, a toolchain folder) declares `roots(ctx)`: the directories it
@@ -208,7 +213,7 @@ without it to the kit it builds; a kit no run has bound removes nothing.
 | `kit.onPath(program)` | Whether a program is on PATH. |
 | `kit.candidate({ kind, path \| ref, ... })` | A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and the plugin as owner. |
 | `kit.run(argv, { signal, check })` | Runs a program through `@osdlc/command-seam`, with a time limit (`RUN_LIMIT_MS`, 30 seconds) and stopped when `ctx.signal` aborts; `ok` when it exited 0, a `CommandFailed` throw with `check`. |
-| `kit.remove(path, ctx?)` | Removes a folder only if it is still inside the plugin's roots, is one of its self roots, or is inside a target or a linked worktree of one (as in [containment](#paths-refs-and-containment)) by its real path, as the core bound them this run; checks it is gone and returns the receipt sentence. Where something in it may not be removed, its read-only folders and files are made writable and the removal tried once more. It removes nothing in a survey's hooks before that survey binds it, or in a ref candidate's `delete`. With `ctx`, it removes nothing once `ctx.signal` has aborted. |
+| `kit.remove(path, ctx?)` | Removes a folder only if it is still inside the plugin's roots, is one of its self roots, or is inside a target or a linked worktree of one (as in [containment](#paths-refs-and-containment)) by its real path, as the core bound them this run; checks it is gone and returns the receipt sentence. Where something in it may not be removed, its read-only folders and files are made writable and the removal tried once more. It removes nothing in a survey's hooks before that survey binds it, in a ref candidate's `delete`, or once `clean` is over. With `ctx`, it removes nothing once `ctx.signal` has aborted, and given `delete`'s `ctx` it holds to that call's bounds even while another run binds the same plugin. |
 
 `idleHoursSetting` is the `idleHours` setting: a plugin that declares it
 inherits the config's top-level `idleHours` when its own entry sets none, and
@@ -390,7 +395,7 @@ host-cleaner config [--format json]   # every plugin's effective settings
 
 The text output writes the home folder in an id as `~`
 (`worktree:~/dev/wt`, `branch:~/dev/repo:main`), and `--pick` and `--spare`
-take that form, also when `HOME` goes through a symlink. host-cleaner refuses to run as root (exit 1). `status`,
+take that form, also when `HOME` goes through a symlink. `status`, `plan` and `clean` refuse to run as root (exit 1); `config` still answers. `status`,
 `plan` and `clean` print each plugin's `detect` note as a warning line naming
 the plugin, with the survey's warnings.
 

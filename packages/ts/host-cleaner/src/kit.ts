@@ -150,7 +150,9 @@ export interface Kit {
    * and files are made writable and the removal tried once more. Returns the
    * receipt sentence; a folder already gone is not a failure. Throws when it is
    * outside, when the kit is not bound to a run, when `ctx.signal` has aborted,
-   * or when the folder is still there after.
+   * or when the folder is still there after. Given `delete`'s `ctx`, it holds
+   * to that call's bounds, even while another run on the same plugin binds
+   * the kit again; without one, to the last run's to bind it.
    */
   remove(path: string, ctx?: Pick<Ctx, 'signal'>): string
 }
@@ -174,8 +176,8 @@ export interface KitOptions {
   env?: Readonly<Record<string, string | undefined>> | undefined
 }
 
-/** Each kit's setter for its bounds, kept off {@link Kit} so a plugin cannot widen its own. */
-const binders = new WeakMap<Kit, (bounds: Bounds | undefined) => void>()
+/** Each kit's setter for its bounds, or one hook call's by its signal, kept off {@link Kit} so a plugin cannot widen its own. */
+const binders = new WeakMap<Kit, (bounds: Bounds | undefined, signal?: AbortSignal) => void>()
 
 /** The kits each plugin was built on: the one `create` was given, and one it built itself instead. */
 const kits = new WeakMap<Plugin, Set<Kit>>()
@@ -185,9 +187,14 @@ export function attachKit(plugin: Plugin, kit: Kit): void {
   kits.set(plugin, (kits.get(plugin) ?? new Set()).add(kit))
 }
 
-/** Binds each kit `plugin` was built on to `bounds` for {@link Kit.remove}, or unbinds it with none, so it removes nothing; a plugin built on no kit is left alone. */
-export function bindKit(plugin: Plugin, bounds: Bounds | undefined): void {
-  for (const kit of kits.get(plugin) ?? []) binders.get(kit)?.(bounds)
+/**
+ * Binds each kit `plugin` was built on to `bounds` for {@link Kit.remove}, or
+ * unbinds it with none, so it removes nothing; a plugin built on no kit is
+ * left alone. With `signal`, one hook call's, only for a `kit.remove` given
+ * that call's `ctx`.
+ */
+export function bindKit(plugin: Plugin, bounds: Bounds | undefined, signal?: AbortSignal): void {
+  for (const kit of kits.get(plugin) ?? []) binders.get(kit)?.(bounds, signal)
 }
 
 /** Thrown inside {@link Kit.idle}'s walk when the budget runs out. */
@@ -325,6 +332,8 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
 
   // Unbound until the core resolves this plugin's roots in a run.
   let bounds: Bounds | undefined
+  // Each `delete` call's own, by its signal; none there binds it to nothing.
+  const byCall = new WeakMap<AbortSignal, Bounds | undefined>()
 
   const kit: Kit = {
     owner,
@@ -408,10 +417,11 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
       if (ctx?.signal.aborted === true)
         throw new Error(`${path} was not removed: the hook was stopped`)
       if (!present(path)) return `already gone: ${path}`
-      if (bounds === undefined) {
+      const bound = ctx !== undefined && byCall.has(ctx.signal) ? byCall.get(ctx.signal) : bounds
+      if (bound === undefined) {
         throw new Error(`${path} was not removed: ${owner}'s kit is not bound to a run`)
       }
-      if (boundBy(bounds, path) === null) {
+      if (boundBy(bound, path) === null) {
         throw new Error(`${path} is not inside ${owner}'s roots or the targets`)
       }
       const bytes = sizeOf(path, { timeoutMs: budget })
@@ -426,8 +436,9 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
       return bytes === null ? `removed ${path}` : `removed ${path}; freed ${bytes} bytes`
     },
   }
-  binders.set(kit, (b) => {
-    bounds = b
+  binders.set(kit, (b, signal) => {
+    if (signal === undefined) bounds = b
+    else byCall.set(signal, b)
   })
   return kit
 }
