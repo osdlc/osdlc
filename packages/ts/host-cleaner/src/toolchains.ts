@@ -92,11 +92,11 @@ export const noatimeNote = (dir: string): string =>
 
 /**
  * What {@link Detection.note} says when the versions folder `dir` is on macOS
- * and not mounted `strictatime`: there a file's access time is not moved past
- * its modified time, so it cannot show a recent use.
+ * and not mounted `strictatime`: there a file's access time stops moving once
+ * it is newer than its modified time, so it cannot show a recent use.
  */
 export const cappedAtimeNote = (dir: string): string =>
-  `${dir} is on a macOS volume, which does not move a file's access time past its modified time, ` +
+  `${dir} is on a macOS volume, which stops updating a file's access time once it is newer than its modified time, ` +
   "so last use can't be measured and every version in it is kept"
 
 const TOOLS = ['rustup', 'nvm', 'volta'] as const

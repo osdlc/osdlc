@@ -387,11 +387,11 @@ Settings: `plugins.toolchains.idleHours`, which inherits the top-level
   `mount` on macOS and `/proc/self/mounts` on Linux. When they cannot be read
   (`df` or `mount` failing, another platform), the access times are
   trusted, except on macOS.
-- macOS does not move a file's access time past its modified time, so there
-  the access times cannot show a recent use: unless the volume is mounted
-  `strictatime`, a versions folder on macOS proposes nothing either, and
-  `status` warns
-  `toolchains: <folder> is on a macOS volume, which does not move a file's access time past its modified time, so last use can't be measured and every version in it is kept`.
+- macOS stops updating a file's access time once it is newer than its
+  modified time, so after a version's first use there its access times cannot
+  show a recent one: unless the volume is mounted `strictatime`, a versions
+  folder on macOS proposes nothing either, and `status` warns
+  `toolchains: <folder> is on a macOS volume, which stops updating a file's access time once it is newer than its modified time, so last use can't be measured and every version in it is kept`.
 - Checkouts are listed only when some installed version is past
   `idleHours`; when none is, nothing is proposed and git is not asked.
 - As a library: `toolchainsPlugin(kit, env, { idleHours, mountOptions, platform })`

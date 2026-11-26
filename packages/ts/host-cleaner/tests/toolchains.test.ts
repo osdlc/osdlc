@@ -1046,7 +1046,7 @@ describe('reading mount options', () => {
     expect(await mountOptionsBy(fake(df, table), 'win32')('C:\\x', ctx)).toBeNull()
   })
 
-  test('the definition reads idleHours from its settings and asks df for each versions folder', async () => {
+  test('the definition reads idleHours from its settings and asks df for each versions folder, on this platform', async () => {
     const h = tempHome('host-cleaner-toolchains-')
     cleanups.push(h.cleanup)
     const nvm = join(h.home, '.nvm', 'versions', 'node')
@@ -1067,8 +1067,14 @@ describe('reading mount options', () => {
       targetsGiven: true,
       allow: [],
     })
-    expect(s.candidates.map((c) => c.name)).toEqual(['v14.21.3'])
-    expect(s.notes).toEqual({})
+    // With df failing, macOS's access times are not trusted, and those elsewhere are.
+    if (process.platform === 'darwin') {
+      expect(s.candidates).toEqual([])
+      expect(s.notes).toEqual({ toolchains: cappedAtimeNote(nvm) })
+    } else {
+      expect(s.candidates.map((c) => c.name)).toEqual(['v14.21.3'])
+      expect(s.notes).toEqual({})
+    }
     expect(f.calls.map((c) => c.argv)).toContainEqual(['df', '-P', nvm])
   })
 })
