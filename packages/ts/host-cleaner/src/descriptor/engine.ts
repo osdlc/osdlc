@@ -27,13 +27,7 @@ import { hostDirs } from '../config.ts'
 import { COST_DESCRIPTIONS, type CostDescription } from '../cost.ts'
 import { DISCOVER_LIMIT_MS, errorText, yieldToLimit } from '../helpers.ts'
 import { containsIgnored, coveredBy } from '../ignore.ts'
-import {
-  DEFAULT_IDLE_HOURS,
-  idleHoursSetting,
-  present,
-  type Idle,
-  type Kit,
-} from '../kit.ts'
+import { DEFAULT_IDLE_HOURS, idleHoursSetting, present, type Idle, type Kit } from '../kit.ts'
 import { containedIn, isLink, linkedCheckouts, realOr, rootProblem, within } from '../roots.ts'
 import { DELETE_LIMIT_MS, OUTSIDE_ROOTS } from '../run.ts'
 import {
@@ -140,9 +134,9 @@ export function pathProblem(
   if (root !== null) return root
   if (containedIn([at.home], path) === null) return 'it is not inside the home folder'
   for (const own of at.ownDirs) {
-    const real = realBelow(own)
-    if (within(path, real)) return `it holds host-cleaner's own folder ${own}`
-    if (within(real, path)) return `it is inside host-cleaner's own folder ${own}`
+    const [outer, inner] = [realBelow(path), realBelow(own)]
+    if (within(outer, inner)) return `it holds host-cleaner's own folder ${own}`
+    if (within(inner, outer)) return `it is inside host-cleaner's own folder ${own}`
   }
   return null
 }
@@ -178,7 +172,11 @@ const globParts = (glob: string): GlobParts[] =>
 
 /** A marker as one pattern: an entry name that any of its `{a,b}` alternatives matches. */
 const markerRegExp = (marker: string): RegExp =>
-  new RegExp(alternatives(marker).map((alt) => `(?:${globRegExp(alt).source})`).join('|'))
+  new RegExp(
+    alternatives(marker)
+      .map((alt) => `(?:${globRegExp(alt).source})`)
+      .join('|'),
+  )
 
 /**
  * Whether `path`, below `folder`, is a match of `glob` there by the rules of
@@ -277,9 +275,33 @@ const digestOf = (paths: readonly string[]): string =>
 const costliest = (costs: readonly CostDescription[]): CostDescription =>
   COST_DESCRIPTIONS[Math.max(...costs.map((c) => COST_DESCRIPTIONS.indexOf(c)))]!
 
+// What git says of the targets' checkouts, once per survey for every descriptor:
+// a survey's hooks share its targets, and each survey makes its own list.
+const linkedOf = new WeakMap<readonly string[], string[]>()
+const checkoutsOfRun = new WeakMap<readonly string[], Checkout[]>()
 
 /** Why a folder whose idle time cannot be read is left alone. */
 const UNREADABLE = 'it cannot be read now'
+
+/** A row's idle time against its threshold: out of the time budget, or idle or not, and its size. */
+type Measured =
+  | { unmeasured: true }
+  | { unmeasured: false; hours: number | null; idle: boolean; bytes: number | null }
+
+/** The candidate fields `m` sets: unmeasured, or its size and held when it is not idle. */
+const idleFields = (m: Measured): { unmeasured?: true; bytes?: number; held?: true } =>
+  m.unmeasured
+    ? { unmeasured: true }
+    : { ...(m.bytes === null ? {} : { bytes: m.bytes }), ...(m.idle ? {} : { held: true }) }
+
+/** `hours` against `threshold`, after `idleWord` when `idle` and `changedWord` when not. */
+const sinceText = (
+  hours: number,
+  idle: boolean,
+  threshold: number,
+  [idleWord, changedWord]: readonly [string, string],
+): string =>
+  `${idle ? idleWord : changedWord} ${hoursText(hours)} hours${idle ? '' : ' ago'} (threshold ${threshold})`
 
 /** The plugin for the descriptor `d`, named `name` (its file name). Settings: `idleHours`. */
 export function descriptorPlugin(
@@ -338,10 +360,6 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     return folders
   }
 
-  // What git says of the targets' checkouts, once per run: a run's hooks share its targets.
-  const linkedOf = new WeakMap<readonly string[], string[]>()
-  const checkoutsOfRun = new WeakMap<readonly string[], Checkout[]>()
-
   // The `project` entries, each with its marker compiled once.
   const projects: Project[] = (d.project ?? []).map((entry, index) => ({
     entry,
@@ -396,6 +414,22 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   const actionOf = (entry: DescriptorCandidate): Action =>
     entry.command !== undefined && kit.onPath(entry.command[0]!) ? 'command' : 'remove'
 
+  /**
+   * `path`'s idle time against `threshold`, and its size when it was measured;
+   * null when it cannot be read, since it may hide recent changes, or is gone.
+   */
+  const measure = (path: string, threshold: number): Measured | null => {
+    let idle
+    try {
+      idle = idleOf(path)
+    } catch {
+      return null
+    }
+    if (idle.unmeasured) return { unmeasured: true }
+    const idleNow = idle.hours === null || idle.hours >= threshold
+    return { unmeasured: false, hours: idle.hours, idle: idleNow, bytes: kit.size(path) }
+  }
+
   /** One folder's row: a whole folder, or one glob match. */
   const folderRow = (
     entry: DescriptorCandidate,
@@ -432,40 +466,19 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         }),
       }
     }
-    let idle
-    try {
-      idle = idleOf(path)
-    } catch {
-      // A folder that cannot be read may hide recent changes: no row.
-      return null
-    }
     const threshold = thresholdOf(entry)
+    const m = measure(path, threshold)
+    if (m === null) return null
     const how =
       action === 'command' ? `${entry.command!.join(' ')} empties it` : 'removed as a folder'
-    if (idle.unmeasured) {
-      return {
-        objections,
-        candidate: kit.candidate({
-          ...base,
-          why: `when it last changed could not be measured in the time budget; ${how}`,
-          unmeasured: true,
-        }),
-      }
-    }
-    const idleNow = idle.hours === null || idle.hours >= threshold
-    const bytes = kit.size(path)
-    const since =
-      idle.hours === null
+    const since = m.unmeasured
+      ? 'when it last changed could not be measured in the time budget'
+      : m.hours === null
         ? 'it holds no file'
-        : `${idleNow ? 'nothing changed in it for' : 'it changed'} ${hoursText(idle.hours)} hours${idleNow ? '' : ' ago'} (threshold ${threshold})`
+        : sinceText(m.hours, m.idle, threshold, ['nothing changed in it for', 'it changed'])
     return {
       objections,
-      candidate: kit.candidate({
-        ...base,
-        why: `${since}; ${how}`,
-        ...(bytes === null ? {} : { bytes }),
-        ...(idleNow ? {} : { held: true }),
-      }),
+      candidate: kit.candidate({ ...base, why: `${since}; ${how}`, ...idleFields(m) }),
     }
   }
 
@@ -513,46 +526,25 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   /** The row for the build folder at `path` that each of `builds` gives: by the highest of their thresholds, at the highest of their costs. */
   const projectRow = (builds: readonly Project[], checkout: string, path: string): Row | null => {
     if (containedIn([checkout], path) === null) return null
-    let idle
-    try {
-      idle = idleOf(path)
-    } catch {
-      return null
-    }
     const threshold = projectThreshold(builds)
+    const m = measure(path, threshold)
+    if (m === null) return null
     const marker = builds.map((p) => p.entry.marker).join(' and ')
-    const costDescription = costliest(builds.map((p) => p.entry.costDescription))
-    const evidence: Evidence = { path, project: builds[0]!.index, checkout }
-    if (idle.unmeasured) {
-      return {
-        checkout,
-        objections: [],
-        candidate: kit.candidate({
-          kind: name,
-          path,
-          why: `a ${marker} build folder whose last change could not be measured in the time budget`,
-          costDescription,
-          unmeasured: true,
-          evidence,
-        }),
-      }
-    }
-    const idleNow = idle.hours === null || idle.hours >= threshold
-    const bytes = kit.size(path)
+    const since = m.unmeasured
+      ? 'whose last change could not be measured in the time budget'
+      : m.hours === null
+        ? 'that holds no file'
+        : sinceText(m.hours, m.idle, threshold, ['unchanged for', 'changed'])
     return {
       checkout,
       objections: [],
       candidate: kit.candidate({
         kind: name,
         path,
-        why:
-          idle.hours === null
-            ? `a ${marker} build folder that holds no file`
-            : `a ${marker} build folder ${idleNow ? 'unchanged for' : 'changed'} ${hoursText(idle.hours)} hours${idleNow ? '' : ' ago'} (threshold ${threshold})`,
-        costDescription,
-        ...(bytes === null ? {} : { bytes }),
-        ...(idleNow ? {} : { held: true }),
-        evidence,
+        why: `a ${marker} build folder ${since}`,
+        costDescription: costliest(builds.map((p) => p.entry.costDescription)),
+        evidence: { path, project: builds[0]!.index, checkout } satisfies Evidence,
+        ...idleFields(m),
       }),
     }
   }
@@ -779,8 +771,9 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
    * Why `path`, of `c`, is no longer as idle as the plan had it, or null: one
    * the plan ran as idle may not have changed within `threshold` hours since,
    * nor be unmeasured now, by the rules of `checkAgain` (`../helpers.ts`).
-   * One held anyway, by its entry's `held` or as `lost`, was not picked for
-   * its idle time, so it is checked like one that was not held.
+   * A held one a person picked skips the check, since it was held for not
+   * being idle, unless it is held by its entry's `held` or, by the core, as
+   * `lost`: `held` does not say why, so those are checked like any other.
    */
   const notIdle = (
     c: Candidate,
@@ -982,7 +975,14 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       const why = refusal(c, [path], ctx)
       if (why !== null) throw new Error(`${path} was not deleted: ${why}`)
       if (ev.action === 'command') {
-        return runCommand(kit, d.candidates[ev.candidate!]!, path, c.bytes ?? null, homeOf(ctx), ctx)
+        return runCommand(
+          kit,
+          d.candidates[ev.candidate!]!,
+          path,
+          c.bytes ?? null,
+          homeOf(ctx),
+          ctx,
+        )
       }
       return kit.remove(path, ctx)
     },

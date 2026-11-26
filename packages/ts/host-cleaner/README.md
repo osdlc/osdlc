@@ -323,7 +323,8 @@ const plugin = descriptorPlugin('pip', d)
   be or hold home, a personal folder, a target or a checkout, sit outside
   home, or hold or sit inside host-cleaner's own folders.
 - **discover:** one candidate per folder, or per `glob` match inside it
-  (`globMatches`; a match may be a file). Matches past `maxEntries` are
+  (`globMatches`; a match may be a file, and `{a,b}` takes either, as in a
+  `marker`). Matches past `maxEntries` are
   combined into one candidate at the first of them, held while any of them
   changed within the threshold, and measured together in the time one folder
   gets. `project` entries find build folders beside a marker in the targets'
@@ -331,11 +332,14 @@ const plugin = descriptorPlugin('pip', d)
   the targets. A build folder that several `project` entries give is one
   candidate, by the longest of their `idleHours` and the highest of their
   costs. Any other folder that two entries give is refused
-  (`duplicate-entry`). Home is the run's (`ctx.home`), else `HOME`.
+  (`duplicate-entry`). Home is the run's (`ctx.home`), else `HOME`. It has a
+  10 minute limit, which can stop it between two folders.
 - **object:** a running `inUse` process or lock refuses its candidates
   (`in-use`); a prune with no program on PATH gets a `no-prune-tool` protest.
 - **delete:** checks the candidate again, and that one the plan ran as idle
-  is still idle and measured (a prune excepted), then runs the tool's command
+  is still idle and measured (a prune excepted). A held one a person picked is
+  not checked for idle time, unless its entry holds it (`held: true`) or it is
+  `lost`: those must be idle now. Then it runs the tool's command
   from the home folder, pointed at the folder, or removes it with
   `kit.remove`. A combined candidate removes each of its matches, none when
   one is no longer idle. One that cannot be removed does not stop the others,

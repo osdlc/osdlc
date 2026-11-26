@@ -114,7 +114,9 @@ export function liveBlockers(held: Running): Array<{ code: string; reason: strin
       : []),
     ...(held.unknown === undefined
       ? []
-      : [{ code: 'process-table-unreadable', reason: `process table unreadable: ${held.unknown}` }]),
+      : [
+          { code: 'process-table-unreadable', reason: `process table unreadable: ${held.unknown}` },
+        ]),
   ]
 }
 

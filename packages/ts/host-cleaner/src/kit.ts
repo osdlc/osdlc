@@ -58,7 +58,7 @@ const CLOCK_EVERY = 64
 /** The time limit of {@link Kit.run}, in milliseconds, unless the call gives another. */
 export const RUN_LIMIT_MS = 30_000
 
-export const HOUR_MS = 3_600_000
+const HOUR_MS = 3_600_000
 
 /**
  * How long a folder has sat unchanged: the newest modification time under it
