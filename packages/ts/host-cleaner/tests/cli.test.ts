@@ -82,14 +82,8 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
   return {
     home,
     cwd: tempDir(),
-    // VSCODE_APPDATA keeps the vscode and cursor plugins off this machine's storage, and HOME keeps
-    // cursor off its agent worktrees.
-    env: {
-      ...(process.env as Record<string, string>),
-      HOME: home,
-      HOST_CLEANER_ROOT: home,
-      VSCODE_APPDATA: home,
-    },
+    // HOME puts the cursor plugin's agent worktrees in the test's home.
+    env: { ...(process.env as Record<string, string>), HOME: home, HOST_CLEANER_ROOT: home },
   }
 }
 
@@ -151,15 +145,17 @@ describe('phases', () => {
     expect(r.err).toContain('is not a phase')
   })
 
-  test('as root every phase is refused with exit 1 and nothing runs; --help still answers', async () => {
+  test('as root status, plan and clean are refused with exit 1 and nothing runs; config and --help still answer', async () => {
     const { env, cwd } = setup()
     const plugin = fake()
-    for (const phase of ['status', 'plan', 'clean', 'config']) {
+    for (const phase of ['status', 'plan', 'clean']) {
       const r = await run([phase, '--yes'], cwd, env, { plugins: [plugin], uid: 0 })
       expect(r.code).toBe(1)
       expect(r.err).toContain('refusing to run as root')
     }
     expect(plugin.removed).toEqual([])
+    const config = await run(['config'], cwd, env, { uid: 0 })
+    expect([config.code, config.err]).toEqual([0, ''])
     expect((await run(['--help'], cwd, env, { uid: 0 })).code).toBe(0)
   })
 })

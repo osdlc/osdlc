@@ -31,6 +31,7 @@ import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { PS_LSTART_ENV, startMs } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
 import {
@@ -223,30 +224,52 @@ const LEGACY_CHAT_KEY = 'interactive.sessions'
 const SCAN_CHUNK = 1 << 20
 
 /**
- * True when the `state.vscdb` at `path` has the old chat key; one that cannot
- * be read does. SQLite is asked only when the key's bytes are in the file,
- * which keeps those of rows deleted since.
+ * Whether the `state.vscdb` at `path` holds chats under the old chat key:
+ * false, true, or why it could not be told, which counts as holding some.
+ * SQLite is asked only when the key's bytes are in the file, which keeps
+ * those of rows deleted since.
  */
-const legacyChats = (path: string): boolean => namesLegacyChats(path) && hasLegacyChats(path)
+const legacyChats = (path: string): boolean | string =>
+  namesLegacyChats(path) && hasLegacyChats(path)
 
-/** True when a row of the SQLite file `path` has the old chat key; one that cannot be read does. */
-function hasLegacyChats(path: string): boolean {
+/**
+ * True when the value of an old chat row holds a chat with a request: it is a
+ * list of chats, each with its `requests` (`chatModel.ts`). Throws on any
+ * other value, so one that cannot be read counts.
+ */
+function legacyValueHolds(value: unknown): boolean {
+  const text = value instanceof Uint8Array ? Buffer.from(value).toString('utf8') : value
+  if (typeof text !== 'string') throw new Error('the value is not text')
+  const chats: unknown = JSON.parse(text)
+  if (!Array.isArray(chats)) throw new Error('the value is not a list of chats')
+  return chats.some((chat) => requestsOf(chat) > 0)
+}
+
+/**
+ * Whether a row of the SQLite file `path` with the old chat key holds a chat
+ * with a request: false, true, or why it could not be told.
+ */
+function hasLegacyChats(path: string): boolean | string {
   try {
     // Read as it lies (`immutable`), so that nothing is written beside it; what
     // SQLite keeps there is not read then, and may hold the row.
-    if (['-wal', '-journal'].some((end) => present(path + end))) return true
+    if (['-wal', '-journal'].some((end) => present(path + end))) {
+      return 'a log beside it is not read'
+    }
     const { DatabaseSync } = process.getBuiltinModule('node:sqlite')
     const url = pathToFileURL(path)
     url.searchParams.set('immutable', '1')
     const db = new DatabaseSync(url, { readOnly: true })
     try {
-      const row = db.prepare('SELECT 1 FROM ItemTable WHERE instr(key, ?) > 0').get(LEGACY_CHAT_KEY)
-      return row !== undefined
+      const rows = db
+        .prepare('SELECT value FROM ItemTable WHERE instr(key, ?) > 0')
+        .all(LEGACY_CHAT_KEY)
+      return rows.some((row) => legacyValueHolds(row.value))
     } finally {
       db.close()
     }
-  } catch {
-    return true
+  } catch (err) {
+    return `it could not be read: ${err instanceof Error ? err.message : String(err)}`
   }
 }
 
@@ -304,7 +327,7 @@ function holdsHistory(name: (typeof HISTORY_FOLDERS)[number], path: string): boo
       const log = file.endsWith('.jsonl')
       // VS Code reads no other files there.
       if (!log && !file.endsWith('.json')) return false
-      return chatRequests(readFileSync(join(path, file), 'utf8'), log) > 0
+      return chatRequests(readText(join(path, file)), log) > 0
     })
   }
   if (name === 'chatEditingSessions') {
@@ -316,9 +339,12 @@ function holdsHistory(name: (typeof HISTORY_FOLDERS)[number], path: string): boo
   return filled(path)
 }
 
-/** Group 1 is the folder a removable volume is mounted on, under the mount roots macOS and Linux use. */
+/**
+ * Group 1 is the folder a removable volume is mounted on, under the mount roots macOS and Linux
+ * use; under `/media`, `<user>/<label>` or, on older Debian and Ubuntu, `<label>` (see {@link unmounted}).
+ */
 const VOLUME =
-  /^(\/Volumes\/[^/]+|\/run\/media\/[^/]+\/[^/]+|\/media\/[^/]+\/[^/]+|\/mnt\/[^/]+)(?:\/|$)/
+  /^(\/Volumes\/[^/]+|\/run\/media\/[^/]+\/[^/]+|\/media\/[^/]+(?:\/[^/]+)?|\/mnt\/[^/]+)(?:\/|$)/
 
 export interface VscodeOptions extends KitOptions {
   /** The editor's `User` folder. Default: under `HOME`, by platform. */
@@ -336,7 +362,7 @@ const homeOf = (env: Env): string => env.HOME || homedir()
  * `editor`'s `User` folder on `platform`, found as VS Code and its forks find
  * it: under `VSCODE_APPDATA` when set, else `~/Library/Application Support` on
  * macOS and `XDG_CONFIG_HOME` or `~/.config` on Linux; undefined where the
- * plugin does not know it.
+ * plugin does not know it, and when that is not an absolute path.
  */
 function userDirOf(editor: Editor, env: Env, platform: NodeJS.Platform): string | undefined {
   const home = homeOf(env)
@@ -344,7 +370,9 @@ function userDirOf(editor: Editor, env: Env, platform: NodeJS.Platform): string 
   if (platform === 'darwin') appData = join(home, 'Library', 'Application Support')
   else if (platform === 'linux') appData = env.XDG_CONFIG_HOME || join(home, '.config')
   else return undefined
-  return join(env.VSCODE_APPDATA || appData, editor.appDir, 'User')
+  const dir = join(env.VSCODE_APPDATA || appData, editor.appDir, 'User')
+  // An empty or relative HOME names no folder of this machine's.
+  return isAbsolute(dir) ? dir : undefined
 }
 
 /** VS Code's `User` folder on `platform`; undefined where the plugin does not know it. */
@@ -367,8 +395,17 @@ const within = (path: string, dir: string): boolean =>
 
 /** True when `path` is under a mount folder that is missing or empty. */
 function unmounted(path: string): boolean {
-  const mount = VOLUME.exec(path)?.[1]
+  let mount = VOLUME.exec(path)?.[1]
   if (mount === undefined) return false
+  // Older Debian and Ubuntu mount at `/media/<label>`: a folder there on a device of its own is the mount.
+  const label = /^\/media\/[^/]+/.exec(mount)?.[0]
+  if (label !== undefined && label !== mount) {
+    try {
+      if (statSync(label).dev !== statSync('/media').dev) mount = label
+    } catch {
+      // Not readable: the mount stays the one under the user's folder.
+    }
+  }
   try {
     return readdirSync(mount).length === 0
   } catch {
@@ -390,7 +427,9 @@ function historyIn(dir: string): string[] {
       return true
     }
   })
-  if (legacyChats(join(dir, 'state.vscdb'))) found.push('state.vscdb')
+  const legacy = legacyChats(join(dir, 'state.vscdb'))
+  if (legacy === true) found.push('state.vscdb')
+  else if (legacy !== false) found.push(`state.vscdb (${legacy})`)
   return found
 }
 
@@ -600,9 +639,6 @@ function usedSince(root: string, since: number | undefined): Named {
   return out
 }
 
-/** `ps` reads its own zone and locale; these keep the start times it prints in one format, in UTC. */
-const PS_ENV = { TZ: 'UTC', LC_ALL: 'C' } as const
-
 /** Taken off the editor's start time: `ps` gives it, and some filesystems a modification time, only to a second or two. */
 const START_SLACK_MS = 10_000
 
@@ -617,13 +653,13 @@ async function startedAt(
     const r = await kit.run(['ps', '-o', 'lstart=', '-p', pids.join(',')], {
       signal: ctx.signal,
       cwd: '/',
-      env: PS_ENV,
+      env: PS_LSTART_ENV,
     })
     if (!r.ok || r.outputIncomplete === true) return undefined
     const starts = r.stdout
       .split('\n')
       .filter((line) => line.trim() !== '')
-      .map((line) => Date.parse(`${line.trim()} UTC`))
+      .map(startMs)
     if (starts.length === 0 || starts.some((t) => Number.isNaN(t))) return undefined
     return Math.min(...starts)
   } catch {
@@ -723,10 +759,12 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
     // an agent under another program's name may.
     if (!w.running && !editor.agentUnnamed) return []
     const here = kit.running({ in: c.path }, ctx)
-    const procs = processesOf(editor, here.processes)
-    if (procs.length > 0) {
-      const names = procs.map((p) => `${p.command} (pid ${p.pid})`).join(', ')
-      return [own(c, 'refuse', editor.codes.inUse, `${editor.product} works in it: ${names}`)]
+    // The kit names each process, in the order of `processes`.
+    const names = here.names.filter((_, i) => editor.process.test(here.processes[i]?.command ?? ''))
+    if (names.length > 0) {
+      return [
+        own(c, 'refuse', editor.codes.inUse, `${editor.product} works in it: ${names.join(', ')}`),
+      ]
     }
     if (editor.agentUnnamed && here.processes.length > 0) {
       return [

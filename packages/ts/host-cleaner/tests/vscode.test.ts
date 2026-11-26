@@ -159,14 +159,24 @@ function chat(dir: string, body: string | unknown[], file = 'f2c4.jsonl'): void 
   )
 }
 
-/** A SQLite `state.vscdb` in the storage folder `dir`, as VS Code makes it, with `keys` set and `deleted` then deleted. */
-function vscdbOf(dir: string, keys: string[], deleted: string[] = []): void {
+/**
+ * A SQLite `state.vscdb` in the storage folder `dir`, as VS Code makes it, with
+ * `keys` set (to `[]`, or to the value given) and `deleted` then deleted.
+ */
+function vscdbOf(
+  dir: string,
+  keys: Array<string | [string, string]>,
+  deleted: string[] = [],
+): void {
   const path = join(dir, 'state.vscdb')
   writeFileSync(path, '')
   const { DatabaseSync } = process.getBuiltinModule('node:sqlite')
   const db = new DatabaseSync(path)
   db.exec('CREATE TABLE ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)')
-  for (const key of keys) db.prepare('INSERT INTO ItemTable VALUES (?, ?)').run(key, '[]')
+  for (const entry of keys) {
+    const [key, value] = typeof entry === 'string' ? [entry, '[]'] : entry
+    db.prepare('INSERT INTO ItemTable VALUES (?, ?)').run(key, value)
+  }
   for (const key of deleted) db.prepare('DELETE FROM ItemTable WHERE key = ?').run(key)
   db.close()
 }
@@ -326,6 +336,12 @@ describe('discover', () => {
     expect(vscodeUserDir(both, 'linux')).toBe(user('/a'))
     expect(vscodeUserDir({ HOME: '/h', VSCODE_APPDATA: '/a' }, 'darwin')).toBe(user('/a'))
     expect(vscodeUserDir({ HOME: '/h', VSCODE_APPDATA: '/a' }, 'win32')).toBeUndefined()
+    // An empty or relative HOME names no folder here: the plugin stays out of the run.
+    expect(vscodeUserDir({ HOME: '' }, 'linux')).toBeUndefined()
+    expect(vscodeUserDir({ HOME: '' }, 'darwin')).toBeUndefined()
+    expect(vscodeUserDir({ HOME: 'h' }, 'darwin')).toBeUndefined()
+    expect(vscodeUserDir({ HOME: '', XDG_CONFIG_HOME: '/x' }, 'linux')).toBe(user('/x'))
+    expect(vscodeUserDir({ HOME: '', VSCODE_APPDATA: '/a' }, 'darwin')).toBe(user('/a'))
   })
 
   test('a stopped discover gives up between folders', async () => {
@@ -454,6 +470,8 @@ describe('chat and agent history', () => {
       ['q', (d) => chat(d, [whole([REQUEST]), { kind: 1, k: [], v: whole().v }])],
       // The whole chat changed some other way: kept.
       ['r', (d) => chat(d, [whole(), { kind: 3, k: [] }])],
+      // A chat with no requests that starts with a byte order mark, which VS Code reads.
+      ['s', (d) => chat(d, `\uFEFF${JSON.stringify(whole().v)}`, 'f2c4.json')],
     ]
     const kept = new Set(['d', 'e', 'f', 'g', 'i', 'j', 'k', 'l', 'm', 'n', 'p', 'r'])
     deadStores(h, shapes)
@@ -503,19 +521,31 @@ describe('chat and agent history', () => {
           writeFileSync(join(d, 'state.vscdb-wal'), 'x')
         },
       ],
+      // A chat with a request; chats with none; a value that is not a list of chats.
+      [
+        'g',
+        (d) => vscdbOf(d, [['interactive.sessions', JSON.stringify([{ requests: [REQUEST] }])]]),
+      ],
+      ['h', (d) => vscdbOf(d, [['interactive.sessions', '[{"requests":[]},{"requests":[]}]']])],
+      ['i', (d) => vscdbOf(d, [['interactive.sessions', '{}']])],
     ])
     expect(readFileSync(join(h.storage, 'e', 'state.vscdb')).includes('interactive.sessions')).toBe(
       true,
     )
 
     const s = await survey([vscodePlugin(h.options())], ctxOf(h.home))
+    const unread = [expect.stringMatching(/^state\.vscdb \(it could not be read: .+\)$/)]
     expect(s.candidates.map((c) => [c.path, c.costDescription, c.evidence.history])).toEqual([
-      [join(h.storage, 'a'), 'lost', ['state.vscdb']],
+      [join(h.storage, 'a'), 'lost', unread],
       [join(h.storage, 'b'), 're-download', undefined],
-      [join(h.storage, 'c'), 'lost', ['state.vscdb']],
-      [join(h.storage, 'd'), 'lost', ['state.vscdb']],
+      [join(h.storage, 'c'), 'lost', unread],
+      // The row holds `[]`: no chat.
+      [join(h.storage, 'd'), 're-download', undefined],
       [join(h.storage, 'e'), 're-download', undefined],
-      [join(h.storage, 'f'), 'lost', ['state.vscdb']],
+      [join(h.storage, 'f'), 'lost', ['state.vscdb (a log beside it is not read)']],
+      [join(h.storage, 'g'), 'lost', ['state.vscdb']],
+      [join(h.storage, 'h'), 're-download', undefined],
+      [join(h.storage, 'i'), 'lost', unread],
     ])
     expect(readdirSync(join(h.storage, 'e')).sort()).toEqual(['state.vscdb', 'workspace.json'])
   })
