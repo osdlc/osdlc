@@ -550,9 +550,7 @@ function draftDescriptor(store: CorpusStore): Draft {
     true,
   )
   for (const b of buildDirs) {
-    const covered = COVERED.find(
-      (c) => c.dir === b.path && (c.marker === undefined || c.marker === b.marker),
-    )
+    const covered = COVERED.find((c) => c.dir === b.path && c.marker === b.marker)
     if (covered !== undefined) left.push(`project ${b.path}: the ${covered.by} plugin covers it`)
     else if (!isEntryName(b.path))
       left.push(`project ${b.path}: a project entry names one folder, not a path`)
