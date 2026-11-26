@@ -237,7 +237,8 @@ without it to the kit it builds; a kit no run has bound removes nothing.
 
 | Helper | What it does |
 | --- | --- |
-| `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the hours since, fractions included, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Several folders, as a list, are one answer within one budget. Out of time, it is `{ unmeasured: true }`. |
+| `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the hours since, fractions included, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Several folders, as a list, are one answer within one budget. A path that is a file is aged by itself. Out of time, it is `{ unmeasured: true }`. |
+| `kit.overBudget()` | A check that turns true once the same budget has passed since the call, by the kit's clock: for a plugin that measures several things as one. |
 | `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
 | `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and the unbroken line of ancestors above it whose command lines name host-cleaner are left out, so the `npm exec` or `pnpm dlx` that started it does not count, but an editor, terminal or `tmux` it runs inside does. The table is read fresh once per hook call; one that could not be read stays `unknown` for the rest of it. |
 | `kit.onPath(program)` | Whether a program is on PATH. |
@@ -319,7 +320,7 @@ import { DescriptorError, readDescriptor } from '@osdlc/host-cleaner'
 try {
   const descriptor = readDescriptor('uv.yaml')
 } catch (err) {
-  // One line per problem, such as `line 5: candidates.0.path: no folder named "models" in paths`.
+  // One line per problem, such as `line 8: candidates.0.path: no folder named "models" in paths`.
   if (err instanceof DescriptorError) console.error(err.issues)
 }
 ```
@@ -330,7 +331,8 @@ lines. A folder must start with `~/`, be absolute, and name something below
 the home folder or the root, not a home folder itself such as `/home/alice`. A
 glob names entries inside its path, in every `{a,b}` alternative too, and a
 project `marker` names a file in every alternative. A tool's
-`command` must name the checked folder, as a `{path}` argument or in `env`.
+`command` must name the checked folder, as a `{path}` argument or in `env`, and
+`env` may not set `PATH`, `LD_*`, `DYLD_*`, `NODE_OPTIONS` or `BASH_ENV`.
 `vars` (tier 2) and any `${VAR}` elsewhere are refused until variables are
 built. `DescriptorSchema` is the zod schema, and `schemas/descriptor-1.json`,
 which the package ships (`@osdlc/host-cleaner/schemas/descriptor-1.json`), is
@@ -352,7 +354,8 @@ const plugin = descriptorPlugin('pip', d)
   be or hold home, a personal folder, a target or a checkout, sit outside
   home, or hold or sit inside host-cleaner's own folders.
 - **discover:** one candidate per folder, or per `glob` match inside it
-  (`globMatches`; a match may be a file). Matches past `maxEntries` are
+  (`globMatches`; a match may be a file, and `{a,b}` takes either, as in a
+  `marker`). Matches past `maxEntries` are
   combined into one candidate at the first of them, held while any of them
   changed within the threshold, and measured together in the time one folder
   gets. `project` entries find build folders beside a marker in the targets'
@@ -360,11 +363,14 @@ const plugin = descriptorPlugin('pip', d)
   the targets. A build folder that several `project` entries give is one
   candidate, by the longest of their `idleHours` and the highest of their
   costs. Any other folder that two entries give is refused
-  (`duplicate-entry`). Home is the run's (`ctx.home`), else `HOME`.
+  (`duplicate-entry`). Home is the run's (`ctx.home`), else `HOME`. It has a
+  10 minute limit, which can stop it between two folders.
 - **object:** a running `inUse` process or lock refuses its candidates
   (`in-use`); a prune with no program on PATH gets a `no-prune-tool` protest.
 - **delete:** checks the candidate again, and that one the plan ran as idle
-  is still idle and measured (a prune excepted), then runs the tool's command
+  is still idle and measured (a prune excepted). A held one a person picked is
+  not checked for idle time, unless its entry holds it (`held: true`) or it is
+  `lost`: those must be idle now. Then it runs the tool's command
   from the home folder, pointed at the folder, or removes it with
   `kit.remove`. A combined candidate removes each of its matches, none when
   one is no longer idle. One that cannot be removed does not stop the others,
@@ -397,6 +403,18 @@ const { loaded, failed } = await loadPackages(entries, packageRoots(process.env)
 const user = join(homedir(), '.config', 'host-cleaner', 'descriptors')
 const { definitions } = loadPlugins({ user }, {}, { loaded, entries })
 ```
+
+`sources` names the shipped folder (`shipped`, default `SHIPPED_DESCRIPTORS`),
+the user's (`user`, none when unset) and single files (`flag`). Each of
+`descriptors` (`LoadedDescriptor`) says its `name`, `source`, `path`, the file
+it `replaces`, and the checked `descriptor`. `findDescriptors(sources,
+builtIns)` is `loadDescriptors` that collects each `DescriptorProblem` (`name`,
+`path`, `error`) instead of throwing the first. A descriptor folder that can't
+be read throws `DescriptorLoadError` from all four.
+
+A descriptor whose `supersededBy` plugin runs is told so by `ctx.running`,
+which holds only the plugins before it in `survey`'s list: put a descriptor
+after the plugin it names.
 
 ## The `git` plugin
 
@@ -514,10 +532,10 @@ Every plugin has one name, so any other clash, such as a descriptor named `git`
 or two files of one name in one folder, is a file that can't be used. Descriptors
 run after the built-ins, by name. To try one you are writing:
 `host-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan records the
-`--descriptor` files it was made with. `clean --plan` does not load them by
-itself: when one is not given it stops (exit 2) and names each `--descriptor`
-flag to add. A descriptor's `supersededBy` must name a built-in plugin, or a
-package the config names.
+`--descriptor` files behind the plugins it ran, not those the run left out.
+`clean --plan` does not load them by itself: when one is not given it stops
+(exit 2) and names each `--descriptor` flag to add. A descriptor's
+`supersededBy` must name a built-in plugin, or a package the config names.
 
 `config` reports a descriptor file that can't be used (not a descriptor, a name
 that is no plugin name, or a name clash) and goes on. `status`, `plan` and

@@ -533,25 +533,33 @@ const unknownMessage = (unknown: readonly string[]): string =>
 /**
  * The config and the plugins this run uses: {@link findRun}, then
  * {@link loadRun}, each built from its entry (or `deps.plugins`), then chosen
- * by flag, and what to warn of. A descriptor that can't be used stops the run
- * unless the run leaves its name out. A config entry that names no plugin
- * stops the run when `strict`. `failed` are the packages that did not load or
- * build, which the run goes without.
+ * by flag, the `--descriptor` files behind those plugins, and what to warn of.
+ * A descriptor that can't be used stops the run unless the run leaves its
+ * name out. A config entry that names no plugin stops the run when `strict`.
+ * `failed` are the packages that did not load or build, which the run goes
+ * without.
  */
 async function setUp(
   v: SweepValues,
   ctx: CliContext,
   deps: MainDeps,
   strict: boolean,
-): Promise<{ config: Config; plugins: Plugin[]; failed: PackageFailure[]; warnings: string[] }> {
+): Promise<{
+  config: Config
+  plugins: Plugin[]
+  descriptors: string[]
+  failed: PackageFailure[]
+  warnings: string[]
+}> {
   const naming = { want: v.plugin, skip: v.skipPlugin }
   const run = findRun(v, ctx, deps)
-  const { config, found, unknown } = run
+  const { config, found, entries, unknown } = run
   const warnings = [...run.warnings]
   if (unknown.length > 0) {
     if (strict) {
+      const have = [...(deps.plugins ?? found.definitions), ...entries].map((d) => d.name).join(', ')
       throw new BadInput(
-        `${unknownMessage(unknown)}; give its --descriptor, or remove the entry from the config`,
+        `${unknownMessage(unknown)}; correct the name (have ${have}), give the descriptor of that name with --descriptor, or remove the entry from the config`,
       )
     }
     warnings.push(unknownMessage(unknown))
@@ -561,7 +569,18 @@ async function setUp(
     warnings.push(`${p.error.message}; this run leaves ${p.name} out`)
   }
   const loading = await loadRun(run, naming, ctx, deps)
-  return { config, plugins: pluginsFor(v, loading, deps, ctx), failed: loading.failed, warnings }
+  const plugins = pluginsFor(v, loading, deps, ctx)
+  const names = new Set(plugins.map((p) => p.name))
+  return {
+    config,
+    plugins,
+    // The `--descriptor` files behind the plugins this run uses, which a plan records.
+    descriptors: found.descriptors
+      .filter((d) => d.source === 'flag' && names.has(d.name))
+      .map((d) => d.path),
+    failed: loading.failed,
+    warnings,
+  }
 }
 
 /**
@@ -599,9 +618,14 @@ function pluginsFor(v: SweepValues, loading: Loading, deps: MainDeps, ctx: CliCo
   const broken = failed.find((f) => named.includes(f.name))
   if (broken !== undefined) throw new BadInput(broken.reason)
   // Names `--skip-plugin` may give that have no plugin: packages not loaded, and descriptors that can't be used.
-  const absent = [...entries, ...problems].map((e) => e.name)
-  const chosen = selectPlugins(all, v.plugin, v.skipPlugin, absent)
-  return chosen.filter((p) => named.includes(p.name) || !disabledByConfig(p.name, config.plugins))
+  const absent = [...entries, ...problems].filter(
+    (e) => !named.includes(e.name) && !all.some((p) => p.name === e.name),
+  )
+  const chosen = selectPlugins<Pick<Plugin, 'name'>>([...all, ...absent], v.plugin, v.skipPlugin)
+  return all.filter(
+    (p) =>
+      chosen.includes(p) && (named.includes(p.name) || !disabledByConfig(p.name, config.plugins)),
+  )
 }
 
 /** The home folder, from `HOME` when set, with no trailing slash. */
@@ -832,7 +856,7 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
   const v = parsed.values
   let plan: Plan
   try {
-    const { config, plugins, failed, warnings } = await setUp(v, ctx, deps, false)
+    const { config, plugins, descriptors, failed, warnings } = await setUp(v, ctx, deps, false)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = await survey(plugins, cctx)
     writeWarnings(ctx, name, [...warnings, ...failed.map(notLoaded), ...surveyWarnings(s)])
@@ -841,7 +865,7 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
       targets: cctx.targets,
       targetsGiven: cctx.targetsGiven,
       ignore: cctx.ignore,
-      descriptors: flagDescriptors(v, ctx),
+      descriptors,
       pick: v.pick.map((e) => untildePick(e, homeOf(ctx), s.candidates)),
       spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
       allow: v.allow,
@@ -1036,6 +1060,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         targets: cctx.targets,
         targetsGiven: cctx.targetsGiven,
         ignore: cctx.ignore,
+        descriptors: run.descriptors,
         pick: v.pick.map((e) => untildePick(e, homeOf(ctx), s.candidates)),
         spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
         allow: v.allow,

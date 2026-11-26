@@ -112,6 +112,7 @@ function cached<T>(cache: Map<string, T> | undefined, key: string, read: () => T
   return cache.get(key)!
 }
 
+/** Whether `path` is a symlink itself. */
 export const isLink = (path: string): boolean =>
   lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true
 

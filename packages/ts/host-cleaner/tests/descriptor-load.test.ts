@@ -186,6 +186,14 @@ describe('one namespace', () => {
     )
   })
 
+  test('three files of one name in one folder are an error naming all three', () => {
+    const s = sources({}, { 'uv.json': '{}', 'uv.yaml': store('a'), 'uv.yml': store('b') })
+    const [json, yaml, yml] = ['uv.json', 'uv.yaml', 'uv.yml'].map((f) => join(s.user, f))
+    expect(() => loadDescriptors(s, RESERVED)).toThrow(
+      `${json}, ${yaml} and ${yml} are all the descriptor uv; keep one`,
+    )
+  })
+
   test('two --descriptor files of one name are an error', () => {
     const a = join(folder(join(tempDir(), 'a'), { 'uv.yaml': store('a') }), 'uv.yaml')
     const b = join(folder(join(tempDir(), 'b'), { 'uv.yml': store('b') }), 'uv.yml')

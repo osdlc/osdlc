@@ -140,28 +140,27 @@ function foundIn(
   paths: readonly string[],
   source: DescriptorSource,
 ): Array<Found | DescriptorProblem> {
-  const seen = new Map<string, Found | DescriptorProblem>()
+  const seen = new Map<string, string[]>()
   for (const path of paths) {
     const name = nameOf(path)
-    const twin = seen.get(name)
-    if (!PLUGIN_NAME.test(name)) {
-      seen.set(
-        name,
-        problem(
-          path,
-          `descriptor ${path}: "${name}" is not a plugin name: lowercase letters, digits and -, starting with a letter`,
-        ),
-      )
-    } else if (twin !== undefined) {
-      seen.set(
-        name,
-        problem(path, `${twin.path} and ${path} are both the descriptor ${name}; keep one`),
-      )
-    } else {
-      seen.set(name, { name, source, path })
-    }
+    seen.set(name, [...(seen.get(name) ?? []), path])
   }
-  return [...seen.values()]
+  return [...seen].map(([name, all]): Found | DescriptorProblem => {
+    const path = all[all.length - 1]!
+    if (!PLUGIN_NAME.test(name)) {
+      return problem(
+        path,
+        `descriptor ${path}: "${name}" is not a plugin name: lowercase letters, digits and -, starting with a letter`,
+      )
+    }
+    if (all.length > 1) {
+      return problem(
+        path,
+        `${all.slice(0, -1).join(', ')} and ${path} are ${all.length === 2 ? 'both' : 'all'} the descriptor ${name}; keep one`,
+      )
+    }
+    return { name, source, path }
+  })
 }
 
 const isProblem = (f: Found | DescriptorProblem): f is DescriptorProblem => 'error' in f
