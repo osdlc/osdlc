@@ -16,6 +16,7 @@ import {
   SelectionError,
   clean,
   decide,
+  decidePlan,
   parsePlan,
   plan,
   recheck,
@@ -418,6 +419,31 @@ describe('objection levels', () => {
     expect(s.objections).toEqual([
       { by: 'cargo', candidate: 'worktree:/a', level: 'refuse', code: 'x', reason: 'x reason' },
     ])
+  })
+
+  test('an objection a plan would refuse refuses its candidate instead, and the plan reads back', async () => {
+    const odd: Plugin = {
+      name: 'node',
+      detect: () => true,
+      object: () => [
+        { candidate: 'a:1', level: 'warn', code: 'x', reason: 'y' } as unknown as Objection,
+        { candidate: 'a:2', level: 'refuse', code: 'x' } as unknown as Objection,
+        objection('a:3', 'note', 'fine'),
+      ],
+    }
+    const cs = ['a:1', 'a:2', 'a:3'].map((id) => cand(id, 'git'))
+    const s = await survey([fake('git', cs, []), odd], ctx)
+    expect(s.objections).toMatchObject([
+      { by: 'node', candidate: 'a:1', level: 'refuse', code: 'plugin-error' },
+      { by: 'node', candidate: 'a:2', level: 'refuse', code: 'plugin-error' },
+      { by: 'node', candidate: 'a:3', level: 'note', code: 'fine' },
+    ])
+    expect(s.warnings).toEqual([
+      expect.stringMatching(/^node: object answered an objection to a:1 whose level a plan refuses/),
+      expect.stringMatching(/^node: object answered an objection to a:2 whose reason a plan refuses/),
+    ])
+    const back = parsePlan(JSON.stringify(plan(s)), 'plan.json')
+    expect(decidePlan(back).run.map((c) => c.id)).toEqual(['a:3'])
   })
 
   test('a plugin whose object throws refuses every candidate', async () => {

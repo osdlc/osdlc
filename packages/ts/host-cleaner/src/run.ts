@@ -14,6 +14,7 @@ import { bindKit } from './kit.ts'
 import { acceptRoots, boundBy, linkedCheckouts, type Bounds } from './roots.ts'
 import {
   CandidateSchema,
+  ObjectionSchema,
   writeReceipt,
   PLAN_VERSION,
   RECEIPT_VERSION,
@@ -235,7 +236,9 @@ function nest(cs: readonly Candidate[]): Candidate[] {
  * `scope` or `discover`, or answers anything but a list, proposes nothing,
  * with a warning; an entry of that list that is not a path or a candidate is
  * left out with a warning. One that throws or times out in `object` refuses
- * every candidate, since what it would object to is unknown. A path
+ * every candidate, since what it would object to is unknown, and an
+ * objection it answers that a plan would refuse (an unknown level, a reason
+ * that is not a string) refuses its candidate instead, with a warning. A path
  * candidate outside its owner's roots and the targets is refused
  * `outside-roots`, and a root the core refuses (see `rootProblem`
  * in `./roots.ts`) is left out with a warning. A candidate with both a path
@@ -420,7 +423,23 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
     if (p.object === undefined) continue
     try {
       for (const o of await callHook(p, 'object', scoped, (x) => p.object!(candidates, x))) {
-        if (known.has(o.candidate)) objections.push({ ...o, by: p.name })
+        if (!known.has(o.candidate)) continue
+        const read = ObjectionSchema.safeParse({ ...o, by: p.name })
+        if (read.success) {
+          objections.push(read.data)
+          continue
+        }
+        // What it meant to stop is unknown, so it refuses, as an `object` that throws does.
+        const issue = read.error.issues[0]!
+        const reason = `${p.name}: object answered an objection to ${o.candidate} whose ${issue.path.join('.')} a plan refuses: ${issue.message}`
+        warnings.push(reason)
+        objections.push({
+          by: p.name,
+          candidate: o.candidate,
+          level: 'refuse',
+          code: 'plugin-error',
+          reason,
+        })
       }
     } catch (err) {
       if (err instanceof FatalRun) throw err
