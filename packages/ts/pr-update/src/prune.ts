@@ -382,10 +382,27 @@ function checkRecords(clone: string, listed: readonly Worktree[]): void {
   }
 }
 
+/** The entry of `worktrees`, a git directory's list, for the one at `path`, if it has one. */
+function entryOf(worktrees: readonly Worktree[], path: string): Worktree | undefined {
+  const real = realOr(path)
+  return worktrees.find((w) => w.path === path || realOr(w.path) === real)
+}
+
 /** Whether `worktrees`, a git directory's list, has the one at `path`. */
 function lists(worktrees: readonly Worktree[], path: string): boolean {
-  const real = realOr(path)
-  return worktrees.some((w) => w.path === path || realOr(w.path) === real)
+  return entryOf(worktrees, path) !== undefined
+}
+
+/**
+ * Why `w`, the listed worktree at `path`, stays for a `git worktree lock`, or null. The lock git
+ * itself takes while `git worktree add` runs, `initializing`, is no reason: a killed add leaves
+ * it behind. git writes that word in the language the add ran in, so a translated one is taken
+ * for a person's lock.
+ */
+function lockedReason(w: Worktree, path: string): string | null {
+  if (!w.locked || w.lockReason === 'initializing') return null
+  const why = w.lockReason === null ? '' : ` (${w.lockReason})`
+  return `${path} is locked${why}; \`git worktree unlock ${path}\` frees it`
 }
 
 /** The git directory that owns a run worktree, read from its `.git` file and the record's `commondir`. */
@@ -828,9 +845,13 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
         return foreign(`its owner ${owner.common} is not a clone pr-update may change: ${why}`)
       }
     }
-    if (!lists(gitAt(owner.common, opts.git).worktrees(), m.path)) {
+    const entry = entryOf(gitAt(owner.common, opts.git).worktrees(), m.path)
+    if (entry === undefined) {
       return foreign(`its owner ${owner.common} does not list it as a worktree`)
     }
+    // `git worktree remove` refuses a locked one, and removing it by hand would ignore the lock.
+    const locked = lockedReason(entry, m.path)
+    if (locked !== null) return { left: { skip: 'in-use', reason: locked } }
     return { left: null, owner, lock: clone ? cloneLockPath(owner.common) : null }
   }
 
@@ -999,6 +1020,8 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       folders: ownFolders(at.kept),
     })
     const kept: { path: string; branch: string | null }[] = []
+    /** Why kept trees stay for a `git worktree lock`. */
+    const keptLocks: string[] = []
     const inUse: string[] = []
     /** Dead runs' worktrees that stay: the clone stays with them. */
     const stays: string[] = []
@@ -1022,6 +1045,8 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
         else dead.push(tree)
       } else if (ownedUnder([keptPlace.dir]).owns(w.path)) {
         kept.push({ path: w.path, branch: w.branch })
+        const locked = lockedReason(w, w.path)
+        if (locked !== null) keptLocks.push(locked)
       } else inUse.push(w.path)
     }
     for (const d of dead) {
@@ -1047,6 +1072,13 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       leave({
         skip: 'kept',
         reason: `has kept worktrees (${kept.map((k) => k.path).join(', ')}); pass --discard-kept to remove them and the clone`,
+      })
+      return
+    }
+    if (keptLocks.length > 0) {
+      leave({
+        skip: 'kept',
+        reason: `its kept worktree ${keptLocks.join('; ')}; it stays, and so does the clone`,
       })
       return
     }

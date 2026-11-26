@@ -2057,6 +2057,81 @@ describe('every removal passes one check, the same in a dry run (final review ro
       expect(existsSync(`${path}.json`)).toBe(true)
     })
 
+    test.each([
+      ['a reason', ['--reason', 'my build']],
+      ['no reason', []],
+    ])('a dead run worktree a person locked with %s stays, and so does its clone', (_, reason) => {
+      const clone = makeClone('acme/api', 400)
+      const dead = runWorktree(clone, 'acme/api')
+      writeFileSync(join(dead, 'mine.txt'), 'mine\n')
+      git(clone, 'worktree', 'lock', ...reason, dead)
+
+      const r = bothModes({ allClones: true })
+
+      expect(r.removed).toEqual([])
+      expect(r.skipped.map((e) => [e.kind, e.path, e.skip])).toEqual([
+        ['worktree', dead, 'in-use'],
+        ['clone', clone, 'in-use'],
+      ])
+      expect(r.skipped[0]!.reason).toContain(`git worktree unlock ${dead}`)
+      expect(readFileSync(join(dead, 'mine.txt'), 'utf8')).toBe('mine\n')
+      expect(listed(clone)).toEqual([dead])
+    })
+
+    test('a dead run worktree of a located checkout a person locked stays, record and all', () => {
+      const checkout = makeGitFixture({ dir: join(scratch, 'dev', 'web') })
+      checkout.commit('init', { 'w.txt': 'w' })
+      const dead = runWorktree(checkout.dir, 'acme/web')
+      writeFileSync(join(dead, 'mine.txt'), 'mine\n')
+      git(checkout.dir, 'worktree', 'lock', '--reason', 'my build', dead)
+
+      const r = bothModes({})
+
+      expect(r.removed).toEqual([])
+      expect(r.skipped.map((e) => [e.kind, e.path, e.skip])).toEqual([['worktree', dead, 'in-use']])
+      expect(readFileSync(join(dead, 'mine.txt'), 'utf8')).toBe('mine\n')
+      expect(listed(checkout.dir)).toEqual([dead])
+    })
+
+    test.each(['with', 'without'])(
+      'a kept tree a person locked stays, and so does its clone, %s a record',
+      (record) => {
+        const clone = makeClone('acme/api', 400)
+        const path = keptWorktree(clone, 'acme/api', 7)
+        if (record === 'without') unlinkSync(`${path}.json`)
+        git(clone, 'worktree', 'lock', '--reason', 'my fix', path)
+
+        const r = bothModes(everything)
+
+        expect(r.removed).toEqual([])
+        expect(r.skipped).toEqual([
+          expect.objectContaining({
+            kind: 'clone',
+            path: clone,
+            skip: 'kept',
+            reason: expect.stringContaining(`git worktree unlock ${path}`),
+          }),
+        ])
+        expect(listed(clone)).toEqual([path])
+        expect(branches(clone)).toContain('pr-update/failed-acme-api-7')
+      },
+    )
+
+    test('a dead run worktree locked only by a killed `git worktree add` (initializing) goes, with its clone', () => {
+      const clone = makeClone('acme/api', 400)
+      const dead = runWorktree(clone, 'acme/api')
+      git(clone, 'worktree', 'lock', '--reason', 'initializing', dead)
+
+      const r = bothModes({ allClones: true })
+
+      expect(r.removed.map((e) => [e.kind, e.path])).toEqual([
+        ['worktree', dead],
+        ['clone', clone],
+      ])
+      expect(existsSync(dead)).toBe(false)
+      expect(existsSync(clone)).toBe(false)
+    })
+
     test('a clone whose lock holds a token that is not a string is busy, as a claim finds it, in a dry run too', () => {
       const clone = makeClone('acme/api', 400)
       const lock = { tool: 'pr-update', holder: { pid: 2147483646 }, token: 123 }
