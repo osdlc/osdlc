@@ -11,7 +11,6 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
-import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -331,8 +330,12 @@ describe('discover', () => {
     expect(vscodeUserDir(both, 'linux')).toBe(user('/a'))
     expect(vscodeUserDir({ HOME: '/h', VSCODE_APPDATA: '/a' }, 'darwin')).toBe(user('/a'))
     expect(vscodeUserDir({ HOME: '/h', VSCODE_APPDATA: '/a' }, 'win32')).toBeUndefined()
-    // An empty HOME is unset, as the others are, not a relative path.
-    expect(vscodeUserDir({ HOME: '' }, 'linux')).toBe(user(join(homedir(), '.config')))
+    // An empty or relative HOME names no folder here: the plugin stays out of the run.
+    expect(vscodeUserDir({ HOME: '' }, 'linux')).toBeUndefined()
+    expect(vscodeUserDir({ HOME: '' }, 'darwin')).toBeUndefined()
+    expect(vscodeUserDir({ HOME: 'h' }, 'darwin')).toBeUndefined()
+    expect(vscodeUserDir({ HOME: '', XDG_CONFIG_HOME: '/x' }, 'linux')).toBe(user('/x'))
+    expect(vscodeUserDir({ HOME: '', VSCODE_APPDATA: '/a' }, 'darwin')).toBe(user('/a'))
   })
 
   test('a stopped discover gives up between folders', async () => {
@@ -462,7 +465,7 @@ describe('chat and agent history', () => {
       // The whole chat changed some other way: kept.
       ['r', (d) => chat(d, [whole(), { kind: 3, k: [] }])],
       // A chat with no requests that starts with a byte order mark, which VS Code reads.
-      ['s', (d) => chat(d, `﻿${JSON.stringify(whole().v)}`, 'f2c4.json')],
+      ['s', (d) => chat(d, `\uFEFF${JSON.stringify(whole().v)}`, 'f2c4.json')],
     ]
     const kept = new Set(['d', 'e', 'f', 'g', 'i', 'j', 'k', 'l', 'm', 'n', 'p', 'r'])
     deadStores(h, shapes)

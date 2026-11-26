@@ -280,9 +280,12 @@ function holdsHistory(name: (typeof HISTORY_FOLDERS)[number], path: string): boo
   return filled(path)
 }
 
-/** Group 1 is the folder a removable volume is mounted on, under the mount roots macOS and Linux use. */
+/**
+ * Group 1 is the folder a removable volume is mounted on, under the mount roots macOS and Linux
+ * use; under `/media`, `<user>/<label>` or, on older Debian and Ubuntu, `<label>` (see {@link unmounted}).
+ */
 const VOLUME =
-  /^(\/Volumes\/[^/]+|\/run\/media\/[^/]+\/[^/]+|\/media\/[^/]+\/[^/]+|\/mnt\/[^/]+)(?:\/|$)/
+  /^(\/Volumes\/[^/]+|\/run\/media\/[^/]+\/[^/]+|\/media\/[^/]+(?:\/[^/]+)?|\/mnt\/[^/]+)(?:\/|$)/
 
 export interface VscodeOptions extends KitOptions {
   /** VS Code's `User` folder. Default: under `HOME`, by platform. */
@@ -295,19 +298,21 @@ export interface VscodeOptions extends KitOptions {
  * VS Code's `User` folder on `platform`, found as VS Code finds it: under
  * `VSCODE_APPDATA` when set, else `~/Library/Application Support` on macOS and
  * `XDG_CONFIG_HOME` or `~/.config` on Linux; undefined where the plugin does
- * not know it.
+ * not know it, and when that is not an absolute path.
  */
 export function vscodeUserDir(
   env: Readonly<Record<string, string | undefined>>,
   platform: NodeJS.Platform,
 ): string | undefined {
+  const home = env.HOME ?? homedir()
   const set = (v: string | undefined): string | undefined => (v === '' ? undefined : v)
-  const home = set(env.HOME) ?? homedir()
   let appData: string
   if (platform === 'darwin') appData = join(home, 'Library', 'Application Support')
   else if (platform === 'linux') appData = set(env.XDG_CONFIG_HOME) ?? join(home, '.config')
   else return undefined
-  return join(set(env.VSCODE_APPDATA) ?? appData, 'Code', 'User')
+  const dir = join(set(env.VSCODE_APPDATA) ?? appData, 'Code', 'User')
+  // An empty or relative HOME names no folder of this machine's.
+  return isAbsolute(dir) ? dir : undefined
 }
 
 /** What one storage folder says about its workspace. */

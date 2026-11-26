@@ -309,7 +309,8 @@ and never removes it when the folder goes. Its root is
 `~/.config/Code/User/workspaceStorage` on Linux (`$XDG_CONFIG_HOME/Code/...`
 when `XDG_CONFIG_HOME` is set), or `$VSCODE_APPDATA/Code/...` on either when
 that is set, as VS Code itself finds it; the plugin is detected when that
-folder exists, and has no settings.
+folder exists (and is not when it is not an absolute path, as with an empty
+`HOME`), and has no settings.
 
 | Phase | What it does |
 | --- | --- |
