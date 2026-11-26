@@ -769,6 +769,7 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
     onRebaseConflict: effectiveCfg.on_rebase_conflict,
     maxRebaseStops: effectiveCfg.repair.max_rebase_stops,
     submodules: effectiveCfg.submodules,
+    rerere: effectiveCfg.rerere,
     confirmPush,
   }
   // Records too old to matter go before this run writes new ones. A rehearsal writes nothing.

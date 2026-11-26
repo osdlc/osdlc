@@ -699,7 +699,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     kept tree gets a verify log;
   - with submodules, the `submodule.<name>.url` and `.active` keys in its
     config, set for the update and put back as they were after each PR, and
-    the submodule clones git makes for the run worktree.
+    the submodule clones git makes for the run worktree;
+  - unless `pr_update.rerere` is false, the conflict resolutions git's rerere
+    records in `rr-cache/` during `update --apply`. Once that folder exists,
+    git uses rerere for the person's own merges there too, unless their
+    config turns it off.
 
   pr-update's own git calls there start no `gc --auto` (`targetGitEnv`
   sets `gc.auto=0` and `maintenance.auto=false`); the person's own git

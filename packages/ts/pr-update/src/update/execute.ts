@@ -19,7 +19,8 @@
  *
  * Rebase, then merge, then repair. A rebase replays every commit, so it can
  * stop once per commit. The fixed resolvers (rerere, lockfile, resolvers,
- * generators) run at every stop. A stop they cannot clear aborts the rebase,
+ * generators) run at every stop; rerere only with `apply` (`integrationEnv`).
+ * A stop they cannot clear aborts the rebase,
  * and the PR is retried as a merge, which meets the same conflict once. Only
  * then is `repair` called, so an agent is never asked to fix twenty versions
  * of one conflict. The outcome records the change of strategy, so a reader
@@ -37,8 +38,8 @@
  */
 
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { basename, dirname, join, resolve } from 'node:path'
 
 import {
   absolutePathEntries,
@@ -168,6 +169,8 @@ export interface UpdateSettings {
   maxRebaseStops?: number | undefined
   /** `pr_update.submodules`; see `submodules` in config.ts. Absent means `auto`. */
   submodules?: 'auto' | 'off' | undefined
+  /** `pr_update.rerere`; see `rerere` in config.ts and {@link integrationEnv}. Absent means on. */
+  rerere?: boolean | undefined
 }
 
 /** A problem the repair fixed, for the report. */
@@ -483,6 +486,7 @@ async function updateOneUnscoped(
   if (strategy === 'rebase') {
     const repairing = settings.onRebaseConflict === 'repair'
     const attempt = await rebaseThroughRungs(git, base, settings, runVerb, opts.worktree, {
+      env: integrationEnv(settings, opts.apply),
       repair: repairing ? repairOf(settings, 'conflict', opts.apply) : null,
       maxRepairs: settings.maxRebaseStops ?? 3,
       target,
@@ -565,6 +569,8 @@ async function rebaseThroughRungs(
   runVerb: RunVerb,
   worktree: string,
   limits: {
+    /** The git environment of the rebase and each `--continue` ({@link integrationEnv}). */
+    env: Record<string, string>
     maxStops: number
     upstream?: string | undefined
     repair: Repair | null
@@ -572,10 +578,14 @@ async function rebaseThroughRungs(
     target: UpdateTarget
   },
 ): Promise<RebaseAttempt> {
+  // The conflicts rerere tracked at each stop. A rebase that does not finish keeps none of the
+  // resolutions it recorded at `--continue`.
+  const tracked: RerereTracked[] = []
   // However this ends, leave a clean tree on the branch, because the fallback
   // merge runs in this same worktree.
   const reset = (): void => {
-    git.try.rebaseAbort()
+    git.try.rebaseAbort({ env: limits.env })
+    dropNewResolutions(tracked)
     git.try.resetHard('HEAD')
     git.clean({ directories: true, nested: true })
   }
@@ -590,7 +600,7 @@ async function rebaseThroughRungs(
   try {
     outcome = git.rebase(base, {
       autostash: false,
-      env: targetGitEnv(),
+      env: limits.env,
       // Without a known old parent head, let git look for it in the reflog.
       ...(limits.upstream === undefined ? { forkPoint: true } : { upstream: limits.upstream }),
     })
@@ -599,9 +609,11 @@ async function rebaseThroughRungs(
   }
   for (let stops = 0; outcome.status === 'conflict'; stops += 1) {
     if (stops >= limits.maxStops) return failed(`rebase ${base}: no progress after ${stops} stops`)
+    tracked.push(...rerereTracked(git))
     const paths = conflictedPaths(git)
-    // An empty list after a reported conflict means rerere replayed a
-    // resolution recorded earlier in this run. The tree is already correct.
+    // An empty list after a reported conflict means rerere replayed a resolution recorded
+    // earlier, in this run or an earlier one, and staged it (`rerere.autoUpdate`, set by
+    // `integrationEnv`). The resolution still goes through verify.
     const plans =
       paths.length === 0
         ? []
@@ -642,7 +654,7 @@ async function rebaseThroughRungs(
       // continue with a half-regenerated tree. This is safe because the
       // worktree is temporary and holds nothing but this integration.
       git.add(['.'])
-      outcome = git.rebaseContinue({ env: targetGitEnv() })
+      outcome = git.rebaseContinue({ env: limits.env })
     } catch (e) {
       return failed(`continuing the rebase: ${errorLine(e)}`)
     }
@@ -679,6 +691,7 @@ async function integrateAndPush(
 ): Promise<UpdateOutcome> {
   const base = baseRef(target, settings.remote)
   const head = `${settings.remote}/${target.head}`
+  const env = integrationEnv(settings, opts.apply)
 
   let outcome
   if (rebased === null) {
@@ -689,6 +702,7 @@ async function integrateAndPush(
       outcome = git.merge(base, {
         message:
           mergeTitle(target) + (baseSha === null ? '' : `\n\nBase: ${target.base} at ${baseSha}`),
+        env,
       })
     } catch (e) {
       git.try.mergeAbort()
@@ -748,17 +762,21 @@ async function integrateAndPush(
     try {
       // See `rebaseThroughRungs` for why the pathspec is `.`.
       git.add(['.'])
+      // rerere records the resolution here (see `integrationEnv`).
       git.commit({
         message: mergeTitle(target),
         body:
-          repaired.length > 0
-            ? 'Conflicts resolved by rebuilding the generated artifacts and the repair.'
-            : 'Conflicts resolved by rebuilding the generated artifacts.',
+          paths.length === 0
+            ? 'Conflicts resolved by git rerere, from a resolution recorded earlier.'
+            : repaired.length > 0
+              ? 'Conflicts resolved by rebuilding the generated artifacts and the repair.'
+              : 'Conflicts resolved by rebuilding the generated artifacts.',
         // The project's checks belong to `verify:`, run once per PR under the
         // caller's control. Otherwise git would run the commit hooks here and
         // nowhere else, so whether they ran would depend on the strategy. The
         // rebase path turns hooks off the same way (see `targetGitEnv`).
         noVerify: true,
+        env,
       })
     } catch (e) {
       return fail(`committing the resolution: ${errorLine(e)}`)
@@ -985,13 +1003,108 @@ function runVerify(
  * in, a run worktree holding the PR's files: `ssh` for a fetch or push over ssh, a `!` credential
  * helper such as `gh auth setup-git`'s, `gpg` to sign. With `.` on `PATH`, any of them could be a
  * file the PR commits. An unset `PATH` stays unset.
+ *
+ * `extra` is more config, set after the rest. A call that needs more than the client's settings
+ * passes the whole set, since a call's `env` replaces the client's variables one by one.
  */
 export function targetGitEnv(
   parent: Record<string, string | undefined> = process.env,
+  extra: readonly (readonly [key: string, value: string])[] = [],
 ): Record<string, string> {
-  const env = gitConfigEnv([['core.hooksPath', '/dev/null'], ...NO_MAINTENANCE], parent)
+  const env = gitConfigEnv([['core.hooksPath', '/dev/null'], ...NO_MAINTENANCE, ...extra], parent)
   const path = absolutePathEntries(pathOf(parent))
   return path === undefined ? env : { ...env, PATH: path }
+}
+
+/**
+ * The environment of the git calls that integrate the base and record a resolution: the rebase
+ * and each `--continue`, the merge and its resolution commit. `targetGitEnv`, with git's rerere on
+ * in an `--apply` run and off otherwise, whatever the person's own config says.
+ *
+ * - `rerere.enabled=true`: at a conflict git replays a resolution recorded earlier for the same
+ *   conflict, and at the commit it records the one pr-update made. So a stack of sibling PRs that
+ *   meet one conflict needs it resolved once, by a resolver or a repair, not once per PR.
+ * - `rerere.autoUpdate=true`: a replayed path is staged, so it is not listed as conflicted and
+ *   no resolver or repair is asked about it. The replayed content still goes through verify.
+ *
+ * Resolutions are kept in the repository's common git directory, `rr-cache/`: the person's own
+ * checkout for the project root and a located checkout, the clone for a cloned target. Once
+ * there, git turns rerere on for the person's own merges in that checkout too, unless their
+ * config says `rerere.enabled=false`. `pr_update.rerere: false` turns it off for pr-update.
+ *
+ * A rehearsal records nothing, so it does not use rerere at all, and may report a conflict that
+ * an `--apply` run clears with a recorded resolution.
+ */
+function integrationEnv(settings: UpdateSettings, apply: boolean): Record<string, string> {
+  const on = apply && settings.rerere !== false
+  return targetGitEnv(
+    process.env,
+    on
+      ? [
+          ['rerere.enabled', 'true'],
+          ['rerere.autoUpdate', 'true'],
+        ]
+      : [['rerere.enabled', 'false']],
+  )
+}
+
+/** A conflict rerere tracks: its folder in `rr-cache/`, and the resolutions in it when read. */
+interface RerereTracked {
+  dir: string
+  had: ReadonlySet<string>
+}
+
+/** The `postimage` files in a conflict's `rr-cache/` folder: one per resolution recorded. */
+function postimagesIn(dir: string): string[] {
+  try {
+    return readdirSync(dir).filter((f) => f.startsWith('postimage'))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * The conflicts rerere tracks in `git`'s worktree now, from its `MERGE_RR` (`<id>\t<path>`
+ * entries, NUL-separated, written while a merge or rebase stops). Empty when rerere is off.
+ */
+function rerereTracked(git: Git): RerereTracked[] {
+  let mergeRr: string
+  let cache: string
+  try {
+    const [m, c] = git
+      .rawChecked(['rev-parse', '--git-path', 'MERGE_RR', '--git-path', 'rr-cache'])
+      .stdout.split('\n')
+    if (m === undefined || c === undefined) return []
+    mergeRr = resolve(git.cwd, m)
+    cache = resolve(git.cwd, c)
+  } catch {
+    return []
+  }
+  if (!existsSync(mergeRr)) return []
+  return readFileSync(mergeRr, 'utf8')
+    .split('\0')
+    .filter((entry) => entry.includes('\t'))
+    .map((entry) => {
+      // `<id>.<n>` names the n-th variant of a conflict; the folder is `<id>`.
+      const dir = join(cache, entry.slice(0, entry.indexOf('\t')).split('.')[0]!)
+      return { dir, had: new Set(postimagesIn(dir)) }
+    })
+}
+
+/**
+ * Remove each resolution recorded for `tracked` since it was read: one pr-update did not accept.
+ * A repair that commits, or runs `rebase --continue`, is rejected for moving HEAD, but git has
+ * already recorded its resolution, since rerere is on for any git in a repository with an
+ * `rr-cache/`. So is a stop a rebase continued past before it was abandoned. `git rerere forget`
+ * cannot clear either: it needs the conflict still in the index. A resolution another run
+ * recorded for the same conflict meanwhile goes too, and is recorded again the next time.
+ */
+function dropNewResolutions(tracked: readonly RerereTracked[]): void {
+  for (const { dir, had } of tracked) {
+    for (const file of postimagesIn(dir)) {
+      if (!had.has(file)) rmSync(join(dir, file), { force: true })
+    }
+  }
 }
 
 /** `PATH` in `env`, which Windows names in any case (`Path`). */
@@ -1066,16 +1179,22 @@ async function tryRepair(
   const headBefore = git.resolveRef('HEAD')
   const refsBefore = refNames(git)
   const dirtyBefore = dirtyFiles(git, req.worktree)
+  // A rejected repair's resolution must not be replayed into a later PR (`dropNewResolutions`).
+  const tracked = req.kind === 'conflict' ? rerereTracked(git) : []
   let res: RepairResult
   try {
     res = await repair(req)
   } catch (e) {
+    dropNewResolutions(tracked)
     return { ok: false, reason: `repair (${req.kind}) threw: ${errorLine(e)}` }
   }
-  const rejected = (why: string): { ok: false; reason: string } => ({
-    ok: false,
-    reason: `repair (${req.kind}) ${why}${res.note === '' ? '' : ` — ${res.note}`}`,
-  })
+  const rejected = (why: string): { ok: false; reason: string } => {
+    dropNewResolutions(tracked)
+    return {
+      ok: false,
+      reason: `repair (${req.kind}) ${why}${res.note === '' ? '' : ` — ${res.note}`}`,
+    }
+  }
 
   const headAfter = git.resolveRef('HEAD')
   if (headAfter !== headBefore) {

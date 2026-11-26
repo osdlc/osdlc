@@ -266,7 +266,9 @@ run or kept worktree, the run's scratch branch (deleted at the end, and made
 with `--no-track`, so it adds no `branch.*` keys to your config) and a kept
 tree's branch, the objects the update builds, the `origin/*` refs its fetch
 and push write, and, with `attempts.store: git-ref`, local `refs/pr-update/*`
-copies of the remote's record and lease. A kept tree with a verify log adds
+copies of the remote's record and lease. Unless `pr_update.rerere` is false,
+`update --apply` adds the conflict resolutions git's rerere records to
+`rr-cache/` (see [Replaying a resolution](#replaying-a-resolution-rerere)). A kept tree with a verify log adds
 `/.pr-update-verify.log` to `info/exclude` once, and with submodules the
 `submodule.*` URLs are set for the update and put back after it. A run that is
 killed can leave its worktree's entry and scratch branch, which the next run
@@ -609,6 +611,37 @@ conflict:
 
 A conflict that no resolver claims is reported with the path and the reason,
 in `update`'s structured `conflicts` field. It is never guessed at.
+
+### Replaying a resolution: rerere
+
+`update --apply` runs its merges and rebases, and the commits that finish them,
+with git's `rerere.enabled` and `rerere.autoUpdate` set for those commands
+only. It never writes them to your git config, and it overrides a
+`rerere.enabled: false` there. When a resolver or an accepted repair resolves a
+conflict, git records the resolution at the commit. When the same conflict
+comes up again, in a later PR of the run or in a later run, git replays the
+resolution and stages it, and no resolver or repair is asked about it. So a
+stack of sibling PRs on one base that meet one conflict needs it resolved once,
+not once per PR.
+
+- A replayed resolution still goes through `verify`. A replay can be wrong
+  where the same conflict needs a different answer, such as a lockfile whose
+  manifests differ outside the conflict, and `verify` is what catches it.
+- Only a resolution pr-update accepted is kept. When a repair is rejected, or
+  a rebase is abandoned after it continued past a resolved stop, the
+  resolutions git recorded for it are removed. A resolution recorded by a
+  merge whose `verify` then failed is kept.
+- The resolutions live in the repository's `rr-cache/` folder: your own
+  checkout's git directory for the project root and a checkout found on this
+  machine, the clone for a cloned target. `git gc` removes old ones.
+- Once `rr-cache/` exists, git uses rerere for your own merges and rebases in
+  that checkout too, unless your config says `rerere.enabled: false`. It then
+  writes a recorded resolution into the file, without staging it, and says so.
+- A rehearsal (no `--apply`) does not use rerere at all, so it records nothing,
+  and it may report a conflict that `--apply` clears with a recorded
+  resolution.
+- `pr_update.rerere: false` turns it off for pr-update: its merges and rebases
+  then run with `rerere.enabled=false`, whatever your config says.
 
 ### The fallback chain
 
