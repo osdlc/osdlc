@@ -435,8 +435,13 @@ describe('folders', () => {
   )
 
   test('with process.env and no HOME, the folders are still placed', () => {
-    vi.stubEnv('HOME', undefined)
-    expect(() => hostDirs(process.env)).not.toThrow()
+    for (const name of ['HOME', 'XDG_CONFIG_HOME', 'XDG_STATE_HOME', 'HOST_CLEANER_ROOT']) {
+      vi.stubEnv(name, undefined)
+    }
+    for (const key of ['CONFIG', 'STATE', 'LOGS']) vi.stubEnv(`HOST_CLEANER_${key}_DIR`, undefined)
+    // tiered-dirs' own rules apply: in a test process, its temporary test root;
+    // elsewhere, the OS account's home.
+    expect(hostDirs(process.env).config.startsWith(tmpdir())).toBe(true)
   })
 
   test('with no home, --config still works and clean exits 1', () => {
