@@ -79,18 +79,18 @@ export class UnknownPlugin extends Error {
 
 /**
  * `plugins` narrowed to `want` when given, less `skip`. A name no plugin has is
- * an error, except that `skip` may name one of `absent`, the descriptors that can't be used.
+ * an error. Anything with a name can be chosen, so a run chooses among its
+ * plugins and its descriptors that can't be used together.
  *
  * @throws UnknownPlugin
  */
-export function selectPlugins(
-  plugins: readonly Plugin[],
+export function selectPlugins<P extends Pick<Plugin, 'name'>>(
+  plugins: readonly P[],
   want: readonly string[] | undefined,
   skip: readonly string[] | undefined,
-  absent: readonly string[] = [],
-): Plugin[] {
+): P[] {
   const known = new Set(plugins.map((p) => p.name))
-  for (const name of [...(want ?? []), ...(skip ?? []).filter((n) => !absent.includes(n))]) {
+  for (const name of [...(want ?? []), ...(skip ?? [])]) {
     if (!known.has(name)) {
       throw new UnknownPlugin(`no plugin named ${name}; have ${[...known].join(', ')}`)
     }

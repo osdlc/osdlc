@@ -346,6 +346,33 @@ const plugin = descriptorPlugin('pip', d)
   one is no longer idle. One that cannot be removed does not stop the others,
   and the error says which went.
 
+A descriptor whose `supersededBy` plugin runs is told so by `ctx.running`,
+which holds only the plugins before it in `survey`'s list: put a descriptor
+after the plugin it names.
+
+To load descriptors from folders and files, as the command line does:
+
+```ts
+import { findPlugins, loadPlugins, survey } from '@osdlc/host-cleaner'
+
+const sources = { user: '/home/me/.config/host-cleaner/descriptors', flag: ['/tmp/uv.yaml'] }
+// The built-ins, then one definition per descriptor by name; a name whose file
+// can't be used is one of `problems`, with its `error`.
+const { definitions, descriptors, problems } = findPlugins(sources)
+// The same, but the first problem is thrown.
+const loaded = loadPlugins(sources)
+```
+
+`sources` names the shipped folder (`shipped`, default `SHIPPED_DESCRIPTORS`),
+the user's (`user`, none when unset) and single files (`flag`). Each of
+`descriptors` (`LoadedDescriptor`) says its `name`, `source`, `path`, the file
+it `replaces`, and the checked `descriptor`. `findDescriptors(sources,
+builtIns)` and `loadDescriptors(sources, builtIns)` give the descriptors alone,
+with no plugin built: `find…` collects each `DescriptorProblem` (`name`,
+`path`, `error`), and `load…` throws the first. A clash of names is a
+`DescriptorLoadError`, a file that is no descriptor a `DescriptorError`; a
+descriptor folder that can't be read throws `DescriptorLoadError` from all four.
+
 ## The `git` plugin
 
 `gitPlugin(options)` proposes repo-cleaner's worktrees, as paths, and branches,
@@ -457,7 +484,8 @@ Every plugin has one name, so any other clash, such as a descriptor named `git`
 or two files of one name in one folder, is a file that can't be used. Descriptors
 run after the built-ins, by name. To try one you are writing:
 `host-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan records the
-`--descriptor` files it was made with. `clean --plan` does not load them by
+`--descriptor` files behind the plugins it ran, not those the run left out.
+`clean --plan` does not load them by
 itself: when one is not given it stops (exit 2) and names each `--descriptor`
 flag to add. A descriptor's `supersededBy` must name a built-in plugin.
 

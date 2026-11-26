@@ -68,7 +68,9 @@ export interface DescriptorOptions {
   /**
    * Whether the code plugin `plugin` runs this time: detected, enabled and not
    * skipped. A descriptor whose `supersededBy` runs doesn't. Default: whether
-   * survey has found it active (`ctx.running`).
+   * survey has found it active (`ctx.running`), which holds only the plugins
+   * before this one in survey's list: put a descriptor after the plugin of its
+   * `supersededBy`, as `findPlugins` does, or that plugin counts as not running.
    */
   runs?: ((plugin: string, ctx: Ctx) => MaybePromise<boolean>) | undefined
   /** host-cleaner's own folders, which no path may contain. Default: `hostDirs(env)`. */

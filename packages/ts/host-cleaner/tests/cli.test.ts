@@ -669,6 +669,39 @@ ${extra}`
     expect(dry.err).not.toContain('add --descriptor')
   })
 
+  test('a plan records only the --descriptor files behind the plugins it ran', async () => {
+    const h = withHome(['mine', 'other'])
+    const desc = join(h.cwd, 'mine.yaml')
+    writeFileSync(desc, store('.cache/mine'))
+    writeFileSync(join(h.user, 'other.yaml'), store('.cache/other'))
+    const bad = join(h.cwd, 'bad.yaml')
+    writeFileSync(bad, 'not: a descriptor\n')
+    const deps = { shippedDescriptors: h.shipped }
+    const planFile = join(h.cwd, 'p.json')
+    const descriptorsOf = async (...argv: string[]) => {
+      const r = await run(['plan', ...argv, '-o', planFile], h.cwd, h.env, deps)
+      expect(r.code, argv.join(' ')).toBe(0)
+      return parsePlan(readFileSync(planFile, 'utf8'), planFile).descriptors
+    }
+    const common = ['--descriptor', desc, '--descriptor', bad, '--skip-plugin', 'bad']
+    expect(await descriptorsOf(...common, '--plugin', 'mine')).toEqual([desc])
+    expect(await descriptorsOf(...common, '--plugin', 'other')).toBeUndefined()
+    const left = await run(['clean', '--plan', planFile, '--dry-run'], h.cwd, h.env, deps)
+    expect(left.err).not.toContain('add --descriptor')
+  })
+
+  test('clean refuses a config entry that names no plugin, as for a misspelt built-in', async () => {
+    const h = withHome()
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { crago: { enabled: false } } }))
+    const r = await run(['clean', '--config', file, '--yes'], h.cwd, h.env, {
+      shippedDescriptors: h.shipped,
+    })
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('config names no plugin crago')
+    expect(r.err).toContain('correct the name (have git, cargo, node, orca)')
+  })
+
   test('supersededBy: left out while that plugin runs, used when it is skipped', async () => {
     const h = withHome(['mine'])
     writeFileSync(join(h.user, 'mine.yaml'), store('.cache/mine', 'supersededBy: git\n'))
