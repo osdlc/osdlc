@@ -993,9 +993,9 @@ export async function main(
   deps: MainDeps = {},
 ): Promise<number> {
   const [sub, ...rest] = argv
-  const phase =
-    sub === 'status' || sub === 'plan' || sub === 'clean' || sub === 'config' || sub === 'plugins'
+  const phase = sub === 'status' || sub === 'plan' || sub === 'clean' || sub === 'plugins'
   // It cleans one person's files; as root, a target or a root could reach everyone's.
+  // `config` only reads the settings, so it still answers.
   if (phase && (deps.uid ?? process.getuid?.()) === 0) {
     ctx.io.stderr(
       renderError('refusing to run as root; run it as the user whose files it cleans', NAME),
