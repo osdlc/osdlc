@@ -118,7 +118,7 @@ try {
       : join(prefix, 'lib', 'node_modules')
   const pkg = join(global, 'host-cleaner-smoke-plugin')
   mkdirSync(join(global, '@osdlc'), { recursive: true })
-  symlinkSync(join(dist, '..'), join(global, '@osdlc', 'host-cleaner'), 'dir')
+  symlinkSync(join(dist, '..'), join(global, '@osdlc', 'host-cleaner'), 'junction')
   mkdirSync(pkg)
   writeFileSync(
     join(pkg, 'package.json'),

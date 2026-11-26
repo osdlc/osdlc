@@ -152,15 +152,17 @@ describe('phases', () => {
     expect(r.err).toContain('is not a phase')
   })
 
-  test('as root every phase is refused with exit 1 and nothing runs; --help still answers', async () => {
+  test('as root status, plan and clean are refused with exit 1 and nothing runs; config and --help still answer', async () => {
     const { env, cwd } = setup()
     const plugin = fake()
-    for (const phase of ['status', 'plan', 'clean', 'config']) {
+    for (const phase of ['status', 'plan', 'clean']) {
       const r = await run([phase, '--yes'], cwd, env, { plugins: [plugin], uid: 0 })
       expect(r.code).toBe(1)
       expect(r.err).toContain('refusing to run as root')
     }
     expect(plugin.removed).toEqual([])
+    const config = await run(['config'], cwd, env, { uid: 0 })
+    expect([config.code, config.err]).toEqual([0, ''])
     expect((await run(['--help'], cwd, env, { uid: 0 })).code).toBe(0)
   })
 })
@@ -674,6 +676,39 @@ ${extra}`
     expect(dry.err).not.toContain('add --descriptor')
   })
 
+  test('a plan records only the --descriptor files behind the plugins it ran', async () => {
+    const h = withHome(['mine', 'other'])
+    const desc = join(h.cwd, 'mine.yaml')
+    writeFileSync(desc, store('.cache/mine'))
+    writeFileSync(join(h.user, 'other.yaml'), store('.cache/other'))
+    const bad = join(h.cwd, 'bad.yaml')
+    writeFileSync(bad, 'not: a descriptor\n')
+    const deps = { shippedDescriptors: h.shipped }
+    const planFile = join(h.cwd, 'p.json')
+    const descriptorsOf = async (...argv: string[]) => {
+      const r = await run(['plan', ...argv, '-o', planFile], h.cwd, h.env, deps)
+      expect(r.code, argv.join(' ')).toBe(0)
+      return parsePlan(readFileSync(planFile, 'utf8'), planFile).descriptors
+    }
+    const common = ['--descriptor', desc, '--descriptor', bad, '--skip-plugin', 'bad']
+    expect(await descriptorsOf(...common, '--plugin', 'mine')).toEqual([desc])
+    expect(await descriptorsOf(...common, '--plugin', 'other')).toBeUndefined()
+    const left = await run(['clean', '--plan', planFile, '--dry-run'], h.cwd, h.env, deps)
+    expect(left.err).not.toContain('add --descriptor')
+  })
+
+  test('clean refuses a config entry that names no plugin, as for a misspelt built-in', async () => {
+    const h = withHome()
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { crago: { enabled: false } } }))
+    const r = await run(['clean', '--config', file, '--yes'], h.cwd, h.env, {
+      shippedDescriptors: h.shipped,
+    })
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('config names no plugin crago')
+    expect(r.err).toContain('correct the name (have git, cargo, node, orca)')
+  })
+
   test('supersededBy: left out while that plugin runs, used when it is skipped', async () => {
     const h = withHome(['mine'])
     writeFileSync(join(h.user, 'mine.yaml'), store('.cache/mine', 'supersededBy: git\n'))
@@ -717,10 +752,11 @@ describe('packages', () => {
     writeFileSync(config, JSON.stringify({ plugins }))
     const nm = nodeModules(tempDir())
     const path = nm.add(FIXTURE, source)
-    const deps: MainDeps = { packageRoots: [nm.root], shippedDescriptors: tempDir() }
+    const shipped = tempDir()
+    const deps: MainDeps = { packageRoots: [nm.root], shippedDescriptors: shipped }
     const go = (argv: string[]) =>
       run([...argv, '--config', config], cwd, { ...env, HOME: home }, deps)
-    return { home, cwd, path, go }
+    return { home, cwd, path, shipped, go }
   }
 
   const fixture = { fixture: { package: FIXTURE, keep: ['kept'] } }
@@ -744,6 +780,14 @@ describe('packages', () => {
     ])
     expect(json.plugins.fixture).toEqual({ enabled: true, keep: ['kept'], package: FIXTURE })
 
+    // A disabled package is still loaded, printed and checked by config.
+    const off = withPackage({ fixture: { ...fixture.fixture, enabled: false } })
+    expect((await off.go(['config'])).out).toContain('  enabled = false  (config)')
+    const typo = withPackage({ fixture: { ...fixture.fixture, enabled: false, kep: [] } })
+    const bad = await typo.go(['config'])
+    expect(bad.code).toBe(2)
+    expect(bad.err).toContain('plugins.fixture')
+
     const clean = await h.go([
       'clean',
       '--plugin',
@@ -756,6 +800,20 @@ describe('packages', () => {
     expect(clean.out).toMatch(/done\s+scratch:~\/\.fixture\/old/)
     expect(existsSync(join(h.home, '.fixture', 'old'))).toBe(false)
     expect(existsSync(join(h.home, '.fixture', 'kept'))).toBe(true)
+  })
+
+  test('a package replaces a shipped descriptor of its name, one that can be used or not', async () => {
+    const store = 'descriptor: 1\npaths:\n  store: { all: ~/.fixture/kept }\ncandidates:\n'
+    for (const candidate of ['  - { path: store, costDescription: re-download }\n', '  - nope\n']) {
+      const h = withPackage(fixture)
+      writeFileSync(join(h.shipped, 'fixture.yaml'), store + candidate)
+      const status = await h.go(['status', '--skip-plugin', 'cargo,node'])
+      expect(status.err).toBe('')
+      expect(status.code).toBe(0)
+      expect(status.out).toContain('plugins: git, fixture\n')
+      expect(status.out).toContain('scratch:~/.fixture/old')
+      expect(status.out).not.toContain('kept')
+    }
   })
 
   test('a wrong api: status and plan warn and go on, clean exits 2 unless --skip-plugin', async () => {

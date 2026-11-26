@@ -20,6 +20,7 @@ import {
 import { z } from 'zod'
 
 import { DISCOVER_LIMIT_MS, objector } from './helpers.ts'
+import { linkedCheckouts } from './roots.ts'
 import {
   FatalRun,
   PLUGIN_API,
@@ -109,6 +110,20 @@ export function gitPlugin(given: GitPluginOptions = {}): Plugin {
           ? { ...common, path: row.path }
           : { ...common, ref: row.path, at: row.repo }
       })
+    },
+    // A worktree whose folder is gone, or left without its `.git`, has no
+    // checkout the core could find its repository from: git, which found it in
+    // its repository, declares it so its prune is not refused outside-roots.
+    // One of a repository a target is in, the core counts already.
+    roots(ctx) {
+      const counted = new Set(linkedCheckouts(ctx.targets))
+      return [...rows.values()].flatMap((row) =>
+        row.kind === 'worktree' &&
+        (row.evidence as WorktreeEvidence).onDisk === false &&
+        !counted.has(row.path)
+          ? [{ path: row.path, self: true as const }]
+          : [],
+      )
     },
     object(all) {
       return all.flatMap((c): Objection[] => {

@@ -55,7 +55,7 @@ export function nodeModules(dir: string): {
 } {
   const root = join(dir, 'node_modules')
   mkdirSync(join(root, '@osdlc'), { recursive: true })
-  symlinkSync(join(here, '..', '..'), join(root, '@osdlc', 'host-cleaner'), 'dir')
+  symlinkSync(join(here, '..', '..'), join(root, '@osdlc', 'host-cleaner'), 'junction')
   return {
     root,
     add(name, source, manifest = {}) {

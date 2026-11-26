@@ -88,8 +88,31 @@ export interface Bounds {
   linked: readonly string[]
   /** The home folder, which no root may be or hold. */
   home: string
+  /** Git's answers {@link linkedWorktreeOf} reads, kept for one survey; none, as right before `delete` and in `kit.remove`, asks git afresh. */
+  reads?: GitReads | undefined
 }
 
+/** What {@link linkedWorktreeOf} asks git, by real path, so the candidates in one repository ask it once a survey. */
+export interface GitReads {
+  /** Each folder's checkout; null outside any. */
+  top: Map<string, string | null>
+  /** Each checkout's main checkout. */
+  main: Map<string, string | null>
+  /** Each main checkout's linked worktrees, parents resolved. */
+  trees: Map<string, readonly string[]>
+}
+
+/** Empty {@link GitReads}. */
+export const gitReads = (): GitReads => ({ top: new Map(), main: new Map(), trees: new Map() })
+
+/** `cache`'s answer for `key`, read and kept when it has none; `read()` itself without a cache. */
+function cached<T>(cache: Map<string, T> | undefined, key: string, read: () => T): T {
+  if (cache === undefined) return read()
+  if (!cache.has(key)) cache.set(key, read())
+  return cache.get(key)!
+}
+
+/** Whether `path` is a symlink itself. */
 export const isLink = (path: string): boolean =>
   lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true
 
@@ -201,8 +224,13 @@ const isDir = (path: string): boolean => {
  * target's repository, or a worktree moved away from where it is
  * registered, does not count. A repository nested in a worktree is looked
  * through to the worktree around it. The main checkout itself is never one.
+ * With `reads`, git's answers are kept there and read back.
  */
-export function linkedWorktreeOf(targets: readonly string[], path: string): string | null {
+export function linkedWorktreeOf(
+  targets: readonly string[],
+  path: string,
+  reads?: GitReads,
+): string | null {
   if (!isAbsolute(path) || hasDotDot(path)) return null
   const leaf = realLeaf(path)
   const inTarget = (dir: string): boolean =>
@@ -211,14 +239,22 @@ export function linkedWorktreeOf(targets: readonly string[], path: string): stri
   for (;;) {
     let top: string | null
     try {
-      const git = new Git(dir)
-      top = git.topLevel()
+      const from = dir
+      top = cached(reads?.top, from, () => {
+        const found = new Git(from).topLevel()
+        return found === null ? null : realOr(found)
+      })
       if (top === null) return null
-      top = realOr(top)
-      const main = git.mainCheckout()
-      if (main !== null && realOr(main) !== top && inTarget(main)) {
-        const listed = git.worktrees().some((t, i) => i > 0 && !t.bare && realLeaf(t.path) === top)
-        if (listed && (leaf === top || containedIn([top], path) !== null)) return top
+      const at = top
+      const main = cached(reads?.main, at, () => new Git(at).mainCheckout())
+      if (main !== null && realOr(main) !== at && inTarget(main)) {
+        const trees = cached(reads?.trees, realOr(main), () =>
+          new Git(at)
+            .worktrees()
+            .filter((t, i) => i > 0 && !t.bare)
+            .map((t) => realLeaf(t.path)),
+        )
+        if (trees.includes(at) && (leaf === at || containedIn([at], path) !== null)) return at
       }
     } catch {
       return null
@@ -270,6 +306,7 @@ export function boundBy(bounds: Bounds, path: string): string | null {
   }
   if (bounds.targets.some((t) => t === path || realOr(t) === leaf)) return null
   return (
-    linked.find((c) => c === path || realOr(c) === leaf) ?? linkedWorktreeOf(bounds.targets, path)
+    linked.find((c) => c === path || realOr(c) === leaf) ??
+    linkedWorktreeOf(bounds.targets, path, bounds.reads)
   )
 }

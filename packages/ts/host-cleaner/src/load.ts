@@ -18,8 +18,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { z } from 'zod'
 
 import { BUILT_IN_PLUGINS } from './builtins.ts'
-import { byName } from './helpers.ts'
+import { byName, errorText, isObject } from './helpers.ts'
 import { builtOn } from './kit.ts'
+import { validLimit } from './run.ts'
 import { HOOKS, PLUGIN_API, type Plugin, type PluginDefinition } from './types.ts'
 
 /** An npm package name: lowercase, optionally scoped, with no path in it. */
@@ -192,8 +193,6 @@ const LEGACY_MAIN_SUFFIXES = [
 const isFile = (path: string): boolean =>
   statSync(path, { throwIfNoEntry: false })?.isFile() === true
 
-const isObject = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null
-
 const MUST_EXPORT = 'it must export default definePlugin({ ... })'
 
 /** Why `x` is not a `definePlugin` definition, or undefined when it is one. */
@@ -226,7 +225,8 @@ function misshapenHooks(plugin: Record<string, unknown>): string | undefined {
   if (!isObject(limits)) return 'limits is not an object'
   for (const [hook, ms] of Object.entries(limits)) {
     if (!(HOOKS as readonly string[]).includes(hook)) return `limits names ${hook}, not a hook`
-    if (typeof ms !== 'number' || !(ms > 0)) {
+    // As the core reads it: undefined is the default.
+    if (ms !== undefined && !validLimit(ms)) {
       return `limits.${hook} is not a positive number of milliseconds`
     }
   }
@@ -252,7 +252,7 @@ function checked(def: PluginDefinition, entry: PackageEntry, label: string): Plu
       try {
         plugin = def.create(init)
       } catch (err) {
-        throw fail(`could not be created: ${(err as Error).message}`)
+        throw fail(`could not be created: ${errorText(err)}`)
       }
       if (!isObject(plugin) || plugin.name !== def.name) {
         throw fail(
@@ -291,7 +291,7 @@ async function loadPackage(entry: PackageEntry, roots: readonly string[]): Promi
   try {
     manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as Manifest
   } catch (err) {
-    throw fail(`cannot read ${join(dir, 'package.json')}: ${(err as Error).message}`)
+    throw fail(`cannot read ${join(dir, 'package.json')}: ${errorText(err)}`)
   }
   const version = typeof manifest.version === 'string' ? manifest.version : undefined
   const label = version === undefined ? entry.package : `${entry.package} ${version}`
@@ -301,7 +301,7 @@ async function loadPackage(entry: PackageEntry, roots: readonly string[]): Promi
   try {
     mod = (await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default?: unknown }
   } catch (err) {
-    throw fail(`${label} at ${dir} failed to import: ${(err as Error).message}`)
+    throw fail(`${label} at ${dir} failed to import: ${errorText(err)}`)
   }
   const def = mod.default
   // An api given is checked before the shape, which another api may change.

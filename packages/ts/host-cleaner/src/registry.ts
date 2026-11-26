@@ -4,17 +4,20 @@
  * one namespace.
  */
 
+import { dirname, resolve } from 'node:path'
+
 import { BUILT_IN_PLUGINS } from './builtins.ts'
 import { descriptorPlugin, type DescriptorOptions } from './descriptor/engine.ts'
 import {
   DescriptorLoadError,
+  SHIPPED_DESCRIPTORS,
   findDescriptors,
   type DescriptorProblem,
   type DescriptorSources,
   type LoadedDescriptor,
 } from './descriptor/load.ts'
 import { byName } from './helpers.ts'
-import { refuseBuiltInName, type LoadedPackage, type PackageEntry } from './load.ts'
+import { isPackaged, refuseBuiltInName, type LoadedPackage, type PackageEntry } from './load.ts'
 import type { Plugin, PluginDefinition } from './types.ts'
 
 export { BUILT_IN_PLUGINS }
@@ -40,9 +43,11 @@ export interface Packages {
 /**
  * The built-ins, then the `packages` loaded, then the descriptors from
  * `sources`, each by name; `opts` is passed to each descriptor's plugin. A
- * descriptor that can't be used, that is named as a package in the config, or
- * whose `supersededBy` names neither a built-in plugin nor a package in the
- * config, is one of `problems`.
+ * package in the config replaces a shipped descriptor of its name, one that
+ * can't be used too. A
+ * descriptor that can't be used, a user or `--descriptor` one named as a
+ * package in the config, or one whose `supersededBy` names neither a built-in
+ * plugin nor a package in the config, is one of `problems`.
  *
  * @throws DescriptorLoadError for a descriptor folder that can't be read
  * @throws PackageError for a package named as a built-in plugin
@@ -58,7 +63,11 @@ export function findPlugins(
   for (const e of named.values()) refuseBuiltInName(e)
   const code = [...builtIns, ...named.keys()]
   const found = findDescriptors(sources, builtIns)
-  const problems = [...found.problems]
+  const shipped = resolve(sources.shipped ?? SHIPPED_DESCRIPTORS)
+  // The package the config names replaces a shipped descriptor, as a user file would.
+  const replaced = (d: { name: string; path: string }): boolean =>
+    named.has(d.name) && resolve(dirname(d.path)) === shipped
+  const problems = found.problems.filter((p) => !replaced(p))
   const refused = (d: LoadedDescriptor, why: string): false => {
     problems.push({
       name: d.name,
@@ -68,6 +77,7 @@ export function findPlugins(
     return false
   }
   const descriptors = found.descriptors.filter((d) => {
+    if (d.source === 'shipped' && replaced(d)) return false
     const entry = named.get(d.name)
     if (entry !== undefined) {
       return refused(
@@ -96,7 +106,7 @@ export function findPlugins(
   )
 }
 
-/** `found`, which has no package yet, with those `loaded` between the built-ins and the descriptors, by name. */
+/** `found` with its packages, if any, replaced by those `loaded`, between the built-ins and the descriptors, by name. */
 export function withPackages(found: Loaded, loaded: readonly LoadedPackage[]): Loaded {
   const packages = [...loaded].sort(byName)
   return {
@@ -104,7 +114,7 @@ export function withPackages(found: Loaded, loaded: readonly LoadedPackage[]): L
     definitions: [
       ...BUILT_IN_PLUGINS,
       ...packages.map((p) => p.definition),
-      ...found.definitions.filter((d) => !BUILT_IN_PLUGINS.includes(d)),
+      ...found.definitions.filter((d) => !BUILT_IN_PLUGINS.includes(d) && !isPackaged(d)),
     ],
     packages,
   }
@@ -113,8 +123,9 @@ export function withPackages(found: Loaded, loaded: readonly LoadedPackage[]): L
 /**
  * {@link findPlugins}, with no problem allowed.
  *
- * @throws DescriptorLoadError for a descriptor named as a built-in plugin or a
- *   package in the config, a `supersededBy` that names neither, or as loadDescriptors
+ * @throws DescriptorLoadError for a descriptor named as a built-in plugin, a
+ *   user or `--descriptor` one named as a package in the config, a
+ *   `supersededBy` that names neither, or as loadDescriptors
  * @throws DescriptorError for a descriptor file that can't be used
  * @throws PackageError as findPlugins
  */
@@ -135,18 +146,18 @@ export class UnknownPlugin extends Error {
 
 /**
  * `plugins` narrowed to `want` when given, less `skip`. A name no plugin has is
- * an error, except that `skip` may name one of `absent`, the descriptors that can't be used.
+ * an error. Anything with a name can be chosen, so a run chooses among its
+ * plugins and its descriptors that can't be used together.
  *
  * @throws UnknownPlugin
  */
-export function selectPlugins(
-  plugins: readonly Plugin[],
+export function selectPlugins<P extends Pick<Plugin, 'name'>>(
+  plugins: readonly P[],
   want: readonly string[] | undefined,
   skip: readonly string[] | undefined,
-  absent: readonly string[] = [],
-): Plugin[] {
+): P[] {
   const known = new Set(plugins.map((p) => p.name))
-  for (const name of [...(want ?? []), ...(skip ?? []).filter((n) => !absent.includes(n))]) {
+  for (const name of [...(want ?? []), ...(skip ?? [])]) {
     if (!known.has(name)) {
       throw new UnknownPlugin(`no plugin named ${name}; have ${[...known].join(', ')}`)
     }
