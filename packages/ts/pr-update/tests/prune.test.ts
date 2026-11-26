@@ -2143,5 +2143,30 @@ describe('every removal passes one check, the same in a dry run (final review ro
       expect(r.skipped.map((e) => [e.path, e.skip])).toEqual([[clone, 'busy']])
       expect(existsSync(clone)).toBe(true)
     })
+
+    test.each([
+      ['a YAML error', 'mirror_max_age_days: [\n'],
+      ['a value the schema refuses', 'mirror_max_age_days: -5\n'],
+    ])('a clone is not aged by the default when the machine file holds %s', (_, text) => {
+      const clone = makeClone('acme/api', 400)
+      const file = machineFile({ env }).path()
+      mkdirSync(dirname(file), { recursive: true })
+      writeFileSync(file, text)
+
+      const r = bothModes({ machine: machineFile({ env }) })
+
+      expect(r.removed).toEqual([])
+      expect(r.failed).toEqual([
+        expect.objectContaining({
+          kind: 'clone',
+          path: paths.repos,
+          reason: expect.stringContaining('mirror_max_age_days could not be read'),
+        }),
+      ])
+      expect(existsSync(clone)).toBe(true)
+      // An age on the command line does not need the file.
+      const asked = prune({ machine: machineFile({ env }), olderThanDays: 30 })
+      expect(asked.removed.map((e) => e.path)).toEqual([clone])
+    })
   })
 })

@@ -180,19 +180,33 @@ interface Where {
   worktrees: string
   kept: string
   maxAgeDays: number
-  /** Why the machine file could not be read, when it could not: `maxAgeDays` is then the default. */
+  /**
+   * Why the machine file could not be read, or is not valid, when it is not: `maxAgeDays` is then
+   * a default, not what the file says.
+   */
   machineUnread: Error | null
 }
 
-/** Why the machine file cannot be read, or null when it can or is not there. */
+/** The machine file's load issues that leave its age unknown. */
+const NOT_VALID: ReadonlySet<string> = new Set(['unreadable', 'yaml', 'not_mapping', 'invalid'])
+
+/**
+ * Why the machine file cannot be read, or null when it can or is not there. One that is read but
+ * is not valid (a YAML error, no mapping, or a value the schema refuses) counts too: the age in it
+ * is not known. A key the schema does not know, or a newer version read as it is, does not: the
+ * age is still read.
+ */
 function unreadMachine(file: MachineConfigFile<typeof machineConfigSchema>): Error | null {
   try {
     file.read()
-    return null
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code
     return code === 'ENOENT' || code === 'ENOTDIR' ? null : (e as Error)
   }
+  const bad = file.loadWithIssues().issues.find((i) => NOT_VALID.has(i.code))
+  if (bad === undefined) return null
+  const key = bad.path.length === 0 ? '' : `${bad.path.join('.')}: `
+  return new Error(`${file.path()}: ${key}${bad.message.split('\n')[0]}`)
 }
 
 function where(opts: MirrorWalkOptions): Where {
@@ -682,8 +696,8 @@ export interface PruneReport {
   allClones: boolean
   /**
    * The age in days a clone had to pass to be removed, or null when no age applied: with `allClones`,
-   * or at `mirror_max_age_days: 0`, or with a machine file that cannot be read, and no
-   * `olderThanDays`, when no clone is removed.
+   * or at `mirror_max_age_days: 0`, or with a machine file that cannot be read or is not valid,
+   * and no `olderThanDays`, when no clone is removed.
    */
   olderThanDays: number | null
   /** What was removed, or would be in a dry run. */
