@@ -752,10 +752,11 @@ describe('packages', () => {
     writeFileSync(config, JSON.stringify({ plugins }))
     const nm = nodeModules(tempDir())
     const path = nm.add(FIXTURE, source)
-    const deps: MainDeps = { packageRoots: [nm.root], shippedDescriptors: tempDir() }
+    const shipped = tempDir()
+    const deps: MainDeps = { packageRoots: [nm.root], shippedDescriptors: shipped }
     const go = (argv: string[]) =>
       run([...argv, '--config', config], cwd, { ...env, HOME: home }, deps)
-    return { home, cwd, path, go }
+    return { home, cwd, path, shipped, go }
   }
 
   const fixture = { fixture: { package: FIXTURE, keep: ['kept'] } }
@@ -799,6 +800,20 @@ describe('packages', () => {
     expect(clean.out).toMatch(/done\s+scratch:~\/\.fixture\/old/)
     expect(existsSync(join(h.home, '.fixture', 'old'))).toBe(false)
     expect(existsSync(join(h.home, '.fixture', 'kept'))).toBe(true)
+  })
+
+  test('a package replaces a shipped descriptor of its name, one that can be used or not', async () => {
+    const store = 'descriptor: 1\npaths:\n  store: { all: ~/.fixture/kept }\ncandidates:\n'
+    for (const candidate of ['  - { path: store, costDescription: re-download }\n', '  - nope\n']) {
+      const h = withPackage(fixture)
+      writeFileSync(join(h.shipped, 'fixture.yaml'), store + candidate)
+      const status = await h.go(['status', '--skip-plugin', 'cargo,node'])
+      expect(status.err).toBe('')
+      expect(status.code).toBe(0)
+      expect(status.out).toContain('plugins: git, fixture\n')
+      expect(status.out).toContain('scratch:~/.fixture/old')
+      expect(status.out).not.toContain('kept')
+    }
   })
 
   test('a wrong api: status and plan warn and go on, clean exits 2 unless --skip-plugin', async () => {

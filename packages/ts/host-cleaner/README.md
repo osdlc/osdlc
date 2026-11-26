@@ -410,7 +410,8 @@ the user's (`user`, none when unset) and single files (`flag`). Each of
 it `replaces`, and the checked `descriptor`. `findDescriptors(sources,
 builtIns)` is `loadDescriptors` that collects each `DescriptorProblem` (`name`,
 `path`, `error`) instead of throwing the first. A descriptor folder that can't
-be read throws `DescriptorLoadError` from all four.
+be read throws `DescriptorLoadError` from it, `loadDescriptors`, `findPlugins`
+and `loadPlugins`.
 
 A descriptor whose `supersededBy` plugin runs is told so by `ctx.running`,
 which holds only the plugins before it in `survey`'s list: put a descriptor
