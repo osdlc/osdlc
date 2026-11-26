@@ -214,8 +214,8 @@ describe("the system description's examples", () => {
         ),
       ),
     ).toEqual([
-      'line 5: candidates.0.command: ${ is not filled here: variables are filled only in paths, vars and locks',
-      'line 5: candidates.0.env: ${ is not filled here: variables are filled only in paths, vars and locks',
+      'line 5: candidates.0.command.2: ${ is not filled here: variables are filled only in paths, vars and locks',
+      'line 5: candidates.0.env.A: ${ is not filled here: variables are filled only in paths, vars and locks',
     ])
     expect(issues(hfWith("{ path: hub, costDescription: rebuild, glob: '${X}/*' }"))).toEqual([
       'line 5: candidates.0.glob: ${ is not filled here: variables are filled only in paths, vars and locks',
@@ -231,7 +231,7 @@ describe("the system description's examples", () => {
       unfilled('inUse.processes.0'),
     ])
     expect(issues(GO.replace('[go, env, GOMODCACHE]', "[go, env, -C, '${HOME}']"))).toEqual([
-      unfilled('vars.GOMODCACHE.1.command'),
+      unfilled('vars.GOMODCACHE.1.command.3'),
     ])
     expect(
       issues(GO.replace('- command: [go, env, GOMODCACHE]', "- { file: ~/go.toml, key: '${X}' }")),
@@ -244,6 +244,8 @@ describe("the system description's examples", () => {
         `${HUGGING_FACE}project:\n  - { dir: '\${OUT}', marker: '\${M}.csproj', costDescription: rebuild }\n`,
       ),
     ).toEqual([unfilled('project.0.dir'), unfilled('project.0.marker')])
+    // A string field no check names is refused too.
+    expect(issues(`$schema: '\${S}'\n${HUGGING_FACE}`)).toEqual([unfilled('$schema')])
   })
 
   test('a glob or marker whose every {a,b} alternative names an entry is accepted', () => {
@@ -268,6 +270,13 @@ describe("the system description's examples", () => {
         `${HUGGING_FACE}project:\n  - { dir: obj, marker: '${glob}', costDescription: rebuild }\n`,
       ),
     ).toEqual(['line 11: project.0.marker: must have no more than 1024 {a,b} alternatives'])
+  })
+
+  test('a glob with two wide {a,b} groups is refused before they are expanded', () => {
+    const group = `{${Array(20_000).fill('a').join(',')}}`
+    expect(
+      issues(hfWith(`{ path: hub, costDescription: rebuild, glob: '${group}${group}' }`)),
+    ).toEqual(['line 5: candidates.0.glob: must have no more than 1024 {a,b} alternatives'])
   })
 
   test('a glob may start with ~ when it names an entry, such as ~$*', () => {
@@ -438,6 +447,10 @@ describe('a bad descriptor names the field path', () => {
       '/var\\root',
       '/var/root',
       '/private/var/root/',
+      '/var/home/alice',
+      '/usr/home/alice',
+      '/export/home/alice/',
+      '/mnt/c/Users/alice',
     ].map((home): [string, string, string] => [
       `a home folder written out, ${home}`,
       HUGGING_FACE.replace('~/.cache/huggingface/hub', `'${home}'`),
@@ -502,11 +515,20 @@ describe('a bad descriptor names the field path', () => {
       UV.replace('{ onPath: uv }', '{ onPath: uv, exists: cache }'),
       'line 5: detect.any.0: set one of onPath or exists',
     ],
-    [
-      'a lock that is a folder',
-      UV.replace('processes: [uv]', 'locks: [~/.cache/uv/]'),
+    ...['~/.cache/uv/', '~/.cache/uv/.'].map((lock): [string, string, string] => [
+      `a lock that is a folder, ${lock}`,
+      UV.replace('processes: [uv]', `locks: ['${lock}']`),
       'line 14: inUse.locks.0: must be a file, not a folder',
-    ],
+    ]),
+    ...['PATH', 'Path', 'LD_PRELOAD', 'DYLD_INSERT_LIBRARIES', 'NODE_OPTIONS', 'BASH_ENV'].map(
+      (name): [string, string, string] => [
+        `an env entry that redirects the program, ${name}`,
+        hfWith(
+          `{ path: hub, costDescription: rebuild, command: [rm, -rf, x], env: { ${name}: '{path}' }, removes: all }`,
+        ),
+        `line 5: candidates.0.env.${name}: must not change which program runs or what it loads`,
+      ],
+    ),
     [
       'a project dir that is a path',
       `${HUGGING_FACE}project:\n  - { dir: build/obj, marker: '*.csproj', costDescription: rebuild }\n`,
@@ -580,12 +602,12 @@ describe('a bad descriptor names the field path', () => {
     [
       "a variable in a candidate's command",
       PNPM.replace("'{path}']", "'{path}', '${STORE}']"),
-      'line 12: candidates.0.command: ${ is not filled here: variables are filled only in paths, vars and locks',
+      'line 12: candidates.0.command.5: ${ is not filled here: variables are filled only in paths, vars and locks',
     ],
     [
       "a variable in a candidate's env",
       PNPM.replace("'{path}']", "'{path}']\n    env: { CACHE: '${XDG_CACHE_HOME}/x' }"),
-      'line 13: candidates.0.env: ${ is not filled here: variables are filled only in paths, vars and locks',
+      'line 13: candidates.0.env.CACHE: ${ is not filled here: variables are filled only in paths, vars and locks',
     ],
     [
       'a variable name that is no environment variable name',
@@ -611,8 +633,25 @@ describe('a bad descriptor names the field path', () => {
 
   test('every problem is listed, not only the first', () => {
     expect(issues(hfWith('{ path: models, costDescription: rebuild }\n  - { path: hub }'))).toEqual(
-      ['line 6: candidates.1.costDescription: required'],
+      [
+        'line 6: candidates.1.costDescription: required',
+        'line 5: candidates.0.path: no folder named "models" in paths',
+      ],
     )
+    // The candidate's and the paths entry's own cross-field checks, beside a type error.
+    expect(
+      issues(hfWith('{ path: hub, costDescription: rebuild, command: [uv, prune], idleHours: x }')),
+    ).toEqual([
+      'line 5: candidates.0.idleHours: Invalid input: expected number, received string',
+      'line 5: candidates.0.removes: required with command: unused or all',
+      'line 5: candidates.0.command: must name the checked folder, as a {path} argument or in env (D13)',
+    ])
+    expect(
+      issues(HUGGING_FACE.replace('{ all: ~/.cache/huggingface/hub }', '{ all: ~/a, linux: 1 }')),
+    ).toEqual([
+      'line 4: paths.hub.linux: Invalid input: expected string, received number',
+      'line 4: paths.hub: set all or per-OS folders, not both',
+    ])
     expect(
       issues(
         hfWith(

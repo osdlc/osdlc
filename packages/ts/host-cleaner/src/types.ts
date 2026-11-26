@@ -171,7 +171,8 @@ export type Hook = (typeof HOOKS)[number]
  * awaits each in turn, one plugin at a time. Each call has a time limit (see
  * `limits`): past it, `ctx.signal` is aborted and the call counts as a throw.
  * Synchronous work cannot be stopped part way: a hook that answers past its
- * limit is timed out only then, and its answer dropped. So a hook that works
+ * limit is timed out only then, and its answer dropped, but for `delete`'s,
+ * which counts: it has deleted by then. So a hook that works
  * for long waits on something between two pieces of work and looks at
  * `ctx.signal`.
  */

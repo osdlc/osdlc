@@ -106,7 +106,8 @@ async function run(argv: string[], cwd: string, env: Record<string, string>, dep
   const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
   const skip = ['--skip-plugin', 'orca', '--skip-plugin', 'cargo']
   const args = phase && deps.plugins === undefined ? [...argv, ...skip] : argv
-  // The shipped descriptors would sweep this machine's caches, since HOME is the real one.
+  // The shipped descriptors would make each run depend on this machine: their detection looks for
+  // tools on its PATH, and their in-use checks read its process table.
   const shippedDescriptors = deps.shippedDescriptors ?? tempDir()
   const code = await main(args, ctx, { confirm: () => null, ...deps, shippedDescriptors })
   return { code, out: ctx.io.out, err: ctx.io.err }
@@ -159,15 +160,17 @@ describe('phases', () => {
     expect(r.err).toContain('is not a phase')
   })
 
-  test('as root every phase is refused with exit 1 and nothing runs; --help still answers', async () => {
+  test('as root status, plan and clean are refused with exit 1 and nothing runs; config and --help still answer', async () => {
     const { env, cwd } = setup()
     const plugin = fake()
-    for (const phase of ['status', 'plan', 'clean', 'config', 'plugins']) {
+    for (const phase of ['status', 'plan', 'clean', 'plugins']) {
       const r = await run([phase, '--yes'], cwd, env, { plugins: [plugin], uid: 0 })
       expect(r.code).toBe(1)
       expect(r.err).toContain('refusing to run as root')
     }
     expect(plugin.removed).toEqual([])
+    const config = await run(['config'], cwd, env, { uid: 0 })
+    expect([config.code, config.err]).toEqual([0, ''])
     expect((await run(['--help'], cwd, env, { uid: 0 })).code).toBe(0)
   })
 })
@@ -1245,6 +1248,39 @@ candidates:
     )
     expect(dry.code).not.toBe(2)
     expect(dry.err).not.toContain('add --descriptor')
+  })
+
+  test('a plan records only the --descriptor files behind the plugins it ran', async () => {
+    const h = withHome(['mine', 'other'])
+    const desc = join(h.cwd, 'mine.yaml')
+    writeFileSync(desc, store('.cache/mine'))
+    writeFileSync(join(h.user, 'other.yaml'), store('.cache/other'))
+    const bad = join(h.cwd, 'bad.yaml')
+    writeFileSync(bad, 'not: a descriptor\n')
+    const deps = { shippedDescriptors: h.shipped }
+    const planFile = join(h.cwd, 'p.json')
+    const descriptorsOf = async (...argv: string[]) => {
+      const r = await run(['plan', ...argv, '-o', planFile], h.cwd, h.env, deps)
+      expect(r.code, argv.join(' ')).toBe(0)
+      return parsePlan(readFileSync(planFile, 'utf8'), planFile).descriptors
+    }
+    const common = ['--descriptor', desc, '--descriptor', bad, '--skip-plugin', 'bad']
+    expect(await descriptorsOf(...common, '--plugin', 'mine')).toEqual([desc])
+    expect(await descriptorsOf(...common, '--plugin', 'other')).toBeUndefined()
+    const left = await run(['clean', '--plan', planFile, '--dry-run'], h.cwd, h.env, deps)
+    expect(left.err).not.toContain('add --descriptor')
+  })
+
+  test('clean refuses a config entry that names no plugin, as for a misspelt built-in', async () => {
+    const h = withHome()
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { crago: { enabled: false } } }))
+    const r = await run(['clean', '--config', file, '--yes'], h.cwd, h.env, {
+      shippedDescriptors: h.shipped,
+    })
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('config names no plugin crago')
+    expect(r.err).toContain('correct the name (have git, cargo, node, orca)')
   })
 
   test('supersededBy: left out while that plugin runs, used when it is skipped', async () => {
