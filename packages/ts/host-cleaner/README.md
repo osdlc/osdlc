@@ -345,8 +345,8 @@ Settings: `plugins.jetbrains.idleHours` (default 24).
   `product-info.json`, read from each tool the Toolbox's `state.json` lists and
   from the application folders (`/Applications` and `~/Applications` on macOS;
   the Toolbox's `apps` folder, `/opt`, `/usr/local`, `/usr/share`, snaps under
-  `/snap`, `~/opt`, `~/.local/share`, `~/Applications` and the home itself on
-  Linux), and from the install each `jetbrains-*.desktop` entry starts
+  `/snap`, `~/opt`, `~/.local/share`, `~/Applications`, `~/bin`, `~/tools`,
+  `~/Downloads` and the home itself on Linux), and from the install each `jetbrains-*.desktop` entry starts
   (`Exec=<install>/bin/...`, in `~/.local/share/applications`,
   `/usr/local/share/applications` and `/usr/share/applications`). It is held
   while it changed within `idleHours`, in case an install sits somewhere not
@@ -354,8 +354,10 @@ Settings: `plugins.jetbrains.idleHours` (default 24).
   Toolbox state or `product-info.json` that is there and cannot be read refuses
   every version folder (`installs-unreadable`), and so does a Toolbox install
   of an IntelliJ-platform IDE (it has a `bin/idea.properties`) with no
-  `product-info.json`; a Toolbox tool with neither, such as Fleet, is passed
-  over. In the application folders, an
+  `product-info.json`, or whose `product-info.json` has no
+  `dataDirectoryName`; a Toolbox tool with neither file, such as Fleet, or one
+  whose `dataDirectoryName` is no `<Product><year>.<n>`, which no version folder
+  can be, is passed over. In the application folders, an
   entry that cannot be looked into, or whose `product-info.json` names no
   `<Product><year>.<n>` folder, is taken as some other app and passed over.
 - `project-cache:<path>`: inside an installed version, `projects/<name>.<hash>`

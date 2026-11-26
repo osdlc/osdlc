@@ -147,8 +147,11 @@ function layoutOf(opts: JetbrainsOptions, ctx: Pick<Ctx, 'home'>): Layout {
         join(home, 'opt'),
         join(home, '.local', 'share'),
         join(home, 'Applications'),
-        // A tarball unpacked straight into the home, such as `~/idea-IU-251.23774.435`.
+        // A tarball unpacked straight into the home, such as `~/idea-IU-251.23774.435`, or beside it.
         home,
+        join(home, 'bin'),
+        join(home, 'tools'),
+        join(home, 'Downloads'),
       ],
       // An install unpacked anywhere else is found through the desktop entry made for it.
       desktop: opts.desktop ?? [
@@ -221,8 +224,8 @@ interface Installs {
 /**
  * The installs in `layout`. A `product-info.json` that is missing means no
  * install; one that is there and cannot be read, or a Toolbox install whose
- * folder names no version folder or has none beside an `idea.properties`
- * (an IntelliJ-platform IDE), is a problem, since an install
+ * `product-info.json` names no data folder, or that has none beside an
+ * `idea.properties` (an IntelliJ-platform IDE), is a problem, since an install
  * may be missed. In the application folders, an entry that cannot be looked
  * into, or whose `product-info.json` names no version folder, is some other
  * app and is passed over.
@@ -249,10 +252,12 @@ function installsOf(layout: Layout): Installs {
     }
     if (file === undefined) {
       // A tool with neither file is no IntelliJ-platform IDE, such as Fleet, and uses no version folder.
-      const platformIde = ['bin', join('Contents', 'bin')].some(
-        (b) => exists(join(dir, b, 'idea.properties')) !== false,
-      )
-      if (toolbox && platformIde) {
+      if (
+        toolbox &&
+        ['bin', join('Contents', 'bin')].some(
+          (b) => exists(join(dir, b, 'idea.properties')) !== false,
+        )
+      ) {
         found.problems.push(`the Toolbox installed ${dir}, which has no product-info.json`)
       }
       return
@@ -267,7 +272,8 @@ function installsOf(layout: Layout): Installs {
     const name = isObject(info) ? info.dataDirectoryName : undefined
     const m = typeof name === 'string' ? VERSION_DIR.exec(name) : null
     if (!isObject(info) || m === null) {
-      if (toolbox) found.problems.push(`${file} names no version folder`)
+      // A name that is no `<Product><year>.<n>`, as `AndroidStudio2024.1.2`, is a folder never looked into.
+      if (toolbox && typeof name !== 'string') found.problems.push(`${file} names no data folder`)
       return
     }
     found.versions.add(m[0])

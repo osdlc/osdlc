@@ -189,6 +189,14 @@ describe('version folders', () => {
     expect(s.objections).toEqual([
       expect.objectContaining({ by: 'host-cleaner', candidate: log.id, code: 'discard-user-data' }),
     ])
+    const plugin = make(h)
+    const picked = await clean(
+      plan(await survey([plugin], ctx()), { pick: [log.id], allow: ['discard-user-data'] }),
+      [plugin],
+      ctx(),
+    )
+    expect(picked.steps.map((x) => x.result)).toEqual(['ok', 'ok'])
+    expect(existsSync(log.path!)).toBe(false)
   })
 
   test('clean removes the uninstalled version and leaves the installed one and the rest', async () => {
@@ -269,10 +277,7 @@ describe('version folders', () => {
     const other = twoVersions()
     put(join(apps(other), 'Broken.app', 'Contents', 'Resources', 'product-info.json'), 48, '{')
     const again = await survey([make(other)], ctx())
-    expect(ours(again).map((o) => o.code)).toEqual([
-      'installs-unreadable',
-      'installs-unreadable',
-    ])
+    expect(ours(again).map((o) => o.code)).toEqual(['installs-unreadable', 'installs-unreadable'])
     expect(ours(again)[0]!.reason).toContain('Broken.app')
   })
 
@@ -325,17 +330,24 @@ describe('version folders', () => {
     expect(ours(s)).toEqual([])
   })
 
-  test('a Toolbox install that names no version folder refuses every version folder', async () => {
+  test('a Toolbox install that names no data folder refuses every version folder; one that names another folder does not', async () => {
     const h = twoVersions()
     const odd = join(h.home, 'tools', 'Odd.app')
-    put(join(odd, 'product-info.json'), 48, JSON.stringify({ dataDirectoryName: 'Odd' }))
-    put(
-      join(config(h), 'Toolbox', 'state.json'),
-      48,
-      JSON.stringify({ tools: [{ installLocation: odd }] }),
-    )
+    put(join(odd, 'product-info.json'), 48, JSON.stringify({ name: 'Odd' }))
+    const state = join(config(h), 'Toolbox', 'state.json')
+    put(state, 48, JSON.stringify({ tools: [{ installLocation: odd }] }))
     const s = await survey([make(h)], ctx())
     expect(ours(s).map((o) => o.code)).toEqual(['installs-unreadable', 'installs-unreadable'])
+
+    // Its folder is no `<Product><year>.<n>`, so none the plugin looks into.
+    const studio = join(h.home, 'tools', 'Android Studio.app')
+    put(
+      join(studio, 'Contents', 'Resources', 'product-info.json'),
+      48,
+      JSON.stringify({ dataDirectoryName: 'AndroidStudio2024.1.2' }),
+    )
+    put(state, 48, JSON.stringify({ tools: [{ installLocation: studio }] }))
+    expect(ours(await survey([make(h)], ctx()))).toEqual([])
   })
 
   test('a Toolbox tool that is no IntelliJ-platform IDE refuses nothing; an IDE missing its product-info.json does', async () => {
@@ -348,7 +360,11 @@ describe('version folders', () => {
 
     const ide = join(h.home, 'tools', 'Half.app')
     put(join(ide, 'Contents', 'bin', 'idea.properties'))
-    put(state, 48, JSON.stringify({ tools: [{ installLocation: fleet }, { installLocation: ide }] }))
+    put(
+      state,
+      48,
+      JSON.stringify({ tools: [{ installLocation: fleet }, { installLocation: ide }] }),
+    )
     expect(ours(await survey([make(h)], ctx())).map((o) => o.code)).toEqual([
       'installs-unreadable',
       'installs-unreadable',
@@ -489,6 +505,29 @@ describe('version folders', () => {
     put(join(caches(h), 'RustRover2025.1', 'fresh'), 1)
     const again = await clean(plan(idle, { pick: [c.id] }), [plugin], ctx())
     expect(again.dropped).toEqual([expect.objectContaining({ id: c.id, reason: 'changed' })])
+    expect(existsSync(c.path!)).toBe(true)
+  })
+
+  test('discover stops at its limit between folders', async () => {
+    const h = twoVersions()
+    const stop = new AbortController()
+    setTimeout(() => stop.abort(new Error('past the limit')), 0)
+    await expect(
+      (async () => make(h).discover!({ ...ctx(), signal: stop.signal }))(),
+    ).rejects.toThrow('past the limit')
+  })
+
+  test('a delete past its limit removes nothing', async () => {
+    const h = twoVersions()
+    const plugin = make(h)
+    const c = (await survey([plugin], ctx())).candidates.find(
+      (x) => x.path === join(caches(h), 'RustRover2025.1'),
+    )!
+    const stop = new AbortController()
+    setTimeout(() => stop.abort(new Error('past the limit')), 0)
+    await expect(
+      (async () => plugin.delete!(c, { ...ctx(), signal: stop.signal }))(),
+    ).rejects.toThrow('past the limit')
     expect(existsSync(c.path!)).toBe(true)
   })
 
@@ -699,6 +738,27 @@ describe('detection and roots', () => {
     const s = await survey([plugin], ctx())
     expect(s.roots).toEqual({ jetbrains: [join(cache, 'JetBrains')] })
     expect(ids(s.candidates)).toEqual([`ide-version:${join(cache, 'JetBrains', 'GoLand2024.3')}`])
+  })
+
+  test('on Linux, an IDE unpacked into the home or a folder beside it is an install', async () => {
+    const h = home()
+    const cache = join(h.home, 'xdg-cache')
+    for (const v of ['GoLand2025.1', 'GoLand2024.3', 'GoLand2024.2']) {
+      put(join(cache, 'JetBrains', v, 'x'))
+    }
+    const unpacked = (dir: string, v: string): void =>
+      put(join(dir, 'product-info.json'), 48, JSON.stringify({ dataDirectoryName: v }))
+    unpacked(join(h.home, 'GoLand-2025.1'), 'GoLand2025.1')
+    unpacked(join(h.home, 'tools', 'GoLand-2024.3'), 'GoLand2024.3')
+    const plugin = make(h, {
+      options: {
+        platform: 'linux',
+        apps: undefined,
+        env: { HOME: h.home, XDG_CACHE_HOME: cache },
+      },
+    })
+    const s = await survey([plugin], ctx())
+    expect(ids(s.candidates)).toEqual([`ide-version:${join(cache, 'JetBrains', 'GoLand2024.2')}`])
   })
 
   test('on another platform it has no roots and drops out', async () => {
