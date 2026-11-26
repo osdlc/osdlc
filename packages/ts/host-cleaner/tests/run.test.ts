@@ -213,7 +213,7 @@ describe('plugin order and duplicates', () => {
       expect(s.plugins).toEqual([])
       expect(s.notes).toEqual({})
       expect(s.warnings).toEqual([
-        `odd: detect answered ${JSON.stringify(answer)}, which is neither a boolean nor { active, note? }; it was left out`,
+        `odd: detect answered ${JSON.stringify(answer)}, which is neither a boolean nor { active, note?, vars? }; it was left out`,
       ])
     }
   })
@@ -288,7 +288,15 @@ describe('inspect', () => {
       },
     })
     const found = await inspect([failing, fake('a', [], [])], ctx)
-    expect(found.plugins).toEqual([{ name: 'a', detected: true, roots: [], selfRoots: [] }])
+    expect(found.plugins).toEqual([
+      {
+        name: 'a',
+        detected: true,
+        roots: [],
+        rootsFailed: 'roots failed: no folder',
+        selfRoots: [],
+      },
+    ])
     expect(found.warnings).toEqual([
       'a: a second plugin of that name was left out',
       'a: scope failed: no list',
@@ -362,7 +370,7 @@ describe('inspect', () => {
       {
         name: 'c',
         detected: false,
-        reason: 'detect answered "yes", which is neither a boolean nor { active, note? }',
+        reason: 'detect answered "yes", which is neither a boolean nor { active, note?, vars? }',
         roots: [],
         selfRoots: [],
       },

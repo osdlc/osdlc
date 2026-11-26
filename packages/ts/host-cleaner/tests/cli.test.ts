@@ -365,6 +365,7 @@ describe('plugins', () => {
           detected: true,
           reason: null,
           roots: ['/cache/git'],
+          rootsFailed: null,
           selfRoots: [],
           note: null,
           vars: [],
@@ -374,8 +375,9 @@ describe('plugins', () => {
           source: 'given',
           enabled: false,
           detected: false,
-          reason: "plugins.cargo.enabled is false; a sweep's --plugin cargo runs it anyway",
+          reason: 'plugins.cargo.enabled is false',
           roots: [],
+          rootsFailed: null,
           selfRoots: [],
           note: null,
           vars: [],
@@ -387,6 +389,7 @@ describe('plugins', () => {
           detected: false,
           reason: null,
           roots: [],
+          rootsFailed: null,
           selfRoots: [],
           note: null,
           vars: [],
@@ -398,6 +401,7 @@ describe('plugins', () => {
           detected: true,
           reason: null,
           roots: [],
+          rootsFailed: null,
           selfRoots: [],
           note: 'Orca is installed but not running',
           vars: [],
@@ -557,6 +561,73 @@ candidates:
     expect(r.err).toContain('x: a second plugin of that name was left out')
   })
 
+  test('a roots hook that failed, or whose every root was refused, says so: its candidates outside the targets are refused', async () => {
+    const { env, cwd } = setup()
+    const plugins = (): Plugin[] => [
+      fake('none'),
+      {
+        ...fake('broke'),
+        roots: () => {
+          throw new Error('no\nfolder')
+        },
+      },
+      { ...fake('wide'), roots: () => ['/'] },
+    ]
+    const r = await run(['plugins'], cwd, env, { plugins: plugins() })
+    expect(r.code).toBe(0)
+    const lines = r.out.split('\n')
+    expect(lines.slice(1, 3)).toEqual([
+      '  none   given  detected; roots: none, the targets alone',
+      '  broke  given  detected; roots: none, the targets alone (roots failed: no folder)',
+    ])
+    expect(lines[3]).toMatch(
+      /^ {2}wide {3}given {2}detected; roots: none, the targets alone \(roots: left out the root \/: .+\)$/,
+    )
+    const json = await run(['plugins', '--format', 'json'], cwd, env, { plugins: plugins() })
+    const rows = JSON.parse(json.out).plugins
+    expect(rows.map((row: { rootsFailed: string | null }) => row.rootsFailed)).toEqual([
+      null,
+      'roots failed: no\nfolder',
+      expect.stringMatching(/^roots: left out the root \/: /),
+    ])
+  })
+
+  test("a variable's value, source or failure keeps to its own line", async () => {
+    const { env, cwd } = setup()
+    const h = tempHome()
+    cleanups.push(h.cleanup)
+    const text = `descriptor: 1
+detect:
+  any: [{ onPath: mine }]
+vars:
+  DIR:
+    - env: MINE_DIR
+paths:
+  store: { all: '\${DIR}' }
+candidates:
+  - { path: store, costDescription: re-download }
+`
+    const mineEnv = { ...h.env, MINE_DIR: '/x\n  ${OTHER} = /y' }
+    const mine = descriptorPlugin('mine', parseDescriptor(text, 'mine.yaml'), {
+      ownDirs: [],
+    }).create({
+      settings: { idleHours: 0 },
+      only: [],
+      env: mineEnv,
+      kit: pluginKit('mine', { env: mineEnv }),
+    })
+    const r = await run(['plugins'], cwd, { ...env, HOME: h.home }, { plugins: [mine] })
+    expect(r.code).toBe(0)
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  mine  given  not detected',
+        '    ${DIR}  = /x   ${OTHER} = /y  from env MINE_DIR',
+        '',
+      ].join('\n'),
+    )
+  })
+
   test('a degraded plugin shows as detected with its note, in text and json, and a self root is marked', async () => {
     const { env, cwd } = setup()
     const cache = tempDir()
@@ -588,6 +659,7 @@ candidates:
         detected: true,
         reason: null,
         roots: [cache],
+        rootsFailed: null,
         selfRoots: [cache],
         note: 'one note',
         vars: [],
@@ -599,6 +671,7 @@ candidates:
         detected: false,
         reason: null,
         roots: [],
+        rootsFailed: null,
         selfRoots: [],
         note: 'no cargo',
         vars: [],

@@ -38,6 +38,7 @@ import {
   clean,
   descriptorPlugin,
   globMatches,
+  inspect,
   parseDescriptor,
   pathProblem,
   plan,
@@ -46,13 +47,13 @@ import {
   survey,
   type Descriptor,
   type DescriptorOptions,
+  type Detection,
   type Kit,
   type Os,
   type PathCandidate,
   type Plugin,
   type RunCtx,
 } from '../src/index.ts'
-import { descriptorDetection } from '../src/descriptor/engine.ts'
 import { effectiveSettings, settingsIssues, settingsOf } from '../src/settings.ts'
 import {
   ageTree as age,
@@ -1167,11 +1168,13 @@ function outsideHome(): string {
 }
 
 describe('variables (tier 2)', () => {
-  test('descriptorDetection holds what the last finished detect found; a cancelled one records nothing', async () => {
+  test('detect gives the variables its folders use; one that throws after working them out gives none', async () => {
     const text = `descriptor: 1
+detect:
+  any: [{ onPath: mine }]
 vars:
   DIR:
-    - command: [mine, dir]
+    - env: MINE_DIR
     - value: ~/.cache/mine
 paths:
   store: { all: '\${DIR}' }
@@ -1179,19 +1182,36 @@ candidates:
   - { path: store, costDescription: re-download }
 `
     const b = buildVars('mine', text)
-    expect(descriptorDetection(b.plugin)).toEqual({})
-    await b.plugin.detect({ ...fakeContext(), signal: AbortSignal.abort() })
-    expect(descriptorDetection(b.plugin)).toEqual({})
-    await b.plugin.detect(fakeContext())
-    expect(descriptorDetection(b.plugin)?.vars?.DIR).toMatchObject({
-      value: join(b.home, '.cache/mine'),
-      from: 'value',
+    const answer = (await b.plugin.detect(fakeContext())) as Detection
+    expect(answer).toMatchObject({
+      active: false,
+      vars: { DIR: { value: join(b.home, '.cache/mine'), from: 'value' } },
     })
-    expect(descriptorDetection(b.plugin)?.vars?.HOME).toBeUndefined()
-    // As another descriptor's `supersededBy` does, under a ctx cancelled before it finishes.
-    await b.plugin.detect({ ...fakeContext(), signal: AbortSignal.abort() })
-    expect(descriptorDetection(b.plugin)?.vars?.DIR?.value).toBe(join(b.home, '.cache/mine'))
-    expect(descriptorDetection({ ...b.plugin })).toBeUndefined()
+    expect(answer.vars?.HOME).toBeUndefined()
+    // They come with the answer, so a wrapper around the plugin keeps them.
+    const [wrapped] = (await inspect([{ ...b.plugin }], fakeContext())).plugins
+    expect(wrapped!.vars?.DIR?.value).toBe(join(b.home, '.cache/mine'))
+
+    // `onPath` throws once the variables are worked out, as a stat that fails would.
+    const h = tempHome()
+    cleanups.push(h.cleanup)
+    const throwing = descriptorPlugin('mine', parseDescriptor(text, 'mine.yaml'), {
+      os: OS,
+      ownDirs: [],
+    }).create({
+      settings: { idleHours: 0 },
+      only: [],
+      env: h.env,
+      kit: pluginKit('mine', {
+        env: h.env,
+        which: () => {
+          throw new Error('EACCES')
+        },
+      }),
+    })
+    const [state] = (await inspect([throwing], fakeContext())).plugins
+    expect(state).toMatchObject({ detected: false, reason: 'EACCES' })
+    expect(state!.vars).toBeUndefined()
   })
 
   test('the contract suite passes for pnpm and go, with and without their tools', async () => {

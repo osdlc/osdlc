@@ -415,24 +415,6 @@ function missingText(key: string, missing: string, vars: Readonly<Vars>): string
   return `${key} is left out: \${${missing}} has no value${why === '' ? '' : ` (${why})`}`
 }
 
-/** What a descriptor's last `detect` found, for `host-cleaner plugins`. */
-export interface DescriptorDetection {
-  /** The variables its folders and locks use on this OS, declared or built in. Absent when that `detect` did not work them out. */
-  vars?: Vars
-}
-
-const lastDetection = new WeakMap<Plugin, () => DescriptorDetection>()
-
-/**
- * What the last `detect` of `plugin`, a descriptor's, found: the variables it
- * worked out, none when it skipped. A `detect` that was cancelled, such as by
- * its time limit, or that threw records nothing, so what an earlier one found
- * stays. Undefined for any other plugin, including a wrapper around a
- * descriptor's.
- */
-export const descriptorDetection = (plugin: Plugin): DescriptorDetection | undefined =>
-  lastDetection.get(plugin)?.()
-
 function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   /** The run's home: the core's, else the one the plugin was created with. */
   const homeOf = (ctx: Pick<Ctx, 'home'>): string => ctx.home ?? at.home
@@ -1097,13 +1079,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     .flat()
     .filter((s) => 'command' in s).length
 
-  let detected: DescriptorDetection = {}
-  // A cancelled call records nothing: see `descriptorDetection`.
-  const record = (ctx: Ctx, now: DescriptorDetection): void => {
-    if (!ctx.signal.aborted) detected = now
-  }
-
-  const plugin: Plugin = {
+  return {
     name,
     limits: {
       discover: DISCOVER_LIMIT_MS,
@@ -1111,18 +1087,11 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     },
     async detect(ctx) {
       const skip = skipReason(d)
-      if (skip !== undefined) {
-        record(ctx, {})
-        return { active: false, note: skip }
-      }
+      if (skip !== undefined) return { active: false, note: skip }
       if (d.supersededBy !== undefined && (await at.runs(d.supersededBy, ctx)) === true) {
-        record(ctx, {})
         return { active: false, note: `skipped: the plugin ${d.supersededBy} runs instead` }
       }
       const vars = await refresh(ctx)
-      record(ctx, {
-        vars: Object.fromEntries(Object.entries(vars).filter(([n]) => shown.has(n))),
-      })
       const holds = (c: { onPath?: string | undefined; exists?: string | undefined }): boolean => {
         if (c.onPath !== undefined) return kit.onPath(c.onPath)
         const folder = c.exists === undefined ? undefined : folders.get(c.exists)?.path
@@ -1133,7 +1102,13 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         if (d.detect?.any !== undefined) return d.detect.any.some(holds)
         return [...folders.values()].some((f) => present(f.path))
       }
-      return leftOut === undefined ? active() : { active: active(), note: leftOut }
+      const shownVars = Object.entries(vars).filter(([n]) => shown.has(n))
+      if (leftOut === undefined && shownVars.length === 0) return active()
+      return {
+        active: active(),
+        ...(leftOut === undefined ? {} : { note: leftOut }),
+        ...(shownVars.length === 0 ? {} : { vars: Object.fromEntries(shownVars) }),
+      }
     },
     async roots(ctx): Promise<Root[]> {
       await ready(ctx)
@@ -1175,8 +1150,6 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       return kit.remove(path, ctx)
     },
   }
-  lastDetection.set(plugin, () => detected)
-  return plugin
 }
 
 const unreadable = (why: string): Row['objections'][number] => ({

@@ -10,6 +10,7 @@ import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 
 import { errorText, realOr } from './helpers.ts'
 import { coveredBy, containsIgnored } from './ignore.ts'
+import { VarsSchema, type Vars } from './descriptor/vars.ts'
 import { bindKit } from './kit.ts'
 import { acceptRoots, boundBy, linkedCheckouts, type Bounds } from './roots.ts'
 import {
@@ -142,17 +143,23 @@ export interface Survey {
 }
 
 /**
- * `detect`'s answer as whether the plugin runs and its note; null when it is
- * neither a boolean nor a {@link Detection} with a boolean `active` and a
- * string or no `note`.
+ * `detect`'s answer as whether the plugin runs, its note and its variables;
+ * null when it is neither a boolean nor a {@link Detection} with a boolean
+ * `active`, a string or no `note`, and {@link Vars} or no `vars`.
  */
-function detection(answer: unknown): { active: boolean; note?: string } | null {
+function detection(answer: unknown): { active: boolean; note?: string; vars?: Vars } | null {
   if (typeof answer === 'boolean') return { active: answer }
   if (typeof answer !== 'object' || answer === null) return null
-  const { active, note } = answer as Partial<Record<keyof Detection, unknown>>
+  const { active, note, vars } = answer as Partial<Record<keyof Detection, unknown>>
   if (typeof active !== 'boolean') return null
-  if (note === undefined) return { active }
-  return typeof note === 'string' ? { active, note } : null
+  if (note !== undefined && typeof note !== 'string') return null
+  const checked = vars === undefined ? undefined : VarsSchema.safeParse(vars)
+  if (checked?.success === false) return null
+  return {
+    active,
+    ...(note === undefined ? {} : { note }),
+    ...(checked === undefined ? {} : { vars: checked.data }),
+  }
 }
 
 /** The ignore entry a candidate sits in, or a path candidate holds (deleting a directory takes what is inside it). */
@@ -274,6 +281,8 @@ interface Detected {
   detected: boolean
   /** The note `detect` gave with its answer. */
   note?: string | undefined
+  /** The variables `detect` gave with its answer. */
+  vars?: Vars | undefined
   /** What `detect` threw or timed out with, or why its answer was left out; absent when it answered a boolean or a {@link Detection}. */
   error?: string | undefined
   /** Whether `skip` left it out, so its `detect` did not run. */
@@ -324,12 +333,12 @@ async function detectAll(
     const answer = r.value
     const found = detection(answer)
     if (found === null) {
-      const error = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note? }`
+      const error = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note?, vars? }`
       if (warnFailures) warnings.push(`${p.name}: ${error}; it was left out`)
       detections.push({ plugin: p, detected: false, error })
       continue
     }
-    detections.push({ plugin: p, detected: found.active, note: found.note })
+    detections.push({ plugin: p, detected: found.active, note: found.note, vars: found.vars })
   }
   return detections
 }
@@ -364,6 +373,14 @@ async function scopeOf(
 const detectedOf = (detections: readonly Detected[]): Plugin[] =>
   detections.filter((d) => d.detected).map((d) => d.plugin)
 
+/** A plugin's roots, as {@link askRoots} found them. */
+interface AskedRoots {
+  roots: readonly string[]
+  self: readonly string[]
+  /** Why it has none though its `roots` hook ran: what the hook threw or timed out with, or why each root it gave was left out. */
+  failed?: string | undefined
+}
+
 /**
  * Each of `plugins`' roots, asked once per plugin so a throwing `roots` warns
  * once, less those the core refuses (see `rootProblem` in `./roots.ts`), each
@@ -376,21 +393,30 @@ async function askRoots(
   scoped: RunCtx,
   warnings: string[],
 ): Promise<{
-  rootsOf: Map<string, { roots: readonly string[]; self: readonly string[] }>
+  rootsOf: Map<string, AskedRoots>
   linked: () => string[]
   home: string
 }> {
-  const guarded = guard(warnings)
   let found: string[] | undefined
   const linked = (): string[] => (found ??= linkedCheckouts(scoped.targets))
   const home = scoped.home ?? homedir()
-  const rootsOf = new Map<string, { roots: readonly string[]; self: readonly string[] }>()
+  const rootsOf = new Map<string, AskedRoots>()
   for (const p of plugins) {
     if (p.roots === undefined) continue
-    const answer = await guarded<unknown>(p, 'roots', [], scoped, (x) => p.roots!(x))
-    const accepted = acceptRoots(answer, { targets: scoped.targets, linked: linked(), home })
+    const r = await tryHook<unknown>(p, 'roots', scoped, (x) => p.roots!(x))
+    if ('failed' in r) {
+      warnings.push(`${p.name}: roots failed: ${r.failed}`)
+      rootsOf.set(p.name, { roots: [], self: [], failed: `roots failed: ${r.failed}` })
+      continue
+    }
+    const accepted = acceptRoots(r.value, { targets: scoped.targets, linked: linked(), home })
     for (const problem of accepted.problems) warnings.push(`${p.name}: roots: ${problem}`)
-    rootsOf.set(p.name, accepted)
+    const none = accepted.roots.length === 0 && accepted.problems.length > 0
+    rootsOf.set(p.name, {
+      roots: accepted.roots,
+      self: accepted.self,
+      ...(none ? { failed: `roots: ${accepted.problems.join('; ')}` } : {}),
+    })
   }
   return { rootsOf, linked, home }
 }
@@ -407,8 +433,16 @@ export interface PluginState {
   reason?: string | undefined
   /** The note `detect` gave with its answer, whether the plugin is detected or not. */
   note?: string | undefined
+  /** The variables `detect` gave with its answer (`Detection.vars`), whether the plugin is detected or not. */
+  vars?: Readonly<Vars> | undefined
   /** Its roots by path, as its `roots` hook answered less those the core refused; empty without the hook, or when it is not detected. */
   roots: readonly string[]
+  /**
+   * Why `roots` is empty though the plugin has the hook and is detected: what
+   * the hook threw or timed out with, or why the core left out each root it
+   * gave. Its candidates outside the targets are then refused `outside-roots`.
+   */
+  rootsFailed?: string | undefined
   /** The roots among `roots` declared `{ path, self: true }`, which may be candidates themselves. */
   selfRoots: readonly string[]
 }
@@ -450,7 +484,9 @@ export async function inspect(
       ...(d.skipped === undefined ? {} : { skipped: d.skipped }),
       ...(d.error === undefined ? {} : { reason: d.error }),
       ...(d.note === undefined ? {} : { note: d.note }),
+      ...(d.vars === undefined ? {} : { vars: d.vars }),
       roots: r?.roots ?? [],
+      ...(r?.failed === undefined ? {} : { rootsFailed: r.failed }),
       selfRoots: r?.self ?? [],
     }
   })

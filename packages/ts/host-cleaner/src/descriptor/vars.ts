@@ -24,6 +24,7 @@ import { failureText, firstLine } from '@osdlc/command-seam'
 import { getIn } from '@osdlc/config-layers'
 import { parse as parseToml } from 'smol-toml'
 import { parse as parseYaml } from 'yaml'
+import { z } from 'zod'
 
 import type { Kit } from '../kit.ts'
 import { within } from '../roots.ts'
@@ -83,7 +84,7 @@ export interface VarValue {
    * The source that gave it, as {@link describeSource} names it; `config`;
    * `home` for `HOME`; or `default` for an `XDG_*` folder's default.
    */
-  from?: string
+  from?: string | undefined
   /**
    * Set in the config, an `XDG_*` folder the environment sets that
    * {@link VarsAt.trustsXdg} passes, or a `value` inside a trusted variable's
@@ -96,6 +97,17 @@ export interface VarValue {
 
 /** Every variable's outcome: the built-ins, then the declared ones in the order declared. */
 export type Vars = Record<string, VarValue>
+
+/** {@link Vars}, as the core takes them from a `detect` answer (`Detection.vars`). */
+export const VarsSchema = z.record(
+  z.string(),
+  z.object({
+    value: z.string().nullable(),
+    from: z.string().optional(),
+    trusted: z.boolean(),
+    tried: z.array(z.object({ source: z.string(), failed: z.string() })),
+  }),
+)
 
 /** The names `text` refers to as `${NAME}`, in order, repeats kept. */
 export const varRefs = (text: string): string[] => [...text.matchAll(VAR_REF)].map((m) => m[1]!)

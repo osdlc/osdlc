@@ -8,6 +8,7 @@ import type { Kind } from '@osdlc/repo-cleaner'
 import type { z } from 'zod'
 
 import type { CostDescription } from './cost.ts'
+import type { Vars } from './descriptor/vars.ts'
 import { attachKit, type Kit } from './kit.ts'
 
 /** What every candidate has, whether a path or a ref. */
@@ -130,6 +131,12 @@ export interface Ctx extends RunCtx {
 export interface Detection {
   active: boolean
   note?: string | undefined
+  /**
+   * The variables the plugin's folders use here and the source that gave
+   * each, as a descriptor's plugin gives them; `inspect` returns them, and
+   * `host-cleaner plugins` shows them.
+   */
+  vars?: Readonly<Vars> | undefined
 }
 
 /**

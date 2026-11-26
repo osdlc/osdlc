@@ -57,8 +57,11 @@ must still be refused, so it stays active). The core keeps each plugin's note,
 whether it runs or not, in the survey's `notes` (plugin name to note, plain
 JSON). `status`, `plan` and `clean` print each as a warning line naming the
 plugin, so a degraded plugin shows on the commands that act too, and
-`status --format json` and `clean --format json` carry them under `notes`. An
-answer of any other shape leaves the plugin out with a warning.
+`status --format json` and `clean --format json` carry them under `notes`. The
+answer may also give `vars`, the variables the plugin's folders use and the
+source of each, as a descriptor's plugin does; `inspect` returns them and
+`host-cleaner plugins` shows them. An answer of any other shape leaves the
+plugin out with a warning.
 
 Every hook's `ctx` carries `targetsGiven`: true when a person named the
 targets, in the config or on the command line, and false when the command line
@@ -113,17 +116,22 @@ const found = await survey([cache], ctx) // scope, discover, object
 const receipt = await clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
 ```
 
-`inspect` runs `detect`, `scope` and `roots` only, as `host-cleaner plugins`
-does: whether each plugin applies here, why not, its note and its roots. It
-proposes and deletes nothing. A plugin its `skip` option picks is listed as
-`skipped` and none of its hooks run, as `host-cleaner plugins` lists a plugin
-the config disables.
+`inspect` asks the plugins where they stand without proposing anything: it
+calls `detect`, `scope` and `roots` as `survey` does, and nothing else, as
+`host-cleaner plugins` does. Each `PluginState` says whether its plugin is
+detected, why not (what `detect` threw, or why its answer was left out), the
+note and the variables (`vars`) `detect` gave, and its roots, less those the
+core refuses. When a detected plugin's `roots` threw, timed out or had every
+root refused, `rootsFailed` says so, since its candidates outside the targets
+are then refused. A failed `scope` or `roots` is a warning. A plugin its `skip`
+option picks is listed as `skipped` and none of its hooks run, as
+`host-cleaner plugins` lists a plugin the config disables.
 
 ```ts
 import { inspect } from '@osdlc/host-cleaner'
 
-const { plugins, warnings } = await inspect([cache], ctx)
-for (const p of plugins) console.log(p.name, p.detected, p.reason ?? '', p.roots)
+const seen = await inspect([cache], ctx) // detect, scope, roots; seen.ctx has the scoped targets
+for (const p of seen.plugins) console.log(p.name, p.detected ? p.roots : (p.reason ?? 'not detected'))
 ```
 
 What a plan runs uses repo-cleaner's words, with their meaning:
@@ -140,20 +148,6 @@ What a plan runs uses repo-cleaner's words, with their meaning:
   dropped as `spared`.
 
 Each candidate that runs is still judged by the rules above.
-
-`inspect` asks the plugins where they stand without proposing anything: it
-calls `detect`, `scope` and `roots` as `survey` does, and nothing else. Each
-`PluginState` says whether its plugin is detected, why not (what `detect`
-threw, or why its answer was left out), the note `detect` gave, and its roots,
-less those the core refuses. A failed `scope` or `roots` is a warning. The
-`host-cleaner plugins` command prints it.
-
-```ts
-import { inspect } from '@osdlc/host-cleaner'
-
-const seen = await inspect([cache], ctx) // detect, scope, roots; seen.ctx has the scoped targets
-for (const p of seen.plugins) console.log(p.name, p.detected ? p.roots : (p.reason ?? 'not detected'))
-```
 
 ### What deleting costs
 
@@ -624,19 +618,23 @@ plugin asks for another). A note its `detect` gives follows the plugin's state
 but not running does, and a descriptor that is `system: true` or superseded says
 so there; the JSON row has it as `note`. A root the core refuses is left out
 with a warning, as `status` does, and a self root is marked `(itself too)`. A
-plugin the config disables is listed as `disabled`, and its `detect` is not run.
-A descriptor that can't be used, or a config entry that names no plugin, is a
-warning, as in `config`.
+detected plugin with no roots shows `none, the targets alone`, followed in
+parentheses by why when its `roots` threw, timed out or had every root refused
+(`rootsFailed` in JSON): its candidates outside the targets are then refused. A
+plugin the config disables is listed as `disabled`, and its `detect` is not run;
+its JSON `reason` is `plugins.<name>.enabled is false`, and the text adds that a
+sweep's `--plugin <name>` runs it anyway. A descriptor that can't be used, or
+a config entry that names no plugin, is a warning, as in `config`.
 
 Under a descriptor with variables, one line per variable its folders and locks
 use on this OS, built in or declared: its value and the source that gave it,
 then each source tried before it and why it gave none. A command that timed out
 says so, and the source after it that gave the value is the one named. A
 variable no source gave a value has no value; its folders are left out, and the
-note says so. A descriptor whose
-`detect` timed out, was skipped or was superseded shows no variables, since
-none were worked out for this run. `--format json` prints
-the same, one object per plugin, each with its `vars`.
+note says so. The variables come with `detect`'s answer, so a descriptor whose
+`detect` threw, timed out, was skipped or was superseded shows none. Each line
+keeps to itself: a line break in a value is printed as a space. `--format json`
+prints the same, one object per plugin, each with its `vars`.
 
 ```text
 targets: /Users/me/dev

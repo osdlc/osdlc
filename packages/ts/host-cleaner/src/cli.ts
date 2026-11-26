@@ -34,7 +34,6 @@ import {
   readConfig,
   type Config,
 } from './config.ts'
-import { descriptorDetection } from './descriptor/engine.ts'
 import {
   DescriptorLoadError,
   sameDescriptor,
@@ -797,15 +796,17 @@ interface PluginRow {
   replaces?: { source: DescriptorSource; path: string }
   enabled: boolean
   detected: boolean
-  /** Why it does not run: disabled in the config, or the `reason` `inspect` gave. Null when it is detected, or `detect` answered no. */
+  /** Why it does not run: `plugins.<name>.enabled is false`, or the `reason` `inspect` gave. Null when it is detected, or `detect` answered no. */
   reason: string | null
   /** Where it may delete besides the targets; empty, the targets alone. */
   roots: readonly string[]
+  /** Why `roots` is empty though the plugin has a `roots` hook: `rootsFailed` from `inspect`; null otherwise. */
+  rootsFailed: string | null
   /** The roots among `roots` that may be deleted themselves (`{ path, self: true }`). */
   selfRoots: readonly string[]
   /** The note its `detect` gave, whether it is detected or not; null when it gave none. */
   note: string | null
-  /** A descriptor's variables as its `detect` worked them out; empty for a plugin that has none, or when `detect` did not get that far. */
+  /** A descriptor's variables as its `detect` gave them; empty for a plugin that has none, or when `detect` did not finish. */
   vars: readonly VarRow[]
 }
 
@@ -820,9 +821,12 @@ function varLine(x: VarRow, width: number): string {
   const tried =
     x.tried.length === 0
       ? ''
-      : ` (tried ${x.tried.map((t) => `${t.source}: ${t.failed}`).join('; ')})`
-  const said = x.value === null ? `has no value${tried}` : `= ${x.value}  from ${x.from}${tried}`
-  return `    ${`\${${x.name}}`.padEnd(width + 3)}  ${said}`
+      : ` (tried ${x.tried.map((t) => `${oneLine(t.source)}: ${oneLine(t.failed)}`).join('; ')})`
+  const said =
+    x.value === null
+      ? `has no value${tried}`
+      : `= ${pathLine(x.value)}  from ${oneLine(x.from ?? '')}${tried}`
+  return `    ${`\${${oneLine(x.name)}}`.padEnd(width + 3)}  ${said}`
 }
 
 /** `text` on one line, so a plugin's own words cannot split a row: each run of whitespace is one space. */
@@ -830,6 +834,9 @@ const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
 
 /** `path` on one line; it keeps its spaces, as only a line break would split a row. */
 const pathLine = (path: string): string => path.replace(/[\r\n]+/g, ' ')
+
+/** What `host-cleaner plugins` adds to a disabled plugin's reason. */
+const runsAnyway = (name: string): string => `; a sweep's --plugin ${name} runs it anyway`
 
 function renderPlugins(
   rows: readonly PluginRow[],
@@ -844,9 +851,10 @@ function renderPlugins(
     const state = !r.enabled
       ? 'disabled'
       : r.detected
-        ? `detected; roots: ${r.roots.map((root) => pathLine(root) + (r.selfRoots.includes(root) ? ' (itself too)' : '')).join(', ') || 'none, the targets alone'}`
+        ? `detected; roots: ${r.roots.map((root) => pathLine(root) + (r.selfRoots.includes(root) ? ' (itself too)' : '')).join(', ') || `none, the targets alone${r.rootsFailed === null ? '' : ` (${oneLine(r.rootsFailed)})`}`}`
         : 'not detected'
-    const reason = r.reason === null ? null : oneLine(r.reason)
+    const reason =
+      r.reason === null ? null : oneLine(r.reason) + (r.enabled ? '' : runsAnyway(r.name))
     const note = r.note === null ? null : oneLine(r.note)
     const replaces =
       r.replaces === undefined
@@ -887,22 +895,18 @@ async function runPlugins(
     rows = found.plugins.map((s): PluginRow => {
       // Without `deps.plugins`, each plugin that is not built in is a descriptor's.
       const d = s.builtIn === true ? undefined : loaded.get(s.name)
-      const p = all.find((q) => q.name === s.name)
-      const seen = s.skipped === true || p === undefined ? undefined : descriptorDetection(p)
       return {
         name: s.name,
         source: s.builtIn === true ? 'built-in' : (d?.source ?? 'given'),
         ...(d?.replaces === undefined ? {} : { replaces: d.replaces }),
         enabled: s.skipped !== true,
         detected: s.detected,
-        reason:
-          s.skipped === true
-            ? `plugins.${s.name}.enabled is false; a sweep's --plugin ${s.name} runs it anyway`
-            : (s.reason ?? null),
+        reason: s.skipped === true ? `plugins.${s.name}.enabled is false` : (s.reason ?? null),
         roots: s.roots,
+        rootsFailed: s.rootsFailed ?? null,
         selfRoots: s.selfRoots,
         note: s.note ?? null,
-        vars: varRows(seen?.vars),
+        vars: varRows(s.vars),
       }
     })
     targets = found.ctx.targets
