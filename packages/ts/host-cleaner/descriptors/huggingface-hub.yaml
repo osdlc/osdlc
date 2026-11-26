@@ -2,8 +2,9 @@
 # The Hugging Face hub cache: HF_HUB_CACHE (or its old name
 # HUGGINGFACE_HUB_CACHE), else hub under HF_HOME, else under
 # $XDG_CACHE_HOME/huggingface, which is ~/.cache/huggingface on macOS and Linux
-# alike. Each model and each dataset is its own candidate, removed as a folder
-# once nothing in it changed for 30 days: a model is large to download again.
+# alike. Each model, dataset and space is its own candidate, removed as a
+# folder once nothing in it changed for 30 days: a model is large to download
+# again.
 # Loading a cached model changes nothing in it, so its idle time is counted
 # from its last download, not its last use.
 # `hf cache prune` can't be pointed at one entry, so it isn't used. No process
@@ -30,5 +31,9 @@ candidates:
     idleHours: 720
   - path: hub
     glob: 'datasets--*/'
+    costDescription: re-download
+    idleHours: 720
+  - path: hub
+    glob: 'spaces--*/'
     costDescription: re-download
     idleHours: 720

@@ -7,6 +7,7 @@
 import type { Kind } from '@osdlc/repo-cleaner'
 import type { z } from 'zod'
 
+import type { CostDescription } from './cost.ts'
 import { attachKit, type Kit } from './kit.ts'
 
 /** What every candidate has, whether a path or a ref. */
@@ -41,10 +42,7 @@ interface CandidateBase {
   unmeasured?: boolean | undefined
 }
 
-/** What deleting a candidate costs: fetched again, built again, or gone for good. */
-export const COST_DESCRIPTIONS = ['re-download', 'rebuild', 'lost'] as const
-
-export type CostDescription = (typeof COST_DESCRIPTIONS)[number]
+export { COST_DESCRIPTIONS, type CostDescription } from './cost.ts'
 
 /**
  * A folder its owner deletes. It must sit strictly inside one of the owner's
@@ -107,6 +105,12 @@ export interface RunCtx {
   targetsGiven?: boolean | undefined
   /** The home folder, which no root may be or hold; the process's when unset. The CLI sets it from `HOME`, as it expands `~`. */
   home?: string | undefined
+  /**
+   * In `detect`, the plugins survey has found active so far, in run order: a
+   * plugin whose `detect` failed or ran past its limit is not among them.
+   * Survey sets it; unset elsewhere.
+   */
+  running?: readonly string[] | undefined
 }
 
 /** What a hook is given: the run, and a signal of its own. */
@@ -159,6 +163,10 @@ export type Hook = (typeof HOOKS)[number]
  * A plugin. Every hook may answer straight away or return a promise; the core
  * awaits each in turn, one plugin at a time. Each call has a time limit (see
  * `limits`): past it, `ctx.signal` is aborted and the call counts as a throw.
+ * Synchronous work cannot be stopped part way: a hook that answers past its
+ * limit is timed out only then, and its answer dropped. So a hook that works
+ * for long waits on something between two pieces of work and looks at
+ * `ctx.signal`.
  */
 export interface Plugin {
   name: string
@@ -200,12 +208,23 @@ export interface Plugin {
 /** The plugin API version this host-cleaner supports; a definition's `api` must equal it. */
 export const PLUGIN_API = 1
 
+/** Where a setting's value came from: the plugin's own entry, the config's top-level setting, or the default. */
+export type SettingSource = 'config' | 'shared' | 'default'
+
+/** One part of a plugin with an idle threshold of its own, as `config` shows it. */
+export interface PartIdleHours {
+  part: string
+  idleHours: number
+}
+
 /**
  * What `create` is told: its own entry in the config's `plugins`, validated with
  * its defaults filled in, and the git kinds `--worktrees` and `--branches` leave.
  */
 export interface PluginInit<S = Record<string, unknown>> {
   settings: S
+  /** Where each key of `settings` came from; a key it does not name came from the default. */
+  sources?: Readonly<Record<string, SettingSource>>
   only: readonly Kind[]
   /** The command line's environment, for a plugin that runs other programs. */
   env: Readonly<Record<string, string | undefined>>
@@ -224,12 +243,19 @@ export interface PluginDefinition<S extends z.ZodObject = z.ZodObject> {
   /** The keys its entry in `plugins` may hold; an unknown key is a config error. */
   settings: S
   create(init: PluginInit<z.output<S>>): Plugin
+  /**
+   * The idle threshold of each part that does not simply take the `idleHours`
+   * setting, given that setting and where it came from: what the run uses, for
+   * `config` to show.
+   */
+  idleHoursOf?(idleHours: number, source: SettingSource): PartIdleHours[]
 }
 
 /**
  * `def`, with `create`'s settings typed from its schema. The plugin `create`
- * returns is tied to the kit it was given, so the core can bind that kit to
- * the plugin's roots each run.
+ * returns is tied to the kit it was given, beside one it was built on instead
+ * (as `cargoPlugin` without a kit is), so the core can bind each to the
+ * plugin's roots each run.
  */
 export const definePlugin = <S extends z.ZodObject>(
   def: PluginDefinition<S>,

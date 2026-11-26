@@ -13,15 +13,13 @@ import {
   readdirSync,
   renameSync,
   symlinkSync,
-  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import { captureContext } from '@osdlc/cli-tool'
-import type { CommandRunner } from '@osdlc/command-seam'
-import type { ProcessHolder, ProcessProbe } from '@osdlc/repo-cleaner'
+import type { ProcessHolder } from '@osdlc/repo-cleaner'
 
 import { main } from '../../src/cli.ts'
 import {
@@ -44,7 +42,16 @@ import {
   type Plugin,
   type RunCtx,
 } from '../../src/index.ts'
-import { contractSuite, fakeContext, fakeRunner, tempHome } from '../../src/testing.ts'
+import { effectiveSettings, sourcesOf, settingsOf } from '../../src/settings.ts'
+import {
+  ageTree as age,
+  contractSuite,
+  fakeContext,
+  fakeProcesses,
+  fakeRunner,
+  tempHome,
+  type FakeProcesses,
+} from '../../src/testing.ts'
 
 /** The shipped stores, by plugin name. */
 const STORES = [
@@ -107,6 +114,7 @@ const RUNNING: Partial<Record<Store, { command: string; shown: string }>> = {
     shown: 'java',
   },
   npm: { command: 'node /usr/local/bin/npm install', shown: 'node' },
+  pip: { command: '/usr/bin/python3 -m pip install -r requirements.txt', shown: 'python3' },
   pnpm: { command: 'node /opt/homebrew/bin/pnpm dev', shown: 'node' },
   uv: { command: '/home/me/.local/bin/uv sync', shown: 'uv' },
   yarn: { command: 'node /usr/local/bin/yarn install', shown: 'node' },
@@ -123,28 +131,8 @@ afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()!()
 })
 
-/** The kit's process table, as its `probe` and `ps` options. */
-interface Processes {
-  probe: ProcessProbe
-  ps: CommandRunner
-}
-
-/**
- * A process table where no process works in any folder, and `ps` lists
- * `running`, each a child of init with `command` as its command line.
- */
-const processes = (running: ProcessHolder[] = []): Processes => ({
-  probe: { alive: () => false, holders: () => [] },
-  ps: {
-    run: () => ({
-      exitCode: 0,
-      stdout: [{ pid: 1, command: '/sbin/init' }, ...running]
-        .map((h) => `${h.pid} ${h.pid === 1 ? 0 : 1} ${h.command}\n`)
-        .join(''),
-      stderr: '',
-    }),
-  },
-})
+/** A process table where no process works in any folder, and `ps` lists `running`. */
+const processes = (running: ProcessHolder[]): FakeProcesses => fakeProcesses({ '/': running })
 
 const shipped = (name: string): Descriptor =>
   readDescriptor(join(SHIPPED_DESCRIPTORS, `${name}.yaml`))
@@ -196,12 +184,18 @@ function fill(d: Descriptor, key: string, folder: string): void {
  * The shipped descriptor `name` as a plugin for `os` over a new fixture home,
  * with each of its default folders made and filled, and each folder `moves`
  * puts elsewhere made and filled too. `programs` are on PATH; the settings are
- * the defaults, with `moves.vars`.
+ * the defaults, with `moves.vars`, unless `config` gives the plugin's entry and
+ * the top-level settings.
  */
 function build(
   name: Store,
   os: TestedOs,
-  o: { programs?: Programs; processes?: Processes; moves?: (home: string) => Moves } = {},
+  o: {
+    programs?: Programs
+    processes?: FakeProcesses
+    moves?: (home: string) => Moves
+    config?: { entry: Record<string, unknown>; shared: { idleHours?: number } }
+  } = {},
 ): Built {
   const h = tempHome()
   cleanups.push(h.cleanup)
@@ -219,9 +213,17 @@ function build(
   }
   const env = { ...h.env, ...m.env }
   const fake = fakeRunner({ ...o.programs, ...m.programs })
-  const kit = pluginKit(name, { env, ...(o.processes ?? processes()), ...fake })
-  const plugin = descriptorPlugin(name, d, { os, ownDirs: [] }).create({
-    settings: { idleHours: DEFAULT_IDLE_HOURS, vars: m.vars },
+  const kit = pluginKit(name, { env, ...(o.processes ?? processes([])), ...fake })
+  const def = descriptorPlugin(name, d, { os, ownDirs: [] })
+  const plugin = def.create({
+    ...(o.config === undefined
+      ? { settings: { idleHours: DEFAULT_IDLE_HOURS, vars: m.vars } }
+      : {
+          settings: settingsOf(name, o.config.entry, o.config.shared, [def]) as {
+            idleHours?: number
+          },
+          sources: sourcesOf(name, o.config.entry, o.config.shared, [def]),
+        }),
     only: [],
     env,
     kit,
@@ -259,20 +261,9 @@ const storeEntries = <V>(r: Partial<Record<Store, V>>): Array<[Store, V]> =>
 
 const CTX: RunCtx = { cwd: '/', targets: [], allow: [] }
 
-async function surveyAndClean(plugin: Plugin) {
+async function surveyAndClean(plugin: Plugin, pick: string[] = []) {
   const s = await survey([plugin], CTX)
-  return { survey: s, receipt: await clean(plan(s, { allow: [] }), [plugin], CTX) }
-}
-
-/** Sets every modification time under `dir`, and its own, to `hours` ago. */
-function age(dir: string, hours: number): void {
-  const at = new Date(Date.now() - hours * 3_600_000)
-  for (const name of readdirSync(dir, { withFileTypes: true })) {
-    const p = join(dir, name.name)
-    if (name.isDirectory()) age(p, hours)
-    utimesSync(p, at, at)
-  }
-  utimesSync(dir, at, at)
+  return { survey: s, receipt: await clean(plan(s, { pick }), [plugin], CTX) }
 }
 
 const ids = (cs: readonly { id: string }[]): string[] => cs.map((c) => c.id).sort()
@@ -441,7 +432,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
   })
 
   describe('huggingface-hub', () => {
-    test('one candidate per model and dataset, removed after 30 idle days', async () => {
+    test('one candidate per model, dataset and space, removed after 30 idle days', async () => {
       const b = build('huggingface-hub', os)
       const hub = b.folder('hub')
       mkdirSync(join(hub, '.locks', 'models--a'), { recursive: true })
@@ -449,7 +440,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       age(join(hub, 'models--b'), 719)
       const { survey: s, receipt } = await surveyAndClean(b.plugin)
       expect(ids(s.candidates)).toEqual(
-        ['datasets--a', 'datasets--b', 'models--a', 'models--b'].map(
+        ['datasets--a', 'datasets--b', 'models--a', 'models--b', 'spaces--a', 'spaces--b'].map(
           (n) => `huggingface-hub:${join(hub, n)}`,
         ),
       )
@@ -524,6 +515,21 @@ describe.each(OSES_TESTED)('on %s', (os) => {
   })
 
   describe('pip', () => {
+    test.each([
+      '/usr/bin/pip install -r requirements.txt',
+      '/usr/bin/python3 /usr/local/bin/pip3 install requests',
+      '/usr/bin/python3.12 /usr/local/bin/pip3.12 install requests',
+      'python -m pip install requests',
+    ])('`%s` running refuses the idle cache', async (command) => {
+      const b = build('pip', os, { processes: processes([{ pid: PID, command }]) })
+      age(b.folder('cache'), 25)
+      const { survey: s, receipt } = await surveyAndClean(b.plugin)
+      const inUse = s.objections.filter((o) => o.code === IN_USE)
+      expect(inUse.map((o) => o.candidate)).toEqual([`pip:${b.folder('cache')}`])
+      expect(receipt.steps).toEqual([])
+      expect(existsSync(b.folder('cache'))).toBe(true)
+    })
+
     test(`removes the idle cache in ${os}'s folder`, async () => {
       const b = build('pip', os)
       const cache = join(b.home, os === 'macos' ? 'Library/Caches/pip' : '.cache/pip')
@@ -552,21 +558,86 @@ describe.each(OSES_TESTED)('on %s', (os) => {
   })
 
   describe('maven', () => {
-    test('holds the local repository until it sat 30 days unchanged', async () => {
-      const fresh = build('maven', os)
-      age(fresh.folder('repository'), 719)
-      const held = await surveyAndClean(fresh.plugin)
-      expect(held.survey.candidates[0]!.held).toBe(true)
+    test('holds the local repository however long it sat unchanged, and removes it when picked', async () => {
+      const b = build('maven', os)
+      age(b.folder('repository'), 10_000)
+      const held = await surveyAndClean(b.plugin)
+      expect(held.survey.candidates).toMatchObject([{ held: true, costDescription: 'rebuild' }])
       expect(held.receipt.steps).toEqual([])
+      expect(existsSync(b.folder('repository'))).toBe(true)
 
-      expect(held.survey.candidates[0]!.costDescription).toBe('rebuild')
+      const picked = await surveyAndClean(b.plugin, ids(held.survey.candidates))
+      expect(picked.receipt.steps.map((st) => st.result)).toEqual(['ok'])
+      expect(existsSync(b.folder('repository'))).toBe(false)
+      expect(existsSync(join(b.home, '.m2'))).toBe(true)
+    })
 
-      const idle = build('maven', os)
-      age(idle.folder('repository'), 721)
-      const { receipt } = await surveyAndClean(idle.plugin)
-      expect(receipt.steps.map((st) => st.result)).toEqual(['ok'])
-      expect(existsSync(idle.folder('repository'))).toBe(false)
-      expect(existsSync(join(idle.home, '.m2'))).toBe(true)
+    test.each([
+      [
+        'the jar-based ./mvnw',
+        '/usr/bin/java -classpath /home/me/app/.mvn/wrapper/maven-wrapper.jar -Dmaven.multiModuleProjectDirectory=/home/me/app org.apache.maven.wrapper.MavenWrapperMain install',
+      ],
+      ['the mvnd client', '/home/me/.sdkman/candidates/mvnd/current/bin/mvnd install'],
+      [
+        'the mvnd daemon',
+        '/usr/bin/java -classpath /opt/mvnd/mvn/lib/ext/mvnd-daemon.jar org.mvndaemon.mvnd.common.MavenDaemon',
+      ],
+      [
+        "IntelliJ's embedded Maven server",
+        '/opt/idea/jbr/bin/java -classpath /opt/idea/plugins/maven/lib/maven-server.jar org.jetbrains.idea.maven.server.RemoteMavenServer36',
+      ],
+    ])('%s running refuses the repository', async (_, command) => {
+      const b = build('maven', os, { processes: processes([{ pid: PID, command }]) })
+      const id = `maven:${b.folder('repository')}`
+      const { survey: s, receipt } = await surveyAndClean(b.plugin, [id])
+      expect(s.objections.filter((o) => o.code === IN_USE).map((o) => o.candidate)).toEqual([id])
+      expect(receipt.steps).toEqual([])
+      expect(existsSync(b.folder('repository'))).toBe(true)
+    })
+  })
+
+  describe("an entry's own idleHours", () => {
+    type Config = { entry: Record<string, unknown>; shared: { idleHours?: number } }
+
+    /** Whether Gradle's caches (168 hours), `hours` idle, are still there after a clean under `config`. */
+    const kept = async (config: Config, hours: number): Promise<boolean> => {
+      const b = build('gradle', os, { config })
+      age(b.folder('caches'), hours)
+      await surveyAndClean(b.plugin)
+      return existsSync(b.folder('caches'))
+    }
+
+    test("the plugin's idleHours the user set wins over it, both ways", async () => {
+      expect(await kept({ entry: { idleHours: 4000 }, shared: {} }, 169)).toBe(true)
+      expect(await kept({ entry: { idleHours: 48 }, shared: { idleHours: 4000 } }, 49)).toBe(false)
+    })
+
+    test('the top-level idleHours raises it, and never lowers it', async () => {
+      expect(await kept({ entry: {}, shared: { idleHours: 4000 } }, 169)).toBe(true)
+      expect(await kept({ entry: {}, shared: { idleHours: 0 } }, 49)).toBe(true)
+      expect(await kept({ entry: {}, shared: { idleHours: 0 } }, 169)).toBe(false)
+    })
+
+    test('config shows the threshold the run applies to each entry', () => {
+      const { definitions } = loadPlugins({})
+      const parts = (name: string, entry: Config['entry'], shared: Config['shared']) =>
+        effectiveSettings({ [name]: entry }, shared, definitions)[name]!.find(
+          (r) => r.key === 'idleHours',
+        )!.parts
+      const gradle = (caches: number, wrapper: number) => [
+        { part: 'caches', idleHours: caches },
+        { part: 'wrapper/*/', idleHours: wrapper },
+      ]
+      expect(parts('gradle', {}, {})).toEqual(gradle(168, 720))
+      expect(parts('gradle', {}, { idleHours: 0 })).toEqual(gradle(168, 720))
+      expect(parts('gradle', {}, { idleHours: 200 })).toEqual(gradle(200, 720))
+      expect(parts('gradle', { idleHours: 10 }, { idleHours: 4000 })).toEqual(gradle(10, 10))
+      expect(parts('huggingface-hub', {}, {})!.map((p) => p.part)).toEqual([
+        'hub/models--*/',
+        'hub/datasets--*/',
+        'hub/spaces--*/',
+      ])
+      expect(parts('npm', {}, {})).toBeUndefined()
     })
 
     test('a LOCAL_REPOSITORY set in the config is trusted on another disk, and cleaned', async () => {

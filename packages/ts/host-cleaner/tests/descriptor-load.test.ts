@@ -15,12 +15,12 @@ import {
   DescriptorError,
   DescriptorLoadError,
   SHIPPED_DESCRIPTORS,
+  findDescriptors,
+  findPlugins,
   loadDescriptors,
   loadPlugins,
   pluginKit,
-  supersession,
   survey,
-  type Detection,
   type LoadedDescriptor,
   type Plugin,
 } from '../src/index.ts'
@@ -273,48 +273,25 @@ describe('the run’s plugins', () => {
     )
   })
 
-  test('supersededBy: a plugin runs only when tracked and its detect answered active', async () => {
-    const calls: string[] = []
-    const plugin = (name: string, detected: boolean | Detection): Plugin => ({
-      name,
-      detect: () => {
-        calls.push(name)
-        if (name === 'broken') throw new Error('down')
-        return detected
-      },
-    })
-    const s = supersession()
-    const tracked = s.track([
-      plugin('cargo', true),
-      plugin('node', false),
-      plugin('docker', { active: true, note: 'up' }),
-      plugin('ollama', { active: false, note: 'not running' }),
-      plugin('broken', true),
-      plugin('late', true),
-    ])
-    await Promise.allSettled(tracked.slice(0, -1).map((p) => p.detect(fakeContext())))
-    expect(s.runs('cargo')).toBe(true)
-    expect(s.runs('node')).toBe(false)
-    expect(s.runs('docker')).toBe(true)
-    expect(s.runs('ollama')).toBe(false)
-    expect(s.runs('broken')).toBe(false)
-    expect(s.runs('late')).toBe(false)
-    expect(s.runs('orca')).toBe(false)
-    // runs reads the kept answers: detect is called once per plugin, by the caller.
-    expect(calls).toEqual(['cargo', 'node', 'docker', 'ollama', 'broken'])
-    s.track([])
-    expect(s.runs('cargo')).toBe(false)
-  })
-
-  test('supersededBy: survey asks the built-in once, and the descriptor stands down', async () => {
+  /** The descriptor `uv`, superseded by cargo, its folder made, built for a temp home. */
+  function supersededUv(): Plugin {
     const h = tempHome()
     cleanups.push(h.cleanup)
     folder(join(h.home, '.cache', 'x'), { blob: 'x' })
-    const s = supersession()
     const { definitions } = loadPlugins(
       sources({ 'uv.yaml': `${store('.cache/x')}supersededBy: cargo\n` }),
-      { runs: s.runs },
     )
+    return definitions
+      .find((d) => d.name === 'uv')!
+      .create({
+        settings: { idleHours: 0 },
+        only: [],
+        env: h.env,
+        kit: pluginKit('uv', { env: h.env }),
+      })
+  }
+
+  test('supersededBy: survey asks the built-in once, and the descriptor stands down', async () => {
     let asked = 0
     const cargo: Plugin = {
       name: 'cargo',
@@ -323,16 +300,121 @@ describe('the run’s plugins', () => {
         return true
       },
     }
-    const uv = definitions
-      .find((d) => d.name === 'uv')!
-      .create({
-        settings: { idleHours: 0 },
-        only: [],
-        env: h.env,
-        kit: pluginKit('uv', { env: h.env }),
-      })
-    const result = await survey(s.track([cargo, uv]), fakeContext())
+    const result = await survey([cargo, supersededUv()], fakeContext())
     expect(asked).toBe(1)
     expect(result.plugins.map((p) => p.name)).toEqual(['cargo'])
+  })
+
+  test('supersededBy: a built-in whose detect answered past its limit does not run, so the descriptor does', async () => {
+    const after = (ms: number): Promise<boolean> =>
+      new Promise((done) => setTimeout(() => done(true), ms))
+    // It answers while a later plugin's detect waits, or only once it is past its limit.
+    const late: Array<Plugin['detect']> = [
+      () => after(60),
+      () => {
+        const start = performance.now()
+        while (performance.now() - start < 40);
+        return true
+      },
+    ]
+    for (const detect of late) {
+      const cargo: Plugin = { name: 'cargo', limits: { detect: 20 }, detect }
+      const slow: Plugin = { name: 'slow', detect: () => after(200) }
+      const result = await survey([cargo, slow, supersededUv()], fakeContext())
+      expect(result.plugins.map((p) => p.name)).toEqual(['slow', 'uv'])
+      expect(result.warnings.join('\n')).toContain('cargo: detect failed')
+    }
+  })
+
+  test('supersededBy: a built-in whose detect throws or answers no does not run', async () => {
+    const answers: Array<Plugin['detect']> = [
+      () => false,
+      () => ({ active: false, note: 'down' }),
+      () => {
+        throw new Error('down')
+      },
+    ]
+    for (const detect of answers) {
+      const result = await survey([{ name: 'cargo', detect }, supersededUv()], fakeContext())
+      expect(result.plugins.map((p) => p.name)).toEqual(['uv'])
+    }
+  })
+
+  test('supersededBy: survey calls a class-based plugin as itself', async () => {
+    class Cargo implements Plugin {
+      readonly name = 'cargo'
+      readonly #root: string = '/from/scope'
+      detect(): boolean {
+        return this.#root !== ''
+      }
+      scope(): string[] {
+        return [this.#root]
+      }
+    }
+    const cargo = new Cargo()
+    const result = await survey([cargo, supersededUv()], fakeContext())
+    expect(result.plugins).toHaveLength(1)
+    expect(result.plugins[0]).toBe(cargo)
+    expect(result.ctx.targets).toEqual(['/from/scope'])
+  })
+})
+
+describe('problems', () => {
+  test('a descriptor that cannot be used is a problem of its name; the others load', () => {
+    const s = sources(
+      { 'uv.yaml': store('.cache/uv'), 'git.yaml': store('.cache/git') },
+      { 'bad.yaml': 'descriptor: 1\npaths: {}\ncandidates: []\n', 'My_tool.yaml': store('x') },
+    )
+    const { descriptors, problems } = findDescriptors(s, RESERVED)
+    expect(descriptors.map((d) => d.name)).toEqual(['uv'])
+    expect(problems.map((p) => [p.name, p.error.name])).toEqual([
+      ['My_tool', 'DescriptorLoadError'],
+      ['bad', 'DescriptorError'],
+      ['git', 'DescriptorLoadError'],
+    ])
+  })
+
+  test('a supersededBy that names no built-in is a problem of that name', () => {
+    const { definitions, problems } = findPlugins(
+      sources({ 'uv.yaml': `${store('x')}supersededBy: cargoo\n`, 'npm.yaml': store('.npm') }),
+    )
+    expect(definitions.at(-1)!.name).toBe('npm')
+    expect(problems.map((p) => p.name)).toEqual(['uv'])
+    expect(problems[0]!.error.message).toContain('cargoo')
+  })
+
+  test('one --descriptor file named directly and through a link loads once', () => {
+    const dir = tempDir()
+    const uv = join(dir, 'uv.yaml')
+    writeFileSync(uv, store('.cache/uv'))
+    const link = join(tempDir(), 'uv.yaml')
+    symlinkSync(uv, link)
+    const linked = join(tempDir(), 'linked')
+    symlinkSync(dir, linked)
+    const flag = [uv, link, join(linked, 'uv.yaml')]
+    const loaded = loadDescriptors({ shipped: tempDir(), flag }, RESERVED)
+    expect(loaded.map((d) => [d.name, d.path])).toEqual([['uv', uv]])
+  })
+
+  test('a --descriptor link of another name is its own descriptor, and replaces the one of that name', () => {
+    const s = sources({ 'pip.yaml': store('shipped-pip') })
+    const dir = folder(join(tempDir(), 'mine'), { 'uv.yaml': store('.cache/uv') })
+    const uv = join(dir, 'uv.yaml')
+    const pip = join(dir, 'pip.yaml')
+    symlinkSync(uv, pip)
+    const loaded = loadDescriptors({ ...s, flag: [uv, pip] }, RESERVED)
+    expect(loaded.map((d) => [d.name, d.path])).toEqual([
+      ['pip', pip],
+      ['uv', uv],
+    ])
+  })
+
+  test('a name whose files clash in one source is usable once a later source replaces it', () => {
+    const s = sources({ 'pip.yaml': store('a'), 'pip.yml': store('b') })
+    expect(findDescriptors(s, RESERVED).problems.map((p) => p.name)).toEqual(['pip'])
+    folder(s.user, { 'pip.yaml': store('user-pip') })
+    const { descriptors, problems } = findDescriptors(s, RESERVED)
+    expect(problems).toEqual([])
+    expect(descriptors.map((d) => [d.name, d.source])).toEqual([['pip', 'user']])
   })
 })

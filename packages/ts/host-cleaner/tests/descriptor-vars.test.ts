@@ -349,6 +349,18 @@ describe('the built-in variables', () => {
       tried: [{ source: 'env XDG_DATA_HOME', failed: 'data is not an absolute folder' }],
     })
   })
+
+  test('an XDG folder the environment sets is trusted only when trustsXdg passes it', async () => {
+    const { resolve } = setup({ env: { XDG_CACHE_HOME: '/fast/cache', XDG_STATE_HOME: '/home' } })
+    const v = await resolve({}, { trustsXdg: (f) => f !== '/home' })
+    expect(v.XDG_CACHE_HOME!.trusted).toBe(true)
+    expect(v.XDG_STATE_HOME!.trusted).toBe(false)
+    expect(v.XDG_CONFIG_HOME!.trusted).toBe(false)
+    expect(fillTemplate('${XDG_CACHE_HOME}/pip', v, '/h')).toEqual({
+      path: '/fast/cache/pip',
+      trusted: true,
+    })
+  })
 })
 
 describe('fillTemplate', () => {
@@ -408,5 +420,48 @@ describe('only', () => {
     expect(v.BASE?.value).toBe('/base')
     expect(Object.hasOwn(v, 'UNUSED')).toBe(false)
     expect(calls).toEqual([])
+  })
+})
+
+describe('resolving at the same time', () => {
+  test("variables that don't use each other run their commands at the same time", async () => {
+    const h = tempHome()
+    cleanups.push(h.cleanup)
+    let running = 0
+    let most = 0
+    let release = (): void => {}
+    const both = new Promise<void>((r) => (release = r))
+    // One at a time, the first command waits out this timer alone.
+    const timer = setTimeout(release, 2_000)
+    cleanups.push(() => clearTimeout(timer))
+    const kit: VarsAt['kit'] = {
+      onPath: () => true,
+      run: async (argv) => {
+        running++
+        most = Math.max(most, running)
+        if (running === 2) release()
+        await both
+        running--
+        return { ok: true, exitCode: 0, stdout: `/${argv[1]}\n`, stderr: '' }
+      },
+    }
+    const v = await resolveVars(
+      { A: [{ command: ['tool', 'a'] }], B: [{ command: ['tool', 'b'] }] },
+      { home: h.home, os: 'linux', env: h.env, kit, signal: new AbortController().signal },
+    )
+    expect(most).toBe(2)
+    expect([v.A?.value, v.B?.value]).toEqual(['/a', '/b'])
+  })
+
+  test('a variable on a cycle gives no value instead of waiting forever', async () => {
+    const { resolve } = setup()
+    const v = await resolve({
+      A: [{ value: '${B}/a' }],
+      B: [{ value: '${A}/b' }, { value: '/b' }],
+      C: [{ value: '${C}/c' }],
+    })
+    expect(v.B?.value).toBe('/b')
+    expect(v.A?.value).toBe('/b/a')
+    expect(v.C?.value).toBeNull()
   })
 })
