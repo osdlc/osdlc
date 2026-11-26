@@ -6,9 +6,10 @@
  * arrive in stack order and are applied in it. A stack updated child first is
  * work that has to be redone as soon as the parent moves.
  *
- * Nothing is written without `apply`. A bare run goes through the whole path
- * (checkout, integrate, resolve) and pushes nothing, so the report says which
- * PRs would conflict before anything reaches a remote. That is the default
+ * Nothing is pushed, kept or recorded without `apply`. A bare run goes through
+ * the whole path (fetch, clone locks, worktrees, scratch branches and commits,
+ * resolvers, verify), so the report says which PRs would conflict before
+ * anything reaches a remote. That is the default
  * because the worst failure of this command is a bad force-push, and a default
  * that could cause one would be wrong. `confirmPush` adds a second check: a
  * y/N before each rebase force-push.
@@ -734,7 +735,8 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
   // before any update, so a list the host refuses for one repository stops
   // the run before anything in any repository is pushed. And every surveyed
   // checkout, not only those with a PR to update, so a missing or refused
-  // list is reported on every run, not first on the run that needs it.
+  // list is reported on every run, not first on the run that needs it. Not one
+  // the trust gate refused, or whose listing failed or drift was not measured.
   const verify = effectiveCfg.verify
   const verifyVerbsOf = new Map<string, readonly string[]>()
   if (verify !== 'none' && verify !== 'detect') {

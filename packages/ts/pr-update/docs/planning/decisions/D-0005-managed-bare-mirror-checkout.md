@@ -198,7 +198,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   | Clones | cache | `~/.cache/osdlc/pr-update/repos/<host>/<owner>/<name>.git` |
   | Run worktrees of non-root targets | cache | `~/.cache/osdlc/pr-update/worktrees/<host>/<owner>/<name>/<run>` |
   | Kept worktrees of non-root targets | state | `~/.local/state/osdlc/pr-update/kept/<host>/<owner>/<name>/<number>` |
-  | File attempts of non-root targets | state | `~/.local/state/osdlc/pr-update/attempts/` |
+  | File attempts of non-root targets | state | `~/.local/state/osdlc/pr-update/attempts/<host>/<owner>/<name>/` |
 
   Every per-repository path of a non-root target is lower-cased and carries
   the host. A non-root target's `host/owner/name` is lower-cased once, when
@@ -422,8 +422,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   lock is made again under that lock by `update --apply` with
   `checkout: mirror` consent, and otherwise its target is skipped with a
   note, never an error. (added during the build: Build note 1)
-- **Trust.** The trust gate runs for each target before a command its own
-  files choose (`verify: detect`, `lockfile_install`). A located checkout is
+- **Trust.** The trust gate runs for each target before a command or agent
+  starts in its worktree: `lockfile_install`, `resolvers`, a `verify` other
+  than `none`, `repair.command` and `repair.agent`, from any config layer or
+  flag (`worktreeCommands` in `src/trust.ts`). A located checkout is
   keyed by its path, as the project root is. A clone is keyed by
   `host/owner/name`, with the host's port left out, as trust-repo's
   repository keys take it (`pr-update trust host/owner/name` records one).
@@ -858,11 +860,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   branches in a shared checkout stay apart. A record stores the owning git
   directory (`gitDir`) only for places outside a checkout, so the project
   root's records are unchanged.
-- **What a target's trust gate covers.** The Trust bullet names commands a
-  target's own files choose (`verify: detect`, `lockfile_install`). Built, it
-  covers every setting that starts a command in a target's worktree, from any
-  config layer or flag: `lockfile_install`, `resolvers`, a `verify` other
-  than `none`, `repair.command` and `repair.agent`. A target's own files
+- **What a target's trust gate covers.** The Trust bullet first named only
+  commands a target's own files choose (`verify: detect`, `lockfile_install`).
+  Built, it covers every setting that starts a command in a target's
+  worktree, from any config layer or flag: `lockfile_install`, `resolvers`, a
+  `verify` other than `none`, `repair.command` and `repair.agent`. The Trust
+  bullet now names them. A target's own files
   decide what each of these runs. With none set, no trust is needed. The gate
   runs before any verify list is asked for and before kept trees are
   settled. A grant by name does not cover a located checkout.

@@ -33,8 +33,10 @@
  * updating a child before its parent is work that has to be redone as soon as
  * the parent moves.
  *
- * Nothing is written without `apply`. A dry run runs the same code, predicts
- * the same conflicts, and pushes nothing.
+ * Nothing is pushed, kept or recorded without `apply`. A dry run runs the same
+ * code, with its worktree, scratch branch, commits, resolvers and verify, and
+ * pushes nothing. It calls no repair and does not use rerere, so it can report a
+ * conflict an `apply` run would clear.
  */
 
 import { createHash } from 'node:crypto'

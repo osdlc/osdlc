@@ -248,7 +248,9 @@ export interface Ports {
    * repositories that build differently can each get their own list. Every
    * call comes before the first update, and comes whether or not that
    * repository has a PR to update, so a refused list stops the run before
-   * anything is pushed.
+   * anything is pushed. It is not asked for a repository the trust gate
+   * refused, or for one whose PR listing failed or whose drift could not be
+   * measured and that has no PR to update.
    */
   resolveVerifyVerbs: (opts: VerifyVerbsRequest) => Promise<readonly string[]>
   generators?: readonly Generator[] | undefined

@@ -461,8 +461,8 @@ export function surveyCommand(seams: CliSeams) {
       'Lists the open PRs of the repository (or each --repo), measures how far each is behind ' +
       'its base with the local refs, and predicts with git merge-tree whether bringing it up to ' +
       'date would conflict. Stacked PRs are listed parent first. Nothing is checked out, and ' +
-      "nothing is written but the fetch and, for a managed clone, the clone's last-used stamp " +
-      'and its lock file.',
+      "nothing is written but the fetch and, for a managed clone, the clone's last-used stamp, " +
+      'its lock file, and what the `git maintenance run --auto` after its fetch writes.',
     flags: {
       ...scopeFlags(
         'survey',
@@ -576,7 +576,13 @@ export function updateCommand(seams: CliSeams) {
         'update',
         'Remote of this checkout to fetch from, measure against and push to. A checkout found for --repo uses its origin.',
       ),
-      apply: { kind: 'boolean', help: 'Push the updates. Without it, nothing is written.' },
+      apply: {
+        kind: 'boolean',
+        help:
+          'Push the updates. Without it the run is a rehearsal: it pushes, keeps and records nothing, ' +
+          'but it still fetches, takes clone locks, makes worktrees, scratch branches and commits, ' +
+          'and runs resolvers and verify.',
+      },
       confirmPush: {
         kind: 'boolean',
         help: 'Show the commits and diffstat and ask y/N before each force-push. Needs --apply and a terminal.',
