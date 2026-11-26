@@ -1295,6 +1295,66 @@ fn a_redirect_to_a_missing_note_is_refused() {
     assert_eq!(plan.conflict.as_deref(), Some("no note at b.md"));
 }
 
+#[test]
+fn a_redirect_points_an_attachments_links_at_the_kept_copy() {
+    let fx = Fixture::new(&[
+        ("_attachments/a.png", "png"),
+        ("notes/a-copy.png", "png"),
+        (
+            "index.md",
+            "![[a-copy.png]], ![[notes/a-copy.png|200]] and ![a](notes/a-copy.png).\n",
+        ),
+    ]);
+    let plan = plan::plan_redirect(
+        &vfs_seam::NativeVfs,
+        fx.path(),
+        &fx.facts(),
+        "notes/a-copy.png",
+        "_attachments/a.png",
+    )
+    .expect("plan_redirect");
+    assert!(plan.ok(), "{:?}", plan.conflict);
+    let file = plan.files.iter().find(|f| f.path == "index.md").unwrap();
+    let before = std::fs::read(fx.path().join("index.md")).unwrap();
+    std::fs::write(
+        fx.path().join("index.md"),
+        crate::splice(&before, &file.edits),
+    )
+    .unwrap();
+    assert_eq!(
+        fx.read("index.md"),
+        "![[a.png]], ![[_attachments/a.png|200]] and ![a](_attachments/a.png).\n"
+    );
+}
+
+#[test]
+fn a_redirect_between_a_note_and_an_attachment_is_refused() {
+    let fx = Fixture::new(&[("a.md", "# A\n"), ("a.png", "png")]);
+    for (from, to, reason) in [
+        ("a.md", "a.png", "destination is not a markdown note"),
+        ("a.png", "a.md", "source is not a markdown note"),
+        ("a.png", "b.png", "no file at b.png"),
+        ("b.png", "a.png", "no file at b.png"),
+    ] {
+        let plan =
+            plan::plan_redirect(&vfs_seam::NativeVfs, fx.path(), &fx.facts(), from, to).unwrap();
+        assert_eq!(plan.conflict.as_deref(), Some(reason), "{from} -> {to}");
+    }
+    // A rename still takes notes only.
+    let plan = plan::plan(
+        &vfs_seam::NativeVfs,
+        fx.path(),
+        &fx.facts(),
+        "a.png",
+        "b.png",
+    )
+    .unwrap();
+    assert_eq!(
+        plan.conflict.as_deref(),
+        Some("source is not a markdown note")
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn planning_reads_through_a_vfs_and_writes_nothing() {
