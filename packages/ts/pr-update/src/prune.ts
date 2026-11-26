@@ -352,13 +352,32 @@ function lastUsed(clone: string, unreadable: Unreadable): number {
 }
 
 /**
- * Throws when a worktree record of the clone at `clone` cannot be read. `git worktree list`
- * leaves such a worktree out, with no error, so the clone would look as if nothing used it.
+ * Throws unless `listed`, the clone's `git worktree list`, has every worktree record the clone at
+ * `clone` holds. git leaves out a record it cannot read, or whose `gitdir` is missing or empty,
+ * with no error, so the clone would look as if nothing used it, while the tree may hold commits
+ * only the clone has.
  */
-function checkRecords(clone: string): void {
+function checkRecords(clone: string, listed: readonly Worktree[]): void {
   const records = join(clone, 'worktrees')
   for (const id of namesIn(records, THROW)) {
-    for (const file of ['gitdir', 'HEAD']) textOr(join(records, id, file), THROW)
+    const record = join(records, id)
+    // git reads `<id>/gitdir`, so a plain file here is no record.
+    const st = lstatOr(record, THROW)
+    if (st === null || st.isFile()) continue
+    textOr(join(record, 'HEAD'), THROW)
+    const gitdir = join(record, 'gitdir')
+    const named = textOr(gitdir, THROW)?.trim() ?? ''
+    if (named === '') {
+      throw new Error(
+        `git does not list the worktree record ${record}: ${gitdir} is missing or empty`,
+      )
+    }
+    // git lists a worktree by its `gitdir` without the `/.git` at its end.
+    const at = resolve(record, named)
+    const tree = basename(at) === '.git' ? dirname(at) : at
+    if (!lists(listed, tree)) {
+      throw new Error(`git does not list the worktree ${tree} that ${gitdir} names`)
+    }
   }
 }
 
@@ -968,12 +987,12 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       leave(place)
       return
     }
-    checkRecords(path)
     const git = gitAt(path, opts.git)
     const worktrees = git.worktrees()
     // git in a clone it cannot read answers for a repository the clone is inside, if there is one.
     const bare = worktrees.filter((w) => w.bare)
     if (!lists(bare, path)) throw new Error(`git does not read ${path} as a clone of its own`)
+    checkRecords(path, worktrees)
     const keptPlace = keptPlaceOf(at.kept, at.worktrees, repo, path, {
       owned,
       folders: ownFolders(at.kept),
@@ -1039,12 +1058,24 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       }
     }
     // A record that cannot be read is not one that is missing, so the clone fails with its trees.
-    const recordsOf = new Map(
-      (kept.length === 0 ? [] : listKept(keptPlace, undefined, THROW)).map((r) => [
-        realOr(r.path),
-        r,
-      ]),
+    const recordsOf = new Map(listKept(keptPlace, undefined, THROW).map((r) => [realOr(r.path), r]))
+    // A kept tree still on disk whose record names this clone, but which the clone does not list:
+    // its record in the clone is gone (a `git worktree prune` while `kept/` was not mounted, say),
+    // and its commits may be in this clone only.
+    const real = realOr(path)
+    const orphans = [...recordsOf.values()].filter(
+      (r) =>
+        r.gitDir !== undefined &&
+        realOr(r.gitDir) === real &&
+        !kept.some((k) => realOr(k.path) === realOr(r.path)),
     )
+    if (orphans.length > 0) {
+      leave({
+        skip: 'kept',
+        reason: `its kept worktree ${orphans.map((r) => r.path).join(', ')} is not in the clone's list of worktrees, though its record names this clone; it may hold commits only the clone has, so the clone stays`,
+      })
+      return
+    }
     // A kept tree with no record, or one whose record was refused, is removed only while the
     // clone lists it on a `pr-update/failed-*` branch: a run stopped between making it and
     // writing its record. On any other branch, or detached, a person has taken it over.

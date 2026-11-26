@@ -1969,6 +1969,62 @@ describe('every removal passes one check, the same in a dry run (final review ro
   })
 
   describe('what git does not list, or a person locked, keeps the clone (final review round 4)', () => {
+    /** A commit made in `tree`, which only the clone holds. */
+    function commitIn(tree: string): string {
+      git(tree, 'commit', '-q', '--allow-empty', '-m', 'mine')
+      return git(tree, 'rev-parse', 'HEAD')
+    }
+
+    test.each(['empty', 'missing'])(
+      'a clone stays while a worktree record of it has a gitdir that is %s, which git leaves out of its list',
+      (what) => {
+        const clone = makeClone('acme/api', 400)
+        const path = keptWorktree(clone, 'acme/api', 7)
+        const tip = commitIn(path)
+        const gitdir = join(clone, 'worktrees', '7', 'gitdir')
+        if (what === 'empty') writeFileSync(gitdir, '')
+        else unlinkSync(gitdir)
+
+        for (const opts of [{}, everything]) {
+          const r = bothModes(opts)
+          expect(r.removed).toEqual([])
+          expect(r.failed).toEqual([
+            expect.objectContaining({
+              kind: 'clone',
+              path: clone,
+              reason: expect.stringContaining(gitdir),
+            }),
+          ])
+        }
+        expect(existsSync(join(path, 'a.txt'))).toBe(true)
+        expect(git(clone, 'cat-file', '-t', tip)).toBe('commit')
+      },
+    )
+
+    test('a kept tree whose record folder in the clone is gone stays with the clone, while its record names the clone', () => {
+      const clone = makeClone('acme/api', 400)
+      const path = keptWorktree(clone, 'acme/api', 7)
+      const tip = commitIn(path)
+      // As `git worktree prune` leaves it when it ran while `kept/` was not mounted.
+      rmSync(join(clone, 'worktrees', '7'), { recursive: true, force: true })
+
+      for (const opts of [{}, everything]) {
+        const r = bothModes(opts)
+        expect(r.removed).toEqual([])
+        expect(r.failed).toEqual([])
+        expect(r.skipped).toEqual([
+          expect.objectContaining({
+            kind: 'clone',
+            path: clone,
+            skip: 'kept',
+            reason: expect.stringContaining(path),
+          }),
+        ])
+      }
+      expect(existsSync(join(path, 'a.txt'))).toBe(true)
+      expect(git(clone, 'cat-file', '-t', tip)).toBe('commit')
+    })
+
     test('a clone whose lock holds a token that is not a string is busy, as a claim finds it, in a dry run too', () => {
       const clone = makeClone('acme/api', 400)
       const lock = { tool: 'pr-update', holder: { pid: 2147483646 }, token: 123 }
