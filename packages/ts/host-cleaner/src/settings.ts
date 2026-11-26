@@ -91,14 +91,6 @@ export const settingsOf = (
   defs: Definitions = BUILT_IN_PLUGINS,
 ): Record<string, unknown> => resolveSettings(name, raw, shared, defs).settings
 
-/** Where each of `name`'s settings came from, as {@link resolveSettings} resolves them. */
-export const sourcesOf = (
-  name: string,
-  raw: Record<string, unknown>,
-  shared: Shared = {},
-  defs: Definitions = BUILT_IN_PLUGINS,
-): Record<string, SettingSource> => resolveSettings(name, raw, shared, defs).sources
-
 /** Whether the config switches `name` off with `enabled: false`. */
 export const disabledByConfig = (name: string, plugins: Entries): boolean =>
   plugins[name]?.enabled === false

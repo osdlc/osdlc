@@ -34,8 +34,9 @@ import {
   type PathCandidate,
   type Plugin,
   type RunCtx,
+  type SettingSource,
 } from '../../src/index.ts'
-import { effectiveSettings, sourcesOf, settingsOf } from '../../src/settings.ts'
+import { effectiveSettings, resolveSettings } from '../../src/settings.ts'
 import {
   ageTree as age,
   contractSuite,
@@ -146,12 +147,10 @@ function build(
   const plugin = def.create({
     ...(o.config === undefined
       ? { settings: { idleHours: DEFAULT_IDLE_HOURS } }
-      : {
-          settings: settingsOf(name, o.config.entry, o.config.shared, [def]) as {
-            idleHours?: number
-          },
-          sources: sourcesOf(name, o.config.entry, o.config.shared, [def]),
-        }),
+      : (resolveSettings(name, o.config.entry, o.config.shared, [def]) as {
+          settings: { idleHours?: number }
+          sources: Record<string, SettingSource>
+        })),
     only: [],
     env: h.env,
     kit,
@@ -336,7 +335,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
   })
 
   describe('huggingface-hub', () => {
-    test('one candidate per model, dataset and space, removed after 30 idle days', async () => {
+    test('one candidate per model, dataset and space; a dataset removed after 30 idle days', async () => {
       const b = build('huggingface-hub', os)
       const hub = b.folder('hub')
       mkdirSync(join(hub, '.locks', 'datasets--a'), { recursive: true })

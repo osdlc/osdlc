@@ -1059,7 +1059,10 @@ describe('inUse', () => {
     }
     const receipt = await clean(p, [b.plugin], ctx)
     expect(receipt.steps).toMatchObject([
-      { result: 'failed', error: `${b.folder('cache')} was not deleted: running: pip (pid 5000009)` },
+      {
+        result: 'failed',
+        error: `${b.folder('cache')} was not deleted: running: pip (pid 5000009)`,
+      },
     ])
     expect(existsSync(b.folder('cache'))).toBe(true)
   })

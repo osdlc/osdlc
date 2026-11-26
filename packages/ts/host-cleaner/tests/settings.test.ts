@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
 
 import { PLUGIN_API, definePlugin } from '../src/index.ts'
-import { resolveSettings, settingsIssues, settingsOf, sourcesOf } from '../src/settings.ts'
+import { resolveSettings, settingsIssues, settingsOf } from '../src/settings.ts'
 
 /** A plugin whose settings may name volumes to keep or to drop, not both. */
 const volumes = definePlugin({
@@ -44,21 +44,17 @@ describe('a refined settings schema', () => {
   })
 })
 
-test('sourcesOf names where each setting came from, as settingsOf resolves it', () => {
+test('resolveSettings gives the settings and where each came from', () => {
+  const sourcesOf = (...args: Parameters<typeof resolveSettings>) =>
+    resolveSettings(...args).sources
   expect(sourcesOf('cargo', { idleHours: 3 }, { idleHours: 3 })).toEqual({ idleHours: 'config' })
-  expect(sourcesOf('cargo', { enabled: true }, { idleHours: 3 })).toEqual({
-    enabled: 'config',
-    idleHours: 'shared',
-  })
   expect(sourcesOf('cargo', { idleHours: undefined }, { idleHours: 3 })).toEqual({
     idleHours: 'shared',
   })
   expect(sourcesOf('cargo', {})).toEqual({})
   // git has no idleHours setting.
   expect(sourcesOf('git', {}, { idleHours: 3 })).toEqual({})
-})
 
-test('resolveSettings gives the settings and their sources from one resolution', () => {
   const shared = resolveSettings('cargo', { enabled: true }, { idleHours: 3 })
   expect([shared.settings.idleHours, shared.sources]).toEqual([
     3,

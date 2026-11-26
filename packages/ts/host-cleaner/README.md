@@ -505,22 +505,22 @@ descriptors, with a warning.
 The package ships eight, for macOS and Linux: `pnpm` (the store, pruned with
 `pnpm store prune`, and the metadata cache), `uv` (the cache, pruned with
 `uv cache prune`), `huggingface-hub` (one candidate per model, dataset or space,
-after 30 idle days; models are held, so one goes only when picked), `gradle` (the
-caches after a week and each wrapper distribution after 30 days; wrapper
-distributions are held, so one goes only when picked), `npm` (the package cache), `pip` (the cache), `yarn` (Classic's
-global cache; Berry's is left out, since Plug'n'Play projects run from it) and
-`maven` (the local repository, at the cost `rebuild`; always held, so it goes
-only when picked). While the tool runs, every candidate of `pnpm`, `uv`,
-`gradle` (any Gradle build or daemon), `npm` (npm or npx), `pip` (pip, pip3 or
-`python -m pip`), `yarn` and `maven` (mvn, `./mvnw`, mvnd or any process naming
-`maven`, such as IntelliJ's Maven server) is refused as `in-use`, at the survey
-and again before each delete, so a long-running `pnpm dev` keeps the pnpm store
-from being pruned. Idle time is the newest modification time inside a
-folder, and reading a file doesn't change it: a Hugging Face model or a Gradle
-wrapper distribution in daily use counts as idle from its download, which is why
-they are held. So does a Maven repository whose artifacts are all downloaded, and
-it may hold what only a local `mvn install` gives back, which is why it is held
-too. Each looks only at the
+after 30 idle days; models are held, so one goes only when picked), `gradle`
+(the caches after a week and each wrapper distribution after 30 days; wrapper
+distributions are held, so one goes only when picked), `npm` (the package
+cache), `pip` (the cache), `yarn` (Classic's global cache; Berry's is left out,
+since Plug'n'Play projects run from it) and `maven` (the local repository, at
+the cost `rebuild`; always held, so it goes only when picked). While the tool
+runs, every candidate of `pnpm`, `uv`, `gradle` (any Gradle build or daemon),
+`npm` (npm or npx), `pip` (pip, pip3 or `python -m pip`), `yarn` and `maven`
+(mvn, `./mvnw`, mvnd or any process naming `maven`, such as IntelliJ's Maven
+server) is refused as `in-use`, at the survey and again before each delete, so
+a long-running `pnpm dev` keeps the pnpm store from being pruned. Idle time is
+the newest modification time inside a folder, and reading a file doesn't change
+it: a Hugging Face model or a Gradle wrapper distribution in daily use counts as
+idle from its download, which is why they are held. So does a Maven repository
+whose artifacts are all downloaded, and it may hold what only a local
+`mvn install` gives back, which is why it is held too. Each looks only at the
 tool's default folders: a store moved by an environment variable or a setting is
 not found, and the folder it left behind, if any, is what gets cleaned.
 
