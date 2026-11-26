@@ -20,7 +20,7 @@ any other in the order given. The order decides which plugin keeps a duplicate i
 | discover | each plugin | proposes candidates; a duplicate id keeps the first plugin's, with a warning naming both |
 | object | each plugin | objects to any candidate; sees no other plugin's objections |
 | decide | core | `refuse` blocks, `protest` needs `--allow <code>`, `note` does not gate |
-| re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved `changed` |
+| re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved `changed`; a plan with a candidate whose owner is no known plugin throws `StalePlan` |
 | prepare | every plugin | before the delete; a throw stops only that candidate, a `FatalRun` stops the run |
 | delete | the owner | returns the receipt sentence |
 | deleted | every other plugin | after the delete; best effort, failures are in the receipt |
@@ -52,6 +52,17 @@ const cache: Plugin = {
 const ctx: Ctx = { cwd: process.cwd(), targets: [], allow: [] }
 const found = survey([cache], ctx) // scope, discover, object
 const receipt = clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
+```
+
+`recheck(plan, plugins, ctx, known)` and `clean`'s `known` option name every
+plugin the install has, left-out ones too; they default to the names in
+`plugins`. A plan candidate whose owner `known` lacks throws `StalePlan` and
+nothing runs: sweep again. A known plugin left out of `plugins` has its
+candidates dropped as `gone`, so a caller that passes only some plugins passes
+`known` as well:
+
+```ts
+clean(saved, [git], ctx, { known: ['git', 'cargo'] }) // cargo's candidates are `gone`
 ```
 
 What a plan runs uses repo-cleaner's words, with their meaning:
@@ -176,7 +187,7 @@ all three directories):
 ```
 
 `plugins.<name>` holds that plugin's settings. A name that no plugin has stops
-`clean` (and `clean --plan`) with exit 2 before anything is deleted, since a
+`clean` (with `--plan` and `--dry-run` too) with exit 2 before anything is deleted, since a
 misspelt name would leave that plugin on its defaults; `status`, `plan` and
 `config` warn (the warning is kept in `status --format json` and in a plan) and
 go on. Each plugin's settings are a strict schema, checked when the config

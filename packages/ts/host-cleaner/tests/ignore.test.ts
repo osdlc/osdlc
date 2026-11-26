@@ -129,6 +129,7 @@ describe('idleHours', () => {
     expect(settingsOf('cargo', {}, { idleHours: 3 }).idleHours).toBe(3)
     expect(settingsOf('cargo', { idleHours: 0 }, { idleHours: 3 }).idleHours).toBe(0)
     expect(settingsOf('cargo', {}).idleHours).toBe(24)
+    expect(Object.keys(effectiveSettings({}, {}, ['node', 'fake']))).toEqual(['node'])
     const row = effectiveSettings({ node: { idleHours: 1 } }, { idleHours: 3 })
     expect(row.cargo!.find((r) => r.key === 'idleHours')).toMatchObject({
       value: 3,

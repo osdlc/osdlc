@@ -226,7 +226,9 @@ describe('status', () => {
     const planned = run(['plan', '--config', config, '-o', planFile], cwd, env, { plugins })
     expect(planned.code).toBe(0)
     const warnings: string[] = JSON.parse(readFileSync(planFile, 'utf8')).warnings
-    expect(warnings).toEqual(['config plugins.gti: no plugin has this name, so it is ignored'])
+    expect(warnings).toEqual([
+      'config plugins.gti: no plugin has this name; clean refuses to run until it is fixed',
+    ])
     const r = run(['config', '--config', config], cwd, env, { plugins })
     expect(r.err).toContain('plugins.gti')
     expect(r.err).not.toContain('plugins.fake')
@@ -240,7 +242,9 @@ describe('status', () => {
     // 10: the shipped plugins may find nothing in a fresh directory.
     expect([0, 10]).toContain(r.code)
     const warnings: string[] = JSON.parse(r.out).warnings
-    expect(warnings).toContain('config plugins.gti: no plugin has this name, so it is ignored')
+    expect(warnings).toContain(
+      'config plugins.gti: no plugin has this name; clean refuses to run until it is fixed',
+    )
     expect(warnings.some((w) => w.includes('plugins.node'))).toBe(false)
   })
 

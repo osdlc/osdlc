@@ -26,7 +26,7 @@ import { stripControls } from '@osdlc/ux'
 
 import { expandHome, ignorePaths } from './ignore.ts'
 import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
-import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
+import { missingFrom, parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { FACTORIES, UnknownPlugin, selectPlugins } from './registry.ts'
 import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
 import {
@@ -360,28 +360,28 @@ const registered = (deps: MainDeps): string[] =>
   deps.plugins?.map((p) => p.name) ?? Object.keys(FACTORIES)
 
 /**
- * The config, every registered plugin's name, and a warning for each name in the config's
- * `plugins` that is not one of them.
- * With `refuse`, such a name is an error instead: `clean` deletes nothing on a config it
- * cannot apply in full, since a misspelt name would leave that plugin on its defaults.
+ * The config, every registered plugin's name, the names in the config's `plugins` that are
+ * not one of them (`unused`), and a warning for each.
  */
 function checkedConfig(
   v: { config?: string | undefined },
   ctx: CliContext,
   deps: MainDeps,
-  refuse = false,
-): { config: Config; known: ReadonlySet<string>; warnings: string[] } {
+): { config: Config; known: string[]; unused: string[]; warnings: string[] } {
   const config = loadConfig(v, ctx)
-  const known = new Set(registered(deps))
-  const unused = Object.keys(config.plugins).filter((n) => !known.has(n))
-  if (refuse && unused.length > 0) {
-    throw new BadInput(`config names no plugin ${unused.join(', ')}; nothing was deleted`)
-  }
+  const known = registered(deps)
+  const unused = missingFrom(Object.keys(config.plugins), known)
   const warnings = unused.map(
-    (n) => `config plugins.${n}: no plugin has this name, so it is ignored`,
+    (n) => `config plugins.${n}: no plugin has this name; clean refuses to run until it is fixed`,
   )
-  return { config, known, warnings }
+  return { config, known, unused, warnings }
 }
+
+/** `s` with `warnings` ahead of its own. */
+const withWarnings = <S extends { warnings: readonly string[] }>(s: S, warnings: string[]): S => ({
+  ...s,
+  warnings: [...warnings, ...s.warnings],
+})
 
 /** The plugins this run uses: the shipped ones built from the config, or `deps.plugins`, then chosen by flag. */
 function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliContext): Plugin[] {
@@ -466,11 +466,13 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   let s: ReturnType<typeof survey>
   try {
     const { config, warnings } = checkedConfig(v, ctx, deps)
-    s = survey(
-      pluginsFor(v, config, deps, ctx),
-      contextFor(parsed.positionals, config, ctx, [], v.ignore),
+    s = withWarnings(
+      survey(
+        pluginsFor(v, config, deps, ctx),
+        contextFor(parsed.positionals, config, ctx, [], v.ignore),
+      ),
+      warnings,
     )
-    s = { ...s, warnings: [...warnings, ...s.warnings] }
   } catch (err) {
     return refusal(ctx, name, err)
   }
@@ -499,9 +501,7 @@ function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
     const { config, known, warnings } = checkedConfig(v, ctx, deps)
     writeWarnings(ctx, name, warnings)
     // Only the plugins a run would build: a section for one it lacks would contradict the warning.
-    const settings = Object.fromEntries(
-      Object.entries(effectiveSettings(config.plugins, config)).filter(([n]) => known.has(n)),
-    )
+    const settings = effectiveSettings(config.plugins, config, known)
     if (v.format === 'json') {
       const values = Object.fromEntries(
         Object.entries(settings).map(([n, rows]) => [
@@ -553,8 +553,7 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   try {
     const { config, warnings } = checkedConfig(v, ctx, deps)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
-    const surveyed = survey(pluginsFor(v, config, deps, ctx), cctx)
-    const s = { ...surveyed, warnings: [...warnings, ...surveyed.warnings] }
+    const s = withWarnings(survey(pluginsFor(v, config, deps, ctx), cctx), warnings)
     writeWarnings(ctx, name, s.warnings)
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
     plan = makePlan(s, {
@@ -694,11 +693,15 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let plan: Plan
   let source: string
   let plugins: Plugin[]
-  let known: ReadonlySet<string>
+  let known: string[]
   let cctx: Ctx
   let preview: Decision
   try {
-    const read = checkedConfig(v, ctx, deps, true)
+    const read = checkedConfig(v, ctx, deps)
+    // Nothing runs on a config it cannot apply in full: a misspelt name leaves a plugin on defaults.
+    if (read.unused.length > 0) {
+      throw new BadInput(`config names no plugin ${read.unused.join(', ')}; nothing was deleted`)
+    }
     const { config } = read
     known = read.known
     plugins = pluginsFor(v, config, deps, ctx)
