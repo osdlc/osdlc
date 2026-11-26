@@ -779,6 +779,14 @@ describe('packages', () => {
     ])
     expect(json.plugins.fixture).toEqual({ enabled: true, keep: ['kept'], package: FIXTURE })
 
+    // A disabled package is still loaded, printed and checked by config.
+    const off = withPackage({ fixture: { ...fixture.fixture, enabled: false } })
+    expect((await off.go(['config'])).out).toContain('  enabled = false  (config)')
+    const typo = withPackage({ fixture: { ...fixture.fixture, enabled: false, kep: [] } })
+    const bad = await typo.go(['config'])
+    expect(bad.code).toBe(2)
+    expect(bad.err).toContain('plugins.fixture')
+
     const clean = await h.go([
       'clean',
       '--plugin',

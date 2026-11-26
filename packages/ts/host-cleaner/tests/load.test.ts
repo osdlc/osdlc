@@ -23,6 +23,7 @@ import {
   type PackageEntry,
   type PluginDefinition,
 } from '../src/index.ts'
+import { withPackages } from '../src/registry.ts'
 import { contractSuite, fakeContext, tempHome } from '../src/testing.ts'
 import {
   CLASS_PLUGIN,
@@ -233,6 +234,39 @@ describe('what a package must export', () => {
     expect(await failure("throw new Error('boom')\n")).toMatch(
       /^plugins\.fixture\.package: @acme\/host-cleaner-fixture 1\.0\.0 at .* failed to import: boom$/,
     )
+    expect(await failure("throw 'missing native binding'\n")).toMatch(
+      /failed to import: missing native binding$/,
+    )
+  })
+
+  test('a default export that is a list is no definition', async () => {
+    expect(await failure('export default []\n')).toBe(
+      `plugins.fixture.package: ${FIXTURE} 1.0.0 has no default export; it must export default definePlugin({ ... })`,
+    )
+  })
+
+  test('create that throws anything, or returns no object, is reported as that', async () => {
+    const creating = async (body: string) => {
+      const r = await load(
+        exporting(
+          `definePlugin({ name: 'fixture', api: PLUGIN_API, settings: z.object({}), create: () => { ${body} } })`,
+        ),
+      )
+      let reason = ''
+      try {
+        created(r.loaded[0]!.definition)
+      } catch (err) {
+        expect(err).toBeInstanceOf(PackageLoadError)
+        reason = (err as PackageLoadError).failure.reason
+      }
+      return reason
+    }
+    expect(await creating("throw 'no token'")).toBe(
+      `plugins.fixture.package: ${FIXTURE} 1.0.0 could not be created: no token`,
+    )
+    expect(await creating('return undefined')).toBe(
+      `plugins.fixture.package: ${FIXTURE} 1.0.0 returned a plugin named undefined from create, not fixture`,
+    )
   })
 
   test('create must return a plugin of the same name', async () => {
@@ -274,6 +308,13 @@ describe('what a package must export', () => {
     expect(
       await returning("{ name: 'fixture', detect: () => true, limits: { detect: 'soon' } }"),
     ).toBe(`${from} limits.detect is not a positive number of milliseconds`)
+    // As the core reads limits: undefined is the default, and Infinity is no limit.
+    expect(
+      await returning("{ name: 'fixture', detect: () => true, limits: { detect: Infinity } }"),
+    ).toBe(`${from} limits.detect is not a positive number of milliseconds`)
+    expect(
+      await returning("{ name: 'fixture', detect: () => true, limits: { detect: undefined } }"),
+    ).toBe('')
     expect(await returning("{ name: 'fixture', detect: () => true, limits: { sweep: 10 } }")).toBe(
       `${from} limits names sweep, not a hook`,
     )
@@ -336,6 +377,14 @@ describe('config entries and the run’s plugins', () => {
       'aardvark',
     ])
     expect(loaded.packages.map((p) => p.version)).toEqual(['1.0.0', '1.0.0'])
+    // Packages already in `found` are replaced, not added twice.
+    expect(withPackages(loaded, packages.loaded).definitions).toEqual(loaded.definitions)
+    // A shipped descriptor of a package's name is replaced by the package.
+    writeFileSync(join(shipped, 'beta.yaml'), descriptor)
+    const over = loadPlugins({ shipped, user }, {}, { loaded: packages.loaded, entries })
+    expect(over.definitions.map((d) => d.name)).toEqual(loaded.definitions.map((d) => d.name))
+    expect(over.problems).toEqual([])
+    expect(over.descriptors.map((d) => d.name)).toEqual(['aardvark'])
     writeFileSync(join(user, 'beta.yaml'), descriptor)
     // A package of that name clashes by its entry, or by itself when the caller gives no entry.
     for (const of of [

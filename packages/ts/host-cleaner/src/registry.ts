@@ -14,7 +14,7 @@ import {
   type LoadedDescriptor,
 } from './descriptor/load.ts'
 import { byName } from './helpers.ts'
-import { refuseBuiltInName, type LoadedPackage, type PackageEntry } from './load.ts'
+import { isPackaged, refuseBuiltInName, type LoadedPackage, type PackageEntry } from './load.ts'
 import type { Plugin, PluginDefinition } from './types.ts'
 
 export { BUILT_IN_PLUGINS }
@@ -40,7 +40,8 @@ export interface Packages {
 /**
  * The built-ins, then the `packages` loaded, then the descriptors from
  * `sources`, each by name; `opts` is passed to each descriptor's plugin. A
- * descriptor that can't be used, that is named as a package in the config, or
+ * shipped descriptor named as a package in the config is not used. A
+ * descriptor that can't be used, a user or `--descriptor` one named as such a package, or
  * whose `supersededBy` names neither a built-in plugin nor a package in the
  * config, is one of `problems`.
  *
@@ -69,6 +70,8 @@ export function findPlugins(
   }
   const descriptors = found.descriptors.filter((d) => {
     const entry = named.get(d.name)
+    // The package the config names replaces a shipped descriptor, as a user file would.
+    if (entry !== undefined && d.source === 'shipped') return false
     if (entry !== undefined) {
       return refused(
         d,
@@ -96,7 +99,7 @@ export function findPlugins(
   )
 }
 
-/** `found`, which has no package yet, with those `loaded` between the built-ins and the descriptors, by name. */
+/** `found` with its packages, if any, replaced by those `loaded`, between the built-ins and the descriptors, by name. */
 export function withPackages(found: Loaded, loaded: readonly LoadedPackage[]): Loaded {
   const packages = [...loaded].sort(byName)
   return {
@@ -104,7 +107,7 @@ export function withPackages(found: Loaded, loaded: readonly LoadedPackage[]): L
     definitions: [
       ...BUILT_IN_PLUGINS,
       ...packages.map((p) => p.definition),
-      ...found.definitions.filter((d) => !BUILT_IN_PLUGINS.includes(d)),
+      ...found.definitions.filter((d) => !BUILT_IN_PLUGINS.includes(d) && !isPackaged(d)),
     ],
     packages,
   }

@@ -62,7 +62,7 @@ export class HookTimeout extends Error {
 const MAX_DELAY_MS = 2 ** 31 - 1
 
 /** Whether `ms` is a time limit the core takes: a positive number of milliseconds. */
-const validLimit = (ms: unknown): ms is number =>
+export const validLimit = (ms: unknown): ms is number =>
   typeof ms === 'number' && Number.isFinite(ms) && ms > 0
 
 /** The time limit of `hook` on `p`: its own when valid, else the default. */

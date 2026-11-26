@@ -577,15 +577,18 @@ npm prefix (`npm_config_prefix`, else npm's default: `%APPDATA%\npm` on
 Windows, Node's own elsewhere; a relative prefix is not used). Its default
 export must be a `definePlugin` value whose `name` is the config key and whose
 `api` is this host-cleaner's `PLUGIN_API`. A name a built-in has is refused
-(exit 2), and a descriptor of a package's name is a file that can't be used.
+(exit 2). A package replaces a shipped descriptor of its name, and a
+descriptor of its name in the config directory or `--descriptor` is a file
+that can't be used.
 Packages run after the built-ins and before the descriptors, by name. No
 package is imported until the config's other entries and the descriptors have
 been checked. When one fails to load (not installed, its import throws, a wrong
 export, name or api), `status` and `plan` warn and go on without it, and
 `clean` exits 2 unless you pass `--skip-plugin <name>`, since its objections
 would be missing too. A package the config disables, or that `--skip-plugin`
-names, is not loaded. `host-cleaner config` names each loaded package with its
-version and folder.
+names, is not loaded, except by `host-cleaner config`, which loads every
+package the config names to print and check its settings, and names each with
+its version and folder.
 
 The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
 all three directories):

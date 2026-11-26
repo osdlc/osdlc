@@ -787,7 +787,10 @@ async function runConfig(
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
-    const loading = await loadRun(findRun(v, ctx, deps), {}, ctx, deps)
+    const found = findRun(v, ctx, deps)
+    // Every package the config names, disabled or not, so its settings are printed and checked.
+    const every = { want: found.entries.map((e) => e.name) }
+    const loading = await loadRun(found, every, ctx, deps)
     const { config, unknown, failed, warnings } = loading
     const { definitions, packages, problems } = loading.loaded
     writeWarnings(ctx, name, [
