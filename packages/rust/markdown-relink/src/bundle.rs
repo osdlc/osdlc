@@ -161,7 +161,7 @@ pub fn plan_bundle(
     // Every refusal a single-file rename names — same path, `_system/`, a
     // hidden directory, not markdown, source missing — applies to the entry
     // note exactly as it does to any other file.
-    if let Some(reason) = plan::refusal(vfs, &from, &to, &from_abs) {
+    if let Some(reason) = plan::refusal(vfs, &from, &to, &from_abs, false) {
         return refuse(reason);
     }
 
