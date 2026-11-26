@@ -48,9 +48,19 @@ function isUnder(path: string, root: string): boolean {
 }
 
 /**
+ * Whether a person locked a worktree with `git worktree lock`, from its list entry. The lock git
+ * itself takes while `git worktree add` runs, `initializing`, is not one: a killed add leaves it
+ * behind.
+ */
+export function lockedByPerson(w: { locked: boolean; lockReason: string | null }): boolean {
+  return w.locked && w.lockReason !== 'initializing'
+}
+
+/**
  * The way for a checkout that is not the run's own: only worktrees under `roots` are the run's.
  * When removing one failed, its folder is deleted and its record, `<common>/worktrees/<id>/`, is
- * deleted too, but only the record whose `gitdir` names that worktree. Nothing else is pruned.
+ * deleted too, but only the record whose `gitdir` names that worktree. Nothing else is pruned. A
+ * worktree a person locked (`git worktree remove` fails on it) is left as it is, folder and record.
  */
 export function ownedUnder(roots: readonly string[]): WorktreeRecords {
   const owns = (path: string): boolean => roots.some((root) => isUnder(path, root))
@@ -58,36 +68,53 @@ export function ownedUnder(roots: readonly string[]): WorktreeRecords {
     owns,
     forget(git, path, removed) {
       if (removed || !owns(path)) return
+      const record = recordOf(git, path)
+      if (record !== null && lockedByPerson(readLock(record))) return
       rmSync(path, { recursive: true, force: true })
-      let common: string | null
-      try {
-        common = git.gitCommonDir()
-      } catch {
-        return
-      }
-      if (common === null) return
-      const records = join(resolve(git.cwd, common), 'worktrees')
-      let ids: string[]
-      try {
-        ids = readdirSync(records)
-      } catch {
-        return
-      }
-      const wanted = canonical(path)
-      for (const id of ids) {
-        let gitdir: string
-        try {
-          gitdir = readFileSync(join(records, id, 'gitdir'), 'utf8').trim()
-        } catch {
-          continue
-        }
-        // `gitdir` names the worktree's `.git` file.
-        const tree = dirname(resolve(records, id, gitdir))
-        if (canonical(tree) === wanted && owns(tree) && !existsSync(tree)) {
-          rmSync(join(records, id), { recursive: true, force: true })
-        }
+      if (record !== null && owns(path) && !existsSync(path)) {
+        rmSync(record, { recursive: true, force: true })
       }
     },
+  }
+}
+
+/** The record, `<common>/worktrees/<id>/`, whose `gitdir` names the worktree at `path`, or null. */
+function recordOf(git: Git, path: string): string | null {
+  let common: string | null
+  try {
+    common = git.gitCommonDir()
+  } catch {
+    return null
+  }
+  if (common === null) return null
+  const records = join(resolve(git.cwd, common), 'worktrees')
+  let ids: string[]
+  try {
+    ids = readdirSync(records)
+  } catch {
+    return null
+  }
+  const wanted = canonical(path)
+  for (const id of ids) {
+    let gitdir: string
+    try {
+      gitdir = readFileSync(join(records, id, 'gitdir'), 'utf8').trim()
+    } catch {
+      continue
+    }
+    // `gitdir` names the worktree's `.git` file.
+    if (canonical(dirname(resolve(records, id, gitdir))) === wanted) return join(records, id)
+  }
+  return null
+}
+
+/** A record's lock, as `git worktree list` reads it: its `locked` file, whose text is the reason. */
+function readLock(record: string): { locked: boolean; lockReason: string | null } {
+  try {
+    const reason = readFileSync(join(record, 'locked'), 'utf8').trim()
+    return { locked: true, lockReason: reason === '' ? null : reason }
+  } catch {
+    return { locked: false, lockReason: null }
   }
 }
 

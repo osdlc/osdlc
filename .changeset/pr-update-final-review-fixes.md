@@ -148,8 +148,11 @@ Fixed: `mirror prune` removed a worktree a person had locked with
 `git worktree lock`: git refused, and pr-update then deleted the folder and
 git's record of it, uncommitted files and all. Prune now honours the lock. A
 dead run's worktree or a kept worktree that `git worktree list` shows as
-locked stays, with `--discard-kept` too, and so does its clone; the message
-names `git worktree unlock <path>`. git's own `initializing` lock, which a
+locked stays, with `--discard-kept` too, even when its folder is missing (on a
+drive that is not mounted, say), and so does its clone; the message names
+`git worktree unlock <path>`. `update` likewise leaves a killed run's scratch
+worktree that a person locked, and its branch, where it used to remove it from
+a `--repo` target's checkout or clone. git's own `initializing` lock, which a
 killed `git worktree add` leaves, is still not counted.
 
 Fixed: `mirror prune --dry-run` read a clone's lock with rules of its own, so

@@ -24,7 +24,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative } from 'node:path'
+import { basename, dirname, join, relative } from 'node:path'
 
 import { EXIT, captureContext } from '@osdlc/cli-tool'
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
@@ -2076,6 +2076,28 @@ describe('every removal passes one check, the same in a dry run (final review ro
       expect(r.skipped[0]!.reason).toContain(`git worktree unlock ${dead}`)
       expect(readFileSync(join(dead, 'mine.txt'), 'utf8')).toBe('mine\n')
       expect(listed(clone)).toEqual([dead])
+    })
+
+    test('a dead run worktree a person locked stays with its clone when its folder is gone', () => {
+      const clone = makeClone('acme/api', 400)
+      const dead = runWorktree(clone, 'acme/api')
+      const tip = commitIn(dead)
+      git(clone, 'worktree', 'lock', '--reason', 'on my usb drive', dead)
+      rmSync(dead, { recursive: true, force: true })
+
+      const r = bothModes({ allClones: true })
+
+      expect(r.removed).toEqual([])
+      expect(r.skipped).toEqual([
+        expect.objectContaining({
+          kind: 'clone',
+          path: clone,
+          skip: 'in-use',
+          reason: expect.stringContaining(`on my usb drive); \`git worktree unlock ${dead}\``),
+        }),
+      ])
+      expect(listed(clone)).toEqual([dead])
+      expect(git(clone, 'rev-parse', `pr-update/scratch-${basename(dead)}`)).toBe(tip)
     })
 
     test('a dead run worktree of a located checkout a person locked stays, record and all', () => {

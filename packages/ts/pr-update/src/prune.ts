@@ -87,7 +87,7 @@ import {
   type KeptPlace,
   type KeptRecord,
 } from './update/kept.ts'
-import { ownedUnder, removeWorktree } from './update/registrations.ts'
+import { lockedByPerson, ownedUnder, removeWorktree } from './update/registrations.ts'
 
 /** A leftover `.tmp-*` clone folder or `.pr-update-probe-*` probe younger than this is left alone. */
 export const LEFTOVER_AGE_MS = 60 * 60 * 1000
@@ -411,12 +411,12 @@ function lists(worktrees: readonly Worktree[], path: string): boolean {
 
 /**
  * Why `w`, the listed worktree at `path`, stays for a `git worktree lock`, or null. The lock git
- * itself takes while `git worktree add` runs, `initializing`, is no reason: a killed add leaves
- * it behind. git writes that word in the language the add ran in, so a translated one is taken
- * for a person's lock.
+ * itself takes while `git worktree add` runs, `initializing`, is no reason (`lockedByPerson`).
+ * git writes that word in the language the add ran in, so a translated one is taken for a
+ * person's lock.
  */
 function lockedReason(w: Worktree, path: string): string | null {
-  if (!w.locked || w.lockReason === 'initializing') return null
+  if (!lockedByPerson(w)) return null
   const why = w.lockReason === null ? '' : ` (${w.lockReason})`
   return `${path} is locked${why}; \`git worktree unlock ${path}\` frees it`
 }
@@ -1044,6 +1044,8 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
     const inUse: string[] = []
     /** Dead runs' worktrees that stay: the clone stays with them. */
     const stays: string[] = []
+    /** Why dead runs' worktrees stay for a `git worktree lock`. */
+    const runLocks: string[] = []
     const dead: Measured[] = []
     for (const w of worktrees) {
       if (w.bare) continue
@@ -1051,6 +1053,13 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       if (ownedUnder([at.worktrees]).owns(w.path) && run !== null) {
         if (isRunning(run, alive)) {
           inUse.push(w.path)
+          continue
+        }
+        // Read from the clone's own list: with its folder gone (on a drive that is not mounted,
+        // say), `checkRunWorktree` cannot find its owner, and so never reads the lock.
+        const locked = lockedReason(w, w.path)
+        if (locked !== null) {
+          runLocks.push(locked)
           continue
         }
         // The walk above removed it, or its folder was gone already. One that is still there
@@ -1080,6 +1089,13 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       leave({
         skip: 'in-use',
         reason: `its run worktree ${stays.join(', ')} was left, so the clone stays with it`,
+      })
+      return
+    }
+    if (runLocks.length > 0) {
+      leave({
+        skip: 'in-use',
+        reason: `its run worktree ${runLocks.join('; ')}; it stays, and so does the clone`,
       })
       return
     }

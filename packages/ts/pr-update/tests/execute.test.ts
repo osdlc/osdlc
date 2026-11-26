@@ -39,6 +39,7 @@ import type { Generator, PushPreview, Repair, RepairRequest, RepairResult } from
 import { toResult } from '../src/update.ts'
 import { NothingDetectedError } from '../src/detect.ts'
 import { targetGitEnv } from '../src/update/execute.ts'
+import { ownedUnder } from '../src/update/registrations.ts'
 import {
   WORK_BRANCH,
   scratchBranch,
@@ -2019,6 +2020,45 @@ describe('updateAll', () => {
     })
     expect(results.map((r) => r.outcome.status)).toEqual(['updated'])
     expect(existsSync(stale)).toBe(false)
+  })
+
+  test.each(['there', 'gone'])(
+    "a dead run's scratch worktree a person locked stays, with its branch, when its folder is %s",
+    async (folder) => {
+      const { git } = fx.worker
+      git.checkout('main', { branch: 'after' })
+      fx.worker.commit('work', { 'a.txt': 'a\n' })
+      git.push('origin', 'after')
+      git.checkout('main')
+      git.fetch('origin')
+      const root = join(fx.worker.dir, '.pr-update')
+      const stale = join(root, '2147483646.1')
+      git.worktreeAdd(stale, { branch: WORK_BRANCH, startPoint: 'origin/main' })
+      git.at(stale).commit({ message: 'mine', allowEmpty: true })
+      const tip = git.resolveRef(WORK_BRANCH)
+      git.raw(['worktree', 'lock', '--reason', 'on my usb drive', stale])
+      if (folder === 'gone') rmSync(stale, { recursive: true, force: true })
+
+      await updateAll(git, [target({ head: 'after' })], SETTINGS, recorder(), {
+        apply: true,
+        worktreeRoot: join(root, 'next'),
+        records: ownedUnder([root]),
+      })
+      expect(git.worktrees().some((w) => w.path.endsWith('2147483646.1'))).toBe(true)
+      expect(git.resolveRef(WORK_BRANCH)).toBe(tip)
+      expect(existsSync(stale)).toBe(folder === 'there')
+    },
+  )
+
+  test('ownedUnder leaves a worktree a person locked, folder and record, when it cannot be removed', () => {
+    const { git } = fx.worker
+    const root = join(fx.worker.dir, '.pr-update')
+    const tree = join(root, 'locked')
+    git.worktreeAdd(tree, { detach: true, startPoint: 'origin/main' })
+    git.raw(['worktree', 'lock', '--reason', 'mine', tree])
+    ownedUnder([root]).forget(git, tree, false)
+    expect(existsSync(tree)).toBe(true)
+    expect(git.worktrees().some((w) => w.path.endsWith('locked'))).toBe(true)
   })
 
   test('an empty run creates no worktree at all', async () => {
