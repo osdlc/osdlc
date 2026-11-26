@@ -106,7 +106,8 @@ export interface Kit {
   readonly owner: string
   /**
    * How long `path` has sat unchanged, by the newest modification time of any
-   * file under it, links not followed, within the time budget. Several paths
+   * file under it, links not followed, within the time budget; a path that
+   * is a file by its own modification time. Several paths
    * are one answer, by the newest file under any of them, within one budget.
    * `skip` names entries to pass over, files and directories alike. Throws
    * when a directory cannot be read, since what it hides may be recent; one
@@ -116,6 +117,8 @@ export interface Kit {
     path: string | readonly string[],
     opts?: { skip?: ((name: string) => boolean) | undefined },
   ): Idle
+  /** A check that turns true once one measurement's time budget has passed since this call, by the kit's clock. */
+  overBudget(): () => boolean
   /** Bytes `path` takes on disk, by repo-cleaner's `sizeOf` (`du`) within the time budget; null when it could not be read. */
   size(path: string): number | null
   /**
@@ -177,8 +180,13 @@ const kits = new WeakMap<Plugin, Set<Kit>>()
 
 /** Records that `plugin` was built on `kit`, beside any recorded before, so the core can bind it each run. `definePlugin`'s `create` calls it. */
 export function attachKit(plugin: Plugin, kit: Kit): void {
+  // A `create` that returned no object is reported by whoever called it, not as a WeakMap key error.
+  if (Object(plugin) !== plugin) return
   kits.set(plugin, (kits.get(plugin) ?? new Set()).add(kit))
 }
+
+/** Whether `plugin` was built on `kit`, as {@link attachKit} recorded it. */
+export const builtOn = (plugin: Plugin, kit: Kit): boolean => kits.get(plugin)?.has(kit) === true
 
 /**
  * Binds each kit `plugin` was built on to `bounds` for {@link Kit.remove}, or
@@ -362,13 +370,21 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
         }
       }
       try {
-        for (const each of typeof path === 'string' ? [path] : path) visit(each)
+        for (const each of typeof path === 'string' ? [path] : path) {
+          const stat = lstatSync(each, { throwIfNoEntry: false })
+          if (stat === undefined || stat.isDirectory() || stat.isSymbolicLink()) visit(each)
+          else if (newest === null || stat.mtimeMs > newest) newest = stat.mtimeMs
+        }
       } catch (err) {
         if (err instanceof OutOfTime) return { unmeasured: true }
         throw err
       }
       const hours: number | null = newest === null ? null : Math.max(0, (at - newest) / HOUR_MS)
       return { unmeasured: false, newestMs: newest, hours }
+    },
+    overBudget() {
+      const start = clock()
+      return () => clock() - start > budget
     },
     size: (path) => sizeOf(path, { timeoutMs: budget }),
     running(where, ctx) {

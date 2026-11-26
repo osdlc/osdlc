@@ -62,7 +62,7 @@ export class HookTimeout extends Error {
 const MAX_DELAY_MS = 2 ** 31 - 1
 
 /** Whether `ms` is a time limit the core takes: a positive number of milliseconds. */
-const validLimit = (ms: unknown): ms is number =>
+export const validLimit = (ms: unknown): ms is number =>
   typeof ms === 'number' && Number.isFinite(ms) && ms > 0
 
 /** The time limit of `hook` on `p`: its own when valid, else the default. */
@@ -311,7 +311,10 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
         )
       }
     }
-    const answer = await guarded<unknown>(p, 'detect', false, ctx, (x) => p.detect(x))
+    const running = plugins.map((q) => q.name)
+    const answer = await guarded<unknown>(p, 'detect', false, { ...ctx, running }, (x) =>
+      p.detect(x),
+    )
     const found = detection(answer)
     if (found === null) {
       warnings.push(
@@ -554,6 +557,7 @@ export function plan(
     targets?: readonly string[] | undefined
     targetsGiven?: boolean | undefined
     ignore?: readonly string[] | undefined
+    descriptors?: readonly string[] | undefined
     select?: readonly string[] | null | undefined
     pick?: readonly string[] | undefined
     spare?: readonly string[] | undefined
@@ -577,6 +581,9 @@ export function plan(
     spare: [...selection.spare],
     allow: [...(opts.allow ?? [])],
     ignore: [...(opts.ignore ?? [])],
+    ...(opts.descriptors === undefined || opts.descriptors.length === 0
+      ? {}
+      : { descriptors: [...opts.descriptors] }),
     warnings: s.warnings,
     // A copy, so a plugin that mutates and returns the same objects on re-discovery cannot change the plan.
     candidates: structuredClone(s.candidates),
@@ -770,7 +777,8 @@ export function decidePlan(p: Plan): Decision {
  * Judge a plan against the world now. Surveys again and decides over exactly
  * what the plan would run, so a refusal that appeared since is `blocked`, a
  * protest nobody granted `not-allowed`, a vanished candidate `gone`, and one whose evidence
- * moved (repo-cleaner's `sameFingerprint`) `changed`.
+ * moved (repo-cleaner's `sameFingerprint`), or that its owner holds now and did not
+ * then, `changed`. One held then that is held no longer still runs.
  */
 export async function recheck(
   p: Plan,
@@ -799,6 +807,13 @@ export async function recheck(
     const before = plannedById.get(c.id)
     if (before !== undefined && !sameFingerprint(before.evidence, c.evidence)) {
       dropped.push({ id: c.id, reason: 'changed', detail: 'its evidence moved since the plan' })
+    } else if (before !== undefined && before.held !== true && c.held === true) {
+      // Nobody chose it held, not even by a pick.
+      dropped.push({
+        id: c.id,
+        reason: 'changed',
+        detail: 'it is held for review now, and was not in the plan',
+      })
     } else kept.set(c.id, c)
   }
   const explain: Explain = (id) => {

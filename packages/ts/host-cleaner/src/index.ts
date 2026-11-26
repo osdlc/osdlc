@@ -8,7 +8,23 @@
 export { VERSION } from './version.generated.ts'
 export * from './plugin.ts'
 export { DROP_REASONS, type DropReason } from './types.ts'
-export { BUILT_IN_PLUGINS } from './registry.ts'
+export {
+  BUILT_IN_PLUGINS,
+  findPlugins,
+  loadPlugins,
+  type Loaded,
+  type Packages,
+} from './registry.ts'
+export {
+  PackageError,
+  PackageLoadError,
+  loadPackages,
+  packageEntries,
+  packageRoots,
+  type LoadedPackage,
+  type PackageEntry,
+  type PackageFailure,
+} from './load.ts'
 export {
   PLAN_VERSION,
   PlanSchema,
@@ -50,6 +66,46 @@ export { gitDefinitionWith, gitPlugin, type GitPluginOptions } from './git.ts'
 export { cargoPlugin, CARGO_PLUGIN } from './cargo.ts'
 export { nodePlugin, NODE_PLUGIN } from './node.ts'
 export { type ArtifactOptions } from './artifacts.ts'
+export {
+  DEFAULT_MAX_ENTRIES,
+  DESCRIPTOR_SCHEMA_URL,
+  DESCRIPTOR_VERSION,
+  DescriptorCandidateSchema,
+  DescriptorError,
+  DescriptorSchema,
+  OSES,
+  ProjectEntrySchema,
+  descriptorIssues,
+  descriptorJsonSchema,
+  parseDescriptor,
+  readDescriptor,
+  type Descriptor,
+  type DescriptorCandidate,
+  type Os,
+  type ProjectEntry,
+} from './descriptor/schema.ts'
+export {
+  DUPLICATE_ENTRY,
+  IN_USE,
+  NO_PRUNE_TOOL,
+  descriptorPlugin,
+  globMatches,
+  osOf,
+  pathProblem,
+  skipReason,
+  type DescriptorOptions,
+} from './descriptor/engine.ts'
+export {
+  DescriptorLoadError,
+  SHIPPED_DESCRIPTORS,
+  findDescriptors,
+  loadDescriptors,
+  type DescriptorProblem,
+  type DescriptorSource,
+  type DescriptorSources,
+  type FoundDescriptors,
+  type LoadedDescriptor,
+} from './descriptor/load.ts'
 export {
   CLOSE_TERMINALS,
   ORCA_BUNDLE_CLI,

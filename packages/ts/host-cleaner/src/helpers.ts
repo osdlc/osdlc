@@ -15,6 +15,10 @@ import type { Candidate, Ctx, Objection, PathCandidate } from './types.ts'
 export const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
+/** Orders by `name`, by code unit. */
+export const byName = (a: { name: string }, b: { name: string }): number =>
+  a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+
 /** `v` when it is a string, else `''`. */
 export const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 

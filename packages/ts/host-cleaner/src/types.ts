@@ -6,6 +6,7 @@
 
 import type { z } from 'zod'
 
+import type { CostDescription } from './cost.ts'
 import { attachKit, type Kit } from './kit.ts'
 
 /** What every candidate has, whether a path or a ref. */
@@ -40,10 +41,7 @@ interface CandidateBase {
   unmeasured?: boolean | undefined
 }
 
-/** What deleting a candidate costs: fetched again, built again, or gone for good. */
-export const COST_DESCRIPTIONS = ['re-download', 'rebuild', 'lost'] as const
-
-export type CostDescription = (typeof COST_DESCRIPTIONS)[number]
+export { COST_DESCRIPTIONS, type CostDescription } from './cost.ts'
 
 /**
  * A folder its owner deletes. It must sit strictly inside one of the owner's
@@ -106,6 +104,12 @@ export interface RunCtx {
   targetsGiven?: boolean | undefined
   /** The home folder, which no root may be or hold; the process's when unset. The CLI sets it from `HOME`, as it expands `~`. */
   home?: string | undefined
+  /**
+   * In `detect`, the plugins survey has found active so far, in run order: a
+   * plugin whose `detect` failed or ran past its limit is not among them.
+   * Survey sets it; unset elsewhere.
+   */
+  running?: readonly string[] | undefined
 }
 
 /** What a hook is given: the run, and a signal of its own. */

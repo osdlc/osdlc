@@ -1,0 +1,15 @@
+{
+  // tests/outside.test.ts builds the package with this file.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "types": ["node"],
+    // Emits the dist/index.d.ts that package.json's `types` export names.
+    "declaration": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"]
+}
