@@ -32,7 +32,7 @@ import {
   survey,
 } from '../src/index.ts'
 import type { Candidate, Plugin, Root, RunCtx } from '../src/index.ts'
-import { boundBy, rootProblem } from '../src/roots.ts'
+import { boundBy, gitReads, linkedWorktreeOf, rootProblem } from '../src/roots.ts'
 import { contractSuite } from '../src/testing.ts'
 
 const dirs: string[] = []
@@ -252,6 +252,29 @@ describe('a plugin with no roots is held to the targets', () => {
       level: 'refuse',
       reason: `${documents} is not inside cache's roots (none) or the targets`,
     })
+  })
+
+  test('with reads, git is asked once per repository for the worktrees candidates sit in, and its answers read back', () => {
+    const dev = temp()
+    const repo = join(dev, 'app')
+    mkdirSync(repo)
+    makeGitFixture({ dir: repo, initialBranch: 'main' })
+    sh(repo, ['commit', '--allow-empty', '-m', 'initial'])
+    const away = temp()
+    const [a, b] = [join(away, 'a'), join(away, 'b')]
+    sh(repo, ['worktree', 'add', '-q', a, '-b', 'a'])
+    sh(repo, ['worktree', 'add', '-q', b, '-b', 'b'])
+    mkdirSync(join(a, 'target'))
+    mkdirSync(join(b, 'node_modules'))
+    const reads = gitReads()
+    expect(linkedWorktreeOf([dev], join(a, 'target'), reads)).toBe(a)
+    expect(linkedWorktreeOf([dev], join(b, 'node_modules'), reads)).toBe(b)
+    expect([...reads.main.keys()]).toEqual([a, b])
+    expect([...reads.trees.keys()]).toEqual([repo])
+    // A kept list is read back, not asked again; without reads, git is asked afresh.
+    reads.trees.set(repo, [a])
+    expect(linkedWorktreeOf([dev], join(b, 'node_modules'), reads)).toBeNull()
+    expect(linkedWorktreeOf([dev], join(b, 'node_modules'))).toBe(b)
   })
 
   test('a target itself is refused; a linked checkout of a target outside it is not', async () => {

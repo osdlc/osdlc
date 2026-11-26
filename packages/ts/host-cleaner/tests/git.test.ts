@@ -6,11 +6,12 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  rmSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
@@ -162,6 +163,47 @@ describe('the git plugin', () => {
     expect(ReceiptSchema.parse(JSON.parse(readFileSync(receiptPath, 'utf8'))).status).toBe(
       'complete',
     )
+  })
+
+  test('prunes a worktree whose folder is gone, or left without its .git, registered outside a target that is a folder of repositories', async () => {
+    const fx = fixture()
+    const away = realpathSync(mkdtempSync(join(tmpdir(), 'hc-away-')))
+    cleanups.push(() => rmSync(away, { recursive: true, force: true }))
+    const gone = join(away, 'gone')
+    const left = join(away, 'left')
+    sh(fx.root, ['worktree', 'add', '-q', '-b', 'gone', gone, 'main'])
+    sh(fx.root, ['worktree', 'add', '-q', '-b', 'left', left, 'main'])
+    rmSync(gone, { recursive: true })
+    rmSync(join(left, '.git'))
+    // The target holds the repository and is not one itself.
+    const ctx = fakeContext({ cwd: fx.root, targets: [dirname(fx.root)] })
+    const s = await survey([fx.plugin], ctx)
+    // The gone one first: the prune of the one left would also drop it.
+    const ids = [`worktree:${gone}`, `worktree:${left}`]
+    expect(s.candidates.map((c) => c.id)).toEqual(expect.arrayContaining(ids))
+    expect(s.objections.filter((o) => o.code === 'outside-roots')).toEqual([])
+    expect(s.warnings).toEqual([])
+    const receipt = await clean(plan(s, { select: ids }), [fx.plugin], ctx)
+    expect(receipt.steps.map((x) => [x.id, x.result, x.error])).toEqual(
+      ids.map((id) => [id, 'ok', null]),
+    )
+    expect(sh(fx.root, ['worktree', 'list', '--porcelain'])).not.toContain(away)
+    // A prune leaves the folder.
+    expect(existsSync(left)).toBe(true)
+  })
+
+  test('declares no root for a gone worktree of a repository a target is in, which the core counts already', async () => {
+    const fx = fixture()
+    const away = realpathSync(mkdtempSync(join(tmpdir(), 'hc-away-')))
+    cleanups.push(() => rmSync(away, { recursive: true, force: true }))
+    const gone = join(away, 'gone')
+    sh(fx.root, ['worktree', 'add', '-q', '-b', 'gone', gone, 'main'])
+    rmSync(gone, { recursive: true })
+    const s = await survey([fx.plugin], fx.ctx)
+    expect(s.candidates.map((c) => c.id)).toContain(`worktree:${gone}`)
+    expect(s.objections.filter((o) => o.code === 'outside-roots')).toEqual([])
+    expect(s.warnings).toEqual([])
+    expect(s.roots.git).toEqual([])
   })
 
   test('an unmerged branch needs abandon-unmerged granted by name', async () => {
