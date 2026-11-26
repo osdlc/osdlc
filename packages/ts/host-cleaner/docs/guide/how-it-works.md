@@ -85,7 +85,8 @@ flowchart LR
    warning `<plugin>: <note>`, `status --format json` and `clean --format
    json` carry them under `notes`, and `plugins` shows it after the plugin's
    state. A throw, a time-out, or any other answer leaves it out with a
-   warning. Every hook's `ctx.targetsGiven` says whether the targets were
+   warning (under `plugins`, as the row's reason instead); a `FatalRun`
+   thrown from `detect` stops the run. Every hook's `ctx.targetsGiven` says whether the targets were
    given (on the command line or in the config) or the core fell back to the
    current folder.
 2. **scope.** Plugins add targets: `orca` adds the repositories Orca lists.
