@@ -100,13 +100,17 @@ flowchart LR
    candidate. The core leaves out, with a warning, an entry that is neither and
    every root it refuses; the README lists those under
    [paths, refs and containment](../../README.md#paths-refs-and-containment).
-   It then binds every plugin's kit to its accepted roots, the targets and
+   It asks after `discover`, so a plugin may root what it found: `git`
+   declares a worktree whose folder is gone, or left without its `.git`, as a
+   self root, so its record can still be pruned. It then binds every plugin's kit to its accepted roots, the targets and
    their linked worktrees.
 5. **core objections.** `lost` gets a `discard-user-data` protest and is held;
    `unmeasured` gets an `unmeasured` protest; a path outside its owner's bounds
    is refused `outside-roots`. All are by `host-cleaner`.
 6. **object.** Each plugin objects to any candidate. A throw refuses every
-   candidate with `plugin-error`; `FatalRun` stops the run.
+   candidate with `plugin-error`; `FatalRun` stops the run. An objection a
+   plan would refuse (an unknown level, a reason that is not a string)
+   refuses its candidate with `plugin-error` instead, with a warning.
 7. **decide.** `refuse` blocks, `protest` needs `--allow <code>`, `note` does
    not gate. Held candidates need a pick. Spared ones are dropped.
 8. **re-check.** At `clean`, the core surveys again and decides again. A
@@ -123,7 +127,8 @@ Plugins run one at a time, in the order given. Every hook may return a
 promise. Each call has a limit and its own `ctx.signal`, which is aborted
 when the limit passes (D2). The limit is the plugin's own for that hook when
 it sets one in `limits` (`git`, `cargo` and `node` give `discover` 10
-minutes), else 30 seconds, or 10 minutes for `delete`.
+minutes), else 30 seconds, or 10 minutes for `delete`. An answer past the
+limit is dropped, except `delete`'s, which counts: it has deleted by then.
 
 ## Rules every plugin is held to
 
@@ -172,14 +177,17 @@ same at the re-check, which decides over a new survey:
 
 | `<why>` | When |
 | --- | --- |
-| `needs --pick <id>` | the inner one is held, or not selected, as one no plugin proposed when the plan was made |
+| `needs --pick <id> when the plan is made` | the inner one is held, or not selected, as one no plugin proposed when the plan was made |
 | `needs --allow <codes>` | it carries a protest not granted |
-| `needs --pick <id> --allow <codes>` | both |
+| `needs --pick <id> --allow <codes> when the plan is made` | both |
 | `is refused (<by>: <reason>)` | something refuses it |
 | `is spared (--spare <entry>)` | a `--spare` matched it |
 | `is gone` | no plugin proposes it now, or it is in an `ignore` folder, which a survey leaves out |
 | `is <reason>: <detail>` | its own dropped entry: `is blocked: requires …` down a chain, `is blocked: its requirements form a cycle`, or, at the re-check, `is changed: its evidence moved since the plan` |
 | `does not run` | none of the above applies: it is selected and has no dropped entry, yet does not run |
+
+A saved plan takes no `--pick` at `clean --plan`, so `when the plan is made`
+sends the pick to `plan`, or to `clean` without `--plan`.
 
 The detail shows in the clean preview (text and JSON), in the receipt, and in
 the `clean -i` checklist as a ` (blocked: …)` suffix. A step skipped because a
@@ -214,9 +222,11 @@ helpers the shipped plugins use: `idle`, `size`, `running`, `onPath`,
 Binding is how `kit.remove(path)` knows where it may delete without being
 told. The core binds a kit after the plugin's `roots` hook answers at the
 survey, and again to the roots it fetches right before each `delete`. The
-setter is not on `Kit`, so a plugin cannot widen its own bounds. A kit no run
-has bound removes nothing, so a plugin's `delete` is tested through `survey`
-and `clean`, or `contractSuite`.
+setter is not on `Kit`, so a plugin cannot widen its own bounds. Given
+`delete`'s `ctx`, `kit.remove` holds to that call's bounds, even while another
+run binds the same plugin. `clean` unbinds every kit when it is over. A kit no
+run has bound removes nothing, so a plugin's `delete` is tested through
+`survey` and `clean`, or `contractSuite`.
 
 `cargo.ts` and `node.ts` import nothing from host-cleaner but the kit, the
 types, `helpers.ts` and their shared `artifacts.ts`. `artifacts.ts` is not built as an
@@ -244,7 +254,9 @@ still answers active, with the reason as its note.
 the README's [command line](../../README.md#command-line).
 
 `plugins` runs `detect`, `scope` and `roots` and nothing else (`inspect` in
-`src/run.ts`), with the same limits and the same root checks as the survey. It
+`src/run.ts`), with the same limits and the same root checks as the survey.
+With no `discover`, a root a plugin takes from what it found (git's gone
+worktrees) shows in `status` and not here. It
 prints `targets: <targets>`, `ignoring: <paths>` when there are any, then one
 line per plugin:
 
@@ -256,7 +268,8 @@ line per plugin:
   [which plugins run here](../../README.md#which-plugins-run-here) says which.
 - `<state>` is `disabled`, `not detected`, or `detected; roots: <roots>`. A
   self root is followed by ` (itself too)`; a plugin with no roots reads
-  `none, the targets alone`.
+  `none, the targets alone`, followed by why in brackets when its `roots`
+  threw or timed out, or the core refused every root it gave.
 - `<reason>` says why it does not run: the config disables it, or `detect`
   threw, timed out, or answered something that is neither a boolean nor
   `{ active, note? }`.
