@@ -609,11 +609,6 @@ describe('a bad descriptor names the field path', () => {
       PNPM.replace("'{path}']", "'{path}']\n    env: { CACHE: '${XDG_CACHE_HOME}/x' }"),
       'line 13: candidates.0.env.CACHE: ${ is not filled here: variables are filled only in paths, vars and locks',
     ],
-    [
-      'a variable name that is no environment variable name',
-      PNPM.replace('  STORE:', '  pnpm-store:'),
-      'line 4: vars.pnpm-store: Invalid key in record',
-    ],
   ])('%s', (_, text, issue) => {
     expect(issues(text)).toEqual([issue])
   })
@@ -622,6 +617,28 @@ describe('a bad descriptor names the field path', () => {
     const text = GO.replace('- value: ~/go', "- value: '${GOMODCACHE}/go'")
     expect(issues(text)).toEqual([
       'line 6: vars.GOPATH: GOPATH refers back to itself: GOPATH -> GOMODCACHE -> GOPATH',
+    ])
+  })
+
+  test("the variables' problems are listed beside a type error", () => {
+    const typeError = (text: string) =>
+      text.replace('removes: unused', 'removes: unused\n    idleHours: x')
+    expect(
+      issues(typeError(PNPM.replace('${XDG_DATA_HOME}/pnpm/store', '${DATA}/pnpm/store'))),
+    ).toEqual([
+      'line 14: candidates.0.idleHours: Invalid input: expected number, received string',
+      'line 6: vars.STORE.1.value.linux: no variable ${DATA}: declare it in vars',
+    ])
+    expect(issues(typeError(PNPM.replace('${XDG_DATA_HOME}/pnpm/store', '${STORE}/v10')))).toEqual([
+      'line 14: candidates.0.idleHours: Invalid input: expected number, received string',
+      'line 4: vars.STORE: STORE refers back to itself: STORE -> STORE',
+    ])
+  })
+
+  test('a variable name that is no environment variable name leaves its uses undeclared', () => {
+    expect(issues(PNPM.replace('  STORE:', '  pnpm-store:'))).toEqual([
+      'line 4: vars.pnpm-store: Invalid key in record',
+      'line 8: paths.store.all: no variable ${STORE}: declare it in vars',
     ])
   })
 
