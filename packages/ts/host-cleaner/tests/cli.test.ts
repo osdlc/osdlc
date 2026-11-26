@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -15,13 +16,25 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
+import { fakeNeverExited, fakeRunner } from '@osdlc/command-seam/testing'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, tildeId, untildeId, untildeSpare, type MainDeps } from '../src/cli.ts'
 import { hostDirs } from '../src/config.ts'
 import { PLAN_VERSION, parsePlan } from '../src/plan.ts'
-import type { Candidate, Objection, Plugin, RefCandidate } from '../src/index.ts'
+import {
+  BUILT_IN_PLUGINS,
+  descriptorPlugin,
+  orcaPlugin,
+  parseDescriptor,
+  pluginKit,
+  type Candidate,
+  type Objection,
+  type Plugin,
+  type RefCandidate,
+} from '../src/index.ts'
+import { fakeRunner as kitRunner, tempHome } from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -93,7 +106,10 @@ async function run(argv: string[], cwd: string, env: Record<string, string>, dep
   const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
   const skip = ['--skip-plugin', 'orca', '--skip-plugin', 'cargo']
   const args = phase && deps.plugins === undefined ? [...argv, ...skip] : argv
-  const code = await main(args, ctx, { confirm: () => null, ...deps })
+  // The shipped descriptors would make each run depend on this machine: their detection looks for
+  // tools on its PATH, and their in-use checks read its process table.
+  const shippedDescriptors = deps.shippedDescriptors ?? tempDir()
+  const code = await main(args, ctx, { confirm: () => null, ...deps, shippedDescriptors })
   return { code, out: ctx.io.out, err: ctx.io.err }
 }
 
@@ -144,10 +160,10 @@ describe('phases', () => {
     expect(r.err).toContain('is not a phase')
   })
 
-  test('as root status, plan and clean are refused with exit 1 and nothing runs; config and --help still answer', async () => {
+  test('as root status, plan, clean and plugins are refused with exit 1 and nothing runs; config and --help still answer', async () => {
     const { env, cwd } = setup()
     const plugin = fake()
-    for (const phase of ['status', 'plan', 'clean']) {
+    for (const phase of ['status', 'plan', 'clean', 'plugins']) {
       const r = await run([phase, '--yes'], cwd, env, { plugins: [plugin], uid: 0 })
       expect(r.code).toBe(1)
       expect(r.err).toContain('refusing to run as root')
@@ -300,10 +316,14 @@ describe('status', () => {
     const bad = await run(['status', '--config', config], cwd, env)
     expect(bad.code).toBe(2)
     expect(bad.err).toContain('plugins.cargo.idleHours')
+    // A name no plugin has may be a descriptor this run does not load: status warns, clean stops.
     writeFileSync(config, JSON.stringify({ plugins: { ghost: {} } }))
     const r = await run(['status', '--config', config], cwd, env)
-    expect(r.code).toBe(2)
-    expect(r.err).toContain('ghost')
+    expect(r.code).not.toBe(2)
+    expect(r.err).toContain('config names no plugin ghost')
+    const clean = await run(['clean', '--config', config, '--yes'], cwd, env)
+    expect(clean.code).toBe(2)
+    expect(clean.err).toContain('config names no plugin ghost')
   })
 
   test('there are no profiles: --profile is an unknown option and a profiles key is refused', async () => {
@@ -316,6 +336,521 @@ describe('status', () => {
     const r = await run(['status', '--config', config], cwd, env)
     expect(r.code).toBe(2)
     expect(r.err).toContain('profiles')
+  })
+})
+
+describe('plugins', () => {
+  /** The real orca plugin over a fake `orca` CLI whose `status` says the app is not reachable. */
+  const orcaDown = () => {
+    const ok = (result: unknown) => ({ stdout: JSON.stringify({ id: 'x', ok: true, result }) })
+    const cli = fakeRunner((argv) =>
+      argv[0] === 'status' ? ok({ runtime: { reachable: false } }) : undefined,
+    )
+    return orcaPlugin({ orca: cli.runner })
+  }
+
+  const plugins = (): Plugin[] => [
+    { ...fake('git'), roots: () => ['/cache/git'] },
+    fake('cargo'),
+    { ...fake('node'), detect: () => false },
+    orcaDown(),
+  ]
+
+  test('Orca not running shows as detected with its note, beside each plugin’s own source (orca built in, though main was handed it), detection and roots', async () => {
+    const { env, cwd } = setup()
+    const r = await run(['plugins'], cwd, env, { plugins: plugins() })
+    expect(r.code).toBe(0)
+    expect(r.err).toBe('')
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  git    given     detected; roots: /cache/git',
+        '  cargo  given     detected; roots: none, the targets alone',
+        '  node   given     not detected',
+        '  orca   built-in  detected; roots: none, the targets alone; note: Orca is installed but not running',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  test('json carries every plugin, and one the config disables is listed without running detect', async () => {
+    const { env, cwd, home } = setup()
+    const file = join(home, 'c.json')
+    writeFileSync(file, JSON.stringify({ plugins: { cargo: { enabled: false } } }))
+    const all = plugins()
+    let asked = false
+    all[1] = { ...all[1]!, detect: () => (asked = true) }
+    const r = await run(['plugins', '--config', file, '--format', 'json'], cwd, env, {
+      plugins: all,
+    })
+    expect(r.code).toBe(0)
+    expect(asked).toBe(false)
+    expect(JSON.parse(r.out)).toEqual({
+      targets: [cwd],
+      ignore: [],
+      warnings: [],
+      plugins: [
+        {
+          name: 'git',
+          source: 'given',
+          enabled: true,
+          detected: true,
+          reason: null,
+          roots: ['/cache/git'],
+          rootsFailed: null,
+          selfRoots: [],
+          note: null,
+          vars: [],
+        },
+        {
+          name: 'cargo',
+          source: 'given',
+          enabled: false,
+          detected: false,
+          reason: 'plugins.cargo.enabled is false',
+          roots: [],
+          rootsFailed: null,
+          selfRoots: [],
+          note: null,
+          vars: [],
+        },
+        {
+          name: 'node',
+          source: 'given',
+          enabled: true,
+          detected: false,
+          reason: null,
+          roots: [],
+          rootsFailed: null,
+          selfRoots: [],
+          note: null,
+          vars: [],
+        },
+        {
+          name: 'orca',
+          source: 'built-in',
+          enabled: true,
+          detected: true,
+          reason: null,
+          roots: [],
+          rootsFailed: null,
+          selfRoots: [],
+          note: 'Orca is installed but not running',
+          vars: [],
+        },
+      ],
+    })
+  })
+
+  /** Go's module cache: GOMODCACHE, then `go env`, then under GOPATH; a build cache under XDG_CACHE_HOME; and a folder with no value. */
+  const GO = `descriptor: 1
+detect:
+  any: [{ onPath: go }]
+vars:
+  GOPATH:
+    - env: GOPATH
+    - value: ~/go
+  GOMODCACHE:
+    - env: GOMODCACHE
+    - command: [go, env, GOMODCACHE]
+    - value: '\${GOPATH}/pkg/mod'
+  TOOLDIR:
+    - env: GO_TOOL_DIR
+paths:
+  modcache: { all: '\${GOMODCACHE}' }
+  buildcache: { all: '\${XDG_CACHE_HOME}/go-build' }
+  tools: { all: '\${TOOLDIR}' }
+candidates:
+  - { path: modcache, costDescription: re-download }
+  - { path: buildcache, costDescription: rebuild }
+  - { path: tools, costDescription: rebuild }
+`
+
+  /**
+   * The go descriptor, shipped, and a plugin built from it over a fixture home
+   * whose `go env GOMODCACHE` never answers, for a program to pass to `main`.
+   */
+  function goHungEnv() {
+    const h = tempHome()
+    cleanups.push(h.cleanup)
+    const shipped = tempDir()
+    writeFileSync(join(shipped, 'go.yaml'), GO)
+    const fake = kitRunner({ go: { 'env GOMODCACHE': fakeNeverExited('timeout') } })
+    const go = descriptorPlugin('go', parseDescriptor(GO, 'go.yaml'), { ownDirs: [] }).create({
+      settings: { idleHours: 0 },
+      only: [],
+      env: h.env,
+      kit: pluginKit('go', { env: h.env, ...fake }),
+    })
+    return { home: h.home, shipped, go }
+  }
+
+  test('a timed-out command shows as such, with the source used after it: one line per variable', async () => {
+    const { env, cwd } = setup()
+    const { home, shipped, go } = goHungEnv()
+    // A given plugin is `given`, though a shipped descriptor has its name.
+    const r = await run(
+      ['plugins'],
+      cwd,
+      { ...env, HOME: home },
+      {
+        plugins: [fake('git'), go],
+        shippedDescriptors: shipped,
+      },
+    )
+    expect(r.code).toBe(0)
+    expect(r.err).toBe('')
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  git  given  detected; roots: none, the targets alone',
+        `  go   given  detected; roots: ${join(home, 'go/pkg/mod')} (itself too), ${join(home, '.cache/go-build')} (itself too); note: tools is left out: \${TOOLDIR} has no value (env GO_TOOL_DIR: not set)`,
+        `    \${XDG_CACHE_HOME}  = ${join(home, '.cache')}  from default (tried env XDG_CACHE_HOME: not set)`,
+        `    \${GOPATH}          = ${join(home, 'go')}  from value (tried env GOPATH: not set)`,
+        `    \${GOMODCACHE}      = ${join(home, 'go/pkg/mod')}  from value (tried env GOMODCACHE: not set; command go env GOMODCACHE: timed out after 5 s)`,
+        '    ${TOOLDIR}         has no value (tried env GO_TOOL_DIR: not set)',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  test('json gives each variable its value, the source that gave it and every source that failed', async () => {
+    const { env, cwd } = setup()
+    const { home, shipped, go } = goHungEnv()
+    const r = await run(
+      ['plugins', '--format', 'json'],
+      cwd,
+      { ...env, HOME: home },
+      {
+        plugins: [go],
+        shippedDescriptors: shipped,
+      },
+    )
+    expect(r.code).toBe(0)
+    const [row] = JSON.parse(r.out).plugins
+    expect(row.source).toBe('given')
+    expect(row.replaces).toBeUndefined()
+    expect(row.vars).toEqual([
+      {
+        name: 'XDG_CACHE_HOME',
+        value: join(home, '.cache'),
+        from: 'default',
+        trusted: false,
+        tried: [{ source: 'env XDG_CACHE_HOME', failed: 'not set' }],
+      },
+      {
+        name: 'GOPATH',
+        value: join(home, 'go'),
+        from: 'value',
+        trusted: false,
+        tried: [{ source: 'env GOPATH', failed: 'not set' }],
+      },
+      {
+        name: 'GOMODCACHE',
+        value: join(home, 'go/pkg/mod'),
+        from: 'value',
+        trusted: false,
+        tried: [
+          { source: 'env GOMODCACHE', failed: 'not set' },
+          { source: 'command go env GOMODCACHE', failed: 'timed out after 5 s' },
+        ],
+      },
+      {
+        name: 'TOOLDIR',
+        value: null,
+        from: null,
+        trusted: false,
+        tried: [{ source: 'env GO_TOOL_DIR', failed: 'not set' }],
+      },
+    ])
+  })
+
+  test('it proposes and deletes nothing, and a config naming no plugin is a warning', async () => {
+    const { env, cwd, home } = setup()
+    let discovered = false
+    const plugin = { ...fake(), discover: () => ((discovered = true), []) }
+    expect((await run(['plugins'], cwd, env, { plugins: [plugin] })).code).toBe(0)
+    expect(discovered).toBe(false)
+    expect(plugin.removed).toEqual([])
+    const file = join(home, 'c.json')
+    writeFileSync(file, JSON.stringify({ plugins: { ghost: {} } }))
+    const r = await run(['plugins', '--config', file], cwd, env, { plugins: [plugin] })
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('config names no plugin ghost')
+  })
+
+  test('a second plugin of one name gets no row of its own, and the warning says it was left out', async () => {
+    const { env, cwd } = setup()
+    const twice = [
+      { ...fake('x'), roots: () => ['/cache/first'] },
+      { ...fake('x'), roots: () => ['/cache/second'] },
+    ]
+    const r = await run(['plugins'], cwd, env, { plugins: twice })
+    expect(r.code).toBe(0)
+    expect(r.out).toBe(
+      [`targets: ${cwd}`, '  x  given  detected; roots: /cache/first', ''].join('\n'),
+    )
+    expect(r.err).toContain('x: a second plugin of that name was left out')
+  })
+
+  test('a roots hook that failed, or whose every root was refused, says so: its candidates outside the targets are refused', async () => {
+    const { env, cwd } = setup()
+    const plugins = (): Plugin[] => [
+      fake('none'),
+      {
+        ...fake('broke'),
+        roots: () => {
+          throw new Error('no\nfolder')
+        },
+      },
+      { ...fake('wide'), roots: () => ['/'] },
+    ]
+    const r = await run(['plugins'], cwd, env, { plugins: plugins() })
+    expect(r.code).toBe(0)
+    const lines = r.out.split('\n')
+    expect(lines.slice(1, 3)).toEqual([
+      '  none   given  detected; roots: none, the targets alone',
+      '  broke  given  detected; roots: none, the targets alone (roots failed: no folder)',
+    ])
+    expect(lines[3]).toMatch(
+      /^ {2}wide {3}given {2}detected; roots: none, the targets alone \(roots: left out the root \/: .+\)$/,
+    )
+    const json = await run(['plugins', '--format', 'json'], cwd, env, { plugins: plugins() })
+    const rows = JSON.parse(json.out).plugins
+    expect(rows.map((row: { rootsFailed: string | null }) => row.rootsFailed)).toEqual([
+      null,
+      'roots failed: no\nfolder',
+      expect.stringMatching(/^roots: left out the root \/: /),
+    ])
+  })
+
+  test("a variable's value, source or failure keeps to its own line", async () => {
+    const { env, cwd } = setup()
+    const h = tempHome()
+    cleanups.push(h.cleanup)
+    const text = `descriptor: 1
+detect:
+  any: [{ onPath: mine }, { exists: store }]
+vars:
+  DIR:
+    - env: MINE_DIR
+paths:
+  store: { all: '\${DIR}' }
+candidates:
+  - { path: store, costDescription: re-download }
+`
+    const mineEnv = { ...h.env, MINE_DIR: '/x\n  ${OTHER} = /y' }
+    const mine = descriptorPlugin('mine', parseDescriptor(text, 'mine.yaml'), {
+      ownDirs: [],
+    }).create({
+      settings: { idleHours: 0 },
+      only: [],
+      env: mineEnv,
+      kit: pluginKit('mine', { env: mineEnv }),
+    })
+    const r = await run(['plugins'], cwd, { ...env, HOME: h.home }, { plugins: [mine] })
+    expect(r.code).toBe(0)
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  mine  given  not detected',
+        '    ${DIR}  = /x   ${OTHER} = /y  from env MINE_DIR',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  test('a degraded plugin shows as detected with its note, in text and json, and a self root is marked', async () => {
+    const { env, cwd } = setup()
+    const cache = tempDir()
+    const noted = (): Plugin[] => [
+      {
+        ...fake('git'),
+        detect: () => ({ active: true, note: 'one note' }),
+        roots: () => [{ path: cache, self: true }],
+      },
+      { ...fake('cargo'), detect: () => ({ active: false, note: 'no cargo' }) },
+    ]
+    const r = await run(['plugins'], cwd, env, { plugins: noted() })
+    expect(r.code).toBe(0)
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        `  git    given  detected; roots: ${cache} (itself too); note: one note`,
+        '  cargo  given  not detected; note: no cargo',
+        '',
+      ].join('\n'),
+    )
+    const json = await run(['plugins', '--format', 'json'], cwd, env, { plugins: noted() })
+    expect(json.code).toBe(0)
+    expect(JSON.parse(json.out).plugins).toEqual([
+      {
+        name: 'git',
+        source: 'given',
+        enabled: true,
+        detected: true,
+        reason: null,
+        roots: [cache],
+        rootsFailed: null,
+        selfRoots: [cache],
+        note: 'one note',
+        vars: [],
+      },
+      {
+        name: 'cargo',
+        source: 'given',
+        enabled: true,
+        detected: false,
+        reason: null,
+        roots: [],
+        rootsFailed: null,
+        selfRoots: [],
+        note: 'no cargo',
+        vars: [],
+      },
+    ])
+  })
+
+  test('a second plugin of a name is one row with a warning, and a multi-line detect error stays on its row', async () => {
+    const { env, cwd } = setup()
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [
+        {
+          ...fake('a'),
+          detect: () => {
+            throw new Error('stderr line one\nstderr line two')
+          },
+        },
+        { ...fake('a'), detect: () => true },
+      ],
+    })
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('a: a second plugin of that name was left out')
+    expect(r.out).toBe(
+      [`targets: ${cwd}`, '  a  given  not detected: stderr line one stderr line two', ''].join(
+        '\n',
+      ),
+    )
+  })
+
+  test('the shipped plugins are built in, a disabled one too', async () => {
+    const { env, cwd, home } = setup()
+    const file = join(home, 'c.json')
+    // Orca's detect would talk to this machine's Orca.
+    writeFileSync(file, JSON.stringify({ plugins: { orca: { enabled: false } } }))
+    const r = await run(['plugins', '--config', file, '--format', 'json'], cwd, env)
+    expect(r.code).toBe(0)
+    const rows = JSON.parse(r.out).plugins as Array<{ name: string; source: string }>
+    expect(rows.map((p) => [p.name, p.source])).toEqual(
+      BUILT_IN_PLUGINS.map((d) => [d.name, 'built-in']),
+    )
+  })
+
+  test('a line break in a root, or in a target a plugin adds, does not split its line', async () => {
+    const { env, cwd } = setup()
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [{ ...fake('a'), scope: () => ['/s\nt'], roots: () => ['/cache\none  two'] }],
+    })
+    expect(r.out).toBe(
+      [`targets: ${cwd}, /s t`, '  a  given  detected; roots: /cache one  two', ''].join('\n'),
+    )
+  })
+
+  test('a variable whose plugin names no source ends at its value', async () => {
+    const { env, cwd } = setup()
+    const vars = { X: { value: '/a', trusted: false, tried: [] } }
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [{ ...fake('a'), detect: () => ({ active: true, vars }) }],
+    })
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  a  given  detected; roots: none, the targets alone',
+        '    ${X}  = /a',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  test('a line break in a plugin name does not split its row or widen the column', async () => {
+    const { env, cwd } = setup()
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [{ ...fake('a\nb'), detect: () => false }, fake('cc')],
+    })
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  a b  given  not detected',
+        '  cc   given  detected; roots: none, the targets alone',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  test('a failed roots says why the plugin has none, in text and json', async () => {
+    const { env, cwd } = setup()
+    const failing = (): Plugin[] => [
+      {
+        ...fake('a'),
+        roots: () => {
+          throw new Error('timed\nout')
+        },
+      },
+    ]
+    const r = await run(['plugins'], cwd, env, { plugins: failing() })
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  a  given  detected; roots: none, the targets alone (roots failed: timed out)',
+        '',
+      ].join('\n'),
+    )
+    const json = await run(['plugins', '--format', 'json'], cwd, env, { plugins: failing() })
+    expect(JSON.parse(json.out).plugins[0].rootsFailed).toBe('roots failed: timed\nout')
+  })
+
+  test('a multi-line note stays on its row', async () => {
+    const { env, cwd } = setup()
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [
+        { ...fake('a'), detect: () => ({ active: false, note: 'installed\nbut not running' }) },
+      ],
+    })
+    expect(r.out).toBe(
+      [`targets: ${cwd}`, '  a  given  not detected; note: installed but not running', ''].join(
+        '\n',
+      ),
+    )
+  })
+
+  test('a second plugin of a name is warned of whether the config disables it or not', async () => {
+    const { env, cwd, home } = setup()
+    const file = join(home, 'c.json')
+    writeFileSync(file, JSON.stringify({ plugins: { x: { enabled: false } } }))
+    const r = await run(['plugins', '--config', file], cwd, env, {
+      plugins: [fake('x'), fake('x')],
+    })
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('x: a second plugin of that name was left out')
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  x  given  disabled: plugins.x.enabled is false; status, plan or clean with --plugin x runs it anyway',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  test('an ignored target is shown as ignored, in text and json', async () => {
+    const { env, cwd } = setup()
+    const plugins = [fake('a')]
+    const args = ['plugins', cwd, '--ignore', cwd]
+    const r = await run(args, cwd, env, { plugins })
+    expect(r.code).toBe(0)
+    expect(r.out).toMatch(/^targets: \(none\)\nignoring: \S/)
+    const json = JSON.parse((await run([...args, '--format', 'json'], cwd, env, { plugins })).out)
+    expect(json.targets).toEqual([])
+    expect(json.ignore).toHaveLength(1)
   })
 })
 
@@ -368,13 +903,534 @@ describe('plugin settings', () => {
     expect(json.plugins.git).toEqual({ enabled: true })
   })
 
-  test('config refuses a bad config and a plugin nobody has', async () => {
+  test('config refuses a bad config and warns of a plugin nobody has', async () => {
     const bad = withConfig({ plugins: { cargo: { nope: 1 } } })
     expect((await run(['config', '--config', bad.file], bad.cwd, bad.env)).code).toBe(2)
     const ghost = withConfig({ plugins: { ghost: {} } })
     const r = await run(['config', '--config', ghost.file], ghost.cwd, ghost.env)
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('config names no plugin ghost')
+  })
+})
+
+describe('descriptors', () => {
+  /** A descriptor whose one folder is `~/<folder>`. */
+  const store = (folder: string, extra = ''): string => `descriptor: 1
+paths:
+  store: { all: ~/${folder} }
+candidates:
+  - { path: store, costDescription: re-download }
+${extra}`
+
+  /**
+   * A fixture home, its `.cache/<name>` folders made with a file in each, an
+   * empty shipped folder by default, and the user's descriptor folder.
+   */
+  function withHome(made: string[] = []) {
+    const { env, cwd, home } = setup()
+    for (const name of made) {
+      mkdirSync(join(home, '.cache', name), { recursive: true })
+      writeFileSync(join(home, '.cache', name, 'blob'), 'x')
+    }
+    const user = join(hostDirs(env).config, 'descriptors')
+    mkdirSync(user, { recursive: true })
+    const shipped = join(tempDir(), 'shipped')
+    mkdirSync(shipped)
+    return { env: { ...env, HOME: home }, cwd, home, user, shipped }
+  }
+
+  test('status --descriptor <file> --plugin <name> shows what that one descriptor would propose', async () => {
+    const h = withHome(['mine'])
+    const file = join(h.cwd, 'mine.yaml')
+    writeFileSync(file, store('.cache/mine'))
+    const r = await run(['status', '--descriptor', file, '--plugin', 'mine'], h.cwd, h.env, {
+      shippedDescriptors: h.shipped,
+    })
+    expect(r.code).toBe(0)
+    expect(r.out).toContain('plugins: mine\n')
+    expect(r.out).toMatch(/review\s+re-download mine:~\/\.cache\/mine\n/)
+    expect(r.out).toContain('(threshold 24)')
+  })
+
+  test('a descriptor named git is an error, from the user folder or --descriptor', async () => {
+    const h = withHome()
+    writeFileSync(join(h.user, 'git.yaml'), store('.cache/git'))
+    const r = await run(['status'], h.cwd, h.env, { shippedDescriptors: h.shipped })
     expect(r.code).toBe(2)
-    expect(r.err).toContain('ghost')
+    expect(r.err).toContain(`descriptor ${join(h.user, 'git.yaml')} is named git`)
+    rmSync(join(h.user, 'git.yaml'))
+    const file = join(h.cwd, 'git.yaml')
+    writeFileSync(file, store('.cache/git'))
+    const flag = await run(['status', '--descriptor', file], h.cwd, h.env, {
+      shippedDescriptors: h.shipped,
+    })
+    expect(flag.code).toBe(2)
+    expect(flag.err).toContain('is named git, as the built-in plugin')
+  })
+
+  test('a user pnpm.yaml replaces the shipped one; --descriptor replaces both for one run', async () => {
+    const h = withHome(['shipped-pnpm', 'user-pnpm', 'flag-pnpm'])
+    writeFileSync(join(h.shipped, 'pnpm.yaml'), store('.cache/shipped-pnpm'))
+    const status = async (...extra: string[]) =>
+      (
+        await run(['status', '--plugin', 'pnpm', ...extra], h.cwd, h.env, {
+          shippedDescriptors: h.shipped,
+        })
+      ).out
+    expect(await status()).toContain('pnpm:~/.cache/shipped-pnpm')
+    writeFileSync(join(h.user, 'pnpm.yaml'), store('.cache/user-pnpm'))
+    const replaced = await status()
+    expect(replaced).toContain('pnpm:~/.cache/user-pnpm')
+    expect(replaced).not.toContain('shipped-pnpm')
+    const file = join(h.cwd, 'pnpm.yaml')
+    writeFileSync(file, store('.cache/flag-pnpm'))
+    const once = await status('--descriptor', file)
+    expect(once).toContain('pnpm:~/.cache/flag-pnpm')
+    expect(once).not.toContain('user-pnpm')
+    const listed = async (...extra: string[]) =>
+      (
+        await run(['plugins', '--format', 'json', ...extra], h.cwd, h.env, {
+          shippedDescriptors: h.shipped,
+        })
+      ).out
+    const pnpm = (out: string) =>
+      JSON.parse(out).plugins.find((p: { name: string }) => p.name === 'pnpm')
+    expect(pnpm(await listed())).toMatchObject({
+      source: 'user',
+      replaces: { source: 'shipped', path: join(h.shipped, 'pnpm.yaml') },
+    })
+    expect(pnpm(await listed('--descriptor', file))).toMatchObject({
+      source: 'flag',
+      replaces: { source: 'user', path: join(h.user, 'pnpm.yaml') },
+    })
+    const text = (await run(['plugins'], h.cwd, h.env, { shippedDescriptors: h.shipped })).out
+    expect(text.split('\n').find((l) => l.startsWith('  pnpm '))).toMatch(
+      `; replaces the shipped ${join(h.shipped, 'pnpm.yaml')}`,
+    )
+  })
+
+  test('descriptors run after the built-ins, by name', async () => {
+    const h = withHome(['b', 'a'])
+    writeFileSync(join(h.user, 'zeta.yaml'), store('.cache/b'))
+    writeFileSync(join(h.shipped, 'alpha.yaml'), store('.cache/a'))
+    const r = await run(['status', '--skip-plugin', 'cargo,node'], h.cwd, h.env, {
+      shippedDescriptors: h.shipped,
+    })
+    expect(r.out).toContain('plugins: git, alpha, zeta\n')
+  })
+
+  test('plugins.<name>.enabled and idleHours apply to a descriptor', async () => {
+    const h = withHome(['mine'])
+    writeFileSync(join(h.user, 'mine.yaml'), store('.cache/mine'))
+    const file = join(h.home, 'config.json')
+    const status = async (config: unknown, ...extra: string[]) => {
+      writeFileSync(file, JSON.stringify(config))
+      return run(
+        ['status', '--config', file, '--skip-plugin', 'cargo,node', ...extra],
+        h.cwd,
+        h.env,
+        {
+          shippedDescriptors: h.shipped,
+        },
+      )
+    }
+    const off = { plugins: { mine: { enabled: false } } }
+    expect((await status(off)).out).not.toContain('mine:')
+    expect((await status(off, '--plugin', 'mine')).out).toContain('mine:~/.cache/mine')
+    expect((await status({ idleHours: 5 })).out).toContain('(threshold 5)')
+    const own = (await status({ idleHours: 5, plugins: { mine: { idleHours: 0 } } })).out
+    expect(own).toContain('(threshold 0)')
+    expect(own).toMatch(/delete\s+re-download mine:~\/\.cache\/mine/)
+    const bad = await status({ plugins: { mine: { idleHours: -1, nope: 1 } } })
+    expect(bad.code).toBe(2)
+    expect(bad.err).toContain('plugins.mine.idleHours')
+    expect(bad.err).toContain('nope')
+  })
+
+  test("an entry's own idleHours: plugins.<name>.idleHours wins, the top-level one raises it, and config says what the run uses", async () => {
+    const h = withHome(['mine'])
+    writeFileSync(
+      join(h.shipped, 'mine.yaml'),
+      store('.cache/mine').replace('re-download }', 're-download, idleHours: 720 }') +
+        "project:\n  - { dir: out, marker: '*.x', costDescription: rebuild, idleHours: 168 }\n",
+    )
+    const file = join(h.home, 'config.json')
+    const deps = { shippedDescriptors: h.shipped }
+    for (const [config, setting, own, project] of [
+      [{}, 24, 720, 168],
+      [{ idleHours: 0 }, 0, 720, 168],
+      [{ idleHours: 200 }, 200, 720, 200],
+      [{ idleHours: 4000 }, 4000, 4000, 4000],
+      [{ plugins: { mine: { idleHours: 4000 } } }, 4000, 4000, 4000],
+      [{ plugins: { mine: { idleHours: 1 } } }, 1, 1, 1],
+      [{ idleHours: 4000, plugins: { mine: { idleHours: 1 } } }, 1, 1, 1],
+    ] as const) {
+      writeFileSync(file, JSON.stringify(config))
+      const what = JSON.stringify(config)
+      const common = ['--config', file]
+      const status = await run(['status', '--plugin', 'mine', ...common], h.cwd, h.env, deps)
+      expect(status.out, what).toContain(`(threshold ${own})`)
+      const text = await run(['config', ...common], h.cwd, h.env, deps)
+      expect(text.out, what).toMatch(
+        new RegExp(
+          `plugins\\.mine\\n.*\\n {2}idleHours = ${setting} .*\\n {4}store: idleHours = ${own}\\n {4}out beside \\*\\.x: idleHours = ${project}\\n`,
+        ),
+      )
+      const json = await run(['config', '--format', 'json', ...common], h.cwd, h.env, deps)
+      expect(JSON.parse(json.out), what).toMatchObject({
+        plugins: { mine: { idleHours: setting } },
+        partIdleHours: {
+          mine: [
+            { part: 'store', idleHours: own },
+            { part: 'out beside *.x', idleHours: project },
+          ],
+        },
+      })
+    }
+  })
+
+  test('config prints a descriptor’s settings; --descriptor adds one for that run', async () => {
+    const h = withHome()
+    writeFileSync(join(h.user, 'mine.yaml'), store('.cache/mine'))
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { mine: { idleHours: 48 } } }))
+    const deps = { shippedDescriptors: h.shipped }
+    const r = await run(['config', '--config', file], h.cwd, h.env, deps)
+    expect(r.code).toBe(0)
+    expect(r.out).toMatch(/plugins\.mine\n {2}enabled = true {2}\(default\)/)
+    expect(r.out).toMatch(/idleHours = 48 {2}\(config\)/)
+    const extra = join(h.cwd, 'extra.yaml')
+    writeFileSync(extra, store('.cache/extra'))
+    const json = JSON.parse(
+      (await run(['config', '--descriptor', extra, '--format', 'json'], h.cwd, h.env, deps)).out,
+    )
+    expect(json.plugins.extra).toEqual({ enabled: true, idleHours: 24 })
+  })
+
+  test('plugins says where each descriptor came from and shows its variables, even when it is not detected', async () => {
+    const h = withHome()
+    writeFileSync(
+      join(h.user, 'mine.yaml'),
+      `descriptor: 1
+vars:
+  DIR:
+    - env: MINE_DIR
+    - value: ~/.cache/mine
+paths:
+  store: { all: '\${DIR}' }
+candidates:
+  - { path: store, costDescription: re-download }
+`,
+    )
+    const extra = join(h.cwd, 'extra.yaml')
+    writeFileSync(extra, store('.cache/extra'))
+    const file = join(h.home, 'config.json')
+    const config = { orca: { enabled: false }, mine: { vars: { DIR: '~/elsewhere' } } }
+    writeFileSync(file, JSON.stringify({ plugins: config }))
+    const r = await run(
+      ['plugins', '--config', file, '--descriptor', extra, '--format', 'json'],
+      h.cwd,
+      h.env,
+      { shippedDescriptors: h.shipped },
+    )
+    expect(r.code).toBe(0)
+    const rows = Object.fromEntries(
+      JSON.parse(r.out).plugins.map((p: { name: string }) => [p.name, p]),
+    )
+    expect(rows.git).toMatchObject({ source: 'built-in', vars: [] })
+    expect(rows.orca).toMatchObject({ enabled: false, vars: [] })
+    expect(rows.mine).toMatchObject({
+      source: 'user',
+      detected: false,
+      vars: [
+        { name: 'DIR', value: join(h.home, 'elsewhere'), from: 'config', trusted: true, tried: [] },
+      ],
+    })
+    expect(rows.extra).toMatchObject({ source: 'flag', vars: [] })
+  })
+
+  test('a descriptor file that is not valid is refused with exit 2, naming the file and the line', async () => {
+    const h = withHome()
+    writeFileSync(join(h.user, 'mine.yaml'), 'descriptor: 1\npaths: {}\ncandidates: []\n')
+    const r = await run(['status'], h.cwd, h.env, { shippedDescriptors: h.shipped })
+    expect(r.code).toBe(2)
+    expect(r.err).toContain(`bad descriptor ${join(h.user, 'mine.yaml')}: line 2: paths`)
+  })
+
+  test('a bad descriptor stops only a run that uses it; config reports it and goes on', async () => {
+    const h = withHome()
+    writeFileSync(join(h.user, 'mine.yaml'), 'descriptor: 1\npaths: {}\ncandidates: []\n')
+    writeFileSync(join(h.user, 'My_tool.yaml'), store('.cache/x'))
+    const deps = { shippedDescriptors: h.shipped }
+    const bad = `bad descriptor ${join(h.user, 'mine.yaml')}`
+    for (const argv of [
+      ['status', '--plugin', 'git'],
+      ['status', '--skip-plugin', 'mine,My_tool'],
+      ['plan', '--plugin', 'git', '-o', '-'],
+    ]) {
+      const r = await run(argv, h.cwd, h.env, deps)
+      expect(r.code, argv.join(' ')).not.toBe(2)
+      expect(r.err).toContain(bad)
+    }
+    expect((await run(['status', '--skip-plugin', 'mine'], h.cwd, h.env, deps)).code).toBe(2)
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { mine: { enabled: false } } }))
+    const off = await run(
+      ['status', '--config', file, '--skip-plugin', 'My_tool'],
+      h.cwd,
+      h.env,
+      deps,
+    )
+    expect(off.code).not.toBe(2)
+    for (const argv of [
+      ['status'],
+      ['plan', '-o', '-'],
+      ['clean', '--yes'],
+      ['clean', '--plugin', 'mine', '--yes'],
+    ]) {
+      const r = await run(argv, h.cwd, h.env, deps)
+      expect(r.code, argv.join(' ')).toBe(2)
+    }
+    const named = await run(['status', '--config', file, '--plugin', 'mine'], h.cwd, h.env, deps)
+    expect(named.code).toBe(2)
+    expect(named.err).toContain(bad)
+    const config = await run(['config'], h.cwd, h.env, deps)
+    expect(config.code).toBe(0)
+    expect(config.err).toContain(bad)
+    expect(config.err).toContain('"My_tool" is not a plugin name')
+  })
+
+  test("plugins lists a descriptor that can't be used as a row with its error; a disabled one, or one named as a built-in, is a warning, and --plugin of its name stops on it", async () => {
+    const h = withHome()
+    const bad = (name: string) => `bad descriptor ${join(h.user, `${name}.yaml`)}`
+    for (const name of ['mine', 'off']) {
+      writeFileSync(join(h.user, `${name}.yaml`), 'descriptor: 1\npaths: {}\ncandidates: []\n')
+    }
+    writeFileSync(join(h.user, 'git.yaml'), store('.cache/git'))
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { off: { enabled: false } } }))
+    const deps = { shippedDescriptors: h.shipped }
+    const r = await run(['plugins', '--config', file, '--format', 'json'], h.cwd, h.env, deps)
+    expect(r.code).toBe(0)
+    const out = JSON.parse(r.out) as {
+      warnings: string[]
+      plugins: Array<{ name: string; reason: string | null }>
+    }
+    expect(out.plugins.filter((p) => p.name === 'git')).toMatchObject([{ source: 'built-in' }])
+    const rows = Object.fromEntries(out.plugins.map((p) => [p.name, p]))
+    expect(rows.mine).toMatchObject({ source: 'user', enabled: true, detected: false, roots: [] })
+    expect(rows.mine!.reason).toContain(bad('mine'))
+    expect(rows.off).toMatchObject({
+      source: 'user',
+      enabled: false,
+      reason: 'plugins.off.enabled is false',
+    })
+    expect(out.warnings.some((w) => w.includes(bad('mine')))).toBe(false)
+    expect(out.warnings.some((w) => w.includes(bad('off')))).toBe(true)
+    expect(out.warnings.some((w) => w.includes(join(h.user, 'git.yaml')))).toBe(true)
+    const text = await run(['plugins', '--config', file], h.cwd, h.env, deps)
+    expect(text.out).toMatch(/^ {2}mine +user +not detected: bad descriptor /m)
+    expect(text.out).toMatch(
+      /^ {2}off +user +disabled: plugins\.off\.enabled is false; status, plan or clean with --plugin off stops on its descriptor's error$/m,
+    )
+    const named = await run(['status', '--config', file, '--plugin', 'off'], h.cwd, h.env, deps)
+    expect(named.code).toBe(2)
+    expect(named.err).toContain(bad('off'))
+    writeFileSync(file, JSON.stringify({ plugins: { git: { enabled: false } } }))
+    const git = await run(['plugins', '--config', file], h.cwd, h.env, deps)
+    expect(git.out).toMatch(
+      /^ {2}git +built-in +disabled: plugins\.git\.enabled is false; status, plan or clean with --plugin git stops on its descriptor's error$/m,
+    )
+    const gitNamed = await run(['status', '--config', file, '--plugin', 'git'], h.cwd, h.env, deps)
+    expect(gitNamed.code).toBe(2)
+    expect(gitNamed.err).toContain(join(h.user, 'git.yaml'))
+  })
+
+  test('--skip-plugin of a built-in leaves it out although a descriptor has its name', async () => {
+    const h = withHome()
+    writeFileSync(join(h.user, 'git.yaml'), store('.cache/git'))
+    const deps = { shippedDescriptors: h.shipped }
+    const r = await run(['status', '--skip-plugin', 'git,cargo,node'], h.cwd, h.env, deps)
+    expect(r.out).toContain('plugins: (none)\n')
+    expect(r.err).toContain('is named git, as the built-in plugin')
+    const ghost = await run(['status', '--skip-plugin', 'git,ghost'], h.cwd, h.env, deps)
+    expect(ghost.code).toBe(2)
+    expect(ghost.err).toContain('no plugin named ghost')
+  })
+
+  test('a config entry for a descriptor given by --descriptor: a warning without it, and clean stops', async () => {
+    const h = withHome(['mine'])
+    const desc = join(h.cwd, 'mine.yaml')
+    writeFileSync(desc, store('.cache/mine'))
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { mine: { idleHours: 0 } } }))
+    const deps = { shippedDescriptors: h.shipped }
+    const common = ['--config', file]
+    const warning = 'config names no plugin mine; a descriptor of that name is not loaded'
+    for (const argv of [['status', '--plugin', 'git'], ['plan', '-o', '-'], ['config']]) {
+      const r = await run([...argv, ...common], h.cwd, h.env, deps)
+      expect(r.code, argv.join(' ')).not.toBe(2)
+      expect(r.err).toContain(warning)
+    }
+    const json = await run(['status', '--format', 'json', ...common], h.cwd, h.env, deps)
+    expect(JSON.parse(json.out).warnings).toContain(warning)
+    for (const argv of [['--yes'], ['--dry-run']]) {
+      const r = await run(['clean', ...argv, ...common], h.cwd, h.env, deps)
+      expect(r.code).toBe(2)
+      expect(r.err).toContain(warning)
+    }
+    expect(existsSync(join(h.home, '.cache', 'mine'))).toBe(true)
+    const given = await run(['status', '--descriptor', desc, ...common], h.cwd, h.env, deps)
+    expect(given.err).not.toContain('names no plugin')
+  })
+
+  test('--config goes on without a config directory, with no user descriptors and a warning', async () => {
+    const h = withHome(['mine'])
+    writeFileSync(join(h.shipped, 'mine.yaml'), store('.cache/mine'))
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({}))
+    const env = { ...h.env, HOST_CLEANER_ROOT: 'relative' }
+    const deps = { shippedDescriptors: h.shipped }
+    for (const argv of [['status', '--plugin', 'git'], ['config']]) {
+      const r = await run([...argv, '--config', file], h.cwd, env, deps)
+      expect(r.code, argv.join(' ')).not.toBe(1)
+      expect(r.err).toContain('no user descriptors: ')
+      expect((await run(argv, h.cwd, env, deps)).code).toBe(1)
+    }
+  })
+
+  test('with deps.plugins no descriptor is loaded, so a bad one does not matter', async () => {
+    const h = withHome()
+    writeFileSync(join(h.user, 'mine.yaml'), 'not: a descriptor\n')
+    const r = await run(['status'], h.cwd, h.env, {
+      shippedDescriptors: h.shipped,
+      plugins: [fake('only')],
+    })
+    expect(r.code).not.toBe(2)
+    expect(r.err).not.toContain('mine.yaml')
+  })
+
+  test('a plan records its --descriptor files, and clean --plan stops without them', async () => {
+    const h = withHome(['mine'])
+    const desc = join(h.cwd, 'mine.yaml')
+    writeFileSync(desc, store('.cache/mine'))
+    const deps = { shippedDescriptors: h.shipped }
+    const planFile = join(h.cwd, 'p.json')
+    const made = await run(
+      ['plan', '--descriptor', desc, '--plugin', 'mine', '-o', planFile],
+      h.cwd,
+      h.env,
+      deps,
+    )
+    expect(made.code).toBe(0)
+    expect(parsePlan(readFileSync(planFile, 'utf8'), planFile).descriptors).toEqual([desc])
+    const without = await run(['clean', '--plan', planFile, '--yes'], h.cwd, h.env, deps)
+    expect(without.code).toBe(2)
+    expect(without.err).toContain(`add --descriptor ${desc}`)
+    const other = join(tempDir(), 'mine.yaml')
+    writeFileSync(other, store('.cache/mine'))
+    const wrong = ['clean', '--plan', planFile, '--descriptor', other, '--yes']
+    expect((await run(wrong, h.cwd, h.env, deps)).code).toBe(2)
+    // The plan's descriptors are named even where the config's entry for one would stop it too.
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { mine: { idleHours: 0 } } }))
+    const configured = ['clean', '--plan', planFile, '--config', file, '--yes']
+    const both = await run(configured, h.cwd, h.env, deps)
+    expect(both.code).toBe(2)
+    expect(both.err).toContain(`add --descriptor ${desc}`)
+    expect(existsSync(join(h.home, '.cache', 'mine'))).toBe(true)
+    const dry = await run(
+      ['clean', '--plan', planFile, '--descriptor', desc, '--dry-run'],
+      h.cwd,
+      h.env,
+      deps,
+    )
+    expect(dry.code).not.toBe(2)
+    expect(dry.err).not.toContain('add --descriptor')
+  })
+
+  test('a plan records only the --descriptor files behind the plugins it ran', async () => {
+    const h = withHome(['mine', 'other'])
+    const desc = join(h.cwd, 'mine.yaml')
+    writeFileSync(desc, store('.cache/mine'))
+    writeFileSync(join(h.user, 'other.yaml'), store('.cache/other'))
+    const bad = join(h.cwd, 'bad.yaml')
+    writeFileSync(bad, 'not: a descriptor\n')
+    const deps = { shippedDescriptors: h.shipped }
+    const planFile = join(h.cwd, 'p.json')
+    const descriptorsOf = async (...argv: string[]) => {
+      const r = await run(['plan', ...argv, '-o', planFile], h.cwd, h.env, deps)
+      expect(r.code, argv.join(' ')).toBe(0)
+      return parsePlan(readFileSync(planFile, 'utf8'), planFile).descriptors
+    }
+    const common = ['--descriptor', desc, '--descriptor', bad, '--skip-plugin', 'bad']
+    expect(await descriptorsOf(...common, '--plugin', 'mine')).toEqual([desc])
+    expect(await descriptorsOf(...common, '--plugin', 'other')).toBeUndefined()
+    const left = await run(['clean', '--plan', planFile, '--dry-run'], h.cwd, h.env, deps)
+    expect(left.err).not.toContain('add --descriptor')
+  })
+
+  test('clean refuses a config entry that names no plugin, as for a misspelt built-in', async () => {
+    const h = withHome()
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { crago: { enabled: false } } }))
+    const r = await run(['clean', '--config', file, '--yes'], h.cwd, h.env, {
+      shippedDescriptors: h.shipped,
+    })
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('config names no plugin crago')
+    expect(r.err).toContain('correct the name (have git, cargo, node, orca)')
+  })
+
+  test('supersededBy: left out while that plugin runs, used when it is skipped', async () => {
+    const h = withHome(['mine'])
+    writeFileSync(join(h.user, 'mine.yaml'), store('.cache/mine', 'supersededBy: git\n'))
+    const deps = { shippedDescriptors: h.shipped }
+    const on = await run(['status', '--skip-plugin', 'cargo,node'], h.cwd, h.env, deps)
+    expect(on.out).toContain('plugins: git\n')
+    const off = await run(['status', '--skip-plugin', 'git,cargo,node'], h.cwd, h.env, deps)
+    expect(off.out).toContain('plugins: mine\n')
+  })
+
+  test('plugins says why a superseded or system: true descriptor does not apply', async () => {
+    const h = withHome(['mine', 'root'])
+    writeFileSync(join(h.user, 'mine.yaml'), store('.cache/mine', 'supersededBy: git\n'))
+    writeFileSync(join(h.user, 'root.yaml'), store('.cache/root', 'system: true\n'))
+    const r = await run(['plugins', '--format', 'json'], h.cwd, h.env, {
+      shippedDescriptors: h.shipped,
+    })
+    expect(r.code).toBe(0)
+    const rows = Object.fromEntries(
+      JSON.parse(r.out).plugins.map((p: { name: string }) => [p.name, p]),
+    )
+    expect(rows.mine).toMatchObject({
+      detected: false,
+      reason: null,
+      note: 'skipped: the plugin git runs instead',
+      vars: [],
+    })
+    expect(rows.root).toMatchObject({ detected: false, reason: null, vars: [] })
+    expect(rows.root.note).toMatch(/^skipped: .*system: true/)
+    const text = (await run(['plugins'], h.cwd, h.env, { shippedDescriptors: h.shipped })).out
+    expect(text).toMatch(
+      / {2}mine +user +not detected; note: skipped: the plugin git runs instead\n/,
+    )
+  })
+
+  test('clean deletes a descriptor’s folder through the kit', async () => {
+    const h = withHome(['mine'])
+    writeFileSync(join(h.user, 'mine.yaml'), store('.cache/mine'))
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { mine: { idleHours: 0 } } }))
+    const r = await run(
+      ['clean', '--config', file, '--plugin', 'mine', '--yes', '--receipt', join(h.cwd, 'r.json')],
+      h.cwd,
+      h.env,
+      { shippedDescriptors: h.shipped },
+    )
+    expect(r.code).toBe(0)
+    expect(r.out).toMatch(/done\s+mine:~\/\.cache\/mine/)
+    expect(existsSync(join(h.home, '.cache', 'mine'))).toBe(false)
   })
 })
 

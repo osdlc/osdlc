@@ -5,6 +5,7 @@
  * - `fakeContext` is a hook's context with defaults.
  * - `fakeRunner` answers the kit's programs from a table and records them.
  * - `tempHome` is a temporary folder for a test's fixtures.
+ * - `fakeProcesses` is a process table for the kit; `ageTree` backdates a folder.
  * - `contractSuite` checks a plugin against the contract every plugin keeps.
  *
  * Nothing here depends on a test runner. The suite returns the problems it
@@ -14,6 +15,7 @@
 import {
   existsSync,
   lstatSync,
+  lutimesSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -22,14 +24,15 @@ import {
   rmSync,
   symlinkSync,
   unlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { AsyncCommandRunner, AsyncCommandRunOptions } from '@osdlc/command-seam'
+import type { AsyncCommandRunner, AsyncCommandRunOptions, CommandRunner } from '@osdlc/command-seam'
 import { fakeRunner as seamRunner } from '@osdlc/command-seam/testing'
-import { sameFingerprint } from '@osdlc/repo-cleaner'
+import { sameFingerprint, type ProcessHolder, type ProcessProbe } from '@osdlc/repo-cleaner'
 
 import { PlanSchema } from './plan.ts'
 import { boundBy, type Bounds } from './roots.ts'
@@ -128,6 +131,44 @@ export function tempHome(prefix = 'host-cleaner-home-'): TempHome {
     env: { HOME: home },
     cleanup: () => rmSync(home, { recursive: true, force: true }),
   }
+}
+
+/** A fake process table, as the kit's `probe` and `ps` options of those names. */
+export interface FakeProcesses {
+  probe: ProcessProbe
+  ps: CommandRunner
+}
+
+/**
+ * A process table: a folder in `table` maps to the processes working in it,
+ * for the probe; `/` lists every process, read by `ps` as a child of init with
+ * `command` as its command line. Both read `table` when asked, so it may
+ * change. Spread it into a plugin's kit options. Give each process a pid above
+ * any real one (Linux's pid_max is at most 2^22), so the kit never leaves it
+ * out as this process or an ancestor.
+ */
+export const fakeProcesses = (table: Record<string, ProcessHolder[]> = {}): FakeProcesses => ({
+  probe: { alive: () => false, holders: (path) => table[path] ?? [] },
+  ps: {
+    run: () => ({
+      exitCode: 0,
+      stdout: [{ pid: 1, command: '/sbin/init' }, ...(table['/'] ?? [])]
+        .map((h) => `${h.pid} ${h.pid === 1 ? 0 : 1} ${h.command}\n`)
+        .join(''),
+      stderr: '',
+    }),
+  },
+})
+
+/** Sets the modification time of `dir` and of everything under it to `hours` ago; links are not followed. */
+export function ageTree(dir: string, hours: number): void {
+  const at = new Date(Date.now() - hours * 3_600_000)
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, entry.name)
+    if (entry.isDirectory()) ageTree(p, hours)
+    else lutimesSync(p, at, at)
+  }
+  utimesSync(dir, at, at)
 }
 
 /** Where in `value` a value is that JSON would change or drop, and what it is; null when there is none. */

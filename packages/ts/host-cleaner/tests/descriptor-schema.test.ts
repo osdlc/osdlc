@@ -18,6 +18,10 @@ import {
   DescriptorSchema,
   descriptorIssues,
   descriptorJsonSchema,
+  isEntryName,
+  isFolder,
+  isLock,
+  isPathsName,
   parseDescriptor,
   readDescriptor,
 } from '../src/descriptor/schema.ts'
@@ -146,7 +150,7 @@ function issues(text: string): readonly string[] {
 }
 
 describe("the system description's examples", () => {
-  test.each(Object.entries(TIER_1))('%s reads', (_, text) => {
+  test.each(Object.entries({ ...TIER_1, ...TIER_2 }))('%s reads', (_, text) => {
     expect(issues(text)).toEqual([])
   })
 
@@ -177,27 +181,32 @@ describe("the system description's examples", () => {
     })
   })
 
-  test('the tier 2 examples are refused by the reader until variables are built', () => {
-    expect(issues(PNPM)).toEqual([
-      'line 3: vars: variables (tier 2) are not supported yet',
-      'line 8: paths.store.all: variables (tier 2) are not supported yet',
-    ])
-    expect(issues(GO)[0]).toBe('line 5: vars: variables (tier 2) are not supported yet')
+  test('go reads its variables in the order written', () => {
+    expect(parseDescriptor(GO, 'go.yaml').vars).toEqual({
+      GOPATH: [{ env: 'GOPATH' }, { value: '~/go' }],
+      GOMODCACHE: [
+        { env: 'GOMODCACHE' },
+        { command: ['go', 'env', 'GOMODCACHE'] },
+        { value: '${GOPATH}/pkg/mod' },
+      ],
+      GOCACHE: [
+        { env: 'GOCACHE' },
+        { command: ['go', 'env', 'GOCACHE'] },
+        { value: { macos: '~/Library/Caches/go-build', linux: '${XDG_CACHE_HOME}/go-build' } },
+      ],
+    })
   })
 
-  test('a ${VAR} in a tier 1 path is refused too', () => {
-    expect(issues(PIP_PER_OS.replace('~/.cache/pip', "'${XDG_CACHE_HOME}/pip'"))).toEqual([
-      'line 3: paths.cache.linux: variables (tier 2) are not supported yet',
-    ])
+  test('a built-in variable needs no declaration', () => {
+    expect(issues(PIP_PER_OS.replace('~/.cache/pip', "'${XDG_CACHE_HOME}/pip'"))).toEqual([])
+    expect(issues(PIP_PER_OS.replace('~/.cache/pip', "'${HOME}/.pip'"))).toEqual([])
   })
 
-  test('a ${VAR} in a lock is refused too', () => {
-    expect(issues(UV.replace('processes: [uv]', "locks: ['${HOME}/.cache/uv/.lock']"))).toEqual([
-      'line 14: inUse.locks.0: variables (tier 2) are not supported yet',
-    ])
+  test('a built-in variable needs no declaration in a lock either', () => {
+    expect(issues(UV.replace('processes: [uv]', "locks: ['${HOME}/.cache/uv/.lock']"))).toEqual([])
   })
 
-  test('a ${VAR} in a command argument, an env value or a glob is refused too', () => {
+  test('a ${VAR} in a command argument, an env value or a glob is refused', () => {
     expect(
       issues(
         hfWith(
@@ -205,21 +214,46 @@ describe("the system description's examples", () => {
         ),
       ),
     ).toEqual([
-      'line 5: candidates.0.command.2: variables (tier 2) are not supported yet',
-      'line 5: candidates.0.env.A: variables (tier 2) are not supported yet',
+      'line 5: candidates.0.command.2: ${ is not filled here: variables are filled only in paths, vars and locks',
+      'line 5: candidates.0.env.A: ${ is not filled here: variables are filled only in paths, vars and locks',
     ])
     expect(issues(hfWith("{ path: hub, costDescription: rebuild, glob: '${X}/*' }"))).toEqual([
-      'line 5: candidates.0.glob: variables (tier 2) are not supported yet',
+      'line 5: candidates.0.glob: ${ is not filled here: variables are filled only in paths, vars and locks',
     ])
   })
 
-  test('vars is reported beside the schema problems, not after they are fixed', () => {
-    expect(
-      issues(`${hfWith("{ path: hub, costDescription: rebuild, idleHours: 'x' }")}vars: {}\n`),
-    ).toEqual([
-      'line 5: candidates.0.idleHours: Invalid input: expected number, received string',
-      'line 6: vars: variables (tier 2) are not supported yet',
+  test('a ${VAR} in a field that is never filled is refused', () => {
+    const unfilled = (field: string) =>
+      expect.stringContaining(
+        `${field}: \${ is not filled here: variables are filled only in paths, vars and locks`,
+      )
+    expect(issues(UV.replace('processes: [uv]', "processes: ['${JAVA}']"))).toEqual([
+      unfilled('inUse.processes.0'),
     ])
+    expect(issues(GO.replace('[go, env, GOMODCACHE]', "[go, env, -C, '${HOME}']"))).toEqual([
+      unfilled('vars.GOMODCACHE.1.command.3'),
+    ])
+    expect(
+      issues(
+        GO.replace(
+          '- command: [go, env, GOMODCACHE]',
+          "- { command: [go, env, GOMODCACHE], env: { GOPATH: '${HOME}/go' } }",
+        ),
+      ),
+    ).toEqual([unfilled('vars.GOMODCACHE.1.env.GOPATH')])
+    expect(
+      issues(GO.replace('- command: [go, env, GOMODCACHE]', "- { file: ~/go.toml, key: '${X}' }")),
+    ).toEqual([unfilled('vars.GOMODCACHE.1.key')])
+    expect(issues(UV.replace('{ onPath: uv }', "{ onPath: '${UV}' }"))).toEqual([
+      unfilled('detect.any.0.onPath'),
+    ])
+    expect(
+      issues(
+        `${HUGGING_FACE}project:\n  - { dir: '\${OUT}', marker: '\${M}.csproj', costDescription: rebuild }\n`,
+      ),
+    ).toEqual([unfilled('project.0.dir'), unfilled('project.0.marker')])
+    // A string field no check names is refused too.
+    expect(issues(`$schema: '\${S}'\n${HUGGING_FACE}`)).toEqual([unfilled('$schema')])
   })
 
   test('a glob or marker whose every {a,b} alternative names an entry is accepted', () => {
@@ -518,14 +552,107 @@ describe('a bad descriptor names the field path', () => {
       '- descriptor: 1\n',
       'line 1: (top): Invalid input: expected object, received array',
     ],
+    [
+      'a path using an undeclared variable',
+      PIP_PER_OS.replace('~/.cache/pip', "'${PIP_CACHE_DIR}'"),
+      'line 3: paths.cache.linux: no variable ${PIP_CACHE_DIR}: declare it in vars',
+    ],
+    [
+      'a variable written without braces',
+      PIP_PER_OS.replace('~/.cache/pip', "'${XDG_CACHE_HOME/pip'"),
+      'line 3: paths.cache.linux: write a variable as ${NAME}',
+    ],
+    [
+      'a value using an undeclared variable',
+      PNPM.replace('${XDG_DATA_HOME}/pnpm/store', '${DATA}/pnpm/store'),
+      'line 6: vars.STORE.1.value.linux: no variable ${DATA}: declare it in vars',
+    ],
+    [
+      'a file source using an undeclared variable',
+      PNPM.replace('- command: [pnpm, store, path]', "- { file: '${RC}/pnpm.yaml', key: store }"),
+      'line 5: vars.STORE.0.file: no variable ${RC}: declare it in vars',
+    ],
+    [
+      'a lock using an undeclared variable',
+      PNPM.replace('processes: [pnpm]', "locks: ['${LOCKS}/pnpm.lock']"),
+      'line 15: inUse.locks.0: no variable ${LOCKS}: declare it in vars',
+    ],
+    [
+      'a built-in declared again',
+      PNPM.replace('  STORE:', '  XDG_DATA_HOME:\n    - env: DATA\n  STORE:'),
+      'line 4: vars.XDG_DATA_HOME: XDG_DATA_HOME is built in; use it without declaring it',
+    ],
+    [
+      'a variable that refers to itself',
+      PNPM.replace('${XDG_DATA_HOME}/pnpm/store', '${STORE}/v10'),
+      'line 4: vars.STORE: STORE refers back to itself: STORE -> STORE',
+    ],
+    [
+      'a value that climbs out',
+      GO.replace('- value: ~/go', "- value: '${HOME}/../go'"),
+      'line 8: vars.GOPATH.1.value: must not have a .. segment',
+    ],
+    [
+      'a file source that is not TOML, JSON or YAML',
+      PNPM.replace('- command: [pnpm, store, path]', '- { file: ~/.npmrc, key: store-dir }'),
+      'line 5: vars.STORE.0.file: must be a .toml, .json, .yaml, .yml file',
+    ],
+    [
+      'a relative value',
+      GO.replace('- value: ~/go', '- value: go'),
+      'line 8: vars.GOPATH.1.value: must start with ~/, be absolute, or start with a ${VAR}',
+    ],
+    [
+      'a command source whose program is a path',
+      PNPM.replace('[pnpm, store, path]', '[/usr/bin/pnpm, store, path]'),
+      'line 5: vars.STORE.0.command: the program must be a name on PATH, not a path',
+    ],
+    [
+      "a variable in a candidate's command",
+      PNPM.replace("'{path}']", "'{path}', '${STORE}']"),
+      'line 12: candidates.0.command.5: ${ is not filled here: variables are filled only in paths, vars and locks',
+    ],
+    [
+      "a variable in a candidate's env",
+      PNPM.replace("'{path}']", "'{path}']\n    env: { CACHE: '${XDG_CACHE_HOME}/x' }"),
+      'line 13: candidates.0.env.CACHE: ${ is not filled here: variables are filled only in paths, vars and locks',
+    ],
   ])('%s', (_, text, issue) => {
     expect(issues(text)).toEqual([issue])
   })
 
-  test('${HOME} alone is a home folder too, and a variable', () => {
+  test('a cycle through several variables is named once, with its chain', () => {
+    const text = GO.replace('- value: ~/go', "- value: '${GOMODCACHE}/go'")
+    expect(issues(text)).toEqual([
+      'line 6: vars.GOPATH: GOPATH refers back to itself: GOPATH -> GOMODCACHE -> GOPATH',
+    ])
+  })
+
+  test("the variables' problems are listed beside a type error", () => {
+    const typeError = (text: string) =>
+      text.replace('removes: unused', 'removes: unused\n    idleHours: x')
+    expect(
+      issues(typeError(PNPM.replace('${XDG_DATA_HOME}/pnpm/store', '${DATA}/pnpm/store'))),
+    ).toEqual([
+      'line 14: candidates.0.idleHours: Invalid input: expected number, received string',
+      'line 6: vars.STORE.1.value.linux: no variable ${DATA}: declare it in vars',
+    ])
+    expect(issues(typeError(PNPM.replace('${XDG_DATA_HOME}/pnpm/store', '${STORE}/v10')))).toEqual([
+      'line 14: candidates.0.idleHours: Invalid input: expected number, received string',
+      'line 4: vars.STORE: STORE refers back to itself: STORE -> STORE',
+    ])
+  })
+
+  test('a variable name that is no environment variable name leaves its uses undeclared', () => {
+    expect(issues(PNPM.replace('  STORE:', '  pnpm-store:'))).toEqual([
+      'line 4: vars.pnpm-store: Invalid key in record',
+      'line 8: paths.store.all: no variable ${STORE}: declare it in vars',
+    ])
+  })
+
+  test('${HOME} alone is a home folder too', () => {
     expect(issues(HUGGING_FACE.replace('~/.cache/huggingface/hub', "'${HOME}'"))).toEqual([
       'line 4: paths.hub.all: must name a folder below a home folder, not a home folder itself',
-      'line 4: paths.hub.all: variables (tier 2) are not supported yet',
     ])
   })
 
@@ -590,6 +717,43 @@ describe('a bad descriptor names the field path', () => {
       expect(jsonSchema(parse(text)), text).toBe(false)
       expect(jsonSchema.errors?.map((e) => e.instancePath)).toContain(path)
     }
+  })
+})
+
+describe('the predicates a script may use take what the schema takes', () => {
+  const base = {
+    descriptor: 1,
+    paths: { a: { all: '~/a' } },
+    candidates: [{ path: 'a', costDescription: 'rebuild' }],
+  }
+  const accepts = (more: Record<string, unknown>) =>
+    descriptorIssues({ ...base, ...more }).length === 0
+  const FOLDERS = [
+    '~/a',
+    '~/a/',
+    '/var/a',
+    'C:\\a',
+    '~',
+    '~/',
+    '/',
+    '~/..',
+    '~/a/../b',
+    'a/b',
+    '/home/me',
+    '',
+  ]
+  const NAMES = ['a', 'cache-a_1', '1a', 'a b', '', '.', '..', 'a/b', 'a\\b', '.venv']
+
+  test.each(FOLDERS)('folder and lock %j', (p) => {
+    expect(isFolder(p)).toBe(accepts({ paths: { ...base.paths, b: { all: p } } }))
+    expect(isLock(p)).toBe(accepts({ inUse: { locks: [p] } }))
+  })
+
+  test.each(NAMES)('paths name and entry name %j', (n) => {
+    expect(isPathsName(n)).toBe(accepts({ paths: { ...base.paths, [n]: { all: '~/b' } } }))
+    expect(isEntryName(n)).toBe(
+      accepts({ project: [{ dir: n, marker: 'm', costDescription: 'rebuild' }] }),
+    )
   })
 })
 
