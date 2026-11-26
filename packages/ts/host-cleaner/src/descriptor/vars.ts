@@ -8,13 +8,16 @@
  *            sit outside the home folder
  *   env      an environment variable
  *   file     a key in a TOML, JSON or YAML file
- *   command  a command's output, trimmed: argv only, only when the program is
- *            on PATH, run from the home folder with a short time limit
+ *   command  a command's output, trimmed: argv only, with its own `env`
+ *            entries, only when the program is on PATH, run from the home
+ *            folder with a short time limit
  *   value    a fixed value, per OS or for all, which may use other variables
  *
  * A source that gives no value, or one that is not an absolute folder, moves
- * on to the next. `HOME` and the `XDG_*` folders are built in, the `XDG_*`
- * ones with their XDG defaults on every OS.
+ * on to the next. A variable set in the config also wins over the sources of
+ * the variables built from it: in each of those, the sources before the first
+ * one that uses it are skipped. `HOME` and the `XDG_*` folders are built in,
+ * the `XDG_*` ones with their XDG defaults on every OS.
  */
 
 import { readFile, stat } from 'node:fs/promises'
@@ -32,6 +35,7 @@ import {
   BUILT_IN_VARS,
   VAR_FILE_EXTENSIONS,
   VAR_REF,
+  sourceTemplates,
   varRefs,
   type VarFileExtension,
 } from './var-names.ts'
@@ -56,7 +60,7 @@ type PerOs = { [K in Os | 'all']?: string | undefined }
 export type VarSource =
   | { env: string }
   | { file: string; key: string }
-  | { command: string[] }
+  | { command: string[]; env?: Record<string, string> | undefined }
   | { value: string | PerOs }
 
 /** The text of `v` on `os`: `v` itself, its `all`, or its `os` entry. */
@@ -74,7 +78,8 @@ export interface VarValue {
   from?: string
   /**
    * Set in the config, an `XDG_*` folder the environment sets that
-   * {@link VarsAt.trustsXdg} passes, or a `value` inside a trusted variable's
+   * {@link VarsAt.trustsXdg} passes (as a built-in or read by an `env`
+   * source), or a `value` inside a trusted variable's
    * folder ({@link fillTemplate}): its folders may sit outside home.
    */
   trusted: boolean
@@ -85,11 +90,11 @@ export interface VarValue {
 /** Every variable's outcome: the built-ins, then the declared ones in the order declared. */
 export type Vars = Record<string, VarValue>
 
-/** How `source` is named in an outcome. */
+/** How `source` is named in an outcome. A `command` source may have `env` too, so it is told apart first. */
 function describeSource(source: VarSource): string {
+  if ('command' in source) return `command ${source.command.join(' ')}`
   if ('env' in source) return `env ${source.env}`
   if ('file' in source) return `file ${source.file} key ${source.key}`
-  if ('command' in source) return `command ${source.command.join(' ')}`
   return 'value'
 }
 
@@ -174,6 +179,8 @@ export async function resolveVars(
   at: VarsAt,
 ): Promise<Vars> {
   const done: Vars = builtIns(at)
+  const refs = refsMemo(at.os)
+  const fromConfig = configSet(declared, at.config, refs)
   const limit = at.timeoutMs ?? VAR_COMMAND_LIMIT_MS
   const started = new Map<string, Promise<void>>()
   // Which variables each one is waiting for. A wait that would close a cycle
@@ -223,9 +230,14 @@ export async function resolveVars(
   }
 
   const fromSource = async (source: VarSource, by: string): Promise<Given> => {
+    if ('command' in source) return commandValue(source, at, limit)
     if ('env' in source) {
       const v = ownValue(at.env, source.env)
-      return v === undefined || v === '' ? { failed: 'not set' } : { value: v, trusted: false }
+      if (v === undefined || v === '') return { failed: 'not set' }
+      // An `XDG_*` folder read this way keeps the trust its built-in has.
+      const xdg = Object.hasOwn(BUILT_IN_VARS, source.env) ? done[source.env] : undefined
+      const trusted = xdg?.from === `env ${source.env}` && xdg.trusted
+      return { value: v, trusted }
     }
     if ('file' in source) {
       const file = await fill(source.file, by)
@@ -233,7 +245,6 @@ export async function resolveVars(
       const v = await keyIn(file.value, source.key, at.signal, limit)
       return typeof v === 'string' ? { value: v, trusted: false } : { failed: v.failed }
     }
-    if ('command' in source) return commandValue(source.command, at, limit)
     const template = forOs(source.value, at.os)
     return template === undefined ? { failed: `none for ${at.os}` } : fill(template, by)
   }
@@ -244,7 +255,15 @@ export async function resolveVars(
       return { value: folderOf(set, at.home), from: 'config', trusted: true, tried: [] }
     }
     const tried: VarValue['tried'] = []
-    for (const source of sources) {
+    const uses = (s: VarSource) => refs(s).find((r) => fromConfig.has(r))
+    const first = sources.findIndex((s) => uses(s) !== undefined)
+    if (first > 0) {
+      const failed = `skipped: \${${uses(sources[first]!)}} is set in the config`
+      for (const source of sources.slice(0, first)) {
+        tried.push({ source: describeSource(source), failed })
+      }
+    }
+    for (const source of sources.slice(Math.max(first, 0))) {
       const given = await fromSource(source, name)
       const said = describeSource(source)
       if ('failed' in given) {
@@ -267,6 +286,53 @@ export async function resolveVars(
       .filter((n) => Object.hasOwn(done, n))
       .map((n) => [n, done[n]!]),
   )
+}
+
+/**
+ * The names `source`'s folder templates use on `os`: those of
+ * {@link sourceTemplates} that apply there, a per-OS `value`'s `all` before
+ * its `os` entry, as {@link forOs} reads it.
+ */
+function refsOf(source: VarSource, os: Os): string[] {
+  const templates = sourceTemplates(source)
+  const perOs = templates.filter((t) => t.os !== undefined)
+  const onOs = perOs.find((t) => t.os === 'all') ?? perOs.find((t) => t.os === os)
+  const apply = templates.filter((t) => t.os === undefined || t === onOs)
+  return apply.flatMap((t) => varRefs(t.text))
+}
+
+/** {@link refsOf} on `os`, worked out once per source. */
+function refsMemo(os: Os): (source: VarSource) => string[] {
+  const memo = new Map<VarSource, string[]>()
+  return (source) => {
+    let refs = memo.get(source)
+    if (refs === undefined) {
+      refs = refsOf(source, os)
+      memo.set(source, refs)
+    }
+    return refs
+  }
+}
+
+/**
+ * The declared variables the config sets, and those with a source on `at.os`
+ * that uses one of them, at any depth.
+ */
+function configSet(
+  declared: Readonly<Record<string, readonly VarSource[]>>,
+  config: VarsAt['config'],
+  refs: (source: VarSource) => string[],
+): Set<string> {
+  const out = new Set(Object.keys(declared).filter((n) => ownValue(config, n) !== undefined))
+  for (let grew = true; grew;) {
+    grew = false
+    for (const [name, sources] of Object.entries(declared)) {
+      if (out.has(name) || !sources.some((s) => refs(s).some((r) => out.has(r)))) continue
+      out.add(name)
+      grew = true
+    }
+  }
+  return out
 }
 
 /** `record[name]` when `record` has it as its own key, so `constructor` is not read from the prototype. */
@@ -359,17 +425,23 @@ async function keyIn(
     : { failed: `${key} in ${file} is not a string` }
 }
 
-/** The one line `argv` prints, run from home within `limit`, or why there is none. */
+/** The one line `source.command` prints, run from home within `limit`, or why there is none. */
 async function commandValue(
-  argv: readonly string[],
+  source: { command: readonly string[]; env?: Readonly<Record<string, string>> | undefined },
   at: Pick<VarsAt, 'home' | 'kit' | 'signal'>,
   limit: number,
 ): Promise<Given> {
+  const argv = source.command
   const program = argv[0]!
   if (!at.kit.onPath(program)) return { failed: `${program} is not on PATH` }
   let r
   try {
-    r = await at.kit.run(argv, { signal: at.signal, cwd: at.home, timeoutMs: limit })
+    r = await at.kit.run(argv, {
+      signal: at.signal,
+      cwd: at.home,
+      env: source.env,
+      timeoutMs: limit,
+    })
   } catch (err) {
     return { failed: `did not run: ${(err as Error).message}` }
   }

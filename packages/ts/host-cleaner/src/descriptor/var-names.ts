@@ -30,3 +30,27 @@ export const varRefs = (text: string): string[] => [...text.matchAll(VAR_REF)].m
 
 /** Whether `text` has a `${` that is not a well-formed `${NAME}`. */
 export const badVarRef = (text: string): boolean => text.replace(VAR_REF, '').includes('${')
+
+/** A folder template in a `vars` source, with its field under the source; `os` is the key of a per-OS `value` entry. */
+export type SourceTemplate = { text: string; field: string[]; os?: string }
+
+/**
+ * The folder templates a `vars` source holds: its `file`, its `value` string,
+ * or each entry of a per-OS `value`. The one walk the schema's checks and the
+ * resolver both read, so they agree on which variables a source uses.
+ */
+export function sourceTemplates(source: object): SourceTemplate[] {
+  const out: SourceTemplate[] = []
+  if ('file' in source && typeof source.file === 'string') {
+    out.push({ text: source.file, field: ['file'] })
+  }
+  if (!('value' in source)) return out
+  const v = source.value
+  if (typeof v === 'string') out.push({ text: v, field: ['value'] })
+  else if (typeof v === 'object' && v !== null) {
+    for (const [os, text] of Object.entries(v)) {
+      if (typeof text === 'string') out.push({ text, field: ['value', os], os })
+    }
+  }
+  return out
+}

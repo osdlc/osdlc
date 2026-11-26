@@ -338,6 +338,60 @@ describe('the order of sources', () => {
     expect(v.CMD).toMatchObject({ value: '/Volumes/build/mod', from: 'config' })
     expect(calls).toEqual([])
   })
+
+  test('a config value wins over the sources before the one that uses it, at any depth', async () => {
+    const { calls, resolve } = setup({
+      env: { GOMODCACHE: '/env/mod' },
+      programs: { go: { 'env GOMODCACHE': { stdout: '/go/said\n' } } },
+    })
+    const v = await resolve(
+      {
+        GOPATH: [{ env: 'GOPATH' }, { value: '~/go' }],
+        GOMODCACHE: [
+          { env: 'GOMODCACHE' },
+          { command: ['go', 'env', 'GOMODCACHE'] },
+          { value: '${GOPATH}/pkg/mod' },
+        ],
+        DEEP: [{ value: '/before' }, { value: '${GOMODCACHE}/deep' }],
+        OTHER: [{ value: '/other' }, { value: '${GOPATH}/other' }],
+      },
+      { config: { GOPATH: '/data/go', OTHER: '/set/other' } },
+    )
+    expect(v.GOMODCACHE).toEqual({
+      value: '/data/go/pkg/mod',
+      from: 'value',
+      trusted: true,
+      tried: [
+        { source: 'env GOMODCACHE', failed: 'skipped: ${GOPATH} is set in the config' },
+        { source: 'command go env GOMODCACHE', failed: 'skipped: ${GOPATH} is set in the config' },
+      ],
+    })
+    expect(v.DEEP).toMatchObject({ value: '/data/go/pkg/mod/deep', trusted: true })
+    expect(v.OTHER).toMatchObject({ value: '/set/other', from: 'config' })
+    expect(calls).toEqual([])
+  })
+
+  test('with no config value, the sources run in order as before', async () => {
+    const { resolve } = setup({ programs: { go: { 'env GOMODCACHE': { stdout: '/go/said\n' } } } })
+    const v = await resolve({
+      GOPATH: [{ value: '~/go' }],
+      GOMODCACHE: [{ command: ['go', 'env', 'GOMODCACHE'] }, { value: '${GOPATH}/pkg/mod' }],
+    })
+    expect(v.GOMODCACHE).toMatchObject({ value: '/go/said', from: 'command go env GOMODCACHE' })
+  })
+})
+
+describe("a command source's env", () => {
+  test('is set over the environment for that command only', async () => {
+    const { calls, resolve } = setup({
+      programs: { go: { 'env GOMODCACHE': { stdout: '/go/said\n' } } },
+    })
+    const v = await resolve({
+      GOMODCACHE: [{ command: ['go', 'env', 'GOMODCACHE'], env: { GOTOOLCHAIN: 'local' } }],
+    })
+    expect(v.GOMODCACHE?.value).toBe('/go/said')
+    expect(calls[0]?.opts.env).toMatchObject({ GOTOOLCHAIN: 'local' })
+  })
 })
 
 describe('the built-in variables', () => {
@@ -384,6 +438,28 @@ describe('the built-in variables', () => {
       path: '/fast/cache/pip',
       trusted: true,
     })
+  })
+
+  test('an env source reading an XDG folder keeps the trust its built-in has', async () => {
+    const { resolve } = setup({
+      env: { XDG_CACHE_HOME: '/data/cache', XDG_DATA_HOME: '/home', OTHER: '/data/cache' },
+    })
+    const v = await resolve(
+      {
+        CACHE_SET: [{ env: 'XDG_CACHE_HOME' }],
+        DATA_SET: [{ env: 'XDG_DATA_HOME' }],
+        OTHER: [{ env: 'OTHER' }],
+        YARN: [{ value: '${CACHE_SET}/yarn' }],
+      },
+      { trustsXdg: (f) => f !== '/home' },
+    )
+    expect(v.CACHE_SET).toMatchObject({ value: '/data/cache', trusted: true })
+    expect(v.YARN).toMatchObject({ value: '/data/cache/yarn', trusted: true })
+    expect(v.DATA_SET!.trusted).toBe(false)
+    expect(v.OTHER!.trusted).toBe(false)
+    const untrusting = setup({ env: { XDG_CACHE_HOME: '/data/cache' } })
+    const none = await untrusting.resolve({ CACHE_SET: [{ env: 'XDG_CACHE_HOME' }] })
+    expect(none.CACHE_SET!.trusted).toBe(false)
   })
 })
 

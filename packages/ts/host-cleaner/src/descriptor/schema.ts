@@ -12,7 +12,13 @@ import { z } from 'zod'
 import { LineCounter, isMap, isScalar, isSeq, parseDocument, type Document } from 'yaml'
 
 import { COST_DESCRIPTIONS } from '../cost.ts'
-import { BUILT_IN_VARS, VAR_FILE_EXTENSIONS, badVarRef, varRefs } from './var-names.ts'
+import {
+  BUILT_IN_VARS,
+  VAR_FILE_EXTENSIONS,
+  badVarRef,
+  sourceTemplates,
+  varRefs,
+} from './var-names.ts'
 
 /** The format version this reader takes. */
 export const DESCRIPTOR_VERSION = 1
@@ -386,6 +392,10 @@ const varSource = z.union([
     command: argv.describe(
       'A command whose output, trimmed, is the value. It runs from the home folder, only when on PATH, with a short time limit.',
     ),
+    env: z
+      .record(z.string().regex(ENV_NAME), z.string())
+      .optional()
+      .describe("Environment entries for `command`, such as `{ GOTOOLCHAIN: 'local' }`."),
   }),
   z.strictObject({
     value: z
@@ -537,12 +547,7 @@ function templatesOf(d: Record<string, unknown>): Template[] {
       if (Array.isArray(sources))
         sources.forEach((s, i) => {
           if (!isObject(s)) return
-          const at = ['vars', name, i]
-          add(s['file'], [...at, 'file'], name)
-          if (isObject(s['value']))
-            for (const [os, text] of Object.entries(s['value']))
-              add(text, [...at, 'value', os], name)
-          else add(s['value'], [...at, 'value'], name)
+          for (const t of sourceTemplates(s)) add(t.text, ['vars', name, i, ...t.field], name)
         })
   const inUse = d['inUse']
   if (isObject(inUse) && Array.isArray(inUse['locks']))

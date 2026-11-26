@@ -347,6 +347,17 @@
                     "minLength": 1
                   },
                   "description": "A command whose output, trimmed, is the value. It runs from the home folder, only when on PATH, with a short time limit."
+                },
+                "env": {
+                  "description": "Environment entries for `command`, such as `{ GOTOOLCHAIN: 'local' }`.",
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "additionalProperties": {
+                    "type": "string"
+                  }
                 }
               },
               "required": [
