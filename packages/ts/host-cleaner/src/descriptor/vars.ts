@@ -16,8 +16,8 @@
  * A source that gives no value, or one that is not an absolute folder, moves
  * on to the next. A variable set in the config also wins over the sources of
  * the variables built from it: in each of those, the sources before the first
- * one that uses it are skipped. `HOME` and the `XDG_*` folders are built in, the `XDG_*`
- * ones with their XDG defaults on every OS.
+ * one that uses it are skipped. `HOME` and the `XDG_*` folders are built in,
+ * the `XDG_*` ones with their XDG defaults on every OS.
  */
 
 import { readFile } from 'node:fs/promises'
@@ -315,11 +315,10 @@ function configSet(
   at: Pick<VarsAt, 'config' | 'os'>,
 ): Set<string> {
   const out = new Set(Object.keys(declared).filter((n) => ownValue(at.config, n) !== undefined))
-  for (let grew = true; grew; ) {
+  for (let grew = true; grew;) {
     grew = false
     for (const [name, sources] of Object.entries(declared)) {
-      if (out.has(name) || !sources.some((s) => refsOf(s, at.os).some((r) => out.has(r))))
-        continue
+      if (out.has(name) || !sources.some((s) => refsOf(s, at.os).some((r) => out.has(r)))) continue
       out.add(name)
       grew = true
     }

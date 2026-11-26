@@ -304,10 +304,10 @@ project `marker` names a file in every alternative. A tool's
 `paths`, `vars` and `inUse.locks` may use a `${VAR}` that `vars` declares or
 that is built in (`HOME` and the `XDG_*` folders); a `${` anywhere else (a
 candidate's `command`, `env` or `glob`, `inUse.processes`, `detect`'s
-`onPath`, a `project` entry, a variable's `command`, its `env` or `key`) is refused. `DescriptorSchema` is the zod schema,
-and `schemas/descriptor-1.json`, which the package ships
-(`@osdlc/host-cleaner/schemas/descriptor-1.json`), is the same schema as JSON
-Schema for editors.
+`onPath`, a `project` entry, a variable's `command`, its `env` or `key`) is
+refused. `DescriptorSchema` is the zod schema, and `schemas/descriptor-1.json`,
+which the package ships (`@osdlc/host-cleaner/schemas/descriptor-1.json`), is
+the same schema as JSON Schema for editors.
 
 `descriptorPlugin(name, descriptor)` turns a checked descriptor into a
 `definePlugin` value built only on the kit, with an `idleHours` setting, and
@@ -485,7 +485,8 @@ build cache after a week, emptied with `go clean`). While the tool runs, every
 candidate of `pnpm`, `uv`, `gradle` (any Gradle build or daemon), `npm` (npm
 or npx), `pip` (pip, pip3 or `python -m pip`), `yarn`, `maven` (mvn, `./mvnw`,
 mvnd or any process naming `maven`, such as IntelliJ's Maven server) and `go`
-(go or gopls) is refused as `in-use`, at the survey and again before each delete, so a
+(go, gopls, or any process naming `go`, such as an editor open on `main.go`)
+is refused as `in-use`, at the survey and again before each delete, so a
 long-running `pnpm dev` keeps the pnpm store from being pruned. Idle time is
 the newest modification time inside a folder, and reading a file doesn't change
 it: a Hugging Face model or a Gradle wrapper distribution in daily use counts as
@@ -497,8 +498,9 @@ Each finds a store from the environment variables its tool reads, from
 `uv.toml`, or by asking the tool (`npm config get cache`, `pnpm store path`,
 `pnpm config get cache-dir`, `uv cache dir`, `go env`) when it is on PATH, else
 at the default folder. Some settings the tools read are not followed: Maven's
-`localRepository` in `settings.xml`, pip's `cache-dir` in `pip.conf`, Yarn's
-`cache-folder` in `.yarnrc`, and `-Dgradle.user.home` in `GRADLE_OPTS`. A store
+`localRepository` in `settings.xml` and `-Dmaven.repo.local` in `MAVEN_OPTS`,
+pip's `cache-dir` in `pip.conf`, Yarn's `cache-folder` in `.yarnrc`, and
+`-Dgradle.user.home` in `GRADLE_OPTS`. A store
 moved by one of those, or by any setting not listed here, is not found, and the
 folder it left behind, if any, is what gets cleaned. Name such a store in the
 config with `plugins.<name>.vars`:

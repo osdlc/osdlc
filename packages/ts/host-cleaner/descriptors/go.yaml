@@ -11,9 +11,10 @@
 # module cache in daily use with no new download for 30 days is emptied too,
 # and downloaded again by the next build. Every go command runs with
 # GOTOOLCHAIN=local, so no other toolchain is downloaded first, and with
-# GO111MODULE=off, so a go.mod or go.work in or above the home folder that asks
-# for a newer go doesn't stop it. While go or gopls runs, both are refused
-# in-use.
+# GO111MODULE=off, so no go.mod or go.work in or above the home folder is read.
+# While go or gopls runs, both are refused in-use. `go` also matches a word
+# with go as a dot part, such as main.go, so an editor open on a Go file holds
+# them too.
 descriptor: 1
 store: go
 detect:
