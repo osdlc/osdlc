@@ -1314,22 +1314,27 @@ export function archiveCandidates(
 const tipOf = (row: Row): string => (row.kind === 'worktree' ? '' : row.evidence.sha)
 
 /**
- * Why `candidate` is not held by `archived` at all, or null when it is or
- * holds nothing unlanded.
+ * Why `archived` does not hold `candidate` as its evidence names it, or null
+ * when it does or the candidate holds nothing unlanded. A branch is compared
+ * by the commit its candidate names, which `delete-branch` deletes it at; a
+ * worktree's files are not read here.
  */
 function notArchived(candidate: CleanCandidate, archived: CandidateArchive): string | null {
   if (!mayContribute(candidate)) return null
   const left = archived.refused.get(candidate.id)
   if (left !== undefined) return left
-  const held = archived.repo === candidate.repo && archived.stamps.has(candidate.id)
-  return held ? null : `refused: ${candidate.id} was not archived`
+  const stamp = archived.repo === candidate.repo ? archived.stamps.get(candidate.id) : undefined
+  if (stamp === undefined) return `refused: ${candidate.id} was not archived`
+  const row = rowOfCandidate(candidate)
+  return row.kind === 'worktree' || stamp === tipOf(row)
+    ? null
+    : `refused: ${candidate.path} changed since it was archived`
 }
 
 /**
  * Why `candidate` may not be deleted on the strength of `archived`, or null
- * when it may: it holds nothing unlanded, or the archive holds it. A worktree
- * is compared with the archive as it is now; a branch is not read again here,
- * since `delete-branch` deletes it only at the commit the archive holds.
+ * when it may: it holds nothing unlanded, or the archive holds it. A branch is
+ * compared by the commit its candidate names; a worktree as it is now.
  */
 export function archiveProblem(
   candidate: CleanCandidate,
@@ -1387,7 +1392,7 @@ export function removeCandidate(
   const stamps = new Map<string, string>()
   let job: ArchiveJob | undefined
   if (opts.archived !== undefined) {
-    // A worktree is compared with the archive by its `remove-worktree` step.
+    // A worktree's files are compared with the archive by its `remove-worktree` step.
     const problem = notArchived(candidate, opts.archived)
     if (problem !== null) return refused(problem)
     const stamp = opts.archived.stamps.get(row.id)

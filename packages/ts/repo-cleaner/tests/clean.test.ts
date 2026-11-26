@@ -1661,9 +1661,26 @@ describe('candidatesOf and removeCandidate', () => {
       writeFileSync(join(fx.worktree, 'wip.txt'), 'changed\n')
       expect(archiveProblem(c, archived)).toContain('changed since it was archived')
       const out = removeCandidate(c, { ...opts, archived })
-      expect(out).toMatchObject({ ok: false, steps: [] })
+      expect(out.ok).toBe(false)
+      expect(out.steps.map((s) => [s.action, s.result])).toEqual([['remove-worktree', 'failed']])
       expect(out.error).toContain('changed since it was archived')
       expect(readFileSync(join(fx.worktree, 'wip.txt'), 'utf8')).toBe('changed\n')
+    })
+
+    test('a worktree that gained a file the archive leaves out is refused, and stays', () => {
+      const fx = buildFixture()
+      writeFileSync(join(fx.worktree, 'wip.txt'), 'wip\n')
+      const c = candidate(fx, wt(fx.worktree))
+      const opts = { cwd: fx.root, probe: idle, allow: ['discard-archived' as const] }
+      const archived = archiveCandidates([c], { ...opts, archive: {} })
+      expect(archived.stamps.has(c.id)).toBe(true)
+      // A secret-shaped file is left out of a snapshot, so the stamp does not see it.
+      writeFileSync(join(fx.worktree, '.env'), 'TOKEN=1\n')
+      expect(archiveProblem(c, archived)).toBeNull()
+      const out = removeCandidate(c, { ...opts, archived })
+      expect(out).toMatchObject({ ok: false, steps: [] })
+      expect(out.error).toContain('needs discard-changes')
+      expect(existsSync(join(fx.worktree, '.env'))).toBe(true)
     })
 
     test('a candidate the archive lacks, or holds at another commit, is refused', () => {
@@ -1674,10 +1691,13 @@ describe('candidatesOf and removeCandidate', () => {
       const opts = { cwd: fx.root, probe: idle, allow: [...allow] }
       const archived = archiveCandidates([branch], { ...opts, archive: {} })
       expect(removeCandidate(worktree, { ...opts, archived }).error).toContain('was not archived')
-      const moved = {
-        ...branch,
-        evidence: { ...branch.evidence, sha: sh(fx.root, ['rev-parse', 'main']) },
-      } as typeof branch
+      // The branch moves after the archive, and is found again at its new commit.
+      sh(fx.root, ['checkout', '-q', 'unmerged'])
+      sh(fx.root, ['commit', '--allow-empty', '-m', 'wip: after the archive'])
+      sh(fx.root, ['checkout', '-q', 'main'])
+      const moved = candidate(fx, 'branch:unmerged')
+      expect(moved.evidence).not.toMatchObject({ sha: (branch.evidence as { sha: string }).sha })
+      expect(archiveProblem(moved, archived)).toContain('changed since')
       expect(removeCandidate(moved, { ...opts, archived }).error).toContain('changed since')
       const elsewhere = { ...archived, repo: '/elsewhere' }
       expect(removeCandidate(branch, { ...opts, archived: elsewhere }).error).toContain(

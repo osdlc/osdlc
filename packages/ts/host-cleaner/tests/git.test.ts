@@ -1,14 +1,7 @@
 import { afterEach, describe, expect, test } from 'vitest'
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
@@ -291,6 +284,7 @@ describe('the git plugin', () => {
       delete: (c) => {
         // The archive already holds the file this deletes.
         expect(archives(fx.bare)).toHaveLength(1)
+        rmSync(c.path)
         return `removed ${c.id}`
       },
     }
@@ -300,16 +294,28 @@ describe('the git plugin', () => {
     const receipt = clean(p, [plugin, inside], { ...fx.ctx, allow })
     expect(receipt.steps[0]).toMatchObject({ id: 'inside:wip', result: 'ok' })
     expect(receipt.steps[0]!.prepared?.[0]).toMatch(/^git: refs\/heads\/archive\//)
+    // The worktree no longer matches its archive, so it stays.
+    expect(receipt.steps[1]).toMatchObject({
+      id: `worktree:${fx.worktree}`,
+      result: 'failed',
+      error: expect.stringContaining('changed since it was archived'),
+    })
+    expect(existsSync(fx.worktree)).toBe(true)
+    expect(archives(fx.bare)).toHaveLength(1)
   })
 
   test('with archive, a gone worktree in a repository with no remote is not refused for it', () => {
     const fx = fixture()
-    sh(fx.worktree, ['commit', '--allow-empty', '-m', 'more'])
-    rmSync(fx.worktree, { recursive: true, force: true })
+    const wt = join(dirname(fx.worktree), 'wt-gone')
+    sh(fx.root, ['worktree', 'add', '-q', '-b', 'gone', wt, 'main'])
+    sh(wt, ['-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', fx.bare, 'sub'])
+    sh(join(wt, 'sub'), ['commit', '--allow-empty', '-m', 'only here'])
+    // Its git dir keeps the submodule's commit, which no archive could hold.
+    rmSync(wt, { recursive: true, force: true })
     sh(fx.root, ['remote', 'remove', 'origin'])
     const s = survey([archiving()], fx.ctx)
-    const id = `worktree:${fx.worktree}`
-    expect(s.objections.filter((o) => o.candidate === id && o.code === 'no-remote')).toEqual([])
+    const codes = s.objections.filter((o) => o.candidate === `worktree:${wt}`).map((o) => o.code)
+    expect(codes).toEqual(['abandon-unmerged'])
   })
 
   test('with archive, unlanded work in a repository with no remote is refused, merged work is not', () => {

@@ -94,9 +94,10 @@ first candidate there, or before another plugin's candidate inside one of the
 run's worktrees. Without `ctx.run`, it archives each candidate it was not given
 before. The step that pushed it records the archive in `prepared`. A failed push
 throws `FatalRun`, and a candidate with unlanded work in a repository with no
-remote is refused (`no-remote`). Work
-that changed since the archive fails that candidate, and stays. Grant the named
-risks; the `discard-archived` cover is not yet offered here.
+remote is refused (`no-remote`). Work that changed since the archive fails that
+candidate, and stays: so does a worktree whose files another plugin's delete
+inside it changed. Grant the named risks; the `discard-archived` cover is not
+yet offered here.
 
 ## The `cargo` and `node` plugins
 
