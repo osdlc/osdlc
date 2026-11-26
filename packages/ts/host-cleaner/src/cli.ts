@@ -557,7 +557,9 @@ async function setUp(
   const warnings = [...run.warnings]
   if (unknown.length > 0) {
     if (strict) {
-      const have = [...(deps.plugins ?? found.definitions), ...entries].map((d) => d.name).join(', ')
+      const have = [...(deps.plugins ?? found.definitions), ...entries]
+        .map((d) => d.name)
+        .join(', ')
       throw new BadInput(
         `${unknownMessage(unknown)}; correct the name (have ${have}), give the descriptor of that name with --descriptor, or remove the entry from the config`,
       )
