@@ -28,17 +28,24 @@ plugin](./docs/guide/writing-a-plugin.md) is the guide: writing, testing and
 publishing one.
 
 ```ts
+import { existsSync } from 'node:fs'
+import { isAbsolute, join } from 'node:path'
+
 import { PLUGIN_API, definePlugin, z } from '@osdlc/host-cleaner/plugin'
 
 export default definePlugin({
   name: 'scratch',
   api: PLUGIN_API,
-  settings: z.object({ dir: z.string() }),
+  // The core refuses a root that is not absolute.
+  settings: z.object({ dir: z.string().refine(isAbsolute, 'dir must be an absolute path') }),
   create: ({ settings, kit }) => ({
     name: 'scratch',
     detect: () => true,
     roots: () => [settings.dir],
-    discover: () => [kit.candidate({ kind: 'scratch', path: `${settings.dir}/out`, why: 'built' })],
+    discover: () => {
+      const out = join(settings.dir, 'out')
+      return existsSync(out) ? [kit.candidate({ kind: 'scratch', path: out, why: 'built' })] : []
+    },
     delete: (c, ctx) => kit.remove(c.path!, ctx),
   }),
 })

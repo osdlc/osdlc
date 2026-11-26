@@ -9,10 +9,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
@@ -23,7 +25,7 @@ import { fileURLToPath } from 'node:url'
 
 import { clean, plan, survey, type RunCtx } from '../src/index.ts'
 import * as entry from '../src/plugin.ts'
-import { tempHome } from '../src/testing.ts'
+import { fakeContext, tempHome } from '../src/testing.ts'
 import scratch from './fixtures/outside-plugin/plugin.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -85,9 +87,14 @@ function outsidePackage(dir: string): void {
 
 // One package, shared by the tests that use it.
 describe('a package outside this one', () => {
-  const { home: dir, cleanup } = tempHome('host-cleaner-outside-')
-  beforeAll(() => outsidePackage(dir), 120_000)
-  afterAll(cleanup)
+  // Made in beforeAll, so a run that skips these tests leaves no folder behind.
+  let dir = ''
+  let cleanup = () => {}
+  beforeAll(() => {
+    ;({ home: dir, cleanup } = tempHome('host-cleaner-outside-'))
+    outsidePackage(dir)
+  }, 120_000)
+  afterAll(() => cleanup())
 
   test('builds against ./plugin and ./testing, and its plugin keeps the contract', () => {
     const built = spawnSync(process.execPath, [tsc, '-p', dir], { cwd: dir, encoding: 'utf8' })
@@ -148,9 +155,18 @@ test('./plugin exports what a plugin is written with, and nothing of the run', (
 
 describe("the guide's plugin, its walk out of time in one survey and not the other", () => {
   const DAY_MS = 86_400_000
-  const { home, env, cleanup } = tempHome('host-cleaner-scratch-')
-  afterAll(cleanup)
-  const path = join(home, '.scratch', 'build-1')
+  let made: ReturnType<typeof tempHome> | undefined
+  let home = ''
+  let env: ReturnType<typeof tempHome>['env'] = {}
+  let path = ''
+  let ctx: RunCtx
+  beforeAll(() => {
+    made = tempHome('host-cleaner-scratch-')
+    ;({ home, env } = made)
+    path = join(home, '.scratch', 'build-1')
+    ctx = { cwd: home, targets: [home], allow: [] }
+  })
+  afterAll(() => made?.cleanup())
   beforeEach(() => {
     mkdirSync(path, { recursive: true })
     writeFileSync(join(path, 'out.bin'), 'x')
@@ -167,7 +183,6 @@ describe("the guide's plugin, its walk out of time in one survey and not the oth
       kit: entry.pluginKit(scratch.name, { env, ...(slow ? { clock: () => (ms += DAY_MS) } : {}) }),
     })
   }
-  const ctx: RunCtx = { cwd: home, targets: [home], allow: [] }
   const allow = ['unmeasured']
 
   test.each([
@@ -197,6 +212,38 @@ describe("the guide's plugin, its walk out of time in one survey and not the oth
     const receipt = await clean(planned, [make(false)], ctx)
     expect(receipt.dropped).toEqual([expect.objectContaining({ reason: 'gone' })])
     expect(existsSync(path)).toBe(true)
+  })
+
+  test('does not measure a folder the run ignores', async () => {
+    // Every measure runs out of time, so a measured folder would be proposed.
+    const found = await make(true).discover?.(fakeContext({ cwd: home, ignore: [path] }))
+    expect(found).toEqual([])
+  })
+
+  // Root reads a folder of mode 000.
+  const asRoot = process.getuid?.() === 0
+  test.skipIf(asRoot)('keeps the other folders when it cannot read one', async () => {
+    const locked = join(home, '.scratch', 'locked')
+    mkdirSync(join(locked, 'inside'), { recursive: true })
+    chmodSync(locked, 0o000)
+    try {
+      const found = await make(false).discover?.(fakeContext({ cwd: home }))
+      expect(found?.map((c) => c.path)).toEqual([path])
+    } finally {
+      chmodSync(locked, 0o700)
+      rmSync(locked, { recursive: true })
+    }
+  })
+
+  test('does not run when its folder is a file', async () => {
+    const file = join(home, 'a-file')
+    writeFileSync(file, 'x')
+    const plugin = scratch.create({
+      settings: scratch.settings.parse({ dir: file }),
+      env,
+      kit: entry.pluginKit(scratch.name, { env }),
+    })
+    expect(await plugin.detect(fakeContext({ cwd: home }))).toBe(false)
   })
 })
 

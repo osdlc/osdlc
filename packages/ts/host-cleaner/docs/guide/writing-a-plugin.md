@@ -43,16 +43,18 @@ A plugin uses two entries of `@osdlc/host-cleaner`, and no other:
 This plugin cleans the folders under `~/.scratch` that have sat idle:
 
 ```ts
-import { existsSync, readdirSync } from 'node:fs'
+import { readdirSync, statSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
 import {
   DEFAULT_IDLE_HOURS,
   PLUGIN_API,
+  coveredBy,
   definePlugin,
   idleHoursSetting,
   z,
   type Candidate,
+  type Idle,
 } from '@osdlc/host-cleaner/plugin'
 
 export default definePlugin({
@@ -66,14 +68,24 @@ export default definePlugin({
       name: 'scratch',
       // The core refuses a relative root, so say why the plugin does not run.
       detect: () =>
-        isAbsolute(root) ? existsSync(root) : { active: false, note: `${root} is not absolute` },
+        isAbsolute(root)
+          ? statSync(root, { throwIfNoEntry: false })?.isDirectory() === true
+          : { active: false, note: `${root} is not absolute` },
       roots: () => [root],
-      discover() {
+      discover(ctx) {
         return readdirSync(root, { withFileTypes: true })
           .filter((e) => e.isDirectory())
           .flatMap((e): Candidate[] => {
             const path = join(root, e.name)
-            const idle = kit.idle(path)
+            // The core leaves out an ignored folder, so do not measure it.
+            if (coveredBy(path, ctx.ignore ?? []) !== undefined) return []
+            let idle: Idle
+            try {
+              idle = kit.idle(path)
+            } catch {
+              // A folder it cannot read: leave it out, and keep the others.
+              return []
+            }
             if (idle.unmeasured) {
               return [
                 kit.candidate({
@@ -134,7 +146,9 @@ What it relies on:
   for the person reading every run. The
   core refuses a root that is not an absolute path, so this plugin does not
   run, and says why, when `dir` is relative (`~` is not expanded) or `HOME` is
-  unset. `ctx.targetsGiven` says whether the person gave targets or the run fell
+  unset. It does not run either when the root is not a folder.
+- **`discover`** skips the folders `ctx.ignore` covers, and leaves out a
+  folder `kit.idle` cannot read rather than failing the whole survey. `ctx.targetsGiven` says whether the person gave targets or the run fell
   back to the current folder.
 
 The rules every plugin keeps:
