@@ -95,6 +95,9 @@ interface Fixture {
 
 const HOUR_MS = 3_600_000
 
+/** A process probe that finds nothing running anywhere, so no test reads this machine's process table. */
+const NOTHING_RUNS: ProcessProbe = { alive: () => true, holders: () => [] }
+
 /** One installed version: a folder with a file in its `bin`, last used a year ago. */
 const install = (dir: string, name: string): string => {
   const tool = join(dir, name, 'bin', 'tool')
@@ -172,7 +175,7 @@ function fixture(
     runner: fake.runner,
     which: fake.which,
     now: opts.now,
-    probe: opts.probe ?? { alive: () => true, holders: () => [] },
+    probe: opts.probe ?? NOTHING_RUNS,
   })
   const plugin = toolchainsPlugin(kit, env, {
     idleHours: opts.idleHours,
@@ -810,7 +813,7 @@ describe('nvm and Volta Node versions', () => {
 
     const names = async (dirs: string[]): Promise<unknown[]> => {
       const env = { HOME: h.home, PATH: dirs.map((d) => join(h.home, d)).join(delimiter) }
-      const kit = pluginKit('toolchains', { env })
+      const kit = pluginKit('toolchains', { env, probe: NOTHING_RUNS })
       const plugin = toolchainsPlugin(kit, env, {
         mountOptions: async () => [],
         platform: 'linux',
@@ -947,7 +950,7 @@ describe('a versions folder on a noatime volume', () => {
     const p = plan(await survey([fx.plugin], fx.ctx))
     expect(p.candidates.map((c) => c.name)).toEqual(['v14.21.3'])
     const env = { HOME: fx.home, PATH: '' }
-    const kit = pluginKit('toolchains', { env })
+    const kit = pluginKit('toolchains', { env, probe: NOTHING_RUNS })
     const mac = toolchainsPlugin(kit, env, {
       mountOptions: async () => ['local'],
       platform: 'darwin',
@@ -1063,7 +1066,7 @@ describe('reading mount options', () => {
       settings: { idleHours: 1 },
       only: [],
       env,
-      kit: pluginKit('toolchains', { env, runner: f.runner, which: f.which }),
+      kit: pluginKit('toolchains', { env, runner: f.runner, which: f.which, probe: NOTHING_RUNS }),
     })
     const s = await survey([plugin], {
       cwd: h.home,
