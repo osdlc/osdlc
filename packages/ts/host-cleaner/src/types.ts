@@ -149,8 +149,8 @@ export interface VarValue {
   from?: string | undefined
   /**
    * Set in the config, an `XDG_*` folder the environment sets that the folder
-   * checks pass, or a `value` inside a trusted variable's folder: its folders
-   * may sit outside home.
+   * checks pass (as a built-in or read by an `env` source), or a `value` inside
+   * a trusted variable's folder: its folders may sit outside home.
    */
   trusted: boolean
   /** The sources before it that gave nothing, in order, and why. */
