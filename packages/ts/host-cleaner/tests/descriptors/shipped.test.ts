@@ -943,6 +943,28 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       },
     )
 
+    test.each([
+      ['yarn', { XDG_CACHE_HOME: 'cache' }, { classic: 'cache/yarn' }],
+      [
+        'pnpm',
+        { XDG_CACHE_HOME: 'cache', XDG_DATA_HOME: 'data' },
+        { cache: 'cache/pnpm', store: 'data/pnpm/store' },
+      ],
+    ] as const)(
+      '%s trusts an XDG folder the environment sets on another disk',
+      async (name, env, moved) => {
+        const disk = tempHome()
+        cleanups.push(disk.cleanup)
+        const on = (rels: Record<string, string>) =>
+          Object.fromEntries(Object.entries(rels).map(([k, rel]) => [k, join(disk.home, rel)]))
+        const b = build(name, os, { moves: () => ({ env: on(env), moved: on(moved) }) })
+        const s = await survey([b.plugin], CTX)
+        expect(s.warnings).toEqual([])
+        expect(s.objections.filter((o) => o.code === OUTSIDE_ROOTS)).toEqual([])
+        expect(s.candidates.map((c) => c.path).sort()).toEqual(expectedPaths(b))
+      },
+    )
+
     test('a moved pnpm store is pruned where pnpm says it is', async () => {
       const b = build('pnpm', os, { moves: pnpmStorePath })
       const { receipt } = await surveyAndClean(b.plugin)
