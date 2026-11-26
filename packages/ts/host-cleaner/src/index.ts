@@ -102,3 +102,20 @@ export {
   type OrcaOptions,
   type OrcaRecord,
 } from './orca.ts'
+export {
+  AGENT_WORKTREE,
+  CURSOR_IN_USE,
+  CURSOR_PLUGIN,
+  CURSOR_STATE_UNREADABLE,
+  CURSOR_UNKNOWN_WORKSPACE,
+  VSCODE_IN_USE,
+  VSCODE_PLUGIN,
+  VSCODE_STATE_UNREADABLE,
+  VSCODE_UNKNOWN_WORKSPACE,
+  cursorPlugin,
+  cursorUserDir,
+  vscodePlugin,
+  vscodeUserDir,
+  type CursorOptions,
+  type VscodeOptions,
+} from './vscode.ts'

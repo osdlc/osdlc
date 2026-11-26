@@ -7,7 +7,7 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node` and `orca` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `vscode`, `cursor` and `orca` plugins, and the `host-cleaner` command.
 It runs only when a person runs it: there is no scheduled or unattended run
 ([B-0001](docs/planning/backlog/B-0001-unattended-cleaning.md)).
 
@@ -18,7 +18,7 @@ The design it is heading to, descriptors and loadable plugins included, is the
 ## Phases
 
 Plugins run in the order they are given. The command line runs the shipped
-ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `orca`.
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`.
 The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
@@ -225,7 +225,7 @@ without it to the kit it builds; a kit no run has bound removes nothing.
 | --- | --- |
 | `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the hours since, fractions included, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Several folders, as a list, are one answer within one budget. Out of time, it is `{ unmeasured: true }`. |
 | `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
-| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and the unbroken line of ancestors above it whose command lines name host-cleaner are left out, so the `npm exec` or `pnpm dlx` that started it does not count, but an editor, terminal or `tmux` it runs inside does. The table is read fresh once per hook call; one that could not be read stays `unknown` for the rest of it. |
+| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy), as `names` (`<command> (pid <n>)`, for a sentence) and `processes` (`{ pid, command }`, to match on); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and the unbroken line of ancestors above it whose command lines name host-cleaner are left out, so the `npm exec` or `pnpm dlx` that started it does not count, but an editor, terminal or `tmux` it runs inside does. The table is read fresh once per hook call; one that could not be read stays `unknown` for the rest of it. |
 | `kit.onPath(program)` | Whether a program is on PATH. |
 | `kit.candidate({ kind, path \| ref, ... })` | A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and the plugin as owner. |
 | `kit.run(argv, { signal, check })` | Runs a program through `@osdlc/command-seam`, with a time limit (`RUN_LIMIT_MS`, 30 seconds) and stopped when `ctx.signal` aborts; `ok` when it exited 0, a `CommandFailed` throw with `check`. |
@@ -322,6 +322,58 @@ its checkout (checked with `@osdlc/path-guard`) is a `refuse` and is never
 measured. `delete` reads the checkout's candidates again over a fresh process
 table, then removes the directory with `kit.remove`; a directory that is already
 gone (its worktree went first) is not a failure.
+
+## The `vscode` plugin
+
+VS Code keeps state for every folder it opened in `workspaceStorage/<hash>/`
+and never removes it when the folder goes. Its root is
+`~/Library/Application Support/Code/User/workspaceStorage` on macOS and
+`~/.config/Code/User/workspaceStorage` on Linux (`$XDG_CONFIG_HOME/Code/...`
+when `XDG_CONFIG_HOME` is set), or `$VSCODE_APPDATA/Code/...` on either when
+that is set, as VS Code itself finds it; the plugin is detected when that
+folder exists (and is not when it is not an absolute path, as with an empty
+`HOME`), and has no settings.
+
+| Phase | What it does |
+| --- | --- |
+| discover | Reads each folder's `workspace.json`. One whose `folder` or `workspace` (a `.code-workspace` file) is a `file:` URI naming nothing on disk is `workspace-storage:<path>`, with its size and `costDescription: re-download`. One that holds chat or agent history is `costDescription: lost` instead, so it is held and runs only when picked with `--allow discard-user-data`: history is a `chatSessions/` chat (VS Code's chats, a `.json` file or a `.jsonl` log) with at least one request, a `chatEditingSessions/<session>/` whose `contents/` has something in it (the file contents an agent's edits changed), anything in the Copilot extension's `GitHub.copilot-chat/transcripts` or `GitHub.copilot-chat/memory-tool/memories`, or a `state.vscdb` with an `interactive.sessions` row holding a chat with at least one request, where VS Code kept chats before `chatSessions/` (one whose bytes name the key is read with `node:sqlite`, and counts unless it can tell that no such row does; then `evidence.history` says why, as `state.vscdb (<reason>)`). An empty chat file, a chat with no requests, an editing session with an empty or missing `contents/`, and other files in `chatSessions/` do not count; a chat file it cannot parse, and a folder it cannot read, do. The `why` and `evidence.history` name the folders found. A remote URI, a folder with no `workspace.json` (an empty window's), a link, and a path on a volume that is not mounted are left alone. A `workspace.json` of any other shape is never guessed at: the folder is proposed held and refused `vscode-unknown-workspace`, naming what was found, so it shows under `--all-rows`. |
+| object | While VS Code runs, or the process table cannot be read, refuses (`vscode-in-use`) a `git` worktree a VS Code process works in (by its working directory, such as a `Code Helper (Plugin)` process an extension started there), one the window state (`User/globalStorage/storage.json`, `windowsState`) names as open, and one a storage folder written since VS Code started names. Both name a worktree by a folder in it or a folder it is in (a window on `/repo` names `/repo/.worktrees/feat`), or by an open `.code-workspace` file's root in it or above it. The window state can miss a window opened since VS Code started; its storage does not. When VS Code's start cannot be read (`ps -o lstart=`), every worktree that storage names is refused; one that none names is not. Its own candidate is refused the same way: when a window still names the gone folder, or the candidate was written since VS Code started (or at any time, when that is not known). A window state, or an open workspace file it names, that cannot be read refuses every worktree and storage candidate not refused already (`vscode-state-unreadable`); a `workspace.json` or workspace file of storage written since that cannot be read refuses every such worktree. A worktree that is not refused and whose processes could not be listed carries a `note` (`vscode-unchecked`). |
+| prepare | Checks each `git` worktree and each of its own candidates again as `object` did, right before it is deleted, and fails it when VS Code may now have it open or works in it. Each check reads the process table afresh. |
+| delete | Reads the folder's `workspace.json` again, checks it is a folder directly in `workspaceStorage`, its workspace is still gone, and it holds no chat or agent history unless it was planned as `lost`, then removes it with `kit.remove`. |
+
+## The `cursor` plugin
+
+Cursor is a fork of VS Code and keeps the same `workspaceStorage`. The `cursor`
+plugin is the `vscode` plugin's code over Cursor's folders,
+`~/Library/Application Support/Cursor/User/workspaceStorage` on macOS and
+`~/.config/Cursor/User/workspaceStorage` on Linux (moved by `XDG_CONFIG_HOME`
+and `VSCODE_APPDATA` as VS Code's is), and over Cursor's processes
+(`Cursor`, `Cursor Helper (…)`, `cursor`). It finds, refuses and deletes what
+the `vscode` plugin does. Three differences. Cursor keeps its chat history in that
+storage, so every dead workspace's folder is `costDescription: lost`, not only
+one with the history folders the `vscode` plugin looks for. It is held,
+protested `discard-user-data`, and runs only with
+`--pick <id> --allow discard-user-data`. Cursor's agents make and track
+their own worktrees under `~/.cursor/worktrees`, so the plugin refuses
+(`agent-worktree`, exported as `AGENT_WORKTREE`) any `git` worktree there,
+whether or not Cursor runs. (For another tool's agent worktrees, list their
+folder in the config's `ignore`.) And the `cursor-agent` CLI runs as `node`, so
+the process table does not show which process is Cursor's agent: the plugin
+refuses (`cursor-in-use`) any `git` worktree that any process other than an idle
+shell works in, whether or not Cursor runs. The plugin is detected when its
+storage or the agents' folder exists; on a host with only the CLI, that is once
+it has made a worktree there. On Windows only the agents' folder is checked. Its
+codes are the `vscode` plugin's under its own name: `cursor-in-use`,
+`cursor-unknown-workspace`, `cursor-state-unreadable` and `cursor-unchecked`.
+
+```ts
+import { CURSOR_PLUGIN, cursorPlugin, cursorUserDir, survey } from '@osdlc/host-cleaner'
+
+// Cursor's `User` folder here: undefined on a platform the plugin does not know.
+const userDir = cursorUserDir(process.env, process.platform)
+const s = await survey([cursorPlugin({ userDir })], { cwd: process.cwd(), targets: [], allow: [] })
+const ofCursor = s.candidates.filter((c) => c.owner === CURSOR_PLUGIN)
+```
 
 ## The `orca` plugin
 
