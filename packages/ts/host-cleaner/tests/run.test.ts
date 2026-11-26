@@ -214,9 +214,37 @@ describe('plugin order and duplicates', () => {
       expect(s.plugins).toEqual([])
       expect(s.notes).toEqual({})
       expect(s.warnings).toEqual([
-        `odd: detect answered ${JSON.stringify(answer)}, which is neither a boolean nor { active, note?, vars? }; it was left out`,
+        `odd: detect answered ${JSON.stringify(answer)}, which is neither a boolean nor { active, note? }; it was left out`,
       ])
     }
+  })
+
+  test('vars it cannot show leave the plugin in: survey does not read them, inspect drops them with a warning', async () => {
+    const vars = { X: { value: '/a', from: null, trusted: false, tried: [] } }
+    const odd = fake('odd', [cand('a:1', 'odd')], [], {
+      detect: () => ({ active: true, note: 'n', vars }) as unknown as boolean,
+    })
+    const s = await survey([odd], ctx)
+    expect(s.plugins.map((p) => p.name)).toEqual(['odd'])
+    expect(s.notes).toEqual({ odd: 'n' })
+    expect(s.warnings).toEqual([])
+    const i = await inspect([odd], ctx)
+    expect(i.plugins[0]).toMatchObject({ name: 'odd', detected: true, note: 'n' })
+    expect(i.plugins[0]!.vars).toBeUndefined()
+    expect(i.warnings).toEqual([
+      'odd: detect answered vars it cannot show: vars.X is not { value, from?, trusted, tried }',
+    ])
+  })
+
+  test('inspect keeps a variable named __proto__ as an own key', async () => {
+    const vars = JSON.parse(
+      '{"__proto__": {"value": "/a", "from": "env A", "trusted": false, "tried": []}}',
+    )
+    const p = fake('odd', [], [], { detect: () => ({ active: true, vars }) as unknown as boolean })
+    const got = (await inspect([p], ctx)).plugins[0]!.vars!
+    expect(Object.keys(got)).toEqual(['__proto__'])
+    expect(Object.getPrototypeOf(got)).toBe(Object.prototype)
+    expect(got['__proto__']).toEqual({ value: '/a', from: 'env A', trusted: false, tried: [] })
   })
 
   test('every hook sees targetsGiven, false when the run leaves it unset', async () => {
@@ -404,7 +432,7 @@ describe('inspect', () => {
       {
         name: 'c',
         detected: false,
-        reason: 'detect answered "yes", which is neither a boolean nor { active, note?, vars? }',
+        reason: 'detect answered "yes", which is neither a boolean nor { active, note? }',
         roots: [],
         selfRoots: [],
       },

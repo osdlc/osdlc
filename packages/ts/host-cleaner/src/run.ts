@@ -10,7 +10,6 @@ import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 
 import { errorText, realOr } from './helpers.ts'
 import { coveredBy, containsIgnored } from './ignore.ts'
-import { VarsSchema, type Vars } from './descriptor/vars.ts'
 import { bindKit } from './kit.ts'
 import { acceptRoots, boundBy, gitReads, linkedCheckouts, type Bounds } from './roots.ts'
 import {
@@ -27,6 +26,7 @@ import {
 import {
   FatalRun,
   isBuiltIn,
+  parseVars,
   type Candidate,
   type Ctx,
   type Detection,
@@ -36,6 +36,7 @@ import {
   type PathCandidate,
   type Plugin,
   type RunCtx,
+  type Vars,
 } from './types.ts'
 
 /** The refusal for a path candidate that is not inside its owner's roots or the targets. */
@@ -159,22 +160,21 @@ export interface Survey {
 }
 
 /**
- * `detect`'s answer as whether the plugin runs, its note and its variables;
- * null when it is neither a boolean nor a {@link Detection} with a boolean
- * `active`, a string or no `note`, and {@link Vars} or no `vars`.
+ * `detect`'s answer as whether the plugin runs, its note and its variables,
+ * unchecked: only `inspect` shows them, and checks them there; null when it is
+ * neither a boolean nor a {@link Detection} with a boolean `active` and a
+ * string or no `note`.
  */
-function detection(answer: unknown): { active: boolean; note?: string; vars?: Vars } | null {
+function detection(answer: unknown): { active: boolean; note?: string; vars?: unknown } | null {
   if (typeof answer === 'boolean') return { active: answer }
   if (typeof answer !== 'object' || answer === null) return null
   const { active, note, vars } = answer as Partial<Record<keyof Detection, unknown>>
   if (typeof active !== 'boolean') return null
   if (note !== undefined && typeof note !== 'string') return null
-  const checked = vars === undefined ? undefined : VarsSchema.safeParse(vars)
-  if (checked?.success === false) return null
   return {
     active,
     ...(note === undefined ? {} : { note }),
-    ...(checked === undefined ? {} : { vars: checked.data }),
+    ...(vars === undefined ? {} : { vars }),
   }
 }
 
@@ -297,8 +297,8 @@ interface Detected {
   detected: boolean
   /** The note `detect` gave with its answer. */
   note?: string | undefined
-  /** The variables `detect` gave with its answer. */
-  vars?: Vars | undefined
+  /** The variables `detect` gave with its answer, unchecked. */
+  vars?: unknown
   /** What `detect` threw or timed out with, or why its answer was left out; absent when it answered a boolean or a {@link Detection}. */
   error?: string | undefined
   /** Whether `skip` left it out, so its `detect` did not run. */
@@ -349,7 +349,7 @@ async function detectAll(
     const answer = r.value
     const found = detection(answer)
     if (found === null) {
-      const error = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note?, vars? }`
+      const error = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note? }`
       if (warnFailures) warnings.push(`${p.name}: ${error}; it was left out`)
       detections.push({ plugin: p, detected: false, error })
       continue
@@ -464,7 +464,7 @@ export interface Inspection {
   plugins: PluginState[]
   /** The run's context after `scope`. */
   ctx: RunCtx
-  /** A failed `scope` or `roots`, a `scope` answer, a root or a `limits` entry the core does not take, and a second plugin of one name. A failed `detect` is its plugin's `reason` instead. */
+  /** A failed `scope` or `roots`, a `scope` answer, a root, `vars` or a `limits` entry the core does not take, and a second plugin of one name. A failed `detect` is its plugin's `reason` instead. */
   warnings: string[]
 }
 
@@ -493,6 +493,10 @@ export async function inspect(
   const { rootsOf } = await askRoots(detected, scoped, warnings)
   const plugins = detections.map((d): PluginState => {
     const r = rootsOf.get(d.plugin.name)
+    const vars = d.vars === undefined ? undefined : parseVars(d.vars)
+    if (vars !== undefined && 'failed' in vars) {
+      warnings.push(`${d.plugin.name}: detect answered vars it cannot show: ${vars.failed}`)
+    }
     return {
       name: d.plugin.name,
       detected: d.detected,
@@ -500,7 +504,7 @@ export async function inspect(
       ...(d.skipped === undefined ? {} : { skipped: d.skipped }),
       ...(d.error === undefined ? {} : { reason: d.error }),
       ...(d.note === undefined ? {} : { note: d.note }),
-      ...(d.vars === undefined ? {} : { vars: d.vars }),
+      ...(vars === undefined || 'failed' in vars ? {} : { vars: vars.vars }),
       roots: r?.roots ?? [],
       ...(r?.failed === undefined ? {} : { rootsFailed: r.failed }),
       selfRoots: r?.self ?? [],

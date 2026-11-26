@@ -1269,6 +1269,27 @@ candidates:
     expect(state!.vars).toBeUndefined()
   })
 
+  test('detect shows the variables the folders use and the built-ins their sources name, and no others', async () => {
+    const text = `descriptor: 1
+detect:
+  any: [{ exists: store }]
+vars:
+  ROOT:
+    - value: \${XDG_CACHE_HOME}/mine
+  DIR:
+    - value: \${ROOT}/store
+  UNUSED:
+    - value: \${XDG_DATA_HOME}/other
+paths:
+  store: { all: '\${DIR}' }
+candidates:
+  - { path: store, costDescription: re-download }
+`
+    const b = buildVars('mine', text)
+    const answer = (await b.plugin.detect(fakeContext())) as Detection
+    expect(Object.keys(answer.vars ?? {}).sort()).toEqual(['DIR', 'ROOT', 'XDG_CACHE_HOME'])
+  })
+
   test('the contract suite passes for pnpm and go, with and without their tools', async () => {
     for (const [name, text] of [
       ['pnpm', PNPM_VARS],

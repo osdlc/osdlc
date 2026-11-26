@@ -61,8 +61,9 @@ plugin, so a degraded plugin shows on the commands that act too, and
 `status --format json` and `clean --format json` carry them under `notes`. The
 answer may also give `vars`, the variables the plugin's folders use and the
 source of each, as a descriptor's plugin does; `inspect` returns them and
-`host-cleaner plugins` shows them. An answer of any other shape leaves the
-plugin out with a warning.
+`host-cleaner plugins` shows them. A sweep does not read them, and `inspect`
+drops `vars` that are not that shape with a warning and keeps the plugin. An
+answer of any other shape leaves the plugin out with a warning.
 
 Every hook's `ctx` carries `targetsGiven`: true when a person named the
 targets, in the config or on the command line, and false when the command line

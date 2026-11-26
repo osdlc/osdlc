@@ -432,33 +432,6 @@ interface EngineAt {
  */
 type Folder = { path: string; trusted: boolean }
 
-/**
- * The variables that `templates` use on `os`, declared or built in, with the
- * ones their sources use in turn: the ones a survey resolves.
- */
-function varsUsed(d: Descriptor, os: Os, templates: readonly string[]): Set<string> {
-  const used = new Set<string>()
-  const add = (text: string): void => {
-    for (const ref of varRefs(text)) {
-      if (used.has(ref)) continue
-      used.add(ref)
-      for (const s of sourcesOf(d, ref)) {
-        if ('file' in s) add(s.file)
-        if ('value' in s) {
-          const v = forOs(s.value, os)
-          if (v !== undefined) add(v)
-        }
-      }
-    }
-  }
-  templates.forEach(add)
-  return used
-}
-
-/** The sources `d` declares for the variable `name`; none for a built-in. */
-const sourcesOf = (d: Descriptor, name: string) =>
-  d.vars !== undefined && Object.hasOwn(d.vars, name) ? d.vars[name]! : []
-
 /** Why the variable `missing` has no value, for a note: each source tried and why it gave none. */
 function missingText(key: string, missing: string, vars: Readonly<Vars>): string {
   const tried = Object.hasOwn(vars, missing) ? vars[missing]!.tried : []
@@ -477,7 +450,25 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   const lockTemplates = d.inUse?.locks ?? []
   // resolveVars resolves the variables these use in turn as their sources need them.
   const used = [...pathTemplates.map(([, t]) => t), ...lockTemplates].flatMap(varRefs)
-  const shown = varsUsed(d, at.os, [...pathTemplates.map(([, t]) => t), ...lockTemplates])
+
+  /**
+   * The variables of `vars`, a survey's outcome, that the folders and locks
+   * use: every declared one in it, as it holds only the ones resolved for
+   * them, and the built-ins they or those variables' sources name.
+   */
+  const shownOf = (vars: Readonly<Vars>): Vars => {
+    const declared = d.vars ?? {}
+    const names = new Set(used)
+    for (const n of Object.keys(vars)) {
+      if (!Object.hasOwn(declared, n)) continue
+      names.add(n)
+      for (const s of declared[n]!) {
+        const template = 'file' in s ? s.file : 'value' in s ? forOs(s.value, at.os) : undefined
+        if (template !== undefined) varRefs(template).forEach((ref) => names.add(ref))
+      }
+    }
+    return Object.fromEntries(Object.entries(vars).filter(([n]) => names.has(n)))
+  }
 
   // The folders by their name in `paths`, and the lock files, as the last
   // survey filled them, for the home `filledFor`; undefined until a survey runs.
@@ -1137,12 +1128,13 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         if (d.detect?.any !== undefined) return d.detect.any.some(holds)
         return [...folders.values()].some((f) => present(f.path))
       }
-      const shownVars = Object.entries(vars).filter(([n]) => shown.has(n))
-      if (leftOut === undefined && shownVars.length === 0) return active()
+      const shown = shownOf(vars)
+      const none = Object.keys(shown).length === 0
+      if (leftOut === undefined && none) return active()
       return {
         active: active(),
         ...(leftOut === undefined ? {} : { note: leftOut }),
-        ...(shownVars.length === 0 ? {} : { vars: Object.fromEntries(shownVars) }),
+        ...(none ? {} : { vars: shown }),
       }
     },
     async roots(ctx): Promise<Root[]> {

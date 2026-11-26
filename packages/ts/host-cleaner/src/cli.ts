@@ -822,18 +822,27 @@ const varRows = (vars: Vars | undefined): VarRow[] =>
 
 /**
  * `${NAME} = <folder>  from <source> (tried <source>: <why it gave none>; …)`,
- * or `has no value (tried …)` when no source gave one.
+ * without `from` when the plugin named no source, or `has no value (tried …)`
+ * when no source gave one.
  */
 function varLine(x: VarRow, width: number): string {
   const tried =
     x.tried.length === 0
       ? ''
       : ` (tried ${x.tried.map((t) => `${oneLine(t.source)}: ${oneLine(t.failed)}`).join('; ')})`
-  const said =
-    x.value === null
-      ? `has no value${tried}`
-      : `= ${pathLine(x.value)}  from ${oneLine(x.from ?? '')}${tried}`
+  const from = x.from === null ? '' : `  from ${oneLine(x.from)}`
+  const said = x.value === null ? `has no value${tried}` : `= ${pathLine(x.value)}${from}${tried}`
   return `    ${`\${${oneLine(x.name)}}`.padEnd(width + 3)}  ${said}`
+}
+
+/** `roots: <root> (itself too), …`, or `none, the targets alone (<why>)` when it has none. */
+function rootsText(r: PluginRow): string {
+  const roots = r.roots.map(
+    (root) => pathLine(root) + (r.selfRoots.includes(root) ? ' (itself too)' : ''),
+  )
+  if (roots.length > 0) return `roots: ${roots.join(', ')}`
+  const why = r.rootsFailed === null ? '' : ` (${oneLine(r.rootsFailed)})`
+  return `roots: none, the targets alone${why}`
 }
 
 /** `text` on one line, so a plugin's own words cannot split a row: each run of whitespace is one space. */
@@ -860,7 +869,7 @@ function renderPlugins(
     const state = !r.enabled
       ? 'disabled'
       : r.detected
-        ? `detected; roots: ${r.roots.map((root) => pathLine(root) + (r.selfRoots.includes(root) ? ' (itself too)' : '')).join(', ') || `none, the targets alone${r.rootsFailed === null ? '' : ` (${oneLine(r.rootsFailed)})`}`}`
+        ? `detected; ${rootsText(r)}`
         : 'not detected'
     const reason =
       r.reason === null ? null : oneLine(r.reason) + (r.enabled ? '' : runsAnyway(r.name))

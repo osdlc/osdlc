@@ -23,11 +23,11 @@ import { isAbsolute, join, normalize, sep } from 'node:path'
 import { getIn } from '@osdlc/config-layers'
 import { parse as parseToml } from 'smol-toml'
 import { parse as parseYaml } from 'yaml'
-import { z } from 'zod'
 
 import { runFailure } from '../helpers.ts'
 import type { Kit } from '../kit.ts'
 import { within } from '../roots.ts'
+import type { VarValue, Vars } from '../types.ts'
 import type { Os } from './schema.ts'
 import {
   BUILT_IN_VARS,
@@ -38,6 +38,7 @@ import {
 } from './var-names.ts'
 
 export { BUILT_IN_VARS, VAR_FILE_EXTENSIONS, badVarRef, varRefs } from './var-names.ts'
+export type { VarValue, Vars } from '../types.ts'
 
 /** How long a `command` source may run, or a `file` source be read, before the next source is tried. */
 export const VAR_COMMAND_LIMIT_MS = 5_000
@@ -63,39 +64,6 @@ export type VarSource =
 /** The text of `v` on `os`: `v` itself, its `all`, or its `os` entry. */
 export const forOs = (v: string | PerOs, os: Os): string | undefined =>
   typeof v === 'string' ? v : (v.all ?? v[os])
-
-/** One variable's outcome. */
-export interface VarValue {
-  /** The folder, absolute and normalized; null when no source gave one. */
-  value: string | null
-  /**
-   * The source that gave it, as {@link describeSource} names it; `config`;
-   * `home` for `HOME`; or `default` for an `XDG_*` folder's default.
-   */
-  from?: string | undefined
-  /**
-   * Set in the config, an `XDG_*` folder the environment sets that
-   * {@link VarsAt.trustsXdg} passes, or a `value` inside a trusted variable's
-   * folder ({@link fillTemplate}): its folders may sit outside home.
-   */
-  trusted: boolean
-  /** The sources before it that gave nothing, in order, and why. */
-  tried: Array<{ source: string; failed: string }>
-}
-
-/** Every variable's outcome: the built-ins, then the declared ones in the order declared. */
-export type Vars = Record<string, VarValue>
-
-/** {@link Vars}, as the core takes them from a `detect` answer (`Detection.vars`). */
-export const VarsSchema = z.record(
-  z.string(),
-  z.object({
-    value: z.string().nullable(),
-    from: z.string().optional(),
-    trusted: z.boolean(),
-    tried: z.array(z.object({ source: z.string(), failed: z.string() })),
-  }),
-)
 
 /** How `source` is named in an outcome. */
 function describeSource(source: VarSource): string {

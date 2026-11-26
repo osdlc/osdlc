@@ -756,6 +756,22 @@ candidates:
     )
   })
 
+  test('a variable whose plugin names no source ends at its value', async () => {
+    const { env, cwd } = setup()
+    const vars = { X: { value: '/a', trusted: false, tried: [] } }
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [{ ...fake('a'), detect: () => ({ active: true, vars }) }],
+    })
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  a  given  detected; roots: none, the targets alone',
+        '    ${X}  = /a',
+        '',
+      ].join('\n'),
+    )
+  })
+
   test('a line break in a plugin name does not split its row or widen the column', async () => {
     const { env, cwd } = setup()
     const r = await run(['plugins'], cwd, env, {
