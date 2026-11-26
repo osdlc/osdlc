@@ -148,7 +148,7 @@
             "description": "What deleting it costs. `lost` is always held, with a `discard-user-data` protest that only --allow grants."
           },
           "idleHours": {
-            "description": "Hours it must sit unchanged before it's selected by default; fractions count. Unset: the plugin's idleHours setting.",
+            "description": "Hours it must sit unchanged before it's selected by default; fractions count. The config's plugins.<name>.idleHours wins over it, and its top-level idleHours can only raise it. Unset: the plugin's idleHours setting.",
             "type": "number",
             "minimum": 0
           },
@@ -261,7 +261,7 @@
             "description": "What deleting it costs. `lost` is always held, with a `discard-user-data` protest that only --allow grants."
           },
           "idleHours": {
-            "description": "Hours it must sit unchanged before it's selected by default; fractions count. Unset: the plugin's idleHours setting.",
+            "description": "Hours it must sit unchanged before it's selected by default; fractions count. The config's plugins.<name>.idleHours wins over it, and its top-level idleHours can only raise it. Unset: the plugin's idleHours setting.",
             "type": "number",
             "minimum": 0
           }
@@ -284,7 +284,7 @@
       "type": "boolean"
     },
     "vars": {
-      "description": "Tier 2 variables. Not read yet: a descriptor that sets them is refused.",
+      "description": "Tier 2 variables, each a list of sources tried in order; the first value wins, and `plugins.<name>.vars` in the config wins over all. Built in: HOME, XDG_CACHE_HOME, XDG_DATA_HOME, XDG_CONFIG_HOME, XDG_STATE_HOME.",
       "type": "object",
       "propertyNames": {
         "type": "string",
@@ -300,7 +300,8 @@
               "properties": {
                 "env": {
                   "type": "string",
-                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                  "description": "An environment variable."
                 }
               },
               "required": [
@@ -313,11 +314,20 @@
               "properties": {
                 "file": {
                   "type": "string",
-                  "pattern": "^(~[/\\\\]|\\/|[A-Za-z]:[/\\\\]|\\$\\{)"
+                  "allOf": [
+                    {
+                      "pattern": "^(~[/\\\\]|\\/|[A-Za-z]:[/\\\\]|\\$\\{)"
+                    },
+                    {
+                      "pattern": "(\\.toml|\\.json|\\.yaml|\\.yml)$"
+                    }
+                  ],
+                  "description": "A TOML, JSON or YAML file, by its extension."
                 },
                 "key": {
                   "type": "string",
-                  "minLength": 1
+                  "minLength": 1,
+                  "description": "A dotted key in it, such as `cache.dir`."
                 }
               },
               "required": [
@@ -335,6 +345,18 @@
                   "items": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "description": "A command whose output, trimmed, is the value. It runs from the home folder, only when on PATH, with a short time limit."
+                },
+                "env": {
+                  "description": "Environment entries for `command`, such as `{ GOTOOLCHAIN: 'local' }`.",
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "additionalProperties": {
+                    "type": "string"
                   }
                 }
               },
@@ -350,7 +372,7 @@
                   "anyOf": [
                     {
                       "type": "string",
-                      "minLength": 1
+                      "pattern": "^(~[/\\\\]|\\/|[A-Za-z]:[/\\\\]|\\$\\{)"
                     },
                     {
                       "type": "object",
@@ -390,7 +412,8 @@
                         }
                       ]
                     }
-                  ]
+                  ],
+                  "description": "A fixed folder, per OS or `all`, which may use other variables."
                 }
               },
               "required": [

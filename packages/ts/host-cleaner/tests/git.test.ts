@@ -154,6 +154,16 @@ describe('the git plugin', () => {
     expect(s.roots.git).toEqual([])
   })
 
+  test('with no gone worktree, as before discover, roots reads no target, so git is not run for each', async () => {
+    const fx = fixture()
+    let read = 0
+    const targets = new Proxy([fx.root], {
+      get: (t, k, r) => (read++, Reflect.get(t, k, r)),
+    })
+    expect(await fx.plugin.roots!({ ...fx.ctx, targets })).toEqual([])
+    expect(read).toBe(0)
+  })
+
   test('an unmerged branch needs abandon-unmerged granted by name', async () => {
     const fx = fixture()
     const unmerged = (await survey([fx.plugin], fx.ctx)).candidates.find(

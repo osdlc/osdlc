@@ -58,14 +58,19 @@ must still be refused, so it stays active). The core keeps each plugin's note,
 whether it runs or not, in the survey's `notes` (plugin name to note, plain
 JSON). `status`, `plan` and `clean` print each as a warning line naming the
 plugin, so a degraded plugin shows on the commands that act too, and
-`status --format json` and `clean --format json` carry them under `notes`. An
+`status --format json` and `clean --format json` carry them under `notes`. The
+answer may also give `vars`, the variables the plugin's folders use and the
+source of each, as a descriptor's plugin does; `inspect` returns them and
+`host-cleaner plugins` shows them. A sweep does not read them, and `inspect`
+drops `vars` that are not that shape with a warning and keeps the plugin. An
 answer of any other shape leaves the plugin out with a warning.
 
 Every hook's `ctx` carries `targetsGiven`: true when a person named the
 targets, in the config or on the command line, and false when the command line
 fell back to the directory it runs in (and when a `RunCtx` leaves it unset). A
 plan keeps it, so `clean --plan` tells the plugins the same; a plan without it
-is refused: sweep again.
+is refused: sweep again. In `detect`, `ctx.running` holds the names of the
+plugins found active so far, in run order.
 
 A `RunCtx` may name `home`, the home folder no root may be or hold (see the
 roots rules); unset, it is the process's. The CLI sets it from `HOME`, the
@@ -112,6 +117,24 @@ const cache: Plugin = {
 const ctx: RunCtx = { cwd: process.cwd(), targets: [process.cwd()], targetsGiven: true, allow: [] }
 const found = await survey([cache], ctx) // scope, discover, object
 const receipt = await clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
+```
+
+`inspect` asks the plugins where they stand without proposing anything: it
+calls `detect`, `scope` and `roots` as `survey` does, and nothing else, as
+`host-cleaner plugins` does. Each `PluginState` says whether its plugin is
+detected, why not (what `detect` threw, or why its answer was left out), the
+note and the variables (`vars`) `detect` gave, and its roots, less those the
+core refuses. When a detected plugin's `roots` threw, timed out or had every
+root refused, `rootsFailed` says so, since its candidates outside the targets
+are then refused. A failed `scope` or `roots` is a warning. A plugin its `skip`
+option picks is listed as `skipped` and none of its hooks run, as
+`host-cleaner plugins` lists a plugin the config disables.
+
+```ts
+import { inspect } from '@osdlc/host-cleaner'
+
+const seen = await inspect([cache], ctx) // detect, scope, roots; seen.ctx has the scoped targets
+for (const p of seen.plugins) console.log(p.name, p.detected ? p.roots : (p.reason ?? 'not detected'))
 ```
 
 What a plan runs uses repo-cleaner's words, with their meaning:
@@ -217,7 +240,10 @@ without it to the kit it builds; a kit no run has bound removes nothing.
 
 `idleHoursSetting` is the `idleHours` setting: a plugin that declares it
 inherits the config's top-level `idleHours` when its own entry sets none, and
-`idleHoursOr(idle)` is the threshold it names, the default when unset. A plugin
+`idleHoursOr(idle)` is the threshold it names, the default when unset. The core
+tells `create` where each setting came from (`init.sources`: `config`, `shared`
+or `default`), and a definition's `idleHoursOf(idleHours, source)` lists the
+parts with a threshold of their own, for `config` to print. A plugin
 that walks checkouts itself skips those `coveredBy(path, ctx.ignore ?? [])`
 finds ignored; `present(path)` says whether something, a link included, is
 there.
@@ -237,6 +263,8 @@ runner:
 | `fakeContext(over)` | A hook's context: no targets, `targetsGiven: false`, nothing allowed, a signal never aborted. |
 | `fakeRunner({ program: answers })` | Fake programs for the kit: spread it into `pluginKit`'s options. A program in the table is on PATH and answers as command-seam's `fakeRunner` does; `calls` records each run. |
 | `tempHome()` | A new empty folder, by its real path, with `cleanup()`. |
+| `fakeProcesses({ folder: processes })` | A process table for the kit: spread it into `pluginKit`'s options. `/` lists every process, by command line; any other folder, those working in it. |
+| `ageTree(dir, hours)` | Sets the modification time of a folder and all in it to `hours` ago; links are not followed. |
 | `contractSuite(plugin, ctx, { deleteLimitMs })` | Surveys the plugin twice and returns one line per broken rule. |
 
 The suite checks that `limits` name hooks; that the survey warns of nothing
@@ -260,12 +288,16 @@ Every shipped plugin passes it:
 expect(await contractSuite(plugin, { cwd: root, targets: [root] })).toEqual([])
 ```
 
+On a real machine, `host-cleaner plugins` says whether a plugin is detected and
+where it may delete, and `host-cleaner status --plugin <name>` runs that plugin
+alone and shows its candidates and objections. Neither deletes anything.
+
 ### Descriptors
 
 A descriptor is a plugin written as a YAML (or JSON) file, `descriptor: 1`:
 named folders in `paths`, one value for `all` or one per OS, and the
-`candidates` under them. This release reads and checks the format and builds a
-plugin from it; the command line does not load descriptors yet.
+`candidates` under them. Where the command line finds descriptor files is under
+[Command line](#command-line).
 
 ```yaml
 # yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner/schemas/descriptor-1.json
@@ -302,13 +334,18 @@ glob names entries inside its path, in every `{a,b}` alternative too, and a
 project `marker` names a file in every alternative. A tool's
 `command` must name the checked folder, as a `{path}` argument or in `env`, and
 `env` may not set `PATH`, `LD_*`, `DYLD_*`, `NODE_OPTIONS` or `BASH_ENV`.
-`vars` (tier 2) and any `${VAR}` elsewhere are refused until variables are
-built. `DescriptorSchema` is the zod schema, and `schemas/descriptor-1.json`,
-which the package ships (`@osdlc/host-cleaner/schemas/descriptor-1.json`), is
-the same schema as JSON Schema for editors.
+`paths`, `vars` and `inUse.locks` may use a `${VAR}` that `vars` declares or
+that is built in (`HOME` and the `XDG_*` folders); a `${` in any other string
+(such as a candidate's `command`, `env` or `glob`, `inUse.processes`,
+`detect`'s `onPath`, a `project` entry, or a variable's `command`, its `env`
+or `key`) is refused.
+`DescriptorSchema` is the zod schema, and `schemas/descriptor-1.json`, which
+the package ships (`@osdlc/host-cleaner/schemas/descriptor-1.json`), is the
+same schema as JSON Schema for editors.
 
 `descriptorPlugin(name, descriptor)` turns a checked descriptor into a
-`definePlugin` value built only on the kit, with an `idleHours` setting:
+`definePlugin` value built only on the kit, with an `idleHours` setting, and
+`vars` (a folder per variable) when the descriptor declares variables:
 
 ```ts
 const d = readDescriptor('pip.yaml')
@@ -317,11 +354,17 @@ const plugin = descriptorPlugin('pip', d)
 
 - **detect:** its `detect` (`onPath`, `exists`), or any of its folders
   existing. A `system: true` descriptor (`skipReason`) and one whose
-  `supersededBy` plugin runs answer `{ active: false, note }`.
+  `supersededBy` plugin runs answer `{ active: false, note }`. Otherwise it
+  first resolves the variables its folders and locks use, once per survey; a
+  folder whose variable has no value is left out, and the note says why. A
+  lock whose variable has no value can't be checked, so it refuses every
+  candidate (`in-use`).
 - **roots:** each of its `paths` for this OS that `pathProblem` passes, as a
   self root. A path may not be a symlink (a trailing `/` is dropped first),
   be or hold home, a personal folder, a target or a checkout, sit outside
-  home, or hold or sit inside host-cleaner's own folders.
+  home (unless a variable set in the config, or an `XDG_*` folder the
+  environment sets that passes the folder checks, gives it), or hold or sit
+  inside host-cleaner's own folders.
 - **discover:** one candidate per folder, or per `glob` match inside it
   (`globMatches`; a match may be a file, and `{a,b}` takes either, as in a
   `marker`). Matches past `maxEntries` are
@@ -331,7 +374,8 @@ const plugin = descriptorPlugin('pip', d)
   checkouts, in one walk, and in a repository's primary checkout only inside
   the targets. A build folder that several `project` entries give is one
   candidate, by the longest of their `idleHours` and the highest of their
-  costs. Any other folder that two entries give is refused
+  costs. An entry's own `idleHours` gives way to the config's
+  ([below](#command-line)). Any other folder that two entries give is refused
   (`duplicate-entry`). Home is the run's (`ctx.home`), else `HOME`. It has a
   10 minute limit, which can stop it between two folders.
 - **object:** a running `inUse` process or lock refuses its candidates
@@ -344,6 +388,33 @@ const plugin = descriptorPlugin('pip', d)
   `kit.remove`. A combined candidate removes each of its matches, none when
   one is no longer idle. One that cannot be removed does not stop the others,
   and the error says which went.
+
+A descriptor whose `supersededBy` plugin runs is told so by `ctx.running`,
+which holds only the plugins before it in `survey`'s list: put a descriptor
+after the plugin it names.
+
+To load descriptors from folders and files, as the command line does:
+
+```ts
+import { findPlugins, loadPlugins } from '@osdlc/host-cleaner'
+
+const sources = { user: '/home/me/.config/host-cleaner/descriptors', flag: ['/tmp/uv.yaml'] }
+// The built-ins, then one definition per descriptor by name; a name whose file
+// can't be used is one of `problems`, with its `error`.
+const { definitions, descriptors, problems } = findPlugins(sources)
+// The same, but the first problem is thrown.
+const loaded = loadPlugins(sources)
+```
+
+`sources` names the shipped folder (`shipped`, default `SHIPPED_DESCRIPTORS`),
+the user's (`user`, none when unset) and single files (`flag`). Each of
+`descriptors` (`LoadedDescriptor`) says its `name`, `source`, `path`, the file
+it `replaces`, and the checked `descriptor`. `findDescriptors(sources,
+builtIns)` and `loadDescriptors(sources, builtIns)` give the descriptors alone,
+with no plugin built: `find…` collects each `DescriptorProblem` (`name`,
+`path`, `error`), and `load…` throws the first. A clash of names is a
+`DescriptorLoadError`, a file that is no descriptor a `DescriptorError`; a
+descriptor folder that can't be read throws `DescriptorLoadError` from all four.
 
 ## The `git` plugin
 
@@ -423,6 +494,7 @@ host-cleaner status [target...]   # every candidate, what deleting it costs, and
 host-cleaner plan -o plan.json
 host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [-i] [--yes | --dry-run]
 host-cleaner config [--format json]   # every plugin's effective settings
+host-cleaner plugins [target...] [--format json]   # every plugin: where it came from, detected or why not, its roots
 ```
 
 | Flag | Meaning, as in repo-cleaner |
@@ -436,7 +508,7 @@ host-cleaner config [--format json]   # every plugin's effective settings
 
 The text output writes the home folder in an id as `~`
 (`worktree:~/dev/wt`, `branch:~/dev/repo:main`), and `--pick` and `--spare`
-take that form, also when `HOME` goes through a symlink. `status`, `plan` and `clean` refuse to run as root (exit 1); `config` still answers. `status`,
+take that form, also when `HOME` goes through a symlink. `status`, `plan`, `clean` and `plugins` refuse to run as root (exit 1); `config` still answers. `status`,
 `plan` and `clean` print each plugin's `detect` note as a warning line naming
 the plugin, with the survey's warnings.
 
@@ -447,6 +519,118 @@ asks (`--yes` skips the question; with no terminal and no `--yes` it exits 2),
 deletes, and writes one receipt to `--receipt` or the state directory's
 `receipts/`, plus a line in `logs/host-cleaner.log`.
 
+Descriptors (plugins written as YAML or JSON files) come from three places,
+and each file's name, less `.yaml`, `.yml` or `.json`, is its plugin name: the
+package's `descriptors/`, `descriptors/` in the config directory, and
+`--descriptor <file>` for one run. A file in the config directory replaces a
+shipped one of the same name, and `--descriptor` replaces either for that run.
+Every plugin has one name, so any other clash, such as a descriptor named `git`
+or two files of one name in one folder, is a file that can't be used. Descriptors
+run after the built-ins, by name. To try one you are writing:
+`host-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan records the
+`--descriptor` files behind the plugins it ran, not those the run left out.
+`clean --plan` does not load them by itself: when one is not given it stops
+(exit 2) and names each `--descriptor` flag to add. A descriptor's `supersededBy` must name a built-in plugin.
+
+`config` reports a descriptor file that can't be used (not a descriptor, a name
+that is no plugin name, or a name clash) and goes on. `status`, `plan` and
+`clean` stop (exit 2) unless the run leaves that name out (`--skip-plugin`,
+`--plugin` naming others, or `enabled: false`), and then warn of it. `--config
+<file>` replaces the config file alone: descriptors still come from the config
+directory. When that directory can't be found, such a run has no user
+descriptors, with a warning.
+
+The package ships these, for macOS and Linux: `pnpm` (the store, pruned with
+`pnpm store prune`, and the metadata cache), `uv` (the cache, pruned with
+`uv cache prune`), `huggingface-hub` (one candidate per model, dataset or space,
+after 30 idle days; models are held, so one goes only when picked), `gradle`
+(the caches after a week and each wrapper distribution after 30 days; wrapper
+distributions are held, so one goes only when picked), `npm` (the package
+cache), `pip` (the cache), `yarn` (Classic's global cache; Berry's is left out,
+since Plug'n'Play projects run from it), `maven` (the local repository, at the
+cost `rebuild`; always held, so it goes only when picked) and `go` (the module
+cache after 30 days with no change, the build cache after a week, emptied with
+`go clean`). While the tool runs, every candidate of `pnpm`, `uv`, `gradle`
+(any Gradle build or daemon), `npm` (npm or npx), `pip` (pip, pip3 or
+`python -m pip`), `yarn`, `maven` (mvn, `./mvnw`, mvnd or any process naming
+`maven`, such as IntelliJ's Maven server) and `go` (go, gopls, or any process
+naming `go`, such as an editor open on `main.go`) is refused as `in-use`, at
+the survey and again before each delete, so a long-running `pnpm dev` keeps
+the pnpm store from being pruned. Idle time is the newest modification time
+inside a folder, and reading a file doesn't change it: a Hugging Face model or
+a Gradle wrapper distribution in daily use counts as idle from its download,
+which is why they are held. So does a Maven repository whose artifacts are all
+downloaded, and it may hold what only a local `mvn install` gives back, which
+is why it is held too.
+
+Each finds a store from the environment variables its tool reads, from
+`uv.toml`, or by asking the tool (`npm config get cache`, `pnpm store path`,
+`pnpm config get cache-dir`, `uv cache dir`, `go env`) when it is on PATH, else
+at the default folder. Some settings the tools read are not followed: Maven's
+`localRepository` in `settings.xml` and `-Dmaven.repo.local` in `MAVEN_OPTS`,
+pip's `cache-dir` in `pip.conf`, Yarn's `cache-folder` in `.yarnrc`, and
+`-Dgradle.user.home` in `GRADLE_OPTS`. A store moved by one of those, or by
+any setting not listed here, is not found, and the folder it left behind, if
+any, is what gets cleaned. Name such a store in the config with
+`plugins.<name>.vars`:
+
+```json
+{ "plugins": { "maven": { "vars": { "LOCAL_REPOSITORY": "/data/m2/repository" } } } }
+```
+
+A descriptor finds a moved folder with variables: `${NAME}` in a `paths` entry,
+a lock, or another variable's `file` or `value`. Each variable lists sources,
+tried in order on every survey; the first that gives an absolute folder wins:
+
+```yaml
+vars:
+  GOPATH:
+    - env: GOPATH
+    - value: ~/go
+  GOMODCACHE:
+    - env: GOMODCACHE # an environment variable
+    - command: [go, env, GOMODCACHE] # one line of output; argv only, run from home, 5 s limit
+      env: { GOTOOLCHAIN: local } # optional entries for the command's environment
+    - { file: ~/.config/go/env.toml, key: cache.mod } # a dotted key in a TOML, JSON or YAML file
+    - value: '${GOPATH}/pkg/mod' # a fixed folder, per OS or `all`
+paths:
+  modcache: { all: '${GOMODCACHE}' }
+```
+
+`HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and
+`XDG_STATE_HOME` are built in; each `XDG_*` folder falls back to its XDG default
+under home on every OS. A variable is resolved only when a folder or lock on
+this OS uses it, or another such variable uses it; variables that don't use each
+other are resolved at the same time. A `detect` that its `onPath` conditions
+already leave inactive resolves none, and a `file` source is read only when it
+is a regular file, and given up on after the command limit. A folder whose
+variable has no value is left out, and `status` notes which variable and why
+each source gave none. `${` is refused in every other field, such as a
+candidate's `command`: a command is pointed at its folder with `{path}`. A
+resolved folder must sit inside home, except one under a variable set in the
+config's `plugins.<name>.vars`, which is trusted, so a cache moved to another
+disk can be cleaned. An `XDG_*` folder your environment sets is trusted too, as
+your own setting, with nothing in the config, whether a folder uses the
+built-in or a variable with an `env: XDG_CACHE_HOME` source: a folder under
+`XDG_CACHE_HOME=/var/cache`, say, may be cleaned. Either must pass the checks on
+a descriptor's folders (no `..`, not a home folder or a root):
+
+```json
+{ "plugins": { "go": { "vars": { "GOMODCACHE": "/Volumes/build/go/mod" } } } }
+```
+
+`resolveVars(declared, at)` resolves a descriptor's `vars` outside the engine
+(`VarSource`, `VarsAt`): each variable's `value`, the source it came `from`,
+whether it is `trusted`, and each source `tried` before it (`VarValue`, in
+`Vars`). `fillTemplate(template, vars, home)` fills one folder from them.
+`BUILT_IN_VARS` lists the built-ins with their defaults under home, and
+`VAR_COMMAND_LIMIT_MS` (5 s) is how long a command may run, or a file be read:
+
+```ts
+const vars = await resolveVars(d.vars ?? {}, { home, os: 'linux', env: process.env, kit, signal })
+const store = fillTemplate('${STORE}', vars, home) // { path, trusted }, or { missing }
+```
+
 The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
 all three directories):
 
@@ -454,15 +638,17 @@ all three directories):
 { "targets": ["~/dev"], "plugins": { "cargo": { "idleHours": 48 }, "node": { "enabled": false } } }
 ```
 
-`plugins.<name>` holds that plugin's settings; a name that no plugin has is an
-error. Each plugin's settings are a strict schema, checked when the config
-loads: a misspelt key or a wrong type is refused (exit 2), naming the plugin and
-the key.
+`plugins.<name>` holds that plugin's settings. A name that no plugin has, such as
+a descriptor given only by `--descriptor`, is a warning for `status`, `plan` and
+`config`, and stops `clean` (exit 2). Each plugin's settings are a strict schema,
+checked when the config loads: a misspelt key or a wrong type is refused (exit 2),
+naming the plugin and the key.
 
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
-| `idleHours` | `cargo`, `node` | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
+| `idleHours` | `cargo`, `node`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, and `0` takes every artifact. |
+| `vars.<NAME>` | descriptors that declare `vars` | none | A folder (`~/…` or absolute) for one of the descriptor's variables. It wins over every source and may sit outside home. A name the descriptor does not declare is an error. It wins over the sources of the variables built from it too: `GOPATH` (go) moves the module cache even with go on PATH. |
 
 Two settings sit at the top of the config and apply to every plugin:
 
@@ -476,10 +662,80 @@ Two settings sit at the top of the config and apply to every plugin:
   the active list, a plan records it, and `clean --plan` honours the plan's list
   and the current one, dropping a planned candidate as `ignored`.
 - `idleHours` is the default for every plugin that has the setting and does not
-  set its own. `0` is allowed and makes every idle-checked artifact a candidate.
+  set its own. `0` is allowed and makes every idle-checked artifact a candidate,
+  except where a descriptor entry's own `idleHours` is higher (below).
+
+A descriptor entry may carry its own `idleHours`, such as the 168 of Gradle's
+caches. A `plugins.<name>.idleHours` you set wins over it, higher or lower. A
+top-level `idleHours` you set can only raise it: `"idleHours": 0` leaves Gradle's
+caches at 168 hours, `"idleHours": 1000` takes them to 1000. With neither set,
+the entry's own value applies.
 
 `host-cleaner config` prints every plugin's effective settings: the value, and
-whether the file set it or it is the default. `--format json` prints the values.
+whether the file set it or it is the default. Under a descriptor's `idleHours`
+it prints each entry with its own value and the threshold the run applies to it
+(to a prune entry only when its program is not on PATH and the folder is
+removed whole).
+`--format json` prints the values, and those thresholds under `partIdleHours`.
+
+`host-cleaner plugins` lists every plugin: where it came from, each plugin by its
+own origin (`built-in` when host-cleaner ships it, even when a program passes it
+to `main` or a copy of it; for a descriptor `shipped`, `user` for the config
+directory or `flag` for `--descriptor`; and `given` for a plugin the program
+wrote, or one of host-cleaner's whose hooks it replaced), whether it applies
+here and, when it does not, why, and its roots, the folders it may delete in
+besides the targets. When it does not apply, a reason follows if one is known:
+disabled, or what `detect` threw. A `detect` that just answers no, as most
+built-ins do, gives no reason: it shows `not detected`. A descriptor that
+stands in for one of the same name ends its line with the file it replaces
+(`replaces` in JSON). The ignored directories (`--ignore` and the config's
+`ignore`), which may leave out a target, show after `ignoring:`, as in `status`;
+the JSON has them as `ignore`. It runs `detect`, `scope` and `roots` and nothing
+else, so it proposes and deletes nothing. It asks the plugins one after
+another, so each hook that hangs adds its time limit (30 seconds unless the
+plugin asks for another). A note its `detect` gives follows the plugin's state
+(`; note: ...`), whether it is detected or not, so a degraded plugin
+(`{ active: true, note }`) shows as detected with its note, as Orca installed
+but not running does, and a descriptor that is `system: true` or superseded says
+so there; the JSON row has it as `note`. A root the core refuses is left out
+with a warning, as `status` does, and a self root is marked `(itself too)`. A
+detected plugin with no roots shows `none, the targets alone`, followed in
+parentheses by why when its `roots` threw, timed out or had every root refused
+(`rootsFailed` in JSON): its candidates outside the targets are then refused.
+Git is asked once per target only when a plugin gives a root to check.
+`plugins` runs no `discover`, where a sweep asks `roots` after it, so a root a
+plugin takes from what it found (git's gone worktrees) shows in `status` and
+not here. A plugin the config disables is listed as `disabled`, and its
+`detect` is not run; its JSON `reason` is `plugins.<name>.enabled is false`,
+and the text adds that status, plan or clean with `--plugin <name>` runs it
+anyway. A descriptor that can't be used has a row of its own, from where the
+file was found, not detected, with why as the reason; for one the config
+disables, why is a warning, and the text says that status, plan or clean with
+`--plugin <name>` stops on that error, as it does for a disabled built-in
+plugin whose name such a descriptor has. One named as a built-in plugin is a
+warning alone, as a config entry that names no plugin is, as in `config`.
+
+Under a descriptor with variables, one line per variable its folders and locks
+use on this OS, built in or declared: its value and the source that gave it,
+then each source tried before it and why it gave none. A command that timed out
+says so, and the source after it that gave the value is the one named. A
+variable no source gave a value has no value; its folders are left out, and the
+note says so. The variables come with `detect`'s answer, so a descriptor whose
+`detect` threw, timed out, was skipped or was superseded shows none, as does
+one whose `onPath` conditions alone leave it undetected. Each line
+keeps to itself: a line break in a value is printed as a space. `--format json`
+prints the same, one object per plugin, each with its `vars`.
+
+```text
+targets: /Users/me/dev
+  git    built-in  detected; roots: none, the targets alone
+  cargo  built-in  detected; roots: none, the targets alone
+  node   built-in  disabled: plugins.node.enabled is false; status, plan or clean with --plugin node runs it anyway
+  orca   built-in  detected; roots: none, the targets alone; note: Orca is installed but not running
+  go     user      detected; roots: /Users/me/go/pkg/mod (itself too)
+    ${GOPATH}      = /Users/me/go  from value (tried env GOPATH: not set)
+    ${GOMODCACHE}  = /Users/me/go/pkg/mod  from value (tried env GOMODCACHE: not set; command go env GOMODCACHE: timed out after 5 s)
+```
 
 ### Exit codes
 

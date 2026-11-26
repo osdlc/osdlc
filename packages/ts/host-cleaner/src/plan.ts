@@ -65,6 +65,8 @@ export const PlanSchema = z
     allow: z.array(z.string()),
     /** The ignore list the plan was swept with; `clean --plan` honours it as well as the current one. */
     ignore: z.array(z.string()).default([]),
+    /** The `--descriptor` files the plan was made with; `clean --plan` stops unless it is given each of them. */
+    descriptors: z.array(z.string()).optional(),
     warnings: z.array(z.string()),
     candidates: z.array(CandidateSchema),
     objections: z.array(ObjectionSchema),

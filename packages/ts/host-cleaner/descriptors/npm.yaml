@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
+# npm's package cache: _cacache under npm's `cache` setting, which
+# npm_config_cache sets, or else `npm config get cache` reports (it reads
+# .npmrc), or else ~/.npm. It is removed as a folder once idle, which is what
+# `npm cache clean --force` does; npm can't be pointed at this folder, since
+# its `cache` setting names the folder above it. The npx cache and the logs
+# are left out. npm and npx both use the cache, and either may show in `ps` as
+# `node .../npm-cli.js` or `node .../npx-cli.js`, so each of those names
+# refuses it in-use.
+descriptor: 1
+store: npm
+detect:
+  any: [{ onPath: npm }, { exists: cache }]
+vars:
+  NPM_CONFIG_CACHE:
+    - env: npm_config_cache
+    - env: NPM_CONFIG_CACHE
+    - command: [npm, config, get, cache]
+    - value: ~/.npm
+paths:
+  cache: { macos: '${NPM_CONFIG_CACHE}/_cacache', linux: '${NPM_CONFIG_CACHE}/_cacache' }
+candidates:
+  - path: cache
+    costDescription: re-download
+inUse:
+  processes: [npm, npx, npm-cli, npx-cli]
