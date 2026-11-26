@@ -88,12 +88,11 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
 
 async function run(argv: string[], cwd: string, env: Record<string, string>, deps: MainDeps = {}) {
   const ctx = captureContext({ cwd, env })
-  // The shipped plugins would talk to this machine's Orca and Docker, and sweep every repository Orca lists.
+  // The shipped plugins would talk to this machine's Orca and Docker, and sweep every repository Orca lists,
+  // and run its rustup, which on a macOS runner took half a minute a run, filling the decoy home.
   const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
-  const args =
-    phase && deps.plugins === undefined
-      ? [...argv, '--skip-plugin', 'orca', '--skip-plugin', 'docker']
-      : argv
+  const skip = ['--skip-plugin', 'orca', '--skip-plugin', 'docker', '--skip-plugin', 'cargo']
+  const args = phase && deps.plugins === undefined ? [...argv, ...skip] : argv
   const code = await main(args, ctx, { confirm: () => null, ...deps })
   return { code, out: ctx.io.out, err: ctx.io.err }
 }
