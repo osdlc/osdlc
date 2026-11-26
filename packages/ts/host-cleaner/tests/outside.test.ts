@@ -25,6 +25,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parse as parseYaml } from 'yaml'
 
+import { bumpVersion, configProblems, pendingBumps } from '@osdlc/conformance-suites'
+
 import { clean, plan, survey, type RunCtx } from '../src/index.ts'
 import * as entry from '../src/plugin.ts'
 import { fakeContext, tempHome } from '../src/testing.ts'
@@ -154,11 +156,9 @@ describe('a package outside this one', () => {
   })
 })
 
-/** The `podman` arguments the example lists unused volumes with. */
-const LS = 'volume ls --filter dangling=true --format json'
+const example = join(pkg, 'examples', 'podman-plugin')
 
 test('the podman example builds against ./plugin alone, and the loader takes it as a package', () => {
-  const example = join(pkg, 'examples', 'podman-plugin')
   const { home: dir, cleanup } = tempHome('host-cleaner-outside-')
   onTestFinished(cleanup)
   outsidePackage(dir, {
@@ -190,7 +190,7 @@ import { loadPackages, pluginKit } from ${dist('index.js')}
 import { contractSuite, fakeRunner } from ${dist('testing.js')}
 const { loaded, failed } = await loadPackages([{ name: 'podman', package: 'host-cleaner-podman' }], [${JSON.stringify(root)}])
 const def = loaded[0]?.definition
-const fake = fakeRunner({ podman: { info: {}, ${JSON.stringify(LS)}: { stdout: ${JSON.stringify(JSON.stringify(listed))} } } })
+const fake = fakeRunner({ podman: (argv) => argv[0] === 'info' ? {} : argv[0] === 'volume' && argv[1] === 'ls' ? { stdout: ${JSON.stringify(JSON.stringify(listed))} } : undefined })
 const plugin = def?.create({ settings: def.settings.parse({ package: 'host-cleaner-podman' }), env: {}, kit: pluginKit('podman', { ...fake }) })
 const problems = plugin === undefined ? [] : await contractSuite(plugin)
 const ran = fake.calls.map((c) => c.argv.join(' '))
@@ -206,12 +206,13 @@ process.stdout.write(JSON.stringify({ failed, version: loaded[0]?.version, name:
     version: '0.0.0',
     name: 'podman',
     problems: [],
-    ran: expect.arrayContaining(['podman info', `podman ${LS}`]),
+    ran: expect.arrayContaining(['podman info', expect.stringMatching(/^podman volume ls /)]),
   })
   expect(out.ran.filter((c) => c.startsWith('podman volume rm'))).toEqual([])
 
-  // The example's tests, typechecked as the package would: they also reach
-  // the main entry and ./testing, which its plugin code does not.
+  // The example's source and tests, typechecked as the package would and to
+  // this repo's bar (@osdlc/tsconfig's base.json) on top of its own `strict`:
+  // the tests also reach the main entry and ./testing, which its code does not.
   hostCleanerEntries(dir, ['.', 'plugin', 'testing'])
   mkdirSync(join(dir, 'test'))
   copyFileSync(join(example, 'test', 'podman.test.ts'), join(dir, 'test', 'podman.test.ts'))
@@ -221,7 +222,18 @@ process.stdout.write(JSON.stringify({ failed, version: loaded[0]?.version, name:
     join(dir, 'tsconfig.test.json'),
     JSON.stringify({
       extends: './tsconfig.json',
-      compilerOptions: { noEmit: true, allowImportingTsExtensions: true, rootDir: '.' },
+      compilerOptions: {
+        noEmit: true,
+        allowImportingTsExtensions: true,
+        rootDir: '.',
+        noUncheckedIndexedAccess: true,
+        noImplicitOverride: true,
+        noFallthroughCasesInSwitch: true,
+        noUnusedLocals: true,
+        verbatimModuleSyntax: true,
+        isolatedModules: true,
+        exactOptionalPropertyTypes: true,
+      },
       include: ['src', 'test'],
     }),
   )
@@ -233,8 +245,7 @@ process.stdout.write(JSON.stringify({ failed, version: loaded[0]?.version, name:
   expect(checked.status).toBe(0)
 }, 120_000)
 
-test("the podman example's version ranges are host-cleaner's next release and the workspace catalog's", () => {
-  const example = join(pkg, 'examples', 'podman-plugin')
+test("the podman example's and the guide's version ranges are host-cleaner's next release, and the rest the workspace catalog's", () => {
   const manifest = JSON.parse(readFileSync(join(example, 'package.json'), 'utf8')) as {
     peerDependencies: Record<string, string>
     devDependencies: Record<string, string>
@@ -244,24 +255,23 @@ test("the podman example's version ranges are host-cleaner's next release and th
   }
   // The release the pending changesets make, which a copy of the example installs.
   const changesets = join(pkg, '..', '..', '..', '.changeset')
-  const bumps = readdirSync(changesets)
-    .filter((f) => f.endsWith('.md'))
-    .flatMap((f) => {
-      const front = /^---\n([\s\S]*?)\n---/.exec(readFileSync(join(changesets, f), 'utf8'))?.[1]
-      const bump = /^["']@osdlc\/host-cleaner["']:\s*(major|minor|patch)\s*$/m.exec(front ?? '')
-      return bump === null ? [] : [bump[1]]
-    })
-  const [major, minor] = version.split('.').map(Number) as [number, number]
-  const next = bumps.includes('major')
-    ? [major + 1, 0]
-    : bumps.includes('minor')
-      ? [major, minor + 1]
-      : [major, minor]
-  const range = next[0] === 0 ? `^0.${next[1]}.0` : `^${next[0]}.0.0`
+  const config: unknown = JSON.parse(readFileSync(join(changesets, 'config.json'), 'utf8'))
+  expect(configProblems(config, existsSync(join(changesets, 'pre.json')))).toEqual([])
+  const bumps = pendingBumps(
+    readdirSync(changesets)
+      .filter((f) => f.endsWith('.md') && f !== 'README.md')
+      .map((f): [string, string] => [f, readFileSync(join(changesets, f), 'utf8')]),
+  )
+  const next = bumpVersion(version, bumps.get('@osdlc/host-cleaner') ?? 'none')
+  // The minor is kept from 1.0 on too: the example may use what that minor added.
+  const range = `^${next.split('.').slice(0, 2).join('.')}.0`
   expect(manifest.peerDependencies['@osdlc/host-cleaner']).toBe(range)
   expect(manifest.devDependencies['@osdlc/host-cleaner']).toBe(range)
   const readme = readFileSync(join(example, 'README.md'), 'utf8')
   expect(readme).toContain(`\`@osdlc/host-cleaner\` \`${range}\``)
+  // The guide's package.json, which the example follows.
+  expect(guide).toContain(`"peerDependencies": { "@osdlc/host-cleaner": "${range}" }`)
+  expect(guide).toContain(`"devDependencies": { "@osdlc/host-cleaner": "${range}" }`)
 
   const yaml = readFileSync(join(pkg, '..', '..', '..', 'pnpm-workspace.yaml'), 'utf8')
   const workspace = parseYaml(yaml) as { catalog: Record<string, string> }

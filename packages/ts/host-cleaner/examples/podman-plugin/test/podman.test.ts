@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'vitest'
 
 import { clean, plan, survey, type RunCtx, type Survey } from '@osdlc/host-cleaner'
-import { pluginKit } from '@osdlc/host-cleaner/plugin'
+import { RUN_LIMIT_MS, pluginKit } from '@osdlc/host-cleaner/plugin'
 import {
   contractSuite,
   fakeContext,
@@ -49,7 +49,7 @@ function build(answers: FakeAnswers | undefined, keepVolumes: string[] = []) {
   })
   const ran = () => fake.calls.map((c) => c.argv.join(' '))
   const removed = () => ran().filter((c) => c.startsWith('podman volume rm'))
-  return { plugin, ran, removed }
+  return { plugin, ran, removed, calls: fake.calls }
 }
 
 const ctx: RunCtx = { cwd: process.cwd(), targets: [], allow: [] }
@@ -203,6 +203,39 @@ describe('the podman example', () => {
     expect(down.plugins).toEqual([])
     expect(down.notes).toEqual({ podman: 'podman info failed: Cannot connect to Podman' })
     expect(stopped.ran()).toEqual(['podman info'])
+  })
+
+  test('a podman info that never finishes gives why as its note, within a limit under the hook timeout', async () => {
+    const hung = build({
+      info: { exitCode: 1, neverExited: true, reason: 'timeout', stdout: '', stderr: '' },
+    })
+    const timedOut = await survey([hung.plugin], ctx)
+    expect(timedOut.warnings).toEqual([])
+    expect(timedOut.notes).toEqual({ podman: 'podman info failed: did not finish (timeout)' })
+    // The detect hook's limit is RUN_LIMIT_MS too; info must give up first.
+    expect(hung.calls[0]?.opts.timeoutMs).toBeLessThan(RUN_LIMIT_MS)
+
+    const unstartable = build({
+      info: { exitCode: 1, neverExited: true, reason: 'spawn', error: 'spawn podman EACCES' },
+    })
+    const refused = await survey([unstartable.plugin], ctx)
+    expect(refused.notes).toEqual({ podman: 'podman info failed: spawn podman EACCES' })
+  })
+
+  test('the same creation time printed another way is not a change', async () => {
+    let created = '2026-05-01T09:00:00.123456789Z'
+    const { plugin, removed } = build((argv) => {
+      const key = argv.join(' ')
+      if (key === 'info') return {}
+      if (key === LS) return { stdout: volumes(['cache'], created) }
+      if (key === 'volume rm cache') return { stdout: 'cache\n' }
+      return undefined
+    })
+    const p = picked(await survey([plugin], go))
+    created = '2026-05-01T11:00:00.123456789+02:00'
+    const receipt = await clean(p, [plugin], go)
+    expect(receipt.dropped).toEqual([])
+    expect(removed()).toEqual(['podman volume rm cache'])
   })
 
   test('no volumes is no candidates, whether podman prints [], null or nothing', async () => {

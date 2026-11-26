@@ -21,11 +21,13 @@ What it shows:
   propose either.
 - **A note from `detect`.** When `podman info` fails, as with a stopped
   Podman machine, the plugin is not detected and says why, so `status`, `plan`
-  and `clean` show the reason.
+  and `clean` show the reason. `podman info` gets 5 seconds, well under the
+  detect hook's limit, so a Podman that hangs gives that note too.
 - **`costDescription: 'lost'`.** A volume holds data nothing can download or
   rebuild. The core holds each one for review: it runs only with
   `--pick volume:<name>` and `--allow discard-user-data`.
-- **Evidence.** Each candidate keeps the volume's creation time. A volume made
+- **Evidence.** Each candidate keeps the volume's creation time, as an
+  instant, so the same time printed another way is not a change. A volume made
   again under the same name since the plan is another volume, and the re-check
   drops it as `changed`. A volume Podman lists with no creation time, or with
   Go's zero time in its place, is not proposed, since the re-check could not

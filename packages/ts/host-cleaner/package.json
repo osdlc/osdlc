@@ -80,6 +80,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@osdlc/conformance-suites": "workspace:^",
     "@osdlc/corpus-schema": "workspace:^",
     "@osdlc/corpus-system-cleanup-reference": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",

@@ -878,6 +878,9 @@ importers:
         specifier: 'catalog:'
         version: 4.6.7
     devDependencies:
+      '@osdlc/conformance-suites':
+        specifier: workspace:^
+        version: link:../conformance-suites
       '@osdlc/corpus-schema':
         specifier: workspace:^
         version: link:../corpus-schema

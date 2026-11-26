@@ -13,6 +13,9 @@ const VOLUME_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/
 /** Go's zero `time.Time`, which Podman writes for a volume with no creation time. */
 const GO_ZERO_TIME = Date.parse('0001-01-01T00:00:00Z')
 
+/** How long `podman info` may take before detect reports Podman as unreachable. */
+const INFO_LIMIT_MS = 5_000
+
 /** The fields of one entry of `podman volume ls --format json` this plugin reads. */
 const Volume = z.object({
   Name: z.string(),
@@ -47,10 +50,18 @@ export default definePlugin({
       name: 'podman',
       async detect(ctx) {
         if (!kit.onPath('podman')) return false
-        // `podman info` fails when it can't reach Podman, such as a stopped machine.
-        const r = await kit.run(['podman', 'info'], { signal: ctx.signal })
+        // `podman info` fails when it can't reach Podman, such as a stopped
+        // machine. Its limit is well under the detect hook's, so a Podman that
+        // hangs gives this note, not a hook timeout.
+        const r = await kit.run(['podman', 'info'], {
+          signal: ctx.signal,
+          timeoutMs: INFO_LIMIT_MS,
+        })
         if (r.ok) return true
-        return { active: false, note: `podman info failed: ${r.stderr.trim() || 'no output'}` }
+        // A run that never exited has no stderr; `error` or `reason` says why.
+        const never = r.neverExited === true ? `did not finish (${r.reason ?? 'unknown'})` : ''
+        const why = r.stderr.trim() || r.error || never || 'no output'
+        return { active: false, note: `podman info failed: ${why}` }
       },
       async discover(ctx) {
         return (await unusedVolumes(kit, ctx.signal)).flatMap((v) => {
@@ -60,7 +71,8 @@ export default definePlugin({
           // Without a creation time, a volume made again under the same name
           // would have the same evidence, so it is not proposed. Podman gives
           // a missing one as Go's zero time, 0001-01-01T00:00:00Z.
-          if (!(Date.parse(v.CreatedAt ?? '') > GO_ZERO_TIME)) return []
+          const created = Date.parse(v.CreatedAt ?? '')
+          if (!(created > GO_ZERO_TIME)) return []
           return kit.candidate({
             kind: 'volume',
             ref: v.Name,
@@ -71,8 +83,9 @@ export default definePlugin({
                 : 'no container uses it',
             costDescription: 'lost',
             // A volume made again under the same name since the plan is
-            // another volume: the re-check drops it as changed.
-            evidence: { created: v.CreatedAt, driver: v.Driver ?? null },
+            // another volume: the re-check drops it as changed. The instant,
+            // not Podman's text, so the same time printed another way is not.
+            evidence: { created, driver: v.Driver ?? null },
           })
         })
       },
