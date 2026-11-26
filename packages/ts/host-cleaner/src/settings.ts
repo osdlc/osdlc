@@ -55,47 +55,45 @@ export interface Shared {
 }
 
 /**
- * `name`'s settings with defaults filled in, and `idleHours` taken from `shared`
- * when the plugin has that setting and does not set it; `raw` as given for a
- * plugin with no schema. `defs` are the plugins it knows.
+ * `name`'s settings and where each came from, resolved once. `settings` has
+ * the defaults filled in, and `idleHours` taken from `shared` when the plugin
+ * has that setting and does not set it; it is `raw` as given for a plugin with
+ * no schema. `sources` names, by key, `config` for a key its entry `raw` sets
+ * and `shared` for an `idleHours` the top-level setting gave; a key from the
+ * default is left out. `defs` are the plugins it knows.
  */
-export function settingsOf(
+export function resolveSettings(
   name: string,
   raw: Record<string, unknown>,
   shared: Shared = {},
   defs: Definitions = BUILT_IN_PLUGINS,
-): Record<string, unknown> {
+): { settings: Record<string, unknown>; sources: Record<string, SettingSource> } {
+  const sources: Record<string, SettingSource> = {}
+  for (const [key, value] of Object.entries(raw)) if (value !== undefined) sources[key] = 'config'
   const schema = schemaOf(name, defs)
-  if (schema === undefined) return raw
+  if (schema === undefined) return { settings: raw, sources }
   const parsed = schema.parse(raw) as Record<string, unknown>
-  return 'idleHours' in schema.shape
-    ? { ...parsed, idleHours: parsed.idleHours ?? shared.idleHours ?? DEFAULT_IDLE_HOURS }
-    : parsed
+  if (!('idleHours' in schema.shape)) return { settings: parsed, sources }
+  if (parsed.idleHours === undefined && shared.idleHours !== undefined) {
+    sources.idleHours ??= 'shared'
+  }
+  return {
+    settings: { ...parsed, idleHours: parsed.idleHours ?? shared.idleHours ?? DEFAULT_IDLE_HOURS },
+    sources,
+  }
 }
+
+/** `name`'s settings, as {@link resolveSettings} resolves them. */
+export const settingsOf = (
+  name: string,
+  raw: Record<string, unknown>,
+  shared: Shared = {},
+  defs: Definitions = BUILT_IN_PLUGINS,
+): Record<string, unknown> => resolveSettings(name, raw, shared, defs).settings
 
 /** Whether the config switches `name` off with `enabled: false`. */
 export const disabledByConfig = (name: string, plugins: Entries): boolean =>
   plugins[name]?.enabled === false
-
-/**
- * Where each of `name`'s settings came from, by key, as {@link settingsOf}
- * resolves them: `config` for a key its entry `raw` sets, `shared` for an
- * `idleHours` the top-level setting gave. A key from the default is left out.
- */
-export function sourcesOf(
-  name: string,
-  raw: Record<string, unknown>,
-  shared: Shared = {},
-  defs: Definitions = BUILT_IN_PLUGINS,
-): Record<string, SettingSource> {
-  const out: Record<string, SettingSource> = {}
-  for (const [key, value] of Object.entries(raw)) if (value !== undefined) out[key] = 'config'
-  const schema = schemaOf(name, defs)
-  if (schema !== undefined && 'idleHours' in schema.shape && shared.idleHours !== undefined) {
-    out.idleHours ??= 'shared'
-  }
-  return out
-}
 
 export interface SettingRow {
   key: string
@@ -118,8 +116,7 @@ export function effectiveSettings(
   for (const def of defs) {
     const { name } = def
     const raw = plugins[name] ?? {}
-    const value = settingsOf(name, raw, shared, defs)
-    const sources = sourcesOf(name, raw, shared, defs)
+    const { settings: value, sources } = resolveSettings(name, raw, shared, defs)
     const fields = configFields({ [name]: schemaOf(name, defs)! })
     // The core's `enabled` first, ahead of the plugin's own settings.
     fields.sort((a, b) => Number(b.path[1] === 'enabled') - Number(a.path[1] === 'enabled'))

@@ -70,6 +70,8 @@ test("the README's descriptor reads back, and a bad one lists its problems", () 
       if (err instanceof DescriptorError) issues = err.issues
     }
     expect(issues).toEqual(['line 8: candidates.0.path: no folder named "models" in paths'])
+    // The README shows the same line as its example error.
+    expect(readme).toContain(`\`${issues[0]}\``)
   } finally {
     rmSync(folder, { recursive: true, force: true })
   }
