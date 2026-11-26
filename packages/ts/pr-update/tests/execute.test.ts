@@ -1559,27 +1559,54 @@ describe('the executor against real git', () => {
         expect(postimages()).toEqual([])
       })
 
-      test('a rehearsal neither records nor replays', async () => {
-        makeSiblings('dry1')
-        const [result] = await runAll(
-          [target({ head: 'dry1' })],
+      /**
+       * `other` and the `siblings` off one base: `other` changes `shared.ts` to `other`, a
+       * conflict of its own. Then a recorded resolution of the siblings' conflict (`both`), from
+       * an `--apply` run on the first sibling, with rerere on in the repository's own config.
+       */
+      async function recordedWithRerereOn(other: string, ...siblings: string[]): Promise<string[]> {
+        const { git } = fx.worker
+        git.checkout('main', { branch: other })
+        fx.worker.commit(`${other} work`, { 'shared.ts': 'other\n' })
+        git.push('origin', other)
+        git.checkout('main')
+        makeSiblings(...siblings)
+        const first = siblings[0]!
+        git.raw(['config', 'rerere.enabled', 'true'])
+        await runAll([target({ number: 1, head: first })], {
+          repair: fakeRepair(writeShared('both\n')),
+          repairOn: ['conflict'],
+        })
+        const recorded = postimages()
+        expect(recorded).toHaveLength(1)
+        return recorded
+      }
+
+      test('a rehearsal neither records nor replays, with rerere on in the repository', async () => {
+        const recorded = await recordedWithRerereOn('dry3', 'dry1', 'dry2')
+        // The same conflict is not replayed, so with no repair in a rehearsal it stays.
+        const [same] = await runAll([target({ number: 2, head: 'dry2' })], {}, false)
+        expect(same!.outcome.status).toBe('conflict')
+        // Another conflict a generator resolves is not recorded.
+        const [other] = await runAll(
+          [target({ number: 3, head: 'dry3' })],
           { generators: [sharedGenerator()] },
           false,
         )
-        expect(result!.outcome).toMatchObject({ status: 'updated', pushed: false })
-        expect(existsSync(rrCache())).toBe(false)
+        expect(other!.outcome).toMatchObject({ status: 'updated', pushed: false })
+        expect(postimages()).toEqual(recorded)
       })
 
-      test('rerere: false records nothing, so each sibling is repaired', async () => {
-        makeSiblings('off1', 'off2')
+      test('rerere: false neither records nor replays, with rerere on in the repository', async () => {
+        const recorded = await recordedWithRerereOn('off3', 'off1', 'off2')
         const repair = fakeRepair(writeShared('both\n'))
         const results = await runAll(
-          [target({ number: 1, head: 'off1' }), target({ number: 2, head: 'off2' })],
+          [target({ number: 2, head: 'off2' }), target({ number: 3, head: 'off3' })],
           { repair, repairOn: ['conflict'], rerere: false },
         )
         expect(results.map((r) => r.outcome.status)).toEqual(['updated', 'updated'])
-        expect(repair.calls.map((c) => c.pr)).toEqual([1, 2])
-        expect(existsSync(rrCache())).toBe(false)
+        expect(repair.calls.map((c) => c.pr)).toEqual([2, 3])
+        expect(postimages()).toEqual(recorded)
       })
 
       test("the person's own rerere.enabled=false does not turn it off", async () => {
