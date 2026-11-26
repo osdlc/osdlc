@@ -1,5 +1,5 @@
 ---
-"@osdlc/file-lock": minor
+"@osdlc/file-lock": patch
 ---
 
 New `readHeldLock(path)`: the lock as a claim reads a held one, read without
