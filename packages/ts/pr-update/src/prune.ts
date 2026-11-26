@@ -79,6 +79,7 @@ import { realOr } from './real-path.ts'
 import { scratchBranch, targetGitOptions } from './update/execute.ts'
 import {
   discardKept,
+  keptOwnerElsewhere,
   keptTreeCheck,
   listKept,
   type KeptPlace,
@@ -1143,7 +1144,8 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
    * `discardKept`, or null. The clone must list it on the branch of its `record`, if it has one
    * (with none, its caller checked the branch), the tree's own `.git` file must name this clone,
    * and the git directory the record names must list it too (`keptTreeCheck`, which `discardKept`
-   * checks again). A copy of a clone, or a moved one, lists the tree whatever it is on by now.
+   * checks again) and be this clone: `discardKept` changes that directory, and only this clone's
+   * lock is held. A copy of a clone, or a moved one, lists the tree whatever it is on by now.
    *
    * @throws when that git directory's list cannot be read.
    */
@@ -1165,7 +1167,11 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
     }
     if (record === undefined) return null
     const tree = keptTreeCheck(git, place, record)
-    if (tree.kind === 'kept') return null
+    if (tree.kind === 'kept') {
+      const elsewhere = keptOwnerElsewhere(place, record)
+      if (elsewhere === null) return null
+      return `the record of its kept worktree ${k.path} names another git directory, ${elsewhere}, which is changed only under its own lock; the tree stays, and so does the clone`
+    }
     if (tree.kind === 'moved') return `its kept worktree ${tree.why}, ${stay}`
     if (tree.unlisted === true) throw new Error(`its kept worktree ${k.path}: ${tree.why}`)
     return `the record of its kept worktree ${k.path} is refused: ${tree.why}; the tree stays, and so does the clone`

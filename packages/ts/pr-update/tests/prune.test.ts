@@ -2025,6 +2025,38 @@ describe('every removal passes one check, the same in a dry run (final review ro
       expect(git(clone, 'cat-file', '-t', tip)).toBe('commit')
     })
 
+    test('a kept tree whose record names another clone that lists it is not removed through that clone, whose lock another run holds', () => {
+      const clone = makeClone('acme/api', 400)
+      const path = keptWorktree(clone, 'acme/api', 7)
+      const copies = join(scratch, 'copies')
+      cpSync(paths.repos, copies, { recursive: true })
+      const copy = join(copies, 'github.com', 'acme', 'api.git')
+      const tip = commitIn(path)
+      // The command the prune names for a tree whose .git does not name the clone.
+      git(copy, 'worktree', 'repair', path)
+      holdLock(clone)
+
+      const r = bothModes({ ...everything, dir: copies })
+
+      expect(r.removed).toEqual([])
+      expect(r.failed).toEqual([])
+      expect(r.skipped).toEqual([
+        expect.objectContaining({
+          kind: 'clone',
+          path: copy,
+          skip: 'kept',
+          reason: expect.stringContaining(realpathSync.native(clone)),
+        }),
+      ])
+      // The commit made in the tree before the repair is in the first clone only.
+      expect(git(clone, 'rev-parse', 'pr-update/failed-acme-api-7')).toBe(tip)
+      expect(existsSync(join(path, 'a.txt'))).toBe(true)
+      expect(existsSync(copy)).toBe(true)
+      expect(listed(clone)).toEqual([path])
+      expect(existsSync(join(clone, 'worktrees', '7'))).toBe(true)
+      expect(existsSync(`${path}.json`)).toBe(true)
+    })
+
     test('a clone whose lock holds a token that is not a string is busy, as a claim finds it, in a dry run too', () => {
       const clone = makeClone('acme/api', 400)
       const lock = { tool: 'pr-update', holder: { pid: 2147483646 }, token: 123 }
