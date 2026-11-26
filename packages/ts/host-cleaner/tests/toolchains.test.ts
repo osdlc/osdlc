@@ -37,6 +37,7 @@ import {
   globalPackages,
   keeps,
   lastUsedMs,
+  cappedAtimeNote,
   mountOptionsBy,
   noatimeNote,
   parseMountOutput,
@@ -127,6 +128,8 @@ function fixture(
     idleHours?: number
     env?: Record<string, string> | ((home: string) => Record<string, string>)
     mounts?: MountOptions
+    platform?: NodeJS.Platform
+    now?: () => Date
   } = {},
 ): Fixture {
   const h = tempHome('host-cleaner-toolchains-')
@@ -161,10 +164,16 @@ function fixture(
     PATH: '',
     ...(typeof opts.env === 'function' ? opts.env(home) : opts.env),
   }
-  const kit = pluginKit('toolchains', { env, runner: fake.runner, which: fake.which })
+  const kit = pluginKit('toolchains', {
+    env,
+    runner: fake.runner,
+    which: fake.which,
+    now: opts.now,
+  })
   const plugin = toolchainsPlugin(kit, env, {
     idleHours: opts.idleHours,
     mountOptions: opts.mounts ?? (async () => []),
+    platform: opts.platform ?? 'linux',
   })
   attachKit(plugin, kit)
   return {
@@ -265,6 +274,59 @@ describe('rustup toolchains', () => {
     write(join(wt, 'rust-toolchain.toml'), '[toolchain]\nchannel = "1.72.0"\n')
 
     expect((await proposed(fx)).names).toEqual([`1.73.0-${HOST}`])
+  })
+
+  test('a repository in an untracked folder has its linked worktree elsewhere read for pins', async () => {
+    const fx = fixture({ rust: [`1.70.0-${HOST}`, `1.73.0-${HOST}`] })
+    const a = repo(join(fx.dev, 'a'))
+    const inner = repo(join(a, 'vendor', 'inner'))
+    const wt = join(fx.home, 'elsewhere', 'inner-wt')
+    sh(inner, ['worktree', 'add', '-q', wt, '-b', 'topic'])
+    write(join(wt, 'rust-toolchain'), '1.70.0\n')
+
+    const { names, refused } = await proposed(fx)
+    expect(names).toEqual([`1.73.0-${HOST}`])
+    expect(refused).toEqual([])
+  })
+
+  test('a home folder whose .git is broken is walked only in the targets', async () => {
+    const fx = fixture({
+      rust: [`1.70.0-${HOST}`, `1.71.0-${HOST}`, `1.73.0-${HOST}`],
+      targets: (dev) => [join(dev, 'proj')],
+    })
+    mkdirSync(join(fx.home, '.git'))
+    write(join(fx.dev, 'proj', 'x', 'rust-toolchain'), '1.70.0\n')
+    write(join(fx.home, 'other', 'rust-toolchain'), '1.71.0\n')
+
+    const { names, refused } = await proposed(fx)
+    expect(names).toEqual([`1.71.0-${HOST}`, `1.73.0-${HOST}`])
+    expect(refused).toEqual([])
+  })
+
+  test('an empty RUSTUP_HOME, NVM_DIR or VOLTA_HOME counts as unset', async () => {
+    const fx = fixture({
+      rust: [`1.75.0-${HOST}`, `stable-${HOST}`],
+      nvm: ['v14.21.3'],
+      volta: ['16.0.0'],
+      env: { RUSTUP_HOME: '', NVM_DIR: '', VOLTA_HOME: '' },
+    })
+    repo(join(fx.dev, 'a'))
+    const { s, names } = await proposed(fx)
+    expect(names).toEqual([`1.75.0-${HOST}`, '16.0.0', 'v14.21.3'])
+    expect(s.candidates.map((c) => c.path).sort()).toEqual([
+      join(fx.nvm, 'v14.21.3'),
+      join(fx.rustup, `1.75.0-${HOST}`),
+      join(fx.volta, '16.0.0'),
+    ])
+  })
+
+  test("idle time is read from the kit's clock", async () => {
+    const fx = fixture({ nvm: ['v14.21.3'], now: () => new Date(Date.now() + 48 * HOUR_MS) })
+    repo(join(fx.dev, 'a'))
+    use(fx.nvm, 'v14.21.3')
+    const { s, names } = await proposed(fx)
+    expect(names).toEqual(['v14.21.3'])
+    expect(s.candidates[0]!.why).toContain('last used 48')
   })
 
   test('the default, an override and RUSTUP_TOOLCHAIN are kept, and so is a pin by prefix', async () => {
@@ -745,7 +807,10 @@ describe('nvm and Volta Node versions', () => {
     const names = async (dirs: string[]): Promise<unknown[]> => {
       const env = { HOME: h.home, PATH: dirs.map((d) => join(h.home, d)).join(delimiter) }
       const kit = pluginKit('toolchains', { env })
-      const plugin = toolchainsPlugin(kit, env, { mountOptions: async () => [] })
+      const plugin = toolchainsPlugin(kit, env, {
+        mountOptions: async () => [],
+        platform: 'linux',
+      })
       attachKit(plugin, kit)
       const s = await survey([plugin], { cwd, targets: [dev], targetsGiven: true, allow: [] })
       expect(s.objections.filter((o) => o.level === 'refuse')).toEqual([])
@@ -843,6 +908,50 @@ describe('a versions folder on a noatime volume', () => {
       toolchains: `${noatimeNote(fx.rustup)}; ${noatimeNote(fx.volta)}`,
     })
     expect(fx.calls).toEqual([])
+  })
+
+  test('macOS: access times cannot show a recent use, so nothing is proposed unless strictatime', async () => {
+    for (const options of [['local', 'journaled', 'nobrowse'], null]) {
+      const fx = fixture({
+        rust: [`1.75.0-${HOST}`, `stable-${HOST}`],
+        nvm: ['v14.21.3'],
+        platform: 'darwin',
+        mounts: async () => options,
+      })
+      repo(join(fx.dev, 'a'))
+      const { s, names } = await proposed(fx)
+      expect(names).toEqual([])
+      expect(s.notes).toEqual({
+        toolchains: `${cappedAtimeNote(fx.rustup)}; ${cappedAtimeNote(fx.nvm)}`,
+      })
+      expect(fx.calls).toEqual([])
+    }
+    const fx = fixture({
+      rust: [`1.75.0-${HOST}`, `stable-${HOST}`],
+      platform: 'darwin',
+      mounts: async () => ['local', 'strictatime'],
+    })
+    repo(join(fx.dev, 'a'))
+    const { s, names } = await proposed(fx)
+    expect(names).toEqual([`1.75.0-${HOST}`])
+    expect(s.notes).toEqual({})
+  })
+
+  test('a version planned on Linux is not removed once the folder reads as macOS', async () => {
+    const fx = fixture({ nvm: ['v14.21.3'] })
+    repo(join(fx.dev, 'a'))
+    const p = plan(await survey([fx.plugin], fx.ctx))
+    expect(p.candidates.map((c) => c.name)).toEqual(['v14.21.3'])
+    const env = { HOME: fx.home, PATH: '' }
+    const kit = pluginKit('toolchains', { env })
+    const mac = toolchainsPlugin(kit, env, {
+      mountOptions: async () => ['local'],
+      platform: 'darwin',
+    })
+    attachKit(mac, kit)
+    const receipt = await clean(p, [mac], fx.ctx)
+    expect(receipt.steps).toEqual([])
+    expect(readdirSync(fx.nvm)).toEqual(['v14.21.3'])
   })
 
   test('a version planned before its folder turned noatime is not removed', async () => {
@@ -976,6 +1085,16 @@ describe('a clean of several versions', () => {
     return () =>
       existsSync(log) ? (readFileSync(log, 'utf8').match(/ls-files -z/g)?.length ?? 0) : 0
   }
+
+  test('with every version used lately, the checkouts are not listed', async () => {
+    const fx = fixture({ nvm: ['v14.21.3', 'v16.20.0'] })
+    repo(join(fx.dev, 'a'))
+    use(fx.nvm, 'v14.21.3', 1)
+    use(fx.nvm, 'v16.20.0', 2)
+    const calls = countGit(fx.home)
+    expect((await proposed(fx)).names).toEqual([])
+    expect(calls()).toBe(0)
+  })
 
   test('lists the checkouts once, at the re-check, not again for each delete', async () => {
     const fx = fixture({ nvm: ['v12.0.0', 'v14.21.3', 'v16.20.0', 'v18.17.0'] })

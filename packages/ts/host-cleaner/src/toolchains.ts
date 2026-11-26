@@ -65,7 +65,7 @@ const HOUR_MS = 3_600_000
 const RELATIME_LAG_HOURS = 24
 
 /** How far a versions folder's access times can be trusted, by its mount's options. */
-type AtimeMode = 'noatime' | 'relatime' | 'exact'
+type AtimeMode = 'noatime' | 'capped' | 'relatime' | 'exact'
 
 /** What {@link Detection.note} says when the targets are the run's folder, taken because none were given. */
 export const NO_TARGETS_NOTE =
@@ -90,18 +90,28 @@ export const UNSEARCHED_NOTE =
 export const noatimeNote = (dir: string): string =>
   `${dir} is on a volume mounted noatime, so last use can't be measured and every version in it is kept`
 
+/**
+ * What {@link Detection.note} says when the versions folder `dir` is on macOS
+ * and not mounted `strictatime`: there a file's access time is not moved past
+ * its modified time, so it cannot show a recent use.
+ */
+export const cappedAtimeNote = (dir: string): string =>
+  `${dir} is on a macOS volume, which does not move a file's access time past its modified time, ` +
+  "so last use can't be measured and every version in it is kept"
+
 const TOOLS = ['rustup', 'nvm', 'volta'] as const
 type Tool = (typeof TOOLS)[number]
 
 /** Where each tool keeps its versions. */
 type Homes = Record<Tool, string>
 
+/** Where each tool keeps its versions; a variable set empty counts as unset, as the tools read it. */
 const homesOf = (env: Readonly<Record<string, string | undefined>>): Homes => {
-  const home = env.HOME ?? homedir()
+  const home = env.HOME || homedir()
   return {
-    rustup: env.RUSTUP_HOME ?? join(home, '.rustup'),
-    nvm: env.NVM_DIR ?? join(home, '.nvm'),
-    volta: env.VOLTA_HOME ?? join(home, '.volta'),
+    rustup: env.RUSTUP_HOME || join(home, '.rustup'),
+    nvm: env.NVM_DIR || join(home, '.nvm'),
+    volta: env.VOLTA_HOME || join(home, '.volta'),
   }
 }
 
@@ -225,21 +235,31 @@ async function checkoutsUnder(ctx: Ctx): Promise<{ checkouts: string[]; unknown:
     }
     for (const checkout of scanUnder(dir, unknown)) found.add(checkout)
   }
-  // A worktree lists every worktree of its repository, a bare one's too.
   const out = new Set<string>()
   for (const checkout of found) {
     if (out.has(checkout)) continue
     await yieldToLimit(ctx)
-    try {
-      for (const tree of await new AsyncGit(checkout).worktrees(gitCall(ctx))) {
-        if (!tree.bare && isDir(tree.path)) out.add(tree.path)
-      }
-    } catch (err) {
-      if (brokenGit(err)) out.add(checkout)
-      else unknown.push(`the worktrees of ${checkout} could not be listed: ${errorText(err)}`)
-    }
+    for (const tree of await worktreesOf(checkout, ctx, unknown)) out.add(tree)
   }
   return { checkouts: [...out].sort(), unknown }
+}
+
+/**
+ * The worktrees of the repository `checkout` is in, bare ones aside: a
+ * worktree lists every worktree of its repository, a bare one's too. Just
+ * `checkout` when its `.git` is broken; none, with why in `unknown`, when git
+ * fails otherwise.
+ */
+async function worktreesOf(checkout: string, ctx: Ctx, unknown: string[]): Promise<string[]> {
+  try {
+    return (await new AsyncGit(checkout).worktrees(gitCall(ctx)))
+      .filter((tree) => !tree.bare && isDir(tree.path))
+      .map((tree) => tree.path)
+  } catch (err) {
+    if (brokenGit(err)) return [checkout]
+    unknown.push(`the worktrees of ${checkout} could not be listed: ${errorText(err)}`)
+    return []
+  }
 }
 
 /** The pin files named in a checkout, and the checkouts inside it that are read on their own. */
@@ -288,25 +308,35 @@ async function listedIn(
   return { files, nested }
 }
 
+/** How many folders {@link walked} reads between two yields to the hook's time limit. */
+const WALK_YIELD_EVERY = 100
+
 /**
  * What {@link listedIn} gives, for a folder whose `.git` is broken: git lists
  * nothing there, so everything in it is read but `.git` and `node_modules`
- * folders, links not followed. Throws when a folder cannot be read.
+ * folders, links not followed; below its root, only the folders `within`,
+ * when given. It yields to the hook's time limit as it goes. Throws when a
+ * folder cannot be read.
  */
-function walked(checkout: string): Found {
-  const files: string[] = []
+async function walked(
+  checkout: string,
+  within: readonly string[] | null,
+  ctx: Ctx,
+): Promise<Found> {
+  const files = within === null ? [] : PIN_FILES.map((f) => join(checkout, f))
   const nested: string[] = []
-  const visit = (dir: string): void => {
+  const queue = [...(within ?? [checkout])]
+  for (let read = 0, dir = queue.shift(); dir !== undefined; read++, dir = queue.shift()) {
+    if (read % WALK_YIELD_EVERY === 0) await yieldToLimit(ctx)
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name)
       if (!entry.isDirectory()) {
         if (PIN_FILES.includes(entry.name)) files.push(path)
       } else if (entry.name === '.git' || entry.name === 'node_modules') continue
       else if (present(join(path, '.git'))) nested.push(path)
-      else visit(path)
+      else queue.push(path)
     }
   }
-  visit(checkout)
   return { files, nested }
 }
 
@@ -329,22 +359,28 @@ async function listPins(ctx: Ctx, home: string): Promise<Listing> {
   for (let checkout = queue.shift(); checkout !== undefined; checkout = queue.shift()) {
     await yieldToLimit(ctx)
     let found: Found
+    const within = withinOf(checkout)
     try {
       try {
-        found = await listedIn(checkout, withinOf(checkout), ctx)
+        found = await listedIn(checkout, within, ctx)
       } catch (err) {
         if (!brokenGit(err)) throw err
-        found = walked(checkout)
+        found = await walked(checkout, within, ctx)
       }
     } catch (err) {
+      ctx.signal.throwIfAborted()
       unknown.push(`${checkout} could not be listed: ${errorText(err)}`)
       continue
     }
     for (const file of found.files) files.add(file)
+    // A nested repository's linked worktrees may sit outside the targets, on branches with pins of their own.
     for (const nested of found.nested) {
-      if (!seen.has(nested)) {
-        seen.add(nested)
-        queue.push(nested)
+      if (seen.has(nested)) continue
+      for (const tree of [nested, ...(await worktreesOf(nested, ctx, unknown))]) {
+        if (!seen.has(tree)) {
+          seen.add(tree)
+          queue.push(tree)
+        }
       }
     }
   }
@@ -532,6 +568,11 @@ export interface ToolchainsOptions {
   idleHours?: number | undefined
   /** Default: {@link mountOptionsBy} on the plugin's kit. */
   mountOptions?: MountOptions | undefined
+  /**
+   * The platform the versions folders are on. On `darwin` access times are
+   * not trusted unless the mount is `strictatime`. Default: `process.platform`.
+   */
+  platform?: NodeJS.Platform | undefined
 }
 
 /**
@@ -544,7 +585,8 @@ export function toolchainsPlugin(
   opts: ToolchainsOptions = {},
 ): Plugin {
   const { idleHours } = opts
-  const mountOptions = opts.mountOptions ?? mountOptionsBy(kit)
+  const platform = opts.platform ?? process.platform
+  const mountOptions = opts.mountOptions ?? mountOptionsBy(kit, platform)
   const homes = homesOf(env)
   const versions = versionsDirs(homes)
   const threshold = idleHoursOr(idleHours)
@@ -666,6 +708,19 @@ export function toolchainsPlugin(
     return { keep, unknown }
   }
 
+  /** Hours since the version in `path` was last used ({@link lastUsedMs}), by the kit's clock; null when it cannot be told. */
+  const hoursUnused = (path: string): number | null => {
+    const used = lastUsedMs(path)
+    return used === null ? null : Math.max(0, (kit.now().getTime() - used) / HOUR_MS)
+  }
+
+  /**
+   * Whether `hours` unused is past {@link threshold}, {@link RELATIME_LAG_HOURS}
+   * more on a `relatime` mount; true when it cannot be told, which refuses it.
+   */
+  const idle = (hours: number | null, relatime: boolean): boolean =>
+    hours === null || hours >= threshold + (relatime ? RELATIME_LAG_HOURS : 0)
+
   /**
    * The row for a version no pin or default keeps; null when it was used in the
    * last {@link threshold} hours, {@link RELATIME_LAG_HOURS} more when its
@@ -679,10 +734,8 @@ export function toolchainsPlugin(
     measure: boolean,
   ): Row | null => {
     const path = join(versions[tool], name)
-    const used = lastUsedMs(path)
-    const hours = used === null ? null : Math.max(0, (Date.now() - used) / HOUR_MS)
-    const limit = threshold + (relatime ? RELATIME_LAG_HOURS : 0)
-    if (hours !== null && hours < limit) return null
+    const hours = hoursUnused(path)
+    if (!idle(hours, relatime)) return null
     const bytes = measure ? kit.size(path) : null
     const what = tool === 'rustup' ? 'this toolchain' : 'this Node version'
     // The global packages npm installed into a Node version go with it, and a re-download does not bring them back.
@@ -732,8 +785,9 @@ export function toolchainsPlugin(
 
   /**
    * How far each tool's versions folder can be trusted for last use, by its
-   * mount: `noatime` not at all, `relatime` up to {@link RELATIME_LAG_HOURS}
-   * late, else exactly; a mount whose options cannot be read is trusted.
+   * mount: `noatime` not at all, nor on macOS unless `strictatime`, `relatime`
+   * up to {@link RELATIME_LAG_HOURS} late, else exactly; elsewhere a mount whose
+   * options cannot be read is trusted.
    */
   const atimeModes = async (tools: readonly Tool[], ctx: Ctx): Promise<Map<Tool, AtimeMode>> => {
     const modes = await Promise.all(
@@ -745,6 +799,7 @@ export function toolchainsPlugin(
           options = null
         }
         if (options?.includes('noatime')) return 'noatime'
+        if (platform === 'darwin' && !options?.includes('strictatime')) return 'capped'
         if (options?.includes('relatime') && !options.includes('strictatime')) return 'relatime'
         return 'exact'
       }),
@@ -752,11 +807,16 @@ export function toolchainsPlugin(
     return new Map(tools.map((t, i) => [t, modes[i]!]))
   }
 
-  /** The present tools, `only` that one when it is given, their mounts' {@link AtimeMode}, and those on a `noatime` mount. */
+  /**
+   * The present tools, `only` that one when it is given, their mounts'
+   * {@link AtimeMode}, and those whose last use cannot be measured
+   * (`noatime`, or macOS's `capped`).
+   */
   const survey = async (ctx: Ctx, only?: Tool) => {
     const tools = presentTools().filter((t) => only === undefined || only === t)
     const modes = await atimeModes(tools, ctx)
-    return { tools, modes, noatime: tools.filter((t) => modes.get(t) === 'noatime') }
+    const unmeasured = tools.filter((t) => modes.get(t) === 'noatime' || modes.get(t) === 'capped')
+    return { tools, modes, unmeasured }
   }
 
   /** The last listing, the targets it is of, and when it was made. */
@@ -767,7 +827,7 @@ export function toolchainsPlugin(
     const targets = ctx.targets.join('\0')
     const age = listed === undefined ? -1 : Date.now() - listed.at
     if (again && listed?.targets === targets && age >= 0 && age < LISTING_MS) return listed.listing
-    const found = await listPins(ctx, ctx.home ?? env.HOME ?? homedir())
+    const found = await listPins(ctx, ctx.home || env.HOME || homedir())
     listed = { listing: found, targets, at: Date.now() }
     return found
   }
@@ -780,23 +840,28 @@ export function toolchainsPlugin(
    */
   const scan = async (ctx: Ctx, measure: boolean, only?: Tool): Promise<Row[]> => {
     if (!ctx.targetsGiven || ctx.targets.length === 0) return []
-    // A version run daily on a noatime volume would read as unused, so none there is proposed.
-    const { tools, modes, noatime } = await survey(ctx, only)
-    const wanted = (t: Tool): boolean => tools.includes(t) && !noatime.includes(t)
+    // A version run daily where access times do not show it would read as unused, so none there is proposed.
+    const { tools, modes, unmeasured } = await survey(ctx, only)
+    const wanted = (t: Tool): boolean => tools.includes(t) && !unmeasured.includes(t)
     if (!TOOLS.some(wanted)) return []
-    const pins = readPins(await listing(ctx, only !== undefined), ctx.cwd)
-    const rows: Row[] = []
-    const add = (tool: Tool, name: string, unknown: readonly string[]): void => {
-      const r = row(tool, name, unknown, modes.get(tool) === 'relatime', measure)
-      if (r !== null) rows.push(r)
-    }
-
+    const relatime = (t: Tool): boolean => modes.get(t) === 'relatime'
     const rust = wanted('rustup') ? installed(versions.rustup, RUST_RELEASE) : []
     const node = {
       nvm: installed(versions.nvm, NODE_VERSION),
       volta: installed(versions.volta, NODE_VERSION),
     }
     const nodeTools = (['nvm', 'volta'] as const).filter((t) => wanted(t) && node[t].length > 0)
+    // Listing the checkouts is the costly part: with no version idle there is nothing for it to keep.
+    const anyIdle = (tool: Tool, names: readonly string[]): boolean =>
+      names.some((n) => idle(hoursUnused(join(versions[tool], n)), relatime(tool)))
+    if (!anyIdle('rustup', rust) && !nodeTools.some((t) => anyIdle(t, node[t]))) return []
+    const pins = readPins(await listing(ctx, only !== undefined), ctx.cwd)
+    const rows: Row[] = []
+    const add = (tool: Tool, name: string, unknown: readonly string[]): void => {
+      const r = row(tool, name, unknown, relatime(tool), measure)
+      if (r !== null) rows.push(r)
+    }
+
     // nvm's `node` and `latest` name the newest version nvm has, not Volta's.
     const newest = node.nvm.map(plain).sort(byVersion).at(-1)
     const [rustKeep, inUse] = await Promise.all([
@@ -852,9 +917,11 @@ export function toolchainsPlugin(
     async detect(ctx) {
       if (presentTools().length === 0) return false
       if (!ctx.targetsGiven) return { active: true, note: NO_TARGETS_NOTE }
-      const { noatime } = await survey(ctx)
-      if (noatime.length === 0) return true
-      return { active: true, note: noatime.map((t) => noatimeNote(versions[t])).join('; ') }
+      const { modes, unmeasured } = await survey(ctx)
+      if (unmeasured.length === 0) return true
+      const note = (t: Tool): string =>
+        (modes.get(t) === 'noatime' ? noatimeNote : cappedAtimeNote)(versions[t])
+      return { active: true, note: unmeasured.map(note).join('; ') }
     },
     roots: () => TOOLS.map((t) => versions[t]),
     async discover(ctx) {

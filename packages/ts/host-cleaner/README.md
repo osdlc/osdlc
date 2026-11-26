@@ -206,6 +206,7 @@ without it to the kit it builds; a kit no run has bound removes nothing.
 
 | Helper | What it does |
 | --- | --- |
+| `kit.now()` | The time now, by the clock `kit.idle` reads (`KitOptions.now`). |
 | `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the hours since, fractions included, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Several folders, as a list, are one answer within one budget. Out of time, it is `{ unmeasured: true }`. |
 | `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
 | `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and the unbroken line of ancestors above it whose command lines name host-cleaner are left out, so the `npm exec` or `pnpm dlx` that started it does not count, but an editor, terminal or `tmux` it runs inside does. The table is read fresh once per hook call; one that could not be read stays `unknown` for the rest of it. |
@@ -358,7 +359,9 @@ Settings: `plugins.toolchains.idleHours`, which inherits the top-level
   so. When a repository a target sits in is the home folder, or holds it, its
   own files are read, and what it does not track only in the targets.
 - A folder whose `.git` is broken (a pruned worktree's, an empty one) has no
-  git to list it, so all of it is read but its `node_modules`.
+  git to list it, so all of it is read but its `node_modules` (only the
+  targets in it, when it is or holds the home folder). A repository found
+  inside a checkout has its linked worktrees read too, wherever they sit.
 - Kept: what they name, by prefix (`1.80` keeps `1.80-<host>` and
   `1.80.1-<host>`; `18` keeps every `18.x.y`), rustup's default, its directory
   overrides, `RUSTUP_TOOLCHAIN` and the pin files in the folder you run
@@ -383,7 +386,18 @@ Settings: `plugins.toolchains.idleHours`, which inherits the top-level
   The volume is the one `df` names for the folder, and its options come from
   `mount` on macOS and `/proc/self/mounts` on Linux. When they cannot be read
   (`df` or `mount` failing, another platform), the access times are
-  trusted.
+  trusted, except on macOS.
+- macOS does not move a file's access time past its modified time, so there
+  the access times cannot show a recent use: unless the volume is mounted
+  `strictatime`, a versions folder on macOS proposes nothing either, and
+  `status` warns
+  `toolchains: <folder> is on a macOS volume, which does not move a file's access time past its modified time, so last use can't be measured and every version in it is kept`.
+- Checkouts are listed only when some installed version is past
+  `idleHours`; when none is, nothing is proposed and git is not asked.
+- As a library: `toolchainsPlugin(kit, env, { idleHours, mountOptions, platform })`
+  builds it on your kit, reading `HOME`, `RUSTUP_HOME`, `NVM_DIR` and
+  `VOLTA_HOME` from `env` (one set empty counts as unset). Idle time is
+  read from `kit.now()`.
 - When any of that cannot be read (an alias nvm does not have, a checkout git
   cannot list, rustup not answering), every candidate of that tool is refused
   with `unused-unknown` (nvm's default refuses only nvm's versions, Volta's
