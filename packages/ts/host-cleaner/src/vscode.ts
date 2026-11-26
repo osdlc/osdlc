@@ -794,8 +794,9 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
           ]
     // What is gone is named as the editor spelled it, so the worktree's own spelling counts too.
     const real = dir ?? realAbove(c.path)
+    // A window on a folder the worktree is in has its files open too.
     const holds = (named: Named): boolean =>
-      named.paths.some((p) => within(p, real) || within(p, c.path))
+      named.paths.some((p) => [real, c.path].some((d) => within(p, d) || within(d, p)))
     if (holds(w.open)) {
       return [
         own(
