@@ -44,11 +44,28 @@ afterEach(() => {
 
 // These tests run `clean --yes` with the shipped plugins. One that read this process's environment
 // in place of the run's would find no one's own home: it is a temporary folder here, not a test's.
+const HOME_VARS = [
+  'HOME',
+  'USERPROFILE',
+  'VSCODE_APPDATA',
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+  'XDG_CACHE_HOME',
+  'XDG_STATE_HOME',
+  'CLAUDE_CONFIG_DIR',
+  'npm_config_prefix',
+]
+let nobody = ''
 beforeEach(() => {
-  const nobody = tempDir()
-  vi.stubEnv('HOME', nobody)
-  vi.stubEnv('VSCODE_APPDATA', nobody)
-  vi.stubEnv('XDG_CONFIG_HOME', nobody)
+  nobody = tempDir()
+  for (const name of HOME_VARS) vi.stubEnv(name, nobody)
+})
+
+test('a run whose env lacks a home folder variable finds only the empty decoy', () => {
+  expect([HOME_VARS.map((name) => process.env[name]), readdirSync(nobody)]).toEqual([
+    HOME_VARS.map(() => nobody),
+    [],
+  ])
 })
 
 function tempDir(): string {
