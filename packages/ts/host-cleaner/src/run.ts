@@ -11,7 +11,7 @@ import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 import { errorText, realOr } from './helpers.ts'
 import { coveredBy, containsIgnored } from './ignore.ts'
 import { bindKit } from './kit.ts'
-import { acceptRoots, boundBy, linkedCheckouts, type Bounds } from './roots.ts'
+import { acceptRoots, boundBy, gitReads, linkedCheckouts, type Bounds } from './roots.ts'
 import {
   CandidateSchema,
   ObjectionSchema,
@@ -403,6 +403,8 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
     home,
   })
   for (const p of plugins) bindKit(p, boundsOf(p.name))
+  // Git is asked once per repository for every candidate of this survey; `delete` and `kit.remove` ask afresh.
+  const reads = gitReads()
   for (const c of candidates) {
     if (c.costDescription === 'lost') {
       objections.push({
@@ -423,7 +425,7 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
       })
     }
     if (c.path === undefined) continue
-    const why = outside(c, boundsOf(c.owner))
+    const why = outside(c, { ...boundsOf(c.owner), reads })
     if (why !== null) {
       objections.push({
         by: 'host-cleaner',
