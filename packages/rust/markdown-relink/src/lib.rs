@@ -72,8 +72,8 @@
 //! doc) live beside it — as one unit: the directory, its entry note, and
 //! every peer. Not a multi-file restructure beyond that one directory, and
 //! not deletes. The one delete-shaped plan is [`plan_redirect`]: the
-//! edits that point a doomed note's inbound links at a copy that stays, which
-//! the caller splices before it removes the note. The wire shapes anticipate more (a `PathMap` is a map,
+//! edits that point a doomed note's or attachment's inbound links at a copy
+//! that stays, which the caller splices before it removes the file. The wire shapes anticipate more (a `PathMap` is a map,
 //! the edit set is per-file, `expect` is a list), so the single-file planner
 //! and the bundle planner are the SAME rewrite machinery over a bigger
 //! `PathMap`, not two implementations that happen to agree.
