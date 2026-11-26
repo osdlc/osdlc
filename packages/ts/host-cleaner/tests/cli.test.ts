@@ -385,6 +385,7 @@ describe('plugins', () => {
           detected: true,
           reason: null,
           roots: ['/cache/git'],
+          rootsFailed: null,
           selfRoots: [],
           note: null,
         },
@@ -393,8 +394,9 @@ describe('plugins', () => {
           source: 'given',
           enabled: false,
           detected: false,
-          reason: 'plugins.cargo.enabled is false; --plugin cargo runs it anyway',
+          reason: 'plugins.cargo.enabled is false',
           roots: [],
+          rootsFailed: null,
           selfRoots: [],
           note: null,
         },
@@ -405,6 +407,7 @@ describe('plugins', () => {
           detected: false,
           reason: null,
           roots: [],
+          rootsFailed: null,
           selfRoots: [],
           note: null,
         },
@@ -415,6 +418,7 @@ describe('plugins', () => {
           detected: true,
           reason: null,
           roots: [],
+          rootsFailed: null,
           selfRoots: [],
           note: 'Orca is installed but not running',
         },
@@ -466,6 +470,7 @@ describe('plugins', () => {
         detected: true,
         reason: null,
         roots: [cache],
+        rootsFailed: null,
         selfRoots: [cache],
         note: 'one note',
       },
@@ -476,6 +481,7 @@ describe('plugins', () => {
         detected: false,
         reason: null,
         roots: [],
+        rootsFailed: null,
         selfRoots: [],
         note: 'no cargo',
       },
@@ -527,6 +533,43 @@ describe('plugins', () => {
     )
   })
 
+  test('a line break in a plugin name does not split its row or widen the column', async () => {
+    const { env, cwd } = setup()
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [{ ...fake('a\nb'), detect: () => false }, fake('cc')],
+    })
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  a b  given  not detected',
+        '  cc   given  detected; roots: none, the targets alone',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  test('a failed roots says why the plugin has none, in text and json', async () => {
+    const { env, cwd } = setup()
+    const failing = (): Plugin[] => [
+      {
+        ...fake('a'),
+        roots: () => {
+          throw new Error('timed\nout')
+        },
+      },
+    ]
+    const r = await run(['plugins'], cwd, env, { plugins: failing() })
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  a  given  detected; roots: none, the targets alone (roots failed: timed out)',
+        '',
+      ].join('\n'),
+    )
+    const json = await run(['plugins', '--format', 'json'], cwd, env, { plugins: failing() })
+    expect(JSON.parse(json.out).plugins[0].rootsFailed).toBe('roots failed: timed\nout')
+  })
+
   test('a multi-line note stays on its row', async () => {
     const { env, cwd } = setup()
     const r = await run(['plugins'], cwd, env, {
@@ -553,7 +596,7 @@ describe('plugins', () => {
     expect(r.out).toBe(
       [
         `targets: ${cwd}`,
-        '  x  given  disabled: plugins.x.enabled is false; --plugin x runs it anyway',
+        '  x  given  disabled: plugins.x.enabled is false; status, plan or clean with --plugin x runs it anyway',
         '',
       ].join('\n'),
     )

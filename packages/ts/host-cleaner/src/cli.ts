@@ -630,10 +630,12 @@ interface PluginRow {
   source: 'built-in' | 'given'
   enabled: boolean
   detected: boolean
-  /** Why it does not run: disabled in the config, or the `reason` `inspect` gave. Null when it is detected, or `detect` answered no. */
+  /** Why it does not run: `plugins.<name>.enabled is false`, or the `reason` `inspect` gave. Null when it is detected, or `detect` answered no. */
   reason: string | null
   /** Where it may delete besides the targets; empty, the targets alone. */
   roots: readonly string[]
+  /** Why `roots` is empty though the plugin has a `roots` hook: `rootsFailed` from `inspect`; null otherwise. */
+  rootsFailed: string | null
   /** The roots among `roots` that may be deleted themselves (`{ path, self: true }`). */
   selfRoots: readonly string[]
   /** The note its `detect` gave, whether it is detected or not; null when it gave none. */
@@ -646,25 +648,31 @@ const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
 /** `path` on one line; it keeps its spaces, as only a line break would split a row. */
 const pathLine = (path: string): string => path.replace(/[\r\n]+/g, ' ')
 
+/** How to run a disabled plugin; `plugins` itself takes no `--plugin`. */
+const runsAnyway = (name: string): string =>
+  `; status, plan or clean with --plugin ${oneLine(name)} runs it anyway`
+
 function renderPlugins(
   rows: readonly PluginRow[],
   targets: readonly string[],
   ignored: readonly string[],
 ): string {
-  const width = Math.max(...rows.map((r) => r.name.length))
+  const names = rows.map((r) => oneLine(r.name))
+  const width = Math.max(...names.map((n) => n.length))
   const sourceWidth = Math.max(...rows.map((r) => r.source.length))
   const lines = [`targets: ${targets.map(pathLine).join(', ') || '(none)'}`]
   if (ignored.length > 0) lines.push(`ignoring: ${ignored.map(pathLine).join(', ')}`)
-  for (const r of rows) {
+  for (const [i, r] of rows.entries()) {
     const state = !r.enabled
       ? 'disabled'
       : r.detected
-        ? `detected; roots: ${r.roots.map((root) => pathLine(root) + (r.selfRoots.includes(root) ? ' (itself too)' : '')).join(', ') || 'none, the targets alone'}`
+        ? `detected; roots: ${r.roots.map((root) => pathLine(root) + (r.selfRoots.includes(root) ? ' (itself too)' : '')).join(', ') || `none, the targets alone${r.rootsFailed === null ? '' : ` (${oneLine(r.rootsFailed)})`}`}`
         : 'not detected'
-    const reason = r.reason === null ? null : oneLine(r.reason)
+    const reason =
+      r.reason === null ? null : oneLine(r.reason) + (r.enabled ? '' : runsAnyway(r.name))
     const note = r.note === null ? null : oneLine(r.note)
     lines.push(
-      `  ${r.name.padEnd(width)}  ${r.source.padEnd(sourceWidth)}  ${state}${reason === null ? '' : `: ${reason}`}${note === null ? '' : `; note: ${note}`}`,
+      `  ${names[i]!.padEnd(width)}  ${r.source.padEnd(sourceWidth)}  ${state}${reason === null ? '' : `: ${reason}`}${note === null ? '' : `; note: ${note}`}`,
     )
   }
   return block(lines)
@@ -693,11 +701,9 @@ async function runPlugins(
       source: s.builtIn === true ? 'built-in' : 'given',
       enabled: s.skipped !== true,
       detected: s.detected,
-      reason:
-        s.skipped === true
-          ? `plugins.${s.name}.enabled is false; --plugin ${s.name} runs it anyway`
-          : (s.reason ?? null),
+      reason: s.skipped === true ? `plugins.${s.name}.enabled is false` : (s.reason ?? null),
       roots: s.roots,
+      rootsFailed: s.rootsFailed ?? null,
       selfRoots: s.selfRoots,
       note: s.note ?? null,
     }))

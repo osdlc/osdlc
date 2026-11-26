@@ -244,6 +244,21 @@ function nest(cs: readonly Candidate[]): Candidate[] {
   })
 }
 
+/** Calls one hook; a throw or a timeout, other than {@link FatalRun}, is `failed`, its text. */
+async function tryHook<T>(
+  p: Plugin,
+  hook: Hook,
+  at: RunCtx,
+  f: (ctx: Ctx) => MaybePromise<T>,
+): Promise<{ value: T } | { failed: string }> {
+  try {
+    return { value: await callHook(p, hook, at, f) }
+  } catch (err) {
+    if (err instanceof FatalRun) throw err
+    return { failed: errorText(err) }
+  }
+}
+
 /** Calls one hook; a throw or a timeout, other than {@link FatalRun}, is a warning and the fallback. */
 const guard =
   (warnings: string[]) =>
@@ -254,13 +269,10 @@ const guard =
     at: RunCtx,
     f: (ctx: Ctx) => MaybePromise<T>,
   ): Promise<T> => {
-    try {
-      return await callHook(p, hook, at, f)
-    } catch (err) {
-      if (err instanceof FatalRun) throw err
-      warnings.push(`${p.name}: ${hook} failed: ${errorText(err)}`)
-      return fallback
-    }
+    const r = await tryHook(p, hook, at, f)
+    if ('value' in r) return r.value
+    warnings.push(`${p.name}: ${hook} failed: ${r.failed}`)
+    return fallback
   }
 
 /** `answer` when it is a list; otherwise none, with a warning. */
@@ -318,16 +330,13 @@ async function detectAll(
         )
       }
     }
-    let answer: unknown
-    try {
-      answer = await callHook<unknown>(p, 'detect', ctx, (x) => p.detect(x))
-    } catch (err) {
-      if (err instanceof FatalRun) throw err
-      const error = errorText(err)
-      if (warnFailures) warnings.push(`${p.name}: detect failed: ${error}`)
-      detections.push({ plugin: p, detected: false, error })
+    const r = await tryHook<unknown>(p, 'detect', ctx, (x) => p.detect(x))
+    if ('failed' in r) {
+      if (warnFailures) warnings.push(`${p.name}: detect failed: ${r.failed}`)
+      detections.push({ plugin: p, detected: false, error: r.failed })
       continue
     }
+    const answer = r.value
     const found = detection(answer)
     if (found === null) {
       const error = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note? }`
@@ -370,33 +379,47 @@ async function scopeOf(
 const detectedOf = (detections: readonly Detected[]): Plugin[] =>
   detections.filter((d) => d.detected).map((d) => d.plugin)
 
+/** One plugin's roots, as `askRoots` accepted them. */
+interface AskedRoots {
+  roots: readonly string[]
+  self: readonly string[]
+  /** Why it has none though its `roots` hook ran: what the hook threw or timed out with, or why each root it gave was left out. */
+  failed?: string | undefined
+}
+
 /**
  * Each of `plugins`' roots, asked once per plugin so a throwing `roots` warns
  * once, less those the core refuses (see `rootProblem` in `./roots.ts`), each
  * with a warning; and the linked checkouts and home they were checked against.
  * The linked checkouts run `git` once per target, so they are found only when
- * a plugin has `roots` or the caller asks for them.
+ * a plugin answers a root to check against them; `linked` is undefined when
+ * none did.
  */
 async function askRoots(
   plugins: readonly Plugin[],
   scoped: RunCtx,
   warnings: string[],
-): Promise<{
-  rootsOf: Map<string, { roots: readonly string[]; self: readonly string[] }>
-  linked: () => string[]
-  home: string
-}> {
-  const guarded = guard(warnings)
-  let found: string[] | undefined
-  const linked = (): string[] => (found ??= linkedCheckouts(scoped.targets))
+): Promise<{ rootsOf: Map<string, AskedRoots>; linked: string[] | undefined; home: string }> {
+  let linked: string[] | undefined
   const home = scoped.home ?? homedir()
-  const rootsOf = new Map<string, { roots: readonly string[]; self: readonly string[] }>()
+  const rootsOf = new Map<string, AskedRoots>()
   for (const p of plugins) {
     if (p.roots === undefined) continue
-    const answer = await guarded<unknown>(p, 'roots', [], scoped, (x) => p.roots!(x))
-    const accepted = acceptRoots(answer, { targets: scoped.targets, linked: linked(), home })
+    const r = await tryHook<unknown>(p, 'roots', scoped, (x) => p.roots!(x))
+    if ('failed' in r) {
+      warnings.push(`${p.name}: roots failed: ${r.failed}`)
+      rootsOf.set(p.name, { roots: [], self: [], failed: `roots failed: ${r.failed}` })
+      continue
+    }
+    if (Array.isArray(r.value) && r.value.length > 0) linked ??= linkedCheckouts(scoped.targets)
+    const accepted = acceptRoots(r.value, { targets: scoped.targets, linked: linked ?? [], home })
     for (const problem of accepted.problems) warnings.push(`${p.name}: roots: ${problem}`)
-    rootsOf.set(p.name, accepted)
+    const none = accepted.roots.length === 0 && accepted.problems.length > 0
+    rootsOf.set(p.name, {
+      roots: accepted.roots,
+      self: accepted.self,
+      ...(none ? { failed: `roots: ${accepted.problems.join('; ')}` } : {}),
+    })
   }
   return { rootsOf, linked, home }
 }
@@ -415,6 +438,12 @@ export interface PluginState {
   note?: string | undefined
   /** Its roots by path, as its `roots` hook answered less those the core refused; empty without the hook, or when it is not detected. */
   roots: readonly string[]
+  /**
+   * Why `roots` is empty though the plugin has a `roots` hook: what the hook
+   * threw or timed out with, or why the core left out each root it gave. Its
+   * candidates outside the targets are then refused `outside-roots`.
+   */
+  rootsFailed?: string | undefined
   /** The roots among `roots` declared `{ path, self: true }`, which may be candidates themselves. */
   selfRoots: readonly string[]
 }
@@ -432,7 +461,8 @@ export interface Inspection {
  * each plugin applies here, why not, and where it may delete. A root the core
  * refuses (see `rootProblem` in `./roots.ts`) is left out with a warning, as
  * in `survey`. It proposes and deletes nothing, so it is quick where
- * `discover` walks every checkout; plugins are asked one after another (D2),
+ * `discover` walks every checkout; git is asked once per target only when a
+ * plugin gives a root to check; plugins are asked one after another (D2),
  * so each hook that hangs adds its time limit. A plugin `skip` picks is listed as
  * `skipped`, after the check for a second plugin of its name, and none of its
  * hooks run.
@@ -457,6 +487,7 @@ export async function inspect(
       ...(d.error === undefined ? {} : { reason: d.error }),
       ...(d.note === undefined ? {} : { note: d.note }),
       roots: r?.roots ?? [],
+      ...(r?.failed === undefined ? {} : { rootsFailed: r.failed }),
       selfRoots: r?.self ?? [],
     }
   })
@@ -499,7 +530,11 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
   const plugins = detectedOf(detections)
   const scoped = await scopeOf(plugins, ctx, warnings)
   const targets = scoped.targets
-  const ignore = ctx.ignore ?? []
+  const ignore = scoped.ignore ?? []
+  // Asked before `discover`, as `inspect` asks them, so `plugins` shows the roots a sweep holds candidates to.
+  const asked = await askRoots(plugins, scoped, warnings)
+  const { rootsOf, home } = asked
+  const linked = asked.linked ?? linkedCheckouts(targets)
 
   const discovered: Candidate[] = []
   const first = new Map<string, string>()
@@ -547,9 +582,6 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
 
   const known = new Set(candidates.map((c) => c.id))
   const objections: Objection[] = []
-  const asked = await askRoots(plugins, scoped, warnings)
-  const { rootsOf, home } = asked
-  const linked = asked.linked()
   const boundsOf = (name: string): Bounds => ({
     roots: rootsOf.get(name)?.roots ?? [],
     self: rootsOf.get(name)?.self ?? [],

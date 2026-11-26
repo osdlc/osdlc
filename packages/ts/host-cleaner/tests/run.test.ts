@@ -289,7 +289,15 @@ describe('inspect', () => {
       },
     })
     const found = await inspect([failing, fake('a', [], [])], ctx)
-    expect(found.plugins).toEqual([{ name: 'a', detected: true, roots: [], selfRoots: [] }])
+    expect(found.plugins).toEqual([
+      {
+        name: 'a',
+        detected: true,
+        roots: [],
+        rootsFailed: 'roots failed: no folder',
+        selfRoots: [],
+      },
+    ])
     expect(found.warnings).toEqual([
       'a: a second plugin of that name was left out',
       'a: scope failed: no list',
@@ -303,13 +311,42 @@ describe('inspect', () => {
     await expect(inspect([fatal], ctx)).rejects.toThrow('stop')
   })
 
-  test('a plugin a shipped factory built is marked, and a copy of one is not', async () => {
+  test('a plugin a shipped factory built is marked, a copy of one too, and one whose hook a program replaced is not', async () => {
     const git = gitPlugin()
-    const found = await inspect([git, { ...git, name: 'mine' }], ctx)
+    const changed = gitPlugin()
+    changed.discover = () => []
+    const found = await inspect(
+      [git, { ...gitPlugin(), name: 'copy', limits: { detect: 1000 } }, { ...changed, name: 'mine' }],
+      ctx,
+    )
     expect(found.plugins).toEqual([
       { name: 'git', detected: true, builtIn: true, roots: [], selfRoots: [] },
+      { name: 'copy', detected: true, builtIn: true, roots: [], selfRoots: [] },
       { name: 'mine', detected: true, roots: [], selfRoots: [] },
     ])
+  })
+
+  test('every root refused is why a plugin has none', async () => {
+    const found = await inspect([fake('a', [], [], { roots: () => ['/'] })], ctx)
+    expect(found.plugins).toEqual([
+      {
+        name: 'a',
+        detected: true,
+        roots: [],
+        rootsFailed: 'roots: left out the root /: it is the filesystem root',
+        selfRoots: [],
+      },
+    ])
+  })
+
+  test('survey asks roots before discover, as inspect does', async () => {
+    const log: string[] = []
+    const p = fake('a', [], log, {
+      roots: () => (log.push('roots'), []),
+      discover: () => (log.push('discover'), []),
+    })
+    await survey([p], ctx)
+    expect(log).toEqual(['roots', 'discover'])
   })
 
   test('a plugin skip picks is listed as skipped with no hook run, after the check for a second of its name', async () => {

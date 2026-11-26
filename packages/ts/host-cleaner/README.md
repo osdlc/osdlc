@@ -415,7 +415,8 @@ whether the file set it or it is the default. `--format json` prints the values.
 
 `host-cleaner plugins` lists every plugin: where it came from, each plugin by its
 own origin (`built-in` when host-cleaner ships it, even when a program passes it
-to `main`, and `given` for a plugin the program wrote), whether it applies here
+to `main` or a copy of it, and `given` for a plugin the program wrote, or one
+of host-cleaner's whose hooks it replaced), whether it applies here
 and, when it does not, why, and its roots, the folders it may delete in besides
 the targets. The ignored directories (`--ignore` and the config's `ignore`),
 which may leave out a target, show after `ignoring:`, as in `status`; the JSON
@@ -428,7 +429,12 @@ follows the plugin's state (`; note: ...`), whether it is detected or not, so a
 degraded plugin (`{ active: true, note }`) shows as detected with its note, as
 Orca installed but not running does; the JSON row has it as `note`.
 A root the core refuses is left out with a warning, as `status` does, and a
-self root is marked `(itself too)`. A plugin the config disables is listed as
+self root is marked `(itself too)`. A plugin whose `roots` throws or times out,
+or whose every root is refused, shows `roots: none, the targets alone` followed
+by why in brackets; the JSON row has it as `rootsFailed`. Git is asked once per
+target only when a plugin gives a root to check. `roots` is asked before
+`discover` in a sweep too, so the roots shown are the ones `status` holds
+candidates to. A plugin the config disables is listed as
 `disabled`, and its `detect` is not run. `--format json` prints the same, one
 object per plugin.
 
@@ -436,7 +442,7 @@ object per plugin.
 targets: /Users/me/dev
   git    built-in  detected; roots: none, the targets alone
   cargo  built-in  detected; roots: none, the targets alone
-  node   built-in  disabled: plugins.node.enabled is false; --plugin node runs it anyway
+  node   built-in  disabled: plugins.node.enabled is false; status, plan or clean with --plugin node runs it anyway
   orca   built-in  detected; roots: none, the targets alone; note: Orca is installed but not running
 ```
 
