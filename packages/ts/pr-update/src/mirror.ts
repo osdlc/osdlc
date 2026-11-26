@@ -24,7 +24,6 @@ import {
   mkdirSync,
   mkdtempSync,
   openSync,
-  readFileSync,
   readdirSync,
   renameSync,
   rmSync,
