@@ -171,8 +171,9 @@ export interface VarsAt {
   /** Each command's time limit. Default {@link VAR_COMMAND_LIMIT_MS}. */
   timeoutMs?: number | undefined
   /**
-   * The declared variables to resolve, with the ones they use; default all.
-   * The rest are left out of the outcome, and their commands never run.
+   * The declared variables to resolve; default all. The ones their sources use
+   * are resolved as those sources need them. The rest are left out of the
+   * outcome, and their commands never run.
    */
   only?: Iterable<string> | undefined
 }
@@ -181,47 +182,78 @@ type Given = { value: string; trusted: boolean } | { failed: string }
 
 /**
  * Every variable in `declared`, or in `at.only`, and the built-ins, resolved
- * now. Commands run one at a time, so a descriptor with `n` command sources
- * can take `n` times the time limit.
+ * now. Variables that don't use each other resolve at the same time; one
+ * variable's sources are tried one at a time. So a descriptor whose longest
+ * chain of variables has `n` command sources can take `n` times the time
+ * limit.
  */
 export async function resolveVars(
   declared: Readonly<Record<string, readonly VarSource[]>>,
   at: VarsAt,
 ): Promise<Vars> {
   const done: Vars = builtIns(at)
-  const visiting = new Set<string>()
   const limit = at.timeoutMs ?? VAR_COMMAND_LIMIT_MS
-
-  const resolve = async (name: string): Promise<void> => {
-    if (Object.hasOwn(done, name) || !Object.hasOwn(declared, name) || visiting.has(name)) return
-    visiting.add(name)
-    done[name] = await resolveOne(name, declared[name]!)
-    visiting.delete(name)
+  const started = new Map<string, Promise<void>>()
+  // Which variables each one is waiting for. A wait that would close a cycle
+  // is not made, so a variable on a cycle gives no value instead of hanging.
+  const waits = new Map<string, Set<string>>()
+  const waitsFor = (from: string, to: string): boolean => {
+    const seen = new Set<string>()
+    const todo = [from]
+    for (let n = todo.pop(); n !== undefined; n = todo.pop()) {
+      if (n === to) return true
+      if (seen.has(n)) continue
+      seen.add(n)
+      todo.push(...(waits.get(n) ?? []))
+    }
+    return false
   }
 
-  /** `template` filled, once every variable it uses is resolved. */
-  const fill = async (template: string): Promise<Given> => {
-    for (const ref of varRefs(template)) await resolve(ref)
+  /** Resolves `name`, a variable `by`'s sources use, or one asked for when `by` is undefined. */
+  const resolve = async (name: string, by?: string): Promise<void> => {
+    if (!started.has(name) && (Object.hasOwn(done, name) || !Object.hasOwn(declared, name))) return
+    if (by !== undefined && waitsFor(name, by)) return
+    let running = started.get(name)
+    if (running === undefined) {
+      // Started on a later tick, so `started` and the wait below are in place first.
+      running = Promise.resolve().then(async () => {
+        done[name] = await resolveOne(name, declared[name]!)
+      })
+      started.set(name, running)
+    }
+    if (by === undefined) return running
+    if (!waits.has(by)) waits.set(by, new Set())
+    waits.get(by)!.add(name)
+    try {
+      await running
+    } finally {
+      waits.get(by)!.delete(name)
+    }
+  }
+
+  /** `template`, which a source of `by` holds, filled once every variable it uses is resolved. */
+  const fill = async (template: string, by: string): Promise<Given> => {
+    await Promise.all([...new Set(varRefs(template))].map((ref) => resolve(ref, by)))
     const filled = fillTemplate(template, done, at.home)
     return 'missing' in filled
       ? { failed: `\${${filled.missing}} has no value` }
       : { value: filled.path, trusted: filled.trusted }
   }
 
-  const fromSource = async (source: VarSource): Promise<Given> => {
+  const fromSource = async (source: VarSource, by: string): Promise<Given> => {
     if ('env' in source) {
       const v = ownValue(at.env, source.env)
       return v === undefined || v === '' ? { failed: 'not set' } : { value: v, trusted: false }
     }
     if ('file' in source) {
-      const file = await fill(source.file)
+      const file = await fill(source.file, by)
       if ('failed' in file) return file
       const v = await keyIn(file.value, source.key)
       return typeof v === 'string' ? { value: v, trusted: false } : { failed: v.failed }
     }
     if ('command' in source) return commandValue(source.command, at, limit)
     const template = forOs(source.value, at.os)
-    return template === undefined ? { failed: `none for ${at.os}` } : fill(template)
+    return template === undefined ? { failed: `none for ${at.os}` } : fill(template, by)
   }
 
   const resolveOne = async (name: string, sources: readonly VarSource[]): Promise<VarValue> => {
@@ -231,7 +263,7 @@ export async function resolveVars(
     }
     const tried: VarValue['tried'] = []
     for (const source of sources) {
-      const given = await fromSource(source)
+      const given = await fromSource(source, name)
       const said = describeSource(source)
       if ('failed' in given) {
         tried.push({ source: said, failed: given.failed })
@@ -247,7 +279,7 @@ export async function resolveVars(
     return { value: null, trusted: false, tried }
   }
 
-  for (const name of at.only ?? Object.keys(declared)) await resolve(name)
+  await Promise.all([...new Set(at.only ?? Object.keys(declared))].map((name) => resolve(name)))
   return Object.fromEntries(
     [...Object.keys(BUILT_IN_VARS), ...Object.keys(declared)]
       .filter((n) => Object.hasOwn(done, n))

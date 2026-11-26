@@ -1336,6 +1336,18 @@ candidates:
     expect(existsSync(mod)).toBe(false)
   })
 
+  test('a folder under an XDG folder the environment sets outside home is trusted', async () => {
+    const cache = join(outsideHome(), 'cache')
+    const build = filled(cache, 'go-build')
+    const b = buildVars('go', GO_VARS, { env: () => ({ XDG_CACHE_HOME: cache }) })
+    // detect needs go on PATH or its module cache.
+    filled(b.home, 'go', 'pkg', 'mod')
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.objections.filter((o) => o.code === OUTSIDE_ROOTS)).toEqual([])
+    expect(s.roots.go).toContain(build)
+    expect(s.candidates.map((c) => c.path)).toContain(build)
+  })
+
   test('a trusted folder is still refused when it holds home, or is a target', async () => {
     const holdsHome = buildVars('go', GO_VARS)
     const parent = join(holdsHome.home, '..')
@@ -1371,15 +1383,23 @@ candidates:
       'vars:\n  LOCKS:\n    - env: PNPM_LOCKS\n',
     )
     const b = buildVars('pnpm', UNKNOWN)
-    filled(b.home, '.local/share/pnpm/store')
+    const store = filled(b.home, '.local/share/pnpm/store')
     const s = await survey([b.plugin], ctxOf())
+    const c = s.candidates[0]!
     expect(s.objections).toContainEqual(
       expect.objectContaining({
+        by: 'pnpm',
+        candidate: c.id,
         code: IN_USE,
         level: 'refuse',
         reason: 'the lock ${LOCKS}/lock cannot be checked: ${LOCKS} has no value',
       }),
     )
+    // The check before the delete refuses it too.
+    await expect(b.plugin.delete!(c, fakeContext())).rejects.toThrow(
+      'cannot be checked: ${LOCKS} has no value',
+    )
+    expect(existsSync(store)).toBe(true)
   })
 
   test("the config's vars name only the descriptor's variables, each a folder", () => {

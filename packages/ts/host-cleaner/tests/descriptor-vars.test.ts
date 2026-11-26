@@ -422,3 +422,46 @@ describe('only', () => {
     expect(calls).toEqual([])
   })
 })
+
+describe('resolving at the same time', () => {
+  test("variables that don't use each other run their commands at the same time", async () => {
+    const h = tempHome()
+    cleanups.push(h.cleanup)
+    let running = 0
+    let most = 0
+    let release = (): void => {}
+    const both = new Promise<void>((r) => (release = r))
+    // One at a time, the first command waits out this timer alone.
+    const timer = setTimeout(release, 2_000)
+    cleanups.push(() => clearTimeout(timer))
+    const kit: VarsAt['kit'] = {
+      onPath: () => true,
+      run: async (argv) => {
+        running++
+        most = Math.max(most, running)
+        if (running === 2) release()
+        await both
+        running--
+        return { ok: true, exitCode: 0, stdout: `/${argv[1]}\n`, stderr: '' }
+      },
+    }
+    const v = await resolveVars(
+      { A: [{ command: ['tool', 'a'] }], B: [{ command: ['tool', 'b'] }] },
+      { home: h.home, os: 'linux', env: h.env, kit, signal: new AbortController().signal },
+    )
+    expect(most).toBe(2)
+    expect([v.A?.value, v.B?.value]).toEqual(['/a', '/b'])
+  })
+
+  test('a variable on a cycle gives no value instead of waiting forever', async () => {
+    const { resolve } = setup()
+    const v = await resolve({
+      A: [{ value: '${B}/a' }],
+      B: [{ value: '${A}/b' }, { value: '/b' }],
+      C: [{ value: '${C}/c' }],
+    })
+    expect(v.B?.value).toBe('/b')
+    expect(v.A?.value).toBe('/b/a')
+    expect(v.C?.value).toBeNull()
+  })
+})

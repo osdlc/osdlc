@@ -514,7 +514,8 @@ paths:
 `HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and
 `XDG_STATE_HOME` are built in; each `XDG_*` folder falls back to its XDG default
 under home on every OS. A variable is resolved only when a folder or lock on
-this OS uses it. A folder whose variable has no value is left out, and `status`
+this OS uses it, or another such variable uses it; variables that don't use each
+other are resolved at the same time. A folder whose variable has no value is left out, and `status`
 notes which variable and why each source gave none. `${` is refused in every
 other field, such as a candidate's `command`: a command is pointed at its folder
 with `{path}`. A resolved folder must sit inside home, except one under a variable

@@ -1044,7 +1044,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     )
   }
 
-  // detect's limit covers every variable's commands, which run one at a time.
+  // detect's limit covers every variable's commands as if they ran one at a time.
   const commands = Object.values(d.vars ?? {})
     .flat()
     .filter((s) => 'command' in s).length

@@ -236,6 +236,14 @@ describe("the system description's examples", () => {
     expect(
       issues(GO.replace('- command: [go, env, GOMODCACHE]', "- { file: ~/go.toml, key: '${X}' }")),
     ).toEqual([unfilled('vars.GOMODCACHE.1.key')])
+    expect(issues(UV.replace('{ onPath: uv }', "{ onPath: '${UV}' }"))).toEqual([
+      unfilled('detect.any.0.onPath'),
+    ])
+    expect(
+      issues(
+        `${HUGGING_FACE}project:\n  - { dir: '\${OUT}', marker: '\${M}.csproj', costDescription: rebuild }\n`,
+      ),
+    ).toEqual([unfilled('project.0.dir'), unfilled('project.0.marker')])
   })
 
   test('a glob or marker whose every {a,b} alternative names an entry is accepted', () => {
