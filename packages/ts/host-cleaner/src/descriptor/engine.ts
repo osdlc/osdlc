@@ -448,27 +448,9 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     return template === undefined ? [] : [[key, template] as const]
   })
   const lockTemplates = d.inUse?.locks ?? []
-  // resolveVars resolves the variables these use in turn as their sources need them.
+  // resolveVars resolves the variables these use in turn as their sources
+  // need them, and gives those alone: the ones `detect` shows.
   const used = [...pathTemplates.map(([, t]) => t), ...lockTemplates].flatMap(varRefs)
-
-  /**
-   * The variables of `vars`, a survey's outcome, that the folders and locks
-   * use: every declared one in it, as it holds only the ones resolved for
-   * them, and the built-ins they or those variables' sources name.
-   */
-  const shownOf = (vars: Readonly<Vars>): Vars => {
-    const declared = d.vars ?? {}
-    const names = new Set(used)
-    for (const n of Object.keys(vars)) {
-      if (!Object.hasOwn(declared, n)) continue
-      names.add(n)
-      for (const s of declared[n]!) {
-        const template = 'file' in s ? s.file : 'value' in s ? forOs(s.value, at.os) : undefined
-        if (template !== undefined) varRefs(template).forEach((ref) => names.add(ref))
-      }
-    }
-    return Object.fromEntries(Object.entries(vars).filter(([n]) => names.has(n)))
-  }
 
   // The folders by their name in `paths`, and the lock files, as the last
   // survey filled them, for the home `filledFor`; undefined until a survey runs.
@@ -1128,13 +1110,12 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
         if (d.detect?.any !== undefined) return d.detect.any.some(holds)
         return [...folders.values()].some((f) => present(f.path))
       }
-      const shown = shownOf(vars)
-      const none = Object.keys(shown).length === 0
+      const none = Object.keys(vars).length === 0
       if (leftOut === undefined && none) return active()
       return {
         active: active(),
         ...(leftOut === undefined ? {} : { note: leftOut }),
-        ...(none ? {} : { vars: shown }),
+        ...(none ? {} : { vars }),
       }
     },
     async roots(ctx): Promise<Root[]> {

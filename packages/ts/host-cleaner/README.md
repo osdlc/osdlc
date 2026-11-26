@@ -690,8 +690,10 @@ plugin takes from what it found (git's gone worktrees) shows in `status` and
 not here. A plugin the config disables is listed as `disabled`, and its
 `detect` is not run; its JSON `reason` is `plugins.<name>.enabled is false`,
 and the text adds that status, plan or clean with `--plugin <name>` runs it
-anyway. A descriptor that can't be used, or a config entry that names no
-plugin, is a warning, as in `config`.
+anyway. A descriptor that can't be used has a row of its own, from where the
+file was found, not detected, with why as the reason; for one the config
+disables, why is a warning. One named as a built-in plugin is a warning alone,
+as a config entry that names no plugin is, as in `config`.
 
 Under a descriptor with variables, one line per variable its folders and locks
 use on this OS, built in or declared: its value and the source that gave it,
@@ -699,7 +701,8 @@ then each source tried before it and why it gave none. A command that timed out
 says so, and the source after it that gave the value is the one named. A
 variable no source gave a value has no value; its folders are left out, and the
 note says so. The variables come with `detect`'s answer, so a descriptor whose
-`detect` threw, timed out, was skipped or was superseded shows none. Each line
+`detect` threw, timed out, was skipped or was superseded shows none, as does
+one whose `onPath` conditions alone leave it undetected. Each line
 keeps to itself: a line break in a value is printed as a space. `--format json`
 prints the same, one object per plugin, each with its `vars`.
 

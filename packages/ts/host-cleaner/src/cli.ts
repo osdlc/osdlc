@@ -803,7 +803,7 @@ interface PluginRow {
   replaces?: { source: DescriptorSource; path: string }
   enabled: boolean
   detected: boolean
-  /** Why it does not run: `plugins.<name>.enabled is false`, or the `reason` `inspect` gave. Null when it is detected, or `detect` answered no. */
+  /** Why it does not run: `plugins.<name>.enabled is false`, the `reason` `inspect` gave, or why its descriptor can't be used. Null when it is detected, or `detect` answered no. */
   reason: string | null
   /** Where it may delete besides the targets; empty, the targets alone. */
   roots: readonly string[]
@@ -816,6 +816,20 @@ interface PluginRow {
   /** A descriptor's variables as its `detect` gave them; empty for a plugin that has none, or when `detect` did not finish. */
   vars: readonly VarRow[]
 }
+
+/** The row of a descriptor that can't be used: not detected, with its error as the reason, or disabled as any plugin is. */
+const problemRow = (p: DescriptorProblem, on: boolean): PluginRow => ({
+  name: p.name,
+  source: p.source,
+  enabled: on,
+  detected: false,
+  reason: on ? p.error.message : `plugins.${p.name}.enabled is false`,
+  roots: [],
+  rootsFailed: null,
+  selfRoots: [],
+  note: null,
+  vars: [],
+})
 
 const varRows = (vars: Vars | undefined): VarRow[] =>
   Object.entries(vars ?? {}).map(([name, x]) => ({ name, ...x, from: x.from ?? null }))
@@ -927,12 +941,18 @@ async function runPlugins(
         vars: varRows(s.vars),
       }
     })
+    // A descriptor that can't be used has a row, its error the reason, unless
+    // a plugin has its name; then, or when it is disabled, the error is a warning.
+    const named = new Set(rows.map((r) => r.name))
+    const rowed = problems.filter((p) => !named.has(p.name))
+    rows.push(...rowed.map((p) => problemRow(p, enabled(p.name, config))))
     targets = found.ctx.targets
     ignored = found.ctx.ignore ?? []
-    // As `config`, it lists what it can: a descriptor that can't be used is a warning.
     warnings = [
       ...loading.warnings,
-      ...problems.map((p) => p.error.message),
+      ...problems
+        .filter((p) => !rowed.includes(p) || !enabled(p.name, config))
+        .map((p) => p.error.message),
       ...(unknown.length > 0 ? [unknownMessage(unknown)] : []),
       ...found.warnings,
     ]

@@ -1200,6 +1200,38 @@ candidates:
     expect(config.err).toContain('"My_tool" is not a plugin name')
   })
 
+  test("plugins lists a descriptor that can't be used as a row with its error; a disabled one, or one named as a built-in, is a warning", async () => {
+    const h = withHome()
+    const bad = (name: string) => `bad descriptor ${join(h.user, `${name}.yaml`)}`
+    for (const name of ['mine', 'off']) {
+      writeFileSync(join(h.user, `${name}.yaml`), 'descriptor: 1\npaths: {}\ncandidates: []\n')
+    }
+    writeFileSync(join(h.user, 'git.yaml'), store('.cache/git'))
+    const file = join(h.home, 'config.json')
+    writeFileSync(file, JSON.stringify({ plugins: { off: { enabled: false } } }))
+    const deps = { shippedDescriptors: h.shipped }
+    const r = await run(['plugins', '--config', file, '--format', 'json'], h.cwd, h.env, deps)
+    expect(r.code).toBe(0)
+    const out = JSON.parse(r.out) as {
+      warnings: string[]
+      plugins: Array<{ name: string; reason: string | null }>
+    }
+    expect(out.plugins.filter((p) => p.name === 'git')).toMatchObject([{ source: 'built-in' }])
+    const rows = Object.fromEntries(out.plugins.map((p) => [p.name, p]))
+    expect(rows.mine).toMatchObject({ source: 'user', enabled: true, detected: false, roots: [] })
+    expect(rows.mine!.reason).toContain(bad('mine'))
+    expect(rows.off).toMatchObject({
+      source: 'user',
+      enabled: false,
+      reason: 'plugins.off.enabled is false',
+    })
+    expect(out.warnings.some((w) => w.includes(bad('mine')))).toBe(false)
+    expect(out.warnings.some((w) => w.includes(bad('off')))).toBe(true)
+    expect(out.warnings.some((w) => w.includes(join(h.user, 'git.yaml')))).toBe(true)
+    const text = await run(['plugins', '--config', file], h.cwd, h.env, deps)
+    expect(text.out).toMatch(/^ {2}mine +user +not detected: bad descriptor /m)
+  })
+
   test('--skip-plugin of a built-in leaves it out although a descriptor has its name', async () => {
     const h = withHome()
     writeFileSync(join(h.user, 'git.yaml'), store('.cache/git'))

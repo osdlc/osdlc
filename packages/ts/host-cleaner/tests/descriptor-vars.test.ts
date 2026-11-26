@@ -445,6 +445,19 @@ describe('only', () => {
     expect(Object.hasOwn(v, 'UNUSED')).toBe(false)
     expect(calls).toEqual([])
   })
+
+  test('gives the built-ins the named variables use, on the way too, and no others', async () => {
+    const { resolve } = setup()
+    const v = await resolve(
+      {
+        BASE: [{ value: '${XDG_CACHE_HOME}/base' }],
+        USED: [{ value: '${BASE}/used' }],
+        UNUSED: [{ value: '${XDG_DATA_HOME}/other' }],
+      },
+      { only: ['USED', 'HOME'] },
+    )
+    expect(Object.keys(v)).toEqual(['HOME', 'XDG_CACHE_HOME', 'BASE', 'USED'])
+  })
 })
 
 describe('resolving at the same time', () => {
