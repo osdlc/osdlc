@@ -594,6 +594,21 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       expect(receipt.steps).toEqual([])
       expect(existsSync(b.folder('repository'))).toBe(true)
     })
+
+    test('a LOCAL_REPOSITORY set in the config is trusted on another disk, and cleaned when picked', async () => {
+      const disk = tempHome()
+      cleanups.push(disk.cleanup)
+      const repo = join(disk.home, 'm2')
+      const b = build('maven', os, {
+        moves: () => ({ vars: { LOCAL_REPOSITORY: repo }, moved: { repository: repo } }),
+      })
+      age(repo, 721)
+      const { survey: s, receipt } = await surveyAndClean(b.plugin, [`maven:${repo}`])
+      expect(s.objections).toEqual([])
+      expect(receipt.steps).toMatchObject([{ id: `maven:${repo}`, result: 'ok' }])
+      expect(existsSync(repo)).toBe(false)
+      expect(existsSync(join(b.home, '.m2/repository/blob'))).toBe(true)
+    })
   })
 
   describe("an entry's own idleHours", () => {
@@ -638,21 +653,6 @@ describe.each(OSES_TESTED)('on %s', (os) => {
         'hub/spaces--*/',
       ])
       expect(parts('npm', {}, {})).toBeUndefined()
-    })
-
-    test('a LOCAL_REPOSITORY set in the config is trusted on another disk, and cleaned', async () => {
-      const disk = tempHome()
-      cleanups.push(disk.cleanup)
-      const repo = join(disk.home, 'm2')
-      const b = build('maven', os, {
-        moves: () => ({ vars: { LOCAL_REPOSITORY: repo }, moved: { repository: repo } }),
-      })
-      age(repo, 721)
-      const { survey: s, receipt } = await surveyAndClean(b.plugin)
-      expect(s.objections).toEqual([])
-      expect(receipt.steps).toMatchObject([{ id: `maven:${repo}`, result: 'ok' }])
-      expect(existsSync(repo)).toBe(false)
-      expect(existsSync(join(b.home, '.m2/repository/blob'))).toBe(true)
     })
   })
 
