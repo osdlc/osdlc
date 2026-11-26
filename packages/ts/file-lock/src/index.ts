@@ -7,6 +7,7 @@
 export {
   claimLock,
   MARKER_STALE_MS,
+  readHeldLock,
   releaseLock,
   touchLock,
   updateLock,
