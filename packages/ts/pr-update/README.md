@@ -1282,7 +1282,7 @@ from source under Bun, so it needs `bun` on PATH and the checkout's
 dependencies installed and built. The installed copy says which checkout it
 hands off to on stderr; `PR_UPDATE_QUIET=1` silences that line.
 
-[docs/architecture.md](docs/architecture.md) follows one run through the code,
+[docs/guide/architecture.md](docs/guide/architecture.md) follows one run through the code,
 with the file and line of each step, and lists the known problems.
 
 ## Licence
