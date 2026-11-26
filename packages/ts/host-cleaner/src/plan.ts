@@ -120,7 +120,10 @@ export function missingFrom(names: Iterable<string>, known: Iterable<string>): s
 
 /** The owners of `plan`'s candidates that `known` does not name, each once. */
 export const unknownOwners = (plan: Plan, known: Iterable<string>): string[] =>
-  missingFrom(plan.candidates.map((c) => c.owner), known)
+  missingFrom(
+    plan.candidates.map((c) => c.owner),
+    known,
+  )
 
 export function writePlan(path: string, plan: Plan): void {
   writeJsonAtomic(path, plan)

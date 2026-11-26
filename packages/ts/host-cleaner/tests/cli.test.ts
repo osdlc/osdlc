@@ -261,6 +261,7 @@ describe('status', () => {
     for (const argv of [
       ['clean', '--config', config, '--yes'],
       ['clean', '--config', config, '--plan', planFile, '--yes'],
+      ['clean', '--config', config, '--dry-run'],
     ]) {
       const r = run(argv, cwd, env, { plugins: [plugin] })
       expect(r.code).toBe(2)
