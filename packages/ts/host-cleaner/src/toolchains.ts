@@ -171,9 +171,15 @@ function voltaPin(text: string): { node: string | null; extends: string | null }
 /** What every git call is given: the hook's signal, and a locale {@link brokenGit} can read. */
 const gitCall = (ctx: Ctx) => ({ signal: ctx.signal, env: { LC_ALL: 'C' } })
 
-/** Whether git failed because a folder's `.git` is no repository: a pruned worktree's, or an empty one. */
+/**
+ * Whether git failed because a folder's `.git` is no repository: a pruned
+ * worktree's, or an empty one. Of a `.git` file naming a folder that is gone,
+ * git 2.56 says it "does not point to a valid repository", older git "not a git repository".
+ */
 const brokenGit = (err: unknown): boolean =>
-  /not a git repository|invalid gitfile format/.test(errorText(err))
+  /not a git repository|invalid gitfile format|gitfile does not point to a valid repository/.test(
+    errorText(err),
+  )
 
 /** Whether the folder `dir` is or holds `path`, by real path. */
 const holds = (dir: string, path: string): boolean =>
