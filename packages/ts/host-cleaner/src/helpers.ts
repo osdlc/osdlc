@@ -7,9 +7,24 @@
 import { realpathSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
 
-import { failureText, type CommandResult } from '@osdlc/command-seam'
+import { failureText, firstLine, type CommandResult } from '@osdlc/command-seam'
 
 import type { Candidate, Ctx, Objection, PathCandidate } from './types.ts'
+
+/**
+ * Why the run `r`, which failed, failed: `how` it ended (`exit N`, `did not
+ * run` when it never started, or `stopped before it exited (reason)`), and
+ * `said`, the first line it printed, or `''`.
+ */
+export function runFailure(r: CommandResult): { how: string; said: string } {
+  const how =
+    r.neverExited !== true
+      ? `exit ${r.exitCode}`
+      : r.reason === 'spawn'
+        ? 'did not run'
+        : `stopped before it exited (${r.reason ?? 'unknown'})`
+  return { how, said: firstLine(failureText(r, { both: true })) }
+}
 
 /** Whether `v`, read from JSON, is an object and not a list. */
 export const isObject = (v: unknown): v is Record<string, unknown> =>

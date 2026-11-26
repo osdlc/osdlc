@@ -66,7 +66,7 @@ assert.deepEqual(
 // The shipped descriptors are in the package, where the loader looks for them.
 assert.deepEqual(
   loadDescriptors({}, []).map((d) => d.name),
-  ['gradle', 'huggingface-hub', 'maven', 'npm', 'pip', 'pnpm', 'uv', 'yarn'],
+  ['go', 'gradle', 'huggingface-hub', 'maven', 'npm', 'pip', 'pnpm', 'uv', 'yarn'],
 )
 const schemaFile = fileURLToPath(
   import.meta.resolve('@osdlc/host-cleaner/schemas/descriptor-1.json'),

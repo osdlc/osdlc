@@ -42,6 +42,7 @@ export function findPlugins(sources: DescriptorSources, opts: DescriptorOptions 
     if (by === undefined || builtIns.includes(by)) return true
     problems.push({
       name: d.name,
+      source: d.source,
       path: d.path,
       error: new DescriptorLoadError(
         `descriptor ${d.path}: supersededBy ${by} is no built-in plugin; have ${builtIns.join(', ')}`,

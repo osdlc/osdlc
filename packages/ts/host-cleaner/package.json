@@ -72,6 +72,7 @@
     "@osdlc/repo-cleaner": "workspace:^",
     "@osdlc/typed-git": "workspace:^",
     "@osdlc/ux": "workspace:^",
+    "smol-toml": "catalog:",
     "yaml": "catalog:",
     "zod": "catalog:"
   },

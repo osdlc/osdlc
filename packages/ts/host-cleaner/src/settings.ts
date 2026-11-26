@@ -7,7 +7,7 @@
  * prints the same schemas' fields and defaults through `configFields`.
  */
 
-import { configFields, validateStandard } from '@osdlc/config-layers'
+import { configFields, getIn, validateStandard } from '@osdlc/config-layers'
 import { z } from 'zod'
 
 import { DEFAULT_IDLE_HOURS } from './kit.ts'
@@ -121,13 +121,15 @@ export function effectiveSettings(
     // The core's `enabled` first, ahead of the plugin's own settings.
     fields.sort((a, b) => Number(b.path[1] === 'enabled') - Number(a.path[1] === 'enabled'))
     out[name] = fields.map((f) => {
-      const key = f.path.slice(1).join('.')
-      const source = sources[key] ?? 'default'
+      const at = f.path.slice(1)
+      const key = at.join('.')
+      // A nested key, such as `vars.GOMODCACHE`, is set by the config or left at its default.
+      const source = sources[key] ?? (getIn(raw, at).found ? 'config' : 'default')
       const parts =
         key === 'idleHours' ? def.idleHoursOf?.(value[key] as number, source) : undefined
       return {
         key,
-        value: value[key],
+        value: getIn(value, at).value,
         default: key === 'idleHours' ? DEFAULT_IDLE_HOURS : f.default,
         source,
         description: f.description,

@@ -61,12 +61,15 @@ export {
   clean,
   decide,
   decidePlan,
+  inspect,
   plan,
   recheck,
   spares,
   survey,
   type CleanOptions,
   type Decision,
+  type Inspection,
+  type PluginState,
   type Selection,
   type Survey,
 } from './run.ts'
@@ -122,6 +125,16 @@ export {
   skipReason,
   type DescriptorOptions,
 } from './descriptor/engine.ts'
+export {
+  BUILT_IN_VARS,
+  VAR_COMMAND_LIMIT_MS,
+  fillTemplate,
+  resolveVars,
+  type VarSource,
+  type VarValue,
+  type Vars,
+  type VarsAt,
+} from './descriptor/vars.ts'
 export {
   DescriptorLoadError,
   SHIPPED_DESCRIPTORS,
