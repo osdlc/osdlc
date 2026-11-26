@@ -160,7 +160,7 @@ describe('phases', () => {
     expect(r.err).toContain('is not a phase')
   })
 
-  test('as root status, plan and clean are refused with exit 1 and nothing runs; config and --help still answer', async () => {
+  test('as root status, plan, clean and plugins are refused with exit 1 and nothing runs; config and --help still answer', async () => {
     const { env, cwd } = setup()
     const plugin = fake()
     for (const phase of ['status', 'plan', 'clean', 'plugins']) {
@@ -756,6 +756,43 @@ candidates:
     )
   })
 
+  test('a line break in a plugin name does not split its row or widen the column', async () => {
+    const { env, cwd } = setup()
+    const r = await run(['plugins'], cwd, env, {
+      plugins: [{ ...fake('a\nb'), detect: () => false }, fake('cc')],
+    })
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  a b  given  not detected',
+        '  cc   given  detected; roots: none, the targets alone',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  test('a failed roots says why the plugin has none, in text and json', async () => {
+    const { env, cwd } = setup()
+    const failing = (): Plugin[] => [
+      {
+        ...fake('a'),
+        roots: () => {
+          throw new Error('timed\nout')
+        },
+      },
+    ]
+    const r = await run(['plugins'], cwd, env, { plugins: failing() })
+    expect(r.out).toBe(
+      [
+        `targets: ${cwd}`,
+        '  a  given  detected; roots: none, the targets alone (roots failed: timed out)',
+        '',
+      ].join('\n'),
+    )
+    const json = await run(['plugins', '--format', 'json'], cwd, env, { plugins: failing() })
+    expect(JSON.parse(json.out).plugins[0].rootsFailed).toBe('roots failed: timed\nout')
+  })
+
   test('a multi-line note stays on its row', async () => {
     const { env, cwd } = setup()
     const r = await run(['plugins'], cwd, env, {
@@ -782,7 +819,7 @@ candidates:
     expect(r.out).toBe(
       [
         `targets: ${cwd}`,
-        "  x  given  disabled: plugins.x.enabled is false; a sweep's --plugin x runs it anyway",
+        '  x  given  disabled: plugins.x.enabled is false; status, plan or clean with --plugin x runs it anyway',
         '',
       ].join('\n'),
     )

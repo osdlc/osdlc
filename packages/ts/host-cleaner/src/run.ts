@@ -361,14 +361,14 @@ async function detectAll(
 
 /**
  * The context whose targets the detected `plugins`' `scope` added to, less
- * those `ignore` covers; a failed `scope`, or an answer or entry the core does
- * not take, is a warning.
+ * those its `ignore` covers, and that `ignore` itself; a failed `scope`, or an
+ * answer or entry the core does not take, is a warning.
  */
 async function scopeOf(
   plugins: readonly Plugin[],
   ctx: RunCtx,
   warnings: string[],
-): Promise<RunCtx> {
+): Promise<RunCtx & { ignore: readonly string[] }> {
   const guarded = guard(warnings)
   const ignore = ctx.ignore ?? []
   const targets = ctx.targets.filter((t) => coveredBy(t, ignore) === undefined)
@@ -383,13 +383,13 @@ async function scopeOf(
       if (!targets.includes(root) && coveredBy(root, ignore) === undefined) targets.push(root)
     }
   }
-  return { ...ctx, targets }
+  return { ...ctx, targets, ignore }
 }
 
 const detectedOf = (detections: readonly Detected[]): Plugin[] =>
   detections.filter((d) => d.detected).map((d) => d.plugin)
 
-/** A plugin's roots, as {@link askRoots} found them. */
+/** One plugin's roots, as {@link askRoots} accepted them. */
 interface AskedRoots {
   roots: readonly string[]
   self: readonly string[]
@@ -402,19 +402,15 @@ interface AskedRoots {
  * once, less those the core refuses (see `rootProblem` in `./roots.ts`), each
  * with a warning; and the linked checkouts and home they were checked against.
  * The linked checkouts run `git` once per target, so they are found only when
- * a plugin has `roots` or the caller asks for them.
+ * a plugin answers a root to check against them; `linked` is undefined when
+ * none did.
  */
 async function askRoots(
   plugins: readonly Plugin[],
   scoped: RunCtx,
   warnings: string[],
-): Promise<{
-  rootsOf: Map<string, AskedRoots>
-  linked: () => string[]
-  home: string
-}> {
-  let found: string[] | undefined
-  const linked = (): string[] => (found ??= linkedCheckouts(scoped.targets))
+): Promise<{ rootsOf: Map<string, AskedRoots>; linked: string[] | undefined; home: string }> {
+  let linked: string[] | undefined
   const home = scoped.home ?? homedir()
   const rootsOf = new Map<string, AskedRoots>()
   for (const p of plugins) {
@@ -425,7 +421,8 @@ async function askRoots(
       rootsOf.set(p.name, { roots: [], self: [], failed: `roots failed: ${r.failed}` })
       continue
     }
-    const accepted = acceptRoots(r.value, { targets: scoped.targets, linked: linked(), home })
+    if (Array.isArray(r.value) && r.value.length > 0) linked ??= linkedCheckouts(scoped.targets)
+    const accepted = acceptRoots(r.value, { targets: scoped.targets, linked: linked ?? [], home })
     for (const problem of accepted.problems) warnings.push(`${p.name}: roots: ${problem}`)
     const none = accepted.roots.length === 0 && accepted.problems.length > 0
     rootsOf.set(p.name, {
@@ -454,9 +451,9 @@ export interface PluginState {
   /** Its roots by path, as its `roots` hook answered less those the core refused; empty without the hook, or when it is not detected. */
   roots: readonly string[]
   /**
-   * Why `roots` is empty though the plugin has the hook and is detected: what
-   * the hook threw or timed out with, or why the core left out each root it
-   * gave. Its candidates outside the targets are then refused `outside-roots`.
+   * Why `roots` is empty though the plugin has a `roots` hook and is detected:
+   * what the hook threw or timed out with, or why the core left out each root
+   * it gave. Its candidates outside the targets are then refused `outside-roots`.
    */
   rootsFailed?: string | undefined
   /** The roots among `roots` declared `{ path, self: true }`, which may be candidates themselves. */
@@ -472,14 +469,17 @@ export interface Inspection {
 }
 
 /**
- * Detect, scope and roots, as `survey` calls them, and nothing else: whether
- * each plugin applies here, why not, and where it may delete. A root the core
- * refuses (see `rootProblem` in `./roots.ts`) is left out with a warning, as
- * in `survey`. It proposes and deletes nothing, so it is quick where
- * `discover` walks every checkout; plugins are asked one after another (D2),
- * so each hook that hangs adds its time limit. A plugin `skip` picks is listed as
- * `skipped`, after the check for a second plugin of its name, and none of its
- * hooks run.
+ * Detect, scope and roots, and nothing else: whether each plugin applies
+ * here, why not, and where it may delete. A root the core refuses (see
+ * `rootProblem` in `./roots.ts`) is left out with a warning, as in `survey`.
+ * `roots` is asked after `scope` with no `discover`, where `survey` asks it
+ * after `discover`, so a root a plugin takes from what it discovered (git's
+ * gone worktrees) is not listed. It proposes and deletes nothing, so it is
+ * quick where `discover` walks every checkout; git is asked once per target
+ * only when a plugin gives a root to check; plugins are asked one after
+ * another (D2), so each hook that hangs adds its time limit. A plugin `skip`
+ * picks is listed as `skipped`, after the check for a second plugin of its
+ * name, and none of its hooks run.
  */
 export async function inspect(
   all: readonly Plugin[],
@@ -545,7 +545,7 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
   const plugins = detectedOf(detections)
   const scoped = await scopeOf(plugins, ctx, warnings)
   const targets = scoped.targets
-  const ignore = ctx.ignore ?? []
+  const ignore = scoped.ignore
 
   const discovered: Candidate[] = []
   const first = new Map<string, string>()
@@ -593,9 +593,10 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
 
   const known = new Set(candidates.map((c) => c.id))
   const objections: Objection[] = []
+  // Asked after `discover`, so a plugin may root what it found (git's gone worktrees).
   const asked = await askRoots(plugins, scoped, warnings)
   const { rootsOf, home } = asked
-  const linked = asked.linked()
+  const linked = asked.linked ?? linkedCheckouts(targets)
   const boundsOf = (name: string): Bounds => ({
     roots: rootsOf.get(name)?.roots ?? [],
     self: rootsOf.get(name)?.self ?? [],

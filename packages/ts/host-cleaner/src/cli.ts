@@ -842,19 +842,21 @@ const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
 /** `path` on one line; it keeps its spaces, as only a line break would split a row. */
 const pathLine = (path: string): string => path.replace(/[\r\n]+/g, ' ')
 
-/** What `host-cleaner plugins` adds to a disabled plugin's reason. */
-const runsAnyway = (name: string): string => `; a sweep's --plugin ${name} runs it anyway`
+/** How to run a disabled plugin; `plugins` itself takes no `--plugin`. */
+const runsAnyway = (name: string): string =>
+  `; status, plan or clean with --plugin ${oneLine(name)} runs it anyway`
 
 function renderPlugins(
   rows: readonly PluginRow[],
   targets: readonly string[],
   ignored: readonly string[],
 ): string {
-  const width = Math.max(...rows.map((r) => r.name.length))
+  const names = rows.map((r) => oneLine(r.name))
+  const width = Math.max(...names.map((n) => n.length))
   const sourceWidth = Math.max(...rows.map((r) => r.source.length))
   const lines = [`targets: ${targets.map(pathLine).join(', ') || '(none)'}`]
   if (ignored.length > 0) lines.push(`ignoring: ${ignored.map(pathLine).join(', ')}`)
-  for (const r of rows) {
+  for (const [i, r] of rows.entries()) {
     const state = !r.enabled
       ? 'disabled'
       : r.detected
@@ -868,10 +870,10 @@ function renderPlugins(
         ? ''
         : `; replaces the ${r.replaces.source} ${pathLine(r.replaces.path)}`
     lines.push(
-      `  ${r.name.padEnd(width)}  ${r.source.padEnd(sourceWidth)}  ${state}${reason === null ? '' : `: ${reason}`}${note === null ? '' : `; note: ${note}`}${replaces}`,
+      `  ${names[i]!.padEnd(width)}  ${r.source.padEnd(sourceWidth)}  ${state}${reason === null ? '' : `: ${reason}`}${note === null ? '' : `; note: ${note}`}${replaces}`,
     )
-    const names = Math.max(...r.vars.map((x) => x.name.length))
-    for (const x of r.vars) lines.push(varLine(x, names))
+    const varWidth = Math.max(...r.vars.map((x) => oneLine(x.name).length))
+    for (const x of r.vars) lines.push(varLine(x, varWidth))
   }
   return block(lines)
 }

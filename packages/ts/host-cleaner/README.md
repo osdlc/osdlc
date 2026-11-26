@@ -507,7 +507,7 @@ host-cleaner plugins [target...] [--format json]   # every plugin: where it came
 
 The text output writes the home folder in an id as `~`
 (`worktree:~/dev/wt`, `branch:~/dev/repo:main`), and `--pick` and `--spare`
-take that form, also when `HOME` goes through a symlink. `status`, `plan` and `clean` refuse to run as root (exit 1); `config` still answers. `status`,
+take that form, also when `HOME` goes through a symlink. `status`, `plan`, `clean` and `plugins` refuse to run as root (exit 1); `config` still answers. `status`,
 `plan` and `clean` print each plugin's `detect` note as a warning line naming
 the plugin, with the survey's warnings.
 
@@ -661,12 +661,13 @@ removed whole).
 
 `host-cleaner plugins` lists every plugin: where it came from, each plugin by its
 own origin (`built-in` when host-cleaner ships it, even when a program passes it
-to `main`; for a descriptor `shipped`, `user` for the config directory or `flag`
-for `--descriptor`; and `given` for a plugin the program wrote), whether it
-applies here and, when it does not, why, and its roots, the folders it may
-delete in besides the targets. When it does not apply, a reason follows if one
-is known: disabled, or what `detect` threw. A `detect` that just answers no, as
-most built-ins do, gives no reason: it shows `not detected`. A descriptor that
+to `main` or a copy of it; for a descriptor `shipped`, `user` for the config
+directory or `flag` for `--descriptor`; and `given` for a plugin the program
+wrote, or one of host-cleaner's whose hooks it replaced), whether it applies
+here and, when it does not, why, and its roots, the folders it may delete in
+besides the targets. When it does not apply, a reason follows if one is known:
+disabled, or what `detect` threw. A `detect` that just answers no, as most
+built-ins do, gives no reason: it shows `not detected`. A descriptor that
 stands in for one of the same name ends its line with the file it replaces
 (`replaces` in JSON). The ignored directories (`--ignore` and the config's
 `ignore`), which may leave out a target, show after `ignoring:`, as in `status`;
@@ -681,11 +682,15 @@ so there; the JSON row has it as `note`. A root the core refuses is left out
 with a warning, as `status` does, and a self root is marked `(itself too)`. A
 detected plugin with no roots shows `none, the targets alone`, followed in
 parentheses by why when its `roots` threw, timed out or had every root refused
-(`rootsFailed` in JSON): its candidates outside the targets are then refused. A
-plugin the config disables is listed as `disabled`, and its `detect` is not run;
-its JSON `reason` is `plugins.<name>.enabled is false`, and the text adds that a
-sweep's `--plugin <name>` runs it anyway. A descriptor that can't be used, or
-a config entry that names no plugin, is a warning, as in `config`.
+(`rootsFailed` in JSON): its candidates outside the targets are then refused.
+Git is asked once per target only when a plugin gives a root to check.
+`plugins` runs no `discover`, where a sweep asks `roots` after it, so a root a
+plugin takes from what it found (git's gone worktrees) shows in `status` and
+not here. A plugin the config disables is listed as `disabled`, and its
+`detect` is not run; its JSON `reason` is `plugins.<name>.enabled is false`,
+and the text adds that status, plan or clean with `--plugin <name>` runs it
+anyway. A descriptor that can't be used, or a config entry that names no
+plugin, is a warning, as in `config`.
 
 Under a descriptor with variables, one line per variable its folders and locks
 use on this OS, built in or declared: its value and the source that gave it,
@@ -701,7 +706,7 @@ prints the same, one object per plugin, each with its `vars`.
 targets: /Users/me/dev
   git    built-in  detected; roots: none, the targets alone
   cargo  built-in  detected; roots: none, the targets alone
-  node   built-in  disabled: plugins.node.enabled is false; a sweep's --plugin node runs it anyway
+  node   built-in  disabled: plugins.node.enabled is false; status, plan or clean with --plugin node runs it anyway
   orca   built-in  detected; roots: none, the targets alone; note: Orca is installed but not running
   go     user      detected; roots: /Users/me/go/pkg/mod (itself too)
     ${GOPATH}      = /Users/me/go  from value (tried env GOPATH: not set)

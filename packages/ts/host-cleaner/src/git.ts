@@ -94,13 +94,14 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
     // its repository, declares it so its prune is not refused outside-roots.
     // One of a repository a target is in, the core counts already.
     roots(ctx) {
+      const gone = [...rows.values()].filter(
+        (row) => row.kind === 'worktree' && (row.evidence as WorktreeEvidence).onDisk === false,
+      )
+      // Nothing to root, as before `discover`: git is not run for every target.
+      if (gone.length === 0) return []
       const counted = new Set(linkedCheckouts(ctx.targets))
-      return [...rows.values()].flatMap((row) =>
-        row.kind === 'worktree' &&
-        (row.evidence as WorktreeEvidence).onDisk === false &&
-        !counted.has(row.path)
-          ? [{ path: row.path, self: true as const }]
-          : [],
+      return gone.flatMap((row) =>
+        counted.has(row.path) ? [] : [{ path: row.path, self: true as const }],
       )
     },
     object(all) {
