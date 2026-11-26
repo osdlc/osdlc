@@ -82,7 +82,8 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
   return {
     home,
     cwd: tempDir(),
-    env: { ...(process.env as Record<string, string>), HOST_CLEANER_ROOT: home },
+    // HOME puts the cursor plugin's agent worktrees in the test's home.
+    env: { ...(process.env as Record<string, string>), HOME: home, HOST_CLEANER_ROOT: home },
   }
 }
 
@@ -168,6 +169,24 @@ describe('status', () => {
     expect(r.out).toMatch(/delete\s+-\s+branch:.*:merged-a/)
     expect(r.out).toMatch(/review\s+-\s+branch:.*:topic/)
     expect(r.out).toContain('protest abandon-unmerged (git)')
+  })
+
+  test("the shipped cursor plugin refuses git's worktree in Cursor's agent worktrees under HOME", async () => {
+    const { env, home } = setup()
+    const dir = repo()
+    const wt = join(home, '.cursor', 'worktrees', 'repo', 'wt')
+    sh(dir, ['worktree', 'add', '-q', wt, 'merged-a'])
+    const r = await run(['status', '--all-rows', '--format', 'json'], dir, env)
+    const doc = JSON.parse(r.out)
+    expect(doc.plugins).toContain('cursor')
+    expect(doc.candidates.map((c: Candidate) => c.id)).toContain(`worktree:${wt}`)
+    expect(doc.objections).toContainEqual(
+      expect.objectContaining({
+        by: 'cursor',
+        candidate: `worktree:${wt}`,
+        code: 'agent-worktree',
+      }),
+    )
   })
 
   test('json carries the candidates and objections', async () => {

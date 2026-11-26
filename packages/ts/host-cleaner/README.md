@@ -7,12 +7,12 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node`, `vscode` and `orca` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `vscode`, `cursor` and `orca` plugins, and the `host-cleaner` command.
 
 ## Phases
 
 Plugins run in the order they are given. The command line runs the shipped
-ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `orca`.
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`.
 The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
@@ -318,6 +318,40 @@ folder exists (and is not when it is not an absolute path, as with an empty
 | object | While VS Code runs, or the process table cannot be read, refuses (`vscode-in-use`) a `git` worktree a VS Code process works in (by its working directory, such as a `Code Helper (Plugin)` process an extension started there), one the window state (`User/globalStorage/storage.json`, `windowsState`) names as open, and one a storage folder written since VS Code started names. Both name a worktree by a folder in it or a folder it is in (a window on `/repo` names `/repo/.worktrees/feat`), or by an open `.code-workspace` file's root in it or above it. The window state can miss a window opened since VS Code started; its storage does not. When VS Code's start cannot be read (`ps -o lstart=`), every worktree that storage names is refused; one that none names is not. Its own candidate is refused the same way: when a window still names the gone folder, or the candidate was written since VS Code started (or at any time, when that is not known). A window state, or an open workspace file it names, that cannot be read refuses every worktree and storage candidate not refused already (`vscode-state-unreadable`); a `workspace.json` or workspace file of storage written since that cannot be read refuses every such worktree. A worktree that is not refused and whose processes could not be listed carries a `note` (`vscode-unchecked`). |
 | prepare | Checks each `git` worktree and each of its own candidates again as `object` did, right before it is deleted, and fails it when VS Code may now have it open or works in it. Each check reads the process table afresh. |
 | delete | Reads the folder's `workspace.json` again, checks it is a folder directly in `workspaceStorage`, its workspace is still gone, and it holds no chat or agent history unless it was planned as `lost`, then removes it with `kit.remove`. |
+
+## The `cursor` plugin
+
+Cursor is a fork of VS Code and keeps the same `workspaceStorage`. The `cursor`
+plugin is the `vscode` plugin's code over Cursor's folders,
+`~/Library/Application Support/Cursor/User/workspaceStorage` on macOS and
+`~/.config/Cursor/User/workspaceStorage` on Linux (moved by `XDG_CONFIG_HOME`
+and `VSCODE_APPDATA` as VS Code's is), and over Cursor's processes
+(`Cursor`, `Cursor Helper (…)`, `cursor`). It finds, refuses and deletes what
+the `vscode` plugin does. Three differences. Cursor keeps its chat history in that
+storage, so every dead workspace's folder is `costDescription: lost`, not only
+one with the history folders the `vscode` plugin looks for. It is held,
+protested `discard-user-data`, and runs only with
+`--pick <id> --allow discard-user-data`. Cursor's agents make and track
+their own worktrees under `~/.cursor/worktrees`, so the plugin refuses
+(`agent-worktree`, exported as `AGENT_WORKTREE`) any `git` worktree there,
+whether or not Cursor runs. (For another tool's agent worktrees, list their
+folder in the config's `ignore`.) And the `cursor-agent` CLI runs as `node`, so
+the process table does not show which process is Cursor's agent: the plugin
+refuses (`cursor-in-use`) any `git` worktree that any process other than an idle
+shell works in, whether or not Cursor runs. The plugin is detected when its
+storage or the agents' folder exists; on a host with only the CLI, that is once
+it has made a worktree there. On Windows only the agents' folder is checked. Its
+codes are the `vscode` plugin's under its own name: `cursor-in-use`,
+`cursor-unknown-workspace`, `cursor-state-unreadable` and `cursor-unchecked`.
+
+```ts
+import { CURSOR_PLUGIN, cursorPlugin, cursorUserDir, survey } from '@osdlc/host-cleaner'
+
+// Cursor's `User` folder here: undefined on a platform the plugin does not know.
+const userDir = cursorUserDir(process.env, process.platform)
+const s = await survey([cursorPlugin({ userDir })], { cwd: process.cwd(), targets: [], allow: [] })
+const ofCursor = s.candidates.filter((c) => c.owner === CURSOR_PLUGIN)
+```
 
 ## The `orca` plugin
 
