@@ -253,6 +253,12 @@ describe('a small corpus', () => {
             },
             { path: 'target', marker: 'Cargo.toml', holds: 'build-output', rebuild: 'rebuild' },
             { path: 'target', marker: 'pom.xml', holds: 'build-output', rebuild: 'rebuild' },
+            {
+              path: 'node_modules',
+              marker: 'deno.json',
+              holds: 'packages',
+              rebuild: 're-download',
+            },
             { path: '.tool/cache', marker: 'tool.json', holds: 'cache', rebuild: 'rebuild' },
             { path: 'out', holds: 'build-output', rebuild: 'rebuild' },
             { path: '.tool.cjs', marker: 'tool.json', holds: 'packages', rebuild: 'rebuild' },
@@ -263,8 +269,11 @@ describe('a small corpus', () => {
     const { text } = draftStore(corpus, 'tool')
     expect(read(text).project).toEqual([
       { dir: 'target', marker: 'pom.xml', costDescription: 'rebuild' },
+      // The node plugin needs a package.json beside node_modules.
+      { dir: 'node_modules', marker: 'deno.json', costDescription: 're-download' },
     ])
     expect(text).toContain('# - project node_modules: the node plugin covers it')
+    expect(text.match(/node plugin covers/g)).toHaveLength(1)
     expect(text).toContain('# - project target: the cargo plugin covers it')
     expect(text).toContain('# - project .tool/cache: a project entry names one folder, not a path')
     expect(text).toContain('# - project out: the corpus names no marker file')
@@ -407,6 +416,53 @@ describe('a small corpus', () => {
     ])
   })
 
+  test('folders that end in none of the same segments are joined, and named for the reviewer', () => {
+    store(
+      'Tool',
+      { slug: 'tool' },
+      dirsOnly([
+        dir('macos', '~/Library/Application Support/tool/blobs'),
+        dir('linux', '~/.local/share/other/models'),
+        dir('all', '~/.tool/logs', 'logs', 'lost'),
+      ]),
+    )
+    const { text } = draftStore(corpus, 'tool')
+    expect(read(text).paths['cache']).toEqual({
+      macos: '~/Library/Application Support/tool/blobs',
+      linux: '~/.local/share/other/models',
+    })
+    expect(text).toContain('# Joined across platforms though their names differ')
+    expect(text).toContain(
+      '# - paths.cache: macos ~/Library/Application Support/tool/blobs, linux\n#   ~/.local/share/other/models',
+    )
+    expect(text).not.toContain('paths.logs:')
+  })
+
+  test('folders match in any case across platforms, and nest in any case but on linux', () => {
+    store(
+      'Tool',
+      { slug: 'tool' },
+      dirsOnly([
+        dir('linux', '~/.cache/yarn'),
+        dir('macos', '~/Library/Caches/Other'),
+        dir('macos', '~/Library/Caches/Yarn'),
+        dir('macos', '~/Library/caches/yarn/v6', 'packages'),
+        dir('linux', '~/.Tool', 'state'),
+        dir('linux', '~/.tool/x', 'logs'),
+      ]),
+    )
+    const { text } = draftStore(corpus, 'tool')
+    const d = read(text)
+    expect(Object.values(d.paths)).toContainEqual({
+      macos: '~/Library/Caches/Yarn',
+      linux: '~/.cache/yarn',
+    })
+    expect(text).not.toContain('Joined across platforms')
+    expect(text).toContain('# - paths.packages is inside paths.cache-yarn: keep one')
+    // linux tells case apart.
+    expect(text).not.toContain('paths.logs is inside')
+  })
+
   test('two groups that name one folder are flagged', () => {
     store(
       'Tool',
@@ -475,6 +531,8 @@ describe('a small corpus', () => {
         'project/build-dirs': {
           dirs: [
             { path: 'out', marker: 'src/tool.json', holds: 'build-output', rebuild: 'rebuild' },
+            { path: 'gen', marker: '{,pom.xml}', holds: 'build-output', rebuild: 'rebuild' },
+            { path: 'obj', marker: '{.,x}', holds: 'build-output', rebuild: 'rebuild' },
           ],
         },
         'clean/command': { supported: false, commands: [{ command: 'tool gc', removes: 'all' }] },
@@ -482,7 +540,9 @@ describe('a small corpus', () => {
     )
     const { text } = draftStore(corpus, 'tool')
     expect(read(text)).not.toHaveProperty('project')
-    expect(text).toContain('# - project out: its marker src/tool.json is a path, not a file name')
+    expect(text).toContain('# - project out (marker src/tool.json): marker must be a file name')
+    expect(text).toContain('# - project gen (marker {,pom.xml}): marker must be a file name')
+    expect(text).toContain('# - project obj (marker {.,x}): marker must be a file name')
     expect(text).toContain('# - none')
     expect(text).not.toContain('tool gc')
   })
@@ -629,13 +689,18 @@ describe('a small corpus', () => {
       })
     writeFileSync(join(elsewhere, 'stray.md'), stray('current'))
     writeFileSync(join(elsewhere, 'old.md'), stray('superseded'))
+    // A stray in another store's folder is that store's, and named only there.
+    store('Other', { slug: 'other' }, dirsOnly([dir('all', '~/.other')]))
+    writeFileSync(join(corpus, 'statements', 'Other', 'gone.md'), stray('current'))
     const { text } = draftStore(corpus, 'tool')
     expect(text).toContain("# Statements not read, which may be this store's:")
     expect(text).toContain('# - statements/Renamed/stray.md: ')
     expect(text).not.toContain('old.md')
+    expect(text).not.toContain('statements/Other/')
     expect(() => draftStore(corpus, 'lone')).toThrow(
-      /^lone: .* \(linked to no store: statements\/Renamed\/stray\.md: /,
+      /^lone: .* \(linked to no store: statements\/Renamed\/stray\.md: [^;]*\)$/,
     )
+    expect(() => draftStore(corpus, 'other')).toThrow(/^statements\/Other\/gone\.md: /)
     writeFileSync(join(corpus, 'statements', 'Tool', 'stray.md'), stray('current'))
     expect(() => draftStore(corpus, 'tool')).toThrow(/^statements\/Tool\/stray\.md: /)
   })
