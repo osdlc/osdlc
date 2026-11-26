@@ -58,6 +58,9 @@ together with the files beside its entry note.
 - Attachments (images, scripts and other non-note files) are link targets
   only. Their own contents are never read. A bundle move carries them with
   the folder and repoints the links that name them.
+- `plan_redirect` points the links to a file you are about to delete at a
+  copy you keep: a note at a note, or an attachment at an attachment, such
+  as a duplicate image. It never redirects a note to an attachment or back.
 - A bundle is a folder that holds one note named after the folder, such as
   `review/review.md`, plus its other files and sub-folders. It moves as one
   unit. The path you pass names the entry note, and the destination must
