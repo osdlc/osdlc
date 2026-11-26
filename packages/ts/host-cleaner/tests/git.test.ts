@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, test } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
@@ -267,6 +275,10 @@ describe('the git plugin', () => {
   test("another plugin's candidate inside a worktree is prepared only after the worktree is archived", () => {
     const fx = fixture()
     writeFileSync(join(fx.worktree, 'wip.txt'), 'wip\n')
+    // The plugin names the file through a link; git names the worktree resolved.
+    const link = join(mkdtempSync(join(tmpdir(), 'hc-link-')), 'parent')
+    symlinkSync(dirname(fx.worktree), link)
+    cleanups.push(() => rmSync(dirname(link), { recursive: true, force: true }))
     const plugin = archiving()
     const inside: Plugin = {
       name: 'inside',
@@ -275,7 +287,7 @@ describe('the git plugin', () => {
         {
           id: 'inside:wip',
           kind: 'cache',
-          path: join(fx.worktree, 'wip.txt'),
+          path: join(link, basename(fx.worktree), 'wip.txt'),
           owner: 'inside',
           why: 'a file in the worktree',
           evidence: {},

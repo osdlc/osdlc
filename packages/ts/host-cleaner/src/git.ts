@@ -4,8 +4,7 @@
  * as the delete.
  */
 
-import { sep } from 'node:path'
-
+import { nodeGuard } from '@osdlc/path-guard/node'
 import {
   RISKS,
   archiveCandidates,
@@ -102,12 +101,13 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
 
   /**
    * The git worktree rows this run deletes that hold `c`, a candidate of
-   * another plugin: their archive is made before `c` is touched.
+   * another plugin: their archive is made before `c` is touched. Compared by
+   * real path, since git names a worktree resolved and a plugin may not.
    */
   const worktreesHolding = (c: Candidate, ctx: Ctx): CleanCandidate[] =>
     (ctx.run ?? []).flatMap((q) => {
       const r = q.owner === 'git' ? rows.get(q.id) : undefined
-      return r?.kind === 'worktree' && mayContribute(r) && c.path.startsWith(`${r.path}${sep}`)
+      return r?.kind === 'worktree' && mayContribute(r) && nodeGuard.contains(r.path, c.path)
         ? [r]
         : []
     })
