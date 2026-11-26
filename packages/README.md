@@ -332,11 +332,16 @@ Developed here, in this repository:
   baselines from a pinned Playwright container, Playwright helpers for
   interaction and perf specs, an in-page metrics hook and a perf report that
   parallel workers merge)
-- `packages/ts/json-canvas-core` (`@osdlc/json-canvas-core` on npm once
-  published, the model for JSON Canvas documents: types, validation, an
-  immutable operation engine with undo and redo, geometry and a view model)
-- `packages/ts/json-canvas-vue` (`@osdlc/json-canvas-vue` on npm once
-  published, a Vue 3 board that draws and edits a JSON Canvas document on
+- `packages/ts/code-stats` (`@osdlc/code-stats` on npm once published, a tool
+  and library that counts lines of source by kind for a tree or a change, says
+  what each line of a change did (added, removed, changed, moved), writes
+  pull-request descriptions from that, and writes the review-prep manifest for
+  a change: kept and dropped files, review groups by package root and
+  reading-order flags)
+- `packages/ts/json-canvas-core` (`@osdlc/json-canvas-core` on npm, the model
+  for JSON Canvas documents: types, validation, an immutable operation engine
+  with undo and redo, geometry and a view model)
+- `packages/ts/json-canvas-vue` (`@osdlc/json-canvas-vue` on npm, a Vue 3 board that draws and edits a JSON Canvas document on
   `@osdlc/json-canvas-core`, with undo, node components, a read-only mode and
   a sanitizing markdown seam)
 - `packages/ts/markdown-vault` (`@osdlc/markdown-vault` on npm once published,
