@@ -53,7 +53,13 @@ export type {
   TristateFlag,
 } from './define-cli.ts'
 
-export { envVars, systemDirs, TieredDirs, TieredDirsError } from '@osdlc/config-layers/dirs'
+export {
+  envVars,
+  homeDir,
+  systemDirs,
+  TieredDirs,
+  TieredDirsError,
+} from '@osdlc/config-layers/dirs'
 export { closestMatches, didYouMean } from '@osdlc/config-layers/did-you-mean'
 export type { EnvVars, ResolveOptions, VendorDirs } from '@osdlc/config-layers/dirs'
 export {

@@ -13,7 +13,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 
-import { envVars, systemDirs, TieredDirsError, type ResolveOptions } from '@osdlc/cli-tool'
+import { envVars, homeDir, systemDirs, TieredDirsError, type ResolveOptions } from '@osdlc/cli-tool'
 
 import { settingsIssues } from './settings.ts'
 
@@ -75,11 +75,23 @@ const UNREAD_ROOTS = {
   scratch: '/unused',
 }
 
+// `tiered-dirs` takes any `env` passed in for a test's and never falls back to the OS home.
+const envOpt = (env: Record<string, string | undefined>): { env?: typeof env } =>
+  env === process.env ? {} : { env }
+
+/**
+ * The home directory `~` stands for in targets and ignore entries: the one
+ * {@link hostDirs} builds the folders on, by the same rules. A `HOME` that is
+ * empty or relative counts as unset.
+ *
+ * @throws TieredDirsError with code `MISSING_BASE_DIR` when no home can be found.
+ */
+export const hostHome = (env: Record<string, string | undefined> = process.env): string =>
+  homeDir(envOpt(env))
+
 function dirsUnder(env: Record<string, string | undefined>, opts: ResolveOptions): HostDirs {
-  // `tiered-dirs` takes any `env` passed in for a test's and never falls back to the OS home.
-  const from = env === process.env ? {} : { env }
   try {
-    const dirs = systemDirs(VENDOR_DIRS, { ...from, ...opts, overrides: UNREAD_ROOTS })
+    const dirs = systemDirs(VENDOR_DIRS, { ...envOpt(env), ...opts, overrides: UNREAD_ROOTS })
     const tier = dirs.standalone('host-cleaner')
     return { config: tier.config().path, state: tier.state().path, logs: tier.logs().path }
   } catch (err) {

@@ -185,10 +185,13 @@ refused with exit 2. A relative `XDG_*` value is ignored, as the XDG spec says.
 `HOST_CLEANER_CONVENTION=native` puts them back in macOS's own folders under
 `~/Library`. Spaces around the value are ignored and an empty value counts as
 unset; any value other than `native` or `xdg` is refused with exit 2. When
-`HOME` is unset, the OS account's home is used. With no home directory to place
+`HOME` (`USERPROFILE` on Windows) is unset, empty or relative, the OS account's
+home is used. `~` in `targets` and `ignore` is that same home, so an ignore
+entry under `~` covers the folder it names. With no home directory to place
 the folders in, and no variable that places them, a `clean` that deletes and
 every command that reads the default config exit 1; `status`, `plan`,
-`config` and `clean --dry-run` given `--config` still run.
+`config` and `clean --dry-run` given `--config` still run, unless a target or
+ignore entry starts with `~`, which is then refused with exit 1.
 Windows has no `xdg` folders and keeps its own: the config is
 `%APPDATA%\host-cleaner\config.json`.
 

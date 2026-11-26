@@ -32,6 +32,7 @@ import {
   didYouMean,
   discardTypeAhead,
   envVars,
+  homeDir,
   EXIT,
   EXIT_FAILURE,
   exitCodeFor,
@@ -374,6 +375,8 @@ test('re-exported helpers: close matches and per-OS directories', () => {
   const noHome = (): TieredDirs => systemDirs(vendorDirs, { env: {} })
   expect(noHome).toThrow(TieredDirsError)
   expect(noHome).toThrow(expect.objectContaining({ code: 'MISSING_BASE_DIR' }))
+  // The home they are built on, for a `~` that must mean the same one.
+  expect(homeDir({ platform: 'linux', env: { HOME: '/home/ada' } })).toBe('/home/ada')
 })
 
 test('help text is wrapped when it is rendered', () => {

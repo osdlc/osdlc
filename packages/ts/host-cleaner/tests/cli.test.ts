@@ -11,7 +11,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { tmpdir, userInfo } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
@@ -465,6 +465,59 @@ describe('folders', () => {
     expect(r.err).toContain('no home directory')
     expect(plugin.removed).toEqual([])
     expect(run(['config'], cwd, env).code).toBe(1)
+  })
+
+  test('`~` is the home the folders are built on, and with none a `~` path is refused', () => {
+    const { cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, JSON.stringify({ ignore: ['~/keep'] }))
+    const candidate = { path: join(home, 'keep', 'cache') }
+    const base = { PATH: process.env.PATH ?? '', HOST_CLEANER_ROOT: home }
+    const clean = (env: Record<string, string>) => {
+      const plugin = fake('fake', { candidate })
+      return {
+        ...run(['clean', '--yes', '--config', file, cwd], cwd, env, { plugins: [plugin] }),
+        removed: plugin.removed,
+      }
+    }
+    const kept = clean({ ...base, HOME: home, USERPROFILE: home })
+    expect(kept.err).toContain('left out 1 candidate(s)')
+    expect(kept.removed).toEqual([])
+    // An empty or relative HOME is no home, as for the folders; `~/keep` is
+    // then refused, not read as `/keep` or `<cwd>/rel/keep`, which cover nothing.
+    const noHome: Array<Record<string, string>> = [
+      { ...base, HOME: '' },
+      { ...base, HOME: 'rel' },
+      base,
+    ]
+    for (const env of noHome) {
+      const r = clean(env)
+      expect(r.code, JSON.stringify(env['HOME'])).toBe(1)
+      expect(r.err).toContain('cannot expand `~`')
+      expect(r.removed).toEqual([])
+    }
+    // A `~` target is refused the same way, by a command that deletes nothing too.
+    writeFileSync(file, JSON.stringify({ targets: ['~/dev'] }))
+    const r = run(['status', '--config', file], cwd, base, { plugins: [fake()] })
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('cannot expand `~`')
+  })
+
+  test('with process.env, an empty or relative HOME gives `~` the OS account home', () => {
+    const { cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, JSON.stringify({ ignore: ['~/keep'] }))
+    for (const value of ['', 'rel']) {
+      vi.stubEnv('HOME', value)
+      vi.stubEnv('USERPROFILE', value)
+      // Only `status`: it deletes nothing, and the only plugin is a fake.
+      const env = process.env as Record<string, string>
+      const r = run(['status', '--format', 'json', '--config', file, cwd], cwd, env, {
+        plugins: [fake()],
+      })
+      expect(r.code, JSON.stringify(value)).toBe(0)
+      expect(JSON.parse(r.out).ignore).toContain(join(userInfo().homedir, 'keep'))
+    }
   })
 
   test('HOST_CLEANER_CONVENTION is trimmed, and empty counts as unset', () => {

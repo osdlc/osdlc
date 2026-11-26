@@ -24,12 +24,13 @@
  *
  * {@link systemDirs}, {@link TieredDirs}, {@link envVars} and {@link VendorDirs}
  * resolve the tool's machine-local directories; {@link TieredDirsError} is what
- * they throw. {@link closestMatches} and {@link didYouMean} suggest close names
- * for a mistyped noun, verb, key or repo.
+ * they throw, and {@link homeDir} is the home they are built on.
+ * {@link closestMatches} and {@link didYouMean} suggest close names for a
+ * mistyped noun, verb, key or repo.
  */
 
 export { closestMatches, didYouMean } from './did-you-mean.ts'
-export { envStem, envVars, systemDirs, TieredDirs, TieredDirsError } from './dirs.ts'
+export { envStem, envVars, homeDir, systemDirs, TieredDirs, TieredDirsError } from './dirs.ts'
 export type { EnvVars, ResolveOptions, VendorDirs } from './dirs.ts'
 
 export { getIn, valueAt, valueIsSet } from './value.ts'

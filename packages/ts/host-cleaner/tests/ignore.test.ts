@@ -62,7 +62,7 @@ const plugin = (cs: Candidate[]): Plugin => ({
 
 describe('ignorePaths and coveredBy', () => {
   test('an entry covers itself and what is below it, not a sibling with the same prefix', () => {
-    const ignore = ignorePaths(['/a/b'], '/', '/home')
+    const ignore = ignorePaths(['/a/b'], '/', () => '/home')
     expect(coveredBy('/a/b', ignore)).toBe('/a/b')
     expect(coveredBy('/a/b/c/d', ignore)).toBe('/a/b')
     expect(coveredBy('/a/bc', ignore)).toBeUndefined()
@@ -70,13 +70,16 @@ describe('ignorePaths and coveredBy', () => {
   })
 
   test('~ is home, a relative entry starts at cwd, and a link into an ignored directory is covered', () => {
-    expect(expandHome('~/x', '/home/me')).toBe('/home/me/x')
-    expect(ignorePaths(['~/x', 'y'], '/work', '/home/me')).toEqual(['/home/me/x', '/work/y'])
+    expect(expandHome('~/x', () => '/home/me')).toBe('/home/me/x')
+    expect(ignorePaths(['~/x', 'y'], '/work', () => '/home/me')).toEqual(['/home/me/x', '/work/y'])
     const root = temp()
     mkdirSync(join(root, 'real'))
     symlinkSync(join(root, 'real'), join(root, 'link'))
     expect(
-      coveredBy(join(root, 'real', 'f'), ignorePaths([join(root, 'link')], root, root)),
+      coveredBy(
+        join(root, 'real', 'f'),
+        ignorePaths([join(root, 'link')], root, () => root),
+      ),
     ).toBeDefined()
   })
 
@@ -85,7 +88,7 @@ describe('ignorePaths and coveredBy', () => {
     () => {
       const root = temp()
       mkdirSync(join(root, 'Code', 'Keep'), { recursive: true })
-      const ignore = ignorePaths([join(root, 'code', 'keep')], root, root)
+      const ignore = ignorePaths([join(root, 'code', 'keep')], root, () => root)
       expect(coveredBy(join(root, 'Code', 'Keep', 'target'), ignore)).toBeDefined()
       expect(containsIgnored(join(root, 'Code'), ignore)).toBeDefined()
     },

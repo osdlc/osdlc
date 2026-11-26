@@ -5,7 +5,6 @@
  */
 
 import { appendFileSync, mkdirSync, readSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 import {
@@ -30,6 +29,7 @@ import {
   ConfigError,
   configFile,
   hostDirs,
+  hostHome,
   readConfig,
   unreadNativeConfig,
   type Config,
@@ -427,18 +427,33 @@ function contextFor(
 ): Ctx {
   const chosen =
     targets.length > 0 ? targets : config.targets.length > 0 ? config.targets : [ctx.cwd]
-  const home = ctx.env.HOME ?? homedir()
   return {
     cwd: ctx.cwd,
-    targets: chosen.map((t) => resolve(ctx.cwd, expandHome(t, home))),
+    targets: chosen.map((t) => resolve(ctx.cwd, expandHome(t, tildeHome(ctx)))),
     allow,
     ignore: ignoreFor(config, ignore, ctx),
   }
 }
 
+/**
+ * The home `~` stands for: the one the folders are built on, so an ignore entry
+ * under `~` covers the folder it names. Looked up only for a path that starts
+ * with `~`; with no home, that path is refused rather than read some other way.
+ */
+const tildeHome = (ctx: CliContext) => (): string => {
+  try {
+    return hostHome(ctx.env)
+  } catch (err) {
+    if (err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR') {
+      throw new Error(`cannot expand \`~\`: ${err.message}`)
+    }
+    throw err
+  }
+}
+
 /** The config's ignore list with `extra` (`--ignore`) added, as absolute paths. */
 const ignoreFor = (config: Config, extra: readonly string[], ctx: CliContext): string[] =>
-  ignorePaths([...config.ignore, ...extra], ctx.cwd, ctx.env.HOME ?? homedir())
+  ignorePaths([...config.ignore, ...extra], ctx.cwd, tildeHome(ctx))
 
 /** The lines as one control-stripped block, or nothing for no lines. */
 const block = (lines: readonly string[]): string =>
