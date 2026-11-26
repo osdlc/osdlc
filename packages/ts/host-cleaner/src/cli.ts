@@ -352,37 +352,40 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
 /**
+ * The folders; undefined when there is no home directory to place them in.
+ * Every command resolves them, even with `--config`, so each refuses a bad
+ * folder variable alike; a missing home only matters where they are used.
+ */
+function resolveDirs(ctx: CliContext): HostDirs | undefined {
+  try {
+    return hostDirs(ctx.env)
+  } catch (err) {
+    if (err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR') return undefined
+    throw err
+  }
+}
+
+const NO_HOME = 'no home directory to place the folders in: set HOME, or HOST_CLEANER_ROOT'
+
+/**
  * The config: `--config`, which must exist, else `config.json` in the config
- * folder if present. The folders are resolved even with `--config`, so every
- * command refuses a bad folder variable alike; a missing home only matters
- * when the folders are used. Warns when a config in the native folders, such
- * as macOS's from versions up to 0.3, goes unread.
- *
- * @param dirs - The folders, when the caller resolved them already.
+ * folder if present. Its warnings name a config in the native folders, such as
+ * macOS's from versions up to 0.3, that goes unread.
  */
 function loadConfig(
   v: { config?: string | undefined },
   ctx: CliContext,
-  name: string,
-  dirs?: HostDirs,
-): { file: string; fileExists: boolean; config: Config } {
+  dirs: HostDirs | undefined,
+): { file: string; fileExists: boolean; config: Config; warnings: string[] } {
   if (v.config !== undefined) {
-    if (dirs === undefined) {
-      try {
-        hostDirs(ctx.env)
-      } catch (err) {
-        if (!(err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR')) throw err
-      }
-    }
     const file = resolve(ctx.cwd, v.config)
-    return { file, ...readConfig(file, { required: true }) }
+    return { file, ...readConfig(file, { required: true }), warnings: [] }
   }
-  const file = configFile(dirs ?? hostDirs(ctx.env))
-  const unread = unreadNativeConfig(ctx.env)
-  if (unread !== undefined) {
-    writeWarnings(ctx, name, [`${unread} is not read; the config is now ${file}`])
-  }
-  return { file, ...readConfig(file) }
+  if (dirs === undefined) throw new Error(NO_HOME)
+  const file = configFile(dirs)
+  const unread = unreadNativeConfig(ctx.env, file)
+  const warnings = unread === undefined ? [] : [`${unread} is not read; the config is now ${file}`]
+  return { file, ...readConfig(file), warnings }
 }
 
 /** `--plugin` and its alias `--adapter`, as one list; undefined when neither is given. */
@@ -478,22 +481,25 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   let s: ReturnType<typeof survey>
+  let warnings: string[]
   try {
-    const { config } = loadConfig(v, ctx, name)
+    const loaded = loadConfig(v, ctx, resolveDirs(ctx))
+    const config = loaded.config
     s = survey(
       pluginsFor(v, config, deps, ctx),
       contextFor(parsed.positionals, config, ctx, [], v.ignore),
     )
+    warnings = [...loaded.warnings, ...s.warnings]
   } catch (err) {
     return refusal(ctx, name, err)
   }
   const ignored = s.ctx.ignore ?? []
   if (v.format === 'json') {
     ctx.io.stdout(
-      `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), ignore: ignored, warnings: s.warnings, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
+      `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), ignore: ignored, warnings, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
     )
   } else {
-    writeWarnings(ctx, name, s.warnings)
+    writeWarnings(ctx, name, warnings)
     ctx.io.stdout(
       `plugins: ${s.plugins.map((p) => p.name).join(', ') || '(none)'}\n` +
         (ignored.length > 0 ? `ignoring: ${ignored.join(', ')}\n` : '') +
@@ -509,7 +515,8 @@ function runConfig(argv: readonly string[], ctx: CliContext): number {
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
-    const { file, fileExists, config } = loadConfig(v, ctx, name)
+    const { file, fileExists, config, warnings } = loadConfig(v, ctx, resolveDirs(ctx))
+    writeWarnings(ctx, name, warnings)
     const unused = unknownPlugins(config, (n) => Object.hasOwn(PLUGIN_SETTINGS, n))
     if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
     const settings = effectiveSettings(config.plugins, config)
@@ -565,7 +572,8 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   const v = parsed.values
   let plan: Plan
   try {
-    const { config } = loadConfig(v, ctx, name)
+    const { config, warnings } = loadConfig(v, ctx, resolveDirs(ctx))
+    writeWarnings(ctx, name, warnings)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = survey(pluginsFor(v, config, deps, ctx), cctx)
     writeWarnings(ctx, name, s.warnings)
@@ -703,15 +711,16 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   }
 
   const now = new Date()
-  let dirs: HostDirs
+  let dirs: HostDirs | undefined
   let plan: Plan
   let source: string
   let plugins: Plugin[]
   let cctx: Ctx
   let preview: Decision
   try {
-    dirs = hostDirs(ctx.env)
-    const { config } = loadConfig(v, ctx, name, dirs)
+    dirs = resolveDirs(ctx)
+    const { config, warnings } = loadConfig(v, ctx, dirs)
+    writeWarnings(ctx, name, warnings)
     plugins = pluginsFor(v, config, deps, ctx)
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
@@ -768,6 +777,8 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
     )
     return EXIT.ok
   }
+  // The receipt and the log need the folders; a dry run writes neither.
+  if (dirs === undefined) return refusal(ctx, name, new Error(NO_HOME))
   if (!v.yes) {
     ;(json ? ctx.io.stderr : ctx.io.stdout)(renderPreview(preview))
     const answer = (deps.confirm ?? terminalConfirm)(

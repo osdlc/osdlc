@@ -363,21 +363,27 @@ describe('folders', () => {
     expect(posixDirs(env, opts).config).toBe('C:/Users/me/AppData/Roaming/host-cleaner')
   })
 
+  /** `unreadNativeConfig` beside the config file `hostDirs` names. */
+  const unread = (
+    env: Record<string, string>,
+    opts: Parameters<typeof hostDirs>[1],
+  ): string | undefined => unreadNativeConfig(env, configFile(hostDirs(env, opts)), opts)
+
   test('a config left in the macOS folders by 0.3 is named, never read', () => {
     const home = tempDir()
     const mac = { platform: 'darwin', home }
-    expect(unreadNativeConfig({}, mac)).toBeUndefined()
+    expect(unread({}, mac)).toBeUndefined()
     const old = join(home, 'Library', 'Application Support', 'host-cleaner', 'config.json')
     mkdirSync(dirname(old), { recursive: true })
     writeFileSync(old, 'not json')
-    expect(unreadNativeConfig({}, mac)?.replaceAll('\\', '/')).toBe(old.replaceAll('\\', '/'))
+    expect(unread({}, mac)?.replaceAll('\\', '/')).toBe(old.replaceAll('\\', '/'))
     // Where the native and xdg folders are the same, there is nothing left behind.
-    expect(unreadNativeConfig({ HOST_CLEANER_ROOT: '/r' }, mac)).toBeUndefined()
-    expect(unreadNativeConfig({ HOST_CLEANER_CONVENTION: 'native' }, mac)).toBeUndefined()
+    expect(unread({ HOST_CLEANER_ROOT: '/r' }, mac)).toBeUndefined()
+    expect(unread({ HOST_CLEANER_CONVENTION: 'native' }, mac)).toBeUndefined()
     const linuxOld = join(home, '.config', 'host-cleaner', 'config.json')
     mkdirSync(dirname(linuxOld), { recursive: true })
     writeFileSync(linuxOld, '{}')
-    expect(unreadNativeConfig({}, { platform: 'linux', home })).toBeUndefined()
+    expect(unread({}, { platform: 'linux', home })).toBeUndefined()
   })
 
   test.skipIf(process.platform === 'win32')(
@@ -403,22 +409,35 @@ describe('folders', () => {
         const given = run([...args, '--config', named], cwd, env, { plugins: [fake()] })
         expect(given.err).not.toContain('is not read')
       }
+      // As JSON, status reports it with its other warnings.
+      const r = run(['status', '--format', 'json', cwd], cwd, env, { plugins: [fake()] })
+      expect(r.err).toBe('')
+      expect(JSON.parse(r.out).warnings).toEqual([
+        `${old} is not read; the config is now ${configFile(hostDirs(env))}`,
+      ])
     },
   )
 
   test.skipIf(process.platform === 'win32')(
-    'folders placed by XDG variables alone need no home, for the warning either',
+    'folders placed by XDG_CONFIG_HOME and XDG_STATE_HOME alone need no home',
     () => {
       const { home, cwd } = macHome()
-      const xdg = Object.fromEntries(
-        ['CONFIG', 'STATE', 'DATA', 'CACHE'].map((k) => [`XDG_${k}_HOME`, join(home, 'x')]),
-      )
-      expect(unreadNativeConfig(xdg, { platform: 'darwin' })).toBeUndefined()
-      const r = run(['config'], cwd, { PATH: process.env.PATH ?? '', ...xdg })
-      expect(r.err).toBe('')
-      expect(r.code).toBe(0)
+      const xdg = { XDG_CONFIG_HOME: join(home, 'cfg'), XDG_STATE_HOME: join(home, 'st') }
+      expect(hostDirs(xdg, { platform: 'darwin' }).config).toBe(join(home, 'cfg', 'host-cleaner'))
+      expect(unread(xdg, { platform: 'darwin' })).toBeUndefined()
+      const env = { PATH: process.env.PATH ?? '', ...xdg }
+      for (const args of [['config'], ['status', cwd], ['plan', '-o', '-', cwd]]) {
+        const r = run(args, cwd, env, { plugins: [fake()] })
+        expect(r.err, args.join(' ')).toBe('')
+        expect(r.code, args.join(' ')).toBe(0)
+      }
     },
   )
+
+  test('with process.env and no HOME, the folders are still placed', () => {
+    vi.stubEnv('HOME', undefined)
+    expect(() => hostDirs(process.env)).not.toThrow()
+  })
 
   test('with no home, --config still works and clean exits 1', () => {
     const { cwd, home } = setup()
@@ -429,14 +448,18 @@ describe('folders', () => {
       ['config', '--config', file],
       ['status', '--config', file, cwd],
       ['plan', '--config', file, cwd],
+      ['clean', '--dry-run', '--config', file, cwd],
     ]) {
       const r = run(args, cwd, env, { plugins: [fake()] })
       expect(r.err, args.join(' ')).toBe('')
       expect(r.code, args.join(' ')).toBe(0)
     }
-    const r = run(['clean', '--yes', '--config', file, cwd], cwd, env, { plugins: [fake()] })
+    const plugin = fake()
+    const r = run(['clean', '--yes', '--config', file, cwd], cwd, env, { plugins: [plugin] })
     expect(r.code).toBe(1)
     expect(r.err).toContain('no home directory')
+    expect(plugin.removed).toEqual([])
+    expect(run(['config'], cwd, env).code).toBe(1)
   })
 
   test('HOST_CLEANER_CONVENTION is trimmed, and empty counts as unset', () => {

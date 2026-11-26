@@ -371,14 +371,9 @@ test('re-exported helpers: close matches and per-OS directories', () => {
   expect(dirs.standalone('tooly').config().path).toContain('tooly')
 
   // With no home directory there is nowhere to put them.
-  let error: unknown
-  try {
-    systemDirs(vendorDirs, { env: {} })
-  } catch (e) {
-    error = e
-  }
-  expect(error).toBeInstanceOf(TieredDirsError)
-  expect((error as TieredDirsError).code).toBe('MISSING_BASE_DIR')
+  const noHome = (): TieredDirs => systemDirs(vendorDirs, { env: {} })
+  expect(noHome).toThrow(TieredDirsError)
+  expect(noHome).toThrow(expect.objectContaining({ code: 'MISSING_BASE_DIR' }))
 })
 
 test('help text is wrapped when it is rendered', () => {

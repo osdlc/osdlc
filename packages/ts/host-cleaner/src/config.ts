@@ -41,12 +41,14 @@ export interface HostDirs {
 /**
  * The directories, under the `xdg` convention. Windows has no `xdg` folders
  * and keeps its own; `HOST_CLEANER_CONVENTION=native` switches back to the
- * native ones.
+ * native ones. With `process.env`, a missing `HOME` falls back to the OS
+ * account's home; an `env` passed in is the only one read.
  *
  * @param opts - A platform and home to use instead of this machine's, for tests.
  * @throws ConfigError for a folder variable that cannot be used, such as a
  *   `HOST_CLEANER_CONVENTION` that is neither `native` nor `xdg`.
- * @throws TieredDirsError with code `MISSING_BASE_DIR` when no home directory can be found.
+ * @throws TieredDirsError with code `MISSING_BASE_DIR` when one of the three
+ *   folders needs a home directory and none can be found.
  */
 export function hostDirs(
   env: Record<string, string | undefined> = process.env,
@@ -55,12 +57,33 @@ export function hostDirs(
   return dirsUnder(env, { convention: 'xdg', ...opts })
 }
 
+/** The `TieredDirsError` codes that name a folder variable to fix: exit 2. Any other exits 1. */
+const USAGE_CODES: ReadonlySet<string> = new Set([
+  'RELATIVE_OVERRIDE',
+  'INVALID_CONVENTION',
+  'OVERRIDE_REQUIRED',
+])
+
+/**
+ * The roots host-cleaner never reads, pinned so that placing config, state and
+ * logs (from `XDG_*` alone, say) needs no home directory for these.
+ */
+const UNREAD_ROOTS = {
+  durable: '/unused',
+  cache: '/unused',
+  runtime: '/unused',
+  scratch: '/unused',
+}
+
 function dirsUnder(env: Record<string, string | undefined>, opts: ResolveOptions): HostDirs {
+  // `tiered-dirs` takes any `env` passed in for a test's and never falls back to the OS home.
+  const from = env === process.env ? {} : { env }
   try {
-    const tier = systemDirs(VENDOR_DIRS, { env, ...opts }).standalone('host-cleaner')
+    const dirs = systemDirs(VENDOR_DIRS, { ...from, ...opts, overrides: UNREAD_ROOTS })
+    const tier = dirs.standalone('host-cleaner')
     return { config: tier.config().path, state: tier.state().path, logs: tier.logs().path }
   } catch (err) {
-    if (err instanceof TieredDirsError && err.code !== 'MISSING_BASE_DIR') {
+    if (err instanceof TieredDirsError && USAGE_CODES.has(err.code)) {
       throw new ConfigError(err.message)
     }
     throw err
@@ -70,8 +93,8 @@ function dirsUnder(env: Record<string, string | undefined>, opts: ResolveOptions
 export const configFile = (dirs: HostDirs): string => join(dirs.config, 'config.json')
 
 /**
- * The config file in the native folders, when it exists and is not the one
- * {@link hostDirs} names: on macOS, a config left in
+ * The config file in the native folders, when it exists and is not `xdgFile`,
+ * the one {@link hostDirs} names: on macOS, a config left in
  * `~/Library/Application Support/host-cleaner/` by versions up to 0.3. Only
  * its existence is checked; it is never read. Nothing here throws: the answer
  * only decides a warning, so native folders that cannot be placed (the xdg ones
@@ -80,14 +103,15 @@ export const configFile = (dirs: HostDirs): string => join(dirs.config, 'config.
  * @param opts - A platform and home to use instead of this machine's, for tests.
  */
 export function unreadNativeConfig(
-  env: Record<string, string | undefined> = process.env,
+  env: Record<string, string | undefined>,
+  xdgFile: string,
   opts: Pick<ResolveOptions, 'platform' | 'home'> = {},
 ): string | undefined {
   try {
     const native = configFile(
       dirsUnder(env, { convention: 'native', conventionFromEnv: false, ...opts }),
     )
-    return native !== configFile(hostDirs(env, opts)) && existsSync(native) ? native : undefined
+    return native !== xdgFile && existsSync(native) ? native : undefined
   } catch {
     return undefined
   }
