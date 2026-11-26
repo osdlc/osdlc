@@ -106,11 +106,11 @@ export const varRefs = (text: string): string[] => [...text.matchAll(VAR_REF)].m
 /** Whether `text` has a `${` that is not a well-formed `${NAME}`. */
 export const badVarRef = (text: string): boolean => text.replace(VAR_REF, '').includes('${')
 
-/** How `source` is named in an outcome. */
+/** How `source` is named in an outcome. A `command` source may have `env` too, so it is told apart first. */
 function describeSource(source: VarSource): string {
+  if ('command' in source) return `command ${source.command.join(' ')}`
   if ('env' in source) return `env ${source.env}`
   if ('file' in source) return `file ${source.file} key ${source.key}`
-  if ('command' in source) return `command ${source.command.join(' ')}`
   return 'value'
 }
 
@@ -245,6 +245,7 @@ export async function resolveVars(
   }
 
   const fromSource = async (source: VarSource, by: string): Promise<Given> => {
+    if ('command' in source) return commandValue(source, at, limit)
     if ('env' in source) {
       const v = ownValue(at.env, source.env)
       return v === undefined || v === '' ? { failed: 'not set' } : { value: v, trusted: false }
@@ -255,7 +256,6 @@ export async function resolveVars(
       const v = await keyIn(file.value, source.key)
       return typeof v === 'string' ? { value: v, trusted: false } : { failed: v.failed }
     }
-    if ('command' in source) return commandValue(source, at, limit)
     const template = forOs(source.value, at.os)
     return template === undefined ? { failed: `none for ${at.os}` } : fill(template, by)
   }
