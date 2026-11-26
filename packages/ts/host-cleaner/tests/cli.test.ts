@@ -82,12 +82,7 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
   return {
     home,
     cwd: tempDir(),
-    // VSCODE_APPDATA keeps the vscode plugin off this machine's VS Code storage.
-    env: {
-      ...(process.env as Record<string, string>),
-      HOST_CLEANER_ROOT: home,
-      VSCODE_APPDATA: home,
-    },
+    env: { ...(process.env as Record<string, string>), HOST_CLEANER_ROOT: home },
   }
 }
 

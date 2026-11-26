@@ -11,6 +11,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -153,14 +154,24 @@ function chat(dir: string, body: string | unknown[], file = 'f2c4.jsonl'): void 
   )
 }
 
-/** A SQLite `state.vscdb` in the storage folder `dir`, as VS Code makes it, with `keys` set and `deleted` then deleted. */
-function vscdbOf(dir: string, keys: string[], deleted: string[] = []): void {
+/**
+ * A SQLite `state.vscdb` in the storage folder `dir`, as VS Code makes it, with
+ * `keys` set (to `[]`, or to the value given) and `deleted` then deleted.
+ */
+function vscdbOf(
+  dir: string,
+  keys: Array<string | [string, string]>,
+  deleted: string[] = [],
+): void {
   const path = join(dir, 'state.vscdb')
   writeFileSync(path, '')
   const { DatabaseSync } = process.getBuiltinModule('node:sqlite')
   const db = new DatabaseSync(path)
   db.exec('CREATE TABLE ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)')
-  for (const key of keys) db.prepare('INSERT INTO ItemTable VALUES (?, ?)').run(key, '[]')
+  for (const entry of keys) {
+    const [key, value] = typeof entry === 'string' ? [entry, '[]'] : entry
+    db.prepare('INSERT INTO ItemTable VALUES (?, ?)').run(key, value)
+  }
   for (const key of deleted) db.prepare('DELETE FROM ItemTable WHERE key = ?').run(key)
   db.close()
 }
@@ -220,7 +231,7 @@ describe('discover', () => {
         kind: 'workspace-storage',
         owner: 'vscode',
         path: dead,
-        costDescription: 're-download',
+        costDescription: 'rebuild',
         why: `VS Code kept state for ${join(h.projects, 'dead')}, which no longer exists`,
         evidence: {
           kind: 'workspace-storage',
@@ -320,6 +331,8 @@ describe('discover', () => {
     expect(vscodeUserDir(both, 'linux')).toBe(user('/a'))
     expect(vscodeUserDir({ HOME: '/h', VSCODE_APPDATA: '/a' }, 'darwin')).toBe(user('/a'))
     expect(vscodeUserDir({ HOME: '/h', VSCODE_APPDATA: '/a' }, 'win32')).toBeUndefined()
+    // An empty HOME is unset, as the others are, not a relative path.
+    expect(vscodeUserDir({ HOME: '' }, 'linux')).toBe(user(join(homedir(), '.config')))
   })
 
   test('a stopped discover gives up between folders', async () => {
@@ -405,8 +418,8 @@ describe('chat and agent history', () => {
       [join(h.storage, 'b'), 'lost', ['GitHub.copilot-chat/transcripts']],
       [join(h.storage, 'c'), 'lost', ['GitHub.copilot-chat/memory-tool/memories']],
       [join(h.storage, 'd'), 'lost', ['chatSessions', 'chatEditingSessions']],
-      [join(h.storage, 'e'), 're-download', undefined],
-      [join(h.storage, 'f'), 're-download', undefined],
+      [join(h.storage, 'e'), 'rebuild', undefined],
+      [join(h.storage, 'f'), 'rebuild', undefined],
     ])
   })
 
@@ -448,6 +461,8 @@ describe('chat and agent history', () => {
       ['q', (d) => chat(d, [whole([REQUEST]), { kind: 1, k: [], v: whole().v }])],
       // The whole chat changed some other way: kept.
       ['r', (d) => chat(d, [whole(), { kind: 3, k: [] }])],
+      // A chat with no requests that starts with a byte order mark, which VS Code reads.
+      ['s', (d) => chat(d, `﻿${JSON.stringify(whole().v)}`, 'f2c4.json')],
     ]
     const kept = new Set(['d', 'e', 'f', 'g', 'i', 'j', 'k', 'l', 'm', 'n', 'p', 'r'])
     deadStores(h, shapes)
@@ -455,7 +470,7 @@ describe('chat and agent history', () => {
     const s = await survey([vscodePlugin(h.options())], ctxOf(h.home))
     expect(s.warnings).toEqual([])
     expect(s.candidates.map((c) => [c.path, c.costDescription])).toEqual(
-      shapes.map(([hash]) => [join(h.storage, hash), kept.has(hash) ? 'lost' : 're-download']),
+      shapes.map(([hash]) => [join(h.storage, hash), kept.has(hash) ? 'lost' : 'rebuild']),
     )
   })
 
@@ -471,10 +486,10 @@ describe('chat and agent history', () => {
 
     const s = await survey([vscodePlugin(h.options())], ctxOf(h.home))
     expect(s.candidates.map((c) => [c.path, c.costDescription])).toEqual([
-      [join(h.storage, 'a'), 're-download'],
-      [join(h.storage, 'b'), 're-download'],
+      [join(h.storage, 'a'), 'rebuild'],
+      [join(h.storage, 'b'), 'rebuild'],
       [join(h.storage, 'c'), 'lost'],
-      [join(h.storage, 'd'), 're-download'],
+      [join(h.storage, 'd'), 'rebuild'],
     ])
   })
 
@@ -497,29 +512,41 @@ describe('chat and agent history', () => {
           writeFileSync(join(d, 'state.vscdb-wal'), 'x')
         },
       ],
+      // A chat with a request; chats with none; a value that is not a list of chats.
+      [
+        'g',
+        (d) => vscdbOf(d, [['interactive.sessions', JSON.stringify([{ requests: [REQUEST] }])]]),
+      ],
+      ['h', (d) => vscdbOf(d, [['interactive.sessions', '[{"requests":[]},{"requests":[]}]']])],
+      ['i', (d) => vscdbOf(d, [['interactive.sessions', '{}']])],
     ])
     expect(readFileSync(join(h.storage, 'e', 'state.vscdb')).includes('interactive.sessions')).toBe(
       true,
     )
 
     const s = await survey([vscodePlugin(h.options())], ctxOf(h.home))
+    const unread = [expect.stringMatching(/^state\.vscdb \(it could not be read: .+\)$/)]
     expect(s.candidates.map((c) => [c.path, c.costDescription, c.evidence.history])).toEqual([
-      [join(h.storage, 'a'), 'lost', ['state.vscdb']],
-      [join(h.storage, 'b'), 're-download', undefined],
-      [join(h.storage, 'c'), 'lost', ['state.vscdb']],
-      [join(h.storage, 'd'), 'lost', ['state.vscdb']],
-      [join(h.storage, 'e'), 're-download', undefined],
-      [join(h.storage, 'f'), 'lost', ['state.vscdb']],
+      [join(h.storage, 'a'), 'lost', unread],
+      [join(h.storage, 'b'), 'rebuild', undefined],
+      [join(h.storage, 'c'), 'lost', unread],
+      // The row holds `[]`: no chat.
+      [join(h.storage, 'd'), 'rebuild', undefined],
+      [join(h.storage, 'e'), 'rebuild', undefined],
+      [join(h.storage, 'f'), 'lost', ['state.vscdb (a log beside it is not read)']],
+      [join(h.storage, 'g'), 'lost', ['state.vscdb']],
+      [join(h.storage, 'h'), 'rebuild', undefined],
+      [join(h.storage, 'i'), 'lost', unread],
     ])
     expect(readdirSync(join(h.storage, 'e')).sort()).toEqual(['state.vscdb', 'workspace.json'])
   })
 
-  test('delete refuses a storage folder planned as re-download that now holds chats', async () => {
+  test('delete refuses a storage folder planned as rebuild that now holds chats', async () => {
     const h = home()
     const dead = store(h.storage, 'bbb', folder(join(h.projects, 'dead')))
     const plugin = vscodePlugin(h.options())
     const c = (await survey([plugin], ctxOf(h.home))).candidates[0]!
-    expect(c.costDescription).toBe('re-download')
+    expect(c.costDescription).toBe('rebuild')
     chat(dead, [whole([REQUEST])])
     await expect(deleting(plugin, c, h.home)).rejects.toThrow(
       /now holds chat or agent history \(chatSessions\)/,

@@ -1245,6 +1245,7 @@ const receipt = run(preview)
 | `writeJsonAtomic`, `busyHolders` | The atomic JSON write the receipt uses; the holders of a worktree that are not idle shells |
 | `render` | The command line's formats: `text`, `json`, `summary`, `commands`, `preview`, `receipt` |
 | `defaultProcessProbe`, `providers` | The defaults a host can wrap or replace |
+| `startMs`, `PS_LSTART_ENV` | A process start time as `ps -o lstart` prints it, in epoch milliseconds (NaN for other text), and the environment to run that `ps` under so it prints UTC in English |
 | `RepoCleanerError` | Every refusal, with a `code`: `conflict`, `bad-input`, `not-found`, `ambiguous`, `spared-changed`, `bad-plan` |
 
 A row is a `WorktreeRow`, `BranchRow` or `RemoteRow`, told apart by `kind`:
