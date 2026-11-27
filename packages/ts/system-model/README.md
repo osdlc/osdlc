@@ -4,7 +4,7 @@ A repository's system model, in two halves.
 
 - **The wire contract**: a project's structure in its wire format
   (`SystemGraph`, `SystemNode`, `SystemEdge`, aspects with tiered evidence),
-  plus the ports a host implements to serve it. Types and small pure helpers,
+  the shape a host serves to a viewer. Types and small pure helpers,
   with no runtime dependencies. This is the root entry, `@osdlc/system-model`,
   and it is safe to import in browser code.
 - **Detection and tools**: what a repository contains (its packages,
@@ -91,14 +91,14 @@ Detection uses the same `Evidence` for every claim it makes.
 
 | | |
 |---|---|
-| **Authority on the shape** | `solutions/ontological/desktop/src-tauri/src/schema/system_graph.rs` in the development repository |
-| **Producers** | the `manifest-graph` crate (via SDF's service) and `@osdlc/manifest-graph` (via `buildSystemGraph`) |
-| **Hosts implementing the port** | SDF, over ontogen's generated transport; `product-system-graph`, over a Nitro route |
-| **Consumer** | `@sdlc/exp-system-graph`, which knows only this contract |
+| **Authority on the shape** | the `system-model` crate's `schema` module (`packages/rust/system-model`), kept equal to this package |
+| **Producers** | `buildSystemGraph` in `@osdlc/system-model/build`, and the crate's `build_system_graph` |
+| **Hosts** | an application that serves the graph to a viewer, over any transport; the viewer defines the interface its hosts implement |
+| **Consumers** | viewers, which know only this contract |
 
-Two hosts implement the port and share no code. Keep it that way: it is why
-the same viewer works against a Rust service and against an in-process
-TypeScript call without any change.
+The two producers give the same payload for the same tree, so a viewer works
+against a Rust service and against an in-process TypeScript call without any
+change.
 
 Changing the wire format means changing the Rust schema and this package
 together.
@@ -106,7 +106,7 @@ together.
 ### What is deliberately not here
 
 The view model (`ViewSpec`, `select`, `encode`, `derive`, and the layouts)
-lives in `@sdlc/exp-system-graph`'s `app/lib/`. It is not a contract between
+lives in the viewer. It is not a contract between
 components. It is one viewer's internals, and putting it here would make
 every host depend on one viewer's choices.
 
@@ -128,7 +128,7 @@ Evidence tiers run from the most direct to the least: `manifest` (1),
 
 | Entry | Exports |
 |---|---|
-| `@osdlc/system-model` | the whole wire contract: everything in the four entries below |
+| `@osdlc/system-model` | the whole wire contract: everything in the two entries below |
 | `@osdlc/system-model/graph` | `SystemGraph`, `SystemNode`, `SystemEdge`, the kind unions and their `ALL_*` rosters |
 | `@osdlc/system-model/aspect` | `Aspect`, `Evidence`, `EvidenceKind`, `EVIDENCE_TIERS`, `ALL_ASPECTS`, `hasAspect`, `strongestTier` |
 | `@osdlc/system-model/detect` | `createProject`, the task model, the profile and `ToolDef` types |
