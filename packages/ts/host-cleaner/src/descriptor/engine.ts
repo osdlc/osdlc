@@ -168,6 +168,27 @@ const markerRegExp = (marker: string): RegExp =>
       .join('|'),
   )
 
+/** The type of an entry, as a `Dirent` or `lstat` gives it. */
+type EntryType = Pick<Dirent, 'isDirectory' | 'isSymbolicLink'>
+
+/**
+ * Whether the entry `name` matches level `i` of `glob`: by name, not a link,
+ * and a folder unless it is the last level and the glob has no trailing `/`.
+ * `type` gives the entry's own type, read only once the name matches;
+ * undefined when it is gone.
+ */
+function levelMatches(
+  glob: GlobParts,
+  i: number,
+  name: string,
+  type: () => EntryType | undefined,
+): boolean {
+  if (!glob.parts[i]!.test(name)) return false
+  const t = type()
+  if (t === undefined || t.isSymbolicLink()) return false
+  return (i === glob.parts.length - 1 && !glob.foldersOnly) || t.isDirectory()
+}
+
 /**
  * Whether `path`, below `folder`, is a match of `glob` there by the rules of
  * {@link globMatches}, reading only the entries on its way.
@@ -176,17 +197,13 @@ function isGlobMatch(folder: string, glob: readonly GlobParts[], path: string): 
   const rel = relative(folder, path)
   if (rel === '' || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) return false
   const names = rel.split(sep)
-  return glob.some(({ parts, foldersOnly }) => {
-    if (names.length !== parts.length) return false
+  return glob.some((g) => {
+    if (names.length !== g.parts.length) return false
     let at = folder
-    for (const [i, n] of names.entries()) {
-      if (!parts[i]!.test(n)) return false
+    return names.every((n, i) => {
       at = join(at, n)
-      const stat = lstatSync(at, { throwIfNoEntry: false })
-      if (stat === undefined || stat.isSymbolicLink()) return false
-      if ((i < names.length - 1 || foldersOnly) && !stat.isDirectory()) return false
-    }
-    return true
+      return levelMatches(g, i, n, () => lstatSync(at, { throwIfNoEntry: false }))
+    })
   })
 }
 
@@ -201,10 +218,9 @@ export function globMatches(folder: string, glob: string): string[] {
   return [...found].sort()
 }
 
-function altMatches(folder: string, { parts, foldersOnly }: GlobParts): string[] {
+function altMatches(folder: string, glob: GlobParts): string[] {
   let level = [folder]
-  for (const [i, re] of parts.entries()) {
-    const last = i === parts.length - 1
+  for (const i of glob.parts.keys()) {
     const next: string[] = []
     for (const dir of level) {
       let entries: Dirent[]
@@ -213,11 +229,8 @@ function altMatches(folder: string, { parts, foldersOnly }: GlobParts): string[]
       } catch {
         continue
       }
-      for (const e of entries) {
-        if (!re.test(e.name) || e.isSymbolicLink()) continue
-        if ((!last || foldersOnly) && !e.isDirectory()) continue
-        next.push(join(dir, e.name))
-      }
+      for (const e of entries)
+        if (levelMatches(glob, i, e.name, () => e)) next.push(join(dir, e.name))
     }
     level = next
   }
