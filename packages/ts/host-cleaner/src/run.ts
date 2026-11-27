@@ -357,7 +357,7 @@ async function detectAll(
     const answer = r.value
     const found = detection(answer)
     if (found === null) {
-      const error = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note? }`
+      const error = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note?, vars? }`
       if (warnFailures) warnings.push(`${p.name}: ${error}; it was left out`)
       detections.push({ plugin: p, detected: false, error })
       continue

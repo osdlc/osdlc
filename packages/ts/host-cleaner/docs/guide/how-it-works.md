@@ -281,7 +281,7 @@ line per plugin:
   threw or timed out, or the core refused every root it gave.
 - `<reason>` says why it does not run: the config disables it, or `detect`
   threw, timed out, or answered something that is neither a boolean nor
-  `{ active, note? }`.
+  `{ active, note?, vars? }`.
 - `<note>` is the note `detect` gave, shown whether the plugin is detected or
   not. So a degraded plugin, one that answers `{ active: true, note }`, reads
   `detected; roots: …; note: <note>`.
