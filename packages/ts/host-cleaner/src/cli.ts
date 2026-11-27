@@ -532,6 +532,14 @@ const leftOut = (name: string, naming: Naming, config: Config): boolean =>
     ? !naming.want.includes(name)
     : disabledByConfig(name, config.plugins))
 
+/**
+ * `word` for advice to type in a shell: as it is when it has only characters
+ * no shell reads specially (a `~` only past its start, a `\` for Windows
+ * paths), else in single quotes as a POSIX shell reads them.
+ */
+const shellQuote = (word: string): string =>
+  /^[\w./:@%+=,\\-][\w./:@%+=,~\\-]*$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`
+
 /** The warning for a package that did not load, as `status`, `plan` and `config` write it. */
 const notLoaded = (f: PackageFailure): string => `${f.reason}; going on without ${f.name}`
 
@@ -545,7 +553,7 @@ function refuseFailed(failed: readonly PackageFailure[]): void {
   if (failed.length === 0) return
   const names = failed.map((f) => f.name).join(',')
   throw new BadInput(
-    `${failed.map((f) => f.reason).join('; ')}; clean runs only with every plugin it would use, so fix it or pass --skip-plugin ${names}`,
+    `${failed.map((f) => f.reason).join('; ')}; clean runs only with every plugin it would use, so fix it or pass --skip-plugin ${shellQuote(names)}`,
   )
 }
 
@@ -1180,11 +1188,11 @@ const pathLine = (path: string): string => path.replace(/[\r\n]+/g, ' ')
 
 /** How to run a disabled plugin; `plugins` itself takes no `--plugin`. */
 const runsAnyway = (name: string): string =>
-  `; status, plan or clean with --plugin ${oneLine(name)} runs it anyway`
+  `; status, plan or clean with --plugin ${shellQuote(oneLine(name))} runs it anyway`
 
 /** What `--plugin` does when a descriptor that can't be used has the name: `setUp` throws its error. */
 const stopsOnError = (name: string): string =>
-  `; status, plan or clean with --plugin ${oneLine(name)} stops on its descriptor's error`
+  `; status, plan or clean with --plugin ${shellQuote(oneLine(name))} stops on its descriptor's error`
 
 /** @param unusable The names of the descriptors that can't be used, a built-in's among them. */
 function renderPlugins(
@@ -1514,7 +1522,7 @@ function savedPlan(
   const missing = (plan.descriptors ?? []).filter((p) => !given.some((g) => sameDescriptor(p, g)))
   if (missing.length > 0) {
     throw new BadInput(
-      `the plan was made with descriptors this run does not load; add ${[...new Set(missing)].map((p) => `--descriptor ${p}`).join(' ')}`,
+      `the plan was made with descriptors this run does not load; add ${[...new Set(missing)].map((p) => `--descriptor ${shellQuote(p)}`).join(' ')}`,
     )
   }
   return { plan, source }

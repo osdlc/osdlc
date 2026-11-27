@@ -1569,6 +1569,20 @@ candidates:
     expect(dry.err).not.toContain('add --descriptor')
   })
 
+  test('clean --plan quotes a --descriptor it asks for whose path a shell would split', async () => {
+    const h = withHome(['mine'])
+    mkdirSync(join(h.cwd, 'my descriptors'))
+    const desc = join(h.cwd, 'my descriptors', 'mine.yaml')
+    writeFileSync(desc, store('.cache/mine'))
+    const deps = { shippedDescriptors: h.shipped }
+    const planFile = join(h.cwd, 'p.json')
+    const argv = ['plan', '--descriptor', desc, '--plugin', 'mine', '-o', planFile]
+    expect((await run(argv, h.cwd, h.env, deps)).code).toBe(0)
+    const without = await run(['clean', '--plan', planFile, '--yes'], h.cwd, h.env, deps)
+    expect(without.code).toBe(2)
+    expect(without.err).toContain(`add --descriptor '${desc}'`)
+  })
+
   test('a plan records only the --descriptor files behind the plugins it ran', async () => {
     const h = withHome(['mine', 'other'])
     const desc = join(h.cwd, 'mine.yaml')
