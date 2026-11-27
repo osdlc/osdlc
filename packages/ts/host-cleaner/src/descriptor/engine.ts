@@ -755,8 +755,9 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
    * first of them that removes each, since the core lets only a path
    * candidate remove folders. Held when any of them changed within the
    * threshold. All of them together get the time of one measurement, for idle
-   * and then for size: past it they are unmeasured, or of unknown size. One
-   * that cannot be read is not deleted.
+   * and then for size: past it they are unmeasured, or of unknown size. That
+   * time is checked between matches, so each phase may run up to one more
+   * match's measurement past it. One that cannot be read is not deleted.
    */
   const restRow = (
     entry: DescriptorCandidate,
