@@ -160,8 +160,11 @@ const folder = z
     'must name a folder below a home folder, not a home folder itself',
   )
 
+/** A field path, by keys and indexes. */
+type Path = readonly PropertyKey[]
+
 /** A problem a refinement finds, at `path` below the value it checks. */
-type Issue = { path: PropertyKey[]; message: string }
+type Issue = { path: Path; message: string }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -170,7 +173,7 @@ const addIssues = (
   ctx: { addIssue: (issue: { code: 'custom'; message: string; path: PropertyKey[] }) => void },
   issues: readonly Issue[],
 ): void => {
-  for (const { path, message } of issues) ctx.addIssue({ code: 'custom', message, path })
+  for (const { path, message } of issues) ctx.addIssue({ code: 'custom', message, path: [...path] })
 }
 
 /** One value for every OS (`all`), or one per OS; an OS with none doesn't have the path. */
@@ -689,19 +692,17 @@ export class DescriptorError extends Error {
   }
 }
 
-type Path = readonly PropertyKey[]
-
 /** The schema's problems with `value`, one `<field path>: <message>` each; empty when it is a descriptor. */
 export function descriptorIssues(value: unknown): string[] {
   return check(value).issues.map(({ path, message }) => `${fieldPath(path)}: ${message}`)
 }
 
 /** `value` checked once: its issues, and the descriptor when it has none. */
-function check(value: unknown): { data?: Descriptor; issues: { path: Path; message: string }[] } {
+function check(value: unknown): { data?: Descriptor; issues: Issue[] } {
   const parsed = DescriptorSchema.safeParse(value, {
     error: (iss) => (iss.input === undefined && iss.code !== 'custom' ? 'required' : undefined),
   })
-  const issues: { path: Path; message: string }[] = []
+  const issues: Issue[] = []
   if (!parsed.success)
     for (const i of parsed.error.issues) {
       if (i.code === 'unrecognized_keys')
@@ -710,8 +711,7 @@ function check(value: unknown): { data?: Descriptor; issues: { path: Path; messa
     }
   // Zod skips a refinement when the object it checks has a type or required-field error.
   if (!parsed.success) {
-    const key = ({ path, message }: { path: Path; message: string }) =>
-      JSON.stringify([path.map(String), message])
+    const key = ({ path, message }: Issue) => JSON.stringify([path.map(String), message])
     const seen = new Set(issues.map(key))
     issues.push(...crossFieldIssues(value).filter((i) => !seen.has(key(i))))
   }
