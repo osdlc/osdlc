@@ -15,7 +15,7 @@ import { parseArgs } from 'node:util'
 import { type CorpusRecord, loadCorpus, recordsOf } from '@osdlc/corpus-schema'
 import { Document, isMap, isNode, isSeq } from 'yaml'
 
-import { CARGO_PLUGIN, CARGO_PROJECT } from '../src/cargo.ts'
+import { BUILT_IN_PROJECTS } from '../src/builtins.ts'
 import {
   DESCRIPTOR_SCHEMA_URL,
   DESCRIPTOR_VERSION,
@@ -29,7 +29,6 @@ import {
   type Os,
 } from '../src/descriptor/schema.ts'
 import { isObject } from '../src/helpers.ts'
-import { NODE_PLUGIN, NODE_PROJECT } from '../src/node.ts'
 import { COST_DESCRIPTIONS, type CostDescription } from '../src/types.ts'
 
 /** The reviewed first set the package ships, by corpus slug. */
@@ -67,12 +66,6 @@ function corpusOf(pkg: string): string {
 
 /** The corpus of this package's dev dependency on the research corpus. */
 export const CORPUS_DIR = corpusOf(CORPUS_PACKAGE)
-
-/** Project folders a code plugin already covers, by folder name and marker. */
-const COVERED: readonly { dir: string; marker: string; by: string }[] = [
-  { ...NODE_PROJECT, by: NODE_PLUGIN },
-  { ...CARGO_PROJECT, by: CARGO_PLUGIN },
-]
 
 interface DataDir {
   platform: 'all' | Os
@@ -548,7 +541,7 @@ function draftDescriptor(store: CorpusStore): Draft {
     true,
   )
   for (const b of buildDirs) {
-    const covered = COVERED.find((c) => c.dir === b.path && c.marker === b.marker)
+    const covered = BUILT_IN_PROJECTS.find((c) => c.dir === b.path && c.marker === b.marker)
     if (covered !== undefined) left.push(`project ${b.path}: the ${covered.by} plugin covers it`)
     else if (!isEntryName(b.path))
       left.push(`project ${b.path}: a project entry names one folder, not a path`)
