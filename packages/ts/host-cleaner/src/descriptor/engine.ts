@@ -1023,6 +1023,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       else if (changed === UNREADABLE) kept.push(`${p}: ${changed}`)
       else throw new Error(`${c.id} was not deleted: ${p}: ${changed}`)
     }
+    // Every one went while it was checked.
+    if (idle.length === 0 && kept.length === 0) return `already gone: every match of ${c.id}`
     const done: string[] = []
     const fails: string[] = []
     let untried = idle.length

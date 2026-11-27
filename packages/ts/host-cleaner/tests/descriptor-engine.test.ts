@@ -1874,6 +1874,30 @@ describe('the combined rest', () => {
     expect(size.rest.bytes).toBeUndefined()
   })
 
+  test('when every match goes while it is checked again, it is already gone', async () => {
+    let gone: string[] = []
+    const b = build('pip', `${REST}inUse:\n  processes: [pip]\n`, {
+      idleHours: 24,
+      kit: (kit) => {
+        const running = kit.running
+        kit.running = (where, ctx) => {
+          for (const p of gone) rmSync(p, { recursive: true })
+          gone = []
+          return running(where, ctx)
+        }
+      },
+    })
+    const http = b.folder('http')
+    mkdirSync(join(http, 'c'))
+    age(http, 48)
+    const s = await survey([b.plugin], ctxOf())
+    const rest = s.candidates.find((c) => c.evidence.rest !== undefined)!
+    gone = ['b', 'c'].map((n) => join(http, n))
+    await expect(b.plugin.delete!(rest, fakeContext())).resolves.toBe(
+      `already gone: every match of ${rest.id}`,
+    )
+  })
+
   test('its evidence does not hold its matches', async () => {
     const b = buildRest()
     const text = JSON.stringify((await survey([b.plugin], ctxOf())).candidates)
