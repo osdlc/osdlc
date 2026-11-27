@@ -392,8 +392,8 @@ lines. A folder must start with `~/`, be absolute, and name something below
 the home folder or the root, not a home folder itself such as `/home/alice`. A
 glob names entries inside its path, in every `{a,b}` alternative too, and a
 project `marker` names a file in every alternative. A tool's
-`command` must name the checked folder, as a `{path}` argument or in `env`, and
-`env` may not set `PATH`, `LD_*`, `DYLD_*`, `NODE_OPTIONS` or `BASH_ENV`.
+`command` must name the checked folder, as a `{path}` argument or in `env`, no
+argument or `env` value may have a `..` segment, and `env` may not set `PATH`, `LD_*`, `DYLD_*`, `NODE_OPTIONS` or `BASH_ENV`.
 `paths`, `vars` and `inUse.locks` may use a `${VAR}` that `vars` declares or
 that is built in (`HOME` and the `XDG_*` folders); a `${` in any other string
 (such as a candidate's `command`, `env` or `glob`, `inUse.processes`,

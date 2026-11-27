@@ -395,6 +395,20 @@ describe('a bad descriptor names the field path', () => {
       'line 5: candidates.0.command: must name the checked folder, as a {path} argument or in env (D13)',
     ],
     [
+      'a command argument that climbs above the folder',
+      hfWith(
+        "{ path: hub, costDescription: rebuild, command: [rm, -rf, '{path}/../..'], removes: all }",
+      ),
+      'line 5: candidates.0.command: must not have a .. segment in an argument',
+    ],
+    [
+      'an env value that climbs above the folder',
+      hfWith(
+        "{ path: hub, costDescription: rebuild, command: [uv, cache, prune], env: { UV_CACHE_DIR: '{path}/..' }, removes: unused }",
+      ),
+      'line 5: candidates.0.env: must not have a .. segment in a value',
+    ],
+    [
       'a command with no removes',
       hfWith("{ path: hub, costDescription: rebuild, command: [uv, cache, prune, '{path}'] }"),
       'line 5: candidates.0.removes: required with command: unused or all',

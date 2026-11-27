@@ -326,6 +326,14 @@ function candidateIssues(c: Record<string, unknown>): Issue[] {
       c['command'].some(hasPath) ||
       (isObject(c['env']) && Object.values(c['env']).some(hasPath))
     if (!named) at('command', 'must name the checked folder, as a {path} argument or in env (D13)')
+    // A `..` would point the command at a folder above the checked one.
+    const climbs = (v: unknown) => typeof v === 'string' && CLIMBS.test(v)
+    if (Array.isArray(c['command']) && c['command'].some(climbs)) {
+      at('command', 'must not have a .. segment in an argument')
+    }
+    if (isObject(c['env']) && Object.values(c['env']).some(climbs)) {
+      at('env', 'must not have a .. segment in a value')
+    }
   } else {
     if (c['removes'] !== undefined) at('removes', 'only with command')
     if (c['env'] !== undefined) at('env', 'only with command')
