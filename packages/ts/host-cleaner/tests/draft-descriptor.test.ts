@@ -278,6 +278,11 @@ describe('a small corpus', () => {
     expect(text).toContain('# - project .tool/cache: a project entry names one folder, not a path')
     expect(text).toContain('# - project out: the corpus names no marker file')
     expect(text).toContain('# - project .tool.cjs: looks like a file, not a folder')
+    // deno's node_modules is kept, and the reviewer told the node plugin takes it beside a package.json.
+    expect(text).toContain('# Project folders a built-in plugin also takes:')
+    expect(text).toMatch(
+      /# - project node_modules \(marker deno\.json\): the node plugin also takes\n#\s+node_modules where a package\.json sits/,
+    )
   })
 
   test('a statement that is not current is not used', () => {

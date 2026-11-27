@@ -529,6 +529,8 @@ function draftDescriptor(store: CorpusStore): Draft {
   }
 
   const project: Record<string, unknown>[] = []
+  /** Project entries whose folder a built-in plugin also takes beside another marker. */
+  const shared: string[] = []
   const buildDirs = listIn(
     'project/build-dirs',
     'dirs',
@@ -550,8 +552,14 @@ function draftDescriptor(store: CorpusStore): Draft {
     else {
       const entry = { dir: b.path, marker: b.marker, costDescription: b.rebuild }
       const parsed = ProjectEntrySchema.safeParse(entry)
-      if (parsed.success) project.push(entry)
-      else
+      const also = BUILT_IN_PROJECTS.find((c) => c.dir === b.path)
+      if (parsed.success) {
+        project.push(entry)
+        if (also !== undefined)
+          shared.push(
+            `project ${b.path} (marker ${b.marker}): the ${also.by} plugin also takes ${also.dir} where a ${also.marker} sits; where both are, the core keeps the ${also.by} plugin's candidate`,
+          )
+      } else
         for (const issue of parsed.error.issues)
           left.push(
             `project ${b.path} (marker ${b.marker}): ${issue.path.join('.')} ${issue.message}`,
@@ -646,6 +654,8 @@ function draftDescriptor(store: CorpusStore): Draft {
     )
   if (nested.length > 0)
     header.push('', ' Overlapping folders (their sizes count twice):', ...nested.flatMap(bullet))
+  if (shared.length > 0)
+    header.push('', ' Project folders a built-in plugin also takes:', ...shared.flatMap(bullet))
   const guessed = groups.flatMap((g, i) =>
     g.guessed === true
       ? [
