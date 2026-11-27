@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
+# pip's wheel and HTTP cache: PIP_CACHE_DIR, else the default folder for each
+# OS, under XDG_CACHE_HOME on Linux. A cache-dir set in pip.conf is not
+# followed (INI is not a file source). It is removed as a folder once idle.
+# `pip cache purge` would empty the same folder, but the `pip` on PATH may
+# belong to any Python, or be too old to have `cache`. While `pip`, `pip3` or
+# `python -m pip` runs, it is refused in-use.
+descriptor: 1
+store: pip
+detect:
+  any: [{ onPath: pip }, { onPath: pip3 }, { exists: cache }]
+vars:
+  PIP_CACHE_DIR:
+    - env: PIP_CACHE_DIR
+    - value: { macos: ~/Library/Caches/pip, linux: '${XDG_CACHE_HOME}/pip' }
+paths:
+  cache: { macos: '${PIP_CACHE_DIR}', linux: '${PIP_CACHE_DIR}' }
+candidates:
+  - path: cache
+    costDescription: re-download
+inUse:
+  processes: [pip, pip3]
