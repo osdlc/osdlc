@@ -158,7 +158,13 @@ export function indexStores(corpus: string): StoreIndex {
     folders.add(`statements/${r.name}`)
     const slug = r.data['slug']
     if (typeof slug === 'string') add(bySlug, slug, r)
-    else noSlug.push(errorOf(r) ?? `${r.path}: no slug`)
+    else
+      noSlug.push(
+        model.errors.find((e) => e.startsWith(`${r.path}: slug: `)) ??
+          // A record whose data does not read has no slug for that reason.
+          (Object.keys(r.data).length === 0 ? errorOf(r) : undefined) ??
+          `${r.path}: no slug`,
+      )
   }
 
   const statements = new Map<string, CorpusRecord[]>()

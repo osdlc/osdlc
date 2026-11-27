@@ -555,6 +555,18 @@ describe('a small corpus', () => {
     expect(text).not.toContain('tool gc')
   })
 
+  test("a store with no slug is named by its slug's error, not another field's", () => {
+    writeFileSync(
+      join(corpus, 'stores', 'stores.schema.yaml'),
+      'type: object\nproperties:\n  homepage: { type: string }\n  slug: { type: string }\n',
+    )
+    writeFileSync(join(corpus, 'stores', 'Other.md'), markdown({ homepage: 5 }))
+    writeFileSync(join(corpus, 'stores', 'Tool.md'), markdown({ homepage: 5, slug: 3 }))
+    expect(() => draftStore(corpus, 'tool')).toThrow(
+      '(with no slug: stores/Other.md: no slug; stores/Tool.md: slug: must be string)',
+    )
+  })
+
   test('stores are read once: a broken store file only matters when nothing else matches', () => {
     store('Tool', { slug: 'tool' }, dirsOnly([dir('all', '~/.tool')]))
     writeFileSync(join(corpus, 'stores', 'Aaa.md'), 'no front matter\n')
