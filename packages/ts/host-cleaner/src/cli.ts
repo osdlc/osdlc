@@ -1118,6 +1118,9 @@ interface PluginRow {
   vars: readonly VarRow[]
 }
 
+/** A {@link PluginRow}'s `reason` for a plugin the config switches off. */
+const disabledReason = (name: string): string => `plugins.${name}.enabled is false`
+
 /**
  * The row of a plugin that was not built, a descriptor that can't be used or a
  * package that did not load: not detected, with `why` as the reason, or
@@ -1133,7 +1136,7 @@ const absentRow = (
   source,
   enabled: on,
   detected: false,
-  reason: on ? why : `plugins.${name}.enabled is false`,
+  reason: on ? why : disabledReason(name),
   roots: [],
   rootsFailed: null,
   selfRoots: [],
@@ -1255,7 +1258,7 @@ async function runPlugins(
         ...(d?.replaces === undefined ? {} : { replaces: d.replaces }),
         enabled: s.skipped !== true,
         detected: s.detected,
-        reason: s.skipped === true ? `plugins.${s.name}.enabled is false` : (s.reason ?? null),
+        reason: s.skipped === true ? disabledReason(s.name) : (s.reason ?? null),
         roots: s.roots,
         rootsFailed: s.rootsFailed ?? null,
         selfRoots: s.selfRoots,
