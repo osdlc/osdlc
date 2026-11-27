@@ -4,7 +4,7 @@ A repository's system model, in two halves.
 
 - **The wire contract**: a project's structure in its wire format
   (`SystemGraph`, `SystemNode`, `SystemEdge`, aspects with tiered evidence),
-  the shape a host serves to a viewer. Types and small pure helpers,
+  which a host serves to a viewer. Types and small pure helpers,
   with no runtime dependencies. This is the root entry, `@osdlc/system-model`,
   and it is safe to import in browser code.
 - **Detection and tools**: what a repository contains (its packages,
@@ -96,9 +96,9 @@ Detection uses the same `Evidence` for every claim it makes.
 | **Hosts** | an application that serves the graph to a viewer, over any transport; the viewer defines the interface its hosts implement |
 | **Consumers** | viewers, which know only this contract |
 
-The two producers give the same payload for the same tree, so a viewer works
-against a Rust service and against an in-process TypeScript call without any
-change.
+The two producers are meant to give the same payload for the same tree, and
+both walk the shared `mini-repo` fixture, so a viewer can work against a Rust
+service or an in-process TypeScript call without any change.
 
 Changing the wire format means changing the Rust schema and this package
 together.
@@ -106,8 +106,8 @@ together.
 ### What is deliberately not here
 
 The view model (`ViewSpec`, `select`, `encode`, `derive`, and the layouts)
-lives in the viewer. It is not a contract between
-components. It is one viewer's internals, and putting it here would make
+lives in the viewer that uses it. It is not a contract between components.
+It is one viewer's internals, and putting it here would make
 every host depend on one viewer's choices.
 
 ## The model
@@ -128,7 +128,7 @@ Evidence tiers run from the most direct to the least: `manifest` (1),
 
 | Entry | Exports |
 |---|---|
-| `@osdlc/system-model` | the whole wire contract: everything in the two entries below |
+| `@osdlc/system-model` | the whole wire contract: everything in the `/graph` and `/aspect` entries below |
 | `@osdlc/system-model/graph` | `SystemGraph`, `SystemNode`, `SystemEdge`, the kind unions and their `ALL_*` rosters |
 | `@osdlc/system-model/aspect` | `Aspect`, `Evidence`, `EvidenceKind`, `EVIDENCE_TIERS`, `ALL_ASPECTS`, `hasAspect`, `strongestTier` |
 | `@osdlc/system-model/detect` | `createProject`, the task model, the profile and `ToolDef` types |
