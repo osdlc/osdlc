@@ -645,7 +645,6 @@ function dropTree(git: Git, path: string, records: WorktreeRecords): string | nu
   return null
 }
 
-/** Put a moved tree back at `worktree`, so a half-kept tree with no record is not left behind. */
 /**
  * Put a moved tree back at `worktree`, so a half-kept tree with no record is not left behind.
  * `made` is the kept branch when this keep made it, which is then deleted; null when it did not,

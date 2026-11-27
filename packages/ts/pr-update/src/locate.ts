@@ -217,7 +217,6 @@ function notFound(locator: CheckoutLocator): string {
   return `${where} (${from})${deeper}`
 }
 
-/** Whether the checkout at `path` is shallow. Unknown counts as not shallow: the measure then says what it can. */
 /**
  * Why the located checkout at `path` may not be used, or null: its work tree, its git directory
  * or that directory's `config` belongs to another user or can be written by others
@@ -282,6 +281,10 @@ function portProblem(
   return `its origin ${origin} is on ${port === null ? 'no port' : `port ${port}`}, and --repo names ${named}`
 }
 
+/**
+ * Whether the checkout at `path` is shallow. Unknown counts as not shallow: the measure then says
+ * what it can.
+ */
 function isShallow(path: string, runner: CommandRunner | undefined): boolean {
   // A checkout other than the project root, as for every git call made in one.
   const git = new Git(path, targetGitOptions(runner))
