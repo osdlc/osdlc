@@ -1074,7 +1074,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
 
   // detect's limit covers every variable's commands and file reads as if they
   // ran one at a time, each to its limit.
-  const commands = Object.values(d.vars ?? {})
+  const slowSources = Object.values(d.vars ?? {})
     .flat()
     .filter((s) => 'command' in s || 'file' in s).length
 
@@ -1082,7 +1082,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     name,
     limits: {
       discover: DISCOVER_LIMIT_MS,
-      detect: Math.max(HOOK_LIMIT_MS, (commands + 1) * VAR_COMMAND_LIMIT_MS),
+      detect: Math.max(HOOK_LIMIT_MS, (slowSources + 1) * VAR_COMMAND_LIMIT_MS),
     },
     async detect(ctx) {
       const skip = skipReason(d)
