@@ -241,7 +241,7 @@ export async function resolveVars(
     const uses = (s: VarSource) => refs(s).find((r) => fromConfig.has(r))
     const first = sources.findIndex((s) => uses(s) !== undefined)
     if (first > 0) {
-      const failed = `skipped: \${${uses(sources[first]!)}} is set in the config`
+      const failed = `skipped: \${${uses(sources[first]!)}} comes from the config`
       for (const source of sources.slice(0, first)) {
         tried.push({ source: describeSource(source), failed })
       }
