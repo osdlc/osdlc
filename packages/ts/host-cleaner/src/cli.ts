@@ -1315,13 +1315,14 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
     const swept = unknown.map(
       (n) => `config plugins.${n}: no plugin had this name when this plan was made`,
     )
+    const home = homeOf(ctx)
     plan = makePlan(withWarnings(s, swept), {
       targets: cctx.targets,
       targetsGiven: cctx.targetsGiven,
       ignore: cctx.ignore,
       descriptors,
-      pick: v.pick.map((e) => untildePick(e, homeOf(ctx), s.candidates)),
-      spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
+      pick: v.pick.map((e) => untildePick(e, home, s.candidates)),
+      spare: v.spare.flatMap((e) => untildeSpare(e, home)),
       allow: v.allow,
     })
   } catch (err) {
@@ -1523,6 +1524,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
 
   const now = new Date()
   let dirs: HostDirs | undefined
+  let home: string
   let plan: Plan
   let source: string
   let plugins: Plugin[]
@@ -1548,6 +1550,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
     if (archive !== undefined && !plugins.some((p) => p.name === 'git')) {
       throw new BadInput('--archive has no effect: this run does not use the git plugin')
     }
+    home = homeOf(ctx)
     if (saved === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
       const s = await survey(plugins, cctx)
@@ -1559,8 +1562,8 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         targetsGiven: cctx.targetsGiven,
         ignore: cctx.ignore,
         descriptors: run.descriptors,
-        pick: v.pick.map((e) => untildePick(e, homeOf(ctx), s.candidates)),
-        spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
+        pick: v.pick.map((e) => untildePick(e, home, s.candidates)),
+        spare: v.spare.flatMap((e) => untildeSpare(e, home)),
         allow: v.allow,
         now,
       })
@@ -1575,7 +1578,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         cwd: ctx.cwd,
         targets: plan.targets,
         targetsGiven: plan.targetsGiven,
-        ...(homeOf(ctx) === '' ? {} : { home: homeOf(ctx) }),
+        ...(home === '' ? {} : { home }),
         allow: plan.allow,
         ignore: ignoreFor(config, v.ignore, ctx),
       }
@@ -1592,7 +1595,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   if (v.interactive) {
     // A run that deletes needs the folders for its receipt (below): refused before anyone chooses.
     if (!v.dryRun && dirs === undefined) return refusal(ctx, name, new Error(NO_HOME))
-    const chosen = chooseCandidates(plan, preview, deps, homeOf(ctx))
+    const chosen = chooseCandidates(plan, preview, deps, home)
     if (chosen === null) return usageError(ctx, name, NO_TERMINAL_FOR_I)
     plan = chosen
     preview = decidePlan(plan)
@@ -1610,14 +1613,14 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
       dropped: preview.dropped,
     }
     ctx.io.stdout(
-      json ? `${JSON.stringify(shown, null, 2)}\n` : renderPreview(preview, homeOf(ctx), archived),
+      json ? `${JSON.stringify(shown, null, 2)}\n` : renderPreview(preview, home, archived),
     )
     return EXIT.ok
   }
   // The receipt and the log need the folders; a dry run writes neither.
   if (dirs === undefined) return refusal(ctx, name, new Error(NO_HOME))
   if (!v.yes) {
-    ;(json ? ctx.io.stderr : ctx.io.stdout)(renderPreview(preview, homeOf(ctx), archived))
+    ;(json ? ctx.io.stderr : ctx.io.stdout)(renderPreview(preview, home, archived))
     const answer = (deps.confirm ?? terminalConfirm)(
       `Delete ${count} item${count === 1 ? '' : 's'}?`,
     )
@@ -1652,7 +1655,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   ctx.io.stdout(
     json
       ? `${JSON.stringify({ receiptPath, notes, receipt }, null, 2)}\n`
-      : renderReceipt(receipt, receiptPath, homeOf(ctx)),
+      : renderReceipt(receipt, receiptPath, home),
   )
   return receipt.status === 'failed' ? EXIT_STEP_FAILED : EXIT.ok
 }
