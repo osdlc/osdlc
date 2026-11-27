@@ -332,7 +332,11 @@ function notADefinition(x: unknown): string | undefined {
   if (typeof x.create !== 'function') return `default export has no create function; ${MUST_EXPORT}`
   if (x.api === undefined) return `default export has no api; ${MUST_EXPORT}`
   const { settings } = x
-  if (isObject(settings) && typeof settings.safeExtend === 'function') return undefined
+  if (isObject(settings) && typeof settings.safeExtend === 'function') {
+    return isObject(settings.shape) && Object.hasOwn(settings.shape, 'package')
+      ? 'has settings that declare package, which host-cleaner keeps for the npm package the plugin is loaded from; rename that setting'
+      : undefined
+  }
   return isObject(settings) && typeof settings.parse === 'function'
     ? "has settings made with a zod this host-cleaner can't extend; make them with the z that @osdlc/host-cleaner/plugin exports"
     : `default export has no zod object settings; ${MUST_EXPORT}`

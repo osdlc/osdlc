@@ -374,6 +374,18 @@ describe('what a package must export', () => {
     }
   })
 
+  test('settings that declare package, which the loader keeps for the package name, are refused', async () => {
+    expect(
+      await failure(
+        exporting(
+          "definePlugin({ name: 'fixture', api: PLUGIN_API, settings: z.object({ package: z.number() }), create: () => ({ name: 'fixture', detect: () => true }) })",
+        ),
+      ),
+    ).toBe(
+      `plugins.fixture.package: ${FIXTURE} 1.0.0 has settings that declare package, which host-cleaner keeps for the npm package the plugin is loaded from; rename that setting`,
+    )
+  })
+
   test('a default export that is a list is no definition', async () => {
     expect(await failure('export default []\n')).toBe(
       `plugins.fixture.package: ${FIXTURE} 1.0.0 has no default export; it must export default definePlugin({ ... })`,

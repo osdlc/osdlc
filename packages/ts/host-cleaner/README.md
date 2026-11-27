@@ -1170,7 +1170,7 @@ the key.
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
-| `package` | a plugin loaded from a package | none | The npm package it is loaded from. |
+| `package` | a plugin loaded from a package | none | The npm package it is loaded from. A package whose settings declare `package` themselves is refused. |
 | `idleHours` | `cargo`, `node`, `ollama`, `jetbrains`, `toolchains`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, fractions included (`0.5` is half an hour), and `0` takes every artifact. |
 | `vars.<NAME>` | descriptors that declare `vars` | none | A folder (`~/…` or absolute) for one of the descriptor's variables. It wins over every source and may sit outside home. A name the descriptor does not declare is an error. It wins over the sources of the variables built from it too: `GOPATH` (go) moves the module cache even with go on PATH. |
 | `keepVolumes` | `docker` | `[]` | Volume names never proposed, even when no container uses them. |
