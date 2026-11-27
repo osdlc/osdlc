@@ -4,7 +4,6 @@
  * discover, object, decide, re-check, prepare, delete, deleted.
  */
 
-import type { Kind } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
 import type { CostDescription } from './cost.ts'
@@ -271,15 +270,12 @@ export interface PartIdleHours {
   idleHours: number
 }
 
-/**
- * What `create` is told: its own entry in the config's `plugins`, validated with
- * its defaults filled in, and the git kinds `--worktrees` and `--branches` leave.
- */
+/** What `create` is told. */
 export interface PluginInit<S = Record<string, unknown>> {
+  /** Its own entry in the config's `plugins`, validated with its defaults filled in. */
   settings: S
   /** Where each key of `settings` came from; a key it does not name came from the default. */
   sources?: Readonly<Record<string, SettingSource>>
-  only: readonly Kind[]
   /** The command line's environment, for a plugin that runs other programs. */
   env: Readonly<Record<string, string | undefined>>
   /** The safety helpers, bound to this plugin and, each run, to its roots (see `./kit.ts`). */

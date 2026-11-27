@@ -2,38 +2,29 @@
  * `@osdlc/host-cleaner`: machine cleanup as plugins. A plugin proposes
  * candidates and objects to others'; the core runs the phases in the order
  * the plugins are given, with one flat plan and one receipt. The `git` plugin
- * is repo-cleaner.
+ * is repo-cleaner. Everything `./plugin.ts` exports is exported here too.
  */
 
 export { VERSION } from './version.generated.ts'
+export * from './plugin.ts'
+export { DROP_REASONS, type DropReason } from './types.ts'
 export {
-  COST_DESCRIPTIONS,
-  DROP_REASONS,
-  FatalRun,
-  HOOKS,
-  LEVELS,
-  PLUGIN_API,
-  definePlugin,
-  type Candidate,
-  type CostDescription,
-  type Ctx,
-  type Detection,
-  type DropReason,
-  type Hook,
-  type Level,
-  type MaybePromise,
-  type Objection,
-  type PartIdleHours,
-  type PathCandidate,
-  type Plugin,
-  type PluginDefinition,
-  type PluginInit,
-  type RefCandidate,
-  type Root,
-  type RunCtx,
-  type SettingSource,
-} from './types.ts'
-export { BUILT_IN_PLUGINS, findPlugins, loadPlugins, type Loaded } from './registry.ts'
+  BUILT_IN_PLUGINS,
+  findPlugins,
+  loadPlugins,
+  type Loaded,
+  type Packages,
+} from './registry.ts'
+export {
+  PackageError,
+  PackageLoadError,
+  loadPackages,
+  packageEntries,
+  packageRoots,
+  type LoadedPackage,
+  type PackageEntry,
+  type PackageFailure,
+} from './load.ts'
 export {
   PLAN_VERSION,
   PlanSchema,
@@ -73,29 +64,11 @@ export {
   type Selection,
   type Survey,
 } from './run.ts'
-export { PERSONAL_FOLDERS, containedIn } from './roots.ts'
-export { gitPlugin, type GitPluginOptions } from './git.ts'
+export { PERSONAL_FOLDERS } from './roots.ts'
+export { gitDefinitionWith, gitPlugin, type GitPluginOptions } from './git.ts'
 export { cargoPlugin, CARGO_PLUGIN } from './cargo.ts'
 export { nodePlugin, NODE_PLUGIN } from './node.ts'
 export { type ArtifactOptions } from './artifacts.ts'
-export {
-  DEFAULT_IDLE_HOURS,
-  MEASURE_BUDGET_MS,
-  RUN_LIMIT_MS,
-  commandHasName,
-  coveredBy,
-  idleHoursOr,
-  idleHoursSetting,
-  pluginKit,
-  present,
-  type CandidateFields,
-  type Idle,
-  type Kit,
-  type KitOptions,
-  type KitRunOptions,
-  type KitRunResult,
-  type Running,
-} from './kit.ts'
 export {
   DEFAULT_MAX_ENTRIES,
   DESCRIPTOR_SCHEMA_URL,

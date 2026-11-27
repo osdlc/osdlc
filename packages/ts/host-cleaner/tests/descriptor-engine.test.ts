@@ -132,7 +132,6 @@ function build(
   o.kit?.(kit)
   const plugin = descriptorPlugin(name, d, { os: OS, ownDirs: [], ...o.opts }).create({
     settings: { idleHours: o.idleHours ?? 0 },
-    only: [],
     env: h.env,
     kit,
   })
@@ -404,7 +403,6 @@ candidates:
     })
     const plugin = descriptorPlugin('pnpm', d, { os: OS, ownDirs: [] }).create({
       settings: { idleHours: 0 },
-      only: [],
       env: h.env,
       kit,
     })
@@ -659,7 +657,6 @@ candidates:
       ownDirs: [join(state, 'host-cleaner')],
     }).create({
       settings: { idleHours: 0 },
-      only: [],
       env: { HOME: b.home },
       kit: pluginKit('x', { env: { HOME: b.home }, ...processes() }),
     })
@@ -729,7 +726,6 @@ candidates:
         ownDirs: [],
       }).create({
         settings: { idleHours: 0 },
-        only: [],
         env: h.env,
         kit: pluginKit('pip', { env: h.env, ...processes() }),
       })
@@ -1204,7 +1200,6 @@ function buildVars(
   })
   const plugin = def.create({
     settings: { idleHours: 0, vars: o.vars },
-    only: [],
     env,
     kit: pluginKit(name, { env, ...processes(), ...fake }),
   })
@@ -1253,7 +1248,6 @@ candidates:
       ownDirs: [],
     }).create({
       settings: { idleHours: 0 },
-      only: [],
       env: h.env,
       kit: pluginKit('mine', {
         env: h.env,

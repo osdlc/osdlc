@@ -25,7 +25,37 @@ Each shipped plugin is one `definePlugin({ name, api, settings, create })`
 value: `api` is `PLUGIN_API`, `settings` is the zod schema of its entry in the
 config's `plugins` (the core adds `enabled` and makes it strict), and `create`
 builds the plugin from those settings, validated with defaults filled in, and
-the plugin kit (see [The plugin kit](#the-plugin-kit)).
+the plugin kit (see [The plugin kit](#the-plugin-kit)). A plugin of your own is
+written the same way, from `@osdlc/host-cleaner/plugin`, which holds
+`definePlugin`, `PLUGIN_API`, the contract's types, the kit, `CommandFailed`
+and `z` (the zod the core validates settings with), and nothing of the run; the
+main entry exports all of it too. [Writing a
+plugin](./docs/guide/writing-a-plugin.md) is the guide: writing, testing and
+publishing one.
+
+```ts
+import { existsSync } from 'node:fs'
+import { isAbsolute, join } from 'node:path'
+
+import { PLUGIN_API, definePlugin, z } from '@osdlc/host-cleaner/plugin'
+
+export default definePlugin({
+  name: 'scratch',
+  api: PLUGIN_API,
+  // The core refuses a root that is not absolute.
+  settings: z.object({ dir: z.string().refine(isAbsolute, 'dir must be an absolute path') }),
+  create: ({ settings, kit }) => ({
+    name: 'scratch',
+    detect: () => true,
+    roots: () => [settings.dir],
+    discover: () => {
+      const out = join(settings.dir, 'out')
+      return existsSync(out) ? [kit.candidate({ kind: 'scratch', path: out, why: 'built' })] : []
+    },
+    delete: (c, ctx) => kit.remove(c.path!, ctx),
+  }),
+})
+```
 
 | Phase | Who | What |
 | --- | --- | --- |
@@ -224,7 +254,7 @@ A ref gets no folder checks, and the core never removes a folder for one.
 
 `create` gets `kit`, the safety helpers the shipped plugins use, bound to the
 plugin's name, so a plugin measures, removes and runs things the same way
-(`pluginKit(name, options)` builds one, for tests). Each run, once the
+(`pluginKit(name, options)` builds one, for tests; both entries export it). Each run, once the
 plugin's `roots` hook has answered, the core binds the kit it was created with
 to those roots, the run's targets and their linked worktrees (as above), so `kit.remove`
 needs no more than the path. The plugin `create` returns through
@@ -393,32 +423,46 @@ const plugin = descriptorPlugin('pip', d)
   one is no longer idle. One that cannot be removed does not stop the others,
   and the error says which went.
 
-A descriptor whose `supersededBy` plugin runs is told so by `ctx.running`,
-which holds only the plugins before it in `survey`'s list: put a descriptor
-after the plugin it names.
+### Loading plugins from code
 
-To load descriptors from folders and files, as the command line does:
+The command line builds its plugin list from these exports, and a program that
+runs `survey` and `clean` itself can do the same:
+
+| Export | What it does |
+| --- | --- |
+| `packageEntries(config.plugins)` | The `plugins` entries with a `package`, by name. Throws `PackageError` for one that is not an npm package name or is named as a built-in plugin. |
+| `packageRoots(env)` | The `node_modules` folders a package is looked for in, in order. |
+| `loadPackages(entries, roots)` | Imports each entry's package: `{ loaded, failed }`. A failure is a `PackageFailure`, not a throw. |
+| `loadDescriptors({ shipped, user, flag }, reserved)` | The descriptors a run uses, each with its `source` and the file it `replaces`. Throws `DescriptorLoadError` for a name clash, `DescriptorError` for a bad file. |
+| `loadPlugins(sources, opts, { loaded, entries })` | The built-ins, then the packages, then one `descriptorPlugin` per descriptor: `{ definitions, packages, descriptors }`. Throws `PackageError` for a package named as a built-in plugin, and as `loadDescriptors`. |
+| `findPlugins(sources, opts, { loaded, entries })` | As `loadPlugins`, but a descriptor that can't be used is one of `problems`, not a throw. |
+| `parseDescriptor(text, source)`, `readDescriptor(path)` | One descriptor, checked; `DescriptorError` lists each issue with its field and line. `descriptorIssues(value)` returns them instead. |
+| `descriptorPlugin(name, descriptor, opts)` | The `PluginDefinition` for one descriptor. |
+| `DescriptorSchema`, `descriptorJsonSchema()` | The format as a zod schema and as the JSON Schema in `schemas/descriptor-1.json`. |
 
 ```ts
-import { findPlugins, loadPlugins } from '@osdlc/host-cleaner'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { loadPackages, loadPlugins, packageEntries, packageRoots } from '@osdlc/host-cleaner'
 
-const sources = { user: '/home/me/.config/host-cleaner/descriptors', flag: ['/tmp/uv.yaml'] }
-// The built-ins, then one definition per descriptor by name; a name whose file
-// can't be used is one of `problems`, with its `error`.
-const { definitions, descriptors, problems } = findPlugins(sources)
-// The same, but the first problem is thrown.
-const loaded = loadPlugins(sources)
+const entries = packageEntries(config.plugins)
+const { loaded, failed } = await loadPackages(entries, packageRoots(process.env))
+const user = join(homedir(), '.config', 'host-cleaner', 'descriptors')
+const { definitions } = loadPlugins({ user }, {}, { loaded, entries })
 ```
 
 `sources` names the shipped folder (`shipped`, default `SHIPPED_DESCRIPTORS`),
 the user's (`user`, none when unset) and single files (`flag`). Each of
 `descriptors` (`LoadedDescriptor`) says its `name`, `source`, `path`, the file
 it `replaces`, and the checked `descriptor`. `findDescriptors(sources,
-builtIns)` and `loadDescriptors(sources, builtIns)` give the descriptors alone,
-with no plugin built: `find…` collects each `DescriptorProblem` (`name`,
-`path`, `error`), and `load…` throws the first. A clash of names is a
-`DescriptorLoadError`, a file that is no descriptor a `DescriptorError`; a
-descriptor folder that can't be read throws `DescriptorLoadError` from all four.
+builtIns)` is `loadDescriptors` that collects each `DescriptorProblem` (`name`,
+`path`, `error`) instead of throwing the first. A descriptor folder that can't
+be read throws `DescriptorLoadError` from it, `loadDescriptors`, `findPlugins`
+and `loadPlugins`.
+
+A descriptor whose `supersededBy` plugin runs is told so by `ctx.running`,
+which holds only the plugins before it in `survey`'s list: put a descriptor
+after the plugin it names.
 
 ## The `git` plugin
 
@@ -433,6 +477,11 @@ risks; the `discard-archived` cover is not yet offered here. Its `delete` refuse
 worktree whose folder has become a symlink, since `git worktree remove` would
 follow it and empty the folder it leads to. Its `discover` sweeps every
 repository in one synchronous call, so it has a 10 minute limit.
+
+`BUILT_IN_PLUGINS` holds git as `gitDefinitionWith()`, sweeping worktrees and
+local branches. A program that wants other kinds, as `--worktrees` and
+`--branches` give the command line, puts `gitDefinitionWith({ sweep: { only:
+['worktree'] } })` in its place.
 
 ## The `cargo` and `node` plugins
 
@@ -591,7 +640,8 @@ run after the built-ins, by name. To try one you are writing:
 `host-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan records the
 `--descriptor` files behind the plugins it ran, not those the run left out.
 `clean --plan` does not load them by itself: when one is not given it stops
-(exit 2) and names each `--descriptor` flag to add. A descriptor's `supersededBy` must name a built-in plugin.
+(exit 2) and names each `--descriptor` flag to add. A descriptor's
+`supersededBy` must name a built-in plugin, or a package the config names.
 
 `config` reports a descriptor file that can't be used (not a descriptor, a name
 that is no plugin name, or a name clash) and goes on. `status`, `plan` and
@@ -600,6 +650,30 @@ that is no plugin name, or a name clash) and goes on. `status`, `plan` and
 <file>` replaces the config file alone: descriptors still come from the config
 directory. When that directory can't be found, such a run has no user
 descriptors, with a warning.
+
+A descriptor names its folders per OS under `paths`, then lists what may be
+deleted under `candidates`:
+
+```yaml
+descriptor: 1
+paths:
+  hub: { all: ~/.cache/huggingface/hub }
+candidates:
+  - path: hub
+    glob: 'models--*/' # one candidate per match; past maxEntries (200) the rest are one
+    costDescription: re-download
+    idleHours: 720
+```
+
+A candidate deletes its folder, or with `command` runs the tool's own command
+(naming the folder as `{path}`), with `removes: unused` for a prune or
+`removes: all` for a wipe. `inUse` lists `processes` and `locks` that make every
+candidate wait, `project` adds folders inside each checkout of the targets, and
+`detect` (`all` or `any` of `onPath` and `exists`) decides when it runs. A
+descriptor with `system: true` never runs, nor one whose `supersededBy` names a
+built-in or package plugin that runs this time; `status` gives a note for
+each. Every folder must sit inside home and pass the same checks as a plugin's
+root. The full format is the JSON Schema in `schemas/descriptor-1.json`.
 
 The package ships these, for macOS and Linux: `pnpm` (the store, pruned with
 `pnpm store prune`, and the metadata cache), `uv` (the cache, pruned with
@@ -692,6 +766,31 @@ const vars = await resolveVars(d.vars ?? {}, { home, os: 'linux', env: process.e
 const store = fillTemplate('${STORE}', vars, home) // { path, trusted }, or { missing }
 ```
 
+A code plugin published as a package runs when the config names it:
+`"plugins": { "podman": { "package": "@acme/host-cleaner-podman" } }`. Only a
+package the config names is loaded, by its npm name and never from a path: from
+the `node_modules` folders host-cleaner itself is installed in, then the global
+npm prefix, found as npm finds it for `npm i -g`: `npm_config_prefix`, else
+`prefix` in your `~/.npmrc` (or `npm_config_userconfig`), the global npmrc, or
+the npmrc shipped with the `npm` on your PATH (Homebrew's sets it), else npm's
+default (`%APPDATA%\npm` on Windows, else `PREFIX`, else the one Node is
+installed under). A project `.npmrc`, an `npm` in a `node_modules` folder and a
+relative prefix are not used. Its default
+export must be a `definePlugin` value whose `name` is the config key and whose
+`api` is this host-cleaner's `PLUGIN_API`. A name a built-in has is refused
+(exit 2). A package replaces a shipped descriptor of its name, and a
+descriptor of its name in the config directory or `--descriptor` is a file
+that can't be used.
+Packages run after the built-ins and before the descriptors, by name. No
+package is imported until the config's other entries and the descriptors have
+been checked. When one fails to load (not installed, its import throws, a wrong
+export, name or api), `status` and `plan` warn and go on without it, and
+`clean` exits 2 unless you pass `--skip-plugin <name>`, since its objections
+would be missing too. A package the config disables, or that `--skip-plugin`
+names, is not loaded, except by `host-cleaner config`, which loads every
+package the config names to print and check its settings, and names each with
+its version and folder.
+
 ### Files and config
 
 host-cleaner keeps its files in three folders, from `@osdlc/tiered-dirs`'
@@ -723,6 +822,7 @@ naming the plugin and the key.
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
+| `package` | a plugin loaded from a package | none | The npm package it is loaded from. |
 | `idleHours` | `cargo`, `node`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, fractions included (`0.5` is half an hour), and `0` takes every artifact. |
 | `vars.<NAME>` | descriptors that declare `vars` | none | A folder (`~/…` or absolute) for one of the descriptor's variables. It wins over every source and may sit outside home. A name the descriptor does not declare is an error. It wins over the sources of the variables built from it too: `GOPATH` (go) moves the module cache even with go on PATH. |
 
@@ -758,8 +858,9 @@ removed whole).
 
 `host-cleaner plugins` lists every plugin: where it came from, each plugin by its
 own origin (`built-in` when host-cleaner ships it, even when a program passes it
-to `main` or a copy of it; for a descriptor `shipped`, `user` for the config
-directory or `flag` for `--descriptor`; and `given` for a plugin the program
+to `main` or a copy of it; `package` for one a config entry's `package` loads;
+for a descriptor `shipped`, `user` for the config directory or `flag` for
+`--descriptor`; and `given` for a plugin the program
 wrote, or one of host-cleaner's whose hooks it replaced), whether it applies
 here and, when it does not, why, and its roots, the folders it may delete in
 besides the targets. When it does not apply, a reason follows if one is known:
@@ -792,6 +893,9 @@ disables, why is a warning, and the text says that status, plan or clean with
 `--plugin <name>` stops on that error, as it does for a disabled built-in
 plugin whose name such a descriptor has. One named as a built-in plugin is a
 warning alone, as a config entry that names no plugin is, as in `config`.
+`plugins` loads the packages the config does not disable; a package that did
+not load has a row too, not detected, with why as the reason, and a disabled
+one is listed as `disabled`.
 
 Under a descriptor with variables, one line per variable its folders and locks
 use on this OS, built in or declared: its value and the source that gave it,

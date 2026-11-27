@@ -389,7 +389,7 @@ describe('remove', () => {
         delete: (c) => kit.remove(c.path!),
       }),
     })
-    const plugin = def.create({ settings: {}, only: [], env: {}, kit: pluginKit('cache') })
+    const plugin = def.create({ settings: {}, env: {}, kit: pluginKit('cache') })
     // No target holds `dir`: only the roots the core asked the plugin for.
     const ctx = { cwd: root, targets: [], allow: [] }
     const receipt = await clean(plan(await survey([plugin], ctx)), [plugin], ctx)
@@ -414,7 +414,7 @@ describe('a plugin built on a kit of its own', () => {
       settings: z.strictObject({}),
       create: () => cargoPlugin({ now: () => NOW, probe, which: () => '/bin/cargo' }),
     })
-    const plugin = def.create({ settings: {}, only: [], env: {}, kit: pluginKit('cargo') })
+    const plugin = def.create({ settings: {}, env: {}, kit: pluginKit('cargo') })
     const ctx = { cwd: root, targets: [root], allow: [] }
     const receipt = await clean(plan(await survey([plugin], ctx)), [plugin], ctx)
     expect(receipt.steps).toEqual([expect.objectContaining({ result: 'ok' })])

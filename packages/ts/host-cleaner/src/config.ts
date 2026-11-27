@@ -56,8 +56,8 @@ export class ConfigError extends Error {
 
 /**
  * The config at `path`; empty when the file does not exist, unless `required`
- * (a file the person named). Each entry of `plugins` is checked against the
- * settings of the plugin of its name in `opts.plugins`, the built-ins by default.
+ * (a file the person named). Its `plugins` are checked by {@link checkPlugins}
+ * against `opts.plugins`.
  *
  * @throws ConfigError for a file that is not valid, or whose plugin entry has an unknown key or a wrong type
  */
@@ -77,7 +77,22 @@ export function readConfig(
   }
   const parsed = ConfigSchema.safeParse(raw)
   if (!parsed.success) throw new ConfigError(`bad config ${path}: ${parsed.error.message}`)
-  const issues = settingsIssues(parsed.data.plugins, 'plugins', opts.plugins)
+  return checkPlugins(parsed.data, path, opts.plugins)
+}
+
+/**
+ * `config`, once each entry of its `plugins` fits the settings of the plugin
+ * of its name in `plugins`, the built-ins by default; an entry no plugin has is
+ * not checked. `path` is the file it came from, for the error.
+ *
+ * @throws ConfigError for a plugin entry with an unknown key or a wrong type
+ */
+export function checkPlugins(
+  config: Config,
+  path: string,
+  plugins?: readonly PluginDefinition[],
+): Config {
+  const issues = settingsIssues(config.plugins, 'plugins', plugins)
   if (issues.length > 0) throw new ConfigError(`bad config ${path}: ${issues.join('; ')}`)
-  return parsed.data
+  return config
 }

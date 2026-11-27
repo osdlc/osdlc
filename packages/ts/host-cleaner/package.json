@@ -28,6 +28,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "default": "./dist/plugin.js"
+    },
     "./testing": {
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
@@ -77,6 +81,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@osdlc/conformance-suites": "workspace:^",
     "@osdlc/corpus-schema": "workspace:^",
     "@osdlc/corpus-system-cleanup-reference": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",

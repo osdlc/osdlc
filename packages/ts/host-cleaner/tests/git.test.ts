@@ -16,17 +16,24 @@ import { dirname, join } from 'node:path'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
 
+import type { Kind } from '@osdlc/repo-cleaner'
+
 import {
+  BUILT_IN_PLUGINS,
   DEFAULT_SELECTION,
   FatalRun,
+  PLUGIN_API,
   ReceiptSchema,
   cargoPlugin,
   clean,
   decide,
+  gitDefinitionWith,
   gitPlugin,
   plan,
+  pluginKit,
   survey,
   type Ctx,
+  type GitPluginOptions,
 } from '../src/index.ts'
 import { contractSuite, fakeContext, fakeRunner } from '../src/testing.ts'
 
@@ -70,6 +77,51 @@ describe('the git plugin', () => {
     const fx = fixture()
     expect(await contractSuite(fx.plugin, fx.ctx)).toEqual([])
     expect(existsSync(fx.worktree)).toBe(true)
+  })
+
+  test('gitDefinitionWith builds the plugin with its options, copied when the definition is made', async () => {
+    const fx = fixture()
+    const sweep = { only: ['worktree' as Kind] }
+    const git = gitDefinitionWith({ probe: idle, sweep })
+    expect(git.name).toBe(BUILT_IN_PLUGINS[0]!.name)
+    expect(git.api).toBe(PLUGIN_API)
+    sweep.only = ['branch']
+    const plugin = git.create({ settings: {}, env: {}, kit: pluginKit(git.name) })
+    const s = await survey([plugin], fx.ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual([`worktree:${fx.worktree}`])
+  })
+
+  test('gitPlugin and gitDefinitionWith copy their options, lists and archive included', async () => {
+    for (const build of [
+      (opts: GitPluginOptions) => {
+        const plugin = gitPlugin(opts)
+        return () => plugin
+      },
+      (opts: GitPluginOptions) => {
+        const def = gitDefinitionWith(opts)
+        return () => def.create({ settings: {}, env: {}, kit: pluginKit(def.name) })
+      },
+    ]) {
+      const fx = fixture()
+      writeFileSync(join(fx.worktree, 'notes.txt'), 'kept in the archive')
+      const only: Kind[] = ['worktree']
+      const remotes: string[] = []
+      const exclude: string[] = []
+      const sweep = { only, remotes }
+      const made = build({ probe: idle, sweep, archive: { exclude } })
+      only.push('branch')
+      remotes.push('no-such-remote')
+      exclude.push('notes.txt')
+      const plugin = made()
+      const s = await survey([plugin], fx.ctx)
+      expect(s.warnings).toEqual([])
+      expect(s.candidates.map((c) => c.id)).toEqual([`worktree:${fx.worktree}`])
+      await plugin.delete!(s.candidates[0]!, { ...fx.ctx, allow: ['discard-archived'] })
+      expect(existsSync(fx.worktree)).toBe(false)
+      const archived = sh(fx.root, ['ls-remote', 'origin', 'refs/heads/archive/*']).split(/\s+/)[0]!
+      sh(fx.root, ['fetch', '-q', 'origin', archived])
+      expect(sh(fx.root, ['log', '-m', '--format=', '--name-only', archived])).toMatch(/notes\.txt/)
+    }
   })
 
   test('proposes worktrees and branches, objects with their risks, and a freed branch requires its worktree', async () => {

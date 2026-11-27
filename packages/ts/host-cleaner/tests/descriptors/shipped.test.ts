@@ -223,7 +223,6 @@ function build(
           settings: { idleHours?: number }
           sources: Record<string, SettingSource>
         })),
-    only: [],
     env,
     kit,
   })

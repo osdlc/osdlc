@@ -1,7 +1,9 @@
 /**
  * What each plugin's entry in the config's `plugins` may hold: the settings
- * schema of its definition, a built-in's or a descriptor's, made strict, with
- * the core's `enabled` added and its own refinements kept. It is validated when the config loads with
+ * schema of its definition, a built-in's, a package's or a descriptor's, made
+ * strict, with the core's `enabled` added and its own refinements kept (a
+ * package's definition already holds `package`; see `checked` in ./load.ts).
+ * It is validated when the config loads with
  * `@osdlc/config-layers`' `validateStandard`, so a misspelt key or a wrong type
  * is a config error that names the plugin and the key. `host-cleaner config`
  * prints the same schemas' fields and defaults through `configFields`.
@@ -25,7 +27,7 @@ type Definitions = readonly PluginDefinition[]
 
 /**
  * The settings schema of the plugin `name` in `defs`, with the core's
- * `enabled` and made strict, its refinements kept; undefined for a name no
+ * `enabled` added, made strict, its refinements kept; undefined for a name no
  * definition has.
  */
 const schemaOf = (name: string, defs: Definitions = BUILT_IN_PLUGINS): z.ZodObject | undefined =>
@@ -106,7 +108,7 @@ export interface SettingRow {
   parts?: PartIdleHours[]
 }
 
-/** Every setting of every plugin in `defs`: its effective value, its default and whether the config set it. */
+/** Every setting of every plugin in `defs`: its effective value, its default and where the value came from. */
 export function effectiveSettings(
   plugins: Entries,
   shared: Shared = {},

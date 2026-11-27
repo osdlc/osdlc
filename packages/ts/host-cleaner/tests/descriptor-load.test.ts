@@ -255,7 +255,7 @@ describe('the run’s plugins', () => {
     const by = (name: string): string => `${store('.cache/x')}supersededBy: ${name}\n`
     expect(loadPlugins(sources({ 'uv.yaml': by('cargo') })).definitions.at(-1)!.name).toBe('uv')
     expect(() => loadPlugins(sources({ 'uv.yaml': by('uv') }))).toThrow(
-      /supersededBy uv is no built-in plugin; have git, cargo, node, vscode, cursor, orca/,
+      /supersededBy uv is no built-in plugin and no package the config names; have git, cargo, node, vscode, cursor, orca/,
     )
     expect(() => loadPlugins(sources({ 'a.yaml': by('b'), 'b.yaml': by('a') }))).toThrow(
       DescriptorLoadError,
@@ -272,7 +272,6 @@ describe('the run’s plugins', () => {
     const def = definitions.find((d) => d.name === 'fixture')!
     const plugin = def.create({
       settings: { idleHours: 0 },
-      only: [],
       env: h.env,
       kit: pluginKit('fixture', { env: h.env }),
     })
@@ -290,6 +289,17 @@ describe('the run’s plugins', () => {
     )
   })
 
+  test('supersededBy may name a package the config names, loaded or not', () => {
+    const s = sources({ 'uv.yaml': `${store('.cache/uv')}supersededBy: podman\n` })
+    const entries = [{ name: 'podman', package: '@acme/host-cleaner-podman' }]
+    expect(loadPlugins(s, {}, { loaded: [], entries }).descriptors.map((d) => d.name)).toEqual([
+      'uv',
+    ])
+    expect(() => loadPlugins(s)).toThrow(
+      /supersededBy podman is no built-in plugin and no package the config names/,
+    )
+  })
+
   /** The descriptor `uv`, superseded by cargo, its folder made, built for a temp home. */
   function supersededUv(): Plugin {
     const h = tempHome()
@@ -302,7 +312,6 @@ describe('the run’s plugins', () => {
       .find((d) => d.name === 'uv')!
       .create({
         settings: { idleHours: 0 },
-        only: [],
         env: h.env,
         kit: pluginKit('uv', { env: h.env }),
       })

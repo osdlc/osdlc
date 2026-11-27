@@ -29,6 +29,7 @@ import {
   type Candidate,
   type Objection,
   type Plugin,
+  type PluginDefinition,
 } from './types.ts'
 
 export interface GitPluginOptions extends Runners {
@@ -55,7 +56,29 @@ function nameOf(row: CleanCandidate): string | null {
   return row.kind === 'worktree' ? ((row.evidence as WorktreeEvidence).branch ?? null) : null
 }
 
-export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
+/** `opts` with its objects and lists copied; the runners are the caller's own. */
+function copyOf(opts: GitPluginOptions): GitPluginOptions {
+  const { sweep, archive } = opts
+  return {
+    ...opts,
+    ...(sweep && {
+      sweep: {
+        ...sweep,
+        only: sweep.only && [...sweep.only],
+        remotes: sweep.remotes && [...sweep.remotes],
+      },
+    }),
+    ...(archive && { archive: { ...archive, exclude: archive.exclude && [...archive.exclude] } }),
+  }
+}
+
+/**
+ * The `git` plugin.
+ *
+ * @param given - Copied, so changing it afterwards does not change the plugin.
+ */
+export function gitPlugin(given: GitPluginOptions = {}): Plugin {
+  const opts = copyOf(given)
   /** The last discovery's rows, kept for `object` and `delete`; `discover` makes them afresh. */
   let rows = new Map<string, CleanCandidate>()
   const runners = { git: opts.git, gh: opts.gh, glab: opts.glab, probe: opts.probe }
@@ -135,10 +158,23 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
   })
 }
 
-/** The `git` plugin as the command line builds it: no settings of its own, and the kinds `only` leaves. */
-export const gitDefinition = definePlugin({
-  name: 'git',
-  api: PLUGIN_API,
-  settings: z.strictObject({}),
-  create: ({ only }) => gitPlugin({ sweep: { only: [...only] } }),
-})
+/**
+ * The `git` plugin as a definition, with no settings of its own.
+ *
+ * @param opts - Passed to `gitPlugin`. The command line passes `--worktrees`
+ *   and `--branches` here as `sweep.only`, so no other plugin's `create` sees
+ *   git's kinds. Copied here, so changing it afterwards changes no plugin the
+ *   definition builds.
+ */
+export function gitDefinitionWith(opts: GitPluginOptions = {}): PluginDefinition {
+  const own = copyOf(opts)
+  return definePlugin({
+    name: 'git',
+    api: PLUGIN_API,
+    settings: z.strictObject({}),
+    create: () => gitPlugin(own),
+  })
+}
+
+/** The `git` plugin's definition, sweeping worktrees and local branches. */
+export const gitDefinition = gitDefinitionWith()

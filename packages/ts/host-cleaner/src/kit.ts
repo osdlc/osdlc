@@ -182,8 +182,13 @@ const kits = new WeakMap<Plugin, Set<Kit>>()
 
 /** Records that `plugin` was built on `kit`, beside any recorded before, so the core can bind it each run. `definePlugin`'s `create` calls it. */
 export function attachKit(plugin: Plugin, kit: Kit): void {
+  // A `create` that returned no object is reported by whoever called it, not as a WeakMap key error.
+  if (Object(plugin) !== plugin) return
   kits.set(plugin, (kits.get(plugin) ?? new Set()).add(kit))
 }
+
+/** Whether `plugin` was built on `kit`, as {@link attachKit} recorded it. */
+export const builtOn = (plugin: Plugin, kit: Kit): boolean => kits.get(plugin)?.has(kit) === true
 
 /**
  * Binds each kit `plugin` was built on to `bounds` for {@link Kit.remove}, or

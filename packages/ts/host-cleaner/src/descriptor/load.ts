@@ -6,19 +6,16 @@
  *   user     `descriptors/` in the config folder ({@link descriptorsDir})
  *   flag     each `--descriptor <file>`, for this run only
  *
- * A user file replaces a shipped one of the same name, and a `--descriptor`
- * replaces either. Any other clash is a problem: two files of one name in one
- * source, or a descriptor named as a built-in plugin, since every plugin has
- * one name in one namespace. Only the file a name ends up with is read, so a
- * user file can stand in for a shipped one that no longer parses, or for two
- * of one name.
+ * Which file wins, and which clashes are problems: {@link findDescriptors}. Only
+ * the file a name ends up with is read, so a user file can stand in for a
+ * shipped one that no longer parses, or for two of one name.
  */
 
 import { readdirSync, statSync, type Dirent } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { realOr } from '../helpers.ts'
+import { byName, realOr } from '../helpers.ts'
 import { DescriptorError, PLUGIN_NAME, readDescriptor, type Descriptor } from './schema.ts'
 
 /** The package's own descriptors: `descriptors/` beside `src/` and `dist/`. */
@@ -147,12 +144,12 @@ function foundIn(
   paths: readonly string[],
   source: DescriptorSource,
 ): Array<Found | DescriptorProblem> {
-  const byName = new Map<string, string[]>()
+  const seen = new Map<string, string[]>()
   for (const path of paths) {
     const name = nameOf(path)
-    byName.set(name, [...(byName.get(name) ?? []), path])
+    seen.set(name, [...(seen.get(name) ?? []), path])
   }
-  return [...byName].map(([name, all]): Found | DescriptorProblem => {
+  return [...seen].map(([name, all]): Found | DescriptorProblem => {
     const path = all[all.length - 1]!
     if (!PLUGIN_NAME.test(name)) {
       return problem(
@@ -223,9 +220,7 @@ export function findDescriptors(
   }
   const descriptors: LoadedDescriptor[] = []
   const problems: DescriptorProblem[] = []
-  for (const f of [...chosen.values()].sort((a, b) =>
-    a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
-  )) {
+  for (const f of [...chosen.values()].sort(byName)) {
     if (isProblem(f)) {
       problems.push(f)
       continue
@@ -244,8 +239,9 @@ export function findDescriptors(
  * {@link findDescriptors}, with no problem allowed.
  *
  * @throws DescriptorLoadError for a descriptor named as a built-in plugin, two
- *   files of one name in one source, a file name that is no plugin name, or a
- *   `--descriptor` file that is not YAML or JSON by its extension
+ *   files of one name in one source, a file name that is no plugin name, a
+ *   folder that can't be read, or a `--descriptor` file that is not YAML or
+ *   JSON by its extension
  * @throws DescriptorError for a file the run uses that can't be read or is not a descriptor
  */
 export function loadDescriptors(
