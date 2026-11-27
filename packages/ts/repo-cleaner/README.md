@@ -913,6 +913,9 @@ process table once per probe and reuses it for every worktree: `sweep` makes
 one probe per repository, and `run` uses one probe for its re-sweep and
 reads the table afresh for each pre-unlock and pre-remove check. Where the
 table cannot be read the worktree is held back as `process-probe-failed`. A
+process whose working directory was removed, which Linux's `lsof` lists as
+`<path> (deleted)`, still counts as working in `<path>` while nothing is at
+`<path>` again; a gone path is matched through the links above it. A
 host or test supplies its own probe.
 Nothing is ever killed.
 
@@ -1239,12 +1242,17 @@ const receipt = run(preview)
 | `run(preview, opts?)` | Sweep once more and take the preview's steps, writing a `Receipt` (to `receiptPath` after every step, when given). `onNotes` hears what its own re-check judged without. Each worktree it removes is measured with `du` first, into the step's `freedBytes` |
 | `inspectWorktree(path, opts?)` | One worktree judged as a sweep judges it, submodules included |
 | `candidatesOf(sweep)` | The sweep's deletable or objecting rows as plain data (`CleanCandidate`): id, kind, path, evidence, fingerprint, `requires`, blockers, risks |
-| `removeCandidate(candidate, opts?)` | Delete one candidate as `run` takes one row: archive first with `archive`, the live-process and unsafe-force checks, the removal, its verification. Returns a `CandidateRemoval` (`ok`, `steps`, `error`, and `archiveFailed` for a failed archive push, which a host should treat as fatal). Never throws for a refused or failed delete |
+| `removeCandidate(candidate, opts?)` | Delete one candidate as `run` takes one row: archive first with `archive`, the live-process and unsafe-force checks, the removal, its verification. Returns a `CandidateRemoval` (`ok`, `steps`, `error`, and `archiveFailed` for a failed archive push, which a host should treat as fatal). With `archived`, an `archiveCandidates` answer, nothing is pushed, and a candidate whose unlanded work it does not hold as it is now is refused. Never throws for a refused or failed delete |
+| `archiveCandidates(candidates, opts)` | Push one archive of the unlanded work of one repository's candidates, as `run` does, and check the remote has it. Returns a `CandidateArchive`; throws when it cannot be made. Deletes nothing |
+| `archiveProblem(candidate, archived)` | Why a candidate may not be deleted on that archive, or null when it may |
+| `mayContribute(candidate)` | True when a candidate holds work an archive could hold; never a worktree whose directory is gone |
+| `noRemote(repo)` | The refusal of an archive for a repository with no remote |
 | `readPlan`, `writePlan`, `PlanSchema` | Plans on disk |
 | `fingerprint`, `sameFingerprint` | The evidence a row rests on and the rule that compares two of them |
 | `writeJsonAtomic`, `busyHolders` | The atomic JSON write the receipt uses; the holders of a worktree that are not idle shells |
 | `render` | The command line's formats: `text`, `json`, `summary`, `commands`, `preview`, `receipt` |
 | `defaultProcessProbe`, `providers` | The defaults a host can wrap or replace |
+| `startMs`, `PS_LSTART_ENV` | A process start time as `ps -o lstart` prints it, in epoch milliseconds (NaN for other text), and the environment to run that `ps` under so it prints UTC in English |
 | `RepoCleanerError` | Every refusal, with a `code`: `conflict`, `bad-input`, `not-found`, `ambiguous`, `spared-changed`, `bad-plan` |
 
 A row is a `WorktreeRow`, `BranchRow` or `RemoteRow`, told apart by `kind`:
@@ -1303,7 +1311,9 @@ host re-checks a candidate by sweeping again and comparing `fingerprint` with
 `sameFingerprint`, and turns `blockers` and `risks` into its own objections. It
 deletes what a branch `requires` (its worktree) first. `removeCandidate` keeps the safety model of
 `run`: a risk not in `allow` is refused, and with `archive` the push is made
-and verified before the delete, one archive per candidate.
+and verified before the delete, one archive per candidate. To push one archive
+per repository, before the host deletes anything, pass its candidates to
+`archiveCandidates`, then its answer to each `removeCandidate` as `archived`.
 
 ## Providers (prototype)
 

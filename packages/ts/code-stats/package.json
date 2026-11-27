@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/code-stats",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Source code statistics by kind of line: logic, boilerplate, comments, docs and blank, for a whole tree at any revision, for a diff with added, removed, changed and moved lines, and for two changes side by side. Plus file categories, public API delta and complexity movers for a pull request. Deterministic, no LLM.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

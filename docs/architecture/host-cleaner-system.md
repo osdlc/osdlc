@@ -3,8 +3,8 @@
 Status: approved design, 2026-11-22. This covers host-cleaner from the first
 version through the three tiers in #991. It was approved in the
 review on #951. The plan that builds it is
-`docs/planning/host-cleaner-plan.md`. Only the first version's plugins exist in code
-today.
+`docs/planning/host-cleaner-plan.md`. All three tiers exist in code today;
+`packages/ts/host-cleaner/docs/guide/how-it-works.md` says where the code differs.
 
 It's ordered from simple to complex: first the core every tier shares, then
 each tier, each one adding to the one before. A tag such as **(D2)** marks
