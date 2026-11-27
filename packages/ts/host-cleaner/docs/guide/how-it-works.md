@@ -103,7 +103,7 @@ flowchart LR
    misshapen (both or neither of a path and a ref, a path with an `at`), one
    with an unknown `costDescription`, and the second of two with the same id or
    the same real path (the earlier plugin's stands, D1). Candidates in an
-   `ignore` folder are left out.
+   `ignore` folder, or holding one, are left out.
 4. **roots.** Each plugin names the folders it may delete in besides the
    targets: a path, or `{ path, self: true }` when the folder itself may be a
    candidate. The core leaves out, with a warning, an entry that is neither and
@@ -191,7 +191,7 @@ same at the re-check, which decides over a new survey:
 | `needs --pick <id> --allow <codes> when the plan is made` | both |
 | `is refused (<by>: <reason>)` | something refuses it |
 | `is spared (--spare <entry>)` | a `--spare` matched it |
-| `is gone` | no plugin proposes it now, or it is in an `ignore` folder, which a survey leaves out |
+| `is gone` | no plugin proposes it now, or it is in an `ignore` folder or holds one, which a survey leaves out |
 | `is <reason>: <detail>` | its own dropped entry: `is blocked: requires …` down a chain, `is blocked: its requirements form a cycle`, or, at the re-check, `is changed: its evidence moved since the plan` |
 | `does not run` | none of the above applies: it is selected and has no dropped entry, yet does not run |
 
