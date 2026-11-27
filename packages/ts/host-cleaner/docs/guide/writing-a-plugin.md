@@ -54,10 +54,10 @@ import { readdirSync, statSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
 import {
-  DEFAULT_IDLE_HOURS,
   PLUGIN_API,
   coveredBy,
   definePlugin,
+  idleHoursOr,
   idleHoursSetting,
   z,
   type Candidate,
@@ -70,7 +70,7 @@ export default definePlugin({
   settings: z.object({ dir: z.string().optional(), idleHours: idleHoursSetting }),
   create({ settings, env, kit }) {
     const root = settings.dir ?? join(env.HOME ?? '', '.scratch')
-    const idleHours = settings.idleHours ?? DEFAULT_IDLE_HOURS
+    const idleHours = idleHoursOr(settings.idleHours)
     return {
       name: 'scratch',
       // The core refuses a relative root, so say why the plugin does not run.
@@ -141,8 +141,8 @@ What it relies on:
   `plugins`.
 - **`idleHoursSetting`**, declared under the key `idleHours`, takes the
   config's top-level `idleHours` when a shipped plugin's entry sets none.
-  Parsed by your own program it stays unset when not given, so fall back to
-  `DEFAULT_IDLE_HOURS` as this plugin does.
+  Parsed by your own program it stays unset when not given, so read it with
+  `idleHoursOr`, which falls back to `DEFAULT_IDLE_HOURS`, as this plugin does.
 - **`env`** is the environment the plugin is given: the command line's, or
   whatever the program that builds it passes.
 - **`kit.candidate`** fills in the id (`<kind>:<path>` or `<kind>:<ref>`) and

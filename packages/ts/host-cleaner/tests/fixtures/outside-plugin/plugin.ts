@@ -7,10 +7,10 @@ import { readdirSync, statSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
 import {
-  DEFAULT_IDLE_HOURS,
   PLUGIN_API,
   coveredBy,
   definePlugin,
+  idleHoursOr,
   idleHoursSetting,
   z,
   type Candidate,
@@ -23,7 +23,7 @@ export default definePlugin({
   settings: z.object({ dir: z.string().optional(), idleHours: idleHoursSetting }),
   create({ settings, env, kit }) {
     const root = settings.dir ?? join(env.HOME ?? '', '.scratch')
-    const idleHours = settings.idleHours ?? DEFAULT_IDLE_HOURS
+    const idleHours = idleHoursOr(settings.idleHours)
     return {
       name: 'scratch',
       // The core refuses a relative root, so say why the plugin does not run.
