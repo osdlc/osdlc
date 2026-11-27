@@ -9,14 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.10.0] - 2026-11-27
 
-### Other
-
-- start the Rust crate (model and dependency graph) ([#929](https://github.com/osdlc/osdlc/pull/929))
-- add the ./build entry (manifest-graph walk and dependency graph) ([#924](https://github.com/osdlc/osdlc/pull/924))
+First release on crates.io.
 
 ### Added
 
 - The model types and `build_dependency_graph`, moved from the `manifest-graph` crate.
 - `walk_manifests` and `scan_aspects`, moved from the same crate.
 - `apply_containment`, moved from the same crate.
-- The wire schema (`schema::SystemGraph` and friends), moved from SDF desktop, so this crate is the authority on the shape, and `build_system_graph`, which fills it in.
+- The wire schema (`schema::SystemGraph` and friends), moved here from the desktop application that defined it, so this crate is the authority on the shape, and `build_system_graph`, which fills it in.

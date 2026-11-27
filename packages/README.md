@@ -176,7 +176,7 @@ Developed here, in this repository:
   implementation of `@osdlc/file-lock`, so a Rust process and a Node.js process
   can hold one lock file in turn)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
-- `packages/rust/ref-lease` (`ref-lease` on crates.io, the Rust twin of
+- `packages/rust/ref-lease` (`ref-lease`, not on crates.io yet, the Rust twin of
   `@osdlc/ref-lease`: the protocol's pure half, not the git push and fetch)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/system-model` (`system-model` on crates.io, the Rust twin of `@osdlc/system-model`)
