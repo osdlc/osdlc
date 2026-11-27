@@ -1,4 +1,7 @@
-# How pr-update runs
+---
+title: How pr-update runs
+description: One run of pr-update update --apply followed through the code, where each thing lives, and the known problems.
+---
 
 pr-update brings open pull requests up to date with their base branch. For
 each PR it rebases or merges, runs the verify command, optionally lets a repair
