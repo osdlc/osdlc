@@ -171,15 +171,11 @@ function cwdOf(line: string): string | undefined {
   return isObject(row) && typeof row.cwd === 'string' ? row.cwd : undefined
 }
 
-/** {@link firstCwd}'s answer for a transcript that gives no `cwd` in its first {@link MAX_HEAD_BYTES}. */
-const CUT = Symbol('cut')
-
 /**
  * The first `cwd` a transcript records, read only as far as the line that
- * gives it; undefined when the transcript ends before {@link MAX_HEAD_BYTES}
- * with none, else {@link CUT}.
+ * gives it; undefined when it gives none in its first {@link MAX_HEAD_BYTES}.
  */
-function firstCwd(file: string): string | undefined | typeof CUT {
+function firstCwd(file: string): string | undefined {
   const fd = openSync(file, 'r')
   try {
     let buf = Buffer.allocUnsafe(HEAD_BYTES)
@@ -199,7 +195,7 @@ function firstCwd(file: string): string | undefined | typeof CUT {
       n += got
       if (n < buf.length) continue
       // The line the read stopped in may be whole yet have no line end.
-      if (n >= MAX_HEAD_BYTES) return cwdOf(buf.toString('utf8', from, n)) ?? CUT
+      if (n >= MAX_HEAD_BYTES) return cwdOf(buf.toString('utf8', from, n))
       buf = Buffer.concat([buf], n * 2)
     }
   } finally {
@@ -253,7 +249,7 @@ export function decodeFolder(
       sessions.push(entry.name)
       const cwd = firstCwd(file)
       // The `cwd` past what was read could be another path, and a transcript with none is no project's.
-      if (cwd === CUT || cwd === undefined || !ok(cwd)) return null
+      if (cwd === undefined || !ok(cwd)) return null
     } else if (entry.name === 'sessions-index.json') {
       if (!indexPaths(file).every(ok)) return null
     }
