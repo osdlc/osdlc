@@ -362,7 +362,11 @@ outermost one, since that is where `.describe()` sits. A key under a record reso
 itself, provided the rest of the key resolves in the record's value type.
 
 `systemDirs` and the `VendorDirs` type resolve a tool's machine-local directories over `TieredDirs`
-and `envVars`, which are re-exported from `@osdlc/tiered-dirs`. `envStem` sits with them. `closestMatches` and `didYouMean`
+and `envVars`, which are re-exported from `@osdlc/tiered-dirs`. `envStem` sits with them.
+`TieredDirsError`, also re-exported, is what `systemDirs` and the directories it returns throw, so a
+caller can match it with `instanceof` and switch on its `code`. `homeDir`, re-exported too, is the
+home directory those directories are built on, so a tool can expand `~` against the same one.
+`closestMatches` and `didYouMean`
 suggest close names for a mistyped noun, verb, key or repo. Both groups are also
 exported from the light subpaths `@osdlc/config-layers/dirs` and
 `@osdlc/config-layers/did-you-mean`, which load neither yaml nor zod.
@@ -597,7 +601,7 @@ date. Check their current documentation before you decide.
 
 The package is 0.x, so any minor release may break the API. Every export that this package defines
 is experimental: its shape may still change. Any release may change or remove an experimental export.
-The re-exports from `@osdlc/tiered-dirs` (`TieredDirs`, `envVars` and their types) follow that
+The re-exports from `@osdlc/tiered-dirs` (`TieredDirs`, `TieredDirsError`, `homeDir`, `envVars` and their types) follow that
 package.
 
 The experimental exports:

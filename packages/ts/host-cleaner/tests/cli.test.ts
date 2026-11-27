@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -10,7 +11,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { tmpdir, userInfo } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
@@ -18,7 +19,7 @@ import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeBareAndWorker, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, type MainDeps } from '../src/cli.ts'
-import { hostDirs } from '../src/config.ts'
+import { configFile, hostDirs, unreadNativeConfig } from '../src/config.ts'
 import type { Candidate, Objection, Plugin } from '../src/index.ts'
 
 const cleanups: Array<() => void> = []
@@ -289,6 +290,7 @@ describe('plugin settings', () => {
     })
     const text = run(['config', '--config', file], cwd, env)
     expect(text.code).toBe(0)
+    expect(text.out).toContain(`file: ${file}\n`)
     expect(text.out).toContain('targets: ~/dev')
     expect(text.out).toMatch(/plugins\.cargo\n {2}enabled = true {2}\(default\)/)
     expect(text.out).toMatch(/idleHours = 48 {2}\(config\)/)
@@ -306,6 +308,335 @@ describe('plugin settings', () => {
     const r = run(['config', '--config', ghost.file], ghost.cwd, ghost.env)
     expect(r.code).toBe(2)
     expect(r.err).toContain('ghost')
+  })
+})
+
+describe('folders', () => {
+  /** `hostDirs` with `/` separators, so the expectations hold on any host. */
+  const posixDirs = (...args: Parameters<typeof hostDirs>): Record<string, string> =>
+    Object.fromEntries(
+      Object.entries(hostDirs(...args)).map(([k, p]) => [k, p.replaceAll('\\', '/')]),
+    )
+
+  /** A home, a directory and a `--config` file, on a machine `main` takes for a Mac. */
+  const macHome = (): { home: string; cwd: string; file: string } => {
+    const real = Object.getOwnPropertyDescriptor(process, 'platform')!
+    cleanups.push(() => Object.defineProperty(process, 'platform', real))
+    Object.defineProperty(process, 'platform', { ...real, value: 'darwin' })
+    const home = tempDir()
+    const file = join(home, 'config.json')
+    writeFileSync(file, '{}')
+    return { home, cwd: tempDir(), file }
+  }
+
+  test('macOS uses the xdg folders, as Linux does', () => {
+    for (const platform of ['darwin', 'linux']) {
+      expect(posixDirs({}, { platform, home: '/home/me' })).toEqual({
+        config: '/home/me/.config/host-cleaner',
+        state: '/home/me/.local/state/host-cleaner',
+        logs: '/home/me/.local/state/host-cleaner',
+      })
+    }
+  })
+
+  test('the XDG and HOST_CLEANER variables move them on macOS too', () => {
+    const opts = { platform: 'darwin', home: '/home/me' }
+    expect(posixDirs({ XDG_CONFIG_HOME: '/x/cfg', XDG_STATE_HOME: '/x/st' }, opts)).toEqual({
+      config: '/x/cfg/host-cleaner',
+      state: '/x/st/host-cleaner',
+      logs: '/x/st/host-cleaner',
+    })
+    expect(posixDirs({ HOST_CLEANER_ROOT: '/r' }, opts).config).toBe('/r/config/host-cleaner')
+    expect(posixDirs({ HOST_CLEANER_CONFIG_DIR: '/c' }, opts).config).toBe('/c/host-cleaner')
+  })
+
+  test('config strips control characters from the file path it prints', () => {
+    const { env, cwd } = setup()
+    const dir = join(cwd, 'a\u001b]0;x\u0007b')
+    const r = run(['config'], cwd, { ...env, HOST_CLEANER_CONFIG_DIR: dir })
+    expect(r.code).toBe(0)
+    expect(r.out).toMatch(/^file: .*host-cleaner/m)
+    expect(r.out).not.toContain('\u001b')
+    expect(r.out).not.toContain('\u0007')
+  })
+
+  test('config names the default config file and says it is missing', () => {
+    const { env, cwd } = setup()
+    const file = configFile(hostDirs(env))
+    const r = run(['config'], cwd, env)
+    expect(r.code).toBe(0)
+    expect(r.out).toContain(`file: ${file}  (not found: defaults)\n`)
+    const json = JSON.parse(run(['config', '--format', 'json'], cwd, env).out)
+    expect(json).toMatchObject({ file, fileExists: false })
+  })
+
+  test('HOST_CLEANER_CONVENTION=native gives back the macOS folders', () => {
+    const dirs = posixDirs(
+      { HOST_CLEANER_CONVENTION: 'native' },
+      { platform: 'darwin', home: '/Users/me' },
+    )
+    expect(dirs).toEqual({
+      config: '/Users/me/Library/Application Support/host-cleaner',
+      state: '/Users/me/Library/Application Support/host-cleaner',
+      logs: '/Users/me/Library/Logs/host-cleaner',
+    })
+  })
+
+  test('Windows keeps its own folders under xdg', () => {
+    const env = { APPDATA: 'C:\\Users\\me\\AppData\\Roaming' }
+    const opts = { platform: 'win32', home: 'C:\\Users\\me' }
+    expect(hostDirs(env, opts).config).toBe(
+      hostDirs({ ...env, HOST_CLEANER_CONVENTION: 'native' }, opts).config,
+    )
+    expect(posixDirs(env, opts).config).toBe('C:/Users/me/AppData/Roaming/host-cleaner')
+  })
+
+  /** `unreadNativeConfig` beside the config file `hostDirs` names. */
+  const unread = (
+    env: Record<string, string>,
+    opts: Parameters<typeof hostDirs>[1],
+  ): string | undefined => unreadNativeConfig(env, configFile(hostDirs(env, opts)), opts)
+
+  test('a config left in the macOS folders by 0.3 is named, never read', () => {
+    const home = tempDir()
+    const mac = { platform: 'darwin', home }
+    expect(unread({}, mac)).toBeUndefined()
+    const old = join(home, 'Library', 'Application Support', 'host-cleaner', 'config.json')
+    mkdirSync(dirname(old), { recursive: true })
+    writeFileSync(old, 'not json')
+    expect(unread({}, mac)?.replaceAll('\\', '/')).toBe(old.replaceAll('\\', '/'))
+    // Where the native and xdg folders are the same, there is nothing left behind.
+    expect(unread({ HOST_CLEANER_ROOT: '/r' }, mac)).toBeUndefined()
+    expect(unread({ HOST_CLEANER_CONVENTION: 'native' }, mac)).toBeUndefined()
+    const linuxOld = join(home, '.config', 'host-cleaner', 'config.json')
+    mkdirSync(dirname(linuxOld), { recursive: true })
+    writeFileSync(linuxOld, '{}')
+    expect(unread({}, { platform: 'linux', home })).toBeUndefined()
+  })
+
+  test.skipIf(process.platform === 'win32')(
+    'every command warns about a config left in the macOS folders, and does not read it',
+    () => {
+      const { home, cwd, file: named } = macHome()
+      const old = join(home, 'Library', 'Application Support', 'host-cleaner', 'config.json')
+      const env = { PATH: process.env.PATH ?? '', HOME: home }
+      const commands = [['config'], ['status', cwd], ['plan', cwd], ['clean', '--dry-run', cwd]]
+      for (const args of commands) {
+        expect(run(args, cwd, env, { plugins: [fake()] }).err).not.toContain('is not read')
+      }
+      mkdirSync(dirname(old), { recursive: true })
+      writeFileSync(old, 'not json')
+      for (const args of commands) {
+        const r = run(args, cwd, env, { plugins: [fake()] })
+        expect(r.code, args.join(' ')).toBe(0)
+        const lines = r.err.split('\n').filter((l) => l.includes('is not read'))
+        expect(lines, args.join(' ')).toEqual([
+          `host-cleaner ${args[0]}: ${old} is not read; the config is now ${configFile(hostDirs(env))}`,
+        ])
+        // A config the person named is read whatever the folders hold.
+        const given = run([...args, '--config', named], cwd, env, { plugins: [fake()] })
+        expect(given.err).not.toContain('is not read')
+      }
+      // As JSON, status reports it with its other warnings.
+      const r = run(['status', '--format', 'json', cwd], cwd, env, { plugins: [fake()] })
+      expect(r.err).toBe('')
+      expect(JSON.parse(r.out).warnings).toEqual([
+        `${old} is not read; the config is now ${configFile(hostDirs(env))}`,
+      ])
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'with only the config left in the macOS folders, a clean that deletes refuses and names both files',
+    () => {
+      const { home, cwd, file: named } = macHome()
+      const old = join(home, 'Library', 'Application Support', 'host-cleaner', 'config.json')
+      mkdirSync(dirname(old), { recursive: true })
+      writeFileSync(old, JSON.stringify({ ignore: [cwd] }))
+      const env = { PATH: process.env.PATH ?? '', HOME: home }
+      const file = configFile(hostDirs(env))
+      for (const args of [
+        ['clean', '--yes', cwd],
+        ['clean', '--plan', join(home, 'p.json'), '--yes'],
+      ]) {
+        const plugin = fake()
+        const r = run(args, cwd, env, { plugins: [plugin] })
+        expect(r.code, args.join(' ')).toBe(2)
+        expect(r.err).toBe(
+          `host-cleaner clean: ${old} is not read, and there is no config at ${file}: move the file there, or pass --config; clean deletes nothing until then\n`,
+        )
+        expect(plugin.removed).toEqual([])
+      }
+      // A config the person named, or one in the new folder, is read and the clean runs.
+      const plugin = fake()
+      expect(
+        run(['clean', '--yes', '--config', named, cwd], cwd, env, { plugins: [plugin] }).code,
+      ).toBe(0)
+      mkdirSync(dirname(file), { recursive: true })
+      writeFileSync(file, '{}')
+      const r = run(['clean', '--yes', cwd], cwd, env, { plugins: [plugin] })
+      expect(r.code).toBe(0)
+      expect(r.err).toContain(`${old} is not read; the config is now ${file}`)
+      expect(plugin.removed).toEqual(['artifact:fake', 'artifact:fake'])
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'folders placed by XDG_CONFIG_HOME and XDG_STATE_HOME alone need no home',
+    () => {
+      const { home, cwd } = macHome()
+      const xdg = { XDG_CONFIG_HOME: join(home, 'cfg'), XDG_STATE_HOME: join(home, 'st') }
+      expect(hostDirs(xdg, { platform: 'darwin' }).config).toBe(join(home, 'cfg', 'host-cleaner'))
+      expect(unread(xdg, { platform: 'darwin' })).toBeUndefined()
+      const env = { PATH: process.env.PATH ?? '', ...xdg }
+      for (const args of [['config'], ['status', cwd], ['plan', '-o', '-', cwd]]) {
+        const r = run(args, cwd, env, { plugins: [fake()] })
+        expect(r.err, args.join(' ')).toBe('')
+        expect(r.code, args.join(' ')).toBe(0)
+      }
+    },
+  )
+
+  test('with process.env and no HOME, the folders are still placed', () => {
+    for (const name of ['HOME', 'XDG_CONFIG_HOME', 'XDG_STATE_HOME', 'HOST_CLEANER_ROOT']) {
+      vi.stubEnv(name, undefined)
+    }
+    for (const key of ['CONFIG', 'STATE', 'LOGS']) vi.stubEnv(`HOST_CLEANER_${key}_DIR`, undefined)
+    // tiered-dirs' own rules apply: in a test process, its temporary test root;
+    // elsewhere, the OS account's home.
+    expect(hostDirs(process.env).config.startsWith(tmpdir())).toBe(true)
+  })
+
+  test('with no home, --config still works and clean exits 1', () => {
+    const { cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, '{}')
+    const env = { PATH: process.env.PATH ?? '' }
+    for (const args of [
+      ['config', '--config', file],
+      ['status', '--config', file, cwd],
+      ['plan', '--config', file, cwd],
+      ['clean', '--dry-run', '--config', file, cwd],
+    ]) {
+      const r = run(args, cwd, env, { plugins: [fake()] })
+      expect(r.err, args.join(' ')).toBe('')
+      expect(r.code, args.join(' ')).toBe(0)
+    }
+    const plugin = fake()
+    const r = run(['clean', '--yes', '--config', file, cwd], cwd, env, { plugins: [plugin] })
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('no home directory')
+    expect(plugin.removed).toEqual([])
+    expect(run(['config'], cwd, env).code).toBe(1)
+  })
+
+  test('`~` is the home the folders are built on, and with none a `~` path is refused', () => {
+    const { cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, JSON.stringify({ ignore: ['~/keep'] }))
+    const candidate = { path: join(home, 'keep', 'cache') }
+    const base = { PATH: process.env.PATH ?? '', HOST_CLEANER_ROOT: home }
+    const clean = (env: Record<string, string>) => {
+      const plugin = fake('fake', { candidate })
+      return {
+        ...run(['clean', '--yes', '--config', file, cwd], cwd, env, { plugins: [plugin] }),
+        removed: plugin.removed,
+      }
+    }
+    const kept = clean({ ...base, HOME: home, USERPROFILE: home })
+    expect(kept.err).toContain('left out 1 candidate(s)')
+    expect(kept.removed).toEqual([])
+    // An empty or relative HOME is no home, as for the folders; `~/keep` is
+    // then refused, not read as `/keep` or `<cwd>/rel/keep`, which cover nothing.
+    const noHome: Array<Record<string, string>> = [
+      { ...base, HOME: '' },
+      { ...base, HOME: 'rel' },
+      base,
+    ]
+    for (const env of noHome) {
+      const r = clean(env)
+      expect(r.code, JSON.stringify(env['HOME'])).toBe(1)
+      expect(r.err).toContain('cannot expand `~`')
+      expect(r.removed).toEqual([])
+    }
+    // A `~` target is refused the same way, by a command that deletes nothing too.
+    writeFileSync(file, JSON.stringify({ targets: ['~/dev'] }))
+    const r = run(['status', '--config', file], cwd, base, { plugins: [fake()] })
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('cannot expand `~`')
+  })
+
+  test('with process.env, an empty or relative HOME gives `~` the OS account home', () => {
+    const { cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, JSON.stringify({ ignore: ['~/keep'] }))
+    for (const value of ['', 'rel']) {
+      vi.stubEnv('HOME', value)
+      vi.stubEnv('USERPROFILE', value)
+      // Only `status`: it deletes nothing, and the only plugin is a fake.
+      const env = process.env as Record<string, string>
+      const r = run(['status', '--format', 'json', '--config', file, cwd], cwd, env, {
+        plugins: [fake()],
+      })
+      expect(r.code, JSON.stringify(value)).toBe(0)
+      expect(JSON.parse(r.out).ignore).toContain(join(userInfo().homedir, 'keep'))
+    }
+  })
+
+  test('with process.env, an empty or relative HOME refuses a `~` target', () => {
+    const { cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, JSON.stringify({ targets: ['~/dev'] }))
+    const empty = join(home, 'empty.json')
+    writeFileSync(empty, '{}')
+    for (const value of ['', 'rel']) {
+      vi.stubEnv('HOME', value)
+      vi.stubEnv('USERPROFILE', value)
+      // A target is swept: the OS account's real `~/dev` must not stand in for it.
+      const env = process.env as Record<string, string>
+      for (const argv of [
+        ['--config', file],
+        ['--config', empty, '~/dev'],
+      ]) {
+        const r = run(['status', ...argv], cwd, env, { plugins: [fake()] })
+        expect(r.code, JSON.stringify([value, argv])).toBe(1)
+        expect(r.err).toContain('cannot expand `~` in a target')
+        expect(r.out).toBe('')
+      }
+    }
+  })
+
+  test('HOST_CLEANER_CONVENTION is trimmed, and empty counts as unset', () => {
+    const opts = { platform: 'darwin', home: '/Users/me' }
+    const native = hostDirs({ HOST_CLEANER_CONVENTION: 'native' }, opts)
+    expect(hostDirs({ HOST_CLEANER_CONVENTION: ' native ' }, opts)).toEqual(native)
+    expect(hostDirs({ HOST_CLEANER_CONVENTION: '' }, opts)).toEqual(hostDirs({}, opts))
+  })
+
+  test('a folder variable that is not absolute is a usage error, `~` included', () => {
+    const { env, cwd } = setup()
+    for (const dir of ['~/cfg', 'cfg']) {
+      const r = run(['config'], cwd, { ...env, HOST_CLEANER_CONFIG_DIR: dir })
+      expect(r.code, dir).toBe(2)
+      expect(r.err).toContain('HOST_CLEANER_CONFIG_DIR must be an absolute path')
+    }
+  })
+
+  test('a bad HOST_CLEANER_CONVENTION is a usage error for every command', () => {
+    const { env, cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, '{}')
+    const bad = { ...env, HOST_CLEANER_CONVENTION: 'Native' }
+    for (const args of [
+      ['clean', '--yes', cwd],
+      ['plan', '--config', file, cwd],
+      ['config', '--config', file],
+      ['status', '--config', file, cwd],
+    ]) {
+      const r = run(args, cwd, bad)
+      expect(r.code, args.join(' ')).toBe(2)
+      expect(r.err).toContain('HOST_CLEANER_CONVENTION must be')
+    }
   })
 })
 

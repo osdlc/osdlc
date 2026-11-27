@@ -174,7 +174,7 @@ host-cleaner config [--format json]   # every plugin's effective settings
 `targets`, then the directory you are in. `clean` re-checks, shows the steps,
 asks (`--yes` skips the question; with no terminal and no `--yes` it exits 2),
 deletes, and writes one receipt to `--receipt` or the state directory's
-`receipts/`, plus a line in `logs/host-cleaner.log`.
+`receipts/`, plus a line in the log.
 
 With `--archive`, a run makes one archive per repository, before it deletes any
 of its worktrees or branches. A second run on the same day goes to
@@ -196,8 +196,51 @@ unlanded work, and the preview shows them skipped.
 host-cleaner clean --archive --pick branch:/path/to/repo:topic --allow abandon-unmerged
 ```
 
-The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
-all three directories):
+host-cleaner keeps its files in three folders, from `@osdlc/tiered-dirs`'
+`standalone('host-cleaner')` tier under the `xdg` convention, so macOS uses the
+same folders as Linux:
+
+| What | Path, macOS and Linux | Moved by |
+| --- | --- | --- |
+| Config | `~/.config/host-cleaner/config.json` | `HOST_CLEANER_CONFIG_DIR`, or `XDG_CONFIG_HOME` |
+| Receipts | `~/.local/state/host-cleaner/receipts/` | `HOST_CLEANER_STATE_DIR`, or `XDG_STATE_HOME` |
+| Log | `~/.local/state/host-cleaner/host-cleaner.log` | `HOST_CLEANER_LOGS_DIR`, or `XDG_STATE_HOME` |
+
+Each variable names the base folder, and host-cleaner adds `host-cleaner/` to
+it: with `HOST_CLEANER_CONFIG_DIR=/srv/cfg` the config is
+`/srv/cfg/host-cleaner/config.json`. A `HOST_CLEANER_*` folder must be an
+absolute path, and `~` in it is not expanded, so a relative or `~` path is
+refused with exit 2. A relative `XDG_*` value is ignored, as the XDG spec says.
+`HOST_CLEANER_ROOT` moves all three folders, which is useful for tests.
+`HOST_CLEANER_CONVENTION=native` puts them back in macOS's own folders under
+`~/Library`. Spaces around the value are ignored and an empty value counts as
+unset; any value other than `native` or `xdg` is refused with exit 2. When
+`HOME` (`USERPROFILE` on Windows) is unset, empty or relative, the OS account's
+home is used. `~` in an `ignore` entry is that same home, so the entry covers
+the folder it names. `~` in a target is too when `HOME` is unset; when it is
+set but empty or relative, a target that starts with `~` is refused with
+exit 1, so `~/dev` never sweeps the account's real `~/dev`. With no home
+directory to place the folders in, and no variable that places them, a
+`clean` that deletes and every command that reads the default config exit 1;
+`status`, `plan`,
+`config` and `clean --dry-run` given `--config` still run, unless a target or
+ignore entry starts with `~`, which is then refused with exit 1.
+Windows has no `xdg` folders and keeps its own: the config is
+`%APPDATA%\host-cleaner\config.json`.
+
+Versions up to 0.3 kept the macOS config in
+`~/Library/Application Support/host-cleaner/`; it now lives in
+`~/.config/host-cleaner/`, and host-cleaner does not read the old file; while
+it exists, every command that reads the default config warns on stderr
+(`status --format json` lists it in `warnings`). While it is the only one,
+with nothing at the new path and no `--config`, `clean` refuses with exit 2
+(`clean --dry-run` only warns), since its `ignore` list would not apply: move
+the file to the new path. Their
+receipts and log stay where they were written, in
+`~/Library/Application Support/host-cleaner/receipts/` and
+`~/Library/Logs/host-cleaner/`; new ones go to `~/.local/state/host-cleaner/`.
+
+The config file holds the targets and each plugin's settings:
 
 ```json
 { "targets": ["~/dev"], "plugins": { "cargo": { "idleHours": 48 }, "node": { "enabled": false } } }
@@ -219,16 +262,18 @@ Two settings sit at the top of the config and apply to every plugin:
 { "targets": ["~/dev"], "ignore": ["~/dev/dashboard"], "idleHours": 0 }
 ```
 
-- `ignore` lists paths nothing may be deleted in or below (`~` is home; a path
-  is matched by its real path too). `--ignore <dir>` adds to it and can repeat.
+- `ignore` lists paths nothing may be deleted in or below (`~` is home, and on
+  Windows `~\` as well as `~/`; a path is matched by its real path too). `--ignore <dir>` adds to it and can repeat.
   A candidate there is left out, with a warning saying how many; `status` prints
   the active list, a plan records it, and `clean --plan` honours the plan's list
   and the current one, dropping a planned candidate as `ignored`.
 - `idleHours` is the default for every plugin that has the setting and does not
   set its own. `0` is allowed and makes every idle-checked artifact a candidate.
 
-`host-cleaner config` prints every plugin's effective settings: the value, and
-whether the file set it or it is the default. `--format json` prints the values.
+`host-cleaner config` prints the config file it looked for (and says when it
+is missing, so the defaults apply), then every plugin's effective settings:
+the value, and whether the file set it or it is the default. `--format json`
+prints the values, with `file` and `fileExists`.
 
 ### Exit codes
 
