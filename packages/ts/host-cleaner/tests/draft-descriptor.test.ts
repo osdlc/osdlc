@@ -27,6 +27,7 @@ import {
   FIRST_SET,
   draftStore,
   indexStores,
+  wrap,
   writeDraft,
 } from '../scripts/draft-descriptor.ts'
 import { DESCRIPTOR_SCHEMA_FILE } from '../scripts/write-descriptor-schema.ts'
@@ -95,6 +96,15 @@ test('every store in the corpus drafts a valid descriptor, or says why not', () 
   // Most stores name a fixed folder; a change that stops them drafting fails here.
   expect(drafted).toEqual(expect.arrayContaining([...FIRST_SET]))
   expect(drafted.length, `failed: ${failed.join(', ')}`).toBeGreaterThan(failed.length)
+})
+
+test('a comment line holds 78 characters; only the lines after the first are indented', () => {
+  const word = (n: number) => 'x'.repeat(n)
+  expect(wrap(`- ${word(75)}`, '  ')).toEqual([` - ${word(75)}`])
+  expect(wrap(`- ${word(76)}`, '  ')).toEqual([' -', `   ${word(76)}`])
+  expect(wrap(`${word(40)} ${word(36)}`)).toEqual([` ${word(40)} ${word(36)}`])
+  for (const line of wrap(`- ${'abc '.repeat(60)}`, '  '))
+    expect(line.length).toBeLessThanOrEqual(78)
 })
 
 describe('a small corpus', () => {

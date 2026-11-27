@@ -393,13 +393,14 @@ const orderedFolders = (folders: Group['folders']): Record<string, string> =>
     ),
   )
 
-/** `text` as comment lines of at most 78 characters, each starting with a space. */
-function wrap(text: string, indent = ''): string[] {
+/** `text` as comment lines of at most 78 characters, each starting with a space and, past the first, `indent`. */
+export function wrap(text: string, indent = ''): string[] {
   const width = 78
   const lines: string[] = []
   let line = ''
   for (const word of text.split(/\s+/).filter(Boolean)) {
-    if (line !== '' && indent.length + line.length + word.length + 2 > width) {
+    const lead = lines.length === 0 ? 0 : indent.length
+    if (line !== '' && lead + line.length + word.length + 2 > width) {
       lines.push(line)
       line = ''
     }
