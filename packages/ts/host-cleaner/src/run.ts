@@ -22,7 +22,6 @@ import {
 import {
   CandidateSchema,
   ObjectionSchema,
-  unknownOwners,
   writeReceipt,
   PLAN_VERSION,
   RECEIPT_VERSION,
@@ -1004,6 +1003,12 @@ export function decidePlan(p: Plan): Decision {
 const outgrew = (before: Candidate, c: Candidate): boolean =>
   (before.capped === true || c.capped === true) &&
   (before.bytes === undefined || c.bytes === undefined || c.bytes > before.bytes)
+
+/** The owners of `plan`'s candidates that `known` does not name, each once, in order. */
+function unknownOwners(plan: Plan, known: Iterable<string>): string[] {
+  const have = new Set(known)
+  return [...new Set(plan.candidates.map((c) => c.owner))].filter((n) => !have.has(n))
+}
 
 /**
  * Judge a plan against the world now. Surveys again and decides over exactly
