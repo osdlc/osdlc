@@ -1535,3 +1535,39 @@ describe('a kept tree, round 2', () => {
     for (const p of probes) expect(existsSync(p)).toBe(true)
   })
 })
+
+describe("git's rerere, by where a target is served from", () => {
+  /** acme/api's `topic` and `main` both change `shared.txt`: a conflict the resolver claims. */
+  function conflicting(): void {
+    const w = api.worker
+    w.git.checkout('topic')
+    w.commit('topic changes shared', { 'shared.txt': 'topic\n' })
+    w.git.push('origin', 'topic')
+    w.git.checkout('main')
+    w.commit('main changes shared', { 'shared.txt': 'main\n' })
+    w.git.push('origin', 'main')
+  }
+  const cfg = { resolvers: [{ paths: ['shared.txt'], run: 'regen' }] }
+  const rrCache = (): string => join(api.worker.dir, '.git', 'rr-cache')
+
+  test('a located checkout: nothing is recorded, and no rr-cache is made', async () => {
+    conflicting()
+    const out = await update({ cfg })
+    expect(out.results.map((r) => [r.status, r.pushed])).toEqual([['updated', true]])
+    expect(existsSync(rrCache())).toBe(false)
+  })
+
+  test('a managed clone: the resolution is recorded', async () => {
+    conflicting()
+    const out = await update({ cfg, source: 'clone' })
+    expect(out.results.map((r) => [r.status, r.pushed])).toEqual([['updated', true]])
+    expect(readdirSync(rrCache())).toHaveLength(1)
+  })
+
+  test('a managed clone with pr_update.rerere: false: nothing is recorded', async () => {
+    conflicting()
+    const out = await update({ cfg: { ...cfg, rerere: false }, source: 'clone' })
+    expect(out.results.map((r) => [r.status, r.pushed])).toEqual([['updated', true]])
+    expect(existsSync(rrCache())).toBe(false)
+  })
+})

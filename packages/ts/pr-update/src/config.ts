@@ -108,7 +108,7 @@ export const prUpdateConfigSchema = z
       .boolean()
       .default(true)
       .describe(
-        "Whether `update --apply` uses git's rerere. On (default), a resolution a resolver or an accepted repair made is kept when its PR is pushed, and a later conflict that is the same, in this run or a later one, is replayed and staged instead of resolved again: a stack of sibling PRs that meet one conflict needs one resolution. A replayed resolution still goes through `verify`. The resolutions are kept in the repository's `rr-cache/`, in the person's own checkout for the project root, and once it exists git uses rerere for the person's own merges there too, unless their config says `rerere.enabled: false`. `false` turns rerere off for pr-update's merges and rebases, whatever the git config says. A rehearsal never uses it.",
+        "Whether `update --apply` uses git's rerere in a managed clone, the only place it is used. On (default), a resolution a resolver or an accepted repair made there is kept when its PR is pushed, and a later conflict that is the same, in this run or a later one, is replayed instead of resolved again: a stack of sibling PRs that meet one conflict needs one resolution. A replayed path a resolver claims is still rebuilt; any other is reported in the result's `replayed`, and `verify` is its only check. The resolutions are kept in the clone's `rr-cache/`. In the project root and a located checkout, pr-update's merges and rebases always run with `rerere.enabled=false`, so your own `rr-cache/` and rerere config are never used and no `rr-cache/` is made there. `false` turns rerere off in clones too. A rehearsal never uses it.",
       ),
     on_rebase_conflict: z
       .enum(['merge', 'fail', 'repair'])

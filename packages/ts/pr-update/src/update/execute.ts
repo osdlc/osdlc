@@ -19,13 +19,15 @@
  *
  * Rebase, then merge, then repair. A rebase replays every commit, so it can
  * stop once per commit. The fixed resolvers (rerere, lockfile, resolvers,
- * generators) run at every stop; rerere only with `apply` (`integrationEnv`).
- * A stop they cannot clear aborts the rebase, and the PR is retried as a
- * merge, which meets the same conflict once. Only then is `repair` called, so
- * an agent is never asked to fix twenty versions of one conflict. The outcome
- * records the change of strategy, so a reader does not mistake the push for a
- * rebase. A resolution rerere recorded is kept only when the PR is pushed
- * (`dropNewResolutions`).
+ * generators) run at every stop; rerere only with `apply`, and only in a
+ * repository whose `rr-cache/` pr-update owns, a managed clone
+ * (`UpdateSettings.rerere`, `integrationEnv`). A stop they cannot clear aborts
+ * the rebase, and the PR is retried as a merge, which meets the same conflict
+ * once. Only then is `repair` called, so an agent is never asked to fix twenty
+ * versions of one conflict. The outcome records the change of strategy, so a
+ * reader does not mistake the push for a rebase. A resolution rerere recorded
+ * is kept only when the PR is pushed (`dropNewResolutions`), and a run killed
+ * first leaves a list of them for the next run to remove (`RerereLedger`).
  *
  * With `on_rebase_conflict: repair`, a repository that refuses merges repairs
  * each stop instead, up to a cap, and never falls back to a merge.
@@ -41,7 +43,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 
 import {
@@ -52,6 +54,7 @@ import {
   stderrOrError,
   type CommandRunner,
 } from '@osdlc/command-seam'
+import { atomicWrite } from '@osdlc/etag-write'
 import {
   CommandFailed,
   Git,
@@ -172,7 +175,12 @@ export interface UpdateSettings {
   maxRebaseStops?: number | undefined
   /** `pr_update.submodules`; see `submodules` in config.ts. Absent means `auto`. */
   submodules?: 'auto' | 'off' | undefined
-  /** `pr_update.rerere`; see `rerere` in config.ts and {@link integrationEnv}. Absent means on. */
+  /**
+   * Whether `apply` uses git's rerere here: set only for a repository whose `rr-cache/` pr-update
+   * owns, a managed clone, and only when `pr_update.rerere` allows it (see `rerere` in config.ts
+   * and {@link integrationEnv}). Absent means off: in anyone's own checkout git's rerere is turned
+   * off for pr-update's commands, so it neither replays nor records there.
+   */
   rerere?: boolean | undefined
 }
 
@@ -196,6 +204,12 @@ export type UpdateOutcome =
   | ({
       status: 'updated'
       resolved: PathPlan[]
+      /**
+       * Conflicted paths git's rerere resolved with a resolution recorded earlier, which no
+       * resolver claims, in the order met. Absent means none. A path a resolver claims is rebuilt
+       * as usual, and is in `resolved` instead.
+       */
+      replayed?: string[]
       pushed: boolean
       /**
        * The sha the update built, pushed or not. A rehearsal restacks a
@@ -397,6 +411,17 @@ function restore(git: Git, argv: string[]): void {
   }
 }
 
+/** How one PR is updated: whether it may push, the worktree it runs in, and the run's ledger. */
+interface UpdateOneOptions {
+  apply: boolean
+  worktree: string
+  /**
+   * Where the run lists the rerere resolutions it has not accepted yet; set by `updateAll` when
+   * `apply` and `UpdateSettings.rerere` are. Absent, nothing is listed.
+   */
+  ledger?: RerereLedger | undefined
+}
+
 /**
  * `updateOneUnscoped`, then put the repository's `submodule.*` config back. A linked worktree
  * shares the repository's config, so the URLs of a PR's `.gitmodules` that the submodule setup
@@ -408,6 +433,17 @@ export async function updateOne(
   settings: UpdateSettings,
   runVerb: RunVerb,
   opts: { apply: boolean; worktree: string },
+): Promise<UpdateOutcome> {
+  return updateOneIn(git, target, settings, runVerb, opts)
+}
+
+/** {@link updateOne}, with the run's ledger when `updateAll` keeps one. */
+async function updateOneIn(
+  git: Git,
+  target: UpdateTarget,
+  settings: UpdateSettings,
+  runVerb: RunVerb,
+  opts: UpdateOneOptions,
 ): Promise<UpdateOutcome> {
   if ((settings.submodules ?? 'auto') === 'off')
     return updateOneUnscoped(git, target, settings, runVerb, opts)
@@ -438,7 +474,7 @@ async function updateOneUnscoped(
   target: UpdateTarget,
   settings: UpdateSettings,
   runVerb: RunVerb,
-  opts: { apply: boolean; worktree: string },
+  opts: UpdateOneOptions,
 ): Promise<UpdateOutcome> {
   const base = baseRef(target, settings.remote)
   const head = `${settings.remote}/${target.head}`
@@ -483,7 +519,7 @@ async function updateOneUnscoped(
   }
 
   let strategy = target.strategy
-  let rebased: PathPlan[] | null = null
+  let rebased: Integrated | null = null
   let strategyFallback: string | undefined
   let rebaseRepaired: Repaired[] = []
   // The conflicts rerere tracked in the rebase and the merge. A PR that is not pushed keeps
@@ -493,6 +529,8 @@ async function updateOneUnscoped(
     const repairing = settings.onRebaseConflict === 'repair'
     const attempt = await rebaseThroughRungs(git, base, settings, runVerb, opts.worktree, {
       env: integrationEnv(settings, opts.apply),
+      rerere: rerereOn(settings, opts.apply),
+      ledger: opts.ledger,
       repair: repairing ? repairOf(settings, 'conflict', opts.apply) : null,
       maxRepairs: settings.maxRebaseStops ?? 3,
       target,
@@ -507,7 +545,7 @@ async function updateOneUnscoped(
         : { status: 'failed', reason: attempt.reason }
     }
     if (attempt.kind === 'done') {
-      rebased = attempt.resolved
+      rebased = { resolved: attempt.resolved, replayed: attempt.replayed }
       rebaseRepaired = attempt.repaired
       conflicts.push(...attempt.tracked)
     } else if ((settings.onRebaseConflict ?? 'merge') !== 'merge') {
@@ -533,31 +571,29 @@ async function updateOneUnscoped(
       conflicts,
     )
   } catch (e) {
-    dropNewResolutions(conflicts)
+    dropNewResolutions(conflicts, opts.ledger)
     throw e
   }
   // Not pushed: failed, conflicted, or a push the person declined. A rehearsal records nothing.
-  if (outcome.status !== 'updated' || !outcome.pushed) dropNewResolutions(conflicts)
+  if (outcome.status !== 'updated' || !outcome.pushed) dropNewResolutions(conflicts, opts.ledger)
+  // Pushed: its resolutions are accepted, and are no longer the run's to remove.
+  else opts.ledger?.remove(conflicts)
   return strategyFallback === undefined || outcome.status === 'up-to-date'
     ? outcome
     : { ...outcome, strategyFallback }
 }
 
+/** What resolved a finished rebase's or merge's conflicts: its plans, and what rerere replayed. */
+interface Integrated {
+  resolved: PathPlan[]
+  replayed: string[]
+}
+
 type RebaseAttempt =
-  | { kind: 'done'; resolved: PathPlan[]; repaired: Repaired[]; tracked: RerereTracked[] }
+  | ({ kind: 'done'; repaired: Repaired[]; tracked: RerereTracked[] } & Integrated)
   | { kind: 'stuck'; needsHuman: { path: string; why: string }[] }
   | { kind: 'failed'; reason: string; unrecorded?: true }
 
-/**
- * Replay the branch onto `base`, running the fixed resolvers at every stop.
- *
- * Generated files tend to conflict on every commit that touches them. Clearing
- * only the first stop would leave exactly those files failing at the second.
- * A stop the resolvers cannot clear is repaired when `limits.repair` is set,
- * for at most `limits.maxRepairs` stops. Otherwise, or past that cap, it
- * aborts the rebase, leaves the worktree clean, and returns `stuck` for the
- * caller to merge or report.
- */
 /** The request for a repair of unclaimed conflicts, at a rebase stop when `replaying` is set. */
 function conflictRequest(
   target: UpdateTarget,
@@ -578,6 +614,16 @@ function conflictRequest(
   }
 }
 
+/**
+ * Replay the branch onto `base`, running the fixed resolvers at every stop.
+ *
+ * Generated files tend to conflict on every commit that touches them. Clearing
+ * only the first stop would leave exactly those files failing at the second.
+ * A stop the resolvers cannot clear is repaired when `limits.repair` is set,
+ * for at most `limits.maxRepairs` stops. Otherwise, or past that cap, it
+ * aborts the rebase, leaves the worktree clean, and returns `stuck` for the
+ * caller to merge or report.
+ */
 async function rebaseThroughRungs(
   git: Git,
   base: string,
@@ -587,6 +633,9 @@ async function rebaseThroughRungs(
   limits: {
     /** The git environment of the rebase and each `--continue` ({@link integrationEnv}). */
     env: Record<string, string>
+    /** Whether `env` turns rerere on ({@link rerereOn}). */
+    rerere: boolean
+    ledger: RerereLedger | undefined
     maxStops: number
     upstream?: string | undefined
     repair: Repair | null
@@ -602,7 +651,7 @@ async function rebaseThroughRungs(
   // merge runs in this same worktree.
   const reset = (): void => {
     git.try.rebaseAbort({ env: limits.env })
-    dropNewResolutions(tracked)
+    dropNewResolutions(tracked, limits.ledger)
     git.try.resetHard('HEAD')
     git.clean({ directories: true, nested: true })
   }
@@ -612,6 +661,7 @@ async function rebaseThroughRungs(
   }
 
   const resolved: PathPlan[] = []
+  const replayed: string[] = []
   const repaired: Repaired[] = []
   let outcome
   try {
@@ -628,15 +678,10 @@ async function rebaseThroughRungs(
     for (let stops = 0; outcome.status === 'conflict'; stops += 1) {
       if (stops >= limits.maxStops)
         return failed(`rebase ${base}: no progress after ${stops} stops`)
-      tracked.push(...rerereTracked(git))
-      const paths = conflictedPaths(git)
-      // An empty list after a reported conflict means rerere replayed a resolution recorded
-      // earlier, in this run or an earlier one, and staged it (`rerere.autoUpdate`, set by
-      // `integrationEnv`). The resolution still goes through verify.
-      const plans =
-        paths.length === 0
-          ? []
-          : planPaths(paths, settings.resolvers, settings.lockfileInstall, settings.generators)
+      // Listed before anything here can record a resolution: a rebuild, a repair, `--continue`.
+      track(git, tracked, limits.ledger)
+      const stop = planStop(git, settings, worktree, limits.rerere ? limits.env : null)
+      const { plans } = stop
       const needsHuman = withGitlinkCommits(git, unclaimed(plans), true)
       const stuck = (humans: { path: string; why: string }[]): RebaseAttempt => {
         reset()
@@ -664,6 +709,7 @@ async function rebaseThroughRungs(
             needsHuman,
             sha === null ? undefined : { sha, subject: git.logSubject(sha) ?? '', onto: base },
           ),
+          limits.ledger,
         )
         if (!res.ok) return stuck(needsHuman.map((c) => ({ path: c.path, why: res.reason })))
         repaired.push({ kind: 'conflict', note: res.note })
@@ -681,6 +727,7 @@ async function rebaseThroughRungs(
         return failed(`continuing the rebase: ${errorLine(e)}`)
       }
       resolved.push(...plans)
+      for (const path of stop.replayed) if (!replayed.includes(path)) replayed.push(path)
     }
   } catch (e) {
     // A throw (a generator's, say) still abandons the rebase and drops what its earlier stops
@@ -692,7 +739,7 @@ async function rebaseThroughRungs(
     }
     throw e
   }
-  return { kind: 'done', resolved, repaired, tracked }
+  return { kind: 'done', resolved, replayed, repaired, tracked }
 }
 
 /** The repair for `kind`, or null: a rehearsal, no repair, or `kind` not in `repairOn`. */
@@ -716,8 +763,8 @@ async function integrateAndPush(
   target: UpdateTarget,
   settings: UpdateSettings,
   runVerb: RunVerb,
-  opts: { apply: boolean; worktree: string },
-  rebased: PathPlan[] | null,
+  opts: UpdateOneOptions,
+  rebased: Integrated | null,
   submodulesBefore: string | null,
   rebaseRepaired: Repaired[] = [],
   /** Gets the conflicts rerere tracks in the merge, for the caller to drop on a failure. */
@@ -739,7 +786,7 @@ async function integrateAndPush(
         env,
       })
     } catch (e) {
-      git.try.mergeAbort()
+      git.try.mergeAbort({ env })
       return { status: 'failed', reason: `merge ${base}: ${errorLine(e)}` }
     }
   }
@@ -748,7 +795,7 @@ async function integrateAndPush(
   const repairFor = (kind: RepairKind): Repair | null => repairOf(settings, kind, opts.apply)
   const repaired: Repaired[] = [...rebaseRepaired]
   const fail = (reason: string, unrecorded = false, verifyLog?: string): UpdateOutcome => {
-    git.try.mergeAbort()
+    git.try.mergeAbort({ env })
     // A rebuild or repair can leave edits, intent-to-add entries and untracked
     // files, which the next PR's `add .` would otherwise pick up.
     git.try.resetHard('HEAD')
@@ -770,25 +817,28 @@ async function integrateAndPush(
     reason,
   })
 
-  const resolved: PathPlan[] = rebased ?? []
+  const resolved: PathPlan[] = rebased?.resolved ?? []
+  const replayed: string[] = rebased?.replayed ?? []
   if (outcome?.status === 'conflict') {
-    tracked.push(...rerereTracked(git))
-    const paths = conflictedPaths(git)
-    // See `rebaseThroughRungs` for an empty list.
-    const plans =
-      paths.length === 0
-        ? []
-        : planPaths(paths, settings.resolvers, settings.lockfileInstall, settings.generators)
+    // Listed before anything here can record a resolution: a rebuild, a repair, the commit.
+    track(git, tracked, opts.ledger)
+    const stop = planStop(git, settings, opts.worktree, rerereOn(settings, opts.apply) ? env : null)
+    const { plans } = stop
     const needsHuman = withGitlinkCommits(git, unclaimed(plans), false)
     const repair = repairFor('conflict')
     if (needsHuman.length > 0 && repair === null) {
-      git.try.mergeAbort()
+      git.try.mergeAbort({ env })
       return { status: 'conflict', needsHuman }
     }
     const failure = rebuild(git, plans, settings, runVerb, opts.worktree)
     if (failure !== null) return fail(failure)
     if (needsHuman.length > 0 && repair !== null) {
-      const res = await tryRepair(git, repair, conflictRequest(target, opts.worktree, needsHuman))
+      const res = await tryRepair(
+        git,
+        repair,
+        conflictRequest(target, opts.worktree, needsHuman),
+        opts.ledger,
+      )
       if (!res.ok) return fail(res.reason)
       repaired.push({ kind: 'conflict', note: res.note })
     }
@@ -800,12 +850,11 @@ async function integrateAndPush(
       // rerere records the resolution here (see `integrationEnv`).
       git.commit({
         message: mergeTitle(target),
-        body:
-          paths.length === 0
-            ? 'Conflicts resolved by git rerere, from a resolution recorded earlier.'
-            : repaired.length > 0
-              ? 'Conflicts resolved by rebuilding the generated artifacts and the repair.'
-              : 'Conflicts resolved by rebuilding the generated artifacts.',
+        body: resolutionBody(
+          plans.some((p) => p.kind !== 'unclaimed'),
+          repaired.length > 0,
+          stop.replayed,
+        ),
         // The project's checks belong to `verify:`, run once per PR under the
         // caller's control. Otherwise git would run the commit hooks here and
         // nowhere else, so whether they ran would depend on the strategy. The
@@ -817,6 +866,7 @@ async function integrateAndPush(
       return fail(`committing the resolution: ${errorLine(e)}`)
     }
     resolved.push(...plans.filter((p) => p.kind !== 'unclaimed'))
+    replayed.push(...stop.replayed)
   }
 
   const submodulesAfter = submoduleState(git, opts.worktree, settings)
@@ -860,7 +910,11 @@ async function integrateAndPush(
   const builtOid = built === null ? {} : { builtOid: built }
   if (!opts.apply) return { status: 'updated', resolved, pushed: false, ...builtOid }
 
-  const extra = { ...builtOid, ...(repaired.length > 0 ? { repaired } : {}) }
+  const extra = {
+    ...builtOid,
+    ...(replayed.length > 0 ? { replayed } : {}),
+    ...(repaired.length > 0 ? { repaired } : {}),
+  }
   if (target.strategy === 'rebase' && settings.confirmPush !== undefined) {
     let preview
     try {
@@ -1051,57 +1105,135 @@ export function targetGitEnv(
   return path === undefined ? env : { ...env, PATH: path }
 }
 
+/** Whether git's rerere is on for this PR's integration: `apply`, and `UpdateSettings.rerere`. */
+function rerereOn(settings: UpdateSettings, apply: boolean): boolean {
+  return apply && settings.rerere === true
+}
+
 /**
  * The environment of the git calls that integrate the base and record a resolution: the rebase
- * and each `--continue`, the merge and its resolution commit. `targetGitEnv`, with git's rerere on
- * in an `--apply` run and off otherwise, whatever the person's own config says.
+ * and each `--continue`, the merge, its abort and its resolution commit. `targetGitEnv`, with
+ * git's rerere on when {@link rerereOn} says so and off otherwise, whatever the repository's own
+ * config says.
  *
+ * On, which `update.ts` asks for only in a managed clone, where pr-update owns `rr-cache/`:
  * - `rerere.enabled=true`: at a conflict git replays a resolution recorded earlier for the same
  *   conflict, and at the commit it records the one pr-update made. It is kept only if the PR is
  *   pushed (`dropNewResolutions`). So a stack of sibling PRs that meet one conflict needs it
  *   resolved once, by a resolver or a repair, not once per PR.
- * - `rerere.autoUpdate=true`: a replayed path is staged, so it is not listed as conflicted and
- *   no resolver or repair is asked about it. The replayed content still goes through verify.
+ * - `rerere.autoUpdate=false`: a replayed path stays conflicted in the index, with the replayed
+ *   content in the worktree, so the run can tell which paths were replayed (`replayedPaths`),
+ *   report them, and still rebuild a path a resolver claims. `add .` stages the rest.
  *
- * Resolutions are kept in the repository's common git directory, `rr-cache/`: the person's own
- * checkout for the project root and a located checkout, the clone for a cloned target. Once
- * there, git turns rerere on for the person's own merges in that checkout too, unless their
- * config says `rerere.enabled=false`. `pr_update.rerere: false` turns it off for pr-update.
- *
- * A rehearsal records nothing, so it does not use rerere at all, and may report a conflict that
- * an `--apply` run clears with a recorded resolution.
+ * Off, `rerere.enabled=false`: in the project root and a located checkout, the person's own
+ * `rr-cache/` and rerere config are never used, and no `rr-cache/` is made there. A rehearsal
+ * records nothing, so it is off everywhere, and may report a conflict that an `--apply` run in a
+ * clone clears with a recorded resolution.
  */
 function integrationEnv(settings: UpdateSettings, apply: boolean): Record<string, string> {
-  const on = apply && settings.rerere !== false
   return targetGitEnv(
     process.env,
-    on
+    rerereOn(settings, apply)
       ? [
           ['rerere.enabled', 'true'],
-          ['rerere.autoUpdate', 'true'],
+          ['rerere.autoUpdate', 'false'],
         ]
       : [['rerere.enabled', 'false']],
   )
 }
 
 /**
+ * The plan for the conflicts git stopped on: every conflicted path git reports, given to the
+ * resolvers, less the paths rerere replayed that no resolver claims (`replayed`, in git's order).
+ * A replayed path a resolver claims stays in `plans` and is rebuilt, so a generator's output is
+ * never left to an old replay. `rerere` is the integration's environment when rerere is on.
+ */
+function planStop(
+  git: Git,
+  settings: UpdateSettings,
+  worktree: string,
+  rerere: Record<string, string> | null,
+): { plans: PathPlan[]; replayed: string[] } {
+  const paths = conflictedPaths(git)
+  const replays = new Set(rerere === null ? [] : replayedPaths(git, paths, worktree, rerere))
+  const plans = planPaths(
+    paths,
+    settings.resolvers,
+    settings.lockfileInstall,
+    settings.generators,
+  ).filter((p) => !(p.kind === 'unclaimed' && replays.has(p.path)))
+  const replayed = paths.filter((p) => replays.has(p) && !plans.some((q) => q.path === p))
+  return { plans, replayed }
+}
+
+/**
+ * Which of the conflicted `paths` git's rerere replayed a recorded resolution into: those
+ * `git rerere remaining` does not list. With `rerere.autoUpdate=false` a replayed path stays
+ * conflicted in the index, but `remaining` leaves it out, while it lists every conflict rerere
+ * did not resolve, those it cannot handle (a delete against a change, a binary file) included.
+ *
+ * None, to be safe, when the worktree has no `MERGE_RR` (rerere did not run), when `remaining`
+ * fails, or when a path holds a newline (`remaining` prints one path a line, unquoted). A path
+ * whose file still holds conflict markers is not counted as replayed either.
+ */
+function replayedPaths(
+  git: Git,
+  paths: readonly string[],
+  worktree: string,
+  env: Record<string, string>,
+): string[] {
+  if (paths.length === 0 || paths.some((p) => p.includes('\n'))) return []
+  let remaining: Set<string>
+  try {
+    const mergeRr = resolve(
+      git.cwd,
+      git.rawChecked(['rev-parse', '--git-path', 'MERGE_RR']).stdout.trim(),
+    )
+    if (!existsSync(mergeRr)) return []
+    const listed = git.rawChecked(['rerere', 'remaining'], { env }).stdout
+    remaining = new Set(listed.split('\n').filter((line) => line !== ''))
+  } catch {
+    return []
+  }
+  return paths.filter((p) => !remaining.has(p) && !hasConflictMarkers(join(worktree, p)))
+}
+
+/** The body of a merge commit that resolved conflicts: what resolved them. */
+function resolutionBody(rebuilt: boolean, repaired: boolean, replayed: readonly string[]): string {
+  const by = [
+    ...(rebuilt ? ['rebuilding the generated artifacts'] : []),
+    ...(repaired ? ['the repair'] : []),
+    ...(replayed.length > 0
+      ? [`git rerere, from a resolution recorded earlier (${replayed.join(', ')})`]
+      : []),
+  ]
+  if (by.length === 0) return 'Conflicts resolved.'
+  const last = by.pop()!
+  return `Conflicts resolved by ${by.length === 0 ? last : `${by.join(', ')} and ${last}`}.`
+}
+
+/**
  * A conflict rerere tracks in one worktree: the `postimage` file its resolution is recorded in,
- * and whether that file was there when read (a resolution recorded earlier, which git replays).
+ * the `preimage` file of the same variant, and whether the postimage was there when read (a
+ * resolution recorded earlier).
  */
 interface RerereTracked {
   postimage: string
+  preimage: string
   had: boolean
 }
 
 /**
  * The conflicts rerere tracks in `git`'s worktree now, from its `MERGE_RR` (`<id>\t<path>`
  * entries, NUL-separated, written while a merge or rebase stops). Empty when rerere is off.
+ * A path rerere replayed is not among them: git leaves it out of `MERGE_RR`.
  *
  * One conflict can have several variants in `rr-cache/<id>/`, one per preimage: git gives a
- * conflict a variant of its own while another checkout's preimage of it has no resolution yet.
- * `MERGE_RR` names variant 0 `<id>`, recorded in `postimage`, and variant n `<id>.<n>`, recorded
- * in `postimage.<n>`. Only this worktree's variant is tracked, so a resolution the person records
- * for the same conflict in their own checkout meanwhile is never taken for pr-update's.
+ * conflict a new variant when none of its recorded ones replays cleanly, and never reuses one that
+ * holds a preimage. `MERGE_RR` names variant 0 `<id>`, recorded in `preimage` and `postimage`,
+ * and variant n `<id>.<n>`, in `preimage.<n>` and `postimage.<n>`. Only this worktree's variant
+ * is tracked, so a resolution another run records for the same conflict meanwhile is never taken
+ * for this one's.
  */
 function rerereTracked(git: Git): RerereTracked[] {
   let mergeRr: string
@@ -1122,26 +1254,174 @@ function rerereTracked(git: Git): RerereTracked[] {
     .filter((entry) => entry.includes('\t'))
     .map((entry) => {
       const [id, variant] = entry.slice(0, entry.indexOf('\t')).split('.')
-      const name = variant === undefined ? 'postimage' : `postimage.${variant}`
-      const postimage = join(cache, id!, name)
-      return { postimage, had: existsSync(postimage) }
+      const suffix = variant === undefined ? '' : `.${variant}`
+      const postimage = join(cache, id!, `postimage${suffix}`)
+      return {
+        postimage,
+        preimage: join(cache, id!, `preimage${suffix}`),
+        had: existsSync(postimage),
+      }
     })
+}
+
+/**
+ * Add the conflicts rerere tracks in `git`'s worktree now to `tracked`, and to the run's
+ * `ledger`, which lists them before anything can record a resolution for them.
+ */
+function track(git: Git, tracked: RerereTracked[], ledger: RerereLedger | undefined): void {
+  const now = rerereTracked(git)
+  tracked.push(...now)
+  ledger?.add(now)
 }
 
 /**
  * Remove each resolution recorded for `tracked` since it was read: one pr-update did not accept.
  * A resolution is accepted only when its PR is pushed, so this runs for a repair pr-update
- * rejected, a rebase it abandoned, and a PR that was not pushed after its resolutions were
- * committed (verify rejected them, the push failed, or the person declined it). A repair that
- * commits, or runs `rebase --continue`, is rejected for moving HEAD, but git has already recorded
- * its resolution, since rerere is on for any git in a repository with an `rr-cache/`.
- * `git rerere forget` cannot clear any of these: it needs the conflict still in the index. Only
- * the variant this worktree recorded goes (see {@link rerereTracked}), and only when it was not
- * there before.
+ * rejected, a rebase it abandoned, and a PR that was not pushed (it conflicted, verify rejected
+ * its resolutions, the push failed, or the person declined it). A repair that commits, or runs
+ * `rebase --continue`, is rejected for moving HEAD, but git has already recorded its resolution,
+ * since rerere is on for any git in a repository with an `rr-cache/`. `git rerere forget` cannot
+ * clear any of these: it needs the conflict still in the index.
+ *
+ * Only the variant this worktree made goes (see {@link rerereTracked}), and only when its
+ * resolution was not there before: its postimage, its preimage, and the `<id>` folder when
+ * nothing else is left in it. So a PR that is not pushed, a `merge --abort` included, leaves no
+ * preimage-only folder behind. Each is then taken off `ledger`.
  */
-function dropNewResolutions(tracked: readonly RerereTracked[]): void {
-  for (const { postimage, had } of tracked) {
-    if (!had) rmSync(postimage, { force: true })
+function dropNewResolutions(
+  tracked: readonly RerereTracked[],
+  ledger?: RerereLedger | undefined,
+): void {
+  for (const t of tracked) if (!t.had) removeVariant(t)
+  ledger?.remove(tracked)
+}
+
+/** Remove a variant's postimage and preimage, then its `<id>` folder when that is left empty. */
+function removeVariant(t: Pick<RerereTracked, 'postimage' | 'preimage'>): void {
+  rmSync(t.postimage, { force: true })
+  rmSync(t.preimage, { force: true })
+  try {
+    rmdirSync(dirname(t.postimage))
+  } catch {
+    // Not empty (another variant, another run's), or gone already.
+  }
+}
+
+/**
+ * The folder, in a clone's git directory, where each run lists the resolutions it may record and
+ * has not accepted: `<run>.json`, where `<run>` is its worktree's `<pid>.<time>` name.
+ */
+const LEDGER_DIR = 'pr-update-rerere'
+
+/**
+ * A run's list of the rerere variants it has tracked and not yet accepted or dropped, kept in a
+ * file of the clone's git directory ({@link LEDGER_DIR}). It is written when a conflict is met,
+ * before a rebuild, a repair, a `--continue` or a commit can record a resolution, so a run killed
+ * after git recorded one, but before verify or the push accepted it, leaves the list behind. The
+ * next run served from the clone removes what a dead run listed before it integrates anything
+ * ({@link dropDeadRunResolutions}), so the unaccepted resolution is never replayed.
+ */
+interface RerereLedger {
+  /** List the variants in `tracked` that hold no resolution yet. */
+  add(tracked: readonly RerereTracked[]): void
+  /** Take `tracked` off the list: dropped, or accepted with its PR's push. */
+  remove(tracked: readonly RerereTracked[]): void
+  /** Remove the file, at the end of the run. */
+  close(): void
+}
+
+/**
+ * The ledger of the run whose worktree is `worktree`, in the git directory `git` serves, after
+ * removing what each dead run's ledger there lists ({@link dropDeadRunResolutions}).
+ */
+function openLedger(git: Git, worktree: string): RerereLedger | undefined {
+  dropDeadRunResolutions(git)
+  return rerereLedger(git, worktree)
+}
+
+/** The ledger of the run whose worktree is `worktree`, in the git directory `git` serves. */
+function rerereLedger(git: Git, worktree: string): RerereLedger | undefined {
+  const common = git.gitCommonDir()
+  if (common === null) return undefined
+  const dir = join(resolve(git.cwd, common), LEDGER_DIR)
+  const file = join(dir, `${basename(worktree)}.json`)
+  let listed: Pick<RerereTracked, 'postimage' | 'preimage'>[] = []
+  const save = (): void => {
+    if (listed.length === 0) {
+      rmSync(file, { force: true })
+      return
+    }
+    mkdirSync(dir, { recursive: true, mode: FOLDER_MODE })
+    atomicWrite(file, `${JSON.stringify(listed)}\n`)
+  }
+  return {
+    add(tracked) {
+      const fresh = tracked.filter(
+        (t) => !t.had && !listed.some((l) => l.postimage === t.postimage),
+      )
+      if (fresh.length === 0) return
+      listed.push(...fresh.map(({ postimage, preimage }) => ({ postimage, preimage })))
+      save()
+    },
+    remove(tracked) {
+      const gone = new Set(tracked.map((t) => t.postimage))
+      if (!listed.some((l) => gone.has(l.postimage))) return
+      listed = listed.filter((l) => !gone.has(l.postimage))
+      save()
+    },
+    close() {
+      listed = []
+      save()
+    },
+  }
+}
+
+/** A ledger's file name: the `<pid>.<time>` of the run's worktree, as `update` names it. */
+const LEDGER_NAME = /^(\d+)\.\d+\.json$/
+
+/** A rerere file a ledger may name: `preimage` or `postimage`, with a variant number or none. */
+const VARIANT_FILE = /^(pre|post)image(\.\d+)?$/
+
+/**
+ * Remove the resolutions each dead run listed in its ledger in `git`'s repository, and its
+ * ledger. A run is dead when no process has its pid, the rule `releaseStaleScratch` uses. Only a
+ * `preimage` or `postimage` file directly in a folder of the repository's `rr-cache/` is removed;
+ * a ledger that cannot be read is removed with nothing else.
+ */
+function dropDeadRunResolutions(git: Git): void {
+  let common: string | null
+  try {
+    common = git.gitCommonDir()
+  } catch {
+    return
+  }
+  if (common === null) return
+  const root = resolve(git.cwd, common)
+  const dir = join(root, LEDGER_DIR)
+  const cache = join(root, 'rr-cache')
+  let names: string[]
+  try {
+    names = readdirSync(dir)
+  } catch {
+    return
+  }
+  for (const name of names) {
+    const run = LEDGER_NAME.exec(name)
+    if (run === null || isAlive(Number(run[1]))) continue
+    const file = join(dir, name)
+    let listed: unknown
+    try {
+      listed = JSON.parse(readFileSync(file, 'utf8'))
+    } catch {
+      listed = []
+    }
+    const inCache = (p: unknown): p is string =>
+      typeof p === 'string' && dirname(dirname(p)) === cache && VARIANT_FILE.test(basename(p))
+    for (const entry of Array.isArray(listed) ? listed : []) {
+      const { postimage, preimage } = (entry ?? {}) as Record<string, unknown>
+      if (inCache(postimage) && inCache(preimage)) removeVariant({ postimage, preimage })
+    }
+    rmSync(file, { force: true })
   }
 }
 
@@ -1213,6 +1493,7 @@ async function tryRepair(
   git: Git,
   repair: Repair,
   req: RepairRequest,
+  ledger?: RerereLedger | undefined,
 ): Promise<{ ok: true; note: string } | { ok: false; reason: string }> {
   const headBefore = git.resolveRef('HEAD')
   const refsBefore = refNames(git)
@@ -1223,11 +1504,11 @@ async function tryRepair(
   try {
     res = await repair(req)
   } catch (e) {
-    dropNewResolutions(tracked)
+    dropNewResolutions(tracked, ledger)
     return { ok: false, reason: `repair (${req.kind}) threw: ${errorLine(e)}` }
   }
   const rejected = (why: string): { ok: false; reason: string } => {
-    dropNewResolutions(tracked)
+    dropNewResolutions(tracked, ledger)
     return {
       ok: false,
       reason: `repair (${req.kind}) ${why}${res.note === '' ? '' : ` — ${res.note}`}`,
@@ -1290,6 +1571,9 @@ export function describeOutcome(o: UpdateOutcome): string {
       const notes = [
         ...(o.strategyFallback !== undefined ? ['rebase fell back to merge'] : []),
         ...(o.resolved.length > 0 ? [`resolved ${o.resolved.length}`] : []),
+        ...(o.replayed !== undefined && o.replayed.length > 0
+          ? [`replayed ${o.replayed.length} by rerere`]
+          : []),
         ...(o.repaired ?? []).map((r) => `repaired ${r.kind}`),
       ]
       return `updated${notes.length > 0 ? ` (${notes.join(', ')})` : ''}`
@@ -1376,6 +1660,8 @@ export async function updateAll(
 
   const records = opts.records ?? PRUNE_ALL
   releaseStaleScratch(git, records)
+  // Before anything here integrates, so no PR replays a resolution a killed run never accepted.
+  const ledger = rerereOn(settings, opts.apply) ? openLedger(git, opts.worktreeRoot) : undefined
   const start = `${settings.remote}/${targets[0]!.base}`
   // The folders above the worktree are made here, not by git, which would make them under the
   // umask: a prune refuses a folder someone else can write to.
@@ -1416,9 +1702,10 @@ export async function updateAll(
       }
       let outcome: UpdateOutcome
       try {
-        outcome = await updateOne(wt, target, settings, runVerb, {
+        outcome = await updateOneIn(wt, target, settings, runVerb, {
           apply: opts.apply,
           worktree: opts.worktreeRoot,
+          ledger,
         })
       } finally {
         grant?.release()
@@ -1472,6 +1759,8 @@ export async function updateAll(
     }
     if (opts.lock === undefined) remove()
     else opts.lock.removing(remove)
+    // Every PR it listed was accepted or dropped, or threw past the drop.
+    ledger?.close()
   }
   return results
 }
