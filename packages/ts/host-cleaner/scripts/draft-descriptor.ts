@@ -28,6 +28,7 @@ import {
   parseDescriptor,
   type Os,
 } from '../src/descriptor/schema.ts'
+import { isObject } from '../src/helpers.ts'
 import { NODE_PLUGIN, NODE_PROJECT } from '../src/node.ts'
 import { COST_DESCRIPTIONS, type CostDescription } from '../src/types.ts'
 
@@ -96,7 +97,7 @@ interface Statement {
 
 /** `scope` when it sets a platform, since or until; undefined when it applies everywhere. */
 function narrowing(scope: unknown): Record<string, unknown> | undefined {
-  if (!isRecord(scope)) return undefined
+  if (!isObject(scope)) return undefined
   const set = Object.entries(scope).filter(
     ([, v]) => v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0),
   )
@@ -115,9 +116,6 @@ interface CorpusStore {
   /** Why each statement that may be any store's is not read. */
   strays: readonly string[]
 }
-
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /** A corpus's stores by slug, and its statements by the store they link to. */
 export interface StoreIndex {
@@ -232,7 +230,7 @@ function readStore(slug: string, index: StoreIndex): CorpusStore {
   for (const { path, data } of linked) {
     if (data['status'] !== 'current') continue
     const prop = data['proposition']
-    if (!isRecord(prop) || typeof prop['predicate'] !== 'string' || !isRecord(prop['object']))
+    if (!isObject(prop) || typeof prop['predicate'] !== 'string' || !isObject(prop['object']))
       throw new DraftError(
         `${path}: a current statement needs a proposition with a predicate and an object`,
       )
@@ -470,7 +468,7 @@ function draftDescriptor(store: CorpusStore): Draft {
   const cost = (v: unknown): v is CostDescription =>
     (COST_DESCRIPTIONS as readonly unknown[]).includes(v)
   const dirEntry = (d: unknown): d is DataDir =>
-    isRecord(d) &&
+    isObject(d) &&
     text(d['path']) &&
     typeof d['holds'] === 'string' &&
     isPathsName(d['holds']) &&
@@ -542,7 +540,7 @@ function draftDescriptor(store: CorpusStore): Draft {
     'project/build-dirs',
     'dirs',
     (b): b is BuildDir =>
-      isRecord(b) &&
+      isObject(b) &&
       text(b['path']) &&
       text(b['holds']) &&
       cost(b['rebuild']) &&
@@ -616,7 +614,7 @@ function draftDescriptor(store: CorpusStore): Draft {
             'clean/command',
             'commands',
             (c): c is { command: string; removes: string } =>
-              isRecord(c) && text(c['command']) && text(c['removes']),
+              isObject(c) && text(c['command']) && text(c['removes']),
             true,
           )
         : []
