@@ -10,6 +10,7 @@ import {
   pendingBumps,
   readsAcross,
   registryProblems,
+  unlistedPairs,
   suiteProblems,
   suiteReaders,
   versionProblems,
@@ -312,4 +313,31 @@ test('a suite path is read under the suites directory name', () => {
     [['packages/ts/dirs', ['dirs']]],
   )
   assert.deepEqual([...suiteReaders(files)], [])
+})
+
+test('unlistedPairs needs both twins registered, and exemptions are own keys only', () => {
+  const none = new Set<string>()
+  const libs = {
+    rust: ['packages/rust/constructor', 'packages/rust/half'],
+    ts: ['packages/ts/constructor', 'packages/ts/half'],
+  }
+  const empty = { notFamilies: {}, noSuiteYet: {} }
+  assert.deepEqual(unlistedPairs(libs, new Set(['packages/ts/half']), none, empty), [
+    'constructor: packages/rust/constructor and packages/ts/constructor are not in families.json; register the family, or list constructor in config.json notFamilies or noSuiteYet',
+    'half: packages/rust/half is not in families.json; register the family, or list half in config.json notFamilies or noSuiteYet',
+  ])
+})
+
+test('unlistedPairs reports an exemption whose name is no longer a same-name pair', () => {
+  const libs = { rust: ['packages/rust/both', 'packages/rust/rustonly'], ts: ['packages/ts/both'] }
+  const registered = new Set(['packages/rust/both', 'packages/ts/both'])
+  const exempt = {
+    notFamilies: { gone: 'x', rustonly: 'y' },
+    noSuiteYet: { gone: 'z' },
+  }
+  assert.deepEqual(unlistedPairs(libs, registered, new Set(), exempt), [
+    'gone: in config.json notFamilies, but packages/rust/gone and packages/ts/gone are not both libraries; remove it from notFamilies',
+    'rustonly: in config.json notFamilies, but packages/rust/rustonly and packages/ts/rustonly are not both libraries; remove it from notFamilies',
+    'gone: in config.json noSuiteYet, but packages/rust/gone and packages/ts/gone are not both libraries; remove it from noSuiteYet',
+  ])
 })

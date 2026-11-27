@@ -17,10 +17,14 @@ const sections = suite.sections
 
 const HOST = process.platform === 'win32' ? 'windows' : 'unix'
 
+/** Whether the case names this host, or names no platform. */
+function onThisPlatform(c: Case): boolean {
+  return c.platforms === undefined || c.platforms.includes(HOST)
+}
+
 /** Whether a case runs on this host. */
 function runsHere(c: Case): boolean {
-  if (c.skip?.['ts'] !== undefined) return false
-  return c.platforms === undefined || c.platforms.includes(HOST)
+  return c.skip?.['ts'] === undefined && onThisPlatform(c)
 }
 
 describe('conformance suite', () => {
@@ -51,8 +55,7 @@ describe('conformance suite', () => {
 
   test('runs some case of every section here', () => {
     for (const [name, section] of Object.entries(sections)) {
-      // `write_atomic_mode` is for `unix` only, so it runs nowhere on Windows.
-      if (HOST === 'windows' && name === 'write_atomic_mode') continue
+      if (!section.cases.some(onThisPlatform)) continue
       expect(section.cases.filter(runsHere).length, name).toBeGreaterThan(0)
     }
   })

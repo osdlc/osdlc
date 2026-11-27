@@ -156,6 +156,11 @@ test('a family with one implementation needs a SPEC.md', () => {
       JSON.stringify({ dirs: { ...FAMILY, implementations: FAMILY.implementations.slice(0, 1) } }),
     )
     put('packages/rust/dirs/tests/c.rs', '// reads nothing')
+    // The fixture's Rust twin stays on disk; registering half a pair needs an exemption.
+    put(
+      'packages/conformance/config.json',
+      JSON.stringify({ noSuiteYet: { dirs: 'the Rust twin has no suite runner yet' } }),
+    )
   }
   assert.deepEqual(repo(one), [
     'dirs: a family with one implementation states its format in packages/conformance/dirs/SPEC.md',
@@ -276,4 +281,51 @@ test('a config.json it cannot read stops the check', () => {
     ['config.json: libraries.ts and libraries.rust end in different folder names'],
   )
   assert.match(repo((put) => put('packages/conformance/config.json', '{'))[0]!, /^config\.json: /)
+})
+
+test('a name in both language roots is a family, unmigrated or exempt', () => {
+  const twin = (put: Put) => {
+    put('packages/rust/twin/Cargo.toml', '[package]\nname = "twin"\nversion = "0.1.0"\n')
+    put('packages/ts/twin/package.json', JSON.stringify({ name: '@x/twin', version: '0.1.0' }))
+  }
+  const config = (put: Put, c: unknown) =>
+    put('packages/conformance/config.json', JSON.stringify(c))
+  assert.deepEqual(repo(twin), [
+    'twin: packages/rust/twin and packages/ts/twin are not in families.json; register the family, or list twin in config.json notFamilies or noSuiteYet',
+  ])
+  for (const key of ['notFamilies', 'noSuiteYet']) {
+    assert.deepEqual(
+      repo((put) => {
+        twin(put)
+        config(put, { [key]: { twin: 'a reason' } })
+      }),
+      [],
+    )
+  }
+  assert.deepEqual(
+    repo((put) => {
+      twin(put)
+      config(put, { unmigrated: ['packages/ts/twin'] })
+    }).filter((p) => p.startsWith('twin:')),
+    [],
+  )
+  assert.deepEqual(
+    repo((put) => config(put, { noSuiteYet: { dirs: 'later' } })),
+    ['dirs: in families.json and in config.json noSuiteYet; remove it from noSuiteYet'],
+  )
+  assert.deepEqual(
+    repo((put) => config(put, { notFamilies: { dirs: 'binding' } })),
+    ['dirs: in families.json and in config.json notFamilies; remove it from notFamilies'],
+  )
+})
+
+test('config.json validates notFamilies and noSuiteYet', () => {
+  for (const key of ['notFamilies', 'noSuiteYet']) {
+    assert.equal(
+      repo((put) =>
+        put('packages/conformance/config.json', JSON.stringify({ [key]: { a: '' } })),
+      ).length,
+      1,
+    )
+  }
 })

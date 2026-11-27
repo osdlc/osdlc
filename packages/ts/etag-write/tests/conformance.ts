@@ -8,12 +8,14 @@
  */
 import {
   chmodSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -66,6 +68,7 @@ export const INPUT_KEYS: Record<string, string[]> = {
   write_if_changed: ['existing', 'content'],
   write_atomic: ['existing', 'path', 'content'],
   write_atomic_mode: ['existingMode', 'content'],
+  write_atomic_symlink: ['linkedContent', 'content'],
 }
 
 /**
@@ -171,6 +174,7 @@ interface Input {
   content: Data
   path: string
   existingMode: string
+  linkedContent: Data
 }
 
 /** The outcome this package gives for one case of a section, on this host. */
@@ -237,6 +241,21 @@ export function run(section: string, raw: Record<string, unknown>): Outcome {
         return outcome(
           () => atomicWrite(target, toBytes(input.content as Data)),
           () => ({ mode: (statSync(target).mode & 0o7777).toString(8) }),
+        )
+      })
+    case 'write_atomic_symlink':
+      return inScratch(DEFAULT_PATH, undefined, (target, scratch) => {
+        const real = join(scratch, 'real.txt')
+        writeFileSync(real, toBytes(input.linkedContent as Data))
+        symlinkSync('real.txt', target)
+        return outcome(
+          () => atomicWrite(target, toBytes(input.content as Data)),
+          () => ({
+            content: contentOf(target),
+            linkedContent: contentOf(real),
+            isSymlink: lstatSync(target).isSymbolicLink(),
+            entries: entries(scratch),
+          }),
         )
       })
     default:

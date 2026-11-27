@@ -27,9 +27,21 @@ export interface ConformanceConfig {
    * paths as data.
    */
   skipScan: Record<string, string>
+  /**
+   * Names under both language roots that are not a second implementation of a
+   * family, such as a binding of a crate, each with the reason. A name that
+   * is a registered family fails the check.
+   */
+  notFamilies: Record<string, string>
+  /**
+   * Names under both language roots that are a real pair with no shared cases
+   * yet, each with what is missing. A name that is a registered family fails
+   * the check.
+   */
+  noSuiteYet: Record<string, string>
 }
 
-const KEYS = ['libraries', 'catchingUp', 'unmigrated', 'skipScan']
+const KEYS = ['libraries', 'catchingUp', 'unmigrated', 'skipScan', 'notFamilies', 'noSuiteYet']
 
 const isStringMap = (v: unknown): v is Record<string, string> =>
   isObject(v) && Object.values(v).every((x) => typeof x === 'string' && x.trim() !== '')
@@ -44,13 +56,15 @@ export function readConfig(raw: unknown): { config: ConformanceConfig } | { prob
     catchingUp: {},
     unmigrated: [],
     skipScan: {},
+    notFamilies: {},
+    noSuiteYet: {},
   }
   if (raw === undefined) return { config }
   if (!isObject(raw)) return { problems: ['config.json is not an object'] }
   const problems: string[] = []
   const extra = Object.keys(raw).filter((k) => !KEYS.includes(k))
   if (extra.length > 0) problems.push(`config.json: unknown keys ${extra.join(', ')}`)
-  const { libraries, catchingUp, unmigrated, skipScan } = raw
+  const { libraries, catchingUp, unmigrated, skipScan, notFamilies, noSuiteYet } = raw
   if (libraries !== undefined) {
     if (!isStringMap(libraries) || Object.keys(libraries).some((k) => k !== 'ts' && k !== 'rust')) {
       problems.push('config.json: libraries maps ts and rust to a directory')
@@ -80,6 +94,16 @@ export function readConfig(raw: unknown): { config: ConformanceConfig } | { prob
     if (!isStringMap(skipScan))
       problems.push('config.json: skipScan maps a library directory to a reason')
     else config.skipScan = skipScan
+  }
+  if (notFamilies !== undefined) {
+    if (!isStringMap(notFamilies))
+      problems.push('config.json: notFamilies maps a library name to a reason')
+    else config.notFamilies = notFamilies
+  }
+  if (noSuiteYet !== undefined) {
+    if (!isStringMap(noSuiteYet))
+      problems.push('config.json: noSuiteYet maps a library name to what is missing')
+    else config.noSuiteYet = noSuiteYet
   }
   return problems.length > 0 ? { problems } : { config }
 }

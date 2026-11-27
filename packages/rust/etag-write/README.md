@@ -103,8 +103,10 @@ for `etag_of_file`, `WriteError` for the write functions.
   not copied. A new file gets the same mode `fs::write` would give it: `0o666`
   less the umask on Unix. On Unix the temp file is created with the kept mode,
   so an owner-only file's new content is never readable by others mid-write.
-- **Temp files** are named `.<name>.etag-write-<pid>-<n>.tmp` in the target's
-  directory. If a name is taken, the next `<n>` is tried, up to 65 names in all.
+- **Temp files** are named `.<name>.<12 hex>.tmp` in the target's directory:
+  the name plus 18 bytes, as in the TypeScript package, so a file name of up to
+  237 bytes (on a 255-byte limit) can be written. The 12 hex digits are random.
+  If a name is taken, a new one is tried, up to 65 names in all.
 - **Parent directories** are created as needed.
 - **Symlinks.** The rename replaces a symlink at the target path with a
   regular file. It does not write through the link. The new file takes the
@@ -127,7 +129,7 @@ for `etag_of_file`, `WriteError` for the write functions.
 | Overwriting keeps the mode | `an_overwrite_keeps_the_old_file_mode` |
 | Overwriting drops setuid | `an_overwrite_drops_the_setuid_bit` |
 | A new file gets the `fs::write` mode | `a_new_file_gets_the_same_mode_as_fs_write` |
-| A taken temp name moves on; all 65 taken is an error | `a_taken_temp_name_moves_on_to_the_next_attempt`, `every_temp_name_taken_is_an_io_error` |
+| The temp name is the file name plus 18 bytes; a 237-byte file name is written | `the_temp_name_is_the_file_name_plus_18_bytes_and_differs_per_call`, `a_file_name_of_237_bytes_is_written` |
 | A symlink is replaced, not written through, and takes its target's mode | `a_symlink_at_the_target_is_replaced_not_written_through` |
 | Compare-and-swap rules, rows 1 to 6 | `cas_rejects_a_stale_etag_and_accepts_a_fresh_one`, `cas_rejects_a_blind_overwrite`, `cas_creates_when_absent_and_no_etag_is_sent`, `cas_creates_when_the_file_was_deleted_under_us`, `cas_refuses_to_overwrite_an_unreadable_file` |
 | `etag_of_file` on a missing and an unreadable file | `etag_of_file_is_none_for_a_missing_file`, `etag_of_file_is_an_error_for_an_unreadable_file` |

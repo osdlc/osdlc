@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - Unreleased
+
+Aligned with `@osdlc/etag-write` 0.3.1. The twins share the major and minor
+version.
+
+### Changed
+
+- The temp file is named `.<name>.<12 hex>.tmp` (the name plus 18 bytes), as in
+  the TypeScript package, not `.<name>.etag-write-<pid>-<n>.tmp`. A file name
+  of 232 to 237 bytes failed with `ENAMETOOLONG` before and is written now.
+
 ## [0.2.5](https://github.com/osdlc/osdlc/compare/etag-write/v0.2.4...etag-write/v0.2.5) - 2026-11-19
 
 ### Other

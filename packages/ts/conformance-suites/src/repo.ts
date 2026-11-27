@@ -20,6 +20,7 @@ import {
   registryProblems,
   suiteProblems,
   suiteReaders,
+  unlistedPairs,
   versionProblems,
   type Family,
   type Implementation,
@@ -135,6 +136,9 @@ export function checkRepo(root: string, options: RepoOptions = {}): string[] {
       listed.get(i.dir)!.add(name)
     }
   }
+  const registered = new Set(
+    Object.values(families).flatMap((f) => f.implementations.map((i) => i.dir)),
+  )
   const libraries = Object.values(config.libraries).flatMap((d) =>
     existsSync(join(root, d))
       ? readdirSync(join(root, d))
@@ -150,6 +154,17 @@ export function checkRepo(root: string, options: RepoOptions = {}): string[] {
     if (!libraries.includes(dir))
       problems.push(`config.json: unmigrated names ${dir}, which is not a library`)
   }
+  const librariesIn = (language: string): string[] =>
+    libraries.filter((d) => d.startsWith(`${config.libraries[language]}/`))
+  problems.push(
+    ...unlistedPairs(
+      { rust: librariesIn('rust'), ts: librariesIn('ts') },
+      registered,
+      new Set(config.unmigrated),
+      config,
+      { rust: config.libraries['rust']!, ts: config.libraries['ts']! },
+    ),
+  )
   const sources = new Map(
     libraries.filter((d) => config.skipScan[d] === undefined).map((d) => [d, testSources(root, d)]),
   )

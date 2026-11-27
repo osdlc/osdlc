@@ -17,6 +17,7 @@ export {
   registryProblems,
   suiteProblems,
   suiteReaders,
+  unlistedPairs,
   versionProblems,
   type Family,
   type Implementation,

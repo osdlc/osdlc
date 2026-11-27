@@ -415,3 +415,56 @@ export function generatorBuildFilters(
   }
   return filters
 }
+
+/**
+ * A name under both language roots is two implementations of one family, so
+ * each such name must be registered, unmigrated, or exempt. An exemption is
+ * stale when its name is registered or is not a library in both roots. A pair
+ * whose names differ is not found.
+ *
+ * @param registered - Implementation directories listed in families.json; both twins must be in it.
+ * @param unmigrated - Directories still reading the other language's fixtures.
+ * @param exempt - `notFamilies` for a binding of the other language's library,
+ *   `noSuiteYet` for a real pair with no shared cases yet.
+ * @param roots - The language roots, used only in messages.
+ * @returns One message per problem; empty when every pair is accounted for.
+ */
+export function unlistedPairs(
+  libraries: { rust: readonly string[]; ts: readonly string[] },
+  registered: ReadonlySet<string>,
+  unmigrated: ReadonlySet<string>,
+  exempt: { notFamilies: Record<string, string>; noSuiteYet: Record<string, string> },
+  roots: { rust: string; ts: string } = { rust: 'packages/rust', ts: 'packages/ts' },
+): string[] {
+  const problems: string[] = []
+  const nameOf = (dir: string): string => dir.slice(dir.lastIndexOf('/') + 1)
+  const tsByName = new Map(libraries.ts.map((d) => [nameOf(d), d]))
+  for (const rustDir of libraries.rust) {
+    const name = nameOf(rustDir)
+    const tsDir = tsByName.get(name)
+    if (tsDir === undefined) continue
+    const dirs = [rustDir, tsDir]
+    const unregistered = dirs.filter((d) => !registered.has(d))
+    const exemptions = (['notFamilies', 'noSuiteYet'] as const).filter((k) =>
+      Object.hasOwn(exempt[k], name),
+    )
+    if (unregistered.length === 0) {
+      for (const k of exemptions)
+        problems.push(`${name}: in families.json and in config.json ${k}; remove it from ${k}`)
+    } else if (exemptions.length === 0 && !dirs.some((d) => unmigrated.has(d))) {
+      problems.push(
+        `${name}: ${unregistered.join(' and ')} ${unregistered.length === 1 ? 'is' : 'are'} not in families.json; register the family, or list ${name} in config.json notFamilies or noSuiteYet`,
+      )
+    }
+  }
+  const rustNames = new Set(libraries.rust.map(nameOf))
+  for (const k of ['notFamilies', 'noSuiteYet'] as const) {
+    for (const name of Object.keys(exempt[k])) {
+      if (!rustNames.has(name) || !tsByName.has(name))
+        problems.push(
+          `${name}: in config.json ${k}, but ${roots.rust}/${name} and ${roots.ts}/${name} are not both libraries; remove it from ${k}`,
+        )
+    }
+  }
+  return problems
+}
