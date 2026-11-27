@@ -3,7 +3,7 @@
  * alone: the folders under `~/.scratch` (or `dir`) that have sat idle.
  * `tests/outside.test.ts` builds it in a package of its own.
  */
-import { readdirSync, statSync } from 'node:fs'
+import { readdirSync, statSync, type Dirent } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
 import {
@@ -37,7 +37,15 @@ export default definePlugin({
       },
       roots: () => [root],
       discover(ctx) {
-        return readdirSync(root, { withFileTypes: true })
+        let entries: Dirent[]
+        try {
+          entries = readdirSync(root, { withFileTypes: true })
+        } catch (err) {
+          // Removed since detect: nothing left to propose.
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
+          throw err
+        }
+        return entries
           .filter((e) => e.isDirectory())
           .flatMap((e): Candidate[] => {
             const path = join(root, e.name)

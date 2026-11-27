@@ -50,7 +50,7 @@ through the core, as the example's do. The plugin's own code never does.
 This plugin cleans the folders under `~/.scratch` that have sat idle:
 
 ```ts
-import { readdirSync, statSync } from 'node:fs'
+import { readdirSync, statSync, type Dirent } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
 import {
@@ -84,7 +84,15 @@ export default definePlugin({
       },
       roots: () => [root],
       discover(ctx) {
-        return readdirSync(root, { withFileTypes: true })
+        let entries: Dirent[]
+        try {
+          entries = readdirSync(root, { withFileTypes: true })
+        } catch (err) {
+          // Removed since detect: nothing left to propose.
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
+          throw err
+        }
+        return entries
           .filter((e) => e.isDirectory())
           .flatMap((e): Candidate[] => {
             const path = join(root, e.name)
@@ -162,7 +170,9 @@ What it relies on:
   back to the current folder.
 - **`discover`** skips the folders `ctx.ignore` covers. `kit.idle` throws on
   a folder it cannot read, since what it hides may be recent, so the plugin
-  leaves that folder out and still proposes the others.
+  leaves that folder out and still proposes the others. A root removed since
+  `detect` holds nothing to propose; another error reading it is thrown, and
+  the core prints it as a warning.
 
 The rules every plugin keeps:
 

@@ -380,6 +380,20 @@ describe("the guide's plugin, its walk out of time in one survey and not the oth
     }
   })
 
+  test('proposes nothing when its folder is removed after detect', async () => {
+    const dir = join(home, 'removed')
+    mkdirSync(dir)
+    const plugin = scratch.create({
+      settings: scratch.settings.parse({ dir }),
+      env,
+      kit: entry.pluginKit(scratch.name, { env }),
+    })
+    const ctx = fakeContext({ cwd: home })
+    expect(await plugin.detect(ctx)).toBe(true)
+    rmSync(dir, { recursive: true })
+    expect(await plugin.discover?.(ctx)).toEqual([])
+  })
+
   test('does not run when its folder is a file', async () => {
     const file = join(home, 'a-file')
     writeFileSync(file, 'x')
