@@ -28,7 +28,7 @@ import {
   statSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { PS_LSTART_ENV, startMs } from '@osdlc/repo-cleaner'
@@ -38,6 +38,7 @@ import {
   DISCOVER_LIMIT_MS,
   isGitWorktree,
   isObject,
+  isUnder,
   objector,
   realAbove,
   realOr,
@@ -391,9 +392,6 @@ type Entry =
   | { state: 'unknown'; problem: string }
   /** Live, remote, an empty window's, on a volume not mounted, or not a folder of the editor's. */
   | { state: 'skip' }
-
-const within = (path: string, dir: string): boolean =>
-  path === dir || path.startsWith(dir.endsWith(sep) ? dir : dir + sep)
 
 /** True when `path` is under a mount folder that is missing or empty. */
 function unmounted(path: string): boolean {
@@ -803,7 +801,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
     const real = dir ?? realAbove(c.path)
     // A window on a folder the worktree is in has its files open too.
     const holds = (named: Named): boolean =>
-      named.paths.some((p) => [real, c.path].some((d) => within(p, d) || within(d, p)))
+      named.paths.some((p) => [real, c.path].some((d) => isUnder(p, d) || isUnder(d, p)))
     if (holds(w.open)) {
       return [
         own(
@@ -886,7 +884,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
         // Resolved only where there is an agents' folder; `worktreeCheck` resolves it when it needs it.
         const dir = agentDir === undefined ? undefined : realAbove(c.path)
         const inside = (d: string | undefined): boolean =>
-          d !== undefined && (within(c.path, d) || (dir !== undefined && within(dir, d)))
+          d !== undefined && (isUnder(c.path, d) || (dir !== undefined && isUnder(dir, d)))
         if (inside(agentDir) || inside(agents)) {
           out.push(
             own(c, 'refuse', AGENT_WORKTREE, `${editor.product}'s agents keep it (${agents})`),
