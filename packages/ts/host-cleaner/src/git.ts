@@ -64,6 +64,10 @@ function candidateId(c: CleanCandidate): string {
   return c.kind === 'worktree' ? c.id : `${c.kind}:${c.repo}:${c.path}`
 }
 
+/** The sentence that names an archive pushed: its ref and the commit it lists. */
+const listsLine = (record: NonNullable<CandidateArchive['record']>): string =>
+  `${record.ref} lists ${record.sha}`
+
 /** The name `--spare` knows a row by: a branch's name, or the branch a worktree has checked out. */
 function nameOf(row: CleanCandidate): string | null {
   if (row.kind === 'branch') return row.path
@@ -218,7 +222,7 @@ export function gitPlugin(given: GitPluginOptions = {}): Plugin {
     prepare(c, ctx) {
       if (opts.archive === undefined) return
       const sentence = (a: { made: CandidateArchive; pushed: boolean }): string[] =>
-        a.pushed ? [`${a.made.record!.ref} lists ${a.made.record!.sha}`] : []
+        a.pushed ? [listsLine(a.made.record!)] : []
       if (c.owner !== 'git') {
         // What another plugin deletes inside a worktree is archived with it first.
         const made = worktreesHolding(c, ctx).flatMap((r) => sentence(archiveRepo(r, ctx)))
@@ -252,7 +256,7 @@ export function gitPlugin(given: GitPluginOptions = {}): Plugin {
       if (!result.ok) throw new Error(result.error ?? 'failed')
       const held = archived?.record?.parents.some((p) => p.rows.includes(row.id)) === true
       return [
-        ...(held ? [`${archived!.record!.ref} lists ${archived!.record!.sha}`] : []),
+        ...(held ? [listsLine(archived!.record!)] : []),
         ...result.steps.map((s) => s.verification ?? s.command),
       ].join('; ')
     },
