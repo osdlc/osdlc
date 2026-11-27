@@ -165,7 +165,8 @@ only on the port the target names (below). An SSH config alias in a remote
 (`git@github-work:o/r.git`) counts as the host `ssh -G` resolves it to; when
 ssh cannot resolve it, a note says so and the alias is used as written. Reports and
 `--pr` name a repository by `owner/name` alone, so one `owner/name` on two
-hosts in one run is a usage error (exit `2`).
+hosts in one run is a usage error (exit `2`), and so is one on two ports of a
+host.
 
 A target's PRs are listed on its own host. A target on the host of the
 project root's `origin`, the remote the project root's code host is picked

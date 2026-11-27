@@ -553,10 +553,11 @@ export function scopeToPrs(
 // ---------------------------------------------------------------------------
 
 /**
- * A host as two hosts are compared: lower-cased and without a port. A remote's
- * host is read without its port, and `--repo` keeps the one it names, so
- * `forgejo.local:3000` and `forgejo.local` are one host. It is also the host
- * of every path and trust key a target gets, so none holds a `:`.
+ * A host lower-cased and without a port: the host of every path and trust key
+ * a target gets, so none holds a `:`, and the host a remote's is compared with,
+ * since a remote's host is read without its port. Two `--repo`s are compared
+ * with their ports, and a checkout or clone serves a target only on its port
+ * (`locate.ts`, `cloneHostProblem` in `mirror.ts`).
  */
 export function hostKey(host: string): string {
   return host.toLowerCase().replace(/:\d+$/, '')
@@ -696,15 +697,13 @@ export function resolveTargets(
       root !== null &&
       repo === root.repo.toLowerCase() &&
       (!hostGiven || (rootHost !== null && hostKey(host) === hostKey(rootHost)))
-    const key = isRoot ? '' : `${hostKey(host)}/${repo}`
+    // With the port: two ports of one host may be two servers, and a run serves one of them.
+    const key = isRoot ? '' : `${host.toLowerCase()}/${repo}`
     if (seen.has(key)) continue
     seen.add(key)
     const first = named.get(repo)
     const at = isRoot ? rootHost : host
-    if (
-      first !== undefined &&
-      (first.host === null ? null : hostKey(first.host)) !== (at === null ? null : hostKey(at))
-    ) {
+    if (first !== undefined && first.host?.toLowerCase() !== at?.toLowerCase()) {
       throw new SurveyUsageError(
         `--repo ${first.text} and --repo ${text} are ${repo} on different hosts; a run takes one of them`,
       )

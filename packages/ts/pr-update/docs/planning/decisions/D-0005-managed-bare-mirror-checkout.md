@@ -824,9 +824,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - **Ports in names and paths.** A host's port is kept for `GH_HOST`, the
   clone's credential key and the report. Every clone, run worktree, kept and
   attempt path, and the trust key, use `hostKey`: the host lower-cased with
-  no port. So `forgejo.local:3000/x/y` and `forgejo.local/x/y` are one
-  target, and no path segment holds a `:`. (Changed during the build: S13,
-  below.) The CI review of the omnibus found that `--repo ghe.local:4000/o/n`
+  no port, so no path segment holds a `:`. `forgejo.local:3000/x/y` and
+  `forgejo.local/x/y` were one target. (Changed during the build: S13,
+  below; they are now `x/y` on two hosts, a usage error.) The CI review of the omnibus found that `--repo ghe.local:4000/o/n`
   was then served by a clone or a checkout of `ghe.local:3000`, so its PRs
   were listed from one server and pushed to the other. The owner asked for
   the smallest correct change (2026-11-27): a clone's marker records the host
@@ -840,7 +840,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   `http(s)` `origin` with its host, so a root on a port lists and serves its
   sibling repositories from that port. Paths and trust keys still drop the
   port, so two ports of one host still share them: the second port's target
-  is refused, never served from the first's clone.
+  is refused, never served from the first's clone. Two `--repo`s of one
+  `owner/name` on two ports of a host are a usage error, as on two hosts.
 - **What `--repo` accepts.** Its `host/owner/name`, port dropped, must be a
   key trust-repo accepts (`parseTrustRepo`): a host name, owner and name of
   at most 200 characters, and no name ending in `.git` (the message gives the

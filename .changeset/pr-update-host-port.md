@@ -10,4 +10,5 @@ machine is used only when its `origin` is an `http(s)` URL on the port
 `--repo` names (none, or the scheme's own, when it names none); with a port
 named, an ssh `origin` is not used, since its port cannot say. A bare
 `owner/name` on the project root's GitHub host now takes the port of the
-root's `origin` too.
+root's `origin` too. Two `--repo`s of one `owner/name` on two ports of a
+host are a usage error, as on two hosts, where they used to be one target.
