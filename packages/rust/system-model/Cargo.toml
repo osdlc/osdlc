@@ -1,11 +1,6 @@
 [package]
 name = "system-model"
-version = "0.1.0"
-# Held back from crates.io for now: a first release needs CARGO_REGISTRY_TOKEN,
-# so it cannot share a release-plz run with crates that publish through
-# trusted publishing (packages/README.md, crates.io rules 3, 4 and 7). Remove
-# this line, and its entry in release-plz.toml, in a pull request of its own.
-publish = false
+version = "0.10.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "A repository's system model: typed package manifests and the dependency graph they declare. The Rust twin of @osdlc/system-model."

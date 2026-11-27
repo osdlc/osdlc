@@ -46,19 +46,6 @@ release = false
 
 # Held back until its first release can have a release-plz run of its own; see its Cargo.toml.
 [[package]]
-name = "system-model"
-publish = false
-release = false
-
-# Not on crates.io yet; see the note in its Cargo.toml. `release = false`
-# also stops a tag being cut for a version that was not published.
-[[package]]
-name = "glob-intersect"
-publish = false
-release = false
-
-# Held back until its first release can have a release-plz run of its own; see its Cargo.toml.
-[[package]]
 name = "ref-lease"
 publish = false
 release = false

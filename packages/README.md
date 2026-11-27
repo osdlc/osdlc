@@ -161,7 +161,7 @@ Developed here, in this repository:
   `@osdlc/gfm-table`: GFM pipe tables as strings and byte offsets; not on
   crates.io yet)
 - `packages/rust/glob-intersect` (`glob-intersect`, the Rust implementation of
-  `@osdlc/intersect`: do two globs share a path; not on crates.io yet)
+  `@osdlc/intersect`: do two globs share a path)
 - `packages/rust/markdown-contract` (`markdown-contract` on crates.io, the Rust implementation
   of `@osdlc/markdown-contract`: contracts for markdown documents, checked
   against the package's corpus)
@@ -176,7 +176,7 @@ Developed here, in this repository:
   implementation of `@osdlc/file-lock`, so a Rust process and a Node.js process
   can hold one lock file in turn)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
-- `packages/rust/ref-lease` (`ref-lease` on crates.io, the Rust twin of
+- `packages/rust/ref-lease` (`ref-lease`, not on crates.io yet, the Rust twin of
   `@osdlc/ref-lease`: the protocol's pure half, not the git push and fetch)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/system-model` (`system-model` on crates.io, the Rust twin of `@osdlc/system-model`)
@@ -470,7 +470,6 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    - `gfm-pipe-table`, until its first release can have a release-plz run of
      its own: it needs `CARGO_REGISTRY_TOKEN` (rules 3, 4 and 7).
    - `ref-lease`, for the same reason.
-   - `system-model`, for the same reason.
 
 #### Versions and breaking changes
 

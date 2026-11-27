@@ -18,7 +18,7 @@ given to `matches` and `which_match` is read as a literal name, not a glob.
 
 ## Install
 
-Not on crates.io yet. When it is:
+From crates.io:
 
 ```sh
 cargo add glob-intersect
