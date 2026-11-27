@@ -537,6 +537,19 @@ describe('clean', () => {
     expect(ran().some((c) => c.startsWith('volume rm'))).toBe(false)
   })
 
+  test('volume rm and image rm have the delete limit, not the kit default', async () => {
+    const id = `${DOCKER_VOLUME}:pgdata`
+    const run = { ...ctx, allow: [DISCARD_USER_DATA] }
+    const { plugin, calls } = fakeDocker()
+    const s = await survey([plugin], run)
+    const receipt = await clean(plan(s, { pick: [id], allow: [DISCARD_USER_DATA] }), [plugin], run)
+    expect(receipt.status).toBe('complete')
+    const limit = (verb: string) =>
+      calls.find((c) => c.argv[1] === verb && c.argv[2] === 'rm')?.opts.timeoutMs
+    expect(limit('volume')).toBe(DELETE_LIMIT_MS)
+    expect(limit('image')).toBe(DELETE_LIMIT_MS)
+  })
+
   test('a dangling volume picked still needs --allow discard-user-data, and with it Docker removes it', async () => {
     const id = `${DOCKER_VOLUME}:pgdata`
     const only = { select: [id], pick: [id] }

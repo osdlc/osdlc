@@ -397,7 +397,10 @@ export function dockerPlugin(
         if (str(jsonLines(was.stdout)[0]?.CreatedAt) !== c.evidence.created) {
           throw new Error(`changed: volume ${c.ref} is not the one the plan showed`)
         }
-        const r = await docker(['volume', 'rm', '--', c.ref], ctx, { tolerate: onlyGone })
+        const r = await docker(['volume', 'rm', '--', c.ref], ctx, {
+          timeoutMs: DELETE_LIMIT_MS,
+          tolerate: onlyGone,
+        })
         return r.ok ? `docker volume rm removed volume ${c.ref}` : `already gone: volume ${c.ref}`
       }
       if (c.ref !== undefined && c.kind === DOCKER_IMAGE) {
@@ -414,7 +417,10 @@ export function dockerPlugin(
         if (tags.length > 0) {
           throw new Error(`changed: image ${c.ref} is tagged ${tags.join(', ')} since the plan`)
         }
-        const r = await docker(['image', 'rm', '--', c.ref], ctx, { tolerate: onlyGone })
+        const r = await docker(['image', 'rm', '--', c.ref], ctx, {
+          timeoutMs: DELETE_LIMIT_MS,
+          tolerate: onlyGone,
+        })
         return r.ok ? `docker image rm removed image ${c.ref}` : `already gone: image ${c.ref}`
       }
       if (c.kind === DOCKER_BUILD_CACHE && c.ref === BUILD_CACHE_REF) {
