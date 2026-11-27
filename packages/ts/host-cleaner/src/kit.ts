@@ -130,11 +130,12 @@ export interface Kit {
    * busy processes working in `in` (an idle shell is not busy). A name
    * matches a process when {@link commandHasName} finds it in its command
    * line (`ps -axo pid=,ppid=,args=`). This process and the unbroken line
-   * of ancestors above it whose command lines name host-cleaner are left
-   * out, so the `npm exec` or `pnpm dlx` that started it does not count, but
-   * an editor, terminal or `tmux` it runs inside does. The process table is
-   * read once per hook call, so a `delete` sees it fresh; one that could not
-   * be read stays unknown for the rest of that call.
+   * of ancestors above it whose command lines name host-cleaner as a word
+   * (as {@link commandHasName} finds one, a version after an `@` left off)
+   * are left out, so the `npm exec` or `pnpm dlx` that started it does not
+   * count, but an editor, terminal or `tmux` it runs inside does. The
+   * process table is read once per hook call, so a `delete` sees it fresh;
+   * one that could not be read stays unknown for the rest of that call.
    */
   running(where: string | { in: string } | { name: string }, ctx: Pick<Ctx, 'signal'>): Running
   /**
@@ -264,8 +265,17 @@ export function commandHasName(args: string, name: string): boolean {
 /** `ps` reads its own locale; `LC_ALL=C` keeps its output plain. */
 const PS_ENV = { LC_ALL: 'C' } as const
 
-/** What the command line of a launcher that started host-cleaner holds. */
+/** The name a launcher that started host-cleaner gives it. */
 const SELF = 'host-cleaner'
+
+/**
+ * Whether the command line `args` names host-cleaner as a word
+ * ({@link commandHasName}), a version after an `@` left off, as in
+ * `npm exec @osdlc/host-cleaner@1.2.3`; a folder named `host-cleaner-notes`
+ * does not.
+ */
+const namesSelf = (args: string): boolean =>
+  commandHasName(args.replace(/(?<=[^\s@])@\S*/g, ''), SELF)
 
 /**
  * Each process with its command line, this one and the launchers that
@@ -293,7 +303,7 @@ function commandLines(ps: CommandRunner): Array<{ pid: number; args: string }> {
   // `own` is also the guard against a loop.
   const own = new Set<number>([process.pid])
   let up = parents.get(process.pid)
-  while (up !== undefined && up > 0 && !own.has(up) && argsOf.get(up)?.includes(SELF) === true) {
+  while (up !== undefined && up > 0 && !own.has(up) && namesSelf(argsOf.get(up) ?? '')) {
     own.add(up)
     up = parents.get(up)
   }
