@@ -7,7 +7,7 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node`, `vscode`, `cursor`, `orca` and `docker` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker` and `ollama` plugins, and the `host-cleaner` command.
 It runs only when a person runs it: there is no scheduled or unattended run
 ([B-0001](docs/planning/backlog/B-0001-unattended-cleaning.md)).
 
@@ -18,7 +18,7 @@ The design it is heading to, descriptors and loadable plugins included, is the
 ## Phases
 
 Plugins run in the order they are given. The command line runs the shipped
-ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`.
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama`.
 The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
@@ -633,6 +633,33 @@ propose, it is a warning.
 host-cleaner clean --pick docker-volume:pgdata --allow discard-user-data
 ```
 
+## The `ollama` plugin
+
+Models that nobody has pulled or changed for `plugins.ollama.idleHours` (default
+24, or the config's top-level `idleHours`). Detected when `ollama` is on `PATH`
+and its server answers. Each hook first asks the server over HTTP
+(`$OLLAMA_HOST/api/version`), because the `ollama` CLI starts the app on macOS
+and Windows when the server is down. If the server does not answer, or
+`OLLAMA_HOST` names another machine or cannot be read, `detect` leaves the
+plugin out and says why in its note. This machine is a loopback or unspecified
+address (IPv4-mapped too), its host name, or an address of one of its network
+interfaces.
+
+| Phase | What it does |
+| --- | --- |
+| discover | Each model in `ollama list` is `ollama-model:<name>`, a ref with `costDescription: re-download` and the most its SIZE text can mean (ollama cuts 10 and more to a whole number and rounds less to a tenth unless it is whole, so `19 GB` is up to 20 GB, `3.9 GB` up to 3.95 GB, and `4 GB` is exact). Tags that share an ID share their files, so removing one alone frees nothing: each names the size and the other tags in its reason, the first carries the size when none of them is held, and the rest carry 0 bytes. Models with different IDs may share layers, which `ollama list` does not show, so a size is the most that removing one frees. Its age is the least time the MODIFIED text can mean (`4 days ago` is at least 95.5 hours); a model younger than the threshold, or with an age or size it cannot read, is held for a pick. Cloud models (SIZE `-`), with nothing on disk, are left out. Evidence is the name and the ID. |
+| object | A model `ollama ps` shows loaded, by name or ID, is refused `ollama-in-use`. Every other model gets an `ollama-use-unknown` protest. If `ollama ps` fails, or has not answered in 20 s, every model is refused `ollama-ps-failed`. |
+| delete | Reads `ollama list` and then `ollama ps` again, the loaded check last because `ollama rm` unloads a loaded model: a model now loaded or with another ID is not removed, one already gone is not a failure. Then `ollama rm <name>`, and checks the list no longer shows it; a list that fails after a successful `rm` is noted in the receipt, not a failure. The receipt says the most it freed, or which tags keep its files. |
+
+ollama records when a model was pulled, not when it was last run, so a model
+you run every day can look old. That is why every model carries the
+`ollama-use-unknown` protest: nothing is removed until you pass
+`--allow ollama-use-unknown`.
+
+```sh
+host-cleaner clean --allow ollama-use-unknown
+```
+
 ## Command line
 
 The command works in repo-cleaner's phases, with its flags. Nothing runs until
@@ -864,7 +891,7 @@ naming the plugin and the key.
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
 | `package` | a plugin loaded from a package | none | The npm package it is loaded from. |
-| `idleHours` | `cargo`, `node`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, fractions included (`0.5` is half an hour), and `0` takes every artifact. |
+| `idleHours` | `cargo`, `node`, `ollama`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, fractions included (`0.5` is half an hour), and `0` takes every artifact. |
 | `vars.<NAME>` | descriptors that declare `vars` | none | A folder (`~/…` or absolute) for one of the descriptor's variables. It wins over every source and may sit outside home. A name the descriptor does not declare is an error. It wins over the sources of the variables built from it too: `GOPATH` (go) moves the module cache even with go on PATH. |
 | `keepVolumes` | `docker` | `[]` | Volume names never proposed, even when no container uses them. |
 

@@ -479,6 +479,7 @@ describe('config entries and the run’s plugins', () => {
       'cursor',
       'orca',
       'docker',
+      'ollama',
       'alpha',
       'beta',
       'aardvark',

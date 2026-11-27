@@ -103,7 +103,7 @@ const run = async (plugins: Plugin[], opts: { select?: string[]; allow?: string[
 }
 
 describe('plugin order and duplicates', () => {
-  test('the shipped plugins are one definition each, in run order: git, cargo, node, vscode, cursor, orca, docker', () => {
+  test('the shipped plugins are one definition each, in run order: git, cargo, node, vscode, cursor, orca, docker, ollama', () => {
     expect(BUILT_IN_PLUGINS.map((d) => d.name)).toEqual([
       'git',
       'cargo',
@@ -112,6 +112,7 @@ describe('plugin order and duplicates', () => {
       'cursor',
       'orca',
       'docker',
+      'ollama',
     ])
     expect(BUILT_IN_PLUGINS.every((d) => d.api === PLUGIN_API)).toBe(true)
   })

@@ -152,3 +152,14 @@ export {
   type CursorOptions,
   type VscodeOptions,
 } from './vscode.ts'
+export {
+  OLLAMA_IN_USE,
+  OLLAMA_MODEL,
+  OLLAMA_PLUGIN,
+  OLLAMA_PS_FAILED,
+  OLLAMA_USE_UNKNOWN,
+  ollamaPlugin,
+  type LoadedModel,
+  type OllamaModel,
+  type OllamaOptions,
+} from './ollama.ts'

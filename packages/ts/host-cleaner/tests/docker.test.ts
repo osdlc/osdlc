@@ -711,7 +711,9 @@ describe('the contract', () => {
   })
 
   test('is a built-in, after orca, with keepVolumes defaulting to none', () => {
-    expect(BUILT_IN_PLUGINS.at(-1)).toBe(dockerDefinition)
+    const names = BUILT_IN_PLUGINS.map((d) => d.name)
+    expect(BUILT_IN_PLUGINS[names.indexOf('docker')]).toBe(dockerDefinition)
+    expect(names.indexOf('docker')).toBeGreaterThan(names.indexOf('orca'))
     expect(dockerDefinition.settings.parse({})).toEqual({ keepVolumes: [] })
   })
 })

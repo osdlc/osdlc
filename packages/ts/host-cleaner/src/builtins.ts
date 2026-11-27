@@ -8,6 +8,7 @@ import { cargoDefinition } from './cargo.ts'
 import { dockerDefinition } from './docker.ts'
 import { gitDefinition } from './git.ts'
 import { nodeDefinition } from './node.ts'
+import { ollamaDefinition } from './ollama.ts'
 import { orcaDefinition } from './orca.ts'
 import type { PluginDefinition } from './types.ts'
 import { cursorDefinition, vscodeDefinition } from './vscode.ts'
@@ -24,4 +25,5 @@ export const BUILT_IN_PLUGINS: readonly PluginDefinition[] = [
   cursorDefinition,
   orcaDefinition,
   dockerDefinition,
+  ollamaDefinition,
 ]
