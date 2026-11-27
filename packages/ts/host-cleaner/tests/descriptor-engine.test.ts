@@ -2146,7 +2146,8 @@ describe('what is walked and asked once', () => {
       }
       const few = await lists(1)
       expect(few).toBeGreaterThan(0)
-      expect(await lists(5)).toBe(few)
+      // The descriptor asks once a run; the core asks again right before each path delete, 8 more here.
+      expect(await lists(5)).toBe(few + 8)
     },
   )
 

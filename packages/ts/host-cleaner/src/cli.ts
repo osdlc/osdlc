@@ -1396,9 +1396,13 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   let receipt: Receipt
   try {
     mkdirSync(dirname(receiptPath), { recursive: true })
-    // Only what the person saw as `delete`: a block that clears while they decide must not add to it.
-    const approved = { ...plan, pick: preview.run.map((c) => c.id) }
-    receipt = await clean(approved, plugins, cctx, { source, receiptPath })
+    // Only what the person saw as `delete`, as the exact selection: a block that clears while they decide must not add to it.
+    const approved = { ...plan, select: preview.run.map((c) => c.id), pick: [] }
+    receipt = await clean(approved, plugins, cctx, {
+      source,
+      receiptPath,
+      dropped: preview.dropped,
+    })
   } catch (err) {
     logRun(dirs.logs, { at: now.toISOString(), source, receipt: receiptPath, status: 'failed' })
     return refusal(ctx, name, err)

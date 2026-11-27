@@ -290,6 +290,31 @@ describe('a plugin with no roots is held to the targets', () => {
     expect(refused(s)).toEqual([`file:${root}`, `file:${elsewhere}`])
   })
 
+  test('a linked worktree made in a root after the re-check refuses that root at the delete', async () => {
+    const root = temp()
+    makeGitFixture({ dir: root, initialBranch: 'main' })
+    sh(root, ['commit', '--allow-empty', '-m', 'initial'])
+    const cache = join(temp(), 'cache')
+    const old = join(cache, 'old')
+    mkdirSync(old, { recursive: true })
+    const deleted: string[] = []
+    const p: Plugin = {
+      ...cachePlugin([cache], [old]),
+      // Between the re-check's survey and the delete, a worktree lands in the candidate.
+      prepare: () => sh(root, ['worktree', 'add', '-q', join(old, 'wt'), '-b', 'late']),
+      delete: (c) => {
+        deleted.push(c.path!)
+        return `removed ${c.path}`
+      },
+    }
+    const run = { ...ctx, targets: [root] }
+    const receipt = await clean(plan(await survey([p], run)), [p], run)
+    expect(deleted).toEqual([])
+    expect(receipt.steps.map((x) => [x.result, x.error])).toEqual([
+      ['failed', expect.stringContaining(`it holds the checkout ${join(old, 'wt')}`)],
+    ])
+  })
+
   describe('a linked worktree whose registered folder is no longer it', () => {
     /** A repository as target with a linked worktree elsewhere, and a folder of a person's, with `sub/keep`, outside both. */
     const setup = () => {

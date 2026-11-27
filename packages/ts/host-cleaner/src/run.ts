@@ -1046,6 +1046,8 @@ export interface CleanOptions {
   dryRun?: boolean
   /** The receipt is rewritten here after every step. */
   receiptPath?: string
+  /** What the caller dropped before this re-check, such as the skips a preview showed: the receipt lists them ahead of its own. */
+  dropped?: readonly Dropped[]
   now?: () => Date
 }
 
@@ -1093,7 +1095,7 @@ async function cleanBound(
           startedAt: at,
           finishedAt: at,
           warnings: [...p.warnings],
-          dropped: [],
+          dropped: [...(opts.dropped ?? [])],
           steps: [],
         })
       } catch {
@@ -1109,7 +1111,7 @@ async function cleanBound(
     startedAt: now().toISOString(),
     finishedAt: null,
     warnings: [...p.warnings, ...s.warnings],
-    dropped: decision.dropped,
+    dropped: [...(opts.dropped ?? []), ...decision.dropped],
     steps: [],
   }
   const save = (): void => {
@@ -1208,7 +1210,9 @@ async function runOne(
     } catch (err) {
       return fail(err, `${c.owner}: roots failed: `)
     }
-    const at = { targets: s.ctx.targets, linked: s.linked, home: s.ctx.home ?? homedir() }
+    // Git is asked afresh: a worktree made since the survey must still refuse the root that holds it.
+    const linked = linkedCheckouts(s.ctx.targets)
+    const at = { targets: s.ctx.targets, linked, home: s.ctx.home ?? homedir() }
     const { roots, self, problems } = acceptRoots(answer, at)
     bounds = { roots, self, ...at }
     const why = outside(c, bounds)

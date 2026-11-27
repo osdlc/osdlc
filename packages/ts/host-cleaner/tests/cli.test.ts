@@ -2221,6 +2221,32 @@ describe('plan and clean', () => {
     expect(r.out).toContain('changed')
   })
 
+  test('clean --plan deletes only what the preview showed as delete, though a block clears before the delete', async () => {
+    const { env, cwd, home } = setup()
+    const planFile = join(home, 'plan.json')
+    await run(['plan', '-o', planFile], cwd, env, { plugins: [fake('a'), fake('b')] })
+    const busy: Objection[] = [
+      { by: 'b', candidate: 'artifact:b', level: 'refuse', code: 'busy', reason: 'in use' },
+    ]
+    // Busy at the preview's re-check, free again by the one right before the delete.
+    let checks = 0
+    const a = fake('a')
+    const b = { ...fake('b'), object: () => (++checks === 1 ? busy : []) }
+    const asked: string[] = []
+    const r = await run(['clean', '--plan', planFile], cwd, env, {
+      plugins: [a, b],
+      confirm: (q) => {
+        asked.push(q)
+        return true
+      },
+    })
+    expect(asked).toEqual(['Delete 1 item?'])
+    expect(a.removed).toEqual(['artifact:a'])
+    expect(b.removed).toEqual([])
+    // The preview and the receipt each name the skip and why.
+    expect(r.out.split('  skip    artifact:b\n          blocked: b: in use\n')).toHaveLength(3)
+  })
+
   test('--help and a missing plan file', async () => {
     const { env, cwd } = setup()
     expect((await run(['clean', '--help'], cwd, env)).code).toBe(0)

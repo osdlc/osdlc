@@ -236,8 +236,9 @@ personal folder (`PERSONAL_FOLDERS`: `~/Documents`, `~/Desktop`,
 (holds `.git`), and a self root that is a symlink. It leaves such a root out
 with a warning (`<plugin>: roots: left out the root <path>: <why>`), so its
 candidates are refused `outside-roots`. The same check runs again right before
-`delete` and in `kit.remove`, so a self root that has become a checkout or a
-symlink since the survey is not removed.
+`delete`, against the linked worktrees git lists then, and in `kit.remove`, so a
+self root that has become a checkout or a symlink since the survey, or a root
+that now holds a new linked worktree, is not removed.
 
 Real paths are read with `realpathSync.native`, which spells a path as the
 filesystem does: where it ignores case, as macOS's does, `~/documents` is
@@ -887,7 +888,10 @@ runs these.
 Targets default to the config file's `targets`, then the directory you are in.
 `clean` re-checks, shows the steps, asks (`--yes` skips the question; with no
 terminal and no `--yes` it exits 2), deletes, and writes one receipt to
-`--receipt` or the state directory's `receipts/`, plus a line in the log.
+`--receipt` or the state directory's `receipts/`, plus a line in the log. It
+deletes only what it showed as `delete`: one it showed as `skip` stays, even
+when what blocked it clears before the delete, and the receipt lists those
+skips ahead of its own (the library's `clean` takes them as `dropped`).
 `clean --plan` drops, as `gone`, a planned candidate no plugin proposes now,
 which includes one from a plugin this install does not have.
 
