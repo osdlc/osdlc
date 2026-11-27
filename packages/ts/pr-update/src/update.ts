@@ -1251,9 +1251,10 @@ function settleKept(
       // Before `keptIsTouched` runs git in the folder.
       const tree = treeOf(git, place, record)
       if (tree.kind === 'forged') return true
-      // A tree a person moved to a branch of their own, or detached, or locked, is theirs: changed.
-      const touched = (): boolean =>
-        tree.kind === 'moved' || tree.kind === 'locked' || keptIsTouched(git, record)
+      // Whatever else holds: the person says when it may go.
+      if (tree.kind === 'locked') return skip(`kept worktree ${tree.why}`)
+      // A tree a person moved to a branch of their own, or detached, is theirs: changed.
+      const touched = (): boolean => tree.kind === 'moved' || keptIsTouched(git, record)
       if (child) {
         return touched()
           ? skip(`kept worktree ${record.path} has local changes; push them or pass --discard-kept`)

@@ -1314,8 +1314,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   machine. It fails closed. The README says so where an upgrading user looks
   first.
 - **Size.** Against main, at the end of the omnibus (S13, the CI review's
-  fixes, included), pr-update's `src/` has 7,030 lines added and 485 removed,
-  against the estimate of 700, and its `tests/` 10,087 added and 93 removed
+  fixes, included), pr-update's `src/` has 7,031 lines added and 485 removed,
+  against the estimate of 700, and its `tests/` 10,085 added and 93 removed
   (`git diff --shortstat origin/main...HEAD`, merge base `93271347`, whose
   pr-update is that of `88112cb4`). At the end of S12 it was 6,407 and 455,
   and 9,585 and 91.

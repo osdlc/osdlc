@@ -1004,7 +1004,9 @@ cd .pr-update/failed/acme-widgets-12  # finish the fix, then push it yourself
   HEAD, is a person's: they switched it. It counts as changed, so its PR is skipped and the tree
   stays, and `--discard-kept` leaves it too; the output's `keptLeft` names it and its branch, and
   the text says `kept worktree <path> left: <why>`. So is one you locked with
-  `git worktree lock`: nothing of it is removed, its folder included, until you unlock it.
+  `git worktree lock`: nothing of it is removed, its folder included, until you unlock it,
+  and its PR is skipped with `kept worktree <path> is locked …; run
+  \`git worktree unlock <path>\` to let it go`.
 - In a managed clone, a stash counts as a change to a kept tree, since it can only have come
   from someone working in one of the clone's trees. In your own checkout the stash is yours and
   shared by all your worktrees, so it does not count there.

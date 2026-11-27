@@ -12,3 +12,6 @@ named, an ssh `origin` is not used, since its port cannot say. A bare
 `owner/name` on the project root's GitHub host now takes the port of the
 root's `origin` too. Two `--repo`s of one `owner/name` on two ports of a
 host are a usage error, as on two hosts, where they used to be one target.
+
+Not yet: a `--repo` naming the project root's own repository on another port
+of its host is still taken for the project root.

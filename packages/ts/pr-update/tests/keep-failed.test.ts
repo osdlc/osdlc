@@ -270,9 +270,7 @@ describe('update --keep-failed', () => {
       fx.worker.git.fetch('origin')
       const out = await update({ keepFailed: true })
       expect(out.results).toEqual([])
-      expect(out.skipped[0]!.reason).toBe(
-        `kept worktree ${kept()} has local changes; push them or pass --discard-kept`,
-      )
+      expect(out.skipped[0]!.reason).toBe(`kept worktree ${why()}`)
       expect(existsSync(join(kept(), 'topic.txt'))).toBe(true)
     })
 

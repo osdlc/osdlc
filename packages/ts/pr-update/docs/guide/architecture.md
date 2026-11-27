@@ -64,7 +64,7 @@ turns it off too, except in a managed clone (below).
 | Survey | `survey.ts:1060-1273`, `strategy.ts:107-164` |
 | Select PRs | `update.ts:166-286` |
 | Per-target trust gate | `update.ts:729-740`, `trust.ts:151-203` |
-| Settle kept trees | `update.ts:1154-1284`, `update/kept.ts` |
+| Settle kept trees | `update.ts:1154-1285`, `update/kept.ts` |
 | Run worktree per repository | `update/execute.ts:1617-1671`; killed runs' scratch worktrees `1774-1791`, locked ones skipped with `lockedByPerson` (`update/registrations.ts:57`); in a clone, a killed run's rerere ledger `1664` |
 | Cleanup of the run worktree | `update/execute.ts:1750-1764`, `update/registrations.ts` (`ownedUnder` `69`, which leaves a locked worktree, or one whose lock or record cannot be read) |
 | `--branch` sync | `update.ts:521-543`, `883-895` |
@@ -197,7 +197,7 @@ Paths are the macOS and Linux defaults with no variable set.
 ## Modules
 
 Lines in S13 (`8b5404f40`), against `main` at `88112cb4`, which does not have
-the clone-cache work. In total `src/` went from 6,583 lines to 13,128. Files not listed (`detect.ts`, `devlink.ts`, `real-path.ts`,
+the clone-cache work. In total `src/` went from 6,583 lines to 13,129. Files not listed (`detect.ts`, `devlink.ts`, `real-path.ts`,
 `repair/names.ts`, `update/confirm.ts`, `version.generated.ts`) are small
 helpers.
 
@@ -208,7 +208,7 @@ helpers.
 | Config | `config.ts`, `config-file.ts`, `config-cli.ts` | 336 (330), 72, 361 | the `pr_update` schema, layered loading, `config` commands |
 | Preflight | `preflight.ts` | 122 (83) | tool and remote checks, the `GIT_DIR` refusal |
 | Survey | `survey.ts`, `strategy.ts`, `code-host.ts` | 1,353 (896), 164, 87 (44) | targets, PR listing, fetch, drift, stack order, strategy |
-| Update | `update.ts` | 1,387 (843) | the run: selection, grouping, trust, verify lists, kept trees, attempt routing, output |
+| Update | `update.ts` | 1,388 (843) | the run: selection, grouping, trust, verify lists, kept trees, attempt routing, output |
 | Executor | `update/execute.ts`, `update/resolvers.ts` | 1,808 (1,213), 155 (151) | per-repository worktree loop, per-PR rebase, merge, verify, repair, push; also the target git environment, and rerere in a clone with its ledger |
 | Records | `update/attempts.ts`, `update/ref-attempts.ts`, `update/lease.ts` | 118 (117), 153 (150), 118 (115) | attempt stores and the branch lease |
 | Kept trees | `update/kept.ts`, `update/registrations.ts` | 728 (204), 172 (new) | kept-tree records, checks, keep and discard; how a worktree is forgotten; what counts as a person's `git worktree lock` |
@@ -225,7 +225,7 @@ are no import cycles.
 ## Known problems
 
 Items 1–19 were found while mapping the flow at `f5456df2`; 20–25 in the
-final check of S12; 26–31 in S13, after the CI review of the omnibus at
+final check of S12; 26–32 in S13, after the CI review of the omnibus at
 `dbdb5d6e`. The open items give lines at `8b5404f40`; the fixed ones keep the
 lines where the problem was. Those marked fixed were fixed in the commit
 named: S12's, or S13's.
@@ -365,3 +365,12 @@ named: S12's, or S13's.
     leaves the run worktree at the kept path with no record; the next keep of
     that PR says the folder is in the way (`moveBack`,
     `update/kept.ts:654-678`).
+32. The project root is matched without a port. A `--repo` naming the root's
+    `owner/name` on another port of its host (`ghe.example:9443/o/r` for a
+    root at `ghe.example:8443`) is taken for the project root and updated
+    through the root's `origin` (`isRoot`, `survey.ts:699`), and a target on
+    another port of the root's host is listed through the root's code host
+    (`onRootHost`, `survey.ts:1119`). Found from reading the code at the end of
+    S13 and not changed: `rootHost` also feeds `GH_HOST` and the root target's
+    host. The fix would compare `withWebPort(rootHost, <root's origin>)`
+    there.
