@@ -471,7 +471,10 @@ is using.
 
 It never removes a clone another run holds, one with a kept worktree (unless
 `--discard-kept`, which removes those first), one a live run has a worktree
-in, or a folder without pr-update's marker, and it never follows a symbolic
+in, one that holds work that may be yours and is in that clone only (a local
+branch with commits no remote-tracking branch has, a stash, or notes: the
+message names them and how to push or remove them), or a folder without
+pr-update's marker, and it never follows a symbolic
 link or removes anything from a folder another user owns or others can write
 to (the clone directory's rule above). Such a folder under the cache's
 `worktrees/` or the state's `kept/` is fixed with `chmod -R go-w` on that
@@ -494,7 +497,9 @@ holds only the lock of the clone it prunes.
 Prune honours `git worktree lock`. A dead run's worktree or a kept worktree
 that `git worktree list` shows as locked stays, with `--discard-kept` too, even
 when its folder is missing (on a drive that is not mounted, say), and so does
-its clone; the message names `git worktree unlock <path>`. `update` leaves a
+its clone; the message names `git worktree unlock <path>`. A kept worktree
+whose folder is missing stays with its clone even unlocked; the message says
+to mount it, or to run `git -C <clone> worktree prune` to forget it. `update` leaves a
 locked worktree of a killed run in place too, with its scratch branch. The one
 lock it does not count is git's own `initializing`, which a `git worktree add`
 that was killed leaves behind. git writes that word in the language the add
@@ -981,7 +986,14 @@ cd .pr-update/failed/acme-widgets-12  # finish the fix, then push it yourself
 - A kept tree that `git worktree list` shows at its folder, but on another branch or a detached
   HEAD, is a person's: they switched it. It counts as changed, so its PR is skipped and the tree
   stays, and `--discard-kept` leaves it too; the output's `keptLeft` names it and its branch, and
-  the text says `kept worktree <path> left: <why>`.
+  the text says `kept worktree <path> left: <why>`. So is one you locked with
+  `git worktree lock`: nothing of it is removed, its folder included, until you unlock it.
+- In a managed clone, a stash counts as a change to a kept tree, since it can only have come
+  from someone working in one of the clone's trees. In your own checkout the stash is yours and
+  shared by all your worktrees, so it does not count there.
+- A keep makes its branch, `pr-update/failed-<owner>-<name>-<number>`, and never repoints one
+  that is already there and is not the old kept tree's: that branch may hold your commits. The
+  PR's `keepError` says so, and names `git branch -m` and `git branch -D`.
 - `update --apply --discard-kept` removes every kept worktree of the surveyed repositories, then
   runs as usual. The output's `discarded` lists what was removed. A kept tree in pr-update's
   state directory is removed only when the folders from `kept/` down to it pass the folder rule

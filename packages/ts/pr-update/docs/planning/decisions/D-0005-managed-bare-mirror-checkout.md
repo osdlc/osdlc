@@ -1228,6 +1228,37 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     unaccepted resolution until then.
   What is replayed in a clone is a resolution pr-update recorded there and
   pushed with an earlier PR; `verify` is its only check.
+- **A person's work in a clone or a kept tree.** The CI review of the
+  omnibus found four ways a person's work could go. The owner decided
+  (2026-11-27):
+  - A prune removed a clone without asking whether it held work found
+    nowhere else. A clone's fetches make only remote-tracking branches, so a
+    clone now stays, in a dry run too, while it holds a local branch with
+    commits no remote-tracking branch has (`git rev-list <branch> --not
+    --remotes`), a stash or a notes ref. The branches the prune deletes
+    itself do not count: the kept trees' (all of them go under
+    `--discard-kept`), dead runs' scratch branches, and any other
+    `pr-update/scratch-*` branch. A `pr-update/failed-*` branch no worktree
+    is on does count. In a clone, a stash also counts as a change to a kept
+    tree (`keptIsTouched`), so `update` does not discard it as stale; in a
+    person's checkout the stash is theirs and does not count. `update` never
+    removes a clone, so the clone check is prune's alone.
+  - A kept tree whose folder was missing was removed with its clone under
+    `--discard-kept`. It now stays, locked or not, like a locked one, until
+    the person mounts it or runs `git worktree prune` in the clone.
+  - A kept tree a person locked lost its folder: `git worktree remove
+    --force` refuses a locked tree, and the folder was deleted after it
+    anyway. `keptTreeCheck` now reads the lock (`locked`), and every caller
+    treats such a tree as the person's, as it does a moved one; the removal
+    itself deletes the folder after a failed remove only once the list shows
+    the tree is not locked.
+  - A keep made its branch with `git checkout -B`, which repointed a
+    `pr-update/failed-*` branch that was already there. It now uses `-b`. A
+    branch that is already there is deleted first only while it points at the
+    old kept tree's `builtOid` and no worktree has it checked out; otherwise
+    the keep fails with a note. A keep that is undone deletes the branch only
+    if it made it. `--discard-kept` still deletes a kept tree's branch with
+    the tree, commits and all, as it always said.
 - **Trust granted before this build.** trust-repo first copied the old
   markers into the new store, and every way of telling whether the copy had
   run brought back a revoked grant in some case. The owner dropped the copy

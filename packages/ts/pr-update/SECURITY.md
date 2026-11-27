@@ -114,7 +114,9 @@ are in scope.
   files can put one. A record is acted on only when its branch and path are
   the ones pr-update gives that PR, its folder is not a symbolic link, and
   `git worktree list` shows a worktree at that folder. One shown on another
-  branch, or detached, is a person's, and is never removed. `mirror prune
+  branch, or detached, or locked with `git worktree lock`, is a person's, and
+  is never removed, its folder included. A keep never repoints a branch of
+  the kept name that it did not make. `mirror prune
   --discard-kept` removes a kept tree only while the clone being pruned lists
   it on its record's branch, or on a `pr-update/failed-*` branch with no
   record, the tree's own `.git` file names that clone, and its record names no
@@ -144,7 +146,10 @@ are in scope.
   A worktree that list shows as locked (`git worktree lock`) stays, even
   when its folder is missing, and so does its clone; only git's own
   `initializing` lock, which a killed `git worktree add` leaves, is not
-  counted. A clone also stays while its
+  counted. A kept worktree whose folder is missing keeps its clone, locked or
+  not. A clone also stays while it holds a local branch with commits no
+  remote-tracking branch has, a stash or notes, since those can only be a
+  person's and are in that clone alone. A clone also stays while its
   `worktrees/` folder holds a record that list does not show, since git leaves
   out a record it cannot read without a word. What cannot be read stays and
   is reported, and `--dry-run` decides the same way, reading a clone's lock
