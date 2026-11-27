@@ -528,6 +528,21 @@ describe('chat and agent history', () => {
       ],
       ['h', (d) => vscdbOf(d, [['interactive.sessions', '[{"requests":[]},{"requests":[]}]']])],
       ['i', (d) => vscdbOf(d, [['interactive.sessions', '{}']])],
+      // The key only in a log beside the file, not yet written back to it; a log without it.
+      [
+        'j',
+        (d) => {
+          vscdbOf(d, ['other'])
+          writeFileSync(join(d, 'state.vscdb-wal'), 'interactive.sessions')
+        },
+      ],
+      [
+        'k',
+        (d) => {
+          vscdbOf(d, ['other'])
+          writeFileSync(join(d, 'state.vscdb-journal'), 'x')
+        },
+      ],
     ])
     expect(readFileSync(join(h.storage, 'e', 'state.vscdb')).includes('interactive.sessions')).toBe(
       true,
@@ -546,6 +561,8 @@ describe('chat and agent history', () => {
       [join(h.storage, 'g'), 'lost', ['state.vscdb']],
       [join(h.storage, 'h'), 're-download', undefined],
       [join(h.storage, 'i'), 'lost', unread],
+      [join(h.storage, 'j'), 'lost', ['state.vscdb (a log beside it is not read)']],
+      [join(h.storage, 'k'), 're-download', undefined],
     ])
     expect(readdirSync(join(h.storage, 'e')).sort()).toEqual(['state.vscdb', 'workspace.json'])
   })

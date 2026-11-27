@@ -227,11 +227,11 @@ const SCAN_CHUNK = 1 << 20
 /**
  * Whether the `state.vscdb` at `path` holds chats under the old chat key:
  * false, true, or why it could not be told, which counts as holding some.
- * SQLite is asked only when the key's bytes are in the file, which keeps
- * those of rows deleted since.
+ * SQLite is asked only when the key's bytes are in the file or in a log
+ * beside it, which keeps those of rows deleted since.
  */
 const legacyChats = (path: string): boolean | string =>
-  namesLegacyChats(path) && hasLegacyChats(path)
+  ['', '-wal', '-journal'].some((end) => namesLegacyChats(path + end)) && hasLegacyChats(path)
 
 /**
  * True when the value of an old chat row holds a chat with a request: it is a
