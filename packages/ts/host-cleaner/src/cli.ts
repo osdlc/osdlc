@@ -564,6 +564,12 @@ interface Found {
   entries: readonly PackageEntry[]
   /** The config's `plugins` entries that name no plugin this run has. */
   unknown: string[]
+  /**
+   * Every plugin name this install has, as `recheck` takes it, whether this
+   * run uses it or not: `deps.plugins` or the definitions found, the config's
+   * package entries (loaded or not), and the descriptors that can't be used.
+   */
+  known: string[]
   /** What went wrong reading the config or finding the descriptors that does not stop the run. */
   warnings: string[]
 }
@@ -607,6 +613,7 @@ function findRun(
     found,
     entries,
     unknown: Object.keys(config.plugins).filter((n) => !known.has(n)),
+    known: [...known],
     warnings: [...read.warnings, ...(from?.warnings ?? [])],
   }
 }
@@ -637,13 +644,6 @@ async function loadRun(
 
 const unknownMessage = (unknown: readonly string[]): string =>
   `config names no plugin ${unknown.join(', ')}; a descriptor of that name is not loaded`
-
-/**
- * Every plugin name this install has, skipped ones too, as `recheck` takes it:
- * `deps.plugins`, else the definitions loaded.
- */
-const knownNames = (loading: Loading, deps: MainDeps): string[] =>
-  deps.plugins?.map((p) => p.name) ?? loading.loaded.definitions.map((d) => d.name)
 
 /** `s` with `warnings` ahead of its own. */
 const withWarnings = <S extends { warnings: readonly string[] }>(s: S, warnings: string[]): S => ({
@@ -709,7 +709,7 @@ async function setUp(
     failed: loading.failed,
     warnings,
     unknown,
-    known: knownNames(loading, deps),
+    known: run.known,
   }
 }
 
@@ -997,7 +997,7 @@ async function runConfig(
       ...failed.map(notLoaded),
     ])
     // Only the plugins a run would build: with `deps.plugins`, a built-in's section would contradict the warning.
-    const known = new Set(knownNames(loading, deps))
+    const known = new Set(loading.known)
     const settings = effectiveSettings(
       config.plugins,
       config,

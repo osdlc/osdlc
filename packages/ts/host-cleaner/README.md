@@ -503,7 +503,8 @@ inside it changed. Grant the named risks; the `discard-archived` cover is not
 yet offered here. Its `delete` refuses a worktree whose folder has become a
 symlink, since `git worktree remove` would follow it and empty the folder it
 leads to. Its `discover` sweeps every
-repository in one synchronous call, so it has a 10 minute limit.
+repository in one synchronous call, so it has a 10 minute limit, as its
+`prepare` does, which pushes the archive.
 
 `BUILT_IN_PLUGINS` holds git as `gitDefinitionWith()`, sweeping worktrees and
 local branches. A program that wants other kinds, as `--worktrees` and
@@ -913,8 +914,9 @@ deletes only what it showed as `delete`: one it showed as `skip` stays, even
 when what blocked it clears before the delete, and the receipt lists those
 skips ahead of its own (the library's `clean` takes them as `dropped`).
 `clean --plan` drops, as `gone`, a planned candidate no plugin proposes now,
-as one of a plugin the run skips. It refuses a plan whose candidates belong to
-a plugin this install does not have (exit 2): sweep again with `plan`.
+as one of a plugin the run skips, or of a package the config names that the run
+does not load. It refuses a plan whose candidates belong to a plugin this
+install does not have (exit 2): sweep again with `plan`.
 
 With `--archive`, a run makes one archive per repository, before it deletes any
 of its worktrees or branches. A second run on the same day goes to

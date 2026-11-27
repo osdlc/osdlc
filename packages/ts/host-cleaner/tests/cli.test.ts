@@ -2933,6 +2933,67 @@ describe('plan and clean', () => {
     expect(skipped.out).toContain('gone')
   })
 
+  test('a saved plan drops as gone the candidates of a package the config names and the run does not load', async () => {
+    const { env, cwd, home } = setup()
+    const config = join(home, 'c.json')
+    const planFile = join(home, 'plan.json')
+    const candidate = (owner: string) => ({
+      id: `artifact:${owner}`,
+      kind: 'artifact',
+      ref: owner,
+      owner,
+      why: 'idle',
+      evidence: {},
+    })
+    writeFileSync(
+      planFile,
+      JSON.stringify({
+        version: PLAN_VERSION,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        targets: [cwd],
+        targetsGiven: true,
+        select: null,
+        pick: [],
+        spare: [],
+        allow: [],
+        warnings: [],
+        candidates: [candidate('podman')],
+        objections: [],
+      }),
+    )
+    const gone = { id: 'artifact:podman', reason: 'gone', detail: 'no plugin proposes it now' }
+    const podman = { package: '@x/podman' }
+    const left = [
+      { podman, extra: ['--skip-plugin', 'podman'] },
+      { podman: { ...podman, enabled: false }, extra: [] },
+      { podman, extra: ['--plugin', 'git'] },
+    ]
+    for (const { podman, extra } of left) {
+      writeFileSync(config, JSON.stringify({ plugins: { podman } }))
+      const argv = [
+        'clean',
+        '--config',
+        config,
+        '--plan',
+        planFile,
+        '--dry-run',
+        '--format',
+        'json',
+      ]
+      const r = await run([...argv, ...extra], cwd, env)
+      expect(r.err, extra.join(' ')).not.toContain('sweep again')
+      expect(r.code, extra.join(' ')).toBe(0)
+      expect(JSON.parse(r.out).dropped, extra.join(' ')).toEqual([gone])
+    }
+    // With the given plugins no package is loaded: the candidate is gone too, and the run goes on.
+    writeFileSync(config, JSON.stringify({ plugins: { podman } }))
+    const plugin = fake()
+    const argv = ['clean', '--config', config, '--plan', planFile, '--yes']
+    const r = await run(argv, cwd, env, { plugins: [plugin] })
+    expect(r.code).toBe(0)
+    expect(r.out).toContain('gone')
+  })
+
   test('a saved plan runs what it can when one of its plugins is only skipped', async () => {
     const { env, cwd, home } = setup()
     const planFile = join(home, 'plan.json')
