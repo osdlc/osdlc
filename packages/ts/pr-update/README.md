@@ -227,11 +227,18 @@ The search goes three levels below each root. A default root, found beside
 the project root, is never above your home directory: a project root directly
 in your home directory (`~/widgets`) uses home, and one that is your home
 directory itself gets no default root. A root you list in `repositories.yaml`
-is searched wherever it is. A linked worktree counts as its main checkout. A shallow
-checkout is skipped, since it cannot measure drift. With more than one
+is searched wherever it is. Outside your home directory, a folder others can
+write to (`/tmp`, say) is never a default root. A linked worktree counts as
+its main checkout. A shallow checkout is skipped, since it cannot measure
+drift. So is one whose work tree, git directory or `config` file belongs to
+another user or can be written by others, with a note
+(`<path> is not used: <why>; run \`chmod go-w <path>\``): its git config runs
+as you on every fetch and push (see [SECURITY.md](./SECURITY.md)). Writable by
+the group counts too, unless the group is your own private group, which is
+never so on macOS. With more than one
 checkout of a repository, the first by path is used and a note names the
 others. The `unpushed_local` guard still reads all of them, shallow ones
-included, each against its own `origin`, since any of them can hold a
+included but not one the folder rule refused, each against its own `origin`, since any of them can hold a
 branch's unpushed commits. A checkout found this way is fetched and measured through its
 `origin`, whatever `--remote` says: `--remote` names a remote of the project
 root. That fetch writes only the remote's branches into `origin/*`, with no

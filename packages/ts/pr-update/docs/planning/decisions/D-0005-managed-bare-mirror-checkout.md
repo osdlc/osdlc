@@ -851,6 +851,22 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - **A shallow-only checkout.** It counts as no checkout. A note says `<path>
   is shallow, so it is not used`, the first-run question names it, and a
   clone is still allowed.
+- **A located checkout must pass the folder rule.** The CI review of the
+  omnibus found that a located checkout got no ownership check, while a
+  clone gets `checkClone`'s, and that a project root at `/tmp/proj` gave
+  `/tmp` as the default root. Its `.git/config` runs as the person on fetch
+  and push, before and outside the trust gate, and git's `safe.directory` is
+  off under `safe.directory=*` and missing in 2.34.0 and 2.34.1. The owner
+  decided (2026-11-27): a candidate whose work tree, git directory or
+  `config` file belongs to another user or can be written by others
+  (`folderProblem`, the clone directory's rule) is skipped with a note, is
+  not among the `others` the guard reads, and its work tree is checked
+  before pr-update runs git in it (the locator has read its `origin`
+  already). The ecosystem package gives no default root outside home that
+  others can write to (D-ZVIA, Build note "Default roots others can write
+  to"). Since the rule refuses `g+w` unless the group is the person's
+  private group, which is never so on macOS, a checkout made under umask 002
+  on macOS is no longer used.
 - **`roots: []`.** "With no roots" means no file or no `roots` key, as
   D-ZVIA's table says. `roots: []` scans nothing.
 - **File attempts.** "One file per `host/owner/name`, head and base" is one

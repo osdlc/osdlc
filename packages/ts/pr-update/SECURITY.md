@@ -52,6 +52,19 @@ are in scope.
   the project root and a located checkout, rerere is off for every merge,
   rebase and commit pr-update runs, so the person's own resolutions are never
   replayed into a PR.
+- **A located checkout's git config runs as you.** A `--repo` target's
+  checkout found on this machine is fetched and pushed with its own
+  `.git/config`, so what it sets (`core.sshCommand`, `credential.helper`,
+  `pushurl`, `core.fsmonitor`) runs as the person running pr-update, before
+  and outside the trust gate. So a checkout is used only when its work tree,
+  its git directory and its `config` file belong to you and no one else can
+  write to them (the folder rule of the clone directory: not `o+w`, and not
+  `g+w` unless the group is your private group; never on macOS). A default
+  root outside your home directory that others can write to, such as `/tmp`,
+  gives no default root. git's own `safe.directory` check is not relied on:
+  it is off under `safe.directory=*`, and missing in git 2.34.0 and 2.34.1.
+  Windows gets no such check. A root you list in `repositories.yaml` is
+  yours to keep to checkouts you trust.
 - **GitHub credentials belong to `gh`.** The package reads no GitHub token.
 - **The remote picks the host.** `origin` decides which adapter and which
   repository the updates go to. A `--repo` target names its own host, or
