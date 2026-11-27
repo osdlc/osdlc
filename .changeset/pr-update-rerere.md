@@ -12,10 +12,12 @@ instead of resolved again. So sibling PRs that meet one conflict need one
 resolution, and a repair is called once, not once per PR. A replayed
 resolution still goes through `verify`.
 
-A resolution is kept only when its PR is updated: a rejected repair, a rebase
-abandoned after it continued past a resolved stop, and a PR that fails after
-its resolution was committed (`verify` rejected it, say) leave no recorded
-resolution behind, so the next PR with that conflict is resolved again. A
+A resolution is kept only when its PR is pushed: a rejected repair, a rebase
+abandoned after it continued past a resolved stop, and a PR that is not pushed
+after its resolution was committed (`verify` rejected it, or the person
+declined the push, say) leave no recorded resolution behind, so the next PR
+with that conflict is resolved again. A resolution the person records for the
+same conflict in their own checkout meanwhile is left alone. A
 rehearsal does not use rerere: it records nothing and replays nothing.
 
 The resolutions are kept in the repository's `rr-cache/`: your own checkout

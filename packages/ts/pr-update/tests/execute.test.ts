@@ -1572,6 +1572,39 @@ describe('the executor against real git', () => {
         expect(readFileSync(join(rrCache(), left[0]!), 'utf8')).toBe('mine\n')
       })
 
+      test('a resolution in a push the person declined is not replayed in a later run', async () => {
+        const [o1, o2] = makeSiblings('d1', 'd2')
+        const run = (
+          number: number,
+          head: string,
+          headOid: string,
+          repair: Repair,
+          confirm: boolean,
+        ): Promise<UpdateResult[]> =>
+          updateAll(
+            fx.worker.git,
+            [target({ number, head, headOid, strategy: 'rebase' })],
+            settings({
+              repair,
+              repairOn: ['conflict'],
+              onRebaseConflict: 'repair',
+              confirmPush: () => confirm,
+            }),
+            recorder(),
+            { apply: true, worktreeRoot: wtRoot },
+          )
+        const [first] = await run(1, 'd1', o1!, fakeRepair(writeShared('bad\n')), false)
+        expect(first!.outcome).toMatchObject({ status: 'updated', pushed: false })
+        expect(first!.outcome).toHaveProperty('declined', 'push declined')
+        expect(postimages()).toEqual([])
+        const good = fakeRepair(writeShared('good\n'))
+        const [second] = await run(2, 'd2', o2!, good, true)
+        expect(good.calls).toHaveLength(1)
+        expect(second!.outcome).toMatchObject({ status: 'updated', pushed: true })
+        fx.worker.git.fetch('origin')
+        expect(fx.worker.git.showAtRev('origin/d2', 'shared.ts')).toBe('good\n')
+      })
+
       test('a rebase aborted after a repaired stop leaves nothing a later PR replays', async () => {
         const { git } = fx.worker
         git.checkout('main', { branch: 'two' })

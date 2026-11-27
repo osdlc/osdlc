@@ -44,8 +44,8 @@ are in scope.
   the repository's `rr-cache/` into a later PR with the same conflict and
   stages it; no resolver or repair sees that path, and only `verify` checks
   it. pr-update removes what a rejected repair, an abandoned rebase or a PR
-  that failed recorded, but an agent that writes into `rr-cache/` itself is
-  not stopped.
+  that was not pushed recorded, but an agent that writes into `rr-cache/`
+  itself is not stopped.
 - **GitHub credentials belong to `gh`.** The package reads no GitHub token.
 - **The remote picks the host.** `origin` decides which adapter and which
   repository the updates go to. A `--repo` target names its own host, or

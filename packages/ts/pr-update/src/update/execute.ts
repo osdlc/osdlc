@@ -24,7 +24,7 @@
  * merge, which meets the same conflict once. Only then is `repair` called, so
  * an agent is never asked to fix twenty versions of one conflict. The outcome
  * records the change of strategy, so a reader does not mistake the push for a
- * rebase. A resolution rerere recorded is kept only when the PR is updated
+ * rebase. A resolution rerere recorded is kept only when the PR is pushed
  * (`dropNewResolutions`).
  *
  * With `on_rebase_conflict: repair`, a repository that refuses merges repairs
@@ -486,8 +486,8 @@ async function updateOneUnscoped(
   let rebased: PathPlan[] | null = null
   let strategyFallback: string | undefined
   let rebaseRepaired: Repaired[] = []
-  // The conflicts rerere tracked in the rebase and the merge. A PR that is not updated keeps
-  // none of the resolutions they recorded: a resolution is accepted only with the update.
+  // The conflicts rerere tracked in the rebase and the merge. A PR that is not pushed keeps
+  // none of the resolutions they recorded: a resolution is accepted only with the push.
   const conflicts: RerereTracked[] = []
   if (strategy === 'rebase') {
     const repairing = settings.onRebaseConflict === 'repair'
@@ -519,18 +519,25 @@ async function updateOneUnscoped(
     }
   }
 
-  const outcome = await integrateAndPush(
-    git,
-    { ...target, strategy },
-    settings,
-    runVerb,
-    opts,
-    rebased,
-    submodulesBefore,
-    rebaseRepaired,
-    conflicts,
-  )
-  if (outcome.status === 'failed' || outcome.status === 'conflict') dropNewResolutions(conflicts)
+  let outcome: UpdateOutcome
+  try {
+    outcome = await integrateAndPush(
+      git,
+      { ...target, strategy },
+      settings,
+      runVerb,
+      opts,
+      rebased,
+      submodulesBefore,
+      rebaseRepaired,
+      conflicts,
+    )
+  } catch (e) {
+    dropNewResolutions(conflicts)
+    throw e
+  }
+  // Not pushed: failed, conflicted, or a push the person declined. A rehearsal records nothing.
+  if (outcome.status !== 'updated' || !outcome.pushed) dropNewResolutions(conflicts)
   return strategyFallback === undefined || outcome.status === 'up-to-date'
     ? outcome
     : { ...outcome, strategyFallback }
@@ -1036,7 +1043,7 @@ export function targetGitEnv(
  *
  * - `rerere.enabled=true`: at a conflict git replays a resolution recorded earlier for the same
  *   conflict, and at the commit it records the one pr-update made. It is kept only if the PR is
- *   updated (`dropNewResolutions`). So a stack of sibling PRs that meet one conflict needs it
+ *   pushed (`dropNewResolutions`). So a stack of sibling PRs that meet one conflict needs it
  *   resolved once, by a resolver or a repair, not once per PR.
  * - `rerere.autoUpdate=true`: a replayed path is staged, so it is not listed as conflicted and
  *   no resolver or repair is asked about it. The replayed content still goes through verify.
@@ -1108,9 +1115,9 @@ function rerereTracked(git: Git): RerereTracked[] {
 
 /**
  * Remove each resolution recorded for `tracked` since it was read: one pr-update did not accept.
- * A resolution is accepted only when its PR is updated, so this runs for a repair pr-update
- * rejected, a rebase it abandoned, and a PR that failed or conflicted after its resolutions were
- * committed (verify rejected them, say). A repair that
+ * A resolution is accepted only when its PR is pushed, so this runs for a repair pr-update
+ * rejected, a rebase it abandoned, and a PR that was not pushed after its resolutions were
+ * committed (verify rejected them, the push failed, or the person declined it). A repair that
  * commits, or runs `rebase --continue`, is rejected for moving HEAD, but git has already recorded
  * its resolution, since rerere is on for any git in a repository with an `rr-cache/`.
  * `git rerere forget` cannot clear any of these: it needs the conflict still in the index. Only

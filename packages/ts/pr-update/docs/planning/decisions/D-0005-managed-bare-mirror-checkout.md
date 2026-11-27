@@ -707,7 +707,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     the submodule clones git makes for the run worktree;
   - unless `pr_update.rerere` is false, the conflict resolutions git's rerere
     records in `rr-cache/` during `update --apply`, kept only for a PR that is
-    updated. Once that folder exists,
+    pushed. Once that folder exists,
     git uses rerere for the person's own merges there too, unless their
     config turns it off.
 
