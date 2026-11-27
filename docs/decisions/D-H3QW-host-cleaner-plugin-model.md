@@ -2,7 +2,8 @@
 
 Accepted 2026-11-19. Supersedes the adapter model in
 [D-L7N5](D-L7N5-host-cleaner.md); everything in D-L7N5 about repo-cleaner's
-own gaps, the `ProcessProbe` and the one safety model still holds. The
+own gaps, the `ProcessProbe`, the one safety model and the command seam still
+holds. The
 proposal and the owner's twelve answers are in the review page
 [host-cleaner-plugins](../parley/host-cleaner-plugins.html) (source
 [host-cleaner-plugins.json](../parley/host-cleaner-plugins.json)).
