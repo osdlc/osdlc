@@ -670,8 +670,9 @@ Models that nobody has pulled or changed for `plugins.ollama.idleHours` (default
 and its server answers. Each hook first asks the server over HTTP
 (`$OLLAMA_HOST/api/version`), because the `ollama` CLI starts the app on macOS
 and Windows when the server is down. If the server does not answer, or
-`OLLAMA_HOST` names another machine or cannot be read, `detect` leaves the
-plugin out and says why in its note. This machine is a loopback or unspecified
+`OLLAMA_HOST` names another machine, uses a scheme other than `http` or
+`https`, or cannot be read, `detect` leaves the plugin out and says why in its
+note. This machine is a loopback or unspecified
 address (IPv4-mapped too), its host name, or an address of one of its network
 interfaces.
 

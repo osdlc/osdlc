@@ -442,6 +442,18 @@ describe('survey', () => {
     expect(server).not.toHaveBeenCalled()
   })
 
+  test('an OLLAMA_HOST with a scheme other than http or https leaves it out with a note naming it', async () => {
+    vi.stubEnv('OLLAMA_HOST', 'tcp://localhost:11434')
+    const { plugin, calls } = fakeOllama(models)
+    const s = await survey([plugin], ctx)
+    expect(s.candidates).toEqual([])
+    expect(s.notes['ollama']).toBe(
+      "OLLAMA_HOST uses tcp://, which ollama's client cannot reach a server by",
+    )
+    expect(calls()).toEqual([])
+    expect(server).not.toHaveBeenCalled()
+  })
+
   test('an OLLAMA_HOST it cannot read is not taken for this machine', async () => {
     vi.stubEnv('OLLAMA_HOST', 'gpu box')
     const { plugin, calls } = fakeOllama(models)
