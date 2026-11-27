@@ -705,11 +705,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   - with submodules, the `submodule.<name>.url` and `.active` keys in its
     config, set for the update and put back as they were after each PR, and
     the submodule clones git makes for the run worktree;
-  - unless `pr_update.rerere` is false, the conflict resolutions git's rerere
-    records in `rr-cache/` during `update --apply`, kept only for a PR that is
-    pushed. Once that folder exists,
-    git uses rerere for the person's own merges there too, unless their
-    config turns it off.
+  - nothing in `rr-cache/`: pr-update's merges, rebases and commits there run
+    with `rerere.enabled=false`, so rerere neither replays nor records, and no
+    `rr-cache/` is made (Build note "Rerere in clones only").
 
   pr-update's own git calls there start no `gc --auto` (`targetGitEnv`
   sets `gc.auto=0` and `maintenance.auto=false`); the person's own git
@@ -1201,6 +1199,35 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   foreground `git maintenance run --auto` after each fetch instead (Build note
   "The folder rule"). Windows git's text for a cross-device rename is not checked
   either; the probe decides first.
+- **Rerere in clones only.** S12 turned git's rerere on for every target of
+  `update --apply`, which read and wrote the `rr-cache/` of the person's own
+  checkout for the project root and a located checkout. The CI review of the
+  omnibus found that a resolution the person had recorded there, on any
+  branch, was then replayed into a PR and pushed with no resolver, repair or
+  report. The owner decided (2026-11-27) that rerere is used only in a managed
+  clone, where pr-update owns `rr-cache/`; everywhere else every merge, rebase,
+  abort and commit pr-update runs passes `rerere.enabled=false`, so the
+  person's own resolutions and config are never used and no `rr-cache/` is
+  made. In a clone:
+  - `rerere.autoUpdate=false`, so a replayed path stays conflicted in the
+    index; the replayed paths are the conflicted ones `git rerere remaining`
+    leaves out, with `MERGE_RR` present and no conflict markers in the file. A
+    replayed path a resolver claims is rebuilt by it; any other is reported in
+    the outcome's `replayed`, the text report and the merge commit's message.
+  - A PR that is not pushed drops its variant's postimage, preimage and,
+    when empty, its `<id>` folder, so a `merge --abort` leaves no
+    preimage-only folder.
+  - A killed run: before anything can record a resolution (a rebuild, a
+    repair, `--continue`, the commit), the run writes the variants it has
+    tracked and not accepted to `pr-update-rerere/<pid>.<time>.json` in the
+    clone's git directory, and takes them off when the PR is pushed or
+    dropped. The next `update` served from the clone, under its lock and
+    before it integrates anything, removes the variants each dead run listed
+    (by pid alone, as `releaseStaleScratch` judges a run) and the list. A
+    concurrent run already past that step can still replay a dead run's
+    unaccepted resolution until then.
+  What is replayed in a clone is a resolution pr-update recorded there and
+  pushed with an earlier PR; `verify` is its only check.
 - **Trust granted before this build.** trust-repo first copied the old
   markers into the new store, and every way of telling whether the copy had
   run brought back a revoked grant in some case. The owner dropped the copy

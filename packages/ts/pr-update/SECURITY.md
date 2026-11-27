@@ -39,13 +39,19 @@ are in scope.
 - **A repair agent can run tools.** It edits the update worktree. The engine
   rejects a repair that moves HEAD, creates a ref or leaves conflict markers,
   but it does not sandbox the agent.
-- **Recorded resolutions are replayed.** In `update --apply`, unless
-  `pr_update.rerere` is false, git's rerere replays a resolution recorded in
-  the repository's `rr-cache/` into a later PR with the same conflict and
-  stages it; no resolver or repair sees that path, and only `verify` checks
-  it. pr-update removes what a rejected repair, an abandoned rebase or a PR
-  that was not pushed recorded, but an agent that writes into `rr-cache/`
-  itself is not stopped.
+- **Recorded resolutions are replayed, in managed clones only.** In
+  `update --apply` in a managed clone, unless `pr_update.rerere` is false,
+  git's rerere replays a resolution recorded in the clone's `rr-cache/` into a
+  later PR with the same conflict. What is recorded there is pr-update's own:
+  a resolution a resolver or an accepted repair made for a PR that was then
+  pushed. pr-update removes what a rejected repair, an abandoned rebase or a
+  PR that was not pushed recorded, and what a killed run recorded and never
+  accepted. A replayed path no resolver claims is reported (`replayed`), and
+  `verify` is its only check: with `verify: none`, a replay is pushed
+  unchecked. An agent that writes into `rr-cache/` itself is not stopped. In
+  the project root and a located checkout, rerere is off for every merge,
+  rebase and commit pr-update runs, so the person's own resolutions are never
+  replayed into a PR.
 - **GitHub credentials belong to `gh`.** The package reads no GitHub token.
 - **The remote picks the host.** `origin` decides which adapter and which
   repository the updates go to. A `--repo` target names its own host, or
