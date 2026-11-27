@@ -202,7 +202,10 @@ Versions up to 0.3 kept the macOS config in
 `~/Library/Application Support/host-cleaner/`; it now lives in
 `~/.config/host-cleaner/`, and host-cleaner does not read the old file; while
 it exists, every command that reads the default config warns on stderr
-(`status --format json` lists it in `warnings`). Their
+(`status --format json` lists it in `warnings`). While it is the only one,
+with nothing at the new path and no `--config`, `clean` refuses with exit 2
+(`clean --dry-run` only warns), since its `ignore` list would not apply: move
+the file to the new path. Their
 receipts and log stay where they were written, in
 `~/Library/Application Support/host-cleaner/receipts/` and
 `~/Library/Logs/host-cleaner/`; new ones go to `~/.local/state/host-cleaner/`.
@@ -229,8 +232,8 @@ Two settings sit at the top of the config and apply to every plugin:
 { "targets": ["~/dev"], "ignore": ["~/dev/dashboard"], "idleHours": 0 }
 ```
 
-- `ignore` lists paths nothing may be deleted in or below (`~` is home; a path
-  is matched by its real path too). `--ignore <dir>` adds to it and can repeat.
+- `ignore` lists paths nothing may be deleted in or below (`~` is home, and on
+  Windows `~\` as well as `~/`; a path is matched by its real path too). `--ignore <dir>` adds to it and can repeat.
   A candidate there is left out, with a warning saying how many; `status` prints
   the active list, a plan records it, and `clean --plan` honours the plan's list
   and the current one, dropping a planned candidate as `ignored`.

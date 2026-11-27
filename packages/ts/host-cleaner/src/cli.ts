@@ -370,13 +370,13 @@ const NO_HOME = 'no home directory to place the folders in: set HOME, or HOST_CL
 /**
  * The config: `--config`, which must exist, else `config.json` in the config
  * folder if present. Its warnings name a config in the native folders, such as
- * macOS's from versions up to 0.3, that goes unread.
+ * macOS's from versions up to 0.3, that goes unread (`unread`).
  */
 function loadConfig(
   v: { config?: string | undefined },
   ctx: CliContext,
   dirs: HostDirs | undefined,
-): { file: string; fileExists: boolean; config: Config; warnings: string[] } {
+): { file: string; fileExists: boolean; config: Config; warnings: string[]; unread?: string } {
   if (v.config !== undefined) {
     const file = resolve(ctx.cwd, v.config)
     return { file, ...readConfig(file, { required: true }), warnings: [] }
@@ -384,8 +384,9 @@ function loadConfig(
   if (dirs === undefined) throw new Error(NO_HOME)
   const file = configFile(dirs)
   const unread = unreadNativeConfig(ctx.env, file)
-  const warnings = unread === undefined ? [] : [`${unread} is not read; the config is now ${file}`]
-  return { file, ...readConfig(file), warnings }
+  if (unread === undefined) return { file, ...readConfig(file), warnings: [] }
+  const warnings = [`${unread} is not read; the config is now ${file}`]
+  return { file, ...readConfig(file), warnings, unread }
 }
 
 /** `--plugin` and its alias `--adapter`, as one list; undefined when neither is given. */
@@ -752,7 +753,13 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let preview: Decision
   try {
     dirs = resolveDirs(ctx)
-    const { config, warnings } = loadConfig(v, ctx, dirs)
+    const { file, fileExists, config, warnings, unread } = loadConfig(v, ctx, dirs)
+    // Its ignore list would not apply: a delete on the defaults could take what it kept.
+    if (unread !== undefined && !fileExists && !v.dryRun) {
+      throw new ConfigError(
+        `${unread} is not read, and there is no config at ${file}: move the file there, or pass --config; clean deletes nothing until then`,
+      )
+    }
     writeWarnings(ctx, name, warnings)
     plugins = pluginsFor(v, config, deps, ctx)
     if (v.plan === undefined) {

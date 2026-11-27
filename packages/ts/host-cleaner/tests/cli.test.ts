@@ -392,7 +392,7 @@ describe('folders', () => {
       const { home, cwd, file: named } = macHome()
       const old = join(home, 'Library', 'Application Support', 'host-cleaner', 'config.json')
       const env = { PATH: process.env.PATH ?? '', HOME: home }
-      const commands = [['config'], ['status', cwd], ['plan', cwd], ['clean', '--yes', cwd]]
+      const commands = [['config'], ['status', cwd], ['plan', cwd], ['clean', '--dry-run', cwd]]
       for (const args of commands) {
         expect(run(args, cwd, env, { plugins: [fake()] }).err).not.toContain('is not read')
       }
@@ -415,6 +415,41 @@ describe('folders', () => {
       expect(JSON.parse(r.out).warnings).toEqual([
         `${old} is not read; the config is now ${configFile(hostDirs(env))}`,
       ])
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'with only the config left in the macOS folders, a clean that deletes refuses and names both files',
+    () => {
+      const { home, cwd, file: named } = macHome()
+      const old = join(home, 'Library', 'Application Support', 'host-cleaner', 'config.json')
+      mkdirSync(dirname(old), { recursive: true })
+      writeFileSync(old, JSON.stringify({ ignore: [cwd] }))
+      const env = { PATH: process.env.PATH ?? '', HOME: home }
+      const file = configFile(hostDirs(env))
+      for (const args of [
+        ['clean', '--yes', cwd],
+        ['clean', '--plan', join(home, 'p.json'), '--yes'],
+      ]) {
+        const plugin = fake()
+        const r = run(args, cwd, env, { plugins: [plugin] })
+        expect(r.code, args.join(' ')).toBe(2)
+        expect(r.err).toBe(
+          `host-cleaner clean: ${old} is not read, and there is no config at ${file}: move the file there, or pass --config; clean deletes nothing until then\n`,
+        )
+        expect(plugin.removed).toEqual([])
+      }
+      // A config the person named, or one in the new folder, is read and the clean runs.
+      const plugin = fake()
+      expect(
+        run(['clean', '--yes', '--config', named, cwd], cwd, env, { plugins: [plugin] }).code,
+      ).toBe(0)
+      mkdirSync(dirname(file), { recursive: true })
+      writeFileSync(file, '{}')
+      const r = run(['clean', '--yes', cwd], cwd, env, { plugins: [plugin] })
+      expect(r.code).toBe(0)
+      expect(r.err).toContain(`${old} is not read; the config is now ${file}`)
+      expect(plugin.removed).toEqual(['artifact:fake', 'artifact:fake'])
     },
   )
 
