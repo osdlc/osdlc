@@ -34,28 +34,36 @@ each one, and deletes what a person approves, with one plan and one receipt.
 It is a core and a set of **plugins**. A plugin proposes **candidates**
 (things that could be deleted) and **objects** to candidates, its own or other
 plugins'. The core decides what runs, checks again, and has each candidate's
-owner delete it. The first version ships four plugins: `git` (repo-cleaner),
-`cargo`, `node` and `orca`. It runs only when a person runs it.
+owner delete it. It ships eleven code plugins: `git` (repo-cleaner), `cargo`,
+`node`, `vscode`, `cursor`, `orca`, `docker`, `ollama`, `agent-history`,
+`jetbrains` and `toolchains`, and one plugin per descriptor in `descriptors/`.
+It runs only when a person runs it.
 
 ## Modules
 
 | File | What it holds |
 | --- | --- |
-| `src/index.ts` | The main entry (`exports['.']` in `package.json`): re-exports, from the files below, the contract, the phase runner, the plan and receipt, `containedIn` and `PERSONAL_FOLDERS`, the kit, and the four plugins with `BUILT_IN_PLUGINS`. |
+| `src/index.ts` | The main entry (`exports['.']` in `package.json`): re-exports, from the files below, the contract, the phase runner, the plan and receipt, `containedIn` and `PERSONAL_FOLDERS`, the kit, and every built-in plugin with `BUILT_IN_PLUGINS`. |
 | `src/types.ts` | The contract: `Candidate` (a path or a ref), `Objection`, `Plugin` and its hooks, `definePlugin`, `PluginInit`, `PLUGIN_API`. |
 | `src/run.ts` | The phase runner: `survey`, `plan`, `decide`, `recheck`, `clean`; hook time limits; the core's own objections; nesting. |
 | `src/roots.ts` | Containment: `containedIn`, `boundBy`, `linkedCheckouts`, `linkedWorktreeOf`; which roots a plugin may have: `rootProblem`, `acceptRoots`. |
 | `src/kit.ts` | The plugin kit: `pluginKit`, the helpers, and the binding the core does each run. |
 | `src/plan.ts` | The plan and receipt schemas (plan version 2, receipt version 1). A plan of another version, or one the schema refuses, such as one without `targetsGiven`, is refused with an error that says to sweep again (D15). |
-| `src/registry.ts` | `BUILT_IN_PLUGINS` in run order (`git`, `cargo`, `node`, `orca`), and `--plugin` / `--skip-plugin`. |
+| `src/builtins.ts` | `BUILT_IN_PLUGINS`: the code plugins in run order (`git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama`, `agent-history`, `jetbrains`, `toolchains`). |
+| `src/registry.ts` | The plugins a run knows (built in, loaded from a package, or made from a descriptor), each by one name, and `--plugin` / `--skip-plugin`. |
+| `src/load.ts` | Code plugins loaded from the packages the config names. |
+| `src/descriptor/` | Descriptors: the schema, where they are found, their variables, and the engine that makes each a plugin. |
 | `src/settings.ts` | Each plugin's settings schema made strict, with the core's `enabled`; `idleHours` inheritance. |
 | `src/config.ts` | The config file and the three folders (see [Files](#files)). |
 | `src/ignore.ts` | The machine-wide `ignore` list. |
 | `src/git.ts` | The `git` plugin over repo-cleaner's `candidatesOf` and `removeCandidate`. |
 | `src/artifacts.ts`, `src/cargo.ts`, `src/node.ts` | Build caches: `cargo` and `node` over the shared walk in `artifacts.ts`. |
 | `src/orca.ts` | The `orca` plugin. |
+| `src/vscode.ts` | The `vscode` and `cursor` plugins, one code over each editor's folders. |
+| `src/docker.ts`, `src/ollama.ts`, `src/agent-history.ts`, `src/jetbrains.ts`, `src/toolchains.ts` | The `docker`, `ollama`, `agent-history`, `jetbrains` and `toolchains` plugins. |
 | `src/helpers.ts` | What the core and the plugins share: wording, objections, and the check a plugin makes again right before it deletes. |
 | `src/cli.ts`, `src/bin.ts` | The `host-cleaner` command: `status`, `plan`, `clean`, `config`, `plugins`. |
+| `src/plugin.ts` | `@osdlc/host-cleaner/plugin`: what a code plugin is written with, `z` included. |
 | `src/testing.ts` | `@osdlc/host-cleaner/testing`: fakes and the contract suite. |
 
 The package depends on its siblings as `workspace:^`: repo-cleaner,
@@ -304,7 +312,7 @@ described above where it applies.
 | Self roots, `{ path, self: true }` | [one run](#one-run), step 4 |
 | `kit.running({ name })` matches a word of each command line | the README's [plugin kit](../../README.md#the-plugin-kit) table |
 
-Plugins not built yet will use them: `vscode` decides what to do with a
+The later plugins use them: `vscode` decides what to do with a
 `workspaceStorage/<hash>/` folder that holds Copilot chat sessions,
 `toolchains` reads `targetsGiven` to choose which toolchains to propose, and
 the descriptor engine declares whole-folder stores such as `~/.npm` as self
@@ -314,7 +322,6 @@ roots and checks `inUse.processes` with `kit.running({ name })`.
 
 | Topic | The design | The code |
 | --- | --- | --- |
-| Public entry | `@osdlc/host-cleaner/plugin`, with `z` re-exported | the main entry and `/testing`; plugins import zod themselves. `/plugin` is k-public-api (#1051). |
 | `detect` | does this plugin apply? | may also answer `{ active, note }` (owner's decision) |
 | `ctx` | `ctx.signal` | also `targetsGiven` (owner's decision) |
 | `roots` | folders the plugin may delete inside | also `{ path, self: true }`, where the folder itself may be a candidate. The core checks any plugin's root ([one run](#one-run), step 4), where the design checks only descriptor paths (owner's decision) |
@@ -328,16 +335,6 @@ roots and checks `inUse.processes` with `kit.running({ name })`.
 | Unknown plugin names | a name no plugin has, without `package`, is a warning | not a warning: the README's [files and config](../../README.md#files-and-config) says what a name in the config does, and its [command line](../../README.md#command-line) what one in a plan does; k-unknown (#1020) |
 | `clean --archive` | not named; the plan adds it as k-archive (#1021) | not offered; see the README's [`git` plugin](../../README.md#the-git-plugin); k-archive (#1021) |
 | Containment | inside the plugin's roots or a target (D10) | also inside a linked worktree of a target's repository, or one whose main checkout is in a target, and a self root itself (owner's decisions) |
-
-Not built yet, by plan phase:
-
-- Descriptors with fixed paths, `supersededBy` and the `system` field: phase 4
-  (k-schema #1041 to k-release2 #1046).
-- Variables, and `plugins` showing each one: phase 5.
-- Loading plugin packages (`plugins.<name>.package`, API mismatch errors,
-  `--skip-plugin` for a plugin that fails to load): phase 6.
-- The seven new built-in plugins (vscode, cursor, jetbrains, docker, ollama,
-  toolchains, agent-history).
 
 ## Out of the first version
 
