@@ -42,7 +42,7 @@
  * conflict an `apply` run would clear.
  */
 
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 
@@ -1306,7 +1306,8 @@ function removeVariant(t: Pick<RerereTracked, 'postimage' | 'preimage'>): void {
 
 /**
  * The folder, in a clone's git directory, where each run lists the resolutions it may record and
- * has not accepted: `<run>.json`, where `<run>` is its worktree's `<pid>.<time>` name.
+ * has not accepted: `<pid>.<run>.json`, where `<pid>` is the run's process and `<run>` is unique
+ * to the run ({@link LEDGER_NAME}).
  */
 const LEDGER_DIR = 'pr-update-rerere'
 
@@ -1328,20 +1329,25 @@ interface RerereLedger {
 }
 
 /**
- * The ledger of the run whose worktree is `worktree`, in the git directory `git` serves, after
- * removing what each dead run's ledger there lists ({@link dropDeadRunResolutions}).
+ * This run's ledger in the git directory `git` serves, after removing what each dead run's
+ * ledger there lists ({@link dropDeadRunResolutions}).
  */
-function openLedger(git: Git, worktree: string): RerereLedger | undefined {
+function openLedger(git: Git): RerereLedger | undefined {
   dropDeadRunResolutions(git)
-  return rerereLedger(git, worktree)
+  return rerereLedger(git)
 }
 
-/** The ledger of the run whose worktree is `worktree`, in the git directory `git` serves. */
-function rerereLedger(git: Git, worktree: string): RerereLedger | undefined {
+/**
+ * This run's ledger in the git directory `git` serves. Its name comes from this process's pid
+ * and a run id, not from the worktree's path, which a caller may name as it likes: the next
+ * run finds a dead run's ledger by that pid.
+ */
+function rerereLedger(git: Git): RerereLedger | undefined {
   const common = git.gitCommonDir()
   if (common === null) return undefined
   const dir = join(resolve(git.cwd, common), LEDGER_DIR)
-  const file = join(dir, `${basename(worktree)}.json`)
+  const run = `${Date.now()}-${randomBytes(4).toString('hex')}`
+  const file = join(dir, `${process.pid}.${run}.json`)
   let listed: Pick<RerereTracked, 'postimage' | 'preimage'>[] = []
   const save = (): void => {
     if (listed.length === 0) {
@@ -1373,8 +1379,8 @@ function rerereLedger(git: Git, worktree: string): RerereLedger | undefined {
   }
 }
 
-/** A ledger's file name: the `<pid>.<time>` of the run's worktree, as `update` names it. */
-const LEDGER_NAME = /^(\d+)\.\d+\.json$/
+/** A ledger's file name, `<pid>.<time>-<random>.json` ({@link rerereLedger}). */
+const LEDGER_NAME = /^(\d+)\.\d+-[0-9a-f]+\.json$/
 
 /** A rerere file a ledger may name: `preimage` or `postimage`, with a variant number or none. */
 const VARIANT_FILE = /^(pre|post)image(\.\d+)?$/
@@ -1667,7 +1673,7 @@ export async function updateAll(
   const records = opts.records ?? PRUNE_ALL
   releaseStaleScratch(git, records)
   // Before anything here integrates, so no PR replays a resolution a killed run never accepted.
-  const ledger = rerereOn(settings, opts.apply) ? openLedger(git, opts.worktreeRoot) : undefined
+  const ledger = rerereOn(settings, opts.apply) ? openLedger(git) : undefined
   const start = `${settings.remote}/${targets[0]!.base}`
   // The folders above the worktree are made here, not by git, which would make them under the
   // umask: a prune refuses a folder someone else can write to.

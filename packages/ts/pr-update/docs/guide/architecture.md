@@ -128,7 +128,8 @@ and only verify checks it (`planStop`, `1151-1167`). At each conflict the run
 notes, from its worktree's `MERGE_RR`, the variant its resolution goes to and
 whether that variant was already resolved (`rerereTracked`, `1238-1265`), and
 lists each new one in a ledger in the clone's git directory,
-`pr-update-rerere/<pid>.<ms>.json`, before anything can record a resolution
+`pr-update-rerere/<pid>.<ms>-<random>.json`, named by the run's pid and a run
+id and not by its worktree's path, before anything can record a resolution
 (`track` and `rerereLedger`, `1271-1377`). When a repair is rejected, a rebase
 is abandoned, or the PR is not pushed (failed, conflicted, declined by the
 person, or a throw), that variant's postimage, preimage and empty folder are
@@ -195,7 +196,7 @@ Paths are the macOS and Linux defaults with no variable set.
 | Kept trees | the project root: `.pr-update/failed/`; other targets: `~/.local/state/osdlc/pr-update/kept/<host>/<owner>/<name>/` | until discarded, retried, or the PR moves |
 | Attempt records | `.pr-update/attempts/`, `~/.local/state/osdlc/pr-update/attempts/<host>/<owner>/<name>/`, or refs on the remote | until the PR succeeds, or 30 days |
 | Branch lease | `refs/pr-update/lock/<head>` on the remote (git-ref store only) | one PR |
-| Recorded resolutions (rerere) | `rr-cache/` in a managed clone's git directory only; beside it, `pr-update-rerere/<pid>.<ms>.json`, a run's resolutions not yet accepted | until git's `gc` expires them (60 days by default), run by the clone's foreground maintenance; the ledger until its run ends, or the next run if it was killed |
+| Recorded resolutions (rerere) | `rr-cache/` in a managed clone's git directory only; beside it, `pr-update-rerere/<pid>.<ms>-<random>.json`, a run's resolutions not yet accepted | until git's `gc` expires them (60 days by default), run by the clone's foreground maintenance; the ledger until its run ends, or the next run if it was killed |
 
 ## Modules
 

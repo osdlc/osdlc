@@ -25,7 +25,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { basename, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { Git } from '@osdlc/typed-git'
 import { makeBareAndWorker } from '@osdlc/typed-git/testing'
@@ -1866,50 +1866,43 @@ describe('the executor against real git', () => {
 
       test("a killed run's resolution, never accepted, is removed by the next run and not replayed", async () => {
         const [o1, o2] = makeSiblings('k1', 'k2')
-        const ledgers = join(fx.worker.git.gitCommonDir()!, 'pr-update-rerere')
-        const ledgerDir = (): string => resolve(fx.worker.dir, ledgers)
-        let ledger = ''
-        let left: [string, string][] = []
-        // The run is killed while verify runs: its merge commit has recorded the resolution, and
-        // nothing has accepted it. What it would leave is copied here and put back after it.
-        const verify: RunVerb = () => {
-          const [file] = readdirSync(ledgerDir())
-          ledger = readFileSync(join(ledgerDir(), file!), 'utf8')
-          left = readdirSync(rrCache()).flatMap((id) =>
-            readdirSync(join(rrCache(), id)).map((f): [string, string] => [
-              join(id, f),
-              readFileSync(join(rrCache(), id, f), 'utf8'),
-            ]),
-          )
-          return nope
-        }
-        const run = (number: number, head: string, headOid: string, repair: Repair, v: RunVerb) =>
-          updateAll(
-            fx.worker.git,
-            [target({ number, head, headOid })],
-            settings({ rerere: true, repair, repairOn: ['conflict'], verifyVerbs: ['check'] }),
-            v,
-            { apply: true, worktreeRoot: wtRoot },
-          )
-        await run(1, 'k1', o1!, fakeRepair(writeShared('bad\n')), verify)
-        expect(left.map(([p]) => basename(p)).sort()).toEqual(['postimage', 'preimage'])
-        expect(postimages()).toEqual([])
-        // The run's own ledger goes when it ends.
-        expect(readdirSync(ledgerDir())).toEqual([])
-        // As a hard kill leaves it: the ledger, named for a run whose process is gone, and the
-        // resolution it lists.
-        const dead = spawnSync(process.execPath, ['-e', '']).pid!
-        writeFileSync(join(ledgerDir(), `${dead}.${Date.now()}.json`), ledger)
-        for (const [p, text] of left) {
-          mkdirSync(join(rrCache(), p, '..'), { recursive: true })
-          writeFileSync(join(rrCache(), p), text)
-        }
+        const ledgerDir = resolve(fx.worker.dir, fx.worker.git.gitCommonDir()!, 'pr-update-rerere')
+        // A child process runs the first PR in a worktree at a path of no particular shape, and
+        // kills itself with SIGKILL while verify runs: its merge commit has recorded the `bad`
+        // resolution, and nothing has accepted it.
+        const killed = spawnSync(
+          process.execPath,
+          [
+            join(import.meta.dirname, 'killed-run.child.ts'),
+            fx.worker.dir,
+            join(fx.worker.dir, 'some', 'where'),
+            'k1',
+            o1!,
+          ],
+          { encoding: 'utf8', timeout: 60_000 },
+        )
+        expect(
+          killed.signal,
+          JSON.stringify([killed.status, killed.error, killed.stdout, killed.stderr]),
+        ).toBe('SIGKILL')
+        // What a hard kill leaves: the ledger, named for the dead process, and its resolution.
+        const left = readdirSync(ledgerDir)
+        expect(left).toHaveLength(1)
+        expect(left[0]!.startsWith(`${killed.pid}.`)).toBe(true)
+        expect(postimages()).toHaveLength(1)
+
         const good = fakeRepair(writeShared('good\n'))
-        const [second] = await run(2, 'k2', o2!, good, recorder())
+        const [second] = await updateAll(
+          fx.worker.git,
+          [target({ number: 2, head: 'k2', headOid: o2! })],
+          settings({ rerere: true, repair: good, repairOn: ['conflict'] }),
+          recorder(),
+          { apply: true, worktreeRoot: join(fx.worker.dir, 'another', 'place') },
+        )
         expect(good.calls).toHaveLength(1)
         expect(second!.outcome).toMatchObject({ status: 'updated', pushed: true })
         expect(second!.outcome).not.toHaveProperty('replayed')
-        expect(readdirSync(ledgerDir())).toEqual([])
+        expect(readdirSync(ledgerDir)).toEqual([])
         fx.worker.git.fetch('origin')
         expect(fx.worker.git.showAtRev('origin/k2', 'shared.ts')).toBe('good\n')
       })

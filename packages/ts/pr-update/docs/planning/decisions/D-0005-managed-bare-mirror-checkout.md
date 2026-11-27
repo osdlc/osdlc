@@ -1269,13 +1269,16 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     preimage-only folder.
   - A killed run: before anything can record a resolution (a rebuild, a
     repair, `--continue`, the commit), the run writes the variants it has
-    tracked and not accepted to `pr-update-rerere/<pid>.<time>.json` in the
-    clone's git directory, and takes them off when the PR is pushed or
+    tracked and not accepted to `pr-update-rerere/<pid>.<time>-<random>.json`
+    in the clone's git directory, and takes them off when the PR is pushed or
     dropped. The next `update` served from the clone, under its lock and
     before it integrates anything, removes the variants each dead run listed
     (by pid alone, as `releaseStaleScratch` judges a run) and the list. A
     concurrent run already past that step can still replay a dead run's
-    unaccepted resolution until then.
+    unaccepted resolution until then. (Build note: the list was first
+    named after the run's worktree, which `updateAll`'s caller may put at any
+    path, so a list under a path not shaped `<pid>.<time>` was never swept.
+    It is named by the process's own pid and a run id instead.)
   What is replayed in a clone is a resolution pr-update recorded there and
   pushed with an earlier PR; `verify` is its only check.
 - **A person's work in a clone or a kept tree.** The CI review of the
