@@ -1008,8 +1008,11 @@ cache after 30 days with no change, the build cache after a week, emptied with
 `maven`, such as IntelliJ's Maven server) and `go` (go, gopls, or any process
 naming `go`, such as an editor open on `main.go`) is refused as `in-use`, at
 the survey and again before each delete, so a long-running `pnpm dev` keeps
-the pnpm store from being pruned. Idle time is the newest modification time
-inside a folder, and reading a file doesn't change it: a Hugging Face model or
+the pnpm store from being pruned, a server run with `npx` (such as an MCP
+server) keeps the npm cache from being removed while it runs, and the Gradle
+daemon an IDE starts keeps every Gradle candidate while the IDE is open. Idle
+time is the newest modification time inside a folder, and reading a file
+doesn't change it: a Hugging Face model or
 a Gradle wrapper distribution in daily use counts as idle from its download,
 which is why they are held. So does a Maven repository whose artifacts are all
 downloaded, and it may hold what only a local `mvn install` gives back, which
