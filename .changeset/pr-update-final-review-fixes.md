@@ -153,8 +153,9 @@ locked stays, with `--discard-kept` too, even when its folder is missing (on a
 drive that is not mounted, say), and so does its clone; the message names
 `git worktree unlock <path>`. `update` likewise leaves a killed run's scratch
 worktree that a person locked, and its branch, where it used to remove it from
-a `--repo` target's checkout or clone. git's own `initializing` lock, which a
-killed `git worktree add` leaves, is still not counted.
+a `--repo` target's checkout or clone. A worktree whose lock, or whose record
+in git, cannot be read stays too, and is reported. git's own `initializing`
+lock, which a killed `git worktree add` leaves, is still not counted.
 
 Fixed: `mirror prune --dry-run` read a clone's lock with rules of its own, so
 a lock whose `token` is not a string read as a dead holder's and the clone as

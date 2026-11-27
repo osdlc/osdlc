@@ -832,7 +832,8 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
     try {
       if (owner !== null) {
         const git = gitAt(owner.common, opts.git)
-        removeWorktree(git, tree, records)
+        const left = removeWorktree(git, tree, records)
+        if (left !== undefined) throw new Error(left)
         git.try.deleteBranch(scratchBranch(tree), { force: true })
       }
       // Its owner is gone, or its records name no owner: only the folder is pr-update's to remove.
@@ -1082,7 +1083,9 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
     for (const d of dead) {
       if (dryRun && reported.has(realOr(d.path))) continue
       if (!dryRun) {
-        removeWorktree(git, d.path, records)
+        // What decides whether it may go could not be read: it stays, and so does the clone.
+        const left = removeWorktree(git, d.path, records)
+        if (left !== undefined) throw new Error(left)
         git.try.deleteBranch(scratchBranch(d.path), { force: true })
       }
       done({ kind: 'worktree', path: d.path, repo, bytes: d.bytes })
@@ -1177,7 +1180,8 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
         if (record !== undefined) discardKept(git, keptPlace, record)
         else {
           // On a `pr-update/failed-*` branch (checked above), with no record.
-          removeWorktree(git, k.path, records)
+          const left = removeWorktree(git, k.path, records)
+          if (left !== undefined) throw new Error(left)
           git.try.deleteBranch(k.branch!, { force: true })
         }
         done(keptEntry)

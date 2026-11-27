@@ -1138,8 +1138,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     its folder, so the lock was never read, and the tree, its scratch branch
     and the clone were removed. The clone's own list is now read for the lock
     first. `ownedUnder`'s fallback after a failed `git worktree remove` leaves
-    a locked worktree's folder and record, and `update`'s removal of a killed
-    run's scratch worktree skips a locked one;
+    a locked worktree's folder and record, and so does it when the record's
+    `gitdir` or `locked` file cannot be read (it took an unreadable lock for
+    none), saying why; a prune then keeps the tree and its clone and reports
+    it. `update`'s removal of a killed run's scratch worktree skips a locked
+    one;
   - the clone's lock can be taken. A dry run takes none: it reads the lock as
     a claim reads it (file-lock's `readHeldLock`, the claim's own parser), so
     it says busy exactly where a claim would, and whether it could be

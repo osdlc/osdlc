@@ -2176,7 +2176,7 @@ describe('updateAll', () => {
         owns: (path: string) => owned.owns(path),
         forget: (g: Git, path: string, removed: boolean) => {
           forgotten.push(path)
-          owned.forget(g, path, removed)
+          return owned.forget(g, path, removed)
         },
       }
 
@@ -2202,6 +2202,28 @@ describe('updateAll', () => {
     expect(existsSync(tree)).toBe(true)
     expect(git.worktrees().some((w) => w.path.endsWith('locked'))).toBe(true)
   })
+
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0).each(['locked', 'gitdir'])(
+    'ownedUnder leaves a worktree whose %s file cannot be read, folder and record, and says why',
+    (file) => {
+      const { git } = fx.worker
+      const root = join(fx.worker.dir, '.pr-update')
+      const tree = join(root, 'unread')
+      git.worktreeAdd(tree, { detach: true, startPoint: 'origin/main' })
+      writeFileSync(join(tree, 'uncommitted.txt'), 'mine\n')
+      const record = join(git.gitCommonDir()!, 'worktrees', 'unread')
+      if (file === 'locked') git.raw(['worktree', 'lock', '--reason', 'mine', tree])
+      chmodSync(join(record, file), 0o000)
+      try {
+        const left = ownedUnder([root]).forget(git, tree, false)
+        expect(existsSync(join(tree, 'uncommitted.txt'))).toBe(true)
+        expect(existsSync(record)).toBe(true)
+        expect(left).toContain(`cannot read ${join(record, file)}`)
+      } finally {
+        chmodSync(join(record, file), 0o644)
+      }
+    },
+  )
 
   test('an empty run creates no worktree at all', async () => {
     const { git } = fx.worker
