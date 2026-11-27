@@ -9,7 +9,7 @@
  */
 
 import { beforeAll, describe, expect, test } from 'vitest'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildDependencyGraph } from '../src/dependency-graph.ts'
 import { MANIFEST_FILES, walkManifests } from '../src/manifest-walk.ts'
@@ -131,7 +131,8 @@ describe('walkManifests', () => {
   })
 
   test('MANIFEST_FILES names the file of every manifest the walk finds', () => {
-    const names = new Set(manifests.map((m) => m.path.slice(m.path.lastIndexOf('/') + 1)))
+    // `path` is absolute, in the platform's own separators: backslashes on Windows.
+    const names = new Set(manifests.map((m) => basename(m.path)))
     expect([...names].sort()).toEqual([...MANIFEST_FILES].sort())
   })
 

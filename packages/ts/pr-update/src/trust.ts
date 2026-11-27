@@ -161,7 +161,11 @@ export function worktreeCommands(cfg: PrUpdateConfig): string[] {
 /**
  * What a target other than the project root is trusted as: a checkout found on this machine by
  * its path, as the project root is, and a managed clone, whose folder is made again in other
- * places, by its repository, `host/owner/name` with the host's port left out.
+ * places, by its repository, `host/owner/name` with the host's port left out. So there is one
+ * grant per host name, whatever the port: trust-repo's repository keys hold no `:`, which keeps
+ * them apart from a Windows path (`C:\x`), and the clone's folders name the host without its
+ * port too, since a Windows folder name cannot hold a `:`. Two servers on one host name share
+ * their grants.
  */
 export function targetTrustKey(target: TargetCheckout): TrustKey {
   return target.source === 'clone'

@@ -6,12 +6,13 @@
  * arrive in stack order and are applied in it. A stack updated child first is
  * work that has to be redone as soon as the parent moves.
  *
- * Nothing is written without `apply`. A bare run goes through the whole path
- * (checkout, integrate, resolve) and pushes nothing, so the report says which
- * PRs would conflict before anything reaches a remote. That is the default
- * because the worst failure of this command is a bad force-push, and a default
- * that could cause one would be wrong. `confirmPush` adds a second check: a
- * y/N before each rebase force-push.
+ * Nothing is pushed, kept or recorded without `apply`. A bare run goes through
+ * the whole path (fetch, clone locks, worktrees, scratch branches and commits,
+ * resolvers, verify), so the report says which PRs would conflict before
+ * anything reaches a remote. That is the default because the worst failure of
+ * this command is a bad force-push, and a default that could cause one would
+ * be wrong. `confirmPush` adds a second check: a y/N before each rebase
+ * force-push.
  *
  * What is skipped, and why it is skipped rather than attempted:
  *
@@ -43,7 +44,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 
 import { forwardedSignal } from '@osdlc/command-seam'
-import { Git, withoutRepositoryVars } from '@osdlc/typed-git'
+import { Git } from '@osdlc/typed-git'
 
 import {
   describeOutcome,
@@ -51,6 +52,7 @@ import {
   tally,
   targetGitOptions,
   updateAll,
+  type CloneLock,
   type UpdateResult,
   type UpdateTarget,
 } from './update/execute.ts'
@@ -733,7 +735,8 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
   // before any update, so a list the host refuses for one repository stops
   // the run before anything in any repository is pushed. And every surveyed
   // checkout, not only those with a PR to update, so a missing or refused
-  // list is reported on every run, not first on the run that needs it.
+  // list is reported on every run, not first on the run that needs it. Not one
+  // the trust gate refused, or whose listing failed or drift was not measured.
   const verify = effectiveCfg.verify
   const verifyVerbsOf = new Map<string, readonly string[]>()
   if (verify !== 'none' && verify !== 'detect') {
@@ -768,6 +771,7 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
     onRebaseConflict: effectiveCfg.on_rebase_conflict,
     maxRebaseStops: effectiveCfg.repair.max_rebase_stops,
     submodules: effectiveCfg.submodules,
+    rerere: effectiveCfg.rerere,
     confirmPush,
   }
   // Records too old to matter go before this run writes new ones. A rehearsal writes nothing.
@@ -791,7 +795,7 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
   let madeTargetWorktree = false
   for (const [repo, { path, remote, targets: group }] of groups) {
     const at = served.get(repo)
-    const git = gitOf(path, at, env)
+    const git = gitOf(path, env)
     // `<run>` last: a later run reads the pid of a killed one from it.
     const worktreeRoot = join(at?.worktrees ?? join(path, '.pr-update'), runId)
     // `updateAll` makes it for any PR left, before it asks for a lease, so even a run whose
@@ -910,13 +914,10 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
  * `updateAll`'s hold on the managed clone at `path`, whose run worktree is `worktree`, through
  * the run's {@link ManagedClones}.
  */
-function cloneLock(
-  clones: ManagedClones,
-  path: string,
-  worktree: string,
-): { added: () => void; removing: (remove: () => void) => void } {
+function cloneLock(clones: ManagedClones, path: string, worktree: string): CloneLock {
   return {
     added: () => clones.release(path),
+    keeping: (keep) => clones.keeping(path, worktree, keep),
     removing: (remove) => {
       clones.removing(path, { path: worktree, kind: 'run' }, remove)
     },
@@ -942,11 +943,9 @@ interface Served {
   attempts: AttemptStore | undefined
   lease: BranchLease | undefined
   /**
-   * Set for a target other than the project root, whose checkout is someone else's: git runs
-   * there with hooks off and without an inherited `GIT_DIR` (`targetGitOptions`), and only
-   * worktrees under pr-update's own directories are cleaned up (`records`).
+   * Set for a target other than the project root, whose checkout is someone else's: only
+   * worktrees under pr-update's own directories are cleaned up.
    */
-  elsewhere?: true | undefined
   records?: WorktreeRecords | undefined
   /** Set when its worktrees and kept trees are where `Ports.targetHome` put them. */
   home?: true | undefined
@@ -956,19 +955,18 @@ interface Served {
  * The client a served checkout is updated through. Its `at()` clients run in the run's worktrees
  * and kept trees, so every call it makes runs without an inherited `GIT_DIR`, `GIT_WORK_TREE` or
  * the other variables that pick a repository: in a linked worktree they would act on the
- * repository `GIT_DIR` names and could move its checked-out branch. For a target other than the
- * project root it also runs with hooks off, since a worktree checks out the PR's own files and a
- * relative `core.hooksPath` (`.husky`) would run the hooks the PR's author wrote. The project
- * root's fetch, survey, listing and branch mode's sync keep the environment as given
- * (`survey.ts`, `syncLocalCheckout`). The two agree on the project root because the CLI refuses,
- * before it fetches, a run whose variables find another repository or another top level than the
+ * repository `GIT_DIR` names and could move its checked-out branch. It also runs with hooks off,
+ * the project root's included, since a worktree checks out the PR's own files and a relative
+ * `core.hooksPath` (`.husky`) would run the hooks the PR's author wrote: at `worktree add`, at
+ * the checkout of the PR's head, and at the push. So a person's own pre-push hook does not run
+ * on pr-update's pushes either. The project root's fetch, survey, listing and branch mode's sync,
+ * in the person's own checkout, keep the environment as given (`survey.ts`,
+ * `syncLocalCheckout`). The two agree on the project root because the CLI refuses, before it
+ * fetches, a run whose variables find another repository or another top level than the
  * directory's own (`repositoryVarsRefusal`).
  */
-function gitOf(path: string, at: Served | undefined, env: Pick<UpdateEnv, 'git'>): Git {
-  return new Git(
-    path,
-    at?.elsewhere === true ? targetGitOptions(env.git) : { runner: withoutRepositoryVars(env.git) },
-  )
+function gitOf(path: string, env: Pick<UpdateEnv, 'git'>): Git {
+  return new Git(path, targetGitOptions(env.git))
 }
 
 /**
@@ -1017,7 +1015,6 @@ function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<
         worktrees: join(path, '.pr-update'),
         kept: { ...checkoutKept(path), records },
         target,
-        elsewhere: true,
         records,
       })
       continue
@@ -1037,7 +1034,6 @@ function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<
       },
       attempts: home.attempts,
       lease: home.lease,
-      elsewhere: true,
       records,
       home: true,
     })
@@ -1185,17 +1181,17 @@ function settleKept(
       discardKept(git, place, record),
     )
   }
-  const places = new Map<string, { checkout: string; place: KeptPlace; at?: Served }>()
+  const places = new Map<string, { checkout: string; place: KeptPlace }>()
   for (const [repo, s] of served) {
-    if (!refused.has(repo)) places.set(s.kept.dir, { checkout: s.path, place: s.kept, at: s })
+    if (!refused.has(repo)) places.set(s.kept.dir, { checkout: s.path, place: s.kept })
   }
   for (const [repo, group] of groups) {
     const place = served.get(repo)?.kept ?? checkoutKept(group.path)
     if (!places.has(place.dir)) places.set(place.dir, { checkout: group.path, place })
   }
   if (args.discardKept === true) {
-    for (const { checkout, place, at } of places.values()) {
-      const git = gitOf(checkout, at, env)
+    for (const { checkout, place } of places.values()) {
+      const git = gitOf(checkout, env)
       for (const record of listKept(place, onRefused)) {
         const tree = treeOf(git, place, record)
         if (tree.kind === 'forged') continue
@@ -1216,7 +1212,7 @@ function settleKept(
   for (const [repo, group] of groups) {
     const at = served.get(repo)
     const place = at?.kept ?? checkoutKept(group.path)
-    const git = gitOf(group.path, at, env)
+    const git = gitOf(group.path, env)
     group.targets = group.targets.filter((t) => {
       const record = findKept(place, t.repo, t.number, onRefused)
       if (record === null || removed.includes(record.path)) return true

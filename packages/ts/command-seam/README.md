@@ -615,6 +615,22 @@ const r = await git.run(['rev-parse', '--is-inside-work-tree'], { cwd: '/tmp/clo
 running anything. `absolutePathCandidates(binary, { path, pathext, platform })`
 returns the paths that lookup checks, in order, without reading the disk.
 
+The runner only finds its own binary that way. A child that looks programs
+up itself, as git starts `ssh` for a push or a `!` credential helper, still
+reads `PATH` from the folder it runs in. `absolutePathEntries(path, { platform })`
+keeps only the entries that lookup searches, to pass as the child's `PATH`:
+
+```ts
+import { absolutePathEntries, spawnRunner } from '@osdlc/command-seam'
+
+const git = spawnRunner('git', { absolutePathOnly: true })
+const path = absolutePathEntries(process.env.PATH)
+git.run(['push'], { cwd: '/tmp/clone', ...(path === undefined ? {} : { env: { PATH: path } }) })
+```
+
+With no absolute entry left it gives `/usr/bin:/bin` on POSIX, never an empty
+`PATH`, which a shell reads as the current folder.
+
 ## Reading results
 
 Small helpers that never throw for a failed command (a programmer error,
@@ -1106,7 +1122,7 @@ The experimental exports:
 - `firstLine`, `stderrOrError`
 - `runJson`, `runJsonAsync`, `parseJsonResult`, `isJsonParseFailure`, `JsonRun`, `JsonFailure`, `RunJsonOptions`
 - `withDefaults`, `DefaultedRunner`
-- `which`, `WhichOptions`, `absolutePathCandidates`, `PathCandidateOptions`
+- `which`, `WhichOptions`, `absolutePathCandidates`, `PathCandidateOptions`, `absolutePathEntries`, `AbsolutePathOptions`
 - `commandString`, `CommandStringOptions`
 - `SpawnRunnerOptions`
 - `stopProcess`
@@ -1179,6 +1195,8 @@ are settled, and Windows support has landed, if that is feasible.
 | `WhichOptions`                                                  | interface | `cwd`, `env`, `platform`, `absolutePathOnly`                   |
 | `absolutePathCandidates`                                        | function  | The absolute paths a safe lookup tries for a bare name, in order |
 | `PathCandidateOptions`                                          | interface | `absolutePathCandidates` inputs: `PATH`, `PATHEXT`, platform   |
+| `absolutePathEntries`                                           | function  | A `PATH` with only its absolute entries, to pass to a child    |
+| `AbsolutePathOptions`                                           | interface | `absolutePathEntries` input: the platform                      |
 | `fakeRunner`                                                    | function  | `/testing`: a `CommandRunner` that answers from a table, with async and bytes forms |
 | `fakeNeverExited`                                               | function  | `/testing`: a fake answer for a run that never exited          |
 | `fakeProcess`                                                   | function  | `/testing`: a `ManagedProcessHandle` the test ends by hand     |

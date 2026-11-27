@@ -2,6 +2,10 @@
 "@osdlc/trust-repo": minor
 ---
 
+**Breaking:** `list`, `listGrants` and `tighten` can now throw, when the
+store's directory cannot be resolved (a relative `<PREFIX>_ROOT`, say). Catch
+the error where you call them, or pass an absolute root.
+
 A trust store can now live where the tool's other machine-local files live.
 Pass `vendorDirs` (the same `{ vendor, envVars }` value `machineConfigFile`
 takes) and the store is `<state home>/<tool>/trusted/`, resolved through

@@ -19,9 +19,10 @@ export interface WorktreeRecords {
   owns(path: string): boolean
   /**
    * After `git worktree remove --force <path>` was tried (`removed` says whether it worked), make
-   * sure git no longer lists `path`.
+   * sure git no longer lists `path`. Returns why `path` was left in place when what decides
+   * whether it may go could not be read; undefined otherwise.
    */
-  forget(git: Git, path: string, removed: boolean): void
+  forget(git: Git, path: string, removed: boolean): string | undefined
 }
 
 /** The project root's way: every worktree is the run's to clean, and `git worktree prune` forgets. */
@@ -29,6 +30,7 @@ export const PRUNE_ALL: WorktreeRecords = {
   owns: () => true,
   forget: (git) => {
     git.try.worktreePrune()
+    return undefined
   },
 }
 
@@ -48,51 +50,123 @@ function isUnder(path: string, root: string): boolean {
 }
 
 /**
+ * Whether a person locked a worktree with `git worktree lock`, from its list entry. The lock git
+ * itself takes while `git worktree add` runs, `initializing`, is not one: a killed add leaves it
+ * behind.
+ */
+export function lockedByPerson(w: { locked: boolean; lockReason: string | null }): boolean {
+  return w.locked && w.lockReason !== 'initializing'
+}
+
+/**
  * The way for a checkout that is not the run's own: only worktrees under `roots` are the run's.
  * When removing one failed, its folder is deleted and its record, `<common>/worktrees/<id>/`, is
- * deleted too, but only the record whose `gitdir` names that worktree. Nothing else is pruned.
+ * deleted too, but only the record whose `gitdir` names that worktree. Nothing else is pruned. A
+ * worktree a person locked (`git worktree remove` fails on it) is left as it is, folder and record.
+ * So is one whose record or lock cannot be read, as a prune leaves what it cannot read: git
+ * refuses the removal then too, and the folder may hold uncommitted work.
  */
 export function ownedUnder(roots: readonly string[]): WorktreeRecords {
   const owns = (path: string): boolean => roots.some((root) => isUnder(path, root))
   return {
     owns,
     forget(git, path, removed) {
-      if (removed || !owns(path)) return
+      if (removed || !owns(path)) return undefined
+      const found = recordOf(git, path)
+      if (found !== null && typeof found === 'object') return `${path} stays: ${found.unread}`
+      if (found !== null) {
+        const lock = readLock(found)
+        if ('unread' in lock) return `${path} stays: ${lock.unread}`
+        if (lockedByPerson(lock)) return undefined
+      }
       rmSync(path, { recursive: true, force: true })
-      let common: string | null
-      try {
-        common = git.gitCommonDir()
-      } catch {
-        return
+      if (found !== null && owns(path) && !existsSync(path)) {
+        rmSync(found, { recursive: true, force: true })
       }
-      if (common === null) return
-      const records = join(resolve(git.cwd, common), 'worktrees')
-      let ids: string[]
-      try {
-        ids = readdirSync(records)
-      } catch {
-        return
-      }
-      const wanted = canonical(path)
-      for (const id of ids) {
-        let gitdir: string
-        try {
-          gitdir = readFileSync(join(records, id, 'gitdir'), 'utf8').trim()
-        } catch {
-          continue
-        }
-        // `gitdir` names the worktree's `.git` file.
-        const tree = dirname(resolve(records, id, gitdir))
-        if (canonical(tree) === wanted && owns(tree) && !existsSync(tree)) {
-          rmSync(join(records, id), { recursive: true, force: true })
-        }
-      }
+      return undefined
     },
   }
 }
 
-/** `git worktree remove --force <path>`, then `records.forget`. */
-export function removeWorktree(git: Git, path: string, records: WorktreeRecords): void {
+/** Why a read failed, in a line, or null when the file or folder is not there. */
+function unreadOf(what: string, e: unknown): string | null {
+  const code = (e as NodeJS.ErrnoException).code
+  if (code === 'ENOENT' || code === 'ENOTDIR') return null
+  return `cannot read ${what}: ${code ?? (e as Error).message}`
+}
+
+/**
+ * The record, `<common>/worktrees/<id>/`, whose `gitdir` names the worktree at `path`; null when
+ * no record does. When a record that might be it cannot be read (no `gitdir`, an empty one, or
+ * one that cannot be read), or the records cannot be listed, it says why: the caller cannot tell
+ * whether the worktree is still registered, or locked.
+ */
+function recordOf(git: Git, path: string): string | null | { unread: string } {
+  let common: string | null
+  try {
+    common = git.gitCommonDir()
+  } catch (e) {
+    return { unread: `cannot find its git directory: ${(e as Error).message.split('\n')[0]}` }
+  }
+  if (common === null) return { unread: 'cannot find its git directory' }
+  const records = join(resolve(git.cwd, common), 'worktrees')
+  let ids: string[]
+  try {
+    ids = readdirSync(records)
+  } catch (e) {
+    const why = unreadOf(records, e)
+    return why === null ? null : { unread: why }
+  }
+  const wanted = canonical(path)
+  let unread: string | null = null
+  for (const id of ids) {
+    const file = join(records, id, 'gitdir')
+    let gitdir: string
+    try {
+      gitdir = readFileSync(file, 'utf8').trim()
+    } catch (e) {
+      // ENOTDIR: a stray file in `worktrees/`, not a record.
+      if ((e as NodeJS.ErrnoException).code !== 'ENOTDIR') {
+        unread ??= unreadOf(file, e) ?? `${file} is missing`
+      }
+      continue
+    }
+    if (gitdir === '') {
+      unread ??= `${file} is empty`
+      continue
+    }
+    // `gitdir` names the worktree's `.git` file.
+    if (canonical(dirname(resolve(records, id, gitdir))) === wanted) return join(records, id)
+  }
+  return unread === null ? null : { unread }
+}
+
+/**
+ * A record's lock, as `git worktree list` reads it: its `locked` file, whose text is the reason.
+ * Only a `locked` file that is not there means no lock; one that cannot be read says why.
+ */
+function readLock(
+  record: string,
+): { locked: boolean; lockReason: string | null } | { unread: string } {
+  const file = join(record, 'locked')
+  try {
+    const reason = readFileSync(file, 'utf8').trim()
+    return { locked: true, lockReason: reason === '' ? null : reason }
+  } catch (e) {
+    const why = unreadOf(file, e)
+    return why === null ? { locked: false, lockReason: null } : { unread: why }
+  }
+}
+
+/**
+ * `git worktree remove --force <path>`, then `records.forget`. Returns why `path` was left in
+ * place when `forget` could not read what decides it (see {@link WorktreeRecords.forget}).
+ */
+export function removeWorktree(
+  git: Git,
+  path: string,
+  records: WorktreeRecords,
+): string | undefined {
   const removed = git.try.worktreeRemove(path, { force: true }).ok
-  records.forget(git, path, removed)
+  return records.forget(git, path, removed)
 }

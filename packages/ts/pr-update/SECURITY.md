@@ -39,16 +39,46 @@ are in scope.
 - **A repair agent can run tools.** It edits the update worktree. The engine
   rejects a repair that moves HEAD, creates a ref or leaves conflict markers,
   but it does not sandbox the agent.
+- **Recorded resolutions are replayed.** In `update --apply`, unless
+  `pr_update.rerere` is false, git's rerere replays a resolution recorded in
+  the repository's `rr-cache/` into a later PR with the same conflict and
+  stages it; no resolver or repair sees that path, and only `verify` checks
+  it. pr-update removes what a rejected repair, an abandoned rebase or a PR
+  that was not pushed recorded, but an agent that writes into `rr-cache/`
+  itself is not stopped.
 - **GitHub credentials belong to `gh`.** The package reads no GitHub token.
 - **The remote picks the host.** `origin` decides which adapter and which
   repository the updates go to. A `--repo` target names its own host, or
   takes the host of the project root's `origin` when that is GitHub, else
   github.com.
-- **Other repositories run with hooks off.** For a `--repo` target, every git
-  command, in a checkout found on the machine, a managed clone or their run
-  worktrees, runs with `core.hooksPath=/dev/null`, so a hook the PR commits
-  does not run. Each target passes the trust gate on its own. The project
-  root's git runs as before.
+- **Hooks are off wherever a PR's files are checked out.** Every git command
+  in a run worktree or kept tree, the project root's included, runs with
+  `core.hooksPath=/dev/null`, set after any `-c core.hooksPath` a parent git
+  passed on in `GIT_CONFIG_PARAMETERS`. So a hook the PR commits under a
+  relative `core.hooksPath` such as `.husky` does not run at `worktree add`,
+  at the checkout of the PR's head or at the push, and neither does your own
+  pre-push hook on pr-update's pushes. For a `--repo` target, every git
+  command in a checkout found on the machine or a managed clone runs that way
+  too. Each target passes the trust gate on its own. The project root's own
+  fetch, survey, PR listing and branch mode's sync, in your checkout, keep
+  its hooks.
+- **git finds programs on the absolute `PATH` entries only where a PR's
+  files are checked out.** git and `gh` themselves are always found that way.
+  git also looks programs up on `PATH` itself, from the folder it runs in:
+  `ssh` for a fetch or push over ssh, a `!` credential helper such as the
+  `!gh auth git-credential` that `gh auth setup-git` writes, `gpg` to sign,
+  the shell's lookup for `core.sshCommand`. So with a relative entry such as
+  `.` on `PATH`, any of them could be a file the PR commits. Every git command
+  pr-update runs in a run worktree or kept tree, the project root's included,
+  and every one in a `--repo` target (the git that `gh repo clone` runs, and
+  the target's `git-ref` record and lease, included) gets a `PATH` holding
+  only the absolute entries of yours. With none left, it is `/usr/bin:/bin`
+  on Linux and macOS, never an empty `PATH`, which a shell reads as the
+  current folder. The project root's own fetch, survey, PR listing and branch
+  mode's sync run in your checkout with your `PATH`. Commands from config
+  (verify, resolvers, `lockfile_install`, a repair command or agent) run
+  the PR's code by design, under the trust gate, with your `PATH`, and so do
+  your own git commands in a kept tree.
 - **pr-update's worktrees and other repositories ignore `GIT_DIR`.** A run
   started from a git hook inherits `GIT_DIR`, which would make every git it
   runs act on the hook's repository; in a linked worktree that moves the
@@ -67,17 +97,27 @@ are in scope.
   run's credentials. Local paths and `ext::` URLs are refused; `https` and
   `ssh` ones are not. See [Git submodules](README.md#git-submodules).
 - **A managed clone holds a credential helper.** Its own git config gets
-  `!gh auth git-credential` for its host, so fetches and pushes sign in
-  through `gh`. Your global git config is not changed.
+  `!<gh> auth git-credential` for its host, so fetches and pushes sign in
+  through `gh`. `<gh>` is the absolute path of `gh`, found on the absolute
+  `PATH` entries only, so the helper never runs a `gh` a PR commits, even
+  when your own git command in a kept tree runs it with `.` on `PATH`.
+  Without one, no helper is set. Your global git config is not changed.
 - **A kept record does not choose what is deleted.** `--keep-failed` writes a
   record beside each kept tree, and in a checkout that is
   `.pr-update/failed/`, inside the working tree, where the repository's own
   files can put one. A record is acted on only when its branch and path are
   the ones pr-update gives that PR, its folder is not a symbolic link, and
   `git worktree list` shows a worktree at that folder. One shown on another
-  branch, or detached, is a person's, and is never removed. A tree is removed
+  branch, or detached, is a person's, and is never removed. `mirror prune
+  --discard-kept` removes a kept tree only while the clone being pruned lists
+  it on its record's branch, or on a `pr-update/failed-*` branch with no
+  record, the tree's own `.git` file names that clone, and its record names no
+  other git directory that still exists, so neither a record nor a moved or
+  copied clone decides it alone, and nothing is changed through a clone whose
+  lock the prune does not hold. A tree is removed
   through the checkout's own git directory, never one a checkout's record
-  names. Any other record is left alone and reported.
+  names. Any other record is left alone and reported. A git directory that
+  cannot be read is not taken for one that is gone.
 - **No file others can write to.** The `pr-update` command takes write for
   group and others out of its umask when it starts, and git, `gh` and every
   command it runs inherit it, so none of them creates a file or folder others
@@ -93,4 +133,13 @@ are in scope.
   marker, and in the git directory that owns a dead run's worktree only that
   worktree's record and scratch branch. They never follow a symbolic link, and on Linux and macOS
   they remove nothing from a folder another user owns or others can write
-  to. Windows gets no such check.
+  to. Windows gets no such check. Before anything is removed, that folder
+  rule, the owner's `git worktree list` and the clone's lock must allow it.
+  A worktree that list shows as locked (`git worktree lock`) stays, even
+  when its folder is missing, and so does its clone; only git's own
+  `initializing` lock, which a killed `git worktree add` leaves, is not
+  counted. A clone also stays while its
+  `worktrees/` folder holds a record that list does not show, since git leaves
+  out a record it cannot read without a word. What cannot be read stays and
+  is reported, and `--dry-run` decides the same way, reading a clone's lock
+  as a claim would.

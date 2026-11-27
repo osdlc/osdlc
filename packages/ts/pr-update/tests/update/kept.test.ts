@@ -1,9 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { keptOwnerElsewhere, type KeptPlace, type KeptRecord } from '../../src/update/kept.ts'
+import {
+  keptOwnerElsewhere,
+  keptOwnerGone,
+  type KeptPlace,
+  type KeptRecord,
+} from '../../src/update/kept.ts'
 
 describe('keptOwnerElsewhere', () => {
   let root: string
@@ -48,4 +53,23 @@ describe('keptOwnerElsewhere', () => {
     expect(keptOwnerElsewhere(place, record(other))).toBe(other)
     expect(keptOwnerElsewhere(place, record(join(root, 'gone.git')))).toBeNull()
   })
+
+  // Windows has no search bit for chmod to take away, and root searches any folder.
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'one that cannot be read is not gone, so it is elsewhere (final review round 3)',
+    () => {
+      const shut = join(root, 'shut')
+      const other = join(shut, 'other.git')
+      mkdirSync(other, { recursive: true })
+      chmodSync(shut, 0o000)
+      try {
+        expect(keptOwnerGone(record(other))).toBeNull()
+        expect(keptOwnerElsewhere(place, record(other))).toBe(other)
+      } finally {
+        chmodSync(shut, 0o700)
+      }
+      rmSync(shut, { recursive: true })
+      expect(keptOwnerGone(record(other))).toBe(other)
+    },
+  )
 })

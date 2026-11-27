@@ -40,6 +40,8 @@ import {
   claimCloneLock,
   cloneLockPath,
   markMirrorDir,
+  writeMirrorAnswer,
+  type MirrorAnswer,
 } from '../src/mirror.ts'
 import { CONFIG_INVALID_EXIT } from '@osdlc/config-layers'
 import { allToolsInstalled, isolatedEnv, literal, worktreePaths } from './support.ts'
@@ -115,6 +117,8 @@ beforeEach(() => {
   writeFileSync(join(bin, 'gh.cmd'), `@node "${FAKE_GH}" %*\r\n`)
   ghLog = join(scratch, 'gh.log')
   vi.stubEnv('PATH', `${bin}${delimiter}${process.env.PATH ?? ''}`)
+  // So the Windows lookup spells the fake gh's extension one way (`ghHelper`).
+  vi.stubEnv('PATHEXT', '.COM;.EXE;.BAT;.CMD')
   vi.stubEnv('FAKE_GH_ROOT', ghRoot)
   vi.stubEnv('FAKE_GH_LOG', ghLog)
 
@@ -152,6 +156,17 @@ function ghCalls(): { argv: string[]; host: string; hooksPath: string | null }[]
 
 const cloneOf = (dir: string) => join(dir, 'github.com', 'acme', 'api.git')
 
+/**
+ * The helper a clone gets: the fake gh by its absolute path. On Windows that is `gh.cmd` as
+ * `PATHEXT` spells it, `gh.CMD` (`PATHEXT` is set in `beforeEach`), with `/`, single-quoted
+ * when it holds a character the shell reads (a short name's `~`, say).
+ */
+const ghHelper = () => {
+  if (process.platform !== 'win32') return `!${join(scratch, 'bin', 'gh')} auth git-credential`
+  const path = join(scratch, 'bin', 'gh.CMD').replaceAll('\\', '/')
+  return `!${/^[\w@%+=:,./-]+$/.test(path) ? path : `'${path}'`} auth git-credential`
+}
+
 /** A terminal that answers with `lines`, and records what was asked. */
 function answering(...lines: string[]): { seams: CliSeams; asked: () => string } {
   const file = join(scratch, `answers-${Math.random().toString(36).slice(2)}`)
@@ -177,6 +192,78 @@ function writeMachine(text: string): void {
 const readMachine = () => (existsSync(machinePath()) ? readFileSync(machinePath(), 'utf8') : null)
 
 const clonesMade = () => ghCalls().filter((c) => c.argv[1] === 'clone')
+
+describe("a managed clone's credential helper", () => {
+  test('never runs a gh planted in the worktree a push runs in, with . on PATH (final review)', async () => {
+    const dir = join(scratch, 'clones')
+    const r = await run('update', '--repo', 'acme/api', '--mirror-dir', dir, '--apply')
+    expect(r.code).toBe(EXIT.ok)
+    // A worktree of the clone holding an executable `gh`, as a PR could commit one.
+    const tree = join(scratch, 'tree')
+    git(cloneOf(dir), 'worktree', 'add', '-q', '--detach', tree, 'origin/topic')
+    const planted = join(scratch, 'planted-ran')
+    writeFileSync(join(tree, 'gh'), `#!/bin/sh\n: > '${planted}'\n`)
+    chmodSync(join(tree, 'gh'), 0o755)
+    // On Windows a `gh.cmd` or `gh.bat` there is found through `PATHEXT` too.
+    for (const ext of ['.cmd', '.bat']) {
+      writeFileSync(join(tree, `gh${ext}`), `@echo off\r\ntype nul > "${planted}"\r\n`)
+    }
+    // The credential git asks for when it pushes over https, from that worktree.
+    const res = spawnRunner('git').run(['credential', 'fill'], {
+      cwd: tree,
+      env: { PATH: `.${delimiter}${process.env.PATH ?? ''}`, GIT_TERMINAL_PROMPT: '0' },
+      input: 'protocol=https\nhost=github.com\n\n',
+    })
+    expect(res.stdout).toContain('password=fake')
+    expect(existsSync(planted)).toBe(false)
+    expect(ghCalls().map((c) => c.argv.slice(0, 3))).toContainEqual([
+      'auth',
+      'git-credential',
+      'get',
+    ])
+  })
+})
+
+describe('the PATH of git in a run worktree (final review round 1)', () => {
+  test('a push over ssh never runs an ssh the PR commits, with . on PATH', async () => {
+    // The PR commits an executable `ssh`, so the run worktree holds one.
+    const ran = (name: string) => join(scratch, `${name}-ran`)
+    const pr = join(scratch, 'pr')
+    git(scratch, 'clone', '-q', '-b', 'topic', remote, pr)
+    writeFileSync(join(pr, 'ssh'), `#!/bin/sh\n: > '${ran('planted')}'\nexit 1\n`)
+    // On Windows a `ssh.cmd` or `ssh.bat` there is found through `PATHEXT` too.
+    for (const ext of ['.cmd', '.bat']) {
+      writeFileSync(
+        join(pr, `ssh${ext}`),
+        `@echo off\r\ntype nul > "${ran('planted')}"\r\nexit /b 1\r\n`,
+      )
+    }
+    git(pr, 'add', '--chmod=+x', 'ssh', 'ssh.cmd', 'ssh.bat')
+    git(pr, 'commit', '-q', '-m', 'ssh')
+    git(pr, 'push', '-q', 'origin', 'topic')
+    const head = git(pr, 'rev-parse', 'HEAD')
+    const prs = join(scratch, 'gh', 'prs.json')
+    writeFileSync(prs, readFileSync(prs, 'utf8').replace(topic, head))
+    // An `ssh` on an absolute entry, after `.`: the one a push may run. It fails the push, so
+    // nothing reaches the network.
+    const bin = join(scratch, 'bin')
+    writeFileSync(join(bin, 'ssh'), `#!/bin/sh\n: > '${ran('absolute')}'\nexit 1\n`)
+    chmodSync(join(bin, 'ssh'), 0o755)
+    vi.stubEnv('PATH', `.${delimiter}${process.env.PATH ?? ''}`)
+    // Either would name the ssh to run, and so the person's own.
+    vi.stubEnv('GIT_SSH_COMMAND', undefined)
+    vi.stubEnv('GIT_SSH', undefined)
+    // The clone pushes over ssh, as one gh makes with `git_protocol: ssh` does.
+    vi.stubEnv('FAKE_GH_PUSH_URL', 'git@ssh.invalid:acme/api.git')
+
+    const dir = join(scratch, 'clones')
+    const r = await run('update', '--repo', 'acme/api', '--mirror-dir', dir, '--apply')
+    expect(r.code, r.out + r.err).not.toBe(EXIT.ok)
+    expect(existsSync(ran('planted'))).toBe(false)
+    // Windows' git may find its own `ssh` first; elsewhere the push ran the absolute one.
+    if (process.platform !== 'win32') expect(existsSync(ran('absolute'))).toBe(true)
+  })
+})
 
 describe('update --apply with a target that has no checkout', () => {
   test('--mirror-dir clones it with gh, updates the PR from the clone and pushes to its origin', async () => {
@@ -228,7 +315,8 @@ describe('update --apply with a target that has no checkout', () => {
       ['config', '--local', '--get-all', 'credential.https://github.com.helper'],
       { cwd: c },
     )
-    expect(helpers.stdout).toBe('\n!gh auth git-credential\n')
+    // gh by its absolute path, so a `gh` in the directory a push runs in is never the one run.
+    expect(helpers.stdout).toBe(`\n${ghHelper()}\n`)
     expect(existsSync(join(c, CLONE_STAMP))).toBe(true)
     expect(existsSync(join(dir, '.pr-update-mirror'))).toBe(true)
     // The lock beside the clone is released, and no temporary directory is left.
@@ -399,30 +487,99 @@ describe('the first-run question', () => {
     expect(JSON.parse(r.out).skipped[0].reason).toContain('checkout: local')
   })
 
-  test('an answer that loses the race to another run is dropped, and the run follows the one that won', async () => {
-    // Another run answers "no" while this one is still asking.
-    let answeredElsewhere = false
-    const { seams } = answering('1')
+  /**
+   * A terminal answering with `lines` that, when the question is shown, has another run save
+   * `elsewhere` to the machine file through the same locked write, as if it answered first, or
+   * runs `elsewhere` when it is a function.
+   */
+  function racing(
+    elsewhere: MirrorAnswer | (() => void),
+    ...lines: string[]
+  ): { seams: CliSeams; raced: () => boolean } {
+    let raced = false
+    const { seams } = answering(...lines)
     const terminal = seams.terminal!
-    const racing: CliSeams = {
-      terminal: {
-        ...terminal,
-        write: (text) => {
-          terminal.write?.(text)
-          if (!answeredElsewhere && text.includes('Choose')) {
-            answeredElsewhere = true
-            writeMachine('checkout: local\n')
-          }
+    return {
+      seams: {
+        terminal: {
+          ...terminal,
+          write: (text) => {
+            terminal.write?.(text)
+            if (!raced && text.includes('Choose')) {
+              raced = true
+              if (typeof elsewhere === 'function') elsewhere()
+              else writeMirrorAnswer(machineFile({ env }), elsewhere, { yield: true })
+            }
+          },
         },
       },
+      raced: () => raced,
     }
-    const r = await runWith(racing, {}, 'update', '--repo', 'acme/api', '--apply', '--json')
+  }
+
+  test('another run saved local while this one was answered yes: nothing is cloned, and the note says how to change it (final review)', async () => {
+    const { seams, raced } = racing({ checkout: 'local' }, '1')
+    const r = await runWith(seams, {}, 'update', '--repo', 'acme/api', '--apply', '--json')
     expect(r.code).toBe(EXIT.ok)
-    expect(answeredElsewhere).toBe(true)
+    expect(raced()).toBe(true)
     expect(readMachine()).toBe('checkout: local\n')
-    expect(r.err).toContain('another run answered first')
     expect(clonesMade()).toEqual([])
-    expect(JSON.parse(r.out).skipped[0].reason).toContain('checkout: local')
+    const reason = JSON.parse(r.out).skipped[0].reason
+    expect(reason).toContain(
+      `another run saved checkout: local to ${machinePath()} while this run asked`,
+    )
+    expect(reason).toContain('pr-update mirror enable')
+  })
+
+  test('two runs answer differently: the second, answered no, clones nothing though the first said yes (final review)', async () => {
+    const { seams, raced } = racing({ checkout: 'mirror' }, '3')
+    const r = await runWith(seams, {}, 'update', '--repo', 'acme/api', '--apply', '--json')
+    expect(r.code).toBe(EXIT.ok)
+    expect(raced()).toBe(true)
+    expect(readMachine()).toBe('checkout: mirror\n')
+    expect(clonesMade()).toEqual([])
+    const reason = JSON.parse(r.out).skipped[0].reason
+    expect(reason).toContain('another run saved checkout: mirror (clones in ')
+    expect(reason).toContain('not the answer given here (checkout: local)')
+    expect(reason).toContain('pr-update mirror disable')
+  })
+
+  test('two runs give different directories: the second clones into neither (final review)', async () => {
+    const theirs = join(scratch, 'theirs')
+    const { seams, raced } = racing({ checkout: 'mirror', mirror_dir: theirs }, '2', '~/mine')
+    const r = await runWith(seams, {}, 'update', '--repo', 'acme/api', '--apply', '--json')
+    expect(r.code).toBe(EXIT.ok)
+    expect(raced()).toBe(true)
+    expect(readMachine()).toBe(`checkout: mirror\nmirror_dir: ${theirs}\n`)
+    expect(clonesMade()).toEqual([])
+    expect(JSON.parse(r.out).skipped[0].reason).toContain(
+      `not the answer given here (checkout: mirror (clones in ${join(env.HOME!, 'mine')}))`,
+    )
+  })
+
+  test('an editor saves only a clone directory while this run asks: accepting the offered one clones into neither (final review round 1)', async () => {
+    const theirs = join(scratch, 'theirs')
+    const { seams, raced } = racing(() => writeMachine(`mirror_dir: ${theirs}\n`), '1')
+    const r = await runWith(seams, {}, 'update', '--repo', 'acme/api', '--apply', '--json')
+    expect(r.code).toBe(EXIT.ok)
+    expect(raced()).toBe(true)
+    // The answer is written beside the editor's directory, which is not the one accepted.
+    expect(readMachine()).toBe(`mirror_dir: ${theirs}\ncheckout: mirror\n`)
+    expect(clonesMade()).toEqual([])
+    expect(existsSync(theirs)).toBe(false)
+    const reason = JSON.parse(r.out).skipped[0].reason as string
+    expect(reason).toContain(`says checkout: mirror (clones in ${theirs})`)
+    expect(reason).toContain(`not the answer given here (checkout: mirror (clones in ${repos}))`)
+    expect(reason).toContain('pr-update mirror enable [--mirror-dir <dir>]')
+  })
+
+  test('another run saved the same answer: this run follows it and clones (final review)', async () => {
+    const { seams, raced } = racing({ checkout: 'mirror' }, '1')
+    const r = await runWith(seams, {}, 'update', '--repo', 'acme/api', '--apply', '--json')
+    expect(r.code).toBe(EXIT.ok)
+    expect(raced()).toBe(true)
+    expect(r.err).toContain('another run saved the same answer first')
+    expect(clonesMade()).toHaveLength(1)
   })
 
   test('a shallow checkout of it is named in a note and in the question', async () => {
@@ -567,6 +724,21 @@ describe('survey and a rehearsal', () => {
     }
     expect(clonesMade()).toEqual([])
     expect(existsSync(repos)).toBe(false)
+  })
+
+  test('with no clone, the note follows what the machine file says (final gate)', async () => {
+    writeMachine('checkout: mirror\n')
+    const allowed = await run('survey', '--repo', 'acme/api', '--json')
+    expect(allowed.code).toBe(EXIT.ok)
+    expect(allowed.err).toContain('; `update --apply` will clone it')
+    expect(allowed.err).not.toContain('mirror enable')
+
+    writeMachine('checkout: local\n')
+    const refused = await run('survey', '--repo', 'acme/api', '--json')
+    expect(refused.err).toContain(
+      `; checkout: local in ${machinePath()} makes no clone (\`pr-update mirror enable\` changes it)`,
+    )
+    expect(clonesMade()).toEqual([])
   })
 
   test('use a clone that exists: fetch it under its lock, pruned, stamp it, and measure it there', async () => {
@@ -780,7 +952,7 @@ describe('review round 1', () => {
     expect(clonesMade()).toMatchObject([{ host: 'ghe.example:8443' }])
     expect(JSON.parse(r.out).results).toMatchObject([{ number: 7, status: 'updated' }])
     expect(git(clone, 'config', '--get-all', 'credential.https://ghe.example:8443.helper')).toBe(
-      '!gh auth git-credential',
+      ghHelper(),
     )
   })
 
@@ -1024,6 +1196,53 @@ describe('review round 2', () => {
     expect(trees()).toEqual([clone])
     expect(existsSync(kept!)).toBe(false)
     expect(existsSync(lock)).toBe(false)
+  })
+})
+
+describe('keeping a failed worktree in a clone (final review)', () => {
+  test('happens under the clone’s lock, so a prune between the keep and the worktree added back finds the clone busy', async () => {
+    const dir = join(scratch, 'clones')
+    const clone = cloneOf(dir)
+    writeFileSync(
+      join(project, 'pr-update.local.yaml'),
+      "pr_update:\n  verify: test\n  test_command: 'false'\n",
+    )
+    // A `mirror prune --all-clones --discard-kept` run at the worst moment: the failed PR's
+    // worktree has been moved aside as a kept tree, and the run worktree is not back yet.
+    const real = spawnRunner('git', { absolutePathOnly: true })
+    let moved = false
+    let pruned: ReturnType<typeof pruneMirror> | undefined
+    const racing: CommandRunner = {
+      binary: 'git',
+      run: (argv, opts) => {
+        const at = argv.indexOf('worktree')
+        if (at !== -1 && argv[at + 1] === 'move') moved = true
+        else if (at !== -1 && argv[at + 1] === 'add' && moved && pruned === undefined) {
+          pruned = pruneMirror({ env, dir, allClones: true, discardKept: true })
+        }
+        return real.run(argv, opts)
+      },
+    }
+    const r = await runWith(
+      { ...noTerminal, git: racing },
+      {},
+      'update',
+      '--repo',
+      'acme/api',
+      '--mirror-dir',
+      dir,
+      '--apply',
+      '--trust',
+      '--keep-failed',
+      '--json',
+    )
+    expect(pruned?.removed).toEqual([])
+    expect(pruned?.skipped.map((e) => [e.kind, e.path, e.skip])).toEqual([['clone', clone, 'busy']])
+    expect(JSON.parse(r.out).results).toMatchObject([
+      { number: 7, status: 'failed', keptWorktree: expect.any(String) },
+    ])
+    expect(existsSync(clone)).toBe(true)
+    expect(existsSync(JSON.parse(r.out).results[0].keptWorktree)).toBe(true)
   })
 })
 

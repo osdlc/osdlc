@@ -609,6 +609,43 @@ describe('git in a located checkout', () => {
   })
 })
 
+describe('git in a located checkout, under an inherited -c core.hooksPath', () => {
+  test('runs no hook when a parent git passed GIT_CONFIG_PARAMETERS on (final review)', async () => {
+    const markers = join(scratch, 'markers')
+    mkdirSync(markers)
+    sh(api.worker.dir, 'checkout', '-q', 'topic')
+    mkdirSync(join(api.worker.dir, '.husky'))
+    for (const hook of ['post-checkout', 'pre-push']) {
+      const file = join(api.worker.dir, '.husky', hook)
+      writeFileSync(file, `#!/bin/sh\n: > '${join(markers, hook)}'\n`)
+      chmodSync(file, 0o755)
+    }
+    sh(api.worker.dir, 'add', '.husky')
+    sh(api.worker.dir, 'commit', '-q', '-m', 'hooks')
+    sh(api.worker.dir, 'push', '-q', 'origin', 'topic')
+    sh(api.worker.dir, 'checkout', '-q', 'main')
+    // No core.hooksPath in the checkout's config: it comes from the environment, as when
+    // pr-update runs from a git alias or hook started as `git -c core.hooksPath=.husky`.
+    vi.stubEnv('GIT_CONFIG_PARAMETERS', "'core.hooksPath'='.husky'")
+    try {
+      // The control: with that variable, checking the PR's head out fires its post-checkout.
+      const control = join(scratch, 'control')
+      sh(api.worker.dir, 'worktree', 'add', '-q', '--detach', control, 'origin/main')
+      sh(control, 'checkout', '-q', '--detach', 'origin/topic')
+      expect(existsSync(join(markers, 'post-checkout'))).toBe(true)
+      sh(api.worker.dir, 'worktree', 'remove', '--force', control)
+      rmSync(markers, { recursive: true, force: true })
+      mkdirSync(markers)
+
+      const out = await update({ args: { strategy: 'merge' } })
+      expect(out.results.map((r) => [r.status, r.pushed])).toEqual([['updated', true]])
+      expect(readdirSync(markers)).toEqual([])
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+})
+
 describe("the person's own checkout", () => {
   const stateOf = (dir: string) => ({
     head: sh(dir, 'rev-parse', 'HEAD'),
@@ -696,6 +733,46 @@ describe('a located target kept worktree, when something is off', () => {
     }
     expect(readFileSync(join(kept, 'fix.txt'), 'utf8')).toBe('half a fix\n')
   })
+
+  // Windows has no search bit for chmod to take away, and root searches any folder.
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'whose git directory cannot be read is not gone: --discard-kept leaves it too, and removes one that is gone (final review round 3)',
+    async () => {
+      verifyOk = false
+      await update({ args: { keepFailed: true } })
+      const kept = join(keptDir(), '1')
+      writeFileSync(join(kept, 'fix.txt'), 'half a fix\n')
+      const record = JSON.parse(readFileSync(`${kept}.json`, 'utf8'))
+      const shut = join(scratch, 'shut')
+      const gitDir = join(shut, 'api.git')
+      mkdirSync(gitDir, { recursive: true })
+      writeFileSync(`${kept}.json`, JSON.stringify({ ...record, gitDir }))
+      chmodSync(shut, 0o000)
+      try {
+        for (const args of [{ discardKept: true }, { retryFailed: true }, { keepFailed: true }]) {
+          const out = await update({ args })
+          expect(out.discarded ?? []).toEqual([])
+          expect(readFileSync(join(kept, 'fix.txt'), 'utf8')).toBe('half a fix\n')
+        }
+        expect((await update({ args: { discardKept: true } })).keptRefused).toEqual([
+          {
+            record: `${kept}.json`,
+            reason: "its owner's worktrees could not be listed",
+          },
+        ])
+        expect((await update()).skipped.map((s) => s.reason)).toEqual([
+          `kept elsewhere: ${kept} is a worktree of ${gitDir}`,
+        ])
+      } finally {
+        chmodSync(shut, 0o700)
+      }
+
+      rmSync(shut, { recursive: true })
+      expect((await update({ args: { discardKept: true } })).discarded).toEqual([kept])
+      expect(existsSync(kept)).toBe(false)
+      expect(existsSync(`${kept}.json`)).toBe(false)
+    },
+  )
 
   test('a tree git cannot read counts as changed', () => {
     const plain = join(scratch, 'plain')

@@ -2,6 +2,10 @@
 "@osdlc/pr-update": minor
 ---
 
+**Breaking:** the trust store moved to `~/.local/state/osdlc/pr-update/trusted/`,
+and trust granted by an earlier release no longer counts. Run `pr-update trust`
+again in each repository you had trusted, or pass `--trust` for one run.
+
 `update` now updates a `--repo` target found as a checkout on this machine,
 where before it only surveyed it and skipped its PRs. The run works in a
 worktree under pr-update's cache directory
@@ -47,7 +51,10 @@ git cannot read, is never removed as stale: its PR is skipped until
 moved into, and the run says how to remove it. A kept record is used only
 when its path is the kept path its file name gives. If a target's own record
 cannot be saved after a PR ran, the error is shown on that PR, as
-`recordError` in JSON and `record not saved:` in the text.
+`recordError` in JSON and `record not saved:` in the text. An error from a
+target's own record that no PR or skip shows is listed in `update --json`'s
+new `recordErrors`, as `{ repo, error }`, and in the text as a line starting
+with `!`.
 
 Fixed: a run started from a git hook, which exports `GIT_DIR`, no longer
 acts on the hook's repository inside its own worktrees. In the project root's

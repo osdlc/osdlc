@@ -1,9 +1,18 @@
 /**
  * withoutRepositoryVars: a runner whose children ignore an inherited GIT_DIR
- * and the other variables that pick a repository.
+ * and the other variables that pick a repository. gitConfigEnv and hooksOffEnv:
+ * settings, hooks off among them, that win over the config the environment brings.
  */
 
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -11,6 +20,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import {
   Git,
+  gitConfigEnv,
+  hooksOffEnv,
   REPOSITORY_VARS,
   spawnRunner,
   withoutRepositoryVars,
@@ -80,5 +91,107 @@ describe('withoutRepositoryVars', () => {
     vi.stubEnv('GIT_DIR', undefined)
     expect(plain).toBe(other.git.revParse('HEAD'))
     expect(cleared).toBe(mine.git.revParse('HEAD'))
+  })
+})
+
+describe('gitConfigEnv', () => {
+  test('sets each entry after the inherited pairs and GIT_CONFIG_PARAMETERS', () => {
+    expect(
+      gitConfigEnv(
+        [
+          ['gc.auto', '0'],
+          ['maintenance.auto', 'false'],
+        ],
+        { GIT_CONFIG_COUNT: '1', GIT_CONFIG_PARAMETERS: "'gc.auto'='9'" },
+      ),
+    ).toEqual({
+      GIT_CONFIG_COUNT: '3',
+      GIT_CONFIG_KEY_1: 'gc.auto',
+      GIT_CONFIG_VALUE_1: '0',
+      GIT_CONFIG_KEY_2: 'maintenance.auto',
+      GIT_CONFIG_VALUE_2: 'false',
+      GIT_CONFIG_PARAMETERS: "'gc.auto'='9' 'gc.auto'='0' 'maintenance.auto'='false'",
+    })
+    // A count that is not a positive number starts the pairs at 0.
+    expect(gitConfigEnv([['a.b', 'c']], { GIT_CONFIG_COUNT: 'x' })).toMatchObject({
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'a.b',
+    })
+  })
+
+  test('git reads each value back, quotes and ! included, over an inherited -c', () => {
+    const fixture = makeGitFixture({
+      dir: join(scratch, 'repo'),
+      identity: { ...IDENTITY, ...isolated },
+    })
+    const inherited = { GIT_CONFIG_PARAMETERS: "'gc.auto'='9' 'x.odd'='no'" }
+    const env = {
+      ...inherited,
+      ...gitConfigEnv(
+        [
+          ['gc.auto', '0'],
+          ['x.odd', "it's !here"],
+        ],
+        inherited,
+      ),
+    }
+    const read = (key: string) =>
+      spawnRunner('git').run(['config', key], { cwd: fixture.dir, env }).stdout.trim()
+    expect(read('gc.auto')).toBe('0')
+    expect(read('x.odd')).toBe("it's !here")
+  })
+})
+
+describe('hooksOffEnv', () => {
+  test('appends to the inherited GIT_CONFIG_* pairs and GIT_CONFIG_PARAMETERS', () => {
+    expect(hooksOffEnv({})).toEqual({
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'core.hooksPath',
+      GIT_CONFIG_VALUE_0: '/dev/null',
+      GIT_CONFIG_PARAMETERS: "'core.hooksPath'='/dev/null'",
+    })
+    expect(
+      hooksOffEnv({ GIT_CONFIG_COUNT: '2', GIT_CONFIG_PARAMETERS: " 'core.hookspath'='.husky' " }),
+    ).toEqual({
+      GIT_CONFIG_COUNT: '3',
+      GIT_CONFIG_KEY_2: 'core.hooksPath',
+      GIT_CONFIG_VALUE_2: '/dev/null',
+      GIT_CONFIG_PARAMETERS: "'core.hookspath'='.husky' 'core.hooksPath'='/dev/null'",
+    })
+  })
+
+  test("beats a relative core.hooksPath from the repository, the GIT_CONFIG_* pairs and a parent git's -c", () => {
+    const fixture = makeGitFixture({
+      dir: join(scratch, 'repo'),
+      identity: { ...IDENTITY, ...isolated },
+    })
+    fixture.commit('one', { 'a.txt': 'a' })
+    fixture.git.rawChecked(['branch', 'other'])
+    const marker = join(scratch, 'ran')
+    mkdirSync(join(fixture.dir, '.husky'))
+    const hook = join(fixture.dir, '.husky', 'post-checkout')
+    // A redirection, not `touch`: it needs no PATH.
+    writeFileSync(hook, `#!/bin/sh\n: > '${marker}'\n`)
+    chmodSync(hook, 0o755)
+    const checkout = (env: Record<string, string>, into: string) => {
+      const res = spawnRunner('git').run(['checkout', '-q', into], { cwd: fixture.dir, env })
+      expect(res.stderr).toBe('')
+      const ran = existsSync(marker)
+      rmSync(marker, { force: true })
+      return ran
+    }
+    // What a git alias or hook started as `git -c core.hooksPath=.husky` passes on.
+    const inherited = {
+      GIT_CONFIG_PARAMETERS: "'core.hooksPath'='.husky'",
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'core.hooksPath',
+      GIT_CONFIG_VALUE_0: '.husky',
+    }
+    // The control: the hook runs.
+    expect(checkout(inherited, 'other')).toBe(true)
+    expect(checkout({ ...inherited, ...hooksOffEnv(inherited) }, 'main')).toBe(false)
+    fixture.git.rawChecked(['config', 'core.hooksPath', '.husky'])
+    expect(checkout({}, 'other')).toBe(true)
+    expect(checkout(hooksOffEnv({}), 'main')).toBe(false)
   })
 })

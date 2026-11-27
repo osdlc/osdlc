@@ -2,6 +2,11 @@
 "@osdlc/pr-update": minor
 ---
 
+**Breaking:** an unattended `update --apply` (no terminal) whose GitHub
+`--repo` target has no checkout now exits 2, where it used to skip the target.
+Run `pr-update mirror disable` once to skip such targets again, or
+`pr-update mirror enable` (or pass `--mirror-dir`) to let it clone them.
+
 `update --apply` can now update a GitHub `--repo` target that has no checkout
 on your machine, from a bare clone pr-update keeps for it. It clones only with
 your consent: `--mirror-dir <dir>` on the run, `PR_UPDATE_MIRROR_DIR` in the

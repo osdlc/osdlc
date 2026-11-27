@@ -1,6 +1,11 @@
 ---
-"@osdlc/typed-git": patch
+"@osdlc/typed-git": minor
 ---
+
+**Breaking:** on Windows, `topLevel()`, `gitCommonDir()`, `gitDir()`,
+`mainCheckout()` and `worktrees()` paths now come back as `C:\x`, not git's
+`C:/x`. Compare them with `node:path` paths, or `path.normalize` both sides,
+instead of matching git's own output.
 
 On Windows, `topLevel()`, `gitCommonDir()`, `gitDir()`, `mainCheckout()` and
 each `worktrees()` path now come back in Node's form, `C:\x`, rather than the

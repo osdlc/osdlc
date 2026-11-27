@@ -168,12 +168,34 @@ function fold(path: string): string {
   return process.platform === 'win32' || process.platform === 'darwin' ? path.toLowerCase() : path
 }
 
-function lstatOrNull(path: string): Stats | null {
+/**
+ * `lstat` of `path`, or null when nothing is there (`ENOENT`, or `ENOTDIR`: a file where a folder
+ * on the way should be). Any other error is thrown, so a path that cannot be read, such as one
+ * under a folder the person cannot search (`EACCES`), is never taken for a missing one: a check
+ * would pass it, and a walk would skip what it should report. The one copy every module uses.
+ */
+export function lstatOrNull(path: string): Stats | null {
   try {
     return lstatSync(path)
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null
+    const code = (e as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null
     throw e
+  }
+}
+
+/**
+ * Whether nothing is at `path` (a symbolic link is followed): only `ENOENT` and `ENOTDIR` say so,
+ * as for {@link lstatOrNull}. A path that cannot be read is not gone, where `existsSync` answers
+ * the same for both.
+ */
+export function isGone(path: string): boolean {
+  try {
+    statSync(path)
+    return false
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    return code === 'ENOENT' || code === 'ENOTDIR'
   }
 }
 

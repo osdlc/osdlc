@@ -252,8 +252,9 @@ The two follow one protocol, stated in
 and checked by the family's conformance suite. A lock written by either is
 claimed, taken over and released by the other. The differences:
 
-- The npm package also has `holderGone` and `pidAlive`. This crate does not
-  yet: write the rule as a closure.
+- The npm package also has `holderGone` and `pidAlive`, and `readHeldLock`,
+  which reads a held lock without claiming it. This crate does not yet: write
+  the rule as a closure.
 - `with_lock` returns `f`'s result even when the release after it fails, and
   leaves the lock for the staleness rule. `withLock` throws the release's
   error.

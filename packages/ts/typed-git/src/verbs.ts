@@ -3559,10 +3559,17 @@ export interface CheckoutOptions {
   resetBranch?: boolean | undefined
   /** `--force` — discard local modifications rather than refusing. */
   force?: boolean | undefined
+  /**
+   * `--no-track` — write no `branch.<branch>.remote` and `.merge` for the
+   * branch `branch` creates, which git otherwise writes when `ref` is a
+   * remote-tracking branch (or any branch, under `branch.autoSetupMerge=always`).
+   * Only with `branch`.
+   */
+  noTrack?: boolean | undefined
 }
 
 /**
- * `git checkout [-f] [-b|-B <branch>] <ref>`.
+ * `git checkout [-f] [-b|-B <branch> [--no-track]] <ref>`.
  *
  * `absent: []` — an unknown ref exits 1 here, and a checkout that did not
  * happen leaves the caller on a branch it does not expect. That is a failure,
@@ -3573,6 +3580,7 @@ export function checkout(ref: string, opts: CheckoutOptions = {}): GitVerb<void>
   if (opts.force) argv.push('--force')
   if (opts.branch !== undefined) {
     argv.push(opts.resetBranch ? '-B' : '-b', positional('checkout', 'branch', opts.branch))
+    if (opts.noTrack) argv.push('--no-track')
   }
   argv.push(positional('checkout', 'ref', ref))
   return { argv, absent: NONE, parse: nothing }

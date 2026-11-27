@@ -171,7 +171,7 @@ export interface RemovedTree {
  * A run without it treats a `clone` checkout as any other.
  *
  * Each clone has a lock. `update` holds it from {@link provide} until {@link release}, and again
- * inside {@link removing}; `survey` holds it only inside {@link use}.
+ * inside {@link keeping} and {@link removing}; `survey` holds it only inside {@link use}.
  */
 export interface ManagedClones {
   /**
@@ -216,6 +216,14 @@ export interface ManagedClones {
    * here is let go before it returns.
    */
   removing(clone: string, tree: RemovedTree, remove: () => void): boolean
+  /**
+   * Run `keep`, which moves the run's worktree `tree` in the clone at `clone` aside as a kept
+   * worktree and adds the run worktree back, holding the clone's lock, taken back as
+   * {@link removing} takes it. Without the lock a prune could remove the kept tree and the clone
+   * between the two. When the lock cannot be taken, `keep` is not run, the result is false and
+   * a note says the tree was not kept; the run goes on in the worktree as it is.
+   */
+  keeping(clone: string, tree: string, keep: () => void): boolean
   /** Let go of every lock the run still holds. */
   close(): void
 }

@@ -1,4 +1,10 @@
-/** The one real-path helper the update, kept-tree, prune and preflight code share. */
+/**
+ * The real-path helper for comparing paths that may not exist, shared by the update, kept-tree,
+ * prune and preflight code. Code that must tell a path that cannot be resolved apart (a kept
+ * folder that must resolve to its place, a git directory that must exist) calls
+ * `realpathSync.native` itself and handles the failure; `registrations.ts` resolves the part of a
+ * path that exists.
+ */
 
 import { realpathSync } from 'node:fs'
 

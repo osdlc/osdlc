@@ -1,6 +1,7 @@
 /**
  * `which`: the lookup rules a spawn uses, without spawning. POSIX, except the
- * pure `absolutePathCandidates` cases, which cover Windows.
+ * pure `absolutePathCandidates` and `absolutePathEntries` cases, which cover
+ * Windows.
  */
 
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -11,6 +12,7 @@ import { afterAll, describe, expect, test } from 'vitest'
 
 import {
   absolutePathCandidates,
+  absolutePathEntries,
   classifyFailure,
   managedProcessRunner,
   spawnRunner,
@@ -103,6 +105,34 @@ describe.skipIf(process.platform === 'win32')('which with absolutePathOnly', () 
 
   test('a name with a slash is still a path', () => {
     expect(which('./tool', { cwd: a, env: { PATH: '' }, absolutePathOnly: true })).toBe(first)
+  })
+})
+
+describe('absolutePathEntries', () => {
+  test('POSIX: the absolute entries, in order and as written', () => {
+    expect(absolutePathEntries('.:/usr/bin::bin:/opt/git/bin/:', { platform: 'linux' })).toBe(
+      '/usr/bin:/opt/git/bin/',
+    )
+    // On POSIX a double quote is part of the name, so a quoted entry is relative.
+    expect(absolutePathEntries('"/usr/bin":/bin', { platform: 'linux' })).toBe('/bin')
+  })
+
+  test('POSIX: never empty, which a shell reads as the current folder', () => {
+    expect(absolutePathEntries('', { platform: 'linux' })).toBe('/usr/bin:/bin')
+    expect(absolutePathEntries('.:bin:', { platform: 'darwin' })).toBe('/usr/bin:/bin')
+  })
+
+  test('unset stays unset', () => {
+    expect(absolutePathEntries(undefined, { platform: 'linux' })).toBeUndefined()
+    expect(absolutePathEntries(undefined, { platform: 'win32' })).toBeUndefined()
+  })
+
+  test('Windows: drive and UNC entries, quotes kept, no drive-relative entry', () => {
+    const path = 'C:\\Git\\cmd;bin;;.;\\tools;C:tools;"C:\\Program Files\\x";D:/x;\\\\host\\share'
+    expect(absolutePathEntries(path, { platform: 'win32' })).toBe(
+      'C:\\Git\\cmd;"C:\\Program Files\\x";D:/x;\\\\host\\share',
+    )
+    expect(absolutePathEntries('.;bin', { platform: 'win32' })).toBe('')
   })
 })
 

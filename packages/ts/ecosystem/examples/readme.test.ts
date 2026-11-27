@@ -9,8 +9,10 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { machineConfigFile } from '@osdlc/config-layers'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { z } from 'zod'
 
 import { OSDLC_VENDOR_DIRS, osdlcDirs } from '@osdlc/ecosystem'
 import {
@@ -99,4 +101,24 @@ test('the default roots of an <owner>/<name> layout', () => {
     join(home, 'dev'),
   ])
   expect(OSDLC_VENDOR_DIRS.vendor).toBe('osdlc')
+})
+
+test("a tool's own machine file, pinned to the family's directories", () => {
+  const schema = z.object({ greeting: z.string().default('hi') }).strict()
+  const file = machineConfigFile({
+    tool: 'osdlc',
+    app: 'mytool',
+    env: 'MYTOOL_MACHINE_CONFIG',
+    vendorDirs: OSDLC_VENDOR_DIRS,
+    dirs: () => osdlcDirs(isolated),
+    schema,
+  })
+  const family = osdlcDirs(isolated).standalone('osdlc').config().path
+  expect(file.path()).toBe(join(family, 'mytool', 'config.yaml'))
+  if (process.platform !== 'win32') expect(family).toBe(join(home, '.config', 'osdlc'))
+  // The family's variable leaves it; the tool's own moves it.
+  vi.stubEnv('OSDLC_MACHINE_CONFIG', join(home, 'shared.yaml'))
+  expect(file.path()).toBe(join(family, 'mytool', 'config.yaml'))
+  vi.stubEnv('MYTOOL_MACHINE_CONFIG', join(home, 'mine.yaml'))
+  expect(file.path()).toBe(join(home, 'mine.yaml'))
 })

@@ -47,7 +47,7 @@ export type LockContent<F extends object = Record<string, unknown>> = F & { toke
 
 /** A lock as found on disk. */
 export interface HeldLock<F extends object = Record<string, unknown>> {
-  /** The parsed content, or null when the file is not a JSON object. */
+  /** The parsed content, or null when the file is not a JSON object or its `token` is not a string. */
   content: LockContent<F> | null
   /** When the lock was last written or touched. */
   mtimeMs: number
@@ -107,8 +107,18 @@ function tokenOf(path: string): string | undefined {
   return parse(readLock(path).raw)?.token
 }
 
-/** The lock's text and its mtime, both from one open of the file, so they describe the same inode. */
-function readHeld<F extends object>(path: string): HeldLock<F> {
+/**
+ * The lock at `path` as a claim reads a held one, without claiming it: its text and mtime from
+ * one open of the file, so they describe the same inode, and the content parsed by the claim's
+ * rules (null for anything but a JSON object whose `token`, if it has one, is a string). Give it
+ * to a {@link StaleRule} to learn what a claim would decide.
+ *
+ * Throws {@link NotALockError} for anything but a regular file, and the open error otherwise
+ * (`ENOENT` when there is no lock).
+ */
+export function readHeldLock<F extends object = Record<string, unknown>>(
+  path: string,
+): HeldLock<F> {
   const { raw, mtimeMs } = readLock(path)
   return { content: parse<F>(raw), mtimeMs, raw }
 }
@@ -177,7 +187,7 @@ export function prepareClaim<F extends object>(
         }
         let held: HeldLock<F>
         try {
-          held = readHeld<F>(path)
+          held = readHeldLock<F>(path)
         } catch (err) {
           if (isGone(err) || isDeletePending(err)) continue // released between the link and the read: claim again
           throw err // not a lock file, or unreadable

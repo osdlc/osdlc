@@ -55,6 +55,38 @@ for (const target of ['acme/widgets', 'github.com/acme/gadgets']) {
 [examples/readme.test.ts](https://github.com/osdlc/osdlc/blob/main/packages/ts/ecosystem/examples/readme.test.ts) runs this example in a
 temporary home.
 
+## The family's directories
+
+`osdlcDirs(opts?)` gives the osdlc family's directories, pinned to the Xdg
+convention. `OSDLC_VENDOR_DIRS` is the vendor segment and override variables
+behind it, `osdlc` moved by `OSDLC_ROOT` and `OSDLC_<HOME>_DIR`, for a tool
+that hands config-layers its `vendorDirs`.
+
+```ts
+import { OSDLC_VENDOR_DIRS, osdlcDirs } from '@osdlc/ecosystem'
+import { machineConfigFile } from '@osdlc/config-layers'
+import { schema } from './config.ts' // the tool's own zod schema
+
+// ~/.config/osdlc on Linux and macOS, with no variable set.
+const familyHome = osdlcDirs().standalone('osdlc').config().path
+
+// A tool's own machine file, ~/.config/osdlc/mytool/config.yaml, moved by
+// its own variable: the default, OSDLC_MACHINE_CONFIG, would move every tool's.
+const file = machineConfigFile({
+  tool: 'osdlc',
+  app: 'mytool',
+  env: 'MYTOOL_MACHINE_CONFIG',
+  vendorDirs: OSDLC_VENDOR_DIRS,
+  dirs: () => osdlcDirs(),
+  schema,
+})
+```
+
+`dirs` pins the file to the family's Xdg directories. Without it,
+config-layers resolves under its native convention, which on macOS is
+`~/Library/Application Support`. See
+[the machine-files standard](https://github.com/osdlc/osdlc/blob/main/standards/machine-files.md).
+
 ## `repositories.yaml`
 
 ```yaml
@@ -128,8 +160,19 @@ Not supported yet: a bare store with its worktrees beside it, where
 which is not a working tree, and does not look at the worktrees inside it.
 
 `target` is `owner/name`, which matches on any host, `host/owner/name`, or a
-typed-git `RepoCoordinate`. Owner and name match in any letter case, and the
-host when both sides name one (`sameRepo`). Every match comes back, sorted by
+typed-git `RepoCoordinate`. `parseRepoTarget(text)` turns the first two into
+the third, and throws on any other shape, so a tool can check a `--repo` value
+before it scans:
+
+```ts
+import { locateCheckout, parseRepoTarget } from '@osdlc/ecosystem/repositories'
+
+const target = parseRepoTarget('github.com/acme/widgets') // { host, owner, repo }
+const found = locateCheckout(target)
+```
+
+Owner and name match in any letter case, and the host when both sides name
+one (`sameRepo`). Every match comes back, sorted by
 path, each repository's main checkout once:
 
 ```ts
@@ -173,8 +216,11 @@ writing, delete that file. It refuses a root the reader would drop.
 ## Testing a tool that uses it
 
 Every function takes `env`, `home` and `dirs`, so a test keeps off the real
-home: pass `home` and an `env` with no osdlc variables, or a `dirs` rooted in a
-temp directory. `OSDLC_REPOSITORIES` is read from `process.env`, as
+home. Always pass `home`, or an `env` whose `HOME` is a temp directory, with no
+osdlc variables: `~` in a root, and the stop at the home directory when roots
+are found beside a checkout, use that home. A `dirs` rooted in a temp directory
+only moves `repositories.yaml`; on its own it leaves `~` pointing at the real
+home. `OSDLC_REPOSITORIES` is read from `process.env`, as
 config-layers reads it, so a test clears it. Pass `resolveAlias` so `ssh` never
 runs. git reads the person's global and system config too, so a `url.<base>.insteadOf`
 there changes what `origin` reads as: point `GIT_CONFIG_GLOBAL` at an empty
@@ -188,8 +234,9 @@ it.
 
 ## Runtimes and platforms
 
-Node.js on Linux and macOS is tested. Windows is expected to work, through
-`@osdlc/tiered-dirs`' Windows table, and is not tested.
+Node.js on Linux and macOS is tested, and blocks a release. Windows is tested
+too, through `@osdlc/tiered-dirs`' Windows table, in the repository's Windows
+tier-2 workflow, which reports but does not block.
 
 ## Licence
 

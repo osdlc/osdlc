@@ -37,7 +37,7 @@ import type {
 import { agentRepair } from './repair/agents.ts'
 import { seatRepair } from './repair/seat.ts'
 import { attemptsDir, fileAttemptStore } from './update/attempts.ts'
-import { noHooksEnv, targetGitOptions, UNSET_REPOSITORY_VARS } from './update/execute.ts'
+import { targetGitEnv, targetGitOptions, UNSET_REPOSITORY_VARS } from './update/execute.ts'
 import { defaultLeaseTtlSeconds, refBranchLease } from './update/lease.ts'
 import { DEFAULT_REF_PREFIX, attemptsPrefix, refAttemptStore } from './update/ref-attempts.ts'
 
@@ -251,14 +251,15 @@ function standaloneTargetHome(
  * `GIT_COMMON_DIR` are its common directory, its objects are its own, and no alternates are
  * added. ref-lease runs only `hash-object`, `mktree`, `commit-tree`, `update-ref`, `fetch`,
  * `push` and `ls-remote`, which read neither a work tree nor an index, so an inherited
- * `GIT_WORK_TREE` or `GIT_INDEX_FILE` changes nothing. Hooks are off, as for every git call in
- * a target.
+ * `GIT_WORK_TREE` or `GIT_INDEX_FILE` changes nothing. Hooks and background maintenance are
+ * off (`targetGitEnv`), as for every git call in a target, so its `fetch` in a managed clone starts
+ * no `gc` there. Exported for its tests.
  */
-function refEnv(path: string, git: CommandRunner | undefined): Record<string, string> {
+export function refEnv(path: string, git: CommandRunner | undefined): Record<string, string> {
   const common = new Git(path, targetGitOptions(git)).try.gitCommonDir()
-  if (!common.ok || common.value === null) return noHooksEnv()
+  if (!common.ok || common.value === null) return targetGitEnv()
   return {
-    ...noHooksEnv(),
+    ...targetGitEnv(),
     GIT_DIR: common.value,
     GIT_COMMON_DIR: common.value,
     GIT_OBJECT_DIRECTORY: join(common.value, 'objects'),

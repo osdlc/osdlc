@@ -18,6 +18,7 @@ import {
   pidAlive,
   processIdentity,
   processStartedAt,
+  readHeldLock,
   releaseLock,
   sameProcess,
   touchLock,
@@ -104,6 +105,18 @@ test('a lock held for as long as a process lives, with extra holder pids', () =>
     updateLock<Partial<Lease>>(lock, mine.token, (c) => ({ ...c, holders: [process.pid] })),
   ).toBe(true)
   expect(releaseLock(lock, mine.token)).toBe(true)
+})
+
+test('what a claim would find, read without claiming: a lock whose holder is gone', () => {
+  type Owner = { pid: number }
+  const lock = join(dir, 'report.lock')
+  const isStale: StaleRule<Owner> = holderGone<Owner>((c) => [c.pid])
+  writeFileSync(lock, JSON.stringify({ pid: 2147483646, token: 'x' }))
+  expect(isStale(readHeldLock<Owner>(lock))).toBe(true)
+  // A token that is not a string: a claim reads no content, so this rule never calls it gone.
+  writeFileSync(lock, JSON.stringify({ pid: 2147483646, token: 7 }))
+  expect(readHeldLock<Owner>(lock).content).toBeNull()
+  expect(isStale(readHeldLock<Owner>(lock))).toBe(false)
 })
 
 test('a claim that finds a takeover in progress retries after MARKER_STALE_MS at most', () => {

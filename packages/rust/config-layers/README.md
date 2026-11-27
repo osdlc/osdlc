@@ -157,8 +157,11 @@ need. Run it with `cargo run --example layered_files`.
   when it contains `/` or starts with `.` or `~`. A URL (`scheme://`) and a
   bare word pass through unchanged. Write relative paths with `/`, also on
   Windows. An absolute Windows path such as `C:\repos` passes through
-  unchanged. Only `~` and `~/…` expand, to `home` as given. `~user/…` is not
-  expanded, and an empty `home` leaves `~` as written.
+  unchanged. Only `~` and `~/…` expand, to `home` as given. In `~/…` the
+  `.` and `..` parts are folded and a doubled `/` collapsed, as the
+  TypeScript package does (`~/../x` is the folder beside the home), and a `..`
+  at the root stays there. `~user/…` is not expanded, and an empty `home`
+  leaves `~` as written.
 - **An unknown `{name}` is an error**, not an empty string. The message names
   the setting, the fix and the names that exist.
 

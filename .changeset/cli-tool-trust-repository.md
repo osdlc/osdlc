@@ -2,6 +2,10 @@
 "@osdlc/cli-tool": minor
 ---
 
+**Breaking:** a word after `--` in the `trust` command is now a usage error,
+where it was ignored. Drop the words after `--`, or give the repository
+before it to a service with `parseRepo`.
+
 The shared `trust` command can take a repository by name, such as
 `tooly trust github.com/acme/api`, for a clone whose folder the tool may
 prune and make again. A tool turns this on by giving its `TrustService` a

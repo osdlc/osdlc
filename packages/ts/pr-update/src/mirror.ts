@@ -7,7 +7,7 @@
  * use a clone that exists. Every use takes the clone's lock, the file `<name>.git.lock` beside
  * the clone, and writes its last-used stamp, so pruning can tell a clone in use from one nobody
  * needs. Every git call in a clone runs with hooks off, as in any checkout other than the
- * project root.
+ * project root and in every run worktree.
  *
  * Consent is any one of `--mirror-dir`, `PR_UPDATE_MIRROR_DIR` and `checkout: mirror` in the
  * machine file (`machine.ts`); the first two beat `checkout: local` for the run. With none of
@@ -15,8 +15,10 @@
  */
 
 import {
+  accessSync,
   chmodSync,
   closeSync,
+  constants,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -28,15 +30,25 @@ import {
   statSync,
   writeFileSync,
   writeSync,
-  type Stats,
 } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
-import { stderrOrError, type CommandRunner } from '@osdlc/command-seam'
+import { shellJoin, stderrOrError, which, type CommandRunner } from '@osdlc/command-seam'
 import { ConfigInvalidError, type MachineConfigFile } from '@osdlc/config-layers'
 import { osdlcDirs } from '@osdlc/ecosystem'
 import { WriteConflictError } from '@osdlc/etag-write'
-import { claimLock, holderGone, processIdentity, releaseLock } from '@osdlc/file-lock'
+import {
+  claimLock,
+  holderGone,
+  processIdentity,
+  readHeldLock,
+  releaseLock,
+  untouchedFor,
+  withLock,
+  type HeldLock,
+  type SectionHolder,
+  type StaleRule,
+} from '@osdlc/file-lock'
 import { expandTilde, homeDir } from '@osdlc/tiered-dirs'
 import { Git } from '@osdlc/typed-git'
 import { Document, isMap, parseDocument } from 'yaml'
@@ -45,6 +57,7 @@ import {
   FOLDER_MODE,
   folderProblem,
   foldersProblem,
+  lstatOrNull,
   ownedByMe,
   type FolderCheckOptions,
   type GroupOptions,
@@ -98,8 +111,6 @@ export function clonePath(root: string, key: CloneKey): string {
 export function cloneLockPath(clone: string): string {
   return `${clone}.lock`
 }
-
-export { foldersProblem, ownedByMe, type OwnedCheck } from './folders.ts'
 
 /** How to put right a clone folder others can write to, for the end of the message. */
 function writableFix(dir: string): string {
@@ -193,15 +204,6 @@ function dropOthersWrite(path: string): void {
     if (st.isDirectory()) for (const name of readdirSync(path)) dropOthersWrite(join(path, name))
   } catch (e) {
     if (!gone(e)) throw e
-  }
-}
-
-function lstatOrNull(path: string): Stats | null {
-  try {
-    return lstatSync(path)
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null
-    throw e
   }
 }
 
@@ -439,6 +441,27 @@ export function claimCloneLock(path: string, waitMs: number): string | null {
   }
 }
 
+/**
+ * Whether another run holds the lock at `path`: what {@link claimCloneLock} with no wait would
+ * find, read without taking the lock or changing anything.
+ *
+ * @throws where a claim would: the lock cannot be read or is no plain file, or nothing can be
+ *   written in its folder.
+ */
+export function cloneLockHeld(path: string): boolean {
+  accessSync(dirname(path), constants.W_OK | constants.X_OK)
+  let held: HeldLock<CloneLockContent>
+  try {
+    // Read and parsed as a claim reads it: content that is not pr-update's is never stale.
+    held = readHeldLock<CloneLockContent>(path)
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return false
+    throw e
+  }
+  return !holderIsGone(held)
+}
+
 /** The target a clone is asked for, with the host `gh` is pointed at. */
 export interface CloneRequest extends CloneKey {
   /** The host as `--repo` named it, port included: `GH_HOST` and the credential URL take it. */
@@ -458,8 +481,13 @@ export class CloneError extends Error {
  *    `<tmp>` is `<name>.git` in a staging folder beside `final`, `.tmp-<name>.git-<pid>-<random>`,
  *    which `mkdtemp` makes `0700`: no one else can reach the clone before step 7;
  * 4. in the clone's own config, `credential.https://<host>.helper` set to an empty value and then
- *    to `!gh auth git-credential`, as `gh auth setup-git` writes them, so later fetches and
- *    pushes authenticate whatever the global git config holds;
+ *    to `!<gh> auth git-credential`, as `gh auth setup-git` writes them, so later fetches and
+ *    pushes authenticate whatever the global git config holds. `<gh>` is the absolute path
+ *    {@link credentialHelper} finds, never a name the shell looks up on `PATH`: a push runs the
+ *    helper in the run worktree, which holds the PR's files, so a relative `PATH` entry such as
+ *    `.` would run a `gh` the PR commits. pr-update's own git calls there get only the absolute
+ *    `PATH` entries (`targetGitEnv`); a person's own git command in a kept tree does not. When it
+ *    finds none, no helper is set, with a note;
  * 5. `core.longpaths=true`, and `maintenance.auto=false` and `gc.auto=0`, so no git starts a
  *    background maintenance that writes in the clone while it is hardened, moved or read;
  * 6. every `refs/heads/*` deleted, the fetch refspec set to the remote-tracking layout, and
@@ -476,7 +504,11 @@ export class CloneError extends Error {
 export function makeClone(
   final: string,
   req: CloneRequest,
-  deps: { gh: CommandRunner; git?: CommandRunner | undefined },
+  deps: {
+    gh: CommandRunner
+    git?: CommandRunner | undefined
+    notice?: ((line: string) => void) | undefined
+  },
 ): void {
   const parent = dirname(final)
   const staging = mkdtempSync(join(parent, `.tmp-${req.name}.git-${process.pid}-`))
@@ -501,10 +533,17 @@ export function makeClone(
     })
     const git = new Git(tmp, targetGitOptions(deps.git))
     const helper = `credential.https://${req.ghHost}.helper`
-    step('set the credential helper', () => {
-      git.rawChecked(['config', '--local', helper, ''])
-      git.rawChecked(['config', '--local', '--add', helper, '!gh auth git-credential'])
-    })
+    const command = credentialHelper(deps.gh)
+    if (command === null) {
+      deps.notice?.(
+        `${final}: no credential helper set, since \`${deps.gh.binary ?? 'gh'}\` is not on an absolute PATH entry; fetches and pushes there use your git config's helper`,
+      )
+    } else {
+      step('set the credential helper', () => {
+        git.rawChecked(['config', '--local', helper, ''])
+        git.rawChecked(['config', '--local', '--add', helper, command])
+      })
+    }
     step('set core.longpaths', () => git.configSet('core.longpaths', 'true', { scope: 'local' }))
     step('turn off background maintenance', () => {
       for (const [key, value] of NO_MAINTENANCE) git.configSet(key, value, { scope: 'local' })
@@ -538,6 +577,27 @@ export function makeClone(
     throw e
   }
   rmSync(staging, { recursive: true, force: true })
+}
+
+/**
+ * The credential helper a clone's config gets: `!<path> auth git-credential`, where `<path>` is
+ * the absolute path of `gh`'s binary (its `binary`, default `gh`), found on the absolute `PATH`
+ * entries only, as command-seam's `absolutePathOnly` finds it, and shell-quoted. git runs the
+ * helper through the shell in the directory of the git that needs it, a run worktree or kept tree
+ * holding the PR's files, so a name looked up on `PATH` there could run a `gh` the PR commits:
+ * pr-update's own git calls there get only the absolute `PATH` entries (`targetGitEnv`), but a
+ * person's git command in a kept tree gets theirs. On Windows the
+ * path is written with `/`, which Git for Windows' shell reads. Null when there is no such `gh`.
+ */
+export function credentialHelper(
+  gh: Pick<CommandRunner, 'binary'>,
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  const name = gh.binary ?? 'gh'
+  const found = isAbsolute(name) ? name : which(name, { absolutePathOnly: true, env })
+  if (found === undefined) return null
+  const path = process.platform === 'win32' ? found.replaceAll('\\', '/') : found
+  return `!${shellJoin([path, 'auth', 'git-credential'])}`
 }
 
 /** How the first-run question is asked. The CLI passes cli-tool's prompts. */
@@ -584,39 +644,70 @@ export function editableMachineFile(path: string, read: { text: string } | null)
 }
 
 /**
- * Write `answer` into the machine file as a compare-and-swap against `before` (the file as read
- * before asking, or null for none; default: read now), keeping the file's other keys and
- * comments. When the swap loses to another run's write: with `yield`, a file that now holds a
- * `checkout` is what won, and is returned unwritten; otherwise, or when it holds none, the write
- * is tried again on the new file.
+ * How old the machine file's lock may get before it counts as a dead writer's, whatever its pid
+ * says: far longer than the read, check and write it covers. The rule `@osdlc/ecosystem`'s
+ * `repositories.yaml` lock uses.
+ */
+export const MACHINE_LOCK_STALE_MS = 10 * 60_000
+
+const writerExited = holderGone<SectionHolder>((h) => [h.pid])
+const writerLongGone = untouchedFor<SectionHolder>(MACHINE_LOCK_STALE_MS)
+
+/**
+ * When the machine file's lock may be taken over: its holder has exited, or it is older than
+ * {@link MACHINE_LOCK_STALE_MS}. `withLock` records only the pid, which another process may later
+ * have, so the pid alone could keep a killed writer's lock for good.
+ */
+const machineLockStale: StaleRule<SectionHolder> = (held) =>
+  writerExited(held) || writerLongGone(held)
+
+/**
+ * Write `answer` into the machine file, keeping the file's other keys and comments. With `yield`,
+ * a file that already holds a `checkout` is left as it is and returned unwritten: another run
+ * answered first.
+ *
+ * The read and the write hold the lock file `<machine file>.lock` (`@osdlc/file-lock`), taken
+ * over once its holder has exited or it is {@link MACHINE_LOCK_STALE_MS} old, so of two runs that
+ * answer at once, the first to take the lock writes, and the other reads that answer. The write
+ * is also a compare-and-swap against the file as read under the lock, tried again on the new file
+ * when something that takes no lock (an editor, say) changed it. The question is asked before,
+ * outside the lock.
  *
  * @returns the machine file as it stands, and whether this write is what it holds.
  * @throws ConfigInvalidError from {@link editableMachineFile}, before anything is written.
+ * @throws LockTimeoutError (`@osdlc/file-lock`) when another live process holds the lock for 30 s.
  */
 export function writeMirrorAnswer(
   file: MachineConfigFile<typeof machineConfigSchema>,
   answer: MirrorAnswer,
-  opts: { before?: { text: string; etag: string } | null; yield?: boolean } = {},
+  opts: { yield?: boolean } = {},
 ): { config: MachineConfig; wrote: boolean } {
-  let before = opts.before === undefined ? file.read() : opts.before
-  for (let tries = 0; tries < 5; tries++) {
-    const doc = editableMachineFile(file.path(), before)
-    doc.set('checkout', answer.checkout)
-    if (answer.mirror_dir !== undefined) doc.set('mirror_dir', answer.mirror_dir)
-    mkdirSync(dirname(file.path()), { recursive: true, mode: FOLDER_MODE })
-    try {
-      file.write(String(doc), { etag: before?.etag ?? null })
-      file.clearCache()
-      return { config: file.load(), wrote: true }
-    } catch (e) {
-      if (!(e instanceof WriteConflictError)) throw e
-    }
-    file.clearCache()
-    const now = file.load()
-    if (opts.yield === true && now.checkout !== undefined) return { config: now, wrote: false }
-    before = file.read()
-  }
-  throw new Error(`${file.path()} kept changing while pr-update wrote to it; run again`)
+  mkdirSync(dirname(file.path()), { recursive: true, mode: FOLDER_MODE })
+  return withLock(
+    `${file.path()}.lock`,
+    () => {
+      for (let tries = 0; tries < 5; tries++) {
+        const before = file.read()
+        const doc = editableMachineFile(file.path(), before)
+        file.clearCache()
+        if (opts.yield === true && before !== null) {
+          const now = file.load()
+          if (now.checkout !== undefined) return { config: now, wrote: false }
+        }
+        doc.set('checkout', answer.checkout)
+        if (answer.mirror_dir !== undefined) doc.set('mirror_dir', answer.mirror_dir)
+        try {
+          file.write(String(doc), { etag: before?.etag ?? null })
+          file.clearCache()
+          return { config: file.load(), wrote: true }
+        } catch (e) {
+          if (!(e instanceof WriteConflictError)) throw e
+        }
+      }
+      throw new Error(`${file.path()} kept changing while pr-update wrote to it; run again`)
+    },
+    { isStale: machineLockStale },
+  )
 }
 
 /** Options for {@link managedClones}. */
@@ -668,8 +759,9 @@ function keyOf(t: { host: string | null; repo: string }): string {
  *   rehearsal does not wait;
  * - until {@link ManagedClones.release}: `update` releases a clone with no PR to update as soon
  *   as it knows, and the others once their run worktree is added;
- * - and again while the run worktree, or a kept worktree it discards, is removed
- *   ({@link ManagedClones.removing}). That wait happens only when the run holds no other
+ * - and again while a failed PR's run worktree is kept and the run worktree added back
+ *   ({@link ManagedClones.keeping}), and while the run worktree, or a kept worktree it discards,
+ *   is removed ({@link ManagedClones.removing}). That wait happens only when the run holds no other
  *   clone's lock, so every run that waits holds nothing another run waits for, and no two runs
  *   wait on each other. A clone whose lock cannot be taken back is not changed: a run
  *   worktree is left for the next run in the clone or `pr-update mirror prune`, a kept one for
@@ -730,6 +822,35 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
     return true
   }
 
+  /**
+   * Run `change` holding `clone`'s lock: the one the run holds, or else taken back, waiting only
+   * in `update --apply` and only when the run holds no other clone's lock. Waiting while holding
+   * another clone's lock could close a cycle with a run that holds this one and waits for that
+   * one. False, with the note `busyNote` gives, when it cannot be had.
+   */
+  const underLock = (
+    clone: string,
+    change: () => void,
+    busyNote: (lock: string) => string,
+  ): boolean => {
+    if (held.has(clone)) {
+      change()
+      return true
+    }
+    const lock = cloneLockPath(clone)
+    const token = claim(lock, applying && held.size === 0 ? waitMs : 0)
+    if (token === null) {
+      opts.notice(busyNote(lock))
+      return false
+    }
+    try {
+      change()
+      return true
+    } finally {
+      releaseLock(lock, token)
+    }
+  }
+
   /** Why `clone` is not held: a folder above it, or another run's lock. */
   const busy = (clone: string): string =>
     unheld.get(clone) ?? `mirror busy: another pr-update run holds ${cloneLockPath(clone)}`
@@ -757,8 +878,13 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
     return 'size unknown'
   }
 
-  /** Ask whether to clone `want`, write the answer, and return the setting that holds now. */
-  const ask = (want: readonly RepoTarget[]): MirrorSetting => {
+  /**
+   * Ask whether to clone `want`, write the answer, and return the setting that holds now. When
+   * the file then gives another consent or clone directory than the answer, `refused` says so: the
+   * run follows neither, and clones nothing. Another run may have saved its answer while this one
+   * asked, or an editor a `mirror_dir` that this run's write kept.
+   */
+  const ask = (want: readonly RepoTarget[]): { setting: MirrorSetting; refused?: string } => {
     const before = file.read()
     // Never ask a question whose answer cannot be saved.
     editableMachineFile(file.path(), before)
@@ -789,22 +915,58 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
       'Do not clone: skip a repository with no checkout',
     ])
     let answer: MirrorAnswer
-    if (choice === 2) answer = { checkout: 'local' }
-    else if (choice === 1) {
+    /** Where the person said the clones go: null for none. */
+    let typedDir: string | null
+    if (choice === 2) {
+      answer = { checkout: 'local' }
+      typedDir = null
+    } else if (choice === 1) {
       const typed = opts.ask.text('Directory for the clones:').trim()
       if (typed === '') throw new MirrorDirError('no directory was given for the clones')
       const chosen = resolve(opts.cwd, expandTilde(typed, home()))
       checkMirrorDir(chosen, opts.git, owned)
       answer = { checkout: 'mirror', mirror_dir: chosen }
-    } else answer = { checkout: 'mirror' }
-    const { config, wrote } = writeMirrorAnswer(file, answer, { before, yield: true })
-    opts.notice(
-      wrote
-        ? `wrote checkout: ${answer.checkout}${answer.mirror_dir === undefined ? '' : ` and mirror_dir: ${answer.mirror_dir}`} to ${file.path()}`
-        : `another run answered first; ${file.path()} says checkout: ${config.checkout}, which this run follows`,
-    )
+      typedDir = chosen
+    } else {
+      answer = { checkout: 'mirror' }
+      typedDir = dir
+    }
+    const { config, wrote } = writeMirrorAnswer(file, answer, { yield: true })
     setting = mirrorSetting({ flag: opts.flag, env: opts.env, machine: config, home: home() })
-    return setting
+    const said = (consent: string, at: string | null): string =>
+      `checkout: ${consent}${at === null ? '' : ` (clones in ${at})`}`
+    const stored = said(
+      setting.consent ?? 'unset',
+      setting.consent === 'mirror' ? setting.dir : null,
+    )
+    const given = said(answer.checkout, typedDir)
+    const fix =
+      '`pr-update mirror enable [--mirror-dir <dir>]` or `pr-update mirror disable` changes it'
+    // What the file gives now, compared both when this run wrote and when it yielded: a write
+    // keeps the file's other keys, so a `mirror_dir` an editor saved while this run asked stays.
+    const same =
+      setting.consent === answer.checkout && (typedDir === null || setting.dir === typedDir)
+    if (wrote) {
+      const wroteNote = `wrote checkout: ${answer.checkout}${answer.mirror_dir === undefined ? '' : ` and mirror_dir: ${answer.mirror_dir}`} to ${file.path()}`
+      if (same) {
+        opts.notice(wroteNote)
+        return { setting }
+      }
+      // The person answered for one directory; a clone in another is not theirs to accept here.
+      return {
+        setting,
+        refused: `${wroteNote}, but the file was changed while this run asked and now says ${stored}, not the answer given here (${given}), so this run clones nothing; ${fix}`,
+      }
+    }
+    if (same) {
+      opts.notice(`another run saved the same answer first: ${file.path()} says ${stored}`)
+      return { setting }
+    }
+    // The person answered this run's question; another run's answer is not theirs to adopt here.
+    return {
+      setting,
+      refused: `another run saved ${stored} to ${file.path()} while this run asked, not the answer given here (${given}), so this run clones nothing; ${fix}`,
+    }
   }
 
   /**
@@ -868,12 +1030,18 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
       misses.set(`${target.host}/${target.owner}/${target.name}`, miss)
     },
 
+    consent() {
+      return { consent: current().consent, file: file.path() }
+    },
+
     provide(targets, { apply }) {
       applying = apply
       const wait = apply ? waitMs : 0
       // Only `update --apply` clones, so only it needs consent.
       const want = apply ? targets.filter((t) => t.source === null && t.github === true) : []
       let s: MirrorSetting | null = null
+      /** Why this run's targets with no checkout are not cloned, when its answer lost a race. */
+      let refused: string | null = null
       if (want.length > 0) {
         s = current()
         if (s.consent === null) {
@@ -884,9 +1052,11 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
                 `pass --mirror-dir <dir>, set ${MIRROR_DIR_ENV}, or run \`pr-update mirror enable\` (\`pr-update mirror disable\` skips such repositories)`,
             )
           }
-          s = ask(want)
+          const asked = ask(want)
+          s = asked.setting
+          refused = asked.refused ?? null
         }
-        if (s.consent === 'mirror') {
+        if (s.consent === 'mirror' && refused === null) {
           checkMirrorDir(s.dir, opts.git, owned)
           markMirrorDir(s.dir)
         }
@@ -895,7 +1065,7 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
       // targets in different orders then never hold one each while waiting for the other.
       const paths = new Set<string>()
       for (const t of targets) if (t.source === 'clone' && t.path !== null) paths.add(t.path)
-      const dir = s?.consent === 'mirror' ? s.dir : null
+      const dir = s?.consent === 'mirror' && refused === null ? s.dir : null
       if (dir !== null) for (const t of want) paths.add(finalOf(t, dir))
       for (const path of [...paths].sort()) hold(path, wait)
 
@@ -931,7 +1101,9 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
         }
         if (!want.includes(t) || s === null) return t
         if (dir === null) {
-          const why = `no checkout on this machine, and checkout: local in ${file.path()} makes no clone`
+          const why =
+            refused ??
+            `no checkout on this machine, and checkout: local in ${file.path()} makes no clone`
           const miss = misses.get(keyOf(t))
           opts.notice(`${miss?.label ?? keyOf(t)}: ${miss?.where ?? 'no checkout found'}; ${why}`)
           return { ...t, unserved: why }
@@ -989,28 +1161,20 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
     release,
 
     removing(clone, tree, remove) {
-      if (held.has(clone)) {
-        remove()
-        return true
-      }
-      const lock = cloneLockPath(clone)
-      // Waiting while holding another clone's lock could close a cycle with a run that holds
-      // this one and waits for that one.
-      const token = claim(lock, applying && held.size === 0 ? waitMs : 0)
-      if (token === null) {
-        opts.notice(
-          tree.kind === 'kept'
-            ? `the kept worktree ${tree.path} is left in place, because another run holds its clone (${lock}); run with --discard-kept again to remove it`
-            : `${tree.path} is left, because another run holds its clone (${lock}); the next run in this clone, or \`pr-update mirror prune\`, removes it`,
-        )
-        return false
-      }
-      try {
-        remove()
-        return true
-      } finally {
-        releaseLock(lock, token)
-      }
+      return underLock(clone, remove, (lock) =>
+        tree.kind === 'kept'
+          ? `the kept worktree ${tree.path} is left in place, because another run holds its clone (${lock}); run with --discard-kept again to remove it`
+          : `${tree.path} is left, because another run holds its clone (${lock}); the next run in this clone, or \`pr-update mirror prune\`, removes it`,
+      )
+    },
+
+    keeping(clone, tree, keep) {
+      return underLock(
+        clone,
+        keep,
+        (lock) =>
+          `${tree} is not kept, because another run holds its clone (${lock}); the run goes on in it`,
+      )
     },
 
     close() {

@@ -2,13 +2,16 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { absolutePathEntries, spawnRunner } from '@osdlc/command-seam'
+import { Git } from '@osdlc/typed-git'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 
 import { prUpdateConfigSchema, prUpdateStandaloneSchema } from '../src/config.ts'
-import { commandRepair, standalonePorts } from '../src/defaults.ts'
+import { commandRepair, refEnv, standalonePorts } from '../src/defaults.ts'
 import { listAttempts } from '../src/update/attempts.ts'
 import type { RepairRequest } from '../src/ports.ts'
+import { targetGitEnv, targetGitOptions } from '../src/update/execute.ts'
 
 let dir: string
 beforeEach(() => {
@@ -123,5 +126,54 @@ describe('standalonePorts', () => {
         checkout: '/repo',
       }),
     ).rejects.toThrow('verify: check has no meaning in a standalone run')
+  })
+})
+
+describe("the config of a target's git calls (final review)", () => {
+  /** What git reads for `key` in `cwd`, with `env` merged over the process environment. */
+  const read = (cwd: string, env: Record<string, string>, key: string): string =>
+    spawnRunner('git').run(['config', key], { cwd, env }).stdout.trim()
+
+  test("keeps hooks and background maintenance off, over a parent git's -c", () => {
+    spawnRunner('git').run(['init', '-q', dir], { cwd: dir })
+    // What a git alias or hook started as `git -c gc.auto=1 -c maintenance.auto=true` passes on.
+    vi.stubEnv(
+      'GIT_CONFIG_PARAMETERS',
+      "'gc.auto'='1' 'maintenance.auto'='true' 'core.hooksPath'='.husky'",
+    )
+    try {
+      for (const env of [refEnv(dir, undefined), refEnv(join(dir, 'missing'), undefined)]) {
+        expect(read(dir, env, 'gc.auto')).toBe('0')
+        expect(read(dir, env, 'maintenance.auto')).toBe('false')
+        expect(read(dir, env, 'core.hooksPath')).toBe('/dev/null')
+      }
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  test("PATH holds only the parent's absolute entries, and never comes out empty", () => {
+    const abs = process.platform === 'win32' ? ['C:\\Git\\cmd', 'D:\\bin'] : ['/usr/bin', '/bin']
+    const path = ['.', abs[0], '', 'bin', abs[1]].join(delimiter)
+    expect(targetGitEnv({ PATH: path }).PATH).toBe(abs.join(delimiter))
+    // Windows names it in any case.
+    if (process.platform === 'win32') expect(targetGitEnv({ Path: path }).PATH).toBe(abs.join(';'))
+    else expect(targetGitEnv({ PATH: `.${delimiter}bin` }).PATH).toBe('/usr/bin:/bin')
+    expect('PATH' in targetGitEnv({})).toBe(false)
+    for (const env of [refEnv(dir, undefined), targetGitOptions().env]) {
+      expect(env.PATH).toBe(absolutePathEntries(process.env.PATH))
+    }
+  })
+
+  test("a target's git client keeps background maintenance off, over a parent git's -c", () => {
+    spawnRunner('git').run(['init', '-q', dir], { cwd: dir })
+    vi.stubEnv('GIT_CONFIG_PARAMETERS', "'gc.auto'='1' 'maintenance.auto'='true'")
+    try {
+      const git = new Git(dir, targetGitOptions())
+      expect(git.raw(['config', 'gc.auto']).stdout.trim()).toBe('0')
+      expect(git.raw(['config', 'maintenance.auto']).stdout.trim()).toBe('false')
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })

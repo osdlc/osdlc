@@ -103,7 +103,8 @@ it took the lock. When the lock is held, it reads it and asks `isStale`:
 
 - `false`: the holder is live. The result is `{ ok: false, holder }`, where
   `holder` is a `HeldLock`: the parsed `content` (null when the file is not
-  a JSON object), the `mtimeMs`, and the `raw` text.
+  a JSON object, or its `token` is not a string), the `mtimeMs`, and the
+  `raw` text.
 - `true`: the lock is taken over and the claim is tried again. When several
   claimants take over one stale lock at once, one of them wins and the others
   see it as the live holder.
@@ -151,6 +152,14 @@ anything. An owner whose lock was taken over, or whose lock is gone, gets
 file at the path holds no token, so it gets `false` too and is left as it is.
 Any other error, such as `EACCES` or `ENOSPC`, is thrown rather than reported
 as a lost lock.
+
+`readHeldLock(path)` reads the lock as a claim reads a held one, and changes
+nothing: the `HeldLock` a claim would hand `isStale`, from one open of the
+file, with the content parsed by the same rules (null when it is not a JSON
+object, or its `token` is not a string). Pass it to your rule to learn what a
+claim would decide, for a report or a dry run. It throws `NotALockError` for
+anything but a regular file, and the open error otherwise (`ENOENT` when there
+is no lock).
 
 The types are `LockContent`, `HeldLock`, `LockClaim`, `ClaimOptions` and
 `StaleRule`. `NotALockError` is the error class, and `NotALockKind` the type of

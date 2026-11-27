@@ -15,14 +15,17 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
+import { execFile } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { promisify } from 'node:util'
+import { delimiter, dirname, join, resolve } from 'node:path'
 
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { osdlcDirs } from '@osdlc/ecosystem'
-import { claimLock, releaseLock } from '@osdlc/file-lock'
+import { claimLock, LockTimeoutError, releaseLock } from '@osdlc/file-lock'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { machineConfigSchema, machineFile, prUpdatePaths } from '../src/machine.ts'
@@ -32,18 +35,24 @@ import {
   CloneError,
   MIRROR_MARKER,
   checkClone,
+  MACHINE_LOCK_STALE_MS,
   MirrorDirError,
   checkMirrorDir,
   claimCloneLock,
   clonePath,
   cloneLockPath,
+  credentialHelper,
   makeClone,
   managedClones,
   markMirrorDir,
   mirrorSetting,
   writeMirrorAnswer,
 } from '../src/mirror.ts'
+import { lstatOrNull } from '../src/folders.ts'
 import { isolatedEnv } from './support.ts'
+
+const run = promisify(execFile)
+const CHILD = join(import.meta.dirname, 'write-answer.child.ts')
 
 let scratch: string
 let source: string
@@ -138,7 +147,12 @@ describe('checkMirrorDir and markMirrorDir', () => {
 })
 
 /** A gh whose `repo clone` makes a bare clone of `source`. */
+/** Where the fake gh says its binary is: the credential helper names it. */
+const GH_BINARY = resolve('/opt/fake/gh')
+const GH_HELPER = `!${GH_BINARY.replaceAll('\\', '/')} auth git-credential`
+
 const gh: CommandRunner = {
+  binary: GH_BINARY,
   run: (argv, opts) => {
     if (argv[0] !== 'repo' || argv[1] !== 'clone') return { exitCode: 1, stdout: '', stderr: '?' }
     return spawnRunner('git').run(['clone', '-q', '--bare', source, argv[3]!], opts)
@@ -226,7 +240,7 @@ describe('makeClone', () => {
       ],
       { cwd: scratch },
     )
-    expect(own.stdout).toBe('\n!gh auth git-credential\n')
+    expect(own.stdout).toBe(`\n${GH_HELPER}\n`)
     // The helper is seen only in the clone.
     const outside = spawnRunner('git').run(
       ['config', '--get-all', 'credential.https://github.com.helper'],
@@ -284,8 +298,87 @@ describe('makeClone', () => {
       ],
       { cwd: scratch },
     )
-    expect(own.stdout).toBe('\n!gh auth git-credential\n')
+    expect(own.stdout).toBe(`\n${GH_HELPER}\n`)
   })
+})
+
+describe('credentialHelper (final review)', () => {
+  test('names gh by an absolute path found on the absolute PATH entries only, shell-quoted', () => {
+    const bin = join(scratch, 'my bin')
+    mkdirSync(bin)
+    const name = process.platform === 'win32' ? 'gh.exe' : 'gh'
+    writeFileSync(join(bin, name), '#!/bin/sh\n')
+    chmodSync(join(bin, name), 0o755)
+    // On Windows the lookup appends each `PATHEXT` extension as `PATHEXT` spells it, and finds
+    // `gh.exe` as `gh.EXE`, since Windows file names compare in any case. `PATHEXT` is set here,
+    // as a lookup with no `PATHEXT` in `env` reads the runner's.
+    const found = process.platform === 'win32' ? join(bin, 'gh.EXE') : join(bin, name)
+    const path = found.replaceAll('\\', '/')
+    const env = { PATH: bin, PATHEXT: '.COM;.EXE;.BAT;.CMD' }
+    expect(credentialHelper({ binary: 'gh' }, env)).toBe(`!'${path}' auth git-credential`)
+    // A relative entry is never searched: the one a push runs in could hold a `gh` a PR commits.
+    // Both are planted where they resolve from, the folder the lookup runs in.
+    const planted = join(scratch, 'planted')
+    mkdirSync(planted)
+    for (const dir of [scratch, planted]) {
+      writeFileSync(join(dir, name), '#!/bin/sh\n')
+      chmodSync(join(dir, name), 0o755)
+    }
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(scratch)
+    try {
+      const relative = { PATH: `.${delimiter}planted`, PATHEXT: '.COM;.EXE;.BAT;.CMD' }
+      expect(credentialHelper({ binary: 'gh' }, relative)).toBeNull()
+    } finally {
+      cwd.mockRestore()
+    }
+  })
+
+  test('makeClone sets no helper, with a note, when gh is not found on an absolute PATH entry', () => {
+    const final = clonePath(join(scratch, 'clones'), req)
+    mkdirSync(dirname(final), { recursive: true })
+    const notes: string[] = []
+    const missing = { binary: 'pr-update-no-such-gh', run: gh.run }
+    makeClone(final, req, { gh: missing, notice: (l) => notes.push(l) })
+    const own = spawnRunner('git').run(
+      [
+        'config',
+        '--file',
+        join(final, 'config'),
+        '--get-all',
+        'credential.https://github.com.helper',
+      ],
+      { cwd: scratch },
+    )
+    expect(own.stdout).toBe('')
+    expect(notes).toEqual([
+      `${final}: no credential helper set, since \`pr-update-no-such-gh\` is not on an absolute PATH entry; fetches and pushes there use your git config's helper`,
+    ])
+  })
+})
+
+describe('lstatOrNull (final review)', () => {
+  test('null for a missing path and for one through a file; any other error is thrown', () => {
+    expect(lstatOrNull(join(scratch, 'missing'))).toBeNull()
+    writeFileSync(join(scratch, 'file'), '')
+    expect(lstatOrNull(join(scratch, 'file', 'below'))).toBeNull()
+    expect(lstatOrNull(join(scratch, 'file'))?.isFile()).toBe(true)
+  })
+
+  // Windows has no search bit for chmod to take away, and root searches any folder.
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'a path under a folder that cannot be searched is not taken for a missing one',
+    () => {
+      const shut = join(scratch, 'shut')
+      mkdirSync(shut)
+      writeFileSync(join(shut, 'inside'), '')
+      chmodSync(shut, 0o600)
+      try {
+        expect(() => lstatOrNull(join(shut, 'inside'))).toThrow(/EACCES/)
+      } finally {
+        chmodSync(shut, 0o700)
+      }
+    },
+  )
 })
 
 describe('claimCloneLock', () => {
@@ -505,6 +598,33 @@ describe('managedClones: taking a lock back to remove a worktree (review round 2
     expect(ran).toBe(false)
     expect(notes).toEqual([
       `${worktree} is left, because another run holds its clone (${cloneLockPath(api.path)}); the next run in this clone, or \`pr-update mirror prune\`, removes it`,
+    ])
+    releaseLock(cloneLockPath(api.path), token)
+    clones.close()
+  })
+
+  test('keeping a failed worktree takes the lock back; when it is busy nothing is kept, with a note (final review)', () => {
+    const api = existing('api')
+    const { clones, waits, notes } = setup(300)
+    clones.provide([api], { apply: true })
+    clones.release(api.path)
+    const worktree = join(scratch, 'worktrees', 'run')
+    // Free: the keep runs holding the lock, which is let go after.
+    let heldDuring = false
+    expect(
+      clones.keeping(api.path, worktree, () => (heldDuring = existsSync(cloneLockPath(api.path)))),
+    ).toBe(true)
+    expect(heldDuring).toBe(true)
+    expect(existsSync(cloneLockPath(api.path))).toBe(false)
+    // Busy: it waits, as `removing` does, then gives up without running the keep.
+    const token = otherRun(api.path)
+    waits.length = 0
+    let ran = false
+    expect(clones.keeping(api.path, worktree, () => (ran = true))).toBe(false)
+    expect(waits).toEqual([300])
+    expect(ran).toBe(false)
+    expect(notes).toEqual([
+      `${worktree} is not kept, because another run holds its clone (${cloneLockPath(api.path)}); the run goes on in it`,
     ])
     releaseLock(cloneLockPath(api.path), token)
     clones.close()
@@ -995,30 +1115,69 @@ describe('writeMirrorAnswer', () => {
     )
   })
 
-  test('a lost race with yield uses the answer that won, and writes nothing', () => {
+  test('with yield, a file that already holds a checkout is returned, and nothing is written', () => {
     const file = fileFor()
-    const before = file.read()
     mkdirSync(dirname(file.path()), { recursive: true })
     writeFileSync(file.path(), 'checkout: local\n')
-    expect(writeMirrorAnswer(file, { checkout: 'mirror' }, { before, yield: true })).toMatchObject({
+    expect(writeMirrorAnswer(file, { checkout: 'mirror' }, { yield: true })).toMatchObject({
       wrote: false,
       config: { checkout: 'local' },
     })
     expect(readFileSync(file.path(), 'utf8')).toBe('checkout: local\n')
   })
 
-  test('a lost race without yield, or to a write that set no checkout, writes again on the new file', () => {
+  test('two processes answering over no file: the first answer wins, the other yields to it (final review)', async () => {
+    const env = isolatedEnv(join(scratch, 'env'))
+    const at = String(Date.now() + 1500)
+    const child = (checkout: string) =>
+      run(process.execPath, [CHILD, JSON.stringify(env), checkout, at], { timeout: 30_000 })
+    const outs = await Promise.all([child('mirror'), child('local')])
+    expect(outs.map((r) => r.stdout).sort()).toEqual(['wrote', 'yielded'])
+    const winner = outs[0]!.stdout === 'wrote' ? 'mirror' : 'local'
+    expect(readFileSync(machineFile({ env }).path(), 'utf8')).toBe(`checkout: ${winner}\n`)
+  })
+
+  test('the read and the write wait for a lock another live process holds (final review)', () => {
     const file = fileFor()
-    const before = file.read()
+    mkdirSync(dirname(file.path()), { recursive: true })
+    const lock = `${file.path()}.lock`
+    // This process holds it, as another run would while it writes its answer.
+    expect(claimLock(lock, { pid: process.pid }, { isStale: () => false }).ok).toBe(true)
+    // Each look at the clock is a second later, so the 30 s wait ends at once.
+    let now = Date.now()
+    vi.spyOn(Date, 'now').mockImplementation(() => (now += 1000))
+    try {
+      expect(() => writeMirrorAnswer(file, { checkout: 'mirror' }, { yield: true })).toThrow(
+        LockTimeoutError,
+      )
+    } finally {
+      vi.restoreAllMocks()
+    }
+    expect(existsSync(file.path())).toBe(false)
+  })
+
+  test('a lock past the bound is taken over, though its pid is alive (final review)', () => {
+    const file = fileFor()
+    mkdirSync(dirname(file.path()), { recursive: true })
+    const lock = `${file.path()}.lock`
+    // A killed writer's lock, whose pid a live process (this one) now has, past the bound.
+    expect(claimLock(lock, { pid: process.pid }, { isStale: () => false }).ok).toBe(true)
+    const past = new Date(Date.now() - MACHINE_LOCK_STALE_MS - 60_000)
+    utimesSync(lock, past, past)
+    expect(writeMirrorAnswer(file, { checkout: 'mirror' }).wrote).toBe(true)
+    expect(existsSync(lock)).toBe(false)
+  })
+
+  test('with yield, a file with no checkout is written, its keys kept; without, a checkout is replaced', () => {
+    const file = fileFor()
     mkdirSync(dirname(file.path()), { recursive: true })
     writeFileSync(file.path(), 'mirror_max_age_days: 3\n')
-    expect(writeMirrorAnswer(file, { checkout: 'mirror' }, { before, yield: true })).toMatchObject({
+    expect(writeMirrorAnswer(file, { checkout: 'mirror' }, { yield: true })).toMatchObject({
       wrote: true,
       config: { checkout: 'mirror', mirror_max_age_days: 3 },
     })
-    const again = file.read()
     writeFileSync(file.path(), 'checkout: local\n')
-    expect(writeMirrorAnswer(file, { checkout: 'mirror' }, { before: again })).toMatchObject({
+    expect(writeMirrorAnswer(file, { checkout: 'mirror' })).toMatchObject({
       wrote: true,
       config: { checkout: 'mirror' },
     })
