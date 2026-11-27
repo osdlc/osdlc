@@ -352,7 +352,11 @@ const terminalChecklist: Checklist = (question, items) =>
   canPrompt() ? askChecklist(question, items) : null
 
 export interface MainDeps {
-  /** The plugins that exist; default is the built-ins, the config's packages and the descriptors, built from the config. */
+  /**
+   * The plugins that exist; default is the built-ins, the config's packages and
+   * the descriptors, built from the config. `clean --archive` is refused with
+   * these: its options reach only the shipped git plugin.
+   */
   plugins?: readonly Plugin[]
   /** The folder of shipped descriptors. Defaults to `SHIPPED_DESCRIPTORS` in descriptor/load.ts. */
   shippedDescriptors?: string
@@ -1694,7 +1698,12 @@ const RUNS = {
 type Phase = keyof typeof RUNS
 const PHASE_NAMES = Object.keys(RUNS) as Phase[]
 
-/** Resolves to an exit code; never exits the process. */
+/**
+ * Resolves to an exit code; never exits the process. Only `process.env` itself
+ * as `ctx.env` falls back to the OS account's home when `HOME` is unset, and
+ * gets tiered-dirs' test-runner rules; any other env, a copy of it too, is the
+ * only one read.
+ */
 export async function main(
   argv: readonly string[],
   ctx: CliContext,
