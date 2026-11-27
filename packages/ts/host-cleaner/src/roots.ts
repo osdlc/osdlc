@@ -88,7 +88,7 @@ export interface Bounds {
   linked: readonly string[]
   /** The home folder, which no root may be or hold. */
   home: string
-  /** Git's answers {@link linkedWorktreeOf} reads, kept for one survey; none, as right before `delete` and in `kit.remove`, asks git afresh. */
+  /** Git's answers {@link linkedWorktreeOf} reads, and which of `linked` are still there, kept for one survey; none, as right before `delete` and in `kit.remove`, looks afresh. */
   reads?: GitReads | undefined
 }
 
@@ -299,6 +299,19 @@ const stillLinked = (path: string): boolean => {
   )
 }
 
+/** The linked worktrees of a survey's bounds still there ({@link stillLinked}), by its {@link GitReads}, so each candidate does not look again. */
+const keptLinked = new WeakMap<GitReads, { from: readonly string[]; kept: readonly string[] }>()
+
+/** `bounds.linked` less what is no longer a linked worktree; looked at once a survey when `bounds.reads` is set, afresh otherwise. */
+function linkedOf(bounds: Bounds): readonly string[] {
+  if (bounds.reads === undefined) return bounds.linked.filter(stillLinked)
+  const known = keptLinked.get(bounds.reads)
+  if (known?.from === bounds.linked) return known.kept
+  const kept = bounds.linked.filter(stillLinked)
+  keptLinked.set(bounds.reads, { from: bounds.linked, kept })
+  return kept
+}
+
 /**
  * What in `bounds` holds `path`, or null: a root, a target or a linked
  * worktree it is strictly inside, the self root it is, or the linked worktree
@@ -312,7 +325,7 @@ const stillLinked = (path: string): boolean => {
  * link left in its place is not the worktree.
  */
 export function boundBy(bounds: Bounds, path: string): string | null {
-  const linked = bounds.linked.filter(stillLinked)
+  const linked = linkedOf(bounds)
   const inside = containedIn([...bounds.roots, ...bounds.targets, ...linked], path)
   if (inside !== null || !isAbsolute(path) || hasDotDot(path)) return inside
   const leaf = realLeaf(path)
