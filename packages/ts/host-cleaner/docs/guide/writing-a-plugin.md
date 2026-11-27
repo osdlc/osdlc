@@ -73,11 +73,15 @@ export default definePlugin({
     const idleHours = idleHoursOr(settings.idleHours)
     return {
       name: 'scratch',
-      // The core refuses a relative root, so say why the plugin does not run.
-      detect: () =>
-        isAbsolute(root)
-          ? statSync(root, { throwIfNoEntry: false })?.isDirectory() === true
-          : { active: false, note: `${root} is not absolute` },
+      detect() {
+        // The core refuses a relative root, so say why the plugin does not run.
+        if (!isAbsolute(root)) return { active: false, note: `${root} is not absolute` }
+        try {
+          return statSync(root, { throwIfNoEntry: false })?.isDirectory() === true
+        } catch (err) {
+          return { active: false, note: `${root} cannot be read: ${(err as Error).message}` }
+        }
+      },
       roots: () => [root],
       discover(ctx) {
         return readdirSync(root, { withFileTypes: true })
@@ -153,8 +157,9 @@ What it relies on:
   for the person reading every run. The
   core refuses a root that is not an absolute path, so this plugin does not
   run, and says why, when `dir` is relative (`~` is not expanded) or `HOME` is
-  unset, and when the root is not a folder. `ctx.targetsGiven` says whether
-  the person gave targets or the run fell back to the current folder.
+  unset, or the root cannot be read; nor when the root is not a folder.
+  `ctx.targetsGiven` says whether the person gave targets or the run fell
+  back to the current folder.
 - **`discover`** skips the folders `ctx.ignore` covers. `kit.idle` throws on
   a folder it cannot read, since what it hides may be recent, so the plugin
   leaves that folder out and still proposes the others.

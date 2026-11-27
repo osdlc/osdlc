@@ -390,6 +390,26 @@ describe("the guide's plugin, its walk out of time in one survey and not the oth
     })
     expect(await plugin.detect(fakeContext({ cwd: home }))).toBe(false)
   })
+
+  test.skipIf(asRoot)('does not run, and says why, when its folder cannot be read', async () => {
+    const locked = join(home, 'locked')
+    mkdirSync(join(locked, 'scratch'), { recursive: true })
+    chmodSync(locked, 0o000)
+    try {
+      const plugin = scratch.create({
+        settings: scratch.settings.parse({ dir: join(locked, 'scratch') }),
+        env,
+        kit: entry.pluginKit(scratch.name, { env }),
+      })
+      expect(await plugin.detect(fakeContext({ cwd: home }))).toEqual({
+        active: false,
+        note: expect.stringMatching(/locked\/scratch cannot be read: EACCES/),
+      })
+    } finally {
+      chmodSync(locked, 0o700)
+      rmSync(locked, { recursive: true })
+    }
+  })
 })
 
 test("the guide's table names every export of ./plugin", () => {

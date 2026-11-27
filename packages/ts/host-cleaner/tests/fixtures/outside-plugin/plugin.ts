@@ -26,11 +26,15 @@ export default definePlugin({
     const idleHours = idleHoursOr(settings.idleHours)
     return {
       name: 'scratch',
-      // The core refuses a relative root, so say why the plugin does not run.
-      detect: () =>
-        isAbsolute(root)
-          ? statSync(root, { throwIfNoEntry: false })?.isDirectory() === true
-          : { active: false, note: `${root} is not absolute` },
+      detect() {
+        // The core refuses a relative root, so say why the plugin does not run.
+        if (!isAbsolute(root)) return { active: false, note: `${root} is not absolute` }
+        try {
+          return statSync(root, { throwIfNoEntry: false })?.isDirectory() === true
+        } catch (err) {
+          return { active: false, note: `${root} cannot be read: ${(err as Error).message}` }
+        }
+      },
       roots: () => [root],
       discover(ctx) {
         return readdirSync(root, { withFileTypes: true })
