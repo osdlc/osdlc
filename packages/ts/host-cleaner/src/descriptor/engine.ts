@@ -26,7 +26,7 @@ import { z } from 'zod'
 import { checkoutsOf, hoursText, liveBlockers, type Checkout } from '../artifacts.ts'
 import { hostDirs } from '../config.ts'
 import { COST_DESCRIPTIONS, type CostDescription } from '../cost.ts'
-import { DISCOVER_LIMIT_MS, errorText, runFailure, yieldToLimit } from '../helpers.ts'
+import { DISCOVER_LIMIT_MS, errorText, realAbove, runFailure, yieldToLimit } from '../helpers.ts'
 import { containsIgnored, coveredBy } from '../ignore.ts'
 import { DEFAULT_IDLE_HOURS, idleHoursSetting, present, type Idle, type Kit } from '../kit.ts'
 import { containedIn, isLink, linkedCheckouts, realOr, rootProblem, within } from '../roots.ts'
@@ -101,23 +101,6 @@ export function skipReason(d: Descriptor): string | undefined {
 }
 
 /**
- * `path`'s real path, read through the nearest folder above it that exists
- * when it does not exist yet, so a folder still to be created behind a link
- * is spelled as it will be.
- */
-const realBelow = (path: string): string => {
-  const rest: string[] = []
-  for (let dir = path; ; dir = dirname(dir)) {
-    try {
-      return join(realpathSync.native(dir), ...rest)
-    } catch {
-      if (dirname(dir) === dir) return path
-      rest.unshift(basename(dir))
-    }
-  }
-}
-
-/**
  * Why `path`, one of a descriptor's folders, may not be cleaned, or null when
  * it may. It must pass the core's check of a self root ({@link rootProblem}),
  * sit strictly inside `home` unless it is `trusted` (from a variable set in the
@@ -141,7 +124,7 @@ export function pathProblem(
     return 'it is not inside the home folder'
   }
   for (const own of at.ownDirs) {
-    const [outer, inner] = [realBelow(path), realBelow(own)]
+    const [outer, inner] = [realAbove(path), realAbove(own)]
     if (within(outer, inner)) return `it holds host-cleaner's own folder ${own}`
     if (within(inner, outer)) return `it is inside host-cleaner's own folder ${own}`
   }
