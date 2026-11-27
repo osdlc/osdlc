@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.1.0](https://github.com/osdlc/osdlc/releases/tag/system-model/v0.1.0) - 2026-11-21
+## [0.10.0] - 2026-11-27
 
 ### Other
 

@@ -8,10 +8,6 @@
 [package]
 name = "glob-intersect"
 version = "0.3.0"
-# Not on crates.io yet. The name is reserved for the first release; to publish,
-# remove this line and the entry in release-plz.toml in a pull request of its
-# own (see scripts/crates-io-auth-plan.ts).
-publish = false
 edition.workspace = true
 rust-version.workspace = true
 description = "Path-pattern overlap engine: do two globs share a common matching path? A pure, dependency-light core (segment automaton + synchronized product, with witnesses) and an optional filesystem layer."
