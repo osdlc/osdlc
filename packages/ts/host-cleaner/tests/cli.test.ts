@@ -520,6 +520,29 @@ describe('folders', () => {
     }
   })
 
+  test('with process.env, an empty or relative HOME refuses a `~` target', () => {
+    const { cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, JSON.stringify({ targets: ['~/dev'] }))
+    const empty = join(home, 'empty.json')
+    writeFileSync(empty, '{}')
+    for (const value of ['', 'rel']) {
+      vi.stubEnv('HOME', value)
+      vi.stubEnv('USERPROFILE', value)
+      // A target is swept: the OS account's real `~/dev` must not stand in for it.
+      const env = process.env as Record<string, string>
+      for (const argv of [
+        ['--config', file],
+        ['--config', empty, '~/dev'],
+      ]) {
+        const r = run(['status', ...argv], cwd, env, { plugins: [fake()] })
+        expect(r.code, JSON.stringify([value, argv])).toBe(1)
+        expect(r.err).toContain('cannot expand `~` in a target')
+        expect(r.out).toBe('')
+      }
+    }
+  })
+
   test('HOST_CLEANER_CONVENTION is trimmed, and empty counts as unset', () => {
     const opts = { platform: 'darwin', home: '/Users/me' }
     const native = hostDirs({ HOST_CLEANER_CONVENTION: 'native' }, opts)

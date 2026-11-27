@@ -186,10 +186,13 @@ refused with exit 2. A relative `XDG_*` value is ignored, as the XDG spec says.
 `~/Library`. Spaces around the value are ignored and an empty value counts as
 unset; any value other than `native` or `xdg` is refused with exit 2. When
 `HOME` (`USERPROFILE` on Windows) is unset, empty or relative, the OS account's
-home is used. `~` in `targets` and `ignore` is that same home, so an ignore
-entry under `~` covers the folder it names. With no home directory to place
-the folders in, and no variable that places them, a `clean` that deletes and
-every command that reads the default config exit 1; `status`, `plan`,
+home is used. `~` in an `ignore` entry is that same home, so the entry covers
+the folder it names. `~` in a target is too when `HOME` is unset; when it is
+set but empty or relative, a target that starts with `~` is refused with
+exit 1, so `~/dev` never sweeps the account's real `~/dev`. With no home
+directory to place the folders in, and no variable that places them, a
+`clean` that deletes and every command that reads the default config exit 1;
+`status`, `plan`,
 `config` and `clean --dry-run` given `--config` still run, unless a target or
 ignore entry starts with `~`, which is then refused with exit 1.
 Windows has no `xdg` folders and keeps its own: the config is

@@ -429,7 +429,7 @@ function contextFor(
     targets.length > 0 ? targets : config.targets.length > 0 ? config.targets : [ctx.cwd]
   return {
     cwd: ctx.cwd,
-    targets: chosen.map((t) => resolve(ctx.cwd, expandHome(t, tildeHome(ctx)))),
+    targets: chosen.map((t) => resolve(ctx.cwd, expandHome(t, targetHome(ctx)))),
     allow,
     ignore: ignoreFor(config, ignore, ctx),
   }
@@ -449,6 +449,24 @@ const tildeHome = (ctx: CliContext) => (): string => {
     }
     throw err
   }
+}
+
+/**
+ * The home `~` stands for in a target: {@link tildeHome}'s, except that a
+ * `HOME` (`USERPROFILE` on Windows) set to an empty or relative value is
+ * refused, where an ignore entry takes the OS account's home. A target is
+ * swept, so `~/dev` there must not become the account's real `~/dev`.
+ */
+const targetHome = (ctx: CliContext) => (): string => {
+  const home = tildeHome(ctx)()
+  const name = process.platform === 'win32' ? 'USERPROFILE' : 'HOME'
+  const given = ctx.env[name]
+  if (given !== undefined && given !== home) {
+    throw new Error(
+      `cannot expand \`~\` in a target: ${name} is ${JSON.stringify(given)}, not an absolute path; set it to one, or give the target in full`,
+    )
+  }
+  return home
 }
 
 /** The config's ignore list with `extra` (`--ignore`) added, as absolute paths. */
