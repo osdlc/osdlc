@@ -32,7 +32,7 @@ import {
 } from './helpers.ts'
 import { idleHoursOr, idleHoursSetting, present, type Kit } from './kit.ts'
 import { containedIn } from './roots.ts'
-import { PLUGIN_API, definePlugin, type Ctx, type Plugin } from './types.ts'
+import { PLUGIN_API, builtIn, definePlugin, type Ctx, type Plugin } from './types.ts'
 
 export const TOOLCHAINS_PLUGIN = 'toolchains'
 
@@ -925,7 +925,7 @@ export function toolchainsPlugin(
 
   let rows = new Map<string, Row>()
 
-  return {
+  return builtIn({
     name: TOOLCHAINS_PLUGIN,
     // A delete surveys again before it removes, so it may take a survey and an uninstall.
     limits: { discover: DISCOVER_LIMIT_MS, delete: DISCOVER_LIMIT_MS + UNINSTALL_LIMIT_MS },
@@ -984,7 +984,7 @@ export function toolchainsPlugin(
       }
       return `rustup toolchain uninstall ${name} removed ${path}`
     },
-  }
+  })
 }
 
 /** Compares two `x.y.z` versions by number. */

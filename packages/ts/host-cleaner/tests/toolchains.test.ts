@@ -1064,7 +1064,6 @@ describe('reading mount options', () => {
     const env = { HOME: h.home, PATH: '' }
     const plugin = toolchainsDefinition.create({
       settings: { idleHours: 1 },
-      only: [],
       env,
       kit: pluginKit('toolchains', { env, runner: f.runner, which: f.which, probe: NOTHING_RUNS }),
     })

@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@osdlc/corpus-schema": "workspace:^",
-    "ajv": "8.20.0",
+    "ajv": "catalog:",
     "yaml": "catalog:"
   },
   "devDependencies": {

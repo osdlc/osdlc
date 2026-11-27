@@ -153,6 +153,16 @@ describe('idle', () => {
     expect(reads.clock).toBeLessThan(10)
   })
 
+  test('a file is aged by itself, by the kit clock', () => {
+    const dir = temp()
+    put(join(dir, 'f'), 30)
+    expect(pluginKit('x', { now: () => NOW }).idle(join(dir, 'f'))).toEqual({
+      unmeasured: false,
+      newestMs: NOW.getTime() - 30 * HOUR,
+      hours: 30,
+    })
+  })
+
   test('several folders are one answer, the newest, within one budget', () => {
     const dir = temp()
     const dirs = ['a', 'b', 'c'].map((name, i) => {
@@ -166,6 +176,13 @@ describe('idle', () => {
     const slow = pluginKit('x', { now: () => NOW, clock: ticking(), budgetMs: 1_500 })
     expect(slow.idle(dirs[0]!)).toMatchObject({ hours: 30 })
     expect(slow.idle(dirs)).toEqual({ unmeasured: true })
+  })
+})
+
+describe('overBudget', () => {
+  test('turns true once the budget has passed since the call, by the kit clock', () => {
+    const late = pluginKit('x', { clock: ticking(), budgetMs: 1_500 }).overBudget()
+    expect([late(), late()]).toEqual([false, true])
   })
 })
 
@@ -372,7 +389,7 @@ describe('remove', () => {
         delete: (c) => kit.remove(c.path!),
       }),
     })
-    const plugin = def.create({ settings: {}, only: [], env: {}, kit: pluginKit('cache') })
+    const plugin = def.create({ settings: {}, env: {}, kit: pluginKit('cache') })
     // No target holds `dir`: only the roots the core asked the plugin for.
     const ctx = { cwd: root, targets: [], allow: [] }
     const receipt = await clean(plan(await survey([plugin], ctx)), [plugin], ctx)
@@ -397,7 +414,7 @@ describe('a plugin built on a kit of its own', () => {
       settings: z.strictObject({}),
       create: () => cargoPlugin({ now: () => NOW, probe, which: () => '/bin/cargo' }),
     })
-    const plugin = def.create({ settings: {}, only: [], env: {}, kit: pluginKit('cargo') })
+    const plugin = def.create({ settings: {}, env: {}, kit: pluginKit('cargo') })
     const ctx = { cwd: root, targets: [root], allow: [] }
     const receipt = await clean(plan(await survey([plugin], ctx)), [plugin], ctx)
     expect(receipt.steps).toEqual([expect.objectContaining({ result: 'ok' })])
@@ -431,10 +448,11 @@ describe('running', () => {
     const ps = fakePs('    4     1 -zsh\n    5     4 /Users/me/.cargo/bin/cargo build\n', calls)
     const kit = pluginKit('cargo', { probe, ps })
     const one = signal()
-    expect(kit.running({ in: '/w' }, { signal: one })).toEqual({ names: ['cargo (pid 5)'] })
-    expect(kit.running({ name: 'cargo' }, { signal: one })).toEqual({ names: ['cargo (pid 5)'] })
-    expect(kit.running('cargo', { signal: one })).toEqual({ names: ['cargo (pid 5)'] })
-    expect(kit.running('rustc', { signal: one })).toEqual({ names: [] })
+    const cargo = { names: ['cargo (pid 5)'], processes: [{ pid: 5, command: 'cargo' }] }
+    expect(kit.running({ in: '/w' }, { signal: one })).toEqual(cargo)
+    expect(kit.running({ name: 'cargo' }, { signal: one })).toEqual(cargo)
+    expect(kit.running('cargo', { signal: one })).toEqual(cargo)
+    expect(kit.running('rustc', { signal: one })).toEqual({ names: [], processes: [] })
     kit.running({ in: '/w' }, { signal: signal() })
     kit.running('cargo', { signal: signal() })
     // The first read in each hook call is fresh; `ps` is read once per hook call.
@@ -526,6 +544,24 @@ describe('running', () => {
     expect(commandHasName('node', '')).toBe(false)
   })
 
+  test('alive asks the probe, with the start time given', () => {
+    const asked: unknown[][] = []
+    const probe: ProcessProbe = {
+      alive: (...args) => {
+        asked.push(args)
+        return args[1] === undefined
+      },
+      holders: () => [],
+    }
+    const kit = pluginKit('x', { probe })
+    expect(kit.alive(42)).toBe(true)
+    expect(kit.alive(42, '1790000000000')).toBe(false)
+    expect(asked).toEqual([
+      [42, undefined],
+      [42, '1790000000000'],
+    ])
+  })
+
   test('an unreadable process table is unknown, not empty', () => {
     const probe: ProcessProbe = {
       alive: () => true,
@@ -535,6 +571,7 @@ describe('running', () => {
     }
     expect(pluginKit('x', { probe }).running({ in: '/w' }, { signal: signal() })).toEqual({
       names: [],
+      processes: [],
       unknown: 'no lsof',
     })
     const noPs: CommandRunner = {
@@ -542,6 +579,7 @@ describe('running', () => {
     }
     expect(pluginKit('x', { ps: noPs }).running('pnpm', { signal: signal() })).toEqual({
       names: [],
+      processes: [],
       unknown: 'ps failed (exit 1): ps: not allowed',
     })
   })
@@ -571,10 +609,11 @@ describe('running, when the table cannot be read', () => {
       },
     }
     const kit = pluginKit('x', { probe, ps })
-    expect(kit.running({ in: '/a' }, { signal: signal() })).toEqual({ names: [] })
+    const none = { names: [], processes: [] }
+    expect(kit.running({ in: '/a' }, { signal: signal() })).toEqual(none)
     broken = true
     const one = signal()
-    const unread = { names: [], unknown: 'lsof did not run' }
+    const unread = { ...none, unknown: 'lsof did not run' }
     expect(kit.running({ in: '/a' }, { signal: one })).toEqual(unread)
     expect(kit.running({ in: '/b' }, { signal: one })).toEqual(unread)
     expect(kit.running('pnpm', { signal: one }).unknown).toMatch(/^ps failed/)
@@ -582,7 +621,7 @@ describe('running, when the table cannot be read', () => {
     expect(calls).toEqual({ lsof: 2, ps: 1 })
     // The next hook call reads afresh.
     broken = false
-    expect(kit.running({ in: '/a' }, { signal: signal() })).toEqual({ names: [] })
+    expect(kit.running({ in: '/a' }, { signal: signal() })).toEqual(none)
     expect(calls.lsof).toBe(3)
   })
 })
