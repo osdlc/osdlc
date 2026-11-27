@@ -2168,12 +2168,24 @@ describe('updateAll', () => {
       const tip = git.resolveRef(WORK_BRANCH)
       git.raw(['worktree', 'lock', '--reason', 'on my usb drive', stale])
       if (folder === 'gone') rmSync(stale, { recursive: true, force: true })
+      // git's refusal and `forget`'s own lock check would keep the tree too; recording the
+      // calls shows the locked tree is never offered for removal at all.
+      const owned = ownedUnder([root])
+      const forgotten: string[] = []
+      const records = {
+        owns: (path: string) => owned.owns(path),
+        forget: (g: Git, path: string, removed: boolean) => {
+          forgotten.push(path)
+          owned.forget(g, path, removed)
+        },
+      }
 
       await updateAll(git, [target({ head: 'after' })], SETTINGS, recorder(), {
         apply: true,
         worktreeRoot: join(root, 'next'),
-        records: ownedUnder([root]),
+        records,
       })
+      expect(forgotten.filter((p) => p.endsWith('2147483646.1'))).toEqual([])
       expect(git.worktrees().some((w) => w.path.endsWith('2147483646.1'))).toBe(true)
       expect(git.resolveRef(WORK_BRANCH)).toBe(tip)
       expect(existsSync(stale)).toBe(folder === 'there')
