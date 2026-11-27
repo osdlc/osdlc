@@ -28,6 +28,7 @@ import { parse as parseToml } from 'smol-toml'
 import { parse as parseYaml } from 'yaml'
 
 import { runFailure } from '../helpers.ts'
+import { expandHome } from '../ignore.ts'
 import type { Kit } from '../kit.ts'
 import { within } from '../roots.ts'
 import type { VarValue, Vars } from '../types.ts'
@@ -78,13 +79,12 @@ function describeSource(source: VarSource): string {
 }
 
 /**
- * `path` with a leading `~` read as `home`, normalized and without a trailing
- * separator, except on a root such as `/` or `C:\`, which would then be
- * relative.
+ * `path` with a leading `~` read as `home` (by {@link expandHome}, so `~\` only
+ * on Windows), normalized and without a trailing separator, except on a root
+ * such as `/` or `C:\`, which would then be relative.
  */
 function folderOf(path: string, home: string): string {
-  const full = path === '~' ? home : /^~[/\\]/.test(path) ? join(home, path.slice(2)) : path
-  const n = normalize(full)
+  const n = normalize(expandHome(path, () => home))
   const bare = n.endsWith(sep) ? n.slice(0, -1) : n
   return bare === '' || /^[A-Za-z]:$/.test(bare) ? n : bare
 }

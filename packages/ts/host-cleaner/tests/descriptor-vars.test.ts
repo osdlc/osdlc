@@ -493,6 +493,16 @@ describe('fillTemplate', () => {
     expect(fillTemplate('${A}/${NONE}', v, home)).toEqual({ missing: 'NONE' })
   })
 
+  test('reads ~\\ as home only on Windows, as an ignore entry does', async () => {
+    const { home, resolve } = setup()
+    const v = await resolve({})
+    const windows = process.platform === 'win32'
+    expect(fillTemplate('~\\x', v, home)).toEqual({
+      path: windows ? join(home, 'x') : '~\\x',
+      trusted: false,
+    })
+  })
+
   test('is trusted only when a trusted variable is the leading folder and the path stays inside it', async () => {
     const { home, resolve } = setup({ env: { OTHER: '/x' } })
     const v = await resolve(
