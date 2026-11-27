@@ -49,7 +49,9 @@ export interface GitPluginOptions extends Runners {
   >
   /**
    * Archive unlanded work to the remote before deleting it: one archive per
-   * repository, pushed in `prepare`. A failed archive push stops the run.
+   * repository, pushed in `prepare`. A failed archive push stops the run. A
+   * caller with its own core sets `ctx.run` to every candidate it will run
+   * before the first `prepare` (see `RunCtx.run`).
    */
   archive?: ArchiveOptions | undefined
 }

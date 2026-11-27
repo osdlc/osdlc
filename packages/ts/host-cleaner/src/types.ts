@@ -119,7 +119,14 @@ export interface RunCtx {
    * Survey sets it; unset elsewhere.
    */
   running?: readonly string[] | undefined
-  /** The candidates `clean` will delete, in order; set for `roots`, `prepare`, `delete` and `deleted` while `clean` runs. */
+  /**
+   * The candidates `clean` will delete, in order; set for `roots`, `prepare`,
+   * `delete` and `deleted` while `clean` runs. A caller with its own core sets
+   * it to every candidate it will run before the first `prepare`: git archives
+   * a repository's work once, from this list, and a `prepare` for one the list
+   * leaves out archives again with the listed rows of its repository, some of
+   * which may be deleted by then, which stops the run.
+   */
   run?: readonly Candidate[] | undefined
 }
 
