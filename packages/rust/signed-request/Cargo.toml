@@ -1,0 +1,68 @@
+[package]
+name = "signed-request"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "HMAC-SHA256 request signing and verification between two services: canonical signing string with direction, audience, key id and epoch; clock-skew window; bounded nonce replay cache; optional axum middleware and reqwest client."
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/signed-request"
+readme = "README.md"
+keywords = ["hmac", "signing", "replay-protection", "axum", "reqwest"]
+categories = ["authentication", "cryptography", "web-programming::http-server"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "tests/**/*.rs",
+  "tests/vectors.json",
+  "tests/gen_vectors.py",
+  "README.md",
+  "CHANGELOG.md",
+  "SECURITY.md",
+  "CONTRIBUTING.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+# Not on crates.io yet: the first release is the owner's step, so release-plz
+# holds it (release-plz.toml). Remove `publish = false` and the hold entry together.
+publish = false
+
+[package.metadata.docs.rs]
+all-features = true
+
+[features]
+default = []
+# Verifying side: a tower/axum middleware that buffers the body, checks the signature and puts
+# the verified key id and epoch in the request extensions.
+axum = ["dep:axum", "dep:async-trait"]
+# Signing side: a reqwest client that signs every request it sends.
+reqwest = ["dep:reqwest"]
+
+[[example]]
+name = "protect_router"
+required-features = ["axum"]
+
+[[example]]
+name = "signed_client"
+required-features = ["axum", "reqwest"]
+
+[dependencies]
+async-trait = { workspace = true, optional = true }
+axum = { workspace = true, optional = true, features = ["http1", "tokio"] }
+getrandom = { workspace = true }
+hmac = { workspace = true }
+reqwest = { workspace = true, optional = true, features = ["json"] }
+sha2 = { workspace = true }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# The tests and examples answer with `axum::Json`.
+axum = { workspace = true, features = ["json"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread"] }
+tower = { workspace = true }
+
+[lints]
+workspace = true
