@@ -54,7 +54,7 @@ answers every question from it.
 ## The wire contract
 
 ```ts
-import type { SystemGraph, SystemGraphClient, SystemNode } from '@osdlc/system-model'
+import type { SystemGraph, SystemNode } from '@osdlc/system-model'
 ```
 
 The Rust schema is the authority on this shape. This package states it once
@@ -86,18 +86,6 @@ crate, and the two walk one fixture tree (`tests/fixtures/mini-repo`, a symlink 
 
 **`./aspect`**: `Aspect`, `Evidence`, `EvidenceKind` and `EVIDENCE_TIERS`.
 Detection uses the same `Evidence` for every claim it makes.
-
-**`./client`**: `SystemGraphClient`, the port. One method, because the
-viewer needs one thing: the whole graph. Folding a container is an
-interaction, not a query. So the aggregation runs on the client over one
-payload, and there is no second call for "the graph, but collapsed".
-
-**`./saved-view`**: `SavedView` and the `SavedViewStore` port that keeps
-named views of a graph, with `slugify` and `SLUG_PATTERN`.
-
-`ProjectFacets` and the optional `ProjectFacetsStore` port, in the root
-entry only, carry what the build system knows about a project that a manifest
-cannot say, joined to graph nodes by directory.
 
 ### Who is on each side
 
@@ -140,11 +128,9 @@ Evidence tiers run from the most direct to the least: `manifest` (1),
 
 | Entry | Exports |
 |---|---|
-| `@osdlc/system-model` | the whole wire contract: everything in the four entries below, plus `ProjectFacets` and `ProjectFacetsStore` |
+| `@osdlc/system-model` | the whole wire contract: everything in the four entries below |
 | `@osdlc/system-model/graph` | `SystemGraph`, `SystemNode`, `SystemEdge`, the kind unions and their `ALL_*` rosters |
 | `@osdlc/system-model/aspect` | `Aspect`, `Evidence`, `EvidenceKind`, `EVIDENCE_TIERS`, `ALL_ASPECTS`, `hasAspect`, `strongestTier` |
-| `@osdlc/system-model/client` | `SystemGraphClient` |
-| `@osdlc/system-model/saved-view` | `SavedView`, `SavedViewStore`, `PositionOverride`, `slugify`, `SLUG_PATTERN` |
 | `@osdlc/system-model/detect` | `createProject`, the task model, the profile and `ToolDef` types |
 | `@osdlc/system-model/builtins` | `builtins`, every built-in tool in report order, and `BUILTIN_TOOL_IDS` |
 | `@osdlc/system-model/node` | bun, pnpm, yarn, npm, `node-scripts`, and the node ecosystem |
@@ -166,7 +152,7 @@ Evidence tiers run from the most direct to the least: `manifest` (1),
 | `@osdlc/system-model/groups` | `GROUPS`, `ALL_GROUP_IDS`, `groupOf`, `catalogGroups` and `SYNTHESIZED_RUNNERS`: which group a report falls in |
 
 The core knows no tool. A plugin imports only the core, never another plugin.
-The root entry, `./graph`, `./aspect`, `./client`, `./saved-view`, `./match`,
+The root entry, `./graph`, `./aspect`, `./match`,
 `./params`, `./duration`, `./groups` and `./schema` import no Node built-in
 and no dependency, so a browser bundle can use them. A test walks each one's imports to check.
 

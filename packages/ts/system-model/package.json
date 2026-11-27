@@ -43,14 +43,6 @@
       "types": "./dist/build.d.ts",
       "default": "./dist/build.js"
     },
-    "./client": {
-      "types": "./dist/client.d.ts",
-      "default": "./dist/client.js"
-    },
-    "./saved-view": {
-      "types": "./dist/saved-view.d.ts",
-      "default": "./dist/saved-view.js"
-    },
     "./detect": {
       "types": "./dist/engine.d.ts",
       "default": "./dist/engine.js"
