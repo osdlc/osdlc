@@ -3,7 +3,7 @@
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 
 import { afterAll, expect, test } from 'vitest'
 
@@ -52,6 +52,9 @@ test('two workspace packages produce one dependency edge', async () => {
   expect(nodes.map((n) => n.id)).toEqual(['pkg-a', 'pkg-b'])
   expect(deps.map((d) => d.specifierKind)).toEqual(['workspace'])
   expect(DEFAULT_EXCLUDES).toContain('node_modules')
+  // Every manifest the walk found has one of the names the walk reads.
+  const names: readonly string[] = MANIFEST_FILES
+  expect(manifests.every((m) => names.includes(basename(m.path)))).toBe(true)
 
   // Pick manifests out of a file list, as a caller with no directory to walk does.
   const listed = ['pkg-a/package.json', 'pkg-a/README.md', 'crates/x/Cargo.toml']
