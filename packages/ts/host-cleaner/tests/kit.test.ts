@@ -153,6 +153,16 @@ describe('idle', () => {
     expect(reads.clock).toBeLessThan(10)
   })
 
+  test('a file is aged by itself, by the kit clock', () => {
+    const dir = temp()
+    put(join(dir, 'f'), 30)
+    expect(pluginKit('x', { now: () => NOW }).idle(join(dir, 'f'))).toEqual({
+      unmeasured: false,
+      newestMs: NOW.getTime() - 30 * HOUR,
+      hours: 30,
+    })
+  })
+
   test('several folders are one answer, the newest, within one budget', () => {
     const dir = temp()
     const dirs = ['a', 'b', 'c'].map((name, i) => {
@@ -166,6 +176,13 @@ describe('idle', () => {
     const slow = pluginKit('x', { now: () => NOW, clock: ticking(), budgetMs: 1_500 })
     expect(slow.idle(dirs[0]!)).toMatchObject({ hours: 30 })
     expect(slow.idle(dirs)).toEqual({ unmeasured: true })
+  })
+})
+
+describe('overBudget', () => {
+  test('turns true once the budget has passed since the call, by the kit clock', () => {
+    const late = pluginKit('x', { clock: ticking(), budgetMs: 1_500 }).overBudget()
+    expect([late(), late()]).toEqual([false, true])
   })
 })
 

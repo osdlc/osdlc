@@ -31,6 +31,9 @@ import { PLUGIN_API, builtIn, definePlugin, type Plugin } from './types.ts'
 
 export const CARGO_PLUGIN = 'cargo'
 
+/** The folder the plugin cleans, and the file that detects it. */
+export const CARGO_PROJECT = { dir: 'target', marker: 'Cargo.toml' } as const
+
 /**
  * Whether incremental builds are off for `checkout`: `CARGO_INCREMENTAL`, then
  * `CARGO_BUILD_INCREMENTAL`, then `cargo config get build.incremental`, in cargo's
@@ -69,9 +72,9 @@ const profileDirs = (target: string): string[] =>
 
 async function rowsOrThrow(env: Env, checkout: Checkout): Promise<Row[]> {
   const { kit, idleHours: threshold } = env
-  const target = join(checkout.path, 'target')
+  const target = join(checkout.path, CARGO_PROJECT.dir)
   if (!present(target)) return []
-  const safeTarget = inside(checkout.path, 'target')
+  const safeTarget = inside(checkout.path, CARGO_PROJECT.dir)
   if (safeTarget === null) return [refusedRow(kit, 'cargo-target', target, checkout.path)]
   if (!existsSync(join(safeTarget, 'CACHEDIR.TAG'))) return []
 
@@ -132,7 +135,7 @@ export function cargoPlugin(opts: ArtifactOptions = {}, kit?: Kit): Plugin {
       opts,
       (env) =>
         env.kit.onPath('cargo') ||
-        checkoutsOf(env).some((c) => existsSync(join(c.path, 'Cargo.toml'))),
+        checkoutsOf(env).some((c) => existsSync(join(c.path, CARGO_PROJECT.marker))),
       rowsOrThrow,
       kit,
     ),

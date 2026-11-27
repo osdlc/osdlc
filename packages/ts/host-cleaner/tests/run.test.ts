@@ -226,6 +226,34 @@ describe('plugin order and duplicates', () => {
     }
   })
 
+  test('vars it cannot show leave the plugin in: survey does not read them, inspect drops them with a warning', async () => {
+    const vars = { X: { value: '/a', from: null, trusted: false, tried: [] } }
+    const odd = fake('odd', [cand('a:1', 'odd')], [], {
+      detect: () => ({ active: true, note: 'n', vars }) as unknown as boolean,
+    })
+    const s = await survey([odd], ctx)
+    expect(s.plugins.map((p) => p.name)).toEqual(['odd'])
+    expect(s.notes).toEqual({ odd: 'n' })
+    expect(s.warnings).toEqual([])
+    const i = await inspect([odd], ctx)
+    expect(i.plugins[0]).toMatchObject({ name: 'odd', detected: true, note: 'n' })
+    expect(i.plugins[0]!.vars).toBeUndefined()
+    expect(i.warnings).toEqual([
+      'odd: detect answered vars it cannot show: vars.X is not { value, from?, trusted, tried }',
+    ])
+  })
+
+  test('inspect keeps a variable named __proto__ as an own key', async () => {
+    const vars = JSON.parse(
+      '{"__proto__": {"value": "/a", "from": "env A", "trusted": false, "tried": []}}',
+    )
+    const p = fake('odd', [], [], { detect: () => ({ active: true, vars }) as unknown as boolean })
+    const got = (await inspect([p], ctx)).plugins[0]!.vars!
+    expect(Object.keys(got)).toEqual(['__proto__'])
+    expect(Object.getPrototypeOf(got)).toBe(Object.prototype)
+    expect(got['__proto__']).toEqual({ value: '/a', from: 'env A', trusted: false, tried: [] })
+  })
+
   test('every hook sees targetsGiven, false when the run leaves it unset', async () => {
     const seen: boolean[] = []
     const p = fake('git', [], [], {
@@ -934,6 +962,21 @@ describe('re-check', () => {
     expect(same.decision.run.map((c) => c.id)).toEqual(['a:1'])
     const moved = await recheck(p, [mutable([cand('a:1', 'git', { evidence: { sha: 'b' } })])], ctx)
     expect(moved.decision.dropped.map((d) => d.reason)).toEqual(['changed'])
+  })
+
+  test('changed: held now and not in the plan, picked or not; held then and not now still runs', async () => {
+    const idle = mutable([cand('a:1', 'git')])
+    const held = mutable([cand('a:1', 'git', { held: true })])
+    for (const pick of [[], ['a:1']]) {
+      const r = await recheck(plan(await survey([idle], ctx), { pick }), [held], ctx)
+      expect(r.decision.run).toEqual([])
+      expect(r.decision.dropped.map((d) => d.reason)).toEqual(['changed'])
+    }
+    const picked = plan(await survey([held], ctx), { pick: ['a:1'] })
+    for (const later of [idle, held]) {
+      const r = await recheck(picked, [later], ctx)
+      expect(r.decision.run.map((c) => c.id)).toEqual(['a:1'])
+    }
   })
 
   test('a candidate that changed drops its dependents', async () => {

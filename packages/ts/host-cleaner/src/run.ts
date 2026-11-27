@@ -26,6 +26,7 @@ import {
 import {
   FatalRun,
   isBuiltIn,
+  parseVars,
   type Candidate,
   type Ctx,
   type Detection,
@@ -35,6 +36,7 @@ import {
   type PathCandidate,
   type Plugin,
   type RunCtx,
+  type Vars,
 } from './types.ts'
 
 /** The refusal for a path candidate that is not inside its owner's roots or the targets. */
@@ -158,17 +160,22 @@ export interface Survey {
 }
 
 /**
- * `detect`'s answer as whether the plugin runs and its note; null when it is
+ * `detect`'s answer as whether the plugin runs, its note and its variables,
+ * unchecked: only `inspect` shows them, and checks them there; null when it is
  * neither a boolean nor a {@link Detection} with a boolean `active` and a
  * string or no `note`.
  */
-function detection(answer: unknown): { active: boolean; note?: string } | null {
+function detection(answer: unknown): { active: boolean; note?: string; vars?: unknown } | null {
   if (typeof answer === 'boolean') return { active: answer }
   if (typeof answer !== 'object' || answer === null) return null
-  const { active, note } = answer as Partial<Record<keyof Detection, unknown>>
+  const { active, note, vars } = answer as Partial<Record<keyof Detection, unknown>>
   if (typeof active !== 'boolean') return null
-  if (note === undefined) return { active }
-  return typeof note === 'string' ? { active, note } : null
+  if (note !== undefined && typeof note !== 'string') return null
+  return {
+    active,
+    ...(note === undefined ? {} : { note }),
+    ...(vars === undefined ? {} : { vars }),
+  }
 }
 
 /** The ignore entry a candidate sits in, or a path candidate holds (deleting a directory takes what is inside it). */
@@ -290,6 +297,8 @@ interface Detected {
   detected: boolean
   /** The note `detect` gave with its answer. */
   note?: string | undefined
+  /** The variables `detect` gave with its answer, unchecked. */
+  vars?: unknown
   /** What `detect` threw or timed out with, or why its answer was left out; absent when it answered a boolean or a {@link Detection}. */
   error?: string | undefined
   /** Whether `skip` left it out, so its `detect` did not run. */
@@ -330,7 +339,8 @@ async function detectAll(
         )
       }
     }
-    const r = await tryHook<unknown>(p, 'detect', ctx, (x) => p.detect(x))
+    const running = detections.filter((d) => d.detected).map((d) => d.plugin.name)
+    const r = await tryHook<unknown>(p, 'detect', { ...ctx, running }, (x) => p.detect(x))
     if ('failed' in r) {
       if (warnFailures) warnings.push(`${p.name}: detect failed: ${r.failed}`)
       detections.push({ plugin: p, detected: false, error: r.failed })
@@ -344,7 +354,7 @@ async function detectAll(
       detections.push({ plugin: p, detected: false, error })
       continue
     }
-    detections.push({ plugin: p, detected: found.active, note: found.note })
+    detections.push({ plugin: p, detected: found.active, note: found.note, vars: found.vars })
   }
   return detections
 }
@@ -379,7 +389,7 @@ async function scopeOf(
 const detectedOf = (detections: readonly Detected[]): Plugin[] =>
   detections.filter((d) => d.detected).map((d) => d.plugin)
 
-/** One plugin's roots, as `askRoots` accepted them. */
+/** One plugin's roots, as {@link askRoots} accepted them. */
 interface AskedRoots {
   roots: readonly string[]
   self: readonly string[]
@@ -436,12 +446,14 @@ export interface PluginState {
   reason?: string | undefined
   /** The note `detect` gave with its answer, whether the plugin is detected or not. */
   note?: string | undefined
+  /** The variables `detect` gave with its answer (`Detection.vars`), whether the plugin is detected or not. */
+  vars?: Readonly<Vars> | undefined
   /** Its roots by path, as its `roots` hook answered less those the core refused; empty without the hook, or when it is not detected. */
   roots: readonly string[]
   /**
-   * Why `roots` is empty though the plugin has a `roots` hook: what the hook
-   * threw or timed out with, or why the core left out each root it gave. Its
-   * candidates outside the targets are then refused `outside-roots`.
+   * Why `roots` is empty though the plugin has a `roots` hook and is detected:
+   * what the hook threw or timed out with, or why the core left out each root
+   * it gave. Its candidates outside the targets are then refused `outside-roots`.
    */
   rootsFailed?: string | undefined
   /** The roots among `roots` declared `{ path, self: true }`, which may be candidates themselves. */
@@ -452,7 +464,7 @@ export interface Inspection {
   plugins: PluginState[]
   /** The run's context after `scope`. */
   ctx: RunCtx
-  /** A failed `scope` or `roots`, a `scope` answer, a root or a `limits` entry the core does not take, and a second plugin of one name. A failed `detect` is its plugin's `reason` instead. */
+  /** A failed `scope` or `roots`, a `scope` answer, a root, `vars` or a `limits` entry the core does not take, and a second plugin of one name. A failed `detect` is its plugin's `reason` instead. */
   warnings: string[]
 }
 
@@ -481,6 +493,10 @@ export async function inspect(
   const { rootsOf } = await askRoots(detected, scoped, warnings)
   const plugins = detections.map((d): PluginState => {
     const r = rootsOf.get(d.plugin.name)
+    const vars = d.vars === undefined ? undefined : parseVars(d.vars)
+    if (vars !== undefined && 'failed' in vars) {
+      warnings.push(`${d.plugin.name}: detect answered vars it cannot show: ${vars.failed}`)
+    }
     return {
       name: d.plugin.name,
       detected: d.detected,
@@ -488,6 +504,7 @@ export async function inspect(
       ...(d.skipped === undefined ? {} : { skipped: d.skipped }),
       ...(d.error === undefined ? {} : { reason: d.error }),
       ...(d.note === undefined ? {} : { note: d.note }),
+      ...(vars === undefined || 'failed' in vars ? {} : { vars: vars.vars }),
       roots: r?.roots ?? [],
       ...(r?.failed === undefined ? {} : { rootsFailed: r.failed }),
       selfRoots: r?.self ?? [],
@@ -743,6 +760,7 @@ export function plan(
     targets?: readonly string[] | undefined
     targetsGiven?: boolean | undefined
     ignore?: readonly string[] | undefined
+    descriptors?: readonly string[] | undefined
     select?: readonly string[] | null | undefined
     pick?: readonly string[] | undefined
     spare?: readonly string[] | undefined
@@ -766,6 +784,9 @@ export function plan(
     spare: [...selection.spare],
     allow: [...(opts.allow ?? [])],
     ignore: [...(opts.ignore ?? [])],
+    ...(opts.descriptors === undefined || opts.descriptors.length === 0
+      ? {}
+      : { descriptors: [...opts.descriptors] }),
     warnings: s.warnings,
     // A copy, so a plugin that mutates and returns the same objects on re-discovery cannot change the plan.
     candidates: structuredClone(s.candidates),
@@ -959,7 +980,8 @@ export function decidePlan(p: Plan): Decision {
  * Judge a plan against the world now. Surveys again and decides over exactly
  * what the plan would run, so a refusal that appeared since is `blocked`, a
  * protest nobody granted `not-allowed`, a vanished candidate `gone`, and one whose evidence
- * moved (repo-cleaner's `sameFingerprint`) `changed`.
+ * moved (repo-cleaner's `sameFingerprint`), or that its owner holds now and did not
+ * then, `changed`. One held then that is held no longer still runs.
  */
 export async function recheck(
   p: Plan,
@@ -988,6 +1010,13 @@ export async function recheck(
     const before = plannedById.get(c.id)
     if (before !== undefined && !sameFingerprint(before.evidence, c.evidence)) {
       dropped.push({ id: c.id, reason: 'changed', detail: 'its evidence moved since the plan' })
+    } else if (before !== undefined && before.held !== true && c.held === true) {
+      // Nobody chose it held, not even by a pick.
+      dropped.push({
+        id: c.id,
+        reason: 'changed',
+        detail: 'it is held for review now, and was not in the plan',
+      })
     } else kept.set(c.id, c)
   }
   const explain: Explain = (id) => {

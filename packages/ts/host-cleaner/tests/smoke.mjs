@@ -9,6 +9,7 @@
 
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -18,6 +19,8 @@ import {
   VERSION,
   clean,
   gitPlugin,
+  loadDescriptors,
+  parseDescriptor,
   plan,
   survey,
 } from '@osdlc/host-cleaner'
@@ -53,6 +56,22 @@ assert.deepEqual(log, ['artifact:c'])
 assert.ok(new FatalRun('x') instanceof Error)
 assert.equal(typeof contractSuite, 'function')
 assert.deepEqual(fakeContext().targets, [])
+assert.deepEqual(
+  parseDescriptor(
+    'descriptor: 1\npaths: { hub: { all: ~/.cache/hub } }\ncandidates: [{ path: hub, costDescription: re-download }]\n',
+    'hub.yaml',
+  ).paths,
+  { hub: { all: '~/.cache/hub' } },
+)
+// The shipped descriptors are in the package, where the loader looks for them.
+assert.deepEqual(
+  loadDescriptors({}, []).map((d) => d.name),
+  ['go', 'gradle', 'huggingface-hub', 'maven', 'npm', 'pip', 'pnpm', 'uv', 'yarn'],
+)
+const schemaFile = fileURLToPath(
+  import.meta.resolve('@osdlc/host-cleaner/schemas/descriptor-1.json'),
+)
+assert.equal(JSON.parse(readFileSync(schemaFile, 'utf8')).title, 'host-cleaner descriptor')
 
 // The binary sits beside dist/ in the package, installed or not.
 const dist = dirname(fileURLToPath(import.meta.resolve('@osdlc/host-cleaner')))
