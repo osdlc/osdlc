@@ -279,7 +279,7 @@ describe('status', () => {
     expect(r.out).toContain('protest abandon-unmerged (git)')
   })
 
-  test("the shipped cursor plugin refuses git's worktree in Cursor's agent worktrees under HOME", async () => {
+  test("git's worktree in Cursor's agent worktrees under HOME is refused, and the cursor plugin is detected by them", async () => {
     const { env, home } = setup()
     const dir = repo()
     const wt = join(home, '.cursor', 'worktrees', 'repo', 'wt')
@@ -290,11 +290,41 @@ describe('status', () => {
     expect(doc.candidates.map((c: Candidate) => c.id)).toContain(`worktree:${wt}`)
     expect(doc.objections).toContainEqual(
       expect.objectContaining({
-        by: 'cursor',
+        by: 'host-cleaner',
         candidate: `worktree:${wt}`,
         code: 'agent-worktree',
       }),
     )
+  })
+
+  test("the config's agentFolders, with `~` for HOME, refuse git's worktree in them and leave one beside them", async () => {
+    const { env, home } = setup()
+    const dir = repo()
+    sh(dir, ['branch', 'merged-b'])
+    const inside = join(home, 'agents', 'repo', 'wt')
+    const beside = join(home, 'agents-old', 'wt')
+    sh(dir, ['worktree', 'add', '-q', inside, 'merged-a'])
+    sh(dir, ['worktree', 'add', '-q', beside, 'merged-b'])
+    const file = join(home, 'config.json')
+    writeFileSync(file, JSON.stringify({ agentFolders: ['~/agents'] }))
+    const r = await run(['status', '--all-rows', '--format', 'json', '--config', file], dir, env)
+    const doc = JSON.parse(r.out)
+    const refusals = (id: string) =>
+      doc.objections.filter((o: Objection) => o.candidate === id && o.code === 'agent-worktree')
+    expect(refusals(`worktree:${inside}`)).toEqual([
+      {
+        by: 'host-cleaner',
+        candidate: `worktree:${inside}`,
+        level: 'refuse',
+        code: 'agent-worktree',
+        reason: `it is in ${join(home, 'agents')}, where a coding agent keeps its worktrees`,
+      },
+    ])
+    expect(doc.candidates.map((c: Candidate) => c.id)).toContain(`worktree:${beside}`)
+    expect(refusals(`worktree:${beside}`)).toEqual([])
+    // The plan shows it skipped, with the reason.
+    const text = await run(['plan', '--config', file], dir, env)
+    expect(text.out).toMatch(/where a coding agent keeps its worktrees/)
   })
 
   test('json carries the candidates and objections', async () => {
@@ -1100,12 +1130,16 @@ describe('plugin settings', () => {
   test('config prints each plugin’s settings with defaults and what the file set', async () => {
     const { env, cwd, file } = withConfig({
       targets: ['~/dev'],
+      agentFolders: ['~/agents'],
       plugins: { cargo: { idleHours: 48 }, node: { enabled: false } },
     })
     const text = await run(['config', '--config', file], cwd, env)
     expect(text.code).toBe(0)
     expect(text.out).toContain(`file: ${file}\n`)
     expect(text.out).toContain('targets: ~/dev')
+    expect(text.out).toContain(
+      'agentFolders: ~/agents  (always also ~/.cursor/worktrees, ~/.codex/worktrees)',
+    )
     expect(text.out).toMatch(/plugins\.cargo\n {2}enabled = true {2}\(default\)/)
     expect(text.out).toMatch(/idleHours = 48 {2}\(config\)/)
     expect(text.out).toMatch(/plugins\.node\n {2}enabled = false {2}\(config\)/)
@@ -1115,6 +1149,8 @@ describe('plugin settings', () => {
     )
     expect(json.plugins.cargo).toEqual({ enabled: true, idleHours: 48 })
     expect(json.plugins.git).toEqual({ enabled: true })
+    expect(json.agentFolders).toEqual(['~/agents'])
+    expect(json.defaultAgentFolders).toEqual(['~/.cursor/worktrees', '~/.codex/worktrees'])
   })
 
   test('config refuses a bad config and warns of a plugin nobody has', async () => {

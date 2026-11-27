@@ -43,7 +43,18 @@ import {
   realOr,
   yieldToLimit,
 } from './helpers.ts'
-import { attachKit, pluginKit, present, type Kit, type KitOptions, type Running } from './kit.ts'
+import {
+  CURSOR_WORKTREES,
+  agentFolderAt,
+  agentFoldersOf,
+  attachKit,
+  homeFolder,
+  pluginKit,
+  present,
+  type Kit,
+  type KitOptions,
+  type Running,
+} from './kit.ts'
 import {
   PLUGIN_API,
   builtIn,
@@ -70,9 +81,6 @@ export const CURSOR_UNKNOWN_WORKSPACE = 'cursor-unknown-workspace'
 export const VSCODE_STATE_UNREADABLE = 'vscode-state-unreadable'
 export const CURSOR_STATE_UNREADABLE = 'cursor-state-unreadable'
 
-/** The refusal of a `git` worktree in the folder where the editor's own agents keep theirs. */
-export const AGENT_WORKTREE = 'agent-worktree'
-
 const KIND = 'workspace-storage'
 
 /** One editor of VS Code's family: where it keeps its state and what its processes are called. */
@@ -88,8 +96,12 @@ interface Editor {
   codes: { inUse: string; unknownWorkspace: string; stateUnreadable: string }
   /** True when its workspace storage always holds chat history, so deleting it is `lost`. */
   keepsChat: boolean
-  /** The folder under `HOME` where its agents make and track their own worktrees. */
-  agentWorktrees?: string
+  /**
+   * A folder, `~` for `HOME`, that shows its agent is in use where its storage
+   * is not, as on a host with only its CLI: the plugin is detected by it. The
+   * core refuses what is in it, as one of `DEFAULT_AGENT_FOLDERS`.
+   */
+  detectedBy?: string
   /**
    * True when its agent may run under another program's name (the
    * `cursor-agent` CLI runs as `node`), so any busy process working in a
@@ -126,7 +138,7 @@ const CURSOR: Editor = {
     stateUnreadable: CURSOR_STATE_UNREADABLE,
   },
   keepsChat: true,
-  agentWorktrees: join('.cursor', 'worktrees'),
+  detectedBy: CURSOR_WORKTREES,
   agentUnnamed: true,
 }
 
@@ -366,7 +378,7 @@ const homeOf = (env: Env): string => env.HOME || homedir()
  * plugin does not know it, and when that is not an absolute path.
  */
 function userDirOf(editor: Editor, env: Env, platform: NodeJS.Platform): string | undefined {
-  // An empty HOME is kept, so that it names no folder (below); see homeOf for the agents' folder.
+  // An empty HOME is kept, so that it names no folder (below); see homeOf for the agents' folders.
   const home = env.HOME ?? homedir()
   let appData: string
   if (platform === 'darwin') appData = join(home, 'Library', 'Application Support')
@@ -692,8 +704,8 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
     userDir === undefined ? undefined : join(userDir, ...parts)
   const root = under('workspaceStorage')
   const stateFile = under('globalStorage', 'storage.json')
-  const agentDir =
-    editor.agentWorktrees === undefined ? undefined : join(homeOf(env), editor.agentWorktrees)
+  const marker =
+    editor.detectedBy === undefined ? undefined : homeFolder(editor.detectedBy, homeOf(env))
   /**
    * Nothing can be told of a worktree but where it is: the editor's folders on
    * this platform are not known, and Windows has no `lsof` to list processes with.
@@ -752,13 +764,8 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
           ),
         ]
 
-  /** The objections to deleting git's worktree `c`, whose real path is `dir` when known, while the editor is as `w` says. */
-  const worktreeCheck = (
-    c: PathCandidate,
-    w: Windows,
-    ctx: Pick<Ctx, 'signal'>,
-    dir?: string,
-  ): Objection[] => {
+  /** The objections to deleting git's worktree `c` while the editor is as `w` says. */
+  const worktreeCheck = (c: PathCandidate, w: Windows, ctx: Pick<Ctx, 'signal'>): Objection[] => {
     // With no process of the editor's anywhere, none works in this worktree and no window has it open;
     // an agent under another program's name may.
     if (!w.running && !editor.agentUnnamed) return []
@@ -794,7 +801,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
             ),
           ]
     // What is gone is named as the editor spelled it, so the worktree's own spelling counts too.
-    const real = dir ?? realAbove(c.path)
+    const real = realAbove(c.path)
     // A window on a folder the worktree is in has its files open too.
     const holds = (named: Named): boolean =>
       named.paths.some((p) => [real, c.path].some((d) => within(p, d) || within(d, p)))
@@ -830,8 +837,8 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
   return {
     name: editor.name,
     limits: { discover: DISCOVER_LIMIT_MS },
-    // Its agent worktrees are refused even where its storage is not, as on a host with only the CLI.
-    detect: () => storage() !== undefined || (agentDir !== undefined && isDir(realOr(agentDir))),
+    // Detected even where its storage is not, as on a host with only the CLI, whose agent runs under another name.
+    detect: () => storage() !== undefined || (marker !== undefined && isDir(realOr(marker))),
     roots: () => {
       const dir = storage()
       return dir === undefined ? [] : [dir]
@@ -872,27 +879,16 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
           out.push(own(c, 'refuse', editor.codes.unknownWorkspace, e.problem))
         if (e?.state === 'gone') gone.push({ c, local: e.local })
       }
-      // Resolved here, as the folder may be newer than this plugin. A worktree is looked for in it by
-      // both spellings of each, so that neither a link nor a folder that is gone hides it.
-      const agents = agentDir === undefined ? undefined : realAbove(agentDir)
-      const worktrees: Array<{ c: PathCandidate; dir: string | undefined }> = []
+      // The core refuses a worktree in an agent's folder, so none is looked at here.
+      const agents = agentFoldersOf({ ...ctx, home: ctx.home ?? homeOf(env) })
+      const worktrees: PathCandidate[] = []
       for (const c of all.filter(isGitWorktree)) {
-        // Resolved only where there is an agents' folder; `worktreeCheck` resolves it when it needs it.
-        const dir = agentDir === undefined ? undefined : realAbove(c.path)
-        const inside = (d: string | undefined): boolean =>
-          d !== undefined && (within(c.path, d) || (dir !== undefined && within(dir, d)))
-        if (inside(agentDir) || inside(agents)) {
-          out.push(
-            own(c, 'refuse', AGENT_WORKTREE, `${editor.product}'s agents keep it (${agents})`),
-          )
-        } else if (!placeOnly) {
-          worktrees.push({ c, dir })
-        }
+        if (!placeOnly && agentFolderAt(c.path, agents) === undefined) worktrees.push(c)
       }
       if (worktrees.length === 0 && gone.length === 0) return out
 
       const windows = await look(ctx, worktrees.length > 0)
-      for (const { c, dir } of worktrees) out.push(...worktreeCheck(c, windows, ctx, dir))
+      for (const c of worktrees) out.push(...worktreeCheck(c, windows, ctx))
       for (const { c, local } of gone) out.push(...goneCheck(c, local, windows))
       return out
     },

@@ -8,6 +8,12 @@ import { dirname } from 'node:path'
 
 import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 
+import {
+  AGENT_WORKTREE,
+  agentFolderOf,
+  agentFolderReason,
+  agentFoldersOf,
+} from './agent-folders.ts'
 import { errorText, realOr } from './helpers.ts'
 import { coveredBy, containsIgnored } from './ignore.ts'
 import { bindKit } from './kit.ts'
@@ -612,7 +618,18 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
   for (const p of plugins) bindKit(p, boundsOf(p.name))
   // Git is asked once per repository for every candidate of this survey; `delete` and `kit.remove` ask afresh.
   const reads = gitReads()
+  const agentFolders = agentFoldersOf(scoped)
   for (const c of candidates) {
+    const agents = agentFolderOf(c, agentFolders)
+    if (agents !== undefined) {
+      objections.push({
+        by: 'host-cleaner',
+        candidate: c.id,
+        level: 'refuse',
+        code: AGENT_WORKTREE,
+        reason: agentFolderReason(c, agents),
+      })
+    }
     if (c.costDescription === 'lost') {
       objections.push({
         by: 'host-cleaner',
@@ -1206,6 +1223,9 @@ async function runOne(
     step.error = prefix + errorText(err)
     return err instanceof FatalRun ? step.error : null
   }
+  // A folder made since the survey, or a link moved, may put it in an agent's folder now; checked before any prepare.
+  const agents = agentFolderOf(c, agentFoldersOf(s.ctx))
+  if (agents !== undefined) return fail(agentFolderReason(c, agents))
   for (const q of s.plugins) {
     if (q.prepare === undefined) continue
     try {
