@@ -1,31 +1,59 @@
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import {
+  BUILT_IN_PLUGINS,
   DEFAULT_SELECTION,
+  DELETE_LIMIT_MS,
   FatalRun,
+  HOOK_LIMIT_MS,
+  HookTimeout,
+  DISCARD_USER_DATA,
+  PLUGIN_API,
   SelectionError,
+  StalePlan,
   clean,
   decide,
-  orderPlugins,
+  decidePlan,
+  gitPlugin,
+  inspect,
+  parsePlan,
   plan,
   recheck,
   survey,
   type Candidate,
-  type Ctx,
   type Objection,
+  type PathCandidate,
   type Plugin,
+  type RefCandidate,
+  type RunCtx,
 } from '../src/index.ts'
 
-const ctx: Ctx = { cwd: '/work', targets: [], allow: [] }
+const ctx: RunCtx = { cwd: '/work', targets: [], allow: [] }
 
-const cand = (id: string, owner: string, extra: Partial<Candidate> = {}): Candidate => ({
+/** A ref candidate: the core makes no folder checks on it. */
+const cand = (id: string, owner: string, extra: Partial<RefCandidate> = {}): Candidate => ({
   id,
   kind: id.split(':')[0]!,
-  path: id,
+  ref: id,
+  owner,
+  why: 'idle',
+  evidence: { v: 1 },
+  ...extra,
+})
+
+const pathCand = (
+  id: string,
+  owner: string,
+  path: string,
+  extra: Partial<PathCandidate> = {},
+): Candidate => ({
+  id,
+  kind: id.split(':')[0]!,
+  path,
   owner,
   why: 'idle',
   evidence: { v: 1 },
@@ -70,32 +98,76 @@ const objection = (candidate: string, level: Objection['level'], code: string): 
   reason: `${code} reason`,
 })
 
-const run = (plugins: Plugin[], opts: { select?: string[]; allow?: string[] } = {}) => {
-  const s = survey(plugins, ctx)
-  return clean(plan(s, opts), plugins, { ...ctx, allow: opts.allow ?? [] })
+const run = async (plugins: Plugin[], opts: { select?: string[]; allow?: string[] } = {}) => {
+  const s = await survey(plugins, ctx)
+  return await clean(plan(s, opts), plugins, { ...ctx, allow: opts.allow ?? [] })
 }
 
 describe('plugin order and duplicates', () => {
-  test('git is first, known built-ins in their order, unknown plugins after', () => {
-    const names = ['zzz', 'node', 'orca', 'git', 'cargo'].map((name) => fake(name, [], []))
-    expect(orderPlugins(names).map((p) => p.name)).toEqual(['git', 'cargo', 'node', 'orca', 'zzz'])
+  test('the shipped plugins are one definition each, in run order: git, cargo, node, vscode, cursor, orca, docker, ollama, agent-history, jetbrains, toolchains', () => {
+    expect(BUILT_IN_PLUGINS.map((d) => d.name)).toEqual([
+      'git',
+      'cargo',
+      'node',
+      'vscode',
+      'cursor',
+      'orca',
+      'docker',
+      'ollama',
+      'agent-history',
+      'jetbrains',
+      'toolchains',
+    ])
+    expect(BUILT_IN_PLUGINS.every((d) => d.api === PLUGIN_API)).toBe(true)
   })
 
-  test('a duplicate id keeps the first plugin in order and warns, naming both', () => {
+  test('plugins run in the order given', async () => {
     const log: string[] = []
-    const s = survey(
+    const items = (name: string) => [cand(`a:${name}`, name)]
+    const plugins = ['zzz', 'node', 'git'].map((name) => fake(name, items(name), log))
+    const s = await survey(plugins, ctx)
+    expect(s.plugins.map((p) => p.name)).toEqual(['zzz', 'node', 'git'])
+    await clean(plan(s), plugins, ctx)
+    expect(log.filter((l) => l.includes(':prepare:a:zzz'))).toEqual([
+      'zzz:prepare:a:zzz',
+      'node:prepare:a:zzz',
+      'git:prepare:a:zzz',
+    ])
+  })
+
+  test('a duplicate id keeps the first plugin in the list and warns, naming both', async () => {
+    const log: string[] = []
+    const s = await survey(
       [
         fake('node', [cand('artifact:/a', 'node')], log),
         fake('git', [cand('artifact:/a', 'git')], log),
       ],
       ctx,
     )
-    expect(s.candidates.map((c) => c.owner)).toEqual(['git'])
-    expect(s.warnings).toEqual(["duplicate artifact:/a: kept git's, dropped node's"])
+    expect(s.candidates.map((c) => c.owner)).toEqual(['node'])
+    expect(s.warnings).toEqual(["duplicate artifact:/a: kept node's, dropped git's"])
   })
 
-  test('a second plugin of the same name is left out with a warning', () => {
-    const s = survey(
+  test('two plugins on one folder give one candidate, the first plugin’s, with a warning naming both', async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'hc-overlap-')))
+    const folder = join(dir, 'cache')
+    mkdirSync(folder)
+    symlinkSync(folder, join(dir, 'link'))
+    const s = await survey(
+      [
+        fake('code', [pathCand(`cache:${folder}`, 'code', folder)], []),
+        fake('desc', [pathCand(`dir:${dir}/link`, 'desc', join(dir, 'link'))], []),
+      ],
+      { ...ctx, targets: [dir] },
+    )
+    expect(s.candidates.map((c) => c.id)).toEqual([`cache:${folder}`])
+    expect(s.warnings).toEqual([
+      `duplicate ${folder}: kept code's cache:${folder}, dropped desc's dir:${dir}/link`,
+    ])
+  })
+
+  test('a second plugin of the same name is left out with a warning', async () => {
+    const s = await survey(
       [fake('cache', [cand('a:1', 'cache')], []), fake('cache', [cand('a:2', 'cache')], [])],
       ctx,
     )
@@ -103,45 +175,282 @@ describe('plugin order and duplicates', () => {
     expect(s.warnings).toEqual(['cache: a second plugin of that name was left out'])
   })
 
-  test('a plugin that mutates a candidate it returns cannot move the plan under the re-check', () => {
+  test('a plugin that mutates a candidate it returns cannot move the plan under the re-check', async () => {
     const shared = cand('a:1', 'cache', { evidence: { v: 0 } })
     let calls = 0
     const mutating = fake('cache', [], [], {
       discover: () => ((shared.evidence.v = ++calls), [shared]),
     })
-    const receipt = clean(plan(survey([mutating], ctx)), [mutating], ctx)
+    const receipt = await clean(plan(await survey([mutating], ctx)), [mutating], ctx)
     expect(receipt.dropped.map((d) => d.reason)).toEqual(['changed'])
   })
 
-  test('a candidate naming another plugin as owner is dropped', () => {
-    const s = survey([fake('git', [cand('worktree:/a', 'node')], [])], ctx)
+  test('a candidate naming another plugin as owner is dropped', async () => {
+    const s = await survey([fake('git', [cand('worktree:/a', 'node')], [])], ctx)
     expect(s.candidates).toEqual([])
     expect(s.warnings[0]).toMatch(/dropped worktree:\/a, which names node/)
   })
 
-  test('a plugin whose detect throws is left out with a warning', () => {
+  test('a plugin whose detect throws is left out with a warning', async () => {
     const bad = {
       ...fake('node', [], []),
       detect: () => {
         throw new Error('no stat')
       },
     }
-    const s = survey([bad, fake('git', [cand('a:1', 'git')], [])], ctx)
+    const s = await survey([bad, fake('git', [cand('a:1', 'git')], [])], ctx)
     expect(s.candidates).toHaveLength(1)
     expect(s.warnings).toEqual(['node: detect failed: no stat'])
   })
 
-  test('scope adds roots before discover, once', () => {
+  test('detect may answer { active, note }: the note is kept on the survey, whether the plugin runs or not', async () => {
+    const degraded = fake('orca', [cand('a:1', 'orca')], [], {
+      detect: () => ({ active: true, note: 'installed but not running' }),
+    })
+    const off = fake('cargo', [cand('a:2', 'cargo')], [], {
+      detect: async () => ({ active: false, note: 'no cargo on PATH' }),
+    })
+    const plain = fake('git', [cand('a:3', 'git')], [], { detect: () => ({ active: true }) })
+    const s = await survey([degraded, off, plain], ctx)
+    expect(s.plugins.map((p) => p.name)).toEqual(['orca', 'git'])
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:1', 'a:3'])
+    expect(s.notes).toEqual({ orca: 'installed but not running', cargo: 'no cargo on PATH' })
+    expect(s.warnings).toEqual([])
+    expect(JSON.parse(JSON.stringify(s.notes))).toEqual(s.notes)
+  })
+
+  test('a detect answer of another shape leaves the plugin out with a warning', async () => {
+    const answers: unknown[] = [1, 'yes', null, { note: 'x' }, { active: true, note: 7 }]
+    for (const answer of answers) {
+      const odd = fake('odd', [cand('a:1', 'odd')], [], { detect: () => answer as boolean })
+      const s = await survey([odd], ctx)
+      expect(s.plugins).toEqual([])
+      expect(s.notes).toEqual({})
+      expect(s.warnings).toEqual([
+        `odd: detect answered ${JSON.stringify(answer)}, which is neither a boolean nor { active, note? }; it was left out`,
+      ])
+    }
+  })
+
+  test('vars it cannot show leave the plugin in: survey does not read them, inspect drops them with a warning', async () => {
+    const vars = { X: { value: '/a', from: null, trusted: false, tried: [] } }
+    const odd = fake('odd', [cand('a:1', 'odd')], [], {
+      detect: () => ({ active: true, note: 'n', vars }) as unknown as boolean,
+    })
+    const s = await survey([odd], ctx)
+    expect(s.plugins.map((p) => p.name)).toEqual(['odd'])
+    expect(s.notes).toEqual({ odd: 'n' })
+    expect(s.warnings).toEqual([])
+    const i = await inspect([odd], ctx)
+    expect(i.plugins[0]).toMatchObject({ name: 'odd', detected: true, note: 'n' })
+    expect(i.plugins[0]!.vars).toBeUndefined()
+    expect(i.warnings).toEqual([
+      'odd: detect answered vars it cannot show: vars.X is not { value, from?, trusted, tried }',
+    ])
+  })
+
+  test('inspect keeps a variable named __proto__ as an own key', async () => {
+    const vars = JSON.parse(
+      '{"__proto__": {"value": "/a", "from": "env A", "trusted": false, "tried": []}}',
+    )
+    const p = fake('odd', [], [], { detect: () => ({ active: true, vars }) as unknown as boolean })
+    const got = (await inspect([p], ctx)).plugins[0]!.vars!
+    expect(Object.keys(got)).toEqual(['__proto__'])
+    expect(Object.getPrototypeOf(got)).toBe(Object.prototype)
+    expect(got['__proto__']).toEqual({ value: '/a', from: 'env A', trusted: false, tried: [] })
+  })
+
+  test('every hook sees targetsGiven, false when the run leaves it unset', async () => {
+    const seen: boolean[] = []
+    const p = fake('git', [], [], {
+      detect: (c) => (seen.push(c.targetsGiven), true),
+      discover: (c) => (seen.push(c.targetsGiven), []),
+    })
+    await survey([p], ctx)
+    await survey([p], { ...ctx, targetsGiven: true })
+    expect(seen).toEqual([false, false, true, true])
+  })
+
+  test('scope adds roots before discover, once', async () => {
     const seen: string[][] = []
     const scoping = fake('orca', [], [], {
       scope: () => ['/r1', '/r1'],
       discover: (c) => (seen.push([...c.targets]), []),
     })
-    survey([scoping, fake('git', [], [], { scope: () => ['/r1', '/r2'] })], {
+    await survey([scoping, fake('git', [], [], { scope: () => ['/r1', '/r2'] })], {
       ...ctx,
       targets: ['/r0'],
     })
     expect(seen).toEqual([['/r0', '/r1', '/r2']])
+  })
+})
+
+describe('inspect', () => {
+  test('detect, scope and roots only: each plugin detected or why not, and its roots', async () => {
+    const log: string[] = []
+    const plugins: Plugin[] = [
+      fake('a', [], log, {
+        scope: () => ['/scoped'],
+        roots: (x) => (log.push(`roots:${x.targets.join(',')}`), ['/cache/a']),
+        discover: () => (log.push('discover'), []),
+      }),
+      fake('b', [], log),
+      fake('no', [], log, { detect: () => false, roots: () => (log.push('roots:no'), []) }),
+      fake('down', [], log, {
+        detect: () => {
+          throw new Error('the app is not running')
+        },
+      }),
+    ]
+    const found = await inspect(plugins, ctx)
+    expect(found.plugins).toEqual([
+      { name: 'a', detected: true, roots: ['/cache/a'], selfRoots: [] },
+      { name: 'b', detected: true, roots: [], selfRoots: [] },
+      { name: 'no', detected: false, roots: [], selfRoots: [] },
+      {
+        name: 'down',
+        detected: false,
+        reason: 'the app is not running',
+        roots: [],
+        selfRoots: [],
+      },
+    ])
+    expect(found.ctx.targets).toEqual(['/scoped'])
+    expect(found.warnings).toEqual([])
+    expect(log).toEqual(['roots:/scoped'])
+  })
+
+  test('a failed roots or scope is a warning, and a FatalRun from detect goes to the caller', async () => {
+    const failing = fake('a', [], [], {
+      scope: () => {
+        throw new Error('no list')
+      },
+      roots: () => {
+        throw new Error('no folder')
+      },
+    })
+    const found = await inspect([failing, fake('a', [], [])], ctx)
+    expect(found.plugins).toEqual([
+      {
+        name: 'a',
+        detected: true,
+        roots: [],
+        rootsFailed: 'roots failed: no folder',
+        selfRoots: [],
+      },
+    ])
+    expect(found.warnings).toEqual([
+      'a: a second plugin of that name was left out',
+      'a: scope failed: no list',
+      'a: roots failed: no folder',
+    ])
+    const fatal = fake('f', [], [], {
+      detect: () => {
+        throw new FatalRun('stop')
+      },
+    })
+    await expect(inspect([fatal], ctx)).rejects.toThrow('stop')
+  })
+
+  test('a plugin a shipped factory built is marked, a copy of one too, and one whose hook a program replaced is not', async () => {
+    const git = gitPlugin()
+    const changed = gitPlugin()
+    changed.discover = () => []
+    const found = await inspect(
+      [
+        git,
+        { ...gitPlugin(), name: 'copy', limits: { detect: 1000 } },
+        { ...changed, name: 'mine' },
+      ],
+      ctx,
+    )
+    expect(found.plugins).toEqual([
+      { name: 'git', detected: true, builtIn: true, roots: [], selfRoots: [] },
+      { name: 'copy', detected: true, builtIn: true, roots: [], selfRoots: [] },
+      { name: 'mine', detected: true, roots: [], selfRoots: [] },
+    ])
+  })
+
+  test('every root refused is why a plugin has none', async () => {
+    const found = await inspect([fake('a', [], [], { roots: () => ['/'] })], ctx)
+    expect(found.plugins).toEqual([
+      {
+        name: 'a',
+        detected: true,
+        roots: [],
+        rootsFailed: 'roots: left out the root /: it is the filesystem root',
+        selfRoots: [],
+      },
+    ])
+  })
+
+  test('survey asks roots after discover, so a plugin may root what it found', async () => {
+    const log: string[] = []
+    const p = fake('a', [], log, {
+      roots: () => (log.push('roots'), []),
+      discover: () => (log.push('discover'), []),
+    })
+    await survey([p], ctx)
+    expect(log).toEqual(['discover', 'roots'])
+  })
+
+  test('a plugin skip picks is listed as skipped with no hook run, after the check for a second of its name', async () => {
+    const log: string[] = []
+    const off = fake('off', [], log, { detect: () => (log.push('detect:off'), true) })
+    const found = await inspect([off, fake('off', [], log)], ctx, {
+      skip: (p) => p.name === 'off',
+    })
+    expect(found.plugins).toEqual([
+      { name: 'off', detected: false, skipped: true, roots: [], selfRoots: [] },
+    ])
+    expect(found.warnings).toEqual(['off: a second plugin of that name was left out'])
+    expect(log).toEqual([])
+  })
+
+  test('survey warns of a failed detect in plugin order, beside a second plugin of a name', async () => {
+    const throwing = fake('a', [], [], {
+      detect: () => {
+        throw new Error('x')
+      },
+    })
+    const s = await survey([throwing, fake('b', [], []), fake('b', [], [])], ctx)
+    expect(s.warnings.slice(0, 2)).toEqual([
+      'a: detect failed: x',
+      'b: a second plugin of that name was left out',
+    ])
+  })
+
+  test('a note is kept whether detected or not, an answer that is neither is the reason, and roots are checked as survey checks them', async () => {
+    const self = realpathSync(mkdtempSync(join(tmpdir(), 'hc-inspect-self-')))
+    const found = await inspect(
+      [
+        fake('a', [], [], {
+          detect: () => ({ active: true, note: 'cache is shared' }),
+          roots: () => ['/', '/cache/a', { path: self, self: true }],
+        }),
+        fake('b', [], [], { detect: () => ({ active: false, note: 'no daemon' }) }),
+        fake('c', [], [], { detect: () => 'yes' as unknown as boolean }),
+      ],
+      ctx,
+    )
+    expect(found.plugins).toEqual([
+      {
+        name: 'a',
+        detected: true,
+        note: 'cache is shared',
+        roots: ['/cache/a', self],
+        selfRoots: [self],
+      },
+      { name: 'b', detected: false, note: 'no daemon', roots: [], selfRoots: [] },
+      {
+        name: 'c',
+        detected: false,
+        reason: 'detect answered "yes", which is neither a boolean nor { active, note? }',
+        roots: [],
+        selfRoots: [],
+      },
+    ])
+    expect(found.warnings).toEqual(['a: roots: left out the root /: it is the filesystem root'])
   })
 })
 
@@ -188,19 +497,172 @@ describe('objection levels', () => {
     expect(decide(cs, os, only(['a:3']), ['lossy']).run.map((c) => c.id)).toEqual(['a:3'])
   })
 
-  test('a plugin cannot object under another name, or to a candidate nobody proposed', () => {
+  test('a candidate with both a path and a ref, or neither, is dropped with a warning', async () => {
+    const both = { ...pathCand('a:both', 'a', '/x'), ref: 'x' } as unknown as Candidate
+    const neither = { ...cand('a:neither', 'a'), ref: undefined } as unknown as Candidate
+    const s = await survey([fake('a', [both, neither, cand('a:ok', 'a')], [])], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:ok'])
+    expect(s.warnings).toEqual([
+      'a: dropped a:both, which must have one of a path and a ref',
+      'a: dropped a:neither, which must have one of a path and a ref',
+    ])
+  })
+
+  test('a path or ref that is not a string, or a path with an at, is dropped, not thrown on', async () => {
+    const odd = [
+      { ...cand('a:null-path', 'a'), path: null },
+      { ...pathCand('a:null-ref', 'a', '/x'), ref: null },
+      { ...pathCand('a:path-at', 'a', '/x'), at: '/x' },
+      { ...cand('a:number-at', 'a'), at: 7 },
+    ] as unknown as Candidate[]
+    const s = await survey([fake('a', [...odd, cand('a:ok', 'a')], [])], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:ok'])
+    expect(s.warnings).toEqual([
+      'a: dropped a:null-path, which must have one of a path and a ref',
+      'a: dropped a:null-ref, which must have one of a path and a ref',
+      'a: dropped a:path-at, a path candidate with an at, which only a ref may have',
+      'a: dropped a:number-at, whose at is not a path',
+    ])
+  })
+
+  test('a scope or discover that answers no list, or a list entry of the wrong kind, is warned of, not thrown on', async () => {
+    const none = fake('a', [], [], {
+      scope: async () => undefined as unknown as string[],
+      discover: async () => undefined as unknown as Candidate[],
+    })
+    const odd = fake('b', [7, null, cand('b:ok', 'b')] as unknown as Candidate[], [], {
+      scope: () => [7] as unknown as string[],
+    })
+    const s = await survey([none, odd], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['b:ok'])
+    expect(s.warnings).toEqual([
+      'a: scope answered undefined, which is not a list; it proposed nothing',
+      'b: scope: left out 7, which is not a path',
+      'a: discover answered undefined, which is not a list; it proposed nothing',
+      'b: dropped 7, which is not a candidate',
+      'b: dropped null, which is not a candidate',
+    ])
+  })
+
+  test('a lost candidate is held and protested discard-user-data; rebuild and re-download are not', async () => {
+    const items = [
+      cand('a:lost', 'a', { costDescription: 'lost' }),
+      cand('a:built', 'a', { costDescription: 'rebuild' }),
+      cand('a:fetched', 'a', { costDescription: 're-download' }),
+    ]
+    const s = await survey([fake('a', items, [])], ctx)
+    expect(s.candidates.map((c) => [c.id, c.held])).toEqual([
+      ['a:lost', true],
+      ['a:built', undefined],
+      ['a:fetched', undefined],
+    ])
+    expect(s.objections).toEqual([
+      {
+        by: 'host-cleaner',
+        candidate: 'a:lost',
+        level: 'protest',
+        code: DISCARD_USER_DATA,
+        reason: 'deleting it loses data that cannot be fetched or built again',
+      },
+    ])
+    expect(decide(s.candidates, s.objections, DEFAULT_SELECTION, [DISCARD_USER_DATA]).run).toEqual([
+      items[1],
+      items[2],
+    ])
+  })
+
+  test('a candidate with an unknown costDescription is dropped with a warning', async () => {
+    const odd = cand('a:odd', 'a', { costDescription: 'free' as 'lost' })
+    const s = await survey([fake('a', [odd, cand('a:ok', 'a')], [])], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:ok'])
+    expect(s.warnings).toEqual([
+      expect.stringMatching(/^a: dropped a:odd, whose costDescription a plan refuses: /),
+    ])
+  })
+
+  test('a candidate a plan would refuse is dropped, so a plan of the survey reads back', async () => {
+    const odd = cand('a:bytes', 'a', { bytes: '10' as unknown as number })
+    const s = await survey([fake('a', [odd, cand('a:ok', 'a')], [])], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:ok'])
+    expect(s.warnings).toEqual([
+      expect.stringMatching(/^a: dropped a:bytes, whose bytes a plan refuses: /),
+    ])
+    expect(parsePlan(JSON.stringify(plan(s)), 'plan.json').candidates).toHaveLength(1)
+  })
+
+  test('a limit that is not a positive number warns and falls back to the default', async () => {
+    const slow: Plugin = {
+      ...fake('a', [cand('a:ok', 'a')], []),
+      limits: { discover: Number.NaN },
+      discover: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        return [cand('a:ok', 'a')]
+      },
+    }
+    const s = await survey([slow], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:ok'])
+    expect(s.warnings).toEqual([
+      'a: limits.discover is NaN, not a positive number of milliseconds; the default was used',
+    ])
+  })
+
+  test('a spare of the folder a ref candidate is at spares it', () => {
+    const rec = cand('orca:1', 'orca', { at: '/home/me/orca/x' })
+    const d = decide([rec], [], { select: null, pick: [], spare: ['/home/me/orca/x'] }, [])
+    expect(d.run).toEqual([])
+    expect(d.dropped).toEqual([
+      { id: 'orca:1', reason: 'spared', detail: '--spare /home/me/orca/x' },
+    ])
+  })
+
+  test('a saved plan keeps each candidate’s costDescription', async () => {
+    const s = await survey([fake('a', [cand('a:lost', 'a', { costDescription: 'lost' })], [])], ctx)
+    const back = parsePlan(JSON.stringify(plan(s)), 'plan.json')
+    expect(back.candidates[0]).toMatchObject({ costDescription: 'lost', held: true })
+  })
+
+  test('a plugin cannot object under another name, or to a candidate nobody proposed', async () => {
     const lying: Plugin = {
       name: 'cargo',
       detect: () => true,
       object: () => [objection('worktree:/a', 'refuse', 'x'), objection('nope', 'refuse', 'x')],
     }
-    const s = survey([fake('git', [cand('worktree:/a', 'git')], []), lying], ctx)
+    const s = await survey([fake('git', [cand('worktree:/a', 'git')], []), lying], ctx)
     expect(s.objections).toEqual([
       { by: 'cargo', candidate: 'worktree:/a', level: 'refuse', code: 'x', reason: 'x reason' },
     ])
   })
 
-  test('a plugin whose object throws refuses every candidate', () => {
+  test('an objection a plan would refuse refuses its candidate instead, and the plan reads back', async () => {
+    const odd: Plugin = {
+      name: 'node',
+      detect: () => true,
+      object: () => [
+        { candidate: 'a:1', level: 'warn', code: 'x', reason: 'y' } as unknown as Objection,
+        { candidate: 'a:2', level: 'refuse', code: 'x' } as unknown as Objection,
+        objection('a:3', 'note', 'fine'),
+      ],
+    }
+    const cs = ['a:1', 'a:2', 'a:3'].map((id) => cand(id, 'git'))
+    const s = await survey([fake('git', cs, []), odd], ctx)
+    expect(s.objections).toMatchObject([
+      { by: 'node', candidate: 'a:1', level: 'refuse', code: 'plugin-error' },
+      { by: 'node', candidate: 'a:2', level: 'refuse', code: 'plugin-error' },
+      { by: 'node', candidate: 'a:3', level: 'note', code: 'fine' },
+    ])
+    expect(s.warnings).toEqual([
+      expect.stringMatching(
+        /^node: object answered an objection to a:1 whose level a plan refuses/,
+      ),
+      expect.stringMatching(
+        /^node: object answered an objection to a:2 whose reason a plan refuses/,
+      ),
+    ])
+    const back = parsePlan(JSON.stringify(plan(s)), 'plan.json')
+    expect(decidePlan(back).run.map((c) => c.id)).toEqual(['a:3'])
+  })
+
+  test('a plugin whose object throws refuses every candidate', async () => {
     const broken: Plugin = {
       name: 'node',
       detect: () => true,
@@ -208,16 +670,16 @@ describe('objection levels', () => {
         throw new Error('boom')
       },
     }
-    const s = survey([fake('git', [cand('a:1', 'git')], []), broken], ctx)
+    const s = await survey([fake('git', [cand('a:1', 'git')], []), broken], ctx)
     expect(s.objections).toMatchObject([{ by: 'node', level: 'refuse', code: 'plugin-error' }])
     expect(s.warnings).toEqual(['node: object failed: boom'])
   })
 })
 
 describe('pick, select and spare', () => {
-  const branch = cand('branch:/r:feat/x', 'git', { path: '/r:feat/x', name: 'feat/x' })
-  const tree = cand('worktree:/w/x', 'git', { path: '/w/x', name: 'feat/x' })
-  const other = cand('artifact:/r/target', 'cargo', { path: '/r/target' })
+  const branch = cand('branch:/r:feat/x', 'git', { ref: 'feat/x', at: '/r', name: 'feat/x' })
+  const tree = pathCand('worktree:/w/x', 'git', '/w/x', { name: 'feat/x' })
+  const other = pathCand('artifact:/r/target', 'cargo', '/r/target')
   const cs = [branch, tree, other]
   const ran = (sel: Partial<typeof DEFAULT_SELECTION>) =>
     decide(cs, [], { ...DEFAULT_SELECTION, ...sel }, [])
@@ -256,6 +718,16 @@ describe('pick, select and spare', () => {
     expect(ran({ spare: ['nothing-*'] }).dropped).toEqual([])
   })
 
+  test('a branch is spared by its old path, `<repo>:<branch>`, and a glob over it', () => {
+    expect(ran({ spare: ['/r:feat/x'] }).dropped).toEqual([
+      { id: 'branch:/r:feat/x', reason: 'spared', detail: '--spare /r:feat/x' },
+    ])
+    expect(ran({ spare: ['/r:feat/*'] }).run.map((c) => c.id)).toEqual([
+      'worktree:/w/x',
+      'artifact:/r/target',
+    ])
+  })
+
   test('a spare wins over a pick of something it matches', () => {
     const d = ran({ pick: ['worktree:/w/x'], spare: ['feat/*'] })
     expect(d.run.map((c) => c.id)).toEqual(['artifact:/r/target'])
@@ -282,9 +754,9 @@ describe('requires', () => {
   const tree = cand('worktree:/w', 'git')
   const branch = cand('branch:b', 'git', { requires: ['worktree:/w'] })
 
-  test('a requirement is deleted before its dependent, whatever the discovery order', () => {
+  test('a requirement is deleted before its dependent, whatever the discovery order', async () => {
     const log: string[] = []
-    const receipt = run([fake('git', [branch, tree], log)])
+    const receipt = await run([fake('git', [branch, tree], log)])
     expect(receipt.steps.map((s) => s.id)).toEqual(['worktree:/w', 'branch:b'])
     expect(receipt.status).toBe('complete')
   })
@@ -304,10 +776,49 @@ describe('requires', () => {
     ])
   })
 
-  test('a dependent whose requirement is not selected is blocked', () => {
+  test('a dependent whose requirement is not selected is blocked, and says to pick it', () => {
     const d = decide([tree, branch], [], only(['branch:b']), [])
     expect(d.dropped).toEqual([
-      { id: 'branch:b', reason: 'blocked', detail: 'requires worktree:/w, which does not run' },
+      {
+        id: 'branch:b',
+        reason: 'blocked',
+        detail: 'requires worktree:/w, which needs --pick worktree:/w when the plan is made',
+      },
+    ])
+  })
+
+  test('a blocked dependent says what would let each requirement run', () => {
+    const held = cand('a:held', 'git', { held: true })
+    const lost = cand('a:lost', 'git', { held: true })
+    const protested = cand('a:protested', 'git')
+    const refused = cand('a:refused', 'git')
+    const spared = cand('a:spared', 'git')
+    const ids = [held, lost, protested, refused, spared].map((c) => c.id)
+    const outer = cand('a:outer', 'git', { requires: [...ids, 'a:missing'] })
+    const top = cand('a:top', 'git', { requires: [outer.id] })
+    const objections = [
+      objection(lost.id, 'protest', 'discard-user-data'),
+      objection(protested.id, 'protest', 'unmeasured'),
+      objection(refused.id, 'refuse', 'live-process'),
+    ]
+    const d = decide(
+      [held, lost, protested, refused, spared, outer, top],
+      objections,
+      { ...DEFAULT_SELECTION, spare: [spared.id] },
+      [],
+    )
+    const why = [
+      'requires a:held, which needs --pick a:held when the plan is made',
+      'requires a:lost, which needs --pick a:lost --allow discard-user-data when the plan is made',
+      'requires a:protested, which needs --allow unmeasured',
+      'requires a:refused, which is refused (x: live-process reason)',
+      'requires a:spared, which is spared (--spare a:spared)',
+      'requires a:missing, which is gone',
+    ].join('; ')
+    expect(d.dropped).toEqual([
+      { id: spared.id, reason: 'spared', detail: `--spare ${spared.id}` },
+      { id: outer.id, reason: 'blocked', detail: why },
+      { id: top.id, reason: 'blocked', detail: `requires a:outer, which is blocked: ${why}` },
     ])
   })
 
@@ -320,7 +831,7 @@ describe('requires', () => {
     expect(d.dropped.map((x) => x.id).sort()).toEqual(['a:a', 'a:b', 'a:c'])
   })
 
-  test('a failed requirement skips its dependent and leaves the rest', () => {
+  test('a failed requirement skips its dependent and leaves the rest', async () => {
     const log: string[] = []
     const other = cand('artifact:/o', 'git')
     const git = fake('git', [tree, branch, other], log, {
@@ -329,20 +840,92 @@ describe('requires', () => {
         return 'ok'
       },
     })
-    const receipt = run([git])
+    const receipt = await run([git])
     expect(receipt.steps.map((s) => [s.id, s.result])).toEqual([
       ['worktree:/w', 'failed'],
       ['branch:b', 'skipped'],
       ['artifact:/o', 'ok'],
     ])
     expect(receipt.steps[0]!.error).toBe('directory busy')
+    expect(receipt.steps[1]!.error).toBe('requires worktree:/w, which did not complete')
     expect(receipt.status).toBe('failed')
   })
 })
 
+describe('nested candidates', () => {
+  // A real target, so containment passes and only the objections below gate.
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'hc-nested-')))
+  const at: RunCtx = { ...ctx, targets: [dir] }
+  const w = join(dir, 'w')
+  const tree = pathCand(`worktree:${w}`, 'git', w, { name: 'feat' })
+  const target = pathCand(`artifact:${w}/target`, 'cargo', join(w, 'target'))
+  const deps = pathCand(`artifact:${w}/a/node_modules`, 'node', join(w, 'a', 'node_modules'))
+  const plugins = (...extra: Plugin[]) => [
+    fake('git', [tree], []),
+    fake('cargo', [target], []),
+    fake('node', [deps], []),
+    ...extra,
+  ]
+
+  test('both stay, and the outer requires every candidate inside it, with no warning', async () => {
+    const branch = cand('branch:b', 'git', { requires: [tree.id] })
+    const s = await survey(
+      [fake('git', [branch, tree], []), fake('cargo', [target], []), fake('node', [deps], [])],
+      at,
+    )
+    expect(s.candidates.map((c) => [c.id, c.requires])).toEqual([
+      ['branch:b', [tree.id]],
+      [tree.id, [target.id, deps.id]],
+      [target.id, undefined],
+      [deps.id, undefined],
+    ])
+    expect(s.warnings).toEqual([])
+    expect(s.objections).toEqual([])
+    expect(tree.requires).toBeUndefined()
+  })
+
+  test('the inner ones are deleted first', async () => {
+    const receipt = await clean(plan(await survey(plugins(), at)), plugins(), at)
+    expect(receipt.steps.map((s) => s.id)).toEqual([target.id, deps.id, tree.id])
+  })
+
+  test('a refused target/ refuses its worktree', async () => {
+    const live: Plugin = {
+      name: 'live',
+      detect: () => true,
+      object: () => [objection(target.id, 'refuse', 'live-process')],
+    }
+    const s = await survey(plugins(live), at)
+    const d = decide(s.candidates, s.objections, DEFAULT_SELECTION, [])
+    expect(d.run.map((c) => c.id)).toEqual([deps.id])
+    const d2 = decide(s.candidates, s.objections, only([tree.id, target.id]), [])
+    expect(d2.run).toEqual([])
+    expect(d2.dropped).toEqual([
+      { id: target.id, reason: 'blocked', detail: 'live: live-process reason' },
+      {
+        id: tree.id,
+        reason: 'blocked',
+        detail:
+          `requires ${target.id}, which is refused (live: live-process reason); ` +
+          `requires ${deps.id}, which needs --pick ${deps.id} when the plan is made`,
+      },
+    ])
+  })
+
+  test('a spared inner one keeps its outer one too', async () => {
+    const s = await survey(plugins(), at)
+    const d = decide(s.candidates, [], { ...DEFAULT_SELECTION, spare: [join(w, 'target')] }, [])
+    expect(d.run.map((c) => c.id)).toEqual([deps.id])
+    expect(d.dropped.map((x) => [x.id, x.reason])).toEqual([
+      [target.id, 'spared'],
+      [tree.id, 'blocked'],
+    ])
+  })
+})
+
 describe('re-check', () => {
-  const planWith = (plugin: Plugin, opts: { select?: string[]; allow?: string[] } = {}) =>
-    plan(survey([plugin], ctx), opts)
+  const planWith = async (plugin: Plugin, opts: { select?: string[]; allow?: string[] } = {}) =>
+    plan(await survey([plugin], ctx), opts)
   const mutable = (items: Candidate[], objections: () => Objection[] = () => []): Plugin => ({
     name: 'git',
     detect: () => true,
@@ -350,18 +933,29 @@ describe('re-check', () => {
     object: objections,
   })
 
-  test('gone: no plugin proposes it now', () => {
+  test('gone: no plugin proposes it now', async () => {
     const items = [cand('a:1', 'git')]
-    const p = planWith(mutable(items))
-    const r = recheck(p, [mutable([])], ctx)
+    const p = await planWith(mutable(items))
+    const r = await recheck(p, [mutable([])], ctx)
     expect(r.decision.dropped).toEqual([
       { id: 'a:1', reason: 'gone', detail: 'no plugin proposes it now' },
     ])
   })
 
-  test('blocked: a refusal appeared since the plan', () => {
-    const p = planWith(mutable([cand('a:1', 'git')]))
-    const r = recheck(
+  test('a candidate whose owner is not known throws StalePlan; a known but skipped one is gone', async () => {
+    const p = await planWith(mutable([cand('a:1', 'git')]))
+    const other: Plugin = { ...mutable([]), name: 'cargo' }
+    await expect(recheck(p, [other], ctx)).rejects.toThrow(StalePlan)
+    await expect(recheck(p, [other], ctx)).rejects.toThrow('no plugin named git')
+    const gone = [{ id: 'a:1', reason: 'gone', detail: 'no plugin proposes it now' }]
+    expect((await recheck(p, [other], ctx, ['git', 'cargo'])).decision.dropped).toEqual(gone)
+    await expect(clean(p, [other], ctx)).rejects.toThrow(StalePlan)
+    expect((await clean(p, [other], ctx, { known: ['git', 'cargo'] })).dropped).toEqual(gone)
+  })
+
+  test('blocked: a refusal appeared since the plan', async () => {
+    const p = await planWith(mutable([cand('a:1', 'git')]))
+    const r = await recheck(
       p,
       [mutable([cand('a:1', 'git')], () => [objection('a:1', 'refuse', 'live')])],
       ctx,
@@ -369,9 +963,9 @@ describe('re-check', () => {
     expect(r.decision.dropped.map((d) => d.reason)).toEqual(['blocked'])
   })
 
-  test('not-allowed: a protest appeared that nobody granted', () => {
-    const p = planWith(mutable([cand('a:1', 'git')]))
-    const r = recheck(
+  test('not-allowed: a protest appeared that nobody granted', async () => {
+    const p = await planWith(mutable([cand('a:1', 'git')]))
+    const r = await recheck(
       p,
       [mutable([cand('a:1', 'git')], () => [objection('a:1', 'protest', 'lossy')])],
       ctx,
@@ -379,31 +973,93 @@ describe('re-check', () => {
     expect(r.decision.dropped.map((d) => d.reason)).toEqual(['not-allowed'])
   })
 
-  test('changed: the evidence moved; a missing key counts as null', () => {
-    const p = planWith(mutable([cand('a:1', 'git', { evidence: { sha: 'a', pr: null } })]))
-    const same = recheck(p, [mutable([cand('a:1', 'git', { evidence: { sha: 'a' } })])], ctx)
+  test('changed: the evidence moved; a missing key counts as null', async () => {
+    const p = await planWith(mutable([cand('a:1', 'git', { evidence: { sha: 'a', pr: null } })]))
+    const same = await recheck(p, [mutable([cand('a:1', 'git', { evidence: { sha: 'a' } })])], ctx)
     expect(same.decision.run.map((c) => c.id)).toEqual(['a:1'])
-    const moved = recheck(p, [mutable([cand('a:1', 'git', { evidence: { sha: 'b' } })])], ctx)
+    const moved = await recheck(p, [mutable([cand('a:1', 'git', { evidence: { sha: 'b' } })])], ctx)
     expect(moved.decision.dropped.map((d) => d.reason)).toEqual(['changed'])
   })
 
-  test('a candidate that changed drops its dependents', () => {
+  test('changed: held now and not in the plan, picked or not; held then and not now still runs', async () => {
+    const idle = mutable([cand('a:1', 'git')])
+    const held = mutable([cand('a:1', 'git', { held: true })])
+    for (const pick of [[], ['a:1']]) {
+      const r = await recheck(plan(await survey([idle], ctx), { pick }), [held], ctx)
+      expect(r.decision.run).toEqual([])
+      expect(r.decision.dropped.map((d) => d.reason)).toEqual(['changed'])
+    }
+    const picked = plan(await survey([held], ctx), { pick: ['a:1'] })
+    for (const later of [idle, held]) {
+      const r = await recheck(picked, [later], ctx)
+      expect(r.decision.run.map((c) => c.id)).toEqual(['a:1'])
+    }
+  })
+
+  test('changed: a capped candidate grew; one that shrank, or is not capped, is not', async () => {
+    const sized = (bytes: number | undefined, capped?: boolean) =>
+      mutable([cand('a:1', 'git', { bytes, capped })])
+    const outcome = async (before: number | undefined, after: number | undefined, capped = true) =>
+      (await recheck(await planWith(sized(before, capped)), [sized(after, capped)], ctx)).decision
+    expect((await outcome(10, 11)).dropped).toEqual([
+      { id: 'a:1', reason: 'changed', detail: 'the plan showed 10 bytes, now 11 bytes' },
+    ])
+    expect((await outcome(10, 11)).run).toEqual([])
+    expect((await outcome(undefined, 11)).dropped.map((d) => d.reason)).toEqual(['changed'])
+    expect((await outcome(10, undefined)).dropped.map((d) => d.reason)).toEqual(['changed'])
+    expect((await outcome(10, 10)).run.map((c) => c.id)).toEqual(['a:1'])
+    expect((await outcome(10, 9)).run.map((c) => c.id)).toEqual(['a:1'])
+    expect((await outcome(10, 11, false)).run.map((c) => c.id)).toEqual(['a:1'])
+    // The plan file keeps it.
+    const p = await planWith(sized(10, true))
+    expect(parsePlan(JSON.stringify(p), 'p').candidates).toEqual(p.candidates)
+  })
+
+  test('a candidate that changed drops its dependents', async () => {
     const items = (sha: string) => [
       cand('worktree:/w', 'git', { evidence: { sha } }),
       cand('branch:b', 'git', { requires: ['worktree:/w'] }),
     ]
-    const p = planWith(mutable(items('a')))
-    const r = recheck(p, [mutable(items('b'))], ctx)
+    const p = await planWith(mutable(items('a')))
+    const r = await recheck(p, [mutable(items('b'))], ctx)
     expect(r.decision.dropped.map((d) => [d.id, d.reason])).toEqual([
       ['worktree:/w', 'changed'],
       ['branch:b', 'blocked'],
     ])
+    // The receipt names the requirement and why it no longer runs.
+    const receipt = await clean(p, [mutable(items('b'))], ctx)
+    expect(receipt.dropped[1]).toEqual({
+      id: 'branch:b',
+      reason: 'blocked',
+      detail: 'requires worktree:/w, which is changed: its evidence moved since the plan',
+    })
   })
 
-  test('clean deletes nothing it dropped', () => {
+  test('a dependent says why its requirement no longer runs in the words the survey uses', async () => {
+    const tree = cand('worktree:/w', 'git', { at: '/w' })
+    const branch = cand('branch:b', 'git', { requires: [tree.id] })
+    const p = await planWith(mutable([tree, branch]))
+    const why = async (plugin: Plugin, at: RunCtx = ctx) =>
+      (await recheck(p, [plugin], at)).decision.dropped.find((d) => d.id === branch.id)?.detail
+    const now = (level: Objection['level'], code: string) =>
+      mutable([tree, branch], () => [objection(tree.id, level, code)])
+    expect(await why(now('refuse', 'live'))).toBe(
+      'requires worktree:/w, which is refused (git: live reason)',
+    )
+    expect(await why(now('protest', 'lossy'))).toBe(
+      'requires worktree:/w, which needs --allow lossy',
+    )
+    const same = mutable([tree, branch])
+    expect(await why(same, { ...ctx, ignore: ['/w'] })).toBe('requires worktree:/w, which is gone')
+    expect(await why(mutable([{ ...tree, requires: [branch.id] }, branch]))).toBe(
+      'requires worktree:/w, which is blocked: its requirements form a cycle',
+    )
+  })
+
+  test('clean deletes nothing it dropped', async () => {
     const log: string[] = []
-    const p = planWith(fake('git', [cand('a:1', 'git')], []))
-    const receipt = clean(p, [fake('git', [], log)], ctx)
+    const p = await planWith(fake('git', [cand('a:1', 'git')], []))
+    const receipt = await clean(p, [fake('git', [], log)], ctx)
     expect(receipt.steps).toEqual([])
     expect(receipt.dropped.map((d) => d.reason)).toEqual(['gone'])
     expect(log).toEqual([])
@@ -411,7 +1067,7 @@ describe('re-check', () => {
 })
 
 describe('prepare, delete and deleted', () => {
-  test('a plugin that throws in the re-check leaves a failed receipt and rethrows', () => {
+  test('a plugin that throws in the re-check leaves a failed receipt and rethrows', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'hc-recheck-'))
     const receiptPath = join(dir, 'receipt.json')
     let reads = 0
@@ -421,17 +1077,17 @@ describe('prepare, delete and deleted', () => {
         return [cand('a:1', 'git')]
       },
     })
-    const p = plan(survey([flaky], ctx), {})
-    expect(() => clean(p, [flaky], ctx, { receiptPath })).toThrow('cannot read')
+    const p = plan(await survey([flaky], ctx), {})
+    await expect(clean(p, [flaky], ctx, { receiptPath })).rejects.toThrow('cannot read')
     expect(JSON.parse(readFileSync(receiptPath, 'utf8'))).toMatchObject({
       status: 'failed',
       steps: [],
     })
   })
 
-  test('every plugin prepares, the owner deletes, the others are told', () => {
+  test('every plugin prepares, the owner deletes, the others are told', async () => {
     const log: string[] = []
-    const receipt = run([
+    const receipt = await run([
       fake('git', [cand('worktree:/w', 'git')], log),
       withoutDelete(fake('orca', [], log)),
     ])
@@ -454,14 +1110,14 @@ describe('prepare, delete and deleted', () => {
     ])
   })
 
-  test('a prepare failure stops only that candidate; the next one runs', () => {
+  test('a prepare failure stops only that candidate; the next one runs', async () => {
     const log: string[] = []
     const orca = fake('orca', [], log, {
       prepare: (c) => {
         if (c.id === 'a:1') throw new Error('terminal would not close')
       },
     })
-    const receipt = run([fake('git', [cand('a:1', 'git'), cand('a:2', 'git')], log), orca])
+    const receipt = await run([fake('git', [cand('a:1', 'git'), cand('a:2', 'git')], log), orca])
     expect(receipt.steps.map((s) => [s.id, s.result, s.delete])).toEqual([
       ['a:1', 'failed', null],
       ['a:2', 'ok', 'removed a:2'],
@@ -474,14 +1130,14 @@ describe('prepare, delete and deleted', () => {
     expect(log).not.toContain('git:deleted:a:1')
   })
 
-  test('a FatalRun in prepare stops the run: the rest are skipped, nothing more is deleted', () => {
+  test('a FatalRun in prepare stops the run: the rest are skipped, nothing more is deleted', async () => {
     const log: string[] = []
     const git = fake('git', [cand('a:1', 'git'), cand('a:2', 'git')], log, {
       prepare: () => {
         throw new FatalRun('archive push failed')
       },
     })
-    const receipt = run([git])
+    const receipt = await run([git])
     expect(receipt.steps.map((s) => [s.id, s.result])).toEqual([
       ['a:1', 'failed'],
       ['a:2', 'skipped'],
@@ -493,26 +1149,26 @@ describe('prepare, delete and deleted', () => {
     expect(log).toEqual([])
   })
 
-  test('a FatalRun in delete stops the run too', () => {
+  test('a FatalRun in delete stops the run too', async () => {
     const git = fake('git', [cand('a:1', 'git'), cand('a:2', 'git')], [], {
       delete: () => {
         throw new FatalRun('disk gone')
       },
     })
-    const receipt = run([git])
+    const receipt = await run([git])
     expect(receipt.steps.map((s) => s.result)).toEqual(['failed', 'skipped'])
   })
 
-  test('deleted failures are recorded and neither fail the step nor stop the others', () => {
+  test('deleted failures are recorded and neither fail the step nor stop the others', async () => {
     const log: string[] = []
-    const receipt = run([
+    const receipt = await run([
       fake('git', [cand('a:1', 'git')], log),
+      fake('cargo', [], log),
       fake('orca', [], log, {
         deleted: () => {
           throw new Error('forget failed')
         },
       }),
-      fake('cargo', [], log),
     ])
     expect(receipt.steps[0]).toMatchObject({ result: 'ok', error: null })
     expect(receipt.steps[0]!.notified).toEqual([
@@ -522,12 +1178,180 @@ describe('prepare, delete and deleted', () => {
     expect(receipt.status).toBe('complete')
   })
 
-  test('a dry run plans the steps and runs no phase', () => {
+  test('a dry run plans the steps and runs no phase', async () => {
     const log: string[] = []
     const git = fake('git', [cand('a:1', 'git')], log)
-    const receipt = clean(plan(survey([git], ctx)), [git], ctx, { dryRun: true })
+    const receipt = await clean(plan(await survey([git], ctx)), [git], ctx, { dryRun: true })
     expect(receipt.status).toBe('dry-run')
     expect(receipt.steps.map((s) => s.result)).toEqual(['would-run'])
     expect(log).toEqual([])
+  })
+})
+
+describe('async hooks and time limits', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Never settles. */
+  const hang = <T>(): Promise<T> => new Promise<T>(() => {})
+  const later = <T>(ms: number, value: T): Promise<T> =>
+    new Promise((resolve) => setTimeout(() => resolve(value), ms))
+
+  test('a hook that never resolves is stopped at its limit, warned about, and the run finishes', async () => {
+    let signal: AbortSignal | undefined
+    const stuck = fake('node', [], [], {
+      limits: { discover: 20 },
+      discover: (x) => ((signal = x.signal), hang()),
+    })
+    const s = await survey([fake('git', [cand('a:1', 'git')], []), stuck], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:1'])
+    expect(s.warnings).toEqual(['node: discover failed: timed out after 20 ms'])
+    expect(signal?.aborted).toBe(true)
+    expect(signal?.reason).toBeInstanceOf(HookTimeout)
+  })
+
+  test('a detect that never resolves leaves the plugin out; an object that never resolves refuses every candidate', async () => {
+    const lost = fake('cargo', [cand('a:2', 'cargo')], [], { limits: { detect: 20 }, detect: hang })
+    const silent = fake('node', [], [], { limits: { object: 20 }, object: hang })
+    const s = await survey([fake('git', [cand('a:1', 'git')], []), lost, silent], ctx)
+    expect(s.plugins.map((p) => p.name)).toEqual(['git', 'node'])
+    expect(s.objections).toMatchObject([
+      { by: 'node', candidate: 'a:1', level: 'refuse', code: 'plugin-error' },
+    ])
+    expect(s.warnings).toEqual([
+      'cargo: detect failed: timed out after 20 ms',
+      'node: object failed: timed out after 20 ms',
+    ])
+  })
+
+  test('a delete that never resolves fails its step; the next candidate still runs', async () => {
+    const log: string[] = []
+    const git = fake('git', [cand('a:1', 'git'), cand('a:2', 'git')], log, {
+      limits: { delete: 20 },
+      delete: (c) => (c.id === 'a:1' ? hang() : `removed ${c.id}`),
+    })
+    const receipt = await run([git])
+    expect(receipt.steps.map((x) => [x.id, x.result, x.error])).toEqual([
+      ['a:1', 'failed', 'timed out after 20 ms'],
+      ['a:2', 'ok', null],
+    ])
+    expect(receipt.status).toBe('failed')
+  })
+
+  test('promised answers are awaited, one plugin at a time, in the order given', async () => {
+    const log: string[] = []
+    const slow = (name: string, ms: number): Plugin =>
+      fake(name, [], log, {
+        detect: () => later(ms, true),
+        discover: async () => {
+          log.push(`${name}:start`)
+          await later(ms, null)
+          log.push(`${name}:end`)
+          return [cand(`a:${name}`, name)]
+        },
+        delete: async (c) => later(ms, `removed ${c.id}`),
+      })
+    const plugins = [slow('git', 15), slow('node', 1)]
+    const s = await survey(plugins, ctx)
+    expect(log).toEqual(['git:start', 'git:end', 'node:start', 'node:end'])
+    const receipt = await clean(plan(s), plugins, ctx)
+    expect(receipt.steps.map((x) => x.delete)).toEqual(['removed a:git', 'removed a:node'])
+  })
+
+  /** Works synchronously for `ms`, so no timer can fire meanwhile. */
+  const block = (ms: number): void => {
+    const end = performance.now() + ms
+    while (performance.now() < end);
+  }
+
+  test('a synchronous hook that answers past its limit is timed out then, and its signal aborted', async () => {
+    let signal: AbortSignal | undefined
+    const slow = fake('node', [], [], {
+      limits: { discover: 20 },
+      discover: (x) => {
+        signal = x.signal
+        block(40)
+        return [cand('a:2', 'node')]
+      },
+    })
+    const s = await survey([fake('git', [cand('a:1', 'git')], []), slow], ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual(['a:1'])
+    expect(s.warnings).toEqual(['node: discover failed: timed out after 20 ms'])
+    expect(signal?.aborted).toBe(true)
+    expect(signal?.reason).toBeInstanceOf(HookTimeout)
+  })
+
+  test('a synchronous hook that throws past its limit keeps its own error, so a FatalRun still stops the run', async () => {
+    let signal: AbortSignal | undefined
+    const git = fake('git', [cand('a:1', 'git'), cand('a:2', 'git')], [], {
+      limits: { delete: 20 },
+      delete: (_c, x) => {
+        signal = x.signal
+        block(40)
+        throw new FatalRun('archive failed')
+      },
+    })
+    const receipt = await run([git])
+    expect(receipt.steps.map((x) => [x.result, x.error])).toEqual([
+      ['failed', 'archive failed'],
+      ['skipped', 'the run stopped: archive failed'],
+    ])
+    expect(signal?.aborted).toBe(true)
+  })
+
+  test('a delete that answers past its limit has deleted: its step is ok, the others are told, and what requires it runs', async () => {
+    const log: string[] = []
+    let signal: AbortSignal | undefined
+    const git = fake('git', [cand('a:1', 'git'), cand('a:2', 'git', { requires: ['a:1'] })], log, {
+      limits: { delete: 20 },
+      delete: (c, x) => {
+        log.push(`git:delete:${c.id}`)
+        if (c.id === 'a:1') {
+          signal = x.signal
+          block(40)
+        }
+        return `removed ${c.id}`
+      },
+    })
+    const receipt = await run([git, fake('node', [], log)])
+    expect(receipt.steps.map((x) => [x.id, x.result, x.delete, x.error])).toEqual([
+      ['a:1', 'ok', 'removed a:1', null],
+      ['a:2', 'ok', 'removed a:2', null],
+    ])
+    expect(log).toContain('node:deleted:a:1')
+    expect(receipt.status).toBe('complete')
+    expect(signal?.aborted).toBe(false)
+  })
+
+  test('a synchronous hook works unchanged, and one that answers at once is never timed out', async () => {
+    const log: string[] = []
+    const quick = fake('git', [cand('a:1', 'git')], log, {
+      limits: { detect: 0, discover: 0, prepare: 0, delete: 0, deleted: 0 },
+    })
+    const receipt = await run([quick, fake('node', [], log, { limits: { deleted: 0 } })])
+    expect(receipt.status).toBe('complete')
+    expect(log).toEqual([
+      'git:prepare:a:1',
+      'node:prepare:a:1',
+      'git:delete:a:1',
+      'node:deleted:a:1',
+    ])
+  })
+
+  test('the default limits: short for discover, long for delete', async () => {
+    vi.useFakeTimers()
+    const git = fake('git', [cand('a:1', 'git')], [], {
+      delete: () => later(HOOK_LIMIT_MS * 2, 'removed a:1'),
+    })
+    const stuck = fake('node', [], [], { discover: hang })
+    const surveyed = survey([git, stuck], ctx)
+    await vi.advanceTimersByTimeAsync(HOOK_LIMIT_MS)
+    const s = await surveyed
+    expect(s.warnings).toEqual([`node: discover failed: timed out after ${HOOK_LIMIT_MS} ms`])
+    const cleaned = clean(plan(s), [git], ctx)
+    await vi.advanceTimersByTimeAsync(HOOK_LIMIT_MS * 2)
+    expect((await cleaned).steps).toMatchObject([{ result: 'ok', delete: 'removed a:1' }])
+    expect(DELETE_LIMIT_MS).toBeGreaterThan(HOOK_LIMIT_MS * 2)
   })
 })

@@ -1,0 +1,29 @@
+{
+  "name": "host-cleaner-podman",
+  "version": "0.0.0",
+  "private": true,
+  "description": "An example host-cleaner plugin: Podman volumes no container uses.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@osdlc/host-cleaner": "^0.4.0"
+  },
+  "devDependencies": {
+    "@osdlc/host-cleaner": "^0.4.0",
+    "@types/node": "^26.1.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}

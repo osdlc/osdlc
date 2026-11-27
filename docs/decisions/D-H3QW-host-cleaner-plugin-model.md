@@ -2,11 +2,14 @@
 
 Accepted 2026-11-19. Supersedes the adapter model in
 [D-L7N5](D-L7N5-host-cleaner.md); everything in D-L7N5 about repo-cleaner's
-own gaps, the `ProcessProbe`, the one safety model, the unattended subset and
-launchd scheduling still holds. The proposal and the owner's twelve answers
-are in the review page
+own gaps, the `ProcessProbe` and the one safety model still holds. The
+proposal and the owner's twelve answers are in the review page
 [host-cleaner-plugins](../parley/host-cleaner-plugins.html) (source
 [host-cleaner-plugins.json](../parley/host-cleaner-plugins.json)).
+
+Superseded in part by [D-R8KM](D-R8KM-host-cleaner-v1-attended-only.md): the
+unattended subset and launchd scheduling, which this record kept from D-L7N5,
+no longer hold.
 
 ## Decision
 
@@ -67,15 +70,18 @@ settled here:
 
 ## Consequences
 
-- PR 943 and the contract files are rewritten; the CLI, artifact layer, auto
-  run and schedule carry over. repo-cleaner gains `candidatesOf` and
-  `removeCandidate`, and loses `removeWorktree` and `HostBlocker` from its
-  plan.
+- PR 943 and the contract files are rewritten; the CLI and artifact layer
+  carry over (the auto run and schedule were later left out, D-R8KM).
+  repo-cleaner gains `candidatesOf` and `removeCandidate`, and loses
+  `removeWorktree` and `HostBlocker` from its plan.
 - [host-cleaner-design](../parley/host-cleaner-design.html) has four
   questions closed as superseded: q-order, q-discover, q-orca-discover and
   q-split-943.
-- [The architecture page](../architecture/host-cleaner.md) describes the
-  stack as built until it is rewritten with the code.
+- [The architecture page](../architecture/host-cleaner.md) is kept as the
+  history of the stack before this decision. How host-cleaner is built now is
+  in the package's
+  [how it works](../../packages/ts/host-cleaner/docs/guide/how-it-works.md)
+  page.
 
 ## Reopen if
 
