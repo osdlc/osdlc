@@ -84,8 +84,12 @@ const limitOf = (p: Plugin, hook: Hook): number => {
 
 /**
  * Calls one hook of `p` under its time limit, as {@link callWithin} does,
- * except that `delete`'s answer counts however late it comes: by then it has
- * deleted, and the receipt and the `deleted` hooks must hear so.
+ * except that a `delete` that answers past its limit before the timer fires
+ * (it worked synchronously, so the timer could not) has its answer kept: by
+ * then it has deleted, and the receipt and the `deleted` hooks must hear so.
+ * A `delete` still waiting when the timer fires fails with
+ * {@link HookTimeout} and its signal is aborted, though what it started may
+ * go on.
  */
 const callHook = <T>(
   p: Plugin,
@@ -97,8 +101,9 @@ const callHook = <T>(
 /**
  * Calls `f` with `ctx`, `targetsGiven` defaulted and a signal of its own, and
  * awaits its answer. Past `ms` the signal is aborted and {@link HookTimeout}
- * thrown. How the core calls every hook (but a late `delete`, whose answer it
- * keeps); the contract suite calls `delete` so.
+ * thrown. How the core calls every hook (but a `delete` that answers late
+ * before the timer fires, whose answer it keeps); the contract suite calls
+ * `delete` so.
  *
  * Nothing can stop `f` while it works synchronously: the timer fires only when
  * `f` waits on something. One that then answers past `ms` is late like any
