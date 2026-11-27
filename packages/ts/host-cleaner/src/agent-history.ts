@@ -150,8 +150,10 @@ export function unmounted(
   if (home !== undefined && home !== '' && [dir, real].includes(dirname(home))) return true
   const device = deviceOf(real)
   // A device that differs from the one above shows a volume is mounted there.
-  const onDeviceOf = (other: string): boolean =>
-    device === undefined || deviceOf(other) === undefined || deviceOf(other) === device
+  const onDeviceOf = (other: string): boolean => {
+    const at = deviceOf(other)
+    return device === undefined || at === undefined || at === device
+  }
   return (
     ((mounts.has(dir) || mounts.has(real)) && onDeviceOf(dirname(real))) ||
     roots.some((r) => (dir.startsWith(`${r}/`) || nodeGuard.contains(r, real)) && onDeviceOf(r))
