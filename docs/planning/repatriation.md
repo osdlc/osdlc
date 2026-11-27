@@ -285,7 +285,10 @@ once matured. They are not archived.
 
 - Moving packages out of sksizer/dev: `markdown-vault`, `vault-graph-core`,
   `markdown-vault-query`, `markdown-editor`, `markdown-ui`, model-schema and
-  the packs. No move is planned yet.
+  the packs. No move is planned yet. (Later, on 2026-11-22, `markdown-vault`
+  and `markdown-vault-query` moved here on their own;
+  [D-SM4K](../decisions/D-SM4K-markdown-ecosystem-home.md)'s amendment says
+  why.)
 - Grouping the libraries into folders by product area. D-SM4K says when to
   look at that again.
 - One system for records. The plan keeps its own decisions (D1 and up) and

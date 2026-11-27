@@ -43,7 +43,8 @@ Accepted 2026-11-12.
   and the starter corpus in `packages/corpora/*`, as pnpm workspace members,
   for now.
 - **Nothing moves out of sksizer/dev yet.** Its markdown packages,
-  model-schema and the packs stay there for now.
+  model-schema and the packs stay there for now. (Amended 2026-11-22 for
+  two packages; see the end.)
 - **`markdown-store` stays in sksizer/rust-ontogen for now.**
 - **Two repositories stay as places to publish from.** osdlc/marketplace
   publishes the skill plugins. osdlc/skillwright publishes skillwright, the
@@ -124,3 +125,25 @@ the profile and corpus packages, and three path-filtered workflows. In short:
 4. Bring the profiles and the starter corpus, once their place is decided.
 5. Empty osdlc/markdown and osdlc/models down to their READMEs. They stay
    open.
+
+## Amended 2026-11-22: two markdown packages come from sksizer/dev
+
+The owner asked for `@osdlc/markdown-vault` and `@osdlc/markdown-vault-query`
+to be developed and released here, as open source. They moved from
+sksizer/dev under their present names, to `packages/ts/markdown-vault` and
+`packages/ts/markdown-vault-query`. Their first releases list the API
+changes made on the way. For these two, this replaces "Nothing moves out
+of sksizer/dev yet".
+
+- The rest of that point holds. `vault-graph-core`, `markdown-editor`,
+  `markdown-ui`, model-schema and the packs stay in sksizer/dev.
+- The move does not decide the plan's task 12, which merges `markdown-vault`
+  and `vault-graph-core` into the TypeScript `markdown-corpus`. That task
+  still waits for `vault-graph-core`.
+- The names do not change. [D-ODPP](D-ODPP-markdown-corpus.md) still says
+  the vault names move to corpus later.
+- The plan's records say where the two packages are now: their component
+  records, tasks 12 and 15, and the note on sksizer/dev.
+- Four other libraries came from sksizer/dev at the same time, also at the
+  owner's request: `code-stats`, `diffkit` (since folded into `code-stats`), `json-canvas-core` and
+  `json-canvas-vue`. The markdown plan does not own them.

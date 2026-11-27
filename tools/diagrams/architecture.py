@@ -40,7 +40,7 @@ LAYERS = [
     ("markdown-vault-astro", "notes → site", "osdlc"), ("markdown-editor", "live editor", "dev"),
     ("markdown-ui", "viewing chrome", "dev")], []),
   ("7", "Query (later)", "read a corpus as a database",
-   [("query layer", "Bases engine; in dev for now", "dev", "later")], []),
+   [("query layer", "from the Bases engine", "osdlc", "later")], []),
   ("6", "Profiles", "shared types, and records to reference",
    [("claims profile", "VA-Spec evidence types", "osdlc", "later"),
     ("sdlc profile", "generated from packs", "osdlc", "later"),

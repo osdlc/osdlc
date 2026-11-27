@@ -470,7 +470,7 @@
         11
       ],
       "prs": [],
-      "text": "One TypeScript corpus model, markdown-corpus: markdown-vault and vault-graph-core merged into osdlc on top of markdown-link's resolver. After 11.\n\nOut of scope for now: markdown-vault and vault-graph-core are in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps them there. The merge waits until they move.\n\nDeferred: out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again if markdown-vault and vault-graph-core move here.",
+      "text": "One TypeScript corpus model, markdown-corpus: markdown-vault and vault-graph-core merged into osdlc on top of markdown-link's resolver. After 11.\n\nOut of scope for now: vault-graph-core is in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps it there. markdown-vault moved to osdlc on 2026-11-22. The merge waits until vault-graph-core moves too.\n\nDeferred: out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again if vault-graph-core moves here.",
       "source": "docs/planning/markdown/tasks/12 One TS model.md"
     },
     {
@@ -513,7 +513,7 @@
         12
       ],
       "prs": [],
-      "text": "One query layer. Move markdown-vault-query to osdlc on top of the corpus model. After 12 and D5.\n\nOut of scope for now: markdown-vault-query is in sksizer/dev, and [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md) keeps it there.\n\nDeferred: out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again if markdown-vault-query moves here.",
+      "text": "One query layer: markdown-vault-query on top of the corpus model. After 12 and D5.\n\nmarkdown-vault-query moved to osdlc on 2026-11-22, still on top of markdown-vault.\n\nDeferred: it follows task 12, which is out of scope under [D19](../decisions/D19%20Profiles%20and%20corpora%20come%20to%20osdlc%20osdlc.md). It is opened again with task 12.",
       "source": "docs/planning/markdown/tasks/15 Query layer.md"
     },
     {

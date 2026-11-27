@@ -1,0 +1,79 @@
+{
+  "name": "@osdlc/markdown-vault-query",
+  "version": "0.4.1",
+  "description": "Query engine over a markdown vault. Reads Obsidian Bases (.base) files and runs their filters, formulas and views against the vault.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/markdown-vault-query"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/markdown-vault-query#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "obsidian",
+    "bases",
+    "markdown",
+    "vault",
+    "query",
+    "frontmatter",
+    "cli"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "markdown-vault-query": "./bin/markdown-vault-query.js"
+  },
+  "files": [
+    "dist/",
+    "bin/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "cli-tool-stamp-version && tsc -p tsconfig.build.json",
+    "stamp-version": "cli-tool-stamp-version",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "smoke": "node tests/smoke.mjs",
+    "coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/cli-tool": "workspace:^",
+    "@osdlc/markdown-vault": "workspace:^",
+    "@osdlc/path-guard": "workspace:^",
+    "yaml": "catalog:"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

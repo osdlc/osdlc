@@ -346,6 +346,12 @@ Developed here, in this repository:
 - `packages/ts/json-canvas-vue` (`@osdlc/json-canvas-vue` on npm, a Vue 3 board that draws and edits a JSON Canvas document on
   `@osdlc/json-canvas-core`, with undo, node components, a read-only mode and
   a sanitizing markdown seam)
+- `packages/ts/markdown-vault` (`@osdlc/markdown-vault` on npm once published,
+  reads a vault of Markdown notes into a plain model: frontmatter, tags,
+  wikilinks, embeds and backlinks, from a folder or from data you hold)
+- `packages/ts/markdown-vault-query` (`@osdlc/markdown-vault-query` on npm once
+  published, a tool and library that runs Obsidian Bases (`.base`) queries
+  over a `@osdlc/markdown-vault` index, with no Obsidian app)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull

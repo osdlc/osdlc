@@ -4,6 +4,6 @@ to: "[markdown-vault](../components/markdown-vault.md)"
 overlap: partial
 states: [present]
 note: >-
-  Both build the note and link graph in dev with different link rules: markdown-vault tries file
-  names first, vault-graph-core indexes every path suffix (task 12 merges them).
+  Both build the note and link graph with different link rules: markdown-vault (osdlc) tries file
+  names first, vault-graph-core (dev) indexes every path suffix (task 12 merges them).
 ---

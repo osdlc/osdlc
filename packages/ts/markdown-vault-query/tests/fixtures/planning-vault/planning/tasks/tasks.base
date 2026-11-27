@@ -1,0 +1,16 @@
+filters:
+  and:
+    - file.inFolder("planning/tasks")
+    - file.ext != "base"
+views:
+  - type: table
+    name: All tasks
+    order:
+      - status
+      - impact
+      - complexity
+      - last_reviewed
+      - file.name
+    sort:
+      - property: status
+        direction: ASC
