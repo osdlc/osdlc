@@ -12,7 +12,7 @@
  * through the command seam.
  */
 
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 
 import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
 import { sameProcess } from '@osdlc/file-lock'
@@ -179,7 +179,22 @@ function killProbe(pid: number): boolean | undefined {
  * instant, so the repeated hour of a DST fall-back cannot read as two; `LC_ALL=C`
  * keeps the month and day names English.
  */
-const PS_ENV = { TZ: 'UTC', LC_ALL: 'C' } as const
+export const PS_ENV = { TZ: 'UTC', LC_ALL: 'C' } as const
+
+/** What Linux appends to the working directory of a process whose directory was removed. */
+const DELETED = ' (deleted)'
+
+/**
+ * The directories a working directory as lsof lists it may be: itself, and,
+ * when it ends in {@link DELETED}, the removed directory it names while no
+ * directory is there again, since a process may still sit in a directory that
+ * is gone, but not in one made later at its path.
+ */
+const cwdsOf = (cwd: string): string[] => {
+  if (!cwd.endsWith(DELETED)) return [cwd]
+  const removed = cwd.slice(0, -DELETED.length)
+  return existsSync(removed) ? [cwd] : [cwd, removed]
+}
 
 /** True when the command ran and reported an exit status. */
 const answered = (r: CommandResult): boolean => r.neverExited !== true
@@ -249,10 +264,12 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
       try {
         roots.add(realpathSync(path))
       } catch {
-        // A directory that is gone has no holders.
+        // A directory that is gone has only the path as given: `contains` follows the links above it.
       }
       return table
-        .filter((row) => [...roots].some((root) => nodeGuard.contains(root, row.cwd)))
+        .filter((row) =>
+          [...roots].some((root) => cwdsOf(row.cwd).some((cwd) => nodeGuard.contains(root, cwd))),
+        )
         .map(({ pid, command, hasChildren }) => ({ pid, command, hasChildren }))
     },
   }

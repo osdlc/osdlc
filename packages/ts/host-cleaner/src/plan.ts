@@ -4,23 +4,41 @@ import { readFileSync } from 'node:fs'
 import { writeJsonAtomic } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
-import { DROP_REASONS, LEVELS } from './types.ts'
+import { COST_DESCRIPTIONS, DROP_REASONS, LEVELS } from './types.ts'
 
-export const PLAN_VERSION = 1
+/** 2: a candidate is a path or a ref. A plan of another version is refused (see {@link parsePlan}). */
+export const PLAN_VERSION = 2
 export const RECEIPT_VERSION = 1
 
-export const CandidateSchema = z.object({
+const candidateFields = {
   id: z.string(),
   kind: z.string(),
-  path: z.string(),
   owner: z.string(),
   why: z.string(),
-  at: z.string().optional(),
   bytes: z.number().optional(),
   evidence: z.record(z.string(), z.unknown()),
   requires: z.array(z.string()).optional(),
+  name: z.string().optional(),
   held: z.boolean().optional(),
-})
+  costDescription: z.enum(COST_DESCRIPTIONS).optional(),
+  unmeasured: z.boolean().optional(),
+  capped: z.boolean().optional(),
+}
+
+export const CandidateSchema = z.union([
+  z.object({
+    ...candidateFields,
+    path: z.string(),
+    ref: z.never().optional(),
+    at: z.never().optional(),
+  }),
+  z.object({
+    ...candidateFields,
+    ref: z.string(),
+    at: z.string().optional(),
+    path: z.never().optional(),
+  }),
+])
 
 export const ObjectionSchema = z.object({
   by: z.string(),
@@ -36,6 +54,8 @@ export const PlanSchema = z
     createdAt: z.string(),
     /** The targets the plan was swept over, so `clean --plan` checks the same place. */
     targets: z.array(z.string()),
+    /** Whether a person named the targets, as `RunCtx.targetsGiven`, so `clean --plan` tells plugins the same. */
+    targetsGiven: z.boolean(),
     /** Exactly these candidate ids; null means the default: every one nothing objects to and no owner holds for review. */
     select: z.array(z.string()).nullable(),
     /** Candidate ids run as well as the default or the selection. */
@@ -46,6 +66,8 @@ export const PlanSchema = z
     allow: z.array(z.string()),
     /** The ignore list the plan was swept with; `clean --plan` honours it as well as the current one. */
     ignore: z.array(z.string()).default([]),
+    /** The `--descriptor` files the plan was made with; `clean --plan` stops unless it is given each of them. */
+    descriptors: z.array(z.string()).optional(),
     warnings: z.array(z.string()),
     candidates: z.array(CandidateSchema),
     objections: z.array(ObjectionSchema),
@@ -67,6 +89,8 @@ export const StepSchema = z.object({
   owner: z.string(),
   /** The plugins whose `prepare` ran without failing, in order. */
   preparedBy: z.array(z.string()),
+  /** What a `prepare` reported doing, as `<plugin>: <sentence>`; absent when none did. */
+  prepared: z.array(z.string()).optional(),
   result: z.enum(['ok', 'failed', 'skipped', 'would-run']),
   /** The owner's result sentence; null when the delete did not run. */
   delete: z.string().nullable(),
@@ -91,7 +115,11 @@ export const ReceiptSchema = z.object({
 
 export type Receipt = z.infer<typeof ReceiptSchema>
 
-/** Parse a plan's JSON text; `source` names where it came from, for the error. */
+/**
+ * Parse a plan's JSON text; `source` names where it came from, for the error.
+ * A plan of another version, or a version 2 plan this one cannot read (one
+ * written before a field it needs, such as `targetsGiven`), is refused: sweep again.
+ */
 export function parsePlan(text: string, source: string): Plan {
   let json: unknown
   try {
@@ -99,7 +127,19 @@ export function parsePlan(text: string, source: string): Plan {
   } catch {
     throw new Error(`${source}: not JSON`)
   }
+  const version = (json as { version?: unknown } | null)?.version
+  if (version !== undefined && version !== PLAN_VERSION) {
+    throw new Error(
+      `${source}: a version ${JSON.stringify(version)} plan; this host-cleaner reads version ${PLAN_VERSION}: sweep again`,
+    )
+  }
   const parsed = PlanSchema.safeParse(json)
+  if (!parsed.success && version === PLAN_VERSION) {
+    const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '(plan)'}: ${i.message}`)
+    throw new Error(
+      `${source}: a version ${PLAN_VERSION} plan this host-cleaner cannot read (${issues.join('; ')}): sweep again`,
+    )
+  }
   if (!parsed.success) {
     throw new Error(
       `${source}: not a host-cleaner plan (version ${PLAN_VERSION}): ${parsed.error.message}`,
@@ -111,6 +151,19 @@ export function parsePlan(text: string, source: string): Plan {
 export function readPlan(path: string): Plan {
   return parsePlan(readFileSync(path, 'utf8'), path)
 }
+
+/** The names in `names` that `known` lacks, each once, in order. */
+export function missingFrom(names: Iterable<string>, known: Iterable<string>): string[] {
+  const have = new Set(known)
+  return [...new Set(names)].filter((n) => !have.has(n))
+}
+
+/** The owners of `plan`'s candidates that `known` does not name, each once. */
+export const unknownOwners = (plan: Plan, known: Iterable<string>): string[] =>
+  missingFrom(
+    plan.candidates.map((c) => c.owner),
+    known,
+  )
 
 export function writePlan(path: string, plan: Plan): void {
   writeJsonAtomic(path, plan)

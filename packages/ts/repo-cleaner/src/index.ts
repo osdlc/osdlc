@@ -27,7 +27,12 @@ export {
   type PlanRepo,
   type PlanRow,
 } from './plan.ts'
-export { DEFAULT_MAX_FILE_BYTES, type ArchiveOptions, type LeftOut } from './archive.ts'
+export {
+  DEFAULT_MAX_FILE_BYTES,
+  mayContribute,
+  type ArchiveOptions,
+  type LeftOut,
+} from './archive.ts'
 export { DEFAULT_MAX_DEPTH } from './resolve.ts'
 export {
   isGlob,
@@ -38,9 +43,13 @@ export {
 } from './approval.ts'
 export { globRegExp } from './util.ts'
 export {
+  archiveCandidates,
+  archiveProblem,
   check,
+  noRemote,
   removeCandidate,
   run,
+  type CandidateArchive,
   type CandidateRemoval,
   type CheckOptions,
   type Preview,
@@ -63,6 +72,8 @@ export { formatBytes, sizeOf, type SizeOfOptions } from './size.ts'
 export {
   busyHolders,
   defaultProcessProbe,
+  PS_ENV as PS_LSTART_ENV,
+  startMs,
   type ProcessHolder,
   type ProcessProbe,
 } from './processes.ts'

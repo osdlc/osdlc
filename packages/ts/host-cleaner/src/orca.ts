@@ -6,7 +6,7 @@
  * When the app is not running, or `orca status` fails or prints no JSON,
  * Orca's records cannot be read, so every `git` worktree under
  * {@link ORCA_WORKSPACES} is refused with `orca-unreachable` and the other
- * worktrees are left to `git`.
+ * worktrees are left to `git`; `detect` gives the reason as its note.
  *
  * The `git` plugin owns a worktree, so it removes the directory. This plugin
  * objects first (an agent at work refuses; open terminals protest with
@@ -14,15 +14,35 @@
  * terminals in `prepare`, and in `deleted` asks Orca to forget the record,
  * which `orca worktree rm` does and which would also delete the directory, so
  * it is only asked once the directory is gone. A record whose directory is
- * already gone is its own `orca-record` candidate.
+ * already gone is its own `orca-record` candidate, a ref to the record.
  * Settings: `plugins.orca.repos` (default true) adds the repositories Orca lists to the sweep.
  */
 
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 
-import { failureText, spawnRunner, which, type CommandRunner } from '@osdlc/command-seam'
+import { spawnRunner, which, type CommandRunner } from '@osdlc/command-seam'
+import { z } from 'zod'
 
-import type { Candidate, Ctx, Objection, Plugin } from './types.ts'
+import {
+  errorText,
+  failureReason,
+  isGitWorktree,
+  isObject,
+  num,
+  objector,
+  realOr,
+  str,
+} from './helpers.ts'
+import {
+  PLUGIN_API,
+  builtIn,
+  definePlugin,
+  type Candidate,
+  type Ctx,
+  type Objection,
+  type PathCandidate,
+  type Plugin,
+} from './types.ts'
 
 export const ORCA_PLUGIN = 'orca'
 
@@ -41,6 +61,13 @@ const QUIET_AGENT = new Set(['idle', 'done'])
 const QUIET_STATUS = new Set(['', 'inactive', 'active', 'idle', 'done'])
 
 const RECORD_LIMIT = 1000
+
+/**
+ * The time limit of `orca status`, in milliseconds, below `detect`'s own: a
+ * slow Orca then counts as one that cannot be asked, where a `detect` past its
+ * limit would leave the plugin, and its refusals, out of the run.
+ */
+export const ORCA_STATUS_LIMIT_MS = 20_000
 
 export interface OrcaOptions {
   /** The runner for the `orca` CLI. When absent, the CLI is looked up and spawned. */
@@ -64,20 +91,6 @@ export interface OrcaRecord {
   /** The state of each agent. */
   agents: string[]
   status: string
-}
-
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
-const str = (v: unknown): string => (typeof v === 'string' ? v : '')
-const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
-
-/** A path with symlinks resolved, so two spellings of one place compare equal. */
-function canon(path: string): string {
-  try {
-    return realpathSync(path)
-  } catch {
-    return path
-  }
 }
 
 /** The records in `orca worktree ps --json`; folder workspaces and rows without a path are left out. */
@@ -111,14 +124,11 @@ export function parseRecords(result: unknown): OrcaRecord[] {
 export const busy = (r: OrcaRecord): boolean =>
   !QUIET_STATUS.has(r.status) || r.agents.some((state) => !QUIET_AGENT.has(state))
 
-/** A git plugin's worktree row: the only candidates this plugin acts on. */
-const isGitWorktree = (c: Candidate): boolean => c.kind === 'worktree' && c.owner === 'git'
-
 /** Whether `c` sits under Orca's workspaces folder, by its real path. */
-const inWorkspaces = (c: Candidate): boolean => canon(c.path).includes(ORCA_WORKSPACES)
+const inWorkspaces = (c: PathCandidate): boolean => realOr(c.path).includes(ORCA_WORKSPACES)
 
 /**
- * Orca worktrees as `orca-record:<path>` candidates when their directory is
+ * Orca worktrees as `orca-record:<path>` refs when their directory is
  * gone, notes, protests and refusals on `git`'s worktrees that Orca manages,
  * and Orca's record forgotten after `git` removed the worktree.
  */
@@ -132,12 +142,15 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
   }
 
   /** The `result` of `orca <args> --json`; throws with Orca's own message when it fails. */
-  const call = (args: readonly string[], ctx: Ctx): unknown => {
+  const call = (args: readonly string[], ctx: Ctx, timeoutMs?: number): unknown => {
     const runner = found()
     if (runner === undefined) throw new Error('the orca CLI was not found')
-    const r = runner.run([...args, '--json'], { cwd: ctx.cwd, env: options.env })
-    const reason = (): string => failureText(r) || r.error || `exit ${r.exitCode}`
-    if (r.exitCode !== 0) throw new Error(`orca ${args.join(' ')} failed: ${reason()}`)
+    const r = runner.run([...args, '--json'], {
+      cwd: ctx.cwd,
+      env: options.env,
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    })
+    if (r.exitCode !== 0) throw new Error(`orca ${args.join(' ')} failed: ${failureReason(r)}`)
     let body: unknown
     try {
       body = JSON.parse(r.stdout)
@@ -166,9 +179,9 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
   /** The records seen at `prepare`, kept for `deleted`, since Orca may list less once git has removed the directory. */
   const prepared = new Map<string, OrcaRecord>()
 
-  const recordFor = (c: Candidate, all: readonly OrcaRecord[]): OrcaRecord | undefined => {
-    const real = canon(c.path)
-    return all.find((r) => !r.main && canon(r.path) === real)
+  const recordFor = (c: PathCandidate, all: readonly OrcaRecord[]): OrcaRecord | undefined => {
+    const real = realOr(c.path)
+    return all.find((r) => !r.main && realOr(r.path) === real)
   }
 
   /** Asks Orca to forget `r`. `worktree rm` deletes the directory too, so it is never asked of one that exists. */
@@ -177,35 +190,24 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
     call(['worktree', 'rm', '--worktree', `id:${r.id}`, '--force'], ctx)
   }
 
-  const own = (
-    c: Candidate,
-    level: Objection['level'],
-    code: string,
-    reason: string,
-  ): Objection => ({
-    by: ORCA_PLUGIN,
-    candidate: c.id,
-    level,
-    code,
-    reason,
-  })
+  const own = objector(ORCA_PLUGIN)
 
-  return {
+  return builtIn({
     name: ORCA_PLUGIN,
     detect(ctx) {
       down = undefined
       if (found() === undefined) return false
       let status: unknown
       try {
-        status = call(['status'], ctx)
+        status = call(['status'], ctx, ORCA_STATUS_LIMIT_MS)
       } catch (err) {
-        const why = err instanceof Error ? err.message : String(err)
-        down = `Orca's status could not be read (${why})`
-        return true
+        down = `Orca's status could not be read (${errorText(err)})`
+        return { active: true, note: down }
       }
       const runtime = isObject(status) && isObject(status.runtime) ? status.runtime : {}
-      if (runtime.reachable !== true) down = 'Orca is installed but not running'
-      return true
+      if (runtime.reachable === true) return true
+      down = 'Orca is installed but not running'
+      return { active: true, note: down }
     },
     scope(ctx) {
       if (down !== undefined || options.repos === false) return []
@@ -224,7 +226,8 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
         .map((r): Candidate => ({
           id: `orca-record:${r.path}`,
           kind: 'orca-record',
-          path: r.path,
+          ref: r.id,
+          at: r.path,
           owner: ORCA_PLUGIN,
           why: `Orca lists ${r.name}, whose directory is gone`,
           held: true,
@@ -253,7 +256,7 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
         seen = records(ctx)
       } catch (err) {
         // A worktree might be Orca's and cannot be told; none is taken meanwhile.
-        const why = err instanceof Error ? err.message : String(err)
+        const why = errorText(err)
         return worktrees.map((c) => own(c, 'refuse', 'orca-unreachable', why))
       }
       return worktrees.flatMap((c): Objection[] => {
@@ -302,11 +305,12 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
       if (r.terminals > 0) call(['terminal', 'close', '--worktree', `id:${r.id}`, '--all'], ctx)
     },
     delete(c, ctx) {
-      const orcaId = (c.evidence as { orcaId: string }).orcaId
+      if (c.ref === undefined || c.at === undefined)
+        throw new Error(`${c.id} is not an Orca record`)
       // `git` may already have had Orca forget a prunable worktree of the same path.
-      if (!records(ctx).some((r) => r.id === orcaId)) return `Orca no longer lists ${c.path}`
-      forget({ id: orcaId, path: c.path }, ctx)
-      return `orca worktree rm forgot ${orcaId}`
+      if (!records(ctx).some((r) => r.id === c.ref)) return `Orca no longer lists ${c.at}`
+      forget({ id: c.ref, path: c.at }, ctx)
+      return `orca worktree rm forgot ${c.ref}`
     },
     deleted(c, ctx) {
       if (!isGitWorktree(c)) return
@@ -314,5 +318,18 @@ export function orcaPlugin(options: OrcaOptions = {}): Plugin {
       prepared.delete(c.id)
       if (r !== undefined) forget(r, ctx)
     },
-  }
+  })
 }
+
+/** The `orca` plugin as the command line builds it. Settings: `repos`. */
+export const orcaDefinition = definePlugin({
+  name: ORCA_PLUGIN,
+  api: PLUGIN_API,
+  settings: z.strictObject({
+    repos: z
+      .boolean()
+      .default(true)
+      .describe('Sweep the repositories `orca repo list` names, as if they were in `targets`.'),
+  }),
+  create: ({ settings, env }) => orcaPlugin({ repos: settings.repos, env }),
+})

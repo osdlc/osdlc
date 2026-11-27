@@ -6,7 +6,8 @@
  * packages and the catalog rule.
  *
  *   - `exports` has no `bun` condition. Every entry is `types` and `default`,
- *     both under dist/, except a stylesheet (`./X.css`), which is a plain path.
+ *     both under dist/, except a stylesheet (`./X.css`) and a JSON Schema
+ *     (`./schemas/X.json`), which are plain paths.
  *   - The tarball ships no TypeScript source. A hand-written `.d.ts` is fine.
  *   - The tarball ships no source maps: they would point at the unshipped source.
  *   - No script invokes bun, and `@types/bun` is not a dependency.
@@ -634,4 +635,47 @@ export function stylesheetProblems(exportsField: unknown): string[] {
   return stylesheetKeys(exportsField)
     .filter((k) => !good.has(k))
     .map((k) => `exports["${k}"] must be a "./dist/<name>.css" path`)
+}
+
+const SCHEMA_PATH = /^\.\/schemas\/[^/*]+\.json$/
+
+/** Every string in an `exports` target: the target itself, or each one under its conditions. */
+const targetPaths = (target: unknown): string[] =>
+  typeof target === 'string'
+    ? [target]
+    : target !== null && typeof target === 'object'
+      ? Object.values(target).flatMap(targetPaths)
+      : []
+
+/** What is wrong with the package's JSON Schemas. A schema export is any key
+ * or target under `./schemas/`, and it must be the plain
+ * `"./schemas/<name>.json": "./schemas/<name>.json"`. Every file the tarball
+ * ships under `schemas/` must be a `<name>.json` with that export, and every
+ * such export must name a file the tarball ships. */
+export function schemaProblems(exportsField: unknown, packedFiles: string[]): string[] {
+  const problems: string[] = []
+  const good = new Set<string>()
+  if (exportsField !== null && typeof exportsField === 'object') {
+    for (const [key, target] of Object.entries(exportsField)) {
+      const underSchemas = [key, ...targetPaths(target)].some((p) => p.startsWith('./schemas/'))
+      if (!underSchemas) continue
+      if (SCHEMA_PATH.test(key) && target === key) good.add(key.slice(2))
+      else problems.push(`exports["${key}"] must be "./schemas/<name>.json", aimed at itself`)
+    }
+  }
+  for (const f of packedFiles.filter((f) => f.startsWith('schemas/'))) {
+    if (!SCHEMA_PATH.test(`./${f}`)) {
+      problems.push(`the tarball ships ${f}; schemas/ holds only <name>.json files`)
+    } else if (!good.has(f)) {
+      problems.push(`the tarball ships ${f} with no export; add "./${f}": "./${f}"`)
+    }
+  }
+  for (const f of good) {
+    if (!packedFiles.includes(f)) {
+      problems.push(
+        `exports["./${f}"] names a file the tarball does not ship; list schemas/ in "files"`,
+      )
+    }
+  }
+  return problems
 }
