@@ -37,7 +37,7 @@ import {
   type Row,
 } from './helpers.ts'
 import { present, type Kit } from './kit.ts'
-import { PLUGIN_API, definePlugin, type Ctx, type Plugin } from './types.ts'
+import { PLUGIN_API, builtIn, definePlugin, type Ctx, type Plugin } from './types.ts'
 
 export const AGENT_HISTORY_PLUGIN = 'agent-history'
 
@@ -418,7 +418,7 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
     return { sessions, mounts: mountPoints(), ctx }
   }
 
-  return {
+  return builtIn({
     name: AGENT_HISTORY_PLUGIN,
     limits: { discover: DISCOVER_LIMIT_MS },
     // `projects` may be a link, such as to a synced folder; the folders in it may not.
@@ -461,7 +461,7 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
       }
       return kit.remove(c.path, ctx)
     },
-  }
+  })
 }
 
 /** The `agent-history` plugin as the command line builds it. */

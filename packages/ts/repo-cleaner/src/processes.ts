@@ -179,7 +179,7 @@ function killProbe(pid: number): boolean | undefined {
  * instant, so the repeated hour of a DST fall-back cannot read as two; `LC_ALL=C`
  * keeps the month and day names English.
  */
-const PS_ENV = { TZ: 'UTC', LC_ALL: 'C' } as const
+export const PS_ENV = { TZ: 'UTC', LC_ALL: 'C' } as const
 
 /** What Linux appends to the working directory of a process whose directory was removed. */
 const DELETED = ' (deleted)'

@@ -102,7 +102,6 @@ function fixture(): Fixture {
     plugin: (probe = idle, env = t.env) =>
       agentHistoryDefinition.create({
         settings: {},
-        only: [],
         env,
         kit: pluginKit(AGENT_HISTORY_PLUGIN, { probe, env }),
       }),
@@ -481,7 +480,6 @@ describe('discover', () => {
     cleanups.push(t.cleanup)
     const plugin = agentHistoryDefinition.create({
       settings: {},
-      only: [],
       env: t.env,
       kit: pluginKit(AGENT_HISTORY_PLUGIN, { probe: idle }),
     })
