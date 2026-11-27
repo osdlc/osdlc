@@ -179,7 +179,7 @@ function killProbe(pid: number): boolean | undefined {
  * instant, so the repeated hour of a DST fall-back cannot read as two; `LC_ALL=C`
  * keeps the month and day names English.
  */
-const PS_ENV = { TZ: 'UTC', LC_ALL: 'C' } as const
+export const PS_ENV = { TZ: 'UTC', LC_ALL: 'C' } as const
 
 /** True when the command ran and reported an exit status. */
 const answered = (r: CommandResult): boolean => r.neverExited !== true

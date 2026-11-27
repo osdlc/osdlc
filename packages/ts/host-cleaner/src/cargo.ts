@@ -27,9 +27,12 @@ import {
 } from './artifacts.ts'
 import { hoursText } from './helpers.ts'
 import { idleHoursSetting, present, type Kit } from './kit.ts'
-import { PLUGIN_API, definePlugin, type Plugin } from './types.ts'
+import { PLUGIN_API, builtIn, definePlugin, type Plugin } from './types.ts'
 
 export const CARGO_PLUGIN = 'cargo'
+
+/** The folder the plugin cleans, and the file that detects it. */
+export const CARGO_PROJECT = { dir: 'target', marker: 'Cargo.toml' } as const
 
 /**
  * Whether incremental builds are off for `checkout`: `CARGO_INCREMENTAL`, then
@@ -69,9 +72,9 @@ const profileDirs = (target: string): string[] =>
 
 async function rowsOrThrow(env: Env, checkout: Checkout): Promise<Row[]> {
   const { kit, idleHours: threshold } = env
-  const target = join(checkout.path, 'target')
+  const target = join(checkout.path, CARGO_PROJECT.dir)
   if (!present(target)) return []
-  const safeTarget = inside(checkout.path, 'target')
+  const safeTarget = inside(checkout.path, CARGO_PROJECT.dir)
   if (safeTarget === null) return [refusedRow(kit, 'cargo-target', target, checkout.path)]
   if (!existsSync(join(safeTarget, 'CACHEDIR.TAG'))) return []
 
@@ -126,14 +129,16 @@ async function rowsOrThrow(env: Env, checkout: Checkout): Promise<Row[]> {
 
 /** The `cargo` plugin on `kit`, or on a kit built from `opts`. Idle `target/` directories, and `incremental` directories where incremental builds are off. Settings: `idleHours`. */
 export function cargoPlugin(opts: ArtifactOptions = {}, kit?: Kit): Plugin {
-  return artifactPlugin(
-    CARGO_PLUGIN,
-    opts,
-    (env) =>
-      env.kit.onPath('cargo') ||
-      checkoutsOf(env).some((c) => existsSync(join(c.path, 'Cargo.toml'))),
-    rowsOrThrow,
-    kit,
+  return builtIn(
+    artifactPlugin(
+      CARGO_PLUGIN,
+      opts,
+      (env) =>
+        env.kit.onPath('cargo') ||
+        checkoutsOf(env).some((c) => existsSync(join(c.path, CARGO_PROJECT.marker))),
+      rowsOrThrow,
+      kit,
+    ),
   )
 }
 

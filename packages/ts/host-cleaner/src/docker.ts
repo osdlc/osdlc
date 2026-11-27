@@ -19,7 +19,14 @@ import { z } from 'zod'
 import { errorText, failureReason, isObject, objector, str } from './helpers.ts'
 import { pluginKit, type Kit, type KitOptions, type KitRunResult } from './kit.ts'
 import { DELETE_LIMIT_MS } from './run.ts'
-import { PLUGIN_API, definePlugin, type Candidate, type Ctx, type Plugin } from './types.ts'
+import {
+  PLUGIN_API,
+  builtIn,
+  definePlugin,
+  type Candidate,
+  type Ctx,
+  type Plugin,
+} from './types.ts'
 
 export const DOCKER_PLUGIN = 'docker'
 
@@ -336,7 +343,7 @@ export function dockerPlugin(
   /** Counts `discover` calls, so one the core abandoned cannot set `unlisted` after a later one. */
   let discoveries = 0
 
-  return {
+  return builtIn({
     name: DOCKER_PLUGIN,
     // `delete` reads `builder du` before the prune gets a full delete limit of its own.
     limits: { discover: DISCOVER_LIMIT_MS, delete: DELETE_LIMIT_MS + DU_LIMIT_MS },
@@ -420,7 +427,7 @@ export function dockerPlugin(
       }
       throw new Error(`docker: ${c.id} is not a Docker volume, image or build cache`)
     },
-  }
+  })
 }
 
 /** The `docker` plugin as the command line builds it. Settings: `keepVolumes`. */

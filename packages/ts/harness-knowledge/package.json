@@ -67,7 +67,7 @@
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
-    "ajv": "^8.20.0",
+    "ajv": "catalog:",
     "harness-reference": "workspace:^",
     "oxlint": "catalog:",
     "prettier": "catalog:",

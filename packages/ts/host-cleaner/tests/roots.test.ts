@@ -368,7 +368,7 @@ describe('a plugin with no roots is held to the targets', () => {
         settings: z.strictObject({}),
         create: () => ({ name: 'cache', detect: () => true }),
       })
-      await survey([def.create({ settings: {}, only: [], env: {}, kit })], run)
+      await survey([def.create({ settings: {}, env: {}, kit })], run)
       renameSync(linked, `${linked}-moved`)
       symlinkSync(thesis, linked)
       for (const path of [linked, join(linked, 'sub'), join(thesis, 'sub')]) {
@@ -531,7 +531,7 @@ describe('a root declared { path, self: true }', () => {
         delete: (c) => kit.remove(c.path!),
       }),
     })
-    return def.create({ settings: {}, only: [], env: {}, kit: pluginKit('store') })
+    return def.create({ settings: {}, env: {}, kit: pluginKit('store') })
   }
 
   /** A home folder of its own, as `HOME`, with `.npm/_cacache/blob` in it. */
