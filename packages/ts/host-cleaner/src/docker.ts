@@ -408,8 +408,10 @@ export function dockerPlugin(
           { tolerate: onlyGone },
         )
         if (!was.ok) return `already gone: image ${c.ref}`
-        const tags: unknown = JSON.parse(was.stdout.trim() || 'null')
-        if (Array.isArray(tags) && tags.length > 0) {
+        const listed: unknown = JSON.parse(was.stdout.trim() || 'null')
+        // Older daemons list a dangling image's missing tag as `<none>:<none>`.
+        const tags = Array.isArray(listed) ? listed.filter((t) => t !== '<none>:<none>') : []
+        if (tags.length > 0) {
           throw new Error(`changed: image ${c.ref} is tagged ${tags.join(', ')} since the plan`)
         }
         const r = await docker(['image', 'rm', '--', c.ref], ctx, { tolerate: onlyGone })

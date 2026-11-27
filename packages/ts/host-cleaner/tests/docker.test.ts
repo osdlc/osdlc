@@ -651,10 +651,12 @@ describe('the re-check and the delete', () => {
       `changed: image ${OLD} is tagged app:latest since the plan`,
     )
     expect(tagged.ran().some((r) => r.startsWith('image rm'))).toBe(false)
-    const plain = fakeDocker()
-    expect(await plain.plugin.delete!(c, fakeContext())).toBe(
-      `docker image rm removed image ${OLD}`,
-    )
+    for (const tags of [[], ['<none>:<none>']]) {
+      const plain = fakeDocker({ tagged: { [OLD]: tags } })
+      expect(await plain.plugin.delete!(c, fakeContext())).toBe(
+        `docker image rm removed image ${OLD}`,
+      )
+    }
   })
 
   test('a build cache grown past the plan is not pruned; the same or less is', async () => {
