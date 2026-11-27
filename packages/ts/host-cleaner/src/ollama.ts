@@ -131,11 +131,6 @@ export function sizeBound(text: string): { bytes: number; text: string } | null 
   return { bytes: Math.round(shown * UNITS[unit]!), text: `${shown} ${unit}` }
 }
 
-/** The most bytes SIZE text can mean; null for anything else. See {@link sizeBound}. */
-export function parseBytes(text: string): number | null {
-  return sizeBound(text)?.bytes ?? null
-}
-
 /** The models in `ollama list`'s output. Throws when it is not the table ollama prints. */
 export function parseList(stdout: string): OllamaModel[] {
   const { at, rows } = table(stdout, ['NAME', 'ID', 'SIZE', 'MODIFIED'])
@@ -147,7 +142,7 @@ export function parseList(stdout: string): OllamaModel[] {
       name,
       id,
       size: sizeText,
-      bytes: parseBytes(sizeText),
+      bytes: sizeBound(sizeText)?.bytes ?? null,
       modified: row.slice(modified).trim(),
     }
   })

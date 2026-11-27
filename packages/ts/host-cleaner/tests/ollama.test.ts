@@ -23,7 +23,6 @@ import {
 import {
   isLocal,
   leastHours,
-  parseBytes,
   parseList,
   parsePs,
   pingUrl,
@@ -157,13 +156,13 @@ describe('parsing', () => {
 
   test('sizes in powers of 1000, read as the most the text can mean', () => {
     // HumanBytes cuts 10 and more to a whole number, and rounds less to a tenth unless it is whole.
-    expect(parseBytes('849 MB')).toBe(850_000_000)
+    expect(sizeBound('849 MB')?.bytes).toBe(850_000_000)
     expect(sizeBound('19 GB')).toEqual({ bytes: 20_000_000_000, text: '20 GB' })
     expect(sizeBound('3.9 GB')).toEqual({ bytes: 3_950_000_000, text: '3.95 GB' })
     expect(sizeBound('4 GB')).toEqual({ bytes: 4_000_000_000, text: '4 GB' })
-    expect(parseBytes('512 B')).toBe(512)
-    expect(parseBytes('-')).toBeNull()
-    expect(parseBytes('3.9GiB')).toBeNull()
+    expect(sizeBound('512 B')?.bytes).toBe(512)
+    expect(sizeBound('-')).toBeNull()
+    expect(sizeBound('3.9GiB')).toBeNull()
   })
 
   test('OLLAMA_HOST read as ollama reads it, and whether it is this machine', () => {
