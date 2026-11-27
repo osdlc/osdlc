@@ -21,7 +21,7 @@ import {
   type FlagSpec,
   type FlagValues,
 } from '@osdlc/cli-tool'
-import type { Kind } from '@osdlc/repo-cleaner'
+import { mayContribute, type ArchiveOptions, type Kind } from '@osdlc/repo-cleaner'
 import { stripControls } from '@osdlc/ux'
 
 import { expandHome, ignorePaths } from './ignore.ts'
@@ -229,6 +229,16 @@ const cleanCli = () =>
         'leave these candidates alone: an id, a path, a branch name (its worktree too) or a glob; repeatable',
       ),
       allow: idList('code', 'accept a protest by its code; repeatable'),
+      archive: {
+        kind: 'boolean',
+        help:
+          'push unlanded work to an archive branch on the remote before deleting it; ' +
+          'abandon-unmerged and discard-changes still need --allow by name',
+      },
+      archiveExclude: idList(
+        'glob',
+        'with --archive, leave files matching this glob out of a worktree snapshot; repeatable',
+      ),
       plan: {
         kind: 'string',
         valueName: 'file',
@@ -399,15 +409,33 @@ const wanted = (v: SweepValues): string[] | undefined =>
 const unknownPlugins = (config: Config, known: (name: string) => boolean): string[] =>
   Object.keys(config.plugins).filter((n) => !known(n))
 
-/** The plugins this run uses: the shipped ones built from the config, or `deps.plugins`, then chosen by flag. */
-function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliContext): Plugin[] {
+/**
+ * The plugins this run uses: the shipped ones built from the config, or
+ * `deps.plugins`, then chosen by flag.
+ *
+ * @param archive - `clean --archive`'s options, passed to the shipped git plugin.
+ * @throws BadInput when the config names an unknown plugin.
+ * @throws UnknownPlugin when `--plugin` or `--skip-plugin` names one.
+ */
+function pluginsFor(
+  v: SweepValues,
+  config: Config,
+  deps: MainDeps,
+  ctx: CliContext,
+  archive?: ArchiveOptions,
+): Plugin[] {
   // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
   const all =
     deps.plugins ??
     Object.entries(FACTORIES).map(([name, make]) =>
-      make({ settings: settingsOf(name, config.plugins[name] ?? {}, config), only, env: ctx.env }),
+      make({
+        settings: settingsOf(name, config.plugins[name] ?? {}, config),
+        only,
+        env: ctx.env,
+        archive,
+      }),
     )
   const unused = unknownPlugins(config, (n) => all.some((p) => p.name === n))
   if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
@@ -656,6 +684,12 @@ function cleanConflict(v: CleanValues, targets: readonly string[]): string | nul
   if (v.plan === '-' && !v.yes && !v.dryRun) {
     return '--plan - reads the plan from stdin, so nothing can ask; pass --yes or --dry-run'
   }
+  if (!v.archive && v.archiveExclude.length > 0) {
+    return '--archive-exclude has no effect without --archive'
+  }
+  if (v.archiveExclude.length > 0 && v.branches && !v.worktrees) {
+    return '--archive-exclude leaves files out of a worktree snapshot, and --branches cleans no worktree'
+  }
   if (v.yes && v.dryRun)
     return '--yes and --dry-run contradict: one deletes without asking, the other deletes nothing'
   if (v.receipt !== undefined && v.dryRun)
@@ -700,12 +734,37 @@ function chooseCandidates(plan: Plan, preview: Decision, deps: MainDeps): Plan |
   return { ...plan, select: ticked.map((i) => shown[i]!.id), pick: [], allow }
 }
 
-/** What a clean would do, as text: each candidate to run in order, then each one dropped and why. */
-function renderPreview(d: Decision): string {
+/**
+ * The ids in `d.run` whose unlanded work `clean --archive` pushes first: the
+ * git plugin's candidates that `mayContribute`, judged by the risks it protests.
+ */
+function archivedIds(d: Decision, objections: readonly Objection[]): string[] {
+  const risksOf = (id: string): string[] =>
+    objections
+      .filter((o) => o.by === 'git' && o.level === 'protest' && o.candidate === id)
+      .map((o) => o.code)
+  return d.run
+    .filter(
+      (c) =>
+        c.owner === 'git' &&
+        mayContribute({ kind: c.kind, risks: risksOf(c.id), evidence: c.evidence }),
+    )
+    .map((c) => c.id)
+}
+
+/**
+ * What a clean would do, as text: each candidate to run in order, then each one
+ * dropped and why, and which of them have their unlanded work archived first.
+ */
+function renderPreview(d: Decision, archived: readonly string[]): string {
   const lines: string[] = []
   for (const c of d.run) lines.push(`  delete  ${c.id}`, `          ${c.why}`)
   for (const x of d.dropped) lines.push(`  skip    ${x.id}`, `          ${x.reason}: ${x.detail}`)
-  return block(lines) + `would delete: ${d.run.length} item(s)\n`
+  const push =
+    archived.length > 0
+      ? `archive: unlanded work of ${archived.length} item(s) is pushed to its repository's remote before it is deleted\n`
+      : ''
+  return block(lines) + push + `would delete: ${d.run.length} item(s)\n`
 }
 
 function renderReceipt(r: Receipt, path: string): string {
@@ -715,6 +774,7 @@ function renderReceipt(r: Receipt, path: string): string {
       `  ${s.result === 'ok' ? 'done' : s.result.toUpperCase().padEnd(7)} ${s.id}`,
       `          ${s.delete ?? s.error ?? ''}`,
     )
+    for (const p of s.prepared ?? []) lines.push(`          ${p}`)
     for (const n of s.notified)
       if (n.error !== null) lines.push(`          ${n.plugin}: ${n.error}`)
   }
@@ -751,7 +811,12 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let plugins: Plugin[]
   let cctx: Ctx
   let preview: Decision
+  let objections: readonly Objection[]
   try {
+    const archive = v.archive ? { exclude: v.archiveExclude } : undefined
+    if (archive !== undefined && deps.plugins !== undefined) {
+      throw new BadInput('--archive needs the shipped git plugin; the given plugins cannot archive')
+    }
     dirs = resolveDirs(ctx)
     const { file, fileExists, config, warnings, unread } = loadConfig(v, ctx, dirs)
     // Its ignore list would not apply: a delete on the defaults could take what it kept.
@@ -761,7 +826,10 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
       )
     }
     writeWarnings(ctx, name, warnings)
-    plugins = pluginsFor(v, config, deps, ctx)
+    plugins = pluginsFor(v, config, deps, ctx, archive)
+    if (archive !== undefined && !plugins.some((p) => p.name === 'git')) {
+      throw new BadInput('--archive has no effect: this run does not use the git plugin')
+    }
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
       const s = survey(plugins, cctx)
@@ -778,6 +846,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
       source = '(swept)'
       // Swept a moment ago: `clean` checks again before it deletes.
       preview = decidePlan(plan)
+      objections = plan.objections
     } else {
       if (v.plan === '-') {
         plan = parsePlan((deps.readStdin ?? readAllStdin)(), 'stdin')
@@ -795,6 +864,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
       const checked = recheck(plan, plugins, cctx)
       writeWarnings(ctx, name, checked.survey.warnings)
       preview = checked.decision
+      objections = checked.survey.objections
     }
   } catch (err) {
     return refusal(ctx, name, err)
@@ -809,18 +879,21 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
 
   const count = preview.run.length
   const json = v.format === 'json'
+  const archived = v.archive ? archivedIds(preview, objections) : []
   if (v.dryRun || count === 0) {
-    ctx.io.stdout(
-      json
-        ? `${JSON.stringify({ dryRun: v.dryRun, run: preview.run.map((c) => c.id), dropped: preview.dropped }, null, 2)}\n`
-        : renderPreview(preview),
-    )
+    const shown = {
+      dryRun: v.dryRun,
+      run: preview.run.map((c) => c.id),
+      ...(v.archive ? { archive: archived } : {}),
+      dropped: preview.dropped,
+    }
+    ctx.io.stdout(json ? `${JSON.stringify(shown, null, 2)}\n` : renderPreview(preview, archived))
     return EXIT.ok
   }
   // The receipt and the log need the folders; a dry run writes neither.
   if (dirs === undefined) return refusal(ctx, name, new Error(NO_HOME))
   if (!v.yes) {
-    ;(json ? ctx.io.stderr : ctx.io.stdout)(renderPreview(preview))
+    ;(json ? ctx.io.stderr : ctx.io.stdout)(renderPreview(preview, archived))
     const answer = (deps.confirm ?? terminalConfirm)(
       `Delete ${count} item${count === 1 ? '' : 's'}?`,
     )
