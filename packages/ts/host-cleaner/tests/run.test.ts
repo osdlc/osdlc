@@ -14,6 +14,7 @@ import {
   DISCARD_USER_DATA,
   PLUGIN_API,
   SelectionError,
+  StalePlan,
   clean,
   decide,
   decidePlan,
@@ -939,6 +940,17 @@ describe('re-check', () => {
     expect(r.decision.dropped).toEqual([
       { id: 'a:1', reason: 'gone', detail: 'no plugin proposes it now' },
     ])
+  })
+
+  test('a candidate whose owner is not known throws StalePlan; a known but skipped one is gone', async () => {
+    const p = await planWith(mutable([cand('a:1', 'git')]))
+    const other: Plugin = { ...mutable([]), name: 'cargo' }
+    await expect(recheck(p, [other], ctx)).rejects.toThrow(StalePlan)
+    await expect(recheck(p, [other], ctx)).rejects.toThrow('no plugin named git')
+    const gone = [{ id: 'a:1', reason: 'gone', detail: 'no plugin proposes it now' }]
+    expect((await recheck(p, [other], ctx, ['git', 'cargo'])).decision.dropped).toEqual(gone)
+    await expect(clean(p, [other], ctx)).rejects.toThrow(StalePlan)
+    expect((await clean(p, [other], ctx, { known: ['git', 'cargo'] })).dropped).toEqual(gone)
   })
 
   test('blocked: a refusal appeared since the plan', async () => {

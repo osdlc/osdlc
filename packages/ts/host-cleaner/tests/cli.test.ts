@@ -12,16 +12,16 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { tmpdir, userInfo } from 'node:os'
+import { dirname, join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
 import { fakeNeverExited, fakeRunner } from '@osdlc/command-seam/testing'
 import { Git } from '@osdlc/typed-git'
-import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
+import { IDENTITY, makeBareAndWorker, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, tildeId, untildeId, untildeSpare, type MainDeps } from '../src/cli.ts'
-import { hostDirs } from '../src/config.ts'
+import { configFile, hostDirs, unreadNativeConfig } from '../src/config.ts'
 import { PLAN_VERSION, parsePlan } from '../src/plan.ts'
 import {
   BUILT_IN_PLUGINS,
@@ -121,9 +121,11 @@ function tempDir(): string {
   return dir
 }
 
-const sh = (cwd: string, args: string[]): void => {
-  new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args)
-}
+/** Runs git in `cwd`, throwing on failure; returns its trimmed stdout. */
+const git = (cwd: string, args: string[]): string =>
+  new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args).stdout.trim()
+
+const sh = (cwd: string, args: string[]): void => void git(cwd, args)
 
 /** A repository with a merged branch and an unmerged one. */
 function repo(): string {
@@ -136,6 +138,24 @@ function repo(): string {
   sh(dir, ['checkout', '-q', 'main'])
   return dir
 }
+
+/** A repository whose `main` is pushed to a bare remote, plus an unmerged branch `topic`. */
+function pushedRepo(): { dir: string; bare: string } {
+  const pair = makeBareAndWorker({ parent: tempDir() })
+  const dir = pair.worker.dir
+  sh(dir, ['commit', '--allow-empty', '-m', 'initial'])
+  sh(dir, ['push', '-q', '-u', 'origin', 'main'])
+  sh(dir, ['checkout', '-q', '-b', 'topic'])
+  sh(dir, ['commit', '--allow-empty', '-m', 'wip'])
+  sh(dir, ['checkout', '-q', 'main'])
+  return { dir, bare: pair.bare.dir }
+}
+
+/** The archive branches on the remote `bare`. */
+const archives = (bare: string): string[] =>
+  git(bare, ['for-each-ref', '--format=%(refname)', 'refs/heads/archive/'])
+    .split('\n')
+    .filter((l) => l !== '')
 
 function setup(): { home: string; cwd: string; env: Record<string, string> } {
   const home = tempDir()
@@ -177,6 +197,14 @@ async function run(argv: string[], cwd: string, env: Record<string, string>, dep
   const code = await main(args, ctx, { confirm: () => null, ...deps, shippedDescriptors })
   return { code, out: ctx.io.out, err: ctx.io.err }
 }
+
+/** `clean --yes` of `dir`'s unmerged branch `topic`, with `flags` such as `--archive`. */
+const cleanTopic = (dir: string, env: Record<string, string>, ...flags: string[]) =>
+  run(
+    ['clean', ...flags, '--pick', `branch:${dir}:topic`, '--allow', 'abandon-unmerged', '--yes'],
+    dir,
+    env,
+  )
 
 /** A plugin that owns one candidate, `artifact:cache`, and records what it is asked to delete. */
 function fake(
@@ -407,6 +435,110 @@ describe('status', () => {
     const clean = await run(['clean', '--config', config, '--yes'], cwd, env)
     expect(clean.code).toBe(2)
     expect(clean.err).toContain('config names no plugin ghost')
+  })
+
+  test('a config entry for a plugin nobody has is a warning, and the run goes on', async () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { gti: {} } }))
+    const r = await run(['status', '--config', config], cwd, env, { plugins: [fake()] })
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('config names no plugin gti')
+    expect(r.out).toContain('artifact:fake')
+  })
+
+  test('a plan records the config warning; config knows injected plugins', async () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { gti: {}, fake: {} } }))
+    const planFile = join(home, 'plan.json')
+    const plugin = fake()
+    const plugins = [plugin]
+    const planned = await run(['plan', '--config', config, '-o', planFile], cwd, env, { plugins })
+    expect(planned.code).toBe(0)
+    expect(planned.err).toContain(
+      'config names no plugin gti; a descriptor of that name is not loaded',
+    )
+    const said = 'config plugins.gti: no plugin had this name when this plan was made'
+    expect(JSON.parse(readFileSync(planFile, 'utf8')).warnings).toEqual([said])
+    const r = await run(['config', '--config', config], cwd, env, { plugins })
+    // Only gti: the injected fake is known.
+    expect(r.err).toContain('config names no plugin gti;')
+    expect(r.err).not.toMatch(/no plugin[^;\n]*fake/)
+    // Fixed as told, the plan runs, and its receipt does not say clean refused.
+    writeFileSync(config, JSON.stringify({ plugins: { fake: {} } }))
+    const receipt = join(home, 'receipt.json')
+    const argv = ['clean', '--config', config, '--plan', planFile, '--yes', '--receipt', receipt]
+    expect((await run(argv, cwd, env, { plugins })).code).toBe(0)
+    expect(plugin.removed).toEqual(['artifact:fake'])
+    expect(JSON.parse(readFileSync(receipt, 'utf8')).warnings).toEqual([said])
+  })
+
+  test('with the shipped plugins, only an unknown name warns, and --format json carries it', async () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { node: { enabled: false }, gti: {} } }))
+    const r = await run(['status', '--config', config, '--format', 'json'], cwd, env)
+    // 10: the shipped plugins may find nothing in a fresh directory.
+    expect([0, 10]).toContain(r.code)
+    const warnings: string[] = JSON.parse(r.out).warnings
+    expect(warnings).toContain(
+      'config names no plugin gti; a descriptor of that name is not loaded',
+    )
+    expect(warnings.some((w) => /no plugin[^;]*node/.test(w) || w.includes('plugins.node'))).toBe(
+      false,
+    )
+  })
+
+  test('clean refuses a config naming a plugin nobody has, before it deletes anything', async () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { fkae: { enabled: false } } }))
+    const plugin = fake()
+    const planFile = join(home, 'plan.json')
+    const planned = await run(['plan', '--config', config, '-o', planFile], cwd, env, {
+      plugins: [plugin],
+    })
+    expect(planned.code).toBe(0)
+    for (const argv of [
+      ['clean', '--config', config, '--yes'],
+      ['clean', '--config', config, '--plan', planFile, '--yes'],
+      ['clean', '--config', config, '--dry-run'],
+    ]) {
+      const r = await run(argv, cwd, env, { plugins: [plugin] })
+      expect(r.code).toBe(2)
+      expect(r.err).toContain('config names no plugin fkae')
+    }
+    expect(plugin.removed).toEqual([])
+  })
+
+  test('a package key names a package: config warns of one not installed, clean refuses to run without it, and a shipped plugin refuses the key', async () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { podman: { package: '@x/podman' } } }))
+    const r = await run(['config', '--config', config], cwd, env)
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('plugins.podman.package: @x/podman is not installed')
+    const argv = ['clean', '--config', config, '--yes']
+    const refused = await run(argv, cwd, env)
+    expect(refused.code).toBe(2)
+    expect(refused.err).toContain('clean runs only with every plugin it would use')
+    writeFileSync(config, JSON.stringify({ plugins: { git: { package: '@x/git' } } }))
+    expect((await run(['config', '--config', config], cwd, env)).code).toBe(2)
+  })
+
+  test('config shows only the plugins a run would build', async () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { git: { enabled: false } } }))
+    const r = await run(['config', '--config', config], cwd, env, { plugins: [fake()] })
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('config names no plugin git')
+    expect(r.out).not.toContain('plugins.git')
+    const json = await run(['config', '--config', config, '--format', 'json'], cwd, env, {
+      plugins: [fake()],
+    })
+    expect(JSON.parse(json.out).plugins).toEqual({})
   })
 
   test('there are no profiles: --profile is an unknown option and a profiles key is refused', async () => {
@@ -972,6 +1104,7 @@ describe('plugin settings', () => {
     })
     const text = await run(['config', '--config', file], cwd, env)
     expect(text.code).toBe(0)
+    expect(text.out).toContain(`file: ${file}\n`)
     expect(text.out).toContain('targets: ~/dev')
     expect(text.out).toMatch(/plugins\.cargo\n {2}enabled = true {2}\(default\)/)
     expect(text.out).toMatch(/idleHours = 48 {2}\(config\)/)
@@ -991,6 +1124,7 @@ describe('plugin settings', () => {
     const r = await run(['config', '--config', ghost.file], ghost.cwd, ghost.env)
     expect(r.code).toBe(0)
     expect(r.err).toContain('config names no plugin ghost')
+    expect(r.out).toContain('plugins.git')
   })
 })
 
@@ -1370,7 +1504,9 @@ candidates:
     writeFileSync(join(h.shipped, 'mine.yaml'), store('.cache/mine'))
     const file = join(h.home, 'config.json')
     writeFileSync(file, JSON.stringify({}))
-    const env = { ...h.env, HOST_CLEANER_ROOT: 'relative' }
+    // No home to place the folders in: a relative HOST_CLEANER_ROOT is a usage error now.
+    const placing = /^(HOME|USERPROFILE|XDG_\w+|HOST_CLEANER_\w+)$/
+    const env = Object.fromEntries(Object.entries(h.env).filter(([name]) => !placing.test(name)))
     const deps = { shippedDescriptors: h.shipped }
     for (const argv of [['status', '--plugin', 'git'], ['config']]) {
       const r = await run([...argv, '--config', file], h.cwd, env, deps)
@@ -1759,6 +1895,342 @@ describe('packages', () => {
   })
 })
 
+describe('folders', () => {
+  /** `hostDirs` with `/` separators, so the expectations hold on any host. */
+  const posixDirs = (...args: Parameters<typeof hostDirs>): Record<string, string> =>
+    Object.fromEntries(
+      Object.entries(hostDirs(...args)).map(([k, p]) => [k, p.replaceAll('\\', '/')]),
+    )
+
+  /** A home, a directory and a `--config` file, on a machine `main` takes for a Mac. */
+  const macHome = (): { home: string; cwd: string; file: string } => {
+    const real = Object.getOwnPropertyDescriptor(process, 'platform')!
+    cleanups.push(() => Object.defineProperty(process, 'platform', real))
+    Object.defineProperty(process, 'platform', { ...real, value: 'darwin' })
+    const home = tempDir()
+    const file = join(home, 'config.json')
+    writeFileSync(file, '{}')
+    return { home, cwd: tempDir(), file }
+  }
+
+  test('macOS uses the xdg folders, as Linux does', () => {
+    for (const platform of ['darwin', 'linux']) {
+      expect(posixDirs({}, { platform, home: '/home/me' })).toEqual({
+        config: '/home/me/.config/host-cleaner',
+        state: '/home/me/.local/state/host-cleaner',
+        logs: '/home/me/.local/state/host-cleaner',
+      })
+    }
+  })
+
+  test('the XDG and HOST_CLEANER variables move them on macOS too', () => {
+    const opts = { platform: 'darwin', home: '/home/me' }
+    expect(posixDirs({ XDG_CONFIG_HOME: '/x/cfg', XDG_STATE_HOME: '/x/st' }, opts)).toEqual({
+      config: '/x/cfg/host-cleaner',
+      state: '/x/st/host-cleaner',
+      logs: '/x/st/host-cleaner',
+    })
+    expect(posixDirs({ HOST_CLEANER_ROOT: '/r' }, opts).config).toBe('/r/config/host-cleaner')
+    expect(posixDirs({ HOST_CLEANER_CONFIG_DIR: '/c' }, opts).config).toBe('/c/host-cleaner')
+  })
+
+  test('config strips control characters from the file path it prints', async () => {
+    const { env, cwd } = setup()
+    const dir = join(cwd, 'a\u001b]0;x\u0007b')
+    const r = await run(['config'], cwd, { ...env, HOST_CLEANER_CONFIG_DIR: dir })
+    expect(r.code).toBe(0)
+    expect(r.out).toMatch(/^file: .*host-cleaner/m)
+    expect(r.out).not.toContain('\u001b')
+    expect(r.out).not.toContain('\u0007')
+  })
+
+  test('config names the default config file and says it is missing', async () => {
+    const { env, cwd } = setup()
+    const file = configFile(hostDirs(env))
+    const r = await run(['config'], cwd, env)
+    expect(r.code).toBe(0)
+    expect(r.out).toContain(`file: ${file}  (not found: defaults)\n`)
+    const json = JSON.parse((await run(['config', '--format', 'json'], cwd, env)).out)
+    expect(json).toMatchObject({ file, fileExists: false })
+  })
+
+  test('HOST_CLEANER_CONVENTION=native gives back the macOS folders', () => {
+    const dirs = posixDirs(
+      { HOST_CLEANER_CONVENTION: 'native' },
+      { platform: 'darwin', home: '/Users/me' },
+    )
+    expect(dirs).toEqual({
+      config: '/Users/me/Library/Application Support/host-cleaner',
+      state: '/Users/me/Library/Application Support/host-cleaner',
+      logs: '/Users/me/Library/Logs/host-cleaner',
+    })
+  })
+
+  test('Windows keeps its own folders under xdg', () => {
+    const env = { APPDATA: 'C:\\Users\\me\\AppData\\Roaming' }
+    const opts = { platform: 'win32', home: 'C:\\Users\\me' }
+    expect(hostDirs(env, opts).config).toBe(
+      hostDirs({ ...env, HOST_CLEANER_CONVENTION: 'native' }, opts).config,
+    )
+    expect(posixDirs(env, opts).config).toBe('C:/Users/me/AppData/Roaming/host-cleaner')
+  })
+
+  /** `unreadNativeConfig` beside the config file `hostDirs` names. */
+  const unread = (
+    env: Record<string, string>,
+    opts: Parameters<typeof hostDirs>[1],
+  ): string | undefined => unreadNativeConfig(env, configFile(hostDirs(env, opts)), opts)
+
+  test('a config left in the macOS folders by 0.3 is named, never read', () => {
+    const home = tempDir()
+    const mac = { platform: 'darwin', home }
+    expect(unread({}, mac)).toBeUndefined()
+    const old = join(home, 'Library', 'Application Support', 'host-cleaner', 'config.json')
+    mkdirSync(dirname(old), { recursive: true })
+    writeFileSync(old, 'not json')
+    expect(unread({}, mac)?.replaceAll('\\', '/')).toBe(old.replaceAll('\\', '/'))
+    // Where the native and xdg folders are the same, there is nothing left behind.
+    expect(unread({ HOST_CLEANER_ROOT: '/r' }, mac)).toBeUndefined()
+    expect(unread({ HOST_CLEANER_CONVENTION: 'native' }, mac)).toBeUndefined()
+    const linuxOld = join(home, '.config', 'host-cleaner', 'config.json')
+    mkdirSync(dirname(linuxOld), { recursive: true })
+    writeFileSync(linuxOld, '{}')
+    expect(unread({}, { platform: 'linux', home })).toBeUndefined()
+  })
+
+  test.skipIf(process.platform === 'win32')(
+    'every command warns about a config left in the macOS folders, and does not read it',
+    async () => {
+      const { home, cwd, file: named } = macHome()
+      const old = join(home, 'Library', 'Application Support', 'host-cleaner', 'config.json')
+      const env = { PATH: process.env.PATH ?? '', HOME: home }
+      const commands = [['config'], ['status', cwd], ['plan', cwd], ['clean', '--dry-run', cwd]]
+      for (const args of commands) {
+        expect((await run(args, cwd, env, { plugins: [fake()] })).err).not.toContain('is not read')
+      }
+      mkdirSync(dirname(old), { recursive: true })
+      writeFileSync(old, 'not json')
+      for (const args of commands) {
+        const r = await run(args, cwd, env, { plugins: [fake()] })
+        expect(r.code, args.join(' ')).toBe(0)
+        const lines = r.err.split('\n').filter((l) => l.includes('is not read'))
+        expect(lines, args.join(' ')).toEqual([
+          `host-cleaner ${args[0]}: ${old} is not read; the config is now ${configFile(hostDirs(env))}`,
+        ])
+        // A config the person named is read whatever the folders hold.
+        const given = await run([...args, '--config', named], cwd, env, { plugins: [fake()] })
+        expect(given.err).not.toContain('is not read')
+      }
+      // As JSON, status reports it with its other warnings.
+      const r = await run(['status', '--format', 'json', cwd], cwd, env, { plugins: [fake()] })
+      expect(r.err).toBe('')
+      expect(JSON.parse(r.out).warnings).toEqual([
+        `${old} is not read; the config is now ${configFile(hostDirs(env))}`,
+      ])
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'with only the config left in the macOS folders, a clean that deletes refuses and names both files',
+    async () => {
+      const { home, cwd, file: named } = macHome()
+      const old = join(home, 'Library', 'Application Support', 'host-cleaner', 'config.json')
+      mkdirSync(dirname(old), { recursive: true })
+      writeFileSync(old, JSON.stringify({ ignore: [cwd] }))
+      const env = { PATH: process.env.PATH ?? '', HOME: home }
+      const file = configFile(hostDirs(env))
+      for (const args of [
+        ['clean', '--yes', cwd],
+        ['clean', '--plan', join(home, 'p.json'), '--yes'],
+      ]) {
+        const plugin = fake()
+        const r = await run(args, cwd, env, { plugins: [plugin] })
+        expect(r.code, args.join(' ')).toBe(2)
+        expect(r.err).toBe(
+          `host-cleaner clean: ${old} is not read, and there is no config at ${file}: move the file there, or pass --config; clean deletes nothing until then\n`,
+        )
+        expect(plugin.removed).toEqual([])
+      }
+      // A config the person named, or one in the new folder, is read and the clean runs.
+      const plugin = fake()
+      expect(
+        (await run(['clean', '--yes', '--config', named, cwd], cwd, env, { plugins: [plugin] }))
+          .code,
+      ).toBe(0)
+      mkdirSync(dirname(file), { recursive: true })
+      writeFileSync(file, '{}')
+      const r = await run(['clean', '--yes', cwd], cwd, env, { plugins: [plugin] })
+      expect(r.code).toBe(0)
+      expect(r.err).toContain(`${old} is not read; the config is now ${file}`)
+      expect(plugin.removed).toEqual(['artifact:fake', 'artifact:fake'])
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'folders placed by XDG_CONFIG_HOME and XDG_STATE_HOME alone need no home',
+    async () => {
+      const { home, cwd } = macHome()
+      const xdg = { XDG_CONFIG_HOME: join(home, 'cfg'), XDG_STATE_HOME: join(home, 'st') }
+      expect(hostDirs(xdg, { platform: 'darwin' }).config).toBe(join(home, 'cfg', 'host-cleaner'))
+      expect(unread(xdg, { platform: 'darwin' })).toBeUndefined()
+      const env = { PATH: process.env.PATH ?? '', ...xdg }
+      for (const args of [['config'], ['status', cwd], ['plan', '-o', '-', cwd]]) {
+        const r = await run(args, cwd, env, { plugins: [fake()] })
+        expect(r.err, args.join(' ')).toBe('')
+        expect(r.code, args.join(' ')).toBe(0)
+      }
+    },
+  )
+
+  test('with process.env and no HOME, the folders are still placed', () => {
+    for (const name of ['HOME', 'XDG_CONFIG_HOME', 'XDG_STATE_HOME', 'HOST_CLEANER_ROOT']) {
+      vi.stubEnv(name, undefined)
+    }
+    for (const key of ['CONFIG', 'STATE', 'LOGS']) vi.stubEnv(`HOST_CLEANER_${key}_DIR`, undefined)
+    // tiered-dirs' own rules apply: in a test process, its temporary test root;
+    // elsewhere, the OS account's home.
+    expect(hostDirs(process.env).config.startsWith(tmpdir())).toBe(true)
+  })
+
+  test('with no home, --config still works and clean exits 1', async () => {
+    const { cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, '{}')
+    const env = { PATH: process.env.PATH ?? '' }
+    for (const args of [
+      ['config', '--config', file],
+      ['status', '--config', file, cwd],
+      ['plan', '--config', file, cwd],
+      ['clean', '--dry-run', '--config', file, cwd],
+    ]) {
+      const r = await run(args, cwd, env, { plugins: [fake()] })
+      expect(r.err, args.join(' ')).toBe('')
+      expect(r.code, args.join(' ')).toBe(0)
+    }
+    const plugin = fake()
+    const r = await run(['clean', '--yes', '--config', file, cwd], cwd, env, { plugins: [plugin] })
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('no home directory')
+    expect(plugin.removed).toEqual([])
+    expect((await run(['config'], cwd, env)).code).toBe(1)
+  })
+
+  test('`~` is the home the folders are built on, and with none a `~` path is refused', async () => {
+    const { cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, JSON.stringify({ ignore: ['~/keep'] }))
+    const path = join(home, 'keep', 'cache')
+    const base = { PATH: process.env.PATH ?? '', HOST_CLEANER_ROOT: home }
+    const clean = async (env: Record<string, string>) => {
+      const plugin = fake('fake')
+      const at: Plugin = {
+        ...plugin,
+        discover: () => [
+          { id: 'artifact:fake', kind: 'artifact', path, owner: 'fake', why: 'idle', evidence: {} },
+        ],
+      }
+      return {
+        ...(await run(['clean', '--yes', '--config', file, cwd], cwd, env, { plugins: [at] })),
+        removed: plugin.removed,
+      }
+    }
+    const kept = await clean({ ...base, HOME: home, USERPROFILE: home })
+    expect(kept.err).toContain('left out 1 candidate(s)')
+    expect(kept.removed).toEqual([])
+    // An empty or relative HOME is no home, as for the folders; `~/keep` is
+    // then refused, not read as `/keep` or `<cwd>/rel/keep`, which cover nothing.
+    const noHome: Array<Record<string, string>> = [
+      { ...base, HOME: '' },
+      { ...base, HOME: 'rel' },
+      base,
+    ]
+    for (const env of noHome) {
+      const r = await clean(env)
+      expect(r.code, JSON.stringify(env['HOME'])).toBe(1)
+      expect(r.err).toContain('cannot expand `~`')
+      expect(r.removed).toEqual([])
+    }
+    // A `~` target is refused the same way, by a command that deletes nothing too.
+    writeFileSync(file, JSON.stringify({ targets: ['~/dev'] }))
+    const r = await run(['status', '--config', file], cwd, base, { plugins: [fake()] })
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('cannot expand `~`')
+  })
+
+  test('with process.env, an empty or relative HOME gives `~` the OS account home', async () => {
+    const { cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, JSON.stringify({ ignore: ['~/keep'] }))
+    for (const value of ['', 'rel']) {
+      vi.stubEnv('HOME', value)
+      vi.stubEnv('USERPROFILE', value)
+      // Only `status`: it deletes nothing, and the only plugin is a fake.
+      const env = process.env as Record<string, string>
+      const r = await run(['status', '--format', 'json', '--config', file, cwd], cwd, env, {
+        plugins: [fake()],
+      })
+      expect(r.code, JSON.stringify(value)).toBe(0)
+      expect(JSON.parse(r.out).ignore).toContain(join(userInfo().homedir, 'keep'))
+    }
+  })
+
+  test('with process.env, an empty or relative HOME refuses a `~` target', async () => {
+    const { cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, JSON.stringify({ targets: ['~/dev'] }))
+    const empty = join(home, 'empty.json')
+    writeFileSync(empty, '{}')
+    for (const value of ['', 'rel']) {
+      vi.stubEnv('HOME', value)
+      vi.stubEnv('USERPROFILE', value)
+      // A target is swept: the OS account's real `~/dev` must not stand in for it.
+      const env = process.env as Record<string, string>
+      for (const argv of [
+        ['--config', file],
+        ['--config', empty, '~/dev'],
+      ]) {
+        const r = await run(['status', ...argv], cwd, env, { plugins: [fake()] })
+        expect(r.code, JSON.stringify([value, argv])).toBe(1)
+        expect(r.err).toContain('cannot expand `~` in a target')
+        expect(r.out).toBe('')
+      }
+    }
+  })
+
+  test('HOST_CLEANER_CONVENTION is trimmed, and empty counts as unset', () => {
+    const opts = { platform: 'darwin', home: '/Users/me' }
+    const native = hostDirs({ HOST_CLEANER_CONVENTION: 'native' }, opts)
+    expect(hostDirs({ HOST_CLEANER_CONVENTION: ' native ' }, opts)).toEqual(native)
+    expect(hostDirs({ HOST_CLEANER_CONVENTION: '' }, opts)).toEqual(hostDirs({}, opts))
+  })
+
+  test('a folder variable that is not absolute is a usage error, `~` included', async () => {
+    const { env, cwd } = setup()
+    for (const dir of ['~/cfg', 'cfg']) {
+      const r = await run(['config'], cwd, { ...env, HOST_CLEANER_CONFIG_DIR: dir })
+      expect(r.code, dir).toBe(2)
+      expect(r.err).toContain('HOST_CLEANER_CONFIG_DIR must be an absolute path')
+    }
+  })
+
+  test('a bad HOST_CLEANER_CONVENTION is a usage error for every command', async () => {
+    const { env, cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, '{}')
+    const bad = { ...env, HOST_CLEANER_CONVENTION: 'Native' }
+    for (const args of [
+      ['clean', '--yes', cwd],
+      ['plan', '--config', file, cwd],
+      ['config', '--config', file],
+      ['status', '--config', file, cwd],
+    ]) {
+      const r = await run(args, cwd, bad)
+      expect(r.code, args.join(' ')).toBe(2)
+      expect(r.err).toContain('HOST_CLEANER_CONVENTION must be')
+    }
+  })
+})
+
 describe('plan and clean', () => {
   /** A plugin that runs degraded, with a note, and one that does not run, with a note. */
   const noted = (): Plugin[] => [
@@ -1879,6 +2351,185 @@ describe('plan and clean', () => {
     expect(r.out).not.toContain(':topic')
   })
 
+  test('--archive pushes an unmerged branch to an archive branch on the remote, then deletes it', async () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    const wip = git(dir, ['rev-parse', 'topic'])
+    const r = await cleanTopic(dir, env, '--archive')
+    expect(r.code).toBe(0)
+    const [archive, ...more] = archives(bare)
+    expect(more).toEqual([])
+    expect(archive).toMatch(/^refs\/heads\/archive\/worker-local-\d{4}-\d{2}-\d{2}$/)
+    // The archive's first parent is the remote main, the second the work it holds.
+    expect(git(bare, ['rev-parse', `${archive}^2`])).toBe(wip)
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).not.toContain('topic')
+    expect(r.out).toContain(`done branch:${dir}:topic`)
+    expect(r.out).toContain(archive)
+  })
+
+  test('without --archive the same clean deletes the branch and pushes nothing', async () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    const r = await cleanTopic(dir, env)
+    expect(r.code).toBe(0)
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).not.toContain('topic')
+    expect(archives(bare)).toEqual([])
+  })
+
+  test('--archive stops the run with exit 11 when the archive push fails, and keeps the branch', async () => {
+    const { env } = setup()
+    const { dir } = pushedRepo()
+    sh(dir, ['remote', 'set-url', 'origin', join(dirname(dir), 'gone.git')])
+    const r = await cleanTopic(dir, env, '--archive')
+    expect(r.code).toBe(11)
+    expect(r.out).toContain('archive failed')
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).toContain('topic')
+  })
+
+  test('a failed archive push leaves every later candidate, in every repository', async () => {
+    const { env } = setup()
+    const { dir } = pushedRepo()
+    sh(dir, ['remote', 'set-url', 'origin', join(dirname(dir), 'gone.git')])
+    // Its remote works, so only a run that went on after the failure would archive and delete its topic.
+    const { dir: other, bare: otherBare } = pushedRepo()
+    // Picks run in the order given: the failing one first.
+    const picks = [`branch:${dir}:topic`, `branch:${other}:topic`]
+    const argv = ['clean', '--archive', ...picks.flatMap((p) => ['--pick', p])]
+    const r = await run([...argv, '--allow', 'abandon-unmerged', '--yes', dir, other], dir, env)
+    expect(r.code).toBe(11)
+    expect(r.out).toContain('archive failed')
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).toContain('topic')
+    expect(git(other, ['branch', '--format=%(refname:short)'])).toContain('topic')
+    expect(archives(otherBare)).toEqual([])
+  })
+
+  test('--archive refuses unlanded work in a repository with no remote, in the preview', async () => {
+    const { env } = setup()
+    const dir = repo()
+    const flags = ['--archive', '--pick', `branch:${dir}:topic`, '--allow', 'abandon-unmerged']
+    const r = await run(['clean', ...flags, '--dry-run'], dir, env)
+    expect(r.code).toBe(0)
+    expect(r.out).toContain(`skip    branch:${dir}:topic`)
+    expect(r.out).toContain('has no remote to push the archive to')
+    expect(r.out).not.toContain('unlanded work of')
+  })
+
+  test('--archive --dry-run says unlanded work would be pushed; without --archive it does not', async () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    const flags = ['--pick', `branch:${dir}:topic`, '--allow', 'abandon-unmerged', '--dry-run']
+    const r = await run(['clean', '--archive', ...flags], dir, env)
+    expect(r.code).toBe(0)
+    expect(r.out).toContain(`delete  branch:${dir}:topic`)
+    expect(r.out).toContain(
+      "archive: unlanded work of 1 item(s) is pushed to its repository's remote",
+    )
+    expect((await run(['clean', ...flags], dir, env)).out).not.toContain('archive:')
+    const json = await run(['clean', '--archive', '--format', 'json', ...flags], dir, env)
+    expect(JSON.parse(json.out).archive).toEqual([`branch:${dir}:topic`])
+    expect(archives(bare)).toEqual([])
+  })
+
+  test('--archive --dry-run with only merged work says nothing is pushed', async () => {
+    const { env } = setup()
+    const { dir } = pushedRepo()
+    sh(dir, ['branch', 'merged-a', 'main'])
+    const flags = ['--archive', '--pick', `branch:${dir}:merged-a`, '--dry-run']
+    const r = await run(['clean', ...flags], dir, env)
+    expect(r.code).toBe(0)
+    expect(r.out).toContain(`delete  branch:${dir}:merged-a`)
+    expect(r.out).not.toContain('archive:')
+    const json = await run(['clean', '--format', 'json', ...flags], dir, env)
+    expect(JSON.parse(json.out).archive).toEqual([])
+  })
+
+  test('--archive --dry-run does not say the work of a worktree whose directory is gone is pushed', async () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    const wt = join(dirname(dir), 'wt-gone')
+    sh(dir, ['worktree', 'add', '-q', '-b', 'gone', wt, 'main'])
+    sh(wt, ['-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', bare, 'sub'])
+    sh(join(wt, 'sub'), ['commit', '--allow-empty', '-m', 'only here'])
+    // Its git dir keeps the submodule's commit, which no archive holds.
+    rmSync(wt, { recursive: true })
+    const flags = ['--pick', `worktree:${wt}`, '--allow', 'abandon-unmerged', '--dry-run']
+    const r = await run(['clean', '--archive', ...flags], dir, env)
+    expect(r.out).toContain(`delete  worktree:${wt}`)
+    expect(r.out).not.toContain('archive:')
+    const json = await run(['clean', '--archive', '--format', 'json', ...flags], dir, env)
+    expect(JSON.parse(json.out).archive).toEqual([])
+  })
+
+  test('--archive pushes one archive per repository a run, and gives the day’s second run the -2 suffix', async () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    sh(dir, ['checkout', '-q', '-b', 'other'])
+    sh(dir, ['commit', '--allow-empty', '-m', 'more wip'])
+    sh(dir, ['checkout', '-q', 'main'])
+    sh(dir, ['checkout', '-q', '-b', 'later'])
+    sh(dir, ['commit', '--allow-empty', '-m', 'later wip'])
+    sh(dir, ['checkout', '-q', 'main'])
+    const tips = ['topic', 'other', 'later'].map((b) => git(dir, ['rev-parse', b]))
+    const cleaned = async (...names: string[]) => {
+      const picks = names.flatMap((n) => ['--pick', `branch:${dir}:${n}`])
+      const argv = ['clean', '--archive', ...picks, '--allow', 'abandon-unmerged', '--yes']
+      return (await run(argv, dir, env)).code
+    }
+    expect(await cleaned('topic', 'other')).toBe(0)
+    expect(archives(bare)).toHaveLength(1)
+    expect(await cleaned('later')).toBe(0)
+    const found = archives(bare).sort()
+    expect(found).toHaveLength(2)
+    expect(found[0]).toMatch(/^refs\/heads\/archive\/worker-local-\d{4}-\d{2}-\d{2}$/)
+    expect(found[1]).toBe(`${found[0]}-2`)
+    const work = found.map((ref) =>
+      git(bare, ['log', '-1', '--format=%P', ref]).split(' ').slice(1),
+    )
+    expect(work).toEqual([tips.slice(0, 2), tips.slice(2)])
+    const left = git(dir, ['branch', '--format=%(refname:short)'])
+    expect(left).not.toContain('topic')
+    expect(left).not.toContain('other')
+  })
+
+  test('--archive applies to a clean from a saved plan', async () => {
+    const { env, home } = setup()
+    const { dir, bare } = pushedRepo()
+    const wip = git(dir, ['rev-parse', 'topic'])
+    const planFile = join(home, 'plan.json')
+    const planned = ['plan', '--pick', `branch:${dir}:topic`, '--allow', 'abandon-unmerged']
+    expect((await run([...planned, '-o', planFile], dir, env)).code).toBe(0)
+    const r = await run(['clean', '--plan', planFile, '--archive', '--yes'], dir, env)
+    expect(r.code).toBe(0)
+    const [archive, ...more] = archives(bare)
+    expect(more).toEqual([])
+    expect(git(bare, ['rev-parse', `${archive}^2`])).toBe(wip)
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).not.toContain('topic')
+  })
+
+  test('--archive-exclude leaves matching files out of a worktree’s snapshot', async () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    const wt = join(dirname(dir), 'wt-dirty')
+    sh(dir, ['worktree', 'add', '-q', '-b', 'dirty', wt, 'main'])
+    writeFileSync(join(wt, 'keep.txt'), 'kept\n')
+    writeFileSync(join(wt, 'notes.log'), 'left out\n')
+    const argv = ['clean', '--archive', '--archive-exclude', '*.log', '--yes']
+    const r = await run(
+      [...argv, '--pick', `worktree:${wt}`, '--allow', 'discard-changes', '--worktrees'],
+      dir,
+      env,
+    )
+    expect(r.code).toBe(0)
+    expect(existsSync(wt)).toBe(false)
+    const [archive] = archives(bare)
+    const files = git(bare, ['ls-tree', '--name-only', `${archive}^2`]).split('\n')
+    expect(files).toContain('keep.txt')
+    expect(files).not.toContain('notes.log')
+    expect(git(bare, ['log', '-1', '--format=%B', archive!])).toContain(
+      'left out (excluded): notes.log',
+    )
+  })
+
   test('a protest is skipped until its code is allowed by name', async () => {
     const { env, cwd } = setup()
     const objections: Objection[] = [
@@ -1961,6 +2612,28 @@ describe('plan and clean', () => {
     expect((await run(['clean', '--plan', f, '--worktrees'], cwd, env)).code).toBe(2)
     expect((await run(['clean', '-i', '--pick', 'x'], cwd, env)).code).toBe(2)
     expect((await run(['clean', '-i', '--plan', '-'], cwd, env)).code).toBe(2)
+    const exclude = await run(['clean', '--archive-exclude', '*.log', '--dry-run'], cwd, env)
+    expect(exclude.code).toBe(2)
+    expect(exclude.err).toContain('--archive-exclude has no effect without --archive')
+    const branchesOnly = ['clean', '--branches', '--archive', '--archive-exclude', '*.log']
+    const noWorktree = await run([...branchesOnly, '--dry-run'], cwd, env)
+    expect(noWorktree.code).toBe(2)
+    expect(noWorktree.err).toContain('--branches cleans no worktree')
+    const noGit = await run(['clean', '--plugin', 'node', '--archive', '--dry-run'], cwd, env)
+    expect(noGit.code).toBe(2)
+    expect(noGit.err).toContain('this run does not use the git plugin')
+    const injected = await run(['clean', '--archive', '--dry-run'], cwd, env, {
+      plugins: [fake('git')],
+    })
+    expect(injected.code).toBe(2)
+    expect(injected.err).toContain('the given plugins cannot archive')
+    // Refused before the plugins are built, so a config naming an unknown one does not hide it.
+    writeFileSync(f, JSON.stringify({ plugins: { nope: {} } }))
+    const beforeConfig = await run(['clean', '--archive', '--config', f, '--dry-run'], cwd, env, {
+      plugins: [fake('git')],
+    })
+    expect(beforeConfig.code).toBe(2)
+    expect(beforeConfig.err).toContain('the given plugins cannot archive')
     const both = await run(['clean', '--pick', 'a:x', '--spare', 'a:x', '--dry-run'], cwd, env, {
       plugins: [fake()],
     })
@@ -2204,6 +2877,75 @@ describe('plan and clean', () => {
   test('-i with no terminal is refused with exit 2', async () => {
     const { env, cwd } = setup()
     expect((await run(['clean', '-i'], cwd, env, { plugins: [fake()] })).code).toBe(2)
+  })
+
+  test('a plan naming a plugin nobody has is refused with exit 2: sweep again', async () => {
+    const { env, cwd, home } = setup()
+    const planFor = (owner: string): string =>
+      JSON.stringify({
+        version: PLAN_VERSION,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        targets: [cwd],
+        targetsGiven: false,
+        select: null,
+        pick: [],
+        spare: [],
+        allow: [],
+        warnings: [],
+        candidates: [
+          {
+            id: `artifact:${owner}`,
+            kind: 'artifact',
+            ref: owner,
+            owner,
+            why: 'idle',
+            evidence: {},
+          },
+        ],
+        objections: [],
+      })
+    // claude-code was a shipped plugin until #1017; a plan saved before then names it.
+    const planFile = join(home, 'plan.json')
+    writeFileSync(planFile, planFor('claude-code'))
+    const r = await run(['clean', '--plan', planFile, '--yes'], cwd, env)
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('claude-code')
+    expect(r.err).toContain('sweep again')
+    const plugin = fake()
+    const stdin = await run(['clean', '--plan', '-', '--yes'], cwd, env, {
+      plugins: [plugin],
+      readStdin: () => planFor('ghost'),
+    })
+    expect(stdin.code).toBe(2)
+    expect(stdin.err).toContain('ghost')
+    expect(plugin.removed).toEqual([])
+    // A plugin that is only skipped is still known: its candidate is dropped as gone, not refused.
+    writeFileSync(planFile, planFor('fake'))
+    const skipped = await run(
+      ['clean', '--plan', planFile, '--yes', '--skip-plugin', 'fake'],
+      cwd,
+      env,
+      {
+        plugins: [plugin, fake('other')],
+      },
+    )
+    expect(skipped.code).toBe(0)
+    expect(skipped.out).toContain('gone')
+  })
+
+  test('a saved plan runs what it can when one of its plugins is only skipped', async () => {
+    const { env, cwd, home } = setup()
+    const planFile = join(home, 'plan.json')
+    const skip = fake('skip')
+    const other = fake('other')
+    const plugins = [skip, other]
+    expect((await run(['plan', '-o', planFile], cwd, env, { plugins })).code).toBe(0)
+    const argv = ['clean', '--plan', planFile, '--yes', '--skip-plugin', 'skip']
+    const r = await run(argv, cwd, env, { plugins })
+    expect(r.code).toBe(0)
+    expect(r.out).toContain('gone')
+    expect(skip.removed).toEqual([])
+    expect(other.removed).toEqual(['artifact:other'])
   })
 
   test('a plan that moved since is dropped as changed', async () => {

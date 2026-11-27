@@ -89,6 +89,8 @@ export const StepSchema = z.object({
   owner: z.string(),
   /** The plugins whose `prepare` ran without failing, in order. */
   preparedBy: z.array(z.string()),
+  /** What a `prepare` reported doing, as `<plugin>: <sentence>`; absent when none did. */
+  prepared: z.array(z.string()).optional(),
   result: z.enum(['ok', 'failed', 'skipped', 'would-run']),
   /** The owner's result sentence; null when the delete did not run. */
   delete: z.string().nullable(),
@@ -149,6 +151,19 @@ export function parsePlan(text: string, source: string): Plan {
 export function readPlan(path: string): Plan {
   return parsePlan(readFileSync(path, 'utf8'), path)
 }
+
+/** The names in `names` that `known` lacks, each once, in order. */
+export function missingFrom(names: Iterable<string>, known: Iterable<string>): string[] {
+  const have = new Set(known)
+  return [...new Set(names)].filter((n) => !have.has(n))
+}
+
+/** The owners of `plan`'s candidates that `known` does not name, each once. */
+export const unknownOwners = (plan: Plan, known: Iterable<string>): string[] =>
+  missingFrom(
+    plan.candidates.map((c) => c.owner),
+    known,
+  )
 
 export function writePlan(path: string, plan: Plan): void {
   writeJsonAtomic(path, plan)

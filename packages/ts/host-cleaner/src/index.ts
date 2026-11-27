@@ -47,6 +47,7 @@ export {
   HookTimeout,
   OUTSIDE_ROOTS,
   SelectionError,
+  StalePlan,
   UNMEASURED,
   checkSelection,
   clean,

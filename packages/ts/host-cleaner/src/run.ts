@@ -15,6 +15,7 @@ import { acceptRoots, boundBy, gitReads, linkedCheckouts, type Bounds } from './
 import {
   CandidateSchema,
   ObjectionSchema,
+  unknownOwners,
   writeReceipt,
   PLAN_VERSION,
   RECEIPT_VERSION,
@@ -753,6 +754,11 @@ export class SelectionError extends Error {
   override name = 'SelectionError'
 }
 
+/** A plan whose candidates belong to a plugin this install does not have. */
+export class StalePlan extends Error {
+  override name = 'StalePlan'
+}
+
 /** A plan of `s`: every candidate and objection, and what was chosen and allowed. */
 export function plan(
   s: Pick<Survey, 'candidates' | 'objections' | 'warnings'>,
@@ -988,12 +994,23 @@ const outgrew = (before: Candidate, c: Candidate): boolean =>
  * moved (repo-cleaner's `sameFingerprint`), that its owner holds now and did not
  * then, or a `capped` one that grew, `changed`. One held then that is held no
  * longer still runs.
+ *
+ * `known` names every plugin this install has, skipped ones too; it defaults
+ * to `plugins`' names. A candidate whose owner `known` lacks throws
+ * {@link StalePlan} instead of being dropped as `gone`.
  */
 export async function recheck(
   p: Plan,
   plugins: readonly Plugin[],
   ctx: RunCtx,
+  known: Iterable<string> = plugins.map((q) => q.name),
 ): Promise<{ decision: Decision; survey: Survey }> {
+  const strangers = unknownOwners(p, known)
+  if (strangers.length > 0) {
+    throw new StalePlan(
+      `no plugin named ${strangers.join(', ')}, which the plan's candidates belong to; sweep again`,
+    )
+  }
   const decided = decidePlan(p)
   const ignore = [...new Set([...(ctx.ignore ?? []), ...p.ignore])]
   const fresh = await survey(plugins, { ...ctx, ignore, allow: p.allow })
@@ -1048,6 +1065,8 @@ export interface CleanOptions {
   receiptPath?: string
   /** What the caller dropped before this re-check, such as the skips a preview showed: the receipt lists them ahead of its own. */
   dropped?: readonly Dropped[]
+  /** Every plugin name this install has, as {@link recheck} takes it. */
+  known?: Iterable<string> | undefined
   now?: () => Date
 }
 
@@ -1083,7 +1102,7 @@ async function cleanBound(
   const head = { version: RECEIPT_VERSION, plan: opts.source ?? '(swept)' } as const
   let checked: Awaited<ReturnType<typeof recheck>>
   try {
-    checked = await recheck(p, plugins, ctx)
+    checked = await recheck(p, plugins, ctx, opts.known)
   } catch (err) {
     // A throw from the re-check still leaves a receipt saying nothing ran.
     if (opts.receiptPath !== undefined && opts.dryRun !== true) {
@@ -1104,7 +1123,8 @@ async function cleanBound(
     }
     throw err
   }
-  const { decision, survey: s } = checked
+  const { decision } = checked
+  const s: Survey = { ...checked.survey, ctx: { ...checked.survey.ctx, run: [...decision.run] } }
   const receipt: Receipt = {
     ...head,
     status: opts.dryRun === true ? 'dry-run' : 'running',
@@ -1189,8 +1209,9 @@ async function runOne(
   for (const q of s.plugins) {
     if (q.prepare === undefined) continue
     try {
-      await callHook(q, 'prepare', s.ctx, (x) => q.prepare!(c, x))
+      const said = await callHook(q, 'prepare', s.ctx, (x) => q.prepare!(c, x))
       step.preparedBy.push(q.name)
+      if (typeof said === 'string') (step.prepared ??= []).push(`${q.name}: ${said}`)
     } catch (err) {
       return fail(err, `${q.name}: prepare failed: `)
     }

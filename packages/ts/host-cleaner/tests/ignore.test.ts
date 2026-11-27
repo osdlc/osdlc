@@ -15,8 +15,9 @@ import { join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
 
-import { main } from '../src/cli.ts'
+import { main, type MainDeps } from '../src/cli.ts'
 import { containsIgnored, coveredBy, expandHome, ignorePaths } from '../src/ignore.ts'
+import { BUILT_IN_PLUGINS } from '../src/registry.ts'
 import { plan, recheck, survey } from '../src/run.ts'
 import { effectiveSettings, settingsOf } from '../src/settings.ts'
 import { envOf } from '../src/artifacts.ts'
@@ -63,7 +64,7 @@ const plugin = (cs: Candidate[]): Plugin => ({
 
 describe('ignorePaths and coveredBy', () => {
   test('an entry covers itself and what is below it, not a sibling with the same prefix', () => {
-    const ignore = ignorePaths(['/a/b'], '/', '/home')
+    const ignore = ignorePaths(['/a/b'], '/', () => '/home')
     expect(coveredBy('/a/b', ignore)).toBe('/a/b')
     expect(coveredBy('/a/b/c/d', ignore)).toBe('/a/b')
     expect(coveredBy('/a/bc', ignore)).toBeUndefined()
@@ -71,13 +72,21 @@ describe('ignorePaths and coveredBy', () => {
   })
 
   test('~ is home, a relative entry starts at cwd, and a link into an ignored directory is covered', () => {
-    expect(expandHome('~/x', '/home/me')).toBe('/home/me/x')
-    expect(ignorePaths(['~/x', 'y'], '/work', '/home/me')).toEqual(['/home/me/x', '/work/y'])
+    expect(expandHome('~/x', () => '/home/me')).toBe('/home/me/x')
+    // On Windows `~\x` is one too, so such an ignore entry covers the folder it names.
+    expect(expandHome('~\\dev\\keep', () => 'C:\\Users\\me', 'win32')).toBe(
+      'C:\\Users\\me\\dev\\keep',
+    )
+    expect(expandHome('~\\x', () => '/home/me', 'linux')).toBe('~\\x')
+    expect(ignorePaths(['~/x', 'y'], '/work', () => '/home/me')).toEqual(['/home/me/x', '/work/y'])
     const root = temp()
     mkdirSync(join(root, 'real'))
     symlinkSync(join(root, 'real'), join(root, 'link'))
     expect(
-      coveredBy(join(root, 'real', 'f'), ignorePaths([join(root, 'link')], root, root)),
+      coveredBy(
+        join(root, 'real', 'f'),
+        ignorePaths([join(root, 'link')], root, () => root),
+      ),
     ).toBeDefined()
   })
 
@@ -86,7 +95,7 @@ describe('ignorePaths and coveredBy', () => {
     () => {
       const root = temp()
       mkdirSync(join(root, 'Code', 'Keep'), { recursive: true })
-      const ignore = ignorePaths([join(root, 'code', 'keep')], root, root)
+      const ignore = ignorePaths([join(root, 'code', 'keep')], root, () => root)
       expect(coveredBy(join(root, 'Code', 'Keep', 'target'), ignore)).toBeDefined()
       expect(containsIgnored(join(root, 'Code'), ignore)).toBeDefined()
     },
@@ -130,6 +139,9 @@ describe('idleHours', () => {
     expect(settingsOf('cargo', {}, { idleHours: 3 }).idleHours).toBe(3)
     expect(settingsOf('cargo', { idleHours: 0 }, { idleHours: 3 }).idleHours).toBe(0)
     expect(settingsOf('cargo', {}).idleHours).toBe(24)
+    // Only the definitions given: a name with none, as 'fake', has no section.
+    const some = BUILT_IN_PLUGINS.filter((d) => ['node', 'fake'].includes(d.name))
+    expect(Object.keys(effectiveSettings({}, {}, some))).toEqual(['node'])
     const row = effectiveSettings({ node: { idleHours: 1 } }, { idleHours: 3 })
     expect(row.cargo!.find((r) => r.key === 'idleHours')).toMatchObject({
       value: 3,
@@ -149,17 +161,16 @@ describe('the command line', () => {
     const config = join(home, 'c.json')
     writeFileSync(config, JSON.stringify({ ignore: ['/cfg-ignored'], idleHours: 0 }))
     const env = { ...(process.env as Record<string, string>), HOST_CLEANER_ROOT: home }
-    const run = async (argv: string[]) => {
+    const plugins = [
+      plugin([
+        cand('a:1', '/cfg-ignored/x'),
+        cand('a:2', '/cli-ignored/x'),
+        cand('a:3', join(cwd, 'ok')),
+      ]),
+    ]
+    const run = async (argv: string[], deps: MainDeps = { plugins }) => {
       const c = captureContext({ cwd, env })
-      const code = await main(argv, c, {
-        plugins: [
-          plugin([
-            cand('a:1', '/cfg-ignored/x'),
-            cand('a:2', '/cli-ignored/x'),
-            cand('a:3', join(cwd, 'ok')),
-          ]),
-        ],
-      })
+      const code = await main(argv, c, deps)
       return { code, out: c.io.out }
     }
     const status = await run(['status', '--config', config, '--ignore', '/cli-ignored'])
@@ -171,7 +182,8 @@ describe('the command line', () => {
       (await run(['plan', '--config', config, '--ignore', '/cli-ignored'])).out,
     )
     expect(saved.ignore).toEqual(['/cfg-ignored', '/cli-ignored'])
-    const shown = await run(['config', '--config', config])
+    // The shipped plugins: the fake one has no settings to show.
+    const shown = await run(['config', '--config', config], {})
     expect(shown.out).toContain('ignore: /cfg-ignored')
     expect(shown.out).toMatch(/idleHours = 0 {2}\(idleHours\)/)
   })
