@@ -624,58 +624,73 @@ async function rebaseThroughRungs(
   } catch (e) {
     return failed(`rebase ${base}: ${errorLine(e)}`)
   }
-  for (let stops = 0; outcome.status === 'conflict'; stops += 1) {
-    if (stops >= limits.maxStops) return failed(`rebase ${base}: no progress after ${stops} stops`)
-    tracked.push(...rerereTracked(git))
-    const paths = conflictedPaths(git)
-    // An empty list after a reported conflict means rerere replayed a resolution recorded
-    // earlier, in this run or an earlier one, and staged it (`rerere.autoUpdate`, set by
-    // `integrationEnv`). The resolution still goes through verify.
-    const plans =
-      paths.length === 0
-        ? []
-        : planPaths(paths, settings.resolvers, settings.lockfileInstall, settings.generators)
-    const needsHuman = withGitlinkCommits(git, unclaimed(plans), true)
-    const stuck = (humans: { path: string; why: string }[]): RebaseAttempt => {
-      reset()
-      // The repaired stops are discarded with the rebase; say they happened.
-      const done =
-        repaired.length === 0 ? '' : ` (after ${repaired.length} repaired stop(s), discarded)`
-      return { kind: 'stuck', needsHuman: humans.map((h) => ({ ...h, why: h.why + done })) }
+  try {
+    for (let stops = 0; outcome.status === 'conflict'; stops += 1) {
+      if (stops >= limits.maxStops)
+        return failed(`rebase ${base}: no progress after ${stops} stops`)
+      tracked.push(...rerereTracked(git))
+      const paths = conflictedPaths(git)
+      // An empty list after a reported conflict means rerere replayed a resolution recorded
+      // earlier, in this run or an earlier one, and staged it (`rerere.autoUpdate`, set by
+      // `integrationEnv`). The resolution still goes through verify.
+      const plans =
+        paths.length === 0
+          ? []
+          : planPaths(paths, settings.resolvers, settings.lockfileInstall, settings.generators)
+      const needsHuman = withGitlinkCommits(git, unclaimed(plans), true)
+      const stuck = (humans: { path: string; why: string }[]): RebaseAttempt => {
+        reset()
+        // The repaired stops are discarded with the rebase; say they happened.
+        const done =
+          repaired.length === 0 ? '' : ` (after ${repaired.length} repaired stop(s), discarded)`
+        return { kind: 'stuck', needsHuman: humans.map((h) => ({ ...h, why: h.why + done })) }
+      }
+      if (
+        needsHuman.length > 0 &&
+        (limits.repair === null || repaired.length >= limits.maxRepairs)
+      ) {
+        return stuck(needsHuman)
+      }
+      const failure = rebuild(git, plans, settings, runVerb, worktree)
+      if (failure !== null) return failed(failure)
+      if (needsHuman.length > 0 && limits.repair !== null) {
+        const sha = git.resolveRef('REBASE_HEAD')
+        const res = await tryRepair(
+          git,
+          limits.repair,
+          conflictRequest(
+            limits.target,
+            worktree,
+            needsHuman,
+            sha === null ? undefined : { sha, subject: git.logSubject(sha) ?? '', onto: base },
+          ),
+        )
+        if (!res.ok) return stuck(needsHuman.map((c) => ({ path: c.path, why: res.reason })))
+        repaired.push({ kind: 'conflict', note: res.note })
+      }
+      const stale = syncSubmodulesToIndex(git, worktree, settings)
+      if (stale !== null) return failed(stale, true)
+      try {
+        // `.`, not only the conflicted paths. A generator can rewrite files
+        // beyond the ones that conflicted, and leaving those unstaged would
+        // continue with a half-regenerated tree. This is safe because the
+        // worktree is temporary and holds nothing but this integration.
+        git.add(['.'])
+        outcome = git.rebaseContinue({ env: limits.env })
+      } catch (e) {
+        return failed(`continuing the rebase: ${errorLine(e)}`)
+      }
+      resolved.push(...plans)
     }
-    if (needsHuman.length > 0 && (limits.repair === null || repaired.length >= limits.maxRepairs)) {
-      return stuck(needsHuman)
-    }
-    const failure = rebuild(git, plans, settings, runVerb, worktree)
-    if (failure !== null) return failed(failure)
-    if (needsHuman.length > 0 && limits.repair !== null) {
-      const sha = git.resolveRef('REBASE_HEAD')
-      const res = await tryRepair(
-        git,
-        limits.repair,
-        conflictRequest(
-          limits.target,
-          worktree,
-          needsHuman,
-          sha === null ? undefined : { sha, subject: git.logSubject(sha) ?? '', onto: base },
-        ),
-      )
-      if (!res.ok) return stuck(needsHuman.map((c) => ({ path: c.path, why: res.reason })))
-      repaired.push({ kind: 'conflict', note: res.note })
-    }
-    const stale = syncSubmodulesToIndex(git, worktree, settings)
-    if (stale !== null) return failed(stale, true)
+  } catch (e) {
+    // A throw (a generator's, say) still abandons the rebase and drops what its earlier stops
+    // recorded at `--continue`, then goes on as a throw. A reset that fails must not hide it.
     try {
-      // `.`, not only the conflicted paths. A generator can rewrite files
-      // beyond the ones that conflicted, and leaving those unstaged would
-      // continue with a half-regenerated tree. This is safe because the
-      // worktree is temporary and holds nothing but this integration.
-      git.add(['.'])
-      outcome = git.rebaseContinue({ env: limits.env })
-    } catch (e) {
-      return failed(`continuing the rebase: ${errorLine(e)}`)
+      reset()
+    } catch {
+      // The throw below says what went wrong first.
     }
-    resolved.push(...plans)
+    throw e
   }
   return { kind: 'done', resolved, repaired, tracked }
 }

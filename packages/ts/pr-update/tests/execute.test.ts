@@ -1605,6 +1605,60 @@ describe('the executor against real git', () => {
         expect(fx.worker.git.showAtRev('origin/d2', 'shared.ts')).toBe('good\n')
       })
 
+      test('a throw at a later rebase stop leaves nothing an earlier stop recorded', async () => {
+        const { git } = fx.worker
+        git.checkout('main', { branch: 'blows' })
+        fx.worker.commit('one', { 'build/out.txt': 'branch one\n' })
+        fx.worker.commit('two', { 'api.schema.json': 'branch two\n' })
+        git.push('origin', 'blows')
+        const oid = git.resolveRef('HEAD')!
+        git.checkout('main')
+        fx.worker.commit('main moves', { 'build/out.txt': 'main\n', 'api.schema.json': 'main\n' })
+        git.push('origin', 'main')
+        git.fetch('origin')
+        // The first stop is repaired and continued, which records its resolution; the second
+        // stop's generator throws.
+        const repair = fakeRepair((wt) => writeFileSync(join(wt, 'build/out.txt'), 'repaired\n'))
+        const schema: Generator = {
+          name: 'schema',
+          claims: (p) => p.endsWith('.schema.json'),
+          run: () => {
+            throw new Error('generator blew up')
+          },
+        }
+        await expect(
+          runAll([target({ head: 'blows', headOid: oid, strategy: 'rebase' })], {
+            repair,
+            repairOn: ['conflict'],
+            onRebaseConflict: 'repair',
+            generators: [schema],
+          }),
+        ).rejects.toThrow('generator blew up')
+        expect(repair.calls).toHaveLength(1)
+        expect(postimages()).toEqual([])
+      })
+
+      test('a throw after a merge recorded its resolution leaves nothing behind', async () => {
+        const [o1] = makeSiblings('t1')
+        const verify: RunVerb = () => {
+          throw new Error('verify blew up')
+        }
+        await expect(
+          updateAll(
+            fx.worker.git,
+            [target({ number: 1, head: 't1', headOid: o1!, strategy: 'merge' })],
+            settings({
+              repair: fakeRepair(writeShared('resolved\n')),
+              repairOn: ['conflict'],
+              verifyVerbs: ['check'],
+            }),
+            verify,
+            { apply: true, worktreeRoot: wtRoot },
+          ),
+        ).rejects.toThrow('verify blew up')
+        expect(postimages()).toEqual([])
+      })
+
       test('a rebase aborted after a repaired stop leaves nothing a later PR replays', async () => {
         const { git } = fx.worker
         git.checkout('main', { branch: 'two' })
