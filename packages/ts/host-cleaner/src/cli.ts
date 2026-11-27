@@ -1284,7 +1284,10 @@ async function runPlugins(
         .filter((p) => !rowed.includes(p) || !enabled(p.name, config))
         .map((p) => p.error.message),
       ...(unknown.length > 0 ? [unknownMessage(unknown)] : []),
-      ...found.warnings,
+      // Less what a row's `rootsFailed` already says in full.
+      ...found.warnings.filter(
+        (w) => !rows.some((r) => r.rootsFailed !== null && w === `${r.name}: ${r.rootsFailed}`),
+      ),
     ]
   } catch (err) {
     return refusal(ctx, name, err)

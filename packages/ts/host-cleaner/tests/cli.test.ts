@@ -1018,8 +1018,11 @@ candidates:
         '',
       ].join('\n'),
     )
+    // Said once, on the row, not again as a warning.
+    expect(r.err).toBe('')
     const json = await run(['plugins', '--format', 'json'], cwd, env, { plugins: failing() })
     expect(JSON.parse(json.out).plugins[0].rootsFailed).toBe('roots failed: timed\nout')
+    expect(JSON.parse(json.out).warnings).toEqual([])
   })
 
   test('a multi-line note stays on its row', async () => {
