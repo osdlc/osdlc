@@ -186,8 +186,6 @@ describe('browser-safe entries', () => {
       'index',
       'graph',
       'aspect',
-      'client',
-      'saved-view',
       'match',
       'params',
       'duration',
