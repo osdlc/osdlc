@@ -2128,32 +2128,36 @@ describe('folders', () => {
     const r = await run(['clean', '--yes', '--config', file, cwd], cwd, env, { plugins: [plugin] })
     expect(r.code).toBe(1)
     expect(r.err).toContain('no home directory')
+    // It names what would place the folders.
+    expect(r.err).toContain(process.platform === 'win32' ? 'set USERPROFILE' : 'XDG_STATE_HOME')
     expect(plugin.removed).toEqual([])
     expect((await run(['config'], cwd, env)).code).toBe(1)
   })
 
-  test('with XDG_CONFIG_HOME and no home, the config there is read; clean still needs a home to delete', async () => {
-    const { cwd } = setup()
-    const xdg = tempDir()
-    mkdirSync(join(xdg, 'host-cleaner'), { recursive: true })
-    const file = join(xdg, 'host-cleaner', 'config.json')
-    writeFileSync(file, JSON.stringify({ targets: [cwd] }))
-    const env = { PATH: process.env.PATH ?? '', XDG_CONFIG_HOME: xdg }
-    const shown = await run(['config', '--format', 'json'], cwd, env, { plugins: [fake()] })
-    expect(shown.err).toBe('')
-    expect(shown.code).toBe(0)
-    expect(JSON.parse(shown.out)).toMatchObject({ file, fileExists: true, targets: [cwd] })
-    const status = await run(['status'], cwd, env, { plugins: [fake()] })
-    expect(status.err).toBe('')
-    expect(status.code).toBe(0)
-    const plugin = fake()
-    const r = await run(['clean', '--yes'], cwd, env, { plugins: [plugin] })
-    expect(r.code).toBe(1)
-    expect(r.err).toContain('no home directory')
-    // It names what would place the folders.
-    expect(r.err).toContain(process.platform === 'win32' ? 'set USERPROFILE' : 'XDG_STATE_HOME')
-    expect(plugin.removed).toEqual([])
-  })
+  // Windows keeps its own folders and reads no XDG_* variable.
+  test.skipIf(process.platform === 'win32')(
+    'with XDG_CONFIG_HOME and no home, the config there is read; clean still needs a home to delete',
+    async () => {
+      const { cwd } = setup()
+      const xdg = tempDir()
+      mkdirSync(join(xdg, 'host-cleaner'), { recursive: true })
+      const file = join(xdg, 'host-cleaner', 'config.json')
+      writeFileSync(file, JSON.stringify({ targets: [cwd] }))
+      const env = { PATH: process.env.PATH ?? '', XDG_CONFIG_HOME: xdg }
+      const shown = await run(['config', '--format', 'json'], cwd, env, { plugins: [fake()] })
+      expect(shown.err).toBe('')
+      expect(shown.code).toBe(0)
+      expect(JSON.parse(shown.out)).toMatchObject({ file, fileExists: true, targets: [cwd] })
+      const status = await run(['status'], cwd, env, { plugins: [fake()] })
+      expect(status.err).toBe('')
+      expect(status.code).toBe(0)
+      const plugin = fake()
+      const r = await run(['clean', '--yes'], cwd, env, { plugins: [plugin] })
+      expect(r.code).toBe(1)
+      expect(r.err).toContain('no home directory')
+      expect(plugin.removed).toEqual([])
+    },
+  )
 
   test('with no home, clean -i refuses before it shows the checklist', async () => {
     const { cwd, home } = setup()
