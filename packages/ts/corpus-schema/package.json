@@ -66,7 +66,7 @@
   "dependencies": {
     "@osdlc/frontmatter-lossless": "workspace:^",
     "@osdlc/markdown-link": "workspace:^",
-    "ajv": "^8.20.0",
+    "ajv": "catalog:",
     "ajv-formats": "^3.0.1",
     "yaml": "catalog:"
   },

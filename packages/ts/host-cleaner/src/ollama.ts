@@ -27,7 +27,14 @@ import { z } from 'zod'
 
 import { errorText, failureReason, hoursText, objector } from './helpers.ts'
 import { idleHoursOr, idleHoursSetting, pluginKit, type Kit, type KitOptions } from './kit.ts'
-import { PLUGIN_API, definePlugin, type Candidate, type Ctx, type Plugin } from './types.ts'
+import {
+  PLUGIN_API,
+  builtIn,
+  definePlugin,
+  type Candidate,
+  type Ctx,
+  type Plugin,
+} from './types.ts'
 
 export const OLLAMA_PLUGIN = 'ollama'
 
@@ -304,7 +311,7 @@ export function ollamaPlugin(
 
   const objection = objector(OLLAMA_PLUGIN)
 
-  return {
+  return builtIn({
     name: OLLAMA_PLUGIN,
     async detect(ctx) {
       if (!kit.onPath('ollama')) return false
@@ -412,7 +419,7 @@ export function ollamaPlugin(
           : `freed at most ${sizeBound(now.size)?.text ?? now.size}`
       return `ollama rm removed ${c.ref}; ${freed}`
     },
-  }
+  })
 }
 
 /** The `ollama` plugin as the command line builds it. Settings: `idleHours`. */

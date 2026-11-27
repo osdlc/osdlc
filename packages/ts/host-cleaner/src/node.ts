@@ -26,9 +26,12 @@ import {
 } from './artifacts.ts'
 import { hoursText } from './helpers.ts'
 import { idleHoursSetting, present, type Kit } from './kit.ts'
-import { PLUGIN_API, definePlugin, type Plugin } from './types.ts'
+import { PLUGIN_API, builtIn, definePlugin, type Plugin } from './types.ts'
 
 export const NODE_PLUGIN = 'node'
+
+/** The folder the plugin cleans, and the file beside it that it needs. */
+export const NODE_PROJECT = { dir: 'node_modules', marker: 'package.json' } as const
 
 const PNPM_NOTE =
   'node_modules/.pnpm is mostly hard links into the pnpm store; deleting it frees less than the size shown'
@@ -37,10 +40,10 @@ const SKIPPED = new Set(['node_modules', '.git', 'target'])
 
 function rowOrThrow(env: Env, checkout: Checkout): Row[] {
   const { kit, idleHours: threshold } = env
-  if (checkout.primary || !existsSync(join(checkout.path, 'package.json'))) return []
-  const modules = join(checkout.path, 'node_modules')
+  if (checkout.primary || !existsSync(join(checkout.path, NODE_PROJECT.marker))) return []
+  const modules = join(checkout.path, NODE_PROJECT.dir)
   if (!present(modules)) return []
-  const safe = inside(checkout.path, 'node_modules')
+  const safe = inside(checkout.path, NODE_PROJECT.dir)
   if (safe === null) return [refusedRow(kit, 'node-modules', modules, checkout.path)]
 
   const since = kit.idle(checkout.path, { skip: (name) => SKIPPED.has(name) })
@@ -64,12 +67,14 @@ function rowOrThrow(env: Env, checkout: Checkout): Row[] {
 
 /** The `node` plugin on `kit`, or on a kit built from `opts`: `node_modules` of idle linked worktrees. Settings: `idleHours`. */
 export function nodePlugin(opts: ArtifactOptions = {}, kit?: Kit): Plugin {
-  return artifactPlugin(
-    NODE_PLUGIN,
-    opts,
-    (env) => checkoutsOf(env).some((c) => existsSync(join(c.path, 'package.json'))),
-    rowOrThrow,
-    kit,
+  return builtIn(
+    artifactPlugin(
+      NODE_PLUGIN,
+      opts,
+      (env) => checkoutsOf(env).some((c) => existsSync(join(c.path, NODE_PROJECT.marker))),
+      rowOrThrow,
+      kit,
+    ),
   )
 }
 

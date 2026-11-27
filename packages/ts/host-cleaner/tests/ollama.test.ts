@@ -656,7 +656,6 @@ describe('the contract', () => {
     })
     const plugin = def.create({
       settings: { idleHours: 2 },
-      only: [],
       env: {},
       kit: pluginKit('ollama', fake),
     })
