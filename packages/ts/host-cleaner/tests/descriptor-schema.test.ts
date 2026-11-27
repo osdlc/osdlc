@@ -710,6 +710,24 @@ describe('a bad descriptor names the field path', () => {
     ])
   })
 
+  test("detect's problems are listed beside a type error", () => {
+    expect(issues(UV.replace('{ onPath: uv }', '{ onPath: 5, exists: cache }'))).toEqual([
+      'line 5: detect.any.0.onPath: Invalid input: expected string, received number',
+      'line 5: detect.any.0: set one of onPath or exists',
+    ])
+    expect(
+      issues(
+        UV.replace(
+          'any: [{ onPath: uv }, { exists: cache }]',
+          '{ any: [{ onPath: 5 }], all: [{ onPath: uv }] }',
+        ),
+      ),
+    ).toEqual([
+      'line 5: detect.any.0.onPath: Invalid input: expected string, received number',
+      'line 4: detect: set one of any or all',
+    ])
+  })
+
   test('every problem is listed, not only the first', () => {
     expect(issues(hfWith('{ path: models, costDescription: rebuild }\n  - { path: hub }'))).toEqual(
       [

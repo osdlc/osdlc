@@ -256,18 +256,29 @@ const condition = z
     exists: z.string().min(1).optional().describe('A name from `paths` whose folder exists.'),
   })
   .meta({ minProperties: 1, maxProperties: 1 })
-  .refine(
-    (c) => (c.onPath === undefined) !== (c.exists === undefined),
-    'set one of onPath or exists',
-  )
+  .superRefine((c, ctx) => addIssues(ctx, conditionIssues(c)))
+
+/** The cross-field problem of a detect condition; any value, as {@link perOsIssues}. */
+function conditionIssues(c: Record<string, unknown>): Issue[] {
+  return (c['onPath'] === undefined) !== (c['exists'] === undefined)
+    ? []
+    : [{ path: [], message: 'set one of onPath or exists' }]
+}
 
 const conditions = z.array(condition).min(1)
 
 const detect = z
   .strictObject({ any: conditions.optional(), all: conditions.optional() })
   .meta({ minProperties: 1, maxProperties: 1 })
-  .refine((d) => (d.any === undefined) !== (d.all === undefined), 'set one of any or all')
+  .superRefine((d, ctx) => addIssues(ctx, detectIssues(d)))
   .describe('When the plugin applies. Default: any of its paths exists.')
+
+/** The cross-field problem of `detect`; any value, as {@link perOsIssues}. */
+function detectIssues(d: Record<string, unknown>): Issue[] {
+  return (d['any'] === undefined) !== (d['all'] === undefined)
+    ? []
+    : [{ path: [], message: 'set one of any or all' }]
+}
 
 /** Why a `${` is refused outside the fields that fill it. */
 const UNFILLED = 'is not filled here: variables are filled only in paths, vars and locks'
@@ -497,8 +508,8 @@ function pathNameIssues(d: Record<string, unknown>): Issue[] {
 
 /**
  * The cross-field problems in the raw `value`: those of `paths` entries, of
- * candidates, of the names they use and of the variables. The reader adds the
- * ones zod skipped.
+ * candidates, of `detect` and its conditions, of the names they use and of
+ * the variables. The reader adds the ones zod skipped.
  */
 function crossFieldIssues(value: unknown): Issue[] {
   if (!isObject(value)) return []
@@ -512,6 +523,15 @@ function crossFieldIssues(value: unknown): Issue[] {
     value['candidates'].forEach((c, i) => {
       if (isObject(c)) below(['candidates', i], candidateIssues(c))
     })
+  const detect = value['detect']
+  if (isObject(detect)) {
+    below(['detect'], detectIssues(detect))
+    for (const mode of ['any', 'all'])
+      if (Array.isArray(detect[mode]))
+        detect[mode].forEach((c, i) => {
+          if (isObject(c)) below(['detect', mode, i], conditionIssues(c))
+        })
+  }
   return issues
 }
 
