@@ -28,6 +28,7 @@ import { z } from 'zod'
 
 import { DISCOVER_LIMIT_MS, objector } from './helpers.ts'
 import { linkedCheckouts } from './roots.ts'
+import { DELETE_LIMIT_MS } from './run.ts'
 import {
   FatalRun,
   PLUGIN_API,
@@ -155,8 +156,9 @@ export function gitPlugin(given: GitPluginOptions = {}): Plugin {
 
   return builtIn({
     name: 'git',
-    // The sweep covers every repository in one call that nothing can stop part way.
-    limits: { discover: DISCOVER_LIMIT_MS },
+    // The sweep covers every repository in one call that nothing can stop part way,
+    // and `prepare` pushes an archive, which may wait on the remote as long as a delete.
+    limits: { discover: DISCOVER_LIMIT_MS, prepare: DELETE_LIMIT_MS },
     detect: () => true,
     discover(ctx) {
       const found = candidatesOf(sweep(ctx.targets, { ...opts.sweep, ...runners, cwd: ctx.cwd }))

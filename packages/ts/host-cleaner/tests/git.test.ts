@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   appendFileSync,
   existsSync,
@@ -14,6 +14,7 @@ import {
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
+import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
 
@@ -23,6 +24,7 @@ import {
   BUILT_IN_PLUGINS,
   DEFAULT_SELECTION,
   FatalRun,
+  HOOK_LIMIT_MS,
   PLUGIN_API,
   ReceiptSchema,
   cargoPlugin,
@@ -423,6 +425,37 @@ describe('the git plugin', () => {
     }
     expect(branches(fx.root)).not.toContain('other')
     expect(archives(fx.bare)).toHaveLength(2)
+  })
+
+  test('a push that takes longer than the default hook limit is still prepared, and named in the receipt', async () => {
+    const fx = fixture()
+    const real = spawnRunner('git')
+    // The clock jumps past the default limit while the push runs, as a slow remote would make it.
+    const git: CommandRunner = {
+      binary: 'git',
+      run: (argv, o) => {
+        const result = real.run(argv, o)
+        if (argv.includes('push')) vi.advanceTimersByTime(HOOK_LIMIT_MS + 1)
+        return result
+      },
+    }
+    const plugin = gitPlugin({
+      git,
+      probe: idle,
+      archive: {},
+      sweep: { remotes: [''], offline: true, provider: 'none' },
+    })
+    const id = `branch:${realpathSync(fx.root)}:unmerged`
+    const allow = ['abandon-unmerged']
+    const p = plan(await survey([plugin], fx.ctx), { select: [id], allow })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    cleanups.push(() => vi.useRealTimers())
+    const receipt = await clean(p, [plugin], { ...fx.ctx, allow })
+    expect(receipt.steps[0]).toMatchObject({ id, result: 'ok', preparedBy: ['git'] })
+    expect(receipt.steps[0]!.prepared).toEqual([
+      expect.stringMatching(/^git: refs\/heads\/archive\/\S+ lists [0-9a-f]+$/),
+    ])
+    expect(archives(fx.bare)).toHaveLength(1)
   })
 
   test('the receipt names the archive a prepare pushed, though the delete then fails', async () => {
