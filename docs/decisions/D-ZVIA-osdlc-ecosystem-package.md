@@ -80,7 +80,8 @@ A list per tool means one list to keep up per tool, and the lists drift.
   has exited (`holderGone`), or once it is 10 minutes old: `withLock` records
   only a pid, and a killed writer's pid may later belong to a live process,
   which would hold the lock for good. 10 minutes is far past the section, so
-  a slow writer keeps it. A tool that asks the person where their
+  a slow writer keeps it. (changed during the build: Build note "Writes
+  under a lock") A tool that asks the person where their
   checkouts are asks through the package, so every tool asks the same
   question.
 - **Adoption.** pr-update reads it first (D-0005). sdlc is published outside
@@ -162,6 +163,13 @@ matching), within the pr-update omnibus
   project schema refuses unknown keys besides. The two kinds of package are
   a policy the build kept: each building-block change stayed in its own
   package.
+- **Writes under a lock.** The accepted text said only "It writes with a
+  compare-and-swap." The second review of the pr-update omnibus found that
+  the check and the rename alone let two processes both pass, and one root
+  was lost. `writeRoots` now holds a `@osdlc/file-lock` lock
+  beside the file across its read, check and write, with the takeover rules
+  above (commit `471fd7d95`). The sentence was changed then without this
+  marker; S13 added it.
 - **Default roots others can write to.** The CI review of the pr-update
   omnibus found that a caller at `/tmp/proj` got `/tmp` as its default root,
   so any checkout anyone put there whose `origin` claimed a target was used,

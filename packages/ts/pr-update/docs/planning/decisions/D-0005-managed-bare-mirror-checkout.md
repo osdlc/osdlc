@@ -324,7 +324,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   - `n` writes `checkout: local`, so the question does not come back.
 
   The run prints the machine file's path. A write that loses a race to
-  another run's prompt re-reads the file and uses the answer it finds. When
+  another run's prompt re-reads the file: when it holds the answer the person
+  gave here, the run goes on with it; when it holds another, the run adopts
+  neither and clones nothing, with a note. When
   the file cannot take the answer, because it is not valid YAML or its top
   level is not a map, nothing is asked: the run exits 14, the config-invalid
   code, naming it, and `mirror enable` and `mirror disable` do the same. A bad
@@ -454,7 +456,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   | A killed run's worktree under `worktrees/` in the cache | Pruning, automatic or by hand, whatever repository it belongs to |
   | A kept worktree (`keep_failed`) | `--discard-kept`, `--retry-failed`, or the PR moving, unless someone has changed it or git cannot read it; only `--discard-kept` removes that (changed during the build: Build note 1) |
   | `origin/<branch>` for a deleted branch | `fetch --prune` on each unscoped fetch of the project root or a managed clone. A located checkout's fetch does not prune: its own `git fetch --prune` does (changed during the build: Build note 1) |
-  | Unreachable objects | git's automatic `gc` |
+  | Unreachable objects | In a managed clone, `git maintenance run --auto` in the foreground after each fetch, under the clone's lock: a clone has git's automatic `gc` and background maintenance off. Elsewhere, git's automatic `gc` (changed during the build: Build note 1) |
   | A whole clone the person no longer targets | Automatic pruning by age, or `pr-update mirror prune` |
 
   Neither macOS nor common Linux setups clear `~/.cache` on their own, so
@@ -634,8 +636,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     lock".
   - First use asks: the accepted text ended at "re-reads the file and uses the
     answer it finds", with nothing on a machine file that cannot take the
-    answer (exit 14) or a bad value in it. See "A machine file that cannot
-    take an answer".
+    answer (exit 14) or a bad value in it. The build never adopted another
+    run's answer, so S13 rewrote that sentence to say what a lost race does.
+    See "A machine file that cannot take an answer".
   - `pr-update mirror`: "`enable [--dir <dir>]` writes `checkout: mirror`
     and, with `--dir`, `mirror_dir`". See "`mirror enable --mirror-dir`".
   - Clone step 1: the directory "must not be inside a git working tree, and
@@ -658,10 +661,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     support yet (with [osdlc/osdlc#1010](https://github.com/osdlc/osdlc/issues/1010))."
     trust-repo's repository keys are now built. See "Ports in names and
     paths".
-  - The Cleanup table: the kept-worktree row ended at "or the PR moving", and
-    the `origin/<branch>` row read "`fetch --prune`, on each unscoped run that
-    fetches". See "Kept trees" and "A located checkout's fetch does not
-    prune".
+  - The Cleanup table: the kept-worktree row ended at "or the PR moving", the
+    `origin/<branch>` row read "`fetch --prune`, on each unscoped run that
+    fetches", and the unreachable-objects row read "git's automatic `gc`"
+    for every git directory, though a clone has it off (S13 found the table
+    disagreeing with the build). See "Kept trees", "A located checkout's
+    fetch does not prune" and "The folder rule".
   - Pruning clones: "An `update --apply` holds a clone's lock from its clone
     or fetch through its `git worktree add`, as one step, and again for
     `worktree remove`. … It waits up to 60 seconds for the lock, then skips
