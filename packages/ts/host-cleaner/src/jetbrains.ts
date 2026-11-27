@@ -42,7 +42,7 @@ import {
   yieldToLimit,
 } from './helpers.ts'
 import { attachKit, idleHoursOr, idleHoursSetting, present, type Kit } from './kit.ts'
-import { PLUGIN_API, definePlugin, type Ctx, type Plugin } from './types.ts'
+import { PLUGIN_API, builtIn, definePlugin, type Ctx, type Plugin } from './types.ts'
 
 export const JETBRAINS_PLUGIN = 'jetbrains'
 
@@ -561,7 +561,7 @@ export function jetbrainsPlugin(opts: JetbrainsOptions, kit: Kit): Plugin {
     return { kit, ctx, idleHours, layout, installs: installsOf(layout), running: new Map() }
   }
   let rows = new Map<string, Row>()
-  const plugin: Plugin = {
+  const plugin: Plugin = builtIn({
     name: JETBRAINS_PLUGIN,
     limits: { discover: DISCOVER_LIMIT_MS },
     detect: (ctx) => layoutOf(opts, ctx).roots.some(isDir),
@@ -596,7 +596,7 @@ export function jetbrainsPlugin(opts: JetbrainsOptions, kit: Kit): Plugin {
       await yieldToLimit(ctx)
       return kit.remove(c.path, ctx)
     },
-  }
+  })
   // Built without `definePlugin` when called directly, so tie the kit here too.
   attachKit(plugin, kit)
   return plugin

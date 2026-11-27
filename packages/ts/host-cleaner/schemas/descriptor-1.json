@@ -1,0 +1,435 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unpkg.com/@osdlc/host-cleaner/schemas/descriptor-1.json",
+  "title": "host-cleaner descriptor",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "descriptor": {
+      "type": "number",
+      "const": 1
+    },
+    "store": {
+      "description": "The slug of the research corpus entry it was drafted from. Not used at run time.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "detect": {
+      "type": "object",
+      "properties": {
+        "any": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "onPath": {
+                "description": "A program on PATH.",
+                "type": "string",
+                "minLength": 1
+              },
+              "exists": {
+                "description": "A name from `paths` whose folder exists.",
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false,
+            "minProperties": 1,
+            "maxProperties": 1
+          }
+        },
+        "all": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "onPath": {
+                "description": "A program on PATH.",
+                "type": "string",
+                "minLength": 1
+              },
+              "exists": {
+                "description": "A name from `paths` whose folder exists.",
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false,
+            "minProperties": 1,
+            "maxProperties": 1
+          }
+        }
+      },
+      "additionalProperties": false,
+      "minProperties": 1,
+      "maxProperties": 1,
+      "description": "When the plugin applies. Default: any of its paths exists."
+    },
+    "paths": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "all": {
+            "type": "string",
+            "pattern": "^(~[/\\\\]|\\/|[A-Za-z]:[/\\\\]|\\$\\{)"
+          },
+          "macos": {
+            "type": "string",
+            "pattern": "^(~[/\\\\]|\\/|[A-Za-z]:[/\\\\]|\\$\\{)"
+          },
+          "linux": {
+            "type": "string",
+            "pattern": "^(~[/\\\\]|\\/|[A-Za-z]:[/\\\\]|\\$\\{)"
+          },
+          "windows": {
+            "type": "string",
+            "pattern": "^(~[/\\\\]|\\/|[A-Za-z]:[/\\\\]|\\$\\{)"
+          }
+        },
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "all"
+            ],
+            "maxProperties": 1
+          },
+          {
+            "not": {
+              "required": [
+                "all"
+              ]
+            },
+            "minProperties": 1
+          }
+        ]
+      },
+      "minProperties": 1,
+      "description": "Named folders, per OS or `all`. These are the plugin's roots."
+    },
+    "candidates": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A name from `paths`."
+          },
+          "glob": {
+            "description": "Entries under the path, one candidate each, such as `models--*/`.",
+            "type": "string",
+            "minLength": 1
+          },
+          "maxEntries": {
+            "description": "Glob matches past this many are combined into one candidate. Default: 200.",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "costDescription": {
+            "type": "string",
+            "enum": [
+              "re-download",
+              "rebuild",
+              "lost"
+            ],
+            "description": "What deleting it costs. `lost` is always held, with a `discard-user-data` protest that only --allow grants."
+          },
+          "idleHours": {
+            "description": "Hours it must sit unchanged before it's selected by default; fractions count. The config's plugins.<name>.idleHours wins over it, and its top-level idleHours can only raise it. Unset: the plugin's idleHours setting.",
+            "type": "number",
+            "minimum": 0
+          },
+          "command": {
+            "description": "The tool's own command, run from the home folder. It must name the checked folder, as a `{path}` argument or in `env`.",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "env": {
+            "description": "Environment entries for `command`, such as `{ GOMODCACHE: '{path}' }`.",
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "removes": {
+            "description": "`unused`: the command removes only what nothing uses (a prune), with no idle check. `all`: it empties the folder (a wipe).",
+            "type": "string",
+            "enum": [
+              "unused",
+              "all"
+            ]
+          },
+          "held": {
+            "description": "True: left out of the default, even when it's idle.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "costDescription"
+        ],
+        "additionalProperties": false,
+        "dependentRequired": {
+          "command": [
+            "removes"
+          ],
+          "removes": [
+            "command"
+          ],
+          "env": [
+            "command"
+          ],
+          "maxEntries": [
+            "glob"
+          ]
+        },
+        "not": {
+          "required": [
+            "command",
+            "glob"
+          ]
+        }
+      }
+    },
+    "inUse": {
+      "type": "object",
+      "properties": {
+        "processes": {
+          "description": "An executable's name, or any word of its command line, such as `GradleDaemon`.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "locks": {
+          "description": "Files whose presence means in use.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(~[/\\\\]|\\/|[A-Za-z]:[/\\\\]|\\$\\{)"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "description": "A match refuses every candidate with `in-use`."
+    },
+    "project": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "dir": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The build folder's name, such as `obj`."
+          },
+          "marker": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A file name or glob beside it that marks the project, such as `*.csproj`."
+          },
+          "costDescription": {
+            "type": "string",
+            "enum": [
+              "re-download",
+              "rebuild",
+              "lost"
+            ],
+            "description": "What deleting it costs. `lost` is always held, with a `discard-user-data` protest that only --allow grants."
+          },
+          "idleHours": {
+            "description": "Hours it must sit unchanged before it's selected by default; fractions count. The config's plugins.<name>.idleHours wins over it, and its top-level idleHours can only raise it. Unset: the plugin's idleHours setting.",
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "dir",
+          "marker",
+          "costDescription"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "supersededBy": {
+      "description": "A code plugin's name. While that plugin runs, this descriptor doesn't.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "system": {
+      "description": "True: data that needs root. Accepted, but the descriptor is skipped with a note.",
+      "type": "boolean"
+    },
+    "vars": {
+      "description": "Tier 2 variables, each a list of sources tried in order; the first value wins, and `plugins.<name>.vars` in the config wins over all. Built in: HOME, XDG_CACHE_HOME, XDG_DATA_HOME, XDG_CONFIG_HOME, XDG_STATE_HOME.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "minItems": 1,
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "env": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                  "description": "An environment variable."
+                }
+              },
+              "required": [
+                "env"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string",
+                  "allOf": [
+                    {
+                      "pattern": "^(~[/\\\\]|\\/|[A-Za-z]:[/\\\\]|\\$\\{)"
+                    },
+                    {
+                      "pattern": "(\\.toml|\\.json|\\.yaml|\\.yml)$"
+                    }
+                  ],
+                  "description": "A TOML, JSON or YAML file, by its extension."
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "A dotted key in it, such as `cache.dir`."
+                }
+              },
+              "required": [
+                "file",
+                "key"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": "A command whose output, trimmed, is the value. It runs from the home folder, only when on PATH, with a short time limit."
+                },
+                "env": {
+                  "description": "Environment entries for `command`, such as `{ GOTOOLCHAIN: 'local' }`.",
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "command"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^(~[/\\\\]|\\/|[A-Za-z]:[/\\\\]|\\$\\{)"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "all": {
+                          "type": "string",
+                          "pattern": "^(~[/\\\\]|\\/|[A-Za-z]:[/\\\\]|\\$\\{)"
+                        },
+                        "macos": {
+                          "type": "string",
+                          "pattern": "^(~[/\\\\]|\\/|[A-Za-z]:[/\\\\]|\\$\\{)"
+                        },
+                        "linux": {
+                          "type": "string",
+                          "pattern": "^(~[/\\\\]|\\/|[A-Za-z]:[/\\\\]|\\$\\{)"
+                        },
+                        "windows": {
+                          "type": "string",
+                          "pattern": "^(~[/\\\\]|\\/|[A-Za-z]:[/\\\\]|\\$\\{)"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "anyOf": [
+                        {
+                          "required": [
+                            "all"
+                          ],
+                          "maxProperties": 1
+                        },
+                        {
+                          "not": {
+                            "required": [
+                              "all"
+                            ]
+                          },
+                          "minProperties": 1
+                        }
+                      ]
+                    }
+                  ],
+                  "description": "A fixed folder, per OS or `all`, which may use other variables."
+                }
+              },
+              "required": [
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      }
+    }
+  },
+  "required": [
+    "descriptor",
+    "paths",
+    "candidates"
+  ],
+  "additionalProperties": false
+}

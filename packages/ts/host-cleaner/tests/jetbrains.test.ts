@@ -138,7 +138,6 @@ function make(h: TempHome, over: Make = {}): Plugin {
   })
   return def.create({
     settings: {},
-    only: [],
     env: h.env,
     kit: pluginKit(JETBRAINS_PLUGIN, {
       now: over.now ?? (() => NOW),

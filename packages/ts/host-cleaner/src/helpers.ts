@@ -6,15 +6,35 @@
 
 import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { basename, dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
-import { failureText, type CommandResult } from '@osdlc/command-seam'
+import { failureText, firstLine, type CommandResult } from '@osdlc/command-seam'
 
 import type { Candidate, Ctx, Objection, PathCandidate } from './types.ts'
+
+/**
+ * Why the run `r`, which failed, failed: `how` it ended (`exit N`, `did not
+ * run` when it never started, or `stopped before it exited (reason)`), and
+ * `said`, the first line it printed, or `''`.
+ */
+export function runFailure(r: CommandResult): { how: string; said: string } {
+  const how =
+    r.neverExited !== true
+      ? `exit ${r.exitCode}`
+      : r.reason === 'spawn'
+        ? 'did not run'
+        : `stopped before it exited (${r.reason ?? 'unknown'})`
+  return { how, said: firstLine(failureText(r, { both: true })) }
+}
 
 /** Whether `v`, read from JSON, is an object and not a list. */
 export const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** Orders by `name`, by code unit. */
+export const byName = (a: { name: string }, b: { name: string }): number =>
+  a.name < b.name ? -1 : a.name > b.name ? 1 : 0
 
 /** `v` when it is a string, else `''`. */
 export const str = (v: unknown): string => (typeof v === 'string' ? v : '')
@@ -28,6 +48,25 @@ export const realOr = (path: string): string => {
     return realpathSync.native(path)
   } catch {
     return path
+  }
+}
+
+/**
+ * `path`'s real path, or, where it does not resolve, that of the nearest folder
+ * above it that does with the rest of `path` after it: what is gone still
+ * compares through the links above it. By `realpathSync.native`, not
+ * `nodeGuard.realPath`, which keeps the case `path` is written in where the
+ * filesystem ignores case: the editors' paths are compared in the disk's (see {@link realOr}).
+ */
+export function realAbove(path: string): string {
+  let rest = ''
+  for (let at = path; ; at = dirname(at)) {
+    try {
+      return join(realpathSync.native(at), rest)
+    } catch {
+      if (dirname(at) === at) return path
+      rest = join(basename(at), rest)
+    }
   }
 }
 

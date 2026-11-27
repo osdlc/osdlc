@@ -72,8 +72,10 @@ export type Idle =
 
 /** The processes found; `unknown` is set when the process table could not be read. */
 export interface Running {
-  /** Each as `<command> (pid <n>)`. */
+  /** Each as `<command> (pid <n>)`, for a sentence. */
   names: string[]
+  /** The same processes, for a plugin to match on: `command` is lsof's or the command line's program name. */
+  processes: Array<{ pid: number; command: string }>
   unknown?: string | undefined
 }
 
@@ -106,7 +108,8 @@ export interface Kit {
   readonly owner: string
   /**
    * How long `path` has sat unchanged, by the newest modification time of any
-   * file under it, links not followed, within the time budget. Several paths
+   * file under it, links not followed, within the time budget; a path that
+   * is a file by its own modification time. Several paths
    * are one answer, by the newest file under any of them, within one budget.
    * `skip` names entries to pass over, files and directories alike. Throws
    * when a directory cannot be read, since what it hides may be recent; one
@@ -116,6 +119,8 @@ export interface Kit {
     path: string | readonly string[],
     opts?: { skip?: ((name: string) => boolean) | undefined },
   ): Idle
+  /** A check that turns true once one measurement's time budget has passed since this call, by the kit's clock. */
+  overBudget(): () => boolean
   /** Bytes `path` takes on disk, by repo-cleaner's `sizeOf` (`du`) within the time budget; null when it could not be read. */
   size(path: string): number | null
   /**
@@ -130,6 +135,13 @@ export interface Kit {
    * be read stays unknown for the rest of that call.
    */
   running(where: string | { in: string } | { name: string }, ctx: Pick<Ctx, 'signal'>): Running
+  /**
+   * Whether the process `pid` is running, by the process probe. With
+   * `startedAt`, a record of when it started (such as epoch milliseconds), a
+   * pid reused by a process that started later is not it. True when it cannot
+   * be told.
+   */
+  alive(pid: number, startedAt?: string): boolean
   /** Whether `program` is on PATH. */
   onPath(program: string): boolean
   /** A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and this plugin as its owner. */
@@ -177,8 +189,13 @@ const kits = new WeakMap<Plugin, Set<Kit>>()
 
 /** Records that `plugin` was built on `kit`, beside any recorded before, so the core can bind it each run. `definePlugin`'s `create` calls it. */
 export function attachKit(plugin: Plugin, kit: Kit): void {
+  // A `create` that returned no object is reported by whoever called it, not as a WeakMap key error.
+  if (Object(plugin) !== plugin) return
   kits.set(plugin, (kits.get(plugin) ?? new Set()).add(kit))
 }
+
+/** Whether `plugin` was built on `kit`, as {@link attachKit} recorded it. */
+export const builtOn = (plugin: Plugin, kit: Kit): boolean => kits.get(plugin)?.has(kit) === true
 
 /**
  * Binds each kit `plugin` was built on to `bounds` for {@link Kit.remove}, or
@@ -281,6 +298,12 @@ function commandLines(ps: CommandRunner): Array<{ pid: number; args: string }> {
   return rows.filter((row) => !own.has(row.pid))
 }
 
+/** A {@link Running} of `processes`. */
+const listed = (processes: Running['processes']): Running => ({
+  names: processes.map((p) => `${p.command} (pid ${p.pid})`),
+  processes,
+})
+
 /** The kit for the plugin `owner`. */
 export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
   const now = opts.now ?? (() => new Date())
@@ -362,7 +385,11 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
         }
       }
       try {
-        for (const each of typeof path === 'string' ? [path] : path) visit(each)
+        for (const each of typeof path === 'string' ? [path] : path) {
+          const stat = lstatSync(each, { throwIfNoEntry: false })
+          if (stat === undefined || stat.isDirectory() || stat.isSymbolicLink()) visit(each)
+          else if (newest === null || stat.mtimeMs > newest) newest = stat.mtimeMs
+        }
       } catch (err) {
         if (err instanceof OutOfTime) return { unmeasured: true }
         throw err
@@ -370,22 +397,27 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
       const hours: number | null = newest === null ? null : Math.max(0, (at - newest) / HOUR_MS)
       return { unmeasured: false, newestMs: newest, hours }
     },
+    overBudget() {
+      const start = clock()
+      return () => clock() - start > budget
+    },
     size: (path) => sizeOf(path, { timeoutMs: budget }),
     running(where, ctx) {
       try {
         const by = typeof where === 'string' ? { name: where } : where
         if ('in' in by) {
           const found = busyHolders(holders(by.in, ctx.signal))
-          return { names: found.map((h) => `${h.command} (pid ${h.pid})`) }
+          return listed(found.map(({ pid, command }) => ({ pid, command })))
         }
         const found = commands(ctx.signal).filter((row) => commandHasName(row.args, by.name))
-        return {
-          names: found.map((row) => `${basename(row.args.split(/\s+/)[0]!)} (pid ${row.pid})`),
-        }
+        return listed(
+          found.map((row) => ({ pid: row.pid, command: basename(row.args.split(/\s+/)[0]!) })),
+        )
       } catch (err) {
-        return { names: [], unknown: errorText(err) }
+        return { names: [], processes: [], unknown: errorText(err) }
       }
     },
+    alive: (pid, startedAt) => probe.alive(pid, startedAt),
     onPath: (program) => lookup(program) !== undefined,
     candidate(fields) {
       const id = `${fields.kind}:${fields.path ?? fields.ref}`
