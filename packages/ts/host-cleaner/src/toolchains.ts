@@ -577,7 +577,9 @@ export interface ToolchainsOptions {
 
 /**
  * The `toolchains` plugin on `kit`; `env` is where each tool keeps its
- * versions (`HOME`, `RUSTUP_HOME`, `NVM_DIR`, `VOLTA_HOME`).
+ * versions (`HOME`, `RUSTUP_HOME`, `NVM_DIR`, `VOLTA_HOME`). Its `PATH` must
+ * be the one `kit` runs programs on: the `node` on `PATH` is kept, and it is
+ * found on `env.PATH` past Volta's shim but on the kit's `PATH` otherwise.
  */
 export function toolchainsPlugin(
   kit: Kit,
