@@ -322,6 +322,7 @@ roots and checks `inUse.processes` with `kit.running({ name })`.
 
 | Topic | The design | The code |
 | --- | --- | --- |
+| Built-in plugins | `git`, `cargo`, `node`, `orca`, in that order | the eleven of `BUILT_IN_PLUGINS`, in its order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama`, `agent-history`, `jetbrains`, `toolchains`. Order decides which plugin keeps a duplicate candidate |
 | `detect` | does this plugin apply? | may also answer `{ active, note }` (owner's decision) |
 | `ctx` | `ctx.signal` | also `targetsGiven` (owner's decision) |
 | `roots` | folders the plugin may delete inside | also `{ path, self: true }`, where the folder itself may be a candidate. The core checks any plugin's root ([one run](#one-run), step 4), where the design checks only descriptor paths (owner's decision) |
