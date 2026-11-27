@@ -609,9 +609,19 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - A folder check on Windows. Ownership and mode are checked on POSIX only:
   NTFS ACLs are not read, so on Windows a clone directory, `worktrees/` or
   `kept/` that another user can write to is not refused.
-- The next run's cleanup of a killed run's worktree (`releaseStaleScratch`)
-  judges the run by its pid alone; pruning also reads its start time (Build
-  notes).
+- The next run's cleanup of a killed run's worktree (`releaseStaleScratch`),
+  and in a clone of its rerere ledger, judges the run by its pid alone;
+  pruning also reads its start time (Build notes).
+- Prune and the kept-tree discard paths decide by themselves whether a
+  worktree or branch is safe to delete, where `@osdlc/repo-cleaner` already
+  does (`inspectWorktree`, its verdicts and risks). pr-update should keep
+  only the clone-level decisions (the clone lock, the folder rule, removing
+  the bare directory) and ask repo-cleaner about each worktree and branch,
+  extending it where needed (bare clones, never unlocking a person's lock),
+  planned with the pure-cache clone change. S13's prune and kept fixes
+  (Build note "A person's work in a clone or a kept tree") are the safety net
+  until then. See Known problem 27 in
+  [the architecture guide](../../guide/architecture.md#found-in-s13).
 
 ## Build notes
 
@@ -1303,11 +1313,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   grants stop counting and the person runs `pr-update trust` again, once per
   machine. It fails closed. The README says so where an upgrading user looks
   first.
-- **Size.** Against main, at the end of the omnibus (S12, rerere and the
-  final check's fixes included), pr-update's `src/` has 6,407 lines added and
-  455 removed, against the estimate of 700, and its `tests/` 9,585 added and
-  91 removed (`git diff --shortstat origin/main...HEAD`, main at
-  `88112cb4`).
+- **Size.** Against main, at the end of the omnibus (S13, the CI review's
+  fixes, included), pr-update's `src/` has 7,030 lines added and 485 removed,
+  against the estimate of 700, and its `tests/` 10,087 added and 93 removed
+  (`git diff --shortstat origin/main...HEAD`, merge base `93271347`, whose
+  pr-update is that of `88112cb4`). At the end of S12 it was 6,407 and 455,
+  and 9,585 and 91.
 - **Nested groups.** `--repo` takes exactly `owner/name` or
   `host/owner/name`, so a GitLab repository in a nested group can be found
   by the locator but not named as a target. The clone is GitHub only.
