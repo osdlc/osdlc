@@ -1827,6 +1827,31 @@ describe('the executor against real git', () => {
         expect(existsSync(rrCache())).toBe(false)
       })
 
+      test('outside a clone a verify repair commits with rerere off, with rerere on in the repository', async () => {
+        makeBehindPr('vr1', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
+        // Set after the fixture's own commits, which would otherwise make the folder.
+        fx.worker.git.raw(['config', 'rerere.enabled', 'true'])
+        expect(existsSync(rrCache())).toBe(false)
+        let fixed = false
+        const verify: RunVerb = () => (fixed ? ok : nope)
+        const repair = fakeRepair((wt) => {
+          writeFileSync(join(wt, 'fix.txt'), 'fix\n')
+          fixed = true
+        })
+        const results = await updateAll(
+          fx.worker.git,
+          [target({ number: 1, head: 'vr1' })],
+          settings({ verifyVerbs: ['check'], repair, repairOn: ['verify-failed'] }),
+          verify,
+          { apply: true, worktreeRoot: wtRoot },
+        )
+        expect(results[0]!.outcome).toMatchObject({
+          status: 'updated',
+          repaired: [{ kind: 'verify-failed' }],
+        })
+        expect(existsSync(rrCache())).toBe(false)
+      })
+
       test.each(['merge', 'rebase'] as const)(
         'a PR that ends in conflict leaves no rerere folder behind (%s)',
         async (strategy) => {

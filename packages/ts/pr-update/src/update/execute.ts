@@ -903,7 +903,7 @@ async function integrateAndPush(
     if (!res.ok) return fail(res.reason, false, verifyFailure.log)
     repaired.push({ kind: 'verify-failed', note: res.note })
     try {
-      commitRepair(git, target, res.note)
+      commitRepair(git, target, res.note, env)
     } catch (e) {
       return fail(`committing the repair: ${errorLine(e)}`)
     }
@@ -1545,8 +1545,16 @@ async function tryRepair(
   return { ok: true, note: res.note }
 }
 
-/** Commit what a `verify-failed` repair changed, on top of the update. */
-function commitRepair(git: Git, target: UpdateTarget, note: string): void {
+/**
+ * Commit what a `verify-failed` repair changed, on top of the update. `env` is the run's
+ * `integrationEnv`, so outside a clone this commit, like the others, runs with rerere off.
+ */
+function commitRepair(
+  git: Git,
+  target: UpdateTarget,
+  note: string,
+  env: Record<string, string>,
+): void {
   git.add(['.'])
   // A repair that changed nothing (for a flaky check, say) still gets its re-run.
   if (git.diffNameOnly({ cached: true }).length === 0) return
@@ -1554,6 +1562,7 @@ function commitRepair(git: Git, target: UpdateTarget, note: string): void {
     message: `Fix verify after updating ${target.head} onto ${target.base}`,
     body: note === '' ? 'Changes made by the pr-update repair.' : note,
     noVerify: true,
+    env,
   })
 }
 
