@@ -680,9 +680,13 @@ interface Windows {
   used: Named
 }
 
-/** `editor`'s processes among `processes`; see {@link Editor.process}. */
+/** Whether `p` is one of `editor`'s processes; see {@link Editor.process}. */
+const isProcessOf = (editor: Editor, p: Running['processes'][number]): boolean =>
+  editor.process.test(p.command)
+
+/** `editor`'s processes among `processes`. */
 const processesOf = (editor: Editor, processes: Running['processes']): Running['processes'] =>
-  processes.filter((p) => editor.process.test(p.command))
+  processes.filter((p) => isProcessOf(editor, p))
 
 function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
   const env = opts.env ?? process.env
@@ -764,7 +768,9 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
     if (!w.running && !editor.agentUnnamed) return []
     const here = kit.running({ in: c.path }, ctx)
     // The kit names each process, in the order of `processes`.
-    const names = here.names.filter((_, i) => editor.process.test(here.processes[i]?.command ?? ''))
+    const names = here.names.filter(
+      (_, i) => here.processes[i] !== undefined && isProcessOf(editor, here.processes[i]),
+    )
     if (names.length > 0) {
       return [
         own(c, 'refuse', editor.codes.inUse, `${editor.product} works in it: ${names.join(', ')}`),
