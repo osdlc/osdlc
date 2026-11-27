@@ -545,6 +545,18 @@ describe('a running session refuses its folder', () => {
     }
   })
 
+  test("with no candidate folder, no session record's pid is checked", async () => {
+    const fx = fixture()
+    fx.history(fx.live)
+    fx.session(process.pid, { sessionId: 'x', cwd: fx.live })
+    fx.session(deadPid(), { sessionId: 'y', cwd: fx.live })
+    let calls = 0
+    const counting: ProcessProbe = { ...idle, alive: (pid) => (calls++, exists(pid)) }
+    const s = await survey([fx.plugin(counting)], fx.ctx)
+    expect(s.candidates).toEqual([])
+    expect(calls).toBe(0)
+  })
+
   test('a live session record that cannot be read refuses every folder', async () => {
     const fx = fixture()
     const dir = fx.history(fx.gone)

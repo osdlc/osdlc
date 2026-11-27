@@ -409,10 +409,14 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
   const configOf = (ctx: Ctx): string => claudeConfigDir(env, ctx.cwd, ctx.home || homedir())
   const projectsOf = (ctx: Ctx): string => join(configOf(ctx), 'projects')
   let rows = new Map<string, Row>()
-  /** For a scan of every folder: the sessions read once. */
+  /** For a scan of every folder: the sessions read once, when a folder first asks. */
   const look = (ctx: Ctx): Seen => {
-    const sessions = liveSessions(kit, configOf(ctx))
-    return { sessions: () => sessions, mounts: mountPoints(), ctx }
+    let sessions: Sessions | undefined
+    return {
+      sessions: () => (sessions ??= liveSessions(kit, configOf(ctx))),
+      mounts: mountPoints(),
+      ctx,
+    }
   }
   /** For one folder: only the sessions that may be its are checked for a live pid. */
   const lookAt = (ctx: Ctx): Seen => {
