@@ -14,12 +14,23 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 
-import { envVars, homeDir, systemDirs, TieredDirsError, type ResolveOptions } from '@osdlc/cli-tool'
+import {
+  envVars,
+  homeDir,
+  systemDirs,
+  TieredDirsError,
+  type ResolveOptions,
+  type VendorDirs,
+} from '@osdlc/cli-tool'
 
+import { OLD_DIRS } from './old-name.ts'
 import { settingsIssues } from './settings.ts'
 import type { PluginDefinition } from './types.ts'
 
-const VENDOR_DIRS = { vendor: 'workstation-cleaner', envVars: envVars('WORKSTATION_CLEANER') }
+const VENDOR_DIRS: VendorDirs = {
+  vendor: 'workstation-cleaner',
+  envVars: envVars('WORKSTATION_CLEANER'),
+}
 
 export const ConfigSchema = z.strictObject({
   /** Checkouts and directories of checkouts, swept when none is named on the command line. */
@@ -91,10 +102,14 @@ const envOpt = (env: Record<string, string | undefined>): { env?: typeof env } =
 export const hostHome = (env: Record<string, string | undefined> = process.env): string =>
   homeDir(envOpt(env))
 
-function dirsUnder(env: Record<string, string | undefined>, opts: ResolveOptions): HostDirs {
+function dirsUnder(
+  env: Record<string, string | undefined>,
+  opts: ResolveOptions,
+  vendor: VendorDirs = VENDOR_DIRS,
+): HostDirs {
   try {
-    const dirs = systemDirs(VENDOR_DIRS, { ...envOpt(env), ...opts, overrides: UNREAD_ROOTS })
-    const tier = dirs.standalone('workstation-cleaner')
+    const dirs = systemDirs(vendor, { ...envOpt(env), ...opts, overrides: UNREAD_ROOTS })
+    const tier = dirs.standalone(vendor.vendor)
     return { config: tier.config().path, state: tier.state().path, logs: tier.logs().path }
   } catch (err) {
     if (err instanceof TieredDirsError && USAGE_CODES.has(err.code)) {
@@ -110,28 +125,39 @@ export const configFile = (dirs: HostDirs): string => join(dirs.config, 'config.
 export const descriptorsDir = (dirs: HostDirs): string => join(dirs.config, 'descriptors')
 
 /**
- * The config file in the native folders, when it exists and is not `xdgFile`,
- * the one {@link hostDirs} names: on macOS, a config left in
- * `~/Library/Application Support/workstation-cleaner/` by versions up to 0.3. Only
- * its existence is checked; it is never read. Nothing here throws: the answer
- * only decides a warning, so native folders that cannot be placed (the xdg ones
- * can be, from `XDG_*` alone, with no home directory) hold no old config.
+ * The config files that are not read although one of them may be the one
+ * meant: the one in the native folders when it is not `file`, the one
+ * {@link hostDirs} names (on macOS, under `~/Library/Application Support/`),
+ * and those under the old name ({@link OLD_DIRS}) in the xdg and the native
+ * folders, placed by the old name's own variables. Only their existence is
+ * checked; none is ever read. Nothing here throws: the answer only decides a
+ * warning or a refusal, so folders that cannot be placed (the xdg ones can be,
+ * from `XDG_*` alone, with no home directory) hold no config.
  *
  * @param opts - A platform and home to use instead of this machine's, for tests.
  */
-export function unreadNativeConfig(
+export function unreadConfigs(
   env: Record<string, string | undefined>,
-  xdgFile: string,
+  file: string,
   opts: Pick<ResolveOptions, 'platform' | 'home'> = {},
-): string | undefined {
-  try {
-    const native = configFile(
-      dirsUnder(env, { convention: 'native', conventionFromEnv: false, ...opts }),
-    )
-    return native !== xdgFile && existsSync(native) ? native : undefined
-  } catch {
-    return undefined
+): string[] {
+  const places: [VendorDirs, 'native' | 'xdg'][] = [
+    [VENDOR_DIRS, 'native'],
+    [OLD_DIRS, 'xdg'],
+    [OLD_DIRS, 'native'],
+  ]
+  const found = new Set<string>()
+  for (const [vendor, convention] of places) {
+    try {
+      const at = configFile(
+        dirsUnder(env, { convention, conventionFromEnv: false, ...opts }, vendor),
+      )
+      if (at !== file && existsSync(at)) found.add(at)
+    } catch {
+      // Folders that cannot be placed hold no config.
+    }
   }
+  return [...found]
 }
 
 /** A config file, or a folder variable, that cannot be used; the CLI exits 2 for it. */

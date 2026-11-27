@@ -34,7 +34,7 @@ import {
   hostDirs,
   hostHome,
   readConfig,
-  unreadNativeConfig,
+  unreadConfigs,
   type Config,
   type HostDirs,
 } from './config.ts'
@@ -58,6 +58,7 @@ import {
   type PackageEntry,
   type PackageFailure,
 } from './load.ts'
+import { oldVariables, oldVariablesRefusal, oldVariableWarnings } from './old-name.ts'
 import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import {
   BUILT_IN_PLUGINS,
@@ -457,31 +458,34 @@ const NO_HOME = 'no home directory to place the folders in: set HOME, or WORKSTA
 
 /**
  * The config: `--config`, which must exist, else `config.json` in the config
- * folder if present. Its warnings name a config in the native folders, such as
- * macOS's from versions up to 0.3, that goes unread (`unread`). Its `plugins`
- * are not checked here: {@link findRun} checks them against the run's plugins.
+ * folder if present. Its warnings name each config that goes unread (see
+ * {@link unreadConfigs}), such as one under the old name, and each variable of
+ * the old name that is set. Its `plugins` are not checked here:
+ * {@link findRun} checks them against the run's plugins.
  */
 function loadConfig(
   v: { config?: string | undefined },
   ctx: CliContext,
   dirs: HostDirs | undefined,
-): { file: string; fileExists: boolean; config: Config; warnings: string[]; unread?: string } {
+): { file: string; fileExists: boolean; config: Config; warnings: string[] } {
+  const old = oldVariableWarnings(oldVariables(ctx.env))
   if (v.config !== undefined) {
     const file = resolve(ctx.cwd, v.config)
-    return { file, ...readConfig(file, { required: true, plugins: [] }), warnings: [] }
+    return { file, ...readConfig(file, { required: true, plugins: [] }), warnings: old }
   }
   if (dirs === undefined) throw new Error(NO_HOME)
   const file = configFile(dirs)
-  const unread = unreadNativeConfig(ctx.env, file)
-  if (unread === undefined) return { file, ...readConfig(file, { plugins: [] }), warnings: [] }
-  const warnings = [`${unread} is not read; the config is now ${file}`]
-  return { file, ...readConfig(file, { plugins: [] }), warnings, unread }
+  const unread = unreadConfigs(ctx.env, file).map(
+    (u) => `${u} is not read; the config is now ${file}`,
+  )
+  return { file, ...readConfig(file, { plugins: [] }), warnings: [...old, ...unread] }
 }
 
 /**
- * Refuses a clean whose only config is one in the native folders that is not
- * read (see {@link loadConfig}): its ignore list would not apply, and a delete
- * on the defaults could take what it kept.
+ * Refuses a clean that would run without what the person set up (see
+ * {@link loadConfig}): while a variable of the old name is set, or while the
+ * only config is one that is not read. Its ignore list would not apply, and a
+ * delete on the defaults could take what it kept.
  *
  * @throws ConfigError when that is so
  */
@@ -490,12 +494,15 @@ function refuseUnread(
   ctx: CliContext,
   dirs: HostDirs | undefined,
 ): void {
+  const old = oldVariables(ctx.env)
+  if (old.length > 0) throw new ConfigError(oldVariablesRefusal(old))
   if (v.config !== undefined || dirs === undefined) return
   const file = configFile(dirs)
-  const unread = unreadNativeConfig(ctx.env, file)
-  if (unread === undefined || existsSync(file)) return
+  const unread = unreadConfigs(ctx.env, file)
+  if (unread.length === 0 || existsSync(file)) return
+  const one = unread.length === 1
   throw new ConfigError(
-    `${unread} is not read, and there is no config at ${file}: move the file there, or pass --config; clean deletes nothing until then`,
+    `${unread.join(' and ')} ${one ? 'is' : 'are'} not read, and there is no config at ${file}: move ${one ? 'the file' : 'one of them'} there, or pass --config; clean deletes nothing until then`,
   )
 }
 

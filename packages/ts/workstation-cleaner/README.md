@@ -1134,17 +1134,34 @@ ignore entry starts with `~`, which is then refused with exit 1.
 Windows has no `xdg` folders and keeps its own: the config is
 `%APPDATA%\workstation-cleaner\config.json`.
 
-Versions up to 0.3 kept the macOS config in
-`~/Library/Application Support/host-cleaner/`; it now lives in
-`~/.config/workstation-cleaner/`, and workstation-cleaner does not read the old file; while
-it exists, every command that reads the default config warns on stderr
-(`status --format json` lists it in `warnings`). While it is the only one,
-with nothing at the new path and no `--config`, `clean` refuses with exit 2
+<!-- rename:keep -->
+
+Up to 0.3 the package was `@osdlc/host-cleaner` and the command was
+`host-cleaner`. Nothing under the old name is read. That covers a config at
+`~/.config/host-cleaner/config.json`, at
+`~/Library/Application Support/host-cleaner/config.json` (where 0.3 kept it on
+macOS), or in a folder that `HOST_CLEANER_CONFIG_DIR` names. A config in the
+macOS native folders under the new name is not read either. While such a file
+exists, every command that reads the default config warns on stderr
+(`status --format json` lists it in `warnings`). While it is the only one, with
+nothing at the new path and no `--config`, `clean` refuses with exit 2
 (`clean --dry-run` only warns), since its `ignore` list would not apply: move
-the file to the new path. Their
-receipts and log stay where they were written, in
+the file to the new path.
+
+The `HOST_CLEANER_*` variables are not read either. While one is set, every
+command warns, and `clean` refuses with exit 2, with `--config` too
+(`clean --dry-run` only warns), until it is renamed to its
+`WORKSTATION_CLEANER_*` name or unset. Without that, an ignored
+`HOST_CLEANER_CONFIG_DIR` would make the run use the defaults and drop its
+`ignore` list.
+
+Old receipts and logs stay where they were written, under
+`~/.local/state/host-cleaner/`, or on macOS up to 0.3 in
 `~/Library/Application Support/host-cleaner/receipts/` and
-`~/Library/Logs/host-cleaner/`; new ones go to `~/.local/state/workstation-cleaner/`.
+`~/Library/Logs/host-cleaner/`; new ones go to
+`~/.local/state/workstation-cleaner/`.
+
+<!-- /rename:keep -->
 
 The config file holds the targets and each plugin's settings:
 

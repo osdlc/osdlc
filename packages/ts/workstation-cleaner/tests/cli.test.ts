@@ -21,7 +21,7 @@ import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeBareAndWorker, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, tildeId, untildeId, untildeSpare, type MainDeps } from '../src/cli.ts'
-import { configFile, hostDirs, unreadNativeConfig } from '../src/config.ts'
+import { configFile, hostDirs, unreadConfigs } from '../src/config.ts'
 import { PLAN_VERSION, parsePlan } from '../src/plan.ts'
 import {
   BUILT_IN_PLUGINS,
@@ -1981,27 +1981,25 @@ describe('folders', () => {
     expect(posixDirs(env, opts).config).toBe('C:/Users/me/AppData/Roaming/workstation-cleaner')
   })
 
-  /** `unreadNativeConfig` beside the config file `hostDirs` names. */
-  const unread = (
-    env: Record<string, string>,
-    opts: Parameters<typeof hostDirs>[1],
-  ): string | undefined => unreadNativeConfig(env, configFile(hostDirs(env, opts)), opts)
+  /** `unreadConfigs` beside the config file `hostDirs` names. */
+  const unread = (env: Record<string, string>, opts: Parameters<typeof hostDirs>[1]): string[] =>
+    unreadConfigs(env, configFile(hostDirs(env, opts)), opts)
 
-  test('a config left in the macOS folders by 0.3 is named, never read', () => {
+  test('a config left in the macOS native folders is named, never read', () => {
     const home = tempDir()
     const mac = { platform: 'darwin', home }
-    expect(unread({}, mac)).toBeUndefined()
+    expect(unread({}, mac)).toEqual([])
     const old = join(home, 'Library', 'Application Support', 'workstation-cleaner', 'config.json')
     mkdirSync(dirname(old), { recursive: true })
     writeFileSync(old, 'not json')
-    expect(unread({}, mac)?.replaceAll('\\', '/')).toBe(old.replaceAll('\\', '/'))
+    expect(unread({}, mac).map((f) => f.replaceAll('\\', '/'))).toEqual([old.replaceAll('\\', '/')])
     // Where the native and xdg folders are the same, there is nothing left behind.
-    expect(unread({ WORKSTATION_CLEANER_ROOT: '/r' }, mac)).toBeUndefined()
-    expect(unread({ WORKSTATION_CLEANER_CONVENTION: 'native' }, mac)).toBeUndefined()
+    expect(unread({ WORKSTATION_CLEANER_ROOT: '/r' }, mac)).toEqual([])
+    expect(unread({ WORKSTATION_CLEANER_CONVENTION: 'native' }, mac)).toEqual([])
     const linuxOld = join(home, '.config', 'workstation-cleaner', 'config.json')
     mkdirSync(dirname(linuxOld), { recursive: true })
     writeFileSync(linuxOld, '{}')
-    expect(unread({}, { platform: 'linux', home })).toBeUndefined()
+    expect(unread({}, { platform: 'linux', home })).toEqual([])
   })
 
   test.skipIf(process.platform === 'win32')(
@@ -2080,7 +2078,7 @@ describe('folders', () => {
       expect(hostDirs(xdg, { platform: 'darwin' }).config).toBe(
         join(home, 'cfg', 'workstation-cleaner'),
       )
-      expect(unread(xdg, { platform: 'darwin' })).toBeUndefined()
+      expect(unread(xdg, { platform: 'darwin' })).toEqual([])
       const env = { PATH: process.env.PATH ?? '', ...xdg }
       for (const args of [['config'], ['status', cwd], ['plan', '-o', '-', cwd]]) {
         const r = await run(args, cwd, env, { plugins: [fake()] })

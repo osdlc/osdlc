@@ -694,18 +694,26 @@ Gate: Phase 1 merged, k-plugins-cmd. PR: new. Size: M.
 
 Mechanical, once the name exists. The name is one constant.
 
+<!-- rename:keep -->
+
+The owner chose `workstation-cleaner`. The rename is a script, so it can be
+run again after other PRs to the package merge.
+
 What:
 
-- Package name, bin, `standalone(...)` folder name, `WORKSTATION_CLEANER_*` env vars, docs, the descriptor schema URL.
+- Package name, bin, `standalone(...)` folder name, `HOST_CLEANER_*` env vars, docs, the descriptor schema URL: `host-cleaner` becomes `workstation-cleaner`.
+- A config under the old folder name, or a `HOST_CLEANER_*` variable, is never read: every command warns, and `clean` without `--dry-run` refuses with exit 2.
 
 Files:
 
-- `packages/ts/workstation-cleaner/`
+- `packages/ts/host-cleaner/`, moved to `packages/ts/workstation-cleaner/`
 - `docs`
 
 Done when:
 
-- No `workstation-cleaner` left except a changelog line.
+- No `host-cleaner` left except history (changelog entries, review pages, decision records) and the old-name refusals.
+
+<!-- /rename:keep -->
 
 Gate: A name chosen. PR: new. Size: S.
 
