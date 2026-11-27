@@ -75,6 +75,46 @@ test('a run whose env lacks a home folder variable finds only the empty decoy', 
   ])
 })
 
+/**
+ * The variables beside HOME that a shipped plugin or descriptor finds one of this machine's
+ * folders through. A run these tests start gets each as the empty decoy, whatever this process
+ * holds, and no other `npm_config_*` (npm reads its prefix from one).
+ */
+const RUN_HOME_VARS = [
+  ...HOME_VARS.filter((name) => name !== 'HOME'),
+  'APPDATA',
+  'LOCALAPPDATA',
+  'PREFIX',
+  'CARGO_HOME',
+  'RUSTUP_HOME',
+  'NVM_DIR',
+  'VOLTA_HOME',
+  'GOPATH',
+  'GOMODCACHE',
+  'GOCACHE',
+  'GRADLE_USER_HOME',
+  'HF_HOME',
+  'HF_HUB_CACHE',
+  'HUGGINGFACE_HUB_CACHE',
+  'PIP_CACHE_DIR',
+  'PNPM_HOME',
+  'UV_CACHE_DIR',
+  'YARN_CACHE_FOLDER',
+]
+
+test("a run's env holds no home folder variable of this process's", () => {
+  for (const name of RUN_HOME_VARS) vi.stubEnv(name, '/machine')
+  vi.stubEnv('npm_config_userconfig', '/machine/.npmrc')
+  vi.stubEnv('NPM_CONFIG_CACHE', '/machine/.npm')
+  const { env, home } = setup()
+  expect(env.HOME).toBe(home)
+  expect(RUN_HOME_VARS.filter((name) => env[name] !== nobody)).toEqual([])
+  expect(Object.keys(env).filter((name) => /^npm_config_/i.test(name))).toEqual([
+    'npm_config_prefix',
+  ])
+  expect(Object.values(env).filter((value) => value.startsWith('/machine'))).toEqual([])
+})
+
 function tempDir(): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'host-cleaner-cli-')))
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
@@ -103,14 +143,15 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
     home,
     cwd: tempDir(),
     env: {
-      ...(process.env as Record<string, string>),
+      ...Object.fromEntries(
+        Object.entries(process.env as Record<string, string>).filter(
+          ([name]) => !/^npm_config_/i.test(name),
+        ),
+      ),
+      ...Object.fromEntries(RUN_HOME_VARS.map((name) => [name, nobody])),
       // HOME puts the cursor plugin's agent worktrees in the test's home.
       HOME: home,
       HOST_CLEANER_ROOT: home,
-      // Never this machine's toolchains, should the toolchains plugin run.
-      RUSTUP_HOME: join(home, 'rustup'),
-      NVM_DIR: join(home, 'nvm'),
-      VOLTA_HOME: join(home, 'volta'),
     },
   }
 }
