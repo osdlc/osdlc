@@ -129,12 +129,14 @@ const deviceOf = (path: string): number | undefined => {
  * `roots` or below one (such as an empty `/mnt/usb`) and on that root's device
  * (no volume is mounted under it), or it is a link that leads nowhere, or it
  * is the root, as for `/Volumes/x` recorded on a Mac and read on Linux, or a
- * Windows drive that is away.
+ * Windows drive that is away, or it is the folder that holds `home` (such as
+ * `/home`), as for another user's or another machine's home that is not here.
  */
 export function unmounted(
   path: string,
   mounts: ReadonlySet<string> = new Set(),
   roots: readonly string[] = MOUNTS,
+  home?: string,
 ): boolean {
   let dir = dirname(path)
   while (dirname(dir) !== dir && gone(dir)) dir = dirname(dir)
@@ -145,6 +147,7 @@ export function unmounted(
   } catch {
     return true
   }
+  if (home !== undefined && home !== '' && [dir, real].includes(dirname(home))) return true
   const device = deviceOf(real)
   // A device that differs from the one above shows a volume is mounted there.
   const onDeviceOf = (other: string): boolean =>
@@ -350,7 +353,10 @@ function rowFor(kit: Kit, dir: string, seen: Seen, { sized = true } = {}): Row |
   if (!isDir(dir)) return undefined
   let record: ProjectRecord | null
   try {
-    record = decodeFolder(dir, (p) => gone(p) && !unmounted(p, seen.mounts))
+    record = decodeFolder(
+      dir,
+      (p) => gone(p) && !unmounted(p, seen.mounts, MOUNTS, seen.ctx.home || homedir()),
+    )
   } catch {
     return undefined
   }
