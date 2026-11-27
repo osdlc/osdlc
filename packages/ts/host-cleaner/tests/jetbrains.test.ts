@@ -667,6 +667,18 @@ describe('project caches', () => {
     // An autofs share that is down.
     expect(gone('/net/nas/proj', disk({ '/': 1, '/net': 2 }))).toBe(false)
   })
+
+  test('the walk up stops at the root, even when the root reads as missing', () => {
+    let looks = 0
+    const nothing = {
+      present: () => {
+        if (++looks > 100) throw new Error('walked past the root')
+        return false
+      },
+      device: () => undefined,
+    }
+    expect(gone('/a/b', nothing)).toBe(false)
+  })
 })
 
 describe('refusing a folder outside', () => {

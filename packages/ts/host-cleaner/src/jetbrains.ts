@@ -386,7 +386,7 @@ const DISK: DiskProbe = { present: mayExist, device: deviceOf }
 export function gone(path: string, disk: DiskProbe = DISK): boolean {
   if (disk.present(path)) return false
   let dir = dirname(path)
-  while (!disk.present(dir)) dir = dirname(dir)
+  while (dir !== dirname(dir) && !disk.present(dir)) dir = dirname(dir)
   if (dir === dirname(dir)) return false
   const under = (p: string, m: string): boolean => p === m || p.startsWith(m + '/')
   const mounts = MOUNT_PARENTS.find((m) => under(path, m))
