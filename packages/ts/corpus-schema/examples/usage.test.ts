@@ -30,11 +30,14 @@ import {
   type LoadedCorpus,
   type LoadOptions,
   markdownLink,
+  newRecord,
+  type NewRecordOptions,
   npmPackageUrl,
   type PackageUrl,
   packageUrl,
   type RecordLink,
   type RecordReference,
+  recordSkeleton,
   recordsOf,
   type RecordTarget,
   type RefForm,
@@ -313,5 +316,20 @@ describe('writing records', () => {
     expect(markdownLink('Claude Code', '../harnesses/Claude Code.md')).toBe(
       '[Claude Code](../harnesses/Claude%20Code.md)',
     )
+  })
+
+  test('a record skeleton is built from the type, and newRecord writes one valid record', () => {
+    put('c/c.corpus-schema.md', '---\ncorpus-schema: 0\n---\n')
+    put(
+      'c/claims/claims.schema.yaml',
+      'type: object\nrequired: [status, strength]\nproperties:\n  status: { enum: [draft, accepted] }\n  strength: { type: integer, default: 2 }\n',
+    )
+    expect(recordSkeleton(join(dir, 'c'), 'claims')).toEqual({
+      status: '<draft | accepted>',
+      strength: 2,
+    })
+    const options: NewRecordOptions = { values: { status: 'accepted' } }
+    expect(newRecord(join(dir, 'c'), 'claims', 'C-1', options)).toBe('claims/C-1.md')
+    expect(validateCorpus(join(dir, 'c')).errors).toEqual([])
   })
 })

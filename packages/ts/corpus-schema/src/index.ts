@@ -32,6 +32,7 @@ export {
   resolveTarget,
   type TypeRef,
 } from './load.ts'
+export { newRecord, type NewRecordOptions, recordSkeleton } from './skeleton.ts'
 export { generateTypes } from './types.ts'
 export { type SyncReport, syncCorpus } from './sync.ts'
 export { encodePath, fold, markdownLink } from './links.ts'

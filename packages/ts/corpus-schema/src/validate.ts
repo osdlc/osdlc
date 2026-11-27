@@ -168,6 +168,8 @@ export interface Corpus {
   name: string
   id: string | undefined
   level: 1 | 2 | undefined
+  /** The record extensions the root file's `formats` allow. */
+  extensions: string[]
   files: Set<string>
   /** Files and folders by their NFC form, for relative links. */
   filesByNfc: Map<string, string>
@@ -378,7 +380,7 @@ export function idProblem(id: string): string | undefined {
 }
 
 /** Render one ajv error as `field: message`. */
-function describe(e: ErrorObject): string {
+export function describe(e: ErrorObject): string {
   const path = e.instancePath.split('/').slice(1).join('.')
   const dotted = path === '' ? '' : `${path}.`
   if (e.keyword === 'additionalProperties')
@@ -454,13 +456,18 @@ const inNarrative = (dir: string, path: string): boolean =>
     .slice(0, -1)
     .some((part) => part.startsWith('_'))
 
+/** The extension a new record gets: `.md` when `extensions` allows it, else the first. */
+export function preferredExtension(extensions: string[]): string {
+  return extensions.includes('.md') ? '.md' : (extensions[0] ?? '.md')
+}
+
 /**
  * A record's id, from `name`, its file stem or record-folder name. With no `x-id-pattern` up the
  * chain it is `name`. Otherwise it is the longest of `name` and the parts of `name` that end just
  * before a `-` that every pattern matches, so `P-0002-be-kind` with `^P-[0-9]{4}$` has the id
  * `P-0002`. Undefined when none matches.
  */
-function idOf(types: Type[], name: string): string | undefined {
+export function idOf(types: Type[], name: string): string | undefined {
   const patterns = types.flatMap((t) => (t.idPattern === undefined ? [] : [t.idPattern]))
   if (patterns.length === 0) return name
   const ends = [name.length, ...[...name.matchAll(/-/g)].map((m) => m.index).reverse()]
@@ -512,6 +519,7 @@ export function load(root: string, loader: Loader = { done: new Map(), stack: []
     name: basename(resolvePath(root)),
     id: undefined,
     level: undefined,
+    extensions: ['.md'],
     files: new Set(files),
     filesByNfc: new Map(files.map((f) => [f.normalize('NFC'), f])),
     dirsByNfc: new Set(dirs.map((d) => d.normalize('NFC'))),
@@ -539,6 +547,7 @@ export function load(root: string, loader: Loader = { done: new Map(), stack: []
     c.fatal.push(...c.errors.slice(walked))
     return c
   }
+  c.extensions = top.extensions
   loader.stack.push(c)
   readSources(c, top.file, top.data, 'extends', loader)
   readSources(c, top.file, top.data, 'references', loader)
@@ -1254,7 +1263,7 @@ function strayHint(
   const out = 'To keep it out of the corpus, move it under a folder starting with _.'
   if (dir !== type.dir) {
     const name = basename(dir)
-    const preferred = extensions.includes('.md') ? '.md' : (extensions[0] ?? '.md')
+    const preferred = preferredExtension(extensions)
     const record = declared ?? `${name}${preferred}`
     const add = `add ${dir}/${record}${declared === undefined ? ' (or set x-record-file)' : ''}`
     const keep = yml ? `rename it to .yaml and ${add}` : add

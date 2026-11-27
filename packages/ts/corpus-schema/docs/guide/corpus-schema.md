@@ -606,7 +606,8 @@ warnings.
 
 ### The validate command
 
-v0 defines two verbs, `validate` and `sync`.
+v0 defines two verbs, `validate` and `sync`. The package adds a third, `new`, which the spec does not
+require (see [The new command](#the-new-command)).
 
 ```sh
 corpus-schema validate [--fix] [--strict] <folder>...
@@ -647,6 +648,24 @@ corpus-schema sync [<folder>...]
 - `sync` owns `_references/`. In a corpus with no `references` it empties it. It does not follow a
   symbolic link there, and reports one as an error.
 - `validate` never writes the copy. It checks it, and says to run `sync` when it is stale.
+
+### The new command
+
+```sh
+corpus-schema new [--folder] [--json <data>] <corpus> <type> <id>
+```
+
+- It writes the record at `<type>/<id>.md`, or `.yaml` or `.json` when `formats` leaves `md` out. With
+  `--folder` it writes a record folder, `<type>/<id>/<id>.md` or the type's `x-record-file`.
+- The frontmatter holds every required field of the type and of each type up its `x-extends` chain
+  or `uses`. A field is its `const` or `default`, a `<a | b>` placeholder for an `enum`, or an empty
+  value of its type. A required object is built out the same way.
+- It checks the id against the id rules and every `x-id-pattern`, and refuses one that is taken.
+- With `--json`, the fields it names are merged over the skeleton and the result is checked against
+  the schemas before anything is written. Without it the skeleton is a template and does not
+  validate until its placeholders are replaced.
+
+The library exports the skeleton as `recordSkeleton(root, type)` and the write as `newRecord`.
 
 ### Writing records
 
