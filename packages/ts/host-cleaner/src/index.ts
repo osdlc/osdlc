@@ -78,6 +78,12 @@ export {
 } from './docker.ts'
 export { AGENT_HISTORY_PLUGIN } from './agent-history.ts'
 export { jetbrainsPlugin, JETBRAINS_PLUGIN, type JetbrainsOptions } from './jetbrains.ts'
+export {
+  toolchainsDefinition,
+  toolchainsPlugin,
+  TOOLCHAINS_PLUGIN,
+  type ToolchainsOptions,
+} from './toolchains.ts'
 export { type ArtifactOptions } from './artifacts.ts'
 export {
   DEFAULT_MAX_ENTRIES,

@@ -102,8 +102,16 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
   return {
     home,
     cwd: tempDir(),
-    // HOME puts the cursor plugin's agent worktrees in the test's home.
-    env: { ...(process.env as Record<string, string>), HOME: home, HOST_CLEANER_ROOT: home },
+    env: {
+      ...(process.env as Record<string, string>),
+      // HOME puts the cursor plugin's agent worktrees in the test's home.
+      HOME: home,
+      HOST_CLEANER_ROOT: home,
+      // Never this machine's toolchains, should the toolchains plugin run.
+      RUSTUP_HOME: join(home, 'rustup'),
+      NVM_DIR: join(home, 'nvm'),
+      VOLTA_HOME: join(home, 'volta'),
+    },
   }
 }
 
@@ -1412,7 +1420,7 @@ candidates:
     expect(r.code).toBe(2)
     expect(r.err).toContain('config names no plugin crago')
     expect(r.err).toContain(
-      'correct the name (have git, cargo, node, vscode, cursor, orca, docker, ollama, agent-history, jetbrains)',
+      'correct the name (have git, cargo, node, vscode, cursor, orca, docker, ollama, agent-history, jetbrains, toolchains)',
     )
   })
 

@@ -7,7 +7,7 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama`, `agent-history` and `jetbrains` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama`, `agent-history`, `jetbrains` and `toolchains` plugins, and the `host-cleaner` command.
 It runs only when a person runs it: there is no scheduled or unattended run
 ([B-0001](docs/planning/backlog/B-0001-unattended-cleaning.md)).
 
@@ -18,7 +18,7 @@ The design it is heading to, descriptors and loadable plugins included, is the
 ## Phases
 
 Plugins run in the order they are given. The command line runs the shipped
-ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama`, `agent-history`, `jetbrains`.
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama`, `agent-history`, `jetbrains`, `toolchains`.
 The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
@@ -267,6 +267,7 @@ without it to the kit it builds; a kit no run has bound removes nothing.
 | --- | --- |
 | `kit.idle(path, { skip })` | How long the folder sat unchanged: the newest modification time under it and the hours since, fractions included, links not followed, within a time budget (`MEASURE_BUDGET_MS`, 10 seconds). Several folders, as a list, are one answer within one budget. A path that is a file is aged by itself. Out of time, it is `{ unmeasured: true }`. |
 | `kit.overBudget()` | A check that turns true once the same budget has passed since the call, by the kit's clock: for a plugin that measures several things as one. |
+| `kit.now()` | The time now, by the clock `kit.idle` reads (`KitOptions.now`). |
 | `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
 | `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy), as `names` (`<command> (pid <n>)`, for a sentence) and `processes` (`{ pid, command }`, to match on); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and the unbroken line of ancestors above it whose command lines name host-cleaner are left out, so the `npm exec` or `pnpm dlx` that started it does not count, but an editor, terminal or `tmux` it runs inside does. The table is read fresh once per hook call; one that could not be read stays `unknown` for the rest of it. |
 | `kit.alive(pid, startedAt?)` | Whether a process is running, by the process probe's `alive`. With `startedAt` (such as epoch milliseconds recorded when it started), a pid reused by a process that started later is not it. `true` when it cannot be told. |
@@ -758,6 +759,101 @@ A running process of the product (`rustrover`, `idea`, and so on, or
 removes it with `kit.remove`. `jetbrainsPlugin(options, kit)` builds the plugin
 directly, with `apps`, `desktop` or `platform` of your own.
 
+## The `toolchains` plugin
+
+rustup toolchains, and Node versions installed by nvm or Volta, that no
+checkout in your targets asks for. Each is `rust-toolchain:<folder>` or
+`node-version:<folder>`, with its size and `costDescription: re-download`;
+a Node version holding global packages npm installed (other than `npm` and
+`corepack`), or whose packages cannot be listed, is `lost`, since they go with
+it: it is held, and runs only when picked and with `--allow discard-user-data`.
+Settings: `plugins.toolchains.idleHours`, which inherits the top-level
+`idleHours` (default 24).
+
+- Nothing is proposed unless you gave the targets, in the config or on the
+  command line. When the command line falls back to the folder you run from,
+  the plugin proposes nothing and `status` warns
+  `toolchains: no targets were given (the folder it runs from is not enough), so it proposes nothing`.
+
+- The checkouts under the targets are read for `rust-toolchain`,
+  `rust-toolchain.toml`, `.nvmrc`, `.node-version` and `package.json`'s
+  `volta.node` (through `volta.extends` too), at their root and wherever git
+  lists one below it. That is the whole repository a target sits in, every
+  checkout up to 8 folders below a target, each repository's worktrees (a bare
+  one's too), and the submodules of a checkout and the repositories up to 3
+  folders below a folder it does not track. A target that is a link is
+  followed. A target with folders deeper than 8 refuses every candidate, since
+  a checkout may sit there, and so does one that is missing or not a folder
+  that can be read.
+- Not searched: folders whose names start with a dot, and folders a checkout's
+  git ignores. Every candidate carries an `unsearched-folders` note that says
+  so. When a repository a target sits in is the home folder, or holds it, its
+  own files are read, and what it does not track only in the targets.
+- A folder whose `.git` is broken (a pruned worktree's, an empty one) has no
+  git to list it, so all of it is read but its `node_modules` (only the
+  targets in it, when it is or holds the home folder). A repository found
+  inside a checkout has its linked worktrees read too, wherever they sit.
+- Kept: what they name, by prefix (`1.80` keeps `1.80-<host>` and
+  `1.80.1-<host>`; `18` keeps every `18.x.y`), rustup's default, its directory
+  overrides, `RUSTUP_TOOLCHAIN` and the pin files in the folder you run
+  from and above it, nvm's `default` alias, Volta's default, and the `node` on
+  `PATH` (asked with `node --version`; Volta's shim is passed over, since it
+  installs a version it lacks). With no rustup default set, none is kept
+  as the default. nvm aliases such
+  as `lts/*` are followed through nvm's `alias` folder, and `node` or
+  `latest` keep the newest version nvm has.
+- Also kept: any version used in the last `idleHours`, so `cargo +nightly`
+  with no pin file keeps nightly while you use it. Used means the newest
+  access or modification time of the files in the version's `bin` folder,
+  links followed. Every use runs one of them (rustup's proxies, nvm's `PATH`,
+  Volta's shims), and running a file updates its access time. Linux's
+  default `relatime` updates the access time at most once a day, so on a
+  volume mounted `relatime` a version is kept for 24 hours past `idleHours`.
+  A backup or indexer that reads those files only
+  makes a version look used, and keeps it.
+- On a volume mounted `noatime` a run leaves no trace, so a versions folder
+  there proposes nothing, and `status` warns
+  `toolchains: <folder> is on a volume mounted noatime, so last use can't be measured and every version in it is kept`.
+  The volume is the one `df` names for the folder, and its options come from
+  `mount` on macOS and `/proc/self/mounts` on Linux. When they cannot be read
+  (`df` or `mount` failing, another platform), the access times are
+  trusted, except on macOS.
+- macOS stops updating a file's access time once it is newer than its
+  modified time, so after a version's first use there its access times cannot
+  show a recent one: unless the volume is mounted `strictatime`, a versions
+  folder on macOS proposes nothing either, and `status` warns
+  `toolchains: <folder> is on a macOS volume, which stops updating a file's access time once it is newer than its modified time, so last use can't be measured and every version in it is kept`.
+- A version with a process working in its folder (one whose current
+  folder is in it, an idle shell aside) is refused `live-process`, and every
+  version is refused `process-table-unreadable` when that cannot be read, as
+  the `cargo` and `node` plugins refuse an artifact. A process started from a
+  version's `bin` that works in another folder is not seen this way.
+- Checkouts are listed only when some installed version is past
+  `idleHours`; when none is, nothing is proposed and git is not asked.
+- As a library: `toolchainsPlugin(kit, env, { idleHours, mountOptions, platform })`
+  builds it on your kit, reading `HOME`, `RUSTUP_HOME`, `NVM_DIR` and
+  `VOLTA_HOME` from `env` (one set empty counts as unset). Idle time is
+  read from `kit.now()`.
+- When any of that cannot be read (an alias nvm does not have, a checkout git
+  cannot list, rustup not answering), every candidate of that tool is refused
+  with `unused-unknown` (nvm's default refuses only nvm's versions, Volta's
+  only Volta's, a `package.json` that cannot be read, or that names `volta` and
+  is not JSON, only Volta's, and any other pin or the `node` on `PATH` both); a
+  version whose `bin` folder cannot be read is refused on its own. A linked
+  toolchain or one that is not a release is never proposed.
+- `delete` reads everything again, then runs `rustup toolchain uninstall
+  <name>` for a toolchain, or removes an nvm or Volta folder with
+  `kit.remove`. The list of checkouts and pin files alone is kept, for a minute
+  from when it was made, so a clean of many versions does not ask git about
+  every checkout each time: until then a new checkout, or a new pin file below
+  a checkout's root, is not seen. It refuses a folder that is not in the tool's
+  versions folder or has become a link, and a Node version whose global
+  packages changed. A version pinned or used since the plan is gone at that
+  check, and is left alone.
+
+Locations come from `RUSTUP_HOME`, `NVM_DIR` and `VOLTA_HOME`, else `~/.rustup`,
+`~/.nvm` and `~/.volta`.
+
 ## Command line
 
 The command works in repo-cleaner's phases, with its flags. Nothing runs until
@@ -989,7 +1085,7 @@ naming the plugin and the key.
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
 | `package` | a plugin loaded from a package | none | The npm package it is loaded from. |
-| `idleHours` | `cargo`, `node`, `ollama`, `jetbrains`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, fractions included (`0.5` is half an hour), and `0` takes every artifact. |
+| `idleHours` | `cargo`, `node`, `ollama`, `jetbrains`, `toolchains`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, fractions included (`0.5` is half an hour), and `0` takes every artifact. |
 | `vars.<NAME>` | descriptors that declare `vars` | none | A folder (`~/…` or absolute) for one of the descriptor's variables. It wins over every source and may sit outside home. A name the descriptor does not declare is an error. It wins over the sources of the variables built from it too: `GOPATH` (go) moves the module cache even with go on PATH. |
 | `keepVolumes` | `docker` | `[]` | Volume names never proposed, even when no container uses them. |
 

@@ -106,6 +106,8 @@ export interface KitRunResult extends CommandResult {
 export interface Kit {
   /** The plugin the kit is bound to; the owner of every candidate it builds. */
   readonly owner: string
+  /** The time now, by the clock {@link Kit.idle} reads idle time from ({@link KitOptions.now}). */
+  now(): Date
   /**
    * How long `path` has sat unchanged, by the newest modification time of any
    * file under it, links not followed, within the time budget; a path that
@@ -353,6 +355,7 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
 
   const kit: Kit = {
     owner,
+    now,
     idle(path, { skip = () => false } = {}) {
       const at = now().getTime()
       const start = clock()

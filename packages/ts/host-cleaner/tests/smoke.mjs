@@ -52,6 +52,7 @@ assert.deepEqual(
     'ollama',
     'agent-history',
     'jetbrains',
+    'toolchains',
   ],
 )
 
