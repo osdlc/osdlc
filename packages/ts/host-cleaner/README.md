@@ -1098,8 +1098,8 @@ descriptor of its name in the config directory or `--descriptor` is a file
 that can't be used.
 Packages run after the built-ins and before the descriptors, by name. No
 package is imported until the config's other entries and the descriptors have
-been checked. When one fails to load (not installed, its import throws, a wrong
-export, name or api), `status` and `plan` warn and go on without it, and
+been checked. When one fails to load (not installed, its import throws or
+takes over 30 seconds, a wrong export, name or api), `status` and `plan` warn and go on without it, and
 `clean` exits 2 unless you pass `--skip-plugin <name>`, since its objections
 would be missing too. A package the config disables, or that `--skip-plugin`
 names, is not loaded, except by `host-cleaner config`, which loads every

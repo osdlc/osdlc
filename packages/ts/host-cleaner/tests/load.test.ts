@@ -7,7 +7,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import {
   DescriptorLoadError,
@@ -357,6 +357,21 @@ describe('what a package must export', () => {
     expect(await failure("throw 'missing native binding'\n")).toMatch(
       /failed to import: missing native binding$/,
     )
+  })
+
+  test('an import whose top-level await never settles fails after 30 s, not hangs', async () => {
+    vi.useFakeTimers()
+    try {
+      const pending = load('await new Promise(() => {})\nexport default {}\n')
+      await vi.advanceTimersByTimeAsync(30_000)
+      const r = await pending
+      expect(r.loaded).toEqual([])
+      expect(r.failed.map((f) => f.reason)).toEqual([
+        `plugins.fixture.package: ${FIXTURE} 1.0.0 at ${r.path} did not finish importing in 30 s`,
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   test('a default export that is a list is no definition', async () => {

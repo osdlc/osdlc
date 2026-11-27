@@ -254,6 +254,9 @@ export function packageEntries(
   return entries.sort(byName)
 }
 
+/** The time limit, in milliseconds, of a package's import, its top-level await included. */
+const IMPORT_LIMIT_MS = 30_000
+
 /** The `exports` conditions Node matches for an `import`. */
 const IMPORT_CONDITIONS = ['node', 'import', 'module-sync', 'default']
 
@@ -403,7 +406,7 @@ function checked(def: PluginDefinition, entry: PackageEntry, label: string): Plu
 /**
  * The package `entry` names, from the first of `roots` that has it.
  *
- * @throws PackageLoadError when it is not there, its `package.json` can't be read, it exports no entry for `import`, its import throws, or its default export is not a plugin definition of that name for this host-cleaner's {@link PLUGIN_API}
+ * @throws PackageLoadError when it is not there, its `package.json` can't be read, it exports no entry for `import`, its import throws or takes over {@link IMPORT_LIMIT_MS}, or its default export is not a plugin definition of that name for this host-cleaner's {@link PLUGIN_API}
  */
 async function loadPackage(entry: PackageEntry, roots: readonly string[]): Promise<LoadedPackage> {
   const fail = (why: string): PackageLoadError =>
@@ -425,10 +428,22 @@ async function loadPackage(entry: PackageEntry, roots: readonly string[]): Promi
   const file = entryOf(dir, manifest)
   if (file === undefined) throw fail(`${label} at ${dir} exports no entry for import`)
   let mod: { default?: unknown }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(fail(`${label} at ${dir} did not finish importing in ${IMPORT_LIMIT_MS / 1000} s`)),
+      IMPORT_LIMIT_MS,
+    )
+  })
   try {
-    mod = (await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default?: unknown }
+    const imported = import(/* @vite-ignore */ pathToFileURL(file).href)
+    mod = (await Promise.race([imported, late])) as { default?: unknown }
   } catch (err) {
+    if (err instanceof PackageLoadError) throw err
     throw fail(`${label} at ${dir} failed to import: ${errorText(err)}`)
+  } finally {
+    clearTimeout(timer)
   }
   const def = mod.default
   // An api given is checked before the shape, which another api may change.
