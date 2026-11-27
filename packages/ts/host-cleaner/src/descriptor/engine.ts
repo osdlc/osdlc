@@ -18,7 +18,7 @@
 import { createHash } from 'node:crypto'
 import { lstatSync, readdirSync, realpathSync, type Dirent } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import { globRegExp } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
@@ -462,12 +462,14 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   /** Resolves the variables and fills the folders and locks with them; returns every variable's outcome. */
   const refresh = async (ctx: Ctx): Promise<Vars> => {
     const home = homeOf(ctx)
+    // The `XDG_*` the plugin was created with are its own home's, not another's.
+    const ownHome = ctx.home === undefined || resolve(ctx.home) === resolve(at.home)
     const vars = await resolveVars(d.vars ?? {}, {
       home,
       os: at.os,
       env: at.env,
       config: at.vars,
-      trustsXdg: isFolder,
+      ...(ownHome ? { trustsXdg: isFolder } : {}),
       kit,
       signal: ctx.signal,
       only: used,

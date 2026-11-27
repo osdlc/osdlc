@@ -1485,6 +1485,27 @@ candidates:
     expect(s.candidates.map((c) => c.path)).toContain(build)
   })
 
+  test("an XDG folder the environment sets is not trusted for another home than the plugin's", async () => {
+    const cache = join(outsideHome(), 'cache')
+    const build = filled(cache, 'go-build')
+    const b = buildVars('go', GO_VARS, { env: () => ({ XDG_CACHE_HOME: cache }) })
+    const other = outsideHome()
+    filled(other, 'go', 'pkg', 'mod')
+    const s = await survey([b.plugin], ctxOf({ home: other }))
+    expect(s.objections.filter((o) => o.by === 'go')).toContainEqual(
+      expect.objectContaining({
+        code: OUTSIDE_ROOTS,
+        reason: `${build}: it is not inside the home folder`,
+      }),
+    )
+    expect(s.roots.go).not.toContain(build)
+    // The plugin's own home, however it is spelt, still trusts it.
+    filled(b.home, 'go', 'pkg', 'mod')
+    const own = await survey([b.plugin], ctxOf({ home: `${b.home}/` }))
+    expect(own.objections.filter((o) => o.code === OUTSIDE_ROOTS)).toEqual([])
+    expect(own.roots.go).toContain(build)
+  })
+
   test('a trusted folder is still refused when it holds home, or is a target', async () => {
     const holdsHome = buildVars('go', GO_VARS)
     const parent = join(holdsHome.home, '..')
