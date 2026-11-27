@@ -78,8 +78,8 @@ function locateIn(projectRoot?: string, rule?: StandaloneLocateOptions['rule']) 
     locator: { resolveAlias: () => null },
     rule,
   })
-  const target = (host: string, owner: string, name: string) =>
-    locate(`${owner}/${name}`, { host, owner, name })
+  const target = (host: string, owner: string, name: string, port?: number) =>
+    locate(`${owner}/${name}`, { host, owner, name, ...(port === undefined ? {} : { port }) })
   return { target, calls }
 }
 
@@ -206,6 +206,31 @@ describe('standaloneLocate', () => {
     })
   })
 
+  describe('a port is part of the host a checkout serves (S13)', () => {
+    test.each([
+      ['https://ghe.example:3000/acme/api.git', 3000, true],
+      ['https://ghe.example:3000/acme/api.git', 4000, false],
+      ['https://ghe.example:3000/acme/api.git', undefined, false],
+      ['https://ghe.example/acme/api.git', 3000, false],
+      ['https://ghe.example:443/acme/api.git', undefined, true],
+      ['http://ghe.example:80/acme/api.git', undefined, true],
+      ['git@ghe.example:acme/api.git', undefined, true],
+      ['git@ghe.example:acme/api.git', 3000, false],
+      ['ssh://git@ghe.example:2222/acme/api.git', 2222, false],
+    ])('origin %s, --repo port %s: used %s', (url, port, used) => {
+      writeRoots(`roots:\n  - ${home}\n`)
+      const path = checkout('api', url)
+      const found = locateIn().target('ghe.example', 'acme', 'api', port)
+      if (used) expect(found).toMatchObject({ path, source: 'located' })
+      else {
+        expect(found).toBeNull()
+        expect(notes[0]).toMatch(
+          new RegExp(`^ghe\\.example/acme/api: ${path} is not used: its origin `),
+        )
+      }
+    })
+  })
+
   test('scans the roots once per run, and resolves each target once', () => {
     writeRoots(`roots:\n  - ${home}\n`)
     checkout('api', 'https://github.com/acme/api.git')
@@ -214,9 +239,12 @@ describe('standaloneLocate', () => {
     target('github.com', 'acme', 'api')
     const afterFirst = calls.getUrl
     target('github.com', 'acme', 'web')
+    // One more read, of the match's own origin for its port; no second scan.
+    expect(calls.getUrl).toBe(afterFirst + 1)
+    target('github.com', 'acme', 'web')
     target('github.com', 'acme', 'nope')
     target('github.com', 'acme', 'nope')
-    expect(calls.getUrl).toBe(afterFirst)
+    expect(calls.getUrl).toBe(afterFirst + 1)
     expect(notes.filter((l) => l.includes('acme/nope'))).toHaveLength(1)
   })
 

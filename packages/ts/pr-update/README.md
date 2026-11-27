@@ -160,7 +160,8 @@ host with `code_host.override: github`), and github.com otherwise. Each target i
 lower-cased once, so `Acme/API` and `acme/api` are one target, and a
 `--pr owner/name#N` matches it in any letter case. A `--repo` that names the
 repository of the project root's `--remote`, in any case, is the project root.
-Hosts are compared without a port, and an SSH config alias in a remote
+Hosts are compared without a port, but a checkout or clone serves a target
+only on the port the target names (below). An SSH config alias in a remote
 (`git@github-work:o/r.git`) counts as the host `ssh -G` resolves it to; when
 ssh cannot resolve it, a note says so and the alias is used as written. Reports and
 `--pr` name a repository by `owner/name` alone, so one `owner/name` on two
@@ -342,7 +343,15 @@ enable`, and `pr-update mirror disable`, which skips such targets instead.
 
 Clones go to the first of `--mirror-dir`, `PR_UPDATE_MIRROR_DIR`, `mirror_dir`,
 or `~/.cache/osdlc/pr-update/repos/`, one `<host>/<owner>/<name>.git` each,
-lower-cased, with the host's port left out. The directory must be outside
+lower-cased, with the host's port left out. So one clone serves one port of
+a host: its marker records the host it was made for, port included
+(`ghHost`), and a `--repo` on another port of that host is not served from it,
+with a note naming both. A checkout found on this machine is skipped the same
+way when its `origin` is an `http(s)` URL on another port than the target's
+(the scheme's own port counts as none), or when the target names a port and
+the `origin` is an ssh one, whose port, if any, is the ssh server's and says
+nothing about the web one. A bare `owner/name` on the project root's GitHub
+host takes the port of the root's `origin` too. The directory must be outside
 every git checkout and new, empty or already pr-update's, and yours, and on
 Linux and macOS no one else may write to it. A folder anyone can write to is
 refused, sticky bit or not. One its group can write to is refused unless the

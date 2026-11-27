@@ -18,6 +18,11 @@
  * outside the trust gate, and git's `safe.directory` is off under
  * `safe.directory=*` and missing on some versions typed-git supports.
  *
+ * The locator matches hosts without their port, so a checkout is also skipped
+ * when its `origin` is of another port than the one `--repo` names
+ * ({@link portProblem}): the PRs would be listed from one server and pushed
+ * to another.
+ *
  * With no usable checkout, a managed clone that already exists serves the
  * target (`mirror.ts`). This module never makes one: only `update --apply`
  * does, before its survey.
@@ -31,7 +36,7 @@ import { join, resolve } from 'node:path'
 
 import type { CommandRunner } from '@osdlc/command-seam'
 import { CheckoutLocator, type LocateOptions } from '@osdlc/ecosystem/repositories'
-import { Git } from '@osdlc/typed-git'
+import { Git, parseRemoteUrl } from '@osdlc/typed-git'
 
 import { folderProblem, ownedByMe, type FolderCheckOptions, type OwnedCheck } from './folders.ts'
 import type { FoundCheckout, LocateTarget } from './ports.ts'
@@ -123,7 +128,13 @@ export function standaloneLocate(
       notice(`${label}: ${m.path} is not used: ${why}`)
       return false
     })
-    const usable = safe.filter((m) => {
+    const ported = safe.filter((m) => {
+      const why = target === undefined ? null : portProblem(m.path, target, opts.git)
+      if (why === null) return true
+      notice(`${label}: ${m.path} is not used: ${why}`)
+      return false
+    })
+    const usable = ported.filter((m) => {
       if (!isShallow(m.path, opts.git)) return true
       notice(`${label}: ${m.path} is shallow, so it is not used`)
       shallow.push(m.path)
@@ -241,6 +252,34 @@ function checkoutProblem(
   if (common === null) return 'its git directory cannot be found'
   const gitDir = resolve(path, common)
   return check(gitDir) ?? check(join(gitDir, 'config'))
+}
+
+/**
+ * Why the checkout at `path`, whose `origin` the locator matched to `target` without a port, is
+ * not of the port `target` names, or null. An `http(s)` origin carries its port (none, or the
+ * scheme's own, is no port), which must be `target`'s. An ssh origin's port, if any, is the ssh
+ * server's and says nothing about the web one, so with a port in `--repo` it cannot be told to
+ * be the same server, and is not used; with none, it is, as before.
+ */
+function portProblem(
+  path: string,
+  target: LocateTarget,
+  runner: CommandRunner | undefined,
+): string | null {
+  const url = new Git(path, targetGitOptions(runner)).try.remoteGetUrl('origin')
+  const origin = url.ok && url.value !== null ? url.value : ''
+  const web = /^(https?):\/\//i.exec(origin)?.[1]?.toLowerCase()
+  const want = target.port ?? null
+  if (web === undefined) {
+    return want === null
+      ? null
+      : `its origin ${origin} does not say which port it serves, and --repo names ${target.host}:${want}`
+  }
+  const read = parseRemoteUrl(origin)?.port ?? null
+  const port = read === (web === 'https' ? 443 : 80) ? null : read
+  if (port === want) return null
+  const named = want === null ? target.host : `${target.host}:${want}`
+  return `its origin ${origin} is on ${port === null ? 'no port' : `port ${port}`}, and --repo names ${named}`
 }
 
 function isShallow(path: string, runner: CommandRunner | undefined): boolean {

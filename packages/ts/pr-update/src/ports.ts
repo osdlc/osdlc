@@ -151,6 +151,11 @@ export interface LocateTarget {
   owner: string
   name: string
   /**
+   * The port `--repo` named (`3000` for `forgejo.local:3000/x/y`), or unset for none. A checkout
+   * or clone serves the target only when it is of that same port (the standalone `locate`).
+   */
+  port?: number | undefined
+  /**
    * Whether the target's code host is GitHub (github.com, or the project root's host when that
    * is GitHub), so a managed clone could serve it. Unset when the caller does not say.
    */

@@ -24,6 +24,7 @@ import {
   mkdirSync,
   mkdtempSync,
   openSync,
+  readFileSync,
   readdirSync,
   renameSync,
   rmSync,
@@ -185,6 +186,30 @@ export function checkClone(
     }
   }
   return 'clone'
+}
+
+/**
+ * Why the clone at `path` may not serve `host`, the host `--repo` named with its port, or null.
+ * A clone's path drops the port, so `ghe.local:3000` and `ghe.local:4000` would share one; its
+ * marker says which it was made for (`ghHost`). A marker without `ghHost` was made for the host of
+ * its `repo`, which has no port. Hosts are compared in any letter case.
+ */
+export function cloneHostProblem(path: string, host: string): string | null {
+  const marker = join(path, CLONE_MARKER)
+  let made: string
+  try {
+    const mark = JSON.parse(readFileSync(marker, 'utf8')) as { repo?: unknown; ghHost?: unknown }
+    made =
+      typeof mark.ghHost === 'string'
+        ? mark.ghHost
+        : typeof mark.repo === 'string'
+          ? (mark.repo.split('/')[0] ?? '')
+          : ''
+  } catch (e) {
+    return `${marker} cannot be read (${(e as Error).message.split('\n')[0]}), so ${path} is not used`
+  }
+  if (made.toLowerCase() === host.toLowerCase()) return null
+  return `the clone ${path} is of ${made === '' ? 'an unnamed host' : made}, not ${host}: a clone's path does not hold the port, so one clone directory serves one port of a host`
 }
 
 /**
@@ -565,7 +590,7 @@ export function makeClone(
       writeStamp(tmp)
       writeFileSync(
         join(tmp, CLONE_MARKER),
-        `${JSON.stringify({ tool: 'pr-update', repo: `${req.host}/${req.owner}/${req.name}` })}\n`,
+        `${JSON.stringify({ tool: 'pr-update', repo: `${req.host}/${req.owner}/${req.name}`, ghHost: req.ghHost })}\n`,
       )
       // Before the rename, so the clone is never at its path while others can write to it.
       dropOthersWrite(tmp)
@@ -985,6 +1010,11 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
     }
     if (!held.has(final)) return unserved(busy(final))
     const state = checkClone(dir, final, owned)
+    const other = state === 'clone' ? cloneHostProblem(final, t.host ?? 'github.com') : null
+    if (other !== null) {
+      release(final)
+      return unserved(other)
+    }
     if (state === 'clone') writeStamp(final)
     else if (state !== 'missing') {
       release(final)
@@ -1018,6 +1048,12 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
       if (s.consent === 'local') return null
       const path = clonePath(s.dir, target)
       const state = checkClone(s.dir, path, owned)
+      const host = target.port === undefined ? target.host : `${target.host}:${target.port}`
+      const other = state === 'clone' ? cloneHostProblem(path, host) : null
+      if (other !== null) {
+        opts.notice(`${host}/${target.owner}/${target.name}: ${other}`)
+        return null
+      }
       if (state === 'clone') return path
       if (state !== 'missing') {
         opts.notice(`${target.host}/${target.owner}/${target.name}: ${state.foreign}`)

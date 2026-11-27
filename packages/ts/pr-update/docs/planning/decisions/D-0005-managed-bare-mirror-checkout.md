@@ -825,7 +825,22 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   clone's credential key and the report. Every clone, run worktree, kept and
   attempt path, and the trust key, use `hostKey`: the host lower-cased with
   no port. So `forgejo.local:3000/x/y` and `forgejo.local/x/y` are one
-  target, and no path segment holds a `:`.
+  target, and no path segment holds a `:`. (Changed during the build: S13,
+  below.) The CI review of the omnibus found that `--repo ghe.local:4000/o/n`
+  was then served by a clone or a checkout of `ghe.local:3000`, so its PRs
+  were listed from one server and pushed to the other. The owner asked for
+  the smallest correct change (2026-11-27): a clone's marker records the host
+  it was made for, port included (`ghHost`; a marker without one was made
+  for its `repo`'s host, which has no port), and it serves only that host.
+  A located checkout is used only when its `origin` is an `http(s)` URL on
+  the target's port (the scheme's own counts as none), or an ssh URL for a
+  target with no port; an ssh port is the ssh server's and cannot be told
+  apart from another web port, so it fails closed. `LocateTarget` gained
+  `port` for that. A bare `owner/name` takes the port of the project root's
+  `http(s)` `origin` with its host, so a root on a port lists and serves its
+  sibling repositories from that port. Paths and trust keys still drop the
+  port, so two ports of one host still share them: the second port's target
+  is refused, never served from the first's clone.
 - **What `--repo` accepts.** Its `host/owner/name`, port dropped, must be a
   key trust-repo accepts (`parseTrustRepo`): a host name, owner and name of
   at most 200 characters, and no name ending in `.git` (the message gives the

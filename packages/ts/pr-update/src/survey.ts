@@ -48,6 +48,7 @@ import { z } from 'zod'
 import {
   Git,
   parseRemoteRepo,
+  parseRemoteUrl,
   readRemote,
   type RemoteRepo,
   type SshAliasResolver,
@@ -716,7 +717,14 @@ export function resolveTargets(
     const github =
       hostKey(host) === 'github.com' ||
       (githubHost !== null && hostKey(host) === hostKey(githubHost))
-    const checkout = locate(repo, { host: hostKey(host), owner, name, github })
+    const port = /:(\d+)$/.exec(host)?.[1]
+    const checkout = locate(repo, {
+      host: hostKey(host),
+      owner,
+      name,
+      github,
+      ...(port === undefined ? {} : { port: Number(port) }),
+    })
     out.push(
       checkout === null
         ? { repo, host, path: null, source: null, remote, found: null, github }
@@ -1017,10 +1025,19 @@ export function surveyTargets(
     targets: resolveTargets(localRepo, env.projectRoot, args.repo, env.ports.locate, {
       remote: args.remote,
       rootHost,
-      defaultHost: onGithub ? codeHostHost : 'github.com',
+      // With the origin's port: a bare `owner/name` is listed from, and served by, that server.
+      defaultHost: onGithub ? withWebPort(codeHostHost, originUrl) : 'github.com',
       githubHost: onGithub ? codeHostHost : null,
     }),
   }
+}
+
+/** `host`, with the port of `url` when that is an `http(s)` URL on a port other than its scheme's. */
+function withWebPort(host: string, url: string | null): string {
+  const web = url === null ? undefined : /^(https?):\/\//i.exec(url)?.[1]?.toLowerCase()
+  if (web === undefined) return host
+  const port = parseRemoteUrl(url!)?.port ?? null
+  return port === null || port === (web === 'https' ? 443 : 80) ? host : `${host}:${port}`
 }
 
 /**
