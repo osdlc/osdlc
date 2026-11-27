@@ -788,7 +788,9 @@ function pluginsFor(
   // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
-  const all = allPlugins(loading, deps, ctx, gitDefinitionWith({ sweep: { only }, archive }))
+  const git =
+    deps.plugins === undefined ? gitDefinitionWith({ sweep: { only }, archive }) : undefined
+  const all = allPlugins(loading, deps, ctx, git)
   const named = v.plugin ?? []
   const broken = failed.find((f) => named.includes(f.name))
   if (broken !== undefined) throw new BadInput(broken.reason)
@@ -796,13 +798,14 @@ function pluginsFor(
   const absent = [...entries, ...loading.loaded.problems].filter(
     (e) => !named.includes(e.name) && !all.some((p) => p.name === e.name),
   )
-  const chosen = selectPlugins<Pick<Plugin, 'name'>>([...all, ...absent], v.plugin, v.skipPlugin)
-  return all.filter((p) => chosen.includes(p) && enabled(p.name, config, named))
+  // Only for its refusal of a name no plugin has; which run is {@link leftOut}'s to say.
+  selectPlugins<Pick<Plugin, 'name'>>([...all, ...absent], v.plugin, v.skipPlugin)
+  const naming = { want: v.plugin, skip: v.skipPlugin }
+  return all.filter((p) => !leftOut(p.name, naming, config))
 }
 
-/** `enabled: false` in the config leaves a plugin out; naming it in `named` (`--plugin`) runs it anyway. */
-const enabled = (name: string, config: Config, named: readonly string[] = []): boolean =>
-  named.includes(name) || !disabledByConfig(name, config.plugins)
+/** `enabled: false` in the config leaves a plugin out. */
+const enabled = (name: string, config: Config): boolean => !disabledByConfig(name, config.plugins)
 
 /**
  * The home folder `~` stands for in ids, `--pick` and `--spare`, and that no
