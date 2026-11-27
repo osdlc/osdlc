@@ -107,10 +107,10 @@ function outsidePackage(
   hostCleanerEntries(dir, entries)
   build(join(hc, 'dist'))
   // The built files find host-cleaner's dependencies here.
-  symlinkSync(join(pkg, 'node_modules'), join(hc, 'node_modules'), 'dir')
+  symlinkSync(join(pkg, 'node_modules'), join(hc, 'node_modules'), 'junction')
   mkdirSync(join(dir, 'node_modules', '@types'))
   const types = dirname(require.resolve('@types/node/package.json'))
-  symlinkSync(types, join(dir, 'node_modules', '@types', 'node'), 'dir')
+  symlinkSync(types, join(dir, 'node_modules', '@types', 'node'), 'junction')
 }
 
 /** Builds the package in `dir` with its own tsconfig. */
@@ -181,7 +181,7 @@ test('the podman example builds against ./plugin alone, and the loader takes it 
   // host-cleaner and run through the contract suite on a fake podman.
   const { home: root, cleanup: uninstall } = tempHome('host-cleaner-installed-')
   onTestFinished(uninstall)
-  symlinkSync(dir, join(root, 'host-cleaner-podman'), 'dir')
+  symlinkSync(dir, join(root, 'host-cleaner-podman'), 'junction')
   const hc = join(dir, 'node_modules', '@osdlc', 'host-cleaner')
   const dist = (f: string) => JSON.stringify(pathToFileURL(join(hc, 'dist', f)).href)
   const listed = [{ Name: 'cache', Driver: 'local', CreatedAt: '2026-05-01T09:00:00Z' }]
@@ -217,7 +217,7 @@ process.stdout.write(JSON.stringify({ failed, version: loaded[0]?.version, name:
   mkdirSync(join(dir, 'test'))
   copyFileSync(join(example, 'test', 'podman.test.ts'), join(dir, 'test', 'podman.test.ts'))
   const vitest = dirname(require.resolve('vitest/package.json'))
-  symlinkSync(vitest, join(dir, 'node_modules', 'vitest'), 'dir')
+  symlinkSync(vitest, join(dir, 'node_modules', 'vitest'), 'junction')
   writeFileSync(
     join(dir, 'tsconfig.test.json'),
     JSON.stringify({
