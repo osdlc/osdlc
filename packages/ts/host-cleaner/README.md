@@ -7,7 +7,7 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node`, `vscode`, `cursor` and `orca` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `vscode`, `cursor`, `orca` and `docker` plugins, and the `host-cleaner` command.
 It runs only when a person runs it: there is no scheduled or unattended run
 ([B-0001](docs/planning/backlog/B-0001-unattended-cleaning.md)).
 
@@ -18,7 +18,7 @@ The design it is heading to, descriptors and loadable plugins included, is the
 ## Phases
 
 Plugins run in the order they are given. The command line runs the shipped
-ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`.
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`.
 The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
@@ -63,7 +63,7 @@ export default definePlugin({
 | discover | each plugin | proposes candidates; two with the same id, or path candidates with the same real path, are one: the first plugin's stands, with a warning naming both |
 | object | each plugin | objects to any candidate; sees no other plugin's objections |
 | decide | core | `refuse` blocks, `protest` needs `--allow <code>`, `note` does not gate |
-| re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved `changed` |
+| re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved, or a `capped` one that grew, `changed` |
 | prepare | every plugin | before the delete; a throw stops only that candidate, a `FatalRun` stops the run |
 | delete | the owner | returns the receipt sentence |
 | deleted | every other plugin | after the delete; best effort, failures are in the receipt |
@@ -286,6 +286,10 @@ A candidate whose idle time ran out of the budget sets `unmeasured: true`. It
 is not held; the core gives it an `unmeasured` protest (by `host-cleaner`), so
 it runs only with `--allow unmeasured`. The flag stays out of `evidence`, so a
 walk that finishes at the re-check does not read as `changed`.
+
+A candidate whose delete takes whatever is there by then, as a prune does, sets
+`capped: true`. The re-check drops one whose `bytes` are more than the plan
+showed as `changed`; fewer are fine.
 
 ### Testing a plugin
 
@@ -592,6 +596,43 @@ its note. It never fails the run. Every call goes through
 host-cleaner clean --pick worktree:/path/to/wt --allow close-terminals
 ```
 
+## The `docker` plugin
+
+Docker's volumes, images and build cache live in its own data folder, which
+only Docker knows how to read, so every candidate is a ref and Docker deletes
+it itself. The data folder is never touched.
+
+Detected when `docker` is on `PATH` and `docker info` answers. Docker missing is
+silent; installed but not running adds a note with Docker's reason, and the
+plugin stays out of the run.
+
+| Candidate | Found by | Deleted by | Cost |
+| --- | --- | --- | --- |
+| `docker-volume:<name>` | `docker volume ls --filter dangling=true`: no container, running or stopped, uses it. Not one named in `plugins.docker.keepVolumes`. | `docker volume rm` | `lost`: held, and runs only when picked with `--allow discard-user-data` |
+| `docker-image:<id>` | `docker image ls --filter dangling=true`: no tag. One a container (running or stopped) was made from is left out. | `docker image rm` | `re-download` |
+| `docker-build-cache:reclaimable` | The `Reclaimable:` total of `docker builder du`, when it is more than 0. | `docker builder prune --all --force` | `re-download` |
+
+Docker refuses to remove a volume or image a container took up after the
+plan, so that candidate fails instead of being deleted. A volume removed and
+made again under its name since the plan has another creation time, so the
+re-check drops it as `changed`, and the delete looks once more before it removes
+anything. Docker gives that time to the second, so a volume made in the ten
+minutes before the daemon's clock (`docker info`) is not proposed, and neither
+is one Docker gives no creation time for. The build
+cache is `capped`: it is pruned only while its `Reclaimable:` total, read again
+right before the prune, is no more than was shown. An image's size counts only
+the layers no other image shares, from `docker system df -v`, and is left out
+when Docker does not say. A volume or image already removed by someone else is
+`already gone`, not a failure.
+
+When one of the three listings fails, the other two are still proposed, with a
+`not-listed` note on the first candidate saying what failed; with nothing to
+propose, it is a warning.
+
+```sh
+host-cleaner clean --pick docker-volume:pgdata --allow discard-user-data
+```
+
 ## Command line
 
 The command works in repo-cleaner's phases, with its flags. Nothing runs until
@@ -825,6 +866,7 @@ naming the plugin and the key.
 | `package` | a plugin loaded from a package | none | The npm package it is loaded from. |
 | `idleHours` | `cargo`, `node`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, fractions included (`0.5` is half an hour), and `0` takes every artifact. |
 | `vars.<NAME>` | descriptors that declare `vars` | none | A folder (`~/…` or absolute) for one of the descriptor's variables. It wins over every source and may sit outside home. A name the descriptor does not declare is an error. It wins over the sources of the variables built from it too: `GOPATH` (go) moves the module cache even with go on PATH. |
+| `keepVolumes` | `docker` | `[]` | Volume names never proposed, even when no container uses them. |
 
 Two settings sit at the top of the config and apply to every plugin:
 

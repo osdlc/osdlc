@@ -107,12 +107,20 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
   }
 }
 
+/**
+ * The shipped plugins these tests run, which look only inside the decoy home (cursor for its
+ * agents' worktrees under HOME). Every other one is skipped: orca talks to this machine's Orca
+ * and sweeps every repository it lists, cargo runs its rustup, which on a macOS runner took half
+ * a minute a run, and docker talks to its Docker.
+ */
+const TESTED_PLUGINS = ['git', 'node', 'cursor']
+
 async function run(argv: string[], cwd: string, env: Record<string, string>, deps: MainDeps = {}) {
   const ctx = captureContext({ cwd, env })
-  // The shipped plugins would talk to this machine's Orca and sweep every repository it lists,
-  // and run its rustup, which on a macOS runner took half a minute a run, filling the decoy home.
   const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
-  const skip = ['--skip-plugin', 'orca', '--skip-plugin', 'cargo']
+  const skip = BUILT_IN_PLUGINS.map((d) => d.name)
+    .filter((n) => !TESTED_PLUGINS.includes(n))
+    .flatMap((n) => ['--skip-plugin', n])
   const args = phase && deps.plugins === undefined ? [...argv, ...skip] : argv
   // The shipped descriptors would make each run depend on this machine: their detection looks for
   // tools on its PATH, and their in-use checks read its process table.
@@ -1403,7 +1411,9 @@ candidates:
     })
     expect(r.code).toBe(2)
     expect(r.err).toContain('config names no plugin crago')
-    expect(r.err).toContain('correct the name (have git, cargo, node, vscode, cursor, orca)')
+    expect(r.err).toContain(
+      'correct the name (have git, cargo, node, vscode, cursor, orca, docker)',
+    )
   })
 
   test('supersededBy: left out while that plugin runs, used when it is skipped', async () => {

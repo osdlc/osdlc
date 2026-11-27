@@ -478,6 +478,7 @@ describe('config entries and the run’s plugins', () => {
       'vscode',
       'cursor',
       'orca',
+      'docker',
       'alpha',
       'beta',
       'aardvark',

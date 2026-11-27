@@ -976,12 +976,18 @@ export function decidePlan(p: Plan): Decision {
   )
 }
 
+/** Whether `c`, `capped` now or in the plan, may free more than `before`, its row in the plan; one without a size may. */
+const outgrew = (before: Candidate, c: Candidate): boolean =>
+  (before.capped === true || c.capped === true) &&
+  (before.bytes === undefined || c.bytes === undefined || c.bytes > before.bytes)
+
 /**
  * Judge a plan against the world now. Surveys again and decides over exactly
  * what the plan would run, so a refusal that appeared since is `blocked`, a
  * protest nobody granted `not-allowed`, a vanished candidate `gone`, and one whose evidence
- * moved (repo-cleaner's `sameFingerprint`), or that its owner holds now and did not
- * then, `changed`. One held then that is held no longer still runs.
+ * moved (repo-cleaner's `sameFingerprint`), that its owner holds now and did not
+ * then, or a `capped` one that grew, `changed`. One held then that is held no
+ * longer still runs.
  */
 export async function recheck(
   p: Plan,
@@ -1016,6 +1022,13 @@ export async function recheck(
         id: c.id,
         reason: 'changed',
         detail: 'it is held for review now, and was not in the plan',
+      })
+    } else if (before !== undefined && outgrew(before, c)) {
+      const size = (b: number | undefined): string => (b === undefined ? 'no size' : `${b} bytes`)
+      dropped.push({
+        id: c.id,
+        reason: 'changed',
+        detail: `the plan showed ${size(before.bytes)}, now ${size(c.bytes)}`,
       })
     } else kept.set(c.id, c)
   }

@@ -245,6 +245,7 @@ describe('the run’s plugins', () => {
       'vscode',
       'cursor',
       'orca',
+      'docker',
       'npm',
       'uv',
     ])
@@ -255,7 +256,7 @@ describe('the run’s plugins', () => {
     const by = (name: string): string => `${store('.cache/x')}supersededBy: ${name}\n`
     expect(loadPlugins(sources({ 'uv.yaml': by('cargo') })).definitions.at(-1)!.name).toBe('uv')
     expect(() => loadPlugins(sources({ 'uv.yaml': by('uv') }))).toThrow(
-      /supersededBy uv is no built-in plugin and no package the config names; have git, cargo, node, vscode, cursor, orca/,
+      /supersededBy uv is no built-in plugin and no package the config names; have git, cargo, node, vscode, cursor, orca, docker/,
     )
     expect(() => loadPlugins(sources({ 'a.yaml': by('b'), 'b.yaml': by('a') }))).toThrow(
       DescriptorLoadError,

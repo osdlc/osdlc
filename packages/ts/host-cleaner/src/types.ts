@@ -39,6 +39,12 @@ interface CandidateBase {
    * read as changed.
    */
   unmeasured?: boolean | undefined
+  /**
+   * True: deleting it takes whatever is there by then, as a prune does. One
+   * whose `bytes` are more at the re-check than in the plan counts as
+   * changed; fewer do not, which `evidence` could not say.
+   */
+  capped?: boolean | undefined
 }
 
 export { COST_DESCRIPTIONS, type CostDescription } from './cost.ts'
