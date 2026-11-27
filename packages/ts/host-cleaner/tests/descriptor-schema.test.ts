@@ -268,7 +268,8 @@ describe("the system description's examples", () => {
     ).toEqual([])
   })
 
-  test.each([11, 20_000])('a glob or marker with %i {a,b} braces is refused, not a crash', (n) => {
+  // 800 braces are 4000 characters, under the length limit.
+  test.each([11, 800])('a glob or marker with %i {a,b} braces is refused, not a crash', (n) => {
     const glob = '{a,b}'.repeat(n)
     expect(issues(hfWith(`{ path: hub, costDescription: rebuild, glob: '${glob}' }`))).toEqual([
       'line 5: candidates.0.glob: must have no more than 1024 {a,b} alternatives',
@@ -281,10 +282,24 @@ describe("the system description's examples", () => {
   })
 
   test('a glob with two wide {a,b} groups is refused before they are expanded', () => {
-    const group = `{${Array(20_000).fill('a').join(',')}}`
+    // Two groups of 1000 are 4002 characters, under the length limit.
+    const group = `{${Array(1000).fill('a').join(',')}}`
     expect(
       issues(hfWith(`{ path: hub, costDescription: rebuild, glob: '${group}${group}' }`)),
     ).toEqual(['line 5: candidates.0.glob: must have no more than 1024 {a,b} alternatives'])
+  })
+
+  test('a glob or marker longer than 4096 characters is refused before it is expanded', () => {
+    // Ten {a,b} groups are 1024 alternatives, each as long as the glob.
+    const glob = `${'{a,b}'.repeat(10)}${'x'.repeat(5000)}`
+    expect(issues(hfWith(`{ path: hub, costDescription: rebuild, glob: '${glob}' }`))).toEqual([
+      'line 5: candidates.0.glob: must be no longer than 4096 characters',
+    ])
+    expect(
+      issues(
+        `${HUGGING_FACE}project:\n  - { dir: obj, marker: '${glob}', costDescription: rebuild }\n`,
+      ),
+    ).toEqual(['line 11: project.0.marker: must be no longer than 4096 characters'])
   })
 
   test('a glob may start with ~ when it names an entry, such as ~$*', () => {

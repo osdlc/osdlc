@@ -121,10 +121,17 @@ function outermostBraces(glob: string): number[] | undefined {
 const everyAlternative = (glob: string, ok: (alternative: string) => boolean): boolean =>
   braceExpansions(glob)?.every(ok) ?? false
 
+/** Past this many characters, a glob is refused rather than expanded: each alternative is as long as it. */
+const MAX_GLOB_LENGTH = 4096
+
 /** A glob whose `{a,b}` alternatives can all be checked; the checks after it don't run on any other. */
 const globText = z
   .string()
   .min(1)
+  .max(MAX_GLOB_LENGTH, {
+    message: `must be no longer than ${MAX_GLOB_LENGTH} characters`,
+    abort: true,
+  })
   .refine((g) => braceExpansions(g) !== undefined, {
     message: `must have no more than ${MAX_ALTERNATIVES} {a,b} alternatives`,
     abort: true,
