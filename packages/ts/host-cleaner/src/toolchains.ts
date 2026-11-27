@@ -881,7 +881,13 @@ export function toolchainsPlugin(
     const newest = node.nvm.map(plain).sort(byVersion).at(-1)
     const [rustKeep, inUse] = await Promise.all([
       // Why what rustup has in use could not be read, in place of the list.
-      rust.length > 0 ? rustInUse(ctx).catch(errorText) : [],
+      rust.length > 0
+        ? rustInUse(ctx).catch((err: unknown) => {
+            // A hook that was stopped says so, not that rustup did not answer.
+            ctx.signal.throwIfAborted()
+            return errorText(err)
+          })
+        : [],
       nodeTools.length > 0 ? nodeInUse(ctx, newest) : null,
     ])
 
