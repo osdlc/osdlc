@@ -54,6 +54,8 @@ export class DescriptorLoadError extends Error {
 export interface DescriptorProblem {
   /** The file's name less its extension: the plugin name it would have. */
   name: string
+  /** Where the file was found. */
+  source: DescriptorSource
   path: string
   error: DescriptorError | DescriptorLoadError
 }
@@ -71,8 +73,9 @@ const nameOf = (path: string): string => basename(path, extname(path))
 const hasDescriptorExtension = (path: string): boolean =>
   (DESCRIPTOR_EXTENSIONS as readonly string[]).includes(extname(path).toLowerCase())
 
-const problem = (path: string, message: string): DescriptorProblem => ({
+const problem = (path: string, source: DescriptorSource, message: string): DescriptorProblem => ({
   name: nameOf(path),
+  source,
   path,
   error: new DescriptorLoadError(message),
 })
@@ -94,6 +97,7 @@ function flagFiles(paths: readonly string[]): { files: string[]; problems: Descr
       .map((p) =>
         problem(
           p,
+          'flag',
           `descriptor ${p}: not a descriptor file; use ${DESCRIPTOR_EXTENSIONS.join(', ')}`,
         ),
       ),
@@ -150,12 +154,14 @@ function foundIn(
     if (!PLUGIN_NAME.test(name)) {
       return problem(
         path,
+        source,
         `descriptor ${path}: "${name}" is not a plugin name: lowercase letters, digits and -, starting with a letter`,
       )
     }
     if (all.length > 1) {
       return problem(
         path,
+        source,
         `${all.slice(0, -1).join(', ')} and ${path} are ${all.length === 2 ? 'both' : 'all'} the descriptor ${name}; keep one`,
       )
     }
@@ -198,6 +204,7 @@ export function findDescriptors(
           f.name,
           problem(
             f.path,
+            f.source,
             `descriptor ${f.path} is named ${f.name}, as the built-in plugin; every plugin has its own name, so rename the file`,
           ),
         )
@@ -222,7 +229,7 @@ export function findDescriptors(
       descriptors.push({ ...f, descriptor: readDescriptor(f.path) })
     } catch (err) {
       if (!(err instanceof DescriptorError)) throw err
-      problems.push({ name: f.name, path: f.path, error: err })
+      problems.push({ name: f.name, source: f.source, path: f.path, error: err })
     }
   }
   return { descriptors, problems }

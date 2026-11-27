@@ -238,7 +238,16 @@ describe('the run’s plugins', () => {
   test('the built-ins in run order, then one plugin per descriptor by name', () => {
     const s = sources({ 'uv.yaml': store('.cache/uv'), 'npm.yaml': store('.npm') })
     const { definitions, descriptors } = loadPlugins(s)
-    expect(definitions.map((d) => d.name)).toEqual(['git', 'cargo', 'node', 'orca', 'npm', 'uv'])
+    expect(definitions.map((d) => d.name)).toEqual([
+      'git',
+      'cargo',
+      'node',
+      'vscode',
+      'cursor',
+      'orca',
+      'npm',
+      'uv',
+    ])
     expect(descriptors.map((d) => d.name)).toEqual(['npm', 'uv'])
   })
 
@@ -246,7 +255,7 @@ describe('the run’s plugins', () => {
     const by = (name: string): string => `${store('.cache/x')}supersededBy: ${name}\n`
     expect(loadPlugins(sources({ 'uv.yaml': by('cargo') })).definitions.at(-1)!.name).toBe('uv')
     expect(() => loadPlugins(sources({ 'uv.yaml': by('uv') }))).toThrow(
-      /supersededBy uv is no built-in plugin and no package the config names; have git, cargo, node, orca/,
+      /supersededBy uv is no built-in plugin and no package the config names; have git, cargo, node, vscode, cursor, orca/,
     )
     expect(() => loadPlugins(sources({ 'a.yaml': by('b'), 'b.yaml': by('a') }))).toThrow(
       DescriptorLoadError,

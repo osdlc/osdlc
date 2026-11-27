@@ -52,12 +52,15 @@ export {
   clean,
   decide,
   decidePlan,
+  inspect,
   plan,
   recheck,
   spares,
   survey,
   type CleanOptions,
   type Decision,
+  type Inspection,
+  type PluginState,
   type Selection,
   type Survey,
 } from './run.ts'
@@ -96,6 +99,16 @@ export {
   type DescriptorOptions,
 } from './descriptor/engine.ts'
 export {
+  BUILT_IN_VARS,
+  VAR_COMMAND_LIMIT_MS,
+  fillTemplate,
+  resolveVars,
+  type VarSource,
+  type VarValue,
+  type Vars,
+  type VarsAt,
+} from './descriptor/vars.ts'
+export {
   DescriptorLoadError,
   SHIPPED_DESCRIPTORS,
   findDescriptors,
@@ -114,3 +127,20 @@ export {
   type OrcaOptions,
   type OrcaRecord,
 } from './orca.ts'
+export {
+  AGENT_WORKTREE,
+  CURSOR_IN_USE,
+  CURSOR_PLUGIN,
+  CURSOR_STATE_UNREADABLE,
+  CURSOR_UNKNOWN_WORKSPACE,
+  VSCODE_IN_USE,
+  VSCODE_PLUGIN,
+  VSCODE_STATE_UNREADABLE,
+  VSCODE_UNKNOWN_WORKSPACE,
+  cursorPlugin,
+  cursorUserDir,
+  vscodePlugin,
+  vscodeUserDir,
+  type CursorOptions,
+  type VscodeOptions,
+} from './vscode.ts'

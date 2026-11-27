@@ -2,7 +2,9 @@
  * Descriptor to plugin: every tier 1 example and first-set draft against the
  * contract suite, then each rule of the engine on a fixture home: folders per
  * OS, globs, prunes and wipes (D12), commands pointed at the checked folder
- * (D13), inUse, project, supersededBy, system and the path checks.
+ * (D13), inUse, project, supersededBy, system and the path checks. Last, tier
+ * 2: folders from variables, found where they were moved, and the config's
+ * trusted values.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -16,15 +18,14 @@ import {
   renameSync,
   rmSync,
   symlinkSync,
-  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import type { CommandRunner } from '@osdlc/command-seam'
-import type { ProcessHolder, ProcessProbe } from '@osdlc/repo-cleaner'
+import type { ProcessHolder } from '@osdlc/repo-cleaner'
+import { fakeNeverExited } from '@osdlc/command-seam/testing'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { CORPUS_DIR, FIRST_SET, draftStore } from '../scripts/draft-descriptor.ts'
@@ -38,6 +39,7 @@ import {
   clean,
   descriptorPlugin,
   globMatches,
+  inspect,
   parseDescriptor,
   pathProblem,
   plan,
@@ -46,45 +48,29 @@ import {
   survey,
   type Descriptor,
   type DescriptorOptions,
+  type Detection,
   type Kit,
   type Os,
   type PathCandidate,
   type Plugin,
   type RunCtx,
 } from '../src/index.ts'
-import { settingsOf } from '../src/settings.ts'
-import { contractSuite, fakeContext, fakeRunner, tempHome } from '../src/testing.ts'
+import { effectiveSettings, settingsIssues, settingsOf } from '../src/settings.ts'
+import {
+  ageTree as age,
+  contractSuite,
+  fakeContext,
+  fakeProcesses as processes,
+  fakeRunner,
+  tempHome,
+  type FakeProcesses as Processes,
+} from '../src/testing.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
   while (cleanups.length > 0) cleanups.pop()!()
-})
-
-/** The kit's process table, as its `probe` and `ps` options. */
-interface Processes {
-  probe: ProcessProbe
-  ps: CommandRunner
-}
-
-/**
- * A process table: `cwd` maps a folder to the processes working in it, for
- * the probe; `/` lists every process, read by `ps` as a child of init with
- * `command` as its command line. Both read `table` when asked, so it may
- * change.
- */
-const processes = (table: Record<string, ProcessHolder[]> = {}): Processes => ({
-  probe: { alive: () => false, holders: (path) => table[path] ?? [] },
-  ps: {
-    run: () => ({
-      exitCode: 0,
-      stdout: [{ pid: 1, command: '/sbin/init' }, ...(table['/'] ?? [])]
-        .map((h) => `${h.pid} ${h.pid === 1 ? 0 : 1} ${h.command}\n`)
-        .join(''),
-      stderr: '',
-    }),
-  },
 })
 
 const OS: Os = 'linux'
@@ -165,20 +151,6 @@ async function surveyAndClean(plugin: Plugin, allow: string[] = [], over: Partia
   const s = await survey([plugin], ctx)
   const p = plan(s, { allow, targets: ctx.targets })
   return { survey: s, receipt: await clean(p, [plugin], ctx) }
-}
-
-/** Sets every modification time under `dir` to `hours` ago. */
-function age(dir: string, hours: number): void {
-  const at = new Date(Date.now() - hours * 3_600_000)
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name)
-    try {
-      age(p, hours)
-    } catch {
-      // `p` is a file, which readdirSync cannot read.
-    }
-    utimesSync(p, at, at)
-  }
 }
 
 // The system description's tier 1 examples (as in descriptor-schema.test.ts).
@@ -993,7 +965,7 @@ project:
     expect(objs.sort()).toEqual([join(repo, 'lib', 'obj'), join(repo, 'obj')])
   })
 
-  test('held and costDescription: lost are held; idleHours on the candidate beats the setting', async () => {
+  test("held and costDescription: lost are held; the setting does not lower a candidate's idleHours", async () => {
     const b = build(
       'x',
       `descriptor: 1
@@ -1013,6 +985,17 @@ candidates:
     expect(s.candidates[2]!.why).toMatch(/\(threshold 1000\)/)
   })
 
+  test("without the settings' sources, the setting can only raise a candidate's idleHours", async () => {
+    for (const [idleHours, threshold] of [
+      [24, 720],
+      [1000, 1000],
+    ] as const) {
+      const b = build('hf', HUGGING_FACE, { idleHours })
+      const s = await survey([b.plugin], ctxOf())
+      expect(s.candidates[0]!.why).toContain(`(threshold ${threshold})`)
+    }
+  })
+
   test("idleHours comes from the plugin's setting, which inherits the config's", () => {
     const def = descriptorPlugin('pip', parseDescriptor(PIP_PER_OS, 'pip.yaml'))
     expect(settingsOf('pip', {}, { idleHours: 5 }, [def])).toEqual({ enabled: true, idleHours: 5 })
@@ -1026,7 +1009,7 @@ candidates:
 describe('inUse', () => {
   test('a running process or a lock file refuses every candidate', async () => {
     const running = build('uv', UV, {
-      processes: processes({ '/': [{ pid: 7, command: 'uv' }] }),
+      processes: processes({ '/': [{ pid: 5_000_007, command: 'uv' }] }),
     })
     const s = await survey([running.plugin], ctxOf())
     expect(s.objections.filter((o) => o.level === 'refuse')).toEqual([
@@ -1035,7 +1018,7 @@ describe('inUse', () => {
         candidate: `uv:${running.folder('cache')}`,
         level: 'refuse',
         code: IN_USE,
-        reason: 'running: uv (pid 7)',
+        reason: 'running: uv (pid 5000007)',
       },
     ])
 
@@ -1044,6 +1027,21 @@ describe('inUse', () => {
     const l = await survey([locked.plugin], ctxOf())
     expect(l.objections.map((o) => [o.code, o.reason])).toEqual([
       [IN_USE, `the lock ${join(locked.home, '.cache', 'pip.lock')} exists`],
+    ])
+  })
+
+  test('a process that several of the names match is named once, in one objection', async () => {
+    const b = build('pip', `${PIP_PER_OS}inUse: { processes: [pip, python, nothing] }\n`, {
+      processes: processes({
+        '/': [
+          { pid: 5_000_007, command: 'python -m pip' },
+          { pid: 5_000_008, command: 'python x.py' },
+        ],
+      }),
+    })
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.objections.map((o) => [o.code, o.reason])).toEqual([
+      [IN_USE, 'running: python (pid 5000007), python (pid 5000008)'],
     ])
   })
 
@@ -1057,12 +1055,15 @@ describe('inUse', () => {
     // The re-check's survey sees no process; delete, after it, does.
     const deleting = b.plugin.delete!.bind(b.plugin)
     b.plugin.delete = (c, x) => {
-      table['/'] = [{ pid: 9, command: 'pip' }]
+      table['/'] = [{ pid: 5_000_009, command: 'pip' }]
       return deleting(c, x)
     }
     const receipt = await clean(p, [b.plugin], ctx)
     expect(receipt.steps).toMatchObject([
-      { result: 'failed', error: `${b.folder('cache')} was not deleted: running: pip (pid 9)` },
+      {
+        result: 'failed',
+        error: `${b.folder('cache')} was not deleted: running: pip (pid 5000009)`,
+      },
     ])
     expect(existsSync(b.folder('cache'))).toBe(true)
   })
@@ -1083,7 +1084,7 @@ describe('project', () => {
     })
 
     const busy = build('dotnet', DOTNET_PROJECT, {
-      processes: processes({ [repo]: [{ pid: 3, command: 'dotnet' }] }),
+      processes: processes({ [repo]: [{ pid: 5_000_003, command: 'dotnet' }] }),
     })
     const live = await survey([busy.plugin], ctxOf({ targets: [repo] }))
     expect(live.objections.map((o) => [o.candidate, o.code])).toEqual([
@@ -1112,6 +1113,470 @@ describe('project', () => {
     expect(s.candidates.map((c) => c.path).sort()).toEqual(
       [b.folder('nuget'), join(lib, 'bin')].sort(),
     )
+  })
+})
+
+// The system description's tier 2 examples (as in descriptor-schema.test.ts).
+
+const PNPM_VARS = `descriptor: 1
+store: pnpm
+vars:
+  STORE:
+    - command: [pnpm, store, path]
+    - value: { macos: ~/Library/pnpm/store, linux: '\${XDG_DATA_HOME}/pnpm/store' }
+paths:
+  store: { all: '\${STORE}' }
+candidates:
+  - path: store
+    costDescription: re-download
+    command: [pnpm, store, prune, --store-dir, '{path}']
+    removes: unused
+inUse:
+  processes: [pnpm]
+`
+
+const GO_VARS = `descriptor: 1
+store: go
+detect:
+  any: [{ onPath: go }, { exists: modcache }]
+vars:
+  GOPATH:
+    - env: GOPATH
+    - value: ~/go
+  GOMODCACHE:
+    - env: GOMODCACHE
+    - command: [go, env, GOMODCACHE]
+    - value: '\${GOPATH}/pkg/mod'
+  GOCACHE:
+    - env: GOCACHE
+    - command: [go, env, GOCACHE]
+    - value: { macos: ~/Library/Caches/go-build, linux: '\${XDG_CACHE_HOME}/go-build' }
+paths:
+  modcache: { all: '\${GOMODCACHE}' }
+  buildcache: { all: '\${GOCACHE}' }
+candidates:
+  - path: modcache
+    costDescription: re-download
+    idleHours: 720
+    command: [go, clean, -modcache]
+    env: { GOMODCACHE: '{path}' }
+    removes: all
+  - path: buildcache
+    costDescription: rebuild
+    idleHours: 168
+    command: [go, clean, -cache]
+    env: { GOCACHE: '{path}' }
+    removes: all
+`
+
+/** A folder made under `root` with a file in it. */
+function filled(root: string, ...parts: string[]): string {
+  const dir = join(root, ...parts)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'blob'), 'x')
+  return dir
+}
+
+/**
+ * The plugin for `text` over a new fixture home, with `env` over its HOME, the
+ * config's `vars` and `programs` on PATH. No folder is made.
+ */
+function buildVars(
+  name: string,
+  text: string,
+  o: {
+    env?: (home: string) => Record<string, string>
+    vars?: Record<string, string>
+    programs?: Parameters<typeof fakeRunner>[0]
+  } = {},
+) {
+  const h = tempHome()
+  cleanups.push(h.cleanup)
+  const env = { ...h.env, ...o.env?.(h.home) }
+  const fake = fakeRunner(o.programs ?? {})
+  const def = descriptorPlugin(name, parseDescriptor(text, `${name}.yaml`), {
+    os: OS,
+    ownDirs: [],
+  })
+  const plugin = def.create({
+    settings: { idleHours: 0, vars: o.vars },
+    env,
+    kit: pluginKit(name, { env, ...processes(), ...fake }),
+  })
+  return { home: h.home, plugin, def, calls: fake.calls }
+}
+
+/** A directory outside every fixture home. */
+function outsideHome(): string {
+  const t = tempHome()
+  cleanups.push(t.cleanup)
+  return t.home
+}
+
+describe('variables (tier 2)', () => {
+  test('detect gives the variables its folders use; one that throws after working them out gives none', async () => {
+    // An `exists` condition, so a missing program alone does not leave the variables unresolved.
+    const text = `descriptor: 1
+detect:
+  any: [{ onPath: mine }, { exists: store }]
+vars:
+  DIR:
+    - env: MINE_DIR
+    - value: ~/.cache/mine
+paths:
+  store: { all: '\${DIR}' }
+candidates:
+  - { path: store, costDescription: re-download }
+`
+    const b = buildVars('mine', text)
+    const answer = (await b.plugin.detect(fakeContext())) as Detection
+    expect(answer).toMatchObject({
+      active: false,
+      vars: { DIR: { value: join(b.home, '.cache/mine'), from: 'value' } },
+    })
+    expect(answer.vars?.HOME).toBeUndefined()
+    // They come with the answer, so a wrapper around the plugin keeps them.
+    const [wrapped] = (await inspect([{ ...b.plugin }], fakeContext())).plugins
+    expect(wrapped!.vars?.DIR?.value).toBe(join(b.home, '.cache/mine'))
+
+    // `onPath` throws once the variables are worked out, as a stat that fails would.
+    const h = tempHome()
+    let looks = 0
+    cleanups.push(h.cleanup)
+    const throwing = descriptorPlugin('mine', parseDescriptor(text, 'mine.yaml'), {
+      os: OS,
+      ownDirs: [],
+    }).create({
+      settings: { idleHours: 0 },
+      env: h.env,
+      kit: pluginKit('mine', {
+        env: h.env,
+        which: () => {
+          // The look before the variables finds it; the one after throws.
+          if (looks++ === 0) return '/bin/mine'
+          throw new Error('EACCES')
+        },
+      }),
+    })
+    const [state] = (await inspect([throwing], fakeContext())).plugins
+    expect(state).toMatchObject({ detected: false, reason: 'EACCES' })
+    expect(state!.vars).toBeUndefined()
+  })
+
+  test('detect shows the variables the folders use and the built-ins their sources name, and no others', async () => {
+    const text = `descriptor: 1
+detect:
+  any: [{ exists: store }]
+vars:
+  ROOT:
+    - value: \${XDG_CACHE_HOME}/mine
+  DIR:
+    - value: \${ROOT}/store
+  UNUSED:
+    - value: \${XDG_DATA_HOME}/other
+paths:
+  store: { all: '\${DIR}' }
+candidates:
+  - { path: store, costDescription: re-download }
+`
+    const b = buildVars('mine', text)
+    const answer = (await b.plugin.detect(fakeContext())) as Detection
+    expect(Object.keys(answer.vars ?? {}).sort()).toEqual(['DIR', 'ROOT', 'XDG_CACHE_HOME'])
+  })
+
+  test('the contract suite passes for pnpm and go, with and without their tools', async () => {
+    for (const [name, text] of [
+      ['pnpm', PNPM_VARS],
+      ['go', GO_VARS],
+    ] as const) {
+      const bare = buildVars(name, text)
+      filled(bare.home, name === 'pnpm' ? '.local/share/pnpm/store' : 'go/pkg/mod')
+      expect(await contractSuite(bare.plugin), name).toEqual([])
+
+      const tooled = buildVars(name, text, {
+        programs: {
+          [name]: (argv) =>
+            argv[0] === 'env' || argv[1] === 'path' ? { exitCode: 1 } : { exitCode: 0 },
+        },
+      })
+      filled(tooled.home, name === 'pnpm' ? '.local/share/pnpm/store' : 'go/pkg/mod')
+      expect(await contractSuite(tooled.plugin), name).toEqual([])
+    }
+  })
+
+  test('a detect whose onPath conditions already fail resolves no variable', async () => {
+    const text = PNPM_VARS.replace('vars:', 'detect: { all: [{ onPath: corepack }] }\nvars:')
+    const b = buildVars('pnpm', text, {
+      programs: { pnpm: { 'store path': { stdout: '/data/pnpm/store\n' } } },
+    })
+    expect(await b.plugin.detect(fakeContext())).toBe(false)
+    expect(b.calls).toEqual([])
+
+    const any = PNPM_VARS.replace('vars:', 'detect: { any: [{ onPath: corepack }] }\nvars:')
+    const c = buildVars('pnpm', any, {
+      programs: { pnpm: { 'store path': { stdout: '/data/pnpm/store\n' } } },
+    })
+    expect(await c.plugin.detect(fakeContext())).toBe(false)
+    expect(c.calls).toEqual([])
+  })
+
+  test("pnpm's store is found where pnpm says it is, and the prune is pointed there", async () => {
+    let moved = ''
+    const b = buildVars('pnpm', PNPM_VARS, {
+      programs: {
+        pnpm: (argv) => (argv[1] === 'path' ? { stdout: `${moved}\n` } : {}),
+      },
+    })
+    moved = filled(b.home, 'disk', 'pnpm-store')
+    filled(b.home, '.local/share/pnpm/store')
+    const { survey: s } = await surveyAndClean(b.plugin)
+    expect(s.candidates.map((c) => c.path)).toEqual([moved])
+    expect(s.roots.pnpm).toEqual([moved])
+    expect(b.calls.map((c) => c.argv)).toEqual([
+      // The survey, the re-check, then the prune.
+      ['pnpm', 'store', 'path'],
+      ['pnpm', 'store', 'path'],
+      ['pnpm', 'store', 'prune', '--store-dir', moved],
+    ])
+  })
+
+  test('without pnpm, the per-OS value is used, under XDG_DATA_HOME when it is set', async () => {
+    const plain = buildVars('pnpm', PNPM_VARS)
+    const store = filled(plain.home, '.local/share/pnpm/store')
+    expect((await survey([plain.plugin], ctxOf())).candidates.map((c) => c.path)).toEqual([store])
+
+    const moved = buildVars('pnpm', PNPM_VARS, {
+      env: (home) => ({ XDG_DATA_HOME: join(home, 'data') }),
+    })
+    const there = filled(moved.home, 'data/pnpm/store')
+    filled(moved.home, '.local/share/pnpm/store')
+    expect((await survey([moved.plugin], ctxOf())).candidates.map((c) => c.path)).toEqual([there])
+  })
+
+  test("go's module cache follows GOMODCACHE, or GOPATH, and its env entry gets the folder", async () => {
+    const env = buildVars('go', GO_VARS, {
+      env: (home) => ({ GOMODCACHE: join(home, 'mod') }),
+      programs: { go: (argv) => (argv[0] === 'env' ? { exitCode: 1 } : {}) },
+    })
+    const mod = filled(env.home, 'mod')
+    // Past its idleHours of 720.
+    age(mod, 1000)
+    filled(env.home, 'go/pkg/mod')
+    const { survey: s } = await surveyAndClean(env.plugin)
+    expect(s.candidates.map((c) => c.path)).toEqual([mod])
+    expect(env.calls.filter((c) => c.argv[1] === 'clean')).toMatchObject([
+      { argv: ['go', 'clean', '-modcache'], opts: { env: { GOMODCACHE: mod } } },
+    ])
+
+    const gopath = buildVars('go', GO_VARS, { env: (home) => ({ GOPATH: join(home, 'work') }) })
+    const viaPath = filled(gopath.home, 'work/pkg/mod')
+    expect((await survey([gopath.plugin], ctxOf())).candidates.map((c) => c.path)).toEqual([
+      viaPath,
+    ])
+  })
+
+  test('a go env that hangs times out, and the next source gives the folder', async () => {
+    const b = buildVars('go', GO_VARS, {
+      programs: { go: { 'env GOMODCACHE': fakeNeverExited('timeout'), 'env GOCACHE': {} } },
+    })
+    const mod = filled(b.home, 'go/pkg/mod')
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.warnings).toEqual([])
+    expect(s.candidates.map((c) => c.path)).toEqual([mod])
+  })
+
+  test('a variable with no value leaves its folder out: no candidate, no root, and a note saying why', async () => {
+    const NONE = `descriptor: 1
+vars:
+  DIR:
+    - env: TOOL_DIR
+paths:
+  data: { all: '\${DIR}' }
+  other: { all: ~/.cache/other }
+candidates:
+  - { path: data, costDescription: rebuild }
+  - { path: other, costDescription: rebuild }
+`
+    const b = buildVars('tool', NONE)
+    const other = filled(b.home, '.cache/other')
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.candidates.map((c) => c.path)).toEqual([other])
+    expect(s.roots.tool).toEqual([other])
+    expect(s.notes.tool).toBe('data is left out: ${DIR} has no value (env TOOL_DIR: not set)')
+  })
+
+  test('a variable no folder on this OS uses is not resolved: its command does not run', async () => {
+    const WIN_ONLY = `descriptor: 1
+vars:
+  WIN:
+    - command: [tool, where]
+paths:
+  win: { windows: '\${WIN}' }
+  other: { all: ~/.cache/other }
+candidates:
+  - { path: other, costDescription: rebuild }
+`
+    const b = buildVars('tool', WIN_ONLY, { programs: { tool: { where: { stdout: '/w\n' } } } })
+    filled(b.home, '.cache/other')
+    await survey([b.plugin], ctxOf())
+    expect(b.calls).toEqual([])
+  })
+
+  test('each survey works the folder out again; a store moved after the plan is not deleted', async () => {
+    let at = ''
+    const b = buildVars('pnpm', PNPM_VARS, {
+      programs: { pnpm: (argv) => (argv[1] === 'path' ? { stdout: `${at}\n` } : {}) },
+    })
+    const first = filled(b.home, 'one/store')
+    const second = filled(b.home, 'two/store')
+    at = first
+    const ctx = ctxOf()
+    const p = plan(await survey([b.plugin], ctx), {})
+    at = second
+    const receipt = await clean(p, [b.plugin], ctx)
+    expect(receipt.dropped).toMatchObject([{ id: `pnpm:${first}`, reason: 'gone' }])
+    expect(receipt.steps).toEqual([])
+    expect(b.calls.filter((c) => c.argv[2] === 'prune')).toEqual([])
+    expect(existsSync(join(first, 'blob'))).toBe(true)
+  })
+
+  test('a folder a variable puts outside home is refused outside-roots, and the plugin will not delete it', async () => {
+    const elsewhere = filled(outsideHome(), 'cache')
+    const b = buildVars('go', GO_VARS, { env: () => ({ GOMODCACHE: elsewhere }) })
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.objections.filter((o) => o.by === 'go')).toMatchObject([
+      { code: OUTSIDE_ROOTS, reason: `${elsewhere}: it is not inside the home folder` },
+    ])
+    expect(s.roots.go).not.toContain(elsewhere)
+    const c = s.candidates.find((x) => x.path === elsewhere)!
+    expect(c).toMatchObject({ held: true })
+    await expect(b.plugin.delete!(c, fakeContext())).rejects.toThrow(
+      `${elsewhere} was not deleted: it is not inside go's roots`,
+    )
+    const p = plan(s, { pick: [c.id], allow: [OUTSIDE_ROOTS] })
+    await clean(p, [b.plugin], ctxOf())
+    expect(existsSync(join(elsewhere, 'blob'))).toBe(true)
+  })
+
+  test('a folder from a variable set in the config is trusted outside home, and cleaned', async () => {
+    const disk = outsideHome()
+    const mod = filled(disk, 'go', 'mod')
+    age(mod, 1000)
+    const b = buildVars('go', GO_VARS, { vars: { GOMODCACHE: mod } })
+    const { survey: s, receipt } = await surveyAndClean(b.plugin)
+    expect(s.objections).toEqual([])
+    expect(s.roots.go).toContain(mod)
+    expect(receipt.steps).toMatchObject([{ id: `go:${mod}`, result: 'ok' }])
+    expect(existsSync(mod)).toBe(false)
+  })
+
+  test('a folder under an XDG folder the environment sets outside home is trusted', async () => {
+    const cache = join(outsideHome(), 'cache')
+    const build = filled(cache, 'go-build')
+    const b = buildVars('go', GO_VARS, { env: () => ({ XDG_CACHE_HOME: cache }) })
+    // detect needs go on PATH or its module cache.
+    filled(b.home, 'go', 'pkg', 'mod')
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.objections.filter((o) => o.code === OUTSIDE_ROOTS)).toEqual([])
+    expect(s.roots.go).toContain(build)
+    expect(s.candidates.map((c) => c.path)).toContain(build)
+  })
+
+  test('a trusted folder is still refused when it holds home, or is a target', async () => {
+    const holdsHome = buildVars('go', GO_VARS)
+    const parent = join(holdsHome.home, '..')
+    const again = buildVars('go', GO_VARS, { vars: { GOMODCACHE: parent } })
+    const s = await survey([again.plugin], ctxOf())
+    expect(s.objections.map((o) => o.reason)).toContainEqual(
+      expect.stringMatching(/: it holds the home folder$/),
+    )
+
+    const disk = outsideHome()
+    const target = filled(disk, 'repo')
+    const t = buildVars('go', GO_VARS, { vars: { GOMODCACHE: target } })
+    const st = await survey([t.plugin], ctxOf({ targets: [target] }))
+    expect(st.objections.filter((o) => o.by === 'go')).toMatchObject([
+      { code: OUTSIDE_ROOTS, reason: `${target}: it is a target` },
+    ])
+  })
+
+  test('a lock may use a variable', async () => {
+    const LOCKED = PNPM_VARS.replace('processes: [pnpm]', "locks: ['${STORE}/lock']")
+    const b = buildVars('pnpm', LOCKED)
+    const store = filled(b.home, '.local/share/pnpm/store')
+    writeFileSync(join(store, 'lock'), '')
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.objections).toContainEqual(
+      expect.objectContaining({ code: IN_USE, reason: `the lock ${join(store, 'lock')} exists` }),
+    )
+  })
+
+  test('a lock whose variable has no value refuses every candidate', async () => {
+    const UNKNOWN = PNPM_VARS.replace('processes: [pnpm]', "locks: ['${LOCKS}/lock']").replace(
+      'vars:\n',
+      'vars:\n  LOCKS:\n    - env: PNPM_LOCKS\n',
+    )
+    const b = buildVars('pnpm', UNKNOWN)
+    const store = filled(b.home, '.local/share/pnpm/store')
+    const s = await survey([b.plugin], ctxOf())
+    const c = s.candidates[0]!
+    expect(s.objections).toContainEqual(
+      expect.objectContaining({
+        by: 'pnpm',
+        candidate: c.id,
+        code: IN_USE,
+        level: 'refuse',
+        reason: 'the lock ${LOCKS}/lock cannot be checked: ${LOCKS} has no value',
+      }),
+    )
+    // The check before the delete refuses it too.
+    await expect(b.plugin.delete!(c, fakeContext())).rejects.toThrow(
+      'cannot be checked: ${LOCKS} has no value',
+    )
+    expect(existsSync(store)).toBe(true)
+  })
+
+  test("the config's vars name only the descriptor's variables, each a folder", () => {
+    const { def } = buildVars('go', GO_VARS)
+    expect(
+      settingsIssues(
+        { go: { vars: { GOMODCACHE: '/Volumes/build/go/mod', GOROOT: '/x', GOCACHE: 'rel' } } },
+        'plugins',
+        [def],
+      ),
+    ).toEqual([
+      'plugins.go.vars.GOCACHE: must start with ~/ or be absolute',
+      'plugins.go.vars: Unrecognized key: "GOROOT"',
+    ])
+    expect(settingsIssues({ go: { vars: { GOPATH: '~/go' } } }, 'plugins', [def])).toEqual([])
+    // A config value is trusted, so it passes the checks a descriptor's folder does.
+    expect(
+      settingsIssues(
+        { go: { vars: { GOMODCACHE: '/home/bob', GOPATH: '~/../bob', GOCACHE: '/' } } },
+        'plugins',
+        [def],
+      ),
+    ).toEqual([
+      'plugins.go.vars.GOPATH: must not have a .. segment',
+      'plugins.go.vars.GOMODCACHE: must name a folder below a home folder, not a home folder itself',
+      'plugins.go.vars.GOCACHE: must name a folder below the home folder or a root, not the home folder or a root itself',
+    ])
+    const tier1 = descriptorPlugin('pip', parseDescriptor(PIP_PER_OS, 'pip.yaml'))
+    expect(settingsIssues({ pip: { vars: {} } }, 'plugins', [tier1])).toEqual([
+      'plugins.pip: Unrecognized key: "vars"',
+    ])
+  })
+
+  test('config lists each variable, with the value the config sets', () => {
+    const { def } = buildVars('go', GO_VARS)
+    const rows = effectiveSettings({ go: { vars: { GOPATH: '/work/go' } } }, {}, [def]).go!
+    expect(rows.map((r) => [r.key, r.value, r.source])).toEqual([
+      ['enabled', true, 'default'],
+      ['idleHours', 24, 'default'],
+      ['vars.GOPATH', '/work/go', 'config'],
+      ['vars.GOMODCACHE', undefined, 'default'],
+      ['vars.GOCACHE', undefined, 'default'],
+    ])
   })
 })
 

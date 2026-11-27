@@ -35,9 +35,15 @@ import {
   readConfig,
   type Config,
 } from './config.ts'
-import { DescriptorLoadError, sameDescriptor, type DescriptorSources } from './descriptor/load.ts'
+import {
+  DescriptorLoadError,
+  sameDescriptor,
+  type DescriptorSource,
+  type DescriptorSources,
+} from './descriptor/load.ts'
 import { DescriptorError } from './descriptor/schema.ts'
-import { gitDefinitionWith } from './git.ts'
+import type { VarValue, Vars } from './descriptor/vars.ts'
+import { gitDefinition, gitDefinitionWith } from './git.ts'
 import { pluginKit } from './kit.ts'
 import {
   PackageError,
@@ -58,11 +64,12 @@ import {
   withPackages,
   type Loaded,
 } from './registry.ts'
-import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
+import { disabledByConfig, effectiveSettings, resolveSettings } from './settings.ts'
 import {
   SelectionError,
   clean,
   decidePlan,
+  inspect,
   plan as makePlan,
   recheck,
   survey,
@@ -142,7 +149,8 @@ const PHASES = `phases:
   ${NAME} plan     save what status found, to clean later or hand over
   ${NAME} clean    check again, show the steps, ask, delete
 
-  ${NAME} config   print the effective settings of every plugin`
+  ${NAME} config   print the effective settings of every plugin
+  ${NAME} plugins  list every plugin: where it came from, detected or why not, its roots`
 
 /** What the bare command prints: the phases, and that nothing ran. */
 const OVERVIEW = `${NAME} finds what on this machine can go (worktrees and branches whose
@@ -160,9 +168,19 @@ It works in phases, as repo-cleaner does. Nothing is deleted until clean.
                 $ ${NAME} clean --plan plan.json
 
 \`${NAME} config\` prints each plugin's settings and where each value came from.
+\`${NAME} plugins\` lists each plugin, whether it applies here and why not, and its roots.
 
 Nothing ran. Name a phase; \`${NAME} <phase> --help\` shows its options.
 `
+
+/** `--format` of `status` and `plugins`. */
+const REPORT_FORMAT = {
+  kind: 'enum',
+  choices: ['text', 'json'] as const,
+  valueName: 'form',
+  default: 'text',
+  help: 'text (the report) or json (everything)',
+} as const
 
 const statusCli = () =>
   defineCli({
@@ -178,13 +196,7 @@ const statusCli = () =>
         kind: 'boolean',
         help: 'also show candidates a plugin refuses (with --format text)',
       },
-      format: {
-        kind: 'enum',
-        choices: ['text', 'json'] as const,
-        valueName: 'form',
-        default: 'text',
-        help: 'text (the report) or json (everything)',
-      },
+      format: REPORT_FORMAT,
       ...HELP_FLAGS,
     },
     shortEpilogue: `${PHASES}
@@ -210,6 +222,24 @@ const configCli = () =>
       },
       ...HELP_FLAGS,
     },
+  })
+
+const pluginsCli = () =>
+  defineCli({
+    name: `${NAME} plugins`,
+    summary:
+      'List every plugin: where it came from, whether it applies here and why not, and the ' +
+      'folders it may delete in. Runs detect, scope and roots only; proposes and deletes nothing.',
+    autoHelp: false,
+    positionals: TARGETS,
+    flags: {
+      config: SWEEP_FLAGS.config,
+      ignore: SWEEP_FLAGS.ignore,
+      descriptor: SWEEP_FLAGS.descriptor,
+      format: REPORT_FORMAT,
+      ...HELP_FLAGS,
+    },
+    shortEpilogue: `To try one plugin's candidates: ${NAME} status --plugin <name>`,
   })
 
 const planCli = () =>
@@ -586,24 +616,26 @@ async function setUp(
 }
 
 /**
- * The plugins this run uses: the definitions built from the config, or
- * `deps.plugins`, then chosen by flag. A package's plugin that fails to build
- * is added to `loading.failed` and left out.
+ * Every plugin, enabled or not: the definitions built from the config, or
+ * `deps.plugins`. A package's plugin that fails to build is added to
+ * `loading.failed` and left out.
  *
- * @throws BadInput when `--plugin` names a package that failed
+ * @param git Built in place of the shipped `git` definition, as `--worktrees`
+ *   and `--branches` give it.
  */
-function pluginsFor(v: SweepValues, loading: Loading, deps: MainDeps, ctx: CliContext): Plugin[] {
-  const { config, entries, failed } = loading
-  const { definitions, problems } = loading.loaded
-  // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
-  const only: Kind[] =
-    v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
-  const git = gitDefinitionWith({ sweep: { only } })
+function allPlugins(
+  loading: Loading,
+  deps: MainDeps,
+  ctx: CliContext,
+  git: PluginDefinition = gitDefinition,
+): readonly Plugin[] {
+  const { config, failed } = loading
+  const { definitions } = loading.loaded
   const build = (d: PluginDefinition): Plugin[] => {
     try {
       return [
         d.create({
-          settings: settingsOf(d.name, config.plugins[d.name] ?? {}, config, definitions),
+          ...resolveSettings(d.name, config.plugins[d.name] ?? {}, config, definitions),
           env: ctx.env,
           kit: pluginKit(d.name, { env: ctx.env }),
         }),
@@ -614,21 +646,35 @@ function pluginsFor(v: SweepValues, loading: Loading, deps: MainDeps, ctx: CliCo
       return []
     }
   }
-  const all = deps.plugins ?? definitions.map((d) => (d.name === git.name ? git : d)).flatMap(build)
-  // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
+  return deps.plugins ?? definitions.map((d) => (d.name === git.name ? git : d)).flatMap(build)
+}
+
+/**
+ * The plugins this run uses: {@link allPlugins}, then chosen by flag and the
+ * config.
+ *
+ * @throws BadInput when `--plugin` names a package that failed
+ */
+function pluginsFor(v: SweepValues, loading: Loading, deps: MainDeps, ctx: CliContext): Plugin[] {
+  const { config, entries, failed } = loading
+  // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
+  const only: Kind[] =
+    v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
+  const all = allPlugins(loading, deps, ctx, gitDefinitionWith({ sweep: { only } }))
   const named = v.plugin ?? []
   const broken = failed.find((f) => named.includes(f.name))
   if (broken !== undefined) throw new BadInput(broken.reason)
   // Names `--skip-plugin` may give that have no plugin: packages not loaded, and descriptors that can't be used.
-  const absent = [...entries, ...problems].filter(
+  const absent = [...entries, ...loading.loaded.problems].filter(
     (e) => !named.includes(e.name) && !all.some((p) => p.name === e.name),
   )
   const chosen = selectPlugins<Pick<Plugin, 'name'>>([...all, ...absent], v.plugin, v.skipPlugin)
-  return all.filter(
-    (p) =>
-      chosen.includes(p) && (named.includes(p.name) || !disabledByConfig(p.name, config.plugins)),
-  )
+  return all.filter((p) => chosen.includes(p) && enabled(p.name, config, named))
 }
+
+/** `enabled: false` in the config leaves a plugin out; naming it in `named` (`--plugin`) runs it anyway. */
+const enabled = (name: string, config: Config, named: readonly string[] = []): boolean =>
+  named.includes(name) || !disabledByConfig(name, config.plugins)
 
 /** The home folder, from `HOME` when set, with no trailing slash. */
 const homeOf = (ctx: CliContext): string => (ctx.env.HOME ?? homedir()).replace(/(.)\/+$/, '$1')
@@ -807,6 +853,12 @@ async function runConfig(
           Object.fromEntries(rows.map((r) => [r.key, r.value])),
         ]),
       )
+      // Each a list, since two parts may have one name.
+      const parts = Object.fromEntries(
+        Object.entries(settings).flatMap(([n, rows]) =>
+          rows.flatMap((r) => (r.parts === undefined ? [] : [[n, r.parts]])),
+        ),
+      )
       ctx.io.stdout(
         JSON.stringify(
           {
@@ -814,6 +866,7 @@ async function runConfig(
             ignore: config.ignore,
             idleHours: config.idleHours ?? null,
             plugins: values,
+            partIdleHours: parts,
             packages: packages.map((p) => ({
               name: p.name,
               package: p.package,
@@ -845,11 +898,224 @@ async function runConfig(
         lines.push(
           `  ${r.key} = ${JSON.stringify(r.value)}  (${r.source === 'shared' ? 'idleHours' : r.source})  ${r.description}`,
         )
+        for (const p of r.parts ?? []) lines.push(`    ${p.part}: ${r.key} = ${p.idleHours}`)
       }
     }
     ctx.io.stdout(block(lines))
   } catch (err) {
     return refusal(ctx, name, err)
+  }
+  return EXIT.ok
+}
+
+/** One of a descriptor's variables, as `host-cleaner plugins` shows it. */
+type VarRow = Omit<VarValue, 'from'> & {
+  name: string
+  /** The source that gave it, such as `config`, `env GOPATH` or `value`; null when none did. */
+  from: string | null
+}
+
+/** One row of `host-cleaner plugins`. */
+interface PluginRow {
+  name: string
+  /** Where the plugin came from: `built-in`, a `package` the config names, the folder a descriptor was read from (`flag` is `--descriptor`), or `given` by the program that calls `main`. */
+  source: 'built-in' | 'package' | 'given' | DescriptorSource
+  /** See `LoadedDescriptor.replaces` in `./descriptor/load.ts`. */
+  replaces?: { source: DescriptorSource; path: string }
+  enabled: boolean
+  detected: boolean
+  /** Why it does not run: `plugins.<name>.enabled is false`, the `reason` `inspect` gave, or why its descriptor can't be used. Null when it is detected, or `detect` answered no. */
+  reason: string | null
+  /** Where it may delete besides the targets; empty, the targets alone. */
+  roots: readonly string[]
+  /** Why `roots` is empty though the plugin has a `roots` hook: `rootsFailed` from `inspect`; null otherwise. */
+  rootsFailed: string | null
+  /** The roots among `roots` that may be deleted themselves (`{ path, self: true }`). */
+  selfRoots: readonly string[]
+  /** The note its `detect` gave, whether it is detected or not; null when it gave none. */
+  note: string | null
+  /** A descriptor's variables as its `detect` gave them; empty for a plugin that has none, or when `detect` did not finish. */
+  vars: readonly VarRow[]
+}
+
+/**
+ * The row of a plugin that was not built, a descriptor that can't be used or a
+ * package that did not load: not detected, with `why` as the reason, or
+ * disabled as any plugin is.
+ */
+const absentRow = (
+  name: string,
+  source: PluginRow['source'],
+  on: boolean,
+  why: string,
+): PluginRow => ({
+  name,
+  source,
+  enabled: on,
+  detected: false,
+  reason: on ? why : `plugins.${name}.enabled is false`,
+  roots: [],
+  rootsFailed: null,
+  selfRoots: [],
+  note: null,
+  vars: [],
+})
+
+const varRows = (vars: Vars | undefined): VarRow[] =>
+  Object.entries(vars ?? {}).map(([name, x]) => ({ name, ...x, from: x.from ?? null }))
+
+/**
+ * `${NAME} = <folder>  from <source> (tried <source>: <why it gave none>; …)`,
+ * without `from` when the plugin named no source, or `has no value (tried …)`
+ * when no source gave one.
+ */
+function varLine(x: VarRow, width: number): string {
+  const tried =
+    x.tried.length === 0
+      ? ''
+      : ` (tried ${x.tried.map((t) => `${oneLine(t.source)}: ${oneLine(t.failed)}`).join('; ')})`
+  const from = x.from === null ? '' : `  from ${oneLine(x.from)}`
+  const said = x.value === null ? `has no value${tried}` : `= ${pathLine(x.value)}${from}${tried}`
+  return `    ${`\${${oneLine(x.name)}}`.padEnd(width + 3)}  ${said}`
+}
+
+/** `roots: <root> (itself too), …`, or `none, the targets alone (<why>)` when it has none. */
+function rootsText(r: PluginRow): string {
+  const roots = r.roots.map(
+    (root) => pathLine(root) + (r.selfRoots.includes(root) ? ' (itself too)' : ''),
+  )
+  if (roots.length > 0) return `roots: ${roots.join(', ')}`
+  const why = r.rootsFailed === null ? '' : ` (${oneLine(r.rootsFailed)})`
+  return `roots: none, the targets alone${why}`
+}
+
+/** `text` on one line, so a plugin's own words cannot split a row: each run of whitespace is one space. */
+const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
+
+/** `path` on one line; it keeps its spaces, as only a line break would split a row. */
+const pathLine = (path: string): string => path.replace(/[\r\n]+/g, ' ')
+
+/** How to run a disabled plugin; `plugins` itself takes no `--plugin`. */
+const runsAnyway = (name: string): string =>
+  `; status, plan or clean with --plugin ${oneLine(name)} runs it anyway`
+
+/** What `--plugin` does when a descriptor that can't be used has the name: `setUp` throws its error. */
+const stopsOnError = (name: string): string =>
+  `; status, plan or clean with --plugin ${oneLine(name)} stops on its descriptor's error`
+
+/** @param unusable The names of the descriptors that can't be used, a built-in's among them. */
+function renderPlugins(
+  rows: readonly PluginRow[],
+  targets: readonly string[],
+  ignored: readonly string[],
+  unusable: ReadonlySet<string>,
+): string {
+  const names = rows.map((r) => oneLine(r.name))
+  const width = Math.max(...names.map((n) => n.length))
+  const sourceWidth = Math.max(...rows.map((r) => r.source.length))
+  const lines = [`targets: ${targets.map(pathLine).join(', ') || '(none)'}`]
+  if (ignored.length > 0) lines.push(`ignoring: ${ignored.map(pathLine).join(', ')}`)
+  for (const [i, r] of rows.entries()) {
+    const state = !r.enabled
+      ? 'disabled'
+      : r.detected
+        ? `detected; ${rootsText(r)}`
+        : 'not detected'
+    const hint = r.enabled ? '' : unusable.has(r.name) ? stopsOnError(r.name) : runsAnyway(r.name)
+    const reason = r.reason === null ? null : oneLine(r.reason) + hint
+    const note = r.note === null ? null : oneLine(r.note)
+    const replaces =
+      r.replaces === undefined
+        ? ''
+        : `; replaces the ${r.replaces.source} ${pathLine(r.replaces.path)}`
+    lines.push(
+      `  ${names[i]!.padEnd(width)}  ${r.source.padEnd(sourceWidth)}  ${state}${reason === null ? '' : `: ${reason}`}${note === null ? '' : `; note: ${note}`}${replaces}`,
+    )
+    const varWidth = Math.max(...r.vars.map((x) => oneLine(x.name).length))
+    for (const x of r.vars) lines.push(varLine(x, varWidth))
+  }
+  return block(lines)
+}
+
+async function runPlugins(
+  argv: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+): Promise<number> {
+  const name = `${NAME} plugins`
+  const parsed = parseWith(pluginsCli(), name, argv, ctx)
+  if (parsed.status === 'done') return parsed.code
+  const v = parsed.values
+  let rows: PluginRow[]
+  let targets: readonly string[]
+  let ignored: readonly string[]
+  let warnings: readonly string[]
+  let unusable: ReadonlySet<string>
+  try {
+    // The packages the run would load: those the config does not disable.
+    const loading = await loadRun(findRun(v, ctx, deps), {}, ctx, deps)
+    const { config, entries, failed, unknown } = loading
+    const { descriptors, packages, problems } = loading.loaded
+    const all = allPlugins(loading, deps, ctx)
+    const loaded = new Map(descriptors.map((d) => [d.name, d]))
+    const packaged = new Set(packages.map((p) => p.name))
+    const at = contextFor(parsed.positionals, config, ctx, [], v.ignore)
+    const found = await inspect(all, at, { skip: (p) => !enabled(p.name, config) })
+    rows = found.plugins.map((s): PluginRow => {
+      // Without `deps.plugins`, each plugin that is not built in is a package's or a descriptor's.
+      const d = s.builtIn === true ? undefined : loaded.get(s.name)
+      return {
+        name: s.name,
+        source:
+          s.builtIn === true
+            ? 'built-in'
+            : packaged.has(s.name)
+              ? 'package'
+              : (d?.source ?? 'given'),
+        ...(d?.replaces === undefined ? {} : { replaces: d.replaces }),
+        enabled: s.skipped !== true,
+        detected: s.detected,
+        reason: s.skipped === true ? `plugins.${s.name}.enabled is false` : (s.reason ?? null),
+        roots: s.roots,
+        rootsFailed: s.rootsFailed ?? null,
+        selfRoots: s.selfRoots,
+        note: s.note ?? null,
+        vars: varRows(s.vars),
+      }
+    })
+    // A descriptor that can't be used has a row, its error the reason, unless
+    // a plugin has its name; then, or when it is disabled, the error is a warning.
+    const named = new Set(rows.map((r) => r.name))
+    const rowed = problems.filter((p) => !named.has(p.name))
+    rows.push(
+      ...rowed.map((p) => absentRow(p.name, p.source, enabled(p.name, config), p.error.message)),
+    )
+    // So has a package the config disables, or that did not load, with why.
+    for (const e of entries.filter((e) => !named.has(e.name))) {
+      const why = failed.find((f) => f.name === e.name)?.reason ?? 'not loaded'
+      rows.push(absentRow(e.name, 'package', enabled(e.name, config), why))
+    }
+    unusable = new Set(problems.map((p) => p.name))
+    targets = found.ctx.targets
+    ignored = found.ctx.ignore ?? []
+    warnings = [
+      ...loading.warnings,
+      ...problems
+        .filter((p) => !rowed.includes(p) || !enabled(p.name, config))
+        .map((p) => p.error.message),
+      ...(unknown.length > 0 ? [unknownMessage(unknown)] : []),
+      ...found.warnings,
+    ]
+  } catch (err) {
+    return refusal(ctx, name, err)
+  }
+  if (v.format === 'json') {
+    ctx.io.stdout(
+      `${JSON.stringify({ targets, ignore: ignored, warnings, plugins: rows }, null, 2)}\n`,
+    )
+  } else {
+    writeWarnings(ctx, name, warnings)
+    ctx.io.stdout(renderPlugins(rows, targets, ignored, unusable))
   }
   return EXIT.ok
 }
@@ -1147,6 +1413,23 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   return receipt.status === 'failed' ? EXIT_STEP_FAILED : EXIT.ok
 }
 
+type PhaseRun = (
+  argv: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+) => number | Promise<number>
+
+/** Each phase's runner, in the order the usage error names them. */
+const RUNS = {
+  status: runStatus,
+  plan: runPlan,
+  clean: runClean,
+  config: runConfig,
+  plugins: runPlugins,
+} satisfies Record<string, PhaseRun>
+type Phase = keyof typeof RUNS
+const PHASE_NAMES = Object.keys(RUNS) as Phase[]
+
 /** Resolves to an exit code; never exits the process. */
 export async function main(
   argv: readonly string[],
@@ -1154,19 +1437,19 @@ export async function main(
   deps: MainDeps = {},
 ): Promise<number> {
   const [sub, ...rest] = argv
-  const phase = sub === 'status' || sub === 'plan' || sub === 'clean'
-  // It cleans one person's files; as root, a target or a root could reach everyone's.
-  // `config` only reads the settings, so it still answers.
-  if (phase && (deps.uid ?? process.getuid?.()) === 0) {
-    ctx.io.stderr(
-      renderError('refusing to run as root; run it as the user whose files it cleans', NAME),
-    )
-    return EXIT.error
+  const run: PhaseRun | undefined =
+    sub !== undefined && Object.hasOwn(RUNS, sub) ? RUNS[sub as Phase] : undefined
+  if (run !== undefined) {
+    // It cleans one person's files; as root, a target or a root could reach everyone's.
+    // `config` only reads the settings, so it still answers.
+    if (sub !== 'config' && (deps.uid ?? process.getuid?.()) === 0) {
+      ctx.io.stderr(
+        renderError('refusing to run as root; run it as the user whose files it cleans', NAME),
+      )
+      return EXIT.error
+    }
+    return run(rest, ctx, deps)
   }
-  if (sub === 'status') return runStatus(rest, ctx, deps)
-  if (sub === 'plan') return runPlan(rest, ctx, deps)
-  if (sub === 'clean') return runClean(rest, ctx, deps)
-  if (sub === 'config') return runConfig(rest, ctx, deps)
   if (sub === '-h' || sub === '--help') {
     ctx.io.stdout(OVERVIEW)
     return EXIT.ok
@@ -1179,6 +1462,6 @@ export async function main(
   return usageError(
     ctx,
     NAME,
-    `${JSON.stringify(sub)} is not a phase: name one of status, plan, clean or config, then the targets`,
+    `${JSON.stringify(sub)} is not a phase: name one of ${PHASE_NAMES.slice(0, -1).join(', ')} or ${PHASE_NAMES.at(-1)}, then the targets`,
   )
 }

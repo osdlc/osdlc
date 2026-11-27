@@ -475,6 +475,8 @@ describe('config entries and the run’s plugins', () => {
       'git',
       'cargo',
       'node',
+      'vscode',
+      'cursor',
       'orca',
       'alpha',
       'beta',

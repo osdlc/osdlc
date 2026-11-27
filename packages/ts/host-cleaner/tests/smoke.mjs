@@ -29,6 +29,7 @@ import {
   VERSION,
   clean,
   gitPlugin,
+  loadDescriptors,
   parseDescriptor,
   plan,
   survey,
@@ -40,7 +41,7 @@ assert.match(VERSION, /^\d+\.\d+\.\d+/)
 assert.equal(typeof gitPlugin().discover, 'function')
 assert.deepEqual(
   BUILT_IN_PLUGINS.map((d) => d.name),
-  ['git', 'cargo', 'node', 'orca'],
+  ['git', 'cargo', 'node', 'vscode', 'cursor', 'orca'],
 )
 
 const log = []
@@ -72,6 +73,11 @@ assert.deepEqual(
     'hub.yaml',
   ).paths,
   { hub: { all: '~/.cache/hub' } },
+)
+// The shipped descriptors are in the package, where the loader looks for them.
+assert.deepEqual(
+  loadDescriptors({}, []).map((d) => d.name),
+  ['go', 'gradle', 'huggingface-hub', 'maven', 'npm', 'pip', 'pnpm', 'uv', 'yarn'],
 )
 const schemaFile = fileURLToPath(
   import.meta.resolve('@osdlc/host-cleaner/schemas/descriptor-1.json'),

@@ -4,7 +4,7 @@
  * discover, object, decide, re-check, prepare, delete, deleted.
  */
 
-import type { z } from 'zod'
+import { z } from 'zod'
 
 import type { CostDescription } from './cost.ts'
 import { attachKit, type Kit } from './kit.ts'
@@ -129,6 +129,59 @@ export interface Ctx extends RunCtx {
 export interface Detection {
   active: boolean
   note?: string | undefined
+  /**
+   * The variables the plugin's folders use here and the source that gave
+   * each, as a descriptor's plugin gives them; `inspect` returns them, and
+   * `host-cleaner plugins` shows them.
+   */
+  vars?: Readonly<Vars> | undefined
+}
+
+/** One variable's outcome, as a descriptor's `resolveVars` gives it. */
+export interface VarValue {
+  /** The folder, absolute and normalized; null when no source gave one. */
+  value: string | null
+  /**
+   * The source that gave it, as a descriptor names it (`env XDG_CACHE_HOME`);
+   * `config`; `home` for `HOME`; or `default` for an `XDG_*` folder's default.
+   */
+  from?: string | undefined
+  /**
+   * Set in the config, an `XDG_*` folder the environment sets that the folder
+   * checks pass (as a built-in or read by an `env` source), or a `value` inside
+   * a trusted variable's folder: its folders may sit outside home.
+   */
+  trusted: boolean
+  /** The sources before it that gave nothing, in order, and why. */
+  tried: Array<{ source: string; failed: string }>
+}
+
+/** Every variable's outcome: the built-ins, then the declared ones in the order declared. */
+export type Vars = Record<string, VarValue>
+
+const VarValueSchema = z.object({
+  value: z.string().nullable(),
+  from: z.string().optional(),
+  trusted: z.boolean(),
+  tried: z.array(z.object({ source: z.string(), failed: z.string() })),
+})
+
+/**
+ * `raw`, a `detect` answer's `vars`, as {@link Vars}; else why not. Each entry
+ * is checked on its own and kept as an own key, so a variable named
+ * `__proto__` stays a variable.
+ */
+export function parseVars(raw: unknown): { vars: Vars } | { failed: string } {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return { failed: 'vars is not an object' }
+  }
+  const entries: Array<[string, VarValue]> = []
+  for (const [name, value] of Object.entries(raw)) {
+    const checked = VarValueSchema.safeParse(value)
+    if (!checked.success) return { failed: `vars.${name} is not { value, from?, trusted, tried }` }
+    entries.push([name, checked.data])
+  }
+  return { vars: Object.fromEntries(entries) }
 }
 
 /**
@@ -208,10 +261,21 @@ export interface Plugin {
 /** The plugin API version this host-cleaner supports; a definition's `api` must equal it. */
 export const PLUGIN_API = 1
 
+/** Where a setting's value came from: the plugin's own entry, the config's top-level setting, or the default. */
+export type SettingSource = 'config' | 'shared' | 'default'
+
+/** One part of a plugin with an idle threshold of its own, as `config` shows it. */
+export interface PartIdleHours {
+  part: string
+  idleHours: number
+}
+
 /** What `create` is told. */
 export interface PluginInit<S = Record<string, unknown>> {
   /** Its own entry in the config's `plugins`, validated with its defaults filled in. */
   settings: S
+  /** Where each key of `settings` came from; a key it does not name came from the default. */
+  sources?: Readonly<Record<string, SettingSource>>
   /** The command line's environment, for a plugin that runs other programs. */
   env: Readonly<Record<string, string | undefined>>
   /** The safety helpers, bound to this plugin and, each run, to its roots (see `./kit.ts`). */
@@ -229,6 +293,12 @@ export interface PluginDefinition<S extends z.ZodObject = z.ZodObject> {
   /** The keys its entry in `plugins` may hold; an unknown key is a config error. */
   settings: S
   create(init: PluginInit<z.output<S>>): Plugin
+  /**
+   * The idle threshold of each part that does not simply take the `idleHours`
+   * setting, given that setting and where it came from: what the run uses, for
+   * `config` to show.
+   */
+  idleHoursOf?(idleHours: number, source: SettingSource): PartIdleHours[]
 }
 
 /**
@@ -247,6 +317,34 @@ export const definePlugin = <S extends z.ZodObject>(
     return plugin
   },
 })
+
+/**
+ * The hooks a factory host-cleaner ships gave the plugin it built. An
+ * enumerable own property, so a copy such as `{ ...gitPlugin(), limits }`
+ * keeps it.
+ */
+const SHIPPED_HOOKS = Symbol('host-cleaner shipped hooks')
+
+type Branded = Plugin & { [SHIPPED_HOOKS]?: Partial<Record<Hook, unknown>> }
+
+const hooksOf = (plugin: Plugin): Partial<Record<Hook, unknown>> =>
+  Object.fromEntries(HOOKS.map((h) => [h, plugin[h]]))
+
+/** `plugin`, recorded as one host-cleaner ships; each built-in plugin's factory returns through it. */
+export const builtIn = (plugin: Plugin): Plugin => {
+  ;(plugin as Branded)[SHIPPED_HOOKS] = hooksOf(plugin)
+  return plugin
+}
+
+/**
+ * Whether a factory host-cleaner ships built `plugin`, however it reached the
+ * caller, copied or not: every hook is still the one that factory gave it. A
+ * program that replaces a hook wrote that plugin.
+ */
+export const isBuiltIn = (plugin: Plugin): boolean => {
+  const shipped = (plugin as Branded)[SHIPPED_HOOKS]
+  return shipped !== undefined && HOOKS.every((h) => plugin[h] === shipped[h])
+}
 
 /** Thrown from a plugin to stop the whole run, not only the candidate it was working on. */
 export class FatalRun extends Error {

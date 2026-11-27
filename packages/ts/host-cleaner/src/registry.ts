@@ -71,6 +71,7 @@ export function findPlugins(
   const refused = (d: LoadedDescriptor, why: string): false => {
     problems.push({
       name: d.name,
+      source: d.source,
       path: d.path,
       error: new DescriptorLoadError(`descriptor ${d.path}${why}`),
     })

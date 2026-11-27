@@ -9,6 +9,7 @@ import { gitDefinition } from './git.ts'
 import { nodeDefinition } from './node.ts'
 import { orcaDefinition } from './orca.ts'
 import type { PluginDefinition } from './types.ts'
+import { cursorDefinition, vscodeDefinition } from './vscode.ts'
 
 /**
  * The shipped plugins, in run order. Order decides which plugin keeps a
@@ -18,5 +19,7 @@ export const BUILT_IN_PLUGINS: readonly PluginDefinition[] = [
   gitDefinition,
   cargoDefinition,
   nodeDefinition,
+  vscodeDefinition,
+  cursorDefinition,
   orcaDefinition,
 ]

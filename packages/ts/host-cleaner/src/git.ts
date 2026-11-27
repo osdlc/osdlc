@@ -24,6 +24,7 @@ import { linkedCheckouts } from './roots.ts'
 import {
   FatalRun,
   PLUGIN_API,
+  builtIn,
   definePlugin,
   type Candidate,
   type Objection,
@@ -84,7 +85,7 @@ export function gitPlugin(given: GitPluginOptions = {}): Plugin {
   const own = objector('git')
   const isRisk = (code: string): code is Risk => (RISKS as readonly string[]).includes(code)
 
-  return {
+  return builtIn({
     name: 'git',
     // The sweep covers every repository in one call that nothing can stop part way.
     limits: { discover: DISCOVER_LIMIT_MS },
@@ -116,13 +117,14 @@ export function gitPlugin(given: GitPluginOptions = {}): Plugin {
     // its repository, declares it so its prune is not refused outside-roots.
     // One of a repository a target is in, the core counts already.
     roots(ctx) {
+      const gone = [...rows.values()].filter(
+        (row) => row.kind === 'worktree' && (row.evidence as WorktreeEvidence).onDisk === false,
+      )
+      // Nothing to root, as before `discover`: git is not run for every target.
+      if (gone.length === 0) return []
       const counted = new Set(linkedCheckouts(ctx.targets))
-      return [...rows.values()].flatMap((row) =>
-        row.kind === 'worktree' &&
-        (row.evidence as WorktreeEvidence).onDisk === false &&
-        !counted.has(row.path)
-          ? [{ path: row.path, self: true as const }]
-          : [],
+      return gone.flatMap((row) =>
+        counted.has(row.path) ? [] : [{ path: row.path, self: true as const }],
       )
     },
     object(all) {
@@ -153,7 +155,7 @@ export function gitPlugin(given: GitPluginOptions = {}): Plugin {
       if (!result.ok) throw new Error(error)
       return result.steps.map((s) => s.verification ?? s.command).join('; ')
     },
-  }
+  })
 }
 
 /**
