@@ -1,6 +1,6 @@
 /** The `host-cleaner` CLI driven in process: exit codes, refusals, and plan to receipt through fake plugins and the real git plugin. */
 
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   existsSync,
   mkdtempSync,
@@ -11,11 +11,11 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
 import { Git } from '@osdlc/typed-git'
-import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
+import { IDENTITY, makeBareAndWorker, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, type MainDeps } from '../src/cli.ts'
 import { hostDirs } from '../src/config.ts'
@@ -24,6 +24,16 @@ import type { Candidate, Objection, Plugin } from '../src/index.ts'
 const cleanups: Array<() => void> = []
 afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()!()
+  vi.unstubAllEnvs()
+})
+
+// These tests run `clean --yes` with the shipped plugins. One that read this process's environment
+// in place of the run's would find no one's own home: it is a temporary folder here, not a test's.
+beforeEach(() => {
+  const nobody = tempDir()
+  vi.stubEnv('HOME', nobody)
+  vi.stubEnv('VSCODE_APPDATA', nobody)
+  vi.stubEnv('XDG_CONFIG_HOME', nobody)
 })
 
 function tempDir(): string {
@@ -32,9 +42,11 @@ function tempDir(): string {
   return dir
 }
 
-const sh = (cwd: string, args: string[]): void => {
-  new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args)
-}
+/** Runs git in `cwd`, throwing on failure; returns its trimmed stdout. */
+const git = (cwd: string, args: string[]): string =>
+  new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args).stdout.trim()
+
+const sh = (cwd: string, args: string[]): void => void git(cwd, args)
 
 /** A repository with a merged branch and an unmerged one. */
 function repo(): string {
@@ -48,6 +60,24 @@ function repo(): string {
   return dir
 }
 
+/** A repository whose `main` is pushed to a bare remote, plus an unmerged branch `topic`. */
+function pushedRepo(): { dir: string; bare: string } {
+  const pair = makeBareAndWorker({ parent: tempDir() })
+  const dir = pair.worker.dir
+  sh(dir, ['commit', '--allow-empty', '-m', 'initial'])
+  sh(dir, ['push', '-q', '-u', 'origin', 'main'])
+  sh(dir, ['checkout', '-q', '-b', 'topic'])
+  sh(dir, ['commit', '--allow-empty', '-m', 'wip'])
+  sh(dir, ['checkout', '-q', 'main'])
+  return { dir, bare: pair.bare.dir }
+}
+
+/** The archive branches on the remote `bare`. */
+const archives = (bare: string): string[] =>
+  git(bare, ['for-each-ref', '--format=%(refname)', 'refs/heads/archive/'])
+    .split('\n')
+    .filter((l) => l !== '')
+
 function setup(): { home: string; cwd: string; env: Record<string, string> } {
   const home = tempDir()
   return {
@@ -59,12 +89,22 @@ function setup(): { home: string; cwd: string; env: Record<string, string> } {
 
 function run(argv: string[], cwd: string, env: Record<string, string>, deps: MainDeps = {}) {
   const ctx = captureContext({ cwd, env })
-  // The shipped plugins would talk to this machine's Orca and sweep every repository it lists.
+  // The shipped plugins would talk to this machine's Orca and sweep every repository it lists,
+  // and run its rustup, which on a macOS runner took half a minute a run, filling the decoy home.
   const phase = ['status', 'plan', 'clean'].includes(argv[0] ?? '')
-  const args = phase && deps.plugins === undefined ? [...argv, '--skip-plugin', 'orca'] : argv
+  const skip = ['--skip-plugin', 'orca', '--skip-plugin', 'cargo']
+  const args = phase && deps.plugins === undefined ? [...argv, ...skip] : argv
   const code = main(args, ctx, { confirm: () => null, ...deps })
   return { code, out: ctx.io.out, err: ctx.io.err }
 }
+
+/** `clean --yes` of `dir`'s unmerged branch `topic`, with `flags` such as `--archive`. */
+const cleanTopic = (dir: string, env: Record<string, string>, ...flags: string[]) =>
+  run(
+    ['clean', ...flags, '--pick', `branch:${dir}:topic`, '--allow', 'abandon-unmerged', '--yes'],
+    dir,
+    env,
+  )
 
 /** A plugin that owns one candidate, `artifact:cache`, and records what it is asked to delete. */
 function fake(
@@ -327,6 +367,185 @@ describe('plan and clean', () => {
     expect(r.out).not.toContain(':topic')
   })
 
+  test('--archive pushes an unmerged branch to an archive branch on the remote, then deletes it', () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    const wip = git(dir, ['rev-parse', 'topic'])
+    const r = cleanTopic(dir, env, '--archive')
+    expect(r.code).toBe(0)
+    const [archive, ...more] = archives(bare)
+    expect(more).toEqual([])
+    expect(archive).toMatch(/^refs\/heads\/archive\/worker-local-\d{4}-\d{2}-\d{2}$/)
+    // The archive's first parent is the remote main, the second the work it holds.
+    expect(git(bare, ['rev-parse', `${archive}^2`])).toBe(wip)
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).not.toContain('topic')
+    expect(r.out).toContain(`done branch:${dir}:topic`)
+    expect(r.out).toContain(archive)
+  })
+
+  test('without --archive the same clean deletes the branch and pushes nothing', () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    const r = cleanTopic(dir, env)
+    expect(r.code).toBe(0)
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).not.toContain('topic')
+    expect(archives(bare)).toEqual([])
+  })
+
+  test('--archive stops the run with exit 11 when the archive push fails, and keeps the branch', () => {
+    const { env } = setup()
+    const { dir } = pushedRepo()
+    sh(dir, ['remote', 'set-url', 'origin', join(dirname(dir), 'gone.git')])
+    const r = cleanTopic(dir, env, '--archive')
+    expect(r.code).toBe(11)
+    expect(r.out).toContain('archive failed')
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).toContain('topic')
+  })
+
+  test('a failed archive push leaves every later candidate, in every repository', () => {
+    const { env } = setup()
+    const { dir } = pushedRepo()
+    sh(dir, ['remote', 'set-url', 'origin', join(dirname(dir), 'gone.git')])
+    // Its remote works, so only a run that went on after the failure would archive and delete its topic.
+    const { dir: other, bare: otherBare } = pushedRepo()
+    // Picks run in the order given: the failing one first.
+    const picks = [`branch:${dir}:topic`, `branch:${other}:topic`]
+    const argv = ['clean', '--archive', ...picks.flatMap((p) => ['--pick', p])]
+    const r = run([...argv, '--allow', 'abandon-unmerged', '--yes', dir, other], dir, env)
+    expect(r.code).toBe(11)
+    expect(r.out).toContain('archive failed')
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).toContain('topic')
+    expect(git(other, ['branch', '--format=%(refname:short)'])).toContain('topic')
+    expect(archives(otherBare)).toEqual([])
+  })
+
+  test('--archive refuses unlanded work in a repository with no remote, in the preview', () => {
+    const { env } = setup()
+    const dir = repo()
+    const flags = ['--archive', '--pick', `branch:${dir}:topic`, '--allow', 'abandon-unmerged']
+    const r = run(['clean', ...flags, '--dry-run'], dir, env)
+    expect(r.code).toBe(0)
+    expect(r.out).toContain(`skip    branch:${dir}:topic`)
+    expect(r.out).toContain('has no remote to push the archive to')
+    expect(r.out).not.toContain('unlanded work of')
+  })
+
+  test('--archive --dry-run says unlanded work would be pushed; without --archive it does not', () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    const flags = ['--pick', `branch:${dir}:topic`, '--allow', 'abandon-unmerged', '--dry-run']
+    const r = run(['clean', '--archive', ...flags], dir, env)
+    expect(r.code).toBe(0)
+    expect(r.out).toContain(`delete  branch:${dir}:topic`)
+    expect(r.out).toContain(
+      "archive: unlanded work of 1 item(s) is pushed to its repository's remote",
+    )
+    expect(run(['clean', ...flags], dir, env).out).not.toContain('archive:')
+    const json = run(['clean', '--archive', '--format', 'json', ...flags], dir, env)
+    expect(JSON.parse(json.out).archive).toEqual([`branch:${dir}:topic`])
+    expect(archives(bare)).toEqual([])
+  })
+
+  test('--archive --dry-run with only merged work says nothing is pushed', () => {
+    const { env } = setup()
+    const { dir } = pushedRepo()
+    sh(dir, ['branch', 'merged-a', 'main'])
+    const flags = ['--archive', '--pick', `branch:${dir}:merged-a`, '--dry-run']
+    const r = run(['clean', ...flags], dir, env)
+    expect(r.code).toBe(0)
+    expect(r.out).toContain(`delete  branch:${dir}:merged-a`)
+    expect(r.out).not.toContain('archive:')
+    const json = run(['clean', '--format', 'json', ...flags], dir, env)
+    expect(JSON.parse(json.out).archive).toEqual([])
+  })
+
+  test('--archive --dry-run does not say the work of a worktree whose directory is gone is pushed', () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    const wt = join(dirname(dir), 'wt-gone')
+    sh(dir, ['worktree', 'add', '-q', '-b', 'gone', wt, 'main'])
+    sh(wt, ['-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', bare, 'sub'])
+    sh(join(wt, 'sub'), ['commit', '--allow-empty', '-m', 'only here'])
+    // Its git dir keeps the submodule's commit, which no archive holds.
+    rmSync(wt, { recursive: true })
+    const flags = ['--pick', `worktree:${wt}`, '--allow', 'abandon-unmerged', '--dry-run']
+    const r = run(['clean', '--archive', ...flags], dir, env)
+    expect(r.out).toContain(`delete  worktree:${wt}`)
+    expect(r.out).not.toContain('archive:')
+    const json = run(['clean', '--archive', '--format', 'json', ...flags], dir, env)
+    expect(JSON.parse(json.out).archive).toEqual([])
+  })
+
+  test('--archive pushes one archive per repository a run, and gives the day’s second run the -2 suffix', () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    sh(dir, ['checkout', '-q', '-b', 'other'])
+    sh(dir, ['commit', '--allow-empty', '-m', 'more wip'])
+    sh(dir, ['checkout', '-q', 'main'])
+    sh(dir, ['checkout', '-q', '-b', 'later'])
+    sh(dir, ['commit', '--allow-empty', '-m', 'later wip'])
+    sh(dir, ['checkout', '-q', 'main'])
+    const tips = ['topic', 'other', 'later'].map((b) => git(dir, ['rev-parse', b]))
+    const cleaned = (...names: string[]) => {
+      const picks = names.flatMap((n) => ['--pick', `branch:${dir}:${n}`])
+      const argv = ['clean', '--archive', ...picks, '--allow', 'abandon-unmerged', '--yes']
+      return run(argv, dir, env).code
+    }
+    expect(cleaned('topic', 'other')).toBe(0)
+    expect(archives(bare)).toHaveLength(1)
+    expect(cleaned('later')).toBe(0)
+    const found = archives(bare).sort()
+    expect(found).toHaveLength(2)
+    expect(found[0]).toMatch(/^refs\/heads\/archive\/worker-local-\d{4}-\d{2}-\d{2}$/)
+    expect(found[1]).toBe(`${found[0]}-2`)
+    const work = found.map((ref) =>
+      git(bare, ['log', '-1', '--format=%P', ref]).split(' ').slice(1),
+    )
+    expect(work).toEqual([tips.slice(0, 2), tips.slice(2)])
+    const left = git(dir, ['branch', '--format=%(refname:short)'])
+    expect(left).not.toContain('topic')
+    expect(left).not.toContain('other')
+  })
+
+  test('--archive applies to a clean from a saved plan', () => {
+    const { env, home } = setup()
+    const { dir, bare } = pushedRepo()
+    const wip = git(dir, ['rev-parse', 'topic'])
+    const planFile = join(home, 'plan.json')
+    const planned = ['plan', '--pick', `branch:${dir}:topic`, '--allow', 'abandon-unmerged']
+    expect(run([...planned, '-o', planFile], dir, env).code).toBe(0)
+    const r = run(['clean', '--plan', planFile, '--archive', '--yes'], dir, env)
+    expect(r.code).toBe(0)
+    const [archive, ...more] = archives(bare)
+    expect(more).toEqual([])
+    expect(git(bare, ['rev-parse', `${archive}^2`])).toBe(wip)
+    expect(git(dir, ['branch', '--format=%(refname:short)'])).not.toContain('topic')
+  })
+
+  test('--archive-exclude leaves matching files out of a worktree’s snapshot', () => {
+    const { env } = setup()
+    const { dir, bare } = pushedRepo()
+    const wt = join(dirname(dir), 'wt-dirty')
+    sh(dir, ['worktree', 'add', '-q', '-b', 'dirty', wt, 'main'])
+    writeFileSync(join(wt, 'keep.txt'), 'kept\n')
+    writeFileSync(join(wt, 'notes.log'), 'left out\n')
+    const argv = ['clean', '--archive', '--archive-exclude', '*.log', '--yes']
+    const r = run(
+      [...argv, '--pick', `worktree:${wt}`, '--allow', 'discard-changes', '--worktrees'],
+      dir,
+      env,
+    )
+    expect(r.code).toBe(0)
+    expect(existsSync(wt)).toBe(false)
+    const [archive] = archives(bare)
+    const files = git(bare, ['ls-tree', '--name-only', `${archive}^2`]).split('\n')
+    expect(files).toContain('keep.txt')
+    expect(files).not.toContain('notes.log')
+    expect(git(bare, ['log', '-1', '--format=%B', archive!])).toContain(
+      'left out (excluded): notes.log',
+    )
+  })
+
   test('a protest is skipped until its code is allowed by name', () => {
     const { env, cwd } = setup()
     const objections: Objection[] = [
@@ -409,6 +628,28 @@ describe('plan and clean', () => {
     expect(run(['clean', '--plan', f, '--worktrees'], cwd, env).code).toBe(2)
     expect(run(['clean', '-i', '--pick', 'x'], cwd, env).code).toBe(2)
     expect(run(['clean', '-i', '--plan', '-'], cwd, env).code).toBe(2)
+    const exclude = run(['clean', '--archive-exclude', '*.log', '--dry-run'], cwd, env)
+    expect(exclude.code).toBe(2)
+    expect(exclude.err).toContain('--archive-exclude has no effect without --archive')
+    const branchesOnly = ['clean', '--branches', '--archive', '--archive-exclude', '*.log']
+    const noWorktree = run([...branchesOnly, '--dry-run'], cwd, env)
+    expect(noWorktree.code).toBe(2)
+    expect(noWorktree.err).toContain('--branches cleans no worktree')
+    const noGit = run(['clean', '--plugin', 'node', '--archive', '--dry-run'], cwd, env)
+    expect(noGit.code).toBe(2)
+    expect(noGit.err).toContain('this run does not use the git plugin')
+    const injected = run(['clean', '--archive', '--dry-run'], cwd, env, {
+      plugins: [fake('git')],
+    })
+    expect(injected.code).toBe(2)
+    expect(injected.err).toContain('the given plugins cannot archive')
+    // Refused before the plugins are built, so a config naming an unknown one does not hide it.
+    writeFileSync(f, JSON.stringify({ plugins: { nope: {} } }))
+    const beforeConfig = run(['clean', '--archive', '--config', f, '--dry-run'], cwd, env, {
+      plugins: [fake('git')],
+    })
+    expect(beforeConfig.code).toBe(2)
+    expect(beforeConfig.err).toContain('the given plugins cannot archive')
     const both = run(['clean', '--pick', 'a:x', '--spare', 'a:x', '--dry-run'], cwd, env, {
       plugins: [fake()],
     })
