@@ -401,6 +401,17 @@ export function dockerPlugin(
         return r.ok ? `docker volume rm removed volume ${c.ref}` : `already gone: volume ${c.ref}`
       }
       if (c.ref !== undefined && c.kind === DOCKER_IMAGE) {
+        // `image rm` untags and removes an image with one tag, so one tagged since the re-check is left.
+        const was = await docker(
+          ['image', 'inspect', '--format', '{{json .RepoTags}}', '--', c.ref],
+          ctx,
+          { tolerate: onlyGone },
+        )
+        if (!was.ok) return `already gone: image ${c.ref}`
+        const tags: unknown = JSON.parse(was.stdout.trim() || 'null')
+        if (Array.isArray(tags) && tags.length > 0) {
+          throw new Error(`changed: image ${c.ref} is tagged ${tags.join(', ')} since the plan`)
+        }
         const r = await docker(['image', 'rm', '--', c.ref], ctx, { tolerate: onlyGone })
         return r.ok ? `docker image rm removed image ${c.ref}` : `already gone: image ${c.ref}`
       }

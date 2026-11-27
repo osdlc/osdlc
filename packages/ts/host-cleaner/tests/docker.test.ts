@@ -63,6 +63,8 @@ interface Machine {
   madeAgain?: string
   /** Volumes and images someone else removed: `volume rm` and `image rm` say there is no such one. */
   removed?: string[]
+  /** The tags `image inspect` gives an image, such as one tagged after the re-check. */
+  tagged?: Record<string, string[]>
 }
 
 const CREATED = '2026-10-01T09:00:00Z'
@@ -154,6 +156,13 @@ function fakeDocker(m: Machine = {}, keepVolumes: string[] = []) {
           return { exitCode: 1, stderr: "docker: 'builder du' is not a docker command.\n" }
         if (typeof m.du === 'object') return { exitCode: 1, stderr: `${m.du.fails}\n` }
         return { stdout: m.du ?? DU }
+      }
+      if (argv[0] === 'image' && argv[1] === 'inspect' && argv[3] === '{{json .RepoTags}}') {
+        const id = argv[5]!
+        if (m.removed?.includes(id) === true) {
+          return { exitCode: 1, stderr: `Error response from daemon: No such image: ${id}\n` }
+        }
+        return { stdout: `${JSON.stringify(m.tagged?.[id] ?? [])}\n` }
       }
       if (argv[1] === 'rm' && m.removed?.includes(argv[3]!) === true) {
         return argv[0] === 'volume'
@@ -632,6 +641,20 @@ describe('the re-check and the delete', () => {
       [volume, 'ok', 'already gone: volume pgdata'],
       [image, 'ok', `already gone: image ${OLD}`],
     ])
+  })
+
+  test('an image tagged after the re-check is not removed; an untagged one is', async () => {
+    const image = `${DOCKER_IMAGE}:${OLD}`
+    const c = (await survey([fakeDocker().plugin], run)).candidates.find((v) => v.id === image)!
+    const tagged = fakeDocker({ tagged: { [OLD]: ['app:latest'] } })
+    await expect(tagged.plugin.delete!(c, fakeContext())).rejects.toThrow(
+      `changed: image ${OLD} is tagged app:latest since the plan`,
+    )
+    expect(tagged.ran().some((r) => r.startsWith('image rm'))).toBe(false)
+    const plain = fakeDocker()
+    expect(await plain.plugin.delete!(c, fakeContext())).toBe(
+      `docker image rm removed image ${OLD}`,
+    )
   })
 
   test('a build cache grown past the plan is not pruned; the same or less is', async () => {
