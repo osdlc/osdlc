@@ -19,6 +19,7 @@ keywords = ["glob", "pattern", "intersection", "overlap", "path"]
 categories = ["filesystem", "text-processing"]
 include = [
   "src/**/*.rs",
+  "examples/**/*.rs",
   "README.md",
   "CHANGELOG.md",
   "LICENSE-MIT",
