@@ -220,8 +220,12 @@ const costDescription = z
 
 const NOT_A_NAME = 'the program must be a name on PATH, not a path'
 
-/** Whether `program` is a name PATH lookup can find: no folder and no `{path}` in it. */
-const isProgramName = (program: string): boolean => !/[/\\]|\{path\}/.test(program)
+/**
+ * Whether `program` is a name PATH lookup can find: no folder, drive (`C:x`)
+ * or `{path}` in it, and not `.` or `..`.
+ */
+const isProgramName = (program: string): boolean =>
+  !/[/\\]|\{path\}|^[A-Za-z]:/.test(program) && program !== '.' && program !== '..'
 
 /** A program and its arguments; the program is a name looked up on PATH. */
 const argv = z

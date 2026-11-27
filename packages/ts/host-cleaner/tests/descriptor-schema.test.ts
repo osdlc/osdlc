@@ -531,6 +531,19 @@ describe('a bad descriptor names the field path', () => {
       UV.replace('{ onPath: uv }', '{ onPath: /usr/local/bin/uv }'),
       'line 5: detect.any.0.onPath: the program must be a name on PATH, not a path',
     ],
+    ...['C:evil.exe', '.', '..'].map((program): [string, string, string] => [
+      `a detect onPath that is not a program name, ${program}`,
+      UV.replace('{ onPath: uv }', `{ onPath: '${program}' }`),
+      'line 5: detect.any.0.onPath: the program must be a name on PATH, not a path',
+    ]),
+    // A command's .. is refused as a .. segment too.
+    ...['C:evil.exe', '.'].map((program): [string, string, string] => [
+      `a command whose program is not a name, ${program}`,
+      hfWith(
+        `{ path: hub, costDescription: rebuild, command: ['${program}', '{path}'], removes: all }`,
+      ),
+      'line 5: candidates.0.command: the program must be a name on PATH, not a path',
+    ]),
     [
       'a glob that starts at the home folder',
       hfWith("{ path: hub, costDescription: rebuild, glob: '~/x' }"),
