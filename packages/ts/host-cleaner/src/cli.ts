@@ -5,7 +5,6 @@
  */
 
 import { appendFileSync, mkdirSync, readSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 import {
@@ -15,17 +14,27 @@ import {
   canPrompt,
   defineCli,
   renderError,
+  TieredDirsError,
   type ChecklistItem,
   type Cli,
   type CliContext,
   type FlagSpec,
   type FlagValues,
 } from '@osdlc/cli-tool'
-import type { Kind } from '@osdlc/repo-cleaner'
+import { mayContribute, type ArchiveOptions, type Kind } from '@osdlc/repo-cleaner'
 import { stripControls } from '@osdlc/ux'
 
 import { expandHome, ignorePaths } from './ignore.ts'
-import { ConfigError, configFile, hostDirs, readConfig, type Config } from './config.ts'
+import {
+  ConfigError,
+  configFile,
+  hostDirs,
+  hostHome,
+  readConfig,
+  unreadNativeConfig,
+  type Config,
+  type HostDirs,
+} from './config.ts'
 import { missingFrom, parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { FACTORIES, UnknownPlugin, selectPlugins } from './registry.ts'
 import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
@@ -156,7 +165,7 @@ const configCli = () =>
   defineCli({
     name: `${NAME} config`,
     summary:
-      'Print the effective settings of every plugin: each value, its default and whether the config file set it. Deletes nothing.',
+      'Print the config file read and the effective settings of every plugin: each value, its default and whether the config file set it. Deletes nothing.',
     autoHelp: false,
     flags: {
       config: SWEEP_FLAGS.config,
@@ -221,6 +230,16 @@ const cleanCli = () =>
         'leave these candidates alone: an id, a path, a branch name (its worktree too) or a glob; repeatable',
       ),
       allow: idList('code', 'accept a protest by its code; repeatable'),
+      archive: {
+        kind: 'boolean',
+        help:
+          'push unlanded work to an archive branch on the remote before deleting it; ' +
+          'abandon-unmerged and discard-changes still need --allow by name',
+      },
+      archiveExclude: idList(
+        'glob',
+        'with --archive, leave files matching this glob out of a worktree snapshot; repeatable',
+      ),
       plan: {
         kind: 'string',
         valueName: 'file',
@@ -344,10 +363,43 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
-const loadConfig = (v: { config?: string | undefined }, ctx: CliContext): Config =>
-  v.config === undefined
-    ? readConfig(configFile(hostDirs(ctx.env)))
-    : readConfig(resolve(ctx.cwd, v.config), { required: true })
+/**
+ * The folders; undefined when there is no home directory to place them in.
+ * Every command resolves them, even with `--config`, so each refuses a bad
+ * folder variable alike; a missing home only matters where they are used.
+ */
+function resolveDirs(ctx: CliContext): HostDirs | undefined {
+  try {
+    return hostDirs(ctx.env)
+  } catch (err) {
+    if (err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR') return undefined
+    throw err
+  }
+}
+
+const NO_HOME = 'no home directory to place the folders in: set HOME, or HOST_CLEANER_ROOT'
+
+/**
+ * The config: `--config`, which must exist, else `config.json` in the config
+ * folder if present. Its warnings name a config in the native folders, such as
+ * macOS's from versions up to 0.3, that goes unread (`unread`).
+ */
+function loadConfig(
+  v: { config?: string | undefined },
+  ctx: CliContext,
+  dirs: HostDirs | undefined,
+): { file: string; fileExists: boolean; config: Config; warnings: string[]; unread?: string } {
+  if (v.config !== undefined) {
+    const file = resolve(ctx.cwd, v.config)
+    return { file, ...readConfig(file, { required: true }), warnings: [] }
+  }
+  if (dirs === undefined) throw new Error(NO_HOME)
+  const file = configFile(dirs)
+  const unread = unreadNativeConfig(ctx.env, file)
+  if (unread === undefined) return { file, ...readConfig(file), warnings: [] }
+  const warnings = [`${unread} is not read; the config is now ${file}`]
+  return { file, ...readConfig(file), warnings, unread }
+}
 
 /** `--plugin` and its alias `--adapter`, as one list; undefined when neither is given. */
 const wanted = (v: SweepValues): string[] | undefined =>
@@ -360,21 +412,19 @@ const registered = (deps: MainDeps): string[] =>
   deps.plugins?.map((p) => p.name) ?? Object.keys(FACTORIES)
 
 /**
- * The config, every registered plugin's name, the names in the config's `plugins` that are
+ * Every registered plugin's name, the names in the config's `plugins` that are
  * not one of them (`unused`), and a warning for each.
  */
 function checkedConfig(
-  v: { config?: string | undefined },
-  ctx: CliContext,
+  config: Config,
   deps: MainDeps,
-): { config: Config; known: string[]; unused: string[]; warnings: string[] } {
-  const config = loadConfig(v, ctx)
+): { known: string[]; unused: string[]; warnings: string[] } {
   const known = registered(deps)
   const unused = missingFrom(Object.keys(config.plugins), known)
   const warnings = unused.map(
     (n) => `config plugins.${n}: no plugin has this name; clean refuses to run until it is fixed`,
   )
-  return { config, known, unused, warnings }
+  return { known, unused, warnings }
 }
 
 /** `s` with `warnings` ahead of its own. */
@@ -383,15 +433,32 @@ const withWarnings = <S extends { warnings: readonly string[] }>(s: S, warnings:
   warnings: [...warnings, ...s.warnings],
 })
 
-/** The plugins this run uses: the shipped ones built from the config, or `deps.plugins`, then chosen by flag. */
-function pluginsFor(v: SweepValues, config: Config, deps: MainDeps, ctx: CliContext): Plugin[] {
+/**
+ * The plugins this run uses: the shipped ones built from the config, or
+ * `deps.plugins`, then chosen by flag.
+ *
+ * @param archive - `clean --archive`'s options, passed to the shipped git plugin.
+ * @throws UnknownPlugin when `--plugin` or `--skip-plugin` names one.
+ */
+function pluginsFor(
+  v: SweepValues,
+  config: Config,
+  deps: MainDeps,
+  ctx: CliContext,
+  archive?: ArchiveOptions,
+): Plugin[] {
   // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
   const all =
     deps.plugins ??
     Object.entries(FACTORIES).map(([name, make]) =>
-      make({ settings: settingsOf(name, config.plugins[name] ?? {}, config), only, env: ctx.env }),
+      make({
+        settings: settingsOf(name, config.plugins[name] ?? {}, config),
+        only,
+        env: ctx.env,
+        archive,
+      }),
     )
   // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
   const named = wanted(v) ?? []
@@ -410,18 +477,51 @@ function contextFor(
 ): Ctx {
   const chosen =
     targets.length > 0 ? targets : config.targets.length > 0 ? config.targets : [ctx.cwd]
-  const home = ctx.env.HOME ?? homedir()
   return {
     cwd: ctx.cwd,
-    targets: chosen.map((t) => resolve(ctx.cwd, expandHome(t, home))),
+    targets: chosen.map((t) => resolve(ctx.cwd, expandHome(t, targetHome(ctx)))),
     allow,
     ignore: ignoreFor(config, ignore, ctx),
   }
 }
 
+/**
+ * The home `~` stands for: the one the folders are built on, so an ignore entry
+ * under `~` covers the folder it names. Looked up only for a path that starts
+ * with `~`; with no home, that path is refused rather than read some other way.
+ */
+const tildeHome = (ctx: CliContext) => (): string => {
+  try {
+    return hostHome(ctx.env)
+  } catch (err) {
+    if (err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR') {
+      throw new Error(`cannot expand \`~\`: ${err.message}`)
+    }
+    throw err
+  }
+}
+
+/**
+ * The home `~` stands for in a target: {@link tildeHome}'s, except that a
+ * `HOME` (`USERPROFILE` on Windows) set to an empty or relative value is
+ * refused, where an ignore entry takes the OS account's home. A target is
+ * swept, so `~/dev` there must not become the account's real `~/dev`.
+ */
+const targetHome = (ctx: CliContext) => (): string => {
+  const home = tildeHome(ctx)()
+  const name = process.platform === 'win32' ? 'USERPROFILE' : 'HOME'
+  const given = ctx.env[name]
+  if (given !== undefined && given !== home) {
+    throw new Error(
+      `cannot expand \`~\` in a target: ${name} is ${JSON.stringify(given)}, not an absolute path; set it to one, or give the target in full`,
+    )
+  }
+  return home
+}
+
 /** The config's ignore list with `extra` (`--ignore`) added, as absolute paths. */
 const ignoreFor = (config: Config, extra: readonly string[], ctx: CliContext): string[] =>
-  ignorePaths([...config.ignore, ...extra], ctx.cwd, ctx.env.HOME ?? homedir())
+  ignorePaths([...config.ignore, ...extra], ctx.cwd, tildeHome(ctx))
 
 /** The lines as one control-stripped block, or nothing for no lines. */
 const block = (lines: readonly string[]): string =>
@@ -464,25 +564,28 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   let s: ReturnType<typeof survey>
+  let warnings: string[]
   try {
-    const { config, warnings } = checkedConfig(v, ctx, deps)
+    const loaded = loadConfig(v, ctx, resolveDirs(ctx))
+    const config = loaded.config
     s = withWarnings(
       survey(
         pluginsFor(v, config, deps, ctx),
         contextFor(parsed.positionals, config, ctx, [], v.ignore),
       ),
-      warnings,
+      checkedConfig(config, deps).warnings,
     )
+    warnings = [...loaded.warnings, ...s.warnings]
   } catch (err) {
     return refusal(ctx, name, err)
   }
   const ignored = s.ctx.ignore ?? []
   if (v.format === 'json') {
     ctx.io.stdout(
-      `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), ignore: ignored, warnings: s.warnings, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
+      `${JSON.stringify({ plugins: s.plugins.map((p) => p.name), ignore: ignored, warnings, candidates: s.candidates, objections: s.objections }, null, 2)}\n`,
     )
   } else {
-    writeWarnings(ctx, name, s.warnings)
+    writeWarnings(ctx, name, warnings)
     ctx.io.stdout(
       `plugins: ${s.plugins.map((p) => p.name).join(', ') || '(none)'}\n` +
         (ignored.length > 0 ? `ignoring: ${ignored.join(', ')}\n` : '') +
@@ -498,8 +601,9 @@ function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
-    const { config, known, warnings } = checkedConfig(v, ctx, deps)
-    writeWarnings(ctx, name, warnings)
+    const { file, fileExists, config, warnings } = loadConfig(v, ctx, resolveDirs(ctx))
+    const { known, warnings: unknownNames } = checkedConfig(config, deps)
+    writeWarnings(ctx, name, [...warnings, ...unknownNames])
     // Only the plugins a run would build: a section for one it lacks would contradict the warning.
     const settings = effectiveSettings(config.plugins, config, known)
     if (v.format === 'json') {
@@ -512,6 +616,8 @@ function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
       ctx.io.stdout(
         JSON.stringify(
           {
+            file,
+            fileExists,
             targets: config.targets,
             ignore: config.ignore,
             idleHours: config.idleHours ?? null,
@@ -525,6 +631,7 @@ function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
     }
     const list = (xs: readonly string[]): string => (xs.length > 0 ? xs.join(', ') : '(none)')
     const lines = [
+      `file: ${stripControls(file)}${fileExists ? '' : '  (not found: defaults)'}`,
       `targets: ${list(config.targets)}`,
       `ignore: ${list(config.ignore)}`,
       `idleHours: ${config.idleHours ?? '(not set)'}`,
@@ -551,10 +658,12 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   const v = parsed.values
   let plan: Plan
   try {
-    const { config, unused, warnings } = checkedConfig(v, ctx, deps)
+    const { config, warnings } = loadConfig(v, ctx, resolveDirs(ctx))
+    writeWarnings(ctx, name, warnings)
+    const { unused, warnings: unknownNames } = checkedConfig(config, deps)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = survey(pluginsFor(v, config, deps, ctx), cctx)
-    writeWarnings(ctx, name, [...warnings, ...s.warnings])
+    writeWarnings(ctx, name, [...unknownNames, ...s.warnings])
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
     // A receipt copies the plan's warnings: it keeps what was true of this sweep, not what clean will do.
     const swept = unused.map(
@@ -604,6 +713,12 @@ function cleanConflict(v: CleanValues, targets: readonly string[]): string | nul
   if (v.plan === '-' && !v.yes && !v.dryRun) {
     return '--plan - reads the plan from stdin, so nothing can ask; pass --yes or --dry-run'
   }
+  if (!v.archive && v.archiveExclude.length > 0) {
+    return '--archive-exclude has no effect without --archive'
+  }
+  if (v.archiveExclude.length > 0 && v.branches && !v.worktrees) {
+    return '--archive-exclude leaves files out of a worktree snapshot, and --branches cleans no worktree'
+  }
   if (v.yes && v.dryRun)
     return '--yes and --dry-run contradict: one deletes without asking, the other deletes nothing'
   if (v.receipt !== undefined && v.dryRun)
@@ -648,12 +763,37 @@ function chooseCandidates(plan: Plan, preview: Decision, deps: MainDeps): Plan |
   return { ...plan, select: ticked.map((i) => shown[i]!.id), pick: [], allow }
 }
 
-/** What a clean would do, as text: each candidate to run in order, then each one dropped and why. */
-function renderPreview(d: Decision): string {
+/**
+ * The ids in `d.run` whose unlanded work `clean --archive` pushes first: the
+ * git plugin's candidates that `mayContribute`, judged by the risks it protests.
+ */
+function archivedIds(d: Decision, objections: readonly Objection[]): string[] {
+  const risksOf = (id: string): string[] =>
+    objections
+      .filter((o) => o.by === 'git' && o.level === 'protest' && o.candidate === id)
+      .map((o) => o.code)
+  return d.run
+    .filter(
+      (c) =>
+        c.owner === 'git' &&
+        mayContribute({ kind: c.kind, risks: risksOf(c.id), evidence: c.evidence }),
+    )
+    .map((c) => c.id)
+}
+
+/**
+ * What a clean would do, as text: each candidate to run in order, then each one
+ * dropped and why, and which of them have their unlanded work archived first.
+ */
+function renderPreview(d: Decision, archived: readonly string[]): string {
   const lines: string[] = []
   for (const c of d.run) lines.push(`  delete  ${c.id}`, `          ${c.why}`)
   for (const x of d.dropped) lines.push(`  skip    ${x.id}`, `          ${x.reason}: ${x.detail}`)
-  return block(lines) + `would delete: ${d.run.length} item(s)\n`
+  const push =
+    archived.length > 0
+      ? `archive: unlanded work of ${archived.length} item(s) is pushed to its repository's remote before it is deleted\n`
+      : ''
+  return block(lines) + push + `would delete: ${d.run.length} item(s)\n`
 }
 
 function renderReceipt(r: Receipt, path: string): string {
@@ -663,6 +803,7 @@ function renderReceipt(r: Receipt, path: string): string {
       `  ${s.result === 'ok' ? 'done' : s.result.toUpperCase().padEnd(7)} ${s.id}`,
       `          ${s.delete ?? s.error ?? ''}`,
     )
+    for (const p of s.prepared ?? []) lines.push(`          ${p}`)
     for (const n of s.notified)
       if (n.error !== null) lines.push(`          ${n.plugin}: ${n.error}`)
   }
@@ -693,22 +834,38 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   }
 
   const now = new Date()
-  const dirs = hostDirs(ctx.env)
+  let dirs: HostDirs | undefined
   let plan: Plan
   let source: string
   let plugins: Plugin[]
   let known: string[]
   let cctx: Ctx
   let preview: Decision
+  let objections: readonly Objection[]
   try {
-    const read = checkedConfig(v, ctx, deps)
+    const archive = v.archive ? { exclude: v.archiveExclude } : undefined
+    if (archive !== undefined && deps.plugins !== undefined) {
+      throw new BadInput('--archive needs the shipped git plugin; the given plugins cannot archive')
+    }
+    dirs = resolveDirs(ctx)
+    const { file, fileExists, config, warnings, unread } = loadConfig(v, ctx, dirs)
+    // Its ignore list would not apply: a delete on the defaults could take what it kept.
+    if (unread !== undefined && !fileExists && !v.dryRun) {
+      throw new ConfigError(
+        `${unread} is not read, and there is no config at ${file}: move the file there, or pass --config; clean deletes nothing until then`,
+      )
+    }
+    writeWarnings(ctx, name, warnings)
+    const read = checkedConfig(config, deps)
     // Nothing runs on a config it cannot apply in full: a misspelt name leaves a plugin on defaults.
     if (read.unused.length > 0) {
       throw new BadInput(`config names no plugin ${read.unused.join(', ')}; nothing was deleted`)
     }
-    const { config } = read
     known = read.known
-    plugins = pluginsFor(v, config, deps, ctx)
+    plugins = pluginsFor(v, config, deps, ctx, archive)
+    if (archive !== undefined && !plugins.some((p) => p.name === 'git')) {
+      throw new BadInput('--archive has no effect: this run does not use the git plugin')
+    }
     if (v.plan === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
       const s = survey(plugins, cctx)
@@ -725,6 +882,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
       source = '(swept)'
       // Swept a moment ago: `clean` checks again before it deletes.
       preview = decidePlan(plan)
+      objections = plan.objections
     } else {
       if (v.plan === '-') {
         plan = parsePlan((deps.readStdin ?? readAllStdin)(), 'stdin')
@@ -742,6 +900,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
       const checked = recheck(plan, plugins, cctx, known)
       writeWarnings(ctx, name, checked.survey.warnings)
       preview = checked.decision
+      objections = checked.survey.objections
     }
   } catch (err) {
     return refusal(ctx, name, err)
@@ -756,16 +915,21 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
 
   const count = preview.run.length
   const json = v.format === 'json'
+  const archived = v.archive ? archivedIds(preview, objections) : []
   if (v.dryRun || count === 0) {
-    ctx.io.stdout(
-      json
-        ? `${JSON.stringify({ dryRun: v.dryRun, run: preview.run.map((c) => c.id), dropped: preview.dropped }, null, 2)}\n`
-        : renderPreview(preview),
-    )
+    const shown = {
+      dryRun: v.dryRun,
+      run: preview.run.map((c) => c.id),
+      ...(v.archive ? { archive: archived } : {}),
+      dropped: preview.dropped,
+    }
+    ctx.io.stdout(json ? `${JSON.stringify(shown, null, 2)}\n` : renderPreview(preview, archived))
     return EXIT.ok
   }
+  // The receipt and the log need the folders; a dry run writes neither.
+  if (dirs === undefined) return refusal(ctx, name, new Error(NO_HOME))
   if (!v.yes) {
-    ;(json ? ctx.io.stderr : ctx.io.stdout)(renderPreview(preview))
+    ;(json ? ctx.io.stderr : ctx.io.stdout)(renderPreview(preview, archived))
     const answer = (deps.confirm ?? terminalConfirm)(
       `Delete ${count} item${count === 1 ? '' : 's'}?`,
     )

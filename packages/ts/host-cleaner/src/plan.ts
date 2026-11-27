@@ -67,6 +67,8 @@ export const StepSchema = z.object({
   owner: z.string(),
   /** The plugins whose `prepare` ran without failing, in order. */
   preparedBy: z.array(z.string()),
+  /** What a `prepare` reported doing, as `<plugin>: <sentence>`; absent when none did. */
+  prepared: z.array(z.string()).optional(),
   result: z.enum(['ok', 'failed', 'skipped', 'would-run']),
   /** The owner's result sentence; null when the delete did not run. */
   delete: z.string().nullable(),

@@ -21,7 +21,7 @@ any other in the order given. The order decides which plugin keeps a duplicate i
 | object | each plugin | objects to any candidate; sees no other plugin's objections |
 | decide | core | `refuse` blocks, `protest` needs `--allow <code>`, `note` does not gate |
 | re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved `changed`; a plan with a candidate whose owner is no known plugin throws `StalePlan` |
-| prepare | every plugin | before the delete; a throw stops only that candidate, a `FatalRun` stops the run |
+| prepare | every plugin | before the delete; a throw stops only that candidate, a `FatalRun` stops the run. `ctx.run` holds the candidates the run deletes. A returned sentence is kept in the step's `prepared`, even if the candidate then fails |
 | delete | the owner | returns the receipt sentence |
 | deleted | every other plugin | after the delete; best effort, failures are in the receipt |
 
@@ -98,9 +98,17 @@ same check. `ignore` applies to these candidates as to any other.
 `gitPlugin(options)` proposes repo-cleaner's worktrees and branches. Its
 blockers are `refuse` objections and its risks `protest`s, so
 `--allow abandon-unmerged` and the others work as in repo-cleaner. A branch
-freed by a worktree requires it. With `archive`, unlanded work is pushed to the
-remote first; a failed push throws `FatalRun`. Grant the named risks; the
-`discard-archived` cover is not yet offered here.
+freed by a worktree requires it. With `archive` (`clean --archive` on the
+command line), unlanded work is pushed to the remote first: `prepare` pushes one
+archive of everything the run deletes in a repository (`ctx.run`) before its
+first candidate there, or before another plugin's candidate inside one of the
+run's worktrees. Without `ctx.run`, it archives each candidate it was not given
+before. The step that pushed it records the archive in `prepared`. A failed push
+throws `FatalRun`, and a candidate with unlanded work in a repository with no
+remote is refused (`no-remote`). Work that changed since the archive fails that
+candidate, and stays: so does a worktree whose files another plugin's delete
+inside it changed. Grant the named risks; the `discard-archived` cover is not
+yet offered here.
 
 ## The `cargo` and `node` plugins
 
@@ -157,7 +165,7 @@ a phase is named; the bare command explains them and exits 2.
 ```sh
 host-cleaner status [target...]   # every candidate and what objects to it; deletes nothing
 host-cleaner plan -o plan.json
-host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [-i] [--yes | --dry-run]
+host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [--archive [--archive-exclude <glob>]] [-i] [--yes | --dry-run]
 host-cleaner config [--format json]   # every plugin's effective settings
 ```
 
@@ -167,6 +175,8 @@ host-cleaner config [--format json]   # every plugin's effective settings
 | `--spare <id\|name\|glob>` | Leave these alone: an id, a path, a branch name (its worktree too) or a glob. |
 | `-i` | Choose from a checklist, the default candidates ticked; each ticked protest is asked for by code. Needs a terminal. |
 | `--allow <code>` | Accept a protest by its code. |
+| `--archive` | `clean`: before deleting unlanded work, push it to `archive/<repo>-local-<date>` (`<date>` is the UTC date) on the repository's remote, as repo-cleaner does. `abandon-unmerged` and `discard-changes` still need `--allow` by name. |
+| `--archive-exclude <glob>` | With `--archive`, leave files matching this glob out of a worktree's snapshot. Repeatable. |
 | `--worktrees`, `--branches` | Only the git plugin's worktrees, or only its local branches. Remote branches are repo-cleaner's. |
 | `--all-rows` | `status`: also show candidates a plugin refuses. |
 
@@ -175,12 +185,75 @@ host-cleaner config [--format json]   # every plugin's effective settings
 `targets`, then the directory you are in. `clean` re-checks, shows the steps,
 asks (`--yes` skips the question; with no terminal and no `--yes` it exits 2),
 deletes, and writes one receipt to `--receipt` or the state directory's
-`receipts/`, plus a line in `logs/host-cleaner.log`. `clean --plan` refuses a
+`receipts/`, plus a line in the log. `clean --plan` refuses a
 plan whose candidates belong to a plugin this install does not have (exit 2):
 sweep again with `plan`.
 
-The config is `config.json` in the config directory (`HOST_CLEANER_ROOT` moves
-all three directories):
+With `--archive`, a run makes one archive per repository, before it deletes any
+of its worktrees or branches. A second run on the same day goes to
+`archive/<repo>-local-<date>-2`, and so on. The archive does not hold submodule
+commits and files, stashes, ignored files, or the files a snapshot leaves out
+(secret-shaped, `--archive-exclude`, over 10 MiB). `--archive` with a run that
+does not use the git plugin, and `--archive-exclude` with `--branches` alone,
+are refused with exit 2; an exclude that matches no worktree in the run does
+nothing. The preview says how many candidates have unlanded work pushed, and
+`--format json --dry-run` lists them under `archive`. Any failed archive step
+(the push, or reading the remote's default branch) stops the whole run, across
+every repository: that candidate and every one after it are left, with no plugin
+having acted on them, and the run exits 11. A worktree that changed since its
+archive is left too, and the run goes on. A repository with no remote cannot be
+archived, so the git plugin refuses (`no-remote`) its candidates that hold
+unlanded work, and the preview shows them skipped.
+
+```sh
+host-cleaner clean --archive --pick branch:/path/to/repo:topic --allow abandon-unmerged
+```
+
+host-cleaner keeps its files in three folders, from `@osdlc/tiered-dirs`'
+`standalone('host-cleaner')` tier under the `xdg` convention, so macOS uses the
+same folders as Linux:
+
+| What | Path, macOS and Linux | Moved by |
+| --- | --- | --- |
+| Config | `~/.config/host-cleaner/config.json` | `HOST_CLEANER_CONFIG_DIR`, or `XDG_CONFIG_HOME` |
+| Receipts | `~/.local/state/host-cleaner/receipts/` | `HOST_CLEANER_STATE_DIR`, or `XDG_STATE_HOME` |
+| Log | `~/.local/state/host-cleaner/host-cleaner.log` | `HOST_CLEANER_LOGS_DIR`, or `XDG_STATE_HOME` |
+
+Each variable names the base folder, and host-cleaner adds `host-cleaner/` to
+it: with `HOST_CLEANER_CONFIG_DIR=/srv/cfg` the config is
+`/srv/cfg/host-cleaner/config.json`. A `HOST_CLEANER_*` folder must be an
+absolute path, and `~` in it is not expanded, so a relative or `~` path is
+refused with exit 2. A relative `XDG_*` value is ignored, as the XDG spec says.
+`HOST_CLEANER_ROOT` moves all three folders, which is useful for tests.
+`HOST_CLEANER_CONVENTION=native` puts them back in macOS's own folders under
+`~/Library`. Spaces around the value are ignored and an empty value counts as
+unset; any value other than `native` or `xdg` is refused with exit 2. When
+`HOME` (`USERPROFILE` on Windows) is unset, empty or relative, the OS account's
+home is used. `~` in an `ignore` entry is that same home, so the entry covers
+the folder it names. `~` in a target is too when `HOME` is unset; when it is
+set but empty or relative, a target that starts with `~` is refused with
+exit 1, so `~/dev` never sweeps the account's real `~/dev`. With no home
+directory to place the folders in, and no variable that places them, a
+`clean` that deletes and every command that reads the default config exit 1;
+`status`, `plan`,
+`config` and `clean --dry-run` given `--config` still run, unless a target or
+ignore entry starts with `~`, which is then refused with exit 1.
+Windows has no `xdg` folders and keeps its own: the config is
+`%APPDATA%\host-cleaner\config.json`.
+
+Versions up to 0.3 kept the macOS config in
+`~/Library/Application Support/host-cleaner/`; it now lives in
+`~/.config/host-cleaner/`, and host-cleaner does not read the old file; while
+it exists, every command that reads the default config warns on stderr
+(`status --format json` lists it in `warnings`). While it is the only one,
+with nothing at the new path and no `--config`, `clean` refuses with exit 2
+(`clean --dry-run` only warns), since its `ignore` list would not apply: move
+the file to the new path. Their
+receipts and log stay where they were written, in
+`~/Library/Application Support/host-cleaner/receipts/` and
+`~/Library/Logs/host-cleaner/`; new ones go to `~/.local/state/host-cleaner/`.
+
+The config file holds the targets and each plugin's settings:
 
 ```json
 { "targets": ["~/dev"], "plugins": { "cargo": { "idleHours": 48 }, "node": { "enabled": false } } }
@@ -206,16 +279,18 @@ Two settings sit at the top of the config and apply to every plugin:
 { "targets": ["~/dev"], "ignore": ["~/dev/dashboard"], "idleHours": 0 }
 ```
 
-- `ignore` lists paths nothing may be deleted in or below (`~` is home; a path
-  is matched by its real path too). `--ignore <dir>` adds to it and can repeat.
+- `ignore` lists paths nothing may be deleted in or below (`~` is home, and on
+  Windows `~\` as well as `~/`; a path is matched by its real path too). `--ignore <dir>` adds to it and can repeat.
   A candidate there is left out, with a warning saying how many; `status` prints
   the active list, a plan records it, and `clean --plan` honours the plan's list
   and the current one, dropping a planned candidate as `ignored`.
 - `idleHours` is the default for every plugin that has the setting and does not
   set its own. `0` is allowed and makes every idle-checked artifact a candidate.
 
-`host-cleaner config` prints every plugin's effective settings: the value, and
-whether the file set it or it is the default. `--format json` prints the values.
+`host-cleaner config` prints the config file it looked for (and says when it
+is missing, so the defaults apply), then every plugin's effective settings:
+the value, and whether the file set it or it is the default. `--format json`
+prints the values, with `file` and `fileExists`.
 
 ### Exit codes
 

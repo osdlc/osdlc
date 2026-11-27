@@ -480,7 +480,8 @@ export function clean(
     }
     throw err
   }
-  const { decision, survey: s } = checked
+  const { decision } = checked
+  const s: Survey = { ...checked.survey, ctx: { ...checked.survey.ctx, run: [...decision.run] } }
   const receipt: Receipt = {
     version: RECEIPT_VERSION,
     plan: opts.source ?? '(swept)',
@@ -560,8 +561,9 @@ function runOne(c: Candidate, step: Step, s: Survey, owner: Plugin | undefined):
   for (const q of s.plugins) {
     if (q.prepare === undefined) continue
     try {
-      q.prepare(c, s.ctx)
+      const said = q.prepare(c, s.ctx)
       step.preparedBy.push(q.name)
+      if (typeof said === 'string') (step.prepared ??= []).push(`${q.name}: ${said}`)
     } catch (err) {
       return fail(err, `${q.name}: prepare failed: `)
     }

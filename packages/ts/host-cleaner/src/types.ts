@@ -55,6 +55,8 @@ export interface Ctx {
   allow: readonly string[]
   /** Absolute paths nothing may be deleted in or below; the core drops candidates there, a plugin may also skip them. */
   ignore?: readonly string[] | undefined
+  /** The candidates `clean` will delete, in order; set for `roots`, `prepare`, `delete` and `deleted` while `clean` runs. */
+  run?: readonly Candidate[] | undefined
 }
 
 export interface Plugin {
@@ -72,8 +74,11 @@ export interface Plugin {
   discover?(ctx: Ctx): Candidate[]
   /** Objections to any candidate in `all`. It sees no other plugin's objections. */
   object?(all: readonly Candidate[], ctx: Ctx): Objection[]
-  /** Before `c` is deleted, on every plugin. A throw stops only `c`; a {@link FatalRun} stops the run. */
-  prepare?(c: Candidate, ctx: Ctx): void
+  /**
+   * Before `c` is deleted, on every plugin. A throw stops only `c`; a {@link FatalRun} stops the run.
+   * Returns a receipt sentence when it did something the receipt must record, even if `c` then fails.
+   */
+  prepare?(c: Candidate, ctx: Ctx): string | void
   /**
    * Only called on `c.owner`. Returns the receipt sentence; a throw is a failure.
    * It must act on `c.path` alone: that is the path the core checked against `roots` and `ignore`.
