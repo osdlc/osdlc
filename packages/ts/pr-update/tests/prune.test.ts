@@ -2241,122 +2241,18 @@ describe('every removal passes one check, the same in a dry run (final review ro
       },
     )
 
-    test('a kept tree whose folder is missing stays with its clone under --discard-kept, until a person runs git worktree prune (S13)', () => {
+    test('a kept tree whose folder is gone goes with its clone under --discard-kept', () => {
       const clone = makeClone('acme/api', 400)
       const path = keptWorktree(clone, 'acme/api', 7)
       rmSync(path, { recursive: true, force: true })
 
       const r = bothModes(everything)
 
-      expect(r.removed).toEqual([])
-      expect(r.skipped).toEqual([
-        expect.objectContaining({
-          kind: 'clone',
-          path: clone,
-          skip: 'kept',
-          reason: `its kept worktree ${path} is missing (on a drive that is not mounted?); it stays, and so does the clone. Mount it, or run \`git -C ${clone} worktree prune\` to forget it`,
-        }),
+      expect(r.removed.map((e) => [e.kind, e.path])).toEqual([
+        ['kept', path],
+        ['clone', clone],
       ])
-      expect(existsSync(clone)).toBe(true)
-
-      // Once a person tells git to forget it, the clone goes. Its kept branch has nothing a remote
-      // lacks here; one with the built commit on it would keep the clone (below).
-      git(clone, 'worktree', 'prune')
-      expect(prune(everything).removed.map((e) => [e.kind, e.path])).toEqual([['clone', clone]])
-    })
-
-    describe('work only the clone holds keeps it (S13)', () => {
-      /** A commit on top of the clone's `origin/main` that no remote-tracking branch has. */
-      function unpushed(clone: string): string {
-        const id = ['-c', 'user.name=t', '-c', 'user.email=t@example.com']
-        return git(
-          clone,
-          ...id,
-          'commit-tree',
-          'origin/main^{tree}',
-          '-p',
-          'origin/main',
-          '-m',
-          'mine',
-        )
-      }
-
-      test.each([
-        [
-          'a local branch with a commit no remote has',
-          'the branch mine',
-          (c: string) => git(c, 'update-ref', 'refs/heads/mine', unpushed(c)),
-        ],
-        [
-          'a pr-update/failed-* branch no worktree is on, with a commit no remote has',
-          'the branch pr-update/failed-acme-api-9',
-          (c: string) =>
-            git(c, 'update-ref', 'refs/heads/pr-update/failed-acme-api-9', unpushed(c)),
-        ],
-        ['a stash', 'a stash', (c: string) => git(c, 'update-ref', 'refs/stash', unpushed(c))],
-        [
-          'notes',
-          'the notes refs/notes/commits',
-          (c: string) => git(c, 'update-ref', 'refs/notes/commits', unpushed(c)),
-        ],
-      ])('%s: the clone stays, in a dry run too', (_, said, make) => {
-        const clone = makeClone('acme/api', 400)
-        make(clone)
-
-        const r = bothModes(everything)
-
-        expect(r.removed).toEqual([])
-        expect(r.skipped).toEqual([
-          expect.objectContaining({
-            kind: 'clone',
-            path: clone,
-            skip: 'kept',
-            reason: expect.stringContaining(`it holds ${said}, which may be your work`),
-          }),
-        ])
-        expect(existsSync(clone)).toBe(true)
-      })
-
-      test('a branch a remote-tracking branch has, a dead run’s scratch branch and a kept branch do not keep it', () => {
-        const clone = makeClone('acme/api', 400)
-        git(clone, 'branch', 'pushed', 'origin/main')
-        const run = runWorktree(clone, 'acme/api')
-        git(
-          run,
-          '-c',
-          'user.name=t',
-          '-c',
-          'user.email=t@example.com',
-          'commit',
-          '-q',
-          '--allow-empty',
-          '-m',
-          'run',
-        )
-        const kept = keptWorktree(clone, 'acme/api', 7)
-        git(
-          kept,
-          '-c',
-          'user.name=t',
-          '-c',
-          'user.email=t@example.com',
-          'commit',
-          '-q',
-          '--allow-empty',
-          '-m',
-          'kept',
-        )
-        git(clone, 'update-ref', `refs/heads/pr-update/scratch-${DEAD}-old`, unpushed(clone))
-
-        const r = bothModes(everything)
-
-        expect(r.removed.map((e) => [e.kind, e.path])).toEqual([
-          ['worktree', run],
-          ['kept', kept],
-          ['clone', clone],
-        ])
-        expect(existsSync(clone)).toBe(false)
-      })
+      expect(existsSync(clone)).toBe(false)
     })
 
     unreadableTest(

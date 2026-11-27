@@ -70,18 +70,6 @@ function git(dir: string, ...argv: string[]): string {
   return res.stdout.trim()
 }
 
-/**
- * Give the bare repository at `path` the layout pr-update's clones keep: no branches of its own,
- * the remote's under `origin/*`. A prune keeps a clone with a branch no remote-tracking branch has.
- */
-function toCloneLayout(path: string): void {
-  for (const ref of git(path, 'for-each-ref', '--format=%(refname)', 'refs/heads/').split('\n')) {
-    if (ref === '') continue
-    git(path, 'update-ref', ref.replace('refs/heads/', 'refs/remotes/origin/'), ref)
-    git(path, 'update-ref', '-d', ref)
-  }
-}
-
 beforeEach(() => {
   scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'pr-update-clone-')))
   const root = makeGitFixture({ dir: join(scratch, 'dev', 'widgets') })
@@ -1092,7 +1080,6 @@ describe('pruning at the end of update --apply', () => {
     const path = join(dir, 'github.com', 'acme', 'old.git')
     mkdirSync(dirname(path), { recursive: true })
     git(scratch, 'clone', '-q', '--bare', remote, path)
-    toCloneLayout(path)
     writeFileSync(join(path, CLONE_MARKER), '{"tool":"pr-update","repo":"github.com/acme/old"}\n')
     writeFileSync(
       join(path, CLONE_STAMP),
@@ -1380,7 +1367,6 @@ describe('mirror prune review round 1', () => {
     const path = join(dir, 'github.com', 'acme', 'old.git')
     mkdirSync(dirname(path), { recursive: true })
     git(scratch, 'clone', '-q', '--bare', remote, path)
-    toCloneLayout(path)
     writeFileSync(join(path, CLONE_MARKER), '{"tool":"pr-update","repo":"github.com/acme/old"}\n')
     writeFileSync(
       join(path, CLONE_STAMP),

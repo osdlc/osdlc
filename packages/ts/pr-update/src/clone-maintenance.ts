@@ -1,15 +1,10 @@
 /**
- * What more than one module needs to know about a managed clone: the marker that says pr-update
- * made it, and its git maintenance, never in the background and run in the foreground after each
- * fetch, while the clone's lock is still held. A leaf module, so `mirror.ts`, which makes the
- * clone, `survey.ts`, which fetches it, and `update/kept.ts`, which asks whether a kept tree's
- * owner is one, share it without importing each other.
+ * Git maintenance in a managed clone: never in the background, and run in the foreground after
+ * each fetch, while the clone's lock is still held. A leaf module, so `mirror.ts`, which makes
+ * the clone, and `survey.ts`, which fetches it, share it without importing each other.
  */
 
 import type { Git } from '@osdlc/typed-git'
-
-/** The file inside a clone that says pr-update made it. A clone without one is never used or removed. */
-export const CLONE_MARKER = 'pr-update-clone.json'
 
 /**
  * Set in a clone's own config when it is made: no git command run there starts a background

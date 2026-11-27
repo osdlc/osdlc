@@ -19,9 +19,7 @@
  *   folder without the clone marker are never removed. Nor is one that holds a worktree record
  *   its `git worktree list` leaves out. A worktree that list shows as locked
  *   (`git worktree lock`) stays, a dead run's or a kept one, with its folder missing too, and so
- *   does its clone; so does a kept worktree whose folder is missing, locked or not. A clone that
- *   holds what may be a person's work and is nowhere else stays too ({@link personRefsIn}): a
- *   local branch with commits no remote-tracking branch has, a stash, or notes. A machine file that cannot be read or is not valid ages no clone, unless
+ *   does its clone. A machine file that cannot be read or is not valid ages no clone, unless
  *   `olderThanDays` or `allClones` is given. A clone is first renamed to a `.tmp-*` name beside it, so a removal that fails part-way leaves a
  *   leftover the next prune recognises, not a broken clone in the way.
  *
@@ -82,7 +80,7 @@ import {
   loadMirrorSetting,
 } from './mirror.ts'
 import { realOr } from './real-path.ts'
-import { WORK_BRANCH, scratchBranch, targetGitOptions } from './update/execute.ts'
+import { scratchBranch, targetGitOptions } from './update/execute.ts'
 import {
   discardKept,
   keptOwnerElsewhere,
@@ -1046,8 +1044,6 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
     const kept: { path: string; branch: string | null }[] = []
     /** Why kept trees stay for a `git worktree lock`. */
     const keptLocks: string[] = []
-    /** Kept trees whose folders are missing (on a drive that is not mounted, say). */
-    const keptMissing: string[] = []
     const inUse: string[] = []
     /** Dead runs' worktrees that stay: the clone stays with them. */
     const stays: string[] = []
@@ -1082,7 +1078,6 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
         kept.push({ path: w.path, branch: w.branch })
         const locked = lockedReason(w, w.path)
         if (locked !== null) keptLocks.push(locked)
-        else if (lstatOrNull(w.path) === null) keptMissing.push(w.path)
       } else inUse.push(w.path)
     }
     for (const d of dead) {
@@ -1124,14 +1119,6 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       leave({
         skip: 'kept',
         reason: `its kept worktree ${keptLocks.join('; ')}; it stays, and so does the clone`,
-      })
-      return
-    }
-    // Its work may be on a drive that is not mounted; the clone holds its commits.
-    if (keptMissing.length > 0) {
-      leave({
-        skip: 'kept',
-        reason: `its kept worktree ${keptMissing.join(', ')} is missing (on a drive that is not mounted?); it stays, and so does the clone. Mount it, or run \`git -C ${path} worktree prune\` to forget it`,
       })
       return
     }
@@ -1179,22 +1166,6 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       const left = keptLeft(git, path, keptPlace, k, recordsOf.get(realOr(k.path)))
       if (left === null) continue
       leave({ skip: 'kept', reason: left })
-      return
-    }
-    // Before the dry run returns, so it decides the same. The branches this prune deletes itself
-    // are pr-update's: the kept trees' (all of them go, under `discardKept`), dead runs' scratch
-    // branches, and any other `pr-update/scratch-*` branch, which no worktree is on (an in-use one
-    // returned above) and which only a run makes.
-    const ours = new Set([
-      ...kept.flatMap((k) => (k.branch === null ? [] : [k.branch])),
-      ...dead.map((d) => scratchBranch(d.path)),
-    ])
-    const person = personRefsIn(git, (b) => ours.has(b) || b.startsWith(`${WORK_BRANCH}-`))
-    if (person.length > 0) {
-      leave({
-        skip: 'kept',
-        reason: `it holds ${person.join(', ')}, which may be your work and is in this clone only; it stays. Push it, or remove it (\`git -C ${path} branch -D <branch>\`, \`git -C ${path} stash clear\`, \`git -C ${path} update-ref -d <notes ref>\`), then prune again`,
-      })
       return
     }
     if (dryRun) {
@@ -1275,32 +1246,9 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       return `the record of its kept worktree ${k.path} names another git directory, ${elsewhere}, which is changed only under its own lock; the tree stays, and so does the clone`
     }
     if (tree.kind === 'moved') return `its kept worktree ${tree.why}, ${stay}`
-    if (tree.kind === 'locked')
-      return `its kept worktree ${tree.why}; it stays, and so does the clone`
     if (tree.unlisted === true) throw new Error(`its kept worktree ${k.path}: ${tree.why}`)
     return `the record of its kept worktree ${k.path} is refused: ${tree.why}; the tree stays, and so does the clone`
   }
-}
-
-/**
- * What in the clone `git` may be a person's work and is in the clone only, as phrases for a
- * message: each local branch with commits no remote-tracking branch has (`git rev-list <branch>
- * --not --remotes`), other than those `ours` says are pr-update's; a stash; and each notes ref.
- * A clone's own fetches make only remote-tracking branches, so anything else came from a person
- * working in one of its worktrees.
- */
-function personRefsIn(git: Git, ours: (branch: string) => boolean): string[] {
-  const found: string[] = []
-  for (const b of git.branches()) {
-    if (ours(b)) continue
-    const ahead = git.rawChecked(['rev-list', '--count', `refs/heads/${b}`, '--not', '--remotes'])
-    if (ahead.stdout.trim() !== '0') found.push(`the branch ${b}`)
-  }
-  if (git.resolveRef('refs/stash') !== null) found.push('a stash')
-  for (const ref of git.forEachRef('refs/notes/', { format: '%(refname)' })) {
-    found.push(`the notes ${ref}`)
-  }
-  return found
 }
 
 /** A prune as text: each thing removed (or that would be), each left with why, and the space. */

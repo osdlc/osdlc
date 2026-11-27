@@ -10,11 +10,9 @@ import { basename, join } from 'node:path'
 import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
 import { IDENTITY, makeBareAndWorker, makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { CLONE_MARKER } from '../src/clone-maintenance.ts'
 import { prUpdateConfigSchema, type PrUpdateConfig } from '../src/config.ts'
 import type { Ports } from '../src/ports.ts'
 import { renderUpdateText, runUpdate, type UpdateArgs } from '../src/update.ts'
-import { keptIsTouched, type KeptRecord } from '../src/update/kept.ts'
 
 const ARGS: UpdateArgs = {
   repo: ['o/r'],
@@ -243,48 +241,6 @@ describe('update --keep-failed', () => {
       expect(out.results).toEqual([])
       expect(existsSync(kept())).toBe(true)
       expect(fx.worker.git.resolveRef('my-fix')).not.toBeNull()
-    })
-  })
-
-  describe('what a person locked or made stays theirs (S13)', () => {
-    const lock = () =>
-      fx.worker.git.rawChecked(['worktree', 'lock', '--reason', 'on a trip', kept()])
-    const why = () =>
-      `${kept()} is locked (on a trip); run \`git worktree unlock ${kept()}\` to let it go`
-
-    test('--discard-kept leaves a kept tree a person locked, folder and all', async () => {
-      await update({ keepFailed: true })
-      lock()
-      const out = await update({ discardKept: true })
-      expect(out.discarded ?? []).toEqual([])
-      expect(out.keptLeft).toEqual([{ path: kept(), reason: why() }])
-      expect(existsSync(join(kept(), 'topic.txt'))).toBe(true)
-      expect(fx.worker.git.resolveRef('pr-update/failed-o-r-1')).not.toBeNull()
-    })
-
-    test('a moved base does not discard a kept tree a person locked', async () => {
-      await update({ keepFailed: true })
-      lock()
-      fx.worker.commit('main moves again', { 'more.txt': 'x\n' })
-      fx.worker.git.push('origin', 'main')
-      fx.worker.git.fetch('origin')
-      const out = await update({ keepFailed: true })
-      expect(out.results).toEqual([])
-      expect(out.skipped[0]!.reason).toBe(`kept worktree ${why()}`)
-      expect(existsSync(join(kept(), 'topic.txt'))).toBe(true)
-    })
-
-    test('a keep never repoints a branch of the kept name that is already there', async () => {
-      fx.worker.git.rawChecked(['branch', 'pr-update/failed-o-r-1', 'main'])
-      const before = fx.worker.git.resolveRef('pr-update/failed-o-r-1')
-      const out = await update({ keepFailed: true })
-      expect(out.results.map((r) => r.status)).toEqual(['failed'])
-      expect(out.results[0]!.keptWorktree).toBeUndefined()
-      expect(out.results[0]!.keepError).toContain(
-        'the branch pr-update/failed-o-r-1 is already there',
-      )
-      expect(fx.worker.git.resolveRef('pr-update/failed-o-r-1')).toBe(before)
-      expect(existsSync(kept())).toBe(false)
     })
   })
 
@@ -517,43 +473,3 @@ describe('a kept record the checkout supplies', () => {
 })
 
 const ok: CommandResult = { exitCode: 0, stdout: '', stderr: '' }
-
-describe('a stash counts as a change to a kept tree in a managed clone only (S13)', () => {
-  test('in a clone, a stash keeps the kept tree; elsewhere the stash is the person’s own', () => {
-    const fx = makeBareAndWorker({ initialBranch: 'main' })
-    try {
-      fx.worker.commit('initial', { 'a.txt': 'a\n' })
-      fx.worker.git.push('origin', 'main')
-      const path = join(fx.parent, 'kept-7')
-      fx.bare.git.worktreeAdd(path, { branch: 'pr-update/failed-o-r-7', startPoint: 'main' })
-      const tree = fx.bare.git.at(path)
-      const record = {
-        repo: 'o/r',
-        number: 7,
-        head: 'topic',
-        base: 'main',
-        headOid: null,
-        baseOid: null,
-        path,
-        branch: 'pr-update/failed-o-r-7',
-        builtOid: tree.revParse('HEAD'),
-        gitDir: realpathSync.native(fx.bare.dir),
-      } satisfies KeptRecord
-      writeFileSync(
-        join(fx.bare.dir, CLONE_MARKER),
-        '{"tool":"pr-update","repo":"github.com/o/r"}\n',
-      )
-      expect(keptIsTouched(fx.bare.git, record)).toBe(false)
-
-      writeFileSync(join(path, 'a.txt'), 'mine\n')
-      tree.rawChecked(['stash', 'push', '-q'], { env: IDENTITY })
-      expect(tree.statusPorcelain()).toEqual([])
-      expect(keptIsTouched(fx.bare.git, record)).toBe(true)
-
-      rmSync(join(fx.bare.dir, CLONE_MARKER))
-      expect(keptIsTouched(fx.bare.git, record)).toBe(false)
-    } finally {
-      fx.cleanup()
-    }
-  })
-})
