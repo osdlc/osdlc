@@ -11,7 +11,14 @@ import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 import { errorText, realOr } from './helpers.ts'
 import { coveredBy, containsIgnored } from './ignore.ts'
 import { bindKit } from './kit.ts'
-import { acceptRoots, boundBy, gitReads, linkedCheckouts, type Bounds } from './roots.ts'
+import {
+  acceptRoots,
+  boundBy,
+  gitReads,
+  linkedCheckouts,
+  scopeProblem,
+  type Bounds,
+} from './roots.ts'
 import {
   CandidateSchema,
   ObjectionSchema,
@@ -363,7 +370,7 @@ async function detectAll(
 /**
  * The context whose targets the detected `plugins`' `scope` added to, less
  * those its `ignore` covers, and that `ignore` itself; a failed `scope`, or an
- * answer or entry the core does not take, is a warning.
+ * answer or entry the core does not take ({@link scopeProblem}), is a warning.
  */
 async function scopeOf(
   plugins: readonly Plugin[],
@@ -373,12 +380,18 @@ async function scopeOf(
   const guarded = guard(warnings)
   const ignore = ctx.ignore ?? []
   const targets = ctx.targets.filter((t) => coveredBy(t, ignore) === undefined)
+  const home = ctx.home ?? homedir()
   for (const p of plugins) {
     if (p.scope === undefined) continue
     const answer = await guarded<unknown>(p, 'scope', [], ctx, (x) => p.scope!(x))
     for (const root of listFrom(p, 'scope', answer, warnings)) {
       if (typeof root !== 'string') {
         warnings.push(`${p.name}: scope: left out ${JSON.stringify(root)}, which is not a path`)
+        continue
+      }
+      const why = scopeProblem(root, home)
+      if (why !== null) {
+        warnings.push(`${p.name}: scope: left out ${root}: ${why}`)
         continue
       }
       if (!targets.includes(root) && coveredBy(root, ignore) === undefined) targets.push(root)

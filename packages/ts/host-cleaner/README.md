@@ -251,6 +251,12 @@ candidates are refused `outside-roots`. The same check runs again right before
 self root that has become a checkout or a symlink since the survey, or a root
 that now holds a new linked worktree, is not removed.
 
+A `scope` answer is a target, so it bounds what any plugin may propose. The
+core leaves out one that is not an absolute path or has a `..` in it, is the
+filesystem root, is or holds the home folder, or is a personal folder, with a
+warning (`<plugin>: scope: left out <path>: <why>`). Unlike a root it may be a
+checkout, since `scope` adds repositories.
+
 Real paths are read with `realpathSync.native`, which spells a path as the
 filesystem does: where it ignores case, as macOS's does, `~/documents` is
 `~/Documents`, and compares so. A candidate that is itself a link

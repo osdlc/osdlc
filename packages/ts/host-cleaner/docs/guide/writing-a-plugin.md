@@ -168,7 +168,8 @@ The rules every plugin keeps:
   refuses it otherwise (`outside-roots`) and checks again right before
   `delete`. The core leaves out a root that is `/`, is or holds home, is a
   personal folder such as `~/Documents`, is or holds a target or a checkout,
-  and a self root that is a symlink.
+  and a self root that is a symlink. It leaves out a `scope` answer that is
+  `/`, is or holds home, or is a personal folder.
 - **Delete with `kit.remove`.** Never remove a folder yourself. `kit.remove`
   checks the path is still inside the bounds by its real path, makes
   read-only files writable, removes the folder and returns the receipt
