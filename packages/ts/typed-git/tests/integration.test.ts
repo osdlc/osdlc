@@ -170,22 +170,6 @@ describe('integration outcomes — exit 1 is not enough on its own', () => {
     expect(noop).toEqual({ status: 'clean', fastForward: false, alreadyUpToDate: true })
   })
 
-  test("rerere's replay lines on stderr are read into rerereReplayed, each path once", () => {
-    const stderr =
-      "Resolved 'a.ts' using previous resolution.\n" +
-      "Resolved 'it's.txt' using previous resolution.\n" +
-      "Resolved 'a.ts' using previous resolution.\n" +
-      "Recorded preimage for 'f.txt'\n"
-    const out = new Git('/repo', { runner: recorder(res(1, CONFLICT_REPORT, stderr)).runner })
-    expect(out.merge('x')).toEqual({
-      status: 'conflict',
-      conflicts: ['f.txt'],
-      rerereReplayed: ['a.ts', "it's.txt"],
-    })
-    expect(out.rebase('x')).toMatchObject({ rerereReplayed: ['a.ts', "it's.txt"] })
-    expect(out.rebaseContinue()).toMatchObject({ rerereReplayed: ['a.ts', "it's.txt"] })
-  })
-
   test('modify/delete is named too, and each path appears once', () => {
     const stdout =
       'CONFLICT (content): Merge conflict in a.ts\n' +
@@ -330,45 +314,6 @@ describe('real git — the conflict shapes a resolver must tell apart', () => {
 
   test('rebase --abort with no rebase running throws', () => {
     expect(() => fx.git.rebaseAbort()).toThrow(FailureError)
-  })
-})
-
-describe('real git — rerere', () => {
-  test('a replayed path is named in rerereReplayed; a binary conflict it never tracks is not', () => {
-    const r = makeGitFixture({ prefix: 'typedgit-rerere-' })
-    try {
-      const on = {
-        env: {
-          GIT_CONFIG_COUNT: '2',
-          GIT_CONFIG_KEY_0: 'rerere.enabled',
-          GIT_CONFIG_VALUE_0: 'true',
-          GIT_CONFIG_KEY_1: 'rerere.autoUpdate',
-          GIT_CONFIG_VALUE_1: 'false',
-        },
-      }
-      r.commit('base', { 's.txt': 'a\n', 'bin.dat': '\u0000base' })
-      r.git.checkout('main', { branch: 'pr' })
-      r.commit('pr', { 's.txt': 'pr\n', 'bin.dat': '\u0000pr' })
-      r.git.checkout('main')
-      r.commit('main', { 's.txt': 'main\n', 'bin.dat': '\u0000main' })
-      r.git.checkout('pr')
-      const first = r.git.merge('main', on)
-      expect(first).toMatchObject({ status: 'conflict' })
-      expect(first).not.toHaveProperty('rerereReplayed')
-      writeFileSync(join(r.dir, 's.txt'), 'resolved\n')
-      r.git.rawChecked(['checkout', '--ours', 'bin.dat'])
-      r.git.add(['.'])
-      r.git.commit({ message: 'merged', ...on })
-      r.git.rawChecked(['reset', '-q', '--hard', 'HEAD~1'])
-
-      expect(r.git.merge('main', on)).toMatchObject({
-        status: 'conflict',
-        rerereReplayed: ['s.txt'],
-      })
-      r.git.mergeAbort()
-    } finally {
-      r.cleanup()
-    }
   })
 })
 

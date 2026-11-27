@@ -24,8 +24,8 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { execFileSync, spawnSync } from 'node:child_process'
-import { join, resolve } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { join } from 'node:path'
 
 import { Git } from '@osdlc/typed-git'
 import { makeBareAndWorker } from '@osdlc/typed-git/testing'
@@ -51,7 +51,6 @@ import {
   updateOne,
   type RunVerb,
   type UpdateOutcome,
-  type UpdateResult,
   type UpdateSettings,
   type UpdateTarget,
 } from '../src/update/execute.ts'
@@ -1369,7 +1368,7 @@ describe('the executor against real git', () => {
       expect(toResult({ ...target(), outcome }).repaired).toEqual(outcome.repaired)
     })
 
-    describe('rerere', () => {
+    describe("git's rerere is off for everything pr-update runs", () => {
       /**
        * PRs off one `main`, each changing `shared.ts` the same way (and a file of its own), then
        * `main` changes `shared.ts`: the same conflict in each. Returns each branch's head.
@@ -1402,520 +1401,88 @@ describe('the executor against real git', () => {
         )
       }
 
-      /**
-       * `updateAll` with rerere on, as `update.ts` sets it for a managed clone, unless `patch`
-       * says otherwise. The worker stands in for the clone.
-       */
-      const runAll = (
-        targets: UpdateTarget[],
-        patch: Partial<UpdateSettings>,
-        apply = true,
-      ): Promise<UpdateResult[]> =>
-        updateAll(fx.worker.git, targets, settings({ rerere: true, ...patch }), recorder(), {
-          apply,
+      const run = (targets: UpdateTarget[], patch: Partial<UpdateSettings>) =>
+        updateAll(fx.worker.git, targets, settings(patch), recorder(), {
+          apply: true,
           worktreeRoot: wtRoot,
         })
 
-      /** A generator that claims `shared.ts` and writes it, and counts its runs. */
-      function sharedGenerator(): Generator & { runs: string[] } {
-        const runs: string[] = []
-        return {
-          name: 'shared',
-          claims: (p) => p === 'shared.ts',
-          run: (wt) => {
-            runs.push(wt)
-            writeFileSync(join(wt, 'shared.ts'), 'generated\n')
-            return ok
-          },
-          runs,
-        }
-      }
-
-      describe('a conflict rerere never tracks is not taken for a replay (review round 1)', () => {
-        /** A PR and `main` each changing `file` from `base`, under `attributes` set on `main` first. */
-        function conflictOn(
-          file: string,
-          attributes: string | null,
-          side: (who: string) => string,
-        ) {
-          const { git } = fx.worker
-          if (attributes !== null) {
-            fx.worker.commit('attributes', { '.gitattributes': attributes })
-            git.push('origin', 'main')
-          }
-          fx.worker.commit('base file', { [file]: side('base') })
-          git.push('origin', 'main')
-          git.checkout('main', { branch: 'pr' })
-          fx.worker.commit('pr work', { [file]: side('pr') })
-          git.push('origin', 'pr')
-          const oid = git.resolveRef('HEAD')!
-          git.checkout('main')
-          fx.worker.commit('main moves', { [file]: side('main') })
-          git.push('origin', 'main')
-          git.fetch('origin')
-          return oid
-        }
-
-        test.each([
-          ['a binary file', 'merge', 'bin.dat', null, (w: string) => `\u0000\u0001${w}`],
-          ['a binary file', 'rebase', 'bin.dat', null, (w: string) => `\u0000\u0001${w}`],
-          ['a -merge file', 'merge', 'auth.ts', 'auth.ts -merge\n', (w: string) => `${w}\n`],
-          ['a -merge file', 'rebase', 'auth.ts', 'auth.ts -merge\n', (w: string) => `${w}\n`],
-        ] as const)(
-          '%s, by %s, ends in conflict and is not pushed',
-          async (_, strategy, file, attrs, side) => {
-            const oid = conflictOn(file, attrs, side)
-            const results = await runAll([target({ head: 'pr', headOid: oid, strategy })], {})
-            expect(results.map((r) => r.outcome.status)).toEqual(['conflict'])
-            expect(results[0]!.outcome).not.toHaveProperty('replayed')
-            expect(fx.bare.git.resolveRef('pr')).toBe(oid)
-          },
-        )
-      })
-
-      test('a repair resolves the first sibling; rerere replays it for the second', async () => {
-        makeSiblings('sib1', 'sib2')
-        const repair = fakeRepair(writeShared('both\n'))
-        const results = await runAll(
-          [target({ number: 1, head: 'sib1' }), target({ number: 2, head: 'sib2' })],
-          { repair, repairOn: ['conflict'] },
-        )
-        expect(results.map((r) => r.outcome.status)).toEqual(['updated', 'updated'])
-        expect(repair.calls.map((c) => c.pr)).toEqual([1])
-        expect(results[1]!.outcome).not.toHaveProperty('repaired')
-        // The replay is reported, and the merge commit says so.
-        expect(results[0]!.outcome).not.toHaveProperty('replayed')
-        expect(results[1]!.outcome).toMatchObject({ replayed: ['shared.ts'] })
-        expect(describeOutcome(results[1]!.outcome)).toBe('updated (replayed 1 by rerere)')
-        expect(toResult(results[1]!).replayed).toEqual(['shared.ts'])
-        const { git } = fx.worker
-        git.fetch('origin')
-        expect(git.showAtRev('origin/sib2', 'shared.ts')).toBe('both\n')
-        expect(git.raw(['log', '-1', '--format=%b', 'origin/sib2']).stdout).toContain(
-          'git rerere, from a resolution recorded earlier (shared.ts)',
-        )
-      })
-
-      test('a path a generator claims is rebuilt even when rerere replays it', async () => {
-        makeSiblings('gen1', 'gen2')
-        const gen = sharedGenerator()
-        const results = await runAll(
-          [target({ number: 1, head: 'gen1' }), target({ number: 2, head: 'gen2' })],
-          { generators: [gen] },
-        )
-        expect(results.map((r) => r.outcome.status)).toEqual(['updated', 'updated'])
-        expect(gen.runs).toHaveLength(2)
-        // Rebuilt, so it is a resolved path, not a replayed one.
-        expect(results[1]!.outcome).toMatchObject({
-          resolved: [{ kind: 'generator', path: 'shared.ts' }],
-        })
-        expect(results[1]!.outcome).not.toHaveProperty('replayed')
-        const { git } = fx.worker
-        git.fetch('origin')
-        expect(git.showAtRev('origin/gen2', 'shared.ts')).toBe('generated\n')
-      })
-
-      test('a resolution recorded at a rebase stop is replayed at the next', async () => {
-        const [a, b] = makeSiblings('reb1', 'reb2')
-        const repair = fakeRepair(writeShared('both\n'))
-        const results = await runAll(
-          [
-            target({ number: 1, head: 'reb1', headOid: a!, strategy: 'rebase' }),
-            target({ number: 2, head: 'reb2', headOid: b!, strategy: 'rebase' }),
-          ],
-          { repair, repairOn: ['conflict'], onRebaseConflict: 'repair' },
-        )
-        expect(results.map((r) => r.outcome.status)).toEqual(['updated', 'updated'])
-        expect(results.map((r) => r.strategy)).toEqual(['rebase', 'rebase'])
-        expect(repair.calls.map((c) => c.pr)).toEqual([1])
-        // A rebase has no merge commit to say so: the outcome does.
-        expect(results[1]!.outcome).toMatchObject({ replayed: ['shared.ts'] })
-        const { git } = fx.worker
-        git.fetch('origin')
-        expect(git.showAtRev('origin/reb2', 'shared.ts')).toBe('both\n')
-      })
-
-      test('a resolution recorded in one run is replayed in the next', async () => {
-        makeSiblings('run1', 'run2')
-        const repair = fakeRepair(writeShared('both\n'))
-        const patch = { repair, repairOn: ['conflict' as const] }
-        await runAll([target({ number: 1, head: 'run1' })], patch)
-        const [second] = await runAll([target({ number: 2, head: 'run2' })], patch)
-        expect(second!.outcome).toMatchObject({ status: 'updated', pushed: true })
-        expect(repair.calls.map((c) => c.pr)).toEqual([1])
-      })
-
-      test('a rejected repair leaves nothing a later PR replays', async () => {
-        makeSiblings('rej1', 'rej2')
-        // It resolves the conflict and commits, which rerere records, and is rejected for it.
-        const sneaky = fakeRepair((wt) => {
-          writeShared('sneaky\n')(wt)
-          const w = fx.worker.git.at(wt)
-          w.add(['.'])
-          w.commit({ message: 'repair commit', noVerify: true })
-        })
-        const [first] = await runAll([target({ number: 1, head: 'rej1' })], {
-          repair: sneaky,
-          repairOn: ['conflict'],
-        })
-        expect(first!.outcome.status).toBe('failed')
-        expect(postimages()).toEqual([])
-        const [second] = await runAll([target({ number: 2, head: 'rej2' })], {})
-        expect(second!.outcome.status).toBe('conflict')
-      })
-
       test.each(['merge', 'rebase'] as const)(
-        'a resolution verify rejected is not replayed in a later run (%s)',
+        "a person's own recorded resolution is neither replayed nor added to by a %s; the conflict goes to the repair",
         async (strategy) => {
-          const [o1, o2] = makeSiblings('v1', 'v2')
-          // Fails while `shared.ts` holds the bad resolution.
-          const verify: RunVerb = (_verb, wt) =>
-            readFileSync(join(wt, 'shared.ts'), 'utf8') === 'bad\n' ? nope : ok
-          const run = (number: number, head: string, headOid: string, repair: Repair) =>
-            updateAll(
-              fx.worker.git,
-              [target({ number, head, headOid, strategy })],
-              settings({
-                rerere: true,
-                repair,
-                repairOn: ['conflict'],
-                onRebaseConflict: 'repair',
-                verifyVerbs: ['check'],
-              }),
-              verify,
-              { apply: true, worktreeRoot: wtRoot },
-            )
-          const [first] = await run(1, 'v1', o1!, fakeRepair(writeShared('bad\n')))
-          expect(first!.outcome.status).toBe('failed')
-          expect(postimages()).toEqual([])
-          const good = fakeRepair(writeShared('good\n'))
-          const [second] = await run(2, 'v2', o2!, good)
-          expect(good.calls).toHaveLength(1)
-          expect(second!.outcome).toMatchObject({ status: 'updated', pushed: true })
-          fx.worker.git.fetch('origin')
-          expect(fx.worker.git.showAtRev('origin/v2', 'shared.ts')).toBe('good\n')
-        },
-      )
-
-      test('a resolution recorded meanwhile in another worktree stays when the PR fails', async () => {
-        const [, o2] = makeSiblings('p1', 'p2')
-        const { git } = fx.worker
-        git.raw(['config', 'rerere.enabled', 'true'])
-        // A merge in another worktree of the clone (the worker stands in for it) stops at the
-        // same conflict. Its preimage is variant 0, with no resolution yet, so git records
-        // pr-update's in variant 1.
-        git.checkout('origin/p1', { branch: 'mine', noTrack: true })
-        expect(git.raw(['merge', 'origin/main']).exitCode).toBe(1)
-        let during: string[] = []
-        let committed = -1
-        const verify: RunVerb = () => {
-          // While verify runs, the other worktree commits its own resolution.
+          const { git } = fx.worker
+          const [, o2] = makeSiblings('own1', 'own2')
+          // The person resolves the conflict once in their own checkout, with rerere on.
+          git.raw(['config', 'rerere.enabled', 'true'])
+          git.checkout('own1')
+          expect(git.try.merge('main').ok).toBe(true)
           writeFileSync(join(fx.worker.dir, 'shared.ts'), 'mine\n')
-          git.raw(['add', 'shared.ts'])
-          committed = git.raw(['commit', '--no-edit', '--no-verify']).exitCode
-          during = postimages()
-          return nope
-        }
-        const [out] = await updateAll(
-          git,
-          [target({ number: 2, head: 'p2', headOid: o2! })],
-          settings({
-            rerere: true,
-            repair: fakeRepair(writeShared('bad\n')),
-            repairOn: ['conflict'],
-            verifyVerbs: ['check'],
-          }),
-          verify,
-          { apply: true, worktreeRoot: wtRoot },
-        )
-        expect(committed).toBe(0)
-        expect(during).toHaveLength(2)
-        expect(out!.outcome.status).toBe('failed')
-        const left = postimages()
-        expect(left).toHaveLength(1)
-        expect(readFileSync(join(rrCache(), left[0]!), 'utf8')).toBe('mine\n')
-      })
+          git.add(['shared.ts'])
+          git.commit({ message: 'my merge', noVerify: true })
+          git.checkout('main')
+          const recorded = postimages()
+          expect(recorded).toHaveLength(1)
 
-      test('a resolution in a push the person declined is not replayed in a later run', async () => {
-        const [o1, o2] = makeSiblings('d1', 'd2')
-        const run = (
-          number: number,
-          head: string,
-          headOid: string,
-          repair: Repair,
-          confirm: boolean,
-        ): Promise<UpdateResult[]> =>
-          updateAll(
-            fx.worker.git,
-            [target({ number, head, headOid, strategy: 'rebase' })],
-            settings({
-              rerere: true,
-              repair,
-              repairOn: ['conflict'],
-              onRebaseConflict: 'repair',
-              confirmPush: () => confirm,
-            }),
-            recorder(),
-            { apply: true, worktreeRoot: wtRoot },
-          )
-        const [first] = await run(1, 'd1', o1!, fakeRepair(writeShared('bad\n')), false)
-        expect(first!.outcome).toMatchObject({ status: 'updated', pushed: false })
-        expect(first!.outcome).toHaveProperty('declined', 'push declined')
-        expect(postimages()).toEqual([])
-        const good = fakeRepair(writeShared('good\n'))
-        const [second] = await run(2, 'd2', o2!, good, true)
-        expect(good.calls).toHaveLength(1)
-        expect(second!.outcome).toMatchObject({ status: 'updated', pushed: true })
-        fx.worker.git.fetch('origin')
-        expect(fx.worker.git.showAtRev('origin/d2', 'shared.ts')).toBe('good\n')
-      })
-
-      test('a throw at a later rebase stop leaves nothing an earlier stop recorded', async () => {
-        const { git } = fx.worker
-        git.checkout('main', { branch: 'blows' })
-        fx.worker.commit('one', { 'build/out.txt': 'branch one\n' })
-        fx.worker.commit('two', { 'api.schema.json': 'branch two\n' })
-        git.push('origin', 'blows')
-        const oid = git.resolveRef('HEAD')!
-        git.checkout('main')
-        fx.worker.commit('main moves', { 'build/out.txt': 'main\n', 'api.schema.json': 'main\n' })
-        git.push('origin', 'main')
-        git.fetch('origin')
-        // The first stop is repaired and continued, which records its resolution; the second
-        // stop's generator throws.
-        const repair = fakeRepair((wt) => writeFileSync(join(wt, 'build/out.txt'), 'repaired\n'))
-        const schema: Generator = {
-          name: 'schema',
-          claims: (p) => p.endsWith('.schema.json'),
-          run: () => {
-            throw new Error('generator blew up')
-          },
-        }
-        await expect(
-          runAll([target({ head: 'blows', headOid: oid, strategy: 'rebase' })], {
+          // What the repair finds in the file: git's conflict, not the person's resolution.
+          const found: string[] = []
+          const repair = fakeRepair((wt) => {
+            found.push(readFileSync(join(wt, 'shared.ts'), 'utf8'))
+            writeShared('both\n')(wt)
+          })
+          const [r] = await run([target({ number: 2, head: 'own2', headOid: o2!, strategy })], {
             repair,
             repairOn: ['conflict'],
             onRebaseConflict: 'repair',
-            generators: [schema],
-          }),
-        ).rejects.toThrow('generator blew up')
-        expect(repair.calls).toHaveLength(1)
-        expect(postimages()).toEqual([])
-      })
+          })
+          expect(r!.outcome).toMatchObject({ status: 'updated', pushed: true })
+          expect(repair.calls.map((c) => [c.kind, c.paths])).toEqual([['conflict', ['shared.ts']]])
+          expect(found).toHaveLength(1)
+          expect(found[0]).toContain('<<<<<<<')
+          expect(found[0]).not.toContain('mine')
+          expect(postimages()).toEqual(recorded)
+          git.fetch('origin')
+          expect(git.showAtRev('origin/own2', 'shared.ts')).toBe('both\n')
+        },
+      )
 
-      test('a throw after a merge recorded its resolution leaves nothing behind', async () => {
-        const [o1] = makeSiblings('t1')
-        const verify: RunVerb = () => {
-          throw new Error('verify blew up')
-        }
-        await expect(
-          updateAll(
-            fx.worker.git,
-            [target({ number: 1, head: 't1', headOid: o1!, strategy: 'merge' })],
-            settings({
-              rerere: true,
-              repair: fakeRepair(writeShared('resolved\n')),
-              repairOn: ['conflict'],
-              verifyVerbs: ['check'],
-            }),
-            verify,
-            { apply: true, worktreeRoot: wtRoot },
-          ),
-        ).rejects.toThrow('verify blew up')
-        expect(postimages()).toEqual([])
-      })
-
-      test('a rebase aborted after a repaired stop leaves nothing a later PR replays', async () => {
-        const { git } = fx.worker
-        git.checkout('main', { branch: 'two' })
-        fx.worker.commit('one', { 'build/out.txt': 'branch one\n' })
-        fx.worker.commit('two', { 'shared.ts': 'branch two\n' })
-        git.push('origin', 'two')
-        const oid = git.resolveRef('HEAD')!
-        git.checkout('main')
-        fx.worker.commit('main moves', { 'build/out.txt': 'main\n', 'shared.ts': 'main\n' })
-        git.push('origin', 'main')
-        git.fetch('origin')
-        const repair = fakeRepair((wt) => writeFileSync(join(wt, 'build/out.txt'), 'repaired\n'))
-        // The first stop is repaired and continued; the second is past the cap.
-        const [result] = await runAll([target({ head: 'two', headOid: oid, strategy: 'rebase' })], {
-          repair,
-          repairOn: ['conflict'],
-          onRebaseConflict: 'repair',
-          maxRebaseStops: 1,
-        })
-        expect(result!.outcome.status).toBe('conflict')
-        expect(repair.calls).toHaveLength(1)
-        expect(postimages()).toEqual([])
-      })
-
-      /**
-       * `other` and the `siblings` off one base: `other` changes `shared.ts` to `other`, a
-       * conflict of its own. Then a recorded resolution of the siblings' conflict (`both`), from
-       * an `--apply` run on the first sibling, with rerere on in the repository's own config.
-       */
-      async function recordedWithRerereOn(other: string, ...siblings: string[]): Promise<string[]> {
-        const { git } = fx.worker
-        git.checkout('main', { branch: other })
-        fx.worker.commit(`${other} work`, { 'shared.ts': 'other\n' })
-        git.push('origin', other)
-        git.checkout('main')
-        makeSiblings(...siblings)
-        const first = siblings[0]!
-        git.raw(['config', 'rerere.enabled', 'true'])
-        await runAll([target({ number: 1, head: first })], {
-          repair: fakeRepair(writeShared('both\n')),
-          repairOn: ['conflict'],
-        })
-        const recorded = postimages()
-        expect(recorded).toHaveLength(1)
-        return recorded
-      }
-
-      test('a rehearsal neither records nor replays, with rerere on in the repository', async () => {
-        const recorded = await recordedWithRerereOn('dry3', 'dry1', 'dry2')
-        // The same conflict is not replayed, so with no repair in a rehearsal it stays.
-        const [same] = await runAll([target({ number: 2, head: 'dry2' })], {}, false)
-        expect(same!.outcome.status).toBe('conflict')
-        // Another conflict a generator resolves is not recorded.
-        const [other] = await runAll(
-          [target({ number: 3, head: 'dry3' })],
-          { generators: [sharedGenerator()] },
-          false,
-        )
-        expect(other!.outcome).toMatchObject({ status: 'updated', pushed: false })
-        expect(postimages()).toEqual(recorded)
-      })
-
-      test('rerere: false neither records nor replays, with rerere on in the repository', async () => {
-        const recorded = await recordedWithRerereOn('off3', 'off1', 'off2')
-        const repair = fakeRepair(writeShared('both\n'))
-        const results = await runAll(
-          [target({ number: 2, head: 'off2' }), target({ number: 3, head: 'off3' })],
-          { repair, repairOn: ['conflict'], rerere: false },
-        )
-        expect(results.map((r) => r.outcome.status)).toEqual(['updated', 'updated'])
-        expect(repair.calls.map((c) => c.pr)).toEqual([2, 3])
-        expect(postimages()).toEqual(recorded)
-      })
-
-      test("outside a clone the repository's own recorded resolutions are neither replayed nor added to", async () => {
-        // A resolution in the checkout's own `rr-cache/`, with rerere on in its own config.
-        const recorded = await recordedWithRerereOn('own3', 'own1', 'own2')
-        const repair = fakeRepair(writeShared('both\n'))
-        const results = await runAll(
-          [target({ number: 2, head: 'own2' }), target({ number: 3, head: 'own3' })],
-          { repair, repairOn: ['conflict'], rerere: undefined },
-        )
-        expect(results.map((r) => r.outcome.status)).toEqual(['updated', 'updated'])
-        expect(repair.calls.map((c) => c.pr)).toEqual([2, 3])
-        expect(results[0]!.outcome).not.toHaveProperty('replayed')
-        expect(postimages()).toEqual(recorded)
-      })
-
-      test('outside a clone no rr-cache is made', async () => {
+      test('no rr-cache is ever made, by a merge, a rebase or a verify repair, with rerere on in the repository', async () => {
         const [o1, o2] = makeSiblings('mk1', 'mk2')
-        const repair = fakeRepair(writeShared('both\n'))
-        const results = await runAll(
-          [
-            target({ number: 1, head: 'mk1', headOid: o1! }),
-            target({ number: 2, head: 'mk2', headOid: o2!, strategy: 'rebase' }),
-          ],
-          { repair, repairOn: ['conflict'], onRebaseConflict: 'repair', rerere: undefined },
-        )
-        expect(results.map((r) => r.outcome.status)).toEqual(['updated', 'updated'])
-        expect(existsSync(rrCache())).toBe(false)
-      })
-
-      test('outside a clone a verify repair commits with rerere off, with rerere on in the repository', async () => {
-        makeBehindPr('vr1', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
+        makeBehindPr('mk3', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
         // Set after the fixture's own commits, which would otherwise make the folder.
         fx.worker.git.raw(['config', 'rerere.enabled', 'true'])
         expect(existsSync(rrCache())).toBe(false)
         let fixed = false
         const verify: RunVerb = () => (fixed ? ok : nope)
-        const repair = fakeRepair((wt) => {
-          writeFileSync(join(wt, 'fix.txt'), 'fix\n')
-          fixed = true
-        })
+        const calls: RepairRequest[] = []
+        const repair: Repair = async (req) => {
+          calls.push(req)
+          if (req.kind === 'conflict') writeShared('both\n')(req.worktree)
+          else {
+            writeFileSync(join(req.worktree, 'fix.txt'), 'fix\n')
+            fixed = true
+          }
+          return { ok: true, note: 'fixed' }
+        }
         const results = await updateAll(
           fx.worker.git,
-          [target({ number: 1, head: 'vr1' })],
-          settings({ verifyVerbs: ['check'], repair, repairOn: ['verify-failed'] }),
+          [
+            target({ number: 1, head: 'mk1', headOid: o1! }),
+            target({ number: 2, head: 'mk2', headOid: o2!, strategy: 'rebase' }),
+            target({ number: 3, head: 'mk3' }),
+          ],
+          settings({
+            repair,
+            repairOn: ['conflict', 'verify-failed'],
+            onRebaseConflict: 'repair',
+            verifyVerbs: ['check'],
+          }),
           verify,
           { apply: true, worktreeRoot: wtRoot },
         )
-        expect(results[0]!.outcome).toMatchObject({
-          status: 'updated',
-          repaired: [{ kind: 'verify-failed' }],
-        })
+        expect(results.map((r) => r.outcome.status)).toEqual(['updated', 'updated', 'updated'])
+        expect(calls.map((c) => c.kind)).toContain('verify-failed')
+        expect(calls.filter((c) => c.kind === 'conflict')).toHaveLength(2)
         expect(existsSync(rrCache())).toBe(false)
-      })
-
-      test.each(['merge', 'rebase'] as const)(
-        'a PR that ends in conflict leaves no rerere folder behind (%s)',
-        async (strategy) => {
-          const [o1] = makeSiblings('c1')
-          const [r] = await runAll([target({ number: 1, head: 'c1', headOid: o1!, strategy })], {
-            onRebaseConflict: 'fail',
-          })
-          expect(r!.outcome.status).toBe('conflict')
-          expect(existsSync(rrCache()) ? readdirSync(rrCache()) : []).toEqual([])
-        },
-      )
-
-      test("a killed run's resolution, never accepted, is removed by the next run and not replayed", async () => {
-        const [o1, o2] = makeSiblings('k1', 'k2')
-        const ledgerDir = resolve(fx.worker.dir, fx.worker.git.gitCommonDir()!, 'pr-update-rerere')
-        // A child process runs the first PR in a worktree at a path of no particular shape, and
-        // kills itself with SIGKILL while verify runs: its merge commit has recorded the `bad`
-        // resolution, and nothing has accepted it.
-        const killed = spawnSync(
-          process.execPath,
-          [
-            join(import.meta.dirname, 'killed-run.child.ts'),
-            fx.worker.dir,
-            join(fx.worker.dir, 'some', 'where'),
-            'k1',
-            o1!,
-          ],
-          { encoding: 'utf8', timeout: 60_000 },
-        )
-        expect(
-          killed.signal,
-          JSON.stringify([killed.status, killed.error, killed.stdout, killed.stderr]),
-        ).toBe('SIGKILL')
-        // What a hard kill leaves: the ledger, named for the dead process, and its resolution.
-        const left = readdirSync(ledgerDir)
-        expect(left).toHaveLength(1)
-        expect(left[0]!.startsWith(`${killed.pid}.`)).toBe(true)
-        expect(postimages()).toHaveLength(1)
-
-        const good = fakeRepair(writeShared('good\n'))
-        const [second] = await updateAll(
-          fx.worker.git,
-          [target({ number: 2, head: 'k2', headOid: o2! })],
-          settings({ rerere: true, repair: good, repairOn: ['conflict'] }),
-          recorder(),
-          { apply: true, worktreeRoot: join(fx.worker.dir, 'another', 'place') },
-        )
-        expect(good.calls).toHaveLength(1)
-        expect(second!.outcome).toMatchObject({ status: 'updated', pushed: true })
-        expect(second!.outcome).not.toHaveProperty('replayed')
-        expect(readdirSync(ledgerDir)).toEqual([])
-        fx.worker.git.fetch('origin')
-        expect(fx.worker.git.showAtRev('origin/k2', 'shared.ts')).toBe('good\n')
-      })
-
-      test("the clone's own rerere.enabled=false does not turn it off", async () => {
-        makeSiblings('own1', 'own2')
-        fx.worker.git.raw(['config', 'rerere.enabled', 'false'])
-        const repair = fakeRepair(writeShared('both\n'))
-        await runAll([target({ number: 1, head: 'own1' }), target({ number: 2, head: 'own2' })], {
-          repair,
-          repairOn: ['conflict'],
-        })
-        expect(repair.calls.map((c) => c.pr)).toEqual([1])
       })
     })
   })
@@ -2449,44 +2016,48 @@ describe('isStalePush', () => {
 })
 
 describe('targetGitEnv', () => {
-  test('turns hooks and background maintenance off with no parent git config', () => {
+  test('turns hooks, rerere and background maintenance off with no parent git config', () => {
     expect(targetGitEnv({})).toEqual({
-      GIT_CONFIG_COUNT: '3',
+      GIT_CONFIG_COUNT: '4',
       GIT_CONFIG_KEY_0: 'core.hooksPath',
       GIT_CONFIG_VALUE_0: '/dev/null',
-      GIT_CONFIG_KEY_1: 'maintenance.auto',
+      GIT_CONFIG_KEY_1: 'rerere.enabled',
       GIT_CONFIG_VALUE_1: 'false',
-      GIT_CONFIG_KEY_2: 'gc.auto',
-      GIT_CONFIG_VALUE_2: '0',
+      GIT_CONFIG_KEY_2: 'maintenance.auto',
+      GIT_CONFIG_VALUE_2: 'false',
+      GIT_CONFIG_KEY_3: 'gc.auto',
+      GIT_CONFIG_VALUE_3: '0',
       GIT_CONFIG_PARAMETERS:
-        "'core.hooksPath'='/dev/null' 'maintenance.auto'='false' 'gc.auto'='0'",
+        "'core.hooksPath'='/dev/null' 'rerere.enabled'='false' 'maintenance.auto'='false' 'gc.auto'='0'",
     })
   })
 
   test('appends after the git config the parent already set, -c settings included', () => {
-    expect(targetGitEnv({ GIT_CONFIG_COUNT: '2', GIT_CONFIG_PARAMETERS: "'gc.auto'='1'" })).toEqual(
-      {
-        GIT_CONFIG_COUNT: '5',
-        GIT_CONFIG_KEY_2: 'core.hooksPath',
-        GIT_CONFIG_VALUE_2: '/dev/null',
-        GIT_CONFIG_KEY_3: 'maintenance.auto',
-        GIT_CONFIG_VALUE_3: 'false',
-        GIT_CONFIG_KEY_4: 'gc.auto',
-        GIT_CONFIG_VALUE_4: '0',
-        GIT_CONFIG_PARAMETERS:
-          "'gc.auto'='1' 'core.hooksPath'='/dev/null' 'maintenance.auto'='false' 'gc.auto'='0'",
-      },
-    )
+    expect(
+      targetGitEnv({ GIT_CONFIG_COUNT: '2', GIT_CONFIG_PARAMETERS: "'rerere.enabled'='true'" }),
+    ).toEqual({
+      GIT_CONFIG_COUNT: '6',
+      GIT_CONFIG_KEY_2: 'core.hooksPath',
+      GIT_CONFIG_VALUE_2: '/dev/null',
+      GIT_CONFIG_KEY_3: 'rerere.enabled',
+      GIT_CONFIG_VALUE_3: 'false',
+      GIT_CONFIG_KEY_4: 'maintenance.auto',
+      GIT_CONFIG_VALUE_4: 'false',
+      GIT_CONFIG_KEY_5: 'gc.auto',
+      GIT_CONFIG_VALUE_5: '0',
+      GIT_CONFIG_PARAMETERS:
+        "'rerere.enabled'='true' 'core.hooksPath'='/dev/null' 'rerere.enabled'='false' 'maintenance.auto'='false' 'gc.auto'='0'",
+    })
   })
 
   test('sets extra config after the rest, so a call can pass the whole set', () => {
-    const env = targetGitEnv({}, [['rerere.enabled', 'true']])
+    const env = targetGitEnv({}, [['user.name', 'x']])
     expect(env).toMatchObject({
-      GIT_CONFIG_COUNT: '4',
+      GIT_CONFIG_COUNT: '5',
       GIT_CONFIG_KEY_0: 'core.hooksPath',
-      GIT_CONFIG_KEY_3: 'rerere.enabled',
-      GIT_CONFIG_VALUE_3: 'true',
+      GIT_CONFIG_KEY_4: 'user.name',
+      GIT_CONFIG_VALUE_4: 'x',
     })
-    expect(env.GIT_CONFIG_PARAMETERS).toMatch(/'gc\.auto'='0' 'rerere\.enabled'='true'$/)
+    expect(env.GIT_CONFIG_PARAMETERS).toMatch(/'gc\.auto'='0' 'user\.name'='x'$/)
   })
 })

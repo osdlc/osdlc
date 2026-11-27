@@ -51,10 +51,4 @@ describe('prUpdateSection', () => {
       false,
     )
   })
-
-  test('rerere defaults to on and takes false', () => {
-    expect(prUpdateSection.schema.parse({}).rerere).toBe(true)
-    expect(prUpdateSection.schema.parse({ rerere: false }).rerere).toBe(false)
-    expect(prUpdateSection.schema.safeParse({ rerere: 'no' }).success).toBe(false)
-  })
 })

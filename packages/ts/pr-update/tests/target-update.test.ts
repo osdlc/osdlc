@@ -1530,24 +1530,14 @@ describe("git's rerere, by where a target is served from", () => {
   const cfg = { resolvers: [{ paths: ['shared.txt'], run: 'regen' }] }
   const rrCache = (): string => join(api.worker.dir, '.git', 'rr-cache')
 
-  test('a located checkout: nothing is recorded, and no rr-cache is made', async () => {
-    conflicting()
-    const out = await update({ cfg })
-    expect(out.results.map((r) => [r.status, r.pushed])).toEqual([['updated', true]])
-    expect(existsSync(rrCache())).toBe(false)
-  })
-
-  test('a managed clone: the resolution is recorded', async () => {
-    conflicting()
-    const out = await update({ cfg, source: 'clone' })
-    expect(out.results.map((r) => [r.status, r.pushed])).toEqual([['updated', true]])
-    expect(readdirSync(rrCache())).toHaveLength(1)
-  })
-
-  test('a managed clone with pr_update.rerere: false: nothing is recorded', async () => {
-    conflicting()
-    const out = await update({ cfg: { ...cfg, rerere: false }, source: 'clone' })
-    expect(out.results.map((r) => [r.status, r.pushed])).toEqual([['updated', true]])
-    expect(existsSync(rrCache())).toBe(false)
-  })
+  test.each(['located', 'clone'] as const)(
+    'a %s target: nothing is recorded, and no rr-cache is made',
+    async (source) => {
+      conflicting()
+      api.worker.git.raw(['config', 'rerere.enabled', 'true'])
+      const out = await update({ cfg, ...(source === 'clone' ? { source } : {}) })
+      expect(out.results.map((r) => [r.status, r.pushed])).toEqual([['updated', true]])
+      expect(existsSync(rrCache())).toBe(false)
+    },
+  )
 })

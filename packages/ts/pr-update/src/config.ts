@@ -104,17 +104,11 @@ export const prUpdateConfigSchema = z
       .describe(
         "Whether the update worktree gets the repository's git submodules. `auto` (default) runs `git submodule update --init --recursive` in it when it has a `.gitmodules`, after each PR's checkout and again when the update moved a submodule pointer or changed `.gitmodules`, so `verify` verbs, resolvers and `lockfile_install` find them. A failure is reported as `submodule setup failed: <detail>` and is not recorded as a failed attempt. It clones the URLs the PR's `.gitmodules` names (never over `file` or `ext`). `off` leaves submodules alone.",
       ),
-    rerere: z
-      .boolean()
-      .default(true)
-      .describe(
-        "Whether `update --apply` uses git's rerere in a managed clone, the only place it is used. On (default), a resolution a resolver or an accepted repair made there is kept when its PR is pushed, and a later conflict that is the same, in this run or a later one, is replayed instead of resolved again: a stack of sibling PRs that meet one conflict needs one resolution. A replayed path a resolver claims is still rebuilt; any other is reported in the result's `replayed`, and `verify` is its only check. The resolutions are kept in the clone's `rr-cache/`. In the project root and a located checkout, pr-update's merges and rebases always run with `rerere.enabled=false`, so your own `rr-cache/` and rerere config are never used and no `rr-cache/` is made there. `false` turns rerere off in clones too. A rehearsal never uses it.",
-      ),
     on_rebase_conflict: z
       .enum(['merge', 'fail', 'repair'])
       .default('merge')
       .describe(
-        'What a rebase does when it stops on a conflict the automatic rungs (rerere, see `rerere`; lockfile, resolvers, generators) cannot clear. The rungs run at every stop. `merge` (default) aborts the rebase and retries the PR as a merge, which resolves the conflict once and is where `repair` is offered it; the result then reports strategy `merge` with the reason. `fail` reports the PR as a conflict and calls no repair. `repair` calls `repair` (kind `conflict`) at the stop, then continues the rebase, for at most `repair.max_rebase_stops` stops; past that cap, or when a repair fails, it aborts the rebase and reports the PR as a conflict. It never falls back to a merge, so it suits a repository that refuses merge commits. It needs a configured repair with `conflict` in `repair.on`, and a rehearsal never calls it.',
+        'What a rebase does when it stops on a conflict the automatic rungs (lockfile, resolvers, generators) cannot clear. The rungs run at every stop. `merge` (default) aborts the rebase and retries the PR as a merge, which resolves the conflict once and is where `repair` is offered it; the result then reports strategy `merge` with the reason. `fail` reports the PR as a conflict and calls no repair. `repair` calls `repair` (kind `conflict`) at the stop, then continues the rebase, for at most `repair.max_rebase_stops` stops; past that cap, or when a repair fails, it aborts the rebase and reports the PR as a conflict. It never falls back to a merge, so it suits a repository that refuses merge commits. It needs a configured repair with `conflict` in `repair.on`, and a rehearsal never calls it.',
       ),
     lockfile_install: z
       .string()
