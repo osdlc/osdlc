@@ -71,6 +71,11 @@ describe('ignorePaths and coveredBy', () => {
 
   test('~ is home, a relative entry starts at cwd, and a link into an ignored directory is covered', () => {
     expect(expandHome('~/x', () => '/home/me')).toBe('/home/me/x')
+    // On Windows `~\x` is one too, so such an ignore entry covers the folder it names.
+    expect(expandHome('~\\dev\\keep', () => 'C:\\Users\\me', 'win32')).toBe(
+      'C:\\Users\\me\\dev\\keep',
+    )
+    expect(expandHome('~\\x', () => '/home/me', 'linux')).toBe('~\\x')
     expect(ignorePaths(['~/x', 'y'], '/work', () => '/home/me')).toEqual(['/home/me/x', '/work/y'])
     const root = temp()
     mkdirSync(join(root, 'real'))
