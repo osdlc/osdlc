@@ -9,7 +9,7 @@ agent fix what broke, and pushes. This page follows `pr-update update --apply`
 through the calls the code makes. It was mapped from the source at
 `f5456df2`, not from the other docs; where the two disagreed, the code won and
 the disagreement is listed under [Known problems](#known-problems). Its line
-references were brought up to date in S13, at `8b5404f40`.
+references were brought up to date in S13, at `9980190bf`.
 
 File and line references are relative to `src/`.
 
@@ -196,7 +196,7 @@ Paths are the macOS and Linux defaults with no variable set.
 
 ## Modules
 
-Lines in S13 (`8b5404f40`), against `main` at `88112cb4`, which does not have
+Lines in S13 (`9980190bf`), against `main` at `88112cb4`, which does not have
 the clone-cache work. In total `src/` went from 6,583 lines to 13,129. Files not listed (`detect.ts`, `devlink.ts`, `real-path.ts`,
 `repair/names.ts`, `update/confirm.ts`, `version.generated.ts`) are small
 helpers.
@@ -226,7 +226,7 @@ are no import cycles.
 
 Items 1–19 were found while mapping the flow at `f5456df2`; 20–25 in the
 final check of S12; 26–32 in S13, after the CI review of the omnibus at
-`dbdb5d6e`. The open items give lines at `8b5404f40`; the fixed ones keep the
+`dbdb5d6e`. The open items give lines at `9980190bf`; the fixed ones keep the
 lines where the problem was. Those marked fixed were fixed in the commit
 named: S12's, or S13's.
 
