@@ -41,7 +41,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 
 import {
@@ -1036,8 +1036,8 @@ export function targetGitEnv(
  *
  * - `rerere.enabled=true`: at a conflict git replays a resolution recorded earlier for the same
  *   conflict, and at the commit it records the one pr-update made. It is kept only if the PR is
- *   updated (`dropNewResolutions`). So a stack of sibling PRs that
- *   meet one conflict needs it resolved once, by a resolver or a repair, not once per PR.
+ *   updated (`dropNewResolutions`). So a stack of sibling PRs that meet one conflict needs it
+ *   resolved once, by a resolver or a repair, not once per PR.
  * - `rerere.autoUpdate=true`: a replayed path is staged, so it is not listed as conflicted and
  *   no resolver or repair is asked about it. The replayed content still goes through verify.
  *
@@ -1062,24 +1062,24 @@ function integrationEnv(settings: UpdateSettings, apply: boolean): Record<string
   )
 }
 
-/** A conflict rerere tracks: its folder in `rr-cache/`, and the resolutions in it when read. */
+/**
+ * A conflict rerere tracks in one worktree: the `postimage` file its resolution is recorded in,
+ * and whether that file was there when read (a resolution recorded earlier, which git replays).
+ */
 interface RerereTracked {
-  dir: string
-  had: ReadonlySet<string>
-}
-
-/** The `postimage` files in a conflict's `rr-cache/` folder: one per resolution recorded. */
-function postimagesIn(dir: string): string[] {
-  try {
-    return readdirSync(dir).filter((f) => f.startsWith('postimage'))
-  } catch {
-    return []
-  }
+  postimage: string
+  had: boolean
 }
 
 /**
  * The conflicts rerere tracks in `git`'s worktree now, from its `MERGE_RR` (`<id>\t<path>`
  * entries, NUL-separated, written while a merge or rebase stops). Empty when rerere is off.
+ *
+ * One conflict can have several variants in `rr-cache/<id>/`, one per preimage: git gives a
+ * conflict a variant of its own while another checkout's preimage of it has no resolution yet.
+ * `MERGE_RR` names variant 0 `<id>`, recorded in `postimage`, and variant n `<id>.<n>`, recorded
+ * in `postimage.<n>`. Only this worktree's variant is tracked, so a resolution the person records
+ * for the same conflict in their own checkout meanwhile is never taken for pr-update's.
  */
 function rerereTracked(git: Git): RerereTracked[] {
   let mergeRr: string
@@ -1099,9 +1099,10 @@ function rerereTracked(git: Git): RerereTracked[] {
     .split('\0')
     .filter((entry) => entry.includes('\t'))
     .map((entry) => {
-      // `<id>.<n>` names the n-th variant of a conflict; the folder is `<id>`.
-      const dir = join(cache, entry.slice(0, entry.indexOf('\t')).split('.')[0]!)
-      return { dir, had: new Set(postimagesIn(dir)) }
+      const [id, variant] = entry.slice(0, entry.indexOf('\t')).split('.')
+      const name = variant === undefined ? 'postimage' : `postimage.${variant}`
+      const postimage = join(cache, id!, name)
+      return { postimage, had: existsSync(postimage) }
     })
 }
 
@@ -1109,17 +1110,16 @@ function rerereTracked(git: Git): RerereTracked[] {
  * Remove each resolution recorded for `tracked` since it was read: one pr-update did not accept.
  * A resolution is accepted only when its PR is updated, so this runs for a repair pr-update
  * rejected, a rebase it abandoned, and a PR that failed or conflicted after its resolutions were
- * committed (verify rejected them, say). A repair that commits, or runs `rebase --continue`, is
- * rejected for moving HEAD, but git has already recorded its resolution, since rerere is on for
- * any git in a repository with an `rr-cache/`. `git rerere forget` cannot clear any of these: it
- * needs the conflict still in the index. A resolution another run recorded for the same conflict
- * meanwhile goes too, and is recorded again the next time.
+ * committed (verify rejected them, say). A repair that
+ * commits, or runs `rebase --continue`, is rejected for moving HEAD, but git has already recorded
+ * its resolution, since rerere is on for any git in a repository with an `rr-cache/`.
+ * `git rerere forget` cannot clear any of these: it needs the conflict still in the index. Only
+ * the variant this worktree recorded goes (see {@link rerereTracked}), and only when it was not
+ * there before.
  */
 function dropNewResolutions(tracked: readonly RerereTracked[]): void {
-  for (const { dir, had } of tracked) {
-    for (const file of postimagesIn(dir)) {
-      if (!had.has(file)) rmSync(join(dir, file), { force: true })
-    }
+  for (const { postimage, had } of tracked) {
+    if (!had) rmSync(postimage, { force: true })
   }
 }
 

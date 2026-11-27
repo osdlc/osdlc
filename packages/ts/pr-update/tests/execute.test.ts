@@ -1535,6 +1535,43 @@ describe('the executor against real git', () => {
         },
       )
 
+      test("a person's own resolution recorded meanwhile stays when the PR fails", async () => {
+        const [, o2] = makeSiblings('p1', 'p2')
+        const { git } = fx.worker
+        git.raw(['config', 'rerere.enabled', 'true'])
+        // The person's own merge in their checkout stops at the same conflict. Its preimage is
+        // variant 0, with no resolution yet, so git records pr-update's in variant 1.
+        git.checkout('origin/p1', { branch: 'mine', noTrack: true })
+        expect(git.raw(['merge', 'origin/main']).exitCode).toBe(1)
+        let during: string[] = []
+        let committed = -1
+        const verify: RunVerb = () => {
+          // While verify runs, the person commits their own resolution.
+          writeFileSync(join(fx.worker.dir, 'shared.ts'), 'mine\n')
+          git.raw(['add', 'shared.ts'])
+          committed = git.raw(['commit', '--no-edit', '--no-verify']).exitCode
+          during = postimages()
+          return nope
+        }
+        const [out] = await updateAll(
+          git,
+          [target({ number: 2, head: 'p2', headOid: o2! })],
+          settings({
+            repair: fakeRepair(writeShared('bad\n')),
+            repairOn: ['conflict'],
+            verifyVerbs: ['check'],
+          }),
+          verify,
+          { apply: true, worktreeRoot: wtRoot },
+        )
+        expect(committed).toBe(0)
+        expect(during).toHaveLength(2)
+        expect(out!.outcome.status).toBe('failed')
+        const left = postimages()
+        expect(left).toHaveLength(1)
+        expect(readFileSync(join(rrCache(), left[0]!), 'utf8')).toBe('mine\n')
+      })
+
       test('a rebase aborted after a repaired stop leaves nothing a later PR replays', async () => {
         const { git } = fx.worker
         git.checkout('main', { branch: 'two' })
