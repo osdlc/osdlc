@@ -1,4 +1,4 @@
-# host-cleaner: the plan from the first version to tier 3
+# workstation-cleaner: the plan from the first version to tier 3
 
 Status: approved in review, 2026-11-22. It builds `docs/architecture/host-cleaner-system.md`. Each task has an issue;
 the tracking issue is #669.
@@ -35,8 +35,8 @@ flowchart LR
   k_cost["costDescription as a core candidate field (D8)"]
   k_overlap["Same id or same real path is one candidate (D1)"]
   k_kit["The plugin kit; cargo and node rebuilt on it (D4"]
-  k_testing["@osdlc/host-cleaner/testing with a contract suit"]
-  k_plugins_cmd["host-cleaner plugins (D6)"]
+  k_testing["@osdlc/workstation-cleaner/testing with a contract suit"]
+  k_plugins_cmd["workstation-cleaner plugins (D6)"]
   k_docs["Docs pass, and the system description lands in t"]
   k_rename["Rename the package, bin, folders and env vars"]
   k_release1["Release 1: drop private, changeset, publish"]
@@ -57,7 +57,7 @@ flowchart LR
   k_plugins_vars["plugins shows each variable, its value and its s"]
   k_stores2["Variable sources for the eight stores; Go ships"]
   k_release3["Release 3"]
-  k_public_api["The public plugin entry: @osdlc/host-cleaner/plu"]
+  k_public_api["The public plugin entry: @osdlc/workstation-cleaner/plu"]
   k_loader["Load packages named in config"]
   k_example["An example plugin package (Podman volumes)"]
   k_release4["Release 4"]
@@ -218,8 +218,8 @@ it doesn't assume the review that produced it.
 | k-cost (#1026): costDescription as a core candidate field (D8) | p2 | k-ref | one contract PR | S |
 | k-overlap (#1027): Same id or same real path is one candidate (D1) | p2 | k-ref | one contract PR | S |
 | k-kit (#1028): The plugin kit; cargo and node rebuilt on it (D4, D11) | p2 | k-define, k-cost | one contract PR | L |
-| k-testing (#1029): @osdlc/host-cleaner/testing with a contract suite (D9) | p2 | k-kit | one contract PR | M |
-| k-plugins-cmd (#1030): host-cleaner plugins (D6) | p3 | k-define | new | S |
+| k-testing (#1029): @osdlc/workstation-cleaner/testing with a contract suite (D9) | p2 | k-kit | one contract PR | M |
+| k-plugins-cmd (#1030): workstation-cleaner plugins (D6) | p3 | k-define | new | S |
 | k-docs (#1031): Docs pass, and the system description lands in the repo | p3 | Phase 1 merged, k-plugins-cmd | new | M |
 | k-rename (#1032): Rename the package, bin, folders and env vars | p3 | A name chosen | new | S |
 | k-release1 (#1033): Release 1: drop private, changeset, publish | p3 | k-rename, k-docs, k-testing | new | S |
@@ -240,7 +240,7 @@ it doesn't assume the review that produced it.
 | k-plugins-vars (#1048): plugins shows each variable, its value and its source | p5 | k-vars, k-plugins-cmd | new | S |
 | k-stores2 (#1049): Variable sources for the eight stores; Go ships | p5 | k-vars, k-stores1 | new | M |
 | k-release3 (#1050): Release 3 | p5 | k-release2, k-stores2, k-plugins-vars | new | S |
-| k-public-api (#1051): The public plugin entry: @osdlc/host-cleaner/plugin | p6 | k-testing | new | S |
+| k-public-api (#1051): The public plugin entry: @osdlc/workstation-cleaner/plugin | p6 | k-testing | new | S |
 | k-loader (#1052): Load packages named in config | p6 | k-public-api, k-load | new | M |
 | k-example (#1053): An example plugin package (Podman volumes) | p6 | k-loader | new | M |
 | k-release4 (#1054): Release 4 | p6 | k-release3, k-loader, k-example | new | S |
@@ -313,19 +313,19 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/config.ts`
-- `packages/ts/host-cleaner/src/cli.ts`
-- `packages/ts/host-cleaner/src/registry.ts`
-- `packages/ts/host-cleaner/src/run.ts`
-- `packages/ts/host-cleaner/src/settings.ts`
-- `packages/ts/host-cleaner/src/claude.ts`
-- `packages/ts/host-cleaner/tests/profiles.test.ts`
-- `packages/ts/host-cleaner/tests/claude.test.ts`
-- `packages/ts/host-cleaner/README.md`
+- `packages/ts/workstation-cleaner/src/config.ts`
+- `packages/ts/workstation-cleaner/src/cli.ts`
+- `packages/ts/workstation-cleaner/src/registry.ts`
+- `packages/ts/workstation-cleaner/src/run.ts`
+- `packages/ts/workstation-cleaner/src/settings.ts`
+- `packages/ts/workstation-cleaner/src/claude.ts`
+- `packages/ts/workstation-cleaner/tests/profiles.test.ts`
+- `packages/ts/workstation-cleaner/tests/claude.test.ts`
+- `packages/ts/workstation-cleaner/README.md`
 
 Done when:
 
-- `host-cleaner --profile x status` is an unknown option.
+- `workstation-cleaner --profile x status` is an unknown option.
 - No `claude` in `src/`.
 - Tests, lint and typecheck pass.
 
@@ -333,22 +333,22 @@ Gate: k-1009. PR: new. Size: M.
 
 #### k-xdg (#1018): Use the xdg folders on every OS (D5)
 
-`~/.config/host-cleaner` and `~/.local/state/host-cleaner` on macOS too.
+`~/.config/workstation-cleaner` and `~/.local/state/workstation-cleaner` on macOS too.
 
 What:
 
-- Pass the `xdg` convention to `systemDirs(...).standalone('host-cleaner')`.
-- Keep `HOST_CLEANER_ROOT` and the `HOST_CLEANER_*_DIR` overrides.
+- Pass the `xdg` convention to `systemDirs(...).standalone('workstation-cleaner')`.
+- Keep `WORKSTATION_CLEANER_ROOT` and the `WORKSTATION_CLEANER_*_DIR` overrides.
 - README: the folder table.
 
 Files:
 
-- `packages/ts/host-cleaner/src/config.ts`
-- `packages/ts/host-cleaner/README.md`
+- `packages/ts/workstation-cleaner/src/config.ts`
+- `packages/ts/workstation-cleaner/README.md`
 
 Done when:
 
-- On macOS, `host-cleaner config` prints `~/.config/host-cleaner/config.json`.
+- On macOS, `workstation-cleaner config` prints `~/.config/workstation-cleaner/config.json`.
 - Linux paths unchanged.
 
 Gate: k-trim (same file). PR: new. Size: S. Assumes: D5 = xdg.
@@ -367,9 +367,9 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/orca.ts`
-- `packages/ts/host-cleaner/tests/orca.test.ts`
-- `packages/ts/host-cleaner/README.md`
+- `packages/ts/workstation-cleaner/src/orca.ts`
+- `packages/ts/workstation-cleaner/tests/orca.test.ts`
+- `packages/ts/workstation-cleaner/README.md`
 
 Done when:
 
@@ -390,10 +390,10 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/plan.ts`
-- `packages/ts/host-cleaner/src/settings.ts`
-- `packages/ts/host-cleaner/src/cli.ts`
-- `packages/ts/host-cleaner/README.md`
+- `packages/ts/workstation-cleaner/src/plan.ts`
+- `packages/ts/workstation-cleaner/src/settings.ts`
+- `packages/ts/workstation-cleaner/src/cli.ts`
+- `packages/ts/workstation-cleaner/README.md`
 
 Done when:
 
@@ -413,9 +413,9 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/cli.ts`
-- `packages/ts/host-cleaner/src/git.ts`
-- `packages/ts/host-cleaner/README.md`
+- `packages/ts/workstation-cleaner/src/cli.ts`
+- `packages/ts/workstation-cleaner/src/git.ts`
+- `packages/ts/workstation-cleaner/README.md`
 
 Done when:
 
@@ -425,7 +425,7 @@ Gate: k-1009. PR: new. Size: S.
 
 #### k-sizeof (#1022): Use repo-cleaner's `sizeOf`
 
-Drop host-cleaner's own folder-size code.
+Drop workstation-cleaner's own folder-size code.
 
 What:
 
@@ -433,7 +433,7 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/artifacts.ts`
+- `packages/ts/workstation-cleaner/src/artifacts.ts`
 
 Done when:
 
@@ -463,12 +463,12 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/types.ts`
-- `packages/ts/host-cleaner/src/run.ts`
-- `packages/ts/host-cleaner/src/cli.ts`
-- `packages/ts/host-cleaner/src/index.ts`
+- `packages/ts/workstation-cleaner/src/types.ts`
+- `packages/ts/workstation-cleaner/src/run.ts`
+- `packages/ts/workstation-cleaner/src/cli.ts`
+- `packages/ts/workstation-cleaner/src/index.ts`
 - `every plugin file (types only)`
-- `packages/ts/host-cleaner/tests/run.test.ts`
+- `packages/ts/workstation-cleaner/tests/run.test.ts`
 
 Done when:
 
@@ -490,13 +490,13 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/registry.ts`
-- `packages/ts/host-cleaner/src/settings.ts`
-- `packages/ts/host-cleaner/src/run.ts`
-- `packages/ts/host-cleaner/src/git.ts`
-- `packages/ts/host-cleaner/src/cargo.ts`
-- `packages/ts/host-cleaner/src/node.ts`
-- `packages/ts/host-cleaner/src/orca.ts`
+- `packages/ts/workstation-cleaner/src/registry.ts`
+- `packages/ts/workstation-cleaner/src/settings.ts`
+- `packages/ts/workstation-cleaner/src/run.ts`
+- `packages/ts/workstation-cleaner/src/git.ts`
+- `packages/ts/workstation-cleaner/src/cargo.ts`
+- `packages/ts/workstation-cleaner/src/node.ts`
+- `packages/ts/workstation-cleaner/src/orca.ts`
 
 Done when:
 
@@ -516,15 +516,15 @@ What:
 - Remove the skip at run.ts:129: a plugin with no `roots` is held to the targets.
 - Re-check containment on the real path right before delete.
 - Ids stay `<kind>:<path>`; `status` shows them with `~`, and `--pick` and `--spare` accept that form.
-- host-cleaner refuses to start as root.
+- workstation-cleaner refuses to start as root.
 
 Files:
 
-- `packages/ts/host-cleaner/src/types.ts`
-- `packages/ts/host-cleaner/src/run.ts`
-- `packages/ts/host-cleaner/src/git.ts`
-- `packages/ts/host-cleaner/src/orca.ts`
-- `packages/ts/host-cleaner/src/plan.ts`
+- `packages/ts/workstation-cleaner/src/types.ts`
+- `packages/ts/workstation-cleaner/src/run.ts`
+- `packages/ts/workstation-cleaner/src/git.ts`
+- `packages/ts/workstation-cleaner/src/orca.ts`
+- `packages/ts/workstation-cleaner/src/plan.ts`
 
 Done when:
 
@@ -545,9 +545,9 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/types.ts`
-- `packages/ts/host-cleaner/src/run.ts`
-- `packages/ts/host-cleaner/src/cli.ts`
+- `packages/ts/workstation-cleaner/src/types.ts`
+- `packages/ts/workstation-cleaner/src/run.ts`
+- `packages/ts/workstation-cleaner/src/cli.ts`
 
 Done when:
 
@@ -566,8 +566,8 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/run.ts`
-- `packages/ts/host-cleaner/tests/run.test.ts`
+- `packages/ts/workstation-cleaner/src/run.ts`
+- `packages/ts/workstation-cleaner/tests/run.test.ts`
 
 Done when:
 
@@ -578,7 +578,7 @@ Gate: k-ref. PR: one contract PR. Size: S. Assumes: D1 = path.
 
 #### k-kit (#1028): The plugin kit; cargo and node rebuilt on it (D4, D11)
 
-The helpers host-cleaner already has, exported from host-cleaner and bound to the plugin's roots and ctx.signal: idle, remove, running, onPath, candidate and run. A walk that runs out of time gives an `unmeasured` protest.
+The helpers workstation-cleaner already has, exported from workstation-cleaner and bound to the plugin's roots and ctx.signal: idle, remove, running, onPath, candidate and run. A walk that runs out of time gives an `unmeasured` protest.
 
 What:
 
@@ -591,11 +591,11 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/kit.ts (new)`
-- `packages/ts/host-cleaner/src/artifacts.ts`
-- `packages/ts/host-cleaner/src/cargo.ts`
-- `packages/ts/host-cleaner/src/node.ts`
-- `packages/ts/host-cleaner/src/roots.ts`
+- `packages/ts/workstation-cleaner/src/kit.ts (new)`
+- `packages/ts/workstation-cleaner/src/artifacts.ts`
+- `packages/ts/workstation-cleaner/src/cargo.ts`
+- `packages/ts/workstation-cleaner/src/node.ts`
+- `packages/ts/workstation-cleaner/src/roots.ts`
 - `packages/ts/repo-cleaner/src/processes.ts (read only)`
 - `packages/ts/repo-cleaner/src/size.ts (read only)`
 
@@ -606,7 +606,7 @@ Done when:
 
 Gate: k-define, k-cost. PR: one contract PR. Size: L. Assumes: D4 = yes, D11 = protest.
 
-#### k-testing (#1029): @osdlc/host-cleaner/testing with a contract suite (D9)
+#### k-testing (#1029): @osdlc/workstation-cleaner/testing with a contract suite (D9)
 
 fakeContext, fakeRunner, tempHome and contractSuite; every built-in runs the suite.
 
@@ -618,9 +618,9 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/testing.ts (new)`
-- `packages/ts/host-cleaner/package.json`
-- `packages/ts/host-cleaner/tests/*`
+- `packages/ts/workstation-cleaner/src/testing.ts (new)`
+- `packages/ts/workstation-cleaner/package.json`
+- `packages/ts/workstation-cleaner/tests/*`
 
 Done when:
 
@@ -637,7 +637,7 @@ Runs beside phase 4. Ships the first version under its new name.
 
 ### Command
 
-#### k-plugins-cmd (#1030): host-cleaner plugins (D6)
+#### k-plugins-cmd (#1030): workstation-cleaner plugins (D6)
 
 Each plugin's source, detected or why not, and its roots. Variables are added in phase 5.
 
@@ -648,9 +648,9 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/cli.ts`
-- `packages/ts/host-cleaner/src/run.ts`
-- `packages/ts/host-cleaner/README.md`
+- `packages/ts/workstation-cleaner/src/cli.ts`
+- `packages/ts/workstation-cleaner/src/run.ts`
+- `packages/ts/workstation-cleaner/README.md`
 
 Done when:
 
@@ -671,16 +671,16 @@ What:
 - Rewrite the architecture doc.
 - `packages/README.md:34`: descriptors not built yet (until phase 4).
 - README: Orca refusal, --archive, plugins, xdg.
-- Check in the system description under host-cleaner's docs.
+- Check in the system description under workstation-cleaner's docs.
 - B-0002: root-only stores (APT, pacman, Snap), as promised in round 1.
 - Close #951.
 
 Files:
 
 - `docs/decisions/D-L7N5-host-cleaner.md`
-- `packages/ts/host-cleaner/docs/`
+- `packages/ts/workstation-cleaner/docs/`
 - `packages/README.md`
-- `packages/ts/host-cleaner/README.md`
+- `packages/ts/workstation-cleaner/README.md`
 
 Done when:
 
@@ -696,16 +696,16 @@ Mechanical, once the name exists. The name is one constant.
 
 What:
 
-- Package name, bin, `standalone(...)` folder name, `HOST_CLEANER_*` env vars, docs, the descriptor schema URL.
+- Package name, bin, `standalone(...)` folder name, `WORKSTATION_CLEANER_*` env vars, docs, the descriptor schema URL.
 
 Files:
 
-- `packages/ts/host-cleaner/`
+- `packages/ts/workstation-cleaner/`
 - `docs`
 
 Done when:
 
-- No `host-cleaner` left except a changelog line.
+- No `workstation-cleaner` left except a changelog line.
 
 Gate: A name chosen. PR: new. Size: S.
 
@@ -719,7 +719,7 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/package.json`
+- `packages/ts/workstation-cleaner/package.json`
 - `.changeset/`
 
 Done when:
@@ -732,7 +732,7 @@ Gate: k-rename, k-docs, k-testing. PR: new. Size: S.
 
 **Gate:** k-testing merged
 
-All seven chosen in review. Each is a code plugin inside host-cleaner on the phase 2 contract, independent of the others except cursor on vscode. Each ships in the next release after it merges.
+All seven chosen in review. Each is a code plugin inside workstation-cleaner on the phase 2 contract, independent of the others except cursor on vscode. Each ships in the next release after it merges.
 
 ### Editors
 
@@ -749,10 +749,10 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/vscode.ts (new)`
-- `packages/ts/host-cleaner/src/registry.ts`
-- `packages/ts/host-cleaner/tests/vscode.test.ts (new)`
-- `packages/ts/host-cleaner/README.md`
+- `packages/ts/workstation-cleaner/src/vscode.ts (new)`
+- `packages/ts/workstation-cleaner/src/registry.ts`
+- `packages/ts/workstation-cleaner/tests/vscode.test.ts (new)`
+- `packages/ts/workstation-cleaner/README.md`
 
 Done when:
 
@@ -772,9 +772,9 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/vscode.ts`
-- `packages/ts/host-cleaner/src/registry.ts`
-- `packages/ts/host-cleaner/tests/vscode.test.ts`
+- `packages/ts/workstation-cleaner/src/vscode.ts`
+- `packages/ts/workstation-cleaner/src/registry.ts`
+- `packages/ts/workstation-cleaner/tests/vscode.test.ts`
 
 Done when:
 
@@ -795,9 +795,9 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/jetbrains.ts (new)`
-- `packages/ts/host-cleaner/src/registry.ts`
-- `packages/ts/host-cleaner/tests/jetbrains.test.ts (new)`
+- `packages/ts/workstation-cleaner/src/jetbrains.ts (new)`
+- `packages/ts/workstation-cleaner/src/registry.ts`
+- `packages/ts/workstation-cleaner/tests/jetbrains.test.ts (new)`
 
 Done when:
 
@@ -821,9 +821,9 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/docker.ts (new)`
-- `packages/ts/host-cleaner/src/registry.ts`
-- `packages/ts/host-cleaner/tests/docker.test.ts (new)`
+- `packages/ts/workstation-cleaner/src/docker.ts (new)`
+- `packages/ts/workstation-cleaner/src/registry.ts`
+- `packages/ts/workstation-cleaner/tests/docker.test.ts (new)`
 
 Done when:
 
@@ -843,9 +843,9 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/ollama.ts (new)`
-- `packages/ts/host-cleaner/src/registry.ts`
-- `packages/ts/host-cleaner/tests/ollama.test.ts (new)`
+- `packages/ts/workstation-cleaner/src/ollama.ts (new)`
+- `packages/ts/workstation-cleaner/src/registry.ts`
+- `packages/ts/workstation-cleaner/tests/ollama.test.ts (new)`
 
 Done when:
 
@@ -867,9 +867,9 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/toolchains.ts (new)`
-- `packages/ts/host-cleaner/src/registry.ts`
-- `packages/ts/host-cleaner/tests/toolchains.test.ts (new)`
+- `packages/ts/workstation-cleaner/src/toolchains.ts (new)`
+- `packages/ts/workstation-cleaner/src/registry.ts`
+- `packages/ts/workstation-cleaner/tests/toolchains.test.ts (new)`
 
 Done when:
 
@@ -892,9 +892,9 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/agent-history.ts (new)`
-- `packages/ts/host-cleaner/src/registry.ts`
-- `packages/ts/host-cleaner/tests/agent-history.test.ts (new)`
+- `packages/ts/workstation-cleaner/src/agent-history.ts (new)`
+- `packages/ts/workstation-cleaner/src/registry.ts`
+- `packages/ts/workstation-cleaner/tests/agent-history.test.ts (new)`
 
 Done when:
 
@@ -923,9 +923,9 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/descriptor/schema.ts (new)`
-- `packages/ts/host-cleaner/schemas/descriptor-1.json (new)`
-- `packages/ts/host-cleaner/package.json`
+- `packages/ts/workstation-cleaner/src/descriptor/schema.ts (new)`
+- `packages/ts/workstation-cleaner/schemas/descriptor-1.json (new)`
+- `packages/ts/workstation-cleaner/package.json`
 
 Done when:
 
@@ -940,11 +940,11 @@ Reads #992's corpus and writes one draft per store. Never sets `idleHours` or `r
 
 What:
 
-- A script in host-cleaner that maps corpus fields to descriptor fields (the mapping table in the system description).
+- A script in workstation-cleaner that maps corpus fields to descriptor fields (the mapping table in the system description).
 
 Files:
 
-- `packages/ts/host-cleaner/scripts/draft-descriptor.ts (new)`
+- `packages/ts/workstation-cleaner/scripts/draft-descriptor.ts (new)`
 - `packages/corpora/system-cleanup-reference/ (read only)`
 
 Done when:
@@ -965,11 +965,11 @@ What:
 - `removes: unused` with no program on PATH: listed with a `no-prune-tool` protest; `--allow no-prune-tool` removes the folder with the idle check (D12). `removes: all`: falls back to removing the folder.
 - Commands run from home, and every command names the checked folder through `{path}` or an `env` entry; one that names neither fails the schema (D13).
 - `system: true`: skipped with a note.
-- Path checks: strictly inside home; refused `outside-roots` when it is home itself, a personal folder (`~/Documents`, `~/Library`, `~/.ssh`, `~/.config` and the rest in the system description), a target or checkout or contains one, or contains host-cleaner's own folders.
+- Path checks: strictly inside home; refused `outside-roots` when it is home itself, a personal folder (`~/Documents`, `~/Library`, `~/.ssh`, `~/.config` and the rest in the system description), a target or checkout or contains one, or contains workstation-cleaner's own folders.
 
 Files:
 
-- `packages/ts/host-cleaner/src/descriptor/engine.ts (new)`
+- `packages/ts/workstation-cleaner/src/descriptor/engine.ts (new)`
 
 Done when:
 
@@ -990,10 +990,10 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/descriptor/load.ts (new)`
-- `packages/ts/host-cleaner/src/registry.ts`
-- `packages/ts/host-cleaner/src/cli.ts`
-- `packages/ts/host-cleaner/src/config.ts`
+- `packages/ts/workstation-cleaner/src/descriptor/load.ts (new)`
+- `packages/ts/workstation-cleaner/src/registry.ts`
+- `packages/ts/workstation-cleaner/src/cli.ts`
+- `packages/ts/workstation-cleaner/src/config.ts`
 
 Done when:
 
@@ -1016,8 +1016,8 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/descriptors/*.yaml (new)`
-- `packages/ts/host-cleaner/tests/descriptors/*`
+- `packages/ts/workstation-cleaner/descriptors/*.yaml (new)`
+- `packages/ts/workstation-cleaner/tests/descriptors/*`
 
 Done when:
 
@@ -1036,7 +1036,7 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/README.md`
+- `packages/ts/workstation-cleaner/README.md`
 - `.changeset/`
 
 Done when:
@@ -1066,9 +1066,9 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/descriptor/vars.ts (new)`
-- `packages/ts/host-cleaner/src/descriptor/schema.ts`
-- `packages/ts/host-cleaner/src/descriptor/engine.ts`
+- `packages/ts/workstation-cleaner/src/descriptor/vars.ts (new)`
+- `packages/ts/workstation-cleaner/src/descriptor/schema.ts`
+- `packages/ts/workstation-cleaner/src/descriptor/engine.ts`
 
 Done when:
 
@@ -1086,7 +1086,7 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/cli.ts`
+- `packages/ts/workstation-cleaner/src/cli.ts`
 
 Done when:
 
@@ -1106,7 +1106,7 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/descriptors/*.yaml`
+- `packages/ts/workstation-cleaner/descriptors/*.yaml`
 
 Done when:
 
@@ -1124,7 +1124,7 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/README.md`
+- `packages/ts/workstation-cleaner/README.md`
 - `.changeset/`
 
 Done when:
@@ -1141,7 +1141,7 @@ Release 4. Packages named in your config are loaded as plugins, with the same ki
 
 ### Loading
 
-#### k-public-api (#1051): The public plugin entry: @osdlc/host-cleaner/plugin
+#### k-public-api (#1051): The public plugin entry: @osdlc/workstation-cleaner/plugin
 
 definePlugin, the kit, the types, `z`, and the `api` version; a guide to writing a code plugin.
 
@@ -1152,9 +1152,9 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/plugin.ts (new)`
-- `packages/ts/host-cleaner/package.json`
-- `packages/ts/host-cleaner/docs/`
+- `packages/ts/workstation-cleaner/src/plugin.ts (new)`
+- `packages/ts/workstation-cleaner/package.json`
+- `packages/ts/workstation-cleaner/docs/`
 
 Done when:
 
@@ -1164,7 +1164,7 @@ Gate: k-testing. PR: new. Size: S.
 
 #### k-loader (#1052): Load packages named in config
 
-`plugins.<name>.package`; resolved beside host-cleaner, then the global prefix; name and api checked.
+`plugins.<name>.package`; resolved beside workstation-cleaner, then the global prefix; name and api checked.
 
 What:
 
@@ -1177,10 +1177,10 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/src/load.ts (new)`
-- `packages/ts/host-cleaner/src/registry.ts`
-- `packages/ts/host-cleaner/src/settings.ts`
-- `packages/ts/host-cleaner/src/cli.ts`
+- `packages/ts/workstation-cleaner/src/load.ts (new)`
+- `packages/ts/workstation-cleaner/src/registry.ts`
+- `packages/ts/workstation-cleaner/src/settings.ts`
+- `packages/ts/workstation-cleaner/src/cli.ts`
 
 Done when:
 
@@ -1194,11 +1194,11 @@ The tier 3 example from the system description: uses refs and `costDescription: 
 
 What:
 
-- In host-cleaner's `examples/`, not published.
+- In workstation-cleaner's `examples/`, not published.
 
 Files:
 
-- `packages/ts/host-cleaner/examples/podman-plugin/ (new)`
+- `packages/ts/workstation-cleaner/examples/podman-plugin/ (new)`
 
 Done when:
 
@@ -1216,7 +1216,7 @@ What:
 
 Files:
 
-- `packages/ts/host-cleaner/README.md`
+- `packages/ts/workstation-cleaner/README.md`
 - `.changeset/`
 
 Done when:
@@ -1238,7 +1238,7 @@ Gate: k-release3, k-loader, k-example. PR: new. Size: S.
 | A timed-out hook keeps running | JavaScript can't kill synchronous work. | The core stops waiting. Plugins pass `ctx.signal` on; the kit's `run` kills the child process. |
 | Maven's folder is set in settings.xml | XML isn't a file source. | Default folder in tier 1. In tier 2, a `mvn help:evaluate` command source with a longer timeout, or leave it at the default. |
 | Tool layouts change | VS Code, JetBrains and Claude Code change their folders without notice. | Each built-in checks for the layout it knows and skips anything else with a note; fixture tests per layout. |
-| Loaded plugins run code | A package could delete anything. | Only packages your config names, installed beside host-cleaner; the core still checks containment before every delete. |
+| Loaded plugins run code | A package could delete anything. | Only packages your config names, installed beside workstation-cleaner; the core still checks containment before every delete. |
 
 ## Plan questions, as answered
 

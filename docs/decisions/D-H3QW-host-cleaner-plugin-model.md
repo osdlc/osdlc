@@ -1,5 +1,7 @@
 # D-H3QW: host-cleaner is a flat plugin model; repo-cleaner becomes its `git` plugin
 
+Renamed: the tool is now `workstation-cleaner` (`@osdlc/workstation-cleaner`), in [#1032](https://github.com/osdlc/osdlc/issues/1032). This record keeps the name it was made under.
+
 Accepted 2026-11-19. Supersedes the adapter model in
 [D-L7N5](D-L7N5-host-cleaner.md); everything in D-L7N5 about repo-cleaner's
 own gaps, the `ProcessProbe` and the one safety model still holds. The
@@ -80,7 +82,7 @@ settled here:
 - [The architecture page](../architecture/host-cleaner.md) is kept as the
   history of the stack before this decision. How host-cleaner is built now is
   in the package's
-  [how it works](../../packages/ts/host-cleaner/docs/guide/how-it-works.md)
+  [how it works](../../packages/ts/workstation-cleaner/docs/guide/how-it-works.md)
   page.
 
 ## Reopen if

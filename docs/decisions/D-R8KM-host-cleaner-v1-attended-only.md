@@ -1,5 +1,7 @@
 # D-R8KM: host-cleaner's first version runs only when a person runs it
 
+Renamed: the tool is now `workstation-cleaner` (`@osdlc/workstation-cleaner`), in [#1032](https://github.com/osdlc/osdlc/issues/1032). This record keeps the name it was made under.
+
 Accepted 2026-11-22 with [the host-cleaner plan](../planning/host-cleaner-plan.md),
 which puts scheduled and unattended runs out of scope. Supersedes the
 unattended subset and launchd scheduling in
@@ -24,12 +26,12 @@ The first version does not build what D-L7N5 calls the unattended subset
 `close-session` risk ([#665](https://github.com/osdlc/osdlc/issues/665),
 [#666](https://github.com/osdlc/osdlc/issues/666)). They are recorded in
 host-cleaner's backlog,
-[B-0001](../../packages/ts/host-cleaner/docs/planning/backlog/B-0001-unattended-cleaning.md),
+[B-0001](../../packages/ts/workstation-cleaner/docs/planning/backlog/B-0001-unattended-cleaning.md),
 so they can come back.
 
 What still holds of D-L7N5: repo-cleaner's own gaps, the `ProcessProbe`, the
 one safety model, and the command seam. How the package is built now is
-in [how it works](../../packages/ts/host-cleaner/docs/guide/how-it-works.md).
+in [how it works](../../packages/ts/workstation-cleaner/docs/guide/how-it-works.md).
 
 ## Reopen if
 

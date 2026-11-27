@@ -1,5 +1,5 @@
 ---
-"@osdlc/host-cleaner": minor
+"@osdlc/workstation-cleaner": minor
 ---
 
-Add `host-cleaner plugins`, which lists every plugin with its source, whether it is detected and why not, and its roots.
+Add `workstation-cleaner plugins`, which lists every plugin with its source, whether it is detected and why not, and its roots.

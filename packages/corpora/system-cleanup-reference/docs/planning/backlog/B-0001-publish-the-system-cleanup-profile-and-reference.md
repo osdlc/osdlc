@@ -4,7 +4,7 @@ schema_version: '3'
 id: B-0001
 tags:
   - system-cleanup
-  - host-cleaner
+  - workstation-cleaner
   - corpus
   - npm
   - release
@@ -16,8 +16,8 @@ last_reviewed: '2026-11-21'
 
 `@osdlc/corpus-profile-system-cleanup` (`packages/profiles/system-cleanup`) and
 `@osdlc/corpus-system-cleanup-reference` (`packages/corpora/system-cleanup-reference`) are private
-at 0.0.0. They live beside host-cleaner, their only user, which reads them through the pnpm
-workspace. Its descriptors are drafted from the reference and committed, so host-cleaner's users
+at 0.0.0. They live beside workstation-cleaner, their only user, which reads them through the pnpm
+workspace. Its descriptors are drafted from the reference and committed, so workstation-cleaner's users
 never need the corpus itself. Publish both to npm once something outside this repository needs
 them.
 
@@ -26,10 +26,10 @@ What would call for it:
 - **Another corpus extends the profile.** The validator finds a parent by package name, as Node.js
   finds a package, so a corpus outside this repository cannot extend the profile until it is on
   npm.
-- **A tool wants the records.** For example, a cleaner other than host-cleaner, or a site built
+- **A tool wants the records.** For example, a cleaner other than workstation-cleaner, or a site built
   from the reference.
 - **The schema settles.** The tiered contracts in #991 may still change the subjects and the
-  statement fields. Once host-cleaner's first descriptors are drafted from the reference and
+  statement fields. Once workstation-cleaner's first descriptors are drafted from the reference and
   released, a breaking change to the profile costs a breaking release.
 
 To publish:
