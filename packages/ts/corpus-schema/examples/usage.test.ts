@@ -33,12 +33,15 @@ import {
   npmPackageUrl,
   type PackageUrl,
   packageUrl,
+  type Problem,
   type RecordLink,
   type RecordReference,
   recordsOf,
   type RecordTarget,
   type RefForm,
   resolveTarget,
+  type RulesReport,
+  runRules,
   type SyncReport,
   syncCorpus,
   type TypeRef,
@@ -313,5 +316,25 @@ describe('writing records', () => {
     expect(markdownLink('Claude Code', '../harnesses/Claude Code.md')).toBe(
       '[Claude Code](../harnesses/Claude%20Code.md)',
     )
+  })
+})
+
+describe('profile rules', () => {
+  test('run the rules a parent package ships, over the corpus that extends it', async () => {
+    put(
+      'node_modules/acme-profile/package.json',
+      '{"name":"acme-profile","corpus-schema":{"rules":"./rules.mjs"}}',
+    )
+    put('node_modules/acme-profile/acme-profile.corpus-schema.yaml', 'corpus-schema: 0\nlevel: 2\n')
+    put(
+      'node_modules/acme-profile/rules.mjs',
+      `export const check = (corpus) => corpus.records.length > 0 ? [] :
+        [{ file: '.', field: '(records)', message: 'holds no record', severity: 'warning' }]\n`,
+    )
+    put('c/c.corpus-schema.yaml', 'corpus-schema: 0\nlevel: 2\nextends:\n  p: acme-profile\n')
+    const rules: RulesReport = await runRules(loadCorpus(join(dir, 'c')))
+    const warning: Problem = { file: '.', field: '(records)', message: 'holds no record' }
+    expect(rules.warnings).toEqual([`${warning.file}: ${warning.field}: ${warning.message}`])
+    expect(rules.errors).toEqual([])
   })
 })

@@ -28,7 +28,7 @@ const cli = (...args: string[]): { status: number | null; stdout: string; stderr
   return { status: r.status, stdout: r.stdout, stderr: r.stderr }
 }
 const USAGE =
-  'usage: corpus-schema validate [--fix] [--strict] <folder>...\n       corpus-schema sync [<folder>...]\n       corpus-schema types [--out <file>] <folder>\n'
+  'usage: corpus-schema validate [--fix] [--strict] [--no-rules] <folder>...\n       corpus-schema sync [<folder>...]\n       corpus-schema types [--out <file>] <folder>\n'
 const corpus = (rel: string, id: string): void => {
   put(
     `${rel}/${basename(rel)}.corpus-schema.yaml`,
@@ -245,5 +245,52 @@ describe('corpus-schema sync', () => {
       bad.stderr,
       'b.corpus-schema.yaml: references.gone: package @acme/gone is not installed\nb: 1 error(s)\n',
     )
+  })
+})
+
+describe('corpus-schema validate: profile rules', () => {
+  const profile = (rules: string): void => {
+    put('node_modules/prof/package.json', '{"name":"prof","corpus-schema":{"rules":"./rules.mjs"}}')
+    put('node_modules/prof/prof.corpus-schema.yaml', 'corpus-schema: 0\nlevel: 2\n')
+    put('node_modules/prof/rules.mjs', rules)
+    put('c/c.corpus-schema.yaml', 'corpus-schema: 0\nlevel: 2\nextends:\n  p: prof\n')
+  }
+  const fail = `export const check = () => [{ file: 'n/A.md', field: 'f', message: 'no' }]`
+  const warn = `export const check = () => [{ file: 'n/A.md', field: 'f', message: 'hm', severity: 'warning' }]`
+
+  test('an error from the rules fails the corpus', () => {
+    profile(fail)
+    const r = cli('validate', 'c')
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /^n\/A\.md: f: no$/m)
+    assert.match(r.stderr, /^c: 1 error\(s\)$/m)
+  })
+
+  test('--no-rules skips them', () => {
+    profile(fail)
+    const r = cli('validate', '--no-rules', 'c')
+    assert.equal(r.status, 0, r.stderr)
+    assert.equal(r.stdout, 'ok: c: no types\n')
+  })
+
+  test('a warning passes, and fails under --strict', () => {
+    profile(warn)
+    const r = cli('validate', 'c')
+    assert.equal(r.status, 0)
+    assert.match(r.stderr, /^warning: n\/A\.md: f: hm$/m)
+    assert.equal(cli('validate', '--strict', 'c').status, 1)
+  })
+
+  test('the rules do not run while the corpus has schema errors', () => {
+    profile(fail)
+    put('c/n/n.schema.json', '{}')
+    put('c/n/B.md', 'See [x](Gone.md).\n')
+    const r = cli('validate', 'c')
+    assert.equal(r.status, 1)
+    assert.doesNotMatch(r.stderr, /f: no/)
+  })
+
+  test('--no-rules is for validate only', () => {
+    assert.equal(cli('sync', '--no-rules').status, 2)
   })
 })

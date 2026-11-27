@@ -32,6 +32,7 @@ export {
   resolveTarget,
   type TypeRef,
 } from './load.ts'
+export { type Problem, runRules, type RulesReport } from './rules.ts'
 export { generateTypes } from './types.ts'
 export { type SyncReport, syncCorpus } from './sync.ts'
 export { encodePath, fold, markdownLink } from './links.ts'
