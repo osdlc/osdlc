@@ -117,8 +117,11 @@ every rehearsal, they run with `rerere.enabled=false`, so the person's own
 resolutions and rerere config are never used and no `rr-cache/` is made.
 
 In a clone, a conflict git has a recorded resolution for is replayed but left
-conflicted in the index. The replayed paths are the conflicted ones
-`git rerere remaining` leaves out (`replayedPaths`, `1179-1199`). A replayed
+conflicted in the index. A path counts as replayed only where git printed
+`Resolved '<path>' using previous resolution.` for it (typed-git's
+`rerereReplayed`) and the file has no conflict markers (`replayedPaths`,
+`1179-1199`). A binary or `-merge` conflict rerere never tracks is a plain
+conflict. A replayed
 path a resolver claims is planned and rebuilt as usual; any other is reported
 in the outcome's `replayed`, the text report and the merge commit's message,
 and only verify checks it (`planStop`, `1151-1167`). At each conflict the run

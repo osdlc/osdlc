@@ -1257,8 +1257,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   person's own resolutions and config are never used and no `rr-cache/` is
   made. In a clone:
   - `rerere.autoUpdate=false`, so a replayed path stays conflicted in the
-    index; the replayed paths are the conflicted ones `git rerere remaining`
-    leaves out, with `MERGE_RR` present and no conflict markers in the file. A
+    index; a path counts as replayed only where git says so (its
+    `Resolved '<path>' using previous resolution.` line) and the file has no
+    conflict markers. Working it out by subtraction from `git rerere
+    remaining` was wrong: a binary or `-merge` conflict is never tracked by
+    rerere, so it is missing from that list too and was taken for a replay. A
     replayed path a resolver claims is rebuilt by it; any other is reported in
     the outcome's `replayed`, the text report and the merge commit's message.
   - A PR that is not pushed drops its variant's postimage, preimage and,

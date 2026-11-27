@@ -11,7 +11,9 @@ instead of resolved again. So sibling PRs that meet one conflict need one
 resolution, and a repair is called once, not once per PR. A replayed path a
 resolver claims is still rebuilt by it; any other is listed in the result's
 new `replayed` field, the text report and the merge commit's message, and
-`verify` is its only check.
+`verify` is its only check. A path counts as replayed only where git says it
+used a recorded resolution; a binary or `-merge` conflict, which rerere never
+tracks, is a plain conflict.
 
 A resolution is kept only when its PR is pushed: a rejected repair, a rebase
 abandoned after it continued past a resolved stop, and a PR that conflicts or

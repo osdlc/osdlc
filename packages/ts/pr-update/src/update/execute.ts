@@ -680,7 +680,7 @@ async function rebaseThroughRungs(
         return failed(`rebase ${base}: no progress after ${stops} stops`)
       // Listed before anything here can record a resolution: a rebuild, a repair, `--continue`.
       track(git, tracked, limits.ledger)
-      const stop = planStop(git, settings, worktree, limits.rerere ? limits.env : null)
+      const stop = planStop(git, settings, worktree, limits.rerere ? outcome : null)
       const { plans } = stop
       const needsHuman = withGitlinkCommits(git, unclaimed(plans), true)
       const stuck = (humans: { path: string; why: string }[]): RebaseAttempt => {
@@ -822,7 +822,12 @@ async function integrateAndPush(
   if (outcome?.status === 'conflict') {
     // Listed before anything here can record a resolution: a rebuild, a repair, the commit.
     track(git, tracked, opts.ledger)
-    const stop = planStop(git, settings, opts.worktree, rerereOn(settings, opts.apply) ? env : null)
+    const stop = planStop(
+      git,
+      settings,
+      opts.worktree,
+      rerereOn(settings, opts.apply) ? outcome : null,
+    )
     const { plans } = stop
     const needsHuman = withGitlinkCommits(git, unclaimed(plans), false)
     const repair = repairFor('conflict')
@@ -1146,16 +1151,17 @@ function integrationEnv(settings: UpdateSettings, apply: boolean): Record<string
  * The plan for the conflicts git stopped on: every conflicted path git reports, given to the
  * resolvers, less the paths rerere replayed that no resolver claims (`replayed`, in git's order).
  * A replayed path a resolver claims stays in `plans` and is rebuilt, so a generator's output is
- * never left to an old replay. `rerere` is the integration's environment when rerere is on.
+ * never left to an old replay. `stopped` is the merge, rebase or `--continue` outcome that
+ * stopped here, when rerere is on.
  */
 function planStop(
   git: Git,
   settings: UpdateSettings,
   worktree: string,
-  rerere: Record<string, string> | null,
+  stopped: { status: 'conflict'; rerereReplayed?: string[] | undefined } | null,
 ): { plans: PathPlan[]; replayed: string[] } {
   const paths = conflictedPaths(git)
-  const replays = new Set(rerere === null ? [] : replayedPaths(git, paths, worktree, rerere))
+  const replays = new Set(stopped === null ? [] : replayedPaths(paths, worktree, stopped))
   const plans = planPaths(
     paths,
     settings.resolvers,
@@ -1167,35 +1173,26 @@ function planStop(
 }
 
 /**
- * Which of the conflicted `paths` git's rerere replayed a recorded resolution into: those
- * `git rerere remaining` does not list. With `rerere.autoUpdate=false` a replayed path stays
- * conflicted in the index, but `remaining` leaves it out, while it lists every conflict rerere
- * did not resolve, those it cannot handle (a delete against a change, a binary file) included.
+ * Which of the conflicted `paths` git's rerere replayed a recorded resolution into. Only a path
+ * git itself says it replayed counts: the command that stopped here printed `Resolved '<path>'
+ * using previous resolution.` (typed-git's `rerereReplayed`, read under `LC_ALL=C`). With
+ * `rerere.autoUpdate=false` a replayed path stays conflicted in the index and leaves `MERGE_RR`,
+ * so neither tells it apart. Nor does `git rerere remaining`: a conflict rerere never tracks, a
+ * binary file or one `.gitattributes` marks `-merge`, is missing from it too, has no markers, and
+ * would be taken for a replay and pushed as it was left.
  *
- * None, to be safe, when the worktree has no `MERGE_RR` (rerere did not run), when `remaining`
- * fails, or when a path holds a newline (`remaining` prints one path a line, unquoted). A path
- * whose file still holds conflict markers is not counted as replayed either.
+ * A named path whose file still holds conflict markers is not counted, nor one holding a newline
+ * (git prints the path unquoted).
  */
 function replayedPaths(
-  git: Git,
   paths: readonly string[],
   worktree: string,
-  env: Record<string, string>,
+  stopped: { rerereReplayed?: string[] | undefined },
 ): string[] {
-  if (paths.length === 0 || paths.some((p) => p.includes('\n'))) return []
-  let remaining: Set<string>
-  try {
-    const mergeRr = resolve(
-      git.cwd,
-      git.rawChecked(['rev-parse', '--git-path', 'MERGE_RR']).stdout.trim(),
-    )
-    if (!existsSync(mergeRr)) return []
-    const listed = git.rawChecked(['rerere', 'remaining'], { env }).stdout
-    remaining = new Set(listed.split('\n').filter((line) => line !== ''))
-  } catch {
-    return []
-  }
-  return paths.filter((p) => !remaining.has(p) && !hasConflictMarkers(join(worktree, p)))
+  const named = new Set(stopped.rerereReplayed ?? [])
+  return paths.filter(
+    (p) => named.has(p) && !p.includes('\n') && !hasConflictMarkers(join(worktree, p)),
+  )
 }
 
 /** The body of a merge commit that resolved conflicts: what resolved them. */

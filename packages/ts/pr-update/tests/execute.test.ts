@@ -1431,6 +1431,48 @@ describe('the executor against real git', () => {
         }
       }
 
+      describe('a conflict rerere never tracks is not taken for a replay (review round 1)', () => {
+        /** A PR and `main` each changing `file` from `base`, under `attributes` set on `main` first. */
+        function conflictOn(
+          file: string,
+          attributes: string | null,
+          side: (who: string) => string,
+        ) {
+          const { git } = fx.worker
+          if (attributes !== null) {
+            fx.worker.commit('attributes', { '.gitattributes': attributes })
+            git.push('origin', 'main')
+          }
+          fx.worker.commit('base file', { [file]: side('base') })
+          git.push('origin', 'main')
+          git.checkout('main', { branch: 'pr' })
+          fx.worker.commit('pr work', { [file]: side('pr') })
+          git.push('origin', 'pr')
+          const oid = git.resolveRef('HEAD')!
+          git.checkout('main')
+          fx.worker.commit('main moves', { [file]: side('main') })
+          git.push('origin', 'main')
+          git.fetch('origin')
+          return oid
+        }
+
+        test.each([
+          ['a binary file', 'merge', 'bin.dat', null, (w: string) => `\u0000\u0001${w}`],
+          ['a binary file', 'rebase', 'bin.dat', null, (w: string) => `\u0000\u0001${w}`],
+          ['a -merge file', 'merge', 'auth.ts', 'auth.ts -merge\n', (w: string) => `${w}\n`],
+          ['a -merge file', 'rebase', 'auth.ts', 'auth.ts -merge\n', (w: string) => `${w}\n`],
+        ] as const)(
+          '%s, by %s, ends in conflict and is not pushed',
+          async (_, strategy, file, attrs, side) => {
+            const oid = conflictOn(file, attrs, side)
+            const results = await runAll([target({ head: 'pr', headOid: oid, strategy })], {})
+            expect(results.map((r) => r.outcome.status)).toEqual(['conflict'])
+            expect(results[0]!.outcome).not.toHaveProperty('replayed')
+            expect(fx.bare.git.resolveRef('pr')).toBe(oid)
+          },
+        )
+      })
+
       test('a repair resolves the first sibling; rerere replays it for the second', async () => {
         makeSiblings('sib1', 'sib2')
         const repair = fakeRepair(writeShared('both\n'))
