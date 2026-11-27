@@ -22,7 +22,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { parse, stringify } from 'yaml'
 
 import {
-  CORPUS_DIR,
+  corpusDir,
+  corpusOf,
   DraftError,
   FIRST_SET,
   draftStore,
@@ -48,11 +49,11 @@ type Drafted = {
 const read = (text: string): Drafted => parse(text) as Drafted
 
 /** The real corpus, indexed once for every test that drafts from it. */
-const realIndex = indexStores(CORPUS_DIR)
+const realIndex = indexStores(corpusDir())
 
 describe('the first set, from the corpus', () => {
   test.each(FIRST_SET)('%s validates against the schema', (slug) => {
-    const { text } = draftStore(CORPUS_DIR, slug, realIndex)
+    const { text } = draftStore(corpusDir(), slug, realIndex)
     const value = read(text)
     expect(descriptorIssues(value)).toEqual([])
     expect(jsonSchema(value), JSON.stringify(jsonSchema.errors)).toBe(true)
@@ -68,7 +69,7 @@ describe('the first set, from the corpus', () => {
   // What the corpus records changes with its research; these hold for any of
   // it. The small corpus below checks exact drafts.
   test.each(FIRST_SET)('%s: one candidate per folder, and no plugin-covered project', (slug) => {
-    const { text } = draftStore(CORPUS_DIR, slug, realIndex)
+    const { text } = draftStore(corpusDir(), slug, realIndex)
     const value = read(text)
     expect(text).toMatch(/^# yaml-language-server: \$schema=https:\/\//)
     expect(value.candidates.map((c) => c['path'])).toEqual(Object.keys(value.paths))
@@ -85,7 +86,7 @@ test('every store in the corpus drafts a valid descriptor, or says why not', () 
   const failed: string[] = []
   for (const slug of slugs) {
     try {
-      const { text } = draftStore(CORPUS_DIR, slug, realIndex)
+      const { text } = draftStore(corpusDir(), slug, realIndex)
       expect(descriptorIssues(parse(text)), slug).toEqual([])
       drafted.push(slug)
     } catch (err) {
@@ -96,6 +97,13 @@ test('every store in the corpus drafts a valid descriptor, or says why not', () 
   // Most stores name a fixed folder; a change that stops them drafting fails here.
   expect(drafted).toEqual(expect.arrayContaining([...FIRST_SET]))
   expect(drafted.length, `failed: ${failed.join(', ')}`).toBeGreaterThan(failed.length)
+})
+
+test('a corpus package that is not installed is a DraftError, not a stack trace', () => {
+  expect(() => corpusOf('@osdlc/no-such-corpus')).toThrow(DraftError)
+  expect(() => corpusOf('@osdlc/no-such-corpus')).toThrow(
+    /^@osdlc\/no-such-corpus cannot be found \(.*\); pass --corpus <dir>$/,
+  )
 })
 
 test('a comment line holds 78 characters; only the lines after the first are indented', () => {
@@ -527,8 +535,8 @@ describe('a small corpus', () => {
 
   test('a folder with no stores, or an index of another corpus, is refused', () => {
     store('Tool', { slug: 'tool' }, dirsOnly([dir('all', '~/.tool')]))
-    expect(() => draftStore(CORPUS_DIR, 'tool', indexStores(corpus))).toThrow(
-      `the index is of ${corpus}, not of ${CORPUS_DIR}`,
+    expect(() => draftStore(corpusDir(), 'tool', indexStores(corpus))).toThrow(
+      `the index is of ${corpus}, not of ${corpusDir()}`,
     )
     rmSync(join(corpus, 'stores'), { recursive: true })
     expect(() => indexStores(corpus)).toThrow(`${corpus} is not a corpus of stores`)

@@ -54,18 +54,32 @@ const CORPUS_PACKAGE = '@osdlc/corpus-system-cleanup-reference'
 /**
  * The folder the `corpus` field of `pkg`'s package.json names.
  *
- * @throws DraftError when the field is not a folder path
+ * @throws DraftError when `pkg` is not installed or the field is not a folder path
  */
-function corpusOf(pkg: string): string {
-  const file = createRequire(import.meta.url).resolve(`${pkg}/package.json`)
+export function corpusOf(pkg: string): string {
+  let file: string
+  try {
+    file = createRequire(import.meta.url).resolve(`${pkg}/package.json`)
+  } catch (err) {
+    throw new DraftError(
+      `${pkg} cannot be found (${(err as Error).message.split('\n')[0]}); pass --corpus <dir>`,
+    )
+  }
   const corpus = (JSON.parse(readFileSync(file, 'utf8')) as { corpus?: unknown }).corpus
   if (typeof corpus !== 'string' || corpus === '')
     throw new DraftError(`${file}: its "corpus" field must be a folder path`)
   return resolve(dirname(file), corpus)
 }
 
-/** The corpus of this package's dev dependency on the research corpus. */
-export const CORPUS_DIR = corpusOf(CORPUS_PACKAGE)
+let defaultCorpus: string | undefined
+
+/**
+ * The corpus of this package's dev dependency on the research corpus, found
+ * the first time it is asked for.
+ *
+ * @throws DraftError as {@link corpusOf}
+ */
+export const corpusDir = (): string => (defaultCorpus ??= corpusOf(CORPUS_PACKAGE))
 
 interface DataDir {
   platform: 'all' | Os
@@ -758,7 +772,7 @@ function main(argv: readonly string[]): number {
       args: [...argv],
       allowPositionals: true,
       options: {
-        corpus: { type: 'string', default: CORPUS_DIR },
+        corpus: { type: 'string' },
         out: { type: 'string' },
         force: { type: 'boolean', default: false },
         'first-set': { type: 'boolean', default: false },
@@ -774,9 +788,11 @@ function main(argv: readonly string[]): number {
     process.stderr.write(USAGE)
     return 2
   }
+  let corpus: string
   let index: StoreIndex
   try {
-    index = indexStores(values.corpus)
+    corpus = values.corpus ?? corpusDir()
+    index = indexStores(corpus)
   } catch (err) {
     process.stderr.write(`${(err as Error).message}\n`)
     return 1
@@ -784,7 +800,7 @@ function main(argv: readonly string[]): number {
   let failed = 0
   for (const slug of slugs) {
     try {
-      const draft = draftStore(values.corpus, slug, index)
+      const draft = draftStore(corpus, slug, index)
       if (values.out === undefined) process.stdout.write(draft.text)
       else process.stdout.write(`wrote ${writeDraft(values.out, draft, values.force)}\n`)
     } catch (err) {

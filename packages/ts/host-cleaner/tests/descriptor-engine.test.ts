@@ -28,7 +28,7 @@ import type { ProcessHolder } from '@osdlc/repo-cleaner'
 import { fakeNeverExited } from '@osdlc/command-seam/testing'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { CORPUS_DIR, FIRST_SET, draftStore } from '../scripts/draft-descriptor.ts'
+import { FIRST_SET, corpusDir, draftStore } from '../scripts/draft-descriptor.ts'
 import {
   DISCARD_USER_DATA,
   DUPLICATE_ENTRY,
@@ -252,7 +252,7 @@ describe('the contract suite', () => {
   )
 
   test.each(FIRST_SET)('the %s draft passes', async (slug) => {
-    const b = build(slug, draftStore(CORPUS_DIR, slug).text)
+    const b = build(slug, draftStore(corpusDir(), slug).text)
     expect(await contractSuite(b.plugin)).toEqual([])
   })
 })
