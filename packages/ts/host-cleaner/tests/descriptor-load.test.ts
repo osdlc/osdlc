@@ -305,6 +305,20 @@ describe('the run’s plugins', () => {
     )
   })
 
+  test("a --descriptor file of a package's name stays a problem, even in the shipped folder", () => {
+    const s = sources({ 'podman.yaml': 'descriptor: 1\npaths: {}\ncandidates: []\n' })
+    const packages = {
+      loaded: [],
+      entries: [{ name: 'podman', package: '@acme/host-cleaner-podman' }],
+    }
+    const flagged = { ...s, flag: [join(s.shipped, 'podman.yaml')] }
+    expect(findPlugins(flagged, {}, packages).problems.map((p) => [p.name, p.source])).toEqual([
+      ['podman', 'flag'],
+    ])
+    // The shipped file alone is the one the package replaces.
+    expect(findPlugins(s, {}, packages).problems).toEqual([])
+  })
+
   /** The descriptor `uv`, superseded by cargo, its folder made, built for a temp home. */
   function supersededUv(): Plugin {
     const h = tempHome()

@@ -4,15 +4,13 @@
  * one namespace.
  */
 
-import { dirname, resolve } from 'node:path'
-
 import { BUILT_IN_PLUGINS } from './builtins.ts'
 import { descriptorPlugin, type DescriptorOptions } from './descriptor/engine.ts'
 import {
   DescriptorLoadError,
-  SHIPPED_DESCRIPTORS,
   findDescriptors,
   type DescriptorProblem,
+  type DescriptorSource,
   type DescriptorSources,
   type LoadedDescriptor,
 } from './descriptor/load.ts'
@@ -63,10 +61,9 @@ export function findPlugins(
   for (const e of named.values()) refuseBuiltInName(e)
   const code = [...builtIns, ...named.keys()]
   const found = findDescriptors(sources, builtIns)
-  const shipped = resolve(sources.shipped ?? SHIPPED_DESCRIPTORS)
   // The package the config names replaces a shipped descriptor, as a user file would.
-  const replaced = (d: { name: string; path: string }): boolean =>
-    named.has(d.name) && resolve(dirname(d.path)) === shipped
+  const replaced = (d: { name: string; source: DescriptorSource }): boolean =>
+    d.source === 'shipped' && named.has(d.name)
   const problems = found.problems.filter((p) => !replaced(p))
   const refused = (d: LoadedDescriptor, why: string): false => {
     problems.push({
@@ -78,7 +75,7 @@ export function findPlugins(
     return false
   }
   const descriptors = found.descriptors.filter((d) => {
-    if (d.source === 'shipped' && replaced(d)) return false
+    if (replaced(d)) return false
     const entry = named.get(d.name)
     if (entry !== undefined) {
       return refused(
