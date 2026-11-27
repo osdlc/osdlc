@@ -2136,6 +2136,27 @@ describe('folders', () => {
     expect(plugin.removed).toEqual([])
   })
 
+  test('with no home, clean -i refuses before it shows the checklist', async () => {
+    const { cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, '{}')
+    const env = { PATH: process.env.PATH ?? '' }
+    const plugin = fake()
+    const asked: string[] = []
+    const r = await run(['clean', '-i', '--config', file, cwd], cwd, env, {
+      plugins: [plugin],
+      checklist: (q) => {
+        asked.push(q)
+        return [0]
+      },
+      confirm: () => true,
+    })
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('no home directory')
+    expect(asked).toEqual([])
+    expect(plugin.removed).toEqual([])
+  })
+
   test('`~` is the home the folders are built on, and with none a `~` path is refused', async () => {
     const { cwd, home } = setup()
     const file = join(home, 'config.json')

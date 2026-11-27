@@ -1592,6 +1592,8 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   }
 
   if (v.interactive) {
+    // A run that deletes needs the folders for its receipt (below): refused before anyone chooses.
+    if (!v.dryRun && dirs === undefined) return refusal(ctx, name, new Error(NO_HOME))
     const chosen = chooseCandidates(plan, preview, deps, homeOf(ctx))
     if (chosen === null) return usageError(ctx, name, NO_TERMINAL_FOR_I)
     plan = chosen
