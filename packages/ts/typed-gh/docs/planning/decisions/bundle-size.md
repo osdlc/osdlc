@@ -30,10 +30,10 @@ created: 2026-11-05
 
 A bundler drops an unused function but not an unused method. Constructing one
 `Gh` keeps every method, so it keeps every verb and parser those methods call.
-In 0.6.0 that grew sksizer/dev's diffkit bundle by 3.7% (395 KB to 410 KB).
-diffkit calls only `prDiff` and `rawChecked`.
+In 0.6.0 that grew the bundle of a review tool that calls only `prDiff` and
+`rawChecked` by 3.7% (395 KB to 410 KB).
 
-diffkit lives in another repository, so its bundle was not rebuilt here. A
+That tool's bundle was not rebuilt here. A
 proxy entry makes the same two calls (`prDiff(n)`, then a raw checked
 `gh api` call), built with `bun build --minify --target=node` (bun 1.4.4),
 against 0.15.0 with the `raw` and `rawChecked` verbs added:
@@ -55,15 +55,15 @@ against 0.15.0 with the `raw` and `rawChecked` verbs added:
 
 What the numbers say:
 
-- The verb path is 53.6 KB smaller than `Gh` for diffkit's two calls: 79%, or
+- The verb path is 53.6 KB smaller than `Gh` for that tool's two calls: 79%, or
   89% once the runner both carry is taken out. That is more than the 15 KB
-  that 0.6.0 added. On a 410 KB bundle it is about 13%, so diffkit should come
-  in near 356 KB, below its 395 KB baseline. diffkit's own build may minify
-  differently, so this is an estimate until diffkit is rebuilt.
+  that 0.6.0 added. On a 410 KB bundle it is about 13%, so the tool should come
+  in near 356 KB, below its 395 KB baseline. Its own build may minify
+  differently, so this is an estimate until it is rebuilt.
 - What the verb path keeps beyond the runner is the verbs it calls, `runVerb`,
   and the failure classifier (`classifyGhFailure`, with command-seam's
   `classifyFailed`), which every checked call needs to throw a `GhFailure`.
-- Splitting `Gh` saves 4.2 KB (6%) for diffkit. A core `Gh` still holds every
+- Splitting `Gh` saves 4.2 KB (6%) for that tool. A core `Gh` still holds every
   pull request, issue and label method, the `try` and `soft` proxies and the
   merge-state retry. A split small enough to matter would be a split per verb,
   which is the verb functions again.
