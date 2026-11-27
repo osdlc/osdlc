@@ -16,21 +16,29 @@
 # required check; when no package with benchmarks is affected it stops after
 # the pick.
 #
+# Load on pull requests: see "Load on pull requests" in packages-ci.yml. A draft
+# that a bot just pushed a merge commit to (pr-update.yml; see pr-load.yml) skips the job, and marking it ready runs the
+# gate (`ready_for_review`). A label change other than `perf-accepted` skips
+# the job. The pick above already limits the work to pull requests that touch
+# a package with benchmarks, or one it depends on. A manual run is never
+# skipped.
+#
 # Every action is pinned to a commit SHA; the comment names its release.
 name: perf-gate
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled, edited]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# A new push supersedes the run in progress. A label or title edit waits for it
-# instead, so an unrelated label does not throw away an hour of benchmarking.
+# A new push supersedes the run in progress. A title edit or a perf-accepted
+# change waits for it. Any other label change gets its own group, so it cannot
+# replace a pending run.
 concurrency:
-  group: perf-gate-${{ github.ref }}
+  group: perf-gate-${{ github.ref }}${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'perf-accepted' && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.event.action == 'synchronize' || github.event.action == 'opened' || github.event.action == 'reopened' }}
 
 env:
@@ -38,8 +46,17 @@ env:
   CARGO_INCREMENTAL: '0'
 
 jobs:
+  load:
+    uses: ./.github/workflows/pr-load.yml
+
   gate:
     name: perf gate
+    needs: load
+    if: >-
+      !cancelled() && (github.event_name != 'pull_request' || (
+      needs.load.outputs.light != 'true' && (
+      (github.event.action != 'labeled' && github.event.action != 'unlabeled') ||
+      github.event.label.name == 'perf-accepted')))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:

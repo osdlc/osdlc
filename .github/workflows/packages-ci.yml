@@ -33,6 +33,22 @@
 # git never run against a real one. A run that is not a pull request picks
 # every package, so a failure here also blocks a release.
 #
+# Load on pull requests. Many pull requests are updated at once after a merge
+# to main, so a pull request runs less than main does:
+#   - A draft pull request that pr-update.yml just updated (a bot pushed a
+#     merge commit to it; pr-load.yml decides, in the `load` job) runs only
+#     `packages`. A draft that a person pushes to, or that a bot pushes a
+#     single-parent commit to (an agent's `--apply` commit), runs as a ready
+#     one does. The jobs after `packages` skip on `needs.load.outputs.light`
+#     (a job skipped by its `if` counts as passed); `packages` itself still
+#     runs, since the ruleset requires its `verify` jobs. Marking the pull
+#     request ready runs the checks (`ready_for_review`).
+#   - A pull request runs `verify` on Node 22 and 24 (Ubuntu and macOS), and
+#     path-guard on Windows on Node 24 only. Node 26 is not required, so it is
+#     left out of the matrix on a pull request.
+#   - Every other event (push to main through packages-publish.yml,
+#     workflow_dispatch) runs the full matrix.
+#
 # `story-harness` runs story-harness's browser tests and its `story-shots`
 # command end to end in Docker, which `verify` does not set up, when
 # story-harness is picked. It blocks a release the same way.
@@ -42,6 +58,7 @@ name: packages
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_call:
     inputs:
       skip-windows-tier2:
@@ -61,10 +78,13 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  load:
+    uses: ./.github/workflows/pr-load.yml
+
   packages:
     uses: ./.github/workflows/ts-packages-ci.yml
     with:
-      node: '["22", "24", "26"]'
+      node: ${{ github.event_name == 'pull_request' && '["22", "24"]' || '["22", "24", "26"]' }}
       tooling-build: pnpm run build:tooling
       repo-checks: |
         node --test scripts/bounded-run.test.ts
@@ -74,15 +94,16 @@ jobs:
   # and tarballs the same on every OS, so they run in `verify` only.
   windows:
     name: path-guard (windows-latest, node ${{ matrix.node }})
-    needs: packages
+    needs: [load, packages]
     # Runs when the pick exists, even when a `verify` job failed.
     if: >-
-      !cancelled() && contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/path-guard')
+      !cancelled() && needs.load.outputs.light != 'true' &&
+      contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/path-guard')
     runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        node: ['22', '24', '26']
+        node: ${{ fromJSON(github.event_name == 'pull_request' && '["24"]' || '["22","24","26"]') }}
     defaults:
       run:
         shell: bash
@@ -118,9 +139,9 @@ jobs:
   # downgrades to the Ubuntu package and checks the version before testing.
   old-git:
     name: old git (ubuntu-22.04, git 2.34, node 24)
-    needs: packages
+    needs: [load, packages]
     if: >-
-      !cancelled() && (
+      !cancelled() && needs.load.outputs.light != 'true' && (
       contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/typed-git') ||
       contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/pr-update') ||
       contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/trust-repo'))
@@ -170,9 +191,10 @@ jobs:
   # Not required by the ruleset; see the header.
   story-harness:
     name: story-harness (browser and Docker, ubuntu-latest, node 24)
-    needs: packages
+    needs: [load, packages]
     if: >-
-      !cancelled() && contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/story-harness')
+      !cancelled() && needs.load.outputs.light != 'true' &&
+      contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/story-harness')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -202,9 +224,9 @@ jobs:
         run: pnpm --filter @osdlc/story-harness run test:shots
 
   windows-tier2:
-    needs: packages
+    needs: [load, packages]
     if: >-
-      !cancelled() && !inputs.skip-windows-tier2 && (
+      !cancelled() && needs.load.outputs.light != 'true' && !inputs.skip-windows-tier2 && (
       contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/command-seam') ||
       contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/trust-repo') ||
       contains(fromJSON(needs.packages.outputs.packages || '[]'), 'packages/ts/tiered-dirs') ||
