@@ -2133,6 +2133,8 @@ describe('folders', () => {
     const r = await run(['clean', '--yes'], cwd, env, { plugins: [plugin] })
     expect(r.code).toBe(1)
     expect(r.err).toContain('no home directory')
+    // It names what would place the folders.
+    expect(r.err).toContain(process.platform === 'win32' ? 'set USERPROFILE' : 'XDG_STATE_HOME')
     expect(plugin.removed).toEqual([])
   })
 
