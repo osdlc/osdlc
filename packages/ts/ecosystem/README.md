@@ -129,7 +129,10 @@ resolves to the directory above every owner.
 
 It never steps up to the home directory or above it: a checkout directly in
 home uses home, the folder it is in, and a checkout that is home itself gets
-none. A linked worktree counts as its main checkout.
+none. A linked worktree counts as its main checkout. Outside the home
+directory, a folder others can write to is never a default root: a checkout
+at `/tmp/proj` gets none, since anyone can put a checkout in `/tmp` (POSIX
+only, from the `o+w` bit, sticky or not).
 
 ## Finding checkouts
 
