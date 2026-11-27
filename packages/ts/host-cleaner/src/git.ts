@@ -4,6 +4,8 @@
  * as the delete.
  */
 
+import { lstatSync } from 'node:fs'
+
 import { nodeGuard } from '@osdlc/path-guard/node'
 import {
   RISKS,
@@ -22,8 +24,22 @@ import {
   type SweepOptions,
   type WorktreeEvidence,
 } from '@osdlc/repo-cleaner'
+import { z } from 'zod'
 
-import { FatalRun, type Candidate, type Ctx, type Objection, type Plugin } from './types.ts'
+import { DISCOVER_LIMIT_MS, objector } from './helpers.ts'
+import { linkedCheckouts } from './roots.ts'
+import { DELETE_LIMIT_MS } from './run.ts'
+import {
+  FatalRun,
+  PLUGIN_API,
+  builtIn,
+  definePlugin,
+  type Candidate,
+  type Ctx,
+  type Objection,
+  type Plugin,
+  type PluginDefinition,
+} from './types.ts'
 
 export interface GitPluginOptions extends Runners {
   /** What the sweep judges; the plugin sets `cwd` from the run. */
@@ -52,12 +68,35 @@ function nameOf(row: CleanCandidate): string | null {
   return row.kind === 'worktree' ? ((row.evidence as WorktreeEvidence).branch ?? null) : null
 }
 
-export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
+/** `opts` with its objects and lists copied; the runners are the caller's own. */
+function copyOf(opts: GitPluginOptions): GitPluginOptions {
+  const { sweep, archive } = opts
+  return {
+    ...opts,
+    ...(sweep && {
+      sweep: {
+        ...sweep,
+        only: sweep.only && [...sweep.only],
+        remotes: sweep.remotes && [...sweep.remotes],
+      },
+    }),
+    ...(archive && { archive: { ...archive, exclude: archive.exclude && [...archive.exclude] } }),
+  }
+}
+
+/**
+ * The `git` plugin.
+ *
+ * @param given - Copied, so changing it afterwards does not change the plugin.
+ */
+export function gitPlugin(given: GitPluginOptions = {}): Plugin {
+  const opts = copyOf(given)
   /** The last discovery's rows, kept for the later phases; `discover` makes them afresh. */
   let rows = new Map<string, CleanCandidate>()
   /** The archive this run pushed for each repository, by its root; `discover` empties it. */
   const archives = new Map<string, CandidateArchive>()
   const runners = { git: opts.git, gh: opts.gh, glab: opts.glab, probe: opts.probe }
+  const own = objector('git')
   const isRisk = (code: string): code is Risk => (RISKS as readonly string[]).includes(code)
 
   const rowOf = (c: Candidate): CleanCandidate => {
@@ -107,13 +146,19 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
   const worktreesHolding = (c: Candidate, ctx: Ctx): CleanCandidate[] =>
     (ctx.run ?? []).flatMap((q) => {
       const r = q.owner === 'git' ? rows.get(q.id) : undefined
-      return r?.kind === 'worktree' && mayContribute(r) && nodeGuard.contains(r.path, c.path)
+      return r?.kind === 'worktree' &&
+        mayContribute(r) &&
+        c.path !== undefined &&
+        nodeGuard.contains(r.path, c.path)
         ? [r]
         : []
     })
 
-  return {
+  return builtIn({
     name: 'git',
+    // The sweep covers every repository in one call that nothing can stop part way,
+    // and `prepare` pushes an archive, which may wait on the remote as long as a delete.
+    limits: { discover: DISCOVER_LIMIT_MS, prepare: DELETE_LIMIT_MS },
     detect: () => true,
     discover(ctx) {
       const found = candidatesOf(sweep(ctx.targets, { ...opts.sweep, ...runners, cwd: ctx.cwd }))
@@ -121,11 +166,9 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
       archives.clear()
       return found.map((row): Candidate => {
         const id = candidateId(row)
-        return {
+        const common = {
           id,
           kind: row.kind,
-          path: row.kind === 'worktree' ? row.path : `${row.repo}:${row.path}`,
-          ...(row.kind === 'worktree' ? {} : { at: row.repo }),
           ...(nameOf(row) === null ? {} : { name: nameOf(row)! }),
           owner: 'git',
           why: row.why,
@@ -134,27 +177,39 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
           // The default run skips what is not `delete`.
           ...(row.verdict !== 'delete' ? { held: true } : {}),
         }
+        // A branch has no folder of its own: it is a ref in its repository.
+        return row.kind === 'worktree'
+          ? { ...common, path: row.path }
+          : { ...common, ref: row.path, at: row.repo }
       })
+    },
+    // A worktree whose folder is gone, or left without its `.git`, has no
+    // checkout the core could find its repository from: git, which found it in
+    // its repository, declares it so its prune is not refused outside-roots.
+    // One of a repository a target is in, the core counts already.
+    roots(ctx) {
+      const gone = [...rows.values()].filter(
+        (row) => row.kind === 'worktree' && (row.evidence as WorktreeEvidence).onDisk === false,
+      )
+      // Nothing to root, as before `discover`: git is not run for every target.
+      if (gone.length === 0) return []
+      const counted = new Set(linkedCheckouts(ctx.targets))
+      return gone.flatMap((row) =>
+        counted.has(row.path) ? [] : [{ path: row.path, self: true as const }],
+      )
     },
     object(all) {
       return all.flatMap((c): Objection[] => {
         const row = rows.get(c.id)
         if (c.owner !== 'git' || row === undefined) return []
-        const own = (level: Objection['level'], code: string, reason: string): Objection => ({
-          by: 'git',
-          candidate: c.id,
-          level,
-          code,
-          reason,
-        })
         const unarchivable =
           opts.archive !== undefined && row.remote === null && mayContribute(row)
-            ? [own('refuse', 'no-remote', noRemote(row.repo))]
+            ? [own(c, 'refuse', 'no-remote', noRemote(row.repo))]
             : []
         return [
-          ...row.blockers.map((b) => own('refuse', b, `${row.why} (${b})`)),
+          ...row.blockers.map((b) => own(c, 'refuse', b, `${row.why} (${b})`)),
           ...unarchivable,
-          ...row.risks.map((r) => own('protest', r, `deleting it risks ${r}`)),
+          ...row.risks.map((r) => own(c, 'protest', r, `deleting it risks ${r}`)),
         ]
       })
     },
@@ -178,6 +233,10 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
     },
     delete(c, ctx) {
       const row = rowOf(c)
+      // `git worktree remove` follows a link, and would empty the folder it leads to.
+      if (c.path !== undefined && lstatSync(c.path, { throwIfNoEntry: false })?.isSymbolicLink()) {
+        throw new Error(`git: ${c.path} is now a symlink; its worktree is not removed through it`)
+      }
       const archived = archives.get(row.repo)
       if (opts.archive !== undefined && archived === undefined) {
         throw new Error(`git: ${c.id} was not prepared, so its work is not archived`)
@@ -195,5 +254,26 @@ export function gitPlugin(opts: GitPluginOptions = {}): Plugin {
         ...result.steps.map((s) => s.verification ?? s.command),
       ].join('; ')
     },
-  }
+  })
 }
+
+/**
+ * The `git` plugin as a definition, with no settings of its own.
+ *
+ * @param opts - Passed to `gitPlugin`. The command line passes `--worktrees`
+ *   and `--branches` here as `sweep.only`, so no other plugin's `create` sees
+ *   git's kinds. Copied here, so changing it afterwards changes no plugin the
+ *   definition builds.
+ */
+export function gitDefinitionWith(opts: GitPluginOptions = {}): PluginDefinition {
+  const own = copyOf(opts)
+  return definePlugin({
+    name: 'git',
+    api: PLUGIN_API,
+    settings: z.strictObject({}),
+    create: () => gitPlugin(own),
+  })
+}
+
+/** The `git` plugin's definition, sweeping worktrees and local branches. */
+export const gitDefinition = gitDefinitionWith()

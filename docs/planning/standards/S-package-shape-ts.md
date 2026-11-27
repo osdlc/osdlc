@@ -10,13 +10,17 @@ each. This standard says what that shape is.
 
 - **Dist-only ESM with `.d.ts`.** The tarball ships `dist/` plus the README,
   CHANGELOG, licences, SECURITY and CONTRIBUTING (and a `bin/` or `docs/` a
-  library already ships). No TypeScript source ships; a hand-written `.d.ts`
-  is the one exception. Each `exports` entry is exactly
-  `{ "types": "./dist/X.d.ts", "default": "./dist/X.js" }`, with no `bun`
-  condition. A stylesheet is the one other entry: a plain
-  `"./X.css": "./dist/X.css"`, which the package check reads and does not
-  import. Bun still works, through the compiled `dist/`. The tarball ships
-  no source maps, since they would point at the unshipped source.
+  library already ships, or the `schemas/` below). No TypeScript source
+  ships; a hand-written `.d.ts` is the one exception. Each `exports` entry is
+  exactly `{ "types": "./dist/X.d.ts", "default": "./dist/X.js" }`, with no
+  `bun` condition. Two other entries are plain paths, which the package check
+  reads and does not import: a stylesheet, `"./X.css": "./dist/X.css"`, and a
+  JSON Schema, `"./schemas/<name>.json": "./schemas/<name>.json"`. A schema
+  sits in a `schemas/` folder that ships in the tarball, every file there has
+  that export, and each is generated from the package's source and checked
+  in, with a test that fails when it is stale. Bun still works, through the
+  compiled `dist/`. The tarball ships no source maps, since they would point
+  at the unshipped source.
 - **Node 22 or later**, as each library's `engines.node` says. A library's
   range is never wider than a workspace dependency's, so the ones that depend on
   `@osdlc/typed-git` carry its `^22.22.2 || ^24.15.0 || >=26.0.0`.
@@ -71,7 +75,8 @@ CI runs the same two steps in `.github/workflows/ts-packages-ci.yml`, which
 `packages-ci.yml` calls, and again before a publish in
 `ts-packages-release.yml`. The check
 also packs each library, runs publint and Are The Types Wrong on the tarball,
-and loads it in a clean consumer project.
+and loads it in a clean consumer project. Review checks that a schema has the
+test that fails when it is stale.
 
 ## Exemptions
 

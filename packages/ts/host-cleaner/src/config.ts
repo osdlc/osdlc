@@ -4,7 +4,8 @@
  * under the `xdg` convention (see {@link hostDirs}), moved by the
  * `HOST_CLEANER_*` override variables:
  *
- *   config  `config.json`: the targets to sweep and each plugin's settings
+ *   config  `config.json`: the targets to sweep and each plugin's settings,
+ *           and `descriptors/`: the user's descriptors
  *   state   `receipts/`: one receipt per `clean` that was not given `--receipt`
  *   logs    `host-cleaner.log`: one JSON line per `clean`
  */
@@ -16,6 +17,7 @@ import { z } from 'zod'
 import { envVars, homeDir, systemDirs, TieredDirsError, type ResolveOptions } from '@osdlc/cli-tool'
 
 import { settingsIssues } from './settings.ts'
+import type { PluginDefinition } from './types.ts'
 
 const VENDOR_DIRS = { vendor: 'host-cleaner', envVars: envVars('HOST_CLEANER') }
 
@@ -104,6 +106,9 @@ function dirsUnder(env: Record<string, string | undefined>, opts: ResolveOptions
 
 export const configFile = (dirs: HostDirs): string => join(dirs.config, 'config.json')
 
+/** The user's descriptors, which add plugins or replace shipped descriptors of the same name. */
+export const descriptorsDir = (dirs: HostDirs): string => join(dirs.config, 'descriptors')
+
 /**
  * The config file in the native folders, when it exists and is not `xdgFile`,
  * the one {@link hostDirs} names: on macOS, a config left in
@@ -136,13 +141,14 @@ export class ConfigError extends Error {
 
 /**
  * The config at `path`, and whether the file exists; empty when it does not,
- * unless `required` (a file the person named).
+ * unless `required` (a file the person named). Its `plugins` are checked by
+ * {@link checkPlugins} against `opts.plugins`.
  *
  * @throws ConfigError for a file that is not valid, or whose plugin entry has an unknown key or a wrong type
  */
 export function readConfig(
   path: string,
-  opts: { required?: boolean } = {},
+  opts: { required?: boolean; plugins?: readonly PluginDefinition[] } = {},
 ): { fileExists: boolean; config: Config } {
   if (!existsSync(path)) {
     if (opts.required) throw new ConfigError(`config ${path} does not exist`)
@@ -156,7 +162,22 @@ export function readConfig(
   }
   const parsed = ConfigSchema.safeParse(raw)
   if (!parsed.success) throw new ConfigError(`bad config ${path}: ${parsed.error.message}`)
-  const issues = settingsIssues(parsed.data.plugins)
+  return { fileExists: true, config: checkPlugins(parsed.data, path, opts.plugins) }
+}
+
+/**
+ * `config`, once each entry of its `plugins` fits the settings of the plugin
+ * of its name in `plugins`, the built-ins by default; an entry no plugin has is
+ * not checked. `path` is the file it came from, for the error.
+ *
+ * @throws ConfigError for a plugin entry with an unknown key or a wrong type
+ */
+export function checkPlugins(
+  config: Config,
+  path: string,
+  plugins?: readonly PluginDefinition[],
+): Config {
+  const issues = settingsIssues(config.plugins, 'plugins', plugins)
   if (issues.length > 0) throw new ConfigError(`bad config ${path}: ${issues.join('; ')}`)
-  return { fileExists: true, config: parsed.data }
+  return config
 }
