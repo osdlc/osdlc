@@ -440,34 +440,38 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
+/** `f()`, or `missing(err)` when it found no home directory (`MISSING_BASE_DIR`). */
+function orNoHome<T>(f: () => T, missing: (err: TieredDirsError) => T): T {
+  try {
+    return f()
+  } catch (err) {
+    if (err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR') return missing(err)
+    throw err
+  }
+}
+
 /**
  * The folders; undefined when there is no home directory to place them in.
  * Every command resolves them, even with `--config`, so each refuses a bad
  * folder variable alike; a missing home only matters where they are used.
  */
-function resolveDirs(ctx: CliContext): HostDirs | undefined {
-  try {
-    return hostDirs(ctx.env)
-  } catch (err) {
-    if (err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR') return undefined
-    throw err
-  }
-}
+const resolveDirs = (ctx: CliContext): HostDirs | undefined =>
+  orNoHome(
+    () => hostDirs(ctx.env),
+    () => undefined,
+  )
 
 /**
  * The config folder, from `dirs` or, when those could not all be placed, on
  * its own ({@link hostConfigDir}); undefined when there is no home for it
  * either.
  */
-function resolveConfigDir(ctx: CliContext, dirs: HostDirs | undefined): string | undefined {
-  if (dirs !== undefined) return dirs.config
-  try {
-    return hostConfigDir(ctx.env)
-  } catch (err) {
-    if (err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR') return undefined
-    throw err
-  }
-}
+const resolveConfigDir = (ctx: CliContext, dirs: HostDirs | undefined): string | undefined =>
+  dirs?.config ??
+  orNoHome(
+    () => hostConfigDir(ctx.env),
+    () => undefined,
+  )
 
 const NO_HOME = `no home directory to place the folders in: set ${process.platform === 'win32' ? 'USERPROFILE' : 'HOME, XDG_CONFIG_HOME with XDG_STATE_HOME'}, or HOST_CLEANER_ROOT`
 
@@ -805,14 +809,11 @@ const enabled = (name: string, config: Config, named: readonly string[] = []): b
  * root may be or hold: {@link tildeHome}'s, with no trailing slash; '' when
  * there is none, so ids are shown as they are.
  */
-function homeOf(ctx: CliContext): string {
-  try {
-    return homeFrom(hostHome(ctx.env))
-  } catch (err) {
-    if (err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR') return ''
-    throw err
-  }
-}
+const homeOf = (ctx: CliContext): string =>
+  orNoHome(
+    () => homeFrom(hostHome(ctx.env)),
+    () => '',
+  )
 
 /** `id` with the home folder after its `<kind>:`, as `home` spells it or by its real path, written `~`, as the text output shows it. */
 export function tildeId(id: string, home: string): string {
@@ -881,16 +882,13 @@ function contextFor(
  * under `~` covers the folder it names. Looked up only for a path that starts
  * with `~`; with no home, that path is refused rather than read some other way.
  */
-const tildeHome = (ctx: CliContext) => (): string => {
-  try {
-    return hostHome(ctx.env)
-  } catch (err) {
-    if (err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR') {
+const tildeHome = (ctx: CliContext) => (): string =>
+  orNoHome(
+    () => hostHome(ctx.env),
+    (err) => {
       throw new Error(`cannot expand \`~\`: ${err.message}`)
-    }
-    throw err
-  }
-}
+    },
+  )
 
 /**
  * The home `~` stands for in a target: {@link tildeHome}'s, except that a
