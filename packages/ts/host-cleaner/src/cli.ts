@@ -31,6 +31,7 @@ import {
   checkPlugins,
   configFile,
   descriptorsDir,
+  hostConfigDir,
   hostDirs,
   hostHome,
   readConfig,
@@ -453,6 +454,21 @@ function resolveDirs(ctx: CliContext): HostDirs | undefined {
   }
 }
 
+/**
+ * The config folder, from `dirs` or, when those could not all be placed, on
+ * its own ({@link hostConfigDir}); undefined when there is no home for it
+ * either.
+ */
+function resolveConfigDir(ctx: CliContext, dirs: HostDirs | undefined): string | undefined {
+  if (dirs !== undefined) return dirs.config
+  try {
+    return hostConfigDir(ctx.env)
+  } catch (err) {
+    if (err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR') return undefined
+    throw err
+  }
+}
+
 const NO_HOME = 'no home directory to place the folders in: set HOME, or HOST_CLEANER_ROOT'
 
 /**
@@ -464,14 +480,14 @@ const NO_HOME = 'no home directory to place the folders in: set HOME, or HOST_CL
 function loadConfig(
   v: { config?: string | undefined },
   ctx: CliContext,
-  dirs: HostDirs | undefined,
+  configDir: string | undefined,
 ): { file: string; fileExists: boolean; config: Config; warnings: string[]; unread?: string } {
   if (v.config !== undefined) {
     const file = resolve(ctx.cwd, v.config)
     return { file, ...readConfig(file, { required: true, plugins: [] }), warnings: [] }
   }
-  if (dirs === undefined) throw new Error(NO_HOME)
-  const file = configFile(dirs)
+  if (configDir === undefined) throw new Error(NO_HOME)
+  const file = configFile({ config: configDir })
   const unread = unreadNativeConfig(ctx.env, file)
   if (unread === undefined) return { file, ...readConfig(file, { plugins: [] }), warnings: [] }
   const warnings = [`${unread} is not read; the config is now ${file}`]
@@ -542,11 +558,11 @@ function sourcesFor(
   v: { config?: string | undefined; descriptor: readonly string[] },
   ctx: CliContext,
   deps: MainDeps,
-  dirs: HostDirs | undefined,
+  configDir: string | undefined,
 ): { sources: DescriptorSources; warnings: string[] } {
   const sources = { shipped: deps.shippedDescriptors, flag: flagDescriptors(v, ctx) }
-  if (dirs !== undefined)
-    return { sources: { ...sources, user: descriptorsDir(dirs) }, warnings: [] }
+  if (configDir !== undefined)
+    return { sources: { ...sources, user: descriptorsDir({ config: configDir }) }, warnings: [] }
   if (v.config === undefined) throw new Error(NO_HOME)
   return { sources, warnings: [`no user descriptors: ${NO_HOME}`] }
 }
@@ -594,10 +610,11 @@ function findRun(
   deps: MainDeps,
   dirs: HostDirs | undefined,
 ): Found {
-  const read = loadConfig(v, ctx, dirs)
+  const configDir = resolveConfigDir(ctx, dirs)
+  const read = loadConfig(v, ctx, configDir)
   const { config, file: path } = read
   const entries = packageEntries(config.plugins)
-  const from = deps.plugins === undefined ? sourcesFor(v, ctx, deps, dirs) : undefined
+  const from = deps.plugins === undefined ? sourcesFor(v, ctx, deps, configDir) : undefined
   const found: Loaded =
     from === undefined
       ? { definitions: BUILT_IN_PLUGINS, packages: [], descriptors: [], problems: [] }

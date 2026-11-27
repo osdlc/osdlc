@@ -2115,6 +2115,27 @@ describe('folders', () => {
     expect((await run(['config'], cwd, env)).code).toBe(1)
   })
 
+  test('with XDG_CONFIG_HOME and no home, the config there is read; clean still needs a home to delete', async () => {
+    const { cwd } = setup()
+    const xdg = tempDir()
+    mkdirSync(join(xdg, 'host-cleaner'), { recursive: true })
+    const file = join(xdg, 'host-cleaner', 'config.json')
+    writeFileSync(file, JSON.stringify({ targets: [cwd] }))
+    const env = { PATH: process.env.PATH ?? '', XDG_CONFIG_HOME: xdg }
+    const shown = await run(['config', '--format', 'json'], cwd, env, { plugins: [fake()] })
+    expect(shown.err).toBe('')
+    expect(shown.code).toBe(0)
+    expect(JSON.parse(shown.out)).toMatchObject({ file, fileExists: true, targets: [cwd] })
+    const status = await run(['status'], cwd, env, { plugins: [fake()] })
+    expect(status.err).toBe('')
+    expect(status.code).toBe(0)
+    const plugin = fake()
+    const r = await run(['clean', '--yes'], cwd, env, { plugins: [plugin] })
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('no home directory')
+    expect(plugin.removed).toEqual([])
+  })
+
   test('`~` is the home the folders are built on, and with none a `~` path is refused', async () => {
     const { cwd, home } = setup()
     const file = join(home, 'config.json')
