@@ -58,3 +58,18 @@ fn a_root_ending_in_dot_dot_is_labelled_by_its_directory() {
     assert_eq!(graph.root_label, "mini-repo");
     assert!(!graph.root.contains(".."));
 }
+
+#[cfg(unix)]
+#[test]
+fn a_root_through_a_symlink_keeps_the_given_path() {
+    let dir = std::env::temp_dir().join(format!("system-model-link-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let link = dir.join("linked-repo");
+    let _ = std::fs::remove_file(&link);
+    std::os::unix::fs::symlink(root(), &link).unwrap();
+
+    let graph = build_system_graph(&link, false).unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert_eq!(graph.root, link.display().to_string());
+    assert_eq!(graph.root_label, "linked-repo");
+}
