@@ -1146,8 +1146,8 @@ function routeAttempts(
  * A record the checkout's content could have forged is refused (`KeptRefusal`): one that breaks
  * `readRecord`'s rules, or whose folder its owner does not list as a worktree at that path. It
  * is left alone, tree and file, and its PR goes on as if nothing were kept. A tree its owner lists
- * on another branch or detached is a person's (`KeptTreeCheck`): it counts as changed, and
- * `--discard-kept` leaves it.
+ * on another branch or detached, or locked with `git worktree lock`, is a person's
+ * (`KeptTreeCheck`): it counts as changed, and `--discard-kept` leaves it.
  *
  * @returns the paths removed, the records refused, and the trees `--discard-kept` left.
  */
@@ -1210,6 +1210,10 @@ function settleKept(
           left.push({ path: record.path, reason: `${tree.why}, so a person moved it` })
           continue
         }
+        if (tree.kind === 'locked') {
+          left.push({ path: record.path, reason: tree.why })
+          continue
+        }
         const why = keptFolderProblem(place, record)
         if (why !== null) {
           onRefused(keptRefusal(place, record, why))
@@ -1247,8 +1251,9 @@ function settleKept(
       // Before `keptIsTouched` runs git in the folder.
       const tree = treeOf(git, place, record)
       if (tree.kind === 'forged') return true
-      // A tree a person moved to a branch of their own, or detached, is theirs: changed.
-      const touched = (): boolean => tree.kind === 'moved' || keptIsTouched(git, record)
+      // A tree a person moved to a branch of their own, or detached, or locked, is theirs: changed.
+      const touched = (): boolean =>
+        tree.kind === 'moved' || tree.kind === 'locked' || keptIsTouched(git, record)
       if (child) {
         return touched()
           ? skip(`kept worktree ${record.path} has local changes; push them or pass --discard-kept`)

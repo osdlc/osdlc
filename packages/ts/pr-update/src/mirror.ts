@@ -71,7 +71,7 @@ import {
   type machineConfigSchema,
 } from './machine.ts'
 import type { LocateTarget } from './ports.ts'
-import { NO_MAINTENANCE, maintainClone } from './clone-maintenance.ts'
+import { CLONE_MARKER, NO_MAINTENANCE, maintainClone } from './clone-maintenance.ts'
 import { SurveyUsageError, hostKey, type ManagedClones, type RepoTarget } from './survey.ts'
 import { targetGitOptions } from './update/execute.ts'
 
@@ -81,8 +81,7 @@ export const MIRROR_DIR_ENV = 'PR_UPDATE_MIRROR_DIR'
 /** The file at the root of a clone directory that says pr-update made it its own. */
 export const MIRROR_MARKER = '.pr-update-mirror'
 
-/** The file inside a clone that says pr-update made it. A clone without one is never used or removed. */
-export const CLONE_MARKER = 'pr-update-clone.json'
+export { CLONE_MARKER } from './clone-maintenance.ts'
 
 /** The file inside a clone that holds when a run last used it, as an ISO time. */
 export const CLONE_STAMP = 'pr-update-last-used'
