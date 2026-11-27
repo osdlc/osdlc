@@ -302,6 +302,14 @@ describe("the system description's examples", () => {
     ).toEqual(['line 11: project.0.marker: must be no longer than 4096 characters'])
   })
 
+  test.each([
+    '/home2/bob/.cache',
+    '/data/home/bob/.cache',
+    '/System/Volumes/Data/Users/bob/.cache',
+  ])('a folder below a home folder written out, %s, is accepted', (p) => {
+    expect(issues(HUGGING_FACE.replace('~/.cache/huggingface/hub', `'${p}'`))).toEqual([])
+  })
+
   test('a glob may start with ~ when it names an entry, such as ~$*', () => {
     expect(issues(hfWith("{ path: hub, costDescription: rebuild, glob: '~$*' }"))).toEqual([])
   })
@@ -488,6 +496,10 @@ describe('a bad descriptor names the field path', () => {
       '/usr/home/alice',
       '/export/home/alice/',
       '/mnt/c/Users/alice',
+      '/System/Volumes/Data/Users/bob',
+      '/System/Volumes/Data/private/var/root',
+      '/home2/bob',
+      '/data/home/bob',
     ].map((home): [string, string, string] => [
       `a home folder written out, ${home}`,
       HUGGING_FACE.replace('~/.cache/huggingface/hub', `'${home}'`),
@@ -769,6 +781,8 @@ describe('the predicates a script may use take what the schema takes', () => {
     '~/a/../b',
     'a/b',
     '/home/me',
+    '/home2/bob/.cache',
+    '/System/Volumes/Data/Users/bob/.cache',
     '',
   ]
   const NAMES = ['a', 'cache-a_1', '1a', 'a b', '', '.', '..', 'a/b', 'a\\b', '.venv']

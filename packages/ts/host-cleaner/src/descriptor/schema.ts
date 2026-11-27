@@ -51,12 +51,14 @@ const GLOB_ESCAPES = /(^|[/\\{,])\.\.([/\\},]|$)|(^|[{,])([/\\]|~([/\\,}]|$)|[A-
 
 /**
  * A home folder, or the folder that holds them, written out: `/root`,
- * `/var/root`, `/home/<user>` (also under `/var`, `/usr` or `/export`),
- * `/Users/<user>`, `C:\Users\<user>` (also as WSL's `/mnt/c/Users/<user>`),
- * `${HOME}` or `${USERPROFILE}`. Test it on {@link withoutDots}' result.
+ * `/var/root`, `/home/<user>` (also `/home2` and the like, and under `/var`,
+ * `/usr`, `/export` or `/data`), `/Users/<user>`, each of these also under
+ * macOS's `/System/Volumes/Data`, `C:\Users\<user>` (also as WSL's
+ * `/mnt/c/Users/<user>`), `${HOME}` or `${USERPROFILE}`. Test it on
+ * {@link withoutDots}' result.
  */
 const HOME_FOLDER =
-  /^(\/root|\/(private[/\\])?var[/\\]root|\/(((var|usr|export)[/\\])?home|Users)([/\\][^/]*)?|(\/mnt[/\\][A-Za-z]|[A-Za-z]:)[/\\]Users([/\\][^/\\]*)?|\$\{(HOME|USERPROFILE)\})[/\\]*$/i
+  /^((\/System[/\\]Volumes[/\\]Data)?(\/root|\/(private[/\\])?var[/\\]root|\/(((var|usr|export|data)[/\\])?home\d*|Users)([/\\][^/]*)?)|(\/mnt[/\\][A-Za-z]|[A-Za-z]:)[/\\]Users([/\\][^/\\]*)?|\$\{(HOME|USERPROFILE)\})[/\\]*$/i
 
 const NAME = /^[A-Za-z][A-Za-z0-9_-]*$/
 
