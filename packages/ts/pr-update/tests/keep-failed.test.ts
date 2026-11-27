@@ -168,16 +168,16 @@ describe('update --keep-failed', () => {
     expect(out.results[0]!.keptWorktree).toBe(kept())
   })
 
-  test('a moved base does not discard a kept worktree a person has edited', async () => {
+  test('a moved base discards the kept worktree, whatever is in it (ownership contract)', async () => {
     await update({ keepFailed: true })
     writeFileSync(join(kept(), 'wip.txt'), 'unfinished\n')
     fx.worker.commit('main moves again', { 'more.txt': 'x\n' })
     fx.worker.git.push('origin', 'main')
     fx.worker.git.fetch('origin')
     const out = await update({ keepFailed: true })
-    expect(out.results).toEqual([])
-    expect(out.skipped[0]!.reason).toContain('has local changes')
-    expect(existsSync(join(kept(), 'wip.txt'))).toBe(true)
+    expect(out.results.map((r) => r.status)).toEqual(['failed'])
+    expect(out.discarded).toEqual([kept()])
+    expect(existsSync(join(kept(), 'wip.txt'))).toBe(false)
   })
 
   test('--discard-kept removes every kept worktree, and the run goes on', async () => {
@@ -190,26 +190,24 @@ describe('update --keep-failed', () => {
     expect(renderUpdateText(out)).toContain(`discarded kept worktree ${kept()}`)
   })
 
-  describe('a kept tree a person moved off its kept branch (review round 1)', () => {
+  describe('what is in a kept tree never keeps it (ownership contract)', () => {
     const topicOnOrigin = () => fx.bare.git.resolveRef('topic')
 
-    test('one on a branch of their own, with a new file: the PR is not pushed and the tree stays', async () => {
+    test('one switched to another branch, with a new file, goes when the PR moves; that branch stays', async () => {
       await update({ keepFailed: true })
       fx.worker.git.at(kept()).rawChecked(['checkout', '-q', '-b', 'my-fix'])
-      writeFileSync(join(kept(), 'fix.txt'), 'mine\n')
+      writeFileSync(join(kept(), 'fix.txt'), 'x\n')
       fx.worker.commit('main moves again', { 'more.txt': 'x\n' })
       fx.worker.git.push('origin', 'main')
       fx.worker.git.fetch('origin')
       verifyOk = true
-      const before = topicOnOrigin()
       const out = await update({ keepFailed: true })
-      expect(out.results).toEqual([])
-      expect(out.skipped[0]!.reason).toBe(
-        `kept worktree ${kept()} has local changes; push them or pass --discard-kept`,
-      )
-      expect(out.keptRefused).toBeUndefined()
-      expect(topicOnOrigin()).toBe(before)
-      expect(existsSync(join(kept(), 'fix.txt'))).toBe(true)
+      expect(out.results.map((r) => r.status)).toEqual(['updated'])
+      expect(out.discarded).toEqual([kept()])
+      expect(existsSync(kept())).toBe(false)
+      // A branch of the project root's that is not pr-update's is never deleted.
+      expect(fx.worker.git.resolveRef('my-fix')).not.toBeNull()
+      expect(fx.worker.git.resolveRef('pr-update/failed-o-r-1')).toBeNull()
     })
 
     test('one on a detached HEAD, unchanged: the PR is still held back', async () => {
@@ -225,22 +223,31 @@ describe('update --keep-failed', () => {
       expect(existsSync(kept())).toBe(true)
     })
 
-    test('--discard-kept leaves it, with a note naming the branch', async () => {
+    test('--discard-kept removes one switched to another branch, and leaves that branch', async () => {
       await update({ keepFailed: true })
       fx.worker.git.at(kept()).rawChecked(['checkout', '-q', '-b', 'my-fix'])
       verifyOk = true
+      const out = await update({ discardKept: true })
+      expect(out.discarded).toEqual([kept()])
+      expect(out.keptLeft).toBeUndefined()
+      expect(out.results.map((r) => r.status)).toEqual(['updated'])
+      expect(existsSync(kept())).toBe(false)
+      expect(fx.worker.git.resolveRef('my-fix')).not.toBeNull()
+    })
+
+    test('one git will not remove (locked) is listed in keptLeft, and stays', async () => {
+      await update({ keepFailed: true })
+      fx.worker.git.rawChecked(['worktree', 'lock', kept()])
       const out = await update({ discardKept: true })
       expect(out.discarded ?? []).toEqual([])
       expect(out.keptLeft).toEqual([
         {
           path: kept(),
-          reason: `${kept()} is on my-fix, not pr-update/failed-o-r-1, so a person moved it`,
+          reason: expect.stringContaining(`${kept()} stays: git would not remove it`),
         },
       ])
       expect(renderUpdateText(out)).toContain(`! kept worktree ${kept()} left: `)
-      expect(out.results).toEqual([])
       expect(existsSync(kept())).toBe(true)
-      expect(fx.worker.git.resolveRef('my-fix')).not.toBeNull()
     })
   })
 

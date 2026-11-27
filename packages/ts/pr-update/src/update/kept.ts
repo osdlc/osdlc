@@ -1,12 +1,12 @@
 /**
- * A failed PR's worktree, kept for a person to pick up (`--keep-failed`).
+ * A failed PR's worktree, kept as evidence of what went wrong (`--keep-failed`).
  *
  * The project root's trees live at `<checkout>/.pr-update/failed/<owner>-<name>-<number>/`. A
  * target other than the project root, under a host's `Ports.targetHome`, keeps them in its own
  * directory instead, as `<dir>/<number>/` (the standalone run's is
  * `kept/<host>/<owner>/<name>/` in pr-update's state directory). Either way the tree is on a
  * branch named for the PR, `pr-update/failed-<owner>-<name>-<number>`, so `git worktree list`
- * shows it and a person can finish the fix and push it. Beside it, a `.json` record of the same
+ * shows it, and `pr-update kept push` can send its commit somewhere a person works. Beside it, a `.json` record of the same
  * name holds the head and base sha the run saw, so a later run can tell whether the PR has moved
  * since. The verify log is written into the tree and kept out of commits.
  *
@@ -18,11 +18,13 @@
  * can put a record there. A record is therefore never trusted to say what to delete: one whose
  * branch is not the kept branch of its PR, whose path is not its kept path or is a symbolic link,
  * or that names a git directory from a checkout's own place is refused, and so is one whose
- * folder `git worktree list` in the git directory serving its place does not show. A
- * tree it shows on another branch, or detached, is a person's ({@link KeptTreeCheck}), and is
- * never removed. A refused record is left as it is, tree and file, and reported
- * ({@link KeptRefusal}). Every removal goes through {@link discardKept}, which checks the
- * folders too.
+ * folder `git worktree list` in the git directory serving its place does not show
+ * ({@link KeptTreeCheck}). A refused record is left as it is, tree and file, and reported
+ * ({@link KeptRefusal}). Every removal through a record goes through {@link discardKept}, which
+ * checks the folders too.
+ *
+ * A kept tree is pr-update's, as everything it makes is: no one works inside it, so what is in
+ * it never keeps it. It goes when its PR moves, with `--retry-failed`, or with `--discard-kept`.
  *
  * The tree is the state the update ended in. A verify failure leaves the built merge or rebase
  * result. A conflict is aborted, which leaves the PR's own head.
@@ -55,7 +57,7 @@ import {
   type OwnedCheck,
 } from '../folders.ts'
 import { realOr } from '../real-path.ts'
-import { PRUNE_ALL, type WorktreeRecords } from './registrations.ts'
+import { PRUNE_ALL, removeWorktree, type WorktreeRecords } from './registrations.ts'
 
 /** The log a failed verify leaves in a kept worktree. */
 export const VERIFY_LOG = '.pr-update-verify.log'
@@ -72,7 +74,7 @@ export interface KeptRecord {
   /** Absolute path of the worktree. */
   path: string
   branch: string
-  /** HEAD of the tree when it was kept; a later HEAD means someone committed to it. */
+  /** HEAD of the tree when it was kept. */
   builtOid?: string | null
   /**
    * The git common directory that owns the tree, by its real path. Set for a tree kept outside
@@ -295,20 +297,6 @@ export function listKept(
 }
 
 /**
- * The git directory `record` names as its owner when that directory is gone, else null. Its tree
- * can no longer be read through git, so nothing can tell whether a person changed it. One that
- * cannot be read is not gone.
- */
-export function keptOwnerGone(record: KeptRecord): string | null {
-  return record.gitDir !== undefined && isGone(record.gitDir) ? record.gitDir : null
-}
-
-/** Why a PR whose kept tree's owner is gone is left alone. */
-export function keptOwnerGoneReason(record: KeptRecord, gitDir: string): string {
-  return `kept worktree ${record.path}: its git directory ${gitDir} is gone; pass --discard-kept to remove the kept tree`
-}
-
-/**
  * The git directory that owns `record`'s tree, when it is not the one serving `place`'s run and
  * is not gone; null otherwise. A run leaves such a tree alone: it is another checkout's.
  * The two are compared by real path, so a record an older run wrote under another spelling of
@@ -335,10 +323,8 @@ function keptOwner(git: Git, place: KeptPlace, record: KeptRecord): Git | null {
 
 /**
  * What `git worktree list` in the owner of `record`'s tree says of it:
- * - `kept`: listed at its path on its kept branch, or its owner is gone, so there is nothing to
+ * - `kept`: listed at its path, on whatever branch, or its owner is gone, so there is nothing to
  *   ask and its place alone was checked (`readRecord`);
- * - `moved`: listed at its path, but on another branch or a detached HEAD. A person did that: the
- *   tree is theirs now, counts as changed, and is never removed;
  * - `forged`: not listed at its path, or the list could not be read (`unlisted`). The record does
  *   not name a tree pr-update kept, or nothing says it does, and is refused.
  *
@@ -346,10 +332,7 @@ function keptOwner(git: Git, place: KeptPlace, record: KeptRecord): Git | null {
  * hold a `.git` file that points anywhere. A path is matched as given or by its real path; a
  * kept path that is itself a symbolic link was refused by `readRecord`.
  */
-export type KeptTreeCheck =
-  | { kind: 'kept' }
-  | { kind: 'moved'; branch: string | null; why: string }
-  | { kind: 'forged'; why: string; unlisted?: true }
+export type KeptTreeCheck = { kind: 'kept' } | { kind: 'forged'; why: string; unlisted?: true }
 
 /** See {@link KeptTreeCheck}. */
 export function keptTreeCheck(git: Git, place: KeptPlace, record: KeptRecord): KeptTreeCheck {
@@ -363,14 +346,6 @@ export function keptTreeCheck(git: Git, place: KeptPlace, record: KeptRecord): K
   const entry = listed.value.find((w) => w.path === record.path || realOr(w.path) === path)
   if (entry === undefined) {
     return { kind: 'forged', why: `${record.path} is not a worktree of its checkout` }
-  }
-  if (entry.branch !== record.branch) {
-    const branch = entry.branch ?? null
-    return {
-      kind: 'moved',
-      branch,
-      why: `${record.path} is on ${branch ?? 'a detached HEAD'}, not ${record.branch}`,
-    }
   }
   return { kind: 'kept' }
 }
@@ -402,8 +377,9 @@ export function keptRefusal(place: KeptPlace, record: KeptRecord, why: string): 
  * are removed. Every removal of a kept tree goes through here.
  *
  * @throws KeptRefusedError, removing nothing, when the owner does not list the tree as its
- *   worktree on the record's branch ({@link keptTreeCheck}), or when a folder between the
- *   place's `root` and the tree fails the folder rule ({@link keptFolderProblem}).
+ *   worktree ({@link keptTreeCheck}), or when a folder between the place's `root` and the tree
+ *   fails the folder rule ({@link keptFolderProblem}). Also, leaving the record, when git will
+ *   not remove the tree (a locked one, say).
  */
 export function discardKept(git: Git, place: KeptPlace, record: KeptRecord): void {
   const owner = keptOwner(git, place, record)
@@ -416,21 +392,12 @@ export function discardKept(git: Git, place: KeptPlace, record: KeptRecord): voi
     dropTree(owner, record.path, place.records ?? PRUNE_ALL)
     owner.try.deleteBranch(record.branch, { force: true })
   }
-  rmSync(sidecar(place, record.repo, record.number), { force: true })
+  dropKeptRecord(place, record)
 }
 
-/**
- * Whether anyone has changed or committed to a kept worktree since it was kept. A tree git
- * cannot read counts as changed, so it is never removed for being stale.
- */
-export function keptIsTouched(git: Git, record: KeptRecord): boolean {
-  try {
-    const tree = git.at(record.path)
-    if (tree.statusPorcelain().length > 0) return true
-    return record.builtOid != null && tree.revParse('HEAD') !== record.builtOid
-  } catch {
-    return true
-  }
+/** Remove `record`'s file, once its tree is gone. */
+export function dropKeptRecord(place: KeptPlace, record: KeptRecord): void {
+  rmSync(sidecar(place, record.repo, record.number), { force: true })
 }
 
 /** Whether a kept worktree was built from the head and base a target still has. */
@@ -501,8 +468,7 @@ type KeptTarget = Pick<KeptRecord, 'repo' | 'number' | 'head' | 'base' | 'headOi
  * `opts.rename` stands in for `fs.renameSync` in the check for different filesystems.
  *
  * @throws when git cannot move the worktree (one holding submodules, say), when the kept tree this
- * PR already has holds a person's changes, when a folder with no record is in the kept path's
- * place, or when the branch, log or record cannot be written. The worktree is then back at
+ * PR already has cannot be discarded, when a folder with no record is in the kept path's place, or when the branch, log or record cannot be written. The worktree is then back at
  * `worktree`; a kept tree `worktree add` made is removed with its branch.
  */
 export function keepWorktree(
@@ -515,23 +481,13 @@ export function keepWorktree(
 ): KeptRecord {
   const records = place.records ?? PRUNE_ALL
   const old = findKept(place, target.repo, target.number)
-  if (old !== null) {
-    const gone = keptOwnerGone(old)
-    if (gone !== null) throw new Error(keptOwnerGoneReason(old, gone))
-    const tree = keptTreeCheck(git, place, old)
-    if (tree.kind === 'forged') throw new KeptRefusedError(keptRefusal(place, old, tree.why))
-    // A tree a person moved to a branch of their own is theirs, changed or not.
-    if (tree.kind === 'moved' || keptIsTouched(git, old))
-      throw new Error(
-        `kept worktree ${old.path} has local changes; push them or pass --discard-kept`,
-      )
-    // Checks the folders too, so a replacement removes nothing from a folder others can write to.
-    discardKept(git, place, old)
-  }
+  // Checks the record and the folders, so a replacement removes nothing it should not.
+  if (old !== null) discardKept(git, place, old)
   const path = keptPath(place, target.repo, target.number)
   if (existsSync(path)) {
-    // A run stopped between making the tree and writing its record. It may hold a person's work,
-    // so it is never moved into or removed.
+    // A run stopped between making the tree and writing its record, or, in a checkout's own
+    // place, the repository's content put it there. No record says pr-update made it, so it is
+    // never moved into or removed.
     throw new Error(
       `${path} is in the way and has no record (a run stopped part-way); ` +
         `remove it with \`git worktree remove --force ${path}\` in its checkout, then run again`,
@@ -560,20 +516,25 @@ export function keepWorktree(
     if (moved) moveBack(git, place, path, worktree, branch, target)
     else {
       // The run worktree was left as it was, so the added tree and its branch are all to undo.
-      dropTree(git, path, records)
+      // What git will not remove stays, and the keep's own error is the one reported.
+      removeWorktree(git, path, records)
       git.try.deleteBranch(branch, { force: true })
     }
     throw e
   }
-  if (!moved) dropTree(git, worktree, records)
+  // The run's `finally` tries again if git will not remove it now.
+  if (!moved) removeWorktree(git, worktree, records)
   return record
 }
 
-/** Remove the worktree at `path`, its folder, and git's record of it. */
+/**
+ * Remove the worktree at `path`, its folder, and git's record of it.
+ *
+ * @throws when git will not remove it (a locked one, say).
+ */
 function dropTree(git: Git, path: string, records: WorktreeRecords): void {
-  const removed = git.try.worktreeRemove(path, { force: true }).ok
-  rmSync(path, { recursive: true, force: true })
-  records.forget(git, path, removed)
+  const left = removeWorktree(git, path, records)
+  if (left !== undefined) throw new Error(left)
 }
 
 /** Put a moved tree back at `worktree`, so a half-kept tree with no record is not left behind. */

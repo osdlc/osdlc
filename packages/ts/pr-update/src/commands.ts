@@ -646,7 +646,7 @@ export function updateCommand(seams: CliSeams) {
       },
     },
     exits: {
-      1: 'a PR ended conflict or failed',
+      1: 'a PR ended conflict or failed, or git would not remove a kept worktree a discard named',
       14: 'the config file is invalid or unreadable, or the machine file cannot take the answer about cloning (not YAML, or not a map)',
       [EXIT_UNTRUSTED]: "refused: the repository's config names commands it is not trusted to run",
     },
@@ -800,11 +800,14 @@ export function updateCommand(seams: CliSeams) {
         }
       }
       const listingFailure = reportRepoFailures(ctx, out)
-      // A conflict or failed push exits 1 though the run completed, so a script need not read `counts`.
+      // A conflict, a failed push or a kept tree git would not remove exits 1 though the run
+      // completed, so a script need not read `counts` or `keptLeft`.
       const exit =
         interrupted ??
         listingFailure ??
-        (out.counts.conflict > 0 || out.counts.failed > 0 ? EXIT.error : EXIT.ok)
+        (out.counts.conflict > 0 || out.counts.failed > 0 || (out.keptLeft?.length ?? 0) > 0
+          ? EXIT.error
+          : EXIT.ok)
       return exit === EXIT.ok ? out : outcome(out, exit)
     },
     text: (out) => renderUpdateText(out),

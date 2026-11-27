@@ -44,7 +44,6 @@ import {
   checkoutKept,
   findKept,
   keepWorktree,
-  keptIsTouched,
   listKept,
   type KeptPlace,
 } from '../src/update/kept.ts'
@@ -685,7 +684,7 @@ describe("the person's own checkout", () => {
     expect(worktreePaths(sh(api.worker.dir, 'worktree', 'list', '--porcelain'))).toContain(mine)
   })
 
-  test('when removing the run worktree fails, only its record goes, and nothing is pruned', async () => {
+  test('when git will not remove the run worktree, it stays as it is, and nothing is pruned', async () => {
     const mine = join(scratch, 'mine')
     sh(api.worker.dir, 'worktree', 'add', '-q', '--detach', mine, 'main')
     rmSync(mine, { recursive: true, force: true })
@@ -702,17 +701,22 @@ describe("the person's own checkout", () => {
       'updated',
     ])
     expect(calls.some((c) => c[0] === 'worktree' && c[1] === 'prune')).toBe(false)
+    // One `--force`, and no removal by hand.
+    expect(
+      calls
+        .filter((c) => c[0] === 'worktree' && c[1] === 'remove')
+        .every((c) => c.filter((a) => a === '--force').length === 1),
+    ).toBe(true)
     const runs = join(paths.worktrees, 'github.com', 'acme', 'api')
-    expect(readdirSync(runs)).toEqual([])
+    expect(readdirSync(runs)).toHaveLength(1)
     const listed = worktreePaths(sh(api.worker.dir, 'worktree', 'list', '--porcelain'))
     expect(listed).toContain(mine)
-    expect(listed.filter((p) => p.startsWith(runs))).toEqual([])
-    expect(sh(api.worker.dir, 'branch', '--list', 'pr-update/*')).toBe('')
+    expect(listed.filter((p) => p.startsWith(runs))).toHaveLength(1)
   })
 })
 
 describe('a located target kept worktree, when something is off', () => {
-  test('whose git directory is gone is left with its edits, even when the PR moved', async () => {
+  test('whose git directory is gone goes when the PR moves, whatever is in it (ownership contract)', async () => {
     verifyOk = false
     await update({ args: { keepFailed: true } })
     const kept = join(keptDir(), '1')
@@ -723,15 +727,10 @@ describe('a located target kept worktree, when something is off', () => {
     api.worker.commit('main again', { 'n.txt': 'n\n' })
     api.worker.git.push('origin', 'main')
 
-    for (const args of [{ keepFailed: true }, { keepFailed: true, retryFailed: true }]) {
-      const out = await update({ args })
-      expect(out.results).toEqual([])
-      expect(out.discarded ?? []).toEqual([])
-      expect(out.skipped.map((s) => s.reason)).toEqual([
-        `kept worktree ${kept}: its git directory ${gone} is gone; pass --discard-kept to remove the kept tree`,
-      ])
-    }
-    expect(readFileSync(join(kept, 'fix.txt'), 'utf8')).toBe('half a fix\n')
+    const out = await update({ args: { keepFailed: true } })
+    expect(out.results.map((r) => r.status)).toEqual(['failed'])
+    expect(out.discarded).toEqual([kept])
+    expect(existsSync(join(kept, 'fix.txt'))).toBe(false)
   })
 
   // Windows has no search bit for chmod to take away, and root searches any folder.
@@ -773,22 +772,6 @@ describe('a located target kept worktree, when something is off', () => {
       expect(existsSync(`${kept}.json`)).toBe(false)
     },
   )
-
-  test('a tree git cannot read counts as changed', () => {
-    const plain = join(scratch, 'plain')
-    mkdirSync(plain)
-    const record = {
-      repo: 'acme/api',
-      number: 1,
-      head: 'topic',
-      base: 'main',
-      headOid: null,
-      baseOid: null,
-      path: plain,
-      branch: 'pr-update/failed-acme-api-1',
-    }
-    expect(keptIsTouched(new Git(api.worker.dir, { runner: git }), record)).toBe(true)
-  })
 
   test('a folder in the kept path with no record is not moved into, and is named', async () => {
     verifyOk = false
@@ -1486,18 +1469,15 @@ describe.skipIf(process.platform === 'win32')(
 )
 
 describe('a kept tree, round 2', () => {
-  test('--retry-failed leaves a kept tree with local changes, as only --discard-kept removes it', async () => {
+  test('--retry-failed discards a kept tree, whatever is in it (ownership contract)', async () => {
     verifyOk = false
     await update({ args: { keepFailed: true } })
     const kept = join(keptDir(), '1')
     writeFileSync(join(kept, 'fix.txt'), 'half a fix\n')
     const out = await update({ args: { keepFailed: true, retryFailed: true } })
-    expect(out.results).toEqual([])
-    expect(out.skipped.map((s) => s.reason)).toEqual([
-      `kept worktree ${kept} has local changes; push them or pass --discard-kept`,
-    ])
-    expect(readFileSync(join(kept, 'fix.txt'), 'utf8')).toBe('half a fix\n')
-    expect((await update({ args: { discardKept: true } })).discarded).toEqual([kept])
+    expect(out.results.map((r) => r.status)).toEqual(['failed'])
+    expect(out.discarded).toEqual([kept])
+    expect(existsSync(join(kept, 'fix.txt'))).toBe(false)
   })
 
   test('a record whose path names its folder another way is still its own', async () => {

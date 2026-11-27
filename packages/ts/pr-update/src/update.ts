@@ -88,12 +88,10 @@ import {
   discardKept,
   findKept,
   keptIsCurrent,
-  keptIsTouched,
   keptOwnerElsewhere,
-  keptOwnerGone,
   keptTreeCheck,
   keptFolderProblem,
-  keptOwnerGoneReason,
+  KeptRefusedError,
   keptRefusal,
   listKept,
   type KeptPlace,
@@ -452,7 +450,7 @@ export const output = z.object({
     .array(z.object({ path: z.string(), reason: z.string() }))
     .optional()
     .describe(
-      'Kept worktrees `--discard-kept` left because a person moved them to a branch of their own or a detached HEAD. A PR whose kept tree is like that is skipped as changed.',
+      'Kept worktrees a discard could not remove, because git would not (a locked one, say). The run exits 1.',
     ),
   madeTargetWorktree: z
     .literal(true)
@@ -1145,11 +1143,11 @@ function routeAttempts(
  *
  * A record the checkout's content could have forged is refused (`KeptRefusal`): one that breaks
  * `readRecord`'s rules, or whose folder its owner does not list as a worktree at that path. It
- * is left alone, tree and file, and its PR goes on as if nothing were kept. A tree its owner lists
- * on another branch or detached is a person's (`KeptTreeCheck`): it counts as changed, and
- * `--discard-kept` leaves it.
+ * is left alone, tree and file, and its PR goes on as if nothing were kept. What is in a kept
+ * tree never keeps it: it is pr-update's. One git will not remove (a locked one) is listed in
+ * `left`, and its PR is skipped.
  *
- * @returns the paths removed, the records refused, and the trees `--discard-kept` left.
+ * @returns the paths removed, the records refused, and the trees a discard could not remove.
  */
 function settleKept(
   args: UpdateArgs,
@@ -1179,18 +1177,36 @@ function settleKept(
   }
   /**
    * Discard `record`. One that a managed clone owns is discarded only under the clone's lock
-   * (`ManagedClones.removing`): false when the lock could not be had, and the tree stays.
+   * (`ManagedClones.removing`): `busy` when the lock could not be had, and the tree stays. A
+   * refused record is told to `onRefused`; why git would not remove the tree is returned.
    */
-  const discard = (git: Git, checkout: string, place: KeptPlace, record: KeptRecord): boolean => {
+  const discard = (
+    git: Git,
+    checkout: string,
+    place: KeptPlace,
+    record: KeptRecord,
+  ): 'removed' | 'busy' | 'refused' | { left: string } => {
     const owner = record.gitDir ?? realOr(checkout)
     const clone = clones.get(owner) ?? (existsSync(join(owner, CLONE_MARKER)) ? owner : undefined)
-    if (clone === undefined || env.clones === undefined) {
-      discardKept(git, place, record)
-      return true
+    try {
+      if (clone === undefined || env.clones === undefined) discardKept(git, place, record)
+      else if (
+        !env.clones.removing(clone, { path: record.path, kind: 'kept' }, () =>
+          discardKept(git, place, record),
+        )
+      ) {
+        return 'busy'
+      }
+      return 'removed'
+    } catch (e) {
+      if (e instanceof KeptRefusedError) {
+        onRefused(e.refusal)
+        return 'refused'
+      }
+      const reason = (e as Error).message.split('\n')[0]!
+      left.push({ path: record.path, reason })
+      return { left: reason }
     }
-    return env.clones.removing(clone, { path: record.path, kind: 'kept' }, () =>
-      discardKept(git, place, record),
-    )
   }
   const places = new Map<string, { checkout: string; place: KeptPlace }>()
   for (const [repo, s] of served) {
@@ -1206,16 +1222,12 @@ function settleKept(
       for (const record of listKept(place, onRefused)) {
         const tree = treeOf(git, place, record)
         if (tree.kind === 'forged') continue
-        if (tree.kind === 'moved') {
-          left.push({ path: record.path, reason: `${tree.why}, so a person moved it` })
-          continue
-        }
         const why = keptFolderProblem(place, record)
         if (why !== null) {
           onRefused(keptRefusal(place, record, why))
           continue
         }
-        if (writes && !discard(git, checkout, place, record)) continue
+        if (writes && discard(git, checkout, place, record) !== 'removed') continue
         removed.push(record.path)
       }
     }
@@ -1231,44 +1243,27 @@ function settleKept(
         skipped.push({ repo: t.repo, number: t.number, head: t.head, reason })
         return false
       }
-      // Its owner is gone, so git cannot say whether a person changed it: it stays until
-      // `--discard-kept` (handled above).
-      const gone = keptOwnerGone(record)
-      if (gone !== null) return skip(keptOwnerGoneReason(record, gone))
       // A restack child's base is its parent's new head, known only once the parent has run, so
-      // whether its tree is current waits: it is left, and a new keep replaces it. The checks
-      // that do not need that still hold it back.
+      // whether its tree is current waits: it is left, and a new keep replaces it.
       const child = t.stackParent !== undefined
       const moved = !child && !keptIsCurrent(record, t)
       const owner = keptOwnerElsewhere(place, record)
       if (owner !== null && (child || args.retryFailed === true || !moved)) {
         return skip(`kept elsewhere: ${record.path} is a worktree of ${owner}`)
       }
-      // Before `keptIsTouched` runs git in the folder.
       const tree = treeOf(git, place, record)
-      if (tree.kind === 'forged') return true
-      // A tree a person moved to a branch of their own, or detached, is theirs: changed.
-      const touched = (): boolean => tree.kind === 'moved' || keptIsTouched(git, record)
-      if (child) {
-        return touched()
-          ? skip(`kept worktree ${record.path} has local changes; push them or pass --discard-kept`)
-          : true
-      }
-      const stale = args.retryFailed === true || moved
-      // `--retry-failed` too: only `--discard-kept` removes a tree with a person's changes in it.
-      if (stale && touched()) {
-        return skip(
-          `kept worktree ${record.path} has local changes; push them or pass --discard-kept`,
-        )
-      }
-      if (stale) {
+      if (tree.kind === 'forged' || child) return true
+      if (args.retryFailed === true || moved) {
         const why = keptFolderProblem(place, record)
         if (why !== null) return skip(`kept worktree ${record.path} stays: ${why}`)
-        if (writes && !discard(git, group.path, place, record)) {
+        const done = writes ? discard(git, group.path, place, record) : 'removed'
+        if (done === 'busy') {
           return skip(
             `mirror busy: kept worktree ${record.path} could not be removed under its clone's lock`,
           )
         }
+        if (done === 'refused') return true
+        if (done !== 'removed') return skip(`kept worktree ${record.path} stays: ${done.left}`)
         removed.push(record.path)
         return true
       }

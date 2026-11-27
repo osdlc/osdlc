@@ -70,7 +70,7 @@ import { NO_MAINTENANCE } from '../clone-maintenance.ts'
 import { NothingDetectedError } from '../detect.ts'
 import { FOLDER_MODE } from '../folders.ts'
 import { keepWorktree, type KeptPlace } from './kept.ts'
-import { PRUNE_ALL, lockedByPerson, removeWorktree, type WorktreeRecords } from './registrations.ts'
+import { PRUNE_ALL, removeWorktree, type WorktreeRecords } from './registrations.ts'
 import type {
   ConfirmPush,
   BranchLease,
@@ -1744,7 +1744,7 @@ export async function updateAll(
             result.keepError = errorLine(e)
           }
           if (!existsSync(opts.worktreeRoot)) {
-            records.forget(git, opts.worktreeRoot, false)
+            records.forget(git)
             mkdirSync(dirname(opts.worktreeRoot), { recursive: true, mode: FOLDER_MODE })
             git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
           }
@@ -1781,7 +1781,8 @@ export async function updateAll(
  * Remove a worktree that a killed run left holding a {@link WORK_BRANCH} branch, and the branch
  * itself. Without this, scratch branches and worktrees pile up. A worktree whose `<pid>.` name
  * prefix is a live process is left alone, since it belongs to a run still going, and so is one
- * `records` does not count as the run's, and one a person locked with `git worktree lock`.
+ * `records` does not count as the run's. One git will not remove (a locked one) stays, and so
+ * does its branch, which it has checked out.
  */
 function releaseStaleScratch(git: Git, records: WorktreeRecords): void {
   const stale = git
@@ -1790,15 +1791,9 @@ function releaseStaleScratch(git: Git, records: WorktreeRecords): void {
       (w) =>
         w.branch?.startsWith(WORK_BRANCH) === true &&
         records.owns(w.path) &&
-        !lockedByPerson(w) &&
         !isAlive(Number(basename(w.path).split('.')[0])),
     )
-  if (records === PRUNE_ALL) {
-    for (const w of stale) git.try.worktreeRemove(w.path, { force: true })
-    if (stale.length > 0) git.try.worktreePrune()
-  } else {
-    for (const w of stale) removeWorktree(git, w.path, records)
-  }
+  for (const w of stale) removeWorktree(git, w.path, records)
   for (const w of stale) if (w.branch) git.try.deleteBranch(w.branch, { force: true })
 }
 

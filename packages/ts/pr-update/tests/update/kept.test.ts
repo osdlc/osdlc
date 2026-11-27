@@ -3,12 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import {
-  keptOwnerElsewhere,
-  keptOwnerGone,
-  type KeptPlace,
-  type KeptRecord,
-} from '../../src/update/kept.ts'
+import { keptOwnerElsewhere, type KeptPlace, type KeptRecord } from '../../src/update/kept.ts'
 
 describe('keptOwnerElsewhere', () => {
   let root: string
@@ -63,13 +58,12 @@ describe('keptOwnerElsewhere', () => {
       mkdirSync(other, { recursive: true })
       chmodSync(shut, 0o000)
       try {
-        expect(keptOwnerGone(record(other))).toBeNull()
         expect(keptOwnerElsewhere(place, record(other))).toBe(other)
       } finally {
         chmodSync(shut, 0o700)
       }
       rmSync(shut, { recursive: true })
-      expect(keptOwnerGone(record(other))).toBe(other)
+      expect(keptOwnerElsewhere(place, record(other))).toBeNull()
     },
   )
 })

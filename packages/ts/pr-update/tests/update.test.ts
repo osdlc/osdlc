@@ -1456,18 +1456,15 @@ describe('runUpdate --restack — a three-level stack, against real git', () => 
     return path
   }
 
-  test('a restack child whose kept tree a person changed is skipped, and the tree stays (second review)', async () => {
+  test('a restack child whose kept tree has changes in it is restacked all the same (ownership contract)', async () => {
     const kept = keepP()
     writeFileSync(join(kept, 'wip.txt'), 'unfinished\n')
-    const before = tip('p')
     const out = await run({ apply: true, strategy: 'merge' })
-    expect(out.results.map((r) => [r.number, r.status])).toEqual([[1, 'updated']])
-    expect(out.skipped.map((s) => [s.number, s.reason])).toEqual([
-      [2, `kept worktree ${kept} has local changes; push them or pass --discard-kept`],
-      [3, 'blocked on #2; parent #2 was not updated'],
+    expect(out.results.map((r) => [r.number, r.status, r.restackedOnto])).toEqual([
+      [1, 'updated', undefined],
+      [2, 'updated', 1],
+      [3, 'updated', 2],
     ])
-    expect(tip('p')).toBe(before)
-    expect(existsSync(join(kept, 'wip.txt'))).toBe(true)
   })
 
   test('a restack child whose kept tree is untouched is still restacked (second review)', async () => {
