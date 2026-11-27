@@ -772,6 +772,34 @@ describe('detection and roots', () => {
     expect(ids(s.candidates)).toEqual([`ide-version:${join(cache, 'JetBrains', 'GoLand2024.2')}`])
   })
 
+  test('with HOME empty and no home given, it has no roots and drops out', async () => {
+    const h = twoVersions()
+    for (const platform of ['darwin', 'linux'] as const) {
+      const plugin = make(h, { options: { platform, env: { HOME: '' } } })
+      expect(await plugin.roots!(ctx()), platform).toEqual([])
+      expect(await plugin.detect(ctx()), platform).toBe(false)
+    }
+  })
+
+  test("on Linux, for a home other than HOME's, the XDG folders are that home's defaults", async () => {
+    const h = home()
+    const other = home()
+    const cache = join(other.home, 'xdg-cache')
+    put(join(cache, 'JetBrains', 'RustRover2020.1', 'x'))
+    const plugin = make(h, {
+      options: {
+        platform: 'linux',
+        apps: undefined,
+        env: { HOME: other.home, XDG_CACHE_HOME: cache },
+      },
+    })
+    const at = fakeContext({ cwd: '/', home: h.home })
+    expect(await plugin.roots!(at)).toEqual([join(h.home, '.cache', 'JetBrains')])
+    // HOME's own home still reads them.
+    const own = fakeContext({ cwd: '/', home: other.home })
+    expect(await plugin.roots!(own)).toEqual([join(cache, 'JetBrains')])
+  })
+
   test('on another platform it has no roots and drops out', async () => {
     const h = twoVersions()
     const s = await survey([make(h, { options: { platform: 'win32' } })], ctx())
