@@ -111,6 +111,7 @@ export default definePlugin({
                   kind: 'scratch',
                   path,
                   why: 'too big to measure',
+                  costDescription: 'rebuild',
                   unmeasured: true,
                 }),
               ]

@@ -336,6 +336,7 @@ describe("the guide's plugin, its walk out of time in one survey and not the oth
   ])('is not dropped as changed: $planned when planned', async ({ slow }) => {
     const planned = plan(await survey([make(slow)], ctx), { allow })
     expect(planned.candidates.map((c) => c.unmeasured)).toEqual([slow ? true : undefined])
+    expect(planned.candidates.map((c) => c.costDescription)).toEqual(['rebuild'])
     const receipt = await clean(planned, [make(!slow)], ctx)
     expect(receipt.dropped).toEqual([])
     expect(receipt.steps).toEqual([
