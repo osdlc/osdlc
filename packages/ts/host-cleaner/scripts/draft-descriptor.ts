@@ -505,12 +505,11 @@ function draftDescriptor(store: CorpusStore): Draft {
     }),
   )
 
-  const program = store.cli?.split(/\s+/)[0]
+  const words = store.cli?.split(/\s+/).filter(Boolean) ?? []
+  const program = words[0]
+  const onPath = program !== undefined && /^[A-Za-z0-9._+-]+$/.test(program)
   const detect = {
-    any: [
-      ...(program !== undefined && /^[A-Za-z0-9._+-]+$/.test(program) ? [{ onPath: program }] : []),
-      ...names.map((n) => ({ exists: n })),
-    ],
+    any: [...(onPath ? [{ onPath: program }] : []), ...names.map((n) => ({ exists: n }))],
   }
 
   const processes = listIn('liveness/in-use', 'processes', text)
@@ -650,6 +649,13 @@ function draftDescriptor(store: CorpusStore): Draft {
       '',
       ...wrap(
         'No inUse: nothing here tells that the tool is running. Add a process or a lock file that does.',
+      ),
+    )
+  if (onPath && words.length > 1)
+    header.push(
+      '',
+      ...wrap(
+        `onPath ${program} is the first word of the corpus's cli, ${store.cli}: keep it only if nothing but this tool puts ${program} on PATH.`,
       ),
     )
   if (nested.length > 0)

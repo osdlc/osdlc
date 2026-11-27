@@ -191,6 +191,9 @@ describe('a small corpus', () => {
       ],
     })
     expect(text).toContain('stores/Tool.md (checked 2026-01-01)')
+    expect(text).toContain(
+      "# onPath tool is the first word of the corpus's cli, tool sub: keep it only if",
+    )
     expect(text).toContain('# - linux $XDG_DATA_HOME/tool (state): not a fixed folder')
     expect(text).toContain('# - windows %LOCALAPPDATA%\\tool (cache): not a fixed folder')
     expect(text).toContain('# - all ~/.tool/<VERSION> (logs): not a fixed folder')
