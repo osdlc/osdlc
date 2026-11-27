@@ -38,7 +38,9 @@ each. This standard says what that shape is.
   in `docs/planning/`, with a README index, and a user guide in `docs/guide/`,
   which the site publishes under the library's page.
 - **The same scripts and files.** `typecheck` checks the source and the build
-  config, `smoke` runs `tests/smoke.mjs`, the CHANGELOG starts
+  config: `tsc --noEmit && tsc -p tsconfig.build.json --noEmit`, with `vue-tsc`
+  in place of `tsc` in a library that has a Vue single-file component under
+  `src/`, since `tsc` cannot read a `.vue` file. `smoke` runs `tests/smoke.mjs`, the CHANGELOG starts
   `# @osdlc/<name>`, the README has `## Install` and `## Licence`, and
   `.gitignore` lists `node_modules/`, `dist/` and `coverage/`. There is no
   coverage threshold.

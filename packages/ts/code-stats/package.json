@@ -1,0 +1,187 @@
+{
+  "name": "@osdlc/code-stats",
+  "version": "0.2.0",
+  "description": "Source code statistics by kind of line: logic, boilerplate, comments, docs and blank, for a whole tree at any revision, for a diff with added, removed, changed and moved lines, and for two changes side by side. Plus file categories, public API delta and complexity movers for a pull request. Deterministic, no LLM.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/code-stats"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/code-stats#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "sloc",
+    "cloc",
+    "lines-of-code",
+    "code-metrics",
+    "pull-request",
+    "code-review",
+    "diff",
+    "cyclomatic-complexity",
+    "cli"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./scan": {
+      "types": "./dist/scan/index.d.ts",
+      "default": "./dist/scan/index.js"
+    },
+    "./prep": {
+      "types": "./dist/prep/index.d.ts",
+      "default": "./dist/prep/index.js"
+    },
+    "./analysis": {
+      "types": "./dist/analysis/index.d.ts",
+      "default": "./dist/analysis/index.js"
+    },
+    "./tree-sitter": {
+      "types": "./dist/tree-sitter/index.d.ts",
+      "default": "./dist/tree-sitter/index.js"
+    }
+  },
+  "bin": {
+    "code-stats": "./bin/code-stats.js"
+  },
+  "files": [
+    "dist/",
+    "bin/",
+    "docs/guide/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "THIRD-PARTY-NOTICES"
+  ],
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
+  "scripts": {
+    "build": "cli-tool-stamp-version && tsc -p tsconfig.build.json",
+    "stamp-version": "cli-tool-stamp-version",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "languages": "node scripts/languages.ts",
+    "languages:check": "node scripts/languages.ts --check",
+    "check:extra": "pnpm run languages:check",
+    "test": "vitest run",
+    "smoke": "node tests/smoke.mjs",
+    "coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/cli-tool": "workspace:^",
+    "@osdlc/command-seam": "workspace:^",
+    "@osdlc/gfm-table": "workspace:^",
+    "@osdlc/path-guard": "workspace:^",
+    "@osdlc/system-model": "workspace:^",
+    "@osdlc/typed-gh": "workspace:^",
+    "@osdlc/typed-git": "workspace:^",
+    "ignore": "7.0.6",
+    "picomatch": "4.0.7",
+    "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "tree-sitter-bash": ">=0.25.1",
+    "tree-sitter-c": ">=0.24.1",
+    "tree-sitter-c-sharp": ">=0.23.5",
+    "tree-sitter-cpp": ">=0.23.4",
+    "tree-sitter-go": ">=0.25.0",
+    "tree-sitter-java": ">=0.23.5",
+    "tree-sitter-javascript": ">=0.25.0",
+    "tree-sitter-php": ">=0.24.2",
+    "tree-sitter-python": ">=0.25.0",
+    "tree-sitter-ruby": ">=0.23.1",
+    "tree-sitter-rust": ">=0.24.0",
+    "tree-sitter-scala": ">=0.24.0",
+    "tree-sitter-typescript": ">=0.23.2",
+    "typescript": ">=5",
+    "web-tree-sitter": ">=0.25"
+  },
+  "peerDependenciesMeta": {
+    "tree-sitter-bash": {
+      "optional": true
+    },
+    "tree-sitter-c": {
+      "optional": true
+    },
+    "tree-sitter-c-sharp": {
+      "optional": true
+    },
+    "tree-sitter-cpp": {
+      "optional": true
+    },
+    "tree-sitter-go": {
+      "optional": true
+    },
+    "tree-sitter-java": {
+      "optional": true
+    },
+    "tree-sitter-javascript": {
+      "optional": true
+    },
+    "tree-sitter-php": {
+      "optional": true
+    },
+    "tree-sitter-python": {
+      "optional": true
+    },
+    "tree-sitter-ruby": {
+      "optional": true
+    },
+    "tree-sitter-rust": {
+      "optional": true
+    },
+    "tree-sitter-scala": {
+      "optional": true
+    },
+    "tree-sitter-typescript": {
+      "optional": true
+    },
+    "typescript": {
+      "optional": true
+    },
+    "web-tree-sitter": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@types/picomatch": "^4.0.2",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "tree-sitter-bash": "0.25.1",
+    "tree-sitter-c": "0.24.1",
+    "tree-sitter-c-sharp": "0.23.5",
+    "tree-sitter-cpp": "0.23.4",
+    "tree-sitter-go": "0.25.0",
+    "tree-sitter-java": "0.23.5",
+    "tree-sitter-javascript": "0.25.0",
+    "tree-sitter-php": "0.24.2",
+    "tree-sitter-python": "0.25.0",
+    "tree-sitter-ruby": "0.23.1",
+    "tree-sitter-rust": "0.24.0",
+    "tree-sitter-scala": "0.24.0",
+    "tree-sitter-typescript": "0.23.2",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "web-tree-sitter": "0.27.1"
+  }
+}
