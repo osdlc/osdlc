@@ -234,10 +234,107 @@ describe('status', () => {
     const bad = run(['status', '--config', config], cwd, env)
     expect(bad.code).toBe(2)
     expect(bad.err).toContain('plugins.cargo.idleHours')
-    writeFileSync(config, JSON.stringify({ plugins: { ghost: {} } }))
-    const r = run(['status', '--config', config], cwd, env)
-    expect(r.code).toBe(2)
-    expect(r.err).toContain('ghost')
+  })
+
+  test('a config entry for a plugin nobody has is a warning, and the run goes on', () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { gti: {} } }))
+    const r = run(['status', '--config', config], cwd, env, { plugins: [fake()] })
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('config plugins.gti: no plugin has this name')
+    expect(r.out).toContain('artifact:fake')
+  })
+
+  test('a plan records the config warning; config knows injected plugins', () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { gti: {}, fake: {} } }))
+    const planFile = join(home, 'plan.json')
+    const plugin = fake()
+    const plugins = [plugin]
+    const planned = run(['plan', '--config', config, '-o', planFile], cwd, env, { plugins })
+    expect(planned.code).toBe(0)
+    expect(planned.err).toContain(
+      'config plugins.gti: no plugin has this name; clean refuses to run until it is fixed',
+    )
+    const said = 'config plugins.gti: no plugin had this name when this plan was made'
+    expect(JSON.parse(readFileSync(planFile, 'utf8')).warnings).toEqual([said])
+    const r = run(['config', '--config', config], cwd, env, { plugins })
+    expect(r.err).toContain('plugins.gti')
+    expect(r.err).not.toContain('plugins.fake')
+    // Fixed as told, the plan runs, and its receipt does not say clean refused.
+    writeFileSync(config, JSON.stringify({ plugins: { fake: {} } }))
+    const receipt = join(home, 'receipt.json')
+    const argv = ['clean', '--config', config, '--plan', planFile, '--yes', '--receipt', receipt]
+    expect(run(argv, cwd, env, { plugins }).code).toBe(0)
+    expect(plugin.removed).toEqual(['artifact:fake'])
+    expect(JSON.parse(readFileSync(receipt, 'utf8')).warnings).toEqual([said])
+  })
+
+  test('with the shipped plugins, only an unknown name warns, and --format json carries it', () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { node: { enabled: false }, gti: {} } }))
+    const r = run(['status', '--config', config, '--format', 'json'], cwd, env)
+    // 10: the shipped plugins may find nothing in a fresh directory.
+    expect([0, 10]).toContain(r.code)
+    const warnings: string[] = JSON.parse(r.out).warnings
+    expect(warnings).toContain(
+      'config plugins.gti: no plugin has this name; clean refuses to run until it is fixed',
+    )
+    expect(warnings.some((w) => w.includes('plugins.node'))).toBe(false)
+  })
+
+  test('clean refuses a config naming a plugin nobody has, before it deletes anything', () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { fkae: { enabled: false } } }))
+    const plugin = fake()
+    const planFile = join(home, 'plan.json')
+    const planned = run(['plan', '--config', config, '-o', planFile], cwd, env, {
+      plugins: [plugin],
+    })
+    expect(planned.code).toBe(0)
+    for (const argv of [
+      ['clean', '--config', config, '--yes'],
+      ['clean', '--config', config, '--plan', planFile, '--yes'],
+      ['clean', '--config', config, '--dry-run'],
+    ]) {
+      const r = run(argv, cwd, env, { plugins: [plugin] })
+      expect(r.code).toBe(2)
+      expect(r.err).toContain('config names no plugin fkae')
+    }
+    expect(plugin.removed).toEqual([])
+  })
+
+  test('a package key is no special case: an unknown name warns, and a shipped plugin refuses the key', () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { podman: { package: '@x/podman' } } }))
+    const r = run(['config', '--config', config], cwd, env)
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('config plugins.podman: no plugin has this name')
+    const plugin = fake()
+    const argv = ['clean', '--config', config, '--yes']
+    expect(run(argv, cwd, env, { plugins: [plugin] }).code).toBe(2)
+    expect(plugin.removed).toEqual([])
+    writeFileSync(config, JSON.stringify({ plugins: { git: { package: '@x/git' } } }))
+    expect(run(['config', '--config', config], cwd, env).code).toBe(2)
+  })
+
+  test('config shows only the plugins a run would build', () => {
+    const { env, home, cwd } = setup()
+    const config = join(home, 'c.json')
+    writeFileSync(config, JSON.stringify({ plugins: { git: { enabled: false } } }))
+    const r = run(['config', '--config', config], cwd, env, { plugins: [fake()] })
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('config plugins.git: no plugin has this name')
+    expect(r.out).not.toContain('plugins.git')
+    const json = run(['config', '--config', config, '--format', 'json'], cwd, env, {
+      plugins: [fake()],
+    })
+    expect(JSON.parse(json.out).plugins).toEqual({})
   })
 
   test('there are no profiles: --profile is an unknown option and a profiles key is refused', () => {
@@ -301,13 +398,14 @@ describe('plugin settings', () => {
     expect(json.plugins.git).toEqual({ enabled: true })
   })
 
-  test('config refuses a bad config and a plugin nobody has', () => {
+  test('config refuses a bad config and warns of a plugin nobody has', () => {
     const bad = withConfig({ plugins: { cargo: { nope: 1 } } })
     expect(run(['config', '--config', bad.file], bad.cwd, bad.env).code).toBe(2)
     const ghost = withConfig({ plugins: { ghost: {} } })
     const r = run(['config', '--config', ghost.file], ghost.cwd, ghost.env)
-    expect(r.code).toBe(2)
-    expect(r.err).toContain('ghost')
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('config plugins.ghost: no plugin has this name')
+    expect(r.out).toContain('plugins.git')
   })
 })
 
@@ -1036,6 +1134,69 @@ describe('plan and clean', () => {
   test('-i with no terminal is refused with exit 2', () => {
     const { env, cwd } = setup()
     expect(run(['clean', '-i'], cwd, env, { plugins: [fake()] }).code).toBe(2)
+  })
+
+  test('a plan naming a plugin nobody has is refused with exit 2: sweep again', () => {
+    const { env, cwd, home } = setup()
+    const planFor = (owner: string): string =>
+      JSON.stringify({
+        version: 1,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        targets: [cwd],
+        select: null,
+        pick: [],
+        spare: [],
+        allow: [],
+        warnings: [],
+        candidates: [
+          {
+            id: `artifact:${owner}`,
+            kind: 'artifact',
+            path: owner,
+            owner,
+            why: 'idle',
+            evidence: {},
+          },
+        ],
+        objections: [],
+      })
+    // claude-code was a shipped plugin until #1017; a plan saved before then names it.
+    const planFile = join(home, 'plan.json')
+    writeFileSync(planFile, planFor('claude-code'))
+    const r = run(['clean', '--plan', planFile, '--yes'], cwd, env)
+    expect(r.code).toBe(2)
+    expect(r.err).toContain('claude-code')
+    expect(r.err).toContain('sweep again')
+    const plugin = fake()
+    const stdin = run(['clean', '--plan', '-', '--yes'], cwd, env, {
+      plugins: [plugin],
+      readStdin: () => planFor('ghost'),
+    })
+    expect(stdin.code).toBe(2)
+    expect(stdin.err).toContain('ghost')
+    expect(plugin.removed).toEqual([])
+    // A plugin that is only skipped is still known: its candidate is dropped as gone, not refused.
+    writeFileSync(planFile, planFor('fake'))
+    const skipped = run(['clean', '--plan', planFile, '--yes', '--skip-plugin', 'fake'], cwd, env, {
+      plugins: [plugin, fake('other')],
+    })
+    expect(skipped.code).toBe(0)
+    expect(skipped.out).toContain('gone')
+  })
+
+  test('a saved plan runs what it can when one of its plugins is only skipped', () => {
+    const { env, cwd, home } = setup()
+    const planFile = join(home, 'plan.json')
+    const skip = fake('skip')
+    const other = fake('other')
+    const plugins = [skip, other]
+    expect(run(['plan', '-o', planFile], cwd, env, { plugins }).code).toBe(0)
+    const argv = ['clean', '--plan', planFile, '--yes', '--skip-plugin', 'skip']
+    const r = run(argv, cwd, env, { plugins })
+    expect(r.code).toBe(0)
+    expect(r.out).toContain('gone')
+    expect(skip.removed).toEqual([])
+    expect(other.removed).toEqual(['artifact:other'])
   })
 
   test('a plan that moved since is dropped as changed', () => {

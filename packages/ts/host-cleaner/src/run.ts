@@ -8,6 +8,7 @@ import { globRegExp, isGlob, sameFingerprint } from '@osdlc/repo-cleaner'
 import { coveredBy, containsIgnored } from './ignore.ts'
 import { containedIn } from './roots.ts'
 import {
+  unknownOwners,
   writeReceipt,
   PLAN_VERSION,
   RECEIPT_VERSION,
@@ -218,6 +219,11 @@ export class SelectionError extends Error {
   override name = 'SelectionError'
 }
 
+/** A plan whose candidates belong to a plugin this install does not have. */
+export class StalePlan extends Error {
+  override name = 'StalePlan'
+}
+
 /** A plan of `s`: every candidate and objection, and what was chosen and allowed. */
 export function plan(
   s: Pick<Survey, 'candidates' | 'objections' | 'warnings'>,
@@ -380,12 +386,23 @@ export function decidePlan(p: Plan): Decision {
  * what the plan would run, so a refusal that appeared since is `blocked`, a
  * protest nobody granted `not-allowed`, a vanished candidate `gone`, and one whose evidence
  * moved (repo-cleaner's `sameFingerprint`) `changed`.
+ *
+ * `known` names every plugin this install has, skipped ones too; it defaults
+ * to `plugins`' names. A candidate whose owner `known` lacks throws
+ * {@link StalePlan} instead of being dropped as `gone`.
  */
 export function recheck(
   p: Plan,
   plugins: readonly Plugin[],
   ctx: Ctx,
+  known: Iterable<string> = plugins.map((q) => q.name),
 ): { decision: Decision; survey: Survey } {
+  const strangers = unknownOwners(p, known)
+  if (strangers.length > 0) {
+    throw new StalePlan(
+      `no plugin named ${strangers.join(', ')}, which the plan's candidates belong to; sweep again`,
+    )
+  }
   const decided = decidePlan(p)
   const ignore = [...new Set([...(ctx.ignore ?? []), ...p.ignore])]
   const fresh = survey(plugins, { ...ctx, ignore, allow: p.allow })
@@ -420,6 +437,8 @@ export interface CleanOptions {
   dryRun?: boolean
   /** The receipt is rewritten here after every step. */
   receiptPath?: string
+  /** Every plugin name this install has, as {@link recheck} takes it. */
+  known?: Iterable<string> | undefined
   now?: () => Date
 }
 
@@ -439,7 +458,7 @@ export function clean(
   const now = opts.now ?? (() => new Date())
   let checked: ReturnType<typeof recheck>
   try {
-    checked = recheck(p, plugins, ctx)
+    checked = recheck(p, plugins, ctx, opts.known)
   } catch (err) {
     // A throw from the re-check still leaves a receipt saying nothing ran.
     if (opts.receiptPath !== undefined && opts.dryRun !== true) {

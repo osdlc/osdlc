@@ -35,11 +35,12 @@ import {
   type Config,
   type HostDirs,
 } from './config.ts'
-import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
+import { missingFrom, parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
 import { FACTORIES, UnknownPlugin, selectPlugins } from './registry.ts'
-import { PLUGIN_SETTINGS, disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
+import { disabledByConfig, effectiveSettings, settingsOf } from './settings.ts'
 import {
   SelectionError,
+  StalePlan,
   clean,
   decidePlan,
   orderPlugins,
@@ -324,7 +325,8 @@ function refusal(ctx: CliContext, name: string, err: unknown): number {
     err instanceof ConfigError ||
     err instanceof UnknownPlugin ||
     err instanceof BadInput ||
-    err instanceof SelectionError
+    err instanceof SelectionError ||
+    err instanceof StalePlan
   ) {
     return usageError(ctx, name, err.message)
   }
@@ -405,16 +407,37 @@ const wanted = (v: SweepValues): string[] | undefined =>
     ? undefined
     : [...(v.plugin ?? []), ...(v.adapter ?? [])]
 
-/** The plugin names in `plugins` that `known` refuses. */
-const unknownPlugins = (config: Config, known: (name: string) => boolean): string[] =>
-  Object.keys(config.plugins).filter((n) => !known(n))
+/** Every plugin name this run could use, before config and flags narrow it: `deps.plugins`, else the registry. */
+const registered = (deps: MainDeps): string[] =>
+  deps.plugins?.map((p) => p.name) ?? Object.keys(FACTORIES)
+
+/**
+ * Every registered plugin's name, the names in the config's `plugins` that are
+ * not one of them (`unused`), and a warning for each.
+ */
+function checkedConfig(
+  config: Config,
+  deps: MainDeps,
+): { known: string[]; unused: string[]; warnings: string[] } {
+  const known = registered(deps)
+  const unused = missingFrom(Object.keys(config.plugins), known)
+  const warnings = unused.map(
+    (n) => `config plugins.${n}: no plugin has this name; clean refuses to run until it is fixed`,
+  )
+  return { known, unused, warnings }
+}
+
+/** `s` with `warnings` ahead of its own. */
+const withWarnings = <S extends { warnings: readonly string[] }>(s: S, warnings: string[]): S => ({
+  ...s,
+  warnings: [...warnings, ...s.warnings],
+})
 
 /**
  * The plugins this run uses: the shipped ones built from the config, or
  * `deps.plugins`, then chosen by flag.
  *
  * @param archive - `clean --archive`'s options, passed to the shipped git plugin.
- * @throws BadInput when the config names an unknown plugin.
  * @throws UnknownPlugin when `--plugin` or `--skip-plugin` names one.
  */
 function pluginsFor(
@@ -437,8 +460,6 @@ function pluginsFor(
         archive,
       }),
     )
-  const unused = unknownPlugins(config, (n) => all.some((p) => p.name === n))
-  if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
   // `enabled: false` leaves a plugin out; naming it with --plugin runs it anyway.
   const named = wanted(v) ?? []
   const chosen = selectPlugins(all, wanted(v), v.skipPlugin)
@@ -547,9 +568,12 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   try {
     const loaded = loadConfig(v, ctx, resolveDirs(ctx))
     const config = loaded.config
-    s = survey(
-      pluginsFor(v, config, deps, ctx),
-      contextFor(parsed.positionals, config, ctx, [], v.ignore),
+    s = withWarnings(
+      survey(
+        pluginsFor(v, config, deps, ctx),
+        contextFor(parsed.positionals, config, ctx, [], v.ignore),
+      ),
+      checkedConfig(config, deps).warnings,
     )
     warnings = [...loaded.warnings, ...s.warnings]
   } catch (err) {
@@ -571,17 +595,17 @@ function runStatus(argv: readonly string[], ctx: CliContext, deps: MainDeps): nu
   return nothingFound(s) ? EXIT_NOTHING_TO_SWEEP : EXIT.ok
 }
 
-function runConfig(argv: readonly string[], ctx: CliContext): number {
+function runConfig(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
   const name = `${NAME} config`
   const parsed = parseWith(configCli(), name, argv, ctx)
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
     const { file, fileExists, config, warnings } = loadConfig(v, ctx, resolveDirs(ctx))
-    writeWarnings(ctx, name, warnings)
-    const unused = unknownPlugins(config, (n) => Object.hasOwn(PLUGIN_SETTINGS, n))
-    if (unused.length > 0) throw new BadInput(`config names no plugin ${unused.join(', ')}`)
-    const settings = effectiveSettings(config.plugins, config)
+    const { known, warnings: unknownNames } = checkedConfig(config, deps)
+    writeWarnings(ctx, name, [...warnings, ...unknownNames])
+    // Only the plugins a run would build: a section for one it lacks would contradict the warning.
+    const settings = effectiveSettings(config.plugins, config, known)
     if (v.format === 'json') {
       const values = Object.fromEntries(
         Object.entries(settings).map(([n, rows]) => [
@@ -636,11 +660,16 @@ function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps): numb
   try {
     const { config, warnings } = loadConfig(v, ctx, resolveDirs(ctx))
     writeWarnings(ctx, name, warnings)
+    const { unused, warnings: unknownNames } = checkedConfig(config, deps)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = survey(pluginsFor(v, config, deps, ctx), cctx)
-    writeWarnings(ctx, name, s.warnings)
+    writeWarnings(ctx, name, [...unknownNames, ...s.warnings])
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
-    plan = makePlan(s, {
+    // A receipt copies the plan's warnings: it keeps what was true of this sweep, not what clean will do.
+    const swept = unused.map(
+      (n) => `config plugins.${n}: no plugin had this name when this plan was made`,
+    )
+    plan = makePlan(withWarnings(s, swept), {
       targets: cctx.targets,
       ignore: cctx.ignore,
       pick: v.pick,
@@ -809,6 +838,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let plan: Plan
   let source: string
   let plugins: Plugin[]
+  let known: string[]
   let cctx: Ctx
   let preview: Decision
   let objections: readonly Objection[]
@@ -826,6 +856,12 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
       )
     }
     writeWarnings(ctx, name, warnings)
+    const read = checkedConfig(config, deps)
+    // Nothing runs on a config it cannot apply in full: a misspelt name leaves a plugin on defaults.
+    if (read.unused.length > 0) {
+      throw new BadInput(`config names no plugin ${read.unused.join(', ')}; nothing was deleted`)
+    }
+    known = read.known
     plugins = pluginsFor(v, config, deps, ctx, archive)
     if (archive !== undefined && !plugins.some((p) => p.name === 'git')) {
       throw new BadInput('--archive has no effect: this run does not use the git plugin')
@@ -861,7 +897,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
         allow: plan.allow,
         ignore: ignoreFor(config, v.ignore, ctx),
       }
-      const checked = recheck(plan, plugins, cctx)
+      const checked = recheck(plan, plugins, cctx, known)
       writeWarnings(ctx, name, checked.survey.warnings)
       preview = checked.decision
       objections = checked.survey.objections
@@ -914,7 +950,7 @@ function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
     mkdirSync(dirname(receiptPath), { recursive: true })
     // Only what the person saw as `delete`: a block that clears while they decide must not add to it.
     const approved = { ...plan, pick: preview.run.map((c) => c.id) }
-    receipt = clean(approved, plugins, cctx, { source, receiptPath })
+    receipt = clean(approved, plugins, cctx, { source, receiptPath, known })
   } catch (err) {
     logRun(dirs.logs, { at: now.toISOString(), source, receipt: receiptPath, status: 'failed' })
     return refusal(ctx, name, err)
@@ -934,7 +970,7 @@ export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = 
   if (sub === 'status') return runStatus(rest, ctx, deps)
   if (sub === 'plan') return runPlan(rest, ctx, deps)
   if (sub === 'clean') return runClean(rest, ctx, deps)
-  if (sub === 'config') return runConfig(rest, ctx)
+  if (sub === 'config') return runConfig(rest, ctx, deps)
   if (sub === '-h' || sub === '--help') {
     ctx.io.stdout(OVERVIEW)
     return EXIT.ok

@@ -20,7 +20,7 @@ any other in the order given. The order decides which plugin keeps a duplicate i
 | discover | each plugin | proposes candidates; a duplicate id keeps the first plugin's, with a warning naming both |
 | object | each plugin | objects to any candidate; sees no other plugin's objections |
 | decide | core | `refuse` blocks, `protest` needs `--allow <code>`, `note` does not gate |
-| re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved `changed` |
+| re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved `changed`; a plan with a candidate whose owner is no known plugin throws `StalePlan` |
 | prepare | every plugin | before the delete; a throw stops only that candidate, a `FatalRun` stops the run. `ctx.run` holds the candidates the run deletes. A returned sentence is kept in the step's `prepared`, even if the candidate then fails |
 | delete | the owner | returns the receipt sentence |
 | deleted | every other plugin | after the delete; best effort, failures are in the receipt |
@@ -52,6 +52,17 @@ const cache: Plugin = {
 const ctx: Ctx = { cwd: process.cwd(), targets: [], allow: [] }
 const found = survey([cache], ctx) // scope, discover, object
 const receipt = clean(plan(found), [cache], ctx) // re-check, prepare, delete, deleted
+```
+
+`recheck(plan, plugins, ctx, known)` and `clean`'s `known` option name every
+plugin the install has, left-out ones too; they default to the names in
+`plugins`. A plan candidate whose owner `known` lacks throws `StalePlan` and
+nothing runs: sweep again. A known plugin left out of `plugins` has its
+candidates dropped as `gone`, so a caller that passes only some plugins passes
+`known` as well:
+
+```ts
+clean(saved, [git], ctx, { known: ['git', 'cargo'] }) // cargo's candidates are `gone`
 ```
 
 What a plan runs uses repo-cleaner's words, with their meaning:
@@ -174,7 +185,9 @@ host-cleaner config [--format json]   # every plugin's effective settings
 `targets`, then the directory you are in. `clean` re-checks, shows the steps,
 asks (`--yes` skips the question; with no terminal and no `--yes` it exits 2),
 deletes, and writes one receipt to `--receipt` or the state directory's
-`receipts/`, plus a line in the log.
+`receipts/`, plus a line in the log. `clean --plan` refuses a
+plan whose candidates belong to a plugin this install does not have (exit 2):
+sweep again with `plan`.
 
 With `--archive`, a run makes one archive per repository, before it deletes any
 of its worktrees or branches. A second run on the same day goes to
@@ -246,8 +259,12 @@ The config file holds the targets and each plugin's settings:
 { "targets": ["~/dev"], "plugins": { "cargo": { "idleHours": 48 }, "node": { "enabled": false } } }
 ```
 
-`plugins.<name>` holds that plugin's settings; a name that no plugin has is an
-error. Each plugin's settings are a strict schema, checked when the config
+`plugins.<name>` holds that plugin's settings. A name that no plugin has stops
+`clean` (with `--plan` and `--dry-run` too) with exit 2 before anything is deleted, since a
+misspelt name would leave that plugin on its defaults; `status`, `plan` and
+`config` warn (the warning is kept in `status --format json`) and go on. A plan
+records that no plugin had the name when it was made, and the receipt of a run
+from it keeps that. Each plugin's settings are a strict schema, checked when the config
 loads: a misspelt key or a wrong type is refused (exit 2), naming the plugin and
 the key.
 

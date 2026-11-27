@@ -91,13 +91,18 @@ export interface SettingRow {
   description: string
 }
 
-/** Every setting of every shipped plugin: its effective value, its default and whether the config set it. */
+/**
+ * Every setting of each shipped plugin in `names` (all of them by default): its effective value,
+ * its default and whether the config set it. A name no shipped plugin has is left out.
+ */
 export function effectiveSettings(
   plugins: Entries,
   shared: Shared = {},
+  names: Iterable<string> = Object.keys(PLUGIN_SETTINGS),
 ): Record<string, SettingRow[]> {
   const out: Record<string, SettingRow[]> = {}
-  for (const name of Object.keys(PLUGIN_SETTINGS)) {
+  for (const name of names) {
+    if (!Object.hasOwn(PLUGIN_SETTINGS, name)) continue
     const raw = plugins[name] ?? {}
     const value = settingsOf(name, raw, shared)
     out[name] = configFields({ [name]: schemaOf(name)! }).map((f) => {
