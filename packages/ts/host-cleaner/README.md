@@ -674,7 +674,8 @@ and Windows when the server is down. If the server does not answer, or
 `https`, or cannot be read, `detect` leaves the plugin out and says why in its
 note. This machine is a loopback or unspecified
 address (IPv4-mapped too), its host name, or an address of one of its network
-interfaces.
+interfaces. The ping goes straight to the server: it does not read
+`HTTP_PROXY`, `HTTPS_PROXY` or `NO_PROXY`, which ollama's own client honours.
 
 | Phase | What it does |
 | --- | --- |
