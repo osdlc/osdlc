@@ -1209,8 +1209,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   machine. It fails closed. The README says so where an upgrading user looks
   first.
 - **Size.** Against main, at the end of the omnibus (S12, rerere and the
-  final check's fixes included), pr-update's `src/` has 6,348 lines added and
-  411 removed, against the estimate of 700, and its `tests/` 9,531 added and
+  final check's fixes included), pr-update's `src/` has 6,407 lines added and
+  455 removed, against the estimate of 700, and its `tests/` 9,585 added and
   91 removed (`git diff --shortstat origin/main...HEAD`, main at
   `88112cb4`).
 - **Nested groups.** `--repo` takes exactly `owner/name` or

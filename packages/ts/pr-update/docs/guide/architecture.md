@@ -6,7 +6,7 @@ agent fix what broke, and pushes. This page follows `pr-update update --apply`
 through the calls the code makes. It was mapped from the source at
 `f5456df2`, not from the other docs; where the two disagreed, the code won and
 the disagreement is listed under [Known problems](#known-problems). Its line
-references were brought up to date at the end of S12 (`639c0e52`).
+references were brought up to date at the end of S12 (`38977714`).
 
 File and line references are relative to `src/`.
 
@@ -61,8 +61,8 @@ turns it on, so it neither replays nor records a resolution.
 | Select PRs | `update.ts:166-286` |
 | Per-target trust gate | `update.ts:720-731`, `trust.ts:151-203` |
 | Settle kept trees | `update.ts:1143-1268`, `update/kept.ts` |
-| Run worktree per repository | `update/execute.ts:1318-1370`; killed runs' scratch worktrees `1470-1487`, locked ones skipped with `lockedByPerson` (`update/registrations.ts:57`) |
-| Cleanup of the run worktree | `update/execute.ts:1448-1460`, `update/registrations.ts` (`ownedUnder` `69`, which leaves a locked worktree, or one whose lock or record cannot be read) |
+| Run worktree per repository | `update/execute.ts:1333-1385`; killed runs' scratch worktrees `1485-1502`, locked ones skipped with `lockedByPerson` (`update/registrations.ts:57`) |
+| Cleanup of the run worktree | `update/execute.ts:1463-1475`, `update/registrations.ts` (`ownedUnder` `69`, which leaves a locked worktree, or one whose lock or record cannot be read) |
 | `--branch` sync | `update.ts:512-534`, `872-884` |
 | Automatic prune | `commands.ts:359-393`, `prune.ts:724-1252` |
 | Report and exit code | `commands.ts:431-441`, `531-556`, `779-808` |
@@ -101,19 +101,19 @@ flowchart TD
 ```
 
 A repair is accepted only if it did not move HEAD, create refs, give up, leave
-conflict markers, or leave whitespace errors (`update/execute.ts:1197-1253`).
+conflict markers, or leave whitespace errors (`update/execute.ts:1212-1268`).
 
 In `--apply`, unless `pr_update.rerere` is false, the rebase, the merge and
 their `--continue` and commit run with git's rerere on and `autoUpdate` set
-(`integrationEnv`, `update/execute.ts:1059-1070`). A conflict git has a
+(`integrationEnv`, `update/execute.ts:1074-1085`). A conflict git has a
 recorded resolution for is replayed and staged, so no resolver or repair sees
 it; verify still runs. At each conflict the run notes, from its worktree's
 `MERGE_RR`, the variant of the conflict its resolution goes to and whether that
-variant was already resolved (`rerereTracked`, `1091-1114`). When a repair is
+variant was already resolved (`rerereTracked`, `1106-1129`). When a repair is
 rejected, a rebase is abandoned after continuing past a resolved stop, or the
-PR is not pushed (failed, conflicted, or the person declined the push), that
-variant's new resolution is removed (`dropNewResolutions`, `1127-1131`; called
-at `605`, `1211`, `1215`, `536` and `540`). So only a PR that is pushed leaves
+PR is not pushed (failed, conflicted, declined by the person, or a throw), that
+variant's new resolution is removed (`dropNewResolutions`, `1142-1146`; called
+at `605`, `1226`, `1230`, `536` and `540`). So only a PR that is pushed leaves
 a resolution for the next one. A resolution the person records for the same
 conflict in their own checkout meanwhile is another variant, and stays.
 
@@ -123,14 +123,14 @@ given.
 
 | Step | Where |
 | --- | --- |
-| Lease | `update/execute.ts:1372-1401`, `update/lease.ts` |
+| Lease | `update/execute.ts:1387-1416`, `update/lease.ts` |
 | Checkout and quick exits | `update/execute.ts:405-544` |
-| Rebase through the resolvers | `update/execute.ts:581-681`, `update/resolvers.ts:105-134` |
-| Merge | `update/execute.ts:699-811` |
-| Rerere on, tracked, dropped | `update/execute.ts:1059-1131`, `536-540` |
-| Verify and repair | `update/execute.ts:813-842`, `985-1006`, `1197-1265`, `repair/` |
-| Push | `update/execute.ts:844-936` |
-| Keep a failed tree, record the attempt | `update/execute.ts:1408-1442`, `update/kept.ts:508-625`, `update.ts:838-848` |
+| Rebase through the resolvers | `update/execute.ts:581-696`, `update/resolvers.ts:105-134` |
+| Merge | `update/execute.ts:714-826` |
+| Rerere on, tracked, dropped | `update/execute.ts:1074-1146`, `536-540` |
+| Verify and repair | `update/execute.ts:828-857`, `1000-1021`, `1212-1280`, `repair/` |
+| Push | `update/execute.ts:859-951` |
+| Keep a failed tree, record the attempt | `update/execute.ts:1423-1457`, `update/kept.ts:508-625`, `update.ts:838-848` |
 
 ## `survey` and `mirror`
 
@@ -173,9 +173,9 @@ Paths are the macOS and Linux defaults with no variable set.
 
 ## Modules
 
-Lines at the end of S12 (`639c0e52`), against `main` at `88112cb4`, which does
+Lines at the end of S12 (`38977714`), against `main` at `88112cb4`, which does
 not have the clone-cache work. In total `src/` went from 6,583 lines to
-12,520. Files not listed (`detect.ts`, `devlink.ts`, `real-path.ts`,
+12,535. Files not listed (`detect.ts`, `devlink.ts`, `real-path.ts`,
 `repair/names.ts`, `update/confirm.ts`, `version.generated.ts`) are small
 helpers.
 
@@ -187,7 +187,7 @@ helpers.
 | Preflight | `preflight.ts` | 122 (83) | tool and remote checks, the `GIT_DIR` refusal |
 | Survey | `survey.ts`, `strategy.ts`, `code-host.ts` | 1,337 (896), 164, 87 (44) | targets, PR listing, fetch, drift, stack order, strategy |
 | Update | `update.ts` | 1,370 (843) | the run: selection, grouping, trust, verify lists, kept trees, attempt routing, output |
-| Executor | `update/execute.ts`, `update/resolvers.ts` | 1,504 (1,213), 154 (151) | per-repository worktree loop, per-PR rebase, merge, verify, repair, push; also the target git environment and rerere |
+| Executor | `update/execute.ts`, `update/resolvers.ts` | 1,519 (1,213), 154 (151) | per-repository worktree loop, per-PR rebase, merge, verify, repair, push; also the target git environment and rerere |
 | Records | `update/attempts.ts`, `update/ref-attempts.ts`, `update/lease.ts` | 118 (117), 153 (150), 118 (115) | attempt stores and the branch lease |
 | Kept trees | `update/kept.ts`, `update/registrations.ts` | 653 (204), 172 (new) | kept-tree records, checks, keep and discard; how a worktree is forgotten; what counts as a person's `git worktree lock` |
 | Repair | `repair/agents.ts`, `repair/seat.ts`, `repair/prompt.ts` | 155 (152), 97 (89), 58 | headless agent, interactive and tmux repair, the prompt |
@@ -203,7 +203,7 @@ are no import cycles.
 ## Known problems
 
 Items 1–19 were found while mapping the flow at `f5456df2`; 20–25 in the
-final check of S12. The open items give lines at `639c0e52`; the fixed ones
+final check of S12. The open items give lines at `38977714`; the fixed ones
 keep the lines at `f5456df2`, where the problem was. Those marked fixed were
 fixed in S12, in the commit named.
 
@@ -211,7 +211,7 @@ fixed in S12, in the commit named.
 
 1. One repository can stop the whole run. `releaseStaleScratch` and
    `git worktree add` sit outside `updateAll`'s `try`
-   (`update/execute.ts:1363-1368`), and `updateRun` does not catch around
+   (`update/execute.ts:1378-1383`), and `updateRun` does not catch around
    `updateAll`. A missing base ref in one repository skips every later one,
    though the executor's design note says one stuck PR must not end the run.
 2. A `--repo` target is cloned and fetched before its trust gate runs
@@ -223,7 +223,7 @@ fixed in S12, in the commit named.
 4. What the automatic prune removes appears only as notes
    (`commands.ts:379-391`). It is in neither the JSON output nor `--report`.
 5. Two answers to "is this run alive?": the executor checks the pid
-   (`update/execute.ts:1489`), prune the pid and its start time
+   (`update/execute.ts:1504`), prune the pid and its start time
    (`prune.ts:135`). A reused pid makes them disagree.
 6. `--keep-failed` and `--discard-kept` are checked for a missing `--apply`
    only after the survey's listings and fetches (`update.ts:678-681`).
@@ -239,7 +239,7 @@ fixed in S12, in the commit named.
    `update/execute.ts`.
 10. The rules for running git outside the project root (hooks off, repository
     variables cleared, absolute `PATH`) live in the executor
-    (`update/execute.ts:1030-1037`, `1134-1166`), so survey, locate, mirror and
+    (`update/execute.ts:1045-1052`, `1149-1181`), so survey, locate, mirror and
     prune import the executor for them. The rerere helpers now sit between
     them.
 11. The rule that a kept tree a person touched is theirs is applied in three
@@ -250,7 +250,7 @@ fixed in S12, in the commit named.
     (`commands.ts:715-722`, `309-315`).
 13. Most code reads the environment the CLI passes in, but five places read
     `process.env` directly (`preflight.ts:113`, `machine.ts:164`,
-    `update/execute.ts:1031`, `1062`, `mirror.ts:594`). The terminal seam
+    `update/execute.ts:1046`, `1077`, `mirror.ts:594`). The terminal seam
     covers only the clone question.
 14. `survey` builds the whole update environment, repair and attempt stores
     included, and uses none of it (`commands.ts:491`).
@@ -277,10 +277,10 @@ fixed in S12, in the commit named.
 20. A replayed resolution is not named in the report. rerere stages it with
     `autoUpdate`, so no resolver or repair sees the path, and the outcome lists
     no resolved path for it; only verify checks it
-    (`update/execute.ts:1059-1070`). A merge commit says rerere resolved it
+    (`update/execute.ts:1074-1085`). A merge commit says rerere resolved it
     only when every conflicted path was replayed.
 21. Removing a PR's resolutions removes only the `postimage` file of its
-    variant (`update/execute.ts:1127-1131`). The `preimage` git writes at
+    variant (`update/execute.ts:1142-1146`). The `preimage` git writes at
     the conflict stays in `rr-cache/` until git's `gc` expires it (15 days by
     default for an unresolved entry). It is not replayed, but it takes space.
 22. Fixed (`3722c693`). Two runs on one repository share its `rr-cache/`,
