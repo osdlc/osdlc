@@ -7,8 +7,8 @@
  * thrown; `cli.ts` lists the exit codes.
  */
 
-import { mkdirSync, rmSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
 import {
@@ -341,7 +341,7 @@ function runEnv(
 
 /**
  * Whether an `update` touched pr-update's cache: it served a target from a managed clone, or made
- * a run worktree where `Ports.targetHome` puts a target's (`madeTargetWorktree`). The run's
+ * a run worktree, which `Ports.targetHome` puts in the cache (`madeTargetWorktree`). The run's
  * results are not enough: a target whose every lease was refused made its worktree but has none.
  */
 export function touchedCache(out: UpdateOutput): boolean {
@@ -390,6 +390,20 @@ function pruneAfterRun(
   } catch (e) {
     ctx.note(`pruning after the run failed: ${(e as Error).message.split('\n')[0]}`)
   }
+}
+
+/**
+ * One note when the project root holds the `.pr-update/` folder older versions kept their run
+ * worktrees, kept trees and attempt records in. Nothing reads or writes it now: everything
+ * pr-update makes lives in its own directories. It is neither moved nor deleted.
+ */
+function noteOldPlace(ctx: CommandContext): void {
+  const old = join(ctx.cwd, '.pr-update')
+  if (!existsSync(old)) return
+  ctx.note(
+    `${old} is no longer used: pr-update keeps its worktrees and records in its own directories ` +
+      'now. It can be deleted (run `git worktree prune` after, if it held worktrees).',
+  )
 }
 
 /**
@@ -610,7 +624,7 @@ export function updateCommand(seams: CliSeams) {
         kind: 'tristate',
         offHelp:
           'Do not keep failed worktrees this run, overriding a configured pr_update.keep_failed: true.',
-        help: "Move the worktree of a PR that ended conflict or failed to .pr-update/failed/<owner>-<name>-<number>/ (a --repo target's to kept/<host>/<owner>/<name>/<number>/ in pr-update's state directory), on a branch named for the PR, with a failed verify's log in it, for a person to finish and push. The run goes on in a fresh worktree. Needs --apply.",
+        help: "Keep the worktree of a PR that ended conflict or failed, as evidence, at kept/<host>/<owner>/<name>/<number>/ in pr-update's state directory, on a branch named for the PR, with a failed verify's log in it. The run goes on in a fresh worktree. Needs --apply.",
       },
       discardKept: {
         kind: 'boolean',
@@ -753,6 +767,7 @@ export function updateCommand(seams: CliSeams) {
         ...base,
         targetTrust: targetTrustGate({ cfg: base.cfg, trust: flags.trust, env: ctx.env }),
       }
+      noteOldPlace(ctx)
       let out: UpdateOutput
       try {
         out = await runUpdate(

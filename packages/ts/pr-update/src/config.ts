@@ -222,7 +222,7 @@ export const prUpdateConfigSchema = z
       .boolean()
       .default(false)
       .describe(
-        "Keep the worktree of a PR whose update ended `conflict` or `failed`, as `update --keep-failed` does: it moves to `.pr-update/failed/<owner>-<name>-<number>/` (a `--repo` target's, to `kept/<host>/<owner>/<name>/<number>/` in pr-update's state directory) on a branch named for the PR, with a failed verify's log in `.pr-update-verify.log`, and the run goes on in a fresh worktree. A later run skips that PR until its head or base moves, or `--retry-failed` or `--discard-kept` is given; a kept tree someone has changed stays until `--discard-kept`. `--no-keep-failed` overrides it for one run. Only `--apply` runs keep anything.",
+        "Keep the worktree of a PR whose update ended `conflict` or `failed`, as `update --keep-failed` does: it moves to `kept/<host>/<owner>/<name>/<number>/` in pr-update's state directory, the project root's as any other, on a branch named for the PR, with a failed verify's log in `.pr-update-verify.log`, and the run goes on in a fresh worktree. The tree is evidence, pr-update's own: a later run skips that PR until its head or base moves, or `--retry-failed` or `--discard-kept` is given, and then removes the tree, whatever is in it. `--no-keep-failed` overrides it for one run. Only `--apply` runs keep anything.",
       ),
     max_failed_attempts: z
       .number()
@@ -230,7 +230,7 @@ export const prUpdateConfigSchema = z
       .min(0)
       .default(1)
       .describe(
-        "Skip a PR once its update has failed this many times at the same head and base sha, until either moves. Failures from `--apply` runs are recorded in `.pr-update/attempts/` (one file per repo, head and base branch); a successful update clears the PR's entries. 0 disables the check. The retry-failed flag of `update` ignores it for one run.",
+        "Skip a PR once its update has failed this many times at the same head and base sha, until either moves. Failures from `--apply` runs are recorded in `attempts/<host>/<owner>/<name>/` in pr-update's state directory (one file per repo, head and base branch); a successful update clears the PR's entries. 0 disables the check. The retry-failed flag of `update` ignores it for one run.",
       ),
   })
   .strict()
@@ -248,7 +248,7 @@ export const prUpdateStandaloneSchema = prUpdateConfigSchema.extend({
         .enum(['file', 'git-ref'])
         .default('file')
         .describe(
-          'Where failed updates are recorded. `file` (default) keeps them in `.pr-update/attempts/` in the project root, so they are per machine. `git-ref` keeps them as refs on the `--remote` (one per repo, head and base branch, under `ref_prefix`), so every machine and CI job that updates the repository shares them, and also turns on the per-branch update lease (see `lease`). The remote must accept refs outside `refs/heads` and `refs/tags`; a host that refuses them fails the run with an error naming this setting.',
+          'Where failed updates are recorded. `file` (default) keeps them in `attempts/<host>/<owner>/<name>/` in the state directory of pr-update, so they are per machine. `git-ref` keeps them as refs on the `--remote` (one per repo, head and base branch, under `ref_prefix`), so every machine and CI job that updates the repository shares them, and also turns on the per-branch update lease (see `lease`). The remote must accept refs outside `refs/heads` and `refs/tags`; a host that refuses them fails the run with an error naming this setting.',
         ),
       ref_prefix: z
         .string()

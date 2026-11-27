@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import type { CommandRunner } from '@osdlc/command-seam'
 
 import type { CliSeams } from '../src/cli.ts'
+import type { Ports } from '../src/ports.ts'
 
 /** A `PATH` lookup that finds every binary. */
 export const allToolsInstalled = (binary: string): string => `/usr/bin/${binary}`
@@ -21,6 +22,19 @@ export const emptyGh: CommandRunner = {
 
 /** The default remote the CLI fixtures give a repo, so the survey has a repository to list. */
 export const FIXTURE_REMOTE = 'https://github.com/o/r.git'
+
+/**
+ * A `Ports.targetHome` that puts every repository's places under `dir`, as the standalone run
+ * does under pr-update's directories: `worktrees/<host>/<owner>/<name>` and
+ * `kept/<host>/<owner>/<name>`. Each test gives its own `dir`, since every fixture is `o/r`.
+ */
+export function homeUnder(dir: string): Ports['targetHome'] {
+  return (t) => ({
+    worktrees: join(dir, 'worktrees', t.host, t.owner, t.name),
+    kept: join(dir, 'kept', t.host, t.owner, t.name),
+    keptRoot: join(dir, 'kept'),
+  })
+}
 
 /** Seams for a run where all tools exist and `gh` finds nothing. */
 export const fakeTools: CliSeams = { which: allToolsInstalled, gh: emptyGh }

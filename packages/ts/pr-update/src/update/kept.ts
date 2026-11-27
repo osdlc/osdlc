@@ -1,27 +1,24 @@
 /**
  * A failed PR's worktree, kept as evidence of what went wrong (`--keep-failed`).
  *
- * The project root's trees live at `<checkout>/.pr-update/failed/<owner>-<name>-<number>/`. A
- * target other than the project root, under a host's `Ports.targetHome`, keeps them in its own
- * directory instead, as `<dir>/<number>/` (the standalone run's is
- * `kept/<host>/<owner>/<name>/` in pr-update's state directory). Either way the tree is on a
- * branch named for the PR, `pr-update/failed-<owner>-<name>-<number>`, so `git worktree list`
- * shows it, and `pr-update kept push` can send its commit somewhere a person works. Beside it, a `.json` record of the same
- * name holds the head and base sha the run saw, so a later run can tell whether the PR has moved
- * since. The verify log is written into the tree and kept out of commits.
+ * Each repository keeps its trees in its own directory, `Ports.targetHome`'s `kept`, as
+ * `<dir>/<number>/` (the standalone run's is `kept/<host>/<owner>/<name>/` in pr-update's state
+ * directory), never inside its checkout. The tree is on a branch named for the PR,
+ * `pr-update/failed-<owner>-<name>-<number>`, so `git worktree list` shows it, and
+ * `pr-update kept push` can send its commit somewhere a person works. Beside it, a `.json` record
+ * of the same name holds the head and base sha the run saw, so a later run can tell whether the
+ * PR has moved since. The verify log is written into the tree and kept out of commits.
  *
  * The same repository can be served from different git directories on different runs (one
- * checkout, another, or a clone). So a record kept outside its checkout also stores the git
- * directory that owns the tree (`gitDir`), and removing the tree goes through that one.
+ * checkout, another, or a clone). So a record also stores the git directory that owns the tree
+ * (`gitDir`), and removing the tree goes through that one.
  *
- * A checkout's `.pr-update/failed/` is inside its working tree, so the repository's own content
- * can put a record there. A record is therefore never trusted to say what to delete: one whose
- * branch is not the kept branch of its PR, whose path is not its kept path or is a symbolic link,
- * or that names a git directory from a checkout's own place is refused, and so is one whose
- * folder `git worktree list` in the git directory serving its place does not show
- * ({@link KeptTreeCheck}). A refused record is left as it is, tree and file, and reported
- * ({@link KeptRefusal}). Every removal through a record goes through {@link discardKept}, which
- * checks the folders too.
+ * A record's `path`, `branch` and `gitDir` say what a discard deletes, so a record is never
+ * trusted alone: one whose branch is not the kept branch of its PR, or whose path is not its kept
+ * path or is a symbolic link, is refused, and so is one whose folder `git worktree list` in the
+ * git directory that owns it does not show ({@link KeptTreeCheck}). A refused record is left as it
+ * is, tree and file, and reported ({@link KeptRefusal}). Every removal through a record goes
+ * through {@link discardKept}, which checks the folders too.
  *
  * A kept tree is pr-update's, as everything it makes is: no one works inside it, so what is in
  * it never keeps it. It goes when its PR moves, with `--retry-failed`, or with `--discard-kept`.
@@ -124,19 +121,14 @@ export interface KeptPlace {
   /** The directory that holds the trees, each with its `.json` record beside it. */
   dir: string
   /**
-   * How a tree is named in {@link dir}: `<owner>-<name>-<number>` in a checkout's
-   * `.pr-update/failed/`, or `<number>` in a directory that is one repository's own.
-   */
-  naming: 'checkout' | 'repository'
-  /**
-   * The git common directory serving this run, by its real path. Set for a place outside the
-   * checkout: records made there store it, and a record another one owns is not this run's.
+   * The git common directory serving this run, by its real path: records made here store it, and
+   * a record another one owns is not this run's. Unset when it could not be read.
    */
   gitDir?: string | undefined
   /**
-   * The folder pr-update or its host owns that holds `dir` (`TargetHome.keptRoot`). Set for a
-   * place outside the checkout: {@link discardKept} removes a tree there only when the folders
-   * from `root` down to it pass the folder rule (`placeProblem` in `../folders.ts`).
+   * The folder pr-update or its host owns that holds `dir` (`TargetHome.keptRoot`):
+   * {@link discardKept} removes a tree only when the folders from `root` down to it pass the
+   * folder rule (`placeProblem` in `../folders.ts`). Unset means the folders are not checked.
    */
   root?: string | undefined
   /**
@@ -145,15 +137,10 @@ export interface KeptPlace {
    */
   rootCheck?: { owned: OwnedCheck; folders: FolderCheckOptions } | undefined
   /**
-   * How a tree removed from `dir` leaves git's records. Defaults to {@link PRUNE_ALL}, the
-   * project root's way; a place outside the checkout passes `ownedUnder` (see `./registrations.ts`).
+   * How a tree removed from `dir` leaves git's records. Defaults to {@link PRUNE_ALL}; a run
+   * passes `ownedUnder` (see `./registrations.ts`), so the person's other worktrees are not touched.
    */
   records?: WorktreeRecords | undefined
-}
-
-/** A checkout's own place: `<checkout>/.pr-update/failed/`. */
-export function checkoutKept(checkout: string): KeptPlace {
-  return { dir: join(checkout, '.pr-update', 'failed'), naming: 'checkout' }
 }
 
 /** `<owner>-<name>-<number>`, safe as one path segment and in a branch name. */
@@ -166,13 +153,14 @@ export function keptBranch(repo: string, number: number): string {
   return `pr-update/failed-${qualifiedName(repo, number)}`
 }
 
-function keptName(place: KeptPlace, repo: string, number: number): string {
-  return place.naming === 'checkout' ? qualifiedName(repo, number) : String(number)
+/** A tree's name in its place, which is one repository's own: its PR number. */
+function keptName(number: number): string {
+  return String(number)
 }
 
 /** Where a PR's kept worktree goes in `place`. */
 export function keptPath(place: KeptPlace, repo: string, number: number): string {
-  return join(place.dir, keptName(place, repo, number))
+  return join(place.dir, keptName(number))
 }
 
 function sidecar(place: KeptPlace, repo: string, number: number): string {
@@ -182,9 +170,8 @@ function sidecar(place: KeptPlace, repo: string, number: number): string {
 /**
  * The record in the file `name` of `place`, when it is one this place could have written: its
  * `number` an integer, its file named for its repository and number, its `path` the absolute
- * kept path those give, and its `branch` the kept branch they give. A record in a checkout's own
- * place names no `gitDir`: pr-update writes one only outside a checkout, and an owner named
- * there would come from the repository's content. A record is JSON on disk, and its `path`,
+ * kept path those give, its `branch` the kept branch they give, and its `gitDir`, when set, an
+ * absolute path. A record is JSON on disk, and its `path`,
  * `branch` and `gitDir` say what a discard deletes, so a record that breaks any of these rules
  * is refused: `onRefused` is told, and the caller leaves it alone. One that is not a record at
  * all, or whose tree is gone, is ignored, and so is one that cannot be read, or whose tree
@@ -213,7 +200,7 @@ function readRecord(
   if (typeof record !== 'object' || record === null) return null
   const { repo, number, path, branch, gitDir } = record
   if (typeof repo !== 'string' || !Number.isInteger(number) || typeof path !== 'string') return null
-  if (name !== `${keptName(place, repo, number)}.json`) return null
+  if (name !== `${keptName(number)}.json`) return null
   const refuse = (reason: string): null => {
     onRefused?.({ record: file, reason })
     return null
@@ -235,11 +222,6 @@ function readRecord(
   if (branch !== keptBranch(repo, number)) {
     return refuse(`its branch ${String(branch)} is not ${keptBranch(repo, number)}`)
   }
-  if (gitDir !== undefined && place.gitDir === undefined) {
-    return refuse(
-      `it names the git directory ${String(gitDir)}, which a checkout's own record never does`,
-    )
-  }
   if (gitDir !== undefined && (typeof gitDir !== 'string' || !isAbsolute(gitDir))) {
     return refuse(`its git directory ${String(gitDir)} is not an absolute path`)
   }
@@ -253,7 +235,7 @@ function readRecord(
  */
 function isKeptPath(place: KeptPlace, path: string, repo: string, number: number): boolean {
   if (path === keptPath(place, repo, number)) return true
-  if (basename(path) !== keptName(place, repo, number)) return false
+  if (basename(path) !== keptName(number)) return false
   try {
     return realpathSync.native(dirname(path)) === realpathSync.native(place.dir)
   } catch {
@@ -271,7 +253,7 @@ export function findKept(
   number: number,
   onRefused?: OnKeptRefused,
 ): KeptRecord | null {
-  const record = readRecord(place, `${keptName(place, repo, number)}.json`, onRefused, undefined)
+  const record = readRecord(place, `${keptName(number)}.json`, onRefused, undefined)
   return record !== null && record.repo === repo && record.number === number ? record : null
 }
 
@@ -312,9 +294,8 @@ export function keptOwnerElsewhere(place: KeptPlace, record: KeptRecord): string
 /**
  * The git directory that owns `record`'s tree, or null when it is gone. One that cannot be read is
  * not gone, and git then says it cannot list its worktrees. `git` is any worktree of
- * the repository serving `place`'s run. A checkout's own place has no `gitDir`, so its trees are
- * that checkout's, whatever a record says. A place outside the checkout (`KeptPlace.gitDir`) is
- * written only by pr-update, and its records name their owner.
+ * the repository serving `place`'s run. A record or place that names no git directory (one that
+ * could not be read when it was made) is that repository's.
  */
 function keptOwner(git: Git, place: KeptPlace, record: KeptRecord): Git | null {
   if (place.gitDir === undefined || record.gitDir === undefined) return git
@@ -352,8 +333,7 @@ export function keptTreeCheck(git: Git, place: KeptPlace, record: KeptRecord): K
 
 /**
  * Why `record`'s tree may not be removed for the folders it is in, or null. A place with a
- * `root` (outside the checkout) is checked from it ({@link KeptPlace.rootCheck}); a checkout's
- * own place is the person's checkout, and is not.
+ * `root` is checked from it ({@link KeptPlace.rootCheck}); one with none is not.
  */
 export function keptFolderProblem(place: KeptPlace, record: KeptRecord): string | null {
   const root = place.root
@@ -372,7 +352,7 @@ export function keptRefusal(place: KeptPlace, record: KeptRecord, why: string): 
 
 /**
  * Remove a kept worktree, its branch and its record. `git` is any worktree of the repository
- * serving the run. A record outside its checkout that names its owner is removed through that
+ * serving the run. A record that names its owner is removed through that
  * git directory instead; when that directory is gone, only the tree's directory and the record
  * are removed. Every removal of a kept tree goes through here.
  *
@@ -485,9 +465,8 @@ export function keepWorktree(
   if (old !== null) discardKept(git, place, old)
   const path = keptPath(place, target.repo, target.number)
   if (existsSync(path)) {
-    // A run stopped between making the tree and writing its record, or, in a checkout's own
-    // place, the repository's content put it there. No record says pr-update made it, so it is
-    // never moved into or removed.
+    // A run stopped between making the tree and writing its record. No record says what it is,
+    // so it is never moved into or removed.
     throw new Error(
       `${path} is in the way and has no record (a run stopped part-way); ` +
         `remove it with \`git worktree remove --force ${path}\` in its checkout, then run again`,

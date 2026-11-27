@@ -36,7 +36,7 @@ import type {
 } from './ports.ts'
 import { agentRepair } from './repair/agents.ts'
 import { seatRepair } from './repair/seat.ts'
-import { attemptsDir, fileAttemptStore } from './update/attempts.ts'
+import { fileAttemptStore } from './update/attempts.ts'
 import { targetGitEnv, targetGitOptions, UNSET_REPOSITORY_VARS } from './update/execute.ts'
 import { defaultLeaseTtlSeconds, refBranchLease } from './update/lease.ts'
 import { DEFAULT_REF_PREFIX, attemptsPrefix, refAttemptStore } from './update/ref-attempts.ts'
@@ -104,15 +104,13 @@ export interface StandalonePortsOptions {
  * beside the project root's main checkout (`locate.ts`). One locator serves
  * every call on the returned ports, so make one `Ports` per run.
  *
- * With `projectRoot`, failed updates are recorded in
- * `<projectRoot>/.pr-update/attempts/`, or, with `attempts.store: git-ref`, as refs on `remote`
- * (default `origin`) along with a per-branch update lease.
- *
- * Any other target keeps its own, in pr-update's osdlc directories (`machine.ts`), under
- * `<host>/<owner>/<name>` with the host's port left out: run worktrees in the cache's
- * `worktrees/`, kept worktrees in the state's `kept/`, and file attempts in the state's
- * `attempts/`. With `git-ref`, its record and lease are refs on its own checkout's remote, written
- * with git's hooks off, as every git call in that checkout is.
+ * Every repository the run updates, the project root included, keeps what the run makes for it
+ * in pr-update's osdlc directories (`machine.ts`), under `<host>/<owner>/<name>` with the host's
+ * port left out: run worktrees in the cache's `worktrees/`, kept worktrees in the state's
+ * `kept/`, and file attempts in the state's `attempts/`. Its checkout gets only git records.
+ * With `attempts.store: git-ref`, its record and lease are refs on its own checkout's remote,
+ * written with git's hooks off, as every git call in that checkout is: the project root's on
+ * `remote` (default `origin`), as `Ports.attempts` and `Ports.lease`.
  *
  * With `opts.clones`, a target with no checkout is served from its managed clone when one exists.
  *
@@ -188,11 +186,9 @@ export function standalonePorts(
       : command !== null
         ? { repair: commandRepair(command, timeout) }
         : {}),
-    ...(projectRoot === undefined
-      ? {}
-      : cfg?.attempts?.store === 'git-ref'
-        ? refRecords(cfg, remote, projectRoot)
-        : { attempts: fileAttemptStore(attemptsDir(projectRoot)) }),
+    ...(projectRoot !== undefined && cfg?.attempts?.store === 'git-ref'
+      ? refRecords(cfg, remote, projectRoot)
+      : {}),
     targetHome: (target) => standaloneTargetHome(cfg, target, opts.env, opts.git),
   }
 }
@@ -221,8 +217,9 @@ function refRecords(
 }
 
 /**
- * A target's own places in pr-update's directories, read from `env` when asked, so a run with
- * no `--repo` resolves none. `target.host` carries no port, so no path segment holds a `:`.
+ * A repository's own places in pr-update's directories, read from `env` when asked.
+ * `target.host` carries no port, so no path segment holds a `:`. The project root's `git-ref`
+ * record and lease are `Ports.attempts` and `Ports.lease`, so its home names none.
  */
 function standaloneTargetHome(
   cfg: (PrUpdateConfig & Partial<PrUpdateStandaloneConfig>) | undefined,
@@ -233,9 +230,11 @@ function standaloneTargetHome(
   const paths = prUpdatePaths(osdlcDirs(env === undefined ? {} : { env }))
   const own = (dir: string): string => join(dir, target.host, target.owner, target.name)
   const records =
-    cfg?.attempts?.store === 'git-ref'
-      ? refRecords(cfg, target.remote, target.path, refEnv(target.path, git))
-      : { attempts: fileAttemptStore(own(paths.attempts)) }
+    cfg?.attempts?.store !== 'git-ref'
+      ? { attempts: fileAttemptStore(own(paths.attempts)) }
+      : target.source === 'root'
+        ? {}
+        : refRecords(cfg, target.remote, target.path, refEnv(target.path, git))
   return {
     worktrees: own(paths.worktrees),
     kept: own(paths.kept),

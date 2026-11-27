@@ -14,11 +14,13 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { isatty } from 'node:tty'
 
@@ -28,10 +30,11 @@ import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { forwarded } from './support-signal.ts'
+import { homeUnder } from './support.ts'
 import { prUpdateConfigSchema, type PrUpdateConfig } from '../src/config.ts'
 import type { AttemptStore, Ports } from '../src/ports.ts'
 import { prKey, type SurveyReport } from '../src/survey.ts'
-import { attemptsDir, fileAttemptStore, listAttempts } from '../src/update/attempts.ts'
+import { fileAttemptStore, listAttempts } from '../src/update/attempts.ts'
 import type { UpdateResult, UpdateTarget } from '../src/update/execute.ts'
 import {
   applyStrategyOverride,
@@ -48,6 +51,13 @@ import {
 vi.mock('@osdlc/command-seam', async (original) =>
   (await import('./support-signal.ts')).mockForwarding(original),
 )
+
+/** Where `fakePorts` puts every repository's run worktrees and kept trees: one folder per test. */
+let home: string
+beforeEach(() => {
+  home = realpathSync.native(mkdtempSync(join(tmpdir(), 'pr-update-home-')))
+})
+afterEach(() => rmSync(home, { recursive: true, force: true }))
 
 function cfg(patch: Record<string, unknown> = {}): PrUpdateConfig {
   return { ...prUpdateConfigSchema.parse({}), ...patch } as PrUpdateConfig
@@ -455,6 +465,7 @@ function fakePorts(overrides: Partial<Ports> = {}): Ports {
     locate: () => null,
     runVerb: (): CommandResult => ({ exitCode: 0, stdout: '', stderr: '' }),
     resolveVerifyVerbs: async () => [],
+    targetHome: (t) => homeUnder(home)(t),
     ...overrides,
   }
 }
@@ -658,7 +669,7 @@ describe('runUpdate — failed attempts', () => {
     fx.worker.git.push('origin', 'main')
     branchOff('topic', { 'shared.txt': 'topic\n' })
     commitOn('main', { 'shared.txt': 'main\n' })
-    file = attemptsDir(fx.worker.dir)
+    file = join(home, 'attempts')
   })
   afterEach(() => {
     forwarded.signal = undefined
@@ -721,8 +732,9 @@ describe('runUpdate — failed attempts', () => {
     expect(asked).toHaveLength(1)
     expect(asked[0]?.which).toBe('detect')
     expect(asked[0]?.pr).toBe(1)
-    expect(asked[0]?.checkout).toContain('.pr-update')
-    expect(asked[0]?.checkout).not.toBe(fx.worker.dir)
+    expect(asked[0]?.checkout.startsWith(join(home, 'worktrees', 'github.com', 'o', 'r'))).toBe(
+      true,
+    )
   })
 
   test('a dry run with --confirm-push needs no terminal and never asks', async () => {
@@ -1094,10 +1106,8 @@ describe('runUpdate — two repositories that each hold a PR 1', () => {
     expect(out.results.map((r) => r.status)).toEqual(['updated', 'updated'])
     // Through typed-git, whose paths are in Node's form; git prints `C:/x` on Windows.
     expect(b.worker.git.worktrees().map((w) => w.path)).toContain(mine)
-    expect(existsSync(join(b.worker.dir, '.pr-update'))).toBe(true)
-    expect(b.worker.git.rawChecked(['worktree', 'list', '--porcelain']).stdout).not.toContain(
-      '.pr-update',
-    )
+    expect(existsSync(join(b.worker.dir, '.pr-update'))).toBe(false)
+    expect(b.worker.git.rawChecked(['worktree', 'list', '--porcelain']).stdout).not.toContain(home)
   })
 
   test('verify verbs are resolved once per repository, naming it and its checkout, and run there', async () => {
@@ -1119,8 +1129,8 @@ describe('runUpdate — two repositories that each hold a PR 1', () => {
       { which: 'check', trust: false, repo: 'b/y', checkout: realpathSync.native(b.worker.dir) },
     ])
     expect(ran.map((r) => r.verb)).toEqual(['make check', 'cargo test'])
-    expect(ran[0]!.cwd.startsWith(join(realpathSync.native(a.worker.dir), '.pr-update'))).toBe(true)
-    expect(ran[1]!.cwd.startsWith(join(realpathSync.native(b.worker.dir), '.pr-update'))).toBe(true)
+    expect(ran[0]!.cwd.startsWith(join(home, 'worktrees', 'github.com', 'a', 'x'))).toBe(true)
+    expect(ran[1]!.cwd.startsWith(join(home, 'worktrees', 'github.com', 'b', 'y'))).toBe(true)
     expect(out.counts.updated).toBe(2)
   })
 
@@ -1439,7 +1449,7 @@ describe('runUpdate --restack — a three-level stack, against real git', () => 
   /** A kept tree for #2, `p`, built from the heads the run sees now, as `--keep-failed` leaves it. */
   function keepP(): string {
     const { git } = fx.worker
-    const path = join(fx.worker.dir, '.pr-update', 'failed', 'o-r-2')
+    const path = join(home, 'kept', 'github.com', 'o', 'r', '2')
     git.worktreeAdd(path, { branch: 'pr-update/failed-o-r-2', startPoint: tip('p') })
     const record = {
       repo: 'o/r',

@@ -499,7 +499,6 @@ function keptPlaceOf(
   }
   return {
     dir: join(kept, ...repo.split('/')),
-    naming: 'repository',
     gitDir,
     records: ownedUnder([worktrees, kept]),
     root: kept,

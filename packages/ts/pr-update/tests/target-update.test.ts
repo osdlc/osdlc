@@ -40,13 +40,7 @@ import {
   type UpdateArgs,
   type UpdateEnv,
 } from '../src/update.ts'
-import {
-  checkoutKept,
-  findKept,
-  keepWorktree,
-  listKept,
-  type KeptPlace,
-} from '../src/update/kept.ts'
+import { findKept, keepWorktree, listKept, type KeptPlace } from '../src/update/kept.ts'
 import { refBranchLease } from '../src/update/lease.ts'
 import { refAttemptStore } from '../src/update/ref-attempts.ts'
 import { allToolsInstalled, isolatedEnv, worktreePaths } from './support.ts'
@@ -506,7 +500,7 @@ describe('keepWorktree across filesystems', () => {
     const run = join(scratch, 'cache', `${process.pid}.1`)
     sh(api.worker.dir, 'worktree', 'add', '-q', '--detach', run, 'origin/topic')
     writeFileSync(join(run, 'build.out'), 'built\n')
-    const place = { dir: join(scratch, 'state', 'kept'), naming: 'repository' as const }
+    const place = { dir: join(scratch, 'state', 'kept') }
     return { run, place, tip: sh(run, 'rev-parse', 'HEAD') }
   }
   const target = {
@@ -560,11 +554,11 @@ describe('keepWorktree across filesystems', () => {
             }
           : git.run(argv, opts),
     }
-    const place = checkoutKept(api.worker.dir)
+    const place = { dir: join(scratch, 'state', 'kept') }
     expect(() =>
       keepWorktree(new Git(api.worker.dir, { runner: refusing }), place, run, target, undefined),
     ).toThrow(/submodules/)
-    expect(existsSync(join(place.dir, 'acme-api-1'))).toBe(false)
+    expect(existsSync(join(place.dir, '1'))).toBe(false)
     expect(existsSync(run)).toBe(true)
   })
 })
@@ -809,20 +803,20 @@ describe('a located target kept worktree, when something is off', () => {
     expect((await update({ args: { keepFailed: true } })).discarded ?? []).toEqual([])
     expect(readFileSync(join(victim, 'keep.txt'), 'utf8')).toBe('keep\n')
 
-    // The project root's place reads records the same way.
-    const place = checkoutKept(root.worker.dir)
+    // A record named for another number, or for no whole number, is not read either.
+    const place = { dir: join(scratch, 'state', 'kept-forged') }
     mkdirSync(place.dir, { recursive: true })
-    writeFileSync(join(place.dir, 'acme-api-1.json'), JSON.stringify(forged))
+    writeFileSync(join(place.dir, '1.json'), JSON.stringify(forged))
     writeFileSync(
-      join(place.dir, 'acme-api-2.json'),
-      JSON.stringify({ ...forged, number: 1, path: join(place.dir, 'acme-api-1') }),
+      join(place.dir, '2.json'),
+      JSON.stringify({ ...forged, number: 1, path: join(place.dir, '1') }),
     )
     writeFileSync(
-      join(place.dir, 'acme-api-1.5.json'),
-      JSON.stringify({ ...forged, number: 1.5, path: join(place.dir, 'acme-api-1.5') }),
+      join(place.dir, '1.5.json'),
+      JSON.stringify({ ...forged, number: 1.5, path: join(place.dir, '1.5') }),
     )
-    mkdirSync(join(place.dir, 'acme-api-1'))
-    mkdirSync(join(place.dir, 'acme-api-1.5'))
+    mkdirSync(join(place.dir, '1'))
+    mkdirSync(join(place.dir, '1.5'))
     expect(listKept(place)).toEqual([])
     expect(findKept(place, 'acme/api', 1)).toBeNull()
   })
@@ -833,10 +827,7 @@ describe('keepWorktree, telling filesystems apart', () => {
     const run = join(scratch, 'cache', `${process.pid}.1`)
     sh(api.worker.dir, 'worktree', 'add', '-q', '--detach', run, 'origin/topic')
     writeFileSync(join(run, 'build.out'), 'built\n')
-    const place =
-      repo === 'acme/api'
-        ? { dir: join(scratch, 'state', 'kept'), naming: 'repository' as const }
-        : checkoutKept(api.worker.dir)
+    const place = { dir: join(scratch, 'state', 'kept', repo) }
     return { run, place, tip: sh(run, 'rev-parse', 'HEAD') }
   }
   const target = (repo: string) => ({
@@ -919,7 +910,7 @@ describe('keepWorktree, telling filesystems apart', () => {
         undefined,
       ),
     ).toThrow(/Permission denied/)
-    expect(existsSync(join(place.dir, 'acme-exdev-1'))).toBe(false)
+    expect(existsSync(join(place.dir, '1'))).toBe(false)
     expect(existsSync(join(run, 'build.out'))).toBe(true)
   })
 })
@@ -1134,7 +1125,8 @@ describe("a run started with GIT_DIR set to the project root's .git", () => {
     // Printed by git, which writes `C:/x` on Windows.
     const top = normalize(printed!)
     expect(gitDir).toBe('unset')
-    expect(top.startsWith(join(root.worker.dir, '.pr-update'))).toBe(true)
+    expect(top.startsWith(join(paths.worktrees, 'github.com', 'acme', 'root'))).toBe(true)
+    expect(existsSync(join(root.worker.dir, '.pr-update'))).toBe(false)
     expect(rootState()).toEqual(before)
   })
 
@@ -1379,13 +1371,6 @@ describe('whether a run made a worktree under the cache (second review)', () => 
     expect(out.skipped.map((s) => s.reason)).toEqual([
       `failed worktree kept at ${join(keptDir(), '1')}`,
     ])
-    expect(out.madeTargetWorktree).toBeUndefined()
-    expect(touchedCache(out)).toBe(false)
-  })
-
-  test('without targetHome a located target works in its own .pr-update/, not the cache', async () => {
-    const out = await update({ ports: { targetHome: undefined } })
-    expect(out.results.map((r) => r.status)).toEqual(['updated'])
     expect(out.madeTargetWorktree).toBeUndefined()
     expect(touchedCache(out)).toBe(false)
   })

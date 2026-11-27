@@ -1,17 +1,17 @@
 /**
  * What a host must supply that this package cannot know for itself.
  *
- * The three required ports each answer a question the host owns and this
+ * The four required ports each answer a question the host owns and this
  * package does not: where a named repository's checkout is on this machine,
- * how to run a shell verb, and whether a verb list from the project may run in
- * this repository at all (a trust decision). Two optional ports add conflict
+ * where the run keeps what it makes for each repository, how to run a shell
+ * verb, and whether a verb list from the project may run in this repository at
+ * all (a trust decision). Two optional ports add conflict
  * resolvers. `generators` rebuild artifacts in process. `repair` is the last
  * step, called only when no fixed rule resolved the problem. The conflict
  * repair is offered only on a merge (a rebase falls back to a merge first). A
  * verify repair runs for either strategy. The optional `attempts` port records
  * failed updates across runs. The optional `lease` port locks each head branch
- * while it is updated. `confirmPush` asks before each rebase force-push. `targetHome` places the
- * worktrees, record and lease of a target other than the project root. A standalone run (see
+ * while it is updated. `confirmPush` asks before each rebase force-push. A standalone run (see
  * `defaults.ts`) supplies simple versions of the same ports that work with any host.
  */
 
@@ -184,21 +184,23 @@ export interface FoundCheckout {
 }
 
 /**
- * A target other than the project root, as {@link Ports.targetHome} is asked about it: the
- * repository, lower-cased, and the checkout serving the run.
+ * A repository the run updates, as {@link Ports.targetHome} is asked about it: the repository,
+ * lower-cased, and the checkout serving the run. The trust gate is asked about every one but the
+ * project root (`source: 'root'`).
  */
 export interface TargetCheckout extends LocateTarget {
   /** The checkout the run is served from, absolute. */
   path: string
   /** Where {@link path} came from. */
-  source: Exclude<CheckoutSource, 'root'>
+  source: CheckoutSource
   /** The checkout's remote the run fetches from and pushes to. */
   remote: string
 }
 
 /**
- * Where a run keeps what it makes for one target other than the project root, outside that
- * target's checkout. Each directory is that target's own.
+ * Where a run keeps what it makes for one repository, outside its checkout. Each directory is
+ * that repository's own. The checkout itself gets only git records: the run's worktree
+ * registrations, its `pr-update/*` branches and, with a `git-ref` store, refs on its remote.
  */
 export interface TargetHome {
   /** The target's run worktrees go here, one `<run>` directory each. */
@@ -229,19 +231,17 @@ export interface Ports {
    * standalone run's locate returns that form (see `defaults.ts`).
    *
    * `update` runs in the checkout it returns. Its run worktree and kept
-   * worktrees go where {@link targetHome} says, or, without that port, under
-   * the checkout's own `.pr-update/`.
+   * worktrees go where {@link targetHome} says.
    */
   locate: (repo: string, target?: LocateTarget) => string | FoundCheckout | null
   /**
    * Where `update` keeps the run worktrees, kept worktrees, failed-attempt
-   * record and lease of a target other than the project root. Asked once per
-   * run for each such target with a checkout. Absent means each target's
-   * worktrees go under its checkout's `.pr-update/`, and {@link attempts} and
-   * {@link lease} serve every target. The standalone run supplies it (see
-   * `defaults.ts`).
+   * record and lease of each repository it updates, the project root
+   * included. Asked once per run for each one with a checkout. For the project
+   * root, {@link attempts} and {@link lease} win where set. The standalone run
+   * puts them in pr-update's osdlc directories (see `defaults.ts`).
    */
-  targetHome?: ((target: TargetCheckout) => TargetHome) | undefined
+  targetHome: (target: TargetCheckout) => TargetHome
   /** Runs the shell verbs of resolvers and verify. See {@link RunVerb}. */
   runVerb: RunVerb
   /**
@@ -261,11 +261,17 @@ export interface Ports {
   generators?: readonly Generator[] | undefined
   /** Called at most once per kind in `PrUpdateConfig.repair.on`. Absent means no repair. */
   repair?: Repair | undefined
-  /** Absent means failures are not recorded and no PR is skipped for past failures. */
+  /**
+   * The project root's failed-attempt record, and the record of any repository whose
+   * {@link TargetHome} has none. An error from it ends the run. Absent means the project root's
+   * {@link TargetHome.attempts} serves; with neither, failures are not recorded and no PR is
+   * skipped for past failures.
+   */
   attempts?: AttemptStore | undefined
   /**
-   * Taken around each PR's update in an `--apply` run. A PR whose lease another run holds is
-   * skipped. Absent means no locking; a rehearsal never takes it.
+   * The project root's lease, taken around each PR's update in an `--apply` run. A PR whose
+   * lease another run holds is skipped; an error from it ends the run. Absent means the project
+   * root's {@link TargetHome.lease}, or no locking; a rehearsal never takes it.
    */
   lease?: BranchLease | undefined
   /**

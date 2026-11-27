@@ -40,7 +40,7 @@ export {
 export { commandRepair, standalonePorts, type StandalonePortsOptions } from './defaults.ts'
 export type { CloneLookup, MissedCheckout } from './locate.ts'
 export { detectVerifyCommand, NothingDetectedError, type DetectedVerify } from './detect.ts'
-export { attemptFile, attemptsDir, fileAttemptStore, listAttempts } from './update/attempts.ts'
+export { attemptFile, fileAttemptStore, listAttempts } from './update/attempts.ts'
 export { refAttemptStore, type RefAttemptStore } from './update/ref-attempts.ts'
 export { refBranchLease, defaultLeaseTtlSeconds } from './update/lease.ts'
 export { attemptRef, DEFAULT_REF_PREFIX } from './update/ref-attempts.ts'
