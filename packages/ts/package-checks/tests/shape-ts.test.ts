@@ -24,6 +24,7 @@ const {
   parseJsonc,
   peerName,
   readmeProblems,
+  schemaProblems,
   scriptProblems,
   shapeProblems,
   shippedSource,
@@ -520,4 +521,48 @@ test('stylesheetProblems flags every ./*.css export not aimed at one ./dist/*.cs
   ])
   assert.deepEqual(stylesheetProblems('./dist/index.js'), [])
   assert.deepEqual(stylesheetProblems(undefined), [])
+})
+
+test('schemaProblems accepts a plain ./schemas/<name>.json export the tarball ships', () => {
+  const exports = {
+    '.': { types: './dist/index.d.ts', default: './dist/index.js' },
+    './schemas/descriptor-1.json': './schemas/descriptor-1.json',
+  }
+  const packed = ['dist/index.js', 'dist/index.d.ts', 'schemas/descriptor-1.json']
+  assert.deepEqual(schemaProblems(exports, packed), [])
+  assert.deepEqual(schemaProblems('./dist/index.js', ['dist/index.js']), [])
+  assert.deepEqual(schemaProblems(undefined, []), [])
+})
+
+test('schemaProblems flags every schema export that is not a plain ./schemas/<name>.json', () => {
+  const exports = {
+    './schemas/in-dist.json': './dist/in-dist.json',
+    './outside.json': './schemas/outside.json',
+    './schemas/a.json': './schemas/b.json',
+    './schemas/code.json': './schemas/code.js',
+    './schemas/x.yaml': './schemas/x.yaml',
+    './schemas/*.json': './schemas/*.json',
+    './schemas/deep/x.json': './schemas/deep/x.json',
+    './schemas/cond.json': { default: './schemas/cond.json' },
+    './cond': { types: './dist/cond.d.ts', default: './schemas/cond.json' },
+  }
+  const problem = (k: string) => `exports["${k}"] must be "./schemas/<name>.json", aimed at itself`
+  assert.deepEqual(schemaProblems(exports, []), Object.keys(exports).map(problem))
+  // A data file outside schemas/ is not a schema export.
+  assert.deepEqual(schemaProblems({ './data/x.json': './data/x.json' }, ['data/x.json']), [])
+})
+
+test('schemaProblems holds what the tarball ships under schemas/ to the exports', () => {
+  const exports = {
+    './schemas/shipped.json': './schemas/shipped.json',
+    './schemas/missing.json': './schemas/missing.json',
+  }
+  assert.deepEqual(
+    schemaProblems(exports, ['schemas/shipped.json', 'schemas/extra.json', 'schemas/notes.md']),
+    [
+      'the tarball ships schemas/extra.json with no export; add "./schemas/extra.json": "./schemas/extra.json"',
+      'the tarball ships schemas/notes.md; schemas/ holds only <name>.json files',
+      'exports["./schemas/missing.json"] names a file the tarball does not ship; list schemas/ in "files"',
+    ],
+  )
 })

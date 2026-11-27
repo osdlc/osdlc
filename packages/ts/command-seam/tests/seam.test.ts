@@ -619,10 +619,20 @@ describe('spawnRunnerAsync — abort', () => {
         const r = await pending
         expect(r.neverExited).toBe(true)
         expect(r.error).toBe('The operation was aborted')
-        for (let i = 0; i < 40 && !existsSync(marker); i++) {
+        // The shell creates the file and then writes to it, so wait for the
+        // text. A read between the two finds the file empty, and a read
+        // before both finds no file.
+        const written = (): string => {
+          try {
+            return readFileSync(marker, 'utf8')
+          } catch {
+            return ''
+          }
+        }
+        for (let i = 0; i < 40 && written() !== 'cleaned\n'; i++) {
           await new Promise((res) => setTimeout(res, 25))
         }
-        expect(readFileSync(marker, 'utf8')).toBe('cleaned\n')
+        expect(written()).toBe('cleaned\n')
       } finally {
         rmSync(dir, { recursive: true, force: true })
       }
