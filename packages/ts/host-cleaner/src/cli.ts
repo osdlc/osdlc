@@ -656,9 +656,9 @@ const withWarnings = <S extends { warnings: readonly string[] }>(s: S, warnings:
  * {@link loadRun}, each built from its entry (or `deps.plugins`), then chosen
  * by flag, the `--descriptor` files behind those plugins, and what to warn of.
  * A descriptor that can't be used stops the run unless the run leaves its
- * name out. A config entry that names no plugin stops the run when `strict`.
- * `failed` are the packages that did not load or build, which the run goes
- * without.
+ * name out. A config entry that names no plugin stops the run when
+ * `opts.strict`. `failed` are the packages that did not load or build, which
+ * the run goes without.
  *
  * @param opts.archive - `clean --archive`'s options, passed to the shipped git plugin.
  */
@@ -666,8 +666,7 @@ async function setUp(
   v: SweepValues,
   ctx: CliContext,
   deps: MainDeps,
-  strict: boolean,
-  opts: { archive?: ArchiveOptions | undefined } = {},
+  opts: { strict?: boolean; archive?: ArchiveOptions | undefined } = {},
 ): Promise<{
   config: Config
   plugins: Plugin[]
@@ -682,7 +681,7 @@ async function setUp(
   const { config, found, entries, unknown } = run
   const warnings = [...run.warnings]
   if (unknown.length > 0) {
-    if (strict) {
+    if (opts.strict === true) {
       const have = [...(deps.plugins ?? found.definitions), ...entries]
         .map((d) => d.name)
         .join(', ')
@@ -952,7 +951,7 @@ async function runStatus(
   let s: Survey
   let warnings: string[]
   try {
-    const run = await setUp(v, ctx, deps, false)
+    const run = await setUp(v, ctx, deps)
     warnings = [...run.warnings, ...run.failed.map(notLoaded)]
     s = await survey(run.plugins, contextFor(parsed.positionals, run.config, ctx, [], v.ignore))
   } catch (err) {
@@ -1287,12 +1286,7 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
   const v = parsed.values
   let plan: Plan
   try {
-    const { config, plugins, descriptors, failed, warnings, unknown } = await setUp(
-      v,
-      ctx,
-      deps,
-      false,
-    )
+    const { config, plugins, descriptors, failed, warnings, unknown } = await setUp(v, ctx, deps)
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = await survey(plugins, cctx)
     writeWarnings(ctx, name, [...warnings, ...failed.map(notLoaded), ...surveyWarnings(s)])
@@ -1525,7 +1519,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
     dirs = resolveDirs(ctx)
     if (!v.dryRun) refuseUnread(v, ctx, dirs)
     const saved = v.plan === undefined ? undefined : savedPlan(v.plan, v, ctx, deps)
-    const run = await setUp(v, ctx, deps, true, { archive })
+    const run = await setUp(v, ctx, deps, { strict: true, archive })
     refuseFailed(run.failed)
     const config = run.config
     plugins = run.plugins
