@@ -182,7 +182,7 @@ const VarValueSchema = z.object({
   from: z.string().optional(),
   trusted: z.boolean(),
   tried: z.array(z.object({ source: z.string(), failed: z.string() })),
-})
+}) satisfies z.ZodType<VarValue>
 
 /**
  * `raw`, a `detect` answer's `vars`, as {@link Vars}; else why not. Each entry
