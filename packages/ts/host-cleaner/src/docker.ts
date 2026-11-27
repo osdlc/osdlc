@@ -38,12 +38,12 @@ export const DOCKER_BUILD_CACHE = 'docker-build-cache'
 const NOT_LISTED = 'not-listed'
 
 /** `discover` runs several Docker commands, and `docker builder du` may wait on its builder. */
-const DISCOVER_LIMIT_MS = 2 * 60_000
+const DOCKER_DISCOVER_LIMIT_MS = 2 * 60_000
 
-/** `docker builder du` waits on its builder, which may be remote or stopped; well inside {@link DISCOVER_LIMIT_MS}. */
+/** `docker builder du` waits on its builder, which may be remote or stopped; well inside {@link DOCKER_DISCOVER_LIMIT_MS}. */
 const DU_LIMIT_MS = 60_000
 
-/** `docker system df -v` sizes every container and volume to print an image's own layers; well inside {@link DISCOVER_LIMIT_MS}. */
+/** `docker system df -v` sizes every container and volume to print an image's own layers; well inside {@link DOCKER_DISCOVER_LIMIT_MS}. */
 const DF_LIMIT_MS = 30_000
 
 /** A running daemon answers `docker info` at once; well inside detect's 30s hook limit. */
@@ -346,7 +346,7 @@ export function dockerPlugin(
   return builtIn({
     name: DOCKER_PLUGIN,
     // `delete` reads `builder du` before the prune gets a full delete limit of its own.
-    limits: { discover: DISCOVER_LIMIT_MS, delete: DELETE_LIMIT_MS + DU_LIMIT_MS },
+    limits: { discover: DOCKER_DISCOVER_LIMIT_MS, delete: DELETE_LIMIT_MS + DU_LIMIT_MS },
     async detect(ctx) {
       if (!kit.onPath('docker')) return false
       try {
