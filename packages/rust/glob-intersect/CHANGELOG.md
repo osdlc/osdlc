@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-27
+
+First release on crates.io.
+
 ### Changed
 
 - Moved to osdlc/osdlc as `glob-intersect`, because the crates.io name
