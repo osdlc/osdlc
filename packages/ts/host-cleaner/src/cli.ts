@@ -585,13 +585,15 @@ interface Loading extends Found {
  * The built-ins and the descriptors, and the config checked against them, or
  * with `deps.plugins` the built-ins alone and no descriptor loaded. Runs no
  * package's code, so what it refuses is refused before any is imported.
+ *
+ * @param dirs - The folders, as the command resolved them once ({@link resolveDirs}).
  */
 function findRun(
   v: { config?: string | undefined; descriptor: readonly string[] },
   ctx: CliContext,
   deps: MainDeps,
+  dirs: HostDirs | undefined,
 ): Found {
-  const dirs = resolveDirs(ctx)
   const read = loadConfig(v, ctx, dirs)
   const { config, file: path } = read
   const entries = packageEntries(config.plugins)
@@ -661,12 +663,13 @@ const withWarnings = <S extends { warnings: readonly string[] }>(s: S, warnings:
  * the run goes without.
  *
  * @param opts.archive - `clean --archive`'s options, passed to the shipped git plugin.
+ * @param opts.dirs - The folders, as the command resolved them once ({@link resolveDirs}).
  */
 async function setUp(
   v: SweepValues,
   ctx: CliContext,
   deps: MainDeps,
-  opts: { strict?: boolean; archive?: ArchiveOptions | undefined } = {},
+  opts: { dirs: HostDirs | undefined; strict?: boolean; archive?: ArchiveOptions | undefined },
 ): Promise<{
   config: Config
   plugins: Plugin[]
@@ -677,7 +680,7 @@ async function setUp(
   known: string[]
 }> {
   const naming = { want: v.plugin, skip: v.skipPlugin }
-  const run = findRun(v, ctx, deps)
+  const run = findRun(v, ctx, deps, opts.dirs)
   const { config, found, entries, unknown } = run
   const warnings = [...run.warnings]
   if (unknown.length > 0) {
@@ -951,7 +954,7 @@ async function runStatus(
   let s: Survey
   let warnings: string[]
   try {
-    const run = await setUp(v, ctx, deps)
+    const run = await setUp(v, ctx, deps, { dirs: resolveDirs(ctx) })
     warnings = [...run.warnings, ...run.failed.map(notLoaded)]
     s = await survey(run.plugins, contextFor(parsed.positionals, run.config, ctx, [], v.ignore))
   } catch (err) {
@@ -983,7 +986,7 @@ async function runConfig(
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
-    const found = findRun(v, ctx, deps)
+    const found = findRun(v, ctx, deps, resolveDirs(ctx))
     // Every package the config names, disabled or not, so its settings are printed and checked.
     const every = { want: found.entries.map((e) => e.name) }
     const loading = await loadRun(found, every, ctx, deps)
@@ -1212,7 +1215,7 @@ async function runPlugins(
   let unusable: ReadonlySet<string>
   try {
     // The packages the run would load: those the config does not disable.
-    const loading = await loadRun(findRun(v, ctx, deps), {}, ctx, deps)
+    const loading = await loadRun(findRun(v, ctx, deps, resolveDirs(ctx)), {}, ctx, deps)
     const { config, entries, failed, unknown } = loading
     const { descriptors, packages, problems } = loading.loaded
     const all = allPlugins(loading, deps, ctx)
@@ -1286,7 +1289,9 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
   const v = parsed.values
   let plan: Plan
   try {
-    const { config, plugins, descriptors, failed, warnings, unknown } = await setUp(v, ctx, deps)
+    const { config, plugins, descriptors, failed, warnings, unknown } = await setUp(v, ctx, deps, {
+      dirs: resolveDirs(ctx),
+    })
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = await survey(plugins, cctx)
     writeWarnings(ctx, name, [...warnings, ...failed.map(notLoaded), ...surveyWarnings(s)])
@@ -1519,7 +1524,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
     dirs = resolveDirs(ctx)
     if (!v.dryRun) refuseUnread(v, ctx, dirs)
     const saved = v.plan === undefined ? undefined : savedPlan(v.plan, v, ctx, deps)
-    const run = await setUp(v, ctx, deps, { strict: true, archive })
+    const run = await setUp(v, ctx, deps, { dirs, strict: true, archive })
     refuseFailed(run.failed)
     const config = run.config
     plugins = run.plugins
