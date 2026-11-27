@@ -4,7 +4,15 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -12,7 +20,7 @@ import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { osdlcDirs } from '@osdlc/ecosystem'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { standaloneLocate } from '../src/locate.ts'
+import { standaloneLocate, type StandaloneLocateOptions } from '../src/locate.ts'
 import { standalonePorts } from '../src/defaults.ts'
 
 let root: string
@@ -27,6 +35,9 @@ beforeEach(() => {
   notes = []
 })
 afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+/** The inode of `path`, to tell it apart in an owner check. */
+const statIno = (path: string): number => statSync(path).ino
 
 /** The sandbox home, as `HOME` and as `USERPROFILE`, where Windows looks for it. */
 const homeEnv = () => ({ HOME: home, USERPROFILE: home })
@@ -51,7 +62,7 @@ function writeRoots(text: string): string {
 }
 
 /** A locate inside the sandbox, counting the `remote get-url` calls the scan makes. */
-function locateIn(projectRoot?: string) {
+function locateIn(projectRoot?: string, rule?: StandaloneLocateOptions['rule']) {
   const calls = { getUrl: 0 }
   const git: CommandRunner = {
     run: (argv, opts) => {
@@ -65,6 +76,7 @@ function locateIn(projectRoot?: string) {
     env: homeEnv(),
     notice: (line) => void notes.push(line),
     locator: { resolveAlias: () => null },
+    rule,
   })
   const target = (host: string, owner: string, name: string) =>
     locate(`${owner}/${name}`, { host, owner, name })
@@ -157,6 +169,40 @@ describe('standaloneLocate', () => {
     expect(locateIn().target('github.com', 'acme', 'api')).toMatchObject({
       path: full,
       others: [shallow],
+    })
+  })
+
+  // POSIX modes; Windows does not say who can write.
+  describe.skipIf(process.platform === 'win32')('the folder rule (S13)', () => {
+    test.each([
+      ['its work tree', (dir: string) => dir],
+      ['its git directory', (dir: string) => join(dir, '.git')],
+      ['its config file', (dir: string) => join(dir, '.git', 'config')],
+    ])(
+      'a checkout where others can write to %s is skipped, and is not among the others',
+      (_, part) => {
+        writeRoots(`roots:\n  - ${home}\n`)
+        const a = checkout('a/api', 'https://github.com/acme/api.git')
+        const b = checkout('b/api', 'https://github.com/acme/api.git')
+        chmodSync(part(a), 0o777)
+        expect(locateIn().target('github.com', 'acme', 'api')).toEqual({
+          path: b,
+          source: 'located',
+          remote: 'origin',
+        })
+        expect(notes).toEqual([
+          `github.com/acme/api: ${a} is not used: ${part(a)} can be written by anyone; run \`chmod go-w ${part(a)}\``,
+        ])
+      },
+    )
+
+    test('a checkout another user owns is skipped', () => {
+      writeRoots(`roots:\n  - ${home}\n`)
+      const a = checkout('a/api', 'https://github.com/acme/api.git')
+      const theirs = realpathSync.native(a)
+      const owned = (st: { ino: number }) => st.ino !== statIno(theirs)
+      expect(locateIn(undefined, { owned }).target('github.com', 'acme', 'api')).toBeNull()
+      expect(notes[0]).toBe(`github.com/acme/api: ${a} is not used: ${a} belongs to another user`)
     })
   })
 
