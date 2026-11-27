@@ -135,6 +135,13 @@ export interface Kit {
    * be read stays unknown for the rest of that call.
    */
   running(where: string | { in: string } | { name: string }, ctx: Pick<Ctx, 'signal'>): Running
+  /**
+   * Whether the process `pid` is running, by the process probe. With
+   * `startedAt`, a record of when it started (such as epoch milliseconds), a
+   * pid reused by a process that started later is not it. True when it cannot
+   * be told.
+   */
+  alive(pid: number, startedAt?: string): boolean
   /** Whether `program` is on PATH. */
   onPath(program: string): boolean
   /** A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and this plugin as its owner. */
@@ -410,6 +417,7 @@ export function pluginKit(owner: string, opts: KitOptions = {}): Kit {
         return { names: [], processes: [], unknown: errorText(err) }
       }
     },
+    alive: (pid, startedAt) => probe.alive(pid, startedAt),
     onPath: (program) => lookup(program) !== undefined,
     candidate(fields) {
       const id = `${fields.kind}:${fields.path ?? fields.ref}`

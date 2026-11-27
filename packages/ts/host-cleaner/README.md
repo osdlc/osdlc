@@ -7,7 +7,7 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker` and `ollama` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama` and `agent-history` plugins, and the `host-cleaner` command.
 It runs only when a person runs it: there is no scheduled or unattended run
 ([B-0001](docs/planning/backlog/B-0001-unattended-cleaning.md)).
 
@@ -18,7 +18,7 @@ The design it is heading to, descriptors and loadable plugins included, is the
 ## Phases
 
 Plugins run in the order they are given. The command line runs the shipped
-ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama`.
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama`, `agent-history`.
 The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
@@ -267,6 +267,7 @@ without it to the kit it builds; a kit no run has bound removes nothing.
 | `kit.overBudget()` | A check that turns true once the same budget has passed since the call, by the kit's clock: for a plugin that measures several things as one. |
 | `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
 | `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy), as `names` (`<command> (pid <n>)`, for a sentence) and `processes` (`{ pid, command }`, to match on); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and the unbroken line of ancestors above it whose command lines name host-cleaner are left out, so the `npm exec` or `pnpm dlx` that started it does not count, but an editor, terminal or `tmux` it runs inside does. The table is read fresh once per hook call; one that could not be read stays `unknown` for the rest of it. |
+| `kit.alive(pid, startedAt?)` | Whether a process is running, by the process probe's `alive`. With `startedAt` (such as epoch milliseconds recorded when it started), a pid reused by a process that started later is not it. `true` when it cannot be told. |
 | `kit.onPath(program)` | Whether a program is on PATH. |
 | `kit.candidate({ kind, path \| ref, ... })` | A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and the plugin as owner. |
 | `kit.run(argv, { signal, check })` | Runs a program through `@osdlc/command-seam`, with a time limit (`RUN_LIMIT_MS`, 30 seconds) and stopped when `ctx.signal` aborts; `ok` when it exited 0, a `CommandFailed` throw with `check`. |
@@ -659,6 +660,51 @@ you run every day can look old. That is why every model carries the
 ```sh
 host-cleaner clean --allow ollama-use-unknown
 ```
+
+## The `agent-history` plugin
+
+Claude Code keeps each project's sessions in `~/.claude/projects/<name>/`
+(`CLAUDE_CONFIG_DIR/projects` when that is set, a relative one under the folder
+the command runs in; `~` is the run's home folder). When a worktree is removed, its history stays. This
+plugin proposes the history of a project whose folder no longer exists, as
+`claude-history:<folder>`, with its size.
+
+`<name>` is the project's path with every character but a letter or a digit
+turned into `-` (past 200 characters, its first 200 and a hash), which cannot
+be turned back. So the path is read from what
+the folder records: the first `cwd` of each transcript (`<session>.jsonl`) and
+each `projectPath` in `sessions-index.json`. A folder that records no path, or
+a path that does not give its name (it was moved, or its records disagree), is
+skipped, never guessed, and so is one with a transcript that gives no `cwd` in
+its first 4 MiB. A folder is proposed only when every path it records is gone,
+and not when that path could be on a volume that is not mounted: the nearest
+folder above it that exists is `/Volumes`, `/mnt`, `/media`, `/run/media` or
+below one and no volume is mounted between (its device is that folder's), is
+a mount point in `/etc/fstab` with nothing mounted on it, or is the root (a path from
+another machine, or a drive that is away). A link there is followed, and one
+that leads nowhere counts as a volume that is away. A project folder in
+`projects` that is a link is skipped; `projects` itself may be one.
+
+History cannot be fetched or built again, so its `costDescription` is `lost`:
+it is held, and runs only when picked and allowed:
+
+```sh
+host-cleaner clean --pick claude-history:~/.claude/projects/-Users-me-dev-app-wt --allow discard-user-data
+```
+
+It is a `refuse` while a Claude Code session in it is running (`live-session`:
+a `~/.claude/sessions/<pid>.json` whose process is alive and whose session is
+the folder's, or whose `cwd` gives the folder's name, or past 200 characters
+the name of a path the folder records; a process that started after the file was last
+written, and after its `startedAt`, reused the pid and does not count), while a
+process still works in the gone folder (`live-process`; macOS gives no name for
+a removed folder, so there such a process is not seen), or when either cannot
+be read (`session-state-unreadable`, `process-table-unreadable`). `delete` reads the folder and the sessions again,
+then removes it with `kit.remove`. No settings.
+
+Codex is left out: it keeps sessions by date
+(`~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl`), with the working
+folder inside each file, so it has no folder per project to remove.
 
 ## Command line
 

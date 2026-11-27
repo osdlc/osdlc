@@ -480,6 +480,7 @@ describe('config entries and the run’s plugins', () => {
       'orca',
       'docker',
       'ollama',
+      'agent-history',
       'alpha',
       'beta',
       'aardvark',

@@ -544,6 +544,24 @@ describe('running', () => {
     expect(commandHasName('node', '')).toBe(false)
   })
 
+  test('alive asks the probe, with the start time given', () => {
+    const asked: unknown[][] = []
+    const probe: ProcessProbe = {
+      alive: (...args) => {
+        asked.push(args)
+        return args[1] === undefined
+      },
+      holders: () => [],
+    }
+    const kit = pluginKit('x', { probe })
+    expect(kit.alive(42)).toBe(true)
+    expect(kit.alive(42, '1790000000000')).toBe(false)
+    expect(asked).toEqual([
+      [42, undefined],
+      [42, '1790000000000'],
+    ])
+  })
+
   test('an unreadable process table is unknown, not empty', () => {
     const probe: ProcessProbe = {
       alive: () => true,

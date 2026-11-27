@@ -4,6 +4,7 @@
  * imports settings.ts.
  */
 
+import { agentHistoryDefinition } from './agent-history.ts'
 import { cargoDefinition } from './cargo.ts'
 import { dockerDefinition } from './docker.ts'
 import { gitDefinition } from './git.ts'
@@ -26,4 +27,5 @@ export const BUILT_IN_PLUGINS: readonly PluginDefinition[] = [
   orcaDefinition,
   dockerDefinition,
   ollamaDefinition,
+  agentHistoryDefinition,
 ]

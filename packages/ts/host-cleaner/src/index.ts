@@ -76,6 +76,7 @@ export {
   dockerPlugin,
   type DockerOptions,
 } from './docker.ts'
+export { AGENT_HISTORY_PLUGIN } from './agent-history.ts'
 export { type ArtifactOptions } from './artifacts.ts'
 export {
   DEFAULT_MAX_ENTRIES,
