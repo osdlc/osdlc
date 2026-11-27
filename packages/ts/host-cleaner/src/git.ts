@@ -97,9 +97,9 @@ function copyOf(opts: GitPluginOptions): GitPluginOptions {
  */
 export function gitPlugin(given: GitPluginOptions = {}): Plugin {
   const opts = copyOf(given)
-  /** The last discovery's rows, kept for the later phases; `discover` makes them afresh. */
+  /** The last discovery's rows, kept for the later phases; `detect` empties them and `discover` makes them afresh. */
   let rows = new Map<string, CleanCandidate>()
-  /** The archive this run pushed for each repository, by its root; `discover` empties it. */
+  /** The archive this run pushed for each repository, by its root; `detect` and `discover` empty it. */
   const archives = new Map<string, CandidateArchive>()
   const runners = { git: opts.git, gh: opts.gh, glab: opts.glab, probe: opts.probe }
   const own = objector('git')
@@ -165,7 +165,12 @@ export function gitPlugin(given: GitPluginOptions = {}): Plugin {
     // The sweep covers every repository in one call that nothing can stop part way,
     // and `prepare` pushes an archive, which may wait on the remote as long as a delete.
     limits: { discover: DISCOVER_LIMIT_MS, prepare: DELETE_LIMIT_MS },
-    detect: () => true,
+    // A survey or inspect starts here: what an earlier `discover` found is not this run's.
+    detect: () => {
+      rows = new Map()
+      archives.clear()
+      return true
+    },
     discover(ctx) {
       const found = candidatesOf(sweep(ctx.targets, { ...opts.sweep, ...runners, cwd: ctx.cwd }))
       rows = new Map(found.map((row) => [candidateId(row), row]))
