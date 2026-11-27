@@ -5,6 +5,7 @@
  */
 
 import { realpathSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
@@ -122,6 +123,10 @@ export function checkAgain(c: Candidate, now: Row | undefined): asserts now is R
   }
   if (now.candidate.held === true && c.held !== true) throw new Error(`${what} is no longer idle`)
 }
+
+/** The home folder `HOME` names, or the process's, without a trailing slash, as `~` expands. */
+export const homeFrom = (home: string | undefined): string =>
+  (home ?? homedir()).replace(/(.)\/+$/, '$1')
 
 /** The time limit of a `discover` that walks or asks about many folders, for a plugin's `limits`. */
 export const DISCOVER_LIMIT_MS = 10 * 60_000

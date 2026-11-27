@@ -1412,7 +1412,7 @@ candidates:
     expect(r.code).toBe(2)
     expect(r.err).toContain('config names no plugin crago')
     expect(r.err).toContain(
-      'correct the name (have git, cargo, node, vscode, cursor, orca, docker, ollama, agent-history)',
+      'correct the name (have git, cargo, node, vscode, cursor, orca, docker, ollama, agent-history, jetbrains)',
     )
   })
 

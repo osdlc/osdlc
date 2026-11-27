@@ -7,7 +7,7 @@ receipt. The `git` plugin is [`@osdlc/repo-cleaner`](../repo-cleaner/README.md):
 its sweep supplies worktrees and branches, and its `removeCandidate` deletes them,
 under repo-cleaner's safety model.
 
-This release is the library, the `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama` and `agent-history` plugins, and the `host-cleaner` command.
+This release is the library, the `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama`, `agent-history` and `jetbrains` plugins, and the `host-cleaner` command.
 It runs only when a person runs it: there is no scheduled or unattended run
 ([B-0001](docs/planning/backlog/B-0001-unattended-cleaning.md)).
 
@@ -18,7 +18,7 @@ The design it is heading to, descriptors and loadable plugins included, is the
 ## Phases
 
 Plugins run in the order they are given. The command line runs the shipped
-ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama`, `agent-history`.
+ones, `BUILT_IN_PLUGINS`, in that list's order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama`, `agent-history`, `jetbrains`.
 The order decides which plugin keeps a duplicate, and the order `prepare` and `deleted` run in.
 
 Each shipped plugin is one `definePlugin({ name, api, settings, create })`
@@ -63,7 +63,7 @@ export default definePlugin({
 | discover | each plugin | proposes candidates; two with the same id, or path candidates with the same real path, are one: the first plugin's stands, with a warning naming both |
 | object | each plugin | objects to any candidate; sees no other plugin's objections |
 | decide | core | `refuse` blocks, `protest` needs `--allow <code>`, `note` does not gate |
-| re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved, or a `capped` one that grew, `changed` |
+| re-check | core | discovers and objects again; a candidate now refused is `blocked`, a protest not granted `not-allowed`, a vanished one `gone`, one whose evidence moved, that its owner holds now and did not in the plan, or a `capped` one that grew, `changed` |
 | prepare | every plugin | before the delete; a throw stops only that candidate, a `FatalRun` stops the run |
 | delete | the owner | returns the receipt sentence |
 | deleted | every other plugin | after the delete; best effort, failures are in the receipt |
@@ -176,7 +176,9 @@ What a plan runs uses repo-cleaner's words, with their meaning:
   holds for review (`held: true`).
 - **`select`:** exactly these candidate ids instead of the default.
 - **`pick`:** these as well; a candidate held for review runs only when picked
-  or selected.
+  or selected. One the plan did not hold and its owner holds at the re-check is
+  dropped as `changed`, picked or not; one held in the plan and held no longer
+  still runs.
 - **`spare`:** leave these alone: an id, a path (a ref candidate's `ref`,
   the folder it is `at`, or `<at>:<ref>`, as in `~/dev/app:release-1.2`), a name (every candidate of that name, as a branch
   and the worktree that has it checked out), or a glob over ids, paths and
@@ -706,6 +708,56 @@ Codex is left out: it keeps sessions by date
 (`~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl`), with the working
 folder inside each file, so it has no folder per project to remove.
 
+## The `jetbrains` plugin
+
+JetBrains IDEs keep a cache and a log folder per version, and caches per
+project inside it. The IDE rebuilds the caches when needed
+(`costDescription: rebuild`); nothing rebuilds the macOS log folders (`lost`),
+so they wait for a pick. Roots: `~/Library/Caches/JetBrains` and
+`~/Library/Logs/JetBrains` on macOS, `~/.cache/JetBrains` (or
+`$XDG_CACHE_HOME/JetBrains`) on Linux, under the core's `home` when it is set,
+else `HOME`. Detected when one of them exists.
+Settings: `plugins.jetbrains.idleHours` (default 24).
+
+- `ide-version:<path>`: a version folder, such as `RustRover2025.1`, that no
+  install names. An install is known by `dataDirectoryName` in its
+  `product-info.json`, read from each tool the Toolbox's `state.json` lists and
+  from the application folders (`/Applications` and `~/Applications` on macOS;
+  the Toolbox's `apps` folder, `/opt`, `/usr/local`, `/usr/share`, snaps under
+  `/snap`, `~/opt`, `~/.local/share`, `~/Applications`, `~/bin`, `~/tools`,
+  `~/Downloads` and the home itself on Linux), and from the install each `jetbrains-*.desktop` entry starts
+  (`Exec=<install>/bin/...`, in `~/.local/share/applications`,
+  `/usr/local/share/applications` and `/usr/share/applications`). It is held
+  while it changed within `idleHours`, in case an install sits somewhere not
+  looked in; one used again between plan and clean is dropped as changed. A
+  Toolbox state or `product-info.json` that is there and cannot be read refuses
+  every version folder (`installs-unreadable`), and so does a Toolbox install
+  of an IntelliJ-platform IDE (it has a `bin/idea.properties`) with no
+  `product-info.json`, or whose `product-info.json` has no
+  `dataDirectoryName`; a Toolbox tool with neither file, such as Fleet, or one
+  whose `dataDirectoryName` is no `<Product><year>.<n>`, which no version folder
+  can be, is passed over. In the application folders, an
+  entry that cannot be looked into, or whose `product-info.json` names no
+  `<Product><year>.<n>` folder, is taken as some other app and passed over.
+- `project-cache:<path>`: inside an installed version, `projects/<name>.<hash>`
+  whose project is gone. The hash is Java's `String.hashCode` of the project's
+  path, matched against the version's recent projects
+  (`options/recentProjects.xml` in its config folder). It is held while it
+  changed within `idleHours`, as a project missing for a moment (a share that
+  is down, a checkout being cloned again) still uses its cache. A cache whose
+  hash matches no recent project is left alone, and so is a project on a volume
+  that is not mounted: under `/Volumes`, `/mnt`, `/media`, `/run/media` or
+  `/net`, a missing project is gone only when its nearest existing folder is on
+  a mounted volume of its own, inside that mount folder.
+
+A running process of the product (`rustrover`, `idea`, and so on, or
+`rustrover64` as in the `.vmoptions` file a Linux `.sh` launcher passes to
+`java`), whatever its version, or a process table that cannot be read, is a
+`refuse`. Folders other than version folders, and links, are never looked into.
+`delete` finds the folder again and checks its idle time and processes, then
+removes it with `kit.remove`. `jetbrainsPlugin(options, kit)` builds the plugin
+directly, with `apps`, `desktop` or `platform` of your own.
+
 ## Command line
 
 The command works in repo-cleaner's phases, with its flags. Nothing runs until
@@ -937,7 +989,7 @@ naming the plugin and the key.
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
 | `package` | a plugin loaded from a package | none | The npm package it is loaded from. |
-| `idleHours` | `cargo`, `node`, `ollama`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, fractions included (`0.5` is half an hour), and `0` takes every artifact. |
+| `idleHours` | `cargo`, `node`, `ollama`, `jetbrains`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, fractions included (`0.5` is half an hour), and `0` takes every artifact. |
 | `vars.<NAME>` | descriptors that declare `vars` | none | A folder (`~/…` or absolute) for one of the descriptor's variables. It wins over every source and may sit outside home. A name the descriptor does not declare is an error. It wins over the sources of the variables built from it too: `GOPATH` (go) moves the module cache even with go on PATH. |
 | `keepVolumes` | `docker` | `[]` | Volume names never proposed, even when no container uses them. |
 

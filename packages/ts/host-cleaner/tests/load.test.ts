@@ -481,6 +481,7 @@ describe('config entries and the run’s plugins', () => {
       'docker',
       'ollama',
       'agent-history',
+      'jetbrains',
       'alpha',
       'beta',
       'aardvark',

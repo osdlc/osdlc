@@ -8,6 +8,7 @@ import { agentHistoryDefinition } from './agent-history.ts'
 import { cargoDefinition } from './cargo.ts'
 import { dockerDefinition } from './docker.ts'
 import { gitDefinition } from './git.ts'
+import { jetbrainsDefinition } from './jetbrains.ts'
 import { nodeDefinition } from './node.ts'
 import { ollamaDefinition } from './ollama.ts'
 import { orcaDefinition } from './orca.ts'
@@ -28,4 +29,5 @@ export const BUILT_IN_PLUGINS: readonly PluginDefinition[] = [
   dockerDefinition,
   ollamaDefinition,
   agentHistoryDefinition,
+  jetbrainsDefinition,
 ]

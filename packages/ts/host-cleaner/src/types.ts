@@ -25,7 +25,10 @@ interface CandidateBase {
   requires?: string[] | undefined
   /** The name a person knows it by, which `spare` matches: a branch's name, the branch a worktree has checked out. */
   name?: string | undefined
-  /** True: held for review. The default leaves it out; only a pick or a selection runs it. */
+  /**
+   * True: held for review. The default leaves it out; only a pick or a selection runs it.
+   * One the plan did not hold and the re-check finds held is dropped as `changed`.
+   */
   held?: boolean | undefined
   /**
    * What deleting it costs. The core holds a `lost` one for review and adds a
