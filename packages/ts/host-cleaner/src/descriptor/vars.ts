@@ -354,22 +354,27 @@ function builtIns(at: Pick<VarsAt, 'home' | 'env' | 'trustsXdg'>): Vars {
 /**
  * The text of the regular file `file`, or why there is none: a FIFO or other
  * special file is not read, and a read still waiting after `limit`, as on a
- * stalled network mount, gives up.
+ * stalled network mount, gives up and is stopped. A read the system call
+ * already blocks holds its thread until that call returns.
  */
 async function textOf(
   file: string,
   signal: AbortSignal,
   limit: number,
 ): Promise<string | { failed: string }> {
+  const stop = new AbortController()
   const read = (async () => {
     if (!(await stat(file)).isFile()) return { failed: `${file} is not a file` }
-    return readFile(file, { encoding: 'utf-8', signal })
+    return readFile(file, { encoding: 'utf-8', signal: AbortSignal.any([signal, stop.signal]) })
   })()
   // The read may end after the limit; its outcome is then dropped.
   read.catch(() => undefined)
   let timer: NodeJS.Timeout | undefined
   const late = new Promise<{ failed: string }>((done) => {
-    timer = setTimeout(() => done({ failed: `${file} not read within ${limit / 1000} s` }), limit)
+    timer = setTimeout(() => {
+      done({ failed: `${file} not read within ${limit / 1000} s` })
+      stop.abort()
+    }, limit)
   })
   try {
     return await Promise.race([read, late])
