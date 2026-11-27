@@ -40,3 +40,4 @@ decision names the one that replaces it. A task is `open` or `done`.
 - [T-03](tasks/T-03-import-the-library-without-the-command-framework.md): Import the library
   without the command framework
 - [T-04](tasks/T-04-share-the-even-split-rule.md): One copy of the even-split rule
+- [T-05](tasks/T-05-export-the-command-app.md): Export the command app
