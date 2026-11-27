@@ -39,7 +39,7 @@ export const idleHoursOr = (idle: number | undefined): number =>
 /**
  * The `idleHours` setting. A plugin that declares it under that key inherits
  * the config's top-level `idleHours` when its own entry sets none (see
- * `settingsOf` in `./settings.ts`).
+ * `resolveSettings` in `./settings.ts`).
  */
 export const idleHoursSetting = z
   .number()

@@ -55,7 +55,7 @@ import {
   type Plugin,
   type RunCtx,
 } from '../src/index.ts'
-import { effectiveSettings, settingsIssues, settingsOf } from '../src/settings.ts'
+import { effectiveSettings, resolveSettings, settingsIssues } from '../src/settings.ts'
 import {
   ageTree as age,
   contractSuite,
@@ -998,8 +998,11 @@ candidates:
 
   test("idleHours comes from the plugin's setting, which inherits the config's", () => {
     const def = descriptorPlugin('pip', parseDescriptor(PIP_PER_OS, 'pip.yaml'))
-    expect(settingsOf('pip', {}, { idleHours: 5 }, [def])).toEqual({ enabled: true, idleHours: 5 })
-    expect(settingsOf('pip', { idleHours: 0.5 }, { idleHours: 5 }, [def])).toEqual({
+    expect(resolveSettings('pip', {}, { idleHours: 5 }, [def]).settings).toEqual({
+      enabled: true,
+      idleHours: 5,
+    })
+    expect(resolveSettings('pip', { idleHours: 0.5 }, { idleHours: 5 }, [def]).settings).toEqual({
       enabled: true,
       idleHours: 0.5,
     })
