@@ -250,6 +250,22 @@ describe('where a package is looked for', () => {
     expect(r.loaded[0]!.definition.name).toBe('fixture')
   })
 
+  test.each(['../other/index.js', 'index.js', './node_modules/other/index.js', './a/../index.js'])(
+    'an exports target of %s, which Node refuses, is no entry',
+    async (target) => {
+      const nm = nodeModules(tempDir())
+      nm.add('@acme/other', FIXTURE_PLUGIN)
+      const path = nm.add(FIXTURE, FIXTURE_PLUGIN, { exports: target })
+      mkdirSync(join(path, 'node_modules', 'other'), { recursive: true })
+      writeFileSync(join(path, 'node_modules', 'other', 'index.js'), FIXTURE_PLUGIN)
+      const r = await loadPackages([entry()], [nm.root])
+      expect(r.loaded).toEqual([])
+      expect(r.failed.map((f) => f.reason)).toEqual([
+        `plugins.fixture.package: ${FIXTURE} 1.0.0 at ${path} exports no entry for import`,
+      ])
+    },
+  )
+
   test.each(['index', '.', './index.js'])(
     'a legacy main of %s resolves as Node resolves it',
     async (main) => {

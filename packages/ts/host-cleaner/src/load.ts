@@ -281,11 +281,22 @@ function exported(exports: unknown): string | undefined {
   return undefined
 }
 
+/**
+ * Whether Node takes `target` from `exports`: it starts with `./` and has no
+ * `.`, `..` or `node_modules` segment, so it stays in the package.
+ */
+const inPackage = (target: string): boolean =>
+  target.startsWith('./') &&
+  target
+    .slice(2)
+    .split(/[/\\]/)
+    .every((s) => s !== '.' && s !== '..' && s.toLowerCase() !== 'node_modules')
+
 /** The file `import '<package>'` loads from the package folder `dir`. */
 function entryOf(dir: string, manifest: Manifest): string | undefined {
   if (manifest.exports !== undefined) {
     const file = exported(manifest.exports)
-    return file === undefined ? undefined : join(dir, file)
+    return file === undefined || !inPackage(file) ? undefined : join(dir, file)
   }
   if (typeof manifest.main === 'string') {
     const main = join(dir, manifest.main)
