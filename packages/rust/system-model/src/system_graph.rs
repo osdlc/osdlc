@@ -1,7 +1,7 @@
 //! `build_system_graph`: walk a project and flatten it into the wire payload.
 
 use std::fmt;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use crate::aspects::scan_aspects;
 use crate::containment::{ContainmentOptions, apply_containment};
@@ -21,6 +21,24 @@ impl fmt::Display for NotADirectory {
 }
 
 impl std::error::Error for NotADirectory {}
+
+/// `root` made absolute with `.` and `..` folded away by name, as Node's `path.resolve` does for
+/// the TypeScript twin. Symlinks are not followed, so the payload's `root` is the path the caller
+/// gave: on macOS a folder under `/var` stays under `/var`, not `/private/var`.
+fn resolve(root: &Path) -> PathBuf {
+    let absolute = std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf());
+    let mut out = PathBuf::new();
+    for part in absolute.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
 
 fn workspace_label(ecosystem: Ecosystem) -> &'static str {
     match ecosystem {
@@ -55,10 +73,7 @@ pub fn build_system_graph(
     if !root.is_dir() {
         return Err(NotADirectory(root.display().to_string()));
     }
-    // Absolute, so `root` and the checkout's label hold for a relative input like `.` or `..`.
-    let absolute = root
-        .canonicalize()
-        .unwrap_or_else(|_| std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf()));
+    let absolute = resolve(root);
     let root = absolute.as_path();
     let root_label = root
         .file_name()
