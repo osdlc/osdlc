@@ -7,7 +7,7 @@ the guide it follows. It is not published.
 
 | File | Holds |
 | --- | --- |
-| [`package.json`](./package.json) | The package as it would be published: ESM, built to `dist/` by `npm run build` and tested by `npm test`, with `@osdlc/workstation-cleaner` `^0.5.0`, which under 0.x is 0.5 only, as a peer dependency. |
+| [`package.json`](./package.json) | The package as it would be published: ESM, built to `dist/` by `npm run build` and tested by `npm test`, with `@osdlc/workstation-cleaner` `^0.6.0`, which under 0.x is 0.6 only, as a peer dependency. |
 | [`tsconfig.json`](./tsconfig.json) | The build: `src/` to `dist/`, with the declarations the `types` export names. |
 | [`src/index.ts`](./src/index.ts) | The plugin, one `definePlugin` value. |
 | [`test/podman.test.ts`](./test/podman.test.ts) | Its tests, on a fake `podman`. |
