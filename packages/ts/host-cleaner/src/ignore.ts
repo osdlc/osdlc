@@ -18,7 +18,8 @@ export const expandHome = (
     ? (platform === 'win32' ? win32 : posix).join(home(), path.slice(1))
     : path
 
-const within = (path: string, dir: string): boolean =>
+/** Whether `path` is `dir` or below it, by name. */
+export const within = (path: string, dir: string): boolean =>
   path === dir || path.startsWith(dir.endsWith(sep) ? dir : dir + sep)
 
 /** `entries` as absolute paths (`~` is `home()`, a relative entry starts at `cwd`), each by its real path as well. */

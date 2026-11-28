@@ -146,6 +146,11 @@ export {
 } from './orca.ts'
 export {
   AGENT_WORKTREE,
+  CURSOR_WORKTREES,
+  DEFAULT_AGENT_FOLDERS,
+  agentFoldersOf,
+} from './agent-folders.ts'
+export {
   CURSOR_IN_USE,
   CURSOR_PLUGIN,
   CURSOR_STATE_UNREADABLE,
