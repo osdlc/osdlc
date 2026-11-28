@@ -82,6 +82,24 @@ describe('the env source', () => {
     const { home, resolve } = setup({ env: { UV_CACHE_DIR: '~/fast/uv/' } })
     expect((await resolve({ UV: [{ env: 'UV_CACHE_DIR' }] })).UV?.value).toBe(join(home, 'fast/uv'))
   })
+
+  test('an XDG folder that is not absolute gives no value, as the built-in ignores it; ~ is not read in it', async () => {
+    const { home, resolve } = setup({ env: { XDG_CACHE_HOME: '~/c', XDG_DATA_HOME: 'data' } })
+    const v = await resolve({
+      CACHE_SET: [{ env: 'XDG_CACHE_HOME' }],
+      DATA_SET: [{ env: 'XDG_DATA_HOME' }, { value: '~/.local/share' }],
+      YARN: [{ value: '${CACHE_SET}/yarn' }, { value: '${XDG_CACHE_HOME}/yarn' }],
+    })
+    expect(v.CACHE_SET).toEqual({
+      value: null,
+      trusted: false,
+      tried: [{ source: 'env XDG_CACHE_HOME', failed: '~/c is not an absolute folder' }],
+    })
+    expect(v.DATA_SET).toMatchObject({ value: join(home, '.local/share'), from: 'value' })
+    // The same folder the built-in gives, not ~/c/yarn.
+    expect(v.YARN).toMatchObject({ value: join(home, '.cache/yarn') })
+    expect(v.XDG_CACHE_HOME).toMatchObject({ value: join(home, '.cache'), from: 'default' })
+  })
 })
 
 describe('the file source', () => {

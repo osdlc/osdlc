@@ -14,7 +14,8 @@
  *   value    a fixed value, per OS or for all, which may use other variables
  *
  * A source that gives no value, or one that is not an absolute folder, moves
- * on to the next. A variable set in the config also wins over the sources of
+ * on to the next; an env source of an `XDG_*` built-in must be absolute
+ * before `~` is read, as the built-in must. A variable set in the config also wins over the sources of
  * the variables built from it: in each of those, the sources before the first
  * one that uses it are skipped. `HOME` and the `XDG_*` folders are built in,
  * the `XDG_*` ones with their XDG defaults on every OS.
@@ -217,6 +218,8 @@ export async function resolveVars(
     if ('env' in source) {
       const v = ownValue(at.env, source.env)
       if (v === undefined || v === '') return { failed: 'not set' }
+      // An `XDG_*` folder that is not absolute is ignored, as its built-in ignores it, before `~` is read as home.
+      if (isXdg(source.env) && !isAbsolute(v)) return { failed: `${v} is not an absolute folder` }
       // An `XDG_*` folder read this way keeps the trust its built-in has.
       const xdg = Object.hasOwn(BUILT_IN_VARS, source.env) ? done[source.env] : undefined
       const trusted = xdg?.from === `env ${source.env}` && xdg.trusted
@@ -317,6 +320,10 @@ function configSet(
   }
   return out
 }
+
+/** Whether `name` is one of the built-in `XDG_*` folders, which must be absolute to count. */
+const isXdg = (name: string): boolean =>
+  ownValue<string | undefined>(BUILT_IN_VARS, name) !== undefined
 
 /** `record[name]` when `record` has it as its own key, so `constructor` is not read from the prototype. */
 function ownValue<T>(record: Readonly<Record<string, T>> | undefined, name: string): T | undefined {
