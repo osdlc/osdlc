@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.5",
+  "referenceVersion": "0.4.6",
   "sections": {
     "routing_shadow": {
       "description": "shadowedRules: the rules an earlier, same-or-broader rule makes unreachable",

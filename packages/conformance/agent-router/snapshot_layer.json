@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.5",
+  "referenceVersion": "0.4.6",
   "sections": {
     "snapshot_layer": {
       "description": "The shipped snapshot layer, which other sections name as the layer `snapshot`. `expect` is the layer; the Rust crate parses it with its strict schema and uses it as that layer.",

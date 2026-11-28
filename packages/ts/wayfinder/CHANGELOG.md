@@ -1,5 +1,16 @@
 # @osdlc/wayfinder
 
+## 0.13.7
+
+### Patch Changes
+
+- Updated dependencies [0b3fbfa]
+- Updated dependencies [0b3fbfa]
+- Updated dependencies [6a7d874]
+  - @osdlc/cli-tool@0.22.0
+  - @osdlc/config-layers@0.12.0
+  - @osdlc/system-model@0.11.0
+
 ## 0.13.6
 
 ### Patch Changes
