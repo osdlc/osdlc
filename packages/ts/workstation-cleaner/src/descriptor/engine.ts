@@ -366,7 +366,9 @@ export function descriptorPlugin(
         })),
       ]
         .filter((p) => p.own !== undefined)
-        .map((p) => ({ part: p.part, idleHours: entryIdleHours(p.own, idleHours, source) })),
+        .map((p) => ({ part: p.part, idleHours: entryIdleHours(p.own, idleHours, source) }))
+        // A part the setting overrides, or that its own value leaves at the setting, adds nothing.
+        .filter((p) => p.idleHours !== idleHours),
     create: ({ settings, sources, kit, env }) =>
       engine(name, d, kit, {
         home: env.HOME ?? homedir(),

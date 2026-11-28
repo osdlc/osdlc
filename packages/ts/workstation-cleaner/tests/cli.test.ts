@@ -1324,22 +1324,25 @@ ${extra}`
       const common = ['--config', file]
       const status = await run(['status', '--plugin', 'mine', ...common], h.cwd, h.env, deps)
       expect(status.out, what).toContain(`(threshold ${own})`)
+      // Only the parts whose threshold is not the setting's are listed.
+      const parts = [
+        { part: 'store', idleHours: own },
+        { part: 'out beside *.x', idleHours: project },
+      ].filter((p) => p.idleHours !== setting)
       const text = await run(['config', ...common], h.cwd, h.env, deps)
+      const lines = parts.map(
+        (p) => ` {4}${p.part.replace('*.', '\\*\\.')}: idleHours = ${p.idleHours}\\n`,
+      )
       expect(text.out, what).toMatch(
         new RegExp(
-          `plugins\\.mine\\n.*\\n {2}idleHours = ${setting} .*\\n {4}store: idleHours = ${own}\\n {4}out beside \\*\\.x: idleHours = ${project}\\n`,
+          `plugins\\.mine\\n.*\\n {2}idleHours = ${setting} .*\\n${lines.join('')}(?! {4})`,
         ),
       )
-      const json = await run(['config', '--format', 'json', ...common], h.cwd, h.env, deps)
-      expect(JSON.parse(json.out), what).toMatchObject({
-        plugins: { mine: { idleHours: setting } },
-        partIdleHours: {
-          mine: [
-            { part: 'store', idleHours: own },
-            { part: 'out beside *.x', idleHours: project },
-          ],
-        },
-      })
+      const json = JSON.parse(
+        (await run(['config', '--format', 'json', ...common], h.cwd, h.env, deps)).out,
+      )
+      expect(json, what).toMatchObject({ plugins: { mine: { idleHours: setting } } })
+      expect(json.partIdleHours.mine, what).toEqual(parts.length === 0 ? undefined : parts)
     }
   })
 

@@ -1274,9 +1274,11 @@ the entry's own value applies.
 `workstation-cleaner config` prints the config file it looked for (and says when it
 is missing, so the defaults apply), then every plugin's effective settings:
 the value, and whether the file set it or it is the default. Under a descriptor's `idleHours`
-it prints each entry with its own value and the threshold the run applies to it
-(to a prune entry only when its program is not on PATH and the folder is
-removed whole).
+it prints each entry with its own value whose threshold differs from that
+setting, with the threshold the run applies to it (to a prune entry only when
+its program is not on PATH and the folder is removed whole). An entry the
+setting overrides, such as every entry under a `plugins.<name>.idleHours`, is
+not printed: it takes the setting.
 `--format json` prints the values, with `file` and `fileExists`, and those
 thresholds under `partIdleHours`.
 
