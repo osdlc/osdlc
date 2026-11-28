@@ -23,10 +23,11 @@
  *
  * A record's `path`, `branch` and `gitDir` say what a discard deletes, so a record is never
  * trusted alone: one whose branch is not the kept branch of its PR, or whose path is not a folder
- * directly in the repository's run worktrees or is a symbolic link, is refused, and so is one whose folder `git worktree list` in the
- * git directory that owns it does not show ({@link KeptTreeCheck}). A refused record is left as it
- * is, tree and file, and reported ({@link KeptRefusal}). Every removal through a record goes
- * through {@link discardKept}, which checks the folders too.
+ * directly in the repository's run worktrees or is a symbolic link, is refused, and so is one
+ * whose folder `git worktree list` in the git directory that owns it does not show, or shows on a
+ * run's scratch branch ({@link KeptTreeCheck}). A refused record is left as it is, tree and file,
+ * and reported ({@link KeptRefusal}). Every removal through a record goes through
+ * {@link discardKept}, which checks the folders too.
  *
  * A kept tree is pr-update's, as everything it makes is: no one works inside it, so what is in
  * it never keeps it. It goes when its PR moves, with `--retry-failed`, or with `--discard-kept`.

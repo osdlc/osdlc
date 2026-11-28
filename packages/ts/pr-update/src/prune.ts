@@ -4,11 +4,14 @@
  *
  * Two walks:
  * - `worktrees/` in the cache, which holds the run worktrees of every target, the project root
- *   included, located or cloned, and the failed ones kept as evidence. A run worktree a valid
- *   kept record in `kept/` names is a kept tree, never a dead run's, and the walk leaves it (see
- *   `./update/kept.ts`). Any other whose run is dead ({@link runAliveWith}: by pid and start
- *   time) is removed, whatever its age, through the git directory that owns it, when
- *   that lists it. Its `.git` file and that record's `commondir` are read first, so the owner is
+ *   included, located or cloned, and the failed ones kept as evidence, where they ran. A run
+ *   worktree a valid kept record in `kept/` names is a kept tree, never a dead run's, and the walk
+ *   leaves it (see `./update/kept.ts`), unless git lists it on a scratch branch: a keep puts its
+ *   tree on the PR's branch before it writes the record, so such a tree is a run's. Any other
+ *   whose run is dead ({@link runAliveWith}: by pid and start time) is removed, whatever its age,
+ *   through the git directory that owns it, when that lists it, with its scratch branch and the
+ *   `pr-update/` branch it is on (a keep that stopped before its record leaves a tree on its
+ *   `pr-update/failed-*` branch). Its `.git` file and that record's `commondir` are read first, so the owner is
  *   known before anything is touched. Only that worktree's own record is taken out of the owner:
  *   never a bare `git worktree prune`, which would also drop a person's worktrees whose folders
  *   are missing. A run worktree of a managed clone is removed only while holding the clone's
@@ -17,7 +20,8 @@
  *   under its lock, after its dead run worktrees. Everything in it and under `worktrees/` and
  *   `kept/` is pr-update's: no one works inside them, so what is in them never keeps them. One
  *   with a kept worktree stays, since a kept tree is evidence, unless `discardKept`; then its kept
- *   trees go first, through the clone, whatever their records name, and the clone with them. A
+ *   trees go first, through the clone, whatever their records name, with their records (one whose
+ *   tree is gone too), and the clone with them. A
  *   clone with a live run's worktree, or any worktree outside pr-update's folders, one whose lock
  *   another run holds, and a folder without the clone marker are never removed, and nor is a kept
  *   tree whose `.git` file names another git directory. A machine file that cannot be read or is
@@ -39,8 +43,8 @@
  * stopped in).
  * No walk follows a symbolic link: a link is never descended into, removed through, or counted.
  * Nothing is removed from a folder someone else could write to (`folderProblem` in
- * `./folders.ts`); under `worktrees/` and `kept/` the fix named is `chmod -R go-w` on that
- * directory.
+ * `./folders.ts`); under `worktrees/`, kept trees included, the fix named is `chmod -R go-w` on
+ * that directory.
  * Pruning never waits for a lock, and every git call runs with hooks off.
  */
 
@@ -502,7 +506,8 @@ function runBranches(tree: string, on: string | null): string[] {
 /**
  * The trees the kept records of `repo` (`host/owner/name`) name, by real path: kept trees, not
  * dead runs' worktrees. Any record that passes `listKept`'s checks counts, whatever git directory
- * it names, so a tree is never taken for a dead run's while a record claims it.
+ * it names, so a tree is never taken for a dead run's while a record claims it, unless git lists
+ * it on a scratch branch (the walk in {@link pruneMirror} asks).
  *
  * @throws through `unreadable` when the records cannot be read: then which trees are kept is not
  * known.
@@ -726,7 +731,7 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
   const dryRun = opts.dryRun === true
   const alive = opts.alive ?? runAlive
   const group = opts.group ?? {}
-  /** The check of a folder under `worktrees/` or `kept/`, whose fix covers every folder below. */
+  /** The check of a folder under `root` (`worktrees/`), whose fix covers every folder below. */
   const ownFolders = (root: string): FolderCheckOptions => ({
     ...group,
     fix: () => `run \`chmod -R go-w ${root}\``,

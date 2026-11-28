@@ -39,19 +39,22 @@ are in scope.
 - **A repair agent can run tools.** It edits the update worktree. The engine
   rejects a repair that moves HEAD, creates a ref or leaves conflict markers,
   but it does not sandbox the agent.
-- **Recorded resolutions are replayed, in managed clones only.** In
-  `update --apply` in a managed clone, unless `pr_update.rerere` is false,
-  git's rerere replays a resolution recorded in the clone's `rr-cache/` into a
-  later PR with the same conflict. What is recorded there is pr-update's own:
-  a resolution a resolver or an accepted repair made for a PR that was then
-  pushed. pr-update removes what a rejected repair, an abandoned rebase or a
-  PR that was not pushed recorded, and what a killed run recorded and never
-  accepted. A replayed path no resolver claims is reported (`replayed`), and
-  `verify` is its only check: with `verify: none`, a replay is pushed
-  unchecked. An agent that writes into `rr-cache/` itself is not stopped. In
-  the project root and a located checkout, rerere is off for every merge,
-  rebase and commit pr-update runs, so the person's own resolutions are never
-  replayed into a PR.
+- **Recorded resolutions are replayed, in managed clones only, within one
+  run.** In `update --apply` in a managed clone, unless `pr_update.rerere` is
+  false, git's rerere replays a resolution recorded earlier in the same run
+  into a later rebase stop or a sibling PR with the same conflict. What can be
+  replayed is pr-update's own: a resolution a resolver or an accepted repair
+  made in this run, in this clone, for a PR that was pushed or for the PR in
+  flight. The clone's `rr-cache/` is emptied under its lock before the run
+  integrates anything, whenever a PR ends without a push, and at the end of
+  the run, and rerere stays off while another live run has a worktree in the
+  clone, so one run never replays another's unpushed resolution. A replayed
+  path no resolver claims is reported (`replayed`), and `verify` is its only
+  check: with `verify: none`, a replay is pushed unchecked. An agent that
+  writes into `rr-cache/` itself during the run is not stopped. In the project
+  root and a located checkout, rerere is off for every merge, rebase and
+  commit pr-update runs, so the person's own resolutions are never replayed
+  into a PR.
 - **A located checkout's git config runs as you.** A `--repo` target's
   checkout found on this machine is fetched and pushed with its own
   `.git/config`, so what it sets (`core.sshCommand`, `credential.helper`,
@@ -97,7 +100,8 @@ are in scope.
   mode's sync run in your checkout with your `PATH`. Commands from config
   (verify, resolvers, `lockfile_install`, a repair command or agent) run
   the PR's code by design, under the trust gate, with your `PATH`, and so do
-  your own git commands in a kept tree.
+  your own git commands in a kept tree (a kept tree is evidence to copy with
+  `kept push`, not a place to work).
 - **pr-update's worktrees and other repositories ignore `GIT_DIR`.** A run
   started from a git hook inherits `GIT_DIR`, which would make every git it
   runs act on the hook's repository; in a linked worktree that moves the
@@ -121,24 +125,23 @@ are in scope.
   `PATH` entries only, so the helper never runs a `gh` a PR commits, even
   when your own git command in a kept tree runs it with `.` on `PATH`.
   Without one, no helper is set. Your global git config is not changed.
-- **A kept record does not choose what is deleted.** `--keep-failed` writes a
-  record beside each kept tree, and in a checkout that is
-  `.pr-update/failed/`, inside the working tree, where the repository's own
-  files can put one. A record is acted on only when its branch and path are
-  the ones pr-update gives that PR, its folder is not a symbolic link, and
-  `git worktree list` shows a worktree at that folder. One shown on another
-  branch, or detached, or locked with `git worktree lock`, is a person's, and
-  is never removed, its folder included. A keep never repoints a branch of
-  the kept name that it did not make. `mirror prune
-  --discard-kept` removes a kept tree only while the clone being pruned lists
-  it on its record's branch, or on a `pr-update/failed-*` branch with no
-  record, the tree's own `.git` file names that clone, and its record names no
-  other git directory that still exists, so neither a record nor a moved or
-  copied clone decides it alone, and nothing is changed through a clone whose
-  lock the prune does not hold. A tree is removed
-  through the checkout's own git directory, never one a checkout's record
-  names. Any other record is left alone and reported. A git directory that
-  cannot be read is not taken for one that is gone.
+- **A kept record does not choose what is deleted.** `--keep-failed` leaves a
+  failed PR's tree where it ran, in `worktrees/` in pr-update's cache
+  directory, and writes its record in `kept/` in its state directory, outside
+  every working tree, so a repository's files cannot put one there. A record is
+  acted on only when its branch is the one pr-update gives that PR, its path is
+  a folder directly in that repository's `worktrees/` folder and not a symbolic
+  link, and `git worktree list` in the git directory it names shows a worktree
+  there on a branch other than a run's scratch branch, so a record can never
+  make a live run's worktree look kept. What is in a kept tree never keeps it:
+  it is pr-update's. `mirror prune --discard-kept` removes a clone's kept trees
+  through that clone, under its lock, only when the tree's own `.git` file
+  names that clone, so a moved or copied clone does not decide it. Any other
+  record is left alone and reported. A git directory that cannot be read is
+  not taken for one that is gone. `kept push` runs no git in the tree: it reads
+  the tree's commit from that git directory's worktree list, and pushes from
+  there with hooks off. A local repository it pushes to runs its own receive
+  hooks, as a server does, on the PR's commit.
 - **No file others can write to.** The `pr-update` command takes write for
   group and others out of its umask when it starts, and git, `gh` and every
   command it runs inherit it, so none of them creates a file or folder others
@@ -152,17 +155,15 @@ are in scope.
   an `update --apply`, delete folders only inside pr-update's cache and
   state directories and the clone directory, which must carry pr-update's
   marker, and in the git directory that owns a dead run's worktree only that
-  worktree's record and scratch branch. They never follow a symbolic link, and on Linux and macOS
+  worktree's record and its `pr-update/` branches. They never follow a symbolic link, and on Linux and macOS
   they remove nothing from a folder another user owns or others can write
   to. Windows gets no such check. Before anything is removed, that folder
   rule, the owner's `git worktree list` and the clone's lock must allow it.
-  A worktree that list shows as locked (`git worktree lock`) stays, even
-  when its folder is missing, and so does its clone; only git's own
-  `initializing` lock, which a killed `git worktree add` leaves, is not
-  counted. A kept worktree whose folder is missing keeps its clone, locked or
-  not. A clone also stays while it holds a local branch with commits no
-  remote-tracking branch has, a stash or notes, since those can only be a
-  person's and are in that clone alone. A clone also stays while its
+  Everything pr-update made is its own to remove once no live run uses it;
+  what is in it (commits, a stash, changes) does not keep it. A worktree is
+  removed with one `git worktree remove --force`, and one git refuses (locked
+  with `git worktree lock`) stays, with its clone, as a failure. Only
+  `pr-update/` branches are deleted in a person's checkout. A clone also stays while its
   `worktrees/` folder holds a record that list does not show, since git leaves
   out a record it cannot read without a word. What cannot be read stays and
   is reported, and `--dry-run` decides the same way, reading a clone's lock
