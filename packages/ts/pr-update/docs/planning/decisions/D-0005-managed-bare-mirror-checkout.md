@@ -49,7 +49,9 @@ that this record left open, and where it differs, is under Build notes.
 project root is reported `no local checkout — drift not measured`
 (`src/survey.ts`) and `update` skips it. The update worktree is made at
 `<checkout>/.pr-update/<run>` (`src/update.ts`), and file-store attempts live in
-`<projectRoot>/.pr-update/attempts` (`src/update/attempts.ts`). Verified in code.
+`<projectRoot>/.pr-update/attempts` (`src/update/attempts.ts`). Verified in code
+when the record was accepted; the build moved both into pr-update's cache and
+state directories (Build note "The ownership contract").
 
 A host that supplies its own `Ports` also supplies its own `locate`. sdlc's
 scans the directories its `repos:` lists name and matches each checkout's
@@ -80,9 +82,10 @@ scans the directories its `repos:` lists name and matches each checkout's
   on a repository without submodules.
 - `git worktree move` is a plain `rename()` with no copy fallback, so it fails
   with `Invalid cross-device link` when the source and target are on
-  different filesystems. `keepWorktree` (`src/update/kept.ts`) moves the run
-  worktree to its kept path. For non-root targets those are in the cache and
-  state homes, which can be on different disks. Reproduced in review.
+  different filesystems. `keepWorktree` (`src/update/kept.ts`) moved the run
+  worktree to its kept path. For non-root targets those were in the cache and
+  state homes, which can be on different disks. Reproduced in review. (Moot
+  since the build: a kept tree now stays where it ran; Build note "The ownership contract".)
 - `unpushed_local` asks `git worktree list` for a worktree on the head
   (`unpushedLocalWork` in `src/survey.ts`). A bare clone this tool owns has
   none, so the guard is false by construction there and never fires.
@@ -196,17 +199,19 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   | --- | --- | --- |
   | Machine file | config | `~/.config/osdlc/pr-update/config.yaml` |
   | Clones | cache | `~/.cache/osdlc/pr-update/repos/<host>/<owner>/<name>.git` |
-  | Run worktrees of non-root targets | cache | `~/.cache/osdlc/pr-update/worktrees/<host>/<owner>/<name>/<run>` |
-  | Kept worktrees of non-root targets | state | `~/.local/state/osdlc/pr-update/kept/<host>/<owner>/<name>/<number>` |
-  | File attempts of non-root targets | state | `~/.local/state/osdlc/pr-update/attempts/<host>/<owner>/<name>/` |
+  | Run worktrees of every target, the project root included | cache | `~/.cache/osdlc/pr-update/worktrees/<host>/<owner>/<name>/<run>` |
+  | Kept worktrees: run worktrees left where they ran | cache | `~/.cache/osdlc/pr-update/worktrees/<host>/<owner>/<name>/<run>` |
+  | Kept-tree records | state | `~/.local/state/osdlc/pr-update/kept/<host>/<owner>/<name>/<number>.json` |
+  | File attempts of every target | state | `~/.local/state/osdlc/pr-update/attempts/<host>/<owner>/<name>/` |
 
-  Every per-repository path of a non-root target is lower-cased and carries
-  the host. A non-root target's `host/owner/name` is lower-cased once, when
-  the target is resolved, and every clone, kept and attempt lookup compares
-  that form, so `Acme/API` and `acme/api` are one target. For those targets
-  `keptName` and `findKept` (`src/update/kept.ts`) use that layout and match
-  on host as well as repository. No non-root
-  target has a kept worktree today, so nothing needs to move.
+  Every per-repository path is lower-cased and carries the host. A target's
+  `host/owner/name` is lower-cased once, when the target is resolved, and
+  every clone, kept and attempt lookup compares that form, so `Acme/API` and
+  `acme/api` are one target. `findKept` (`src/update/kept.ts`) uses that
+  layout and matches on host as well as repository. A project root whose
+  remote names no host is filed under `github.com`. An old
+  `<projectRoot>/.pr-update/` is neither read, moved nor deleted; `update`
+  notes it once. (changed during the build: Build note "The ownership contract")
 
   The same repository can be served from different git repositories on
   different runs: one located checkout, another, or the clone. So a kept
@@ -218,21 +223,16 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   from its owner. Otherwise the run names the kept worktree and its owner,
   leaves both alone, and skips the PR with reason `kept elsewhere`.
 
-  A non-root target's run worktree (cache) and kept worktree (state) can be
-  on different filesystems, where `git worktree move` fails (facts above).
-  Then keeping falls back to `git worktree add` at the kept path from the run
-  worktree's `HEAD`, copies the verify log in, and removes the run worktree.
-  The kept tree has the same commit and log; untracked build output is not
-  carried over. The run worktree stays until the keep has fully succeeded.
-  If a later keep step fails, the rollback is `git worktree remove --force`
-  of the kept path and deleting its branch, not a move back.
-
-  Kept worktrees and attempt records are not cache: a person may have work to finish in one,
-  and the other is history nothing re-derives. The project root keeps today's
-  `<projectRoot>/.pr-update/` for its run worktrees, kept worktrees and
-  attempt records, and today's
-  `<owner>-<name>-<number>` kept name, so worktrees already kept there are
-  still found.
+  A kept worktree is not moved: it stays the run worktree it was, on a branch
+  named for the PR, and its record names it. The run goes on in a new run
+  worktree. So a kept tree is on the filesystem it ran on, a PR with
+  submodules can be kept, and a cache cleaner that empties the cache removes
+  kept trees too. The record is what tells a kept tree from a dead run's
+  worktree. Everything pr-update makes is its own to delete once no live run
+  uses it: a kept tree is evidence, not work, and `pr-update kept push` copies
+  one out as a branch for a person to work on. Attempt records are history
+  nothing re-derives, so they stay in the state home. (changed during the
+  build: Build note "The ownership contract")
 - **Machine file.** Read and written with `machineConfigFile`, which gets an
   `app` option first (a config-layers change), and is passed the pinned
   `dirs`. Its relocation variable is `PR_UPDATE_MACHINE_CONFIG`, named
@@ -454,7 +454,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   | --- | --- |
   | A run's worktree and scratch branch | The run, in a `finally` (`src/update/execute.ts`). A killed run's are removed by the next run served from the same git directory, or by pruning (below) |
   | A killed run's worktree under `worktrees/` in the cache | Pruning, automatic or by hand, whatever repository it belongs to |
-  | A kept worktree (`keep_failed`) | `--discard-kept`, `--retry-failed`, or the PR moving, unless someone has changed it or git cannot read it; only `--discard-kept` removes that (changed during the build: Build note 1) |
+  | A kept worktree (`keep_failed`) | `--discard-kept`, `--retry-failed`, or the PR moving, whatever is in it; `mirror prune --discard-kept` with its clone; a cache cleaner (changed during the build: Build note 1, Build note "The ownership contract") |
   | `origin/<branch>` for a deleted branch | `fetch --prune` on each unscoped fetch of the project root or a managed clone. A located checkout's fetch does not prune: its own `git fetch --prune` does (changed during the build: Build note 1) |
   | Unreachable objects | In a managed clone, `git maintenance run --auto` in the foreground after each fetch, under the clone's lock: a clone has git's automatic `gc` and background maintenance off. Elsewhere, git's automatic `gc` (changed during the build: Build note 1) |
   | A whole clone the person no longer targets | Automatic pruning by age, or `pr-update mirror prune` |
@@ -487,15 +487,14 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   directory without the tool's marker was not made by this tool and is never
   removed. A `.tmp-<name>.git-<pid>[-<random>]` directory is recognised by its name instead,
   inside a mirror directory that carries the tool's marker (clone step 1), so
-  one left by a killed clone is removed once it is an hour old, as is a
-  `.pr-update-probe-*` folder under `worktrees/` or `kept/`. A clone is renamed
+  one left by a killed clone is removed once it is an hour old. A clone is renamed
   to such a name before it is deleted, so a removal that stops part-way leaves
   a leftover the next prune removes, not a broken clone at the clone path.
   Nothing is removed from a folder that `checkClone` would refuse (another
   user's, or one someone else can write to by the rule of clone step 1), and
-  no walk follows a symbolic link. Under `worktrees/` and `kept/` the refusal
-  names `chmod -R go-w <worktrees or kept directory>`; under the clone
-  directory, clone step 1's fix. (changed during the build: Build note 1)
+  no walk follows a symbolic link. Under `worktrees/` the refusal names
+  `chmod -R go-w <worktrees directory>`; under the clone directory, clone step
+  1's fix. (changed during the build: Build note 1, Build note "The ownership contract")
 
   Pruning also walks `worktrees/` in the cache, which holds the run
   worktrees of located checkouts as well as clones. A directory whose run is
@@ -513,14 +512,14 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   names `<common-dir>/worktrees/<id>`, whose `commondir` file gives the
   owning git directory; that record's `gitdir` must name the directory back.
   When the owner still exists, pruning runs `git worktree remove --force`
-  there and deletes the dead run's scratch branch, holding the clone's lock
-  when the owner is a managed clone. An owner whose `git worktree list` cannot
-  be read, or does not show the directory, keeps it, and so does one that
-  shows it locked (`git worktree lock`), unless the lock is git's own
-  `initializing`, which a killed `git worktree add` leaves. A clone reads that
-  lock from its own list, so it holds when the directory is missing too.
-  (changed during the build: Build note 1) If the removal fails, only the
-  directory and that one `worktrees/<id>/` record are deleted, never a bare
+  there and deletes the dead run's scratch branch and any other `pr-update/`
+  branch the worktree is on, holding the clone's lock when the owner is a
+  managed clone. A run worktree a valid kept record names is a kept tree and
+  is left, unless git lists it on a scratch branch. An owner whose
+  `git worktree list` cannot be read, or does not show the directory, keeps
+  it. pr-update reads no worktree locks of its own: git refuses to remove a
+  locked one, and that refusal is a failure (exit 1), with the clone kept.
+  (changed during the build: Build note 1, Build note "The ownership contract") Never a bare
   `git worktree prune`, which would drop the person's own worktrees whose
   folders are missing. With the owner gone, or records that do not name the
   directory, only the directory is removed.
@@ -546,11 +545,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   - *Never removed:* a clone whose lock another process holds, one with a
     kept worktree, or one with a live run's worktree, even with
     `--all-clones`. `mirror prune --discard-kept` removes the kept worktrees
-    of a clone it is removing first. Prune honours `git worktree lock`: a
-    worktree git shows as locked, a dead run's or a kept one, is never
-    removed, `--discard-kept` included, even when its folder is missing, and
-    its clone stays with it.
-    (changed during the build: Build note 1)
+    of a clone it is removing first, whatever is in them. A worktree git will
+    not remove (one locked with `git worktree lock`) stays as a failure, and
+    its clone with it.
+    (changed during the build: Build note 1, Build note "The ownership contract")
   - Removing a clone leaves its repository's attempt records in the state
     home. They are history, not cache, and later runs that reach the
     repository from outside it, located or cloned, read them.
@@ -575,12 +573,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   whose local checkout holds commits that were never pushed. The README states
   this next to the mode, and the run's notice names the searched roots so a
   missed one is visible.
-- **`file` attempt records are per entry point.** A run started inside a
-  repository reads and writes `<projectRoot>/.pr-update/attempts`. A run that
-  reaches the same repository with `--repo` reads and writes the state store.
-  Neither sees the other's records, so a PR skipped from one may be retried
-  from the other. This keeps criterion 5. `git-ref` shares records across
-  both, and across machines (B-0003).
+- **`file` attempt records are one store per repository.** As accepted, a run
+  started inside a repository read and wrote `<projectRoot>/.pr-update/attempts`,
+  and one that reached it with `--repo` the state store, so neither saw the
+  other's records. Since the build both use the state store, keyed by
+  `host/owner/name` (Build note "The ownership contract"). `git-ref` shares records across machines
+  too (B-0003).
 - pr-update keeps state under two roots for a while: everything above and the
   trust store (`<state>/osdlc/pr-update/trusted/`) under `osdlc/pr-update/`,
   and devlink's files under `pr-update/`. Each category lives in one place, and
@@ -607,21 +605,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   instead name the target's repository in their environment (Build note
   "Repository variables (`GIT_DIR` and the rest)").
 - A folder check on Windows. Ownership and mode are checked on POSIX only:
-  NTFS ACLs are not read, so on Windows a clone directory, `worktrees/` or
-  `kept/` that another user can write to is not refused.
-- The next run's cleanup of a killed run's worktree (`releaseStaleScratch`),
-  and in a clone of its rerere ledger, judges the run by its pid alone;
-  pruning also reads its start time (Build notes).
-- Prune and the kept-tree discard paths decide by themselves whether a
-  worktree or branch is safe to delete, where `@osdlc/repo-cleaner` already
-  does (`inspectWorktree`, its verdicts and risks). pr-update should keep
-  only the clone-level decisions (the clone lock, the folder rule, removing
-  the bare directory) and ask repo-cleaner about each worktree and branch,
-  extending it where needed (bare clones, never unlocking a person's lock),
-  planned with the pure-cache clone change. S13's prune and kept fixes
-  (Build note "A person's work in a clone or a kept tree") are the safety net
-  until then. See Known problem 27 in
-  [the architecture guide](../../guide/architecture.md#found-in-s13).
+  NTFS ACLs are not read, so on Windows a clone directory or `worktrees/`
+  that another user can write to is not refused.
+- The next run's cleanup of a killed run's worktree (`releaseStaleScratch`)
+  judges the run by its pid alone; pruning also reads its start time (Build
+  notes).
 
 ## Build notes
 
@@ -702,7 +690,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - **What a run writes in a located checkout.** Nothing in its working tree,
   index or HEAD. In its git directory:
   - a `worktrees/<id>/` record for each run worktree and kept tree, which
-    live under pr-update's cache and state;
+    live under pr-update's cache;
   - the run's scratch branch, `pr-update/scratch-<run>`, deleted at the end,
     made with `--no-track` so it writes no `branch.<name>.remote` or `.merge`
     keys in the checkout's config (the final review of the omnibus found
@@ -722,7 +710,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     the submodule clones git makes for the run worktree;
   - nothing in `rr-cache/`: pr-update's merges, rebases and commits there run
     with `rerere.enabled=false`, so rerere neither replays nor records, and no
-    `rr-cache/` is made (Build note "Rerere in clones only").
+    `rr-cache/` is made (Build note "The ownership contract").
 
   pr-update's own git calls there start no `gc --auto` (`targetGitEnv`
   sets `gc.auto=0` and `maintenance.auto=false`); the person's own git
@@ -730,17 +718,18 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
 - **What a killed run can leave in a located checkout.** The run worktree's
   record and the scratch branch (the next run on that checkout removes them,
   since the run's pid is in the worktree's name); `submodule.*` keys that
-  were not put back; and, when it stopped between making a kept tree and
-  writing its record, a kept tree with no record. A later keep of that PR
-  refuses to move into that folder, names it, and says how to remove it.
-  Outside the checkout it can leave the run worktree's folder under the
+  were not put back; and, when it stopped between moving a run worktree to
+  its PR's branch and writing the record, a run worktree on a
+  `pr-update/failed-*` branch with no record. Pruning, or the next run on that
+  checkout, removes it as a dead run's worktree, with that branch. Outside
+  the checkout it can leave the run worktree's folder under the
   cache and, with `git-ref`, a lease ref on the remote until its TTL ends.
 - **Cleaning up in a located checkout.** The run never runs a bare
   `git worktree prune` there, which would also drop the person's worktrees
   whose folders are missing. When `git worktree remove` of a run's own tree
   fails, it deletes only that tree's `worktrees/<id>/` record, after checking
   that its `gitdir` names a folder under pr-update's own directories.
-- **Kept trees.** A record is used only when its `path` is the kept path its
+- **Kept trees.** *Superseded by Build note "The ownership contract"; kept as the record of what was built before it.* A record is used only when its `path` is the kept path its
   file name gives, compared by the real path of its folder. A tree whose
   owning git directory is gone, or that git cannot read, or that someone has
   changed, is never removed for being stale, `--retry-failed` included: the
@@ -758,7 +747,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   own attempt record is checked for an error again after `restackTarget`
   (`broken`), whose look-up of the child's new key can fail too; before, that
   failure read as no record and the child was pushed.
-- **Kept records are not trusted.** A checkout's kept place,
+- **Kept records are not trusted.** *Superseded by Build note "The ownership contract"; kept as the record of what was built before it.* A checkout's kept place,
   `.pr-update/failed/`, is in its working tree, so a cloned repository can
   commit a record there that names another repository's git directory and a
   branch to delete. Built after review, a record is refused when its branch
@@ -801,7 +790,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   the tree, its record and its branch through the original, whose lock the
   prune did not hold. A tree whose record names another git directory that
   still exists now stays, with its clone, in both modes.
-- **Names starting with `.`.** A hard kill can leave the probe in
+- **Names starting with `.`.** *Superseded by Build note "The ownership contract"; kept as the record of what was built before it.* A hard kill can leave the probe in
   `worktrees/<host>/<owner>/<name>/` or `kept/<host>/<owner>/<name>/`. Every
   walk pr-update makes of its own folders skips names starting with `.`:
   listing kept trees, and the walks of `mirror prune` and `mirror list`.
@@ -819,10 +808,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   one-argument `locate` that returns a path still compiles and is read
   through `--remote`, as before. `FoundCheckout` carries `others`, the
   repository's other checkouts, for the `unpushed_local` guard. A new
-  optional port, `Ports.targetHome(target)`, says where a checkout keeps its
-  run worktrees, kept trees, attempts and lease; without it, a host's
-  checkout is served from its own `.pr-update/`, as the project root is. A
-  host gets managed clones only by supplying `SurveyEnv.clones`.
+  port, `Ports.targetHome(target)`, says where a checkout keeps its run
+  worktrees, kept-tree records, attempts and lease. It was optional, with a
+  host's checkout served from its own `.pr-update/`; since Build note "The ownership contract"
+  it is required. A host gets managed clones only by supplying
+  `SurveyEnv.clones`.
 - **The host of a bare `owner/name`.** "The project root's host" is the host
   of its `origin`, the remote its code host is picked from, after an SSH
   config alias is resolved with `ssh -G`. When `ssh -G` cannot resolve it, a
@@ -904,7 +894,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   store per repository, `attempts/<host>/<owner>/<name>/` in the state home,
   holding one file per head and base branch, as the project root's store
   does. A repository with no store of its own falls back to `Ports.attempts`.
-- **Kept names.** In a repository's own kept folder a tree is named
+- **Kept names.** *Superseded by Build note "The ownership contract"; kept as the record of what was built before it.* In a repository's own kept folder a tree is named
   `<number>`. Its branch stays `pr-update/failed-<owner>-<name>-<number>`, so
   branches in a shared checkout stay apart. A record stores the owning git
   directory (`gitDir`) only for places outside a checkout, so the project
@@ -1074,9 +1064,11 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   that cannot be made or hold the lock, skips the target with why, where
   before a symbolic link had a folder made at its far end and an unwritable
   one ended the run with `EACCES`. A kept tree is removed, by `mirror
-  prune --discard-kept` or by `update`, only when the folders from `kept/`
-  down to it pass the rule; before review only run worktrees, leftovers and
-  `.tmp-*` folders were checked. `Ports.targetHome` gained `keptRoot` for it.
+  prune --discard-kept` or by `update`, only when the folders from
+  `worktrees/` down to it pass the rule; before review only run worktrees,
+  leftovers and `.tmp-*` folders were checked. `Ports.targetHome` gained
+  `keptRoot` for it, renamed `worktreesRoot` when kept trees stopped moving
+  (Build note "The ownership contract").
   The root is compared by its real path, since git names a worktree by its
   real path: before the first review of these fixes, a state directory
   reached through a symbolic link skipped every folder between it and a kept
@@ -1172,8 +1164,10 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     the clone keeps the clone too when the list does not show it (its record
     folder in the clone is gone, as `git worktree prune` leaves it when it ran
     while `kept/` was not mounted);
-  - a worktree that list shows as locked stays, a dead run's or a kept one,
-    and so does its clone. The lock git takes while `git worktree add` runs,
+  - *Superseded by Build note "The ownership contract": pr-update no longer reads worktree
+    locks; git's refusal to remove a locked worktree is a failure, and the
+    clone stays.* A worktree that list showed as locked stayed, a dead run's
+    or a kept one, and so did its clone. The lock git takes while `git worktree add` runs,
     `initializing`, does not count: a killed add leaves it. git writes that
     word in the language the add ran in, and pr-update's own adds do not fix
     the language, so a translated one counts as a person's lock and keeps the
@@ -1206,8 +1200,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   default, 30. A key the schema does not know, or a newer version read as it
   is, still gives the age as read.
 - **Leftovers.** A `.tmp-<name>.git-<pid>[-<random>]` folder (a clone's
-  staging folder, or a clone a prune could not finish removing) or a `.pr-update-probe-*`
-  folder is removed once it is an hour old, so a clone in progress is never
+  staging folder, or a clone a prune could not finish removing) is removed
+  once it is an hour old (a `.pr-update-probe-*` folder was too, until kept
+  trees stopped moving and the probe went), so a clone in progress is never
   taken. A clone is renamed to a `.tmp-*` name before it is deleted, so a
   removal that stops part-way leaves a leftover, not a broken clone. Empty
   `<host>` and `<owner>` folders stay: removing them raced with another
@@ -1244,9 +1239,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   `attempts/`). In a located checkout, unreachable objects are left to
   the `gc --auto` of the person's own git commands, with no code here; a managed clone gets the
   foreground `git maintenance run --auto` after each fetch instead (Build note
-  "The folder rule"). Windows git's text for a cross-device rename is not checked
-  either; the probe decides first.
-- **Rerere in clones only.** S12 turned git's rerere on for every target of
+  "The folder rule").
+- **Rerere in clones only.** *Changed by Build note "The ownership contract": the
+  cache now lives for one run, so the killed-run list below is gone.* S12 turned git's rerere on for every target of
   `update --apply`, which read and wrote the `rr-cache/` of the person's own
   checkout for the project root and a located checkout. The CI review of the
   omnibus found that a resolution the person had recorded there, on any
@@ -1281,7 +1276,7 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     It is named by the process's own pid and a run id instead.)
   What is replayed in a clone is a resolution pr-update recorded there and
   pushed with an earlier PR; `verify` is its only check.
-- **A person's work in a clone or a kept tree.** The CI review of the
+- **A person's work in a clone or a kept tree.** *Superseded by Build note "The ownership contract"; kept as the record of what was built before it.* The CI review of the
   omnibus found four ways a person's work could go. The owner decided
   (2026-11-27):
   - A prune removed a clone without asking whether it held work found
@@ -1312,6 +1307,61 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     the keep fails with a note. A keep that is undone deletes the branch only
     if it made it. `--discard-kept` still deletes a kept tree's branch with
     the tree, commits and all, as it always said.
+- **The ownership contract.** The owner decided (2026-11-27), after the CI
+  review of the omnibus: everything pr-update makes is its own to delete
+  whenever no live run is using it. It reads no locks of its own: when git
+  refuses (a worktree locked with `git worktree lock`, say), that is a
+  failure, reported, and the clone stays. What stays as it was: paths are
+  confined by their real path; a kept record is checked (S11's forged-record
+  protection); the folder rule and `checkClone`; the clone lock and the
+  live-run check; a thing that cannot be read stays where that guards
+  confinement; and in the project root and a located checkout only
+  pr-update's own worktrees and `pr-update/*` branches are ever deleted. The
+  Decision blocks this changed end with "(changed during the build: Build
+  note "The ownership contract")". What changed, with the wording it
+  replaced:
+  - One layout. Accepted: "The project root keeps today's
+    `<projectRoot>/.pr-update/` for its run worktrees, kept worktrees and
+    attempt records, and today's `<owner>-<name>-<number>` kept name", with a
+    table row for each of "Run worktrees of non-root targets", "Kept worktrees
+    of non-root targets" (in state) and "File attempts of non-root targets".
+    Built: every target, the project root included, has its run worktrees in
+    the cache and its kept records and attempts in the state directory, under
+    `<host>/<owner>/<name>`. A project root whose remote names no host goes
+    under `github.com`. An old `.pr-update/` is left alone and noted once. A
+    breaking change: attempts and kept trees from before are not read.
+  - Kept trees stay where they ran. Accepted: a keep moved the run worktree
+    to `kept/`, with a fallback to `git worktree add` across filesystems. Built:
+    the run worktree switches to `pr-update/failed-<owner>-<name>-<number>`
+    and stays in `worktrees/`; its record in `kept/<…>/<number>.json` is what
+    makes it a kept tree. So a keep works across filesystems and with
+    submodules, and the probe, the move-back and the `.`-name rules went. A
+    record whose path git lists on a `pr-update/scratch-*` branch is refused
+    (`forged`), and prune treats that tree as a run's; a run worktree on a
+    failed branch with no record is a dead run's and goes with that branch.
+  - A kept tree is evidence, not work. Accepted, after S13's first fixes: a
+    tree someone had changed, locked, or that git could not read was left
+    until `--discard-kept`, and a clone that held a person's branch, stash or
+    notes stayed (Build notes "Kept trees", "A person's work in a clone or a
+    kept tree"). Built: `--retry-failed`, a moved PR and `--discard-kept`
+    remove a kept tree whatever is in it, and prune removes a clone with its
+    kept trees. `pr-update kept push <pr> --to <remote-or-path>` copies a kept
+    tree's HEAD out as a branch, refusing a branch that is there unless
+    `--force`, which pins the lease to the commit it read. Its commit is read
+    from the owner's worktree list, never from git in the tree, and hooks are
+    off in the repository pushed from; a local repository pushed to runs its
+    own receive hooks, as a server does.
+  - Locks. Accepted: prune honoured `git worktree lock` and kept a locked
+    tree and its clone, except git's own `initializing`. Built: no lock is
+    read; git's refusal is a failure (exit 1).
+  - rerere for one run. Accepted (S12, then "Rerere in clones only"): rerere
+    in a clone with a list of a killed run's unaccepted resolutions, swept by
+    the next run. Built: the clone's `rr-cache/` is emptied before a run
+    integrates anything, whenever a PR ends without a push, and at the end of
+    the run, and rerere stays off while another live run has a worktree in
+    the clone. So a replayed resolution was made in this run, by a pushed PR
+    or the PR in flight. The list, the variant tracking and their sweep went.
+    Everywhere else pr-update's git passes `rerere.enabled=false`, as before.
 - **Trust granted before this build.** trust-repo first copied the old
   markers into the new store, and every way of telling whether the copy had
   run brought back a revoked grant in some case. The owner dropped the copy
@@ -1320,11 +1370,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   machine. It fails closed. The README says so where an upgrading user looks
   first.
 - **Size.** Against main, at the end of the omnibus (S13, the CI review's
-  fixes, included), pr-update's `src/` has 7,031 lines added and 485 removed,
-  against the estimate of 700, and its `tests/` 10,085 added and 93 removed
-  (`git diff --shortstat origin/main...HEAD`, merge base `93271347`, whose
-  pr-update is that of `88112cb4`). At the end of S12 it was 6,407 and 455,
-  and 9,585 and 91.
+  fixes and the ownership contract, included), pr-update's `src/` has 6,778
+  lines added and 541 removed, against the estimate of 700, and its `tests/`
+  10,152 added and 119 removed (`git diff --shortstat origin/main...HEAD`,
+  merge base `93271347`, whose pr-update is that of `88112cb4`). Before the
+  ownership contract it was 7,031 and 485, and 10,085 and 93; at the end of
+  S12, 6,407 and 455, and 9,585 and 91.
 - **Nested groups.** `--repo` takes exactly `owner/name` or
   `host/owner/name`, so a GitLab repository in a nested group can be found
   by the locator but not named as a target. The clone is GitHub only.
