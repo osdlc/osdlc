@@ -742,6 +742,13 @@ another machine, or a drive that is away). A link there is followed, and one
 that leads nowhere counts as a volume that is away. A project folder in
 `projects` that is a link is skipped; `projects` itself may be one.
 
+A `~/.claude` folder synced with another machine, or shared with a container
+or another pid namespace, can hold that machine's live history. Its project
+path can be missing here only, and its sessions' processes look dead here, so
+no check on this machine can tell it from history whose folder is gone. Such a
+folder is proposed like any other; since it is `lost` (below), it is deleted
+only when you pick it, so check where a project ran before you pick it.
+
 History cannot be fetched or built again, so its `costDescription` is `lost`:
 it is held, and runs only when picked and allowed:
 
