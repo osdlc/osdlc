@@ -1173,7 +1173,7 @@ Windows has no `xdg` folders and keeps its own: the config is
 
 <!-- rename:keep -->
 
-Up to 0.3 the package was `@osdlc/host-cleaner` and the command was
+Up to 0.4 the package was `@osdlc/host-cleaner` and the command was
 `host-cleaner`. Nothing under the old name is read. That covers a config at
 `~/.config/host-cleaner/config.json`, at
 `~/Library/Application Support/host-cleaner/config.json` (where 0.3 kept it on

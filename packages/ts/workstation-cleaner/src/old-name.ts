@@ -1,6 +1,7 @@
 /**
- * What is left of the name this package had up to 0.3, `host-cleaner` (#1032):
- * a config file in its folders and `HOST_CLEANER_*` variables. Neither is read.
+ * What is left of the name this package had up to 0.4, `host-cleaner` (#1032):
+ * a config file or user descriptors in its folders, and `HOST_CLEANER_*`
+ * variables. None is read.
  * Every command warns about them, and a `clean` that deletes refuses with
  * exit 2, since the run would fall back to the defaults and lose the config's
  * `ignore` list. The rename script leaves this file as written.
