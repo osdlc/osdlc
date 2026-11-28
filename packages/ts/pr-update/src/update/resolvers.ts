@@ -14,12 +14,14 @@
  *
  * The resolvers, in order:
  *
- *   0. rerere: git replayed and staged a resolution recorded earlier, in this
- *      run or an earlier one, so the path is not conflicted by the time the
- *      others look. It costs nothing, and it is why a stack of sibling PRs on
- *      one base needs one resolution, not one per PR. On only in an `--apply`
- *      run, unless `pr_update.rerere` is false (`integrationEnv` in
- *      `execute.ts`).
+ *   0. rerere: git replayed a resolution recorded earlier in this run, by a
+ *      PR that was pushed or by the PR in flight (an earlier rebase stop). It
+ *      costs nothing, and it is why sibling PRs on one base need one
+ *      resolution, not one per PR. A replayed path the resolvers below claim is still rebuilt by
+ *      them; one they do not claim keeps the replay, and is reported. On only
+ *      in an `--apply` run in a managed clone whose rerere lock the run holds,
+ *      unless `pr_update.rerere` is false (`planStop` and `integrationEnv` in
+ *      `execute.ts`, `./rerere.ts`).
  *   1. lockfile: built in, because every ecosystem has lockfiles and the
  *      resolution always has the same form: take a side, then regenerate from
  *      the merged manifest. Regenerating needs a command only the host knows

@@ -926,6 +926,66 @@ describe('review round 1', () => {
     },
   )
 
+  describe('a port is part of the host a clone serves (S13)', () => {
+    /** The project root on an Enterprise host on port 8443, and `gh repo clone`'s source for it. */
+    function enterpriseOn8443(): string {
+      git(project, 'remote', 'set-url', 'origin', 'https://ghe.example:8443/o/r.git')
+      writeFileSync(join(project, 'pr-update.yaml'), 'code_host:\n  override: github\n')
+      for (const port of ['8443', '9443']) {
+        const source = join(scratch, 'gh', `ghe.example_${port}`, 'acme', 'api.git')
+        mkdirSync(dirname(source), { recursive: true, mode: 0o755 })
+        git(scratch, 'clone', '-q', '--bare', remote, source)
+      }
+      return join(scratch, 'clones')
+    }
+
+    test('a bare owner/name on such a root is cloned from that port', async () => {
+      const dir = enterpriseOn8443()
+      const r = await run('update', '--repo', 'acme/api', '--mirror-dir', dir, '--apply')
+      expect(r.code, r.err).toBe(EXIT.ok)
+      expect(clonesMade()).toMatchObject([{ host: 'ghe.example:8443' }])
+    })
+
+    test('the clone of one port does not serve another, in a survey or an update', async () => {
+      const dir = enterpriseOn8443()
+      const clone = join(dir, 'ghe.example', 'acme', 'api.git')
+      const made = await run(
+        'update',
+        '--repo',
+        'ghe.example:8443/acme/api',
+        '--mirror-dir',
+        dir,
+        '--apply',
+      )
+      expect(made.code, made.err).toBe(EXIT.ok)
+      const why = `the clone ${clone} is of ghe.example:8443, not ghe.example:9443`
+
+      const survey = await run(
+        'survey',
+        '--repo',
+        'ghe.example:9443/acme/api',
+        '--mirror-dir',
+        dir,
+        '--json',
+      )
+      expect(survey.err).toContain(why)
+      expect(JSON.parse(survey.out).repos[0].checkout).toBeNull()
+
+      const update = await run(
+        'update',
+        '--repo',
+        'ghe.example:9443/acme/api',
+        '--mirror-dir',
+        dir,
+        '--apply',
+        '--json',
+      )
+      expect(update.err).toContain(why)
+      expect(JSON.parse(update.out).results).toEqual([])
+      expect(clonesMade()).toHaveLength(1)
+    })
+  })
+
   test('an Enterprise host on a port: GH_HOST keeps the port, and so does the credential key', async () => {
     git(project, 'remote', 'set-url', 'origin', 'https://ghe.example:8443/o/r.git')
     writeFileSync(join(project, 'pr-update.yaml'), 'code_host:\n  override: github\n')
@@ -1208,7 +1268,8 @@ describe('keeping a failed worktree in a clone (final review)', () => {
       "pr_update:\n  verify: test\n  test_command: 'false'\n",
     )
     // A `mirror prune --all-clones --discard-kept` run at the worst moment: the failed PR's
-    // worktree has been moved aside as a kept tree, and the run worktree is not back yet.
+    // worktree has been kept where it is, on its PR's branch, and the run's next worktree is not
+    // added yet.
     const real = spawnRunner('git', { absolutePathOnly: true })
     let moved = false
     let pruned: ReturnType<typeof pruneMirror> | undefined
@@ -1216,7 +1277,7 @@ describe('keeping a failed worktree in a clone (final review)', () => {
       binary: 'git',
       run: (argv, opts) => {
         const at = argv.indexOf('worktree')
-        if (at !== -1 && argv[at + 1] === 'move') moved = true
+        if (argv.some((a) => a.startsWith('pr-update/failed-'))) moved = true
         else if (at !== -1 && argv[at + 1] === 'add' && moved && pruned === undefined) {
           pruned = pruneMirror({ env, dir, allClones: true, discardKept: true })
         }
@@ -1383,7 +1444,8 @@ describe('mirror prune review round 1', () => {
       }
       expect(JSON.parse(r.out).results, r.err).toMatchObject([{ number: 7, status: 'failed' }])
       const clone = cloneOf(clones)
-      const keptTree = join(paths().kept, 'github.com', 'acme', 'api', '7')
+      const record = join(paths().kept, 'github.com', 'acme', 'api', '7.json')
+      const keptTree = (JSON.parse(readFileSync(record, 'utf8')) as { path: string }).path
       // The kept tree's admin folder in the clone, written by `git worktree add` after the clone.
       const [admin, ...others] = readdirSync(join(clone, 'worktrees'))
       expect(others).toEqual([])

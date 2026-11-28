@@ -7,8 +7,8 @@
  * thrown; `cli.ts` lists the exit codes.
  */
 
-import { mkdirSync, rmSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
 import {
@@ -100,7 +100,7 @@ export interface CliSeams {
 const SCHEMA_VERSION = 1
 
 /** The injected git runner, else one that runs git only from an absolute PATH entry. Git and gh run in the project, so a bare name could be planted there. */
-function gitRunner(seams: CliSeams): CommandRunner {
+export function gitRunner(seams: CliSeams): CommandRunner {
   return seams.git ?? spawnRunner('git', { absolutePathOnly: true })
 }
 
@@ -201,7 +201,7 @@ function branchOf(
 }
 
 /** The config layers, with an invalid or unreadable file as the command's failure: exit 14. */
-function loadLayers(ctx: CliContext, seams: CliSeams): ReturnType<typeof loadConfigLayers> {
+export function loadLayers(ctx: CliContext, seams: CliSeams): ReturnType<typeof loadConfigLayers> {
   try {
     return loadConfigLayers(seams.configFile ?? PR_UPDATE_CONFIG_FILE, ctx.cwd, {
       env: ctx.env,
@@ -220,7 +220,7 @@ function loadLayers(ctx: CliContext, seams: CliSeams): ReturnType<typeof loadCon
  * checkout search alike, so each alias is asked once. When ssh cannot answer
  * for an alias, a note says so, and the alias is read as written.
  */
-function aliasResolver(seams: CliSeams, notice: (line: string) => void): SshAliasResolver {
+export function aliasResolver(seams: CliSeams, notice: (line: string) => void): SshAliasResolver {
   const ssh = seams.ssh ?? spawnRunner('ssh', { absolutePathOnly: true })
   return sshAliasResolver({
     ...ssh,
@@ -341,7 +341,7 @@ function runEnv(
 
 /**
  * Whether an `update` touched pr-update's cache: it served a target from a managed clone, or made
- * a run worktree where `Ports.targetHome` puts a target's (`madeTargetWorktree`). The run's
+ * a run worktree, which `Ports.targetHome` puts in the cache (`madeTargetWorktree`). The run's
  * results are not enough: a target whose every lease was refused made its worktree but has none.
  */
 export function touchedCache(out: UpdateOutput): boolean {
@@ -393,6 +393,20 @@ function pruneAfterRun(
 }
 
 /**
+ * One note when the project root holds the `.pr-update/` folder older versions kept their run
+ * worktrees, kept trees and attempt records in. Nothing reads or writes it now: everything
+ * pr-update makes lives in its own directories. It is neither moved nor deleted.
+ */
+function noteOldPlace(ctx: CommandContext): void {
+  const old = join(ctx.cwd, '.pr-update')
+  if (!existsSync(old)) return
+  ctx.note(
+    `${old} is no longer used: pr-update keeps its worktrees and records in its own directories ` +
+      'now. It can be deleted (run `git worktree prune` after, if it held worktrees).',
+  )
+}
+
+/**
  * Check the run's tools, remote and code host before any PR is listed. A
  * problem is thrown, so the app prints it and exits with its kind's code.
  */
@@ -418,7 +432,7 @@ function checkStart(
  * repository than the checkout it runs in (`repositoryVarsRefusal`). It runs first, before git is
  * asked anything. The variables are read from `process.env`, which the git runner inherits.
  */
-function checkCheckout(ctx: CliContext, seams: CliSeams): void {
+export function checkCheckout(ctx: CliContext, seams: CliSeams): void {
   const refusal = repositoryVarsRefusal(ctx.cwd, gitRunner(seams))
   if (refusal !== null) throw new UsageError(refusal)
 }
@@ -604,13 +618,13 @@ export function updateCommand(seams: CliSeams) {
       },
       retryFailed: {
         kind: 'boolean',
-        help: 'Attempt PRs whose update already failed at their current head and base. Discards a kept worktree of such a PR first, unless someone has changed it or git cannot read it; only --discard-kept removes that.',
+        help: 'Attempt PRs whose update already failed at their current head and base. Discards a kept worktree of such a PR first, whatever is in it.',
       },
       keepFailed: {
         kind: 'tristate',
         offHelp:
           'Do not keep failed worktrees this run, overriding a configured pr_update.keep_failed: true.',
-        help: "Move the worktree of a PR that ended conflict or failed to .pr-update/failed/<owner>-<name>-<number>/ (a --repo target's to kept/<host>/<owner>/<name>/<number>/ in pr-update's state directory), on a branch named for the PR, with a failed verify's log in it, for a person to finish and push. The run goes on in a fresh worktree. Needs --apply.",
+        help: "Keep the worktree of a PR that ended conflict or failed, as evidence, where it ran in pr-update's cache directory, on a branch named for the PR, with a failed verify's log in it. The run goes on in a fresh worktree. Needs --apply.",
       },
       discardKept: {
         kind: 'boolean',
@@ -646,7 +660,7 @@ export function updateCommand(seams: CliSeams) {
       },
     },
     exits: {
-      1: 'a PR ended conflict or failed',
+      1: 'a PR ended conflict or failed, or git would not remove a kept worktree a discard named',
       14: 'the config file is invalid or unreadable, or the machine file cannot take the answer about cloning (not YAML, or not a map)',
       [EXIT_UNTRUSTED]: "refused: the repository's config names commands it is not trusted to run",
     },
@@ -753,6 +767,7 @@ export function updateCommand(seams: CliSeams) {
         ...base,
         targetTrust: targetTrustGate({ cfg: base.cfg, trust: flags.trust, env: ctx.env }),
       }
+      noteOldPlace(ctx)
       let out: UpdateOutput
       try {
         out = await runUpdate(
@@ -800,11 +815,14 @@ export function updateCommand(seams: CliSeams) {
         }
       }
       const listingFailure = reportRepoFailures(ctx, out)
-      // A conflict or failed push exits 1 though the run completed, so a script need not read `counts`.
+      // A conflict, a failed push or a kept tree git would not remove exits 1 though the run
+      // completed, so a script need not read `counts` or `keptLeft`.
       const exit =
         interrupted ??
         listingFailure ??
-        (out.counts.conflict > 0 || out.counts.failed > 0 ? EXIT.error : EXIT.ok)
+        (out.counts.conflict > 0 || out.counts.failed > 0 || (out.keptLeft?.length ?? 0) > 0
+          ? EXIT.error
+          : EXIT.ok)
       return exit === EXIT.ok ? out : outcome(out, exit)
     },
     text: (out) => renderUpdateText(out),

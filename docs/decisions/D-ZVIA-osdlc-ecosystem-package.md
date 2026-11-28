@@ -44,13 +44,13 @@ A list per tool means one list to keep up per tool, and the lists drift.
     - ~/dev/repos
   ```
 
-  | Case                                  | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-  | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | An absolute path, or one starting `~` | A root. `~` is expanded                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-  | A relative path                       | Dropped, with a warning naming the file                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-  | A root that does not exist            | Skipped silently: the file may list another machine's directories                                                                                                                                                                                                                                                                                                                                                                                                                             |
-  | `roots: []`                           | Scan nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-  | No file, or no `roots`                | The directory that holds the caller's main checkout, or the one above it when that directory is named after the owner in the caller's own `origin` (in any case, as remote matching compares owners), so an `<owner>/<name>` layout resolves to the directory above every owner. It never steps to or above the person's home directory: a checkout directly in `$HOME` keeps `$HOME`, and a checkout that is `$HOME` itself gives no default root. Nothing when the caller names no checkout |
+  | Case                                  | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+  | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | An absolute path, or one starting `~` | A root. `~` is expanded                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+  | A relative path                       | Dropped, with a warning naming the file                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+  | A root that does not exist            | Skipped silently: the file may list another machine's directories                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+  | `roots: []`                           | Scan nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+  | No file, or no `roots`                | The directory that holds the caller's main checkout, or the one above it when that directory is named after the owner in the caller's own `origin` (in any case, as remote matching compares owners), so an `<owner>/<name>` layout resolves to the directory above every owner. It never steps to or above the person's home directory: a checkout directly in `$HOME` keeps `$HOME`, and a checkout that is `$HOME` itself gives no default root. Nothing when the caller names no checkout (changed during the build: Build note "Default roots others can write to") |
 
 - **The package locates checkouts; `typed-git` does the git work.** The
   split follows the two kinds of package above:
@@ -80,7 +80,8 @@ A list per tool means one list to keep up per tool, and the lists drift.
   has exited (`holderGone`), or once it is 10 minutes old: `withLock` records
   only a pid, and a killed writer's pid may later belong to a live process,
   which would hold the lock for good. 10 minutes is far past the section, so
-  a slow writer keeps it. A tool that asks the person where their
+  a slow writer keeps it. (changed during the build: Build note "Writes
+  under a lock") A tool that asks the person where their
   checkouts are asks through the package, so every tool asks the same
   question.
 - **Adoption.** pr-update reads it first (D-0005). sdlc is published outside
@@ -162,6 +163,21 @@ matching), within the pr-update omnibus
   project schema refuses unknown keys besides. The two kinds of package are
   a policy the build kept: each building-block change stayed in its own
   package.
+- **Writes under a lock.** The accepted text said only "It writes with a
+  compare-and-swap." The second review of the pr-update omnibus found that
+  the check and the rename alone let two processes both pass, and one root
+  was lost. `writeRoots` now holds a `@osdlc/file-lock` lock
+  beside the file across its read, check and write, with the takeover rules
+  above (commit `471fd7d95`). The sentence was changed then without this
+  marker; S13 added it.
+- **Default roots others can write to.** The CI review of the pr-update
+  omnibus found that a caller at `/tmp/proj` got `/tmp` as its default root,
+  so any checkout anyone put there whose `origin` claimed a target was used,
+  and its git config ran as the person. The owner decided (2026-11-27) that
+  outside the home directory a holder others can write to (`o+w`, sticky or
+  not) gives no default root, and so does the directory above it when that
+  is the root. Read on POSIX only; Windows modes do not say. A tool that uses
+  a located checkout checks the checkout itself too (pr-update's D-0005).
 - **Adoption.** pr-update reads `repositories.yaml` through the package.
   sdlc's change is in the release phase, after this build.
 

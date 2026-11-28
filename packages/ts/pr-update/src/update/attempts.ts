@@ -28,11 +28,6 @@ export const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 
 export interface Entry extends AttemptKey, AttemptRecord {}
 
-/** The directory a run rooted at `projectRoot` keeps its records in. */
-export function attemptsDir(projectRoot: string): string {
-  return join(projectRoot, '.pr-update', 'attempts')
-}
-
 /** The file holding the record of one PR target: `head` into `base` of `repo`. */
 export function attemptFile(dir: string, repo: string, head: string, base: string): string {
   const safe = `${repo}__${head}`.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80)

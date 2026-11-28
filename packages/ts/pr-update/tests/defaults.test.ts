@@ -1,17 +1,20 @@
 /** The standalone `Ports` built from a `PrUpdateConfig`. */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { absolutePathEntries, spawnRunner } from '@osdlc/command-seam'
+import { osdlcDirs } from '@osdlc/ecosystem'
 import { Git } from '@osdlc/typed-git'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 
 import { prUpdateConfigSchema, prUpdateStandaloneSchema } from '../src/config.ts'
 import { commandRepair, refEnv, standalonePorts } from '../src/defaults.ts'
+import { prUpdatePaths } from '../src/machine.ts'
 import { listAttempts } from '../src/update/attempts.ts'
 import type { RepairRequest } from '../src/ports.ts'
 import { targetGitEnv, targetGitOptions } from '../src/update/execute.ts'
+import { isolatedEnv } from './support.ts'
 
 let dir: string
 beforeEach(() => {
@@ -83,13 +86,26 @@ describe('standalonePorts', () => {
     expect(typeof standalonePorts(cfg).repair).toBe('function')
   })
 
-  test('the attempts store is wired only with a project root', () => {
+  test("the project root's file attempts are its home's, in the state directory, not the checkout (one layout)", () => {
     const cfg = prUpdateConfigSchema.parse({})
-    expect(standalonePorts(cfg).attempts).toBeUndefined()
-    const { attempts } = standalonePorts(cfg, dir)
+    const env = isolatedEnv(join(dir, 'env'))
+    const ports = standalonePorts(cfg, dir, 'origin', () => {}, { env })
+    expect(ports.attempts).toBeUndefined()
+    const home = ports.targetHome({
+      host: 'github.com',
+      owner: 'o',
+      name: 'r',
+      path: dir,
+      source: 'root',
+      remote: 'origin',
+    })
+    const paths = prUpdatePaths(osdlcDirs({ env }))
+    expect(home.worktrees).toBe(join(paths.worktrees, 'github.com', 'o', 'r'))
+    expect(home.kept).toBe(join(paths.kept, 'github.com', 'o', 'r'))
     const key = { repo: 'o/r', head: 'h', headOid: '1', base: 'main', baseOid: '2' }
-    attempts!.recordFailure(key, 'boom')
-    expect(listAttempts(join(dir, '.pr-update', 'attempts'))).toHaveLength(1)
+    home.attempts!.recordFailure(key, 'boom')
+    expect(listAttempts(join(paths.attempts, 'github.com', 'o', 'r'))).toHaveLength(1)
+    expect(existsSync(join(dir, '.pr-update'))).toBe(false)
   })
 
   test('verify: test runs test_command', async () => {

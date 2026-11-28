@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The failed-attempt cache follows pr-update's new layout. pr-update after 0.17
+  keeps its attempt records in its state directory, not `.pr-update/attempts`;
+  the action sets `OSDLC_STATE_DIR` to `$RUNNER_TEMP/pr-update-state` and caches
+  `attempts/` there as well as `.pr-update/attempts`, so either version keeps its
+  record between runs.
 - osdlc/osdlc's `.github/workflows/pr-update.yml` is callable from other
   repositories (`workflow_call`), so a repository keeps a short caller with
   `secrets: inherit` instead of a copy. Its settings come from the running

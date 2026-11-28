@@ -2,19 +2,19 @@
 "@osdlc/pr-update": minor
 ---
 
-A kept worktree's record no longer decides what is deleted. In a checkout the
-records are in `.pr-update/failed/`, inside the working tree, so a repository
+Fixed: a kept worktree's record no longer decides what is deleted. Its
+records were in `.pr-update/failed/`, inside the working tree, so a repository
 could commit one that named another repository's git directory and a branch
-there, and the next `update --apply` deleted that branch. Now a record is
-refused when its branch is not `pr-update/failed-<owner>-<name>-<number>`, its
-path is not that PR's kept folder, it names a git directory from a checkout's
-own folder, its folder is a symbolic link, or `git worktree list` does not show
-a worktree at its folder. A refused record and its folder are left alone,
-listed in the new `keptRefused` output, and the PR is updated as if nothing
-were kept. A kept tree a person switched to a branch of their own, or
-detached, counts as changed: its PR is skipped, nothing is removed, and
-`--discard-kept` leaves it, listed in the new `keptLeft`. Every removal of a
-kept tree, including a new keep replacing the PR's old tree, first checks the
+there, and the next `update --apply` deleted that branch. Records now live in
+pr-update's state directory, and a record is refused when its branch is not
+`pr-update/failed-<owner>-<name>-<number>`, its path is not a folder directly
+in its repository's run worktrees, its folder is a symbolic link, or
+`git worktree list` does not show a worktree at its folder, or shows it on a
+run's scratch branch. A refused record and its folder are left alone, listed
+in the new `keptRefused` output, and the PR is updated as if nothing were
+kept. A kept tree git will not remove (a locked one) is listed in the new
+`keptLeft`, its PR is skipped, and the run exits 1. Every removal of a kept
+tree, including a new keep replacing the PR's old tree, first checks the
 folders it is in.
 
 Fetching a checkout found on the machine, or a managed clone, no longer
@@ -34,16 +34,8 @@ clone whose folder or `config` others can write to, or whose `config` is a
 symbolic link, is skipped with the fix to run, as the folders above it
 already were.
 
-Fixed: a restack child (`--restack`) skipped every kept-tree check, so its
-PR was updated and force-pushed even when a person had changed its kept tree.
-It is now skipped with `kept worktree ... has local changes`, as any other PR
-is, and when its kept tree's owner is gone or another checkout owns the tree.
-Only whether the tree is current waits for the parent. The gap dates from
-[#926](https://github.com/osdlc/osdlc/pull/926).
-
 A restack child whose target's own attempt record fails while its new key is
-looked up is now skipped with the record's error. Before, the failed look-up
-read as no record, and the child was updated and pushed anyway.
+looked up is skipped with the record's error.
 
 Before taking a clone's lock, `update` checks the `<host>` and `<owner>`
 folders above it and makes the missing ones one level at a time, each under a
@@ -51,26 +43,26 @@ folder that passed the check. A `<host>` folder that is a symbolic link no
 longer has a folder made where it points, and a folder that cannot be written
 skips the target with why, where before the run ended with `EACCES`.
 
-A kept worktree is no longer removed from a folder someone else can write
-to. `mirror prune --discard-kept` leaves such a tree, and its clone, with the
+A kept worktree is never removed from a folder someone else can write to.
+`mirror prune --discard-kept` leaves such a tree, and its clone, with the
 folder's problem and the `chmod` that fixes it; `update` leaves it too, saying
-why in `keptRefused` or in the PR's skip. A host's `Ports.targetHome` may give
-`keptRoot`, the folder of its own that holds the kept trees, which the check
-starts from.
+why in `keptRefused` or in the PR's skip. A host's `TargetHome` may give
+`worktreesRoot`, the folder of its own that holds the run worktrees, which the
+check starts from.
 
-`survey` no longer fails when a prune removes a managed clone just before the
-survey takes its lock. The clone is checked again under the lock; a clone that
-is gone is reported unmeasured with a note, where before the survey ended with
-`ENOENT` writing its last-used stamp.
+When a prune removes a managed clone just before `survey` takes its lock, the
+clone is checked again under the lock, and one that is gone is reported
+unmeasured with a note.
 
-The pruning at the end of an `update --apply` now also runs when a located
+The pruning at the end of an `update --apply` also runs when a located
 target's run worktree was made in the cache but none of its PRs got a result,
 as when every lease was refused. The report says so in the new
 `madeTargetWorktree`.
 
 The folder check before a removal compares the cache or state directory by its
-real path. A directory reached through a symbolic link no longer skips the
-folders between it and the tree, and a tree that is not under it is left.
+real path, so a directory reached through a symbolic link still has every
+folder between it and the tree checked, and a tree that is not under it is
+left.
 
 A managed clone is made in a staging folder only its user can open, then
 hardened and moved into place, with git's background maintenance turned off

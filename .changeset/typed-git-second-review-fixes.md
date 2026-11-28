@@ -7,8 +7,12 @@ not: git ignores `--refmap` with `--multiple`.
 `refmap: ''` gives an empty map, so the fetch writes only the refspecs it is
 given. Without it, git also applies the remote's configured fetch lines to the
 refs it fetches, and a forced line into `refs/heads/` overwrites a local
-branch. `prune: false` now passes `--no-prune`, which beats `fetch.prune` and
-`remote.<name>.prune` in the repository's config; leaving `prune` out still
+branch.
+
+**Breaking:** `prune: false` now passes `--no-prune`, which beats `fetch.prune`
+and `remote.<name>.prune` in the repository's config, where it used to pass no
+flag. A caller that passes `prune: opts.prune ?? false` stops pruning where the
+config said to prune. Leave `prune` out to let git config decide: that still
 passes neither flag.
 
 `parseRemoteRepo`, `parseRemoteUrl` and `readRemote` read an scp-style remote

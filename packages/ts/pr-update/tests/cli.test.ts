@@ -1,5 +1,13 @@
 import { afterAll, describe, expect, test, vi } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { isatty } from 'node:tty'
@@ -92,6 +100,20 @@ describe('pr-update update with verify: test', () => {
     writeFileSync(join(repo.dir, LOCAL_FILE_NAME), config)
     return { dir: repo.dir, env: isolatedEnv(repo.dir) }
   }
+
+  test('a project root with an old .pr-update/ gets one note that it is no longer used, and keeps it (one layout)', async () => {
+    const { dir, env } = project('pr_update:\n  verify: none\n')
+    const ctx = captureContext({ cwd: dir, env })
+    expect(await main(['update'], ctx, fakeTools)).toBe(EXIT.ok)
+    expect(ctx.io.err).not.toContain('.pr-update')
+    mkdirSync(join(dir, '.pr-update', 'failed'), { recursive: true })
+    const again = captureContext({ cwd: dir, env })
+    expect(await main(['update'], again, fakeTools)).toBe(EXIT.ok)
+    const old = join(dir, '.pr-update')
+    expect(again.io.err.split(old).length - 1).toBe(1)
+    expect(again.io.err).toContain(`${old} is no longer used`)
+    expect(existsSync(join(old, 'failed'))).toBe(true)
+  })
 
   test('accepts test_command as the verify list', async () => {
     const { dir, env } = project('pr_update:\n  verify: test\n  test_command: make test\n')

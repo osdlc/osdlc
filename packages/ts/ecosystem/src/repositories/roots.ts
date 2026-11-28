@@ -99,6 +99,11 @@ export function resolveRoots(opts: RootsOptions = {}): ResolvedRoots {
  * keeps the owner directory, and a checkout that is the home directory (or
  * holds it) gives none. No `caller`, or a `caller` outside any checkout,
  * gives none.
+ *
+ * Outside the home directory, a root others can write to gives none, nor does
+ * a holder others can write to: for a checkout at `/tmp/proj` the root would
+ * be `/tmp`, where anyone can put a checkout whose `origin` claims any
+ * repository. Checked on POSIX only, from the mode's `o+w` bit, sticky or not.
  */
 export function defaultRoots(opts: RootsOptions = {}): string[] {
   if (opts.caller === undefined || !existsSync(opts.caller)) return []
@@ -116,11 +121,27 @@ export function defaultRoots(opts: RootsOptions = {}): string[] {
   const holder = dirname(main)
   // The holder is above the home directory, as `/` is for a checkout at `/widgets`.
   if (holder !== home && within(home, holder)) return []
+  if (!within(holder, home) && othersCanWrite(holder)) return []
   const above = dirname(holder)
   if (within(home, above)) return [holder]
   const owner = originOwner(git.at(main), opts.resolveAlias)
   const named = owner !== null && basename(holder).toLowerCase() === owner.toLowerCase()
-  return [named ? above : holder]
+  const root = named ? above : holder
+  if (root !== holder && !within(root, home) && othersCanWrite(root)) return []
+  return [root]
+}
+
+/**
+ * Whether others can write to `dir` (`o+w`). Never on Windows, whose modes
+ * do not say. A folder that cannot be read counts as one they can.
+ */
+function othersCanWrite(dir: string): boolean {
+  if (process.platform === 'win32') return false
+  try {
+    return (statSync(dir).mode & 0o002) !== 0
+  } catch {
+    return true
+  }
 }
 
 /** The owner the `origin` of the checkout `git` is bound to names, or null. */

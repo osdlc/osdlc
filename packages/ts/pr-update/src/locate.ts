@@ -10,7 +10,18 @@
  *
  * A found checkout is read through `origin`, the remote that matched,
  * whatever `--remote` says: `--remote` names a remote of the project root.
- * A shallow checkout is skipped, since it cannot measure drift.
+ * A shallow checkout is skipped, since it cannot measure drift. So is one
+ * whose work tree, git directory or `config` file belongs to another user or
+ * can be written by others (the folder rule, `folders.ts`): a located
+ * checkout's git config runs as the person on every fetch and push
+ * (`core.sshCommand`, `credential.helper`, `core.fsmonitor`), before and
+ * outside the trust gate, and git's `safe.directory` is off under
+ * `safe.directory=*` and missing on some versions typed-git supports.
+ *
+ * The locator matches hosts without their port, so a checkout is also skipped
+ * when its `origin` is of another port than the one `--repo` names
+ * ({@link portProblem}): the PRs would be listed from one server and pushed
+ * to another.
  *
  * With no usable checkout, a managed clone that already exists serves the
  * target (`mirror.ts`). This module never makes one: only `update --apply`
@@ -20,10 +31,14 @@
  * module is not used.
  */
 
+import { statSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+
 import type { CommandRunner } from '@osdlc/command-seam'
 import { CheckoutLocator, type LocateOptions } from '@osdlc/ecosystem/repositories'
-import { Git } from '@osdlc/typed-git'
+import { Git, parseRemoteUrl } from '@osdlc/typed-git'
 
+import { folderProblem, ownedByMe, type FolderCheckOptions, type OwnedCheck } from './folders.ts'
 import type { FoundCheckout, LocateTarget } from './ports.ts'
 import { targetGitOptions } from './update/execute.ts'
 
@@ -41,6 +56,11 @@ export interface StandaloneLocateOptions {
   locator?: Pick<LocateOptions, 'resolveAlias' | 'dirs' | 'home' | 'maxDepth'> | undefined
   /** The run's managed clones, the fallback for a target with no usable checkout. Default none. */
   clones?: CloneLookup | undefined
+  /**
+   * Whether a checkout's files are the person's, and how the folder rule reads groups. Tests pass
+   * their own, since they cannot change an owner. Default {@link ownedByMe} and the platform's.
+   */
+  rule?: { owned?: OwnedCheck | undefined; folders?: FolderCheckOptions | undefined } | undefined
 }
 
 /** A target with no usable checkout, as {@link CloneLookup.missed} is told about it. */
@@ -101,7 +121,20 @@ export function standaloneLocate(
       target === undefined ? repo : { host: target.host, owner: target.owner, repo: target.name },
     )
     const shallow: string[] = []
-    const usable = matches.filter((m) => {
+    // Before anything else runs git there.
+    const safe = matches.filter((m) => {
+      const why = checkoutProblem(m.path, opts.git, opts.rule)
+      if (why === null) return true
+      notice(`${label}: ${m.path} is not used: ${why}`)
+      return false
+    })
+    const ported = safe.filter((m) => {
+      const why = target === undefined ? null : portProblem(m.path, target, opts.git)
+      if (why === null) return true
+      notice(`${label}: ${m.path} is not used: ${why}`)
+      return false
+    })
+    const usable = ported.filter((m) => {
       if (!isShallow(m.path, opts.git)) return true
       notice(`${label}: ${m.path} is shallow, so it is not used`)
       shallow.push(m.path)
@@ -133,7 +166,8 @@ export function standaloneLocate(
         `${label}: using ${first.path}; also checked out at ${rest.map((o) => o.path).join(', ')}`,
       )
     }
-    const others = matches.filter((m) => m.path !== first.path).map((m) => m.path)
+    // Not one the folder rule refused: the `unpushed_local` guard runs git in each.
+    const others = safe.filter((m) => m.path !== first.path).map((m) => m.path)
     return {
       path: first.path,
       source: 'located',
@@ -183,7 +217,91 @@ function notFound(locator: CheckoutLocator): string {
   return `${where} (${from})${deeper}`
 }
 
-/** Whether the checkout at `path` is shallow. Unknown counts as not shallow: the measure then says what it can. */
+/**
+ * Why the located checkout at `path` may not be used, or null: its work tree, its git directory
+ * or that directory's `config` belongs to another user or can be written by others
+ * ({@link folderProblem}), or one of them cannot be read. The work tree is checked before git
+ * runs in it at all.
+ */
+function checkoutProblem(
+  path: string,
+  runner: CommandRunner | undefined,
+  rule: StandaloneLocateOptions['rule'],
+): string | null {
+  const check = ownerCheck(rule)
+  const tree = check(path)
+  if (tree !== null) return tree
+  let common: string | null
+  try {
+    common = new Git(path, targetGitOptions(runner)).gitCommonDir()
+  } catch (e) {
+    return `its git directory cannot be found: ${(e as Error).message.split('\n')[0]}`
+  }
+  if (common === null) return 'its git directory cannot be found'
+  return gitDirProblem(resolve(path, common), rule)
+}
+
+/** The check {@link checkoutProblem} makes of one path: {@link folderProblem}, or that it cannot be read. */
+function ownerCheck(rule: StandaloneLocateOptions['rule']): (p: string) => string | null {
+  const owned = rule?.owned ?? ownedByMe
+  return (p) => {
+    let st
+    try {
+      st = statSync(p)
+    } catch (e) {
+      return `${p} cannot be read: ${(e as NodeJS.ErrnoException).code ?? (e as Error).message}`
+    }
+    const why = folderProblem(p, st, owned, rule?.folders)
+    if (why === null) return null
+    return why.fix === undefined ? why.problem : `${why.problem}; ${why.fix}`
+  }
+}
+
+/**
+ * Why a checkout's git directory `gitDir` may not be used, or null: it, or its `config`, belongs
+ * to another user or can be written by others ({@link folderProblem}), or cannot be read.
+ * Whoever can write that `config` chooses what git runs there. Asked before any git runs in it.
+ */
+export function gitDirProblem(
+  gitDir: string,
+  rule?: StandaloneLocateOptions['rule'],
+): string | null {
+  const check = ownerCheck(rule)
+  return check(gitDir) ?? check(join(gitDir, 'config'))
+}
+
+/**
+ * Why the checkout at `path`, whose `origin` the locator matched to `target` without a port, is
+ * not of the port `target` names, or null. An `http(s)` origin carries its port (none, or the
+ * scheme's own, is no port), which must be `target`'s. An ssh origin's port, if any, is the ssh
+ * server's and says nothing about the web one, so with a port in `--repo` it cannot be told to
+ * be the same server, and is not used; with none, it is, as before.
+ */
+function portProblem(
+  path: string,
+  target: LocateTarget,
+  runner: CommandRunner | undefined,
+): string | null {
+  const url = new Git(path, targetGitOptions(runner)).try.remoteGetUrl('origin')
+  const origin = url.ok && url.value !== null ? url.value : ''
+  const web = /^(https?):\/\//i.exec(origin)?.[1]?.toLowerCase()
+  const want = target.port ?? null
+  if (web === undefined) {
+    return want === null
+      ? null
+      : `its origin ${origin} does not say which port it serves, and --repo names ${target.host}:${want}`
+  }
+  const read = parseRemoteUrl(origin)?.port ?? null
+  const port = read === (web === 'https' ? 443 : 80) ? null : read
+  if (port === want) return null
+  const named = want === null ? target.host : `${target.host}:${want}`
+  return `its origin ${origin} is on ${port === null ? 'no port' : `port ${port}`}, and --repo names ${named}`
+}
+
+/**
+ * Whether the checkout at `path` is shallow. Unknown counts as not shallow: the measure then says
+ * what it can.
+ */
 function isShallow(path: string, runner: CommandRunner | undefined): boolean {
   // A checkout other than the project root, as for every git call made in one.
   const git = new Git(path, targetGitOptions(runner))

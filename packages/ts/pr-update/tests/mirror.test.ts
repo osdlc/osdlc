@@ -49,7 +49,7 @@ import {
   writeMirrorAnswer,
 } from '../src/mirror.ts'
 import { lstatOrNull } from '../src/folders.ts'
-import { isolatedEnv } from './support.ts'
+import { isolatedEnv, ownedAllBut } from './support.ts'
 
 const run = promisify(execFile)
 const CHILD = join(import.meta.dirname, 'write-answer.child.ts')
@@ -911,8 +911,7 @@ describe('the folders between the clone directory and a clone (review round 2)',
     const host = join(root(), 'github.com')
     const owner = join(host, 'acme')
     for (const theirs of [host, owner]) {
-      const owned = (st: import('node:fs').Stats) => st.ino !== statSync(theirs).ino
-      expect(checkClone(root(), clone, owned)).toEqual({
+      expect(checkClone(root(), clone, ownedAllBut(theirs))).toEqual({
         foreign: `${theirs} belongs to another user, so ${clone} is not used`,
       })
     }
@@ -1071,8 +1070,7 @@ describe('a clone pr-update did not make, or that is not yours, is not used', ()
     mkdirSync(clone, { recursive: true })
     writeFileSync(join(clone, CLONE_MARKER), '{}\n')
     for (const theirs of [root, clone, join(clone, CLONE_MARKER)]) {
-      const owned = (st: import('node:fs').Stats) => st.ino !== statSync(theirs).ino
-      expect(checkClone(root, clone, owned)).toEqual({
+      expect(checkClone(root, clone, ownedAllBut(theirs))).toEqual({
         foreign: `${theirs} belongs to another user, so ${clone} is not used`,
       })
     }
@@ -1081,8 +1079,7 @@ describe('a clone pr-update did not make, or that is not yours, is not used', ()
       `the clone directory ${root} belongs to another user`,
     )
     const marker = join(root, MIRROR_MARKER)
-    const markerTheirs = (st: import('node:fs').Stats) => st.ino !== statSync(marker).ino
-    expect(() => checkMirrorDir(root, undefined, markerTheirs)).toThrow(
+    expect(() => checkMirrorDir(root, undefined, ownedAllBut(marker))).toThrow(
       `${marker} belongs to another user, so ${root} is not used`,
     )
   })

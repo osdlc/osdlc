@@ -3,13 +3,14 @@
  * PRs, and an environment that keeps a run off the person's real files.
  */
 
-import { mkdirSync, realpathSync } from 'node:fs'
+import { mkdirSync, realpathSync, utimesSync } from 'node:fs'
 import { join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import type { CommandRunner } from '@osdlc/command-seam'
 
 import type { CliSeams } from '../src/cli.ts'
+import type { Ports } from '../src/ports.ts'
 
 /** A `PATH` lookup that finds every binary. */
 export const allToolsInstalled = (binary: string): string => `/usr/bin/${binary}`
@@ -21,6 +22,19 @@ export const emptyGh: CommandRunner = {
 
 /** The default remote the CLI fixtures give a repo, so the survey has a repository to list. */
 export const FIXTURE_REMOTE = 'https://github.com/o/r.git'
+
+/**
+ * A `Ports.targetHome` that puts every repository's places under `dir`, as the standalone run
+ * does under pr-update's directories: `worktrees/<host>/<owner>/<name>` and
+ * `kept/<host>/<owner>/<name>`. Each test gives its own `dir`, since every fixture is `o/r`.
+ */
+export function homeUnder(dir: string): Ports['targetHome'] {
+  return (t) => ({
+    worktrees: join(dir, 'worktrees', t.host, t.owner, t.name),
+    kept: join(dir, 'kept', t.host, t.owner, t.name),
+    worktreesRoot: join(dir, 'worktrees'),
+  })
+}
 
 /** Seams for a run where all tools exist and `gh` finds nothing. */
 export const fakeTools: CliSeams = { which: allToolsInstalled, gh: emptyGh }
@@ -85,4 +99,19 @@ export function worktreePaths(porcelain: string): string[] {
 /** `text` escaped for a `RegExp`, so a Windows path's backslashes match themselves. */
 export function literal(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+let marks = 0
+
+/**
+ * An ownership check (`OwnedCheck`) that reads `path` as another user's and everything else as
+ * yours. `path` is told by a modification time no other path has, which it is given here: not by
+ * `ino`, which Windows fills from a 64-bit file id that two folders can share once read as a
+ * number.
+ */
+export function ownedAllBut(path: string): (st: { mtimeMs: number }) => boolean {
+  marks += 1
+  const mark = new Date(Date.UTC(2001, 0, marks))
+  utimesSync(path, mark, mark)
+  return (st) => st.mtimeMs !== mark.getTime()
 }

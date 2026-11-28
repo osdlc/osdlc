@@ -84,16 +84,13 @@ import { CLONE_MARKER } from './mirror.ts'
 import { realOr } from './real-path.ts'
 import { terminalConfirmPush } from './update/confirm.ts'
 import {
-  checkoutKept,
   discardKept,
   findKept,
   keptIsCurrent,
-  keptIsTouched,
   keptOwnerElsewhere,
-  keptOwnerGone,
   keptTreeCheck,
   keptFolderProblem,
-  keptOwnerGoneReason,
+  KeptRefusedError,
   keptRefusal,
   listKept,
   type KeptPlace,
@@ -324,7 +321,7 @@ export const input = z.object({
     .boolean()
     .optional()
     .describe(
-      "Move the worktree of a PR that ended `conflict` or `failed` to `.pr-update/failed/<owner>-<name>-<number>/` (a `--repo` target's, to where `Ports.targetHome` says: the standalone run's is `kept/<host>/<owner>/<name>/<number>/` in pr-update's state directory), on a branch named for the PR, for a person to finish and push; absent defers to `pr_update.keep_failed`. Needs --apply. A later run skips that PR until its head or base moves, unless --retry-failed or --discard-kept; a kept tree someone has changed stays until --discard-kept.",
+      "Keep the worktree of a PR that ended `conflict` or `failed`, as evidence, where it ran (a folder in `worktrees/<host>/<owner>/<name>/` in pr-update's cache directory, for the standalone run), on a branch named for the PR, with its record in the state directory's `kept/`; absent defers to `pr_update.keep_failed`. Needs --apply. A later run skips that PR until its head or base moves, unless --retry-failed or --discard-kept, and then removes the tree, whatever is in it.",
     ),
   discardKept: z
     .boolean()
@@ -367,6 +364,12 @@ export const result = z.object({
     .describe(
       'Present when status is `conflict`: each unresolved path and why no resolver claimed it.',
     ),
+  replayed: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Present when git's rerere resolved conflicts in this update with a resolution recorded earlier in this run, by a PR that was pushed or at an earlier stop of this one (in a managed clone only): each path, which no resolver claims. `verify` is the only check of the replayed content.",
+    ),
   repaired: z
     .array(z.object({ kind: z.enum(['conflict', 'verify-failed']), note: z.string() }))
     .optional()
@@ -386,7 +389,15 @@ export const result = z.object({
   keepError: z
     .string()
     .optional()
-    .describe('Present when `keepFailed` could not keep the worktree (one holding submodules).'),
+    .describe(
+      "Present when `keepFailed` could not keep the worktree (the PR's old kept tree could not be removed, or another run held the clone's lock, say): why. When the tree was kept but the next run worktree could not be added, it says so, and the run's other PRs in that repository were not updated.",
+    ),
+  worktreeLeft: z
+    .string()
+    .optional()
+    .describe(
+      'Present on the last PR a run worktree served when git would not remove that worktree at the end of the run (a locked one, say): why. The PR’s own status stands; `mirror prune` removes the worktree once git allows it.',
+    ),
   recordError: z
     .string()
     .optional()
@@ -446,13 +457,13 @@ export const output = z.object({
     .array(z.object({ path: z.string(), reason: z.string() }))
     .optional()
     .describe(
-      'Kept worktrees `--discard-kept` left because a person moved them to a branch of their own or a detached HEAD. A PR whose kept tree is like that is skipped as changed.',
+      'Kept worktrees a discard could not remove, because git would not (a locked one, say). The run exits 1.',
     ),
   madeTargetWorktree: z
     .literal(true)
     .optional()
     .describe(
-      "Present when a run that writes made a run worktree where `Ports.targetHome` puts a `--repo` target's (for the CLI, `worktrees/` in pr-update's cache directory), even when no PR there got as far as a result. The CLI's pruning after the run reads it.",
+      "Present when a run that writes made a run worktree where `Ports.targetHome` puts it (for the CLI, `worktrees/` in pr-update's cache directory), even when no PR there got as far as a result. The CLI's pruning after the run reads it.",
     ),
   repos: z
     .array(repoEntry)
@@ -484,6 +495,9 @@ export function toResult(r: UpdateResult, localCheckout?: LocalCheckout): z.infe
       ? { strategyFallback: r.outcome.strategyFallback }
       : {}),
     ...(r.outcome.status === 'conflict' ? { conflicts: r.outcome.needsHuman } : {}),
+    ...(r.outcome.status === 'updated' && r.outcome.replayed !== undefined
+      ? { replayed: r.outcome.replayed }
+      : {}),
     ...(r.outcome.status === 'updated' && r.outcome.repaired !== undefined
       ? { repaired: r.outcome.repaired }
       : {}),
@@ -491,6 +505,7 @@ export function toResult(r: UpdateResult, localCheckout?: LocalCheckout): z.infe
     ...(r.keptWorktree === undefined ? {} : { keptWorktree: r.keptWorktree }),
     ...(r.keepError === undefined ? {} : { keepError: r.keepError }),
     ...(r.recordError === undefined ? {} : { recordError: r.recordError }),
+    ...(r.worktreeLeft === undefined ? {} : { worktreeLeft: r.worktreeLeft }),
     ...(r.onto === undefined ? {} : { restackedOnto: r.onto.parent }),
   }
 }
@@ -506,8 +521,8 @@ export type LocalCheckout = { updated: boolean; detail: string }
  * A merge update is a fast-forward of the branch. A rebase is not, and the
  * checkout still moves with `reset --hard`. It is clean and at the old remote
  * head, so every commit it held is one the push replaced or kept. Paths under
- * `.pr-update/` (this tool's own scratch files and record) do not count as
- * changes.
+ * `.pr-update/`, where older versions kept their scratch files and records, do
+ * not count as changes: a leftover one must not hold the checkout back.
  */
 export function syncLocalCheckout(git: Git, r: UpdateResult): LocalCheckout | undefined {
   if (r.outcome.status !== 'updated' || !r.outcome.pushed) return undefined
@@ -632,7 +647,9 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
   // Each repository's PRs are updated in the checkout the survey measured them in, through the
   // remote it was measured against.
   const served = servedTargets(repoTargets, env)
-  const routed = routeAttempts(served, env.ports.attempts)
+  // The project root's store serves any repository with none of its own, as `Ports.attempts` does.
+  const rootStore = [...served.values()].find((s) => s.target === null)?.attempts
+  const routed = routeAttempts(served, rootStore ?? env.ports.attempts)
   const attempts = routed?.store
   // Branch mode names its PR by head branch. The survey has already narrowed
   // the report to it and its stack parents. The match is by repository and
@@ -688,19 +705,17 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
     }
     // `--branch` names a branch of the checkout the run was started in, so a target served from
     // any other checkout is left alone.
-    if (args.branch !== undefined && at !== undefined && at.path !== env.projectRoot) {
+    if (at === undefined) {
+      skip('no checkout serves it')
+      continue
+    }
+    if (args.branch !== undefined && at.path !== env.projectRoot) {
       skip(`--branch names a branch of the project root; not updated in ${at.path}`)
       continue
     }
     const group = groups.get(t.repo)
     if (group !== undefined) group.targets.push(t)
-    else {
-      groups.set(t.repo, {
-        path: at?.path ?? env.projectRoot,
-        remote: at?.remote ?? args.remote,
-        targets: [t],
-      })
-    }
+    else groups.set(t.repo, { path: at.path, remote: at.remote, targets: [t] })
   }
   // A clone with no PR to update is let go before anything else is done, so another run that
   // needs it does not wait for this run's other targets. The rest are let go as each one's
@@ -771,7 +786,6 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
     onRebaseConflict: effectiveCfg.on_rebase_conflict,
     maxRebaseStops: effectiveCfg.repair.max_rebase_stops,
     submodules: effectiveCfg.submodules,
-    rerere: effectiveCfg.rerere,
     confirmPush,
   }
   // Records too old to matter go before this run writes new ones. A rehearsal writes nothing.
@@ -794,13 +808,13 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
   const results: UpdateResult[] = []
   let madeTargetWorktree = false
   for (const [repo, { path, remote, targets: group }] of groups) {
-    const at = served.get(repo)
+    const at = served.get(repo)!
     const git = gitOf(path, env)
     // `<run>` last: a later run reads the pid of a killed one from it.
-    const worktreeRoot = join(at?.worktrees ?? join(path, '.pr-update'), runId)
+    const worktreeRoot = join(at.worktrees, runId)
     // `updateAll` makes it for any PR left, before it asks for a lease, so even a run whose
     // every lease is refused wrote there.
-    if (writes && at?.home === true && group.length > 0) madeTargetWorktree = true
+    if (writes && group.length > 0) madeTargetWorktree = true
     const verifyVerbs =
       verify === 'detect'
         ? (worktree: string, pr: number) =>
@@ -812,22 +826,25 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
               checkout: worktree,
             })
         : (verifyVerbsOf.get(repo) ?? [])
-    const lease = writes ? (at === undefined ? env.ports.lease : at.lease) : undefined
+    const lease = writes ? at.lease : undefined
+    // Only in a managed clone, whose `rr-cache/` is pr-update's: in the project root and a located
+    // checkout, the person's own resolutions are never replayed, and none is recorded there.
+    const rerere = effectiveCfg.rerere && at.target?.source === 'clone'
     results.push(
       ...(await updateAll(
         git,
         group,
-        { ...settings, lease, remote, verifyVerbs },
+        { ...settings, lease, remote, verifyVerbs, rerere },
         env.ports.runVerb,
         {
           apply: writes,
           worktreeRoot,
-          ...(keepFailed ? { keepFailed: { place: at?.kept ?? checkoutKept(path) } } : {}),
-          ...(at?.records === undefined ? {} : { records: at.records }),
-          // Only a target's own lease: the host's (`Ports.lease`) ends the run on an error.
-          skipOnLeaseError: at?.lease !== undefined && at.lease !== env.ports.lease,
-          ...(at?.target?.source === 'clone' && env.clones !== undefined
-            ? { lock: cloneLock(env.clones, path, worktreeRoot) }
+          ...(keepFailed ? { keepFailed: { place: at.kept } } : {}),
+          records: at.records,
+          // Only a target's own lease: the project root's ends the run on an error.
+          skipOnLeaseError: at.target !== null && at.lease !== undefined,
+          ...(at.target?.source === 'clone' && env.clones !== undefined
+            ? { lock: cloneLock(env.clones, path) }
             : {}),
           onSkip: (s) => skipped.push(s),
           // A rehearsal cannot repair, so `writes` keeps it from recording anything. Recorded as
@@ -910,15 +927,12 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
   }
 }
 
-/**
- * `updateAll`'s hold on the managed clone at `path`, whose run worktree is `worktree`, through
- * the run's {@link ManagedClones}.
- */
-function cloneLock(clones: ManagedClones, path: string, worktree: string): CloneLock {
+/** `updateAll`'s hold on the managed clone at `path`, through the run's {@link ManagedClones}. */
+function cloneLock(clones: ManagedClones, path: string): CloneLock {
   return {
     added: () => clones.release(path),
-    keeping: (keep) => clones.keeping(path, worktree, keep),
-    removing: (remove) => {
+    keeping: (worktree, keep) => clones.keeping(path, worktree, keep),
+    removing: (worktree, remove) => {
       clones.removing(path, { path: worktree, kind: 'run' }, remove)
     },
   }
@@ -935,7 +949,7 @@ interface Group {
 interface Served {
   path: string
   remote: string
-  /** The target as `Ports.targetHome` and the trust gate see it; null for the project root. */
+  /** The target as the trust gate sees it; null for the project root, which it is not asked about. */
   target: TargetCheckout | null
   /** The directory the run worktrees go under. */
   worktrees: string
@@ -943,12 +957,10 @@ interface Served {
   attempts: AttemptStore | undefined
   lease: BranchLease | undefined
   /**
-   * Set for a target other than the project root, whose checkout is someone else's: only
-   * worktrees under pr-update's own directories are cleaned up.
+   * Only worktrees under pr-update's own directories are cleaned up: the checkout is the
+   * person's, and its other worktrees are theirs.
    */
-  records?: WorktreeRecords | undefined
-  /** Set when its worktrees and kept trees are where `Ports.targetHome` put them. */
-  home?: true | undefined
+  records: WorktreeRecords
 }
 
 /**
@@ -970,72 +982,48 @@ function gitOf(path: string, env: Pick<UpdateEnv, 'git'>): Git {
 }
 
 /**
- * Each surveyed repository with a checkout, by `owner/name`. The project root's records, lease
- * and worktrees are the run's own (`Ports.attempts`, `Ports.lease`, `<checkout>/.pr-update/`).
- * Any other target's are where `Ports.targetHome` puts them, outside its checkout, so a run
- * writes in a located checkout only git records (D-0005's Build notes list them). Without that
- * port, a target is served from its own checkout's `.pr-update/`. Either way git runs in it
- * with hooks off, and its path is resolved through symlinks once, here.
+ * Each surveyed repository with a checkout, by `owner/name`, and where `Ports.targetHome` puts
+ * what the run makes for it, outside its checkout, so a run writes in a checkout only git
+ * records (D-0005's Build notes list them). The project root is asked about as any other, with
+ * `source: 'root'`; its record and lease are `Ports.attempts` and `Ports.lease` where set. Git
+ * runs in each checkout with hooks off, and a path other than the project root's is resolved
+ * through symlinks once, here.
  */
 function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<string, Served> {
   const out = new Map<string, Served>()
   for (const t of repoTargets) {
     if (t.path === null) continue
-    const own = {
-      path: t.path,
-      remote: t.remote,
-      worktrees: join(t.path, '.pr-update'),
-      kept: checkoutKept(t.path),
-      attempts: env.ports.attempts,
-      lease: env.ports.lease,
-    }
     // A host's `locate` may answer with the project root's own checkout: that is the project root.
-    if (t.source === 'root' || t.source === null || realOr(t.path) === realOr(env.projectRoot)) {
-      out.set(t.repo, { ...own, target: null })
-      continue
-    }
+    const root =
+      t.source === 'root' || t.source === null || realOr(t.path) === realOr(env.projectRoot)
     // Resolved once: the trust gate, the worktrees and the kept record all see this path.
-    const path = realOr(t.path)
+    const path = root ? t.path : realOr(t.path)
     const [owner = '', name = ''] = t.repo.split('/')
     const target: TargetCheckout = {
       host: hostKey(t.host ?? 'github.com'),
       owner,
       name,
       path,
-      source: t.source,
+      source: root ? 'root' : (t.source as Exclude<typeof t.source, 'root' | null>),
       remote: t.remote,
     }
-    const home = env.ports.targetHome?.(target)
-    if (home === undefined) {
-      // Still someone else's checkout: only what the run made under its `.pr-update/` is cleaned.
-      const records = ownedUnder([join(path, '.pr-update')])
-      out.set(t.repo, {
-        ...own,
-        path,
-        worktrees: join(path, '.pr-update'),
-        kept: { ...checkoutKept(path), records },
-        target,
-        records,
-      })
-      continue
-    }
+    const home = env.ports.targetHome(target)
     const records = ownedUnder([home.worktrees, home.kept])
     out.set(t.repo, {
       path,
       remote: t.remote,
-      target,
+      target: root ? null : target,
       worktrees: home.worktrees,
       kept: {
         dir: home.kept,
-        root: home.keptRoot ?? home.kept,
-        naming: 'repository',
+        trees: home.worktrees,
+        root: home.worktreesRoot ?? home.worktrees,
         gitDir: commonDirOf(path, env),
         records,
       },
-      attempts: home.attempts,
-      lease: home.lease,
+      attempts: root ? (env.ports.attempts ?? home.attempts) : home.attempts,
+      lease: root ? (env.ports.lease ?? home.lease) : home.lease,
       records,
-      home: true,
     })
   }
   return out
@@ -1066,8 +1054,8 @@ interface RoutedAttempts {
 /**
  * One attempt store over each served repository's own, by the `repo` of each key, so selection,
  * recording and clearing all reach the store of the repository the PR is in. `fallback`
- * (`Ports.attempts`) serves any repository with none of its own; undefined when there is no
- * store at all.
+ * (the project root's: `Ports.attempts`, or its `TargetHome.attempts`) serves any repository
+ * with none of its own; undefined when there is no store at all.
  *
  * A target's own store lives on its own remote or in its own folder, so an error from it (a
  * remote that refuses `refs/pr-update/*`) is that target's alone: it lands in `broken`, and the
@@ -1134,11 +1122,11 @@ function routeAttempts(
  *
  * A record the checkout's content could have forged is refused (`KeptRefusal`): one that breaks
  * `readRecord`'s rules, or whose folder its owner does not list as a worktree at that path. It
- * is left alone, tree and file, and its PR goes on as if nothing were kept. A tree its owner lists
- * on another branch or detached is a person's (`KeptTreeCheck`): it counts as changed, and
- * `--discard-kept` leaves it.
+ * is left alone, tree and file, and its PR goes on as if nothing were kept. What is in a kept
+ * tree never keeps it: it is pr-update's. One git will not remove (a locked one) is listed in
+ * `left`, and its PR is skipped.
  *
- * @returns the paths removed, the records refused, and the trees `--discard-kept` left.
+ * @returns the paths removed, the records refused, and the trees a discard could not remove.
  */
 function settleKept(
   args: UpdateArgs,
@@ -1168,25 +1156,43 @@ function settleKept(
   }
   /**
    * Discard `record`. One that a managed clone owns is discarded only under the clone's lock
-   * (`ManagedClones.removing`): false when the lock could not be had, and the tree stays.
+   * (`ManagedClones.removing`): `busy` when the lock could not be had, and the tree stays. A
+   * refused record is told to `onRefused`; why git would not remove the tree is returned.
    */
-  const discard = (git: Git, checkout: string, place: KeptPlace, record: KeptRecord): boolean => {
+  const discard = (
+    git: Git,
+    checkout: string,
+    place: KeptPlace,
+    record: KeptRecord,
+  ): 'removed' | 'busy' | 'refused' | { left: string } => {
     const owner = record.gitDir ?? realOr(checkout)
     const clone = clones.get(owner) ?? (existsSync(join(owner, CLONE_MARKER)) ? owner : undefined)
-    if (clone === undefined || env.clones === undefined) {
-      discardKept(git, place, record)
-      return true
+    try {
+      if (clone === undefined || env.clones === undefined) discardKept(git, place, record)
+      else if (
+        !env.clones.removing(clone, { path: record.path, kind: 'kept' }, () =>
+          discardKept(git, place, record),
+        )
+      ) {
+        return 'busy'
+      }
+      return 'removed'
+    } catch (e) {
+      if (e instanceof KeptRefusedError) {
+        onRefused(e.refusal)
+        return 'refused'
+      }
+      const reason = (e as Error).message.split('\n')[0]!
+      left.push({ path: record.path, reason })
+      return { left: reason }
     }
-    return env.clones.removing(clone, { path: record.path, kind: 'kept' }, () =>
-      discardKept(git, place, record),
-    )
   }
   const places = new Map<string, { checkout: string; place: KeptPlace }>()
   for (const [repo, s] of served) {
     if (!refused.has(repo)) places.set(s.kept.dir, { checkout: s.path, place: s.kept })
   }
   for (const [repo, group] of groups) {
-    const place = served.get(repo)?.kept ?? checkoutKept(group.path)
+    const place = served.get(repo)!.kept
     if (!places.has(place.dir)) places.set(place.dir, { checkout: group.path, place })
   }
   if (args.discardKept === true) {
@@ -1195,23 +1201,18 @@ function settleKept(
       for (const record of listKept(place, onRefused)) {
         const tree = treeOf(git, place, record)
         if (tree.kind === 'forged') continue
-        if (tree.kind === 'moved') {
-          left.push({ path: record.path, reason: `${tree.why}, so a person moved it` })
-          continue
-        }
         const why = keptFolderProblem(place, record)
         if (why !== null) {
           onRefused(keptRefusal(place, record, why))
           continue
         }
-        if (writes && !discard(git, checkout, place, record)) continue
+        if (writes && discard(git, checkout, place, record) !== 'removed') continue
         removed.push(record.path)
       }
     }
   }
   for (const [repo, group] of groups) {
-    const at = served.get(repo)
-    const place = at?.kept ?? checkoutKept(group.path)
+    const place = served.get(repo)!.kept
     const git = gitOf(group.path, env)
     group.targets = group.targets.filter((t) => {
       const record = findKept(place, t.repo, t.number, onRefused)
@@ -1220,44 +1221,27 @@ function settleKept(
         skipped.push({ repo: t.repo, number: t.number, head: t.head, reason })
         return false
       }
-      // Its owner is gone, so git cannot say whether a person changed it: it stays until
-      // `--discard-kept` (handled above).
-      const gone = keptOwnerGone(record)
-      if (gone !== null) return skip(keptOwnerGoneReason(record, gone))
       // A restack child's base is its parent's new head, known only once the parent has run, so
-      // whether its tree is current waits: it is left, and a new keep replaces it. The checks
-      // that do not need that still hold it back.
+      // whether its tree is current waits: it is left, and a new keep replaces it.
       const child = t.stackParent !== undefined
       const moved = !child && !keptIsCurrent(record, t)
       const owner = keptOwnerElsewhere(place, record)
       if (owner !== null && (child || args.retryFailed === true || !moved)) {
         return skip(`kept elsewhere: ${record.path} is a worktree of ${owner}`)
       }
-      // Before `keptIsTouched` runs git in the folder.
       const tree = treeOf(git, place, record)
-      if (tree.kind === 'forged') return true
-      // A tree a person moved to a branch of their own, or detached, is theirs: changed.
-      const touched = (): boolean => tree.kind === 'moved' || keptIsTouched(git, record)
-      if (child) {
-        return touched()
-          ? skip(`kept worktree ${record.path} has local changes; push them or pass --discard-kept`)
-          : true
-      }
-      const stale = args.retryFailed === true || moved
-      // `--retry-failed` too: only `--discard-kept` removes a tree with a person's changes in it.
-      if (stale && touched()) {
-        return skip(
-          `kept worktree ${record.path} has local changes; push them or pass --discard-kept`,
-        )
-      }
-      if (stale) {
+      if (tree.kind === 'forged' || child) return true
+      if (args.retryFailed === true || moved) {
         const why = keptFolderProblem(place, record)
         if (why !== null) return skip(`kept worktree ${record.path} stays: ${why}`)
-        if (writes && !discard(git, group.path, place, record)) {
+        const done = writes ? discard(git, group.path, place, record) : 'removed'
+        if (done === 'busy') {
           return skip(
             `mirror busy: kept worktree ${record.path} could not be removed under its clone's lock`,
           )
         }
+        if (done === 'refused') return true
+        if (done !== 'removed') return skip(`kept worktree ${record.path} stays: ${done.left}`)
         removed.push(record.path)
         return true
       }
@@ -1338,9 +1322,11 @@ export function renderUpdateText(out: UpdateOutput): string {
     const onto =
       r.restackedOnto === undefined ? '' : `  (restacked onto ${prKey(r.repo, r.restackedOnto)})`
     lines.push(`${mark} ${prKey(r.repo, r.number)}  ${r.strategy}  ${r.head}  ${r.detail}${onto}`)
+    if (r.replayed !== undefined) lines.push(`    replayed by rerere: ${r.replayed.join(', ')}`)
     if (r.keptWorktree !== undefined) lines.push(`    kept: ${r.keptWorktree}`)
     if (r.keepError !== undefined) lines.push(`    could not keep the worktree: ${r.keepError}`)
     if (r.recordError !== undefined) lines.push(`    record not saved: ${r.recordError}`)
+    if (r.worktreeLeft !== undefined) lines.push(`    worktree left: ${r.worktreeLeft}`)
     if (r.localCheckout !== undefined) {
       lines.push(
         `    checkout: ${r.localCheckout.updated ? 'moved' : 'left'} — ${r.localCheckout.detail}`,

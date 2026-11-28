@@ -6,12 +6,7 @@ import { basename, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import type { AttemptKey } from '../../src/ports.ts'
-import {
-  attemptFile,
-  attemptsDir,
-  fileAttemptStore,
-  listAttempts,
-} from '../../src/update/attempts.ts'
+import { attemptFile, fileAttemptStore, listAttempts } from '../../src/update/attempts.ts'
 
 const KEY: AttemptKey = { repo: 'o/r', head: 'topic', headOid: 'h1', base: 'main', baseOid: 'b1' }
 
@@ -31,7 +26,7 @@ describe('fileAttemptStore', () => {
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'pr-update-attempts-'))
-    file = attemptsDir(root)
+    file = join(root, 'attempts')
   })
   afterEach(() => rmSync(root, { recursive: true, force: true }))
 
@@ -126,7 +121,7 @@ describe('fileAttemptStore: one file per branch', () => {
   afterEach(() => rmSync(root, { recursive: true, force: true }))
 
   test('branches that sanitise alike do not share a file', () => {
-    const dir = attemptsDir(root)
+    const dir = join(root, 'attempts')
     expect(attemptFile(dir, 'o/r', 'a/b', 'main')).not.toBe(attemptFile(dir, 'o/r', 'a_b', 'main'))
     expect(attemptFile(dir, 'o/r', 'a', 'main')).not.toBe(attemptFile(dir, 'o/r', 'a', 'release'))
   })
@@ -138,11 +133,11 @@ describe('fileAttemptStore: one file per branch', () => {
         entries: [{ ...KEY, failures: 9, reason: 'x', at: new Date().toISOString() }],
       }),
     )
-    expect(fileAttemptStore(attemptsDir(root)).get(KEY)).toBeNull()
+    expect(fileAttemptStore(join(root, 'attempts')).get(KEY)).toBeNull()
   })
 
   test('processes recording different PRs at once lose nothing', async () => {
-    const dir = attemptsDir(root)
+    const dir = join(root, 'attempts')
     const src = join(import.meta.dirname, '../../src/update/attempts.ts')
     // A URL, since on Windows the loader takes `D:\x` for a URL with scheme `d:`.
     const script = `import { fileAttemptStore } from ${JSON.stringify(pathToFileURL(src).href)}

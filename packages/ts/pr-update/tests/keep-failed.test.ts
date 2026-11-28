@@ -4,8 +4,18 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { existsSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, dirname, join } from 'node:path'
 
 import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
 import { IDENTITY, makeBareAndWorker, makeGitFixture } from '@osdlc/typed-git/testing'
@@ -13,6 +23,7 @@ import { IDENTITY, makeBareAndWorker, makeGitFixture } from '@osdlc/typed-git/te
 import { prUpdateConfigSchema, type PrUpdateConfig } from '../src/config.ts'
 import type { Ports } from '../src/ports.ts'
 import { renderUpdateText, runUpdate, type UpdateArgs } from '../src/update.ts'
+import { homeUnder } from './support.ts'
 
 const ARGS: UpdateArgs = {
   repo: ['o/r'],
@@ -29,6 +40,7 @@ const ARGS: UpdateArgs = {
 
 describe('update --keep-failed', () => {
   let fx: ReturnType<typeof makeBareAndWorker>
+  let home: string
   let verifyOk: boolean
 
   const real = spawnRunner('git')
@@ -66,8 +78,9 @@ describe('update --keep-failed', () => {
       locate: () => fx.worker.dir,
       runVerb,
       resolveVerifyVerbs: async () => ['check'],
+      targetHome: homeUnder(home),
     }
-    return runUpdate(
+    const out = await runUpdate(
       { ...ARGS, ...patch },
       {
         projectRoot: fx.worker.dir,
@@ -78,13 +91,27 @@ describe('update --keep-failed', () => {
         ports,
       },
     )
+    // Read while its record is there.
+    kept()
+    return out
   }
 
-  const kept = () => join(fx.worker.dir, '.pr-update', 'failed', 'o-r-1')
+  /** #1's record. */
+  const record = () => join(home, 'kept', 'github.com', 'o', 'r', '1.json')
+  let keptAt: string | undefined
+  /** #1's first kept tree, by its record; a path where nothing is while none was kept. */
+  const kept = (): string => {
+    if (keptAt === undefined && existsSync(record())) {
+      keptAt = JSON.parse(readFileSync(record(), 'utf8')).path as string
+    }
+    return keptAt ?? join(home, 'nothing-kept')
+  }
   const worktrees = () => fx.worker.git.worktrees().map((w) => w.path)
 
   beforeEach(() => {
     verifyOk = false
+    keptAt = undefined
+    home = realpathSync.native(mkdtempSync(join(tmpdir(), 'pr-update-home-')))
     fx = makeBareAndWorker({ initialBranch: 'main' })
     fx.worker.commit('initial', { 'shared.txt': 'base\n' })
     fx.worker.git.push('origin', 'main')
@@ -95,7 +122,17 @@ describe('update --keep-failed', () => {
     fx.worker.commit('main moves', { 'main.txt': 'main\n' })
     fx.worker.git.push('origin', 'main')
   })
-  afterEach(() => fx.cleanup())
+  afterEach(() => {
+    fx.cleanup()
+    rmSync(home, { recursive: true, force: true })
+  })
+
+  test('a failed verify keeps the tree where targetHome puts it, nothing in the checkout (one layout)', async () => {
+    const out = await update({ keepFailed: true })
+    expect(out.results[0]!.keptWorktree).toBe(kept())
+    expect(dirname(kept())).toBe(join(home, 'worktrees', 'github.com', 'o', 'r'))
+    expect(existsSync(join(fx.worker.dir, '.pr-update'))).toBe(false)
+  })
 
   test('a failed verify keeps the built tree on a PR branch with its log, uncommitted', async () => {
     const out = await update({ keepFailed: true })
@@ -151,9 +188,7 @@ describe('update --keep-failed', () => {
     expect(out.results.map((r) => r.status)).toEqual(['updated'])
     expect(out.discarded).toEqual([kept()])
     expect(existsSync(kept())).toBe(false)
-    expect(worktrees()).not.toContain(
-      join(realpathSync.native(fx.worker.dir), '.pr-update', 'failed', 'o-r-1'),
-    )
+    expect(worktrees()).not.toContain(kept())
     expect(fx.worker.git.resolveRef('pr-update/failed-o-r-1')).toBeNull()
   })
 
@@ -162,22 +197,26 @@ describe('update --keep-failed', () => {
     fx.worker.commit('main moves again', { 'more.txt': 'x\n' })
     fx.worker.git.push('origin', 'main')
     fx.worker.git.fetch('origin')
+    const old = kept()
     const out = await update({ keepFailed: true })
     expect(out.results.map((r) => r.status)).toEqual(['failed'])
-    expect(out.discarded).toEqual([kept()])
-    expect(out.results[0]!.keptWorktree).toBe(kept())
+    expect(out.discarded).toEqual([old])
+    expect(existsSync(old)).toBe(false)
+    const now = JSON.parse(readFileSync(record(), 'utf8')).path as string
+    expect(out.results[0]!.keptWorktree).toBe(now)
+    expect(existsSync(now)).toBe(true)
   })
 
-  test('a moved base does not discard a kept worktree a person has edited', async () => {
+  test('a moved base discards the kept worktree, whatever is in it (ownership contract)', async () => {
     await update({ keepFailed: true })
     writeFileSync(join(kept(), 'wip.txt'), 'unfinished\n')
     fx.worker.commit('main moves again', { 'more.txt': 'x\n' })
     fx.worker.git.push('origin', 'main')
     fx.worker.git.fetch('origin')
     const out = await update({ keepFailed: true })
-    expect(out.results).toEqual([])
-    expect(out.skipped[0]!.reason).toContain('has local changes')
-    expect(existsSync(join(kept(), 'wip.txt'))).toBe(true)
+    expect(out.results.map((r) => r.status)).toEqual(['failed'])
+    expect(out.discarded).toEqual([kept()])
+    expect(existsSync(join(kept(), 'wip.txt'))).toBe(false)
   })
 
   test('--discard-kept removes every kept worktree, and the run goes on', async () => {
@@ -190,26 +229,24 @@ describe('update --keep-failed', () => {
     expect(renderUpdateText(out)).toContain(`discarded kept worktree ${kept()}`)
   })
 
-  describe('a kept tree a person moved off its kept branch (review round 1)', () => {
+  describe('what is in a kept tree never keeps it (ownership contract)', () => {
     const topicOnOrigin = () => fx.bare.git.resolveRef('topic')
 
-    test('one on a branch of their own, with a new file: the PR is not pushed and the tree stays', async () => {
+    test('one switched to another branch, with a new file, goes when the PR moves; that branch stays', async () => {
       await update({ keepFailed: true })
       fx.worker.git.at(kept()).rawChecked(['checkout', '-q', '-b', 'my-fix'])
-      writeFileSync(join(kept(), 'fix.txt'), 'mine\n')
+      writeFileSync(join(kept(), 'fix.txt'), 'x\n')
       fx.worker.commit('main moves again', { 'more.txt': 'x\n' })
       fx.worker.git.push('origin', 'main')
       fx.worker.git.fetch('origin')
       verifyOk = true
-      const before = topicOnOrigin()
       const out = await update({ keepFailed: true })
-      expect(out.results).toEqual([])
-      expect(out.skipped[0]!.reason).toBe(
-        `kept worktree ${kept()} has local changes; push them or pass --discard-kept`,
-      )
-      expect(out.keptRefused).toBeUndefined()
-      expect(topicOnOrigin()).toBe(before)
-      expect(existsSync(join(kept(), 'fix.txt'))).toBe(true)
+      expect(out.results.map((r) => r.status)).toEqual(['updated'])
+      expect(out.discarded).toEqual([kept()])
+      expect(existsSync(kept())).toBe(false)
+      // A branch of the project root's that is not pr-update's is never deleted.
+      expect(fx.worker.git.resolveRef('my-fix')).not.toBeNull()
+      expect(fx.worker.git.resolveRef('pr-update/failed-o-r-1')).toBeNull()
     })
 
     test('one on a detached HEAD, unchanged: the PR is still held back', async () => {
@@ -225,22 +262,31 @@ describe('update --keep-failed', () => {
       expect(existsSync(kept())).toBe(true)
     })
 
-    test('--discard-kept leaves it, with a note naming the branch', async () => {
+    test('--discard-kept removes one switched to another branch, and leaves that branch', async () => {
       await update({ keepFailed: true })
       fx.worker.git.at(kept()).rawChecked(['checkout', '-q', '-b', 'my-fix'])
       verifyOk = true
+      const out = await update({ discardKept: true })
+      expect(out.discarded).toEqual([kept()])
+      expect(out.keptLeft).toBeUndefined()
+      expect(out.results.map((r) => r.status)).toEqual(['updated'])
+      expect(existsSync(kept())).toBe(false)
+      expect(fx.worker.git.resolveRef('my-fix')).not.toBeNull()
+    })
+
+    test('one git will not remove (locked) is listed in keptLeft, and stays', async () => {
+      await update({ keepFailed: true })
+      fx.worker.git.rawChecked(['worktree', 'lock', kept()])
       const out = await update({ discardKept: true })
       expect(out.discarded ?? []).toEqual([])
       expect(out.keptLeft).toEqual([
         {
           path: kept(),
-          reason: `${kept()} is on my-fix, not pr-update/failed-o-r-1, so a person moved it`,
+          reason: expect.stringContaining(`${kept()} stays: git would not remove it`),
         },
       ])
       expect(renderUpdateText(out)).toContain(`! kept worktree ${kept()} left: `)
-      expect(out.results).toEqual([])
       expect(existsSync(kept())).toBe(true)
-      expect(fx.worker.git.resolveRef('my-fix')).not.toBeNull()
     })
   })
 
@@ -291,6 +337,7 @@ describe('update --keep-failed', () => {
           // Only the first PR's verify fails.
           runVerb: () => (calls++ === 0 ? { exitCode: 1, stdout: '', stderr: 'no\n' } : ok),
           resolveVerifyVerbs: async () => ['check'],
+          targetHome: homeUnder(home),
         },
       },
     )
@@ -298,11 +345,103 @@ describe('update --keep-failed', () => {
     expect(out.results[0]!.keptWorktree).toBe(kept())
     expect(out.results[1]!.keptWorktree).toBeUndefined()
   })
+
+  test('a run worktree git will not remove at the end of the run is reported, and the PR keeps its outcome (review round 2)', async () => {
+    let at = ''
+    const out = await runUpdate(
+      { ...ARGS },
+      {
+        projectRoot: fx.worker.dir,
+        dryRun: false,
+        git,
+        gh,
+        cfg: {
+          ...prUpdateConfigSchema.parse({}),
+          verify: 'check',
+          max_failed_attempts: 0,
+        } as PrUpdateConfig,
+        ports: {
+          locate: () => fx.worker.dir,
+          // Someone locks the run worktree while verify runs.
+          runVerb: (_verb, cwd) => {
+            at = cwd
+            real.run(['worktree', 'lock', cwd], { cwd: fx.worker.dir })
+            return { exitCode: 0, stdout: '', stderr: '' }
+          },
+          resolveVerifyVerbs: async () => ['check'],
+          targetHome: homeUnder(home),
+        },
+      },
+    )
+    expect(out.results.map((r) => r.status)).toEqual(['updated'])
+    expect(out.results[0]!.worktreeLeft).toContain(`${at} stays: git would not remove it`)
+    expect(renderUpdateText(out)).toContain(
+      `    worktree left: ${at} stays: git would not remove it`,
+    )
+    expect(existsSync(at)).toBe(true)
+  })
+
+  test('when the next run worktree cannot be added after a keep, the kept tree and its record stay, and the run stops (review round 2)', async () => {
+    fx.worker.git.checkout('main', { branch: 'second' })
+    fx.worker.commit('second work', { 'second.txt': 's\n' })
+    fx.worker.git.push('origin', 'second')
+    fx.worker.git.checkout('main')
+    const real2 = spawnRunner('git')
+    const out = await runUpdate(
+      { ...ARGS, keepFailed: true },
+      {
+        projectRoot: fx.worker.dir,
+        dryRun: false,
+        git,
+        gh: {
+          run: () => {
+            fx.worker.git.fetch('origin')
+            const prs = ['topic', 'second'].map((head, i) => ({
+              number: i + 1,
+              state: 'OPEN',
+              title: head,
+              url: `https://github.com/o/r/pull/${i + 1}`,
+              baseRefName: 'main',
+              headRefName: head,
+              headRefOid: fx.worker.git.resolveRef(`origin/${head}`),
+            }))
+            return { exitCode: 0, stdout: JSON.stringify(prs), stderr: '' }
+          },
+        },
+        cfg: {
+          ...prUpdateConfigSchema.parse({}),
+          verify: 'check',
+          max_failed_attempts: 0,
+        } as PrUpdateConfig,
+        ports: {
+          locate: () => fx.worker.dir,
+          // The first PR's verify fails, and takes away the ref the next worktree starts from.
+          runVerb: () => {
+            real2.run(['update-ref', '-d', 'refs/remotes/origin/main'], { cwd: fx.worker.dir })
+            return { exitCode: 1, stdout: '', stderr: 'no\n' }
+          },
+          resolveVerifyVerbs: async () => ['check'],
+          targetHome: homeUnder(home),
+        },
+      },
+    )
+    expect(out.results.map((r) => r.number)).toEqual([1])
+    const [first] = out.results
+    expect(first!.status).toBe('failed')
+    expect(first!.keptWorktree).toBe(kept())
+    expect(first!.keepError).toContain('the next run worktree could not be added')
+    expect(existsSync(kept())).toBe(true)
+    expect(existsSync(record())).toBe(true)
+    expect(fx.worker.git.resolveRef('pr-update/failed-o-r-1')).not.toBeNull()
+    expect(worktrees()).toContain(realpathSync.native(kept()))
+    expect(renderUpdateText(out)).toContain('the next run worktree could not be added')
+  })
 })
 
-describe('a kept record the checkout supplies', () => {
-  // `.pr-update/failed/` is inside the working tree, so a repository can commit a record there.
+describe('a forged kept record', () => {
+  // A record is JSON on disk, and its path, branch and git directory say what a discard deletes.
   let fx: ReturnType<typeof makeBareAndWorker>
+  let home: string
   let victim: ReturnType<typeof makeGitFixture>
 
   const real = spawnRunner('git')
@@ -339,15 +478,21 @@ describe('a kept record the checkout supplies', () => {
           locate: () => fx.worker.dir,
           runVerb: () => ok,
           resolveVerifyVerbs: async () => [],
+          targetHome: homeUnder(home),
         },
       },
     )
-  const keptDir = () => join(fx.worker.dir, '.pr-update', 'failed', 'o-r-1')
+  /** The folder a forged record names: a run worktree's place, and #1's record. */
+  const keptDir = () => join(home, 'worktrees', 'github.com', 'o', 'r', '123.456')
+  const recordPath = () => join(home, 'kept', 'github.com', 'o', 'r', '1.json')
 
-  /** Commit a record for #1, with `headOid: null` so the run reads the PR as moved. */
-  function plant(record: Record<string, unknown>): void {
-    fx.worker.commit('plant a kept record', {
-      '.pr-update/failed/o-r-1.json': `${JSON.stringify({
+  /** Write #1's record, with `headOid: null` so the run reads the PR as moved, and a folder. */
+  function plant(record: Record<string, unknown>, folder = true): void {
+    mkdirSync(join(recordPath(), '..'), { recursive: true })
+    mkdirSync(join(keptDir(), '..'), { recursive: true })
+    writeFileSync(
+      recordPath(),
+      `${JSON.stringify({
         repo: 'o/r',
         number: 1,
         head: 'topic',
@@ -357,11 +502,15 @@ describe('a kept record the checkout supplies', () => {
         path: keptDir(),
         ...record,
       })}\n`,
-      '.pr-update/failed/o-r-1/x.txt': 'x\n',
-    })
+    )
+    if (folder) {
+      mkdirSync(keptDir())
+      writeFileSync(join(keptDir(), 'x.txt'), 'x\n')
+    }
   }
 
   beforeEach(() => {
+    home = realpathSync.native(mkdtempSync(join(tmpdir(), 'pr-update-home-')))
     fx = makeBareAndWorker({ initialBranch: 'main' })
     fx.worker.commit('initial', { 'shared.txt': 'base\n' })
     fx.worker.git.push('origin', 'main')
@@ -380,6 +529,7 @@ describe('a kept record the checkout supplies', () => {
   afterEach(() => {
     fx.cleanup()
     victim.cleanup()
+    rmSync(home, { recursive: true, force: true })
   })
 
   const victimGitDir = () => realpathSync.native(join(victim.dir, '.git'))
@@ -396,10 +546,10 @@ describe('a kept record the checkout supplies', () => {
       expect(victim.git.resolveRef('precious')).toBe(precious)
       expect(out.discarded ?? []).toEqual([])
       expect(existsSync(join(keptDir(), 'x.txt'))).toBe(true)
-      expect(existsSync(`${keptDir()}.json`)).toBe(true)
-      expect(out.keptRefused?.map((r) => r.record)).toEqual([`${keptDir()}.json`])
-      expect(renderUpdateText(out)).toContain(`kept record ${keptDir()}.json left alone`)
-      // The PR is still updated: a committed file cannot hold it back.
+      expect(existsSync(recordPath())).toBe(true)
+      expect(out.keptRefused?.map((r) => r.record)).toEqual([recordPath()])
+      expect(renderUpdateText(out)).toContain(`kept record ${recordPath()} left alone`)
+      // The PR is still updated: a forged record cannot hold it back.
       expect(out.results.map((r) => r.status)).toEqual(['updated'])
     },
   )
@@ -408,12 +558,12 @@ describe('a kept record the checkout supplies', () => {
     plant({
       branch: 'pr-update/failed-o-r-1',
       gitDir: victimGitDir(),
-      path: join('.pr-update', 'failed', 'o-r-1'),
+      path: join('r', '123.456'),
     })
     victim.git.rawChecked(['branch', 'pr-update/failed-o-r-1'])
-    // The CLI runs in the checkout, where a relative path names its kept folder.
+    // Run where the relative path names the kept folder.
     const cwd = process.cwd()
-    process.chdir(fx.worker.dir)
+    process.chdir(join(keptDir(), '..', '..'))
     const out = await update({ discardKept: true }).finally(() => process.chdir(cwd))
     expect(victim.git.resolveRef('pr-update/failed-o-r-1')).not.toBeNull()
     expect(out.discarded ?? []).toEqual([])
@@ -426,23 +576,12 @@ describe('a kept record the checkout supplies', () => {
       const theirs = join(fx.worker.dir, '..', `${basename(fx.worker.dir)}-theirs`)
       fx.worker.git.rawChecked(['worktree', 'add', '-q', '-b', 'mine', theirs, 'main'])
       writeFileSync(join(theirs, 'wip.txt'), 'wip\n')
-      fx.worker.commit('plant a kept record', {
-        '.pr-update/failed/o-r-1.json': `${JSON.stringify({
-          repo: 'o/r',
-          number: 1,
-          head: 'topic',
-          base: 'main',
-          headOid: null,
-          baseOid: null,
-          path: keptDir(),
-          branch: 'pr-update/failed-o-r-1',
-        })}\n`,
-      })
+      plant({ branch: 'pr-update/failed-o-r-1' }, false)
       symlinkSync(theirs, keptDir(), 'dir')
       try {
         const out = await update({ discardKept: true })
         expect(out.keptRefused).toEqual([
-          { record: `${keptDir()}.json`, reason: `its path ${keptDir()} is a symbolic link` },
+          { record: recordPath(), reason: `its path ${keptDir()} is a symbolic link` },
         ])
         expect(out.keptLeft).toBeUndefined()
         expect(out.results.map((r) => r.status)).toEqual(['updated'])
@@ -464,10 +603,73 @@ describe('a kept record the checkout supplies', () => {
       fx.worker.git.rawChecked(['branch', 'pr-update/failed-o-r-1'])
       const out = await update(patch)
       expect(existsSync(join(keptDir(), 'x.txt'))).toBe(true)
-      expect(existsSync(`${keptDir()}.json`)).toBe(true)
+      expect(existsSync(recordPath())).toBe(true)
       expect(fx.worker.git.resolveRef('pr-update/failed-o-r-1')).not.toBeNull()
       expect(out.discarded ?? []).toEqual([])
       expect(out.keptRefused?.[0]?.reason).toContain('not a worktree')
+    },
+  )
+
+  /**
+   * A live run's worktree of the checkout, detached, as a run's is between PRs. Named for this
+   * process's parent, which is alive: a tree named for this process is live only while a run of
+   * it holds the tree.
+   */
+  function liveTree(): string {
+    const tree = join(home, 'worktrees', 'github.com', 'o', 'r', `${process.ppid}.${Date.now()}`)
+    mkdirSync(join(tree, '..'), { recursive: true })
+    fx.worker.git.rawChecked(['worktree', 'add', '-q', '--detach', tree, 'main'])
+    writeFileSync(join(tree, 'wip.txt'), 'wip\n')
+    return tree
+  }
+
+  test.each([
+    ['a plain --apply', {}],
+    ['--discard-kept', { discardKept: true }],
+  ])(
+    "one naming a live run's detached worktree is refused, and the tree stays (%s) (review round 2)",
+    async (_, patch) => {
+      const tree = liveTree()
+      plant({ branch: 'pr-update/failed-o-r-1', path: tree }, false)
+      const out = await update(patch)
+      expect(existsSync(join(tree, 'wip.txt'))).toBe(true)
+      expect(existsSync(recordPath())).toBe(true)
+      expect(out.discarded ?? []).toEqual([])
+      expect(out.keptRefused?.[0]?.reason).toContain('still going')
+      expect(out.results.map((r) => r.status)).toEqual(['updated'])
+    },
+  )
+
+  test.each([
+    ['a plain --apply', {}],
+    ['--discard-kept', { discardKept: true }],
+  ])(
+    "one whose git directory is gone, naming a live run's worktree, is refused, and the tree stays (%s) (review round 2)",
+    async (_, patch) => {
+      const tree = liveTree()
+      plant({ branch: 'pr-update/failed-o-r-1', path: tree, gitDir: join(home, 'gone.git') }, false)
+      const out = await update(patch)
+      expect(existsSync(join(tree, 'wip.txt'))).toBe(true)
+      expect(existsSync(recordPath())).toBe(true)
+      expect(out.discarded ?? []).toEqual([])
+      expect(out.keptRefused?.[0]?.reason).toContain('still going')
+    },
+  )
+
+  test.each([
+    ['a plain --apply', {}],
+    ['--discard-kept', { discardKept: true }],
+  ])(
+    "one whose git directory is gone, naming another checkout's dead run worktree, is refused (%s) (review round 2)",
+    async (_, patch) => {
+      const tree = join(home, 'worktrees', 'github.com', 'o', 'r', '2147483646.1')
+      mkdirSync(join(tree, '..'), { recursive: true })
+      victim.git.rawChecked(['worktree', 'add', '-q', '--detach', tree, 'main'])
+      plant({ branch: 'pr-update/failed-o-r-1', path: tree, gitDir: join(home, 'gone.git') }, false)
+      const out = await update(patch)
+      expect(existsSync(join(tree, 'a.txt'))).toBe(true)
+      expect(out.discarded ?? []).toEqual([])
+      expect(out.keptRefused?.[0]?.reason).toContain(`is a worktree of ${victimGitDir()}`)
     },
   )
 })

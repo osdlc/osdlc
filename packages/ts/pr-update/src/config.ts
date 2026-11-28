@@ -108,7 +108,7 @@ export const prUpdateConfigSchema = z
       .boolean()
       .default(true)
       .describe(
-        "Whether `update --apply` uses git's rerere. On (default), a resolution a resolver or an accepted repair made is kept when its PR is pushed, and a later conflict that is the same, in this run or a later one, is replayed and staged instead of resolved again: a stack of sibling PRs that meet one conflict needs one resolution. A replayed resolution still goes through `verify`. The resolutions are kept in the repository's `rr-cache/`, in the person's own checkout for the project root, and once it exists git uses rerere for the person's own merges there too, unless their config says `rerere.enabled: false`. `false` turns rerere off for pr-update's merges and rebases, whatever the git config says. A rehearsal never uses it.",
+        "Whether `update --apply` uses git's rerere in a managed clone, the only place it is used. On (default), a resolution a resolver or a repair made there is recorded, and a later conflict that is the same in the same run, at a later stop of the rebase or in a sibling PR, is replayed instead of resolved again: sibling PRs that meet one conflict need one resolution. One run at a time holds a clone's cache, through the clone's rerere lock (`pr-update-rerere.lock`), taken without waiting; a run that cannot get it works without rerere. The holder empties `rr-cache/` when it takes the lock, whenever a PR ends without being pushed, and when it lets go, so a replayed resolution was made in this run by a PR that was pushed or by the PR in flight; a killed holder's lock is taken over by a run that empties the cache first, and a cache that cannot be emptied turns rerere off for the run. A replayed path a resolver claims is still rebuilt; any other is reported in the result's `replayed`, and `verify` is its only check. In the project root and a located checkout, pr-update's merges and rebases always run with `rerere.enabled=false`, so your own `rr-cache/` and rerere config are never used and no `rr-cache/` is made there. `false` turns rerere off in clones too. A rehearsal never uses it.",
       ),
     on_rebase_conflict: z
       .enum(['merge', 'fail', 'repair'])
@@ -228,7 +228,7 @@ export const prUpdateConfigSchema = z
       .boolean()
       .default(false)
       .describe(
-        "Keep the worktree of a PR whose update ended `conflict` or `failed`, as `update --keep-failed` does: it moves to `.pr-update/failed/<owner>-<name>-<number>/` (a `--repo` target's, to `kept/<host>/<owner>/<name>/<number>/` in pr-update's state directory) on a branch named for the PR, with a failed verify's log in `.pr-update-verify.log`, and the run goes on in a fresh worktree. A later run skips that PR until its head or base moves, or `--retry-failed` or `--discard-kept` is given; a kept tree someone has changed stays until `--discard-kept`. `--no-keep-failed` overrides it for one run. Only `--apply` runs keep anything.",
+        "Keep the worktree of a PR whose update ended `conflict` or `failed`, as `update --keep-failed` does: it stays where it ran, in `worktrees/<host>/<owner>/<name>/` in pr-update's cache directory, the project root's as any other, on a branch named for the PR, with a failed verify's log in `.pr-update-verify.log` and its record in `kept/` in the state directory, and the run goes on in a fresh worktree. A cache cleaner that empties the cache removes it too. The tree is evidence, pr-update's own: a later run skips that PR until its head or base moves, or `--retry-failed` or `--discard-kept` is given, and then removes the tree, whatever is in it. `--no-keep-failed` overrides it for one run. Only `--apply` runs keep anything.",
       ),
     max_failed_attempts: z
       .number()
@@ -236,7 +236,7 @@ export const prUpdateConfigSchema = z
       .min(0)
       .default(1)
       .describe(
-        "Skip a PR once its update has failed this many times at the same head and base sha, until either moves. Failures from `--apply` runs are recorded in `.pr-update/attempts/` (one file per repo, head and base branch); a successful update clears the PR's entries. 0 disables the check. The retry-failed flag of `update` ignores it for one run.",
+        "Skip a PR once its update has failed this many times at the same head and base sha, until either moves. Failures from `--apply` runs are recorded in `attempts/<host>/<owner>/<name>/` in pr-update's state directory (one file per repo, head and base branch); a successful update clears the PR's entries. 0 disables the check. The retry-failed flag of `update` ignores it for one run.",
       ),
   })
   .strict()
@@ -254,7 +254,7 @@ export const prUpdateStandaloneSchema = prUpdateConfigSchema.extend({
         .enum(['file', 'git-ref'])
         .default('file')
         .describe(
-          'Where failed updates are recorded. `file` (default) keeps them in `.pr-update/attempts/` in the project root, so they are per machine. `git-ref` keeps them as refs on the `--remote` (one per repo, head and base branch, under `ref_prefix`), so every machine and CI job that updates the repository shares them, and also turns on the per-branch update lease (see `lease`). The remote must accept refs outside `refs/heads` and `refs/tags`; a host that refuses them fails the run with an error naming this setting.',
+          'Where failed updates are recorded. `file` (default) keeps them in `attempts/<host>/<owner>/<name>/` in the state directory of pr-update, so they are per machine. `git-ref` keeps them as refs on the `--remote` (one per repo, head and base branch, under `ref_prefix`), so every machine and CI job that updates the repository shares them, and also turns on the per-branch update lease (see `lease`). The remote must accept refs outside `refs/heads` and `refs/tags`; a host that refuses them fails the run with an error naming this setting.',
         ),
       ref_prefix: z
         .string()

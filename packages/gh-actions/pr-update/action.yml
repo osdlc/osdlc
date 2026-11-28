@@ -73,8 +73,9 @@ inputs:
     default: "false"
   cache-attempts:
     description: >-
-      Keep pr-update's failed-attempt record (.pr-update/attempts) between runs
-      with actions/cache, so a PR that already conflicted at its current head and
+      Keep pr-update's failed-attempt record between runs with actions/cache
+      (.pr-update/attempts for pr-update 0.17 and earlier, attempts/ in its state
+      directory after), so a PR that already conflicted at its current head and
       base is not retried, and no agent tokens are spent on it again.
     default: "true"
   extra-args:
@@ -128,7 +129,9 @@ runs:
       if: inputs.cache-attempts == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: .pr-update/attempts
+        path: |
+          .pr-update/attempts
+          ${{ runner.temp }}/pr-update-state/osdlc/pr-update/attempts
         key: pr-update-attempts-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: pr-update-attempts-
 
@@ -148,6 +151,9 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        # pr-update after 0.17 keeps its attempt records in its state directory, here, where the
+        # cache steps find them; 0.17 and earlier keep them in .pr-update/ and ignore this.
+        OSDLC_STATE_DIR: ${{ runner.temp }}/pr-update-state
         PR_UPDATE_VERSION: ${{ inputs.pr-update-version }}
         PR_NUMBER: ${{ inputs.pr }}
         STRATEGY: ${{ inputs.strategy }}
@@ -168,5 +174,7 @@ runs:
     - if: always() && inputs.cache-attempts == 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: .pr-update/attempts
+        path: |
+          .pr-update/attempts
+          ${{ runner.temp }}/pr-update-state/osdlc/pr-update/attempts
         key: pr-update-attempts-${{ github.run_id }}-${{ github.run_attempt }}

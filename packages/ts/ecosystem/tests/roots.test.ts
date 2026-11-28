@@ -3,7 +3,7 @@
  * directory stop.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -191,6 +191,37 @@ describe('defaultRoots', () => {
     const checkout = sb.checkout('../srv/acme/widgets', origin)
     expect(roots(checkout.dir)).toEqual([join(sb.root, 'srv')])
   })
+
+  // POSIX modes; Windows does not say who can write.
+  test.skipIf(process.platform === 'win32')(
+    'outside the home directory, a holder or root others can write to gives none, sticky or not',
+    () => {
+      const checkout = sb.checkout('../tmp/proj', origin)
+      const tmp = join(sb.root, 'tmp')
+      expect(roots(checkout.dir)).toEqual([tmp])
+      chmodSync(tmp, 0o1777)
+      expect(roots(checkout.dir)).toEqual([])
+      chmodSync(tmp, 0o777)
+      expect(roots(checkout.dir)).toEqual([])
+
+      // The root one up, when the holder is named after the owner.
+      const owned = sb.checkout('../srv/acme/widgets', origin)
+      chmodSync(join(sb.root, 'srv'), 0o1777)
+      expect(roots(owned.dir)).toEqual([])
+      chmodSync(join(sb.root, 'srv'), 0o755)
+      expect(roots(owned.dir)).toEqual([join(sb.root, 'srv')])
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'inside the home directory the mode is not read',
+    () => {
+      const checkout = sb.checkout('dev/repos/widgets', origin)
+      chmodSync(join(sb.home, 'dev', 'repos'), 0o777)
+      expect(roots(checkout.dir)).toEqual([join(sb.home, 'dev', 'repos')])
+      chmodSync(join(sb.home, 'dev', 'repos'), 0o755)
+    },
+  )
 
   test('an inherited GIT_DIR naming another repository does not change the answer', () => {
     // A hook in a linked worktree of another repository exports an absolute GIT_DIR.

@@ -1,17 +1,17 @@
 /**
  * What a host must supply that this package cannot know for itself.
  *
- * The three required ports each answer a question the host owns and this
+ * The four required ports each answer a question the host owns and this
  * package does not: where a named repository's checkout is on this machine,
- * how to run a shell verb, and whether a verb list from the project may run in
- * this repository at all (a trust decision). Two optional ports add conflict
+ * where the run keeps what it makes for each repository, how to run a shell
+ * verb, and whether a verb list from the project may run in this repository at
+ * all (a trust decision). Two optional ports add conflict
  * resolvers. `generators` rebuild artifacts in process. `repair` is the last
  * step, called only when no fixed rule resolved the problem. The conflict
  * repair is offered only on a merge (a rebase falls back to a merge first). A
  * verify repair runs for either strategy. The optional `attempts` port records
  * failed updates across runs. The optional `lease` port locks each head branch
- * while it is updated. `confirmPush` asks before each rebase force-push. `targetHome` places the
- * worktrees, record and lease of a target other than the project root. A standalone run (see
+ * while it is updated. `confirmPush` asks before each rebase force-push. A standalone run (see
  * `defaults.ts`) supplies simple versions of the same ports that work with any host.
  */
 
@@ -151,6 +151,11 @@ export interface LocateTarget {
   owner: string
   name: string
   /**
+   * The port `--repo` named (`3000` for `forgejo.local:3000/x/y`), or unset for none. A checkout
+   * or clone serves the target only when it is of that same port (the standalone `locate`).
+   */
+  port?: number | undefined
+  /**
    * Whether the target's code host is GitHub (github.com, or the project root's host when that
    * is GitHub), so a managed clone could serve it. Unset when the caller does not say.
    */
@@ -179,33 +184,39 @@ export interface FoundCheckout {
 }
 
 /**
- * A target other than the project root, as {@link Ports.targetHome} is asked about it: the
- * repository, lower-cased, and the checkout serving the run.
+ * A repository the run updates, as {@link Ports.targetHome} is asked about it: the repository,
+ * lower-cased, and the checkout serving the run. The trust gate is asked about every one but the
+ * project root (`source: 'root'`).
  */
 export interface TargetCheckout extends LocateTarget {
   /** The checkout the run is served from, absolute. */
   path: string
   /** Where {@link path} came from. */
-  source: Exclude<CheckoutSource, 'root'>
+  source: CheckoutSource
   /** The checkout's remote the run fetches from and pushes to. */
   remote: string
 }
 
 /**
- * Where a run keeps what it makes for one target other than the project root, outside that
- * target's checkout. Each directory is that target's own.
+ * Where a run keeps what it makes for one repository, outside its checkout. Each directory is
+ * that repository's own. The checkout itself gets only git records: the run's worktree
+ * registrations, its `pr-update/*` branches and, with a `git-ref` store, refs on its remote.
  */
 export interface TargetHome {
-  /** The target's run worktrees go here, one `<run>` directory each. */
+  /**
+   * The repository's run worktrees go here, one `<run>` directory each. A failed PR's kept
+   * worktree is a run worktree left here (`--keep-failed`).
+   */
   worktrees: string
-  /** The target's kept worktrees go here, as `<number>/`, each with `<number>.json` beside it. */
+  /** The repository's kept-tree records go here, as `<number>.json`. */
   kept: string
   /**
-   * The folder of the host's own that holds {@link kept}, such as `kept/` in pr-update's state
-   * directory. A kept tree is removed only when the folders from here down to it pass the folder
-   * rule: the person owns them, and no one else can write to them. Default {@link kept} itself.
+   * The folder of the host's own that holds {@link worktrees}, such as `worktrees/` in pr-update's
+   * cache directory. A kept tree is removed only when the folders from here down to it pass the
+   * folder rule: the person owns them, and no one else can write to them. Default
+   * {@link worktrees} itself.
    */
-  keptRoot?: string | undefined
+  worktreesRoot?: string | undefined
   /** The target's failed-attempt record. Absent means none is kept for it. */
   attempts?: AttemptStore | undefined
   /** The target's branch lease. Absent means no locking for it. */
@@ -224,19 +235,17 @@ export interface Ports {
    * standalone run's locate returns that form (see `defaults.ts`).
    *
    * `update` runs in the checkout it returns. Its run worktree and kept
-   * worktrees go where {@link targetHome} says, or, without that port, under
-   * the checkout's own `.pr-update/`.
+   * worktrees go where {@link targetHome} says.
    */
   locate: (repo: string, target?: LocateTarget) => string | FoundCheckout | null
   /**
    * Where `update` keeps the run worktrees, kept worktrees, failed-attempt
-   * record and lease of a target other than the project root. Asked once per
-   * run for each such target with a checkout. Absent means each target's
-   * worktrees go under its checkout's `.pr-update/`, and {@link attempts} and
-   * {@link lease} serve every target. The standalone run supplies it (see
-   * `defaults.ts`).
+   * record and lease of each repository it updates, the project root
+   * included. Asked once per run for each one with a checkout. For the project
+   * root, {@link attempts} and {@link lease} win where set. The standalone run
+   * puts them in pr-update's osdlc directories (see `defaults.ts`).
    */
-  targetHome?: ((target: TargetCheckout) => TargetHome) | undefined
+  targetHome: (target: TargetCheckout) => TargetHome
   /** Runs the shell verbs of resolvers and verify. See {@link RunVerb}. */
   runVerb: RunVerb
   /**
@@ -256,11 +265,17 @@ export interface Ports {
   generators?: readonly Generator[] | undefined
   /** Called at most once per kind in `PrUpdateConfig.repair.on`. Absent means no repair. */
   repair?: Repair | undefined
-  /** Absent means failures are not recorded and no PR is skipped for past failures. */
+  /**
+   * The project root's failed-attempt record, and the record of any repository whose
+   * {@link TargetHome} has none. An error from it ends the run. Absent means the project root's
+   * {@link TargetHome.attempts} serves; with neither, failures are not recorded and no PR is
+   * skipped for past failures.
+   */
   attempts?: AttemptStore | undefined
   /**
-   * Taken around each PR's update in an `--apply` run. A PR whose lease another run holds is
-   * skipped. Absent means no locking; a rehearsal never takes it.
+   * The project root's lease, taken around each PR's update in an `--apply` run. A PR whose
+   * lease another run holds is skipped; an error from it ends the run. Absent means the project
+   * root's {@link TargetHome.lease}, or no locking; a rehearsal never takes it.
    */
   lease?: BranchLease | undefined
   /**

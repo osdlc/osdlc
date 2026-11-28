@@ -170,7 +170,7 @@ git identity: the action pushes merge commits from that checkout.
 | `include-bots`           | `false`               | Update PRs authored by a bot. A PR named by `pr` is updated either way.                                              |
 | `dry-run`                | `false`               | Measure and report; push, label and comment nothing.                                                                 |
 | `fail-on-conflict`       | `false`               | Fail the step when a PR ended conflict or failed (see Exit policy).                                                  |
-| `cache-attempts`         | `true`                | Persist `.pr-update/attempts` between runs with actions/cache.                                                       |
+| `cache-attempts`         | `true`                | Persist pr-update's failed-attempt record between runs with actions/cache.                                           |
 | `extra-args`             | none                  | Extra `pr-update update` arguments, for example `--retry-failed`.                                                    |
 
 Outputs: `report-path` (the pr-update JSON report), and the counts `updated`,
@@ -206,7 +206,8 @@ CI on the PR checks what was pushed.
 
 ## Conflicts
 
-1. pr-update tries git `rerere`, the lockfile rule and project `resolvers`.
+1. pr-update tries the lockfile rule and project `resolvers`. (It uses git's
+   `rerere` only in a managed clone, and the action's checkout is not one.)
 2. If a conflict is left and repair is on, `--repair-agent` runs the agent once
    in the merge worktree, with `repair-timeout-seconds` (written to a config
    file named by `PR_UPDATE_CONFIG`, which replaces any `pr-update.yaml` in the
@@ -221,7 +222,7 @@ CI on the PR checks what was pushed.
    agent's note, a link to the merge commit and the resolution as `git show
    --remerge-diff` output in a collapsed block (cut at 300 lines; `git show
    --stat` where remerge-diff is unavailable), ending `<!-- pr-update: repaired
-   head=<merge sha> -->`. Conflicts cleared by rerere, the lockfile rule,
+   head=<merge sha> -->`. Conflicts cleared by the lockfile rule,
    resolvers or generators, and clean updates, stay silent.
 5. When the PR later ends `updated` or `up-to-date`, the label is removed.
 
@@ -232,8 +233,11 @@ conflicted PR from being repaired again.
 
 ### The failed-attempt record
 
-pr-update writes `.pr-update/attempts/` (one file per repo, head and base
-branch, written atomically) for each PR that ends `conflict` or `failed`. The
+pr-update writes a record (one file per repo, head and base branch, written
+atomically) for each PR that ends `conflict` or `failed`: in `.pr-update/attempts/`
+for pr-update 0.17 and earlier, and in `attempts/` in its state directory after.
+The action points that state directory at `$RUNNER_TEMP/pr-update-state`
+(`OSDLC_STATE_DIR`) and caches both places. The
 next run skips that PR, and spends no agent tokens on it, until its head or
 base sha changes. The action restores the directory with `actions/cache/restore`
 and saves it with `actions/cache/save` under `pr-update-attempts-<run id>-<attempt>`

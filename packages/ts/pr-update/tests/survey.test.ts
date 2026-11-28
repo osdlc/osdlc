@@ -502,6 +502,18 @@ describe('resolveTargets', () => {
     expect(both).toThrow(
       '--repo github.com/x/y and --repo git.example.com/X/Y are x/y on different hosts; a run takes one of them',
     )
+    // Two ports of one host may be two servers (S13).
+    expect(() =>
+      resolveTargets(
+        'o/r',
+        '/repo',
+        ['ghe.example:3000/x/y', 'ghe.example:4000/x/y'],
+        locate({}),
+        opts,
+      ),
+    ).toThrow(
+      '--repo ghe.example:3000/x/y and --repo ghe.example:4000/x/y are x/y on different hosts',
+    )
     // The project root counts, on its own host.
     expect(() =>
       resolveTargets('o/r', '/repo', ['o/r', 'git.example.com/o/r'], locate({}), opts),

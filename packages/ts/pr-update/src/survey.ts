@@ -48,6 +48,7 @@ import { z } from 'zod'
 import {
   Git,
   parseRemoteRepo,
+  parseRemoteUrl,
   readRemote,
   type RemoteRepo,
   type SshAliasResolver,
@@ -217,10 +218,10 @@ export interface ManagedClones {
    */
   removing(clone: string, tree: RemovedTree, remove: () => void): boolean
   /**
-   * Run `keep`, which moves the run's worktree `tree` in the clone at `clone` aside as a kept
-   * worktree and adds the run worktree back, holding the clone's lock, taken back as
-   * {@link removing} takes it. Without the lock a prune could remove the kept tree and the clone
-   * between the two. When the lock cannot be taken, `keep` is not run, the result is false and
+   * Run `keep`, which keeps the run's worktree `tree` in the clone at `clone` where it is, as a
+   * kept worktree, and adds the run a new one, holding the clone's lock, taken back as
+   * {@link removing} takes it. Without the lock a prune could find no run worktree between the
+   * two and remove the clone. When the lock cannot be taken, `keep` is not run, the result is false and
    * a note says the tree was not kept; the run goes on in the worktree as it is.
    */
   keeping(clone: string, tree: string, keep: () => void): boolean
@@ -552,10 +553,11 @@ export function scopeToPrs(
 // ---------------------------------------------------------------------------
 
 /**
- * A host as two hosts are compared: lower-cased and without a port. A remote's
- * host is read without its port, and `--repo` keeps the one it names, so
- * `forgejo.local:3000` and `forgejo.local` are one host. It is also the host
- * of every path and trust key a target gets, so none holds a `:`.
+ * A host lower-cased and without a port: the host of every path and trust key
+ * a target gets, so none holds a `:`, and the host a remote's is compared with,
+ * since a remote's host is read without its port. Two `--repo`s are compared
+ * with their ports, and a checkout or clone serves a target only on its port
+ * (`locate.ts`, `cloneHostProblem` in `mirror.ts`).
  */
 export function hostKey(host: string): string {
   return host.toLowerCase().replace(/:\d+$/, '')
@@ -695,15 +697,13 @@ export function resolveTargets(
       root !== null &&
       repo === root.repo.toLowerCase() &&
       (!hostGiven || (rootHost !== null && hostKey(host) === hostKey(rootHost)))
-    const key = isRoot ? '' : `${hostKey(host)}/${repo}`
+    // With the port: two ports of one host may be two servers, and a run serves one of them.
+    const key = isRoot ? '' : `${host.toLowerCase()}/${repo}`
     if (seen.has(key)) continue
     seen.add(key)
     const first = named.get(repo)
     const at = isRoot ? rootHost : host
-    if (
-      first !== undefined &&
-      (first.host === null ? null : hostKey(first.host)) !== (at === null ? null : hostKey(at))
-    ) {
+    if (first !== undefined && first.host?.toLowerCase() !== at?.toLowerCase()) {
       throw new SurveyUsageError(
         `--repo ${first.text} and --repo ${text} are ${repo} on different hosts; a run takes one of them`,
       )
@@ -716,7 +716,14 @@ export function resolveTargets(
     const github =
       hostKey(host) === 'github.com' ||
       (githubHost !== null && hostKey(host) === hostKey(githubHost))
-    const checkout = locate(repo, { host: hostKey(host), owner, name, github })
+    const port = /:(\d+)$/.exec(host)?.[1]
+    const checkout = locate(repo, {
+      host: hostKey(host),
+      owner,
+      name,
+      github,
+      ...(port === undefined ? {} : { port: Number(port) }),
+    })
     out.push(
       checkout === null
         ? { repo, host, path: null, source: null, remote, found: null, github }
@@ -1017,10 +1024,19 @@ export function surveyTargets(
     targets: resolveTargets(localRepo, env.projectRoot, args.repo, env.ports.locate, {
       remote: args.remote,
       rootHost,
-      defaultHost: onGithub ? codeHostHost : 'github.com',
+      // With the origin's port: a bare `owner/name` is listed from, and served by, that server.
+      defaultHost: onGithub ? withWebPort(codeHostHost, originUrl) : 'github.com',
       githubHost: onGithub ? codeHostHost : null,
     }),
   }
+}
+
+/** `host`, with the port of `url` when that is an `http(s)` URL on a port other than its scheme's. */
+function withWebPort(host: string, url: string | null): string {
+  const web = url === null ? undefined : /^(https?):\/\//i.exec(url)?.[1]?.toLowerCase()
+  if (web === undefined) return host
+  const port = parseRemoteUrl(url!)?.port ?? null
+  return port === null || port === (web === 'https' ? 443 : 80) ? host : `${host}:${port}`
 }
 
 /**

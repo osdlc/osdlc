@@ -19,9 +19,9 @@ clone, even when a checkout exists.
 What it adds:
 
 - The same behaviour on every machine, whatever the person has cloned.
-- Nothing written inside the project root's checkout. D-0005 already keeps a
-  located checkout's run worktree under the cache, but the project root still
-  gets `<projectRoot>/.pr-update/<run>`.
+- Nothing written inside the project root's checkout. (Since D-0005's Build
+  note "The ownership contract" this holds without the new value: every
+  target's run worktree, the project root's included, is under the cache.)
 
 What it costs:
 

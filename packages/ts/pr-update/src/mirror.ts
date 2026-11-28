@@ -24,6 +24,7 @@ import {
   mkdirSync,
   mkdtempSync,
   openSync,
+  readFileSync,
   readdirSync,
   renameSync,
   rmSync,
@@ -38,9 +39,7 @@ import { ConfigInvalidError, type MachineConfigFile } from '@osdlc/config-layers
 import { osdlcDirs } from '@osdlc/ecosystem'
 import { WriteConflictError } from '@osdlc/etag-write'
 import {
-  claimLock,
   holderGone,
-  processIdentity,
   readHeldLock,
   releaseLock,
   untouchedFor,
@@ -71,6 +70,11 @@ import {
   type machineConfigSchema,
 } from './machine.ts'
 import type { LocateTarget } from './ports.ts'
+import {
+  claimProcessLock as claimCloneLock,
+  processLockGone as holderIsGone,
+  type ProcessLockContent as CloneLockContent,
+} from './process-lock.ts'
 import { NO_MAINTENANCE, maintainClone } from './clone-maintenance.ts'
 import { SurveyUsageError, hostKey, type ManagedClones, type RepoTarget } from './survey.ts'
 import { targetGitOptions } from './update/execute.ts'
@@ -186,6 +190,30 @@ export function checkClone(
     }
   }
   return 'clone'
+}
+
+/**
+ * Why the clone at `path` may not serve `host`, the host `--repo` named with its port, or null.
+ * A clone's path drops the port, so `ghe.local:3000` and `ghe.local:4000` would share one; its
+ * marker says which it was made for (`ghHost`). A marker without `ghHost` was made for the host of
+ * its `repo`, which has no port. Hosts are compared in any letter case.
+ */
+export function cloneHostProblem(path: string, host: string): string | null {
+  const marker = join(path, CLONE_MARKER)
+  let made: string
+  try {
+    const mark = JSON.parse(readFileSync(marker, 'utf8')) as { repo?: unknown; ghHost?: unknown }
+    made =
+      typeof mark.ghHost === 'string'
+        ? mark.ghHost
+        : typeof mark.repo === 'string'
+          ? (mark.repo.split('/')[0] ?? '')
+          : ''
+  } catch (e) {
+    return `${marker} cannot be read (${(e as Error).message.split('\n')[0]}), so ${path} is not used`
+  }
+  if (made.toLowerCase() === host.toLowerCase()) return null
+  return `the clone ${path} is of ${made === '' ? 'an unnamed host' : made}, not ${host}: a clone's path does not hold the port, so one clone directory serves one port of a host`
 }
 
 /**
@@ -404,43 +432,6 @@ export function markMirrorDir(dir: string): void {
   }
 }
 
-/** What a clone's lock records: the holding process, by pid and start, so a reused pid is not taken for it. */
-interface CloneLockContent {
-  tool: string
-  holder: { pid: number; startedAt?: string }
-}
-
-let identity: string | null | undefined
-
-function lockHolder(): CloneLockContent['holder'] {
-  identity ??= processIdentity(process.pid)
-  return { pid: process.pid, ...(identity === null ? {} : { startedAt: identity }) }
-}
-
-const holderIsGone = holderGone<CloneLockContent>((c) => [c.holder])
-
-/** Nothing ever notifies it, so `Atomics.wait` on it just sleeps. */
-const SLEEPER = new Int32Array(new SharedArrayBuffer(4))
-
-/**
- * Take the lock at `path`, waiting up to `waitMs` for another run to let go. A lock whose holder
- * process is gone is taken over. Returns the token that releases it, or null when it stayed held.
- */
-export function claimCloneLock(path: string, waitMs: number): string | null {
-  const deadline = Date.now() + waitMs
-  for (;;) {
-    const claim = claimLock<CloneLockContent>(
-      path,
-      { tool: 'pr-update', holder: lockHolder() },
-      { isStale: holderIsGone },
-    )
-    if (claim.ok) return claim.token
-    const left = deadline - Date.now()
-    if (left <= 0) return null
-    Atomics.wait(SLEEPER, 0, 0, Math.min(250, left))
-  }
-}
-
 /**
  * Whether another run holds the lock at `path`: what {@link claimCloneLock} with no wait would
  * find, read without taking the lock or changing anything.
@@ -461,6 +452,8 @@ export function cloneLockHeld(path: string): boolean {
   }
   return !holderIsGone(held)
 }
+
+export { claimCloneLock }
 
 /** The target a clone is asked for, with the host `gh` is pointed at. */
 export interface CloneRequest extends CloneKey {
@@ -566,7 +559,7 @@ export function makeClone(
       writeStamp(tmp)
       writeFileSync(
         join(tmp, CLONE_MARKER),
-        `${JSON.stringify({ tool: 'pr-update', repo: `${req.host}/${req.owner}/${req.name}` })}\n`,
+        `${JSON.stringify({ tool: 'pr-update', repo: `${req.host}/${req.owner}/${req.name}`, ghHost: req.ghHost })}\n`,
       )
       // Before the rename, so the clone is never at its path while others can write to it.
       dropOthersWrite(tmp)
@@ -986,6 +979,11 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
     }
     if (!held.has(final)) return unserved(busy(final))
     const state = checkClone(dir, final, owned)
+    const other = state === 'clone' ? cloneHostProblem(final, t.host ?? 'github.com') : null
+    if (other !== null) {
+      release(final)
+      return unserved(other)
+    }
     if (state === 'clone') writeStamp(final)
     else if (state !== 'missing') {
       release(final)
@@ -1019,6 +1017,12 @@ export function managedClones(opts: ManagedClonesOptions): StandaloneClones {
       if (s.consent === 'local') return null
       const path = clonePath(s.dir, target)
       const state = checkClone(s.dir, path, owned)
+      const host = target.port === undefined ? target.host : `${target.host}:${target.port}`
+      const other = state === 'clone' ? cloneHostProblem(path, host) : null
+      if (other !== null) {
+        opts.notice(`${host}/${target.owner}/${target.name}: ${other}`)
+        return null
+      }
       if (state === 'clone') return path
       if (state !== 'missing') {
         opts.notice(`${target.host}/${target.owner}/${target.name}: ${state.foreign}`)

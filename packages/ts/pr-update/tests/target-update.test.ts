@@ -18,7 +18,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, join, normalize, sep } from 'node:path'
+import { basename, dirname, join, normalize, sep } from 'node:path'
 
 import { EXIT, captureContext } from '@osdlc/cli-tool'
 import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
@@ -40,14 +40,7 @@ import {
   type UpdateArgs,
   type UpdateEnv,
 } from '../src/update.ts'
-import {
-  checkoutKept,
-  findKept,
-  keepWorktree,
-  keptIsTouched,
-  listKept,
-  type KeptPlace,
-} from '../src/update/kept.ts'
+import { findKept, listKept } from '../src/update/kept.ts'
 import { refBranchLease } from '../src/update/lease.ts'
 import { refAttemptStore } from '../src/update/ref-attempts.ts'
 import { allToolsInstalled, isolatedEnv, worktreePaths } from './support.ts'
@@ -69,18 +62,6 @@ const real = spawnRunner('git')
 /** git with the fixtures' identity. */
 const git: CommandRunner = {
   run: (argv, opts) => real.run(argv, { ...opts, env: { ...IDENTITY, ...opts?.env } }),
-}
-
-/** A git that fails every `worktree move` the way git does across filesystems. */
-const crossDevice: CommandRunner = {
-  run: (argv, opts) =>
-    argv[0] === 'worktree' && argv[1] === 'move'
-      ? {
-          exitCode: 128,
-          stdout: '',
-          stderr: `fatal: failed to move '${argv[2]}' to '${argv[3]}': Invalid cross-device link\n`,
-        }
-      : git.run(argv, opts),
 }
 
 let scratch: string
@@ -225,6 +206,25 @@ async function update(run: Run = {}) {
 }
 
 /** Run git in `dir`, and fail the test when it fails. */
+/**
+ * Make `kept`'s record name the git directory `gitDir` that is not there (or not readable), as a
+ * deleted checkout leaves it: the tree's own `.git` names that directory's record of it too. A
+ * record naming a gone git directory while the tree's `.git` names one that is there is a forged
+ * one, and its tree stays.
+ */
+function ownerGone(
+  kept: string,
+  record: Record<string, unknown>,
+  file: string,
+  gitDir: string,
+): void {
+  writeFileSync(file, JSON.stringify({ ...record, gitDir }))
+  // Removed first: git on Windows hides `.git`, and a hidden file cannot be opened to be
+  // rewritten (EPERM).
+  rmSync(join(kept, '.git'), { force: true })
+  writeFileSync(join(kept, '.git'), `gitdir: ${join(gitDir, 'worktrees', basename(kept))}\n`)
+}
+
 function sh(dir: string, ...argv: string[]): string {
   const res = git.run(argv, { cwd: dir })
   if (res.exitCode !== 0) throw new Error(`git ${argv.join(' ')}: ${res.stderr}`)
@@ -233,7 +233,12 @@ function sh(dir: string, ...argv: string[]): string {
 
 const worktreesOf = (dir: string): string[] =>
   new Git(dir, { runner: git }).worktrees().map((w) => w.path)
+/** acme/api's kept-tree records. */
 const keptDir = () => join(paths.kept, 'github.com', 'acme', 'api')
+/** The record of acme/api#`n`. */
+const recordFile = (n = 1) => join(keptDir(), `${n}.json`)
+/** The kept tree of acme/api#`n`, by its record. */
+const keptTree = (n = 1): string => JSON.parse(readFileSync(recordFile(n), 'utf8')).path as string
 const ownGitDir = () => realpathSync.native(join(api.worker.dir, '.git'))
 
 beforeEach(() => {
@@ -406,12 +411,12 @@ describe('the trust gate for a located target', () => {
 })
 
 describe('a located target kept worktree', () => {
-  test('is kept in the state directory, recording the git directory that owns it', async () => {
+  test('is kept where it ran, its record in the state directory naming the git directory that owns it', async () => {
     verifyOk = false
     const out = await update({ args: { keepFailed: true } })
-    const kept = join(keptDir(), '1')
+    const kept = keptTree()
     expect(out.results[0]!.keptWorktree).toBe(kept)
-    const record = JSON.parse(readFileSync(`${kept}.json`, 'utf8'))
+    const record = JSON.parse(readFileSync(recordFile(), 'utf8'))
     expect(record).toMatchObject({ repo: 'acme/api', number: 1, path: kept, gitDir: ownGitDir() })
     expect(worktreesOf(api.worker.dir)).toContain(realpathSync.native(kept))
     expect(sh(kept, 'branch', '--show-current')).toBe('pr-update/failed-acme-api-1')
@@ -426,7 +431,7 @@ describe('a located target kept worktree', () => {
   test('another checkout serving the run skips the PR as kept elsewhere, and leaves it', async () => {
     verifyOk = false
     await update({ args: { keepFailed: true } })
-    const kept = join(keptDir(), '1')
+    const kept = keptTree()
     const other = join(scratch, 'other')
     sh(scratch, 'clone', '-q', api.bare.dir, other)
 
@@ -444,7 +449,7 @@ describe('a located target kept worktree', () => {
   test('a PR that moved discards it through the git directory that owns it', async () => {
     verifyOk = false
     await update({ args: { keepFailed: true } })
-    const kept = join(keptDir(), '1')
+    const kept = keptTree()
     api.worker.commit('main again', { 'n.txt': 'n\n' })
     api.worker.git.push('origin', 'main')
     // Cloned after main moved, so it measures the PR's new base.
@@ -463,110 +468,108 @@ describe('a located target kept worktree', () => {
   test('--discard-kept removes it through its owner; with the owner gone, only the tree and record', async () => {
     verifyOk = false
     await update({ args: { keepFailed: true } })
-    const kept = join(keptDir(), '1')
+    const kept = keptTree()
     const other = join(scratch, 'other')
     sh(scratch, 'clone', '-q', api.bare.dir, other)
     const out = await update({ checkout: other, args: { discardKept: true } })
     expect(out.discarded).toEqual([kept])
     expect(existsSync(kept)).toBe(false)
-    expect(existsSync(`${kept}.json`)).toBe(false)
+    expect(existsSync(recordFile())).toBe(false)
     expect(worktreesOf(api.worker.dir)).toEqual([realpathSync.native(api.worker.dir)])
 
     await update({ args: { keepFailed: true, retryFailed: true } })
-    const record = JSON.parse(readFileSync(`${kept}.json`, 'utf8'))
-    writeFileSync(`${kept}.json`, JSON.stringify({ ...record, gitDir: join(scratch, 'gone') }))
+    const again = keptTree()
+    const record = JSON.parse(readFileSync(recordFile(), 'utf8'))
+    ownerGone(again, record, recordFile(), join(scratch, 'gone'))
     expect((await update({ checkout: other, args: { discardKept: true } })).discarded).toEqual([
-      kept,
+      again,
     ])
-    expect(existsSync(kept)).toBe(false)
-    expect(existsSync(`${kept}.json`)).toBe(false)
+    expect(existsSync(again)).toBe(false)
+    expect(existsSync(recordFile())).toBe(false)
   })
 
-  test('across filesystems is made with worktree add at the same commit, with the log', async () => {
+  test('stays where it ran, a run worktree in the cache, and the run goes on in a new one (keep in place)', async () => {
     verifyOk = false
-    const out = await update({ args: { keepFailed: true }, runner: crossDevice })
-    const kept = join(keptDir(), '1')
-    expect(out.results[0]).toMatchObject({ status: 'failed', keptWorktree: kept })
-    expect(out.results[0]!.keepError).toBeUndefined()
-    expect(worktreesOf(api.worker.dir)).toEqual([
-      realpathSync.native(api.worker.dir),
-      realpathSync.native(kept),
+    apiPr2 = true
+    sh(api.worker.dir, 'checkout', '-q', '-b', 'topic2', 'origin/topic')
+    api.worker.commit('topic2 work', { 't2.txt': 't2\n' })
+    sh(api.worker.dir, 'push', '-q', 'origin', 'topic2')
+    sh(api.worker.dir, 'checkout', '-q', 'main')
+    const out = await update({ args: { keepFailed: true } })
+    const runs = join(paths.worktrees, 'github.com', 'acme', 'api')
+    const [one, two] = [keptTree(1), keptTree(2)]
+    expect(out.results.map((r) => [r.number, r.status, r.keptWorktree])).toEqual([
+      [1, 'failed', one],
+      [2, 'failed', two],
     ])
-    expect(sh(kept, 'branch', '--show-current')).toBe('pr-update/failed-acme-api-1')
-    // The built result: the topic work on top of main.
-    expect(existsSync(join(kept, 'topic.txt'))).toBe(true)
-    expect(existsSync(join(kept, 'main.txt'))).toBe(true)
-    expect(readFileSync(join(kept, '.pr-update-verify.log'), 'utf8')).toContain('FAIL widget')
-    expect(readdirSync(join(paths.worktrees, 'github.com', 'acme', 'api'))).toEqual([])
-  })
-})
-
-describe('keepWorktree across filesystems', () => {
-  /** A run worktree of the acme/api checkout at `topic`, with an untracked build output. */
-  function runWorktree(): { run: string; place: KeptPlace; tip: string } {
-    const run = join(scratch, 'cache', `${process.pid}.1`)
-    sh(api.worker.dir, 'worktree', 'add', '-q', '--detach', run, 'origin/topic')
-    writeFileSync(join(run, 'build.out'), 'built\n')
-    const place = { dir: join(scratch, 'state', 'kept'), naming: 'repository' as const }
-    return { run, place, tip: sh(run, 'rev-parse', 'HEAD') }
-  }
-  const target = {
-    repo: 'acme/api',
-    number: 1,
-    head: 'topic',
-    base: 'main',
-    headOid: null,
-    baseOid: null,
-  }
-
-  test('keeps the commit and the log, drops untracked output, and removes the run worktree', () => {
-    const { run, place, tip } = runWorktree()
-    const record = keepWorktree(
-      new Git(api.worker.dir, { runner: crossDevice }),
-      place,
-      run,
-      target,
-      'log\n',
-    )
-    expect(record.path).toBe(join(place.dir, '1'))
-    expect(sh(record.path, 'rev-parse', 'HEAD')).toBe(tip)
-    expect(readFileSync(join(record.path, '.pr-update-verify.log'), 'utf8')).toBe('log\n')
-    expect(existsSync(join(record.path, 'build.out'))).toBe(false)
-    expect(existsSync(run)).toBe(false)
-    expect(worktreesOf(api.worker.dir)).not.toContain(run)
-  })
-
-  test('a later step that fails removes the added tree and its branch, and leaves the run worktree', () => {
-    const { run, place } = runWorktree()
-    // The record cannot be written: a directory is in its place.
-    mkdirSync(join(place.dir, '1.json'), { recursive: true })
-    expect(() =>
-      keepWorktree(new Git(api.worker.dir, { runner: crossDevice }), place, run, target, 'log\n'),
-    ).toThrow()
-    expect(existsSync(join(place.dir, '1'))).toBe(false)
-    expect(sh(api.worker.dir, 'branch', '--list', 'pr-update/*')).toBe('')
-    expect(existsSync(join(run, 'build.out'))).toBe(true)
-    expect(worktreesOf(api.worker.dir)).toEqual([realpathSync.native(api.worker.dir), run])
-  })
-
-  test('a move that fails for another reason is not retried another way', () => {
-    const { run } = runWorktree()
-    const refusing: CommandRunner = {
-      run: (argv, opts) =>
-        argv[0] === 'worktree' && argv[1] === 'move'
-          ? {
-              exitCode: 128,
-              stdout: '',
-              stderr: 'fatal: working trees containing submodules cannot be moved\n',
-            }
-          : git.run(argv, opts),
+    for (const kept of [one, two]) {
+      expect(dirname(kept)).toBe(runs)
+      expect(basename(kept)).toMatch(new RegExp(`^${process.pid}\\.\\d+$`))
     }
-    const place = checkoutKept(api.worker.dir)
-    expect(() =>
-      keepWorktree(new Git(api.worker.dir, { runner: refusing }), place, run, target, undefined),
-    ).toThrow(/submodules/)
-    expect(existsSync(join(place.dir, 'acme-api-1'))).toBe(false)
-    expect(existsSync(run)).toBe(true)
+    expect(one).not.toBe(two)
+    // The run's last worktree is gone; the kept ones stay, each on its PR's branch.
+    expect(readdirSync(runs).sort()).toEqual([basename(one), basename(two)].sort())
+    expect(sh(one, 'branch', '--show-current')).toBe('pr-update/failed-acme-api-1')
+    expect(sh(two, 'branch', '--show-current')).toBe('pr-update/failed-acme-api-2')
+    expect(sh(api.worker.dir, 'branch', '--list', 'pr-update/scratch*')).toBe('')
+    // The built result, with the log.
+    expect(existsSync(join(one, 'topic.txt'))).toBe(true)
+    expect(existsSync(join(one, 'main.txt'))).toBe(true)
+    expect(readFileSync(join(one, '.pr-update-verify.log'), 'utf8')).toContain('FAIL widget')
+    expect(readdirSync(keptDir()).sort()).toEqual(['1.json', '2.json'])
+
+    // `kept push` finds each through its record.
+    const out2 = join(scratch, 'evidence.git')
+    sh(scratch, 'init', '-q', '--bare', out2)
+    for (const [n, kept] of [
+      [1, one],
+      [2, two],
+    ] as const) {
+      const ctx = captureContext({ cwd: scratch, env })
+      const argv = ['kept', 'push', `acme/api#${n}`, '--to', out2]
+      expect(await main(argv, ctx, { which: allToolsInstalled }), ctx.io.err).toBe(EXIT.ok)
+      expect(sh(out2, 'rev-parse', `kept/acme-api-${n}`)).toBe(sh(kept, 'rev-parse', 'HEAD'))
+    }
+  })
+
+  test('a PR with a checked-out submodule is kept, and discarded (keep in place)', async () => {
+    const sub = join(scratch, 'sub')
+    mkdirSync(sub)
+    sh(sub, 'init', '-q', '-b', 'main')
+    writeFileSync(join(sub, 'f.txt'), 'one\n')
+    sh(sub, 'add', 'f.txt')
+    sh(sub, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'one')
+    sh(api.worker.dir, 'checkout', '-q', 'topic')
+    sh(
+      api.worker.dir,
+      '-c',
+      'protocol.file.allow=always',
+      'submodule',
+      'add',
+      '-q',
+      sub,
+      'deps/sub',
+    )
+    sh(api.worker.dir, 'commit', '-q', '-m', 'submodule')
+    sh(api.worker.dir, 'push', '-q', 'origin', 'topic')
+    sh(api.worker.dir, 'checkout', '-q', 'main')
+    verifyOk = false
+    // The run's submodule clone takes a local path only when `file` is allowed.
+    const saved = process.env.GIT_ALLOW_PROTOCOL
+    process.env.GIT_ALLOW_PROTOCOL = 'file'
+    try {
+      const out = await update({ args: { keepFailed: true } })
+      const kept = keptTree()
+      expect(out.results.map((r) => [r.status, r.keptWorktree, r.keepError])).toEqual([
+        ['failed', kept, undefined],
+      ])
+      expect(readFileSync(join(kept, 'deps', 'sub', 'f.txt'), 'utf8')).toBe('one\n')
+      expect((await update({ args: { discardKept: true } })).discarded).toEqual([kept])
+      expect(existsSync(kept)).toBe(false)
+    } finally {
+      if (saved === undefined) delete process.env.GIT_ALLOW_PROTOCOL
+      else process.env.GIT_ALLOW_PROTOCOL = saved
+    }
   })
 })
 
@@ -685,7 +688,7 @@ describe("the person's own checkout", () => {
     expect(worktreePaths(sh(api.worker.dir, 'worktree', 'list', '--porcelain'))).toContain(mine)
   })
 
-  test('when removing the run worktree fails, only its record goes, and nothing is pruned', async () => {
+  test('when git will not remove the run worktree, it stays as it is, and nothing is pruned', async () => {
     const mine = join(scratch, 'mine')
     sh(api.worker.dir, 'worktree', 'add', '-q', '--detach', mine, 'main')
     rmSync(mine, { recursive: true, force: true })
@@ -702,36 +705,35 @@ describe("the person's own checkout", () => {
       'updated',
     ])
     expect(calls.some((c) => c[0] === 'worktree' && c[1] === 'prune')).toBe(false)
+    // One `--force`, and no removal by hand.
+    expect(
+      calls
+        .filter((c) => c[0] === 'worktree' && c[1] === 'remove')
+        .every((c) => c.filter((a) => a === '--force').length === 1),
+    ).toBe(true)
     const runs = join(paths.worktrees, 'github.com', 'acme', 'api')
-    expect(readdirSync(runs)).toEqual([])
+    expect(readdirSync(runs)).toHaveLength(1)
     const listed = worktreePaths(sh(api.worker.dir, 'worktree', 'list', '--porcelain'))
     expect(listed).toContain(mine)
-    expect(listed.filter((p) => p.startsWith(runs))).toEqual([])
-    expect(sh(api.worker.dir, 'branch', '--list', 'pr-update/*')).toBe('')
+    expect(listed.filter((p) => p.startsWith(runs))).toHaveLength(1)
   })
 })
 
 describe('a located target kept worktree, when something is off', () => {
-  test('whose git directory is gone is left with its edits, even when the PR moved', async () => {
+  test('whose git directory is gone goes when the PR moves, whatever is in it (ownership contract)', async () => {
     verifyOk = false
     await update({ args: { keepFailed: true } })
-    const kept = join(keptDir(), '1')
+    const kept = keptTree()
     writeFileSync(join(kept, 'fix.txt'), 'half a fix\n')
-    const record = JSON.parse(readFileSync(`${kept}.json`, 'utf8'))
-    const gone = join(scratch, 'gone')
-    writeFileSync(`${kept}.json`, JSON.stringify({ ...record, gitDir: gone }))
+    const record = JSON.parse(readFileSync(recordFile(), 'utf8'))
+    ownerGone(kept, record, recordFile(), join(scratch, 'gone'))
     api.worker.commit('main again', { 'n.txt': 'n\n' })
     api.worker.git.push('origin', 'main')
 
-    for (const args of [{ keepFailed: true }, { keepFailed: true, retryFailed: true }]) {
-      const out = await update({ args })
-      expect(out.results).toEqual([])
-      expect(out.discarded ?? []).toEqual([])
-      expect(out.skipped.map((s) => s.reason)).toEqual([
-        `kept worktree ${kept}: its git directory ${gone} is gone; pass --discard-kept to remove the kept tree`,
-      ])
-    }
-    expect(readFileSync(join(kept, 'fix.txt'), 'utf8')).toBe('half a fix\n')
+    const out = await update({ args: { keepFailed: true } })
+    expect(out.results.map((r) => r.status)).toEqual(['failed'])
+    expect(out.discarded).toEqual([kept])
+    expect(existsSync(join(kept, 'fix.txt'))).toBe(false)
   })
 
   // Windows has no search bit for chmod to take away, and root searches any folder.
@@ -740,13 +742,13 @@ describe('a located target kept worktree, when something is off', () => {
     async () => {
       verifyOk = false
       await update({ args: { keepFailed: true } })
-      const kept = join(keptDir(), '1')
+      const kept = keptTree()
       writeFileSync(join(kept, 'fix.txt'), 'half a fix\n')
-      const record = JSON.parse(readFileSync(`${kept}.json`, 'utf8'))
+      const record = JSON.parse(readFileSync(recordFile(), 'utf8'))
       const shut = join(scratch, 'shut')
       const gitDir = join(shut, 'api.git')
       mkdirSync(gitDir, { recursive: true })
-      writeFileSync(`${kept}.json`, JSON.stringify({ ...record, gitDir }))
+      ownerGone(kept, record, recordFile(), gitDir)
       chmodSync(shut, 0o000)
       try {
         for (const args of [{ discardKept: true }, { retryFailed: true }, { keepFailed: true }]) {
@@ -756,7 +758,7 @@ describe('a located target kept worktree, when something is off', () => {
         }
         expect((await update({ args: { discardKept: true } })).keptRefused).toEqual([
           {
-            record: `${kept}.json`,
+            record: recordFile(),
             reason: "its owner's worktrees could not be listed",
           },
         ])
@@ -770,40 +772,9 @@ describe('a located target kept worktree, when something is off', () => {
       rmSync(shut, { recursive: true })
       expect((await update({ args: { discardKept: true } })).discarded).toEqual([kept])
       expect(existsSync(kept)).toBe(false)
-      expect(existsSync(`${kept}.json`)).toBe(false)
+      expect(existsSync(recordFile())).toBe(false)
     },
   )
-
-  test('a tree git cannot read counts as changed', () => {
-    const plain = join(scratch, 'plain')
-    mkdirSync(plain)
-    const record = {
-      repo: 'acme/api',
-      number: 1,
-      head: 'topic',
-      base: 'main',
-      headOid: null,
-      baseOid: null,
-      path: plain,
-      branch: 'pr-update/failed-acme-api-1',
-    }
-    expect(keptIsTouched(new Git(api.worker.dir, { runner: git }), record)).toBe(true)
-  })
-
-  test('a folder in the kept path with no record is not moved into, and is named', async () => {
-    verifyOk = false
-    const kept = join(keptDir(), '1')
-    mkdirSync(kept, { recursive: true })
-    writeFileSync(join(kept, 'work.txt'), 'mine\n')
-    const out = await update({ args: { keepFailed: true } })
-    expect(out.results[0]!.keptWorktree).toBeUndefined()
-    expect(out.results[0]!.keepError).toBe(
-      `${kept} is in the way and has no record (a run stopped part-way); ` +
-        `remove it with \`git worktree remove --force ${kept}\` in its checkout, then run again`,
-    )
-    expect(readdirSync(kept)).toEqual(['work.txt'])
-    expect(readdirSync(join(paths.worktrees, 'github.com', 'acme', 'api'))).toEqual([])
-  })
 
   test('a record whose path is not its own kept path is ignored, and deletes nothing', async () => {
     const victim = join(scratch, 'victim')
@@ -826,118 +797,48 @@ describe('a located target kept worktree, when something is off', () => {
     expect((await update({ args: { keepFailed: true } })).discarded ?? []).toEqual([])
     expect(readFileSync(join(victim, 'keep.txt'), 'utf8')).toBe('keep\n')
 
-    // The project root's place reads records the same way.
-    const place = checkoutKept(root.worker.dir)
+    // A record named for another number, or for no whole number, is not read either.
+    const place = { dir: join(scratch, 'state', 'kept-forged'), trees: join(scratch, 'trees') }
     mkdirSync(place.dir, { recursive: true })
-    writeFileSync(join(place.dir, 'acme-api-1.json'), JSON.stringify(forged))
+    writeFileSync(join(place.dir, '1.json'), JSON.stringify(forged))
     writeFileSync(
-      join(place.dir, 'acme-api-2.json'),
-      JSON.stringify({ ...forged, number: 1, path: join(place.dir, 'acme-api-1') }),
+      join(place.dir, '2.json'),
+      JSON.stringify({ ...forged, number: 1, path: join(place.dir, '1') }),
     )
     writeFileSync(
-      join(place.dir, 'acme-api-1.5.json'),
-      JSON.stringify({ ...forged, number: 1.5, path: join(place.dir, 'acme-api-1.5') }),
+      join(place.dir, '1.5.json'),
+      JSON.stringify({ ...forged, number: 1.5, path: join(place.dir, '1.5') }),
     )
-    mkdirSync(join(place.dir, 'acme-api-1'))
-    mkdirSync(join(place.dir, 'acme-api-1.5'))
+    mkdirSync(join(place.dir, '1'))
+    mkdirSync(join(place.dir, '1.5'))
     expect(listKept(place)).toEqual([])
     expect(findKept(place, 'acme/api', 1)).toBeNull()
   })
-})
 
-describe('keepWorktree, telling filesystems apart', () => {
-  function runWorktree(repo = 'acme/api'): { run: string; place: KeptPlace; tip: string } {
-    const run = join(scratch, 'cache', `${process.pid}.1`)
-    sh(api.worker.dir, 'worktree', 'add', '-q', '--detach', run, 'origin/topic')
-    writeFileSync(join(run, 'build.out'), 'built\n')
-    const place =
-      repo === 'acme/api'
-        ? { dir: join(scratch, 'state', 'kept'), naming: 'repository' as const }
-        : checkoutKept(api.worker.dir)
-    return { run, place, tip: sh(run, 'rev-parse', 'HEAD') }
-  }
-  const target = (repo: string) => ({
-    repo,
-    number: 1,
-    head: 'topic',
-    base: 'main',
-    headOid: null,
-    baseOid: null,
-  })
-  const exdev = (): never => {
-    throw Object.assign(new Error('EXDEV: cross-device link not permitted'), { code: 'EXDEV' })
-  }
-
-  test('a probe rename that fails with EXDEV makes the tree with worktree add, never a move', () => {
-    const { run, place, tip } = runWorktree()
-    const calls: string[][] = []
-    const logged: CommandRunner = {
-      run: (argv, opts) => {
-        calls.push([...argv])
-        return git.run(argv, opts)
-      },
+  test("a record naming another run's worktree, on its scratch branch, is refused, and removes nothing (keep in place)", async () => {
+    const runs = join(paths.worktrees, 'github.com', 'acme', 'api')
+    const other = join(runs, `${process.pid}.1`)
+    mkdirSync(runs, { recursive: true })
+    sh(api.worker.dir, 'worktree', 'add', '-q', '-b', 'pr-update/scratch-x', other, 'origin/main')
+    mkdirSync(keptDir(), { recursive: true })
+    const forged = {
+      repo: 'acme/api',
+      number: 1,
+      head: 'topic',
+      base: 'main',
+      headOid: null,
+      baseOid: null,
+      path: other,
+      branch: 'pr-update/failed-acme-api-1',
     }
-    const record = keepWorktree(
-      new Git(api.worker.dir, { runner: logged }),
-      place,
-      run,
-      target('acme/api'),
-      'log\n',
-      { rename: exdev },
-    )
-    expect(calls.some((c) => c[0] === 'worktree' && c[1] === 'move')).toBe(false)
-    expect(sh(record.path, 'rev-parse', 'HEAD')).toBe(tip)
-    expect(existsSync(join(record.path, 'build.out'))).toBe(false)
-    expect(existsSync(run)).toBe(false)
-    // The probe leaves nothing behind.
-    for (const dir of [join(scratch, 'cache'), place.dir]) {
-      expect(readdirSync(dir).filter((n) => n.startsWith('.pr-update-probe-'))).toEqual([])
-    }
-  })
-
-  test('on one filesystem the move runs in the C locale, and keeps untracked output', () => {
-    const { run, place } = runWorktree()
-    let moveEnv: Record<string, string | undefined> | undefined
-    const logged: CommandRunner = {
-      run: (argv, opts) => {
-        if (argv[0] === 'worktree' && argv[1] === 'move') moveEnv = opts?.env
-        return git.run(argv, opts)
-      },
-    }
-    const record = keepWorktree(
-      new Git(api.worker.dir, { runner: logged }),
-      place,
-      run,
-      target('acme/api'),
-      undefined,
-    )
-    expect(moveEnv?.['LC_ALL']).toBe('C')
-    expect(readFileSync(join(record.path, 'build.out'), 'utf8')).toBe('built\n')
-  })
-
-  test('a repository named exdev whose move fails for another reason is not retried', () => {
-    const { run, place } = runWorktree('acme/exdev')
-    const refusing: CommandRunner = {
-      run: (argv, opts) =>
-        argv[0] === 'worktree' && argv[1] === 'move'
-          ? {
-              exitCode: 128,
-              stdout: '',
-              stderr: `fatal: failed to move '${argv[2]}' to '${argv[3]}': Permission denied\n`,
-            }
-          : git.run(argv, opts),
-    }
-    expect(() =>
-      keepWorktree(
-        new Git(api.worker.dir, { runner: refusing }),
-        place,
-        run,
-        target('acme/exdev'),
-        undefined,
-      ),
-    ).toThrow(/Permission denied/)
-    expect(existsSync(join(place.dir, 'acme-exdev-1'))).toBe(false)
-    expect(existsSync(join(run, 'build.out'))).toBe(true)
+    writeFileSync(recordFile(), JSON.stringify(forged))
+    const out = await update({ args: { discardKept: true } })
+    expect(out.discarded ?? []).toEqual([])
+    expect(out.keptRefused).toEqual([
+      { record: recordFile(), reason: `${other} is a run's worktree, on its scratch branch` },
+    ])
+    expect(existsSync(join(other, '.git'))).toBe(true)
+    sh(api.worker.dir, 'worktree', 'remove', '--force', other)
   })
 })
 
@@ -1151,7 +1052,8 @@ describe("a run started with GIT_DIR set to the project root's .git", () => {
     // Printed by git, which writes `C:/x` on Windows.
     const top = normalize(printed!)
     expect(gitDir).toBe('unset')
-    expect(top.startsWith(join(root.worker.dir, '.pr-update'))).toBe(true)
+    expect(top.startsWith(join(paths.worktrees, 'github.com', 'acme', 'root'))).toBe(true)
+    expect(existsSync(join(root.worker.dir, '.pr-update'))).toBe(false)
     expect(rootState()).toEqual(before)
   })
 
@@ -1331,7 +1233,7 @@ describe("errors from a target's own record and lease, during the run", () => {
     verifyOk = false
     const keep = { args: { keepFailed: true } }
     await update({ ...keep, ports: { targetHome: homeWith({}) } })
-    const kept = join(paths.kept, 'api', '1')
+    const kept = JSON.parse(readFileSync(join(paths.kept, 'api', '1.json'), 'utf8')).path as string
     // Its only PR is skipped for its kept tree, but its store is still pruned, and that fails.
     const pruning: AttemptStore = {
       get: () => null,
@@ -1393,16 +1295,7 @@ describe('whether a run made a worktree under the cache (second review)', () => 
     verifyOk = false
     await update({ args: { keepFailed: true } })
     const out = await update({})
-    expect(out.skipped.map((s) => s.reason)).toEqual([
-      `failed worktree kept at ${join(keptDir(), '1')}`,
-    ])
-    expect(out.madeTargetWorktree).toBeUndefined()
-    expect(touchedCache(out)).toBe(false)
-  })
-
-  test('without targetHome a located target works in its own .pr-update/, not the cache', async () => {
-    const out = await update({ ports: { targetHome: undefined } })
-    expect(out.results.map((r) => r.status)).toEqual(['updated'])
+    expect(out.skipped.map((s) => s.reason)).toEqual([`failed worktree kept at ${keptTree()}`])
     expect(out.madeTargetWorktree).toBeUndefined()
     expect(touchedCache(out)).toBe(false)
   })
@@ -1414,14 +1307,14 @@ describe.skipIf(process.platform === 'win32')(
     test('is not discarded, by --discard-kept or because its PR moved', async () => {
       verifyOk = false
       await update({ args: { keepFailed: true } })
-      const kept = join(keptDir(), '1')
-      const owner = join(paths.kept, 'github.com', 'acme')
+      const kept = keptTree()
+      const owner = join(paths.worktrees, 'github.com', 'acme')
       chmodSync(owner, 0o777)
-      const why = `${owner} can be written by anyone; run \`chmod -R go-w ${paths.kept}\``
+      const why = `${owner} can be written by anyone; run \`chmod -R go-w ${paths.worktrees}\``
       try {
         const out = await update({ args: { discardKept: true } })
         expect(out.discarded ?? []).toEqual([])
-        expect(out.keptRefused).toEqual([{ record: `${kept}.json`, reason: why }])
+        expect(out.keptRefused).toEqual([{ record: recordFile(), reason: why }])
         expect(existsSync(kept)).toBe(true)
         const retried = await update({ args: { retryFailed: true } })
         expect(retried.results).toEqual([])
@@ -1466,11 +1359,11 @@ describe.skipIf(process.platform === 'win32')(
         [1, 'updated'],
         [2, 'failed'],
       ])
-      const kept = join(keptDir(), '2')
+      const kept = keptTree(2)
       const builtFirst = sh(kept, 'rev-parse', 'HEAD')
       api.worker.commit('main moves again', { 'more.txt': 'x\n' })
       sh(api.worker.dir, 'push', '-q', 'origin', 'main')
-      const owner = join(paths.kept, 'github.com', 'acme')
+      const owner = join(paths.worktrees, 'github.com', 'acme')
       chmodSync(owner, 0o777)
       try {
         const second = await run()
@@ -1486,52 +1379,81 @@ describe.skipIf(process.platform === 'win32')(
 )
 
 describe('a kept tree, round 2', () => {
-  test('--retry-failed leaves a kept tree with local changes, as only --discard-kept removes it', async () => {
+  test('--retry-failed discards a kept tree, whatever is in it (ownership contract)', async () => {
     verifyOk = false
     await update({ args: { keepFailed: true } })
-    const kept = join(keptDir(), '1')
+    const kept = keptTree()
     writeFileSync(join(kept, 'fix.txt'), 'half a fix\n')
     const out = await update({ args: { keepFailed: true, retryFailed: true } })
-    expect(out.results).toEqual([])
-    expect(out.skipped.map((s) => s.reason)).toEqual([
-      `kept worktree ${kept} has local changes; push them or pass --discard-kept`,
-    ])
-    expect(readFileSync(join(kept, 'fix.txt'), 'utf8')).toBe('half a fix\n')
-    expect((await update({ args: { discardKept: true } })).discarded).toEqual([kept])
+    expect(out.results.map((r) => r.status)).toEqual(['failed'])
+    expect(out.discarded).toEqual([kept])
+    expect(existsSync(join(kept, 'fix.txt'))).toBe(false)
   })
 
   test('a record whose path names its folder another way is still its own', async () => {
     verifyOk = false
     await update({ args: { keepFailed: true } })
-    const kept = join(keptDir(), '1')
-    const link = join(scratch, 'kept-link')
-    symlinkSync(keptDir(), link)
-    const record = JSON.parse(readFileSync(`${kept}.json`, 'utf8'))
-    writeFileSync(`${kept}.json`, JSON.stringify({ ...record, path: join(link, '1') }))
+    const kept = keptTree()
+    const link = join(scratch, 'trees-link')
+    symlinkSync(dirname(kept), link)
+    const linked = join(link, basename(kept))
+    const record = JSON.parse(readFileSync(recordFile(), 'utf8'))
+    writeFileSync(recordFile(), JSON.stringify({ ...record, path: linked }))
     expect((await update()).skipped.map((s) => s.reason)).toEqual([
-      `failed worktree kept at ${join(link, '1')}`,
+      `failed worktree kept at ${linked}`,
     ])
-    // The right name in another folder is not.
-    const elsewhere = join(scratch, 'elsewhere', '1')
+    // The same name in another folder is not.
+    const elsewhere = join(scratch, 'elsewhere', basename(kept))
     mkdirSync(elsewhere, { recursive: true })
-    writeFileSync(`${kept}.json`, JSON.stringify({ ...record, path: elsewhere }))
+    writeFileSync(recordFile(), JSON.stringify({ ...record, path: elsewhere }))
     expect((await update({ args: { discardKept: true } })).discarded ?? []).toEqual([])
     expect(existsSync(elsewhere)).toBe(true)
   })
+})
 
-  test("a probe left by a killed run is skipped by the run's own walks and left alone", async () => {
-    const probes = [
-      join(paths.worktrees, 'github.com', 'acme', 'api', '.pr-update-probe-abc'),
-      join(keptDir(), '.pr-update-probe-abc'),
-    ]
-    for (const p of probes) mkdirSync(p, { recursive: true })
-    writeFileSync(join(keptDir(), '.pr-update-probe-abc.json'), '{}')
-    verifyOk = false
-    const kept = join(keptDir(), '1')
-    expect((await update({ args: { keepFailed: true } })).results[0]!.keptWorktree).toBe(kept)
-    const place = { dir: keptDir(), naming: 'repository' as const, gitDir: ownGitDir() }
-    expect(listKept(place).map((r) => r.path)).toEqual([kept])
-    expect((await update({ args: { discardKept: true } })).discarded).toEqual([kept])
-    for (const p of probes) expect(existsSync(p)).toBe(true)
+describe("git's rerere, by where a target is served from", () => {
+  /** acme/api's `topic` and `main` both change `shared.txt`: a conflict the resolver claims. */
+  function conflicting(): void {
+    const w = api.worker
+    w.git.checkout('topic')
+    w.commit('topic changes shared', { 'shared.txt': 'topic\n' })
+    w.git.push('origin', 'topic')
+    w.git.checkout('main')
+    w.commit('main changes shared', { 'shared.txt': 'main\n' })
+    w.git.push('origin', 'main')
+  }
+  const cfg = { resolvers: [{ paths: ['shared.txt'], run: 'regen' }] }
+  const rrCache = (): string => join(api.worker.dir, '.git', 'rr-cache')
+
+  test('a located checkout: nothing is recorded, and no rr-cache is made', async () => {
+    conflicting()
+    const out = await update({ cfg })
+    expect(out.results.map((r) => [r.status, r.pushed])).toEqual([['updated', true]])
+    expect(existsSync(rrCache())).toBe(false)
+  })
+
+  test('a managed clone: the resolution is recorded for the run, and gone at its end', async () => {
+    conflicting()
+    let during: string[] = []
+    const out = await update({
+      cfg: { ...cfg, verify: 'check' },
+      source: 'clone',
+      ports: {
+        runVerb: () => {
+          during = existsSync(rrCache()) ? readdirSync(rrCache()) : []
+          return { exitCode: 0, stdout: '', stderr: '' }
+        },
+      },
+    })
+    expect(out.results.map((r) => [r.status, r.pushed])).toEqual([['updated', true]])
+    expect(during).toHaveLength(1)
+    expect(existsSync(rrCache())).toBe(false)
+  })
+
+  test('a managed clone with pr_update.rerere: false: nothing is recorded', async () => {
+    conflicting()
+    const out = await update({ cfg: { ...cfg, rerere: false }, source: 'clone' })
+    expect(out.results.map((r) => [r.status, r.pushed])).toEqual([['updated', true]])
+    expect(existsSync(rrCache())).toBe(false)
   })
 })
