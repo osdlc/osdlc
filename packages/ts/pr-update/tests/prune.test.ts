@@ -593,6 +593,54 @@ describe('managed clones', () => {
     expect(existsSync(recordAt(kept))).toBe(true)
   })
 
+  test('a record naming a live run worktree does not make it a kept tree: --discard-kept leaves it, and its clone (keep in place)', () => {
+    const clone = makeClone('acme/api', 400)
+    const live = runWorktree(clone, 'acme/api', liveRun())
+    const dir = join(paths.kept, 'github.com', 'acme', 'api')
+    mkdirSync(dir, { recursive: true })
+    const forged = {
+      repo: 'acme/api',
+      number: 7,
+      head: 'topic',
+      base: 'main',
+      headOid: null,
+      baseOid: null,
+      path: live,
+      branch: 'pr-update/failed-acme-api-7',
+      gitDir: realpathSync.native(clone),
+    }
+    writeFileSync(join(dir, '7.json'), JSON.stringify(forged))
+
+    for (const dryRun of [true, false]) {
+      const r = prune({ allClones: true, discardKept: true, dryRun })
+      expect(r.removed).toEqual([])
+      expect(r.skipped.map((e) => [e.kind, e.path, e.skip])).toEqual([['clone', clone, 'in-use']])
+    }
+    expect(listed(clone)).toEqual([live])
+  })
+
+  test('a record naming a dead run worktree on its scratch branch does not keep it: a plain prune removes it (keep in place)', () => {
+    const clone = makeClone('acme/api', 0)
+    const dead = runWorktree(clone, 'acme/api')
+    const dir = join(paths.kept, 'github.com', 'acme', 'api')
+    mkdirSync(dir, { recursive: true })
+    const forged = {
+      repo: 'acme/api',
+      number: 7,
+      head: 'topic',
+      base: 'main',
+      headOid: null,
+      baseOid: null,
+      path: dead,
+      branch: 'pr-update/failed-acme-api-7',
+      gitDir: realpathSync.native(clone),
+    }
+    writeFileSync(join(dir, '7.json'), JSON.stringify(forged))
+
+    expect(prune().removed.map((e) => [e.kind, e.path])).toEqual([['worktree', dead]])
+    expect(listed(clone)).toEqual([])
+  })
+
   test('a worktree on a kept branch with no record (a keep that stopped part-way) is a dead run worktree: it goes, with its branch', () => {
     const clone = makeClone('acme/api', 0)
     const path = keptPath('acme/api', 9)

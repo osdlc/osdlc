@@ -86,7 +86,7 @@ import {
   loadMirrorSetting,
 } from './mirror.ts'
 import { realOr } from './real-path.ts'
-import { scratchBranch, targetGitOptions } from './update/execute.ts'
+import { WORK_BRANCH, scratchBranch, targetGitOptions } from './update/execute.ts'
 import { dropKeptRecord, listKept, type KeptPlace } from './update/kept.ts'
 import { ownedUnder, removeWorktree } from './update/registrations.ts'
 
@@ -481,6 +481,11 @@ function runWorktrees(
     }
   }
   return out
+}
+
+/** Whether `branch` is a run's scratch branch. */
+function isScratch(branch: string | null): boolean {
+  return branch !== null && branch.startsWith(`${WORK_BRANCH}-`)
 }
 
 /**
@@ -895,12 +900,27 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
     if (found instanceof Error) throw found
     return found
   }
+  /**
+   * Whether the owner of the worktree at `path` lists it on a scratch branch: then it is a run's,
+   * and a record that names it is not its own. One whose owner cannot be read is not: it stays.
+   */
+  const listedOnScratch = (path: string): boolean => {
+    try {
+      const owner = worktreeOwner(path)
+      if (owner === null || isGone(owner.common)) return false
+      return isScratch(entryOf(gitAt(owner.common, opts.git).worktrees(), path)?.branch ?? null)
+    } catch {
+      return false
+    }
+  }
   for (const w of runWorktrees(at.worktrees, alive, unreadable('worktree'))) {
     if (w.running) continue
     const m = measure(w.path)
     const entry: PruneEntry = { kind: 'worktree', path: w.path, repo: w.repo, bytes: m.bytes }
     try {
-      if (keptTrees(w.repo).has(realOr(w.path))) continue
+      // A tree a record names is kept, unless git lists it on a scratch branch: a keep puts its
+      // tree on the PR's branch before it writes the record, so that record is not its own.
+      if (keptTrees(w.repo).has(realOr(w.path)) && !listedOnScratch(w.path)) continue
       const check = checkRunWorktree(m)
       if (check.left !== null) {
         skip(entry, check.left)
@@ -1043,8 +1063,9 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
     const dead: (Measured & { branch: string | null })[] = []
     for (const w of worktrees) {
       if (w.bare) continue
-      // A run worktree a record names is a kept tree, whatever its run.
-      if (recordsOf.has(realOr(w.path))) {
+      // A run worktree a record names is a kept tree, whatever its run, unless it is on a scratch
+      // branch (see `onScratch`).
+      if (recordsOf.has(realOr(w.path)) && !isScratch(w.branch)) {
         kept.push(w.path)
         continue
       }

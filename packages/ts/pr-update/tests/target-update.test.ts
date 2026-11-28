@@ -783,6 +783,32 @@ describe('a located target kept worktree, when something is off', () => {
     expect(listKept(place)).toEqual([])
     expect(findKept(place, 'acme/api', 1)).toBeNull()
   })
+
+  test("a record naming another run's worktree, on its scratch branch, is refused, and removes nothing (keep in place)", async () => {
+    const runs = join(paths.worktrees, 'github.com', 'acme', 'api')
+    const other = join(runs, `${process.pid}.1`)
+    mkdirSync(runs, { recursive: true })
+    sh(api.worker.dir, 'worktree', 'add', '-q', '-b', 'pr-update/scratch-x', other, 'origin/main')
+    mkdirSync(keptDir(), { recursive: true })
+    const forged = {
+      repo: 'acme/api',
+      number: 1,
+      head: 'topic',
+      base: 'main',
+      headOid: null,
+      baseOid: null,
+      path: other,
+      branch: 'pr-update/failed-acme-api-1',
+    }
+    writeFileSync(recordFile(), JSON.stringify(forged))
+    const out = await update({ args: { discardKept: true } })
+    expect(out.discarded ?? []).toEqual([])
+    expect(out.keptRefused).toEqual([
+      { record: recordFile(), reason: `${other} is a run's worktree, on its scratch branch` },
+    ])
+    expect(existsSync(join(other, '.git'))).toBe(true)
+    sh(api.worker.dir, 'worktree', 'remove', '--force', other)
+  })
 })
 
 describe('the attempt record of each target', () => {

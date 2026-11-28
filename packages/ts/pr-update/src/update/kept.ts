@@ -306,10 +306,12 @@ function keptOwner(git: Git, place: KeptPlace, record: KeptRecord): Git | null {
 
 /**
  * What `git worktree list` in the owner of `record`'s tree says of it:
- * - `kept`: listed at its path, on whatever branch, or its owner is gone, so there is nothing to
- *   ask and its place alone was checked (`readRecord`);
- * - `forged`: not listed at its path, or the list could not be read (`unlisted`). The record does
- *   not name a tree pr-update kept, or nothing says it does, and is refused.
+ * - `kept`: listed at its path, on any branch but a scratch one, or its owner is gone, so there is
+ *   nothing to ask and its place alone was checked (`readRecord`);
+ * - `forged`: not listed at its path, listed on a scratch branch (a run's worktree, which a
+ *   record can name now that kept trees stay among them), or the list could not be read
+ *   (`unlisted`). The record does not name a tree pr-update kept, or nothing says it does, and is
+ *   refused.
  *
  * Asked before anything runs git in the tree itself, since a folder that is not a worktree can
  * hold a `.git` file that points anywhere. A path is matched as given or by its real path; a
@@ -329,6 +331,11 @@ export function keptTreeCheck(git: Git, place: KeptPlace, record: KeptRecord): K
   const entry = listed.value.find((w) => w.path === record.path || realOr(w.path) === path)
   if (entry === undefined) {
     return { kind: 'forged', why: `${record.path} is not a worktree of its checkout` }
+  }
+  // A keep puts its tree on the PR's branch before it writes the record, so a record naming a
+  // tree on a scratch branch (`WORK_BRANCH` in execute.ts) is not its own: that is a run's.
+  if (entry.branch?.startsWith('pr-update/scratch-') === true) {
+    return { kind: 'forged', why: `${record.path} is a run's worktree, on its scratch branch` }
   }
   return { kind: 'kept' }
 }
