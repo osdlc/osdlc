@@ -20,7 +20,7 @@ import type { Git } from '@osdlc/typed-git'
 export interface WorktreeRecords {
   /** Whether `path` is a worktree this run may remove. */
   owns(path: string): boolean
-  /** Tidy git's records after the run removed a worktree, or after a keep moved one away. */
+  /** Tidy git's records after the run removed a worktree. */
   forget(git: Git): void
 }
 
