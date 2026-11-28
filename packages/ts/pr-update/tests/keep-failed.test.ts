@@ -346,6 +346,41 @@ describe('update --keep-failed', () => {
     expect(out.results[1]!.keptWorktree).toBeUndefined()
   })
 
+  test('a run worktree git will not remove at the end of the run is reported, and the PR keeps its outcome (review round 2)', async () => {
+    let at = ''
+    const out = await runUpdate(
+      { ...ARGS },
+      {
+        projectRoot: fx.worker.dir,
+        dryRun: false,
+        git,
+        gh,
+        cfg: {
+          ...prUpdateConfigSchema.parse({}),
+          verify: 'check',
+          max_failed_attempts: 0,
+        } as PrUpdateConfig,
+        ports: {
+          locate: () => fx.worker.dir,
+          // Someone locks the run worktree while verify runs.
+          runVerb: (_verb, cwd) => {
+            at = cwd
+            real.run(['worktree', 'lock', cwd], { cwd: fx.worker.dir })
+            return { exitCode: 0, stdout: '', stderr: '' }
+          },
+          resolveVerifyVerbs: async () => ['check'],
+          targetHome: homeUnder(home),
+        },
+      },
+    )
+    expect(out.results.map((r) => r.status)).toEqual(['updated'])
+    expect(out.results[0]!.worktreeLeft).toContain(`${at} stays: git would not remove it`)
+    expect(renderUpdateText(out)).toContain(
+      `    worktree left: ${at} stays: git would not remove it`,
+    )
+    expect(existsSync(at)).toBe(true)
+  })
+
   test('when the next run worktree cannot be added after a keep, the kept tree and its record stay, and the run stops (review round 2)', async () => {
     fx.worker.git.checkout('main', { branch: 'second' })
     fx.worker.commit('second work', { 'second.txt': 's\n' })

@@ -244,10 +244,15 @@ export type UpdateOutcome =
  */
 export interface UpdateResult extends UpdateTarget {
   outcome: UpdateOutcome
-  /** Set when `keepFailed` moved this PR's worktree aside: its path. */
+  /** Set when `keepFailed` kept this PR's worktree where it ran: its path. */
   keptWorktree?: string
   /** Set when `keepFailed` could not keep it: why. The outcome is unchanged. */
   keepError?: string
+  /**
+   * Set on the last PR a run worktree served when git would not remove that worktree at the end
+   * of the run (a locked one, say): why. The PR's own outcome stands.
+   */
+  worktreeLeft?: string
   /**
    * Set when the target's own attempt record could not be read or written for this PR: the
    * error. The outcome is unchanged, and the target's later PRs in the run are skipped.
@@ -1574,7 +1579,12 @@ export async function updateAll(
     // others run. A stray worktree is worse than a stray branch, and both are
     // worse than an exception here hiding the real one.
     const remove = (): void => {
-      removeWorktree(git, root, records)
+      const left = removeWorktree(git, root, records)
+      if (left !== undefined) {
+        const last = results.at(-1)
+        if (last !== undefined) last.worktreeLeft = left
+        return
+      }
       git.try.deleteBranch(scratchBranch(root), { force: true })
     }
     // When the run's last worktree was kept, nothing of the run's is left to remove.

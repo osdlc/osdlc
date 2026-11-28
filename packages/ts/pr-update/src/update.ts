@@ -392,6 +392,12 @@ export const result = z.object({
     .describe(
       "Present when `keepFailed` could not keep the worktree (the PR's old kept tree could not be removed, or another run held the clone's lock, say): why. When the tree was kept but the next run worktree could not be added, it says so, and the run's other PRs in that repository were not updated.",
     ),
+  worktreeLeft: z
+    .string()
+    .optional()
+    .describe(
+      'Present on the last PR a run worktree served when git would not remove that worktree at the end of the run (a locked one, say): why. The PR’s own status stands; `mirror prune` removes the worktree once git allows it.',
+    ),
   recordError: z
     .string()
     .optional()
@@ -499,6 +505,7 @@ export function toResult(r: UpdateResult, localCheckout?: LocalCheckout): z.infe
     ...(r.keptWorktree === undefined ? {} : { keptWorktree: r.keptWorktree }),
     ...(r.keepError === undefined ? {} : { keepError: r.keepError }),
     ...(r.recordError === undefined ? {} : { recordError: r.recordError }),
+    ...(r.worktreeLeft === undefined ? {} : { worktreeLeft: r.worktreeLeft }),
     ...(r.onto === undefined ? {} : { restackedOnto: r.onto.parent }),
   }
 }
@@ -1319,6 +1326,7 @@ export function renderUpdateText(out: UpdateOutput): string {
     if (r.keptWorktree !== undefined) lines.push(`    kept: ${r.keptWorktree}`)
     if (r.keepError !== undefined) lines.push(`    could not keep the worktree: ${r.keepError}`)
     if (r.recordError !== undefined) lines.push(`    record not saved: ${r.recordError}`)
+    if (r.worktreeLeft !== undefined) lines.push(`    worktree left: ${r.worktreeLeft}`)
     if (r.localCheckout !== undefined) {
       lines.push(
         `    checkout: ${r.localCheckout.updated ? 'moved' : 'left'} — ${r.localCheckout.detail}`,
