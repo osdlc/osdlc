@@ -23,6 +23,7 @@ import {
   type VendorDirs,
 } from '@osdlc/cli-tool'
 
+import { filesIn } from './descriptor/load.ts'
 import { OLD_DIRS } from './old-name.ts'
 import { settingsIssues } from './settings.ts'
 import type { PluginDefinition } from './types.ts'
@@ -181,6 +182,42 @@ export function unreadConfigs(
     }
   }
   return [...found]
+}
+
+/**
+ * The descriptor folders under the old name ({@link OLD_DIRS}), in the xdg and
+ * the native folders, that hold a descriptor file and are not `folder`, the
+ * one read now. None is ever read. Nothing here throws, as in
+ * {@link unreadConfigs}: a folder that cannot be placed or read holds none.
+ *
+ * @param opts - A platform and home to use instead of this machine's, for tests.
+ */
+export function unreadDescriptorFolders(
+  env: Record<string, string | undefined>,
+  folder: string,
+  opts: Pick<ResolveOptions, 'platform' | 'home'> = {},
+): string[] {
+  const found = new Set<string>()
+  for (const convention of ['xdg', 'native'] as const) {
+    try {
+      const at = descriptorsDir(
+        dirsUnder(env, { convention, conventionFromEnv: false, ...opts }, OLD_DIRS),
+      )
+      if (at !== folder && filesIn(at).length > 0) found.add(at)
+    } catch {
+      // Folders that cannot be placed or read hold no descriptors.
+    }
+  }
+  return [...found]
+}
+
+/** Whether `folder` holds a descriptor file; one that cannot be read holds none. */
+export function holdsDescriptors(folder: string): boolean {
+  try {
+    return filesIn(folder).length > 0
+  } catch {
+    return false
+  }
 }
 
 /** A config file, or a folder variable, that cannot be used; the CLI exits 2 for it. */

@@ -120,7 +120,7 @@ function isFile(path: string, e: Dirent): boolean {
  *
  * @throws DescriptorLoadError for a folder that can't be read
  */
-function filesIn(dir: string): string[] {
+export function filesIn(dir: string): string[] {
   let entries: Dirent[]
   try {
     entries = readdirSync(dir, { withFileTypes: true })

@@ -1185,6 +1185,13 @@ nothing at the new path and no `--config`, `clean` refuses with exit 2
 (`clean --dry-run` only warns), since its `ignore` list would not apply: move
 the file to the new path.
 
+User descriptors in a `descriptors/` folder under the old name, such as
+`~/.config/host-cleaner/descriptors/`, are not read either. While such a
+folder holds one, every command warns, and while the new `descriptors/` folder
+holds none, `clean` refuses with exit 2, with `--config` too
+(`clean --dry-run` only warns), since a descriptor that replaces a shipped one
+would not apply: move the descriptors to the new folder.
+
 The `HOST_CLEANER_*` variables are not read either. While one is set, every
 command warns, and `clean` refuses with exit 2, with `--config` too
 (`clean --dry-run` only warns), until it is renamed to its

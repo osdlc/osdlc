@@ -34,9 +34,11 @@ import {
   descriptorsDir,
   hostConfigDir,
   hostDirs,
+  holdsDescriptors,
   hostHome,
   readConfig,
   unreadConfigs,
+  unreadDescriptorFolders,
   type Config,
   type HostDirs,
 } from './config.ts'
@@ -484,9 +486,10 @@ const NO_HOME = `no home directory to place the folders in: set ${process.platfo
 /**
  * The config: `--config`, which must exist, else `config.json` in the config
  * folder if present. Its warnings name each config that goes unread (see
- * {@link unreadConfigs}), such as one under the old name, and each variable of
- * the old name that is set. Its `plugins` are not checked here:
- * {@link findRun} checks them against the run's plugins.
+ * {@link unreadConfigs}), such as one under the old name, each descriptor
+ * folder of the old name that holds descriptors, and each variable of the old
+ * name that is set. Its `plugins` are not checked here: {@link findRun} checks
+ * them against the run's plugins.
  */
 function loadConfig(
   v: { config?: string | undefined },
@@ -494,6 +497,13 @@ function loadConfig(
   configDir: string | undefined,
 ): { file: string; fileExists: boolean; config: Config; warnings: string[] } {
   const old = oldVariableWarnings(oldVariables(ctx.env))
+  // The user descriptors come from the config folder with --config too (see sourcesFor).
+  if (configDir !== undefined) {
+    const now = descriptorsDir({ config: configDir })
+    for (const d of unreadDescriptorFolders(ctx.env, now)) {
+      old.push(`${d} is not read; descriptors are now read from ${now}`)
+    }
+  }
   if (v.config !== undefined) {
     const file = resolve(ctx.cwd, v.config)
     return { file, ...readConfig(file, { required: true, plugins: [] }), warnings: old }
@@ -508,9 +518,11 @@ function loadConfig(
 
 /**
  * Refuses a clean that would run without what the person set up (see
- * {@link loadConfig}): while a variable of the old name is set, or while the
- * only config is one that is not read. Its ignore list would not apply, and a
- * delete on the defaults could take what it kept.
+ * {@link loadConfig}): while a variable of the old name is set, while the only
+ * config is one that is not read, or while the only user descriptors are in a
+ * folder of the old name. Its ignore list, or a descriptor that replaces a
+ * shipped one, would not apply, and a delete on the defaults could take what
+ * it kept.
  *
  * @throws ConfigError when that is so
  */
@@ -521,14 +533,24 @@ function refuseUnread(
 ): void {
   const old = oldVariables(ctx.env)
   if (old.length > 0) throw new ConfigError(oldVariablesRefusal(old))
-  if (v.config !== undefined || dirs === undefined) return
+  if (dirs === undefined) return
   const file = configFile(dirs)
-  const unread = unreadConfigs(ctx.env, file)
-  if (unread.length === 0 || existsSync(file)) return
-  const one = unread.length === 1
-  throw new ConfigError(
-    `${unread.join(' and ')} ${one ? 'is' : 'are'} not read, and there is no config at ${file}: move ${one ? 'the file' : 'one of them'} there, or pass --config; clean deletes nothing until then`,
-  )
+  const unread = v.config === undefined ? unreadConfigs(ctx.env, file) : []
+  if (unread.length > 0 && !existsSync(file)) {
+    const one = unread.length === 1
+    throw new ConfigError(
+      `${unread.join(' and ')} ${one ? 'is' : 'are'} not read, and there is no config at ${file}: move ${one ? 'the file' : 'one of them'} there, or pass --config; clean deletes nothing until then`,
+    )
+  }
+  // With --config too: the user descriptors still come from the config folder.
+  const now = descriptorsDir(dirs)
+  const stale = unreadDescriptorFolders(ctx.env, now)
+  if (stale.length > 0 && !holdsDescriptors(now)) {
+    const one = stale.length === 1
+    throw new ConfigError(
+      `${stale.join(' and ')} ${one ? 'is' : 'are'} not read, and there are no descriptors in ${now}: move ${one ? 'its descriptors' : 'the descriptors of one of them'} there; clean deletes nothing until then`,
+    )
+  }
 }
 
 /** Which plugins a run names: `--plugin` and `--skip-plugin`. */

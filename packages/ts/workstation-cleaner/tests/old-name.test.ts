@@ -13,7 +13,13 @@ import { dirname, join } from 'node:path'
 import { captureContext } from '@osdlc/cli-tool'
 
 import { main, type MainDeps } from '../src/cli.ts'
-import { configFile, hostDirs, unreadConfigs } from '../src/config.ts'
+import {
+  configFile,
+  descriptorsDir,
+  hostDirs,
+  unreadConfigs,
+  unreadDescriptorFolders,
+} from '../src/config.ts'
 import { oldVariables } from '../src/old-name.ts'
 import type { Plugin } from '../src/index.ts'
 
@@ -168,6 +174,77 @@ describe('a config under the old name', () => {
   )
 })
 
+describe('descriptors under the old name', () => {
+  test.skipIf(process.platform === 'win32')(
+    'are found in the xdg folders and the macOS ones, when the folder holds one',
+    () => {
+      const home = tempDir()
+      const mac = { platform: 'darwin', home }
+      const now = descriptorsDir(hostDirs({}, mac))
+      const xdg = join(home, '.config', 'host-cleaner', 'descriptors')
+      const native = join(home, 'Library', 'Application Support', 'host-cleaner', 'descriptors')
+      mkdirSync(xdg, { recursive: true })
+      write(join(native, 'notes.txt'), '')
+      expect(unreadDescriptorFolders({}, now, mac)).toEqual([])
+      write(join(xdg, 'npm.yaml'), '')
+      write(join(native, 'pip.yml'), '')
+      expect(unreadDescriptorFolders({}, now, mac)).toEqual([xdg, native])
+      expect(unreadDescriptorFolders({}, xdg, mac)).toEqual([native])
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'every command warns about them, with --config too',
+    async () => {
+      const { home, cwd, env, named } = setup()
+      const old = join(home, '.config', 'host-cleaner', 'descriptors')
+      write(join(old, 'npm.yaml'), '')
+      const now = descriptorsDir(hostDirs(env))
+      for (const args of warnOnly(cwd)) {
+        for (const extra of [[], ['--config', named]]) {
+          const r = await run([...args, ...extra], cwd, env, { plugins: [fake()] })
+          expect(r.code, args.join(' ')).toBe(0)
+          expect(r.err, args.join(' ')).toBe(
+            `workstation-cleaner ${args[0]}: ${old} is not read; descriptors are now read from ${now}\n`,
+          )
+        }
+      }
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'while they are the only ones, a clean that deletes refuses with exit 2, with --config too',
+    async () => {
+      const { home, cwd, env, named } = setup()
+      const file = configFile(hostDirs(env))
+      write(file, '{}')
+      const old = join(home, '.config', 'host-cleaner', 'descriptors')
+      write(join(old, 'npm.yaml'), '')
+      const now = descriptorsDir(hostDirs(env))
+      for (const args of [
+        ['clean', '--yes', cwd],
+        ['clean', '--yes', '--config', named, cwd],
+        ['clean', '--plan', join(home, 'p.json'), '--yes'],
+      ]) {
+        const plugin = fake()
+        const r = await run(args, cwd, env, { plugins: [plugin] })
+        expect(r.code, args.join(' ')).toBe(2)
+        expect(r.err).toBe(
+          `workstation-cleaner clean: ${old} is not read, and there are no descriptors in ${now}: move its descriptors there; clean deletes nothing until then\n`,
+        )
+        expect(plugin.removed).toEqual([])
+      }
+      // With a descriptor in the new folder, the clean runs and only warns.
+      write(join(now, 'npm.yaml'), '')
+      const plugin = fake()
+      const r = await run(['clean', '--yes', cwd], cwd, env, { plugins: [plugin] })
+      expect(r.code).toBe(0)
+      expect(r.err).toContain(`${old} is not read; descriptors are now read from ${now}`)
+      expect(plugin.removed).toEqual(['artifact:fake'])
+    },
+  )
+})
+
 describe('HOST_CLEANER_* variables', () => {
   test('are found by name, with the names they have now; an empty one is unset', () => {
     expect(
@@ -182,6 +259,15 @@ describe('HOST_CLEANER_* variables', () => {
       { old: 'HOST_CLEANER_CONFIG_DIR', now: 'WORKSTATION_CLEANER_CONFIG_DIR' },
       { old: 'HOST_CLEANER_ROOT', now: 'WORKSTATION_CLEANER_ROOT' },
     ])
+  })
+
+  test('on Windows a name matches in any case, as process.env reads it there', () => {
+    const env = { Host_Cleaner_Config_Dir: 'C:\\cfg', host_cleaner_root: 'C:\\r' }
+    expect(oldVariables(env, 'win32')).toEqual([
+      { old: 'Host_Cleaner_Config_Dir', now: 'WORKSTATION_CLEANER_CONFIG_DIR' },
+      { old: 'host_cleaner_root', now: 'WORKSTATION_CLEANER_ROOT' },
+    ])
+    expect(oldVariables(env, 'linux')).toEqual([])
   })
 
   test.skipIf(process.platform === 'win32')(

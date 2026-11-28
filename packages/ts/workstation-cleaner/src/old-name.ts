@@ -22,13 +22,20 @@ export interface OldVariable {
 
 /**
  * The `HOST_CLEANER_*` variables `env` sets, by name. An empty or blank value
- * counts as unset, as it does for the current variables.
+ * counts as unset, as it does for the current variables. On Windows a name
+ * matches in any case, as `process.env` reads it there.
+ *
+ * @param platform - A `process.platform` value to use instead of this machine's, for tests.
  */
-export function oldVariables(env: Record<string, string | undefined>): OldVariable[] {
+export function oldVariables(
+  env: Record<string, string | undefined>,
+  platform: string = process.platform,
+): OldVariable[] {
+  const fold = (k: string): string => (platform === 'win32' ? k.toUpperCase() : k)
   return Object.keys(env)
-    .filter((k) => k.startsWith(OLD_PREFIX) && (env[k]?.trim() ?? '') !== '')
+    .filter((k) => fold(k).startsWith(OLD_PREFIX) && (env[k]?.trim() ?? '') !== '')
     .sort()
-    .map((old) => ({ old, now: NEW_PREFIX + old.slice(OLD_PREFIX.length) }))
+    .map((old) => ({ old, now: NEW_PREFIX + fold(old).slice(OLD_PREFIX.length) }))
 }
 
 /** The warning for each old variable. */
