@@ -1,0 +1,1 @@
+C:\work\app\src\a.rs:12: bad thing

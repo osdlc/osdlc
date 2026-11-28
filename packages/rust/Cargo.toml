@@ -9,7 +9,7 @@
 [workspace]
 # resolver 3 picks dependency versions that support `rust-version` (the MSRV).
 resolver = "3"
-members = ["agent-adapt", "agent-router", "config-layers", "etag-write", "frontmatter-lossless", "gfm-pipe-table", "glob-intersect", "markdown-contract", "markdown-corpus", "markdown-link", "markdown-relink", "markdown-tags", "markdown-vault-fs", "osdlc-file-lock", "path-guard", "ref-lease", "slug-collate", "system-model", "tiered-dirs", "tradecraft", "typed-git", "vfs-seam", "vfs-walk", "web-access", "yaml-splice", "yaml-splice-wasm"]
+members = ["agent-adapt", "agent-router", "command-seam", "config-layers", "etag-write", "finding-formats", "frontmatter-lossless", "gfm-pipe-table", "glob-intersect", "markdown-contract", "markdown-corpus", "markdown-link", "markdown-relink", "markdown-tags", "markdown-vault-fs", "osdlc-cli-tool", "osdlc-file-lock", "path-guard", "ref-lease", "slug-collate", "system-model", "tiered-dirs", "tradecraft", "trust-repo", "typed-git", "vfs-seam", "vfs-walk", "web-access", "yaml-splice", "yaml-splice-wasm"]
 
 [workspace.package]
 edition = "2024"
@@ -29,6 +29,9 @@ missing_docs = "warn"
 # with native async extractors, which the crate implements.
 axum = { version = "0.8", default-features = false }
 base64 = "0.22"
+# cli-tool: the command-line parser it builds on, through clap's derive API. 4.5 is what
+# criterion (the benchmarks) needs.
+clap = { version = "4.5", features = ["derive"] }
 # Pinned exactly: the line numbers markdown-contract reports are part of its
 # contract with @osdlc/markdown-contract, and a comrak release can move them.
 comrak = { version = "=0.53.0", default-features = false }
@@ -50,15 +53,26 @@ hyper-util = { version = "0.1.10", default-features = false, features = ["tokio"
 if-addrs = "0.13"
 # js-sys 0.3.103 is the release that pairs with wasm-bindgen 0.2.126.
 js-sys = "0.3.103"
+# finding-formats reads JUnit XML with quick-xml.
+quick-xml = "0.41"
 # 1.8 is the first regex that reads the `\/` escape in a contract pattern.
 regex = "1.8"
+# command-seam polls a child's pipes and signals its process group through
+# rustix's safe API; command-seam adds the `event` feature.
+rustix = { version = "1.1", features = ["process"] }
 saphyr-parser = "0.0.11"
+# cli-tool derives each --json document's schema from its payload type. Earlier 0.8 releases name a
+# variable `gen`, which edition 2024 reserves, so the minimal-versions job needs 0.8.22.
+schemars = "0.8.22"
 # 1.0.220 is the first serde that pins its own serde_derive (see config-layers).
 serde = { version = "1.0.220", features = ["derive"] }
 # 1.0.100 is what criterion (the benchmarks) needs; the minimal-versions job resolves to it.
 serde_json = "1.0.100"
 # 0.9.4 is the first serde_yaml that rejects a duplicate mapping key.
 serde_yaml = "0.9.4"
+# command-seam installs signal actions without `unsafe`, to forward SIGINT,
+# SIGTERM and SIGHUP to a child. 0.4.0 pins libc to =0.2.156, which rustix 1.1 does not accept.
+signal-hook = { version = "0.4.1", default-features = false }
 sha2 = "0.10"
 # web-access compares tokens in constant time.
 subtle = "2.5"
@@ -78,7 +92,11 @@ tracing = "0.1.35"
 # so the minimal-versions job does not resolve an older 0.1.x that predates it.
 unicode-normalization = "0.1.26"
 # osdlc-file-lock's claim tokens: random v4 UUIDs, as @osdlc/file-lock writes.
-uuid = { version = "1", features = ["v4"] }
+# 1.2.2 is what uuid-simd 0.8 needs, which osdlc-cli-tool's tests reach through jsonschema.
+uuid = { version = "1.2.2", features = ["v4"] }
+# command-seam finds a program on PATH with `which`, which does the executable test.
+# 8.0.2 is what typed-git needs; the workspace resolves one which 8.x.
+which = "8.0.2"
 walkdir = "2.5"
 # Must equal the version of the wasm-bindgen CLI that
 # yaml-splice-wasm/build.sh runs, so it is pinned exactly.

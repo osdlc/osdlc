@@ -154,8 +154,12 @@ Developed here, in this repository:
 - `packages/rust/agent-adapt` (`agent-adapt` on crates.io)
 - `packages/rust/agent-router` (`agent-router`, the Rust implementation of
   `@osdlc/agent-router`'s pure core; not on crates.io)
+- `packages/rust/command-seam` (`command-seam` on crates.io, the Rust twin of
+  `@osdlc/command-seam`: a seam for running child processes)
 - `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
+- `packages/rust/finding-formats` (`finding-formats` on crates.io: reads line-oriented text,
+  SARIF, JUnit XML and lcov into one small findings and facts model)
 - `packages/rust/frontmatter-lossless` (`frontmatter-lossless` on crates.io)
 - `packages/rust/gfm-pipe-table` (`gfm-pipe-table`, the Rust implementation of
   `@osdlc/gfm-table`: GFM pipe tables as strings and byte offsets; not on
@@ -172,6 +176,8 @@ Developed here, in this repository:
 - `packages/rust/markdown-relink` (`markdown-relink` on crates.io)
 - `packages/rust/markdown-vault-fs` (`markdown-vault-fs` on crates.io, the
   vault layer over `vfs-walk`)
+- `packages/rust/osdlc-cli-tool` (`osdlc-cli-tool` on crates.io, imported as `cli_tool`, the Rust twin of
+  `@osdlc/cli-tool`: the groundwork a standalone CLI needs over clap)
 - `packages/rust/osdlc-file-lock` (`osdlc-file-lock` on crates.io, the Rust
   implementation of `@osdlc/file-lock`, so a Rust process and a Node.js process
   can hold one lock file in turn)
@@ -183,6 +189,8 @@ Developed here, in this repository:
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
 - `packages/rust/tradecraft` (`tradecraft` on crates.io, the CLI's old
   name. It only points to `skillwright`.)
+- `packages/rust/trust-repo` (`trust-repo` on crates.io, the Rust port of the whole-repository part of
+  `@osdlc/trust-repo`: per-user consent to run a repository's own scripts)
 - `packages/rust/typed-git` (`typed-git` on crates.io, the Rust implementation of
   `@osdlc/typed-git`: a typed git client)
 - `packages/rust/vfs-seam` (`vfs-seam` on crates.io, the file-access trait the

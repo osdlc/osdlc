@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "lint-a",
+          "rules": [
+            { "id": "A001", "defaultConfiguration": { "level": "error" } },
+            { "id": "A002" }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "A001",
+          "ruleIndex": 0,
+          "message": { "text": "bad call" },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "file:///repo/src/a.rs" },
+                "region": { "startLine": 4, "endLine": 6, "startColumn": 2 }
+              }
+            }
+          ],
+          "partialFingerprints": { "primaryLocationLineHash": "abc123" }
+        },
+        {
+          "ruleId": "A002",
+          "level": "note",
+          "message": { "text": "style" },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/b.rs", "uriBaseId": "SRCROOT" },
+                "region": { "startLine": 1 }
+              }
+            }
+          ],
+          "fingerprints": { "v1": "fp-b" }
+        },
+        { "ruleId": "A002", "message": { "text": "no location, no level" } }
+      ]
+    },
+    {
+      "tool": { "driver": { "name": "lint-b" } },
+      "results": [{ "ruleId": "B1", "level": "none", "message": { "text": "informational" } }]
+    }
+  ]
+}
