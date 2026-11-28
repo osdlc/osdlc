@@ -471,6 +471,14 @@ all of 1/2/3 is both-modified, 1+3 is we-deleted, 1+2 is they-deleted, 2+3
 with no base is add/add. A resolver that assumes both-modified deletes files.
 For the paths alone, `diffNameOnly({ diffFilter: "U" })` is cheaper.
 
+With git's rerere on, a conflict outcome also carries `rerereReplayed`, the
+paths rerere says it resolved from a recorded resolution (its `Resolved
+'<path>' using previous resolution.` line on stderr), when there are any.
+Under `rerere.autoUpdate=false` such a path is still unmerged in the index,
+so `lsFilesUnmerged()` cannot tell it apart, and neither can subtracting
+`git rerere remaining`: a binary or `-merge` conflict rerere never tracks is
+missing from that list too.
+
 `merge`, `rebase` and `rebaseContinue` run with `LC_ALL=C`, over the client,
 backend and call `env`, so `fastForward`, `alreadyUpToDate` and `conflicts` do
 not change with the caller's locale. `push` does the same for its

@@ -364,6 +364,12 @@ export const result = z.object({
     .describe(
       'Present when status is `conflict`: each unresolved path and why no resolver claimed it.',
     ),
+  replayed: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Present when git's rerere resolved conflicts in this update with a resolution recorded earlier in this run, by a PR that was pushed or at an earlier stop of this one (in a managed clone only): each path, which no resolver claims. `verify` is the only check of the replayed content.",
+    ),
   repaired: z
     .array(z.object({ kind: z.enum(['conflict', 'verify-failed']), note: z.string() }))
     .optional()
@@ -481,6 +487,9 @@ export function toResult(r: UpdateResult, localCheckout?: LocalCheckout): z.infe
       ? { strategyFallback: r.outcome.strategyFallback }
       : {}),
     ...(r.outcome.status === 'conflict' ? { conflicts: r.outcome.needsHuman } : {}),
+    ...(r.outcome.status === 'updated' && r.outcome.replayed !== undefined
+      ? { replayed: r.outcome.replayed }
+      : {}),
     ...(r.outcome.status === 'updated' && r.outcome.repaired !== undefined
       ? { repaired: r.outcome.repaired }
       : {}),
@@ -809,11 +818,14 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
             })
         : (verifyVerbsOf.get(repo) ?? [])
     const lease = writes ? at.lease : undefined
+    // Only in a managed clone, whose `rr-cache/` is pr-update's: in the project root and a located
+    // checkout, the person's own resolutions are never replayed, and none is recorded there.
+    const rerere = effectiveCfg.rerere && at.target?.source === 'clone'
     results.push(
       ...(await updateAll(
         git,
         group,
-        { ...settings, lease, remote, verifyVerbs },
+        { ...settings, lease, remote, verifyVerbs, rerere },
         env.ports.runVerb,
         {
           apply: writes,
@@ -1303,6 +1315,7 @@ export function renderUpdateText(out: UpdateOutput): string {
     const onto =
       r.restackedOnto === undefined ? '' : `  (restacked onto ${prKey(r.repo, r.restackedOnto)})`
     lines.push(`${mark} ${prKey(r.repo, r.number)}  ${r.strategy}  ${r.head}  ${r.detail}${onto}`)
+    if (r.replayed !== undefined) lines.push(`    replayed by rerere: ${r.replayed.join(', ')}`)
     if (r.keptWorktree !== undefined) lines.push(`    kept: ${r.keptWorktree}`)
     if (r.keepError !== undefined) lines.push(`    could not keep the worktree: ${r.keepError}`)
     if (r.recordError !== undefined) lines.push(`    record not saved: ${r.recordError}`)

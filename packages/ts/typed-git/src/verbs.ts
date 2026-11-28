@@ -3217,8 +3217,15 @@ export type IntegrationOutcome<Extra> =
    * on a real conflict. Ask
    * {@link lsFilesUnmerged} or `diffNameOnly({ diffFilter: "U" })` for the
    * authoritative list.
+   *
+   * `rerereReplayed` lists the paths git's rerere says it resolved from a
+   * recorded resolution (`Resolved '<path>' using previous resolution.` on
+   * stderr), in git's order; it is there only when there is one. Under
+   * `rerere.autoUpdate=false` such a path is still unmerged in the index, so
+   * this is the only positive word that rerere replayed it. A path holding a
+   * newline is not listed.
    */
-  | { status: 'conflict'; conflicts: string[] }
+  | { status: 'conflict'; conflicts: string[]; rerereReplayed?: string[] }
 
 export type MergeOutcome = IntegrationOutcome<{
   fastForward: boolean
@@ -3231,6 +3238,19 @@ export type RebaseOutcome = IntegrationOutcome<{ alreadyUpToDate: boolean }>
 const CONFLICT_MERGE_IN = /^CONFLICT \([^)]*\): Merge conflict in (.+)$/
 /** `CONFLICT (modify/delete): <path> deleted in <x> and modified in <y>…` */
 const CONFLICT_MODIFY_DELETE = /^CONFLICT \(modify\/delete\): (.+?) deleted in .+? and modified in /
+
+/** rerere's line for a path it resolved from a recorded resolution (`rerere.c`, `LC_ALL=C`). */
+const RERERE_RESOLVED = /^Resolved '(.+)' using previous resolution\.$/
+
+/** Paths rerere says it resolved from a recorded resolution, in its order, each once. */
+function rerereReplayed(stderr: string): string[] {
+  const seen = new Set<string>()
+  for (const line of stderr.split('\n')) {
+    const m = RERERE_RESOLVED.exec(line.replace(/\r$/, ''))
+    if (m?.[1] !== undefined) seen.add(m[1])
+  }
+  return [...seen]
+}
 
 /** Paths git named in its own conflict report. Best effort — see the type. */
 function conflictPaths(stdout: string): string[] {
@@ -3252,9 +3272,14 @@ function conflictPaths(stdout: string): string[] {
 function conflictOrThrow(
   argv: string[],
   r: CommandResult,
-): { status: 'conflict'; conflicts: string[] } {
+): { status: 'conflict'; conflicts: string[]; rerereReplayed?: string[] } {
   if (r.stdout.trim() === '') throw new CommandFailed(argv, r)
-  return { status: 'conflict', conflicts: conflictPaths(r.stdout) }
+  const replayed = rerereReplayed(r.stderr)
+  return {
+    status: 'conflict',
+    conflicts: conflictPaths(r.stdout),
+    ...(replayed.length > 0 ? { rerereReplayed: replayed } : {}),
+  }
 }
 
 /** Options for {@link merge}. */
