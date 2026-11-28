@@ -41,6 +41,9 @@ export type Os = (typeof OSES)[number]
 /** A `..` segment, which would climb out of where a path or glob is anchored. */
 const CLIMBS = /(^|[/\\])\.\.([/\\]|$)/
 
+/** A `..` segment in a command argument or env value, also as an option's value after `=`, as in `--dir=..`. */
+const ARG_CLIMBS = /(^|[/\\=])\.\.([/\\]|$)/
+
 /**
  * A glob alternative that climbs or starts outside: a `..` segment, or a
  * leading `/`, `\`, `~/` or drive, at the start or after a brace's `{` or `,`.
@@ -354,7 +357,7 @@ function candidateIssues(c: Record<string, unknown>): Issue[] {
       (isObject(c['env']) && Object.values(c['env']).some(hasPath))
     if (!named) at('command', 'must name the checked folder, as a {path} argument or in env (D13)')
     // A `..` would point the command at a folder above the checked one.
-    const climbs = (v: unknown) => typeof v === 'string' && CLIMBS.test(v)
+    const climbs = (v: unknown) => typeof v === 'string' && ARG_CLIMBS.test(v)
     if (Array.isArray(c['command']) && c['command'].some(climbs)) {
       at('command', 'must not have a .. segment in an argument')
     }

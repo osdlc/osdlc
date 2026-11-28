@@ -425,6 +425,20 @@ describe('a bad descriptor names the field path', () => {
       'line 5: candidates.0.command: must not have a .. segment in an argument',
     ],
     [
+      'a command option whose value climbs above the folder',
+      hfWith(
+        "{ path: hub, costDescription: rebuild, command: [tool, clean, '{path}', '--dir=..'], removes: all }",
+      ),
+      'line 5: candidates.0.command: must not have a .. segment in an argument',
+    ],
+    [
+      'an env value whose option climbs above the folder',
+      hfWith(
+        "{ path: hub, costDescription: rebuild, command: [uv, cache, prune, '{path}'], env: { UV_ARGS: '--dir=../x' }, removes: unused }",
+      ),
+      'line 5: candidates.0.env: must not have a .. segment in a value',
+    ],
+    [
       'an env value that climbs above the folder',
       hfWith(
         "{ path: hub, costDescription: rebuild, command: [uv, cache, prune], env: { UV_CACHE_DIR: '{path}/..' }, removes: unused }",
