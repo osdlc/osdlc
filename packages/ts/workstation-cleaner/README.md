@@ -883,9 +883,13 @@ Settings: `plugins.toolchains.idleHours`, which inherits the top-level
   there proposes nothing, and `status` warns
   `toolchains: <folder> is on a volume mounted noatime, so last use can't be measured and every version in it is kept`.
   The volume is the one `df` names for the folder, and its options come from
-  `mount` on macOS and `/proc/self/mounts` on Linux. When they cannot be read
-  (`df` or `mount` failing, another platform), the access times are
-  trusted, except on macOS.
+  `mount` on macOS and `/proc/self/mounts` on Linux. On Linux, options that
+  cannot be read (`df` failing, `/proc/self/mounts` unreadable or not naming
+  that volume) count as unmeasured too: the folder proposes nothing, and
+  `status` warns
+  `toolchains: <folder> is on a volume whose mount options could not be read, so it may be mounted noatime, last use can't be measured and every version in it is kept`.
+  On macOS such a folder proposes nothing either (below). On any other
+  platform the options are not read, and the access times are trusted.
 - macOS stops updating a file's access time once it is newer than its
   modified time, so after a version's first use there its access times cannot
   show a recent one: unless the volume is mounted `strictatime`, a versions

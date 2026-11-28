@@ -65,7 +65,10 @@ const HOUR_MS = 3_600_000
 const RELATIME_LAG_HOURS = 24
 
 /** How far a versions folder's access times can be trusted, by its mount's options. */
-type AtimeMode = 'noatime' | 'capped' | 'relatime' | 'exact'
+type AtimeMode = 'noatime' | 'capped' | 'unread' | 'relatime' | 'exact'
+
+/** The modes under which last use cannot be measured, so nothing in the folder is proposed. */
+const UNMEASURED_MODES: ReadonlySet<AtimeMode> = new Set(['noatime', 'capped', 'unread'])
 
 /** What {@link Detection.note} says when the targets are the run's folder, taken because none were given. */
 export const NO_TARGETS_NOTE =
@@ -89,6 +92,14 @@ export const UNSEARCHED_NOTE =
 /** What {@link Detection.note} says when the versions folder `dir` is on a volume mounted `noatime`. */
 export const noatimeNote = (dir: string): string =>
   `${dir} is on a volume mounted noatime, so last use can't be measured and every version in it is kept`
+
+/**
+ * What {@link Detection.note} says when the versions folder `dir` is on Linux
+ * and its mount's options cannot be read: it may be mounted `noatime`.
+ */
+export const unreadMountNote = (dir: string): string =>
+  `${dir} is on a volume whose mount options could not be read, so it may be mounted noatime, ` +
+  "last use can't be measured and every version in it is kept"
 
 /**
  * What {@link Detection.note} says when the versions folder `dir` is on macOS
@@ -802,9 +813,10 @@ export function toolchainsPlugin(
 
   /**
    * How far each tool's versions folder can be trusted for last use, by its
-   * mount: `noatime` not at all, nor on macOS unless `strictatime`, `relatime`
-   * up to {@link RELATIME_LAG_HOURS} late, else exactly; elsewhere a mount whose
-   * options cannot be read is trusted.
+   * mount: `noatime` not at all, nor on macOS unless `strictatime`, nor on
+   * Linux when the options cannot be read (`unread`), `relatime` up to
+   * {@link RELATIME_LAG_HOURS} late, else exactly. On any other platform, where
+   * the options are never read, it is trusted.
    */
   const atimeModes = async (tools: readonly Tool[], ctx: Ctx): Promise<Map<Tool, AtimeMode>> => {
     const modes = await Promise.all(
@@ -817,6 +829,7 @@ export function toolchainsPlugin(
         }
         if (options?.includes('noatime')) return 'noatime'
         if (platform === 'darwin' && !options?.includes('strictatime')) return 'capped'
+        if (platform === 'linux' && options === null) return 'unread'
         if (options?.includes('relatime') && !options.includes('strictatime')) return 'relatime'
         return 'exact'
       }),
@@ -827,12 +840,12 @@ export function toolchainsPlugin(
   /**
    * The present tools, `only` that one when it is given, their mounts'
    * {@link AtimeMode}, and those whose last use cannot be measured
-   * (`noatime`, or macOS's `capped`).
+   * (`noatime`, macOS's `capped`, or Linux's `unread`).
    */
   const survey = async (ctx: Ctx, only?: Tool) => {
     const tools = presentTools().filter((t) => only === undefined || only === t)
     const modes = await atimeModes(tools, ctx)
-    const unmeasured = tools.filter((t) => modes.get(t) === 'noatime' || modes.get(t) === 'capped')
+    const unmeasured = tools.filter((t) => UNMEASURED_MODES.has(modes.get(t)!))
     return { tools, modes, unmeasured }
   }
 
@@ -942,8 +955,12 @@ export function toolchainsPlugin(
       if (!ctx.targetsGiven) return { active: true, note: NO_TARGETS_NOTE }
       const { modes, unmeasured } = await survey(ctx)
       if (unmeasured.length === 0) return true
-      const note = (t: Tool): string =>
-        (modes.get(t) === 'noatime' ? noatimeNote : cappedAtimeNote)(versions[t])
+      const note = (t: Tool): string => {
+        const mode = modes.get(t)
+        const of =
+          mode === 'noatime' ? noatimeNote : mode === 'unread' ? unreadMountNote : cappedAtimeNote
+        return of(versions[t])
+      }
       return { active: true, note: unmeasured.map(note).join('; ') }
     },
     roots: () => TOOLS.map((t) => versions[t]),
