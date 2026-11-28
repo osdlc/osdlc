@@ -1346,14 +1346,23 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     kept tree"). Built: `--retry-failed`, a moved PR and `--discard-kept`
     remove a kept tree whatever is in it, and `mirror prune --discard-kept`
     removes a clone with its kept trees. `pr-update kept push <pr> --to <remote-or-path>` copies a kept
-    tree's HEAD out as a branch, refusing a branch that is there unless
+    tree's HEAD out as a branch, `kept/<owner>-<name>-<number>` by default and
+    never one under `pr-update/` (a later keep of the same PR in the checkout
+    pushed to would take that over, and its discard delete it; review round
+    2), refusing a branch that is there unless
     `--force`, which pins the lease to the commit it read. Its commit is read
     from the owner's worktree list, never from git in the tree, and hooks are
     off in the repository pushed from; a local repository pushed to runs its
-    own receive hooks, as a server does.
+    own receive hooks, as a server does. The owner is checked before git runs
+    in it, as a run checks a managed clone (`checkClone`) or a located
+    checkout's git directory (`gitDirProblem`), since whoever can write its
+    `config` chooses what git runs there (review round 2).
   - Locks. Accepted: prune honoured `git worktree lock` and kept a locked
     tree and its clone, except git's own `initializing`. Built: no lock is
-    read; git's refusal is a failure (exit 1).
+    read; git's refusal is a failure (exit 1). After review round 2, one lock
+    is read again: a dead run's worktree whose `locked` file says exactly
+    `initializing` (a killed `git worktree add`) is unlocked and removed
+    (`removeWorktree`); any other lock is still refused and reported.
   - rerere for one run. Accepted (S12, then "Rerere in clones only"): rerere
     in a clone with a list of a killed run's unaccepted resolutions, swept by
     the next run. Built: one run at a time holds a clone's cache, through the

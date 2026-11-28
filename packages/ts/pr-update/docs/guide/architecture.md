@@ -187,7 +187,11 @@ taking it. The automatic prune at the end of `update --apply` is
 of the git directory the record names (it refuses a tree on a scratch branch,
 as `keptTreeCheck` does, `update/kept.ts:324-342`), and pushes it with
 `--force-with-lease` pinned to what `ls-remote` showed. No git runs in the
-tree, and hooks are off in the repository pushed from.
+tree, and hooks are off in the repository pushed from. Before any git runs in
+the owning git directory, it is checked as a run checks it: `checkClone` for a
+managed clone, `gitDirProblem` (`locate.ts`) otherwise. Its default branch is
+`kept/<owner>-<name>-<number>` (`keptPushBranch`), and a `--branch` under
+`pr-update/` is refused, since pr-update makes and deletes those.
 
 ## Where each thing lives
 

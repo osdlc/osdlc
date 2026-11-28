@@ -143,7 +143,11 @@ are in scope.
   record is left alone and reported. A git directory that cannot be read is
   not taken for one that is gone. `kept push` runs no git in the tree: it reads
   the tree's commit from that git directory's worktree list, and pushes from
-  there with hooks off. A local repository it pushes to runs its own receive
+  there with hooks off. Before any git runs in that git directory, it is
+  checked as a run checks a managed clone or a located checkout: it and its
+  `config` must be the person's, and no one else may write them. Its default
+  branch is `kept/<owner>-<name>-<number>`, never a `pr-update/` one, so no
+  later run in the checkout pushed to replaces or deletes it. A local repository it pushes to runs its own receive
   hooks, as a server does, on the PR's commit.
 - **No file others can write to.** The `pr-update` command takes write for
   group and others out of its umask when it starts, and git, `gh` and every

@@ -981,7 +981,7 @@ carries `keptWorktree: <path>` and the text output says `kept: <path>`.
 ```sh
 pr-update update --apply --keep-failed
 pr-update kept push 12 --to ~/src/widgets   # copy the evidence out as a branch
-cd ~/src/widgets && git switch pr-update/failed-acme-widgets-12
+cd ~/src/widgets && git switch kept/acme-widgets-12
 ```
 
 A kept tree is pr-update's, as everything it makes is, so treat it as read-only evidence and do
@@ -1036,8 +1036,9 @@ pr-update kept push <pr> --to <remote-or-path> [--branch <name>] [--force] [--re
 ```
 
 Pushes the HEAD commit of `<pr>`'s kept worktree to `--to`, as the branch
-`pr-update/failed-<owner>-<name>-<number>` or `--branch`. The pushed branch is yours: no
-pr-update command removes it.
+`kept/<owner>-<name>-<number>` or `--branch`. The pushed branch is yours: no pr-update command
+removes it. So it is never a `pr-update/` branch, which pr-update makes and deletes in every
+checkout it serves: a `--branch` that starts `pr-update/` is a usage error.
 
 - `<pr>` is a PR number of the project root's repository (its `origin` remote), or of `--repo`
   (`owner/name` or `host/owner/name`, as `update --repo` takes it), or `owner/name#<number>`.
@@ -1060,7 +1061,7 @@ pr-update command removes it.
   commit `--force` replaced, or null.
 - Exits 0 when pushed; 1 when the PR has no kept worktree (or its record is refused), its owning
   git directory is not used, the branch is there without `--force`, or the push fails; 2 for a
-  `<pr>`, `--branch` or `--to` it cannot read.
+  `<pr>`, `--branch` or `--to` it cannot read, or a `--branch` under `pr-update/`.
 
 ## Seeing a force-push before it happens
 

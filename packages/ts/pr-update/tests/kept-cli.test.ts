@@ -20,9 +20,12 @@ import { join, relative } from 'node:path'
 import { EXIT, captureContext } from '@osdlc/cli-tool'
 import { spawnRunner } from '@osdlc/command-seam'
 import { osdlcDirs } from '@osdlc/ecosystem'
+import { Git } from '@osdlc/typed-git'
 
 import { main } from '../src/cli.ts'
 import { CLONE_MARKER } from '../src/mirror.ts'
+import { discardKept, keepWorktree, type KeptPlace } from '../src/update/kept.ts'
+import { ownedUnder } from '../src/update/registrations.ts'
 import { prUpdatePaths } from '../src/machine.ts'
 import { allToolsInstalled, isolatedEnv } from './support.ts'
 
@@ -127,10 +130,10 @@ describe('kept push', () => {
       worktree: tree,
       sha,
       to: 'mine',
-      branch: 'pr-update/failed-acme-api-7',
+      branch: 'kept/acme-api-7',
       replaced: null,
     })
-    expect(tip(mine, 'pr-update/failed-acme-api-7')).toBe(sha)
+    expect(tip(mine, 'kept/acme-api-7')).toBe(sha)
     // The tree is not changed.
     expect(git(tree, 'rev-parse', 'HEAD')).toBe(sha)
     expect(git(tree, 'branch', '--show-current')).toBe('pr-update/failed-acme-api-7')
@@ -160,20 +163,20 @@ describe('kept push', () => {
     const other = join(scratch, 'other')
     git(scratch, 'clone', '-q', mine, other)
     commit(other, 'theirs')
-    git(other, 'push', '-q', 'origin', 'HEAD:refs/heads/pr-update/failed-acme-api-7')
-    const theirs = tip(mine, 'pr-update/failed-acme-api-7')
+    git(other, 'push', '-q', 'origin', 'HEAD:refs/heads/kept/acme-api-7')
+    const theirs = tip(mine, 'kept/acme-api-7')
 
     const refused = await run(root, 'kept', 'push', '7', '--to', 'mine')
     expect(refused.code).toBe(EXIT.error)
     expect(refused.err).toContain(
-      `mine has pr-update/failed-acme-api-7 already, at ${theirs.slice(0, 12)}; pass --force to replace it`,
+      `mine has kept/acme-api-7 already, at ${theirs.slice(0, 12)}; pass --force to replace it`,
     )
-    expect(tip(mine, 'pr-update/failed-acme-api-7')).toBe(theirs)
+    expect(tip(mine, 'kept/acme-api-7')).toBe(theirs)
 
     const forced = await run(root, 'kept', 'push', '7', '--to', 'mine', '--force', '--json')
     expect(forced.code, forced.err).toBe(EXIT.ok)
     expect(JSON.parse(forced.out)).toMatchObject({ sha, replaced: theirs })
-    expect(tip(mine, 'pr-update/failed-acme-api-7')).toBe(sha)
+    expect(tip(mine, 'kept/acme-api-7')).toBe(sha)
   })
 
   test('a PR with no kept tree exits 1, and pushes nothing', async () => {
@@ -203,7 +206,7 @@ describe('kept push', () => {
       mine,
     )
     expect(first.code, first.err).toBe(EXIT.ok)
-    expect(tip(mine, 'pr-update/failed-acme-web-3')).toBe(sha)
+    expect(tip(mine, 'kept/acme-web-3')).toBe(sha)
     const second = await run(away, 'kept', 'push', 'acme/web#3', '--to', mine, '--branch', 'b')
     expect(second.code, second.err).toBe(EXIT.ok)
     expect(tip(mine, 'b')).toBe(sha)
@@ -216,6 +219,10 @@ describe('kept push', () => {
     [['kept', 'push', 'seven', '--to', 'mine'], '<pr> seven: not a PR number'],
     [['kept', 'push', '7', '--to', 'mine', '--branch', 'a..b'], '--branch a..b: not a branch name'],
     [['kept', 'push', '7', '--to', 'nowhere'], '--to nowhere: not a remote of this repository'],
+    [
+      ['kept', 'push', '7', '--to', 'mine', '--branch', 'pr-update/mine'],
+      '--branch pr-update/mine: pr-update/ branches are pr-update’s',
+    ],
   ])('%j is a usage error', async (argv, message) => {
     keep(7)
     const r = await run(root, ...argv)
@@ -230,6 +237,41 @@ describe('kept push', () => {
     expect(r.code).toBe(EXIT.error)
     expect(r.err).toContain(`${tree} is a run’s worktree, on its scratch branch`)
     expect(git(mine, 'for-each-ref')).toBe('')
+  })
+
+  test('a branch pushed into a checkout outlives a keep and a discard of the same PR there (review round 2)', async () => {
+    const { sha } = keep(7)
+    const other = join(scratch, 'other')
+    git(scratch, 'clone', '-q', root, other)
+    const r = await run(root, 'kept', 'push', '7', '--to', other, '--json')
+    expect(r.code, r.err).toBe(EXIT.ok)
+    const { branch } = JSON.parse(r.out) as { branch: string }
+    expect(tip(other, branch)).toBe(sha)
+
+    // A run served from that checkout keeps PR 7 there, and later discards it.
+    const runs = join(scratch, 'other-runs')
+    const tree = join(runs, '2147483646.1')
+    mkdirSync(runs)
+    git(other, 'worktree', 'add', '-q', '--detach', tree, 'HEAD')
+    const owner = new Git(other)
+    const place: KeptPlace = {
+      dir: join(scratch, 'other-kept'),
+      trees: runs,
+      gitDir: realpathSync.native(join(other, '.git')),
+      records: ownedUnder([runs]),
+    }
+    const target = {
+      repo: 'acme/api',
+      number: 7,
+      head: 'topic',
+      base: 'main',
+      headOid: null,
+      baseOid: null,
+    }
+    discardKept(owner, place, keepWorktree(owner, place, tree, target, undefined))
+
+    expect(existsSync(tree)).toBe(false)
+    expect(tip(other, branch)).toBe(sha)
   })
 
   /**
@@ -295,7 +337,7 @@ describe('kept push', () => {
 
       const r = await run(root, 'kept', 'push', '7', '--to', 'mine')
       expect(r.code, r.err).toBe(EXIT.ok)
-      expect(tip(mine, 'pr-update/failed-acme-api-7')).toBe(sha)
+      expect(tip(mine, 'kept/acme-api-7')).toBe(sha)
       expect(existsSync(join(markers, 'pre-push'))).toBe(false)
       expect(existsSync(join(markers, 'pre-receive'))).toBe(true)
     },

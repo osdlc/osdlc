@@ -162,6 +162,16 @@ export function keptBranch(repo: string, number: number): string {
   return `pr-update/failed-${qualifiedName(repo, number)}`
 }
 
+/**
+ * The branch `pr-update kept push` pushes a kept tree of `repo#number` as by default:
+ * `kept/<owner>-<name>-<number>`. Not under `pr-update/`, which pr-update makes and deletes: a
+ * pushed branch is the person's, and a later keep of the same PR in the checkout pushed to
+ * would take it over.
+ */
+export function keptPushBranch(repo: string, number: number): string {
+  return `kept/${qualifiedName(repo, number)}`
+}
+
 /** The file of a PR's record in `place`: `<number>.json`. */
 function sidecar(place: KeptPlace, number: number): string {
   return join(place.dir, `${number}.json`)

@@ -38,7 +38,7 @@ import { CLONE_MARKER, checkClone } from './mirror.ts'
 import { realOr } from './real-path.ts'
 import { SurveyUsageError, hostKey, parsePrKey, surveyTargets } from './survey.ts'
 import { WORK_BRANCH, targetGitOptions } from './update/execute.ts'
-import { findKept, keptBranch, type KeptRefusal } from './update/kept.ts'
+import { findKept, keptPushBranch, type KeptRefusal } from './update/kept.ts'
 
 /**
  * Why the managed clone at `gitDir` (`<root>/<host>/<owner>/<name>.git`) may not be used, or
@@ -72,8 +72,9 @@ function text(out: Output): string {
 }
 
 /**
- * Why `name` cannot be a branch name, or null. git's own rules (`git check-ref-format`), so a
- * name git would refuse is a usage error before anything is read.
+ * Why `name` cannot be the branch `kept push` pushes as, or null: git's own rules (`git
+ * check-ref-format`), so a name git would refuse is a usage error before anything is read, and
+ * no `pr-update/` branch.
  */
 export function branchNameProblem(name: string): string | null {
   const bad =
@@ -91,7 +92,13 @@ export function branchNameProblem(name: string): string | null {
     // Control characters, space, and `~ ^ : ? * [ \`.
     // eslint-disable-next-line no-control-regex
     /[\x00-\x20\x7f~^:?*[\\]/.test(name)
-  return bad ? `--branch ${name}: not a branch name git accepts` : null
+  if (bad) return `--branch ${name}: not a branch name git accepts`
+  // pr-update makes and deletes its own `pr-update/` branches in any checkout it serves, so a
+  // pushed branch there would not stay the person's.
+  if (name.startsWith('pr-update/')) {
+    return `--branch ${name}: pr-update/ branches are pr-update’s, which a later run can replace or delete; pick another name`
+  }
+  return null
 }
 
 /** Whether `to` reads as a URL: `scheme://...`, or scp-like `[user@]host:path`. */
@@ -137,7 +144,8 @@ export function keptCommand(seams: CliSeams = {}): Group {
         summary: 'push a kept worktree’s HEAD to a remote or a local repository, as a branch',
         description:
           'Finds the kept worktree of <pr> through its record, and pushes its HEAD commit to ' +
-          '--to as --branch (default pr-update/failed-<owner>-<name>-<number>). <pr> is a ' +
+          '--to as --branch (default kept/<owner>-<name>-<number>; not a pr-update/ branch, ' +
+          'which pr-update makes and deletes). <pr> is a ' +
           'number of the project root’s repository (its origin remote), or of --repo, or ' +
           'owner/name#<number>. --to is a remote of the repository, a URL, or a local path. A ' +
           'branch that is there already is refused, unless --force, which replaces it only ' +
@@ -165,7 +173,7 @@ export function keptCommand(seams: CliSeams = {}): Group {
           branch: {
             kind: 'string',
             valueName: 'name',
-            help: 'The branch to push as. Default pr-update/failed-<owner>-<name>-<number>.',
+            help: 'The branch to push as, not under pr-update/. Default kept/<owner>-<name>-<number>.',
           },
           force: {
             kind: 'boolean',
@@ -274,7 +282,7 @@ export function keptCommand(seams: CliSeams = {}): Group {
           }
           const sha = entry.head
           const to = destination(flags.to, owning.remotes(), ctx.cwd, ctx.env)
-          const branch = flags.branch ?? keptBranch(t.repo, number)
+          const branch = flags.branch ?? keptPushBranch(t.repo, number)
           const ref = `refs/heads/${branch}`
           const failed = (e: unknown): CommandError =>
             new CommandError(
