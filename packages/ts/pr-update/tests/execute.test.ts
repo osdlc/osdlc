@@ -1712,18 +1712,21 @@ describe('the executor against real git', () => {
             )
             check()
           })
-        const exited = new Promise<NodeJS.Signals | null>((done) =>
-          child.on('exit', (_c, sig) => done(sig)),
+        const exited = new Promise<{ code: number | null; sig: NodeJS.Signals | null }>((done) =>
+          child.on('exit', (code, sig) => done({ code, sig })),
         )
         await heard('ready')
         // Run B starts while A holds the cache, and A records and dies during B's first PR.
         const repair = fakeRepair(writeShared('good\n'))
+        // What PR 2's repair saw once A was dead, checked after the run: an assertion that
+        // failed in here would only show as PR 2 failing.
+        let death: { code: number | null; sig: NodeJS.Signals | null } | undefined
+        let recordedThen = -1
         const killing = async (req: RepairRequest): Promise<RepairResult> => {
           if (req.pr === 2) {
             child.stdin!.write('go\n')
-            expect(await exited).toBe('SIGKILL')
-            expect(said.join('')).toContain('recorded')
-            expect(postimages()).toHaveLength(1)
+            death = await exited
+            recordedThen = postimages().length
           }
           return repair(req)
         }
@@ -1734,6 +1737,12 @@ describe('the executor against real git', () => {
           ],
           { repair: killing, repairOn: ['conflict'] },
         )
+        // Killed: by SIGKILL, or on Windows, where a process that ends itself so is seen to exit
+        // with a failing code and no signal.
+        if (process.platform === 'win32') expect(death?.code).not.toBe(0)
+        else expect(death?.sig).toBe('SIGKILL')
+        expect(said.join('')).toContain('recorded')
+        expect(recordedThen).toBe(1)
         expect(results.map((r) => r.outcome.status)).toEqual(['updated', 'updated'])
         expect(repair.calls.map((c) => c.pr)).toEqual([2, 3])
         expect(results[1]!.outcome).not.toHaveProperty('replayed')
