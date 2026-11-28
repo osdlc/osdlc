@@ -49,7 +49,9 @@ export interface GitPluginOptions extends Runners {
   >
   /**
    * Archive unlanded work to the remote before deleting it: one archive per
-   * repository, pushed in `prepare`. A failed archive push stops the run.
+   * repository, pushed in `prepare`. A failed archive push stops the run. A
+   * caller with its own core sets `ctx.run` to every candidate it will run
+   * before the first `prepare` (see `RunCtx.run`).
    */
   archive?: ArchiveOptions | undefined
 }
@@ -61,6 +63,10 @@ export interface GitPluginOptions extends Runners {
 function candidateId(c: CleanCandidate): string {
   return c.kind === 'worktree' ? c.id : `${c.kind}:${c.repo}:${c.path}`
 }
+
+/** The sentence that names an archive pushed: its ref and the commit it lists. */
+const listsLine = (record: NonNullable<CandidateArchive['record']>): string =>
+  `${record.ref} lists ${record.sha}`
 
 /** The name `--spare` knows a row by: a branch's name, or the branch a worktree has checked out. */
 function nameOf(row: CleanCandidate): string | null {
@@ -91,9 +97,9 @@ function copyOf(opts: GitPluginOptions): GitPluginOptions {
  */
 export function gitPlugin(given: GitPluginOptions = {}): Plugin {
   const opts = copyOf(given)
-  /** The last discovery's rows, kept for the later phases; `discover` makes them afresh. */
+  /** The last discovery's rows, kept for the later phases; `detect` empties them and `discover` makes them afresh. */
   let rows = new Map<string, CleanCandidate>()
-  /** The archive this run pushed for each repository, by its root; `discover` empties it. */
+  /** The archive this run pushed for each repository, by its root; `detect` and `discover` empty it. */
   const archives = new Map<string, CandidateArchive>()
   const runners = { git: opts.git, gh: opts.gh, glab: opts.glab, probe: opts.probe }
   const own = objector('git')
@@ -159,7 +165,12 @@ export function gitPlugin(given: GitPluginOptions = {}): Plugin {
     // The sweep covers every repository in one call that nothing can stop part way,
     // and `prepare` pushes an archive, which may wait on the remote as long as a delete.
     limits: { discover: DISCOVER_LIMIT_MS, prepare: DELETE_LIMIT_MS },
-    detect: () => true,
+    // A survey or inspect starts here: what an earlier `discover` found is not this run's.
+    detect: () => {
+      rows = new Map()
+      archives.clear()
+      return true
+    },
     discover(ctx) {
       const found = candidatesOf(sweep(ctx.targets, { ...opts.sweep, ...runners, cwd: ctx.cwd }))
       rows = new Map(found.map((row) => [candidateId(row), row]))
@@ -216,7 +227,7 @@ export function gitPlugin(given: GitPluginOptions = {}): Plugin {
     prepare(c, ctx) {
       if (opts.archive === undefined) return
       const sentence = (a: { made: CandidateArchive; pushed: boolean }): string[] =>
-        a.pushed ? [`${a.made.record!.ref} lists ${a.made.record!.sha}`] : []
+        a.pushed ? [listsLine(a.made.record!)] : []
       if (c.owner !== 'git') {
         // What another plugin deletes inside a worktree is archived with it first.
         const made = worktreesHolding(c, ctx).flatMap((r) => sentence(archiveRepo(r, ctx)))
@@ -250,7 +261,7 @@ export function gitPlugin(given: GitPluginOptions = {}): Plugin {
       if (!result.ok) throw new Error(result.error ?? 'failed')
       const held = archived?.record?.parents.some((p) => p.rows.includes(row.id)) === true
       return [
-        ...(held ? [`${archived!.record!.ref} lists ${archived!.record!.sha}`] : []),
+        ...(held ? [listsLine(archived!.record!)] : []),
         ...result.steps.map((s) => s.verification ?? s.command),
       ].join('; ')
     },

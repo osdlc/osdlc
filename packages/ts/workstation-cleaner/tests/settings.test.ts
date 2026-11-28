@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
 
 import { PLUGIN_API, definePlugin } from '../src/index.ts'
-import { resolveSettings, settingsIssues, settingsOf } from '../src/settings.ts'
+import { resolveSettings, settingsIssues } from '../src/settings.ts'
 
 /** A plugin whose settings may name volumes to keep or to drop, not both. */
 const volumes = definePlugin({
@@ -32,15 +32,15 @@ describe('a refined settings schema', () => {
     expect(issues({ kept: ['a'] })).toEqual([expect.stringMatching(/^plugins\.volumes: .*kept/)])
   })
 
-  test('settingsOf fills in the defaults and enabled, and refuses what the refinement refuses', () => {
-    expect(settingsOf('volumes', { keep: ['a'] }, {}, [volumes])).toEqual({
+  test('resolveSettings fills in the defaults and enabled, and refuses what the refinement refuses', () => {
+    expect(resolveSettings('volumes', { keep: ['a'] }, {}, [volumes]).settings).toEqual({
       keep: ['a'],
       drop: [],
       enabled: true,
     })
-    expect(() => settingsOf('volumes', { keep: ['a'], drop: ['b'] }, {}, [volumes])).toThrow(
-      /set keep or drop, not both/,
-    )
+    expect(
+      () => resolveSettings('volumes', { keep: ['a'], drop: ['b'] }, {}, [volumes]).settings,
+    ).toThrow(/set keep or drop, not both/)
   })
 })
 

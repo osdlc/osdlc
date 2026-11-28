@@ -12,8 +12,8 @@
  * is refused {@link OLLAMA_IN_USE}. Every hook first asks the server over
  * HTTP, because the `ollama` CLI starts the app on macOS and Windows when it
  * is down; a server that does not answer, or an `OLLAMA_HOST` on another
- * machine or that cannot be read, leaves the plugin out with that as
- * `detect`'s note.
+ * machine, with a scheme other than `http` or `https`, or that cannot be
+ * read, leaves the plugin out with that as `detect`'s note.
  *
  * Settings: `plugins.ollama.idleHours` (default {@link DEFAULT_IDLE_HOURS}).
  *
@@ -131,11 +131,6 @@ export function sizeBound(text: string): { bytes: number; text: string } | null 
   return { bytes: Math.round(shown * UNITS[unit]!), text: `${shown} ${unit}` }
 }
 
-/** The most bytes SIZE text can mean; null for anything else. See {@link sizeBound}. */
-export function parseBytes(text: string): number | null {
-  return sizeBound(text)?.bytes ?? null
-}
-
 /** The models in `ollama list`'s output. Throws when it is not the table ollama prints. */
 export function parseList(stdout: string): OllamaModel[] {
   const { at, rows } = table(stdout, ['NAME', 'ID', 'SIZE', 'MODIFIED'])
@@ -147,7 +142,7 @@ export function parseList(stdout: string): OllamaModel[] {
       name,
       id,
       size: sizeText,
-      bytes: parseBytes(sizeText),
+      bytes: sizeBound(sizeText)?.bytes ?? null,
       modified: row.slice(modified).trim(),
     }
   })
@@ -272,6 +267,12 @@ export function ollamaPlugin(
     if (!isLocal(server)) {
       throw new Error(
         `OLLAMA_HOST points at ${server.host}, not this machine, so its models are not on this disk`,
+      )
+    }
+    // ollama's Go client speaks only these; any other scheme fails there, and pings nothing here.
+    if (server.protocol !== 'http:' && server.protocol !== 'https:') {
+      throw new Error(
+        `OLLAMA_HOST uses ${server.protocol}//, which ollama's client cannot reach a server by`,
       )
     }
     const url = pingUrl(server)

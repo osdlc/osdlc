@@ -32,6 +32,7 @@ import {
   decide,
   gitDefinitionWith,
   gitPlugin,
+  inspect,
   plan,
   pluginKit,
   survey,
@@ -240,6 +241,20 @@ describe('the git plugin', () => {
     expect(s.objections.filter((o) => o.code === 'outside-roots')).toEqual([])
     expect(s.warnings).toEqual([])
     expect(s.roots.git).toEqual([])
+  })
+
+  test("inspect after a survey declares no root for the survey's gone worktree", async () => {
+    const fx = fixture()
+    const away = realpathSync(mkdtempSync(join(tmpdir(), 'hc-away-')))
+    cleanups.push(() => rmSync(away, { recursive: true, force: true }))
+    const gone = join(away, 'gone')
+    sh(fx.root, ['worktree', 'add', '-q', '-b', 'gone', gone, 'main'])
+    rmSync(gone, { recursive: true })
+    const ctx = fakeContext({ cwd: fx.root, targets: [dirname(fx.root)] })
+    expect((await survey([fx.plugin], ctx)).roots.git).toEqual([gone])
+    const git = (await inspect([fx.plugin], ctx)).plugins.find((p) => p.name === 'git')!
+    expect(git.roots).toEqual([])
+    expect(git.selfRoots).toEqual([])
   })
 
   test('with no gone worktree, as before discover, roots reads no target, so git is not run for each', async () => {

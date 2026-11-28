@@ -267,9 +267,10 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
         // A directory that is gone has only the path as given: `contains` follows the links above it.
       }
       return table
-        .filter((row) =>
-          [...roots].some((root) => cwdsOf(row.cwd).some((cwd) => nodeGuard.contains(root, cwd))),
-        )
+        .filter((row) => {
+          const cwds = cwdsOf(row.cwd)
+          return [...roots].some((root) => cwds.some((cwd) => nodeGuard.contains(root, cwd)))
+        })
         .map(({ pid, command, hasChildren }) => ({ pid, command, hasChildren }))
     },
   }

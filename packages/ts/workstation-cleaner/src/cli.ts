@@ -24,6 +24,7 @@ import {
 import { mayContribute, type ArchiveOptions, type Kind } from '@osdlc/repo-cleaner'
 import { stripControls } from '@osdlc/ux'
 
+import { DEFAULT_AGENT_FOLDERS } from './agent-folders.ts'
 import { errorText, homeFrom, realOr } from './helpers.ts'
 import { expandHome, ignorePaths } from './ignore.ts'
 import {
@@ -31,6 +32,7 @@ import {
   checkPlugins,
   configFile,
   descriptorsDir,
+  hostConfigDir,
   hostDirs,
   hostHome,
   readConfig,
@@ -352,7 +354,11 @@ const terminalChecklist: Checklist = (question, items) =>
   canPrompt() ? askChecklist(question, items) : null
 
 export interface MainDeps {
-  /** The plugins that exist; default is the built-ins, the config's packages and the descriptors, built from the config. */
+  /**
+   * The plugins that exist; default is the built-ins, the config's packages and
+   * the descriptors, built from the config. `clean --archive` is refused with
+   * these: its options reach only the shipped git plugin.
+   */
   plugins?: readonly Plugin[]
   /** The folder of shipped descriptors. Defaults to `SHIPPED_DESCRIPTORS` in descriptor/load.ts. */
   shippedDescriptors?: string
@@ -440,21 +446,40 @@ function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
 
 type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
+/** `f()`, or `missing(err)` when it found no home directory (`MISSING_BASE_DIR`). */
+function orNoHome<T>(f: () => T, missing: (err: TieredDirsError) => T): T {
+  try {
+    return f()
+  } catch (err) {
+    if (err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR') return missing(err)
+    throw err
+  }
+}
+
 /**
  * The folders; undefined when there is no home directory to place them in.
  * Every command resolves them, even with `--config`, so each refuses a bad
  * folder variable alike; a missing home only matters where they are used.
  */
-function resolveDirs(ctx: CliContext): HostDirs | undefined {
-  try {
-    return hostDirs(ctx.env)
-  } catch (err) {
-    if (err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR') return undefined
-    throw err
-  }
-}
+const resolveDirs = (ctx: CliContext): HostDirs | undefined =>
+  orNoHome(
+    () => hostDirs(ctx.env),
+    () => undefined,
+  )
 
-const NO_HOME = 'no home directory to place the folders in: set HOME, or WORKSTATION_CLEANER_ROOT'
+/**
+ * The config folder, from `dirs` or, when those could not all be placed, on
+ * its own ({@link hostConfigDir}); undefined when there is no home for it
+ * either.
+ */
+const resolveConfigDir = (ctx: CliContext, dirs: HostDirs | undefined): string | undefined =>
+  dirs?.config ??
+  orNoHome(
+    () => hostConfigDir(ctx.env),
+    () => undefined,
+  )
+
+const NO_HOME = `no home directory to place the folders in: set ${process.platform === 'win32' ? 'USERPROFILE' : 'HOME, XDG_CONFIG_HOME with XDG_STATE_HOME'}, or HOST_CLEANER_ROOT`
 
 /**
  * The config: `--config`, which must exist, else `config.json` in the config
@@ -466,15 +491,15 @@ const NO_HOME = 'no home directory to place the folders in: set HOME, or WORKSTA
 function loadConfig(
   v: { config?: string | undefined },
   ctx: CliContext,
-  dirs: HostDirs | undefined,
+  configDir: string | undefined,
 ): { file: string; fileExists: boolean; config: Config; warnings: string[] } {
   const old = oldVariableWarnings(oldVariables(ctx.env))
   if (v.config !== undefined) {
     const file = resolve(ctx.cwd, v.config)
     return { file, ...readConfig(file, { required: true, plugins: [] }), warnings: old }
   }
-  if (dirs === undefined) throw new Error(NO_HOME)
-  const file = configFile(dirs)
+  if (configDir === undefined) throw new Error(NO_HOME)
+  const file = configFile({ config: configDir })
   const unread = unreadConfigs(ctx.env, file).map(
     (u) => `${u} is not read; the config is now ${file}`,
   )
@@ -519,6 +544,14 @@ const leftOut = (name: string, naming: Naming, config: Config): boolean =>
     ? !naming.want.includes(name)
     : disabledByConfig(name, config.plugins))
 
+/**
+ * `word` for advice to type in a shell: as it is when it has only characters
+ * no shell reads specially (a `~` only past its start, a `\` for Windows
+ * paths), else in single quotes as a POSIX shell reads them.
+ */
+const shellQuote = (word: string): string =>
+  /^[\w./:@%+=,\\-][\w./:@%+=,~\\-]*$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`
+
 /** The warning for a package that did not load, as `status`, `plan` and `config` write it. */
 const notLoaded = (f: PackageFailure): string => `${f.reason}; going on without ${f.name}`
 
@@ -532,7 +565,7 @@ function refuseFailed(failed: readonly PackageFailure[]): void {
   if (failed.length === 0) return
   const names = failed.map((f) => f.name).join(',')
   throw new BadInput(
-    `${failed.map((f) => f.reason).join('; ')}; clean runs only with every plugin it would use, so fix it or pass --skip-plugin ${names}`,
+    `${failed.map((f) => f.reason).join('; ')}; clean runs only with every plugin it would use, so fix it or pass --skip-plugin ${shellQuote(names)}`,
   )
 }
 
@@ -549,11 +582,11 @@ function sourcesFor(
   v: { config?: string | undefined; descriptor: readonly string[] },
   ctx: CliContext,
   deps: MainDeps,
-  dirs: HostDirs | undefined,
+  configDir: string | undefined,
 ): { sources: DescriptorSources; warnings: string[] } {
   const sources = { shipped: deps.shippedDescriptors, flag: flagDescriptors(v, ctx) }
-  if (dirs !== undefined)
-    return { sources: { ...sources, user: descriptorsDir(dirs) }, warnings: [] }
+  if (configDir !== undefined)
+    return { sources: { ...sources, user: descriptorsDir({ config: configDir }) }, warnings: [] }
   if (v.config === undefined) throw new Error(NO_HOME)
   return { sources, warnings: [`no user descriptors: ${NO_HOME}`] }
 }
@@ -592,17 +625,20 @@ interface Loading extends Found {
  * The built-ins and the descriptors, and the config checked against them, or
  * with `deps.plugins` the built-ins alone and no descriptor loaded. Runs no
  * package's code, so what it refuses is refused before any is imported.
+ *
+ * @param dirs - The folders, as the command resolved them once ({@link resolveDirs}).
  */
 function findRun(
   v: { config?: string | undefined; descriptor: readonly string[] },
   ctx: CliContext,
   deps: MainDeps,
+  dirs: HostDirs | undefined,
 ): Found {
-  const dirs = resolveDirs(ctx)
-  const read = loadConfig(v, ctx, dirs)
+  const configDir = resolveConfigDir(ctx, dirs)
+  const read = loadConfig(v, ctx, configDir)
   const { config, file: path } = read
   const entries = packageEntries(config.plugins)
-  const from = deps.plugins === undefined ? sourcesFor(v, ctx, deps, dirs) : undefined
+  const from = deps.plugins === undefined ? sourcesFor(v, ctx, deps, configDir) : undefined
   const found: Loaded =
     from === undefined
       ? { definitions: BUILT_IN_PLUGINS, packages: [], descriptors: [], problems: [] }
@@ -663,18 +699,18 @@ const withWarnings = <S extends { warnings: readonly string[] }>(s: S, warnings:
  * {@link loadRun}, each built from its entry (or `deps.plugins`), then chosen
  * by flag, the `--descriptor` files behind those plugins, and what to warn of.
  * A descriptor that can't be used stops the run unless the run leaves its
- * name out. A config entry that names no plugin stops the run when `strict`.
- * `failed` are the packages that did not load or build, which the run goes
- * without.
+ * name out. A config entry that names no plugin stops the run when
+ * `opts.strict`. `failed` are the packages that did not load or build, which
+ * the run goes without.
  *
  * @param opts.archive - `clean --archive`'s options, passed to the shipped git plugin.
+ * @param opts.dirs - The folders, as the command resolved them once ({@link resolveDirs}).
  */
 async function setUp(
   v: SweepValues,
   ctx: CliContext,
   deps: MainDeps,
-  strict: boolean,
-  opts: { archive?: ArchiveOptions | undefined } = {},
+  opts: { dirs: HostDirs | undefined; strict?: boolean; archive?: ArchiveOptions | undefined },
 ): Promise<{
   config: Config
   plugins: Plugin[]
@@ -685,11 +721,11 @@ async function setUp(
   known: string[]
 }> {
   const naming = { want: v.plugin, skip: v.skipPlugin }
-  const run = findRun(v, ctx, deps)
+  const run = findRun(v, ctx, deps, opts.dirs)
   const { config, found, entries, unknown } = run
   const warnings = [...run.warnings]
   if (unknown.length > 0) {
-    if (strict) {
+    if (opts.strict === true) {
       const have = [...(deps.plugins ?? found.definitions), ...entries]
         .map((d) => d.name)
         .join(', ')
@@ -772,7 +808,9 @@ function pluginsFor(
   // As repo-cleaner's --worktrees and --branches; remote branches are repo-cleaner's alone.
   const only: Kind[] =
     v.worktrees === v.branches ? ['worktree', 'branch'] : v.worktrees ? ['worktree'] : ['branch']
-  const all = allPlugins(loading, deps, ctx, gitDefinitionWith({ sweep: { only }, archive }))
+  const git =
+    deps.plugins === undefined ? gitDefinitionWith({ sweep: { only }, archive }) : undefined
+  const all = allPlugins(loading, deps, ctx, git)
   const named = v.plugin ?? []
   const broken = failed.find((f) => named.includes(f.name))
   if (broken !== undefined) throw new BadInput(broken.reason)
@@ -780,27 +818,25 @@ function pluginsFor(
   const absent = [...entries, ...loading.loaded.problems].filter(
     (e) => !named.includes(e.name) && !all.some((p) => p.name === e.name),
   )
-  const chosen = selectPlugins<Pick<Plugin, 'name'>>([...all, ...absent], v.plugin, v.skipPlugin)
-  return all.filter((p) => chosen.includes(p) && enabled(p.name, config, named))
+  // Only for its refusal of a name no plugin has; which run is {@link leftOut}'s to say.
+  selectPlugins<Pick<Plugin, 'name'>>([...all, ...absent], v.plugin, v.skipPlugin)
+  const naming = { want: v.plugin, skip: v.skipPlugin }
+  return all.filter((p) => !leftOut(p.name, naming, config))
 }
 
-/** `enabled: false` in the config leaves a plugin out; naming it in `named` (`--plugin`) runs it anyway. */
-const enabled = (name: string, config: Config, named: readonly string[] = []): boolean =>
-  named.includes(name) || !disabledByConfig(name, config.plugins)
+/** `enabled: false` in the config leaves a plugin out. */
+const enabled = (name: string, config: Config): boolean => !disabledByConfig(name, config.plugins)
 
 /**
  * The home folder `~` stands for in ids, `--pick` and `--spare`, and that no
  * root may be or hold: {@link tildeHome}'s, with no trailing slash; '' when
  * there is none, so ids are shown as they are.
  */
-function homeOf(ctx: CliContext): string {
-  try {
-    return homeFrom(hostHome(ctx.env))
-  } catch (err) {
-    if (err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR') return ''
-    throw err
-  }
-}
+const homeOf = (ctx: CliContext): string =>
+  orNoHome(
+    () => homeFrom(hostHome(ctx.env)),
+    () => '',
+  )
 
 /** `id` with the home folder after its `<kind>:`, as `home` spells it or by its real path, written `~`, as the text output shows it. */
 export function tildeId(id: string, home: string): string {
@@ -861,6 +897,7 @@ function contextFor(
     ...(home === '' ? {} : { home }),
     allow,
     ignore: ignoreFor(config, ignore, ctx),
+    agentFolders: agentFoldersFor(config, ctx),
   }
 }
 
@@ -869,16 +906,13 @@ function contextFor(
  * under `~` covers the folder it names. Looked up only for a path that starts
  * with `~`; with no home, that path is refused rather than read some other way.
  */
-const tildeHome = (ctx: CliContext) => (): string => {
-  try {
-    return hostHome(ctx.env)
-  } catch (err) {
-    if (err instanceof TieredDirsError && err.code === 'MISSING_BASE_DIR') {
+const tildeHome = (ctx: CliContext) => (): string =>
+  orNoHome(
+    () => hostHome(ctx.env),
+    (err) => {
       throw new Error(`cannot expand \`~\`: ${err.message}`)
-    }
-    throw err
-  }
-}
+    },
+  )
 
 /**
  * The home `~` stands for in a target: {@link tildeHome}'s, except that a
@@ -901,6 +935,10 @@ const targetHome = (ctx: CliContext) => (): string => {
 /** The config's ignore list with `extra` (`--ignore`) added, as absolute paths. */
 const ignoreFor = (config: Config, extra: readonly string[], ctx: CliContext): string[] =>
   ignorePaths([...config.ignore, ...extra], ctx.cwd, tildeHome(ctx))
+
+/** The config's agent folders, as absolute paths by the ignore list's rules; the core adds the built-in ones. */
+const agentFoldersFor = (config: Config, ctx: CliContext): string[] =>
+  ignorePaths(config.agentFolders, ctx.cwd, tildeHome(ctx))
 
 /** The lines as one control-stripped block, or nothing for no lines. */
 const block = (lines: readonly string[]): string =>
@@ -959,7 +997,7 @@ async function runStatus(
   let s: Survey
   let warnings: string[]
   try {
-    const run = await setUp(v, ctx, deps, false)
+    const run = await setUp(v, ctx, deps, { dirs: resolveDirs(ctx) })
     warnings = [...run.warnings, ...run.failed.map(notLoaded)]
     s = await survey(run.plugins, contextFor(parsed.positionals, run.config, ctx, [], v.ignore))
   } catch (err) {
@@ -991,7 +1029,7 @@ async function runConfig(
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   try {
-    const found = findRun(v, ctx, deps)
+    const found = findRun(v, ctx, deps, resolveDirs(ctx))
     // Every package the config names, disabled or not, so its settings are printed and checked.
     const every = { want: found.entries.map((e) => e.name) }
     const loading = await loadRun(found, every, ctx, deps)
@@ -1030,6 +1068,8 @@ async function runConfig(
             fileExists,
             targets: config.targets,
             ignore: config.ignore,
+            agentFolders: config.agentFolders,
+            defaultAgentFolders: DEFAULT_AGENT_FOLDERS,
             idleHours: config.idleHours ?? null,
             plugins: values,
             partIdleHours: parts,
@@ -1051,6 +1091,7 @@ async function runConfig(
       `file: ${stripControls(file)}${fileExists ? '' : '  (not found: defaults)'}`,
       `targets: ${list(config.targets)}`,
       `ignore: ${list(config.ignore)}`,
+      `agentFolders: ${list(config.agentFolders)}  (always also ${DEFAULT_AGENT_FOLDERS.join(', ')})`,
       `idleHours: ${config.idleHours ?? '(not set)'}`,
     ]
     for (const [n, rows] of Object.entries(settings)) {
@@ -1105,6 +1146,9 @@ interface PluginRow {
   vars: readonly VarRow[]
 }
 
+/** A {@link PluginRow}'s `reason` for a plugin the config switches off. */
+const disabledReason = (name: string): string => `plugins.${name}.enabled is false`
+
 /**
  * The row of a plugin that was not built, a descriptor that can't be used or a
  * package that did not load: not detected, with `why` as the reason, or
@@ -1120,7 +1164,7 @@ const absentRow = (
   source,
   enabled: on,
   detected: false,
-  reason: on ? why : `plugins.${name}.enabled is false`,
+  reason: on ? why : disabledReason(name),
   roots: [],
   rootsFailed: null,
   selfRoots: [],
@@ -1164,11 +1208,11 @@ const pathLine = (path: string): string => path.replace(/[\r\n]+/g, ' ')
 
 /** How to run a disabled plugin; `plugins` itself takes no `--plugin`. */
 const runsAnyway = (name: string): string =>
-  `; status, plan or clean with --plugin ${oneLine(name)} runs it anyway`
+  `; status, plan or clean with --plugin ${shellQuote(oneLine(name))} runs it anyway`
 
 /** What `--plugin` does when a descriptor that can't be used has the name: `setUp` throws its error. */
 const stopsOnError = (name: string): string =>
-  `; status, plan or clean with --plugin ${oneLine(name)} stops on its descriptor's error`
+  `; status, plan or clean with --plugin ${shellQuote(oneLine(name))} stops on its descriptor's error`
 
 /** @param unusable The names of the descriptors that can't be used, a built-in's among them. */
 function renderPlugins(
@@ -1220,7 +1264,7 @@ async function runPlugins(
   let unusable: ReadonlySet<string>
   try {
     // The packages the run would load: those the config does not disable.
-    const loading = await loadRun(findRun(v, ctx, deps), {}, ctx, deps)
+    const loading = await loadRun(findRun(v, ctx, deps, resolveDirs(ctx)), {}, ctx, deps)
     const { config, entries, failed, unknown } = loading
     const { descriptors, packages, problems } = loading.loaded
     const all = allPlugins(loading, deps, ctx)
@@ -1242,7 +1286,7 @@ async function runPlugins(
         ...(d?.replaces === undefined ? {} : { replaces: d.replaces }),
         enabled: s.skipped !== true,
         detected: s.detected,
-        reason: s.skipped === true ? `plugins.${s.name}.enabled is false` : (s.reason ?? null),
+        reason: s.skipped === true ? disabledReason(s.name) : (s.reason ?? null),
         roots: s.roots,
         rootsFailed: s.rootsFailed ?? null,
         selfRoots: s.selfRoots,
@@ -1271,7 +1315,10 @@ async function runPlugins(
         .filter((p) => !rowed.includes(p) || !enabled(p.name, config))
         .map((p) => p.error.message),
       ...(unknown.length > 0 ? [unknownMessage(unknown)] : []),
-      ...found.warnings,
+      // Less what a row's `rootsFailed` already says in full.
+      ...found.warnings.filter(
+        (w) => !rows.some((r) => r.rootsFailed !== null && w === `${r.name}: ${r.rootsFailed}`),
+      ),
     ]
   } catch (err) {
     return refusal(ctx, name, err)
@@ -1294,12 +1341,9 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
   const v = parsed.values
   let plan: Plan
   try {
-    const { config, plugins, descriptors, failed, warnings, unknown } = await setUp(
-      v,
-      ctx,
-      deps,
-      false,
-    )
+    const { config, plugins, descriptors, failed, warnings, unknown } = await setUp(v, ctx, deps, {
+      dirs: resolveDirs(ctx),
+    })
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = await survey(plugins, cctx)
     writeWarnings(ctx, name, [...warnings, ...failed.map(notLoaded), ...surveyWarnings(s)])
@@ -1308,13 +1352,14 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
     const swept = unknown.map(
       (n) => `config plugins.${n}: no plugin had this name when this plan was made`,
     )
+    const home = homeOf(ctx)
     plan = makePlan(withWarnings(s, swept), {
       targets: cctx.targets,
       targetsGiven: cctx.targetsGiven,
       ignore: cctx.ignore,
       descriptors,
-      pick: v.pick.map((e) => untildePick(e, homeOf(ctx), s.candidates)),
-      spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
+      pick: v.pick.map((e) => untildePick(e, home, s.candidates)),
+      spare: v.spare.flatMap((e) => untildeSpare(e, home)),
       allow: v.allow,
     })
   } catch (err) {
@@ -1497,7 +1542,7 @@ function savedPlan(
   const missing = (plan.descriptors ?? []).filter((p) => !given.some((g) => sameDescriptor(p, g)))
   if (missing.length > 0) {
     throw new BadInput(
-      `the plan was made with descriptors this run does not load; add ${[...new Set(missing)].map((p) => `--descriptor ${p}`).join(' ')}`,
+      `the plan was made with descriptors this run does not load; add ${[...new Set(missing)].map((p) => `--descriptor ${shellQuote(p)}`).join(' ')}`,
     )
   }
   return { plan, source }
@@ -1516,6 +1561,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
 
   const now = new Date()
   let dirs: HostDirs | undefined
+  let home: string
   let plan: Plan
   let source: string
   let plugins: Plugin[]
@@ -1532,7 +1578,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
     dirs = resolveDirs(ctx)
     if (!v.dryRun) refuseUnread(v, ctx, dirs)
     const saved = v.plan === undefined ? undefined : savedPlan(v.plan, v, ctx, deps)
-    const run = await setUp(v, ctx, deps, true, { archive })
+    const run = await setUp(v, ctx, deps, { dirs, strict: true, archive })
     refuseFailed(run.failed)
     const config = run.config
     plugins = run.plugins
@@ -1541,6 +1587,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
     if (archive !== undefined && !plugins.some((p) => p.name === 'git')) {
       throw new BadInput('--archive has no effect: this run does not use the git plugin')
     }
+    home = homeOf(ctx)
     if (saved === undefined) {
       cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
       const s = await survey(plugins, cctx)
@@ -1552,8 +1599,8 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         targetsGiven: cctx.targetsGiven,
         ignore: cctx.ignore,
         descriptors: run.descriptors,
-        pick: v.pick.map((e) => untildePick(e, homeOf(ctx), s.candidates)),
-        spare: v.spare.flatMap((e) => untildeSpare(e, homeOf(ctx))),
+        pick: v.pick.map((e) => untildePick(e, home, s.candidates)),
+        spare: v.spare.flatMap((e) => untildeSpare(e, home)),
         allow: v.allow,
         now,
       })
@@ -1568,9 +1615,10 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         cwd: ctx.cwd,
         targets: plan.targets,
         targetsGiven: plan.targetsGiven,
-        ...(homeOf(ctx) === '' ? {} : { home: homeOf(ctx) }),
+        ...(home === '' ? {} : { home }),
         allow: plan.allow,
         ignore: ignoreFor(config, v.ignore, ctx),
+        agentFolders: agentFoldersFor(config, ctx),
       }
       const checked = await recheck(plan, plugins, cctx, known)
       writeWarnings(ctx, name, surveyWarnings(checked.survey))
@@ -1583,7 +1631,9 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   }
 
   if (v.interactive) {
-    const chosen = chooseCandidates(plan, preview, deps, homeOf(ctx))
+    // A run that deletes needs the folders for its receipt (below): refused before anyone chooses.
+    if (!v.dryRun && dirs === undefined) return refusal(ctx, name, new Error(NO_HOME))
+    const chosen = chooseCandidates(plan, preview, deps, home)
     if (chosen === null) return usageError(ctx, name, NO_TERMINAL_FOR_I)
     plan = chosen
     preview = decidePlan(plan)
@@ -1601,14 +1651,14 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
       dropped: preview.dropped,
     }
     ctx.io.stdout(
-      json ? `${JSON.stringify(shown, null, 2)}\n` : renderPreview(preview, homeOf(ctx), archived),
+      json ? `${JSON.stringify(shown, null, 2)}\n` : renderPreview(preview, home, archived),
     )
     return EXIT.ok
   }
   // The receipt and the log need the folders; a dry run writes neither.
   if (dirs === undefined) return refusal(ctx, name, new Error(NO_HOME))
   if (!v.yes) {
-    ;(json ? ctx.io.stderr : ctx.io.stdout)(renderPreview(preview, homeOf(ctx), archived))
+    ;(json ? ctx.io.stderr : ctx.io.stdout)(renderPreview(preview, home, archived))
     const answer = (deps.confirm ?? terminalConfirm)(
       `Delete ${count} item${count === 1 ? '' : 's'}?`,
     )
@@ -1643,7 +1693,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
   ctx.io.stdout(
     json
       ? `${JSON.stringify({ receiptPath, notes, receipt }, null, 2)}\n`
-      : renderReceipt(receipt, receiptPath, homeOf(ctx)),
+      : renderReceipt(receipt, receiptPath, home),
   )
   return receipt.status === 'failed' ? EXIT_STEP_FAILED : EXIT.ok
 }
@@ -1665,7 +1715,12 @@ const RUNS = {
 type Phase = keyof typeof RUNS
 const PHASE_NAMES = Object.keys(RUNS) as Phase[]
 
-/** Resolves to an exit code; never exits the process. */
+/**
+ * Resolves to an exit code; never exits the process. Only `process.env` itself
+ * as `ctx.env` falls back to the OS account's home when `HOME` is unset, and
+ * gets tiered-dirs' test-runner rules; any other env, a copy of it too, is the
+ * only one read.
+ */
 export async function main(
   argv: readonly string[],
   ctx: CliContext,

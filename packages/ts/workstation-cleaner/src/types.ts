@@ -107,6 +107,12 @@ export interface RunCtx {
   /** Absolute paths nothing may be deleted in or below; the core drops candidates there, a plugin may also skip them. */
   ignore?: readonly string[] | undefined
   /**
+   * Absolute paths of folders where coding agents keep their worktrees, added
+   * to the built-in `DEFAULT_AGENT_FOLDERS`: the core refuses (`agent-worktree`)
+   * every candidate in or holding one of them.
+   */
+  agentFolders?: readonly string[] | undefined
+  /**
    * True when a person named the targets, in the config or on the command
    * line; false when the CLI fell back to the folder it runs in. Unset is false.
    */
@@ -119,7 +125,14 @@ export interface RunCtx {
    * Survey sets it; unset elsewhere.
    */
   running?: readonly string[] | undefined
-  /** The candidates `clean` will delete, in order; set for `roots`, `prepare`, `delete` and `deleted` while `clean` runs. */
+  /**
+   * The candidates `clean` will delete, in order; set for `roots`, `prepare`,
+   * `delete` and `deleted` while `clean` runs. A caller with its own core sets
+   * it to every candidate it will run before the first `prepare`: git archives
+   * a repository's work once, from this list, and a `prepare` for one the list
+   * leaves out archives again with the listed rows of its repository, some of
+   * which may be deleted by then, which stops the run.
+   */
   run?: readonly Candidate[] | undefined
 }
 
@@ -175,7 +188,7 @@ const VarValueSchema = z.object({
   from: z.string().optional(),
   trusted: z.boolean(),
   tried: z.array(z.object({ source: z.string(), failed: z.string() })),
-})
+}) satisfies z.ZodType<VarValue>
 
 /**
  * `raw`, a `detect` answer's `vars`, as {@link Vars}; else why not. Each entry

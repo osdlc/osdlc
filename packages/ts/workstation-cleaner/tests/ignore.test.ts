@@ -19,7 +19,7 @@ import { main, type MainDeps } from '../src/cli.ts'
 import { containsIgnored, coveredBy, expandHome, ignorePaths } from '../src/ignore.ts'
 import { BUILT_IN_PLUGINS } from '../src/registry.ts'
 import { plan, recheck, survey } from '../src/run.ts'
-import { effectiveSettings, settingsOf } from '../src/settings.ts'
+import { effectiveSettings, resolveSettings } from '../src/settings.ts'
 import { envOf } from '../src/artifacts.ts'
 import { pluginKit } from '../src/kit.ts'
 import { fakeContext } from '../src/testing.ts'
@@ -136,9 +136,9 @@ describe('idleHours', () => {
     const c: Ctx = fakeContext({ cwd: '/', targets: [] })
     expect(envOf(pluginKit('cargo'), { idleHours: 0 }, c).idleHours).toBe(0)
     expect(envOf(pluginKit('cargo'), { idleHours: -1 }, c).idleHours).toBe(24)
-    expect(settingsOf('cargo', {}, { idleHours: 3 }).idleHours).toBe(3)
-    expect(settingsOf('cargo', { idleHours: 0 }, { idleHours: 3 }).idleHours).toBe(0)
-    expect(settingsOf('cargo', {}).idleHours).toBe(24)
+    expect(resolveSettings('cargo', {}, { idleHours: 3 }).settings.idleHours).toBe(3)
+    expect(resolveSettings('cargo', { idleHours: 0 }, { idleHours: 3 }).settings.idleHours).toBe(0)
+    expect(resolveSettings('cargo', {}).settings.idleHours).toBe(24)
     // Only the definitions given: a name with none, as 'fake', has no section.
     const some = BUILT_IN_PLUGINS.filter((d) => ['node', 'fake'].includes(d.name))
     expect(Object.keys(effectiveSettings({}, {}, some))).toEqual(['node'])

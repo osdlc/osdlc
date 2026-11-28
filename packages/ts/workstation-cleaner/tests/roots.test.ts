@@ -254,6 +254,36 @@ describe('a plugin with no roots is held to the targets', () => {
     })
   })
 
+  test('a scope answer that is /, home, holds home, a personal folder or relative is left out with a warning, so it bounds nothing; a checkout is taken', async () => {
+    const home = temp()
+    const target = temp()
+    const elsewhere = join(temp(), 'cache')
+    const repo = join(temp(), 'repo')
+    mkdirSync(join(repo, '.git'), { recursive: true })
+    const inRepo = join(repo, 'cache')
+    const wide = ['/', home, dirname(home), join(home, 'Documents'), 'relative']
+    const scoping: Plugin = {
+      name: 'orca',
+      detect: () => true,
+      scope: () => [...wide, repo],
+      discover: () => [],
+    }
+    const s = await survey([scoping, cachePlugin(null, [elsewhere, inRepo])], {
+      ...ctx,
+      home,
+      targets: [target],
+    })
+    expect(s.warnings).toEqual([
+      'orca: scope: left out /: it is the filesystem root',
+      `orca: scope: left out ${home}: it is the home folder`,
+      `orca: scope: left out ${dirname(home)}: it holds the home folder`,
+      `orca: scope: left out ${join(home, 'Documents')}: it is the personal folder ~/Documents`,
+      'orca: scope: left out relative: it is not an absolute path without ..',
+    ])
+    expect(s.ctx.targets).toEqual([target, repo])
+    expect(refused(s)).toEqual([`file:${elsewhere}`])
+  })
+
   test('with reads, git is asked once per repository for the worktrees candidates sit in, and its answers read back', () => {
     const dev = temp()
     const repo = join(dev, 'app')

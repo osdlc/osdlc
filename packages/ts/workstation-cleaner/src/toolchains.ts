@@ -577,7 +577,9 @@ export interface ToolchainsOptions {
 
 /**
  * The `toolchains` plugin on `kit`; `env` is where each tool keeps its
- * versions (`HOME`, `RUSTUP_HOME`, `NVM_DIR`, `VOLTA_HOME`).
+ * versions (`HOME`, `RUSTUP_HOME`, `NVM_DIR`, `VOLTA_HOME`). Its `PATH` must
+ * be the one `kit` runs programs on: the `node` on `PATH` is kept, and it is
+ * found on `env.PATH` past Volta's shim but on the kit's `PATH` otherwise.
  */
 export function toolchainsPlugin(
   kit: Kit,
@@ -881,7 +883,13 @@ export function toolchainsPlugin(
     const newest = node.nvm.map(plain).sort(byVersion).at(-1)
     const [rustKeep, inUse] = await Promise.all([
       // Why what rustup has in use could not be read, in place of the list.
-      rust.length > 0 ? rustInUse(ctx).catch(errorText) : [],
+      rust.length > 0
+        ? rustInUse(ctx).catch((err: unknown) => {
+            // A hook that was stopped says so, not that rustup did not answer.
+            ctx.signal.throwIfAborted()
+            return errorText(err)
+          })
+        : [],
       nodeTools.length > 0 ? nodeInUse(ctx, newest) : null,
     ])
 

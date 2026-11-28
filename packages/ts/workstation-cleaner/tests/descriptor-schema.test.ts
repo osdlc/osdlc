@@ -268,7 +268,8 @@ describe("the system description's examples", () => {
     ).toEqual([])
   })
 
-  test.each([11, 20_000])('a glob or marker with %i {a,b} braces is refused, not a crash', (n) => {
+  // 800 braces are 4000 characters, under the length limit.
+  test.each([11, 800])('a glob or marker with %i {a,b} braces is refused, not a crash', (n) => {
     const glob = '{a,b}'.repeat(n)
     expect(issues(hfWith(`{ path: hub, costDescription: rebuild, glob: '${glob}' }`))).toEqual([
       'line 5: candidates.0.glob: must have no more than 1024 {a,b} alternatives',
@@ -281,10 +282,32 @@ describe("the system description's examples", () => {
   })
 
   test('a glob with two wide {a,b} groups is refused before they are expanded', () => {
-    const group = `{${Array(20_000).fill('a').join(',')}}`
+    // Two groups of 1000 are 4002 characters, under the length limit.
+    const group = `{${Array(1000).fill('a').join(',')}}`
     expect(
       issues(hfWith(`{ path: hub, costDescription: rebuild, glob: '${group}${group}' }`)),
     ).toEqual(['line 5: candidates.0.glob: must have no more than 1024 {a,b} alternatives'])
+  })
+
+  test('a glob or marker longer than 4096 characters is refused before it is expanded', () => {
+    // Ten {a,b} groups are 1024 alternatives, each as long as the glob.
+    const glob = `${'{a,b}'.repeat(10)}${'x'.repeat(5000)}`
+    expect(issues(hfWith(`{ path: hub, costDescription: rebuild, glob: '${glob}' }`))).toEqual([
+      'line 5: candidates.0.glob: must be no longer than 4096 characters',
+    ])
+    expect(
+      issues(
+        `${HUGGING_FACE}project:\n  - { dir: obj, marker: '${glob}', costDescription: rebuild }\n`,
+      ),
+    ).toEqual(['line 11: project.0.marker: must be no longer than 4096 characters'])
+  })
+
+  test.each([
+    '/home2/bob/.cache',
+    '/data/home/bob/.cache',
+    '/System/Volumes/Data/Users/bob/.cache',
+  ])('a folder below a home folder written out, %s, is accepted', (p) => {
+    expect(issues(HUGGING_FACE.replace('~/.cache/huggingface/hub', `'${p}'`))).toEqual([])
   })
 
   test('a glob may start with ~ when it names an entry, such as ~$*', () => {
@@ -395,6 +418,34 @@ describe('a bad descriptor names the field path', () => {
       'line 5: candidates.0.command: must name the checked folder, as a {path} argument or in env (D13)',
     ],
     [
+      'a command argument that climbs above the folder',
+      hfWith(
+        "{ path: hub, costDescription: rebuild, command: [rm, -rf, '{path}/../..'], removes: all }",
+      ),
+      'line 5: candidates.0.command: must not have a .. segment in an argument',
+    ],
+    [
+      'a command option whose value climbs above the folder',
+      hfWith(
+        "{ path: hub, costDescription: rebuild, command: [tool, clean, '{path}', '--dir=..'], removes: all }",
+      ),
+      'line 5: candidates.0.command: must not have a .. segment in an argument',
+    ],
+    [
+      'an env value whose option climbs above the folder',
+      hfWith(
+        "{ path: hub, costDescription: rebuild, command: [uv, cache, prune, '{path}'], env: { UV_ARGS: '--dir=../x' }, removes: unused }",
+      ),
+      'line 5: candidates.0.env: must not have a .. segment in a value',
+    ],
+    [
+      'an env value that climbs above the folder',
+      hfWith(
+        "{ path: hub, costDescription: rebuild, command: [uv, cache, prune], env: { UV_CACHE_DIR: '{path}/..' }, removes: unused }",
+      ),
+      'line 5: candidates.0.env: must not have a .. segment in a value',
+    ],
+    [
       'a command with no removes',
       hfWith("{ path: hub, costDescription: rebuild, command: [uv, cache, prune, '{path}'] }"),
       'line 5: candidates.0.removes: required with command: unused or all',
@@ -459,6 +510,10 @@ describe('a bad descriptor names the field path', () => {
       '/usr/home/alice',
       '/export/home/alice/',
       '/mnt/c/Users/alice',
+      '/System/Volumes/Data/Users/bob',
+      '/System/Volumes/Data/private/var/root',
+      '/home2/bob',
+      '/data/home/bob',
     ].map((home): [string, string, string] => [
       `a home folder written out, ${home}`,
       HUGGING_FACE.replace('~/.cache/huggingface/hub', `'${home}'`),
@@ -490,6 +545,19 @@ describe('a bad descriptor names the field path', () => {
       UV.replace('{ onPath: uv }', '{ onPath: /usr/local/bin/uv }'),
       'line 5: detect.any.0.onPath: the program must be a name on PATH, not a path',
     ],
+    ...['C:evil.exe', '.', '..'].map((program): [string, string, string] => [
+      `a detect onPath that is not a program name, ${program}`,
+      UV.replace('{ onPath: uv }', `{ onPath: '${program}' }`),
+      'line 5: detect.any.0.onPath: the program must be a name on PATH, not a path',
+    ]),
+    // A command's .. is refused as a .. segment too.
+    ...['C:evil.exe', '.'].map((program): [string, string, string] => [
+      `a command whose program is not a name, ${program}`,
+      hfWith(
+        `{ path: hub, costDescription: rebuild, command: ['${program}', '{path}'], removes: all }`,
+      ),
+      'line 5: candidates.0.command: the program must be a name on PATH, not a path',
+    ]),
     [
       'a glob that starts at the home folder',
       hfWith("{ path: hub, costDescription: rebuild, glob: '~/x' }"),
@@ -656,6 +724,24 @@ describe('a bad descriptor names the field path', () => {
     ])
   })
 
+  test("detect's problems are listed beside a type error", () => {
+    expect(issues(UV.replace('{ onPath: uv }', '{ onPath: 5, exists: cache }'))).toEqual([
+      'line 5: detect.any.0.onPath: Invalid input: expected string, received number',
+      'line 5: detect.any.0: set one of onPath or exists',
+    ])
+    expect(
+      issues(
+        UV.replace(
+          'any: [{ onPath: uv }, { exists: cache }]',
+          '{ any: [{ onPath: 5 }], all: [{ onPath: uv }] }',
+        ),
+      ),
+    ).toEqual([
+      'line 5: detect.any.0.onPath: Invalid input: expected string, received number',
+      'line 4: detect: set one of any or all',
+    ])
+  })
+
   test('every problem is listed, not only the first', () => {
     expect(issues(hfWith('{ path: models, costDescription: rebuild }\n  - { path: hub }'))).toEqual(
       [
@@ -740,6 +826,8 @@ describe('the predicates a script may use take what the schema takes', () => {
     '~/a/../b',
     'a/b',
     '/home/me',
+    '/home2/bob/.cache',
+    '/System/Volumes/Data/Users/bob/.cache',
     '',
   ]
   const NAMES = ['a', 'cache-a_1', '1a', 'a b', '', '.', '..', 'a/b', 'a\\b', '.venv']

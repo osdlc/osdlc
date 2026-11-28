@@ -251,6 +251,12 @@ candidates are refused `outside-roots`. The same check runs again right before
 self root that has become a checkout or a symlink since the survey, or a root
 that now holds a new linked worktree, is not removed.
 
+A `scope` answer is a target, so it bounds what any plugin may propose. The
+core leaves out one that is not an absolute path or has a `..` in it, is the
+filesystem root, is or holds the home folder, or is a personal folder, with a
+warning (`<plugin>: scope: left out <path>: <why>`). Unlike a root it may be a
+checkout, since `scope` adds repositories.
+
 Real paths are read with `realpathSync.native`, which spells a path as the
 filesystem does: where it ignores case, as macOS's does, `~/documents` is
 `~/Documents`, and compares so. A candidate that is itself a link
@@ -263,6 +269,30 @@ check.
 
 A ref gets no folder checks, and the core never removes a folder for one.
 `ignore` applies to a path, and to a ref's `at`.
+
+Coding agents keep worktrees of their own in fixed folders, track what they made
+there, and clean it up themselves. The core refuses (`agent-worktree`, exported
+as `AGENT_WORKTREE`, by `host-cleaner`) every candidate, whatever its plugin,
+that is in or holds one of these folders, and a ref whose `at` is in one, by
+the path's own spelling and its real path, through links above a folder that
+is gone. So a `git` worktree an agent made there is never removed, nor a
+`node_modules` inside it. The folders are the built-in ones
+(`DEFAULT_AGENT_FOLDERS`) and the config's [`agentFolders`](#files-and-config),
+which add to them (`RunCtx.agentFolders`, absolute paths, for code that calls
+`survey`):
+
+| Folder | Agent | Source |
+| --- | --- | --- |
+| `~/.cursor/worktrees` | Cursor's parallel agents and its `cursor-agent` CLI | Fixed, with no setting: [Cursor forum, staff answer](https://forum.cursor.com/t/configure-worktree-location/149222) |
+| `~/.codex/worktrees` | The Codex app | `$CODEX_HOME/worktrees` ([Codex docs](https://learn.chatgpt.com/docs/environments/git-worktrees)), and `CODEX_HOME` is `~/.codex` when unset (`codex-rs/utils/home-dir`) |
+
+`~` is the run's home (`RunCtx.home`, else the process's). A Codex app with
+another worktree root, or a moved `CODEX_HOME`, needs its folder in
+`agentFolders`. Claude Code keeps its worktrees in each repository, in
+`.claude/worktrees/` at its root, so no folder under home covers them; list a
+repository's `.claude/worktrees` in `agentFolders` to protect it. The same
+check runs again right before `prepare` in `clean`, so a candidate that a link
+has put in an agent folder since the survey fails that step.
 
 ### The plugin kit
 
@@ -281,7 +311,7 @@ without it to the kit it builds; a kit no run has bound removes nothing.
 | `kit.overBudget()` | A check that turns true once the same budget has passed since the call, by the kit's clock: for a plugin that measures several things as one. |
 | `kit.now()` | The time now, by the clock `kit.idle` reads (`KitOptions.now`). |
 | `kit.size(path)` | Bytes on disk, by repo-cleaner's `sizeOf` (`du`) within the same budget; `null` when unread. |
-| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy), as `names` (`<command> (pid <n>)`, for a sentence) and `processes` (`{ pid, command }`, to match on); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. workstation-cleaner's own process and the unbroken line of ancestors above it whose command lines name workstation-cleaner are left out, so the `npm exec` or `pnpm dlx` that started it does not count, but an editor, terminal or `tmux` it runs inside does. The table is read fresh once per hook call; one that could not be read stays `unknown` for the rest of it. |
+| `kit.running(name \| { name } \| { in }, ctx)` | The processes of a program, by name, or the busy processes working in a folder (an idle shell is not busy), as `names` (`<command> (pid <n>)`, for a sentence) and `processes` (`{ pid, command }`, to match on); `unknown` when the process table cannot be read. A name matches a word of a process's command line (`ps -axo pid=,ppid=,args=`): a word whose last path segment is the name or has it as one of its dot-separated parts (`commandHasName`). So `pnpm` finds `node /opt/homebrew/bin/pnpm dev` and corepack's `.../pnpm.cjs`, and `GradleDaemon` or `gradle` finds `java ... org.gradle.launcher.daemon.bootstrap.GradleDaemon`. Case counts. host-cleaner's own process and the unbroken line of ancestors above it whose command lines name host-cleaner as a word (as `commandHasName` finds one, a version after an `@` left off) are left out, so the `npm exec` or `pnpm dlx` that started it does not count, but an editor, terminal or `tmux` it runs inside does. The table is read fresh once per hook call; one that could not be read stays `unknown` for the rest of it. |
 | `kit.alive(pid, startedAt?)` | Whether a process is running, by the process probe's `alive`. With `startedAt` (such as epoch milliseconds recorded when it started), a pid reused by a process that started later is not it. `true` when it cannot be told. |
 | `kit.onPath(program)` | Whether a program is on PATH. |
 | `kit.candidate({ kind, path \| ref, ... })` | A candidate with its id (`<kind>:<path>` or `<kind>:<ref>`) and the plugin as owner. |
@@ -386,8 +416,8 @@ lines. A folder must start with `~/`, be absolute, and name something below
 the home folder or the root, not a home folder itself such as `/home/alice`. A
 glob names entries inside its path, in every `{a,b}` alternative too, and a
 project `marker` names a file in every alternative. A tool's
-`command` must name the checked folder, as a `{path}` argument or in `env`, and
-`env` may not set `PATH`, `LD_*`, `DYLD_*`, `NODE_OPTIONS` or `BASH_ENV`.
+`command` must name the checked folder, as a `{path}` argument or in `env`, no
+argument or `env` value may have a `..` segment (an option's value after `=` too, as in `--dir=..`), and `env` may not set `PATH`, `LD_*`, `DYLD_*`, `NODE_OPTIONS` or `BASH_ENV`.
 `paths`, `vars` and `inUse.locks` may use a `${VAR}` that `vars` declares or
 that is built in (`HOME` and the `XDG_*` folders); a `${` in any other string
 (such as a candidate's `command`, `env` or `glob`, `inUse.processes`,
@@ -571,15 +601,17 @@ storage, so every dead workspace's folder is `costDescription: lost`, not only
 one with the history folders the `vscode` plugin looks for. It is held,
 protested `discard-user-data`, and runs only with
 `--pick <id> --allow discard-user-data`. Cursor's agents make and track
-their own worktrees under `~/.cursor/worktrees`, so the plugin refuses
-(`agent-worktree`, exported as `AGENT_WORKTREE`) any `git` worktree there,
-whether or not Cursor runs. (For another tool's agent worktrees, list their
-folder in the config's `ignore`.) And the `cursor-agent` CLI runs as `node`, so
+their own worktrees under `~/.cursor/worktrees`, one of the core's
+[agent folders](#paths-refs-and-containment), so every candidate there is
+refused (`agent-worktree`) whether or not Cursor runs, and whether or not this
+plugin is detected; the plugin, like the `vscode` one, looks no further at a
+`git` worktree in any agent folder. And the `cursor-agent` CLI runs as `node`, so
 the process table does not show which process is Cursor's agent: the plugin
 refuses (`cursor-in-use`) any `git` worktree that any process other than an idle
 shell works in, whether or not Cursor runs. The plugin is detected when its
-storage or the agents' folder exists; on a host with only the CLI, that is once
-it has made a worktree there. On Windows only the agents' folder is checked. Its
+storage or `~/.cursor/worktrees` exists; on a host with only the CLI, that is once
+it has made a worktree there. On Windows, which has no `lsof`, it checks no `git`
+worktree itself; the core still refuses those in an agent folder. Its
 codes are the `vscode` plugin's under its own name: `cursor-in-use`,
 `cursor-unknown-workspace`, `cursor-state-unreadable` and `cursor-unchecked`.
 
@@ -633,7 +665,7 @@ plugin stays out of the run.
 | Candidate | Found by | Deleted by | Cost |
 | --- | --- | --- | --- |
 | `docker-volume:<name>` | `docker volume ls --filter dangling=true`: no container, running or stopped, uses it. Not one named in `plugins.docker.keepVolumes`. | `docker volume rm` | `lost`: held, and runs only when picked with `--allow discard-user-data` |
-| `docker-image:<id>` | `docker image ls --filter dangling=true`: no tag. One a container (running or stopped) was made from is left out. | `docker image rm` | `re-download` |
+| `docker-image:<id>` | `docker image ls --filter dangling=true`: no tag. One a container (running or stopped) was made from is left out. | `docker image rm`, unless `docker image inspect` finds a tag on it now | `re-download` |
 | `docker-build-cache:reclaimable` | The `Reclaimable:` total of `docker builder du`, when it is more than 0. | `docker builder prune --all --force` | `re-download` |
 
 Docker refuses to remove a volume or image a container took up after the
@@ -664,10 +696,12 @@ Models that nobody has pulled or changed for `plugins.ollama.idleHours` (default
 and its server answers. Each hook first asks the server over HTTP
 (`$OLLAMA_HOST/api/version`), because the `ollama` CLI starts the app on macOS
 and Windows when the server is down. If the server does not answer, or
-`OLLAMA_HOST` names another machine or cannot be read, `detect` leaves the
-plugin out and says why in its note. This machine is a loopback or unspecified
+`OLLAMA_HOST` names another machine, uses a scheme other than `http` or
+`https`, or cannot be read, `detect` leaves the plugin out and says why in its
+note. This machine is a loopback or unspecified
 address (IPv4-mapped too), its host name, or an address of one of its network
-interfaces.
+interfaces. The ping goes straight to the server: it does not read
+`HTTP_PROXY`, `HTTPS_PROXY` or `NO_PROXY`, which ollama's own client honours.
 
 | Phase | What it does |
 | --- | --- |
@@ -1000,8 +1034,11 @@ cache after 30 days with no change, the build cache after a week, emptied with
 `maven`, such as IntelliJ's Maven server) and `go` (go, gopls, or any process
 naming `go`, such as an editor open on `main.go`) is refused as `in-use`, at
 the survey and again before each delete, so a long-running `pnpm dev` keeps
-the pnpm store from being pruned. Idle time is the newest modification time
-inside a folder, and reading a file doesn't change it: a Hugging Face model or
+the pnpm store from being pruned, a server run with `npx` (such as an MCP
+server) keeps the npm cache from being removed while it runs, and the Gradle
+daemon an IDE starts keeps every Gradle candidate while the IDE is open. Idle
+time is the newest modification time inside a folder, and reading a file
+doesn't change it: a Hugging Face model or
 a Gradle wrapper distribution in daily use counts as idle from its download,
 which is why they are held. So does a Maven repository whose artifacts are all
 downloaded, and it may hold what only a local `mvn install` gives back, which
@@ -1092,8 +1129,8 @@ descriptor of its name in the config directory or `--descriptor` is a file
 that can't be used.
 Packages run after the built-ins and before the descriptors, by name. No
 package is imported until the config's other entries and the descriptors have
-been checked. When one fails to load (not installed, its import throws, a wrong
-export, name or api), `status` and `plan` warn and go on without it, and
+been checked. When one fails to load (not installed, its import throws or
+takes over 30 seconds, a wrong export, name or api), `status` and `plan` warn and go on without it, and
 `clean` exits 2 unless you pass `--skip-plugin <name>`, since its objections
 would be missing too. A package the config disables, or that `--skip-plugin`
 names, is not loaded, except by `workstation-cleaner config`, which loads every
@@ -1181,15 +1218,15 @@ the key.
 | Setting | Plugins | Default | Meaning |
 | --- | --- | --- | --- |
 | `enabled` | every plugin | `true` | `false` leaves the plugin out of every run. `--plugin <name>` runs it anyway. |
-| `package` | a plugin loaded from a package | none | The npm package it is loaded from. |
+| `package` | a plugin loaded from a package | none | The npm package it is loaded from. A package whose settings declare `package` themselves is refused. |
 | `idleHours` | `cargo`, `node`, `ollama`, `jetbrains`, `toolchains`, every descriptor | the top-level `idleHours`, else `24` | Hours an artifact must have sat unused before it is a candidate; `0` or more, fractions included (`0.5` is half an hour), and `0` takes every artifact. |
 | `vars.<NAME>` | descriptors that declare `vars` | none | A folder (`~/…` or absolute) for one of the descriptor's variables. It wins over every source and may sit outside home. A name the descriptor does not declare is an error. It wins over the sources of the variables built from it too: `GOPATH` (go) moves the module cache even with go on PATH. |
 | `keepVolumes` | `docker` | `[]` | Volume names never proposed, even when no container uses them. |
 
-Two settings sit at the top of the config and apply to every plugin:
+Three settings sit at the top of the config and apply to every plugin:
 
 ```json
-{ "targets": ["~/dev"], "ignore": ["~/dev/dashboard"], "idleHours": 0 }
+{ "targets": ["~/dev"], "ignore": ["~/dev/dashboard"], "agentFolders": ["~/dev/app/.claude/worktrees"], "idleHours": 0 }
 ```
 
 - `ignore` lists paths nothing may be deleted in or below (`~` is home, and on
@@ -1197,6 +1234,14 @@ Two settings sit at the top of the config and apply to every plugin:
   A candidate there is left out, with a warning saying how many; `status` prints
   the active list, a plan records it, and `clean --plan` honours the plan's list
   and the current one, dropping a planned candidate as `ignored`.
+- `agentFolders` lists folders where coding agents keep their own worktrees,
+  by the same rules as `ignore` (`~` is home; a path is matched by its real path
+  too). It adds to the built-in list (`~/.cursor/worktrees`,
+  `~/.codex/worktrees`), which always applies and cannot be turned off. A
+  candidate in or holding one is not left out but refused (`agent-worktree`),
+  so `status` and `plan` show it skipped with the folder in the reason; see
+  [containment](#paths-refs-and-containment). `config` prints the list and the
+  built-in one (`agentFolders` and `defaultAgentFolders` in JSON).
 - `idleHours` is the default for every plugin that has the setting and does not
   set its own. `0` is allowed and makes every idle-checked artifact a candidate,
   except where a descriptor entry's own `idleHours` is higher (below).

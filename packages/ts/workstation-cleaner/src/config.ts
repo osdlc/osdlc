@@ -37,6 +37,8 @@ export const ConfigSchema = z.strictObject({
   targets: z.array(z.string().min(1)).default([]),
   /** Paths no candidate may sit in or below, for every plugin; `--ignore` adds to them. `~` is the home directory. */
   ignore: z.array(z.string().min(1)).default([]),
+  /** Folders where coding agents keep their worktrees, refused for every plugin, added to the built-in ones. `~` is the home directory. */
+  agentFolders: z.array(z.string().min(1)).default([]),
   /** Hours an artifact must have sat unused, for every plugin that does not set its own; 0 or more. */
   idleHours: z.number().nonnegative().optional(),
   /** Settings by plugin name; a plugin reads only its own entry. */
@@ -68,6 +70,24 @@ export function hostDirs(
   opts: Pick<ResolveOptions, 'platform' | 'home'> = {},
 ): HostDirs {
   return dirsUnder(env, { convention: 'xdg', ...opts })
+}
+
+/**
+ * The config folder alone, by the rules of {@link hostDirs}: for when those
+ * cannot place the state and logs folders (no home, and no `XDG_STATE_HOME`),
+ * since reading the config needs only this one.
+ *
+ * @throws as {@link hostDirs} does
+ */
+export function hostConfigDir(
+  env: Record<string, string | undefined> = process.env,
+  opts: Pick<ResolveOptions, 'platform' | 'home'> = {},
+): string {
+  return dirsUnder(env, {
+    convention: 'xdg',
+    ...opts,
+    overrides: { state: '/unused', logs: '/unused' },
+  }).config
 }
 
 /** The `TieredDirsError` codes that name a folder variable to fix: exit 2. Any other exits 1. */
@@ -108,7 +128,8 @@ function dirsUnder(
   vendor: VendorDirs = VENDOR_DIRS,
 ): HostDirs {
   try {
-    const dirs = systemDirs(vendor, { ...envOpt(env), ...opts, overrides: UNREAD_ROOTS })
+    const overrides = { ...UNREAD_ROOTS, ...opts.overrides }
+    const dirs = systemDirs(vendor, { ...envOpt(env), ...opts, overrides })
     const tier = dirs.standalone(vendor.vendor)
     return { config: tier.config().path, state: tier.state().path, logs: tier.logs().path }
   } catch (err) {
@@ -119,10 +140,12 @@ function dirsUnder(
   }
 }
 
-export const configFile = (dirs: HostDirs): string => join(dirs.config, 'config.json')
+export const configFile = (dirs: Pick<HostDirs, 'config'>): string =>
+  join(dirs.config, 'config.json')
 
 /** The user's descriptors, which add plugins or replace shipped descriptors of the same name. */
-export const descriptorsDir = (dirs: HostDirs): string => join(dirs.config, 'descriptors')
+export const descriptorsDir = (dirs: Pick<HostDirs, 'config'>): string =>
+  join(dirs.config, 'descriptors')
 
 /**
  * The config files that are not read although one of them may be the one

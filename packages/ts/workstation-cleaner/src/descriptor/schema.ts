@@ -41,6 +41,9 @@ export type Os = (typeof OSES)[number]
 /** A `..` segment, which would climb out of where a path or glob is anchored. */
 const CLIMBS = /(^|[/\\])\.\.([/\\]|$)/
 
+/** A `..` segment in a command argument or env value, also as an option's value after `=`, as in `--dir=..`. */
+const ARG_CLIMBS = /(^|[/\\=])\.\.([/\\]|$)/
+
 /**
  * A glob alternative that climbs or starts outside: a `..` segment, or a
  * leading `/`, `\`, `~/` or drive, at the start or after a brace's `{` or `,`.
@@ -51,12 +54,14 @@ const GLOB_ESCAPES = /(^|[/\\{,])\.\.([/\\},]|$)|(^|[{,])([/\\]|~([/\\,}]|$)|[A-
 
 /**
  * A home folder, or the folder that holds them, written out: `/root`,
- * `/var/root`, `/home/<user>` (also under `/var`, `/usr` or `/export`),
- * `/Users/<user>`, `C:\Users\<user>` (also as WSL's `/mnt/c/Users/<user>`),
- * `${HOME}` or `${USERPROFILE}`. Test it on {@link withoutDots}' result.
+ * `/var/root`, `/home/<user>` (also `/home2` and the like, and under `/var`,
+ * `/usr`, `/export` or `/data`), `/Users/<user>`, each of these also under
+ * macOS's `/System/Volumes/Data`, `C:\Users\<user>` (also as WSL's
+ * `/mnt/c/Users/<user>`), `${HOME}` or `${USERPROFILE}`. Test it on
+ * {@link withoutDots}' result.
  */
 const HOME_FOLDER =
-  /^(\/root|\/(private[/\\])?var[/\\]root|\/(((var|usr|export)[/\\])?home|Users)([/\\][^/]*)?|(\/mnt[/\\][A-Za-z]|[A-Za-z]:)[/\\]Users([/\\][^/\\]*)?|\$\{(HOME|USERPROFILE)\})[/\\]*$/i
+  /^((\/System[/\\]Volumes[/\\]Data)?(\/root|\/(private[/\\])?var[/\\]root|\/(((var|usr|export|data)[/\\])?home\d*|Users)([/\\][^/]*)?)|(\/mnt[/\\][A-Za-z]|[A-Za-z]:)[/\\]Users([/\\][^/\\]*)?|\$\{(HOME|USERPROFILE)\})[/\\]*$/i
 
 const NAME = /^[A-Za-z][A-Za-z0-9_-]*$/
 
@@ -121,10 +126,17 @@ function outermostBraces(glob: string): number[] | undefined {
 const everyAlternative = (glob: string, ok: (alternative: string) => boolean): boolean =>
   braceExpansions(glob)?.every(ok) ?? false
 
+/** Past this many characters, a glob is refused rather than expanded: each alternative is as long as it. */
+const MAX_GLOB_LENGTH = 4096
+
 /** A glob whose `{a,b}` alternatives can all be checked; the checks after it don't run on any other. */
 const globText = z
   .string()
   .min(1)
+  .max(MAX_GLOB_LENGTH, {
+    message: `must be no longer than ${MAX_GLOB_LENGTH} characters`,
+    abort: true,
+  })
   .refine((g) => braceExpansions(g) !== undefined, {
     message: `must have no more than ${MAX_ALTERNATIVES} {a,b} alternatives`,
     abort: true,
@@ -151,8 +163,11 @@ const folder = z
     'must name a folder below a home folder, not a home folder itself',
   )
 
+/** A field path, by keys and indexes. */
+type Path = readonly PropertyKey[]
+
 /** A problem a refinement finds, at `path` below the value it checks. */
-type Issue = { path: PropertyKey[]; message: string }
+type Issue = { path: Path; message: string }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -161,7 +176,7 @@ const addIssues = (
   ctx: { addIssue: (issue: { code: 'custom'; message: string; path: PropertyKey[] }) => void },
   issues: readonly Issue[],
 ): void => {
-  for (const { path, message } of issues) ctx.addIssue({ code: 'custom', message, path })
+  for (const { path, message } of issues) ctx.addIssue({ code: 'custom', message, path: [...path] })
 }
 
 /** One value for every OS (`all`), or one per OS; an OS with none doesn't have the path. */
@@ -211,8 +226,12 @@ const costDescription = z
 
 const NOT_A_NAME = 'the program must be a name on PATH, not a path'
 
-/** Whether `program` is a name PATH lookup can find: no folder and no `{path}` in it. */
-const isProgramName = (program: string): boolean => !/[/\\]|\{path\}/.test(program)
+/**
+ * Whether `program` is a name PATH lookup can find: no folder, drive (`C:x`)
+ * or `{path}` in it, and not `.` or `..`.
+ */
+const isProgramName = (program: string): boolean =>
+  !/[/\\]|\{path\}|^[A-Za-z]:/.test(program) && program !== '.' && program !== '..'
 
 /** A program and its arguments; the program is a name looked up on PATH. */
 const argv = z
@@ -243,18 +262,29 @@ const condition = z
     exists: z.string().min(1).optional().describe('A name from `paths` whose folder exists.'),
   })
   .meta({ minProperties: 1, maxProperties: 1 })
-  .refine(
-    (c) => (c.onPath === undefined) !== (c.exists === undefined),
-    'set one of onPath or exists',
-  )
+  .superRefine((c, ctx) => addIssues(ctx, conditionIssues(c)))
+
+/** The cross-field problem of a detect condition; any value, as {@link perOsIssues}. */
+function conditionIssues(c: Record<string, unknown>): Issue[] {
+  return (c['onPath'] === undefined) !== (c['exists'] === undefined)
+    ? []
+    : [{ path: [], message: 'set one of onPath or exists' }]
+}
 
 const conditions = z.array(condition).min(1)
 
 const detect = z
   .strictObject({ any: conditions.optional(), all: conditions.optional() })
   .meta({ minProperties: 1, maxProperties: 1 })
-  .refine((d) => (d.any === undefined) !== (d.all === undefined), 'set one of any or all')
+  .superRefine((d, ctx) => addIssues(ctx, detectIssues(d)))
   .describe('When the plugin applies. Default: any of its paths exists.')
+
+/** The cross-field problem of `detect`; any value, as {@link perOsIssues}. */
+function detectIssues(d: Record<string, unknown>): Issue[] {
+  return (d['any'] === undefined) !== (d['all'] === undefined)
+    ? []
+    : [{ path: [], message: 'set one of any or all' }]
+}
 
 /** Why a `${` is refused outside the fields that fill it. */
 const UNFILLED = 'is not filled here: variables are filled only in paths, vars and locks'
@@ -326,6 +356,14 @@ function candidateIssues(c: Record<string, unknown>): Issue[] {
       c['command'].some(hasPath) ||
       (isObject(c['env']) && Object.values(c['env']).some(hasPath))
     if (!named) at('command', 'must name the checked folder, as a {path} argument or in env (D13)')
+    // A `..` would point the command at a folder above the checked one.
+    const climbs = (v: unknown) => typeof v === 'string' && ARG_CLIMBS.test(v)
+    if (Array.isArray(c['command']) && c['command'].some(climbs)) {
+      at('command', 'must not have a .. segment in an argument')
+    }
+    if (isObject(c['env']) && Object.values(c['env']).some(climbs)) {
+      at('env', 'must not have a .. segment in a value')
+    }
   } else {
     if (c['removes'] !== undefined) at('removes', 'only with command')
     if (c['env'] !== undefined) at('env', 'only with command')
@@ -476,8 +514,8 @@ function pathNameIssues(d: Record<string, unknown>): Issue[] {
 
 /**
  * The cross-field problems in the raw `value`: those of `paths` entries, of
- * candidates, of the names they use and of the variables. The reader adds the
- * ones zod skipped.
+ * candidates, of `detect` and its conditions, of the names they use and of
+ * the variables. The reader adds the ones zod skipped.
  */
 function crossFieldIssues(value: unknown): Issue[] {
   if (!isObject(value)) return []
@@ -491,6 +529,15 @@ function crossFieldIssues(value: unknown): Issue[] {
     value['candidates'].forEach((c, i) => {
       if (isObject(c)) below(['candidates', i], candidateIssues(c))
     })
+  const detect = value['detect']
+  if (isObject(detect)) {
+    below(['detect'], detectIssues(detect))
+    for (const mode of ['any', 'all'])
+      if (Array.isArray(detect[mode]))
+        detect[mode].forEach((c, i) => {
+          if (isObject(c)) below(['detect', mode, i], conditionIssues(c))
+        })
+  }
   return issues
 }
 
@@ -648,19 +695,17 @@ export class DescriptorError extends Error {
   }
 }
 
-type Path = readonly PropertyKey[]
-
 /** The schema's problems with `value`, one `<field path>: <message>` each; empty when it is a descriptor. */
 export function descriptorIssues(value: unknown): string[] {
   return check(value).issues.map(({ path, message }) => `${fieldPath(path)}: ${message}`)
 }
 
 /** `value` checked once: its issues, and the descriptor when it has none. */
-function check(value: unknown): { data?: Descriptor; issues: { path: Path; message: string }[] } {
+function check(value: unknown): { data?: Descriptor; issues: Issue[] } {
   const parsed = DescriptorSchema.safeParse(value, {
     error: (iss) => (iss.input === undefined && iss.code !== 'custom' ? 'required' : undefined),
   })
-  const issues: { path: Path; message: string }[] = []
+  const issues: Issue[] = []
   if (!parsed.success)
     for (const i of parsed.error.issues) {
       if (i.code === 'unrecognized_keys')
@@ -669,8 +714,7 @@ function check(value: unknown): { data?: Descriptor; issues: { path: Path; messa
     }
   // Zod skips a refinement when the object it checks has a type or required-field error.
   if (!parsed.success) {
-    const key = ({ path, message }: { path: Path; message: string }) =>
-      JSON.stringify([path.map(String), message])
+    const key = ({ path, message }: Issue) => JSON.stringify([path.map(String), message])
     const seen = new Set(issues.map(key))
     issues.push(...crossFieldIssues(value).filter((i) => !seen.has(key(i))))
   }

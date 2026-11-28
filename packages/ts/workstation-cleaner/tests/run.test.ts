@@ -227,7 +227,7 @@ describe('plugin order and duplicates', () => {
       expect(s.plugins).toEqual([])
       expect(s.notes).toEqual({})
       expect(s.warnings).toEqual([
-        `odd: detect answered ${JSON.stringify(answer)}, which is neither a boolean nor { active, note? }; it was left out`,
+        `odd: detect answered ${JSON.stringify(answer)}, which is neither a boolean nor { active, note?, vars? }; it was left out`,
       ])
     }
   })
@@ -445,7 +445,7 @@ describe('inspect', () => {
       {
         name: 'c',
         detected: false,
-        reason: 'detect answered "yes", which is neither a boolean nor { active, note? }',
+        reason: 'detect answered "yes", which is neither a boolean nor { active, note?, vars? }',
         roots: [],
         selfRoots: [],
       },
@@ -1051,9 +1051,15 @@ describe('re-check', () => {
     )
     const same = mutable([tree, branch])
     expect(await why(same, { ...ctx, ignore: ['/w'] })).toBe('requires worktree:/w, which is gone')
-    expect(await why(mutable([{ ...tree, requires: [branch.id] }, branch]))).toBe(
-      'requires worktree:/w, which is blocked: its requirements form a cycle',
-    )
+    // Which of two candidates that require each other is the cycle follows their order;
+    // the other names it.
+    const cyclic = mutable([{ ...tree, requires: [branch.id] }, branch])
+    const dropped = (await recheck(p, [cyclic], ctx)).decision.dropped
+    const detail = (id: string) => dropped.find((d) => d.id === id)?.detail
+    const cycle = 'its requirements form a cycle'
+    const [first, second] = detail(tree.id) === cycle ? [tree, branch] : [branch, tree]
+    expect(detail(first.id)).toBe(cycle)
+    expect(detail(second.id)).toBe(`requires ${first.id}, which is blocked: ${cycle}`)
   })
 
   test('clean deletes nothing it dropped', async () => {

@@ -279,7 +279,7 @@ describe('status', () => {
     expect(r.out).toContain('protest abandon-unmerged (git)')
   })
 
-  test("the shipped cursor plugin refuses git's worktree in Cursor's agent worktrees under HOME", async () => {
+  test("git's worktree in Cursor's agent worktrees under HOME is refused, and the cursor plugin is detected by them", async () => {
     const { env, home } = setup()
     const dir = repo()
     const wt = join(home, '.cursor', 'worktrees', 'repo', 'wt')
@@ -290,11 +290,41 @@ describe('status', () => {
     expect(doc.candidates.map((c: Candidate) => c.id)).toContain(`worktree:${wt}`)
     expect(doc.objections).toContainEqual(
       expect.objectContaining({
-        by: 'cursor',
+        by: 'host-cleaner',
         candidate: `worktree:${wt}`,
         code: 'agent-worktree',
       }),
     )
+  })
+
+  test("the config's agentFolders, with `~` for HOME, refuse git's worktree in them and leave one beside them", async () => {
+    const { env, home } = setup()
+    const dir = repo()
+    sh(dir, ['branch', 'merged-b'])
+    const inside = join(home, 'agents', 'repo', 'wt')
+    const beside = join(home, 'agents-old', 'wt')
+    sh(dir, ['worktree', 'add', '-q', inside, 'merged-a'])
+    sh(dir, ['worktree', 'add', '-q', beside, 'merged-b'])
+    const file = join(home, 'config.json')
+    writeFileSync(file, JSON.stringify({ agentFolders: ['~/agents'] }))
+    const r = await run(['status', '--all-rows', '--format', 'json', '--config', file], dir, env)
+    const doc = JSON.parse(r.out)
+    const refusals = (id: string) =>
+      doc.objections.filter((o: Objection) => o.candidate === id && o.code === 'agent-worktree')
+    expect(refusals(`worktree:${inside}`)).toEqual([
+      {
+        by: 'host-cleaner',
+        candidate: `worktree:${inside}`,
+        level: 'refuse',
+        code: 'agent-worktree',
+        reason: `it is in ${join(home, 'agents')}, where a coding agent keeps its worktrees`,
+      },
+    ])
+    expect(doc.candidates.map((c: Candidate) => c.id)).toContain(`worktree:${beside}`)
+    expect(refusals(`worktree:${beside}`)).toEqual([])
+    // The plan shows it skipped, with the reason.
+    const text = await run(['plan', '--config', file], dir, env)
+    expect(text.out).toMatch(/where a coding agent keeps its worktrees/)
   })
 
   test('json carries the candidates and objections', async () => {
@@ -1018,8 +1048,11 @@ candidates:
         '',
       ].join('\n'),
     )
+    // Said once, on the row, not again as a warning.
+    expect(r.err).toBe('')
     const json = await run(['plugins', '--format', 'json'], cwd, env, { plugins: failing() })
     expect(JSON.parse(json.out).plugins[0].rootsFailed).toBe('roots failed: timed\nout')
+    expect(JSON.parse(json.out).warnings).toEqual([])
   })
 
   test('a multi-line note stays on its row', async () => {
@@ -1100,12 +1133,16 @@ describe('plugin settings', () => {
   test('config prints each plugin’s settings with defaults and what the file set', async () => {
     const { env, cwd, file } = withConfig({
       targets: ['~/dev'],
+      agentFolders: ['~/agents'],
       plugins: { cargo: { idleHours: 48 }, node: { enabled: false } },
     })
     const text = await run(['config', '--config', file], cwd, env)
     expect(text.code).toBe(0)
     expect(text.out).toContain(`file: ${file}\n`)
     expect(text.out).toContain('targets: ~/dev')
+    expect(text.out).toContain(
+      'agentFolders: ~/agents  (always also ~/.cursor/worktrees, ~/.codex/worktrees)',
+    )
     expect(text.out).toMatch(/plugins\.cargo\n {2}enabled = true {2}\(default\)/)
     expect(text.out).toMatch(/idleHours = 48 {2}\(config\)/)
     expect(text.out).toMatch(/plugins\.node\n {2}enabled = false {2}\(config\)/)
@@ -1115,6 +1152,8 @@ describe('plugin settings', () => {
     )
     expect(json.plugins.cargo).toEqual({ enabled: true, idleHours: 48 })
     expect(json.plugins.git).toEqual({ enabled: true })
+    expect(json.agentFolders).toEqual(['~/agents'])
+    expect(json.defaultAgentFolders).toEqual(['~/.cursor/worktrees', '~/.codex/worktrees'])
   })
 
   test('config refuses a bad config and warns of a plugin nobody has', async () => {
@@ -1564,6 +1603,20 @@ candidates:
     )
     expect(dry.code).not.toBe(2)
     expect(dry.err).not.toContain('add --descriptor')
+  })
+
+  test('clean --plan quotes a --descriptor it asks for whose path a shell would split', async () => {
+    const h = withHome(['mine'])
+    mkdirSync(join(h.cwd, 'my descriptors'))
+    const desc = join(h.cwd, 'my descriptors', 'mine.yaml')
+    writeFileSync(desc, store('.cache/mine'))
+    const deps = { shippedDescriptors: h.shipped }
+    const planFile = join(h.cwd, 'p.json')
+    const argv = ['plan', '--descriptor', desc, '--plugin', 'mine', '-o', planFile]
+    expect((await run(argv, h.cwd, h.env, deps)).code).toBe(0)
+    const without = await run(['clean', '--plan', planFile, '--yes'], h.cwd, h.env, deps)
+    expect(without.code).toBe(2)
+    expect(without.err).toContain(`add --descriptor '${desc}'`)
   })
 
   test('a plan records only the --descriptor files behind the plugins it ran', async () => {
@@ -2118,8 +2171,56 @@ describe('folders', () => {
     const r = await run(['clean', '--yes', '--config', file, cwd], cwd, env, { plugins: [plugin] })
     expect(r.code).toBe(1)
     expect(r.err).toContain('no home directory')
+    // It names what would place the folders.
+    expect(r.err).toContain(process.platform === 'win32' ? 'set USERPROFILE' : 'XDG_STATE_HOME')
     expect(plugin.removed).toEqual([])
     expect((await run(['config'], cwd, env)).code).toBe(1)
+  })
+
+  // Windows keeps its own folders and reads no XDG_* variable.
+  test.skipIf(process.platform === 'win32')(
+    'with XDG_CONFIG_HOME and no home, the config there is read; clean still needs a home to delete',
+    async () => {
+      const { cwd } = setup()
+      const xdg = tempDir()
+      mkdirSync(join(xdg, 'host-cleaner'), { recursive: true })
+      const file = join(xdg, 'host-cleaner', 'config.json')
+      writeFileSync(file, JSON.stringify({ targets: [cwd] }))
+      const env = { PATH: process.env.PATH ?? '', XDG_CONFIG_HOME: xdg }
+      const shown = await run(['config', '--format', 'json'], cwd, env, { plugins: [fake()] })
+      expect(shown.err).toBe('')
+      expect(shown.code).toBe(0)
+      expect(JSON.parse(shown.out)).toMatchObject({ file, fileExists: true, targets: [cwd] })
+      const status = await run(['status'], cwd, env, { plugins: [fake()] })
+      expect(status.err).toBe('')
+      expect(status.code).toBe(0)
+      const plugin = fake()
+      const r = await run(['clean', '--yes'], cwd, env, { plugins: [plugin] })
+      expect(r.code).toBe(1)
+      expect(r.err).toContain('no home directory')
+      expect(plugin.removed).toEqual([])
+    },
+  )
+
+  test('with no home, clean -i refuses before it shows the checklist', async () => {
+    const { cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, '{}')
+    const env = { PATH: process.env.PATH ?? '' }
+    const plugin = fake()
+    const asked: string[] = []
+    const r = await run(['clean', '-i', '--config', file, cwd], cwd, env, {
+      plugins: [plugin],
+      checklist: (q) => {
+        asked.push(q)
+        return [0]
+      },
+      confirm: () => true,
+    })
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('no home directory')
+    expect(asked).toEqual([])
+    expect(plugin.removed).toEqual([])
   })
 
   test('`~` is the home the folders are built on, and with none a `~` path is refused', async () => {

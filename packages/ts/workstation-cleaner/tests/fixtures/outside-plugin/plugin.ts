@@ -3,14 +3,14 @@
  * alone: the folders under `~/.scratch` (or `dir`) that have sat idle.
  * `tests/outside.test.ts` builds it in a package of its own.
  */
-import { readdirSync, statSync } from 'node:fs'
+import { readdirSync, statSync, type Dirent } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
 import {
-  DEFAULT_IDLE_HOURS,
   PLUGIN_API,
   coveredBy,
   definePlugin,
+  idleHoursOr,
   idleHoursSetting,
   z,
   type Candidate,
@@ -23,17 +23,29 @@ export default definePlugin({
   settings: z.object({ dir: z.string().optional(), idleHours: idleHoursSetting }),
   create({ settings, env, kit }) {
     const root = settings.dir ?? join(env.HOME ?? '', '.scratch')
-    const idleHours = settings.idleHours ?? DEFAULT_IDLE_HOURS
+    const idleHours = idleHoursOr(settings.idleHours)
     return {
       name: 'scratch',
-      // The core refuses a relative root, so say why the plugin does not run.
-      detect: () =>
-        isAbsolute(root)
-          ? statSync(root, { throwIfNoEntry: false })?.isDirectory() === true
-          : { active: false, note: `${root} is not absolute` },
+      detect() {
+        // The core refuses a relative root, so say why the plugin does not run.
+        if (!isAbsolute(root)) return { active: false, note: `${root} is not absolute` }
+        try {
+          return statSync(root, { throwIfNoEntry: false })?.isDirectory() === true
+        } catch (err) {
+          return { active: false, note: `${root} cannot be read: ${(err as Error).message}` }
+        }
+      },
       roots: () => [root],
       discover(ctx) {
-        return readdirSync(root, { withFileTypes: true })
+        let entries: Dirent[]
+        try {
+          entries = readdirSync(root, { withFileTypes: true })
+        } catch (err) {
+          // Removed since detect: nothing left to propose.
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
+          throw err
+        }
+        return entries
           .filter((e) => e.isDirectory())
           .flatMap((e): Candidate[] => {
             const path = join(root, e.name)
@@ -52,6 +64,7 @@ export default definePlugin({
                   kind: 'scratch',
                   path,
                   why: 'too big to measure',
+                  costDescription: 'rebuild',
                   unmeasured: true,
                 }),
               ]

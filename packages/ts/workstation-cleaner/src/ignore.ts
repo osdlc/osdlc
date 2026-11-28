@@ -4,9 +4,9 @@
  * real path, so a link into an ignored directory is covered too.
  */
 
-import { isAbsolute, posix, resolve, sep, win32 } from 'node:path'
+import { isAbsolute, posix, resolve, win32 } from 'node:path'
 
-import { realOr } from './helpers.ts'
+import { isUnder, realOr } from './helpers.ts'
 
 /** `path` with a leading `~` (or on Windows `~\`) taken as `home()`, which is called only then. */
 export const expandHome = (
@@ -17,9 +17,6 @@ export const expandHome = (
   path === '~' || path.startsWith('~/') || (platform === 'win32' && path.startsWith('~\\'))
     ? (platform === 'win32' ? win32 : posix).join(home(), path.slice(1))
     : path
-
-const within = (path: string, dir: string): boolean =>
-  path === dir || path.startsWith(dir.endsWith(sep) ? dir : dir + sep)
 
 /** `entries` as absolute paths (`~` is `home()`, a relative entry starts at `cwd`), each by its real path as well. */
 export function ignorePaths(entries: readonly string[], cwd: string, home: () => string): string[] {
@@ -36,12 +33,12 @@ export function ignorePaths(entries: readonly string[], cwd: string, home: () =>
 export function coveredBy(path: string, ignore: readonly string[]): string | undefined {
   if (ignore.length === 0 || !isAbsolute(path)) return undefined
   const forms = [path, realOr(path)]
-  return ignore.find((dir) => forms.some((f) => within(f, dir)))
+  return ignore.find((dir) => forms.some((f) => isUnder(f, dir)))
 }
 
 /** The ignore entry that sits inside `path`, so deleting `path` would take it too, or undefined. */
 export function containsIgnored(path: string, ignore: readonly string[]): string | undefined {
   if (ignore.length === 0 || !isAbsolute(path)) return undefined
   const forms = [path, realOr(path)]
-  return ignore.find((dir) => forms.some((f) => within(dir, f)))
+  return ignore.find((dir) => forms.some((f) => isUnder(dir, f)))
 }

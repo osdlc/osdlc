@@ -116,7 +116,8 @@ const use = (dir: string, name: string, hoursAgo = 0): void => {
 /**
  * A home with `rust` toolchains in `.rustup`, `nvm` versions and `volta`
  * versions, and a `dev` folder of checkouts as the one target. `rustup`
- * answers `answers.rustup` over a default of `stable` with no overrides and
+ * answers `answers.rustup` (an answer, or a function called for one) over a
+ * default of `stable` with no overrides and
  * removes a toolchain it uninstalls; `node` is on PATH only when given.
  * `mounts` gives each versions folder's mount options, by default none.
  * `probe` answers what works in a folder, by default nothing.
@@ -126,7 +127,7 @@ function fixture(
     rust?: string[]
     nvm?: string[]
     volta?: string[]
-    rustup?: Record<string, Answer>
+    rustup?: Record<string, Answer | (() => Answer)>
     node?: string
     targets?: (dev: string) => string[]
     targetsGiven?: boolean
@@ -150,7 +151,7 @@ function fixture(
   for (const name of opts.nvm ?? []) install(nvm, name)
   for (const name of opts.volta ?? []) install(volta, name)
 
-  const answers: Record<string, Answer> = {
+  const answers: Record<string, Answer | (() => Answer)> = {
     default: { stdout: `stable-${HOST} (default)\n` },
     'override list': { stdout: 'no overrides\n' },
     ...opts.rustup,
@@ -161,7 +162,8 @@ function fixture(
         rmSync(join(rustup, argv[2]!), { recursive: true, force: true })
         return { stdout: `info: toolchain '${argv[2]}' uninstalled\n` }
       }
-      return answers[argv.join(' ')]
+      const answer = answers[argv.join(' ')]
+      return typeof answer === 'function' ? answer() : answer
     },
     ...(opts.node === undefined ? {} : { node: { '--version': { stdout: `${opts.node}\n` } } }),
   })
@@ -363,6 +365,22 @@ describe('rustup toolchains', () => {
     symlinkSync(outside, join(fx.rustup, `1.60.0-${HOST}`))
     repo(join(fx.dev, 'a'))
     expect((await proposed(fx)).names).toEqual([])
+  })
+
+  test('a hook stopped while rustup is asked what is in use rejects with why it was stopped', async () => {
+    const stop = new AbortController()
+    const why = new Error('hook took too long')
+    const fx = fixture({
+      rust: [`1.75.0-${HOST}`, `stable-${HOST}`],
+      rustup: {
+        default: () => {
+          stop.abort(why)
+          return { exitCode: 1, stderr: 'error: interrupted' }
+        },
+      },
+    })
+    repo(join(fx.dev, 'a'))
+    await expect(fx.plugin.discover!({ ...fx.ctx, signal: stop.signal })).rejects.toBe(why)
   })
 
   test('with rustup not answering, every toolchain is refused, since what is in use cannot be told', async () => {

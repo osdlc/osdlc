@@ -20,8 +20,9 @@ A plugin's code uses two entries of `@osdlc/workstation-cleaner`, and no other:
 | `@osdlc/workstation-cleaner/testing` | `fakeContext`, `fakeRunner`, `tempHome` and `contractSuite`, for the plugin's own tests. |
 
 Its tests may also import `survey`, `plan` and `clean`, with their types
-`RunCtx` and `Survey`, from the main entry, `@osdlc/workstation-cleaner`, to run it
-through the core, as the example's do. The plugin's own code never does.
+`RunCtx` and `Survey`, from the main entry, `@osdlc/host-cleaner`, to run it
+through the core, and `HOOK_LIMIT_MS`, to hold a time limit under the hook's,
+as the example's do. The plugin's own code never does.
 
 ## The package
 
@@ -50,14 +51,14 @@ through the core, as the example's do. The plugin's own code never does.
 This plugin cleans the folders under `~/.scratch` that have sat idle:
 
 ```ts
-import { readdirSync, statSync } from 'node:fs'
+import { readdirSync, statSync, type Dirent } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
 import {
-  DEFAULT_IDLE_HOURS,
   PLUGIN_API,
   coveredBy,
   definePlugin,
+  idleHoursOr,
   idleHoursSetting,
   z,
   type Candidate,
@@ -70,17 +71,29 @@ export default definePlugin({
   settings: z.object({ dir: z.string().optional(), idleHours: idleHoursSetting }),
   create({ settings, env, kit }) {
     const root = settings.dir ?? join(env.HOME ?? '', '.scratch')
-    const idleHours = settings.idleHours ?? DEFAULT_IDLE_HOURS
+    const idleHours = idleHoursOr(settings.idleHours)
     return {
       name: 'scratch',
-      // The core refuses a relative root, so say why the plugin does not run.
-      detect: () =>
-        isAbsolute(root)
-          ? statSync(root, { throwIfNoEntry: false })?.isDirectory() === true
-          : { active: false, note: `${root} is not absolute` },
+      detect() {
+        // The core refuses a relative root, so say why the plugin does not run.
+        if (!isAbsolute(root)) return { active: false, note: `${root} is not absolute` }
+        try {
+          return statSync(root, { throwIfNoEntry: false })?.isDirectory() === true
+        } catch (err) {
+          return { active: false, note: `${root} cannot be read: ${(err as Error).message}` }
+        }
+      },
       roots: () => [root],
       discover(ctx) {
-        return readdirSync(root, { withFileTypes: true })
+        let entries: Dirent[]
+        try {
+          entries = readdirSync(root, { withFileTypes: true })
+        } catch (err) {
+          // Removed since detect: nothing left to propose.
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
+          throw err
+        }
+        return entries
           .filter((e) => e.isDirectory())
           .flatMap((e): Candidate[] => {
             const path = join(root, e.name)
@@ -99,6 +112,7 @@ export default definePlugin({
                   kind: 'scratch',
                   path,
                   why: 'too big to measure',
+                  costDescription: 'rebuild',
                   unmeasured: true,
                 }),
               ]
@@ -141,8 +155,8 @@ What it relies on:
   `plugins`.
 - **`idleHoursSetting`**, declared under the key `idleHours`, takes the
   config's top-level `idleHours` when a shipped plugin's entry sets none.
-  Parsed by your own program it stays unset when not given, so fall back to
-  `DEFAULT_IDLE_HOURS` as this plugin does.
+  Parsed by your own program it stays unset when not given, so read it with
+  `idleHoursOr`, which falls back to `DEFAULT_IDLE_HOURS`, as this plugin does.
 - **`env`** is the environment the plugin is given: the command line's, or
   whatever the program that builds it passes.
 - **`kit.candidate`** fills in the id (`<kind>:<path>` or `<kind>:<ref>`) and
@@ -153,11 +167,14 @@ What it relies on:
   for the person reading every run. The
   core refuses a root that is not an absolute path, so this plugin does not
   run, and says why, when `dir` is relative (`~` is not expanded) or `HOME` is
-  unset, and when the root is not a folder. `ctx.targetsGiven` says whether
-  the person gave targets or the run fell back to the current folder.
+  unset, or the root cannot be read; nor when the root is not a folder.
+  `ctx.targetsGiven` says whether the person gave targets or the run fell
+  back to the current folder.
 - **`discover`** skips the folders `ctx.ignore` covers. `kit.idle` throws on
   a folder it cannot read, since what it hides may be recent, so the plugin
-  leaves that folder out and still proposes the others.
+  leaves that folder out and still proposes the others. A root removed since
+  `detect` holds nothing to propose; another error reading it is thrown, and
+  the core prints it as a warning.
 
 The rules every plugin keeps:
 
@@ -168,7 +185,8 @@ The rules every plugin keeps:
   refuses it otherwise (`outside-roots`) and checks again right before
   `delete`. The core leaves out a root that is `/`, is or holds home, is a
   personal folder such as `~/Documents`, is or holds a target or a checkout,
-  and a self root that is a symlink.
+  and a self root that is a symlink. It leaves out a `scope` answer that is
+  `/`, is or holds home, or is a personal folder.
 - **Delete with `kit.remove`.** Never remove a folder yourself. `kit.remove`
   checks the path is still inside the bounds by its real path, makes
   read-only files writable, removes the folder and returns the receipt

@@ -106,11 +106,11 @@ function outsidePackage(
   mkdirSync(hc, { recursive: true })
   workstationCleanerEntries(dir, entries)
   build(join(hc, 'dist'))
-  // The built files find workstation-cleaner's dependencies here.
-  symlinkSync(join(pkg, 'node_modules'), join(hc, 'node_modules'), 'dir')
+  // The built files find host-cleaner's dependencies here.
+  symlinkSync(join(pkg, 'node_modules'), join(hc, 'node_modules'), 'junction')
   mkdirSync(join(dir, 'node_modules', '@types'))
   const types = dirname(require.resolve('@types/node/package.json'))
-  symlinkSync(types, join(dir, 'node_modules', '@types', 'node'), 'dir')
+  symlinkSync(types, join(dir, 'node_modules', '@types', 'node'), 'junction')
 }
 
 /** Builds the package in `dir` with its own tsconfig. */
@@ -181,8 +181,8 @@ test('the podman example builds against ./plugin alone, and the loader takes it 
   // workstation-cleaner and run through the contract suite on a fake podman.
   const { home: root, cleanup: uninstall } = tempHome('workstation-cleaner-installed-')
   onTestFinished(uninstall)
-  symlinkSync(dir, join(root, 'workstation-cleaner-podman'), 'dir')
-  const hc = join(dir, 'node_modules', '@osdlc', 'workstation-cleaner')
+  symlinkSync(dir, join(root, 'host-cleaner-podman'), 'junction')
+  const hc = join(dir, 'node_modules', '@osdlc', 'host-cleaner')
   const dist = (f: string) => JSON.stringify(pathToFileURL(join(hc, 'dist', f)).href)
   const listed = [{ Name: 'cache', Driver: 'local', CreatedAt: '2026-05-01T09:00:00Z' }]
   const script = `
@@ -217,7 +217,7 @@ process.stdout.write(JSON.stringify({ failed, version: loaded[0]?.version, name:
   mkdirSync(join(dir, 'test'))
   copyFileSync(join(example, 'test', 'podman.test.ts'), join(dir, 'test', 'podman.test.ts'))
   const vitest = dirname(require.resolve('vitest/package.json'))
-  symlinkSync(vitest, join(dir, 'node_modules', 'vitest'), 'dir')
+  symlinkSync(vitest, join(dir, 'node_modules', 'vitest'), 'junction')
   writeFileSync(
     join(dir, 'tsconfig.test.json'),
     JSON.stringify({
@@ -336,6 +336,7 @@ describe("the guide's plugin, its walk out of time in one survey and not the oth
   ])('is not dropped as changed: $planned when planned', async ({ slow }) => {
     const planned = plan(await survey([make(slow)], ctx), { allow })
     expect(planned.candidates.map((c) => c.unmeasured)).toEqual([slow ? true : undefined])
+    expect(planned.candidates.map((c) => c.costDescription)).toEqual(['rebuild'])
     const receipt = await clean(planned, [make(!slow)], ctx)
     expect(receipt.dropped).toEqual([])
     expect(receipt.steps).toEqual([
@@ -380,6 +381,20 @@ describe("the guide's plugin, its walk out of time in one survey and not the oth
     }
   })
 
+  test('proposes nothing when its folder is removed after detect', async () => {
+    const dir = join(home, 'removed')
+    mkdirSync(dir)
+    const plugin = scratch.create({
+      settings: scratch.settings.parse({ dir }),
+      env,
+      kit: entry.pluginKit(scratch.name, { env }),
+    })
+    const ctx = fakeContext({ cwd: home })
+    expect(await plugin.detect(ctx)).toBe(true)
+    rmSync(dir, { recursive: true })
+    expect(await plugin.discover?.(ctx)).toEqual([])
+  })
+
   test('does not run when its folder is a file', async () => {
     const file = join(home, 'a-file')
     writeFileSync(file, 'x')
@@ -389,6 +404,26 @@ describe("the guide's plugin, its walk out of time in one survey and not the oth
       kit: entry.pluginKit(scratch.name, { env }),
     })
     expect(await plugin.detect(fakeContext({ cwd: home }))).toBe(false)
+  })
+
+  test.skipIf(asRoot)('does not run, and says why, when its folder cannot be read', async () => {
+    const locked = join(home, 'locked')
+    mkdirSync(join(locked, 'scratch'), { recursive: true })
+    chmodSync(locked, 0o000)
+    try {
+      const plugin = scratch.create({
+        settings: scratch.settings.parse({ dir: join(locked, 'scratch') }),
+        env,
+        kit: entry.pluginKit(scratch.name, { env }),
+      })
+      expect(await plugin.detect(fakeContext({ cwd: home }))).toEqual({
+        active: false,
+        note: expect.stringMatching(/locked\/scratch cannot be read: EACCES/),
+      })
+    } finally {
+      chmodSync(locked, 0o700)
+      rmSync(locked, { recursive: true })
+    }
   })
 })
 

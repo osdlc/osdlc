@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process'
 import fs, { existsSync, mkdirSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 
 import type { ProcessProbe } from '@osdlc/repo-cleaner'
 
@@ -201,6 +201,18 @@ describe('mount points', () => {
     expect(unmounted(join(`${mnt}-not`, 'dev', 'app'), new Set(), [mnt])).toBe(false)
   })
 
+  test("a gone path whose user folder is missing beside the home may be another machine's", () => {
+    const t = tempHome()
+    cleanups.push(t.cleanup)
+    const homes = join(t.home, 'homes')
+    const me = join(homes, 'me')
+    mkdirSync(me, { recursive: true })
+    expect(unmounted(join(homes, 'ghost', 'dev', 'p'), new Set(), [], me)).toBe(true)
+    expect(unmounted(join(homes, 'ghost', 'dev', 'p'), new Set(), [])).toBe(false)
+    // A gone path in the home itself is not.
+    expect(unmounted(join(me, 'dev', 'p'), new Set(), [], me)).toBe(false)
+  })
+
   test('a link above a gone path is followed to the mount folder', () => {
     const t = tempHome()
     cleanups.push(t.cleanup)
@@ -246,6 +258,14 @@ describe('discover', () => {
       expect.objectContaining({ candidate: `claude-history:${dir}`, code: DISCARD_USER_DATA }),
     )
     expect(refusals(s, `claude-history:${dir}`)).toEqual([])
+  })
+
+  test('a path under a user folder missing beside the home is not proposed', async () => {
+    const fx = fixture()
+    fx.history(join(dirname(fx.home), `${basename(fx.home)}-ghost`, 'dev', 'p'))
+    const dir = fx.history(fx.gone)
+    const s = await survey([fx.plugin()], fx.ctx)
+    expect(s.candidates.map((c) => c.id)).toEqual([`claude-history:${dir}`])
   })
 
   test('is deleted only when picked and allowed discard-user-data', async () => {
@@ -523,6 +543,18 @@ describe('a running session refuses its folder', () => {
       fx.session(process.pid, { sessionId: 'x', cwd })
       expect(refusals(await survey([fx.plugin()], fx.ctx), id)).toEqual(['live-session'])
     }
+  })
+
+  test("with no candidate folder, no session record's pid is checked", async () => {
+    const fx = fixture()
+    fx.history(fx.live)
+    fx.session(process.pid, { sessionId: 'x', cwd: fx.live })
+    fx.session(deadPid(), { sessionId: 'y', cwd: fx.live })
+    let calls = 0
+    const counting: ProcessProbe = { ...idle, alive: (pid) => (calls++, exists(pid)) }
+    const s = await survey([fx.plugin(counting)], fx.ctx)
+    expect(s.candidates).toEqual([])
+    expect(calls).toBe(0)
   })
 
   test('a live session record that cannot be read refuses every folder', async () => {

@@ -26,7 +26,7 @@
  */
 
 import { lstatSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { basename, dirname, isAbsolute, join, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 
 import { z } from 'zod'
 
@@ -107,11 +107,26 @@ interface Layout {
   desktop: readonly string[]
 }
 
-/** The layout for the home the core checks roots against: `ctx.home`, else `HOME`. */
+/** No folders at all, so the plugin is not detected. */
+const noLayout = (home: string): Layout => ({
+  home,
+  roots: [],
+  config: '',
+  toolbox: '',
+  apps: [],
+  desktop: [],
+})
+
+/**
+ * The layout for the home the core checks roots against: `ctx.home`, else
+ * `HOME`. None for a home that is empty or relative, which names no folder of
+ * this machine's.
+ */
 function layoutOf(opts: JetbrainsOptions, ctx: Pick<Ctx, 'home'>): Layout {
   const env = opts.env ?? process.env
   const home = homeFrom(ctx.home ?? env.HOME)
   const platform = opts.platform ?? process.platform
+  if (!isAbsolute(home)) return noLayout(home)
   if (platform === 'darwin') {
     const lib = join(home, 'Library')
     const config = join(lib, 'Application Support', 'JetBrains')
@@ -127,8 +142,10 @@ function layoutOf(opts: JetbrainsOptions, ctx: Pick<Ctx, 'home'>): Layout {
     }
   }
   if (platform === 'linux') {
+    // The `XDG_*` folders are those of `HOME`'s owner: for another home, its defaults.
+    const ownHome = ctx.home === undefined || resolve(ctx.home) === resolve(homeFrom(env.HOME))
     const xdg = (name: string, rel: string): string => {
-      const v = env[name]
+      const v = ownHome ? env[name] : undefined
       return v !== undefined && isAbsolute(v) ? v : join(home, rel)
     }
     const share = xdg('XDG_DATA_HOME', '.local/share')
@@ -161,7 +178,7 @@ function layoutOf(opts: JetbrainsOptions, ctx: Pick<Ctx, 'home'>): Layout {
       ],
     }
   }
-  return { home, roots: [], config: '', toolbox: '', apps: [], desktop: [] }
+  return noLayout(home)
 }
 
 /** Whether `path` exists as itself or may: one that cannot be checked counts as present, so it is never taken as gone. */
@@ -386,7 +403,7 @@ const DISK: DiskProbe = { present: mayExist, device: deviceOf }
 export function gone(path: string, disk: DiskProbe = DISK): boolean {
   if (disk.present(path)) return false
   let dir = dirname(path)
-  while (!disk.present(dir)) dir = dirname(dir)
+  while (dir !== dirname(dir) && !disk.present(dir)) dir = dirname(dir)
   if (dir === dirname(dir)) return false
   const under = (p: string, m: string): boolean => p === m || p.startsWith(m + '/')
   const mounts = MOUNT_PARENTS.find((m) => under(path, m))

@@ -5,8 +5,8 @@
   "extends": "@osdlc/tsconfig/node-lib",
   "compilerOptions": {
     // The podman example is a package of its own, where this package's name
-    // does not resolve. It gets the built dist/ that `exports` names, as the
-    // other examples do.
+    // does not resolve. Here that name, as the examples import it, resolves
+    // to the built dist/ through these paths. tsconfig.build.json drops them.
     "paths": {
       "@osdlc/workstation-cleaner": ["./dist/index.d.ts"],
       "@osdlc/workstation-cleaner/plugin": ["./dist/plugin.d.ts"],

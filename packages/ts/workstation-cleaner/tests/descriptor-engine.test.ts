@@ -28,7 +28,7 @@ import type { ProcessHolder } from '@osdlc/repo-cleaner'
 import { fakeNeverExited } from '@osdlc/command-seam/testing'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { CORPUS_DIR, FIRST_SET, draftStore } from '../scripts/draft-descriptor.ts'
+import { FIRST_SET, corpusDir, draftStore } from '../scripts/draft-descriptor.ts'
 import {
   DISCARD_USER_DATA,
   DUPLICATE_ENTRY,
@@ -55,7 +55,7 @@ import {
   type Plugin,
   type RunCtx,
 } from '../src/index.ts'
-import { effectiveSettings, settingsIssues, settingsOf } from '../src/settings.ts'
+import { effectiveSettings, resolveSettings, settingsIssues } from '../src/settings.ts'
 import {
   ageTree as age,
   contractSuite,
@@ -252,7 +252,7 @@ describe('the contract suite', () => {
   )
 
   test.each(FIRST_SET)('the %s draft passes', async (slug) => {
-    const b = build(slug, draftStore(CORPUS_DIR, slug).text)
+    const b = build(slug, draftStore(corpusDir(), slug).text)
     expect(await contractSuite(b.plugin)).toEqual([])
   })
 })
@@ -998,8 +998,11 @@ candidates:
 
   test("idleHours comes from the plugin's setting, which inherits the config's", () => {
     const def = descriptorPlugin('pip', parseDescriptor(PIP_PER_OS, 'pip.yaml'))
-    expect(settingsOf('pip', {}, { idleHours: 5 }, [def])).toEqual({ enabled: true, idleHours: 5 })
-    expect(settingsOf('pip', { idleHours: 0.5 }, { idleHours: 5 }, [def])).toEqual({
+    expect(resolveSettings('pip', {}, { idleHours: 5 }, [def]).settings).toEqual({
+      enabled: true,
+      idleHours: 5,
+    })
+    expect(resolveSettings('pip', { idleHours: 0.5 }, { idleHours: 5 }, [def]).settings).toEqual({
       enabled: true,
       idleHours: 0.5,
     })
@@ -1482,6 +1485,27 @@ candidates:
     expect(s.candidates.map((c) => c.path)).toContain(build)
   })
 
+  test("an XDG folder the environment sets is not trusted for another home than the plugin's", async () => {
+    const cache = join(outsideHome(), 'cache')
+    const build = filled(cache, 'go-build')
+    const b = buildVars('go', GO_VARS, { env: () => ({ XDG_CACHE_HOME: cache }) })
+    const other = outsideHome()
+    filled(other, 'go', 'pkg', 'mod')
+    const s = await survey([b.plugin], ctxOf({ home: other }))
+    expect(s.objections.filter((o) => o.by === 'go')).toContainEqual(
+      expect.objectContaining({
+        code: OUTSIDE_ROOTS,
+        reason: `${build}: it is not inside the home folder`,
+      }),
+    )
+    expect(s.roots.go).not.toContain(build)
+    // The plugin's own home, however it is spelt, still trusts it.
+    filled(b.home, 'go', 'pkg', 'mod')
+    const own = await survey([b.plugin], ctxOf({ home: `${b.home}/` }))
+    expect(own.objections.filter((o) => o.code === OUTSIDE_ROOTS)).toEqual([])
+    expect(own.roots.go).toContain(build)
+  })
+
   test('a trusted folder is still refused when it holds home, or is a target', async () => {
     const holdsHome = buildVars('go', GO_VARS)
     const parent = join(holdsHome.home, '..')
@@ -1872,6 +1896,30 @@ describe('the combined rest', () => {
     expect(size.past).toEqual(['idle b', 'idle c', 'idle d', 'size b', 'size c'])
     expect(size.rest.unmeasured).toBeUndefined()
     expect(size.rest.bytes).toBeUndefined()
+  })
+
+  test('when every match goes while it is checked again, it is already gone', async () => {
+    let gone: string[] = []
+    const b = build('pip', `${REST}inUse:\n  processes: [pip]\n`, {
+      idleHours: 24,
+      kit: (kit) => {
+        const running = kit.running
+        kit.running = (where, ctx) => {
+          for (const p of gone) rmSync(p, { recursive: true })
+          gone = []
+          return running(where, ctx)
+        }
+      },
+    })
+    const http = b.folder('http')
+    mkdirSync(join(http, 'c'))
+    age(http, 48)
+    const s = await survey([b.plugin], ctxOf())
+    const rest = s.candidates.find((c) => c.evidence.rest !== undefined)!
+    gone = ['b', 'c'].map((n) => join(http, n))
+    await expect(b.plugin.delete!(rest, fakeContext())).resolves.toBe(
+      `already gone: every match of ${rest.id}`,
+    )
   })
 
   test('its evidence does not hold its matches', async () => {

@@ -130,7 +130,8 @@
           "glob": {
             "description": "Entries under the path, one candidate each, such as `models--*/`.",
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 4096
           },
           "maxEntries": {
             "description": "Glob matches past this many are combined into one candidate. Default: 200.",
@@ -249,6 +250,7 @@
           "marker": {
             "type": "string",
             "minLength": 1,
+            "maxLength": 4096,
             "description": "A file name or glob beside it that marks the project, such as `*.csproj`."
           },
           "costDescription": {

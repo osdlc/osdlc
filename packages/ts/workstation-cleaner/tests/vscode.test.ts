@@ -221,6 +221,19 @@ const worktree = (path: string): Candidate => ({
   evidence: {},
 })
 
+/** A `git` plugin that proposes git's worktrees at `paths`. */
+const gitOf = (paths: string[]): Plugin => ({
+  name: 'git',
+  detect: () => true,
+  discover: () => paths.map(worktree),
+})
+
+/** The core's `agent-worktree` refusals of a survey of `plugins` with `home` as the home folder. */
+async function agentRefusals(plugins: Plugin[], home: string) {
+  const s = await survey(plugins, { ...ctxOf(home), home })
+  return s.objections.filter((o) => o.code === AGENT_WORKTREE)
+}
+
 describe('discover', () => {
   test('a fixture with one live and one dead workspace proposes only the dead one', async () => {
     const h = home()
@@ -528,6 +541,21 @@ describe('chat and agent history', () => {
       ],
       ['h', (d) => vscdbOf(d, [['interactive.sessions', '[{"requests":[]},{"requests":[]}]']])],
       ['i', (d) => vscdbOf(d, [['interactive.sessions', '{}']])],
+      // The key only in a log beside the file, not yet written back to it; a log without it.
+      [
+        'j',
+        (d) => {
+          vscdbOf(d, ['other'])
+          writeFileSync(join(d, 'state.vscdb-wal'), 'interactive.sessions')
+        },
+      ],
+      [
+        'k',
+        (d) => {
+          vscdbOf(d, ['other'])
+          writeFileSync(join(d, 'state.vscdb-journal'), 'x')
+        },
+      ],
     ])
     expect(readFileSync(join(h.storage, 'e', 'state.vscdb')).includes('interactive.sessions')).toBe(
       true,
@@ -546,6 +574,8 @@ describe('chat and agent history', () => {
       [join(h.storage, 'g'), 'lost', ['state.vscdb']],
       [join(h.storage, 'h'), 're-download', undefined],
       [join(h.storage, 'i'), 'lost', unread],
+      [join(h.storage, 'j'), 'lost', ['state.vscdb (a log beside it is not read)']],
+      [join(h.storage, 'k'), 're-download', undefined],
     ])
     expect(readdirSync(join(h.storage, 'e')).sort()).toEqual(['state.vscdb', 'workspace.json'])
   })
@@ -1136,7 +1166,7 @@ describe('cursor', () => {
     expect(await elsewhere.object!([worktree(wt)], fakeContext())).toEqual([])
   })
 
-  test("refuses git's worktree in Cursor's agent folder made after the plugin, by a home that is a link", async () => {
+  test("git's worktree in Cursor's agent folder made after the plugin is refused, by a home that is a link", async () => {
     const h = home('Cursor')
     const link = join(h.projects, 'home-link')
     symlinkSync(h.home, link)
@@ -1145,23 +1175,23 @@ describe('cursor', () => {
     mkdirSync(wt, { recursive: true })
     // A prunable worktree, whose folder is gone, named through the link.
     const gone = join(link, '.cursor', 'worktrees', 'repo', 'gone')
-    const later = cursorPlugin(h.options({ env: { HOME: link } }))
-    for (const p of [plugin, later]) {
-      expect(await p.object!([worktree(wt), worktree(gone)], fakeContext())).toEqual([
-        expect.objectContaining({ candidate: `worktree:${wt}`, code: AGENT_WORKTREE }),
-        expect.objectContaining({ candidate: `worktree:${gone}`, code: AGENT_WORKTREE }),
-      ])
-    }
+    expect(await agentRefusals([gitOf([wt, gone]), plugin], link)).toEqual([
+      expect.objectContaining({ by: 'host-cleaner', candidate: `worktree:${wt}` }),
+      expect.objectContaining({ by: 'host-cleaner', candidate: `worktree:${gone}` }),
+    ])
+    // The plugin leaves them to the core.
+    expect(
+      await plugin.object!([worktree(wt), worktree(gone)], fakeContext({ home: link })),
+    ).toEqual([])
     // With the agents' folder gone too, in either spelling, and only links above it left to resolve.
     rmSync(join(h.home, '.cursor'), { recursive: true })
     const real = join(realpathSync(h.home), '.cursor', 'worktrees', 'repo', 'gone')
-    expect(await plugin.object!([worktree(real), worktree(gone)], fakeContext())).toEqual([
-      expect.objectContaining({ candidate: `worktree:${real}`, code: AGENT_WORKTREE }),
-      expect.objectContaining({ candidate: `worktree:${gone}`, code: AGENT_WORKTREE }),
+    expect(await agentRefusals([gitOf([real, gone])], link)).toEqual([
+      expect.objectContaining({ candidate: `worktree:${real}` }),
+      expect.objectContaining({ candidate: `worktree:${gone}` }),
     ])
-    const atHome = cursorPlugin(h.options({ env: { HOME: realpathSync(h.home) } }))
-    expect(await atHome.object!([worktree(gone)], fakeContext())).toEqual([
-      expect.objectContaining({ candidate: `worktree:${gone}`, code: AGENT_WORKTREE }),
+    expect(await agentRefusals([gitOf([gone])], realpathSync(h.home))).toEqual([
+      expect.objectContaining({ candidate: `worktree:${gone}` }),
     ])
   })
 
@@ -1183,22 +1213,44 @@ describe('cursor', () => {
     ])
   })
 
-  test("refuses git's worktree in Cursor's agent worktrees, even while Cursor does not run", async () => {
+  test("git's worktree in Cursor's agent worktrees is refused, even while Cursor does not run", async () => {
     const h = home('Cursor')
     const agents = join(h.home, '.cursor', 'worktrees')
     const wt = join(agents, 'repo', 'k3x')
     mkdirSync(wt, { recursive: true })
     const plugin = cursorPlugin(h.options())
-    expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
+    expect(await agentRefusals([gitOf([wt]), plugin], h.home)).toEqual([
+      {
+        by: 'host-cleaner',
+        candidate: `worktree:${wt}`,
+        level: 'refuse',
+        code: AGENT_WORKTREE,
+        reason: `it is in ${agents}, where a coding agent keeps its worktrees`,
+      },
+    ])
+    // Every plugin, the vscode one too, leaves it to the core.
+    expect(await plugin.object!([worktree(wt)], fakeContext({ home: h.home }))).toEqual([])
+    expect(
+      await vscodePlugin(h.options()).object!([worktree(wt)], fakeContext({ home: h.home })),
+    ).toEqual([])
+  })
+
+  test("refuses git's worktree in Cursor's agent worktrees under its HOME when the run's home is another", async () => {
+    const h = home('Cursor')
+    const agents = join(h.home, '.cursor', 'worktrees')
+    const wt = join(agents, 'repo', 'k3x')
+    mkdirSync(wt, { recursive: true })
+    // The run sets no home, so the core looks in the process's home; the plugin's HOME is h.home.
+    const s = await survey([gitOf([wt]), cursorPlugin(h.options())], ctxOf(h.home))
+    expect(s.objections.filter((o) => o.code === AGENT_WORKTREE)).toEqual([
       {
         by: 'cursor',
         candidate: `worktree:${wt}`,
         level: 'refuse',
         code: AGENT_WORKTREE,
-        reason: `Cursor's agents keep it (${realpathSync(agents)})`,
+        reason: `it is in ${agents}, where a coding agent keeps its worktrees`,
       },
     ])
-    expect(await vscodePlugin(h.options()).object!([worktree(wt)], fakeContext())).toEqual([])
   })
 
   test("knows a cursor-agent by its own name, whole or cut to lsof's 9 characters", async () => {
@@ -1225,8 +1277,11 @@ describe('cursor', () => {
     mkdirSync(wt, { recursive: true })
     for (const platform of ['darwin', 'linux', 'win32'] as const) {
       expect(await plugin(platform).detect(fakeContext())).toBe(true)
-      expect(await plugin(platform).object!([worktree(wt)], fakeContext())).toEqual([
-        expect.objectContaining({ code: AGENT_WORKTREE }),
+      expect(await plugin(platform).object!([worktree(wt)], fakeContext({ home: h.home }))).toEqual(
+        [],
+      )
+      expect(await agentRefusals([gitOf([wt]), plugin(platform)], h.home)).toEqual([
+        expect.objectContaining({ candidate: `worktree:${wt}` }),
       ])
     }
   })
@@ -1245,9 +1300,9 @@ describe('cursor', () => {
       },
     }
     const onWindows = cursorPlugin(h.options({ probe, platform: 'win32' }))
-    expect(await onWindows.object!([worktree(agent), worktree(wt)], fakeContext())).toEqual([
-      expect.objectContaining({ candidate: `worktree:${agent}`, code: AGENT_WORKTREE }),
-    ])
+    expect(
+      await onWindows.object!([worktree(agent), worktree(wt)], fakeContext({ home: h.home })),
+    ).toEqual([])
     await onWindows.prepare!(worktree(wt), fakeContext())
     expect(reads).toBe(0)
 
@@ -1259,10 +1314,11 @@ describe('cursor', () => {
     expect(reads).toBe(1)
   })
 
-  test('reads no process table when every worktree is an agent worktree', async () => {
+  test("reads no process table when every worktree is in an agent folder, the default or the run's", async () => {
     const h = home('Cursor')
     const wt = join(h.home, '.cursor', 'worktrees', 'repo', 'k3x')
-    mkdirSync(wt, { recursive: true })
+    const mine = join(h.projects, 'agents', 'wt')
+    for (const d of [wt, mine]) mkdirSync(d, { recursive: true })
     let reads = 0
     const probe: ProcessProbe = {
       alive: () => true,
@@ -1272,9 +1328,8 @@ describe('cursor', () => {
       },
     }
     const plugin = cursorPlugin(h.options({ probe }))
-    expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([
-      expect.objectContaining({ code: AGENT_WORKTREE }),
-    ])
+    const ctx = fakeContext({ home: h.home, agentFolders: [join(h.projects, 'agents')] })
+    expect(await plugin.object!([worktree(wt), worktree(mine)], ctx)).toEqual([])
     expect(reads).toBe(0)
   })
 
