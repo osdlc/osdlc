@@ -372,8 +372,15 @@ export interface VscodeOptions extends KitOptions {
 
 type Env = Readonly<Record<string, string | undefined>>
 
-/** `HOME`, or the OS's home when it is unset or empty: a folder kept from deletion is looked for even then. */
-const homeOf = (env: Env): string => env.HOME || homedir()
+/**
+ * `HOME`, or the OS's home when it is unset or empty: a folder kept from
+ * deletion is looked for even then. Undefined when that is not absolute, as
+ * `HOME=rel`: it names no folder of this machine's (see {@link userDirOf}).
+ */
+const homeOf = (env: Env): string | undefined => {
+  const home = env.HOME || homedir()
+  return isAbsolute(home) ? home : undefined
+}
 
 /**
  * `editor`'s `User` folder on `platform`, found as VS Code and its forks find
@@ -709,8 +716,11 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
     userDir === undefined ? undefined : join(userDir, ...parts)
   const root = under('workspaceStorage')
   const stateFile = under('globalStorage', 'storage.json')
+  const home = homeOf(env)
   const marker =
-    editor.detectedBy === undefined ? undefined : homeFolder(editor.detectedBy, homeOf(env))
+    editor.detectedBy === undefined || home === undefined
+      ? undefined
+      : homeFolder(editor.detectedBy, home)
   /**
    * Nothing can be told of a worktree but where it is: the editor's folders on
    * this platform are not known, and Windows has no `lsof` to list processes with.
