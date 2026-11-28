@@ -77,7 +77,7 @@ export {
   dockerPlugin,
   type DockerOptions,
 } from './docker.ts'
-export { AGENT_HISTORY_PLUGIN } from './agent-history.ts'
+export { AGENT_HISTORY_PLUGIN, agentHistoryDefinition } from './agent-history.ts'
 export { jetbrainsPlugin, JETBRAINS_PLUGIN, type JetbrainsOptions } from './jetbrains.ts'
 export {
   toolchainsDefinition,

@@ -12,6 +12,7 @@ import type { ProcessProbe } from '@osdlc/repo-cleaner'
 import {
   AGENT_HISTORY_PLUGIN,
   DISCARD_USER_DATA,
+  agentHistoryDefinition,
   clean,
   plan,
   pluginKit,
@@ -22,7 +23,6 @@ import {
   type Plugin,
 } from '../src/index.ts'
 import {
-  agentHistoryDefinition,
   claudeConfigDir,
   decodeFolder,
   fstabMounts,

@@ -759,6 +759,11 @@ a removed folder, so there such a process is not seen), or when either cannot
 be read (`session-state-unreadable`, `process-table-unreadable`). `delete` reads the folder and the sessions again,
 then removes it with `kit.remove`. No settings.
 
+As a library: `agentHistoryDefinition` is the plugin as the command line
+builds it; `agentHistoryDefinition.create({ settings: {}, env, kit })` reads
+`CLAUDE_CONFIG_DIR` from `env`, and the home folder from the run's `ctx.home`
+(the process's when that is empty).
+
 Codex is left out: it keeps sessions by date
 (`~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl`), with the working
 folder inside each file, so it has no folder per project to remove.
