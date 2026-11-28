@@ -4,15 +4,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -22,7 +14,7 @@ import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { standaloneLocate, type StandaloneLocateOptions } from '../src/locate.ts'
 import { standalonePorts } from '../src/defaults.ts'
-import { literal } from './support.ts'
+import { literal, ownedAllBut } from './support.ts'
 
 let root: string
 let home: string
@@ -38,7 +30,6 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }))
 
 /** The inode of `path`, to tell it apart in an owner check. */
-const statIno = (path: string): number => statSync(path).ino
 
 /** The sandbox home, as `HOME` and as `USERPROFILE`, where Windows looks for it. */
 const homeEnv = () => ({ HOME: home, USERPROFILE: home })
@@ -201,7 +192,7 @@ describe('standaloneLocate', () => {
       writeRoots(`roots:\n  - ${home}\n`)
       const a = checkout('a/api', 'https://github.com/acme/api.git')
       const theirs = realpathSync.native(a)
-      const owned = (st: { ino: number }) => st.ino !== statIno(theirs)
+      const owned = ownedAllBut(theirs)
       expect(locateIn(undefined, { owned }).target('github.com', 'acme', 'api')).toBeNull()
       expect(notes[0]).toBe(`github.com/acme/api: ${a} is not used: ${a} belongs to another user`)
     })

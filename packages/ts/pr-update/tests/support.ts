@@ -3,7 +3,7 @@
  * PRs, and an environment that keeps a run off the person's real files.
  */
 
-import { mkdirSync, realpathSync } from 'node:fs'
+import { mkdirSync, realpathSync, utimesSync } from 'node:fs'
 import { join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -99,4 +99,19 @@ export function worktreePaths(porcelain: string): string[] {
 /** `text` escaped for a `RegExp`, so a Windows path's backslashes match themselves. */
 export function literal(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+let marks = 0
+
+/**
+ * An ownership check (`OwnedCheck`) that reads `path` as another user's and everything else as
+ * yours. `path` is told by a modification time no other path has, which it is given here: not by
+ * `ino`, which Windows fills from a 64-bit file id that two folders can share once read as a
+ * number.
+ */
+export function ownedAllBut(path: string): (st: { mtimeMs: number }) => boolean {
+  marks += 1
+  const mark = new Date(Date.UTC(2001, 0, marks))
+  utimesSync(path, mark, mark)
+  return (st) => st.mtimeMs !== mark.getTime()
 }
