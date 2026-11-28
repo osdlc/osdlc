@@ -28,7 +28,7 @@ import {
   statSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { PS_LSTART_ENV, startMs } from '@osdlc/repo-cleaner'
@@ -38,6 +38,7 @@ import {
   DISCOVER_LIMIT_MS,
   isGitWorktree,
   isObject,
+  isUnder,
   objector,
   realAbove,
   realOr,
@@ -242,11 +243,11 @@ const SCAN_CHUNK = 1 << 20
 /**
  * Whether the `state.vscdb` at `path` holds chats under the old chat key:
  * false, true, or why it could not be told, which counts as holding some.
- * SQLite is asked only when the key's bytes are in the file, which keeps
- * those of rows deleted since.
+ * SQLite is asked only when the key's bytes are in the file or in a log
+ * beside it, which keeps those of rows deleted since.
  */
 const legacyChats = (path: string): boolean | string =>
-  namesLegacyChats(path) && hasLegacyChats(path)
+  ['', '-wal', '-journal'].some((end) => namesLegacyChats(path + end)) && hasLegacyChats(path)
 
 /**
  * True when the value of an old chat row holds a chat with a request: it is a
@@ -406,9 +407,6 @@ type Entry =
   | { state: 'unknown'; problem: string }
   /** Live, remote, an empty window's, on a volume not mounted, or not a folder of the editor's. */
   | { state: 'skip' }
-
-const within = (path: string, dir: string): boolean =>
-  path === dir || path.startsWith(dir.endsWith(sep) ? dir : dir + sep)
 
 /** True when `path` is under a mount folder that is missing or empty. */
 function unmounted(path: string): boolean {
@@ -695,9 +693,13 @@ interface Windows {
   used: Named
 }
 
-/** `editor`'s processes among `processes`; see {@link Editor.process}. */
+/** Whether `p` is one of `editor`'s processes; see {@link Editor.process}. */
+const isProcessOf = (editor: Editor, p: Running['processes'][number]): boolean =>
+  editor.process.test(p.command)
+
+/** `editor`'s processes among `processes`. */
 const processesOf = (editor: Editor, processes: Running['processes']): Running['processes'] =>
-  processes.filter((p) => editor.process.test(p.command))
+  processes.filter((p) => isProcessOf(editor, p))
 
 function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
   const env = opts.env ?? process.env
@@ -774,7 +776,9 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
     if (!w.running && !editor.agentUnnamed) return []
     const here = kit.running({ in: c.path }, ctx)
     // The kit names each process, in the order of `processes`.
-    const names = here.names.filter((_, i) => editor.process.test(here.processes[i]?.command ?? ''))
+    const names = here.names.filter(
+      (_, i) => here.processes[i] !== undefined && isProcessOf(editor, here.processes[i]),
+    )
     if (names.length > 0) {
       return [
         own(c, 'refuse', editor.codes.inUse, `${editor.product} works in it: ${names.join(', ')}`),
@@ -807,7 +811,7 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
     const real = realAbove(c.path)
     // A window on a folder the worktree is in has its files open too.
     const holds = (named: Named): boolean =>
-      named.paths.some((p) => [real, c.path].some((d) => within(p, d) || within(d, p)))
+      named.paths.some((p) => [real, c.path].some((d) => isUnder(p, d) || isUnder(d, p)))
     if (holds(w.open)) {
       return [
         own(

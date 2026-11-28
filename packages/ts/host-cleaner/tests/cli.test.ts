@@ -1048,8 +1048,11 @@ candidates:
         '',
       ].join('\n'),
     )
+    // Said once, on the row, not again as a warning.
+    expect(r.err).toBe('')
     const json = await run(['plugins', '--format', 'json'], cwd, env, { plugins: failing() })
     expect(JSON.parse(json.out).plugins[0].rootsFailed).toBe('roots failed: timed\nout')
+    expect(JSON.parse(json.out).warnings).toEqual([])
   })
 
   test('a multi-line note stays on its row', async () => {
@@ -1602,6 +1605,20 @@ candidates:
     expect(dry.err).not.toContain('add --descriptor')
   })
 
+  test('clean --plan quotes a --descriptor it asks for whose path a shell would split', async () => {
+    const h = withHome(['mine'])
+    mkdirSync(join(h.cwd, 'my descriptors'))
+    const desc = join(h.cwd, 'my descriptors', 'mine.yaml')
+    writeFileSync(desc, store('.cache/mine'))
+    const deps = { shippedDescriptors: h.shipped }
+    const planFile = join(h.cwd, 'p.json')
+    const argv = ['plan', '--descriptor', desc, '--plugin', 'mine', '-o', planFile]
+    expect((await run(argv, h.cwd, h.env, deps)).code).toBe(0)
+    const without = await run(['clean', '--plan', planFile, '--yes'], h.cwd, h.env, deps)
+    expect(without.code).toBe(2)
+    expect(without.err).toContain(`add --descriptor '${desc}'`)
+  })
+
   test('a plan records only the --descriptor files behind the plugins it ran', async () => {
     const h = withHome(['mine', 'other'])
     const desc = join(h.cwd, 'mine.yaml')
@@ -2147,8 +2164,56 @@ describe('folders', () => {
     const r = await run(['clean', '--yes', '--config', file, cwd], cwd, env, { plugins: [plugin] })
     expect(r.code).toBe(1)
     expect(r.err).toContain('no home directory')
+    // It names what would place the folders.
+    expect(r.err).toContain(process.platform === 'win32' ? 'set USERPROFILE' : 'XDG_STATE_HOME')
     expect(plugin.removed).toEqual([])
     expect((await run(['config'], cwd, env)).code).toBe(1)
+  })
+
+  // Windows keeps its own folders and reads no XDG_* variable.
+  test.skipIf(process.platform === 'win32')(
+    'with XDG_CONFIG_HOME and no home, the config there is read; clean still needs a home to delete',
+    async () => {
+      const { cwd } = setup()
+      const xdg = tempDir()
+      mkdirSync(join(xdg, 'host-cleaner'), { recursive: true })
+      const file = join(xdg, 'host-cleaner', 'config.json')
+      writeFileSync(file, JSON.stringify({ targets: [cwd] }))
+      const env = { PATH: process.env.PATH ?? '', XDG_CONFIG_HOME: xdg }
+      const shown = await run(['config', '--format', 'json'], cwd, env, { plugins: [fake()] })
+      expect(shown.err).toBe('')
+      expect(shown.code).toBe(0)
+      expect(JSON.parse(shown.out)).toMatchObject({ file, fileExists: true, targets: [cwd] })
+      const status = await run(['status'], cwd, env, { plugins: [fake()] })
+      expect(status.err).toBe('')
+      expect(status.code).toBe(0)
+      const plugin = fake()
+      const r = await run(['clean', '--yes'], cwd, env, { plugins: [plugin] })
+      expect(r.code).toBe(1)
+      expect(r.err).toContain('no home directory')
+      expect(plugin.removed).toEqual([])
+    },
+  )
+
+  test('with no home, clean -i refuses before it shows the checklist', async () => {
+    const { cwd, home } = setup()
+    const file = join(home, 'config.json')
+    writeFileSync(file, '{}')
+    const env = { PATH: process.env.PATH ?? '' }
+    const plugin = fake()
+    const asked: string[] = []
+    const r = await run(['clean', '-i', '--config', file, cwd], cwd, env, {
+      plugins: [plugin],
+      checklist: (q) => {
+        asked.push(q)
+        return [0]
+      },
+      confirm: () => true,
+    })
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('no home directory')
+    expect(asked).toEqual([])
+    expect(plugin.removed).toEqual([])
   })
 
   test('`~` is the home the folders are built on, and with none a `~` path is refused', async () => {

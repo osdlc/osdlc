@@ -7,8 +7,8 @@
 import { homedir } from 'node:os'
 import { resolve } from 'node:path'
 
-import { realAbove } from './helpers.ts'
-import { expandHome, within } from './ignore.ts'
+import { isUnder, realAbove } from './helpers.ts'
+import { expandHome } from './ignore.ts'
 import type { Candidate, RunCtx } from './types.ts'
 
 /** The refusal of a candidate in, or holding, a folder where an agent keeps its worktrees. */
@@ -60,7 +60,7 @@ export function agentFolderAt(
   const forms = [path, realAbove(path)]
   return folders.find((dir) => {
     const dirs = [dir, realAbove(dir)]
-    return forms.some((p) => dirs.some((d) => within(p, d) || (holds && within(d, p))))
+    return forms.some((p) => dirs.some((d) => isUnder(p, d) || (holds && isUnder(d, p))))
   })
 }
 
@@ -74,6 +74,6 @@ export const agentFolderOf = (c: Candidate, folders: readonly string[]): string 
 
 /** Why `c` is refused for `folder`. */
 export const agentFolderReason = (c: Candidate, folder: string): string =>
-  c.path !== undefined && folder !== c.path && within(folder, c.path)
+  c.path !== undefined && folder !== c.path && isUnder(folder, c.path)
     ? `it holds ${folder}, where a coding agent keeps its worktrees`
     : `it is in ${folder}, where a coding agent keeps its worktrees`

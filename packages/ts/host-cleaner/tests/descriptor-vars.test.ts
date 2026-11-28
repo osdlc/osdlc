@@ -362,13 +362,34 @@ describe('the order of sources', () => {
       from: 'value',
       trusted: true,
       tried: [
-        { source: 'env GOMODCACHE', failed: 'skipped: ${GOPATH} is set in the config' },
-        { source: 'command go env GOMODCACHE', failed: 'skipped: ${GOPATH} is set in the config' },
+        { source: 'env GOMODCACHE', failed: 'skipped: ${GOPATH} comes from the config' },
+        { source: 'command go env GOMODCACHE', failed: 'skipped: ${GOPATH} comes from the config' },
       ],
     })
     expect(v.DEEP).toMatchObject({ value: '/data/go/pkg/mod/deep', trusted: true })
     expect(v.OTHER).toMatchObject({ value: '/set/other', from: 'config' })
     expect(calls).toEqual([])
+  })
+
+  test('a skip names a variable built from a config value as coming from the config, not set in it', async () => {
+    const { resolve } = setup({ programs: { pnpm: { 'store path': { stdout: '/pnpm/said\n' } } } })
+    const v = await resolve(
+      {
+        STORE: [{ command: ['pnpm', 'store', 'path'] }, { value: '${PNPM_HOME}/store' }],
+        PNPM_HOME: [{ env: 'PNPM_HOME' }, { value: '${XDG_DATA_HOME_SET}/pnpm' }],
+        XDG_DATA_HOME_SET: [{ env: 'XDG_DATA_HOME' }],
+      },
+      { config: { XDG_DATA_HOME_SET: '/data/share' } },
+    )
+    expect(v.STORE).toMatchObject({
+      value: '/data/share/pnpm/store',
+      tried: [
+        {
+          source: 'command pnpm store path',
+          failed: 'skipped: ${PNPM_HOME} comes from the config',
+        },
+      ],
+    })
   })
 
   test('with no config value, the sources run in order as before', async () => {
@@ -470,6 +491,16 @@ describe('fillTemplate', () => {
     expect(fillTemplate('${A}/x', v, home)).toEqual({ path: '/a/x', trusted: false })
     expect(fillTemplate('~/${A}', v, home)).toEqual({ path: join(home, 'a'), trusted: false })
     expect(fillTemplate('${A}/${NONE}', v, home)).toEqual({ missing: 'NONE' })
+  })
+
+  test('reads ~\\ as home only on Windows, as an ignore entry does', async () => {
+    const { home, resolve } = setup()
+    const v = await resolve({})
+    const windows = process.platform === 'win32'
+    expect(fillTemplate('~\\x', v, home)).toEqual({
+      path: windows ? join(home, 'x') : '~\\x',
+      trusted: false,
+    })
   })
 
   test('is trusted only when a trusted variable is the leading folder and the path stays inside it', async () => {

@@ -7,7 +7,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import {
   DescriptorLoadError,
@@ -250,6 +250,22 @@ describe('where a package is looked for', () => {
     expect(r.loaded[0]!.definition.name).toBe('fixture')
   })
 
+  test.each(['../other/index.js', 'index.js', './node_modules/other/index.js', './a/../index.js'])(
+    'an exports target of %s, which Node refuses, is no entry',
+    async (target) => {
+      const nm = nodeModules(tempDir())
+      nm.add('@acme/other', FIXTURE_PLUGIN)
+      const path = nm.add(FIXTURE, FIXTURE_PLUGIN, { exports: target })
+      mkdirSync(join(path, 'node_modules', 'other'), { recursive: true })
+      writeFileSync(join(path, 'node_modules', 'other', 'index.js'), FIXTURE_PLUGIN)
+      const r = await loadPackages([entry()], [nm.root])
+      expect(r.loaded).toEqual([])
+      expect(r.failed.map((f) => f.reason)).toEqual([
+        `plugins.fixture.package: ${FIXTURE} 1.0.0 at ${path} exports no entry for import`,
+      ])
+    },
+  )
+
   test.each(['index', '.', './index.js'])(
     'a legacy main of %s resolves as Node resolves it',
     async (main) => {
@@ -340,6 +356,33 @@ describe('what a package must export', () => {
     )
     expect(await failure("throw 'missing native binding'\n")).toMatch(
       /failed to import: missing native binding$/,
+    )
+  })
+
+  test('an import whose top-level await never settles fails after 30 s, not hangs', async () => {
+    vi.useFakeTimers()
+    try {
+      const pending = load('await new Promise(() => {})\nexport default {}\n')
+      await vi.advanceTimersByTimeAsync(30_000)
+      const r = await pending
+      expect(r.loaded).toEqual([])
+      expect(r.failed.map((f) => f.reason)).toEqual([
+        `plugins.fixture.package: ${FIXTURE} 1.0.0 at ${r.path} did not finish importing in 30 s`,
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('settings that declare package, which the loader keeps for the package name, are refused', async () => {
+    expect(
+      await failure(
+        exporting(
+          "definePlugin({ name: 'fixture', api: PLUGIN_API, settings: z.object({ package: z.number() }), create: () => ({ name: 'fixture', detect: () => true }) })",
+        ),
+      ),
+    ).toBe(
+      `plugins.fixture.package: ${FIXTURE} 1.0.0 has settings that declare package, which host-cleaner keeps for the npm package the plugin is loaded from; rename that setting`,
     )
   })
 

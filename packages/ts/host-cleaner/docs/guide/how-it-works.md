@@ -103,7 +103,7 @@ flowchart LR
    misshapen (both or neither of a path and a ref, a path with an `at`), one
    with an unknown `costDescription`, and the second of two with the same id or
    the same real path (the earlier plugin's stands, D1). Candidates in an
-   `ignore` folder are left out.
+   `ignore` folder, or holding one, are left out.
 4. **roots.** Each plugin names the folders it may delete in besides the
    targets: a path, or `{ path, self: true }` when the folder itself may be a
    candidate. The core leaves out, with a warning, an entry that is neither and
@@ -191,7 +191,7 @@ same at the re-check, which decides over a new survey:
 | `needs --pick <id> --allow <codes> when the plan is made` | both |
 | `is refused (<by>: <reason>)` | something refuses it |
 | `is spared (--spare <entry>)` | a `--spare` matched it |
-| `is gone` | no plugin proposes it now, or it is in an `ignore` folder, which a survey leaves out |
+| `is gone` | no plugin proposes it now, or it is in an `ignore` folder or holds one, which a survey leaves out |
 | `is <reason>: <detail>` | its own dropped entry: `is blocked: requires …` down a chain, `is blocked: its requirements form a cycle`, or, at the re-check, `is changed: its evidence moved since the plan` |
 | `does not run` | none of the above applies: it is selected and has no dropped entry, yet does not run |
 
@@ -281,7 +281,7 @@ line per plugin:
   threw or timed out, or the core refused every root it gave.
 - `<reason>` says why it does not run: the config disables it, or `detect`
   threw, timed out, or answered something that is neither a boolean nor
-  `{ active, note? }`.
+  `{ active, note?, vars? }`.
 - `<note>` is the note `detect` gave, shown whether the plugin is detected or
   not. So a degraded plugin, one that answers `{ active: true, note }`, reads
   `detected; roots: …; note: <note>`.
@@ -322,6 +322,7 @@ roots and checks `inUse.processes` with `kit.running({ name })`.
 
 | Topic | The design | The code |
 | --- | --- | --- |
+| Built-in plugins | `git`, `cargo`, `node`, `orca`, in that order | the eleven of `BUILT_IN_PLUGINS`, in its order: `git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama`, `agent-history`, `jetbrains`, `toolchains`. Order decides which plugin keeps a duplicate candidate |
 | `detect` | does this plugin apply? | may also answer `{ active, note }` (owner's decision) |
 | `ctx` | `ctx.signal` | also `targetsGiven` (owner's decision) |
 | `roots` | folders the plugin may delete inside | also `{ path, self: true }`, where the folder itself may be a candidate. The core checks any plugin's root ([one run](#one-run), step 4), where the design checks only descriptor paths (owner's decision) |

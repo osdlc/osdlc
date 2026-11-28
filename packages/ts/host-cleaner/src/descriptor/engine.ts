@@ -18,7 +18,7 @@
 import { createHash } from 'node:crypto'
 import { lstatSync, readdirSync, realpathSync, type Dirent } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import { globRegExp } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
@@ -26,7 +26,7 @@ import { z } from 'zod'
 import { checkoutsOf, hoursText, liveBlockers, type Checkout } from '../artifacts.ts'
 import { hostDirs } from '../config.ts'
 import { COST_DESCRIPTIONS, type CostDescription } from '../cost.ts'
-import { DISCOVER_LIMIT_MS, errorText, runFailure, yieldToLimit } from '../helpers.ts'
+import { DISCOVER_LIMIT_MS, errorText, realAbove, runFailure, yieldToLimit } from '../helpers.ts'
 import { containsIgnored, coveredBy } from '../ignore.ts'
 import { DEFAULT_IDLE_HOURS, idleHoursSetting, present, type Idle, type Kit } from '../kit.ts'
 import { containedIn, isLink, linkedCheckouts, realOr, rootProblem, within } from '../roots.ts'
@@ -101,23 +101,6 @@ export function skipReason(d: Descriptor): string | undefined {
 }
 
 /**
- * `path`'s real path, read through the nearest folder above it that exists
- * when it does not exist yet, so a folder still to be created behind a link
- * is spelled as it will be.
- */
-const realBelow = (path: string): string => {
-  const rest: string[] = []
-  for (let dir = path; ; dir = dirname(dir)) {
-    try {
-      return join(realpathSync.native(dir), ...rest)
-    } catch {
-      if (dirname(dir) === dir) return path
-      rest.unshift(basename(dir))
-    }
-  }
-}
-
-/**
  * Why `path`, one of a descriptor's folders, may not be cleaned, or null when
  * it may. It must pass the core's check of a self root ({@link rootProblem}),
  * sit strictly inside `home` unless it is `trusted` (from a variable set in the
@@ -141,7 +124,7 @@ export function pathProblem(
     return 'it is not inside the home folder'
   }
   for (const own of at.ownDirs) {
-    const [outer, inner] = [realBelow(path), realBelow(own)]
+    const [outer, inner] = [realAbove(path), realAbove(own)]
     if (within(outer, inner)) return `it holds host-cleaner's own folder ${own}`
     if (within(inner, outer)) return `it is inside host-cleaner's own folder ${own}`
   }
@@ -185,6 +168,27 @@ const markerRegExp = (marker: string): RegExp =>
       .join('|'),
   )
 
+/** The type of an entry, as a `Dirent` or `lstat` gives it. */
+type EntryType = Pick<Dirent, 'isDirectory' | 'isSymbolicLink'>
+
+/**
+ * Whether the entry `name` matches level `i` of `glob`: by name, not a link,
+ * and a folder unless it is the last level and the glob has no trailing `/`.
+ * `type` gives the entry's own type, read only once the name matches;
+ * undefined when it is gone.
+ */
+function levelMatches(
+  glob: GlobParts,
+  i: number,
+  name: string,
+  type: () => EntryType | undefined,
+): boolean {
+  if (!glob.parts[i]!.test(name)) return false
+  const t = type()
+  if (t === undefined || t.isSymbolicLink()) return false
+  return (i === glob.parts.length - 1 && !glob.foldersOnly) || t.isDirectory()
+}
+
 /**
  * Whether `path`, below `folder`, is a match of `glob` there by the rules of
  * {@link globMatches}, reading only the entries on its way.
@@ -193,17 +197,13 @@ function isGlobMatch(folder: string, glob: readonly GlobParts[], path: string): 
   const rel = relative(folder, path)
   if (rel === '' || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) return false
   const names = rel.split(sep)
-  return glob.some(({ parts, foldersOnly }) => {
-    if (names.length !== parts.length) return false
+  return glob.some((g) => {
+    if (names.length !== g.parts.length) return false
     let at = folder
-    for (const [i, n] of names.entries()) {
-      if (!parts[i]!.test(n)) return false
+    return names.every((n, i) => {
       at = join(at, n)
-      const stat = lstatSync(at, { throwIfNoEntry: false })
-      if (stat === undefined || stat.isSymbolicLink()) return false
-      if ((i < names.length - 1 || foldersOnly) && !stat.isDirectory()) return false
-    }
-    return true
+      return levelMatches(g, i, n, () => lstatSync(at, { throwIfNoEntry: false }))
+    })
   })
 }
 
@@ -218,10 +218,9 @@ export function globMatches(folder: string, glob: string): string[] {
   return [...found].sort()
 }
 
-function altMatches(folder: string, { parts, foldersOnly }: GlobParts): string[] {
+function altMatches(folder: string, glob: GlobParts): string[] {
   let level = [folder]
-  for (const [i, re] of parts.entries()) {
-    const last = i === parts.length - 1
+  for (const i of glob.parts.keys()) {
     const next: string[] = []
     for (const dir of level) {
       let entries: Dirent[]
@@ -230,11 +229,8 @@ function altMatches(folder: string, { parts, foldersOnly }: GlobParts): string[]
       } catch {
         continue
       }
-      for (const e of entries) {
-        if (!re.test(e.name) || e.isSymbolicLink()) continue
-        if ((!last || foldersOnly) && !e.isDirectory()) continue
-        next.push(join(dir, e.name))
-      }
+      for (const e of entries)
+        if (levelMatches(glob, i, e.name, () => e)) next.push(join(dir, e.name))
     }
     level = next
   }
@@ -466,12 +462,14 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
   /** Resolves the variables and fills the folders and locks with them; returns every variable's outcome. */
   const refresh = async (ctx: Ctx): Promise<Vars> => {
     const home = homeOf(ctx)
+    // The `XDG_*` the plugin was created with are its own home's, not another's.
+    const ownHome = ctx.home === undefined || resolve(ctx.home) === resolve(at.home)
     const vars = await resolveVars(d.vars ?? {}, {
       home,
       os: at.os,
       env: at.env,
       config: at.vars,
-      trustsXdg: isFolder,
+      ...(ownHome ? { trustsXdg: isFolder } : {}),
       kit,
       signal: ctx.signal,
       only: used,
@@ -772,8 +770,9 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
    * first of them that removes each, since the core lets only a path
    * candidate remove folders. Held when any of them changed within the
    * threshold. All of them together get the time of one measurement, for idle
-   * and then for size: past it they are unmeasured, or of unknown size. One
-   * that cannot be read is not deleted.
+   * and then for size: past it they are unmeasured, or of unknown size. That
+   * time is checked between matches, so each phase may run up to one more
+   * match's measurement past it. One that cannot be read is not deleted.
    */
   const restRow = (
     entry: DescriptorCandidate,
@@ -1039,6 +1038,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       else if (changed === UNREADABLE) kept.push(`${p}: ${changed}`)
       else throw new Error(`${c.id} was not deleted: ${p}: ${changed}`)
     }
+    // Every one went while it was checked.
+    if (idle.length === 0 && kept.length === 0) return `already gone: every match of ${c.id}`
     const done: string[] = []
     const fails: string[] = []
     let untried = idle.length
@@ -1075,7 +1076,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
 
   // detect's limit covers every variable's commands and file reads as if they
   // ran one at a time, each to its limit.
-  const commands = Object.values(d.vars ?? {})
+  const slowSources = Object.values(d.vars ?? {})
     .flat()
     .filter((s) => 'command' in s || 'file' in s).length
 
@@ -1083,7 +1084,7 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     name,
     limits: {
       discover: DISCOVER_LIMIT_MS,
-      detect: Math.max(HOOK_LIMIT_MS, (commands + 1) * VAR_COMMAND_LIMIT_MS),
+      detect: Math.max(HOOK_LIMIT_MS, (slowSources + 1) * VAR_COMMAND_LIMIT_MS),
     },
     async detect(ctx) {
       const skip = skipReason(d)

@@ -41,6 +41,28 @@ pnpm run lint
 pnpm run format:check
 ```
 
+## Drafting a descriptor
+
+`scripts/draft-descriptor.ts` drafts a tier 1 descriptor from one store of
+the system-cleanup research corpus, for you to review before it ships. Build
+the workspace first (`pnpm run build` at the repository root), then, in the
+package directory:
+
+```sh
+pnpm draft:descriptor <slug>                 # print the draft of one store
+pnpm draft:descriptor --out <dir> <slug>...  # write <dir>/<slug>.yaml for each
+pnpm draft:descriptor --out <dir> --first-set
+```
+
+- `--out <dir>` writes the drafts. A file already there is kept, since it may
+  hold a review, unless you pass `--force`.
+- `--first-set` drafts the stores the package ships descriptors for.
+- `--corpus <dir>` reads another corpus folder in place of the dev
+  dependency's.
+
+A draft never sets `idleHours` or `removes`. What it can't put in a valid
+file goes into comments at its top for the reviewer.
+
 ## Code style
 
 - TypeScript, ES modules, and explicit `.ts` import paths.

@@ -15,7 +15,7 @@ import { parseArgs } from 'node:util'
 import { type CorpusRecord, loadCorpus, recordsOf } from '@osdlc/corpus-schema'
 import { Document, isMap, isNode, isSeq } from 'yaml'
 
-import { CARGO_PLUGIN, CARGO_PROJECT } from '../src/cargo.ts'
+import { BUILT_IN_PROJECTS } from '../src/builtins.ts'
 import {
   DESCRIPTOR_SCHEMA_URL,
   DESCRIPTOR_VERSION,
@@ -28,7 +28,7 @@ import {
   parseDescriptor,
   type Os,
 } from '../src/descriptor/schema.ts'
-import { NODE_PLUGIN, NODE_PROJECT } from '../src/node.ts'
+import { isObject } from '../src/helpers.ts'
 import { COST_DESCRIPTIONS, type CostDescription } from '../src/types.ts'
 
 /** The reviewed first set the package ships, by corpus slug. */
@@ -54,24 +54,32 @@ const CORPUS_PACKAGE = '@osdlc/corpus-system-cleanup-reference'
 /**
  * The folder the `corpus` field of `pkg`'s package.json names.
  *
- * @throws DraftError when the field is not a folder path
+ * @throws DraftError when `pkg` is not installed or the field is not a folder path
  */
-function corpusOf(pkg: string): string {
-  const file = createRequire(import.meta.url).resolve(`${pkg}/package.json`)
+export function corpusOf(pkg: string): string {
+  let file: string
+  try {
+    file = createRequire(import.meta.url).resolve(`${pkg}/package.json`)
+  } catch (err) {
+    throw new DraftError(
+      `${pkg} cannot be found (${(err as Error).message.split('\n')[0]}); pass --corpus <dir>`,
+    )
+  }
   const corpus = (JSON.parse(readFileSync(file, 'utf8')) as { corpus?: unknown }).corpus
   if (typeof corpus !== 'string' || corpus === '')
     throw new DraftError(`${file}: its "corpus" field must be a folder path`)
   return resolve(dirname(file), corpus)
 }
 
-/** The corpus of this package's dev dependency on the research corpus. */
-export const CORPUS_DIR = corpusOf(CORPUS_PACKAGE)
+let defaultCorpus: string | undefined
 
-/** Project folders a code plugin already covers, by folder name and marker. */
-const COVERED: readonly { dir: string; marker: string; by: string }[] = [
-  { ...NODE_PROJECT, by: NODE_PLUGIN },
-  { ...CARGO_PROJECT, by: CARGO_PLUGIN },
-]
+/**
+ * The corpus of this package's dev dependency on the research corpus, found
+ * the first time it is asked for.
+ *
+ * @throws DraftError as {@link corpusOf}
+ */
+export const corpusDir = (): string => (defaultCorpus ??= corpusOf(CORPUS_PACKAGE))
 
 interface DataDir {
   platform: 'all' | Os
@@ -96,7 +104,7 @@ interface Statement {
 
 /** `scope` when it sets a platform, since or until; undefined when it applies everywhere. */
 function narrowing(scope: unknown): Record<string, unknown> | undefined {
-  if (!isRecord(scope)) return undefined
+  if (!isObject(scope)) return undefined
   const set = Object.entries(scope).filter(
     ([, v]) => v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0),
   )
@@ -115,9 +123,6 @@ interface CorpusStore {
   /** Why each statement that may be any store's is not read. */
   strays: readonly string[]
 }
-
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /** A corpus's stores by slug, and its statements by the store they link to. */
 export interface StoreIndex {
@@ -167,7 +172,13 @@ export function indexStores(corpus: string): StoreIndex {
     folders.add(`statements/${r.name}`)
     const slug = r.data['slug']
     if (typeof slug === 'string') add(bySlug, slug, r)
-    else noSlug.push(errorOf(r) ?? `${r.path}: no slug`)
+    else
+      noSlug.push(
+        model.errors.find((e) => e.startsWith(`${r.path}: slug: `)) ??
+          // A record whose data does not read has no slug for that reason.
+          (Object.keys(r.data).length === 0 ? errorOf(r) : undefined) ??
+          `${r.path}: no slug`,
+      )
   }
 
   const statements = new Map<string, CorpusRecord[]>()
@@ -232,7 +243,7 @@ function readStore(slug: string, index: StoreIndex): CorpusStore {
   for (const { path, data } of linked) {
     if (data['status'] !== 'current') continue
     const prop = data['proposition']
-    if (!isRecord(prop) || typeof prop['predicate'] !== 'string' || !isRecord(prop['object']))
+    if (!isObject(prop) || typeof prop['predicate'] !== 'string' || !isObject(prop['object']))
       throw new DraftError(
         `${path}: a current statement needs a proposition with a predicate and an object`,
       )
@@ -396,13 +407,14 @@ const orderedFolders = (folders: Group['folders']): Record<string, string> =>
     ),
   )
 
-/** `text` as comment lines of at most 78 characters, each starting with a space. */
-function wrap(text: string, indent = ''): string[] {
+/** `text` as comment lines of at most 78 characters, each starting with a space and, past the first, `indent`. */
+export function wrap(text: string, indent = ''): string[] {
   const width = 78
   const lines: string[] = []
   let line = ''
   for (const word of text.split(/\s+/).filter(Boolean)) {
-    if (line !== '' && indent.length + line.length + word.length + 2 > width) {
+    const lead = lines.length === 0 ? 0 : indent.length
+    if (line !== '' && lead + line.length + word.length + 2 > width) {
       lines.push(line)
       line = ''
     }
@@ -470,7 +482,7 @@ function draftDescriptor(store: CorpusStore): Draft {
   const cost = (v: unknown): v is CostDescription =>
     (COST_DESCRIPTIONS as readonly unknown[]).includes(v)
   const dirEntry = (d: unknown): d is DataDir =>
-    isRecord(d) &&
+    isObject(d) &&
     text(d['path']) &&
     typeof d['holds'] === 'string' &&
     isPathsName(d['holds']) &&
@@ -514,12 +526,11 @@ function draftDescriptor(store: CorpusStore): Draft {
     }),
   )
 
-  const program = store.cli?.split(/\s+/)[0]
+  const words = store.cli?.split(/\s+/).filter(Boolean) ?? []
+  const program = words[0]
+  const onPath = program !== undefined && /^[A-Za-z0-9._+-]+$/.test(program)
   const detect = {
-    any: [
-      ...(program !== undefined && /^[A-Za-z0-9._+-]+$/.test(program) ? [{ onPath: program }] : []),
-      ...names.map((n) => ({ exists: n })),
-    ],
+    any: [...(onPath ? [{ onPath: program }] : []), ...names.map((n) => ({ exists: n }))],
   }
 
   const processes = listIn('liveness/in-use', 'processes', text)
@@ -538,11 +549,13 @@ function draftDescriptor(store: CorpusStore): Draft {
   }
 
   const project: Record<string, unknown>[] = []
+  /** Project entries whose folder a built-in plugin also takes beside another marker. */
+  const shared: string[] = []
   const buildDirs = listIn(
     'project/build-dirs',
     'dirs',
     (b): b is BuildDir =>
-      isRecord(b) &&
+      isObject(b) &&
       text(b['path']) &&
       text(b['holds']) &&
       cost(b['rebuild']) &&
@@ -550,7 +563,7 @@ function draftDescriptor(store: CorpusStore): Draft {
     true,
   )
   for (const b of buildDirs) {
-    const covered = COVERED.find((c) => c.dir === b.path && c.marker === b.marker)
+    const covered = BUILT_IN_PROJECTS.find((c) => c.dir === b.path && c.marker === b.marker)
     if (covered !== undefined) left.push(`project ${b.path}: the ${covered.by} plugin covers it`)
     else if (!isEntryName(b.path))
       left.push(`project ${b.path}: a project entry names one folder, not a path`)
@@ -559,8 +572,14 @@ function draftDescriptor(store: CorpusStore): Draft {
     else {
       const entry = { dir: b.path, marker: b.marker, costDescription: b.rebuild }
       const parsed = ProjectEntrySchema.safeParse(entry)
-      if (parsed.success) project.push(entry)
-      else
+      const also = BUILT_IN_PROJECTS.find((c) => c.dir === b.path)
+      if (parsed.success) {
+        project.push(entry)
+        if (also !== undefined)
+          shared.push(
+            `project ${b.path} (marker ${b.marker}): the ${also.by} plugin also takes ${also.dir} where a ${also.marker} sits; where both are, the core keeps the ${also.by} plugin's candidate`,
+          )
+      } else
         for (const issue of parsed.error.issues)
           left.push(
             `project ${b.path} (marker ${b.marker}): ${issue.path.join('.')} ${issue.message}`,
@@ -616,7 +635,7 @@ function draftDescriptor(store: CorpusStore): Draft {
             'clean/command',
             'commands',
             (c): c is { command: string; removes: string } =>
-              isRecord(c) && text(c['command']) && text(c['removes']),
+              isObject(c) && text(c['command']) && text(c['removes']),
             true,
           )
         : []
@@ -653,8 +672,17 @@ function draftDescriptor(store: CorpusStore): Draft {
         'No inUse: nothing here tells that the tool is running. Add a process or a lock file that does.',
       ),
     )
+  if (onPath && words.length > 1)
+    header.push(
+      '',
+      ...wrap(
+        `onPath ${program} is the first word of the corpus's cli, ${store.cli}: keep it only if nothing but this tool puts ${program} on PATH.`,
+      ),
+    )
   if (nested.length > 0)
     header.push('', ' Overlapping folders (their sizes count twice):', ...nested.flatMap(bullet))
+  if (shared.length > 0)
+    header.push('', ' Project folders a built-in plugin also takes:', ...shared.flatMap(bullet))
   const guessed = groups.flatMap((g, i) =>
     g.guessed === true
       ? [
@@ -744,7 +772,7 @@ function main(argv: readonly string[]): number {
       args: [...argv],
       allowPositionals: true,
       options: {
-        corpus: { type: 'string', default: CORPUS_DIR },
+        corpus: { type: 'string' },
         out: { type: 'string' },
         force: { type: 'boolean', default: false },
         'first-set': { type: 'boolean', default: false },
@@ -760,9 +788,11 @@ function main(argv: readonly string[]): number {
     process.stderr.write(USAGE)
     return 2
   }
+  let corpus: string
   let index: StoreIndex
   try {
-    index = indexStores(values.corpus)
+    corpus = values.corpus ?? corpusDir()
+    index = indexStores(corpus)
   } catch (err) {
     process.stderr.write(`${(err as Error).message}\n`)
     return 1
@@ -770,7 +800,7 @@ function main(argv: readonly string[]): number {
   let failed = 0
   for (const slug of slugs) {
     try {
-      const draft = draftStore(values.corpus, slug, index)
+      const draft = draftStore(corpus, slug, index)
       if (values.out === undefined) process.stdout.write(draft.text)
       else process.stdout.write(`wrote ${writeDraft(values.out, draft, values.force)}\n`)
     } catch (err) {

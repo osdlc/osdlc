@@ -61,6 +61,24 @@ export function hostDirs(
   return dirsUnder(env, { convention: 'xdg', ...opts })
 }
 
+/**
+ * The config folder alone, by the rules of {@link hostDirs}: for when those
+ * cannot place the state and logs folders (no home, and no `XDG_STATE_HOME`),
+ * since reading the config needs only this one.
+ *
+ * @throws as {@link hostDirs} does
+ */
+export function hostConfigDir(
+  env: Record<string, string | undefined> = process.env,
+  opts: Pick<ResolveOptions, 'platform' | 'home'> = {},
+): string {
+  return dirsUnder(env, {
+    convention: 'xdg',
+    ...opts,
+    overrides: { state: '/unused', logs: '/unused' },
+  }).config
+}
+
 /** The `TieredDirsError` codes that name a folder variable to fix: exit 2. Any other exits 1. */
 const USAGE_CODES: ReadonlySet<string> = new Set([
   'RELATIVE_OVERRIDE',
@@ -95,7 +113,8 @@ export const hostHome = (env: Record<string, string | undefined> = process.env):
 
 function dirsUnder(env: Record<string, string | undefined>, opts: ResolveOptions): HostDirs {
   try {
-    const dirs = systemDirs(VENDOR_DIRS, { ...envOpt(env), ...opts, overrides: UNREAD_ROOTS })
+    const overrides = { ...UNREAD_ROOTS, ...opts.overrides }
+    const dirs = systemDirs(VENDOR_DIRS, { ...envOpt(env), ...opts, overrides })
     const tier = dirs.standalone('host-cleaner')
     return { config: tier.config().path, state: tier.state().path, logs: tier.logs().path }
   } catch (err) {
@@ -106,10 +125,12 @@ function dirsUnder(env: Record<string, string | undefined>, opts: ResolveOptions
   }
 }
 
-export const configFile = (dirs: HostDirs): string => join(dirs.config, 'config.json')
+export const configFile = (dirs: Pick<HostDirs, 'config'>): string =>
+  join(dirs.config, 'config.json')
 
 /** The user's descriptors, which add plugins or replace shipped descriptors of the same name. */
-export const descriptorsDir = (dirs: HostDirs): string => join(dirs.config, 'descriptors')
+export const descriptorsDir = (dirs: Pick<HostDirs, 'config'>): string =>
+  join(dirs.config, 'descriptors')
 
 /**
  * The config file in the native folders, when it exists and is not `xdgFile`,

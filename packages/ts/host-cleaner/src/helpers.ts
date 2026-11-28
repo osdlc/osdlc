@@ -6,7 +6,7 @@
 
 import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, sep } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 import { failureText, firstLine, type CommandResult } from '@osdlc/command-seam'
@@ -69,6 +69,13 @@ export function realAbove(path: string): string {
     }
   }
 }
+
+/**
+ * Whether `path` is `dir` or below it, by their names as given: no real paths,
+ * so a link is not followed (see `within` in `./roots.ts` for that).
+ */
+export const isUnder = (path: string, dir: string): boolean =>
+  path === dir || path.startsWith(dir.endsWith(sep) ? dir : dir + sep)
 
 /** What was thrown, as a sentence. */
 export const errorText = (err: unknown): string =>

@@ -28,6 +28,7 @@ import { parse as parseToml } from 'smol-toml'
 import { parse as parseYaml } from 'yaml'
 
 import { runFailure } from '../helpers.ts'
+import { expandHome } from '../ignore.ts'
 import type { Kit } from '../kit.ts'
 import { within } from '../roots.ts'
 import type { VarValue, Vars } from '../types.ts'
@@ -78,13 +79,12 @@ function describeSource(source: VarSource): string {
 }
 
 /**
- * `path` with a leading `~` read as `home`, normalized and without a trailing
- * separator, except on a root such as `/` or `C:\`, which would then be
- * relative.
+ * `path` with a leading `~` read as `home` (by {@link expandHome}, so `~\` only
+ * on Windows), normalized and without a trailing separator, except on a root
+ * such as `/` or `C:\`, which would then be relative.
  */
 function folderOf(path: string, home: string): string {
-  const full = path === '~' ? home : /^~[/\\]/.test(path) ? join(home, path.slice(2)) : path
-  const n = normalize(full)
+  const n = normalize(expandHome(path, () => home))
   const bare = n.endsWith(sep) ? n.slice(0, -1) : n
   return bare === '' || /^[A-Za-z]:$/.test(bare) ? n : bare
 }
@@ -241,7 +241,7 @@ export async function resolveVars(
     const uses = (s: VarSource) => refs(s).find((r) => fromConfig.has(r))
     const first = sources.findIndex((s) => uses(s) !== undefined)
     if (first > 0) {
-      const failed = `skipped: \${${uses(sources[first]!)}} is set in the config`
+      const failed = `skipped: \${${uses(sources[first]!)}} comes from the config`
       for (const source of sources.slice(0, first)) {
         tried.push({ source: describeSource(source), failed })
       }
@@ -354,22 +354,27 @@ function builtIns(at: Pick<VarsAt, 'home' | 'env' | 'trustsXdg'>): Vars {
 /**
  * The text of the regular file `file`, or why there is none: a FIFO or other
  * special file is not read, and a read still waiting after `limit`, as on a
- * stalled network mount, gives up.
+ * stalled network mount, gives up and is stopped. A read the system call
+ * already blocks holds its thread until that call returns.
  */
 async function textOf(
   file: string,
   signal: AbortSignal,
   limit: number,
 ): Promise<string | { failed: string }> {
+  const stop = new AbortController()
   const read = (async () => {
     if (!(await stat(file)).isFile()) return { failed: `${file} is not a file` }
-    return readFile(file, { encoding: 'utf-8', signal })
+    return readFile(file, { encoding: 'utf-8', signal: AbortSignal.any([signal, stop.signal]) })
   })()
   // The read may end after the limit; its outcome is then dropped.
   read.catch(() => undefined)
   let timer: NodeJS.Timeout | undefined
   const late = new Promise<{ failed: string }>((done) => {
-    timer = setTimeout(() => done({ failed: `${file} not read within ${limit / 1000} s` }), limit)
+    timer = setTimeout(() => {
+      done({ failed: `${file} not read within ${limit / 1000} s` })
+      stop.abort()
+    }, limit)
   })
   try {
     return await Promise.race([read, late])

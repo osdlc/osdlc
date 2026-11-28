@@ -249,13 +249,13 @@ describe('contractSuite', () => {
     expect(await contractSuite(plugin)).toEqual([])
   })
 
-  test('a detect answer that is neither a boolean nor { active, note? }', async () => {
+  test('a detect answer that is neither a boolean nor { active, note?, vars? }', async () => {
     const { plugin } = cachePlugin(() => ({
       detect: () => ({ active: true, note: 3 }) as unknown as boolean,
     }))
     expect(await contractSuite(plugin)).toEqual([
       'cache: detect said no in this fixture, so nothing else could be checked',
-      'cache: the survey warned: cache: detect answered {"active":true,"note":3}, which is neither a boolean nor { active, note? }; it was left out',
+      'cache: the survey warned: cache: detect answered {"active":true,"note":3}, which is neither a boolean nor { active, note?, vars? }; it was left out',
     ])
   })
 })

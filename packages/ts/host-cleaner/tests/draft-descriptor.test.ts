@@ -22,11 +22,13 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { parse, stringify } from 'yaml'
 
 import {
-  CORPUS_DIR,
+  corpusDir,
+  corpusOf,
   DraftError,
   FIRST_SET,
   draftStore,
   indexStores,
+  wrap,
   writeDraft,
 } from '../scripts/draft-descriptor.ts'
 import { DESCRIPTOR_SCHEMA_FILE } from '../scripts/write-descriptor-schema.ts'
@@ -47,11 +49,11 @@ type Drafted = {
 const read = (text: string): Drafted => parse(text) as Drafted
 
 /** The real corpus, indexed once for every test that drafts from it. */
-const realIndex = indexStores(CORPUS_DIR)
+const realIndex = indexStores(corpusDir())
 
 describe('the first set, from the corpus', () => {
   test.each(FIRST_SET)('%s validates against the schema', (slug) => {
-    const { text } = draftStore(CORPUS_DIR, slug, realIndex)
+    const { text } = draftStore(corpusDir(), slug, realIndex)
     const value = read(text)
     expect(descriptorIssues(value)).toEqual([])
     expect(jsonSchema(value), JSON.stringify(jsonSchema.errors)).toBe(true)
@@ -67,7 +69,7 @@ describe('the first set, from the corpus', () => {
   // What the corpus records changes with its research; these hold for any of
   // it. The small corpus below checks exact drafts.
   test.each(FIRST_SET)('%s: one candidate per folder, and no plugin-covered project', (slug) => {
-    const { text } = draftStore(CORPUS_DIR, slug, realIndex)
+    const { text } = draftStore(corpusDir(), slug, realIndex)
     const value = read(text)
     expect(text).toMatch(/^# yaml-language-server: \$schema=https:\/\//)
     expect(value.candidates.map((c) => c['path'])).toEqual(Object.keys(value.paths))
@@ -84,7 +86,7 @@ test('every store in the corpus drafts a valid descriptor, or says why not', () 
   const failed: string[] = []
   for (const slug of slugs) {
     try {
-      const { text } = draftStore(CORPUS_DIR, slug, realIndex)
+      const { text } = draftStore(corpusDir(), slug, realIndex)
       expect(descriptorIssues(parse(text)), slug).toEqual([])
       drafted.push(slug)
     } catch (err) {
@@ -95,6 +97,22 @@ test('every store in the corpus drafts a valid descriptor, or says why not', () 
   // Most stores name a fixed folder; a change that stops them drafting fails here.
   expect(drafted).toEqual(expect.arrayContaining([...FIRST_SET]))
   expect(drafted.length, `failed: ${failed.join(', ')}`).toBeGreaterThan(failed.length)
+})
+
+test('a corpus package that is not installed is a DraftError, not a stack trace', () => {
+  expect(() => corpusOf('@osdlc/no-such-corpus')).toThrow(DraftError)
+  expect(() => corpusOf('@osdlc/no-such-corpus')).toThrow(
+    /^@osdlc\/no-such-corpus cannot be found \(.*\); pass --corpus <dir>$/,
+  )
+})
+
+test('a comment line holds 78 characters; only the lines after the first are indented', () => {
+  const word = (n: number) => 'x'.repeat(n)
+  expect(wrap(`- ${word(75)}`, '  ')).toEqual([` - ${word(75)}`])
+  expect(wrap(`- ${word(76)}`, '  ')).toEqual([' -', `   ${word(76)}`])
+  expect(wrap(`${word(40)} ${word(36)}`)).toEqual([` ${word(40)} ${word(36)}`])
+  for (const line of wrap(`- ${'abc '.repeat(60)}`, '  '))
+    expect(line.length).toBeLessThanOrEqual(78)
 })
 
 describe('a small corpus', () => {
@@ -191,6 +209,9 @@ describe('a small corpus', () => {
       ],
     })
     expect(text).toContain('stores/Tool.md (checked 2026-01-01)')
+    expect(text).toContain(
+      "# onPath tool is the first word of the corpus's cli, tool sub: keep it only if",
+    )
     expect(text).toContain('# - linux $XDG_DATA_HOME/tool (state): not a fixed folder')
     expect(text).toContain('# - windows %LOCALAPPDATA%\\tool (cache): not a fixed folder')
     expect(text).toContain('# - all ~/.tool/<VERSION> (logs): not a fixed folder')
@@ -278,6 +299,11 @@ describe('a small corpus', () => {
     expect(text).toContain('# - project .tool/cache: a project entry names one folder, not a path')
     expect(text).toContain('# - project out: the corpus names no marker file')
     expect(text).toContain('# - project .tool.cjs: looks like a file, not a folder')
+    // deno's node_modules is kept, and the reviewer told the node plugin takes it beside a package.json.
+    expect(text).toContain('# Project folders a built-in plugin also takes:')
+    expect(text).toMatch(
+      /# - project node_modules \(marker deno\.json\): the node plugin also takes\n#\s+node_modules where a package\.json sits/,
+    )
   })
 
   test('a statement that is not current is not used', () => {
@@ -509,8 +535,8 @@ describe('a small corpus', () => {
 
   test('a folder with no stores, or an index of another corpus, is refused', () => {
     store('Tool', { slug: 'tool' }, dirsOnly([dir('all', '~/.tool')]))
-    expect(() => draftStore(CORPUS_DIR, 'tool', indexStores(corpus))).toThrow(
-      `the index is of ${corpus}, not of ${CORPUS_DIR}`,
+    expect(() => draftStore(corpusDir(), 'tool', indexStores(corpus))).toThrow(
+      `the index is of ${corpus}, not of ${corpusDir()}`,
     )
     rmSync(join(corpus, 'stores'), { recursive: true })
     expect(() => indexStores(corpus)).toThrow(`${corpus} is not a corpus of stores`)
@@ -545,6 +571,18 @@ describe('a small corpus', () => {
     expect(text).toContain('# - project obj (marker {.,x}): marker must be a file name')
     expect(text).toContain('# - none')
     expect(text).not.toContain('tool gc')
+  })
+
+  test("a store with no slug is named by its slug's error, not another field's", () => {
+    writeFileSync(
+      join(corpus, 'stores', 'stores.schema.yaml'),
+      'type: object\nproperties:\n  homepage: { type: string }\n  slug: { type: string }\n',
+    )
+    writeFileSync(join(corpus, 'stores', 'Other.md'), markdown({ homepage: 5 }))
+    writeFileSync(join(corpus, 'stores', 'Tool.md'), markdown({ homepage: 5, slug: 3 }))
+    expect(() => draftStore(corpus, 'tool')).toThrow(
+      '(with no slug: stores/Other.md: no slug; stores/Tool.md: slug: must be string)',
+    )
   })
 
   test('stores are read once: a broken store file only matters when nothing else matches', () => {

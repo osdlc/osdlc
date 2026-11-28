@@ -129,12 +129,14 @@ const deviceOf = (path: string): number | undefined => {
  * `roots` or below one (such as an empty `/mnt/usb`) and on that root's device
  * (no volume is mounted under it), or it is a link that leads nowhere, or it
  * is the root, as for `/Volumes/x` recorded on a Mac and read on Linux, or a
- * Windows drive that is away.
+ * Windows drive that is away, or it is the folder that holds `home` (such as
+ * `/home`), as for another user's or another machine's home that is not here.
  */
 export function unmounted(
   path: string,
   mounts: ReadonlySet<string> = new Set(),
   roots: readonly string[] = MOUNTS,
+  home?: string,
 ): boolean {
   let dir = dirname(path)
   while (dirname(dir) !== dir && gone(dir)) dir = dirname(dir)
@@ -145,10 +147,13 @@ export function unmounted(
   } catch {
     return true
   }
+  if (home !== undefined && home !== '' && [dir, real].includes(dirname(home))) return true
   const device = deviceOf(real)
   // A device that differs from the one above shows a volume is mounted there.
-  const onDeviceOf = (other: string): boolean =>
-    device === undefined || deviceOf(other) === undefined || deviceOf(other) === device
+  const onDeviceOf = (other: string): boolean => {
+    const at = deviceOf(other)
+    return device === undefined || at === undefined || at === device
+  }
   return (
     ((mounts.has(dir) || mounts.has(real)) && onDeviceOf(dirname(real))) ||
     roots.some((r) => (dir.startsWith(`${r}/`) || nodeGuard.contains(r, real)) && onDeviceOf(r))
@@ -166,15 +171,11 @@ function cwdOf(line: string): string | undefined {
   return isObject(row) && typeof row.cwd === 'string' ? row.cwd : undefined
 }
 
-/** {@link firstCwd}'s answer for a transcript that gives no `cwd` in its first {@link MAX_HEAD_BYTES}. */
-const CUT = Symbol('cut')
-
 /**
  * The first `cwd` a transcript records, read only as far as the line that
- * gives it; undefined when the transcript ends before {@link MAX_HEAD_BYTES}
- * with none, else {@link CUT}.
+ * gives it; undefined when it gives none in its first {@link MAX_HEAD_BYTES}.
  */
-function firstCwd(file: string): string | undefined | typeof CUT {
+function firstCwd(file: string): string | undefined {
   const fd = openSync(file, 'r')
   try {
     let buf = Buffer.allocUnsafe(HEAD_BYTES)
@@ -194,7 +195,7 @@ function firstCwd(file: string): string | undefined | typeof CUT {
       n += got
       if (n < buf.length) continue
       // The line the read stopped in may be whole yet have no line end.
-      if (n >= MAX_HEAD_BYTES) return cwdOf(buf.toString('utf8', from, n)) ?? CUT
+      if (n >= MAX_HEAD_BYTES) return cwdOf(buf.toString('utf8', from, n))
       buf = Buffer.concat([buf], n * 2)
     }
   } finally {
@@ -248,7 +249,7 @@ export function decodeFolder(
       sessions.push(entry.name)
       const cwd = firstCwd(file)
       // The `cwd` past what was read could be another path, and a transcript with none is no project's.
-      if (cwd === CUT || cwd === undefined || !ok(cwd)) return null
+      if (cwd === undefined || !ok(cwd)) return null
     } else if (entry.name === 'sessions-index.json') {
       if (!indexPaths(file).every(ok)) return null
     }
@@ -350,7 +351,10 @@ function rowFor(kit: Kit, dir: string, seen: Seen, { sized = true } = {}): Row |
   if (!isDir(dir)) return undefined
   let record: ProjectRecord | null
   try {
-    record = decodeFolder(dir, (p) => gone(p) && !unmounted(p, seen.mounts))
+    record = decodeFolder(
+      dir,
+      (p) => gone(p) && !unmounted(p, seen.mounts, MOUNTS, seen.ctx.home || homedir()),
+    )
   } catch {
     return undefined
   }
@@ -405,10 +409,14 @@ function agentHistoryPlugin(kit: Kit, env: Readonly<Record<string, string | unde
   const configOf = (ctx: Ctx): string => claudeConfigDir(env, ctx.cwd, ctx.home || homedir())
   const projectsOf = (ctx: Ctx): string => join(configOf(ctx), 'projects')
   let rows = new Map<string, Row>()
-  /** For a scan of every folder: the sessions read once. */
+  /** For a scan of every folder: the sessions read once, when a folder first asks. */
   const look = (ctx: Ctx): Seen => {
-    const sessions = liveSessions(kit, configOf(ctx))
-    return { sessions: () => sessions, mounts: mountPoints(), ctx }
+    let sessions: Sessions | undefined
+    return {
+      sessions: () => (sessions ??= liveSessions(kit, configOf(ctx))),
+      mounts: mountPoints(),
+      ctx,
+    }
   }
   /** For one folder: only the sessions that may be its are checked for a live pid. */
   const lookAt = (ctx: Ctx): Seen => {

@@ -17,11 +17,17 @@ import {
 import { errorText, realOr } from './helpers.ts'
 import { coveredBy, containsIgnored } from './ignore.ts'
 import { bindKit } from './kit.ts'
-import { acceptRoots, boundBy, gitReads, linkedCheckouts, type Bounds } from './roots.ts'
+import {
+  acceptRoots,
+  boundBy,
+  gitReads,
+  linkedCheckouts,
+  scopeProblem,
+  type Bounds,
+} from './roots.ts'
 import {
   CandidateSchema,
   ObjectionSchema,
-  unknownOwners,
   writeReceipt,
   PLAN_VERSION,
   RECEIPT_VERSION,
@@ -83,8 +89,12 @@ const limitOf = (p: Plugin, hook: Hook): number => {
 
 /**
  * Calls one hook of `p` under its time limit, as {@link callWithin} does,
- * except that `delete`'s answer counts however late it comes: by then it has
- * deleted, and the receipt and the `deleted` hooks must hear so.
+ * except that a `delete` that answers past its limit before the timer fires
+ * (it worked synchronously, so the timer could not) has its answer kept: by
+ * then it has deleted, and the receipt and the `deleted` hooks must hear so.
+ * A `delete` still waiting when the timer fires fails with
+ * {@link HookTimeout} and its signal is aborted, though what it started may
+ * go on.
  */
 const callHook = <T>(
   p: Plugin,
@@ -96,8 +106,9 @@ const callHook = <T>(
 /**
  * Calls `f` with `ctx`, `targetsGiven` defaulted and a signal of its own, and
  * awaits its answer. Past `ms` the signal is aborted and {@link HookTimeout}
- * thrown. How the core calls every hook (but a late `delete`, whose answer it
- * keeps); the contract suite calls `delete` so.
+ * thrown. How the core calls every hook (but a `delete` that answers late
+ * before the timer fires, whose answer it keeps); the contract suite calls
+ * `delete` so.
  *
  * Nothing can stop `f` while it works synchronously: the timer fires only when
  * `f` waits on something. One that then answers past `ms` is late like any
@@ -356,7 +367,7 @@ async function detectAll(
     const answer = r.value
     const found = detection(answer)
     if (found === null) {
-      const error = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note? }`
+      const error = `detect answered ${JSON.stringify(answer) ?? String(answer)}, which is neither a boolean nor { active, note?, vars? }`
       if (warnFailures) warnings.push(`${p.name}: ${error}; it was left out`)
       detections.push({ plugin: p, detected: false, error })
       continue
@@ -369,7 +380,7 @@ async function detectAll(
 /**
  * The context whose targets the detected `plugins`' `scope` added to, less
  * those its `ignore` covers, and that `ignore` itself; a failed `scope`, or an
- * answer or entry the core does not take, is a warning.
+ * answer or entry the core does not take ({@link scopeProblem}), is a warning.
  */
 async function scopeOf(
   plugins: readonly Plugin[],
@@ -379,12 +390,18 @@ async function scopeOf(
   const guarded = guard(warnings)
   const ignore = ctx.ignore ?? []
   const targets = ctx.targets.filter((t) => coveredBy(t, ignore) === undefined)
+  const home = ctx.home ?? homedir()
   for (const p of plugins) {
     if (p.scope === undefined) continue
     const answer = await guarded<unknown>(p, 'scope', [], ctx, (x) => p.scope!(x))
     for (const root of listFrom(p, 'scope', answer, warnings)) {
       if (typeof root !== 'string') {
         warnings.push(`${p.name}: scope: left out ${JSON.stringify(root)}, which is not a path`)
+        continue
+      }
+      const why = scopeProblem(root, home)
+      if (why !== null) {
+        warnings.push(`${p.name}: scope: left out ${root}: ${why}`)
         continue
       }
       if (!targets.includes(root) && coveredBy(root, ignore) === undefined) targets.push(root)
@@ -1003,6 +1020,12 @@ export function decidePlan(p: Plan): Decision {
 const outgrew = (before: Candidate, c: Candidate): boolean =>
   (before.capped === true || c.capped === true) &&
   (before.bytes === undefined || c.bytes === undefined || c.bytes > before.bytes)
+
+/** The owners of `plan`'s candidates that `known` does not name, each once, in order. */
+function unknownOwners(plan: Plan, known: Iterable<string>): string[] {
+  const have = new Set(known)
+  return [...new Set(plan.candidates.map((c) => c.owner))].filter((n) => !have.has(n))
+}
 
 /**
  * Judge a plan against the world now. Surveys again and decides over exactly
