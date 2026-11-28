@@ -14,10 +14,18 @@ root now gets only git records (worktree registrations, `pr-update/*` branches a
 `attempts.store: git-ref`, refs on its remote). An existing `.pr-update/` is neither read, moved nor
 deleted; `update` prints one note that it is no longer used and can be deleted.
 
-For library hosts, `Ports.targetHome` is now required and is asked about the project root too
-(`TargetCheckout.source` can be `'root'`); `Ports.attempts` and `Ports.lease` still win for the
-project root where set. `attemptsDir` and `checkoutKept` are gone, `KeptPlace` has no
-`naming` and gains `trees` (where its trees are), and `TargetHome.keptRoot` is now
-`worktreesRoot`. A worktree a record does not name is a run worktree, so `mirror prune` removes
-one whose run is dead, with its `pr-update/` branch. A kept record no longer has a rule against naming a git directory, since no record is
-inside a working tree any more; its path, branch and listing checks stay.
+**Breaking**, for library hosts: `Ports` gains a required `targetHome(target)`, asked about every
+target, the project root included (`TargetCheckout.source` can be `'root'`). It returns where
+that repository's run worktrees, kept-tree records, attempts and lease go (`TargetHome`, with
+`worktreesRoot` for the folder check). `Ports.attempts` and `Ports.lease` still win for the
+project root where set. The `attemptsDir` export is gone.
+
+**Breaking:** a kept worktree is pr-update's, whatever is in it. When its PR's head or base moves
+it is removed even if you changed or committed in it, where before that PR was skipped with
+`has local changes`; `--retry-failed`, `--discard-kept` and `mirror prune --discard-kept` remove it
+the same way. To keep its commit, push it out first with `pr-update kept push`. pr-update reads no
+worktree locks of its own: a worktree git will not remove (one locked with `git worktree lock`) is
+a failure, reported, and nothing of it is deleted by hand.
+
+A worktree in `worktrees/` that no kept record names is a run worktree, so `mirror prune` removes
+one whose run is dead, with its scratch branch and any other `pr-update/` branch it is on.

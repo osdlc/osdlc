@@ -720,8 +720,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   since the run's pid is in the worktree's name); `submodule.*` keys that
   were not put back; and, when it stopped between moving a run worktree to
   its PR's branch and writing the record, a run worktree on a
-  `pr-update/failed-*` branch with no record. Pruning, or the next run on that
-  checkout, removes it as a dead run's worktree, with that branch. Outside
+  `pr-update/failed-*` branch with no record. Pruning removes it as a dead
+  run's worktree, with that branch. Outside
   the checkout it can leave the run worktree's folder under the
   cache and, with `git-ref`, a lease ref on the remote until its TTL ends.
 - **Cleaning up in a located checkout.** The run never runs a bare

@@ -31,13 +31,13 @@ made a run worktree in the cache, unless a signal stopped it. It notes what it
 removed, what it left for a folder someone else could write to, and the space
 freed.
 
-The folder check of the clone directory, `worktrees/` and `kept/` accepts a
+The folder check of the clone directory and `worktrees/` accepts a
 folder writable by its group only for a user private group (not on macOS; the
 folder's group, your primary group and your uid are one number, as under the
 umask `002` of Ubuntu, Debian and Fedora). A folder anyone can write to is
 refused, sticky bit or not. pr-update makes the folders it creates with mode
 `755` at most, whatever the umask, including the folders above each run
-worktree and each kept place. `survey` holds a clone's lock
+worktree and each folder of kept-tree records. `survey` holds a clone's lock
 while it reads the clone (and drops what it read without the lock from a
 clone a prune removed meanwhile), and a run that finds its clone removed before it
 took the lock makes it again (`update --apply` with consent) or skips

@@ -14,13 +14,11 @@ checkout's own working tree, index and HEAD are not touched. Every git
 command there runs with hooks off, so a hook the PR commits under a relative
 `core.hooksPath` does not run, and the run never prunes the checkout's other
 worktrees. If a target's own attempt record or lease fails, that target's PRs
-are skipped with the error, and the run goes on. Its kept worktrees and failed
-attempts go in pr-update's state directory, under the same
+are skipped with the error, and the run goes on. Its kept-tree records and
+failed attempts go in pr-update's state directory, under the same
 `<host>/<owner>/<name>`, and with `attempts.store: git-ref` its record and
-lease are refs on that checkout's `origin`. The project root keeps
-`.pr-update/` as before. A host that embeds the package chooses these places
-with the new optional `Ports.targetHome`; without it, a target is used as the
-project root is.
+lease are refs on that checkout's `origin`. A host that embeds the package
+chooses these places with `Ports.targetHome`.
 
 Each target now passes the trust gate before `update` runs a command in it.
 A checkout is trusted by its path: run `pr-update trust` inside it. An
@@ -42,10 +40,10 @@ in `.git`, with a message that gives the form without it. A host's port is left 
 
 A kept worktree's record now names the git directory that owns it. A run
 served from another checkout of the same repository skips that PR as
-`kept elsewhere` while it is unchanged. A kept tree whose git directory is
-gone, or that git cannot read, is never removed as stale: its PR is skipped
-until `--discard-kept`. A kept record is used only when its path is a folder
-in its repository's `worktrees/` folder. If a target's own record
+`kept elsewhere`, restack children included, unless the PR moved or
+`--discard-kept` is given; then the tree is removed through the git directory
+that owns it. A kept record is used only when its path is a folder directly in
+its repository's `worktrees/` folder. If a target's own record
 cannot be saved after a PR ran, the error is shown on that PR, as
 `recordError` in JSON and `record not saved:` in the text. An error from a
 target's own record that no PR or skip shows is listed in `update --json`'s
@@ -64,11 +62,6 @@ are unchanged. So `survey` and `update` now stop with exit 2 before they
 fetch when `GIT_DIR`, `GIT_WORK_TREE` or another of these variables finds
 another repository or another top level than the directory's own, as a
 dotfiles setup's bare repository does. A git hook's own `GIT_DIR` passes.
-
-Fixed: `--retry-failed` no longer discards a kept worktree someone has
-changed or committed to, or one git cannot read, in the project root too.
-That PR is skipped with `kept worktree <path> has local changes; push them or
-pass --discard-kept`, and only `--discard-kept` removes the tree.
 
 In branch mode, a target served from a checkout other than the project
 root is skipped, and the `unpushed_local` guard reads every checkout of a
