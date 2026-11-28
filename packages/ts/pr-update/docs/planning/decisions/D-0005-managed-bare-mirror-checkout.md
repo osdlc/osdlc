@@ -1398,12 +1398,13 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   machine. It fails closed. The README says so where an upgrading user looks
   first.
 - **Size.** Against main, at the end of the omnibus (S13, the CI review's
-  fixes and the ownership contract, included), pr-update's `src/` has 6,778
-  lines added and 541 removed, against the estimate of 700, and its `tests/`
-  10,152 added and 119 removed (`git diff --shortstat origin/main...HEAD`,
-  merge base `93271347`, whose pr-update is that of `88112cb4`). Before the
-  ownership contract it was 7,031 and 485, and 10,085 and 93; at the end of
-  S12, 6,407 and 455, and 9,585 and 91.
+  fixes, the ownership contract and review round 2, included), pr-update's
+  `src/` has 7,202 lines added and 542 removed, against the estimate of 700,
+  and its `tests/` 10,732 added and 120 removed (`git diff --shortstat
+  origin/main...HEAD`, merge base `93271347`, whose pr-update is that of
+  `88112cb4`). Before review round 2 it was 6,778 and 541, and 10,152 and
+  119; before the ownership contract, 7,031 and 485, and 10,085 and 93; at
+  the end of S12, 6,407 and 455, and 9,585 and 91.
 - **Nested groups.** `--repo` takes exactly `owner/name` or
   `host/owner/name`, so a GitLab repository in a nested group can be found
   by the locator but not named as a target. The clone is GitHub only.
