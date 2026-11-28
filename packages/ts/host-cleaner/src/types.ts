@@ -107,6 +107,12 @@ export interface RunCtx {
   /** Absolute paths nothing may be deleted in or below; the core drops candidates there, a plugin may also skip them. */
   ignore?: readonly string[] | undefined
   /**
+   * Absolute paths of folders where coding agents keep their worktrees, added
+   * to the built-in `DEFAULT_AGENT_FOLDERS`: the core refuses (`agent-worktree`)
+   * every candidate in or holding one of them.
+   */
+  agentFolders?: readonly string[] | undefined
+  /**
    * True when a person named the targets, in the config or on the command
    * line; false when the CLI fell back to the folder it runs in. Unset is false.
    */

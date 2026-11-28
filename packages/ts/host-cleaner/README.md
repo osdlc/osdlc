@@ -270,6 +270,30 @@ check.
 A ref gets no folder checks, and the core never removes a folder for one.
 `ignore` applies to a path, and to a ref's `at`.
 
+Coding agents keep worktrees of their own in fixed folders, track what they made
+there, and clean it up themselves. The core refuses (`agent-worktree`, exported
+as `AGENT_WORKTREE`, by `host-cleaner`) every candidate, whatever its plugin,
+that is in or holds one of these folders, and a ref whose `at` is in one, by
+the path's own spelling and its real path, through links above a folder that
+is gone. So a `git` worktree an agent made there is never removed, nor a
+`node_modules` inside it. The folders are the built-in ones
+(`DEFAULT_AGENT_FOLDERS`) and the config's [`agentFolders`](#files-and-config),
+which add to them (`RunCtx.agentFolders`, absolute paths, for code that calls
+`survey`):
+
+| Folder | Agent | Source |
+| --- | --- | --- |
+| `~/.cursor/worktrees` | Cursor's parallel agents and its `cursor-agent` CLI | Fixed, with no setting: [Cursor forum, staff answer](https://forum.cursor.com/t/configure-worktree-location/149222) |
+| `~/.codex/worktrees` | The Codex app | `$CODEX_HOME/worktrees` ([Codex docs](https://learn.chatgpt.com/docs/environments/git-worktrees)), and `CODEX_HOME` is `~/.codex` when unset (`codex-rs/utils/home-dir`) |
+
+`~` is the run's home (`RunCtx.home`, else the process's). A Codex app with
+another worktree root, or a moved `CODEX_HOME`, needs its folder in
+`agentFolders`. Claude Code keeps its worktrees in each repository, in
+`.claude/worktrees/` at its root, so no folder under home covers them; list a
+repository's `.claude/worktrees` in `agentFolders` to protect it. The same
+check runs again right before `prepare` in `clean`, so a candidate that a link
+has put in an agent folder since the survey fails that step.
+
 ### The plugin kit
 
 `create` gets `kit`, the safety helpers the shipped plugins use, bound to the
@@ -577,15 +601,17 @@ storage, so every dead workspace's folder is `costDescription: lost`, not only
 one with the history folders the `vscode` plugin looks for. It is held,
 protested `discard-user-data`, and runs only with
 `--pick <id> --allow discard-user-data`. Cursor's agents make and track
-their own worktrees under `~/.cursor/worktrees`, so the plugin refuses
-(`agent-worktree`, exported as `AGENT_WORKTREE`) any `git` worktree there,
-whether or not Cursor runs. (For another tool's agent worktrees, list their
-folder in the config's `ignore`.) And the `cursor-agent` CLI runs as `node`, so
+their own worktrees under `~/.cursor/worktrees`, one of the core's
+[agent folders](#paths-refs-and-containment), so every candidate there is
+refused (`agent-worktree`) whether or not Cursor runs, and whether or not this
+plugin is detected; the plugin, like the `vscode` one, looks no further at a
+`git` worktree in any agent folder. And the `cursor-agent` CLI runs as `node`, so
 the process table does not show which process is Cursor's agent: the plugin
 refuses (`cursor-in-use`) any `git` worktree that any process other than an idle
 shell works in, whether or not Cursor runs. The plugin is detected when its
-storage or the agents' folder exists; on a host with only the CLI, that is once
-it has made a worktree there. On Windows only the agents' folder is checked. Its
+storage or `~/.cursor/worktrees` exists; on a host with only the CLI, that is once
+it has made a worktree there. On Windows, which has no `lsof`, it checks no `git`
+worktree itself; the core still refuses those in an agent folder. Its
 codes are the `vscode` plugin's under its own name: `cursor-in-use`,
 `cursor-unknown-workspace`, `cursor-state-unreadable` and `cursor-unchecked`.
 
@@ -1180,10 +1206,10 @@ the key.
 | `vars.<NAME>` | descriptors that declare `vars` | none | A folder (`~/…` or absolute) for one of the descriptor's variables. It wins over every source and may sit outside home. A name the descriptor does not declare is an error. It wins over the sources of the variables built from it too: `GOPATH` (go) moves the module cache even with go on PATH. |
 | `keepVolumes` | `docker` | `[]` | Volume names never proposed, even when no container uses them. |
 
-Two settings sit at the top of the config and apply to every plugin:
+Three settings sit at the top of the config and apply to every plugin:
 
 ```json
-{ "targets": ["~/dev"], "ignore": ["~/dev/dashboard"], "idleHours": 0 }
+{ "targets": ["~/dev"], "ignore": ["~/dev/dashboard"], "agentFolders": ["~/dev/app/.claude/worktrees"], "idleHours": 0 }
 ```
 
 - `ignore` lists paths nothing may be deleted in or below (`~` is home, and on
@@ -1191,6 +1217,14 @@ Two settings sit at the top of the config and apply to every plugin:
   A candidate there is left out, with a warning saying how many; `status` prints
   the active list, a plan records it, and `clean --plan` honours the plan's list
   and the current one, dropping a planned candidate as `ignored`.
+- `agentFolders` lists folders where coding agents keep their own worktrees,
+  by the same rules as `ignore` (`~` is home; a path is matched by its real path
+  too). It adds to the built-in list (`~/.cursor/worktrees`,
+  `~/.codex/worktrees`), which always applies and cannot be turned off. A
+  candidate in or holding one is not left out but refused (`agent-worktree`),
+  so `status` and `plan` show it skipped with the folder in the reason; see
+  [containment](#paths-refs-and-containment). `config` prints the list and the
+  built-in one (`agentFolders` and `defaultAgentFolders` in JSON).
 - `idleHours` is the default for every plugin that has the setting and does not
   set its own. `0` is allowed and makes every idle-checked artifact a candidate,
   except where a descriptor entry's own `idleHours` is higher (below).

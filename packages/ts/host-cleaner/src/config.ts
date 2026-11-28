@@ -26,6 +26,8 @@ export const ConfigSchema = z.strictObject({
   targets: z.array(z.string().min(1)).default([]),
   /** Paths no candidate may sit in or below, for every plugin; `--ignore` adds to them. `~` is the home directory. */
   ignore: z.array(z.string().min(1)).default([]),
+  /** Folders where coding agents keep their worktrees, refused for every plugin, added to the built-in ones. `~` is the home directory. */
+  agentFolders: z.array(z.string().min(1)).default([]),
   /** Hours an artifact must have sat unused, for every plugin that does not set its own; 0 or more. */
   idleHours: z.number().nonnegative().optional(),
   /** Settings by plugin name; a plugin reads only its own entry. */

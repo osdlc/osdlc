@@ -24,6 +24,7 @@ import {
 import { mayContribute, type ArchiveOptions, type Kind } from '@osdlc/repo-cleaner'
 import { stripControls } from '@osdlc/ux'
 
+import { DEFAULT_AGENT_FOLDERS } from './agent-folders.ts'
 import { errorText, homeFrom, realOr } from './helpers.ts'
 import { expandHome, ignorePaths } from './ignore.ts'
 import {
@@ -889,6 +890,7 @@ function contextFor(
     ...(home === '' ? {} : { home }),
     allow,
     ignore: ignoreFor(config, ignore, ctx),
+    agentFolders: agentFoldersFor(config, ctx),
   }
 }
 
@@ -926,6 +928,10 @@ const targetHome = (ctx: CliContext) => (): string => {
 /** The config's ignore list with `extra` (`--ignore`) added, as absolute paths. */
 const ignoreFor = (config: Config, extra: readonly string[], ctx: CliContext): string[] =>
   ignorePaths([...config.ignore, ...extra], ctx.cwd, tildeHome(ctx))
+
+/** The config's agent folders, as absolute paths by the ignore list's rules; the core adds the built-in ones. */
+const agentFoldersFor = (config: Config, ctx: CliContext): string[] =>
+  ignorePaths(config.agentFolders, ctx.cwd, tildeHome(ctx))
 
 /** The lines as one control-stripped block, or nothing for no lines. */
 const block = (lines: readonly string[]): string =>
@@ -1055,6 +1061,8 @@ async function runConfig(
             fileExists,
             targets: config.targets,
             ignore: config.ignore,
+            agentFolders: config.agentFolders,
+            defaultAgentFolders: DEFAULT_AGENT_FOLDERS,
             idleHours: config.idleHours ?? null,
             plugins: values,
             partIdleHours: parts,
@@ -1076,6 +1084,7 @@ async function runConfig(
       `file: ${stripControls(file)}${fileExists ? '' : '  (not found: defaults)'}`,
       `targets: ${list(config.targets)}`,
       `ignore: ${list(config.ignore)}`,
+      `agentFolders: ${list(config.agentFolders)}  (always also ${DEFAULT_AGENT_FOLDERS.join(', ')})`,
       `idleHours: ${config.idleHours ?? '(not set)'}`,
     ]
     for (const [n, rows] of Object.entries(settings)) {
@@ -1602,6 +1611,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
         ...(home === '' ? {} : { home }),
         allow: plan.allow,
         ignore: ignoreFor(config, v.ignore, ctx),
+        agentFolders: agentFoldersFor(config, ctx),
       }
       const checked = await recheck(plan, plugins, cctx, known)
       writeWarnings(ctx, name, surveyWarnings(checked.survey))
