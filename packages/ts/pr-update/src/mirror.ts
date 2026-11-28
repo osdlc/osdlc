@@ -39,9 +39,7 @@ import { ConfigInvalidError, type MachineConfigFile } from '@osdlc/config-layers
 import { osdlcDirs } from '@osdlc/ecosystem'
 import { WriteConflictError } from '@osdlc/etag-write'
 import {
-  claimLock,
   holderGone,
-  processIdentity,
   readHeldLock,
   releaseLock,
   untouchedFor,
@@ -72,6 +70,11 @@ import {
   type machineConfigSchema,
 } from './machine.ts'
 import type { LocateTarget } from './ports.ts'
+import {
+  claimProcessLock as claimCloneLock,
+  processLockGone as holderIsGone,
+  type ProcessLockContent as CloneLockContent,
+} from './process-lock.ts'
 import { NO_MAINTENANCE, maintainClone } from './clone-maintenance.ts'
 import { SurveyUsageError, hostKey, type ManagedClones, type RepoTarget } from './survey.ts'
 import { targetGitOptions } from './update/execute.ts'
@@ -429,43 +432,6 @@ export function markMirrorDir(dir: string): void {
   }
 }
 
-/** What a clone's lock records: the holding process, by pid and start, so a reused pid is not taken for it. */
-interface CloneLockContent {
-  tool: string
-  holder: { pid: number; startedAt?: string }
-}
-
-let identity: string | null | undefined
-
-function lockHolder(): CloneLockContent['holder'] {
-  identity ??= processIdentity(process.pid)
-  return { pid: process.pid, ...(identity === null ? {} : { startedAt: identity }) }
-}
-
-const holderIsGone = holderGone<CloneLockContent>((c) => [c.holder])
-
-/** Nothing ever notifies it, so `Atomics.wait` on it just sleeps. */
-const SLEEPER = new Int32Array(new SharedArrayBuffer(4))
-
-/**
- * Take the lock at `path`, waiting up to `waitMs` for another run to let go. A lock whose holder
- * process is gone is taken over. Returns the token that releases it, or null when it stayed held.
- */
-export function claimCloneLock(path: string, waitMs: number): string | null {
-  const deadline = Date.now() + waitMs
-  for (;;) {
-    const claim = claimLock<CloneLockContent>(
-      path,
-      { tool: 'pr-update', holder: lockHolder() },
-      { isStale: holderIsGone },
-    )
-    if (claim.ok) return claim.token
-    const left = deadline - Date.now()
-    if (left <= 0) return null
-    Atomics.wait(SLEEPER, 0, 0, Math.min(250, left))
-  }
-}
-
 /**
  * Whether another run holds the lock at `path`: what {@link claimCloneLock} with no wait would
  * find, read without taking the lock or changing anything.
@@ -486,6 +452,8 @@ export function cloneLockHeld(path: string): boolean {
   }
   return !holderIsGone(held)
 }
+
+export { claimCloneLock }
 
 /** The target a clone is asked for, with the host `gh` is pointed at. */
 export interface CloneRequest extends CloneKey {
