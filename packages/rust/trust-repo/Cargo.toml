@@ -1,0 +1,36 @@
+[package]
+name = "trust-repo"
+version = "0.5.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Per-user consent to run a repository's own scripts: a store of marker files, one per trusted repository, and the rule that combines it with a per-run flag. The Rust port of @osdlc/trust-repo's whole-repository grants."
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/trust-repo"
+readme = "README.md"
+keywords = ["trust", "consent", "repository", "security", "xdg"]
+categories = ["filesystem", "command-line-utilities"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[lib]
+name = "trust_repo"
+path = "src/lib.rs"
+
+[dependencies]
+etag-write = { workspace = true }
+path-guard = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

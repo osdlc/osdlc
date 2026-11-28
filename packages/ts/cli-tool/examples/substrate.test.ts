@@ -32,6 +32,7 @@ import {
   didYouMean,
   discardTypeAhead,
   envVars,
+  homeDir,
   EXIT,
   EXIT_FAILURE,
   exitCodeFor,
@@ -53,6 +54,7 @@ import {
   runMain,
   systemDirs,
   TieredDirs,
+  TieredDirsError,
   type AskChecklistOptions,
   type AskChoiceOptions,
   type ChecklistItem,
@@ -368,6 +370,13 @@ test('re-exported helpers: close matches and per-OS directories', () => {
   const options: ResolveOptions = { home: dir, env: {} }
   const dirs: TieredDirs = systemDirs(vendorDirs, options)
   expect(dirs.standalone('tooly').config().path).toContain('tooly')
+
+  // With no home directory there is nowhere to put them.
+  const noHome = (): TieredDirs => systemDirs(vendorDirs, { env: {} })
+  expect(noHome).toThrow(TieredDirsError)
+  expect(noHome).toThrow(expect.objectContaining({ code: 'MISSING_BASE_DIR' }))
+  // The home they are built on, for a `~` that must mean the same one.
+  expect(homeDir({ platform: 'linux', env: { HOME: '/home/ada' } })).toBe('/home/ada')
 })
 
 test('help text is wrapped when it is rendered', () => {

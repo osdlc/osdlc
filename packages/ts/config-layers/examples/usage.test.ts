@@ -51,6 +51,7 @@ import {
   enforcementProblems,
   envStem,
   envVars,
+  homeDir,
   substitutePathNames,
   getIn,
   isReserved,
@@ -95,6 +96,7 @@ import {
   stripUnknownKeys,
   systemDirs,
   TieredDirs,
+  TieredDirsError,
   PathNameError,
   topLevelKeys,
   unknownKeyMessage,
@@ -396,6 +398,15 @@ test('find the tool directories under a home that is not the real one', () => {
     scratch: join(base, 'scratch'),
   })
   expect(direct.standalone('tooly').config().path.startsWith(join(base, 'config'))).toBe(true)
+
+  // A directory that cannot be placed is a `TieredDirsError`; its `code` says why.
+  const noHome = (): TieredDirs => systemDirs(VENDOR, { env: {} })
+  expect(noHome).toThrow(TieredDirsError)
+  expect(noHome).toThrow(expect.objectContaining({ code: 'MISSING_BASE_DIR' }))
+
+  // `homeDir` is the home they are built on, for expanding a `~` against the same one.
+  expect(homeDir({ platform: 'linux', env: { HOME: '/home/ada' } })).toBe('/home/ada')
+  expect(() => homeDir({ env: { HOME: 'relative' } })).toThrow(TieredDirsError)
 })
 
 test('read a setting by dotted key and tell whether it counts as set', () => {

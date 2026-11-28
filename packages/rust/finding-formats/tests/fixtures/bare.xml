@@ -1,0 +1,4 @@
+<testsuite name="solo" tests="2" time="1.5">
+  <testcase name="no_class" time="1.0"><failure><![CDATA[boom <raw>]]></failure></testcase>
+  <testcase classname="c" name="ok" time="0.5"/>
+</testsuite>

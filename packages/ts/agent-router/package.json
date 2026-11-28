@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/agent-router",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Picks the coding-agent CLI, model and effort to launch: a model catalogue (tools, providers, models, offerings) with a shipped snapshot, a resolver for references (tool/model[ctx=\u2026]@effort), and an ordered profile walk with first-available fallback, tier chains across tools and an author rule for reviews. The main entry is pure and browser-safe; the experimental ./config subpath holds config sections for a host and is not.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
@@ -82,7 +82,7 @@
   },
   "peerDependencies": {
     "zod": "^4",
-    "@osdlc/config-layers": "^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0"
+    "@osdlc/config-layers": "^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0"
   },
   "peerDependenciesMeta": {
     "@osdlc/config-layers": {

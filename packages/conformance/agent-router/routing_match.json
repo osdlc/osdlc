@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.5",
+  "referenceVersion": "0.4.6",
   "sections": {
     "routing_match": {
       "description": "matchRule: the first rule whose when holds for the request; every key must hold, tags match any",

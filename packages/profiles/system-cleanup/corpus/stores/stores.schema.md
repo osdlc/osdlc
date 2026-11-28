@@ -10,12 +10,12 @@ required: [slug, category, vendor, homepage, open_source, platforms, checked, so
 properties:
   slug:
     description: >-
-      A stable key: lowercase letters, digits and hyphens. A host-cleaner plugin keys on it, so a
+      A stable key: lowercase letters, digits and hyphens. A workstation-cleaner plugin keys on it, so a
       rename of the record does not change it.
     type: string
     pattern: "^[a-z0-9][a-z0-9-]*$"
   category:
-    description: What kind of thing it is, which decides which host-cleaner plugin family covers it.
+    description: What kind of thing it is, which decides which workstation-cleaner plugin family covers it.
     enum:
       - language-package-manager
       - os-package-manager
@@ -95,7 +95,7 @@ does not say:
 
 - `slug` is the store's key outside the corpus. It is unique and never changes once a plugin uses
   it.
-- `category` groups stores into host-cleaner plugin families. A tool that is two things, such as a
+- `category` groups stores into workstation-cleaner plugin families. A tool that is two things, such as a
   language's toolchain and its package manager, takes the one its disk use comes from.
 - `sources` lists links to document records, one per page used for the fields above.
 - `license` is allowed only when `open_source` is true.

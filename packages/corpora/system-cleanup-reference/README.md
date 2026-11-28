@@ -3,7 +3,7 @@
 A cited record of where developer tools and apps keep data that can be reclaimed from disk, and
 how to reclaim it safely: package managers, toolchain managers, build tools and SDKs, OS package
 managers, local model runtimes and hubs, container runtimes and editors. Every value has a date
-and a quoted source. host-cleaner's plugins are meant to be built from it ([#952](https://github.com/osdlc/osdlc/issues/952), [#991](https://github.com/osdlc/osdlc/issues/991)).
+and a quoted source. workstation-cleaner's plugins are meant to be built from it ([#952](https://github.com/osdlc/osdlc/issues/952), [#991](https://github.com/osdlc/osdlc/issues/991)).
 
 The record is one [corpus-schema](../../conformance/corpus-schema/SPEC.md)
 corpus. Its types come from the [system cleanup profile](../../profiles/system-cleanup/README.md), which builds
@@ -16,7 +16,7 @@ package is not published yet ([B-0001](docs/planning/backlog/B-0001-publish-the-
   profile and uses all its types as they are (`uses: [system-cleanup/*]`), so no type folder holds a schema file.
 - `corpus/stores/`: one record per tool or app, named after the product as the vendor writes it,
   such as `pnpm.md` or `LM Studio.md`. A `slug` is its stable key, and `category` says which
-  host-cleaner plugin family covers it. `system: true` marks data that needs root to clean.
+  workstation-cleaner plugin family covers it. `system: true` marks data that needs root to clean.
 - `corpus/subjects/`: the six questions asked of every store, each with a `valueSchema`:
 
   | Slug | Question |

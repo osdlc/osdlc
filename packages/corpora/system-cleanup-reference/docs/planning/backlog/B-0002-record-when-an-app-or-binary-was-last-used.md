@@ -4,7 +4,7 @@ schema_version: '3'
 id: B-0002
 tags:
   - system-cleanup
-  - host-cleaner
+  - workstation-cleaner
   - liveness
   - macos
 related:
@@ -38,12 +38,12 @@ What this would add:
 
 1. A subject, such as `liveness/last-used`, asked of each store: which signal says when it was
    last used, on which platform, and how far it can be trusted. Cited like the other subjects.
-2. In host-cleaner, a `lastUsed` source for descriptors (#991), beside `vars` and `liveness`, so
+2. In workstation-cleaner, a `lastUsed` source for descriptors (#991), beside `vars` and `liveness`, so
    `idleDays` can be measured from the app's last use, not only from file times.
 3. A missing value counts as unknown, never as "not used". Unknown falls back to the rules used
    today.
 
 Before this can be done:
 
-- Undecided (owner, 2026-11-21): whether host-cleaner may read Full Disk Access data such as
+- Undecided (owner, 2026-11-21): whether workstation-cleaner may read Full Disk Access data such as
   Screen Time history, or only metadata any process can read.

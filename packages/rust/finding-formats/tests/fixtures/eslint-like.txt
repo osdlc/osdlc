@@ -1,0 +1,4 @@
+web/app.js:3:5: warning no-unused-vars unused 'y'
+web/app.js:9:1: Error semi missing semicolon
+web/app.js:10:1: info prefer-const use const
+summary: 3 problems

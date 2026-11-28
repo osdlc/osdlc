@@ -24,5 +24,5 @@ valueSchema:
 
 Directories inside a project, relative to its root, such as Cargo's `target` or npm's
 `node_modules`. `marker` is the file beside it that shows the directory is the tool's and not
-something else with the same name, such as `Cargo.toml` beside `target`. host-cleaner's artifact
+something else with the same name, such as `Cargo.toml` beside `target`. workstation-cleaner's artifact
 plugins look for these.

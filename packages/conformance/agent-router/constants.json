@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.5",
+  "referenceVersion": "0.4.6",
   "sections": {
     "constants": {
       "description": "the constants the Rust crate retypes: EFFORT_LEVELS, DEFAULT_CHAIN_ORDER, the built-in classify rules and profiles, the availability and skip reasons, the routing keys",

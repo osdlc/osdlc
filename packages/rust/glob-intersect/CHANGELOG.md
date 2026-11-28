@@ -7,14 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-27
+
+First release on crates.io.
+
 ### Changed
 
 - Moved to osdlc/osdlc as `glob-intersect`, because the crates.io name
   `intersect` belongs to another crate. The library is imported as
   `glob_intersect`.
 - Licensed `MIT OR Apache-2.0`, like the other crates in this workspace.
-- The tests read the `@osdlc/intersect` corpus in place
-  (`packages/ts/intersect/fixtures/`), so the pinned copy, `PIN.json` and
+- The tests read the shared intersect conformance suite in place
+  (`packages/conformance/intersect/suite.json`), so the pinned copy, `PIN.json` and
   `tests/pin.rs` are gone. This adds the corpus's three dot-file cases for the
   `fs` layer.
 - `Matcher::matches`, `matches`, `which_match`, `Registry::matching` and the
@@ -31,8 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [0.3.0] - 2026-10-20
 
 Aligned with @osdlc/intersect 0.3.0. The pinned corpus is the content of
-[osdlc/osdlc#341](https://github.com/osdlc/osdlc/pull/341); 0.3.0 is not
-published yet, so re-check the pin against the release when it is.
+[osdlc/osdlc#341](https://github.com/osdlc/osdlc/pull/341). This version and
+the ones below were never published to crates.io; 0.3.1 is the first.
 
 ### Changed (breaking)
 

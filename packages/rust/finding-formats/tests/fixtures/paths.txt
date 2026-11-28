@@ -1,0 +1,2 @@
+./src/a.rs:5: relative to the tool's cwd
+../shared/b.rs:6: one level up

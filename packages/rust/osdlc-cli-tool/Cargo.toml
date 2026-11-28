@@ -1,0 +1,40 @@
+[package]
+name = "osdlc-cli-tool"
+version = "0.22.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The groundwork a standalone CLI needs, over clap: an output seam, an injectable context, fixed exit codes, classified failures and versioned --json documents. The Rust twin of @osdlc/cli-tool."
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/osdlc-cli-tool"
+readme = "README.md"
+keywords = ["cli", "clap", "exit-code", "json", "output"]
+categories = ["command-line-interface", "development-tools"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[lib]
+name = "cli_tool"
+
+[dependencies]
+clap = { workspace = true }
+# Output schemas are derived from the payload types, as the TypeScript twin derives them from zod.
+schemars = { workspace = true }
+serde = { workspace = true }
+# `preserve_order` keeps the envelope's keys in the order the document writes them.
+serde_json = { workspace = true, features = ["preserve_order"] }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# No default features: a test schema's `$ref` is not fetched, unless feature unification adds them.
+jsonschema = { version = "0.28", default-features = false }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

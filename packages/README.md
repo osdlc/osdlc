@@ -31,8 +31,10 @@ of them.
 - `packages/profiles/system-cleanup/` and
   `packages/corpora/system-cleanup-reference/` are the system cleanup profile
   and reference: cited statements about where tools and apps keep data that
-  can be reclaimed from disk, which host-cleaner's descriptors are drafted
-  from. They live beside host-cleaner while it is their only user, and are not
+  can be reclaimed from disk. workstation-cleaner's descriptors will be drafted from
+  them; descriptors are not built yet (phase 4 of
+  [the workstation-cleaner plan](../docs/planning/host-cleaner-plan.md)). They live
+  beside workstation-cleaner while it is their only user, and are not
   published yet; the reference's backlog item B-0001 says when they will be.
 - TypeScript libraries are published to npm from CI with
   [Changesets](https://changesets.dev). `.github/workflows/packages-publish.yml`
@@ -152,14 +154,18 @@ Developed here, in this repository:
 - `packages/rust/agent-adapt` (`agent-adapt` on crates.io)
 - `packages/rust/agent-router` (`agent-router`, the Rust implementation of
   `@osdlc/agent-router`'s pure core; not on crates.io)
+- `packages/rust/command-seam` (`command-seam` on crates.io, the Rust twin of
+  `@osdlc/command-seam`: a seam for running child processes)
 - `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
+- `packages/rust/finding-formats` (`finding-formats` on crates.io: reads line-oriented text,
+  SARIF, JUnit XML and lcov into one small findings and facts model)
 - `packages/rust/frontmatter-lossless` (`frontmatter-lossless` on crates.io)
 - `packages/rust/gfm-pipe-table` (`gfm-pipe-table`, the Rust implementation of
   `@osdlc/gfm-table`: GFM pipe tables as strings and byte offsets; not on
   crates.io yet)
 - `packages/rust/glob-intersect` (`glob-intersect`, the Rust implementation of
-  `@osdlc/intersect`: do two globs share a path; not on crates.io yet)
+  `@osdlc/intersect`: do two globs share a path)
 - `packages/rust/markdown-contract` (`markdown-contract` on crates.io, the Rust implementation
   of `@osdlc/markdown-contract`: contracts for markdown documents, checked
   against the package's corpus)
@@ -170,17 +176,21 @@ Developed here, in this repository:
 - `packages/rust/markdown-relink` (`markdown-relink` on crates.io)
 - `packages/rust/markdown-vault-fs` (`markdown-vault-fs` on crates.io, the
   vault layer over `vfs-walk`)
+- `packages/rust/osdlc-cli-tool` (`osdlc-cli-tool` on crates.io, imported as `cli_tool`, the Rust twin of
+  `@osdlc/cli-tool`: the groundwork a standalone CLI needs over clap)
 - `packages/rust/osdlc-file-lock` (`osdlc-file-lock` on crates.io, the Rust
   implementation of `@osdlc/file-lock`, so a Rust process and a Node.js process
   can hold one lock file in turn)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
-- `packages/rust/ref-lease` (`ref-lease` on crates.io, the Rust twin of
+- `packages/rust/ref-lease` (`ref-lease`, not on crates.io yet, the Rust twin of
   `@osdlc/ref-lease`: the protocol's pure half, not the git push and fetch)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/system-model` (`system-model` on crates.io, the Rust twin of `@osdlc/system-model`)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
 - `packages/rust/tradecraft` (`tradecraft` on crates.io, the CLI's old
   name. It only points to `skillwright`.)
+- `packages/rust/trust-repo` (`trust-repo` on crates.io, the Rust port of the whole-repository part of
+  `@osdlc/trust-repo`: per-user consent to run a repository's own scripts)
 - `packages/rust/typed-git` (`typed-git` on crates.io, the Rust implementation of
   `@osdlc/typed-git`: a typed git client)
 - `packages/rust/vfs-seam` (`vfs-seam` on crates.io, the file-access trait the
@@ -306,7 +316,7 @@ Developed here, in this repository:
   that finds the branches, worktrees and remote branches that have been merged
   and can go away, with the evidence and the command for each, and applies an
   approved plan compare-and-swap)
-- `packages/ts/host-cleaner` (`@osdlc/host-cleaner` on npm once published, a tool and
+- `packages/ts/workstation-cleaner` (`@osdlc/workstation-cleaner` on npm once published, a tool and
   library that runs machine cleanup as plugins, each proposing candidates and
   objecting to others', through one plan, one re-check and one receipt)
 - `packages/ts/rule-review` (`@osdlc/rule-review` on npm, a tool and library
@@ -332,15 +342,20 @@ Developed here, in this repository:
   baselines from a pinned Playwright container, Playwright helpers for
   interaction and perf specs, an in-page metrics hook and a perf report that
   parallel workers merge)
+- `packages/ts/code-stats` (`@osdlc/code-stats` on npm once published, a tool
+  and library that counts lines of source by kind for a tree or a change, says
+  what each line of a change did (added, removed, changed, moved), writes
+  pull-request descriptions from that, and writes the review-prep manifest for
+  a change: kept and dropped files, review groups by package root and
+  reading-order flags)
 - `packages/ts/ecosystem` (`@osdlc/ecosystem` on npm once published, the
   settings every osdlc tool shares, one module per concern: the family's
   directories, and `repositories.yaml` with the roots to scan and finding a
   person's checkouts of a repository by their `origin`)
-- `packages/ts/json-canvas-core` (`@osdlc/json-canvas-core` on npm once
-  published, the model for JSON Canvas documents: types, validation, an
-  immutable operation engine with undo and redo, geometry and a view model)
-- `packages/ts/json-canvas-vue` (`@osdlc/json-canvas-vue` on npm once
-  published, a Vue 3 board that draws and edits a JSON Canvas document on
+- `packages/ts/json-canvas-core` (`@osdlc/json-canvas-core` on npm, the model
+  for JSON Canvas documents: types, validation, an immutable operation engine
+  with undo and redo, geometry and a view model)
+- `packages/ts/json-canvas-vue` (`@osdlc/json-canvas-vue` on npm, a Vue 3 board that draws and edits a JSON Canvas document on
   `@osdlc/json-canvas-core`, with undo, node components, a read-only mode and
   a sanitizing markdown seam)
 
@@ -467,7 +482,6 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    - `gfm-pipe-table`, until its first release can have a release-plz run of
      its own: it needs `CARGO_REGISTRY_TOKEN` (rules 3, 4 and 7).
    - `ref-lease`, for the same reason.
-   - `system-model`, for the same reason.
 
 #### Versions and breaking changes
 
