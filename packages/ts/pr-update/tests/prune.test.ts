@@ -2180,17 +2180,53 @@ describe('every removal passes one check, the same in a dry run (final review ro
       },
     )
 
-    test('a dead run worktree git itself left locked (a killed `git worktree add`) fails too: pr-update reads no locks', () => {
-      const clone = makeClone('acme/api', 400)
-      const dead = runWorktree(clone, 'acme/api')
-      git(clone, 'worktree', 'lock', '--reason', 'initializing', dead)
+    /** The `locked` file git keeps for the worktree at `tree` of `clone`. */
+    const lockFile = (clone: string, tree: string): string =>
+      join(clone, 'worktrees', basename(tree), 'locked')
 
-      const r = prune({ allClones: true })
+    test.each([
+      ['as git writes it', 'initializing\n'],
+      ['with no newline', 'initializing'],
+    ])(
+      'a dead run worktree git itself left locked (a killed `git worktree add`), %s, is unlocked and removed, and its clone with it (known problem 33)',
+      (_, text) => {
+        const clone = makeClone('acme/api', 400)
+        const dead = runWorktree(clone, 'acme/api')
+        git(clone, 'worktree', 'lock', dead)
+        writeFileSync(lockFile(clone, dead), text)
 
-      expect(r.removed).toEqual([])
-      expect(r.failed.map((e) => [e.kind, e.path])).toEqual([['worktree', dead]])
-      expect(existsSync(dead)).toBe(true)
-    })
+        const r = prune({ allClones: true })
+
+        expect(r.failed).toEqual([])
+        expect(r.removed.map((e) => [e.kind, e.path])).toEqual([
+          ['worktree', dead],
+          ['clone', clone],
+        ])
+        expect(existsSync(dead)).toBe(false)
+      },
+    )
+
+    test.each([
+      ['two newlines', 'initializing\n\n'],
+      ['a space before it', ' initializing\n'],
+      ['more after it', 'initializing a build\n'],
+      ['another case', 'Initializing\n'],
+    ])(
+      'a dead run worktree locked with %s is not git’s own lock: it fails, and its clone stays (known problem 33)',
+      (_, text) => {
+        const clone = makeClone('acme/api', 400)
+        const dead = runWorktree(clone, 'acme/api')
+        git(clone, 'worktree', 'lock', dead)
+        writeFileSync(lockFile(clone, dead), text)
+
+        const r = prune({ allClones: true })
+
+        expect(r.removed).toEqual([])
+        expect(r.failed.map((e) => [e.kind, e.path])).toEqual([['worktree', dead]])
+        expect(listed(clone)).toEqual([dead])
+        expect(readFileSync(lockFile(clone, dead), 'utf8')).toBe(text)
+      },
+    )
 
     test('a clone whose lock holds a token that is not a string is busy, as a claim finds it, in a dry run too', () => {
       const clone = makeClone('acme/api', 400)
