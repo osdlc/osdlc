@@ -1268,7 +1268,8 @@ describe('keeping a failed worktree in a clone (final review)', () => {
       "pr_update:\n  verify: test\n  test_command: 'false'\n",
     )
     // A `mirror prune --all-clones --discard-kept` run at the worst moment: the failed PR's
-    // worktree has been moved aside as a kept tree, and the run worktree is not back yet.
+    // worktree has been kept where it is, on its PR's branch, and the run's next worktree is not
+    // added yet.
     const real = spawnRunner('git', { absolutePathOnly: true })
     let moved = false
     let pruned: ReturnType<typeof pruneMirror> | undefined
@@ -1276,7 +1277,7 @@ describe('keeping a failed worktree in a clone (final review)', () => {
       binary: 'git',
       run: (argv, opts) => {
         const at = argv.indexOf('worktree')
-        if (at !== -1 && argv[at + 1] === 'move') moved = true
+        if (argv.some((a) => a.startsWith('pr-update/failed-'))) moved = true
         else if (at !== -1 && argv[at + 1] === 'add' && moved && pruned === undefined) {
           pruned = pruneMirror({ env, dir, allClones: true, discardKept: true })
         }
@@ -1443,7 +1444,8 @@ describe('mirror prune review round 1', () => {
       }
       expect(JSON.parse(r.out).results, r.err).toMatchObject([{ number: 7, status: 'failed' }])
       const clone = cloneOf(clones)
-      const keptTree = join(paths().kept, 'github.com', 'acme', 'api', '7')
+      const record = join(paths().kept, 'github.com', 'acme', 'api', '7.json')
+      const keptTree = (JSON.parse(readFileSync(record, 'utf8')) as { path: string }).path
       // The kept tree's admin folder in the clone, written by `git worktree add` after the clone.
       const [admin, ...others] = readdirSync(join(clone, 'worktrees'))
       expect(others).toEqual([])

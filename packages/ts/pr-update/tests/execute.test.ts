@@ -2276,7 +2276,7 @@ describe('updateAll', () => {
         keeping: () => {
           throw new Error('nothing failed, so nothing is kept')
         },
-        removing: (remove) => {
+        removing: (_worktree, remove) => {
           events.push(`removing: listed ${listed()}`)
           remove()
           events.push(`removed: listed ${listed()}`)

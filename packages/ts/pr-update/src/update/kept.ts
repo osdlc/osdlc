@@ -1,21 +1,29 @@
 /**
  * A failed PR's worktree, kept as evidence of what went wrong (`--keep-failed`).
  *
- * Each repository keeps its trees in its own directory, `Ports.targetHome`'s `kept`, as
- * `<dir>/<number>/` (the standalone run's is `kept/<host>/<owner>/<name>/` in pr-update's state
- * directory), never inside its checkout. The tree is on a branch named for the PR,
+ * A failed PR's run worktree stays where it is, under the repository's run worktrees
+ * (`Ports.targetHome`'s `worktrees`; the standalone run's are `worktrees/<host>/<owner>/<name>/`
+ * in pr-update's cache directory), and the run goes on in a new one. Nothing is moved, so a tree
+ * holding submodules is kept like any other. The tree is put on a branch named for the PR,
  * `pr-update/failed-<owner>-<name>-<number>`, so `git worktree list` shows it, and
- * `pr-update kept push` can send its commit somewhere a person works. Beside it, a `.json` record
- * of the same name holds the head and base sha the run saw, so a later run can tell whether the
- * PR has moved since. The verify log is written into the tree and kept out of commits.
+ * `pr-update kept push` can send its commit somewhere a person works. A `.json` record named for
+ * the PR, in the repository's own `kept` directory (the standalone run's is
+ * `kept/<host>/<owner>/<name>/<number>.json` in pr-update's state directory), maps the PR to the
+ * tree and holds the head and base sha the run saw, so a later run can tell whether the PR has
+ * moved since. The record is what tells a kept tree from a dead run's worktree: a run worktree a
+ * valid record names is never removed as a dead run's. The verify log is written into the tree and
+ * kept out of commits.
+ *
+ * The tree is in the cache, so a tool that empties caches removes it with the rest; it is
+ * evidence, not work.
  *
  * The same repository can be served from different git directories on different runs (one
  * checkout, another, or a clone). So a record also stores the git directory that owns the tree
  * (`gitDir`), and removing the tree goes through that one.
  *
  * A record's `path`, `branch` and `gitDir` say what a discard deletes, so a record is never
- * trusted alone: one whose branch is not the kept branch of its PR, or whose path is not its kept
- * path or is a symbolic link, is refused, and so is one whose folder `git worktree list` in the
+ * trusted alone: one whose branch is not the kept branch of its PR, or whose path is not a folder
+ * directly in the repository's run worktrees or is a symbolic link, is refused, and so is one whose folder `git worktree list` in the
  * git directory that owns it does not show ({@link KeptTreeCheck}). A refused record is left as it
  * is, tree and file, and reported ({@link KeptRefusal}). Every removal through a record goes
  * through {@link discardKept}, which checks the folders too.
@@ -31,16 +39,13 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
-  renameSync,
   rmSync,
 } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 
-import { isCommandFailed } from '@osdlc/command-seam'
 import { atomicWrite } from '@osdlc/etag-write'
 import type { Git } from '@osdlc/typed-git'
 
@@ -68,14 +73,14 @@ export interface KeptRecord {
   base: string
   headOid: string | null
   baseOid: string | null
-  /** Absolute path of the worktree. */
+  /** Absolute path of the worktree: a run worktree, kept where it is. */
   path: string
   branch: string
   /** HEAD of the tree when it was kept. */
   builtOid?: string | null
   /**
-   * The git common directory that owns the tree, by its real path. Set for a tree kept outside
-   * its checkout ({@link KeptPlace.gitDir}).
+   * The git common directory that owns the tree, by its real path ({@link KeptPlace.gitDir}).
+   * Unset when it could not be read when the tree was kept.
    */
   gitDir?: string
 }
@@ -116,17 +121,19 @@ export class KeptRefusedError extends Error {
   }
 }
 
-/** Where one repository's kept worktrees live. */
+/** Where one repository's kept worktrees and their records live. */
 export interface KeptPlace {
-  /** The directory that holds the trees, each with its `.json` record beside it. */
+  /** The directory that holds the records, `<number>.json` each. */
   dir: string
+  /** The directory that holds the repository's run worktrees, and so its kept trees. */
+  trees: string
   /**
    * The git common directory serving this run, by its real path: records made here store it, and
    * a record another one owns is not this run's. Unset when it could not be read.
    */
   gitDir?: string | undefined
   /**
-   * The folder pr-update or its host owns that holds `dir` (`TargetHome.keptRoot`):
+   * The folder pr-update or its host owns that holds `trees` (`TargetHome.worktreesRoot`):
    * {@link discardKept} removes a tree only when the folders from `root` down to it pass the
    * folder rule (`placeProblem` in `../folders.ts`). Unset means the folders are not checked.
    */
@@ -137,7 +144,7 @@ export interface KeptPlace {
    */
   rootCheck?: { owned: OwnedCheck; folders: FolderCheckOptions } | undefined
   /**
-   * How a tree removed from `dir` leaves git's records. Defaults to {@link PRUNE_ALL}; a run
+   * How a tree removed from `trees` leaves git's records. Defaults to {@link PRUNE_ALL}; a run
    * passes `ownedUnder` (see `./registrations.ts`), so the person's other worktrees are not touched.
    */
   records?: WorktreeRecords | undefined
@@ -153,25 +160,16 @@ export function keptBranch(repo: string, number: number): string {
   return `pr-update/failed-${qualifiedName(repo, number)}`
 }
 
-/** A tree's name in its place, which is one repository's own: its PR number. */
-function keptName(number: number): string {
-  return String(number)
-}
-
-/** Where a PR's kept worktree goes in `place`. */
-export function keptPath(place: KeptPlace, repo: string, number: number): string {
-  return join(place.dir, keptName(number))
-}
-
-function sidecar(place: KeptPlace, repo: string, number: number): string {
-  return `${keptPath(place, repo, number)}.json`
+/** The file of a PR's record in `place`: `<number>.json`. */
+function sidecar(place: KeptPlace, number: number): string {
+  return join(place.dir, `${number}.json`)
 }
 
 /**
  * The record in the file `name` of `place`, when it is one this place could have written: its
- * `number` an integer, its file named for its repository and number, its `path` the absolute
- * kept path those give, its `branch` the kept branch they give, and its `gitDir`, when set, an
- * absolute path. A record is JSON on disk, and its `path`,
+ * `number` an integer, its file named for its number, its `path` an absolute folder directly in
+ * `place.trees`, its `branch` the kept branch its repository and number give, and its `gitDir`,
+ * when set, an absolute path. A record is JSON on disk, and its `path`,
  * `branch` and `gitDir` say what a discard deletes, so a record that breaks any of these rules
  * is refused: `onRefused` is told, and the caller leaves it alone. One that is not a record at
  * all, or whose tree is gone, is ignored, and so is one that cannot be read, or whose tree
@@ -182,6 +180,7 @@ function readRecord(
   name: string,
   onRefused: OnKeptRefused | undefined,
   onUnreadable: OnKeptUnreadable | undefined,
+  gone = false,
 ): KeptRecord | null {
   const file = join(place.dir, name)
   let text: string
@@ -200,14 +199,14 @@ function readRecord(
   if (typeof record !== 'object' || record === null) return null
   const { repo, number, path, branch, gitDir } = record
   if (typeof repo !== 'string' || !Number.isInteger(number) || typeof path !== 'string') return null
-  if (name !== `${keptName(number)}.json`) return null
+  if (name !== `${number}.json`) return null
   const refuse = (reason: string): null => {
     onRefused?.({ record: file, reason })
     return null
   }
   // Checked before anything reads `path`: a relative one would be read against the cwd.
-  if (!isAbsolute(path) || !isKeptPath(place, path, repo, number)) {
-    return refuse(`its path ${path} is not the kept path ${keptPath(place, repo, number)}`)
+  if (!isAbsolute(path) || !isInTrees(place, path)) {
+    return refuse(`its path ${path} is not a folder in ${place.trees}`)
   }
   let st
   try {
@@ -216,9 +215,9 @@ function readRecord(
     tellUnreadable(path, e, onUnreadable)
     return null
   }
-  if (st === null) return null
+  if (st === null && !gone) return null
   // A link there could make another worktree of the owner's look like this one.
-  if (st.isSymbolicLink()) return refuse(`its path ${path} is a symbolic link`)
+  if (st?.isSymbolicLink() === true) return refuse(`its path ${path} is a symbolic link`)
   if (branch !== keptBranch(repo, number)) {
     return refuse(`its branch ${String(branch)} is not ${keptBranch(repo, number)}`)
   }
@@ -229,15 +228,16 @@ function readRecord(
 }
 
 /**
- * Whether `path` is the kept path of `repo#number` in `place`: the same string, or the right
- * name in a folder that resolves to `place.dir`, so a path whose spelling differs (a drive
- * letter's case, a symlink) still counts. A folder that cannot be resolved does not.
+ * Whether `path` is a folder directly in `place.trees`: its parent is that folder, as written or
+ * by real path, so a path whose spelling differs (a drive letter's case, a symlink) still counts.
+ * A folder that cannot be resolved does not, and nor does a name that is `.`, `..` or empty.
  */
-function isKeptPath(place: KeptPlace, path: string, repo: string, number: number): boolean {
-  if (path === keptPath(place, repo, number)) return true
-  if (basename(path) !== keptName(number)) return false
+function isInTrees(place: KeptPlace, path: string): boolean {
+  const name = basename(path)
+  if (name === '' || name === '.' || name === '..' || resolve(path) !== path) return false
+  if (dirname(path) === place.trees) return true
   try {
-    return realpathSync.native(dirname(path)) === realpathSync.native(place.dir)
+    return realpathSync.native(dirname(path)) === realpathSync.native(place.trees)
   } catch {
     return false
   }
@@ -253,20 +253,22 @@ export function findKept(
   number: number,
   onRefused?: OnKeptRefused,
 ): KeptRecord | null {
-  const record = readRecord(place, `${keptName(number)}.json`, onRefused, undefined)
+  const record = readRecord(place, `${number}.json`, onRefused, undefined)
   return record !== null && record.repo === repo && record.number === number ? record : null
 }
 
 /**
  * Every kept worktree in `place` with a valid record; each refused one is told to `onRefused`,
  * and the folder, when it cannot be listed, and each record that cannot be read to `onUnreadable`.
- * Names starting with `.` are skipped, as in every walk pr-update makes of its own folders: a
- * run's probe (`.pr-update-probe-*`) is one, and a hard kill can leave it behind.
+ * Names starting with `.` are skipped, as in every walk pr-update makes of its own folders: no
+ * record is named so. A record whose tree is gone is left out, unless `gone` is set (a prune
+ * drops such records with their clone's entries).
  */
 export function listKept(
   place: KeptPlace,
   onRefused?: OnKeptRefused,
   onUnreadable?: OnKeptUnreadable,
+  gone = false,
 ): KeptRecord[] {
   let names: string[]
   try {
@@ -275,7 +277,7 @@ export function listKept(
     tellUnreadable(place.dir, e, onUnreadable)
     return []
   }
-  return names.flatMap((name) => readRecord(place, name, onRefused, onUnreadable) ?? [])
+  return names.flatMap((name) => readRecord(place, name, onRefused, onUnreadable, gone) ?? [])
 }
 
 /**
@@ -347,7 +349,7 @@ export function keptFolderProblem(place: KeptPlace, record: KeptRecord): string 
 
 /** The refusal of `record` in `place`, for `why`. */
 export function keptRefusal(place: KeptPlace, record: KeptRecord, why: string): KeptRefusal {
-  return { record: sidecar(place, record.repo, record.number), reason: why }
+  return { record: sidecar(place, record.number), reason: why }
 }
 
 /**
@@ -377,7 +379,7 @@ export function discardKept(git: Git, place: KeptPlace, record: KeptRecord): voi
 
 /** Remove `record`'s file, once its tree is gone. */
 export function dropKeptRecord(place: KeptPlace, record: KeptRecord): void {
-  rmSync(sidecar(place, record.repo, record.number), { force: true })
+  rmSync(sidecar(place, record.number), { force: true })
 }
 
 /** Whether a kept worktree was built from the head and base a target still has. */
@@ -388,68 +390,17 @@ export function keptIsCurrent(
   return record.headOid !== null && record.headOid === t.headOid && record.baseOid === t.baseOid
 }
 
-/** Renames a path, as `fs.renameSync` does. A test passes one that fails. */
-export type Rename = (from: string, to: string) => void
-
-/**
- * Whether `from` and `to`, two existing directories, are on different filesystems, where
- * `git worktree move` cannot go: git's `rename()` has no copy fallback. Found by renaming an empty
- * probe folder from one into the other and reading the error's code. Any other failure is not
- * taken as an answer, so the move is still tried.
- *
- * The probe is named `.pr-update-probe-*` and removed at once, but a hard kill can leave it in
- * either folder. Its name starts with `.` so pr-update's own walks of these folders skip it.
- */
-function crossesDevice(from: string, to: string, rename: Rename): boolean {
-  const probe = mkdtempSync(join(from, '.pr-update-probe-'))
-  const moved = join(to, basename(probe))
-  try {
-    rename(probe, moved)
-    return false
-  } catch (e) {
-    return (e as NodeJS.ErrnoException | null)?.code === 'EXDEV'
-  } finally {
-    rmSync(probe, { recursive: true, force: true })
-    rmSync(moved, { recursive: true, force: true })
-  }
-}
-
-/**
- * Whether `e`, thrown by `git worktree move` under `LC_ALL=C`, ends a line with the C library's
- * text for EXDEV (`Invalid cross-device link` on Linux, `Cross-device link` on macOS). Only a
- * fallback for when the probe could not tell: the text is matched at the end of git's line, after
- * the quoted paths, so a path that holds the words does not match.
- */
-function saysCrossDevice(e: unknown): boolean {
-  const failure = (e as { failure?: { detail?: unknown; cause?: unknown } } | null)?.failure
-  const cause = failure?.cause
-  const text = [
-    e instanceof Error ? e.message : String(e),
-    typeof failure?.detail === 'string' ? failure.detail : '',
-    isCommandFailed(cause) ? cause.result.stderr : '',
-  ].join('\n')
-  return /: (invalid )?cross-device link\s*$/im.test(text)
-}
-
-/** git's messages in English, so {@link saysCrossDevice} can read them. */
-const C_LOCALE = { env: { LC_ALL: 'C' } }
-
 type KeptTarget = Pick<KeptRecord, 'repo' | 'number' | 'head' | 'base' | 'headOid' | 'baseOid'>
 
 /**
- * Move `worktree` to its kept path in `place` and put a branch named for the PR on it. A kept
- * worktree this PR already has is discarded first. `git` is any worktree of the repository.
+ * Keep the run worktree `worktree` where it is: put a branch named for the PR on it, write the
+ * verify log into it, and write its record in `place`. A kept worktree this PR already has is
+ * discarded first. `git` is any worktree of the repository. The scratch branch `worktree` was on
+ * is left for the caller, which makes the run a new worktree.
  *
- * When the two paths are on different filesystems, where `git worktree move` cannot go, the kept
- * tree is made with `git worktree add` at `worktree`'s HEAD instead, and `worktree` is removed
- * once the keep has fully succeeded. The kept tree has the same commit and verify log; uncommitted
- * changes and untracked files in `worktree`, such as build output, are not carried over.
- *
- * `opts.rename` stands in for `fs.renameSync` in the check for different filesystems.
- *
- * @throws when git cannot move the worktree (one holding submodules, say), when the kept tree this
- * PR already has cannot be discarded, when a folder with no record is in the kept path's place, or when the branch, log or record cannot be written. The worktree is then back at
- * `worktree`; a kept tree `worktree add` made is removed with its branch.
+ * @throws when the kept tree this PR already has cannot be discarded, or when the branch, log or
+ * record cannot be written. The worktree is then as it was, detached at its commit, and no record
+ * names it.
  */
 export function keepWorktree(
   git: Git,
@@ -457,53 +408,22 @@ export function keepWorktree(
   worktree: string,
   target: KeptTarget,
   verifyLog: string | undefined,
-  opts: { rename?: Rename | undefined } = {},
 ): KeptRecord {
-  const records = place.records ?? PRUNE_ALL
   const old = findKept(place, target.repo, target.number)
   // Checks the record and the folders, so a replacement removes nothing it should not.
   if (old !== null) discardKept(git, place, old)
-  const path = keptPath(place, target.repo, target.number)
-  if (existsSync(path)) {
-    // A run stopped between making the tree and writing its record. No record says what it is,
-    // so it is never moved into or removed.
-    throw new Error(
-      `${path} is in the way and has no record (a run stopped part-way); ` +
-        `remove it with \`git worktree remove --force ${path}\` in its checkout, then run again`,
-    )
-  }
   const branch = keptBranch(target.repo, target.number)
-  mkdirSync(place.dir, { recursive: true, mode: FOLDER_MODE })
-  let moved = !crossesDevice(dirname(worktree), place.dir, opts.rename ?? renameSync)
-  if (moved) {
-    try {
-      git.worktreeMove(worktree, path, C_LOCALE)
-    } catch (e) {
-      if (!saysCrossDevice(e)) throw e
-      moved = false
-    }
-  }
-  if (!moved) {
-    const tip = git.at(worktree).revParse('HEAD')
-    if (tip === null) throw new Error(`cannot read the commit of ${worktree} to keep it`)
-    git.worktreeAdd(path, { detach: true, startPoint: tip })
-  }
-  let record: KeptRecord
+  const tree = git.at(worktree)
+  const tip = tree.revParse('HEAD')
   try {
-    record = finishKeep(git, place, path, branch, target, verifyLog)
+    return finishKeep(git, place, worktree, branch, target, verifyLog)
   } catch (e) {
-    if (moved) moveBack(git, place, path, worktree, branch, target)
-    else {
-      // The run worktree was left as it was, so the added tree and its branch are all to undo.
-      // What git will not remove stays, and the keep's own error is the one reported.
-      removeWorktree(git, path, records)
-      git.try.deleteBranch(branch, { force: true })
-    }
+    // Back to the run worktree it was: no record, no kept branch.
+    rmSync(sidecar(place, target.number), { force: true })
+    if (tip !== null) tree.try.checkout(tip)
+    git.try.deleteBranch(branch, { force: true })
     throw e
   }
-  // The run's `finally` tries again if git will not remove it now.
-  if (!moved) removeWorktree(git, worktree, records)
-  return record
 }
 
 /**
@@ -514,29 +434,6 @@ export function keepWorktree(
 function dropTree(git: Git, path: string, records: WorktreeRecords): void {
   const left = removeWorktree(git, path, records)
   if (left !== undefined) throw new Error(left)
-}
-
-/** Put a moved tree back at `worktree`, so a half-kept tree with no record is not left behind. */
-function moveBack(
-  git: Git,
-  place: KeptPlace,
-  path: string,
-  worktree: string,
-  branch: string,
-  target: KeptTarget,
-): void {
-  try {
-    git.worktreeMove(path, worktree)
-    const tip = git.at(worktree).revParse('HEAD')
-    if (tip !== null) git.at(worktree).checkout(tip)
-    git.try.deleteBranch(branch, { force: true })
-  } catch {
-    // It stays at the kept path; the record lets a later run find and discard it.
-    atomicWrite(
-      sidecar(place, target.repo, target.number),
-      `${JSON.stringify(recordOf(git, place, path, branch, target))}\n`,
-    )
-  }
 }
 
 function finishKeep(
@@ -566,7 +463,8 @@ function finishKeep(
     }
   }
   const record = recordOf(git, place, path, branch, target)
-  atomicWrite(sidecar(place, target.repo, target.number), `${JSON.stringify(record)}\n`)
+  mkdirSync(place.dir, { recursive: true, mode: FOLDER_MODE })
+  atomicWrite(sidecar(place, target.number), `${JSON.stringify(record)}\n`)
   return record
 }
 

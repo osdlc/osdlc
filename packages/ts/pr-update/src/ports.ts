@@ -203,16 +203,20 @@ export interface TargetCheckout extends LocateTarget {
  * registrations, its `pr-update/*` branches and, with a `git-ref` store, refs on its remote.
  */
 export interface TargetHome {
-  /** The target's run worktrees go here, one `<run>` directory each. */
+  /**
+   * The repository's run worktrees go here, one `<run>` directory each. A failed PR's kept
+   * worktree is a run worktree left here (`--keep-failed`).
+   */
   worktrees: string
-  /** The target's kept worktrees go here, as `<number>/`, each with `<number>.json` beside it. */
+  /** The repository's kept-tree records go here, as `<number>.json`. */
   kept: string
   /**
-   * The folder of the host's own that holds {@link kept}, such as `kept/` in pr-update's state
-   * directory. A kept tree is removed only when the folders from here down to it pass the folder
-   * rule: the person owns them, and no one else can write to them. Default {@link kept} itself.
+   * The folder of the host's own that holds {@link worktrees}, such as `worktrees/` in pr-update's
+   * cache directory. A kept tree is removed only when the folders from here down to it pass the
+   * folder rule: the person owns them, and no one else can write to them. Default
+   * {@link worktrees} itself.
    */
-  keptRoot?: string | undefined
+  worktreesRoot?: string | undefined
   /** The target's failed-attempt record. Absent means none is kept for it. */
   attempts?: AttemptStore | undefined
   /** The target's branch lease. Absent means no locking for it. */

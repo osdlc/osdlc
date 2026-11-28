@@ -218,10 +218,10 @@ export interface ManagedClones {
    */
   removing(clone: string, tree: RemovedTree, remove: () => void): boolean
   /**
-   * Run `keep`, which moves the run's worktree `tree` in the clone at `clone` aside as a kept
-   * worktree and adds the run worktree back, holding the clone's lock, taken back as
-   * {@link removing} takes it. Without the lock a prune could remove the kept tree and the clone
-   * between the two. When the lock cannot be taken, `keep` is not run, the result is false and
+   * Run `keep`, which keeps the run's worktree `tree` in the clone at `clone` where it is, as a
+   * kept worktree, and adds the run a new one, holding the clone's lock, taken back as
+   * {@link removing} takes it. Without the lock a prune could find no run worktree between the
+   * two and remove the clone. When the lock cannot be taken, `keep` is not run, the result is false and
    * a note says the tree was not kept; the run goes on in the worktree as it is.
    */
   keeping(clone: string, tree: string, keep: () => void): boolean

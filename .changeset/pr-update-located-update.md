@@ -42,14 +42,10 @@ in `.git`, with a message that gives the form without it. A host's port is left 
 
 A kept worktree's record now names the git directory that owns it. A run
 served from another checkout of the same repository skips that PR as
-`kept elsewhere` while it is unchanged. When the kept directory is on another
-filesystem, the kept tree is made with `git worktree add` at the same commit
-instead of moved, and uncommitted changes and untracked files such as build
-output are not carried over. A kept tree whose git directory is gone, or that
-git cannot read, is never removed as stale: its PR is skipped until
-`--discard-kept`. A folder left in a kept tree's place with no record is not
-moved into, and the run says how to remove it. A kept record is used only
-when its path is the kept path its file name gives. If a target's own record
+`kept elsewhere` while it is unchanged. A kept tree whose git directory is
+gone, or that git cannot read, is never removed as stale: its PR is skipped
+until `--discard-kept`. A kept record is used only when its path is a folder
+in its repository's `worktrees/` folder. If a target's own record
 cannot be saved after a PR ran, the error is shown on that PR, as
 `recordError` in JSON and `record not saved:` in the text. An error from a
 target's own record that no PR or skip shows is listed in `update --json`'s

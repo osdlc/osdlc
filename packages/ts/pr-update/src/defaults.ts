@@ -106,8 +106,9 @@ export interface StandalonePortsOptions {
  *
  * Every repository the run updates, the project root included, keeps what the run makes for it
  * in pr-update's osdlc directories (`machine.ts`), under `<host>/<owner>/<name>` with the host's
- * port left out: run worktrees in the cache's `worktrees/`, kept worktrees in the state's
- * `kept/`, and file attempts in the state's `attempts/`. Its checkout gets only git records.
+ * port left out: run worktrees, and the failed ones kept as evidence, in the cache's
+ * `worktrees/`; the records of kept ones in the state's `kept/`; and file attempts in the
+ * state's `attempts/`. Its checkout gets only git records.
  * With `attempts.store: git-ref`, its record and lease are refs on its own checkout's remote,
  * written with git's hooks off, as every git call in that checkout is: the project root's on
  * `remote` (default `origin`), as `Ports.attempts` and `Ports.lease`.
@@ -238,7 +239,7 @@ function standaloneTargetHome(
   return {
     worktrees: own(paths.worktrees),
     kept: own(paths.kept),
-    keptRoot: paths.kept,
+    worktreesRoot: paths.worktrees,
     ...records,
   }
 }

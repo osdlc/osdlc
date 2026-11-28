@@ -25,7 +25,7 @@ describe('keptOwnerElsewhere', () => {
     root = realpathSync.native(mkdtempSync(join(tmpdir(), 'pr-update-kept-')))
     gitDir = join(root, 'api.git')
     mkdirSync(gitDir)
-    place = { dir: join(root, 'kept'), gitDir }
+    place = { dir: join(root, 'kept'), trees: join(root, 'worktrees'), gitDir }
   })
   afterEach(() => rmSync(root, { recursive: true, force: true }))
 

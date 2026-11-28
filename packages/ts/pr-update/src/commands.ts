@@ -618,13 +618,13 @@ export function updateCommand(seams: CliSeams) {
       },
       retryFailed: {
         kind: 'boolean',
-        help: 'Attempt PRs whose update already failed at their current head and base. Discards a kept worktree of such a PR first, unless someone has changed it or git cannot read it; only --discard-kept removes that.',
+        help: 'Attempt PRs whose update already failed at their current head and base. Discards a kept worktree of such a PR first, whatever is in it.',
       },
       keepFailed: {
         kind: 'tristate',
         offHelp:
           'Do not keep failed worktrees this run, overriding a configured pr_update.keep_failed: true.',
-        help: "Keep the worktree of a PR that ended conflict or failed, as evidence, at kept/<host>/<owner>/<name>/<number>/ in pr-update's state directory, on a branch named for the PR, with a failed verify's log in it. The run goes on in a fresh worktree. Needs --apply.",
+        help: "Keep the worktree of a PR that ended conflict or failed, as evidence, where it ran in pr-update's cache directory, on a branch named for the PR, with a failed verify's log in it. The run goes on in a fresh worktree. Needs --apply.",
       },
       discardKept: {
         kind: 'boolean',

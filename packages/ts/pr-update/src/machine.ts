@@ -78,11 +78,14 @@ export interface PrUpdatePaths {
   state: string
   /** Managed clones: `repos/<host>/<owner>/<name>.git`. */
   repos: string
-  /** Run worktrees of targets other than the project root: `worktrees/<host>/<owner>/<name>/<run>`. */
+  /**
+   * Run worktrees of every target, the project root included, and the failed ones kept as
+   * evidence: `worktrees/<host>/<owner>/<name>/<run>`.
+   */
   worktrees: string
-  /** Kept worktrees of targets other than the project root: `kept/<host>/<owner>/<name>/<number>`. */
+  /** The records of kept worktrees: `kept/<host>/<owner>/<name>/<number>.json`. */
   kept: string
-  /** File attempt records of targets other than the project root. */
+  /** File attempt records of every target: `attempts/<host>/<owner>/<name>/`. */
   attempts: string
 }
 
@@ -92,9 +95,8 @@ export interface PrUpdatePaths {
  * only that environment.
  *
  * Every walk pr-update makes of these folders (listing kept trees, `mirror list` and
- * `mirror prune`, `prune.ts`) skips entries whose names start with `.`: a run's temporary probe
- * (`.pr-update-probe-*`) is one, and a hard kill can leave it. Only pruning looks at two kinds
- * of them, to remove a probe or a `.tmp-*` clone folder once it is an hour old.
+ * `mirror prune`, `prune.ts`) skips entries whose names start with `.`. Only pruning looks at
+ * one kind of them, to remove a `.tmp-*` clone folder once it is an hour old.
  */
 export function prUpdatePaths(dirs: TieredDirs = osdlcDirs()): PrUpdatePaths {
   const tier = dirs.standalone('osdlc')

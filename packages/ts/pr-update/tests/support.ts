@@ -32,7 +32,7 @@ export function homeUnder(dir: string): Ports['targetHome'] {
   return (t) => ({
     worktrees: join(dir, 'worktrees', t.host, t.owner, t.name),
     kept: join(dir, 'kept', t.host, t.owner, t.name),
-    keptRoot: join(dir, 'kept'),
+    worktreesRoot: join(dir, 'worktrees'),
   })
 }
 

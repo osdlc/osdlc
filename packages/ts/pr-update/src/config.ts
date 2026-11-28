@@ -228,7 +228,7 @@ export const prUpdateConfigSchema = z
       .boolean()
       .default(false)
       .describe(
-        "Keep the worktree of a PR whose update ended `conflict` or `failed`, as `update --keep-failed` does: it moves to `kept/<host>/<owner>/<name>/<number>/` in pr-update's state directory, the project root's as any other, on a branch named for the PR, with a failed verify's log in `.pr-update-verify.log`, and the run goes on in a fresh worktree. The tree is evidence, pr-update's own: a later run skips that PR until its head or base moves, or `--retry-failed` or `--discard-kept` is given, and then removes the tree, whatever is in it. `--no-keep-failed` overrides it for one run. Only `--apply` runs keep anything.",
+        "Keep the worktree of a PR whose update ended `conflict` or `failed`, as `update --keep-failed` does: it stays where it ran, in `worktrees/<host>/<owner>/<name>/` in pr-update's cache directory, the project root's as any other, on a branch named for the PR, with a failed verify's log in `.pr-update-verify.log` and its record in `kept/` in the state directory, and the run goes on in a fresh worktree. A cache cleaner that empties the cache removes it too. The tree is evidence, pr-update's own: a later run skips that PR until its head or base moves, or `--retry-failed` or `--discard-kept` is given, and then removes the tree, whatever is in it. `--no-keep-failed` overrides it for one run. Only `--apply` runs keep anything.",
       ),
     max_failed_attempts: z
       .number()

@@ -24,7 +24,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative } from 'node:path'
+import { basename, dirname, join, relative, sep } from 'node:path'
 
 import { EXIT, captureContext } from '@osdlc/cli-tool'
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
@@ -112,11 +112,23 @@ function runWorktree(owner: string, repo: string, run = DEAD): string {
 const startOf = (owner: string): string =>
   existsSync(join(owner, CLONE_MARKER)) ? 'origin/main' : 'main'
 
-/** A kept worktree of the clone `clone` for `repo#number`, with its record. */
+/** Where the kept tree of `repo#number` is: a run worktree folder whose run is dead. */
+const keptPath = (repo: string, number: number): string =>
+  join(paths.worktrees, 'github.com', ...repo.split('/'), `${DEAD}${number}`)
+
+/** Where the record of `repo#number`'s kept tree is. */
+const recordOf = (repo: string, number: number): string =>
+  join(paths.kept, 'github.com', ...repo.split('/'), `${number}.json`)
+
+/**
+ * A kept worktree of the clone `clone` for `repo#number`, with its record. It stays where its
+ * run made it, in `worktrees/`, under a dead run's name, so only its record keeps it.
+ */
 function keptWorktree(clone: string, repo: string, number: number): string {
   const dir = join(paths.kept, 'github.com', ...repo.split('/'))
-  const path = join(dir, String(number))
+  const path = keptPath(repo, number)
   mkdirSync(dir, { recursive: true })
+  mkdirSync(dirname(path), { recursive: true })
   const branch = `pr-update/failed-${repo.replace('/', '-')}-${number}`
   git(clone, 'worktree', 'add', '-q', '-b', branch, path, startOf(clone))
   const record = {
@@ -132,6 +144,12 @@ function keptWorktree(clone: string, repo: string, number: number): string {
   }
   writeFileSync(join(dir, `${number}.json`), JSON.stringify(record))
   return path
+}
+
+/** The record of the kept tree at `path`, which `keptPath` named: `<number>.json` in `kept/`. */
+function recordAt(path: string): string {
+  const rel = relative(paths.worktrees, path).split(sep)
+  return recordOf(rel.slice(1, 3).join('/'), Number(rel[3]!.slice(DEAD.length)))
 }
 
 /** The paths of the worktrees git lists for `gitDir`, other than the bare entry. */
@@ -554,79 +572,66 @@ describe('managed clones', () => {
       ['clone', clone],
     ])
     expect(existsSync(kept)).toBe(false)
-    expect(existsSync(`${kept}.json`)).toBe(false)
+    expect(existsSync(recordOf('acme/api', 7))).toBe(false)
     expect(existsSync(clone)).toBe(false)
   })
 
-  test('a kept worktree with no record stays without --discard-kept, and with it goes with its branch', () => {
+  test('a kept tree, a worktree in worktrees/ named for a dead run, is never pruned as a dead run worktree (keep in place)', () => {
     const clone = makeClone('acme/api', 400)
-    const path = join(paths.kept, 'github.com', 'acme', 'api', '9')
+    const kept = keptWorktree(clone, 'acme/api', 7)
+    expect(basename(kept)).toMatch(/^\d+\.\d+$/)
+
+    for (const opts of [{}, { allClones: true }, { olderThanDays: 0 }]) {
+      for (const dryRun of [true, false]) {
+        const r = prune({ ...opts, dryRun })
+        expect(r.removed).toEqual([])
+        expect(r.failed).toEqual([])
+      }
+    }
+    expect(listed(clone)).toEqual([kept])
+    expect(branches(clone)).toEqual(['pr-update/failed-acme-api-7'])
+    expect(existsSync(recordAt(kept))).toBe(true)
+  })
+
+  test('a worktree on a kept branch with no record (a keep that stopped part-way) is a dead run worktree: it goes, with its branch', () => {
+    const clone = makeClone('acme/api', 0)
+    const path = keptPath('acme/api', 9)
     mkdirSync(dirname(path), { recursive: true })
     git(clone, 'worktree', 'add', '-q', '-b', 'pr-update/failed-acme-api-9', path, 'origin/main')
 
-    expect(prune({ allClones: true }).skipped).toEqual([
-      expect.objectContaining({
-        path: clone,
-        reason: expect.stringContaining('has kept worktrees'),
-      }),
-    ])
-    expect(existsSync(path)).toBe(true)
-
-    const r = prune({ allClones: true, discardKept: true })
-    expect(r.removed.map((e) => [e.kind, e.path])).toEqual([
-      ['kept', path],
-      ['clone', clone],
-    ])
+    const r = prune()
+    expect(r.failed).toEqual([])
+    expect(r.removed.map((e) => [e.kind, e.path])).toEqual([['worktree', path]])
     expect(existsSync(path)).toBe(false)
-    expect(existsSync(clone)).toBe(false)
+    expect(branches(clone)).toEqual([])
+    expect(existsSync(clone)).toBe(true)
   })
 
-  test.each([
-    ['with no record, switched to another branch', false, ['switch', '-q', '-c', 'my-work']],
-    ['with no record, detached', false, ['switch', '-q', '--detach']],
-    ['with a record, switched to another branch', true, ['switch', '-q', '-c', 'my-work']],
-  ] as const)(
-    'a kept worktree %s, with a new file, goes with its clone under --discard-kept, in a dry run too (ownership contract)',
-    (_, recorded, move) => {
-      const clone = makeClone('acme/api', 400)
-      let path = join(paths.kept, 'github.com', 'acme', 'api', '9')
-      if (recorded) path = keptWorktree(clone, 'acme/api', 9)
-      else {
-        mkdirSync(dirname(path), { recursive: true })
-        git(
-          clone,
-          'worktree',
-          'add',
-          '-q',
-          '-b',
-          'pr-update/failed-acme-api-9',
-          path,
-          'origin/main',
-        )
-      }
-      git(path, ...move)
-      writeFileSync(join(path, 'new.txt'), 'x\n')
+  test('a kept worktree switched to another branch, with a new file, goes with its clone under --discard-kept, in a dry run too (ownership contract)', () => {
+    const clone = makeClone('acme/api', 400)
+    const path = keptWorktree(clone, 'acme/api', 9)
+    git(path, 'switch', '-q', '-c', 'my-work')
+    writeFileSync(join(path, 'new.txt'), 'x\n')
 
-      for (const dryRun of [true, false]) {
-        const r = prune({ allClones: true, discardKept: true, dryRun })
-        expect(r.failed).toEqual([])
-        expect(r.removed.map((e) => [e.kind, e.path])).toEqual([
-          ['kept', path],
-          ['clone', clone],
-        ])
-        expect(existsSync(path)).toBe(dryRun)
-      }
-      expect(existsSync(`${path}.json`)).toBe(false)
-      expect(existsSync(clone)).toBe(false)
-    },
-  )
+    for (const dryRun of [true, false]) {
+      const r = prune({ allClones: true, discardKept: true, dryRun })
+      expect(r.failed).toEqual([])
+      expect(r.removed.map((e) => [e.kind, e.path])).toEqual([
+        ['kept', path],
+        ['clone', clone],
+      ])
+      expect(existsSync(path)).toBe(dryRun)
+    }
+    expect(existsSync(recordOf('acme/api', 9))).toBe(false)
+    expect(existsSync(clone)).toBe(false)
+  })
 
   test('a kept worktree whose record names another repository goes through its clone, and that repository is not touched (ownership contract)', () => {
     const clone = makeClone('acme/api', 400)
     const path = keptWorktree(clone, 'acme/api', 7)
     const other = makeGitFixture({ dir: join(scratch, 'dev', 'other') })
     other.commit('init', { 'o.txt': 'o' })
-    const recordFile = join(dirname(path), '7.json')
+    const recordFile = recordAt(path)
     const record = JSON.parse(readFileSync(recordFile, 'utf8')) as Record<string, unknown>
     const otherGitDir = realpathSync.native(join(other.dir, '.git'))
     writeFileSync(recordFile, JSON.stringify({ ...record, gitDir: otherGitDir }))
@@ -768,25 +773,20 @@ describe('managed clones', () => {
 })
 
 describe('leftovers', () => {
-  test('a .tmp-* clone folder and a probe older than an hour are removed; younger ones, and other names starting with ., stay', () => {
+  test('a .tmp-* clone folder older than an hour is removed; younger ones, and other names starting with ., stay', () => {
     makeClone('acme/api', 1)
     const parent = join(paths.repos, 'github.com', 'acme')
     const oldTmp = join(parent, '.tmp-web.git-2147483646')
     const newTmp = join(parent, '.tmp-cli.git-2147483646')
     const other = join(parent, '.keep')
-    const oldProbe = join(paths.worktrees, 'github.com', 'acme', 'api', '.pr-update-probe-abc')
-    const keptProbe = join(paths.kept, 'github.com', 'acme', 'api', '.pr-update-probe-def')
-    const newProbe = join(paths.worktrees, 'github.com', 'acme', 'api', '.pr-update-probe-ghi')
     const dotDir = join(paths.worktrees, 'github.com', 'acme', 'api', '.other')
-    for (const d of [oldTmp, newTmp, other, oldProbe, keptProbe, newProbe, dotDir]) {
-      mkdirSync(d, { recursive: true })
-    }
-    for (const d of [oldTmp, other, oldProbe, keptProbe, dotDir]) age(d, 2 * 60 * 60 * 1000)
+    for (const d of [oldTmp, newTmp, other, dotDir]) mkdirSync(d, { recursive: true })
+    for (const d of [oldTmp, other, dotDir]) age(d, 2 * 60 * 60 * 1000)
 
     const r = prune()
 
-    expect(r.removed.map((e) => e.path).sort()).toEqual([keptProbe, oldProbe, oldTmp].sort())
-    for (const d of [newTmp, other, newProbe, dotDir]) expect(existsSync(d)).toBe(true)
+    expect(r.removed.map((e) => e.path)).toEqual([oldTmp])
+    for (const d of [newTmp, other, dotDir]) expect(existsSync(d)).toBe(true)
   })
 
   test('a .tmp-* folder whose clone’s lock another run holds is left', () => {
@@ -938,19 +938,19 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
   test('nothing is removed from a folder anyone, another group or another user can write to', () => {
     const clone = makeClone('acme/api', 400)
     const dead = runWorktree(clone, 'acme/api')
-    const probe = join(paths.kept, 'github.com', 'acme', 'web', '.pr-update-probe-x')
-    mkdirSync(probe, { recursive: true })
-    age(probe, 2 * 60 * 60 * 1000)
     const tmp = join(dirname(clone), '.tmp-web.git-2147483646')
     mkdirSync(tmp)
     age(tmp, 2 * 60 * 60 * 1000)
-    const keptOwner = join(paths.kept, 'github.com', 'acme')
+    const groupOwner = join(paths.repos, 'github.com', 'other')
+    const groupTmp = join(groupOwner, '.tmp-cli.git-2147483646')
+    mkdirSync(groupTmp, { recursive: true })
+    age(groupTmp, 2 * 60 * 60 * 1000)
     chmodSync(join(paths.worktrees, 'github.com'), 0o777)
-    chmodSync(keptOwner, 0o775)
+    chmodSync(groupOwner, 0o775)
     chmodSync(dirname(clone), 0o757)
     // The folder's group as a private group of the person's, on Linux; then the same group
     // shared with others (its number is not the uid).
-    const g = statSync(keptOwner).gid
+    const g = statSync(groupOwner).gid
     const privateGroup = { platform: 'linux' as const, uid: g, gid: g }
 
     const r = prune({ allClones: true, group: { ...privateGroup, uid: g + 1 } })
@@ -964,9 +964,11 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
           `${join(paths.worktrees, 'github.com')} can be written by anyone; run \`chmod -R go-w ${paths.worktrees}\``,
         ],
         [
-          probe,
+          groupTmp,
           'folder',
-          `${keptOwner} can be written by its group, which is not a private group of yours; run \`chmod -R go-w ${paths.kept}\``,
+          expect.stringContaining(
+            `${groupOwner} can be written by its group, which is not a private group of yours; run \`chmod go-w ${groupOwner}\``,
+          ),
         ],
         [
           tmp,
@@ -978,11 +980,11 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
         [clone, 'foreign', expect.stringContaining(`${dirname(clone)} can be written by anyone`)],
       ]),
     )
-    for (const p of [clone, dead, probe, tmp]) expect(existsSync(p)).toBe(true)
+    for (const p of [clone, dead, groupTmp, tmp]) expect(existsSync(p)).toBe(true)
 
-    // With a private group, the group-writable kept folder is the person's own.
+    // With a private group, the group-writable folder is the person's own.
     expect(prune({ allClones: true, group: privateGroup }).removed).toEqual([
-      expect.objectContaining({ kind: 'leftover', path: probe }),
+      expect.objectContaining({ kind: 'leftover', path: groupTmp }),
     ])
 
     // A run worktree in a sound folder whose owner, a clone, fails the clone checks, is left too.
@@ -1012,9 +1014,9 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
   test('a kept tree in a folder others can write to is not discarded, and its clone stays (second review)', () => {
     const clone = makeClone('acme/api', 400)
     const kept = keptWorktree(clone, 'acme/api', 7)
-    const keptOwner = join(paths.kept, 'github.com', 'acme')
+    const keptOwner = join(paths.worktrees, 'github.com', 'acme')
     for (const dir of [keptOwner, dirname(kept)]) chmodSync(dir, 0o777)
-    const why = `${keptOwner} can be written by anyone; run \`chmod -R go-w ${paths.kept}\``
+    const why = `${keptOwner} can be written by anyone; run \`chmod -R go-w ${paths.worktrees}\``
     try {
       for (const dryRun of [true, false]) {
         const r = prune({ allClones: true, discardKept: true, dryRun })
@@ -1031,20 +1033,20 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
   })
 
   test.skipIf(process.platform === 'win32')(
-    'a kept tree in a folder others can write to, under a state directory reached through a symbolic link, is not discarded (review round 1)',
+    'a kept tree in a folder others can write to, under a cache directory reached through a symbolic link, is not discarded (review round 1)',
     () => {
-      // git names the kept tree by its real path; the state directory is configured through a link.
-      const realState = join(scratch, 'real-state')
-      mkdirSync(realState)
-      symlinkSync(realState, join(scratch, 'state-link'), 'dir')
-      env = { ...env, OSDLC_STATE_DIR: join(scratch, 'state-link') }
+      // git names the kept tree by its real path; the cache directory is configured through a link.
+      const realCache = join(scratch, 'real-cache')
+      mkdirSync(realCache)
+      symlinkSync(realCache, join(scratch, 'cache-link'), 'dir')
+      env = { ...env, OSDLC_CACHE_DIR: join(scratch, 'cache-link') }
       paths = prUpdatePaths(osdlcDirs({ env }))
-      expect(paths.kept.startsWith(join(scratch, 'state-link'))).toBe(true)
+      expect(paths.worktrees.startsWith(join(scratch, 'cache-link'))).toBe(true)
       const clone = makeClone('acme/api', 400)
       const kept = keptWorktree(clone, 'acme/api', 7)
       const keptOwner = join(
-        realState,
-        relative(join(scratch, 'state-link'), paths.kept),
+        realCache,
+        relative(join(scratch, 'cache-link'), paths.worktrees),
         'github.com',
         'acme',
       )
@@ -1057,7 +1059,7 @@ describe.skipIf(process.platform === 'win32')('folders someone else could write 
             kind: 'clone',
             path: clone,
             skip: 'folder',
-            reason: `${keptOwner} can be written by anyone; run \`chmod -R go-w ${paths.kept}\``,
+            reason: `${keptOwner} can be written by anyone; run \`chmod -R go-w ${paths.worktrees}\``,
           }),
         ])
         expect(existsSync(kept)).toBe(true)
@@ -1364,35 +1366,27 @@ describe('every removal passes one check, the same in a dry run (final review ro
       git(moved, 'worktree', 'repair', path)
       expect(prune({ ...everything, dir: after }).removed.map((e) => e.path)).toEqual([path, moved])
       expect(existsSync(path)).toBe(false)
-      expect(existsSync(`${path}.json`)).toBe(false)
+      expect(existsSync(recordAt(path))).toBe(false)
     })
 
-    test.each([
-      ['with no record', false],
-      ['whose record names an owner that is gone', true],
-    ])(
-      '%s is not removed through a copy of its clone, which lists it on the branch it was on when copied',
-      (_, record) => {
-        const clone = makeClone('acme/api', 400)
-        const path = keptWorktree(clone, 'acme/api', 7)
-        const file = `${path}.json`
-        if (record) {
-          const text = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
-          writeFileSync(file, JSON.stringify({ ...text, gitDir: join(scratch, 'gone.git') }))
-        } else unlinkSync(file)
-        const copies = join(scratch, 'copies')
-        cpSync(paths.repos, copies, { recursive: true })
-        const mine = takeOver(path)
+    test('whose record names an owner that is gone is not removed through a copy of its clone, which lists it on the branch it was on when copied', () => {
+      const clone = makeClone('acme/api', 400)
+      const path = keptWorktree(clone, 'acme/api', 7)
+      const file = recordAt(path)
+      const text = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+      writeFileSync(file, JSON.stringify({ ...text, gitDir: join(scratch, 'gone.git') }))
+      const copies = join(scratch, 'copies')
+      cpSync(paths.repos, copies, { recursive: true })
+      const mine = takeOver(path)
 
-        const r = bothModes({ ...everything, dir: copies })
+      const r = bothModes({ ...everything, dir: copies })
 
-        expect(r.removed).toEqual([])
-        expect(r.skipped.map((e) => [e.kind, e.skip])).toEqual([['clone', 'kept']])
-        expect(readFileSync(mine, 'utf8')).toBe('mine\n')
-        expect(git(path, 'branch', '--show-current')).toBe('my-work')
-        expect(existsSync(join(copies, 'github.com', 'acme', 'api.git'))).toBe(true)
-      },
-    )
+      expect(r.removed).toEqual([])
+      expect(r.skipped.map((e) => [e.kind, e.skip])).toEqual([['clone', 'kept']])
+      expect(readFileSync(mine, 'utf8')).toBe('mine\n')
+      expect(git(path, 'branch', '--show-current')).toBe('my-work')
+      expect(existsSync(join(copies, 'github.com', 'acme', 'api.git'))).toBe(true)
+    })
 
     unreadableTest(
       'whose record names a repository that cannot be reached goes through its clone all the same (ownership contract)',
@@ -1401,7 +1395,7 @@ describe('every removal passes one check, the same in a dry run (final review ro
         const path = keptWorktree(clone, 'acme/api', 7)
         const other = makeGitFixture({ dir: join(scratch, 'dev', 'other') })
         other.commit('init', { 'o.txt': 'o' })
-        const file = `${path}.json`
+        const file = recordAt(path)
         const record = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
         const gitDir = realpathSync.native(join(other.dir, '.git'))
         writeFileSync(file, JSON.stringify({ ...record, gitDir }))
@@ -1442,21 +1436,27 @@ describe('every removal passes one check, the same in a dry run (final review ro
       expect(await main(argv, ctx, { which: allToolsInstalled })).toBe(EXIT.error)
       expect(ctx.io.out).toContain(`! could not remove kept worktree ${path}`)
       expect(existsSync(path)).toBe(true)
-      expect(existsSync(`${path}.json`)).toBe(true)
+      expect(existsSync(recordAt(path))).toBe(true)
       expect(existsSync(clone)).toBe(true)
     })
 
     unreadableTest('whose record file cannot be read stays, and so does its clone', () => {
       const clone = makeClone('acme/api', 400)
       const path = keptWorktree(clone, 'acme/api', 7)
-      withMode(`${path}.json`, 0o000, () => {
+      withMode(recordAt(path), 0o000, () => {
         const r = bothModes(everything)
         expect(r.removed).toEqual([])
+        // The walk of dead runs' worktrees cannot tell it from one, so it fails there too.
         expect(r.failed).toEqual([
+          expect.objectContaining({
+            kind: 'worktree',
+            path,
+            reason: expect.stringContaining(recordAt(path)),
+          }),
           expect.objectContaining({
             kind: 'clone',
             path: clone,
-            reason: expect.stringContaining(`${path}.json`),
+            reason: expect.stringContaining(recordAt(path)),
           }),
         ])
       })
@@ -1500,20 +1500,21 @@ describe('every removal passes one check, the same in a dry run (final review ro
     unreadableTest('folder `mirror list` cannot list is noted', () => {
       const path = keptWorktree(makeClone('acme/api', 400), 'acme/api', 7)
       const notes: string[] = []
-      withMode(dirname(path), 0o300, () => {
+      const records = dirname(recordAt(path))
+      withMode(records, 0o300, () => {
         const l = listMirror({ env, notice: (n) => notes.push(n) })
         expect(l.clones).toEqual([expect.objectContaining({ kept: [] })])
       })
-      expect(notes.join('\n')).toContain(`${dirname(path)} could not be read: EACCES`)
+      expect(notes.join('\n')).toContain(`${records} could not be read: EACCES`)
     })
 
     unreadableTest('record `mirror list` cannot read is noted', () => {
       const path = keptWorktree(makeClone('acme/api', 400), 'acme/api', 7)
       const notes: string[] = []
-      withMode(`${path}.json`, 0o000, () => {
+      withMode(recordAt(path), 0o000, () => {
         listMirror({ env, notice: (n) => notes.push(n) })
       })
-      expect(notes.join('\n')).toContain(`${path}.json could not be read: EACCES`)
+      expect(notes.join('\n')).toContain(`${recordAt(path)} could not be read: EACCES`)
     })
   })
 
@@ -1691,7 +1692,7 @@ describe('every removal passes one check, the same in a dry run (final review ro
       ['worktrees', 0o000],
       ['worktrees', 0o600],
       ['worktrees', 0o300],
-      [join('worktrees', '7'), 0o000],
+      [join('worktrees', `${DEAD}7`), 0o000],
     ])(
       'stays while a worktree record of it cannot be read, which git leaves out of its list (%s, mode %o)',
       (below, mode) => {
@@ -1891,41 +1892,34 @@ describe('every removal passes one check, the same in a dry run (final review ro
       expect(existsSync(tmp)).toBe(true)
     })
 
-    test('whose own check throws fails alone, a probe and a `.tmp-*` folder alike', () => {
+    test('whose own check throws fails alone', () => {
       const clone = makeClone('acme/api', 1)
       const tmp = oldFolder(join(dirname(clone), '.tmp-api.git-2147483646'))
-      const probe = oldFolder(join(paths.kept, 'github.com', 'acme', 'api', '.pr-update-probe-abc'))
-      const sibling = oldFolder(join(paths.kept, 'github.com', 'acme', 'api', '.pr-update-probe-d'))
-      const bad = new Set([statSync(tmp).mtimeMs, statSync(probe).mtimeMs])
+      const sibling = oldFolder(join(dirname(clone), '.tmp-web.git-2147483646'))
       utimesSync(sibling, new Date(0), new Date(0))
+      const bad = statSync(tmp).mtimeMs
 
       const r = bothModes({
         owned: (st) => {
-          if (bad.has(st.mtimeMs)) throw new Error('the owner cannot be read')
+          if (st.mtimeMs === bad) throw new Error('the owner cannot be read')
           return true
         },
       })
 
       expect(r.removed.map((e) => e.path)).toEqual([sibling])
-      expect(r.failed.map((e) => [e.path, e.reason])).toEqual([
-        [probe, 'the owner cannot be read'],
-        [tmp, 'the owner cannot be read'],
-      ])
+      expect(r.failed.map((e) => [e.path, e.reason])).toEqual([[tmp, 'the owner cannot be read']])
     })
 
     unreadableTest('that holds a folder that cannot be listed is left, in a dry run too', () => {
       const clone = makeClone('acme/api', 1)
       const tmp = join(dirname(clone), '.tmp-api.git-2147483646')
-      const probe = join(paths.worktrees, 'github.com', 'acme', 'api', '.pr-update-probe-abc')
-      for (const p of [tmp, probe]) mkdirSync(join(p, 'shut'), { recursive: true })
-      for (const p of [tmp, probe]) age(p, 2 * 60 * 60 * 1000)
-      withMode(join(tmp, 'shut'), 0o000, () =>
-        withMode(join(probe, 'shut'), 0o000, () => {
-          const r = bothModes({})
-          expect(r.removed).toEqual([])
-          expect(r.failed.map((e) => e.path)).toEqual([probe, tmp])
-        }),
-      )
+      mkdirSync(join(tmp, 'shut'), { recursive: true })
+      age(tmp, 2 * 60 * 60 * 1000)
+      withMode(join(tmp, 'shut'), 0o000, () => {
+        const r = bothModes({})
+        expect(r.removed).toEqual([])
+        expect(r.failed.map((e) => e.path)).toEqual([tmp])
+      })
     })
   })
 
@@ -1942,7 +1936,7 @@ describe('every removal passes one check, the same in a dry run (final review ro
         const clone = makeClone('acme/api', 400)
         const path = keptWorktree(clone, 'acme/api', 7)
         commitIn(path)
-        const record = join(clone, 'worktrees', '7')
+        const record = join(clone, 'worktrees', basename(path))
         if (what === 'empty') writeFileSync(join(record, 'gitdir'), '')
         else if (what === 'missing') unlinkSync(join(record, 'gitdir'))
         else rmSync(record, { recursive: true, force: true })
@@ -1966,7 +1960,7 @@ describe('every removal passes one check, the same in a dry run (final review ro
           ['clone', clone],
         ])
         expect(existsSync(path)).toBe(false)
-        expect(existsSync(`${path}.json`)).toBe(false)
+        expect(existsSync(recordAt(path))).toBe(false)
       },
     )
 
@@ -2051,19 +2045,23 @@ describe('every removal passes one check, the same in a dry run (final review ro
       expect(listed(checkout.dir)).toEqual([dead])
     })
 
-    test.each(['with', 'without'])(
+    // Without its record, the tree is a dead run's worktree (a keep that stopped part-way).
+    test.each([
+      ['with', 'kept', 'kept'],
+      ['without', 'worktree', 'in-use'],
+    ])(
       'a kept tree that is locked fails, and its clone stays, %s a record',
-      (record) => {
+      (record, kind, skip) => {
         const clone = makeClone('acme/api', 400)
         const path = keptWorktree(clone, 'acme/api', 7)
-        if (record === 'without') unlinkSync(`${path}.json`)
+        if (record === 'without') unlinkSync(recordAt(path))
         git(clone, 'worktree', 'lock', '--reason', 'held', path)
 
         const r = prune(everything)
 
         expect(r.removed).toEqual([])
-        expect(r.failed.map((e) => [e.kind, e.path])).toEqual([['kept', path]])
-        expect(r.skipped.map((e) => [e.kind, e.path, e.skip])).toEqual([['clone', clone, 'kept']])
+        expect(r.failed.map((e) => [e.kind, e.path])).toEqual([[kind, path]])
+        expect(r.skipped.map((e) => [e.kind, e.path, e.skip])).toEqual([['clone', clone, skip]])
         expect(listed(clone)).toEqual([path])
       },
     )

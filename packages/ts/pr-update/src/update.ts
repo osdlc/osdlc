@@ -321,7 +321,7 @@ export const input = z.object({
     .boolean()
     .optional()
     .describe(
-      "Keep the worktree of a PR that ended `conflict` or `failed`, as evidence, where `Ports.targetHome` says (the standalone run's is `kept/<host>/<owner>/<name>/<number>/` in pr-update's state directory), on a branch named for the PR; absent defers to `pr_update.keep_failed`. Needs --apply. A later run skips that PR until its head or base moves, unless --retry-failed or --discard-kept, and then removes the tree, whatever is in it.",
+      "Keep the worktree of a PR that ended `conflict` or `failed`, as evidence, where it ran (a folder in `worktrees/<host>/<owner>/<name>/` in pr-update's cache directory, for the standalone run), on a branch named for the PR, with its record in the state directory's `kept/`; absent defers to `pr_update.keep_failed`. Needs --apply. A later run skips that PR until its head or base moves, unless --retry-failed or --discard-kept, and then removes the tree, whatever is in it.",
     ),
   discardKept: z
     .boolean()
@@ -835,7 +835,7 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
           // Only a target's own lease: the project root's ends the run on an error.
           skipOnLeaseError: at.target !== null && at.lease !== undefined,
           ...(at.target?.source === 'clone' && env.clones !== undefined
-            ? { lock: cloneLock(env.clones, path, worktreeRoot) }
+            ? { lock: cloneLock(env.clones, path) }
             : {}),
           onSkip: (s) => skipped.push(s),
           // A rehearsal cannot repair, so `writes` keeps it from recording anything. Recorded as
@@ -918,15 +918,12 @@ async function updateRun(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput
   }
 }
 
-/**
- * `updateAll`'s hold on the managed clone at `path`, whose run worktree is `worktree`, through
- * the run's {@link ManagedClones}.
- */
-function cloneLock(clones: ManagedClones, path: string, worktree: string): CloneLock {
+/** `updateAll`'s hold on the managed clone at `path`, through the run's {@link ManagedClones}. */
+function cloneLock(clones: ManagedClones, path: string): CloneLock {
   return {
     added: () => clones.release(path),
-    keeping: (keep) => clones.keeping(path, worktree, keep),
-    removing: (remove) => {
+    keeping: (worktree, keep) => clones.keeping(path, worktree, keep),
+    removing: (worktree, remove) => {
       clones.removing(path, { path: worktree, kind: 'run' }, remove)
     },
   }
@@ -1010,7 +1007,8 @@ function servedTargets(repoTargets: readonly RepoTarget[], env: UpdateEnv): Map<
       worktrees: home.worktrees,
       kept: {
         dir: home.kept,
-        root: home.keptRoot ?? home.kept,
+        trees: home.worktrees,
+        root: home.worktreesRoot ?? home.worktrees,
         gitDir: commonDirOf(path, env),
         records,
       },

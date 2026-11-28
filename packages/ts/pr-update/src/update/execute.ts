@@ -1401,18 +1401,35 @@ export function describeOutcome(o: UpdateOutcome): string {
  * (`ManagedClones.provide`).
  * - `added` lets the lock go once the run worktree is recorded in the clone, so the lock covers
  *   the survey's fetch, the removal of a killed run's worktree and `worktree add`.
- * - `keeping` takes it back to keep a failed PR's worktree and add the run worktree back
- *   (`ManagedClones.keeping`); false, with nothing done, when it cannot be had.
- * - `removing` takes it back to remove the worktree and its scratch branch, and leaves both,
- *   with a note, when it cannot be had (`ManagedClones.removing`).
+ * - `keeping` takes it back to keep a failed PR's run worktree, `worktree`, where it is and add
+ *   the run a new one (`ManagedClones.keeping`); false, with nothing done, when it cannot be had.
+ * - `removing` takes it back to remove the run worktree `worktree` and its scratch branch, and
+ *   leaves both, with a note, when it cannot be had (`ManagedClones.removing`).
  *
  * Taking it back waits only in `update --apply` and only when the run holds no other clone's
  * lock.
  */
 export interface CloneLock {
   added: () => void
-  keeping: (keep: () => void) => boolean
-  removing: (remove: () => void) => void
+  keeping: (worktree: string, keep: () => void) => boolean
+  removing: (worktree: string, remove: () => void) => void
+}
+
+/**
+ * A new run worktree path beside `root`, for the run to go on in after `root` is kept: the
+ * `<pid>.<time>` of this process now, so a prune reads it as this run's, one later when that is
+ * taken. A `root` of another shape (a test's) gets `-<n>` added instead.
+ */
+function nextRunRoot(root: string): string {
+  const dir = dirname(root)
+  if (!/^\d+\.\d+$/.test(basename(root))) {
+    let n = 1
+    while (existsSync(`${root}-${n}`)) n += 1
+    return `${root}-${n}`
+  }
+  let at = Math.max(Date.now(), Number(basename(root).split('.')[1]) + 1)
+  while (existsSync(join(dir, `${process.pid}.${at}`))) at += 1
+  return join(dir, `${process.pid}.${at}`)
 }
 
 /**
@@ -1458,8 +1475,8 @@ export async function updateAll(
      */
     prepare?: (target: UpdateTarget, done: readonly UpdateResult[]) => UpdateTarget | null
     /**
-     * Set to move the worktree of a PR that ended `conflict` or `failed` aside, into `place`,
-     * for a person to pick up (see `./kept.ts`). The run goes on in a fresh one.
+     * Set to keep the worktree of a PR that ended `conflict` or `failed` where it is, as evidence,
+     * with its record in `place` (see `./kept.ts`). The run goes on in a new one beside it.
      */
     keepFailed?: { place: KeptPlace }
     /** Set when `git`'s repository is a managed clone whose lock the run holds (see {@link CloneLock}). */
@@ -1481,7 +1498,9 @@ export async function updateAll(
   mkdirSync(dirname(opts.worktreeRoot), { recursive: true, mode: FOLDER_MODE })
   git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
   opts.lock?.added()
-  const wt = git.at(opts.worktreeRoot)
+  // The run's worktree now: a new one after each PR kept in the one before.
+  let root = opts.worktreeRoot
+  let wt = git.at(root)
   try {
     for (const planned of targets) {
       // The host was signalled and is stopping: update no further PR.
@@ -1517,8 +1536,8 @@ export async function updateAll(
       try {
         outcome = await updateOneIn(wt, target, settings, runVerb, {
           apply: opts.apply,
-          worktree: opts.worktreeRoot,
-          rerere: rerere && !otherLiveRun(git, opts.worktreeRoot),
+          worktree: root,
+          rerere: rerere && !otherLiveRun(git, root),
         })
       } finally {
         grant?.release()
@@ -1530,28 +1549,31 @@ export async function updateAll(
         place !== undefined &&
         (outcome.status === 'conflict' || (outcome.status === 'failed' && !outcome.unrecorded))
       ) {
-        // The keep and the worktree added back in its place are one change to the clone: a prune
-        // between them would find no run worktree and could remove the kept tree and the clone.
+        // The keep and the new run worktree are one change to the clone: a prune between them
+        // would find no run worktree and could remove the clone.
+        const kept = root
         const keep = (): void => {
           try {
             result.keptWorktree = keepWorktree(
               git,
               place,
-              opts.worktreeRoot,
+              kept,
               target,
               outcome.status === 'failed' ? outcome.verifyLog : undefined,
             ).path
           } catch (e) {
             result.keepError = errorLine(e)
+            return
           }
-          if (!existsSync(opts.worktreeRoot)) {
-            records.forget(git)
-            mkdirSync(dirname(opts.worktreeRoot), { recursive: true, mode: FOLDER_MODE })
-            git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
-          }
+          // The kept tree is on its own branch now, so the scratch branch is free to go.
+          git.try.deleteBranch(scratchBranch(kept), { force: true })
+          const next = nextRunRoot(kept)
+          git.worktreeAdd(next, { detach: true, startPoint: start })
+          root = next
+          wt = git.at(root)
         }
         if (opts.lock === undefined) keep()
-        else if (!opts.lock.keeping(keep)) {
+        else if (!opts.lock.keeping(kept, keep)) {
           result.keepError = "mirror busy: another pr-update run holds the clone's lock"
         }
       }
@@ -1567,11 +1589,11 @@ export async function updateAll(
     // others run. A stray worktree is worse than a stray branch, and both are
     // worse than an exception here hiding the real one.
     const remove = (): void => {
-      removeWorktree(git, opts.worktreeRoot, records)
-      git.try.deleteBranch(scratchBranch(opts.worktreeRoot), { force: true })
+      removeWorktree(git, root, records)
+      git.try.deleteBranch(scratchBranch(root), { force: true })
     }
     if (opts.lock === undefined) remove()
-    else opts.lock.removing(remove)
+    else opts.lock.removing(root, remove)
     // The cache lives for one run.
     if (rerere) clearRerere(git)
   }
