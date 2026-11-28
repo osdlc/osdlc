@@ -171,6 +171,7 @@ export {
   OLLAMA_MODEL,
   OLLAMA_PLUGIN,
   OLLAMA_PS_FAILED,
+  OLLAMA_UNREACHABLE,
   OLLAMA_USE_UNKNOWN,
   ollamaPlugin,
   type LoadedModel,
