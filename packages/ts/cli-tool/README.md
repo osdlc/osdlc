@@ -94,7 +94,7 @@ dependency: install it only in a tool that serves MCP. No other entry loads it.
 
 The tool's project and machine config files are a separate package,
 `@osdlc/config-layers`. The root re-exports its directory and did-you-mean
-helpers (`systemDirs`, `TieredDirs`,
+helpers (`systemDirs`, `TieredDirs`, `TieredDirsError`, `homeDir`,
 `envVars`, `closestMatches`, `didYouMean`) and their types, taken from the
 light `@osdlc/config-layers/dirs` and `/did-you-mean` subpaths so importing the
 root does not load yaml or zod.
@@ -942,8 +942,8 @@ Experimental: the `devlink`, `command`, `config-command`, `trust-command`,
 the text and choice prompts, `openTty`, `requireInteractive`,
 `NotInteractiveError` and the `required` and `flag` prompt options; and
 `systemDirs`, `VendorDirs`, `closestMatches` and `didYouMean`, which the root
-re-exports from `@osdlc/config-layers`. `TieredDirs`, `envVars` and their types
-follow `@osdlc/tiered-dirs`.
+re-exports from `@osdlc/config-layers`. `TieredDirs`, `TieredDirsError`, `homeDir`, `envVars` and their
+types follow `@osdlc/tiered-dirs`.
 
 The experimental exports of `@osdlc/cli-tool`:
 

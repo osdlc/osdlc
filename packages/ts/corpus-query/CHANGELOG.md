@@ -1,5 +1,12 @@
 # @osdlc/corpus-query
 
+## 0.1.6
+
+### Patch Changes
+
+- Updated dependencies [0b3fbfa]
+  - @osdlc/cli-tool@0.22.0
+
 ## 0.1.5
 
 ### Patch Changes

@@ -11,7 +11,7 @@ import type { Aspect } from './aspect.ts'
  *
  * The whole payload is sent in one response. Containment is a tree the viewer
  * folds and unfolds often, and a round trip per fold would be too slow. So the
- * full node set and the full edge set are sent together, and the client does
+ * full node set and the full edge set are sent together, and the viewer does
  * its own aggregation.
  */
 

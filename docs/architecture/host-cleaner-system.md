@@ -1,10 +1,10 @@
-# host-cleaner: how the whole system works
+# workstation-cleaner: how the whole system works
 
-Status: approved design, 2026-11-22. This covers host-cleaner from the first
+Status: approved design, 2026-11-22. This covers workstation-cleaner from the first
 version through the three tiers in #991. It was approved in the
 review on #951. The plan that builds it is
-`docs/planning/host-cleaner-plan.md`. Only the first version's plugins exist in code
-today.
+`docs/planning/host-cleaner-plan.md`. All three tiers exist in code today;
+`packages/ts/workstation-cleaner/docs/guide/how-it-works.md` says where the code differs.
 
 It's ordered from simple to complex: first the core every tier shares, then
 each tier, each one adding to the one before. A tag such as **(D2)** marks
@@ -13,7 +13,7 @@ under "Decisions".
 
 ## In one paragraph
 
-host-cleaner frees disk space on a developer machine.
+workstation-cleaner frees disk space on a developer machine.
 - Every cleaner is a **plugin**.
 - A plugin proposes **candidates**, the things it could delete, and may
   **object** to any plugin's candidates.
@@ -101,18 +101,18 @@ written the same way as a package.
 ### Commands
 
 ```sh
-host-cleaner status [target...]   # every candidate and what objects to it; deletes nothing
-host-cleaner plan -o plan.json    # the same, saved
-host-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [-i] [--yes | --dry-run]
-host-cleaner config               # every plugin's effective settings
-host-cleaner plugins              # every plugin: where it came from, detected or not, roots, variables (D6)
+workstation-cleaner status [target...]   # every candidate and what objects to it; deletes nothing
+workstation-cleaner plan -o plan.json    # the same, saved
+workstation-cleaner clean [--plan plan.json] [--pick <id>] [--spare <id|name|glob>] [--allow <code>] [-i] [--yes | --dry-run]
+workstation-cleaner config               # every plugin's effective settings
+workstation-cleaner plugins              # every plugin: where it came from, detected or not, roots, variables (D6)
 ```
 
 `--plugin <name>` runs only the named plugins, and `--skip-plugin <name>`
 leaves them out. Both work for every plugin, whatever its form, because each
 descriptor is its own plugin.
 
-host-cleaner refuses to start as root.
+workstation-cleaner refuses to start as root.
 
 ### What one run does
 
@@ -132,12 +132,12 @@ host-cleaner refuses to start as root.
 
 **In short:** a descriptor is a fixed set of answers to the same steps. The core does the work for it: it finds the folders, measures idle, checks `inUse`, and deletes. A descriptor objects only to its own candidates, through `inUse`, and never to another plugin's. Steps that need logic (`scope`, `prepare`, `deleted`, objecting to others) belong to code plugins.
 
-**How hooks run (D2).** When host-cleaner asks a plugin something, such as
+**How hooks run (D2).** When workstation-cleaner asks a plugin something, such as
 "what can you delete?", the plugin may answer straight away, or answer later
 when it has had to wait for another program, such as Docker or Orca. In
 JavaScript terms, the hook may be `async` and return a promise. Either way:
 - Plugins are asked one after another, in plugin order, never at the same time.
-- Each question has a time limit. When it runs out, host-cleaner cancels the
+- Each question has a time limit. When it runs out, workstation-cleaner cancels the
   work through `ctx.signal`, warns, and carries on, so a hung program can't
   hang the run.
 - A timeout counts as that hook failing:
@@ -147,7 +147,7 @@ JavaScript terms, the hook may be `async` and return a promise. Either way:
   - in `delete`, that step fails.
 
 The built-in plugins answer straight away and barely change. Code that calls
-host-cleaner's own `survey()` and `clean()` has to wait for their answers too,
+workstation-cleaner's own `survey()` and `clean()` has to wait for their answers too,
 which is why this lands before the first public release.
 
 **Plugin order.**
@@ -160,19 +160,19 @@ Order decides which plugin keeps a candidate that two of them propose (see
 
 ### Where things live
 
-host-cleaner keeps its files in three folders, from `@osdlc/tiered-dirs`'
-`standalone('host-cleaner')` tier, under the `xdg` convention **(D5)**:
+workstation-cleaner keeps its files in three folders, from `@osdlc/tiered-dirs`'
+`standalone('workstation-cleaner')` tier, under the `xdg` convention **(D5)**:
 
 | What | Path, macOS and Linux | Moved by |
 | --- | --- | --- |
-| Config | `~/.config/host-cleaner/config.json` | `HOST_CLEANER_CONFIG_DIR`, or `XDG_CONFIG_HOME` |
-| Your descriptors | `~/.config/host-cleaner/descriptors/<name>.yaml` | follows the config folder |
-| Receipts | `~/.local/state/host-cleaner/receipts/` | `HOST_CLEANER_STATE_DIR`, or `XDG_STATE_HOME` |
-| Log | `~/.local/state/host-cleaner/host-cleaner.log` | `HOST_CLEANER_LOGS_DIR` |
+| Config | `~/.config/workstation-cleaner/config.json` | `WORKSTATION_CLEANER_CONFIG_DIR`, or `XDG_CONFIG_HOME` |
+| Your descriptors | `~/.config/workstation-cleaner/descriptors/<name>.yaml` | follows the config folder |
+| Receipts | `~/.local/state/workstation-cleaner/receipts/` | `WORKSTATION_CLEANER_STATE_DIR`, or `XDG_STATE_HOME` |
+| Log | `~/.local/state/workstation-cleaner/workstation-cleaner.log` | `WORKSTATION_CLEANER_LOGS_DIR` |
 
-`HOST_CLEANER_ROOT` moves all three folders, which is useful for tests.
+`WORKSTATION_CLEANER_ROOT` moves all three folders, which is useful for tests.
 
-Today host-cleaner uses the `native` convention instead. On macOS that puts the
+Today workstation-cleaner uses the `native` convention instead. On macOS that puts the
 config under `~/Library/Application Support/host-cleaner/` and the log under
 `~/Library/Logs/host-cleaner/`, and Linux is the same as above.
 
@@ -185,9 +185,9 @@ lets you fix a shipped descriptor without waiting for a release.
 | --- | --- | --- |
 | Built in | `git`, `cargo`, `node`, `orca`: code in the package. | core |
 | Shipped descriptors | `descriptors/*.yaml` in the package: the reviewed first set (pnpm, uv, Go, Hugging Face Hub, Gradle, npm, pip, Yarn, Maven). | 1 and 2 |
-| Your descriptors | `~/.config/host-cleaner/descriptors/*.yaml`: adds a tool, or replaces a shipped descriptor of the same name. | 1 and 2 |
+| Your descriptors | `~/.config/workstation-cleaner/descriptors/*.yaml`: adds a tool, or replaces a shipped descriptor of the same name. | 1 and 2 |
 | One run | `--descriptor <file>`: for writing and testing a descriptor. It replaces a descriptor of the same name for that run. | 1 and 2 |
-| Loaded packages | `plugins.<name>.package` in config: code plugins installed beside host-cleaner. | 3 |
+| Loaded packages | `plugins.<name>.package` in config: code plugins installed beside workstation-cleaner. | 3 |
 
 A repository can't add plugins or descriptors. Nothing a checkout holds can
 load code, and nothing it holds can point a delete somewhere.
@@ -207,7 +207,7 @@ configured under `plugins.<name>`. This example uses every tier:
     "orca": { "repos": false },
     "pnpm": { "enabled": false },
     "go": { "vars": { "GOMODCACHE": "/Volumes/build/go/mod" } },
-    "podman": { "package": "@acme/host-cleaner-podman", "keepVolumes": ["pgdata"] }
+    "podman": { "package": "@acme/workstation-cleaner-podman", "keepVolumes": ["pgdata"] }
   }
 }
 ```
@@ -238,7 +238,7 @@ plugin never declares them:
 | `package` | loaded plugins (tier 3) | The npm package to load it from. |
 
 A code plugin's other settings are whatever its schema declares, as with
-`orca`'s `repos` today. `host-cleaner config` prints every plugin's effective
+`orca`'s `repos` today. `workstation-cleaner config` prints every plugin's effective
 settings, with defaults included.
 
 ### Safety rules for every plugin
@@ -255,7 +255,7 @@ settings, with defaults included.
 - **Commands can't wander:** a tool's command runs from the home folder and is
   pointed at the folder the core checked **(D13)**, and a prune becomes a
   removal only when you allow it **(D12)**.
-- **No root:** host-cleaner refuses to start as root, and `system: true`
+- **No root:** workstation-cleaner refuses to start as root, and `system: true`
   descriptors are skipped.
 - **No scheduling:** a person runs every clean. `clean` asks before deleting,
   unless given `--yes`.
@@ -264,14 +264,14 @@ settings, with defaults included.
 
 A descriptor is one YAML file per tool, named after the plugin: `uv.yaml` is
 the plugin `uv`. It has no code and no variables. It names a tool's folders
-directly, per OS, with `~` for the home folder, and host-cleaner turns it into
+directly, per OS, with `~` for the home folder, and workstation-cleaner turns it into
 a plugin with the same hooks a code plugin has. YAML also reads JSON, and one
 JSON Schema checks both.
 
 ### A first descriptor: uv
 
 ```yaml
-# yaml-language-server: $schema=https://unpkg.com/@osdlc/host-cleaner@1/schemas/descriptor-1.json
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/workstation-cleaner@1/schemas/descriptor-1.json
 descriptor: 1
 store: uv # the research corpus slug it was drafted from; optional
 detect:
@@ -333,7 +333,7 @@ matches what `cargo` and `node` do today with folders that aren't idle.
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `descriptor` | yes | The format version, `1`. |
-| `store` | no | The `slug` of the store's entry in the system-cleanup research corpus (#992), such as `pnpm` (from `corpus/stores/pnpm.md`) or `huggingface-hub`. It records which research the file was drafted from, and the drafting script fills it in. host-cleaner doesn't use it when it runs. |
+| `store` | no | The `slug` of the store's entry in the system-cleanup research corpus (#992), such as `pnpm` (from `corpus/stores/pnpm.md`) or `huggingface-hub`. It records which research the file was drafted from, and the drafting script fills it in. workstation-cleaner doesn't use it when it runs. |
 | `detect` | no | `any:` or `all:` of `{ onPath: <program> }` and `{ exists: <path name> }`. Default: any path exists. |
 | `paths` | yes | Named folders, per OS (`macos`, `linux`, `windows`) or `all`. They may use `~`. These are the plugin's roots. |
 | `candidates` | yes | What may be deleted (below). |
@@ -387,7 +387,7 @@ long as it runs. That's on purpose: stop it to clean.
 files writable. Go's module cache, for example, is read-only.
 
 **Commands are pointed at the checked folder (D13).** Without this, a command
-acts on wherever the tool is configured, not on the folder host-cleaner
+acts on wherever the tool is configured, not on the folder workstation-cleaner
 checked: with `UV_CACHE_DIR` set in your shell, `uv cache prune` would prune
 that other folder. So every `command` must name the checked folder, as a
 `{path}` argument or an `env` entry. A command that names neither is a schema
@@ -412,17 +412,17 @@ it that marks the project), `costDescription`, and an optional `idleHours`. `car
 ### Where the file lives, and tuning it
 
 - **Shipped:** in the package, as `descriptors/uv.yaml`.
-- **Your own:** `~/.config/host-cleaner/descriptors/uv.yaml`. The same name as
-  a shipped one replaces it, and `host-cleaner plugins` says so.
+- **Your own:** `~/.config/workstation-cleaner/descriptors/uv.yaml`. The same name as
+  a shipped one replaces it, and `workstation-cleaner plugins` says so.
 - **One run:** `--descriptor ./uv.yaml`. To try one you're writing, use
-  `host-cleaner status --descriptor ./uv.yaml --plugin uv`, which shows what it
+  `workstation-cleaner status --descriptor ./uv.yaml --plugin uv`, which shows what it
   would propose and deletes nothing.
 - **Tuning:** `plugins.uv.enabled: false` turns it off;
   `plugins.uv.idleHours: 336` changes its idle time.
 
 ### Drafting a descriptor from the corpus
 
-A script in host-cleaner does this (q-compile). The corpus has quoted answers
+A script in workstation-cleaner does this (q-compile). The corpus has quoted answers
 for each store, and the script turns one store's answers into a first
 descriptor file:
 
@@ -451,7 +451,7 @@ those, and commits it. A store the corpus marks `system: true` gets
 ## Tier 2: descriptors with variables
 
 It's the same file, plus `vars`. A tool that lets people move its folder gets a
-variable for it. The variable lists where to look, and host-cleaner works out
+variable for it. The variable lists where to look, and workstation-cleaner works out
 its value on each run, so a moved store is found.
 
 ### A first variable: pnpm's store
@@ -475,7 +475,7 @@ inUse:
   processes: [pnpm]
 ```
 
-**What `STORE` is.** A name for a folder that host-cleaner works out on each
+**What `STORE` is.** A name for a folder that workstation-cleaner works out on each
 run. It tries each source in order and keeps the first answer:
 
 1. `command: [pnpm, store, path]` asks pnpm where its store is. That finds a
@@ -555,7 +555,7 @@ and each command is pointed at the folder that was checked.
 - On Windows, `LOCALAPPDATA` and `APPDATA`.
 
 A variable that ends with no value leaves its paths unresolved. Their candidates
-don't appear, and `status` says which variable was missing. `host-cleaner
+don't appear, and `status` says which variable was missing. `workstation-cleaner
 plugins` shows each variable's value and the source that gave it **(D6)**.
 
 Commands also get every resolved variable in their environment, so a command
@@ -569,7 +569,7 @@ must sit strictly inside the home folder. The core refuses a path, with
 - is the home folder itself;
 - is a personal folder (`~/Documents`, `~/Desktop`, `~/Downloads`, `~/Pictures`, `~/Music`, `~/Movies`, `~/Library`, `~/.ssh`, `~/.config`);
 - is a target or a checkout, or contains one;
-- contains host-cleaner's own folders.
+- contains workstation-cleaner's own folders.
 
 Nothing is deleted there.
 
@@ -586,7 +586,7 @@ names be one too.
 
 <!-- id: tier3-language -->
 **Language (D14).** A tier 3 plugin is JavaScript or TypeScript, loaded into
-host-cleaner's own process. That keeps the kit, the types and zod shared
+workstation-cleaner's own process. That keeps the kit, the types and zod shared
 directly, and a plugin is one import. A program in any language speaking JSON
 over stdin and stdout (as LSP and MCP servers do) would open tier 3 to Rust,
 Python or a shell script. It would also give a real time limit, because a stuck
@@ -633,7 +633,7 @@ roughly the built-in `docker` plugin. The same code in a package of its own,
 under a name no built-in uses, such as `podman`, is a tier 3 plugin:
 
 ```ts
-import { definePlugin, z } from '@osdlc/host-cleaner/plugin'
+import { definePlugin, z } from '@osdlc/workstation-cleaner/plugin'
 
 export default definePlugin({
   name: 'docker',
@@ -677,7 +677,7 @@ What the example relies on:
 
 ### The plugin kit
 
-The kit **(D4)** is the set of safety helpers host-cleaner's own plugins use,
+The kit **(D4)** is the set of safety helpers workstation-cleaner's own plugins use,
 exported so a code plugin calls the same ones instead of writing its own
 folder deletion:
 - `kit.idle(path)`: how long since anything in the folder changed, with a time
@@ -697,7 +697,7 @@ one later takes a major release.
 
 ### Testing a plugin
 
-`@osdlc/host-cleaner/testing` **(D9)** gives a fake context, a fake command
+`@osdlc/workstation-cleaner/testing` **(D9)** gives a fake context, a fake command
 runner, a temporary home, and one contract suite every plugin runs. The suite
 checks that:
 - ids are unique;
@@ -710,26 +710,26 @@ The built-in plugins and the shipped descriptors run the same suite.
 ### Loading a code plugin
 
 ```json
-{ "plugins": { "podman": { "package": "@acme/host-cleaner-podman", "keepVolumes": ["pgdata"] } } }
+{ "plugins": { "podman": { "package": "@acme/workstation-cleaner-podman", "keepVolumes": ["pgdata"] } } }
 ```
 
-- **Where host-cleaner looks:** the package is resolved from where host-cleaner
+- **Where workstation-cleaner looks:** the package is resolved from where workstation-cleaner
   is installed, then from the global npm prefix. So `npm i -g
-  @acme/host-cleaner-podman` next to a global host-cleaner works. With `npx` or
-  `pnpm dlx`, install both globally instead. host-cleaner never resolves a
+  @acme/workstation-cleaner-podman` next to a global workstation-cleaner works. With `npx` or
+  `pnpm dlx`, install both globally instead. workstation-cleaner never resolves a
   package from a checkout.
 - **Checks at load:**
   - The config key must equal the plugin's `name`.
-  - `api` must be one host-cleaner supports. A mismatch is an error that names
+  - `api` must be one workstation-cleaner supports. A mismatch is an error that names
     the package and both versions. `api` changes only with a major release of
-    host-cleaner.
+    workstation-cleaner.
 - **If loading fails** (the package isn't installed, its import throws, or it
   exports the wrong shape):
   - `status` and `plan` warn and go on without it.
   - `clean` exits 2, naming `plugins.<name>.package`, unless you pass
     `--skip-plugin <name>`. A missing plugin's objections are missing too, and
     `clean` won't delete without them by accident.
-- The plugin API is exported from host-cleaner and versioned with it.
+- The plugin API is exported from workstation-cleaner and versioned with it.
 
 ## How the tiers meet
 
@@ -775,7 +775,7 @@ The built-in plugins and the shipped descriptors run the same suite.
 4. **Tier 3.**
 
 Each is a minor release, out when its work merges. Root-only stores and
-scheduled runs are recorded as later work in host-cleaner's backlog.
+scheduled runs are recorded as later work in workstation-cleaner's backlog.
 
 ## Decisions
 
@@ -786,16 +786,16 @@ Every decision was made in review. The text above follows them.
 | D1 | How are two plugins' candidates for the same thing matched? You answered "same candidate id, code plugin's kept", but ids rarely match across plugins. | The same id **or the same real path** is one candidate, and the earlier plugin's stands. Nested candidates are both kept, inner first, and an inner refusal refuses the outer. | Matching on id alone lets a code plugin and a descriptor delete the same folder twice. Dropping nested candidates would drop every `cargo` and `node` candidate inside a git worktree. |
 | D2 | Make every hook async? | Yes, before the first public release. Add a per-hook timeout and `AbortSignal`, and run plugins one at a time. | `Plugin`, `survey` and `clean` are exported today, so changing them later is a major release. Loaded plugins that call APIs need it. |
 | D3 | One `definePlugin` export per plugin? | Yes, and the built-in plugins move to it too. | The factory and the settings schema live in two maps today (`FACTORIES`, `PLUGIN_SETTINGS`). An author should learn one thing. |
-| D4 | Export the plugin kit, and build descriptors only on it? | Yes. The helpers stay inside host-cleaner, exported as `@osdlc/host-cleaner/plugin`, and reuse repo-cleaner's and `@osdlc/path-guard`'s code. Splitting them into standalone inspection packages is possible later work. | A code plugin otherwise rewrites idle, removal and containment logic, with less care. |
-| D5 | Switch host-cleaner's folders to `xdg`? | Yes, before the first release. | `tiered-dirs`' own guidance says a CLI uses `xdg` (`~/.config/<tool>`), and people keep it in their dotfiles. Nothing is released yet, so there's nothing to migrate. |
-| D6 | Add `host-cleaner plugins`? | Yes. It lists each plugin's source, whether it was detected and why, its roots, and each variable's value and where it came from. | #991 put resolved variables in `config`, which mixes settings with discovery. Testing a descriptor needs no extra command: `status --descriptor <file> --plugin <name>`. |
+| D4 | Export the plugin kit, and build descriptors only on it? | Yes. The helpers stay inside workstation-cleaner, exported as `@osdlc/workstation-cleaner/plugin`, and reuse repo-cleaner's and `@osdlc/path-guard`'s code. Splitting them into standalone inspection packages is possible later work. | A code plugin otherwise rewrites idle, removal and containment logic, with less care. |
+| D5 | Switch workstation-cleaner's folders to `xdg`? | Yes, before the first release. | `tiered-dirs`' own guidance says a CLI uses `xdg` (`~/.config/<tool>`), and people keep it in their dotfiles. Nothing is released yet, so there's nothing to migrate. |
+| D6 | Add `workstation-cleaner plugins`? | Yes. It lists each plugin's source, whether it was detected and why, its roots, and each variable's value and where it came from. | #991 put resolved variables in `config`, which mixes settings with discovery. Testing a descriptor needs no extra command: `status --descriptor <file> --plugin <name>`. |
 | D7 | One unit for idle? | Keep `idleHours` everywhere, in the config and in descriptors. It takes any number from 0 up, so `0.5` is 30 minutes. | #991 used `idleDays` in descriptors. One unit in both places beats nicer numbers. A duration string (`30d`) was chosen, then reversed in review. |
 | D8 | Make `costDescription` a core candidate field? | Yes, optional for code plugins, named `costDescription` (plain `cost` read as unclear). The core applies the `lost` rule to every candidate that sets it. | Otherwise the rule holds only for descriptors, and a code plugin must remember to set `held` and a protest itself. |
 | D9 | Ship a testing kit with a contract suite? | Yes. | Plugin authors otherwise learn the contract by reading the core. |
 | D10 | Add ref candidates, which have no folder? | Yes. Every plugin's path candidates must sit inside its roots or a target. Git's branches and Orca's records become refs. | Today a plugin with no `roots` gets no containment check at all (`run.ts:129`), and Docker volumes or Orca records have no folder to check. |
 | D11 | A folder too large to measure in the time budget. You chose "held with a note" (q-idle). | Give it an `unmeasured` protest instead, so it runs only with `--allow unmeasured`, and keep the budget outcome out of the evidence. | Held still lets a pick delete it with no idle evidence. And whether the measure finishes can differ between plan and re-check, so the folder would flap as `changed`. |
 | D12 | The tool's command when it's on PATH, otherwise remove the folder. You chose that (q-prefer). | A prune (`removes: unused`) never falls back on its own. Without the program it gets a `no-prune-tool` protest; `--allow no-prune-tool` removes the folder instead, with the idle check. Wipes (`removes: all`) still fall back. | A prune runs with no idle check. Falling back to a removal would wipe a whole pnpm store in daily use. |
-| D13 | Must every tool command name the checked folder? | Yes: a `{path}` argument or an `env` entry, or the schema rejects it. | Tier 1 has no variables, so without this a command cleans wherever the tool is configured, such as a moved `UV_CACHE_DIR`, not the folder host-cleaner checked. |
+| D13 | Must every tool command name the checked folder? | Yes: a `{path}` argument or an `env` entry, or the schema rejects it. | Tier 1 has no variables, so without this a command cleans wherever the tool is configured, such as a moved `UV_CACHE_DIR`, not the folder workstation-cleaner checked. |
 | D14 | Must a tier 3 plugin be TypeScript, or can it be any program over stdio? | JavaScript or TypeScript, in-process, for tier 3. Keep every hook's input and output plain JSON, so a stdio bridge can come later as one built-in plugin. | In-process shares the kit and types directly, with no protocol to design. Plain JSON keeps the door open for other languages without a breaking change. |
 | D15 | Must a version read what an earlier version wrote? | No, not before 1.0. No code reads an old config location, upgrades an old plan or file version, or keeps a renamed field working. An old plan is refused with "sweep again". | Before 1.0 the formats still change, and each migration is code to keep and test for users who don't exist yet. |
 

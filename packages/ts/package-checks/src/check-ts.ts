@@ -7,7 +7,8 @@
  * under Node. A package with optional peers is loaded twice: once without
  * them, where only an entry that needs a missing optional peer may fail, and
  * once with them installed. Then the package's smoke check runs, if it has
- * one. A stylesheet export must point at one `./dist/<name>.css` file. The smoke
+ * one. A stylesheet export must point at one `./dist/<name>.css` file, and a
+ * JSON Schema export at itself, one shipped `./schemas/<name>.json`. The smoke
  * check is `tests/smoke.mjs` in the package directory. It is not shipped. It
  * is copied into the consumer project and imports the package by name, so it
  * runs against the installed tarball.
@@ -57,6 +58,7 @@ import {
   parseCatalog,
   parseJsonc,
   peerName,
+  schemaProblems,
   shapeProblems,
   stylesheetEntries,
   stylesheetProblems,
@@ -369,10 +371,11 @@ function checkPacked(
         )
       }
       console.log(`packed ${tarball}`)
+      const files = packedFiles(tarball)
       const shape = [
         ...shapeProblems({
           pkg,
-          packedFiles: packedFiles(tarball),
+          packedFiles: files,
           tsconfigs: tsconfigs(pkgDir),
         }),
         ...conventionProblems({
@@ -389,6 +392,7 @@ function checkPacked(
         }),
         ...packedManifestProblems(packedManifest(tarball)),
         ...stylesheetProblems(pkg.exports),
+        ...schemaProblems(pkg.exports, files),
       ]
       if (shape.length > 0) {
         throw Object.assign(

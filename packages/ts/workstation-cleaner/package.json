@@ -1,0 +1,100 @@
+{
+  "name": "@osdlc/workstation-cleaner",
+  "version": "0.5.0",
+  "private": true,
+  "description": "Machine cleanup as plugins: each plugin proposes candidates and objects to others, and one plan, one re-check and one receipt cover them all.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/workstation-cleaner"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/workstation-cleaner#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "cleanup",
+    "worktree",
+    "plugin",
+    "disk"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "default": "./dist/plugin.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    },
+    "./schemas/descriptor-1.json": "./schemas/descriptor-1.json"
+  },
+  "files": [
+    "dist/",
+    "bin/",
+    "descriptors/",
+    "schemas/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
+  "scripts": {
+    "build": "cli-tool-stamp-version && tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "smoke": "node tests/smoke.mjs",
+    "coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
+    "stamp-version": "cli-tool-stamp-version",
+    "write:descriptor-schema": "node scripts/write-descriptor-schema.ts",
+    "draft:descriptor": "node scripts/draft-descriptor.ts"
+  },
+  "dependencies": {
+    "@osdlc/cli-tool": "workspace:^",
+    "@osdlc/command-seam": "workspace:^",
+    "@osdlc/config-layers": "workspace:^",
+    "@osdlc/path-guard": "workspace:^",
+    "@osdlc/repo-cleaner": "workspace:^",
+    "@osdlc/typed-git": "workspace:^",
+    "@osdlc/ux": "workspace:^",
+    "smol-toml": "catalog:",
+    "yaml": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@osdlc/conformance-suites": "workspace:^",
+    "@osdlc/corpus-schema": "workspace:^",
+    "@osdlc/corpus-system-cleanup-reference": "workspace:^",
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "ajv": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "bin": {
+    "workstation-cleaner": "./bin/workstation-cleaner.js"
+  }
+}

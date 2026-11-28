@@ -1,0 +1,30 @@
+[package]
+name = "finding-formats"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Reads common tool output (line-oriented text, SARIF 2.1.0, JUnit XML, lcov) into one small findings and facts model."
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/finding-formats"
+readme = "README.md"
+keywords = ["sarif", "junit", "lcov", "lint", "findings"]
+categories = ["parser-implementations", "development-tools"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[dependencies]
+quick-xml = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

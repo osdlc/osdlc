@@ -2,7 +2,7 @@
   "name": "@osdlc/corpus-system-cleanup-reference",
   "private": true,
   "version": "0.0.0",
-  "description": "A cited record of where tools and apps keep data that can be reclaimed from disk, and how to clean it safely, typed by @osdlc/corpus-profile-system-cleanup. host-cleaner's descriptors are drafted from it.",
+  "description": "A cited record of where tools and apps keep data that can be reclaimed from disk, and how to clean it safely, typed by @osdlc/corpus-profile-system-cleanup. workstation-cleaner's descriptors are drafted from it.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
   "repository": {

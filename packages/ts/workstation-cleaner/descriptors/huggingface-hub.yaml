@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://unpkg.com/@osdlc/workstation-cleaner@1/schemas/descriptor-1.json
+# The Hugging Face hub cache: HF_HUB_CACHE (or its old name
+# HUGGINGFACE_HUB_CACHE), else hub under HF_HOME, else under
+# $XDG_CACHE_HOME/huggingface, which is ~/.cache/huggingface on macOS and Linux
+# alike. Each model, dataset and space is its own candidate, removed as a
+# folder once nothing in it changed for 30 days (a model only when picked): a
+# model is large to download again.
+# Loading a cached model changes nothing in it, so its idle time is counted
+# from its last download, not its last use: a model loaded every day can go 30
+# days unchanged, so models are held and removed only when picked.
+# `hf cache prune` can't be pointed at one entry, so it isn't used. No process
+# name identifies a reader (any Python program can be one), and the lock files
+# under .locks stay after a download, so neither is an in-use check.
+descriptor: 1
+store: huggingface-hub
+detect:
+  any: [{ onPath: hf }, { exists: hub }]
+vars:
+  HF_HOME:
+    - env: HF_HOME
+    - value: '${XDG_CACHE_HOME}/huggingface'
+  HF_HUB_CACHE:
+    - env: HF_HUB_CACHE
+    - env: HUGGINGFACE_HUB_CACHE
+    - value: '${HF_HOME}/hub'
+paths:
+  hub: { macos: '${HF_HUB_CACHE}', linux: '${HF_HUB_CACHE}' }
+candidates:
+  - path: hub
+    glob: 'models--*/'
+    costDescription: re-download
+    idleHours: 720
+    held: true
+  - path: hub
+    glob: 'datasets--*/'
+    costDescription: re-download
+    idleHours: 720
+  - path: hub
+    glob: 'spaces--*/'
+    costDescription: re-download
+    idleHours: 720

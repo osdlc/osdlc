@@ -4,7 +4,7 @@ A repository's system model, in two halves.
 
 - **The wire contract**: a project's structure in its wire format
   (`SystemGraph`, `SystemNode`, `SystemEdge`, aspects with tiered evidence),
-  plus the ports a host implements to serve it. Types and small pure helpers,
+  which a host serves to a viewer. Types and small pure helpers,
   with no runtime dependencies. This is the root entry, `@osdlc/system-model`,
   and it is safe to import in browser code.
 - **Detection and tools**: what a repository contains (its packages,
@@ -54,7 +54,7 @@ answers every question from it.
 ## The wire contract
 
 ```ts
-import type { SystemGraph, SystemGraphClient, SystemNode } from '@osdlc/system-model'
+import type { SystemGraph, SystemNode } from '@osdlc/system-model'
 ```
 
 The Rust schema is the authority on this shape. This package states it once
@@ -87,30 +87,18 @@ crate, and the two walk one fixture tree (`tests/fixtures/mini-repo`, a symlink 
 **`./aspect`**: `Aspect`, `Evidence`, `EvidenceKind` and `EVIDENCE_TIERS`.
 Detection uses the same `Evidence` for every claim it makes.
 
-**`./client`**: `SystemGraphClient`, the port. One method, because the
-viewer needs one thing: the whole graph. Folding a container is an
-interaction, not a query. So the aggregation runs on the client over one
-payload, and there is no second call for "the graph, but collapsed".
-
-**`./saved-view`**: `SavedView` and the `SavedViewStore` port that keeps
-named views of a graph, with `slugify` and `SLUG_PATTERN`.
-
-`ProjectFacets` and the optional `ProjectFacetsStore` port, in the root
-entry only, carry what the build system knows about a project that a manifest
-cannot say, joined to graph nodes by directory.
-
 ### Who is on each side
 
 | | |
 |---|---|
-| **Authority on the shape** | `solutions/ontological/desktop/src-tauri/src/schema/system_graph.rs` in the development repository |
-| **Producers** | the `manifest-graph` crate (via SDF's service) and `@osdlc/manifest-graph` (via `buildSystemGraph`) |
-| **Hosts implementing the port** | SDF, over ontogen's generated transport; `product-system-graph`, over a Nitro route |
-| **Consumer** | `@sdlc/exp-system-graph`, which knows only this contract |
+| **Authority on the shape** | the `system-model` crate's `schema` module (`packages/rust/system-model`), kept equal to this package |
+| **Producers** | `buildSystemGraph` in `@osdlc/system-model/build`, and the crate's `build_system_graph` |
+| **Hosts** | an application that serves the graph to a viewer, over any transport; the viewer defines the interface its hosts implement |
+| **Consumers** | viewers, which know only this contract |
 
-Two hosts implement the port and share no code. Keep it that way: it is why
-the same viewer works against a Rust service and against an in-process
-TypeScript call without any change.
+The two producers are meant to give the same payload for the same tree, and
+both walk the shared `mini-repo` fixture, so a viewer can work against a Rust
+service or an in-process TypeScript call without any change.
 
 Changing the wire format means changing the Rust schema and this package
 together.
@@ -118,8 +106,8 @@ together.
 ### What is deliberately not here
 
 The view model (`ViewSpec`, `select`, `encode`, `derive`, and the layouts)
-lives in `@sdlc/exp-system-graph`'s `app/lib/`. It is not a contract between
-components. It is one viewer's internals, and putting it here would make
+lives in the viewer that uses it. It is not a contract between components.
+It is one viewer's internals, and putting it here would make
 every host depend on one viewer's choices.
 
 ## The model
@@ -140,11 +128,9 @@ Evidence tiers run from the most direct to the least: `manifest` (1),
 
 | Entry | Exports |
 |---|---|
-| `@osdlc/system-model` | the whole wire contract: everything in the four entries below, plus `ProjectFacets` and `ProjectFacetsStore` |
+| `@osdlc/system-model` | the whole wire contract: everything in the `/graph` and `/aspect` entries below |
 | `@osdlc/system-model/graph` | `SystemGraph`, `SystemNode`, `SystemEdge`, the kind unions and their `ALL_*` rosters |
 | `@osdlc/system-model/aspect` | `Aspect`, `Evidence`, `EvidenceKind`, `EVIDENCE_TIERS`, `ALL_ASPECTS`, `hasAspect`, `strongestTier` |
-| `@osdlc/system-model/client` | `SystemGraphClient` |
-| `@osdlc/system-model/saved-view` | `SavedView`, `SavedViewStore`, `PositionOverride`, `slugify`, `SLUG_PATTERN` |
 | `@osdlc/system-model/detect` | `createProject`, the task model, the profile and `ToolDef` types |
 | `@osdlc/system-model/builtins` | `builtins`, every built-in tool in report order, and `BUILTIN_TOOL_IDS` |
 | `@osdlc/system-model/node` | bun, pnpm, yarn, npm, `node-scripts`, and the node ecosystem |
@@ -166,7 +152,7 @@ Evidence tiers run from the most direct to the least: `manifest` (1),
 | `@osdlc/system-model/groups` | `GROUPS`, `ALL_GROUP_IDS`, `groupOf`, `catalogGroups` and `SYNTHESIZED_RUNNERS`: which group a report falls in |
 
 The core knows no tool. A plugin imports only the core, never another plugin.
-The root entry, `./graph`, `./aspect`, `./client`, `./saved-view`, `./match`,
+The root entry, `./graph`, `./aspect`, `./match`,
 `./params`, `./duration`, `./groups` and `./schema` import no Node built-in
 and no dependency, so a browser bundle can use them. A test walks each one's imports to check.
 

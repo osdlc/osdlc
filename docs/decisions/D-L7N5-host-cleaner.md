@@ -1,9 +1,14 @@
 # D-L7N5: Machine cleanup is a `host-cleaner` package over repo-cleaner, with optional detected adapters
 
+Renamed: the tool is now `workstation-cleaner` (`@osdlc/workstation-cleaner`), in [#1032](https://github.com/osdlc/osdlc/issues/1032). This record keeps the name it was made under.
+
 Superseded in part by [D-H3QW](D-H3QW-host-cleaner-plugin-model.md): the adapter
 model became a plugin model. Accepted 2026-10-07 in sksizer/dev. Moved here on 2026-11-07, restated for
 repo-cleaner 0.18. Builds on
 [D-RSWP](../../packages/ts/repo-cleaner/docs/planning/decisions/D-RSWP-standalone.md).
+
+Superseded in part by [D-R8KM](D-R8KM-host-cleaner-v1-attended-only.md): the
+unattended subset, launchd scheduling and the `claude-code` adapter.
 
 ## Decision
 
@@ -26,7 +31,7 @@ repo-cleaner 0.18. Builds on
   against pid reuse, and asks a `ProcessProbe` whether a pid is alive and
   which processes work inside a path. The default probe runs `ps` and `lsof`
   through the command seam. It names no host product.
-- **Machine awareness is a new package here.** `packages/ts/host-cleaner`
+- **Machine awareness is a new package here.** `packages/ts/workstation-cleaner`
   (`@osdlc/host-cleaner`, binary `host-cleaner`) composes repo-cleaner. It
   ships a library and a CLI, on the same package shape as the rest of
   `packages/ts/`.

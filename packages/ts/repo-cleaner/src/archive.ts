@@ -123,8 +123,19 @@ export function coverageOf(row: Row, opts: ArchiveOptions, git: (path: string) =
   return { covers, leftOut }
 }
 
-/** True when a row could put something in an archive. */
-export function mayContribute(row: Row): boolean {
+/**
+ * True when a row, or the candidate of one, could put something in an archive:
+ * it risks `abandon-unmerged` or `discard-changes`, and is not a worktree whose
+ * directory is gone, of which {@link pushArchive} holds nothing.
+ */
+export function mayContribute(row: {
+  kind: string
+  risks: readonly string[]
+  evidence: object
+}): boolean {
+  if (row.kind === 'worktree' && (row.evidence as { onDisk?: unknown }).onDisk === false) {
+    return false
+  }
   return row.risks.includes('abandon-unmerged') || row.risks.includes('discard-changes')
 }
 
@@ -163,33 +174,40 @@ function snapshotTree(git: Git, leftOut: readonly LeftOut[]): string {
  * archive is not deleted on the strength of an archive that lacks it.
  */
 export function worktreeStamp(git: Git, opts: ArchiveOptions, files: boolean): string {
-  const tree = files ? snapshotTree(git, snapshotLeftOut(git, opts)) : ''
-  return `${git.resolveRef('HEAD') ?? ''}:${tree}`
+  const head = git.resolveRef('HEAD')
+  return stampOf(
+    head,
+    files && head !== null ? snapshotTree(git, snapshotLeftOut(git, opts)) : null,
+  )
 }
+
+const stampOf = (head: string | null, tree: string | null): string => `${head ?? ''}:${tree ?? ''}`
 
 /**
  * Commit the worktree `git` is at, uncommitted files included, without
  * touching its index or files. `sha` is null when nothing differs from HEAD;
  * `unheld` is true when something is dirty that a snapshot cannot hold, such
- * as a staged change the working file has since been reverted from.
+ * as a staged change the working file has since been reverted from; `stamp` is
+ * the {@link worktreeStamp} of what was committed.
  */
 function snapshot(
   git: Git,
   opts: ArchiveOptions,
-): { sha: string | null; leftOut: LeftOut[]; unheld: boolean } {
+): { sha: string | null; leftOut: LeftOut[]; unheld: boolean; stamp: string } {
   const head = git.resolveRef('HEAD')
-  if (head === null) return { sha: null, leftOut: [], unheld: false }
+  if (head === null) return { sha: null, leftOut: [], unheld: false, stamp: stampOf(null, null) }
   const leftOut = snapshotLeftOut(git, opts)
   const tree = snapshotTree(git, leftOut)
+  const stamp = stampOf(head, tree)
   if (tree === git.resolveRef('HEAD^{tree}')) {
-    return { sha: null, leftOut, unheld: git.statusEntries().length > leftOut.length }
+    return { sha: null, leftOut, unheld: git.statusEntries().length > leftOut.length, stamp }
   }
   const sha = git.commitTree(
     tree,
     { parents: [head], message: `snapshot of ${git.cwd}\n\nuncommitted files on top of ${head}` },
     { env: identityEnv(git) },
   )
-  return { sha, leftOut, unheld: false }
+  return { sha, leftOut, unheld: false, stamp }
 }
 
 /** `<repo>-local-<YYYY-MM-DD>`, the branch name after `archive/`. */
@@ -211,7 +229,7 @@ function identityEnv(git: Git): Record<string, string> | undefined {
 
 /**
  * Build the archive of `jobs` and push it, then confirm the remote has it.
- * Returns null when there was nothing to hold, else the receipt record and each archived worktree's {@link worktreeStamp}.
+ * Returns the receipt record, null when there was nothing to hold, and the {@link worktreeStamp} of each worktree on disk.
  *
  * @param git The client at the repository's root.
  * @param defaultRef The remote default branch, `<remote>/<branch>`.
@@ -226,7 +244,7 @@ export function pushArchive(
   jobs: readonly ArchiveRowJob[],
   opts: ArchiveOptions,
   now: Date,
-): { record: ArchiveRecord; stamps: Map<RowId, string> } | null {
+): { record: ArchiveRecord | null; stamps: Map<RowId, string> } {
   const defaultTip = git.resolveRef(defaultRef)
   const tree = git.resolveRef(`${defaultRef}^{tree}`)
   if (defaultTip === null || tree === null) throw new Error(`cannot read ${defaultRef}`)
@@ -240,6 +258,7 @@ export function pushArchive(
       was.source += `, ${source}`
     }
   }
+  const stamps = new Map<RowId, string>()
   for (const { row, discardAllowed } of jobs) {
     if (row.kind !== 'worktree') {
       if (row.risks.includes('abandon-unmerged')) hold(row.evidence.sha, row.id, row.id)
@@ -254,27 +273,17 @@ export function pushArchive(
           `refused: ${row.name} has changes the archive cannot hold (${snap.leftOut.map((f) => f.path).join(', ') || 'staged changes the files no longer show'}); allow discard-changes for it`,
         )
       }
+      // The stamp of the very tree that was committed, so a file written since is a change.
+      stamps.set(row.id, snap.stamp)
       if (snap.sha !== null) {
         hold(snap.sha, row.id, row.id, snap.leftOut)
         continue
       }
-    }
+    } else stamps.set(row.id, worktreeStamp(at, opts, false))
     const head = row.risks.includes('abandon-unmerged') ? at.resolveRef('HEAD') : null
     if (head !== null) hold(head, row.id, row.id)
   }
-  if (held.size === 0) return null
-  const stamps = new Map<RowId, string>(
-    jobs.flatMap(({ row }) =>
-      row.kind === 'worktree' && row.evidence.onDisk !== false
-        ? [
-            [
-              row.id,
-              worktreeStamp(git.at(row.name), opts, row.risks.includes('discard-changes')),
-            ] as const,
-          ]
-        : [],
-    ),
-  )
+  if (held.size === 0) return { record: null, stamps }
   const parents = [...held.values()]
   const lines = [
     `repo-cleaner archive of local work, ${now.toISOString()}`,

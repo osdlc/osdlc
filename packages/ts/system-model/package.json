@@ -1,7 +1,7 @@
 {
   "name": "@osdlc/system-model",
-  "version": "0.10.0",
-  "description": "A repository's system model: its structure on the wire (SystemGraph, aspects with tiered evidence) and the ports a host satisfies to serve it, plus detection of its packages, ecosystems and tools, each tool described once with the roles it plays, and the tasks its runners expose. Running a repository's own tools is off by default.",
+  "version": "0.11.0",
+  "description": "A repository's system model: its structure on the wire (SystemGraph, aspects with tiered evidence) plus detection of its packages, ecosystems and tools, each tool described once with the roles it plays, and the tasks its runners expose. Running a repository's own tools is off by default.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
   "repository": {
@@ -42,14 +42,6 @@
     "./build": {
       "types": "./dist/build.d.ts",
       "default": "./dist/build.js"
-    },
-    "./client": {
-      "types": "./dist/client.d.ts",
-      "default": "./dist/client.js"
-    },
-    "./saved-view": {
-      "types": "./dist/saved-view.d.ts",
-      "default": "./dist/saved-view.js"
     },
     "./detect": {
       "types": "./dist/engine.d.ts",

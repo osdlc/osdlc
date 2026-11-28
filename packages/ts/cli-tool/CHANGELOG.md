@@ -1,5 +1,16 @@
 # @osdlc/cli-tool
 
+## 0.22.0
+
+### Minor Changes
+
+- 0b3fbfa: Re-export `TieredDirsError` and `homeDir` next to `systemDirs`, so a tool can match the errors of its directory resolution with `instanceof` and expand `~` against the home its directories are built on.
+
+### Patch Changes
+
+- Updated dependencies [0b3fbfa]
+  - @osdlc/config-layers@0.12.0
+
 ## 0.21.0
 
 ### Minor Changes

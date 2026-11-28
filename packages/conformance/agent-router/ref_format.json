@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.5",
+  "referenceVersion": "0.4.6",
   "sections": {
     "ref_format": {
       "description": "formatRef: canonical qualifier order, size rounding, empty qualifiers",
