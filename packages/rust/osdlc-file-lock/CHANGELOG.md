@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.2](https://github.com/osdlc/osdlc/compare/osdlc-file-lock/v0.4.1...osdlc-file-lock/v0.4.2) - 2026-11-28
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.4.1](https://github.com/osdlc/osdlc/compare/osdlc-file-lock/v0.4.0...osdlc-file-lock/v0.4.1) - 2026-11-25
 
 ### Other
