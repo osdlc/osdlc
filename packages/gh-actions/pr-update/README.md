@@ -170,7 +170,7 @@ git identity: the action pushes merge commits from that checkout.
 | `include-bots`           | `false`               | Update PRs authored by a bot. A PR named by `pr` is updated either way.                                              |
 | `dry-run`                | `false`               | Measure and report; push, label and comment nothing.                                                                 |
 | `fail-on-conflict`       | `false`               | Fail the step when a PR ended conflict or failed (see Exit policy).                                                  |
-| `cache-attempts`         | `true`                | Persist `.pr-update/attempts` between runs with actions/cache.                                                       |
+| `cache-attempts`         | `true`                | Persist pr-update's failed-attempt record between runs with actions/cache.                                           |
 | `extra-args`             | none                  | Extra `pr-update update` arguments, for example `--retry-failed`.                                                    |
 
 Outputs: `report-path` (the pr-update JSON report), and the counts `updated`,
@@ -232,8 +232,11 @@ conflicted PR from being repaired again.
 
 ### The failed-attempt record
 
-pr-update writes `.pr-update/attempts/` (one file per repo, head and base
-branch, written atomically) for each PR that ends `conflict` or `failed`. The
+pr-update writes a record (one file per repo, head and base branch, written
+atomically) for each PR that ends `conflict` or `failed`: in `.pr-update/attempts/`
+for pr-update 0.17 and earlier, and in `attempts/` in its state directory after.
+The action points that state directory at `$RUNNER_TEMP/pr-update-state`
+(`OSDLC_STATE_DIR`) and caches both places. The
 next run skips that PR, and spends no agent tokens on it, until its head or
 base sha changes. The action restores the directory with `actions/cache/restore`
 and saves it with `actions/cache/save` under `pr-update-attempts-<run id>-<attempt>`
