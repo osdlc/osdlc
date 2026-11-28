@@ -22,6 +22,7 @@ import { spawnRunner } from '@osdlc/command-seam'
 import { osdlcDirs } from '@osdlc/ecosystem'
 
 import { main } from '../src/cli.ts'
+import { CLONE_MARKER } from '../src/mirror.ts'
 import { prUpdatePaths } from '../src/machine.ts'
 import { allToolsInstalled, isolatedEnv } from './support.ts'
 
@@ -95,7 +96,7 @@ function keep(number: number, repo = 'acme/api', owner = root): { tree: string; 
     baseOid: null,
     path: tree,
     branch,
-    gitDir: realpathSync.native(join(owner, '.git')),
+    gitDir: realpathSync.native(existsSync(join(owner, '.git')) ? join(owner, '.git') : owner),
   }
   writeFileSync(join(records, `${number}.json`), JSON.stringify(record))
   return { tree, sha }
@@ -230,6 +231,52 @@ describe('kept push', () => {
     expect(r.err).toContain(`${tree} is a run’s worktree, on its scratch branch`)
     expect(git(mine, 'for-each-ref')).toBe('')
   })
+
+  /**
+   * Make the owning git directory's config writable by anyone, holding a command git runs on the
+   * push (`remote.mine.uploadpack`, which `ls-remote mine` runs), and return the marker that
+   * command writes.
+   */
+  function plantCommand(gitDir: string): string {
+    const marker = join(scratch, 'ran')
+    const script = join(scratch, 'sentinel.sh')
+    writeFileSync(script, `#!/bin/sh\n: > '${marker}'\nexit 1\n`)
+    chmodSync(script, 0o755)
+    git(gitDir, 'config', 'remote.mine.url', mine)
+    git(gitDir, 'config', 'remote.mine.uploadpack', script)
+    chmodSync(join(gitDir, 'config'), 0o666)
+    return marker
+  }
+
+  test.skipIf(process.platform === 'win32')(
+    'a checkout owner whose config others can write is refused, and nothing in it runs (review round 2)',
+    async () => {
+      keep(7)
+      const marker = plantCommand(join(root, '.git'))
+      const r = await run(root, 'kept', 'push', '7', '--to', 'mine')
+      expect(existsSync(marker)).toBe(false)
+      expect(r.code).toBe(EXIT.error)
+      expect(r.err).toContain(join(root, '.git', 'config'))
+      expect(git(mine, 'for-each-ref')).toBe('')
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'a managed clone owner whose config others can write is refused, and nothing in it runs (review round 2)',
+    async () => {
+      const clone = join(scratch, 'clones', 'github.com', 'acme', 'api.git')
+      mkdirSync(join(clone, '..'), { recursive: true })
+      git(scratch, 'clone', '-q', '--bare', root, clone)
+      writeFileSync(join(clone, CLONE_MARKER), '')
+      keep(7, 'acme/api', clone)
+      const marker = plantCommand(clone)
+      const r = await run(root, 'kept', 'push', '7', '--to', 'mine')
+      expect(existsSync(marker)).toBe(false)
+      expect(r.code).toBe(EXIT.error)
+      expect(r.err).toContain(join(clone, 'config'))
+      expect(git(mine, 'for-each-ref')).toBe('')
+    },
+  )
 
   test.skipIf(process.platform === 'win32')(
     "the pushing repository's hooks do not run; a local repository's own receive hooks do",

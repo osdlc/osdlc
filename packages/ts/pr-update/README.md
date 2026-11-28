@@ -1046,6 +1046,10 @@ pr-update command removes it.
 - The tree is found through its record, with every check above, and its commit is read from the
   worktree list of the git directory that owns it. Nothing in the tree changes, and no git runs
   in it.
+- The git directory that owns it is checked first, as a run checks it: a managed clone as a
+  clone (see the clone directory, above), any other as a located checkout's git directory. One
+  that, or whose `config`, belongs to another user or others can write is not used, since whoever
+  can write that `config` chooses what git runs there. Nothing runs in it then.
 - A branch already there is refused, naming the commit it holds. `--force` replaces it with
   `--force-with-lease`, pinned to that commit, so a push that landed in between is not lost.
 - Hooks are off in the repository pushed from, as for every git pr-update runs. A local
@@ -1054,9 +1058,9 @@ pr-update command removes it.
   that repository's own.
 - `--json` prints `{ repo, number, worktree, sha, to, branch, replaced }`; `replaced` is the
   commit `--force` replaced, or null.
-- Exits 0 when pushed; 1 when the PR has no kept worktree (or its record is refused), the branch
-  is there without `--force`, or the push fails; 2 for a `<pr>`, `--branch` or `--to` it cannot
-  read.
+- Exits 0 when pushed; 1 when the PR has no kept worktree (or its record is refused), its owning
+  git directory is not used, the branch is there without `--force`, or the push fails; 2 for a
+  `<pr>`, `--branch` or `--to` it cannot read.
 
 ## Seeing a force-push before it happens
 
@@ -1295,7 +1299,7 @@ change it). With a single repository the failure is thrown.
 | Code | Meaning |
 |---|---|
 | `0` | Clean run (`survey` when every PR listing worked; `update` when no PR ended `conflict` or `failed`) |
-| `1` | Something went wrong that no other code names, for example: the run finished but a PR ended `conflict` or `failed`; `mirror prune` could not remove or read something; `kept push` found no kept worktree, met a branch already there without `--force`, or could not push; `config set` lost a race with another write; `PR_UPDATE_MACHINE_CONFIG` is not absolute; or an unexpected error |
+| `1` | Something went wrong that no other code names, for example: the run finished but a PR ended `conflict` or `failed`; `mirror prune` could not remove or read something; `kept push` found no kept worktree, would not use the git directory that owns it, met a branch already there without `--force`, or could not push; `config set` lost a race with another write; `PR_UPDATE_MACHINE_CONFIG` is not absolute; or an unexpected error |
 | `2` | The command cannot run as typed, for example: a malformed flag, `--repo` or `--pr`, a `kept push` `<pr>`, `--branch` or `--to` it cannot read, a `--branch` with no open PR, a `--pr owner/name#N` for a repository outside the run, one `owner/name` on two hosts, an unusable clone directory, an `update --apply` that must ask whether to clone and has no terminal, or a `GIT_DIR` or `GIT_WORK_TREE` that names another repository than the directory's own |
 | `14` | A config file is invalid or unreadable, or the machine file cannot take an answer about cloning (not valid YAML, or not a map), in `update --apply`, `mirror enable` or `mirror disable` |
 | `21` | `update` refused for want of trust in the project root. An untrusted `--repo` target is skipped instead |

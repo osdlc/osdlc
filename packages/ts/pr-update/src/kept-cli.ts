@@ -9,9 +9,11 @@
  * The tree is found through its record (`kept/<host>/<owner>/<name>/<number>.json` in the state
  * directory), with every check `findKept` makes, and its commit is read from the list of
  * worktrees of the git directory the record names. No git runs in the tree itself, and every git
- * runs with hooks off (`targetGitOptions`): the pushing repository's hooks never run. A local
- * repository pushed to runs its own receive hooks, as a server does: git starts its
- * `receive-pack` without the config pr-update passes.
+ * runs with hooks off (`targetGitOptions`): the pushing repository's hooks never run. Before
+ * any git runs in that git directory it is checked as a run checks it (`checkClone` for a
+ * managed clone, `gitDirProblem` otherwise), since whoever can write its `config` chooses what
+ * git runs there. A local repository pushed to runs its own receive hooks, as a server does: git
+ * starts its `receive-pack` without the config pr-update passes.
  */
 
 import {
@@ -25,16 +27,29 @@ import { isCommandFailed } from '@osdlc/command-seam'
 import { homeDir } from '@osdlc/tiered-dirs'
 import { Git } from '@osdlc/typed-git'
 import { existsSync } from 'node:fs'
-import { isAbsolute, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { z } from 'zod'
 
 import { aliasResolver, checkCheckout, gitRunner, loadLayers, type CliSeams } from './commands.ts'
 import { standaloneTrees } from './defaults.ts'
 import { isGone } from './folders.ts'
+import { gitDirProblem } from './locate.ts'
+import { CLONE_MARKER, checkClone } from './mirror.ts'
 import { realOr } from './real-path.ts'
 import { SurveyUsageError, hostKey, parsePrKey, surveyTargets } from './survey.ts'
 import { WORK_BRANCH, targetGitOptions } from './update/execute.ts'
 import { findKept, keptBranch, type KeptRefusal } from './update/kept.ts'
+
+/**
+ * Why the managed clone at `gitDir` (`<root>/<host>/<owner>/<name>.git`) may not be used, or
+ * null: {@link checkClone} from the clone directory it is in.
+ */
+function cloneProblem(gitDir: string): string | null {
+  const root = dirname(dirname(dirname(gitDir)))
+  const check = checkClone(root, gitDir)
+  if (check === 'clone') return null
+  return check === 'missing' ? `${gitDir} is gone` : check.foreign
+}
 
 const output = z.object({
   repo: z.string().describe('host/owner/name of the PR.'),
@@ -128,8 +143,11 @@ export function keptCommand(seams: CliSeams = {}): Group {
           'branch that is there already is refused, unless --force, which replaces it only ' +
           'while it holds the commit read just before (--force-with-lease). The tree is not ' +
           'changed. Hooks are off in the repository pushed from; a local repository pushed to ' +
-          'runs its own receive hooks, as a server does. Exits 1 when the PR has no kept ' +
-          'worktree, the branch is there without --force, or the push fails.',
+          'runs its own receive hooks, as a server does. The git directory that owns the tree ' +
+          'is checked first, as a run checks a clone or a located checkout, and not used when ' +
+          'it or its config belongs to another user or others can write it. Exits 1 when the ' +
+          'PR has no kept worktree, its owner is not used, the branch is there without --force, ' +
+          'or the push fails.',
         positionals: [
           {
             name: 'pr',
@@ -229,6 +247,18 @@ export function keptCommand(seams: CliSeams = {}): Group {
           }
           if (record.gitDir === undefined || isGone(record.gitDir)) {
             throw notKept(`the git directory of its kept worktree ${record.path} is gone`)
+          }
+          // Whoever can write the owner's config chooses what git runs there, so the owner is
+          // checked as a run checks it before any git runs in it: a managed clone as a clone, any
+          // other git directory as a located checkout's.
+          const ownerProblem = existsSync(join(record.gitDir, CLONE_MARKER))
+            ? cloneProblem(record.gitDir)
+            : gitDirProblem(record.gitDir)
+          if (ownerProblem !== null) {
+            throw new CommandError(
+              `${repo}#${number}: the git directory of its kept worktree is not used: ${ownerProblem}`,
+              { code: 'owner-refused' },
+            )
           }
           // Its owner's list, not git in the tree: a folder that is not a worktree can hold a
           // `.git` file that points anywhere.

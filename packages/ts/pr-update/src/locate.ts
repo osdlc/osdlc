@@ -228,8 +228,23 @@ function checkoutProblem(
   runner: CommandRunner | undefined,
   rule: StandaloneLocateOptions['rule'],
 ): string | null {
+  const check = ownerCheck(rule)
+  const tree = check(path)
+  if (tree !== null) return tree
+  let common: string | null
+  try {
+    common = new Git(path, targetGitOptions(runner)).gitCommonDir()
+  } catch (e) {
+    return `its git directory cannot be found: ${(e as Error).message.split('\n')[0]}`
+  }
+  if (common === null) return 'its git directory cannot be found'
+  return gitDirProblem(resolve(path, common), rule)
+}
+
+/** The check {@link checkoutProblem} makes of one path: {@link folderProblem}, or that it cannot be read. */
+function ownerCheck(rule: StandaloneLocateOptions['rule']): (p: string) => string | null {
   const owned = rule?.owned ?? ownedByMe
-  const check = (p: string): string | null => {
+  return (p) => {
     let st
     try {
       st = statSync(p)
@@ -240,16 +255,18 @@ function checkoutProblem(
     if (why === null) return null
     return why.fix === undefined ? why.problem : `${why.problem}; ${why.fix}`
   }
-  const tree = check(path)
-  if (tree !== null) return tree
-  let common: string | null
-  try {
-    common = new Git(path, targetGitOptions(runner)).gitCommonDir()
-  } catch (e) {
-    return `its git directory cannot be found: ${(e as Error).message.split('\n')[0]}`
-  }
-  if (common === null) return 'its git directory cannot be found'
-  const gitDir = resolve(path, common)
+}
+
+/**
+ * Why a checkout's git directory `gitDir` may not be used, or null: it, or its `config`, belongs
+ * to another user or can be written by others ({@link folderProblem}), or cannot be read.
+ * Whoever can write that `config` chooses what git runs there. Asked before any git runs in it.
+ */
+export function gitDirProblem(
+  gitDir: string,
+  rule?: StandaloneLocateOptions['rule'],
+): string | null {
+  const check = ownerCheck(rule)
   return check(gitDir) ?? check(join(gitDir, 'config'))
 }
 
