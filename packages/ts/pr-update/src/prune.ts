@@ -22,7 +22,8 @@
  *   with a kept worktree stays, since a kept tree is evidence, unless `discardKept`; then its kept
  *   trees go first, through the clone, whatever their records name, with their records (one whose
  *   tree is gone too), and the clone with them. A
- *   clone with a live run's worktree, or any worktree outside pr-update's folders, one whose lock
+ *   clone with a live run's worktree, or a worktree that `git worktree list` shows outside
+ *   pr-update's folders, one whose lock
  *   another run holds, and a folder without the clone marker are never removed, and nor is a kept
  *   tree whose `.git` file names another git directory. A machine file that cannot be read or is
  *   not valid ages no clone, unless `olderThanDays` or `allClones` is given. A clone is first

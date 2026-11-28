@@ -544,12 +544,10 @@ the folder rule, the clone's or checkout's `git worktree list`, and the
 clone's lock. What cannot be read stays; only a path that is not there counts
 as gone. So a worktree, a leftover or a clone stays whole when a folder on its
 way or in it cannot be read, or cannot have its entries removed; the message
-names `chmod -R u+rwX <path>`. A clone also stays when its lock, its last-used
-stamp or a record of one of its worktrees cannot be read, while its
-`worktrees/` folder holds a record its `git worktree list` does not show (one
-whose `gitdir` file is missing or empty, say), while a kept worktree's record
-names it though its list does not show the tree, and with any worktree of it
-that stays. When the machine file cannot be read, or is not valid (a YAML
+names `chmod -R u+rwX <path>`. A clone also stays when its lock or its
+last-used stamp cannot be read, while a kept worktree's record names it though
+its list does not show the tree (unless `--discard-kept`), and with any
+worktree of it that stays. When the machine file cannot be read, or is not valid (a YAML
 error, or a value the schema refuses), no clone is removed for its age, unless
 you pass `--older-than` (or `--all-clones`). A key the schema does not know
 leaves the age as read.

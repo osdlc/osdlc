@@ -1155,12 +1155,15 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     `chmod -R u+rwX <path>`. A link is never removed through;
   - `git worktree list` in the owner (the clone, or a dead run worktree's
     checkout) allows it. An owner that cannot be listed keeps its worktrees.
-    The clone's list must be the clone's own, and its records
-    (`worktrees/<id>/`) must be readable, since git leaves out one it cannot
+    The clone's list must be the clone's own. *Superseded by Build note "The
+    ownership contract": pr-update no longer reads a clone's `worktrees/<id>/`
+    records itself; what `git worktree list` shows is what counts, and review
+    round 2 confirmed that the check is not brought back.* Its records
+    (`worktrees/<id>/`) had to be readable, since git leaves out one it cannot
     read, with no error: a clone with an unreadable record looked unused and
     was removed. After the review cap, an extra round found that git also
-    leaves out a record whose `gitdir` file is missing or empty, so now every
-    record must be in the list. A kept tree still on disk whose record names
+    leaves out a record whose `gitdir` file is missing or empty, so every
+    record had to be in the list. A kept tree still on disk whose record names
     the clone keeps the clone too when the list does not show it (its record
     folder in the clone is gone, as `git worktree prune` leaves it when it ran
     while `kept/` was not mounted);

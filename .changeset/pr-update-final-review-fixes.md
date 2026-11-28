@@ -72,13 +72,12 @@ are made with `--no-track`, so a run writes no `branch.<name>.remote` or
 being pruned: the clone must list it, and the tree's own `.git` file must
 name that clone. A kept tree of a moved clone, or one another git directory
 owns, stays with its clone and the reason (run `git worktree repair` in the
-clone), in `--dry-run` too. A clone stays, under `failed`, while git cannot
-read its record of a worktree, or while its `worktrees/` folder holds a
-record with an empty or missing `gitdir` file, since `git worktree list`
-leaves such a worktree out with no error. A kept tree still on disk whose
+clone), in `--dry-run` too. A kept tree still on disk whose
 record names the clone keeps the clone too when the clone's list does not
 show it (its record folder in the clone was dropped by a `git worktree prune`
-that ran while the cache was not mounted, say).
+that ran while the cache was not mounted, say). `--discard-kept` removes such
+a tree as a plain folder, but never a live run's worktree, nor one whose
+`.git` names another git directory, nor one whose `.git` cannot be read.
 
 Pruning never takes a path it cannot read for one that is not there: an
 `lstat` that fails with anything but "no such file" (such as `EACCES`) is an
