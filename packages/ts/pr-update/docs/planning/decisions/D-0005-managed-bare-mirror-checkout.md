@@ -1344,8 +1344,8 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     until `--discard-kept`, and a clone that held a person's branch, stash or
     notes stayed (Build notes "Kept trees", "A person's work in a clone or a
     kept tree"). Built: `--retry-failed`, a moved PR and `--discard-kept`
-    remove a kept tree whatever is in it, and prune removes a clone with its
-    kept trees. `pr-update kept push <pr> --to <remote-or-path>` copies a kept
+    remove a kept tree whatever is in it, and `mirror prune --discard-kept`
+    removes a clone with its kept trees. `pr-update kept push <pr> --to <remote-or-path>` copies a kept
     tree's HEAD out as a branch, refusing a branch that is there unless
     `--force`, which pins the lease to the commit it read. Its commit is read
     from the owner's worktree list, never from git in the tree, and hooks are

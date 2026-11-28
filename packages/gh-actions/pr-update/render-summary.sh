@@ -61,7 +61,7 @@ if [ -n "$pr" ]; then
       else "Skipped: \(.detail)." end),
     (if .strategyFallback then "- The rebase stopped (\(.strategyFallback)); it was retried as a merge." else empty end),
     (if (.detail | test("resolved [0-9]+")) then
-       "- Automatic resolvers (rerere, lockfile rule, project resolvers) cleared \(.detail | capture("resolved (?<n>[0-9]+)") | .n) conflicted path(s)."
+       "- Automatic resolvers (lockfile rule, project resolvers; rerere in a managed clone) cleared \(.detail | capture("resolved (?<n>[0-9]+)") | .n) conflicted path(s)."
      else empty end),
     (.repaired[] | "- The \($agent) repair ran for a \(.kind): \(.note)"),
     (.conflicts[] | "- Unresolved: `\(.path)` - \(.why)")' <<<"$row"

@@ -311,7 +311,8 @@ kept.
     and commits, runs resolvers and verify, fetches, and takes clone locks.
 16. Fixed (`92d63727`). Rerere was described as the first resolver, but
     nothing turned it on. `update --apply` now runs its merges and rebases with
-    rerere on (`integrationEnv` in `update/execute.ts`).
+    rerere on, in a managed clone only (`integrationEnv` in
+    `update/execute.ts`).
 17. Fixed (`2d1482d8`). D-0005's trust bullet named fewer guarded settings
     than `trust.ts:151-159` checks, and its directory table showed a flat
     `attempts/` where the code nests by repository.
