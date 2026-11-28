@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.5",
+  "referenceVersion": "0.4.6",
   "sections": {
     "profile_parse": {
       "description": "parseProfile: a bare list or the long form, typed errors by entry index; the zod text of a shape error is not mirrored",

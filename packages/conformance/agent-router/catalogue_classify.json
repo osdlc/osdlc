@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.5",
+  "referenceVersion": "0.4.6",
   "sections": {
     "catalogue_classify": {
       "description": "classify and parameterCount: classifier rules, policy rules first",

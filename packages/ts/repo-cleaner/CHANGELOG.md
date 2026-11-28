@@ -1,5 +1,19 @@
 # @osdlc/repo-cleaner
 
+## 0.25.0
+
+### Minor Changes
+
+- 3f34046: Export `startMs`, which reads a process start time as `ps -o lstart` prints it, and `PS_LSTART_ENV`, the environment to run that `ps` under.
+- 8be1132: `archiveCandidates` pushes one archive of a repository's candidates, and `removeCandidate` takes its answer as `archived` in place of pushing an archive per candidate. A worktree that changes after an archive that had nothing to hold is no longer removed. `mayContribute` no longer counts a worktree whose directory is gone, so `run --archive` does not refuse one for a repository with no remote.
+
+### Patch Changes
+
+- 28799e2: `holders` works out a process's working folders once per process, not once per root it is checked against.
+- ac231ce: `defaultProcessProbe().holders(path)` now counts a process whose working directory was removed, which Linux's `lsof` lists as `<path> (deleted)`, as working in `path` while nothing is at `path` again.
+- Updated dependencies [0b3fbfa]
+  - @osdlc/cli-tool@0.22.0
+
 ## 0.24.1
 
 ### Patch Changes

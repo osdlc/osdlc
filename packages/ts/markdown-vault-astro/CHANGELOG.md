@@ -1,5 +1,12 @@
 # @osdlc/markdown-vault-astro
 
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [0b3fbfa]
+  - @osdlc/cli-tool@0.22.0
+
 ## 0.9.0
 
 ### Minor Changes
