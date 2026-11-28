@@ -1470,6 +1470,10 @@ export async function updateAll(
   // The run's worktree now: a new one after each PR kept in the one before.
   let root = opts.worktreeRoot
   let wt = git.at(root)
+  // Whether `root` is still the run's to remove: a kept tree is not, once its keep succeeded.
+  let ownsRoot = true
+  // Set when no run worktree is left to go on in: the rest of the PRs are not attempted.
+  let stopped = false
   try {
     for (const planned of targets) {
       // The host was signalled and is stopping: update no further PR.
@@ -1534,12 +1538,23 @@ export async function updateAll(
             result.keepError = errorLine(e)
             return
           }
-          // The kept tree is on its own branch now, so the scratch branch is free to go.
+          // The kept tree is the record's now, never the run's to clean up, and its scratch
+          // branch is free to go.
+          ownsRoot = false
           git.try.deleteBranch(scratchBranch(kept), { force: true })
           const next = nextRunRoot(kept)
-          git.worktreeAdd(next, { detach: true, startPoint: start })
+          try {
+            git.worktreeAdd(next, { detach: true, startPoint: start })
+          } catch (e) {
+            result.keepError =
+              `kept at ${kept}, but the next run worktree could not be added (${errorLine(e)}), ` +
+              "so the run's other PRs in this repository were not updated"
+            stopped = true
+            return
+          }
           root = next
           wt = git.at(root)
+          ownsRoot = true
         }
         if (opts.lock === undefined) keep()
         else if (!opts.lock.keeping(kept, keep)) {
@@ -1550,6 +1565,7 @@ export async function updateAll(
       // Reported as each PR finishes, not only at the end. A run over fifty
       // PRs takes minutes, and a caller showing progress needs each result.
       opts.onResult?.(result)
+      if (stopped) break
     }
   } finally {
     // Order matters. The scratch branch is checked out in the worktree, and
@@ -1561,8 +1577,11 @@ export async function updateAll(
       removeWorktree(git, root, records)
       git.try.deleteBranch(scratchBranch(root), { force: true })
     }
-    if (opts.lock === undefined) remove()
-    else opts.lock.removing(root, remove)
+    // When the run's last worktree was kept, nothing of the run's is left to remove.
+    if (ownsRoot) {
+      if (opts.lock === undefined) remove()
+      else opts.lock.removing(root, remove)
+    }
     // The cache lives for one run.
     cache?.release()
   }

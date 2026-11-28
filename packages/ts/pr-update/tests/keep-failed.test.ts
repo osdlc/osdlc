@@ -345,6 +345,62 @@ describe('update --keep-failed', () => {
     expect(out.results[0]!.keptWorktree).toBe(kept())
     expect(out.results[1]!.keptWorktree).toBeUndefined()
   })
+
+  test('when the next run worktree cannot be added after a keep, the kept tree and its record stay, and the run stops (review round 2)', async () => {
+    fx.worker.git.checkout('main', { branch: 'second' })
+    fx.worker.commit('second work', { 'second.txt': 's\n' })
+    fx.worker.git.push('origin', 'second')
+    fx.worker.git.checkout('main')
+    const real2 = spawnRunner('git')
+    const out = await runUpdate(
+      { ...ARGS, keepFailed: true },
+      {
+        projectRoot: fx.worker.dir,
+        dryRun: false,
+        git,
+        gh: {
+          run: () => {
+            fx.worker.git.fetch('origin')
+            const prs = ['topic', 'second'].map((head, i) => ({
+              number: i + 1,
+              state: 'OPEN',
+              title: head,
+              url: `https://github.com/o/r/pull/${i + 1}`,
+              baseRefName: 'main',
+              headRefName: head,
+              headRefOid: fx.worker.git.resolveRef(`origin/${head}`),
+            }))
+            return { exitCode: 0, stdout: JSON.stringify(prs), stderr: '' }
+          },
+        },
+        cfg: {
+          ...prUpdateConfigSchema.parse({}),
+          verify: 'check',
+          max_failed_attempts: 0,
+        } as PrUpdateConfig,
+        ports: {
+          locate: () => fx.worker.dir,
+          // The first PR's verify fails, and takes away the ref the next worktree starts from.
+          runVerb: () => {
+            real2.run(['update-ref', '-d', 'refs/remotes/origin/main'], { cwd: fx.worker.dir })
+            return { exitCode: 1, stdout: '', stderr: 'no\n' }
+          },
+          resolveVerifyVerbs: async () => ['check'],
+          targetHome: homeUnder(home),
+        },
+      },
+    )
+    expect(out.results.map((r) => r.number)).toEqual([1])
+    const [first] = out.results
+    expect(first!.status).toBe('failed')
+    expect(first!.keptWorktree).toBe(kept())
+    expect(first!.keepError).toContain('the next run worktree could not be added')
+    expect(existsSync(kept())).toBe(true)
+    expect(existsSync(record())).toBe(true)
+    expect(fx.worker.git.resolveRef('pr-update/failed-o-r-1')).not.toBeNull()
+    expect(worktrees()).toContain(realpathSync.native(kept()))
+    expect(renderUpdateText(out)).toContain('the next run worktree could not be added')
+  })
 })
 
 describe('a forged kept record', () => {

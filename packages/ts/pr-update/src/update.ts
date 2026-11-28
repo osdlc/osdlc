@@ -390,7 +390,7 @@ export const result = z.object({
     .string()
     .optional()
     .describe(
-      "Present when `keepFailed` could not keep the worktree (the PR's old kept tree could not be removed, or another run held the clone's lock, say): why.",
+      "Present when `keepFailed` could not keep the worktree (the PR's old kept tree could not be removed, or another run held the clone's lock, say): why. When the tree was kept but the next run worktree could not be added, it says so, and the run's other PRs in that repository were not updated.",
     ),
   recordError: z
     .string()
