@@ -31,8 +31,8 @@ as the example's do. The plugin's own code never does.
   "name": "workstation-cleaner-scratch",
   "type": "module",
   "exports": "./dist/index.js",
-  "peerDependencies": { "@osdlc/workstation-cleaner": "^0.5.0" },
-  "devDependencies": { "@osdlc/workstation-cleaner": "^0.5.0" }
+  "peerDependencies": { "@osdlc/workstation-cleaner": "^0.6.0" },
+  "devDependencies": { "@osdlc/workstation-cleaner": "^0.6.0" }
 }
 ```
 
