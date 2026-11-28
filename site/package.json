@@ -18,7 +18,7 @@
   "dependencies": {
     "@astrojs/starlight": "0.42.5",
     "@astrojs/vue": "7.0.3",
-    "astro": "7.3.5",
+    "astro": "7.4.7",
     "starlight-blog": "0.30.0",
     "vue": "3.5.43"
   },
