@@ -352,9 +352,10 @@ kept.
     also named (a kept tree whose folder is missing, a clone's branch, stash
     or notes) are moot under the ownership contract: they no longer keep a
     clone.
-25. The changesets list "Fixed:" entries for behaviour that is new in this
+25. Fixed (`5bc57e2dc`). The changesets listed "Fixed:" entries for behaviour that is new in this
     release (the clone cache and `mirror prune`), so they read as fixes to
-    released code.
+    released code. They are now plain statements; "Fixed:" is kept for
+    changes to released behaviour.
 
 ### Found in S13
 

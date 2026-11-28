@@ -206,7 +206,8 @@ CI on the PR checks what was pushed.
 
 ## Conflicts
 
-1. pr-update tries git `rerere`, the lockfile rule and project `resolvers`.
+1. pr-update tries the lockfile rule and project `resolvers`. (It uses git's
+   `rerere` only in a managed clone, and the action's checkout is not one.)
 2. If a conflict is left and repair is on, `--repair-agent` runs the agent once
    in the merge worktree, with `repair-timeout-seconds` (written to a config
    file named by `PR_UPDATE_CONFIG`, which replaces any `pr-update.yaml` in the
@@ -221,7 +222,7 @@ CI on the PR checks what was pushed.
    agent's note, a link to the merge commit and the resolution as `git show
    --remerge-diff` output in a collapsed block (cut at 300 lines; `git show
    --stat` where remerge-diff is unavailable), ending `<!-- pr-update: repaired
-   head=<merge sha> -->`. Conflicts cleared by rerere, the lockfile rule,
+   head=<merge sha> -->`. Conflicts cleared by the lockfile rule,
    resolvers or generators, and clean updates, stay silent.
 5. When the PR later ends `updated` or `up-to-date`, the label is removed.
 
