@@ -22,6 +22,7 @@ import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { standaloneLocate, type StandaloneLocateOptions } from '../src/locate.ts'
 import { standalonePorts } from '../src/defaults.ts'
+import { literal } from './support.ts'
 
 let root: string
 let home: string
@@ -225,7 +226,7 @@ describe('standaloneLocate', () => {
       else {
         expect(found).toBeNull()
         expect(notes[0]).toMatch(
-          new RegExp(`^ghe\\.example/acme/api: ${path} is not used: its origin `),
+          new RegExp(`^ghe\\.example/acme/api: ${literal(path)} is not used: its origin `),
         )
       }
     })
