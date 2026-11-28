@@ -230,18 +230,38 @@ function standaloneTargetHome(
 ): TargetHome {
   const paths = prUpdatePaths(osdlcDirs(env === undefined ? {} : { env }))
   const own = (dir: string): string => join(dir, target.host, target.owner, target.name)
-  const records =
-    cfg?.attempts?.store !== 'git-ref'
-      ? { attempts: fileAttemptStore(own(paths.attempts)) }
-      : target.source === 'root'
-        ? {}
-        : refRecords(cfg, target.remote, target.path, refEnv(target.path, git))
   return {
-    worktrees: own(paths.worktrees),
-    kept: own(paths.kept),
-    worktreesRoot: paths.worktrees,
-    ...records,
+    ...standaloneTrees(target, env),
+    ...standaloneRecords(cfg, target, git, own(paths.attempts)),
   }
+}
+
+/**
+ * Where the standalone run keeps a repository's run worktrees, kept ones among them, and the
+ * records of its kept trees: `worktrees/<host>/<owner>/<name>/` in pr-update's cache directory
+ * and `kept/<host>/<owner>/<name>/` in its state directory. `kept push` finds a kept tree here.
+ */
+export function standaloneTrees(
+  target: Pick<TargetCheckout, 'host' | 'owner' | 'name'>,
+  env: Record<string, string | undefined> | undefined,
+): Pick<TargetHome, 'worktrees' | 'kept' | 'worktreesRoot'> {
+  const paths = prUpdatePaths(osdlcDirs(env === undefined ? {} : { env }))
+  const own = (dir: string): string => join(dir, target.host, target.owner, target.name)
+  return { worktrees: own(paths.worktrees), kept: own(paths.kept), worktreesRoot: paths.worktrees }
+}
+
+/** The standalone run's attempt record and lease of a repository (see `standaloneTargetHome`). */
+function standaloneRecords(
+  cfg: (PrUpdateConfig & Partial<PrUpdateStandaloneConfig>) | undefined,
+  target: TargetCheckout,
+  git: CommandRunner | undefined,
+  attempts: string,
+): Pick<TargetHome, 'attempts' | 'lease'> {
+  return cfg?.attempts?.store !== 'git-ref'
+    ? { attempts: fileAttemptStore(attempts) }
+    : target.source === 'root'
+      ? {}
+      : refRecords(cfg, target.remote, target.path, refEnv(target.path, git))
 }
 
 /**

@@ -498,6 +498,21 @@ describe('a located target kept worktree', () => {
     expect(existsSync(join(one, 'main.txt'))).toBe(true)
     expect(readFileSync(join(one, '.pr-update-verify.log'), 'utf8')).toContain('FAIL widget')
     expect(readdirSync(keptDir()).sort()).toEqual(['1.json', '2.json'])
+
+    // `kept push` finds each through its record.
+    const out2 = join(scratch, 'evidence.git')
+    sh(scratch, 'init', '-q', '--bare', out2)
+    for (const [n, kept] of [
+      [1, one],
+      [2, two],
+    ] as const) {
+      const ctx = captureContext({ cwd: scratch, env })
+      const argv = ['kept', 'push', `acme/api#${n}`, '--to', out2]
+      expect(await main(argv, ctx, { which: allToolsInstalled }), ctx.io.err).toBe(EXIT.ok)
+      expect(sh(out2, 'rev-parse', `pr-update/failed-acme-api-${n}`)).toBe(
+        sh(kept, 'rev-parse', 'HEAD'),
+      )
+    }
   })
 
   test('a PR with a checked-out submodule is kept, and discarded (keep in place)', async () => {

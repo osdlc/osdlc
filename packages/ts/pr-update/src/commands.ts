@@ -100,7 +100,7 @@ export interface CliSeams {
 const SCHEMA_VERSION = 1
 
 /** The injected git runner, else one that runs git only from an absolute PATH entry. Git and gh run in the project, so a bare name could be planted there. */
-function gitRunner(seams: CliSeams): CommandRunner {
+export function gitRunner(seams: CliSeams): CommandRunner {
   return seams.git ?? spawnRunner('git', { absolutePathOnly: true })
 }
 
@@ -201,7 +201,7 @@ function branchOf(
 }
 
 /** The config layers, with an invalid or unreadable file as the command's failure: exit 14. */
-function loadLayers(ctx: CliContext, seams: CliSeams): ReturnType<typeof loadConfigLayers> {
+export function loadLayers(ctx: CliContext, seams: CliSeams): ReturnType<typeof loadConfigLayers> {
   try {
     return loadConfigLayers(seams.configFile ?? PR_UPDATE_CONFIG_FILE, ctx.cwd, {
       env: ctx.env,
@@ -220,7 +220,7 @@ function loadLayers(ctx: CliContext, seams: CliSeams): ReturnType<typeof loadCon
  * checkout search alike, so each alias is asked once. When ssh cannot answer
  * for an alias, a note says so, and the alias is read as written.
  */
-function aliasResolver(seams: CliSeams, notice: (line: string) => void): SshAliasResolver {
+export function aliasResolver(seams: CliSeams, notice: (line: string) => void): SshAliasResolver {
   const ssh = seams.ssh ?? spawnRunner('ssh', { absolutePathOnly: true })
   return sshAliasResolver({
     ...ssh,
@@ -432,7 +432,7 @@ function checkStart(
  * repository than the checkout it runs in (`repositoryVarsRefusal`). It runs first, before git is
  * asked anything. The variables are read from `process.env`, which the git runner inherits.
  */
-function checkCheckout(ctx: CliContext, seams: CliSeams): void {
+export function checkCheckout(ctx: CliContext, seams: CliSeams): void {
   const refusal = repositoryVarsRefusal(ctx.cwd, gitRunner(seams))
   if (refusal !== null) throw new UsageError(refusal)
 }

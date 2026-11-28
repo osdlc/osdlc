@@ -953,72 +953,91 @@ Set `attempts.store: file` there. The file store is the default, so nothing chan
 A run that ends `conflict` or `failed` normally throws its worktree away, and a person who picks the
 PR up has to fetch, rebase, re-run the resolvers and re-run verify to get back where it stopped.
 `update --apply --keep-failed` (or `pr_update.keep_failed: true`; `--no-keep-failed` overrides it)
-moves that PR's worktree to `.pr-update/failed/<owner>-<name>-<number>/`, on a branch named
-`pr-update/failed-<owner>-<name>-<number>`, and the run goes on in a fresh one. A `--repo`
-target's tree goes to `kept/<host>/<owner>/<name>/<number>/` in pr-update's state directory
-instead (see `--repo`), on the same branch name. The result carries
-`keptWorktree: <path>` and the text output says `kept: <path>`.
+keeps that PR's worktree as evidence, and the run goes on in a new one. The tree stays where it
+ran, in `worktrees/<host>/<owner>/<name>/` in pr-update's cache directory, the project root's as
+any other. It is put on a branch named `pr-update/failed-<owner>-<name>-<number>`, and a record,
+`kept/<host>/<owner>/<name>/<number>.json` in pr-update's state directory, names it. The result
+carries `keptWorktree: <path>` and the text output says `kept: <path>`.
 
 ```sh
 pr-update update --apply --keep-failed
-git worktree list                    # the kept tree is ordinary worktree state
-cd .pr-update/failed/acme-widgets-12  # finish the fix, then push it yourself
+pr-update kept push 12 --to ~/src/widgets   # copy the evidence out as a branch
+cd ~/src/widgets && git switch pr-update/failed-acme-widgets-12
 ```
 
-- The tree is the state the update ended in. A failed verify leaves the built merge or rebase result.
-  A conflict is aborted, which leaves the PR's own head.
+A kept tree is pr-update's, as everything it makes is, so treat it as read-only evidence and do
+your work on a copy. `kept push` (below) makes that copy.
+
+- The tree is the state the update ended in. A failed verify leaves the built merge or rebase
+  result. A conflict is aborted, which leaves the PR's own head.
 - A failed verify's log (the verb, its exit status and its output) is written to
   `.pr-update-verify.log` in the tree, and the repository's `info/exclude` lists it, so it is never
   committed by accident.
-- Only `--apply` runs keep anything. A failure that says nothing about the PR (see
-  `unrecorded`) is not kept, and neither is a PR whose worktree git cannot move (one holding
-  submodules); the result's `keepError` says why.
-- When the kept directory is on another filesystem than the run worktree, git cannot move it.
-  The kept tree is then made fresh with `git worktree add` at the same commit, with the verify
-  log written into it. Uncommitted changes and untracked files in the run worktree, such as
-  build output, are not carried over. The run tells the two cases apart by renaming an empty
-  probe folder into the kept directory first.
+- Only `--apply` runs keep anything. A failure that says nothing about the PR (see `unrecorded`)
+  is not kept. A tree holding submodules is kept like any other. When a keep fails, the result's
+  `keepError` says why.
+- A later run lists a PR with a kept worktree under `skipped`, reason
+  `failed worktree kept at <path>`, while its head and base sha are unchanged. The tree goes,
+  whatever is in it, when the PR's head or base moves (the PR is then attempted again), when
+  `--retry-failed` names the PR, or with `update --apply --discard-kept`, which removes every kept
+  worktree of the surveyed repositories before the run. The output's `discarded` lists what was
+  removed. `mirror prune` removes a clone's kept trees with the clone only under `--discard-kept`.
+- The tree is in the cache directory, so a tool that empties caches removes kept trees too.
+  Push one out with `kept push` before you clean the cache, if you want it.
 - A kept tree's record names the git directory that owns it. A target can be served from
   different checkouts on different runs, so a run served from another one leaves the tree alone
   and lists the PR under `skipped`, reason `kept elsewhere: <path> is a worktree of <git dir>`,
   while the PR is unchanged or under `--retry-failed`. A PR that has moved has its old tree
   removed through the git directory that owns it, as does `--discard-kept`.
-- A later run lists a PR with a kept worktree under `skipped`, reason
-  `failed worktree kept at <path>`, while its head and base sha are unchanged. A PR that has moved
-  is attempted again and its old tree is discarded, as is a PR named by `--retry-failed`. A tree
-  someone has changed or committed to, or one git cannot read, is not discarded either way: the
-  PR is skipped with `kept worktree <path> has local changes; push them or pass --discard-kept`,
-  and only `--discard-kept` removes it. A record is used only when its path names the kept
-  tree's own folder, and names starting with `.` in these folders are skipped.
-- A restack child (`--restack`) is held back the same way when a person changed its kept tree,
-  its owner is gone, or another checkout owns it. Whether its tree is current is not judged,
-  since its base is its parent's new head: an untouched tree is left, and a new keep replaces it.
-- `.pr-update/failed/` is inside the working tree, so a repository's own files can put a record
-  there. A record is refused when its branch is not `pr-update/failed-<owner>-<name>-<number>`,
-  its path is not that PR's kept folder, it names a git directory (a checkout's own records never
-  do), its folder is a symbolic link, or `git worktree list` in the checkout does not show a
-  worktree at its folder. A refused record and its folder are left as they are, the output's
-  `keptRefused` lists the record with why, the text says `kept record <file> left alone: <why>`,
-  and the PR is updated as if nothing were kept.
-- A kept tree that `git worktree list` shows at its folder, but on another branch or a detached
-  HEAD, is a person's: they switched it. It counts as changed, so its PR is skipped and the tree
-  stays, and `--discard-kept` leaves it too; the output's `keptLeft` names it and its branch, and
-  the text says `kept worktree <path> left: <why>`. So is one you locked with
-  `git worktree lock`: nothing of it is removed, its folder included, until you unlock it,
-  and its PR is skipped with `kept worktree <path> is locked …; run
-  \`git worktree unlock <path>\` to let it go`.
-- In a managed clone, a stash counts as a change to a kept tree, since it can only have come
-  from someone working in one of the clone's trees. In your own checkout the stash is yours and
-  shared by all your worktrees, so it does not count there.
-- A keep makes its branch, `pr-update/failed-<owner>-<name>-<number>`, and never repoints one
-  that is already there and is not the old kept tree's: that branch may hold your commits. The
-  PR's `keepError` says so, and names `git branch -m` and `git branch -D`.
-- `update --apply --discard-kept` removes every kept worktree of the surveyed repositories, then
-  runs as usual. The output's `discarded` lists what was removed. A kept tree in pr-update's
-  state directory is removed only when the folders from `kept/` down to it pass the folder rule
+- A restack child (`--restack`) is held back while another checkout owns its kept tree. Whether
+  its tree is current is not judged, since its base is its parent's new head: the tree is left,
+  and a new keep replaces it.
+- The record is what tells a kept tree from a dead run's worktree: no prune removes a run
+  worktree a valid record names. A record is refused when its branch is not
+  `pr-update/failed-<owner>-<name>-<number>`, its path is not a folder directly in the
+  repository's `worktrees/` folder or is a symbolic link, or `git worktree list` in the git
+  directory it names does not show a worktree there, or shows one on a run's scratch branch. A
+  refused record and its folder are left as they are, the output's `keptRefused` lists the record
+  with why, the text says `kept record <file> left alone: <why>`, and the PR is updated as if
+  nothing were kept. A worktree on a kept branch with no record (a keep that stopped part-way) is
+  a dead run's worktree, and `mirror prune` removes it with its branch.
+- A kept tree git will not remove (one locked with `git worktree lock`) stays, and is listed in
+  `keptLeft`; the run exits 1.
+- A kept tree is removed only when the folders from `worktrees/` down to it pass the folder rule
   (see the clone directory, above); otherwise it stays, and `keptRefused` says why, as does the
-  skip of a PR that moved. The same check holds whenever a kept tree is removed, including when
-  a new keep replaces the old tree of the same PR.
+  skip of a PR that moved. The same check holds whenever a kept tree is removed, including when a
+  new keep replaces the old tree of the same PR.
+- An old `<root>/.pr-update/` folder, from 0.17 or earlier, is no longer read; see
+  [Upgrading from 0.17 or earlier](#upgrading-from-017-or-earlier).
+
+### `kept push`
+
+```sh
+pr-update kept push <pr> --to <remote-or-path> [--branch <name>] [--force] [--repo <owner/name>]
+```
+
+Pushes the HEAD commit of `<pr>`'s kept worktree to `--to`, as the branch
+`pr-update/failed-<owner>-<name>-<number>` or `--branch`. The pushed branch is yours: no
+pr-update command removes it.
+
+- `<pr>` is a PR number of the project root's repository (its `origin` remote), or of `--repo`
+  (`owner/name` or `host/owner/name`, as `update --repo` takes it), or `owner/name#<number>`.
+- `--to` is a remote of the repository (`origin`, say), a URL, or a local repository's path. A
+  relative path is read from the working directory.
+- The tree is found through its record, with every check above, and its commit is read from the
+  worktree list of the git directory that owns it. Nothing in the tree changes, and no git runs
+  in it.
+- A branch already there is refused, naming the commit it holds. `--force` replaces it with
+  `--force-with-lease`, pinned to that commit, so a push that landed in between is not lost.
+- Hooks are off in the repository pushed from, as for every git pr-update runs. A local
+  repository pushed to runs its own receive hooks (`pre-receive`, `update`, `post-receive`), as a
+  server does: git starts its `receive-pack` without the config pr-update passes, and they are
+  that repository's own.
+- `--json` prints `{ repo, number, worktree, sha, to, branch, replaced }`; `replaced` is the
+  commit `--force` replaced, or null.
+- Exits 0 when pushed; 1 when the PR has no kept worktree (or its record is refused), the branch
+  is there without `--force`, or the push fails; 2 for a `<pr>`, `--branch` or `--to` it cannot
+  read.
 
 ## Seeing a force-push before it happens
 

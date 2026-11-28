@@ -389,7 +389,9 @@ export const result = z.object({
   keepError: z
     .string()
     .optional()
-    .describe('Present when `keepFailed` could not keep the worktree (one holding submodules).'),
+    .describe(
+      "Present when `keepFailed` could not keep the worktree (the PR's old kept tree could not be removed, or another run held the clone's lock, say): why.",
+    ),
   recordError: z
     .string()
     .optional()
