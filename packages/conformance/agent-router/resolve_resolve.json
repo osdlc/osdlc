@@ -1,7 +1,7 @@
 {
   "family": "agent-router",
   "reference": "ts",
-  "referenceVersion": "0.4.5",
+  "referenceVersion": "0.4.6",
   "sections": {
     "resolve_resolve": {
       "description": "resolveRef: tier, pin, name and default models; effort moved or unchecked; the check riding along; every error kind",

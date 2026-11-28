@@ -1,5 +1,12 @@
 # @osdlc/code-host
 
+## 0.8.7
+
+### Patch Changes
+
+- Updated dependencies [0b3fbfa]
+  - @osdlc/config-layers@0.12.0
+
 ## 0.8.6
 
 ### Patch Changes
