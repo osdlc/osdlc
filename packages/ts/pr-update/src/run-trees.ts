@@ -5,9 +5,11 @@
  */
 
 import { lstatSync, readFileSync, realpathSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 
 import { pidAlive, processStartedAt } from '@osdlc/file-lock'
+
+import { realOr } from './real-path.ts'
 
 /** A run worktree's folder name: `<pid>.<time>`, as `update` names it, the time in ms. */
 export const RUN_NAME = /^(\d+)\.(\d+)$/
@@ -63,6 +65,34 @@ export function isRunning(run: RegExpExecArray, alive: RunAlive): boolean {
   return alive(Number(run[1]), Number(run[2]))
 }
 
+/** The run worktrees this process's runs are working in now, by real path. */
+const held = new Set<string>()
+
+/** Note that a run of this process works in the run worktree at `path` now. */
+export function holdRunTree(path: string): void {
+  held.add(realOr(path))
+}
+
+/** Note that no run of this process works in the run worktree at `path` any more. */
+export function letGoRunTree(path: string): void {
+  held.delete(realOr(path))
+  held.delete(path)
+}
+
+/**
+ * Whether the run worktree at `path` is one a run is working in now. A tree named for another
+ * process is judged by its name ({@link isRunning} by `alive`). One named for this process is
+ * judged by what this process holds ({@link holdRunTree}): a host that runs `update` more than
+ * once in one process (a library host) would otherwise read every tree an earlier run of it kept
+ * as a live run's.
+ */
+export function runTreeLive(path: string, alive: RunAlive = runAlive): boolean {
+  const run = RUN_NAME.exec(basename(path))
+  if (run === null) return false
+  if (Number(run[1]) === process.pid) return held.has(realOr(path)) || held.has(path)
+  return isRunning(run, alive)
+}
+
 export interface Owner {
   /** The owning git directory (the clone, or a checkout's `.git`). */
   common: string
@@ -93,4 +123,66 @@ export function worktreeOwner(tree: string): Owner | null {
     if (code === 'ENOENT' || code === 'ENOTDIR') return null
     throw e
   }
+}
+
+/**
+ * The git directory the `.git` at `tree` names, or null when there is none. A `.git` folder names
+ * itself: the tree is a repository's own checkout. A `.git` file names a record
+ * `<common>/worktrees/<id>`, and the common directory is read from the record's `commondir`, or,
+ * when the record is gone, taken as the folder two above it.
+ *
+ * @throws when `.git` or the record cannot be read for any reason but that it is not there.
+ */
+export function namedGitDir(tree: string): string | null {
+  const dotGit = join(tree, '.git')
+  let text: string
+  try {
+    if (lstatSync(dotGit).isDirectory()) return dotGit
+    text = readFileSync(dotGit, 'utf8')
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null
+    throw e
+  }
+  const match = /^gitdir:\s*(.+)$/m.exec(text)
+  if (match === null) throw new Error(`${dotGit} does not name a git directory`)
+  const record = resolve(tree, match[1]!.trim())
+  try {
+    return resolve(record, readFileSync(join(record, 'commondir'), 'utf8').trim())
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return dirname(dirname(record))
+    throw e
+  }
+}
+
+/** Why a folder may not be removed as a plain folder: see {@link rawRemovalProblem}. */
+export interface RawRemovalProblem {
+  /** `live`: a live run's worktree; `foreign`: a worktree of another git directory. */
+  kind: 'live' | 'foreign'
+  why: string
+}
+
+/**
+ * Why the folder at `path`, which a kept record names, may not be removed as a plain folder (not
+ * through git), or null. `gitDir` is the git directory the removal is for: the clone being pruned,
+ * or the record's own git directory when that is gone. Refused are a live run's worktree, by
+ * `live` (default {@link runTreeLive}), and a tree whose `.git` names another git directory, which
+ * owns it. A record is JSON on disk, so its path alone never makes a folder removable.
+ *
+ * @throws when the tree's `.git` cannot be read: a folder that cannot be read stays.
+ */
+export function rawRemovalProblem(
+  path: string,
+  gitDir: string,
+  live: (path: string) => boolean = runTreeLive,
+): RawRemovalProblem | null {
+  if (live(path)) {
+    return { kind: 'live', why: `${path} is the worktree of a run that is still going` }
+  }
+  const named = namedGitDir(path)
+  if (named !== null && realOr(named) !== realOr(gitDir)) {
+    return { kind: 'foreign', why: `${path} is a worktree of ${realOr(named)}` }
+  }
+  return null
 }

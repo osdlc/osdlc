@@ -619,6 +619,72 @@ describe('managed clones', () => {
     expect(listed(clone)).toEqual([live])
   })
 
+  /** Write a record for `repo#number` naming `path`, as if its tree were a kept tree of `gitDir`. */
+  function forgeRecord(repo: string, number: number, path: string, gitDir: string): string {
+    const dir = join(paths.kept, 'github.com', ...repo.split('/'))
+    mkdirSync(dir, { recursive: true })
+    const record = {
+      repo,
+      number,
+      head: 'topic',
+      base: 'main',
+      headOid: null,
+      baseOid: null,
+      path,
+      branch: `pr-update/failed-${repo.replace('/', '-')}-${number}`,
+      gitDir: realpathSync.native(gitDir),
+    }
+    writeFileSync(join(dir, `${number}.json`), JSON.stringify(record))
+    return join(dir, `${number}.json`)
+  }
+
+  test("a record in clone A naming checkout B's live run worktree does not let --all-clones --discard-kept remove it (review round 2)", () => {
+    const clone = makeClone('acme/api', 400)
+    const checkout = join(scratch, 'b')
+    git(scratch, 'clone', '-q', source, checkout)
+    const theirs = runWorktree(checkout, 'acme/api', liveRun())
+    writeFileSync(join(theirs, 'wip.txt'), 'wip\n')
+    forgeRecord('acme/api', 7, theirs, clone)
+
+    for (const dryRun of [true, false]) {
+      const r = prune({ allClones: true, discardKept: true, dryRun })
+      expect(r.removed).toEqual([])
+      expect(r.skipped.map((e) => [e.kind, e.path, e.skip])).toEqual([['clone', clone, 'in-use']])
+    }
+    expect(existsSync(join(theirs, 'wip.txt'))).toBe(true)
+    expect(listed(checkout)).toEqual([theirs])
+  })
+
+  test("a record in clone A naming a dead run's folder whose .git names checkout B leaves it to B (review round 2)", () => {
+    const clone = makeClone('acme/api', 400)
+    const checkout = join(scratch, 'b')
+    git(scratch, 'clone', '-q', source, checkout)
+    const theirs = runWorktree(checkout, 'acme/api', DEAD)
+    forgeRecord('acme/api', 7, theirs, clone)
+
+    // Without --discard-kept the walk removes B's dead run worktree through B, as its own.
+    const r = prune({ allClones: true, discardKept: true, dryRun: true })
+    expect(r.skipped.map((e) => [e.kind, e.path, e.skip])).toEqual([['clone', clone, 'kept']])
+    expect(r.skipped[0]!.reason).toContain(
+      `is a worktree of ${realpathSync.native(join(checkout, '.git'))}`,
+    )
+  })
+
+  test("a record naming a live run's detached worktree in the clone does not make it a kept tree (review round 2)", () => {
+    const clone = makeClone('acme/api', 400)
+    const path = join(paths.worktrees, 'github.com', 'acme', 'api', liveRun())
+    mkdirSync(dirname(path), { recursive: true })
+    git(clone, 'worktree', 'add', '-q', '--detach', path, 'origin/main')
+    forgeRecord('acme/api', 7, path, clone)
+
+    for (const dryRun of [true, false]) {
+      const r = prune({ allClones: true, discardKept: true, dryRun })
+      expect(r.removed).toEqual([])
+      expect(r.skipped.map((e) => [e.kind, e.path, e.skip])).toEqual([['clone', clone, 'in-use']])
+    }
+    expect(listed(clone)).toEqual([path])
+  })
+
   test('a record naming a dead run worktree on its scratch branch does not keep it: a plain prune removes it (keep in place)', () => {
     const clone = makeClone('acme/api', 0)
     const dead = runWorktree(clone, 'acme/api')

@@ -92,9 +92,11 @@ import { realOr } from './real-path.ts'
 import {
   RUN_NAME,
   isRunning,
+  rawRemovalProblem,
   runAlive,
   worktreeOwner,
   type Owner,
+  type RawRemovalProblem,
   type RunAlive,
 } from './run-trees.ts'
 import { WORK_BRANCH, scratchBranch, targetGitOptions } from './update/execute.ts'
@@ -998,18 +1000,21 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
     const dead: (Measured & { branch: string | null })[] = []
     for (const w of worktrees) {
       if (w.bare) continue
+      const run = RUN_NAME.exec(basename(w.path))
+      const runTree = ownedUnder([at.worktrees]).owns(w.path) && run !== null
+      // A live run's worktree is in use, whatever a record says of it: a record is JSON on disk.
+      // (A tree the live run kept is in use too; it is a kept tree once that run is over.)
+      if (runTree && isRunning(run, alive)) {
+        inUse.push(w.path)
+        continue
+      }
       // A run worktree a record names is a kept tree, whatever its run, unless it is on a scratch
       // branch (see `onScratch`).
       if (recordsOf.has(realOr(w.path)) && !isScratch(w.branch)) {
         kept.push(w.path)
         continue
       }
-      const run = RUN_NAME.exec(basename(w.path))
-      if (ownedUnder([at.worktrees]).owns(w.path) && run !== null) {
-        if (isRunning(run, alive)) {
-          inUse.push(w.path)
-          continue
-        }
+      if (runTree) {
         // The walk above removed it, or its folder was gone already. One that is still there
         // stays, but for a dry run, where the walk removed nothing.
         const tree = measure(w.path)
@@ -1067,6 +1072,30 @@ export function pruneMirror(opts: PruneOptions): PruneReport {
       const left = mayRemove(measure(k), at.worktrees, ownFolders(at.worktrees))
       if (left !== null) {
         leave(left)
+        return
+      }
+    }
+    // One the clone does not list is removed as a plain folder, so its record alone must not make
+    // it removable: not a live run's worktree, nor one whose `.git` names another git directory.
+    // One whose `.git` cannot be read stays.
+    for (const k of unlisted) {
+      if (lstatOrNull(k) === null) continue
+      let problem: RawRemovalProblem | null
+      try {
+        problem = rawRemovalProblem(k, path, (p) => {
+          const r = RUN_NAME.exec(basename(p))
+          return r !== null && isRunning(r, alive)
+        })
+      } catch (e) {
+        fail({ kind: 'kept', path: k, repo, bytes: sizeOf(k) }, e)
+        leave({ skip: 'kept', reason: `its kept worktree ${k} stays` })
+        return
+      }
+      if (problem !== null) {
+        leave({
+          skip: problem.kind === 'live' ? 'in-use' : 'kept',
+          reason: `a record names ${k} as its kept worktree, but ${problem.why}; it stays, and so does the clone`,
+        })
         return
       }
     }

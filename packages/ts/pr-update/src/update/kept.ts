@@ -60,6 +60,7 @@ import {
   type OwnedCheck,
 } from '../folders.ts'
 import { realOr } from '../real-path.ts'
+import { rawRemovalProblem, runTreeLive } from '../run-trees.ts'
 import { PRUNE_ALL, removeWorktree, type WorktreeRecords } from './registrations.ts'
 
 /** The log a failed verify leaves in a kept worktree. */
@@ -338,6 +339,14 @@ export function keptTreeCheck(git: Git, place: KeptPlace, record: KeptRecord): K
   if (entry.branch?.startsWith('pr-update/scratch-') === true) {
     return { kind: 'forged', why: `${record.path} is a run's worktree, on its scratch branch` }
   }
+  // A live run's worktree, detached as between PRs, is that run's. (A tree a live run of another
+  // process kept keeps that run's name, but is on the PR's branch.)
+  if (entry.branch !== record.branch && runTreeLive(record.path)) {
+    return {
+      kind: 'forged',
+      why: `${record.path} is the worktree of a run that is still going, not on ${record.branch}`,
+    }
+  }
   return { kind: 'kept' }
 }
 
@@ -367,8 +376,10 @@ export function keptRefusal(place: KeptPlace, record: KeptRecord, why: string): 
  * are removed. Every removal of a kept tree goes through here.
  *
  * @throws KeptRefusedError, removing nothing, when the owner does not list the tree as its
- *   worktree ({@link keptTreeCheck}), or when a folder between the place's `root` and the tree
- *   fails the folder rule ({@link keptFolderProblem}). Also, leaving the record, when git will
+ *   worktree ({@link keptTreeCheck}), when a folder between the place's `root` and the tree
+ *   fails the folder rule ({@link keptFolderProblem}), or, when the owner is gone, when the
+ *   folder is a live run's worktree, names another git directory in its `.git`, or has a `.git`
+ *   that cannot be read (`rawRemovalProblem` in `../run-trees.ts`). Also, leaving the record, when git will
  *   not remove the tree (a locked one, say).
  */
 export function discardKept(git: Git, place: KeptPlace, record: KeptRecord): void {
@@ -377,8 +388,17 @@ export function discardKept(git: Git, place: KeptPlace, record: KeptRecord): voi
   if (tree.kind !== 'kept') throw new KeptRefusedError(keptRefusal(place, record, tree.why))
   const folder = keptFolderProblem(place, record)
   if (folder !== null) throw new KeptRefusedError(keptRefusal(place, record, folder))
-  if (owner === null) rmSync(record.path, { recursive: true, force: true })
-  else {
+  if (owner === null) {
+    // Removed as a plain folder, so the record's path alone must not make it removable.
+    let problem: string | null
+    try {
+      problem = rawRemovalProblem(record.path, record.gitDir!)?.why ?? null
+    } catch (e) {
+      problem = `its .git cannot be read (${(e as Error).message.split('\n')[0]})`
+    }
+    if (problem !== null) throw new KeptRefusedError(keptRefusal(place, record, problem))
+    rmSync(record.path, { recursive: true, force: true })
+  } else {
     dropTree(owner, record.path, place.records ?? PRUNE_ALL)
     owner.try.deleteBranch(record.branch, { force: true })
   }

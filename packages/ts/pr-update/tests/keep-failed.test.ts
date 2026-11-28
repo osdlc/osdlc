@@ -609,6 +609,69 @@ describe('a forged kept record', () => {
       expect(out.keptRefused?.[0]?.reason).toContain('not a worktree')
     },
   )
+
+  /**
+   * A live run's worktree of the checkout, detached, as a run's is between PRs. Named for this
+   * process's parent, which is alive: a tree named for this process is live only while a run of
+   * it holds the tree.
+   */
+  function liveTree(): string {
+    const tree = join(home, 'worktrees', 'github.com', 'o', 'r', `${process.ppid}.${Date.now()}`)
+    mkdirSync(join(tree, '..'), { recursive: true })
+    fx.worker.git.rawChecked(['worktree', 'add', '-q', '--detach', tree, 'main'])
+    writeFileSync(join(tree, 'wip.txt'), 'wip\n')
+    return tree
+  }
+
+  test.each([
+    ['a plain --apply', {}],
+    ['--discard-kept', { discardKept: true }],
+  ])(
+    "one naming a live run's detached worktree is refused, and the tree stays (%s) (review round 2)",
+    async (_, patch) => {
+      const tree = liveTree()
+      plant({ branch: 'pr-update/failed-o-r-1', path: tree }, false)
+      const out = await update(patch)
+      expect(existsSync(join(tree, 'wip.txt'))).toBe(true)
+      expect(existsSync(recordPath())).toBe(true)
+      expect(out.discarded ?? []).toEqual([])
+      expect(out.keptRefused?.[0]?.reason).toContain('still going')
+      expect(out.results.map((r) => r.status)).toEqual(['updated'])
+    },
+  )
+
+  test.each([
+    ['a plain --apply', {}],
+    ['--discard-kept', { discardKept: true }],
+  ])(
+    "one whose git directory is gone, naming a live run's worktree, is refused, and the tree stays (%s) (review round 2)",
+    async (_, patch) => {
+      const tree = liveTree()
+      plant({ branch: 'pr-update/failed-o-r-1', path: tree, gitDir: join(home, 'gone.git') }, false)
+      const out = await update(patch)
+      expect(existsSync(join(tree, 'wip.txt'))).toBe(true)
+      expect(existsSync(recordPath())).toBe(true)
+      expect(out.discarded ?? []).toEqual([])
+      expect(out.keptRefused?.[0]?.reason).toContain('still going')
+    },
+  )
+
+  test.each([
+    ['a plain --apply', {}],
+    ['--discard-kept', { discardKept: true }],
+  ])(
+    "one whose git directory is gone, naming another checkout's dead run worktree, is refused (%s) (review round 2)",
+    async (_, patch) => {
+      const tree = join(home, 'worktrees', 'github.com', 'o', 'r', '2147483646.1')
+      mkdirSync(join(tree, '..'), { recursive: true })
+      victim.git.rawChecked(['worktree', 'add', '-q', '--detach', tree, 'main'])
+      plant({ branch: 'pr-update/failed-o-r-1', path: tree, gitDir: join(home, 'gone.git') }, false)
+      const out = await update(patch)
+      expect(existsSync(join(tree, 'a.txt'))).toBe(true)
+      expect(out.discarded ?? []).toEqual([])
+      expect(out.keptRefused?.[0]?.reason).toContain(`is a worktree of ${victimGitDir()}`)
+    },
+  )
 })
 
 const ok: CommandResult = { exitCode: 0, stdout: '', stderr: '' }

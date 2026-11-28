@@ -70,6 +70,7 @@ import {
 import { NO_MAINTENANCE } from '../clone-maintenance.ts'
 import { NothingDetectedError } from '../detect.ts'
 import { FOLDER_MODE } from '../folders.ts'
+import { holdRunTree, letGoRunTree } from '../run-trees.ts'
 import { keepWorktree, type KeptPlace } from './kept.ts'
 import { PRUNE_ALL, removeWorktree, type WorktreeRecords } from './registrations.ts'
 import { takeRerere, type RerereCache } from './rerere.ts'
@@ -1471,6 +1472,7 @@ export async function updateAll(
   // umask: a prune refuses a folder someone else can write to.
   mkdirSync(dirname(opts.worktreeRoot), { recursive: true, mode: FOLDER_MODE })
   git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
+  holdRunTree(opts.worktreeRoot)
   opts.lock?.added()
   // The run's worktree now: a new one after each PR kept in the one before.
   let root = opts.worktreeRoot
@@ -1546,10 +1548,12 @@ export async function updateAll(
           // The kept tree is the record's now, never the run's to clean up, and its scratch
           // branch is free to go.
           ownsRoot = false
+          letGoRunTree(kept)
           git.try.deleteBranch(scratchBranch(kept), { force: true })
           const next = nextRunRoot(kept)
           try {
             git.worktreeAdd(next, { detach: true, startPoint: start })
+            holdRunTree(next)
           } catch (e) {
             result.keepError =
               `kept at ${kept}, but the next run worktree could not be added (${errorLine(e)}), ` +
@@ -1592,6 +1596,7 @@ export async function updateAll(
       if (opts.lock === undefined) remove()
       else opts.lock.removing(root, remove)
     }
+    letGoRunTree(root)
     // The cache lives for one run.
     cache?.release()
   }
