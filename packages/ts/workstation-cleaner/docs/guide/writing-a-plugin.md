@@ -31,12 +31,12 @@ as the example's do. The plugin's own code never does.
   "name": "workstation-cleaner-scratch",
   "type": "module",
   "exports": "./dist/index.js",
-  "peerDependencies": { "@osdlc/workstation-cleaner": "^0.4.0" },
-  "devDependencies": { "@osdlc/workstation-cleaner": "^0.4.0" }
+  "peerDependencies": { "@osdlc/workstation-cleaner": "^0.5.0" },
+  "devDependencies": { "@osdlc/workstation-cleaner": "^0.5.0" }
 }
 ```
 
-- The plugin entry first ships in 0.4.0; an earlier workstation-cleaner has no
+- The plugin entry first ships in 0.5.0; an earlier workstation-cleaner has no
   `@osdlc/workstation-cleaner/plugin`. workstation-cleaner is not on npm yet, so until it
   is, a plugin builds against a local checkout (a `link:` or `file:`
   dependency).
