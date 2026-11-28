@@ -25,7 +25,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { execFileSync, spawn } from 'node:child_process'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { Git } from '@osdlc/typed-git'
 import { makeBareAndWorker } from '@osdlc/typed-git/testing'
@@ -40,6 +40,7 @@ import type { Generator, PushPreview, Repair, RepairRequest, RepairResult } from
 import { toResult } from '../src/update.ts'
 import { NothingDetectedError } from '../src/detect.ts'
 import { claimProcessLock } from '../src/process-lock.ts'
+import { takeRerere } from '../src/update/rerere.ts'
 import { targetGitEnv } from '../src/update/execute.ts'
 import { ownedUnder, removeWorktree } from '../src/update/registrations.ts'
 import {
@@ -1647,6 +1648,38 @@ describe('the executor against real git', () => {
         expect(results.map((r) => r.outcome.status)).toEqual(['updated', 'updated'])
         expect(repair.calls.map((c) => c.pr)).toEqual([1, 2])
         expect(results[1]!.outcome).not.toHaveProperty('replayed')
+      })
+
+      test('a run whose first worktree cannot be added lets go of the rerere lock (review round 3)', async () => {
+        // A base that is not there: `git worktree add` fails before any PR is tried.
+        await expect(
+          runAll([target({ number: 1, head: 'topic', base: 'gone' })], {}),
+        ).rejects.toThrow()
+        expect(existsSync(resolve(fx.worker.dir, rereLock()))).toBe(false)
+        // A later run in this process gets the cache.
+        const later = takeRerere(fx.worker.git)
+        expect(later).not.toBeNull()
+        later!.release()
+      })
+
+      test('a run whose clone lock cannot be let go lets go of the rerere lock too (review round 3)', async () => {
+        const lock = {
+          added: () => {
+            throw new Error('EACCES')
+          },
+          keeping: (_: string, fn: () => void) => (fn(), true),
+          removing: (_: string, fn: () => void) => fn(),
+        }
+        await expect(
+          updateAll(
+            fx.worker.git,
+            [target({ number: 1, head: 'topic' })],
+            settings({ rerere: true }),
+            recorder(),
+            { apply: true, worktreeRoot: wtRoot, lock },
+          ),
+        ).rejects.toThrow('EACCES')
+        expect(existsSync(resolve(fx.worker.dir, rereLock()))).toBe(false)
       })
 
       test('a run killed after recording, before its push, leaves nothing a concurrent or later run replays', async () => {

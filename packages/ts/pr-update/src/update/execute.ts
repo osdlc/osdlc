@@ -1463,18 +1463,22 @@ export async function updateAll(
 
   const records = opts.records ?? PRUNE_ALL
   releaseStaleScratch(git, records)
-  // Under the clone's lock, before anything here integrates: no PR replays what a killed run, or
-  // an earlier one, recorded.
-  // Taken while the run still holds the clone's lock: no PR replays what a killed run, or an
-  // earlier one, recorded, nor what a run that holds the cache now records.
-  const cache = rerereOn(settings, opts.apply) ? takeRerere(git) : null
   const start = `${settings.remote}/${targets[0]!.base}`
   // The folders above the worktree are made here, not by git, which would make them under the
   // umask: a prune refuses a folder someone else can write to.
   mkdirSync(dirname(opts.worktreeRoot), { recursive: true, mode: FOLDER_MODE })
   git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
   holdRunTree(opts.worktreeRoot)
-  opts.lock?.added()
+  // Taken once the worktree is there, so the `finally` below always lets go of it, and while the
+  // run still holds the clone's lock, before anything here integrates: no PR replays what a
+  // killed run, or an earlier one, recorded, nor what a run that holds the cache now records.
+  const cache = rerereOn(settings, opts.apply) ? takeRerere(git) : null
+  try {
+    opts.lock?.added()
+  } catch (e) {
+    cache?.release()
+    throw e
+  }
   // The run's worktree now: a new one after each PR kept in the one before.
   let root = opts.worktreeRoot
   let wt = git.at(root)
