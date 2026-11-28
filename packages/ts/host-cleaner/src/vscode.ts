@@ -44,8 +44,10 @@ import {
   yieldToLimit,
 } from './helpers.ts'
 import {
+  AGENT_WORKTREE,
   CURSOR_WORKTREES,
   agentFolderAt,
+  agentFolderReason,
   agentFoldersOf,
   attachKit,
   homeFolder,
@@ -99,7 +101,8 @@ interface Editor {
   /**
    * A folder, `~` for `HOME`, that shows its agent is in use where its storage
    * is not, as on a host with only its CLI: the plugin is detected by it. The
-   * core refuses what is in it, as one of `DEFAULT_AGENT_FOLDERS`.
+   * core refuses what is in it, as one of `DEFAULT_AGENT_FOLDERS`; the plugin
+   * does when the run's home is not its `HOME`.
    */
   detectedBy?: string
   /**
@@ -879,11 +882,16 @@ function build(editor: Editor, kit: Kit, opts: VscodeOptions): Plugin {
           out.push(own(c, 'refuse', editor.codes.unknownWorkspace, e.problem))
         if (e?.state === 'gone') gone.push({ c, local: e.local })
       }
-      // The core refuses a worktree in an agent's folder, so none is looked at here.
-      const agents = agentFoldersOf({ ...ctx, home: ctx.home ?? homeOf(env) })
+      // The core refuses a worktree in its agent folders, so none is looked at here. One in the
+      // editor's agent folder under this plugin's HOME, where the core's home is another, is refused here.
+      const agents = agentFoldersOf(ctx)
       const worktrees: PathCandidate[] = []
       for (const c of all.filter(isGitWorktree)) {
-        if (!placeOnly && agentFolderAt(c.path, agents) === undefined) worktrees.push(c)
+        if (agentFolderAt(c.path, agents) !== undefined) continue
+        const mine = marker === undefined ? undefined : agentFolderAt(c.path, [marker])
+        if (mine !== undefined)
+          out.push(own(c, 'refuse', AGENT_WORKTREE, agentFolderReason(c, mine)))
+        else if (!placeOnly) worktrees.push(c)
       }
       if (worktrees.length === 0 && gone.length === 0) return out
 

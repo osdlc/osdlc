@@ -1163,7 +1163,9 @@ describe('cursor', () => {
       expect.objectContaining({ by: 'host-cleaner', candidate: `worktree:${gone}` }),
     ])
     // The plugin leaves them to the core.
-    expect(await plugin.object!([worktree(wt), worktree(gone)], fakeContext())).toEqual([])
+    expect(
+      await plugin.object!([worktree(wt), worktree(gone)], fakeContext({ home: link })),
+    ).toEqual([])
     // With the agents' folder gone too, in either spelling, and only links above it left to resolve.
     rmSync(join(h.home, '.cursor'), { recursive: true })
     const real = join(realpathSync(h.home), '.cursor', 'worktrees', 'repo', 'gone')
@@ -1210,8 +1212,28 @@ describe('cursor', () => {
       },
     ])
     // Every plugin, the vscode one too, leaves it to the core.
-    expect(await plugin.object!([worktree(wt)], fakeContext())).toEqual([])
-    expect(await vscodePlugin(h.options()).object!([worktree(wt)], fakeContext())).toEqual([])
+    expect(await plugin.object!([worktree(wt)], fakeContext({ home: h.home }))).toEqual([])
+    expect(
+      await vscodePlugin(h.options()).object!([worktree(wt)], fakeContext({ home: h.home })),
+    ).toEqual([])
+  })
+
+  test("refuses git's worktree in Cursor's agent worktrees under its HOME when the run's home is another", async () => {
+    const h = home('Cursor')
+    const agents = join(h.home, '.cursor', 'worktrees')
+    const wt = join(agents, 'repo', 'k3x')
+    mkdirSync(wt, { recursive: true })
+    // The run sets no home, so the core looks in the process's home; the plugin's HOME is h.home.
+    const s = await survey([gitOf([wt]), cursorPlugin(h.options())], ctxOf(h.home))
+    expect(s.objections.filter((o) => o.code === AGENT_WORKTREE)).toEqual([
+      {
+        by: 'cursor',
+        candidate: `worktree:${wt}`,
+        level: 'refuse',
+        code: AGENT_WORKTREE,
+        reason: `it is in ${agents}, where a coding agent keeps its worktrees`,
+      },
+    ])
   })
 
   test("knows a cursor-agent by its own name, whole or cut to lsof's 9 characters", async () => {
@@ -1238,7 +1260,9 @@ describe('cursor', () => {
     mkdirSync(wt, { recursive: true })
     for (const platform of ['darwin', 'linux', 'win32'] as const) {
       expect(await plugin(platform).detect(fakeContext())).toBe(true)
-      expect(await plugin(platform).object!([worktree(wt)], fakeContext())).toEqual([])
+      expect(await plugin(platform).object!([worktree(wt)], fakeContext({ home: h.home }))).toEqual(
+        [],
+      )
       expect(await agentRefusals([gitOf([wt]), plugin(platform)], h.home)).toEqual([
         expect.objectContaining({ candidate: `worktree:${wt}` }),
       ])
@@ -1259,7 +1283,9 @@ describe('cursor', () => {
       },
     }
     const onWindows = cursorPlugin(h.options({ probe, platform: 'win32' }))
-    expect(await onWindows.object!([worktree(agent), worktree(wt)], fakeContext())).toEqual([])
+    expect(
+      await onWindows.object!([worktree(agent), worktree(wt)], fakeContext({ home: h.home })),
+    ).toEqual([])
     await onWindows.prepare!(worktree(wt), fakeContext())
     expect(reads).toBe(0)
 
@@ -1285,7 +1311,7 @@ describe('cursor', () => {
       },
     }
     const plugin = cursorPlugin(h.options({ probe }))
-    const ctx = fakeContext({ agentFolders: [join(h.projects, 'agents')] })
+    const ctx = fakeContext({ home: h.home, agentFolders: [join(h.projects, 'agents')] })
     expect(await plugin.object!([worktree(wt), worktree(mine)], ctx)).toEqual([])
     expect(reads).toBe(0)
   })

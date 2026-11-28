@@ -31,7 +31,14 @@ import type { Candidate, Ctx, PathCandidate, Plugin, RefCandidate } from './type
 export { coveredBy } from './ignore.ts'
 
 /** The run's agent folders, which the core refuses candidates in, for a plugin that would look no further at those. */
-export { CURSOR_WORKTREES, agentFolderAt, agentFoldersOf, homeFolder } from './agent-folders.ts'
+export {
+  AGENT_WORKTREE,
+  CURSOR_WORKTREES,
+  agentFolderAt,
+  agentFolderReason,
+  agentFoldersOf,
+  homeFolder,
+} from './agent-folders.ts'
 
 export const DEFAULT_IDLE_HOURS = 24
 
