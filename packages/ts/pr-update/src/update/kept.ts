@@ -146,8 +146,9 @@ export interface KeptPlace {
    */
   rootCheck?: { owned: OwnedCheck; folders: FolderCheckOptions } | undefined
   /**
-   * How a tree removed from `trees` leaves git's records. Defaults to {@link PRUNE_ALL}; a run
-   * passes `ownedUnder` (see `./registrations.ts`), so the person's other worktrees are not touched.
+   * How a tree removed from `trees` leaves git's records. Defaults to {@link PRUNE_ALL}, the
+   * library default; every CLI run passes `ownedUnder` (see `./registrations.ts`), so the
+   * person's other worktrees are not touched.
    */
   records?: WorktreeRecords | undefined
 }

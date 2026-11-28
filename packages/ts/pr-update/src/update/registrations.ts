@@ -8,10 +8,11 @@
  * reason `initializing`. A run worktree locked so, whose run is over by its name, is unlocked
  * and removed ({@link removeWorktree}).
  *
- * In the project root's checkout the run then runs `git worktree prune`, as it always has. In
- * anyone else's checkout (a located `--repo` target) a bare prune would also drop the person's
- * own worktrees whose folders are missing, for instance on a drive that is not mounted, so the
- * run prunes nothing there, and only worktrees under pr-update's own directories are its own.
+ * Every target the CLI runs, the project root's checkout included, passes {@link ownedUnder}:
+ * only worktrees under pr-update's own directories are the run's, and nothing is pruned. A bare
+ * `git worktree prune` would also drop the person's own worktrees whose folders are missing, for
+ * instance on a drive that is not mounted. {@link PRUNE_ALL}, which owns every worktree and runs
+ * `git worktree prune`, is only the library's default, for a host that passes no `records`.
  */
 
 import { readdirSync, readFileSync, realpathSync } from 'node:fs'
@@ -30,7 +31,10 @@ export interface WorktreeRecords {
   forget(git: Git): void
 }
 
-/** The project root's way: every worktree is the run's to clean, and `git worktree prune` tidies. */
+/**
+ * The library default, for a host that passes no `records`: every worktree is the run's to
+ * clean, and `git worktree prune` tidies. No CLI target uses it ({@link ownedUnder}).
+ */
 export const PRUNE_ALL: WorktreeRecords = {
   owns: () => true,
   forget: (git) => {
@@ -54,8 +58,8 @@ function isUnder(path: string, root: string): boolean {
 }
 
 /**
- * The way for a checkout that is not the run's own: only worktrees under `roots` are the run's,
- * and nothing is pruned.
+ * The way every CLI target, the project root's checkout included, cleans up: only worktrees under
+ * `roots` (pr-update's own directories) are the run's, and nothing is pruned.
  */
 export function ownedUnder(roots: readonly string[]): WorktreeRecords {
   return {

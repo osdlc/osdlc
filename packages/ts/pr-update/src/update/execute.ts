@@ -1438,7 +1438,8 @@ export async function updateAll(
     skipOnLeaseError?: boolean | undefined
     /**
      * Which worktrees of `git`'s repository the run may clean up, and how it forgets one it
-     * removed. Defaults to {@link PRUNE_ALL}, the project root's way.
+     * removed. Defaults to {@link PRUNE_ALL}, the library default for a host that passes none;
+     * every CLI target, the project root included, passes `ownedUnder`.
      */
     records?: WorktreeRecords | undefined
     /**
