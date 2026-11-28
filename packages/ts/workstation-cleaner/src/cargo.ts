@@ -20,6 +20,7 @@ import {
   checkoutsOf,
   inside,
   refusedRow,
+  unreadableRow,
   type ArtifactOptions,
   type Checkout,
   type Env,
@@ -80,7 +81,13 @@ async function rowsOrThrow(env: Env, checkout: Checkout): Promise<Row[]> {
 
   const held = kit.running({ in: checkout.path }, env.ctx)
   const profiles = profileDirs(safeTarget)
-  const last = kit.idle(profiles.map((p) => join(p, '.fingerprint')))
+  let last
+  try {
+    last = kit.idle(profiles.map((p) => join(p, '.fingerprint')))
+  } catch (err) {
+    const fingerprints = join(safeTarget, '*', '.fingerprint')
+    return [unreadableRow(kit, 'cargo-target', safeTarget, checkout.path, fingerprints, err)]
+  }
   const facts = { kind: 'cargo-target' as const, path: safeTarget, checkout: checkout.path, held }
   if (last.unmeasured) {
     return [
@@ -111,7 +118,13 @@ async function rowsOrThrow(env: Env, checkout: Checkout): Promise<Row[]> {
       continue
     }
     if (!present(dir)) continue
-    const since = kit.idle(dir)
+    let since
+    try {
+      since = kit.idle(dir)
+    } catch (err) {
+      rows.push(unreadableRow(kit, 'cargo-incremental', dir, checkout.path, dir, err))
+      continue
+    }
     rows.push(
       artifactRow(env, {
         kind: 'cargo-incremental',

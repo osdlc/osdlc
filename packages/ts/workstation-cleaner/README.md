@@ -466,6 +466,11 @@ const plugin = descriptorPlugin('pip', d)
   10 minute limit, which can stop it between two folders.
 - **object:** a running `inUse` process or lock refuses its candidates
   (`in-use`); a prune with no program on PATH gets a `no-prune-tool` protest.
+  A folder, glob match or build folder that is there but whose idle time
+  cannot be read (a folder in it gives `EACCES`, say) is listed, not sized,
+  and refused `folder-unreadable`, since it may hide recent changes. (Of the
+  matches past `maxEntries`, one that cannot be read is left when the others
+  are deleted.)
 - **delete:** checks the candidate again, and that one the plan ran as idle
   is still idle and measured (a prune excepted). A held one a person picked is
   not checked for idle time, unless its entry holds it (`held: true`) or it is
@@ -566,7 +571,9 @@ give it a 10 minute limit instead of the default 30 seconds, and let that limit
 fire between two checkouts.
 
 A `cargo` or `rustc` process in the checkout (any busy process for `node`), or
-a process table that cannot be read, is a `refuse`. A path that leads outside
+a process table that cannot be read, is a `refuse`. So is an artifact whose
+idle time cannot be read (a folder in the worktree, or in `target/*/.fingerprint`,
+gives `EACCES`, say): `folder-unreadable`, not sized. A path that leads outside
 its checkout (checked with `@osdlc/path-guard`) is a `refuse` and is never
 measured. `delete` reads the checkout's candidates again over a fresh process
 table, then removes the directory with `kit.remove`; a directory that is already

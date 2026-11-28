@@ -23,7 +23,13 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { globRegExp } from '@osdlc/repo-cleaner'
 import { z } from 'zod'
 
-import { checkoutsOf, hoursText, liveBlockers, type Checkout } from '../artifacts.ts'
+import {
+  FOLDER_UNREADABLE,
+  checkoutsOf,
+  hoursText,
+  liveBlockers,
+  type Checkout,
+} from '../artifacts.ts'
 import { hostDirs } from '../config.ts'
 import { COST_DESCRIPTIONS, type CostDescription } from '../cost.ts'
 import { DISCOVER_LIMIT_MS, errorText, realAbove, runFailure, yieldToLimit } from '../helpers.ts'
@@ -320,6 +326,18 @@ const checkoutsOfRun = new WeakMap<readonly string[], Checkout[]>()
 /** Why a folder whose idle time cannot be read is left alone. */
 const UNREADABLE = 'it cannot be read now'
 
+/** A folder that is there but whose idle time cannot be read, and why. */
+interface Unreadable {
+  unreadable: string
+}
+
+/** The refusal of a folder that cannot be read; see {@link FOLDER_UNREADABLE}. */
+const unreadableObjection = (path: string, why: string): Row['objections'][number] => ({
+  level: 'refuse',
+  code: FOLDER_UNREADABLE,
+  reason: `${path} cannot be read: ${why}`,
+})
+
 /** A row's idle time against its threshold: out of the time budget, or idle or not, and its size. */
 type Measured =
   | { unmeasured: true }
@@ -559,16 +577,31 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     entry.command !== undefined && kit.onPath(entry.command[0]!) ? 'command' : 'remove'
 
   /**
-   * `path`'s idle time against `threshold`, and its size when it was measured;
-   * null when it cannot be read, since it may hide recent changes, or is gone.
+   * `path`'s idle time, or why it cannot be read while it is there: it may hide
+   * recent changes. Null when it is gone, before or while it is measured. One
+   * that cannot be told to be there or gone counts as there.
    */
-  const measure = (path: string, threshold: number): Measured | null => {
-    let idle
+  const readIdle = (path: string): Idle | Unreadable | null => {
     try {
-      idle = idleOf(path)
-    } catch {
-      return null
+      return idleOf(path)
+    } catch (err) {
+      let there: boolean
+      try {
+        there = present(path)
+      } catch {
+        there = true
+      }
+      return there ? { unreadable: errorText(err) } : null
     }
+  }
+
+  /**
+   * `path`'s idle time against `threshold`, and its size when it was measured;
+   * why not when it cannot be read ({@link readIdle}), or null when it is gone.
+   */
+  const measure = (path: string, threshold: number): Measured | Unreadable | null => {
+    const idle = readIdle(path)
+    if (idle === null || 'unreadable' in idle) return idle
     if (idle.unmeasured) return { unmeasured: true }
     const idleNow = idle.hours === null || idle.hours >= threshold
     return { unmeasured: false, hours: idle.hours, idle: idleNow, bytes: kit.size(path) }
@@ -613,6 +646,16 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     const threshold = thresholdOf(entry)
     const m = measure(path, threshold)
     if (m === null) return null
+    if ('unreadable' in m) {
+      return {
+        objections: [...objections, unreadableObjection(path, m.unreadable)],
+        candidate: kit.candidate({
+          ...base,
+          why: `when it last changed is not known: it cannot be read (${m.unreadable})`,
+          held: true,
+        }),
+      }
+    }
     const how =
       action === 'command' ? `${entry.command!.join(' ')} empties it` : 'removed as a folder'
     const since = m.unmeasured
@@ -674,6 +717,23 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
     const m = measure(path, threshold)
     if (m === null) return null
     const marker = builds.map((p) => p.entry.marker).join(' and ')
+    const base = {
+      kind: name,
+      path,
+      costDescription: costliest(builds.map((p) => p.entry.costDescription)),
+      evidence: { path, project: builds[0]!.index, checkout } satisfies Evidence,
+    }
+    if ('unreadable' in m) {
+      return {
+        checkout,
+        objections: [unreadableObjection(path, m.unreadable)],
+        candidate: kit.candidate({
+          ...base,
+          why: `a ${marker} build folder whose last change is not known: it cannot be read (${m.unreadable})`,
+          held: true,
+        }),
+      }
+    }
     const since = m.unmeasured
       ? 'whose last change could not be measured in the time budget'
       : m.hours === null
@@ -683,11 +743,8 @@ function engine(name: string, d: Descriptor, kit: Kit, at: EngineAt): Plugin {
       checkout,
       objections: [],
       candidate: kit.candidate({
-        kind: name,
-        path,
+        ...base,
         why: `a ${marker} build folder ${since}`,
-        costDescription: costliest(builds.map((p) => p.entry.costDescription)),
-        evidence: { path, project: builds[0]!.index, checkout } satisfies Evidence,
         ...idleFields(m),
       }),
     }

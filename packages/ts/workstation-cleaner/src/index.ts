@@ -85,7 +85,7 @@ export {
   TOOLCHAINS_PLUGIN,
   type ToolchainsOptions,
 } from './toolchains.ts'
-export { type ArtifactOptions } from './artifacts.ts'
+export { FOLDER_UNREADABLE, type ArtifactOptions } from './artifacts.ts'
 export {
   DEFAULT_MAX_ENTRIES,
   DESCRIPTOR_SCHEMA_URL,

@@ -15,7 +15,14 @@ import type { CommandRunner } from '@osdlc/command-seam'
 import { nodeGuard } from '@osdlc/path-guard/node'
 import { Git } from '@osdlc/typed-git'
 
-import { DISCOVER_LIMIT_MS, checkAgain, objectionsTo, yieldToLimit, type Row } from './helpers.ts'
+import {
+  DISCOVER_LIMIT_MS,
+  checkAgain,
+  errorText,
+  objectionsTo,
+  yieldToLimit,
+  type Row,
+} from './helpers.ts'
 import {
   attachKit,
   coveredBy,
@@ -143,6 +150,38 @@ export function artifactRow({ kit, unsized }: Pick<Env, 'kit' | 'unsized'>, f: A
         checkout: f.checkout,
         notes: f.notes ?? [],
       },
+    }),
+  }
+}
+
+/**
+ * The refusal of a folder whose idle time cannot be read, such as one with a
+ * folder in it that gives EACCES: it may hide recent changes. The `cargo`,
+ * `node` and descriptor plugins give it.
+ */
+export const FOLDER_UNREADABLE = 'folder-unreadable'
+
+/**
+ * A row for an artifact whose idle time could not be read, since reading
+ * `read` threw `err`: refused, not sized, and never removed.
+ */
+export function unreadableRow(
+  kit: Kit,
+  kind: ArtifactKind,
+  path: string,
+  checkout: string,
+  read: string,
+  err: unknown,
+): Row {
+  const why = `${read} cannot be read: ${errorText(err)}`
+  return {
+    blockers: [{ code: FOLDER_UNREADABLE, reason: why }],
+    candidate: kit.candidate({
+      kind: 'artifact',
+      path,
+      why: `when it last changed is not known: ${why}`,
+      held: true,
+      evidence: { kind, path, checkout },
     }),
   }
 }

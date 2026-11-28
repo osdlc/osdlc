@@ -30,6 +30,7 @@ import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { FIRST_SET, corpusDir, draftStore } from '../scripts/draft-descriptor.ts'
 import {
+  FOLDER_UNREADABLE,
   DISCARD_USER_DATA,
   DUPLICATE_ENTRY,
   IN_USE,
@@ -1634,6 +1635,59 @@ function beforeDelete(plugin: Plugin, before: () => void): void {
     return deleting(c, x)
   }
 }
+
+describe('a folder whose idle time cannot be read', () => {
+  /** A kit whose `idle` throws, as for a folder in it that gives EACCES, on each path `locked` names. */
+  const locking =
+    (locked: (path: string) => boolean) =>
+    (kit: Kit): void => {
+      const idle = kit.idle
+      kit.idle = (path, o) => {
+        if (typeof path === 'string' && locked(path)) throw new Error('EACCES: permission denied')
+        return idle(path, o)
+      }
+    }
+
+  test('is listed, refused folder-unreadable and not sized, and is not deleted', async () => {
+    let cache = ''
+    const b = build('pip', PIP_PER_OS, { kit: locking((p) => p === cache) })
+    cache = b.folder('cache')
+    const ctx = ctxOf()
+    const s = await survey([b.plugin], ctx)
+    expect(s.candidates).toEqual([
+      expect.objectContaining({ id: `pip:${cache}`, held: true, costDescription: 're-download' }),
+    ])
+    expect(s.candidates[0]!.bytes).toBeUndefined()
+    expect(s.objections).toEqual([
+      expect.objectContaining({
+        by: 'pip',
+        candidate: `pip:${cache}`,
+        level: 'refuse',
+        code: FOLDER_UNREADABLE,
+        reason: `${cache} cannot be read: EACCES: permission denied`,
+      }),
+    ])
+    const receipt = await clean(plan(s, { pick: [`pip:${cache}`] }), [b.plugin], ctx)
+    expect(receipt.steps).toEqual([])
+    expect(existsSync(join(cache, 'blob'))).toBe(true)
+  })
+
+  test('one that is gone still gives no row', async () => {
+    let cache = ''
+    const b = build('pip', PIP_PER_OS, {
+      kit: (kit) => {
+        kit.idle = () => {
+          rmSync(cache, { recursive: true })
+          throw new Error('ENOENT')
+        }
+      },
+    })
+    cache = b.folder('cache')
+    const s = await survey([b.plugin], ctxOf())
+    expect(s.candidates).toEqual([])
+    expect(s.objections).toEqual([])
+  })
+})
 
 describe('idle is checked again at delete', () => {
   test('a folder that changed after the re-check is not deleted', async () => {

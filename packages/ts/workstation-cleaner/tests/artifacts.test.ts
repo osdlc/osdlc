@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -22,6 +23,7 @@ import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture } from '@osdlc/typed-git/testing'
 
 import {
+  FOLDER_UNREADABLE,
   cargoPlugin,
   clean,
   nodePlugin,
@@ -401,6 +403,49 @@ describe('node plugin', () => {
     expect(receipt.steps[0]!.delete).toMatch(/^removed .*node_modules; freed \d+ bytes$/)
     expect(existsSync(join(wt, 'node_modules'))).toBe(false)
     expect(existsSync(join(wt, 'package.json'))).toBe(true)
+  })
+})
+
+// Root reads a folder of mode 000.
+describe.skipIf(process.getuid?.() === 0)('a folder whose idle time cannot be read', () => {
+  /** Makes `dir` unreadable until the test ends. */
+  const lock = (dir: string): void => {
+    mkdirSync(dir, { recursive: true })
+    chmodSync(dir, 0o000)
+    cleanups.push(() => chmodSync(dir, 0o700))
+  }
+
+  test('a node worktree with a folder that cannot be read is listed, refused and not sized', async () => {
+    const root = repo()
+    const wt = linked(root)
+    put(join(wt, 'package.json'), 72, '{}')
+    put(join(wt, 'node_modules', 'a', 'index.js'), 72)
+    lock(join(wt, 'src', 'locked'))
+    const s = await node(root)
+    const id = `artifact:${join(wt, 'node_modules')}`
+    expect(s.candidates).toEqual([expect.objectContaining({ id, held: true })])
+    expect(s.candidates[0]!.bytes).toBeUndefined()
+    expect(s.refused).toEqual([
+      expect.objectContaining({
+        candidate: id,
+        code: FOLDER_UNREADABLE,
+        reason: expect.stringMatching(new RegExp(`^${wt} cannot be read: .*EACCES`)),
+      }),
+    ])
+    const receipt = await clean(plan(s, { pick: [id] }), [nodePlugin(options())], ctxOf(root))
+    expect(receipt.steps).toEqual([])
+    expect(existsSync(join(wt, 'node_modules', 'a', 'index.js'))).toBe(true)
+  })
+
+  test('a cargo target/ whose fingerprints cannot be read is listed and refused', async () => {
+    const root = repo()
+    const dir = target(root, 48)
+    lock(join(dir, 'debug', '.fingerprint', 'b'))
+    const s = await cargo(root)
+    expect(s.candidates.map((c) => c.id)).toEqual([`artifact:${dir}`])
+    expect(s.refused).toEqual([
+      expect.objectContaining({ candidate: `artifact:${dir}`, code: FOLDER_UNREADABLE }),
+    ])
   })
 })
 
