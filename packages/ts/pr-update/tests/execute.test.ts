@@ -24,7 +24,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { join } from 'node:path'
 
 import { Git } from '@osdlc/typed-git'
@@ -39,6 +39,7 @@ vi.mock('@osdlc/command-seam', async (original) =>
 import type { Generator, PushPreview, Repair, RepairRequest, RepairResult } from '../src/ports.ts'
 import { toResult } from '../src/update.ts'
 import { NothingDetectedError } from '../src/detect.ts'
+import { claimProcessLock } from '../src/process-lock.ts'
 import { targetGitEnv } from '../src/update/execute.ts'
 import { ownedUnder, removeWorktree } from '../src/update/registrations.ts'
 import {
@@ -1629,11 +1630,15 @@ describe('the executor against real git', () => {
         expect(postimages()).toEqual([])
       })
 
-      test("while another live run has a worktree in the clone, rerere stays off for this run's PRs", async () => {
+      const rereLock = (): string => join(fx.worker.git.gitCommonDir()!, 'pr-update-rerere.lock')
+
+      test("while another run holds the clone's rerere lock, this run uses no rerere, whatever its worktrees' branches", async () => {
         makeSiblings('live1', 'live2')
-        // Another run's worktree, on its scratch branch, named for a live process (this one).
+        // Another run: it holds the lock (this process stands in for it, alive), and its worktree
+        // is detached, as a run's is between its add and its first checkout.
+        expect(claimProcessLock(rereLock(), 0)).not.toBeNull()
         const other = join(fx.worker.dir, 'other-run', `${process.pid}.1`)
-        fx.worker.git.raw(['worktree', 'add', '-q', '-b', `${WORK_BRANCH}-x`, other, 'main'])
+        fx.worker.git.raw(['worktree', 'add', '-q', '--detach', other, 'main'])
         const repair = fakeRepair(writeShared('both\n'))
         const results = await runAll(
           [target({ number: 1, head: 'live1' }), target({ number: 2, head: 'live2' })],
@@ -1643,6 +1648,101 @@ describe('the executor against real git', () => {
         expect(repair.calls.map((c) => c.pr)).toEqual([1, 2])
         expect(results[1]!.outcome).not.toHaveProperty('replayed')
       })
+
+      test('a run killed after recording, before its push, leaves nothing a concurrent or later run replays', async () => {
+        const [, o2, o3] = makeSiblings('kh1', 'kh2', 'kh3')
+        // Run A holds the cache, then records `bad` for the siblings' conflict and is killed.
+        const child = spawn(
+          process.execPath,
+          [
+            join(import.meta.dirname, 'rerere-holder.child.ts'),
+            fx.worker.dir,
+            join(fx.worker.dir, 'a-runs'),
+            'kh1',
+          ],
+          { stdio: ['pipe', 'pipe', 'inherit'] },
+        )
+        const said: string[] = []
+        const heard = (word: string): Promise<void> =>
+          new Promise((done, fail) => {
+            const check = (): void => {
+              if (said.join('').includes(word)) done()
+            }
+            child.stdout!.on('data', (c: Buffer) => {
+              said.push(c.toString())
+              check()
+            })
+            child.on('exit', () =>
+              said.join('').includes(word)
+                ? done()
+                : fail(new Error(`child exited: ${said.join('')}`)),
+            )
+            check()
+          })
+        const exited = new Promise<NodeJS.Signals | null>((done) =>
+          child.on('exit', (_c, sig) => done(sig)),
+        )
+        await heard('ready')
+        // Run B starts while A holds the cache, and A records and dies during B's first PR.
+        const repair = fakeRepair(writeShared('good\n'))
+        const killing = async (req: RepairRequest): Promise<RepairResult> => {
+          if (req.pr === 2) {
+            child.stdin!.write('go\n')
+            expect(await exited).toBe('SIGKILL')
+            expect(said.join('')).toContain('recorded')
+            expect(postimages()).toHaveLength(1)
+          }
+          return repair(req)
+        }
+        const results = await runAll(
+          [
+            target({ number: 2, head: 'kh2', headOid: o2! }),
+            target({ number: 3, head: 'kh3', headOid: o3! }),
+          ],
+          { repair: killing, repairOn: ['conflict'] },
+        )
+        expect(results.map((r) => r.outcome.status)).toEqual(['updated', 'updated'])
+        expect(repair.calls.map((c) => c.pr)).toEqual([2, 3])
+        expect(results[1]!.outcome).not.toHaveProperty('replayed')
+        fx.worker.git.fetch('origin')
+        expect(fx.worker.git.showAtRev('origin/kh3', 'shared.ts')).toBe('good\n')
+        // The next run takes the dead holder's lock over and empties the cache first.
+        expect(postimages()).toHaveLength(1)
+        await runAll([], {})
+        const later = await runAll([target({ number: 1, head: 'kh1' })], {
+          repair,
+          repairOn: ['conflict'],
+        })
+        expect(later[0]!.outcome).toMatchObject({ status: 'updated', pushed: true })
+        expect(later[0]!.outcome).not.toHaveProperty('replayed')
+        expect(postimages()).toEqual([])
+      })
+
+      // An immutable file (`chflags uchg`, macOS only) cannot be removed, and git still replays it.
+      test.skipIf(process.platform !== 'darwin')(
+        'a cache that cannot be emptied leaves rerere off for the run',
+        async () => {
+          makeSiblings('cl1', 'cl2')
+          const [image] = recordByHand('cl1', 'left\n')
+          const variant = join(rrCache(), image!.split('/')[0]!)
+          const files = ['preimage', 'postimage'].map((f) => join(variant, f))
+          execFileSync('chflags', ['uchg', ...files])
+          try {
+            const repair = fakeRepair(writeShared('both\n'))
+            const [second] = await runAll([target({ number: 2, head: 'cl2' })], {
+              repair,
+              repairOn: ['conflict'],
+            })
+            expect(second!.outcome).toMatchObject({ status: 'updated', pushed: true })
+            expect(second!.outcome).not.toHaveProperty('replayed')
+            expect(repair.calls.map((c) => c.pr)).toEqual([2])
+            fx.worker.git.fetch('origin')
+            expect(fx.worker.git.showAtRev('origin/cl2', 'shared.ts')).toBe('both\n')
+          } finally {
+            execFileSync('chflags', ['nouchg', ...files])
+          }
+        },
+      )
 
       test('a rejected repair leaves nothing a later PR replays', async () => {
         makeSiblings('rej1', 'rej2')

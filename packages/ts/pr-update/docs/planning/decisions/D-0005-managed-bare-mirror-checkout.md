@@ -1356,11 +1356,16 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     read; git's refusal is a failure (exit 1).
   - rerere for one run. Accepted (S12, then "Rerere in clones only"): rerere
     in a clone with a list of a killed run's unaccepted resolutions, swept by
-    the next run. Built: the clone's `rr-cache/` is emptied before a run
-    integrates anything, whenever a PR ends without a push, and at the end of
-    the run, and rerere stays off while another live run has a worktree in
-    the clone. So a replayed resolution was made in this run, by a pushed PR
-    or the PR in flight. The list, the variant tracking and their sweep went.
+    the next run. Built: one run at a time holds a clone's cache, through the
+    clone's rerere lock (`pr-update-rerere.lock`, taken without waiting; a
+    killed holder's is taken over). The holder empties `rr-cache/` when it
+    takes the lock, whenever a PR ends without a push, and when it lets go; a
+    run without the lock, or whose cache cannot be emptied, uses no rerere.
+    So a replayed resolution was made in this run, by a pushed PR or the PR
+    in flight. (Review round 2 replaced a first rule, rerere off while
+    another live run had a worktree on a scratch branch in the clone: a run
+    whose worktree was detached was not seen, and a run that started while
+    another held resolutions could replay them once that one died.) The list, the variant tracking and their sweep went.
     Everywhere else pr-update's git passes `rerere.enabled=false`, as before.
 - **Trust granted before this build.** trust-repo first copied the old
   markers into the new store, and every way of telling whether the copy had

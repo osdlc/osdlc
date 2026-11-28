@@ -666,16 +666,18 @@ resolution. So a stack of sibling PRs on one base that meet one conflict needs
 it resolved once, and a repair is called once, not once per PR.
 
 - What is shared: within one run, in one clone, the resolutions of the PRs
-  that were pushed and of the PR in flight. Nothing else. The clone's
-  `rr-cache/` is emptied under the clone's lock before the run integrates
-  anything (which also clears what a killed run left), whenever a PR ends
-  without being pushed (it failed or conflicted, you declined the push, a
-  repair was rejected, a rebase was abandoned, or the update threw), and at
-  the end of the run. A new run starts with an empty cache.
-- While another live run has a worktree in the same clone, rerere stays off
-  for this run's PRs, so one run never replays a resolution another run has
-  not pushed. A run that clears the cache can still drop resolutions the
-  other run recorded, which costs that run one more resolution.
+  that were pushed and of the PR in flight. Nothing else. One run at a time
+  holds a clone's cache: a run takes the clone's rerere lock,
+  `pr-update-rerere.lock` in the clone, without waiting, and a run that cannot
+  get it (another run holds it) works without rerere. The holder empties
+  `rr-cache/` when it takes the lock, whenever a PR ends without being pushed
+  (it failed or conflicted, you declined the push, a repair was rejected, a
+  rebase was abandoned, or the update threw), and when it lets go, after its
+  last PR in the clone. The lock of a run that was killed is taken over by the
+  next run, which empties the cache first, so a killed run's resolutions are
+  never replayed.
+- When the cache cannot be emptied (it cannot be removed, or the clone's git
+  directory cannot be found), the run uses no rerere from then on.
 - In the project root and in a checkout found on this machine, every merge,
   rebase and commit pr-update runs has `rerere.enabled=false`, whatever your
   config says. Your own `rr-cache/` is never replayed from or added to, and

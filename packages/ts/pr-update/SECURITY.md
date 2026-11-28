@@ -45,10 +45,13 @@ are in scope.
   into a later rebase stop or a sibling PR with the same conflict. What can be
   replayed is pr-update's own: a resolution a resolver or an accepted repair
   made in this run, in this clone, for a PR that was pushed or for the PR in
-  flight. The clone's `rr-cache/` is emptied under its lock before the run
-  integrates anything, whenever a PR ends without a push, and at the end of
-  the run, and rerere stays off while another live run has a worktree in the
-  clone, so one run never replays another's unpushed resolution. A replayed
+  flight. A run uses rerere only while it holds the clone's rerere lock
+  (`pr-update-rerere.lock` in the clone), taken without waiting; a run that
+  cannot get it uses no rerere. The holder empties `rr-cache/` when it takes
+  the lock, whenever a PR ends without a push, and when it lets go, and the
+  lock of a killed holder is taken over by a run that empties the cache first,
+  so no run replays another's unpushed resolution. When the cache cannot be
+  emptied, the run uses no rerere from then on. A replayed
   path no resolver claims is reported (`replayed`), and `verify` is its only
   check: with `verify: none`, a replay is pushed unchecked. An agent that
   writes into `rr-cache/` itself during the run is not stopped. In the project

@@ -19,8 +19,9 @@
  *      costs nothing, and it is why sibling PRs on one base need one
  *      resolution, not one per PR. A replayed path the resolvers below claim is still rebuilt by
  *      them; one they do not claim keeps the replay, and is reported. On only
- *      in an `--apply` run in a managed clone, unless `pr_update.rerere` is
- *      false (`planStop` and `integrationEnv` in `execute.ts`).
+ *      in an `--apply` run in a managed clone whose rerere lock the run holds,
+ *      unless `pr_update.rerere` is false (`planStop` and `integrationEnv` in
+ *      `execute.ts`, `./rerere.ts`).
  *   1. lockfile: built in, because every ecosystem has lockfiles and the
  *      resolution always has the same form: take a side, then regenerate from
  *      the merged manifest. Regenerating needs a command only the host knows
