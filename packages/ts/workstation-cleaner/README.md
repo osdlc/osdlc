@@ -1098,7 +1098,10 @@ of that name gives no value either. A variable is resolved only when a folder or
 this OS uses it, or another such variable uses it; variables that don't use each
 other are resolved at the same time. A `detect` that its `onPath` conditions
 already leave inactive resolves none, and a `file` source is read only when it
-is a regular file, and given up on after the command limit. A folder whose
+is a regular file, and given up on after the command limit. A `file` source
+larger than 1 MiB (`VAR_FILE_LIMIT_BYTES`) is not read, and gives the variable
+no value: the sources after it are not tried, since one of them could name
+another folder than the one the file sets. A folder whose
 variable has no value is left out, and `status` notes which variable and why
 each source gave none. `${` is refused in every other field, such as a
 candidate's `command`: a command is pointed at its folder with `{path}`. A

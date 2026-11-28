@@ -14,10 +14,11 @@
  *   value    a fixed value, per OS or for all, which may use other variables
  *
  * A source that gives no value, or one that is not an absolute folder, moves
- * on to the next; an env source of an `XDG_*` built-in must be absolute
- * before `~` is read, as the built-in must. A variable set in the config also wins over the sources of
- * the variables built from it: in each of those, the sources before the first
- * one that uses it are skipped. `HOME` and the `XDG_*` folders are built in,
+ * on to the next, except a file larger than {@link VAR_FILE_LIMIT_BYTES}, which
+ * gives the variable none. An env source of an `XDG_*` built-in must be
+ * absolute before `~` is read, as the built-in must. A variable set in the
+ * config also wins over the sources of the variables built from it: in each of
+ * those, the sources before the first one that uses it are skipped. `HOME` and the `XDG_*` folders are built in,
  * the `XDG_*` ones with their XDG defaults on every OS.
  */
 
@@ -48,6 +49,13 @@ export type { VarValue, Vars } from '../types.ts'
 
 /** How long a `command` source may run, or a `file` source be read, before the next source is tried. */
 export const VAR_COMMAND_LIMIT_MS = 5_000
+
+/**
+ * The largest `file` source read, in bytes (1 MiB). A larger file gives the
+ * variable no value, and no later source is tried: one of those could name
+ * another folder than the one the file sets.
+ */
+export const VAR_FILE_LIMIT_BYTES = 1024 * 1024
 
 /** The parser for each extension a `file` source may have. */
 const PARSERS = {
@@ -145,7 +153,10 @@ export interface VarsAt {
   only?: Iterable<string> | undefined
 }
 
-type Given = { value: string; trusted: boolean } | { failed: string }
+/** A source's value, or why it gave none; `final` when no later source may be tried. */
+type Given = { value: string; trusted: boolean } | Failed
+
+type Failed = { failed: string; final?: true }
 
 /**
  * Every variable in `declared` and the built-ins, or those `at.only` uses,
@@ -229,7 +240,7 @@ export async function resolveVars(
       const file = await fill(source.file, by)
       if ('failed' in file) return file
       const v = await keyIn(file.value, source.key, at.signal, limit)
-      return typeof v === 'string' ? { value: v, trusted: false } : { failed: v.failed }
+      return typeof v === 'string' ? { value: v, trusted: false } : v
     }
     const template = forOs(source.value, at.os)
     return template === undefined ? { failed: `none for ${at.os}` } : fill(template, by)
@@ -254,6 +265,7 @@ export async function resolveVars(
       const said = describeSource(source)
       if ('failed' in given) {
         tried.push({ source: said, failed: given.failed })
+        if (given.final === true) break
         continue
       }
       const value = folderOf(given.value, at.home)
@@ -358,26 +370,36 @@ function builtIns(at: Pick<VarsAt, 'home' | 'env' | 'trustsXdg'>): Vars {
   return out
 }
 
+/** Why a `file` source larger than {@link VAR_FILE_LIMIT_BYTES} gives no value. */
+const tooLarge = (file: string): Failed => ({
+  failed: `${file} is larger than ${VAR_FILE_LIMIT_BYTES / (1024 * 1024)} MiB, so no later source is tried`,
+  final: true,
+})
+
 /**
  * The text of the regular file `file`, or why there is none: a FIFO or other
- * special file is not read, and a read still waiting after `limit`, as on a
- * stalled network mount, gives up and is stopped. A read the system call
- * already blocks holds its thread until that call returns.
+ * special file is not read, one larger than {@link VAR_FILE_LIMIT_BYTES} is
+ * not read either (its size is read first), and a read still waiting after
+ * `limit`, as on a stalled network mount, gives up and is stopped. A read the
+ * system call already blocks holds its thread until that call returns.
  */
-async function textOf(
-  file: string,
-  signal: AbortSignal,
-  limit: number,
-): Promise<string | { failed: string }> {
+async function textOf(file: string, signal: AbortSignal, limit: number): Promise<string | Failed> {
   const stop = new AbortController()
   const read = (async () => {
-    if (!(await stat(file)).isFile()) return { failed: `${file} is not a file` }
-    return readFile(file, { encoding: 'utf-8', signal: AbortSignal.any([signal, stop.signal]) })
+    const st = await stat(file)
+    if (!st.isFile()) return { failed: `${file} is not a file` }
+    if (st.size > VAR_FILE_LIMIT_BYTES) return tooLarge(file)
+    const text = await readFile(file, {
+      encoding: 'utf-8',
+      signal: AbortSignal.any([signal, stop.signal]),
+    })
+    // It may have grown since its size was read.
+    return Buffer.byteLength(text) > VAR_FILE_LIMIT_BYTES ? tooLarge(file) : text
   })()
   // The read may end after the limit; its outcome is then dropped.
   read.catch(() => undefined)
   let timer: NodeJS.Timeout | undefined
-  const late = new Promise<{ failed: string }>((done) => {
+  const late = new Promise<Failed>((done) => {
     timer = setTimeout(() => {
       done({ failed: `${file} not read within ${limit / 1000} s` })
       stop.abort()
@@ -399,7 +421,7 @@ async function keyIn(
   key: string,
   signal: AbortSignal,
   limit: number,
-): Promise<string | { failed: string }> {
+): Promise<string | Failed> {
   const text = await textOf(file, signal, limit)
   if (typeof text !== 'string') return text
   // The schema allows only these extensions, and a filled template keeps its

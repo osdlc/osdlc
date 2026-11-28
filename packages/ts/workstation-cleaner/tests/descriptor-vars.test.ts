@@ -15,6 +15,7 @@ import { pluginKit } from '../src/index.ts'
 import {
   BUILT_IN_VARS,
   VAR_COMMAND_LIMIT_MS,
+  VAR_FILE_LIMIT_BYTES,
   fillTemplate,
   resolveVars,
   type VarSource,
@@ -150,6 +151,32 @@ describe('the file source', () => {
       `cache.size in ${good} is not a string`,
       expect.stringMatching(new RegExp(`^${bad.replaceAll('/', '\\/')} does not parse: `)),
     ])
+  })
+
+  test('a file larger than 1 MiB gives the variable no value, and no later source is tried', async () => {
+    const { home, resolve } = setup()
+    const big = write(
+      home,
+      'big.json',
+      `{ "dir": "/data/tool", "pad": "${'x'.repeat(VAR_FILE_LIMIT_BYTES)}" }`,
+    )
+    const v = await resolve({
+      DIR: [{ file: '~/.config/tool/big.json', key: 'dir' }, { value: '/fallback' }],
+    })
+    expect(v.DIR).toEqual({
+      value: null,
+      trusted: false,
+      tried: [
+        {
+          source: 'file ~/.config/tool/big.json key dir',
+          failed: `${big} is larger than 1 MiB, so no later source is tried`,
+        },
+      ],
+    })
+    // At the limit it is read.
+    write(home, 'edge.json', `{ "dir": "/data/tool" }`.padEnd(VAR_FILE_LIMIT_BYTES))
+    const edge = await resolve({ DIR: [{ file: '~/.config/tool/edge.json', key: 'dir' }] })
+    expect(edge.DIR?.value).toBe('/data/tool')
   })
 
   test('a file named only by its extension is read by that extension', async () => {

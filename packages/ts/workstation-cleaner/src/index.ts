@@ -118,6 +118,7 @@ export {
 export {
   BUILT_IN_VARS,
   VAR_COMMAND_LIMIT_MS,
+  VAR_FILE_LIMIT_BYTES,
   fillTemplate,
   resolveVars,
   type VarSource,
