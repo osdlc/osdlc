@@ -424,6 +424,16 @@ describe('a bad descriptor names the field path', () => {
       ),
       'line 5: candidates.0.command: must not have a .. segment in an argument',
     ],
+    ...[
+      "[rm, -rf, '{path}', /]",
+      "[tool, --cache-dir, /var/cache, '{path}']",
+      "[tool, clean, '{path}', 'C:\\x']",
+      "[tool, clean, '{path}', '\\\\server\\share']",
+    ].map((command): [string, string, string] => [
+      `a command argument that is an absolute path not built from {path}, ${command}`,
+      hfWith(`{ path: hub, costDescription: rebuild, command: ${command}, removes: all }`),
+      'line 5: candidates.0.command: must not have an absolute path as an argument, unless it is built from {path}',
+    ]),
     [
       'a command option whose value climbs above the folder',
       hfWith(

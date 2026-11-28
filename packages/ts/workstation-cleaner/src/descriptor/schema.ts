@@ -44,6 +44,9 @@ const CLIMBS = /(^|[/\\])\.\.([/\\]|$)/
 /** A `..` segment in a command argument or env value, also as an option's value after `=`, as in `--dir=..`. */
 const ARG_CLIMBS = /(^|[/\\=])\.\.([/\\]|$)/
 
+/** An absolute path: from the root (`/`, `\`) or a drive (`C:`). */
+const ABSOLUTE = /^([/\\]|[A-Za-z]:)/
+
 /**
  * A glob alternative that climbs or starts outside: a `..` segment, or a
  * leading `/`, `\`, `~/` or drive, at the start or after a brace's `{` or `,`.
@@ -360,6 +363,11 @@ function candidateIssues(c: Record<string, unknown>): Issue[] {
     const climbs = (v: unknown) => typeof v === 'string' && ARG_CLIMBS.test(v)
     if (Array.isArray(c['command']) && c['command'].some(climbs)) {
       at('command', 'must not have a .. segment in an argument')
+    }
+    // Another folder named outright, as `/` in `[rm, -rf, '{path}', /]`.
+    const elsewhere = (v: unknown) => typeof v === 'string' && !hasPath(v) && ABSOLUTE.test(v)
+    if (Array.isArray(c['command']) && c['command'].slice(1).some(elsewhere)) {
+      at('command', 'must not have an absolute path as an argument, unless it is built from {path}')
     }
     if (isObject(c['env']) && Object.values(c['env']).some(climbs)) {
       at('env', 'must not have a .. segment in a value')
