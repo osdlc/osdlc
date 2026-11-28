@@ -1398,11 +1398,12 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   machine. It fails closed. The README says so where an upgrading user looks
   first.
 - **Size.** Against main, at the end of the omnibus (S13, the CI review's
-  fixes, the ownership contract and review round 2, included), pr-update's
-  `src/` has 7,202 lines added and 542 removed, against the estimate of 700,
-  and its `tests/` 10,732 added and 120 removed (`git diff --shortstat
+  fixes, the ownership contract and review rounds 2 and 3, included),
+  pr-update's `src/` has 7,241 lines added and 576 removed, against the
+  estimate of 700, and its `tests/` 10,825 added and 121 removed (`git diff --shortstat
   origin/main...HEAD`, merge base `93271347`, whose pr-update is that of
-  `88112cb4`). Before review round 2 it was 6,778 and 541, and 10,152 and
+  `88112cb4`). After review round 2 it was 7,202 and 542, and 10,732 and
+  120; before review round 2, 6,778 and 541, and 10,152 and
   119; before the ownership contract, 7,031 and 485, and 10,085 and 93; at
   the end of S12, 6,407 and 455, and 9,585 and 91.
 - **Nested groups.** `--repo` takes exactly `owner/name` or
