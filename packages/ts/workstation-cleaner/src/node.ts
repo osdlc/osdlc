@@ -19,6 +19,7 @@ import {
   checkoutsOf,
   inside,
   refusedRow,
+  unreadableRow,
   type ArtifactOptions,
   type Checkout,
   type Env,
@@ -46,7 +47,12 @@ function rowOrThrow(env: Env, checkout: Checkout): Row[] {
   const safe = inside(checkout.path, NODE_PROJECT.dir)
   if (safe === null) return [refusedRow(kit, 'node-modules', modules, checkout.path)]
 
-  const since = kit.idle(checkout.path, { skip: (name) => SKIPPED.has(name) })
+  let since
+  try {
+    since = kit.idle(checkout.path, { skip: (name) => SKIPPED.has(name) })
+  } catch (err) {
+    return [unreadableRow(kit, 'node-modules', safe, checkout.path, checkout.path, err)]
+  }
   if (!since.unmeasured && (since.hours === null || since.hours < threshold)) return []
 
   return [

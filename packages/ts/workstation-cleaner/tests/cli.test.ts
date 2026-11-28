@@ -10,8 +10,10 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { tmpdir, userInfo } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -114,6 +116,10 @@ test("a run's env holds no home folder variable of this process's", () => {
   ])
   expect(Object.values(env).filter((value) => value.startsWith('/machine'))).toEqual([])
 })
+
+/** The sha256 of `file`'s bytes, in hex, as a plan records a descriptor's. */
+const sha256Of = (file: string): string =>
+  createHash('sha256').update(readFileSync(file)).digest('hex')
 
 function tempDir(): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'workstation-cleaner-cli-')))
@@ -1324,22 +1330,25 @@ ${extra}`
       const common = ['--config', file]
       const status = await run(['status', '--plugin', 'mine', ...common], h.cwd, h.env, deps)
       expect(status.out, what).toContain(`(threshold ${own})`)
+      // Only the parts whose threshold is not the setting's are listed.
+      const parts = [
+        { part: 'store', idleHours: own },
+        { part: 'out beside *.x', idleHours: project },
+      ].filter((p) => p.idleHours !== setting)
       const text = await run(['config', ...common], h.cwd, h.env, deps)
+      const lines = parts.map(
+        (p) => ` {4}${p.part.replace('*.', '\\*\\.')}: idleHours = ${p.idleHours}\\n`,
+      )
       expect(text.out, what).toMatch(
         new RegExp(
-          `plugins\\.mine\\n.*\\n {2}idleHours = ${setting} .*\\n {4}store: idleHours = ${own}\\n {4}out beside \\*\\.x: idleHours = ${project}\\n`,
+          `plugins\\.mine\\n.*\\n {2}idleHours = ${setting} .*\\n${lines.join('')}(?! {4})`,
         ),
       )
-      const json = await run(['config', '--format', 'json', ...common], h.cwd, h.env, deps)
-      expect(JSON.parse(json.out), what).toMatchObject({
-        plugins: { mine: { idleHours: setting } },
-        partIdleHours: {
-          mine: [
-            { part: 'store', idleHours: own },
-            { part: 'out beside *.x', idleHours: project },
-          ],
-        },
-      })
+      const json = JSON.parse(
+        (await run(['config', '--format', 'json', ...common], h.cwd, h.env, deps)).out,
+      )
+      expect(json, what).toMatchObject({ plugins: { mine: { idleHours: setting } } })
+      expect(json.partIdleHours.mine, what).toEqual(parts.length === 0 ? undefined : parts)
     }
   })
 
@@ -1579,7 +1588,9 @@ candidates:
       deps,
     )
     expect(made.code).toBe(0)
-    expect(parsePlan(readFileSync(planFile, 'utf8'), planFile).descriptors).toEqual([desc])
+    expect(parsePlan(readFileSync(planFile, 'utf8'), planFile).descriptors).toEqual([
+      { name: 'mine', source: 'flag', path: desc, sha256: sha256Of(desc) },
+    ])
     const without = await run(['clean', '--plan', planFile, '--yes'], h.cwd, h.env, deps)
     expect(without.code).toBe(2)
     expect(without.err).toContain(`add --descriptor ${desc}`)
@@ -1605,6 +1616,50 @@ candidates:
     expect(dry.err).not.toContain('add --descriptor')
   })
 
+  test('clean --plan refuses a plan whose descriptor was replaced, edited, removed or added', async () => {
+    const h = withHome(['mine'])
+    const shipped = join(h.shipped, 'mine.yaml')
+    writeFileSync(shipped, store('.cache/mine'))
+    const deps = { shippedDescriptors: h.shipped }
+    const planFile = join(h.cwd, 'p.json')
+    const made = await run(['plan', '--plugin', 'mine', '-o', planFile], h.cwd, h.env, deps)
+    expect(made.code).toBe(0)
+    const planned = readFileSync(planFile, 'utf8')
+    expect(parsePlan(planned, planFile).descriptors).toEqual([
+      { name: 'mine', source: 'shipped', path: shipped, sha256: sha256Of(shipped) },
+    ])
+    // Every built-in left out: only the descriptor runs, and with it gone, no plugin.
+    const skip = BUILT_IN_PLUGINS.map((d) => d.name).join(',')
+    const clean = () =>
+      run(['clean', '--plan', planFile, '--skip-plugin', skip, '--yes'], h.cwd, h.env, deps)
+    const refused = async (why: string) => {
+      const r = await clean()
+      expect(r.code, why).toBe(2)
+      expect(r.err, why).toContain("the plan's descriptors changed since it was made: ")
+      expect(r.err, why).toContain(why)
+      expect(existsSync(join(h.home, '.cache', 'mine', 'blob'))).toBe(true)
+    }
+    // A user file of the name stands in for the shipped one.
+    const user = join(h.user, 'mine.yaml')
+    writeFileSync(user, store('.cache/mine'))
+    await refused(`mine is now user ${user}, not shipped ${shipped}`)
+    rmSync(user)
+    // The same file, edited.
+    writeFileSync(shipped, store('.cache/mine', '# edited\n'))
+    await refused(`mine: ${shipped} changed`)
+    rmSync(shipped)
+    await refused(`mine (shipped ${shipped}) is not loaded now`)
+    // A plugin the candidates belong to that is a descriptor the plan does not record.
+    writeFileSync(shipped, store('.cache/mine'))
+    writeFileSync(planFile, JSON.stringify({ ...JSON.parse(planned), descriptors: [] }))
+    await refused(`mine is now the descriptor shipped ${shipped}, which the plan did not run`)
+    // As it was planned, it runs.
+    writeFileSync(planFile, planned)
+    const r = await clean()
+    expect(r.err).not.toContain('descriptors changed')
+    expect(r.code).toBe(0)
+  })
+
   test('clean --plan quotes a --descriptor it asks for whose path a shell would split', async () => {
     const h = withHome(['mine'])
     mkdirSync(join(h.cwd, 'my descriptors'))
@@ -1619,7 +1674,7 @@ candidates:
     expect(without.err).toContain(`add --descriptor '${desc}'`)
   })
 
-  test('a plan records only the --descriptor files behind the plugins it ran', async () => {
+  test('a plan records the descriptors behind the plugins it ran, and only those', async () => {
     const h = withHome(['mine', 'other'])
     const desc = join(h.cwd, 'mine.yaml')
     writeFileSync(desc, store('.cache/mine'))
@@ -1634,8 +1689,13 @@ candidates:
       return parsePlan(readFileSync(planFile, 'utf8'), planFile).descriptors
     }
     const common = ['--descriptor', desc, '--descriptor', bad, '--skip-plugin', 'bad']
-    expect(await descriptorsOf(...common, '--plugin', 'mine')).toEqual([desc])
-    expect(await descriptorsOf(...common, '--plugin', 'other')).toBeUndefined()
+    expect(await descriptorsOf(...common, '--plugin', 'mine')).toEqual([
+      { name: 'mine', source: 'flag', path: desc, sha256: sha256Of(desc) },
+    ])
+    const other = join(h.user, 'other.yaml')
+    expect(await descriptorsOf(...common, '--plugin', 'other')).toEqual([
+      { name: 'other', source: 'user', path: other, sha256: sha256Of(other) },
+    ])
     const left = await run(['clean', '--plan', planFile, '--dry-run'], h.cwd, h.env, deps)
     expect(left.err).not.toContain('add --descriptor')
   })
@@ -1818,6 +1878,43 @@ describe('packages', () => {
       expect(status.out).toContain('scratch:~/.fixture/old')
       expect(status.out).not.toContain('kept')
     }
+  })
+
+  test("a plan and its receipt keep the setup's warnings, and the unknown name once", async () => {
+    const api2 = exporting(
+      "definePlugin({ name: 'fixture', api: 2, settings: z.object({}), create: () => ({ name: 'fixture', detect: () => true }) })",
+    )
+    const h = withPackage({ fixture: { package: FIXTURE }, gti: {} }, api2)
+    const old = join(h.home, '.fixture', 'old')
+    const when = new Date(Date.now() - 48 * 3_600_000)
+    utimesSync(join(old, 'blob'), when, when)
+    writeFileSync(
+      join(h.shipped, 'other.yaml'),
+      'descriptor: 1\npaths:\n  store: { all: ~/.fixture/old }\ncandidates:\n  - { path: store, costDescription: re-download }\n',
+    )
+    writeFileSync(join(h.shipped, 'bad.yaml'), 'descriptor: 1\nnope: 1\n')
+    // Only the descriptor runs: the built-ins would read this machine.
+    const skip = [...BUILT_IN_PLUGINS.map((d) => d.name), 'bad'].join(',')
+    const planFile = join(h.cwd, 'p.json')
+    const planned = await h.go(['plan', '--skip-plugin', skip, '-o', planFile])
+    expect(planned.code).toBe(0)
+    const notLoaded = `plugins.fixture.package: ${FIXTURE} 1.0.0 is written for plugin api 2`
+    const warnings: string[] = JSON.parse(readFileSync(planFile, 'utf8')).warnings
+    expect(warnings).toEqual([
+      expect.stringMatching(/^bad descriptor .*bad\.yaml: .*; this run leaves bad out$/),
+      expect.stringMatching(new RegExp(`^${notLoaded}.*; going on without fixture$`)),
+      'config plugins.gti: no plugin had this name when this plan was made',
+    ])
+    expect(planned.err).toContain('config names no plugin gti')
+
+    writeFileSync(join(h.home, 'config.json'), JSON.stringify({ plugins: {} }))
+    const receipt = join(h.cwd, 'r.json')
+    const argv = ['clean', '--plan', planFile, '--skip-plugin', skip, '--yes', '--receipt', receipt]
+    expect((await h.go(argv)).code).toBe(0)
+    expect(existsSync(old)).toBe(false)
+    expect(JSON.parse(readFileSync(receipt, 'utf8')).warnings).toEqual(
+      expect.arrayContaining(warnings),
+    )
   })
 
   test('a wrong api: status and plan warn and go on, clean exits 2 unless --skip-plugin', async () => {
@@ -2896,11 +2993,11 @@ describe('plan and clean', () => {
     })
     expect(r.code).not.toBe(0)
     expect(r.err).toContain(
-      'a version 1 plan; this workstation-cleaner reads version 2: sweep again',
+      `a version 1 plan; this workstation-cleaner reads version ${PLAN_VERSION}: sweep again`,
     )
   })
 
-  test('a version 2 plan without targetsGiven is refused: sweep again', async () => {
+  test('a plan of this version without targetsGiven is refused: sweep again', async () => {
     const { env, home, cwd } = setup()
     const old = {
       version: PLAN_VERSION,
@@ -2912,11 +3009,13 @@ describe('plan and clean', () => {
       allow: [],
       ignore: [],
       warnings: [],
+      descriptors: [],
       candidates: [],
       objections: [],
     }
-    const refusal =
-      /^old\.json: a version 2 plan this workstation-cleaner cannot read \(targetsGiven: .*\): sweep again$/
+    const refusal = new RegExp(
+      `^old\\.json: a version ${PLAN_VERSION} plan this workstation-cleaner cannot read \\(targetsGiven: .*\\): sweep again$`,
+    )
     expect(() => parsePlan(JSON.stringify(old), 'old.json')).toThrow(refusal)
     expect(
       parsePlan(JSON.stringify({ ...old, targetsGiven: false }), 'new.json').targetsGiven,
@@ -2927,7 +3026,9 @@ describe('plan and clean', () => {
       plugins: [fake()],
     })
     expect(r.code).toBe(1)
-    expect(r.err).toContain('a version 2 plan this workstation-cleaner cannot read (targetsGiven: ')
+    expect(r.err).toContain(
+      `a version ${PLAN_VERSION} plan this workstation-cleaner cannot read (targetsGiven: `,
+    )
     expect(r.err).toContain('): sweep again')
   })
 
@@ -3002,6 +3103,7 @@ describe('plan and clean', () => {
         spare: [],
         allow: [],
         warnings: [],
+        descriptors: [],
         candidates: [
           {
             id: `artifact:${owner}`,
@@ -3067,6 +3169,7 @@ describe('plan and clean', () => {
         spare: [],
         allow: [],
         warnings: [],
+        descriptors: [],
         candidates: [candidate('podman')],
         objections: [],
       }),

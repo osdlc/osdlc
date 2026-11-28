@@ -10,6 +10,7 @@ import {
   HOOK_LIMIT_MS,
   OLLAMA_IN_USE,
   OLLAMA_PS_FAILED,
+  OLLAMA_UNREACHABLE,
   OLLAMA_USE_UNKNOWN,
   clean,
   decidePlan,
@@ -356,7 +357,28 @@ describe('survey', () => {
       evidence: { kind: 'ollama-model', name: 'old:7b', id: idOf('old:7b') },
     }
     const [o] = await plugin.object!([c], fakeContext({ signal: stop.signal }))
-    expect(o).toMatchObject({ code: OLLAMA_PS_FAILED, reason: 'hook took too long' })
+    expect(o).toMatchObject({ code: OLLAMA_UNREACHABLE, reason: 'hook took too long' })
+    expect(calls()).toEqual([])
+  })
+
+  test('a server that stops answering before object refuses every model ollama-unreachable, not ollama-ps-failed', async () => {
+    const { plugin, calls } = fakeOllama(models)
+    server.mockImplementation(async () => ({ ok: false }))
+    const c = {
+      id: 'ollama-model:old:7b',
+      kind: 'ollama-model',
+      ref: 'old:7b',
+      owner: 'ollama',
+      why: 'x',
+      evidence: { kind: 'ollama-model', name: 'old:7b', id: idOf('old:7b') },
+    }
+    const [o] = await plugin.object!([c], fakeContext())
+    expect(o).toMatchObject({
+      level: 'refuse',
+      code: OLLAMA_UNREACHABLE,
+      reason: "ollama's server at 127.0.0.1:11434 does not answer",
+    })
+    // ps never ran.
     expect(calls()).toEqual([])
   })
 

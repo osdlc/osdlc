@@ -16,7 +16,7 @@ import { basename, extname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { byName, realOr } from '../helpers.ts'
-import { DescriptorError, PLUGIN_NAME, readDescriptor, type Descriptor } from './schema.ts'
+import { DescriptorError, PLUGIN_NAME, readDescriptorFile, type Descriptor } from './schema.ts'
 
 /** The package's own descriptors: `descriptors/` beside `src/` and `dist/`. */
 export const SHIPPED_DESCRIPTORS = fileURLToPath(new URL('../../descriptors/', import.meta.url))
@@ -43,6 +43,8 @@ export interface LoadedDescriptor {
   /** The file this one replaced: a shipped one, or for `--descriptor` the one the name had. */
   replaces?: { source: DescriptorSource; path: string }
   descriptor: Descriptor
+  /** The sha256 of the file's bytes as they were parsed, in hex; a plan records it. */
+  sha256: string
 }
 
 /** Descriptors that can't be used together: a clash of names, or a file name that is no plugin name. */
@@ -193,7 +195,10 @@ export function findDescriptors(
     sources.user === undefined ? [] : foundIn(filesIn(sources.user), 'user'),
     [...foundIn(flag.files, 'flag'), ...flag.problems],
   ]
-  const chosen = new Map<string, Omit<LoadedDescriptor, 'descriptor'> | DescriptorProblem>()
+  const chosen = new Map<
+    string,
+    Omit<LoadedDescriptor, 'descriptor' | 'sha256'> | DescriptorProblem
+  >()
   for (const layer of layers) {
     for (const f of layer) {
       const before = chosen.get(f.name)
@@ -226,7 +231,7 @@ export function findDescriptors(
       continue
     }
     try {
-      descriptors.push({ ...f, descriptor: readDescriptor(f.path) })
+      descriptors.push({ ...f, ...readDescriptorFile(f.path) })
     } catch (err) {
       if (!(err instanceof DescriptorError)) throw err
       problems.push({ name: f.name, source: f.source, path: f.path, error: err })

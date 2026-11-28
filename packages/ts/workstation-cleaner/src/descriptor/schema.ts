@@ -7,6 +7,7 @@
  * reader runs. So are the checks on `vars` (tier 2), {@link varIssues}.
  */
 
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 import { LineCounter, isMap, isScalar, isSeq, parseDocument, type Document } from 'yaml'
@@ -43,6 +44,9 @@ const CLIMBS = /(^|[/\\])\.\.([/\\]|$)/
 
 /** A `..` segment in a command argument or env value, also as an option's value after `=`, as in `--dir=..`. */
 const ARG_CLIMBS = /(^|[/\\=])\.\.([/\\]|$)/
+
+/** An absolute path: from the root (`/`, `\`) or a drive (`C:`). */
+const ABSOLUTE = /^([/\\]|[A-Za-z]:)/
 
 /**
  * A glob alternative that climbs or starts outside: a `..` segment, or a
@@ -360,6 +364,11 @@ function candidateIssues(c: Record<string, unknown>): Issue[] {
     const climbs = (v: unknown) => typeof v === 'string' && ARG_CLIMBS.test(v)
     if (Array.isArray(c['command']) && c['command'].some(climbs)) {
       at('command', 'must not have a .. segment in an argument')
+    }
+    // Another folder named outright, as `/` in `[rm, -rf, '{path}', /]`.
+    const elsewhere = (v: unknown) => typeof v === 'string' && !hasPath(v) && ABSOLUTE.test(v)
+    if (Array.isArray(c['command']) && c['command'].slice(1).some(elsewhere)) {
+      at('command', 'must not have an absolute path as an argument, unless it is built from {path}')
     }
     if (isObject(c['env']) && Object.values(c['env']).some(climbs)) {
       at('env', 'must not have a .. segment in a value')
@@ -766,13 +775,24 @@ export function parseDescriptor(text: string, source: string): Descriptor {
  * @throws DescriptorError for a file that can't be read, or as {@link parseDescriptor}
  */
 export function readDescriptor(path: string): Descriptor {
-  let text: string
+  return readDescriptorFile(path).descriptor
+}
+
+/**
+ * The descriptor in the file at `path`, and the sha256 of the bytes it was
+ * parsed from, in hex.
+ *
+ * @throws DescriptorError as {@link readDescriptor}
+ */
+export function readDescriptorFile(path: string): { descriptor: Descriptor; sha256: string } {
+  let bytes: Buffer
   try {
-    text = readFileSync(path, 'utf-8')
+    bytes = readFileSync(path)
   } catch (err) {
     throw new DescriptorError(path, [`cannot read: ${(err as Error).message}`])
   }
-  return parseDescriptor(text, path)
+  const sha256 = createHash('sha256').update(bytes).digest('hex')
+  return { descriptor: parseDescriptor(bytes.toString('utf-8'), path), sha256 }
 }
 
 const lineOf = (lines: LineCounter, offset: number): string => `line ${lines.linePos(offset).line}`

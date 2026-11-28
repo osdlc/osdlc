@@ -321,9 +321,10 @@ export interface PluginDefinition<S extends z.ZodObject = z.ZodObject> {
   settings: S
   create(init: PluginInit<z.output<S>>): Plugin
   /**
-   * The idle threshold of each part that does not simply take the `idleHours`
-   * setting, given that setting and where it came from: what the run uses, for
-   * `config` to show.
+   * The idle threshold the run uses for each part, given the `idleHours`
+   * setting and where it came from, for `config` to show: only the parts whose
+   * threshold, once the setting is applied to their own, differs from the
+   * setting. A part the setting overrides is left out.
    */
   idleHoursOf?(idleHours: number, source: SettingSource): PartIdleHours[]
 }

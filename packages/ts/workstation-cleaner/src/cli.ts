@@ -47,6 +47,7 @@ import {
   sameDescriptor,
   type DescriptorSource,
   type DescriptorSources,
+  type LoadedDescriptor,
 } from './descriptor/load.ts'
 import { DescriptorError } from './descriptor/schema.ts'
 import type { VarValue, Vars } from './descriptor/vars.ts'
@@ -63,7 +64,14 @@ import {
   type PackageFailure,
 } from './load.ts'
 import { oldVariables, oldVariablesRefusal, oldVariableWarnings } from './old-name.ts'
-import { parsePlan, readPlan, writePlan, type Plan, type Receipt } from './plan.ts'
+import {
+  parsePlan,
+  readPlan,
+  writePlan,
+  type DescriptorRecord,
+  type Plan,
+  type Receipt,
+} from './plan.ts'
 import {
   BUILT_IN_PLUGINS,
   UnknownPlugin,
@@ -719,7 +727,8 @@ const withWarnings = <S extends { warnings: readonly string[] }>(s: S, warnings:
 /**
  * The config and the plugins this run uses: {@link findRun}, then
  * {@link loadRun}, each built from its entry (or `deps.plugins`), then chosen
- * by flag, the `--descriptor` files behind those plugins, and what to warn of.
+ * by flag, the descriptors behind those plugins, every descriptor loaded,
+ * and what to warn of.
  * A descriptor that can't be used stops the run unless the run leaves its
  * name out. A config entry that names no plugin stops the run when
  * `opts.strict`. `failed` are the packages that did not load or build, which
@@ -736,7 +745,10 @@ async function setUp(
 ): Promise<{
   config: Config
   plugins: Plugin[]
-  descriptors: string[]
+  /** The descriptor plugins this run uses, as a plan records them. */
+  descriptors: DescriptorRecord[]
+  /** Every descriptor this run loaded, used or not. */
+  loaded: readonly LoadedDescriptor[]
   failed: PackageFailure[]
   warnings: string[]
   unknown: string[]
@@ -767,10 +779,10 @@ async function setUp(
   return {
     config,
     plugins,
-    // The `--descriptor` files behind the plugins this run uses, which a plan records.
-    descriptors: found.descriptors
-      .filter((d) => d.source === 'flag' && names.has(d.name))
-      .map((d) => d.path),
+    descriptors: loading.loaded.descriptors
+      .filter((d) => names.has(d.name))
+      .map(({ name, source, path, sha256 }) => ({ name, source, path, sha256 })),
+    loaded: loading.loaded.descriptors,
     failed: loading.failed,
     warnings,
     unknown,
@@ -1368,14 +1380,18 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
     })
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = await survey(plugins, cctx)
-    writeWarnings(ctx, name, [...warnings, ...failed.map(notLoaded), ...surveyWarnings(s)])
+    const setup = [...warnings, ...failed.map(notLoaded)]
+    writeWarnings(ctx, name, [...setup, ...surveyWarnings(s)])
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
     // A receipt copies the plan's warnings: it keeps what was true of this sweep, not what clean will do.
     const swept = unknown.map(
       (n) => `config plugins.${n}: no plugin had this name when this plan was made`,
     )
+    // The unknown names once, as `swept` words them.
+    const said = unknown.length === 0 ? undefined : unknownMessage(unknown)
+    const recorded = [...setup.filter((w) => w !== said), ...swept]
     const home = homeOf(ctx)
-    plan = makePlan(withWarnings(s, swept), {
+    plan = makePlan(withWarnings(s, recorded), {
       targets: cctx.targets,
       targetsGiven: cctx.targetsGiven,
       ignore: cctx.ignore,
@@ -1561,13 +1577,49 @@ function savedPlan(
   const plan =
     named === '-' ? parsePlan((deps.readStdin ?? readAllStdin)(), 'stdin') : readPlan(source)
   const given = flagDescriptors(v, ctx)
-  const missing = (plan.descriptors ?? []).filter((p) => !given.some((g) => sameDescriptor(p, g)))
+  const missing = plan.descriptors
+    .filter((d) => d.source === 'flag')
+    .map((d) => d.path)
+    .filter((p) => !given.some((g) => sameDescriptor(p, g)))
   if (missing.length > 0) {
     throw new BadInput(
       `the plan was made with descriptors this run does not load; add ${[...new Set(missing)].map((p) => `--descriptor ${shellQuote(p)}`).join(' ')}`,
     )
   }
   return { plan, source }
+}
+
+/**
+ * Refuses a plan whose descriptors are not the ones it ran: one it records
+ * that is not loaded now, comes from another source or file, or whose file
+ * changed; or a plugin its candidates belong to that is now a descriptor it
+ * does not record (`loaded` is every descriptor this run loaded).
+ *
+ * @throws BadInput naming each change
+ */
+function refuseChangedDescriptors(plan: Plan, loaded: readonly LoadedDescriptor[]): void {
+  const now = new Map(loaded.map((d) => [d.name, d]))
+  const from = (d: { source: DescriptorSource; path: string }): string => `${d.source} ${d.path}`
+  const changes: string[] = []
+  for (const r of plan.descriptors) {
+    const d = now.get(r.name)
+    if (d === undefined) changes.push(`${r.name} (${from(r)}) is not loaded now`)
+    else if (d.source !== r.source || realOr(d.path) !== realOr(r.path)) {
+      changes.push(`${r.name} is now ${from(d)}, not ${from(r)}`)
+    } else if (d.sha256 !== r.sha256) changes.push(`${r.name}: ${r.path} changed`)
+  }
+  const recorded = new Set(plan.descriptors.map((r) => r.name))
+  for (const owner of new Set(plan.candidates.map((c) => c.owner))) {
+    const d = now.get(owner)
+    if (d !== undefined && !recorded.has(owner)) {
+      changes.push(`${owner} is now the descriptor ${from(d)}, which the plan did not run`)
+    }
+  }
+  if (changes.length > 0) {
+    throw new BadInput(
+      `the plan's descriptors changed since it was made: ${changes.map(oneLine).join('; ')}; sweep again`,
+    )
+  }
 }
 
 async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps): Promise<number> {
@@ -1602,6 +1654,7 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
     const saved = v.plan === undefined ? undefined : savedPlan(v.plan, v, ctx, deps)
     const run = await setUp(v, ctx, deps, { dirs, strict: true, archive })
     refuseFailed(run.failed)
+    if (saved !== undefined) refuseChangedDescriptors(saved.plan, run.loaded)
     const config = run.config
     plugins = run.plugins
     known = run.known
@@ -1616,7 +1669,8 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
       writeWarnings(ctx, name, surveyWarnings(s))
       notes = s.notes
       if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
-      plan = makePlan(s, {
+      // Its receipt records what the setup warned of, as a saved plan's does.
+      plan = makePlan(withWarnings(s, run.warnings), {
         targets: cctx.targets,
         targetsGiven: cctx.targetsGiven,
         ignore: cctx.ignore,

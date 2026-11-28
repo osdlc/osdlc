@@ -417,7 +417,9 @@ the home folder or the root, not a home folder itself such as `/home/alice`. A
 glob names entries inside its path, in every `{a,b}` alternative too, and a
 project `marker` names a file in every alternative. A tool's
 `command` must name the checked folder, as a `{path}` argument or in `env`, no
-argument or `env` value may have a `..` segment (an option's value after `=` too, as in `--dir=..`), and `env` may not set `PATH`, `LD_*`, `DYLD_*`, `NODE_OPTIONS` or `BASH_ENV`.
+argument or `env` value may have a `..` segment (an option's value after `=` too, as in `--dir=..`), no
+argument may be an absolute path that is not built from `{path}` (so `[rm, -rf, '{path}', /]`
+and `[tool, --cache-dir, /var/cache, '{path}']` are refused; `'{path}/sub'` is not), and `env` may not set `PATH`, `LD_*`, `DYLD_*`, `NODE_OPTIONS` or `BASH_ENV`.
 `paths`, `vars` and `inUse.locks` may use a `${VAR}` that `vars` declares or
 that is built in (`HOME` and the `XDG_*` folders); a `${` in any other string
 (such as a candidate's `command`, `env` or `glob`, `inUse.processes`,
@@ -464,6 +466,11 @@ const plugin = descriptorPlugin('pip', d)
   10 minute limit, which can stop it between two folders.
 - **object:** a running `inUse` process or lock refuses its candidates
   (`in-use`); a prune with no program on PATH gets a `no-prune-tool` protest.
+  A folder, glob match or build folder that is there but whose idle time
+  cannot be read (a folder in it gives `EACCES`, say) is listed, not sized,
+  and refused `folder-unreadable`, since it may hide recent changes. (Of the
+  matches past `maxEntries`, one that cannot be read is left when the others
+  are deleted.)
 - **delete:** checks the candidate again, and that one the plan ran as idle
   is still idle and measured (a prune excepted). A held one a person picked is
   not checked for idle time, unless its entry holds it (`held: true`) or it is
@@ -564,7 +571,9 @@ give it a 10 minute limit instead of the default 30 seconds, and let that limit
 fire between two checkouts.
 
 A `cargo` or `rustc` process in the checkout (any busy process for `node`), or
-a process table that cannot be read, is a `refuse`. A path that leads outside
+a process table that cannot be read, is a `refuse`. So is an artifact whose
+idle time cannot be read (a folder in the worktree, or in `target/*/.fingerprint`,
+gives `EACCES`, say): `folder-unreadable`, not sized. A path that leads outside
 its checkout (checked with `@osdlc/path-guard`) is a `refuse` and is never
 measured. `delete` reads the checkout's candidates again over a fresh process
 table, then removes the directory with `kit.remove`; a directory that is already
@@ -666,7 +675,7 @@ plugin stays out of the run.
 | --- | --- | --- | --- |
 | `docker-volume:<name>` | `docker volume ls --filter dangling=true`: no container, running or stopped, uses it. Not one named in `plugins.docker.keepVolumes`. | `docker volume rm` | `lost`: held, and runs only when picked with `--allow discard-user-data` |
 | `docker-image:<id>` | `docker image ls --filter dangling=true`: no tag. One a container (running or stopped) was made from is left out. | `docker image rm`, unless `docker image inspect` finds a tag on it now | `re-download` |
-| `docker-build-cache:reclaimable` | The `Reclaimable:` total of `docker builder du`, when it is more than 0. | `docker builder prune --all --force` | `re-download` |
+| `docker-build-cache:reclaimable` | The `Reclaimable:` total of `docker builder du`, when it is more than 0. | `docker builder prune --all --force` | `rebuild`: only a build makes it again |
 
 Docker refuses to remove a volume or image a container took up after the
 plan, so that candidate fails instead of being deleted. A volume removed and
@@ -706,7 +715,7 @@ interfaces. The ping goes straight to the server: it does not read
 | Phase | What it does |
 | --- | --- |
 | discover | Each model in `ollama list` is `ollama-model:<name>`, a ref with `costDescription: re-download` and the most its SIZE text can mean (ollama cuts 10 and more to a whole number and rounds less to a tenth unless it is whole, so `19 GB` is up to 20 GB, `3.9 GB` up to 3.95 GB, and `4 GB` is exact). Tags that share an ID share their files, so removing one alone frees nothing: each names the size and the other tags in its reason, the first carries the size when none of them is held, and the rest carry 0 bytes. Models with different IDs may share layers, which `ollama list` does not show, so a size is the most that removing one frees. Its age is the least time the MODIFIED text can mean (`4 days ago` is at least 95.5 hours); a model younger than the threshold, or with an age or size it cannot read, is held for a pick. Cloud models (SIZE `-`), with nothing on disk, are left out. Evidence is the name and the ID. |
-| object | A model `ollama ps` shows loaded, by name or ID, is refused `ollama-in-use`. Every other model gets an `ollama-use-unknown` protest. If `ollama ps` fails, or has not answered in 20 s, every model is refused `ollama-ps-failed`. |
+| object | A model `ollama ps` shows loaded, by name or ID, is refused `ollama-in-use`. Every other model gets an `ollama-use-unknown` protest. If the server cannot be reached then, every model is refused `ollama-unreachable`; if `ollama ps` fails, or has not answered in 20 s, every model is refused `ollama-ps-failed`. |
 | delete | Reads `ollama list` and then `ollama ps` again, the loaded check last because `ollama rm` unloads a loaded model: a model now loaded or with another ID is not removed, one already gone is not a failure. Then `ollama rm <name>`, and checks the list no longer shows it; a list that fails after a successful `rm` is noted in the receipt, not a failure. The receipt says the most it freed, or which tags keep its files. |
 
 ollama records when a model was pulled, not when it was last run, so a model
@@ -742,6 +751,13 @@ another machine, or a drive that is away). A link there is followed, and one
 that leads nowhere counts as a volume that is away. A project folder in
 `projects` that is a link is skipped; `projects` itself may be one.
 
+A `~/.claude` folder synced with another machine, or shared with a container
+or another pid namespace, can hold that machine's live history. Its project
+path can be missing here only, and its sessions' processes look dead here, so
+no check on this machine can tell it from history whose folder is gone. Such a
+folder is proposed like any other; since it is `lost` (below), it is deleted
+only when you pick it, so check where a project ran before you pick it.
+
 History cannot be fetched or built again, so its `costDescription` is `lost`:
 it is held, and runs only when picked and allowed:
 
@@ -758,6 +774,11 @@ process still works in the gone folder (`live-process`; macOS gives no name for
 a removed folder, so there such a process is not seen), or when either cannot
 be read (`session-state-unreadable`, `process-table-unreadable`). `delete` reads the folder and the sessions again,
 then removes it with `kit.remove`. No settings.
+
+As a library: `agentHistoryDefinition` is the plugin as the command line
+builds it; `agentHistoryDefinition.create({ settings: {}, env, kit })` reads
+`CLAUDE_CONFIG_DIR` from `env`, and the home folder from the run's `ctx.home`
+(the process's when that is empty).
 
 Codex is left out: it keeps sessions by date
 (`~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl`), with the working
@@ -869,9 +890,13 @@ Settings: `plugins.toolchains.idleHours`, which inherits the top-level
   there proposes nothing, and `status` warns
   `toolchains: <folder> is on a volume mounted noatime, so last use can't be measured and every version in it is kept`.
   The volume is the one `df` names for the folder, and its options come from
-  `mount` on macOS and `/proc/self/mounts` on Linux. When they cannot be read
-  (`df` or `mount` failing, another platform), the access times are
-  trusted, except on macOS.
+  `mount` on macOS and `/proc/self/mounts` on Linux. On Linux, options that
+  cannot be read (`df` failing, `/proc/self/mounts` unreadable or not naming
+  that volume) count as unmeasured too: the folder proposes nothing, and
+  `status` warns
+  `toolchains: <folder> is on a volume whose mount options could not be read, so it may be mounted noatime, last use can't be measured and every version in it is kept`.
+  On macOS such a folder proposes nothing either (below). On any other
+  platform the options are not read, and the access times are trusted.
 - macOS stops updating a file's access time once it is newer than its
   modified time, so after a version's first use there its access times cannot
   show a recent one: unless the volume is mounted `strictatime`, a versions
@@ -936,7 +961,9 @@ The text output writes the home folder in an id as `~`
 (`worktree:~/dev/wt`, `branch:~/dev/repo:main`), and `--pick` and `--spare`
 take that form, also when `HOME` goes through a symlink. `status`, `plan`, `clean` and `plugins` refuse to run as root (exit 1); `config` still answers. `status`,
 `plan` and `clean` print each plugin's `detect` note as a warning line naming
-the plugin, with the survey's warnings.
+the plugin, with the survey's warnings. A plan's `warnings`, which its receipt
+copies, hold what the setup warned of too: a descriptor the run leaves out, a
+package that did not load, a config that is not read.
 
 `--plugin <name>` runs only those plugins and `--skip-plugin <name>` never
 runs these.
@@ -980,10 +1007,15 @@ shipped one of the same name, and `--descriptor` replaces either for that run.
 Every plugin has one name, so any other clash, such as a descriptor named `git`
 or two files of one name in one folder, is a file that can't be used. Descriptors
 run after the built-ins, by name. To try one you are writing:
-`workstation-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan records the
-`--descriptor` files behind the plugins it ran, not those the run left out.
-`clean --plan` does not load them by itself: when one is not given it stops
-(exit 2) and names each `--descriptor` flag to add. A descriptor's
+`workstation-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan records
+each descriptor behind the plugins it ran, not those the run left out: its
+name, where it came from (`shipped`, `user` or `flag`), its file and the
+file's sha256. `clean --plan` does not load a `--descriptor` file by itself:
+when one is not given it stops (exit 2) and names each `--descriptor` flag to
+add. It also stops (exit 2, sweep again) when a descriptor the plan records
+is not loaded now, comes from another source or file, or was edited, or when
+a plugin the plan's candidates belong to is now a descriptor the plan does
+not record, so a plan deletes only through the descriptors it was made with. A descriptor's
 `supersededBy` must name a built-in plugin, or a package the config names.
 
 `config` reports a descriptor file that can't be used (not a descriptor, a name
@@ -1080,11 +1112,16 @@ paths:
 
 `HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and
 `XDG_STATE_HOME` are built in; each `XDG_*` folder falls back to its XDG default
-under home on every OS. A variable is resolved only when a folder or lock on
+under home on every OS. One set to a folder that is not absolute, such as
+`XDG_CACHE_HOME=~/c`, is ignored, as the XDG spec says, and so an `env` source
+of that name gives no value either. A variable is resolved only when a folder or lock on
 this OS uses it, or another such variable uses it; variables that don't use each
 other are resolved at the same time. A `detect` that its `onPath` conditions
 already leave inactive resolves none, and a `file` source is read only when it
-is a regular file, and given up on after the command limit. A folder whose
+is a regular file, and given up on after the command limit. A `file` source
+larger than 1 MiB (`VAR_FILE_LIMIT_BYTES`) is not read, and gives the variable
+no value: the sources after it are not tried, since one of them could name
+another folder than the one the file sets. A folder whose
 variable has no value is left out, and `status` notes which variable and why
 each source gave none. `${` is refused in every other field, such as a
 candidate's `command`: a command is pointed at its folder with `{path}`. A
@@ -1262,9 +1299,11 @@ the entry's own value applies.
 `workstation-cleaner config` prints the config file it looked for (and says when it
 is missing, so the defaults apply), then every plugin's effective settings:
 the value, and whether the file set it or it is the default. Under a descriptor's `idleHours`
-it prints each entry with its own value and the threshold the run applies to it
-(to a prune entry only when its program is not on PATH and the folder is
-removed whole).
+it prints each entry with its own value whose threshold differs from that
+setting, with the threshold the run applies to it (to a prune entry only when
+its program is not on PATH and the folder is removed whole). An entry the
+setting overrides, such as every entry under a `plugins.<name>.idleHours`, is
+not printed: it takes the setting.
 `--format json` prints the values, with `file` and `fileExists`, and those
 thresholds under `partIdleHours`.
 

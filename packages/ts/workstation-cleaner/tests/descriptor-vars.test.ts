@@ -15,6 +15,7 @@ import { pluginKit } from '../src/index.ts'
 import {
   BUILT_IN_VARS,
   VAR_COMMAND_LIMIT_MS,
+  VAR_FILE_LIMIT_BYTES,
   fillTemplate,
   resolveVars,
   type VarSource,
@@ -82,6 +83,24 @@ describe('the env source', () => {
     const { home, resolve } = setup({ env: { UV_CACHE_DIR: '~/fast/uv/' } })
     expect((await resolve({ UV: [{ env: 'UV_CACHE_DIR' }] })).UV?.value).toBe(join(home, 'fast/uv'))
   })
+
+  test('an XDG folder that is not absolute gives no value, as the built-in ignores it; ~ is not read in it', async () => {
+    const { home, resolve } = setup({ env: { XDG_CACHE_HOME: '~/c', XDG_DATA_HOME: 'data' } })
+    const v = await resolve({
+      CACHE_SET: [{ env: 'XDG_CACHE_HOME' }],
+      DATA_SET: [{ env: 'XDG_DATA_HOME' }, { value: '~/.local/share' }],
+      YARN: [{ value: '${CACHE_SET}/yarn' }, { value: '${XDG_CACHE_HOME}/yarn' }],
+    })
+    expect(v.CACHE_SET).toEqual({
+      value: null,
+      trusted: false,
+      tried: [{ source: 'env XDG_CACHE_HOME', failed: '~/c is not an absolute folder' }],
+    })
+    expect(v.DATA_SET).toMatchObject({ value: join(home, '.local/share'), from: 'value' })
+    // The same folder the built-in gives, not ~/c/yarn.
+    expect(v.YARN).toMatchObject({ value: join(home, '.cache/yarn') })
+    expect(v.XDG_CACHE_HOME).toMatchObject({ value: join(home, '.cache'), from: 'default' })
+  })
 })
 
 describe('the file source', () => {
@@ -132,6 +151,32 @@ describe('the file source', () => {
       `cache.size in ${good} is not a string`,
       expect.stringMatching(new RegExp(`^${bad.replaceAll('/', '\\/')} does not parse: `)),
     ])
+  })
+
+  test('a file larger than 1 MiB gives the variable no value, and no later source is tried', async () => {
+    const { home, resolve } = setup()
+    const big = write(
+      home,
+      'big.json',
+      `{ "dir": "/data/tool", "pad": "${'x'.repeat(VAR_FILE_LIMIT_BYTES)}" }`,
+    )
+    const v = await resolve({
+      DIR: [{ file: '~/.config/tool/big.json', key: 'dir' }, { value: '/fallback' }],
+    })
+    expect(v.DIR).toEqual({
+      value: null,
+      trusted: false,
+      tried: [
+        {
+          source: 'file ~/.config/tool/big.json key dir',
+          failed: `${big} is larger than 1 MiB, so no later source is tried`,
+        },
+      ],
+    })
+    // At the limit it is read.
+    write(home, 'edge.json', `{ "dir": "/data/tool" }`.padEnd(VAR_FILE_LIMIT_BYTES))
+    const edge = await resolve({ DIR: [{ file: '~/.config/tool/edge.json', key: 'dir' }] })
+    expect(edge.DIR?.value).toBe('/data/tool')
   })
 
   test('a file named only by its extension is read by that extension', async () => {

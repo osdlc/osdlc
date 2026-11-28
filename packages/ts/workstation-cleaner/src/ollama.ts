@@ -50,6 +50,9 @@ export const OLLAMA_USE_UNKNOWN = 'ollama-use-unknown'
 /** The refusal of every model when `ollama ps` fails, so a loaded one cannot be told apart. */
 export const OLLAMA_PS_FAILED = 'ollama-ps-failed'
 
+/** The refusal of every model when the server cannot be reached in `object`, so `ollama ps` cannot run. */
+export const OLLAMA_UNREACHABLE = 'ollama-unreachable'
+
 const USE_UNKNOWN_REASON = 'ollama records when a model was pulled, not when it was last run'
 
 /** How long the server has to answer before it counts as down. */
@@ -377,12 +380,16 @@ export function ollamaPlugin(
     async object(all, ctx) {
       const mine = all.filter(own)
       if (mine.length === 0) return []
-      let loaded: LoadedModel[]
+      // Without `ollama ps` a loaded model cannot be told apart, so every model is refused.
       try {
         await reach(ctx)
+      } catch (err) {
+        return mine.map((c) => objection(c, 'refuse', OLLAMA_UNREACHABLE, errorText(err)))
+      }
+      let loaded: LoadedModel[]
+      try {
         loaded = await loadedNow(ctx)
       } catch (err) {
-        // Without `ollama ps` a loaded model cannot be told apart, so every model is refused.
         return mine.map((c) => objection(c, 'refuse', OLLAMA_PS_FAILED, errorText(err)))
       }
       return mine.map((c) => {

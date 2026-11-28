@@ -216,9 +216,10 @@ describe('discover', () => {
     // The id is the content; `CreatedAt`, printed in local time, would move with TZ.
     expect(image!.evidence).toEqual({ kind: DOCKER_IMAGE, id: OLD })
     expect(image!.held).toBeUndefined()
+    // Only a build makes a build cache again.
     expect(cache).toMatchObject({
       bytes: 1_500_000_000,
-      costDescription: 're-download',
+      costDescription: 'rebuild',
       evidence: { kind: DOCKER_BUILD_CACHE },
     })
   })

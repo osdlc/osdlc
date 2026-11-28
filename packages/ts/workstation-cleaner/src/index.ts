@@ -26,6 +26,7 @@ export {
   type PackageFailure,
 } from './load.ts'
 export {
+  DescriptorRecordSchema,
   PLAN_VERSION,
   PlanSchema,
   RECEIPT_VERSION,
@@ -34,6 +35,7 @@ export {
   readPlan,
   writePlan,
   writeReceipt,
+  type DescriptorRecord,
   type Dropped,
   type Plan,
   type Receipt,
@@ -77,7 +79,7 @@ export {
   dockerPlugin,
   type DockerOptions,
 } from './docker.ts'
-export { AGENT_HISTORY_PLUGIN } from './agent-history.ts'
+export { AGENT_HISTORY_PLUGIN, agentHistoryDefinition } from './agent-history.ts'
 export { jetbrainsPlugin, JETBRAINS_PLUGIN, type JetbrainsOptions } from './jetbrains.ts'
 export {
   toolchainsDefinition,
@@ -85,7 +87,7 @@ export {
   TOOLCHAINS_PLUGIN,
   type ToolchainsOptions,
 } from './toolchains.ts'
-export { type ArtifactOptions } from './artifacts.ts'
+export { FOLDER_UNREADABLE, type ArtifactOptions } from './artifacts.ts'
 export {
   DEFAULT_MAX_ENTRIES,
   DESCRIPTOR_SCHEMA_URL,
@@ -118,6 +120,7 @@ export {
 export {
   BUILT_IN_VARS,
   VAR_COMMAND_LIMIT_MS,
+  VAR_FILE_LIMIT_BYTES,
   fillTemplate,
   resolveVars,
   type VarSource,
@@ -171,6 +174,7 @@ export {
   OLLAMA_MODEL,
   OLLAMA_PLUGIN,
   OLLAMA_PS_FAILED,
+  OLLAMA_UNREACHABLE,
   OLLAMA_USE_UNKNOWN,
   ollamaPlugin,
   type LoadedModel,

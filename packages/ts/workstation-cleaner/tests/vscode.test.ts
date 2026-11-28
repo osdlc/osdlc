@@ -13,7 +13,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import type { ProcessProbe } from '@osdlc/repo-cleaner'
@@ -1081,6 +1081,22 @@ describe('cursor', () => {
     expect(linux.candidates.map((c) => c.path)).toEqual([onLinux])
     const windows = await survey([cursorPlugin(h.options({ platform: 'win32' }))], ctxOf(h.home))
     expect(windows.plugins).toEqual([])
+  })
+
+  test("a HOME that is not absolute names no agents' folder to detect Cursor by", async () => {
+    const h = home('Cursor')
+    mkdirSync(join(h.home, '.cursor', 'worktrees'), { recursive: true })
+    // Windows: no User folder is known, so only the agents' folder can detect Cursor.
+    const byHome = (HOME: string) => cursorPlugin(h.options({ env: { HOME }, platform: 'win32' }))
+    expect(await byHome(h.home).detect(fakeContext())).toBe(true)
+    // `rel/.cursor/worktrees` exists under the folder the run is in, and is not this HOME's.
+    const cwd = process.cwd()
+    process.chdir(dirname(h.home))
+    try {
+      expect(await byHome(basename(h.home)).detect(fakeContext())).toBe(false)
+    } finally {
+      process.chdir(cwd)
+    }
   })
 
   test('cursor keeps the contract', async () => {

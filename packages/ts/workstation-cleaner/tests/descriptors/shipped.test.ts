@@ -659,7 +659,7 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       expect(await kept({ entry: {}, shared: { idleHours: 0 } }, 169)).toBe(false)
     })
 
-    test('config shows the threshold the run applies to each entry', () => {
+    test('config shows the threshold the run applies to each entry that does not take the setting', () => {
       const { definitions } = loadPlugins({})
       const parts = (name: string, entry: Config['entry'], shared: Config['shared']) =>
         effectiveSettings({ [name]: entry }, shared, definitions)[name]!.find(
@@ -671,8 +671,11 @@ describe.each(OSES_TESTED)('on %s', (os) => {
       ]
       expect(parts('gradle', {}, {})).toEqual(gradle(168, 720))
       expect(parts('gradle', {}, { idleHours: 0 })).toEqual(gradle(168, 720))
-      expect(parts('gradle', {}, { idleHours: 200 })).toEqual(gradle(200, 720))
-      expect(parts('gradle', { idleHours: 10 }, { idleHours: 4000 })).toEqual(gradle(10, 10))
+      // Only the parts whose threshold is not the setting's.
+      expect(parts('gradle', {}, { idleHours: 200 })).toEqual([
+        { part: 'wrapper/*/', idleHours: 720 },
+      ])
+      expect(parts('gradle', { idleHours: 10 }, { idleHours: 4000 })).toBeUndefined()
       expect(parts('huggingface-hub', {}, {})!.map((p) => p.part)).toEqual([
         'hub/models--*/',
         'hub/datasets--*/',

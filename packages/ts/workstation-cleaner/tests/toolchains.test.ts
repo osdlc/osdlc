@@ -41,6 +41,7 @@ import {
   cappedAtimeNote,
   mountOptionsBy,
   noatimeNote,
+  unreadMountNote,
   parseMountOutput,
   parseProcMounts,
   rustPin,
@@ -905,19 +906,34 @@ describe('a versions folder on a noatime volume', () => {
     expect(s.candidates[0]!.why).toContain('(threshold 24, plus 24 for a relatime mount)')
   })
 
-  test('options that cannot be read, or a lookup that throws: access times are trusted, and there is no note', async () => {
+  test('Linux: options that cannot be read, or a lookup that throws, count as unmeasured, with a note for each folder', async () => {
+    const unread = async (path: string) => {
+      if (path.endsWith('node')) throw new Error('mount table unreadable')
+      return null
+    }
     const fx = fixture({
       rust: [`1.75.0-${HOST}`, `stable-${HOST}`],
       nvm: ['v14.21.3'],
-      mounts: async (path) => {
-        if (path.endsWith('node')) throw new Error('mount table unreadable')
-        return null
-      },
+      mounts: unread,
     })
     repo(join(fx.dev, 'a'))
     const { s, names } = await proposed(fx)
-    expect(names).toEqual([`1.75.0-${HOST}`, 'v14.21.3'])
-    expect(s.notes).toEqual({})
+    expect(names).toEqual([])
+    expect(s.notes).toEqual({
+      toolchains: `${unreadMountNote(fx.rustup)}; ${unreadMountNote(fx.nvm)}`,
+    })
+    expect(fx.calls).toEqual([])
+    // Another platform never reads them, so there access times are trusted.
+    const other = fixture({
+      rust: [`1.75.0-${HOST}`, `stable-${HOST}`],
+      nvm: ['v14.21.3'],
+      platform: 'freebsd',
+      mounts: unread,
+    })
+    repo(join(other.dev, 'a'))
+    const elsewhere = await proposed(other)
+    expect(elsewhere.names).toEqual([`1.75.0-${HOST}`, 'v14.21.3'])
+    expect(elsewhere.s.notes).toEqual({})
   })
 
   test('every folder noatime: nothing is proposed, nothing is asked, and the note names each', async () => {
@@ -1091,10 +1107,13 @@ describe('reading mount options', () => {
       targetsGiven: true,
       allow: [],
     })
-    // With df failing, macOS's access times are not trusted, and those elsewhere are.
+    // With df failing, macOS's and Linux's access times are not trusted, and those elsewhere are.
     if (process.platform === 'darwin') {
       expect(s.candidates).toEqual([])
       expect(s.notes).toEqual({ toolchains: cappedAtimeNote(nvm) })
+    } else if (process.platform === 'linux') {
+      expect(s.candidates).toEqual([])
+      expect(s.notes).toEqual({ toolchains: unreadMountNote(nvm) })
     } else {
       expect(s.candidates.map((c) => c.name)).toEqual(['v14.21.3'])
       expect(s.notes).toEqual({})

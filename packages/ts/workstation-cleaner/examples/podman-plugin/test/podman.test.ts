@@ -219,8 +219,9 @@ describe('the podman example', () => {
     const timedOut = await survey([hung.plugin], ctx)
     expect(timedOut.warnings).toEqual([])
     expect(timedOut.notes).toEqual({ podman: 'podman info failed: did not finish (timeout)' })
-    // info must give up before the detect hook does.
+    // info must give up before the detect hook does, and wait for a slow Podman to start.
     expect(hung.calls[0]?.opts.timeoutMs).toBeLessThan(HOOK_LIMIT_MS)
+    expect(hung.calls[0]?.opts.timeoutMs).toBe(20_000)
 
     const unstartable = build({
       info: { exitCode: 1, neverExited: true, reason: 'spawn', error: 'spawn podman EACCES' },

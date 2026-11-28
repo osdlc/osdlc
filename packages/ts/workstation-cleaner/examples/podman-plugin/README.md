@@ -21,8 +21,9 @@ What it shows:
   propose either.
 - **A note from `detect`.** When `podman info` fails, as with a stopped
   Podman machine, the plugin is not detected and says why, so `status`, `plan`
-  and `clean` show the reason. `podman info` gets 5 seconds, well under the
-  detect hook's limit, so a Podman that hangs gives that note too.
+  and `clean` show the reason. `podman info` gets 20 seconds, enough for a
+  cold rootless Podman or a Podman machine that has to start, and under the
+  detect hook's 30-second limit, so a Podman that hangs gives that note too.
 - **`costDescription: 'lost'`.** A volume holds data nothing can download or
   rebuild. The core holds each one for review: it runs only with
   `--pick volume:<name>` and `--allow discard-user-data`.
