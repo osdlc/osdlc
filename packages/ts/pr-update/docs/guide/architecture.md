@@ -72,8 +72,8 @@ checkout gets only git's worktree records and `pr-update/*` branches. An old
 | Select PRs | `update.ts:163-283` |
 | Per-target trust gate | `update.ts:735-746`, `trust.ts:151-203` |
 | Settle kept trees | `update.ts:1131-1252`, `update/kept.ts` |
-| Run worktree per repository | `update/execute.ts:1419-1489`; killed runs' scratch worktrees `releaseStaleScratch` `1618-1629`; in a clone, the rerere lock taken and `rr-cache/` emptied `1475` (`update/rerere.ts`) |
-| Cleanup of the run worktree | `update/execute.ts:1584-1607`, `update/registrations.ts` (`removeWorktree` `123-138`: one `git worktree remove --force`; a refusal is reported, but for git's own `initializing` lock on a dead run's worktree, `addLeftLock` `105-115`) |
+| Run worktree per repository | `update/execute.ts:1419-1486`; killed runs' scratch worktrees `releaseStaleScratch` `1619-1630`; in a clone, the rerere lock taken and `rr-cache/` emptied `1484` (`update/rerere.ts`) |
+| Cleanup of the run worktree | `update/execute.ts:1581-1608`, `update/registrations.ts` (`removeWorktree` `123-138`: one `git worktree remove --force`; a refusal is reported, but for git's own `initializing` lock on a dead run's worktree, `addLeftLock` `105-115`) |
 | `--branch` sync | `update.ts:527-549`, `889-901` |
 | Automatic prune | `commands.ts:359-393`, `prune.ts:658-1157` |
 | Report and exit code | `commands.ts:445-455`, `545-570`, `794-826` |
@@ -123,7 +123,7 @@ per group in `update.ts:832` from the target's source). One run at a time
 holds a clone's cache: the run takes the clone's rerere lock,
 `pr-update-rerere.lock` in its git directory, without waiting, and a run that
 cannot get it uses no rerere (`takeRerere`, `update/rerere.ts:73-103`, called
-in `updateAll` at `update/execute.ts:1475`, after the run worktree is added). A lock whose holder was killed is
+in `updateAll` at `update/execute.ts:1484`, after the run worktree is added). A lock whose holder was killed is
 taken over through file-lock's dead-holder rule (`process-lock.ts`). Everywhere else, the project root, a located checkout and every
 rehearsal, they run with `rerere.enabled=false`, so the person's own
 resolutions and rerere config are never used and no `rr-cache/` is made.
@@ -132,7 +132,7 @@ The clone's `rr-cache/` lives for one run (`clearRerere`,
 `update/rerere.ts:44-53`): the holder empties it when it takes the lock,
 whenever a PR ends without a push (`update/execute.ts:580`, `585`), when a
 rebase is abandoned (`658`), and when it lets go at the end of the run
-(`1606`). An emptying that fails turns rerere off for the rest of the run, and
+(`1607`). An emptying that fails turns rerere off for the rest of the run, and
 one that fails when the lock is taken leaves the run without it. So a replayed resolution was made in this run, by a PR that was
 pushed or by the PR in flight. A replayed conflict is left conflicted in the
 index. A path counts as replayed only where git printed
@@ -149,14 +149,14 @@ given.
 
 | Step | Where |
 | --- | --- |
-| Lease | `update/execute.ts:1490-1530`, `update/lease.ts` |
+| Lease | `update/execute.ts:1487-1527`, `update/lease.ts` |
 | Checkout and quick exits | `update/execute.ts:439-595` |
 | Rebase through the resolvers | `update/execute.ts:632-744`, `update/resolvers.ts:107-136` |
 | Merge | `update/execute.ts:762-869` |
-| Rerere on, and its one-run cache | `update/execute.ts:1108-1143`, `580-585`, `658`, `1475`, `1606`; `update/rerere.ts` (the lock and emptying) |
+| Rerere on, and its one-run cache | `update/execute.ts:1108-1143`, `580-585`, `658`, `1484`, `1607`; `update/rerere.ts` (the lock and emptying) |
 | Verify and repair | `update/execute.ts:871-900`, `1047-1068`, `1271-1346`, `repair/` |
 | Push | `update/execute.ts:902-998` |
-| Keep a failed tree, record the attempt | `update/execute.ts:1532-1577`, `update/kept.ts:444-530`, `update.ts:842-865` |
+| Keep a failed tree, record the attempt | `update/execute.ts:1529-1574`, `update/kept.ts:444-530`, `update.ts:842-865` |
 
 ## `survey` and `mirror`
 
@@ -226,7 +226,7 @@ A project root whose remote names no host is filed under `github.com`.
 
 Lines after S13's review round 2, against `main` at `88112cb4`, which
 does not have the clone-cache work. In total `src/` went from 6,583 lines to
-13,243. Files not listed (`detect.ts`, `devlink.ts`, `real-path.ts`,
+13,248. Files not listed (`detect.ts`, `devlink.ts`, `real-path.ts`,
 `repair/names.ts`, `update/confirm.ts`, `version.generated.ts`) are small
 helpers.
 
@@ -238,7 +238,7 @@ helpers.
 | Preflight | `preflight.ts` | 122 (83) | tool and remote checks, the `GIT_DIR` refusal |
 | Survey | `survey.ts`, `strategy.ts`, `code-host.ts` | 1,353 (896), 164, 87 (44) | targets, PR listing, fetch, drift, stack order, strategy |
 | Update | `update.ts` | 1,356 (843) | the run: selection, grouping, trust, verify lists, kept trees, attempt routing, output |
-| Executor | `update/execute.ts`, `update/resolvers.ts`, `update/rerere.ts` | 1,642 (1,213), 156 (151), 103 (new) | per-repository worktree loop, per-PR rebase, merge, verify, repair, push; also the target git environment, and rerere in a clone for one run under the clone's rerere lock |
+| Executor | `update/execute.ts`, `update/resolvers.ts`, `update/rerere.ts` | 1,647 (1,213), 156 (151), 103 (new) | per-repository worktree loop, per-PR rebase, merge, verify, repair, push; also the target git environment, and rerere in a clone for one run under the clone's rerere lock |
 | Records | `update/attempts.ts`, `update/ref-attempts.ts`, `update/lease.ts` | 113 (117), 153 (150), 118 (115) | attempt stores and the branch lease |
 | Kept trees | `update/kept.ts`, `update/registrations.ts` | 530 (204), 138 (new) | kept-tree records, checks, keep and discard; how a worktree is removed and forgotten |
 | Repair | `repair/agents.ts`, `repair/seat.ts`, `repair/prompt.ts` | 155 (152), 97 (89), 58 | headless agent, interactive and tmux repair, the prompt |
@@ -265,7 +265,7 @@ kept.
 
 1. One repository can stop the whole run. `releaseStaleScratch` and
    `git worktree add` sit outside `updateAll`'s `try`
-   (`update/execute.ts:1465-1489`), and `updateRun` does not catch around
+   (`update/execute.ts:1465-1486`), and `updateRun` does not catch around
    `updateAll`. A missing base ref in one repository skips every later one,
    though the executor's design note says one stuck PR must not end the run.
 2. A `--repo` target is cloned and fetched before its trust gate runs
@@ -277,7 +277,7 @@ kept.
 4. What the automatic prune removes appears only as notes
    (`commands.ts:379-391`). It is in neither the JSON output nor `--report`.
 5. Two answers to "is this run alive?": the executor checks the pid alone
-   (`isAlive`, `update/execute.ts:1631-1639`) for a killed run's scratch
+   (`isAlive`, `update/execute.ts:1632-1640`) for a killed run's scratch
    worktree; prune, kept trees and worktree removal check the pid and its
    start time (`runAliveWith`, `run-trees.ts:50-58`). A reused pid makes them
    disagree: the next run leaves a killed run's scratch worktree until that
@@ -292,7 +292,8 @@ kept.
 6. `--keep-failed` and `--discard-kept` are checked for a missing `--apply`
    only after the survey's listings and fetches (`update.ts:695-698`).
 7. Moot under the ownership contract (D-0005, Build note "The ownership contract"). A probe folder left by a hard kill in the project root's `.pr-update/`
-   was outside every prune walk (`update/kept.ts:508-509`, `prune.ts:845-868`).
+   was outside every prune walk (`crossesDevice` in `update/kept.ts` and the probe walk of
+   `pruneMirror` in `prune.ts`, at `5561c33d3`, before kept trees stopped moving).
    Kept trees no longer move, so there is no probe, and nothing is written to
    `.pr-update/`.
 
@@ -382,8 +383,9 @@ kept.
 26. Moot: rerere's cache now lives for one run, so there is no ledger (D-0005, Build note "The ownership contract"). A run that was still going when a killed run's ledger was swept is not
     stopped from replaying that run's unaccepted resolution first: the sweep
     was in the next `updateAll` served from the clone, and a concurrent run
-    already past that step integrated without it (`update/execute.ts:1672`,
-    `dropDeadRunResolutions` `1391-1426`).
+    already past that step integrated without it (`dropDeadRunResolutions`, called
+    from `openLedger`, in `update/execute.ts` at `c00f1cfbb`, the last commit with
+    the ledger).
 27. Moot under the ownership contract (D-0005, Build note "The ownership contract"). Prune and the kept-tree discard paths decided by themselves whether a
     worktree or branch is safe to delete (`pruneClone` in `prune.ts`,
     `settleKept`, `discardKept`, `keptIsTouched`, `personRefsIn`). Nothing in
@@ -415,8 +417,8 @@ kept.
     no port.
 31. Moot under the ownership contract (D-0005, Build note "The ownership contract"). A keep whose undo failed part-way, when the keep did not make its
     branch, left the run worktree at the kept path with no record; the next
-    keep of that PR said the folder was in the way (`moveBack`,
-    `update/kept.ts:685-709`). Nothing moves now: a keep that stops before its
+    keep of that PR said the folder was in the way (`moveBack` in
+    `update/kept.ts` at `5561c33d3`). Nothing moves now: a keep that stops before its
     record leaves a run worktree on its failed branch, which prune removes as
     a dead run's, with the branch.
 32. The project root is matched without a port. A `--repo` naming the root's
