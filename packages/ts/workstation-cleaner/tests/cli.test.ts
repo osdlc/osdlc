@@ -10,6 +10,7 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir, userInfo } from 'node:os'
@@ -1821,6 +1822,43 @@ describe('packages', () => {
       expect(status.out).toContain('scratch:~/.fixture/old')
       expect(status.out).not.toContain('kept')
     }
+  })
+
+  test("a plan and its receipt keep the setup's warnings, and the unknown name once", async () => {
+    const api2 = exporting(
+      "definePlugin({ name: 'fixture', api: 2, settings: z.object({}), create: () => ({ name: 'fixture', detect: () => true }) })",
+    )
+    const h = withPackage({ fixture: { package: FIXTURE }, gti: {} }, api2)
+    const old = join(h.home, '.fixture', 'old')
+    const when = new Date(Date.now() - 48 * 3_600_000)
+    utimesSync(join(old, 'blob'), when, when)
+    writeFileSync(
+      join(h.shipped, 'other.yaml'),
+      'descriptor: 1\npaths:\n  store: { all: ~/.fixture/old }\ncandidates:\n  - { path: store, costDescription: re-download }\n',
+    )
+    writeFileSync(join(h.shipped, 'bad.yaml'), 'descriptor: 1\nnope: 1\n')
+    // Only the descriptor runs: the built-ins would read this machine.
+    const skip = [...BUILT_IN_PLUGINS.map((d) => d.name), 'bad'].join(',')
+    const planFile = join(h.cwd, 'p.json')
+    const planned = await h.go(['plan', '--skip-plugin', skip, '-o', planFile])
+    expect(planned.code).toBe(0)
+    const notLoaded = `plugins.fixture.package: ${FIXTURE} 1.0.0 is written for plugin api 2`
+    const warnings: string[] = JSON.parse(readFileSync(planFile, 'utf8')).warnings
+    expect(warnings).toEqual([
+      expect.stringMatching(/^bad descriptor .*bad\.yaml: .*; this run leaves bad out$/),
+      expect.stringMatching(new RegExp(`^${notLoaded}.*; going on without fixture$`)),
+      'config plugins.gti: no plugin had this name when this plan was made',
+    ])
+    expect(planned.err).toContain('config names no plugin gti')
+
+    writeFileSync(join(h.home, 'config.json'), JSON.stringify({ plugins: {} }))
+    const receipt = join(h.cwd, 'r.json')
+    const argv = ['clean', '--plan', planFile, '--skip-plugin', skip, '--yes', '--receipt', receipt]
+    expect((await h.go(argv)).code).toBe(0)
+    expect(existsSync(old)).toBe(false)
+    expect(JSON.parse(readFileSync(receipt, 'utf8')).warnings).toEqual(
+      expect.arrayContaining(warnings),
+    )
   })
 
   test('a wrong api: status and plan warn and go on, clean exits 2 unless --skip-plugin', async () => {

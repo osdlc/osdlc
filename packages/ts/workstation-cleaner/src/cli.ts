@@ -1368,14 +1368,18 @@ async function runPlan(argv: readonly string[], ctx: CliContext, deps: MainDeps)
     })
     const cctx = contextFor(parsed.positionals, config, ctx, v.allow, v.ignore)
     const s = await survey(plugins, cctx)
-    writeWarnings(ctx, name, [...warnings, ...failed.map(notLoaded), ...surveyWarnings(s)])
+    const setup = [...warnings, ...failed.map(notLoaded)]
+    writeWarnings(ctx, name, [...setup, ...surveyWarnings(s)])
     if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
     // A receipt copies the plan's warnings: it keeps what was true of this sweep, not what clean will do.
     const swept = unknown.map(
       (n) => `config plugins.${n}: no plugin had this name when this plan was made`,
     )
+    // The unknown names once, as `swept` words them.
+    const said = unknown.length === 0 ? undefined : unknownMessage(unknown)
+    const recorded = [...setup.filter((w) => w !== said), ...swept]
     const home = homeOf(ctx)
-    plan = makePlan(withWarnings(s, swept), {
+    plan = makePlan(withWarnings(s, recorded), {
       targets: cctx.targets,
       targetsGiven: cctx.targetsGiven,
       ignore: cctx.ignore,
@@ -1616,7 +1620,8 @@ async function runClean(argv: readonly string[], ctx: CliContext, deps: MainDeps
       writeWarnings(ctx, name, surveyWarnings(s))
       notes = s.notes
       if (nothingFound(s)) return EXIT_NOTHING_TO_SWEEP
-      plan = makePlan(s, {
+      // Its receipt records what the setup warned of, as a saved plan's does.
+      plan = makePlan(withWarnings(s, run.warnings), {
         targets: cctx.targets,
         targetsGiven: cctx.targetsGiven,
         ignore: cctx.ignore,

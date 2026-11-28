@@ -961,7 +961,9 @@ The text output writes the home folder in an id as `~`
 (`worktree:~/dev/wt`, `branch:~/dev/repo:main`), and `--pick` and `--spare`
 take that form, also when `HOME` goes through a symlink. `status`, `plan`, `clean` and `plugins` refuse to run as root (exit 1); `config` still answers. `status`,
 `plan` and `clean` print each plugin's `detect` note as a warning line naming
-the plugin, with the survey's warnings.
+the plugin, with the survey's warnings. A plan's `warnings`, which its receipt
+copies, hold what the setup warned of too: a descriptor the run leaves out, a
+package that did not load, a config that is not read.
 
 `--plugin <name>` runs only those plugins and `--skip-plugin <name>` never
 runs these.
