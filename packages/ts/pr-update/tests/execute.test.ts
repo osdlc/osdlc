@@ -1682,6 +1682,29 @@ describe('the executor against real git', () => {
         expect(existsSync(resolve(fx.worker.dir, rereLock()))).toBe(false)
       })
 
+      test('a run whose worktree cleanup throws still lets go of the rerere lock, and the error reaches the caller (review round 3)', async () => {
+        const lock = {
+          added: () => {},
+          keeping: (_: string, fn: () => void) => (fn(), true),
+          removing: () => {
+            throw new Error('the clone lock is lost')
+          },
+        }
+        await expect(
+          updateAll(
+            fx.worker.git,
+            [target({ number: 1, head: 'topic' })],
+            settings({ rerere: true }),
+            recorder(),
+            { apply: true, worktreeRoot: wtRoot, lock },
+          ),
+        ).rejects.toThrow('the clone lock is lost')
+        expect(existsSync(resolve(fx.worker.dir, rereLock()))).toBe(false)
+        const later = takeRerere(fx.worker.git)
+        expect(later).not.toBeNull()
+        later!.release()
+      })
+
       test('a run killed after recording, before its push, leaves nothing a concurrent or later run replays', async () => {
         const [, o2, o3] = makeSiblings('kh1', 'kh2', 'kh3')
         // Run A holds the cache, then records `bad` for the siblings' conflict and is killed.

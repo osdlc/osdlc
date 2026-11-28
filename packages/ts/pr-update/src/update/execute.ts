@@ -1469,16 +1469,6 @@ export async function updateAll(
   mkdirSync(dirname(opts.worktreeRoot), { recursive: true, mode: FOLDER_MODE })
   git.worktreeAdd(opts.worktreeRoot, { detach: true, startPoint: start })
   holdRunTree(opts.worktreeRoot)
-  // Taken once the worktree is there, so the `finally` below always lets go of it, and while the
-  // run still holds the clone's lock, before anything here integrates: no PR replays what a
-  // killed run, or an earlier one, recorded, nor what a run that holds the cache now records.
-  const cache = rerereOn(settings, opts.apply) ? takeRerere(git) : null
-  try {
-    opts.lock?.added()
-  } catch (e) {
-    cache?.release()
-    throw e
-  }
   // The run's worktree now: a new one after each PR kept in the one before.
   let root = opts.worktreeRoot
   let wt = git.at(root)
@@ -1486,121 +1476,132 @@ export async function updateAll(
   let ownsRoot = true
   // Set when no run worktree is left to go on in: the rest of the PRs are not attempted.
   let stopped = false
+  let cache: RerereCache | null = null
   try {
-    for (const planned of targets) {
-      // The host was signalled and is stopping: update no further PR.
-      if (forwardedSignal() !== undefined) break
-      const target = opts.prepare === undefined ? planned : opts.prepare(planned, results)
-      if (target === null) continue
-      // A rehearsal never takes a lease: it pushes nothing.
-      let grant
-      try {
-        grant = opts.apply
-          ? settings.lease?.acquire({ head: target.head, pr: target.number })
-          : undefined
-      } catch (e) {
-        if (opts.skipOnLeaseError !== true) throw e
-        opts.onSkip?.({
-          repo: target.repo,
-          number: target.number,
-          head: target.head,
-          reason: errorLine(e),
-        })
-        continue
-      }
-      if (grant !== undefined && !grant.ok) {
-        opts.onSkip?.({
-          repo: target.repo,
-          number: target.number,
-          head: target.head,
-          reason: `another pr-update run is updating this branch (${grant.holder})`,
-        })
-        continue
-      }
-      let outcome: UpdateOutcome
-      try {
-        outcome = await updateOneIn(wt, target, settings, runVerb, {
-          apply: opts.apply,
-          worktree: root,
-          cache: cache ?? undefined,
-        })
-      } finally {
-        grant?.release()
-      }
-      const ran = 'strategyFallback' in outcome ? 'merge' : target.strategy
-      const result: UpdateResult = { ...target, strategy: ran, outcome }
-      const place = opts.keepFailed?.place
-      if (
-        place !== undefined &&
-        (outcome.status === 'conflict' || (outcome.status === 'failed' && !outcome.unrecorded))
-      ) {
-        // The keep and the new run worktree are one change to the clone: a prune between them
-        // would find no run worktree and could remove the clone.
-        const kept = root
-        const keep = (): void => {
-          try {
-            result.keptWorktree = keepWorktree(
-              git,
-              place,
-              kept,
-              target,
-              outcome.status === 'failed' ? outcome.verifyLog : undefined,
-            ).path
-          } catch (e) {
-            result.keepError = errorLine(e)
-            return
-          }
-          // The kept tree is the record's now, never the run's to clean up, and its scratch
-          // branch is free to go.
-          ownsRoot = false
-          letGoRunTree(kept)
-          git.try.deleteBranch(scratchBranch(kept), { force: true })
-          const next = nextRunRoot(kept)
-          try {
-            git.worktreeAdd(next, { detach: true, startPoint: start })
-            holdRunTree(next)
-          } catch (e) {
-            result.keepError =
-              `kept at ${kept}, but the next run worktree could not be added (${errorLine(e)}), ` +
-              "so the run's other PRs in this repository were not updated"
-            stopped = true
-            return
-          }
-          root = next
-          wt = git.at(root)
-          ownsRoot = true
+    // Taken once the worktree is there, and while the run still holds the clone's lock, before
+    // anything here integrates: no PR replays what a killed run, or an earlier one, recorded,
+    // nor what a run that holds the cache now records.
+    cache = rerereOn(settings, opts.apply) ? takeRerere(git) : null
+    opts.lock?.added()
+    try {
+      for (const planned of targets) {
+        // The host was signalled and is stopping: update no further PR.
+        if (forwardedSignal() !== undefined) break
+        const target = opts.prepare === undefined ? planned : opts.prepare(planned, results)
+        if (target === null) continue
+        // A rehearsal never takes a lease: it pushes nothing.
+        let grant
+        try {
+          grant = opts.apply
+            ? settings.lease?.acquire({ head: target.head, pr: target.number })
+            : undefined
+        } catch (e) {
+          if (opts.skipOnLeaseError !== true) throw e
+          opts.onSkip?.({
+            repo: target.repo,
+            number: target.number,
+            head: target.head,
+            reason: errorLine(e),
+          })
+          continue
         }
-        if (opts.lock === undefined) keep()
-        else if (!opts.lock.keeping(kept, keep)) {
-          result.keepError = "mirror busy: another pr-update run holds the clone's lock"
+        if (grant !== undefined && !grant.ok) {
+          opts.onSkip?.({
+            repo: target.repo,
+            number: target.number,
+            head: target.head,
+            reason: `another pr-update run is updating this branch (${grant.holder})`,
+          })
+          continue
         }
+        let outcome: UpdateOutcome
+        try {
+          outcome = await updateOneIn(wt, target, settings, runVerb, {
+            apply: opts.apply,
+            worktree: root,
+            cache: cache ?? undefined,
+          })
+        } finally {
+          grant?.release()
+        }
+        const ran = 'strategyFallback' in outcome ? 'merge' : target.strategy
+        const result: UpdateResult = { ...target, strategy: ran, outcome }
+        const place = opts.keepFailed?.place
+        if (
+          place !== undefined &&
+          (outcome.status === 'conflict' || (outcome.status === 'failed' && !outcome.unrecorded))
+        ) {
+          // The keep and the new run worktree are one change to the clone: a prune between them
+          // would find no run worktree and could remove the clone.
+          const kept = root
+          const keep = (): void => {
+            try {
+              result.keptWorktree = keepWorktree(
+                git,
+                place,
+                kept,
+                target,
+                outcome.status === 'failed' ? outcome.verifyLog : undefined,
+              ).path
+            } catch (e) {
+              result.keepError = errorLine(e)
+              return
+            }
+            // The kept tree is the record's now, never the run's to clean up, and its scratch
+            // branch is free to go.
+            ownsRoot = false
+            letGoRunTree(kept)
+            git.try.deleteBranch(scratchBranch(kept), { force: true })
+            const next = nextRunRoot(kept)
+            try {
+              git.worktreeAdd(next, { detach: true, startPoint: start })
+              holdRunTree(next)
+            } catch (e) {
+              result.keepError =
+                `kept at ${kept}, but the next run worktree could not be added (${errorLine(e)}), ` +
+                "so the run's other PRs in this repository were not updated"
+              stopped = true
+              return
+            }
+            root = next
+            wt = git.at(root)
+            ownsRoot = true
+          }
+          if (opts.lock === undefined) keep()
+          else if (!opts.lock.keeping(kept, keep)) {
+            result.keepError = "mirror busy: another pr-update run holds the clone's lock"
+          }
+        }
+        results.push(result)
+        // Reported as each PR finishes, not only at the end. A run over fifty
+        // PRs takes minutes, and a caller showing progress needs each result.
+        opts.onResult?.(result)
+        if (stopped) break
       }
-      results.push(result)
-      // Reported as each PR finishes, not only at the end. A run over fifty
-      // PRs takes minutes, and a caller showing progress needs each result.
-      opts.onResult?.(result)
-      if (stopped) break
+    } finally {
+      // Order matters. The scratch branch is checked out in the worktree, and
+      // git refuses to delete a branch a worktree holds. Removing the worktree
+      // releases it. Each step uses `try`, so a failure in one still lets the
+      // others run. A stray worktree is worse than a stray branch, and both are
+      // worse than an exception here hiding the real one.
+      const remove = (): void => {
+        const left = removeWorktree(git, root, records)
+        if (left !== undefined) {
+          const last = results.at(-1)
+          if (last !== undefined) last.worktreeLeft = left
+          return
+        }
+        git.try.deleteBranch(scratchBranch(root), { force: true })
+      }
+      // When the run's last worktree was kept, nothing of the run's is left to remove.
+      if (ownsRoot) {
+        if (opts.lock === undefined) remove()
+        else opts.lock.removing(root, remove)
+      }
     }
   } finally {
-    // Order matters. The scratch branch is checked out in the worktree, and
-    // git refuses to delete a branch a worktree holds. Removing the worktree
-    // releases it. Each step uses `try`, so a failure in one still lets the
-    // others run. A stray worktree is worse than a stray branch, and both are
-    // worse than an exception here hiding the real one.
-    const remove = (): void => {
-      const left = removeWorktree(git, root, records)
-      if (left !== undefined) {
-        const last = results.at(-1)
-        if (last !== undefined) last.worktreeLeft = left
-        return
-      }
-      git.try.deleteBranch(scratchBranch(root), { force: true })
-    }
-    // When the run's last worktree was kept, nothing of the run's is left to remove.
-    if (ownsRoot) {
-      if (opts.lock === undefined) remove()
-      else opts.lock.removing(root, remove)
-    }
+    // On every way out once the worktree is there, a cleanup above that throws included, so a
+    // later run in this process gets the cache and does not read the tree as live.
     letGoRunTree(root)
     // The cache lives for one run.
     cache?.release()
