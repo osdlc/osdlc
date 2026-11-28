@@ -9,7 +9,8 @@
  * so Docker's data folder is never touched and Docker refuses a volume or image
  * a container took up since.
  * A volume is `lost`, so it is held and needs `--allow discard-user-data`;
- * images and the build cache are `re-download`.
+ * a dangling image is `re-download`, and the build cache, which only a build
+ * makes again, `rebuild`.
  * Settings: `plugins.docker.keepVolumes` (default none), volume names never proposed.
  */
 
@@ -330,7 +331,8 @@ export function dockerPlugin(
         ref: BUILD_CACHE_REF,
         why: 'build cache no build is using',
         bytes,
-        costDescription: 're-download',
+        // Nothing fetches a build cache back: a build makes it again.
+        costDescription: 'rebuild',
         // The size moves with every build, so it stays out of the evidence; `capped` holds it to the plan's.
         capped: true,
         evidence: { kind: DOCKER_BUILD_CACHE },

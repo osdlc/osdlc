@@ -666,7 +666,7 @@ plugin stays out of the run.
 | --- | --- | --- | --- |
 | `docker-volume:<name>` | `docker volume ls --filter dangling=true`: no container, running or stopped, uses it. Not one named in `plugins.docker.keepVolumes`. | `docker volume rm` | `lost`: held, and runs only when picked with `--allow discard-user-data` |
 | `docker-image:<id>` | `docker image ls --filter dangling=true`: no tag. One a container (running or stopped) was made from is left out. | `docker image rm`, unless `docker image inspect` finds a tag on it now | `re-download` |
-| `docker-build-cache:reclaimable` | The `Reclaimable:` total of `docker builder du`, when it is more than 0. | `docker builder prune --all --force` | `re-download` |
+| `docker-build-cache:reclaimable` | The `Reclaimable:` total of `docker builder du`, when it is more than 0. | `docker builder prune --all --force` | `rebuild`: only a build makes it again |
 
 Docker refuses to remove a volume or image a container took up after the
 plan, so that candidate fails instead of being deleted. A volume removed and
