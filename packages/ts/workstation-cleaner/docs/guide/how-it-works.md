@@ -48,7 +48,7 @@ It runs only when a person runs it.
 | `src/run.ts` | The phase runner: `survey`, `plan`, `decide`, `recheck`, `clean`; hook time limits; the core's own objections; nesting. |
 | `src/roots.ts` | Containment: `containedIn`, `boundBy`, `linkedCheckouts`, `linkedWorktreeOf`; which roots a plugin may have: `rootProblem`, `acceptRoots`. |
 | `src/kit.ts` | The plugin kit: `pluginKit`, the helpers, and the binding the core does each run. |
-| `src/plan.ts` | The plan and receipt schemas (plan version 2, receipt version 1). A plan of another version, or one the schema refuses, such as one without `targetsGiven`, is refused with an error that says to sweep again (D15). |
+| `src/plan.ts` | The plan and receipt schemas (plan version 3, receipt version 1). A plan of another version, or one the schema refuses, such as one without `targetsGiven`, is refused with an error that says to sweep again (D15). |
 | `src/builtins.ts` | `BUILT_IN_PLUGINS`: the code plugins in run order (`git`, `cargo`, `node`, `vscode`, `cursor`, `orca`, `docker`, `ollama`, `agent-history`, `jetbrains`, `toolchains`). |
 | `src/registry.ts` | The plugins a run knows (built in, loaded from a package, or made from a descriptor), each by one name, and `--plugin` / `--skip-plugin`. |
 | `src/load.ts` | Code plugins loaded from the packages the config names. |

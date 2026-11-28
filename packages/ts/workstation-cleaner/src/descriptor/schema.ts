@@ -7,6 +7,7 @@
  * reader runs. So are the checks on `vars` (tier 2), {@link varIssues}.
  */
 
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 import { LineCounter, isMap, isScalar, isSeq, parseDocument, type Document } from 'yaml'
@@ -774,13 +775,24 @@ export function parseDescriptor(text: string, source: string): Descriptor {
  * @throws DescriptorError for a file that can't be read, or as {@link parseDescriptor}
  */
 export function readDescriptor(path: string): Descriptor {
-  let text: string
+  return readDescriptorFile(path).descriptor
+}
+
+/**
+ * The descriptor in the file at `path`, and the sha256 of the bytes it was
+ * parsed from, in hex.
+ *
+ * @throws DescriptorError as {@link readDescriptor}
+ */
+export function readDescriptorFile(path: string): { descriptor: Descriptor; sha256: string } {
+  let bytes: Buffer
   try {
-    text = readFileSync(path, 'utf-8')
+    bytes = readFileSync(path)
   } catch (err) {
     throw new DescriptorError(path, [`cannot read: ${(err as Error).message}`])
   }
-  return parseDescriptor(text, path)
+  const sha256 = createHash('sha256').update(bytes).digest('hex')
+  return { descriptor: parseDescriptor(bytes.toString('utf-8'), path), sha256 }
 }
 
 const lineOf = (lines: LineCounter, offset: number): string => `line ${lines.linePos(offset).line}`

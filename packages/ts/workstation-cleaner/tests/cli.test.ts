@@ -13,6 +13,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { tmpdir, userInfo } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -115,6 +116,10 @@ test("a run's env holds no home folder variable of this process's", () => {
   ])
   expect(Object.values(env).filter((value) => value.startsWith('/machine'))).toEqual([])
 })
+
+/** The sha256 of `file`'s bytes, in hex, as a plan records a descriptor's. */
+const sha256Of = (file: string): string =>
+  createHash('sha256').update(readFileSync(file)).digest('hex')
 
 function tempDir(): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'workstation-cleaner-cli-')))
@@ -1583,7 +1588,9 @@ candidates:
       deps,
     )
     expect(made.code).toBe(0)
-    expect(parsePlan(readFileSync(planFile, 'utf8'), planFile).descriptors).toEqual([desc])
+    expect(parsePlan(readFileSync(planFile, 'utf8'), planFile).descriptors).toEqual([
+      { name: 'mine', source: 'flag', path: desc, sha256: sha256Of(desc) },
+    ])
     const without = await run(['clean', '--plan', planFile, '--yes'], h.cwd, h.env, deps)
     expect(without.code).toBe(2)
     expect(without.err).toContain(`add --descriptor ${desc}`)
@@ -1609,6 +1616,50 @@ candidates:
     expect(dry.err).not.toContain('add --descriptor')
   })
 
+  test('clean --plan refuses a plan whose descriptor was replaced, edited, removed or added', async () => {
+    const h = withHome(['mine'])
+    const shipped = join(h.shipped, 'mine.yaml')
+    writeFileSync(shipped, store('.cache/mine'))
+    const deps = { shippedDescriptors: h.shipped }
+    const planFile = join(h.cwd, 'p.json')
+    const made = await run(['plan', '--plugin', 'mine', '-o', planFile], h.cwd, h.env, deps)
+    expect(made.code).toBe(0)
+    const planned = readFileSync(planFile, 'utf8')
+    expect(parsePlan(planned, planFile).descriptors).toEqual([
+      { name: 'mine', source: 'shipped', path: shipped, sha256: sha256Of(shipped) },
+    ])
+    // Every built-in left out: only the descriptor runs, and with it gone, no plugin.
+    const skip = BUILT_IN_PLUGINS.map((d) => d.name).join(',')
+    const clean = () =>
+      run(['clean', '--plan', planFile, '--skip-plugin', skip, '--yes'], h.cwd, h.env, deps)
+    const refused = async (why: string) => {
+      const r = await clean()
+      expect(r.code, why).toBe(2)
+      expect(r.err, why).toContain("the plan's descriptors changed since it was made: ")
+      expect(r.err, why).toContain(why)
+      expect(existsSync(join(h.home, '.cache', 'mine', 'blob'))).toBe(true)
+    }
+    // A user file of the name stands in for the shipped one.
+    const user = join(h.user, 'mine.yaml')
+    writeFileSync(user, store('.cache/mine'))
+    await refused(`mine is now user ${user}, not shipped ${shipped}`)
+    rmSync(user)
+    // The same file, edited.
+    writeFileSync(shipped, store('.cache/mine', '# edited\n'))
+    await refused(`mine: ${shipped} changed`)
+    rmSync(shipped)
+    await refused(`mine (shipped ${shipped}) is not loaded now`)
+    // A plugin the candidates belong to that is a descriptor the plan does not record.
+    writeFileSync(shipped, store('.cache/mine'))
+    writeFileSync(planFile, JSON.stringify({ ...JSON.parse(planned), descriptors: [] }))
+    await refused(`mine is now the descriptor shipped ${shipped}, which the plan did not run`)
+    // As it was planned, it runs.
+    writeFileSync(planFile, planned)
+    const r = await clean()
+    expect(r.err).not.toContain('descriptors changed')
+    expect(r.code).toBe(0)
+  })
+
   test('clean --plan quotes a --descriptor it asks for whose path a shell would split', async () => {
     const h = withHome(['mine'])
     mkdirSync(join(h.cwd, 'my descriptors'))
@@ -1623,7 +1674,7 @@ candidates:
     expect(without.err).toContain(`add --descriptor '${desc}'`)
   })
 
-  test('a plan records only the --descriptor files behind the plugins it ran', async () => {
+  test('a plan records the descriptors behind the plugins it ran, and only those', async () => {
     const h = withHome(['mine', 'other'])
     const desc = join(h.cwd, 'mine.yaml')
     writeFileSync(desc, store('.cache/mine'))
@@ -1638,8 +1689,13 @@ candidates:
       return parsePlan(readFileSync(planFile, 'utf8'), planFile).descriptors
     }
     const common = ['--descriptor', desc, '--descriptor', bad, '--skip-plugin', 'bad']
-    expect(await descriptorsOf(...common, '--plugin', 'mine')).toEqual([desc])
-    expect(await descriptorsOf(...common, '--plugin', 'other')).toBeUndefined()
+    expect(await descriptorsOf(...common, '--plugin', 'mine')).toEqual([
+      { name: 'mine', source: 'flag', path: desc, sha256: sha256Of(desc) },
+    ])
+    const other = join(h.user, 'other.yaml')
+    expect(await descriptorsOf(...common, '--plugin', 'other')).toEqual([
+      { name: 'other', source: 'user', path: other, sha256: sha256Of(other) },
+    ])
     const left = await run(['clean', '--plan', planFile, '--dry-run'], h.cwd, h.env, deps)
     expect(left.err).not.toContain('add --descriptor')
   })
@@ -2937,11 +2993,11 @@ describe('plan and clean', () => {
     })
     expect(r.code).not.toBe(0)
     expect(r.err).toContain(
-      'a version 1 plan; this workstation-cleaner reads version 2: sweep again',
+      `a version 1 plan; this workstation-cleaner reads version ${PLAN_VERSION}: sweep again`,
     )
   })
 
-  test('a version 2 plan without targetsGiven is refused: sweep again', async () => {
+  test('a plan of this version without targetsGiven is refused: sweep again', async () => {
     const { env, home, cwd } = setup()
     const old = {
       version: PLAN_VERSION,
@@ -2953,11 +3009,13 @@ describe('plan and clean', () => {
       allow: [],
       ignore: [],
       warnings: [],
+      descriptors: [],
       candidates: [],
       objections: [],
     }
-    const refusal =
-      /^old\.json: a version 2 plan this workstation-cleaner cannot read \(targetsGiven: .*\): sweep again$/
+    const refusal = new RegExp(
+      `^old\\.json: a version ${PLAN_VERSION} plan this workstation-cleaner cannot read \\(targetsGiven: .*\\): sweep again$`,
+    )
     expect(() => parsePlan(JSON.stringify(old), 'old.json')).toThrow(refusal)
     expect(
       parsePlan(JSON.stringify({ ...old, targetsGiven: false }), 'new.json').targetsGiven,
@@ -2968,7 +3026,9 @@ describe('plan and clean', () => {
       plugins: [fake()],
     })
     expect(r.code).toBe(1)
-    expect(r.err).toContain('a version 2 plan this workstation-cleaner cannot read (targetsGiven: ')
+    expect(r.err).toContain(
+      `a version ${PLAN_VERSION} plan this workstation-cleaner cannot read (targetsGiven: `,
+    )
     expect(r.err).toContain('): sweep again')
   })
 
@@ -3043,6 +3103,7 @@ describe('plan and clean', () => {
         spare: [],
         allow: [],
         warnings: [],
+        descriptors: [],
         candidates: [
           {
             id: `artifact:${owner}`,
@@ -3108,6 +3169,7 @@ describe('plan and clean', () => {
         spare: [],
         allow: [],
         warnings: [],
+        descriptors: [],
         candidates: [candidate('podman')],
         objections: [],
       }),

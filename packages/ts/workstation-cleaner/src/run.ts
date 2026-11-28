@@ -31,6 +31,7 @@ import {
   writeReceipt,
   PLAN_VERSION,
   RECEIPT_VERSION,
+  type DescriptorRecord,
   type Dropped,
   type Plan,
   type Receipt,
@@ -800,7 +801,8 @@ export function plan(
     targets?: readonly string[] | undefined
     targetsGiven?: boolean | undefined
     ignore?: readonly string[] | undefined
-    descriptors?: readonly string[] | undefined
+    /** The descriptor plugins the survey ran; none when undefined. */
+    descriptors?: readonly DescriptorRecord[] | undefined
     select?: readonly string[] | null | undefined
     pick?: readonly string[] | undefined
     spare?: readonly string[] | undefined
@@ -824,9 +826,7 @@ export function plan(
     spare: [...selection.spare],
     allow: [...(opts.allow ?? [])],
     ignore: [...(opts.ignore ?? [])],
-    ...(opts.descriptors === undefined || opts.descriptors.length === 0
-      ? {}
-      : { descriptors: [...opts.descriptors] }),
+    descriptors: (opts.descriptors ?? []).map((d) => ({ ...d })),
     warnings: s.warnings,
     // A copy, so a plugin that mutates and returns the same objects on re-discovery cannot change the plan.
     candidates: structuredClone(s.candidates),

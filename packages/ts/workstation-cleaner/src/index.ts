@@ -26,6 +26,7 @@ export {
   type PackageFailure,
 } from './load.ts'
 export {
+  DescriptorRecordSchema,
   PLAN_VERSION,
   PlanSchema,
   RECEIPT_VERSION,
@@ -34,6 +35,7 @@ export {
   readPlan,
   writePlan,
   writeReceipt,
+  type DescriptorRecord,
   type Dropped,
   type Plan,
   type Receipt,

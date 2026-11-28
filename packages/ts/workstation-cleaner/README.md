@@ -1007,10 +1007,15 @@ shipped one of the same name, and `--descriptor` replaces either for that run.
 Every plugin has one name, so any other clash, such as a descriptor named `git`
 or two files of one name in one folder, is a file that can't be used. Descriptors
 run after the built-ins, by name. To try one you are writing:
-`workstation-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan records the
-`--descriptor` files behind the plugins it ran, not those the run left out.
-`clean --plan` does not load them by itself: when one is not given it stops
-(exit 2) and names each `--descriptor` flag to add. A descriptor's
+`workstation-cleaner status --descriptor ./uv.yaml --plugin uv`. A plan records
+each descriptor behind the plugins it ran, not those the run left out: its
+name, where it came from (`shipped`, `user` or `flag`), its file and the
+file's sha256. `clean --plan` does not load a `--descriptor` file by itself:
+when one is not given it stops (exit 2) and names each `--descriptor` flag to
+add. It also stops (exit 2, sweep again) when a descriptor the plan records
+is not loaded now, comes from another source or file, or was edited, or when
+a plugin the plan's candidates belong to is now a descriptor the plan does
+not record, so a plan deletes only through the descriptors it was made with. A descriptor's
 `supersededBy` must name a built-in plugin, or a package the config names.
 
 `config` reports a descriptor file that can't be used (not a descriptor, a name

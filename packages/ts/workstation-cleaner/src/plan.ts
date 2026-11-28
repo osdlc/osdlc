@@ -6,8 +6,11 @@ import { z } from 'zod'
 
 import { COST_DESCRIPTIONS, DROP_REASONS, LEVELS } from './types.ts'
 
-/** 2: a candidate is a path or a ref. A plan of another version is refused (see {@link parsePlan}). */
-export const PLAN_VERSION = 2
+/**
+ * 3: a plan records the file behind each descriptor plugin it ran. A plan of
+ * another version is refused (see {@link parsePlan}).
+ */
+export const PLAN_VERSION = 3
 export const RECEIPT_VERSION = 1
 
 const candidateFields = {
@@ -48,6 +51,18 @@ export const ObjectionSchema = z.object({
   reason: z.string(),
 })
 
+/** A descriptor plugin a plan ran: its name, where its file came from, the file, and the file's sha256. */
+export const DescriptorRecordSchema = z
+  .object({
+    name: z.string(),
+    source: z.enum(['shipped', 'user', 'flag']),
+    path: z.string(),
+    sha256: z.string(),
+  })
+  .strict()
+
+export type DescriptorRecord = z.infer<typeof DescriptorRecordSchema>
+
 export const PlanSchema = z
   .object({
     version: z.literal(PLAN_VERSION),
@@ -66,8 +81,13 @@ export const PlanSchema = z
     allow: z.array(z.string()),
     /** The ignore list the plan was swept with; `clean --plan` honours it as well as the current one. */
     ignore: z.array(z.string()).default([]),
-    /** The `--descriptor` files the plan was made with; `clean --plan` stops unless it is given each of them. */
-    descriptors: z.array(z.string()).optional(),
+    /**
+     * Each descriptor plugin the plan ran, by name. `clean --plan` stops
+     * unless it is given each `--descriptor` among them again, and when any
+     * is replaced, edited or gone, or a plugin the plan's candidates belong
+     * to is now a descriptor it does not record.
+     */
+    descriptors: z.array(DescriptorRecordSchema),
     warnings: z.array(z.string()),
     candidates: z.array(CandidateSchema),
     objections: z.array(ObjectionSchema),
@@ -117,7 +137,7 @@ export type Receipt = z.infer<typeof ReceiptSchema>
 
 /**
  * Parse a plan's JSON text; `source` names where it came from, for the error.
- * A plan of another version, or a version 2 plan this one cannot read (one
+ * A plan of another version, or one of this version this one cannot read (one
  * written before a field it needs, such as `targetsGiven`), is refused: sweep again.
  */
 export function parsePlan(text: string, source: string): Plan {
