@@ -21,7 +21,7 @@ created: 2026-11-07
 - A breaking change to a stable export ships only in a new 0.x minor release, with a CHANGELOG
   entry that starts with `Breaking:`.
 - `@osdlc/config-layers` is an optional peer at a range written by hand, today
-  `^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0`: the lines `./config` was checked against (each section built
+  `^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0`: the lines `./config` was checked against (each section built
   from the packed package). Changesets leaves the range alone while a config-layers release stays
   in it (`onlyUpdatePeerDependentsWhenOutOfRange` in `.changeset/config.json`). A release that
   leaves it would still give this package an automatic patch that rewrites the range, so the pull

@@ -36,6 +36,6 @@ test('the config-layers peer range still admits every line it was checked agains
   }
   const range = manifest.peerDependencies?.['@osdlc/config-layers'] ?? ''
   // Checked by hand with the packed package: `./config` builds its sections on each.
-  for (const version of ['0.8.0', '0.9.0', '0.10.0', '0.11.0', '0.12.0'])
+  for (const version of ['0.8.0', '0.9.0', '0.10.0', '0.11.0', '0.12.0', '0.13.0'])
     expect(satisfies(version, range)).toBe(true)
 })
