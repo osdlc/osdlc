@@ -1719,15 +1719,13 @@ describe('the executor against real git', () => {
           { stdio: ['pipe', 'pipe', 'inherit'] },
         )
         const said: string[] = []
+        child.stdout!.on('data', (c: Buffer) => said.push(c.toString()))
         const heard = (word: string): Promise<void> =>
           new Promise((done, fail) => {
             const check = (): void => {
               if (said.join('').includes(word)) done()
             }
-            child.stdout!.on('data', (c: Buffer) => {
-              said.push(c.toString())
-              check()
-            })
+            child.stdout!.on('data', check)
             child.on('exit', () =>
               said.join('').includes(word)
                 ? done()
@@ -1743,11 +1741,18 @@ describe('the executor against real git', () => {
         const repair = fakeRepair(writeShared('good\n'))
         // What PR 2's repair saw once A was dead, checked after the run: an assertion that
         // failed in here would only show as PR 2 failing.
+        let sent = false
         let death: { code: number | null; sig: NodeJS.Signals | null } | undefined
         let recordedThen = -1
         const killing = async (req: RepairRequest): Promise<RepairResult> => {
           if (req.pr === 2) {
             child.stdin!.write('go\n')
+            await heard('recorded')
+            // A answers while it waits, so it is alive when it is killed here, by the test: an
+            // ordinary error exit of A cannot pass for a kill.
+            child.stdin!.write('ping\n')
+            await heard('pong')
+            sent = child.kill('SIGKILL')
             death = await exited
             recordedThen = postimages().length
           }
@@ -1760,10 +1765,10 @@ describe('the executor against real git', () => {
           ],
           { repair: killing, repairOn: ['conflict'] },
         )
-        // Killed: by SIGKILL, or on Windows, where a process that ends itself so is seen to exit
-        // with a failing code and no signal.
-        if (process.platform === 'win32') expect(death?.code).not.toBe(0)
-        else expect(death?.sig).toBe('SIGKILL')
+        // A was alive when the kill was sent, and the kill ended it.
+        expect(sent).toBe(true)
+        expect(child.killed).toBe(true)
+        expect(death).toEqual({ code: null, sig: 'SIGKILL' })
         expect(said.join('')).toContain('recorded')
         expect(recordedThen).toBe(1)
         expect(results.map((r) => r.outcome.status)).toEqual(['updated', 'updated'])

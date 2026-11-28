@@ -3,8 +3,9 @@
  * stands in for a run that holds a managed clone's rerere cache. It takes the clone's rerere
  * lock, as a run does, and adds its run worktree, named for its own pid, on a scratch branch. It
  * prints `ready` and waits. On `go` it records a resolution of `<branch>`'s conflict with the
- * clone's `main`, `bad`, through its worktree, prints `recorded`, and kills itself with SIGKILL:
- * a run killed after recording and before its push, which leaves its lock and its resolution.
+ * clone's `main`, `bad`, through its worktree, prints `recorded`, and waits for the test to kill
+ * it, answering `ping` with `pong` meanwhile: a run killed after recording and before its push,
+ * which leaves its lock and its resolution.
  */
 import { writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -27,6 +28,8 @@ process.stdout.write('ready\n')
 
 process.stdin.setEncoding('utf8')
 process.stdin.on('data', (chunk: string) => {
+  // Says it is still here, waiting, so the test kills a live process.
+  if (chunk.includes('ping')) process.stdout.write('pong\n')
   if (!chunk.includes('go')) return
   const wt = new Git(tree)
   const rr = ['-c', 'rerere.enabled=true', '-c', 'rerere.autoUpdate=false']
@@ -50,5 +53,5 @@ process.stdin.on('data', (chunk: string) => {
     'bad',
   ])
   process.stdout.write('recorded\n')
-  process.kill(process.pid, 'SIGKILL')
+  // Waits here, stdin open, until the test kills it.
 })
