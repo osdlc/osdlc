@@ -102,7 +102,27 @@ A worktree is removed with one `git worktree remove --force`. When git
 refuses (a worktree locked with `git worktree lock`, say), that is a failure,
 reported under `failed`, its clone stays, and pr-update never deletes its
 folder or git's record of it by hand. `update` likewise leaves a killed run's
-scratch worktree that git will not remove, and its branch.
+scratch worktree that git will not remove, and its branch. One lock is git's
+own: a `git worktree add` that was killed leaves its worktree locked with the
+reason `initializing`. A run worktree whose run is over, locked with exactly
+that reason, is unlocked and removed; any other lock is still refused.
+
+When git will not remove a run's own worktree at the end of `update`, the
+PR it last served keeps its outcome, its result says so in the new
+`worktreeLeft`, and the text adds `worktree left: <why>`.
+
+With `--keep-failed`, when the run worktree that comes after a kept one
+cannot be added, the kept tree and its record stay, `keepError` says so, and
+the run updates no more PRs in that repository.
+
+A kept record no longer leads a removal to a folder it does not own. A tree
+removed as a plain folder because a record names it (`mirror prune
+--discard-kept` for a tree its clone does not list, or a discard whose
+record's git directory is gone) stays when it is a live run's worktree, when
+its `.git` names another git directory, or when its `.git` cannot be read. A
+record naming a live run's worktree that is not on the record's branch is
+refused, and `mirror prune` counts a live run's worktree as in use whatever a
+record says.
 
 `mirror prune --dry-run` reads a clone's lock with file-lock's
 `readHeldLock`, as a claim does, so it calls a clone busy exactly where the

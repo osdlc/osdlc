@@ -530,14 +530,22 @@ git directory keeps itself and its clone: the clone was moved (run
 `git worktree repair` in the clone, as the message says), or the one pruned is a
 copy. A prune holds only the lock of the clone it prunes.
 
-pr-update reads no worktree locks of its own. It removes a worktree with one
-`git worktree remove --force`, which git refuses for one locked with
-`git worktree lock`, git's own `initializing` lock of a killed
-`git worktree add` included. That worktree is reported under `failed`, with
-git's reason, it and its clone stay, and `prune` exits `1`; run
+pr-update reads no worktree locks of its own, but one. It removes a worktree
+with one `git worktree remove --force`, which git refuses for one locked with
+`git worktree lock`. That worktree is reported under `failed`, with git's
+reason, it and its clone stay, and `prune` exits `1`; run
 `git worktree unlock <path>` to let it go. A dry run cannot know git will
 refuse, so it lists such a worktree as one it would remove. `update` leaves a
-locked worktree of a killed run in place the same way.
+locked worktree of a killed run in place the same way. The one lock read is
+git's own: a `git worktree add` that was killed leaves its worktree locked
+with the reason `initializing`. A run worktree whose run is over, whose lock
+says exactly `initializing`, is unlocked and removed.
+
+A kept record never leads a removal by itself. A tree the clone does not list,
+which `--discard-kept` removes as a plain folder because a record names it,
+stays with its clone when it is a live run's worktree, when its `.git` names
+another git directory, or when its `.git` cannot be read. A live run's
+worktree keeps its clone whatever a record says of it.
 
 Everything a prune removes passes the same checks first, in `--dry-run` too:
 the folder rule, the clone's or checkout's `git worktree list`, and the
@@ -992,7 +1000,9 @@ your work on a copy. `kept push` (below) makes that copy.
   committed by accident.
 - Only `--apply` runs keep anything. A failure that says nothing about the PR (see `unrecorded`)
   is not kept. A tree holding submodules is kept like any other. When a keep fails, the result's
-  `keepError` says why.
+  `keepError` says why. When the tree is kept but the run worktree that comes after it cannot be
+  added, the kept tree and its record stay, `keepError` says so, and the run updates no more PRs
+  in that repository.
 - A later run lists a PR with a kept worktree under `skipped`, reason
   `failed worktree kept at <path>`, while its head and base sha are unchanged. The tree goes,
   whatever is in it, when the PR's head or base moves (the PR is then attempted again), when
@@ -1085,7 +1095,10 @@ removed first, so a file that is there belongs to this run. It is written
 whenever the run produced a result, on a clean exit and on a conflict or failure
 alike. Each PR's entry carries its `repo` and `number`, `status`, the `strategy`
 that ran, `strategyFallback`, `repaired`, `conflicts` and `localCheckout`, so a
-host can act on each outcome without parsing text. `skipped` lists the PRs left
+host can act on each outcome without parsing text. When git will not remove the
+run's own worktree at the end (a locked one, say), the last PR's entry keeps its
+outcome and carries `worktreeLeft` with why; the text adds
+`worktree left: <why>`. `skipped` lists the PRs left
 alone, each with its `repo`, `number` and `reason`. `notFound` lists the `--pr`
 selectors no surveyed PR matched (`#N` or `owner/name#N`). `repos` lists the
 repositories surveyed, exactly as `survey` reports them. A run that throws

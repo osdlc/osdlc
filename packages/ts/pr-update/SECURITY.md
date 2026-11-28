@@ -135,8 +135,13 @@ are in scope.
   acted on only when its branch is the one pr-update gives that PR, its path is
   a folder directly in that repository's `worktrees/` folder and not a symbolic
   link, and `git worktree list` in the git directory it names shows a worktree
-  there on a branch other than a run's scratch branch, so a record can never
-  make a live run's worktree look kept. What is in a kept tree never keeps it:
+  there on a branch other than a run's scratch branch, and, for a live run's
+  worktree, on the record's own branch, so a record can never make a live
+  run's worktree look kept. A tree removed as a plain folder because a record
+  names it (one its clone does not list, under `mirror prune --discard-kept`,
+  or one whose record's git directory is gone) is never a live run's worktree
+  and never one whose `.git` names another git directory; one whose `.git`
+  cannot be read stays. What is in a kept tree never keeps it:
   it is pr-update's. `mirror prune --discard-kept` removes a clone's kept trees
   through that clone, under its lock, only when the tree's own `.git` file
   names that clone, so a moved or copied clone does not decide it. Any other
@@ -169,9 +174,10 @@ are in scope.
   Everything pr-update made is its own to remove once no live run uses it;
   what is in it (commits, a stash, changes) does not keep it. A worktree is
   removed with one `git worktree remove --force`, and one git refuses (locked
-  with `git worktree lock`) stays, with its clone, as a failure. Only
-  `pr-update/` branches are deleted in a person's checkout. A clone also stays while its
-  `worktrees/` folder holds a record that list does not show, since git leaves
-  out a record it cannot read without a word. What cannot be read stays and
+  with `git worktree lock`) stays, with its clone, as a failure. The one lock
+  pr-update reads is git's own `initializing`, left by a killed
+  `git worktree add`: a run worktree whose run is over and whose `locked` file
+  says exactly that is unlocked and removed. Only
+  `pr-update/` branches are deleted in a person's checkout. What cannot be read stays and
   is reported, and `--dry-run` decides the same way, reading a clone's lock
   as a claim would.

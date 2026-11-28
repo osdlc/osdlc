@@ -1379,6 +1379,17 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
     whose worktree was detached was not seen, and a run that started while
     another held resolutions could replay them once that one died.) The list, the variant tracking and their sweep went.
     Everywhere else pr-update's git passes `rerere.enabled=false`, as before.
+  - A record leads no removal by itself (review round 2). A tree removed as a
+    plain folder because a record names it (one its clone does not list,
+    under `mirror prune --discard-kept`, or one whose record's git directory
+    is gone) is refused when it is a live run's worktree, by its name, or
+    when its `.git` names another git directory; one whose `.git` cannot be
+    read stays (`rawRemovalProblem` in `run-trees.ts`). Prune counts a live
+    run's worktree as in use whatever a record says, and `keptTreeCheck`
+    refuses a record naming a live run's worktree that is not on the
+    record's branch. A run notes the worktrees it works in, so a host that
+    runs `update` more than once in one process does not read its own
+    earlier kept trees as a live run's.
 - **Trust granted before this build.** trust-repo first copied the old
   markers into the new store, and every way of telling whether the copy had
   run brought back a revoked grant in some case. The owner dropped the copy

@@ -25,7 +25,9 @@ it is removed even if you changed or committed in it, where before that PR was s
 `has local changes`; `--retry-failed`, `--discard-kept` and `mirror prune --discard-kept` remove it
 the same way. To keep its commit, push it out first with `pr-update kept push`. pr-update reads no
 worktree locks of its own: a worktree git will not remove (one locked with `git worktree lock`) is
-a failure, reported, and nothing of it is deleted by hand.
+a failure, reported, and nothing of it is deleted by hand. The one exception is git's own
+`initializing` lock on a dead run's worktree, left by a killed `git worktree add`: that worktree is
+unlocked and removed.
 
 A worktree in `worktrees/` that no kept record names is a run worktree, so `mirror prune` removes
 one whose run is dead, with its scratch branch and any other `pr-update/` branch it is on.
