@@ -13,8 +13,11 @@ const VOLUME_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/
 /** Go's zero `time.Time`, which Podman writes for a volume with no creation time. */
 const GO_ZERO_TIME = Date.parse('0001-01-01T00:00:00Z')
 
-/** How long `podman info` may take before detect reports Podman as unreachable. */
-const INFO_LIMIT_MS = 5_000
+/**
+ * How long `podman info` may take before detect reports Podman as unreachable:
+ * long enough for a cold rootless Podman or a Podman machine that has to start.
+ */
+const INFO_LIMIT_MS = 20_000
 
 /** The fields of one entry of `podman volume ls --format json` this plugin reads. */
 const Volume = z.object({
@@ -51,7 +54,7 @@ export default definePlugin({
       async detect(ctx) {
         if (!kit.onPath('podman')) return false
         // `podman info` fails when it can't reach Podman, such as a stopped
-        // machine. Its limit is well under the detect hook's, so a Podman that
+        // machine. Its limit is under the detect hook's, so a Podman that
         // hangs gives this note, not a hook timeout.
         const r = await kit.run(['podman', 'info'], {
           signal: ctx.signal,
