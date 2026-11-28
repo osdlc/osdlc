@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites time="3.5">
+  <testsuite name="outer" tests="4" time="3.5">
+    <testsuite name="inner" tests="2">
+      <testcase classname="app.Math" name="adds" time="0.5" file="tests/math.rs" line="10">
+        <failure message="expected 4 &amp; got 5" type="AssertionError">trace here</failure>
+      </testcase>
+      <testcase classname="app.Math" name="subtracts" time="0.25"/>
+    </testsuite>
+    <testcase classname="app.Io" name="reads" time="1.0">
+      <error type="IoError">
+        read failed: &lt;eof&gt;
+        second line
+      </error>
+    </testcase>
+    <testcase classname="app.Io" name="writes" time="0.25">
+      <skipped message="not today"/>
+    </testcase>
+  </testsuite>
+</testsuites>

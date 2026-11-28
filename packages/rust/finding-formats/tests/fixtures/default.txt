@@ -1,0 +1,4 @@
+src/main.rs:12: unused variable `x`
+src/lib.rs:40:7: missing semicolon
+
+this line is chatter from the tool
