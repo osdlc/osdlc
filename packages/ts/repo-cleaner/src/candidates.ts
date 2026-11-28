@@ -1,6 +1,6 @@
 /**
  * A sweep's rows as plain data for a host that runs its own phases (a
- * `git` plugin of host-cleaner): what could be deleted, what would object,
+ * `git` plugin of workstation-cleaner): what could be deleted, what would object,
  * and what it depends on. `removeCandidate` (in `clean.ts`) takes one back.
  */
 

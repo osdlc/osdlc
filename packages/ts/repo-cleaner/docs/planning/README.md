@@ -6,7 +6,7 @@ Why `@osdlc/repo-cleaner` has the shape it has, and what is still open. The
 These files are maintained here, in
 [osdlc/osdlc](https://github.com/osdlc/osdlc). Open an issue or a pull request
 there. Decisions that span repo-cleaner and other packages, such as
-[D-L7N5](../../../../../docs/decisions/D-L7N5-host-cleaner.md) for host-cleaner,
+[D-L7N5](../../../../../docs/decisions/D-L7N5-host-cleaner.md) for workstation-cleaner,
 are in the root [`docs/decisions/`](../../../../../docs/decisions/README.md).
 
 ## Layout

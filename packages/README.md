@@ -31,10 +31,10 @@ of them.
 - `packages/profiles/system-cleanup/` and
   `packages/corpora/system-cleanup-reference/` are the system cleanup profile
   and reference: cited statements about where tools and apps keep data that
-  can be reclaimed from disk. host-cleaner's descriptors will be drafted from
+  can be reclaimed from disk. workstation-cleaner's descriptors will be drafted from
   them; descriptors are not built yet (phase 4 of
-  [the host-cleaner plan](../docs/planning/host-cleaner-plan.md)). They live
-  beside host-cleaner while it is their only user, and are not
+  [the workstation-cleaner plan](../docs/planning/host-cleaner-plan.md)). They live
+  beside workstation-cleaner while it is their only user, and are not
   published yet; the reference's backlog item B-0001 says when they will be.
 - TypeScript libraries are published to npm from CI with
   [Changesets](https://changesets.dev). `.github/workflows/packages-publish.yml`
@@ -308,7 +308,7 @@ Developed here, in this repository:
   that finds the branches, worktrees and remote branches that have been merged
   and can go away, with the evidence and the command for each, and applies an
   approved plan compare-and-swap)
-- `packages/ts/host-cleaner` (`@osdlc/host-cleaner` on npm once published, a tool and
+- `packages/ts/workstation-cleaner` (`@osdlc/workstation-cleaner` on npm once published, a tool and
   library that runs machine cleanup as plugins, each proposing candidates and
   objecting to others', through one plan, one re-check and one receipt)
 - `packages/ts/rule-review` (`@osdlc/rule-review` on npm, a tool and library
