@@ -219,6 +219,9 @@ function ownerGone(
   gitDir: string,
 ): void {
   writeFileSync(file, JSON.stringify({ ...record, gitDir }))
+  // Removed first: git on Windows hides `.git`, and a hidden file cannot be opened to be
+  // rewritten (EPERM).
+  rmSync(join(kept, '.git'), { force: true })
   writeFileSync(join(kept, '.git'), `gitdir: ${join(gitDir, 'worktrees', basename(kept))}\n`)
 }
 
