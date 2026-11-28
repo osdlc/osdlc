@@ -206,6 +206,22 @@ async function update(run: Run = {}) {
 }
 
 /** Run git in `dir`, and fail the test when it fails. */
+/**
+ * Make `kept`'s record name the git directory `gitDir` that is not there (or not readable), as a
+ * deleted checkout leaves it: the tree's own `.git` names that directory's record of it too. A
+ * record naming a gone git directory while the tree's `.git` names one that is there is a forged
+ * one, and its tree stays.
+ */
+function ownerGone(
+  kept: string,
+  record: Record<string, unknown>,
+  file: string,
+  gitDir: string,
+): void {
+  writeFileSync(file, JSON.stringify({ ...record, gitDir }))
+  writeFileSync(join(kept, '.git'), `gitdir: ${join(gitDir, 'worktrees', basename(kept))}\n`)
+}
+
 function sh(dir: string, ...argv: string[]): string {
   const res = git.run(argv, { cwd: dir })
   if (res.exitCode !== 0) throw new Error(`git ${argv.join(' ')}: ${res.stderr}`)
@@ -461,7 +477,7 @@ describe('a located target kept worktree', () => {
     await update({ args: { keepFailed: true, retryFailed: true } })
     const again = keptTree()
     const record = JSON.parse(readFileSync(recordFile(), 'utf8'))
-    writeFileSync(recordFile(), JSON.stringify({ ...record, gitDir: join(scratch, 'gone') }))
+    ownerGone(again, record, recordFile(), join(scratch, 'gone'))
     expect((await update({ checkout: other, args: { discardKept: true } })).discarded).toEqual([
       again,
     ])
@@ -509,9 +525,7 @@ describe('a located target kept worktree', () => {
       const ctx = captureContext({ cwd: scratch, env })
       const argv = ['kept', 'push', `acme/api#${n}`, '--to', out2]
       expect(await main(argv, ctx, { which: allToolsInstalled }), ctx.io.err).toBe(EXIT.ok)
-      expect(sh(out2, 'rev-parse', `pr-update/failed-acme-api-${n}`)).toBe(
-        sh(kept, 'rev-parse', 'HEAD'),
-      )
+      expect(sh(out2, 'rev-parse', `kept/acme-api-${n}`)).toBe(sh(kept, 'rev-parse', 'HEAD'))
     }
   })
 
@@ -709,8 +723,7 @@ describe('a located target kept worktree, when something is off', () => {
     const kept = keptTree()
     writeFileSync(join(kept, 'fix.txt'), 'half a fix\n')
     const record = JSON.parse(readFileSync(recordFile(), 'utf8'))
-    const gone = join(scratch, 'gone')
-    writeFileSync(recordFile(), JSON.stringify({ ...record, gitDir: gone }))
+    ownerGone(kept, record, recordFile(), join(scratch, 'gone'))
     api.worker.commit('main again', { 'n.txt': 'n\n' })
     api.worker.git.push('origin', 'main')
 
@@ -732,7 +745,7 @@ describe('a located target kept worktree, when something is off', () => {
       const shut = join(scratch, 'shut')
       const gitDir = join(shut, 'api.git')
       mkdirSync(gitDir, { recursive: true })
-      writeFileSync(recordFile(), JSON.stringify({ ...record, gitDir }))
+      ownerGone(kept, record, recordFile(), gitDir)
       chmodSync(shut, 0o000)
       try {
         for (const args of [{ discardKept: true }, { retryFailed: true }, { keepFailed: true }]) {
