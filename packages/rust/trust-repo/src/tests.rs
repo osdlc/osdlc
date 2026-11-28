@@ -20,30 +20,46 @@ fn store_and_repo() -> (tempfile::TempDir, TrustStore, PathBuf) {
     (dir, store, repo)
 }
 
+/// `parts` joined under the platform's root, so the paths are absolute on Windows too.
+fn abs(parts: &[&str]) -> PathBuf {
+    let mut path = PathBuf::from(if cfg!(windows) { "C:\\" } else { "/" });
+    path.extend(parts);
+    path
+}
+
 #[test]
 fn store_dir_takes_an_absolute_xdg_state_home() {
-    let home = Path::new("/home/u");
+    let home = abs(&["home", "u"]);
+    let state = abs(&["x", "state"]);
     assert_eq!(
-        trust_store_dir("mytool", &vars(&[("XDG_STATE_HOME", "/x/state")]), home),
-        Path::new("/x/state/mytool/trusted")
+        trust_store_dir(
+            "mytool",
+            &vars(&[("XDG_STATE_HOME", state.to_str().unwrap())]),
+            &home
+        ),
+        state.join("mytool").join("trusted")
     );
     assert_eq!(
-        trust_store_dir("mytool", &vars(&[("XDG_STATE_HOME", "~/st")]), home),
-        Path::new("/home/u/st/mytool/trusted")
+        trust_store_dir("mytool", &vars(&[("XDG_STATE_HOME", "~/st")]), &home),
+        home.join("st").join("mytool").join("trusted")
     );
 }
 
 #[test]
 fn store_dir_falls_back_when_xdg_state_home_is_unset_blank_or_relative() {
-    let home = Path::new("/home/u");
-    let fallback = Path::new("/home/u/.local/state/mytool/trusted");
+    let home = abs(&["home", "u"]);
+    let fallback = home
+        .join(".local")
+        .join("state")
+        .join("mytool")
+        .join("trusted");
     for given in [
         &[][..],
         &[("XDG_STATE_HOME", "  ")],
         &[("XDG_STATE_HOME", "rel/state")],
     ] {
         assert_eq!(
-            trust_store_dir("mytool", &vars(given), home),
+            trust_store_dir("mytool", &vars(given), &home),
             fallback,
             "{given:?}"
         );
@@ -261,6 +277,8 @@ fn gate_flags_read_no_store() {
     let file = dir.path().join("not-a-folder");
     std::fs::write(&file, "").unwrap();
     let store = TrustStore::at(file);
+    // Windows reports a path through a file as not found, which reads as no grant.
+    #[cfg(unix)]
     assert!(matches!(
         resolve_exec_gate(&store, dir.path(), true, None),
         Err(TrustError::Io { .. })
