@@ -436,7 +436,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   others. (changed during the build: Build note 1)
 - **Attempts and the lease, per target.** The run's attempt store and lease
   route by repository:
-  - The project root keeps today's store, `--remote` and lease.
+  - The project root keeps its `--remote` and lease. Its `file` store is
+    the state store, like any other target's (changed during the build:
+    Build note "The ownership contract").
   - `git-ref` for any other target is bound to that target's checkout or
     clone and its `origin`.
   - `file` for any other target is the state store (table above), one file
@@ -519,6 +521,9 @@ Option A. B lost on criterion 1, C on cost and the guard. Details to build:
   `git worktree list` cannot be read, or does not show the directory, keeps
   it. pr-update reads no worktree locks of its own: git refuses to remove a
   locked one, and that refusal is a failure (exit 1), with the clone kept.
+  The one lock it reads is git's own `initializing` on a dead run's
+  worktree, which a killed `git worktree add` leaves: that one is unlocked
+  and the removal retried.
   (changed during the build: Build note 1, Build note "The ownership contract") Never a bare
   `git worktree prune`, which would drop the person's own worktrees whose
   folders are missing. With the owner gone, or records that do not name the

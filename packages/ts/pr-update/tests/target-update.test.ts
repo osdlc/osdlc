@@ -411,7 +411,7 @@ describe('the trust gate for a located target', () => {
 })
 
 describe('a located target kept worktree', () => {
-  test('is kept in the state directory, recording the git directory that owns it', async () => {
+  test('is kept where it ran, its record in the state directory naming the git directory that owns it', async () => {
     verifyOk = false
     const out = await update({ args: { keepFailed: true } })
     const kept = keptTree()
