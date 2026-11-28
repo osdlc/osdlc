@@ -309,7 +309,7 @@ describe('the run’s plugins', () => {
     const s = sources({ 'podman.yaml': 'descriptor: 1\npaths: {}\ncandidates: []\n' })
     const packages = {
       loaded: [],
-      entries: [{ name: 'podman', package: '@acme/host-cleaner-podman' }],
+      entries: [{ name: 'podman', package: '@acme/workstation-cleaner-podman' }],
     }
     const flagged = { ...s, flag: [join(s.shipped, 'podman.yaml')] }
     expect(findPlugins(flagged, {}, packages).problems.map((p) => [p.name, p.source])).toEqual([

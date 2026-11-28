@@ -290,7 +290,7 @@ describe('status', () => {
     expect(doc.candidates.map((c: Candidate) => c.id)).toContain(`worktree:${wt}`)
     expect(doc.objections).toContainEqual(
       expect.objectContaining({
-        by: 'host-cleaner',
+        by: 'workstation-cleaner',
         candidate: `worktree:${wt}`,
         code: 'agent-worktree',
       }),
@@ -313,7 +313,7 @@ describe('status', () => {
       doc.objections.filter((o: Objection) => o.candidate === id && o.code === 'agent-worktree')
     expect(refusals(`worktree:${inside}`)).toEqual([
       {
-        by: 'host-cleaner',
+        by: 'workstation-cleaner',
         candidate: `worktree:${inside}`,
         level: 'refuse',
         code: 'agent-worktree',
@@ -2183,8 +2183,8 @@ describe('folders', () => {
     async () => {
       const { cwd } = setup()
       const xdg = tempDir()
-      mkdirSync(join(xdg, 'host-cleaner'), { recursive: true })
-      const file = join(xdg, 'host-cleaner', 'config.json')
+      mkdirSync(join(xdg, 'workstation-cleaner'), { recursive: true })
+      const file = join(xdg, 'workstation-cleaner', 'config.json')
       writeFileSync(file, JSON.stringify({ targets: [cwd] }))
       const env = { PATH: process.env.PATH ?? '', XDG_CONFIG_HOME: xdg }
       const shown = await run(['config', '--format', 'json'], cwd, env, { plugins: [fake()] })

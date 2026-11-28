@@ -125,8 +125,8 @@ export function pathProblem(
   }
   for (const own of at.ownDirs) {
     const [outer, inner] = [realAbove(path), realAbove(own)]
-    if (within(outer, inner)) return `it holds host-cleaner's own folder ${own}`
-    if (within(inner, outer)) return `it is inside host-cleaner's own folder ${own}`
+    if (within(outer, inner)) return `it holds workstation-cleaner's own folder ${own}`
+    if (within(inner, outer)) return `it is inside workstation-cleaner's own folder ${own}`
   }
   return null
 }

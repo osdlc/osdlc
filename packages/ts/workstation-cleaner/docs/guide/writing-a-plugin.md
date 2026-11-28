@@ -20,7 +20,7 @@ A plugin's code uses two entries of `@osdlc/workstation-cleaner`, and no other:
 | `@osdlc/workstation-cleaner/testing` | `fakeContext`, `fakeRunner`, `tempHome` and `contractSuite`, for the plugin's own tests. |
 
 Its tests may also import `survey`, `plan` and `clean`, with their types
-`RunCtx` and `Survey`, from the main entry, `@osdlc/host-cleaner`, to run it
+`RunCtx` and `Survey`, from the main entry, `@osdlc/workstation-cleaner`, to run it
 through the core, and `HOOK_LIMIT_MS`, to hold a time limit under the hook's,
 as the example's do. The plugin's own code never does.
 

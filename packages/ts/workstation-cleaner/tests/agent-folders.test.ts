@@ -25,7 +25,7 @@ afterEach(() => {
 
 /** A temporary home, with `dev`, a target, in it. */
 function setUp() {
-  const t = tempHome('host-cleaner-agent-folders-')
+  const t = tempHome('workstation-cleaner-agent-folders-')
   cleanups.push(t.cleanup)
   const dev = join(t.home, 'dev')
   mkdirSync(dev)
@@ -80,7 +80,7 @@ describe('agent folders', () => {
     mkdirSync(inside, { recursive: true })
     expect(await refusals([at(inside)], ctx({ agentFolders: [agents] }))).toEqual([
       {
-        by: 'host-cleaner',
+        by: 'workstation-cleaner',
         candidate: `artifact:${inside}`,
         level: 'refuse',
         code: AGENT_WORKTREE,

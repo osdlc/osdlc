@@ -479,7 +479,7 @@ const resolveConfigDir = (ctx: CliContext, dirs: HostDirs | undefined): string |
     () => undefined,
   )
 
-const NO_HOME = `no home directory to place the folders in: set ${process.platform === 'win32' ? 'USERPROFILE' : 'HOME, XDG_CONFIG_HOME with XDG_STATE_HOME'}, or HOST_CLEANER_ROOT`
+const NO_HOME = `no home directory to place the folders in: set ${process.platform === 'win32' ? 'USERPROFILE' : 'HOME, XDG_CONFIG_HOME with XDG_STATE_HOME'}, or WORKSTATION_CLEANER_ROOT`
 
 /**
  * The config: `--config`, which must exist, else `config.json` in the config

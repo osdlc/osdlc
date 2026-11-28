@@ -1176,8 +1176,8 @@ describe('cursor', () => {
     // A prunable worktree, whose folder is gone, named through the link.
     const gone = join(link, '.cursor', 'worktrees', 'repo', 'gone')
     expect(await agentRefusals([gitOf([wt, gone]), plugin], link)).toEqual([
-      expect.objectContaining({ by: 'host-cleaner', candidate: `worktree:${wt}` }),
-      expect.objectContaining({ by: 'host-cleaner', candidate: `worktree:${gone}` }),
+      expect.objectContaining({ by: 'workstation-cleaner', candidate: `worktree:${wt}` }),
+      expect.objectContaining({ by: 'workstation-cleaner', candidate: `worktree:${gone}` }),
     ])
     // The plugin leaves them to the core.
     expect(
@@ -1221,7 +1221,7 @@ describe('cursor', () => {
     const plugin = cursorPlugin(h.options())
     expect(await agentRefusals([gitOf([wt]), plugin], h.home)).toEqual([
       {
-        by: 'host-cleaner',
+        by: 'workstation-cleaner',
         candidate: `worktree:${wt}`,
         level: 'refuse',
         code: AGENT_WORKTREE,

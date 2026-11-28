@@ -523,24 +523,24 @@ describe('running', () => {
     expect(ask('npm')).toEqual([])
   })
 
-  test('a launcher that names host-cleaner with a version is left out; an ancestor that only mentions it in a folder name is seen', () => {
+  test('a launcher that names workstation-cleaner with a version is left out; an ancestor that only mentions it in a folder name is seen', () => {
     const ask = (table: string, name: string) =>
       pluginKit('x', { ps: fakePs(table) }).running({ name }, { signal: signal() }).names
-    expect(ask(startedBy('npm exec @osdlc/host-cleaner@1.2.3 clean'), 'npm')).toEqual([])
-    expect(ask(startedBy('node /opt/homebrew/bin/pnpm dlx host-cleaner@latest'), 'pnpm')).toEqual(
-      [],
-    )
+    expect(ask(startedBy('npm exec @osdlc/workstation-cleaner@1.2.3 clean'), 'npm')).toEqual([])
+    expect(
+      ask(startedBy('node /opt/homebrew/bin/pnpm dlx workstation-cleaner@latest'), 'pnpm'),
+    ).toEqual([])
     const table = [
       '    1     0 /sbin/launchd',
       '   41     1 -zsh',
-      '   42    41 node /opt/homebrew/bin/pnpm --dir /x/host-cleaner-notes dev',
-      `${process.pid}    42 node /Users/me/.npm/_npx/1a2b/node_modules/.bin/host-cleaner clean`,
+      '   42    41 node /opt/homebrew/bin/pnpm --dir /x/workstation-cleaner-notes dev',
+      `${process.pid}    42 node /Users/me/.npm/_npx/1a2b/node_modules/.bin/workstation-cleaner clean`,
     ].join('\n')
     expect(ask(table, 'pnpm')).toEqual(['node (pid 42)'])
   })
 
-  test("a pnpm outside host-cleaner's own line still matches, beside the pnpm dlx that started it", () => {
-    const table = startedBy('node /opt/homebrew/bin/pnpm dlx @osdlc/host-cleaner clean', [
+  test("a pnpm outside workstation-cleaner's own line still matches, beside the pnpm dlx that started it", () => {
+    const table = startedBy('node /opt/homebrew/bin/pnpm dlx @osdlc/workstation-cleaner clean', [
       '   99    41 node /opt/homebrew/bin/pnpm install',
       `  100 ${process.pid} ps -axo pid=,ppid=,args=`,
     ])

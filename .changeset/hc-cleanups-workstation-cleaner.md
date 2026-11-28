@@ -1,8 +1,8 @@
 ---
-"@osdlc/host-cleaner": patch
+"@osdlc/workstation-cleaner": patch
 ---
 
-Fixes from the review rounds of the host-cleaner pull requests:
+Fixes from the review rounds of the workstation-cleaner pull requests:
 
 - A plugin's `scope` answer that is `/`, is or holds the home folder, is a personal folder, or is not an absolute path without `..` is left out with a warning. Before, it became a target, so any path candidate below it counted as inside the bounds.
 - The docker plugin looks at a dangling image once more right before `docker image rm`, and leaves it if it has been tagged since the plan (`image rm` would untag and remove an image with one tag).
@@ -15,7 +15,7 @@ Fixes from the review rounds of the host-cleaner pull requests:
 - An unusable `--descriptor` file named after a configured package stays a problem even when it sits in the shipped descriptors folder.
 - git: `inspect` after a survey no longer lists that survey's gone worktrees as git roots.
 - The warning for a bad `detect` answer reads `{ active, note?, vars? }`.
-- `kit.running` hides only ancestors that name host-cleaner as a word (a trailing `@version` ignored), so a process whose command line only holds the text, such as a folder named `host-cleaner-notes`, is seen.
+- `kit.running` hides only ancestors that name workstation-cleaner as a word (a trailing `@version` ignored), so a process whose command line only holds the text, such as a folder named `workstation-cleaner-notes`, is seen.
 - docker: `volume rm` and `image rm` get the delete limit, not the kit's 30 s default.
 - ollama: an `OLLAMA_HOST` with a scheme other than http or https is named in detect's note, not reported as a server that does not answer.
 - toolchains: a discover stopped while asking rustup what is in use rejects with the hook's abort reason.

@@ -140,7 +140,7 @@ export interface Kit {
    * busy processes working in `in` (an idle shell is not busy). A name
    * matches a process when {@link commandHasName} finds it in its command
    * line (`ps -axo pid=,ppid=,args=`). This process and the unbroken line
-   * of ancestors above it whose command lines name host-cleaner as a word
+   * of ancestors above it whose command lines name workstation-cleaner as a word
    * (as {@link commandHasName} finds one, a version after an `@` left off)
    * are left out, so the `npm exec` or `pnpm dlx` that started it does not
    * count, but an editor, terminal or `tmux` it runs inside does. The
@@ -275,13 +275,13 @@ export function commandHasName(args: string, name: string): boolean {
 /** `ps` reads its own locale; `LC_ALL=C` keeps its output plain. */
 const PS_ENV = { LC_ALL: 'C' } as const
 
-/** The name a launcher that started host-cleaner gives it. */
-const SELF = 'host-cleaner'
+/** The name a launcher that started workstation-cleaner gives it. */
+const SELF = 'workstation-cleaner'
 
 /**
- * Whether the command line `args` names host-cleaner as a word
+ * Whether the command line `args` names workstation-cleaner as a word
  * ({@link commandHasName}), a version after an `@` left off, as in
- * `npm exec @osdlc/host-cleaner@1.2.3`; a folder named `host-cleaner-notes`
+ * `npm exec @osdlc/workstation-cleaner@1.2.3`; a folder named `workstation-cleaner-notes`
  * does not.
  */
 const namesSelf = (args: string): boolean =>

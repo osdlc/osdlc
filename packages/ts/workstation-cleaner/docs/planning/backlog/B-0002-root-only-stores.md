@@ -10,7 +10,7 @@ last_reviewed: '2026-11-23'
 ---
 # Clean stores that only root can clean
 
-host-cleaner refuses to clean as root, and cleaning as root is out of scope for
+workstation-cleaner refuses to clean as root, and cleaning as root is out of scope for
 every release in the
 [plan](../../../../../../docs/planning/host-cleaner-plan.md). Some of the
 largest stores on a Linux machine can only be cleaned as root, so the first
@@ -34,7 +34,7 @@ may need a second look before a descriptor relies on the field.
 
 ## What the design does today
 
-- host-cleaner refuses to run `status`, `plan`, `clean` and `plugins` as root
+- workstation-cleaner refuses to run `status`, `plan`, `clean` and `plugins` as root
   (exit 1); `config` still answers
   ([README, "Command line"](../../../README.md#command-line)).
 - A descriptor may set `system: true`. Once descriptors are built (phase 4 of

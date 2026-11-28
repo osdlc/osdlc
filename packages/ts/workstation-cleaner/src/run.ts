@@ -640,7 +640,7 @@ export async function survey(all: readonly Plugin[], ctx: RunCtx): Promise<Surve
     const agents = agentFolderOf(c, agentFolders)
     if (agents !== undefined) {
       objections.push({
-        by: 'host-cleaner',
+        by: 'workstation-cleaner',
         candidate: c.id,
         level: 'refuse',
         code: AGENT_WORKTREE,

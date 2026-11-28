@@ -106,7 +106,7 @@ function outsidePackage(
   mkdirSync(hc, { recursive: true })
   workstationCleanerEntries(dir, entries)
   build(join(hc, 'dist'))
-  // The built files find host-cleaner's dependencies here.
+  // The built files find workstation-cleaner's dependencies here.
   symlinkSync(join(pkg, 'node_modules'), join(hc, 'node_modules'), 'junction')
   mkdirSync(join(dir, 'node_modules', '@types'))
   const types = dirname(require.resolve('@types/node/package.json'))
@@ -181,8 +181,8 @@ test('the podman example builds against ./plugin alone, and the loader takes it 
   // workstation-cleaner and run through the contract suite on a fake podman.
   const { home: root, cleanup: uninstall } = tempHome('workstation-cleaner-installed-')
   onTestFinished(uninstall)
-  symlinkSync(dir, join(root, 'host-cleaner-podman'), 'junction')
-  const hc = join(dir, 'node_modules', '@osdlc', 'host-cleaner')
+  symlinkSync(dir, join(root, 'workstation-cleaner-podman'), 'junction')
+  const hc = join(dir, 'node_modules', '@osdlc', 'workstation-cleaner')
   const dist = (f: string) => JSON.stringify(pathToFileURL(join(hc, 'dist', f)).href)
   const listed = [{ Name: 'cache', Driver: 'local', CreatedAt: '2026-05-01T09:00:00Z' }]
   const script = `

@@ -334,7 +334,7 @@ function notADefinition(x: unknown): string | undefined {
   const { settings } = x
   if (isObject(settings) && typeof settings.safeExtend === 'function') {
     return isObject(settings.shape) && Object.hasOwn(settings.shape, 'package')
-      ? 'has settings that declare package, which host-cleaner keeps for the npm package the plugin is loaded from; rename that setting'
+      ? 'has settings that declare package, which workstation-cleaner keeps for the npm package the plugin is loaded from; rename that setting'
       : undefined
   }
   return isObject(settings) && typeof settings.parse === 'function'
@@ -410,7 +410,7 @@ function checked(def: PluginDefinition, entry: PackageEntry, label: string): Plu
 /**
  * The package `entry` names, from the first of `roots` that has it.
  *
- * @throws PackageLoadError when it is not there, its `package.json` can't be read, it exports no entry for `import`, its import throws or takes over {@link IMPORT_LIMIT_MS}, or its default export is not a plugin definition of that name for this host-cleaner's {@link PLUGIN_API}
+ * @throws PackageLoadError when it is not there, its `package.json` can't be read, it exports no entry for `import`, its import throws or takes over {@link IMPORT_LIMIT_MS}, or its default export is not a plugin definition of that name for this workstation-cleaner's {@link PLUGIN_API}
  */
 async function loadPackage(entry: PackageEntry, roots: readonly string[]): Promise<LoadedPackage> {
   const fail = (why: string): PackageLoadError =>

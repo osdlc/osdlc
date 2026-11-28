@@ -382,7 +382,7 @@ describe('what a package must export', () => {
         ),
       ),
     ).toBe(
-      `plugins.fixture.package: ${FIXTURE} 1.0.0 has settings that declare package, which host-cleaner keeps for the npm package the plugin is loaded from; rename that setting`,
+      `plugins.fixture.package: ${FIXTURE} 1.0.0 has settings that declare package, which workstation-cleaner keeps for the npm package the plugin is loaded from; rename that setting`,
     )
   })
 
